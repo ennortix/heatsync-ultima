@@ -1544,6 +1544,192 @@
     return wrap
   }
 
+  function renderRewards(rewards, balance, channelId) {
+    const section = document.createElement('div')
+    section.className = 'hs-mc-rewards'
+
+    const header = document.createElement('div')
+    header.className = 'hs-mc-rewards-header'
+    const label = document.createElement('span')
+    label.className = 'hs-mc-rewards-label'
+    label.textContent = 'rewards'
+    header.appendChild(label)
+    if (balance != null) {
+      const bal = document.createElement('span')
+      bal.className = 'hs-mc-rewards-balance'
+      const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
+      svg.setAttribute('width', '12')
+      svg.setAttribute('height', '12')
+      svg.setAttribute('viewBox', '0 0 20 20')
+      svg.style.verticalAlign = '-1px'
+      const path = document.createElementNS('http://www.w3.org/2000/svg', 'path')
+      path.setAttribute('fill', '#ffbf00')
+      path.setAttribute('d', 'M10 6a4 4 0 100 8 4 4 0 000-8zm0-4a8 8 0 110 16 8 8 0 010-16z')
+      svg.appendChild(path)
+      bal.appendChild(svg)
+      bal.appendChild(document.createTextNode(' ' + formatPoints(balance)))
+      header.appendChild(bal)
+    }
+    section.appendChild(header)
+
+    if (!rewards.length) {
+      const empty = document.createElement('div')
+      empty.className = 'hs-mc-rewards-empty'
+      empty.textContent = 'no rewards available'
+      section.appendChild(empty)
+      return section
+    }
+
+    const grid = document.createElement('div')
+    grid.className = 'hs-mc-rewards-grid'
+
+    for (const reward of rewards) {
+      const now = Date.now()
+      const onCooldown = reward.cooldownExpiresAt && new Date(reward.cooldownExpiresAt).getTime() > now
+      const available = !reward.isPaused && reward.isInStock && !onCooldown
+      const card = document.createElement('div')
+      card.className = 'hs-mc-reward-card' + (available ? '' : ' hs-mc-reward-unavailable')
+      card.dataset.rewardId = reward.id
+      card.dataset.cost = reward.cost
+      card.dataset.title = reward.title
+      card.dataset.channelId = channelId
+      if (reward.isUserInputRequired) card.dataset.textRequired = '1'
+      if (reward.prompt) card.dataset.prompt = reward.prompt
+      card.style.setProperty('--rc', reward.backgroundColor || '#9147ff')
+
+      const imgUrl = reward.image?.url || reward.defaultImage?.url || ''
+      if (imgUrl) {
+        const img = document.createElement('img')
+        img.className = 'hs-mc-reward-img'
+        img.src = imgUrl
+        img.width = 28
+        img.height = 28
+        card.appendChild(img)
+      }
+
+      const info = document.createElement('div')
+      info.className = 'hs-mc-reward-info'
+      const titleEl = document.createElement('div')
+      titleEl.className = 'hs-mc-reward-title'
+      titleEl.textContent = reward.title
+      info.appendChild(titleEl)
+
+      const costEl = document.createElement('div')
+      costEl.className = 'hs-mc-reward-cost'
+      const costSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
+      costSvg.setAttribute('width', '10')
+      costSvg.setAttribute('height', '10')
+      costSvg.setAttribute('viewBox', '0 0 20 20')
+      costSvg.style.verticalAlign = '-1px'
+      const costPath = document.createElementNS('http://www.w3.org/2000/svg', 'path')
+      costPath.setAttribute('fill', '#ffbf00')
+      costPath.setAttribute('d', 'M10 6a4 4 0 100 8 4 4 0 000-8zm0-4a8 8 0 110 16 8 8 0 010-16z')
+      costSvg.appendChild(costPath)
+      costEl.appendChild(costSvg)
+      costEl.appendChild(document.createTextNode(' ' + formatPoints(reward.cost)))
+      info.appendChild(costEl)
+
+      if (!available) {
+        const reason = document.createElement('div')
+        reason.className = 'hs-mc-reward-reason'
+        if (reward.isPaused) reason.textContent = 'paused'
+        else if (!reward.isInStock) reason.textContent = 'out of stock'
+        else if (onCooldown) {
+          const secs = Math.ceil((new Date(reward.cooldownExpiresAt).getTime() - now) / 1000)
+          reason.textContent = secs > 60 ? `${Math.ceil(secs / 60)}m cooldown` : `${secs}s cooldown`
+          reason.dataset.cooldownEnds = new Date(reward.cooldownExpiresAt).getTime()
+        }
+        info.appendChild(reason)
+      }
+
+      card.appendChild(info)
+      grid.appendChild(card)
+    }
+
+    section.appendChild(grid)
+    return section
+  }
+
+  function attachRewardHandlers() {
+    const container = document.getElementById('hs-mc-tab-twitch')
+    if (!container) return
+
+    container.querySelectorAll('.hs-mc-reward-card:not(.hs-mc-reward-unavailable)').forEach(card => {
+      card.addEventListener('click', async (e) => {
+        e.stopPropagation()
+        if (card.querySelector('.hs-mc-reward-input-row')) return
+
+        if (card.dataset.textRequired === '1') {
+          const existing = card.parentElement.querySelector('.hs-mc-reward-input-row')
+          if (existing) existing.remove()
+          const row = document.createElement('div')
+          row.className = 'hs-mc-reward-input-row'
+          const input = document.createElement('input')
+          input.className = 'hs-mc-reward-input'
+          input.type = 'text'
+          input.placeholder = card.dataset.prompt || 'enter text...'
+          const btn = document.createElement('button')
+          btn.className = 'hs-mc-reward-submit'
+          btn.textContent = 'redeem'
+          row.appendChild(input)
+          row.appendChild(btn)
+          card.after(row)
+          input.focus()
+
+          btn.addEventListener('click', async (ev) => {
+            ev.stopPropagation()
+            const text = input.value.trim()
+            if (!text) return
+            btn.disabled = true
+            btn.textContent = '...'
+            const result = await redeemChannelReward(card.dataset.channelId, card.dataset.rewardId, parseInt(card.dataset.cost), card.dataset.title, text)
+            if (result.error) {
+              btn.textContent = '!'
+              btn.title = result.error
+              setTimeout(() => { btn.textContent = 'redeem'; btn.disabled = false; btn.title = '' }, 2000)
+            } else {
+              btn.textContent = '\u2713'
+              _rewardsCache = null
+              setTimeout(() => renderTwitchTab(), 500)
+            }
+          })
+          return
+        }
+
+        const titleEl = card.querySelector('.hs-mc-reward-title')
+        const origText = titleEl.textContent
+        titleEl.textContent = '...'
+        card.style.pointerEvents = 'none'
+        const result = await redeemChannelReward(card.dataset.channelId, card.dataset.rewardId, parseInt(card.dataset.cost), card.dataset.title)
+        if (result.error) {
+          titleEl.textContent = '!'
+          card.title = result.error
+          setTimeout(() => { titleEl.textContent = origText; card.style.pointerEvents = ''; card.title = '' }, 2000)
+        } else {
+          titleEl.textContent = '\u2713'
+          _rewardsCache = null
+          setTimeout(() => renderTwitchTab(), 500)
+        }
+      })
+    })
+
+    // Cooldown timers
+    container.querySelectorAll('.hs-mc-reward-reason[data-cooldown-ends]').forEach(el => {
+      const endsAt = parseInt(el.dataset.cooldownEnds)
+      const iv = cleanup.setInterval(() => {
+        if (!el.isConnected) { clearInterval(iv); return }
+        const secs = Math.max(0, Math.ceil((endsAt - Date.now()) / 1000))
+        if (secs <= 0) {
+          _rewardsCache = null
+          renderTwitchTab()
+          clearInterval(iv)
+          return
+        }
+        el.textContent = secs > 60 ? `${Math.ceil(secs / 60)}m cooldown` : `${secs}s cooldown`
+      }, 1000)
+    })
+  }
+
   function attachPredictionHandlers() {
     const container = document.getElementById('hs-mc-tab-twitch')
     if (!container) return
@@ -1650,9 +1836,17 @@
       container.appendChild(loading)
     }
 
-    const result = await fetchPrediction(channel)
+    const [result, rewardsResult] = await Promise.all([
+      fetchPrediction(channel),
+      fetchChannelRewards(channel)
+    ])
 
     container.textContent = ''
+
+    // Auto-claim bonus points
+    if (rewardsResult?.availableClaim && rewardsResult.channelId) {
+      claimCommunityPoints(rewardsResult.availableClaim, rewardsResult.channelId)
+    }
 
     if (!result) {
       const empty = document.createElement('div')
@@ -1662,19 +1856,19 @@
       msg.textContent = "couldn't load predictions"
       empty.appendChild(msg)
       container.appendChild(empty)
-      container.appendChild(renderQuickLinks())
-      attachPredictionHandlers()
-      startPredictionPoll()
-      return
-    }
-
-    if (result.prediction) {
+    } else if (result.prediction) {
       container.appendChild(renderPrediction(result.prediction, result.balance))
     } else {
       container.appendChild(renderNoPrediction(result.balance))
     }
+
+    if (rewardsResult?.rewards?.length) {
+      container.appendChild(renderRewards(rewardsResult.rewards, rewardsResult.balance, rewardsResult.channelId))
+    }
+
     container.appendChild(renderQuickLinks())
     attachPredictionHandlers()
+    attachRewardHandlers()
     startPredictionPoll()
   }
 
@@ -4034,6 +4228,123 @@
         height: 28px;
       }
 
+      /* ═══ Rewards ═══ */
+      .hs-mc-rewards {
+        border-top: 1px solid rgba(255,255,255,0.06);
+        margin-top: 8px;
+        padding-top: 8px;
+      }
+      .hs-mc-rewards-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 0 14px 6px;
+      }
+      .hs-mc-rewards-label {
+        font-size: 10px;
+        font-weight: 600;
+        color: #808080;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+      }
+      .hs-mc-rewards-balance {
+        font-size: 11px;
+        color: #808080;
+      }
+      .hs-mc-rewards-empty {
+        font-size: 11px;
+        color: #555;
+        padding: 8px 14px;
+      }
+      .hs-mc-rewards-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 4px;
+        padding: 0 14px;
+      }
+      .hs-mc-reward-card {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 6px 8px;
+        background: rgba(255,255,255,0.04);
+        border-left: 2px solid var(--rc, #9147ff);
+        cursor: pointer;
+        transition: background 0.15s;
+      }
+      .hs-mc-reward-card:hover {
+        background: rgba(255,255,255,0.08);
+      }
+      .hs-mc-reward-unavailable {
+        opacity: 0.4;
+        cursor: default;
+      }
+      .hs-mc-reward-unavailable:hover {
+        background: rgba(255,255,255,0.04);
+      }
+      .hs-mc-reward-img {
+        flex-shrink: 0;
+        object-fit: contain;
+      }
+      .hs-mc-reward-info {
+        min-width: 0;
+        overflow: hidden;
+      }
+      .hs-mc-reward-title {
+        font-size: 11px;
+        color: #fff;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .hs-mc-reward-cost {
+        font-size: 10px;
+        color: #808080;
+      }
+      .hs-mc-reward-reason {
+        font-size: 9px;
+        color: #f5009b;
+        margin-top: 1px;
+      }
+      .hs-mc-reward-input-row {
+        grid-column: 1 / -1;
+        display: flex;
+        gap: 4px;
+        padding: 4px 0;
+      }
+      .hs-mc-reward-input {
+        flex: 1;
+        background: rgba(255,255,255,0.08);
+        border: 1px solid rgba(255,255,255,0.1);
+        color: #fff;
+        font-size: 11px;
+        padding: 4px 6px;
+        border-radius: 0;
+        outline: none;
+      }
+      .hs-mc-reward-input:focus {
+        border-color: #9147ff;
+      }
+      .hs-mc-reward-submit {
+        background: #9147ff;
+        border: none;
+        color: #fff;
+        font-size: 11px;
+        font-weight: 600;
+        padding: 4px 10px;
+        border-radius: 0;
+        cursor: pointer;
+        transition: opacity 0.15s;
+      }
+      .hs-mc-reward-submit:hover {
+        background: #fff;
+        color: #000;
+      }
+      .hs-mc-reward-submit:disabled {
+        opacity: 0.5;
+        cursor: default;
+      }
+
       /* ═══ Settings tab ═══ */
       .hs-mc-settings-group {
         padding: 4px 0;
@@ -5675,6 +5986,10 @@
   let _predictionPollTimer = null
   let _predictionChannel = null
 
+  // Rewards state
+  let _rewardsCache = null
+  let _rewardsCacheChannel = null
+
   async function fetchPrediction(channelLogin) {
     const safe = channelLogin.replace(/[^a-z0-9_]/g, '')
     if (!safe) return null
@@ -5754,6 +6069,125 @@
       return { ok: true }
     } catch (e) {
       return { error: e.message }
+    }
+  }
+
+  async function fetchChannelRewards(channelLogin) {
+    const safe = channelLogin.replace(/[^a-z0-9_]/g, '')
+    if (!safe) return null
+    if (_rewardsCacheChannel === safe && _rewardsCache && Date.now() - _rewardsCache.fetchedAt < 60000) {
+      return _rewardsCache
+    }
+    const token = getTwitchAuthToken()
+    if (!token) return null
+    const headers = {
+      'Client-Id': TWITCH_CLIENT_ID,
+      'Content-Type': 'application/json',
+      'Authorization': `OAuth ${token}`
+    }
+    try {
+      const resp = await fetch(TWITCH_GQL, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          query: `{
+            user(login: "${safe}") {
+              id
+              communityPointsSettings {
+                customRewards {
+                  id title cost backgroundColor isEnabled isPaused isInStock
+                  isUserInputRequired cooldownExpiresAt prompt
+                  globalCooldownSetting { globalCooldownSeconds isEnabled }
+                  image { url }
+                  defaultImage { url }
+                }
+              }
+              self {
+                communityPoints {
+                  balance
+                  availableClaim { id }
+                }
+              }
+            }
+          }`
+        })
+      })
+      if (!resp.ok) return null
+      const data = await resp.json()
+      const user = data?.data?.user
+      if (!user) return null
+      const rewards = (user.communityPointsSettings?.customRewards || []).filter(r => r.isEnabled)
+      const balance = user.self?.communityPoints?.balance ?? null
+      const availableClaim = user.self?.communityPoints?.availableClaim?.id ?? null
+      _rewardsCache = { rewards, balance, availableClaim, channelId: user.id, fetchedAt: Date.now() }
+      _rewardsCacheChannel = safe
+      return _rewardsCache
+    } catch (e) {
+      log('Failed to fetch rewards:', e.message)
+      return null
+    }
+  }
+
+  async function redeemChannelReward(channelId, rewardId, cost, title, textInput) {
+    const token = getTwitchAuthToken()
+    if (!token) return { error: 'not logged in' }
+    try {
+      const input = {
+        channelID: channelId,
+        rewardID: rewardId,
+        cost,
+        title,
+        transactionID: crypto.randomUUID()
+      }
+      if (textInput) input.textInput = textInput
+      const resp = await fetch(TWITCH_GQL, {
+        method: 'POST',
+        headers: {
+          'Client-Id': TWITCH_CLIENT_ID,
+          'Content-Type': 'application/json',
+          'Authorization': `OAuth ${token}`
+        },
+        body: JSON.stringify({
+          query: `mutation($input: RedeemCommunityPointsCustomRewardInput!) {
+            redeemCommunityPointsCustomReward(input: $input) {
+              redemption { id }
+              error { code }
+            }
+          }`,
+          variables: { input }
+        })
+      })
+      if (!resp.ok) return { error: `HTTP ${resp.status}` }
+      const data = await resp.json()
+      if (data?.errors?.length) return { error: data.errors[0].message }
+      const err = data?.data?.redeemCommunityPointsCustomReward?.error
+      if (err) return { error: err.code || 'redemption failed' }
+      return { ok: true }
+    } catch (e) {
+      return { error: e.message }
+    }
+  }
+
+  async function claimCommunityPoints(claimId, channelId) {
+    const token = getTwitchAuthToken()
+    if (!token) return
+    try {
+      await fetch(TWITCH_GQL, {
+        method: 'POST',
+        headers: {
+          'Client-Id': TWITCH_CLIENT_ID,
+          'Content-Type': 'application/json',
+          'Authorization': `OAuth ${token}`
+        },
+        body: JSON.stringify({
+          query: `mutation($input: ClaimCommunityPointsInput!) {
+            claimCommunityPoints(input: $input) { claim { id } }
+          }`,
+          variables: { input: { claimID: claimId, channelID: channelId } }
+        })
+      })
+    } catch (e) {
+      log('Failed to claim bonus points:', e.message)
     }
   }
 

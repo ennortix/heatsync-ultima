@@ -4077,14 +4077,18 @@
         box-sizing: content-box;
       }
       .hs-mc-picker-emote {
-        height: var(--hs-emote-size, 32px);
+        height: auto;
+        max-height: 32px;
+        max-width: 96px;
+        width: auto;
         vertical-align: middle;
-        margin: 0 2px;
+        margin: 0;
         padding: 4px;
         border-radius: 0;
         transition: none;
         cursor: pointer;
         box-sizing: content-box;
+        object-fit: contain;
       }
 
       /* 7TV ZERO-WIDTH OVERLAY EMOTE STACKING */
@@ -4575,8 +4579,9 @@
         border-radius: 0;
       }
       .hs-mc-picker-section-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(44px, 44px));
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
         gap: 2px;
         padding: 6px;
       }

@@ -1945,6 +1945,35 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true
   }
 
+  // Query all open Twitch/Kick tabs to find channels the user is watching
+  if (message.type === 'get_watching_channels') {
+    const skip = new Set(['directory', 'settings', 'videos', 'moderator', 'subscriptions', 'downloads', 'search', 'categories', 'following'])
+    browser.tabs.query({ url: ['*://*.twitch.tv/*', '*://*.kick.com/*'] }).then(tabs => {
+      const channels = []
+      const seen = new Set()
+      for (const tab of tabs) {
+        try {
+          const url = new URL(tab.url)
+          let match
+          if (url.hostname.includes('twitch.tv')) {
+            match = url.pathname.match(/^\/(?:popout\/)?([a-zA-Z0-9_]+)/)
+          } else if (url.hostname.includes('kick.com')) {
+            match = url.pathname.match(/^\/([a-zA-Z0-9_-]+)/)
+          }
+          if (match?.[1]) {
+            const ch = match[1].toLowerCase()
+            if (!skip.has(ch) && !seen.has(ch)) {
+              seen.add(ch)
+              channels.push({ name: ch, platform: url.hostname.includes('kick') ? 'kick' : 'twitch' })
+            }
+          }
+        } catch (e) {}
+      }
+      sendResponse({ channels })
+    }).catch(() => sendResponse({ channels: [] }))
+    return true
+  }
+
   // Proxy fetch for live status (avoids CORS in content script)
   if (message.type === 'fetch_live_status') {
     const channels = message.channels

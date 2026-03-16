@@ -27,6 +27,8 @@
   // State
   let config = { channels: [], enabled: true };
   let currentTab = 'live';
+  let liveChannel = null;        // override channel for live tab (null = use URL channel)
+  let liveChannelSet = new Set(); // channels currently live (lowercase twitch names)
   let irc = null;
   let kickChat = null;
   let currentUsername = null;
@@ -401,7 +403,7 @@
         log('Loaded history for', ch, '- parsed:', parsed, 'total in buffer:', buffer.getAll().length);
 
         // Re-render if viewing this channel or live tab
-        if (currentTab === ch || (currentTab === 'live' && getCurrentChannel() === ch)) {
+        if (currentTab === ch || (currentTab === 'live' && getLiveChannel() === ch)) {
           renderMessages(currentTab);
         }
       } catch (e) {
@@ -631,6 +633,8 @@
         switchTab('add');
       } else if (tabId === 'rotate') {
         rotateTabPosition();
+      } else if (tabId === 'live') {
+        showLiveChannelPicker(tab);
       } else {
         switchTab(tabId);
       }
@@ -761,7 +765,7 @@
         } else {
           isScrolledUp = true;
           newBtn.innerHTML = newMessageCount > 0 ? `<span class="hs-arrow-down">▼</span> ${newMessageCount} new` : '<span class="hs-arrow-down">▼</span> resume';
-          newBtn.style.display = 'block';
+          newBtn.style.display = 'flex';
         }
       });
 
@@ -771,7 +775,7 @@
           // Scrolling up with wheel = user intent
           isScrolledUp = true;
           newBtn.innerHTML = newMessageCount > 0 ? `<span class="hs-arrow-down">▼</span> ${newMessageCount} new` : '<span class="hs-arrow-down">▼</span> resume';
-          newBtn.style.display = 'block';
+          newBtn.style.display = 'flex';
         } else if (e.deltaY > 0) {
           // Scrolling down - check if we're now at bottom to re-lock
           setTimeout(() => {
@@ -2340,7 +2344,7 @@
     } else if (currentTab === 'notifs') {
       placeholder = 'post to heatsync...';
     } else if (currentTab === 'live') {
-      const channel = getCurrentChannel();
+      const channel = getLiveChannel();
       placeholder = channel ? `send to #${channel}` : 'send a message...';
     } else if (currentTab === 'mentions' || currentTab === 'posts') {
       const channel = getCurrentChannel();
@@ -2709,7 +2713,9 @@
 
     // Determine target channel
     let targetChannel;
-    if (currentTab === 'live' || currentTab === 'mentions' || currentTab === 'posts') {
+    if (currentTab === 'live') {
+      targetChannel = getLiveChannel();
+    } else if (currentTab === 'mentions' || currentTab === 'posts') {
       targetChannel = getCurrentChannel();
     } else if (currentTab === 'add') {
       if (MC_DEBUG) console.warn('[HS] SEND BAIL: on add tab');
@@ -3192,6 +3198,9 @@
         bottom: 12px;
         left: 50%;
         transform: translateX(-50%);
+        display: none;
+        align-items: center;
+        gap: 4px;
         background: rgba(255, 255, 0, 0.95);
         color: #000;
         border: none;
@@ -3211,9 +3220,9 @@
       }
       .hs-arrow-down {
         font-size: 18px;
-        line-height: 1;
-        vertical-align: middle;
-        margin-right: 2px;
+        line-height: 0;
+        position: relative;
+        top: -1px;
       }
 
       /* UNIFIED INPUT BAR - always visible at bottom */
@@ -6045,11 +6054,16 @@
 
     // Persist active tab across refreshes/popouts (skip transient tabs)
     if (id !== 'add') {
-      chrome.storage.local.get(['ui_settings']).then(stored => {
-        const settings = stored.ui_settings || {};
-        settings.activeTab = id;
-        chrome.storage.local.set({ ui_settings: settings });
-      }).catch(() => {})
+      try {
+        chrome.storage.local.get(['ui_settings']).then(stored => {
+          try {
+            const settings = stored.ui_settings || {};
+            settings.activeTab = id;
+            settings.liveChannel = liveChannel;
+            chrome.storage.local.set({ ui_settings: settings });
+          } catch (e) { /* context invalidated */ }
+        }).catch(() => {});
+      } catch (e) { /* context invalidated */ }
     }
 
     // Update tab bar active state
@@ -6062,14 +6076,17 @@
       });
     }
 
+    // Update live tab label when switching to it
+    if (id === 'live') updateLiveTabLabel();
+
     // Reset scroll state BEFORE rendering - always start at bottom when switching tabs
     isScrolledUp = false;
     newMessageCount = 0;
     const newBtn = document.getElementById('hs-mc-new-msgs');
     if (newBtn) newBtn.style.display = 'none';
 
-    // Kick live tab: show native chat, hide overlay + our input
-    if (isKick && id === 'live') {
+    // Kick live tab: show native chat only when viewing the page's own channel
+    if (isKick && id === 'live' && (!liveChannel || liveChannel === getCurrentChannel()?.toLowerCase())) {
       setNativeChatHidden(false);
       if (overlayElement) overlayElement.classList.remove('visible');
       if (inputBarElement) inputBarElement.style.display = 'none';
@@ -6299,7 +6316,7 @@
       newMessageCount++;
       if (newBtn) {
         newBtn.innerHTML = `<span class="hs-arrow-down">▼</span> ${newMessageCount} new`;
-        newBtn.style.display = 'block';
+        newBtn.style.display = 'flex';
       }
       return;
     }
@@ -6314,7 +6331,7 @@
       renderAddChannelForm(msgsEl);
       return;
     } else if (id === 'live') {
-      const curCh = getCurrentChannel();
+      const curCh = getLiveChannel();
       const ircMsgs = curCh ? (irc?.getMessages(curCh) || []) : [];
       // Kick messages for live tab: same channel name, or linked via config
       let kickMsgs = curCh ? (kickChat?.getMessages(curCh) || []) : [];
@@ -7819,7 +7836,7 @@
 
   // Look up emote from global cache + current channel cache
   function lookupEmote(name) {
-    return emoteCache.get(name) || channelEmoteCaches[currentTab]?.get(name) || channelEmoteCaches[getCurrentChannel()]?.get(name);
+    return emoteCache.get(name) || channelEmoteCaches[currentTab]?.get(name) || channelEmoteCaches[getLiveChannel()]?.get(name) || channelEmoteCaches[getCurrentChannel()]?.get(name);
   }
   let inventoryHashes = new Map(); // name → hash for remove_from_inventory
   let emoteHashes = new Map(); // name → hash for ALL emotes (block/unblock API)
@@ -8327,12 +8344,18 @@
     const channels = config.channels
       .map(ch => typeof ch === 'string' ? ch : ch.twitch || ch.id)
       .filter(Boolean);
+    // Also check URL channel (for popout / non-config channels)
+    const urlCh = getCurrentChannel();
+    if (urlCh && !channels.some(c => c.toLowerCase() === urlCh.toLowerCase())) {
+      channels.push(urlCh);
+    }
     if (channels.length === 0) return;
 
     try {
       const data = await chrome.runtime.sendMessage({ type: 'fetch_live_status', channels });
       if (!data?.live) return;
       const liveSet = new Set(data.live.map(c => c.toLowerCase()));
+      liveChannelSet = liveSet;
 
       config.channels.forEach(ch => {
         const id = typeof ch === 'string' ? ch : ch.id;
@@ -8340,6 +8363,23 @@
         const tab = tabBarElement?.querySelector(`[data-tab="${id}"]`);
         if (tab) tab.dataset.live = String(liveSet.has(twitch.toLowerCase()));
       });
+
+      // Update live tab's own red dot based on selected channel
+      const liveTab = tabBarElement?.querySelector('[data-tab="live"]');
+      const curLive = getLiveChannel()?.toLowerCase();
+      if (liveTab) liveTab.dataset.live = String(curLive && liveSet.has(curLive));
+
+      // If override channel went offline, fall back to URL channel or first live
+      if (liveChannel && !liveSet.has(liveChannel)) {
+        liveChannel = null;
+        updateLiveTabLabel();
+        if (currentTab === 'live') renderMessages('live');
+      }
+
+      // Auto-select if no override and URL channel isn't live but others are
+      if (!liveChannel && urlCh && !liveSet.has(urlCh.toLowerCase()) && liveSet.size > 0) {
+        // Don't auto-override — user can pick via the menu
+      }
     } catch (e) { /* network error, skip */ }
   }
 
@@ -8362,6 +8402,132 @@
       return channel;
     }
     return null;
+  }
+
+  /** Channel the live tab is currently showing (override or URL fallback) */
+  function getLiveChannel() {
+    return liveChannel || getCurrentChannel();
+  }
+
+  /** Update the live tab button label to show selected channel */
+  function updateLiveTabLabel() {
+    const liveTab = tabBarElement?.querySelector('[data-tab="live"]');
+    if (!liveTab) return;
+    const ch = liveChannel;
+    // Show channel name when overridden to a non-URL channel
+    if (ch && ch !== getCurrentChannel()?.toLowerCase()) {
+      liveTab.textContent = `live \u00b7 ${ch}`;
+    } else {
+      liveTab.textContent = 'live';
+    }
+  }
+
+  /** Query background script for all channels the user has open tabs for */
+  async function getWatchingChannels() {
+    try {
+      const resp = await chrome.runtime.sendMessage({ type: 'get_watching_channels' });
+      return resp?.channels || [];
+    } catch (e) {
+      return [];
+    }
+  }
+
+  /** Show picker for choosing which live channel to view */
+  async function showLiveChannelPicker(anchorEl) {
+    document.getElementById('hs-mc-live-picker')?.remove();
+
+    const urlCh = getCurrentChannel()?.toLowerCase();
+    const watching = await getWatchingChannels();
+
+    // Check which watching channels are actually live
+    const watchNames = watching.map(w => w.name);
+    if (urlCh && !watchNames.includes(urlCh)) watchNames.push(urlCh);
+    let liveSet = liveChannelSet;
+    if (watchNames.length > 0) {
+      try {
+        const resp = await chrome.runtime.sendMessage({ type: 'fetch_live_status', channels: watchNames });
+        if (resp?.live) liveSet = new Set(resp.live.map(c => c.toLowerCase()));
+      } catch (e) { /* use cached liveChannelSet */ }
+    }
+
+    // Only show channels that are actually live
+    const channels = [];
+    const seen = new Set();
+    for (const w of watching) {
+      const ch = w.name.toLowerCase();
+      if (seen.has(ch) || !liveSet.has(ch)) continue;
+      seen.add(ch);
+      channels.push({ name: ch, platform: w.platform, isCurrent: ch === urlCh });
+    }
+
+    if (channels.length <= 1) {
+      // 0 or 1 live channel — just switch to live normally
+      if (channels.length === 1 && document.body.classList.contains('hs-popout') && channels[0].name !== urlCh) {
+        if (hostPlatform === 'twitch') location.href = `/popout/${channels[0].name}/chat?popout=`;
+        else if (hostPlatform === 'kick') location.href = `/${channels[0].name}`;
+        return;
+      }
+      switchTab('live');
+      return;
+    }
+
+    const menu = document.createElement('div');
+    menu.id = 'hs-mc-live-picker';
+    const rect = anchorEl.getBoundingClientRect();
+    menu.style.cssText = `position:fixed;z-index:99999;background:#111;border:1px solid #444;padding:4px 0;min-width:130px;font-size:12px;font-family:inherit;left:${rect.left}px;top:${rect.bottom + 2}px;`;
+
+    const curLive = getLiveChannel()?.toLowerCase();
+
+    for (const ch of channels) {
+      const item = document.createElement('div');
+      const isActive = ch.name === curLive;
+
+      // Red dot — all channels in picker are confirmed live
+      const dot = document.createElement('span');
+      dot.style.cssText = `display:inline-block;width:6px;height:6px;border-radius:50%;background:#f00;margin-right:6px;vertical-align:middle`;
+      item.appendChild(dot);
+      item.appendChild(document.createTextNode(ch.name));
+
+      item.style.cssText = `padding:6px 12px;cursor:pointer;color:${isActive ? '#ff8700' : '#fff'};white-space:nowrap;`;
+      item.addEventListener('mouseenter', () => item.style.background = 'rgba(255,255,255,0.06)');
+      item.addEventListener('mouseleave', () => item.style.background = 'none');
+      item.addEventListener('click', () => {
+        menu.remove();
+        // In popout mode, navigate to the channel's popout URL
+        if (document.body.classList.contains('hs-popout')) {
+          if (ch.platform === 'twitch' || hostPlatform === 'twitch') {
+            location.href = `/popout/${ch.name}/chat?popout=`;
+          } else if (ch.platform === 'kick' || hostPlatform === 'kick') {
+            location.href = `/${ch.name}`;
+          }
+          return;
+        }
+        liveChannel = ch.name;
+        updateLiveTabLabel();
+        switchTab('live');
+      });
+      menu.appendChild(item);
+    }
+
+    document.body.appendChild(menu);
+
+    // Clamp position so menu stays fully visible
+    const menuRect = menu.getBoundingClientRect();
+    if (menuRect.right > window.innerWidth) {
+      menu.style.left = Math.max(0, window.innerWidth - menuRect.width - 4) + 'px';
+    }
+    if (menuRect.bottom > window.innerHeight) {
+      menu.style.top = Math.max(0, rect.top - menuRect.height - 2) + 'px';
+    }
+
+    // Dismiss on outside click
+    const dismiss = (e) => {
+      if (!menu.contains(e.target) && e.target !== anchorEl) {
+        menu.remove();
+        document.removeEventListener('click', dismiss, true);
+      }
+    };
+    setTimeout(() => document.addEventListener('click', dismiss, true), 0);
   }
 
   function getCurrentUsername() {
@@ -8542,6 +8708,10 @@
       const channelIds = config.channels.map(c => typeof c === 'string' ? c : c.id);
       _savedActiveTab = (saved !== 'add' && (BUILTIN_TABS.includes(saved) || channelIds.includes(saved)))
         ? saved : 'live';
+      // Restore live channel override
+      if (stored.ui_settings?.liveChannel) {
+        liveChannel = stored.ui_settings.liveChannel;
+      }
     } catch (e) {
       _savedActiveTab = 'live';
     }
@@ -8826,8 +8996,8 @@
         updateTabIndicator(tabId);
       }
 
-      // Live tab: show if this is the current channel's Twitch chat
-      if (msg.channel === getCurrentChannel()) {
+      // Live tab: show if this channel matches the live tab's selected channel
+      if (msg.channel === getLiveChannel()) {
         if (currentTab === 'live') {
           if (!appendMessage(msg, 'live')) renderMessages('live');
         } else {
@@ -8859,7 +9029,7 @@
       }
 
       // Live tab: on Kick, show if channel matches; on Twitch, show if config maps current channel
-      const curCh = getCurrentChannel();
+      const curCh = getLiveChannel();
       const isLiveMsg = (hostPlatform === 'kick' && msg.channel === curCh)
         || (hostPlatform === 'twitch' && (msg.channel === curCh
           || config.channels.some(ch => typeof ch !== 'string' && ch.twitch === curCh && ch.kick === msg.channel)));

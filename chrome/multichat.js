@@ -3252,6 +3252,30 @@
       .hs-mc-tab.has-new.active {
         color: #000 !important;
       }
+      /* Stream event — magenta tab text (game switch, online/offline) */
+      .hs-mc-tab.has-stream-event {
+        background: #000 !important;
+        color: #ff00ff !important;
+        border-color: #808080 !important;
+      }
+      .hs-mc-tab.has-stream-event:not(.active):hover {
+        background: #fff !important;
+        color: #000 !important;
+      }
+      .hs-mc-tab.has-stream-event.active {
+        color: #000 !important;
+      }
+      /* Inline stream event notifications */
+      .hs-mc-stream-event {
+        padding: 2px 8px;
+        font-size: 13px;
+        font-style: italic;
+        border-left: 3px solid #ff00ff;
+        border-bottom: 1px solid #333;
+      }
+      .hs-mc-stream-event.event-update { color: #ff00ff; }
+      .hs-mc-stream-event.event-online { color: #0f0; }
+      .hs-mc-stream-event.event-offline { color: #f44; }
       /* Live dot — red indicator, composes with any state */
       .hs-mc-tab {
         position: relative !important;
@@ -6231,6 +6255,7 @@
         t.classList.toggle('active', t.dataset.tab === id);
         if (t.dataset.tab === id) {
           t.classList.remove('has-new');
+          t.classList.remove('has-stream-event');
         }
       });
     }
@@ -9202,6 +9227,75 @@
         }
       }
     });
+
+    // Handle stream events (game switch, online/offline) from HeatSync WS
+    if (!window._hsMcStreamEventListener) {
+      window._hsMcStreamEventListener = true;
+      chrome.runtime?.onMessage?.addListener((msg) => {
+        if (msg.type !== 'stream_event') return;
+        const channel = msg.channel?.toLowerCase();
+        if (!channel) return;
+
+        // Build inline notification
+        let text = '', eventClass = '';
+        if (msg.eventType === 'stream:update' && msg.prevGame && msg.game && msg.prevGame !== msg.game) {
+          text = `\u25C6 switched to ${msg.game}`;
+          eventClass = 'event-update';
+        } else if (msg.eventType === 'stream:online') {
+          text = msg.game ? `\u25C6 went live \u2014 ${msg.game}` : '\u25C6 went live';
+          eventClass = 'event-online';
+        } else if (msg.eventType === 'stream:offline') {
+          text = '\u25C6 went offline';
+          eventClass = 'event-offline';
+        }
+        if (!text) return;
+
+        log('[Stream]', channel, text);
+
+        // Magenta tab highlight
+        const liveChannel = getLiveChannel();
+        if (channel === liveChannel) {
+          if (currentTab !== 'live') {
+            const tab = tabBarElement?.querySelector('[data-tab="live"]');
+            if (tab) tab.classList.add('has-stream-event');
+          }
+          // Inject inline notification into chat
+          const msgsEl = document.getElementById('hs-mc-messages');
+          if (msgsEl && currentTab === 'live') {
+            const div = document.createElement('div');
+            div.className = `hs-mc-stream-event ${eventClass}`;
+            div.textContent = text;
+            msgsEl.appendChild(div);
+            trimChildren(msgsEl, 150);
+            if (!isScrolledUp) scrollMsgsToBottom(msgsEl);
+          }
+        }
+
+        // Check channel tabs too
+        for (const ch of config.channels) {
+          const twName = typeof ch === 'string' ? ch : ch.twitch;
+          const kickName = typeof ch !== 'string' ? ch.kick : null;
+          const tabId = typeof ch === 'string' ? ch : ch.id;
+          if (twName === channel || kickName === channel) {
+            if (currentTab !== tabId) {
+              const tab = tabBarElement?.querySelector(`[data-tab="${tabId}"]`);
+              if (tab) tab.classList.add('has-stream-event');
+            }
+            if (currentTab === tabId) {
+              const msgsEl = document.getElementById('hs-mc-messages');
+              if (msgsEl) {
+                const div = document.createElement('div');
+                div.className = `hs-mc-stream-event ${eventClass}`;
+                div.textContent = text;
+                msgsEl.appendChild(div);
+                trimChildren(msgsEl, 150);
+                if (!isScrolledUp) scrollMsgsToBottom(msgsEl);
+              }
+            }
+          }
+        }
+      });
+    }
 
     if (isKick) {
       // Kick: no React hook needed, just inject directly

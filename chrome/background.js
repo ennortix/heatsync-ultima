@@ -1583,6 +1583,22 @@ function handleWSMessage(msg) {
       })
       break
 
+    case 'stream:update':
+    case 'stream:online':
+    case 'stream:offline':
+      broadcastToTabs({
+        type: 'stream_event',
+        eventType: msg.type,
+        platform: msg.platform,
+        channel: msg.channel,
+        game: msg.game || '',
+        title: msg.title || '',
+        prevGame: msg.prevGame || '',
+        prevTitle: msg.prevTitle || '',
+        isLive: msg.isLive
+      })
+      break
+
     case 'error':
       break;
 

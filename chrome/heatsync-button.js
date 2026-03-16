@@ -1329,7 +1329,8 @@
     hideViewerCount: false,
     compactChatInput: true,
     highlightMentions: true,
-    emotePlaceholderMode: false  // Show colored rectangles instead of emote images
+    emotePlaceholderMode: false, // Show colored rectangles instead of emote images
+    viMode: false,               // Vim keybindings for chat input
   };
 
   // Get extension settings (sync - returns cached)
@@ -1465,6 +1466,18 @@
               <div class="heatsync-setting-label">highlight mentions</div>
             </div>
             <div class="heatsync-toggle ${settings.highlightMentions ? 'active' : ''}" data-setting="highlightMentions"></div>
+          </div>
+        </div>
+
+        <div class="heatsync-settings-section">
+          <div class="heatsync-settings-section-title">input</div>
+
+          <div class="heatsync-setting-row">
+            <div>
+              <div class="heatsync-setting-label">vi mode</div>
+              <div class="heatsync-setting-desc">vim keybindings for chat input</div>
+            </div>
+            <div class="heatsync-toggle ${settings.viMode ? 'active' : ''}" data-setting="viMode"></div>
           </div>
         </div>
       </div>

@@ -48,6 +48,7 @@ const COPY_FILES = [
   'youtube-content.js',
   'options.html',
   'options.js',
+  'vi-mode.js',
 ]
 
 // Assets (images, etc)

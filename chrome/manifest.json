@@ -39,6 +39,11 @@
       "world": "MAIN"
     },
     {
+      "matches": ["https://*.twitch.tv/*", "https://*.kick.com/*"],
+      "js": ["vi-mode.js"],
+      "run_at": "document_end"
+    },
+    {
       "matches": ["https://*.twitch.tv/*"],
       "js": ["autocomplete-hook.js"],
       "run_at": "document_end"

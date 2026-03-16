@@ -37,6 +37,11 @@
       "run_at": "document_start"
     },
     {
+      "matches": ["*://*.twitch.tv/*", "*://*.kick.com/*"],
+      "js": ["vi-mode.js"],
+      "run_at": "document_end"
+    },
+    {
       "matches": ["*://*.twitch.tv/*"],
       "js": ["autocomplete-hook.js"],
       "run_at": "document_end"

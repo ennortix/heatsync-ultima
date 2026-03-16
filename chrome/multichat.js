@@ -4622,8 +4622,10 @@
         color: #808080;
       }
       .hs-mc-picker-emote {
-        width: 36px !important;
-        height: 36px !important;
+        width: auto !important;
+        height: auto !important;
+        max-width: 96px !important;
+        max-height: 32px !important;
         object-fit: contain !important;
         cursor: pointer !important;
         border-radius: 0 !important;

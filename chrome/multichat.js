@@ -8262,6 +8262,25 @@
         continue;
       }
 
+      // Kick emote format: [emote:ID:NAME] → render as image from Kick CDN
+      const kickEmoteMatch = word.match(/^\[emote:(\d+):([^\]]+)\]$/)
+      if (kickEmoteMatch) {
+        const [, emoteId, emoteName] = kickEmoteMatch
+        const kickUrl = `https://files.kick.com/emotes/${emoteId}/fullsize`
+        const safeUrl = escapeHtml(kickUrl)
+        const safeName = escapeHtml(emoteName)
+        const imgHtml = `<span class="hs-mc-emote-wrapper hs-state-global" data-emote-name="${safeName}" data-emote-url="${safeUrl}" data-state="global" data-source="kick"><img src="${safeUrl}" alt="${safeName}" title="${safeName}" class="hs-mc-emote hs-emote-global" data-emote-name="${safeName}" data-state="global" data-source="kick"></span>`
+        if (pendingStack) {
+          result.push(renderEmoteStack(pendingStack))
+        }
+        if (pendingWhitespace) {
+          result.push(pendingWhitespace)
+          pendingWhitespace = ''
+        }
+        pendingStack = { base: imgHtml, overlays: [] }
+        continue
+      }
+
       const emote = emoteCache.get(word) || (channel && channelEmoteCaches[channel]?.get(word));
       if (emote) {
         const isBlocked = blockedEmoteNames.has(word);

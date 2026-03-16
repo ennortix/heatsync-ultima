@@ -724,6 +724,9 @@
   // Clickable links in chat messages (default on)
   let linksEnabled = true;
 
+  // Vi mode for chat input (default off)
+  let viModeEnabled = false;
+
   // Chat width state
   let chatWidth = 340; // Default width
   const DEFAULT_CHAT_WIDTH = 340;
@@ -1046,6 +1049,43 @@
     log('Links:', linksEnabled ? 'enabled' : 'disabled');
   }
 
+  // Vi mode setting
+  async function loadViModeSetting() {
+    try {
+      const stored = await chrome.storage.local.get(['ui_settings']);
+      if (stored.ui_settings?.viMode !== undefined) {
+        viModeEnabled = stored.ui_settings.viMode;
+      }
+    } catch (e) {
+      log('Error loading vi mode setting:', e);
+    }
+  }
+
+  async function saveViModeSetting() {
+    try {
+      const stored = await chrome.storage.local.get(['ui_settings']);
+      const settings = stored.ui_settings || {};
+      settings.viMode = viModeEnabled;
+      await chrome.storage.local.set({ ui_settings: settings });
+      // Sync to localStorage for vi-mode.js
+      try {
+        const ls = JSON.parse(localStorage.getItem('heatsync-extension-settings') || '{}')
+        ls.viMode = viModeEnabled
+        localStorage.setItem('heatsync-extension-settings', JSON.stringify(ls))
+      } catch (_) {}
+      // Notify vi-mode.js
+      window.postMessage({ type: 'heatsync-settings-changed', settings: { ...settings } }, location.origin);
+    } catch (e) {
+      log('Error saving vi mode setting:', e);
+    }
+  }
+
+  function toggleViMode() {
+    viModeEnabled = !viModeEnabled;
+    saveViModeSetting();
+    log('Vi mode:', viModeEnabled ? 'enabled' : 'disabled');
+  }
+
   function rebuildInput() {
     const bar = document.getElementById('hs-mc-inputbar');
     if (!bar) return;
@@ -1259,6 +1299,10 @@
             <span class="hs-mc-setting-label">clickable links</span>
             <button class="hs-mc-toggle-pill ${linksEnabled ? 'active' : ''}" id="hs-mc-links-toggle"><span class="hs-mc-toggle-knob"></span></button>
           </div>
+          <div class="hs-mc-setting-row">
+            <span class="hs-mc-setting-label">vi mode</span>
+            <button class="hs-mc-toggle-pill ${viModeEnabled ? 'active' : ''}" id="hs-mc-vi-toggle"><span class="hs-mc-toggle-knob"></span></button>
+          </div>
         </div>
         <div class="hs-mc-settings-group">
           <div class="hs-mc-settings-group-title">layout</div>
@@ -1329,6 +1373,13 @@
     linksToggle?.addEventListener('click', () => {
       toggleLinks();
       linksToggle.classList.toggle('active', linksEnabled);
+    });
+
+    // Vi mode toggle
+    const viToggle = document.getElementById('hs-mc-vi-toggle');
+    viToggle?.addEventListener('click', () => {
+      toggleViMode();
+      viToggle.classList.toggle('active', viModeEnabled);
     });
 
     // Chat width input
@@ -8915,6 +8966,7 @@
     await loadEmoteSize();
     await loadWysiwygSetting();
     await loadLinksSetting();
+    await loadViModeSetting();
     await loadBlockedEmotes();
     await loadEmotes();
 

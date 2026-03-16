@@ -291,16 +291,19 @@
     indicatorEl = document.createElement('span')
     indicatorEl.id = 'hs-vi-indicator'
     Object.assign(indicatorEl.style, {
+      position: 'absolute',
+      top: '0',
+      right: '0',
+      transform: 'translateY(-100%)',
       fontFamily: 'monospace',
-      fontSize: '13px',
+      fontSize: '11px',
       fontWeight: 'bold',
       pointerEvents: 'none',
       userSelect: 'none',
       lineHeight: '1',
       padding: '1px 4px',
-      borderRadius: '2px',
+      zIndex: '100',
       whiteSpace: 'nowrap',
-      flexShrink: '0',
     })
   }
 
@@ -328,22 +331,13 @@
       return
     }
 
-    // Find a good parent to inject into
-    // Twitch: chat input area has a flex container
-    const container = el.closest('[class*="chat-input__buttons"]')
-      || el.closest('[class*="chat-input"]')
-      || el.closest('.chat-input')
-      || el.parentElement
-
+    // Find parent that can be position:relative anchor
+    // Go up from the input until we find something suitable
+    let container = el.parentElement
     if (container && !container.contains(indicatorEl)) {
-      // Insert at the start of the container
-      container.style.position = 'relative'
-      // For flex containers, insert as first child
-      if (container.firstChild) {
-        container.insertBefore(indicatorEl, container.firstChild)
-      } else {
-        container.appendChild(indicatorEl)
-      }
+      const cs = getComputedStyle(container)
+      if (cs.position === 'static') container.style.position = 'relative'
+      container.appendChild(indicatorEl)
     }
     updateIndicator()
   }

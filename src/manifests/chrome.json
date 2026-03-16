@@ -14,11 +14,11 @@
 
   "host_permissions": [
     "https://static-cdn.jtvnw.net/*",
-    "*://heatsync.org/*",
-    "*://*.heatsync.org/*",
-    "*://*.twitch.tv/*",
-    "*://*.kick.com/*",
-    "*://*.youtube.com/*",
+    "https://heatsync.org/*",
+    "https://*.heatsync.org/*",
+    "https://*.twitch.tv/*",
+    "https://*.kick.com/*",
+    "https://*.youtube.com/*",
     "https://api.betterttv.net/*",
     "https://api.frankerfacez.com/*",
     "https://7tv.io/*",
@@ -46,7 +46,7 @@
     },
     {
       "matches": ["*://*.twitch.tv/*"],
-      "js": ["autocomplete-hook.js"],
+      "js": ["emoji-data.js", "autocomplete-hook.js"],
       "run_at": "document_end"
     },
     {
@@ -56,18 +56,18 @@
         "https://heatsync.org/*",
         "https://*.heatsync.org/*"
       ],
-      "js": ["shared-utils.js", "platform-detector.js", "chat-injector.js", "content.js"],
+      "js": ["emoji-data.js", "shared-utils.js", "platform-detector.js", "chat-injector.js", "content.js"],
       "css": ["injected-message.css"],
       "run_at": "document_end"
     },
     {
       "matches": ["*://*.twitch.tv/*", "*://*.kick.com/*"],
-      "js": ["heatsync-button.js"],
+      "js": ["emoji-data.js", "heatsync-button.js"],
       "run_at": "document_idle"
     },
     {
-      "matches": ["*://*.twitch.tv/*"],
-      "js": ["shared-utils.js", "multichat.js"],
+      "matches": ["*://*.twitch.tv/*", "*://*.kick.com/*"],
+      "js": ["emoji-data.js", "shared-utils.js", "multichat.js"],
       "run_at": "document_idle"
     },
     {

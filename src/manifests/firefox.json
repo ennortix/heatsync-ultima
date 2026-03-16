@@ -13,10 +13,10 @@
     "webRequest",
     "webRequestBlocking",
     "https://static-cdn.jtvnw.net/*",
-    "*://heatsync.org/*",
-    "*://*.heatsync.org/*",
-    "*://*.twitch.tv/*",
-    "*://*.kick.com/*",
+    "https://heatsync.org/*",
+    "https://*.heatsync.org/*",
+    "https://*.twitch.tv/*",
+    "https://*.kick.com/*",
     "https://api.betterttv.net/*",
     "https://api.frankerfacez.com/*",
     "https://7tv.io/*",
@@ -24,7 +24,7 @@
     "https://cdn.7tv.app/*",
     "https://recent-messages.robotty.de/*",
     "https://decapi.me/*",
-    "*://*.youtube.com/*"
+    "https://*.youtube.com/*"
   ],
 
   "background": {
@@ -44,7 +44,7 @@
     },
     {
       "matches": ["*://*.twitch.tv/*"],
-      "js": ["autocomplete-hook.js"],
+      "js": ["emoji-data.js", "autocomplete-hook.js"],
       "run_at": "document_end"
     },
     {
@@ -54,18 +54,18 @@
         "https://heatsync.org/*",
         "https://*.heatsync.org/*"
       ],
-      "js": ["shared-utils.js", "platform-detector.js", "chat-injector.js", "content.js"],
+      "js": ["emoji-data.js", "shared-utils.js", "platform-detector.js", "chat-injector.js", "content.js"],
       "css": ["injected-message.css"],
       "run_at": "document_end"
     },
     {
       "matches": ["*://*.twitch.tv/*", "*://*.kick.com/*"],
-      "js": ["heatsync-button.js"],
+      "js": ["emoji-data.js", "heatsync-button.js"],
       "run_at": "document_idle"
     },
     {
       "matches": ["*://*.twitch.tv/*", "*://*.kick.com/*"],
-      "js": ["shared-utils.js", "multichat.js"],
+      "js": ["emoji-data.js", "shared-utils.js", "multichat.js"],
       "run_at": "document_idle"
     },
     {
@@ -98,6 +98,7 @@
 
   "web_accessible_resources": [
     "autocomplete-hook.js",
+    "vi-mode.js",
     "icon-16.png",
     "icon-48.png",
     "icon-48-black.png",

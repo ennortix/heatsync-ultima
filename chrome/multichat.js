@@ -99,6 +99,49 @@
   // Username → color map for @mention coloring (LRU-bounded)
   const knownColors = new Map();
 
+  // Stream events persistence — survives tab switches AND page refresh
+  const STREAM_EVENTS_KEY = 'hs_stream_events';
+  const STREAM_EVENTS_MAX = 200;
+  let streamEventsLoaded = false;
+
+  async function loadStreamEvents() {
+    try {
+      const data = await chrome.storage.local.get(STREAM_EVENTS_KEY);
+      const events = data[STREAM_EVENTS_KEY];
+      if (!Array.isArray(events) || events.length === 0) return;
+      const cutoff = Date.now() - 86400000; // 24h expiry
+      const valid = events.filter(e => e.time > cutoff);
+      // Inject into appropriate IRC buffers
+      for (const evt of valid) {
+        const ch = evt.channel;
+        if (!ch) continue;
+        const buffer = irc?.channels?.get(ch);
+        if (buffer) {
+          // Only inject if not already present (dedup by time+text)
+          const existing = buffer.getAll();
+          const isDupe = existing.some(m => m.type === 'stream-event' && m.time === evt.time && m.text === evt.text);
+          if (!isDupe) buffer.push(evt);
+        }
+      }
+      // Prune expired from storage
+      if (valid.length < events.length) {
+        await chrome.storage.local.set({ [STREAM_EVENTS_KEY]: valid });
+      }
+      streamEventsLoaded = true;
+    } catch {}
+  }
+
+  async function saveStreamEvent(evt) {
+    try {
+      const data = await chrome.storage.local.get(STREAM_EVENTS_KEY);
+      const events = data[STREAM_EVENTS_KEY] || [];
+      events.push(evt);
+      // Prune old events (keep last STREAM_EVENTS_MAX)
+      if (events.length > STREAM_EVENTS_MAX) events.splice(0, events.length - STREAM_EVENTS_MAX);
+      await chrome.storage.local.set({ [STREAM_EVENTS_KEY]: events });
+    } catch {}
+  }
+
   // Emote size (1, 2, or 4)
   let emoteSize = 1;
 
@@ -122,6 +165,69 @@
       if (shortMatch) return 'https://www.youtube.com/watch?v=' + shortMatch[1]
     } catch {}
     return raw
+  }
+
+  // --- Robust IRC parsing (matches website's chat-history-manager.js) ---
+  function parseTags(tagStr) {
+    const tags = {}
+    for (const part of tagStr.split(';')) {
+      const eq = part.indexOf('=')
+      if (eq === -1) { tags[part] = ''; continue }
+      tags[part.slice(0, eq)] = part.slice(eq + 1) || ''
+    }
+    return tags
+  }
+
+  function parseIrcLine(raw, channel) {
+    try {
+      const tagsMatch = raw.match(/^@([^ ]+)/)
+      if (!tagsMatch) return null
+      const tags = parseTags(tagsMatch[1])
+
+      // PRIVMSG: @tags :user!user@user.tmi.twitch.tv PRIVMSG #channel :message
+      const privmsg = raw.match(/PRIVMSG #([^ ]+) :(.+)$/)
+      if (privmsg) {
+        const displayName = tags['display-name'] || 'anonymous'
+        const msg = {
+          user: displayName,
+          text: privmsg[2],
+          color: sanitizeColor(tags.color || '#fff'),
+          badges: tags.badges || '',
+          channel: channel || privmsg[1].toLowerCase(),
+          time: parseInt(tags['tmi-sent-ts']) || Date.now(),
+          id: tags.id || '',
+          replyTo: tags['reply-parent-display-name'] ? {
+            user: decodeURIComponent(tags['reply-parent-display-name']),
+            text: tags['reply-parent-msg-body'] ? decodeURIComponent(tags['reply-parent-msg-body'].replace(/\\s/g, ' ')) : ''
+          } : null
+        }
+        if (tags['custom-reward-id']) msg.redeemed = true
+        if (tags['first-msg'] === '1') msg.isFirstMsg = true
+        return msg
+      }
+
+      // USERNOTICE: @tags :tmi.twitch.tv USERNOTICE #channel :optional message
+      const usernotice = raw.match(/USERNOTICE #([^ ]+)(?: :(.+))?$/)
+      if (usernotice) {
+        const displayName = tags['display-name'] || 'system'
+        return {
+          user: displayName,
+          text: usernotice[2] || '',
+          systemMsg: decodeURIComponent((tags['system-msg'] || '').replace(/\\s/g, ' ')),
+          color: sanitizeColor(tags.color || '#fff'),
+          badges: tags.badges || '',
+          channel: channel || usernotice[1].toLowerCase(),
+          time: parseInt(tags['tmi-sent-ts']) || Date.now(),
+          type: 'usernotice',
+          msgId: tags['msg-id'] || '',
+          id: tags.id || ''
+        }
+      }
+
+      return null
+    } catch (e) {
+      return null
+    }
   }
 
   const MC_DEBUG = false;
@@ -179,6 +285,11 @@
       // Concat instead of spread — avoids 2 temporary arrays
       return this.buf.slice(this.head).concat(this.buf.slice(0, this.head));
     }
+    clear() {
+      this.buf = new Array(this.cap);
+      this.head = 0;
+      this.size = 0;
+    }
   }
 
   // ============================================
@@ -235,66 +346,27 @@
           this.ws.send('PONG :tmi.twitch.tv\r\n');
           continue;
         }
-        const m = line.match(/@([^ ]+) :([^!]+)![^ ]+ PRIVMSG #(\w+) :(.+)/);
-        if (m) {
-          const tags = {};
-          m[1].split(';').forEach(t => { const [k,v] = t.split('='); tags[k] = v; });
-          const username = tags['display-name'] || m[2];
-          const msg = {
-            user: username,
-            text: m[4],
-            color: sanitizeColor(tags.color || '#fff'),
-            badges: tags.badges || '',
-            channel: m[3].toLowerCase(),
-            time: Date.now(),
-            replyTo: tags['reply-parent-display-name'] ? {
-              user: decodeURIComponent(tags['reply-parent-display-name']),
-              text: tags['reply-parent-msg-body'] ? decodeURIComponent(tags['reply-parent-msg-body'].replace(/\\s/g, ' ')) : ''
-            } : null
-          };
-
-          // Cache username for tab completion + color (cap at 500)
-          usernameCache.add(username);
-          knownColors.set(username.toLowerCase(), msg.color);
+        const msg = parseIrcLine(line);
+        if (msg && !msg.type) {
+          // PRIVMSG
+          const ch = msg.channel;
+          usernameCache.add(msg.user);
+          knownColors.set(msg.user.toLowerCase(), msg.color);
           if (usernameCache.size > 500) {
             usernameCache.delete(usernameCache.values().next().value);
             const oldest = knownColors.keys().next().value;
             knownColors.delete(oldest);
           }
-
-          // Fetch channel badges by login name (GQL uses login, not room-id)
-          const ch = m[3].toLowerCase();
-          fetchChannelBadges(ch)
-          // Detect channel point redeems
-          if (tags['custom-reward-id']) msg.redeemed = true
+          fetchChannelBadges(ch);
 
           if (this.channels.has(ch)) {
             this.channels.get(ch).push(msg);
             this.emit('message', msg);
           }
-        }
-
-        // USERNOTICE — resubs, gift subs, raids, announcements
-        const un = line.match(/@([^ ]+) :tmi\.twitch\.tv USERNOTICE #(\w+)(?: :(.+))?/);
-        if (un) {
-          const tags = {};
-          un[1].split(';').forEach(t => { const [k,v] = t.split('='); tags[k] = v; });
-          const displayName = tags['display-name'] || 'system';
-          const ch = un[2].toLowerCase();
-          const systemMsg = decodeURIComponent((tags['system-msg'] || '').replace(/\\s/g, ' '));
-          const msg = {
-            user: displayName,
-            text: un[3] || '',
-            systemMsg,
-            color: sanitizeColor(tags.color || '#fff'),
-            badges: tags.badges || '',
-            channel: ch,
-            time: parseInt(tags['tmi-sent-ts']) || Date.now(),
-            type: 'usernotice',
-            msgId: tags['msg-id'] || ''
-          };
-          usernameCache.add(displayName);
-          knownColors.set(displayName.toLowerCase(), msg.color);
+        } else if (msg && msg.type === 'usernotice') {
+          const ch = msg.channel;
+          usernameCache.add(msg.user);
+          knownColors.set(msg.user.toLowerCase(), msg.color);
           fetchChannelBadges(ch);
           if (this.channels.has(ch)) {
             this.channels.get(ch).push(msg);
@@ -317,92 +389,86 @@
     }
 
     async loadHistory(ch) {
+      const buffer = this.channels.get(ch);
+      if (!buffer) return;
+
+      const cacheKey = `hs_chat_history_${ch}`;
+      const CACHE_TTL = 300000; // 5 min
+
+      // 1. Try localStorage cache for instant render
+      try {
+        const cached = localStorage.getItem(cacheKey);
+        if (cached) {
+          const { messages, timestamp } = JSON.parse(cached);
+          if (Date.now() - timestamp < CACHE_TTL && messages?.length > 0) {
+            log('Cache hit:', messages.length, 'msgs for', ch);
+            for (const msg of messages) {
+              usernameCache.add(msg.user);
+              knownColors.set(msg.user.toLowerCase(), msg.color);
+              buffer.push(msg);
+            }
+            if (currentTab === ch || (currentTab === 'live' && getLiveChannel() === ch)) {
+              renderMessages(currentTab);
+            }
+            // Refresh in background
+            this._fetchHistory(ch, buffer, cacheKey);
+            return;
+          }
+        }
+      } catch {}
+
+      // 2. No valid cache — fetch synchronously
+      await this._fetchHistory(ch, buffer, cacheKey);
+    }
+
+    async _fetchHistory(ch, buffer, cacheKey) {
       const ctrl = new AbortController();
       const timer = setTimeout(() => ctrl.abort(), 8000);
       try {
-        log('Loading history for', ch);
-        const resp = await fetch(`https://recent-messages.robotty.de/api/v2/recent-messages/${ch}?limit=100`, { signal: ctrl.signal });
-        log('History response status:', resp.status);
-        if (!resp.ok) {
-          log('History fetch failed:', resp.status, resp.statusText);
-          return;
-        }
+        log('Fetching history for', ch);
+        const resp = await fetch(`https://recent-messages.robotty.de/api/v2/recent-messages/${ch}?limit=100`, {
+          signal: ctrl.signal,
+          credentials: 'omit'
+        });
+        if (!resp.ok) { log('History fetch failed:', resp.status); return; }
         const data = await resp.json();
-        log('History data:', data.messages?.length, 'messages');
-        if (!data.messages || !Array.isArray(data.messages)) {
-          log('No messages array in response');
-          return;
+        if (!data.messages?.length) return;
+
+        await fetchChannelBadges(ch);
+
+        // Dedup by message ID against what's already in buffer
+        const existingIds = new Set();
+        for (const m of buffer.getAll()) {
+          if (m.id) existingIds.add(m.id);
         }
 
-        const buffer = this.channels.get(ch);
-        if (!buffer) {
-          log('No buffer for channel', ch);
-          return;
-        }
-
-        // Fetch channel badges before parsing so badge images are ready for render
-        await fetchChannelBadges(ch)
-
-        let parsed = 0;
-        // Parse IRC format messages
+        const parsed = [];
         for (const line of data.messages) {
-          const m = line.match(/@([^ ]+) :([^!]+)![^ ]+ PRIVMSG #(\w+) :(.+)/);
-          if (m) {
-            const tags = {};
-            m[1].split(';').forEach(t => { const [k,v] = t.split('='); tags[k] = v; });
-            const username = tags['display-name'] || m[2];
-            const msg = {
-              user: username,
-              text: m[4],
-              color: sanitizeColor(tags.color || '#fff'),
-              badges: tags.badges || '',
-              channel: m[3].toLowerCase(),
-              time: parseInt(tags['tmi-sent-ts']) || Date.now(),
-              isHistory: true,
-              replyTo: tags['reply-parent-display-name'] ? {
-                user: decodeURIComponent(tags['reply-parent-display-name']),
-                text: tags['reply-parent-msg-body'] ? decodeURIComponent(tags['reply-parent-msg-body'].replace(/\\s/g, ' ')) : ''
-              } : null
-            };
-            // Detect channel point redeems in history
-            if (tags['custom-reward-id']) msg.redeemed = true
-
-            usernameCache.add(username);
-            knownColors.set(username.toLowerCase(), msg.color);
-            buffer.push(msg);
-            parsed++;
-            continue;
-          }
-
-          // USERNOTICE in history
-          const un = line.match(/@([^ ]+) :tmi\.twitch\.tv USERNOTICE #(\w+)(?: :(.+))?/);
-          if (un) {
-            const tags = {};
-            un[1].split(';').forEach(t => { const [k,v] = t.split('='); tags[k] = v; });
-            const displayName = tags['display-name'] || 'system';
-            const systemMsg = decodeURIComponent((tags['system-msg'] || '').replace(/\\s/g, ' '));
-            const msg = {
-              user: displayName,
-              text: un[3] || '',
-              systemMsg,
-              color: sanitizeColor(tags.color || '#fff'),
-              badges: tags.badges || '',
-              channel: un[2].toLowerCase(),
-              time: parseInt(tags['tmi-sent-ts']) || Date.now(),
-              isHistory: true,
-              type: 'usernotice',
-              msgId: tags['msg-id'] || ''
-            };
-            usernameCache.add(displayName);
-            knownColors.set(displayName.toLowerCase(), msg.color);
-            buffer.push(msg);
-            parsed++;
-          }
+          const msg = parseIrcLine(line, ch);
+          if (!msg) continue;
+          msg.isHistory = true;
+          if (msg.id && existingIds.has(msg.id)) continue;
+          usernameCache.add(msg.user);
+          knownColors.set(msg.user.toLowerCase(), msg.color);
+          parsed.push(msg);
         }
 
-        log('Loaded history for', ch, '- parsed:', parsed, 'total in buffer:', buffer.getAll().length);
+        // Merge: clear buffer, add history first, then any live messages on top
+        const liveMessages = buffer.getAll().filter(m => !m.isHistory);
+        buffer.clear();
+        for (const msg of parsed) buffer.push(msg);
+        for (const msg of liveMessages) buffer.push(msg);
 
-        // Re-render if viewing this channel or live tab
+        log('Loaded history for', ch, '- parsed:', parsed.length, 'total:', buffer.getAll().length);
+
+        // Cache for next time
+        try {
+          localStorage.setItem(cacheKey, JSON.stringify({
+            messages: parsed,
+            timestamp: Date.now()
+          }));
+        } catch {}
+
         if (currentTab === ch || (currentTab === 'live' && getLiveChannel() === ch)) {
           renderMessages(currentTab);
         }
@@ -2870,9 +2936,9 @@
       return;
     }
 
-    // Send via IRC (fast async) — always log connection state for debugging
+    // Send via IRC (fast async)
     const wsState = authState.ws ? ['CONNECTING','OPEN','CLOSING','CLOSED'][authState.ws.readyState] : 'null';
-    console.warn(`[HS] IRC SEND → #${targetChannel} ws=${wsState} ready=${authState.ready} queue=${authState.sendQueue.length}`);
+    log(`IRC SEND → #${targetChannel} ws=${wsState} ready=${authState.ready} queue=${authState.sendQueue.length}`);
     sendIrcMessage(targetChannel, text, token).then(result => {
       if (result === true) {
         // If ws wasn't OPEN when we sent, message was likely queued — show yellow indicator
@@ -6366,6 +6432,14 @@
   // Note: innerHTML here is safe — badges/emotes are from extension data, user text
   // goes through escapeHtml() and processEmotes() which sanitize content
   function buildMessageDiv(m, tabId) {
+    // Stream event — render as magenta inline notification
+    if (m.type === 'stream-event') {
+      const div = document.createElement('div')
+      div.className = `hs-mc-stream-event ${m.eventClass || ''}`
+      div.textContent = m.text
+      return div
+    }
+
     const showChannel = tabId === 'mentions';
     const isSuperChat = m.platform === 'youtube' && (m.msgType === 'superchat' || m.msgType === 'supersticker')
     const cls = tabId === 'mentions' ? 'hs-mc-msg mention' :
@@ -6569,7 +6643,8 @@
   }
 
   function escapeHtml(str) {
-    return str.replace(/[&<>"']/g, c => ({
+    if (str == null) return ''
+    return String(str).replace(/[&<>"']/g, c => ({
       '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
     })[c]);
   }
@@ -7114,7 +7189,7 @@
         const ffzKey = channel && `${channel}:${name}/`
         const isFFZ = ffzKey && ffzBadgeKeys.has(`${channel}:${name}`)
         const bgStyle = isFFZ && BADGE_STYLES[name] ? `background:${BADGE_STYLES[name].bg};padding:1px;border-radius:2px;` : ''
-        return `<img class="hs-mc-badge-img" src="${url}" alt="${name}" title="${name}" style="width:18px;height:18px;${bgStyle}">`
+        return `<img class="hs-mc-badge-img" src="${escapeHtml(url)}" alt="${escapeHtml(name)}" title="${escapeHtml(name)}" style="width:18px;height:18px;${bgStyle}">`
       }
       // Text fallback
       const style = BADGE_STYLES[name]
@@ -7946,7 +8021,7 @@
     const textWrap = document.createElement('div');
     textWrap.className = 'link-text';
     if (data) {
-      if (data.image) {
+      if (data.image && /^https?:\/\//i.test(data.image)) {
         const img = document.createElement('img');
         img.src = data.image;
         img.alt = '';
@@ -8222,6 +8297,23 @@
           pendingStack = { base: imgHtml, overlays: [] };
         }
       } else {
+        // Check for emoji :shortcode:
+        if (typeof EMOJI_BY_NAME !== 'undefined' && word.startsWith(':') && word.endsWith(':') && word.length > 2) {
+          const emojiName = word.slice(1, -1)
+          const emojiEntry = EMOJI_BY_NAME.get(emojiName)
+          if (emojiEntry) {
+            if (pendingStack) {
+              result.push(renderEmoteStack(pendingStack))
+              pendingStack = null
+            }
+            if (pendingWhitespace) {
+              result.push(pendingWhitespace)
+              pendingWhitespace = ''
+            }
+            result.push(`<span class="hs-mc-emoji" title=":${escapeHtml(emojiName)}:">${emojiEntry.emoji}</span>`)
+            continue
+          }
+        }
         // Text - flush stack and add text
         if (pendingStack) {
           result.push(renderEmoteStack(pendingStack));
@@ -8236,14 +8328,21 @@
           const name = word.slice(1).replace(/[,.:!?]+$/, '').toLowerCase();
           const color = knownColors.get(name);
           if (color) {
-            result.push(`<span style="color:${color};font-weight:bold">${escapeHtml(word)}</span>`);
+            result.push(`<span style="color:${sanitizeColor(color)};font-weight:bold">${escapeHtml(word)}</span>`);
           } else {
             result.push(escapeHtml(word));
           }
         } else if (linksEnabled && /^(https?:\/\/\S+|[a-z0-9-]+(\.[a-z0-9-]+)+\/\S*)/i.test(word)) {
-          const safeUrl = escapeHtml(word);
-          const href = /^https?:\/\//i.test(word) ? safeUrl : `https://${safeUrl}`;
-          result.push(`<a href="${href}" target="_blank" rel="noopener" class="hs-mc-link">${safeUrl}</a>`);
+          // Validate URL protocol before creating link (block javascript:, data:, etc.)
+          const hasProtocol = /^https?:\/\//i.test(word);
+          const fullUrl = hasProtocol ? word : `https://${word}`;
+          if (/^https?:\/\//i.test(fullUrl)) {
+            const safeUrl = escapeHtml(word);
+            const safeHref = escapeHtml(fullUrl);
+            result.push(`<a href="${safeHref}" target="_blank" rel="noopener noreferrer" class="hs-mc-link">${safeUrl}</a>`);
+          } else {
+            result.push(escapeHtml(word));
+          }
         } else {
           result.push(escapeHtml(word));
         }
@@ -8841,6 +8940,10 @@
   function listenForPosts() {
     cleanup.addEventListener(window, 'message', (e) => {
       if (e.origin !== location.origin) return;
+      if (e.data?.type === 'heatsync-rotate-tabs') {
+        rotateTabPosition();
+        return;
+      }
       if (e.data?.type === 'heatsync-tweet') {
         const post = e.data.tweet;
         postsBuffer.push({
@@ -9156,6 +9259,16 @@
       }
     });
 
+    // Restore persisted stream events into buffers
+    loadStreamEvents().then(() => {
+      if (streamEventsLoaded) {
+        const active = currentTab;
+        if (active === 'live' || config.channels.some(ch => (typeof ch === 'string' ? ch : ch.id) === active)) {
+          renderMessages(active);
+        }
+      }
+    });
+
     // Scan existing chat for mentions (before IRC catches new ones)
     if (hostPlatform === 'twitch') {
       setTimeout(() => scanExistingMentions(), 2000);
@@ -9252,6 +9365,14 @@
         if (!text) return;
 
         log('[Stream]', channel, text);
+        const evt = { type: 'stream-event', eventClass, text, channel, time: Date.now() };
+
+        // Push into IRC buffer so it survives tab switches + renders naturally
+        const buffer = irc?.channels?.get(channel);
+        if (buffer) {
+          buffer.push(evt);
+          saveStreamEvent(evt);
+        }
 
         // Magenta tab highlight
         const liveChannel = getLiveChannel();
@@ -9260,15 +9381,8 @@
             const tab = tabBarElement?.querySelector('[data-tab="live"]');
             if (tab) tab.classList.add('has-stream-event');
           }
-          // Inject inline notification into chat
-          const msgsEl = document.getElementById('hs-mc-messages');
-          if (msgsEl && currentTab === 'live') {
-            const div = document.createElement('div');
-            div.className = `hs-mc-stream-event ${eventClass}`;
-            div.textContent = text;
-            msgsEl.appendChild(div);
-            trimChildren(msgsEl, 150);
-            if (!isScrolledUp) scrollMsgsToBottom(msgsEl);
+          if (currentTab === 'live') {
+            if (!appendMessage(evt, 'live')) renderMessages('live');
           }
         }
 
@@ -9283,15 +9397,7 @@
               if (tab) tab.classList.add('has-stream-event');
             }
             if (currentTab === tabId) {
-              const msgsEl = document.getElementById('hs-mc-messages');
-              if (msgsEl) {
-                const div = document.createElement('div');
-                div.className = `hs-mc-stream-event ${eventClass}`;
-                div.textContent = text;
-                msgsEl.appendChild(div);
-                trimChildren(msgsEl, 150);
-                if (!isScrolledUp) scrollMsgsToBottom(msgsEl);
-              }
+              if (!appendMessage(evt, tabId)) renderMessages(tabId);
             }
           }
         }
@@ -9321,16 +9427,20 @@
         if (!text) return;
 
         log('[FollowStream]', channel, text);
+        const evt = { type: 'stream-event', eventClass, text, channel, time: Date.now() };
 
-        // Inject into active chat overlay
-        const msgsEl = document.getElementById('hs-mc-messages');
-        if (msgsEl) {
-          const div = document.createElement('div');
-          div.className = `hs-mc-stream-event ${eventClass}`;
-          div.textContent = text;
-          msgsEl.appendChild(div);
-          trimChildren(msgsEl, 150);
-          if (!isScrolledUp) scrollMsgsToBottom(msgsEl);
+        // Push into the live channel buffer (follow events show in current chat)
+        const liveChannel = getLiveChannel();
+        const buffer = liveChannel ? irc?.channels?.get(liveChannel) : null;
+        if (buffer) {
+          buffer.push(evt);
+          saveStreamEvent(evt);
+        }
+
+        // Render inline
+        const activeTab = currentTab;
+        if (activeTab === 'live' || config.channels.some(ch => (typeof ch === 'string' ? ch : ch.id) === activeTab)) {
+          if (!appendMessage(evt, activeTab)) renderMessages(activeTab);
         }
       });
     }
@@ -9476,6 +9586,12 @@
         irc.ws.close();
       }
       irc = null;
+
+      // Destroy old KickChat to prevent stale message listeners
+      if (kickChat) {
+        kickChat.destroy();
+        kickChat = null;
+      }
 
       // Clean up — remove entire container (our elements are inside it)
       document.getElementById('hs-mc-container')?.remove();

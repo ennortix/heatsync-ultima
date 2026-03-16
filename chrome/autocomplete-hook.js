@@ -137,120 +137,13 @@
   }
 
   // Emoji shortcodes for :name: autocomplete (Discord/Slack style)
-  const EMOJI_MAP = {
-    // Smileys
-    smile: '😊', grin: '😁', joy: '😂', rofl: '🤣', wink: '😉', blush: '😊',
-    heart_eyes: '😍', kissing_heart: '😘', yum: '😋', stuck_out_tongue: '😛',
-    thinking: '🤔', neutral_face: '😐', expressionless: '😑', unamused: '😒',
-    sweat: '😓', pensive: '😔', confused: '😕', upside_down: '🙃', money_mouth: '🤑',
-    astonished: '😲', flushed: '😳', frowning: '😦', anguished: '😧', fearful: '😨',
-    cold_sweat: '😰', disappointed_relieved: '😥', cry: '😢', sob: '😭', scream: '😱',
-    tired_face: '😫', sleepy: '😪', sleeping: '😴', drooling: '🤤', mask: '😷',
-    nerd: '🤓', sunglasses: '😎', cowboy: '🤠', clown: '🤡', poop: '💩',
-    skull: '💀', ghost: '👻', alien: '👽', robot: '🤖', smiling_imp: '😈', imp: '👿',
-    angry: '😠', rage: '😡', triumph: '😤', exploding_head: '🤯', hot: '🥵', cold: '🥶',
-    woozy: '🥴', shushing: '🤫', lying: '🤥', no_mouth: '😶', zipper_mouth: '🤐',
-    vomiting: '🤮', sneezing: '🤧', partying: '🥳', pleading: '🥺', rolling_eyes: '🙄',
-    smirk: '😏', persevere: '😣', confounded: '😖', worried: '😟', slightly_frowning: '🙁',
-    slightly_smiling: '🙂', innocent: '😇', angel: '😇', devil: '😈', star_struck: '🤩',
-    zany: '🤪', monocle: '🧐', raised_eyebrow: '🤨', // Faces
-    // Gestures
-    thumbsup: '👍', thumbsdown: '👎', ok_hand: '👌', pinching: '🤏', victory: '✌️',
-    crossed_fingers: '🤞', love_you: '🤟', metal: '🤘', call_me: '🤙', point_left: '👈',
-    point_right: '👉', point_up: '👆', point_down: '👇', middle_finger: '🖕',
-    raised_hand: '✋', wave: '👋', clap: '👏', open_hands: '👐', raised_hands: '🙌',
-    palms_up: '🤲', pray: '🙏', handshake: '🤝', nail_care: '💅', selfie: '🤳',
-    muscle: '💪', fist: '✊', punch: '👊', writing_hand: '✍️', // Gestures
-    // Hearts
-    heart: '❤️', orange_heart: '🧡', yellow_heart: '💛', green_heart: '💚',
-    blue_heart: '💙', purple_heart: '💜', black_heart: '🖤', white_heart: '🤍',
-    brown_heart: '🤎', broken_heart: '💔', heart_exclamation: '❣️', two_hearts: '💕',
-    revolving_hearts: '💞', heartbeat: '💓', heartpulse: '💗', sparkling_heart: '💖',
-    cupid: '💘', gift_heart: '💝', // Hearts
-    // Nature
-    sun: '☀️', sunny: '☀️', sunset: '🌅', sunrise: '🌅', rainbow: '🌈',
-    cloud: '☁️', rain: '🌧️', thunder: '⛈️', snow: '❄️', snowflake: '❄️',
-    fire: '🔥', droplet: '💧', ocean: '🌊', star: '⭐', sparkles: '✨',
-    moon: '🌙', full_moon: '🌕', crescent_moon: '🌙', earth: '🌍', globe: '🌎',
-    comet: '☄️', // Nature
-    // Animals
-    dog: '🐕', cat: '🐈', mouse: '🐁', hamster: '🐹', rabbit: '🐰', fox: '🦊',
-    bear: '🐻', panda: '🐼', koala: '🐨', tiger: '🐯', lion: '🦁', cow: '🐄',
-    pig: '🐷', frog: '🐸', monkey: '🐵', see_no_evil: '🙈', hear_no_evil: '🙉',
-    speak_no_evil: '🙊', chicken: '🐔', penguin: '🐧', bird: '🐦', eagle: '🦅',
-    duck: '🦆', owl: '🦉', bat: '🦇', wolf: '🐺', horse: '🐴', unicorn: '🦄',
-    bee: '🐝', bug: '🐛', butterfly: '🦋', snail: '🐌', shell: '🐚',
-    crab: '🦀', shrimp: '🦐', squid: '🦑', octopus: '🐙', turtle: '🐢',
-    snake: '🐍', lizard: '🦎', scorpion: '🦂', spider: '🕷️', whale: '🐳',
-    dolphin: '🐬', fish: '🐟', shark: '🦈', elephant: '🐘', gorilla: '🦍',
-    deer: '🦌', zebra: '🦓', giraffe: '🦒', hedgehog: '🦔', sloth: '🦥',
-    otter: '🦦', skunk: '🦨', kangaroo: '🦘', badger: '🦡', // Animals
-    // Food
-    apple: '🍎', pear: '🍐', orange: '🍊', lemon: '🍋', banana: '🍌', watermelon: '🍉',
-    grapes: '🍇', strawberry: '🍓', blueberries: '🫐', melon: '🍈', cherries: '🍒',
-    peach: '🍑', mango: '🥭', pineapple: '🍍', coconut: '🥥', kiwi: '🥝',
-    tomato: '🍅', eggplant: '🍆', avocado: '🥑', broccoli: '🥦', carrot: '🥕',
-    corn: '🌽', hot_pepper: '🌶️', cucumber: '🥒', garlic: '🧄', onion: '🧅',
-    potato: '🥔', sweet_potato: '🍠', croissant: '🥐', baguette: '🥖', bread: '🍞',
-    pretzel: '🥨', bagel: '🥯', pancakes: '🥞', waffle: '🧇', cheese: '🧀',
-    egg: '🥚', bacon: '🥓', steak: '🥩', poultry_leg: '🍗', burger: '🍔',
-    fries: '🍟', pizza: '🍕', hotdog: '🌭', sandwich: '🥪', taco: '🌮',
-    burrito: '🌯', falafel: '🧆', sushi: '🍣', ramen: '🍜', spaghetti: '🍝',
-    curry: '🍛', rice: '🍚', bento: '🍱', dumpling: '🥟', cookie: '🍪',
-    cake: '🎂', cupcake: '🧁', pie: '🥧', chocolate: '🍫', candy: '🍬',
-    lollipop: '🍭', donut: '🍩', icecream: '🍦', shaved_ice: '🍧', coffee: '☕',
-    tea: '🍵', beer: '🍺', wine: '🍷', cocktail: '🍸', champagne: '🍾',
-    milk: '🥛', juice: '🧃', // Food
-    // Activities
-    soccer: '⚽', basketball: '🏀', football: '🏈', baseball: '⚾', tennis: '🎾',
-    volleyball: '🏐', rugby: '🏉', bowling: '🎳', golf: '⛳', ping_pong: '🏓',
-    badminton: '🏸', hockey: '🏒', cricket: '🏏', lacrosse: '🥍', boxing: '🥊',
-    martial_arts: '🥋', wrestling: '🤼', fencing: '🤺', ski: '🎿', snowboard: '🏂',
-    sled: '🛷', curling: '🥌', dart: '🎯', billiards: '🎱', video_game: '🎮',
-    joystick: '🕹️', slot_machine: '🎰', game_die: '🎲', chess: '♟️', jigsaw: '🧩',
-    teddy_bear: '🧸', // Activities
-    // Objects
-    phone: '📱', computer: '💻', keyboard: '⌨️', mouse_computer: '🖱️', laptop: '💻',
-    camera: '📷', video_camera: '📹', tv: '📺', radio: '📻', microphone: '🎤',
-    headphones: '🎧', speaker: '🔊', mute: '🔇', bell: '🔔', no_bell: '🔕',
-    bulb: '💡', flashlight: '🔦', candle: '🕯️', money: '💰', dollar: '💵',
-    credit_card: '💳', gem: '💎', wrench: '🔧', hammer: '🔨', gear: '⚙️',
-    link: '🔗', lock: '🔒', unlock: '🔓', key: '🔑', magnet: '🧲',
-    bomb: '💣', gun: '🔫', knife: '🔪', sword: '⚔️', shield: '🛡️',
-    pill: '💊', syringe: '💉', dna: '🧬', microscope: '🔬', telescope: '🔭',
-    satellite: '📡', rocket: '🚀', ufo: '🛸', // Objects
-    // Symbols
-    check: '✅', x: '❌', warning: '⚠️', no_entry: '⛔', stop: '🛑',
-    question: '❓', exclamation: '❗', interrobang: '⁉️', hundred: '💯',
-    plus: '➕', minus: '➖', multiply: '✖️', divide: '➗', infinity: '♾️',
-    dollar_sign: '💲', copyright: '©️', registered: '®️', tm: '™️',
-    recycle: '♻️', fleur_de_lis: '⚜️', trident: '🔱', name_badge: '📛',
-    beginner: '🔰', o: '⭕', white_check_mark: '✅', ballot_box: '☑️',
-    heavy_check: '✔️', cross: '✝️', star_of_david: '✡️', yin_yang: '☯️',
-    peace: '☮️', atom: '⚛️', wheel_of_dharma: '☸️', // Symbols
-    // Misc
-    trophy: '🏆', medal: '🏅', first_place: '🥇', second_place: '🥈', third_place: '🥉',
-    crown: '👑', ring: '💍', lipstick: '💄', kiss: '💋', eyes: '👀',
-    eye: '👁️', ear: '👂', nose: '👃', tongue: '👅', brain: '🧠',
-    heart_suit: '♥️', diamond_suit: '♦️', club_suit: '♣️', spade_suit: '♠️',
-    joker: '🃏', mahjong: '🀄', flower: '🌸', cherry_blossom: '🌸', rose: '🌹',
-    hibiscus: '🌺', sunflower: '🌻', tulip: '🌷', cactus: '🌵', palm: '🌴',
-    tree: '🌲', herb: '🌿', shamrock: '☘️', four_leaf_clover: '🍀', maple_leaf: '🍁',
-    leaves: '🍃', mushroom: '🍄', chestnut: '🌰', crab_emoji: '🦀', // Misc
-    // Flags/Symbols
-    flag_white: '🏳️', flag_black: '🏴', checkered_flag: '🏁', rainbow_flag: '🏳️‍🌈',
-    pirate_flag: '🏴‍☠️', // Flags
-    // Common shorthand
-    lol: '😂', lmao: '🤣', omg: '😱', wtf: '🤯', gg: '🎮', ez: '😎',
-    pog: '😮', poggers: '😮', sadge: '😢', copium: '🤡', hopium: '🙏',
-    based: '🗿', cringe: '😬', kek: '😂', pepe: '🐸', monka: '😰',
-    stonks: '📈', notstonks: '📉', sus: '🤨', amogus: '🤨', bruh: '😐',
-    oof: '😣', rip: '⚰️', f: '🪦', w: '🏆', l: '💀', ratio: '📉',
-    cap: '🧢', no_cap: '🙅', sheesh: '🥶', bussin: '😋', slay: '💅',
-    yeet: '🚀', vibe: '✨', mood: '💭', bet: '🤝', facts: '📠', // Slang
-  };
-  // Pre-computed entries array — avoids Object.entries() allocation per keystroke
-  const EMOJI_ENTRIES = Object.entries(EMOJI_MAP);
+  // Use comprehensive emoji dataset from emoji-data.js (loaded before this script)
+  // Build name→emoji map for quick lookup
+  const EMOJI_MAP = {}
+  for (const entry of EMOJI_DATA) {
+    EMOJI_MAP[entry.name] = entry.emoji
+  }
+  const EMOJI_ENTRIES = EMOJI_DATA.map(e => [e.name, e.emoji])
 
   // Extract usernames from chat messages
   function trackUsernamesFromChat() {

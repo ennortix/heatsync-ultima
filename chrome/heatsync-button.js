@@ -824,7 +824,7 @@
       }
 
       /* Emote preview grid */
-      .heatsync-emote-preview {
+      .heatsync-import-preview {
         display: grid;
         grid-template-columns: repeat(8, 1fr);
         gap: 4px;
@@ -836,7 +836,7 @@
         overflow-y: auto;
       }
 
-      .heatsync-emote-preview img {
+      .heatsync-import-preview img {
         width: 28px;
         height: 28px;
         object-fit: contain;
@@ -845,7 +845,7 @@
         transition: none;
       }
 
-      .heatsync-emote-preview img:hover {
+      .heatsync-import-preview img:hover {
       }
 
       /* Status messages */
@@ -1636,6 +1636,9 @@
           <button class="heatsync-tab" data-tab="mine">
             mine<span class="heatsync-tab-count" id="count-mine">...</span>
           </button>
+          <button class="heatsync-tab" data-tab="emoji">
+            emoji<span class="heatsync-tab-count" id="count-emoji">...</span>
+          </button>
         </div>
         <div class="heatsync-emote-grid" id="heatsync-emote-grid">
           <div class="heatsync-empty">loading...</div>
@@ -1768,6 +1771,11 @@
       loadGlobalEmotes(),
       loadInventoryEmotes()
     ]);
+    // Set emoji count
+    if (typeof EMOJI_DATA !== 'undefined') {
+      const countEl = document.getElementById('count-emoji')
+      if (countEl) countEl.textContent = EMOJI_DATA.length
+    }
     renderEmoteGrid();
   }
 
@@ -1882,6 +1890,17 @@
       emotes = globalEmotesCache;
     } else if (currentTab === 'mine') {
       emotes = inventoryEmotesCache;
+    } else if (currentTab === 'emoji') {
+      // Use EMOJI_DATA from emoji-data.js
+      if (typeof EMOJI_DATA !== 'undefined') {
+        emotes = EMOJI_DATA.map(e => ({
+          name: e.name,
+          emoji: e.emoji,
+          category: e.category,
+          url: null,
+          isEmoji: true
+        }))
+      }
     }
 
     // Filter by search
@@ -1943,7 +1962,9 @@
 
       // Click to insert
       wrap.addEventListener('click', () => {
-        if (!isGlobal && !inInventory && isLoggedIn && currentTab !== 'mine') {
+        if (e.isEmoji) {
+          insertEmoteIntoChat(`:${e.name}:`)
+        } else if (!isGlobal && !inInventory && isLoggedIn && currentTab !== 'mine') {
           addEmoteToInventorySilent(e).then(() => insertEmoteIntoChat(e.name));
         } else {
           insertEmoteIntoChat(e.name);
@@ -1961,6 +1982,33 @@
         // Create preview tooltip
         previewTooltip = document.createElement('div');
         previewTooltip.className = 'heatsync-emote-hover-preview';
+
+        if (e.isEmoji) {
+          const emojiPreview = document.createElement('span')
+          emojiPreview.className = 'heatsync-emoji-preview'
+          emojiPreview.textContent = e.emoji
+          emojiPreview.style.fontSize = '48px'
+          emojiPreview.style.lineHeight = '1'
+
+          const nameLabel = document.createElement('div')
+          nameLabel.className = 'heatsync-emote-hover-preview-name'
+          nameLabel.textContent = `:${e.name}:`
+
+          previewTooltip.appendChild(emojiPreview)
+          previewTooltip.appendChild(nameLabel)
+          document.body.appendChild(previewTooltip)
+
+          const rect = wrap.getBoundingClientRect()
+          const tooltipRect = previewTooltip.getBoundingClientRect()
+          let left = rect.left + (rect.width / 2) - (tooltipRect.width / 2)
+          let top = rect.top - tooltipRect.height - 8
+          if (left < 8) left = 8
+          if (left + tooltipRect.width > window.innerWidth - 8) left = window.innerWidth - tooltipRect.width - 8
+          if (top < 8) top = rect.bottom + 8
+          previewTooltip.style.left = `${left}px`
+          previewTooltip.style.top = `${top}px`
+          return
+        }
 
         const previewImg = document.createElement('img');
         previewImg.referrerPolicy = 'no-referrer';
@@ -2027,15 +2075,24 @@
       const e = pickerEmotes[i];
       const wrap = createEmoteElement(e, i);
 
-      // Create img immediately
-      const img = document.createElement('img');
-      img.referrerPolicy = 'no-referrer';
-      img.loading = 'eager';
-      img.decoding = 'async';
-      img.src = e.pickerUrl;
-      img.alt = e.name;
-      img.title = e.name;
-      wrap.appendChild(img);
+      if (e.isEmoji) {
+        // Emoji: render as unicode text, not image
+        const emojiSpan = document.createElement('span')
+        emojiSpan.className = 'heatsync-emoji-cell'
+        emojiSpan.textContent = e.emoji
+        emojiSpan.title = `:${e.name}:`
+        wrap.appendChild(emojiSpan)
+      } else {
+        // Emote: render as image
+        const img = document.createElement('img')
+        img.referrerPolicy = 'no-referrer'
+        img.loading = 'eager'
+        img.decoding = 'async'
+        img.src = e.pickerUrl
+        img.alt = e.name
+        img.title = e.name
+        wrap.appendChild(img)
+      }
 
       fragment.appendChild(wrap);
     }

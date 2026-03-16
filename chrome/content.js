@@ -1491,6 +1491,7 @@ chrome.runtime.onMessage.addListener((message) => {
       log(' Unknown message type:', message.type);
   }
   } catch (err) {
+    console.error('[heatsync] onMessage handler error:', err)
   }
 });
 
@@ -1588,7 +1589,7 @@ function processExistingMessages() {
 
   // Process hidden messages after a short delay (don't block UI)
   if (hiddenMessages.length > 0) {
-    setTimeout(() => {
+    cleanup.setTimeout(() => {
       hiddenMessages.forEach(msg => processMessage(msg));
       log(` ⏱️ Processed ${messages.length} messages (${visibleMessages.length} visible, ${hiddenMessages.length} hidden) in ${(performance.now() - startTime).toFixed(0)}ms`);
     }, 50);
@@ -1737,7 +1738,7 @@ const HEAT_CACHE_TTL = 120000 // 2 min
 const HEAT_BATCH_INTERVAL = 2000 // 2s debounce for subsequent batches
 const heatCache = new Map() // username -> { heat, op, re, fetchedAt }
 // Periodic cleanup — prune stale entries every 5 min
-setInterval(() => {
+cleanup.setInterval(() => {
   const now = Date.now()
   for (const [k, v] of heatCache) {
     if (now - v.fetchedAt > HEAT_CACHE_TTL) heatCache.delete(k)
@@ -2083,7 +2084,8 @@ function colorUsernameMentions(messageElement) {
         const color = knownChatters.get(cleanWord);
         const span = document.createElement('span');
         span.className = 'hs-username-colored';
-        span.style.cssText = `color: ${color} !important; font-weight: bold !important; cursor: pointer !important;`;
+        const safeColor = /^(#[0-9a-f]{3,8}|rgb\(.+\)|[a-z]+)$/i.test(color) ? color : '#ffffff';
+        span.style.cssText = `color: ${safeColor} !important; font-weight: bold !important; cursor: pointer !important;`;
         span.textContent = word;
         span.dataset.hsUsername = cleanWord;
         newNodes.push(span);
@@ -2172,7 +2174,7 @@ function setupUsernameColoringObserver() {
                 blockedEmotes.delete(hash || name);
                 wrapper.classList.remove('emote-overlay-blocked');
                 // Restore appropriate class based on inventory status
-                const inInventory = emoteInventory.some(e => e.hash === hash || e.name === name);
+                const inInventory = inventoryHashSet.has(hash) || inventoryNameSet.has(name);
                 if (inInventory) {
                   wrapper.classList.add('emote-overlay-owned');
                 } else {
@@ -2247,32 +2249,54 @@ function setupUsernameColoringObserver() {
   }
 
   usernameColoringObserver = cleanup.trackObserver(new MutationObserver((mutations) => {
-    // Debounce - only process once per animation frame
-    if (usernameColoringObserver._pending) return;
-    usernameColoringObserver._pending = true;
-
-    requestAnimationFrame(() => {
-      usernameColoringObserver._pending = false;
-
-      // Use cached emote map (rebuilt on dirty flag in processMessage)
-      const allEmotes = cachedAllEmotes || new Map();
-
-      // Re-color only NEW messages (check for processed marker)
-      const messages = chatContainer.querySelectorAll('.chat-line__message:not([data-heatsync-usernames-colored])');
-      const vh = window.innerHeight
-      for (const msg of messages) {
-        const rect = msg.getBoundingClientRect();
-        if (rect.top < vh && rect.bottom > 0) {
-          msg.dataset.heatsyncUsernamesColored = '1'
-          highlightUserMentions(msg);
-          colorUsernameMentions(msg);
-          // Only stack if processMessage hasn't already done it
-          if (!msg.dataset.heatsyncProcessed) {
-            stackAdjacentOverlayEmotes(msg, allEmotes);
+    // Collect new chat messages from addedNodes directly — avoid full container scan
+    const newMessages = []
+    for (const mutation of mutations) {
+      for (const node of mutation.addedNodes) {
+        if (node.nodeType !== 1) continue
+        if (node.classList?.contains('chat-line__message')) {
+          if (!node.dataset.heatsyncUsernamesColored) newMessages.push(node)
+        } else if (node.querySelectorAll) {
+          for (const msg of node.querySelectorAll('.chat-line__message:not([data-heatsync-usernames-colored])')) {
+            newMessages.push(msg)
           }
         }
       }
-    });
+    }
+    if (newMessages.length === 0) return
+
+    // Debounce - only process once per animation frame
+    if (usernameColoringObserver._pending) {
+      // Stash nodes for next frame
+      usernameColoringObserver._queued = (usernameColoringObserver._queued || []).concat(newMessages)
+      return
+    }
+    usernameColoringObserver._pending = true
+    usernameColoringObserver._queued = newMessages
+
+    requestAnimationFrame(() => {
+      usernameColoringObserver._pending = false
+      const batch = usernameColoringObserver._queued || []
+      usernameColoringObserver._queued = null
+
+      // Use cached emote map (rebuilt on dirty flag in processMessage)
+      const allEmotes = cachedAllEmotes || new Map()
+
+      const vh = window.innerHeight
+      for (const msg of batch) {
+        if (msg.dataset.heatsyncUsernamesColored) continue
+        const rect = msg.getBoundingClientRect()
+        if (rect.top < vh && rect.bottom > 0) {
+          msg.dataset.heatsyncUsernamesColored = '1'
+          highlightUserMentions(msg)
+          colorUsernameMentions(msg)
+          // Only stack if processMessage hasn't already done it
+          if (!msg.dataset.heatsyncProcessed) {
+            stackAdjacentOverlayEmotes(msg, allEmotes)
+          }
+        }
+      }
+    })
   }), 'username-coloring');
 
   usernameColoringObserver.observe(chatContainer, {
@@ -2339,6 +2363,7 @@ function processMessage(messageElement) {
 
   // Build combined emote map (cached, rebuilt only when emote data changes)
   if (allEmotesDirty || !cachedAllEmotes) {
+    allEmotesDirty = false // Set early to prevent redundant rebuilds in same batch
     cachedAllEmotes = new Map()
 
     // Add global emotes
@@ -2370,8 +2395,6 @@ function processMessage(messageElement) {
     for (const e of cachedAllEmotes.values()) {
       if (e.hash) cachedEmotesByHash.set(e.hash, e)
     }
-
-    allEmotesDirty = false
   }
 
   // 2-tier lookup: cached base + per-user broadcast emotes (avoids cloning entire Map)
@@ -2525,10 +2548,15 @@ function stackAdjacentOverlayEmotes(messageElement, allEmotes) {
     const checkElement = existingStack || prevElement;
     if (!checkElement) continue;
 
-    const range = document.createRange();
-    range.setStartAfter(checkElement);
-    range.setEndBefore(currentElement);
-    const textBetween = range.toString();
+    let textBetween;
+    try {
+      const range = document.createRange();
+      range.setStartAfter(checkElement);
+      range.setEndBefore(currentElement);
+      textBetween = range.toString();
+    } catch (e) {
+      continue; // Elements detached from DOM during React reconciliation
+    }
 
     log(' 🔍 Text between:', JSON.stringify(textBetween));
 
@@ -2546,6 +2574,7 @@ function stackAdjacentOverlayEmotes(messageElement, allEmotes) {
       const outerContainer = currentElement.closest('.chat-line__message--emote-button')
         || currentElement.closest('[class*="emote-button"]')
         || currentElement;
+      if (!outerContainer.parentNode) continue;
       outerContainer.parentNode.insertBefore(currentWrapper, outerContainer);
       currentWrapper.appendChild(outerContainer);
     } else {
@@ -2585,6 +2614,7 @@ function stackAdjacentOverlayEmotes(messageElement, allEmotes) {
         const outerContainer = baseElement.closest('.chat-line__message--emote-button')
           || baseElement.closest('[class*="emote-button"]')
           || baseElement;
+        if (!outerContainer.parentNode) continue;
         outerContainer.parentNode.insertBefore(baseWrapper, outerContainer);
         baseWrapper.appendChild(outerContainer);
       }
@@ -2604,6 +2634,7 @@ function stackAdjacentOverlayEmotes(messageElement, allEmotes) {
       stackContainer.appendChild(collapseBtn);
 
       // Insert stack container before baseWrapper
+      if (!baseWrapper.parentNode) continue;
       baseWrapper.parentNode.insertBefore(stackContainer, baseWrapper);
 
       // Move baseWrapper into stack (as base)
@@ -2643,8 +2674,8 @@ function stackAdjacentOverlayEmotes(messageElement, allEmotes) {
     }
   }
 
-  // Clean up empty containers
-  const emptyContainers = messageElement.querySelectorAll('span:empty, div:empty');
+  // Clean up empty containers left by emote replacement (only heatsync-created ones)
+  const emptyContainers = messageElement.querySelectorAll('.text-fragment:empty, .chat-entry-content:empty');
   emptyContainers.forEach(el => {
     if (!el.closest('.heatsync-emote-stack') && !el.classList.contains('heatsync-emote-stack')) {
       el.remove();
@@ -2663,34 +2694,35 @@ function wrapExistingHeatsyncEmotes(messageElement, allEmotes) {
     const src = img.src || ''
     const alt = img.alt || ''
 
-    // Wrap emotes from all known CDNs including Twitch native
-    const isEmoteCdn = src.includes('heatsync.org') ||
-                       src.includes('cdn.7tv.app') ||
+    // Wrap emotes from known CDNs — but only wrap native Twitch emotes if they're
+    // in our emote map (otherwise we break Twitch's animated emote rendering)
+    const isHeatsyncCdn = src.includes('heatsync.org')
+    const isThirdPartyEmoteCdn = src.includes('cdn.7tv.app') ||
                        src.includes('cdn.betterttv.net') ||
-                       src.includes('cdn.frankerfacez.com') ||
-                       src.includes('static-cdn.jtvnw.net/emoticons');
+                       src.includes('cdn.frankerfacez.com')
+    const isNativeTwitch = src.includes('static-cdn.jtvnw.net/emoticons')
 
-    if (!isEmoteCdn) continue
+    if (!isHeatsyncCdn && !isThirdPartyEmoteCdn && !isNativeTwitch) continue
 
     const matchedEmote = allEmotes.get(alt);
+
+    // Never wrap native Twitch emotes — reparenting breaks animated emote rendering
+    if (isNativeTwitch) continue
 
     // Use matched emote or create placeholder data
     const emote = matchedEmote || { name: alt, hash: alt, url: src };
 
     const blocked = blockedEmotes.has(emote.hash);
-    const inInventory = emoteInventory.some(e => e.hash === emote.hash || e.name === emote.name);
+    const inInventory = inventoryHashSet.has(emote.hash) || inventoryNameSet.has(emote.name);
 
     // Third-party CDN emotes (7tv, bttv, ffz, twitch) are all "global" - can only block, not add to inventory
     // Only heatsync.org emotes can be added to inventory (blue)
-    const isThirdPartyCdn = src.includes('cdn.7tv.app') ||
-                            src.includes('cdn.betterttv.net') ||
-                            src.includes('cdn.frankerfacez.com') ||
-                            src.includes('static-cdn.jtvnw.net');
+    const isCdnEmote = isThirdPartyEmoteCdn || isNativeTwitch;
 
     let overlayClass = '';
     if (blocked) overlayClass = 'emote-overlay-blocked';
     else if (inInventory) overlayClass = 'emote-overlay-owned';
-    else if (isThirdPartyCdn) overlayClass = 'emote-overlay-global'; // gold - non-ownable
+    else if (isCdnEmote) overlayClass = 'emote-overlay-global'; // gold - non-ownable
     else overlayClass = 'emote-overlay-unadded'; // blue - can be added (heatsync.org)
 
     // Create wrapper and move image into it
@@ -2819,6 +2851,28 @@ function replaceEmotesWithStacking(element, allEmotes) {
       }
       currentStack.push({ emote, isOverlay: false, originalWord: trimmed });
     } else {
+      // Check for emoji :shortcode:
+      if (typeof EMOJI_BY_NAME !== 'undefined' && trimmed.startsWith(':') && trimmed.endsWith(':') && trimmed.length > 2) {
+        const emojiName = trimmed.slice(1, -1)
+        const emojiEntry = EMOJI_BY_NAME.get(emojiName)
+        if (emojiEntry) {
+          // Flush any pending stack
+          if (currentStack.length > 0) {
+            resultNodes.push(flushEmoteStack(currentStack))
+            currentStack = []
+          }
+          if (pendingWhitespace) {
+            resultNodes.push(document.createTextNode(pendingWhitespace))
+            pendingWhitespace = ''
+          }
+          const emojiSpan = document.createElement('span')
+          emojiSpan.className = 'heatsync-emoji'
+          emojiSpan.textContent = emojiEntry.emoji
+          emojiSpan.title = `:${emojiName}:`
+          resultNodes.push(emojiSpan)
+          continue
+        }
+      }
       // Not an emote - flush stack and add word
       if (currentStack.length > 0) {
         resultNodes.push(flushEmoteStack(currentStack));
@@ -2908,9 +2962,10 @@ function replaceEmotesWithStacking(element, allEmotes) {
 
     return stackContainer;
   }
+}
 
-  // Generate DOM element for a single emote (React-safe, no innerHTML)
-  function generateEmoteElement(emote, isOverlay) {
+// Generate DOM element for a single emote (React-safe, no innerHTML)
+function generateEmoteElement(emote, isOverlay) {
     const blocked = blockedEmotes.has(emote.hash);
     const inInventory = inventoryHashSet.has(emote.hash) || inventoryNameSet.has(emote.name);
 
@@ -2994,7 +3049,6 @@ function replaceEmotesWithStacking(element, allEmotes) {
     wrapper.appendChild(img);
     log(' 🎯 generateEmoteElement:', emote.name, 'class:', wrapper.className);
     return wrapper;
-  }
 }
 
 // Retroactive emote replacement — DOM-based (no innerHTML round-trip)
@@ -3928,13 +3982,13 @@ function updateEmoteState(hash, emoteName, state) {
       if (cardEl) {
         closeCard()
       }
-    }, true) // capture phase
+    }, { capture: true, signal }) // capture phase, tied to lifecycle
 
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape' && cardEl) {
         closeCard()
       }
-    })
+    }, { signal })
   }
 
   log(' ✅ Profile card (click) setup')
@@ -4213,7 +4267,7 @@ function showUnblockedEmote(hash) {
                             emoteUrl.includes('static-cdn.jtvnw.net');
 
     // Check if in your set or global
-    const inInventory = emoteInventory.some(e => e.hash === hash || e.name === emoteName);
+    const inInventory = inventoryHashSet.has(hash) || inventoryNameSet.has(emoteName);
     const isGlobalEmote = globalEmotes.some(g => g.name === emoteName);
 
     wrapper.classList.remove('emote-overlay-blocked', 'emote-overlay-owned', 'emote-overlay-unadded', 'emote-overlay-global');
@@ -4324,14 +4378,14 @@ function watchForNewMessages() {
       processingScheduled = true;
       log(' 📬 Queued', processingQueue.length, 'messages for processing');
       requestAnimationFrame(() => {
-        setTimeout(() => {
+        cleanup.setTimeout(() => {
           const batch = processingQueue.splice(0); // Copy and clear queue
           log(' 🔄 Processing batch of', batch.length, 'messages');
 
           batch.forEach(processMessage);
 
           processingScheduled = false;
-        }, 16); // Wait one frame (16ms @ 60fps) for React to finish
+        }, 16); // Wait one frame for React to settle (animated emotes need this)
       });
     }
   }), 'message-observer');
@@ -4454,7 +4508,11 @@ let tabCompleteState = {
 };
 
 // Build combined emote map for searching (inventory + globals)
+let _tabEmoteMap = null
+let _tabEmoteMapDirty = true
 function buildEmoteMap() {
+  if (_tabEmoteMap && !_tabEmoteMapDirty && !allEmotesDirty) return _tabEmoteMap
+  _tabEmoteMapDirty = false
   const map = new Map();
 
   // Add inventory emotes first (higher priority)
@@ -4493,6 +4551,7 @@ function buildEmoteMap() {
     }
   });
 
+  _tabEmoteMap = map
   return map;
 }
 

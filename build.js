@@ -42,6 +42,7 @@ const COPY_FILES = [
   'early-inject-main.js',
   'platform-detector.js',
   'shared-utils.js',
+  'emoji-data.js',
   'polyfill.js',
   'welcome.html',
   'injected-message.css',

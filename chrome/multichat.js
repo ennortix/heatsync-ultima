@@ -760,7 +760,7 @@
           newBtn.style.display = 'none';
         } else {
           isScrolledUp = true;
-          newBtn.textContent = newMessageCount > 0 ? `↓ ${newMessageCount} new` : '↓ resume';
+          newBtn.innerHTML = newMessageCount > 0 ? `<span class="hs-arrow-down">▼</span> ${newMessageCount} new` : '<span class="hs-arrow-down">▼</span> resume';
           newBtn.style.display = 'block';
         }
       });
@@ -770,7 +770,7 @@
         if (e.deltaY < 0) {
           // Scrolling up with wheel = user intent
           isScrolledUp = true;
-          newBtn.textContent = newMessageCount > 0 ? `↓ ${newMessageCount} new` : '↓ resume';
+          newBtn.innerHTML = newMessageCount > 0 ? `<span class="hs-arrow-down">▼</span> ${newMessageCount} new` : '<span class="hs-arrow-down">▼</span> resume';
           newBtn.style.display = 'block';
         } else if (e.deltaY > 0) {
           // Scrolling down - check if we're now at bottom to re-lock
@@ -3196,9 +3196,9 @@
         color: #000;
         border: none;
         border-radius: 0;
-        padding: 8px 16px;
-        font-size: 13px;
-        font-weight: 600;
+        padding: 10px 18px;
+        font-size: 14px;
+        font-weight: 700;
         cursor: pointer;
         z-index: 1005;
         box-shadow: 0 2px 12px rgba(0,0,0,0.6);
@@ -3208,6 +3208,12 @@
       #hs-mc-new-msgs:hover {
         background: #fff;
         color: #000;
+      }
+      .hs-arrow-down {
+        font-size: 18px;
+        line-height: 1;
+        vertical-align: middle;
+        margin-right: 2px;
       }
 
       /* UNIFIED INPUT BAR - always visible at bottom */
@@ -3849,17 +3855,25 @@
         border-radius: 0;
         padding: 8px;
         display: none;
-        flex-direction: column;
-        gap: 6px;
-        max-width: 300px;
+        flex-direction: row;
+        gap: 8px;
+        max-width: 350px;
         box-shadow: 0 4px 12px rgba(0,0,0,0.6);
       }
       #hs-link-tooltip.visible { display: flex; }
       #hs-link-tooltip img {
-        max-width: 280px;
-        max-height: 160px;
-        object-fit: contain;
+        width: 80px;
+        height: 80px;
+        object-fit: cover;
         border-radius: 0;
+        flex-shrink: 0;
+      }
+      #hs-link-tooltip .link-text {
+        display: flex;
+        flex-direction: column;
+        gap: 3px;
+        min-width: 0;
+        justify-content: center;
       }
       #hs-link-tooltip .link-title {
         color: #fff;
@@ -3877,7 +3891,7 @@
         overflow: hidden;
         text-overflow: ellipsis;
         display: -webkit-box;
-        -webkit-line-clamp: 3;
+        -webkit-line-clamp: 2;
         -webkit-box-orient: vertical;
       }
       #hs-link-tooltip .link-domain {
@@ -6284,7 +6298,7 @@
     if (isScrolledUp) {
       newMessageCount++;
       if (newBtn) {
-        newBtn.textContent = `↓ ${newMessageCount} new`;
+        newBtn.innerHTML = `<span class="hs-arrow-down">▼</span> ${newMessageCount} new`;
         newBtn.style.display = 'block';
       }
       return;
@@ -7691,14 +7705,18 @@
     let hostname = '';
     try { hostname = new URL(url).hostname; } catch { hostname = url; }
 
-    // Show loading state immediately — all values escaped via escapeHtml
-    const domainSpan = document.createElement('span');
-    domainSpan.className = 'link-domain';
-    domainSpan.textContent = hostname;
+    // Show loading state immediately
+    const loadWrap = document.createElement('div');
+    loadWrap.className = 'link-text';
     const loadSpan = document.createElement('span');
     loadSpan.className = 'link-loading';
     loadSpan.textContent = 'loading...';
-    tip.replaceChildren(loadSpan, domainSpan);
+    const domainSpan = document.createElement('span');
+    domainSpan.className = 'link-domain';
+    domainSpan.textContent = hostname;
+    loadWrap.appendChild(loadSpan);
+    loadWrap.appendChild(domainSpan);
+    tip.replaceChildren(loadWrap);
     positionLinkTooltip(tip, e.clientX, e.clientY);
     tip.classList.add('visible');
 
@@ -7723,6 +7741,8 @@
     try { hostname = new URL(url).hostname; } catch { hostname = url; }
     tip.replaceChildren(); // clear
     let hasContent = false;
+    const textWrap = document.createElement('div');
+    textWrap.className = 'link-text';
     if (data) {
       if (data.image) {
         const img = document.createElement('img');
@@ -7736,14 +7756,14 @@
         const t = document.createElement('span');
         t.className = 'link-title';
         t.textContent = data.title;
-        tip.appendChild(t);
+        textWrap.appendChild(t);
         hasContent = true;
       }
       if (data.description) {
         const d = document.createElement('span');
         d.className = 'link-desc';
         d.textContent = data.description;
-        tip.appendChild(d);
+        textWrap.appendChild(d);
         hasContent = true;
       }
     }
@@ -7751,7 +7771,8 @@
     const dom = document.createElement('span');
     dom.className = 'link-domain';
     dom.textContent = hasContent ? hostname : url;
-    tip.appendChild(dom);
+    textWrap.appendChild(dom);
+    tip.appendChild(textWrap);
   }
 
   function positionLinkTooltip(tip, cx, cy) {
@@ -8806,8 +8827,12 @@
       }
 
       // Live tab: show if this is the current channel's Twitch chat
-      if (currentTab === 'live' && msg.channel === getCurrentChannel()) {
-        if (!appendMessage(msg, 'live')) renderMessages('live');
+      if (msg.channel === getCurrentChannel()) {
+        if (currentTab === 'live') {
+          if (!appendMessage(msg, 'live')) renderMessages('live');
+        } else {
+          updateTabIndicator('live');
+        }
       }
     });
 
@@ -8835,15 +8860,14 @@
 
       // Live tab: on Kick, show if channel matches; on Twitch, show if config maps current channel
       const curCh = getCurrentChannel();
-      if (currentTab === 'live') {
-        if (hostPlatform === 'kick' && msg.channel === curCh) {
+      const isLiveMsg = (hostPlatform === 'kick' && msg.channel === curCh)
+        || (hostPlatform === 'twitch' && (msg.channel === curCh
+          || config.channels.some(ch => typeof ch !== 'string' && ch.twitch === curCh && ch.kick === msg.channel)));
+      if (isLiveMsg) {
+        if (currentTab === 'live') {
           if (!appendMessage(msg, 'live')) renderMessages('live');
-        } else if (hostPlatform === 'twitch') {
-          // Show Kick messages on live tab if current Twitch channel has a linked Kick channel
-          const linkedKick = config.channels.find(ch => typeof ch !== 'string' && ch.twitch === curCh && ch.kick === msg.channel);
-          if (linkedKick || msg.channel === curCh) {
-            if (!appendMessage(msg, 'live')) renderMessages('live');
-          }
+        } else {
+          updateTabIndicator('live');
         }
       }
     });

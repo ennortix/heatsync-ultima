@@ -9,6 +9,9 @@ const log = DEBUG ? console.log.bind(console, '[heatsync]') : () => {};
 
 log('🔥 BACKGROUND SCRIPT LOADING...');
 
+// Link preview via heatsync.org server proxy (avoids CORS)
+const LINK_PREVIEW_API = 'https://heatsync.org/api/link-preview'
+
 // Show welcome page on first install, clear stale intervals on update
 browser.runtime.onInstalled.addListener((details) => {
   log(' 📦 onInstalled - extension installed/updated', details.reason);
@@ -1929,6 +1932,17 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
       }
     }).catch(() => {})
     return
+  }
+
+  // Link preview — proxy through heatsync.org server (avoids CORS)
+  if (message.type === 'fetch_link_preview') {
+    const url = message.url
+    if (!url || !/^https?:\/\//i.test(url)) { sendResponse(null); return true }
+    fetch(`${LINK_PREVIEW_API}?url=${encodeURIComponent(url)}`, { signal: AbortSignal.timeout(6000) })
+      .then(r => r.ok ? r.json() : null)
+      .then(data => sendResponse(data))
+      .catch(() => sendResponse(null))
+    return true
   }
 
   // Proxy fetch for live status (avoids CORS in content script)

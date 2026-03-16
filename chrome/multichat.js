@@ -888,6 +888,9 @@
   // Vi mode for chat input (default off)
   let viModeEnabled = false;
 
+  // Zebra striping — alternate row backgrounds (default off)
+  let zebraEnabled = false;
+
   // Auto-hide input bar when empty (default off)
   let hideEmptyInput = false;
 
@@ -1280,6 +1283,32 @@
     log('Hide empty input:', hideEmptyInput ? 'enabled' : 'disabled');
   }
 
+  // Zebra striping setting
+  async function loadZebraSetting() {
+    try {
+      const stored = await chrome.storage.local.get(['ui_settings']);
+      if (stored.ui_settings?.zebra !== undefined) {
+        zebraEnabled = stored.ui_settings.zebra;
+      }
+    } catch {}
+  }
+
+  async function saveZebraSetting() {
+    try {
+      const stored = await chrome.storage.local.get(['ui_settings']);
+      const settings = stored.ui_settings || {};
+      settings.zebra = zebraEnabled;
+      await chrome.storage.local.set({ ui_settings: settings });
+    } catch {}
+  }
+
+  function toggleZebra() {
+    zebraEnabled = !zebraEnabled;
+    saveZebraSetting();
+    // Re-render current tab to apply
+    renderMessages(currentTab);
+  }
+
   function applyHideEmptyInput() {
     const bar = document.getElementById('hs-mc-inputbar');
     if (!bar) return
@@ -1513,6 +1542,10 @@
             <button class="hs-mc-toggle-pill ${viModeEnabled ? 'active' : ''}" id="hs-mc-vi-toggle"><span class="hs-mc-toggle-knob"></span></button>
           </div>
           <div class="hs-mc-setting-row">
+            <span class="hs-mc-setting-label">zebra striping</span>
+            <button class="hs-mc-toggle-pill ${zebraEnabled ? 'active' : ''}" id="hs-mc-zebra-toggle"><span class="hs-mc-toggle-knob"></span></button>
+          </div>
+          <div class="hs-mc-setting-row">
             <span class="hs-mc-setting-label">auto-hide input</span>
             <button class="hs-mc-toggle-pill ${hideEmptyInput ? 'active' : ''}" id="hs-mc-hide-input-toggle"><span class="hs-mc-toggle-knob"></span></button>
           </div>
@@ -1593,6 +1626,13 @@
     viToggle?.addEventListener('click', () => {
       toggleViMode();
       viToggle.classList.toggle('active', viModeEnabled);
+    });
+
+    // Zebra toggle
+    const zebraToggle = document.getElementById('hs-mc-zebra-toggle');
+    zebraToggle?.addEventListener('click', () => {
+      toggleZebra();
+      zebraToggle.classList.toggle('active', zebraEnabled);
     });
 
     // Hide empty input toggle
@@ -3671,6 +3711,9 @@
         max-width: 100%;
         box-sizing: border-box;
         color: #ffffff;
+      }
+      .hs-mc-msg.hs-mc-zebra {
+        background: #111;
       }
       .hs-mc-msg:hover {
         background: #000;
@@ -6638,6 +6681,11 @@
     if (empty) empty.remove();
 
     const div = buildMessageDiv(msg, tabId);
+    if (zebraEnabled && msg.type !== 'stream-event') {
+      if (!msgsEl._zebraCount) msgsEl._zebraCount = 0;
+      msgsEl._zebraCount++;
+      if (msgsEl._zebraCount % 2 === 0) div.classList.add('hs-mc-zebra');
+    }
     msgsEl.appendChild(div);
 
     // Trim oldest messages beyond 150
@@ -6725,8 +6773,16 @@
     const toRender = msgs.slice(-150);
     isProgrammaticScroll = true;
     msgsEl.textContent = '';
+    msgsEl._zebraCount = 0;
     const frag = document.createDocumentFragment();
-    for (const m of toRender) frag.appendChild(buildMessageDiv(m, id));
+    for (const m of toRender) {
+      const div = buildMessageDiv(m, id);
+      if (zebraEnabled && m.type !== 'stream-event') {
+        msgsEl._zebraCount++;
+        if (msgsEl._zebraCount % 2 === 0) div.classList.add('hs-mc-zebra');
+      }
+      frag.appendChild(div);
+    }
     msgsEl.appendChild(frag);
     applyMcMutes();
 
@@ -9341,6 +9397,7 @@
     await loadLinksSetting();
     await loadViModeSetting();
     await loadHideEmptyInputSetting();
+    await loadZebraSetting();
     await loadBlockedEmotes();
     await loadEmotes();
 

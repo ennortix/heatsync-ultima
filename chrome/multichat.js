@@ -888,6 +888,9 @@
   // Vi mode for chat input (default off)
   let viModeEnabled = false;
 
+  // Platform badges [T]/[K]/[YT] on messages (default on)
+  let platformBadgesEnabled = true;
+
   // Zebra striping — alternate row backgrounds (default off)
   let zebraEnabled = false;
 
@@ -1251,6 +1254,18 @@
     viModeEnabled = !viModeEnabled;
     saveViModeSetting();
     log('Vi mode:', viModeEnabled ? 'enabled' : 'disabled');
+  }
+
+  // Platform badges setting
+  async function loadPlatformBadgesSetting() {
+    try {
+      const stored = await chrome.storage.local.get(['ui_settings']);
+      if (stored.ui_settings?.showPlatformBadges !== undefined) {
+        platformBadgesEnabled = stored.ui_settings.showPlatformBadges;
+      }
+    } catch (e) {
+      log('Error loading platform badges setting:', e);
+    }
   }
 
   // Hide empty input setting
@@ -4452,8 +4467,8 @@
         color: #808080 !important;
         border: none !important;
         cursor: pointer;
-        font-size: 11px !important;
-        font-weight: 500;
+        font-size: 16px !important;
+        font-weight: 800 !important;
         text-align: center;
         visibility: visible !important;
         opacity: 1 !important;
@@ -6234,7 +6249,7 @@
       </div>
       <div class="hs-feed-body">${content}</div>
       <div class="hs-feed-stats">
-        <span class="hs-feed-stat" title="heat">${heat > 0 ? '🔥 ' + heat : ''}</span>
+        <span class="hs-feed-stat" title="heat" style="color:#ff8700">${heat > 0 ? heat + '°' : ''}</span>
         <span class="hs-feed-stat hs-feed-replies" title="replies">${replies > 0 ? '💬 ' + replies : ''}</span>
       </div>
     `;
@@ -6627,7 +6642,7 @@
     const plat = m.platform === 'youtube' ? 'yt' : m.platform === 'kick' ? 'kick' : 'twitch'
     const platLabel = plat === 'yt' ? '[YT]' : plat === 'kick' ? '[K]' : '[T]'
     const platColors = { twitch: '#9146ff', kick: '#53fc18', yt: '#ff0000' }
-    const platformBadge = plat !== hostPlatform ? `<span style="font-size:10px;margin-right:3px;font-weight:700;vertical-align:middle;color:${platColors[plat]}">${platLabel}</span>` : ''
+    const platformBadge = (platformBadgesEnabled || plat !== hostPlatform) ? `<span class="hs-mc-platform-badge hs-mc-pb-${plat}" style="font-size:10px;margin-right:3px;font-weight:700;vertical-align:middle;color:${platColors[plat]}">${platLabel}</span>` : ''
     const safeScColor = sanitizeColor(m.scColor || '#ffd600')
     const scBadge = isSuperChat && m.amount ? `<span class="hs-mc-sc-badge" style="background:${safeScColor};color:#000;padding:0 4px;border-radius:0;font-size:10px;font-weight:700;margin-right:3px;">${escapeHtml(m.amount)}</span>` : ''
     const userLink = `<a href="https://heatsync.org/u/${encodeURIComponent(m.user)}" target="_blank" class="hs-mc-user" data-username="${escapeHtml(m.user.toLowerCase())}" style="color:${sanitizeColor(m.color || '#fff')}">${escapeHtml(m.user)}</a>`;
@@ -7918,8 +7933,8 @@
   }
 
   const HEAT_GRADIENT = [
-    '#808080', '#aa5555', '#cc5544', '#aa0000', '#dd0000',
-    '#ff0000', '#ff6600', '#ff9900', '#ffcc00', '#ffffff'
+    '#808080', '#cc6e00', '#ff8700', '#ff9900', '#ff6600',
+    '#ff0000', '#ff2200', '#ff9900', '#ffcc00', '#ffffff'
   ];
   function getHeatColor(heat) {
     let tier = 0;
@@ -8438,8 +8453,8 @@
   function processEmotes(text, channel) {
     if (emoteCache.size === 0 && !channelEmoteCaches[channel]) return escapeHtml(text);
 
-    // Split by whitespace, and also split adjacent Kick emotes [emote:id:name][emote:id:name]
-    const words = text.replace(/\]\[emote:/g, '] [emote:').split(/(\s+)/);
+    // Split adjacent Kick emotes and text touching emotes (e.g. "word[emote:id:name]")
+    const words = text.replace(/\]\[emote:/g, '] [emote:').replace(/([^\s\[])\[emote:/g, '$1 [emote:').replace(/\]([^\s\]])/g, '] $1').split(/(\s+)/);
     const result = [];
     let pendingStack = null; // { base: html, overlays: [html...] }
     let pendingWhitespace = ''; // Accumulate whitespace - don't flush stack on spaces
@@ -9307,6 +9322,9 @@
           tabPosition = newSettings.tabPosition;
           applyTabsPosition();
         }
+        if (newSettings.showPlatformBadges !== undefined) {
+          platformBadgesEnabled = newSettings.showPlatformBadges;
+        }
       }
 
       // Emote updates - reload when storage changes
@@ -9432,6 +9450,7 @@
     await loadWysiwygSetting();
     await loadLinksSetting();
     await loadViModeSetting();
+    await loadPlatformBadgesSetting();
     await loadHideEmptyInputSetting();
     await loadZebraSetting();
     await loadBlockedEmotes();

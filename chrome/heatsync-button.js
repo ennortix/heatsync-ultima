@@ -1343,6 +1343,7 @@
     highlightMentions: true,
     emotePlaceholderMode: false, // Show colored rectangles instead of emote images
     viMode: false,               // Vim keybindings for chat input
+    showPlatformBadges: true,    // Show [T]/[K]/[YT] badges on messages
   };
 
   // Get extension settings (sync - returns cached)
@@ -1478,6 +1479,14 @@
               <div class="heatsync-setting-label">highlight mentions</div>
             </div>
             <div class="heatsync-toggle ${settings.highlightMentions ? 'active' : ''}" data-setting="highlightMentions"></div>
+          </div>
+
+          <div class="heatsync-setting-row">
+            <div>
+              <div class="heatsync-setting-label">platform badges</div>
+              <div class="heatsync-setting-desc">[T] [K] [YT] on messages</div>
+            </div>
+            <div class="heatsync-toggle ${settings.showPlatformBadges ? 'active' : ''}" data-setting="showPlatformBadges"></div>
           </div>
         </div>
 

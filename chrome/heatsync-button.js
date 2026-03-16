@@ -598,6 +598,7 @@
         justify-content: center;
         border-radius: 0;
         cursor: pointer;
+        flex-shrink: 0;
       }
 
       /* Unadded = slightly dimmed */

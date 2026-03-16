@@ -56,6 +56,7 @@ const ASSETS = [
   'icon-48.png',
   'icon-96.png',
   'icon-128.png',
+  'icon-48-black.png',
   'COGGERS-1x.webp',
 ]
 

@@ -473,14 +473,14 @@
           this.emit('message', msg)
         }
       }
-      chrome.runtime.onMessage.addListener(this._listener)
+      chrome.runtime?.onMessage?.addListener(this._listener)
       log('Kick chat listener registered (webhook mode)')
     }
 
     destroy() {
       this._destroyed = true
       if (this._listener) {
-        chrome.runtime.onMessage.removeListener(this._listener)
+        chrome.runtime?.onMessage?.removeListener(this._listener)
         this._listener = null
       }
       // Leave all channels
@@ -717,6 +717,9 @@
   // WYSIWYG mode (inline emote images in input)
   let wysiwygEnabled = false;
 
+  // Clickable links in chat messages (default on)
+  let linksEnabled = true;
+
   // Chat width state
   let chatWidth = 340; // Default width
   const DEFAULT_CHAT_WIDTH = 340;
@@ -755,6 +758,10 @@
           isScrolledUp = false;
           newMessageCount = 0;
           newBtn.style.display = 'none';
+        } else {
+          isScrolledUp = true;
+          newBtn.textContent = newMessageCount > 0 ? `↓ ${newMessageCount} new` : '↓ resume';
+          newBtn.style.display = 'block';
         }
       });
 
@@ -763,6 +770,8 @@
         if (e.deltaY < 0) {
           // Scrolling up with wheel = user intent
           isScrolledUp = true;
+          newBtn.textContent = newMessageCount > 0 ? `↓ ${newMessageCount} new` : '↓ resume';
+          newBtn.style.display = 'block';
         } else if (e.deltaY > 0) {
           // Scrolling down - check if we're now at bottom to re-lock
           setTimeout(() => {
@@ -1004,6 +1013,35 @@
     log('WYSIWYG:', wysiwygEnabled ? 'enabled' : 'disabled');
   }
 
+  // Clickable links setting
+  async function loadLinksSetting() {
+    try {
+      const stored = await chrome.storage.local.get(['ui_settings']);
+      if (stored.ui_settings?.linksEnabled !== undefined) {
+        linksEnabled = stored.ui_settings.linksEnabled;
+      }
+    } catch (e) {
+      log('Error loading links setting:', e);
+    }
+  }
+
+  async function saveLinksSetting() {
+    try {
+      const stored = await chrome.storage.local.get(['ui_settings']);
+      const settings = stored.ui_settings || {};
+      settings.linksEnabled = linksEnabled;
+      await chrome.storage.local.set({ ui_settings: settings });
+    } catch (e) {
+      log('Error saving links setting:', e);
+    }
+  }
+
+  function toggleLinks() {
+    linksEnabled = !linksEnabled;
+    saveLinksSetting();
+    log('Links:', linksEnabled ? 'enabled' : 'disabled');
+  }
+
   function rebuildInput() {
     const bar = document.getElementById('hs-mc-inputbar');
     if (!bar) return;
@@ -1053,7 +1091,8 @@
   function createInputBar() {
     const bar = document.createElement('div');
     bar.id = 'hs-mc-inputbar';
-    const iconUrl = chrome.runtime.getURL('icon-16.png');
+    const iconUrl = chrome.runtime.getURL('icon-48.png');
+    const iconBlackUrl = chrome.runtime.getURL('icon-48-black.png');
 
     const inputHtml = wysiwygEnabled
       ? `<div id="hs-mc-input" contenteditable="true" data-placeholder="send a message..." spellcheck="false"></div>`
@@ -1061,11 +1100,19 @@
 
     bar.innerHTML = `
       ${inputHtml}
-      <button id="hs-mc-emote-btn" title="heatsync emotes & settings"><img src="${iconUrl}" alt="hs" style="width:24px;height:24px;vertical-align:middle;"></button>
+      <button id="hs-mc-emote-btn" title="heatsync emotes & settings"><img src="${iconUrl}" data-src="${iconUrl}" data-src-black="${iconBlackUrl}" alt="hs"></button>
     `;
 
     // Initialize input after DOM insertion
-    setTimeout(() => initInput(), 0);
+    setTimeout(() => {
+      initInput();
+      const btn = bar.querySelector('#hs-mc-emote-btn');
+      const img = btn?.querySelector('img');
+      if (btn && img) {
+        btn.addEventListener('mouseenter', () => { img.src = img.dataset.srcBlack })
+        btn.addEventListener('mouseleave', () => { img.src = img.dataset.src })
+      }
+    }, 0);
     return bar;
   }
 
@@ -1204,6 +1251,10 @@
             <span class="hs-mc-setting-label">input preview</span>
             <button class="hs-mc-toggle-pill ${wysiwygEnabled ? 'active' : ''}" id="hs-mc-wysiwyg-toggle"><span class="hs-mc-toggle-knob"></span></button>
           </div>
+          <div class="hs-mc-setting-row">
+            <span class="hs-mc-setting-label">clickable links</span>
+            <button class="hs-mc-toggle-pill ${linksEnabled ? 'active' : ''}" id="hs-mc-links-toggle"><span class="hs-mc-toggle-knob"></span></button>
+          </div>
         </div>
         <div class="hs-mc-settings-group">
           <div class="hs-mc-settings-group-title">layout</div>
@@ -1217,9 +1268,9 @@
         </div>
       </div>
       <div class="hs-mc-picker-tabs">
-        <button class="hs-mc-picker-tab ${pickerTab === 'emotes' ? 'active' : ''}" data-tab="emotes"><svg width="14" height="14" viewBox="0 0 20 20"><path fill="currentColor" d="M7 11a1 1 0 100-2 1 1 0 000 2zm6-1a1 1 0 11-2 0 1 1 0 012 0zm-3 5.5a4 4 0 01-4-4h2a2 2 0 004 0h2a4 4 0 01-4 4zM10 2a8 8 0 110 16 8 8 0 010-16z"></path></svg> emotes</button>
-        <button class="hs-mc-picker-tab ${pickerTab === 'twitch' ? 'active' : ''}" data-tab="twitch"><svg width="14" height="14" viewBox="0 0 20 20"><path fill="currentColor" d="M4.3 1L2 4.5V17h4.5v2.5H9L11.5 17H15l4-4V1H4.3zM17 12l-3 3h-4l-2.5 2.5V15H4V3h13v9z"/><path fill="currentColor" d="M12 6.5h2v5h-2zm-4 0h2v5H8z"/></svg> twitch</button>
-        <button class="hs-mc-picker-tab ${pickerTab === 'settings' ? 'active' : ''}" data-tab="settings"><svg width="14" height="14" viewBox="0 0 20 20"><path fill="currentColor" d="M10 8a2 2 0 100 4 2 2 0 000-4zm7.9 1.44l-1.27-.25a6.9 6.9 0 00-.59-1.42l.74-1.06a.5.5 0 00-.07-.6l-1.12-1.12a.5.5 0 00-.6-.07l-1.06.74a6.9 6.9 0 00-1.42-.59l-.25-1.27a.5.5 0 00-.49-.4h-1.54a.5.5 0 00-.49.4l-.25 1.27a6.9 6.9 0 00-1.42.59l-1.06-.74a.5.5 0 00-.6.07L5.29 6.11a.5.5 0 00-.07.6l.74 1.06a6.9 6.9 0 00-.59 1.42l-1.27.25a.5.5 0 00-.4.49v1.54a.5.5 0 00.4.49l1.27.25c.14.5.34.97.59 1.42l-.74 1.06a.5.5 0 00.07.6l1.12 1.12a.5.5 0 00.6.07l1.06-.74c.45.25.92.45 1.42.59l.25 1.27a.5.5 0 00.49.4h1.54a.5.5 0 00.49-.4l.25-1.27a6.9 6.9 0 001.42-.59l1.06.74a.5.5 0 00.6-.07l1.12-1.12a.5.5 0 00.07-.6l-.74-1.06c.25-.45.45-.92.59-1.42l1.27-.25a.5.5 0 00.4-.49v-1.54a.5.5 0 00-.4-.49z"/></svg> settings</button>
+        <button class="hs-mc-picker-tab ${pickerTab === 'emotes' ? 'active' : ''}" data-tab="emotes">emotes</button>
+        <button class="hs-mc-picker-tab ${pickerTab === 'twitch' ? 'active' : ''}" data-tab="twitch">twitch</button>
+        <button class="hs-mc-picker-tab ${pickerTab === 'settings' ? 'active' : ''}" data-tab="settings">settings</button>
       </div>
     `;
 
@@ -1267,6 +1318,13 @@
     wysiwygToggle?.addEventListener('click', () => {
       toggleWysiwyg();
       wysiwygToggle.classList.toggle('active', wysiwygEnabled);
+    });
+
+    // Links toggle
+    const linksToggle = document.getElementById('hs-mc-links-toggle');
+    linksToggle?.addEventListener('click', () => {
+      toggleLinks();
+      linksToggle.classList.toggle('active', linksEnabled);
     });
 
     // Chat width input
@@ -1407,16 +1465,34 @@
     return links
   }
 
+  function makeCoinSvg(size) {
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
+    svg.setAttribute('width', String(size))
+    svg.setAttribute('height', String(size))
+    svg.setAttribute('viewBox', '0 0 20 20')
+    svg.style.verticalAlign = '-2px'
+    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path')
+    path.setAttribute('fill', '#ffbf00')
+    path.setAttribute('d', 'M10 6a4 4 0 100 8 4 4 0 000-8zm0-4a8 8 0 110 16 8 8 0 010-16z')
+    svg.appendChild(path)
+    return svg
+  }
+
   function renderPrediction(pred, balance) {
     const frag = document.createDocumentFragment()
     const isLocked = pred.status === 'LOCKED'
+    const isResolved = pred.status === 'RESOLVED'
+    const isCanceled = pred.status === 'CANCELED'
+    const isEnded = isResolved || isCanceled
     const totalPoints = pred.outcomes.reduce((s, o) => s + (o.totalPoints || 0), 0)
     const createdAt = new Date(pred.createdAt).getTime()
     const windowMs = (pred.predictionWindowSeconds || 120) * 1000
     const endsAt = createdAt + windowMs
+    const userBet = _userBets.get(pred.id)
+    const winningId = pred.winningOutcome?.id || null
 
     const wrapper = document.createElement('div')
-    wrapper.className = 'hs-mc-prediction'
+    wrapper.className = 'hs-mc-prediction' + (isResolved ? ' hs-mc-pred-resolved' : '') + (isCanceled ? ' hs-mc-pred-canceled' : '')
     wrapper.dataset.eventId = pred.id
 
     // Header
@@ -1427,7 +1503,17 @@
     title.textContent = pred.title
     header.appendChild(title)
 
-    if (isLocked) {
+    if (isCanceled) {
+      const badge = document.createElement('span')
+      badge.className = 'hs-mc-pred-status hs-mc-pred-status-canceled'
+      badge.textContent = 'refunded'
+      header.appendChild(badge)
+    } else if (isResolved) {
+      const badge = document.createElement('span')
+      badge.className = 'hs-mc-pred-status hs-mc-pred-status-resolved'
+      badge.textContent = 'ended'
+      header.appendChild(badge)
+    } else if (isLocked) {
       const badge = document.createElement('span')
       badge.className = 'hs-mc-pred-locked'
       badge.textContent = 'locked'
@@ -1441,12 +1527,33 @@
     wrapper.appendChild(header)
 
     // Balance
-    if (balance != null) {
+    if (balance != null && !isEnded) {
       const bal = document.createElement('div')
       bal.className = 'hs-mc-pred-balance'
-      bal.innerHTML = `<svg width="14" height="14" viewBox="0 0 20 20" style="vertical-align: -2px"><path fill="#ffbf00" d="M10 6a4 4 0 100 8 4 4 0 000-8zm0-4a8 8 0 110 16 8 8 0 010-16z"/></svg> `
-      bal.appendChild(document.createTextNode(formatPoints(balance)))
+      bal.appendChild(makeCoinSvg(14))
+      bal.appendChild(document.createTextNode(' ' + formatPoints(balance)))
       wrapper.appendChild(bal)
+    }
+
+    // User bet result banner
+    if (isResolved && userBet && winningId) {
+      const won = userBet.outcomeId === winningId
+      const banner = document.createElement('div')
+      banner.className = 'hs-mc-pred-result ' + (won ? 'hs-mc-pred-result-won' : 'hs-mc-pred-result-lost')
+      if (won) {
+        const winOutcome = pred.outcomes.find(o => o.id === winningId)
+        const pct = totalPoints > 0 && winOutcome ? (winOutcome.totalPoints / totalPoints) : 1
+        const payout = pct > 0 ? Math.floor(userBet.points / pct) : userBet.points
+        banner.textContent = 'you won +' + formatPoints(payout)
+      } else {
+        banner.textContent = 'you lost ' + formatPoints(userBet.points)
+      }
+      wrapper.appendChild(banner)
+    } else if (isCanceled && userBet) {
+      const banner = document.createElement('div')
+      banner.className = 'hs-mc-pred-result hs-mc-pred-result-refund'
+      banner.textContent = formatPoints(userBet.points) + ' returned'
+      wrapper.appendChild(banner)
     }
 
     // Outcomes
@@ -1458,9 +1565,15 @@
       const color = outcome.color === 'PINK' ? '#f5009b' : '#387aff'
       const userCount = outcome.totalUsers || 0
       const points = outcome.totalPoints || 0
+      const isWinner = winningId === outcome.id
+      const isLoser = isResolved && !isWinner
+      const isBetOn = userBet?.outcomeId === outcome.id
 
       const card = document.createElement('div')
       card.className = 'hs-mc-pred-outcome'
+        + (isWinner ? ' hs-mc-pred-outcome-won' : '')
+        + (isLoser ? ' hs-mc-pred-outcome-lost' : '')
+        + (isBetOn ? ' hs-mc-pred-outcome-yours' : '')
       card.style.setProperty('--oc', color)
 
       const head = document.createElement('div')
@@ -1468,9 +1581,16 @@
       const titleSpan = document.createElement('span')
       titleSpan.className = 'hs-mc-pred-outcome-title'
       titleSpan.textContent = outcome.title
+      if (isWinner) {
+        const winBadge = document.createElement('span')
+        winBadge.className = 'hs-mc-pred-winner-badge'
+        winBadge.textContent = 'winner'
+        titleSpan.appendChild(document.createTextNode(' '))
+        titleSpan.appendChild(winBadge)
+      }
       const pctSpan = document.createElement('span')
       pctSpan.className = 'hs-mc-pred-outcome-pct'
-      pctSpan.textContent = `${pct}%`
+      pctSpan.textContent = pct + '%'
       head.appendChild(titleSpan)
       head.appendChild(pctSpan)
       card.appendChild(head)
@@ -1479,16 +1599,18 @@
       track.className = 'hs-mc-pred-bar-track'
       const fill = document.createElement('div')
       fill.className = 'hs-mc-pred-bar-fill'
-      fill.style.width = `${pct}%`
+      fill.style.width = pct + '%'
       track.appendChild(fill)
       card.appendChild(track)
 
       const stats = document.createElement('div')
       stats.className = 'hs-mc-pred-outcome-stats'
-      stats.textContent = `${formatPoints(points)} pts · ${userCount} voter${userCount !== 1 ? 's' : ''}`
+      let statsText = formatPoints(points) + ' pts \u00b7 ' + userCount + ' voter' + (userCount !== 1 ? 's' : '')
+      if (isBetOn) statsText += ' \u00b7 your bet: ' + formatPoints(userBet.points)
+      stats.textContent = statsText
       card.appendChild(stats)
 
-      if (!isLocked) {
+      if (!isLocked && !isEnded) {
         const betRow = document.createElement('div')
         betRow.className = 'hs-mc-pred-bet-row'
         for (const amt of [100, 1000, 5000]) {
@@ -1497,13 +1619,27 @@
           btn.dataset.outcome = outcome.id
           btn.dataset.points = amt
           btn.style.setProperty('--oc', color)
+          if (balance != null && balance < amt) btn.disabled = true
           btn.textContent = formatPoints(amt)
           betRow.appendChild(btn)
         }
+
+        // Max button
+        if (balance != null && balance > 0) {
+          const maxBtn = document.createElement('button')
+          maxBtn.className = 'hs-mc-pred-bet-btn hs-mc-pred-bet-max'
+          maxBtn.dataset.outcome = outcome.id
+          maxBtn.dataset.points = balance
+          maxBtn.style.setProperty('--oc', color)
+          maxBtn.textContent = 'max'
+          betRow.appendChild(maxBtn)
+        }
+
         const customInput = document.createElement('input')
         customInput.className = 'hs-mc-pred-bet-custom'
         customInput.type = 'number'
         customInput.min = '1'
+        if (balance != null) customInput.max = String(balance)
         customInput.placeholder = 'amt'
         customInput.dataset.outcome = outcome.id
         betRow.appendChild(customInput)
@@ -1537,8 +1673,8 @@
       const bal = document.createElement('div')
       bal.className = 'hs-mc-pred-balance'
       bal.style.marginTop = '8px'
-      bal.innerHTML = `<svg width="14" height="14" viewBox="0 0 20 20" style="vertical-align: -2px"><path fill="#ffbf00" d="M10 6a4 4 0 100 8 4 4 0 000-8zm0-4a8 8 0 110 16 8 8 0 010-16z"/></svg> `
-      bal.appendChild(document.createTextNode(formatPoints(balance)))
+      bal.appendChild(makeCoinSvg(14))
+      bal.appendChild(document.createTextNode(' ' + formatPoints(balance)))
       wrap.appendChild(bal)
     }
     return wrap
@@ -1786,6 +1922,17 @@
       })
     })
 
+    // Enter key in custom input triggers bet
+    container.querySelectorAll('.hs-mc-pred-bet-custom').forEach(input => {
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault()
+          const goBtn = container.querySelector(`.hs-mc-pred-bet-go[data-outcome="${input.dataset.outcome}"]`)
+          if (goBtn && !goBtn.disabled) goBtn.click()
+        }
+      })
+    })
+
     // Start countdown timers
     container.querySelectorAll('.hs-mc-pred-timer').forEach(el => {
       const endsAt = parseInt(el.dataset.ends)
@@ -1836,9 +1983,10 @@
       container.appendChild(loading)
     }
 
-    const [result, rewardsResult] = await Promise.all([
+    const [result, rewardsResult, pollResult] = await Promise.all([
       fetchPrediction(channel),
-      fetchChannelRewards(channel)
+      fetchChannelRewards(channel),
+      fetchPoll(channel)
     ])
 
     container.textContent = ''
@@ -1862,12 +2010,18 @@
       container.appendChild(renderNoPrediction(result.balance))
     }
 
+    // Poll
+    if (pollResult) {
+      container.appendChild(renderPoll(pollResult))
+    }
+
     if (rewardsResult?.rewards?.length) {
       container.appendChild(renderRewards(rewardsResult.rewards, rewardsResult.balance, rewardsResult.channelId))
     }
 
     container.appendChild(renderQuickLinks())
     attachPredictionHandlers()
+    attachPollHandlers()
     attachRewardHandlers()
     startPredictionPoll()
   }
@@ -2169,11 +2323,9 @@
       const userEl = msg.querySelector('.hs-mc-user');
       const username = userEl?.textContent?.trim()?.toLowerCase();
       if (username && mutedUsers.has(username)) {
-        msg.style.opacity = '0.15';
-        msg.style.filter = 'blur(2px)';
+        msg.classList.add('hs-mc-muted');
       } else {
-        msg.style.opacity = '';
-        msg.style.filter = '';
+        msg.classList.remove('hs-mc-muted');
       }
     });
   }
@@ -3104,6 +3256,7 @@
         min-height: 0;
         overflow: hidden;
         background: #000;
+        font-family: 'Courier New', Courier, monospace;
       }
 
       /* Vertical tabs: container gets row direction */
@@ -3195,6 +3348,24 @@
       .hs-mc-msg:hover {
         background: #000;
       }
+      .hs-mc-muted .hs-mc-user {
+        color: #808080 !important;
+        animation: none !important;
+        background: none !important;
+        -webkit-text-fill-color: #808080 !important;
+      }
+      .hs-mc-muted .hs-mc-emote-wrapper,
+      .hs-mc-muted .hs-mc-emote,
+      .hs-mc-muted .hs-mc-reply-ctx,
+      .hs-mc-muted img {
+        display: none !important;
+      }
+      .hs-mc-muted {
+        user-select: none;
+      }
+      .hs-mc-muted > :not(.hs-mc-user):not(.hs-mc-badge-img):not(.hs-mc-timestamp) {
+        display: none !important;
+      }
       .hs-mc-msg.hs-mc-system {
         border-left: 3px solid #9147ff;
         padding-left: 8px;
@@ -3235,6 +3406,15 @@
         font-weight: 600;
         text-decoration: none;
         cursor: pointer;
+      }
+      .hs-mc-link {
+        color: #8080ff;
+        text-decoration: none;
+        word-break: break-all;
+        position: relative;
+      }
+      .hs-mc-link:hover {
+        text-decoration: underline;
       }
       .hs-mc-user.hs-user-highlight {
         background: #fff !important;
@@ -3660,6 +3840,55 @@
       #hs-emote-tooltip .tooltip-source.channel { background: #ffcc00; color: #000; }
       #hs-emote-tooltip .tooltip-source.blocked { background: #ff0000; color: #fff; }
 
+      #hs-link-tooltip {
+        position: fixed;
+        z-index: 5000;
+        pointer-events: none;
+        background: #000;
+        border: 2px solid #808080;
+        border-radius: 0;
+        padding: 8px;
+        display: none;
+        flex-direction: column;
+        gap: 6px;
+        max-width: 300px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.6);
+      }
+      #hs-link-tooltip.visible { display: flex; }
+      #hs-link-tooltip img {
+        max-width: 280px;
+        max-height: 160px;
+        object-fit: contain;
+        border-radius: 0;
+      }
+      #hs-link-tooltip .link-title {
+        color: #fff;
+        font-size: 12px;
+        font-weight: 600;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+      }
+      #hs-link-tooltip .link-desc {
+        color: #aaa;
+        font-size: 11px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        display: -webkit-box;
+        -webkit-line-clamp: 3;
+        -webkit-box-orient: vertical;
+      }
+      #hs-link-tooltip .link-domain {
+        color: #8080ff;
+        font-size: 10px;
+      }
+      #hs-link-tooltip .link-loading {
+        color: #888;
+        font-size: 11px;
+      }
+
       /* Input styles (used in #hs-mc-inputbar) */
       #hs-mc-input {
         flex: 1;
@@ -3728,24 +3957,23 @@
 
       /* Heatsync button */
       #hs-mc-emote-btn {
-        padding: 6px 8px;
+        padding: 4px;
         background: #000;
-        color: #fff;
         border: none;
-        border-radius: 0;
         cursor: pointer;
-        transition: background 0.15s;
         display: flex;
         align-items: center;
         justify-content: center;
         flex-shrink: 0;
+        transition: opacity 0.15s;
+      }
+      #hs-mc-emote-btn img {
+        width: 24px;
+        height: 24px;
+        display: block;
       }
       #hs-mc-emote-btn:hover {
         background: #fff;
-        color: #000;
-      }
-      #hs-mc-emote-btn:hover svg {
-        fill: #000;
       }
 
       /* Emote picker panel — full-width section above inputbar */
@@ -3800,24 +4028,17 @@
         position: relative !important;
         transition: color 0.15s, background 0.15s;
       }
-      #hs-mc-emote-picker .hs-mc-picker-tab svg {
-        opacity: 0.5;
-        transition: opacity 0.15s;
-      }
       #hs-mc-emote-picker .hs-mc-picker-tab:hover {
         background: #fff !important;
         color: #000 !important;
-      }
-      #hs-mc-emote-picker .hs-mc-picker-tab:hover svg {
-        opacity: 1;
-        fill: #000;
       }
       #hs-mc-emote-picker .hs-mc-picker-tab.active {
         color: #ff6b35 !important;
         background: transparent !important;
       }
-      #hs-mc-emote-picker .hs-mc-picker-tab.active svg {
-        opacity: 1;
+      #hs-mc-emote-picker .hs-mc-picker-tab.active:hover {
+        background: #fff !important;
+        color: #000 !important;
       }
       #hs-mc-emote-picker .hs-mc-picker-tab.active::after {
         content: '';
@@ -4215,6 +4436,208 @@
         opacity: 0.5;
         cursor: default;
       }
+      .hs-mc-pred-bet-max {
+        font-weight: 600;
+        color: #ff8700;
+      }
+      .hs-mc-pred-bet-max:hover {
+        background: #ff8700;
+        color: #000;
+      }
+
+      /* Prediction states */
+      .hs-mc-pred-status {
+        font-size: 10px;
+        padding: 2px 6px;
+        white-space: nowrap;
+        flex-shrink: 0;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+      }
+      .hs-mc-pred-status-resolved {
+        background: rgba(0,200,100,0.15);
+        color: #00c864;
+      }
+      .hs-mc-pred-status-canceled {
+        background: rgba(255,255,255,0.08);
+        color: #808080;
+      }
+
+      /* Result banners */
+      .hs-mc-pred-result {
+        font-size: 13px;
+        font-weight: 700;
+        padding: 6px 10px;
+        margin-bottom: 8px;
+        text-align: center;
+      }
+      .hs-mc-pred-result-won {
+        background: rgba(0,200,100,0.12);
+        color: #00c864;
+        border-left: 3px solid #00c864;
+      }
+      .hs-mc-pred-result-lost {
+        background: rgba(255,60,60,0.1);
+        color: #ff3c3c;
+        border-left: 3px solid #ff3c3c;
+      }
+      .hs-mc-pred-result-refund {
+        background: rgba(255,255,255,0.06);
+        color: #808080;
+        border-left: 3px solid #808080;
+      }
+
+      /* Outcome states */
+      .hs-mc-pred-outcome-won {
+        border-left-color: #00c864;
+        background: rgba(0,200,100,0.08);
+      }
+      .hs-mc-pred-outcome-lost {
+        opacity: 0.45;
+      }
+      .hs-mc-pred-outcome-yours {
+        box-shadow: inset 0 0 0 1px rgba(255,135,0,0.3);
+      }
+      .hs-mc-pred-winner-badge {
+        font-size: 9px;
+        padding: 1px 5px;
+        background: #00c864;
+        color: #000;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        vertical-align: middle;
+        margin-left: 4px;
+      }
+
+      /* ═══ Polls ═══ */
+      .hs-mc-poll {
+        padding: 10px 12px;
+        border-top: 1px solid rgba(255,255,255,0.06);
+      }
+      .hs-mc-poll-header {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 8px;
+        margin-bottom: 4px;
+      }
+      .hs-mc-poll-title {
+        font-size: 13px;
+        font-weight: 600;
+        color: #fff;
+        line-height: 1.3;
+        flex: 1;
+      }
+      .hs-mc-poll-status {
+        font-size: 10px;
+        padding: 2px 6px;
+        white-space: nowrap;
+        flex-shrink: 0;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+      }
+      .hs-mc-poll-status-ended {
+        background: rgba(255,255,255,0.08);
+        color: #808080;
+      }
+      .hs-mc-poll-timer {
+        font-size: 12px;
+        color: #ff6b35;
+        font-weight: 600;
+        font-variant-numeric: tabular-nums;
+        white-space: nowrap;
+        flex-shrink: 0;
+      }
+      .hs-mc-poll-meta {
+        font-size: 11px;
+        color: #808080;
+        margin-bottom: 8px;
+      }
+      .hs-mc-poll-choices {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+      .hs-mc-poll-choice {
+        display: flex;
+        gap: 6px;
+        align-items: center;
+      }
+      .hs-mc-poll-choice-track {
+        flex: 1;
+        height: 28px;
+        background: rgba(255,255,255,0.06);
+        position: relative;
+        overflow: hidden;
+      }
+      .hs-mc-poll-choice-fill {
+        position: absolute;
+        top: 0;
+        left: 0;
+        height: 100%;
+        background: rgba(145,71,255,0.35);
+        transition: width 0.3s ease;
+      }
+      .hs-mc-poll-choice-top .hs-mc-poll-choice-fill {
+        background: rgba(145,71,255,0.6);
+      }
+      .hs-mc-poll-choice-voted .hs-mc-poll-choice-track {
+        box-shadow: inset 0 0 0 1px rgba(255,135,0,0.3);
+      }
+      .hs-mc-poll-choice-label {
+        position: relative;
+        z-index: 1;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 0 8px;
+        height: 28px;
+      }
+      .hs-mc-poll-choice-name {
+        font-size: 12px;
+        color: #fff;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .hs-mc-poll-choice-pct {
+        font-size: 12px;
+        font-weight: 700;
+        color: #9147ff;
+        font-variant-numeric: tabular-nums;
+        flex-shrink: 0;
+        margin-left: 8px;
+      }
+      .hs-mc-poll-choice-top .hs-mc-poll-choice-pct {
+        color: #bf8fff;
+      }
+      .hs-mc-poll-voted-check {
+        color: #ff8700;
+        font-weight: 700;
+      }
+      .hs-mc-poll-vote-btn {
+        background: rgba(145,71,255,0.3);
+        border: none;
+        color: #bf8fff;
+        font-size: 11px;
+        font-weight: 600;
+        padding: 4px 10px;
+        cursor: pointer;
+        white-space: nowrap;
+        transition: background 0.15s, color 0.15s;
+      }
+      .hs-mc-poll-vote-btn:hover {
+        background: #9147ff;
+        color: #fff;
+      }
+      .hs-mc-poll-vote-btn:disabled {
+        opacity: 0.5;
+        cursor: default;
+      }
+
       .hs-mc-pred-links {
         border-top: 1px solid rgba(255,255,255,0.06);
         margin-top: 8px;
@@ -5137,7 +5560,7 @@
     if (window._hsMcSocialListener) return;
     window._hsMcSocialListener = true;
 
-    chrome.runtime.onMessage.addListener((msg) => {
+    chrome.runtime?.onMessage?.addListener((msg) => {
       if (msg.type === 'new-message' && msg.data) {
         if (!feedLoaded) return;
         // Dedup: skip if already in feed
@@ -5395,6 +5818,13 @@
           `<img class="hs-mc-emote" src="${safeUrl}" alt="${escaped}" title="${escaped}" loading="lazy">`
         );
       }
+    }
+    // Linkify URLs (with and without protocol)
+    if (linksEnabled) {
+      html = html.replace(/(?<!href="|src=")(https?:\/\/[^\s<"]+)/gi, '<a href="$1" target="_blank" rel="noopener" class="hs-mc-link">$1</a>');
+      html = html.replace(/(?<!href="|src="|\/\/)([a-z0-9-]+(?:\.[a-z0-9-]+)+\/[^\s<"]*)/gi, (m) => {
+        return `<a href="https://${m}" target="_blank" rel="noopener" class="hs-mc-link">${m}</a>`;
+      });
     }
     return html;
   }
@@ -5985,6 +6415,7 @@
   // Prediction state
   let _predictionPollTimer = null
   let _predictionChannel = null
+  const _userBets = new Map() // eventId → { outcomeId, points }
 
   // Rewards state
   let _rewardsCache = null
@@ -6066,6 +6497,7 @@
       if (!resp.ok) return { error: `HTTP ${resp.status}` }
       const data = await resp.json()
       if (data?.errors?.length) return { error: data.errors[0].message }
+      _userBets.set(eventId, { outcomeId, points })
       return { ok: true }
     } catch (e) {
       return { error: e.message }
@@ -6189,6 +6621,202 @@
     } catch (e) {
       log('Failed to claim bonus points:', e.message)
     }
+  }
+
+  async function fetchPoll(channelLogin) {
+    const safe = channelLogin.replace(/[^a-z0-9_]/g, '')
+    if (!safe) return null
+    const token = getTwitchAuthToken()
+    const headers = { 'Client-Id': TWITCH_CLIENT_ID, 'Content-Type': 'application/json' }
+    if (token) headers['Authorization'] = 'OAuth ' + token
+    try {
+      const resp = await fetch(TWITCH_GQL, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          query: '{ user(login: "' + safe + '") { activePoll { id title status durationSeconds remainingDurationMilliseconds startedAt choices { id title totalVoters } totalVoters } } }'
+        })
+      })
+      if (!resp.ok) return null
+      const data = await resp.json()
+      return data?.data?.user?.activePoll || null
+    } catch (e) {
+      log('Failed to fetch poll:', e.message)
+      return null
+    }
+  }
+
+  async function votePoll(pollId, choiceId) {
+    const token = getTwitchAuthToken()
+    if (!token) return { error: 'not logged in' }
+    try {
+      const resp = await fetch(TWITCH_GQL, {
+        method: 'POST',
+        headers: {
+          'Client-Id': TWITCH_CLIENT_ID,
+          'Content-Type': 'application/json',
+          'Authorization': 'OAuth ' + token
+        },
+        body: JSON.stringify({
+          query: 'mutation($input: VotePollInput!) { votePoll(input: $input) { error { code } } }',
+          variables: { input: { pollID: pollId, choiceID: choiceId } }
+        })
+      })
+      if (!resp.ok) return { error: 'HTTP ' + resp.status }
+      const data = await resp.json()
+      if (data?.errors?.length) return { error: data.errors[0].message }
+      const err = data?.data?.votePoll?.error
+      if (err) return { error: err.code || 'vote failed' }
+      return { ok: true }
+    } catch (e) {
+      return { error: e.message }
+    }
+  }
+
+  let _userPollVotes = new Map() // pollId → choiceId
+
+  function renderPoll(poll) {
+    const section = document.createElement('div')
+    section.className = 'hs-mc-poll'
+    section.dataset.pollId = poll.id
+
+    const isCompleted = poll.status === 'COMPLETED' || poll.status === 'ARCHIVED'
+    const totalVotes = poll.totalVoters || poll.choices.reduce((s, c) => s + (c.totalVoters || 0), 0)
+    const userVote = _userPollVotes.get(poll.id)
+
+    // Header
+    const header = document.createElement('div')
+    header.className = 'hs-mc-poll-header'
+    const title = document.createElement('div')
+    title.className = 'hs-mc-poll-title'
+    title.textContent = poll.title
+    header.appendChild(title)
+
+    if (isCompleted) {
+      const badge = document.createElement('span')
+      badge.className = 'hs-mc-poll-status hs-mc-poll-status-ended'
+      badge.textContent = 'ended'
+      header.appendChild(badge)
+    } else if (poll.remainingDurationMilliseconds != null) {
+      const timer = document.createElement('span')
+      timer.className = 'hs-mc-poll-timer'
+      timer.dataset.ends = Date.now() + poll.remainingDurationMilliseconds
+      header.appendChild(timer)
+    }
+    section.appendChild(header)
+
+    // Total votes
+    const meta = document.createElement('div')
+    meta.className = 'hs-mc-poll-meta'
+    meta.textContent = totalVotes + ' vote' + (totalVotes !== 1 ? 's' : '')
+    section.appendChild(meta)
+
+    // Choices
+    const choicesWrap = document.createElement('div')
+    choicesWrap.className = 'hs-mc-poll-choices'
+
+    // Find top choice for winner highlight
+    let topVotes = 0
+    for (const c of poll.choices) {
+      if ((c.totalVoters || 0) > topVotes) topVotes = c.totalVoters || 0
+    }
+
+    for (const choice of poll.choices) {
+      const votes = choice.totalVoters || 0
+      const pct = totalVotes > 0 ? Math.round((votes / totalVotes) * 100) : 0
+      const isTop = isCompleted && votes === topVotes && topVotes > 0
+      const isVoted = userVote === choice.id
+
+      const row = document.createElement('div')
+      row.className = 'hs-mc-poll-choice' + (isTop ? ' hs-mc-poll-choice-top' : '') + (isVoted ? ' hs-mc-poll-choice-voted' : '')
+
+      const track = document.createElement('div')
+      track.className = 'hs-mc-poll-choice-track'
+      const fill = document.createElement('div')
+      fill.className = 'hs-mc-poll-choice-fill'
+      fill.style.width = pct + '%'
+      track.appendChild(fill)
+
+      const label = document.createElement('div')
+      label.className = 'hs-mc-poll-choice-label'
+
+      const nameSpan = document.createElement('span')
+      nameSpan.className = 'hs-mc-poll-choice-name'
+      nameSpan.textContent = choice.title
+      if (isVoted) {
+        const check = document.createElement('span')
+        check.className = 'hs-mc-poll-voted-check'
+        check.textContent = ' \u2713'
+        nameSpan.appendChild(check)
+      }
+      label.appendChild(nameSpan)
+
+      const pctSpan = document.createElement('span')
+      pctSpan.className = 'hs-mc-poll-choice-pct'
+      pctSpan.textContent = pct + '%'
+      label.appendChild(pctSpan)
+
+      track.appendChild(label)
+      row.appendChild(track)
+
+      if (!isCompleted && !userVote) {
+        const voteBtn = document.createElement('button')
+        voteBtn.className = 'hs-mc-poll-vote-btn'
+        voteBtn.dataset.pollId = poll.id
+        voteBtn.dataset.choiceId = choice.id
+        voteBtn.textContent = 'vote'
+        row.appendChild(voteBtn)
+      }
+
+      choicesWrap.appendChild(row)
+    }
+
+    section.appendChild(choicesWrap)
+    return section
+  }
+
+  function attachPollHandlers() {
+    const container = document.getElementById('hs-mc-tab-twitch')
+    if (!container) return
+
+    container.querySelectorAll('.hs-mc-poll-vote-btn').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        e.stopPropagation()
+        btn.disabled = true
+        btn.textContent = '...'
+        const result = await votePoll(btn.dataset.pollId, btn.dataset.choiceId)
+        if (result.error) {
+          btn.textContent = '!'
+          btn.title = result.error
+          setTimeout(() => { btn.textContent = 'vote'; btn.disabled = false; btn.title = '' }, 2000)
+        } else {
+          _userPollVotes.set(btn.dataset.pollId, btn.dataset.choiceId)
+          btn.textContent = '\u2713'
+          setTimeout(() => renderTwitchTab(), 500)
+        }
+      })
+    })
+
+    // Poll timers
+    container.querySelectorAll('.hs-mc-poll-timer').forEach(el => {
+      const endsAt = parseInt(el.dataset.ends)
+      const update = () => {
+        const remaining = Math.max(0, Math.ceil((endsAt - Date.now()) / 1000))
+        if (remaining <= 0) {
+          el.textContent = 'ended'
+          el.classList.add('hs-mc-poll-status-ended')
+          return
+        }
+        const m = Math.floor(remaining / 60)
+        const s = remaining % 60
+        el.textContent = m > 0 ? m + ':' + String(s).padStart(2, '0') : s + 's'
+      }
+      update()
+      const iv = cleanup.setInterval(() => {
+        if (!el.isConnected) { clearInterval(iv); return }
+        update()
+      }, 1000)
+    })
   }
 
   async function fetchChannelBadges(channelLogin) {
@@ -6780,6 +7408,16 @@
             userTooltip.style.top = y + 'px'
           }
         }
+
+        // Kill link tooltip if not on a link
+        const onLink = target?.closest?.('.hs-mc-link')
+        if (linkTooltip?.classList.contains('visible')) {
+          if (!onLink) {
+            hideLinkTooltip()
+          } else {
+            positionLinkTooltip(linkTooltip, cx, cy)
+          }
+        }
       })
     }, 'mc-tooltip-mousemove');
   }
@@ -7033,6 +7671,124 @@
     }, 'mc-user-tooltip-mouseout');
   }
 
+  // Link preview tooltip (Chatterino-style)
+  let linkTooltip = null;
+  const _linkPreviewCache = new Map(); // url -> { title, description, image } | null
+  let _linkHoverUrl = null;
+
+  function ensureLinkTooltip() {
+    if (linkTooltip) return linkTooltip;
+    linkTooltip = document.createElement('div');
+    linkTooltip.id = 'hs-link-tooltip';
+    document.body.appendChild(linkTooltip);
+    return linkTooltip;
+  }
+
+  function showLinkTooltip(e, url) {
+    if (!linksEnabled || !url) return;
+    _linkHoverUrl = url;
+    const tip = ensureLinkTooltip();
+    let hostname = '';
+    try { hostname = new URL(url).hostname; } catch { hostname = url; }
+
+    // Show loading state immediately — all values escaped via escapeHtml
+    const domainSpan = document.createElement('span');
+    domainSpan.className = 'link-domain';
+    domainSpan.textContent = hostname;
+    const loadSpan = document.createElement('span');
+    loadSpan.className = 'link-loading';
+    loadSpan.textContent = 'loading...';
+    tip.replaceChildren(loadSpan, domainSpan);
+    positionLinkTooltip(tip, e.clientX, e.clientY);
+    tip.classList.add('visible');
+
+    // Check cache
+    if (_linkPreviewCache.has(url)) {
+      const cached = _linkPreviewCache.get(url);
+      if (_linkHoverUrl === url) renderLinkPreview(tip, cached, url);
+      return;
+    }
+
+    // Fetch from background
+    safeSendMessage({ type: 'fetch_link_preview', url }).then(data => {
+      _linkPreviewCache.set(url, data);
+      if (_linkHoverUrl === url && tip.classList.contains('visible')) {
+        renderLinkPreview(tip, data, url);
+      }
+    });
+  }
+
+  function renderLinkPreview(tip, data, url) {
+    let hostname = '';
+    try { hostname = new URL(url).hostname; } catch { hostname = url; }
+    tip.replaceChildren(); // clear
+    let hasContent = false;
+    if (data) {
+      if (data.image) {
+        const img = document.createElement('img');
+        img.src = data.image;
+        img.alt = '';
+        img.loading = 'lazy';
+        tip.appendChild(img);
+        hasContent = true;
+      }
+      if (data.title) {
+        const t = document.createElement('span');
+        t.className = 'link-title';
+        t.textContent = data.title;
+        tip.appendChild(t);
+        hasContent = true;
+      }
+      if (data.description) {
+        const d = document.createElement('span');
+        d.className = 'link-desc';
+        d.textContent = data.description;
+        tip.appendChild(d);
+        hasContent = true;
+      }
+    }
+    // If no og data at all, show full URL instead of just domain
+    const dom = document.createElement('span');
+    dom.className = 'link-domain';
+    dom.textContent = hasContent ? hostname : url;
+    tip.appendChild(dom);
+  }
+
+  function positionLinkTooltip(tip, cx, cy) {
+    tip.style.left = '-9999px';
+    tip.style.top = '-9999px';
+    requestAnimationFrame(() => {
+      const h = tip.offsetHeight;
+      const w = tip.offsetWidth;
+      let x = Math.min(cx + 15, window.innerWidth - w - 10);
+      x = Math.max(10, x);
+      let y = cy - h - 12 > 10 ? cy - h - 12 : cy + 24;
+      y = Math.max(10, Math.min(y, window.innerHeight - h - 10));
+      tip.style.left = x + 'px';
+      tip.style.top = y + 'px';
+    });
+  }
+
+  function hideLinkTooltip() {
+    _linkHoverUrl = null;
+    if (linkTooltip) linkTooltip.classList.remove('visible');
+  }
+
+  function setupLinkTooltipHandlers() {
+    if (window._hsLinkTooltipSetup) return;
+    window._hsLinkTooltipSetup = true;
+
+    cleanup.addEventListener(document, 'mouseover', (e) => {
+      const link = e.target.closest('.hs-mc-link');
+      if (link) showLinkTooltip(e, link.href);
+    }, 'mc-link-tooltip-mouseover');
+
+    cleanup.addEventListener(document, 'mouseout', (e) => {
+      const link = e.target.closest('.hs-mc-link');
+      if (link) hideLinkTooltip();
+    }, 'mc-link-tooltip-mouseout');
+  }
+
   // Emote cache (loaded from storage)
   // Format: Map<name, {url, source, state}>
   // States: 'owned' (in inventory), 'global' (third-party), 'unadded' (heatsync, not owned)
@@ -7261,6 +8017,10 @@
           } else {
             result.push(escapeHtml(word));
           }
+        } else if (linksEnabled && /^(https?:\/\/\S+|[a-z0-9-]+(\.[a-z0-9-]+)+\/\S*)/i.test(word)) {
+          const safeUrl = escapeHtml(word);
+          const href = /^https?:\/\//i.test(word) ? safeUrl : `https://${safeUrl}`;
+          result.push(`<a href="${href}" target="_blank" rel="noopener" class="hs-mc-link">${safeUrl}</a>`);
         } else {
           result.push(escapeHtml(word));
         }
@@ -7813,7 +8573,7 @@
     window._hsMcSettingsListener = true;
 
     // Listen for messages from popup
-    chrome.runtime.onMessage.addListener((msg) => {
+    chrome.runtime?.onMessage?.addListener((msg) => {
       if (msg.type === 'ui_settings_changed' && msg.settings) {
         log('Settings changed via message:', msg.settings);
         if (msg.settings.tabPosition !== undefined && msg.settings.tabPosition !== tabPosition) {
@@ -7963,6 +8723,7 @@
     await loadTabsPosition();
     await loadEmoteSize();
     await loadWysiwygSetting();
+    await loadLinksSetting();
     await loadBlockedEmotes();
     await loadEmotes();
 
@@ -7973,6 +8734,7 @@
 
     setupEmoteTooltipHandlers();
     setupUserTooltipHandlers();
+    setupLinkTooltipHandlers();
     listenForPosts();
     listenForSettingsChanges();
 

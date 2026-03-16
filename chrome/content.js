@@ -760,6 +760,29 @@ style.textContent = `
     background: #fff !important;
     color: #000 !important;
   }
+
+  /* Muted users — hide content, gray username, no animations */
+  .hs-user-muted {
+    user-select: none !important;
+  }
+  .hs-user-muted .chat-author__display-name,
+  .hs-user-muted [data-a-target="chat-message-username"] {
+    color: #808080 !important;
+    background: none !important;
+    -webkit-background-clip: unset !important;
+    -webkit-text-fill-color: #808080 !important;
+    animation: none !important;
+    text-shadow: none !important;
+  }
+  .hs-user-muted .text-fragment,
+  .hs-user-muted .mention-fragment,
+  .hs-user-muted .heatsync-emote-wrapper,
+  .hs-user-muted .chat-image,
+  .hs-user-muted .chat-line__message--emote-button,
+  .hs-user-muted img.emote,
+  .hs-user-muted [data-a-target="emote-name"] {
+    display: none !important;
+  }
 `;
 document.head.appendChild(style);
 log(' 🎨 CSS injected for emote hover effects');
@@ -2346,10 +2369,9 @@ function processMessage(messageElement) {
     return;
   }
 
-  // Check if user is muted (soft hide)
+  // Check if user is muted — hide content, gray username
   if (mutedUsers.has(username)) {
-    messageElement.style.color = '#808080';
-    messageElement.style.opacity = '0.5';
+    messageElement.classList.add('hs-user-muted');
     return;
   }
 
@@ -4190,8 +4212,7 @@ function unhideBlockedUser(username) {
 function unmuteUser(username) {
   document.querySelectorAll('.chat-line__message').forEach(msg => {
     if (getUsername(msg) === username) {
-      msg.style.color = '';
-      msg.style.opacity = '';
+      msg.classList.remove('hs-user-muted');
     }
   });
 }
@@ -4265,13 +4286,11 @@ function showUnblockedEmote(hash) {
   });
 }
 
-// Gray out muted user
+// Hide muted user content, gray username
 function muteUser(username) {
-  const messages = document.querySelectorAll('.chat-line__message');
-  messages.forEach(msg => {
+  document.querySelectorAll('.chat-line__message').forEach(msg => {
     if (getUsername(msg) === username) {
-      msg.style.color = '#808080';
-      msg.style.opacity = '0.5';
+      msg.classList.add('hs-user-muted');
     }
   });
 }

@@ -1007,7 +1007,6 @@
       const newWidth = Math.min(MAX_CHAT_WIDTH, Math.max(MIN_CHAT_WIDTH, startWidth + delta))
       chatWidth = newWidth
       applyChatWidth()
-      updateWidthInput()
     })
 
     cleanup.addEventListener(document, 'mouseup', () => {
@@ -1021,11 +1020,6 @@
 
     // Load saved width
     loadChatWidth()
-  }
-
-  function updateWidthInput() {
-    const input = document.getElementById('hs-mc-width-input')
-    if (input && document.activeElement !== input) input.value = chatWidth
   }
 
   function applyChatWidth() {
@@ -1565,15 +1559,6 @@
             <button class="hs-mc-toggle-pill ${hideEmptyInput ? 'active' : ''}" id="hs-mc-hide-input-toggle"><span class="hs-mc-toggle-knob"></span></button>
           </div>
         </div>
-        <div class="hs-mc-settings-group">
-          <div class="hs-mc-settings-group-title">layout</div>
-          <div class="hs-mc-setting-row">
-            <span class="hs-mc-setting-label">chat width</span>
-            <div class="hs-mc-width-row">
-              <input type="number" id="hs-mc-width-input" class="hs-mc-width-input" value="${chatWidth}" min="${MIN_CHAT_WIDTH}" max="${MAX_CHAT_WIDTH}" step="10">
-              <span class="hs-mc-settings-unit">px</span>
-            </div>
-          </div>
         </div>
       </div>
       <div class="hs-mc-picker-tabs">
@@ -1656,16 +1641,6 @@
       toggleHideEmptyInput();
       hideInputToggle.classList.toggle('active', hideEmptyInput);
     });
-
-    // Chat width input
-    const widthInput = document.getElementById('hs-mc-width-input')
-    widthInput?.addEventListener('change', () => {
-      const val = Math.min(MAX_CHAT_WIDTH, Math.max(MIN_CHAT_WIDTH, parseInt(widthInput.value) || DEFAULT_CHAT_WIDTH))
-      widthInput.value = val
-      chatWidth = val
-      applyChatWidth()
-      saveChatWidth()
-    })
 
     // Tab switching
     picker.querySelectorAll('.hs-mc-picker-tab').forEach(tabBtn => {
@@ -5260,8 +5235,7 @@
         font-size: 13px !important;
       }
       .hs-mc-setting-row .hs-mc-toggle-pill,
-      .hs-mc-setting-row .hs-mc-size-btns,
-      .hs-mc-setting-row .hs-mc-width-row {
+      .hs-mc-setting-row .hs-mc-size-btns {
         flex-shrink: 0;
       }
       .hs-mc-size-btns {
@@ -5318,36 +5292,6 @@
       }
       .hs-mc-toggle-pill.active .hs-mc-toggle-knob {
         transform: translateX(16px);
-      }
-      .hs-mc-width-row {
-        display: flex;
-        align-items: center;
-        gap: 6px;
-      }
-      #hs-mc-width-input {
-        width: 56px !important;
-        padding: 4px 8px !important;
-        background: #fff !important;
-        color: #000 !important;
-        border: 1px solid #808080 !important;
-        border-radius: 0 !important;
-        font-size: 12px !important;
-        -moz-appearance: textfield;
-        display: inline-block !important;
-        visibility: visible !important;
-        transition: none;
-      }
-      #hs-mc-width-input:focus {
-        border-color: #ff6b35 !important;
-      }
-      #hs-mc-width-input::-webkit-inner-spin-button,
-      #hs-mc-width-input::-webkit-outer-spin-button {
-        -webkit-appearance: none;
-        margin: 0;
-      }
-      .hs-mc-settings-unit {
-        color: #808080 !important;
-        font-size: 11px !important;
       }
 
 

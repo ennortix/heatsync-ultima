@@ -8346,8 +8346,8 @@
   function processEmotes(text, channel) {
     if (emoteCache.size === 0 && !channelEmoteCaches[channel]) return escapeHtml(text);
 
-    // Split by whitespace, process each token
-    const words = text.split(/(\s+)/);
+    // Split by whitespace, and also split adjacent Kick emotes [emote:id:name][emote:id:name]
+    const words = text.replace(/\]\[emote:/g, '] [emote:').split(/(\s+)/);
     const result = [];
     let pendingStack = null; // { base: html, overlays: [html...] }
     let pendingWhitespace = ''; // Accumulate whitespace - don't flush stack on spaces

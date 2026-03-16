@@ -303,48 +303,143 @@
       this.partial = '';
       this.nick = `justinfan${Math.floor(Math.random() * 99999)}`;
       this._destroyed = false;
+      this._lastData = 0;
+      this._heartbeatTimer = null;
+      this._reconnectTimer = null;
+      this._reconnectAttempts = 0;
+      // Reconnect when tab becomes visible after silence
+      document.addEventListener('visibilitychange', () => {
+        if (this._destroyed) return;
+        if (document.visibilityState === 'visible' && this.channels.size > 0) {
+          const silence = Date.now() - this._lastData;
+          if (silence > 60000 || !this.ws || this.ws.readyState !== WebSocket.OPEN) {
+            log('Tab visible after', Math.round(silence / 1000), 's silence, reconnecting');
+            this._forceReconnect();
+          }
+        }
+      });
     }
 
     connect() {
       if (this._destroyed) return;
-      if (this.ws?.readyState === WebSocket.OPEN) return;
+      this._stopHeartbeat();
+      clearTimeout(this._reconnectTimer);
+      if (this.ws) {
+        try { this.ws.onclose = null; this.ws.close(); } catch {}
+        this.ws = null;
+      }
+      this.partial = '';
+
+      const connectTimeout = setTimeout(() => {
+        if (this.ws?.readyState !== WebSocket.OPEN) {
+          log('IRC connect timeout');
+          try { this.ws.close(); } catch {}
+        }
+      }, 10000);
+
       this.ws = new WebSocket('wss://irc-ws.chat.twitch.tv:443');
-      this.ws.onopen = async () => {
+      this.ws.onopen = () => {
+        clearTimeout(connectTimeout);
         log('IRC connected');
-        // Fetch badges BEFORE joining channels so first messages render with images
-        await fetchGlobalBadges()
-        const currentCh = getCurrentChannel()
-        if (currentCh) await fetchChannelBadges(currentCh)
-        if (this.ws.readyState !== WebSocket.OPEN) return
+        this._reconnectAttempts = 0;
+        this._lastData = Date.now();
         this.ws.send(`NICK ${this.nick}\r\n`);
         this.ws.send('CAP REQ :twitch.tv/tags\r\n');
         for (const ch of this.channels.keys()) {
-          if (this.ws.readyState !== WebSocket.OPEN) return
+          if (this.ws.readyState !== WebSocket.OPEN) return;
           this.ws.send(`JOIN #${ch}\r\n`);
         }
+        this._startHeartbeat();
+        fetchGlobalBadges();
+        const currentCh = getCurrentChannel();
+        if (currentCh) fetchChannelBadges(currentCh);
       };
       this.ws.onmessage = (e) => this.parse(e.data);
+      this.ws.onerror = () => { clearTimeout(connectTimeout); };
       this.ws.onclose = () => {
+        clearTimeout(connectTimeout);
+        this._stopHeartbeat();
         if (this._destroyed) return;
-        log('IRC disconnected, reconnecting...');
-        setTimeout(() => this.connect(), 3000);
+        this._scheduleReconnect();
       };
     }
 
     destroy() {
       this._destroyed = true;
-      try { this.ws?.close(); } catch {}
+      this._stopHeartbeat();
+      clearTimeout(this._reconnectTimer);
+      if (this.ws) {
+        this.ws.onclose = null;
+        try { this.ws.close(); } catch {}
+        this.ws = null;
+      }
+    }
+
+    _startHeartbeat() {
+      this._stopHeartbeat();
+      this._heartbeatTimer = setInterval(() => {
+        if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+          this._stopHeartbeat();
+          if (!this._destroyed) this._scheduleReconnect();
+          return;
+        }
+        const silence = Date.now() - this._lastData;
+        if (silence > 90000) {
+          log('Zombie detected —', Math.round(silence / 1000), 's silence');
+          this._forceReconnect();
+          return;
+        }
+        try { this.ws.send('PING :heatsync\r\n'); } catch {
+          this._forceReconnect();
+        }
+      }, 30000);
+    }
+
+    _stopHeartbeat() {
+      if (this._heartbeatTimer) {
+        clearInterval(this._heartbeatTimer);
+        this._heartbeatTimer = null;
+      }
+    }
+
+    _forceReconnect() {
+      this._stopHeartbeat();
+      if (this.ws) {
+        this.ws.onclose = null;
+        try { this.ws.close(); } catch {}
+        this.ws = null;
+      }
+      this._reconnectAttempts = 0;
+      if (!this._destroyed) this.connect();
+    }
+
+    _scheduleReconnect() {
+      if (this._destroyed) return;
+      clearTimeout(this._reconnectTimer);
+      const delay = Math.min(2000 * Math.pow(2, this._reconnectAttempts), 30000);
+      this._reconnectAttempts++;
+      log('Reconnecting in', delay, 'ms (attempt', this._reconnectAttempts, ')');
+      this._reconnectTimer = setTimeout(() => {
+        if (!this._destroyed) this.connect();
+      }, delay);
     }
 
     parse(data) {
+      this._lastData = Date.now();
       this.partial += data;
       const lines = this.partial.split('\r\n');
       this.partial = lines.pop();
       for (const line of lines) {
         if (!line) continue;
         if (line.startsWith('PING')) {
-          this.ws.send('PONG :tmi.twitch.tv\r\n');
+          try { this.ws.send('PONG :tmi.twitch.tv\r\n'); } catch {}
           continue;
+        }
+        if (line.startsWith(':tmi.twitch.tv PONG') || line.startsWith('PONG')) continue;
+        if (line.includes('RECONNECT')) {
+          log('Server requested RECONNECT');
+          this._forceReconnect();
+          return;
         }
         const msg = parseIrcLine(line);
         if (msg && !msg.type) {
@@ -6687,7 +6782,8 @@
       const resp = await fetch(TWITCH_GQL, {
         method: 'POST',
         headers: { 'Client-Id': TWITCH_CLIENT_ID, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query: '{ badges { imageURL(size: NORMAL) setID version } }' })
+        body: JSON.stringify({ query: '{ badges { imageURL(size: NORMAL) setID version } }' }),
+        signal: AbortSignal.timeout(5000)
       })
       if (!resp.ok) return
       const data = await resp.json()
@@ -7131,9 +7227,10 @@
         fetch(TWITCH_GQL, {
           method: 'POST',
           headers: { 'Client-Id': TWITCH_CLIENT_ID, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ query: `{ user(login: "${safe}") { broadcastBadges { imageURL(size: NORMAL) setID version } } }` })
+          body: JSON.stringify({ query: `{ user(login: "${safe}") { broadcastBadges { imageURL(size: NORMAL) setID version } } }` }),
+          signal: AbortSignal.timeout(5000)
         }),
-        fetch(`https://api.frankerfacez.com/v1/room/${safe}`)
+        fetch(`https://api.frankerfacez.com/v1/room/${safe}`, { signal: AbortSignal.timeout(5000) })
       ])
 
       // Twitch channel badges

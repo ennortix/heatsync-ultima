@@ -140,10 +140,12 @@
   // Use comprehensive emoji dataset from emoji-data.js (loaded before this script)
   // Build name→emoji map for quick lookup
   const EMOJI_MAP = {}
-  for (const entry of EMOJI_DATA) {
-    EMOJI_MAP[entry.name] = entry.emoji
+  if (typeof EMOJI_DATA !== 'undefined') {
+    for (const entry of EMOJI_DATA) {
+      EMOJI_MAP[entry.name] = entry.emoji
+    }
   }
-  const EMOJI_ENTRIES = EMOJI_DATA.map(e => [e.name, e.emoji])
+  const EMOJI_ENTRIES = typeof EMOJI_DATA !== 'undefined' ? EMOJI_DATA.map(e => [e.name, e.emoji]) : []
 
   // Extract usernames from chat messages
   function trackUsernamesFromChat() {

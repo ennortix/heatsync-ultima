@@ -3276,6 +3276,7 @@
       .hs-mc-stream-event.event-update { color: #ff00ff; }
       .hs-mc-stream-event.event-online { color: #0f0; }
       .hs-mc-stream-event.event-offline { color: #f44; }
+      .hs-mc-stream-event.event-follow { color: #ff00ff; border-left-color: #ff00ff; opacity: 0.8; }
       /* Live dot — red indicator, composes with any state */
       .hs-mc-tab {
         position: relative !important;
@@ -9293,6 +9294,43 @@
               }
             }
           }
+        }
+      });
+    }
+
+    // Handle follow-driven stream events (from followed channels not currently viewed)
+    if (!window._hsMcFollowStreamEventListener) {
+      window._hsMcFollowStreamEventListener = true;
+      chrome.runtime?.onMessage?.addListener((msg) => {
+        if (msg.type !== 'follow_stream_event') return;
+        const channel = msg.channel?.toLowerCase();
+        if (!channel) return;
+
+        // Build inline notification
+        let text = '', eventClass = '';
+        if (msg.eventType === 'stream:update' && msg.prevGame && msg.game && msg.prevGame !== msg.game) {
+          text = `[${channel}] \u25C6 switched to ${msg.game}`;
+          eventClass = 'event-follow event-update';
+        } else if (msg.eventType === 'stream:online') {
+          text = msg.game ? `[${channel}] \u25C6 went live \u2014 ${msg.game}` : `[${channel}] \u25C6 went live`;
+          eventClass = 'event-follow event-online';
+        } else if (msg.eventType === 'stream:offline') {
+          text = `[${channel}] \u25C6 went offline`;
+          eventClass = 'event-follow event-offline';
+        }
+        if (!text) return;
+
+        log('[FollowStream]', channel, text);
+
+        // Inject into active chat overlay
+        const msgsEl = document.getElementById('hs-mc-messages');
+        if (msgsEl) {
+          const div = document.createElement('div');
+          div.className = `hs-mc-stream-event ${eventClass}`;
+          div.textContent = text;
+          msgsEl.appendChild(div);
+          trimChildren(msgsEl, 150);
+          if (!isScrolledUp) scrollMsgsToBottom(msgsEl);
         }
       });
     }

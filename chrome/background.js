@@ -72,6 +72,31 @@ function setYtVideoChannel(videoId, channelId) {
 
 let authToken = null; // Will be set by content script or loaded from storage
 let initPromise = null; // Track init completion for message handlers
+
+// Auto-detect login/logout via httpOnly cookie changes
+browser.cookies.onChanged.addListener((changeInfo) => {
+  const c = changeInfo.cookie
+  if (c.name !== 'auth' || !c.domain.includes('heatsync.org')) return
+
+  if (changeInfo.removed) {
+    log(' Auth cookie removed — logging out')
+    authToken = null
+    emoteInventory = []
+    blockedEmotes = new Set()
+    followedUsers = []
+    browser.storage.local.remove(['emote_inventory', 'blocked_emotes', 'auth_token_encrypted', 'auth_token'])
+    broadcastToTabs({ type: 'auth_changed', loggedIn: false })
+  } else {
+    log(' Auth cookie set — logging in')
+    authToken = c.value
+    storeToken(c.value)
+    fetchEmoteInventory()
+    fetchBlockedEmotes()
+    fetchFollowedUsers()
+    connectWebSocket()
+    broadcastToTabs({ type: 'auth_changed', loggedIn: true })
+  }
+})
 const API_URL = 'https://heatsync.org'; // Production
 const WS_URL = 'wss://heatsync.org'; // Production WebSocket
 
@@ -234,46 +259,38 @@ function updateEmoteUrlMap() {
   log(' 📍 Updated emoteUrlMap:', emoteUrlMap.size, 'entries');
 }
 
-// Get auth token (read from memory, storage, or fetch from API)
+// Get auth token (read from memory, storage, or httpOnly cookie via cookies API)
 async function getAuthCookie() {
   if (authToken) {
-    log(' Using auth token from memory');
-    return authToken;
+    log(' Using auth token from memory')
+    return authToken
   }
 
   // Try reading from encrypted storage (persists across restarts)
   try {
-    const stored = await retrieveToken();
+    const stored = await retrieveToken()
     if (stored) {
-      log(' Read auth token from encrypted storage');
-      authToken = stored;
-      return stored;
+      log(' Read auth token from encrypted storage')
+      authToken = stored
+      return stored
     }
-  } catch (err) {
-  }
+  } catch (err) {}
 
-  // Try production first (heatsync.org)
+  // Read httpOnly auth cookie directly via cookies API
   try {
-    log(' Trying token fetch from heatsync.org');
-    const response = await fetchWithTimeout('https://heatsync.org/api/extension/token', {
-      credentials: 'include'
-    });
-
-    if (response.ok) {
-      const data = await response.json();
-      if (data.token) {
-        log(' ✓ Got token from heatsync.org');
-        authToken = data.token;
-        await storeToken(data.token);
-        return data.token;
-      }
+    const cookie = await browser.cookies.get({ url: 'https://heatsync.org', name: 'auth' })
+    if (cookie?.value) {
+      log(' ✓ Read auth cookie via cookies API')
+      authToken = cookie.value
+      await storeToken(cookie.value)
+      return cookie.value
     }
   } catch (err) {
-    log(' Token fetch failed:', err.message);
+    log(' cookies.get failed:', err.message)
   }
 
-  log(' No auth token available');
-  return null;
+  log(' No auth token available')
+  return null
 }
 
 // Fetch user's emote inventory via HTTP
@@ -1596,6 +1613,21 @@ function handleWSMessage(msg) {
         prevGame: msg.prevGame || '',
         prevTitle: msg.prevTitle || '',
         isLive: msg.isLive
+      })
+      break
+
+    case 'follow:stream:update':
+    case 'follow:stream:online':
+    case 'follow:stream:offline':
+      broadcastToTabs({
+        type: 'follow_stream_event',
+        eventType: msg.type.replace('follow:', ''),
+        platform: msg.platform,
+        channel: msg.channel,
+        game: msg.game || '',
+        title: msg.title || '',
+        prevGame: msg.prevGame || '',
+        prevTitle: msg.prevTitle || '',
       })
       break
 

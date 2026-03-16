@@ -1151,24 +1151,6 @@ if (isHeatsyncSite) {
     safeSendMessage({ type: 'set_auth_token', token: urlToken }).catch(() => {});
     // Clean URL
     window.history.replaceState({}, document.title, window.location.pathname);
-  } else {
-    // Fallback: Read directly from document.cookie (auth_ext is non-httpOnly)
-    const cookies = document.cookie.split('; ');
-
-    const authCookie = cookies.find(c => c.startsWith('auth_ext='));
-    const fallbackAuthCookie = cookies.find(c => c.startsWith('auth='));
-
-    if (authCookie) {
-      const token = authCookie.split('=')[1];
-      log(' ✓ Found auth_ext cookie, sending to background (length:', token.length, ')');
-      safeSendMessage({ type: 'set_auth_token', token }).catch(() => {});
-    } else if (fallbackAuthCookie) {
-      const token = fallbackAuthCookie.split('=')[1];
-      log(' ✓ Found auth cookie (fallback), sending to background (length:', token.length, ')');
-      safeSendMessage({ type: 'set_auth_token', token }).catch(() => {});
-    } else {
-      log(' ℹ️  No auth token found (no URL param or cookie)');
-    }
   }
 }
 
@@ -1287,29 +1269,6 @@ if (window.location.hostname.includes('twitch.tv')) {
 }
 
 loadInventory();
-
-// Extract auth_ext cookie and send to background
-// Check auth once, then stop — re-check only on visibility change (tab focus)
-(function checkAndSendAuth() {
-  if (!extensionContextValid) return;
-
-  const sendAuth = () => {
-    const authCookie = document.cookie.split(';')
-      .map(c => c.trim())
-      .find(c => c.startsWith('auth_ext='));
-    if (authCookie) {
-      const token = authCookie.split('=')[1];
-      log(' Found auth_ext in page, sending to background');
-      safeSendMessage({ type: 'set_auth_token', token }).catch(() => {});
-    }
-  };
-
-  sendAuth();
-  // Re-check when user returns to tab (covers login in another tab)
-  document.addEventListener('visibilitychange', () => {
-    if (!document.hidden && extensionContextValid) sendAuth();
-  }, { signal: cleanup.signal });
-})();
 
 // Listen for updates from background script
 chrome.runtime.onMessage.addListener((message) => {

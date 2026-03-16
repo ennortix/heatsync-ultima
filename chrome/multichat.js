@@ -8269,7 +8269,7 @@
         const kickUrl = `https://files.kick.com/emotes/${emoteId}/fullsize`
         const safeUrl = escapeHtml(kickUrl)
         const safeName = escapeHtml(emoteName)
-        const imgHtml = `<span class="hs-mc-emote-wrapper hs-state-global" data-emote-name="${safeName}" data-emote-url="${safeUrl}" data-state="global" data-source="kick"><img src="${safeUrl}" alt="${safeName}" title="${safeName}" class="hs-mc-emote hs-emote-global" data-emote-name="${safeName}" data-state="global" data-source="kick"></span>`
+        const imgHtml = `<span class="hs-mc-emote-wrapper hs-state-channel" data-emote-name="${safeName}" data-emote-url="${safeUrl}" data-state="channel" data-source="kick"><img src="${safeUrl}" alt="${safeName}" title="${safeName}" class="hs-mc-emote hs-emote-channel" data-emote-name="${safeName}" data-state="channel" data-source="kick"></span>`
         if (pendingStack) {
           result.push(renderEmoteStack(pendingStack))
         }

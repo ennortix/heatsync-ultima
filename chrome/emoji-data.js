@@ -1,7 +1,7 @@
 // Comprehensive emoji dataset (generated from gemoji)
 // 1913 emoji with shortcode names, unicode characters, and categories
 // Categories: smileys, people, animals, food, travel, activities, objects, symbols, flags
-const EMOJI_DATA = [
+var EMOJI_DATA = [
   { name: "100", emoji: "💯", category: "smileys" },
   { name: "alien", emoji: "👽", category: "smileys" },
   { name: "anger", emoji: "💢", category: "smileys" },
@@ -1956,8 +1956,8 @@ const EMOJI_DATA = [
 ]
 
 // Build lookup maps for fast access
-const EMOJI_BY_NAME = new Map()
-const EMOJI_CATEGORIES = new Map()
+var EMOJI_BY_NAME = new Map()
+var EMOJI_CATEGORIES = new Map()
 for (const entry of EMOJI_DATA) {
   EMOJI_BY_NAME.set(entry.name, entry)
   if (!EMOJI_CATEGORIES.has(entry.category)) {

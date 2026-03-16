@@ -8715,6 +8715,23 @@
     return liveChannel || getCurrentChannel();
   }
 
+  // Check if a message belongs to the live tab — direct match OR paired via config
+  // e.g., on twitch.tv/asmongold with config {twitch:"zackrawrr", kick:"asmongold"}
+  // → shows both zackrawrr Twitch messages AND asmongold Kick messages
+  function isLiveChannelMessage(msg) {
+    const curCh = getLiveChannel()?.toLowerCase()
+    if (!curCh) return false
+    const mc = msg.channel?.toLowerCase()
+    if (mc === curCh) return true
+    // Check configured channel pairs — either side can be the live channel
+    return config.channels.some(ch => {
+      if (typeof ch === 'string') return false
+      const tw = ch.twitch?.toLowerCase()
+      const ki = ch.kick?.toLowerCase()
+      return (tw === curCh && ki === mc) || (ki === curCh && tw === mc)
+    })
+  }
+
   /** Update the live tab button label to show selected channel */
   function updateLiveTabLabel() {
     const liveTab = tabBarElement?.querySelector('[data-tab="live"]');
@@ -9318,8 +9335,8 @@
         updateTabIndicator(tabId);
       }
 
-      // Live tab: show if this channel matches the live tab's selected channel
-      if (msg.channel === getLiveChannel()) {
+      // Live tab: show if this channel matches live OR is paired via config
+      if (isLiveChannelMessage(msg)) {
         if (currentTab === 'live') {
           if (!appendMessage(msg, 'live')) renderMessages('live');
         } else {
@@ -9350,12 +9367,8 @@
         updateTabIndicator(tabId);
       }
 
-      // Live tab: on Kick, show if channel matches; on Twitch, show if config maps current channel
-      const curCh = getLiveChannel();
-      const isLiveMsg = (hostPlatform === 'kick' && msg.channel === curCh)
-        || (hostPlatform === 'twitch' && (msg.channel === curCh
-          || config.channels.some(ch => typeof ch !== 'string' && ch.twitch === curCh && ch.kick === msg.channel)));
-      if (isLiveMsg) {
+      // Live tab: show if this channel matches live OR is paired via config
+      if (isLiveChannelMessage(msg)) {
         if (currentTab === 'live') {
           if (!appendMessage(msg, 'live')) renderMessages('live');
         } else {

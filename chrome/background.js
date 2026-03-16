@@ -367,6 +367,7 @@ async function fetchEmoteInventory() {
     lastBroadcastWasEmpty = false; // Reset - we have real emotes now
     broadcastToTabs({ type: 'inventory_update', emotes: emoteInventory });
   } catch (error) {
+    console.error('[heatsync] fetchEmoteInventory failed:', error.message || error)
     emoteInventory = [];
     // Only broadcast empty once
     if (!lastBroadcastWasEmpty) {
@@ -404,6 +405,7 @@ async function fetchBlockedEmotes() {
 
     broadcastToTabs({ type: 'blocked_update', blocked: Array.from(allBlocked) });
   } catch (error) {
+    console.error('[heatsync] fetchBlockedEmotes failed:', error.message || error)
   }
 }
 
@@ -453,10 +455,11 @@ async function fetchFollowedUsers() {
     }
 
     const data = await response.json();
-    followedUsers = data.following.map(f => f.username);
+    followedUsers = (data.following || []).map(f => f.username);
     log(' Followed users loaded:', followedUsers.length);
     broadcastToTabs({ type: 'followed_users_updated', users: followedUsers });
   } catch (error) {
+    console.error('[heatsync] fetchFollowedUsers failed:', error.message || error)
     followedUsers = [];
   }
 }
@@ -892,12 +895,14 @@ async function fetchGlobalEmotes() {
     log(' Loaded', globalEmotes.length, 'global emotes (fallback)');
     broadcastToTabs({ type: 'global_emotes_update', emotes: globalEmotes });
   } catch (error) {
+    console.error('[heatsync] fetchGlobalEmotes failed:', error.message || error)
   }
 }
 
 // ========== 7TV EventAPI WebSocket for Real-Time Emote Updates ==========
 let seventvWebSocket = null;
 let seventvReconnectAttempts = 0;
+let seventvReconnectTimer = null;
 const SEVENTV_MAX_RECONNECT_ATTEMPTS = 5;
 
 function connect7TVEventAPI(emoteSetId) {
@@ -906,7 +911,9 @@ function connect7TVEventAPI(emoteSetId) {
     return;
   }
 
-  // Close existing connection if any (null onclose to prevent reconnect loop)
+  // Cancel pending reconnect and close existing connection
+  clearTimeout(seventvReconnectTimer);
+  seventvReconnectTimer = null;
   if (seventvWebSocket) {
     seventvWebSocket.onclose = null;
     seventvWebSocket.close();
@@ -976,7 +983,8 @@ function connect7TVEventAPI(emoteSetId) {
         const delay = Math.min(1000 * Math.pow(2, seventvReconnectAttempts), 30000);
         seventvReconnectAttempts++;
         log(` 7TV EventAPI: Reconnecting in ${delay}ms (attempt ${seventvReconnectAttempts}/${SEVENTV_MAX_RECONNECT_ATTEMPTS})`);
-        setTimeout(() => connect7TVEventAPI(current7TVEmoteSetId), delay);
+        clearTimeout(seventvReconnectTimer);
+        seventvReconnectTimer = setTimeout(() => connect7TVEventAPI(current7TVEmoteSetId), delay);
       }
     };
   } catch (err) {
@@ -1277,6 +1285,8 @@ async function connectWebSocket() {
   // If connected with DIFFERENT token, disconnect first
   if (isSocketOpen() && socketAuthToken !== authToken) {
     log(' 🔄 Token changed, reconnecting...');
+    clearTimeout(reconnectTimer);
+    reconnectTimer = null;
     socket.close();
     wsState = WS_STATE.DISCONNECTED;
     isAuthenticated = false;
@@ -1321,7 +1331,6 @@ async function connectWebSocket() {
       log(' ✅ WebSocket connected');
       reconnectAttempts = 0;
       wsState = WS_STATE.CONNECTED;
-      connectionPromise = null;
 
       // Start heartbeat to keep connection alive (server has 2min idle timeout)
       if (heartbeatInterval) clearInterval(heartbeatInterval);
@@ -1372,6 +1381,7 @@ async function connectWebSocket() {
         }
       }).catch(() => {})
 
+      connectionPromise = null;
       resolve();
     };
 
@@ -1850,7 +1860,7 @@ async function removeFromInventory(emoteHash, emoteName) {
     log(' ✅ Removed from server inventory:', data);
 
     // Update local inventory
-    emoteInventory = emoteInventory.filter(e => e.hash !== emoteHash && e.name !== emoteName);
+    emoteInventory = emoteInventory.filter(e => emoteHash ? e.hash !== emoteHash : e.name !== emoteName);
     await browser.storage.local.set({ emote_inventory: emoteInventory });
 
     // Broadcast success to tabs
@@ -1979,7 +1989,8 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
         browser.tabs.sendMessage(tab.id, message).catch(() => {})
       }
     }).catch(() => {})
-    return
+    sendResponse({ ok: true })
+    return true
   }
 
   // Link preview — proxy through heatsync.org server (avoids CORS)
@@ -2038,7 +2049,7 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
     const url = message.url
     const channelId = message.channelId || 'global'
     log('[hs-bg] youtube_ws_subscribe received:', { url, channelId, socketOpen: isSocketOpen() })
-    if (url) {
+    if (url && /^https:\/\/(www\.)?youtube\.com\//i.test(url)) {
       // Extract videoId from URL for routing (always, even if socket is down)
       const vidMatch = url.match(/[?&]v=([^&]+)/) || url.match(/\/live\/([^?&\/]+)/) || url.match(/youtu\.be\/([^?&]+)/)
       if (vidMatch) setYtVideoChannel(vidMatch[1], channelId)
@@ -2096,9 +2107,12 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return
   }
 
-  // Forward arbitrary WS message from content scripts (used by multichat kick channels)
+  // Forward WS message from content scripts (used by multichat kick channels)
   if (message.type === 'ws_send') {
-    if (message.data) wsSend(message.data)
+    const allowedWsTypes = ['channel:join', 'channel:leave', 'emote:used', 'youtube:subscribe', 'youtube:unsubscribe']
+    if (message.data && allowedWsTypes.includes(message.data.type)) {
+      wsSend(message.data)
+    }
     sendResponse({ ok: true })
     return
   }
@@ -2120,6 +2134,7 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
     // IMPORTANT: Reconnect WebSocket with new token (fixes stale auth after login switch)
     log(' 🔄 Reconnecting WebSocket with new auth token...');
     connectWebSocket();
+    sendResponse({ ok: true });
   } else if (message.type === 'block_emote') {
     // Async - send response when done
     blockEmote(message.hash).then(result => {

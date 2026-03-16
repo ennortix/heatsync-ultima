@@ -2786,9 +2786,18 @@
       const sel = window.getSelection();
       if (!sel.rangeCount) return '';
       const range = sel.getRangeAt(0);
-      // Get text before cursor in current text node
-      if (range.startContainer.nodeType === Node.TEXT_NODE) {
-        const before = range.startContainer.textContent.slice(0, range.startOffset);
+      let container = range.startContainer;
+      let offset = range.startOffset;
+      // Resolve element boundary to preceding text node
+      if (container.nodeType === Node.ELEMENT_NODE && offset > 0) {
+        const child = container.childNodes[offset - 1];
+        if (child?.nodeType === Node.TEXT_NODE) {
+          container = child;
+          offset = child.textContent.length;
+        }
+      }
+      if (container.nodeType === Node.TEXT_NODE) {
+        const before = container.textContent.slice(0, offset);
         const match = before.match(/(\S+)$/);
         return match ? match[1] : '';
       }
@@ -2832,6 +2841,23 @@
           matches.push({ name, url: emote.url, source: emote.source, priority: 0, type: 'emote' });
         } else if (name.toLowerCase().includes(searchLower)) {
           matches.push({ name, url: emote.url, source: emote.source, priority: 1, type: 'emote' });
+        }
+      }
+    }
+
+    // Emoji shortcodes when typing :prefix
+    if (search.startsWith(':') && typeof EMOJI_DATA !== 'undefined') {
+      const emojiPrefix = search.slice(1).toLowerCase();
+      if (emojiPrefix.length > 0) {
+        for (const entry of EMOJI_DATA) {
+          if (matches.length >= 50) break;
+          const emojiMatch = { name: `:${entry.name}:`, url: null, priority: entry.name.startsWith(emojiPrefix) ? 1 : 2, type: 'emoji', emoji: entry.emoji };
+          if (entry.name.startsWith(emojiPrefix)) {
+            matches.push(emojiMatch);
+          } else if (entry.name.includes(emojiPrefix)) {
+            emojiMatch.priority = 2;
+            matches.push(emojiMatch);
+          }
         }
       }
     }
@@ -2899,10 +2925,20 @@
     if (!sel.rangeCount) return;
 
     const range = sel.getRangeAt(0);
-    if (range.startContainer.nodeType !== Node.TEXT_NODE) return;
+    let container = range.startContainer;
+    let rangeOffset = range.startOffset;
+    // Resolve element boundary to preceding text node
+    if (container.nodeType === Node.ELEMENT_NODE && rangeOffset > 0) {
+      const child = container.childNodes[rangeOffset - 1];
+      if (child?.nodeType === Node.TEXT_NODE) {
+        container = child;
+        rangeOffset = child.textContent.length;
+      }
+    }
+    if (container.nodeType !== Node.TEXT_NODE) return;
 
-    const textNode = range.startContainer;
-    const offset = range.startOffset;
+    const textNode = container;
+    const offset = rangeOffset;
     const text = textNode.textContent;
 
     // Find word start

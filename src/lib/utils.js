@@ -43,12 +43,17 @@ function escapeAttr(str) {
 function sanitizeUrl(url) {
   if (!url) return ''
   const str = String(url).trim()
-  // Allow http, https, data (for images), and relative URLs
-  if (str.startsWith('http://') ||
-      str.startsWith('https://') ||
-      str.startsWith('data:image/') ||
-      str.startsWith('/') ||
-      str.startsWith('./')) {
+  const lower = str.toLowerCase()
+  // Allow http, https, safe data image types, and relative URLs
+  if (lower.startsWith('http://') ||
+      lower.startsWith('https://') ||
+      lower.startsWith('/') ||
+      lower.startsWith('./')) {
+    return str
+  }
+  // Only allow safe raster image data URIs (no SVG — can execute JS)
+  if (lower.startsWith('data:image/') &&
+      !lower.startsWith('data:image/svg')) {
     return str
   }
   return ''
@@ -185,7 +190,8 @@ function waitForElement(selector, timeout = 5000, parent = document) {
       }
     })
 
-    observer.observe(parent === document ? document.body : parent, {
+    const observeTarget = parent === document ? (document.body || document.documentElement) : parent
+    observer.observe(observeTarget, {
       childList: true,
       subtree: true
     })

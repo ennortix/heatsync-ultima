@@ -5,9 +5,13 @@
   const API_URL = 'https://heatsync.org'
 
   function escapeHtml(str) {
-    const div = document.createElement('div')
-    div.textContent = str
-    return div.innerHTML
+    if (str == null) return ''
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#x27;')
   }
 
   async function init() {
@@ -58,9 +62,9 @@
           </div>
         </div>
         <div class="actions">
-          <a href="https://heatsync.org/emotes" target="_blank" class="action-btn">emotes</a>
+          <a href="https://heatsync.org/emotes" target="_blank" rel="noopener noreferrer" class="action-btn">emotes</a>
           <button class="action-btn" id="refresh-btn">refresh</button>
-          <a href="https://heatsync.org" target="_blank" class="action-btn">site</a>
+          <a href="https://heatsync.org" target="_blank" rel="noopener noreferrer" class="action-btn">site</a>
         </div>
       `
 
@@ -77,7 +81,7 @@
         <div class="login-section">
           log in to sync emotes
           <br>
-          <a href="https://heatsync.org" target="_blank" class="login-btn">heatsync.org</a>
+          <a href="https://heatsync.org" target="_blank" rel="noopener noreferrer" class="login-btn">heatsync.org</a>
         </div>
       `
     }

@@ -20,14 +20,22 @@
   }
 
   function save(key, value) {
-    chrome.storage.local.set({ [key]: value })
+    chrome.storage.local.set({ [key]: value }).catch(err => {
+      console.error('[heatsync] options save failed:', err)
+      toast.textContent = 'save failed'
+      toast.classList.add('show')
+      clearTimeout(toastTimer)
+      toastTimer = setTimeout(() => { toast.classList.remove('show'); toast.textContent = 'settings saved' }, 2000)
+    })
     flashSaved()
   }
 
   function bindRadio(groupId, storageKey, value) {
-    const radio = document.querySelector(
-      `#${groupId} input[value="${value}"]`
-    )
+    // Validate value to prevent selector injection from corrupt storage
+    const safeValue = String(value || '').replace(/[^a-zA-Z0-9_-]/g, '')
+    const radio = safeValue ? document.querySelector(
+      `#${groupId} input[value="${safeValue}"]`
+    ) : null
     if (radio) radio.checked = true
 
     document.getElementById(groupId).addEventListener('change', (e) => {

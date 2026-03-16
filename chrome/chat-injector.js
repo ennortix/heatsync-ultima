@@ -552,7 +552,8 @@ function createMessageElement(message, platform) {
  * @returns {string} Escaped text
  */
 function escapeHtml(text) {
-  return text.replace(/[&<>"']/g, c => ({
+  if (text == null) return ''
+  return String(text).replace(/[&<>"']/g, c => ({
     '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
   })[c]);
 }

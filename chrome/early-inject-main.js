@@ -25,7 +25,7 @@
   })
 
   function fixExistingImages() {
-    const images = document.querySelectorAll('img[src*="__FFZ__999999"], img[src*="jtvnw.net/emoticons/v2/"]')
+    const images = document.querySelectorAll('img[src*="__FFZ__999999"]')
     images.forEach(img => {
       if (img.dataset.heatsyncFixed) return
       const fixedUrl = fixUrl(img.src)
@@ -49,14 +49,6 @@
 
     if (value.includes('jtvnw.net/emoticons/v2/__FFZ__')) {
       const match = value.match(/__FFZ__999999::([a-f0-9]+)__FFZ__/)
-      if (match) {
-        const url = window.__heatsyncEmoteUrls?.[match[1]]
-        if (url) return url
-      }
-    }
-
-    if (value.includes('jtvnw.net/emoticons/v2/')) {
-      const match = value.match(/emoticons\/v2\/([a-f0-9]{24})\/default/)
       if (match) {
         const url = window.__heatsyncEmoteUrls?.[match[1]]
         if (url) return url

@@ -289,6 +289,7 @@ if (typeof window !== 'undefined') {
   window.addEventListener('pagehide', clearAll)
 
   // Also cleanup on SPA navigation (Twitch/Kick are SPAs)
+  // Use a lightweight title observer instead of subtree:true on body
   let lastUrl = location.href
   const urlObserver = new MutationObserver(() => {
     if (location.href !== lastUrl) {
@@ -298,7 +299,11 @@ if (typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent('heatsync:navigation'))
     }
   })
-  urlObserver.observe(document.body, { childList: true, subtree: true })
+  // Observe <head> title changes (lightweight) + body childList (for pushState nav)
+  if (document.head) urlObserver.observe(document.head, { childList: true, subtree: true })
+  else urlObserver.observe(document.body, { childList: true, subtree: false })
+  // Disconnect on pagehide alongside clearAll
+  window.addEventListener('pagehide', () => urlObserver.disconnect())
 }
 
 // Export as both module and global

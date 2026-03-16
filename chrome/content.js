@@ -4382,9 +4382,13 @@ function watchForNewMessages() {
           const batch = processingQueue.splice(0); // Copy and clear queue
           log(' 🔄 Processing batch of', batch.length, 'messages');
 
-          batch.forEach(processMessage);
-
-          processingScheduled = false;
+          try {
+            batch.forEach(processMessage);
+          } catch (e) {
+            log(' ❌ processMessage error:', e.message);
+          } finally {
+            processingScheduled = false;
+          }
         }, 16); // Wait one frame for React to settle (animated emotes need this)
       });
     }

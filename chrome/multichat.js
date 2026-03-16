@@ -727,6 +727,9 @@
   // Vi mode for chat input (default off)
   let viModeEnabled = false;
 
+  // Auto-hide input bar when empty (default off)
+  let hideEmptyInput = false;
+
   // Chat width state
   let chatWidth = 340; // Default width
   const DEFAULT_CHAT_WIDTH = 340;
@@ -1086,6 +1089,51 @@
     log('Vi mode:', viModeEnabled ? 'enabled' : 'disabled');
   }
 
+  // Hide empty input setting
+  async function loadHideEmptyInputSetting() {
+    try {
+      const stored = await chrome.storage.local.get(['ui_settings']);
+      if (stored.ui_settings?.hideEmptyInput !== undefined) {
+        hideEmptyInput = stored.ui_settings.hideEmptyInput;
+      }
+    } catch (e) {
+      log('Error loading hideEmptyInput setting:', e);
+    }
+  }
+
+  async function saveHideEmptyInputSetting() {
+    try {
+      const stored = await chrome.storage.local.get(['ui_settings']);
+      const settings = stored.ui_settings || {};
+      settings.hideEmptyInput = hideEmptyInput;
+      await chrome.storage.local.set({ ui_settings: settings });
+    } catch (e) {
+      log('Error saving hideEmptyInput setting:', e);
+    }
+  }
+
+  function toggleHideEmptyInput() {
+    hideEmptyInput = !hideEmptyInput;
+    saveHideEmptyInputSetting();
+    applyHideEmptyInput();
+    log('Hide empty input:', hideEmptyInput ? 'enabled' : 'disabled');
+  }
+
+  function applyHideEmptyInput() {
+    const bar = document.getElementById('hs-mc-inputbar');
+    if (!bar) return
+    if (hideEmptyInput) {
+      bar.classList.add('hs-mc-autohide')
+      // Check if input has content
+      const input = document.getElementById('hs-mc-input')
+      const hasText = input ? (input.value || input.textContent || '').trim().length > 0 : false
+      if (!hasText) bar.classList.add('hs-mc-hidden')
+      else bar.classList.remove('hs-mc-hidden')
+    } else {
+      bar.classList.remove('hs-mc-autohide', 'hs-mc-hidden')
+    }
+  }
+
   function rebuildInput() {
     const bar = document.getElementById('hs-mc-inputbar');
     if (!bar) return;
@@ -1144,7 +1192,7 @@
 
     bar.innerHTML = `
       ${inputHtml}
-      <button id="hs-mc-emote-btn" title="heatsync emotes & settings"><img src="${iconUrl}" data-src="${iconUrl}" data-src-black="${iconBlackUrl}" alt="hs"></button>
+      <button id="hs-mc-emote-btn"><img src="${iconUrl}" data-src="${iconUrl}" data-src-black="${iconBlackUrl}" alt="hs"></button>
     `;
 
     // Initialize input after DOM insertion
@@ -1303,6 +1351,10 @@
             <span class="hs-mc-setting-label">vi mode</span>
             <button class="hs-mc-toggle-pill ${viModeEnabled ? 'active' : ''}" id="hs-mc-vi-toggle"><span class="hs-mc-toggle-knob"></span></button>
           </div>
+          <div class="hs-mc-setting-row">
+            <span class="hs-mc-setting-label">auto-hide input</span>
+            <button class="hs-mc-toggle-pill ${hideEmptyInput ? 'active' : ''}" id="hs-mc-hide-input-toggle"><span class="hs-mc-toggle-knob"></span></button>
+          </div>
         </div>
         <div class="hs-mc-settings-group">
           <div class="hs-mc-settings-group-title">layout</div>
@@ -1380,6 +1432,13 @@
     viToggle?.addEventListener('click', () => {
       toggleViMode();
       viToggle.classList.toggle('active', viModeEnabled);
+    });
+
+    // Hide empty input toggle
+    const hideInputToggle = document.getElementById('hs-mc-hide-input-toggle');
+    hideInputToggle?.addEventListener('click', () => {
+      toggleHideEmptyInput();
+      hideInputToggle.classList.toggle('active', hideEmptyInput);
     });
 
     // Chat width input
@@ -2164,7 +2223,23 @@
     input.addEventListener('keydown', handleInputKeydown);
     input.addEventListener('input', handleInputChange);
     input.addEventListener('input', updateCharCount);
-    input.addEventListener('blur', () => setTimeout(hideAutocomplete, 150));
+    input.addEventListener('input', () => {
+      if (!hideEmptyInput) return
+      const bar = document.getElementById('hs-mc-inputbar')
+      if (!bar) return
+      const hasText = (input.value || input.textContent || '').trim().length > 0
+      if (hasText) bar.classList.remove('hs-mc-hidden')
+      else bar.classList.add('hs-mc-hidden')
+    });
+    input.addEventListener('blur', () => {
+      setTimeout(hideAutocomplete, 150)
+      // Re-hide if empty on blur
+      if (!hideEmptyInput) return
+      const bar = document.getElementById('hs-mc-inputbar')
+      if (!bar) return
+      const hasText = (input.value || input.textContent || '').trim().length > 0
+      if (!hasText) bar.classList.add('hs-mc-hidden')
+    });
     sendBtn?.addEventListener('click', sendMessage);
 
     // WYSIWYG: handle paste to strip formatting
@@ -3140,7 +3215,7 @@
         font-family: inherit;
         font-size: 12px !important;
         line-height: 1 !important;
-        transition: background 150ms, color 150ms, border-color 150ms;
+        transition: none;
         text-align: center;
         display: inline-flex;
         align-items: center;
@@ -3223,7 +3298,7 @@
         cursor: ew-resize;
         z-index: 2000;
         background: transparent;
-        transition: background 0.15s;
+        transition: none;
       }
       #hs-mc-resize-handle:hover,
       #hs-mc-resize-handle:active {
@@ -3263,7 +3338,7 @@
         z-index: 1005;
         box-shadow: 0 2px 12px rgba(0,0,0,0.6);
         backdrop-filter: blur(4px);
-        transition: background 0.15s;
+        transition: none;
       }
       #hs-mc-new-msgs:hover {
         background: #fff;
@@ -3717,7 +3792,7 @@
         margin: 0 2px;
         padding: 4px;
         border-radius: 0;
-        transition: background 0.1s, transform 0.1s;
+        transition: none;
         cursor: pointer;
         box-sizing: content-box;
       }
@@ -3727,7 +3802,7 @@
         margin: 0 2px;
         padding: 4px;
         border-radius: 0;
-        transition: background 0.1s, transform 0.1s;
+        transition: none;
         cursor: pointer;
         box-sizing: content-box;
       }
@@ -3817,7 +3892,7 @@
         inset: 4px;
         border-radius: 0;
         opacity: 0;
-        transition: opacity 0.1s;
+        transition: none;
         z-index: 1;
         pointer-events: none;
       }
@@ -3963,6 +4038,27 @@
         font-size: 11px;
       }
 
+      /* Auto-hide input bar when empty */
+      #hs-mc-inputbar.hs-mc-autohide.hs-mc-hidden {
+        opacity: 0;
+        pointer-events: none;
+        height: 0;
+        padding: 0 8px;
+        border-top-color: transparent;
+        overflow: hidden;
+        transition: none;
+      }
+      #hs-mc-inputbar.hs-mc-autohide {
+        transition: none;
+      }
+      #hs-mc-inputbar.hs-mc-autohide.hs-mc-hidden:hover {
+        opacity: 1;
+        pointer-events: auto;
+        height: auto;
+        padding: 8px;
+        border-top-color: #808080;
+      }
+
       /* Input styles (used in #hs-mc-inputbar) */
       #hs-mc-input {
         flex: 1;
@@ -4002,7 +4098,7 @@
         border-radius: 0;
         font-size: 11px;
         cursor: pointer;
-        transition: all 0.15s;
+        transition: none;
       }
       .hs-mc-toggle-btn:hover {
         background: #fff;
@@ -4039,7 +4135,7 @@
         align-items: center;
         justify-content: center;
         flex-shrink: 0;
-        transition: opacity 0.15s;
+        transition: none;
       }
       #hs-mc-emote-btn img {
         width: 24px;
@@ -4100,7 +4196,7 @@
         width: auto !important;
         overflow: visible !important;
         position: relative !important;
-        transition: color 0.15s, background 0.15s;
+        transition: none;
       }
       #hs-mc-emote-picker .hs-mc-picker-tab:hover {
         background: #fff !important;
@@ -4132,7 +4228,7 @@
         cursor: pointer;
         font-size: 15px;
         font-weight: 500;
-        transition: color 0.15s, background 0.15s;
+        transition: none;
         text-align: center;
         display: inline-flex;
         align-items: center;
@@ -4232,7 +4328,7 @@
         font-size: 13px;
         outline: none;
         box-sizing: border-box;
-        transition: border-color 0.15s;
+        transition: none;
       }
       #hs-mc-emote-search:focus {
         border-color: #ff6b35;
@@ -4247,7 +4343,7 @@
         cursor: pointer !important;
         border-radius: 0 !important;
         padding: 4px !important;
-        transition: background 0.1s, transform 0.1s;
+        transition: none;
         display: inline-block !important;
         visibility: visible !important;
       }
@@ -4279,7 +4375,7 @@
         padding: 10px 14px !important;
         cursor: pointer !important;
         color: #fff !important;
-        transition: background 0.15s, border-color 0.15s;
+        transition: none;
         visibility: visible !important;
         border-left: 3px solid transparent;
         margin: 0 6px;
@@ -4302,7 +4398,7 @@
         background: color-mix(in srgb, var(--menu-accent, #ff6b35) 12%, transparent);
         color: var(--menu-accent, #ff6b35);
         flex-shrink: 0;
-        transition: background 0.15s, transform 0.15s;
+        transition: none;
       }
       .hs-mc-menu-item:hover .hs-mc-menu-icon {
         background: #000;
@@ -4334,7 +4430,7 @@
       .hs-mc-menu-arrow {
         color: #808080;
         flex-shrink: 0;
-        transition: color 0.15s, transform 0.15s;
+        transition: none;
       }
       .hs-mc-menu-item:hover .hs-mc-menu-arrow {
         color: #000;
@@ -4463,7 +4559,7 @@
         padding: 3px 8px;
         border-radius: 0;
         cursor: pointer;
-        transition: background 0.15s, color 0.15s;
+        transition: none;
       }
       .hs-mc-pred-bet-btn:hover {
         background: #fff;
@@ -4500,7 +4596,7 @@
         padding: 3px 10px;
         border-radius: 0;
         cursor: pointer;
-        transition: opacity 0.15s;
+        transition: none;
       }
       .hs-mc-pred-bet-go:hover {
         background: #fff;
@@ -4701,7 +4797,7 @@
         padding: 4px 10px;
         cursor: pointer;
         white-space: nowrap;
-        transition: background 0.15s, color 0.15s;
+        transition: none;
       }
       .hs-mc-poll-vote-btn:hover {
         background: #9147ff;
@@ -4767,7 +4863,7 @@
         background: rgba(255,255,255,0.04);
         border-left: 2px solid var(--rc, #9147ff);
         cursor: pointer;
-        transition: background 0.15s;
+        transition: none;
       }
       .hs-mc-reward-card:hover {
         background: rgba(255,255,255,0.08);
@@ -4831,7 +4927,7 @@
         padding: 4px 10px;
         border-radius: 0;
         cursor: pointer;
-        transition: opacity 0.15s;
+        transition: none;
       }
       .hs-mc-reward-submit:hover {
         background: #fff;
@@ -4861,14 +4957,25 @@
         display: flex !important;
         align-items: center !important;
         justify-content: space-between !important;
-        padding: 8px 14px !important;
+        padding: 6px 14px !important;
         font-size: 12px !important;
         color: #fff !important;
         visibility: visible !important;
       }
+      .hs-mc-setting-row:nth-child(even) {
+        background: rgba(255,255,255,0.03);
+      }
+      .hs-mc-setting-row:hover {
+        background: rgba(255,255,255,0.06);
+      }
       .hs-mc-setting-label {
-        color: #808080 !important;
+        color: #ccc !important;
         font-size: 13px !important;
+      }
+      .hs-mc-setting-row .hs-mc-toggle-pill,
+      .hs-mc-setting-row .hs-mc-size-btns,
+      .hs-mc-setting-row .hs-mc-width-row {
+        flex-shrink: 0;
       }
       .hs-mc-size-btns {
         display: flex;
@@ -4886,7 +4993,7 @@
         cursor: pointer !important;
         display: inline-block !important;
         visibility: visible !important;
-        transition: all 0.15s;
+        transition: none;
       }
       .hs-mc-size-btn:hover {
         background: #fff !important;
@@ -4905,7 +5012,7 @@
         border-radius: 0;
         cursor: pointer;
         padding: 0;
-        transition: background 0.2s;
+        transition: none;
         flex-shrink: 0;
       }
       .hs-mc-toggle-pill.active {
@@ -4919,7 +5026,7 @@
         height: 14px;
         background: #fff;
         border-radius: 50%;
-        transition: transform 0.2s;
+        transition: none;
         pointer-events: none;
       }
       .hs-mc-toggle-pill.active .hs-mc-toggle-knob {
@@ -4941,7 +5048,7 @@
         -moz-appearance: textfield;
         display: inline-block !important;
         visibility: visible !important;
-        transition: border-color 0.15s;
+        transition: none;
       }
       #hs-mc-width-input:focus {
         border-color: #ff6b35 !important;
@@ -5153,7 +5260,7 @@
       .hs-feed-msg {
         padding: 8px 12px;
         border-bottom: 1px solid #808080;
-        transition: background 0.1s;
+        transition: none;
       }
       .hs-feed-msg:hover {
         background: #fff;
@@ -5224,7 +5331,7 @@
         padding: 10px 12px;
         border-bottom: 1px solid #808080;
         cursor: pointer;
-        transition: background 0.1s;
+        transition: none;
       }
       .hs-notif:hover {
         background: #fff;
@@ -5509,6 +5616,7 @@
     // Ensure input bar exists
     if (!inputBarElement || !document.contains(inputBarElement)) {
       inputBarElement = createInputBar();
+      applyHideEmptyInput();
       log('Created input bar');
     }
     if (!container.contains(inputBarElement)) {
@@ -8967,6 +9075,7 @@
     await loadWysiwygSetting();
     await loadLinksSetting();
     await loadViModeSetting();
+    await loadHideEmptyInputSetting();
     await loadBlockedEmotes();
     await loadEmotes();
 

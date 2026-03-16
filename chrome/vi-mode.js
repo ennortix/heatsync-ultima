@@ -31,7 +31,6 @@
   let register = ''
   let undoStack = []
   let activeEl = null
-  let indicatorEl = null
 
   // --- DOM helpers ---
 
@@ -222,6 +221,37 @@
     return pos
   }
 
+  // --- WORD motions (space-delimited, not word-class) ---
+
+  function moveWW(text, pos, n) {
+    for (let i = 0; i < n; i++) {
+      if (pos >= text.length) break
+      while (pos < text.length && !/\s/.test(text[pos])) pos++
+      while (pos < text.length && /\s/.test(text[pos])) pos++
+    }
+    return pos
+  }
+
+  function moveBB(text, pos, n) {
+    for (let i = 0; i < n; i++) {
+      if (pos <= 0) break
+      pos--
+      while (pos > 0 && /\s/.test(text[pos])) pos--
+      while (pos > 0 && !/\s/.test(text[pos - 1])) pos--
+    }
+    return pos
+  }
+
+  function moveEE(text, pos, n) {
+    for (let i = 0; i < n; i++) {
+      if (pos >= text.length - 1) break
+      pos++
+      while (pos < text.length - 1 && /\s/.test(text[pos])) pos++
+      while (pos < text.length - 1 && !/\s/.test(text[pos + 1])) pos++
+    }
+    return pos
+  }
+
   // --- Find char motions ---
 
   function findCharMotion(text, pos, char, dir, before, n) {
@@ -251,8 +281,11 @@
       case 'h': return Math.max(0, pos - n)
       case 'l': return Math.min(Math.max(0, text.length - 1), pos + n)
       case 'w': return moveW(text, pos, n)
+      case 'W': return moveWW(text, pos, n)
       case 'b': return moveB(text, pos, n)
+      case 'B': return moveBB(text, pos, n)
       case 'e': return moveE(text, pos, n)
+      case 'E': return moveEE(text, pos, n)
       case '0': return 0
       case '$': return Math.max(0, text.length - 1)
       case '^': {
@@ -281,69 +314,69 @@
       cursor = Math.max(0, Math.min(cursor, len))
       setCursorPos(el, cursor)
     }
-    updateIndicator()
+    updateVisual()
   }
 
-  // --- Mode indicator ---
+  // --- Cheatsheet ---
 
-  function createIndicator() {
-    if (indicatorEl) return
-    indicatorEl = document.createElement('span')
-    indicatorEl.id = 'hs-vi-indicator'
-    Object.assign(indicatorEl.style, {
-      position: 'absolute',
-      top: '0',
-      right: '0',
-      transform: 'translateY(-100%)',
+  let cheatsheetEl = null
+
+  function showCheatsheet(el) {
+    if (cheatsheetEl) { hideCheatsheet(); return }
+    cheatsheetEl = document.createElement('div')
+    cheatsheetEl.id = 'hs-vi-cheatsheet'
+    Object.assign(cheatsheetEl.style, {
+      position: 'fixed',
+      bottom: '80px',
+      right: '12px',
+      background: '#18181b',
+      color: '#ccc',
+      border: '1px solid #333',
+      borderRadius: '6px',
+      padding: '8px 10px',
       fontFamily: 'monospace',
       fontSize: '11px',
-      fontWeight: 'bold',
-      pointerEvents: 'none',
-      userSelect: 'none',
-      lineHeight: '1',
-      padding: '1px 4px',
-      zIndex: '100',
-      whiteSpace: 'nowrap',
+      lineHeight: '1.5',
+      zIndex: '10000',
+      maxWidth: '420px',
+      whiteSpace: 'pre',
+      boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
     })
+    cheatsheetEl.textContent =
+      'hl move  kj history  wb/WBE word  0$^ line  gg/G ends\n' +
+      'fFtT+char find  ;, repeat find  [num]cmd repeat\n' +
+      'x/X del char  dw/db/de/dd del  D del→end\n' +
+      'cw/cb/ce/cc change  C change→end  s/S subst\n' +
+      'yw/yb/ye/yy yank  p/P paste  r replace  ~ case\n' +
+      'i/a/I/A insert  u undo  ? toggle this help'
+    document.body.appendChild(cheatsheetEl)
+    // Auto-dismiss on any key
+    const dismiss = () => { hideCheatsheet(); document.removeEventListener('keydown', dismiss, { capture: true }) }
+    setTimeout(() => document.addEventListener('keydown', dismiss, { capture: true }), 100)
   }
 
-  function updateIndicator() {
-    if (!indicatorEl) return
-    if (!enabled) {
-      indicatorEl.style.display = 'none'
-      return
-    }
-    indicatorEl.style.display = ''
-    if (mode === 'normal') {
-      indicatorEl.textContent = '$'
-      indicatorEl.style.color = '#ff3333'
+  function hideCheatsheet() {
+    if (cheatsheetEl) { cheatsheetEl.remove(); cheatsheetEl = null }
+  }
+
+  // --- Normal mode visual: red border on input ---
+
+  let styleInjected = false
+  function injectStyle() {
+    if (styleInjected) return
+    styleInjected = true
+    const s = document.createElement('style')
+    s.textContent = `.hs-vi-normal { outline: 2px solid #ff3333 !important; outline-offset: -2px; }`
+    document.head.appendChild(s)
+  }
+
+  function updateVisual() {
+    if (!activeEl) return
+    if (enabled && mode === 'normal') {
+      activeEl.classList.add('hs-vi-normal')
     } else {
-      indicatorEl.textContent = '$'
-      indicatorEl.style.color = '#ffffff'
+      activeEl.classList.remove('hs-vi-normal')
     }
-  }
-
-  function attachIndicator(el) {
-    if (!el) return
-    createIndicator()
-    if (!enabled) {
-      indicatorEl.style.display = 'none'
-      return
-    }
-
-    // Find parent that can be position:relative anchor
-    // Go up from the input until we find something suitable
-    let container = el.parentElement
-    if (container && !container.contains(indicatorEl)) {
-      const cs = getComputedStyle(container)
-      if (cs.position === 'static') container.style.position = 'relative'
-      container.appendChild(indicatorEl)
-    }
-    updateIndicator()
-  }
-
-  function detachIndicator() {
-    if (indicatorEl?.parentElement) indicatorEl.remove()
   }
 
   // --- Mode transitions ---
@@ -388,7 +421,7 @@
     if (to >= from) {
       start = from
       // Inclusive end for: e $ l f F t T
-      end = 'e$lftTF'.includes(motionKey) ? to + 1 : to
+      end = 'eE$lftTF'.includes(motionKey) ? to + 1 : to
     } else {
       start = to
       end = from
@@ -463,7 +496,7 @@
     if (key === 'Enter') {
       // Switch to insert mode after send
       mode = 'insert'
-      updateIndicator()
+      updateVisual()
       return
     }
 
@@ -558,7 +591,7 @@
       }
 
       // Motion after operator
-      if ('hlwbe0$^'.includes(key)) {
+      if ('hlwbeWBE0$^'.includes(key)) {
         const newPos = resolveMotion(text, cursor, key, n)
         executeOperator(el, text, cursor, newPos, key)
         return
@@ -609,7 +642,7 @@
     }
 
     // --- Motions ---
-    if ('hlwbe0$^'.includes(key)) {
+    if ('hlwbeWBE0$^'.includes(key)) {
       cursor = resolveMotion(text, cursor, key, n)
       syncCursor(el)
       return
@@ -745,6 +778,21 @@
       }
     }
 
+    // j/k — chat history navigation (dispatch native arrow events)
+    if (key === 'k' || key === 'j') {
+      const arrowKey = key === 'k' ? 'ArrowUp' : 'ArrowDown'
+      el.dispatchEvent(new KeyboardEvent('keydown', { key: arrowKey, code: arrowKey, bubbles: true }))
+      // Re-read cursor after history change
+      setTimeout(() => { cursor = getCursorPos(el); syncCursor(el) }, 50)
+      return
+    }
+
+    // ? — show vi cheatsheet
+    if (key === '?') {
+      showCheatsheet(el)
+      return
+    }
+
     // Arrow keys
     if (key === 'ArrowLeft') {
       cursor = Math.max(0, cursor - n)
@@ -756,10 +804,10 @@
       syncCursor(el)
       return
     }
-    // ArrowUp/Down: let through for chat history
+    // ArrowUp/Down: dispatch native arrow for history
     if (key === 'ArrowUp' || key === 'ArrowDown') {
-      // Don't block — let platform handle history navigation
-      // Re-dispatch since we already blocked it
+      el.dispatchEvent(new KeyboardEvent('keydown', { key, code: key, bubbles: true }))
+      setTimeout(() => { cursor = getCursorPos(el); syncCursor(el) }, 50)
       return
     }
   }
@@ -790,10 +838,7 @@
   }
 
   function onEnable() {
-    if (activeEl) {
-      attachIndicator(activeEl)
-      updateIndicator()
-    }
+    updateVisual()
   }
 
   function onDisable() {
@@ -801,7 +846,7 @@
     count = ''
     operator = null
     pendingCmd = null
-    detachIndicator()
+    updateVisual()
   }
 
   // Listen for settings changes via postMessage (from heatsync-button.js)
@@ -844,22 +889,22 @@
     count = ''
     operator = null
     pendingCmd = null
-    if (enabled) attachIndicator(el)
     log('Attached to', el.tagName, el.id || el.className)
   }
 
   function detach() {
+    if (activeEl) activeEl.classList.remove('hs-vi-normal')
     activeEl = null
     mode = 'insert'
     count = ''
     operator = null
     pendingCmd = null
-    detachIndicator()
   }
 
   // --- Initialization ---
 
   function init() {
+    injectStyle()
     loadSettings()
 
     // Keydown at capture phase on window — fires before all other handlers
@@ -878,7 +923,7 @@
       }
     })
 
-    // Try to find existing input
+    // Try to find existing focused input
     for (const sel of INPUT_SELECTORS) {
       const el = document.querySelector(sel)
       if (el && document.activeElement === el) {
@@ -886,22 +931,6 @@
         break
       }
     }
-
-    // Watch for dynamically added inputs
-    const observer = new MutationObserver(() => {
-      if (activeEl) return
-      for (const sel of INPUT_SELECTORS) {
-        const el = document.querySelector(sel)
-        if (el && document.activeElement === el) {
-          attach(el)
-          break
-        }
-      }
-    })
-    observer.observe(document.body || document.documentElement, {
-      childList: true,
-      subtree: true,
-    })
 
     log('vi-mode initialized, enabled:', enabled)
   }

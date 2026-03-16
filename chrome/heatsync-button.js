@@ -195,12 +195,14 @@
 
   // Get extension icon URL (works in content script context)
   const getIconUrl = () => {
-    if (typeof chrome !== 'undefined' && chrome.runtime?.getURL) {
-      return chrome.runtime.getURL('icon-48.png');
-    }
-    if (typeof browser !== 'undefined' && browser.runtime?.getURL) {
-      return browser.runtime.getURL('icon-48.png');
-    }
+    try {
+      if (typeof chrome !== 'undefined' && chrome.runtime?.getURL) {
+        return chrome.runtime.getURL('icon-48.png');
+      }
+      if (typeof browser !== 'undefined' && browser.runtime?.getURL) {
+        return browser.runtime.getURL('icon-48.png');
+      }
+    } catch (_) {}
     return null;
   };
 
@@ -251,18 +253,27 @@
     const btn = document.createElement('button');
     btn.id = BUTTON_ID;
     btn.className = 'heatsync-chat-btn';
-    btn.setAttribute('aria-label', 'Heatsync');
+    btn.removeAttribute('aria-label');
     btn.setAttribute('data-a-target', 'heatsync-button');
-    btn.title = 'heatsync';
+    btn.title = '';
 
-    // Use extension logo
+    // Use extension logo — swap to black variant on hover
     const iconUrl = getIconUrl();
+    const iconBlackUrl = (() => {
+      try { return chrome?.runtime?.getURL?.('icon-48-black.png') } catch(_) {}
+      try { return browser?.runtime?.getURL?.('icon-48-black.png') } catch(_) {}
+      return null
+    })();
     if (iconUrl) {
       const img = document.createElement('img');
       img.src = iconUrl;
       img.alt = 'heatsync';
       img.style.cssText = 'width: 20px; height: 20px; object-fit: contain;';
       btn.appendChild(img);
+      if (iconBlackUrl) {
+        btn.addEventListener('mouseenter', () => { img.src = iconBlackUrl }, { signal: btnSignal });
+        btn.addEventListener('mouseleave', () => { img.src = iconUrl }, { signal: btnSignal });
+      }
     } else {
       // Fallback: simple H
       btn.textContent = 'H';

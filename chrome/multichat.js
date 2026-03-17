@@ -6388,6 +6388,20 @@
     return formatRelativeMs(Date.now() - ts);
   }
 
+  // Refresh timestamps every 30s — lightweight DOM-only update, no rebuild
+  cleanup.setInterval(() => {
+    const msgsEl = document.getElementById('hs-mc-messages');
+    if (!msgsEl) return;
+    const now = Date.now();
+    for (const el of msgsEl.querySelectorAll('.hs-mc-ts[data-ts]')) {
+      const ts = parseInt(el.dataset.ts);
+      if (ts) {
+        const newText = formatRelativeMs(now - ts);
+        if (el.textContent !== newText) el.textContent = newText;
+      }
+    }
+  }, 30000);
+
   async function toggleThread(msgId) {
     if (expandedThreadId === msgId) {
       expandedThreadId = null;
@@ -6530,7 +6544,7 @@
         const div = document.createElement('div');
         div.className = `hs-mc-stream-event ${m.eventClass || ''}`;
         const ts = formatTimeFromTs(m.time);
-        div.innerHTML = `<span class="hs-mc-ts">${ts}</span>${escapeHtml(m.text)}`;
+        div.innerHTML = `<span class="hs-mc-ts" data-ts="${m.time}">${ts}</span>${escapeHtml(m.text)}`;
         frag.appendChild(div);
       } else {
         frag.appendChild(buildNotifDiv(m));
@@ -6717,7 +6731,7 @@
       const div = document.createElement('div')
       div.className = `hs-mc-stream-event ${m.eventClass || ''}`
       const ts = formatTimeFromTs(m.time)
-      div.innerHTML = `<span class="hs-mc-ts">${ts}</span>${escapeHtml(m.text)}`
+      div.innerHTML = `<span class="hs-mc-ts" data-ts="${m.time}">${ts}</span>${escapeHtml(m.text)}`
       return div
     }
 
@@ -6763,7 +6777,7 @@ m.type === 'usernotice' ? 'hs-mc-msg hs-mc-system' :
     // USERNOTICE system line (all values go through escapeHtml — same pattern as existing innerHTML above)
     const systemLine = m.systemMsg ? `<span class="hs-mc-system-text">${escapeHtml(m.systemMsg)}</span>` : ''
     const ts = formatTimeFromTs(m.time);
-    const tsHtml = ts ? `<span class="hs-mc-ts">${ts}</span>` : '';
+    const tsHtml = ts ? `<span class="hs-mc-ts" data-ts="${m.time}">${ts}</span>` : '';
     const msgBody = m.type === 'usernotice' && !m.text
       ? `${tsHtml}${systemLine}`
       : `${tsHtml}${systemLine}${platformBadge}${scBadge}${badges}${userLink}${channelSpan}: ${processedText}${stickerHtml}`

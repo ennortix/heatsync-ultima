@@ -3788,6 +3788,12 @@
         display: flex !important;
       }
 
+      .hs-mc-ts {
+        color: #555;
+        font-size: 10px;
+        margin-right: 4px;
+        font-variant-numeric: tabular-nums;
+      }
       .hs-mc-msg {
         padding: 2px 4px;
         border-radius: 0;
@@ -6363,7 +6369,11 @@
 
   function formatRelativeTime(isoDate) {
     if (!isoDate) return '';
-    const diff = Date.now() - new Date(isoDate).getTime();
+    return formatRelativeMs(Date.now() - new Date(isoDate).getTime());
+  }
+
+  function formatRelativeMs(diff) {
+    if (diff < 0) return 'now';
     const mins = Math.floor(diff / 60000);
     if (mins < 1) return 'now';
     if (mins < 60) return `${mins}m`;
@@ -6371,6 +6381,11 @@
     if (hours < 24) return `${hours}h`;
     const days = Math.floor(hours / 24);
     return `${days}d`;
+  }
+
+  function formatTimeFromTs(ts) {
+    if (!ts) return '';
+    return formatRelativeMs(Date.now() - ts);
   }
 
   async function toggleThread(msgId) {
@@ -6514,7 +6529,8 @@
       if (m._src === 'event') {
         const div = document.createElement('div');
         div.className = `hs-mc-stream-event ${m.eventClass || ''}`;
-        div.textContent = m.text;
+        const ts = formatTimeFromTs(m.time);
+        div.innerHTML = `<span class="hs-mc-ts">${ts}</span>${escapeHtml(m.text)}`;
         frag.appendChild(div);
       } else {
         frag.appendChild(buildNotifDiv(m));
@@ -6700,7 +6716,8 @@
     if (m.type === 'stream-event') {
       const div = document.createElement('div')
       div.className = `hs-mc-stream-event ${m.eventClass || ''}`
-      div.textContent = m.text
+      const ts = formatTimeFromTs(m.time)
+      div.innerHTML = `<span class="hs-mc-ts">${ts}</span>${escapeHtml(m.text)}`
       return div
     }
 
@@ -6745,9 +6762,11 @@ m.type === 'usernotice' ? 'hs-mc-msg hs-mc-system' :
     const replyBar = m.replyTo ? `<div class="hs-mc-reply-ctx">&#8618; Replying to <span class="hs-mc-reply-user">@${escapeHtml(m.replyTo.user)}</span>${m.replyTo.text ? ': ' + escapeHtml(m.replyTo.text.length > 80 ? m.replyTo.text.slice(0, 80) + '...' : m.replyTo.text) : ''}</div>` : ''
     // USERNOTICE system line (all values go through escapeHtml — same pattern as existing innerHTML above)
     const systemLine = m.systemMsg ? `<span class="hs-mc-system-text">${escapeHtml(m.systemMsg)}</span>` : ''
+    const ts = formatTimeFromTs(m.time);
+    const tsHtml = ts ? `<span class="hs-mc-ts">${ts}</span>` : '';
     const msgBody = m.type === 'usernotice' && !m.text
-      ? `${systemLine}`
-      : `${systemLine}${platformBadge}${scBadge}${badges}${userLink}${channelSpan}: ${processedText}${stickerHtml}`
+      ? `${tsHtml}${systemLine}`
+      : `${tsHtml}${systemLine}${platformBadge}${scBadge}${badges}${userLink}${channelSpan}: ${processedText}${stickerHtml}`
     div.innerHTML = `${replyBar}${msgBody}`;
     // Reply button for threading (Twitch/Kick — needs valid msg id)
     if (m.id && m.platform !== 'youtube') {

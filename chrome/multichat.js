@@ -3562,9 +3562,11 @@
         border-bottom: 1px solid #333;
       }
       .hs-mc-stream-event.event-update { color: #ff00ff; }
-      .hs-mc-stream-event.event-online { color: #0f0; }
-      .hs-mc-stream-event.event-offline { color: #f44; }
+      .hs-mc-stream-event.event-online { color: #f44; border-left-color: #f44; }
+      .hs-mc-stream-event.event-offline { color: #808080; border-left-color: #808080; }
       .hs-mc-stream-event.event-follow { color: #ff00ff; border-left-color: #ff00ff; opacity: 0.8; }
+      .hs-mc-stream-event.event-follow.event-online { color: #f44; border-left-color: #f44; }
+      .hs-mc-stream-event.event-follow.event-offline { color: #808080; border-left-color: #808080; }
       /* Live dot — red indicator, composes with any state */
       .hs-mc-tab {
         position: relative !important;
@@ -5683,8 +5685,7 @@
         transition: none;
       }
       .hs-notif:hover {
-        background: #fff;
-        color: #000;
+        background: #222;
       }
       .hs-notif-header {
         padding: 8px 12px;

@@ -5691,7 +5691,11 @@
         transition: none;
       }
       .hs-notif:hover {
-        background: #222;
+        background: #fff;
+      }
+      .hs-notif:hover,
+      .hs-notif:hover * {
+        color: #000 !important;
       }
       .hs-notif-header {
         padding: 8px 12px;

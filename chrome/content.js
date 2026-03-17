@@ -398,29 +398,55 @@ style.textContent = `
     letter-spacing: 0.3px !important;
     white-space: nowrap !important;
   }
+  .hs-pc-subs-you {
+    background: #ff0000 !important;
+    color: #ffff00 !important;
+    padding: 2px 4px !important;
+    border-radius: 0 !important;
+    font-size: 10px !important;
+    font-weight: 900 !important;
+    letter-spacing: 0.3px !important;
+    white-space: nowrap !important;
+  }
+  .hs-pc-bio {
+    color: #aaa !important;
+    font-size: 11px !important;
+    margin-top: 4px !important;
+    max-width: 250px !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    display: -webkit-box !important;
+    -webkit-line-clamp: 2 !important;
+    -webkit-box-orient: vertical !important;
+  }
 
   .hs-pc-heat {
-    background: #ffff00 !important;
-    color: #000 !important;
+    background: #000 !important;
+    border: 1px solid #fff !important;
     font-weight: 900 !important;
     font-size: 12px !important;
     padding: 2px 6px !important;
     border-radius: 0 !important;
-    box-shadow: 0 0 8px rgba(255,255,0,0.5) !important;
-    border: none !important;
     white-space: nowrap !important;
   }
 
   .hs-pc-op, .hs-pc-re {
-    background: #fff !important;
-    color: #000 !important;
-    border: 1px solid #000 !important;
-    padding: 2px 6px !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    gap: 4px !important;
+    background: transparent !important;
+    color: #fff !important;
+    border: 1px solid #fff !important;
+    padding: 0 6px !important;
+    height: 20px !important;
     border-radius: 0 !important;
     font-size: 11px !important;
-    font-weight: 600 !important;
+    font-weight: 500 !important;
     white-space: nowrap !important;
+    letter-spacing: 0.3px !important;
   }
+  .hs-pc-badge-op { color: #ff0000 !important; }
+  .hs-pc-badge-re { color: #00ffff !important; }
 
   .hs-pc-followers {
     background: #000 !important;
@@ -759,6 +785,17 @@ style.textContent = `
   .heatsync-emote-stack.expanded .heatsync-stack-block-all:hover {
     background: #fff !important;
     color: #000 !important;
+  }
+
+  /* Username mention links — hover underline */
+  .hs-username-colored,
+  .hs-mention-colored {
+    text-decoration: none !important;
+    transition: text-decoration 0.1s !important;
+  }
+  .hs-username-colored:hover,
+  .hs-mention-colored:hover {
+    text-decoration: underline !important;
   }
 
   /* Muted users — hide content, gray username, no animations */
@@ -1750,8 +1787,8 @@ let heatFirstBatch = true // first batch fires immediately
 
 // Heat tier config — matches client/config/colors.js
 const HEAT_GRADIENT = [
-  '#444444', '#664444', '#884444', '#aa0000', '#dd0000',
-  '#ff0000', '#ff6600', '#ff9900', '#ffcc00', '#ffffff'
+  '#808080', '#cc6e00', '#ff8700', '#ff9900', '#ff6600',
+  '#ff0000', '#ff2200', '#ff9900', '#ffcc00', '#ffffff'
 ]
 
 function getHeatTier(heat) {
@@ -1765,6 +1802,10 @@ function getHeatTier(heat) {
   if (heat >= 5) return 2
   if (heat >= 1) return 1
   return 0
+}
+
+function getHeatColor(heat) {
+  return HEAT_GRADIENT[getHeatTier(heat)]
 }
 
 function queueHeatLookup(username) {
@@ -3590,6 +3631,7 @@ function updateEmoteState(hash, emoteName, state) {
     '[data-a-target="chat-message-username"]',
     '.chat-line__username',
     '.hs-username-colored',
+    '.hs-mention-colored',
     '[data-hs-username]',
     '.hs-mc-user' // multichat usernames
   ].join(', ')
@@ -3624,6 +3666,15 @@ function updateEmoteState(hash, emoteName, state) {
     if (months > 0) return `${months}m`
     const days = Math.floor(ms / 86400000)
     return `${days}d`
+  }
+
+  function formatRelTime(dateStr) {
+    if (!dateStr) return ''
+    const d = Math.floor((Date.now() - new Date(dateStr).getTime()) / 86400000)
+    if (d > 365) return ' ' + Math.floor(d / 365) + 'y'
+    if (d > 30) return ' ' + Math.floor(d / 30) + 'mo'
+    if (d > 0) return ' ' + d + 'd'
+    return ''
   }
 
   // Detect current platform
@@ -3732,22 +3783,37 @@ function updateEmoteState(hash, emoteName, state) {
       row1.appendChild(ageSpan)
     }
     // Relationship badges
-    const rel = profile.relationship
-    if (rel) {
-      if (rel.followsYou) {
-        const fySpan = document.createElement('span')
-        fySpan.className = 'hs-pc-follows-you'
-        fySpan.textContent = 'follows you'
-        row1.appendChild(fySpan)
-      }
-      if (rel.isFollowing) {
-        const fgSpan = document.createElement('span')
-        fgSpan.className = 'hs-pc-following'
-        fgSpan.textContent = 'following'
-        row1.appendChild(fgSpan)
-      }
+    const rel = profile.relationship || {}
+    const followsYou = rel.profileFollowsViewerOnTwitch || rel.profileFollowsViewerOnKick || rel.followsYou
+    if (followsYou) {
+      const since = rel.profileFollowsViewerOnTwitchSince || rel.followsYouSince
+      const fySpan = document.createElement('span')
+      fySpan.className = 'hs-pc-follows-you'
+      fySpan.textContent = 'follows you' + formatRelTime(since)
+      row1.appendChild(fySpan)
+    }
+    if (rel.profileSubbedToViewerOnTwitch || rel.subscribesToYou) {
+      const since = rel.profileTwitchSubSince || rel.subscribesToYouSince
+      const subSpan = document.createElement('span')
+      subSpan.className = 'hs-pc-subs-you'
+      subSpan.textContent = 'subs to you' + formatRelTime(since)
+      row1.appendChild(subSpan)
+    }
+    if (rel.isFollowing) {
+      const fgSpan = document.createElement('span')
+      fgSpan.className = 'hs-pc-following'
+      fgSpan.textContent = 'following'
+      row1.appendChild(fgSpan)
     }
     info.appendChild(row1)
+
+    // Bio
+    if (profile.bio) {
+      const bioDiv = document.createElement('div')
+      bioDiv.className = 'hs-pc-bio'
+      bioDiv.textContent = profile.bio
+      info.appendChild(bioDiv)
+    }
 
     // ROW 2: Stats
     const hasStats = heat > 0 || op > 0 || re > 0 || followers > 0
@@ -3758,19 +3824,30 @@ function updateEmoteState(hash, emoteName, state) {
       if (heat > 0) {
         const heatSpan = document.createElement('span')
         heatSpan.className = 'hs-pc-heat'
+        heatSpan.style.color = getHeatColor(heat)
         heatSpan.textContent = `${heat}\u00B0`
         row2.appendChild(heatSpan)
       }
       if (op > 0) {
         const opSpan = document.createElement('span')
         opSpan.className = 'hs-pc-op'
-        opSpan.textContent = `#${op} OP`
+        const opNum = document.createElement('span')
+        opNum.textContent = op
+        const opBadge = document.createElement('span')
+        opBadge.className = 'hs-pc-badge-op'
+        opBadge.textContent = '[OP]'
+        opSpan.append(opNum, opBadge)
         row2.appendChild(opSpan)
       }
       if (re > 0) {
         const reSpan = document.createElement('span')
         reSpan.className = 'hs-pc-re'
-        reSpan.textContent = `#${re} RE`
+        const reNum = document.createElement('span')
+        reNum.textContent = re
+        const reBadge = document.createElement('span')
+        reBadge.className = 'hs-pc-badge-re'
+        reBadge.textContent = '[RE]'
+        reSpan.append(reNum, reBadge)
         row2.appendChild(reSpan)
       }
       if (followers > 0) {
@@ -3918,6 +3995,13 @@ function updateEmoteState(hash, emoteName, state) {
           document.addEventListener('mousemove', onMove, { signal: cardDragAC.signal })
           document.addEventListener('mouseup', onUp, { signal: cardDragAC.signal })
         })
+
+        // Close card when mouse leaves it (unless moving to a username)
+        cardEl.addEventListener('mouseleave', (ev) => {
+          const related = ev.relatedTarget
+          if (related && related.closest(usernameSelectors)) return
+          closeCard()
+        })
       }
 
       // Show loading
@@ -3942,13 +4026,35 @@ function updateEmoteState(hash, emoteName, state) {
     }
   }
 
-  // Click/keydown listeners — guarded to prevent duplicate registration
+  // Hover/click listeners — guarded to prevent duplicate registration
   let profileCardListenersAdded = false;
   if (!profileCardListenersAdded) {
     profileCardListenersAdded = true;
 
+    // Hover handler — instant show on mouseenter for HS-colored usernames
+    document.addEventListener('mouseover', (e) => {
+      const target = e.target.closest(usernameSelectors)
+      if (!target) return
+      const isHsMention = target.classList.contains('hs-username-colored') || target.classList.contains('hs-mention-colored')
+      if (isHsMention) {
+        showCard(target, e)
+      }
+    }, { signal })
+
+    // Mouseleave — close card when mouse leaves both the trigger and the card
+    document.addEventListener('mouseout', (e) => {
+      if (!cardEl) return
+      const related = e.relatedTarget
+      // Stay open if mouse moved into the card itself or another username
+      if (related && (related.closest('.hs-profile-card') || related.closest(usernameSelectors))) return
+      closeCard()
+    }, { signal })
+
+    // Keep card open while hovering it, close when leaving
+    // (applied per-card in showCard via cardEl mouseleave)
+
     // Click handler — capture phase to intercept before Twitch
-    // Colored mentions = left click opens HS card, Alt+click = HS card on native usernames
+    // Alt+click = HS card on native (non-colored) usernames
     document.addEventListener('click', (e) => {
       // Anything inside the card — stop propagation so Twitch doesn't steal it
       if (cardEl && e.target.closest('.hs-profile-card')) {
@@ -3965,14 +4071,18 @@ function updateEmoteState(hash, emoteName, state) {
 
       const target = e.target.closest(usernameSelectors)
       if (target) {
-        // HS-colored mentions (inline text we created) — normal left click opens card
         const isHsMention = target.classList.contains('hs-username-colored') || target.classList.contains('hs-mention-colored')
-        if (isHsMention || e.altKey) {
+        if (isHsMention) {
+          // Already handled by hover — click is a no-op for colored mentions
+          e.stopPropagation()
+          e.preventDefault()
+          return
+        }
+        if (e.altKey) {
           e.stopPropagation()
           e.preventDefault()
           showCard(target, e)
         } else if (cardEl) {
-          // Close HS card if open and user normal-clicks a native Twitch username
           closeCard()
         }
         return

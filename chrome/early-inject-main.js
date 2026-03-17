@@ -8,6 +8,192 @@
 
   // Store for emote URL mappings (populated by content script)
   window.__heatsyncEmoteUrls = window.__heatsyncEmoteUrls || {}
+
+  // ═══ Twitch GQL Interception ═══
+  // Captures persisted query hashes, integrity tokens, and response data
+  // from Twitch's own GQL calls. Proxies GQL requests from content scripts.
+  const gql = {
+    hashes: {},       // operationName → sha256Hash
+    integrity: null,  // Client-Integrity token
+    clientId: null,   // Client-Id
+    authToken: null,  // OAuth token
+    cache: {},        // operationName → { data, ts }
+    pendingRequests: new Map() // queued requests waiting for hashes
+  }
+
+  const GQL_OPS_TO_CACHE = [
+    'ChannelPointsPredictionContext', 'CommunityPointsContext',
+    'ChannelPointsContext', 'ActivePoll', 'CreatePoll',
+    'MakePrediction', 'ChannelPointsRewardRedemption'
+  ]
+
+  // Hook fetch to intercept Twitch GQL traffic
+  const origFetch = window.fetch
+  window.fetch = function(input, init) {
+    const url = typeof input === 'string' ? input : input?.url
+    if (url && url.includes('gql.twitch.tv') && init?.method === 'POST') {
+      // Capture headers
+      try {
+        const hdrs = init.headers
+        if (hdrs) {
+          const get = (k) => {
+            if (hdrs instanceof Headers) return hdrs.get(k)
+            if (typeof hdrs === 'object') return hdrs[k] || hdrs[k.toLowerCase()]
+            return null
+          }
+          const integ = get('Client-Integrity')
+          if (integ) gql.integrity = integ
+          const cid = get('Client-Id') || get('Client-ID')
+          if (cid) gql.clientId = cid
+          const auth = get('Authorization')
+          if (auth && auth.startsWith('OAuth ')) gql.authToken = auth.slice(6)
+        }
+      } catch(e) {}
+
+      // Capture operation hashes from request body
+      try {
+        const body = typeof init.body === 'string' ? JSON.parse(init.body) : null
+        if (body) {
+          const ops = Array.isArray(body) ? body : [body]
+          for (const op of ops) {
+            const hash = op?.extensions?.persistedQuery?.sha256Hash
+            if (hash && op.operationName) {
+              gql.hashes[op.operationName] = hash
+              log('GQL hash captured:', op.operationName)
+            }
+          }
+        }
+      } catch(e) {}
+
+      // Intercept response to cache data
+      const promise = origFetch.apply(this, arguments)
+      promise.then(resp => {
+        if (!resp.ok) return
+        const clone = resp.clone()
+        clone.json().then(data => {
+          const items = Array.isArray(data) ? data : [data]
+          for (const item of items) {
+            const opName = item?.extensions?.operationName
+            if (!opName) continue
+            gql.cache[opName] = { data: item.data, ts: Date.now() }
+            // Forward prediction/poll/points data to content script
+            if (GQL_OPS_TO_CACHE.some(n => opName.includes(n) || opName.toLowerCase().includes(n.toLowerCase()))) {
+              window.postMessage({
+                type: 'heatsync-gql-data',
+                operation: opName,
+                data: item.data,
+                errors: item.errors || null
+              }, location.origin)
+            }
+          }
+          // Flush any pending requests that now have hashes
+          for (const [id, req] of gql.pendingRequests) {
+            if (gql.hashes[req.operation]) {
+              gql.pendingRequests.delete(id)
+              executeGqlProxy(req)
+            }
+          }
+        }).catch(() => {})
+      }).catch(() => {})
+
+      return promise
+    }
+    return origFetch.apply(this, arguments)
+  }
+
+  function buildGqlHeaders() {
+    const hdrs = { 'Content-Type': 'application/json' }
+    if (gql.clientId) hdrs['Client-Id'] = gql.clientId
+    else hdrs['Client-Id'] = 'kimne78kx3ncx6brgo4mv6wki5h1ko'
+    if (gql.authToken) hdrs['Authorization'] = 'OAuth ' + gql.authToken
+    if (gql.integrity) hdrs['Client-Integrity'] = gql.integrity
+    return hdrs
+  }
+
+  function executeGqlProxy(req) {
+    const hash = gql.hashes[req.operation]
+    if (!hash) {
+      window.postMessage({
+        type: 'heatsync-gql-response', id: req.id,
+        error: 'no hash for ' + req.operation
+      }, location.origin)
+      return
+    }
+
+    const body = req.rawQuery
+      ? { query: req.rawQuery, variables: req.variables || {} }
+      : {
+          operationName: req.operation,
+          extensions: { persistedQuery: { version: 1, sha256Hash: hash } },
+          variables: req.variables || {}
+        }
+
+    // Support batched operations
+    const payload = req.batch ? req.batch.map(op => ({
+      operationName: op.operation,
+      extensions: { persistedQuery: { version: 1, sha256Hash: gql.hashes[op.operation] || hash } },
+      variables: op.variables || {}
+    })) : body
+
+    origFetch('https://gql.twitch.tv/gql', {
+      method: 'POST',
+      headers: buildGqlHeaders(),
+      body: JSON.stringify(payload)
+    })
+    .then(r => r.json())
+    .then(data => {
+      window.postMessage({
+        type: 'heatsync-gql-response', id: req.id, data
+      }, location.origin)
+    })
+    .catch(err => {
+      window.postMessage({
+        type: 'heatsync-gql-response', id: req.id, error: err.message
+      }, location.origin)
+    })
+  }
+
+  // Handle GQL requests from content script
+  window.addEventListener('message', (e) => {
+    if (e.origin !== location.origin) return
+
+    // Content script requesting cached GQL data
+    if (e.data?.type === 'heatsync-gql-get-cache') {
+      const ops = e.data.operations || []
+      const result = {}
+      for (const op of ops) {
+        if (gql.cache[op]) result[op] = gql.cache[op]
+      }
+      window.postMessage({
+        type: 'heatsync-gql-cache-response',
+        id: e.data.id,
+        data: result,
+        hashes: Object.keys(gql.hashes)
+      }, location.origin)
+      return
+    }
+
+    // Content script requesting GQL proxy call
+    if (e.data?.type === 'heatsync-gql-request') {
+      const req = e.data
+      if (req.rawQuery || gql.hashes[req.operation]) {
+        executeGqlProxy(req)
+      } else {
+        // Queue request — hash might arrive soon from Twitch's own calls
+        gql.pendingRequests.set(req.id, req)
+        setTimeout(() => {
+          if (gql.pendingRequests.has(req.id)) {
+            gql.pendingRequests.delete(req.id)
+            window.postMessage({
+              type: 'heatsync-gql-response', id: req.id,
+              error: 'hash not available for ' + req.operation
+            }, location.origin)
+          }
+        }, 8000)
+      }
+      return
+    }
+  })
   let urlMapWasEmpty = true
 
   // Listen for URL map updates from content script

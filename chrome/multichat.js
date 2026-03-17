@@ -843,16 +843,8 @@
         menu.appendChild(item);
       };
 
-      // Show YouTube URL if configured
-      const hasYt = ch && typeof ch !== 'string' && ch.youtube;
-      if (hasYt) {
-        const ytInfo = document.createElement('div');
-        ytInfo.textContent = 'yt: ' + (youtubeLinks.get(tabId)?.channelName || ch.youtube.slice(0, 40));
-        ytInfo.style.cssText = 'padding:4px 12px;color:#808080;font-size:10px;border-bottom:1px solid #808080;margin-bottom:2px;';
-        menu.appendChild(ytInfo);
-        mkItem('edit youtube url', '#fff', () => showEditYoutubePrompt(tabId));
-      }
-      mkItem('remove channel', '#ff4444', () => removeChannel(tabId));
+      mkItem('edit', '#fff', () => showEditChannelForm(tabId));
+      mkItem('remove', '#ff4444', () => removeChannel(tabId));
 
       // Append then clamp to viewport so it doesn't overflow off-screen
       document.body.appendChild(menu);
@@ -896,8 +888,34 @@
   // Zebra striping — alternate row backgrounds (default off)
   let zebraEnabled = false;
 
-  // Auto-hide input bar when empty (default off)
-  let hideEmptyInput = false;
+  // Input bar auto-hide — hidden when empty, shown on first keystroke
+  let inputBarVisible = true;
+
+  function showInputBar() {
+    if (inputBarVisible) return
+    inputBarVisible = true
+    const bar = document.getElementById('hs-mc-inputbar')
+    if (bar) bar.style.display = ''
+    const picker = document.getElementById('hs-mc-emote-picker')
+    adjustOverlayForPicker(picker?.classList.contains('visible') || false)
+  }
+
+  function hideInputBar() {
+    if (!inputBarVisible) return
+    const input = document.getElementById('hs-mc-input')
+    const hasText = input ? (input.value || input.textContent || '').trim().length > 0 : false
+    if (hasText) return
+    // Don't hide while emote picker is open
+    const picker = document.getElementById('hs-mc-emote-picker')
+    if (picker?.classList.contains('visible')) return
+    // Don't hide while reply is active
+    if (replyState) return
+    inputBarVisible = false
+    const bar = document.getElementById('hs-mc-inputbar')
+    if (bar) bar.style.display = 'none'
+    const overlay = document.getElementById('hs-mc-overlay')
+    if (overlay) overlay.style.bottom = '0'
+  }
 
   // Chat width state
   let chatWidth = 340; // Default width
@@ -929,9 +947,17 @@
       const newBtn = document.getElementById('hs-mc-new-msgs');
       if (!msgsEl || !newBtn) return;
 
+      const isStaticTab = () => currentTab === 'activity' || currentTab === 'feed';
+
       // scroll event only used for scrollbar drag detection (not wheel — wheel has its own handler)
       msgsEl.addEventListener('scrollend', () => {
         if (isProgrammaticScroll) return;
+        if (isStaticTab()) {
+          // Static tabs: newest at top — "scrolled away" = scrollTop > 0
+          isScrolledUp = msgsEl.scrollTop > 50;
+          if (!isScrolledUp) { newBtn.style.display = 'none'; newMessageCount = 0; }
+          return;
+        }
         const atBottom = msgsEl.scrollHeight - msgsEl.scrollTop - msgsEl.clientHeight < 50;
         if (atBottom) {
           isScrolledUp = false;
@@ -946,6 +972,12 @@
 
       // Use wheel event to detect intentional user scrolling
       msgsEl.addEventListener('wheel', (e) => {
+        if (isStaticTab()) {
+          // Static tabs: track scroll position but don't show button from scrolling alone
+          setTimeout(() => { isScrolledUp = msgsEl.scrollTop > 50; }, 50);
+          if (msgsEl.scrollTop <= 50) { newBtn.style.display = 'none'; newMessageCount = 0; }
+          return;
+        }
         if (e.deltaY < 0) {
           // Scrolling up with wheel = user intent
           isScrolledUp = true;
@@ -965,12 +997,18 @@
       });
 
       newBtn.addEventListener('click', () => {
-        // Reset scroll state FIRST, then re-render to catch up on skipped messages
         isScrolledUp = false;
         newMessageCount = 0;
         newBtn.style.display = 'none';
-        // Re-render will scroll to bottom automatically since isScrolledUp is now false
-        renderMessages(currentTab);
+        if (isStaticTab()) {
+          // Static tabs: re-render then scroll to top (newest content)
+          if (currentTab === 'activity') { notifLoaded = false; renderActivity(); }
+          else renderMessages(currentTab);
+          msgsEl.scrollTop = 0;
+        } else {
+          // Chat tabs: re-render to catch up on skipped messages
+          renderMessages(currentTab);
+        }
       });
     }, 100);
 
@@ -1264,35 +1302,6 @@
     }
   }
 
-  // Hide empty input setting
-  async function loadHideEmptyInputSetting() {
-    try {
-      const stored = await chrome.storage.local.get(['ui_settings']);
-      if (stored.ui_settings?.hideEmptyInput !== undefined) {
-        hideEmptyInput = stored.ui_settings.hideEmptyInput;
-      }
-    } catch (e) {
-      log('Error loading hideEmptyInput setting:', e);
-    }
-  }
-
-  async function saveHideEmptyInputSetting() {
-    try {
-      const stored = await chrome.storage.local.get(['ui_settings']);
-      const settings = stored.ui_settings || {};
-      settings.hideEmptyInput = hideEmptyInput;
-      await chrome.storage.local.set({ ui_settings: settings });
-    } catch (e) {
-      log('Error saving hideEmptyInput setting:', e);
-    }
-  }
-
-  function toggleHideEmptyInput() {
-    hideEmptyInput = !hideEmptyInput;
-    saveHideEmptyInputSetting();
-    applyHideEmptyInput();
-    log('Hide empty input:', hideEmptyInput ? 'enabled' : 'disabled');
-  }
 
   // Zebra striping setting
   async function loadZebraSetting() {
@@ -1320,20 +1329,6 @@
     renderMessages(currentTab);
   }
 
-  function applyHideEmptyInput() {
-    const bar = document.getElementById('hs-mc-inputbar');
-    if (!bar) return
-    if (hideEmptyInput) {
-      bar.classList.add('hs-mc-autohide')
-      // Check if input has content
-      const input = document.getElementById('hs-mc-input')
-      const hasText = input ? (input.value || input.textContent || '').trim().length > 0 : false
-      if (!hasText) bar.classList.add('hs-mc-hidden')
-      else bar.classList.remove('hs-mc-hidden')
-    } else {
-      bar.classList.remove('hs-mc-autohide', 'hs-mc-hidden')
-    }
-  }
 
   function rebuildInput() {
     const bar = document.getElementById('hs-mc-inputbar');
@@ -1503,7 +1498,7 @@
     } else if (picker.classList.contains('visible')) {
       picker.classList.remove('visible');
       adjustOverlayForPicker(false);
-      applyHideEmptyInput();
+      hideInputBar();
       if (_chunkedRafId) { cancelAnimationFrame(_chunkedRafId); _chunkedRafId = null; }
       return;
     }
@@ -1556,10 +1551,6 @@
           <div class="hs-mc-setting-row">
             <span class="hs-mc-setting-label">zebra striping</span>
             <button class="hs-mc-toggle-pill ${zebraEnabled ? 'active' : ''}" id="hs-mc-zebra-toggle"><span class="hs-mc-toggle-knob"></span></button>
-          </div>
-          <div class="hs-mc-setting-row">
-            <span class="hs-mc-setting-label">auto-hide input</span>
-            <button class="hs-mc-toggle-pill ${hideEmptyInput ? 'active' : ''}" id="hs-mc-hide-input-toggle"><span class="hs-mc-toggle-knob"></span></button>
           </div>
         </div>
         </div>
@@ -1638,12 +1629,6 @@
       zebraToggle.classList.toggle('active', zebraEnabled);
     });
 
-    // Hide empty input toggle
-    const hideInputToggle = document.getElementById('hs-mc-hide-input-toggle');
-    hideInputToggle?.addEventListener('click', () => {
-      toggleHideEmptyInput();
-      hideInputToggle.classList.toggle('active', hideEmptyInput);
-    });
 
     // Tab switching
     picker.querySelectorAll('.hs-mc-picker-tab').forEach(tabBtn => {
@@ -1723,7 +1708,7 @@
         if (!picker.contains(e.target) && !e.target.closest('#hs-mc-emote-btn')) {
           picker.classList.remove('visible');
           adjustOverlayForPicker(false);
-          applyHideEmptyInput();
+          hideInputBar();
           stopPredictionPoll();
           document.removeEventListener('click', _pickerCloseHandler);
           _pickerCloseHandler = null;
@@ -1739,9 +1724,9 @@
     if (!overlay) return;
     const container = document.getElementById('hs-mc-container');
     const hasBottomTabs = container?.classList.contains('hs-tabs-bottom');
-    const baseBottom = hasBottomTabs ? 90 : 52;
+    const barBase = inputBarVisible ? (hasBottomTabs ? 90 : 52) : 0;
     const pickerHeight = 400;
-    overlay.style.bottom = open ? (baseBottom + pickerHeight) + 'px' : baseBottom + 'px';
+    overlay.style.bottom = open ? (barBase + pickerHeight) + 'px' : barBase + 'px';
   }
 
 
@@ -2418,29 +2403,15 @@
     input.addEventListener('keydown', handleInputKeydown);
     input.addEventListener('input', handleInputChange);
     input.addEventListener('input', updateCharCount);
-    input.addEventListener('focus', () => {
-      if (!hideEmptyInput) return
-      const bar = document.getElementById('hs-mc-inputbar')
-      if (bar) bar.classList.remove('hs-mc-hidden')
-    });
     input.addEventListener('input', () => {
-      if (!hideEmptyInput) return
-      const bar = document.getElementById('hs-mc-inputbar')
-      if (!bar) return
       const hasText = (input.value || input.textContent || '').trim().length > 0
-      if (hasText) bar.classList.remove('hs-mc-hidden')
-      else bar.classList.add('hs-mc-hidden')
+      if (hasText) showInputBar()
+      else hideInputBar()
     });
     input.addEventListener('blur', () => {
       setTimeout(hideAutocomplete, 150)
-      // Re-hide if empty on blur (but not while emote picker is open)
-      if (!hideEmptyInput) return
-      const bar = document.getElementById('hs-mc-inputbar')
-      if (!bar) return
-      const picker = document.getElementById('hs-mc-emote-picker')
-      if (picker?.classList.contains('visible')) return
-      const hasText = (input.value || input.textContent || '').trim().length > 0
-      if (!hasText) bar.classList.add('hs-mc-hidden')
+      // Hide input bar after blur if empty (delay to allow click-to-emote-picker)
+      setTimeout(hideInputBar, 200)
     });
     sendBtn?.addEventListener('click', sendMessage);
 
@@ -2467,7 +2438,7 @@
         if (picker?.classList.contains('visible')) {
           picker.classList.remove('visible');
           adjustOverlayForPicker(false);
-          applyHideEmptyInput();
+          hideInputBar();
           if (_pickerCloseHandler) {
             document.removeEventListener('click', _pickerCloseHandler);
             _pickerCloseHandler = null;
@@ -2489,12 +2460,32 @@
         const input = document.getElementById('hs-mc-input');
         if (!input) return;
 
-        // If not already in our input, focus it
+        // If not already in our input, reveal bar and focus it
         if (document.activeElement !== input) {
           e.preventDefault();
+          showInputBar();
           input.focus();
         }
       }, { capture: true, signal: mcSignal });
+    }
+
+    // Auto-reveal input bar when user starts typing anywhere
+    if (!window._hsMcTypeRevealHandler) {
+      window._hsMcTypeRevealHandler = true
+      document.addEventListener('keydown', (e) => {
+        if (inputBarVisible) return
+        const input = document.getElementById('hs-mc-input')
+        if (!input) return
+        // Only printable chars — skip modifiers, nav, function keys
+        if (e.ctrlKey || e.altKey || e.metaKey) return
+        if (e.key.length !== 1) return
+        // Don't steal focus from other inputs
+        const active = document.activeElement
+        if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable)) return
+        showInputBar()
+        input.focus()
+        // Character will flow into the now-focused input naturally
+      }, { signal: mcSignal })
     }
 
     // Helper: find emote wrapper or img from event target
@@ -2622,6 +2613,17 @@
           flashAllEmotes(emoteName, 'hs-flash-add');
         }
       }, { capture: true, signal: mcSignal });
+    }
+
+    // Spoiler click → toggle revealed
+    if (!window._hsMcSpoilerHandler) {
+      window._hsMcSpoilerHandler = true
+      document.addEventListener('click', (e) => {
+        const spoiler = e.target.closest('.hs-spoiler')
+        if (!spoiler) return
+        e.stopPropagation()
+        spoiler.classList.toggle('revealed')
+      }, { signal: mcSignal })
     }
 
     // Reply button click → set reply state and focus input
@@ -3067,6 +3069,7 @@
   // Reply state management
   function setReplyState(state) {
     replyState = state
+    showInputBar()
     const bar = document.getElementById('hs-mc-inputbar')
     if (!bar) return
     // Remove existing indicator
@@ -3089,6 +3092,7 @@
   function clearReplyState() {
     replyState = null
     document.getElementById('hs-mc-reply-indicator')?.remove()
+    hideInputBar()
   }
 
   // Get Twitch auth token from cookie
@@ -3174,6 +3178,7 @@
         }
         pendingMessage = '';
         updateCharCount();
+        hideInputBar();
       } else {
         // Show specific error feedback
         input.style.borderColor = '#f44';
@@ -3540,10 +3545,10 @@
       .hs-mc-tab.has-new.active {
         color: #000 !important;
       }
-      /* Stream event — magenta tab text (game switch, online/offline) */
+      /* Stream event — cyan tab text (game switch) */
       .hs-mc-tab.has-stream-event {
         background: #000 !important;
-        color: #ff00ff !important;
+        color: #00ffff !important;
         border-color: #808080 !important;
       }
       .hs-mc-tab.has-stream-event:not(.active):hover {
@@ -3558,13 +3563,13 @@
         padding: 2px 8px;
         font-size: 13px;
         font-style: italic;
-        border-left: 3px solid #ff00ff;
+        border-left: 3px solid #00ffff;
         border-bottom: 1px solid #333;
       }
-      .hs-mc-stream-event.event-update { color: #ff00ff; }
+      .hs-mc-stream-event.event-update { color: #00ffff; }
       .hs-mc-stream-event.event-online { color: #f44; border-left-color: #f44; }
       .hs-mc-stream-event.event-offline { color: #808080; border-left-color: #808080; }
-      .hs-mc-stream-event.event-follow { color: #ff00ff; border-left-color: #ff00ff; opacity: 0.8; }
+      .hs-mc-stream-event.event-follow { color: #00ffff; border-left-color: #00ffff; opacity: 0.8; }
       .hs-mc-stream-event.event-follow.event-online { color: #f44; border-left-color: #f44; }
       .hs-mc-stream-event.event-follow.event-offline { color: #808080; border-left-color: #808080; }
       /* Live dot — red indicator, composes with any state */
@@ -3831,8 +3836,8 @@
         z-index: 10;
       }
       .hs-mc-reply-btn:hover {
-        color: #fff;
-        background: #333;
+        color: #000;
+        background: #fff;
       }
       .hs-mc-msg[data-msg-id]:hover .hs-mc-reply-btn {
         display: block;
@@ -3862,7 +3867,8 @@
         line-height: 1;
       }
       #hs-mc-reply-cancel:hover {
-        color: #fff;
+        color: #000;
+        background: #fff;
       }
       .hs-mc-muted .hs-mc-user {
         color: #808080 !important;
@@ -4415,33 +4421,6 @@
       #hs-link-tooltip .link-loading {
         color: #888;
         font-size: 11px;
-      }
-
-      /* Auto-hide input bar when empty */
-      #hs-mc-inputbar.hs-mc-autohide.hs-mc-hidden {
-        opacity: 0;
-        height: 4px;
-        min-height: 4px;
-        padding: 0 8px;
-        border-top-color: transparent;
-        overflow: hidden;
-        transition: none;
-      }
-      #hs-mc-inputbar.hs-mc-autohide.hs-mc-hidden > * {
-        visibility: hidden;
-      }
-      #hs-mc-inputbar.hs-mc-autohide {
-        transition: none;
-      }
-      #hs-mc-inputbar.hs-mc-autohide.hs-mc-hidden:hover {
-        opacity: 1;
-        height: auto;
-        min-height: unset;
-        padding: 8px;
-        border-top-color: #808080;
-      }
-      #hs-mc-inputbar.hs-mc-autohide.hs-mc-hidden:hover > * {
-        visibility: visible;
       }
 
       /* Input styles (used in #hs-mc-inputbar) */
@@ -5623,10 +5602,9 @@
         background: #fff;
         color: #000;
       }
-      .hs-feed-msg:hover .hs-feed-user,
-      .hs-feed-msg:hover .hs-feed-time,
-      .hs-feed-msg:hover .hs-feed-text {
-        color: #000;
+      .hs-feed-msg:hover,
+      .hs-feed-msg:hover *:not(.hs-spoiler:not(.revealed)) {
+        color: #000 !important;
       }
       .hs-feed-header {
         display: flex;
@@ -5683,6 +5661,30 @@
         font-size: 12px;
       }
 
+      /* ---- TEXT FORMATTING ---- */
+      .hs-spoiler {
+        background: #aaa;
+        color: transparent;
+        cursor: pointer;
+        border-radius: 2px;
+        padding: 0 2px;
+        transition: none;
+      }
+      .hs-spoiler.revealed {
+        background: transparent;
+        color: inherit;
+      }
+      .hs-greentext {
+        color: #789922;
+      }
+      .hs-inline-code {
+        background: #2a2a2a;
+        padding: 1px 4px;
+        border-radius: 2px;
+        font-family: monospace;
+        font-size: 12px;
+      }
+
       /* ---- NOTIFICATIONS ---- */
       .hs-notif {
         padding: 10px 12px;
@@ -5694,7 +5696,7 @@
         background: #fff;
       }
       .hs-notif:hover,
-      .hs-notif:hover * {
+      .hs-notif:hover *:not(.hs-spoiler:not(.revealed)) {
         color: #000 !important;
       }
       .hs-notif-header {
@@ -5976,7 +5978,9 @@
     // Ensure input bar exists
     if (!inputBarElement || !document.contains(inputBarElement)) {
       inputBarElement = createInputBar();
-      applyHideEmptyInput();
+      // Start hidden — typing reveals it
+      inputBarVisible = true
+      hideInputBar()
       log('Created input bar');
     }
     if (!container.contains(inputBarElement)) {
@@ -6188,8 +6192,12 @@
         unreadNotifCount++;
         updateNotifBadge();
         if (currentTab === 'activity') {
-          notifLoaded = false;
-          renderActivity();
+          if (isScrolledUp) {
+            showStaticNewButton();
+          } else {
+            notifLoaded = false;
+            renderActivity();
+          }
         }
       }
     });
@@ -6222,7 +6230,7 @@
     const resp = await apiFetch(`/api/messages?sort=time&limit=30&page=${page}`, { auth: false });
     feedLoading = false;
     if (!resp.ok) {
-      log('Feed fetch failed:', resp.status || resp.error);
+      console.error('[heatsync-mc] Feed fetch failed — full resp:', JSON.stringify(resp));
       if (currentTab === 'feed') {
         const msgsEl = document.getElementById('hs-mc-messages');
         if (msgsEl && feedMessages.length === 0) {
@@ -6329,7 +6337,7 @@
       </div>
       <div class="hs-feed-body">${content}</div>
       <div class="hs-feed-stats">
-        <span class="hs-feed-stat" title="heat" style="color:#ff8700">${heat > 0 ? heat + '°' : ''}</span>
+        <span class="hs-feed-stat" title="heat" style="color:${heat > 0 ? getHeatColor(heat) : '#808080'}">${heat > 0 ? heat + '°' : ''}</span>
         <span class="hs-feed-stat hs-feed-replies" title="replies">${replies > 0 ? '💬 ' + replies : ''}</span>
       </div>
     `;
@@ -6347,12 +6355,50 @@
     return div;
   }
 
+  // Format text with markdown-style syntax (matches heatsync.org rendering)
+  // Must be called AFTER escapeHtml — operates on escaped HTML strings
+  function formatText(html) {
+    // Greentext: >text< (escaped as &gt;text&lt;)
+    html = html.replace(/(&gt;)([^<>&]+)(&lt;)/g, '<span class="hs-greentext">&gt;$2&lt;</span>')
+    // Inline code: `text`
+    html = html.replace(/`([^`]+)`/g, '<code class="hs-inline-code">$1</code>')
+    // Bold: **text** or __text__
+    html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    html = html.replace(/__(.+?)__/g, '<strong>$1</strong>')
+    // Italic: *text* or _text_ (not if part of bold)
+    html = html.replace(/(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)/g, '<em>$1</em>')
+    html = html.replace(/(?<!_)_(?!_)(.+?)(?<!_)_(?!_)/g, '<em>$1</em>')
+    // Strikethrough: ~~text~~
+    html = html.replace(/~~(.+?)~~/g, '<del>$1</del>')
+    // Spoilers: ||text||
+    html = html.replace(/\|\|(.+?)\|\|/g, '<span class="hs-spoiler">$1</span>')
+    return html
+  }
+
   function renderFeedContent(content, emoteRefs) {
     if (!content) return '';
     let html = escapeHtml(String(content));
-    // Render emote refs as inline images
+    // Text formatting (bold, italic, spoilers, etc.)
+    html = formatText(html)
+    // Linkify URLs BEFORE emote replacement (avoids corrupting img src attributes)
+    // Split by HTML tags to only linkify text segments (like heatsync.org does)
+    if (linksEnabled) {
+      const parts = html.split(/(<[^>]+>)/)
+      html = parts.map((part, i) => {
+        if (i % 2 === 1) return part // skip HTML tags
+        part = part.replace(/(https?:\/\/[^\s<"]+)/gi, '<a href="$1" target="_blank" rel="noopener" class="hs-mc-link">$1</a>')
+        part = part.replace(/(?<!\/\/)([a-z0-9-]+(?:\.[a-z0-9-]+)+\/[^\s<"]*)/gi, (m) => {
+          return `<a href="https://${m}" target="_blank" rel="noopener" class="hs-mc-link">${m}</a>`
+        })
+        return part
+      }).join('')
+    }
+    // Render emote refs as inline images (AFTER linkification so img tags aren't corrupted)
+    // emote_refs can be { name: url } or { name: { url, hash, name, provider } }
     if (emoteRefs && typeof emoteRefs === 'object') {
-      for (const [name, url] of Object.entries(emoteRefs)) {
+      for (const [name, val] of Object.entries(emoteRefs)) {
+        const url = typeof val === 'string' ? val : val?.url
+        if (!url) continue
         const escaped = escapeHtml(name);
         const safeUrl = escapeHtml(url);
         html = html.replace(
@@ -6360,13 +6406,6 @@
           `<img class="hs-mc-emote" src="${safeUrl}" alt="${escaped}" title="${escaped}" loading="lazy">`
         );
       }
-    }
-    // Linkify URLs (with and without protocol)
-    if (linksEnabled) {
-      html = html.replace(/(?<!href="|src=")(https?:\/\/[^\s<"]+)/gi, '<a href="$1" target="_blank" rel="noopener" class="hs-mc-link">$1</a>');
-      html = html.replace(/(?<!href="|src="|\/\/)([a-z0-9-]+(?:\.[a-z0-9-]+)+\/[^\s<"]*)/gi, (m) => {
-        return `<a href="https://${m}" target="_blank" rel="noopener" class="hs-mc-link">${m}</a>`;
-      });
     }
     return html;
   }
@@ -6453,6 +6492,7 @@
       }
       pendingMessage = '';
       updateCharCount();
+      hideInputBar();
       // Message will appear via WebSocket real-time
     } else {
       input.style.borderColor = '#f44';
@@ -6493,6 +6533,12 @@
   function renderActivity() {
     const msgsEl = document.getElementById('hs-mc-messages');
     if (!msgsEl) return;
+
+    // Hide resume button on initial render (shown only when new content arrives while scrolled)
+    if (!isScrolledUp) {
+      const newBtn = document.getElementById('hs-mc-new-msgs');
+      if (newBtn) newBtn.style.display = 'none';
+    }
 
     if (!hsAuthToken && activityEvents.length === 0) {
       msgsEl.innerHTML = '<div class="hs-mc-empty">log in at <a href="https://heatsync.org" target="_blank" style="color:#ff6b35">heatsync.org</a> to see activity</div>';
@@ -6548,7 +6594,12 @@
         const div = document.createElement('div');
         div.className = `hs-mc-stream-event ${m.eventClass || ''}`;
         const ts = formatTimeFromTs(m.time);
-        div.innerHTML = `<span class="hs-mc-ts" data-ts="${m.time}">${ts}</span>${escapeHtml(m.text)}`;
+        // Show channel name in magenta for activity context
+        // Strip [channel] prefix from follow events (we add our own #channel)
+        let evtText = m.text
+        if (m.channel) evtText = evtText.replace(new RegExp(`^\\[${m.channel}\\]\\s*`), '')
+        const chanLabel = m.channel ? `<span style="color:#00ffff;font-weight:bold">#${escapeHtml(m.channel)}</span> ` : '';
+        div.innerHTML = `<span class="hs-mc-ts" data-ts="${m.time}">${ts}</span>${chanLabel}${escapeHtml(evtText)}`;
         frag.appendChild(div);
       } else {
         frag.appendChild(buildNotifDiv(m));
@@ -6561,8 +6612,10 @@
     const div = document.createElement('div');
     div.className = 'hs-notif';
     const time = formatRelativeTime(m.created_at);
-    const content = escapeHtml((m.content || '').slice(0, 120));
+    // Safe: renderFeedContent escapes via escapeHtml first, then adds safe formatting tags
+    const content = renderFeedContent(m.content, m.emote_refs);
 
+    // Safe: username/time through escapeHtml, color through sanitizeColor, content through renderFeedContent
     div.innerHTML = `
       <div class="hs-feed-header">
         <a href="https://heatsync.org/user/${encodeURIComponent(m.username)}" target="_blank" class="hs-feed-user" style="color:${sanitizeColor(m.user_color || '#fff')}">${escapeHtml(m.username || 'anon')}</a>
@@ -6571,8 +6624,11 @@
       <div class="hs-feed-body">${content}</div>
     `;
 
-    // Click to switch to feed and show this thread
-    div.addEventListener('click', () => {
+    // Click to switch to feed and show this thread (but not if clicking interactive content)
+    div.addEventListener('click', (e) => {
+      const spoiler = e.target.closest('.hs-spoiler')
+      if (spoiler) { spoiler.classList.toggle('revealed'); return }
+      if (e.target.closest('a, .hs-mc-emote, .hs-mc-link')) return
       const threadId = m.reply_to || m.base36_id;
       expandedThreadId = threadId;
       threadReplies = [];
@@ -6814,6 +6870,15 @@ m.type === 'usernotice' ? 'hs-mc-msg hs-mc-system' :
       }
     }
     return result
+  }
+
+  // Show "new" button for static tabs (activity/feed) — points up since newest is at top
+  function showStaticNewButton() {
+    const newBtn = document.getElementById('hs-mc-new-msgs');
+    if (!newBtn) return;
+    newMessageCount++;
+    newBtn.innerHTML = `<span class="hs-arrow-down" style="transform:rotate(180deg)">▼</span> ${newMessageCount} new`;
+    newBtn.style.display = 'flex';
   }
 
   // Scroll helper — reused by both renderMessages and appendMessage
@@ -8992,9 +9057,15 @@ m.type === 'usernotice' ? 'hs-mc-msg hs-mc-system' :
     if (currentTab === tabId) switchTab('live');
   }
 
-  function showEditYoutubePrompt(tabId) {
-    const ch = config.channels.find(c => (typeof c === 'string' ? c : c.id) === tabId);
-    if (!ch || typeof ch === 'string') return;
+  function showEditChannelForm(tabId) {
+    let ch = config.channels.find(c => (typeof c === 'string' ? c : c.id) === tabId);
+    if (!ch) return;
+    // Normalize legacy string format
+    if (typeof ch === 'string') {
+      const idx = config.channels.indexOf(ch);
+      ch = { id: ch, twitch: ch, kick: '', youtube: '' };
+      config.channels[idx] = ch;
+    }
 
     const msgsEl = document.getElementById('hs-mc-messages');
     if (!msgsEl) return;
@@ -9004,26 +9075,40 @@ m.type === 'usernotice' ? 'hs-mc-msg hs-mc-system' :
     wrapper.style.cssText = 'display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:10px;color:#808080;font-size:13px;padding:16px;box-sizing:border-box;';
 
     const title = document.createElement('div');
-    title.textContent = 'edit youtube for ' + tabId;
+    title.textContent = 'edit ' + tabId;
     title.style.cssText = 'font-size:15px;font-weight:700;color:#fff;';
     wrapper.appendChild(title);
 
-    const row = document.createElement('div');
-    row.style.cssText = 'display:flex;align-items:center;gap:6px;width:100%;max-width:320px;';
-    const lbl = document.createElement('span');
-    lbl.textContent = 'youtube';
-    lbl.style.cssText = 'font-size:11px;font-weight:700;min-width:56px;color:#808080;';
-    const input = document.createElement('input');
-    input.type = 'text';
-    input.value = ch.youtube || '';
-    input.placeholder = 'username or url (leave empty to remove)';
-    input.style.cssText = 'flex:1;background:#fff;color:#000;border:1px solid #808080;padding:5px 8px;border-radius:0;font-size:12px;outline:none;font-family:inherit;';
-    row.appendChild(lbl);
-    row.appendChild(input);
-    wrapper.appendChild(row);
+    const makeRow = (label, placeholder, value) => {
+      const row = document.createElement('div');
+      row.style.cssText = 'display:flex;align-items:center;gap:6px;width:100%;max-width:320px;';
+      const lbl = document.createElement('span');
+      lbl.textContent = label;
+      lbl.style.cssText = 'font-size:11px;font-weight:700;min-width:56px;color:#808080;';
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.placeholder = placeholder;
+      input.value = value || '';
+      input.style.cssText = 'flex:1;background:#fff;color:#000;border:1px solid #808080;padding:5px 8px;border-radius:0;font-size:12px;outline:none;font-family:inherit;';
+      row.appendChild(lbl);
+      row.appendChild(input);
+      return { row, input };
+    };
+
+    const twitch = makeRow('twitch', 'username', ch.twitch);
+    const kick = makeRow('kick', 'username', ch.kick);
+    const yt = makeRow('youtube', 'username or url', ch.youtube);
+    wrapper.appendChild(twitch.row);
+    wrapper.appendChild(kick.row);
+    wrapper.appendChild(yt.row);
+
+    const errEl = document.createElement('div');
+    errEl.style.cssText = 'font-size:11px;color:#ff4444;display:none;';
+    errEl.setAttribute('role', 'alert');
+    wrapper.appendChild(errEl);
 
     const btnRow = document.createElement('div');
-    btnRow.style.cssText = 'display:flex;gap:8px;margin-top:4px;';
+    btnRow.style.cssText = 'display:flex;gap:8px;margin-top:2px;';
     const saveBtn = document.createElement('button');
     saveBtn.textContent = 'save';
     saveBtn.style.cssText = 'background:#fff;color:#000;border:none;padding:7px 20px;border-radius:0;cursor:pointer;font-weight:600;font-size:12px;font-family:inherit;min-width:80px;';
@@ -9036,33 +9121,91 @@ m.type === 'usernotice' ? 'hs-mc-msg hs-mc-system' :
     msgsEl.appendChild(wrapper);
 
     cancelBtn.addEventListener('click', () => switchTab(tabId));
-    const doSave = () => {
-      const newUrl = input.value.trim();
-      // Unsubscribe old (pass URL as fallback if videoId not yet received)
-      const oldLink = youtubeLinks.get(tabId);
-      const oldUrl = ch.youtube || oldLink?.url || '';
-      chrome.runtime.sendMessage({
-        type: 'youtube_ws_unsubscribe',
-        videoId: oldLink?.videoId || '',
-        url: oldUrl,
-        channelId: tabId,
-      }).catch(() => {});
-      youtubeLinks.delete(tabId);
-      channelYtMessages.delete(tabId);
+    const showErr = (msg) => { errEl.textContent = msg; errEl.style.display = 'block'; };
 
-      const normalizedUrl = newUrl ? normalizeYtUrl(newUrl) : ''
-      ch.youtube = normalizedUrl;
+    const doSave = () => {
+      errEl.style.display = 'none';
+      const twitchVal = twitch.input.value.trim().toLowerCase().replace(/^@/, '');
+      const kickVal = kick.input.value.trim().toLowerCase().replace(/^@/, '');
+      const ytVal = yt.input.value.trim() ? normalizeYtUrl(yt.input.value.trim()) : '';
+
+      if (!twitchVal && !kickVal && !ytVal) {
+        showErr('enter at least one platform');
+        return;
+      }
+
+      // Check duplicate twitch (excluding self)
+      if (twitchVal && config.channels.some(c => c !== ch && (typeof c === 'string' ? c : c.twitch) === twitchVal)) {
+        showErr('twitch channel already added');
+        return;
+      }
+
+      // Part old channels if changed
+      const oldTwitch = ch.twitch;
+      const oldKick = ch.kick;
+      const oldYt = ch.youtube;
+
+      if (oldTwitch && oldTwitch !== twitchVal) irc?.part(oldTwitch);
+      if (oldKick && oldKick !== kickVal) kickChat?.part(oldKick);
+
+      // Unsubscribe old YouTube if changed
+      if (oldYt && oldYt !== ytVal) {
+        const oldLink = youtubeLinks.get(tabId);
+        chrome.runtime.sendMessage({
+          type: 'youtube_ws_unsubscribe',
+          videoId: oldLink?.videoId || '',
+          url: oldYt,
+          channelId: tabId,
+        }).catch(() => {});
+        youtubeLinks.delete(tabId);
+        channelYtMessages.delete(tabId);
+      }
+
+      // Update channel config
+      ch.twitch = twitchVal;
+      ch.kick = kickVal;
+      ch.youtube = ytVal;
+
+      // Update id to match primary platform
+      const newId = twitchVal || kickVal || ch.id;
+      if (newId !== ch.id) {
+        // Migrate maps keyed by old id
+        const ytData = youtubeLinks.get(tabId);
+        const ytMsgs = channelYtMessages.get(tabId);
+        if (ytData) { youtubeLinks.delete(tabId); youtubeLinks.set(newId, ytData); }
+        if (ytMsgs) { channelYtMessages.delete(tabId); channelYtMessages.set(newId, ytMsgs); }
+        ch.id = newId;
+      }
       saveConfig();
 
-      if (normalizedUrl) {
-        youtubeLinks.set(tabId, { url: normalizedUrl, videoId: '', channelName: '' });
-        chrome.runtime.sendMessage({ type: 'youtube_ws_subscribe', url: normalizedUrl, channelId: tabId }).catch(() => {});
+      // Join new channels if changed
+      if (twitchVal && twitchVal !== oldTwitch) {
+        irc?.join(twitchVal);
+        try { chrome.runtime.sendMessage({ type: 'join_channel', platform: 'twitch', channel: twitchVal }); } catch (e) {}
       }
-      switchTab(tabId);
+      if (kickVal && kickVal !== oldKick) kickChat?.join(kickVal);
+      if (ytVal && ytVal !== oldYt) {
+        youtubeLinks.set(newId, { url: ytVal, videoId: '', channelName: '' });
+        chrome.runtime.sendMessage({ type: 'youtube_ws_subscribe', url: ytVal, channelId: newId }).catch(() => {});
+      }
+
+      updateTabBar();
+      switchTab(newId);
     };
+
     saveBtn.addEventListener('click', doSave);
-    input.addEventListener('keydown', (e) => { if (e.key === 'Enter') doSave(); if (e.key === 'Escape') switchTab(tabId); });
-    requestAnimationFrame(() => { input.focus(); input.select(); });
+    const inputs = [twitch.input, kick.input, yt.input];
+    inputs.forEach((inp, i) => {
+      inp.addEventListener('keydown', (e) => {
+        if (e.key === 'Tab') {
+          e.preventDefault();
+          inputs[(i + (e.shiftKey ? inputs.length - 1 : 1)) % inputs.length].focus();
+        }
+        if (e.key === 'Enter') doSave();
+        if (e.key === 'Escape') switchTab(tabId);
+      });
+    });
+    requestAnimationFrame(() => twitch.input.focus());
   }
 
   function updateTabIndicator(tabId) {
@@ -9655,7 +9798,6 @@ m.type === 'usernotice' ? 'hs-mc-msg hs-mc-system' :
     await loadLinksSetting();
     await loadViModeSetting();
     await loadPlatformBadgesSetting();
-    await loadHideEmptyInputSetting();
     await loadZebraSetting();
     await loadBlockedEmotes();
     await loadEmotes();
@@ -9821,8 +9963,10 @@ m.type === 'usernotice' ? 'hs-mc-msg hs-mc-system' :
           saveStreamEvent(evt);
         }
         activityEvents.push(evt);
-        if (currentTab === 'activity') renderActivity();
-        else { const actTab = tabBarElement?.querySelector('[data-tab="activity"]'); if (actTab) actTab.classList.add('has-stream-event'); }
+        if (currentTab === 'activity') {
+          if (isScrolledUp) showStaticNewButton();
+          else renderActivity();
+        } else { const actTab = tabBarElement?.querySelector('[data-tab="activity"]'); if (actTab) actTab.classList.add('has-stream-event'); }
 
         // Magenta tab highlight
         const liveChannel = getLiveChannel();
@@ -9887,8 +10031,10 @@ m.type === 'usernotice' ? 'hs-mc-msg hs-mc-system' :
           saveStreamEvent(evt);
         }
         activityEvents.push(evt);
-        if (currentTab === 'activity') renderActivity();
-        else { const actTab = tabBarElement?.querySelector('[data-tab="activity"]'); if (actTab) actTab.classList.add('has-stream-event'); }
+        if (currentTab === 'activity') {
+          if (isScrolledUp) showStaticNewButton();
+          else renderActivity();
+        } else { const actTab = tabBarElement?.querySelector('[data-tab="activity"]'); if (actTab) actTab.classList.add('has-stream-event'); }
 
         // Render inline
         const activeTab = currentTab;

@@ -47,7 +47,6 @@
 
   // Buffers
   const mentionsBuffer = [];
-  const postsBuffer = [];
   const MAX_BUFFER = 500;
 
   // Scoped emote wrapper query (avoids full-document scan)
@@ -68,7 +67,6 @@
   }
 
   let mentionsSeenCount = 0; // Track how many mentions user has seen
-  let postsSeenCount = 0;
 
   // Per-channel YouTube: messages and links
   const channelYtMessages = new Map();  // channelTabId → message[]
@@ -88,8 +86,10 @@
   let notifMessages = []; // Actual notification messages for display
   let notifLoaded = false;
   let unreadNotifCount = 0;
+  const activityEvents = []; // Stream events for activity tab
   let expandedThreadId = null; // Currently expanded thread in feed
   let threadReplies = []; // Replies for expanded thread
+  let replyState = null; // { msgId, user, channel } when replying to a message
   let isKick = location.hostname.includes('kick.com');
   const hostPlatform = isKick ? 'kick' : location.hostname.includes('youtube.com') ? 'yt' : 'twitch';
   let hsAuthToken = null; // Heatsync auth state (loaded from storage)
@@ -122,6 +122,9 @@
           const isDupe = existing.some(m => m.type === 'stream-event' && m.time === evt.time && m.text === evt.text);
           if (!isDupe) buffer.push(evt);
         }
+        // Also push to activityEvents (dedup by time+text)
+        const isDupeActivity = activityEvents.some(m => m.time === evt.time && m.text === evt.text);
+        if (!isDupeActivity) activityEvents.push(evt);
       }
       // Prune expired from storage
       if (valid.length < events.length) {
@@ -762,21 +765,20 @@
     const container = document.createElement('div');
     container.id = 'hs-mc-tabbar';
     // Static hardcoded tab buttons — no user input, safe innerHTML
-    // Kick: only live/feed/notifs (no IRC tabs)
+    // Kick: only live/feed/activity (no IRC tabs)
     // Static hardcoded tab buttons — no user input, safe innerHTML
     container.innerHTML = isKick ? `
       <button class="hs-mc-tab active" data-tab="live">live</button>
       <button class="hs-mc-tab" data-tab="feed">feed</button>
-      <button class="hs-mc-tab" data-tab="notifs">notifs</button>
+      <button class="hs-mc-tab" data-tab="activity">activity</button>
       <button class="hs-mc-tab hs-mc-rotate" data-tab="rotate" title="rotate tabs (T)">T</button>
       <button class="hs-mc-tab hs-mc-font-btn" data-font-dir="-1" title="smaller text">A-</button>
       <button class="hs-mc-tab hs-mc-font-btn" data-font-dir="1" title="larger text">A+</button>
     ` : `
       <button class="hs-mc-tab active" data-tab="live">live</button>
       <button class="hs-mc-tab" data-tab="feed">feed</button>
-      <button class="hs-mc-tab" data-tab="notifs">notifs</button>
+      <button class="hs-mc-tab" data-tab="activity">activity</button>
       <button class="hs-mc-tab" data-tab="mentions">mentions</button>
-      <button class="hs-mc-tab" data-tab="posts">posts</button>
       <button class="hs-mc-tab" data-tab="add">+</button>
       <button class="hs-mc-tab hs-mc-rotate" data-tab="rotate" title="rotate tabs (T)">T</button>
       <button class="hs-mc-tab hs-mc-font-btn" data-font-dir="-1" title="smaller text">A-</button>
@@ -819,7 +821,7 @@
       const tab = e.target.closest('.hs-mc-tab');
       if (!tab) return;
       const tabId = tab.dataset.tab;
-      const reserved = ['live', 'feed', 'notifs', 'mentions', 'posts', 'add', 'rotate'];
+      const reserved = ['live', 'feed', 'activity', 'mentions', 'add', 'rotate'];
       if (reserved.includes(tabId)) return;
       e.preventDefault();
 
@@ -1501,6 +1503,7 @@
     } else if (picker.classList.contains('visible')) {
       picker.classList.remove('visible');
       adjustOverlayForPicker(false);
+      applyHideEmptyInput();
       if (_chunkedRafId) { cancelAnimationFrame(_chunkedRafId); _chunkedRafId = null; }
       return;
     }
@@ -1720,6 +1723,7 @@
         if (!picker.contains(e.target) && !e.target.closest('#hs-mc-emote-btn')) {
           picker.classList.remove('visible');
           adjustOverlayForPicker(false);
+          applyHideEmptyInput();
           stopPredictionPoll();
           document.removeEventListener('click', _pickerCloseHandler);
           _pickerCloseHandler = null;
@@ -2414,6 +2418,11 @@
     input.addEventListener('keydown', handleInputKeydown);
     input.addEventListener('input', handleInputChange);
     input.addEventListener('input', updateCharCount);
+    input.addEventListener('focus', () => {
+      if (!hideEmptyInput) return
+      const bar = document.getElementById('hs-mc-inputbar')
+      if (bar) bar.classList.remove('hs-mc-hidden')
+    });
     input.addEventListener('input', () => {
       if (!hideEmptyInput) return
       const bar = document.getElementById('hs-mc-inputbar')
@@ -2424,10 +2433,12 @@
     });
     input.addEventListener('blur', () => {
       setTimeout(hideAutocomplete, 150)
-      // Re-hide if empty on blur
+      // Re-hide if empty on blur (but not while emote picker is open)
       if (!hideEmptyInput) return
       const bar = document.getElementById('hs-mc-inputbar')
       if (!bar) return
+      const picker = document.getElementById('hs-mc-emote-picker')
+      if (picker?.classList.contains('visible')) return
       const hasText = (input.value || input.textContent || '').trim().length > 0
       if (!hasText) bar.classList.add('hs-mc-hidden')
     });
@@ -2456,6 +2467,7 @@
         if (picker?.classList.contains('visible')) {
           picker.classList.remove('visible');
           adjustOverlayForPicker(false);
+          applyHideEmptyInput();
           if (_pickerCloseHandler) {
             document.removeEventListener('click', _pickerCloseHandler);
             _pickerCloseHandler = null;
@@ -2612,6 +2624,22 @@
       }, { capture: true, signal: mcSignal });
     }
 
+    // Reply button click → set reply state and focus input
+    if (!window._hsMcReplyHandler) {
+      window._hsMcReplyHandler = true
+      document.addEventListener('click', (e) => {
+        const btn = e.target.closest('.hs-mc-reply-btn')
+        if (!btn) return
+        const msg = btn.closest('.hs-mc-msg')
+        if (!msg?.dataset.msgId) return
+        setReplyState({
+          msgId: msg.dataset.msgId,
+          user: msg.dataset.msgUser,
+          channel: msg.dataset.msgChannel
+        })
+      }, { signal: mcSignal })
+    }
+
     // Right-click on message → mute/unmute user
     if (!window._hsMcMsgContextHandler) {
       window._hsMcMsgContextHandler = true;
@@ -2658,12 +2686,12 @@
     let placeholder;
     if (currentTab === 'feed') {
       placeholder = 'post to heatsync...';
-    } else if (currentTab === 'notifs') {
+    } else if (currentTab === 'activity') {
       placeholder = 'post to heatsync...';
     } else if (currentTab === 'live') {
       const channel = getLiveChannel();
       placeholder = channel ? `send to #${channel}` : 'send a message...';
-    } else if (currentTab === 'mentions' || currentTab === 'posts') {
+    } else if (currentTab === 'mentions') {
       const channel = getCurrentChannel();
       placeholder = channel ? `send to #${channel}` : 'send a message...';
     } else if (currentTab === 'add') {
@@ -2746,8 +2774,9 @@
       return;
     }
 
-    // Escape - ensure autocomplete is hidden
+    // Escape - cancel reply state and hide autocomplete
     if (e.key === 'Escape') {
+      if (replyState) clearReplyState()
       hideAutocomplete();
       return;
     }
@@ -3035,6 +3064,33 @@
     }
   }
 
+  // Reply state management
+  function setReplyState(state) {
+    replyState = state
+    const bar = document.getElementById('hs-mc-inputbar')
+    if (!bar) return
+    // Remove existing indicator
+    document.getElementById('hs-mc-reply-indicator')?.remove()
+    const indicator = document.createElement('div')
+    indicator.id = 'hs-mc-reply-indicator'
+    const label = document.createElement('span')
+    label.textContent = `↩ Replying to @${state.user}`
+    const cancel = document.createElement('button')
+    cancel.id = 'hs-mc-reply-cancel'
+    cancel.textContent = '✕'
+    cancel.title = 'Cancel reply'
+    cancel.addEventListener('click', clearReplyState)
+    indicator.appendChild(label)
+    indicator.appendChild(cancel)
+    bar.insertBefore(indicator, bar.firstChild)
+    document.getElementById('hs-mc-input')?.focus()
+  }
+
+  function clearReplyState() {
+    replyState = null
+    document.getElementById('hs-mc-reply-indicator')?.remove()
+  }
+
   // Get Twitch auth token from cookie
   function getTwitchAuthToken() {
     const cookies = document.cookie.split(';');
@@ -3059,7 +3115,7 @@
     if (!text) { if (MC_DEBUG) console.warn('[HS] SEND BAIL: empty text, wysiwyg=' + wysiwygEnabled, 'raw=', input.textContent || input.value); return; }
 
     // Feed/notifs tab → post to heatsync API
-    if (currentTab === 'feed' || currentTab === 'notifs') {
+    if (currentTab === 'feed' || currentTab === 'activity') {
       postFeedMessage(text);
       return;
     }
@@ -3068,7 +3124,7 @@
     let targetChannel;
     if (currentTab === 'live') {
       targetChannel = getLiveChannel();
-    } else if (currentTab === 'mentions' || currentTab === 'posts') {
+    } else if (currentTab === 'mentions') {
       targetChannel = getCurrentChannel();
     } else if (currentTab === 'add') {
       if (MC_DEBUG) console.warn('[HS] SEND BAIL: on add tab');
@@ -3097,10 +3153,14 @@
       return;
     }
 
+    // Capture reply parent before clearing
+    const replyParentId = replyState?.msgId || null
+    clearReplyState()
+
     // Send via IRC (fast async)
     const wsState = authState.ws ? ['CONNECTING','OPEN','CLOSING','CLOSED'][authState.ws.readyState] : 'null';
     log(`IRC SEND → #${targetChannel} ws=${wsState} ready=${authState.ready} queue=${authState.sendQueue.length}`);
-    sendIrcMessage(targetChannel, text, token).then(result => {
+    sendIrcMessage(targetChannel, text, token, replyParentId).then(result => {
       if (result === true) {
         // If ws wasn't OPEN when we sent, message was likely queued — show yellow indicator
         if (wsState !== 'OPEN') {
@@ -3340,10 +3400,11 @@
     }
   }
 
-  async function sendIrcMessage(channel, text, token) {
+  async function sendIrcMessage(channel, text, token, replyParentId) {
     const nick = currentUsername || getCurrentUsername();
     if (!nick) { if (MC_DEBUG) console.warn('[HS] SEND FAIL: no username'); return 'no_user'; }
     channel = channel.toLowerCase();
+    const prefix = replyParentId ? `@reply-parent-msg-id=${replyParentId} ` : ''
 
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
@@ -3365,8 +3426,8 @@
           scheduleReconnect([channel]);
           return true;
         }
-        authState.ws.send(`PRIVMSG #${channel} :${text}\r\n`);
-        if (MC_DEBUG) console.warn('[HS] IRC SEND →', `#${channel}`, `nick=${nick}`, text.slice(0, 40));
+        authState.ws.send(`${prefix}PRIVMSG #${channel} :${text}\r\n`);
+        if (MC_DEBUG) console.warn('[HS] IRC SEND →', `#${channel}`, `nick=${nick}`, replyParentId ? `reply=${replyParentId}` : '', text.slice(0, 40));
         return true;
       } catch (e) {
         log('Send error attempt', attempt, ':', e.message || e);
@@ -3385,7 +3446,7 @@
     if (!tabBarElement) return;
 
     // Clear existing channel tabs (keep built-in tabs)
-    const existingChannelTabs = tabBarElement.querySelectorAll('.hs-mc-tab[data-tab]:not([data-tab="live"]):not([data-tab="feed"]):not([data-tab="notifs"]):not([data-tab="mentions"]):not([data-tab="posts"]):not([data-tab="add"]):not([data-tab="rotate"])');
+    const existingChannelTabs = tabBarElement.querySelectorAll('.hs-mc-tab[data-tab]:not([data-tab="live"]):not([data-tab="feed"]):not([data-tab="activity"]):not([data-tab="mentions"]):not([data-tab="add"]):not([data-tab="rotate"])');
     existingChannelTabs.forEach(t => t.remove());
 
     // Add channel tabs before the + button (or append if no + button, e.g. Kick)
@@ -3743,6 +3804,57 @@
       }
       .hs-mc-msg:hover {
         background: #000;
+      }
+      .hs-mc-msg[data-msg-id] {
+        position: relative;
+      }
+      .hs-mc-reply-btn {
+        display: none;
+        position: absolute;
+        top: 1px;
+        right: 2px;
+        background: #222;
+        border: 1px solid #444;
+        color: #aaa;
+        font-size: 11px;
+        padding: 0 4px;
+        cursor: pointer;
+        line-height: 18px;
+        z-index: 10;
+      }
+      .hs-mc-reply-btn:hover {
+        color: #fff;
+        background: #333;
+      }
+      .hs-mc-msg[data-msg-id]:hover .hs-mc-reply-btn {
+        display: block;
+      }
+      #hs-mc-reply-indicator {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        background: #111;
+        border-bottom: 1px solid #333;
+        padding: 2px 6px;
+        font-size: 11px;
+        color: #aaa;
+      }
+      #hs-mc-reply-indicator span {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      #hs-mc-reply-cancel {
+        background: none;
+        border: none;
+        color: #888;
+        cursor: pointer;
+        font-size: 13px;
+        padding: 0 2px;
+        line-height: 1;
+      }
+      #hs-mc-reply-cancel:hover {
+        color: #fff;
       }
       .hs-mc-muted .hs-mc-user {
         color: #808080 !important;
@@ -4300,22 +4412,28 @@
       /* Auto-hide input bar when empty */
       #hs-mc-inputbar.hs-mc-autohide.hs-mc-hidden {
         opacity: 0;
-        pointer-events: none;
-        height: 0;
+        height: 4px;
+        min-height: 4px;
         padding: 0 8px;
         border-top-color: transparent;
         overflow: hidden;
         transition: none;
+      }
+      #hs-mc-inputbar.hs-mc-autohide.hs-mc-hidden > * {
+        visibility: hidden;
       }
       #hs-mc-inputbar.hs-mc-autohide {
         transition: none;
       }
       #hs-mc-inputbar.hs-mc-autohide.hs-mc-hidden:hover {
         opacity: 1;
-        pointer-events: auto;
         height: auto;
+        min-height: unset;
         padding: 8px;
         border-top-color: #808080;
+      }
+      #hs-mc-inputbar.hs-mc-autohide.hs-mc-hidden:hover > * {
+        visibility: visible;
       }
 
       /* Input styles (used in #hs-mc-inputbar) */
@@ -5958,7 +6076,7 @@
             notifMessages = [];
             unreadNotifCount = 0;
             updateNotifBadge();
-            if (currentTab === 'feed' || currentTab === 'notifs') {
+            if (currentTab === 'feed' || currentTab === 'activity') {
               renderMessages(currentTab);
             }
           }
@@ -6058,9 +6176,9 @@
       if (msg.type === 'notification:new') {
         unreadNotifCount++;
         updateNotifBadge();
-        if (currentTab === 'notifs') {
+        if (currentTab === 'activity') {
           notifLoaded = false;
-          renderNotifs();
+          renderActivity();
         }
       }
     });
@@ -6069,7 +6187,7 @@
   // Update notif tab badge (reuse existing element to avoid DOM churn)
   function updateNotifBadge() {
     if (!tabBarElement) return
-    const tab = tabBarElement.querySelector('[data-tab="notifs"]')
+    const tab = tabBarElement.querySelector('[data-tab="activity"]')
     if (!tab) return
     let badge = tab.querySelector('.hs-badge')
     if (unreadNotifCount > 0) {
@@ -6195,7 +6313,7 @@
     div.innerHTML = `
       <div class="hs-feed-header">
         <img class="hs-feed-avatar" src="${avatarUrl}" alt="" loading="lazy" onerror="this.style.display='none'">
-        <a href="https://heatsync.org/u/${encodeURIComponent(m.username)}" target="_blank" class="hs-feed-user" style="color:${sanitizeColor(m.user_color || '#fff')}">${escapeHtml(m.username || 'anon')}</a>
+        <a href="https://heatsync.org/user/${encodeURIComponent(m.username)}" target="_blank" class="hs-feed-user" style="color:${sanitizeColor(m.user_color || '#fff')}">${escapeHtml(m.username || 'anon')}</a>
         <span class="hs-feed-time">${escapeHtml(time)}</span>
       </div>
       <div class="hs-feed-body">${content}</div>
@@ -6338,24 +6456,24 @@
     notifLoaded = true;
   }
 
-  function renderNotifs() {
+  function renderActivity() {
     const msgsEl = document.getElementById('hs-mc-messages');
     if (!msgsEl) return;
 
-    if (!hsAuthToken) {
-      msgsEl.innerHTML = '<div class="hs-mc-empty">log in at <a href="https://heatsync.org" target="_blank" style="color:#ff6b35">heatsync.org</a> to see notifications</div>';
+    if (!hsAuthToken && activityEvents.length === 0) {
+      msgsEl.innerHTML = '<div class="hs-mc-empty">log in at <a href="https://heatsync.org" target="_blank" style="color:#ff6b35">heatsync.org</a> to see activity</div>';
       return;
     }
 
-    if (!notifLoaded) {
-      msgsEl.innerHTML = '<div class="hs-mc-empty">loading notifications...</div>';
+    if (hsAuthToken && !notifLoaded) {
+      msgsEl.innerHTML = '<div class="hs-mc-empty">loading...</div>';
       fetchNotifications().then(() => {
-        if (currentTab === 'notifs') renderNotifs();
+        if (currentTab === 'activity') renderActivity();
       });
       return;
     }
 
-    // Mark as read when viewing
+    // Mark notifs as read when viewing
     if (unreadNotifCount > 0) {
       apiFetch('/api/notifications/mark-read', { method: 'POST', body: { type: 'all' } });
       unreadNotifCount = 0;
@@ -6363,15 +6481,23 @@
       try { chrome.runtime.sendMessage({ type: 'notifs_viewed' }); } catch (e) {}
     }
 
-    if (notifMessages.length === 0) {
-      msgsEl.innerHTML = '<div class="hs-mc-empty">no notifications</div>';
+    // Merge notifMessages + activityEvents, sort descending by time
+    const normalized = [
+      ...notifMessages.map(m => ({ ...m, _time: new Date(m.created_at).getTime(), _src: 'notif' })),
+      ...activityEvents.map(m => ({ ...m, _time: m.time, _src: 'event' }))
+    ];
+    normalized.sort((a, b) => b._time - a._time);
+    const merged = normalized.slice(0, 150);
+
+    if (merged.length === 0) {
+      msgsEl.innerHTML = '<div class="hs-mc-empty">no activity yet</div>';
       return;
     }
 
     msgsEl.textContent = '';
     const frag = document.createDocumentFragment();
 
-    // Summary header
+    // Summary header (notifs only)
     if (notifications.total > 0) {
       const header = document.createElement('div');
       header.className = 'hs-notif-header';
@@ -6383,10 +6509,15 @@
       frag.appendChild(header);
     }
 
-    const notifsToRender = notifMessages.slice(-150);
-    for (const m of notifsToRender) {
-      const div = buildNotifDiv(m);
-      frag.appendChild(div);
+    for (const m of merged) {
+      if (m._src === 'event') {
+        const div = document.createElement('div');
+        div.className = `hs-mc-stream-event ${m.eventClass || ''}`;
+        div.textContent = m.text;
+        frag.appendChild(div);
+      } else {
+        frag.appendChild(buildNotifDiv(m));
+      }
     }
     msgsEl.appendChild(frag);
   }
@@ -6399,7 +6530,7 @@
 
     div.innerHTML = `
       <div class="hs-feed-header">
-        <a href="https://heatsync.org/u/${encodeURIComponent(m.username)}" target="_blank" class="hs-feed-user" style="color:${sanitizeColor(m.user_color || '#fff')}">${escapeHtml(m.username || 'anon')}</a>
+        <a href="https://heatsync.org/user/${encodeURIComponent(m.username)}" target="_blank" class="hs-feed-user" style="color:${sanitizeColor(m.user_color || '#fff')}">${escapeHtml(m.username || 'anon')}</a>
         <span class="hs-feed-time">${escapeHtml(time)}</span>
       </div>
       <div class="hs-feed-body">${content}</div>
@@ -6433,12 +6564,9 @@
 
     currentTab = id;
 
-    // Mark mentions/posts as seen when switching to those tabs
+    // Mark mentions as seen when switching to that tab
     if (id === 'mentions') {
       mentionsSeenCount = mentionsBuffer.length;
-      updateTabBadges();
-    } else if (id === 'posts') {
-      postsSeenCount = postsBuffer.length;
       updateTabBadges();
     }
 
@@ -6539,14 +6667,9 @@
   function updateTabBadges() {
     if (!tabBarElement) return;
     const mentionsTab = tabBarElement.querySelector('[data-tab="mentions"]');
-    const postsTab = tabBarElement.querySelector('[data-tab="posts"]');
     if (mentionsTab) {
       const unseenMentions = mentionsBuffer.length - mentionsSeenCount;
       mentionsTab.textContent = unseenMentions > 0 ? `mentions(${unseenMentions})` : 'mentions';
-    }
-    if (postsTab) {
-      const unseenPosts = postsBuffer.length - postsSeenCount;
-      postsTab.textContent = unseenPosts > 0 ? `posts(${unseenPosts})` : 'posts';
     }
   }
 
@@ -6583,8 +6706,7 @@
     const showChannel = tabId === 'mentions';
     const isSuperChat = m.platform === 'youtube' && (m.msgType === 'superchat' || m.msgType === 'supersticker')
     const cls = tabId === 'mentions' ? 'hs-mc-msg mention' :
-                tabId === 'posts' ? 'hs-mc-msg tweet' :
-                m.type === 'usernotice' ? 'hs-mc-msg hs-mc-system' :
+m.type === 'usernotice' ? 'hs-mc-msg hs-mc-system' :
                 m.redeemed ? 'hs-mc-msg hs-mc-redeemed' :
                 isSuperChat ? 'hs-mc-msg hs-mc-superchat' :
                 isMention(m) ? 'hs-mc-msg mention' : 'hs-mc-msg';
@@ -6596,7 +6718,7 @@
     const platformBadge = (platformBadgesEnabled || plat !== hostPlatform) ? `<span class="hs-mc-platform-badge hs-mc-pb-${plat}" style="font-size:10px;margin-right:3px;font-weight:700;vertical-align:middle;color:${platColors[plat]}">${platLabel}</span>` : ''
     const safeScColor = sanitizeColor(m.scColor || '#ffd600')
     const scBadge = isSuperChat && m.amount ? `<span class="hs-mc-sc-badge" style="background:${safeScColor};color:#000;padding:0 4px;border-radius:0;font-size:10px;font-weight:700;margin-right:3px;">${escapeHtml(m.amount)}</span>` : ''
-    const userLink = `<a href="https://heatsync.org/u/${encodeURIComponent(m.user)}" target="_blank" class="hs-mc-user" data-username="${escapeHtml(m.user.toLowerCase())}" style="color:${sanitizeColor(m.color || '#fff')}">${escapeHtml(m.user)}</a>`;
+    const userLink = `<a href="https://heatsync.org/${plat === 'yt' ? 'user' : plat}/${encodeURIComponent(m.user)}" target="_blank" class="hs-mc-user" data-username="${escapeHtml(m.user.toLowerCase())}" style="color:${sanitizeColor(m.color || '#fff')}">${escapeHtml(m.user)}</a>`;
 
     // Process text: replace YouTube emoji with inline images
     let processedText = processEmotes(m.text, m.channel)
@@ -6626,6 +6748,17 @@
       ? `${systemLine}`
       : `${systemLine}${platformBadge}${scBadge}${badges}${userLink}${channelSpan}: ${processedText}${stickerHtml}`
     div.innerHTML = `${replyBar}${msgBody}`;
+    // Reply button for threading (Twitch/Kick — needs valid msg id)
+    if (m.id && m.platform !== 'youtube') {
+      div.dataset.msgId = m.id
+      div.dataset.msgUser = m.user
+      div.dataset.msgChannel = m.channel || ''
+      const replyBtn = document.createElement('button')
+      replyBtn.className = 'hs-mc-reply-btn'
+      replyBtn.textContent = '↩'
+      replyBtn.title = 'Reply'
+      div.appendChild(replyBtn)
+    }
     return div;
   }
 
@@ -6709,7 +6842,7 @@
   function renderMessages(id) {
     // Social tabs have their own renderers
     if (id === 'feed') { renderFeed(); return; }
-    if (id === 'notifs') { renderNotifs(); return; }
+    if (id === 'activity') { renderActivity(); return; }
 
     const msgsEl = document.getElementById('hs-mc-messages');
     if (!msgsEl) return;
@@ -6729,8 +6862,6 @@
 
     if (id === 'mentions') {
       msgs = mentionsBuffer;
-    } else if (id === 'posts') {
-      msgs = postsBuffer;
     } else if (id === 'add') {
       renderAddChannelForm(msgsEl);
       return;
@@ -6833,6 +6964,73 @@
   const TWITCH_GQL = 'https://gql.twitch.tv/gql'
   const TWITCH_CLIENT_ID = 'kimne78kx3ncx6brgo4mv6wki5h1ko'
 
+  // ═══ GQL Proxy — routes calls through MAIN world to use fresh hashes ═══
+  // Twitch rotates persisted query hashes; the MAIN world fetch interceptor
+  // captures them from Twitch's own code so we never hardcode stale hashes.
+
+  // Cache for intercepted GQL data pushed from MAIN world
+  const _gqlDataCache = {} // operationName → { data, ts }
+
+  // Listen for passively intercepted GQL data from MAIN world
+  window.addEventListener('message', (e) => {
+    if (e.origin !== location.origin) return
+    if (e.data?.type === 'heatsync-gql-data') {
+      const { operation, data, errors } = e.data
+      if (data && !errors?.length) {
+        _gqlDataCache[operation] = { data, ts: Date.now() }
+        // Auto-refresh Twitch tab if prediction/poll data arrives while tab is visible
+        const container = document.getElementById('hs-mc-tab-twitch')
+        if (container && container.style.display !== 'none') {
+          renderTwitchTab()
+        }
+      }
+    }
+  })
+
+  // Send GQL request through MAIN world proxy (uses captured hashes + integrity)
+  function gqlProxy(operation, variables, opts) {
+    return new Promise((resolve, reject) => {
+      const id = Math.random().toString(36).slice(2)
+      const handler = (e) => {
+        if (e.data?.type === 'heatsync-gql-response' && e.data.id === id) {
+          window.removeEventListener('message', handler)
+          clearTimeout(timer)
+          if (e.data.error) reject(new Error(e.data.error))
+          else resolve(e.data.data)
+        }
+      }
+      window.addEventListener('message', handler)
+      const msg = { type: 'heatsync-gql-request', id, operation, variables }
+      if (opts?.rawQuery) msg.rawQuery = opts.rawQuery
+      if (opts?.batch) msg.batch = opts.batch
+      window.postMessage(msg, location.origin)
+      const timer = setTimeout(() => {
+        window.removeEventListener('message', handler)
+        reject(new Error('GQL proxy timeout'))
+      }, 10000)
+    })
+  }
+
+  // Request cached data from MAIN world
+  function gqlGetCache(operations) {
+    return new Promise((resolve) => {
+      const id = Math.random().toString(36).slice(2)
+      const handler = (e) => {
+        if (e.data?.type === 'heatsync-gql-cache-response' && e.data.id === id) {
+          window.removeEventListener('message', handler)
+          clearTimeout(timer)
+          resolve(e.data)
+        }
+      }
+      window.addEventListener('message', handler)
+      window.postMessage({ type: 'heatsync-gql-get-cache', id, operations }, location.origin)
+      const timer = setTimeout(() => {
+        window.removeEventListener('message', handler)
+        resolve({ data: {}, hashes: [] })
+      }, 3000)
+    })
+  }
+
   async function fetchGlobalBadges() {
     if (globalBadgesFetched) return
     globalBadgesFetched = true
@@ -6869,40 +7067,46 @@
   async function fetchPrediction(channelLogin) {
     const safe = channelLogin.replace(/[^a-z0-9_]/g, '')
     if (!safe) return null
-    const token = getTwitchAuthToken()
-    const headers = { 'Client-Id': TWITCH_CLIENT_ID, 'Content-Type': 'application/json' }
-    if (token) headers['Authorization'] = `OAuth ${token}`
     try {
-      const resp = await fetch(TWITCH_GQL, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify([
-          {
-            operationName: 'ChannelPointsPredictionContext',
-            extensions: {
-              persistedQuery: {
-                version: 1,
-                sha256Hash: '9324cd5cde62cbb1e3455d7c0e2a22ab44d498cd4a498a0e51cb0caafcc36b35'
-              }
-            },
-            variables: { channelLogin: safe }
-          },
-          {
-            operationName: 'CommunityPointsContext',
-            extensions: {
-              persistedQuery: {
-                version: 1,
-                sha256Hash: '1530a003a7d374b0380b79db0be0534f30ff46e61cffa2571ed39571c9de2a30'
-              }
-            },
-            variables: { channelLogin: safe }
+      // First check MAIN world cache (intercepted from Twitch's own calls)
+      const cached = await gqlGetCache(['ChannelPointsPredictionContext', 'CommunityPointsContext'])
+      const predCache = cached.data?.ChannelPointsPredictionContext
+      const pointsCache = cached.data?.CommunityPointsContext
+
+      let predEvent = null
+      let balance = null
+
+      if (predCache && Date.now() - predCache.ts < 30000) {
+        predEvent = predCache.data?.user?.activePredictionEvent || null
+      }
+      if (pointsCache && Date.now() - pointsCache.ts < 30000) {
+        balance = pointsCache.data?.community?.channel?.self?.communityPoints?.balance ?? null
+      }
+
+      // If cache miss, try proxy call with captured hashes
+      if (!predCache || Date.now() - predCache.ts >= 30000) {
+        try {
+          const data = await gqlProxy('ChannelPointsPredictionContext', { channelLogin: safe })
+          if (Array.isArray(data)) {
+            predEvent = data[0]?.data?.user?.activePredictionEvent || null
+            balance = data[1]?.data?.community?.channel?.self?.communityPoints?.balance ?? balance
+          } else {
+            predEvent = data?.data?.user?.activePredictionEvent || data?.user?.activePredictionEvent || null
           }
-        ])
-      })
-      if (!resp.ok) return null
-      const data = await resp.json()
-      const predEvent = data?.[0]?.data?.user?.activePredictionEvent || null
-      const balance = data?.[1]?.data?.community?.channel?.self?.communityPoints?.balance ?? null
+        } catch (e) {
+          log('GQL proxy prediction failed:', e.message)
+        }
+      }
+      if (balance == null && (!pointsCache || Date.now() - pointsCache.ts >= 30000)) {
+        try {
+          const data = await gqlProxy('CommunityPointsContext', { channelLogin: safe })
+          const d = Array.isArray(data) ? data[0]?.data : (data?.data || data)
+          balance = d?.community?.channel?.self?.communityPoints?.balance ?? null
+        } catch (e) {
+          log('GQL proxy points failed:', e.message)
+        }
+      }
+
       return { prediction: predEvent, balance }
     } catch (e) {
       log('Failed to fetch prediction:', e.message)
@@ -6914,34 +7118,16 @@
     const token = getTwitchAuthToken()
     if (!token) return { error: 'not logged in' }
     try {
-      const resp = await fetch(TWITCH_GQL, {
-        method: 'POST',
-        headers: {
-          'Client-Id': TWITCH_CLIENT_ID,
-          'Content-Type': 'application/json',
-          'Authorization': `OAuth ${token}`
-        },
-        body: JSON.stringify({
-          operationName: 'MakePrediction',
-          extensions: {
-            persistedQuery: {
-              version: 1,
-              sha256Hash: 'b44682ecc88358817009f20f69cc0571d8f3b4e1e290472c1c0c6c2ea9b1f0bb'
-            }
-          },
-          variables: {
-            input: {
-              eventID: eventId,
-              outcomeID: outcomeId,
-              points: points,
-              transactionID: transactionId || crypto.randomUUID()
-            }
-          }
-        })
+      const data = await gqlProxy('MakePrediction', {
+        input: {
+          eventID: eventId,
+          outcomeID: outcomeId,
+          points: points,
+          transactionID: transactionId || crypto.randomUUID()
+        }
       })
-      if (!resp.ok) return { error: `HTTP ${resp.status}` }
-      const data = await resp.json()
-      if (data?.errors?.length) return { error: data.errors[0].message }
+      const d = Array.isArray(data) ? data[0] : data
+      if (d?.errors?.length) return { error: d.errors[0].message }
       _userBets.set(eventId, { outcomeId, points })
       return { ok: true }
     } catch (e) {
@@ -6957,45 +7143,58 @@
     }
     const token = getTwitchAuthToken()
     if (!token) return null
-    const headers = {
-      'Client-Id': TWITCH_CLIENT_ID,
-      'Content-Type': 'application/json',
-      'Authorization': `OAuth ${token}`
-    }
     try {
-      const resp = await fetch(TWITCH_GQL, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-          query: `{
-            user(login: "${safe}") {
-              id
-              communityPointsSettings {
-                customRewards {
-                  id title cost backgroundColor isEnabled isPaused isInStock
-                  isUserInputRequired cooldownExpiresAt prompt
-                  globalCooldownSetting { globalCooldownSeconds isEnabled }
-                  image { url }
-                  defaultImage { url }
+      // Try proxy with captured ChannelPointsContext hash first
+      const data = await gqlProxy('ChannelPointsContext', { channelLogin: safe }).catch(() => null)
+      let user = null
+      if (data) {
+        const d = Array.isArray(data) ? data[0] : data
+        user = d?.data?.community?.channel || d?.data?.user || d?.community?.channel || d?.user
+      }
+      // Fallback: try raw GQL (may work for some fields)
+      if (!user) {
+        const resp = await fetch(TWITCH_GQL, {
+          method: 'POST',
+          headers: {
+            'Client-Id': TWITCH_CLIENT_ID,
+            'Content-Type': 'application/json',
+            'Authorization': `OAuth ${token}`
+          },
+          body: JSON.stringify({
+            query: `{
+              user(login: "${safe}") {
+                id
+                communityPointsSettings {
+                  customRewards {
+                    id title cost backgroundColor isEnabled isPaused isInStock
+                    isUserInputRequired cooldownExpiresAt prompt
+                    globalCooldownSetting { globalCooldownSeconds isEnabled }
+                    image { url }
+                    defaultImage { url }
+                  }
+                }
+                self {
+                  communityPoints {
+                    balance
+                    availableClaim { id }
+                  }
                 }
               }
-              self {
-                communityPoints {
-                  balance
-                  availableClaim { id }
-                }
-              }
-            }
-          }`
+            }`
+          })
         })
-      })
-      if (!resp.ok) return null
-      const data = await resp.json()
-      const user = data?.data?.user
+        if (resp.ok) {
+          const raw = await resp.json()
+          user = raw?.data?.user
+        }
+      }
       if (!user) return null
-      const rewards = (user.communityPointsSettings?.customRewards || []).filter(r => r.isEnabled)
-      const balance = user.self?.communityPoints?.balance ?? null
-      const availableClaim = user.self?.communityPoints?.availableClaim?.id ?? null
+      const settings = user.communityPointsSettings || user.communityPointsSetting || {}
+      const rewards = (settings.customRewards || []).filter(r => r.isEnabled)
+      const self = user.self || {}
+      const cp = self.communityPoints || {}
+      const balance = cp.balance ?? null
+      const availableClaim = cp.availableClaim?.id ?? null
       _rewardsCache = { rewards, balance, availableClaim, channelId: user.id, fetchedAt: Date.now() }
       _rewardsCacheChannel = safe
       return _rewardsCache
@@ -7017,29 +7216,40 @@
         transactionID: crypto.randomUUID()
       }
       if (textInput) input.textInput = textInput
-      const resp = await fetch(TWITCH_GQL, {
-        method: 'POST',
-        headers: {
-          'Client-Id': TWITCH_CLIENT_ID,
-          'Content-Type': 'application/json',
-          'Authorization': `OAuth ${token}`
-        },
-        body: JSON.stringify({
-          query: `mutation($input: RedeemCommunityPointsCustomRewardInput!) {
-            redeemCommunityPointsCustomReward(input: $input) {
-              redemption { id }
-              error { code }
-            }
-          }`,
-          variables: { input }
+      // Try proxy first (uses captured hash + integrity)
+      try {
+        const data = await gqlProxy('RedeemCommunityPointsCustomReward', { input })
+        const d = Array.isArray(data) ? data[0] : data
+        if (d?.errors?.length) return { error: d.errors[0].message }
+        const err = d?.data?.redeemCommunityPointsCustomReward?.error
+        if (err) return { error: err.code || 'redemption failed' }
+        return { ok: true }
+      } catch(proxyErr) {
+        // Fallback to raw GQL mutation
+        const resp = await fetch(TWITCH_GQL, {
+          method: 'POST',
+          headers: {
+            'Client-Id': TWITCH_CLIENT_ID,
+            'Content-Type': 'application/json',
+            'Authorization': `OAuth ${token}`
+          },
+          body: JSON.stringify({
+            query: `mutation($input: RedeemCommunityPointsCustomRewardInput!) {
+              redeemCommunityPointsCustomReward(input: $input) {
+                redemption { id }
+                error { code }
+              }
+            }`,
+            variables: { input }
+          })
         })
-      })
-      if (!resp.ok) return { error: `HTTP ${resp.status}` }
-      const data = await resp.json()
-      if (data?.errors?.length) return { error: data.errors[0].message }
-      const err = data?.data?.redeemCommunityPointsCustomReward?.error
-      if (err) return { error: err.code || 'redemption failed' }
-      return { ok: true }
+        if (!resp.ok) return { error: `HTTP ${resp.status}` }
+        const data = await resp.json()
+        if (data?.errors?.length) return { error: data.errors[0].message }
+        const err = data?.data?.redeemCommunityPointsCustomReward?.error
+        if (err) return { error: err.code || 'redemption failed' }
+        return { ok: true }
+      }
     } catch (e) {
       return { error: e.message }
     }
@@ -7049,18 +7259,23 @@
     const token = getTwitchAuthToken()
     if (!token) return
     try {
-      await fetch(TWITCH_GQL, {
-        method: 'POST',
-        headers: {
-          'Client-Id': TWITCH_CLIENT_ID,
-          'Content-Type': 'application/json',
-          'Authorization': `OAuth ${token}`
-        },
-        body: JSON.stringify({
-          query: `mutation($input: ClaimCommunityPointsInput!) {
-            claimCommunityPoints(input: $input) { claim { id } }
-          }`,
-          variables: { input: { claimID: claimId, channelID: channelId } }
+      await gqlProxy('ClaimCommunityPoints', {
+        input: { claimID: claimId, channelID: channelId }
+      }).catch(async () => {
+        // Fallback to raw GQL
+        await fetch(TWITCH_GQL, {
+          method: 'POST',
+          headers: {
+            'Client-Id': TWITCH_CLIENT_ID,
+            'Content-Type': 'application/json',
+            'Authorization': `OAuth ${token}`
+          },
+          body: JSON.stringify({
+            query: `mutation($input: ClaimCommunityPointsInput!) {
+              claimCommunityPoints(input: $input) { claim { id } }
+            }`,
+            variables: { input: { claimID: claimId, channelID: channelId } }
+          })
         })
       })
     } catch (e) {
@@ -7071,13 +7286,30 @@
   async function fetchPoll(channelLogin) {
     const safe = channelLogin.replace(/[^a-z0-9_]/g, '')
     if (!safe) return null
-    const token = getTwitchAuthToken()
-    const headers = { 'Client-Id': TWITCH_CLIENT_ID, 'Content-Type': 'application/json' }
-    if (token) headers['Authorization'] = 'OAuth ' + token
     try {
+      // Try MAIN world cache first (intercepted from Twitch's own calls)
+      const cached = await gqlGetCache(['ActivePoll', 'ChannelPollContext'])
+      for (const key of ['ActivePoll', 'ChannelPollContext']) {
+        const c = cached.data?.[key]
+        if (c && Date.now() - c.ts < 15000) {
+          const poll = c.data?.user?.activePoll || c.data?.channel?.activePoll || null
+          if (poll) return poll
+        }
+      }
+      // Try proxy with captured hash
+      try {
+        const data = await gqlProxy('ActivePoll', { channelLogin: safe })
+        const d = Array.isArray(data) ? data[0] : data
+        return d?.data?.user?.activePoll || d?.user?.activePoll || null
+      } catch(e) {
+        log('GQL proxy poll failed:', e.message)
+      }
+      // Fallback to raw GQL
+      const token = getTwitchAuthToken()
+      const headers = { 'Client-Id': TWITCH_CLIENT_ID, 'Content-Type': 'application/json' }
+      if (token) headers['Authorization'] = 'OAuth ' + token
       const resp = await fetch(TWITCH_GQL, {
-        method: 'POST',
-        headers,
+        method: 'POST', headers,
         body: JSON.stringify({
           query: '{ user(login: "' + safe + '") { activePoll { id title status durationSeconds remainingDurationMilliseconds startedAt choices { id title totalVoters } totalVoters } } }'
         })
@@ -7095,24 +7327,37 @@
     const token = getTwitchAuthToken()
     if (!token) return { error: 'not logged in' }
     try {
-      const resp = await fetch(TWITCH_GQL, {
-        method: 'POST',
-        headers: {
-          'Client-Id': TWITCH_CLIENT_ID,
-          'Content-Type': 'application/json',
-          'Authorization': 'OAuth ' + token
-        },
-        body: JSON.stringify({
-          query: 'mutation($input: VotePollInput!) { votePoll(input: $input) { error { code } } }',
-          variables: { input: { pollID: pollId, choiceID: choiceId } }
+      // Try proxy first
+      try {
+        const data = await gqlProxy('VotePoll', {
+          input: { pollID: pollId, choiceID: choiceId }
         })
-      })
-      if (!resp.ok) return { error: 'HTTP ' + resp.status }
-      const data = await resp.json()
-      if (data?.errors?.length) return { error: data.errors[0].message }
-      const err = data?.data?.votePoll?.error
-      if (err) return { error: err.code || 'vote failed' }
-      return { ok: true }
+        const d = Array.isArray(data) ? data[0] : data
+        if (d?.errors?.length) return { error: d.errors[0].message }
+        const err = d?.data?.votePoll?.error
+        if (err) return { error: err.code || 'vote failed' }
+        return { ok: true }
+      } catch(proxyErr) {
+        // Fallback to raw GQL
+        const resp = await fetch(TWITCH_GQL, {
+          method: 'POST',
+          headers: {
+            'Client-Id': TWITCH_CLIENT_ID,
+            'Content-Type': 'application/json',
+            'Authorization': 'OAuth ' + token
+          },
+          body: JSON.stringify({
+            query: 'mutation($input: VotePollInput!) { votePoll(input: $input) { error { code } } }',
+            variables: { input: { pollID: pollId, choiceID: choiceId } }
+          })
+        })
+        if (!resp.ok) return { error: 'HTTP ' + resp.status }
+        const data = await resp.json()
+        if (data?.errors?.length) return { error: data.errors[0].message }
+        const err = data?.data?.votePoll?.error
+        if (err) return { error: err.code || 'vote failed' }
+        return { ok: true }
+      }
     } catch (e) {
       return { error: e.message }
     }
@@ -8626,7 +8871,7 @@
       }
 
       const id = twitchVal || kickVal || ('yt-' + Date.now())
-      const reserved = ['live', 'feed', 'notifs', 'mentions', 'posts', 'add', 'rotate']
+      const reserved = ['live', 'feed', 'activity', 'mentions', 'add', 'rotate']
       if (reserved.includes(id)) {
         showErr('reserved name')
         return
@@ -9128,36 +9373,6 @@
   }
 
   // ============================================
-  // POST LISTENER
-  // ============================================
-
-  function listenForPosts() {
-    cleanup.addEventListener(window, 'message', (e) => {
-      if (e.origin !== location.origin) return;
-      if (e.data?.type === 'heatsync-rotate-tabs') {
-        rotateTabPosition();
-        return;
-      }
-      if (e.data?.type === 'heatsync-tweet') {
-        const post = e.data.tweet;
-        postsBuffer.push({
-          user: post.username,
-          text: post.content,
-          color: '#f23c3c',
-          time: Date.now()
-        });
-        if (postsBuffer.length > MAX_BUFFER + 50) postsBuffer.splice(0, postsBuffer.length - MAX_BUFFER);
-
-        if (currentTab === 'posts') {
-          renderMessages('posts');
-        } else {
-          updateTabIndicator('posts');
-        }
-      }
-    });
-  }
-
-  // ============================================
   // TABS POSITION SETTING
   // ============================================
 
@@ -9181,7 +9396,7 @@
   }
 
   let _savedActiveTab = null;
-  const BUILTIN_TABS = ['live', 'feed', 'notifs', 'mentions', 'posts', 'add'];
+  const BUILTIN_TABS = ['live', 'feed', 'activity', 'mentions', 'add'];
   async function loadActiveTab() {
     try {
       const stored = await chrome.storage.local.get(['ui_settings']);
@@ -9415,7 +9630,6 @@
     setupEmoteTooltipHandlers();
     setupUserTooltipHandlers();
     setupLinkTooltipHandlers();
-    listenForPosts();
     listenForSettingsChanges();
 
     // Load heatsync auth state
@@ -9568,6 +9782,9 @@
           buffer.push(evt);
           saveStreamEvent(evt);
         }
+        activityEvents.push(evt);
+        if (currentTab === 'activity') renderActivity();
+        else { const actTab = tabBarElement?.querySelector('[data-tab="activity"]'); if (actTab) actTab.classList.add('has-stream-event'); }
 
         // Magenta tab highlight
         const liveChannel = getLiveChannel();
@@ -9631,6 +9848,9 @@
           buffer.push(evt);
           saveStreamEvent(evt);
         }
+        activityEvents.push(evt);
+        if (currentTab === 'activity') renderActivity();
+        else { const actTab = tabBarElement?.querySelector('[data-tab="activity"]'); if (actTab) actTab.classList.add('has-stream-event'); }
 
         // Render inline
         const activeTab = currentTab;

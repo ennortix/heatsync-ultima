@@ -3253,10 +3253,10 @@
   // Send message to current tab's channel
   async function sendMessage() {
     const input = document.getElementById('hs-mc-input');
-    if (!input) { if (MC_DEBUG) console.warn('[HS] SEND BAIL: no input element'); return; }
+    if (!input) { console.warn('[HS] SEND BAIL: no input element'); return; }
 
     const text = getInputText().trim();
-    if (!text) { if (MC_DEBUG) console.warn('[HS] SEND BAIL: empty text, wysiwyg=' + wysiwygEnabled, 'raw=', input.textContent || input.value); return; }
+    if (!text) { console.warn('[HS] SEND BAIL: empty text'); return; }
 
     // Feed/notifs tab → post to heatsync API
     if (currentTab === 'feed' || currentTab === 'activity') {
@@ -3280,14 +3280,14 @@
     }
 
     if (!targetChannel) {
-      if (MC_DEBUG) console.warn('[HS] SEND BAIL: no target channel, currentTab=' + currentTab);
+      console.warn('[HS] SEND BAIL: no target channel, currentTab=' + currentTab);
       return;
     }
 
     // Get auth token
     const token = getTwitchAuthToken();
     if (!token) {
-      if (MC_DEBUG) console.warn('[HS] SEND BAIL: no auth token (cookie missing)');
+      console.warn('[HS] SEND BAIL: no auth token (cookie missing)');
       if (wysiwygEnabled) {
         input.dataset.placeholder = 'not logged in';
       } else {
@@ -3547,7 +3547,7 @@
 
   async function sendIrcMessage(channel, text, token, replyParentId) {
     const nick = currentUsername || getCurrentUsername();
-    if (!nick) { if (MC_DEBUG) console.warn('[HS] SEND FAIL: no username'); return 'no_user'; }
+    if (!nick) { console.warn('[HS] SEND FAIL: no username'); return 'no_user'; }
     channel = channel.toLowerCase();
     const prefix = replyParentId ? `@reply-parent-msg-id=${replyParentId} ` : ''
 

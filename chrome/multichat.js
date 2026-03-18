@@ -868,6 +868,9 @@
     afterText: ''   // Text after the completion
   };
 
+  // Edit form active — block renders while editing channel config
+  let editingChannel = false;
+
   // Track scroll state for "new messages" button
   let isScrolledUp = false;
   let newMessageCount = 0;
@@ -4687,6 +4690,7 @@
         border-top: 1px solid #808080;
         flex-shrink: 0 !important;
         min-height: 0 !important;
+        margin-top: auto !important;
         visibility: visible !important;
         opacity: 1 !important;
         background: #000 !important;
@@ -6772,6 +6776,7 @@
 
   function switchTab(id) {
     log('switchTab called:', id);
+    editingChannel = false;
 
     // Reset expanded thread when leaving feed
     if (currentTab === 'feed' && id !== 'feed') {
@@ -7051,6 +7056,7 @@ m.type === 'usernotice' ? 'hs-mc-msg hs-mc-system' :
   // Incremental append for single messages on the active tab (hot path)
   // Returns true if handled, false if full rebuild needed
   function appendMessage(msg, tabId) {
+    if (editingChannel) return false;
     if (isScrolledUp || currentTab !== tabId) return false;
     const msgsEl = document.getElementById('hs-mc-messages');
     if (!msgsEl) return false;
@@ -7084,6 +7090,7 @@ m.type === 'usernotice' ? 'hs-mc-msg hs-mc-system' :
 
   // Full rebuild — used for tab switches, scroll resume, and initial load
   function renderMessages(id) {
+    if (editingChannel) return;
     // Social tabs have their own renderers
     if (id === 'feed') { renderFeed(); return; }
     if (id === 'activity') { renderActivity(); return; }
@@ -9201,6 +9208,7 @@ m.type === 'usernotice' ? 'hs-mc-msg hs-mc-system' :
   function showEditChannelForm(tabId) {
     let ch = config.channels.find(c => (typeof c === 'string' ? c : c.id) === tabId);
     if (!ch) return;
+    editingChannel = true;
     // Normalize legacy string format
     if (typeof ch === 'string') {
       const idx = config.channels.indexOf(ch);

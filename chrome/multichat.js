@@ -885,22 +885,27 @@
   // Platform badges [T]/[K]/[YT] on messages (default on)
   let platformBadgesEnabled = true;
 
-  // Zebra striping — alternate row backgrounds (default off)
-  let zebraEnabled = false;
+  // Zebra striping — alternate row backgrounds (default on)
+  let zebraEnabled = true;
+
+  // Timestamps on messages (default off)
+  let timestampsEnabled = false;
 
   // Input bar auto-hide — hidden when empty, shown on first keystroke
+  let autoHideInput = true;
   let inputBarVisible = true;
 
   function showInputBar() {
     if (inputBarVisible) return
     inputBarVisible = true
     const bar = document.getElementById('hs-mc-inputbar')
-    if (bar) bar.style.display = ''
+    if (bar) bar.classList.remove('hs-hidden')
     const picker = document.getElementById('hs-mc-emote-picker')
     adjustOverlayForPicker(picker?.classList.contains('visible') || false)
   }
 
   function hideInputBar() {
+    if (!autoHideInput) return
     if (!inputBarVisible) return
     const input = document.getElementById('hs-mc-input')
     const hasText = input ? (input.value || input.textContent || '').trim().length > 0 : false
@@ -912,7 +917,7 @@
     if (replyState) return
     inputBarVisible = false
     const bar = document.getElementById('hs-mc-inputbar')
-    if (bar) bar.style.display = 'none'
+    if (bar) bar.classList.add('hs-hidden')
     const overlay = document.getElementById('hs-mc-overlay')
     if (overlay) overlay.style.bottom = '0'
   }
@@ -1330,6 +1335,67 @@
   }
 
 
+  // Auto-hide input setting
+  async function loadAutoHideSetting() {
+    try {
+      const stored = await chrome.storage.local.get(['ui_settings']);
+      if (stored.ui_settings?.autoHideEmpty !== undefined) {
+        autoHideInput = stored.ui_settings.autoHideEmpty;
+      }
+    } catch {}
+  }
+
+  async function saveAutoHideSetting() {
+    try {
+      const stored = await chrome.storage.local.get(['ui_settings']);
+      const settings = stored.ui_settings || {};
+      settings.autoHideEmpty = autoHideInput;
+      await chrome.storage.local.set({ ui_settings: settings });
+    } catch {}
+  }
+
+  function toggleAutoHide() {
+    autoHideInput = !autoHideInput;
+    saveAutoHideSetting();
+    const bar = document.getElementById('hs-mc-inputbar');
+    const picker = document.getElementById('hs-mc-emote-picker');
+    const pickerOpen = picker?.classList.contains('visible') || false;
+    if (autoHideInput) {
+      // Force-hide bar (bypass picker check)
+      if (bar) bar.classList.add('hs-hidden');
+      inputBarVisible = false;
+    } else {
+      if (bar) bar.classList.remove('hs-hidden');
+      inputBarVisible = true;
+    }
+    adjustOverlayForPicker(pickerOpen);
+  }
+
+  // Timestamps setting
+  async function loadTimestampsSetting() {
+    try {
+      const stored = await chrome.storage.local.get(['ui_settings']);
+      if (stored.ui_settings?.timestamps !== undefined) {
+        timestampsEnabled = stored.ui_settings.timestamps;
+      }
+    } catch {}
+  }
+
+  async function saveTimestampsSetting() {
+    try {
+      const stored = await chrome.storage.local.get(['ui_settings']);
+      const settings = stored.ui_settings || {};
+      settings.timestamps = timestampsEnabled;
+      await chrome.storage.local.set({ ui_settings: settings });
+    } catch {}
+  }
+
+  function toggleTimestamps() {
+    timestampsEnabled = !timestampsEnabled;
+    saveTimestampsSetting();
+    renderMessages(currentTab);
+  }
+
   function rebuildInput() {
     const bar = document.getElementById('hs-mc-inputbar');
     if (!bar) return;
@@ -1525,7 +1591,7 @@
       <div class="hs-mc-tab-content" id="hs-mc-tab-twitch" style="display: ${pickerTab === 'twitch' ? 'flex' : 'none'}; flex-direction: column; padding: 8px 0;">
         <div class="hs-mc-pred-loading">loading...</div>
       </div>
-      <div class="hs-mc-tab-content" id="hs-mc-tab-settings" style="display: ${pickerTab === 'settings' ? 'flex' : 'none'}; flex-direction: column; padding: 0; gap: 0;">
+      <div class="hs-mc-tab-content" id="hs-mc-tab-settings" style="display: ${pickerTab === 'settings' ? 'flex' : 'none'}; flex-direction: column; padding: 0; gap: 0; overflow-y: auto;">
         <div class="hs-mc-settings-group">
           <div class="hs-mc-settings-group-title">display</div>
           <div class="hs-mc-setting-row">
@@ -1551,6 +1617,17 @@
           <div class="hs-mc-setting-row">
             <span class="hs-mc-setting-label">zebra striping</span>
             <button class="hs-mc-toggle-pill ${zebraEnabled ? 'active' : ''}" id="hs-mc-zebra-toggle"><span class="hs-mc-toggle-knob"></span></button>
+          </div>
+          <div class="hs-mc-setting-row">
+            <span class="hs-mc-setting-label">auto-hide input</span>
+            <button class="hs-mc-toggle-pill ${autoHideInput ? 'active' : ''}" id="hs-mc-autohide-toggle"><span class="hs-mc-toggle-knob"></span></button>
+          </div>
+          <div class="hs-mc-setting-row">
+            <span class="hs-mc-setting-label">timestamps</span>
+            <button class="hs-mc-toggle-pill ${timestampsEnabled ? 'active' : ''}" id="hs-mc-timestamps-toggle"><span class="hs-mc-toggle-knob"></span></button>
+          </div>
+          <div class="hs-mc-setting-row" style="margin-top:8px;justify-content:flex-end">
+            <button id="hs-mc-defaults-btn" style="background:#c0c0c0;border:2px outset #fff;padding:2px 10px;font-size:11px;font-weight:bold;cursor:pointer;font-family:'Liberation Mono',monospace;color:#000;box-shadow:1px 1px 0 #000">default</button>
           </div>
         </div>
         </div>
@@ -1629,6 +1706,59 @@
       zebraToggle.classList.toggle('active', zebraEnabled);
     });
 
+    // Auto-hide input toggle
+    const autoHideToggle = document.getElementById('hs-mc-autohide-toggle');
+    autoHideToggle?.addEventListener('click', () => {
+      toggleAutoHide();
+      autoHideToggle.classList.toggle('active', autoHideInput);
+    });
+
+    // Timestamps toggle
+    const timestampsToggle = document.getElementById('hs-mc-timestamps-toggle');
+    timestampsToggle?.addEventListener('click', () => {
+      toggleTimestamps();
+      timestampsToggle.classList.toggle('active', timestampsEnabled);
+    });
+
+    // Default button — reset all settings
+    const defaultsBtn = document.getElementById('hs-mc-defaults-btn');
+    defaultsBtn?.addEventListener('click', async () => {
+      wysiwygEnabled = false;
+      linksEnabled = true;
+      viModeEnabled = false;
+      zebraEnabled = true;
+      autoHideInput = true;
+      timestampsEnabled = false;
+      platformBadgesEnabled = true;
+      // Save all
+      const settings = {
+        wysiwygEnabled: false,
+        linksEnabled: true,
+        viMode: false,
+        zebra: true,
+        autoHideInput: true,
+        timestamps: false,
+        showPlatformBadges: true,
+      };
+      try { await chrome.storage.local.set({ ui_settings: { ...(await chrome.storage.local.get(['ui_settings'])).ui_settings, ...settings } }); } catch {}
+      // Update toggle pills
+      picker.querySelectorAll('.hs-mc-toggle-pill').forEach(p => {
+        const id = p.id;
+        if (id === 'hs-mc-wysiwyg-toggle') p.classList.toggle('active', false);
+        if (id === 'hs-mc-links-toggle') p.classList.toggle('active', true);
+        if (id === 'hs-mc-vi-toggle') p.classList.toggle('active', false);
+        if (id === 'hs-mc-zebra-toggle') p.classList.toggle('active', true);
+        if (id === 'hs-mc-autohide-toggle') p.classList.toggle('active', true);
+        if (id === 'hs-mc-timestamps-toggle') p.classList.toggle('active', false);
+      });
+      // Apply auto-hide (default: on — hide bar)
+      const bar = document.getElementById('hs-mc-inputbar');
+      if (bar) bar.classList.add('hs-hidden');
+      inputBarVisible = false;
+      adjustOverlayForPicker(true);
+      rebuildInput();
+      renderMessages(currentTab);
+    });
 
     // Tab switching
     picker.querySelectorAll('.hs-mc-picker-tab').forEach(tabBtn => {
@@ -1696,6 +1826,10 @@
     }
 
     picker.classList.add('visible');
+    // Position picker flush above input bar (or at bottom if hidden)
+    const bar = document.getElementById('hs-mc-inputbar');
+    const barHeight = (bar && inputBarVisible) ? bar.offsetHeight : 0;
+    picker.style.bottom = barHeight + 'px';
     adjustOverlayForPicker(true);
 
     if (pickerTab === 'twitch') renderTwitchTab();
@@ -1725,8 +1859,9 @@
     const container = document.getElementById('hs-mc-container');
     const hasBottomTabs = container?.classList.contains('hs-tabs-bottom');
     const barBase = inputBarVisible ? (hasBottomTabs ? 90 : 52) : 0;
-    const pickerHeight = 400;
-    overlay.style.bottom = open ? (barBase + pickerHeight) + 'px' : barBase + 'px';
+    const pickerEl = document.getElementById('hs-mc-emote-picker');
+    const pickerHeight = open && pickerEl ? pickerEl.offsetHeight : 0;
+    overlay.style.bottom = (barBase + pickerHeight) + 'px';
   }
 
 
@@ -2457,6 +2592,7 @@
       window._hsMcTabHandler = true;
       document.addEventListener('keydown', (e) => {
         if (e.key !== 'Tab') return;
+        if (currentTab === 'add') return;
         const input = document.getElementById('hs-mc-input');
         if (!input) return;
 
@@ -2474,6 +2610,7 @@
       window._hsMcTypeRevealHandler = true
       document.addEventListener('keydown', (e) => {
         if (inputBarVisible) return
+        if (currentTab === 'add') return
         const input = document.getElementById('hs-mc-input')
         if (!input) return
         // Only printable chars — skip modifiers, nav, function keys
@@ -3522,13 +3659,23 @@
       /* New messages — activity indicator */
       .hs-mc-tab.has-new {
         background: #000 !important;
-        color: #ffff00 !important;
+        color: #fff !important;
         border-color: #808080 !important;
       }
       /* Has-new hover */
       .hs-mc-tab.has-new:not(.active):hover {
         background: #fff !important;
         color: #000 !important;
+      }
+      /* Mentions — red when unseen */
+      .hs-mc-tab.has-mentions:not(.active) {
+        background: #000 !important;
+        color: #f44 !important;
+        border-color: #808080 !important;
+      }
+      .hs-mc-tab.has-mentions:not(.active):hover {
+        background: #fff !important;
+        color: #f44 !important;
       }
       /* Active — focused tab */
       .hs-mc-tab.active {
@@ -3545,10 +3692,10 @@
       .hs-mc-tab.has-new.active {
         color: #000 !important;
       }
-      /* Stream event — cyan tab text (game switch) */
+      /* Stream event — yellow tab text (game switch) */
       .hs-mc-tab.has-stream-event {
         background: #000 !important;
-        color: #00ffff !important;
+        color: #ffff00 !important;
         border-color: #808080 !important;
       }
       .hs-mc-tab.has-stream-event:not(.active):hover {
@@ -3563,13 +3710,13 @@
         padding: 2px 8px;
         font-size: 13px;
         font-style: italic;
-        border-left: 3px solid #00ffff;
+        border-left: 3px solid #ffff00;
         border-bottom: 1px solid #333;
       }
-      .hs-mc-stream-event.event-update { color: #00ffff; }
+      .hs-mc-stream-event.event-update { color: #ffff00; }
       .hs-mc-stream-event.event-online { color: #f44; border-left-color: #f44; }
       .hs-mc-stream-event.event-offline { color: #808080; border-left-color: #808080; }
-      .hs-mc-stream-event.event-follow { color: #00ffff; border-left-color: #00ffff; opacity: 0.8; }
+      .hs-mc-stream-event.event-follow { color: #ffff00; border-left-color: #ffff00; opacity: 0.8; }
       .hs-mc-stream-event.event-follow.event-online { color: #f44; border-left-color: #f44; }
       .hs-mc-stream-event.event-follow.event-offline { color: #808080; border-left-color: #808080; }
       /* Live dot — red indicator, composes with any state */
@@ -3788,9 +3935,14 @@
       }
 
       /* Ensure our elements are visible */
-      #hs-mc-tabbar,
+      #hs-mc-tabbar {
+        display: flex !important;
+      }
       #hs-mc-inputbar {
         display: flex !important;
+      }
+      #hs-mc-inputbar.hs-hidden {
+        display: none !important;
       }
 
       .hs-mc-ts {
@@ -3816,7 +3968,6 @@
         background: #111;
       }
       .hs-mc-msg:hover {
-        background: #000;
       }
       .hs-mc-msg[data-msg-id] {
         position: relative;
@@ -4516,8 +4667,8 @@
         position: absolute;
         left: 0;
         right: 0;
-        bottom: 52px;
-        height: 400px;
+        bottom: 0;
+        height: min(400px, 60vh);
         background: #000;
         border-top: 1px solid #808080;
         z-index: 1003;
@@ -4533,9 +4684,9 @@
       /* Picker tabs — pinned to bottom */
       #hs-mc-emote-picker .hs-mc-picker-tabs {
         display: flex !important;
-        border-top: 1px solid rgba(255,255,255,0.08);
+        border-top: 1px solid #808080;
         flex-shrink: 0 !important;
-        min-height: 40px !important;
+        min-height: 0 !important;
         visibility: visible !important;
         opacity: 1 !important;
         background: #000 !important;
@@ -4546,13 +4697,14 @@
         align-items: center !important;
         justify-content: center !important;
         gap: 5px !important;
-        padding: 8px !important;
+        padding: 6px 4px !important;
         background: transparent !important;
         color: #808080 !important;
         border: none !important;
         cursor: pointer;
-        font-size: 16px !important;
-        font-weight: 800 !important;
+        font-size: 12px !important;
+        font-weight: 600 !important;
+        line-height: 1 !important;
         text-align: center;
         visibility: visible !important;
         opacity: 1 !important;
@@ -4611,7 +4763,7 @@
       .hs-mc-tab-content {
         flex: 1 1 0 !important;
         min-height: 0 !important;
-        max-height: calc(400px - 42px) !important;
+        max-height: calc(min(400px, 60vh) - 42px) !important;
         overflow-y: auto !important;
       }
       /* Custom scrollbar */
@@ -4638,18 +4790,7 @@
         min-height: 0;
       }
       .hs-mc-picker-section-header {
-        position: sticky;
-        top: 0;
-        background: #000;
-        padding: 6px 10px;
-        font-size: 11px;
-        color: #808080;
-        text-transform: lowercase;
-        z-index: 1;
-        border-bottom: 1px solid rgba(255,255,255,0.06);
-        display: flex;
-        align-items: center;
-        gap: 6px;
+        display: none;
       }
       .hs-mc-picker-section-count {
         color: #808080;
@@ -4685,7 +4826,7 @@
       }
       #hs-mc-emote-search {
         width: 100%;
-        padding: 8px 12px 8px 32px;
+        padding: 4px 8px 4px 28px;
         background: #fff;
         color: #000;
         border: 1px solid #808080;
@@ -5370,10 +5511,9 @@
         color: #fff !important;
       }
       .hs-mc-toggle-pill {
-        position: relative;
-        width: 36px;
-        height: 20px;
-        background: #000;
+        width: 16px;
+        height: 16px;
+        background: #f00;
         border: none;
         border-radius: 0;
         cursor: pointer;
@@ -5382,21 +5522,10 @@
         flex-shrink: 0;
       }
       .hs-mc-toggle-pill.active {
-        background: #ff6b35;
+        background: #0f0;
       }
       .hs-mc-toggle-knob {
-        position: absolute;
-        top: 3px;
-        left: 3px;
-        width: 14px;
-        height: 14px;
-        background: #fff;
-        border-radius: 50%;
-        transition: none;
-        pointer-events: none;
-      }
-      .hs-mc-toggle-pill.active .hs-mc-toggle-knob {
-        transform: translateX(16px);
+        display: none;
       }
 
 
@@ -5599,12 +5728,6 @@
         transition: none;
       }
       .hs-feed-msg:hover {
-        background: #fff;
-        color: #000;
-      }
-      .hs-feed-msg:hover,
-      .hs-feed-msg:hover *:not(.hs-spoiler:not(.revealed)) {
-        color: #000 !important;
       }
       .hs-feed-header {
         display: flex;
@@ -5979,8 +6102,10 @@
     if (!inputBarElement || !document.contains(inputBarElement)) {
       inputBarElement = createInputBar();
       // Start hidden — typing reveals it
-      inputBarVisible = true
-      hideInputBar()
+      if (autoHideInput) {
+        inputBarElement.classList.add('hs-hidden')
+        inputBarVisible = false
+      }
       log('Created input bar');
     }
     if (!container.contains(inputBarElement)) {
@@ -6593,13 +6718,14 @@
       if (m._src === 'event') {
         const div = document.createElement('div');
         div.className = `hs-mc-stream-event ${m.eventClass || ''}`;
-        const ts = formatTimeFromTs(m.time);
+        const ts = timestampsEnabled ? formatTimeFromTs(m.time) : '';
+        const tsSpan = ts ? `<span class="hs-mc-ts" data-ts="${m.time}">${ts}</span>` : '';
         // Show channel name in magenta for activity context
         // Strip [channel] prefix from follow events (we add our own #channel)
         let evtText = m.text
         if (m.channel) evtText = evtText.replace(new RegExp(`^\\[${m.channel}\\]\\s*`), '')
-        const chanLabel = m.channel ? `<span style="color:#00ffff;font-weight:bold">#${escapeHtml(m.channel)}</span> ` : '';
-        div.innerHTML = `<span class="hs-mc-ts" data-ts="${m.time}">${ts}</span>${chanLabel}${escapeHtml(evtText)}`;
+        const chanLabel = m.channel ? `<span style="color:#fff;font-weight:bold">#${escapeHtml(m.channel)}</span> ` : '';
+        div.innerHTML = `${tsSpan}${chanLabel}${escapeHtml(evtText)}`;
         frag.appendChild(div);
       } else {
         frag.appendChild(buildNotifDiv(m));
@@ -6615,10 +6741,10 @@
     // Safe: renderFeedContent escapes via escapeHtml first, then adds safe formatting tags
     const content = renderFeedContent(m.content, m.emote_refs);
 
-    // Safe: username/time through escapeHtml, color through sanitizeColor, content through renderFeedContent
+    // Safe: username through escapeHtml+encodeURIComponent, time through escapeHtml, content through renderFeedContent (which escapes via escapeHtml then adds safe formatting)
     div.innerHTML = `
       <div class="hs-feed-header">
-        <a href="https://heatsync.org/user/${encodeURIComponent(m.username)}" target="_blank" class="hs-feed-user" style="color:${sanitizeColor(m.user_color || '#fff')}">${escapeHtml(m.username || 'anon')}</a>
+        <a href="https://heatsync.org/user/${encodeURIComponent(m.username)}" target="_blank" class="hs-feed-user" style="color:#fff">${escapeHtml(m.username || 'anon')}</a>
         <span class="hs-feed-time">${escapeHtml(time)}</span>
       </div>
       <div class="hs-feed-body">${content}</div>
@@ -6682,6 +6808,7 @@
         if (t.dataset.tab === id) {
           t.classList.remove('has-new');
           t.classList.remove('has-stream-event');
+          t.classList.remove('has-mentions');
         }
       });
     }
@@ -6699,12 +6826,24 @@
     if (isKick && id === 'live' && (!liveChannel || liveChannel === getCurrentChannel()?.toLowerCase())) {
       setNativeChatHidden(false);
       if (overlayElement) overlayElement.classList.remove('visible');
-      if (inputBarElement) inputBarElement.style.display = 'none';
+      if (inputBarElement) inputBarElement.classList.add('hs-hidden');
       return;
     }
 
-    // Hide input bar on add-channel form, show for everything else
-    if (inputBarElement) inputBarElement.style.display = id === 'add' ? 'none' : '';
+    // Hide input bar on add-channel form, or when auto-hide is on
+    if (inputBarElement) {
+      const pickerOpen = document.getElementById('hs-mc-emote-picker')?.classList.contains('visible');
+      if (id === 'add') {
+        inputBarElement.classList.add('hs-hidden');
+        inputBarVisible = false;
+      } else if (autoHideInput && !pickerOpen) {
+        inputBarElement.classList.add('hs-hidden');
+        inputBarVisible = false;
+      } else {
+        inputBarElement.classList.remove('hs-hidden');
+        inputBarVisible = true;
+      }
+    }
 
     if (overlayElement) {
       overlayElement.classList.add('visible');
@@ -6761,6 +6900,7 @@
     if (mentionsTab) {
       const unseenMentions = mentionsBuffer.length - mentionsSeenCount;
       mentionsTab.textContent = unseenMentions > 0 ? `mentions(${unseenMentions})` : 'mentions';
+      mentionsTab.classList.toggle('has-mentions', unseenMentions > 0);
     }
   }
 
@@ -6790,8 +6930,9 @@
     if (m.type === 'stream-event') {
       const div = document.createElement('div')
       div.className = `hs-mc-stream-event ${m.eventClass || ''}`
-      const ts = formatTimeFromTs(m.time)
-      div.innerHTML = `<span class="hs-mc-ts" data-ts="${m.time}">${ts}</span>${escapeHtml(m.text)}`
+      const tsVal = timestampsEnabled ? formatTimeFromTs(m.time) : ''
+      const tsSpan = tsVal ? `<span class="hs-mc-ts" data-ts="${m.time}">${tsVal}</span>` : ''
+      div.innerHTML = `${tsSpan}${escapeHtml(m.text)}`
       return div
     }
 
@@ -6837,7 +6978,7 @@ m.type === 'usernotice' ? 'hs-mc-msg hs-mc-system' :
     // USERNOTICE system line (all values go through escapeHtml — same pattern as existing innerHTML above)
     const systemLine = m.systemMsg ? `<span class="hs-mc-system-text">${escapeHtml(m.systemMsg)}</span>` : ''
     const ts = formatTimeFromTs(m.time);
-    const tsHtml = ts ? `<span class="hs-mc-ts" data-ts="${m.time}">${ts}</span>` : '';
+    const tsHtml = ts && timestampsEnabled ? `<span class="hs-mc-ts" data-ts="${m.time}">${ts}</span>` : '';
     const msgBody = m.type === 'usernotice' && !m.text
       ? `${tsHtml}${systemLine}`
       : `${tsHtml}${systemLine}${platformBadge}${scBadge}${badges}${userLink}${channelSpan}: ${processedText}${stickerHtml}`
@@ -9799,6 +9940,8 @@ m.type === 'usernotice' ? 'hs-mc-msg hs-mc-system' :
     await loadViModeSetting();
     await loadPlatformBadgesSetting();
     await loadZebraSetting();
+    await loadAutoHideSetting();
+    await loadTimestampsSetting();
     await loadBlockedEmotes();
     await loadEmotes();
 
@@ -9942,13 +10085,13 @@ m.type === 'usernotice' ? 'hs-mc-msg hs-mc-system' :
         // Build inline notification
         let text = '', eventClass = '';
         if (msg.eventType === 'stream:update' && msg.prevGame && msg.game && msg.prevGame !== msg.game) {
-          text = `\u25C6 switched to ${msg.game}`;
+          text = `[${channel}] \u25C6 switched to ${msg.game}`;
           eventClass = 'event-update';
         } else if (msg.eventType === 'stream:online') {
-          text = msg.game ? `\u25C6 went live \u2014 ${msg.game}` : '\u25C6 went live';
+          text = msg.game ? `[${channel}] \u25C6 went live \u2014 ${msg.game}` : `[${channel}] \u25C6 went live`;
           eventClass = 'event-online';
         } else if (msg.eventType === 'stream:offline') {
-          text = '\u25C6 went offline';
+          text = `[${channel}] \u25C6 went offline`;
           eventClass = 'event-offline';
         }
         if (!text) return;

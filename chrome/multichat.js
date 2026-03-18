@@ -10195,6 +10195,53 @@ m.type === 'usernotice' ? 'hs-mc-msg hs-mc-system' :
       });
     }
 
+    // === BULLETPROOF CONNECTION MAINTENANCE ===
+
+    // 1. Detect extension context invalidation → auto-reload page
+    // When Chrome restarts the service worker or updates the extension,
+    // content scripts become orphaned. Detect and reload.
+    cleanup.setInterval(() => {
+      try {
+        if (!chrome.runtime?.id) throw new Error('dead');
+        // Ping background to verify it's alive
+        chrome.runtime.sendMessage({ type: 'ping' }).catch(() => {
+          log('Background unreachable, reloading page...');
+          location.reload();
+        });
+      } catch {
+        log('Extension context invalidated, reloading page...');
+        location.reload();
+      }
+    }, 30000, 'context-health');
+
+    // 2. Reconnect auth IRC on tab focus (for sending messages)
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState !== 'visible') return;
+      if (authState.ws && authState.ws.readyState === WebSocket.OPEN) return;
+      // Auth IRC is dead — reconnect if we have credentials
+      const token = getTwitchAuthToken();
+      const nick = currentUsername || getCurrentUsername();
+      if (token && nick && !authState.connecting) {
+        log('Tab visible, auth IRC dead — reconnecting');
+        const prev = [...authState.joined];
+        connectAuthIrc(token, nick).then(ok => {
+          if (ok === true) {
+            for (const ch of prev) joinChannel(ch);
+            drainSendQueue();
+          }
+        });
+      }
+    }, { signal: mcSignal });
+
+    // 3. Reconnect Kick chat on tab focus
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState !== 'visible') return;
+      if (kickChat && (!kickChat.ws || kickChat.ws.readyState !== WebSocket.OPEN)) {
+        log('Tab visible, Kick chat dead — reconnecting');
+        kickChat.connect();
+      }
+    }, { signal: mcSignal });
+
     if (isKick) {
       // Kick: no React hook needed, just inject directly
       let kickAttempts = 0;

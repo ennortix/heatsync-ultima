@@ -9,6 +9,15 @@ const log = DEBUG ? console.log.bind(console, '[heatsync]') : () => {};
 
 log('🔥 BACKGROUND SCRIPT LOADING...');
 
+// Keepalive alarm — prevent Chrome from killing the service worker
+// The alarm fires every 25s, which resets Chrome's 30s inactivity timer
+browser.alarms?.create('keepalive', { periodInMinutes: 25 / 60 });
+browser.alarms?.onAlarm?.addListener((alarm) => {
+  if (alarm.name === 'keepalive') {
+    // Just existing is enough to keep the worker alive
+  }
+});
+
 // Link preview via heatsync.org server proxy (avoids CORS)
 const LINK_PREVIEW_API = 'https://heatsync.org/api/link-preview'
 
@@ -1978,6 +1987,12 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
   // Validate ALL content script senders, not just sensitive types
   if (!isValidSender) {
     sendResponse({ ok: false, error: 'unauthorized sender' })
+    return true
+  }
+
+  // Health check ping from content scripts
+  if (message.type === 'ping') {
+    sendResponse({ ok: true })
     return true
   }
 

@@ -3304,11 +3304,23 @@
   }
 
   // Send message to current tab's channel
+  // Build emoji lookup map (once)
+  const _emojiMap = new Map()
+  if (typeof EMOJI_DATA !== 'undefined') {
+    for (const e of EMOJI_DATA) _emojiMap.set(e.name, e.emoji)
+  }
+
+  // Replace :shortcode: patterns with emoji characters
+  function convertEmojiShortcodes(text) {
+    if (_emojiMap.size === 0) return text
+    return text.replace(/:([a-z0-9_]+):/g, (match, name) => _emojiMap.get(name) || match)
+  }
+
   async function sendMessage() {
     const input = document.getElementById('hs-mc-input');
     if (!input) { console.warn('[HS] SEND BAIL: no input element'); return; }
 
-    const text = getInputText().trim();
+    const text = convertEmojiShortcodes(getInputText().trim());
     if (!text) { console.warn('[HS] SEND BAIL: empty text'); return; }
 
     // Feed/notifs tab → post to heatsync API

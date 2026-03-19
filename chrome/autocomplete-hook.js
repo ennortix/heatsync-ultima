@@ -2113,10 +2113,74 @@
     log(' ✅ Hooked Slate normalizer for WYSIWYG text mode');
   }
 
+  // Auto-convert :shortcode: → emoji as you type (on closing colon)
+  function hookEmojiAutoConvert(inst) {
+    const slateEditor = inst?.chatInputRef?.state?.slateEditor
+    if (!slateEditor || slateEditor._heatsyncEmojiHooked) return
+
+    const originalInsertText = slateEditor.insertText.bind(slateEditor)
+    slateEditor._heatsyncEmojiHooked = true
+
+    acSignal.addEventListener('abort', () => {
+      slateEditor.insertText = originalInsertText
+      slateEditor._heatsyncEmojiHooked = false
+    })
+
+    slateEditor.insertText = function(text) {
+      // Only check when a colon is typed
+      if (text === ':' && EMOJI_ENTRIES.length > 0) {
+        try {
+          // Get current text before cursor
+          const { selection } = slateEditor
+          if (selection) {
+            const [node] = slateEditor.node(selection.anchor.path)
+            if (node?.text) {
+              const textBefore = node.text.slice(0, selection.anchor.offset)
+              // Find opening colon — match :word_name pattern (no spaces)
+              const match = textBefore.match(/:([a-z0-9_]+)$/)
+              if (match) {
+                const shortcode = match[1]
+                const emoji = EMOJI_MAP[shortcode]
+                if (emoji) {
+                  // Replace :shortcode with emoji (delete back to opening colon, insert emoji)
+                  const deleteFrom = selection.anchor.offset - match[0].length
+                  const point = { path: selection.anchor.path, offset: deleteFrom }
+                  slateEditor.select({ anchor: point, focus: selection.anchor })
+                  slateEditor.deleteFragment()
+                  originalInsertText.call(slateEditor, emoji + ' ')
+                  log('🎯 Auto-converted :' + shortcode + ': → ' + emoji)
+                  return
+                }
+              }
+            }
+          }
+        } catch (e) {
+          log('Emoji auto-convert error:', e.message)
+        }
+      }
+      return originalInsertText.call(slateEditor, text)
+    }
+    log('✅ Hooked Slate insertText for emoji auto-convert')
+  }
+
+  // CSS: make emoji characters larger in chat input
+  function injectEmojiInputStyle() {
+    if (document.getElementById('hs-emoji-input-style')) return
+    const style = document.createElement('style')
+    style.id = 'hs-emoji-input-style'
+    style.textContent = `
+      [data-slate-editor="true"] {
+        font-variant-emoji: emoji;
+      }
+    `
+    document.head.appendChild(style)
+  }
+
   // Main init
   let clickHandlerInstalled = false;
   function init() {
     log('🚀 init() called');
+    injectEmojiInputStyle();
     chatInputInst = findChatInput();
     if (chatInputInst) {
       log('✅ Chat input FOUND, installing handlers');
@@ -2124,6 +2188,7 @@
       hookComponentDidUpdate(chatInputInst); // Re-inject when props change
       hookInsertReplacement(chatInputInst);  // Pass-through hook (cleanup on reload)
       hookNormalizer(chatInputInst);         // Block emote conversion when WYSIWYG off
+      hookEmojiAutoConvert(chatInputInst);   // Auto-convert :shortcode: → emoji on closing colon
       injectFakeEmotes(chatInputInst); // Inject fake emotes for inline rendering
       installImageObserver(); // Watch for images to fix
       if (!clickHandlerInstalled) {

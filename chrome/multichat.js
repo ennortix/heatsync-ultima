@@ -6988,6 +6988,8 @@
 
     if (overlayElement) {
       overlayElement.classList.add('visible');
+      // Sync overlay bottom with input bar visibility
+      if (!inputBarVisible) overlayElement.style.bottom = '0'
       renderMessages(id);
     } else {
       log('No overlay element to show!');

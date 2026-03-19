@@ -6888,6 +6888,28 @@
   // TAB/CHANNEL MANAGEMENT
   // ============================================
 
+  // Vi-mode tab navigation: listen for custom events from vi-mode.js
+  window.addEventListener('hs-vi-tab-nav', (e) => {
+    const dir = e.detail?.direction // 'next' or 'prev'
+    if (!dir || !tabBarElement) return
+    const tabs = [...tabBarElement.querySelectorAll('.hs-mc-tab[data-tab]')]
+      .filter(t => {
+        const id = t.dataset.tab
+        return id !== 'rotate' && id !== 'font-down' && id !== 'font-up'
+      })
+    if (tabs.length < 2) return
+    const currentIdx = tabs.findIndex(t => t.dataset.tab === currentTab)
+    if (currentIdx === -1) return
+    const nextIdx = dir === 'next'
+      ? (currentIdx + 1) % tabs.length
+      : (currentIdx - 1 + tabs.length) % tabs.length
+    const nextTab = tabs[nextIdx]?.dataset.tab
+    if (nextTab) switchTab(nextTab)
+  })
+
+  // Expose tab orientation for vi-mode.js
+  window.__hsMcTabPosition = () => tabPosition
+
   function switchTab(id) {
     log('switchTab called:', id);
     editingChannel = false;

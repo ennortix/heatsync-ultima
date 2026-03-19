@@ -1739,7 +1739,7 @@
         linksEnabled: true,
         viMode: false,
         zebra: true,
-        autoHideEmpty: true,
+        autoHideInput: true,
         timestamps: false,
         showPlatformBadges: true,
       };
@@ -2618,8 +2618,6 @@
       document.addEventListener('keydown', (e) => {
         if (inputBarVisible) return
         if (currentTab === 'add') return
-        // Vi mode uses j/k/h/l for tab nav — don't auto-reveal on those keys
-        if (viModeEnabled && 'jkhlJKHL'.includes(e.key)) return
         const input = document.getElementById('hs-mc-input')
         if (!input) return
         // Only printable chars — skip modifiers, nav, function keys
@@ -6889,60 +6887,6 @@
   // ============================================
   // TAB/CHANNEL MANAGEMENT
   // ============================================
-
-  // Tab navigation helper
-  function navTab(dir) {
-    if (!tabBarElement) return
-    const tabs = [...tabBarElement.querySelectorAll('.hs-mc-tab[data-tab]')]
-      .filter(t => {
-        const id = t.dataset.tab
-        return id !== 'rotate' && id !== 'font-down' && id !== 'font-up' && id !== 'add'
-      })
-    if (tabs.length < 2) return
-    const currentIdx = tabs.findIndex(t => t.dataset.tab === currentTab)
-    if (currentIdx === -1) return
-    const nextIdx = dir === 'next'
-      ? (currentIdx + 1) % tabs.length
-      : (currentIdx - 1 + tabs.length) % tabs.length
-    const nextTab = tabs[nextIdx]?.dataset.tab
-    if (nextTab) switchTab(nextTab)
-  }
-
-  // Vi-mode tab navigation: custom event from vi-mode.js (when input is focused + normal mode)
-  window.addEventListener('hs-vi-tab-nav', (e) => navTab(e.detail?.direction))
-
-  // Global j/k/h/l tab navigation when vi-mode is on and input isn't focused
-  // This handles the auto-hide case where the input doesn't exist/isn't focusable
-  cleanup.addEventListener(document, 'keydown', (e) => {
-    if (!viModeEnabled) return
-    if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return
-    // Don't intercept if user is typing in an input
-    const ae = document.activeElement
-    if (ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.isContentEditable)) return
-
-    const isVertical = tabPosition === 'left' || tabPosition === 'right'
-    const isHorizontal = tabPosition === 'top' || tabPosition === 'bottom'
-
-    if (isVertical && (e.key === 'j' || e.key === 'k')) {
-      e.preventDefault()
-      e.stopPropagation()
-      navTab(e.key === 'j' ? 'next' : 'prev')
-    } else if (isHorizontal && (e.key === 'h' || e.key === 'l')) {
-      e.preventDefault()
-      e.stopPropagation()
-      navTab(e.key === 'l' ? 'next' : 'prev')
-    } else if (e.key === 'i') {
-      // Enter insert mode: show + focus input
-      e.preventDefault()
-      e.stopPropagation()
-      showInputBar()
-      const input = document.getElementById('hs-mc-input')
-      if (input) input.focus()
-    }
-  })
-
-  // Expose tab orientation for vi-mode.js
-  window.__hsMcTabPosition = () => tabPosition
 
   function switchTab(id) {
     log('switchTab called:', id);

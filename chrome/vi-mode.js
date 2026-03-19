@@ -357,8 +357,7 @@
       boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
     })
     cheatsheetEl.textContent =
-      'hl move  wb/WBE word  0$^ line  gg/G ends\n' +
-      'jk tabs (vertical) | hl tabs (horizontal) | jk history\n' +
+      'hl move  kj history  wb/WBE word  0$^ line  gg/G ends\n' +
       'fFtT+char find  ;, repeat find  [num]cmd repeat\n' +
       'x/X del char  dw/db/de/dd del  D del→end\n' +
       'cw/cb/ce/cc change  C change→end  s/S subst\n' +
@@ -847,31 +846,13 @@
       }
     }
 
-    // j/k — multichat tab nav (vertical tabs) or chat history (non-multichat)
+    // j/k — chat history navigation (dispatch native arrow events)
     if (key === 'k' || key === 'j') {
-      const isMcInput = el.id === 'hs-mc-input'
-      const tabPos = isMcInput && typeof window.__hsMcTabPosition === 'function' ? window.__hsMcTabPosition() : null
-      const isVertical = tabPos === 'left' || tabPos === 'right'
-
-      if (isMcInput && isVertical) {
-        window.dispatchEvent(new CustomEvent('hs-vi-tab-nav', { detail: { direction: key === 'j' ? 'next' : 'prev' } }))
-        return
-      }
-      // Fallback: chat history
       const arrowKey = key === 'k' ? 'ArrowUp' : 'ArrowDown'
       el.dispatchEvent(new KeyboardEvent('keydown', { key: arrowKey, code: arrowKey, bubbles: true }))
+      // Re-read cursor after history change
       setTimeout(() => { cursor = getCursorPos(el); syncCursor(el) }, 50)
       return
-    }
-
-    // h/l — multichat tab nav (horizontal tabs) — overrides cursor movement
-    if ((key === 'h' || key === 'l') && el.id === 'hs-mc-input') {
-      const tabPos = typeof window.__hsMcTabPosition === 'function' ? window.__hsMcTabPosition() : null
-      const isHorizontal = tabPos === 'top' || tabPos === 'bottom'
-      if (isHorizontal) {
-        window.dispatchEvent(new CustomEvent('hs-vi-tab-nav', { detail: { direction: key === 'l' ? 'next' : 'prev' } }))
-        return
-      }
     }
 
     // ? — show vi cheatsheet
@@ -967,34 +948,22 @@
     })
   }
 
-  let preservedMode = null // preserve mode across tab switches
-
   function attach(el) {
     if (activeEl === el) return
     activeEl = el
     cursor = getCursorPos(el)
-    // Restore preserved mode (from tab switch) or default to insert
-    if (preservedMode) {
-      mode = preservedMode
-      preservedMode = null
-      if (mode === 'normal') syncCursor(el)
-    } else {
-      mode = 'insert'
-    }
+    mode = 'insert'
     undoStack = []
-    redoStack = []
     count = ''
     operator = null
     pendingCmd = null
-    updateVisual()
-    log('Attached to', el.tagName, el.id || el.className, 'mode:', mode)
+    log('Attached to', el.tagName, el.id || el.className)
   }
 
   function detach() {
-    // Preserve mode if detaching due to tab switch (input hidden briefly)
-    preservedMode = mode
     if (activeEl) activeEl.classList.remove('hs-vi-normal')
     activeEl = null
+    mode = 'insert'
     count = ''
     operator = null
     pendingCmd = null

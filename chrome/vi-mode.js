@@ -30,6 +30,9 @@
   let lastFind = null       // { type, char }
   let register = ''
   let undoStack = []
+  let redoStack = []
+  let lastEdit = null       // { keys: [], beforeText, beforeCursor } for . repeat
+  let recording = null      // in-progress edit recording
   let activeEl = null
 
   // --- DOM helpers ---
@@ -170,11 +173,22 @@
   function pushUndo(el) {
     undoStack.push({ text: getText(el), cursor })
     if (undoStack.length > 100) undoStack.shift()
+    redoStack.length = 0 // new edit clears redo
   }
 
   function popUndo(el) {
     if (!undoStack.length) return
+    redoStack.push({ text: getText(el), cursor })
     const s = undoStack.pop()
+    replaceAll(el, s.text)
+    cursor = s.cursor
+    syncCursor(el)
+  }
+
+  function popRedo(el) {
+    if (!redoStack.length) return
+    undoStack.push({ text: getText(el), cursor })
+    const s = redoStack.pop()
     replaceAll(el, s.text)
     cursor = s.cursor
     syncCursor(el)
@@ -348,7 +362,7 @@
       'x/X del char  dw/db/de/dd del  D del→end\n' +
       'cw/cb/ce/cc change  C change→end  s/S subst\n' +
       'yw/yb/ye/yy yank  p/P paste  r replace  ~ case\n' +
-      'i/a/I/A insert  u undo  ? toggle this help'
+      'i/a/I/A insert  u undo  Ctrl+R redo  . repeat  ? help'
     document.body.appendChild(cheatsheetEl)
     // Auto-dismiss on any key
     const dismiss = () => { hideCheatsheet(); document.removeEventListener('keydown', dismiss, { capture: true }) }
@@ -399,6 +413,8 @@
     operator = null
     pendingCmd = null
     if (pos !== undefined) cursor = pos
+    // Start recording for . repeat
+    recording = { beforeText: getText(el), beforeCursor: cursor, afterCursor: null }
     syncCursor(el)
     log('→ INSERT, cursor:', cursor)
   }
@@ -416,6 +432,9 @@
   function executeOperator(el, text, from, to, motionKey) {
     const op = operator
     operator = null
+    // Record for . repeat (d and c operations)
+    const beforeText = text
+    const beforeCursor = cursor
 
     let start, end
     if (to >= from) {
@@ -441,6 +460,7 @@
         if (cursor >= newLen && newLen > 0) cursor = newLen - 1
         if (newLen === 0) cursor = 0
         syncCursor(el)
+        lastEdit = { beforeText, afterText: getText(el), beforeCursor, afterCursor: cursor }
         break
       case 'c':
         pushUndo(el)
@@ -458,7 +478,14 @@
 
   function handleKeyDown(e) {
     if (!enabled || !activeEl) return
-    // Don't intercept modifier combos (Ctrl, Alt, Meta)
+    // Ctrl+R = redo in normal mode
+    if (e.ctrlKey && e.key === 'r' && mode === 'normal') {
+      e.preventDefault()
+      e.stopImmediatePropagation()
+      popRedo(activeEl)
+      return
+    }
+    // Don't intercept other modifier combos (Ctrl, Alt, Meta)
     if (e.ctrlKey || e.metaKey || e.altKey) return
 
     if (mode === 'normal') {
@@ -473,6 +500,19 @@
     if (e.key === 'Escape') {
       e.preventDefault()
       e.stopImmediatePropagation()
+      // Finalize . repeat recording
+      if (recording) {
+        const afterText = getText(activeEl)
+        if (afterText !== recording.beforeText) {
+          lastEdit = {
+            beforeText: recording.beforeText,
+            afterText,
+            beforeCursor: recording.beforeCursor,
+            afterCursor: getCursorPos(activeEl),
+          }
+        }
+        recording = null
+      }
       // Read current cursor position from DOM
       cursor = getCursorPos(activeEl)
       if (cursor > 0) cursor-- // vim: back one on escape
@@ -774,6 +814,34 @@
       }
       case 'u': {
         popUndo(el)
+        return
+      }
+      case '.': {
+        // Repeat last edit: replay the text transformation
+        if (!lastEdit) return
+        pushUndo(el)
+        // Apply the same diff: find what was at beforeCursor, replace with the change
+        const currentText = getText(el)
+        const { beforeText, afterText, beforeCursor: bc } = lastEdit
+        // Compute the inserted text (what was added in the edit)
+        // Simple diff: find common prefix/suffix between before and after
+        let prefixLen = 0
+        while (prefixLen < beforeText.length && prefixLen < afterText.length && beforeText[prefixLen] === afterText[prefixLen]) prefixLen++
+        let suffixLen = 0
+        while (suffixLen < beforeText.length - prefixLen && suffixLen < afterText.length - prefixLen &&
+               beforeText[beforeText.length - 1 - suffixLen] === afterText[afterText.length - 1 - suffixLen]) suffixLen++
+        const deletedLen = beforeText.length - prefixLen - suffixLen
+        const inserted = afterText.slice(prefixLen, afterText.length - suffixLen)
+        // Apply at current cursor position
+        const delStart = cursor
+        const delEnd = Math.min(cursor + deletedLen, currentText.length)
+        if (delEnd > delStart) deleteText(el, delStart, delEnd)
+        if (inserted) insertText(el, delStart, inserted)
+        cursor = delStart + inserted.length
+        if (cursor > 0) cursor--
+        const nl = getLen(el)
+        if (cursor >= nl && nl > 0) cursor = nl - 1
+        syncCursor(el)
         return
       }
     }

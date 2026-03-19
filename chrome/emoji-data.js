@@ -1914,7 +1914,7 @@ var EMOJI_DATA = [
   { name: "white_flag", emoji: "🏳️", category: "flags" },
   { name: "yemen", emoji: "🇾🇪", category: "flags" },
   { name: "zambia", emoji: "🇿🇲", category: "flags" },
-  { name: "zimbabwe", emoji: "🇿🇼", category: "flags" }
+  { name: "zimbabwe", emoji: "🇿🇼", category: "flags" },
   // Slang & gaming shortcodes (Twitch/Discord culture)
   { name: "lol", emoji: "😂", category: "smileys" },
   { name: "lmao", emoji: "🤣", category: "smileys" },

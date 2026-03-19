@@ -4722,17 +4722,7 @@
         vertical-align: middle;
         margin: 0 2px;
       }
-      #hs-mc-input .hs-mc-emoji {
-        font-size: 28px;
-        vertical-align: middle;
-        line-height: 1;
-        font-variant-emoji: emoji;
-      }
-      .hs-mc-msg .hs-mc-emoji,
-      .hs-feed-msg .hs-mc-emoji {
-        font-size: 1.8em;
-        vertical-align: middle;
-        line-height: 1;
+      .hs-mc-emoji {
         font-variant-emoji: emoji;
       }
       /* Toggle button */

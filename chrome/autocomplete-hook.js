@@ -2163,21 +2163,7 @@
     log('✅ Hooked Slate insertText for emoji auto-convert')
   }
 
-  // CSS: make emoji characters larger in chat input
-  function injectEmojiInputStyle() {
-    if (document.getElementById('hs-emoji-input-style')) return
-    const style = document.createElement('style')
-    style.id = 'hs-emoji-input-style'
-    style.textContent = `
-      [data-slate-editor="true"] {
-        font-variant-emoji: emoji;
-      }
-    `
-    // Note: Twitch Slate renders emoji as native text — the browser controls size.
-    // Emoji appear at the editor's font-size (13px). No CSS can selectively scale
-    // inline emoji characters without wrapping them in spans, which Slate doesn't do.
-    document.head.appendChild(style)
-  }
+  function injectEmojiInputStyle() {}
 
   // Main init
   let clickHandlerInstalled = false;

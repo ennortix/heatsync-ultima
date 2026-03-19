@@ -478,6 +478,8 @@
 
   function handleKeyDown(e) {
     if (!enabled || !activeEl) return
+    // Skip synthetic events we dispatched (prevent infinite recursion)
+    if (e._hsVi) return
     // Ctrl+R = redo in normal mode
     if (e.ctrlKey && e.key === 'r' && mode === 'normal') {
       e.preventDefault()
@@ -849,8 +851,9 @@
     // j/k — chat history navigation (dispatch native arrow events)
     if (key === 'k' || key === 'j') {
       const arrowKey = key === 'k' ? 'ArrowUp' : 'ArrowDown'
-      el.dispatchEvent(new KeyboardEvent('keydown', { key: arrowKey, code: arrowKey, bubbles: true }))
-      // Re-read cursor after history change
+      const evt = new KeyboardEvent('keydown', { key: arrowKey, code: arrowKey, bubbles: true })
+      evt._hsVi = true
+      el.dispatchEvent(evt)
       setTimeout(() => { cursor = getCursorPos(el); syncCursor(el) }, 50)
       return
     }
@@ -874,7 +877,9 @@
     }
     // ArrowUp/Down: dispatch native arrow for history
     if (key === 'ArrowUp' || key === 'ArrowDown') {
-      el.dispatchEvent(new KeyboardEvent('keydown', { key, code: key, bubbles: true }))
+      const evt = new KeyboardEvent('keydown', { key, code: key, bubbles: true })
+      evt._hsVi = true
+      el.dispatchEvent(evt)
       setTimeout(() => { cursor = getCursorPos(el); syncCursor(el) }, 50)
       return
     }

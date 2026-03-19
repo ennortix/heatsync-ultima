@@ -8368,9 +8368,52 @@ m.type === 'usernotice' ? 'hs-mc-msg hs-mc-system' :
     tooltip.style.top = y + 'px';
   }
 
+  function showEmojiTooltip(e, emoji, name) {
+    const tooltip = ensureEmoteTooltip()
+    const img = tooltip.querySelector('img')
+    const nameEl = tooltip.querySelector('.tooltip-name')
+    const stateEl = tooltip.querySelector('.tooltip-source')
+
+    // Hide the image, show emoji character at 4x instead
+    img.style.display = 'none'
+
+    // Build emoji preview using safe DOM methods
+    nameEl.textContent = ''
+    const emojiChar = document.createElement('span')
+    Object.assign(emojiChar.style, { fontSize: '64px', lineHeight: '1', fontVariantEmoji: 'emoji', display: 'block', textAlign: 'center' })
+    emojiChar.textContent = emoji
+    const label = document.createElement('span')
+    Object.assign(label.style, { display: 'block', marginTop: '4px' })
+    label.textContent = ':' + name + ':'
+    nameEl.appendChild(emojiChar)
+    nameEl.appendChild(label)
+
+    stateEl.textContent = 'emoji'
+    stateEl.className = 'tooltip-source'
+
+    tooltip.style.left = '-9999px'
+    tooltip.style.top = '-9999px'
+    tooltip.classList.add('visible')
+
+    const rect = tooltip.getBoundingClientRect()
+    const gap = 12
+    let x = Math.min(e.clientX + 15, window.innerWidth - rect.width - 10)
+    x = Math.max(10, x)
+    let y = e.clientY - rect.height - gap > 10
+      ? e.clientY - rect.height - gap
+      : e.clientY + gap + 20
+    y = Math.max(10, Math.min(y, window.innerHeight - rect.height - 10))
+
+    tooltip.style.left = x + 'px'
+    tooltip.style.top = y + 'px'
+  }
+
   function hideEmoteTooltip() {
     if (emoteTooltip) {
       emoteTooltip.classList.remove('visible');
+      // Reset img display for next emote hover
+      const img = emoteTooltip.querySelector('img')
+      if (img) img.style.display = ''
     }
   }
 
@@ -8380,6 +8423,15 @@ m.type === 'usernotice' ? 'hs-mc-msg hs-mc-system' :
 
     cleanup.addEventListener(document, 'mouseover', (e) => {
       const target = e.target;
+
+      // Emoji hover: show 4x preview
+      const emojiSpan = target.closest('.hs-mc-emoji');
+      if (emojiSpan) {
+        const name = emojiSpan.dataset.emojiName || emojiSpan.title?.replace(/:/g, '') || '';
+        showEmojiTooltip(e, emojiSpan.textContent, name);
+        return;
+      }
+
       // Check wrapper first, then IMG
       const wrapper = target.closest('.hs-mc-emote-wrapper');
       const img = wrapper ? wrapper.querySelector('img') : (

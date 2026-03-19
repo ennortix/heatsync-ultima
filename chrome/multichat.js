@@ -1739,7 +1739,7 @@
         linksEnabled: true,
         viMode: false,
         zebra: true,
-        autoHideInput: true,
+        autoHideEmpty: true,
         timestamps: false,
         showPlatformBadges: true,
       };
@@ -2618,6 +2618,8 @@
       document.addEventListener('keydown', (e) => {
         if (inputBarVisible) return
         if (currentTab === 'add') return
+        // Vi mode uses j/k/h/l for tab nav — don't auto-reveal on those keys
+        if (viModeEnabled && 'jkhlJKHL'.includes(e.key)) return
         const input = document.getElementById('hs-mc-input')
         if (!input) return
         // Only printable chars — skip modifiers, nav, function keys

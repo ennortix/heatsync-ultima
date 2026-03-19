@@ -2498,13 +2498,15 @@
     const input = document.getElementById('hs-mc-input');
     if (!input) return '';
     if (wysiwygEnabled) {
-      // Convert emote images back to text names
+      // Convert emote images and cycling spans back to text
       let text = '';
       for (const node of input.childNodes) {
         if (node.nodeType === Node.TEXT_NODE) {
           text += node.textContent;
         } else if (node.nodeType === Node.ELEMENT_NODE && node.tagName === 'IMG') {
           text += node.dataset.emoteName || node.alt || '';
+        } else if (node.nodeType === Node.ELEMENT_NODE) {
+          text += node.textContent || '';
         }
       }
       return text.replace(/\u00A0/g, ' ');
@@ -3044,13 +3046,14 @@
 
     // Use saved positions from acState for consistent cycling
     const beforeWord = input.value.slice(0, acState.wordStart);
-    const newValue = beforeWord + match.name + ' ' + acState.afterText;
+    const insertText = match.type === 'emoji' ? match.emoji : match.name;
+    const newValue = beforeWord + insertText + ' ' + acState.afterText;
 
     input.value = newValue;
     pendingMessage = input.value;
 
     // Position cursor after the inserted word
-    const newPos = beforeWord.length + match.name.length + 1;
+    const newPos = beforeWord.length + insertText.length + 1;
     input.selectionStart = input.selectionEnd = newPos;
     input.focus();
 
@@ -3062,16 +3065,26 @@
     const input = document.getElementById('hs-mc-input');
     if (!input) return;
 
-    // Check if we're replacing an existing cycling emote
+    // Check if we're replacing an existing cycling element (emote img or text span)
     const existingEmote = input.querySelector('img.hs-cycling-emote');
+    const existingText = input.querySelector('span.hs-cycling-text');
     if (existingEmote) {
-      // Update existing image
       if (match.url) {
         existingEmote.src = match.url;
         existingEmote.alt = match.name;
         existingEmote.dataset.emoteName = match.name;
+      } else if (match.type === 'emoji') {
+        // Replace emote img with emoji span
+        const span = document.createElement('span')
+        span.className = 'hs-cycling-text'
+        span.textContent = match.emoji
+        span.dataset.completionName = match.name
+        existingEmote.replaceWith(span)
+        // Place caret after the span's trailing space
+        const space = span.nextSibling
+        if (space) placeCaretAfter(space, 1)
+        else placeCaretAfter(span)
       } else {
-        // User completion - replace with text
         const textNode = document.createTextNode(match.name + ' ');
         existingEmote.replaceWith(textNode);
         placeCaretAfter(textNode);
@@ -3079,6 +3092,34 @@
       pendingMessage = getInputText();
       updateCharCount();
       return;
+    }
+    if (existingText) {
+      if (match.url) {
+        // Replace text span with emote img
+        const img = document.createElement('img')
+        img.src = match.url
+        img.alt = match.name
+        img.dataset.emoteName = match.name
+        img.className = 'hs-input-emote hs-cycling-emote'
+        img.draggable = false
+        existingText.replaceWith(img)
+        const space = img.nextSibling
+        if (space) placeCaretAfter(space, 1)
+        else placeCaretAfter(img)
+      } else if (match.type === 'emoji') {
+        existingText.textContent = match.emoji
+        existingText.dataset.completionName = match.name
+        const space = existingText.nextSibling
+        if (space) placeCaretAfter(space, 1)
+        else placeCaretAfter(existingText)
+      } else {
+        const textNode = document.createTextNode(match.name + ' ')
+        existingText.replaceWith(textNode)
+        placeCaretAfter(textNode)
+      }
+      pendingMessage = getInputText()
+      updateCharCount()
+      return
     }
 
     // First Tab: replace word with emote image
@@ -3113,6 +3154,22 @@
     // Save afterText for cycling
     acState.afterText = after;
 
+    // Helper: insert element after textNode with before/after text
+    const insertElement = (el) => {
+      textNode.textContent = before;
+      const space = document.createTextNode('\u00A0' + after);
+      const parent = textNode.parentNode;
+      const nextSibling = textNode.nextSibling;
+      if (nextSibling) {
+        parent.insertBefore(el, nextSibling);
+        parent.insertBefore(space, nextSibling);
+      } else {
+        parent.appendChild(el);
+        parent.appendChild(space);
+      }
+      placeCaretAfter(space, 1);
+    }
+
     if (match.url) {
       // Create emote image
       const img = document.createElement('img');
@@ -3121,27 +3178,16 @@
       img.dataset.emoteName = match.name;
       img.className = 'hs-input-emote hs-cycling-emote';
       img.draggable = false;
-
-      // Rebuild: beforeText + img + nbsp + afterText
-      // Use \u00A0 (nbsp) so contenteditable doesn't collapse the space visually
-      textNode.textContent = before;
-      const space = document.createTextNode('\u00A0' + after);
-
-      // Insert after current text node
-      const parent = textNode.parentNode;
-      const nextSibling = textNode.nextSibling;
-      if (nextSibling) {
-        parent.insertBefore(img, nextSibling);
-        parent.insertBefore(space, nextSibling);
-      } else {
-        parent.appendChild(img);
-        parent.appendChild(space);
-      }
-
-      // Place caret after the space
-      placeCaretAfter(space, 1);
+      insertElement(img);
+    } else if (match.type === 'emoji') {
+      // Create emoji tracking span
+      const span = document.createElement('span')
+      span.className = 'hs-cycling-text'
+      span.textContent = match.emoji
+      span.dataset.completionName = match.name
+      insertElement(span)
     } else {
-      // User completion - just insert text
+      // User/text completion - just insert text
       const newText = before + match.name + ' ' + after;
       textNode.textContent = newText;
       const newPos = before.length + match.name.length + 1;
@@ -3179,7 +3225,8 @@
       document.getElementById('hs-mc-inputbar')?.appendChild(tt);
     }
     const m = acState.matches[acState.index];
-    tt.textContent = `${acState.index + 1}/${acState.matches.length} ${m.name}`;
+    const label = m.type === 'emoji' ? `${m.emoji} ${m.name}` : m.name;
+    tt.textContent = `${acState.index + 1}/${acState.matches.length} ${label}`;
     tt.style.display = 'block';
   }
 
@@ -3196,12 +3243,18 @@
     acState.afterText = '';
     hideCycleTooltip();
 
-    // WYSIWYG: finalize cycling emote (remove cycling class so it's permanent)
+    // WYSIWYG: finalize cycling elements (remove cycling class so they're permanent)
     if (wysiwygEnabled) {
       const input = document.getElementById('hs-mc-input');
       const cyclingEmote = input?.querySelector('.hs-cycling-emote');
       if (cyclingEmote) {
         cyclingEmote.classList.remove('hs-cycling-emote');
+      }
+      const cyclingText = input?.querySelector('.hs-cycling-text');
+      if (cyclingText) {
+        // Replace span with plain text node
+        const textNode = document.createTextNode(cyclingText.textContent);
+        cyclingText.replaceWith(textNode);
       }
     }
   }
@@ -3671,14 +3724,12 @@
         color: #000 !important;
       }
       /* Mentions — red when unseen */
-      .hs-mc-tab.has-mentions:not(.active) {
-        background: #000 !important;
-        color: #f44 !important;
-        border-color: #808080 !important;
+      .hs-mc-tab.has-mentions {
+        color: #ff0000 !important;
       }
       .hs-mc-tab.has-mentions:not(.active):hover {
         background: #fff !important;
-        color: #f44 !important;
+        color: #ff0000 !important;
       }
       /* Active — focused tab */
       .hs-mc-tab.active {
@@ -4346,6 +4397,14 @@
         object-fit: contain;
       }
 
+      /* Emojis — double-size, stackable as overlay base */
+      .hs-mc-emoji {
+        font-size: 2em;
+        line-height: 1;
+        vertical-align: middle;
+        display: inline-block;
+      }
+
       /* 7TV ZERO-WIDTH OVERLAY EMOTE STACKING */
       .hs-mc-emote-stack {
         display: inline-block;
@@ -4356,13 +4415,14 @@
         display: inline-grid;
         place-items: center;
       }
-      .hs-mc-emote-stack-emotes > .hs-mc-emote-wrapper {
+      .hs-mc-emote-stack-emotes > .hs-mc-emote-wrapper,
+      .hs-mc-emote-stack-emotes > .hs-mc-emoji {
         grid-area: 1 / 1;
       }
-      .hs-mc-emote-stack-emotes > .hs-mc-emote-wrapper:first-child {
+      .hs-mc-emote-stack-emotes > :first-child {
         z-index: 1;
       }
-      .hs-mc-emote-stack-emotes > .hs-mc-emote-wrapper:not(:first-child) {
+      .hs-mc-emote-stack-emotes > :not(:first-child) {
         z-index: 2;
         pointer-events: auto;
       }
@@ -6337,17 +6397,11 @@
     if (!tabBarElement) return
     const tab = tabBarElement.querySelector('[data-tab="activity"]')
     if (!tab) return
-    let badge = tab.querySelector('.hs-badge')
-    if (unreadNotifCount > 0) {
-      if (!badge) {
-        badge = document.createElement('span')
-        badge.className = 'hs-badge'
-        tab.appendChild(badge)
-      }
-      badge.textContent = unreadNotifCount > 99 ? '99+' : unreadNotifCount
-    } else if (badge) {
-      badge.remove()
-    }
+    // Remove any legacy badge element
+    const badge = tab.querySelector('.hs-badge')
+    if (badge) badge.remove()
+    // Just use color indicator — no counter
+    tab.classList.toggle('has-new', unreadNotifCount > 0)
   }
 
   // ---- FEED ----
@@ -6904,7 +6958,7 @@
     const mentionsTab = tabBarElement.querySelector('[data-tab="mentions"]');
     if (mentionsTab) {
       const unseenMentions = mentionsBuffer.length - mentionsSeenCount;
-      mentionsTab.textContent = unseenMentions > 0 ? `mentions(${unseenMentions})` : 'mentions';
+      mentionsTab.textContent = 'mentions';
       mentionsTab.classList.toggle('has-mentions', unseenMentions > 0);
     }
   }
@@ -8935,16 +8989,29 @@ m.type === 'usernotice' ? 'hs-mc-msg hs-mc-system' :
         continue
       }
 
-      const emote = emoteCache.get(word) || (channel && channelEmoteCaches[channel]?.get(word));
+      // Try name0 overlay convention: "fire0" → look up "fire" as overlay
+      let emote = null
+      let isOverlayEmote = false
+      const endsWithZero = word.endsWith('0') && word.length > 1
+      if (endsWithZero) {
+        const baseName = word.slice(0, -1)
+        emote = emoteCache.get(baseName) || (channel && channelEmoteCaches[channel]?.get(baseName))
+        if (emote) isOverlayEmote = true
+      }
+      if (!emote) {
+        emote = emoteCache.get(word) || (channel && channelEmoteCaches[channel]?.get(word))
+        if (emote) isOverlayEmote = !!emote.zeroWidth
+      }
       if (emote) {
         const isBlocked = blockedEmoteNames.has(word);
         const state = isBlocked ? 'blocked' : (emote.state || 'global');
         const source = escapeHtml(emote.source || 'unknown');
         const imgSrc = escapeHtml(getChatResUrl(emote.url)); // Upgrade to 2x/4x based on emote size setting
         const safeHash = emote.hash ? escapeHtml(emote.hash) : '';
-        const imgHtml = `<span class="hs-mc-emote-wrapper hs-state-${state}" data-emote-name="${escapeHtml(word)}" data-emote-url="${imgSrc}" data-state="${state}" data-source="${source}"${safeHash ? ` data-emote-hash="${safeHash}"` : ''}><img src="${imgSrc}" alt="${escapeHtml(word)}" title="${escapeHtml(word)}" class="hs-mc-emote hs-emote-${state}" data-emote-name="${escapeHtml(word)}" data-state="${state}" data-source="${source}"></span>`;
+        const displayName = escapeHtml(endsWithZero && isOverlayEmote ? word : word)
+        const imgHtml = `<span class="hs-mc-emote-wrapper hs-state-${state}" data-emote-name="${displayName}" data-emote-url="${imgSrc}" data-state="${state}" data-source="${source}"${safeHash ? ` data-emote-hash="${safeHash}"` : ''}><img src="${imgSrc}" alt="${displayName}" title="${displayName}" class="hs-mc-emote hs-emote-${state}" data-emote-name="${displayName}" data-state="${state}" data-source="${source}"></span>`;
 
-        if (emote.zeroWidth) {
+        if (isOverlayEmote) {
           // Overlay emote - stack on previous base (discard whitespace between)
           log('FOUND zeroWidth emote:', word, '| hasBase:', !!pendingStack);
           if (pendingStack) {
@@ -8970,22 +9037,35 @@ m.type === 'usernotice' ? 'hs-mc-msg hs-mc-system' :
           pendingStack = { base: imgHtml, overlays: [] };
         }
       } else {
-        // Check for emoji :shortcode:
+        // Check for emoji :shortcode: — treat as stackable base
         if (typeof EMOJI_BY_NAME !== 'undefined' && word.startsWith(':') && word.endsWith(':') && word.length > 2) {
           const emojiName = word.slice(1, -1)
           const emojiEntry = EMOJI_BY_NAME.get(emojiName)
           if (emojiEntry) {
             if (pendingStack) {
               result.push(renderEmoteStack(pendingStack))
-              pendingStack = null
             }
             if (pendingWhitespace) {
               result.push(pendingWhitespace)
               pendingWhitespace = ''
             }
-            result.push(`<span class="hs-mc-emoji" title=":${escapeHtml(emojiName)}:">${emojiEntry.emoji}</span>`)
+            const emojiHtml = `<span class="hs-mc-emoji" title=":${escapeHtml(emojiName)}:">${emojiEntry.emoji}</span>`
+            pendingStack = { base: emojiHtml, overlays: [] }
             continue
           }
+        }
+        // Check for Unicode emoji — treat as stackable base
+        if (/^[\p{Extended_Pictographic}\p{Emoji_Presentation}\uFE0F\u200D]+$/u.test(word)) {
+          if (pendingStack) {
+            result.push(renderEmoteStack(pendingStack))
+          }
+          if (pendingWhitespace) {
+            result.push(pendingWhitespace)
+            pendingWhitespace = ''
+          }
+          const emojiHtml = `<span class="hs-mc-emoji">${escapeHtml(word)}</span>`
+          pendingStack = { base: emojiHtml, overlays: [] }
+          continue
         }
         // Text - flush stack and add text
         if (pendingStack) {
@@ -9361,6 +9441,7 @@ m.type === 'usernotice' ? 'hs-mc-msg hs-mc-system' :
     const tab = tabBarElement?.querySelector(`[data-tab="${tabId}"]`);
     if (tab && currentTab !== tabId) {
       tab.classList.add('has-new');
+      if (tabId === 'mentions') tab.classList.add('has-mentions');
     }
   }
 

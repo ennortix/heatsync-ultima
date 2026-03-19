@@ -635,6 +635,14 @@ style.textContent = `
     background: #7f0000 !important;
   }
 
+  /* Emojis — double-size, stackable as overlay base */
+  .heatsync-emoji {
+    font-size: 2em !important;
+    line-height: 1 !important;
+    vertical-align: middle !important;
+    display: inline-block !important;
+  }
+
   /* Emote overlay stacking (7TV zero-width emotes) */
   .heatsync-emote-stack {
     display: inline-flex !important;
@@ -2817,6 +2825,9 @@ function upgradeEmoteUrl(url) {
   return url;
 }
 
+// Unicode emoji detection — matches emoji sequences (presentation + ZWJ combos)
+const UNICODE_EMOJI_RE = /^[\p{Extended_Pictographic}\p{Emoji_Presentation}\uFE0F\u200D]+$/u
+
 // Replace emotes with overlay stacking support (emotes ending in 0 stack on previous)
 // Using DOM nodes instead of innerHTML to avoid React conflicts
 function replaceEmotesWithStacking(element, allEmotes) {
@@ -2897,7 +2908,7 @@ function replaceEmotesWithStacking(element, allEmotes) {
         const emojiName = trimmed.slice(1, -1)
         const emojiEntry = EMOJI_BY_NAME.get(emojiName)
         if (emojiEntry) {
-          // Flush any pending stack
+          // Treat emoji as stackable base (overlays can sit on top)
           if (currentStack.length > 0) {
             resultNodes.push(flushEmoteStack(currentStack))
             currentStack = []
@@ -2906,13 +2917,22 @@ function replaceEmotesWithStacking(element, allEmotes) {
             resultNodes.push(document.createTextNode(pendingWhitespace))
             pendingWhitespace = ''
           }
-          const emojiSpan = document.createElement('span')
-          emojiSpan.className = 'heatsync-emoji'
-          emojiSpan.textContent = emojiEntry.emoji
-          emojiSpan.title = `:${emojiName}:`
-          resultNodes.push(emojiSpan)
+          currentStack.push({ emoji: emojiEntry.emoji, emojiName, isOverlay: false, isEmoji: true, originalWord: trimmed })
           continue
         }
+      }
+      // Check for Unicode emoji (🏙️, 💵, etc.) — stackable base
+      if (UNICODE_EMOJI_RE.test(trimmed)) {
+        if (currentStack.length > 0) {
+          resultNodes.push(flushEmoteStack(currentStack))
+          currentStack = []
+        }
+        if (pendingWhitespace) {
+          resultNodes.push(document.createTextNode(pendingWhitespace))
+          pendingWhitespace = ''
+        }
+        currentStack.push({ emoji: trimmed, isOverlay: false, isEmoji: true, originalWord: trimmed })
+        continue
       }
       // Not an emote - flush stack and add word
       if (currentStack.length > 0) {
@@ -2951,11 +2971,21 @@ function replaceEmotesWithStacking(element, allEmotes) {
   }
 
   // Helper to flush emote stack to DOM node
+  function generateEmojiElement(emoji, title) {
+    const span = document.createElement('span')
+    span.className = 'heatsync-emoji'
+    span.textContent = emoji
+    if (title) span.title = `:${title}:`
+    span.style.cssText = 'display: inline-block; vertical-align: middle; position: relative; z-index: 1;'
+    return span
+  }
+
   function flushEmoteStack(stack) {
     if (stack.length === 0) return document.createTextNode('');
     if (stack.length === 1) {
-      // Single emote - no stack wrapper needed
-      return generateEmoteElement(stack[0].emote, stack[0].isOverlay);
+      const entry = stack[0]
+      if (entry.isEmoji) return generateEmojiElement(entry.emoji, entry.emojiName)
+      return generateEmoteElement(entry.emote, entry.isOverlay);
     }
     // Multiple emotes - wrap in stack container with buttons
     const stackContainer = document.createElement('span');
@@ -2970,9 +3000,13 @@ function replaceEmotesWithStacking(element, allEmotes) {
     collapseBtn.title = 'collapse';
     stackContainer.appendChild(collapseBtn);
 
-    // Add emotes
-    stack.forEach(({ emote, isOverlay }) => {
-      stackContainer.appendChild(generateEmoteElement(emote, isOverlay));
+    // Add emotes and emojis
+    stack.forEach((entry) => {
+      if (entry.isEmoji) {
+        stackContainer.appendChild(generateEmojiElement(entry.emoji, entry.emojiName))
+      } else {
+        stackContainer.appendChild(generateEmoteElement(entry.emote, entry.isOverlay))
+      }
     });
 
     // Add block-all button (⊘)

@@ -1213,14 +1213,17 @@
       }
       const isInInput = inputEl.contains(e.target) || e.target === inputEl;
       if (!isInInput) {
-        // Tab when not in input = focus input
+        // Don't steal focus from multichat or other heatsync inputs
+        const tgt = e.target;
+        if (tgt?.id === 'hs-mc-input' || tgt?.closest?.('#hs-mc-overlay') || tgt?.closest?.('#hs-mc-inputbar')) {
+          return; // Let multichat handle its own Tab
+        }
+        // Tab when not in any input = focus Twitch input
         if (e.key === 'Tab' && !e.shiftKey) {
           e.preventDefault();
           inputEl.focus();
-          log(' ⌨️ Tab focused input');
           return;
         }
-        log(' ⌨️ Not in input, target:', e.target?.tagName);
         return;
       }
 

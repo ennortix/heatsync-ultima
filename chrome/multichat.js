@@ -2934,6 +2934,49 @@
     if (acState.active) {
       hideAutocomplete();
     }
+
+    // Live emoji conversion in contenteditable: :shortcode: → emoji span
+    if (wysiwygEnabled && _emojiMap.size > 0) {
+      const input = document.getElementById('hs-mc-input')
+      if (input?.isContentEditable) {
+        const sel = window.getSelection()
+        if (!sel?.rangeCount) return
+        const range = sel.getRangeAt(0)
+        const node = range.startContainer
+        if (node?.nodeType !== Node.TEXT_NODE) return
+        const text = node.textContent
+        const cursorOffset = range.startOffset
+        // Look for :shortcode: ending at cursor
+        const before = text.slice(0, cursorOffset)
+        const match = before.match(/:([a-z0-9_]+):$/)
+        if (match) {
+          const emoji = _emojiMap.get(match[1])
+          if (emoji) {
+            const start = cursorOffset - match[0].length
+            // Replace the :shortcode: text with emoji span
+            const span = document.createElement('span')
+            span.className = 'hs-mc-emoji'
+            span.textContent = emoji
+            span.title = ':' + match[1] + ':'
+            span.setAttribute('data-emoji-name', match[1])
+            const beforeNode = document.createTextNode(text.slice(0, start))
+            const afterNode = document.createTextNode(text.slice(cursorOffset))
+            const parent = node.parentNode
+            parent.insertBefore(beforeNode, node)
+            parent.insertBefore(span, node)
+            parent.insertBefore(afterNode, node)
+            parent.removeChild(node)
+            // Place cursor after emoji
+            const newRange = document.createRange()
+            newRange.setStart(afterNode, 0)
+            newRange.collapse(true)
+            sel.removeAllRanges()
+            sel.addRange(newRange)
+            pendingMessage = getInputText()
+          }
+        }
+      }
+    }
   }
 
   function updateCharCount() {
@@ -4678,6 +4721,19 @@
         height: var(--hs-emote-size, 32px);
         vertical-align: middle;
         margin: 0 2px;
+      }
+      #hs-mc-input .hs-mc-emoji {
+        font-size: 24px;
+        vertical-align: middle;
+        line-height: 1;
+        font-variant-emoji: emoji;
+      }
+      .hs-mc-msg .hs-mc-emoji,
+      .hs-feed-msg .hs-mc-emoji {
+        font-size: 1.4em;
+        vertical-align: middle;
+        line-height: 1;
+        font-variant-emoji: emoji;
       }
       /* Toggle button */
       .hs-mc-toggle-btn {

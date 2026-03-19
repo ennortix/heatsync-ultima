@@ -1754,10 +1754,12 @@
         if (id === 'hs-mc-autohide-toggle') p.classList.toggle('active', true);
         if (id === 'hs-mc-timestamps-toggle') p.classList.toggle('active', false);
       });
-      // Apply auto-hide (default: on — hide bar)
-      const bar = document.getElementById('hs-mc-inputbar');
-      if (bar) bar.classList.add('hs-hidden');
-      inputBarVisible = false;
+      // Apply auto-hide (default: on) — but don't hide while picker is open
+      if (!picker.classList.contains('visible')) {
+        const bar = document.getElementById('hs-mc-inputbar');
+        if (bar) bar.classList.add('hs-hidden');
+        inputBarVisible = false;
+      }
       adjustOverlayForPicker(true);
       rebuildInput();
       renderMessages(currentTab);

@@ -6888,10 +6888,9 @@
   // TAB/CHANNEL MANAGEMENT
   // ============================================
 
-  // Vi-mode tab navigation: listen for custom events from vi-mode.js
-  window.addEventListener('hs-vi-tab-nav', (e) => {
-    const dir = e.detail?.direction // 'next' or 'prev'
-    if (!dir || !tabBarElement) return
+  // Tab navigation helper
+  function navTab(dir) {
+    if (!tabBarElement) return
     const tabs = [...tabBarElement.querySelectorAll('.hs-mc-tab[data-tab]')]
       .filter(t => {
         const id = t.dataset.tab
@@ -6905,6 +6904,39 @@
       : (currentIdx - 1 + tabs.length) % tabs.length
     const nextTab = tabs[nextIdx]?.dataset.tab
     if (nextTab) switchTab(nextTab)
+  }
+
+  // Vi-mode tab navigation: custom event from vi-mode.js (when input is focused + normal mode)
+  window.addEventListener('hs-vi-tab-nav', (e) => navTab(e.detail?.direction))
+
+  // Global j/k/h/l tab navigation when vi-mode is on and input isn't focused
+  // This handles the auto-hide case where the input doesn't exist/isn't focusable
+  cleanup.addEventListener(document, 'keydown', (e) => {
+    if (!viModeEnabled) return
+    if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return
+    // Don't intercept if user is typing in an input
+    const ae = document.activeElement
+    if (ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.isContentEditable)) return
+
+    const isVertical = tabPosition === 'left' || tabPosition === 'right'
+    const isHorizontal = tabPosition === 'top' || tabPosition === 'bottom'
+
+    if (isVertical && (e.key === 'j' || e.key === 'k')) {
+      e.preventDefault()
+      e.stopPropagation()
+      navTab(e.key === 'j' ? 'next' : 'prev')
+    } else if (isHorizontal && (e.key === 'h' || e.key === 'l')) {
+      e.preventDefault()
+      e.stopPropagation()
+      navTab(e.key === 'l' ? 'next' : 'prev')
+    } else if (e.key === 'i') {
+      // Enter insert mode: show + focus input
+      e.preventDefault()
+      e.stopPropagation()
+      showInputBar()
+      const input = document.getElementById('hs-mc-input')
+      if (input) input.focus()
+    }
   })
 
   // Expose tab orientation for vi-mode.js

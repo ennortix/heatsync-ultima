@@ -967,22 +967,34 @@
     })
   }
 
+  let preservedMode = null // preserve mode across tab switches
+
   function attach(el) {
     if (activeEl === el) return
     activeEl = el
     cursor = getCursorPos(el)
-    mode = 'insert'
+    // Restore preserved mode (from tab switch) or default to insert
+    if (preservedMode) {
+      mode = preservedMode
+      preservedMode = null
+      if (mode === 'normal') syncCursor(el)
+    } else {
+      mode = 'insert'
+    }
     undoStack = []
+    redoStack = []
     count = ''
     operator = null
     pendingCmd = null
-    log('Attached to', el.tagName, el.id || el.className)
+    updateVisual()
+    log('Attached to', el.tagName, el.id || el.className, 'mode:', mode)
   }
 
   function detach() {
+    // Preserve mode if detaching due to tab switch (input hidden briefly)
+    preservedMode = mode
     if (activeEl) activeEl.classList.remove('hs-vi-normal')
     activeEl = null
-    mode = 'insert'
     count = ''
     operator = null
     pendingCmd = null

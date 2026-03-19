@@ -6895,7 +6895,7 @@
     const tabs = [...tabBarElement.querySelectorAll('.hs-mc-tab[data-tab]')]
       .filter(t => {
         const id = t.dataset.tab
-        return id !== 'rotate' && id !== 'font-down' && id !== 'font-up'
+        return id !== 'rotate' && id !== 'font-down' && id !== 'font-up' && id !== 'add'
       })
     if (tabs.length < 2) return
     const currentIdx = tabs.findIndex(t => t.dataset.tab === currentTab)

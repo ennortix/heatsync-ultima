@@ -45,6 +45,11 @@
       "run_at": "document_end"
     },
     {
+      "matches": ["https://*.twitch.tv/*", "https://*.kick.com/*"],
+      "js": ["emoji-data.js"],
+      "run_at": "document_start"
+    },
+    {
       "matches": ["https://*.twitch.tv/*"],
       "js": ["autocomplete-hook.js"],
       "run_at": "document_end"

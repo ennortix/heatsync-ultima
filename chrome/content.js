@@ -4751,11 +4751,32 @@ function findEmoteMatches(partialWord) {
     }
   }
 
-  // Sort: inventory first, then alphabetically
+  // Add emoji matches for :prefix style (Discord/Slack)
+  if (partialWord.startsWith(':') && partial.length >= 3) {
+    const emojiSearch = partial.slice(1)
+    if (typeof EMOJI_DATA !== 'undefined') {
+      let emojiCount = 0
+      for (const entry of EMOJI_DATA) {
+        if (entry.name.includes(emojiSearch)) {
+          matches.push({
+            name: entry.emoji,
+            url: '',
+            provider: 'emoji',
+            emojiName: entry.name,
+          })
+          if (++emojiCount >= 10) break
+        }
+      }
+    }
+  }
+
+  // Sort: inventory first, then emotes, then emoji, then alphabetically
   matches.sort((a, b) => {
     if (a.provider === 'inventory' && b.provider !== 'inventory') return -1;
     if (a.provider !== 'inventory' && b.provider === 'inventory') return 1;
-    return a.name.localeCompare(b.name);
+    if (a.provider === 'emoji' && b.provider !== 'emoji') return 1;
+    if (a.provider !== 'emoji' && b.provider === 'emoji') return -1;
+    return (a.emojiName || a.name).localeCompare(b.emojiName || b.name);
   });
 
   return matches;
@@ -4814,8 +4835,13 @@ function showEmotePreview(emote, currentIndex, totalCount) {
   const hint = preview.querySelector('#heatsync-tab-hint');
 
   if (counter) counter.textContent = `${currentIndex}/${totalCount}`;
-  if (img) img.src = emote.url;
-  if (nameEl) nameEl.textContent = emote.name;
+  if (emote.provider === 'emoji') {
+    if (img) { img.style.display = 'none' }
+    if (nameEl) nameEl.textContent = `${emote.name} :${emote.emojiName}:`
+  } else {
+    if (img) { img.src = emote.url; img.style.display = '' }
+    if (nameEl) nameEl.textContent = emote.name;
+  }
   if (hint) hint.textContent = isTwitch ? 'Ctrl+V' : '';
 
   preview.style.display = 'flex';

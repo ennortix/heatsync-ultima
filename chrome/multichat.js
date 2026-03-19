@@ -9439,10 +9439,33 @@ m.type === 'usernotice' ? 'hs-mc-msg hs-mc-system' :
 
   function updateTabIndicator(tabId) {
     const tab = tabBarElement?.querySelector(`[data-tab="${tabId}"]`);
-    if (tab && currentTab !== tabId) {
-      tab.classList.add('has-new');
-      if (tabId === 'mentions') tab.classList.add('has-mentions');
+    if (!tab || currentTab === tabId) return;
+
+    // Don't light up duplicate tabs showing the same channel
+    // If on live, suppress channel tab indicator for the live channel
+    // If on a channel tab, suppress live tab indicator for the same channel
+    const liveCh = getLiveChannel()?.toLowerCase();
+    if (liveCh) {
+      if (currentTab === 'live' && tabId !== 'feed' && tabId !== 'activity' && tabId !== 'mentions') {
+        const chConfig = config.channels.find(ch => (typeof ch === 'string' ? ch : ch.id) === tabId);
+        if (chConfig) {
+          const tw = (typeof chConfig === 'string' ? chConfig : chConfig.twitch)?.toLowerCase();
+          const ki = (typeof chConfig === 'string' ? undefined : chConfig.kick)?.toLowerCase();
+          if (tw === liveCh || ki === liveCh) return;
+        }
+      }
+      if (tabId === 'live') {
+        const curConfig = config.channels.find(ch => (typeof ch === 'string' ? ch : ch.id) === currentTab);
+        if (curConfig) {
+          const tw = (typeof curConfig === 'string' ? curConfig : curConfig.twitch)?.toLowerCase();
+          const ki = (typeof curConfig === 'string' ? undefined : curConfig.kick)?.toLowerCase();
+          if (tw === liveCh || ki === liveCh) return;
+        }
+      }
     }
+
+    tab.classList.add('has-new');
+    if (tabId === 'mentions') tab.classList.add('has-mentions');
   }
 
   // ============================================

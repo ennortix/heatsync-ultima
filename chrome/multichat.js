@@ -8042,6 +8042,8 @@ m.type === 'usernotice' ? 'hs-mc-msg hs-mc-system' :
       return;
     } else if (id === 'live') {
       const curCh = getLiveChannel();
+      // Ensure channel is joined + history loaded (handles picker overrides, SPA nav)
+      if (curCh && irc && !irc.channels.has(curCh.toLowerCase())) irc.join(curCh);
       const ircMsgs = curCh ? (irc?.getMessages(curCh) || []) : [];
       // Kick messages for live tab: same channel name, or linked via config
       let kickMsgs = curCh ? (kickChat?.getMessages(curCh) || []) : [];
@@ -11031,6 +11033,13 @@ m.type === 'usernotice' ? 'hs-mc-msg hs-mc-system' :
         kickChat.join(currentChannel);
       }
       log('Auto-joined current channel:', currentChannel);
+    }
+
+    // Ensure live channel override is also joined (may differ from URL channel)
+    const liveCh = getLiveChannel();
+    if (liveCh && liveCh !== currentChannel && hostPlatform === 'twitch') {
+      irc.join(liveCh);
+      log('Auto-joined live channel override:', liveCh);
     }
 
     config.channels.forEach(ch => {

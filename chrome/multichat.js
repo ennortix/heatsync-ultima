@@ -790,8 +790,8 @@
     // Static hardcoded tab buttons — no user input, safe innerHTML
     container.innerHTML = isKick ? `
       <button class="hs-mc-tab active" data-tab="feed">feed</button>
-      <button class="hs-mc-tab" data-tab="live">live</button>
       <button class="hs-mc-tab" data-tab="whispers">whispers</button>
+      <button class="hs-mc-tab" data-tab="live">live</button>
       <div class="hs-mc-tab-utils">
         <button class="hs-mc-tab hs-mc-util-btn hs-mc-rotate" data-tab="rotate" title="rotate tabs (T)">T</button>
         <button class="hs-mc-tab hs-mc-util-btn hs-mc-font-btn" data-font-dir="-1" title="smaller text">A-</button>
@@ -800,9 +800,9 @@
       </div>
     ` : `
       <button class="hs-mc-tab active" data-tab="feed">feed</button>
-      <button class="hs-mc-tab" data-tab="live">live</button>
-      <button class="hs-mc-tab" data-tab="mentions">mentions</button>
       <button class="hs-mc-tab" data-tab="whispers">whispers</button>
+      <button class="hs-mc-tab" data-tab="mentions">mentions</button>
+      <button class="hs-mc-tab" data-tab="live">live</button>
       <button class="hs-mc-tab" data-tab="add">+</button>
       <div class="hs-mc-tab-utils">
         <button class="hs-mc-tab hs-mc-util-btn hs-mc-rotate" data-tab="rotate" title="rotate tabs (T)">T</button>

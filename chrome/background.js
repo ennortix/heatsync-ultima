@@ -1626,6 +1626,13 @@ function handleWSMessage(msg) {
       })
       break
 
+    case 'dm:new':
+      broadcastToTabs({
+        type: 'dm_new',
+        data: msg
+      })
+      break
+
     case 'kick-chat-message':
       // Relay Kick chat messages (via server webhook) to content scripts
       broadcastToTabs({

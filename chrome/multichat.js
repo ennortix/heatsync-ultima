@@ -49,6 +49,12 @@
   const mentionsBuffer = [];
   const MAX_BUFFER = 500;
 
+  // Whisper/DM state
+  const whisperConversations = new Map() // key → { msgs, platform, userId, displayName, color, lastTime, unread }
+  let activeWhisperUser = null // key into map, null = conversation list
+  let whisperTotalUnread = 0
+  let whisperDmsLoaded = false // whether HeatSync DM list has been fetched
+
   // Scoped emote wrapper query (avoids full-document scan)
   function queryEmoteWrappers(emoteName) {
     const scope = document.getElementById('hs-mc-overlay') || document
@@ -224,6 +230,21 @@
           type: 'usernotice',
           msgId: tags['msg-id'] || '',
           id: tags.id || ''
+        }
+      }
+
+      // WHISPER: @tags :user!user@user.tmi.twitch.tv WHISPER yourname :message
+      const whisper = raw.match(/WHISPER \S+ :(.+)$/)
+      if (whisper) {
+        return {
+          type: 'whisper',
+          user: tags['display-name'] || 'anonymous',
+          userId: tags['user-id'],
+          text: whisper[1],
+          color: sanitizeColor(tags.color || '#fff'),
+          badges: tags.badges || '',
+          time: parseInt(tags['tmi-sent-ts']) || Date.now(),
+          id: tags['message-id'] || ''
         }
       }
 
@@ -771,20 +792,26 @@
       <button class="hs-mc-tab active" data-tab="live">live</button>
       <button class="hs-mc-tab" data-tab="feed">feed</button>
       <button class="hs-mc-tab" data-tab="activity">activity</button>
-      <button class="hs-mc-tab hs-mc-rotate" data-tab="rotate" title="rotate tabs (T)">T</button>
-      <button class="hs-mc-tab hs-mc-font-btn" data-font-dir="-1" title="smaller text">A-</button>
-      <button class="hs-mc-tab hs-mc-font-btn" data-font-dir="1" title="larger text">A+</button>
-      <button class="hs-mc-tab" data-tab="settings" title="settings">⚙</button>
+      <button class="hs-mc-tab" data-tab="whispers">whispers</button>
+      <div class="hs-mc-tab-utils">
+        <button class="hs-mc-tab hs-mc-util-btn hs-mc-rotate" data-tab="rotate" title="rotate tabs (T)">T</button>
+        <button class="hs-mc-tab hs-mc-util-btn hs-mc-font-btn" data-font-dir="-1" title="smaller text">A-</button>
+        <button class="hs-mc-tab hs-mc-util-btn hs-mc-font-btn" data-font-dir="1" title="larger text">A+</button>
+        <button class="hs-mc-tab hs-mc-util-btn" data-tab="settings" title="settings">\u2699</button>
+      </div>
     ` : `
       <button class="hs-mc-tab active" data-tab="live">live</button>
       <button class="hs-mc-tab" data-tab="feed">feed</button>
       <button class="hs-mc-tab" data-tab="activity">activity</button>
       <button class="hs-mc-tab" data-tab="mentions">mentions</button>
+      <button class="hs-mc-tab" data-tab="whispers">whispers</button>
       <button class="hs-mc-tab" data-tab="add">+</button>
-      <button class="hs-mc-tab hs-mc-rotate" data-tab="rotate" title="rotate tabs (T)">T</button>
-      <button class="hs-mc-tab hs-mc-font-btn" data-font-dir="-1" title="smaller text">A-</button>
-      <button class="hs-mc-tab hs-mc-font-btn" data-font-dir="1" title="larger text">A+</button>
-      <button class="hs-mc-tab" data-tab="settings" title="settings">⚙</button>
+      <div class="hs-mc-tab-utils">
+        <button class="hs-mc-tab hs-mc-util-btn hs-mc-rotate" data-tab="rotate" title="rotate tabs (T)">T</button>
+        <button class="hs-mc-tab hs-mc-util-btn hs-mc-font-btn" data-font-dir="-1" title="smaller text">A-</button>
+        <button class="hs-mc-tab hs-mc-util-btn hs-mc-font-btn" data-font-dir="1" title="larger text">A+</button>
+        <button class="hs-mc-tab hs-mc-util-btn" data-tab="settings" title="settings">\u2699</button>
+      </div>
     `;
 
     // Event delegation for tab clicks
@@ -823,7 +850,7 @@
       const tab = e.target.closest('.hs-mc-tab');
       if (!tab) return;
       const tabId = tab.dataset.tab;
-      const reserved = ['live', 'feed', 'activity', 'mentions', 'add', 'rotate', 'settings'];
+      const reserved = ['live', 'feed', 'activity', 'mentions', 'whispers', 'add', 'rotate', 'settings'];
       if (reserved.includes(tabId)) return;
       e.preventDefault();
 
@@ -2990,6 +3017,13 @@
     } else if (currentTab === 'mentions') {
       const channel = getCurrentChannel();
       placeholder = channel ? `send to #${channel}` : 'send a message...';
+    } else if (currentTab === 'whispers') {
+      if (activeWhisperUser) {
+        const conv = whisperConversations.get(activeWhisperUser)
+        placeholder = `whisper to ${conv?.displayName || activeWhisperUser}`
+      } else {
+        placeholder = ''
+      }
     } else if (currentTab === 'add') {
       placeholder = '';
     } else {
@@ -3518,6 +3552,15 @@
     const text = convertEmojiShortcodes(getInputText().trim());
     if (!text) { console.warn('[HS] SEND BAIL: empty text'); return; }
 
+    // Whispers tab → send whisper/DM
+    if (currentTab === 'whispers' && activeWhisperUser) {
+      sendWhisperMessage(activeWhisperUser, text)
+      if (wysiwygEnabled) input.textContent = ''
+      else input.value = ''
+      pendingMessage = ''
+      return
+    }
+
     // Feed/notifs tab → post to heatsync API
     if (currentTab === 'feed' || currentTab === 'activity') {
       postFeedMessage(text);
@@ -3680,6 +3723,11 @@
         scheduleReconnect(prev);
         return;
       }
+      if (line.includes('WHISPER')) {
+        const msg = parseIrcLine(line)
+        if (msg?.type === 'whisper') handleIncomingWhisper(msg)
+        continue
+      }
       if (line.includes(' 353 ') || line.includes(' 366 ') || line.includes('ROOMSTATE')) continue;
       if (MC_DEBUG) console.warn('[HS] IRC ←', line.slice(0, 200));
     }
@@ -3703,6 +3751,322 @@
         scheduleReconnect(prevChannels);
       }
     }, delay);
+  }
+
+  // ═══ Whisper/DM handling ═══
+
+  let _whisperSaveTimer = null
+  function whisperSaveDebounced() {
+    if (_whisperSaveTimer) clearTimeout(_whisperSaveTimer)
+    _whisperSaveTimer = setTimeout(saveWhispers, 500)
+  }
+
+  function saveWhispers() {
+    const data = {}
+    let count = 0
+    for (const [key, conv] of whisperConversations) {
+      if (count >= 30) break
+      data[key] = {
+        platform: conv.platform,
+        userId: conv.userId,
+        displayName: conv.displayName,
+        color: conv.color,
+        lastTime: conv.lastTime,
+        unread: conv.unread,
+        msgs: conv.msgs.slice(-50)
+      }
+      count++
+    }
+    try { chrome.storage.local.set({ hs_whispers: data }) } catch {}
+  }
+
+  function loadWhispers() {
+    try {
+      chrome.storage.local.get(['hs_whispers']).then(stored => {
+        const data = stored.hs_whispers
+        if (!data) return
+        for (const [key, conv] of Object.entries(data)) {
+          if (!whisperConversations.has(key)) {
+            whisperConversations.set(key, {
+              msgs: conv.msgs || [],
+              platform: conv.platform,
+              userId: conv.userId,
+              displayName: conv.displayName,
+              color: conv.color || '#fff',
+              lastTime: conv.lastTime || 0,
+              unread: conv.unread || 0
+            })
+          }
+        }
+        whisperTotalUnread = 0
+        for (const conv of whisperConversations.values()) whisperTotalUnread += conv.unread
+        updateWhisperBadge()
+      }).catch(() => {})
+    } catch {}
+  }
+
+  function getOrCreateConversation(key, platform, userId, displayName, color) {
+    if (!whisperConversations.has(key)) {
+      whisperConversations.set(key, {
+        msgs: [],
+        platform,
+        userId,
+        displayName,
+        color: color || '#fff',
+        lastTime: 0,
+        unread: 0
+      })
+    }
+    return whisperConversations.get(key)
+  }
+
+  function handleIncomingWhisper(msg) {
+    const key = `twitch:${msg.user.toLowerCase()}`
+    const conv = getOrCreateConversation(key, 'twitch', msg.userId, msg.user, msg.color)
+    conv.msgs.push({
+      user: msg.user,
+      text: msg.text,
+      color: msg.color,
+      time: msg.time,
+      self: false
+    })
+    if (conv.msgs.length > 200) conv.msgs.splice(0, conv.msgs.length - 200)
+    conv.lastTime = msg.time
+    conv.displayName = msg.user
+    conv.color = msg.color
+
+    if (currentTab === 'whispers' && activeWhisperUser === key) {
+      renderWhispersTab()
+    } else {
+      conv.unread++
+      whisperTotalUnread++
+      updateWhisperBadge()
+    }
+    whisperSaveDebounced()
+  }
+
+  function handleIncomingDm(data) {
+    const key = `hs:${data.from_user_id}`
+    const conv = getOrCreateConversation(key, 'heatsync', data.from_user_id, data.from_display_name, data.from_color)
+    conv.msgs.push({
+      user: data.from_display_name,
+      text: data.content,
+      color: data.from_color || '#ff8700',
+      time: data.created_at ? new Date(data.created_at).getTime() : Date.now(),
+      self: false
+    })
+    if (conv.msgs.length > 200) conv.msgs.splice(0, conv.msgs.length - 200)
+    conv.lastTime = Date.now()
+    conv.displayName = data.from_display_name
+    conv.color = data.from_color || '#ff8700'
+
+    if (currentTab === 'whispers' && activeWhisperUser === key) {
+      renderWhispersTab()
+    } else {
+      conv.unread++
+      whisperTotalUnread++
+      updateWhisperBadge()
+    }
+    whisperSaveDebounced()
+  }
+
+  function updateWhisperBadge() {
+    if (!tabBarElement) return
+    const tab = tabBarElement.querySelector('[data-tab="whispers"]')
+    if (tab) {
+      tab.classList.toggle('has-mentions', whisperTotalUnread > 0)
+    }
+  }
+
+  async function sendWhisperMessage(key, text) {
+    const conv = whisperConversations.get(key)
+    if (!conv) return
+
+    if (key.startsWith('twitch:')) {
+      try {
+        await gqlProxy('SendWhisper', {
+          input: {
+            recipientID: conv.userId,
+            message: text,
+            nonce: Math.random().toString(36).slice(2)
+          }
+        }, { rawQuery: 'mutation SendWhisper($input: SendWhisperInput!) { sendWhisper(input: $input) { error { code } } }' })
+      } catch (e) {
+        log('Whisper send failed:', e.message)
+        return
+      }
+    } else if (key.startsWith('hs:')) {
+      const toUserId = key.slice(3)
+      const resp = await apiFetch('/api/dm', {
+        method: 'POST',
+        body: { toUserId, content: text }
+      })
+      if (!resp.ok) {
+        log('DM send failed:', resp.error)
+        return
+      }
+    }
+
+    conv.msgs.push({
+      user: 'you',
+      text,
+      color: '#aaa',
+      time: Date.now(),
+      self: true
+    })
+    if (conv.msgs.length > 200) conv.msgs.splice(0, conv.msgs.length - 200)
+    conv.lastTime = Date.now()
+
+    if (currentTab === 'whispers' && activeWhisperUser === key) {
+      renderWhispersTab()
+    }
+    whisperSaveDebounced()
+  }
+
+  function renderWhispersTab() {
+    const msgsEl = document.getElementById('hs-mc-messages')
+    if (!msgsEl) return
+
+    if (!activeWhisperUser) {
+      // Conversation list mode
+      if (!whisperDmsLoaded && hsAuthToken) {
+        whisperDmsLoaded = true
+        apiFetch('/api/dm').then(resp => {
+          if (resp.ok && resp.data && Array.isArray(resp.data)) {
+            for (const dm of resp.data) {
+              const key = `hs:${dm.other_user_id}`
+              const conv = getOrCreateConversation(key, 'heatsync', dm.other_user_id, dm.other_display_name, dm.other_color)
+              if (dm.last_message) {
+                conv.lastTime = Math.max(conv.lastTime, new Date(dm.last_message.created_at).getTime())
+              }
+              conv.displayName = dm.other_display_name
+              conv.color = dm.other_color || '#ff8700'
+            }
+            if (currentTab === 'whispers' && !activeWhisperUser) renderWhispersTab()
+          }
+        })
+      }
+
+      const sorted = [...whisperConversations.entries()]
+        .sort((a, b) => b[1].lastTime - a[1].lastTime)
+
+      if (sorted.length === 0) {
+        msgsEl.innerHTML = '<div class="hs-mc-empty">no whispers yet</div>'
+        return
+      }
+
+      msgsEl.textContent = ''
+      const frag = document.createDocumentFragment()
+      for (const [key, conv] of sorted) {
+        const row = document.createElement('div')
+        row.className = 'hs-whisper-conv'
+        row.dataset.whisperKey = key
+
+        const platBadge = conv.platform === 'twitch' ? '[T]' : '[HS]'
+        const platColor = conv.platform === 'twitch' ? '#9146ff' : '#ff8700'
+        const lastMsg = conv.msgs.length > 0 ? conv.msgs[conv.msgs.length - 1] : null
+        const preview = lastMsg ? escapeHtml(lastMsg.text.length > 50 ? lastMsg.text.slice(0, 50) + '...' : lastMsg.text) : ''
+        const ago = conv.lastTime ? formatRelativeTime(conv.lastTime) : ''
+        const unreadBadge = conv.unread > 0 ? `<span class="hs-whisper-unread">${conv.unread}</span>` : ''
+
+        // All dynamic values pass through escapeHtml/sanitizeColor — safe innerHTML
+        row.innerHTML = `<span style="color:${platColor};font-size:10px;font-weight:700;margin-right:4px">${platBadge}</span><span style="color:${sanitizeColor(conv.color)};font-weight:600">${escapeHtml(conv.displayName)}</span> ${unreadBadge}<span class="hs-whisper-time">${ago}</span><div class="hs-whisper-preview">${preview}</div>`
+
+        row.addEventListener('click', () => {
+          activeWhisperUser = key
+          const c = whisperConversations.get(key)
+          if (c) {
+            whisperTotalUnread -= c.unread
+            c.unread = 0
+            updateWhisperBadge()
+          }
+          renderWhispersTab()
+          updateInputPlaceholder()
+          if (inputBarElement) {
+            inputBarElement.classList.remove('hs-hidden')
+            inputBarVisible = true
+          }
+        })
+        frag.appendChild(row)
+      }
+      msgsEl.appendChild(frag)
+      return
+    }
+
+    // Active conversation mode
+    const conv = whisperConversations.get(activeWhisperUser)
+    if (!conv) {
+      activeWhisperUser = null
+      renderWhispersTab()
+      return
+    }
+
+    // Lazy-load HeatSync DM history
+    if (activeWhisperUser.startsWith('hs:') && conv.msgs.length <= 1) {
+      const userId = activeWhisperUser.slice(3)
+      apiFetch(`/api/dm/${userId}`).then(resp => {
+        if (resp.ok && resp.data && Array.isArray(resp.data)) {
+          const existing = new Set(conv.msgs.map(m => m.time))
+          for (const dm of resp.data) {
+            const t = new Date(dm.created_at).getTime()
+            if (existing.has(t)) continue
+            conv.msgs.push({
+              user: dm.from_display_name || dm.from_user_id,
+              text: dm.content,
+              color: dm.from_color || '#ff8700',
+              time: t,
+              self: dm.from_user_id !== userId
+            })
+          }
+          conv.msgs.sort((a, b) => a.time - b.time)
+          if (conv.msgs.length > 200) conv.msgs.splice(0, conv.msgs.length - 200)
+          if (currentTab === 'whispers' && activeWhisperUser === `hs:${userId}`) renderWhispersTab()
+        }
+      })
+    }
+
+    msgsEl.textContent = ''
+    const frag = document.createDocumentFragment()
+
+    // Back button + header
+    const header = document.createElement('div')
+    header.className = 'hs-whisper-header'
+    // sanitizeColor + escapeHtml guard all dynamic values
+    header.innerHTML = `<span class="hs-whisper-back">\u2190</span> <span style="color:${sanitizeColor(conv.color)};font-weight:600">${escapeHtml(conv.displayName)}</span>`
+    header.querySelector('.hs-whisper-back').addEventListener('click', () => {
+      activeWhisperUser = null
+      renderWhispersTab()
+      updateInputPlaceholder()
+    })
+    frag.appendChild(header)
+
+    // Messages
+    let zebraCount = 0
+    for (const m of conv.msgs) {
+      const div = document.createElement('div')
+      div.className = m.self ? 'hs-mc-msg hs-whisper-self' : 'hs-mc-msg'
+      zebraCount++
+      if (zebraEnabled && zebraCount % 2 === 0) div.classList.add('hs-mc-zebra')
+
+      const ts = formatTimeFromTs(m.time)
+      const tsHtml = ts ? `<span class="hs-mc-ts" data-ts="${m.time}">${ts}</span>` : ''
+      const userColor = m.self ? '#aaa' : sanitizeColor(m.color || conv.color)
+      const userName = m.self ? 'you' : escapeHtml(m.user)
+      // All dynamic values sanitized — safe innerHTML (matches buildMessageDiv pattern)
+      div.innerHTML = `${tsHtml}<span style="color:${userColor};font-weight:600">${userName}</span>: ${processEmotes(escapeHtml(m.text), null)}`
+      frag.appendChild(div)
+    }
+
+    msgsEl.appendChild(frag)
+    msgsEl.scrollTop = msgsEl.scrollHeight
+  }
+
+  function formatRelativeTime(ts) {
+    const diff = Date.now() - ts
+    if (diff < 60000) return 'now'
+    if (diff < 3600000) return Math.floor(diff / 60000) + 'm'
+    if (diff < 86400000) return Math.floor(diff / 3600000) + 'h'
+    return Math.floor(diff / 86400000) + 'd'
   }
 
   async function connectAuthIrc(token, nick) {
@@ -3851,7 +4215,7 @@
     if (!tabBarElement) return;
 
     // Clear existing channel tabs (keep built-in tabs)
-    const existingChannelTabs = tabBarElement.querySelectorAll('.hs-mc-tab[data-tab]:not([data-tab="live"]):not([data-tab="feed"]):not([data-tab="activity"]):not([data-tab="mentions"]):not([data-tab="add"]):not([data-tab="rotate"]):not([data-tab="settings"])');
+    const existingChannelTabs = tabBarElement.querySelectorAll('.hs-mc-tab[data-tab]:not([data-tab="live"]):not([data-tab="feed"]):not([data-tab="activity"]):not([data-tab="mentions"]):not([data-tab="whispers"]):not([data-tab="add"]):not([data-tab="rotate"]):not([data-tab="settings"])');
     existingChannelTabs.forEach(t => t.remove());
 
     // Add channel tabs before the + button (or append if no + button, e.g. Kick)
@@ -3966,6 +4330,75 @@
       .hs-mc-tab.has-stream-event.active {
         color: #000 !important;
       }
+      /* Utility button row (T, A, A, ⚙) */
+      .hs-mc-tab-utils {
+        display: flex;
+        gap: 4px;
+        width: 100%;
+      }
+      .hs-mc-util-btn {
+        flex: 1 !important;
+        min-width: 0 !important;
+        padding: 4px 0 !important;
+        font-size: 13px !important;
+        font-weight: 700 !important;
+      }
+      /* Whisper conversation list */
+      .hs-whisper-conv {
+        padding: 6px 8px;
+        cursor: pointer;
+        border-bottom: 1px solid #222;
+      }
+      .hs-whisper-conv:hover {
+        background: #fff;
+        color: #000;
+      }
+      .hs-whisper-conv:hover .hs-whisper-preview,
+      .hs-whisper-conv:hover .hs-whisper-time {
+        color: #444;
+      }
+      .hs-whisper-preview {
+        color: #808080;
+        font-size: 11px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        margin-top: 2px;
+      }
+      .hs-whisper-time {
+        color: #808080;
+        font-size: 10px;
+        float: right;
+      }
+      .hs-whisper-unread {
+        background: #ff8700;
+        color: #000;
+        font-size: 10px;
+        font-weight: 700;
+        padding: 0 4px;
+        border-radius: 0;
+        margin-left: 4px;
+      }
+      .hs-whisper-header {
+        padding: 6px 8px;
+        border-bottom: 1px solid #444;
+        font-size: 13px;
+        position: sticky;
+        top: 0;
+        background: #000;
+        z-index: 1;
+      }
+      .hs-whisper-back {
+        cursor: pointer;
+        margin-right: 6px;
+        font-size: 14px;
+      }
+      .hs-whisper-back:hover {
+        color: #ff8700;
+      }
+      .hs-whisper-self {
+        opacity: 0.7;
+      }
       /* Inline stream event notifications */
       .hs-mc-stream-event {
         padding: 2px 8px;
@@ -3980,6 +4413,22 @@
       .hs-mc-stream-event.event-follow { color: #ffff00; border-left-color: #ffff00; opacity: 0.8; }
       .hs-mc-stream-event.event-follow.event-online { color: #f44; border-left-color: #f44; }
       .hs-mc-stream-event.event-follow.event-offline { color: #808080; border-left-color: #808080; }
+      /* Inline feed posts in chat timeline */
+      .hs-mc-feed-inline {
+        padding: 2px 8px;
+        font-size: 13px;
+        border-left: 3px solid #ff8700;
+        border-bottom: 1px solid #333;
+        color: #ccc;
+      }
+      .hs-mc-feed-inline .hs-feed-tag-op { color: #ff8700; font-size: 10px; margin-right: 3px; }
+      .hs-mc-feed-inline .hs-feed-tag-re { color: #808080; font-size: 10px; margin-right: 3px; }
+      .hs-mc-feed-inline .hs-mc-ts { margin-right: 4px; }
+      .hs-mc-feed-inline .hs-feed-body { color: #ddd; }
+      .hs-mc-feed-inline .hs-feed-thread-link {
+        color: #ff8700; text-decoration: none; font-size: 10px; margin-right: 4px;
+      }
+      .hs-mc-feed-inline .hs-feed-thread-link:hover { text-decoration: underline; }
       /* Live dot — red indicator, composes with any state */
       .hs-mc-tab {
         position: relative !important;
@@ -6515,7 +6964,30 @@
           renderFeed();
         } else {
           updateTabIndicator('feed');
+          // Also append inline in live/channel tabs
+          const active = currentTab;
+          if (active === 'live' || config.channels.some(ch => (typeof ch === 'string' ? ch : ch.id) === active)) {
+            const f = msg.data;
+            const t = new Date(f.created_at).getTime();
+            if (!isNaN(t)) {
+              const feedMsg = {
+                type: 'feed-post',
+                base36_id: f.base36_id,
+                feedUser: f.username || f.display_name || 'anon',
+                text: f.content || '',
+                color: f.user_color || '#fff',
+                time: t,
+                reply_to: f.reply_to,
+                emote_refs: f.emote_refs,
+                is_op: f.is_op
+              };
+              appendMessage(feedMsg, active);
+            }
+          }
         }
+      }
+      if (msg.type === 'dm_new' && msg.data) {
+        handleIncomingDm(msg.data)
       }
       if (msg.type === 'youtube_chat_message') {
         // Bidirectional dedup: skip if we already displayed this message from either source
@@ -7064,6 +7536,8 @@
       expandedThreadId = null;
       threadReplies = [];
     }
+    // Reset whisper conversation view when leaving whispers
+    if (currentTab === 'whispers' && id !== 'whispers') activeWhisperUser = null
 
     currentTab = id;
 
@@ -7071,6 +7545,13 @@
     if (id === 'mentions') {
       mentionsSeenCount = mentionsBuffer.length;
       updateTabBadges();
+    }
+
+    // Clear whisper unread when viewing active conversation
+    if (id === 'whispers' && activeWhisperUser) {
+      const conv = whisperConversations.get(activeWhisperUser)
+      if (conv) { whisperTotalUnread -= conv.unread; conv.unread = 0 }
+      updateWhisperBadge()
     }
 
     // Persist active tab across refreshes/popouts (skip transient tabs)
@@ -7119,7 +7600,7 @@
     // Hide input bar on add-channel form, or when auto-hide is on
     if (inputBarElement) {
       const pickerOpen = document.getElementById('hs-mc-emote-picker')?.classList.contains('visible');
-      if (id === 'add') {
+      if (id === 'add' || (id === 'whispers' && !activeWhisperUser)) {
         inputBarElement.classList.add('hs-hidden');
         inputBarVisible = false;
       } else if (autoHideInput && !pickerOpen) {
@@ -7223,6 +7704,38 @@
       let evtHtml = escapeHtml(m.text)
       evtHtml = evtHtml.replace(/(switched to |went live \u2014 )(.+)$/, '$1<span style="color:#fff">$2</span>')
       div.innerHTML = `${tsSpan}${evtHtml}`
+      return div
+    }
+
+    // Inline feed post — render as orange-bordered post in chat timeline
+    // Safety: all user content goes through escapeHtml() and renderFeedContent()
+    // which sanitizes via escapeHtml before adding safe formatting. Same pattern
+    // as buildFeedMessageDiv() and the existing buildMessageDiv() chat path below.
+    if (m.type === 'feed-post') {
+      const div = document.createElement('div')
+      div.className = 'hs-mc-feed-inline'
+      div.dataset.msgId = m.base36_id || ''
+      const tsVal = timestampsEnabled ? formatTimeFromTs(m.time) : ''
+      const tsSpan = tsVal ? `<span class="hs-mc-ts" data-ts="${m.time}">${tsVal}</span>` : ''
+      const isReply = !!m.reply_to
+      const typeTag = isReply
+        ? '<span class="hs-feed-tag hs-feed-tag-re">[RE]</span>'
+        : '<span class="hs-feed-tag hs-feed-tag-op">[OP]</span>'
+      const shortId = (m.base36_id || '').replace(/^0+/, '') || '0'
+      const threadLink = `<a href="https://heatsync.org/post/${encodeURIComponent(m.base36_id)}" target="_blank" class="hs-feed-thread-link">&gt;&gt;${escapeHtml(shortId)}</a>`
+      const userLink = `<a href="https://heatsync.org/user/${encodeURIComponent(m.feedUser)}" target="_blank" class="hs-mc-user" data-username="${escapeHtml((m.feedUser || 'anon').toLowerCase())}" style="color:${sanitizeColor(m.color || '#fff')}">${escapeHtml(m.feedUser || 'anon')}</a>`
+      const content = renderFeedContent(m.text, m.emote_refs)
+      div.innerHTML = `${tsSpan}${threadLink}${typeTag}${userLink}: <span class="hs-feed-body">${content}</span>`
+      // Click to expand in feed tab
+      div.addEventListener('click', (e) => {
+        const spoiler = e.target.closest('.hs-spoiler')
+        if (spoiler) { spoiler.classList.toggle('revealed'); return }
+        if (e.target.closest('a, .hs-mc-emote, .hs-mc-link')) return
+        expandedThreadId = m.reply_to || m.base36_id
+        threadReplies = []
+        switchTab('feed')
+        toggleThread(expandedThreadId)
+      })
       return div
     }
 
@@ -7352,7 +7865,7 @@ m.type === 'usernotice' ? 'hs-mc-msg hs-mc-system' :
     if (empty) empty.remove();
 
     const div = buildMessageDiv(msg, tabId);
-    if (zebraEnabled && msg.type !== 'stream-event') {
+    if (zebraEnabled && msg.type !== 'stream-event' && msg.type !== 'feed-post') {
       if (!msgsEl._zebraCount) msgsEl._zebraCount = 0;
       msgsEl._zebraCount++;
       if (msgsEl._zebraCount % 2 === 0) div.classList.add('hs-mc-zebra');
@@ -7374,12 +7887,41 @@ m.type === 'usernotice' ? 'hs-mc-msg hs-mc-system' :
     return true;
   }
 
+  // Convert feed posts to timeline-compatible objects for inline rendering
+  function feedPostsForTimeline(msgs) {
+    if (!feedLoaded || feedMessages.length === 0) return []
+    // Determine time window of chat messages (only merge overlapping feed posts)
+    const chatTimes = msgs.filter(m => m.time).map(m => m.time)
+    if (chatTimes.length === 0) return []
+    const minTime = Math.min(...chatTimes) - 60000 // 1min before earliest chat msg
+    const maxTime = Math.max(...chatTimes) + 60000 // 1min after latest chat msg
+
+    const result = []
+    for (const f of feedMessages) {
+      const t = new Date(f.created_at).getTime()
+      if (t < minTime || t > maxTime || isNaN(t)) continue
+      result.push({
+        type: 'feed-post',
+        base36_id: f.base36_id,
+        feedUser: f.username || f.display_name || 'anon',
+        text: f.content || '',
+        color: f.user_color || '#fff',
+        time: t,
+        reply_to: f.reply_to,
+        emote_refs: f.emote_refs,
+        is_op: f.is_op
+      })
+    }
+    return result
+  }
+
   // Full rebuild — used for tab switches, scroll resume, and initial load
   function renderMessages(id) {
     if (editingChannel) return;
     // Social tabs have their own renderers
     if (id === 'feed') { renderFeed(); return; }
     if (id === 'activity') { renderActivity(); return; }
+    if (id === 'whispers') { renderWhispersTab(); return; }
     if (id === 'settings') { renderSettingsTab(); return; }
 
     const msgsEl = document.getElementById('hs-mc-messages');
@@ -7413,11 +7955,11 @@ m.type === 'usernotice' ? 'hs-mc-msg hs-mc-system' :
         const linked = config.channels.find(ch => typeof ch !== 'string' && ch.twitch === curCh && ch.kick);
         if (linked) kickMsgs = kickChat?.getMessages(linked.kick) || [];
       }
-      if (kickMsgs.length > 0) {
-        msgs = [...ircMsgs, ...kickMsgs].sort((a, b) => a.time - b.time);
-      } else {
-        msgs = ircMsgs;
-      }
+      const chatMsgs = kickMsgs.length > 0 ? [...ircMsgs, ...kickMsgs] : [...ircMsgs];
+      // Merge feed posts into timeline at correct chronological position
+      const inlineFeed = feedPostsForTimeline(chatMsgs);
+      if (inlineFeed.length > 0) chatMsgs.push(...inlineFeed);
+      msgs = chatMsgs.sort((a, b) => a.time - b.time);
     } else {
       // Channel tab — merge IRC + Kick + per-channel YouTube messages
       const ch = config.channels.find(c => (typeof c === 'string' ? c : c.id) === id);
@@ -7426,12 +7968,11 @@ m.type === 'usernotice' ? 'hs-mc-msg hs-mc-system' :
       const ircMsgs = twitchName ? (irc?.getMessages(twitchName) || []) : [];
       const kickMsgs = kickName ? (kickChat?.getMessages(kickName) || []) : [];
       const ytMsgs = channelYtMessages.get(id) || [];
-      const extraMsgs = [...kickMsgs, ...ytMsgs];
-      if (extraMsgs.length > 0) {
-        msgs = [...ircMsgs, ...extraMsgs].sort((a, b) => a.time - b.time);
-      } else {
-        msgs = ircMsgs;
-      }
+      const chatMsgs = [...ircMsgs, ...kickMsgs, ...ytMsgs];
+      // Merge feed posts into timeline at correct chronological position
+      const inlineFeed = feedPostsForTimeline(chatMsgs);
+      if (inlineFeed.length > 0) chatMsgs.push(...inlineFeed);
+      msgs = chatMsgs.sort((a, b) => a.time - b.time);
     }
 
     updateTabBadges();
@@ -7448,7 +7989,7 @@ m.type === 'usernotice' ? 'hs-mc-msg hs-mc-system' :
     const frag = document.createDocumentFragment();
     for (const m of toRender) {
       const div = buildMessageDiv(m, id);
-      if (zebraEnabled && m.type !== 'stream-event') {
+      if (zebraEnabled && m.type !== 'stream-event' && m.type !== 'feed-post') {
         msgsEl._zebraCount++;
         if (msgsEl._zebraCount % 2 === 0) div.classList.add('hs-mc-zebra');
       }
@@ -9472,7 +10013,7 @@ m.type === 'usernotice' ? 'hs-mc-msg hs-mc-system' :
       }
 
       const id = twitchVal || kickVal || ('yt-' + Date.now())
-      const reserved = ['live', 'feed', 'activity', 'mentions', 'add', 'rotate', 'settings']
+      const reserved = ['live', 'feed', 'activity', 'mentions', 'whispers', 'add', 'rotate', 'settings']
       if (reserved.includes(id)) {
         showErr('reserved name')
         return
@@ -10372,6 +10913,9 @@ m.type === 'usernotice' ? 'hs-mc-msg hs-mc-system' :
     // Listen for social tab events from background
     listenForSocialEvents();
 
+    // Load whisper conversations from storage
+    loadWhispers();
+
     // Initialize IRC (runs on both Twitch and Kick — cross-platform relay)
     irc = new IRC();
     irc.connect();
@@ -10415,6 +10959,17 @@ m.type === 'usernotice' ? 'hs-mc-msg hs-mc-system' :
         }
       }
     });
+
+    // Pre-fetch feed so posts are available for inline rendering in chat tabs
+    if (!feedLoaded && !feedLoading) {
+      fetchFeed().then(() => {
+        // Re-render current tab to show inline feed posts
+        const active = currentTab;
+        if (active === 'live' || config.channels.some(ch => (typeof ch === 'string' ? ch : ch.id) === active)) {
+          renderMessages(active);
+        }
+      });
+    }
 
     // Scan existing chat for mentions (before IRC catches new ones)
     if (hostPlatform === 'twitch') {

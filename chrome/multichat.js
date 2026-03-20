@@ -3968,7 +3968,7 @@
     if (!tabBarElement) return
     const tab = tabBarElement.querySelector('[data-tab="whispers"]')
     if (tab) {
-      tab.classList.toggle('has-mentions', whisperTotalUnread > 0)
+      tab.classList.toggle('has-new', whisperTotalUnread > 0)
     }
   }
 
@@ -11194,7 +11194,7 @@ m.type === 'usernotice' ? 'hs-mc-msg hs-mc-system' :
         if (currentTab === 'activity') {
           if (isScrolledUp) showStaticNewButton();
           else renderActivity();
-        } else { const actTab = tabBarElement?.querySelector('[data-tab="activity"]'); if (actTab) actTab.classList.add('has-stream-event'); }
+        } else { const actTab = tabBarElement?.querySelector('[data-tab="activity"]'); if (actTab) actTab.classList.add('has-new'); }
 
         // Magenta tab highlight
         const liveChannel = getLiveChannel();
@@ -11262,7 +11262,7 @@ m.type === 'usernotice' ? 'hs-mc-msg hs-mc-system' :
         if (currentTab === 'activity') {
           if (isScrolledUp) showStaticNewButton();
           else renderActivity();
-        } else { const actTab = tabBarElement?.querySelector('[data-tab="activity"]'); if (actTab) actTab.classList.add('has-stream-event'); }
+        } else { const actTab = tabBarElement?.querySelector('[data-tab="activity"]'); if (actTab) actTab.classList.add('has-new'); }
 
         // Render inline
         const activeTab = currentTab;

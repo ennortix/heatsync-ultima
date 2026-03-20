@@ -7059,23 +7059,6 @@
           renderFeed();
         } else {
           updateTabIndicator('feed');
-          // Route through inline notification system
-          const f = msg.data;
-          const t = new Date(f.created_at).getTime();
-          if (!isNaN(t)) {
-            const notifType = f.reply_to ? 're' : 'op'
-            injectInlineNotif(notifType, {
-              type: 'feed-post',
-              base36_id: f.base36_id,
-              feedUser: f.username || f.display_name || 'anon',
-              text: f.content || '',
-              color: f.user_color || '#fff',
-              time: t,
-              reply_to: f.reply_to,
-              emote_refs: f.emote_refs,
-              is_op: f.is_op
-            })
-          }
         }
       }
       if (msg.type === 'dm_new' && msg.data) {
@@ -8003,34 +7986,6 @@ m.type === 'usernotice' ? 'hs-mc-msg hs-mc-system' :
     return true;
   }
 
-  // Convert feed posts to timeline-compatible objects for inline rendering
-  function feedPostsForTimeline(msgs) {
-    if (!feedLoaded || feedMessages.length === 0) return []
-    // Determine time window of chat messages (only merge overlapping feed posts)
-    const chatTimes = msgs.filter(m => m.time).map(m => m.time)
-    if (chatTimes.length === 0) return []
-    const minTime = Math.min(...chatTimes) - 60000 // 1min before earliest chat msg
-    const maxTime = Math.max(...chatTimes) + 60000 // 1min after latest chat msg
-
-    const result = []
-    for (const f of feedMessages) {
-      const t = new Date(f.created_at).getTime()
-      if (t < minTime || t > maxTime || isNaN(t)) continue
-      result.push({
-        type: 'feed-post',
-        base36_id: f.base36_id,
-        feedUser: f.username || f.display_name || 'anon',
-        text: f.content || '',
-        color: f.user_color || '#fff',
-        time: t,
-        reply_to: f.reply_to,
-        emote_refs: f.emote_refs,
-        is_op: f.is_op
-      })
-    }
-    return result
-  }
-
   // Full rebuild — used for tab switches, scroll resume, and initial load
   function renderMessages(id) {
     if (editingChannel) return;
@@ -8071,11 +8026,11 @@ m.type === 'usernotice' ? 'hs-mc-msg hs-mc-system' :
         const linked = config.channels.find(ch => typeof ch !== 'string' && ch.twitch === curCh && ch.kick);
         if (linked) kickMsgs = kickChat?.getMessages(linked.kick) || [];
       }
-      const chatMsgs = kickMsgs.length > 0 ? [...ircMsgs, ...kickMsgs] : [...ircMsgs];
-      // Merge feed posts into timeline at correct chronological position
-      const inlineFeed = feedPostsForTimeline(chatMsgs);
-      if (inlineFeed.length > 0) chatMsgs.push(...inlineFeed);
-      msgs = chatMsgs.sort((a, b) => a.time - b.time);
+      if (kickMsgs.length > 0) {
+        msgs = [...ircMsgs, ...kickMsgs].sort((a, b) => a.time - b.time);
+      } else {
+        msgs = ircMsgs;
+      }
     } else {
       // Channel tab — merge IRC + Kick + per-channel YouTube messages
       const ch = config.channels.find(c => (typeof c === 'string' ? c : c.id) === id);
@@ -8084,11 +8039,12 @@ m.type === 'usernotice' ? 'hs-mc-msg hs-mc-system' :
       const ircMsgs = twitchName ? (irc?.getMessages(twitchName) || []) : [];
       const kickMsgs = kickName ? (kickChat?.getMessages(kickName) || []) : [];
       const ytMsgs = channelYtMessages.get(id) || [];
-      const chatMsgs = [...ircMsgs, ...kickMsgs, ...ytMsgs];
-      // Merge feed posts into timeline at correct chronological position
-      const inlineFeed = feedPostsForTimeline(chatMsgs);
-      if (inlineFeed.length > 0) chatMsgs.push(...inlineFeed);
-      msgs = chatMsgs.sort((a, b) => a.time - b.time);
+      const extraMsgs = [...kickMsgs, ...ytMsgs];
+      if (extraMsgs.length > 0) {
+        msgs = [...ircMsgs, ...extraMsgs].sort((a, b) => a.time - b.time);
+      } else {
+        msgs = ircMsgs;
+      }
     }
 
     updateTabBadges();
@@ -11076,17 +11032,6 @@ m.type === 'usernotice' ? 'hs-mc-msg hs-mc-system' :
         }
       }
     });
-
-    // Pre-fetch feed so posts are available for inline rendering in chat tabs
-    if (!feedLoaded && !feedLoading) {
-      fetchFeed().then(() => {
-        // Re-render current tab to show inline feed posts
-        const active = currentTab;
-        if (active === 'live' || config.channels.some(ch => (typeof ch === 'string' ? ch : ch.id) === active)) {
-          renderMessages(active);
-        }
-      });
-    }
 
     // Scan existing chat for mentions (before IRC catches new ones)
     if (hostPlatform === 'twitch') {

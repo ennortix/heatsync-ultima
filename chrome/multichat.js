@@ -7081,6 +7081,23 @@
           renderFeed();
         } else {
           updateTabIndicator('feed');
+          // Inline notification in chat (routed through toggle system)
+          const f = msg.data;
+          const t = new Date(f.created_at).getTime();
+          if (!isNaN(t)) {
+            const notifType = f.reply_to ? 're' : 'op'
+            injectInlineNotif(notifType, {
+              type: 'feed-post',
+              base36_id: f.base36_id,
+              feedUser: f.username || f.display_name || 'anon',
+              text: f.content || '',
+              color: f.user_color || '#fff',
+              time: t,
+              reply_to: f.reply_to,
+              emote_refs: f.emote_refs,
+              is_op: f.is_op
+            })
+          }
         }
       }
       if (msg.type === 'dm_new' && msg.data) {

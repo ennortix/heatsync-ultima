@@ -980,7 +980,8 @@
     if (!inputBarVisible) return
     const input = document.getElementById('hs-mc-input')
     const hasText = input ? (input.value || input.textContent || '').trim().length > 0 : false
-    if (hasText) return
+    const hasContent = hasText || (input && input.querySelector('img, span.hs-mc-emoji'))
+    if (hasContent) return
     // Don't hide while emote picker is open
     const picker = document.getElementById('hs-mc-emote-picker')
     if (picker?.classList.contains('visible')) return

@@ -837,9 +837,9 @@
       const dir = parseInt(fontBtn.dataset.fontDir);
       const msgsEl = document.getElementById('hs-mc-messages');
       if (!msgsEl) return;
-      const baseFont = parseInt(localStorage.getItem('heatsync-chat-font-size')) || 13;
-      const next = Math.max(10, Math.min(22, baseFont + dir));
-      msgsEl.style.setProperty('--hs-chat-font', (next * emoteSize) + 'px');
+      const current = parseInt(getComputedStyle(msgsEl).fontSize) || 13;
+      const next = Math.max(10, Math.min(22, current + dir));
+      msgsEl.style.setProperty('--hs-chat-font', next + 'px');
       localStorage.setItem('heatsync-chat-font-size', next);
     });
 
@@ -983,11 +983,11 @@
       <button id="hs-mc-new-msgs" style="display:none"></button>
     `;
 
-    // Apply saved font size (scaled by emote size multiplier)
+    // Apply saved font size
     const savedFontSize = localStorage.getItem('heatsync-chat-font-size');
     if (savedFontSize) {
       const msgsDiv = overlay.querySelector('#hs-mc-messages');
-      if (msgsDiv) msgsDiv.style.setProperty('--hs-chat-font', (parseInt(savedFontSize) * emoteSize) + 'px');
+      if (msgsDiv) msgsDiv.style.setProperty('--hs-chat-font', savedFontSize + 'px');
     }
 
     // Setup scroll detection after DOM insertion
@@ -1209,11 +1209,9 @@
   function applyEmoteSize() {
     const targets = [document.documentElement, document.getElementById('hs-mc-messages')].filter(Boolean);
     const baseEmote = 32;
-    // Use user's A-/A+ font size as base, not hardcoded 13
-    const savedFont = parseInt(localStorage.getItem('heatsync-chat-font-size')) || 13;
+    // Only scale emote images and badges — font size stays independent (A-/A+ controls it)
     const vars = {
       '--hs-emote-size': (baseEmote * emoteSize) + 'px',
-      '--hs-chat-font': (savedFont * emoteSize) + 'px',
       '--hs-time-font': (10 * emoteSize) + 'px',
       '--hs-badge-size': (18 * emoteSize) + 'px',
       '--hs-badge-font': (10 * emoteSize) + 'px',

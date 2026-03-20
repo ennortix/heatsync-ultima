@@ -933,7 +933,6 @@
     op:      { label: '[OP]',  color: '#ff0000', borderColor: '#ff0000', defaultOn: true,  desc: 'original posts' },
     re:      { label: '[RE]',  color: '#00ffff', borderColor: '#00ffff', defaultOn: false, desc: 'replies' },
     dm:      { label: '[DM]',  color: '#ffff00', borderColor: '#ffff00', defaultOn: false, desc: 'whispers & DMs' },
-    mention: { label: '[@]',   color: '#ff0000', borderColor: '#800000', defaultOn: true,  desc: 'mentions' },
   }
   // Runtime state: { op: true, re: false, dm: false, mention: true }
   const inlineNotifs = {}

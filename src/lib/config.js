@@ -129,29 +129,6 @@ export const EMOTE_PROVIDERS = {
   KICK: 'kick',
 }
 
-// ============================================
-// STORAGE KEYS
-// ============================================
-
-export const STORAGE_KEYS = {
-  AUTH_TOKEN: 'auth_token',
-  USER_SETTINGS: 'user_settings',
-  EMOTE_CACHE: 'emote_cache',
-  LAST_SYNC: 'last_sync',
-  DEBUG_MODE: 'heatsync_debug',
-}
-
-// ============================================
-// MESSAGE TYPES (for postMessage)
-// ============================================
-
-export const MESSAGE_TYPES = {
-  AUTH_REQUEST: 'heatsync-auth-request',
-  AUTH_RESPONSE: 'heatsync-auth-response',
-  EMOTE_INSERT: 'heatsync-emote-insert',
-  SETTINGS_UPDATE: 'heatsync-settings-update',
-}
-
 // Export all as default config object
 const config = {
   API_URL,
@@ -162,8 +139,6 @@ const config = {
   CLASSES,
   Z_INDEX,
   EMOTE_PROVIDERS,
-  STORAGE_KEYS,
-  MESSAGE_TYPES,
 }
 
 // Global export

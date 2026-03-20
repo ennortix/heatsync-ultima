@@ -10003,6 +10003,34 @@ m.type === 'usernotice' ? 'hs-mc-msg hs-mc-system' :
            new RegExp(`\\b${currentUsername}\\b`, 'i').test(text);
   }
 
+  // Browser notification for mentions (gated by hs_notifications setting)
+  let notificationsEnabled = false
+  chrome.storage.local.get('hs_notifications').then(data => {
+    notificationsEnabled = data.hs_notifications === true
+  })
+  chrome.storage.onChanged.addListener((changes) => {
+    if (changes.hs_notifications) notificationsEnabled = changes.hs_notifications.newValue === true
+  })
+
+  function notifyMention(msg) {
+    if (!notificationsEnabled) return
+    if (document.hasFocus()) return // don't notify if tab is focused
+    const channel = msg.channel ? ` in #${msg.channel}` : ''
+    const title = `${msg.user}${channel}`
+    const body = msg.text.length > 200 ? msg.text.slice(0, 200) + '...' : msg.text
+    // Chrome extensions have notification permission by default
+    try {
+      const n = new Notification(title, {
+        body,
+        icon: chrome.runtime.getURL('icon-48.png'),
+        tag: 'hs-mention-' + Date.now(),
+        silent: false
+      })
+      n.onclick = () => { window.focus(); n.close() }
+      setTimeout(() => n.close(), 8000)
+    } catch {}
+  }
+
   /**
    * Scan existing chat messages in DOM for mentions (on load)
    */
@@ -10398,6 +10426,7 @@ m.type === 'usernotice' ? 'hs-mc-msg hs-mc-system' :
       if (isMention(msg)) {
         mentionsBuffer.push(msg);
         if (mentionsBuffer.length > MAX_BUFFER + 50) mentionsBuffer.splice(0, mentionsBuffer.length - MAX_BUFFER);
+        notifyMention(msg);
 
         if (currentTab === 'mentions') {
           if (!appendMessage(msg, 'mentions')) renderMessages('mentions');
@@ -10430,6 +10459,7 @@ m.type === 'usernotice' ? 'hs-mc-msg hs-mc-system' :
       if (isMention(msg)) {
         mentionsBuffer.push(msg);
         if (mentionsBuffer.length > MAX_BUFFER + 50) mentionsBuffer.splice(0, mentionsBuffer.length - MAX_BUFFER);
+        notifyMention(msg);
 
         if (currentTab === 'mentions') {
           if (!appendMessage(msg, 'mentions')) renderMessages('mentions');

@@ -43,7 +43,6 @@ const COPY_FILES = [
   'platform-detector.js',
   'shared-utils.js',
   'emoji-data.js',
-  'polyfill.js',
   'welcome.html',
   'injected-message.css',
   'youtube-content.js',

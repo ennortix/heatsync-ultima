@@ -93,7 +93,7 @@ browser.cookies.onChanged.addListener((changeInfo) => {
     emoteInventory = []
     blockedEmotes = new Set()
     followedUsers = []
-    browser.storage.local.remove(['emote_inventory', 'blocked_emotes', 'auth_token_encrypted', 'auth_token'])
+    browser.storage.local.remove(['emote_inventory', 'blocked_emotes', 'auth_token_encrypted', 'auth_token', 'user_info'])
     broadcastToTabs({ type: 'auth_changed', loggedIn: false })
   } else {
     log(' Auth cookie set — logging in')
@@ -102,6 +102,7 @@ browser.cookies.onChanged.addListener((changeInfo) => {
     fetchEmoteInventory()
     fetchBlockedEmotes()
     fetchFollowedUsers()
+    fetchUserInfo()
     connectWebSocket()
     broadcastToTabs({ type: 'auth_changed', loggedIn: true })
   }
@@ -473,6 +474,43 @@ async function fetchFollowedUsers() {
   }
 }
 
+// Fetch user profile info for popup display
+async function fetchUserInfo() {
+  try {
+    const authToken = await getAuthCookie()
+    if (!authToken) {
+      browser.storage.local.remove('user_info')
+      return
+    }
+
+    const response = await fetchWithTimeout(`${API_URL}/api/auth/me`, {
+      credentials: 'include'
+    })
+
+    if (!response.ok) {
+      browser.storage.local.remove('user_info')
+      return
+    }
+
+    const user = await response.json()
+    if (!user) {
+      browser.storage.local.remove('user_info')
+      return
+    }
+
+    const userInfo = {
+      display_name: user.display_name || user.twitch_username || user.kick_username || '',
+      username: user.username || user.twitch_username || '',
+      avatar_url: user.twitch_profile_pic || user.kick_profile_pic || user.profile_image_url || '',
+      heat: user.heat || 0
+    }
+    browser.storage.local.set({ user_info: userInfo })
+    log(' User info loaded:', userInfo.display_name)
+  } catch (error) {
+    console.error('[heatsync] fetchUserInfo failed:', error.message || error)
+  }
+}
+
 // Validate emote objects from third-party APIs to bound string sizes and URL patterns
 const EMOTE_CDN_PATTERN = /^https:\/\/(cdn\.(betterttv\.net|7tv\.app|frankerfacez\.com)|static-cdn\.jtvnw\.net|heatsync\.org)\//
 const MAX_EMOTE_NAME_LEN = 100
@@ -836,18 +874,6 @@ async function fetchGlobalEmotes() {
       log(' Loaded', globalEmotes.length, 'global emotes from server');
       log(' Sample global emotes:', globalEmotes.slice(0, 5).map(e => e.name));
 
-      // Debug: check providers and CoffeeTime
-      const providers = [...new Set(globalEmotes.map(e => e.source))];
-      log(' Providers:', providers.join(', '));
-      const coffeeTime = globalEmotes.find(e => e.name === 'CoffeeTime');
-      if (coffeeTime) {
-        log(' CoffeeTime found:', coffeeTime);
-      } else {
-        log(' CoffeeTime NOT in server response, fetching Twitch globals separately...');
-        const coffeeEmotes = globalEmotes.filter(e => e.name.toLowerCase().includes('coffee'));
-        log(' Emotes with "coffee":', coffeeEmotes.map(e => e.name).join(', '));
-      }
-
       // ALWAYS fetch Twitch + 7TV global emotes separately (server cache may be stale)
       log('📥 Fetching Twitch + 7TV globals separately...');
       const [twitchGlobals, seventvGlobals] = await Promise.all([
@@ -870,17 +896,6 @@ async function fetchGlobalEmotes() {
         globalEmotes.push(...new7TVEmotes);
         log('✅ Added', new7TVEmotes.length, '7TV globals');
 
-        // Debug: check if BillyApprove is in 7TV globals
-        const billyApprove = new7TVEmotes.find(e => e.name === 'BillyApprove');
-        if (billyApprove) {
-          log('🔍 BillyApprove found in 7TV globals:', billyApprove);
-        } else {
-          log('❌ BillyApprove NOT in new 7TV globals');
-          const allBilly = seventvGlobals.find(e => e.name === 'BillyApprove');
-          if (allBilly) {
-            log('   But BillyApprove exists in raw 7TV response (duplicate?)');
-          }
-        }
       }
 
       updateEmoteUrlMap();
@@ -2246,7 +2261,8 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
       await Promise.all([
         fetchGlobalEmotes(),
         fetchEmoteInventory(),
-        fetchBlockedEmotes()
+        fetchBlockedEmotes(),
+        fetchUserInfo()
       ]);
       sendResponse({ success: true });
     })();
@@ -2357,7 +2373,8 @@ async function initialize() {
     fetchBlockedEmotes(),
     fetchFollowedUsers(),
     fetchFFZBadges(),
-    fetchBTTVBadges()
+    fetchBTTVBadges(),
+    fetchUserInfo()
   ]);
 
   log(' ✓ All fetches complete - global:', globalEmotes.length, 'personal:', emoteInventory.length);

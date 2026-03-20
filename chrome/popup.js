@@ -50,6 +50,7 @@
       const name = user.display_name || user.username || 'user'
       const emoteCount = (stored.emote_inventory || []).length
       const globalCount = (stored.global_emotes || []).length
+      const heat = user.heat || 0
 
       content.innerHTML = `
         <div class="user-section">
@@ -57,7 +58,7 @@
             ${avatar ? `<img src="${escapeHtml(avatar)}" class="user-avatar" alt="">` : '<div class="user-avatar"></div>'}
             <div>
               <div class="user-name">${escapeHtml(name)}</div>
-              <div class="user-stats">${emoteCount} emotes · ${globalCount} global</div>
+              <div class="user-stats">${emoteCount} emotes · ${globalCount} global${heat ? ` · ${heat} heat` : ''}</div>
             </div>
           </div>
         </div>

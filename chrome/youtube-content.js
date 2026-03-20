@@ -50,26 +50,73 @@
     return { user, text }
   }
 
+  const SUPPORTED_RENDERERS = new Set([
+    'YT-LIVE-CHAT-TEXT-MESSAGE-RENDERER',
+    'YT-LIVE-CHAT-PAID-MESSAGE-RENDERER',
+    'YT-LIVE-CHAT-PAID-STICKER-RENDERER',
+    'YT-LIVE-CHAT-MEMBERSHIP-ITEM-RENDERER'
+  ])
+
+  function getMsgType(tagName) {
+    switch (tagName) {
+      case 'YT-LIVE-CHAT-PAID-MESSAGE-RENDERER': return 'superchat'
+      case 'YT-LIVE-CHAT-PAID-STICKER-RENDERER': return 'sticker'
+      case 'YT-LIVE-CHAT-MEMBERSHIP-ITEM-RENDERER': return 'membership'
+      default: return 'text'
+    }
+  }
+
+  function extractSuperchatData(el) {
+    const amountEl = el.querySelector('#purchase-amount, #purchase-amount-chip')
+    const amount = amountEl?.textContent?.trim() || ''
+    // Superchat header color from inline style
+    const header = el.querySelector('#header, #card')
+    const bg = header?.style?.backgroundColor || ''
+    return { amount, scColor: bg }
+  }
+
+  function extractStickerData(el) {
+    const amountEl = el.querySelector('#purchase-amount-chip')
+    const amount = amountEl?.textContent?.trim() || ''
+    const stickerEl = el.querySelector('#sticker img')
+    const sticker = stickerEl?.src || ''
+    return { amount, sticker }
+  }
+
   function processNode(node) {
     if (node.nodeType !== Node.ELEMENT_NODE) return
-    if (node.tagName !== 'YT-LIVE-CHAT-TEXT-MESSAGE-RENDERER') return
+    if (!SUPPORTED_RENDERERS.has(node.tagName)) return
     if (node.dataset.hsYtProcessed) return
     node.dataset.hsYtProcessed = '1'
 
     const msg = extractMessage(node)
     if (!msg) return
 
-    log('yt msg:', msg.user, msg.text)
+    const msgType = getMsgType(node.tagName)
 
-    chrome.runtime.sendMessage({
+    const payload = {
       type: 'youtube_chat_message',
       videoId,
       user: msg.user,
       text: msg.text,
+      msgType,
       color: '#ff0000',
       time: Date.now(),
       platform: 'youtube'
-    }).catch(() => {})
+    }
+
+    if (msgType === 'superchat') {
+      const sc = extractSuperchatData(node)
+      payload.amount = sc.amount
+      payload.scColor = sc.scColor
+    } else if (msgType === 'sticker') {
+      const st = extractStickerData(node)
+      payload.amount = st.amount
+      payload.sticker = st.sticker
+    }
+
+    log('yt msg:', msgType, msg.user, msg.text)
+    chrome.runtime.sendMessage(payload).catch(() => {})
   }
 
   async function init() {

@@ -3,11 +3,7 @@
 
   const DEFAULTS = {
     hs_emote_size: 'medium',
-    hs_heat_badges: true,
-    hs_cross_platform: true,
-    hs_notifications: false,
-    hs_multichat_layout: 'tabs',
-    hs_auto_connect: true
+    hs_notifications: false
   }
 
   const toast = document.getElementById('toast')
@@ -31,7 +27,6 @@
   }
 
   function bindRadio(groupId, storageKey, value) {
-    // Validate value to prevent selector injection from corrupt storage
     const safeValue = String(value || '').replace(/[^a-zA-Z0-9_-]/g, '')
     const radio = safeValue ? document.querySelector(
       `#${groupId} input[value="${safeValue}"]`
@@ -54,11 +49,7 @@
     const s = { ...DEFAULTS, ...data }
 
     bindRadio('emote-size', 'hs_emote_size', s.hs_emote_size)
-    bindRadio('multichat-layout', 'hs_multichat_layout', s.hs_multichat_layout)
-    bindToggle('heat-badges', 'hs_heat_badges', s.hs_heat_badges)
-    bindToggle('cross-platform', 'hs_cross_platform', s.hs_cross_platform)
     bindToggle('notifications', 'hs_notifications', s.hs_notifications)
-    bindToggle('auto-connect', 'hs_auto_connect', s.hs_auto_connect)
   }
 
   document.addEventListener('DOMContentLoaded', () => {

@@ -422,7 +422,7 @@ style.textContent = `
 
   .hs-pc-heat {
     background: #000 !important;
-    border: 1px solid #fff !important;
+    border: 1px solid #ff8700 !important;
     font-weight: 900 !important;
     font-size: 12px !important;
     padding: 2px 6px !important;
@@ -436,7 +436,6 @@ style.textContent = `
     gap: 4px !important;
     background: transparent !important;
     color: #fff !important;
-    border: 1px solid #fff !important;
     padding: 0 6px !important;
     height: 20px !important;
     border-radius: 0 !important;
@@ -445,13 +444,15 @@ style.textContent = `
     white-space: nowrap !important;
     letter-spacing: 0.3px !important;
   }
+  .hs-pc-op { border: 1px solid #ff0000 !important; }
+  .hs-pc-re { border: 1px solid #00ffff !important; }
   .hs-pc-badge-op { color: #ff0000 !important; }
   .hs-pc-badge-re { color: #00ffff !important; }
 
   .hs-pc-followers {
     background: #000 !important;
     color: #fff !important;
-    border: 1px solid #fff !important;
+    border: 1px solid #808080 !important;
     padding: 2px 6px !important;
     border-radius: 0 !important;
     font-size: 11px !important;

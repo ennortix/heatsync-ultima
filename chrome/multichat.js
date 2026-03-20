@@ -1283,6 +1283,21 @@
     msg.inlineNotifColor = typeDef.color
     msg.inlineNotifBorderColor = typeDef.borderColor
     msg.inlineNotifLabel = typeDef.label
+
+    // Persist into IRC buffer so renderMessages() includes it on full re-render
+    // (same pattern as stream events — without this, next message wipes the notif)
+    let channel = null
+    if (active === 'live') {
+      channel = getLiveChannel()
+    } else if (active !== 'mentions') {
+      const ch = config.channels.find(c => (typeof c === 'string' ? c : c.id) === active)
+      channel = typeof ch === 'string' ? ch : ch?.twitch
+    }
+    if (channel) {
+      const buffer = irc?.channels?.get(channel)
+      if (buffer) buffer.push(msg)
+    }
+
     appendMessage(msg, active)
   }
 
@@ -5060,10 +5075,17 @@
       #hs-user-tooltip .hs-pc-stat.op {
         color: #ff0000;
         font-weight: 700;
+        border-color: #ff0000;
+      }
+      #hs-user-tooltip .hs-pc-stat.mop {
+        color: #ff00ff;
+        font-weight: 700;
+        border-color: #ff00ff;
       }
       #hs-user-tooltip .hs-pc-stat.re {
         color: #00ffff;
         font-weight: 700;
+        border-color: #00ffff;
       }
       #hs-user-tooltip .hs-pc-rel {
         display: flex;

@@ -1804,7 +1804,7 @@
   /**
    * Create emote picker popup
    */
-  let pickerTab = 'emotes'; // 'emotes', 'twitch', or 'settings'
+  let pickerTab = 'emotes'; // 'emotes' or 'twitch'
   let _pickerCloseHandler = null; // Tracked to prevent duplicate close handlers
 
   function showEmotePicker(tab = null) {
@@ -1844,55 +1844,9 @@
       <div class="hs-mc-tab-content" id="hs-mc-tab-twitch" style="display: ${pickerTab === 'twitch' ? 'flex' : 'none'}; flex-direction: column; padding: 8px 0;">
         <div class="hs-mc-pred-loading">loading...</div>
       </div>
-      <div class="hs-mc-tab-content" id="hs-mc-tab-settings" style="display: ${pickerTab === 'settings' ? 'flex' : 'none'}; flex-direction: column; padding: 0; gap: 0; overflow-y: auto;">
-        <div class="hs-mc-settings-group">
-          <div class="hs-mc-settings-group-title">display</div>
-          <div class="hs-mc-setting-row">
-            <span class="hs-mc-setting-label">emote size</span>
-            <div class="hs-mc-size-btns">
-              <button class="hs-mc-size-btn ${emoteSize === 1 ? 'active' : ''}" data-size="1">1x</button>
-              <button class="hs-mc-size-btn ${emoteSize === 2 ? 'active' : ''}" data-size="2">2x</button>
-              <button class="hs-mc-size-btn ${emoteSize === 4 ? 'active' : ''}" data-size="4">4x</button>
-            </div>
-          </div>
-          <div class="hs-mc-setting-row">
-            <span class="hs-mc-setting-label">input preview</span>
-            <button class="hs-mc-toggle-pill ${wysiwygEnabled ? 'active' : ''}" id="hs-mc-wysiwyg-toggle"><span class="hs-mc-toggle-knob"></span></button>
-          </div>
-          <div class="hs-mc-setting-row">
-            <span class="hs-mc-setting-label">clickable links</span>
-            <button class="hs-mc-toggle-pill ${linksEnabled ? 'active' : ''}" id="hs-mc-links-toggle"><span class="hs-mc-toggle-knob"></span></button>
-          </div>
-          <div class="hs-mc-setting-row">
-            <span class="hs-mc-setting-label">vi mode</span>
-            <button class="hs-mc-toggle-pill ${viModeEnabled ? 'active' : ''}" id="hs-mc-vi-toggle"><span class="hs-mc-toggle-knob"></span></button>
-          </div>
-          <div class="hs-mc-setting-row">
-            <span class="hs-mc-setting-label">zebra striping</span>
-            <button class="hs-mc-toggle-pill ${zebraEnabled ? 'active' : ''}" id="hs-mc-zebra-toggle"><span class="hs-mc-toggle-knob"></span></button>
-          </div>
-          <div class="hs-mc-setting-row">
-            <span class="hs-mc-setting-label">auto-hide input</span>
-            <button class="hs-mc-toggle-pill ${autoHideInput ? 'active' : ''}" id="hs-mc-autohide-toggle"><span class="hs-mc-toggle-knob"></span></button>
-          </div>
-          <div class="hs-mc-setting-row">
-            <span class="hs-mc-setting-label">timestamps</span>
-            <button class="hs-mc-toggle-pill ${timestampsEnabled ? 'active' : ''}" id="hs-mc-timestamps-toggle"><span class="hs-mc-toggle-knob"></span></button>
-          </div>
-          <div class="hs-mc-setting-row">
-            <span class="hs-mc-setting-label">avatars</span>
-            <button class="hs-mc-toggle-pill ${avatarsEnabled ? 'active' : ''}" id="hs-mc-avatars-toggle"><span class="hs-mc-toggle-knob"></span></button>
-          </div>
-          <div class="hs-mc-setting-row" style="margin-top:8px;justify-content:flex-end">
-            <button id="hs-mc-defaults-btn" style="background:#c0c0c0;border:2px outset #fff;padding:2px 10px;font-size:11px;font-weight:bold;cursor:pointer;font-family:'Liberation Mono',monospace;color:#000;box-shadow:1px 1px 0 #000">default</button>
-          </div>
-        </div>
-        </div>
-      </div>
       <div class="hs-mc-picker-tabs">
         <button class="hs-mc-picker-tab ${pickerTab === 'emotes' ? 'active' : ''}" data-tab="emotes">emotes</button>
         <button class="hs-mc-picker-tab ${pickerTab === 'twitch' ? 'active' : ''}" data-tab="twitch">twitch</button>
-        <button class="hs-mc-picker-tab ${pickerTab === 'settings' ? 'active' : ''}" data-tab="settings">settings</button>
       </div>
     `;
 
@@ -1933,100 +1887,6 @@
         picker.querySelectorAll('.hs-mc-size-btn').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
       });
-    });
-
-    // WYSIWYG toggle
-    const wysiwygToggle = document.getElementById('hs-mc-wysiwyg-toggle');
-    wysiwygToggle?.addEventListener('click', () => {
-      toggleWysiwyg();
-      wysiwygToggle.classList.toggle('active', wysiwygEnabled);
-    });
-
-    // Links toggle
-    const linksToggle = document.getElementById('hs-mc-links-toggle');
-    linksToggle?.addEventListener('click', () => {
-      toggleLinks();
-      linksToggle.classList.toggle('active', linksEnabled);
-    });
-
-    // Vi mode toggle
-    const viToggle = document.getElementById('hs-mc-vi-toggle');
-    viToggle?.addEventListener('click', () => {
-      toggleViMode();
-      viToggle.classList.toggle('active', viModeEnabled);
-    });
-
-    // Zebra toggle
-    const zebraToggle = document.getElementById('hs-mc-zebra-toggle');
-    zebraToggle?.addEventListener('click', () => {
-      toggleZebra();
-      zebraToggle.classList.toggle('active', zebraEnabled);
-    });
-
-    // Auto-hide input toggle
-    const autoHideToggle = document.getElementById('hs-mc-autohide-toggle');
-    autoHideToggle?.addEventListener('click', () => {
-      toggleAutoHide();
-      autoHideToggle.classList.toggle('active', autoHideInput);
-    });
-
-    // Timestamps toggle
-    const timestampsToggle = document.getElementById('hs-mc-timestamps-toggle');
-    timestampsToggle?.addEventListener('click', () => {
-      toggleTimestamps();
-      timestampsToggle.classList.toggle('active', timestampsEnabled);
-    });
-
-    // Avatars toggle
-    const avatarsToggle = document.getElementById('hs-mc-avatars-toggle');
-    avatarsToggle?.addEventListener('click', () => {
-      toggleAvatars();
-      avatarsToggle.classList.toggle('active', avatarsEnabled);
-    });
-
-    // Default button — reset all settings
-    const defaultsBtn = document.getElementById('hs-mc-defaults-btn');
-    defaultsBtn?.addEventListener('click', async () => {
-      wysiwygEnabled = false;
-      linksEnabled = true;
-      viModeEnabled = false;
-      zebraEnabled = true;
-      autoHideInput = true;
-      timestampsEnabled = false;
-      avatarsEnabled = false;
-      platformBadgesEnabled = true;
-      // Save all
-      const settings = {
-        wysiwygEnabled: false,
-        linksEnabled: true,
-        viMode: false,
-        zebra: true,
-        autoHideInput: true,
-        timestamps: false,
-        avatars: false,
-        showPlatformBadges: true,
-      };
-      try { await chrome.storage.local.set({ ui_settings: { ...(await chrome.storage.local.get(['ui_settings'])).ui_settings, ...settings } }); } catch {}
-      // Update toggle pills
-      picker.querySelectorAll('.hs-mc-toggle-pill').forEach(p => {
-        const id = p.id;
-        if (id === 'hs-mc-wysiwyg-toggle') p.classList.toggle('active', false);
-        if (id === 'hs-mc-links-toggle') p.classList.toggle('active', true);
-        if (id === 'hs-mc-vi-toggle') p.classList.toggle('active', false);
-        if (id === 'hs-mc-zebra-toggle') p.classList.toggle('active', true);
-        if (id === 'hs-mc-autohide-toggle') p.classList.toggle('active', true);
-        if (id === 'hs-mc-timestamps-toggle') p.classList.toggle('active', false);
-        if (id === 'hs-mc-avatars-toggle') p.classList.toggle('active', false);
-      });
-      // Apply auto-hide (default: on) — but don't hide while picker is open
-      if (!picker.classList.contains('visible')) {
-        const bar = document.getElementById('hs-mc-inputbar');
-        if (bar) bar.classList.add('hs-hidden');
-        inputBarVisible = false;
-      }
-      adjustOverlayForPicker(true);
-      rebuildInput();
-      renderMessages(currentTab);
     });
 
     // Tab switching

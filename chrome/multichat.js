@@ -935,7 +935,7 @@
     op:      { label: '[OP]',  color: '#ff0000', borderColor: '#ff0000', defaultOn: true,  desc: 'original posts' },
     re:      { label: '[RE]',  color: '#00ffff', borderColor: '#00ffff', defaultOn: false, desc: 'replies' },
     dm:      { label: '[DM]',  color: '#ffff00', borderColor: '#ffff00', defaultOn: false, desc: 'whispers & DMs' },
-    mention: { label: '[@]',   color: '#ff00ff', borderColor: '#ff00ff', defaultOn: true,  desc: 'mentions' },
+    mention: { label: '[@]',   color: '#ff0000', borderColor: '#800000', defaultOn: true,  desc: 'mentions' },
   }
   // Runtime state: { op: true, re: false, dm: false, mention: true }
   const inlineNotifs = {}
@@ -4875,7 +4875,7 @@
         font-weight: 600;
       }
       .hs-mc-msg.mention {
-        background: rgba(212, 73, 73, 0.3);
+        background: #800000;
       }
       .hs-mc-msg.tweet {
         background: rgba(212, 73, 73, 0.3);

@@ -774,6 +774,7 @@
       <button class="hs-mc-tab hs-mc-rotate" data-tab="rotate" title="rotate tabs (T)">T</button>
       <button class="hs-mc-tab hs-mc-font-btn" data-font-dir="-1" title="smaller text">A-</button>
       <button class="hs-mc-tab hs-mc-font-btn" data-font-dir="1" title="larger text">A+</button>
+      <button class="hs-mc-tab" data-tab="settings" title="settings">⚙</button>
     ` : `
       <button class="hs-mc-tab active" data-tab="live">live</button>
       <button class="hs-mc-tab" data-tab="feed">feed</button>
@@ -783,6 +784,7 @@
       <button class="hs-mc-tab hs-mc-rotate" data-tab="rotate" title="rotate tabs (T)">T</button>
       <button class="hs-mc-tab hs-mc-font-btn" data-font-dir="-1" title="smaller text">A-</button>
       <button class="hs-mc-tab hs-mc-font-btn" data-font-dir="1" title="larger text">A+</button>
+      <button class="hs-mc-tab" data-tab="settings" title="settings">⚙</button>
     `;
 
     // Event delegation for tab clicks
@@ -821,7 +823,7 @@
       const tab = e.target.closest('.hs-mc-tab');
       if (!tab) return;
       const tabId = tab.dataset.tab;
-      const reserved = ['live', 'feed', 'activity', 'mentions', 'add', 'rotate'];
+      const reserved = ['live', 'feed', 'activity', 'mentions', 'add', 'rotate', 'settings'];
       if (reserved.includes(tabId)) return;
       e.preventDefault();
 
@@ -893,6 +895,7 @@
 
   // Timestamps on messages (default off)
   let timestampsEnabled = false;
+  let avatarsEnabled = false;
 
   // Input bar auto-hide — hidden when empty, shown on first keystroke
   let autoHideInput = true;
@@ -955,7 +958,7 @@
       const newBtn = document.getElementById('hs-mc-new-msgs');
       if (!msgsEl || !newBtn) return;
 
-      const isStaticTab = () => currentTab === 'activity' || currentTab === 'feed';
+      const isStaticTab = () => currentTab === 'activity' || currentTab === 'feed' || currentTab === 'settings';
 
       // scroll event only used for scrollbar drag detection (not wheel — wheel has its own handler)
       msgsEl.addEventListener('scrollend', () => {
@@ -1399,6 +1402,139 @@
     renderMessages(currentTab);
   }
 
+  // Avatars setting
+  async function loadAvatarsSetting() {
+    try {
+      const stored = await chrome.storage.local.get(['ui_settings']);
+      if (stored.ui_settings?.avatars !== undefined) {
+        avatarsEnabled = stored.ui_settings.avatars;
+      }
+    } catch {}
+  }
+
+  async function saveAvatarsSetting() {
+    try {
+      const stored = await chrome.storage.local.get(['ui_settings']);
+      const settings = stored.ui_settings || {};
+      settings.avatars = avatarsEnabled;
+      await chrome.storage.local.set({ ui_settings: settings });
+    } catch {}
+  }
+
+  function toggleAvatars() {
+    avatarsEnabled = !avatarsEnabled;
+    saveAvatarsSetting();
+    renderMessages(currentTab);
+  }
+
+  function renderSettingsTab() {
+    const msgsEl = document.getElementById('hs-mc-messages');
+    if (!msgsEl) return;
+
+    // Static settings HTML — no user input
+    msgsEl.innerHTML = `
+      <div class="hs-mc-settings-panel">
+        <div class="hs-mc-settings-group">
+          <div class="hs-mc-settings-group-title">display</div>
+          <div class="hs-mc-setting-row">
+            <span class="hs-mc-setting-label">emote size</span>
+            <div class="hs-mc-size-btns">
+              <button class="hs-mc-size-btn ${emoteSize === 1 ? 'active' : ''}" data-size="1">1x</button>
+              <button class="hs-mc-size-btn ${emoteSize === 2 ? 'active' : ''}" data-size="2">2x</button>
+              <button class="hs-mc-size-btn ${emoteSize === 4 ? 'active' : ''}" data-size="4">4x</button>
+            </div>
+          </div>
+          <div class="hs-mc-setting-row">
+            <span class="hs-mc-setting-label">input preview</span>
+            <button class="hs-mc-toggle-pill ${wysiwygEnabled ? 'active' : ''}" data-setting="wysiwyg"><span class="hs-mc-toggle-knob"></span></button>
+          </div>
+          <div class="hs-mc-setting-row">
+            <span class="hs-mc-setting-label">clickable links</span>
+            <button class="hs-mc-toggle-pill ${linksEnabled ? 'active' : ''}" data-setting="links"><span class="hs-mc-toggle-knob"></span></button>
+          </div>
+          <div class="hs-mc-setting-row">
+            <span class="hs-mc-setting-label">vi mode</span>
+            <button class="hs-mc-toggle-pill ${viModeEnabled ? 'active' : ''}" data-setting="vi"><span class="hs-mc-toggle-knob"></span></button>
+          </div>
+          <div class="hs-mc-setting-row">
+            <span class="hs-mc-setting-label">zebra striping</span>
+            <button class="hs-mc-toggle-pill ${zebraEnabled ? 'active' : ''}" data-setting="zebra"><span class="hs-mc-toggle-knob"></span></button>
+          </div>
+          <div class="hs-mc-setting-row">
+            <span class="hs-mc-setting-label">auto-hide input</span>
+            <button class="hs-mc-toggle-pill ${autoHideInput ? 'active' : ''}" data-setting="autohide"><span class="hs-mc-toggle-knob"></span></button>
+          </div>
+          <div class="hs-mc-setting-row">
+            <span class="hs-mc-setting-label">timestamps</span>
+            <button class="hs-mc-toggle-pill ${timestampsEnabled ? 'active' : ''}" data-setting="timestamps"><span class="hs-mc-toggle-knob"></span></button>
+          </div>
+          <div class="hs-mc-setting-row">
+            <span class="hs-mc-setting-label">avatars</span>
+            <button class="hs-mc-toggle-pill ${avatarsEnabled ? 'active' : ''}" data-setting="avatars"><span class="hs-mc-toggle-knob"></span></button>
+          </div>
+          <div class="hs-mc-setting-row" style="margin-top:8px;justify-content:flex-end">
+            <button class="hs-mc-defaults-btn" style="background:#c0c0c0;border:2px outset #fff;padding:2px 10px;font-size:11px;font-weight:bold;cursor:pointer;font-family:'Liberation Mono',monospace;color:#000;box-shadow:1px 1px 0 #000">default</button>
+          </div>
+        </div>
+      </div>
+    `;
+
+    // Wire up toggles via event delegation
+    if (msgsEl._hsSettingsClick) msgsEl.removeEventListener('click', msgsEl._hsSettingsClick);
+    msgsEl._hsSettingsClick = function settingsClick(e) {
+      const toggle = e.target.closest('.hs-mc-toggle-pill[data-setting]');
+      if (toggle) {
+        const setting = toggle.dataset.setting;
+        const toggleMap = {
+          wysiwyg: () => { wysiwygEnabled = !wysiwygEnabled; saveWysiwygSetting(); rebuildInput(); },
+          links: () => { linksEnabled = !linksEnabled; saveLinksSetting(); },
+          vi: () => { viModeEnabled = !viModeEnabled; saveViModeSetting(); },
+          zebra: () => { toggleZebra(); },
+          autohide: () => { toggleAutoHide(); },
+          timestamps: () => { toggleTimestamps(); },
+          avatars: () => { toggleAvatars(); },
+        };
+        if (toggleMap[setting]) {
+          toggleMap[setting]();
+          toggle.classList.toggle('active');
+        }
+        return;
+      }
+
+      const sizeBtn = e.target.closest('.hs-mc-size-btn[data-size]');
+      if (sizeBtn) {
+        const size = parseInt(sizeBtn.dataset.size);
+        if (size) {
+          emoteSize = size;
+          saveEmoteSize();
+          msgsEl.querySelectorAll('.hs-mc-size-btn').forEach(b => b.classList.toggle('active', parseInt(b.dataset.size) === size));
+        }
+        return;
+      }
+
+      const defaultsBtn = e.target.closest('.hs-mc-defaults-btn');
+      if (defaultsBtn) {
+        wysiwygEnabled = false;
+        linksEnabled = true;
+        viModeEnabled = false;
+        zebraEnabled = true;
+        autoHideInput = true;
+        timestampsEnabled = false;
+        avatarsEnabled = false;
+        platformBadgesEnabled = true;
+        const settings = {
+          wysiwygEnabled: false, linksEnabled: true, viMode: false,
+          zebra: true, autoHideInput: true, timestamps: false,
+          avatars: false, showPlatformBadges: true,
+        };
+        try { chrome.storage.local.get(['ui_settings']).then(s => chrome.storage.local.set({ ui_settings: { ...s.ui_settings, ...settings } })); } catch {}
+        renderSettingsTab();
+        return;
+      }
+    };
+    msgsEl.addEventListener('click', msgsEl._hsSettingsClick);
+  }
+
   function rebuildInput() {
     const bar = document.getElementById('hs-mc-inputbar');
     if (!bar) return;
@@ -1629,6 +1765,10 @@
             <span class="hs-mc-setting-label">timestamps</span>
             <button class="hs-mc-toggle-pill ${timestampsEnabled ? 'active' : ''}" id="hs-mc-timestamps-toggle"><span class="hs-mc-toggle-knob"></span></button>
           </div>
+          <div class="hs-mc-setting-row">
+            <span class="hs-mc-setting-label">avatars</span>
+            <button class="hs-mc-toggle-pill ${avatarsEnabled ? 'active' : ''}" id="hs-mc-avatars-toggle"><span class="hs-mc-toggle-knob"></span></button>
+          </div>
           <div class="hs-mc-setting-row" style="margin-top:8px;justify-content:flex-end">
             <button id="hs-mc-defaults-btn" style="background:#c0c0c0;border:2px outset #fff;padding:2px 10px;font-size:11px;font-weight:bold;cursor:pointer;font-family:'Liberation Mono',monospace;color:#000;box-shadow:1px 1px 0 #000">default</button>
           </div>
@@ -1723,6 +1863,13 @@
       timestampsToggle.classList.toggle('active', timestampsEnabled);
     });
 
+    // Avatars toggle
+    const avatarsToggle = document.getElementById('hs-mc-avatars-toggle');
+    avatarsToggle?.addEventListener('click', () => {
+      toggleAvatars();
+      avatarsToggle.classList.toggle('active', avatarsEnabled);
+    });
+
     // Default button — reset all settings
     const defaultsBtn = document.getElementById('hs-mc-defaults-btn');
     defaultsBtn?.addEventListener('click', async () => {
@@ -1732,6 +1879,7 @@
       zebraEnabled = true;
       autoHideInput = true;
       timestampsEnabled = false;
+      avatarsEnabled = false;
       platformBadgesEnabled = true;
       // Save all
       const settings = {
@@ -1741,6 +1889,7 @@
         zebra: true,
         autoHideInput: true,
         timestamps: false,
+        avatars: false,
         showPlatformBadges: true,
       };
       try { await chrome.storage.local.set({ ui_settings: { ...(await chrome.storage.local.get(['ui_settings'])).ui_settings, ...settings } }); } catch {}
@@ -1753,6 +1902,7 @@
         if (id === 'hs-mc-zebra-toggle') p.classList.toggle('active', true);
         if (id === 'hs-mc-autohide-toggle') p.classList.toggle('active', true);
         if (id === 'hs-mc-timestamps-toggle') p.classList.toggle('active', false);
+        if (id === 'hs-mc-avatars-toggle') p.classList.toggle('active', false);
       });
       // Apply auto-hide (default: on) — but don't hide while picker is open
       if (!picker.classList.contains('visible')) {
@@ -3701,7 +3851,7 @@
     if (!tabBarElement) return;
 
     // Clear existing channel tabs (keep built-in tabs)
-    const existingChannelTabs = tabBarElement.querySelectorAll('.hs-mc-tab[data-tab]:not([data-tab="live"]):not([data-tab="feed"]):not([data-tab="activity"]):not([data-tab="mentions"]):not([data-tab="add"]):not([data-tab="rotate"])');
+    const existingChannelTabs = tabBarElement.querySelectorAll('.hs-mc-tab[data-tab]:not([data-tab="live"]):not([data-tab="feed"]):not([data-tab="activity"]):not([data-tab="mentions"]):not([data-tab="add"]):not([data-tab="rotate"]):not([data-tab="settings"])');
     existingChannelTabs.forEach(t => t.remove());
 
     // Add channel tabs before the + button (or append if no + button, e.g. Kick)
@@ -4075,7 +4225,7 @@
         box-sizing: border-box;
         color: #ffffff;
       }
-      .hs-mc-msg.hs-mc-zebra {
+      .hs-mc-msg.hs-mc-zebra, .hs-feed-msg.hs-mc-zebra {
         background: #111;
       }
       .hs-mc-msg:hover {
@@ -4242,7 +4392,7 @@
         z-index: 5000;
         pointer-events: none;
         background: #000;
-        border: 1px solid #808080;
+        border: 2px solid #00ff00;
         border-radius: 0;
         padding: 10px 6px 6px 6px;
         display: none;
@@ -4355,7 +4505,7 @@
       }
       #hs-user-tooltip .hs-pc-stat.heat {
         background: #000;
-        border: 1px solid #fff;
+        border: 1px solid #ff8700;
         padding: 2px 8px;
         font-size: 12px;
       }
@@ -4363,33 +4513,12 @@
         font-weight: 900;
         font-size: 13px;
       }
-      #hs-user-tooltip .hs-pc-stat.op,
-      #hs-user-tooltip .hs-pc-stat.re {
-        background: #fff;
-        color: #000;
-        border: 1px solid #000;
-      }
-      #hs-user-tooltip .hs-pc-stat.op .hs-pc-badge {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        width: 14px;
-        height: 14px;
-        font-size: 9px;
-        background: #fff;
-        color: #f00;
+      #hs-user-tooltip .hs-pc-stat.op {
+        color: #ff0000;
         font-weight: 700;
-        border: 1px solid #f00;
       }
-      #hs-user-tooltip .hs-pc-stat.re .hs-pc-badge {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        width: 14px;
-        height: 14px;
-        font-size: 9px;
-        background: #88ccff;
-        color: #000;
+      #hs-user-tooltip .hs-pc-stat.re {
+        color: #00ffff;
         font-weight: 700;
       }
       #hs-user-tooltip .hs-pc-rel {
@@ -5847,23 +5976,18 @@
 
       /* ---- FEED MESSAGE CARDS ---- */
       .hs-feed-msg {
-        padding: 8px 12px;
-        border-bottom: 1px solid #808080;
-        transition: none;
-      }
-      .hs-feed-msg:hover {
-      }
-      .hs-feed-header {
-        display: flex;
-        align-items: center;
-        gap: 6px;
-        margin-bottom: 4px;
+        padding: 2px 6px;
+        line-height: 1.4;
+        font-size: 13px;
+        word-wrap: break-word;
+        word-break: break-word;
       }
       .hs-feed-avatar {
-        width: 20px;
-        height: 20px;
+        width: 16px;
+        height: 16px;
         border-radius: 50%;
-        flex-shrink: 0;
+        vertical-align: middle;
+        margin-right: 3px;
       }
       .hs-feed-user {
         font-weight: 600;
@@ -5873,35 +5997,57 @@
       }
       .hs-feed-user:hover {
         background: #fff;
-        color: #000;
+        color: #000 !important;
         text-decoration: none;
       }
       .hs-feed-time {
         font-size: 11px;
         color: #808080;
-        margin-left: auto;
+        margin: 0 3px;
       }
       .hs-feed-body {
-        font-size: 13px;
         color: #fff;
-        line-height: 1.4;
-        word-wrap: break-word;
-        word-break: break-word;
-      }
-      .hs-feed-stats {
-        display: flex;
-        gap: 12px;
-        margin-top: 4px;
-        font-size: 11px;
-        color: #808080;
       }
       .hs-feed-stat {
+        font-size: 11px;
+        margin: 0 2px;
         cursor: default;
+      }
+      .hs-feed-replies {
+        cursor: pointer !important;
+      }
+      .hs-feed-thread-link {
+        color: #ff0;
+        font-size: 11px;
+        font-weight: 700;
+        margin-right: 3px;
+        text-decoration: none;
+      }
+      .hs-feed-thread-link:hover {
+        background: #fff;
+        color: #000;
+        text-decoration: none;
+      }
+      .hs-feed-replies:hover {
+        background: #fff;
+        color: #000 !important;
+      }
+      .hs-feed-tag {
+        font-size: 10px;
+        font-weight: 700;
+        margin-right: 3px;
+        vertical-align: middle;
+      }
+      .hs-feed-tag-op {
+        color: #ff0000;
+      }
+      .hs-feed-tag-re {
+        color: #00ffff;
       }
       .hs-feed-reply {
         margin-left: 16px;
         border-left: 2px solid #808080;
-        padding-left: 8px;
+        padding-left: 6px;
       }
       .hs-feed-loader {
         cursor: default;
@@ -6517,13 +6663,17 @@
     msgsEl.textContent = '';
     const frag = document.createDocumentFragment();
     const feedToRender = feedMessages.slice(-150);
+    let zebraCount = 0;
     for (const m of feedToRender) {
-      frag.appendChild(buildFeedMessageDiv(m));
+      const msgDiv = buildFeedMessageDiv(m);
+      if (zebraEnabled && ++zebraCount % 2 === 0) msgDiv.classList.add('hs-mc-zebra');
+      frag.appendChild(msgDiv);
       // If this message is expanded, show thread replies
       if (expandedThreadId === m.base36_id && threadReplies.length > 0) {
         for (const r of threadReplies) {
-          const replyDiv = buildFeedMessageDiv(r);
+          const replyDiv = buildFeedMessageDiv(r, m.username);
           replyDiv.classList.add('hs-feed-reply');
+          if (zebraEnabled && ++zebraCount % 2 === 0) replyDiv.classList.add('hs-mc-zebra');
           frag.appendChild(replyDiv);
         }
       }
@@ -6560,7 +6710,7 @@
     }
   }
 
-  function buildFeedMessageDiv(m) {
+  function buildFeedMessageDiv(m, opUsername) {
     const div = document.createElement('div');
     div.className = 'hs-feed-msg';
     div.dataset.msgId = m.base36_id;
@@ -6569,21 +6719,41 @@
     const avatarUrl = `https://heatsync.org/api/avatar/${encodeURIComponent(m.username)}`;
     const heat = m.heat || 0;
     const replies = m.reply_count || 0;
+    // renderFeedContent sanitizes via escapeHtml + emote ref escaping
     const content = renderFeedContent(m.content, m.emote_refs);
 
-    // Safe: avatarUrl from our API, username/time through escapeHtml, content through renderFeedContent
-    div.innerHTML = `
-      <div class="hs-feed-header">
-        <img class="hs-feed-avatar" src="${avatarUrl}" alt="" loading="lazy" onerror="this.style.display='none'">
-        <a href="https://heatsync.org/user/${encodeURIComponent(m.username)}" target="_blank" class="hs-feed-user" style="color:${sanitizeColor(m.user_color || '#fff')}">${escapeHtml(m.username || 'anon')}</a>
-        <span class="hs-feed-time">${escapeHtml(time)}</span>
-      </div>
-      <div class="hs-feed-body">${content}</div>
-      <div class="hs-feed-stats">
-        <span class="hs-feed-stat" title="heat" style="color:${heat > 0 ? getHeatColor(heat) : '#808080'}">${heat > 0 ? heat + '°' : ''}</span>
-        <span class="hs-feed-stat hs-feed-replies" title="replies">${replies > 0 ? '💬 ' + replies : ''}</span>
-      </div>
-    `;
+    // Thread link: >>id (yellow, links to post on heatsync.org)
+    const shortId = (m.base36_id || '').replace(/^0+/, '') || '0';
+    const threadLink = `<a href="https://heatsync.org/post/${encodeURIComponent(m.base36_id)}" target="_blank" class="hs-feed-thread-link">&gt;&gt;${escapeHtml(shortId)}</a>`;
+
+    // Post type tag: [OP] for original posts, [RE] for replies (matches heatsync.org)
+    const isReply = !!m.reply_to;
+    const typeTag = isReply
+      ? '<span class="hs-feed-tag hs-feed-tag-re">[RE]</span>'
+      : '<span class="hs-feed-tag hs-feed-tag-op">[OP]</span>';
+
+    const isAnon = !m.platform || m.username === 'Anonymous';
+
+    // Platform badge: [T]/[K]/[YT] (hidden for anonymous)
+    const platLabel = m.platform === 'kick' ? '[K]' : m.platform === 'youtube' ? '[YT]' : m.platform === 'twitch' ? '[T]' : '';
+    const platColors = { twitch: '#9146ff', kick: '#53fc18', youtube: '#ff0000' };
+    const platBadge = platLabel ? `<span class="hs-feed-tag" style="color:${platColors[m.platform]}">${platLabel}</span>` : '';
+
+    // Relative timestamp always shown in feed (compact, essential context)
+    const timeHtml = `<span class="hs-feed-time">${escapeHtml(time)}</span>`;
+
+    // All dynamic values sanitized: avatarUrl via encodeURIComponent,
+    // username/time via escapeHtml, color via sanitizeColor, content via renderFeedContent
+    const repliesSpan = replies > 0 ? `<span class="hs-feed-stat hs-feed-replies" title="replies">💬${replies}</span>` : '';
+    const stats = repliesSpan ? ` ${repliesSpan}` : '';
+
+    const anonAvatar = avatarsEnabled ? `<img class="hs-feed-avatar" src="https://heatsync.org/anon.webp" alt="" loading="lazy">` : '';
+    const userAvatar = avatarsEnabled ? `<img class="hs-feed-avatar" src="${avatarUrl}" alt="" loading="lazy" onerror="this.style.display='none'">` : '';
+    const userHtml = isAnon
+      ? `${anonAvatar}<span class="hs-feed-user" style="color:#808080">Anonymous</span>`
+      : `${userAvatar}<a href="https://heatsync.org/user/${encodeURIComponent(m.username)}" target="_blank" class="hs-feed-user hs-mc-user" data-username="${escapeHtml((m.username || 'anon').toLowerCase())}" style="color:${sanitizeColor(m.user_color || '#fff')}">${escapeHtml(m.username || 'anon')}</a>`;
+
+    div.innerHTML = `${threadLink}${typeTag}${platBadge}${userHtml}${timeHtml}${stats}: <span class="hs-feed-body">${content}</span>`;
 
     // Click replies to expand thread
     const repliesEl = div.querySelector('.hs-feed-replies');
@@ -6836,14 +7006,17 @@
       if (m._src === 'event') {
         const div = document.createElement('div');
         div.className = `hs-mc-stream-event ${m.eventClass || ''}`;
-        const ts = timestampsEnabled ? formatTimeFromTs(m.time) : '';
-        const tsSpan = ts ? `<span class="hs-mc-ts" data-ts="${m.time}">${ts}</span>` : '';
+        const ts = formatRelativeMs(Date.now() - m.time);
+        const tsSpan = `<span class="hs-feed-time">${escapeHtml(ts)}</span>`;
         // Show channel name in magenta for activity context
         // Strip [channel] prefix from follow events (we add our own #channel)
         let evtText = m.text
         if (m.channel) evtText = evtText.replace(new RegExp(`^\\[${m.channel}\\]\\s*`), '')
-        const chanLabel = m.channel ? `<span style="color:#fff;font-weight:bold">#${escapeHtml(m.channel)}</span> ` : '';
-        div.innerHTML = `${tsSpan}${chanLabel}${escapeHtml(evtText)}`;
+        const chanColor = _profileCache.get(m.channel?.toLowerCase())?.profile?.twitch_color || '#fff';
+        const chanLabel = m.channel ? `<a href="https://heatsync.org/twitch/${encodeURIComponent(m.channel)}" target="_blank" class="hs-feed-user hs-mc-user" data-username="${escapeHtml(m.channel.toLowerCase())}" style="color:${sanitizeColor(chanColor)};font-weight:bold">${escapeHtml(m.channel)}</a> ` : '';
+        let evtHtml = escapeHtml(evtText)
+        evtHtml = evtHtml.replace(/(switched to |went live \u2014 )(.+)$/, '$1<span style="color:#fff">$2</span>')
+        div.innerHTML = `${tsSpan}${chanLabel}${evtHtml}`;
         frag.appendChild(div);
       } else {
         frag.appendChild(buildNotifDiv(m));
@@ -6860,13 +7033,7 @@
     const content = renderFeedContent(m.content, m.emote_refs);
 
     // Safe: username through escapeHtml+encodeURIComponent, time through escapeHtml, content through renderFeedContent (which escapes via escapeHtml then adds safe formatting)
-    div.innerHTML = `
-      <div class="hs-feed-header">
-        <a href="https://heatsync.org/user/${encodeURIComponent(m.username)}" target="_blank" class="hs-feed-user" style="color:#fff">${escapeHtml(m.username || 'anon')}</a>
-        <span class="hs-feed-time">${escapeHtml(time)}</span>
-      </div>
-      <div class="hs-feed-body">${content}</div>
-    `;
+    div.innerHTML = `<a href="https://heatsync.org/user/${encodeURIComponent(m.username)}" target="_blank" class="hs-feed-user hs-mc-user" data-username="${escapeHtml((m.username || 'anon').toLowerCase())}" style="color:${sanitizeColor(m.user_color || '#fff')}">${escapeHtml(m.username || 'anon')}</a> <span class="hs-feed-time">${escapeHtml(time)}</span>: <span class="hs-feed-body">${content}</span>`;
 
     // Click to switch to feed and show this thread (but not if clicking interactive content)
     div.addEventListener('click', (e) => {
@@ -7053,7 +7220,9 @@
       div.className = `hs-mc-stream-event ${m.eventClass || ''}`
       const tsVal = timestampsEnabled ? formatTimeFromTs(m.time) : ''
       const tsSpan = tsVal ? `<span class="hs-mc-ts" data-ts="${m.time}">${tsVal}</span>` : ''
-      div.innerHTML = `${tsSpan}${escapeHtml(m.text)}`
+      let evtHtml = escapeHtml(m.text)
+      evtHtml = evtHtml.replace(/(switched to |went live \u2014 )(.+)$/, '$1<span style="color:#fff">$2</span>')
+      div.innerHTML = `${tsSpan}${evtHtml}`
       return div
     }
 
@@ -7099,7 +7268,8 @@ m.type === 'usernotice' ? 'hs-mc-msg hs-mc-system' :
     // USERNOTICE system line (all values go through escapeHtml — same pattern as existing innerHTML above)
     const systemLine = m.systemMsg ? `<span class="hs-mc-system-text">${escapeHtml(m.systemMsg)}</span>` : ''
     const ts = formatTimeFromTs(m.time);
-    const tsHtml = ts && timestampsEnabled ? `<span class="hs-mc-ts" data-ts="${m.time}">${ts}</span>` : '';
+    const showTs = timestampsEnabled || tabId === 'mentions';
+    const tsHtml = ts && showTs ? `<span class="hs-mc-ts" data-ts="${m.time}">${ts}</span>` : '';
     const msgBody = m.type === 'usernotice' && !m.text
       ? `${tsHtml}${systemLine}`
       : `${tsHtml}${systemLine}${platformBadge}${scBadge}${badges}${userLink}${channelSpan}: ${processedText}${stickerHtml}`
@@ -7210,6 +7380,7 @@ m.type === 'usernotice' ? 'hs-mc-msg hs-mc-system' :
     // Social tabs have their own renderers
     if (id === 'feed') { renderFeed(); return; }
     if (id === 'activity') { renderActivity(); return; }
+    if (id === 'settings') { renderSettingsTab(); return; }
 
     const msgsEl = document.getElementById('hs-mc-messages');
     if (!msgsEl) return;
@@ -8547,22 +8718,8 @@ m.type === 'usernotice' ? 'hs-mc-msg hs-mc-system' :
     return userTooltip;
   }
 
-  const HEAT_GRADIENT = [
-    '#808080', '#cc6e00', '#ff8700', '#ff9900', '#ff6600',
-    '#ff0000', '#ff2200', '#ff9900', '#ffcc00', '#ffffff'
-  ];
-  function getHeatColor(heat) {
-    let tier = 0;
-    if (heat >= 5000) tier = 9;
-    else if (heat >= 1000) tier = 8;
-    else if (heat >= 500) tier = 7;
-    else if (heat >= 200) tier = 6;
-    else if (heat >= 100) tier = 5;
-    else if (heat >= 50) tier = 4;
-    else if (heat >= 20) tier = 3;
-    else if (heat >= 5) tier = 2;
-    else if (heat >= 1) tier = 1;
-    return HEAT_GRADIENT[tier];
+  function getHeatColor() {
+    return '#ff8700';
   }
 
   function formatCompact(n) {
@@ -8596,7 +8753,7 @@ m.type === 'usernotice' ? 'hs-mc-msg hs-mc-system' :
   }
 
   function renderProfileCard(p) {
-    const pfp = p.twitch_profile_pic || p.kick_profile_pic || p.profile_image_url || '';
+    const pfp = p.twitch_profile_pic || p.kick_profile_pic || p.profile_image_url || 'https://heatsync.org/anon.webp';
     const displayName = p.display_name || p.username || 'unknown';
 
     // Platform badges
@@ -8649,12 +8806,11 @@ m.type === 'usernotice' ? 'hs-mc-msg hs-mc-system' :
     const followers = Math.max(stats.followers || 0, p.twitch_followers || 0, p.kick_followers || 0);
     const following = Math.max(stats.following || 0, p.twitch_following_count || 0, p.kick_following_count || 0);
 
-    const heatColor = getHeatColor(heat);
     const statBadges = [];
-    statBadges.push(`<span class="hs-pc-stat heat"><span class="hs-pc-num" style="color:${heatColor}">${formatCompact(heat)}</span>°</span>`);
-    if (op > 0) statBadges.push(`<span class="hs-pc-stat op"><span class="hs-pc-num">${formatCompact(op)}</span> <span class="hs-pc-badge">OP</span></span>`);
-    if (mop > 0) statBadges.push(`<span class="hs-pc-stat mop"><span class="hs-pc-num">${formatCompact(mop)}</span> <span class="hs-pc-badge" style="background:#ff00ff;color:#fff">OP</span></span>`);
-    if (re > 0) statBadges.push(`<span class="hs-pc-stat re"><span class="hs-pc-num">${formatCompact(re)}</span> <span class="hs-pc-badge">RE</span></span>`);
+    statBadges.push(`<span class="hs-pc-stat heat" style="color:#ff8700"><span class="hs-pc-num">${formatCompact(heat)}</span>°</span>`);
+    if (op > 0) statBadges.push(`<span class="hs-pc-stat op"><span class="hs-pc-num">${formatCompact(op)}</span> [OP]</span>`);
+    if (mop > 0) statBadges.push(`<span class="hs-pc-stat mop"><span class="hs-pc-num">${formatCompact(mop)}</span> <span style="color:#ff00ff">[OP]</span></span>`);
+    if (re > 0) statBadges.push(`<span class="hs-pc-stat re"><span class="hs-pc-num">${formatCompact(re)}</span> [RE]</span>`);
     if (followers > 0) statBadges.push(`<span class="hs-pc-stat"><span class="hs-pc-num">${formatCompact(followers)}</span> followers</span>`);
     if (following > 0) statBadges.push(`<span class="hs-pc-stat">following <span class="hs-pc-num">${formatCompact(following)}</span></span>`);
 
@@ -9316,7 +9472,7 @@ m.type === 'usernotice' ? 'hs-mc-msg hs-mc-system' :
       }
 
       const id = twitchVal || kickVal || ('yt-' + Date.now())
-      const reserved = ['live', 'feed', 'activity', 'mentions', 'add', 'rotate']
+      const reserved = ['live', 'feed', 'activity', 'mentions', 'add', 'rotate', 'settings']
       if (reserved.includes(id)) {
         showErr('reserved name')
         return
@@ -10168,6 +10324,7 @@ m.type === 'usernotice' ? 'hs-mc-msg hs-mc-system' :
     await loadZebraSetting();
     await loadAutoHideSetting();
     await loadTimestampsSetting();
+    await loadAvatarsSetting();
     await loadBlockedEmotes();
     await loadEmotes();
 

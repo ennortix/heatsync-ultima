@@ -947,6 +947,9 @@
   let timestampsEnabled = false;
   let avatarsEnabled = false;
 
+  // Show offline stream events (default off)
+  let showOfflineEvents = false;
+
   // Input bar auto-hide — hidden when empty, shown on first keystroke
   let autoHideInput = true;
   let inputBarVisible = true;
@@ -1519,6 +1522,30 @@
     renderMessages(currentTab);
   }
 
+  // Offline events setting
+  async function loadOfflineEventsSetting() {
+    try {
+      const stored = await chrome.storage.local.get(['ui_settings']);
+      if (stored.ui_settings?.showOfflineEvents !== undefined) {
+        showOfflineEvents = stored.ui_settings.showOfflineEvents;
+      }
+    } catch {}
+  }
+
+  async function saveOfflineEventsSetting() {
+    try {
+      const stored = await chrome.storage.local.get(['ui_settings']);
+      const settings = stored.ui_settings || {};
+      settings.showOfflineEvents = showOfflineEvents;
+      await chrome.storage.local.set({ ui_settings: settings });
+    } catch {}
+  }
+
+  function toggleOfflineEvents() {
+    showOfflineEvents = !showOfflineEvents;
+    saveOfflineEventsSetting();
+  }
+
   // Avatars setting
   async function loadAvatarsSetting() {
     try {
@@ -1658,11 +1685,12 @@
         timestampsEnabled = false;
         avatarsEnabled = false;
         platformBadgesEnabled = true;
+        showOfflineEvents = false;
         for (const [k, v] of Object.entries(INLINE_NOTIF_TYPES)) inlineNotifs[k] = v.defaultOn;
         const settings = {
           wysiwygEnabled: false, linksEnabled: true, viMode: false,
           zebra: true, autoHideInput: true, timestamps: false,
-          avatars: false, showPlatformBadges: true,
+          avatars: false, showPlatformBadges: true, showOfflineEvents: false,
           inlineNotifs: { ...inlineNotifs },
         };
         try { chrome.storage.local.get(['ui_settings']).then(s => chrome.storage.local.set({ ui_settings: { ...s.ui_settings, ...settings } })); } catch {}
@@ -1939,31 +1967,8 @@
         const input = document.getElementById('hs-mc-input');
         if (!input || !name) return;
         if (wysiwygEnabled || !('value' in input)) {
-          const sel = window.getSelection();
-          const text = input.textContent || '';
-          let insertPos = text.length;
-          if (sel.rangeCount && input.contains(sel.anchorNode)) {
-            const range = sel.getRangeAt(0);
-            const preRange = document.createRange();
-            preRange.selectNodeContents(input);
-            preRange.setEnd(range.startContainer, range.startOffset);
-            insertPos = preRange.toString().length;
-          }
-          const before = text.slice(0, insertPos);
-          const after = text.slice(insertPos);
-          const space = before.length > 0 && !before.endsWith(' ') ? ' ' : '';
-          const inserted = space + name + ' ';
-          input.textContent = before + inserted + after;
-          pendingMessage = input.textContent;
-          const newPos = insertPos + inserted.length;
-          const newRange = document.createRange();
-          const textNode = input.firstChild;
-          if (textNode) {
-            newRange.setStart(textNode, Math.min(newPos, textNode.length));
-            newRange.collapse(true);
-            sel.removeAllRanges();
-            sel.addRange(newRange);
-          }
+          // WYSIWYG: insert emote image (with zero-width stacking)
+          pasteEmoteToInput(name)
         } else {
           const pos = input.selectionStart || input.value.length;
           const before = input.value.slice(0, pos);
@@ -2648,17 +2653,26 @@
     const input = document.getElementById('hs-mc-input');
     if (!input) return '';
     if (wysiwygEnabled) {
-      // Convert emote images and cycling spans back to text
+      // Convert emote images, stacks, and cycling spans back to text
       let text = '';
-      for (const node of input.childNodes) {
+      const extractNode = (node) => {
         if (node.nodeType === Node.TEXT_NODE) {
-          text += node.textContent;
+          text += node.textContent
         } else if (node.nodeType === Node.ELEMENT_NODE && node.tagName === 'IMG') {
-          text += node.dataset.emoteName || node.alt || '';
+          text += node.dataset.emoteName || node.alt || ''
+        } else if (node.nodeType === Node.ELEMENT_NODE && node.classList?.contains('hs-input-stack')) {
+          // Stack: extract each child emote name, space-separated
+          for (const child of node.children) {
+            if (child.tagName === 'IMG') {
+              if (text && !text.endsWith(' ')) text += ' '
+              text += child.dataset.emoteName || child.alt || ''
+            }
+          }
         } else if (node.nodeType === Node.ELEMENT_NODE) {
-          text += node.textContent || '';
+          text += node.textContent || ''
         }
       }
+      for (const node of input.childNodes) extractNode(node)
       return text.replace(/\u00A0/g, ' ');
     }
     return input.value || '';
@@ -2701,7 +2715,8 @@
     input.addEventListener('blur', () => {
       setTimeout(hideAutocomplete, 150)
       // Hide input bar after blur if empty (delay to allow click-to-emote-picker)
-      setTimeout(hideInputBar, 200)
+      // Skip if window lost focus — prevents hiding when switching apps
+      setTimeout(() => { if (document.hasFocus()) hideInputBar() }, 200)
     });
     sendBtn?.addEventListener('click', sendMessage);
 
@@ -2874,13 +2889,18 @@
           if (stack) blockAllEmotesInStack(stack);
           return;
         }
-        // Stack expand on left-click (collapsed)
+        // Collapsed stack left-click → paste all emote names to input
         const collapsedStack = e.target.closest('.hs-mc-emote-stack:not(.expanded)');
         if (collapsedStack) {
           e.preventDefault();
           e.stopPropagation();
-          collapsedStack.classList.add('expanded');
-          collapsedStack.removeAttribute('title');
+          const names = [...collapsedStack.querySelectorAll('.hs-mc-emote-wrapper[data-emote-name]')]
+            .map(w => w.dataset.emoteName)
+            .filter(Boolean);
+          if (names.length > 0) {
+            for (const name of names) pasteEmoteToInput(name);
+            flashAllEmotes(names[0], 'hs-flash-paste');
+          }
           return;
         }
 
@@ -3050,7 +3070,10 @@
               const before = text.slice(0, pos);
               const wordStart = before.search(/\S+$/);
               acState.wordStart = wordStart >= 0 ? wordStart : pos;
-              acState.afterText = text.slice(pos);
+              // Skip past rest of word after cursor
+              let wordEnd = pos;
+              while (wordEnd < text.length && !/\s/.test(text[wordEnd])) wordEnd++;
+              acState.afterText = text.slice(wordEnd);
             }
 
             insertCompletionKeepOpen(matches[0]);
@@ -3128,6 +3151,83 @@
             sel.removeAllRanges()
             sel.addRange(newRange)
             pendingMessage = getInputText()
+            return
+          }
+        }
+      }
+    }
+
+    // Live emote replacement: "emoteName " → <img> (triggered on space after emote name)
+    if (wysiwygEnabled) {
+      const input = document.getElementById('hs-mc-input')
+      if (input?.isContentEditable) {
+        const sel = window.getSelection()
+        if (sel?.rangeCount) {
+          const range = sel.getRangeAt(0)
+          const node = range.startContainer
+          if (node?.nodeType === Node.TEXT_NODE) {
+            const text = node.textContent
+            const cursor = range.startOffset
+            const before = text.slice(0, cursor)
+            const match = before.match(/(\S+)\s$/)
+            if (match) {
+              const word = match[1]
+              const emote = lookupEmote(word)
+              if (emote) {
+                const img = createInputEmoteImg(word)
+                if (img) {
+                  const wordStart = cursor - match[0].length
+                  const beforeText = text.slice(0, wordStart)
+                  const afterText = text.slice(cursor)
+                  const parent = node.parentNode
+                  const isZeroWidth = !!emote.zeroWidth
+
+                  // Zero-width: stack onto previous emote if possible
+                  if (isZeroWidth && beforeText.trim() === '') {
+                    // Look for emote element before this text node
+                    let prev = node.previousSibling
+                    while (prev && prev.nodeType === Node.TEXT_NODE && prev.textContent.trim() === '') {
+                      prev = prev.previousSibling
+                    }
+                    if (prev && (
+                      (prev.tagName === 'IMG' && prev.classList.contains('hs-input-emote')) ||
+                      prev.classList?.contains('hs-input-stack')
+                    )) {
+                      // Remove whitespace text nodes between prev and current
+                      let ws = prev.nextSibling
+                      while (ws && ws !== node) {
+                        const rm = ws
+                        ws = ws.nextSibling
+                        rm.remove()
+                      }
+                      stackInputEmote(prev, img)
+                      node.textContent = afterText || '\u00A0'
+                      const newRange = document.createRange()
+                      newRange.setStart(node, 0)
+                      newRange.collapse(true)
+                      sel.removeAllRanges()
+                      sel.addRange(newRange)
+                      pendingMessage = getInputText()
+                      return
+                    }
+                  }
+
+                  // Regular emote: replace text with img
+                  const beforeNode = beforeText ? document.createTextNode(beforeText) : null
+                  const afterNode = document.createTextNode(afterText || '\u00A0')
+                  if (beforeNode) parent.insertBefore(beforeNode, node)
+                  parent.insertBefore(img, node)
+                  parent.insertBefore(afterNode, node)
+                  parent.removeChild(node)
+                  const newRange = document.createRange()
+                  newRange.setStart(afterNode, 0)
+                  newRange.collapse(true)
+                  sel.removeAllRanges()
+                  sel.addRange(newRange)
+                  pendingMessage = getInputText()
+                }
+              }
+            }
           }
         }
       }
@@ -3142,14 +3242,13 @@
   }
 
   function getCurrentWord(input) {
-    if (wysiwygEnabled) {
-      // For contenteditable, get text up to cursor
+    if (!input) return ''
+    if (input.contentEditable === 'true') {
       const sel = window.getSelection();
       if (!sel.rangeCount) return '';
       const range = sel.getRangeAt(0);
       let container = range.startContainer;
       let offset = range.startOffset;
-      // Resolve element boundary to preceding text node
       if (container.nodeType === Node.ELEMENT_NODE && offset > 0) {
         const child = container.childNodes[offset - 1];
         if (child?.nodeType === Node.TEXT_NODE) {
@@ -3158,17 +3257,23 @@
         }
       }
       if (container.nodeType === Node.TEXT_NODE) {
-        const before = container.textContent.slice(0, offset);
-        const match = before.match(/(\S+)$/);
-        return match ? match[1] : '';
+        const text = container.textContent;
+        const before = text.slice(0, offset);
+        const after = text.slice(offset);
+        const beforeMatch = before.match(/(\S+)$/);
+        const afterMatch = after.match(/^(\S+)/);
+        if (beforeMatch) return beforeMatch[1] + (afterMatch ? afterMatch[1] : '');
       }
       return '';
     }
     const text = input.value;
     const pos = input.selectionStart;
     const before = text.slice(0, pos);
-    const match = before.match(/(\S+)$/);
-    return match ? match[1] : '';
+    const after = text.slice(pos);
+    const beforeMatch = before.match(/(\S+)$/);
+    const afterMatch = after.match(/^(\S+)/);
+    if (beforeMatch) return beforeMatch[1] + (afterMatch ? afterMatch[1] : '');
+    return '';
   }
 
   function findEmoteMatches(search) {
@@ -3345,9 +3450,13 @@
     let wordStart = offset;
     while (wordStart > 0 && !/\s/.test(text[wordStart - 1])) wordStart--;
 
+    // Find word end (skip past rest of word after cursor)
+    let wordEnd = offset;
+    while (wordEnd < text.length && !/\s/.test(text[wordEnd])) wordEnd++;
+
     // Split text: before | word | after
     const before = text.slice(0, wordStart);
-    const after = text.slice(offset);
+    const after = text.slice(wordEnd);
 
     // Save afterText for cycling
     acState.afterText = after;
@@ -4727,20 +4836,14 @@
         color: #000;
         background: #fff;
       }
+      .hs-mc-muted {
+        user-select: none;
+      }
       .hs-mc-muted .hs-mc-user {
         color: #808080 !important;
         animation: none !important;
         background: none !important;
         -webkit-text-fill-color: #808080 !important;
-      }
-      .hs-mc-muted .hs-mc-emote-wrapper,
-      .hs-mc-muted .hs-mc-emote,
-      .hs-mc-muted .hs-mc-reply-ctx,
-      .hs-mc-muted img {
-        display: none !important;
-      }
-      .hs-mc-muted {
-        user-select: none;
       }
       .hs-mc-muted > :not(.hs-mc-user):not(.hs-mc-badge-img):not(.hs-mc-timestamp) {
         display: none !important;
@@ -5157,6 +5260,9 @@
         background: none;
         border: 2px dashed #808080;
       }
+      .hs-mc-emote-stack.expanded .hs-mc-emote-wrapper.hs-state-blocked::before {
+        border-color: #fff;
+      }
       .hs-mc-emote-wrapper.hs-state-blocked.hs-emote-highlight::before {
         background: #ff0000;
         border: none;
@@ -5305,6 +5411,19 @@
         vertical-align: middle;
         margin: 0 2px;
       }
+      /* WYSIWYG zero-width emote stacking in input */
+      #hs-mc-input .hs-input-stack {
+        display: inline-grid;
+        place-items: center;
+        vertical-align: middle;
+        margin: 0 2px;
+      }
+      #hs-mc-input .hs-input-stack > img {
+        grid-area: 1 / 1;
+        margin: 0;
+      }
+      #hs-mc-input .hs-input-stack > img:first-child { z-index: 1; }
+      #hs-mc-input .hs-input-stack > img:not(:first-child) { z-index: 2; }
       .hs-mc-emoji {
         font-variant-emoji: emoji;
       }
@@ -7562,12 +7681,24 @@
 
     // Update tab bar active state
     if (tabBarElement) {
+      const liveCh = getLiveChannel()?.toLowerCase()
       tabBarElement.querySelectorAll('.hs-mc-tab').forEach(t => {
         t.classList.toggle('active', t.dataset.tab === id);
         if (t.dataset.tab === id) {
           t.classList.remove('has-new');
           t.classList.remove('has-stream-event');
           t.classList.remove('has-mentions');
+        }
+        // Switching to live also clears the matching channel tab's indicators
+        if (id === 'live' && liveCh && t.dataset.tab !== 'live') {
+          const ch = config.channels.find(c => (typeof c === 'string' ? c : c.id) === t.dataset.tab)
+          if (ch) {
+            const tw = (typeof ch === 'string' ? ch : ch.twitch)?.toLowerCase()
+            const ki = (typeof ch === 'string' ? undefined : ch.kick)?.toLowerCase()
+            if (tw === liveCh || ki === liveCh) {
+              t.classList.remove('has-new', 'has-stream-event', 'has-mentions')
+            }
+          }
         }
       });
     }
@@ -7902,11 +8033,10 @@ m.type === 'usernotice' ? 'hs-mc-msg hs-mc-system' :
     // Trim oldest messages beyond 150
     trimChildren(msgsEl, 150);
 
-    // Apply mute to just this message
+    // Apply mute to just this message (CSS handles opacity/blur via .hs-mc-muted)
     const username = div.querySelector('.hs-mc-user')?.textContent?.trim()?.toLowerCase();
     if (username && mutedUsers.has(username)) {
-      div.style.opacity = '0.15';
-      div.style.filter = 'blur(2px)';
+      div.classList.add('hs-mc-muted');
     }
 
     updateTabBadges();
@@ -8720,22 +8850,104 @@ m.type === 'usernotice' ? 'hs-mc-msg hs-mc-system' :
     }
   }
 
+  // Create emote <img> for WYSIWYG input
+  function createInputEmoteImg(emoteName) {
+    const emote = lookupEmote(emoteName)
+    if (!emote) return null
+    const img = document.createElement('img')
+    img.className = 'hs-input-emote'
+    img.src = getChatResUrl(emote.url)
+    img.alt = emoteName
+    img.dataset.emoteName = emoteName
+    img.draggable = false
+    if (emote.zeroWidth) img.dataset.zeroWidth = '1'
+    return img
+  }
+
+  // Stack a zero-width emote onto a base emote/stack in the input
+  function stackInputEmote(baseEl, overlayImg) {
+    if (baseEl.classList.contains('hs-input-stack')) {
+      baseEl.appendChild(overlayImg)
+      return baseEl
+    }
+    const stack = document.createElement('span')
+    stack.className = 'hs-input-stack'
+    baseEl.parentNode.insertBefore(stack, baseEl)
+    stack.appendChild(baseEl)
+    stack.appendChild(overlayImg)
+    return stack
+  }
+
+  // Find last emote element (img or stack) walking backwards, skipping whitespace
+  function findLastInputEmote(input) {
+    let node = input.lastChild
+    while (node) {
+      if (node.nodeType === Node.TEXT_NODE && node.textContent.trim() === '') {
+        node = node.previousSibling
+        continue
+      }
+      if (node.nodeType === Node.ELEMENT_NODE) {
+        if (node.tagName === 'IMG' && node.classList.contains('hs-input-emote')) return node
+        if (node.classList?.contains('hs-input-stack')) return node
+      }
+      break
+    }
+    return null
+  }
+
+  // Move cursor to end of input
+  function cursorToEnd(input) {
+    const range = document.createRange()
+    range.selectNodeContents(input)
+    range.collapse(false)
+    const sel = window.getSelection()
+    sel.removeAllRanges()
+    sel.addRange(range)
+  }
+
   // Paste emote name to input
   function pasteEmoteToInput(emoteName) {
     const input = document.getElementById('hs-mc-input');
     if (!input) return;
     if (wysiwygEnabled || !('value' in input)) {
-      const text = input.textContent || '';
-      const space = text.length > 0 && !text.endsWith(' ') ? ' ' : '';
-      input.textContent = text + space + emoteName + ' ';
-      pendingMessage = input.textContent;
-      // Move cursor to end
-      const range = document.createRange();
-      const sel = window.getSelection();
-      range.selectNodeContents(input);
-      range.collapse(false);
-      sel.removeAllRanges();
-      sel.addRange(range);
+      const img = createInputEmoteImg(emoteName)
+      if (img) {
+        const emote = lookupEmote(emoteName)
+        const isZeroWidth = emote && !!emote.zeroWidth
+
+        if (isZeroWidth) {
+          const target = findLastInputEmote(input)
+          if (target) {
+            // Remove trailing whitespace between target and end
+            let next = target.nextSibling
+            while (next) {
+              if (next.nodeType === Node.TEXT_NODE && next.textContent.trim() === '') {
+                const rm = next
+                next = next.nextSibling
+                rm.remove()
+              } else break
+            }
+            stackInputEmote(target, img)
+            input.appendChild(document.createTextNode('\u00A0'))
+            cursorToEnd(input)
+            pendingMessage = getInputText()
+            input.focus()
+            return
+          }
+        }
+
+        // Regular emote: append img + space
+        input.appendChild(img)
+        input.appendChild(document.createTextNode('\u00A0'))
+        cursorToEnd(input)
+      } else {
+        // Fallback: emote not in cache, insert as text
+        const text = input.textContent || ''
+        const space = text.length > 0 && !text.endsWith(' ') ? ' ' : ''
+        input.textContent = text + space + emoteName + ' '
+        cursorToEnd(input)
+      }
+      pendingMessage = getInputText()
     } else {
       const pos = input.selectionStart || input.value.length;
       const before = input.value.slice(0, pos);
@@ -9940,28 +10152,28 @@ m.type === 'usernotice' ? 'hs-mc-msg hs-mc-system' :
   function renderAddChannelForm(msgsEl) {
     msgsEl.textContent = ''
     const wrapper = document.createElement('div')
-    wrapper.style.cssText = 'display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:10px;color:#808080;font-size:13px;padding:16px;box-sizing:border-box;'
+    wrapper.style.cssText = 'display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:12px;color:#a8a8a8;font-size:13px;padding:20px;box-sizing:border-box;'
 
     const title = document.createElement('div')
     title.textContent = 'add channel'
-    title.style.cssText = 'font-size:15px;font-weight:700;color:#fff;'
+    title.style.cssText = 'font-size:17px;font-weight:700;color:#ffffff;letter-spacing:.5px;'
     wrapper.appendChild(title)
 
     const desc = document.createElement('div')
     desc.textContent = 'enter at least one platform'
-    desc.style.cssText = 'font-size:11px;color:#808080;margin-bottom:4px;'
+    desc.style.cssText = 'font-size:13px;color:#626262;margin-bottom:2px;'
     wrapper.appendChild(desc)
 
     const makeRow = (label, placeholder) => {
       const row = document.createElement('div')
-      row.style.cssText = 'display:flex;align-items:center;gap:6px;width:100%;max-width:320px;'
+      row.style.cssText = 'display:flex;align-items:center;gap:8px;width:100%;max-width:300px;'
       const lbl = document.createElement('span')
       lbl.textContent = label
-      lbl.style.cssText = 'font-size:11px;font-weight:700;min-width:56px;color:#808080;'
+      lbl.style.cssText = 'font-size:13px;font-weight:600;min-width:56px;color:#949494;text-transform:lowercase;'
       const input = document.createElement('input')
       input.type = 'text'
       input.placeholder = placeholder
-      input.style.cssText = 'flex:1;background:#fff;color:#000;border:1px solid #808080;padding:5px 8px;border-radius:0;font-size:12px;outline:none;font-family:inherit;'
+      input.style.cssText = 'flex:1;background:#ffffff;color:#000000;border:1px solid #808080;padding:6px 10px;border-radius:0;font-size:14px;outline:none;font-family:inherit;'
       row.appendChild(lbl)
       row.appendChild(input)
       return { row, input }
@@ -9977,20 +10189,32 @@ m.type === 'usernotice' ? 'hs-mc-msg hs-mc-system' :
 
     // Error message (between inputs and buttons)
     const errEl = document.createElement('div')
-    errEl.style.cssText = 'font-size:11px;color:#ff4444;display:none;'
+    errEl.style.cssText = 'font-size:13px;color:#ff0000;display:none;'
     errEl.setAttribute('role', 'alert')
     wrapper.appendChild(errEl)
 
     const btnRow = document.createElement('div')
-    btnRow.style.cssText = 'display:flex;gap:8px;margin-top:2px;'
+    btnRow.style.cssText = 'display:flex;gap:8px;margin-top:4px;'
 
-    const addBtn = document.createElement('button')
-    addBtn.textContent = 'add'
-    addBtn.style.cssText = 'background:#fff;color:#000;border:none;padding:7px 20px;border-radius:0;cursor:pointer;font-weight:600;font-size:12px;font-family:inherit;min-width:80px;'
+    const makeMcBtn = (text, primary) => {
+      const btn = document.createElement('button')
+      btn.textContent = text
+      const base = primary
+        ? 'background:transparent;color:#ffffff;border:1px solid #ffffff;'
+        : 'background:transparent;color:#626262;border:1px solid #444444;'
+      btn.style.cssText = base + 'padding:6px 22px;border-radius:0;cursor:pointer;font-weight:600;font-size:14px;font-family:inherit;min-width:80px;transition:all .15s;'
+      btn.addEventListener('mouseenter', () => {
+        btn.style.background = '#ffffff'; btn.style.color = '#000000'
+      })
+      btn.addEventListener('mouseleave', () => {
+        btn.style.background = 'transparent'
+        btn.style.color = primary ? '#ffffff' : '#626262'
+      })
+      return btn
+    }
 
-    const cancelBtn = document.createElement('button')
-    cancelBtn.textContent = 'cancel'
-    cancelBtn.style.cssText = 'background:#808080;color:#fff;border:none;padding:7px 20px;border-radius:0;cursor:pointer;font-size:12px;font-family:inherit;min-width:80px;'
+    const addBtn = makeMcBtn('add', true)
+    const cancelBtn = makeMcBtn('cancel', false)
 
     btnRow.appendChild(addBtn)
     btnRow.appendChild(cancelBtn)
@@ -10113,24 +10337,24 @@ m.type === 'usernotice' ? 'hs-mc-msg hs-mc-system' :
     msgsEl.textContent = '';
 
     const wrapper = document.createElement('div');
-    wrapper.style.cssText = 'display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:10px;color:#808080;font-size:13px;padding:16px;box-sizing:border-box;';
+    wrapper.style.cssText = 'display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:12px;color:#a8a8a8;font-size:13px;padding:20px;box-sizing:border-box;';
 
     const title = document.createElement('div');
     title.textContent = 'edit ' + tabId;
-    title.style.cssText = 'font-size:15px;font-weight:700;color:#fff;';
+    title.style.cssText = 'font-size:17px;font-weight:700;color:#ffffff;letter-spacing:.5px;';
     wrapper.appendChild(title);
 
     const makeRow = (label, placeholder, value) => {
       const row = document.createElement('div');
-      row.style.cssText = 'display:flex;align-items:center;gap:6px;width:100%;max-width:320px;';
+      row.style.cssText = 'display:flex;align-items:center;gap:8px;width:100%;max-width:300px;';
       const lbl = document.createElement('span');
       lbl.textContent = label;
-      lbl.style.cssText = 'font-size:11px;font-weight:700;min-width:56px;color:#808080;';
+      lbl.style.cssText = 'font-size:13px;font-weight:600;min-width:56px;color:#949494;text-transform:lowercase;';
       const input = document.createElement('input');
       input.type = 'text';
       input.placeholder = placeholder;
       input.value = value || '';
-      input.style.cssText = 'flex:1;background:#fff;color:#000;border:1px solid #808080;padding:5px 8px;border-radius:0;font-size:12px;outline:none;font-family:inherit;';
+      input.style.cssText = 'flex:1;background:#ffffff;color:#000000;border:1px solid #808080;padding:6px 10px;border-radius:0;font-size:14px;outline:none;font-family:inherit;';
       row.appendChild(lbl);
       row.appendChild(input);
       return { row, input };
@@ -10144,18 +10368,32 @@ m.type === 'usernotice' ? 'hs-mc-msg hs-mc-system' :
     wrapper.appendChild(yt.row);
 
     const errEl = document.createElement('div');
-    errEl.style.cssText = 'font-size:11px;color:#ff4444;display:none;';
+    errEl.style.cssText = 'font-size:13px;color:#ff0000;display:none;';
     errEl.setAttribute('role', 'alert');
     wrapper.appendChild(errEl);
 
     const btnRow = document.createElement('div');
-    btnRow.style.cssText = 'display:flex;gap:8px;margin-top:2px;';
-    const saveBtn = document.createElement('button');
-    saveBtn.textContent = 'save';
-    saveBtn.style.cssText = 'background:#fff;color:#000;border:none;padding:7px 20px;border-radius:0;cursor:pointer;font-weight:600;font-size:12px;font-family:inherit;min-width:80px;';
-    const cancelBtn = document.createElement('button');
-    cancelBtn.textContent = 'cancel';
-    cancelBtn.style.cssText = 'background:#808080;color:#fff;border:none;padding:7px 20px;border-radius:0;cursor:pointer;font-size:12px;font-family:inherit;min-width:80px;';
+    btnRow.style.cssText = 'display:flex;gap:8px;margin-top:4px;';
+
+    const makeMcBtn = (text, primary) => {
+      const btn = document.createElement('button');
+      btn.textContent = text;
+      const base = primary
+        ? 'background:transparent;color:#ffffff;border:1px solid #ffffff;'
+        : 'background:transparent;color:#626262;border:1px solid #444444;';
+      btn.style.cssText = base + 'padding:6px 22px;border-radius:0;cursor:pointer;font-weight:600;font-size:14px;font-family:inherit;min-width:80px;transition:all .15s;';
+      btn.addEventListener('mouseenter', () => {
+        btn.style.background = '#ffffff'; btn.style.color = '#000000';
+      });
+      btn.addEventListener('mouseleave', () => {
+        btn.style.background = 'transparent';
+        btn.style.color = primary ? '#ffffff' : '#626262';
+      });
+      return btn;
+    };
+
+    const saveBtn = makeMcBtn('save', true);
+    const cancelBtn = makeMcBtn('cancel', false);
     btnRow.appendChild(saveBtn);
     btnRow.appendChild(cancelBtn);
     wrapper.appendChild(btnRow);
@@ -10538,11 +10776,16 @@ m.type === 'usernotice' ? 'hs-mc-msg hs-mc-system' :
     return null;
   }
 
+  function escapeRegex(s) {
+    return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  }
+
   function isMention(msg) {
-    if (!currentUsername) return false;
-    const text = msg.text.toLowerCase();
+    if (!currentUsername) return false
+    if (msg.user && msg.user.toLowerCase() === currentUsername) return false
+    const text = msg.text.toLowerCase()
     return text.includes('@' + currentUsername) ||
-           new RegExp(`\\b${currentUsername}\\b`, 'i').test(text);
+           new RegExp(`\\b${escapeRegex(currentUsername)}\\b`, 'i').test(text)
   }
 
   // Browser notification for mentions (gated by hs_notifications setting)
@@ -10586,15 +10829,18 @@ m.type === 'usernotice' ? 'hs-mc-msg hs-mc-system' :
     log('Scanning', messages.length, 'existing messages for mentions of', currentUsername);
 
     let found = 0;
+    const escaped = escapeRegex(currentUsername)
     messages.forEach(msgEl => {
-      const textContent = msgEl.textContent?.toLowerCase() || '';
-      if (textContent.includes('@' + currentUsername) ||
-          new RegExp(`\\b${currentUsername}\\b`, 'i').test(textContent)) {
-        // Extract username and message
+      // Only check message text, not the full element (which includes sender name)
+      const messageEl = msgEl.querySelector('[data-a-target="chat-message-text"]');
+      const text = messageEl?.textContent || '';
+      const textLower = text.toLowerCase();
+      if (textLower.includes('@' + currentUsername) ||
+          new RegExp(`\\b${escaped}\\b`, 'i').test(textLower)) {
         const usernameEl = msgEl.querySelector('[data-a-target="chat-message-username"]');
         const username = usernameEl?.textContent || 'unknown';
-        const messageEl = msgEl.querySelector('[data-a-target="chat-message-text"]');
-        const text = messageEl?.textContent || textContent;
+        // Skip own messages
+        if (username.toLowerCase() === currentUsername) return;
 
         mentionsBuffer.push({
           user: username,
@@ -10896,6 +11142,7 @@ m.type === 'usernotice' ? 'hs-mc-msg hs-mc-system' :
     await loadAutoHideSetting();
     await loadTimestampsSetting();
     await loadAvatarsSetting();
+    await loadOfflineEventsSetting();
     await loadBlockedEmotes();
     await loadEmotes();
 
@@ -11057,6 +11304,7 @@ m.type === 'usernotice' ? 'hs-mc-msg hs-mc-system' :
           text = msg.game ? `[${channel}] \u25C6 went live \u2014 ${msg.game}` : `[${channel}] \u25C6 went live`;
           eventClass = 'event-online';
         } else if (msg.eventType === 'stream:offline') {
+          if (!showOfflineEvents) return;
           text = `[${channel}] \u25C6 went offline`;
           eventClass = 'event-offline';
         }
@@ -11120,6 +11368,7 @@ m.type === 'usernotice' ? 'hs-mc-msg hs-mc-system' :
           text = msg.game ? `[${channel}] \u25C6 went live \u2014 ${msg.game}` : `[${channel}] \u25C6 went live`;
           eventClass = 'event-follow event-online';
         } else if (msg.eventType === 'stream:offline') {
+          if (!showOfflineEvents) return;
           text = `[${channel}] \u25C6 went offline`;
           eventClass = 'event-follow event-offline';
         }

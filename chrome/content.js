@@ -1186,7 +1186,6 @@ const isHeatsyncSite =
 
 if (isHeatsyncSite) {
   log(' 🔍 Content script running on', window.location.hostname);
-  log(' Current URL:', window.location.href);
 
   // Check URL for auth_token parameter (from OAuth redirect)
   const urlParams = new URLSearchParams(window.location.search);
@@ -1198,6 +1197,9 @@ if (isHeatsyncSite) {
     // Clean URL
     window.history.replaceState({}, document.title, window.location.pathname);
   }
+
+  // Website handles its own emotes/chat — don't run Twitch/Kick handlers here
+  return
 }
 
 // Normalize emote URL - fix URLs that got saved with wrong base domain

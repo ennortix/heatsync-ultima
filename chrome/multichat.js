@@ -4624,6 +4624,14 @@
         margin-right: 4px;
         font-variant-numeric: tabular-nums;
       }
+      .hs-mc-avatar {
+        width: 18px;
+        height: 18px;
+        border-radius: 3px;
+        vertical-align: middle;
+        margin-right: 3px;
+        object-fit: cover;
+      }
       .hs-mc-msg {
         padding: 2px 4px;
         border-radius: 0;
@@ -7738,6 +7746,7 @@ m.type === 'usernotice' ? 'hs-mc-msg hs-mc-system' :
     const safeScColor = sanitizeColor(m.scColor || '#ffd600')
     const scBadge = isSuperChat && m.amount ? `<span class="hs-mc-sc-badge" style="background:${safeScColor};color:#000;padding:0 4px;border-radius:0;font-size:10px;font-weight:700;margin-right:3px;">${escapeHtml(m.amount)}</span>` : ''
     const userLink = `<a href="https://heatsync.org/${plat === 'yt' ? 'user' : plat}/${encodeURIComponent(m.user)}" target="_blank" class="hs-mc-user" data-username="${escapeHtml(m.user.toLowerCase())}" style="color:${sanitizeColor(m.color || '#fff')}">${escapeHtml(m.user)}</a>`;
+    const avatarHtml = avatarsEnabled ? `<img class="hs-mc-avatar" src="https://heatsync.org/api/avatar/${encodeURIComponent(m.user.toLowerCase())}" alt="" loading="lazy" decoding="async" onerror="this.style.display='none'">` : ''
 
     // Process text: replace YouTube emoji with inline images
     let processedText = processEmotes(m.text, m.channel)
@@ -7768,7 +7777,7 @@ m.type === 'usernotice' ? 'hs-mc-msg hs-mc-system' :
     const tsHtml = ts && showTs ? `<span class="hs-mc-ts" data-ts="${m.time}">${ts}</span>` : '';
     const msgBody = m.type === 'usernotice' && !m.text
       ? `${tsHtml}${systemLine}`
-      : `${tsHtml}${systemLine}${platformBadge}${scBadge}${badges}${userLink}${channelSpan}: ${processedText}${stickerHtml}`
+      : `${tsHtml}${systemLine}${avatarHtml}${platformBadge}${scBadge}${badges}${userLink}${channelSpan}: ${processedText}${stickerHtml}`
     div.innerHTML = `${replyBar}${msgBody}`;
     // Reply button for threading (Twitch/Kick — needs valid msg id)
     if (m.id && m.platform !== 'youtube') {

@@ -3064,8 +3064,8 @@
             acState.index = 0;
             acState.active = true;
 
-            if (!wysiwygEnabled) {
-              // Calculate positions for text input cycling
+            if (!wysiwygEnabled && input.value !== undefined) {
+              // Calculate positions for text input cycling (textarea only)
               const text = input.value;
               const pos = input.selectionStart;
               const before = text.slice(0, pos);

@@ -104,6 +104,31 @@
   const usernameCache = new Set();
   // Username → color map for @mention coloring (LRU-bounded)
   const knownColors = new Map();
+  // Avatar URL cache: username → CDN URL (fetched from decapi)
+  const avatarCache = new Map()
+  const avatarFetching = new Set() // prevent duplicate fetches
+  function fetchAvatar(username) {
+    const key = username.toLowerCase()
+    if (avatarCache.has(key) || avatarFetching.has(key)) return
+    avatarFetching.add(key)
+    fetch(`https://decapi.me/twitch/avatar/${encodeURIComponent(key)}`, { credentials: 'omit' })
+      .then(r => r.ok ? r.text() : null)
+      .then(url => {
+        avatarFetching.delete(key)
+        if (!url || !url.startsWith('https://')) return
+        avatarCache.set(key, url.trim())
+        if (avatarCache.size > 500) {
+          avatarCache.delete(avatarCache.keys().next().value)
+        }
+        // Update any visible avatar placeholders
+        if (avatarsEnabled) {
+          document.querySelectorAll(`.hs-mc-avatar[data-user="${CSS.escape(key)}"]`).forEach(img => {
+            img.src = avatarCache.get(key)
+          })
+        }
+      })
+      .catch(() => avatarFetching.delete(key))
+  }
 
   // Stream events persistence — survives tab switches AND page refresh
   const STREAM_EVENTS_KEY = 'hs_stream_events';
@@ -7746,7 +7771,17 @@ m.type === 'usernotice' ? 'hs-mc-msg hs-mc-system' :
     const safeScColor = sanitizeColor(m.scColor || '#ffd600')
     const scBadge = isSuperChat && m.amount ? `<span class="hs-mc-sc-badge" style="background:${safeScColor};color:#000;padding:0 4px;border-radius:0;font-size:10px;font-weight:700;margin-right:3px;">${escapeHtml(m.amount)}</span>` : ''
     const userLink = `<a href="https://heatsync.org/${plat === 'yt' ? 'user' : plat}/${encodeURIComponent(m.user)}" target="_blank" class="hs-mc-user" data-username="${escapeHtml(m.user.toLowerCase())}" style="color:${sanitizeColor(m.color || '#fff')}">${escapeHtml(m.user)}</a>`;
-    const avatarHtml = avatarsEnabled ? `<img class="hs-mc-avatar" src="https://heatsync.org/api/avatar/${encodeURIComponent(m.user.toLowerCase())}" alt="" loading="lazy" decoding="async" onerror="this.style.display='none'">` : ''
+    let avatarHtml = ''
+    if (avatarsEnabled) {
+      const userKey = m.user.toLowerCase()
+      const cachedUrl = avatarCache.get(userKey)
+      if (cachedUrl) {
+        avatarHtml = `<img class="hs-mc-avatar" src="${escapeHtml(cachedUrl)}" alt="" loading="lazy" decoding="async" onerror="this.style.display='none'">`
+      } else {
+        avatarHtml = `<img class="hs-mc-avatar" data-user="${escapeHtml(userKey)}" src="" alt="" style="display:none" loading="lazy" decoding="async">`
+        fetchAvatar(userKey)
+      }
+    }
 
     // Process text: replace YouTube emoji with inline images
     let processedText = processEmotes(m.text, m.channel)

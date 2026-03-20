@@ -1618,8 +1618,7 @@
       if (sizeBtn) {
         const size = parseInt(sizeBtn.dataset.size);
         if (size) {
-          emoteSize = size;
-          saveEmoteSize();
+          setEmoteSize(size);
           msgsEl.querySelectorAll('.hs-mc-size-btn').forEach(b => b.classList.toggle('active', parseInt(b.dataset.size) === size));
         }
         return;

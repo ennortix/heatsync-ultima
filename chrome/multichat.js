@@ -7728,8 +7728,15 @@
         inputBarElement.classList.add('hs-hidden');
         inputBarVisible = false;
       } else if (autoHideInput && !pickerOpen) {
-        inputBarElement.classList.add('hs-hidden');
-        inputBarVisible = false;
+        const input = document.getElementById('hs-mc-input')
+        const hasContent = input && ((input.value || input.textContent || '').trim().length > 0 || input.querySelector('img, span.hs-mc-emoji'))
+        if (hasContent) {
+          inputBarElement.classList.remove('hs-hidden')
+          inputBarVisible = true
+        } else {
+          inputBarElement.classList.add('hs-hidden')
+          inputBarVisible = false
+        }
       } else {
         inputBarElement.classList.remove('hs-hidden');
         inputBarVisible = true;

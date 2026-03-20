@@ -928,6 +928,19 @@
   let autoHideInput = true;
   let inputBarVisible = true;
 
+  // ═══ Inline notification routing ═══
+  // Modular registry: each type can be toggled independently
+  // Colors match website conventions
+  const INLINE_NOTIF_TYPES = {
+    op:      { label: '[OP]',  color: '#ff0000', borderColor: '#ff0000', defaultOn: true,  desc: 'original posts' },
+    re:      { label: '[RE]',  color: '#00ffff', borderColor: '#00ffff', defaultOn: false, desc: 'replies' },
+    dm:      { label: '[DM]',  color: '#ffff00', borderColor: '#ffff00', defaultOn: false, desc: 'whispers & DMs' },
+    mention: { label: '[@]',   color: '#ff00ff', borderColor: '#ff00ff', defaultOn: true,  desc: 'mentions' },
+  }
+  // Runtime state: { op: true, re: false, dm: false, mention: true }
+  const inlineNotifs = {}
+  for (const [k, v] of Object.entries(INLINE_NOTIF_TYPES)) inlineNotifs[k] = v.defaultOn
+
   function showInputBar() {
     if (inputBarVisible) return
     inputBarVisible = true
@@ -1232,6 +1245,47 @@
     return url;
   }
 
+  // Inline notification settings
+  async function loadInlineNotifSettings() {
+    try {
+      const stored = await chrome.storage.local.get(['ui_settings'])
+      const saved = stored.ui_settings?.inlineNotifs
+      if (saved) {
+        for (const k of Object.keys(INLINE_NOTIF_TYPES)) {
+          if (saved[k] !== undefined) inlineNotifs[k] = saved[k]
+        }
+      }
+    } catch {}
+  }
+
+  async function saveInlineNotifSettings() {
+    try {
+      const stored = await chrome.storage.local.get(['ui_settings'])
+      const settings = stored.ui_settings || {}
+      settings.inlineNotifs = { ...inlineNotifs }
+      await chrome.storage.local.set({ ui_settings: settings })
+    } catch {}
+  }
+
+  // Inject an inline notification into active chat tabs
+  function injectInlineNotif(notifType, msg) {
+    if (!inlineNotifs[notifType]) return
+    const typeDef = INLINE_NOTIF_TYPES[notifType]
+    if (!typeDef) return
+
+    const active = currentTab
+    // Only inject into chat-type tabs (live, channel tabs, mentions)
+    const isChatTab = active === 'live' || active === 'mentions' ||
+      config.channels.some(ch => (typeof ch === 'string' ? ch : ch.id) === active)
+    if (!isChatTab) return
+
+    msg.inlineNotifType = notifType
+    msg.inlineNotifColor = typeDef.color
+    msg.inlineNotifBorderColor = typeDef.borderColor
+    msg.inlineNotifLabel = typeDef.label
+    appendMessage(msg, active)
+  }
+
   // WYSIWYG setting
   async function loadWysiwygSetting() {
     try {
@@ -1499,7 +1553,17 @@
             <span class="hs-mc-setting-label">avatars</span>
             <button class="hs-mc-toggle-pill ${avatarsEnabled ? 'active' : ''}" data-setting="avatars"><span class="hs-mc-toggle-knob"></span></button>
           </div>
-          <div class="hs-mc-setting-row" style="margin-top:8px;justify-content:flex-end">
+        </div>
+        <div class="hs-mc-settings-group">
+          <div class="hs-mc-settings-group-title">inline notifications</div>
+          ${Object.entries(INLINE_NOTIF_TYPES).map(([key, def]) => `
+          <div class="hs-mc-setting-row">
+            <span class="hs-mc-setting-label"><span style="color:${def.color}">${def.label}</span> ${def.desc}</span>
+            <button class="hs-mc-toggle-pill ${inlineNotifs[key] ? 'active' : ''}" data-setting="notif_${key}"><span class="hs-mc-toggle-knob"></span></button>
+          </div>`).join('')}
+        </div>
+        <div class="hs-mc-settings-group">
+          <div class="hs-mc-setting-row" style="justify-content:flex-end">
             <button class="hs-mc-defaults-btn" style="background:#c0c0c0;border:2px outset #fff;padding:2px 10px;font-size:11px;font-weight:bold;cursor:pointer;font-family:'Liberation Mono',monospace;color:#000;box-shadow:1px 1px 0 #000">default</button>
           </div>
         </div>
@@ -1512,6 +1576,16 @@
       const toggle = e.target.closest('.hs-mc-toggle-pill[data-setting]');
       if (toggle) {
         const setting = toggle.dataset.setting;
+        // Inline notification toggles (notif_op, notif_re, etc.)
+        if (setting.startsWith('notif_')) {
+          const notifKey = setting.slice(6)
+          if (INLINE_NOTIF_TYPES[notifKey] !== undefined) {
+            inlineNotifs[notifKey] = !inlineNotifs[notifKey]
+            saveInlineNotifSettings()
+            toggle.classList.toggle('active')
+          }
+          return
+        }
         const toggleMap = {
           wysiwyg: () => { wysiwygEnabled = !wysiwygEnabled; saveWysiwygSetting(); rebuildInput(); },
           links: () => { linksEnabled = !linksEnabled; saveLinksSetting(); },
@@ -1549,10 +1623,12 @@
         timestampsEnabled = false;
         avatarsEnabled = false;
         platformBadgesEnabled = true;
+        for (const [k, v] of Object.entries(INLINE_NOTIF_TYPES)) inlineNotifs[k] = v.defaultOn;
         const settings = {
           wysiwygEnabled: false, linksEnabled: true, viMode: false,
           zebra: true, autoHideInput: true, timestamps: false,
           avatars: false, showPlatformBadges: true,
+          inlineNotifs: { ...inlineNotifs },
         };
         try { chrome.storage.local.get(['ui_settings']).then(s => chrome.storage.local.set({ ui_settings: { ...s.ui_settings, ...settings } })); } catch {}
         renderSettingsTab();
@@ -3841,6 +3917,15 @@
       conv.unread++
       whisperTotalUnread++
       updateWhisperBadge()
+      // Inline DM notification in chat
+      injectInlineNotif('dm', {
+        type: 'inline-dm',
+        user: msg.user,
+        text: msg.text,
+        color: msg.color,
+        time: msg.time,
+        platform: 'twitch'
+      })
     }
     whisperSaveDebounced()
   }
@@ -3866,6 +3951,15 @@
       conv.unread++
       whisperTotalUnread++
       updateWhisperBadge()
+      // Inline DM notification in chat
+      injectInlineNotif('dm', {
+        type: 'inline-dm',
+        user: data.from_display_name,
+        text: data.content,
+        color: data.from_color || '#ff8700',
+        time: data.created_at ? new Date(data.created_at).getTime() : Date.now(),
+        platform: 'heatsync'
+      })
     }
     whisperSaveDebounced()
   }
@@ -4417,18 +4511,19 @@
       .hs-mc-feed-inline {
         padding: 2px 8px;
         font-size: 13px;
-        border-left: 3px solid #ff8700;
+        border-left: 3px solid #ff0000;
         border-bottom: 1px solid #333;
         color: #ccc;
       }
-      .hs-mc-feed-inline .hs-feed-tag-op { color: #ff8700; font-size: 10px; margin-right: 3px; }
-      .hs-mc-feed-inline .hs-feed-tag-re { color: #808080; font-size: 10px; margin-right: 3px; }
       .hs-mc-feed-inline .hs-mc-ts { margin-right: 4px; }
       .hs-mc-feed-inline .hs-feed-body { color: #ddd; }
       .hs-mc-feed-inline .hs-feed-thread-link {
         color: #ff8700; text-decoration: none; font-size: 10px; margin-right: 4px;
       }
       .hs-mc-feed-inline .hs-feed-thread-link:hover { text-decoration: underline; }
+      .hs-mc-dm-inline {
+        border-left-color: #ffff00;
+      }
       /* Live dot — red indicator, composes with any state */
       .hs-mc-tab {
         position: relative !important;
@@ -6964,25 +7059,22 @@
           renderFeed();
         } else {
           updateTabIndicator('feed');
-          // Also append inline in live/channel tabs
-          const active = currentTab;
-          if (active === 'live' || config.channels.some(ch => (typeof ch === 'string' ? ch : ch.id) === active)) {
-            const f = msg.data;
-            const t = new Date(f.created_at).getTime();
-            if (!isNaN(t)) {
-              const feedMsg = {
-                type: 'feed-post',
-                base36_id: f.base36_id,
-                feedUser: f.username || f.display_name || 'anon',
-                text: f.content || '',
-                color: f.user_color || '#fff',
-                time: t,
-                reply_to: f.reply_to,
-                emote_refs: f.emote_refs,
-                is_op: f.is_op
-              };
-              appendMessage(feedMsg, active);
-            }
+          // Route through inline notification system
+          const f = msg.data;
+          const t = new Date(f.created_at).getTime();
+          if (!isNaN(t)) {
+            const notifType = f.reply_to ? 're' : 'op'
+            injectInlineNotif(notifType, {
+              type: 'feed-post',
+              base36_id: f.base36_id,
+              feedUser: f.username || f.display_name || 'anon',
+              text: f.content || '',
+              color: f.user_color || '#fff',
+              time: t,
+              reply_to: f.reply_to,
+              emote_refs: f.emote_refs,
+              is_op: f.is_op
+            })
           }
         }
       }
@@ -7707,26 +7799,26 @@
       return div
     }
 
-    // Inline feed post — render as orange-bordered post in chat timeline
-    // Safety: all user content goes through escapeHtml() and renderFeedContent()
-    // which sanitizes via escapeHtml before adding safe formatting. Same pattern
-    // as buildFeedMessageDiv() and the existing buildMessageDiv() chat path below.
+    // Inline feed post — uses notification type colors from registry
     if (m.type === 'feed-post') {
       const div = document.createElement('div')
       div.className = 'hs-mc-feed-inline'
       div.dataset.msgId = m.base36_id || ''
+      const notifType = m.reply_to ? 're' : 'op'
+      const typeDef = INLINE_NOTIF_TYPES[notifType]
+      const borderColor = m.inlineNotifBorderColor || typeDef?.borderColor || '#ff8700'
+      div.style.borderLeftColor = borderColor
       const tsVal = timestampsEnabled ? formatTimeFromTs(m.time) : ''
       const tsSpan = tsVal ? `<span class="hs-mc-ts" data-ts="${m.time}">${tsVal}</span>` : ''
       const isReply = !!m.reply_to
-      const typeTag = isReply
-        ? '<span class="hs-feed-tag hs-feed-tag-re">[RE]</span>'
-        : '<span class="hs-feed-tag hs-feed-tag-op">[OP]</span>'
+      const tagColor = typeDef?.color || (isReply ? '#00ffff' : '#ff0000')
+      const typeTag = `<span class="hs-feed-tag" style="color:${tagColor};font-size:10px;margin-right:3px">${isReply ? '[RE]' : '[OP]'}</span>`
       const shortId = (m.base36_id || '').replace(/^0+/, '') || '0'
       const threadLink = `<a href="https://heatsync.org/post/${encodeURIComponent(m.base36_id)}" target="_blank" class="hs-feed-thread-link">&gt;&gt;${escapeHtml(shortId)}</a>`
       const userLink = `<a href="https://heatsync.org/user/${encodeURIComponent(m.feedUser)}" target="_blank" class="hs-mc-user" data-username="${escapeHtml((m.feedUser || 'anon').toLowerCase())}" style="color:${sanitizeColor(m.color || '#fff')}">${escapeHtml(m.feedUser || 'anon')}</a>`
       const content = renderFeedContent(m.text, m.emote_refs)
+      // All values sanitized — safe innerHTML
       div.innerHTML = `${tsSpan}${threadLink}${typeTag}${userLink}: <span class="hs-feed-body">${content}</span>`
-      // Click to expand in feed tab
       div.addEventListener('click', (e) => {
         const spoiler = e.target.closest('.hs-spoiler')
         if (spoiler) { spoiler.classList.toggle('revealed'); return }
@@ -7735,6 +7827,30 @@
         threadReplies = []
         switchTab('feed')
         toggleThread(expandedThreadId)
+      })
+      return div
+    }
+
+    // Inline DM/whisper notification
+    if (m.type === 'inline-dm') {
+      const div = document.createElement('div')
+      div.className = 'hs-mc-feed-inline hs-mc-dm-inline'
+      const borderColor = m.inlineNotifBorderColor || INLINE_NOTIF_TYPES.dm.borderColor
+      div.style.borderLeftColor = borderColor
+      const tsVal = timestampsEnabled ? formatTimeFromTs(m.time) : ''
+      const tsSpan = tsVal ? `<span class="hs-mc-ts" data-ts="${m.time}">${tsVal}</span>` : ''
+      const labelColor = m.inlineNotifColor || INLINE_NOTIF_TYPES.dm.color
+      const label = `<span style="color:${labelColor};font-size:10px;font-weight:700;margin-right:3px">[DM]</span>`
+      const platBadge = m.platform === 'twitch'
+        ? '<span style="color:#9146ff;font-size:10px;font-weight:700;margin-right:3px">[T]</span>'
+        : '<span style="color:#ff8700;font-size:10px;font-weight:700;margin-right:3px">[HS]</span>'
+      const userName = `<span style="color:${sanitizeColor(m.color)};font-weight:600">${escapeHtml(m.user)}</span>`
+      // All values sanitized — safe innerHTML
+      div.innerHTML = `${tsSpan}${label}${platBadge}${userName}: ${processEmotes(escapeHtml(m.text), null)}`
+      div.style.cursor = 'pointer'
+      div.addEventListener('click', (e) => {
+        if (e.target.closest('a, .hs-mc-emote')) return
+        switchTab('whispers')
       })
       return div
     }
@@ -7865,7 +7981,7 @@ m.type === 'usernotice' ? 'hs-mc-msg hs-mc-system' :
     if (empty) empty.remove();
 
     const div = buildMessageDiv(msg, tabId);
-    if (zebraEnabled && msg.type !== 'stream-event' && msg.type !== 'feed-post') {
+    if (zebraEnabled && msg.type !== 'stream-event' && msg.type !== 'feed-post' && msg.type !== 'inline-dm') {
       if (!msgsEl._zebraCount) msgsEl._zebraCount = 0;
       msgsEl._zebraCount++;
       if (msgsEl._zebraCount % 2 === 0) div.classList.add('hs-mc-zebra');
@@ -10889,6 +11005,7 @@ m.type === 'usernotice' ? 'hs-mc-msg hs-mc-system' :
     await loadWysiwygSetting();
     await loadLinksSetting();
     await loadViModeSetting();
+    await loadInlineNotifSettings();
     await loadPlatformBadgesSetting();
     await loadZebraSetting();
     await loadAutoHideSetting();

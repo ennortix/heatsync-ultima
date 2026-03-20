@@ -580,10 +580,11 @@
 
         await fetchChannelBadges(ch);
 
-        // Dedup by message ID against what's already in buffer
-        const existingIds = new Set();
-        for (const m of buffer.getAll()) {
-          if (m.id) existingIds.add(m.id);
+        // Dedup only against live messages (not cached history we're replacing)
+        const liveMessages = buffer.getAll().filter(m => !m.isHistory);
+        const liveIds = new Set();
+        for (const m of liveMessages) {
+          if (m.id) liveIds.add(m.id);
         }
 
         const parsed = [];
@@ -591,14 +592,13 @@
           const msg = parseIrcLine(line, ch);
           if (!msg) continue;
           msg.isHistory = true;
-          if (msg.id && existingIds.has(msg.id)) continue;
+          if (msg.id && liveIds.has(msg.id)) continue;
           usernameCache.add(msg.user);
           knownColors.set(msg.user.toLowerCase(), msg.color);
           parsed.push(msg);
         }
 
         // Merge: clear buffer, add history first, then any live messages on top
-        const liveMessages = buffer.getAll().filter(m => !m.isHistory);
         buffer.clear();
         for (const msg of parsed) buffer.push(msg);
         for (const msg of liveMessages) buffer.push(msg);
@@ -959,6 +959,7 @@
   // Colors match website conventions
   const INLINE_NOTIF_TYPES = {
     op:      { label: '[OP]',  color: '#ff0000', borderColor: '#ff0000', defaultOn: true,  desc: 'original posts' },
+    mop:     { label: '[OP]',  color: '#ff00ff', borderColor: '#ff00ff', defaultOn: true,  desc: 'OP replies in own thread' },
     re:      { label: '[RE]',  color: '#00ffff', borderColor: '#00ffff', defaultOn: false, desc: 'replies' },
     dm:      { label: '[DM]',  color: '#ffff00', borderColor: '#ffff00', defaultOn: false, desc: 'whispers & DMs' },
   }
@@ -1298,32 +1299,24 @@
     const typeDef = INLINE_NOTIF_TYPES[notifType]
     if (!typeDef) return
 
-    const active = currentTab
-    // Only inject into chat-type tabs (live, channel tabs, mentions)
-    const isChatTab = active === 'live' || active === 'mentions' ||
-      config.channels.some(ch => (typeof ch === 'string' ? ch : ch.id) === active)
-    if (!isChatTab) return
-
     msg.inlineNotifType = notifType
     msg.inlineNotifColor = typeDef.color
     msg.inlineNotifBorderColor = typeDef.borderColor
     msg.inlineNotifLabel = typeDef.label
 
-    // Persist into IRC buffer so renderMessages() includes it on full re-render
-    // (same pattern as stream events — without this, next message wipes the notif)
-    let channel = null
-    if (active === 'live') {
-      channel = getLiveChannel()
-    } else if (active !== 'mentions') {
-      const ch = config.channels.find(c => (typeof c === 'string' ? c : c.id) === active)
-      channel = typeof ch === 'string' ? ch : ch?.twitch
-    }
-    if (channel) {
-      const buffer = irc?.channels?.get(channel)
+    // Persist into ALL channel IRC buffers so notification appears on every tab
+    for (const ch of config.channels) {
+      const twitchName = typeof ch === 'string' ? ch : ch?.twitch
+      if (!twitchName) continue
+      const buffer = irc?.channels?.get(twitchName)
       if (buffer) buffer.push(msg)
     }
 
-    appendMessage(msg, active)
+    // Live-append to current tab if it's a chat tab
+    const active = currentTab
+    const isChatTab = active === 'live' || active === 'mentions' ||
+      config.channels.some(ch => (typeof ch === 'string' ? ch : ch.id) === active)
+    if (isChatTab) appendMessage(msg, active)
   }
 
   // WYSIWYG setting
@@ -1576,13 +1569,31 @@
     const msgsEl = document.getElementById('hs-mc-messages');
     if (!msgsEl) return;
 
-    // Static settings HTML — no user input
+    // Tooltip descriptions for settings — all static strings, no user input
+    const settingTips = {
+      emoteSize: 'Resolution multiplier for emotes in chat. 1x is crisp and compact, 2x is the sweet spot for most displays, 4x is for when you want to see every pixel of that emote art.',
+      wysiwyg: 'Shows emotes as images directly in the input box as you type, instead of plain text names. What you see is what you send.',
+      links: "Turns URLs in chat messages into clickable hyperlinks. Disable if you prefer to copy-paste or just don't trust strangers on the internet.",
+      vi: 'Vim-style keybindings for chat navigation. j/k to scroll, g/G for top/bottom, / to search. For people who think mice are for casuals.',
+      zebra: 'Alternating row shading on chat messages. Makes it easier to track long messages across the window, especially during fast chat.',
+      autohide: "Hides the input bar when you're not actively composing a message. Click or start typing to bring it back. Maximizes chat viewing space.",
+      timestamps: 'Shows the time each message was sent, right next to the username. Useful for catching up on what happened while you were AFK.',
+      avatars: 'Displays profile pictures next to usernames in chat. Makes it easier to visually identify regulars at a glance, costs a bit of vertical space.',
+    }
+    const notifTips = {
+      op: 'Notification in your active chat tab when someone creates a new original post on the feed. Keeps you in the loop without switching tabs.',
+      mop: 'Notification when the original poster replies in their own thread. Useful for tracking when an OP responds to discussion.',
+      re: 'Notification for every reply posted to any thread on the feed. Can get noisy during active discussions.',
+      dm: 'Notification when you receive a whisper or DM. You probably want this on unless you are intentionally ignoring someone.',
+    }
+
+    // Static settings HTML — no user input, all tooltip values are hardcoded strings above
     msgsEl.innerHTML = `
       <div class="hs-mc-settings-panel">
         <div class="hs-mc-settings-group">
           <div class="hs-mc-settings-group-title">display</div>
           <div class="hs-mc-setting-row">
-            <span class="hs-mc-setting-label">emote size</span>
+            <span class="hs-mc-setting-label" data-tip="${settingTips.emoteSize}">emote size</span>
             <div class="hs-mc-size-btns">
               <button class="hs-mc-size-btn ${emoteSize === 1 ? 'active' : ''}" data-size="1">1x</button>
               <button class="hs-mc-size-btn ${emoteSize === 2 ? 'active' : ''}" data-size="2">2x</button>
@@ -1590,31 +1601,31 @@
             </div>
           </div>
           <div class="hs-mc-setting-row">
-            <span class="hs-mc-setting-label">input preview</span>
+            <span class="hs-mc-setting-label" data-tip="${settingTips.wysiwyg}">input preview</span>
             <button class="hs-mc-toggle-pill ${wysiwygEnabled ? 'active' : ''}" data-setting="wysiwyg"><span class="hs-mc-toggle-knob"></span></button>
           </div>
           <div class="hs-mc-setting-row">
-            <span class="hs-mc-setting-label">clickable links</span>
+            <span class="hs-mc-setting-label" data-tip="${settingTips.links}">clickable links</span>
             <button class="hs-mc-toggle-pill ${linksEnabled ? 'active' : ''}" data-setting="links"><span class="hs-mc-toggle-knob"></span></button>
           </div>
           <div class="hs-mc-setting-row">
-            <span class="hs-mc-setting-label">vi mode</span>
+            <span class="hs-mc-setting-label" data-tip="${settingTips.vi}">vi mode</span>
             <button class="hs-mc-toggle-pill ${viModeEnabled ? 'active' : ''}" data-setting="vi"><span class="hs-mc-toggle-knob"></span></button>
           </div>
           <div class="hs-mc-setting-row">
-            <span class="hs-mc-setting-label">zebra striping</span>
+            <span class="hs-mc-setting-label" data-tip="${settingTips.zebra}">zebra striping</span>
             <button class="hs-mc-toggle-pill ${zebraEnabled ? 'active' : ''}" data-setting="zebra"><span class="hs-mc-toggle-knob"></span></button>
           </div>
           <div class="hs-mc-setting-row">
-            <span class="hs-mc-setting-label">auto-hide input</span>
+            <span class="hs-mc-setting-label" data-tip="${settingTips.autohide}">auto-hide input</span>
             <button class="hs-mc-toggle-pill ${autoHideInput ? 'active' : ''}" data-setting="autohide"><span class="hs-mc-toggle-knob"></span></button>
           </div>
           <div class="hs-mc-setting-row">
-            <span class="hs-mc-setting-label">timestamps</span>
+            <span class="hs-mc-setting-label" data-tip="${settingTips.timestamps}">timestamps</span>
             <button class="hs-mc-toggle-pill ${timestampsEnabled ? 'active' : ''}" data-setting="timestamps"><span class="hs-mc-toggle-knob"></span></button>
           </div>
           <div class="hs-mc-setting-row">
-            <span class="hs-mc-setting-label">avatars</span>
+            <span class="hs-mc-setting-label" data-tip="${settingTips.avatars}">avatars</span>
             <button class="hs-mc-toggle-pill ${avatarsEnabled ? 'active' : ''}" data-setting="avatars"><span class="hs-mc-toggle-knob"></span></button>
           </div>
         </div>
@@ -1622,7 +1633,7 @@
           <div class="hs-mc-settings-group-title">inline notifications</div>
           ${Object.entries(INLINE_NOTIF_TYPES).map(([key, def]) => `
           <div class="hs-mc-setting-row">
-            <span class="hs-mc-setting-label"><span style="color:${def.color}">${def.label}</span> ${def.desc}</span>
+            <span class="hs-mc-setting-label" data-tip="${notifTips[key] || def.desc}"><span style="color:${def.color}">${def.label}</span> ${def.desc}</span>
             <button class="hs-mc-toggle-pill ${inlineNotifs[key] ? 'active' : ''}" data-setting="notif_${key}"><span class="hs-mc-toggle-knob"></span></button>
           </div>`).join('')}
         </div>
@@ -1700,6 +1711,27 @@
       }
     };
     msgsEl.addEventListener('click', msgsEl._hsSettingsClick);
+
+    // Custom tooltip for settings labels (native title doesn't work in content scripts)
+    let tip = document.getElementById('hs-settings-tip');
+    if (!tip) {
+      tip = document.createElement('div');
+      tip.id = 'hs-settings-tip';
+      document.body.appendChild(tip);
+    }
+    msgsEl.addEventListener('mouseenter', (e) => {
+      const label = e.target.closest('.hs-mc-setting-label[data-tip]');
+      if (!label) return;
+      tip.textContent = label.dataset.tip;
+      const rect = label.getBoundingClientRect();
+      tip.style.left = rect.left + 'px';
+      tip.style.top = (rect.bottom + 4) + 'px';
+      tip.classList.add('visible');
+    }, true);
+    msgsEl.addEventListener('mouseleave', (e) => {
+      const label = e.target.closest('.hs-mc-setting-label[data-tip]');
+      if (label) tip.classList.remove('visible');
+    }, true);
   }
 
   function rebuildInput() {
@@ -3049,8 +3081,9 @@
       e.preventDefault();
 
       if (acState.active && acState.matches.length > 0) {
-        // Already cycling - go to next match
-        acState.index = (acState.index + 1) % acState.matches.length;
+        // Already cycling - next (Tab) or previous (Shift+Tab)
+        const len = acState.matches.length;
+        acState.index = (acState.index + (e.shiftKey ? len - 1 : 1)) % len;
         insertCompletionKeepOpen(acState.matches[acState.index]);
         showCycleTooltip();
       } else {
@@ -3085,8 +3118,8 @@
       return;
     }
 
-    // Any other key resets autocomplete cycling
-    if (acState.active) {
+    // Any other key resets autocomplete cycling (ignore modifier keys)
+    if (acState.active && !['Shift', 'Control', 'Alt', 'Meta'].includes(e.key)) {
       hideAutocomplete();
     }
 
@@ -4521,7 +4554,7 @@
       .hs-mc-feed-inline .hs-mc-ts { margin-right: 4px; }
       .hs-mc-feed-inline .hs-feed-body { color: #ddd; }
       .hs-mc-feed-inline .hs-feed-thread-link {
-        color: #ff8700; text-decoration: none; font-size: 10px; margin-right: 4px;
+        color: #ffff00; text-decoration: none; font-size: 10px; margin-right: 4px;
       }
       .hs-mc-feed-inline .hs-feed-thread-link:hover { text-decoration: underline; }
       .hs-mc-dm-inline {
@@ -5246,10 +5279,10 @@
       }
 
       /* State colors via ::before */
-      .hs-mc-emote-wrapper.hs-state-global::before { background: #ffcc00; }
+      .hs-mc-emote-wrapper.hs-state-global::before { background: #ffff00; }
       .hs-mc-emote-wrapper.hs-state-owned::before { background: #00ff00; }
-      .hs-mc-emote-wrapper.hs-state-unadded::before { background: #0088ff; }
-      .hs-mc-emote-wrapper.hs-state-channel::before { background: #ffcc00; }
+      .hs-mc-emote-wrapper.hs-state-unadded::before { background: #8080ff; }
+      .hs-mc-emote-wrapper.hs-state-channel::before { background: #ffff00; }
       .hs-mc-emote-wrapper.hs-state-blocked::before { background: #ff0000; }
 
       /* Blocked emotes: hide img (keeps natural dimensions), dashed line via ::before */
@@ -5320,9 +5353,9 @@
         color: #fff;
       }
       #hs-emote-tooltip .tooltip-source.owned { background: #00ff00; color: #000; }
-      #hs-emote-tooltip .tooltip-source.unadded { background: #0088ff; color: #fff; }
-      #hs-emote-tooltip .tooltip-source.global { background: #ffcc00; color: #000; }
-      #hs-emote-tooltip .tooltip-source.channel { background: #ffcc00; color: #000; }
+      #hs-emote-tooltip .tooltip-source.unadded { background: #8080ff; color: #fff; }
+      #hs-emote-tooltip .tooltip-source.global { background: #ffff00; color: #000; }
+      #hs-emote-tooltip .tooltip-source.channel { background: #ffff00; color: #000; }
       #hs-emote-tooltip .tooltip-source.blocked { background: #ff0000; color: #fff; }
 
       #hs-link-tooltip {
@@ -6304,7 +6337,24 @@
       .hs-mc-setting-label {
         color: #ccc !important;
         font-size: 13px !important;
+        cursor: help;
+        border-bottom: 1px dotted #666;
       }
+      #hs-settings-tip {
+        position: fixed;
+        z-index: 99999;
+        background: #1a1a1a;
+        color: #ddd;
+        border: 1px solid #555;
+        padding: 6px 8px;
+        font-size: 11px;
+        line-height: 1.4;
+        max-width: 260px;
+        pointer-events: none;
+        display: none;
+        font-family: 'Liberation Mono', monospace;
+      }
+      #hs-settings-tip.visible { display: block; }
       .hs-mc-setting-row .hs-mc-toggle-pill,
       .hs-mc-setting-row .hs-mc-size-btns {
         flex-shrink: 0;
@@ -6612,6 +6662,9 @@
       }
       .hs-feed-tag-op {
         color: #ff0000;
+      }
+      .hs-feed-tag-mop {
+        color: #ff00ff;
       }
       .hs-feed-tag-re {
         color: #00ffff;
@@ -7091,7 +7144,7 @@
           const f = msg.data;
           const t = new Date(f.created_at).getTime();
           if (!isNaN(t)) {
-            const notifType = f.reply_to ? 're' : 'op'
+            const notifType = f.is_thread_op ? 'mop' : (f.is_op != null ? !!f.is_op : !f.reply_to) ? 'op' : 're'
             injectInlineNotif(notifType, {
               type: 'feed-post',
               base36_id: f.base36_id,
@@ -7101,7 +7154,8 @@
               time: t,
               reply_to: f.reply_to,
               emote_refs: f.emote_refs,
-              is_op: f.is_op
+              is_op: f.is_op,
+              is_thread_op: f.is_thread_op
             })
           }
         }
@@ -7310,11 +7364,14 @@
     const shortId = (m.base36_id || '').replace(/^0+/, '') || '0';
     const threadLink = `<a href="https://heatsync.org/post/${encodeURIComponent(m.base36_id)}" target="_blank" class="hs-feed-thread-link">&gt;&gt;${escapeHtml(shortId)}</a>`;
 
-    // Post type tag: [OP] for original posts, [RE] for replies (matches heatsync.org)
-    const isReply = !!m.reply_to;
-    const typeTag = isReply
-      ? '<span class="hs-feed-tag hs-feed-tag-re">[RE]</span>'
-      : '<span class="hs-feed-tag hs-feed-tag-op">[OP]</span>';
+    // Post type tag: [OP] red = original post, [OP] magenta = OP replying in own thread, [RE] = reply
+    const isOp = m.is_op != null ? !!m.is_op : (!m.reply_to || m.reply_to === '');
+    const isThreadOp = !!m.is_thread_op;
+    const typeTag = isThreadOp
+      ? '<span class="hs-feed-tag hs-feed-tag-mop">[OP]</span>'
+      : isOp
+        ? '<span class="hs-feed-tag hs-feed-tag-op">[OP]</span>'
+        : '<span class="hs-feed-tag hs-feed-tag-re">[RE]</span>';
 
     const isAnon = !m.platform || m.username === 'Anonymous';
 
@@ -7843,15 +7900,17 @@
       const div = document.createElement('div')
       div.className = 'hs-mc-feed-inline'
       div.dataset.msgId = m.base36_id || ''
-      const notifType = m.reply_to ? 're' : 'op'
+      const isOp = m.is_op != null ? !!m.is_op : (!m.reply_to || m.reply_to === '')
+      const isThreadOp = !!m.is_thread_op
+      const notifType = isThreadOp ? 'mop' : isOp ? 'op' : 're'
       const typeDef = INLINE_NOTIF_TYPES[notifType]
       const borderColor = m.inlineNotifBorderColor || typeDef?.borderColor || '#ff8700'
       div.style.borderLeftColor = borderColor
       const tsVal = timestampsEnabled ? formatTimeFromTs(m.time) : ''
       const tsSpan = tsVal ? `<span class="hs-mc-ts" data-ts="${m.time}">${tsVal}</span>` : ''
-      const isReply = !!m.reply_to
-      const tagColor = typeDef?.color || (isReply ? '#00ffff' : '#ff0000')
-      const typeTag = `<span class="hs-feed-tag" style="color:${tagColor};font-size:10px;margin-right:3px">${isReply ? '[RE]' : '[OP]'}</span>`
+      const tagColor = typeDef?.color || '#ff0000'
+      const tagLabel = isThreadOp || isOp ? '[OP]' : '[RE]'
+      const typeTag = `<span class="hs-feed-tag" style="color:${tagColor};font-size:10px;margin-right:3px">${tagLabel}</span>`
       const shortId = (m.base36_id || '').replace(/^0+/, '') || '0'
       const threadLink = `<a href="https://heatsync.org/post/${encodeURIComponent(m.base36_id)}" target="_blank" class="hs-feed-thread-link">&gt;&gt;${escapeHtml(shortId)}</a>`
       const userLink = `<a href="https://heatsync.org/user/${encodeURIComponent(m.feedUser)}" target="_blank" class="hs-mc-user" data-username="${escapeHtml((m.feedUser || 'anon').toLowerCase())}" style="color:${sanitizeColor(m.color || '#fff')}">${escapeHtml(m.feedUser || 'anon')}</a>`

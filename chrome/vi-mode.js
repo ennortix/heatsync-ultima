@@ -59,14 +59,79 @@
     return last ? { node: last, offset: last.length } : null
   }
 
+  function isAtom(node) {
+    if (node.nodeType !== Node.ELEMENT_NODE) return false
+    return node.tagName === 'IMG' || node.contentEditable === 'false'
+  }
+
+  function getContentNodes(el) {
+    const result = []
+    function walk(node) {
+      for (const child of node.childNodes) {
+        if (child.nodeType === Node.TEXT_NODE) {
+          if (child.length > 0) result.push({ node: child, type: 'text', length: child.length })
+        } else if (isAtom(child)) {
+          result.push({ node: child, type: 'atom', length: 1 })
+        } else if (child.childNodes.length) {
+          walk(child)
+        }
+      }
+    }
+    walk(el)
+    return result
+  }
+
+  function findContentAt(nodes, pos) {
+    let remaining = pos
+    for (const entry of nodes) {
+      if (remaining < entry.length) return { entry, offset: remaining }
+      remaining -= entry.length
+    }
+    const last = nodes[nodes.length - 1]
+    return last ? { entry: last, offset: last.length } : null
+  }
+
+  function getVirtualText(el) {
+    const nodes = getContentNodes(el)
+    return nodes.map(e => e.type === 'atom' ? '\uFFFC' : e.node.textContent).join('')
+  }
+
+  function getTextSlice(el, vStart, vEnd) {
+    const cnodes = getContentNodes(el)
+    let result = '', vPos = 0
+    for (const e of cnodes) {
+      const eEnd = vPos + e.length
+      if (eEnd <= vStart) { vPos = eEnd; continue }
+      if (vPos >= vEnd) break
+      if (e.type === 'text') {
+        const s = Math.max(0, vStart - vPos)
+        const end = Math.min(e.length, vEnd - vPos)
+        result += e.node.textContent.slice(s, end)
+      } else {
+        result += e.node.alt || e.node.textContent || ''
+      }
+      vPos = eEnd
+    }
+    return result
+  }
+
   // --- Adapter functions ---
 
   function getText(el) {
     if (!el) return ''
-    return isCE(el) ? (el.textContent || '') : (el.value || '')
+    if (!isCE(el)) return el.value || ''
+    let text = ''
+    for (const node of el.childNodes) {
+      if (node.nodeType === Node.TEXT_NODE) text += node.textContent
+      else if (node.tagName === 'IMG') text += node.alt || ''
+      else text += node.textContent || ''
+    }
+    return text
   }
 
-  function getLen(el) { return getText(el).length }
+  function getLen(el) {
+    return isCE(el) ? getVirtualText(el).length : (el.value || '').length
+  }
 
   function getCursorPos(el) {
     if (!el) return 0
@@ -74,13 +139,22 @@
       const sel = window.getSelection()
       if (!sel.rangeCount) return 0
       const range = sel.getRangeAt(0)
-      const nodes = getTextNodes(el)
-      let offset = 0
-      for (const node of nodes) {
-        if (node === range.startContainer) return offset + range.startOffset
-        offset += node.length
+      const cnodes = getContentNodes(el)
+      let vPos = 0
+      for (const entry of cnodes) {
+        if (entry.type === 'text') {
+          if (entry.node === range.startContainer) return vPos + range.startOffset
+        } else {
+          const parent = entry.node.parentNode
+          if (range.startContainer === parent) {
+            const idx = Array.from(parent.childNodes).indexOf(entry.node)
+            if (range.startOffset <= idx) return vPos
+            if (range.startOffset === idx + 1) return vPos + 1
+          }
+        }
+        vPos += entry.length
       }
-      return offset
+      return vPos
     }
     return el.selectionStart || 0
   }
@@ -89,13 +163,18 @@
     if (!el) return
     pos = Math.max(0, Math.min(pos, getLen(el)))
     if (isCE(el)) {
-      const nodes = getTextNodes(el)
-      if (!nodes.length) return
-      const loc = findNodeAt(nodes, pos)
+      const cnodes = getContentNodes(el)
+      if (!cnodes.length) return
+      const loc = findContentAt(cnodes, pos)
       if (!loc) return
       const sel = window.getSelection()
       const range = document.createRange()
-      range.setStart(loc.node, loc.offset)
+      if (loc.entry.type === 'text') {
+        range.setStart(loc.entry.node, loc.offset)
+      } else {
+        if (loc.offset === 0) range.setStartBefore(loc.entry.node)
+        else range.setStartAfter(loc.entry.node)
+      }
       range.collapse(true)
       sel.removeAllRanges()
       sel.addRange(range)
@@ -110,15 +189,25 @@
     start = Math.max(0, Math.min(start, len))
     end = Math.max(0, Math.min(end, len))
     if (isCE(el)) {
-      const nodes = getTextNodes(el)
-      if (!nodes.length) return
-      const s = findNodeAt(nodes, start)
-      const e = findNodeAt(nodes, end)
+      const cnodes = getContentNodes(el)
+      if (!cnodes.length) return
+      const s = findContentAt(cnodes, start)
+      const e = findContentAt(cnodes, end)
       if (!s || !e) return
       const sel = window.getSelection()
       const range = document.createRange()
-      range.setStart(s.node, s.offset)
-      range.setEnd(e.node, e.offset)
+      if (s.entry.type === 'text') {
+        range.setStart(s.entry.node, s.offset)
+      } else {
+        if (s.offset === 0) range.setStartBefore(s.entry.node)
+        else range.setStartAfter(s.entry.node)
+      }
+      if (e.entry.type === 'text') {
+        range.setEnd(e.entry.node, e.offset)
+      } else {
+        if (e.offset === 0) range.setEndBefore(e.entry.node)
+        else range.setEndAfter(e.entry.node)
+      }
       sel.removeAllRanges()
       sel.addRange(range)
     } else {
@@ -318,12 +407,23 @@
 
   function syncCursor(el) {
     if (!el) return
+    // Clear atom cursor highlights
+    if (isCE(el)) el.querySelectorAll('.hs-vi-cursor').forEach(n => n.classList.remove('hs-vi-cursor'))
     const len = getLen(el)
     if (mode === 'normal') {
       cursor = Math.max(0, Math.min(cursor, Math.max(0, len - 1)))
-      // Block cursor: select 1 char at cursor position
-      if (len > 0) selectRange(el, cursor, cursor + 1)
-      else setCursorPos(el, 0)
+      if (len > 0) {
+        if (isCE(el)) {
+          const cnodes = getContentNodes(el)
+          const loc = findContentAt(cnodes, cursor)
+          if (loc && loc.entry.type === 'atom') {
+            loc.entry.node.classList.add('hs-vi-cursor')
+          }
+        }
+        selectRange(el, cursor, cursor + 1)
+      } else {
+        setCursorPos(el, 0)
+      }
     } else {
       cursor = Math.max(0, Math.min(cursor, len))
       setCursorPos(el, cursor)
@@ -380,7 +480,7 @@
     if (styleInjected) return
     styleInjected = true
     const s = document.createElement('style')
-    s.textContent = `.hs-vi-normal { outline: 2px solid #ff3333 !important; outline-offset: -2px; }`
+    s.textContent = `.hs-vi-normal { outline: 2px solid #ff3333 !important; outline-offset: -2px; } .hs-vi-cursor { outline: 2px solid rgba(255,255,0,0.9); background: rgba(255,255,0,0.25); border-radius: 2px; }`
     document.head.appendChild(s)
   }
 
@@ -448,8 +548,7 @@
 
     if (start >= end) return
 
-    const deleted = text.slice(start, end)
-    register = deleted
+    register = isCE(el) ? getTextSlice(el, start, end) : text.slice(start, end)
 
     switch (op) {
       case 'd':
@@ -530,7 +629,7 @@
 
   function handleNormalMode(e) {
     const el = activeEl
-    const text = getText(el)
+    const text = isCE(el) ? getVirtualText(el) : (el.value || '')
     const len = text.length
     const key = e.key
 
@@ -612,20 +711,20 @@
         switch (operator) {
           case 'd':
             pushUndo(el)
-            register = text
+            register = getText(el)
             replaceAll(el, '')
             cursor = 0
             syncCursor(el)
             break
           case 'c':
             pushUndo(el)
-            register = text
+            register = getText(el)
             replaceAll(el, '')
             cursor = 0
             enterInsert(el, 0)
             break
           case 'y':
-            register = text
+            register = getText(el)
             break
         }
         operator = null
@@ -662,21 +761,21 @@
         pushUndo(el)
         if (cursor < len) {
           const dc = Math.min(n, len - cursor)
-          register = text.slice(cursor, cursor + dc)
+          register = isCE(el) ? getTextSlice(el, cursor, cursor + dc) : text.slice(cursor, cursor + dc)
           deleteText(el, cursor, cursor + dc)
         }
         enterInsert(el, cursor)
         return
       case 'S':
         pushUndo(el)
-        register = text
+        register = getText(el)
         replaceAll(el, '')
         enterInsert(el, 0)
         return
       case 'C':
         pushUndo(el)
         if (cursor < len) {
-          register = text.slice(cursor)
+          register = isCE(el) ? getTextSlice(el, cursor, len) : text.slice(cursor)
           deleteText(el, cursor, len)
         }
         enterInsert(el, cursor)
@@ -734,7 +833,7 @@
         if (cursor < len) {
           pushUndo(el)
           const dc = Math.min(n, len - cursor)
-          register = text.slice(cursor, cursor + dc)
+          register = isCE(el) ? getTextSlice(el, cursor, cursor + dc) : text.slice(cursor, cursor + dc)
           deleteText(el, cursor, cursor + dc)
           const nl = getLen(el)
           if (cursor >= nl && nl > 0) cursor = nl - 1
@@ -747,7 +846,7 @@
         if (cursor > 0) {
           pushUndo(el)
           const dc = Math.min(n, cursor)
-          register = text.slice(cursor - dc, cursor)
+          register = isCE(el) ? getTextSlice(el, cursor - dc, cursor) : text.slice(cursor - dc, cursor)
           deleteText(el, cursor - dc, cursor)
           cursor -= dc
           syncCursor(el)
@@ -757,7 +856,7 @@
       case 'D': {
         if (cursor < len) {
           pushUndo(el)
-          register = text.slice(cursor)
+          register = isCE(el) ? getTextSlice(el, cursor, len) : text.slice(cursor)
           deleteText(el, cursor, len)
           const nl = getLen(el)
           if (cursor >= nl && nl > 0) cursor = nl - 1
@@ -771,23 +870,26 @@
         return
       }
       case '~': {
-        if (cursor < len) {
+        if (cursor < len && text[cursor] !== '\uFFFC') {
           pushUndo(el)
           const end = Math.min(cursor + n, len)
           let toggled = ''
           for (let i = cursor; i < end; i++) {
+            if (text[i] === '\uFFFC') break
             const ch = text[i]
             toggled += ch === ch.toUpperCase() ? ch.toLowerCase() : ch.toUpperCase()
           }
-          selectRange(el, cursor, end)
-          if (isCE(el)) {
-            document.execCommand('insertText', false, toggled)
-          } else {
-            el.value = text.slice(0, cursor) + toggled + text.slice(end)
-            el.dispatchEvent(new Event('input', { bubbles: true }))
+          if (toggled) {
+            selectRange(el, cursor, cursor + toggled.length)
+            if (isCE(el)) {
+              document.execCommand('insertText', false, toggled)
+            } else {
+              el.value = text.slice(0, cursor) + toggled + text.slice(cursor + toggled.length)
+              el.dispatchEvent(new Event('input', { bubbles: true }))
+            }
+            cursor = Math.min(cursor + toggled.length, Math.max(0, getLen(el) - 1))
+            syncCursor(el)
           }
-          cursor = Math.min(end, Math.max(0, getLen(el) - 1))
-          syncCursor(el)
         }
         return
       }

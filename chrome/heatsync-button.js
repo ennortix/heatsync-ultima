@@ -611,14 +611,14 @@
         visibility: hidden;
       }
 
-      /* Default hover = gold */
+      /* Default hover = yellow (global/channel) */
       .heatsync-emote-wrap:hover {
-        background: #ffcc00;
+        background: #ffff00;
       }
 
       /* Unadded emotes = blue */
       .heatsync-emote-wrap.unadded:hover {
-        background: #0088ff;
+        background: #8080ff;
       }
 
       /* In inventory = green */

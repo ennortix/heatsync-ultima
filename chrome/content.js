@@ -859,7 +859,7 @@ function getEmoteColor(img) {
   if (state === 'owned') return '#00ff00';
   if (state === 'unadded') return '#8080ff';
   if (state === 'blocked') return '#ff0000';
-  if (state === 'global') return '#ffcc00';
+  if (state === 'global') return '#ffff00';
   // Fallback: read wrapper class from website
   const wrapper = img.closest?.('.emote-hover-wrapper');
   if (wrapper?.classList.contains('in-set')) return '#00ff00';
@@ -5037,10 +5037,11 @@ function setupTabCompletion() {
       // If cycling through existing matches - just cycle, don't re-read input
       if (tabCompleteState.active && tabCompleteState.matches.length > 0) {
         tabCompleteState.completing = true;
-        tabCompleteState.index = (tabCompleteState.index + 1) % tabCompleteState.matches.length;
+        const len = tabCompleteState.matches.length;
+        tabCompleteState.index = (tabCompleteState.index + (e.shiftKey ? len - 1 : 1)) % len;
         const emote = tabCompleteState.matches[tabCompleteState.index];
-        log(' Cycling to:', emote.name, '(', tabCompleteState.index + 1, '/', tabCompleteState.matches.length, ')');
-        showEmotePreview(emote, tabCompleteState.index + 1, tabCompleteState.matches.length);
+        log(' Cycling to:', emote.name, '(', tabCompleteState.index + 1, '/', len, ')');
+        showEmotePreview(emote, tabCompleteState.index + 1, len);
         completeEmoteInInput(chatInput, emote, tabCompleteState.startPos);
         tabCompleteState.completing = false;
         return;

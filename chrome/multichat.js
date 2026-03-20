@@ -26,7 +26,7 @@
 
   // State
   let config = { channels: [], enabled: true };
-  let currentTab = 'live';
+  let currentTab = 'feed';
   let liveChannel = null;        // override channel for live tab (null = use URL channel)
   let liveChannelSet = new Set(); // channels currently live (lowercase twitch names)
   let irc = null;
@@ -789,9 +789,8 @@
     // Kick: only live/feed/activity (no IRC tabs)
     // Static hardcoded tab buttons — no user input, safe innerHTML
     container.innerHTML = isKick ? `
-      <button class="hs-mc-tab active" data-tab="live">live</button>
-      <button class="hs-mc-tab" data-tab="feed">feed</button>
-      <button class="hs-mc-tab" data-tab="activity">activity</button>
+      <button class="hs-mc-tab active" data-tab="feed">feed</button>
+      <button class="hs-mc-tab" data-tab="live">live</button>
       <button class="hs-mc-tab" data-tab="whispers">whispers</button>
       <div class="hs-mc-tab-utils">
         <button class="hs-mc-tab hs-mc-util-btn hs-mc-rotate" data-tab="rotate" title="rotate tabs (T)">T</button>
@@ -800,9 +799,8 @@
         <button class="hs-mc-tab hs-mc-util-btn" data-tab="settings" title="settings">\u2699</button>
       </div>
     ` : `
-      <button class="hs-mc-tab active" data-tab="live">live</button>
-      <button class="hs-mc-tab" data-tab="feed">feed</button>
-      <button class="hs-mc-tab" data-tab="activity">activity</button>
+      <button class="hs-mc-tab active" data-tab="feed">feed</button>
+      <button class="hs-mc-tab" data-tab="live">live</button>
       <button class="hs-mc-tab" data-tab="mentions">mentions</button>
       <button class="hs-mc-tab" data-tab="whispers">whispers</button>
       <button class="hs-mc-tab" data-tab="add">+</button>
@@ -850,7 +848,7 @@
       const tab = e.target.closest('.hs-mc-tab');
       if (!tab) return;
       const tabId = tab.dataset.tab;
-      const reserved = ['live', 'feed', 'activity', 'mentions', 'whispers', 'add', 'rotate', 'settings'];
+      const reserved = ['live', 'feed', 'mentions', 'whispers', 'add', 'rotate', 'settings'];
       if (reserved.includes(tabId)) return;
       e.preventDefault();
 
@@ -998,7 +996,7 @@
       const newBtn = document.getElementById('hs-mc-new-msgs');
       if (!msgsEl || !newBtn) return;
 
-      const isStaticTab = () => currentTab === 'activity' || currentTab === 'feed' || currentTab === 'settings';
+      const isStaticTab = () => currentTab === 'feed' || currentTab === 'settings';
 
       // scroll event only used for scrollbar drag detection (not wheel — wheel has its own handler)
       msgsEl.addEventListener('scrollend', () => {
@@ -1053,8 +1051,7 @@
         newBtn.style.display = 'none';
         if (isStaticTab()) {
           // Static tabs: re-render then scroll to top (newest content)
-          if (currentTab === 'activity') { notifLoaded = false; renderActivity(); }
-          else renderMessages(currentTab);
+          renderMessages(currentTab);
           msgsEl.scrollTop = 0;
         } else {
           // Chat tabs: re-render to catch up on skipped messages
@@ -3100,8 +3097,6 @@
     let placeholder;
     if (currentTab === 'feed') {
       placeholder = 'post to heatsync...';
-    } else if (currentTab === 'activity') {
-      placeholder = 'post to heatsync...';
     } else if (currentTab === 'live') {
       const channel = getLiveChannel();
       placeholder = channel ? `send to #${channel}` : 'send a message...';
@@ -3653,7 +3648,7 @@
     }
 
     // Feed/notifs tab → post to heatsync API
-    if (currentTab === 'feed' || currentTab === 'activity') {
+    if (currentTab === 'feed') {
       postFeedMessage(text);
       return;
     }
@@ -4324,7 +4319,7 @@
     if (!tabBarElement) return;
 
     // Clear existing channel tabs (keep built-in tabs)
-    const existingChannelTabs = tabBarElement.querySelectorAll('.hs-mc-tab[data-tab]:not([data-tab="live"]):not([data-tab="feed"]):not([data-tab="activity"]):not([data-tab="mentions"]):not([data-tab="whispers"]):not([data-tab="add"]):not([data-tab="rotate"]):not([data-tab="settings"])');
+    const existingChannelTabs = tabBarElement.querySelectorAll('.hs-mc-tab[data-tab]:not([data-tab="live"]):not([data-tab="feed"]):not([data-tab="mentions"]):not([data-tab="whispers"]):not([data-tab="add"]):not([data-tab="rotate"]):not([data-tab="settings"])');
     existingChannelTabs.forEach(t => t.remove());
 
     // Add channel tabs before the + button (or append if no + button, e.g. Kick)
@@ -7052,7 +7047,7 @@
             notifMessages = [];
             unreadNotifCount = 0;
             updateNotifBadge();
-            if (currentTab === 'feed' || currentTab === 'activity') {
+            if (currentTab === 'feed') {
               renderMessages(currentTab);
             }
           }
@@ -7172,14 +7167,6 @@
       if (msg.type === 'notification:new') {
         unreadNotifCount++;
         updateNotifBadge();
-        if (currentTab === 'activity') {
-          if (isScrolledUp) {
-            showStaticNewButton();
-          } else {
-            notifLoaded = false;
-            renderActivity();
-          }
-        }
       }
     });
   }
@@ -8030,7 +8017,6 @@ m.type === 'usernotice' ? 'hs-mc-msg hs-mc-system' :
     if (editingChannel) return;
     // Social tabs have their own renderers
     if (id === 'feed') { renderFeed(); return; }
-    if (id === 'activity') { renderActivity(); return; }
     if (id === 'whispers') { renderWhispersTab(); return; }
     if (id === 'settings') { renderSettingsTab(); return; }
 
@@ -10124,7 +10110,7 @@ m.type === 'usernotice' ? 'hs-mc-msg hs-mc-system' :
       }
 
       const id = twitchVal || kickVal || ('yt-' + Date.now())
-      const reserved = ['live', 'feed', 'activity', 'mentions', 'whispers', 'add', 'rotate', 'settings']
+      const reserved = ['live', 'feed', 'mentions', 'whispers', 'add', 'rotate', 'settings']
       if (reserved.includes(id)) {
         showErr('reserved name')
         return
@@ -10368,7 +10354,7 @@ m.type === 'usernotice' ? 'hs-mc-msg hs-mc-system' :
     // If on a channel tab, suppress live tab indicator for the same channel
     const liveCh = getLiveChannel()?.toLowerCase();
     if (liveCh) {
-      if (currentTab === 'live' && tabId !== 'feed' && tabId !== 'activity' && tabId !== 'mentions') {
+      if (currentTab === 'live' && tabId !== 'feed' && tabId !== 'mentions') {
         const chConfig = config.channels.find(ch => (typeof ch === 'string' ? ch : ch.id) === tabId);
         if (chConfig) {
           const tw = (typeof chConfig === 'string' ? chConfig : chConfig.twitch)?.toLowerCase();
@@ -10780,7 +10766,7 @@ m.type === 'usernotice' ? 'hs-mc-msg hs-mc-system' :
   }
 
   let _savedActiveTab = null;
-  const BUILTIN_TABS = ['live', 'feed', 'activity', 'mentions', 'add'];
+  const BUILTIN_TABS = ['live', 'feed', 'mentions', 'add'];
   async function loadActiveTab() {
     try {
       const stored = await chrome.storage.local.get(['ui_settings']);
@@ -11175,10 +11161,6 @@ m.type === 'usernotice' ? 'hs-mc-msg hs-mc-system' :
           saveStreamEvent(evt);
         }
         activityEvents.push(evt);
-        if (currentTab === 'activity') {
-          if (isScrolledUp) showStaticNewButton();
-          else renderActivity();
-        } else { const actTab = tabBarElement?.querySelector('[data-tab="activity"]'); if (actTab) actTab.classList.add('has-new'); }
 
         // Magenta tab highlight
         const liveChannel = getLiveChannel();
@@ -11243,10 +11225,6 @@ m.type === 'usernotice' ? 'hs-mc-msg hs-mc-system' :
           saveStreamEvent(evt);
         }
         activityEvents.push(evt);
-        if (currentTab === 'activity') {
-          if (isScrolledUp) showStaticNewButton();
-          else renderActivity();
-        } else { const actTab = tabBarElement?.querySelector('[data-tab="activity"]'); if (actTab) actTab.classList.add('has-new'); }
 
         // Render inline
         const activeTab = currentTab;

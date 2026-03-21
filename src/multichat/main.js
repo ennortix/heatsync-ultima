@@ -3542,13 +3542,13 @@
       }
 
       /* ---- KICK NATIVE CHAT HIDING ---- */
-      .hs-native-hidden .chat-entry-list,
-      .hs-native-hidden [class*="chat-entry-list"],
+      .hs-native-hidden #chatroom-messages,
       .hs-native-hidden [class*="chatroom-footer"],
-      .hs-native-hidden [class*="chat-input"] {
+      .hs-native-hidden [class*="chat-input"],
+      .hs-native-hidden div.editor-input {
         display: none !important;
       }
-      .hs-native-hidden#chatroom > *:not(#hs-mc-container) {
+      .hs-native-hidden#channel-chatroom > *:not(#hs-mc-container) {
         display: none !important;
       }
 
@@ -3736,7 +3736,7 @@
 
     // Find the React-controlled chat room
     const chatRoom = isKick
-      ? (document.getElementById('chatroom') || document.querySelector('[class*="chatroom"]'))
+      ? (document.getElementById('channel-chatroom') || document.querySelector('[id*="chatroom"]'))
       : (document.querySelector('[class*="chat-room__content"]') ||
          document.querySelector('[data-a-target="chat-room-component"]') ||
          document.querySelector('.chat-shell') ||
@@ -3993,8 +3993,8 @@
   function setNativeChatHidden(hidden) {
     if (isKick) {
       // Kick selectors
-      const chatroom = document.getElementById('chatroom') ||
-                       document.querySelector('[class*="chatroom"]');
+      const chatroom = document.getElementById('channel-chatroom') ||
+                       document.querySelector('[id*="chatroom"]');
       if (chatroom) chatroom.classList.toggle('hs-native-hidden', hidden);
       return;
     }
@@ -5678,7 +5678,7 @@ m.type === 'usernotice' ? 'hs-mc-msg hs-mc-system' :
       let kickAttempts = 0;
       const tryInjectKick = () => {
         kickAttempts++;
-        const chatroom = document.getElementById('chatroom') || document.querySelector('[class*="chatroom"]');
+        const chatroom = document.getElementById('channel-chatroom') || document.querySelector('[id*="chatroom"]');
         if (chatroom) {
           ensureUIElements();
           switchTab(_savedActiveTab || 'live');

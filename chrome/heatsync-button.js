@@ -219,9 +219,12 @@
     const platform = detectPlatform();
 
     if (platform === 'kick') {
+      // Handle popout/embed: /popout/channel/chat or /embed/channel/chat
+      const popoutMatch = path.match(/^\/(popout|embed)\/([a-zA-Z0-9_-]+)/);
+      if (popoutMatch) return popoutMatch[2].toLowerCase();
       // Kick channel pages: /channelname or /channelname/chatroom
       const match = path.match(/^\/([a-zA-Z0-9_-]+)/);
-      if (match && !['categories', 'following', 'settings', 'browse', 'search', 'dashboard'].includes(match[1])) {
+      if (match && !['categories', 'following', 'settings', 'browse', 'search', 'dashboard', 'popout', 'embed'].includes(match[1])) {
         return match[1].toLowerCase();
       }
       return null;

@@ -76,8 +76,8 @@ export const SELECTORS = {
   TWITCH_USERNAME: '.chat-author__display-name',
 
   // Kick chat
-  KICK_CHAT_CONTAINER: '#chatroom',
-  KICK_CHAT_INPUT: '[data-testid="chat-input"]',
+  KICK_CHAT_CONTAINER: '#channel-chatroom',
+  KICK_CHAT_INPUT: 'div.editor-input',
   KICK_CHAT_MESSAGES: '#chatroom-messages',
 
   // Profile elements

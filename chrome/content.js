@@ -1123,9 +1123,12 @@ function getPageChannel() {
     return (ch && !excluded.includes(ch)) ? ch : null;
   }
   if (url.includes('kick.com')) {
+    // Handle popout/embed URLs: /popout/channel/chat or /embed/channel/chat
+    const popoutMatch = url.match(/kick\.com\/(?:popout|embed)\/([^\/\?]+)/);
+    if (popoutMatch) return popoutMatch[1]?.toLowerCase() || null;
     const match = url.match(/kick\.com\/([^\/\?]+)/);
     const ch = match ? match[1]?.toLowerCase() : null;
-    const kickExcluded = ['categories', 'following', 'settings', 'browse', 'search', 'dashboard', 'category', 'password'];
+    const kickExcluded = ['categories', 'following', 'settings', 'browse', 'search', 'dashboard', 'category', 'password', 'popout', 'embed'];
     return (ch && !kickExcluded.includes(ch)) ? ch : null;
   }
   return null;
@@ -1762,7 +1765,7 @@ function findChatContainer() {
   if (window.location.hostname.includes('kick.com')) {
     return document.querySelector('#chatroom-messages .no-scrollbar') ||
            document.querySelector('#chatroom-messages') ||
-           document.querySelector('#chatroom');
+           document.querySelector('#channel-chatroom');
   }
 
   return null;
@@ -4618,11 +4621,16 @@ function detectAndJoinChannel() {
     }
   } else if (url.includes('kick.com')) {
     platform = 'kick';
-    // Extract channel from URL: /CHANNEL (filter non-channel paths)
-    const match = url.match(/kick\.com\/([^\/\?]+)/);
-    const slug = match ? match[1]?.toLowerCase() : null;
-    const kickExcluded = ['categories', 'following', 'settings', 'browse', 'search', 'dashboard', 'category', 'password'];
-    channelName = (slug && !kickExcluded.includes(slug)) ? slug : null;
+    // Handle popout/embed URLs: /popout/channel/chat or /embed/channel/chat
+    const popoutMatch = url.match(/kick\.com\/(?:popout|embed)\/([^\/\?]+)/);
+    if (popoutMatch) {
+      channelName = popoutMatch[1]?.toLowerCase() || null;
+    } else {
+      const match = url.match(/kick\.com\/([^\/\?]+)/);
+      const slug = match ? match[1]?.toLowerCase() : null;
+      const kickExcluded = ['categories', 'following', 'settings', 'browse', 'search', 'dashboard', 'category', 'password', 'popout', 'embed'];
+      channelName = (slug && !kickExcluded.includes(slug)) ? slug : null;
+    }
   }
 
   if (platform && channelName) {

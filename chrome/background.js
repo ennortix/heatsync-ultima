@@ -2068,11 +2068,13 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
           if (url.hostname.includes('twitch.tv')) {
             match = url.pathname.match(/^\/(?:popout\/)?([a-zA-Z0-9_]+)/)
           } else if (url.hostname.includes('kick.com')) {
-            match = url.pathname.match(/^\/([a-zA-Z0-9_-]+)/)
+            match = url.pathname.match(/^\/(popout|embed)\/([a-zA-Z0-9_-]+)/)
+            if (match) match = [null, match[2]] // normalize to [_, channel]
+            else match = url.pathname.match(/^\/([a-zA-Z0-9_-]+)/)
           }
           if (match?.[1]) {
             const ch = match[1].toLowerCase()
-            if (!skip.has(ch) && !seen.has(ch)) {
+            if (!skip.has(ch) && ch !== 'popout' && ch !== 'embed' && !seen.has(ch)) {
               seen.add(ch)
               channels.push({ name: ch, platform: url.hostname.includes('kick') ? 'kick' : 'twitch' })
             }

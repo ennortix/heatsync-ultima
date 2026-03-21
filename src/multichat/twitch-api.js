@@ -642,6 +642,10 @@ const BADGE_STYLES = {
   artist: { label: 'ART', bg: '#ff6b35', fg: '#fff' },
   turbo: { label: 'T+', bg: '#6441a5', fg: '#fff' },
   founder: { label: 'FND', bg: '#8205b4', fg: '#fff' },
+  // Kick badges (underscore variants)
+  sub_gifter: { label: 'GIFT', bg: '#8205b4', fg: '#fff' },
+  og: { label: 'OG', bg: '#53fc18', fg: '#000' },
+  verified: { label: '✓', bg: '#53fc18', fg: '#000' },
 }
 
 // Twitch badge image URLs: "setID/version" → image_url

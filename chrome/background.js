@@ -1655,6 +1655,32 @@ function handleWSMessage(msg) {
       })
       break
 
+    case 'kick-sub-event':
+      // Relay Kick subscription events to content scripts
+      broadcastToTabs({
+        type: 'kick_sub_event',
+        channel: msg.channel,
+        eventType: msg.eventType,
+        username: msg.username,
+        months: msg.months,
+        gifter: msg.gifter,
+        giftees: msg.giftees,
+        message: msg.message
+      })
+      break
+
+    case 'kick-kicks-event':
+      // Relay KICKs gifted events to content scripts
+      broadcastToTabs({
+        type: 'kick_kicks_event',
+        channel: msg.channel,
+        username: msg.username,
+        amount: msg.amount,
+        giftName: msg.giftName,
+        message: msg.message
+      })
+      break
+
     case 'stream:update':
     case 'stream:online':
     case 'stream:offline':

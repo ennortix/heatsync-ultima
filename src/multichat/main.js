@@ -1741,6 +1741,15 @@
         padding-left: 8px;
         background: rgba(145, 71, 255, 0.08);
       }
+      .hs-mc-msg.hs-mc-kicks {
+        border-left: 3px solid #ffd600;
+        padding-left: 8px;
+        background: rgba(255, 214, 0, 0.1);
+      }
+      .hs-mc-kicks .hs-mc-system-text {
+        color: #ffd600;
+        font-weight: 700;
+      }
       .hs-mc-system-text {
         color: #b0b0b0;
         font-size: 12px;
@@ -1820,6 +1829,7 @@
         cursor: default;
       }
       .hs-mc-badge-img {
+        display: inline !important;
         width: var(--hs-badge-img, 18px);
         height: var(--hs-badge-img, 18px);
         vertical-align: middle;
@@ -4216,7 +4226,9 @@
 
     const showChannel = tabId === 'mentions';
     const isSuperChat = m.platform === 'youtube' && (m.msgType === 'superchat' || m.msgType === 'supersticker')
+    const isKicksEvent = m.kicksEvent === true
     const cls = tabId === 'mentions' ? 'hs-mc-msg mention' :
+isKicksEvent ? 'hs-mc-msg hs-mc-system hs-mc-kicks' :
 m.type === 'usernotice' ? 'hs-mc-msg hs-mc-system' :
                 m.redeemed ? 'hs-mc-msg hs-mc-redeemed' :
                 isSuperChat ? 'hs-mc-msg hs-mc-superchat' :

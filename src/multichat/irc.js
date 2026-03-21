@@ -432,11 +432,15 @@ class KickChat {
         const d = message.data
         const channel = d.channel?.toLowerCase()
         if (!channel || !this.channels.has(channel)) return
+        // Convert Kick badge objects [{name,version}] to Twitch-style "name/version" string
+        const badgeStr = Array.isArray(d.badges)
+          ? d.badges.map(b => `${b.name || 'badge'}/${b.version || '1'}`).join(',')
+          : ''
         const msg = {
           user: d.username || 'unknown',
           text: d.content || '',
           color: d.color || '#53fc18',
-          badges: '',
+          badges: badgeStr,
           channel,
           time: d.timestamp || Date.now(),
           platform: 'kick',
@@ -444,6 +448,49 @@ class KickChat {
             user: d.replyTo.username,
             text: d.replyTo.content || ''
           } : null
+        }
+        this.channels.get(channel).push(msg)
+        this.emit('message', msg)
+      }
+
+      // KICKs gifted events (Kick's equivalent of Twitch Bits)
+      if (message.type === 'kick_kicks_event') {
+        const channel = message.channel?.toLowerCase()
+        if (!channel || !this.channels.has(channel)) return
+        const msg = {
+          user: message.username || 'anonymous',
+          text: message.message || '',
+          systemMsg: `${message.username || 'Anonymous'} gifted ${message.amount} KICKs${message.giftName ? ' (' + message.giftName + ')' : ''}!`,
+          color: '#ffd600',
+          badges: '',
+          channel,
+          time: Date.now(),
+          type: 'usernotice',
+          msgId: 'kicks_gifted',
+          platform: 'kick',
+          kicksEvent: true,
+          id: ''
+        }
+        this.channels.get(channel).push(msg)
+        this.emit('message', msg)
+      }
+
+      // Kick subscription events (new sub, resub, gift subs)
+      if (message.type === 'kick_sub_event') {
+        const channel = message.channel?.toLowerCase()
+        if (!channel || !this.channels.has(channel)) return
+        const msg = {
+          user: message.username || 'system',
+          text: '',
+          systemMsg: message.message || '',
+          color: '#53fc18',
+          badges: '',
+          channel,
+          time: Date.now(),
+          type: 'usernotice',
+          msgId: message.eventType || '',
+          platform: 'kick',
+          id: ''
         }
         this.channels.get(channel).push(msg)
         this.emit('message', msg)

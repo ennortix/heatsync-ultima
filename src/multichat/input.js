@@ -1043,12 +1043,95 @@ function convertEmojiShortcodes(text) {
   return text.replace(/:([a-z0-9_]+):/g, (match, name) => _emojiMap.get(name) || match)
 }
 
+function clearInput(input) {
+  if (wysiwygEnabled) input.textContent = ''
+  else input.value = ''
+  pendingMessage = ''
+  updateCharCount()
+}
+
+async function handleSlashCommand(text, input) {
+  const parts = text.match(/^\/(\w+)\s*(.*)$/)
+  if (!parts) return false
+  const [, cmd, rest] = parts
+
+  if (cmd === 'op') {
+    if (!rest.trim()) { showToast('usage: /op message'); return true }
+    await postFeedMessage(rest.trim(), { topLevel: true })
+    return true
+  }
+
+  if (cmd === 'w' || cmd === 'whisper') {
+    const match = rest.match(/^(\S+)\s+(.+)$/)
+    if (!match) { showToast('usage: /w username message'); return true }
+    const [, username, msg] = match
+    await sendSlashWhisper('twitch', username, msg, input)
+    return true
+  }
+
+  if (cmd === 'dm') {
+    const match = rest.match(/^(\S+)\s+(.+)$/)
+    if (!match) { showToast('usage: /dm username message'); return true }
+    const [, username, msg] = match
+    await sendSlashWhisper('heatsync', username, msg, input)
+    return true
+  }
+
+  return false
+}
+
+async function sendSlashWhisper(platform, username, text, input) {
+  const lowerUser = username.toLowerCase()
+
+  if (platform === 'twitch') {
+    // Check existing conversations
+    const key = `twitch:${lowerUser}`
+    if (whisperConversations.has(key)) {
+      await sendWhisperMessage(key, text)
+      clearInput(input)
+      return
+    }
+    // Resolve username → Twitch ID via decapi
+    try {
+      const resp = await fetch(`https://decapi.me/twitch/id/${encodeURIComponent(lowerUser)}`, { credentials: 'omit' })
+      const body = (await resp.text()).trim()
+      if (!resp.ok || !/^\d+$/.test(body)) {
+        showToast(`twitch user "${username}" not found`)
+        return
+      }
+      getOrCreateConversation(key, 'twitch', body, username, '#fff')
+      await sendWhisperMessage(key, text)
+      clearInput(input)
+    } catch (e) {
+      showToast('failed to resolve twitch user')
+    }
+  } else {
+    // HeatSync DM — resolve username → user_id via profile API
+    const profileResp = await apiFetch(`/api/profile/${encodeURIComponent(lowerUser)}`)
+    if (!profileResp.ok || !profileResp.data?.profile?.user_id) {
+      showToast(`heatsync user "${username}" not found`)
+      return
+    }
+    const userId = profileResp.data.profile.user_id
+    const key = `hs:${userId}`
+    getOrCreateConversation(key, 'heatsync', userId, profileResp.data.profile.display_name || username, profileResp.data.profile.user_color || '#fff')
+    await sendWhisperMessage(key, text)
+    clearInput(input)
+  }
+}
+
 async function sendMessage() {
   const input = document.getElementById('hs-mc-input');
   if (!input) { console.warn('[HS] SEND BAIL: no input element'); return; }
 
   const text = convertEmojiShortcodes(getInputText().trim());
   if (!text) { console.warn('[HS] SEND BAIL: empty text'); return; }
+
+  // Slash commands — work from any tab
+  if (text.startsWith('/')) {
+    const handled = await handleSlashCommand(text, input)
+    if (handled) return
+  }
 
   // Whispers tab → send whisper/DM
   if (currentTab === 'whispers' && activeWhisperUser) {

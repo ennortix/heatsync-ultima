@@ -14,8 +14,7 @@
   // Chat input selectors
   const INPUT_SELECTORS = [
     '[data-a-target="chat-input"]',        // Twitch (contenteditable)
-    'textarea[placeholder*="message"]',     // Kick
-    'textarea[placeholder*="chat"]',        // Kick alt
+    'div.editor-input',                     // Kick (contenteditable)
     '.chat-input textarea',                 // Kick fallback
     '#hs-mc-input',                         // Multichat
   ]

@@ -61,7 +61,7 @@
 }
 
 /* Kick */
-.heatsync-kick-message .chat-entry {
+.heatsync-kick-message[data-index] > div {
   border-left: 4px solid #ff0000 !important;
   background: rgba(255, 0, 0, 0.1) !important;
   padding: 8px !important;
@@ -69,7 +69,7 @@
   border-radius: 0 !important;
 }
 
-.heatsync-kick-message:hover .chat-entry {
+.heatsync-kick-message[data-index]:hover > div {
   background: rgba(255, 0, 0, 0.15) !important;
 }
 

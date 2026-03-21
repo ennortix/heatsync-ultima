@@ -1597,7 +1597,7 @@ function processExistingMessages() {
 
   // Kick messages (if Twitch selector didn't work)
   if (messages.length === 0) {
-    messages = chatContainer.querySelectorAll('.chat-entry, [class*="chat-message"]');
+    messages = chatContainer.querySelectorAll('#chatroom-messages [data-index]');
   }
 
   log(' 📨 Found', messages.length, 'messages to process');
@@ -1650,7 +1650,6 @@ function processExistingMessages() {
 // Fires once per channel join, fetches ~500 recent messages, deduplicates against
 // native Twitch messages, and inserts missing ones at the top of the chat container.
 async function backfillChatHistory() {
-  if (!window.location.hostname.includes('twitch.tv')) return
   const chatContainer = findChatContainer()
   if (!chatContainer) return
   if (chatContainer.dataset.heatsyncBackfilled) return
@@ -1761,9 +1760,9 @@ function findChatContainer() {
 
   // Kick chat
   if (window.location.hostname.includes('kick.com')) {
-    return document.querySelector('.chat-feed') ||
-           document.querySelector('#chatroom') ||
-           document.querySelector('[class*="chat"]');
+    return document.querySelector('#chatroom-messages .no-scrollbar') ||
+           document.querySelector('#chatroom-messages') ||
+           document.querySelector('#chatroom');
   }
 
   return null;
@@ -1907,7 +1906,7 @@ function applyHeatBorders() {
   const chatContainer = findChatContainer()
   if (!chatContainer) return
 
-  const messages = chatContainer.querySelectorAll('.chat-line__message:not([data-hs-heat-applied])')
+  const messages = chatContainer.querySelectorAll('.chat-line__message:not([data-hs-heat-applied]), #chatroom-messages [data-index]:not([data-hs-heat-applied])')
   for (const msg of messages) {
     const username = getUsername(msg)
     if (!username) continue
@@ -2161,16 +2160,16 @@ function colorUsernameMentions(messageElement) {
   }
 
   // Also color @mention elements (Twitch's explicit mentions)
+  // Always make mentions hoverable for profile cards, even if user hasn't chatted yet
   const mentions = messageElement.querySelectorAll('.mention-fragment, [class*="mention"], [data-a-target="chat-message-mention"]');
   for (const mention of mentions) {
     if (mention.classList.contains('hs-mention-colored')) continue;
     const username = mention.textContent.replace('@', '').trim().toLowerCase();
-    const color = knownChatters.get(username);
-    if (color) {
-      mention.style.cssText = `color: ${color} !important; font-weight: bold !important; cursor: pointer !important; pointer-events: auto !important;`;
-      mention.classList.add('hs-mention-colored');
-      mention.dataset.hsUsername = username;
-    }
+    if (!username) continue;
+    const color = knownChatters.get(username) || '#dedede';
+    mention.style.cssText = `color: ${color} !important; font-weight: bold !important; cursor: pointer !important; pointer-events: auto !important;`;
+    mention.classList.add('hs-mention-colored');
+    mention.dataset.hsUsername = username;
   }
 }
 
@@ -2367,7 +2366,7 @@ function processMessage(messageElement) {
 
   messageElement.dataset.heatsyncProcessed = 'true'
 
-  const textElements = messageElement.querySelectorAll('.text-fragment, .chat-entry-content')
+  const textElements = messageElement.querySelectorAll('.text-fragment, span.font-normal')
   if (textElements.length === 0) return
 
   const username = getUsername(messageElement)
@@ -2727,7 +2726,7 @@ function stackAdjacentOverlayEmotes(messageElement, allEmotes) {
   }
 
   // Clean up empty containers left by emote replacement (only heatsync-created ones)
-  const emptyContainers = messageElement.querySelectorAll('.text-fragment:empty, .chat-entry-content:empty');
+  const emptyContainers = messageElement.querySelectorAll('.text-fragment:empty, span.font-normal:empty');
   emptyContainers.forEach(el => {
     if (!el.closest('.heatsync-emote-stack') && !el.classList.contains('heatsync-emote-stack')) {
       el.remove();
@@ -4146,7 +4145,7 @@ function insertEmoteIntoChat(emoteName) {
   log(' insertEmoteIntoChat called with:', emoteName);
 
   const chatInput = document.querySelector('[data-a-target="chat-input"]') || // Twitch
-                    document.querySelector('textarea[placeholder*="message"]') || // Kick
+                    document.querySelector('div.editor-input') || // Kick
                     document.querySelector('textarea');
 
   if (!chatInput) {
@@ -4214,7 +4213,7 @@ function retroactivelyProcessBroadcast(username, emoteName, emoteData) {
   // appears a split second before broadcast arrives. Old messages should not be replaced.
   let messages = chatContainer.querySelectorAll('.chat-line__message');
   if (messages.length === 0) {
-    messages = chatContainer.querySelectorAll('.chat-entry, [class*="chat-message"]');
+    messages = chatContainer.querySelectorAll('#chatroom-messages [data-index]');
   }
 
   // Process last 5 messages - handles fast chats where message appears after broadcast
@@ -4226,7 +4225,7 @@ function retroactivelyProcessBroadcast(username, emoteName, emoteData) {
     if (messageUsername !== username) return;
 
     const textElement = messageElement.querySelector('.text-fragment') ||
-                        messageElement.querySelector('.chat-entry-content') ||
+                        messageElement.querySelector('span.font-normal') ||
                         messageElement.querySelector('[class*="message"]');
 
     if (!textElement) return;
@@ -4270,7 +4269,7 @@ function getUsername(messageElement) {
   const usernameEl = messageElement.querySelector('.chat-author__display-name') ||
                      messageElement.querySelector('.chat-line__username') ||
                      // Kick selectors
-                     messageElement.querySelector('.chat-entry-username') ||
+                     messageElement.querySelector('button.inline.font-bold') ||
                      messageElement.querySelector('[class*="username"]');
 
   return usernameEl ? usernameEl.textContent.trim() : '';
@@ -4282,7 +4281,7 @@ function setupMessageContextMenu() {
     // Don't intercept emote right-clicks
     if (e.target.closest('.heatsync-emote-wrapper')) return;
 
-    const msgEl = e.target.closest('.chat-line__message');
+    const msgEl = e.target.closest('.chat-line__message, #chatroom-messages [data-index]');
     if (!msgEl) return;
 
     e.preventDefault();
@@ -4509,7 +4508,8 @@ function watchForNewMessages() {
             processingQueue.push(node);
           }
           // Kick chat message
-          else if (node.classList.contains('chat-entry') || node.matches?.('[class*="chat-message"]')) {
+          // Kick chat message (div with data-index inside #chatroom-messages)
+          else if (node.hasAttribute?.('data-index') && node.closest?.('#chatroom-messages')) {
             processingQueue.push(node);
           }
           // Check if it has chat-line__message inside
@@ -4967,8 +4967,7 @@ function setupTabCompletion() {
   log(' ✅ Tab completion handler installed for Kick');
 
   const findChatInput = () => {
-    return document.querySelector('textarea[placeholder*="message"]') || // Kick
-           document.querySelector('textarea[placeholder*="chat"]') ||
+    return document.querySelector('div.editor-input') || // Kick
            document.querySelector('.chat-input textarea');
   };
 
@@ -5105,7 +5104,7 @@ function interceptMessageSending() {
   }
 
   const chatInput = document.querySelector('[data-a-target="chat-input"]') || // Twitch
-                    document.querySelector('textarea[placeholder*="message"]') || // Kick
+                    document.querySelector('div.editor-input') || // Kick
                     document.querySelector('textarea');
 
   if (!chatInput) {

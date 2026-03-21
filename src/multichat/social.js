@@ -91,6 +91,7 @@ function listenForSocialEvents() {
       const id = msg.data.base36_id;
       if (id && feedMessages.some(m => m.base36_id === id)) return;
 
+      if (msg.data.username === 'Anonymous') return
       feedMessages.unshift(msg.data);
       if (feedMessages.length > 150) feedMessages.pop();
 
@@ -212,7 +213,7 @@ async function fetchFeed(append = false) {
   if (feedLoading) return;
   feedLoading = true;
   const page = append ? feedPage + 1 : 1;
-  const resp = await apiFetch(`/api/messages?sort=time&limit=30&page=${page}`, { auth: false });
+  const resp = await apiFetch(`/api/messages?sort=time&limit=30&page=${page}&following=true`, { auth: true });
   feedLoading = false;
   if (!resp.ok) {
     console.error('[heatsync-mc] Feed fetch failed — full resp:', JSON.stringify(resp));
@@ -224,7 +225,7 @@ async function fetchFeed(append = false) {
     }
     return;
   }
-  const msgs = resp.data?.messages || [];
+  const msgs = (resp.data?.messages || []).filter(m => m.username !== 'Anonymous')
   if (append) {
     feedMessages.push(...msgs);
     feedPage = page;
@@ -242,10 +243,10 @@ function renderFeed() {
   const msgsEl = document.getElementById('hs-mc-messages');
   if (!msgsEl) return;
 
-  // Feed is public — no auth required to view, only to post
+  // Feed shows posts from followed users (requires auth)
   const isStale = feedLoaded && (Date.now() - feedLastFetch > FEED_STALE_MS);
   if ((!feedLoaded || isStale) && !feedLoading) {
-    msgsEl.innerHTML = '<div class="hs-mc-empty">loading feed...</div>';
+    msgsEl.innerHTML = '<div class="hs-mc-empty">loading following feed...</div>';
     fetchFeed();
     return;
   }
@@ -352,7 +353,7 @@ function buildFeedMessageDiv(m, opUsername) {
     ? `${anonAvatar}<span class="hs-feed-user" style="color:#808080">Anonymous</span>`
     : `${userAvatar}<a href="https://heatsync.org/user/${encodeURIComponent(m.username)}" target="_blank" class="hs-feed-user hs-mc-user" data-username="${escapeHtml((m.username || 'anon').toLowerCase())}" style="color:${sanitizeColor(m.user_color || '#fff')}">${escapeHtml(m.username || 'anon')}</a>`;
 
-  div.innerHTML = `${threadLink}${typeTag}${platBadge}${userHtml}${timeHtml}${stats}: <span class="hs-feed-body">${content}</span>`;
+  div.innerHTML = `${timeHtml}${threadLink}${typeTag}${platBadge}${userHtml}${stats}: <span class="hs-feed-body">${content}</span>`;
 
   // Click replies to expand thread
   const repliesEl = div.querySelector('.hs-feed-replies');
@@ -475,7 +476,7 @@ async function toggleThread(msgId) {
   renderFeed();
 }
 
-async function postFeedMessage(text) {
+async function postFeedMessage(text, { topLevel = false } = {}) {
   const input = document.getElementById('hs-mc-input');
   if (!input) return;
 
@@ -491,7 +492,7 @@ async function postFeedMessage(text) {
 
   const body = { content: text };
   // If replying to an expanded thread, set reply_to
-  if (expandedThreadId) {
+  if (expandedThreadId && !topLevel) {
     body.reply_to = expandedThreadId;
   }
 
@@ -505,7 +506,13 @@ async function postFeedMessage(text) {
     pendingMessage = '';
     updateCharCount();
     hideInputBar();
-    // Message will appear via WebSocket real-time
+    // Insert own post immediately from response (fetchFeed unreliable — service worker gets killed)
+    const posted = resp.data?.message
+    if (posted && !feedMessages.some(f => f.base36_id === posted.base36_id)) {
+      feedMessages.unshift(posted)
+      if (feedMessages.length > 150) feedMessages.pop()
+    }
+    if (currentTab === 'feed') renderFeed()
   } else {
     input.style.borderColor = '#f44';
     const errMsg = resp.status === 401 ? 'log in first'
@@ -632,7 +639,7 @@ function buildNotifDiv(m) {
   const content = renderFeedContent(m.content, m.emote_refs);
 
   // Safe: username through escapeHtml+encodeURIComponent, time through escapeHtml, content through renderFeedContent (which escapes via escapeHtml then adds safe formatting)
-  div.innerHTML = `<a href="https://heatsync.org/user/${encodeURIComponent(m.username)}" target="_blank" class="hs-feed-user hs-mc-user" data-username="${escapeHtml((m.username || 'anon').toLowerCase())}" style="color:${sanitizeColor(m.user_color || '#fff')}">${escapeHtml(m.username || 'anon')}</a> <span class="hs-feed-time">${escapeHtml(time)}</span>: <span class="hs-feed-body">${content}</span>`;
+  div.innerHTML = `<span class="hs-feed-time">${escapeHtml(time)}</span><a href="https://heatsync.org/user/${encodeURIComponent(m.username)}" target="_blank" class="hs-feed-user hs-mc-user" data-username="${escapeHtml((m.username || 'anon').toLowerCase())}" style="color:${sanitizeColor(m.user_color || '#fff')}">${escapeHtml(m.username || 'anon')}</a>: <span class="hs-feed-body">${content}</span>`;
 
   // Click to switch to feed and show this thread (but not if clicking interactive content)
   div.addEventListener('click', (e) => {

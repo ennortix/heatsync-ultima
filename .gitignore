@@ -1,6 +1,7 @@
 node_modules/
 dist/
 *.zip
+chrome/multichat.js
 .DS_Store
 
 # Claude Code (local only)

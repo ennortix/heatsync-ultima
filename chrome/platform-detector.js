@@ -41,11 +41,11 @@
       };
     } else if (platform === 'kick') {
       return {
-        container: '#chatroom .chat-entry-list',
-        message: '.chat-entry',
-        username: '.chat-entry-username',
-        messageText: '.chat-entry-content',
-        messageContainer: '.chat-entry'
+        container: '#chatroom-messages .no-scrollbar',
+        message: '[data-index]',
+        username: 'button.inline.font-bold',
+        messageText: 'span.font-normal',
+        messageContainer: '[data-index]'
       };
     } else if (platform === 'youtube') {
       return {

@@ -62,6 +62,7 @@ let localBlockedEmotes = new Set(); // Local blocks for anonymous users
 let mutedUsers = new Map(); // username -> expiresAt (null = permanent)
 let blockedUsers = new Set();
 let followedUsers = []; // Users the current user follows
+let currentUsername = null; // Logged-in user's username
 let socket = null;
 let lastBroadcastWasEmpty = false; // Track to prevent spamming 0-emote broadcasts
 let currentChannel = null;
@@ -505,6 +506,7 @@ async function fetchUserInfo() {
       heat: user.heat || 0
     }
     browser.storage.local.set({ user_info: userInfo })
+    currentUsername = userInfo.username
     log(' User info loaded:', userInfo.display_name)
   } catch (error) {
     console.error('[heatsync] fetchUserInfo failed:', error.message || error)
@@ -1562,6 +1564,18 @@ function handleWSMessage(msg) {
 
     case 'new-message':
       log(' New message received:', msg);
+      // Only show posts from followed users, exclude anonymous
+      const msgUser = (msg.username || '').toLowerCase()
+      if (msg.username === 'Anonymous') {
+        log(' Skipping feed post — anonymous');
+        break;
+      }
+      if (currentUsername && msgUser === currentUsername.toLowerCase()) {
+        // Always show own posts
+      } else if (!followedUsers.some(u => u.toLowerCase() === msgUser)) {
+        log(' Skipping feed post — not followed');
+        break;
+      }
       broadcastToTabs({
         type: 'new-message',
         data: msg

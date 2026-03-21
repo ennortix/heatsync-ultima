@@ -1712,6 +1712,11 @@
       .hs-mc-msg.mention {
         background: #800000;
       }
+      .hs-mc-msg.mention .hs-mc-reply-ctx,
+      .hs-mc-msg.mention .hs-mc-reply-user {
+        color: #ccc;
+        border-left-color: #ccc;
+      }
       .hs-mc-msg.tweet {
         background: rgba(212, 73, 73, 0.3);
       }
@@ -4167,7 +4172,7 @@ m.type === 'usernotice' ? 'hs-mc-msg hs-mc-system' :
       div.style.paddingLeft = '4px'
     }
     // Reply context bar (Chatterino-style) — all values escaped via escapeHtml
-    const replyBar = m.replyTo ? `<div class="hs-mc-reply-ctx">&#8618; Replying to <span class="hs-mc-reply-user">@${escapeHtml(m.replyTo.user)}</span>${m.replyTo.text ? ': ' + escapeHtml(m.replyTo.text.length > 80 ? m.replyTo.text.slice(0, 80) + '...' : m.replyTo.text) : ''}</div>` : ''
+    const replyBar = m.replyTo ? `<div class="hs-mc-reply-ctx">&#8618; Replying to <a href="https://heatsync.org/user/${encodeURIComponent(m.replyTo.user)}" target="_blank" class="hs-mc-user hs-mc-reply-user" data-username="${escapeHtml(m.replyTo.user.toLowerCase())}">@${escapeHtml(m.replyTo.user)}</a>${m.replyTo.text ? ': ' + escapeHtml(m.replyTo.text.length > 80 ? m.replyTo.text.slice(0, 80) + '...' : m.replyTo.text) : ''}</div>` : ''
     // USERNOTICE system line (all values go through escapeHtml — same pattern as existing innerHTML above)
     const systemLine = m.systemMsg ? `<span class="hs-mc-system-text">${escapeHtml(m.systemMsg)}</span>` : ''
     const ts = formatTimeFromTs(m.time);

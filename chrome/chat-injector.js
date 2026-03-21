@@ -319,7 +319,7 @@ async function setupTabCompletion(platform) {
     if (platform === 'twitch') {
       chatInput = document.querySelector('[data-a-target="chat-input"]');
     } else if (platform === 'kick') {
-      chatInput = document.querySelector('textarea[placeholder*="chat"]');
+      chatInput = document.querySelector('div.editor-input');
     }
 
     if (chatInput) break;
@@ -500,14 +500,16 @@ function createMessageElement(message, platform) {
     `;
   } else if (platform === 'kick') {
     div.className += ' heatsync-kick-message';
+    div.setAttribute('data-index', 'hs-injected');
+    // Safe: sanitizeColor validates hex, escapeHtml escapes all HTML entities, parseTwitchEmotes only inserts img tags with known CDN URLs
     div.innerHTML = `
-      <div class="chat-entry" style="padding: 8px; margin: 4px 0; min-height: 32px;">
+      <div style="padding: 8px; margin: 4px 0; min-height: 32px;">
         <span class="heatsync-op-badge" style="display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; background: #ff0000; color: #ffffff; border-radius: 0; font-size: 10px; font-weight: 400; font-family: monospace; margin-right: 6px;">OP</span>
-        <span class="chat-entry-username" style="font-weight: 700; color: ${sanitizeColor(message.user_color) || '#00ff00'};">
+        <button class="inline font-bold" style="font-weight: 700; color: ${sanitizeColor(message.user_color) || '#00ff00'}; background: none; border: none; cursor: pointer;">
           ${escapeHtml(message.display_name || message.username)}
-        </span>
+        </button>
         <span style="margin: 0 4px;">:</span>
-        <span class="chat-entry-content heatsync-clickable" style="background: #ff0000; color: #ffffff; padding: 2px 4px; font-weight: bold; cursor: pointer;">${parseTwitchEmotes(message.content)}</span>
+        <span class="font-normal heatsync-clickable" style="background: #ff0000; color: #ffffff; padding: 2px 4px; font-weight: bold; cursor: pointer;">${parseTwitchEmotes(message.content)}</span>
       </div>
     `;
   }

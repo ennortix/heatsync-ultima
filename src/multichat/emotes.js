@@ -926,15 +926,11 @@
           result.push(pendingWhitespace);
           pendingWhitespace = '';
         }
-        // Color @mentions using known chatter colors
+        // Color @mentions — always hoverable for profile cards
         if (word.startsWith('@') && word.length > 1) {
           const name = word.slice(1).replace(/[,.:!?]+$/, '').toLowerCase();
-          const color = knownColors.get(name);
-          if (color) {
-            result.push(`<span style="color:${sanitizeColor(color)};font-weight:bold">${escapeHtml(word)}</span>`);
-          } else {
-            result.push(escapeHtml(word));
-          }
+          const color = knownColors.get(name) || '#dedede';
+          result.push(`<a href="https://heatsync.org/user/${encodeURIComponent(name)}" target="_blank" class="hs-mc-user" data-username="${escapeHtml(name)}" style="color:${sanitizeColor(color)};font-weight:bold">${escapeHtml(word)}</a>`);
         } else if (linksEnabled && /^(https?:\/\/\S+|[a-z0-9-]+(\.[a-z0-9-]+)+\/\S*)/i.test(word)) {
           // Validate URL protocol before creating link (block javascript:, data:, etc.)
           const hasProtocol = /^https?:\/\//i.test(word);

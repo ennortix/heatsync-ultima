@@ -2485,7 +2485,7 @@
     let chatInput;
     if (platform === 'kick') {
       // Kick uses a regular input or textarea
-      chatInput = document.querySelector('#message-input, [data-chat-entry-input], textarea[placeholder*="message"], input[placeholder*="message"]');
+      chatInput = document.querySelector('div.editor-input');
     } else {
       // Twitch uses contenteditable
       chatInput = document.querySelector('[data-a-target="chat-input"]');
@@ -2496,16 +2496,13 @@
     }
 
     if (platform === 'kick') {
-      // Kick: regular input/textarea
-      const currentText = chatInput.value || '';
+      // Kick: contenteditable div.editor-input
+      const currentText = chatInput.textContent || '';
       const needsSpace = currentText.length > 0 && !currentText.endsWith(' ');
       const textToInsert = (needsSpace ? ' ' : '') + emoteName + ' ';
 
       chatInput.focus();
-      chatInput.value = currentText + textToInsert;
-
-      // Trigger input event for React
-      chatInput.dispatchEvent(new Event('input', { bubbles: true }));
+      document.execCommand('insertText', false, textToInsert);
     } else {
       // Twitch: contenteditable
       const currentText = chatInput.textContent || '';
@@ -2626,16 +2623,31 @@
     }
 
     // Find Twitch's emote picker button directly
-    const emoteBtn = document.querySelector('[data-a-target="emote-picker-button"]');
-    if (!emoteBtn) {
-      log(' Emote picker button not found yet');
+    let anchor = document.querySelector('[data-a-target="emote-picker-button"]');
+    let insertAfter = true;
+
+    // Kick fallback — anchor near the chat input area
+    if (!anchor && window.location.hostname.includes('kick.com')) {
+      anchor = document.querySelector('.chat-footer') ||
+               document.querySelector('[class*="chat-input"]')?.parentElement ||
+               document.querySelector('#message-input')?.parentElement;
+      insertAfter = false; // append inside the container on Kick
+    }
+
+    if (!anchor) {
+      log(' Anchor element not found yet');
       return;
     }
 
     const btn = createButton();
 
-    // Insert our button right AFTER Twitch's emote button (keep both)
-    emoteBtn.parentElement.insertBefore(btn, emoteBtn.nextSibling);
+    if (insertAfter) {
+      // Twitch: insert right AFTER the emote button (keep both)
+      anchor.parentElement.insertBefore(btn, anchor.nextSibling);
+    } else {
+      // Kick: append inside the chat footer/input area
+      anchor.appendChild(btn);
+    }
 
     buttonInjected = true;
     log(' 🔥 Button added next to emote picker');

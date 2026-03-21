@@ -3551,6 +3551,20 @@
       .hs-native-hidden#channel-chatroom > *:not(#hs-mc-container) {
         display: none !important;
       }
+      /* Force Kick chatroom into a fixed side panel — Kick stacks chat below video
+         which collapses to ~0px. Override to fixed right panel like Twitch. */
+      .hs-native-hidden#channel-chatroom {
+        position: fixed !important;
+        right: 0 !important;
+        top: 0 !important;
+        bottom: 0 !important;
+        width: 340px !important;
+        height: 100vh !important;
+        z-index: 9999 !important;
+        display: flex !important;
+        flex-direction: column !important;
+        background: #000 !important;
+      }
 
       /* Prevent channel accent color bleed on offline/home pages */
       .channel-root--home {
@@ -3711,10 +3725,11 @@
     if (container && document.contains(container)) return container
     container = document.createElement('div')
     container.id = 'hs-mc-container'
-    // Insert directly into chat-shell (which has proper dimensions from Twitch)
-    // rather than deep in the tree where intermediate divs collapse to 0 height
-    const chatShell = document.querySelector('.chat-shell') || document.querySelector('[class*="chat-shell"]')
-    const parent = chatShell || chatRoom.parentElement
+    // On Kick: append directly to #channel-chatroom (must be direct child for CSS rules)
+    // On Twitch: insert into chat-shell (which has proper dimensions)
+    const parent = isKick
+      ? chatRoom
+      : (document.querySelector('.chat-shell') || document.querySelector('[class*="chat-shell"]') || chatRoom.parentElement)
     parent.appendChild(container)
     log('Created #hs-mc-container in', parent.tagName + '.' + [...parent.classList].join('.'))
     return container

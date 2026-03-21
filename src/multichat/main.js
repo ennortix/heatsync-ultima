@@ -622,6 +622,63 @@
     }
   }
 
+  /**
+   * Apply chat width to Kick's fixed #channel-chatroom panel
+   */
+  function applyKickChatWidth() {
+    const chatroom = document.getElementById('channel-chatroom')
+    if (!chatroom) return
+    chatroom.style.setProperty('width', chatWidth + 'px', 'important')
+  }
+
+  /**
+   * Setup resize handle for Kick — left edge of fixed #channel-chatroom panel
+   */
+  function setupKickResizeHandle() {
+    const chatroom = document.getElementById('channel-chatroom')
+    if (!chatroom || document.getElementById('hs-kick-resize-handle')) return
+
+    const handle = document.createElement('div')
+    handle.id = 'hs-kick-resize-handle'
+    chatroom.insertBefore(handle, chatroom.firstChild)
+
+    let isResizing = false
+    let startX = 0
+    let startWidth = 0
+
+    handle.addEventListener('mousedown', (e) => {
+      isResizing = true
+      startX = e.clientX
+      startWidth = chatWidth
+      document.body.style.cursor = 'col-resize'
+      document.body.style.userSelect = 'none'
+      e.preventDefault()
+    })
+
+    cleanup.addEventListener(document, 'mousemove', (e) => {
+      if (!isResizing) return
+      // Dragging left = bigger chat, dragging right = smaller chat
+      const delta = startX - e.clientX
+      const newWidth = Math.min(MAX_CHAT_WIDTH, Math.max(MIN_CHAT_WIDTH, startWidth + delta))
+      chatWidth = newWidth
+      applyKickChatWidth()
+    })
+
+    cleanup.addEventListener(document, 'mouseup', () => {
+      if (isResizing) {
+        isResizing = false
+        document.body.style.cursor = ''
+        document.body.style.userSelect = ''
+        saveChatWidth()
+      }
+    })
+
+    // Load saved width
+    loadChatWidth().then(() => {
+      applyKickChatWidth()
+    })
+  }
+
   // Emote size functions
   function setEmoteSize(size) {
     if ([1, 2, 4].includes(size)) {
@@ -3566,6 +3623,23 @@
         background: #000 !important;
       }
 
+      /* Kick resize handle — left edge of fixed chat panel */
+      #hs-kick-resize-handle {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 4px;
+        height: 100%;
+        cursor: col-resize;
+        z-index: 10000;
+        background: transparent;
+        transition: none;
+      }
+      #hs-kick-resize-handle:hover,
+      #hs-kick-resize-handle:active {
+        background: #ff8700;
+      }
+
       /* Prevent channel accent color bleed on offline/home pages */
       .channel-root--home {
         background-color: #000 !important;
@@ -3866,8 +3940,10 @@
       log('Auto-showed overlay on load');
     }
 
-    // Ensure resize handle exists on right column edge (Twitch only)
-    if (!isKick) {
+    // Ensure resize handle exists on left edge of chat panel
+    if (isKick) {
+      setupKickResizeHandle()
+    } else {
       setupResizeHandle()
     }
 

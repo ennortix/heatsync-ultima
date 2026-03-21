@@ -1,0 +1,33 @@
+// Bootstrap - lifecycle controller, cleanup utilities, debug log
+
+const MC_DEBUG = false
+function log(...args) {
+  if (MC_DEBUG) console.log(LOG_PREFIX, ...args)
+}
+
+// Lifecycle controller — abort() tears down ALL listeners, timers, observers
+const lifecycle = new AbortController()
+const mcSignal = lifecycle.signal
+const _timers = { intervals: [], timeouts: [], observers: [] }
+mcSignal.addEventListener('abort', () => {
+  _timers.intervals.forEach(clearInterval)
+  _timers.timeouts.forEach(clearTimeout)
+  _timers.observers.forEach(o => o.disconnect())
+  if (irc) { irc.destroy(); }
+  if (kickChat) { kickChat.destroy(); }
+  delete window._hsMcEmoteContextHandler
+  delete window._hsMcEmoteClickHandler
+  delete window._hsEmoteTooltipSetup
+  delete window._hsMcSettingsListener
+})
+window.addEventListener('pagehide', () => lifecycle.abort())
+
+const cleanup = {
+  setInterval(fn, ms) { const id = setInterval(fn, ms); _timers.intervals.push(id); return id },
+  setTimeout(fn, ms) { const id = setTimeout(fn, ms); _timers.timeouts.push(id); return id },
+  addEventListener(target, event, handler) {
+    target.addEventListener(event, handler, { signal: mcSignal })
+  },
+  trackObserver(obs) { _timers.observers.push(obs); return obs },
+  raf(fn) { return requestAnimationFrame(fn) },
+}

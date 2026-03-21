@@ -1,17 +1,6983 @@
+(function() {
+'use strict';
+
+// === HEATSYNC LIB (auto-bundled) ===
+
+// --- config.js ---
 /**
- * Heatsync MultiChat - FFZ-style React-aware implementation
- *
- * KEY PRINCIPLE: Work WITHIN React, not around it.
- * - Never manipulate DOM after React renders
- * - Hook into React components and modify render output
- * - Use forceUpdate() to trigger re-renders
- * - Inject UI as React children, not DOM insertions
+ * Centralized configuration and constants for heatsync extension.
+ * No more magic numbers scattered throughout the codebase.
  */
 
-(function() {
-  'use strict';
+// ============================================
+// API ENDPOINTS
+// ============================================
 
-  const STORAGE_KEY = 'heatsync_multichat';
+const API_URL = 'https://heatsync.org'
+const WS_URL = 'wss://heatsync.org'
+
+// ============================================
+// TIMING CONSTANTS
+// ============================================
+
+const TIMING = {
+  // Polling intervals
+  EMOTE_SCAN_INTERVAL: 10000,     // Scan for new emotes
+  HEALTH_CHECK_INTERVAL: 30000,   // Background health check
+  RETRY_INTERVAL: 2000,           // Retry failed operations
+  URL_CHECK_INTERVAL: 1000,       // SPA navigation detection
+
+  // Debounce/throttle
+  SCROLL_THROTTLE: 16,            // ~60fps for scroll handlers
+  RESIZE_DEBOUNCE: 100,           // Resize handler debounce
+  INPUT_DEBOUNCE: 150,            // Input handler debounce
+  HOVER_DEBOUNCE: 100,            // Hover state debounce
+
+  // Timeouts
+  API_TIMEOUT: 10000,             // API request timeout
+  ELEMENT_WAIT_TIMEOUT: 5000,     // Wait for DOM element
+  RECONNECT_DELAY: 5000,          // WebSocket reconnect delay
+  INIT_DELAY: 500,                // Initial setup delay
+
+  // Animation
+  TOOLTIP_DELAY: 200,             // Tooltip show delay
+  FADE_DURATION: 150,             // Fade in/out duration
+}
+
+// ============================================
+// LIMITS
+// ============================================
+
+const LIMITS = {
+  // Cache sizes
+  MAX_CACHED_USERS: 200,          // Username autocomplete cache
+  MAX_CACHED_EMOTES: 1000,        // Emote cache
+  MAX_PROFILE_CACHE: 100,         // Profile preview cache
+
+  // Message limits
+  MAX_MESSAGE_LENGTH: 500,        // Chat message max length
+  MAX_MESSAGES_BUFFER: 500,       // Circular buffer size
+
+  // Performance
+  MAX_DOM_BATCH: 50,              // Max DOM mutations per frame
+  MAX_FIBER_DEPTH: 50,            // React fiber traversal depth
+}
+
+// ============================================
+// DOM SELECTORS
+// ============================================
+
+const SELECTORS = {
+  // Twitch chat
+  TWITCH_CHAT_CONTAINER: [
+    '[class*="chat-room__content"]',
+    '[data-test-selector="chat-room-component"]',
+    '[class*="stream-chat"]',
+    '.chat-shell',
+    '.chat-room'
+  ].join(', '),
+
+  TWITCH_CHAT_INPUT: '[data-a-target="chat-input"]',
+  TWITCH_CHAT_MESSAGES: '[class*="chat-scrollable-area__message-container"]',
+  TWITCH_USERNAME: '.chat-author__display-name',
+
+  // Kick chat
+  KICK_CHAT_CONTAINER: '#chatroom',
+  KICK_CHAT_INPUT: '[data-testid="chat-input"]',
+  KICK_CHAT_MESSAGES: '#chatroom-messages',
+
+  // Profile elements
+  PROFILE_AVATAR: '[class*="avatar"]',
+  PROFILE_CARD: '[class*="viewer-card"]',
+}
+
+// ============================================
+// CSS CLASSES
+// ============================================
+
+const CLASSES = {
+  // Injected elements
+  HEATSYNC_BUTTON: 'heatsync-emote-button',
+  HEATSYNC_PANEL: 'heatsync-emote-panel',
+  HEATSYNC_TOOLTIP: 'heatsync-tooltip',
+  HEATSYNC_EMOTE: 'heatsync-emote',
+  HEATSYNC_BADGE: 'heatsync-badge',
+
+  // States
+  ACTIVE: 'heatsync-active',
+  LOADING: 'heatsync-loading',
+  ERROR: 'heatsync-error',
+  HIDDEN: 'heatsync-hidden',
+}
+
+// ============================================
+// Z-INDEX LAYERS
+// ============================================
+
+const Z_INDEX = {
+  TOOLTIP: 10000,
+  POPUP: 10001,
+  PANEL: 10002,
+  MODAL: 10003,
+  OVERLAY: 10004,
+}
+
+// ============================================
+// EMOTE PROVIDERS
+// ============================================
+
+const EMOTE_PROVIDERS = {
+  HEATSYNC: 'heatsync',
+  BTTV: 'bttv',
+  FFZ: 'ffz',
+  SEVENTV: '7tv',
+  TWITCH: 'twitch',
+  KICK: 'kick',
+}
+
+// Export all as default config object
+const config = {
+  API_URL,
+  WS_URL,
+  TIMING,
+  LIMITS,
+  SELECTORS,
+  CLASSES,
+  Z_INDEX,
+  EMOTE_PROVIDERS,
+}
+
+// Global export
+if (typeof window !== 'undefined') {
+  window.heatsyncConfig = config
+}
+
+
+
+// --- utils.js ---
+/**
+ * Shared utilities for heatsync extension.
+ * XSS prevention, DOM helpers, debouncing, etc.
+ */
+
+// ============================================
+// XSS PREVENTION (CRITICAL)
+// ============================================
+
+/**
+ * Escape HTML entities to prevent XSS
+ * @param {string} str - Untrusted string
+ * @returns {string} Escaped string safe for innerHTML
+ */
+function escapeHtml(str) {
+  if (str == null) return ''
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#x27;')
+}
+
+/**
+ * Escape string for use in HTML attribute
+ * @param {string} str
+ * @returns {string}
+ */
+function escapeAttr(str) {
+  if (str == null) return ''
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#x27;')
+}
+
+/**
+ * Sanitize URL - only allow http/https/data URIs
+ * @param {string} url
+ * @returns {string} Safe URL or empty string
+ */
+function sanitizeUrl(url) {
+  if (!url) return ''
+  const str = String(url).trim()
+  const lower = str.toLowerCase()
+  // Allow http, https, safe data image types, and relative URLs
+  if (lower.startsWith('http://') ||
+      lower.startsWith('https://') ||
+      lower.startsWith('/') ||
+      lower.startsWith('./')) {
+    return str
+  }
+  // Only allow safe raster image data URIs (no SVG — can execute JS)
+  if (lower.startsWith('data:image/') &&
+      !lower.startsWith('data:image/svg')) {
+    return str
+  }
+  return ''
+}
+
+/**
+ * Create element with safe text content (no innerHTML)
+ * @param {string} tag
+ * @param {string} text
+ * @param {string} [className]
+ * @returns {HTMLElement}
+ */
+function createElement(tag, text, className) {
+  const el = document.createElement(tag)
+  if (text) el.textContent = text
+  if (className) el.className = className
+  return el
+}
+
+/**
+ * Set innerHTML safely with escaped content
+ * @param {HTMLElement} el
+ * @param {string} html - Already sanitized HTML (use escapeHtml for user content)
+ */
+function setInnerHTML(el, html) {
+  el.innerHTML = html
+}
+
+// ============================================
+// DEBOUNCE / THROTTLE
+// ============================================
+
+/**
+ * Debounce function - delays execution until no calls for `wait` ms
+ * @param {Function} fn
+ * @param {number} wait - Milliseconds
+ * @returns {Function}
+ */
+function debounce(fn, wait) {
+  let timeoutId = null
+  return function(...args) {
+    clearTimeout(timeoutId)
+    timeoutId = setTimeout(() => fn.apply(this, args), wait)
+  }
+}
+
+/**
+ * Throttle function - executes at most once per `wait` ms
+ * @param {Function} fn
+ * @param {number} wait - Milliseconds
+ * @returns {Function}
+ */
+function throttle(fn, wait) {
+  let lastCall = 0
+  let timeoutId = null
+  return function(...args) {
+    const now = Date.now()
+    const remaining = wait - (now - lastCall)
+
+    if (remaining <= 0) {
+      clearTimeout(timeoutId)
+      lastCall = now
+      fn.apply(this, args)
+    } else if (!timeoutId) {
+      timeoutId = setTimeout(() => {
+        lastCall = Date.now()
+        timeoutId = null
+        fn.apply(this, args)
+      }, remaining)
+    }
+  }
+}
+
+/**
+ * Throttle using requestAnimationFrame (for visual updates)
+ * @param {Function} fn
+ * @returns {Function}
+ */
+function rafThrottle(fn) {
+  let rafId = null
+  return function(...args) {
+    if (rafId) return
+    rafId = requestAnimationFrame(() => {
+      rafId = null
+      fn.apply(this, args)
+    })
+  }
+}
+
+// ============================================
+// DOM HELPERS
+// ============================================
+
+/**
+ * Query selector with caching
+ * @param {string} selector
+ * @param {Element} [parent=document]
+ * @returns {Element|null}
+ */
+function $(selector, parent = document) {
+  return parent.querySelector(selector)
+}
+
+/**
+ * Query selector all
+ * @param {string} selector
+ * @param {Element} [parent=document]
+ * @returns {NodeListOf<Element>}
+ */
+function $$(selector, parent = document) {
+  return parent.querySelectorAll(selector)
+}
+
+/**
+ * Wait for element to appear in DOM
+ * @param {string} selector
+ * @param {number} [timeout=5000]
+ * @param {Element} [parent=document]
+ * @returns {Promise<Element>}
+ */
+function waitForElement(selector, timeout = 5000, parent = document) {
+  return new Promise((resolve, reject) => {
+    const el = parent.querySelector(selector)
+    if (el) {
+      resolve(el)
+      return
+    }
+
+    const observer = new MutationObserver((mutations, obs) => {
+      const el = parent.querySelector(selector)
+      if (el) {
+        obs.disconnect()
+        resolve(el)
+      }
+    })
+
+    const observeTarget = parent === document ? (document.body || document.documentElement) : parent
+    observer.observe(observeTarget, {
+      childList: true,
+      subtree: true
+    })
+
+    setTimeout(() => {
+      observer.disconnect()
+      reject(new Error(`Timeout waiting for ${selector}`))
+    }, timeout)
+  })
+}
+
+/**
+ * Check if element is in viewport
+ * @param {Element} el
+ * @returns {boolean}
+ */
+function isInViewport(el) {
+  const rect = el.getBoundingClientRect()
+  return (
+    rect.top < window.innerHeight &&
+    rect.bottom > 0 &&
+    rect.left < window.innerWidth &&
+    rect.right > 0
+  )
+}
+
+// ============================================
+// REACT FIBER HELPERS (FFZ-style)
+// ============================================
+
+/**
+ * Get React fiber from DOM element
+ * @param {Element} el
+ * @returns {object|null}
+ */
+function getFiber(el) {
+  if (!el) return null
+  const key = Object.keys(el).find(k =>
+    k.startsWith('__reactFiber$') || k.startsWith('__reactInternalInstance$')
+  )
+  return key ? el[key] : null
+}
+
+/**
+ * Find React component by walking fiber tree
+ * @param {Element} startEl
+ * @param {Function} predicate - (instance, fiber) => boolean
+ * @param {number} [maxDepth=50]
+ * @returns {{ instance: object, fiber: object } | null}
+ */
+function findComponent(startEl, predicate, maxDepth = 50) {
+  let fiber = getFiber(startEl)
+  let depth = 0
+  while (fiber && depth < maxDepth) {
+    try {
+      const inst = fiber.stateNode
+      if (inst && predicate(inst, fiber)) {
+        return { instance: inst, fiber }
+      }
+    } catch (e) {}
+    fiber = fiber.return
+    depth++
+  }
+  return null
+}
+
+/**
+ * Get React props from element
+ * @param {Element} el
+ * @returns {object|null}
+ */
+function getReactProps(el) {
+  if (!el) return null
+  const key = Object.keys(el).find(k => k.startsWith('__reactProps$'))
+  return key ? el[key] : null
+}
+
+// ============================================
+// LOGGING
+// ============================================
+
+const DEBUG = typeof window !== 'undefined' &&
+  (window.HEATSYNC_DEBUG || localStorage.getItem('heatsync_debug') === 'true')
+
+/**
+ * Debug log (only when HEATSYNC_DEBUG is true)
+ */
+function log(...args) {
+  if (DEBUG) {
+    console.log('[heatsync]', ...args)
+  }
+}
+
+/**
+ * Warning log (always shown)
+ */
+function warn(...args) {
+  console.warn('[heatsync]', ...args)
+}
+
+/**
+ * Error log (always shown)
+ */
+function error(...args) {
+  console.error('[heatsync]', ...args)
+}
+
+// ============================================
+// MISC
+// ============================================
+
+/**
+ * Sleep for ms
+ * @param {number} ms
+ * @returns {Promise<void>}
+ */
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms))
+}
+
+/**
+ * Generate unique ID
+ * @param {string} [prefix='hs']
+ * @returns {string}
+ */
+function uid(prefix = 'hs') {
+  return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`
+}
+
+/**
+ * Parse JSON safely
+ * @param {string} str
+ * @param {*} fallback
+ * @returns {*}
+ */
+function parseJson(str, fallback = null) {
+  try {
+    return JSON.parse(str)
+  } catch (e) {
+    return fallback
+  }
+}
+
+// ============================================
+// TRUSTED ORIGINS
+// ============================================
+
+const TRUSTED_ORIGINS = [
+  'https://www.twitch.tv',
+  'https://twitch.tv',
+  'https://kick.com',
+  'https://www.kick.com',
+  'https://heatsync.org',
+  'https://www.heatsync.org'
+]
+
+/**
+ * Check if origin is trusted
+ * @param {string} origin
+ * @returns {boolean}
+ */
+function isTrustedOrigin(origin) {
+  return TRUSTED_ORIGINS.includes(origin) || origin === window.location.origin
+}
+
+// Export
+const utils = {
+  // XSS
+  escapeHtml,
+  escapeAttr,
+  sanitizeUrl,
+  createElement,
+  setInnerHTML,
+
+  // Timing
+  debounce,
+  throttle,
+  rafThrottle,
+  sleep,
+
+  // DOM
+  $,
+  $$,
+  waitForElement,
+  isInViewport,
+
+  // React
+  getFiber,
+  findComponent,
+  getReactProps,
+
+  // Logging
+  log,
+  warn,
+  error,
+  DEBUG,
+
+  // Misc
+  uid,
+  parseJson,
+  isTrustedOrigin,
+  TRUSTED_ORIGINS
+}
+
+// Global export
+if (typeof window !== 'undefined') {
+  window.heatsyncUtils = utils
+}
+
+
+
+// --- cleanup.js ---
+/**
+ * Centralized cleanup system for intervals, timeouts, observers, and event listeners.
+ * Prevents memory leaks during 8hr+ streaming sessions.
+ *
+ * Usage:
+ *   import { cleanup } from './lib/cleanup.js'
+ *
+ *   // Track interval
+ *   cleanup.setInterval(() => { ... }, 1000, 'emote-scanner')
+ *
+ *   // Track observer
+ *   cleanup.observe(observer, element, options, 'chat-watcher')
+ *
+ *   // Track event listener
+ *   cleanup.addEventListener(element, 'click', handler, 'panel-click')
+ *
+ *   // Clear specific
+ *   cleanup.clear('emote-scanner')
+ *
+ *   // Clear all (called automatically on unload)
+ *   cleanup.clearAll()
+ */
+
+const registry = {
+  intervals: new Map(),    // name -> intervalId
+  timeouts: new Map(),     // name -> timeoutId
+  observers: new Map(),    // name -> MutationObserver
+  listeners: new Map(),    // name -> { element, event, handler, options }
+  animationFrames: new Map() // name -> rafId
+}
+
+// Stats for debugging
+let stats = {
+  intervalsCreated: 0,
+  intervalsCleaned: 0,
+  observersCreated: 0,
+  observersCleaned: 0,
+  listenersCreated: 0,
+  listenersCleaned: 0
+}
+
+/**
+ * Create a tracked setInterval
+ * @param {Function} callback
+ * @param {number} delay
+ * @param {string} name - Unique identifier for this interval
+ * @returns {number} intervalId
+ */
+function trackedSetInterval(callback, delay, name) {
+  // Clear existing if same name
+  if (registry.intervals.has(name)) {
+    clearInterval(registry.intervals.get(name))
+    stats.intervalsCleaned++
+  }
+
+  const id = setInterval(callback, delay)
+  registry.intervals.set(name, id)
+  stats.intervalsCreated++
+  return id
+}
+
+/**
+ * Create a tracked setTimeout
+ * @param {Function} callback
+ * @param {number} delay
+ * @param {string} name - Unique identifier for this timeout
+ * @returns {number} timeoutId
+ */
+function trackedSetTimeout(callback, delay, name) {
+  // Clear existing if same name
+  if (registry.timeouts.has(name)) {
+    clearTimeout(registry.timeouts.get(name))
+  }
+
+  const id = setTimeout(() => {
+    registry.timeouts.delete(name)
+    callback()
+  }, delay)
+  registry.timeouts.set(name, id)
+  return id
+}
+
+/**
+ * Track and start a MutationObserver
+ * @param {MutationObserver} observer
+ * @param {Element} target
+ * @param {MutationObserverInit} options
+ * @param {string} name - Unique identifier
+ * @returns {MutationObserver}
+ */
+function trackedObserve(observer, target, options, name) {
+  // Disconnect existing if same name
+  if (registry.observers.has(name)) {
+    try {
+      registry.observers.get(name).disconnect()
+      stats.observersCleaned++
+    } catch (e) {}
+  }
+
+  observer.observe(target, options)
+  registry.observers.set(name, observer)
+  stats.observersCreated++
+  return observer
+}
+
+/**
+ * Create a tracked MutationObserver (convenience wrapper)
+ * @param {MutationCallback} callback
+ * @param {Element} target
+ * @param {MutationObserverInit} options
+ * @param {string} name
+ * @returns {MutationObserver}
+ */
+function createTrackedObserver(callback, target, options, name) {
+  const observer = new MutationObserver(callback)
+  return trackedObserve(observer, target, options, name)
+}
+
+/**
+ * Track an existing observer (call .observe() yourself)
+ * Drop-in replacement for old trackObserver() pattern
+ * @param {MutationObserver} observer
+ * @param {string} name
+ * @returns {MutationObserver}
+ */
+function trackObserver(observer, name) {
+  // Disconnect existing if same name
+  if (registry.observers.has(name)) {
+    try {
+      registry.observers.get(name).disconnect()
+      stats.observersCleaned++
+    } catch (e) {}
+  }
+  registry.observers.set(name, observer)
+  stats.observersCreated++
+  return observer
+}
+
+/**
+ * Track an event listener
+ * @param {EventTarget} element
+ * @param {string} event
+ * @param {Function} handler
+ * @param {string} name - Unique identifier
+ * @param {AddEventListenerOptions} [options]
+ * @returns {Function} handler (for chaining)
+ */
+function trackedAddEventListener(element, event, handler, name, options) {
+  // Remove existing if same name
+  if (registry.listeners.has(name)) {
+    const existing = registry.listeners.get(name)
+    try {
+      existing.element.removeEventListener(existing.event, existing.handler, existing.options)
+      stats.listenersCleaned++
+    } catch (e) {}
+  }
+
+  element.addEventListener(event, handler, options)
+  registry.listeners.set(name, { element, event, handler, options })
+  stats.listenersCreated++
+  return handler
+}
+
+/**
+ * Track a requestAnimationFrame
+ * @param {Function} callback
+ * @param {string} name
+ * @returns {number} rafId
+ */
+function trackedRAF(callback, name) {
+  if (registry.animationFrames.has(name)) {
+    cancelAnimationFrame(registry.animationFrames.get(name))
+  }
+
+  const id = requestAnimationFrame(() => {
+    registry.animationFrames.delete(name)
+    callback()
+  })
+  registry.animationFrames.set(name, id)
+  return id
+}
+
+/**
+ * Clear a specific tracked item by name
+ * @param {string} name
+ */
+function clear(name) {
+  if (registry.intervals.has(name)) {
+    clearInterval(registry.intervals.get(name))
+    registry.intervals.delete(name)
+    stats.intervalsCleaned++
+  }
+  if (registry.timeouts.has(name)) {
+    clearTimeout(registry.timeouts.get(name))
+    registry.timeouts.delete(name)
+  }
+  if (registry.observers.has(name)) {
+    try {
+      registry.observers.get(name).disconnect()
+    } catch (e) {}
+    registry.observers.delete(name)
+    stats.observersCleaned++
+  }
+  if (registry.listeners.has(name)) {
+    const l = registry.listeners.get(name)
+    try {
+      l.element.removeEventListener(l.event, l.handler, l.options)
+    } catch (e) {}
+    registry.listeners.delete(name)
+    stats.listenersCleaned++
+  }
+  if (registry.animationFrames.has(name)) {
+    cancelAnimationFrame(registry.animationFrames.get(name))
+    registry.animationFrames.delete(name)
+  }
+}
+
+/**
+ * Clear all tracked items (called on page unload)
+ */
+function clearAll() {
+  // Clear intervals
+  for (const [name, id] of registry.intervals) {
+    clearInterval(id)
+    stats.intervalsCleaned++
+  }
+  registry.intervals.clear()
+
+  // Clear timeouts
+  for (const [name, id] of registry.timeouts) {
+    clearTimeout(id)
+  }
+  registry.timeouts.clear()
+
+  // Disconnect observers
+  for (const [name, obs] of registry.observers) {
+    try { obs.disconnect() } catch (e) {}
+    stats.observersCleaned++
+  }
+  registry.observers.clear()
+
+  // Remove listeners
+  for (const [name, l] of registry.listeners) {
+    try {
+      l.element.removeEventListener(l.event, l.handler, l.options)
+    } catch (e) {}
+    stats.listenersCleaned++
+  }
+  registry.listeners.clear()
+
+  // Cancel animation frames
+  for (const [name, id] of registry.animationFrames) {
+    cancelAnimationFrame(id)
+  }
+  registry.animationFrames.clear()
+}
+
+/**
+ * Get debug stats
+ */
+function getStats() {
+  return {
+    ...stats,
+    active: {
+      intervals: registry.intervals.size,
+      timeouts: registry.timeouts.size,
+      observers: registry.observers.size,
+      listeners: registry.listeners.size,
+      animationFrames: registry.animationFrames.size
+    }
+  }
+}
+
+/**
+ * List all active tracked items (for debugging)
+ */
+function listActive() {
+  return {
+    intervals: [...registry.intervals.keys()],
+    timeouts: [...registry.timeouts.keys()],
+    observers: [...registry.observers.keys()],
+    listeners: [...registry.listeners.keys()],
+    animationFrames: [...registry.animationFrames.keys()]
+  }
+}
+
+// Auto-cleanup on page unload
+if (typeof window !== 'undefined') {
+  window.addEventListener('pagehide', clearAll)
+
+  // Also cleanup on SPA navigation (Twitch/Kick are SPAs)
+  // Use a lightweight title observer instead of subtree:true on body
+  let lastUrl = location.href
+  const urlObserver = new MutationObserver(() => {
+    if (location.href !== lastUrl) {
+      lastUrl = location.href
+      // Don't clear everything on SPA nav, just notify
+      // Individual modules should handle their own cleanup
+      window.dispatchEvent(new CustomEvent('heatsync:navigation'))
+    }
+  })
+  // Observe <head> title changes (lightweight) + body childList (for pushState nav)
+  if (document.head) urlObserver.observe(document.head, { childList: true, subtree: true })
+  else urlObserver.observe(document.body, { childList: true, subtree: false })
+  // Disconnect on pagehide alongside clearAll
+  window.addEventListener('pagehide', () => urlObserver.disconnect())
+}
+
+// Export as both module and global
+const cleanup = {
+  setInterval: trackedSetInterval,
+  setTimeout: trackedSetTimeout,
+  observe: trackedObserve,
+  createObserver: createTrackedObserver,
+  trackObserver: trackObserver,
+  addEventListener: trackedAddEventListener,
+  raf: trackedRAF,
+  clear,
+  clearAll,
+  getStats,
+  listActive
+}
+
+// Global export for non-module scripts
+if (typeof window !== 'undefined') {
+  window.heatsyncCleanup = cleanup
+
+  // Console debug helper
+  window.hsDebug = () => {
+    const s = cleanup.getStats()
+    const a = cleanup.listActive()
+    console.log('%c[heatsync] Cleanup Stats', 'color: #9147ff; font-weight: bold')
+    console.log(`  Created: ${s.intervalsCreated} intervals, ${s.observersCreated} observers, ${s.listenersCreated} listeners`)
+    console.log(`  Cleaned: ${s.intervalsCleaned} intervals, ${s.observersCleaned} observers, ${s.listenersCleaned} listeners`)
+    console.log(`  Active: ${s.active.intervals} intervals, ${s.active.observers} observers, ${s.active.listeners} listeners`)
+    console.table(a)
+    return s
+  }
+}
+
+
+
+// --- browser-api.js ---
+/**
+ * Unified browser API wrapper for Chrome/Firefox compatibility.
+ * Handles chrome.* vs browser.* API differences.
+ *
+ * Usage:
+ *   import { api } from './lib/browser-api.js'
+ *
+ *   // Storage
+ *   await api.storage.local.get('key')
+ *   await api.storage.local.set({ key: value })
+ *
+ *   // Runtime messaging
+ *   api.runtime.sendMessage({ type: 'foo' })
+ *   api.runtime.onMessage.addListener(handler)
+ */
+
+// Detect browser environment
+const isFirefox = typeof browser !== 'undefined'
+const isChrome = typeof chrome !== 'undefined' && !isFirefox
+
+// Get the raw API object
+const rawApi = isFirefox ? browser : (typeof chrome !== 'undefined' ? chrome : null)
+
+/**
+ * Promisify Chrome callback-based APIs
+ * Firefox's browser.* APIs are already Promise-based
+ */
+function promisify(fn) {
+  if (isFirefox) return fn // Already returns promises
+
+  return function(...args) {
+    return new Promise((resolve, reject) => {
+      fn(...args, (result) => {
+        if (rawApi?.runtime?.lastError) {
+          reject(new Error(rawApi.runtime.lastError.message))
+        } else {
+          resolve(result)
+        }
+      })
+    })
+  }
+}
+
+/**
+ * Storage API wrapper
+ */
+const storage = {
+  local: {
+    get: async (keys) => {
+      if (!rawApi?.storage?.local) {
+        console.warn('[heatsync] Storage API not available')
+        return {}
+      }
+      if (isFirefox) {
+        return rawApi.storage.local.get(keys)
+      }
+      return promisify(rawApi.storage.local.get.bind(rawApi.storage.local))(keys)
+    },
+    set: async (items) => {
+      if (!rawApi?.storage?.local) {
+        console.warn('[heatsync] Storage API not available')
+        return
+      }
+      if (isFirefox) {
+        return rawApi.storage.local.set(items)
+      }
+      return promisify(rawApi.storage.local.set.bind(rawApi.storage.local))(items)
+    },
+    remove: async (keys) => {
+      if (!rawApi?.storage?.local) return
+      if (isFirefox) {
+        return rawApi.storage.local.remove(keys)
+      }
+      return promisify(rawApi.storage.local.remove.bind(rawApi.storage.local))(keys)
+    },
+    clear: async () => {
+      if (!rawApi?.storage?.local) return
+      if (isFirefox) {
+        return rawApi.storage.local.clear()
+      }
+      return promisify(rawApi.storage.local.clear.bind(rawApi.storage.local))()
+    }
+  },
+  sync: {
+    get: async (keys) => {
+      if (!rawApi?.storage?.sync) return {}
+      if (isFirefox) {
+        return rawApi.storage.sync.get(keys)
+      }
+      return promisify(rawApi.storage.sync.get.bind(rawApi.storage.sync))(keys)
+    },
+    set: async (items) => {
+      if (!rawApi?.storage?.sync) return
+      if (isFirefox) {
+        return rawApi.storage.sync.set(items)
+      }
+      return promisify(rawApi.storage.sync.set.bind(rawApi.storage.sync))(items)
+    }
+  },
+  onChanged: {
+    addListener: (callback) => {
+      if (rawApi?.storage?.onChanged) {
+        rawApi.storage.onChanged.addListener(callback)
+      }
+    },
+    removeListener: (callback) => {
+      if (rawApi?.storage?.onChanged) {
+        rawApi.storage.onChanged.removeListener(callback)
+      }
+    }
+  }
+}
+
+/**
+ * Runtime API wrapper
+ */
+const runtime = {
+  sendMessage: async (message) => {
+    if (!rawApi?.runtime?.sendMessage) {
+      console.warn('[heatsync] Runtime API not available')
+      return null
+    }
+    try {
+      if (isFirefox) {
+        return await rawApi.runtime.sendMessage(message)
+      }
+      return promisify(rawApi.runtime.sendMessage.bind(rawApi.runtime))(message)
+    } catch (err) {
+      // Extension context invalidated (common during updates)
+      if (err.message?.includes('Extension context invalidated')) {
+        console.warn('[heatsync] Extension context invalidated')
+        return null
+      }
+      throw err
+    }
+  },
+  onMessage: {
+    addListener: (callback) => {
+      if (rawApi?.runtime?.onMessage) {
+        rawApi.runtime.onMessage.addListener(callback)
+      }
+    },
+    removeListener: (callback) => {
+      if (rawApi?.runtime?.onMessage) {
+        rawApi.runtime.onMessage.removeListener(callback)
+      }
+    }
+  },
+  getURL: (path) => {
+    if (rawApi?.runtime?.getURL) {
+      return rawApi.runtime.getURL(path)
+    }
+    return path
+  },
+  get id() {
+    return rawApi?.runtime?.id || 'heatsync-extension'
+  },
+  get lastError() {
+    return rawApi?.runtime?.lastError
+  }
+}
+
+/**
+ * Tabs API wrapper (for background scripts)
+ */
+const tabs = {
+  query: async (queryInfo) => {
+    if (!rawApi?.tabs?.query) return []
+    if (isFirefox) {
+      return rawApi.tabs.query(queryInfo)
+    }
+    return promisify(rawApi.tabs.query.bind(rawApi.tabs))(queryInfo)
+  },
+  sendMessage: async (tabId, message) => {
+    if (!rawApi?.tabs?.sendMessage) return null
+    try {
+      if (isFirefox) {
+        return await rawApi.tabs.sendMessage(tabId, message)
+      }
+      return promisify(rawApi.tabs.sendMessage.bind(rawApi.tabs))(tabId, message)
+    } catch (err) {
+      // Tab may have closed
+      return null
+    }
+  },
+  create: async (createProperties) => {
+    if (!rawApi?.tabs?.create) return null
+    if (isFirefox) {
+      return rawApi.tabs.create(createProperties)
+    }
+    return promisify(rawApi.tabs.create.bind(rawApi.tabs))(createProperties)
+  }
+}
+
+/**
+ * Check if extension context is valid
+ */
+function isContextValid() {
+  try {
+    return !!rawApi?.runtime?.id
+  } catch (e) {
+    return false
+  }
+}
+
+/**
+ * Get platform info
+ */
+const platform = {
+  isFirefox,
+  isChrome,
+  manifestVersion: isFirefox ? 2 : 3,
+  name: isFirefox ? 'firefox' : 'chrome'
+}
+
+// Export unified API
+const api = {
+  storage,
+  runtime,
+  tabs,
+  platform,
+  isContextValid,
+  raw: rawApi
+}
+
+// Global export for non-module scripts
+if (typeof window !== 'undefined') {
+  window.heatsyncApi = api
+}
+
+
+// === END HEATSYNC LIB ===
+
+
+{
+// === MULTICHAT MODULES (auto-bundled) ===
+
+// --- multichat/bootstrap.js ---
+// Bootstrap - lifecycle controller, cleanup utilities, debug log
+
+const MC_DEBUG = false
+function log(...args) {
+  if (MC_DEBUG) console.log(LOG_PREFIX, ...args)
+}
+
+// Lifecycle controller — abort() tears down ALL listeners, timers, observers
+const lifecycle = new AbortController()
+const mcSignal = lifecycle.signal
+const _timers = { intervals: [], timeouts: [], observers: [] }
+mcSignal.addEventListener('abort', () => {
+  _timers.intervals.forEach(clearInterval)
+  _timers.timeouts.forEach(clearTimeout)
+  _timers.observers.forEach(o => o.disconnect())
+  if (irc) { irc.destroy(); }
+  if (kickChat) { kickChat.destroy(); }
+  delete window._hsMcEmoteContextHandler
+  delete window._hsMcEmoteClickHandler
+  delete window._hsEmoteTooltipSetup
+  delete window._hsMcSettingsListener
+})
+window.addEventListener('pagehide', () => lifecycle.abort())
+
+const cleanup = {
+  setInterval(fn, ms) { const id = setInterval(fn, ms); _timers.intervals.push(id); return id },
+  setTimeout(fn, ms) { const id = setTimeout(fn, ms); _timers.timeouts.push(id); return id },
+  addEventListener(target, event, handler) {
+    target.addEventListener(event, handler, { signal: mcSignal })
+  },
+  trackObserver(obs) { _timers.observers.push(obs); return obs },
+  raf(fn) { return requestAnimationFrame(fn) },
+}
+
+
+// --- multichat/irc.js ---
+// IRC - read-only IRC client, message parsing, CircularBuffer
+
+function parseTags(tagStr) {
+  const tags = {}
+  for (const part of tagStr.split(';')) {
+    const eq = part.indexOf('=')
+    if (eq === -1) { tags[part] = ''; continue }
+    tags[part.slice(0, eq)] = part.slice(eq + 1) || ''
+  }
+  return tags
+}
+
+function parseIrcLine(raw, channel) {
+  try {
+    const tagsMatch = raw.match(/^@([^ ]+)/)
+    if (!tagsMatch) return null
+    const tags = parseTags(tagsMatch[1])
+
+    // PRIVMSG: @tags :user!user@user.tmi.twitch.tv PRIVMSG #channel :message
+    const privmsg = raw.match(/PRIVMSG #([^ ]+) :(.+)$/)
+    if (privmsg) {
+      const displayName = tags['display-name'] || 'anonymous'
+      const msg = {
+        user: displayName,
+        text: privmsg[2],
+        color: sanitizeColor(tags.color || '#fff'),
+        badges: tags.badges || '',
+        channel: channel || privmsg[1].toLowerCase(),
+        time: parseInt(tags['tmi-sent-ts']) || Date.now(),
+        id: tags.id || '',
+        replyTo: tags['reply-parent-display-name'] ? {
+          user: decodeURIComponent(tags['reply-parent-display-name']),
+          text: tags['reply-parent-msg-body'] ? decodeURIComponent(tags['reply-parent-msg-body'].replace(/\\s/g, ' ')) : ''
+        } : null
+      }
+      if (tags['custom-reward-id']) msg.redeemed = true
+      if (tags['first-msg'] === '1') msg.isFirstMsg = true
+      return msg
+    }
+
+    // USERNOTICE: @tags :tmi.twitch.tv USERNOTICE #channel :optional message
+    const usernotice = raw.match(/USERNOTICE #([^ ]+)(?: :(.+))?$/)
+    if (usernotice) {
+      const displayName = tags['display-name'] || 'system'
+      return {
+        user: displayName,
+        text: usernotice[2] || '',
+        systemMsg: decodeURIComponent((tags['system-msg'] || '').replace(/\\s/g, ' ')),
+        color: sanitizeColor(tags.color || '#fff'),
+        badges: tags.badges || '',
+        channel: channel || usernotice[1].toLowerCase(),
+        time: parseInt(tags['tmi-sent-ts']) || Date.now(),
+        type: 'usernotice',
+        msgId: tags['msg-id'] || '',
+        id: tags.id || ''
+      }
+    }
+
+    // WHISPER: @tags :user!user@user.tmi.twitch.tv WHISPER yourname :message
+    const whisper = raw.match(/WHISPER \S+ :(.+)$/)
+    if (whisper) {
+      return {
+        type: 'whisper',
+        user: tags['display-name'] || 'anonymous',
+        userId: tags['user-id'],
+        text: whisper[1],
+        color: sanitizeColor(tags.color || '#fff'),
+        badges: tags.badges || '',
+        time: parseInt(tags['tmi-sent-ts']) || Date.now(),
+        id: tags['message-id'] || ''
+      }
+    }
+
+    return null
+  } catch (e) {
+    return null
+  }
+}
+
+// ============================================
+// CIRCULAR BUFFER FOR CHANNEL MESSAGES
+// ============================================
+class CircularBuffer {
+  constructor(cap = 500) {
+    this.buf = new Array(cap);
+    this.cap = cap;
+    this.head = 0;
+    this.size = 0;
+  }
+  push(item) {
+    this.buf[this.head] = item;
+    this.head = (this.head + 1) % this.cap;
+    if (this.size < this.cap) this.size++;
+  }
+  getAll() {
+    if (this.size === 0) return [];
+    if (this.size < this.cap) return this.buf.slice(0, this.size);
+    // Concat instead of spread — avoids 2 temporary arrays
+    return this.buf.slice(this.head).concat(this.buf.slice(0, this.head));
+  }
+  clear() {
+    this.buf = new Array(this.cap);
+    this.head = 0;
+    this.size = 0;
+  }
+}
+
+// ============================================
+// TWITCH IRC CLIENT (READ-ONLY)
+// ============================================
+class IRC {
+  constructor() {
+    this.ws = null;
+    this.channels = new Map();
+    this.handlers = new Map();
+    this.partial = '';
+    this.nick = `justinfan${Math.floor(Math.random() * 99999)}`;
+    this._destroyed = false;
+    this._lastData = 0;
+    this._heartbeatTimer = null;
+    this._reconnectTimer = null;
+    this._reconnectAttempts = 0;
+    // Reconnect when tab becomes visible after silence
+    document.addEventListener('visibilitychange', () => {
+      if (this._destroyed) return;
+      if (document.visibilityState === 'visible' && this.channels.size > 0) {
+        const silence = Date.now() - this._lastData;
+        if (silence > 60000 || !this.ws || this.ws.readyState !== WebSocket.OPEN) {
+          log('Tab visible after', Math.round(silence / 1000), 's silence, reconnecting');
+          this._forceReconnect();
+        }
+      }
+    });
+  }
+
+  connect() {
+    if (this._destroyed) return;
+    this._stopHeartbeat();
+    clearTimeout(this._reconnectTimer);
+    if (this.ws) {
+      try { this.ws.onclose = null; this.ws.close(); } catch {}
+      this.ws = null;
+    }
+    this.partial = '';
+
+    const connectTimeout = setTimeout(() => {
+      if (this.ws?.readyState !== WebSocket.OPEN) {
+        log('IRC connect timeout');
+        try { this.ws.close(); } catch {}
+      }
+    }, 10000);
+
+    this.ws = new WebSocket('wss://irc-ws.chat.twitch.tv:443');
+    this.ws.onopen = () => {
+      clearTimeout(connectTimeout);
+      log('IRC connected');
+      this._reconnectAttempts = 0;
+      this._lastData = Date.now();
+      this.ws.send(`NICK ${this.nick}\r\n`);
+      this.ws.send('CAP REQ :twitch.tv/tags\r\n');
+      for (const ch of this.channels.keys()) {
+        if (this.ws.readyState !== WebSocket.OPEN) return;
+        this.ws.send(`JOIN #${ch}\r\n`);
+      }
+      this._startHeartbeat();
+      fetchGlobalBadges();
+      const currentCh = getCurrentChannel();
+      if (currentCh) fetchChannelBadges(currentCh);
+    };
+    this.ws.onmessage = (e) => this.parse(e.data);
+    this.ws.onerror = () => { clearTimeout(connectTimeout); };
+    this.ws.onclose = () => {
+      clearTimeout(connectTimeout);
+      this._stopHeartbeat();
+      if (this._destroyed) return;
+      this._scheduleReconnect();
+    };
+  }
+
+  destroy() {
+    this._destroyed = true;
+    this._stopHeartbeat();
+    clearTimeout(this._reconnectTimer);
+    if (this.ws) {
+      this.ws.onclose = null;
+      try { this.ws.close(); } catch {}
+      this.ws = null;
+    }
+  }
+
+  _startHeartbeat() {
+    this._stopHeartbeat();
+    this._heartbeatTimer = setInterval(() => {
+      if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+        this._stopHeartbeat();
+        if (!this._destroyed) this._scheduleReconnect();
+        return;
+      }
+      const silence = Date.now() - this._lastData;
+      if (silence > 90000) {
+        log('Zombie detected —', Math.round(silence / 1000), 's silence');
+        this._forceReconnect();
+        return;
+      }
+      try { this.ws.send('PING :heatsync\r\n'); } catch {
+        this._forceReconnect();
+      }
+    }, 30000);
+  }
+
+  _stopHeartbeat() {
+    if (this._heartbeatTimer) {
+      clearInterval(this._heartbeatTimer);
+      this._heartbeatTimer = null;
+    }
+  }
+
+  _forceReconnect() {
+    this._stopHeartbeat();
+    if (this.ws) {
+      this.ws.onclose = null;
+      try { this.ws.close(); } catch {}
+      this.ws = null;
+    }
+    this._reconnectAttempts = 0;
+    if (!this._destroyed) this.connect();
+  }
+
+  _scheduleReconnect() {
+    if (this._destroyed) return;
+    clearTimeout(this._reconnectTimer);
+    const delay = Math.min(2000 * Math.pow(2, this._reconnectAttempts), 30000);
+    this._reconnectAttempts++;
+    log('Reconnecting in', delay, 'ms (attempt', this._reconnectAttempts, ')');
+    this._reconnectTimer = setTimeout(() => {
+      if (!this._destroyed) this.connect();
+    }, delay);
+  }
+
+  parse(data) {
+    this._lastData = Date.now();
+    this.partial += data;
+    const lines = this.partial.split('\r\n');
+    this.partial = lines.pop();
+    for (const line of lines) {
+      if (!line) continue;
+      if (line.startsWith('PING')) {
+        try { this.ws.send('PONG :tmi.twitch.tv\r\n'); } catch {}
+        continue;
+      }
+      if (line.startsWith(':tmi.twitch.tv PONG') || line.startsWith('PONG')) continue;
+      if (line.includes('RECONNECT')) {
+        log('Server requested RECONNECT');
+        this._forceReconnect();
+        return;
+      }
+      const msg = parseIrcLine(line);
+      if (msg && !msg.type) {
+        // PRIVMSG
+        const ch = msg.channel;
+        usernameCache.add(msg.user);
+        knownColors.set(msg.user.toLowerCase(), msg.color);
+        if (usernameCache.size > 500) {
+          usernameCache.delete(usernameCache.values().next().value);
+          const oldest = knownColors.keys().next().value;
+          knownColors.delete(oldest);
+        }
+        fetchChannelBadges(ch);
+
+        if (this.channels.has(ch)) {
+          this.channels.get(ch).push(msg);
+          this.emit('message', msg);
+        }
+      } else if (msg && msg.type === 'usernotice') {
+        const ch = msg.channel;
+        usernameCache.add(msg.user);
+        knownColors.set(msg.user.toLowerCase(), msg.color);
+        fetchChannelBadges(ch);
+        if (this.channels.has(ch)) {
+          this.channels.get(ch).push(msg);
+          this.emit('message', msg);
+        }
+      }
+    }
+  }
+
+  join(ch) {
+    ch = ch.toLowerCase();
+    if (this.channels.has(ch)) return;
+    this.channels.set(ch, new CircularBuffer(500));
+    if (this.ws?.readyState === WebSocket.OPEN) {
+      this.ws.send(`JOIN #${ch}\r\n`);
+    }
+    log('Joined', ch);
+    // Load message history
+    this.loadHistory(ch);
+  }
+
+  async loadHistory(ch) {
+    const buffer = this.channels.get(ch);
+    if (!buffer) return;
+
+    const cacheKey = `hs_chat_history_${ch}`;
+    const CACHE_TTL = 300000; // 5 min
+
+    // 1. Try localStorage cache for instant render
+    try {
+      const cached = localStorage.getItem(cacheKey);
+      if (cached) {
+        const { messages, timestamp } = JSON.parse(cached);
+        if (Date.now() - timestamp < CACHE_TTL && messages?.length > 0) {
+          log('Cache hit:', messages.length, 'msgs for', ch);
+          for (const msg of messages) {
+            usernameCache.add(msg.user);
+            knownColors.set(msg.user.toLowerCase(), msg.color);
+            buffer.push(msg);
+          }
+          if (currentTab === ch || (currentTab === 'live' && getLiveChannel() === ch)) {
+            renderMessages(currentTab);
+          }
+          // Refresh in background
+          this._fetchHistory(ch, buffer, cacheKey);
+          return;
+        }
+      }
+    } catch {}
+
+    // 2. No valid cache — fetch synchronously
+    await this._fetchHistory(ch, buffer, cacheKey);
+  }
+
+  async _fetchHistory(ch, buffer, cacheKey) {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 8000);
+    try {
+      log('Fetching history for', ch);
+      const resp = await fetch(`https://recent-messages.robotty.de/api/v2/recent-messages/${ch}?limit=100`, {
+        signal: ctrl.signal,
+        credentials: 'omit'
+      });
+      if (!resp.ok) { log('History fetch failed:', resp.status); return; }
+      const data = await resp.json();
+      if (!data.messages?.length) return;
+
+      await fetchChannelBadges(ch);
+
+      // Dedup only against live messages (not cached history we're replacing)
+      const liveMessages = buffer.getAll().filter(m => !m.isHistory);
+      const liveIds = new Set();
+      for (const m of liveMessages) {
+        if (m.id) liveIds.add(m.id);
+      }
+
+      const parsed = [];
+      for (const line of data.messages) {
+        const msg = parseIrcLine(line, ch);
+        if (!msg) continue;
+        msg.isHistory = true;
+        if (msg.id && liveIds.has(msg.id)) continue;
+        usernameCache.add(msg.user);
+        knownColors.set(msg.user.toLowerCase(), msg.color);
+        parsed.push(msg);
+      }
+
+      // Merge: clear buffer, add history first, then any live messages on top
+      buffer.clear();
+      for (const msg of parsed) buffer.push(msg);
+      for (const msg of liveMessages) buffer.push(msg);
+
+      log('Loaded history for', ch, '- parsed:', parsed.length, 'total:', buffer.getAll().length);
+
+      // Cache for next time
+      try {
+        localStorage.setItem(cacheKey, JSON.stringify({
+          messages: parsed,
+          timestamp: Date.now()
+        }));
+      } catch {}
+
+      if (currentTab === ch || (currentTab === 'live' && getLiveChannel() === ch)) {
+        renderMessages(currentTab);
+      }
+    } catch (e) {
+      log('Failed to load history for', ch, e.message);
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  part(ch) {
+    ch = ch.toLowerCase();
+    if (!this.channels.has(ch)) return;
+    this.channels.delete(ch);
+    if (this.ws?.readyState === WebSocket.OPEN) {
+      this.ws.send(`PART #${ch}\r\n`);
+    }
+    log('Parted', ch);
+  }
+
+  getMessages(ch) {
+    return this.channels.get(ch?.toLowerCase())?.getAll() || [];
+  }
+
+  on(e, fn) {
+    if (!this.handlers.has(e)) this.handlers.set(e, new Set());
+    this.handlers.get(e).add(fn);
+  }
+
+  emit(e, d) {
+    this.handlers.get(e)?.forEach(fn => fn(d));
+  }
+}
+
+// ============================================
+// KICK CHAT CLIENT (VIA HEATSYNC WEBHOOK)
+// ============================================
+class KickChat {
+  constructor() {
+    this.channels = new Map() // kickUsername → CircularBuffer
+    this.handlers = new Map()
+    this._destroyed = false
+    this._listener = null
+  }
+
+  connect() {
+    if (this._destroyed) return
+    if (this._listener) return
+
+    // Listen for kick chat messages relayed from background.js
+    this._listener = (message) => {
+      if (message.type === 'kick_chat_message' && message.data) {
+        const d = message.data
+        const channel = d.channel?.toLowerCase()
+        if (!channel || !this.channels.has(channel)) return
+        const msg = {
+          user: d.username || 'unknown',
+          text: d.content || '',
+          color: d.color || '#53fc18',
+          badges: '',
+          channel,
+          time: d.timestamp || Date.now(),
+          platform: 'kick',
+          replyTo: d.replyTo ? {
+            user: d.replyTo.username,
+            text: d.replyTo.content || ''
+          } : null
+        }
+        this.channels.get(channel).push(msg)
+        this.emit('message', msg)
+      }
+    }
+    chrome.runtime?.onMessage?.addListener(this._listener)
+    log('Kick chat listener registered (webhook mode)')
+  }
+
+  destroy() {
+    this._destroyed = true
+    if (this._listener) {
+      chrome.runtime?.onMessage?.removeListener(this._listener)
+      this._listener = null
+    }
+    // Leave all channels
+    for (const username of this.channels.keys()) {
+      safeSendMessage({ type: 'ws_send', data: { type: 'channel:leave', platform: 'kick', channel: username } })
+    }
+    this.channels.clear()
+  }
+
+  async join(kickUsername) {
+    kickUsername = kickUsername.toLowerCase()
+    if (this.channels.has(kickUsername)) return
+    this.channels.set(kickUsername, new CircularBuffer(500))
+    // Tell background to join kick channel via HeatSync WS
+    safeSendMessage({ type: 'ws_send', data: { type: 'channel:join', platform: 'kick', channel: kickUsername } })
+    log('Kick joined', kickUsername, '(webhook mode)')
+  }
+
+  part(kickUsername) {
+    kickUsername = kickUsername.toLowerCase()
+    if (!this.channels.has(kickUsername)) return
+    safeSendMessage({ type: 'ws_send', data: { type: 'channel:leave', platform: 'kick', channel: kickUsername } })
+    this.channels.delete(kickUsername)
+    log('Kick parted', kickUsername)
+  }
+
+  getMessages(kickUsername) {
+    return this.channels.get(kickUsername?.toLowerCase())?.getAll() || []
+  }
+
+  on(e, fn) {
+    if (!this.handlers.has(e)) this.handlers.set(e, new Set())
+    this.handlers.get(e).add(fn)
+  }
+
+  emit(e, d) {
+    this.handlers.get(e)?.forEach(fn => fn(d))
+  }
+}
+
+
+// --- multichat/auth-irc.js ---
+// Auth IRC - authenticated Twitch IRC connection for sending messages
+
+const authState = {
+  ws: null,
+  ready: false,
+  connecting: false,
+  destroyed: false,
+  joined: new Set(),
+  joinWaiters: new Map(),
+  lastData: 0,
+  pongPending: false,
+  token: null,
+  nick: null,
+  keepaliveTimer: null,
+  reconnectTimer: null,
+  reconnectDelay: 1000,
+  sendQueue: [], // Capped at 50 — drop oldest if full
+}
+const MAX_SEND_QUEUE = 50
+
+function authIrcAlive() {
+  return authState.ws?.readyState === WebSocket.OPEN && authState.ready
+}
+
+function cleanupAuthIrc(destroy = false) {
+  if (destroy) authState.destroyed = true;
+  if (authState.keepaliveTimer) { clearInterval(authState.keepaliveTimer); authState.keepaliveTimer = null; }
+  if (authState.reconnectTimer) { clearTimeout(authState.reconnectTimer); authState.reconnectTimer = null; }
+  const prevJoined = [...authState.joined];
+  if (authState.ws) {
+    authState.ws.onclose = null;
+    authState.ws.onerror = null;
+    authState.ws.onmessage = null;
+    try { authState.ws.close(); } catch {}
+  }
+  authState.ws = null;
+  authState.ready = false;
+  authState.connecting = false;
+  authState.lastData = 0;
+  authState.pongPending = false;
+  authState.joined.clear();
+  for (const [, w] of authState.joinWaiters) {
+    clearTimeout(w.timer);
+    w.resolve(false);
+  }
+  authState.joinWaiters.clear();
+  return prevJoined;
+}
+
+function handleAuthIrcMessage(event) {
+  authState.lastData = Date.now();
+  for (const line of event.data.split('\r\n')) {
+    if (!line) continue;
+    if (line.startsWith('PING')) {
+      try { authState.ws.send(line.replace('PING', 'PONG') + '\r\n'); } catch {}
+      continue;
+    }
+    if (line.includes('PONG')) { authState.pongPending = false; continue; }
+
+    const joinMatch = line.match(/:(\w+)!\w+@\w+\.tmi\.twitch\.tv JOIN #(\w+)/);
+    if (joinMatch) {
+      const ch = joinMatch[2].toLowerCase();
+      authState.joined.add(ch);
+      const w = authState.joinWaiters.get(ch);
+      if (w) { clearTimeout(w.timer); w.resolve(true); authState.joinWaiters.delete(ch); }
+      continue;
+    }
+    const partMatch = line.match(/:(\w+)!\w+@\w+\.tmi\.twitch\.tv PART #(\w+)/);
+    if (partMatch) { authState.joined.delete(partMatch[2].toLowerCase()); continue; }
+    if (line.includes('NOTICE') && MC_DEBUG) console.warn('[HS] Auth IRC NOTICE:', line.slice(0, 200));
+    if (line.includes('RECONNECT')) {
+      log('Auth IRC: Twitch sent RECONNECT');
+      const prev = cleanupAuthIrc();
+      scheduleReconnect(prev);
+      return;
+    }
+    if (line.includes('WHISPER')) {
+      const msg = parseIrcLine(line)
+      if (msg?.type === 'whisper') handleIncomingWhisper(msg)
+      continue
+    }
+    if (line.includes(' 353 ') || line.includes(' 366 ') || line.includes('ROOMSTATE')) continue;
+    if (MC_DEBUG) console.warn('[HS] IRC ←', line.slice(0, 200));
+  }
+}
+
+function scheduleReconnect(prevChannels) {
+  if (authState.destroyed || !authState.token || !authState.nick) return;
+  if (authState.reconnectTimer) return;
+  const delay = authState.reconnectDelay;
+  authState.reconnectDelay = Math.min(delay * 2, 30000);
+  log(`Auth IRC reconnect in ${delay}ms...`);
+  authState.reconnectTimer = setTimeout(async () => {
+    authState.reconnectTimer = null;
+    if (authState.destroyed || authIrcAlive()) return;
+    const ok = await connectAuthIrc(authState.token, authState.nick);
+    if (ok === true) {
+      for (const ch of (prevChannels || [])) await joinChannel(ch);
+      drainSendQueue();
+      log('Auth IRC reconnected, rejoined:', (prevChannels || []).join(', ') || '(none)');
+    } else if (ok !== 'auth_failed') {
+      scheduleReconnect(prevChannels);
+    }
+  }, delay);
+}
+
+async function connectAuthIrc(token, nick) {
+  if (authState.connecting) {
+    for (let i = 0; i < 80; i++) {
+      await new Promise(r => setTimeout(r, 100));
+      if (authIrcAlive()) return true;
+      if (!authState.connecting) break;
+    }
+    return authIrcAlive();
+  }
+  cleanupAuthIrc();
+  authState.connecting = true;
+  authState.token = token;
+  authState.nick = nick;
+  authState.destroyed = false;
+  try {
+    const ws = new WebSocket('wss://irc-ws.chat.twitch.tv:443');
+    authState.ws = ws;
+    await new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => reject(new Error('timeout')), 8000);
+      ws.onopen = () => {
+        ws.send(`PASS oauth:${token}\r\n`);
+        ws.send(`NICK ${nick}\r\n`);
+        ws.send('CAP REQ :twitch.tv/commands twitch.tv/tags\r\n');
+      };
+      ws.onmessage = (event) => {
+        if (event.data.includes(' 001 ')) {
+          authState.ready = true;
+          authState.lastData = Date.now();
+          authState.reconnectDelay = 1000;
+          clearTimeout(timeout);
+          resolve();
+        }
+        if (event.data.includes('Login authentication failed') || event.data.includes('Login unsuccessful')) {
+          clearTimeout(timeout);
+          reject(new Error('auth_failed'));
+        }
+        for (const l of event.data.split('\r\n')) {
+          if (l.startsWith('PING')) try { ws.send(l.replace('PING', 'PONG') + '\r\n'); } catch {}
+        }
+      };
+      ws.onerror = () => { clearTimeout(timeout); reject(new Error('ws_error')); };
+      ws.onclose = () => { clearTimeout(timeout); reject(new Error('ws_closed')); };
+    });
+    ws.onmessage = handleAuthIrcMessage;
+    ws.onclose = () => {
+      log('Auth IRC disconnected');
+      const prev = cleanupAuthIrc();
+      scheduleReconnect(prev);
+    };
+    ws.onerror = () => {};
+    // Keepalive PING every 60s — detect dead sockets fast
+    authState.keepaliveTimer = cleanup.setInterval(() => {
+      if (!authState.ws || authState.ws.readyState !== WebSocket.OPEN) return;
+      if (authState.pongPending) {
+        log('Auth IRC: PONG timeout, reconnecting');
+        const prev = cleanupAuthIrc();
+        scheduleReconnect(prev);
+        return;
+      }
+      authState.pongPending = true;
+      try { authState.ws.send('PING :hs\r\n'); } catch {}
+    }, 60000);
+    authState.connecting = false;
+    return true;
+  } catch (e) {
+    log('Auth IRC connect failed:', e.message);
+    authState.connecting = false;
+    cleanupAuthIrc();
+    return e.message === 'auth_failed' ? 'auth_failed' : false;
+  }
+}
+
+function joinChannel(channel) {
+  channel = channel.toLowerCase();
+  if (authState.joined.has(channel)) return Promise.resolve(true);
+  if (!authIrcAlive()) return Promise.resolve(false);
+  try { authState.ws.send(`JOIN #${channel}\r\n`); } catch { return Promise.resolve(false); }
+  return new Promise(resolve => {
+    const timer = setTimeout(() => {
+      authState.joinWaiters.delete(channel);
+      authState.joined.add(channel);
+      resolve(true);
+    }, 3000);
+    authState.joinWaiters.set(channel, { resolve, timer });
+  });
+}
+
+function drainSendQueue() {
+  while (authState.sendQueue.length && authIrcAlive()) {
+    const { channel, text } = authState.sendQueue.shift();
+    try {
+      authState.ws.send(`PRIVMSG #${channel} :${text}\r\n`);
+      log('Drained queued msg to #' + channel);
+    } catch {
+      authState.sendQueue.unshift({ channel, text });
+      break;
+    }
+  }
+}
+
+async function sendIrcMessage(channel, text, token, replyParentId) {
+  const nick = currentUsername || getCurrentUsername();
+  if (!nick) { console.warn('[HS] SEND FAIL: no username'); return 'no_user'; }
+  channel = channel.toLowerCase();
+  const prefix = replyParentId ? `@reply-parent-msg-id=${replyParentId} ` : ''
+
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      if (!authIrcAlive()) {
+        const result = await connectAuthIrc(token, nick);
+        if (result === 'auth_failed') return 'auth_failed';
+        if (!result) {
+          if (attempt < 2) continue;
+          if (authState.sendQueue.length < MAX_SEND_QUEUE) authState.sendQueue.push({ channel, text });
+          scheduleReconnect([channel]);
+          log('Queued message for reconnect');
+          return true;
+        }
+      }
+      if (!authState.joined.has(channel)) await joinChannel(channel);
+      if (!authIrcAlive()) {
+        if (attempt < 2) { cleanupAuthIrc(); continue; }
+        if (authState.sendQueue.length < MAX_SEND_QUEUE) authState.sendQueue.push({ channel, text });
+        scheduleReconnect([channel]);
+        return true;
+      }
+      authState.ws.send(`${prefix}PRIVMSG #${channel} :${text}\r\n`);
+      if (MC_DEBUG) console.warn('[HS] IRC SEND →', `#${channel}`, `nick=${nick}`, replyParentId ? `reply=${replyParentId}` : '', text.slice(0, 40));
+      return true;
+    } catch (e) {
+      log('Send error attempt', attempt, ':', e.message || e);
+      cleanupAuthIrc();
+      if (attempt === 2) {
+        if (authState.sendQueue.length < MAX_SEND_QUEUE) authState.sendQueue.push({ channel, text });
+        scheduleReconnect([channel]);
+        return true;
+      }
+    }
+  }
+  return 'send_error';
+}
+
+
+// --- multichat/emotes.js ---
+// Emotes - cache, lookup, processing, picker, block/inventory
+
+  // Emote size (1, 2, or 4)
+  let emoteSize = 1;
+
+  // Upgrade emote URL to match current emote size setting
+  function getChatResUrl(url) {
+    if (!url || emoteSize === 1) return url;
+    if (emoteSize === 2) {
+      if (url.includes('cdn.7tv.app')) return url.replace('/1x', '/2x');
+      if (url.includes('cdn.betterttv.net')) return url.replace('/1x', '/2x');
+      if (url.includes('cdn.frankerfacez.com')) return url.replace(/\/1(?=\.|$)/, '/2');
+      if (url.includes('static-cdn.jtvnw.net')) return url.replace('/1.0', '/2.0');
+    } else if (emoteSize === 4) {
+      if (url.includes('cdn.7tv.app')) return url.replace('/1x', '/4x').replace('/2x', '/4x');
+      if (url.includes('cdn.betterttv.net')) return url.replace('/1x', '/3x').replace('/2x', '/3x');
+      if (url.includes('cdn.frankerfacez.com')) return url.replace(/\/[12](?=\.|$)/, '/4');
+      if (url.includes('static-cdn.jtvnw.net')) return url.replace(/\/[12]\.0/, '/3.0');
+    }
+    return url;
+  }
+
+  // Upgrade emote URL to highest resolution for tooltip
+  function getHighResUrl(url) {
+    if (!url) return url;
+    // 7TV: /1x → /4x
+    if (url.includes('cdn.7tv.app')) {
+      return url.replace('/1x', '/4x').replace('/2x', '/4x').replace('/3x', '/4x');
+    }
+    // BTTV: /1x → /3x (max)
+    if (url.includes('cdn.betterttv.net')) {
+      return url.replace('/1x', '/3x').replace('/2x', '/3x');
+    }
+    // FFZ: /1 → /4
+    if (url.includes('cdn.frankerfacez.com')) {
+      return url.replace(/\/1(?=\.|$)/, '/4').replace(/\/2(?=\.|$)/, '/4');
+    }
+    // Twitch: /1.0 → /3.0 (max)
+    if (url.includes('static-cdn.jtvnw.net')) {
+      return url.replace('/1.0', '/3.0').replace('/2.0', '/3.0');
+    }
+    return url;
+  }
+
+  /**
+   * Group emotes by state+source into ordered sections
+   */
+  const SECTION_ORDER = [
+    'channel-7tv', 'channel-bttv', 'channel-ffz', 'channel-twitch',
+    '7tv', 'bttv', 'ffz', 'twitch', 'heatsync'
+  ]
+  const SECTION_LABELS = {
+    'channel-7tv': 'channel 7tv', 'channel-bttv': 'channel bttv',
+    'channel-ffz': 'channel ffz', 'channel-twitch': 'channel twitch',
+    '7tv': '7tv global', 'bttv': 'bttv global', 'ffz': 'ffz global',
+    'twitch': 'twitch global', 'heatsync': 'heatsync'
+  }
+
+  function groupEmotes(allEmotes) {
+    const groups = {}
+    for (const [name, emote] of allEmotes) {
+      const key = emote.state === 'channel' ? `channel-${emote.source}` : emote.source
+      if (!groups[key]) groups[key] = []
+      groups[key].push([name, emote])
+    }
+    return SECTION_ORDER
+      .filter(k => groups[k]?.length)
+      .map(k => ({ key: k, label: SECTION_LABELS[k] || k, emotes: groups[k] }))
+  }
+
+  function renderEmoteSections(sections, emptyMsg = 'no emotes loaded') {
+    if (!sections.length) return `<div class="hs-mc-picker-empty">${escapeHtml(emptyMsg)}</div>`
+    // Only render section headers + first CHUNK_SIZE emotes per section for instant open
+    // Rest gets appended via chunkedRenderRemaining()
+    return sections.map(s => {
+      const initial = s.emotes.slice(0, EMOTE_CHUNK_SIZE)
+      return `
+      <div class="hs-mc-picker-section" data-section-key="${escapeHtml(s.key)}">
+        <div class="hs-mc-picker-section-header">${escapeHtml(s.label)} <span class="hs-mc-picker-section-count">${s.emotes.length}</span></div>
+        <div class="hs-mc-picker-section-grid">${initial.map(emoteImgHtml).join('')}</div>
+      </div>`
+    }).join('')
+  }
+
+  const EMOTE_CHUNK_SIZE = 80
+  let _chunkedRafId = null
+
+  function emoteImgHtml([name, emote]) {
+    return `<img src="${escapeHtml(emote.url)}" alt="${escapeHtml(name)}" title="${escapeHtml(name)} (${escapeHtml(emote.source)})" class="hs-mc-picker-emote hs-emote-${escapeHtml(emote.source)}" data-name="${escapeHtml(name)}" data-source="${escapeHtml(emote.source)}" loading="lazy">`
+  }
+
+  /** Append remaining emotes in rAF chunks so the picker opens instantly */
+  function chunkedRenderRemaining(sections, container) {
+    if (_chunkedRafId) cancelAnimationFrame(_chunkedRafId)
+    // Build queue of {gridEl, emotes} for sections with remaining emotes
+    const queue = []
+    for (const s of sections) {
+      if (s.emotes.length <= EMOTE_CHUNK_SIZE) continue
+      const gridEl = container.querySelector(`[data-section-key="${CSS.escape(s.key)}"] .hs-mc-picker-section-grid`)
+      if (!gridEl) continue
+      queue.push({ gridEl, emotes: s.emotes.slice(EMOTE_CHUNK_SIZE), offset: 0 })
+    }
+    function renderNext() {
+      const item = queue[0]
+      if (!item) return
+      const chunk = item.emotes.slice(item.offset, item.offset + EMOTE_CHUNK_SIZE)
+      if (!chunk.length) { queue.shift(); renderNext(); return }
+      // Use DocumentFragment for minimal reflows
+      const frag = document.createDocumentFragment()
+      for (const entry of chunk) {
+        const tmp = document.createElement('template')
+        tmp.innerHTML = emoteImgHtml(entry)
+        frag.appendChild(tmp.content)
+      }
+      item.gridEl.appendChild(frag)
+      item.offset += EMOTE_CHUNK_SIZE
+      if (item.offset >= item.emotes.length) queue.shift()
+      if (queue.length) _chunkedRafId = requestAnimationFrame(renderNext)
+    }
+    _chunkedRafId = requestAnimationFrame(renderNext)
+  }
+
+  /**
+   * Create emote picker popup
+   */
+  let pickerTab = 'emotes'; // 'emotes' or 'twitch'
+  let _pickerCloseHandler = null; // Tracked to prevent duplicate close handlers
+
+  function showEmotePicker(tab = null) {
+    const picker = document.getElementById('hs-mc-emote-picker');
+    if (!picker) return;
+
+    // If tab specified, switch to it; otherwise toggle
+    if (tab) {
+      pickerTab = tab;
+    } else if (picker.classList.contains('visible')) {
+      picker.classList.remove('visible');
+      adjustOverlayForPicker(false);
+      hideInputBar();
+      if (_chunkedRafId) { cancelAnimationFrame(_chunkedRafId); _chunkedRafId = null; }
+      return;
+    }
+
+    // Build tabbed UI — merge channel emotes first (so they keep 'channel' state), then globals
+    // Note: all emote names/urls are pre-sanitized via escapeHtml in render helpers
+    const allEmotes = new Map();
+    const chCache = channelEmoteCaches[currentTab] || channelEmoteCaches[getCurrentChannel()];
+    if (chCache) for (const [k, v] of chCache) allEmotes.set(k, v);
+    for (const [k, v] of emoteCache) if (!allEmotes.has(k)) allEmotes.set(k, v);
+    const sections = groupEmotes(allEmotes);
+    picker.innerHTML = `
+      <div class="hs-mc-tab-content" id="hs-mc-tab-emotes" style="display: ${pickerTab === 'emotes' ? 'flex' : 'none'}; flex-direction: column;">
+        <div class="hs-mc-picker-header">
+          <div class="hs-mc-search-wrap">
+            <svg class="hs-mc-search-icon" width="14" height="14" viewBox="0 0 20 20"><path fill="#000" d="M13.74 12.33l4.04 4.04a1 1 0 01-1.42 1.42l-4.04-4.04a7 7 0 111.42-1.42zM9 14A5 5 0 109 4a5 5 0 000 10z"/></svg>
+            <input type="text" id="hs-mc-emote-search" placeholder="search emotes..." autocomplete="off">
+          </div>
+        </div>
+        <div class="hs-mc-picker-scroll" id="hs-mc-emote-grid">
+          ${renderEmoteSections(sections)}
+        </div>
+      </div>
+      <div class="hs-mc-tab-content" id="hs-mc-tab-twitch" style="display: ${pickerTab === 'twitch' ? 'flex' : 'none'}; flex-direction: column; padding: 8px 0;">
+        <div class="hs-mc-pred-loading">loading...</div>
+      </div>
+      <div class="hs-mc-picker-tabs">
+        <button class="hs-mc-picker-tab ${pickerTab === 'emotes' ? 'active' : ''}" data-tab="emotes">emotes</button>
+        <button class="hs-mc-picker-tab ${pickerTab === 'twitch' ? 'active' : ''}" data-tab="twitch">twitch</button>
+      </div>
+    `;
+
+    // Chunked render remaining emotes after initial paint
+    const grid = document.getElementById('hs-mc-emote-grid');
+    if (grid) chunkedRenderRemaining(sections, grid);
+
+    // Search functionality (debounced)
+    let _searchTimer = null;
+    const searchInput = document.getElementById('hs-mc-emote-search');
+    searchInput?.addEventListener('input', (e) => {
+      clearTimeout(_searchTimer);
+      _searchTimer = setTimeout(() => {
+        const query = e.target.value.toLowerCase();
+        const grid = document.getElementById('hs-mc-emote-grid');
+        if (!grid) return;
+
+        const searchEmotes = new Map();
+        const searchChCache = channelEmoteCaches[currentTab] || channelEmoteCaches[getCurrentChannel()];
+        if (searchChCache) for (const [k, v] of searchChCache) searchEmotes.set(k, v);
+        for (const [k, v] of emoteCache) if (!searchEmotes.has(k)) searchEmotes.set(k, v);
+        const filtered = new Map();
+        for (const [name, emote] of searchEmotes) {
+          if (name.toLowerCase().includes(query)) filtered.set(name, emote);
+        }
+        const filteredSections = groupEmotes(filtered);
+        grid.innerHTML = renderEmoteSections(filteredSections, 'no matches');
+        chunkedRenderRemaining(filteredSections, grid);
+      }, 150);
+    });
+
+    // Emote size controls
+    picker.querySelectorAll('.hs-mc-size-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const size = parseInt(btn.dataset.size, 10);
+        setEmoteSize(size);
+        // Update active state
+        picker.querySelectorAll('.hs-mc-size-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+      });
+    });
+
+    // Tab switching
+    picker.querySelectorAll('.hs-mc-picker-tab').forEach(tabBtn => {
+      tabBtn.addEventListener('click', () => {
+        const newTab = tabBtn.dataset.tab;
+        const oldTab = pickerTab;
+        pickerTab = newTab;
+        picker.querySelectorAll('.hs-mc-picker-tab').forEach(t => t.classList.remove('active'));
+        tabBtn.classList.add('active');
+        picker.querySelectorAll('.hs-mc-tab-content').forEach(c => c.style.display = 'none');
+        const display = (newTab === 'emotes' || newTab === 'settings' || newTab === 'twitch') ? 'flex' : 'block';
+        document.getElementById(`hs-mc-tab-${newTab}`).style.display = display;
+        if (newTab === 'twitch') renderTwitchTab();
+        if (oldTab === 'twitch' && newTab !== 'twitch') stopPredictionPoll();
+      });
+    });
+
+    // Event delegation for emote clicks (single handler, works for chunked rendering)
+    if (!picker._hsDelegated) {
+      picker._hsDelegated = true;
+      picker.addEventListener('click', (e) => {
+        const img = e.target.closest('.hs-mc-picker-emote');
+        if (!img) return;
+        const name = img.dataset.name;
+        const input = document.getElementById('hs-mc-input');
+        if (!input || !name) return;
+        if (wysiwygEnabled || !('value' in input)) {
+          // WYSIWYG: insert emote image (with zero-width stacking)
+          pasteEmoteToInput(name)
+        } else {
+          const pos = input.selectionStart || input.value.length;
+          const before = input.value.slice(0, pos);
+          const after = input.value.slice(pos);
+          const space = before.length > 0 && !before.endsWith(' ') ? ' ' : '';
+          input.value = before + space + name + ' ' + after;
+          pendingMessage = input.value;
+        }
+        input.focus();
+        picker.classList.remove('visible');
+        adjustOverlayForPicker(false);
+      });
+    }
+
+    picker.classList.add('visible');
+    // Position picker flush above input bar (or at bottom if hidden)
+    const bar = document.getElementById('hs-mc-inputbar');
+    const barHeight = (bar && inputBarVisible) ? bar.offsetHeight : 0;
+    picker.style.bottom = barHeight + 'px';
+    adjustOverlayForPicker(true);
+
+    if (pickerTab === 'twitch') renderTwitchTab();
+
+    // Close when clicking outside (remove any previous handler first)
+    if (_pickerCloseHandler) document.removeEventListener('click', _pickerCloseHandler);
+    setTimeout(() => {
+      _pickerCloseHandler = (e) => {
+        if (mcSignal?.aborted) { document.removeEventListener('click', _pickerCloseHandler); _pickerCloseHandler = null; return; }
+        if (!picker.contains(e.target) && !e.target.closest('#hs-mc-emote-btn')) {
+          picker.classList.remove('visible');
+          adjustOverlayForPicker(false);
+          hideInputBar();
+          stopPredictionPoll();
+          document.removeEventListener('click', _pickerCloseHandler);
+          _pickerCloseHandler = null;
+        }
+      };
+      document.addEventListener('click', _pickerCloseHandler);
+    }, 0);
+  }
+
+  /** Adjust overlay bottom to make room for picker panel */
+  function adjustOverlayForPicker(open) {
+    const overlay = document.getElementById('hs-mc-overlay');
+    if (!overlay) return;
+    const container = document.getElementById('hs-mc-container');
+    const hasBottomTabs = container?.classList.contains('hs-tabs-bottom');
+    const barBase = inputBarVisible ? (hasBottomTabs ? 90 : 52) : 0;
+    const pickerEl = document.getElementById('hs-mc-emote-picker');
+    const pickerHeight = open && pickerEl ? pickerEl.offsetHeight : 0;
+    overlay.style.bottom = (barBase + pickerHeight) + 'px';
+  }
+
+  // Blocked emotes: stored by HASH (matches background.js/server)
+  // blockedEmoteHashes = Set of hashes from storage
+  // blockedEmoteNames = Set of names (derived via hashToName lookup, for processEmotes)
+  let blockedEmoteHashes = new Set();
+  let blockedEmoteNames = new Set();
+
+  function rebuildBlockedNames() {
+    blockedEmoteNames.clear();
+    for (const hash of blockedEmoteHashes) {
+      const name = hashToName.get(hash);
+      if (name) blockedEmoteNames.add(name);
+    }
+    log('Blocked names rebuilt:', blockedEmoteNames.size, 'from', blockedEmoteHashes.size, 'hashes');
+  }
+
+  async function loadBlockedEmotes() {
+    try {
+      const data = await chrome.storage.local.get(['blocked_emotes']);
+      blockedEmoteHashes = new Set(data.blocked_emotes || []);
+      rebuildBlockedNames();
+      log('Loaded', blockedEmoteHashes.size, 'blocked emote hashes');
+    } catch (e) {
+      log('Error loading blocked emotes:', e);
+    }
+  }
+
+  // Flash all wrappers for a given emote name
+  function flashAllEmotes(emoteName, flashClass) {
+    const wrappers = queryEmoteWrappers(emoteName)
+    if (wrappers.length === 0) return
+    // Batch read/write to avoid per-element reflow
+    for (const w of wrappers) {
+      w.classList.remove('hs-flash-paste', 'hs-flash-add', 'hs-flash-block', 'hs-flash-unblock', 'hs-flash-remove');
+    }
+    // Single reflow trigger for all elements
+    void document.body.offsetWidth
+    for (const w of wrappers) {
+      w.classList.add(flashClass);
+      w.addEventListener('animationend', () => w.classList.remove(flashClass), { once: true });
+    }
+  }
+
+  // Create emote <img> for WYSIWYG input
+  function createInputEmoteImg(emoteName) {
+    const emote = lookupEmote(emoteName)
+    if (!emote) return null
+    const img = document.createElement('img')
+    img.className = 'hs-input-emote'
+    img.src = getChatResUrl(emote.url)
+    img.alt = emoteName
+    img.dataset.emoteName = emoteName
+    img.draggable = false
+    if (emote.zeroWidth) img.dataset.zeroWidth = '1'
+    return img
+  }
+
+  // Stack a zero-width emote onto a base emote/stack in the input
+  function stackInputEmote(baseEl, overlayImg) {
+    if (baseEl.classList.contains('hs-input-stack')) {
+      baseEl.appendChild(overlayImg)
+      return baseEl
+    }
+    const stack = document.createElement('span')
+    stack.className = 'hs-input-stack'
+    baseEl.parentNode.insertBefore(stack, baseEl)
+    stack.appendChild(baseEl)
+    stack.appendChild(overlayImg)
+    return stack
+  }
+
+  // Find last emote element (img or stack) walking backwards, skipping whitespace
+  function findLastInputEmote(input) {
+    let node = input.lastChild
+    while (node) {
+      if (node.nodeType === Node.TEXT_NODE && node.textContent.trim() === '') {
+        node = node.previousSibling
+        continue
+      }
+      if (node.nodeType === Node.ELEMENT_NODE) {
+        if (node.tagName === 'IMG' && node.classList.contains('hs-input-emote')) return node
+        if (node.classList?.contains('hs-input-stack')) return node
+      }
+      break
+    }
+    return null
+  }
+
+  // Move cursor to end of input
+  function cursorToEnd(input) {
+    const range = document.createRange()
+    range.selectNodeContents(input)
+    range.collapse(false)
+    const sel = window.getSelection()
+    sel.removeAllRanges()
+    sel.addRange(range)
+  }
+
+  // Paste emote name to input
+  function pasteEmoteToInput(emoteName) {
+    const input = document.getElementById('hs-mc-input');
+    if (!input) return;
+    if (wysiwygEnabled || !('value' in input)) {
+      const img = createInputEmoteImg(emoteName)
+      if (img) {
+        const emote = lookupEmote(emoteName)
+        const isZeroWidth = emote && !!emote.zeroWidth
+
+        if (isZeroWidth) {
+          const target = findLastInputEmote(input)
+          if (target) {
+            // Remove trailing whitespace between target and end
+            let next = target.nextSibling
+            while (next) {
+              if (next.nodeType === Node.TEXT_NODE && next.textContent.trim() === '') {
+                const rm = next
+                next = next.nextSibling
+                rm.remove()
+              } else break
+            }
+            stackInputEmote(target, img)
+            input.appendChild(document.createTextNode('\u00A0'))
+            cursorToEnd(input)
+            pendingMessage = getInputText()
+            input.focus()
+            return
+          }
+        }
+
+        // Regular emote: append img + space
+        input.appendChild(img)
+        input.appendChild(document.createTextNode('\u00A0'))
+        cursorToEnd(input)
+      } else {
+        // Fallback: emote not in cache, insert as text
+        const text = input.textContent || ''
+        const space = text.length > 0 && !text.endsWith(' ') ? ' ' : ''
+        input.textContent = text + space + emoteName + ' '
+        cursorToEnd(input)
+      }
+      pendingMessage = getInputText()
+    } else {
+      const pos = input.selectionStart || input.value.length;
+      const before = input.value.slice(0, pos);
+      const after = input.value.slice(pos);
+      const space = before.length > 0 && !before.endsWith(' ') ? ' ' : '';
+      input.value = before + space + emoteName + ' ' + after;
+      pendingMessage = input.value;
+      input.selectionStart = input.selectionEnd = pos + space.length + emoteName.length + 1;
+    }
+    input.focus();
+  }
+
+  // Remove emote from inventory via background.js
+  async function removeEmoteFromInventory(emoteName, targetEl) {
+    if (!emoteName) return;
+    const hash = inventoryHashes.get(emoteName);
+    if (!hash) {
+      // Fallback: generate from emote URL
+      const emote = lookupEmote(emoteName);
+      const fallbackHash = emote?.url ? btoa(emote.url).slice(0, 32) : emoteName;
+      try {
+        const response = await new Promise((resolve) => {
+          chrome.runtime.sendMessage({
+            type: 'remove_from_inventory',
+            emoteHash: fallbackHash,
+            emoteName
+          }, resolve);
+        });
+        if (response?.success) handleRemoveSuccess(emoteName, targetEl);
+        else showToast(response?.error || `failed to remove: ${emoteName}`);
+      } catch (e) {
+        showToast(`error removing: ${emoteName}`);
+      }
+      return;
+    }
+    try {
+      const response = await new Promise((resolve) => {
+        chrome.runtime.sendMessage({
+          type: 'remove_from_inventory',
+          emoteHash: hash,
+          emoteName
+        }, resolve);
+      });
+      if (response?.success) handleRemoveSuccess(emoteName, targetEl);
+      else showToast(response?.error || `failed to remove: ${emoteName}`);
+    } catch (e) {
+      showToast(`error removing: ${emoteName}`);
+    }
+  }
+
+  function handleRemoveSuccess(emoteName, targetEl) {
+    inventoryEmotes.delete(emoteName);
+    inventoryHashes.delete(emoteName);
+    const cachedEmote = lookupEmote(emoteName);
+    if (cachedEmote) {
+      cachedEmote.state = ['7tv', 'bttv', 'ffz', 'twitch', 'kick'].includes(cachedEmote.source) ? 'global' : 'unadded';
+    }
+    // Update all wrappers in DOM
+    const newState = cachedEmote?.state || 'unadded';
+    queryEmoteWrappers(emoteName).forEach(w => {
+      w.classList.remove('hs-state-global', 'hs-state-channel', 'hs-state-owned', 'hs-state-blocked', 'hs-state-unadded');
+      w.classList.add(`hs-state-${newState}`);
+      w.dataset.state = newState;
+    });
+    showToast(`removed: ${emoteName}`);
+    flashAllEmotes(emoteName, 'hs-flash-remove');
+  }
+
+  function blockAllEmotesInStack(stack) {
+    const wrappers = stack.querySelectorAll('.hs-mc-emote-wrapper');
+    let count = 0;
+    wrappers.forEach(w => {
+      const name = w.dataset.emoteName;
+      if (name && w.dataset.state !== 'blocked') {
+        blockEmote(name);
+        count++;
+      }
+    });
+    if (count > 0) showToast(`blocked ${count} emotes`);
+    stack.classList.remove('expanded');
+    stack.setAttribute('title', 'expand');
+  }
+
+  function blockEmote(emoteName) {
+    if (!emoteName) return;
+
+    // Update local name-based tracking
+    blockedEmoteNames.add(emoteName);
+
+    // Get hash for API - prefer known hash, fallback to URL-derived
+    const hash = emoteHashes.get(emoteName) ||
+      (lookupEmote(emoteName)?.url ? btoa(lookupEmote(emoteName).url).slice(0, 32) : emoteName);
+    blockedEmoteHashes.add(hash);
+
+    // Sync to heatsync.org API via background.js (it handles storage)
+    syncBlockToAPI(emoteName, true);
+
+    // Instant DOM update - CSS visibility:hidden hides the img, no src swap needed
+    queryEmoteWrappers(emoteName).forEach(w => {
+      w.classList.remove('hs-state-global', 'hs-state-channel', 'hs-state-owned', 'hs-state-unadded');
+      w.classList.add('hs-state-blocked');
+      w.dataset.state = 'blocked';
+      const img = w.querySelector('img');
+      if (img) {
+        img.classList.remove('hs-emote-global', 'hs-emote-channel', 'hs-emote-owned', 'hs-emote-unadded');
+        img.classList.add('hs-emote-blocked');
+        img.dataset.state = 'blocked';
+      }
+    });
+
+    showToast(`blocked: ${emoteName}`);
+    flashAllEmotes(emoteName, 'hs-flash-block');
+  }
+
+  function unblockEmote(emoteName) {
+    if (!emoteName) return;
+
+    // Update local tracking
+    blockedEmoteNames.delete(emoteName);
+    const hash = emoteHashes.get(emoteName) ||
+      (lookupEmote(emoteName)?.url ? btoa(lookupEmote(emoteName).url).slice(0, 32) : emoteName);
+    blockedEmoteHashes.delete(hash);
+
+    // Sync to heatsync.org API via background.js
+    syncBlockToAPI(emoteName, false);
+
+    // Instant DOM update - restore images
+    const emote = lookupEmote(emoteName);
+    const realUrl = emote?.url || '';
+    const newState = emote ? getEmoteState(emoteName, emote.source) : 'global';
+    queryEmoteWrappers(emoteName).forEach(w => {
+      w.classList.remove('hs-state-global', 'hs-state-channel', 'hs-state-owned', 'hs-state-blocked', 'hs-state-unadded');
+      w.classList.add(`hs-state-${newState}`);
+      w.dataset.state = newState;
+      w.style.outline = '';
+      const img = w.querySelector('img');
+      if (img && realUrl) {
+        img.src = realUrl;
+        img.style.width = '';
+        img.style.height = '';
+        img.classList.remove('hs-emote-global', 'hs-emote-channel', 'hs-emote-owned', 'hs-emote-blocked', 'hs-emote-unadded');
+        img.classList.add(`hs-emote-${newState}`);
+        img.dataset.state = newState;
+      }
+    });
+
+    showToast(`unblocked: ${emoteName}`);
+    flashAllEmotes(emoteName, 'hs-flash-unblock');
+  }
+
+  // Add emote to inventory (click-to-add for unadded emotes)
+  async function addEmoteToInventory(emoteName, emoteUrl, emoteSource, targetEl) {
+    if (!emoteName) return;
+
+    try {
+      // Generate a hash from the URL for the API
+      const emoteHash = emoteUrl ? btoa(emoteUrl).slice(0, 32) : emoteName;
+
+      // Send to background script for API call with auth
+      const response = await new Promise((resolve) => {
+        chrome.runtime.sendMessage({
+          type: 'add_to_inventory',
+          emoteName: emoteName,
+          emoteHash: emoteHash,
+          emoteUrl: emoteUrl
+        }, resolve);
+      });
+
+      if (response?.success) {
+        // Update local cache - change from unadded to owned
+        inventoryEmotes.add(emoteName);
+        if (response.hash) inventoryHashes.set(emoteName, response.hash);
+        if (emoteCache.has(emoteName)) {
+          const emote = emoteCache.get(emoteName);
+          emote.state = 'owned';
+          emoteCache.set(emoteName, emote);
+        }
+
+        // Update all wrappers in DOM (no full re-render)
+        queryEmoteWrappers(emoteName).forEach(w => {
+          w.classList.remove('hs-state-global', 'hs-state-unadded', 'hs-state-blocked');
+          w.classList.add('hs-state-owned');
+          w.dataset.state = 'owned';
+        });
+
+        showToast(`added: ${emoteName}`);
+        flashAllEmotes(emoteName, 'hs-flash-add');
+      } else {
+        showToast(response?.error || `failed to add: ${emoteName}`);
+      }
+    } catch (e) {
+      log('Add emote error:', e);
+      showToast(`error adding: ${emoteName}`);
+    }
+  }
+
+  // Sync block/unblock to heatsync.org API via background script
+  async function syncBlockToAPI(emoteName, block) {
+    try {
+      // Background script expects message.hash - use emoteHashes (most complete mapping)
+      const hash = emoteHashes.get(emoteName) ||
+        (lookupEmote(emoteName)?.url ? btoa(lookupEmote(emoteName).url).slice(0, 32) : emoteName);
+      chrome.runtime.sendMessage({
+        type: block ? 'block_emote' : 'unblock_emote',
+        hash: hash,
+        emoteName: emoteName
+      });
+      log('Synced', block ? 'block' : 'unblock', emoteName, '(hash:', hash.substring(0, 8) + '...) to API');
+    } catch (e) {
+      log('API sync error:', e);
+    }
+  }
+
+  // Emote cache (loaded from storage)
+  // Format: Map<name, {url, source, state}>
+  // States: 'owned' (in inventory), 'global' (third-party), 'unadded' (heatsync, not owned)
+  let emoteCache = new Map(); // Global + inventory emotes (no channel emotes!)
+  let channelEmoteCaches = {}; // Per-channel emotes: { channelName: Map<name, emoteData> }
+  let inventoryEmotes = new Set(); // Names of emotes in user's inventory
+
+  // Look up emote from global cache + current channel cache
+  function lookupEmote(name) {
+    return emoteCache.get(name) || channelEmoteCaches[currentTab]?.get(name) || channelEmoteCaches[getLiveChannel()]?.get(name) || channelEmoteCaches[getCurrentChannel()]?.get(name);
+  }
+  let inventoryHashes = new Map(); // name → hash for remove_from_inventory
+  let emoteHashes = new Map(); // name → hash for ALL emotes (block/unblock API)
+  let hashToName = new Map(); // hash → name (reverse lookup for loading blocked from storage)
+
+  // Detect emote source from URL
+  function detectEmoteSource(url, hint = null) {
+    if (!url) return hint || 'unknown';
+    if (url.includes('cdn.7tv.app')) return '7tv';
+    if (url.includes('cdn.betterttv.net')) return 'bttv';
+    if (url.includes('cdn.frankerfacez.com')) return 'ffz';
+    if (url.includes('static-cdn.jtvnw.net')) return 'twitch';
+    if (url.includes('kick.com') || url.includes('kick-static')) return 'kick';
+    if (url.includes('heatsync.org')) return 'heatsync';
+    return hint || 'unknown';
+  }
+
+  // Determine emote state: owned > global > unadded
+  function getEmoteState(name, source) {
+    if (inventoryEmotes.has(name)) return 'owned';
+    // Third-party emotes are always "global" (can't add to heatsync inventory)
+    if (['7tv', 'bttv', 'ffz', 'twitch', 'kick'].includes(source)) return 'global';
+    // Heatsync emotes not in inventory are "unadded"
+    return 'unadded';
+  }
+
+  async function loadEmotes() {
+    try {
+      const stored = await chrome.storage.local.get(['global_emotes', 'emote_inventory', 'channel_emotes_map']);
+      emoteCache.clear();
+      channelEmoteCaches = {};
+      inventoryEmotes.clear();
+      inventoryHashes.clear();
+      emoteHashes.clear();
+      hashToName.clear();
+
+      // Helper to register hash<->name mapping
+      const registerHash = (name, hash) => {
+        if (name && hash) {
+          emoteHashes.set(name, hash);
+          hashToName.set(hash, name);
+        }
+      };
+
+      // First, build inventory set (emotes user owns)
+      (stored.emote_inventory || []).forEach(e => {
+        if (e.name) {
+          inventoryEmotes.add(e.name);
+          if (e.hash) {
+            inventoryHashes.set(e.name, e.hash);
+            registerHash(e.name, e.hash);
+          }
+        }
+      });
+
+      // Add global emotes (heatsync globals - may or may not be in inventory)
+      (stored.global_emotes || []).forEach(e => {
+        if (e.name && e.url) {
+          const source = e.source || detectEmoteSource(e.url, 'heatsync');
+          const state = getEmoteState(e.name, source);
+          emoteCache.set(e.name, { url: e.url, source, state, zeroWidth: !!e.zeroWidth });
+          if (e.hash) registerHash(e.name, e.hash);
+        }
+      });
+
+      // Add inventory emotes (definitely owned)
+      (stored.emote_inventory || []).forEach(e => {
+        if (e.name && e.url) {
+          const source = e.source || 'heatsync';
+          emoteCache.set(e.name, { url: e.url, source, state: 'owned', zeroWidth: !!e.zeroWidth });
+        }
+      });
+
+      // Load per-channel emotes into separate caches (prevents cross-channel leaking)
+      const map = stored.channel_emotes_map || {};
+      for (const [ch, emotes] of Object.entries(map)) {
+        const chCache = new Map();
+        (emotes || []).forEach(e => {
+          if (e.name && e.url) {
+            const source = e.source || detectEmoteSource(e.url, '7tv');
+            chCache.set(e.name, { url: e.url, source, state: 'channel', zeroWidth: !!e.zeroWidth });
+            if (e.hash) registerHash(e.name, e.hash);
+          }
+        });
+        channelEmoteCaches[ch] = chCache;
+      }
+      // Evict oldest channel emote caches if exceeds 20
+      const channelKeys = Object.keys(channelEmoteCaches);
+      if (channelKeys.length > 20) {
+        for (const old of channelKeys.slice(0, channelKeys.length - 20)) {
+          delete channelEmoteCaches[old];
+        }
+      }
+      log('Channel emote caches:', Object.entries(channelEmoteCaches).map(([c, m]) => `${c}: ${m.size}`).join(', '));
+
+      // Rebuild blockedEmoteNames from loaded hashes
+      rebuildBlockedNames();
+
+      log('Loaded', emoteCache.size, 'emotes (inventory:', inventoryEmotes.size, ', hashes:', emoteHashes.size, ')');
+    } catch (e) {
+      log('Error loading emotes:', e);
+    }
+
+    // Also scan DOM for third-party emotes (BTTV, FFZ, 7TV)
+    scanDomForEmotes();
+  }
+
+  // Scan DOM for emotes rendered in chat — route to the current channel's cache, not global
+  function scanDomForEmotes() {
+    const ch = getCurrentChannel();
+    if (!ch) return;
+
+    // Ensure channel cache exists
+    if (!channelEmoteCaches[ch]) channelEmoteCaches[ch] = new Map();
+    // Evict oldest if exceeds 20
+    const chKeys = Object.keys(channelEmoteCaches);
+    if (chKeys.length > 20) {
+      delete channelEmoteCaches[chKeys[0]];
+    }
+    const cache = channelEmoteCaches[ch];
+
+    // Cap per-channel to prevent unbounded growth
+    if (cache.size >= 5000) return;
+
+    // Single combined selector — one DOM scan instead of 7 separate querySelectorAll calls
+    const combinedSelector = '.chat-line__message img[alt], [class*="chat-line"] img[alt], .seventv-emote, .bttv-emote, .ffz-emote, img.emote, img[data-a-target="emote-name"]';
+
+    let found = 0;
+    for (const img of document.querySelectorAll(combinedSelector)) {
+      if (cache.size >= 5000) break;
+      const name = img.alt || img.getAttribute('data-emote-name');
+      const url = img.src;
+      if (name && url && !cache.has(name) && !emoteCache.has(name)) {
+        const source = detectEmoteSource(url);
+        cache.set(name, { url, source, state: 'channel', zeroWidth: false });
+        found++;
+      }
+    }
+
+    if (found > 0) {
+      log('Scanned', found, 'emotes from DOM ->', ch, ', total:', cache.size);
+    }
+  }
+
+  // Periodically scan for new emotes
+  cleanup.setInterval(scanDomForEmotes, 10000, 'emote-scan');
+
+  // Process text and replace emote codes with images
+  // Supports 7TV zero-width (overlay) emotes that stack on base emotes
+  function processEmotes(text, channel) {
+    if (emoteCache.size === 0 && !channelEmoteCaches[channel]) return escapeHtml(text);
+
+    // Split adjacent Kick emotes and text touching emotes (e.g. "word[emote:id:name]")
+    const words = text.replace(/\]\[emote:/g, '] [emote:').replace(/([^\s\[])\[emote:/g, '$1 [emote:').replace(/\]([^\s\]])/g, '] $1').split(/(\s+)/);
+    const result = [];
+    let pendingStack = null; // { base: html, overlays: [html...] }
+    let pendingWhitespace = ''; // Accumulate whitespace - don't flush stack on spaces
+
+    for (const word of words) {
+      // Whitespace - accumulate, don't flush yet (overlays are space-separated)
+      if (/^\s+$/.test(word)) {
+        pendingWhitespace += word;
+        continue;
+      }
+
+      // Kick emote format: [emote:ID:NAME] -> render as image from Kick CDN
+      const kickEmoteMatch = word.match(/^\[emote:(\d+):([^\]]+)\]$/)
+      if (kickEmoteMatch) {
+        const [, emoteId, emoteName] = kickEmoteMatch
+        const kickUrl = `https://files.kick.com/emotes/${emoteId}/fullsize`
+        const safeUrl = escapeHtml(kickUrl)
+        const safeName = escapeHtml(emoteName)
+        // Cross-reference caches to find real provider (7tv/bttv/ffz), fall back to kick
+        const cached = emoteCache.get(emoteName) || (channel && channelEmoteCaches[channel]?.get(emoteName))
+        const provider = cached?.source || 'kick'
+        const imgHtml = `<span class="hs-mc-emote-wrapper hs-state-channel" data-emote-name="${safeName}" data-emote-url="${safeUrl}" data-state="channel" data-source="${escapeHtml(provider)}"><img src="${safeUrl}" alt="${safeName}" title="${safeName} (${escapeHtml(provider)} via kick)" class="hs-mc-emote hs-emote-channel" data-emote-name="${safeName}" data-state="channel" data-source="${escapeHtml(provider)}"></span>`
+        if (pendingStack) {
+          result.push(renderEmoteStack(pendingStack))
+        }
+        if (pendingWhitespace) {
+          result.push(pendingWhitespace)
+          pendingWhitespace = ''
+        }
+        pendingStack = { base: imgHtml, overlays: [] }
+        continue
+      }
+
+      // Try name0 overlay convention: "fire0" -> look up "fire" as overlay
+      let emote = null
+      let isOverlayEmote = false
+      const endsWithZero = word.endsWith('0') && word.length > 1
+      if (endsWithZero) {
+        const baseName = word.slice(0, -1)
+        emote = emoteCache.get(baseName) || (channel && channelEmoteCaches[channel]?.get(baseName))
+        if (emote) isOverlayEmote = true
+      }
+      if (!emote) {
+        emote = emoteCache.get(word) || (channel && channelEmoteCaches[channel]?.get(word))
+        if (emote) isOverlayEmote = !!emote.zeroWidth
+      }
+      if (emote) {
+        const isBlocked = blockedEmoteNames.has(word);
+        const state = isBlocked ? 'blocked' : (emote.state || 'global');
+        const source = escapeHtml(emote.source || 'unknown');
+        const imgSrc = escapeHtml(getChatResUrl(emote.url)); // Upgrade to 2x/4x based on emote size setting
+        const safeHash = emote.hash ? escapeHtml(emote.hash) : '';
+        const displayName = escapeHtml(endsWithZero && isOverlayEmote ? word : word)
+        const imgHtml = `<span class="hs-mc-emote-wrapper hs-state-${state}" data-emote-name="${displayName}" data-emote-url="${imgSrc}" data-state="${state}" data-source="${source}"${safeHash ? ` data-emote-hash="${safeHash}"` : ''}><img src="${imgSrc}" alt="${displayName}" title="${displayName}" class="hs-mc-emote hs-emote-${state}" data-emote-name="${displayName}" data-state="${state}" data-source="${source}"></span>`;
+
+        if (isOverlayEmote) {
+          // Overlay emote - stack on previous base (discard whitespace between)
+          log('FOUND zeroWidth emote:', word, '| hasBase:', !!pendingStack);
+          if (pendingStack) {
+            pendingStack.overlays.push(imgHtml);
+            pendingWhitespace = '';
+          } else {
+            // No base to stack on - render standalone
+            if (pendingWhitespace) {
+              result.push(pendingWhitespace);
+              pendingWhitespace = '';
+            }
+            result.push(imgHtml);
+          }
+        } else {
+          // Base emote - flush previous stack, start new one
+          if (pendingStack) {
+            result.push(renderEmoteStack(pendingStack));
+          }
+          if (pendingWhitespace) {
+            result.push(pendingWhitespace);
+            pendingWhitespace = '';
+          }
+          pendingStack = { base: imgHtml, overlays: [] };
+        }
+      } else {
+        // Check for emoji :shortcode: — treat as stackable base
+        if (typeof EMOJI_BY_NAME !== 'undefined' && word.startsWith(':') && word.endsWith(':') && word.length > 2) {
+          const emojiName = word.slice(1, -1)
+          const emojiEntry = EMOJI_BY_NAME.get(emojiName)
+          if (emojiEntry) {
+            if (pendingStack) {
+              result.push(renderEmoteStack(pendingStack))
+            }
+            if (pendingWhitespace) {
+              result.push(pendingWhitespace)
+              pendingWhitespace = ''
+            }
+            const emojiHtml = `<span class="hs-mc-emoji" title=":${escapeHtml(emojiName)}:">${emojiEntry.emoji}</span>`
+            pendingStack = { base: emojiHtml, overlays: [] }
+            continue
+          }
+        }
+        // Check for Unicode emoji — treat as stackable base
+        if (/^[\p{Extended_Pictographic}\p{Emoji_Presentation}\uFE0F\u200D]+$/u.test(word)) {
+          if (pendingStack) {
+            result.push(renderEmoteStack(pendingStack))
+          }
+          if (pendingWhitespace) {
+            result.push(pendingWhitespace)
+            pendingWhitespace = ''
+          }
+          const emojiHtml = `<span class="hs-mc-emoji">${escapeHtml(word)}</span>`
+          pendingStack = { base: emojiHtml, overlays: [] }
+          continue
+        }
+        // Text - flush stack and add text
+        if (pendingStack) {
+          result.push(renderEmoteStack(pendingStack));
+          pendingStack = null;
+        }
+        if (pendingWhitespace) {
+          result.push(pendingWhitespace);
+          pendingWhitespace = '';
+        }
+        // Color @mentions using known chatter colors
+        if (word.startsWith('@') && word.length > 1) {
+          const name = word.slice(1).replace(/[,.:!?]+$/, '').toLowerCase();
+          const color = knownColors.get(name);
+          if (color) {
+            result.push(`<span style="color:${sanitizeColor(color)};font-weight:bold">${escapeHtml(word)}</span>`);
+          } else {
+            result.push(escapeHtml(word));
+          }
+        } else if (linksEnabled && /^(https?:\/\/\S+|[a-z0-9-]+(\.[a-z0-9-]+)+\/\S*)/i.test(word)) {
+          // Validate URL protocol before creating link (block javascript:, data:, etc.)
+          const hasProtocol = /^https?:\/\//i.test(word);
+          const fullUrl = hasProtocol ? word : `https://${word}`;
+          if (/^https?:\/\//i.test(fullUrl)) {
+            const safeUrl = escapeHtml(word);
+            const safeHref = escapeHtml(fullUrl);
+            result.push(`<a href="${safeHref}" target="_blank" rel="noopener noreferrer" class="hs-mc-link">${safeUrl}</a>`);
+          } else {
+            result.push(escapeHtml(word));
+          }
+        } else {
+          result.push(escapeHtml(word));
+        }
+      }
+    }
+
+    // Flush any remaining stack
+    if (pendingStack) {
+      result.push(renderEmoteStack(pendingStack));
+    }
+    if (pendingWhitespace) {
+      result.push(pendingWhitespace);
+    }
+
+    return result.join('');
+  }
+
+  // Render an emote stack (base + overlays)
+  function renderEmoteStack(stack) {
+    if (stack.overlays.length === 0) {
+      return stack.base;
+    }
+    const overlayHtml = stack.overlays.map(o =>
+      o.replace('class="hs-mc-emote ', 'class="hs-mc-emote hs-mc-overlay-emote ')
+    ).join('');
+    const count = stack.overlays.length + 1;
+    return `<span class="hs-mc-emote-stack" data-stack-count="${count}" title="expand"><span class="hs-mc-emote-stack-emotes">${stack.base}${overlayHtml}</span><span class="hs-mc-stack-collapse" title="collapse">\u00d7</span><span class="hs-mc-stack-block-all" title="block all">\u2298</span></span>`;
+  }
+
+
+// --- multichat/tooltips.js ---
+// Tooltips - toast, emote tooltip, user profile card, link preview
+// Note: all innerHTML usage passes content through escapeHtml() first (see src/lib/utils.js)
+
+  function showToast(msg) {
+    const existing = document.getElementById('hs-mc-toast');
+    if (existing) existing.remove();
+
+    const toast = document.createElement('div');
+    toast.id = 'hs-mc-toast';
+    toast.textContent = msg;
+    toast.style.cssText = `
+      position: fixed;
+      bottom: 70px;
+      right: 20px;
+      background: #000;
+      color: #fff;
+      border: 1px solid #fff;
+      padding: 6px 14px;
+      border-radius: 0;
+      font: bold 12px monospace;
+      z-index: 5000;
+      pointer-events: none;
+    `;
+    document.body.appendChild(toast);
+    setTimeout(() => toast.remove(), 1500);
+  }
+
+  // Emote hover tooltip (4x preview with source color)
+  let emoteTooltip = null;
+
+  function ensureEmoteTooltip() {
+    if (!emoteTooltip || !document.contains(emoteTooltip)) {
+      emoteTooltip = document.createElement('div');
+      emoteTooltip.id = 'hs-emote-tooltip';
+      emoteTooltip.innerHTML = `
+        <img src="" alt="">
+        <span class="tooltip-name"></span>
+        <span class="tooltip-source"></span>
+      `;
+      document.body.appendChild(emoteTooltip);
+    }
+    return emoteTooltip;
+  }
+
+  function showEmoteTooltip(e, emoteName, emoteUrl, state, source, hoveredImg) {
+    const tooltip = ensureEmoteTooltip();
+    const img = tooltip.querySelector('img');
+    const nameEl = tooltip.querySelector('.tooltip-name');
+    const stateEl = tooltip.querySelector('.tooltip-source');
+
+    // Show 1x immediately (no stale image), upgrade to hi-res in background
+    const w4 = (hoveredImg?.offsetWidth || 28) * 4;
+    const h4 = (hoveredImg?.offsetHeight || 28) * 4;
+    img.style.width = w4 + 'px';
+    img.style.height = h4 + 'px';
+    img.src = emoteUrl;
+    img.alt = emoteName;
+    // Try loading hi-res - swap in if it works, keep 1x if it fails
+    const hiResUrl = getHighResUrl(emoteUrl);
+    if (hiResUrl !== emoteUrl) {
+      const hiRes = new Image();
+      hiRes.onload = () => { if (img.alt === emoteName) img.src = hiResUrl; };
+      hiRes.src = hiResUrl;
+    }
+    nameEl.textContent = emoteName;
+
+    // Show state with source for globals
+    let label;
+    if (state === 'owned') {
+      label = 'in your set';
+    } else if (state === 'unadded') {
+      label = 'click to add';
+    } else if (state === 'blocked') {
+      label = 'blocked (click to unblock)';
+    } else {
+      // Global or channel - show source
+      const sourceLabels = {
+        '7tv': '7TV',
+        'bttv': 'BTTV',
+        'ffz': 'FFZ',
+        'twitch': 'Twitch',
+        'kick': 'Kick',
+        'heatsync': 'Heatsync'
+      };
+      const sourceName = sourceLabels[source] || source || 'unknown';
+      const scope = state === 'channel' ? 'channel' : 'global';
+      label = `${scope} (${sourceName})`;
+    }
+    stateEl.textContent = label;
+    stateEl.className = 'tooltip-source ' + (state || 'global');
+
+    // Position: show tooltip above the emote, offset right of cursor
+    // First make visible off-screen to measure height
+    tooltip.style.left = '-9999px';
+    tooltip.style.top = '-9999px';
+    tooltip.classList.add('visible');
+
+    const rect = tooltip.getBoundingClientRect();
+    const tooltipH = rect.height;
+    const tooltipW = rect.width;
+    const gap = 12; // px gap between cursor and tooltip
+
+    // Prefer above cursor; if no room, go below
+    let x = Math.min(e.clientX + 15, window.innerWidth - tooltipW - 10);
+    x = Math.max(10, x);
+    let y;
+    if (e.clientY - tooltipH - gap > 10) {
+      y = e.clientY - tooltipH - gap; // above
+    } else {
+      y = e.clientY + gap + 20; // below (20px for emote height)
+    }
+    y = Math.max(10, Math.min(y, window.innerHeight - tooltipH - 10));
+
+    tooltip.style.left = x + 'px';
+    tooltip.style.top = y + 'px';
+  }
+
+  function showEmojiTooltip(e, emoji, name) {
+    const tooltip = ensureEmoteTooltip()
+    const img = tooltip.querySelector('img')
+    const nameEl = tooltip.querySelector('.tooltip-name')
+    const stateEl = tooltip.querySelector('.tooltip-source')
+
+    // Hide the image, show emoji character at 4x instead
+    img.style.display = 'none'
+
+    // Build emoji preview using safe DOM methods
+    nameEl.textContent = ''
+    const emojiChar = document.createElement('span')
+    Object.assign(emojiChar.style, { fontSize: '64px', lineHeight: '1', fontVariantEmoji: 'emoji', display: 'block', textAlign: 'center' })
+    emojiChar.textContent = emoji
+    const label = document.createElement('span')
+    Object.assign(label.style, { display: 'block', marginTop: '4px' })
+    label.textContent = ':' + name + ':'
+    nameEl.appendChild(emojiChar)
+    nameEl.appendChild(label)
+
+    stateEl.textContent = 'emoji'
+    stateEl.className = 'tooltip-source'
+
+    tooltip.style.left = '-9999px'
+    tooltip.style.top = '-9999px'
+    tooltip.classList.add('visible')
+
+    const rect = tooltip.getBoundingClientRect()
+    const gap = 12
+    let x = Math.min(e.clientX + 15, window.innerWidth - rect.width - 10)
+    x = Math.max(10, x)
+    let y = e.clientY - rect.height - gap > 10
+      ? e.clientY - rect.height - gap
+      : e.clientY + gap + 20
+    y = Math.max(10, Math.min(y, window.innerHeight - rect.height - 10))
+
+    tooltip.style.left = x + 'px'
+    tooltip.style.top = y + 'px'
+  }
+
+  function hideEmoteTooltip() {
+    if (emoteTooltip) {
+      emoteTooltip.classList.remove('visible');
+      // Reset img display for next emote hover
+      const img = emoteTooltip.querySelector('img')
+      if (img) img.style.display = ''
+    }
+  }
+
+  function setupEmoteTooltipHandlers() {
+    if (window._hsEmoteTooltipSetup) return;
+    window._hsEmoteTooltipSetup = true;
+
+    cleanup.addEventListener(document, 'mouseover', (e) => {
+      const target = e.target;
+
+      // Emoji hover: show 4x preview
+      const emojiSpan = target.closest('.hs-mc-emoji');
+      if (emojiSpan) {
+        const name = emojiSpan.dataset.emojiName || emojiSpan.title?.replace(/:/g, '') || '';
+        showEmojiTooltip(e, emojiSpan.textContent, name);
+        return;
+      }
+
+      // Check wrapper first, then IMG
+      const wrapper = target.closest('.hs-mc-emote-wrapper');
+      const img = wrapper ? wrapper.querySelector('img') : (
+        target.tagName === 'IMG' && (target.classList.contains('hs-mc-emote') || target.classList.contains('hs-mc-picker-emote')) ? target : null
+      );
+      if (!img && !wrapper) return;
+
+      const emoteName = wrapper?.dataset.emoteName || img?.alt || img?.dataset.emoteName || img?.title?.split(' ')[0];
+      if (!emoteName) return;
+
+      const emoteUrl = wrapper?.dataset.emoteUrl || img?.src;
+      const state = wrapper?.dataset.state || img?.dataset.state || 'global';
+      const source = wrapper?.dataset.source || img?.dataset.source || detectEmoteSource(emoteUrl);
+
+      showEmoteTooltip(e, emoteName, emoteUrl, state, source, img);
+
+      // Cross-highlight: add highlight to all wrappers with same emote name
+      queryEmoteWrappers(emoteName).forEach(w => {
+        w.classList.add('hs-emote-highlight');
+      });
+    }, 'mc-emote-tooltip-mouseover');
+
+    cleanup.addEventListener(document, 'mouseout', (e) => {
+      const target = e.target;
+      const wrapper = target.closest('.hs-mc-emote-wrapper');
+      const img = wrapper ? wrapper.querySelector('img') : (
+        target.tagName === 'IMG' && (target.classList.contains('hs-mc-emote') || target.classList.contains('hs-mc-picker-emote')) ? target : null
+      );
+      if (!img && !wrapper) return;
+
+      hideEmoteTooltip();
+
+      // Remove cross-highlight from all wrappers
+      const emoteName = wrapper?.dataset.emoteName || img?.alt || img?.dataset.emoteName;
+      if (emoteName) {
+        queryEmoteWrappers(emoteName).forEach(w => {
+          w.classList.remove('hs-emote-highlight');
+        });
+      }
+    }, 'mc-emote-tooltip-mouseout');
+
+    let _tooltipRafPending = false
+    cleanup.addEventListener(document, 'mousemove', (e) => {
+      // RAF-batch tooltip position updates to avoid per-mousemove style writes
+      if (_tooltipRafPending) return
+      _tooltipRafPending = true
+      const cx = e.clientX, cy = e.clientY, target = e.target
+      requestAnimationFrame(() => {
+        _tooltipRafPending = false
+        const onEmote = target?.closest?.('.hs-mc-emote-wrapper') ||
+          (target?.tagName === 'IMG' && (target.classList?.contains('hs-mc-emote') || target.classList?.contains('hs-mc-picker-emote')))
+        const onUser = target?.closest?.('.hs-mc-user')
+
+        // Kill emote tooltip instantly if not on an emote
+        if (emoteTooltip?.classList.contains('visible')) {
+          if (!onEmote) {
+            hideEmoteTooltip()
+            document.querySelectorAll('.hs-emote-highlight').forEach(w => w.classList.remove('hs-emote-highlight'))
+          } else {
+            const tooltipH = emoteTooltip.offsetHeight
+            const tooltipW = emoteTooltip.offsetWidth
+            const gap = 12
+            let x = Math.min(cx + 15, window.innerWidth - tooltipW - 10)
+            x = Math.max(10, x)
+            let y = cy - tooltipH - gap > 10 ? cy - tooltipH - gap : cy + gap + 20
+            y = Math.max(10, Math.min(y, window.innerHeight - tooltipH - 10))
+            emoteTooltip.style.left = x + 'px'
+            emoteTooltip.style.top = y + 'px'
+          }
+        }
+
+        // Kill user tooltip instantly if not on a username
+        if (userTooltip?.classList.contains('visible')) {
+          if (!onUser && !target?.closest?.('#hs-user-tooltip')) {
+            hideUserTooltip()
+          } else {
+            const x = Math.min(cx + 15, window.innerWidth - 220)
+            const y = Math.max(cy - 60, 10)
+            userTooltip.style.left = x + 'px'
+            userTooltip.style.top = y + 'px'
+          }
+        }
+
+        // Kill link tooltip if not on a link
+        const onLink = target?.closest?.('.hs-mc-link')
+        if (linkTooltip?.classList.contains('visible')) {
+          if (!onLink) {
+            hideLinkTooltip()
+          } else {
+            positionLinkTooltip(linkTooltip, cx, cy)
+          }
+        }
+      })
+    }, 'mc-tooltip-mousemove');
+  }
+
+  // User hover tooltip (profile preview)
+  let userTooltip = null;
+  const _profileCache = new Map(); // username -> { profile, ts }
+  const PROFILE_CACHE_TTL = 60000; // 60s
+  let _profileGen = 0; // generation counter to prevent stale renders
+
+  function ensureUserTooltip() {
+    if (!userTooltip || !document.contains(userTooltip)) {
+      userTooltip = document.createElement('div');
+      userTooltip.id = 'hs-user-tooltip';
+      document.body.appendChild(userTooltip);
+    }
+    return userTooltip;
+  }
+
+  function getHeatColor() {
+    return '#ff8700';
+  }
+
+  function formatCompact(n) {
+    if (n >= 1000000) return (n / 1000000).toFixed(1).replace(/\.0$/, '') + 'M';
+    if (n >= 1000) return (n / 1000).toFixed(1).replace(/\.0$/, '') + 'K';
+    return String(n);
+  }
+
+  function getAccountAge(dateStr) {
+    if (!dateStr) return null;
+    const d = new Date(dateStr);
+    const now = new Date();
+    const y = now.getFullYear() - d.getFullYear();
+    const m = now.getMonth() - d.getMonth();
+    const days = now.getDate() - d.getDate();
+    if (y > 0) return y + 'y';
+    if (m > 0) return m + 'm';
+    return Math.max(0, days) + 'd';
+  }
+
+  function getCompactRelTime(dateStr) {
+    if (!dateStr) return '';
+    const ms = Date.now() - new Date(dateStr).getTime();
+    const d = Math.floor(ms / 86400000);
+    if (d > 365) return Math.floor(d / 365) + 'y ago';
+    if (d > 30) return Math.floor(d / 30) + 'mo ago';
+    if (d > 0) return d + 'd ago';
+    const h = Math.floor(ms / 3600000);
+    if (h > 0) return h + 'h ago';
+    return 'just now';
+  }
+
+  function renderProfileCard(p) {
+    const pfp = p.twitch_profile_pic || p.kick_profile_pic || p.profile_image_url || 'https://heatsync.org/anon.webp';
+    const displayName = p.display_name || p.username || 'unknown';
+
+    // Platform badges
+    let platforms = '';
+    if (p.twitch_username) {
+      let ttv = `<span class="hs-pc-platform twitch">ttv:${escapeHtml(p.twitch_username)}</span>`;
+      if (p.twitch_verified) ttv += ' ✓';
+      if (p.twitch_is_live) {
+        const vc = p.twitch_viewer_count || 0;
+        ttv += ` <span style="color:#f00">🔴${vc > 0 ? ' ' + formatCompact(vc) : ''}</span>`;
+      }
+      platforms += ttv;
+    }
+    if (p.kick_username) {
+      let kk = `<span class="hs-pc-platform kick">kick:${escapeHtml(p.kick_username)}</span>`;
+      if (p.kick_verified) kk += ' ✓';
+      if (p.kick_is_live) {
+        const vc = p.kick_viewer_count || 0;
+        kk += ` <span style="color:#f00">🔴${vc > 0 ? ' ' + formatCompact(vc) : ''}</span>`;
+      }
+      platforms += kk;
+    }
+    if (!platforms) {
+      platforms = `<span class="hs-pc-name">${escapeHtml(displayName)}</span>`;
+    }
+
+    // Role badge
+    let role = '';
+    const bt = p.twitch_broadcaster_type;
+    if (bt === 'partner') role = '<span class="hs-pc-role partner">partner</span>';
+    else if (bt === 'affiliate') role = '<span class="hs-pc-role affiliate">affiliate</span>';
+    else if (p.role === 'admin') role = '<span class="hs-pc-role admin">admin</span>';
+    else if (p.role === 'staff') role = '<span class="hs-pc-role staff">staff</span>';
+
+    // Account age
+    const dates = [p.twitch_created_at, p.kick_created_at].filter(Boolean);
+    const oldest = dates.length ? dates.reduce((a, b) => new Date(b) < new Date(a) ? b : a) : null;
+    const age = getAccountAge(oldest);
+    const ageHtml = age ? `<span class="hs-pc-age">${age}</span>` : '';
+
+    // Bio
+    const bio = p.bio ? `<div class="hs-pc-bio">${escapeHtml(p.bio)}</div>` : '';
+
+    // Stats
+    const stats = p.stats || {};
+    const heat = stats.total_heat || 0;
+    const op = stats.op_count || p.opCount || 0;
+    const mop = stats.mop_count || p.mopCount || 0;
+    const re = stats.re_count || p.reCount || 0;
+    const followers = Math.max(stats.followers || 0, p.twitch_followers || 0, p.kick_followers || 0);
+    const following = Math.max(stats.following || 0, p.twitch_following_count || 0, p.kick_following_count || 0);
+
+    const statBadges = [];
+    statBadges.push(`<span class="hs-pc-stat heat" style="color:#ff8700"><span class="hs-pc-num">${formatCompact(heat)}</span>°</span>`);
+    if (op > 0) statBadges.push(`<span class="hs-pc-stat op"><span class="hs-pc-num">${formatCompact(op)}</span> [OP]</span>`);
+    if (mop > 0) statBadges.push(`<span class="hs-pc-stat mop"><span class="hs-pc-num">${formatCompact(mop)}</span> <span style="color:#ff00ff">[OP]</span></span>`);
+    if (re > 0) statBadges.push(`<span class="hs-pc-stat re"><span class="hs-pc-num">${formatCompact(re)}</span> [RE]</span>`);
+    if (followers > 0) statBadges.push(`<span class="hs-pc-stat"><span class="hs-pc-num">${formatCompact(followers)}</span> followers</span>`);
+    if (following > 0) statBadges.push(`<span class="hs-pc-stat">following <span class="hs-pc-num">${formatCompact(following)}</span></span>`);
+
+    // Relationship
+    const rel = p.relationship || {};
+    const relBadges = [];
+    const followsYou = rel.profileFollowsViewerOnTwitch || rel.profileFollowsViewerOnKick || rel.followsYou;
+    if (followsYou) {
+      const since = rel.profileFollowsViewerOnTwitchSince || rel.followsYouSince;
+      relBadges.push(`<span class="hs-pc-rel-badge mutual">follows you${since ? ' ' + getCompactRelTime(since) : ''}</span>`);
+    }
+    if (rel.profileSubbedToViewerOnTwitch || rel.subscribesToYou) {
+      const since = rel.profileTwitchSubSince || rel.subscribesToYouSince;
+      relBadges.push(`<span class="hs-pc-rel-badge supporter">subs to you${since ? ' ' + getCompactRelTime(since) : ''}</span>`);
+    }
+
+    return `
+      ${pfp ? `<img class="hs-pc-avatar" src="${escapeHtml(pfp)}" alt="${escapeHtml(displayName)}">` : ''}
+      <div class="hs-pc-info">
+        <div class="hs-pc-header">${platforms} ${role} ${ageHtml}</div>
+        ${bio}
+        ${statBadges.length ? `<div class="hs-pc-stats">${statBadges.join('')}</div>` : ''}
+        ${relBadges.length ? `<div class="hs-pc-rel">${relBadges.join(' ')}</div>` : ''}
+      </div>`;
+  }
+
+  async function showUserTooltip(e, username, color) {
+    const tooltip = ensureUserTooltip();
+    const gen = ++_profileGen;
+
+    // Show loading state immediately
+    tooltip.innerHTML = `<div class="hs-pc-loading" style="color:${color || '#fff'}">${escapeHtml(username)}...</div>`;
+
+    const x = Math.min(e.clientX + 15, window.innerWidth - 280);
+    const y = Math.max(e.clientY - 80, 10);
+    tooltip.style.left = x + 'px';
+    tooltip.style.top = y + 'px';
+    tooltip.classList.add('visible');
+
+    // Check cache
+    const cached = _profileCache.get(username.toLowerCase());
+    if (cached && Date.now() - cached.ts < PROFILE_CACHE_TTL) {
+      if (gen !== _profileGen) return;
+      tooltip.innerHTML = renderProfileCard(cached.profile);
+      repositionTooltip(tooltip, e);
+      return;
+    }
+
+    // Fetch profile
+    const resp = await apiFetch(`/api/profile/${encodeURIComponent(username)}`);
+    if (gen !== _profileGen) return; // user moved away
+
+    if (resp?.ok && resp.data?.profile) {
+      const profile = resp.data.profile;
+      _profileCache.set(username.toLowerCase(), { profile, ts: Date.now() });
+      // Prune cache
+      if (_profileCache.size > 100) {
+        const oldest = [..._profileCache.entries()].sort((a, b) => a[1].ts - b[1].ts).slice(0, 50);
+        for (const [k] of oldest) _profileCache.delete(k);
+      }
+      tooltip.innerHTML = renderProfileCard(profile);
+      repositionTooltip(tooltip, e);
+    } else {
+      // Fallback - show basic info
+      tooltip.innerHTML = `<div class="hs-pc-info"><div class="hs-pc-header"><span class="hs-pc-name">${escapeHtml(username)}</span></div></div>`;
+    }
+  }
+
+  function repositionTooltip(tooltip, e) {
+    // Re-position after content changes size
+    const rect = tooltip.getBoundingClientRect();
+    const x = Math.min(e.clientX + 15, window.innerWidth - rect.width - 10);
+    const y = e.clientY - rect.height - 10 > 0
+      ? e.clientY - rect.height - 10
+      : e.clientY + 20;
+    tooltip.style.left = Math.max(5, x) + 'px';
+    tooltip.style.top = Math.max(5, y) + 'px';
+  }
+
+  function hideUserTooltip() {
+    _profileGen++;
+    if (userTooltip) {
+      userTooltip.classList.remove('visible');
+    }
+  }
+
+  function setupUserTooltipHandlers() {
+    if (window._hsUserTooltipSetup) return;
+    window._hsUserTooltipSetup = true;
+
+    cleanup.addEventListener(document, 'mouseover', (e) => {
+      const target = e.target.closest('.hs-mc-user');
+      if (target) {
+        const username = target.textContent;
+        const color = target.style.color;
+        showUserTooltip(e, username, color);
+
+        // Highlight all matching usernames
+        const name = target.dataset.username;
+        if (name) {
+          const overlay = document.getElementById('hs-mc-overlay');
+          if (overlay) {
+            overlay.querySelectorAll(`.hs-mc-user[data-username="${CSS.escape(name)}"]`).forEach(el => {
+              el.classList.add('hs-user-highlight');
+            });
+          }
+        }
+      }
+    }, 'mc-user-tooltip-mouseover');
+
+    cleanup.addEventListener(document, 'mouseout', (e) => {
+      const target = e.target.closest('.hs-mc-user');
+      if (target) {
+        hideUserTooltip();
+
+        // Remove all username highlights
+        const overlay = document.getElementById('hs-mc-overlay');
+        if (overlay) {
+          overlay.querySelectorAll('.hs-user-highlight').forEach(el => {
+            el.classList.remove('hs-user-highlight');
+          });
+        }
+      }
+    }, 'mc-user-tooltip-mouseout');
+  }
+
+  // Link preview tooltip (Chatterino-style)
+  let linkTooltip = null;
+  const _linkPreviewCache = new Map(); // url -> { title, description, image } | null
+  let _linkHoverUrl = null;
+
+  function ensureLinkTooltip() {
+    if (linkTooltip) return linkTooltip;
+    linkTooltip = document.createElement('div');
+    linkTooltip.id = 'hs-link-tooltip';
+    document.body.appendChild(linkTooltip);
+    return linkTooltip;
+  }
+
+  function showLinkTooltip(e, url) {
+    if (!linksEnabled || !url) return;
+    _linkHoverUrl = url;
+    const tip = ensureLinkTooltip();
+    let hostname = '';
+    try { hostname = new URL(url).hostname; } catch { hostname = url; }
+
+    // Show loading state immediately
+    const loadWrap = document.createElement('div');
+    loadWrap.className = 'link-text';
+    const loadSpan = document.createElement('span');
+    loadSpan.className = 'link-loading';
+    loadSpan.textContent = 'loading...';
+    const domainSpan = document.createElement('span');
+    domainSpan.className = 'link-domain';
+    domainSpan.textContent = hostname;
+    loadWrap.appendChild(loadSpan);
+    loadWrap.appendChild(domainSpan);
+    tip.replaceChildren(loadWrap);
+    positionLinkTooltip(tip, e.clientX, e.clientY);
+    tip.classList.add('visible');
+
+    // Check cache
+    if (_linkPreviewCache.has(url)) {
+      const cached = _linkPreviewCache.get(url);
+      if (_linkHoverUrl === url) renderLinkPreview(tip, cached, url);
+      return;
+    }
+
+    // Fetch from background
+    safeSendMessage({ type: 'fetch_link_preview', url }).then(data => {
+      _linkPreviewCache.set(url, data);
+      if (_linkHoverUrl === url && tip.classList.contains('visible')) {
+        renderLinkPreview(tip, data, url);
+      }
+    });
+  }
+
+  function renderLinkPreview(tip, data, url) {
+    let hostname = '';
+    try { hostname = new URL(url).hostname; } catch { hostname = url; }
+    tip.replaceChildren(); // clear
+    let hasContent = false;
+    const textWrap = document.createElement('div');
+    textWrap.className = 'link-text';
+    if (data) {
+      if (data.image && /^https?:\/\//i.test(data.image)) {
+        const img = document.createElement('img');
+        img.src = data.image;
+        img.alt = '';
+        img.loading = 'lazy';
+        tip.appendChild(img);
+        hasContent = true;
+      }
+      if (data.title) {
+        const t = document.createElement('span');
+        t.className = 'link-title';
+        t.textContent = data.title;
+        textWrap.appendChild(t);
+        hasContent = true;
+      }
+      if (data.description) {
+        const d = document.createElement('span');
+        d.className = 'link-desc';
+        d.textContent = data.description;
+        textWrap.appendChild(d);
+        hasContent = true;
+      }
+    }
+    // If no og data at all, show full URL instead of just domain
+    const dom = document.createElement('span');
+    dom.className = 'link-domain';
+    dom.textContent = hasContent ? hostname : url;
+    textWrap.appendChild(dom);
+    tip.appendChild(textWrap);
+  }
+
+  function positionLinkTooltip(tip, cx, cy) {
+    tip.style.left = '-9999px';
+    tip.style.top = '-9999px';
+    requestAnimationFrame(() => {
+      const h = tip.offsetHeight;
+      const w = tip.offsetWidth;
+      let x = Math.min(cx + 15, window.innerWidth - w - 10);
+      x = Math.max(10, x);
+      let y = cy - h - 12 > 10 ? cy - h - 12 : cy + 24;
+      y = Math.max(10, Math.min(y, window.innerHeight - h - 10));
+      tip.style.left = x + 'px';
+      tip.style.top = y + 'px';
+    });
+  }
+
+  function hideLinkTooltip() {
+    _linkHoverUrl = null;
+    if (linkTooltip) linkTooltip.classList.remove('visible');
+  }
+
+  function setupLinkTooltipHandlers() {
+    if (window._hsLinkTooltipSetup) return;
+    window._hsLinkTooltipSetup = true;
+
+    cleanup.addEventListener(document, 'mouseover', (e) => {
+      const link = e.target.closest('.hs-mc-link');
+      if (link) showLinkTooltip(e, link.href);
+    }, 'mc-link-tooltip-mouseover');
+
+    cleanup.addEventListener(document, 'mouseout', (e) => {
+      const link = e.target.closest('.hs-mc-link');
+      if (link) hideLinkTooltip();
+    }, 'mc-link-tooltip-mouseout');
+  }
+
+
+// --- multichat/twitch-api.js ---
+// Twitch API - GQL proxy, badges, predictions, rewards, polls, Twitch tab UI
+
+// ═══ Predictions & Betting ═══
+
+function formatPoints(n) {
+  if (n == null) return '?'
+  if (n >= 1000000) return (n / 1000000).toFixed(1).replace(/\.0$/, '') + 'M'
+  if (n >= 1000) return (n / 1000).toFixed(1).replace(/\.0$/, '') + 'K'
+  return String(n)
+}
+
+function renderQuickLinks() {
+  const links = document.createElement('div')
+  links.className = 'hs-mc-pred-links'
+
+  const items = [
+    { action: 'popout', accent: '#4a90d9', icon: '<svg width="16" height="16" viewBox="0 0 20 20"><path fill="currentColor" d="M4 4h6v2H6v8h8v-4h2v6H4V4zm8 0h4v4h-2V6.41l-4.3 4.3-1.4-1.42L12.58 6H11V4z"></path></svg>', label: 'popout chat' },
+    { action: 'mod', accent: '#00c8af', icon: '<svg width="16" height="16" viewBox="0 0 20 20"><path fill="currentColor" d="M10 2l6 2.7V9c0 4.4-2.5 8.3-6 10-3.5-1.7-6-5.6-6-10V4.7L10 2z"/></svg>', label: 'mod view' }
+  ]
+
+  for (const item of items) {
+    const el = document.createElement('div')
+    el.className = 'hs-mc-menu-item hs-mc-pred-link'
+    el.dataset.action = item.action
+    el.style.setProperty('--menu-accent', item.accent)
+    el.innerHTML = `<div class="hs-mc-menu-icon">${item.icon}</div><div class="hs-mc-menu-text"><div class="hs-mc-menu-title">${item.label}</div></div><svg class="hs-mc-menu-arrow" width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>`
+    links.appendChild(el)
+  }
+  return links
+}
+
+function makeCoinSvg(size) {
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
+  svg.setAttribute('width', String(size))
+  svg.setAttribute('height', String(size))
+  svg.setAttribute('viewBox', '0 0 20 20')
+  svg.style.verticalAlign = '-2px'
+  const path = document.createElementNS('http://www.w3.org/2000/svg', 'path')
+  path.setAttribute('fill', '#ffbf00')
+  path.setAttribute('d', 'M10 6a4 4 0 100 8 4 4 0 000-8zm0-4a8 8 0 110 16 8 8 0 010-16z')
+  svg.appendChild(path)
+  return svg
+}
+
+function renderPrediction(pred, balance) {
+  const frag = document.createDocumentFragment()
+  const isLocked = pred.status === 'LOCKED'
+  const isResolved = pred.status === 'RESOLVED'
+  const isCanceled = pred.status === 'CANCELED'
+  const isEnded = isResolved || isCanceled
+  const totalPoints = pred.outcomes.reduce((s, o) => s + (o.totalPoints || 0), 0)
+  const createdAt = new Date(pred.createdAt).getTime()
+  const windowMs = (pred.predictionWindowSeconds || 120) * 1000
+  const endsAt = createdAt + windowMs
+  const userBet = _userBets.get(pred.id)
+  const winningId = pred.winningOutcome?.id || null
+
+  const wrapper = document.createElement('div')
+  wrapper.className = 'hs-mc-prediction' + (isResolved ? ' hs-mc-pred-resolved' : '') + (isCanceled ? ' hs-mc-pred-canceled' : '')
+  wrapper.dataset.eventId = pred.id
+
+  // Header
+  const header = document.createElement('div')
+  header.className = 'hs-mc-pred-header'
+  const title = document.createElement('div')
+  title.className = 'hs-mc-pred-title'
+  title.textContent = pred.title
+  header.appendChild(title)
+
+  if (isCanceled) {
+    const badge = document.createElement('span')
+    badge.className = 'hs-mc-pred-status hs-mc-pred-status-canceled'
+    badge.textContent = 'refunded'
+    header.appendChild(badge)
+  } else if (isResolved) {
+    const badge = document.createElement('span')
+    badge.className = 'hs-mc-pred-status hs-mc-pred-status-resolved'
+    badge.textContent = 'ended'
+    header.appendChild(badge)
+  } else if (isLocked) {
+    const badge = document.createElement('span')
+    badge.className = 'hs-mc-pred-locked'
+    badge.textContent = 'locked'
+    header.appendChild(badge)
+  } else {
+    const timer = document.createElement('span')
+    timer.className = 'hs-mc-pred-timer'
+    timer.dataset.ends = endsAt
+    header.appendChild(timer)
+  }
+  wrapper.appendChild(header)
+
+  // Balance
+  if (balance != null && !isEnded) {
+    const bal = document.createElement('div')
+    bal.className = 'hs-mc-pred-balance'
+    bal.appendChild(makeCoinSvg(14))
+    bal.appendChild(document.createTextNode(' ' + formatPoints(balance)))
+    wrapper.appendChild(bal)
+  }
+
+  // User bet result banner
+  if (isResolved && userBet && winningId) {
+    const won = userBet.outcomeId === winningId
+    const banner = document.createElement('div')
+    banner.className = 'hs-mc-pred-result ' + (won ? 'hs-mc-pred-result-won' : 'hs-mc-pred-result-lost')
+    if (won) {
+      const winOutcome = pred.outcomes.find(o => o.id === winningId)
+      const pct = totalPoints > 0 && winOutcome ? (winOutcome.totalPoints / totalPoints) : 1
+      const payout = pct > 0 ? Math.floor(userBet.points / pct) : userBet.points
+      banner.textContent = 'you won +' + formatPoints(payout)
+    } else {
+      banner.textContent = 'you lost ' + formatPoints(userBet.points)
+    }
+    wrapper.appendChild(banner)
+  } else if (isCanceled && userBet) {
+    const banner = document.createElement('div')
+    banner.className = 'hs-mc-pred-result hs-mc-pred-result-refund'
+    banner.textContent = formatPoints(userBet.points) + ' returned'
+    wrapper.appendChild(banner)
+  }
+
+  // Outcomes
+  const outcomesWrap = document.createElement('div')
+  outcomesWrap.className = 'hs-mc-pred-outcomes'
+
+  for (const outcome of pred.outcomes) {
+    const pct = totalPoints > 0 ? Math.round((outcome.totalPoints / totalPoints) * 100) : 0
+    const color = outcome.color === 'PINK' ? '#f5009b' : '#387aff'
+    const userCount = outcome.totalUsers || 0
+    const points = outcome.totalPoints || 0
+    const isWinner = winningId === outcome.id
+    const isLoser = isResolved && !isWinner
+    const isBetOn = userBet?.outcomeId === outcome.id
+
+    const card = document.createElement('div')
+    card.className = 'hs-mc-pred-outcome'
+      + (isWinner ? ' hs-mc-pred-outcome-won' : '')
+      + (isLoser ? ' hs-mc-pred-outcome-lost' : '')
+      + (isBetOn ? ' hs-mc-pred-outcome-yours' : '')
+    card.style.setProperty('--oc', color)
+
+    const head = document.createElement('div')
+    head.className = 'hs-mc-pred-outcome-head'
+    const titleSpan = document.createElement('span')
+    titleSpan.className = 'hs-mc-pred-outcome-title'
+    titleSpan.textContent = outcome.title
+    if (isWinner) {
+      const winBadge = document.createElement('span')
+      winBadge.className = 'hs-mc-pred-winner-badge'
+      winBadge.textContent = 'winner'
+      titleSpan.appendChild(document.createTextNode(' '))
+      titleSpan.appendChild(winBadge)
+    }
+    const pctSpan = document.createElement('span')
+    pctSpan.className = 'hs-mc-pred-outcome-pct'
+    pctSpan.textContent = pct + '%'
+    head.appendChild(titleSpan)
+    head.appendChild(pctSpan)
+    card.appendChild(head)
+
+    const track = document.createElement('div')
+    track.className = 'hs-mc-pred-bar-track'
+    const fill = document.createElement('div')
+    fill.className = 'hs-mc-pred-bar-fill'
+    fill.style.width = pct + '%'
+    track.appendChild(fill)
+    card.appendChild(track)
+
+    const stats = document.createElement('div')
+    stats.className = 'hs-mc-pred-outcome-stats'
+    let statsText = formatPoints(points) + ' pts \u00b7 ' + userCount + ' voter' + (userCount !== 1 ? 's' : '')
+    if (isBetOn) statsText += ' \u00b7 your bet: ' + formatPoints(userBet.points)
+    stats.textContent = statsText
+    card.appendChild(stats)
+
+    if (!isLocked && !isEnded) {
+      const betRow = document.createElement('div')
+      betRow.className = 'hs-mc-pred-bet-row'
+      for (const amt of [100, 1000, 5000]) {
+        const btn = document.createElement('button')
+        btn.className = 'hs-mc-pred-bet-btn'
+        btn.dataset.outcome = outcome.id
+        btn.dataset.points = amt
+        btn.style.setProperty('--oc', color)
+        if (balance != null && balance < amt) btn.disabled = true
+        btn.textContent = formatPoints(amt)
+        betRow.appendChild(btn)
+      }
+
+      // Max button
+      if (balance != null && balance > 0) {
+        const maxBtn = document.createElement('button')
+        maxBtn.className = 'hs-mc-pred-bet-btn hs-mc-pred-bet-max'
+        maxBtn.dataset.outcome = outcome.id
+        maxBtn.dataset.points = balance
+        maxBtn.style.setProperty('--oc', color)
+        maxBtn.textContent = 'max'
+        betRow.appendChild(maxBtn)
+      }
+
+      const customInput = document.createElement('input')
+      customInput.className = 'hs-mc-pred-bet-custom'
+      customInput.type = 'number'
+      customInput.min = '1'
+      if (balance != null) customInput.max = String(balance)
+      customInput.placeholder = 'amt'
+      customInput.dataset.outcome = outcome.id
+      betRow.appendChild(customInput)
+
+      const goBtn = document.createElement('button')
+      goBtn.className = 'hs-mc-pred-bet-go'
+      goBtn.dataset.outcome = outcome.id
+      goBtn.style.setProperty('--oc', color)
+      goBtn.textContent = 'bet'
+      betRow.appendChild(goBtn)
+
+      card.appendChild(betRow)
+    }
+
+    outcomesWrap.appendChild(card)
+  }
+
+  wrapper.appendChild(outcomesWrap)
+  frag.appendChild(wrapper)
+  return frag
+}
+
+function renderNoPrediction(balance) {
+  const wrap = document.createElement('div')
+  wrap.className = 'hs-mc-pred-empty'
+  const text = document.createElement('div')
+  text.className = 'hs-mc-pred-empty-text'
+  text.textContent = 'no active prediction'
+  wrap.appendChild(text)
+  if (balance != null) {
+    const bal = document.createElement('div')
+    bal.className = 'hs-mc-pred-balance'
+    bal.style.marginTop = '8px'
+    bal.appendChild(makeCoinSvg(14))
+    bal.appendChild(document.createTextNode(' ' + formatPoints(balance)))
+    wrap.appendChild(bal)
+  }
+  return wrap
+}
+
+function renderRewards(rewards, balance, channelId) {
+  const section = document.createElement('div')
+  section.className = 'hs-mc-rewards'
+
+  const header = document.createElement('div')
+  header.className = 'hs-mc-rewards-header'
+  const label = document.createElement('span')
+  label.className = 'hs-mc-rewards-label'
+  label.textContent = 'rewards'
+  header.appendChild(label)
+  if (balance != null) {
+    const bal = document.createElement('span')
+    bal.className = 'hs-mc-rewards-balance'
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
+    svg.setAttribute('width', '12')
+    svg.setAttribute('height', '12')
+    svg.setAttribute('viewBox', '0 0 20 20')
+    svg.style.verticalAlign = '-1px'
+    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path')
+    path.setAttribute('fill', '#ffbf00')
+    path.setAttribute('d', 'M10 6a4 4 0 100 8 4 4 0 000-8zm0-4a8 8 0 110 16 8 8 0 010-16z')
+    svg.appendChild(path)
+    bal.appendChild(svg)
+    bal.appendChild(document.createTextNode(' ' + formatPoints(balance)))
+    header.appendChild(bal)
+  }
+  section.appendChild(header)
+
+  if (!rewards.length) {
+    const empty = document.createElement('div')
+    empty.className = 'hs-mc-rewards-empty'
+    empty.textContent = 'no rewards available'
+    section.appendChild(empty)
+    return section
+  }
+
+  const grid = document.createElement('div')
+  grid.className = 'hs-mc-rewards-grid'
+
+  for (const reward of rewards) {
+    const now = Date.now()
+    const onCooldown = reward.cooldownExpiresAt && new Date(reward.cooldownExpiresAt).getTime() > now
+    const available = !reward.isPaused && reward.isInStock && !onCooldown
+    const card = document.createElement('div')
+    card.className = 'hs-mc-reward-card' + (available ? '' : ' hs-mc-reward-unavailable')
+    card.dataset.rewardId = reward.id
+    card.dataset.cost = reward.cost
+    card.dataset.title = reward.title
+    card.dataset.channelId = channelId
+    if (reward.isUserInputRequired) card.dataset.textRequired = '1'
+    if (reward.prompt) card.dataset.prompt = reward.prompt
+    card.style.setProperty('--rc', reward.backgroundColor || '#9147ff')
+
+    const imgUrl = reward.image?.url || reward.defaultImage?.url || ''
+    if (imgUrl) {
+      const img = document.createElement('img')
+      img.className = 'hs-mc-reward-img'
+      img.src = imgUrl
+      img.width = 28
+      img.height = 28
+      card.appendChild(img)
+    }
+
+    const info = document.createElement('div')
+    info.className = 'hs-mc-reward-info'
+    const titleEl = document.createElement('div')
+    titleEl.className = 'hs-mc-reward-title'
+    titleEl.textContent = reward.title
+    info.appendChild(titleEl)
+
+    const costEl = document.createElement('div')
+    costEl.className = 'hs-mc-reward-cost'
+    const costSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
+    costSvg.setAttribute('width', '10')
+    costSvg.setAttribute('height', '10')
+    costSvg.setAttribute('viewBox', '0 0 20 20')
+    costSvg.style.verticalAlign = '-1px'
+    const costPath = document.createElementNS('http://www.w3.org/2000/svg', 'path')
+    costPath.setAttribute('fill', '#ffbf00')
+    costPath.setAttribute('d', 'M10 6a4 4 0 100 8 4 4 0 000-8zm0-4a8 8 0 110 16 8 8 0 010-16z')
+    costSvg.appendChild(costPath)
+    costEl.appendChild(costSvg)
+    costEl.appendChild(document.createTextNode(' ' + formatPoints(reward.cost)))
+    info.appendChild(costEl)
+
+    if (!available) {
+      const reason = document.createElement('div')
+      reason.className = 'hs-mc-reward-reason'
+      if (reward.isPaused) reason.textContent = 'paused'
+      else if (!reward.isInStock) reason.textContent = 'out of stock'
+      else if (onCooldown) {
+        const secs = Math.ceil((new Date(reward.cooldownExpiresAt).getTime() - now) / 1000)
+        reason.textContent = secs > 60 ? `${Math.ceil(secs / 60)}m cooldown` : `${secs}s cooldown`
+        reason.dataset.cooldownEnds = new Date(reward.cooldownExpiresAt).getTime()
+      }
+      info.appendChild(reason)
+    }
+
+    card.appendChild(info)
+    grid.appendChild(card)
+  }
+
+  section.appendChild(grid)
+  return section
+}
+
+function attachRewardHandlers() {
+  const container = document.getElementById('hs-mc-tab-twitch')
+  if (!container) return
+
+  container.querySelectorAll('.hs-mc-reward-card:not(.hs-mc-reward-unavailable)').forEach(card => {
+    card.addEventListener('click', async (e) => {
+      e.stopPropagation()
+      if (card.querySelector('.hs-mc-reward-input-row')) return
+
+      if (card.dataset.textRequired === '1') {
+        const existing = card.parentElement.querySelector('.hs-mc-reward-input-row')
+        if (existing) existing.remove()
+        const row = document.createElement('div')
+        row.className = 'hs-mc-reward-input-row'
+        const input = document.createElement('input')
+        input.className = 'hs-mc-reward-input'
+        input.type = 'text'
+        input.placeholder = card.dataset.prompt || 'enter text...'
+        const btn = document.createElement('button')
+        btn.className = 'hs-mc-reward-submit'
+        btn.textContent = 'redeem'
+        row.appendChild(input)
+        row.appendChild(btn)
+        card.after(row)
+        input.focus()
+
+        btn.addEventListener('click', async (ev) => {
+          ev.stopPropagation()
+          const text = input.value.trim()
+          if (!text) return
+          btn.disabled = true
+          btn.textContent = '...'
+          const result = await redeemChannelReward(card.dataset.channelId, card.dataset.rewardId, parseInt(card.dataset.cost), card.dataset.title, text)
+          if (result.error) {
+            btn.textContent = '!'
+            btn.title = result.error
+            setTimeout(() => { btn.textContent = 'redeem'; btn.disabled = false; btn.title = '' }, 2000)
+          } else {
+            btn.textContent = '\u2713'
+            _rewardsCache = null
+            setTimeout(() => renderTwitchTab(), 500)
+          }
+        })
+        return
+      }
+
+      const titleEl = card.querySelector('.hs-mc-reward-title')
+      const origText = titleEl.textContent
+      titleEl.textContent = '...'
+      card.style.pointerEvents = 'none'
+      const result = await redeemChannelReward(card.dataset.channelId, card.dataset.rewardId, parseInt(card.dataset.cost), card.dataset.title)
+      if (result.error) {
+        titleEl.textContent = '!'
+        card.title = result.error
+        setTimeout(() => { titleEl.textContent = origText; card.style.pointerEvents = ''; card.title = '' }, 2000)
+      } else {
+        titleEl.textContent = '\u2713'
+        _rewardsCache = null
+        setTimeout(() => renderTwitchTab(), 500)
+      }
+    })
+  })
+
+  // Cooldown timers
+  container.querySelectorAll('.hs-mc-reward-reason[data-cooldown-ends]').forEach(el => {
+    const endsAt = parseInt(el.dataset.cooldownEnds)
+    const iv = cleanup.setInterval(() => {
+      if (!el.isConnected) { clearInterval(iv); return }
+      const secs = Math.max(0, Math.ceil((endsAt - Date.now()) / 1000))
+      if (secs <= 0) {
+        _rewardsCache = null
+        renderTwitchTab()
+        clearInterval(iv)
+        return
+      }
+      el.textContent = secs > 60 ? `${Math.ceil(secs / 60)}m cooldown` : `${secs}s cooldown`
+    }, 1000)
+  })
+}
+
+function attachPredictionHandlers() {
+  const container = document.getElementById('hs-mc-tab-twitch')
+  if (!container) return
+
+  // Quick link handlers
+  container.querySelectorAll('.hs-mc-pred-link').forEach(item => {
+    item.addEventListener('click', (e) => {
+      e.stopPropagation()
+      triggerTwitchFeature(item.dataset.action)
+    })
+  })
+
+  // Bet button handlers
+  container.querySelectorAll('.hs-mc-pred-bet-btn').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation()
+      const eventId = container.querySelector('.hs-mc-prediction')?.dataset.eventId
+      if (!eventId) return
+      btn.disabled = true
+      btn.textContent = '...'
+      const result = await placePredictionBet(eventId, btn.dataset.outcome, parseInt(btn.dataset.points))
+      if (result.error) {
+        btn.textContent = '!'
+        btn.title = result.error
+        setTimeout(() => { btn.textContent = formatPoints(parseInt(btn.dataset.points)); btn.disabled = false; btn.title = '' }, 2000)
+      } else {
+        btn.textContent = '\u2713'
+        setTimeout(() => renderTwitchTab(), 500)
+      }
+    })
+  })
+
+  // Custom bet "go" buttons
+  container.querySelectorAll('.hs-mc-pred-bet-go').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation()
+      const eventId = container.querySelector('.hs-mc-prediction')?.dataset.eventId
+      if (!eventId) return
+      const input = container.querySelector(`.hs-mc-pred-bet-custom[data-outcome="${btn.dataset.outcome}"]`)
+      const points = parseInt(input?.value)
+      if (!points || points < 1) return
+      btn.disabled = true
+      btn.textContent = '...'
+      const result = await placePredictionBet(eventId, btn.dataset.outcome, points)
+      if (result.error) {
+        btn.textContent = '!'
+        btn.title = result.error
+        setTimeout(() => { btn.textContent = 'bet'; btn.disabled = false; btn.title = '' }, 2000)
+      } else {
+        btn.textContent = '\u2713'
+        input.value = ''
+        setTimeout(() => renderTwitchTab(), 500)
+      }
+    })
+  })
+
+  // Enter key in custom input triggers bet
+  container.querySelectorAll('.hs-mc-pred-bet-custom').forEach(input => {
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault()
+        const goBtn = container.querySelector(`.hs-mc-pred-bet-go[data-outcome="${input.dataset.outcome}"]`)
+        if (goBtn && !goBtn.disabled) goBtn.click()
+      }
+    })
+  })
+
+  // Start countdown timers
+  container.querySelectorAll('.hs-mc-pred-timer').forEach(el => {
+    const endsAt = parseInt(el.dataset.ends)
+    const update = () => {
+      const remaining = Math.max(0, Math.ceil((endsAt - Date.now()) / 1000))
+      if (remaining <= 0) {
+        el.textContent = 'closing...'
+        el.classList.add('hs-mc-pred-locked')
+        return
+      }
+      const m = Math.floor(remaining / 60)
+      const s = remaining % 60
+      el.textContent = m > 0 ? `${m}:${String(s).padStart(2, '0')}` : `${s}s`
+    }
+    update()
+    const iv = cleanup.setInterval(() => {
+      if (!el.isConnected) { clearInterval(iv); return }
+      update()
+    }, 1000)
+  })
+}
+
+async function renderTwitchTab() {
+  const container = document.getElementById('hs-mc-tab-twitch')
+  if (!container) return
+
+  const channel = getCurrentChannel()
+  if (!channel) {
+    container.textContent = ''
+    const empty = document.createElement('div')
+    empty.className = 'hs-mc-pred-empty'
+    const msg = document.createElement('div')
+    msg.className = 'hs-mc-pred-empty-text'
+    msg.textContent = 'no channel detected'
+    empty.appendChild(msg)
+    container.appendChild(empty)
+    container.appendChild(renderQuickLinks())
+    return
+  }
+
+  _predictionChannel = channel
+
+  if (!container.querySelector('.hs-mc-prediction, .hs-mc-pred-empty')) {
+    container.textContent = ''
+    const loading = document.createElement('div')
+    loading.className = 'hs-mc-pred-loading'
+    loading.textContent = 'loading...'
+    container.appendChild(loading)
+  }
+
+  const [result, rewardsResult, pollResult] = await Promise.all([
+    fetchPrediction(channel),
+    fetchChannelRewards(channel),
+    fetchPoll(channel)
+  ])
+
+  container.textContent = ''
+
+  // Auto-claim bonus points
+  if (rewardsResult?.availableClaim && rewardsResult.channelId) {
+    claimCommunityPoints(rewardsResult.availableClaim, rewardsResult.channelId)
+  }
+
+  if (!result) {
+    const empty = document.createElement('div')
+    empty.className = 'hs-mc-pred-empty'
+    const msg = document.createElement('div')
+    msg.className = 'hs-mc-pred-empty-text'
+    msg.textContent = "couldn't load predictions"
+    empty.appendChild(msg)
+    container.appendChild(empty)
+  } else if (result.prediction) {
+    container.appendChild(renderPrediction(result.prediction, result.balance))
+  } else {
+    container.appendChild(renderNoPrediction(result.balance))
+  }
+
+  // Poll
+  if (pollResult) {
+    container.appendChild(renderPoll(pollResult))
+  }
+
+  if (rewardsResult?.rewards?.length) {
+    container.appendChild(renderRewards(rewardsResult.rewards, rewardsResult.balance, rewardsResult.channelId))
+  }
+
+  container.appendChild(renderQuickLinks())
+  attachPredictionHandlers()
+  attachPollHandlers()
+  attachRewardHandlers()
+  startPredictionPoll()
+}
+
+function startPredictionPoll() {
+  stopPredictionPoll()
+  _predictionPollTimer = cleanup.setInterval(() => {
+    const container = document.getElementById('hs-mc-tab-twitch')
+    if (!container || container.style.display === 'none') {
+      stopPredictionPoll()
+      return
+    }
+    renderTwitchTab()
+  }, 15000)
+}
+
+function stopPredictionPoll() {
+  if (_predictionPollTimer) {
+    clearInterval(_predictionPollTimer)
+    _predictionPollTimer = null
+  }
+}
+
+function triggerTwitchFeature(action) {
+  const channel = getCurrentChannel();
+  if (!channel) return false;
+
+  const actions = {
+    popout: { url: `https://www.twitch.tv/popout/${channel}/chat?popout=`, opts: 'width=400,height=600' },
+    mod:    { url: `https://www.twitch.tv/moderator/${channel}`, opts: 'width=1200,height=800' },
+  };
+
+  const cfg = actions[action];
+  if (!cfg) return false;
+
+  window.open(cfg.url, '_blank', cfg.opts || '');
+  return true;
+}
+
+// Twitch IRC badge rendering
+const BADGE_STYLES = {
+  broadcaster: { label: 'LIVE', bg: '#e91916', fg: '#fff' },
+  moderator: { label: 'MOD', bg: '#00ad03', fg: '#fff' },
+  vip: { label: 'VIP', bg: '#e005b9', fg: '#fff' },
+  subscriber: { label: 'SUB', bg: '#8205b4', fg: '#fff' },
+  predictions: { label: 'PRED', bg: '#1f69ff', fg: '#fff' },
+  premium: { label: 'PRIME', bg: '#0d6efd', fg: '#fff' },
+  admin: { label: 'ADMIN', bg: '#faaf19', fg: '#000' },
+  staff: { label: 'STAFF', bg: '#faaf19', fg: '#000' },
+  global_mod: { label: 'GMOD', bg: '#00ad03', fg: '#fff' },
+  partner: { label: '✓', bg: '#9147ff', fg: '#fff' },
+  'bits-leader': { label: 'BITS', bg: '#ffd700', fg: '#000' },
+  'sub-gifter': { label: 'GIFT', bg: '#8205b4', fg: '#fff' },
+  artist: { label: 'ART', bg: '#ff6b35', fg: '#fff' },
+  turbo: { label: 'T+', bg: '#6441a5', fg: '#fff' },
+  founder: { label: 'FND', bg: '#8205b4', fg: '#fff' },
+}
+
+// Twitch badge image URLs: "setID/version" → image_url
+const twitchBadgeUrls = new Map()
+const ffzBadgeKeys = new Set() // tracks which channel:badgeName entries are FFZ (need bg color)
+const badgesFetchedChannels = new Set()
+let globalBadgesFetched = false
+const TWITCH_GQL = 'https://gql.twitch.tv/gql'
+const TWITCH_CLIENT_ID = 'kimne78kx3ncx6brgo4mv6wki5h1ko'
+
+// ═══ GQL Proxy — routes calls through MAIN world to use fresh hashes ═══
+// Twitch rotates persisted query hashes; the MAIN world fetch interceptor
+// captures them from Twitch's own code so we never hardcode stale hashes.
+
+// Cache for intercepted GQL data pushed from MAIN world
+const _gqlDataCache = {} // operationName → { data, ts }
+
+// Listen for passively intercepted GQL data from MAIN world
+window.addEventListener('message', (e) => {
+  if (e.origin !== location.origin) return
+  if (e.data?.type === 'heatsync-gql-data') {
+    const { operation, data, errors } = e.data
+    if (data && !errors?.length) {
+      _gqlDataCache[operation] = { data, ts: Date.now() }
+      // Auto-refresh Twitch tab if prediction/poll data arrives while tab is visible
+      const container = document.getElementById('hs-mc-tab-twitch')
+      if (container && container.style.display !== 'none') {
+        renderTwitchTab()
+      }
+    }
+  }
+})
+
+// Send GQL request through MAIN world proxy (uses captured hashes + integrity)
+function gqlProxy(operation, variables, opts) {
+  return new Promise((resolve, reject) => {
+    const id = Math.random().toString(36).slice(2)
+    const handler = (e) => {
+      if (e.data?.type === 'heatsync-gql-response' && e.data.id === id) {
+        window.removeEventListener('message', handler)
+        clearTimeout(timer)
+        if (e.data.error) reject(new Error(e.data.error))
+        else resolve(e.data.data)
+      }
+    }
+    window.addEventListener('message', handler)
+    const msg = { type: 'heatsync-gql-request', id, operation, variables }
+    if (opts?.rawQuery) msg.rawQuery = opts.rawQuery
+    if (opts?.batch) msg.batch = opts.batch
+    window.postMessage(msg, location.origin)
+    const timer = setTimeout(() => {
+      window.removeEventListener('message', handler)
+      reject(new Error('GQL proxy timeout'))
+    }, 10000)
+  })
+}
+
+// Request cached data from MAIN world
+function gqlGetCache(operations) {
+  return new Promise((resolve) => {
+    const id = Math.random().toString(36).slice(2)
+    const handler = (e) => {
+      if (e.data?.type === 'heatsync-gql-cache-response' && e.data.id === id) {
+        window.removeEventListener('message', handler)
+        clearTimeout(timer)
+        resolve(e.data)
+      }
+    }
+    window.addEventListener('message', handler)
+    window.postMessage({ type: 'heatsync-gql-get-cache', id, operations }, location.origin)
+    const timer = setTimeout(() => {
+      window.removeEventListener('message', handler)
+      resolve({ data: {}, hashes: [] })
+    }, 3000)
+  })
+}
+
+async function fetchGlobalBadges() {
+  if (globalBadgesFetched) return
+  globalBadgesFetched = true
+  try {
+    const resp = await fetch(TWITCH_GQL, {
+      method: 'POST',
+      headers: { 'Client-Id': TWITCH_CLIENT_ID, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query: '{ badges { imageURL(size: NORMAL) setID version } }' }),
+      signal: AbortSignal.timeout(5000)
+    })
+    if (!resp.ok) return
+    const data = await resp.json()
+    const badges = data?.data?.badges
+    if (!badges) return
+    for (const b of badges) {
+      twitchBadgeUrls.set(`${b.setID}/${b.version}`, b.imageURL)
+    }
+    log('Loaded global badges:', twitchBadgeUrls.size)
+  } catch (e) {
+    globalBadgesFetched = false
+    log('Failed to fetch global badges:', e.message)
+  }
+}
+
+// Prediction state
+let _predictionPollTimer = null
+let _predictionChannel = null
+const _userBets = new Map() // eventId → { outcomeId, points }
+
+// Rewards state
+let _rewardsCache = null
+let _rewardsCacheChannel = null
+
+async function fetchPrediction(channelLogin) {
+  const safe = channelLogin.replace(/[^a-z0-9_]/g, '')
+  if (!safe) return null
+  try {
+    // First check MAIN world cache (intercepted from Twitch's own calls)
+    const cached = await gqlGetCache(['ChannelPointsPredictionContext', 'CommunityPointsContext'])
+    const predCache = cached.data?.ChannelPointsPredictionContext
+    const pointsCache = cached.data?.CommunityPointsContext
+
+    let predEvent = null
+    let balance = null
+
+    if (predCache && Date.now() - predCache.ts < 30000) {
+      predEvent = predCache.data?.user?.activePredictionEvent || null
+    }
+    if (pointsCache && Date.now() - pointsCache.ts < 30000) {
+      balance = pointsCache.data?.community?.channel?.self?.communityPoints?.balance ?? null
+    }
+
+    // If cache miss, try proxy call with captured hashes
+    if (!predCache || Date.now() - predCache.ts >= 30000) {
+      try {
+        const data = await gqlProxy('ChannelPointsPredictionContext', { channelLogin: safe })
+        if (Array.isArray(data)) {
+          predEvent = data[0]?.data?.user?.activePredictionEvent || null
+          balance = data[1]?.data?.community?.channel?.self?.communityPoints?.balance ?? balance
+        } else {
+          predEvent = data?.data?.user?.activePredictionEvent || data?.user?.activePredictionEvent || null
+        }
+      } catch (e) {
+        log('GQL proxy prediction failed:', e.message)
+      }
+    }
+    if (balance == null && (!pointsCache || Date.now() - pointsCache.ts >= 30000)) {
+      try {
+        const data = await gqlProxy('CommunityPointsContext', { channelLogin: safe })
+        const d = Array.isArray(data) ? data[0]?.data : (data?.data || data)
+        balance = d?.community?.channel?.self?.communityPoints?.balance ?? null
+      } catch (e) {
+        log('GQL proxy points failed:', e.message)
+      }
+    }
+
+    return { prediction: predEvent, balance }
+  } catch (e) {
+    log('Failed to fetch prediction:', e.message)
+    return null
+  }
+}
+
+async function placePredictionBet(eventId, outcomeId, points, transactionId) {
+  const token = getTwitchAuthToken()
+  if (!token) return { error: 'not logged in' }
+  try {
+    const data = await gqlProxy('MakePrediction', {
+      input: {
+        eventID: eventId,
+        outcomeID: outcomeId,
+        points: points,
+        transactionID: transactionId || crypto.randomUUID()
+      }
+    })
+    const d = Array.isArray(data) ? data[0] : data
+    if (d?.errors?.length) return { error: d.errors[0].message }
+    _userBets.set(eventId, { outcomeId, points })
+    return { ok: true }
+  } catch (e) {
+    return { error: e.message }
+  }
+}
+
+async function fetchChannelRewards(channelLogin) {
+  const safe = channelLogin.replace(/[^a-z0-9_]/g, '')
+  if (!safe) return null
+  if (_rewardsCacheChannel === safe && _rewardsCache && Date.now() - _rewardsCache.fetchedAt < 60000) {
+    return _rewardsCache
+  }
+  const token = getTwitchAuthToken()
+  if (!token) return null
+  try {
+    // Try proxy with captured ChannelPointsContext hash first
+    const data = await gqlProxy('ChannelPointsContext', { channelLogin: safe }).catch(() => null)
+    let user = null
+    if (data) {
+      const d = Array.isArray(data) ? data[0] : data
+      user = d?.data?.community?.channel || d?.data?.user || d?.community?.channel || d?.user
+    }
+    // Fallback: try raw GQL (may work for some fields)
+    if (!user) {
+      const resp = await fetch(TWITCH_GQL, {
+        method: 'POST',
+        headers: {
+          'Client-Id': TWITCH_CLIENT_ID,
+          'Content-Type': 'application/json',
+          'Authorization': `OAuth ${token}`
+        },
+        body: JSON.stringify({
+          query: `{
+            user(login: "${safe}") {
+              id
+              communityPointsSettings {
+                customRewards {
+                  id title cost backgroundColor isEnabled isPaused isInStock
+                  isUserInputRequired cooldownExpiresAt prompt
+                  globalCooldownSetting { globalCooldownSeconds isEnabled }
+                  image { url }
+                  defaultImage { url }
+                }
+              }
+              self {
+                communityPoints {
+                  balance
+                  availableClaim { id }
+                }
+              }
+            }
+          }`
+        })
+      })
+      if (resp.ok) {
+        const raw = await resp.json()
+        user = raw?.data?.user
+      }
+    }
+    if (!user) return null
+    const settings = user.communityPointsSettings || user.communityPointsSetting || {}
+    const rewards = (settings.customRewards || []).filter(r => r.isEnabled)
+    const self = user.self || {}
+    const cp = self.communityPoints || {}
+    const balance = cp.balance ?? null
+    const availableClaim = cp.availableClaim?.id ?? null
+    _rewardsCache = { rewards, balance, availableClaim, channelId: user.id, fetchedAt: Date.now() }
+    _rewardsCacheChannel = safe
+    return _rewardsCache
+  } catch (e) {
+    log('Failed to fetch rewards:', e.message)
+    return null
+  }
+}
+
+async function redeemChannelReward(channelId, rewardId, cost, title, textInput) {
+  const token = getTwitchAuthToken()
+  if (!token) return { error: 'not logged in' }
+  try {
+    const input = {
+      channelID: channelId,
+      rewardID: rewardId,
+      cost,
+      title,
+      transactionID: crypto.randomUUID()
+    }
+    if (textInput) input.textInput = textInput
+    // Try proxy first (uses captured hash + integrity)
+    try {
+      const data = await gqlProxy('RedeemCommunityPointsCustomReward', { input })
+      const d = Array.isArray(data) ? data[0] : data
+      if (d?.errors?.length) return { error: d.errors[0].message }
+      const err = d?.data?.redeemCommunityPointsCustomReward?.error
+      if (err) return { error: err.code || 'redemption failed' }
+      return { ok: true }
+    } catch(proxyErr) {
+      // Fallback to raw GQL mutation
+      const resp = await fetch(TWITCH_GQL, {
+        method: 'POST',
+        headers: {
+          'Client-Id': TWITCH_CLIENT_ID,
+          'Content-Type': 'application/json',
+          'Authorization': `OAuth ${token}`
+        },
+        body: JSON.stringify({
+          query: `mutation($input: RedeemCommunityPointsCustomRewardInput!) {
+            redeemCommunityPointsCustomReward(input: $input) {
+              redemption { id }
+              error { code }
+            }
+          }`,
+          variables: { input }
+        })
+      })
+      if (!resp.ok) return { error: `HTTP ${resp.status}` }
+      const data = await resp.json()
+      if (data?.errors?.length) return { error: data.errors[0].message }
+      const err = data?.data?.redeemCommunityPointsCustomReward?.error
+      if (err) return { error: err.code || 'redemption failed' }
+      return { ok: true }
+    }
+  } catch (e) {
+    return { error: e.message }
+  }
+}
+
+async function claimCommunityPoints(claimId, channelId) {
+  const token = getTwitchAuthToken()
+  if (!token) return
+  try {
+    await gqlProxy('ClaimCommunityPoints', {
+      input: { claimID: claimId, channelID: channelId }
+    }).catch(async () => {
+      // Fallback to raw GQL
+      await fetch(TWITCH_GQL, {
+        method: 'POST',
+        headers: {
+          'Client-Id': TWITCH_CLIENT_ID,
+          'Content-Type': 'application/json',
+          'Authorization': `OAuth ${token}`
+        },
+        body: JSON.stringify({
+          query: `mutation($input: ClaimCommunityPointsInput!) {
+            claimCommunityPoints(input: $input) { claim { id } }
+          }`,
+          variables: { input: { claimID: claimId, channelID: channelId } }
+        })
+      })
+    })
+  } catch (e) {
+    log('Failed to claim bonus points:', e.message)
+  }
+}
+
+async function fetchPoll(channelLogin) {
+  const safe = channelLogin.replace(/[^a-z0-9_]/g, '')
+  if (!safe) return null
+  try {
+    // Try MAIN world cache first (intercepted from Twitch's own calls)
+    const cached = await gqlGetCache(['ActivePoll', 'ChannelPollContext'])
+    for (const key of ['ActivePoll', 'ChannelPollContext']) {
+      const c = cached.data?.[key]
+      if (c && Date.now() - c.ts < 15000) {
+        const poll = c.data?.user?.activePoll || c.data?.channel?.activePoll || null
+        if (poll) return poll
+      }
+    }
+    // Try proxy with captured hash
+    try {
+      const data = await gqlProxy('ActivePoll', { channelLogin: safe })
+      const d = Array.isArray(data) ? data[0] : data
+      return d?.data?.user?.activePoll || d?.user?.activePoll || null
+    } catch(e) {
+      log('GQL proxy poll failed:', e.message)
+    }
+    // Fallback to raw GQL
+    const token = getTwitchAuthToken()
+    const headers = { 'Client-Id': TWITCH_CLIENT_ID, 'Content-Type': 'application/json' }
+    if (token) headers['Authorization'] = 'OAuth ' + token
+    const resp = await fetch(TWITCH_GQL, {
+      method: 'POST', headers,
+      body: JSON.stringify({
+        query: '{ user(login: "' + safe + '") { activePoll { id title status durationSeconds remainingDurationMilliseconds startedAt choices { id title totalVoters } totalVoters } } }'
+      })
+    })
+    if (!resp.ok) return null
+    const data = await resp.json()
+    return data?.data?.user?.activePoll || null
+  } catch (e) {
+    log('Failed to fetch poll:', e.message)
+    return null
+  }
+}
+
+async function votePoll(pollId, choiceId) {
+  const token = getTwitchAuthToken()
+  if (!token) return { error: 'not logged in' }
+  try {
+    // Try proxy first
+    try {
+      const data = await gqlProxy('VotePoll', {
+        input: { pollID: pollId, choiceID: choiceId }
+      })
+      const d = Array.isArray(data) ? data[0] : data
+      if (d?.errors?.length) return { error: d.errors[0].message }
+      const err = d?.data?.votePoll?.error
+      if (err) return { error: err.code || 'vote failed' }
+      return { ok: true }
+    } catch(proxyErr) {
+      // Fallback to raw GQL
+      const resp = await fetch(TWITCH_GQL, {
+        method: 'POST',
+        headers: {
+          'Client-Id': TWITCH_CLIENT_ID,
+          'Content-Type': 'application/json',
+          'Authorization': 'OAuth ' + token
+        },
+        body: JSON.stringify({
+          query: 'mutation($input: VotePollInput!) { votePoll(input: $input) { error { code } } }',
+          variables: { input: { pollID: pollId, choiceID: choiceId } }
+        })
+      })
+      if (!resp.ok) return { error: 'HTTP ' + resp.status }
+      const data = await resp.json()
+      if (data?.errors?.length) return { error: data.errors[0].message }
+      const err = data?.data?.votePoll?.error
+      if (err) return { error: err.code || 'vote failed' }
+      return { ok: true }
+    }
+  } catch (e) {
+    return { error: e.message }
+  }
+}
+
+let _userPollVotes = new Map() // pollId → choiceId
+
+function renderPoll(poll) {
+  const section = document.createElement('div')
+  section.className = 'hs-mc-poll'
+  section.dataset.pollId = poll.id
+
+  const isCompleted = poll.status === 'COMPLETED' || poll.status === 'ARCHIVED'
+  const totalVotes = poll.totalVoters || poll.choices.reduce((s, c) => s + (c.totalVoters || 0), 0)
+  const userVote = _userPollVotes.get(poll.id)
+
+  // Header
+  const header = document.createElement('div')
+  header.className = 'hs-mc-poll-header'
+  const title = document.createElement('div')
+  title.className = 'hs-mc-poll-title'
+  title.textContent = poll.title
+  header.appendChild(title)
+
+  if (isCompleted) {
+    const badge = document.createElement('span')
+    badge.className = 'hs-mc-poll-status hs-mc-poll-status-ended'
+    badge.textContent = 'ended'
+    header.appendChild(badge)
+  } else if (poll.remainingDurationMilliseconds != null) {
+    const timer = document.createElement('span')
+    timer.className = 'hs-mc-poll-timer'
+    timer.dataset.ends = Date.now() + poll.remainingDurationMilliseconds
+    header.appendChild(timer)
+  }
+  section.appendChild(header)
+
+  // Total votes
+  const meta = document.createElement('div')
+  meta.className = 'hs-mc-poll-meta'
+  meta.textContent = totalVotes + ' vote' + (totalVotes !== 1 ? 's' : '')
+  section.appendChild(meta)
+
+  // Choices
+  const choicesWrap = document.createElement('div')
+  choicesWrap.className = 'hs-mc-poll-choices'
+
+  // Find top choice for winner highlight
+  let topVotes = 0
+  for (const c of poll.choices) {
+    if ((c.totalVoters || 0) > topVotes) topVotes = c.totalVoters || 0
+  }
+
+  for (const choice of poll.choices) {
+    const votes = choice.totalVoters || 0
+    const pct = totalVotes > 0 ? Math.round((votes / totalVotes) * 100) : 0
+    const isTop = isCompleted && votes === topVotes && topVotes > 0
+    const isVoted = userVote === choice.id
+
+    const row = document.createElement('div')
+    row.className = 'hs-mc-poll-choice' + (isTop ? ' hs-mc-poll-choice-top' : '') + (isVoted ? ' hs-mc-poll-choice-voted' : '')
+
+    const track = document.createElement('div')
+    track.className = 'hs-mc-poll-choice-track'
+    const fill = document.createElement('div')
+    fill.className = 'hs-mc-poll-choice-fill'
+    fill.style.width = pct + '%'
+    track.appendChild(fill)
+
+    const label = document.createElement('div')
+    label.className = 'hs-mc-poll-choice-label'
+
+    const nameSpan = document.createElement('span')
+    nameSpan.className = 'hs-mc-poll-choice-name'
+    nameSpan.textContent = choice.title
+    if (isVoted) {
+      const check = document.createElement('span')
+      check.className = 'hs-mc-poll-voted-check'
+      check.textContent = ' \u2713'
+      nameSpan.appendChild(check)
+    }
+    label.appendChild(nameSpan)
+
+    const pctSpan = document.createElement('span')
+    pctSpan.className = 'hs-mc-poll-choice-pct'
+    pctSpan.textContent = pct + '%'
+    label.appendChild(pctSpan)
+
+    track.appendChild(label)
+    row.appendChild(track)
+
+    if (!isCompleted && !userVote) {
+      const voteBtn = document.createElement('button')
+      voteBtn.className = 'hs-mc-poll-vote-btn'
+      voteBtn.dataset.pollId = poll.id
+      voteBtn.dataset.choiceId = choice.id
+      voteBtn.textContent = 'vote'
+      row.appendChild(voteBtn)
+    }
+
+    choicesWrap.appendChild(row)
+  }
+
+  section.appendChild(choicesWrap)
+  return section
+}
+
+function attachPollHandlers() {
+  const container = document.getElementById('hs-mc-tab-twitch')
+  if (!container) return
+
+  container.querySelectorAll('.hs-mc-poll-vote-btn').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation()
+      btn.disabled = true
+      btn.textContent = '...'
+      const result = await votePoll(btn.dataset.pollId, btn.dataset.choiceId)
+      if (result.error) {
+        btn.textContent = '!'
+        btn.title = result.error
+        setTimeout(() => { btn.textContent = 'vote'; btn.disabled = false; btn.title = '' }, 2000)
+      } else {
+        _userPollVotes.set(btn.dataset.pollId, btn.dataset.choiceId)
+        btn.textContent = '\u2713'
+        setTimeout(() => renderTwitchTab(), 500)
+      }
+    })
+  })
+
+  // Poll timers
+  container.querySelectorAll('.hs-mc-poll-timer').forEach(el => {
+    const endsAt = parseInt(el.dataset.ends)
+    const update = () => {
+      const remaining = Math.max(0, Math.ceil((endsAt - Date.now()) / 1000))
+      if (remaining <= 0) {
+        el.textContent = 'ended'
+        el.classList.add('hs-mc-poll-status-ended')
+        return
+      }
+      const m = Math.floor(remaining / 60)
+      const s = remaining % 60
+      el.textContent = m > 0 ? m + ':' + String(s).padStart(2, '0') : s + 's'
+    }
+    update()
+    const iv = cleanup.setInterval(() => {
+      if (!el.isConnected) { clearInterval(iv); return }
+      update()
+    }, 1000)
+  })
+}
+
+async function fetchChannelBadges(channelLogin) {
+  if (!channelLogin || badgesFetchedChannels.has(channelLogin)) return
+  // Sanitize: Twitch logins are alphanumeric + underscore only
+  const safe = channelLogin.replace(/[^a-z0-9_]/g, '')
+  if (!safe) return
+  badgesFetchedChannels.add(channelLogin)
+  // Evict oldest channel if cache exceeds 20
+  if (badgesFetchedChannels.size > 20) {
+    const oldest = badgesFetchedChannels.values().next().value;
+    badgesFetchedChannels.delete(oldest);
+    // Remove that channel's badge entries
+    for (const key of twitchBadgeUrls.keys()) {
+      if (key.startsWith(`${oldest}:`)) twitchBadgeUrls.delete(key);
+    }
+  }
+  try {
+    // Fetch Twitch GQL + FFZ badges in parallel
+    const [twitchResp, ffzResp] = await Promise.allSettled([
+      fetch(TWITCH_GQL, {
+        method: 'POST',
+        headers: { 'Client-Id': TWITCH_CLIENT_ID, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query: `{ user(login: "${safe}") { broadcastBadges { imageURL(size: NORMAL) setID version } } }` }),
+        signal: AbortSignal.timeout(5000)
+      }),
+      fetch(`https://api.frankerfacez.com/v1/room/${safe}`, { signal: AbortSignal.timeout(5000) })
+    ])
+
+    // Twitch channel badges
+    if (twitchResp.status === 'fulfilled' && twitchResp.value.ok) {
+      const data = await twitchResp.value.json()
+      const badges = data?.data?.user?.broadcastBadges
+      if (badges) {
+        for (const b of badges) {
+          twitchBadgeUrls.set(`${channelLogin}:${b.setID}/${b.version}`, b.imageURL)
+        }
+      }
+    }
+
+    // FFZ custom mod/VIP badges — override Twitch versions
+    if (ffzResp.status === 'fulfilled' && ffzResp.value.ok) {
+      const ffz = await ffzResp.value.json()
+      const room = ffz?.room
+      if (room) {
+        // Custom mod badge
+        const modUrl = room.mod_urls?.['2'] || room.mod_urls?.['1'] || room.moderator_badge
+        if (modUrl) {
+          const src = modUrl.startsWith('//') ? 'https:' + modUrl : modUrl
+          twitchBadgeUrls.set(`${channelLogin}:moderator/1`, src)
+          ffzBadgeKeys.add(`${channelLogin}:moderator`)
+        }
+        // Custom VIP badge
+        const vipUrl = room.vip_badge?.['2'] || room.vip_badge?.['1']
+        if (vipUrl) {
+          const src = vipUrl.startsWith('//') ? 'https:' + vipUrl : vipUrl
+          twitchBadgeUrls.set(`${channelLogin}:vip/1`, src)
+          ffzBadgeKeys.add(`${channelLogin}:vip`)
+        }
+      }
+    }
+
+    log('Loaded channel badges for', channelLogin)
+  } catch (e) {
+    badgesFetchedChannels.delete(channelLogin)
+    log('Failed to fetch channel badges:', e.message)
+  }
+}
+
+function renderBadges(badgesStr, channel) {
+  if (!badgesStr) return ''
+  return badgesStr.split(',').map(badge => {
+    const [name, version] = badge.split('/')
+    // Channel-specific first, then global fallback
+    const url = (channel && twitchBadgeUrls.get(`${channel}:${name}/${version}`))
+      || twitchBadgeUrls.get(`${name}/${version}`)
+      || twitchBadgeUrls.get(`${name}/1`)
+    if (url) {
+      // FFZ custom badges are white icons on transparent bg — add badge-type background
+      const ffzKey = channel && `${channel}:${name}/`
+      const isFFZ = ffzKey && ffzBadgeKeys.has(`${channel}:${name}`)
+      const bgStyle = isFFZ && BADGE_STYLES[name] ? `background:${BADGE_STYLES[name].bg};padding:1px;border-radius:2px;` : ''
+      return `<img class="hs-mc-badge-img" src="${escapeHtml(url)}" alt="${escapeHtml(name)}" title="${escapeHtml(name)}" style="width:18px;height:18px;${bgStyle}">`
+    }
+    // Text fallback
+    const style = BADGE_STYLES[name]
+    if (!style) return ''
+    return `<span class="hs-mc-badge" style="background:${style.bg};color:${style.fg}" title="${escapeHtml(name)}">${style.label}</span>`
+  }).join('')
+}
+
+
+// --- multichat/social.js ---
+// Social - feed, notifications, activity, heatsync API
+
+// Feed & notifications state
+let feedMessages = [];
+let feedLoaded = false;
+let feedLoading = false;
+let feedPage = 1;
+let feedHasMore = true;
+let feedLastFetch = 0; // Timestamp of last feed fetch
+const FEED_STALE_MS = 120000; // 2 minutes
+let notifications = { mentions: 0, op_replies: 0, re_replies: 0, total: 0 };
+let notifMessages = []; // Actual notification messages for display
+let notifLoaded = false;
+let unreadNotifCount = 0;
+const activityEvents = []; // Stream events for activity tab
+let expandedThreadId = null; // Currently expanded thread in feed
+let threadReplies = []; // Replies for expanded thread
+let replyState = null; // { msgId, user, channel } when replying to a message
+let hsAuthToken = null; // Heatsync auth state (loaded from storage)
+
+// ============================================
+// SOCIAL TABS (FEED & NOTIFICATIONS)
+// ============================================
+
+// API proxy — routes through background.js to bypass CORS + attach auth
+function apiFetch(path, opts = {}) {
+  return new Promise((resolve) => {
+    try {
+      chrome.runtime.sendMessage({
+        type: 'api_fetch',
+        path,
+        method: opts.method || 'GET',
+        auth: opts.auth !== false,
+        body: opts.body
+      }, (resp) => resolve(resp || { ok: false, error: 'no response' }));
+    } catch (e) {
+      resolve({ ok: false, error: 'context invalidated' });
+    }
+  });
+}
+
+// Load heatsync auth state from storage
+async function loadHsAuth() {
+  try {
+    const data = await chrome.storage.local.get(['auth_token_encrypted', 'auth_token']);
+    hsAuthToken = !!(data.auth_token_encrypted || data.auth_token);
+    log('Heatsync auth:', hsAuthToken ? 'logged in' : 'anonymous');
+  } catch (e) {
+    hsAuthToken = false;
+  }
+
+  // Watch for auth changes (login/logout on heatsync.org)
+  if (!window._hsMcAuthWatcher) {
+    window._hsMcAuthWatcher = true;
+    chrome.storage.onChanged.addListener((changes, area) => {
+      if (area !== 'local') return;
+      if (changes.auth_token_encrypted || changes.auth_token) {
+        const wasAuthed = hsAuthToken;
+        hsAuthToken = !!(
+          changes.auth_token_encrypted?.newValue ||
+          changes.auth_token?.newValue
+        );
+        if (wasAuthed !== hsAuthToken) {
+          log('Auth state changed:', hsAuthToken ? 'logged in' : 'logged out');
+          // Reset feed/notif data on auth change
+          feedLoaded = false;
+          feedMessages = [];
+          notifLoaded = false;
+          notifMessages = [];
+          unreadNotifCount = 0;
+          updateNotifBadge();
+          if (currentTab === 'feed') {
+            renderMessages(currentTab);
+          }
+        }
+      }
+    });
+  }
+}
+
+// Listen for social events from background (new messages, notifications)
+function listenForSocialEvents() {
+  // Guard: only register once (survives SPA reinit via chrome listener persistence)
+  if (window._hsMcSocialListener) return;
+  window._hsMcSocialListener = true;
+
+  chrome.runtime?.onMessage?.addListener((msg) => {
+    if (msg.type === 'new-message' && msg.data) {
+      if (!feedLoaded) return;
+      // Dedup: skip if already in feed
+      const id = msg.data.base36_id;
+      if (id && feedMessages.some(m => m.base36_id === id)) return;
+
+      feedMessages.unshift(msg.data);
+      if (feedMessages.length > 150) feedMessages.pop();
+
+      if (currentTab === 'feed') {
+        renderFeed();
+      } else {
+        updateTabIndicator('feed');
+        // Inline notification in chat (routed through toggle system)
+        const f = msg.data;
+        const t = new Date(f.created_at).getTime();
+        if (!isNaN(t)) {
+          const notifType = f.is_thread_op ? 'mop' : (f.is_op != null ? !!f.is_op : !f.reply_to) ? 'op' : 're'
+          injectInlineNotif(notifType, {
+            type: 'feed-post',
+            base36_id: f.base36_id,
+            feedUser: f.username || f.display_name || 'anon',
+            text: f.content || '',
+            color: f.user_color || '#fff',
+            time: t,
+            reply_to: f.reply_to,
+            emote_refs: f.emote_refs,
+            is_op: f.is_op,
+            is_thread_op: f.is_thread_op
+          })
+        }
+      }
+    }
+    if (msg.type === 'dm_new' && msg.data) {
+      handleIncomingDm(msg.data)
+    }
+    if (msg.type === 'youtube_chat_message') {
+      // Bidirectional dedup: skip if we already displayed this message from either source
+      if (isYtDuplicate(msg.user, msg.text)) return
+
+      // Track for dedup (both server and content script messages)
+      trackYtServerMsg(msg.user, msg.text)
+
+      const ytMsg = {
+        user: msg.user,
+        text: msg.text,
+        color: msg.color || '#ff0000',
+        channel: 'youtube',
+        time: msg.time,
+        platform: 'youtube',
+        emotes: msg.emotes || [],
+        msgType: msg.msgType || 'text',
+        amount: msg.amount || '',
+        scColor: msg.scColor || '',
+        sticker: msg.sticker || null,
+      }
+
+      const targetChannelId = msg.channelId
+      if (targetChannelId && targetChannelId !== 'global') {
+        // Per-channel YouTube → route to that channel tab
+        if (!channelYtMessages.has(targetChannelId)) channelYtMessages.set(targetChannelId, [])
+        const buf = channelYtMessages.get(targetChannelId)
+        buf.push(ytMsg)
+        if (buf.length > MAX_BUFFER + 50) buf.splice(0, buf.length - MAX_BUFFER)
+        if (currentTab === targetChannelId) {
+          appendMessage(ytMsg, targetChannelId) || renderMessages(currentTab)
+        } else {
+          updateTabIndicator(targetChannelId)
+        }
+      }
+    }
+    if (msg.type === 'youtube_status') {
+      const targetChannelId = msg.channelId
+      if (targetChannelId && targetChannelId !== 'global') {
+        // Per-channel YouTube status
+        const link = youtubeLinks.get(targetChannelId) || { url: '', videoId: '', channelName: '' }
+        if (msg.status === 'connected') {
+          link.videoId = msg.videoId || ''
+          link.channelName = msg.channelName || ''
+          youtubeLinks.set(targetChannelId, link)
+          log('YouTube connected for channel', targetChannelId, ':', link.channelName)
+        }
+        // Show status in channel tab if viewing it
+        if (currentTab === targetChannelId) {
+          const msgsEl = document.getElementById('hs-mc-messages')
+          if (msgsEl && msg.status === 'connected' && !(channelYtMessages.get(targetChannelId)?.length)) {
+            const el = document.createElement('div')
+            el.className = 'hs-mc-empty'
+            el.textContent = 'youtube connected: ' + (link.channelName || msg.videoId) + ' — waiting for messages...'
+            msgsEl.appendChild(el)
+            trimChildren(msgsEl, 150)
+          } else if (msgsEl && (msg.status === 'ended' || msg.status === 'error')) {
+            const el = document.createElement('div')
+            el.className = 'hs-mc-empty'
+            el.textContent = msg.status === 'ended' ? 'youtube stream ended' : (msg.error || 'youtube connection error')
+            el.style.color = '#ff4444'
+            msgsEl.appendChild(el)
+            trimChildren(msgsEl, 150)
+          }
+        }
+      }
+    }
+    if (msg.type === 'notification:new') {
+      unreadNotifCount++;
+      updateNotifBadge();
+    }
+  });
+}
+
+// Update notif tab badge (reuse existing element to avoid DOM churn)
+function updateNotifBadge() {
+  if (!tabBarElement) return
+  const tab = tabBarElement.querySelector('[data-tab="activity"]')
+  if (!tab) return
+  // Remove any legacy badge element
+  const badge = tab.querySelector('.hs-badge')
+  if (badge) badge.remove()
+  // Just use color indicator — no counter
+  tab.classList.toggle('has-new', unreadNotifCount > 0)
+}
+
+// ---- FEED ----
+
+async function fetchFeed(append = false) {
+  if (feedLoading) return;
+  feedLoading = true;
+  const page = append ? feedPage + 1 : 1;
+  const resp = await apiFetch(`/api/messages?sort=time&limit=30&page=${page}`, { auth: false });
+  feedLoading = false;
+  if (!resp.ok) {
+    console.error('[heatsync-mc] Feed fetch failed — full resp:', JSON.stringify(resp));
+    if (currentTab === 'feed') {
+      const msgsEl = document.getElementById('hs-mc-messages');
+      if (msgsEl && feedMessages.length === 0) {
+        msgsEl.innerHTML = `<div class="hs-mc-empty">failed to load feed${resp.status === 401 ? ' — log in at heatsync.org' : ''}</div>`;
+      }
+    }
+    return;
+  }
+  const msgs = resp.data?.messages || [];
+  if (append) {
+    feedMessages.push(...msgs);
+    feedPage = page;
+  } else {
+    feedMessages = msgs;
+    feedPage = 1;
+  }
+  feedHasMore = resp.data?.pagination?.hasMore ?? msgs.length >= 30;
+  feedLoaded = true;
+  feedLastFetch = Date.now();
+  if (currentTab === 'feed') renderFeed();
+}
+
+function renderFeed() {
+  const msgsEl = document.getElementById('hs-mc-messages');
+  if (!msgsEl) return;
+
+  // Feed is public — no auth required to view, only to post
+  const isStale = feedLoaded && (Date.now() - feedLastFetch > FEED_STALE_MS);
+  if ((!feedLoaded || isStale) && !feedLoading) {
+    msgsEl.innerHTML = '<div class="hs-mc-empty">loading feed...</div>';
+    fetchFeed();
+    return;
+  }
+
+  if (feedMessages.length === 0) {
+    msgsEl.innerHTML = '<div class="hs-mc-empty">no posts yet</div>';
+    return;
+  }
+
+  isProgrammaticScroll = true;
+  msgsEl.textContent = '';
+  const frag = document.createDocumentFragment();
+  const feedToRender = feedMessages.slice(-150);
+  let zebraCount = 0;
+  for (const m of feedToRender) {
+    const msgDiv = buildFeedMessageDiv(m);
+    if (zebraEnabled && ++zebraCount % 2 === 0) msgDiv.classList.add('hs-mc-zebra');
+    frag.appendChild(msgDiv);
+    // If this message is expanded, show thread replies
+    if (expandedThreadId === m.base36_id && threadReplies.length > 0) {
+      for (const r of threadReplies) {
+        const replyDiv = buildFeedMessageDiv(r, m.username);
+        replyDiv.classList.add('hs-feed-reply');
+        if (zebraEnabled && ++zebraCount % 2 === 0) replyDiv.classList.add('hs-mc-zebra');
+        frag.appendChild(replyDiv);
+      }
+    }
+  }
+  if (feedHasMore) {
+    const loader = document.createElement('div');
+    loader.className = 'hs-mc-empty hs-feed-loader';
+    loader.textContent = 'scroll for more...';
+    frag.appendChild(loader);
+  }
+  msgsEl.appendChild(frag);
+
+  // Feed scrolls to top (newest-first), not bottom like IRC
+  isProgrammaticScroll = true;
+  msgsEl.scrollTop = 0;
+  requestAnimationFrame(() => { isProgrammaticScroll = false; });
+
+  // Setup infinite scroll
+  if (!msgsEl._hsFeedScroll) {
+    msgsEl._hsFeedScroll = true;
+    let feedScrollTimer = null
+    msgsEl.addEventListener('scroll', () => {
+      if (mcSignal?.aborted) return;
+      if (currentTab !== 'feed' || feedLoading || !feedHasMore) return;
+      if (feedScrollTimer) return // Throttle: one check per 200ms
+      feedScrollTimer = cleanup.setTimeout(() => {
+        feedScrollTimer = null
+        const { scrollTop, scrollHeight, clientHeight } = msgsEl;
+        if (scrollHeight - scrollTop - clientHeight < 100) {
+          fetchFeed(true);
+        }
+      }, 200)
+    });
+  }
+}
+
+function buildFeedMessageDiv(m, opUsername) {
+  const div = document.createElement('div');
+  div.className = 'hs-feed-msg';
+  div.dataset.msgId = m.base36_id;
+
+  const time = formatRelativeTime(m.created_at);
+  const avatarUrl = `https://heatsync.org/api/avatar/${encodeURIComponent(m.username)}`;
+  const heat = m.heat || 0;
+  const replies = m.reply_count || 0;
+  // renderFeedContent sanitizes via escapeHtml + emote ref escaping
+  const content = renderFeedContent(m.content, m.emote_refs);
+
+  // Thread link: >>id (yellow, links to post on heatsync.org)
+  const shortId = (m.base36_id || '').replace(/^0+/, '') || '0';
+  const threadLink = `<a href="https://heatsync.org/post/${encodeURIComponent(m.base36_id)}" target="_blank" class="hs-feed-thread-link">&gt;&gt;${escapeHtml(shortId)}</a>`;
+
+  // Post type tag: [OP] red = original post, [OP] magenta = OP replying in own thread, [RE] = reply
+  const isOp = m.is_op != null ? !!m.is_op : (!m.reply_to || m.reply_to === '');
+  const isThreadOp = !!m.is_thread_op;
+  const typeTag = isThreadOp
+    ? '<span class="hs-feed-tag hs-feed-tag-mop">[OP]</span>'
+    : isOp
+      ? '<span class="hs-feed-tag hs-feed-tag-op">[OP]</span>'
+      : '<span class="hs-feed-tag hs-feed-tag-re">[RE]</span>';
+
+  const isAnon = !m.platform || m.username === 'Anonymous';
+
+  // Platform badge: [T]/[K]/[YT] (hidden for anonymous)
+  const platLabel = m.platform === 'kick' ? '[K]' : m.platform === 'youtube' ? '[YT]' : m.platform === 'twitch' ? '[T]' : '';
+  const platColors = { twitch: '#9146ff', kick: '#53fc18', youtube: '#ff0000' };
+  const platBadge = platLabel ? `<span class="hs-feed-tag" style="color:${platColors[m.platform]}">${platLabel}</span>` : '';
+
+  // Relative timestamp always shown in feed (compact, essential context)
+  const timeHtml = `<span class="hs-feed-time">${escapeHtml(time)}</span>`;
+
+  // All dynamic values sanitized: avatarUrl via encodeURIComponent,
+  // username/time via escapeHtml, color via sanitizeColor, content via renderFeedContent
+  const repliesSpan = replies > 0 ? `<span class="hs-feed-stat hs-feed-replies" title="replies">💬${replies}</span>` : '';
+  const stats = repliesSpan ? ` ${repliesSpan}` : '';
+
+  const anonAvatar = avatarsEnabled ? `<img class="hs-feed-avatar" src="https://heatsync.org/anon.webp" alt="" loading="lazy">` : '';
+  const userAvatar = avatarsEnabled ? `<img class="hs-feed-avatar" src="${avatarUrl}" alt="" loading="lazy" onerror="this.style.display='none'">` : '';
+  const userHtml = isAnon
+    ? `${anonAvatar}<span class="hs-feed-user" style="color:#808080">Anonymous</span>`
+    : `${userAvatar}<a href="https://heatsync.org/user/${encodeURIComponent(m.username)}" target="_blank" class="hs-feed-user hs-mc-user" data-username="${escapeHtml((m.username || 'anon').toLowerCase())}" style="color:${sanitizeColor(m.user_color || '#fff')}">${escapeHtml(m.username || 'anon')}</a>`;
+
+  div.innerHTML = `${threadLink}${typeTag}${platBadge}${userHtml}${timeHtml}${stats}: <span class="hs-feed-body">${content}</span>`;
+
+  // Click replies to expand thread
+  const repliesEl = div.querySelector('.hs-feed-replies');
+  if (repliesEl && replies > 0) {
+    repliesEl.style.cursor = 'pointer';
+    repliesEl.addEventListener('click', (e) => {
+      e.stopPropagation();
+      toggleThread(m.base36_id);
+    });
+  }
+
+  return div;
+}
+
+// Format text with markdown-style syntax (matches heatsync.org rendering)
+// Must be called AFTER escapeHtml — operates on escaped HTML strings
+function formatText(html) {
+  // Greentext: >text< (escaped as &gt;text&lt;)
+  html = html.replace(/(&gt;)([^<>&]+)(&lt;)/g, '<span class="hs-greentext">&gt;$2&lt;</span>')
+  // Inline code: `text`
+  html = html.replace(/`([^`]+)`/g, '<code class="hs-inline-code">$1</code>')
+  // Bold: **text** or __text__
+  html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+  html = html.replace(/__(.+?)__/g, '<strong>$1</strong>')
+  // Italic: *text* or _text_ (not if part of bold)
+  html = html.replace(/(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)/g, '<em>$1</em>')
+  html = html.replace(/(?<!_)_(?!_)(.+?)(?<!_)_(?!_)/g, '<em>$1</em>')
+  // Strikethrough: ~~text~~
+  html = html.replace(/~~(.+?)~~/g, '<del>$1</del>')
+  // Spoilers: ||text||
+  html = html.replace(/\|\|(.+?)\|\|/g, '<span class="hs-spoiler">$1</span>')
+  return html
+}
+
+function renderFeedContent(content, emoteRefs) {
+  if (!content) return '';
+  let html = escapeHtml(String(content));
+  // Text formatting (bold, italic, spoilers, etc.)
+  html = formatText(html)
+  // Linkify URLs BEFORE emote replacement (avoids corrupting img src attributes)
+  // Split by HTML tags to only linkify text segments (like heatsync.org does)
+  if (linksEnabled) {
+    const parts = html.split(/(<[^>]+>)/)
+    html = parts.map((part, i) => {
+      if (i % 2 === 1) return part // skip HTML tags
+      part = part.replace(/(https?:\/\/[^\s<"]+)/gi, '<a href="$1" target="_blank" rel="noopener" class="hs-mc-link">$1</a>')
+      part = part.replace(/(?<!\/\/)([a-z0-9-]+(?:\.[a-z0-9-]+)+\/[^\s<"]*)/gi, (m) => {
+        return `<a href="https://${m}" target="_blank" rel="noopener" class="hs-mc-link">${m}</a>`
+      })
+      return part
+    }).join('')
+  }
+  // Render emote refs as inline images (AFTER linkification so img tags aren't corrupted)
+  // emote_refs can be { name: url } or { name: { url, hash, name, provider } }
+  if (emoteRefs && typeof emoteRefs === 'object') {
+    for (const [name, val] of Object.entries(emoteRefs)) {
+      const url = typeof val === 'string' ? val : val?.url
+      if (!url) continue
+      const escaped = escapeHtml(name);
+      const safeUrl = escapeHtml(url);
+      html = html.replace(
+        new RegExp(`\\b${escaped.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'g'),
+        `<img class="hs-mc-emote" src="${safeUrl}" alt="${escaped}" title="${escaped}" loading="lazy">`
+      );
+    }
+  }
+  return html;
+}
+
+function formatRelativeTime(isoDate) {
+  if (!isoDate) return '';
+  return formatRelativeMs(Date.now() - new Date(isoDate).getTime());
+}
+
+function formatRelativeMs(diff) {
+  if (diff < 0) return 'now';
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return 'now';
+  if (mins < 60) return `${mins}m`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h`;
+  const days = Math.floor(hours / 24);
+  return `${days}d`;
+}
+
+function formatTimeFromTs(ts) {
+  if (!ts) return '';
+  return formatRelativeMs(Date.now() - ts);
+}
+
+// Refresh timestamps every 30s — lightweight DOM-only update, no rebuild
+cleanup.setInterval(() => {
+  const msgsEl = document.getElementById('hs-mc-messages');
+  if (!msgsEl) return;
+  const now = Date.now();
+  for (const el of msgsEl.querySelectorAll('.hs-mc-ts[data-ts]')) {
+    const ts = parseInt(el.dataset.ts);
+    if (ts) {
+      const newText = formatRelativeMs(now - ts);
+      if (el.textContent !== newText) el.textContent = newText;
+    }
+  }
+}, 30000);
+
+async function toggleThread(msgId) {
+  if (expandedThreadId === msgId) {
+    expandedThreadId = null;
+    threadReplies = [];
+    renderFeed();
+    return;
+  }
+  expandedThreadId = msgId;
+  threadReplies = [];
+  renderFeed(); // Show loading state
+
+  const resp = await apiFetch(`/api/messages/${msgId}/replies`);
+  if (resp.ok) {
+    threadReplies = resp.data?.replies || [];
+  }
+  renderFeed();
+}
+
+async function postFeedMessage(text) {
+  const input = document.getElementById('hs-mc-input');
+  if (!input) return;
+
+  if (!hsAuthToken) {
+    if (wysiwygEnabled) {
+      input.dataset.placeholder = 'log in at heatsync.org first';
+    } else {
+      input.placeholder = 'log in at heatsync.org first';
+    }
+    setTimeout(() => updateInputPlaceholder(), 2000);
+    return;
+  }
+
+  const body = { content: text };
+  // If replying to an expanded thread, set reply_to
+  if (expandedThreadId) {
+    body.reply_to = expandedThreadId;
+  }
+
+  const resp = await apiFetch('/api/messages', { method: 'POST', auth: true, body });
+  if (resp.ok) {
+    if (wysiwygEnabled) {
+      input.innerHTML = '';
+    } else {
+      input.value = '';
+    }
+    pendingMessage = '';
+    updateCharCount();
+    hideInputBar();
+    // Message will appear via WebSocket real-time
+  } else {
+    input.style.borderColor = '#f44';
+    const errMsg = resp.status === 401 ? 'log in first'
+      : resp.status === 429 ? 'slow down'
+      : resp.status === 409 ? 'duplicate message'
+      : 'failed to post';
+    showToast(errMsg);
+    setTimeout(() => { input.style.borderColor = ''; }, 1500);
+    log('Post failed:', resp.status || resp.error);
+  }
+}
+
+// ---- NOTIFICATIONS ----
+
+async function fetchNotifications() {
+  try {
+    const resp = await apiFetch('/api/notifications');
+    if (resp.ok) {
+      notifications = resp.data || { mentions: 0, op_replies: 0, re_replies: 0, total: 0 };
+      unreadNotifCount = notifications.total || 0;
+      updateNotifBadge();
+    } else if (resp.status === 401) {
+      notifLoaded = true;
+      return; // Not logged in
+    }
+    // Fetch actual notification messages (mentions, op replies, re replies)
+    const msgResp = await apiFetch('/api/messages?filter_type=mentions&limit=20');
+    if (msgResp.ok) {
+      notifMessages = msgResp.data?.messages || [];
+    }
+  } catch (e) {
+    log('Notification fetch error:', e);
+  }
+  notifLoaded = true;
+}
+
+function renderActivity() {
+  const msgsEl = document.getElementById('hs-mc-messages');
+  if (!msgsEl) return;
+
+  // Hide resume button on initial render (shown only when new content arrives while scrolled)
+  if (!isScrolledUp) {
+    const newBtn = document.getElementById('hs-mc-new-msgs');
+    if (newBtn) newBtn.style.display = 'none';
+  }
+
+  if (!hsAuthToken && activityEvents.length === 0) {
+    msgsEl.innerHTML = '<div class="hs-mc-empty">log in at <a href="https://heatsync.org" target="_blank" style="color:#ff6b35">heatsync.org</a> to see activity</div>';
+    return;
+  }
+
+  if (hsAuthToken && !notifLoaded) {
+    msgsEl.innerHTML = '<div class="hs-mc-empty">loading...</div>';
+    fetchNotifications().then(() => {
+      if (currentTab === 'activity') renderActivity();
+    });
+    return;
+  }
+
+  // Mark notifs as read when viewing
+  if (unreadNotifCount > 0) {
+    apiFetch('/api/notifications/mark-read', { method: 'POST', body: { type: 'all' } });
+    unreadNotifCount = 0;
+    updateNotifBadge();
+    try { chrome.runtime.sendMessage({ type: 'notifs_viewed' }); } catch (e) {}
+  }
+
+  // Merge notifMessages + activityEvents, sort descending by time
+  const normalized = [
+    ...notifMessages.map(m => ({ ...m, _time: new Date(m.created_at).getTime(), _src: 'notif' })),
+    ...activityEvents.map(m => ({ ...m, _time: m.time, _src: 'event' }))
+  ];
+  normalized.sort((a, b) => b._time - a._time);
+  const merged = normalized.slice(0, 150);
+
+  if (merged.length === 0) {
+    msgsEl.innerHTML = '<div class="hs-mc-empty">no activity yet</div>';
+    return;
+  }
+
+  msgsEl.textContent = '';
+  const frag = document.createDocumentFragment();
+
+  // Summary header (notifs only)
+  if (notifications.total > 0) {
+    const header = document.createElement('div');
+    header.className = 'hs-notif-header';
+    const parts = [];
+    if (notifications.mentions > 0) parts.push(`${notifications.mentions} mention${notifications.mentions > 1 ? 's' : ''}`);
+    if (notifications.op_replies > 0) parts.push(`${notifications.op_replies} OP repl${notifications.op_replies > 1 ? 'ies' : 'y'}`);
+    if (notifications.re_replies > 0) parts.push(`${notifications.re_replies} RE repl${notifications.re_replies > 1 ? 'ies' : 'y'}`);
+    header.textContent = parts.join(', ');
+    frag.appendChild(header);
+  }
+
+  for (const m of merged) {
+    if (m._src === 'event') {
+      const div = document.createElement('div');
+      div.className = `hs-mc-stream-event ${m.eventClass || ''}`;
+      const ts = formatRelativeMs(Date.now() - m.time);
+      const tsSpan = `<span class="hs-feed-time">${escapeHtml(ts)}</span>`;
+      // Show channel name in magenta for activity context
+      // Strip [channel] prefix from follow events (we add our own #channel)
+      let evtText = m.text
+      if (m.channel) evtText = evtText.replace(new RegExp(`^\\[${m.channel}\\]\\s*`), '')
+      const chanColor = _profileCache.get(m.channel?.toLowerCase())?.profile?.twitch_color || '#fff';
+      const chanLabel = m.channel ? `<a href="https://heatsync.org/twitch/${encodeURIComponent(m.channel)}" target="_blank" class="hs-feed-user hs-mc-user" data-username="${escapeHtml(m.channel.toLowerCase())}" style="color:${sanitizeColor(chanColor)};font-weight:bold">${escapeHtml(m.channel)}</a> ` : '';
+      let evtHtml = escapeHtml(evtText)
+      evtHtml = evtHtml.replace(/(switched to |went live \u2014 )(.+)$/, '$1<span style="color:#fff">$2</span>')
+      div.innerHTML = `${tsSpan}${chanLabel}${evtHtml}`;
+      frag.appendChild(div);
+    } else {
+      frag.appendChild(buildNotifDiv(m));
+    }
+  }
+  msgsEl.appendChild(frag);
+}
+
+function buildNotifDiv(m) {
+  const div = document.createElement('div');
+  div.className = 'hs-notif';
+  const time = formatRelativeTime(m.created_at);
+  // Safe: renderFeedContent escapes via escapeHtml first, then adds safe formatting tags
+  const content = renderFeedContent(m.content, m.emote_refs);
+
+  // Safe: username through escapeHtml+encodeURIComponent, time through escapeHtml, content through renderFeedContent (which escapes via escapeHtml then adds safe formatting)
+  div.innerHTML = `<a href="https://heatsync.org/user/${encodeURIComponent(m.username)}" target="_blank" class="hs-feed-user hs-mc-user" data-username="${escapeHtml((m.username || 'anon').toLowerCase())}" style="color:${sanitizeColor(m.user_color || '#fff')}">${escapeHtml(m.username || 'anon')}</a> <span class="hs-feed-time">${escapeHtml(time)}</span>: <span class="hs-feed-body">${content}</span>`;
+
+  // Click to switch to feed and show this thread (but not if clicking interactive content)
+  div.addEventListener('click', (e) => {
+    const spoiler = e.target.closest('.hs-spoiler')
+    if (spoiler) { spoiler.classList.toggle('revealed'); return }
+    if (e.target.closest('a, .hs-mc-emote, .hs-mc-link')) return
+    const threadId = m.reply_to || m.base36_id;
+    expandedThreadId = threadId;
+    threadReplies = [];
+    switchTab('feed');
+    // Fetch thread after switching
+    toggleThread(threadId);
+  });
+
+  return div;
+}
+
+
+
+// --- multichat/whispers.js ---
+// Whispers - DM/whisper conversations, rendering, send
+
+const whisperConversations = new Map() // key → { msgs, platform, userId, displayName, color, lastTime, unread }
+let activeWhisperUser = null // key into map, null = conversation list
+let whisperTotalUnread = 0
+let whisperDmsLoaded = false // whether HeatSync DM list has been fetched
+
+let _whisperSaveTimer = null
+function whisperSaveDebounced() {
+  if (_whisperSaveTimer) clearTimeout(_whisperSaveTimer)
+  _whisperSaveTimer = setTimeout(saveWhispers, 500)
+}
+
+function saveWhispers() {
+  const data = {}
+  let count = 0
+  for (const [key, conv] of whisperConversations) {
+    if (count >= 30) break
+    data[key] = {
+      platform: conv.platform,
+      userId: conv.userId,
+      displayName: conv.displayName,
+      color: conv.color,
+      lastTime: conv.lastTime,
+      unread: conv.unread,
+      msgs: conv.msgs.slice(-50)
+    }
+    count++
+  }
+  try { chrome.storage.local.set({ hs_whispers: data }) } catch {}
+}
+
+function loadWhispers() {
+  try {
+    chrome.storage.local.get(['hs_whispers']).then(stored => {
+      const data = stored.hs_whispers
+      if (!data) return
+      for (const [key, conv] of Object.entries(data)) {
+        if (!whisperConversations.has(key)) {
+          whisperConversations.set(key, {
+            msgs: conv.msgs || [],
+            platform: conv.platform,
+            userId: conv.userId,
+            displayName: conv.displayName,
+            color: conv.color || '#fff',
+            lastTime: conv.lastTime || 0,
+            unread: conv.unread || 0
+          })
+        }
+      }
+      whisperTotalUnread = 0
+      for (const conv of whisperConversations.values()) whisperTotalUnread += conv.unread
+      updateWhisperBadge()
+    }).catch(() => {})
+  } catch {}
+}
+
+function getOrCreateConversation(key, platform, userId, displayName, color) {
+  if (!whisperConversations.has(key)) {
+    whisperConversations.set(key, {
+      msgs: [],
+      platform,
+      userId,
+      displayName,
+      color: color || '#fff',
+      lastTime: 0,
+      unread: 0
+    })
+  }
+  return whisperConversations.get(key)
+}
+
+function handleIncomingWhisper(msg) {
+  const key = `twitch:${msg.user.toLowerCase()}`
+  const conv = getOrCreateConversation(key, 'twitch', msg.userId, msg.user, msg.color)
+  conv.msgs.push({
+    user: msg.user,
+    text: msg.text,
+    color: msg.color,
+    time: msg.time,
+    self: false
+  })
+  if (conv.msgs.length > 200) conv.msgs.splice(0, conv.msgs.length - 200)
+  conv.lastTime = msg.time
+  conv.displayName = msg.user
+  conv.color = msg.color
+
+  if (currentTab === 'whispers' && activeWhisperUser === key) {
+    renderWhispersTab()
+  } else {
+    conv.unread++
+    whisperTotalUnread++
+    updateWhisperBadge()
+    // Inline DM notification in chat
+    injectInlineNotif('dm', {
+      type: 'inline-dm',
+      user: msg.user,
+      text: msg.text,
+      color: msg.color,
+      time: msg.time,
+      platform: 'twitch'
+    })
+  }
+  whisperSaveDebounced()
+}
+
+function handleIncomingDm(data) {
+  const key = `hs:${data.from_user_id}`
+  const conv = getOrCreateConversation(key, 'heatsync', data.from_user_id, data.from_display_name, data.from_color)
+  conv.msgs.push({
+    user: data.from_display_name,
+    text: data.content,
+    color: data.from_color || '#ff8700',
+    time: data.created_at ? new Date(data.created_at).getTime() : Date.now(),
+    self: false
+  })
+  if (conv.msgs.length > 200) conv.msgs.splice(0, conv.msgs.length - 200)
+  conv.lastTime = Date.now()
+  conv.displayName = data.from_display_name
+  conv.color = data.from_color || '#ff8700'
+
+  if (currentTab === 'whispers' && activeWhisperUser === key) {
+    renderWhispersTab()
+  } else {
+    conv.unread++
+    whisperTotalUnread++
+    updateWhisperBadge()
+    // Inline DM notification in chat
+    injectInlineNotif('dm', {
+      type: 'inline-dm',
+      user: data.from_display_name,
+      text: data.content,
+      color: data.from_color || '#ff8700',
+      time: data.created_at ? new Date(data.created_at).getTime() : Date.now(),
+      platform: 'heatsync'
+    })
+  }
+  whisperSaveDebounced()
+}
+
+function updateWhisperBadge() {
+  if (!tabBarElement) return
+  const tab = tabBarElement.querySelector('[data-tab="whispers"]')
+  if (tab) {
+    tab.classList.toggle('has-new', whisperTotalUnread > 0)
+  }
+}
+
+async function sendWhisperMessage(key, text) {
+  const conv = whisperConversations.get(key)
+  if (!conv) return
+
+  if (key.startsWith('twitch:')) {
+    try {
+      await gqlProxy('SendWhisper', {
+        input: {
+          recipientID: conv.userId,
+          message: text,
+          nonce: Math.random().toString(36).slice(2)
+        }
+      }, { rawQuery: 'mutation SendWhisper($input: SendWhisperInput!) { sendWhisper(input: $input) { error { code } } }' })
+    } catch (e) {
+      log('Whisper send failed:', e.message)
+      return
+    }
+  } else if (key.startsWith('hs:')) {
+    const toUserId = key.slice(3)
+    const resp = await apiFetch('/api/dm', {
+      method: 'POST',
+      body: { toUserId, content: text }
+    })
+    if (!resp.ok) {
+      log('DM send failed:', resp.error)
+      return
+    }
+  }
+
+  conv.msgs.push({
+    user: 'you',
+    text,
+    color: '#aaa',
+    time: Date.now(),
+    self: true
+  })
+  if (conv.msgs.length > 200) conv.msgs.splice(0, conv.msgs.length - 200)
+  conv.lastTime = Date.now()
+
+  if (currentTab === 'whispers' && activeWhisperUser === key) {
+    renderWhispersTab()
+  }
+  whisperSaveDebounced()
+}
+
+function renderWhispersTab() {
+  const msgsEl = document.getElementById('hs-mc-messages')
+  if (!msgsEl) return
+
+  if (!activeWhisperUser) {
+    // Conversation list mode
+    if (!whisperDmsLoaded && hsAuthToken) {
+      whisperDmsLoaded = true
+      apiFetch('/api/dm').then(resp => {
+        if (resp.ok && resp.data && Array.isArray(resp.data)) {
+          for (const dm of resp.data) {
+            const key = `hs:${dm.other_user_id}`
+            const conv = getOrCreateConversation(key, 'heatsync', dm.other_user_id, dm.other_display_name, dm.other_color)
+            if (dm.last_message) {
+              conv.lastTime = Math.max(conv.lastTime, new Date(dm.last_message.created_at).getTime())
+            }
+            conv.displayName = dm.other_display_name
+            conv.color = dm.other_color || '#ff8700'
+          }
+          if (currentTab === 'whispers' && !activeWhisperUser) renderWhispersTab()
+        }
+      })
+    }
+
+    const sorted = [...whisperConversations.entries()]
+      .sort((a, b) => b[1].lastTime - a[1].lastTime)
+
+    if (sorted.length === 0) {
+      msgsEl.innerHTML = '<div class="hs-mc-empty">no whispers yet</div>'
+      return
+    }
+
+    msgsEl.textContent = ''
+    const frag = document.createDocumentFragment()
+    for (const [key, conv] of sorted) {
+      const row = document.createElement('div')
+      row.className = 'hs-whisper-conv'
+      row.dataset.whisperKey = key
+
+      const platBadge = conv.platform === 'twitch' ? '[T]' : '[HS]'
+      const platColor = conv.platform === 'twitch' ? '#9146ff' : '#ff8700'
+      const lastMsg = conv.msgs.length > 0 ? conv.msgs[conv.msgs.length - 1] : null
+      const preview = lastMsg ? escapeHtml(lastMsg.text.length > 50 ? lastMsg.text.slice(0, 50) + '...' : lastMsg.text) : ''
+      const ago = conv.lastTime ? formatWhisperTime(conv.lastTime) : ''
+      const unreadBadge = conv.unread > 0 ? `<span class="hs-whisper-unread">${conv.unread}</span>` : ''
+
+      // All dynamic values pass through escapeHtml/sanitizeColor — safe innerHTML
+      row.innerHTML = `<span style="color:${platColor};font-size:10px;font-weight:700;margin-right:4px">${platBadge}</span><span style="color:${sanitizeColor(conv.color)};font-weight:600">${escapeHtml(conv.displayName)}</span> ${unreadBadge}<span class="hs-whisper-time">${ago}</span><div class="hs-whisper-preview">${preview}</div>`
+
+      row.addEventListener('click', () => {
+        activeWhisperUser = key
+        const c = whisperConversations.get(key)
+        if (c) {
+          whisperTotalUnread -= c.unread
+          c.unread = 0
+          updateWhisperBadge()
+        }
+        renderWhispersTab()
+        updateInputPlaceholder()
+        if (inputBarElement) {
+          inputBarElement.classList.remove('hs-hidden')
+          inputBarVisible = true
+        }
+      })
+      frag.appendChild(row)
+    }
+    msgsEl.appendChild(frag)
+    return
+  }
+
+  // Active conversation mode
+  const conv = whisperConversations.get(activeWhisperUser)
+  if (!conv) {
+    activeWhisperUser = null
+    renderWhispersTab()
+    return
+  }
+
+  // Lazy-load HeatSync DM history
+  if (activeWhisperUser.startsWith('hs:') && conv.msgs.length <= 1) {
+    const userId = activeWhisperUser.slice(3)
+    apiFetch(`/api/dm/${userId}`).then(resp => {
+      if (resp.ok && resp.data && Array.isArray(resp.data)) {
+        const existing = new Set(conv.msgs.map(m => m.time))
+        for (const dm of resp.data) {
+          const t = new Date(dm.created_at).getTime()
+          if (existing.has(t)) continue
+          conv.msgs.push({
+            user: dm.from_display_name || dm.from_user_id,
+            text: dm.content,
+            color: dm.from_color || '#ff8700',
+            time: t,
+            self: dm.from_user_id !== userId
+          })
+        }
+        conv.msgs.sort((a, b) => a.time - b.time)
+        if (conv.msgs.length > 200) conv.msgs.splice(0, conv.msgs.length - 200)
+        if (currentTab === 'whispers' && activeWhisperUser === `hs:${userId}`) renderWhispersTab()
+      }
+    })
+  }
+
+  msgsEl.textContent = ''
+  const frag = document.createDocumentFragment()
+
+  // Back button + header
+  const header = document.createElement('div')
+  header.className = 'hs-whisper-header'
+  // sanitizeColor + escapeHtml guard all dynamic values
+  header.innerHTML = `<span class="hs-whisper-back">\u2190</span> <span style="color:${sanitizeColor(conv.color)};font-weight:600">${escapeHtml(conv.displayName)}</span>`
+  header.querySelector('.hs-whisper-back').addEventListener('click', () => {
+    activeWhisperUser = null
+    renderWhispersTab()
+    updateInputPlaceholder()
+  })
+  frag.appendChild(header)
+
+  // Messages
+  let zebraCount = 0
+  for (const m of conv.msgs) {
+    const div = document.createElement('div')
+    div.className = m.self ? 'hs-mc-msg hs-whisper-self' : 'hs-mc-msg'
+    zebraCount++
+    if (zebraEnabled && zebraCount % 2 === 0) div.classList.add('hs-mc-zebra')
+
+    const ts = formatTimeFromTs(m.time)
+    const tsHtml = ts ? `<span class="hs-mc-ts" data-ts="${m.time}">${ts}</span>` : ''
+    const userColor = m.self ? '#aaa' : sanitizeColor(m.color || conv.color)
+    const userName = m.self ? 'you' : escapeHtml(m.user)
+    // All dynamic values sanitized — safe innerHTML (matches buildMessageDiv pattern)
+    div.innerHTML = `${tsHtml}<span style="color:${userColor};font-weight:600">${userName}</span>: ${processEmotes(escapeHtml(m.text), null)}`
+    frag.appendChild(div)
+  }
+
+  msgsEl.appendChild(frag)
+  msgsEl.scrollTop = msgsEl.scrollHeight
+}
+
+function formatWhisperTime(ts) {
+  const diff = Date.now() - ts
+  if (diff < 60000) return 'now'
+  if (diff < 3600000) return Math.floor(diff / 60000) + 'm'
+  if (diff < 86400000) return Math.floor(diff / 3600000) + 'h'
+  return Math.floor(diff / 86400000) + 'd'
+}
+
+
+// --- multichat/input.js ---
+// Input - chat input, autocomplete, send message, reply state
+
+// Autocomplete state (Tab-only cycling, no dropdown)
+let acState = {
+matches: [],
+index: 0,
+active: false,  // true when cycling through matches
+wordStart: 0,   // Position where the completion word starts
+afterText: ''   // Text after the completion
+};
+function rebuildInput() {
+  const bar = document.getElementById('hs-mc-inputbar');
+  if (!bar) return;
+
+  // Save current text
+  const oldInput = document.getElementById('hs-mc-input');
+  const savedText = oldInput ? getInputText() : pendingMessage;
+
+  // Remove old input
+  if (oldInput) oldInput.remove();
+
+  // Create new input element
+  const emoteBtn = bar.querySelector('#hs-mc-emote-btn');
+  if (wysiwygEnabled) {
+    const div = document.createElement('div');
+    div.id = 'hs-mc-input';
+    div.contentEditable = 'true';
+    div.setAttribute('data-placeholder', 'send a message...');
+    div.spellcheck = false;
+    if (emoteBtn) bar.insertBefore(div, emoteBtn);
+  } else {
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.id = 'hs-mc-input';
+    input.placeholder = 'send a message...';
+    input.autocomplete = 'off';
+    input.spellcheck = false;
+    if (emoteBtn) bar.insertBefore(input, emoteBtn);
+  }
+
+  // Restore text and reinit
+  const newInput = document.getElementById('hs-mc-input');
+  if (newInput && savedText) {
+    if (wysiwygEnabled) {
+      newInput.textContent = savedText;
+    } else {
+      newInput.value = savedText;
+    }
+  }
+  initInput();
+  updateCharCount();
+}
+
+/**
+ * Create unified input bar - ALWAYS visible, text persists across tabs
+ */
+function createInputBar() {
+  const bar = document.createElement('div');
+  bar.id = 'hs-mc-inputbar';
+  const iconUrl = chrome.runtime.getURL('icon-48.png');
+  const iconBlackUrl = chrome.runtime.getURL('icon-48-black.png');
+
+  const inputHtml = wysiwygEnabled
+    ? `<div id="hs-mc-input" contenteditable="true" data-placeholder="send a message..." spellcheck="false"></div>`
+    : `<input type="text" id="hs-mc-input" placeholder="send a message..." autocomplete="off" spellcheck="false">`;
+
+  bar.innerHTML = `
+    ${inputHtml}
+    <button id="hs-mc-emote-btn"><img src="${iconUrl}" data-src="${iconUrl}" data-src-black="${iconBlackUrl}" alt="hs"></button>
+  `;
+
+  // Initialize input after DOM insertion
+  setTimeout(() => {
+    initInput();
+    const btn = bar.querySelector('#hs-mc-emote-btn');
+    const img = btn?.querySelector('img');
+    if (btn && img) {
+      btn.addEventListener('mouseenter', () => { img.src = img.dataset.srcBlack })
+      btn.addEventListener('mouseleave', () => { img.src = img.dataset.src })
+    }
+  }, 0);
+  return bar;
+}
+// Get text from input (handles both input and contenteditable)
+function getInputText() {
+  const input = document.getElementById('hs-mc-input');
+  if (!input) return '';
+  if (wysiwygEnabled) {
+    // Convert emote images, stacks, and cycling spans back to text
+    let text = '';
+    const extractNode = (node) => {
+      if (node.nodeType === Node.TEXT_NODE) {
+        text += node.textContent
+      } else if (node.nodeType === Node.ELEMENT_NODE && node.tagName === 'IMG') {
+        text += node.dataset.emoteName || node.alt || ''
+      } else if (node.nodeType === Node.ELEMENT_NODE && node.classList?.contains('hs-input-stack')) {
+        // Stack: extract each child emote name, space-separated
+        for (const child of node.children) {
+          if (child.tagName === 'IMG') {
+            if (text && !text.endsWith(' ')) text += ' '
+            text += child.dataset.emoteName || child.alt || ''
+          }
+        }
+      } else if (node.nodeType === Node.ELEMENT_NODE) {
+        text += node.textContent || ''
+      }
+    }
+    for (const node of input.childNodes) extractNode(node)
+    return text.replace(/\u00A0/g, ' ');
+  }
+  return input.value || '';
+}
+function initInput() {
+  const input = document.getElementById('hs-mc-input');
+  const sendBtn = document.getElementById('hs-mc-send');
+  log('🎯 initInput called, input found:', !!input);
+  if (!input) {
+    log('❌ Input not found in DOM yet, retrying...');
+    setTimeout(initInput, 100);
+    return;
+  }
+  // Mark input as initialized to avoid duplicate handlers
+  if (input._hsInitialized) {
+    log('⚠️ Input already initialized');
+    return;
+  }
+  input._hsInitialized = true;
+  log('✅ Initializing input handlers, WYSIWYG:', wysiwygEnabled);
+
+  // Restore pending message
+  if (pendingMessage) {
+    if (wysiwygEnabled) {
+      input.textContent = pendingMessage;
+    } else {
+      input.value = pendingMessage;
+    }
+  }
+
+  input.addEventListener('keydown', handleInputKeydown);
+  input.addEventListener('input', handleInputChange);
+  input.addEventListener('input', updateCharCount);
+  input.addEventListener('input', () => {
+    const hasText = (input.value || input.textContent || '').trim().length > 0
+    if (hasText) showInputBar()
+    else hideInputBar()
+  });
+  input.addEventListener('blur', () => {
+    setTimeout(hideAutocomplete, 150)
+    // Hide input bar after blur if empty (delay to allow click-to-emote-picker)
+    // Skip if window lost focus — prevents hiding when switching apps
+    setTimeout(() => { if (document.hasFocus()) hideInputBar() }, 200)
+  });
+  sendBtn?.addEventListener('click', sendMessage);
+
+  // WYSIWYG: handle paste to strip formatting
+  if (wysiwygEnabled) {
+    input.addEventListener('paste', (e) => {
+      e.preventDefault();
+      const text = e.clipboardData.getData('text/plain');
+      document.execCommand('insertText', false, text);
+    });
+  }
+
+  // Initialize character counter
+  updateCharCount();
+
+  // Emote picker button (includes twitch features in tabs)
+  const emoteBtn = document.getElementById('hs-mc-emote-btn');
+  if (emoteBtn && !emoteBtn._hsInitialized) {
+    emoteBtn._hsInitialized = true;
+    emoteBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const picker = document.getElementById('hs-mc-emote-picker');
+      if (picker?.classList.contains('visible')) {
+        picker.classList.remove('visible');
+        adjustOverlayForPicker(false);
+        hideInputBar();
+        if (_pickerCloseHandler) {
+          document.removeEventListener('click', _pickerCloseHandler);
+          _pickerCloseHandler = null;
+        }
+      } else {
+        showEmotePicker();
+      }
+    });
+  }
+
+  // Update placeholder based on current tab
+  updateInputPlaceholder();
+
+  // Global Tab key to focus input from anywhere
+  if (!window._hsMcTabHandler) {
+    window._hsMcTabHandler = true;
+    document.addEventListener('keydown', (e) => {
+      if (e.key !== 'Tab') return;
+      if (currentTab === 'add') return;
+      const input = document.getElementById('hs-mc-input');
+      if (!input) return;
+
+      // If not already in our input, reveal bar and focus it
+      if (document.activeElement !== input) {
+        e.preventDefault();
+        showInputBar();
+        input.focus();
+      }
+    }, { capture: true, signal: mcSignal });
+  }
+
+  // Auto-reveal input bar when user starts typing anywhere
+  if (!window._hsMcTypeRevealHandler) {
+    window._hsMcTypeRevealHandler = true
+    document.addEventListener('keydown', (e) => {
+      if (inputBarVisible) return
+      if (currentTab === 'add') return
+      const input = document.getElementById('hs-mc-input')
+      if (!input) return
+      // Only printable chars — skip modifiers, nav, function keys
+      if (e.ctrlKey || e.altKey || e.metaKey) return
+      if (e.key.length !== 1) return
+      // Don't steal focus from other inputs
+      const active = document.activeElement
+      if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable)) return
+      showInputBar()
+      input.focus()
+      // Character will flow into the now-focused input naturally
+    }, { signal: mcSignal })
+  }
+
+  // Helper: find emote wrapper or img from event target
+  function findEmoteTarget(target) {
+    // Check wrapper first (our emotes)
+    const wrapper = target.closest('.hs-mc-emote-wrapper');
+    if (wrapper) {
+      return {
+        wrapper,
+        emoteName: wrapper.dataset.emoteName || wrapper.querySelector('img')?.alt || 'emote',
+        state: wrapper.dataset.state || 'global',
+        emoteUrl: wrapper.dataset.emoteUrl || wrapper.querySelector('img')?.src || '',
+        source: wrapper.dataset.source || 'unknown'
+      };
+    }
+    // Fallback: direct IMG (Twitch/7TV/BTTV native emotes, picker emotes)
+    if (target.tagName === 'IMG' && !target.classList.contains('hs-mc-badge-img') && (
+      target.classList.contains('hs-mc-emote') ||
+      target.classList.contains('hs-mc-picker-emote') ||
+      target.classList.contains('chat-line__message--emote') ||
+      target.classList.contains('chat-image') ||
+      target.src?.includes('7tv.app') ||
+      target.src?.includes('betterttv.net') ||
+      (target.src?.includes('frankerfacez') && !target.src?.includes('room-badge/')) ||
+      target.src?.includes('static-cdn.jtvnw.net/emoticons')
+    )) {
+      return {
+        wrapper: null,
+        emoteName: target.alt || target.dataset.emoteName || target.title?.split(' ')[0] || 'emote',
+        state: target.dataset.state || 'global',
+        emoteUrl: target.src || '',
+        source: target.dataset.source || 'unknown'
+      };
+    }
+    return null;
+  }
+
+  // Global right-click handler for ALL emotes
+  if (!window._hsMcEmoteContextHandler) {
+    window._hsMcEmoteContextHandler = true;
+    document.addEventListener('contextmenu', (e) => {
+      // Stack expand on right-click
+      const collapsedStack = e.target.closest('.hs-mc-emote-stack:not(.expanded)');
+      if (collapsedStack) {
+        e.preventDefault();
+        e.stopPropagation();
+        collapsedStack.classList.add('expanded');
+        collapsedStack.removeAttribute('title');
+        return;
+      }
+
+      const emoteInfo = findEmoteTarget(e.target);
+      if (!emoteInfo) return;
+      log('Emote right-click:', emoteInfo.emoteName, emoteInfo.state);
+
+      e.preventDefault();
+      e.stopPropagation();
+
+      const { emoteName, state } = emoteInfo;
+
+      if (state === 'blocked') {
+        // Blocked → unblock + yellow flash
+        unblockEmote(emoteName);
+      } else if (state === 'owned') {
+        // Owned → remove from inventory + white flash
+        removeEmoteFromInventory(emoteName, e.target);
+      } else {
+        // Global or unadded → block + red flash
+        blockEmote(emoteName);
+      }
+    }, { capture: true, signal: mcSignal });
+  }
+
+  // Global left-click handler for ALL emotes
+  if (!window._hsMcEmoteClickHandler) {
+    window._hsMcEmoteClickHandler = true;
+    document.addEventListener('click', (e) => {
+      // Stack collapse button
+      if (e.target.closest('.hs-mc-stack-collapse')) {
+        e.preventDefault();
+        e.stopPropagation();
+        const stack = e.target.closest('.hs-mc-emote-stack');
+        if (stack) {
+          stack.classList.remove('expanded');
+          stack.setAttribute('title', 'expand');
+        }
+        return;
+      }
+      // Stack block-all button
+      if (e.target.closest('.hs-mc-stack-block-all')) {
+        e.preventDefault();
+        e.stopPropagation();
+        const stack = e.target.closest('.hs-mc-emote-stack');
+        if (stack) blockAllEmotesInStack(stack);
+        return;
+      }
+      // Collapsed stack left-click → paste all emote names to input
+      const collapsedStack = e.target.closest('.hs-mc-emote-stack:not(.expanded)');
+      if (collapsedStack) {
+        e.preventDefault();
+        e.stopPropagation();
+        const names = [...collapsedStack.querySelectorAll('.hs-mc-emote-wrapper[data-emote-name]')]
+          .map(w => w.dataset.emoteName)
+          .filter(Boolean);
+        if (names.length > 0) {
+          for (const name of names) pasteEmoteToInput(name);
+          flashAllEmotes(names[0], 'hs-flash-paste');
+        }
+        return;
+      }
+
+      const emoteInfo = findEmoteTarget(e.target);
+      if (!emoteInfo) return;
+
+      e.preventDefault();
+      e.stopPropagation();
+
+      const { emoteName, state, emoteUrl, source } = emoteInfo;
+
+      if (state === 'blocked') {
+        // Blocked → unblock + yellow flash
+        unblockEmote(emoteName);
+      } else if (state === 'owned' || state === 'global' || state === 'channel') {
+        // Owned, global, or channel → paste to input + white flash
+        pasteEmoteToInput(emoteName);
+        flashAllEmotes(emoteName, 'hs-flash-paste');
+      } else if (state === 'unadded') {
+        // Unadded → add to inventory + green flash
+        addEmoteToInventory(emoteName, emoteUrl, source, e.target);
+        flashAllEmotes(emoteName, 'hs-flash-add');
+      }
+    }, { capture: true, signal: mcSignal });
+  }
+
+  // Spoiler click → toggle revealed
+  if (!window._hsMcSpoilerHandler) {
+    window._hsMcSpoilerHandler = true
+    document.addEventListener('click', (e) => {
+      const spoiler = e.target.closest('.hs-spoiler')
+      if (!spoiler) return
+      e.stopPropagation()
+      spoiler.classList.toggle('revealed')
+    }, { signal: mcSignal })
+  }
+
+  // Reply button click → set reply state and focus input
+  if (!window._hsMcReplyHandler) {
+    window._hsMcReplyHandler = true
+    document.addEventListener('click', (e) => {
+      const btn = e.target.closest('.hs-mc-reply-btn')
+      if (!btn) return
+      const msg = btn.closest('.hs-mc-msg')
+      if (!msg?.dataset.msgId) return
+      setReplyState({
+        msgId: msg.dataset.msgId,
+        user: msg.dataset.msgUser,
+        channel: msg.dataset.msgChannel
+      })
+    }, { signal: mcSignal })
+  }
+
+  // Right-click on message → mute/unmute user
+  if (!window._hsMcMsgContextHandler) {
+    window._hsMcMsgContextHandler = true;
+    document.addEventListener('contextmenu', (e) => {
+      const msg = e.target.closest('.hs-mc-msg');
+      if (!msg) return;
+      // Don't intercept if clicking an emote (let emote handler handle it)
+      if (findEmoteTarget(e.target)) return;
+
+      e.preventDefault();
+      const userEl = msg.querySelector('.hs-mc-user');
+      const username = userEl?.textContent?.trim()?.toLowerCase();
+      if (!username) return;
+
+      if (mutedUsers.has(username)) {
+        mutedUsers.delete(username);
+        showToast(`unmuted ${username}`);
+      } else {
+        mutedUsers.add(username);
+        showToast(`muted ${username}`);
+      }
+      chrome.storage.local.set({ heatsync_mc_muted: [...mutedUsers] });
+      applyMcMutes();
+    }, { signal: mcSignal });
+  }
+}
+function applyMcMutes() {
+  document.querySelectorAll('.hs-mc-msg').forEach(msg => {
+    const userEl = msg.querySelector('.hs-mc-user');
+    const username = userEl?.textContent?.trim()?.toLowerCase();
+    if (username && mutedUsers.has(username)) {
+      msg.classList.add('hs-mc-muted');
+    } else {
+      msg.classList.remove('hs-mc-muted');
+    }
+  });
+}
+
+function updateInputPlaceholder() {
+  const input = document.getElementById('hs-mc-input');
+  if (!input) return;
+
+  let placeholder;
+  if (currentTab === 'feed') {
+    placeholder = 'post to heatsync...';
+  } else if (currentTab === 'live') {
+    const channel = getLiveChannel();
+    placeholder = channel ? `send to #${channel}` : 'send a message...';
+  } else if (currentTab === 'mentions') {
+    const channel = getCurrentChannel();
+    placeholder = channel ? `send to #${channel}` : 'send a message...';
+  } else if (currentTab === 'whispers') {
+    if (activeWhisperUser) {
+      const conv = whisperConversations.get(activeWhisperUser)
+      placeholder = `whisper to ${conv?.displayName || activeWhisperUser}`
+    } else {
+      placeholder = ''
+    }
+  } else if (currentTab === 'add') {
+    placeholder = '';
+  } else {
+    // Channel tab — resolve twitch name for placeholder
+    const ch = config.channels.find(c => (typeof c === 'string' ? c : c.id) === currentTab);
+    const twitchName = typeof ch === 'string' ? ch : ch?.twitch;
+    placeholder = twitchName ? `send to #${twitchName}` : `send to #${currentTab}`;
+  }
+
+  if (wysiwygEnabled) {
+    input.dataset.placeholder = placeholder;
+  } else {
+    input.placeholder = placeholder;
+  }
+}
+function handleInputKeydown(e) {
+  const input = e.target;
+
+  // Tab - cycle through emote completions
+  if (e.key === 'Tab') {
+    e.preventDefault();
+
+    if (acState.active && acState.matches.length > 0) {
+      // Already cycling - next (Tab) or previous (Shift+Tab)
+      const len = acState.matches.length;
+      acState.index = (acState.index + (e.shiftKey ? len - 1 : 1)) % len;
+      insertCompletionKeepOpen(acState.matches[acState.index]);
+      showCycleTooltip();
+    } else {
+      // First Tab - find matches
+      const word = getCurrentWord(input);
+      if (word.length >= 2) {
+        const matches = findEmoteMatches(word);
+        if (matches.length > 0) {
+          // Save state for cycling (WYSIWYG handles positions internally)
+          acState.matches = matches;
+          acState.index = 0;
+          acState.active = true;
+
+          if (!wysiwygEnabled && input.value !== undefined) {
+            // Calculate positions for text input cycling (textarea only)
+            const text = input.value;
+            const pos = input.selectionStart;
+            const before = text.slice(0, pos);
+            const wordStart = before.search(/\S+$/);
+            acState.wordStart = wordStart >= 0 ? wordStart : pos;
+            // Skip past rest of word after cursor
+            let wordEnd = pos;
+            while (wordEnd < text.length && !/\s/.test(text[wordEnd])) wordEnd++;
+            acState.afterText = text.slice(wordEnd);
+          }
+
+          insertCompletionKeepOpen(matches[0]);
+          showCycleTooltip();
+        }
+      }
+    }
+    return;
+  }
+
+  // Any other key resets autocomplete cycling (ignore modifier keys)
+  if (acState.active && !['Shift', 'Control', 'Alt', 'Meta'].includes(e.key)) {
+    hideAutocomplete();
+  }
+
+  // Enter - send message
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    sendMessage();
+    return;
+  }
+
+  // Escape - cancel reply state and hide autocomplete
+  if (e.key === 'Escape') {
+    if (replyState) clearReplyState()
+    hideAutocomplete();
+    return;
+  }
+}
+
+function handleInputChange(e) {
+  // Save pending message (persists across tab switches)
+  pendingMessage = getInputText();
+
+  // Reset autocomplete cycling on any text change
+  if (acState.active) {
+    hideAutocomplete();
+  }
+
+  // Live emoji conversion in contenteditable: :shortcode: → emoji span
+  if (wysiwygEnabled && _emojiMap.size > 0) {
+    const input = document.getElementById('hs-mc-input')
+    if (input?.isContentEditable) {
+      const sel = window.getSelection()
+      if (!sel?.rangeCount) return
+      const range = sel.getRangeAt(0)
+      const node = range.startContainer
+      if (node?.nodeType !== Node.TEXT_NODE) return
+      const text = node.textContent
+      const cursorOffset = range.startOffset
+      // Look for :shortcode: ending at cursor
+      const before = text.slice(0, cursorOffset)
+      const match = before.match(/:([a-z0-9_]+):$/)
+      if (match) {
+        const emoji = _emojiMap.get(match[1])
+        if (emoji) {
+          const start = cursorOffset - match[0].length
+          // Replace the :shortcode: text with emoji span
+          const span = document.createElement('span')
+          span.className = 'hs-mc-emoji'
+          span.textContent = emoji
+          span.title = ':' + match[1] + ':'
+          span.setAttribute('data-emoji-name', match[1])
+          const beforeNode = document.createTextNode(text.slice(0, start))
+          const afterNode = document.createTextNode(text.slice(cursorOffset))
+          const parent = node.parentNode
+          parent.insertBefore(beforeNode, node)
+          parent.insertBefore(span, node)
+          parent.insertBefore(afterNode, node)
+          parent.removeChild(node)
+          // Place cursor after emoji
+          const newRange = document.createRange()
+          newRange.setStart(afterNode, 0)
+          newRange.collapse(true)
+          sel.removeAllRanges()
+          sel.addRange(newRange)
+          pendingMessage = getInputText()
+          return
+        }
+      }
+    }
+  }
+
+  // Live emote replacement: "emoteName " → <img> (triggered on space after emote name)
+  if (wysiwygEnabled) {
+    const input = document.getElementById('hs-mc-input')
+    if (input?.isContentEditable) {
+      const sel = window.getSelection()
+      if (sel?.rangeCount) {
+        const range = sel.getRangeAt(0)
+        const node = range.startContainer
+        if (node?.nodeType === Node.TEXT_NODE) {
+          const text = node.textContent
+          const cursor = range.startOffset
+          const before = text.slice(0, cursor)
+          const match = before.match(/(\S+)\s$/)
+          if (match) {
+            const word = match[1]
+            const emote = lookupEmote(word)
+            if (emote) {
+              const img = createInputEmoteImg(word)
+              if (img) {
+                const wordStart = cursor - match[0].length
+                const beforeText = text.slice(0, wordStart)
+                const afterText = text.slice(cursor)
+                const parent = node.parentNode
+                const isZeroWidth = !!emote.zeroWidth
+
+                // Zero-width: stack onto previous emote if possible
+                if (isZeroWidth && beforeText.trim() === '') {
+                  // Look for emote element before this text node
+                  let prev = node.previousSibling
+                  while (prev && prev.nodeType === Node.TEXT_NODE && prev.textContent.trim() === '') {
+                    prev = prev.previousSibling
+                  }
+                  if (prev && (
+                    (prev.tagName === 'IMG' && prev.classList.contains('hs-input-emote')) ||
+                    prev.classList?.contains('hs-input-stack')
+                  )) {
+                    // Remove whitespace text nodes between prev and current
+                    let ws = prev.nextSibling
+                    while (ws && ws !== node) {
+                      const rm = ws
+                      ws = ws.nextSibling
+                      rm.remove()
+                    }
+                    stackInputEmote(prev, img)
+                    node.textContent = afterText || '\u00A0'
+                    const newRange = document.createRange()
+                    newRange.setStart(node, 0)
+                    newRange.collapse(true)
+                    sel.removeAllRanges()
+                    sel.addRange(newRange)
+                    pendingMessage = getInputText()
+                    return
+                  }
+                }
+
+                // Regular emote: replace text with img
+                const beforeNode = beforeText ? document.createTextNode(beforeText) : null
+                const afterNode = document.createTextNode(afterText || '\u00A0')
+                if (beforeNode) parent.insertBefore(beforeNode, node)
+                parent.insertBefore(img, node)
+                parent.insertBefore(afterNode, node)
+                parent.removeChild(node)
+                const newRange = document.createRange()
+                newRange.setStart(afterNode, 0)
+                newRange.collapse(true)
+                sel.removeAllRanges()
+                sel.addRange(newRange)
+                pendingMessage = getInputText()
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+function updateCharCount() {
+  const input = document.getElementById('hs-mc-input');
+  if (!input) return;
+  const len = getInputText().length;
+  input.classList.toggle('over-limit', len > 500)
+}
+
+function getCurrentWord(input) {
+  if (!input) return ''
+  if (input.contentEditable === 'true') {
+    const sel = window.getSelection();
+    if (!sel.rangeCount) return '';
+    const range = sel.getRangeAt(0);
+    let container = range.startContainer;
+    let offset = range.startOffset;
+    if (container.nodeType === Node.ELEMENT_NODE && offset > 0) {
+      const child = container.childNodes[offset - 1];
+      if (child?.nodeType === Node.TEXT_NODE) {
+        container = child;
+        offset = child.textContent.length;
+      }
+    }
+    if (container.nodeType === Node.TEXT_NODE) {
+      const text = container.textContent;
+      const before = text.slice(0, offset);
+      const after = text.slice(offset);
+      const beforeMatch = before.match(/(\S+)$/);
+      const afterMatch = after.match(/^(\S+)/);
+      if (beforeMatch) return beforeMatch[1] + (afterMatch ? afterMatch[1] : '');
+    }
+    return '';
+  }
+  const text = input.value;
+  const pos = input.selectionStart;
+  const before = text.slice(0, pos);
+  const after = text.slice(pos);
+  const beforeMatch = before.match(/(\S+)$/);
+  const afterMatch = after.match(/^(\S+)/);
+  if (beforeMatch) return beforeMatch[1] + (afterMatch ? afterMatch[1] : '');
+  return '';
+}
+
+function findEmoteMatches(search) {
+  const matches = [];
+
+  // Check if searching for username (starts with @)
+  const isUserSearch = search.startsWith('@');
+  const searchTerm = isUserSearch ? search.slice(1) : search;
+  const searchLower = searchTerm.toLowerCase();
+
+  // Search usernames if @ prefix or if it could be a username
+  if (isUserSearch || searchTerm.length >= 2) {
+    for (const username of usernameCache) {
+      const userLower = username.toLowerCase();
+      if (userLower.startsWith(searchLower)) {
+        matches.push({ name: '@' + username, url: null, priority: isUserSearch ? 0 : 2, type: 'user' });
+      } else if (!isUserSearch && userLower.includes(searchLower)) {
+        matches.push({ name: '@' + username, url: null, priority: 3, type: 'user' });
+      }
+    }
+  }
+
+  // Search emote cache (unless explicitly searching users with @)
+  if (!isUserSearch) {
+    // Search global + channel emotes for current tab
+    const acEmotes = new Map(emoteCache);
+    const acChCache = channelEmoteCaches[currentTab] || channelEmoteCaches[getCurrentChannel()];
+    if (acChCache) for (const [k, v] of acChCache) acEmotes.set(k, v);
+    for (const [name, emote] of acEmotes) {
+      if (name.toLowerCase().startsWith(searchLower)) {
+        matches.push({ name, url: emote.url, source: emote.source, priority: 0, type: 'emote' });
+      } else if (name.toLowerCase().includes(searchLower)) {
+        matches.push({ name, url: emote.url, source: emote.source, priority: 1, type: 'emote' });
+      }
+    }
+  }
+
+  // Emoji shortcodes when typing :prefix
+  if (search.startsWith(':') && typeof EMOJI_DATA !== 'undefined') {
+    const emojiPrefix = search.slice(1).toLowerCase();
+    if (emojiPrefix.length > 0) {
+      for (const entry of EMOJI_DATA) {
+        if (matches.length >= 50) break;
+        const emojiMatch = { name: `:${entry.name}:`, url: null, priority: entry.name.startsWith(emojiPrefix) ? 1 : 2, type: 'emoji', emoji: entry.emoji };
+        if (entry.name.startsWith(emojiPrefix)) {
+          matches.push(emojiMatch);
+        } else if (entry.name.includes(emojiPrefix)) {
+          emojiMatch.priority = 2;
+          matches.push(emojiMatch);
+        }
+      }
+    }
+  }
+
+  // Sort: prefix matches first, then alphabetical
+  matches.sort((a, b) => {
+    if (a.priority !== b.priority) return a.priority - b.priority;
+    return a.name.localeCompare(b.name);
+  });
+
+  return matches;
+}
+
+// Insert completion and keep cycling state
+function insertCompletionKeepOpen(match) {
+  const input = document.getElementById('hs-mc-input');
+  if (!input || !match) return;
+
+  if (wysiwygEnabled) {
+    insertCompletionWysiwyg(match);
+    return;
+  }
+
+  // Use saved positions from acState for consistent cycling
+  const beforeWord = input.value.slice(0, acState.wordStart);
+  const insertText = match.type === 'emoji' ? match.emoji : match.name;
+  const newValue = beforeWord + insertText + ' ' + acState.afterText;
+
+  input.value = newValue;
+  pendingMessage = input.value;
+
+  // Position cursor after the inserted word
+  const newPos = beforeWord.length + insertText.length + 1;
+  input.selectionStart = input.selectionEnd = newPos;
+  input.focus();
+
+  updateCharCount();
+}
+
+// WYSIWYG emote insertion
+function insertCompletionWysiwyg(match) {
+  const input = document.getElementById('hs-mc-input');
+  if (!input) return;
+
+  // Check if we're replacing an existing cycling element (emote img or text span)
+  const existingEmote = input.querySelector('img.hs-cycling-emote');
+  const existingText = input.querySelector('span.hs-cycling-text');
+  if (existingEmote) {
+    if (match.url) {
+      existingEmote.src = match.url;
+      existingEmote.alt = match.name;
+      existingEmote.dataset.emoteName = match.name;
+    } else if (match.type === 'emoji') {
+      // Replace emote img with emoji span
+      const span = document.createElement('span')
+      span.className = 'hs-cycling-text'
+      span.textContent = match.emoji
+      span.dataset.completionName = match.name
+      existingEmote.replaceWith(span)
+      // Place caret after the span's trailing space
+      const space = span.nextSibling
+      if (space) placeCaretAfter(space, 1)
+      else placeCaretAfter(span)
+    } else {
+      const textNode = document.createTextNode(match.name + ' ');
+      existingEmote.replaceWith(textNode);
+      placeCaretAfter(textNode);
+    }
+    pendingMessage = getInputText();
+    updateCharCount();
+    return;
+  }
+  if (existingText) {
+    if (match.url) {
+      // Replace text span with emote img
+      const img = document.createElement('img')
+      img.src = match.url
+      img.alt = match.name
+      img.dataset.emoteName = match.name
+      img.className = 'hs-input-emote hs-cycling-emote'
+      img.draggable = false
+      existingText.replaceWith(img)
+      const space = img.nextSibling
+      if (space) placeCaretAfter(space, 1)
+      else placeCaretAfter(img)
+    } else if (match.type === 'emoji') {
+      existingText.textContent = match.emoji
+      existingText.dataset.completionName = match.name
+      const space = existingText.nextSibling
+      if (space) placeCaretAfter(space, 1)
+      else placeCaretAfter(existingText)
+    } else {
+      const textNode = document.createTextNode(match.name + ' ')
+      existingText.replaceWith(textNode)
+      placeCaretAfter(textNode)
+    }
+    pendingMessage = getInputText()
+    updateCharCount()
+    return
+  }
+
+  // First Tab: replace word with emote image
+  const sel = window.getSelection();
+  if (!sel.rangeCount) return;
+
+  const range = sel.getRangeAt(0);
+  let container = range.startContainer;
+  let rangeOffset = range.startOffset;
+  // Resolve element boundary to preceding text node
+  if (container.nodeType === Node.ELEMENT_NODE && rangeOffset > 0) {
+    const child = container.childNodes[rangeOffset - 1];
+    if (child?.nodeType === Node.TEXT_NODE) {
+      container = child;
+      rangeOffset = child.textContent.length;
+    }
+  }
+  if (container.nodeType !== Node.TEXT_NODE) return;
+
+  const textNode = container;
+  const offset = rangeOffset;
+  const text = textNode.textContent;
+
+  // Find word start
+  let wordStart = offset;
+  while (wordStart > 0 && !/\s/.test(text[wordStart - 1])) wordStart--;
+
+  // Find word end (skip past rest of word after cursor)
+  let wordEnd = offset;
+  while (wordEnd < text.length && !/\s/.test(text[wordEnd])) wordEnd++;
+
+  // Split text: before | word | after
+  const before = text.slice(0, wordStart);
+  const after = text.slice(wordEnd);
+
+  // Save afterText for cycling
+  acState.afterText = after;
+
+  // Helper: insert element after textNode with before/after text
+  const insertElement = (el) => {
+    textNode.textContent = before;
+    const space = document.createTextNode('\u00A0' + after);
+    const parent = textNode.parentNode;
+    const nextSibling = textNode.nextSibling;
+    if (nextSibling) {
+      parent.insertBefore(el, nextSibling);
+      parent.insertBefore(space, nextSibling);
+    } else {
+      parent.appendChild(el);
+      parent.appendChild(space);
+    }
+    placeCaretAfter(space, 1);
+  }
+
+  if (match.url) {
+    // Create emote image
+    const img = document.createElement('img');
+    img.src = match.url;
+    img.alt = match.name;
+    img.dataset.emoteName = match.name;
+    img.className = 'hs-input-emote hs-cycling-emote';
+    img.draggable = false;
+    insertElement(img);
+  } else if (match.type === 'emoji') {
+    // Create emoji tracking span
+    const span = document.createElement('span')
+    span.className = 'hs-cycling-text'
+    span.textContent = match.emoji
+    span.dataset.completionName = match.name
+    insertElement(span)
+  } else {
+    // User/text completion - just insert text
+    const newText = before + match.name + ' ' + after;
+    textNode.textContent = newText;
+    const newPos = before.length + match.name.length + 1;
+    range.setStart(textNode, newPos);
+    range.collapse(true);
+    sel.removeAllRanges();
+    sel.addRange(range);
+  }
+
+  pendingMessage = getInputText();
+  updateCharCount();
+  input.focus();
+}
+
+function placeCaretAfter(node, offset = 0) {
+  const sel = window.getSelection();
+  const range = document.createRange();
+  if (node.nodeType === Node.TEXT_NODE) {
+    range.setStart(node, Math.min(offset, node.length));
+  } else {
+    range.setStartAfter(node);
+  }
+  range.collapse(true);
+  sel.removeAllRanges();
+  sel.addRange(range);
+}
+
+
+function showCycleTooltip() {
+  let tt = document.getElementById('hs-mc-cycle-tooltip');
+  if (!tt) {
+    tt = document.createElement('div');
+    tt.id = 'hs-mc-cycle-tooltip';
+    tt.style.cssText = 'position:absolute;bottom:100%;left:8px;background:#000;color:#fff;padding:4px 8px;font-size:12px;border-radius: 0;z-index:1003;margin-bottom:4px;';
+    document.getElementById('hs-mc-inputbar')?.appendChild(tt);
+  }
+  const m = acState.matches[acState.index];
+  const label = m.type === 'emoji' ? `${m.emoji} ${m.name}` : m.name;
+  tt.textContent = `${acState.index + 1}/${acState.matches.length} ${label}`;
+  tt.style.display = 'block';
+}
+
+function hideCycleTooltip() {
+  const tt = document.getElementById('hs-mc-cycle-tooltip');
+  if (tt) tt.style.display = 'none';
+}
+
+function hideAutocomplete() {
+  acState.active = false;
+  acState.matches = [];
+  acState.index = 0;
+  acState.wordStart = 0;
+  acState.afterText = '';
+  hideCycleTooltip();
+
+  // WYSIWYG: finalize cycling elements (remove cycling class so they're permanent)
+  if (wysiwygEnabled) {
+    const input = document.getElementById('hs-mc-input');
+    const cyclingEmote = input?.querySelector('.hs-cycling-emote');
+    if (cyclingEmote) {
+      cyclingEmote.classList.remove('hs-cycling-emote');
+    }
+    const cyclingText = input?.querySelector('.hs-cycling-text');
+    if (cyclingText) {
+      // Replace span with plain text node
+      const textNode = document.createTextNode(cyclingText.textContent);
+      cyclingText.replaceWith(textNode);
+    }
+  }
+}
+
+// Reply state management
+function setReplyState(state) {
+  replyState = state
+  showInputBar()
+  const bar = document.getElementById('hs-mc-inputbar')
+  if (!bar) return
+  // Remove existing indicator
+  document.getElementById('hs-mc-reply-indicator')?.remove()
+  const indicator = document.createElement('div')
+  indicator.id = 'hs-mc-reply-indicator'
+  const label = document.createElement('span')
+  label.textContent = `↩ Replying to @${state.user}`
+  const cancel = document.createElement('button')
+  cancel.id = 'hs-mc-reply-cancel'
+  cancel.textContent = '✕'
+  cancel.title = 'Cancel reply'
+  cancel.addEventListener('click', clearReplyState)
+  indicator.appendChild(label)
+  indicator.appendChild(cancel)
+  bar.insertBefore(indicator, bar.firstChild)
+  document.getElementById('hs-mc-input')?.focus()
+}
+
+function clearReplyState() {
+  replyState = null
+  document.getElementById('hs-mc-reply-indicator')?.remove()
+  hideInputBar()
+}
+
+// Get Twitch auth token from cookie
+function getTwitchAuthToken() {
+  const cookies = document.cookie.split(';');
+  for (const cookie of cookies) {
+    const eqIdx = cookie.indexOf('=');
+    if (eqIdx === -1) continue;
+    const key = cookie.slice(0, eqIdx).trim();
+    const value = cookie.slice(eqIdx + 1).trim();
+    if (key === 'auth-token' && value) {
+      return decodeURIComponent(value);
+    }
+  }
+  return null;
+}
+
+// Send message to current tab's channel
+// Build emoji lookup map (once)
+const _emojiMap = new Map()
+if (typeof EMOJI_DATA !== 'undefined') {
+  for (const e of EMOJI_DATA) _emojiMap.set(e.name, e.emoji)
+}
+
+// Replace :shortcode: patterns with emoji characters
+function convertEmojiShortcodes(text) {
+  if (_emojiMap.size === 0) return text
+  return text.replace(/:([a-z0-9_]+):/g, (match, name) => _emojiMap.get(name) || match)
+}
+
+async function sendMessage() {
+  const input = document.getElementById('hs-mc-input');
+  if (!input) { console.warn('[HS] SEND BAIL: no input element'); return; }
+
+  const text = convertEmojiShortcodes(getInputText().trim());
+  if (!text) { console.warn('[HS] SEND BAIL: empty text'); return; }
+
+  // Whispers tab → send whisper/DM
+  if (currentTab === 'whispers' && activeWhisperUser) {
+    sendWhisperMessage(activeWhisperUser, text)
+    if (wysiwygEnabled) input.textContent = ''
+    else input.value = ''
+    pendingMessage = ''
+    return
+  }
+
+  // Feed/notifs tab → post to heatsync API
+  if (currentTab === 'feed') {
+    postFeedMessage(text);
+    return;
+  }
+
+  // Determine target channel
+  let targetChannel;
+  if (currentTab === 'live') {
+    targetChannel = getLiveChannel();
+  } else if (currentTab === 'mentions') {
+    targetChannel = getCurrentChannel();
+  } else if (currentTab === 'add') {
+    if (MC_DEBUG) console.warn('[HS] SEND BAIL: on add tab');
+    return;
+  } else {
+    // Resolve twitch name from channel config (object or legacy string)
+    const ch = config.channels.find(c => (typeof c === 'string' ? c : c.id) === currentTab);
+    targetChannel = typeof ch === 'string' ? ch : ch?.twitch || currentTab;
+  }
+
+  if (!targetChannel) {
+    console.warn('[HS] SEND BAIL: no target channel, currentTab=' + currentTab);
+    return;
+  }
+
+  // Get auth token
+  const token = getTwitchAuthToken();
+  if (!token) {
+    console.warn('[HS] SEND BAIL: no auth token (cookie missing)');
+    if (wysiwygEnabled) {
+      input.dataset.placeholder = 'not logged in';
+    } else {
+      input.placeholder = 'not logged in';
+    }
+    setTimeout(() => updateInputPlaceholder(), 2000);
+    return;
+  }
+
+  // Capture reply parent before clearing
+  const replyParentId = replyState?.msgId || null
+  clearReplyState()
+
+  // Send via IRC (fast async)
+  const wsState = authState.ws ? ['CONNECTING','OPEN','CLOSING','CLOSED'][authState.ws.readyState] : 'null';
+  log(`IRC SEND → #${targetChannel} ws=${wsState} ready=${authState.ready} queue=${authState.sendQueue.length}`);
+  sendIrcMessage(targetChannel, text, token, replyParentId).then(result => {
+    if (result === true) {
+      // If ws wasn't OPEN when we sent, message was likely queued — show yellow indicator
+      if (wsState !== 'OPEN') {
+        input.style.borderColor = '#ff0';
+        setTimeout(() => { input.style.borderColor = ''; }, 1500);
+      }
+      if (wysiwygEnabled) {
+        input.textContent = '';
+      } else {
+        input.value = '';
+      }
+      pendingMessage = '';
+      updateCharCount();
+      hideInputBar();
+    } else {
+      // Show specific error feedback
+      input.style.borderColor = '#f44';
+      const msg = result === 'no_user' ? 'no username detected'
+        : result === 'auth_failed' ? 'auth failed — re-login to twitch'
+        : result === 'connect_failed' ? 'connection failed — try again'
+        : 'send failed — try again';
+      if (wysiwygEnabled) {
+        input.dataset.placeholder = msg;
+      } else {
+        input.placeholder = msg;
+      }
+      setTimeout(() => {
+        input.style.borderColor = '';
+        updateInputPlaceholder();
+      }, 2500);
+    }
+  });
+}
+
+// === END MULTICHAT MODULES ===
+
+
+const STORAGE_KEY = 'heatsync_multichat';
   const LOG_PREFIX = '[heatsync-mc]';
 
   // Safe chrome.runtime.sendMessage wrapper (context invalidation guard)
@@ -49,11 +7015,8 @@
   const mentionsBuffer = [];
   const MAX_BUFFER = 500;
 
-  // Whisper/DM state
-  const whisperConversations = new Map() // key → { msgs, platform, userId, displayName, color, lastTime, unread }
-  let activeWhisperUser = null // key into map, null = conversation list
-  let whisperTotalUnread = 0
-  let whisperDmsLoaded = false // whether HeatSync DM list has been fetched
+  let isKick = location.hostname.includes('kick.com');
+  const hostPlatform = isKick ? 'kick' : location.hostname.includes('youtube.com') ? 'yt' : 'twitch';
 
   // Scoped emote wrapper query (avoids full-document scan)
   function queryEmoteWrappers(emoteName) {
@@ -80,25 +7043,6 @@
 
   // YouTube global state (per-channel only now — global removed)
 
-  // Feed & notifications state
-  let feedMessages = [];
-  let feedLoaded = false;
-  let feedLoading = false;
-  let feedPage = 1;
-  let feedHasMore = true;
-  let feedLastFetch = 0; // Timestamp of last feed fetch
-  const FEED_STALE_MS = 120000; // 2 minutes
-  let notifications = { mentions: 0, op_replies: 0, re_replies: 0, total: 0 };
-  let notifMessages = []; // Actual notification messages for display
-  let notifLoaded = false;
-  let unreadNotifCount = 0;
-  const activityEvents = []; // Stream events for activity tab
-  let expandedThreadId = null; // Currently expanded thread in feed
-  let threadReplies = []; // Replies for expanded thread
-  let replyState = null; // { msgId, user, channel } when replying to a message
-  let isKick = location.hostname.includes('kick.com');
-  const hostPlatform = isKick ? 'kick' : location.hostname.includes('youtube.com') ? 'yt' : 'twitch';
-  let hsAuthToken = null; // Heatsync auth state (loaded from storage)
 
   // Username cache for tab completion
   const usernameCache = new Set();
@@ -176,8 +7120,6 @@
     } catch {}
   }
 
-  // Emote size (1, 2, or 4)
-  let emoteSize = 1;
 
   // Dedup: track recent server-sourced YouTube messages to skip content-script duplicates
   const ytServerMsgHashes = new Set();
@@ -201,565 +7143,9 @@
     return raw
   }
 
-  // --- Robust IRC parsing (matches website's chat-history-manager.js) ---
-  function parseTags(tagStr) {
-    const tags = {}
-    for (const part of tagStr.split(';')) {
-      const eq = part.indexOf('=')
-      if (eq === -1) { tags[part] = ''; continue }
-      tags[part.slice(0, eq)] = part.slice(eq + 1) || ''
-    }
-    return tags
-  }
-
-  function parseIrcLine(raw, channel) {
-    try {
-      const tagsMatch = raw.match(/^@([^ ]+)/)
-      if (!tagsMatch) return null
-      const tags = parseTags(tagsMatch[1])
-
-      // PRIVMSG: @tags :user!user@user.tmi.twitch.tv PRIVMSG #channel :message
-      const privmsg = raw.match(/PRIVMSG #([^ ]+) :(.+)$/)
-      if (privmsg) {
-        const displayName = tags['display-name'] || 'anonymous'
-        const msg = {
-          user: displayName,
-          text: privmsg[2],
-          color: sanitizeColor(tags.color || '#fff'),
-          badges: tags.badges || '',
-          channel: channel || privmsg[1].toLowerCase(),
-          time: parseInt(tags['tmi-sent-ts']) || Date.now(),
-          id: tags.id || '',
-          replyTo: tags['reply-parent-display-name'] ? {
-            user: decodeURIComponent(tags['reply-parent-display-name']),
-            text: tags['reply-parent-msg-body'] ? decodeURIComponent(tags['reply-parent-msg-body'].replace(/\\s/g, ' ')) : ''
-          } : null
-        }
-        if (tags['custom-reward-id']) msg.redeemed = true
-        if (tags['first-msg'] === '1') msg.isFirstMsg = true
-        return msg
-      }
-
-      // USERNOTICE: @tags :tmi.twitch.tv USERNOTICE #channel :optional message
-      const usernotice = raw.match(/USERNOTICE #([^ ]+)(?: :(.+))?$/)
-      if (usernotice) {
-        const displayName = tags['display-name'] || 'system'
-        return {
-          user: displayName,
-          text: usernotice[2] || '',
-          systemMsg: decodeURIComponent((tags['system-msg'] || '').replace(/\\s/g, ' ')),
-          color: sanitizeColor(tags.color || '#fff'),
-          badges: tags.badges || '',
-          channel: channel || usernotice[1].toLowerCase(),
-          time: parseInt(tags['tmi-sent-ts']) || Date.now(),
-          type: 'usernotice',
-          msgId: tags['msg-id'] || '',
-          id: tags.id || ''
-        }
-      }
-
-      // WHISPER: @tags :user!user@user.tmi.twitch.tv WHISPER yourname :message
-      const whisper = raw.match(/WHISPER \S+ :(.+)$/)
-      if (whisper) {
-        return {
-          type: 'whisper',
-          user: tags['display-name'] || 'anonymous',
-          userId: tags['user-id'],
-          text: whisper[1],
-          color: sanitizeColor(tags.color || '#fff'),
-          badges: tags.badges || '',
-          time: parseInt(tags['tmi-sent-ts']) || Date.now(),
-          id: tags['message-id'] || ''
-        }
-      }
-
-      return null
-    } catch (e) {
-      return null
-    }
-  }
-
-  const MC_DEBUG = false;
-  function log(...args) {
-    if (MC_DEBUG) console.log(LOG_PREFIX, ...args);
-  }
-
-  // Lifecycle controller — abort() tears down ALL listeners, timers, observers
-  const lifecycle = new AbortController()
-  const mcSignal = lifecycle.signal
-  const _timers = { intervals: [], timeouts: [], observers: [] }
-  mcSignal.addEventListener('abort', () => {
-    _timers.intervals.forEach(clearInterval)
-    _timers.timeouts.forEach(clearTimeout)
-    _timers.observers.forEach(o => o.disconnect())
-    // Disconnect IRC + Kick on teardown
-    if (irc) { irc.destroy(); }
-    if (kickChat) { kickChat.destroy(); }
-    // Clear handler guards so they re-register on re-init
-    delete window._hsMcEmoteContextHandler
-    delete window._hsMcEmoteClickHandler
-    delete window._hsEmoteTooltipSetup
-    delete window._hsMcSettingsListener
-  })
-  window.addEventListener('pagehide', () => lifecycle.abort())
-
-  const cleanup = {
-    setInterval(fn, ms) { const id = setInterval(fn, ms); _timers.intervals.push(id); return id },
-    setTimeout(fn, ms) { const id = setTimeout(fn, ms); _timers.timeouts.push(id); return id },
-    addEventListener(target, event, handler) {
-      target.addEventListener(event, handler, { signal: mcSignal })
-    },
-    trackObserver(obs) { _timers.observers.push(obs); return obs },
-    raf(fn) { return requestAnimationFrame(fn) },
-  }
-
-  // ============================================
-  // CIRCULAR BUFFER FOR CHANNEL MESSAGES
-  // ============================================
-  class CircularBuffer {
-    constructor(cap = 500) {
-      this.buf = new Array(cap);
-      this.cap = cap;
-      this.head = 0;
-      this.size = 0;
-    }
-    push(item) {
-      this.buf[this.head] = item;
-      this.head = (this.head + 1) % this.cap;
-      if (this.size < this.cap) this.size++;
-    }
-    getAll() {
-      if (this.size === 0) return [];
-      if (this.size < this.cap) return this.buf.slice(0, this.size);
-      // Concat instead of spread — avoids 2 temporary arrays
-      return this.buf.slice(this.head).concat(this.buf.slice(0, this.head));
-    }
-    clear() {
-      this.buf = new Array(this.cap);
-      this.head = 0;
-      this.size = 0;
-    }
-  }
-
-  // ============================================
-  // TWITCH IRC CLIENT (READ-ONLY)
-  // ============================================
-  class IRC {
-    constructor() {
-      this.ws = null;
-      this.channels = new Map();
-      this.handlers = new Map();
-      this.partial = '';
-      this.nick = `justinfan${Math.floor(Math.random() * 99999)}`;
-      this._destroyed = false;
-      this._lastData = 0;
-      this._heartbeatTimer = null;
-      this._reconnectTimer = null;
-      this._reconnectAttempts = 0;
-      // Reconnect when tab becomes visible after silence
-      document.addEventListener('visibilitychange', () => {
-        if (this._destroyed) return;
-        if (document.visibilityState === 'visible' && this.channels.size > 0) {
-          const silence = Date.now() - this._lastData;
-          if (silence > 60000 || !this.ws || this.ws.readyState !== WebSocket.OPEN) {
-            log('Tab visible after', Math.round(silence / 1000), 's silence, reconnecting');
-            this._forceReconnect();
-          }
-        }
-      });
-    }
-
-    connect() {
-      if (this._destroyed) return;
-      this._stopHeartbeat();
-      clearTimeout(this._reconnectTimer);
-      if (this.ws) {
-        try { this.ws.onclose = null; this.ws.close(); } catch {}
-        this.ws = null;
-      }
-      this.partial = '';
-
-      const connectTimeout = setTimeout(() => {
-        if (this.ws?.readyState !== WebSocket.OPEN) {
-          log('IRC connect timeout');
-          try { this.ws.close(); } catch {}
-        }
-      }, 10000);
-
-      this.ws = new WebSocket('wss://irc-ws.chat.twitch.tv:443');
-      this.ws.onopen = () => {
-        clearTimeout(connectTimeout);
-        log('IRC connected');
-        this._reconnectAttempts = 0;
-        this._lastData = Date.now();
-        this.ws.send(`NICK ${this.nick}\r\n`);
-        this.ws.send('CAP REQ :twitch.tv/tags\r\n');
-        for (const ch of this.channels.keys()) {
-          if (this.ws.readyState !== WebSocket.OPEN) return;
-          this.ws.send(`JOIN #${ch}\r\n`);
-        }
-        this._startHeartbeat();
-        fetchGlobalBadges();
-        const currentCh = getCurrentChannel();
-        if (currentCh) fetchChannelBadges(currentCh);
-      };
-      this.ws.onmessage = (e) => this.parse(e.data);
-      this.ws.onerror = () => { clearTimeout(connectTimeout); };
-      this.ws.onclose = () => {
-        clearTimeout(connectTimeout);
-        this._stopHeartbeat();
-        if (this._destroyed) return;
-        this._scheduleReconnect();
-      };
-    }
-
-    destroy() {
-      this._destroyed = true;
-      this._stopHeartbeat();
-      clearTimeout(this._reconnectTimer);
-      if (this.ws) {
-        this.ws.onclose = null;
-        try { this.ws.close(); } catch {}
-        this.ws = null;
-      }
-    }
-
-    _startHeartbeat() {
-      this._stopHeartbeat();
-      this._heartbeatTimer = setInterval(() => {
-        if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
-          this._stopHeartbeat();
-          if (!this._destroyed) this._scheduleReconnect();
-          return;
-        }
-        const silence = Date.now() - this._lastData;
-        if (silence > 90000) {
-          log('Zombie detected —', Math.round(silence / 1000), 's silence');
-          this._forceReconnect();
-          return;
-        }
-        try { this.ws.send('PING :heatsync\r\n'); } catch {
-          this._forceReconnect();
-        }
-      }, 30000);
-    }
-
-    _stopHeartbeat() {
-      if (this._heartbeatTimer) {
-        clearInterval(this._heartbeatTimer);
-        this._heartbeatTimer = null;
-      }
-    }
-
-    _forceReconnect() {
-      this._stopHeartbeat();
-      if (this.ws) {
-        this.ws.onclose = null;
-        try { this.ws.close(); } catch {}
-        this.ws = null;
-      }
-      this._reconnectAttempts = 0;
-      if (!this._destroyed) this.connect();
-    }
-
-    _scheduleReconnect() {
-      if (this._destroyed) return;
-      clearTimeout(this._reconnectTimer);
-      const delay = Math.min(2000 * Math.pow(2, this._reconnectAttempts), 30000);
-      this._reconnectAttempts++;
-      log('Reconnecting in', delay, 'ms (attempt', this._reconnectAttempts, ')');
-      this._reconnectTimer = setTimeout(() => {
-        if (!this._destroyed) this.connect();
-      }, delay);
-    }
-
-    parse(data) {
-      this._lastData = Date.now();
-      this.partial += data;
-      const lines = this.partial.split('\r\n');
-      this.partial = lines.pop();
-      for (const line of lines) {
-        if (!line) continue;
-        if (line.startsWith('PING')) {
-          try { this.ws.send('PONG :tmi.twitch.tv\r\n'); } catch {}
-          continue;
-        }
-        if (line.startsWith(':tmi.twitch.tv PONG') || line.startsWith('PONG')) continue;
-        if (line.includes('RECONNECT')) {
-          log('Server requested RECONNECT');
-          this._forceReconnect();
-          return;
-        }
-        const msg = parseIrcLine(line);
-        if (msg && !msg.type) {
-          // PRIVMSG
-          const ch = msg.channel;
-          usernameCache.add(msg.user);
-          knownColors.set(msg.user.toLowerCase(), msg.color);
-          if (usernameCache.size > 500) {
-            usernameCache.delete(usernameCache.values().next().value);
-            const oldest = knownColors.keys().next().value;
-            knownColors.delete(oldest);
-          }
-          fetchChannelBadges(ch);
-
-          if (this.channels.has(ch)) {
-            this.channels.get(ch).push(msg);
-            this.emit('message', msg);
-          }
-        } else if (msg && msg.type === 'usernotice') {
-          const ch = msg.channel;
-          usernameCache.add(msg.user);
-          knownColors.set(msg.user.toLowerCase(), msg.color);
-          fetchChannelBadges(ch);
-          if (this.channels.has(ch)) {
-            this.channels.get(ch).push(msg);
-            this.emit('message', msg);
-          }
-        }
-      }
-    }
-
-    join(ch) {
-      ch = ch.toLowerCase();
-      if (this.channels.has(ch)) return;
-      this.channels.set(ch, new CircularBuffer(500));
-      if (this.ws?.readyState === WebSocket.OPEN) {
-        this.ws.send(`JOIN #${ch}\r\n`);
-      }
-      log('Joined', ch);
-      // Load message history
-      this.loadHistory(ch);
-    }
-
-    async loadHistory(ch) {
-      const buffer = this.channels.get(ch);
-      if (!buffer) return;
-
-      const cacheKey = `hs_chat_history_${ch}`;
-      const CACHE_TTL = 300000; // 5 min
-
-      // 1. Try localStorage cache for instant render
-      try {
-        const cached = localStorage.getItem(cacheKey);
-        if (cached) {
-          const { messages, timestamp } = JSON.parse(cached);
-          if (Date.now() - timestamp < CACHE_TTL && messages?.length > 0) {
-            log('Cache hit:', messages.length, 'msgs for', ch);
-            for (const msg of messages) {
-              usernameCache.add(msg.user);
-              knownColors.set(msg.user.toLowerCase(), msg.color);
-              buffer.push(msg);
-            }
-            if (currentTab === ch || (currentTab === 'live' && getLiveChannel() === ch)) {
-              renderMessages(currentTab);
-            }
-            // Refresh in background
-            this._fetchHistory(ch, buffer, cacheKey);
-            return;
-          }
-        }
-      } catch {}
-
-      // 2. No valid cache — fetch synchronously
-      await this._fetchHistory(ch, buffer, cacheKey);
-    }
-
-    async _fetchHistory(ch, buffer, cacheKey) {
-      const ctrl = new AbortController();
-      const timer = setTimeout(() => ctrl.abort(), 8000);
-      try {
-        log('Fetching history for', ch);
-        const resp = await fetch(`https://recent-messages.robotty.de/api/v2/recent-messages/${ch}?limit=100`, {
-          signal: ctrl.signal,
-          credentials: 'omit'
-        });
-        if (!resp.ok) { log('History fetch failed:', resp.status); return; }
-        const data = await resp.json();
-        if (!data.messages?.length) return;
-
-        await fetchChannelBadges(ch);
-
-        // Dedup only against live messages (not cached history we're replacing)
-        const liveMessages = buffer.getAll().filter(m => !m.isHistory);
-        const liveIds = new Set();
-        for (const m of liveMessages) {
-          if (m.id) liveIds.add(m.id);
-        }
-
-        const parsed = [];
-        for (const line of data.messages) {
-          const msg = parseIrcLine(line, ch);
-          if (!msg) continue;
-          msg.isHistory = true;
-          if (msg.id && liveIds.has(msg.id)) continue;
-          usernameCache.add(msg.user);
-          knownColors.set(msg.user.toLowerCase(), msg.color);
-          parsed.push(msg);
-        }
-
-        // Merge: clear buffer, add history first, then any live messages on top
-        buffer.clear();
-        for (const msg of parsed) buffer.push(msg);
-        for (const msg of liveMessages) buffer.push(msg);
-
-        log('Loaded history for', ch, '- parsed:', parsed.length, 'total:', buffer.getAll().length);
-
-        // Cache for next time
-        try {
-          localStorage.setItem(cacheKey, JSON.stringify({
-            messages: parsed,
-            timestamp: Date.now()
-          }));
-        } catch {}
-
-        if (currentTab === ch || (currentTab === 'live' && getLiveChannel() === ch)) {
-          renderMessages(currentTab);
-        }
-      } catch (e) {
-        log('Failed to load history for', ch, e.message);
-      } finally {
-        clearTimeout(timer);
-      }
-    }
-
-    part(ch) {
-      ch = ch.toLowerCase();
-      if (!this.channels.has(ch)) return;
-      this.channels.delete(ch);
-      if (this.ws?.readyState === WebSocket.OPEN) {
-        this.ws.send(`PART #${ch}\r\n`);
-      }
-      log('Parted', ch);
-    }
-
-    getMessages(ch) {
-      return this.channels.get(ch?.toLowerCase())?.getAll() || [];
-    }
-
-    on(e, fn) {
-      if (!this.handlers.has(e)) this.handlers.set(e, new Set());
-      this.handlers.get(e).add(fn);
-    }
-
-    emit(e, d) {
-      this.handlers.get(e)?.forEach(fn => fn(d));
-    }
-  }
-
-  // ============================================
-  // KICK CHAT CLIENT (VIA HEATSYNC WEBHOOK)
-  // ============================================
-  class KickChat {
-    constructor() {
-      this.channels = new Map() // kickUsername → CircularBuffer
-      this.handlers = new Map()
-      this._destroyed = false
-      this._listener = null
-    }
-
-    connect() {
-      if (this._destroyed) return
-      if (this._listener) return
-
-      // Listen for kick chat messages relayed from background.js
-      this._listener = (message) => {
-        if (message.type === 'kick_chat_message' && message.data) {
-          const d = message.data
-          const channel = d.channel?.toLowerCase()
-          if (!channel || !this.channels.has(channel)) return
-          const msg = {
-            user: d.username || 'unknown',
-            text: d.content || '',
-            color: d.color || '#53fc18',
-            badges: '',
-            channel,
-            time: d.timestamp || Date.now(),
-            platform: 'kick',
-            replyTo: d.replyTo ? {
-              user: d.replyTo.username,
-              text: d.replyTo.content || ''
-            } : null
-          }
-          this.channels.get(channel).push(msg)
-          this.emit('message', msg)
-        }
-      }
-      chrome.runtime?.onMessage?.addListener(this._listener)
-      log('Kick chat listener registered (webhook mode)')
-    }
-
-    destroy() {
-      this._destroyed = true
-      if (this._listener) {
-        chrome.runtime?.onMessage?.removeListener(this._listener)
-        this._listener = null
-      }
-      // Leave all channels
-      for (const username of this.channels.keys()) {
-        safeSendMessage({ type: 'ws_send', data: { type: 'channel:leave', platform: 'kick', channel: username } })
-      }
-      this.channels.clear()
-    }
-
-    async join(kickUsername) {
-      kickUsername = kickUsername.toLowerCase()
-      if (this.channels.has(kickUsername)) return
-      this.channels.set(kickUsername, new CircularBuffer(500))
-      // Tell background to join kick channel via HeatSync WS
-      safeSendMessage({ type: 'ws_send', data: { type: 'channel:join', platform: 'kick', channel: kickUsername } })
-      log('Kick joined', kickUsername, '(webhook mode)')
-    }
-
-    part(kickUsername) {
-      kickUsername = kickUsername.toLowerCase()
-      if (!this.channels.has(kickUsername)) return
-      safeSendMessage({ type: 'ws_send', data: { type: 'channel:leave', platform: 'kick', channel: kickUsername } })
-      this.channels.delete(kickUsername)
-      log('Kick parted', kickUsername)
-    }
-
-    getMessages(kickUsername) {
-      return this.channels.get(kickUsername?.toLowerCase())?.getAll() || []
-    }
-
-    on(e, fn) {
-      if (!this.handlers.has(e)) this.handlers.set(e, new Set())
-      this.handlers.get(e).add(fn)
-    }
-
-    emit(e, d) {
-      this.handlers.get(e)?.forEach(fn => fn(d))
-    }
-  }
-
   // ============================================
   // REACT UTILITIES (FFZ-STYLE)
   // ============================================
-
-  function getFiber(el) {
-    if (!el) return null
-    const key = Object.keys(el).find(k =>
-      k.startsWith('__reactFiber$') || k.startsWith('__reactInternalInstance$')
-    )
-    return key ? el[key] : null
-  }
-
-  function findComponent(startEl, predicate, maxDepth = 50) {
-    let fiber = getFiber(startEl)
-    let depth = 0
-    while (fiber && depth < maxDepth) {
-      try {
-        const inst = fiber.stateNode
-        if (inst && predicate(inst, fiber)) {
-          return { instance: inst, fiber }
-        }
-      } catch (e) {}
-      fiber = fiber.return
-      depth++
-    }
-    return null
-  }
 
   /**
    * Find the chat room container component
@@ -911,14 +7297,6 @@
     return container;
   }
 
-  // Autocomplete state (Tab-only cycling, no dropdown)
-  let acState = {
-    matches: [],
-    index: 0,
-    active: false,  // true when cycling through matches
-    wordStart: 0,   // Position where the completion word starts
-    afterText: ''   // Text after the completion
-  };
 
   // Edit form active — block renders while editing channel config
   let editingChannel = false;
@@ -1254,22 +7632,6 @@
     renderMessages(currentTab);
   }
 
-  // Upgrade emote URL to match current emote size setting
-  function getChatResUrl(url) {
-    if (!url || emoteSize === 1) return url;
-    if (emoteSize === 2) {
-      if (url.includes('cdn.7tv.app')) return url.replace('/1x', '/2x');
-      if (url.includes('cdn.betterttv.net')) return url.replace('/1x', '/2x');
-      if (url.includes('cdn.frankerfacez.com')) return url.replace(/\/1(?=\.|$)/, '/2');
-      if (url.includes('static-cdn.jtvnw.net')) return url.replace('/1.0', '/2.0');
-    } else if (emoteSize === 4) {
-      if (url.includes('cdn.7tv.app')) return url.replace('/1x', '/4x').replace('/2x', '/4x');
-      if (url.includes('cdn.betterttv.net')) return url.replace('/1x', '/3x').replace('/2x', '/3x');
-      if (url.includes('cdn.frankerfacez.com')) return url.replace(/\/[12](?=\.|$)/, '/4');
-      if (url.includes('static-cdn.jtvnw.net')) return url.replace(/\/[12]\.0/, '/3.0');
-    }
-    return url;
-  }
 
   // Inline notification settings
   async function loadInlineNotifSettings() {
@@ -1734,2612 +8096,13 @@
     }, true);
   }
 
-  function rebuildInput() {
-    const bar = document.getElementById('hs-mc-inputbar');
-    if (!bar) return;
 
-    // Save current text
-    const oldInput = document.getElementById('hs-mc-input');
-    const savedText = oldInput ? getInputText() : pendingMessage;
 
-    // Remove old input
-    if (oldInput) oldInput.remove();
 
-    // Create new input element
-    const emoteBtn = bar.querySelector('#hs-mc-emote-btn');
-    if (wysiwygEnabled) {
-      const div = document.createElement('div');
-      div.id = 'hs-mc-input';
-      div.contentEditable = 'true';
-      div.setAttribute('data-placeholder', 'send a message...');
-      div.spellcheck = false;
-      if (emoteBtn) bar.insertBefore(div, emoteBtn);
-    } else {
-      const input = document.createElement('input');
-      input.type = 'text';
-      input.id = 'hs-mc-input';
-      input.placeholder = 'send a message...';
-      input.autocomplete = 'off';
-      input.spellcheck = false;
-      if (emoteBtn) bar.insertBefore(input, emoteBtn);
-    }
 
-    // Restore text and reinit
-    const newInput = document.getElementById('hs-mc-input');
-    if (newInput && savedText) {
-      if (wysiwygEnabled) {
-        newInput.textContent = savedText;
-      } else {
-        newInput.value = savedText;
-      }
-    }
-    initInput();
-    updateCharCount();
-  }
 
-  /**
-   * Create unified input bar - ALWAYS visible, text persists across tabs
-   */
-  function createInputBar() {
-    const bar = document.createElement('div');
-    bar.id = 'hs-mc-inputbar';
-    const iconUrl = chrome.runtime.getURL('icon-48.png');
-    const iconBlackUrl = chrome.runtime.getURL('icon-48-black.png');
 
-    const inputHtml = wysiwygEnabled
-      ? `<div id="hs-mc-input" contenteditable="true" data-placeholder="send a message..." spellcheck="false"></div>`
-      : `<input type="text" id="hs-mc-input" placeholder="send a message..." autocomplete="off" spellcheck="false">`;
 
-    bar.innerHTML = `
-      ${inputHtml}
-      <button id="hs-mc-emote-btn"><img src="${iconUrl}" data-src="${iconUrl}" data-src-black="${iconBlackUrl}" alt="hs"></button>
-    `;
-
-    // Initialize input after DOM insertion
-    setTimeout(() => {
-      initInput();
-      const btn = bar.querySelector('#hs-mc-emote-btn');
-      const img = btn?.querySelector('img');
-      if (btn && img) {
-        btn.addEventListener('mouseenter', () => { img.src = img.dataset.srcBlack })
-        btn.addEventListener('mouseleave', () => { img.src = img.dataset.src })
-      }
-    }, 0);
-    return bar;
-  }
-
-  /**
-   * Group emotes by state+source into ordered sections
-   */
-  const SECTION_ORDER = [
-    'channel-7tv', 'channel-bttv', 'channel-ffz', 'channel-twitch',
-    '7tv', 'bttv', 'ffz', 'twitch', 'heatsync'
-  ]
-  const SECTION_LABELS = {
-    'channel-7tv': 'channel 7tv', 'channel-bttv': 'channel bttv',
-    'channel-ffz': 'channel ffz', 'channel-twitch': 'channel twitch',
-    '7tv': '7tv global', 'bttv': 'bttv global', 'ffz': 'ffz global',
-    'twitch': 'twitch global', 'heatsync': 'heatsync'
-  }
-
-  function groupEmotes(allEmotes) {
-    const groups = {}
-    for (const [name, emote] of allEmotes) {
-      const key = emote.state === 'channel' ? `channel-${emote.source}` : emote.source
-      if (!groups[key]) groups[key] = []
-      groups[key].push([name, emote])
-    }
-    return SECTION_ORDER
-      .filter(k => groups[k]?.length)
-      .map(k => ({ key: k, label: SECTION_LABELS[k] || k, emotes: groups[k] }))
-  }
-
-  function renderEmoteSections(sections, emptyMsg = 'no emotes loaded') {
-    if (!sections.length) return `<div class="hs-mc-picker-empty">${escapeHtml(emptyMsg)}</div>`
-    // Only render section headers + first CHUNK_SIZE emotes per section for instant open
-    // Rest gets appended via chunkedRenderRemaining()
-    return sections.map(s => {
-      const initial = s.emotes.slice(0, EMOTE_CHUNK_SIZE)
-      return `
-      <div class="hs-mc-picker-section" data-section-key="${escapeHtml(s.key)}">
-        <div class="hs-mc-picker-section-header">${escapeHtml(s.label)} <span class="hs-mc-picker-section-count">${s.emotes.length}</span></div>
-        <div class="hs-mc-picker-section-grid">${initial.map(emoteImgHtml).join('')}</div>
-      </div>`
-    }).join('')
-  }
-
-  const EMOTE_CHUNK_SIZE = 80
-  let _chunkedRafId = null
-
-  function emoteImgHtml([name, emote]) {
-    return `<img src="${escapeHtml(emote.url)}" alt="${escapeHtml(name)}" title="${escapeHtml(name)} (${escapeHtml(emote.source)})" class="hs-mc-picker-emote hs-emote-${escapeHtml(emote.source)}" data-name="${escapeHtml(name)}" data-source="${escapeHtml(emote.source)}" loading="lazy">`
-  }
-
-  /** Append remaining emotes in rAF chunks so the picker opens instantly */
-  function chunkedRenderRemaining(sections, container) {
-    if (_chunkedRafId) cancelAnimationFrame(_chunkedRafId)
-    // Build queue of {gridEl, emotes} for sections with remaining emotes
-    const queue = []
-    for (const s of sections) {
-      if (s.emotes.length <= EMOTE_CHUNK_SIZE) continue
-      const gridEl = container.querySelector(`[data-section-key="${CSS.escape(s.key)}"] .hs-mc-picker-section-grid`)
-      if (!gridEl) continue
-      queue.push({ gridEl, emotes: s.emotes.slice(EMOTE_CHUNK_SIZE), offset: 0 })
-    }
-    function renderNext() {
-      const item = queue[0]
-      if (!item) return
-      const chunk = item.emotes.slice(item.offset, item.offset + EMOTE_CHUNK_SIZE)
-      if (!chunk.length) { queue.shift(); renderNext(); return }
-      // Use DocumentFragment for minimal reflows
-      const frag = document.createDocumentFragment()
-      for (const entry of chunk) {
-        const tmp = document.createElement('template')
-        tmp.innerHTML = emoteImgHtml(entry)
-        frag.appendChild(tmp.content)
-      }
-      item.gridEl.appendChild(frag)
-      item.offset += EMOTE_CHUNK_SIZE
-      if (item.offset >= item.emotes.length) queue.shift()
-      if (queue.length) _chunkedRafId = requestAnimationFrame(renderNext)
-    }
-    _chunkedRafId = requestAnimationFrame(renderNext)
-  }
-
-  /**
-   * Create emote picker popup
-   */
-  let pickerTab = 'emotes'; // 'emotes' or 'twitch'
-  let _pickerCloseHandler = null; // Tracked to prevent duplicate close handlers
-
-  function showEmotePicker(tab = null) {
-    const picker = document.getElementById('hs-mc-emote-picker');
-    if (!picker) return;
-
-    // If tab specified, switch to it; otherwise toggle
-    if (tab) {
-      pickerTab = tab;
-    } else if (picker.classList.contains('visible')) {
-      picker.classList.remove('visible');
-      adjustOverlayForPicker(false);
-      hideInputBar();
-      if (_chunkedRafId) { cancelAnimationFrame(_chunkedRafId); _chunkedRafId = null; }
-      return;
-    }
-
-    // Build tabbed UI — merge channel emotes first (so they keep 'channel' state), then globals
-    // Note: all emote names/urls are pre-sanitized via escapeHtml in render helpers
-    const allEmotes = new Map();
-    const chCache = channelEmoteCaches[currentTab] || channelEmoteCaches[getCurrentChannel()];
-    if (chCache) for (const [k, v] of chCache) allEmotes.set(k, v);
-    for (const [k, v] of emoteCache) if (!allEmotes.has(k)) allEmotes.set(k, v);
-    const sections = groupEmotes(allEmotes);
-    picker.innerHTML = `
-      <div class="hs-mc-tab-content" id="hs-mc-tab-emotes" style="display: ${pickerTab === 'emotes' ? 'flex' : 'none'}; flex-direction: column;">
-        <div class="hs-mc-picker-header">
-          <div class="hs-mc-search-wrap">
-            <svg class="hs-mc-search-icon" width="14" height="14" viewBox="0 0 20 20"><path fill="#000" d="M13.74 12.33l4.04 4.04a1 1 0 01-1.42 1.42l-4.04-4.04a7 7 0 111.42-1.42zM9 14A5 5 0 109 4a5 5 0 000 10z"/></svg>
-            <input type="text" id="hs-mc-emote-search" placeholder="search emotes..." autocomplete="off">
-          </div>
-        </div>
-        <div class="hs-mc-picker-scroll" id="hs-mc-emote-grid">
-          ${renderEmoteSections(sections)}
-        </div>
-      </div>
-      <div class="hs-mc-tab-content" id="hs-mc-tab-twitch" style="display: ${pickerTab === 'twitch' ? 'flex' : 'none'}; flex-direction: column; padding: 8px 0;">
-        <div class="hs-mc-pred-loading">loading...</div>
-      </div>
-      <div class="hs-mc-picker-tabs">
-        <button class="hs-mc-picker-tab ${pickerTab === 'emotes' ? 'active' : ''}" data-tab="emotes">emotes</button>
-        <button class="hs-mc-picker-tab ${pickerTab === 'twitch' ? 'active' : ''}" data-tab="twitch">twitch</button>
-      </div>
-    `;
-
-    // Chunked render remaining emotes after initial paint
-    const grid = document.getElementById('hs-mc-emote-grid');
-    if (grid) chunkedRenderRemaining(sections, grid);
-
-    // Search functionality (debounced)
-    let _searchTimer = null;
-    const searchInput = document.getElementById('hs-mc-emote-search');
-    searchInput?.addEventListener('input', (e) => {
-      clearTimeout(_searchTimer);
-      _searchTimer = setTimeout(() => {
-        const query = e.target.value.toLowerCase();
-        const grid = document.getElementById('hs-mc-emote-grid');
-        if (!grid) return;
-
-        const searchEmotes = new Map();
-        const searchChCache = channelEmoteCaches[currentTab] || channelEmoteCaches[getCurrentChannel()];
-        if (searchChCache) for (const [k, v] of searchChCache) searchEmotes.set(k, v);
-        for (const [k, v] of emoteCache) if (!searchEmotes.has(k)) searchEmotes.set(k, v);
-        const filtered = new Map();
-        for (const [name, emote] of searchEmotes) {
-          if (name.toLowerCase().includes(query)) filtered.set(name, emote);
-        }
-        const filteredSections = groupEmotes(filtered);
-        grid.innerHTML = renderEmoteSections(filteredSections, 'no matches');
-        chunkedRenderRemaining(filteredSections, grid);
-      }, 150);
-    });
-
-    // Emote size controls
-    picker.querySelectorAll('.hs-mc-size-btn').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const size = parseInt(btn.dataset.size, 10);
-        setEmoteSize(size);
-        // Update active state
-        picker.querySelectorAll('.hs-mc-size-btn').forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
-      });
-    });
-
-    // Tab switching
-    picker.querySelectorAll('.hs-mc-picker-tab').forEach(tabBtn => {
-      tabBtn.addEventListener('click', () => {
-        const newTab = tabBtn.dataset.tab;
-        const oldTab = pickerTab;
-        pickerTab = newTab;
-        picker.querySelectorAll('.hs-mc-picker-tab').forEach(t => t.classList.remove('active'));
-        tabBtn.classList.add('active');
-        picker.querySelectorAll('.hs-mc-tab-content').forEach(c => c.style.display = 'none');
-        const display = (newTab === 'emotes' || newTab === 'settings' || newTab === 'twitch') ? 'flex' : 'block';
-        document.getElementById(`hs-mc-tab-${newTab}`).style.display = display;
-        if (newTab === 'twitch') renderTwitchTab();
-        if (oldTab === 'twitch' && newTab !== 'twitch') stopPredictionPoll();
-      });
-    });
-
-    // Event delegation for emote clicks (single handler, works for chunked rendering)
-    if (!picker._hsDelegated) {
-      picker._hsDelegated = true;
-      picker.addEventListener('click', (e) => {
-        const img = e.target.closest('.hs-mc-picker-emote');
-        if (!img) return;
-        const name = img.dataset.name;
-        const input = document.getElementById('hs-mc-input');
-        if (!input || !name) return;
-        if (wysiwygEnabled || !('value' in input)) {
-          // WYSIWYG: insert emote image (with zero-width stacking)
-          pasteEmoteToInput(name)
-        } else {
-          const pos = input.selectionStart || input.value.length;
-          const before = input.value.slice(0, pos);
-          const after = input.value.slice(pos);
-          const space = before.length > 0 && !before.endsWith(' ') ? ' ' : '';
-          input.value = before + space + name + ' ' + after;
-          pendingMessage = input.value;
-        }
-        input.focus();
-        picker.classList.remove('visible');
-        adjustOverlayForPicker(false);
-      });
-    }
-
-    picker.classList.add('visible');
-    // Position picker flush above input bar (or at bottom if hidden)
-    const bar = document.getElementById('hs-mc-inputbar');
-    const barHeight = (bar && inputBarVisible) ? bar.offsetHeight : 0;
-    picker.style.bottom = barHeight + 'px';
-    adjustOverlayForPicker(true);
-
-    if (pickerTab === 'twitch') renderTwitchTab();
-
-    // Close when clicking outside (remove any previous handler first)
-    if (_pickerCloseHandler) document.removeEventListener('click', _pickerCloseHandler);
-    setTimeout(() => {
-      _pickerCloseHandler = (e) => {
-        if (mcSignal?.aborted) { document.removeEventListener('click', _pickerCloseHandler); _pickerCloseHandler = null; return; }
-        if (!picker.contains(e.target) && !e.target.closest('#hs-mc-emote-btn')) {
-          picker.classList.remove('visible');
-          adjustOverlayForPicker(false);
-          hideInputBar();
-          stopPredictionPoll();
-          document.removeEventListener('click', _pickerCloseHandler);
-          _pickerCloseHandler = null;
-        }
-      };
-      document.addEventListener('click', _pickerCloseHandler);
-    }, 0);
-  }
-
-  /** Adjust overlay bottom to make room for picker panel */
-  function adjustOverlayForPicker(open) {
-    const overlay = document.getElementById('hs-mc-overlay');
-    if (!overlay) return;
-    const container = document.getElementById('hs-mc-container');
-    const hasBottomTabs = container?.classList.contains('hs-tabs-bottom');
-    const barBase = inputBarVisible ? (hasBottomTabs ? 90 : 52) : 0;
-    const pickerEl = document.getElementById('hs-mc-emote-picker');
-    const pickerHeight = open && pickerEl ? pickerEl.offsetHeight : 0;
-    overlay.style.bottom = (barBase + pickerHeight) + 'px';
-  }
-
-
-  // ═══ Predictions & Betting ═══
-
-  function formatPoints(n) {
-    if (n == null) return '?'
-    if (n >= 1000000) return (n / 1000000).toFixed(1).replace(/\.0$/, '') + 'M'
-    if (n >= 1000) return (n / 1000).toFixed(1).replace(/\.0$/, '') + 'K'
-    return String(n)
-  }
-
-  function renderQuickLinks() {
-    const links = document.createElement('div')
-    links.className = 'hs-mc-pred-links'
-
-    const items = [
-      { action: 'popout', accent: '#4a90d9', icon: '<svg width="16" height="16" viewBox="0 0 20 20"><path fill="currentColor" d="M4 4h6v2H6v8h8v-4h2v6H4V4zm8 0h4v4h-2V6.41l-4.3 4.3-1.4-1.42L12.58 6H11V4z"></path></svg>', label: 'popout chat' },
-      { action: 'mod', accent: '#00c8af', icon: '<svg width="16" height="16" viewBox="0 0 20 20"><path fill="currentColor" d="M10 2l6 2.7V9c0 4.4-2.5 8.3-6 10-3.5-1.7-6-5.6-6-10V4.7L10 2z"/></svg>', label: 'mod view' }
-    ]
-
-    for (const item of items) {
-      const el = document.createElement('div')
-      el.className = 'hs-mc-menu-item hs-mc-pred-link'
-      el.dataset.action = item.action
-      el.style.setProperty('--menu-accent', item.accent)
-      el.innerHTML = `<div class="hs-mc-menu-icon">${item.icon}</div><div class="hs-mc-menu-text"><div class="hs-mc-menu-title">${item.label}</div></div><svg class="hs-mc-menu-arrow" width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>`
-      links.appendChild(el)
-    }
-    return links
-  }
-
-  function makeCoinSvg(size) {
-    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
-    svg.setAttribute('width', String(size))
-    svg.setAttribute('height', String(size))
-    svg.setAttribute('viewBox', '0 0 20 20')
-    svg.style.verticalAlign = '-2px'
-    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path')
-    path.setAttribute('fill', '#ffbf00')
-    path.setAttribute('d', 'M10 6a4 4 0 100 8 4 4 0 000-8zm0-4a8 8 0 110 16 8 8 0 010-16z')
-    svg.appendChild(path)
-    return svg
-  }
-
-  function renderPrediction(pred, balance) {
-    const frag = document.createDocumentFragment()
-    const isLocked = pred.status === 'LOCKED'
-    const isResolved = pred.status === 'RESOLVED'
-    const isCanceled = pred.status === 'CANCELED'
-    const isEnded = isResolved || isCanceled
-    const totalPoints = pred.outcomes.reduce((s, o) => s + (o.totalPoints || 0), 0)
-    const createdAt = new Date(pred.createdAt).getTime()
-    const windowMs = (pred.predictionWindowSeconds || 120) * 1000
-    const endsAt = createdAt + windowMs
-    const userBet = _userBets.get(pred.id)
-    const winningId = pred.winningOutcome?.id || null
-
-    const wrapper = document.createElement('div')
-    wrapper.className = 'hs-mc-prediction' + (isResolved ? ' hs-mc-pred-resolved' : '') + (isCanceled ? ' hs-mc-pred-canceled' : '')
-    wrapper.dataset.eventId = pred.id
-
-    // Header
-    const header = document.createElement('div')
-    header.className = 'hs-mc-pred-header'
-    const title = document.createElement('div')
-    title.className = 'hs-mc-pred-title'
-    title.textContent = pred.title
-    header.appendChild(title)
-
-    if (isCanceled) {
-      const badge = document.createElement('span')
-      badge.className = 'hs-mc-pred-status hs-mc-pred-status-canceled'
-      badge.textContent = 'refunded'
-      header.appendChild(badge)
-    } else if (isResolved) {
-      const badge = document.createElement('span')
-      badge.className = 'hs-mc-pred-status hs-mc-pred-status-resolved'
-      badge.textContent = 'ended'
-      header.appendChild(badge)
-    } else if (isLocked) {
-      const badge = document.createElement('span')
-      badge.className = 'hs-mc-pred-locked'
-      badge.textContent = 'locked'
-      header.appendChild(badge)
-    } else {
-      const timer = document.createElement('span')
-      timer.className = 'hs-mc-pred-timer'
-      timer.dataset.ends = endsAt
-      header.appendChild(timer)
-    }
-    wrapper.appendChild(header)
-
-    // Balance
-    if (balance != null && !isEnded) {
-      const bal = document.createElement('div')
-      bal.className = 'hs-mc-pred-balance'
-      bal.appendChild(makeCoinSvg(14))
-      bal.appendChild(document.createTextNode(' ' + formatPoints(balance)))
-      wrapper.appendChild(bal)
-    }
-
-    // User bet result banner
-    if (isResolved && userBet && winningId) {
-      const won = userBet.outcomeId === winningId
-      const banner = document.createElement('div')
-      banner.className = 'hs-mc-pred-result ' + (won ? 'hs-mc-pred-result-won' : 'hs-mc-pred-result-lost')
-      if (won) {
-        const winOutcome = pred.outcomes.find(o => o.id === winningId)
-        const pct = totalPoints > 0 && winOutcome ? (winOutcome.totalPoints / totalPoints) : 1
-        const payout = pct > 0 ? Math.floor(userBet.points / pct) : userBet.points
-        banner.textContent = 'you won +' + formatPoints(payout)
-      } else {
-        banner.textContent = 'you lost ' + formatPoints(userBet.points)
-      }
-      wrapper.appendChild(banner)
-    } else if (isCanceled && userBet) {
-      const banner = document.createElement('div')
-      banner.className = 'hs-mc-pred-result hs-mc-pred-result-refund'
-      banner.textContent = formatPoints(userBet.points) + ' returned'
-      wrapper.appendChild(banner)
-    }
-
-    // Outcomes
-    const outcomesWrap = document.createElement('div')
-    outcomesWrap.className = 'hs-mc-pred-outcomes'
-
-    for (const outcome of pred.outcomes) {
-      const pct = totalPoints > 0 ? Math.round((outcome.totalPoints / totalPoints) * 100) : 0
-      const color = outcome.color === 'PINK' ? '#f5009b' : '#387aff'
-      const userCount = outcome.totalUsers || 0
-      const points = outcome.totalPoints || 0
-      const isWinner = winningId === outcome.id
-      const isLoser = isResolved && !isWinner
-      const isBetOn = userBet?.outcomeId === outcome.id
-
-      const card = document.createElement('div')
-      card.className = 'hs-mc-pred-outcome'
-        + (isWinner ? ' hs-mc-pred-outcome-won' : '')
-        + (isLoser ? ' hs-mc-pred-outcome-lost' : '')
-        + (isBetOn ? ' hs-mc-pred-outcome-yours' : '')
-      card.style.setProperty('--oc', color)
-
-      const head = document.createElement('div')
-      head.className = 'hs-mc-pred-outcome-head'
-      const titleSpan = document.createElement('span')
-      titleSpan.className = 'hs-mc-pred-outcome-title'
-      titleSpan.textContent = outcome.title
-      if (isWinner) {
-        const winBadge = document.createElement('span')
-        winBadge.className = 'hs-mc-pred-winner-badge'
-        winBadge.textContent = 'winner'
-        titleSpan.appendChild(document.createTextNode(' '))
-        titleSpan.appendChild(winBadge)
-      }
-      const pctSpan = document.createElement('span')
-      pctSpan.className = 'hs-mc-pred-outcome-pct'
-      pctSpan.textContent = pct + '%'
-      head.appendChild(titleSpan)
-      head.appendChild(pctSpan)
-      card.appendChild(head)
-
-      const track = document.createElement('div')
-      track.className = 'hs-mc-pred-bar-track'
-      const fill = document.createElement('div')
-      fill.className = 'hs-mc-pred-bar-fill'
-      fill.style.width = pct + '%'
-      track.appendChild(fill)
-      card.appendChild(track)
-
-      const stats = document.createElement('div')
-      stats.className = 'hs-mc-pred-outcome-stats'
-      let statsText = formatPoints(points) + ' pts \u00b7 ' + userCount + ' voter' + (userCount !== 1 ? 's' : '')
-      if (isBetOn) statsText += ' \u00b7 your bet: ' + formatPoints(userBet.points)
-      stats.textContent = statsText
-      card.appendChild(stats)
-
-      if (!isLocked && !isEnded) {
-        const betRow = document.createElement('div')
-        betRow.className = 'hs-mc-pred-bet-row'
-        for (const amt of [100, 1000, 5000]) {
-          const btn = document.createElement('button')
-          btn.className = 'hs-mc-pred-bet-btn'
-          btn.dataset.outcome = outcome.id
-          btn.dataset.points = amt
-          btn.style.setProperty('--oc', color)
-          if (balance != null && balance < amt) btn.disabled = true
-          btn.textContent = formatPoints(amt)
-          betRow.appendChild(btn)
-        }
-
-        // Max button
-        if (balance != null && balance > 0) {
-          const maxBtn = document.createElement('button')
-          maxBtn.className = 'hs-mc-pred-bet-btn hs-mc-pred-bet-max'
-          maxBtn.dataset.outcome = outcome.id
-          maxBtn.dataset.points = balance
-          maxBtn.style.setProperty('--oc', color)
-          maxBtn.textContent = 'max'
-          betRow.appendChild(maxBtn)
-        }
-
-        const customInput = document.createElement('input')
-        customInput.className = 'hs-mc-pred-bet-custom'
-        customInput.type = 'number'
-        customInput.min = '1'
-        if (balance != null) customInput.max = String(balance)
-        customInput.placeholder = 'amt'
-        customInput.dataset.outcome = outcome.id
-        betRow.appendChild(customInput)
-
-        const goBtn = document.createElement('button')
-        goBtn.className = 'hs-mc-pred-bet-go'
-        goBtn.dataset.outcome = outcome.id
-        goBtn.style.setProperty('--oc', color)
-        goBtn.textContent = 'bet'
-        betRow.appendChild(goBtn)
-
-        card.appendChild(betRow)
-      }
-
-      outcomesWrap.appendChild(card)
-    }
-
-    wrapper.appendChild(outcomesWrap)
-    frag.appendChild(wrapper)
-    return frag
-  }
-
-  function renderNoPrediction(balance) {
-    const wrap = document.createElement('div')
-    wrap.className = 'hs-mc-pred-empty'
-    const text = document.createElement('div')
-    text.className = 'hs-mc-pred-empty-text'
-    text.textContent = 'no active prediction'
-    wrap.appendChild(text)
-    if (balance != null) {
-      const bal = document.createElement('div')
-      bal.className = 'hs-mc-pred-balance'
-      bal.style.marginTop = '8px'
-      bal.appendChild(makeCoinSvg(14))
-      bal.appendChild(document.createTextNode(' ' + formatPoints(balance)))
-      wrap.appendChild(bal)
-    }
-    return wrap
-  }
-
-  function renderRewards(rewards, balance, channelId) {
-    const section = document.createElement('div')
-    section.className = 'hs-mc-rewards'
-
-    const header = document.createElement('div')
-    header.className = 'hs-mc-rewards-header'
-    const label = document.createElement('span')
-    label.className = 'hs-mc-rewards-label'
-    label.textContent = 'rewards'
-    header.appendChild(label)
-    if (balance != null) {
-      const bal = document.createElement('span')
-      bal.className = 'hs-mc-rewards-balance'
-      const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
-      svg.setAttribute('width', '12')
-      svg.setAttribute('height', '12')
-      svg.setAttribute('viewBox', '0 0 20 20')
-      svg.style.verticalAlign = '-1px'
-      const path = document.createElementNS('http://www.w3.org/2000/svg', 'path')
-      path.setAttribute('fill', '#ffbf00')
-      path.setAttribute('d', 'M10 6a4 4 0 100 8 4 4 0 000-8zm0-4a8 8 0 110 16 8 8 0 010-16z')
-      svg.appendChild(path)
-      bal.appendChild(svg)
-      bal.appendChild(document.createTextNode(' ' + formatPoints(balance)))
-      header.appendChild(bal)
-    }
-    section.appendChild(header)
-
-    if (!rewards.length) {
-      const empty = document.createElement('div')
-      empty.className = 'hs-mc-rewards-empty'
-      empty.textContent = 'no rewards available'
-      section.appendChild(empty)
-      return section
-    }
-
-    const grid = document.createElement('div')
-    grid.className = 'hs-mc-rewards-grid'
-
-    for (const reward of rewards) {
-      const now = Date.now()
-      const onCooldown = reward.cooldownExpiresAt && new Date(reward.cooldownExpiresAt).getTime() > now
-      const available = !reward.isPaused && reward.isInStock && !onCooldown
-      const card = document.createElement('div')
-      card.className = 'hs-mc-reward-card' + (available ? '' : ' hs-mc-reward-unavailable')
-      card.dataset.rewardId = reward.id
-      card.dataset.cost = reward.cost
-      card.dataset.title = reward.title
-      card.dataset.channelId = channelId
-      if (reward.isUserInputRequired) card.dataset.textRequired = '1'
-      if (reward.prompt) card.dataset.prompt = reward.prompt
-      card.style.setProperty('--rc', reward.backgroundColor || '#9147ff')
-
-      const imgUrl = reward.image?.url || reward.defaultImage?.url || ''
-      if (imgUrl) {
-        const img = document.createElement('img')
-        img.className = 'hs-mc-reward-img'
-        img.src = imgUrl
-        img.width = 28
-        img.height = 28
-        card.appendChild(img)
-      }
-
-      const info = document.createElement('div')
-      info.className = 'hs-mc-reward-info'
-      const titleEl = document.createElement('div')
-      titleEl.className = 'hs-mc-reward-title'
-      titleEl.textContent = reward.title
-      info.appendChild(titleEl)
-
-      const costEl = document.createElement('div')
-      costEl.className = 'hs-mc-reward-cost'
-      const costSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
-      costSvg.setAttribute('width', '10')
-      costSvg.setAttribute('height', '10')
-      costSvg.setAttribute('viewBox', '0 0 20 20')
-      costSvg.style.verticalAlign = '-1px'
-      const costPath = document.createElementNS('http://www.w3.org/2000/svg', 'path')
-      costPath.setAttribute('fill', '#ffbf00')
-      costPath.setAttribute('d', 'M10 6a4 4 0 100 8 4 4 0 000-8zm0-4a8 8 0 110 16 8 8 0 010-16z')
-      costSvg.appendChild(costPath)
-      costEl.appendChild(costSvg)
-      costEl.appendChild(document.createTextNode(' ' + formatPoints(reward.cost)))
-      info.appendChild(costEl)
-
-      if (!available) {
-        const reason = document.createElement('div')
-        reason.className = 'hs-mc-reward-reason'
-        if (reward.isPaused) reason.textContent = 'paused'
-        else if (!reward.isInStock) reason.textContent = 'out of stock'
-        else if (onCooldown) {
-          const secs = Math.ceil((new Date(reward.cooldownExpiresAt).getTime() - now) / 1000)
-          reason.textContent = secs > 60 ? `${Math.ceil(secs / 60)}m cooldown` : `${secs}s cooldown`
-          reason.dataset.cooldownEnds = new Date(reward.cooldownExpiresAt).getTime()
-        }
-        info.appendChild(reason)
-      }
-
-      card.appendChild(info)
-      grid.appendChild(card)
-    }
-
-    section.appendChild(grid)
-    return section
-  }
-
-  function attachRewardHandlers() {
-    const container = document.getElementById('hs-mc-tab-twitch')
-    if (!container) return
-
-    container.querySelectorAll('.hs-mc-reward-card:not(.hs-mc-reward-unavailable)').forEach(card => {
-      card.addEventListener('click', async (e) => {
-        e.stopPropagation()
-        if (card.querySelector('.hs-mc-reward-input-row')) return
-
-        if (card.dataset.textRequired === '1') {
-          const existing = card.parentElement.querySelector('.hs-mc-reward-input-row')
-          if (existing) existing.remove()
-          const row = document.createElement('div')
-          row.className = 'hs-mc-reward-input-row'
-          const input = document.createElement('input')
-          input.className = 'hs-mc-reward-input'
-          input.type = 'text'
-          input.placeholder = card.dataset.prompt || 'enter text...'
-          const btn = document.createElement('button')
-          btn.className = 'hs-mc-reward-submit'
-          btn.textContent = 'redeem'
-          row.appendChild(input)
-          row.appendChild(btn)
-          card.after(row)
-          input.focus()
-
-          btn.addEventListener('click', async (ev) => {
-            ev.stopPropagation()
-            const text = input.value.trim()
-            if (!text) return
-            btn.disabled = true
-            btn.textContent = '...'
-            const result = await redeemChannelReward(card.dataset.channelId, card.dataset.rewardId, parseInt(card.dataset.cost), card.dataset.title, text)
-            if (result.error) {
-              btn.textContent = '!'
-              btn.title = result.error
-              setTimeout(() => { btn.textContent = 'redeem'; btn.disabled = false; btn.title = '' }, 2000)
-            } else {
-              btn.textContent = '\u2713'
-              _rewardsCache = null
-              setTimeout(() => renderTwitchTab(), 500)
-            }
-          })
-          return
-        }
-
-        const titleEl = card.querySelector('.hs-mc-reward-title')
-        const origText = titleEl.textContent
-        titleEl.textContent = '...'
-        card.style.pointerEvents = 'none'
-        const result = await redeemChannelReward(card.dataset.channelId, card.dataset.rewardId, parseInt(card.dataset.cost), card.dataset.title)
-        if (result.error) {
-          titleEl.textContent = '!'
-          card.title = result.error
-          setTimeout(() => { titleEl.textContent = origText; card.style.pointerEvents = ''; card.title = '' }, 2000)
-        } else {
-          titleEl.textContent = '\u2713'
-          _rewardsCache = null
-          setTimeout(() => renderTwitchTab(), 500)
-        }
-      })
-    })
-
-    // Cooldown timers
-    container.querySelectorAll('.hs-mc-reward-reason[data-cooldown-ends]').forEach(el => {
-      const endsAt = parseInt(el.dataset.cooldownEnds)
-      const iv = cleanup.setInterval(() => {
-        if (!el.isConnected) { clearInterval(iv); return }
-        const secs = Math.max(0, Math.ceil((endsAt - Date.now()) / 1000))
-        if (secs <= 0) {
-          _rewardsCache = null
-          renderTwitchTab()
-          clearInterval(iv)
-          return
-        }
-        el.textContent = secs > 60 ? `${Math.ceil(secs / 60)}m cooldown` : `${secs}s cooldown`
-      }, 1000)
-    })
-  }
-
-  function attachPredictionHandlers() {
-    const container = document.getElementById('hs-mc-tab-twitch')
-    if (!container) return
-
-    // Quick link handlers
-    container.querySelectorAll('.hs-mc-pred-link').forEach(item => {
-      item.addEventListener('click', (e) => {
-        e.stopPropagation()
-        triggerTwitchFeature(item.dataset.action)
-      })
-    })
-
-    // Bet button handlers
-    container.querySelectorAll('.hs-mc-pred-bet-btn').forEach(btn => {
-      btn.addEventListener('click', async (e) => {
-        e.stopPropagation()
-        const eventId = container.querySelector('.hs-mc-prediction')?.dataset.eventId
-        if (!eventId) return
-        btn.disabled = true
-        btn.textContent = '...'
-        const result = await placePredictionBet(eventId, btn.dataset.outcome, parseInt(btn.dataset.points))
-        if (result.error) {
-          btn.textContent = '!'
-          btn.title = result.error
-          setTimeout(() => { btn.textContent = formatPoints(parseInt(btn.dataset.points)); btn.disabled = false; btn.title = '' }, 2000)
-        } else {
-          btn.textContent = '\u2713'
-          setTimeout(() => renderTwitchTab(), 500)
-        }
-      })
-    })
-
-    // Custom bet "go" buttons
-    container.querySelectorAll('.hs-mc-pred-bet-go').forEach(btn => {
-      btn.addEventListener('click', async (e) => {
-        e.stopPropagation()
-        const eventId = container.querySelector('.hs-mc-prediction')?.dataset.eventId
-        if (!eventId) return
-        const input = container.querySelector(`.hs-mc-pred-bet-custom[data-outcome="${btn.dataset.outcome}"]`)
-        const points = parseInt(input?.value)
-        if (!points || points < 1) return
-        btn.disabled = true
-        btn.textContent = '...'
-        const result = await placePredictionBet(eventId, btn.dataset.outcome, points)
-        if (result.error) {
-          btn.textContent = '!'
-          btn.title = result.error
-          setTimeout(() => { btn.textContent = 'bet'; btn.disabled = false; btn.title = '' }, 2000)
-        } else {
-          btn.textContent = '\u2713'
-          input.value = ''
-          setTimeout(() => renderTwitchTab(), 500)
-        }
-      })
-    })
-
-    // Enter key in custom input triggers bet
-    container.querySelectorAll('.hs-mc-pred-bet-custom').forEach(input => {
-      input.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') {
-          e.preventDefault()
-          const goBtn = container.querySelector(`.hs-mc-pred-bet-go[data-outcome="${input.dataset.outcome}"]`)
-          if (goBtn && !goBtn.disabled) goBtn.click()
-        }
-      })
-    })
-
-    // Start countdown timers
-    container.querySelectorAll('.hs-mc-pred-timer').forEach(el => {
-      const endsAt = parseInt(el.dataset.ends)
-      const update = () => {
-        const remaining = Math.max(0, Math.ceil((endsAt - Date.now()) / 1000))
-        if (remaining <= 0) {
-          el.textContent = 'closing...'
-          el.classList.add('hs-mc-pred-locked')
-          return
-        }
-        const m = Math.floor(remaining / 60)
-        const s = remaining % 60
-        el.textContent = m > 0 ? `${m}:${String(s).padStart(2, '0')}` : `${s}s`
-      }
-      update()
-      const iv = cleanup.setInterval(() => {
-        if (!el.isConnected) { clearInterval(iv); return }
-        update()
-      }, 1000)
-    })
-  }
-
-  async function renderTwitchTab() {
-    const container = document.getElementById('hs-mc-tab-twitch')
-    if (!container) return
-
-    const channel = getCurrentChannel()
-    if (!channel) {
-      container.textContent = ''
-      const empty = document.createElement('div')
-      empty.className = 'hs-mc-pred-empty'
-      const msg = document.createElement('div')
-      msg.className = 'hs-mc-pred-empty-text'
-      msg.textContent = 'no channel detected'
-      empty.appendChild(msg)
-      container.appendChild(empty)
-      container.appendChild(renderQuickLinks())
-      return
-    }
-
-    _predictionChannel = channel
-
-    if (!container.querySelector('.hs-mc-prediction, .hs-mc-pred-empty')) {
-      container.textContent = ''
-      const loading = document.createElement('div')
-      loading.className = 'hs-mc-pred-loading'
-      loading.textContent = 'loading...'
-      container.appendChild(loading)
-    }
-
-    const [result, rewardsResult, pollResult] = await Promise.all([
-      fetchPrediction(channel),
-      fetchChannelRewards(channel),
-      fetchPoll(channel)
-    ])
-
-    container.textContent = ''
-
-    // Auto-claim bonus points
-    if (rewardsResult?.availableClaim && rewardsResult.channelId) {
-      claimCommunityPoints(rewardsResult.availableClaim, rewardsResult.channelId)
-    }
-
-    if (!result) {
-      const empty = document.createElement('div')
-      empty.className = 'hs-mc-pred-empty'
-      const msg = document.createElement('div')
-      msg.className = 'hs-mc-pred-empty-text'
-      msg.textContent = "couldn't load predictions"
-      empty.appendChild(msg)
-      container.appendChild(empty)
-    } else if (result.prediction) {
-      container.appendChild(renderPrediction(result.prediction, result.balance))
-    } else {
-      container.appendChild(renderNoPrediction(result.balance))
-    }
-
-    // Poll
-    if (pollResult) {
-      container.appendChild(renderPoll(pollResult))
-    }
-
-    if (rewardsResult?.rewards?.length) {
-      container.appendChild(renderRewards(rewardsResult.rewards, rewardsResult.balance, rewardsResult.channelId))
-    }
-
-    container.appendChild(renderQuickLinks())
-    attachPredictionHandlers()
-    attachPollHandlers()
-    attachRewardHandlers()
-    startPredictionPoll()
-  }
-
-  function startPredictionPoll() {
-    stopPredictionPoll()
-    _predictionPollTimer = cleanup.setInterval(() => {
-      const container = document.getElementById('hs-mc-tab-twitch')
-      if (!container || container.style.display === 'none') {
-        stopPredictionPoll()
-        return
-      }
-      renderTwitchTab()
-    }, 15000)
-  }
-
-  function stopPredictionPoll() {
-    if (_predictionPollTimer) {
-      clearInterval(_predictionPollTimer)
-      _predictionPollTimer = null
-    }
-  }
-
-  function triggerTwitchFeature(action) {
-    const channel = getCurrentChannel();
-    if (!channel) return false;
-
-    const actions = {
-      popout: { url: `https://www.twitch.tv/popout/${channel}/chat?popout=`, opts: 'width=400,height=600' },
-      mod:    { url: `https://www.twitch.tv/moderator/${channel}`, opts: 'width=1200,height=800' },
-    };
-
-    const cfg = actions[action];
-    if (!cfg) return false;
-
-    window.open(cfg.url, '_blank', cfg.opts || '');
-    return true;
-  }
-
-  // Get text from input (handles both input and contenteditable)
-  function getInputText() {
-    const input = document.getElementById('hs-mc-input');
-    if (!input) return '';
-    if (wysiwygEnabled) {
-      // Convert emote images, stacks, and cycling spans back to text
-      let text = '';
-      const extractNode = (node) => {
-        if (node.nodeType === Node.TEXT_NODE) {
-          text += node.textContent
-        } else if (node.nodeType === Node.ELEMENT_NODE && node.tagName === 'IMG') {
-          text += node.dataset.emoteName || node.alt || ''
-        } else if (node.nodeType === Node.ELEMENT_NODE && node.classList?.contains('hs-input-stack')) {
-          // Stack: extract each child emote name, space-separated
-          for (const child of node.children) {
-            if (child.tagName === 'IMG') {
-              if (text && !text.endsWith(' ')) text += ' '
-              text += child.dataset.emoteName || child.alt || ''
-            }
-          }
-        } else if (node.nodeType === Node.ELEMENT_NODE) {
-          text += node.textContent || ''
-        }
-      }
-      for (const node of input.childNodes) extractNode(node)
-      return text.replace(/\u00A0/g, ' ');
-    }
-    return input.value || '';
-  }
-
-  function initInput() {
-    const input = document.getElementById('hs-mc-input');
-    const sendBtn = document.getElementById('hs-mc-send');
-    log('🎯 initInput called, input found:', !!input);
-    if (!input) {
-      log('❌ Input not found in DOM yet, retrying...');
-      setTimeout(initInput, 100);
-      return;
-    }
-    // Mark input as initialized to avoid duplicate handlers
-    if (input._hsInitialized) {
-      log('⚠️ Input already initialized');
-      return;
-    }
-    input._hsInitialized = true;
-    log('✅ Initializing input handlers, WYSIWYG:', wysiwygEnabled);
-
-    // Restore pending message
-    if (pendingMessage) {
-      if (wysiwygEnabled) {
-        input.textContent = pendingMessage;
-      } else {
-        input.value = pendingMessage;
-      }
-    }
-
-    input.addEventListener('keydown', handleInputKeydown);
-    input.addEventListener('input', handleInputChange);
-    input.addEventListener('input', updateCharCount);
-    input.addEventListener('input', () => {
-      const hasText = (input.value || input.textContent || '').trim().length > 0
-      if (hasText) showInputBar()
-      else hideInputBar()
-    });
-    input.addEventListener('blur', () => {
-      setTimeout(hideAutocomplete, 150)
-      // Hide input bar after blur if empty (delay to allow click-to-emote-picker)
-      // Skip if window lost focus — prevents hiding when switching apps
-      setTimeout(() => { if (document.hasFocus()) hideInputBar() }, 200)
-    });
-    sendBtn?.addEventListener('click', sendMessage);
-
-    // WYSIWYG: handle paste to strip formatting
-    if (wysiwygEnabled) {
-      input.addEventListener('paste', (e) => {
-        e.preventDefault();
-        const text = e.clipboardData.getData('text/plain');
-        document.execCommand('insertText', false, text);
-      });
-    }
-
-    // Initialize character counter
-    updateCharCount();
-
-    // Emote picker button (includes twitch features in tabs)
-    const emoteBtn = document.getElementById('hs-mc-emote-btn');
-    if (emoteBtn && !emoteBtn._hsInitialized) {
-      emoteBtn._hsInitialized = true;
-      emoteBtn.addEventListener('click', (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        const picker = document.getElementById('hs-mc-emote-picker');
-        if (picker?.classList.contains('visible')) {
-          picker.classList.remove('visible');
-          adjustOverlayForPicker(false);
-          hideInputBar();
-          if (_pickerCloseHandler) {
-            document.removeEventListener('click', _pickerCloseHandler);
-            _pickerCloseHandler = null;
-          }
-        } else {
-          showEmotePicker();
-        }
-      });
-    }
-
-    // Update placeholder based on current tab
-    updateInputPlaceholder();
-
-    // Global Tab key to focus input from anywhere
-    if (!window._hsMcTabHandler) {
-      window._hsMcTabHandler = true;
-      document.addEventListener('keydown', (e) => {
-        if (e.key !== 'Tab') return;
-        if (currentTab === 'add') return;
-        const input = document.getElementById('hs-mc-input');
-        if (!input) return;
-
-        // If not already in our input, reveal bar and focus it
-        if (document.activeElement !== input) {
-          e.preventDefault();
-          showInputBar();
-          input.focus();
-        }
-      }, { capture: true, signal: mcSignal });
-    }
-
-    // Auto-reveal input bar when user starts typing anywhere
-    if (!window._hsMcTypeRevealHandler) {
-      window._hsMcTypeRevealHandler = true
-      document.addEventListener('keydown', (e) => {
-        if (inputBarVisible) return
-        if (currentTab === 'add') return
-        const input = document.getElementById('hs-mc-input')
-        if (!input) return
-        // Only printable chars — skip modifiers, nav, function keys
-        if (e.ctrlKey || e.altKey || e.metaKey) return
-        if (e.key.length !== 1) return
-        // Don't steal focus from other inputs
-        const active = document.activeElement
-        if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable)) return
-        showInputBar()
-        input.focus()
-        // Character will flow into the now-focused input naturally
-      }, { signal: mcSignal })
-    }
-
-    // Helper: find emote wrapper or img from event target
-    function findEmoteTarget(target) {
-      // Check wrapper first (our emotes)
-      const wrapper = target.closest('.hs-mc-emote-wrapper');
-      if (wrapper) {
-        return {
-          wrapper,
-          emoteName: wrapper.dataset.emoteName || wrapper.querySelector('img')?.alt || 'emote',
-          state: wrapper.dataset.state || 'global',
-          emoteUrl: wrapper.dataset.emoteUrl || wrapper.querySelector('img')?.src || '',
-          source: wrapper.dataset.source || 'unknown'
-        };
-      }
-      // Fallback: direct IMG (Twitch/7TV/BTTV native emotes, picker emotes)
-      if (target.tagName === 'IMG' && !target.classList.contains('hs-mc-badge-img') && (
-        target.classList.contains('hs-mc-emote') ||
-        target.classList.contains('hs-mc-picker-emote') ||
-        target.classList.contains('chat-line__message--emote') ||
-        target.classList.contains('chat-image') ||
-        target.src?.includes('7tv.app') ||
-        target.src?.includes('betterttv.net') ||
-        (target.src?.includes('frankerfacez') && !target.src?.includes('room-badge/')) ||
-        target.src?.includes('static-cdn.jtvnw.net/emoticons')
-      )) {
-        return {
-          wrapper: null,
-          emoteName: target.alt || target.dataset.emoteName || target.title?.split(' ')[0] || 'emote',
-          state: target.dataset.state || 'global',
-          emoteUrl: target.src || '',
-          source: target.dataset.source || 'unknown'
-        };
-      }
-      return null;
-    }
-
-    // Global right-click handler for ALL emotes
-    if (!window._hsMcEmoteContextHandler) {
-      window._hsMcEmoteContextHandler = true;
-      document.addEventListener('contextmenu', (e) => {
-        // Stack expand on right-click
-        const collapsedStack = e.target.closest('.hs-mc-emote-stack:not(.expanded)');
-        if (collapsedStack) {
-          e.preventDefault();
-          e.stopPropagation();
-          collapsedStack.classList.add('expanded');
-          collapsedStack.removeAttribute('title');
-          return;
-        }
-
-        const emoteInfo = findEmoteTarget(e.target);
-        if (!emoteInfo) return;
-        log('Emote right-click:', emoteInfo.emoteName, emoteInfo.state);
-
-        e.preventDefault();
-        e.stopPropagation();
-
-        const { emoteName, state } = emoteInfo;
-
-        if (state === 'blocked') {
-          // Blocked → unblock + yellow flash
-          unblockEmote(emoteName);
-        } else if (state === 'owned') {
-          // Owned → remove from inventory + white flash
-          removeEmoteFromInventory(emoteName, e.target);
-        } else {
-          // Global or unadded → block + red flash
-          blockEmote(emoteName);
-        }
-      }, { capture: true, signal: mcSignal });
-    }
-
-    // Global left-click handler for ALL emotes
-    if (!window._hsMcEmoteClickHandler) {
-      window._hsMcEmoteClickHandler = true;
-      document.addEventListener('click', (e) => {
-        // Stack collapse button
-        if (e.target.closest('.hs-mc-stack-collapse')) {
-          e.preventDefault();
-          e.stopPropagation();
-          const stack = e.target.closest('.hs-mc-emote-stack');
-          if (stack) {
-            stack.classList.remove('expanded');
-            stack.setAttribute('title', 'expand');
-          }
-          return;
-        }
-        // Stack block-all button
-        if (e.target.closest('.hs-mc-stack-block-all')) {
-          e.preventDefault();
-          e.stopPropagation();
-          const stack = e.target.closest('.hs-mc-emote-stack');
-          if (stack) blockAllEmotesInStack(stack);
-          return;
-        }
-        // Collapsed stack left-click → paste all emote names to input
-        const collapsedStack = e.target.closest('.hs-mc-emote-stack:not(.expanded)');
-        if (collapsedStack) {
-          e.preventDefault();
-          e.stopPropagation();
-          const names = [...collapsedStack.querySelectorAll('.hs-mc-emote-wrapper[data-emote-name]')]
-            .map(w => w.dataset.emoteName)
-            .filter(Boolean);
-          if (names.length > 0) {
-            for (const name of names) pasteEmoteToInput(name);
-            flashAllEmotes(names[0], 'hs-flash-paste');
-          }
-          return;
-        }
-
-        const emoteInfo = findEmoteTarget(e.target);
-        if (!emoteInfo) return;
-
-        e.preventDefault();
-        e.stopPropagation();
-
-        const { emoteName, state, emoteUrl, source } = emoteInfo;
-
-        if (state === 'blocked') {
-          // Blocked → unblock + yellow flash
-          unblockEmote(emoteName);
-        } else if (state === 'owned' || state === 'global' || state === 'channel') {
-          // Owned, global, or channel → paste to input + white flash
-          pasteEmoteToInput(emoteName);
-          flashAllEmotes(emoteName, 'hs-flash-paste');
-        } else if (state === 'unadded') {
-          // Unadded → add to inventory + green flash
-          addEmoteToInventory(emoteName, emoteUrl, source, e.target);
-          flashAllEmotes(emoteName, 'hs-flash-add');
-        }
-      }, { capture: true, signal: mcSignal });
-    }
-
-    // Spoiler click → toggle revealed
-    if (!window._hsMcSpoilerHandler) {
-      window._hsMcSpoilerHandler = true
-      document.addEventListener('click', (e) => {
-        const spoiler = e.target.closest('.hs-spoiler')
-        if (!spoiler) return
-        e.stopPropagation()
-        spoiler.classList.toggle('revealed')
-      }, { signal: mcSignal })
-    }
-
-    // Reply button click → set reply state and focus input
-    if (!window._hsMcReplyHandler) {
-      window._hsMcReplyHandler = true
-      document.addEventListener('click', (e) => {
-        const btn = e.target.closest('.hs-mc-reply-btn')
-        if (!btn) return
-        const msg = btn.closest('.hs-mc-msg')
-        if (!msg?.dataset.msgId) return
-        setReplyState({
-          msgId: msg.dataset.msgId,
-          user: msg.dataset.msgUser,
-          channel: msg.dataset.msgChannel
-        })
-      }, { signal: mcSignal })
-    }
-
-    // Right-click on message → mute/unmute user
-    if (!window._hsMcMsgContextHandler) {
-      window._hsMcMsgContextHandler = true;
-      document.addEventListener('contextmenu', (e) => {
-        const msg = e.target.closest('.hs-mc-msg');
-        if (!msg) return;
-        // Don't intercept if clicking an emote (let emote handler handle it)
-        if (findEmoteTarget(e.target)) return;
-
-        e.preventDefault();
-        const userEl = msg.querySelector('.hs-mc-user');
-        const username = userEl?.textContent?.trim()?.toLowerCase();
-        if (!username) return;
-
-        if (mutedUsers.has(username)) {
-          mutedUsers.delete(username);
-          showToast(`unmuted ${username}`);
-        } else {
-          mutedUsers.add(username);
-          showToast(`muted ${username}`);
-        }
-        chrome.storage.local.set({ heatsync_mc_muted: [...mutedUsers] });
-        applyMcMutes();
-      }, { signal: mcSignal });
-    }
-  }
-
-  function applyMcMutes() {
-    document.querySelectorAll('.hs-mc-msg').forEach(msg => {
-      const userEl = msg.querySelector('.hs-mc-user');
-      const username = userEl?.textContent?.trim()?.toLowerCase();
-      if (username && mutedUsers.has(username)) {
-        msg.classList.add('hs-mc-muted');
-      } else {
-        msg.classList.remove('hs-mc-muted');
-      }
-    });
-  }
-
-  function updateInputPlaceholder() {
-    const input = document.getElementById('hs-mc-input');
-    if (!input) return;
-
-    let placeholder;
-    if (currentTab === 'feed') {
-      placeholder = 'post to heatsync...';
-    } else if (currentTab === 'live') {
-      const channel = getLiveChannel();
-      placeholder = channel ? `send to #${channel}` : 'send a message...';
-    } else if (currentTab === 'mentions') {
-      const channel = getCurrentChannel();
-      placeholder = channel ? `send to #${channel}` : 'send a message...';
-    } else if (currentTab === 'whispers') {
-      if (activeWhisperUser) {
-        const conv = whisperConversations.get(activeWhisperUser)
-        placeholder = `whisper to ${conv?.displayName || activeWhisperUser}`
-      } else {
-        placeholder = ''
-      }
-    } else if (currentTab === 'add') {
-      placeholder = '';
-    } else {
-      // Channel tab — resolve twitch name for placeholder
-      const ch = config.channels.find(c => (typeof c === 'string' ? c : c.id) === currentTab);
-      const twitchName = typeof ch === 'string' ? ch : ch?.twitch;
-      placeholder = twitchName ? `send to #${twitchName}` : `send to #${currentTab}`;
-    }
-
-    if (wysiwygEnabled) {
-      input.dataset.placeholder = placeholder;
-    } else {
-      input.placeholder = placeholder;
-    }
-  }
-
-  function getCurrentChannel() {
-    // Get current channel from URL (works for both Twitch and Kick, including popout/embed)
-    const match = location.pathname.match(/^\/(?:popout\/|embed\/)?([a-zA-Z0-9_]+)/);
-    if (match && match[1]) {
-      const ch = match[1].toLowerCase();
-      if (['directory', 'settings', 'videos', 'moderator', 'subscriptions'].includes(ch)) return null;
-      return ch;
-    }
-    return null;
-  }
-
-  function handleInputKeydown(e) {
-    const input = e.target;
-
-    // Tab - cycle through emote completions
-    if (e.key === 'Tab') {
-      e.preventDefault();
-
-      if (acState.active && acState.matches.length > 0) {
-        // Already cycling - next (Tab) or previous (Shift+Tab)
-        const len = acState.matches.length;
-        acState.index = (acState.index + (e.shiftKey ? len - 1 : 1)) % len;
-        insertCompletionKeepOpen(acState.matches[acState.index]);
-        showCycleTooltip();
-      } else {
-        // First Tab - find matches
-        const word = getCurrentWord(input);
-        if (word.length >= 2) {
-          const matches = findEmoteMatches(word);
-          if (matches.length > 0) {
-            // Save state for cycling (WYSIWYG handles positions internally)
-            acState.matches = matches;
-            acState.index = 0;
-            acState.active = true;
-
-            if (!wysiwygEnabled && input.value !== undefined) {
-              // Calculate positions for text input cycling (textarea only)
-              const text = input.value;
-              const pos = input.selectionStart;
-              const before = text.slice(0, pos);
-              const wordStart = before.search(/\S+$/);
-              acState.wordStart = wordStart >= 0 ? wordStart : pos;
-              // Skip past rest of word after cursor
-              let wordEnd = pos;
-              while (wordEnd < text.length && !/\s/.test(text[wordEnd])) wordEnd++;
-              acState.afterText = text.slice(wordEnd);
-            }
-
-            insertCompletionKeepOpen(matches[0]);
-            showCycleTooltip();
-          }
-        }
-      }
-      return;
-    }
-
-    // Any other key resets autocomplete cycling (ignore modifier keys)
-    if (acState.active && !['Shift', 'Control', 'Alt', 'Meta'].includes(e.key)) {
-      hideAutocomplete();
-    }
-
-    // Enter - send message
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      sendMessage();
-      return;
-    }
-
-    // Escape - cancel reply state and hide autocomplete
-    if (e.key === 'Escape') {
-      if (replyState) clearReplyState()
-      hideAutocomplete();
-      return;
-    }
-  }
-
-  function handleInputChange(e) {
-    // Save pending message (persists across tab switches)
-    pendingMessage = getInputText();
-
-    // Reset autocomplete cycling on any text change
-    if (acState.active) {
-      hideAutocomplete();
-    }
-
-    // Live emoji conversion in contenteditable: :shortcode: → emoji span
-    if (wysiwygEnabled && _emojiMap.size > 0) {
-      const input = document.getElementById('hs-mc-input')
-      if (input?.isContentEditable) {
-        const sel = window.getSelection()
-        if (!sel?.rangeCount) return
-        const range = sel.getRangeAt(0)
-        const node = range.startContainer
-        if (node?.nodeType !== Node.TEXT_NODE) return
-        const text = node.textContent
-        const cursorOffset = range.startOffset
-        // Look for :shortcode: ending at cursor
-        const before = text.slice(0, cursorOffset)
-        const match = before.match(/:([a-z0-9_]+):$/)
-        if (match) {
-          const emoji = _emojiMap.get(match[1])
-          if (emoji) {
-            const start = cursorOffset - match[0].length
-            // Replace the :shortcode: text with emoji span
-            const span = document.createElement('span')
-            span.className = 'hs-mc-emoji'
-            span.textContent = emoji
-            span.title = ':' + match[1] + ':'
-            span.setAttribute('data-emoji-name', match[1])
-            const beforeNode = document.createTextNode(text.slice(0, start))
-            const afterNode = document.createTextNode(text.slice(cursorOffset))
-            const parent = node.parentNode
-            parent.insertBefore(beforeNode, node)
-            parent.insertBefore(span, node)
-            parent.insertBefore(afterNode, node)
-            parent.removeChild(node)
-            // Place cursor after emoji
-            const newRange = document.createRange()
-            newRange.setStart(afterNode, 0)
-            newRange.collapse(true)
-            sel.removeAllRanges()
-            sel.addRange(newRange)
-            pendingMessage = getInputText()
-            return
-          }
-        }
-      }
-    }
-
-    // Live emote replacement: "emoteName " → <img> (triggered on space after emote name)
-    if (wysiwygEnabled) {
-      const input = document.getElementById('hs-mc-input')
-      if (input?.isContentEditable) {
-        const sel = window.getSelection()
-        if (sel?.rangeCount) {
-          const range = sel.getRangeAt(0)
-          const node = range.startContainer
-          if (node?.nodeType === Node.TEXT_NODE) {
-            const text = node.textContent
-            const cursor = range.startOffset
-            const before = text.slice(0, cursor)
-            const match = before.match(/(\S+)\s$/)
-            if (match) {
-              const word = match[1]
-              const emote = lookupEmote(word)
-              if (emote) {
-                const img = createInputEmoteImg(word)
-                if (img) {
-                  const wordStart = cursor - match[0].length
-                  const beforeText = text.slice(0, wordStart)
-                  const afterText = text.slice(cursor)
-                  const parent = node.parentNode
-                  const isZeroWidth = !!emote.zeroWidth
-
-                  // Zero-width: stack onto previous emote if possible
-                  if (isZeroWidth && beforeText.trim() === '') {
-                    // Look for emote element before this text node
-                    let prev = node.previousSibling
-                    while (prev && prev.nodeType === Node.TEXT_NODE && prev.textContent.trim() === '') {
-                      prev = prev.previousSibling
-                    }
-                    if (prev && (
-                      (prev.tagName === 'IMG' && prev.classList.contains('hs-input-emote')) ||
-                      prev.classList?.contains('hs-input-stack')
-                    )) {
-                      // Remove whitespace text nodes between prev and current
-                      let ws = prev.nextSibling
-                      while (ws && ws !== node) {
-                        const rm = ws
-                        ws = ws.nextSibling
-                        rm.remove()
-                      }
-                      stackInputEmote(prev, img)
-                      node.textContent = afterText || '\u00A0'
-                      const newRange = document.createRange()
-                      newRange.setStart(node, 0)
-                      newRange.collapse(true)
-                      sel.removeAllRanges()
-                      sel.addRange(newRange)
-                      pendingMessage = getInputText()
-                      return
-                    }
-                  }
-
-                  // Regular emote: replace text with img
-                  const beforeNode = beforeText ? document.createTextNode(beforeText) : null
-                  const afterNode = document.createTextNode(afterText || '\u00A0')
-                  if (beforeNode) parent.insertBefore(beforeNode, node)
-                  parent.insertBefore(img, node)
-                  parent.insertBefore(afterNode, node)
-                  parent.removeChild(node)
-                  const newRange = document.createRange()
-                  newRange.setStart(afterNode, 0)
-                  newRange.collapse(true)
-                  sel.removeAllRanges()
-                  sel.addRange(newRange)
-                  pendingMessage = getInputText()
-                }
-              }
-            }
-          }
-        }
-      }
-    }
-  }
-
-  function updateCharCount() {
-    const input = document.getElementById('hs-mc-input');
-    if (!input) return;
-    const len = getInputText().length;
-    input.classList.toggle('over-limit', len > 500)
-  }
-
-  function getCurrentWord(input) {
-    if (!input) return ''
-    if (input.contentEditable === 'true') {
-      const sel = window.getSelection();
-      if (!sel.rangeCount) return '';
-      const range = sel.getRangeAt(0);
-      let container = range.startContainer;
-      let offset = range.startOffset;
-      if (container.nodeType === Node.ELEMENT_NODE && offset > 0) {
-        const child = container.childNodes[offset - 1];
-        if (child?.nodeType === Node.TEXT_NODE) {
-          container = child;
-          offset = child.textContent.length;
-        }
-      }
-      if (container.nodeType === Node.TEXT_NODE) {
-        const text = container.textContent;
-        const before = text.slice(0, offset);
-        const after = text.slice(offset);
-        const beforeMatch = before.match(/(\S+)$/);
-        const afterMatch = after.match(/^(\S+)/);
-        if (beforeMatch) return beforeMatch[1] + (afterMatch ? afterMatch[1] : '');
-      }
-      return '';
-    }
-    const text = input.value;
-    const pos = input.selectionStart;
-    const before = text.slice(0, pos);
-    const after = text.slice(pos);
-    const beforeMatch = before.match(/(\S+)$/);
-    const afterMatch = after.match(/^(\S+)/);
-    if (beforeMatch) return beforeMatch[1] + (afterMatch ? afterMatch[1] : '');
-    return '';
-  }
-
-  function findEmoteMatches(search) {
-    const matches = [];
-
-    // Check if searching for username (starts with @)
-    const isUserSearch = search.startsWith('@');
-    const searchTerm = isUserSearch ? search.slice(1) : search;
-    const searchLower = searchTerm.toLowerCase();
-
-    // Search usernames if @ prefix or if it could be a username
-    if (isUserSearch || searchTerm.length >= 2) {
-      for (const username of usernameCache) {
-        const userLower = username.toLowerCase();
-        if (userLower.startsWith(searchLower)) {
-          matches.push({ name: '@' + username, url: null, priority: isUserSearch ? 0 : 2, type: 'user' });
-        } else if (!isUserSearch && userLower.includes(searchLower)) {
-          matches.push({ name: '@' + username, url: null, priority: 3, type: 'user' });
-        }
-      }
-    }
-
-    // Search emote cache (unless explicitly searching users with @)
-    if (!isUserSearch) {
-      // Search global + channel emotes for current tab
-      const acEmotes = new Map(emoteCache);
-      const acChCache = channelEmoteCaches[currentTab] || channelEmoteCaches[getCurrentChannel()];
-      if (acChCache) for (const [k, v] of acChCache) acEmotes.set(k, v);
-      for (const [name, emote] of acEmotes) {
-        if (name.toLowerCase().startsWith(searchLower)) {
-          matches.push({ name, url: emote.url, source: emote.source, priority: 0, type: 'emote' });
-        } else if (name.toLowerCase().includes(searchLower)) {
-          matches.push({ name, url: emote.url, source: emote.source, priority: 1, type: 'emote' });
-        }
-      }
-    }
-
-    // Emoji shortcodes when typing :prefix
-    if (search.startsWith(':') && typeof EMOJI_DATA !== 'undefined') {
-      const emojiPrefix = search.slice(1).toLowerCase();
-      if (emojiPrefix.length > 0) {
-        for (const entry of EMOJI_DATA) {
-          if (matches.length >= 50) break;
-          const emojiMatch = { name: `:${entry.name}:`, url: null, priority: entry.name.startsWith(emojiPrefix) ? 1 : 2, type: 'emoji', emoji: entry.emoji };
-          if (entry.name.startsWith(emojiPrefix)) {
-            matches.push(emojiMatch);
-          } else if (entry.name.includes(emojiPrefix)) {
-            emojiMatch.priority = 2;
-            matches.push(emojiMatch);
-          }
-        }
-      }
-    }
-
-    // Sort: prefix matches first, then alphabetical
-    matches.sort((a, b) => {
-      if (a.priority !== b.priority) return a.priority - b.priority;
-      return a.name.localeCompare(b.name);
-    });
-
-    return matches;
-  }
-
-  // Insert completion and keep cycling state
-  function insertCompletionKeepOpen(match) {
-    const input = document.getElementById('hs-mc-input');
-    if (!input || !match) return;
-
-    if (wysiwygEnabled) {
-      insertCompletionWysiwyg(match);
-      return;
-    }
-
-    // Use saved positions from acState for consistent cycling
-    const beforeWord = input.value.slice(0, acState.wordStart);
-    const insertText = match.type === 'emoji' ? match.emoji : match.name;
-    const newValue = beforeWord + insertText + ' ' + acState.afterText;
-
-    input.value = newValue;
-    pendingMessage = input.value;
-
-    // Position cursor after the inserted word
-    const newPos = beforeWord.length + insertText.length + 1;
-    input.selectionStart = input.selectionEnd = newPos;
-    input.focus();
-
-    updateCharCount();
-  }
-
-  // WYSIWYG emote insertion
-  function insertCompletionWysiwyg(match) {
-    const input = document.getElementById('hs-mc-input');
-    if (!input) return;
-
-    // Check if we're replacing an existing cycling element (emote img or text span)
-    const existingEmote = input.querySelector('img.hs-cycling-emote');
-    const existingText = input.querySelector('span.hs-cycling-text');
-    if (existingEmote) {
-      if (match.url) {
-        existingEmote.src = match.url;
-        existingEmote.alt = match.name;
-        existingEmote.dataset.emoteName = match.name;
-      } else if (match.type === 'emoji') {
-        // Replace emote img with emoji span
-        const span = document.createElement('span')
-        span.className = 'hs-cycling-text'
-        span.textContent = match.emoji
-        span.dataset.completionName = match.name
-        existingEmote.replaceWith(span)
-        // Place caret after the span's trailing space
-        const space = span.nextSibling
-        if (space) placeCaretAfter(space, 1)
-        else placeCaretAfter(span)
-      } else {
-        const textNode = document.createTextNode(match.name + ' ');
-        existingEmote.replaceWith(textNode);
-        placeCaretAfter(textNode);
-      }
-      pendingMessage = getInputText();
-      updateCharCount();
-      return;
-    }
-    if (existingText) {
-      if (match.url) {
-        // Replace text span with emote img
-        const img = document.createElement('img')
-        img.src = match.url
-        img.alt = match.name
-        img.dataset.emoteName = match.name
-        img.className = 'hs-input-emote hs-cycling-emote'
-        img.draggable = false
-        existingText.replaceWith(img)
-        const space = img.nextSibling
-        if (space) placeCaretAfter(space, 1)
-        else placeCaretAfter(img)
-      } else if (match.type === 'emoji') {
-        existingText.textContent = match.emoji
-        existingText.dataset.completionName = match.name
-        const space = existingText.nextSibling
-        if (space) placeCaretAfter(space, 1)
-        else placeCaretAfter(existingText)
-      } else {
-        const textNode = document.createTextNode(match.name + ' ')
-        existingText.replaceWith(textNode)
-        placeCaretAfter(textNode)
-      }
-      pendingMessage = getInputText()
-      updateCharCount()
-      return
-    }
-
-    // First Tab: replace word with emote image
-    const sel = window.getSelection();
-    if (!sel.rangeCount) return;
-
-    const range = sel.getRangeAt(0);
-    let container = range.startContainer;
-    let rangeOffset = range.startOffset;
-    // Resolve element boundary to preceding text node
-    if (container.nodeType === Node.ELEMENT_NODE && rangeOffset > 0) {
-      const child = container.childNodes[rangeOffset - 1];
-      if (child?.nodeType === Node.TEXT_NODE) {
-        container = child;
-        rangeOffset = child.textContent.length;
-      }
-    }
-    if (container.nodeType !== Node.TEXT_NODE) return;
-
-    const textNode = container;
-    const offset = rangeOffset;
-    const text = textNode.textContent;
-
-    // Find word start
-    let wordStart = offset;
-    while (wordStart > 0 && !/\s/.test(text[wordStart - 1])) wordStart--;
-
-    // Find word end (skip past rest of word after cursor)
-    let wordEnd = offset;
-    while (wordEnd < text.length && !/\s/.test(text[wordEnd])) wordEnd++;
-
-    // Split text: before | word | after
-    const before = text.slice(0, wordStart);
-    const after = text.slice(wordEnd);
-
-    // Save afterText for cycling
-    acState.afterText = after;
-
-    // Helper: insert element after textNode with before/after text
-    const insertElement = (el) => {
-      textNode.textContent = before;
-      const space = document.createTextNode('\u00A0' + after);
-      const parent = textNode.parentNode;
-      const nextSibling = textNode.nextSibling;
-      if (nextSibling) {
-        parent.insertBefore(el, nextSibling);
-        parent.insertBefore(space, nextSibling);
-      } else {
-        parent.appendChild(el);
-        parent.appendChild(space);
-      }
-      placeCaretAfter(space, 1);
-    }
-
-    if (match.url) {
-      // Create emote image
-      const img = document.createElement('img');
-      img.src = match.url;
-      img.alt = match.name;
-      img.dataset.emoteName = match.name;
-      img.className = 'hs-input-emote hs-cycling-emote';
-      img.draggable = false;
-      insertElement(img);
-    } else if (match.type === 'emoji') {
-      // Create emoji tracking span
-      const span = document.createElement('span')
-      span.className = 'hs-cycling-text'
-      span.textContent = match.emoji
-      span.dataset.completionName = match.name
-      insertElement(span)
-    } else {
-      // User/text completion - just insert text
-      const newText = before + match.name + ' ' + after;
-      textNode.textContent = newText;
-      const newPos = before.length + match.name.length + 1;
-      range.setStart(textNode, newPos);
-      range.collapse(true);
-      sel.removeAllRanges();
-      sel.addRange(range);
-    }
-
-    pendingMessage = getInputText();
-    updateCharCount();
-    input.focus();
-  }
-
-  function placeCaretAfter(node, offset = 0) {
-    const sel = window.getSelection();
-    const range = document.createRange();
-    if (node.nodeType === Node.TEXT_NODE) {
-      range.setStart(node, Math.min(offset, node.length));
-    } else {
-      range.setStartAfter(node);
-    }
-    range.collapse(true);
-    sel.removeAllRanges();
-    sel.addRange(range);
-  }
-
-
-  function showCycleTooltip() {
-    let tt = document.getElementById('hs-mc-cycle-tooltip');
-    if (!tt) {
-      tt = document.createElement('div');
-      tt.id = 'hs-mc-cycle-tooltip';
-      tt.style.cssText = 'position:absolute;bottom:100%;left:8px;background:#000;color:#fff;padding:4px 8px;font-size:12px;border-radius: 0;z-index:1003;margin-bottom:4px;';
-      document.getElementById('hs-mc-inputbar')?.appendChild(tt);
-    }
-    const m = acState.matches[acState.index];
-    const label = m.type === 'emoji' ? `${m.emoji} ${m.name}` : m.name;
-    tt.textContent = `${acState.index + 1}/${acState.matches.length} ${label}`;
-    tt.style.display = 'block';
-  }
-
-  function hideCycleTooltip() {
-    const tt = document.getElementById('hs-mc-cycle-tooltip');
-    if (tt) tt.style.display = 'none';
-  }
-
-  function hideAutocomplete() {
-    acState.active = false;
-    acState.matches = [];
-    acState.index = 0;
-    acState.wordStart = 0;
-    acState.afterText = '';
-    hideCycleTooltip();
-
-    // WYSIWYG: finalize cycling elements (remove cycling class so they're permanent)
-    if (wysiwygEnabled) {
-      const input = document.getElementById('hs-mc-input');
-      const cyclingEmote = input?.querySelector('.hs-cycling-emote');
-      if (cyclingEmote) {
-        cyclingEmote.classList.remove('hs-cycling-emote');
-      }
-      const cyclingText = input?.querySelector('.hs-cycling-text');
-      if (cyclingText) {
-        // Replace span with plain text node
-        const textNode = document.createTextNode(cyclingText.textContent);
-        cyclingText.replaceWith(textNode);
-      }
-    }
-  }
-
-  // Reply state management
-  function setReplyState(state) {
-    replyState = state
-    showInputBar()
-    const bar = document.getElementById('hs-mc-inputbar')
-    if (!bar) return
-    // Remove existing indicator
-    document.getElementById('hs-mc-reply-indicator')?.remove()
-    const indicator = document.createElement('div')
-    indicator.id = 'hs-mc-reply-indicator'
-    const label = document.createElement('span')
-    label.textContent = `↩ Replying to @${state.user}`
-    const cancel = document.createElement('button')
-    cancel.id = 'hs-mc-reply-cancel'
-    cancel.textContent = '✕'
-    cancel.title = 'Cancel reply'
-    cancel.addEventListener('click', clearReplyState)
-    indicator.appendChild(label)
-    indicator.appendChild(cancel)
-    bar.insertBefore(indicator, bar.firstChild)
-    document.getElementById('hs-mc-input')?.focus()
-  }
-
-  function clearReplyState() {
-    replyState = null
-    document.getElementById('hs-mc-reply-indicator')?.remove()
-    hideInputBar()
-  }
-
-  // Get Twitch auth token from cookie
-  function getTwitchAuthToken() {
-    const cookies = document.cookie.split(';');
-    for (const cookie of cookies) {
-      const eqIdx = cookie.indexOf('=');
-      if (eqIdx === -1) continue;
-      const key = cookie.slice(0, eqIdx).trim();
-      const value = cookie.slice(eqIdx + 1).trim();
-      if (key === 'auth-token' && value) {
-        return decodeURIComponent(value);
-      }
-    }
-    return null;
-  }
-
-  // Send message to current tab's channel
-  // Build emoji lookup map (once)
-  const _emojiMap = new Map()
-  if (typeof EMOJI_DATA !== 'undefined') {
-    for (const e of EMOJI_DATA) _emojiMap.set(e.name, e.emoji)
-  }
-
-  // Replace :shortcode: patterns with emoji characters
-  function convertEmojiShortcodes(text) {
-    if (_emojiMap.size === 0) return text
-    return text.replace(/:([a-z0-9_]+):/g, (match, name) => _emojiMap.get(name) || match)
-  }
-
-  async function sendMessage() {
-    const input = document.getElementById('hs-mc-input');
-    if (!input) { console.warn('[HS] SEND BAIL: no input element'); return; }
-
-    const text = convertEmojiShortcodes(getInputText().trim());
-    if (!text) { console.warn('[HS] SEND BAIL: empty text'); return; }
-
-    // Whispers tab → send whisper/DM
-    if (currentTab === 'whispers' && activeWhisperUser) {
-      sendWhisperMessage(activeWhisperUser, text)
-      if (wysiwygEnabled) input.textContent = ''
-      else input.value = ''
-      pendingMessage = ''
-      return
-    }
-
-    // Feed/notifs tab → post to heatsync API
-    if (currentTab === 'feed') {
-      postFeedMessage(text);
-      return;
-    }
-
-    // Determine target channel
-    let targetChannel;
-    if (currentTab === 'live') {
-      targetChannel = getLiveChannel();
-    } else if (currentTab === 'mentions') {
-      targetChannel = getCurrentChannel();
-    } else if (currentTab === 'add') {
-      if (MC_DEBUG) console.warn('[HS] SEND BAIL: on add tab');
-      return;
-    } else {
-      // Resolve twitch name from channel config (object or legacy string)
-      const ch = config.channels.find(c => (typeof c === 'string' ? c : c.id) === currentTab);
-      targetChannel = typeof ch === 'string' ? ch : ch?.twitch || currentTab;
-    }
-
-    if (!targetChannel) {
-      console.warn('[HS] SEND BAIL: no target channel, currentTab=' + currentTab);
-      return;
-    }
-
-    // Get auth token
-    const token = getTwitchAuthToken();
-    if (!token) {
-      console.warn('[HS] SEND BAIL: no auth token (cookie missing)');
-      if (wysiwygEnabled) {
-        input.dataset.placeholder = 'not logged in';
-      } else {
-        input.placeholder = 'not logged in';
-      }
-      setTimeout(() => updateInputPlaceholder(), 2000);
-      return;
-    }
-
-    // Capture reply parent before clearing
-    const replyParentId = replyState?.msgId || null
-    clearReplyState()
-
-    // Send via IRC (fast async)
-    const wsState = authState.ws ? ['CONNECTING','OPEN','CLOSING','CLOSED'][authState.ws.readyState] : 'null';
-    log(`IRC SEND → #${targetChannel} ws=${wsState} ready=${authState.ready} queue=${authState.sendQueue.length}`);
-    sendIrcMessage(targetChannel, text, token, replyParentId).then(result => {
-      if (result === true) {
-        // If ws wasn't OPEN when we sent, message was likely queued — show yellow indicator
-        if (wsState !== 'OPEN') {
-          input.style.borderColor = '#ff0';
-          setTimeout(() => { input.style.borderColor = ''; }, 1500);
-        }
-        if (wysiwygEnabled) {
-          input.textContent = '';
-        } else {
-          input.value = '';
-        }
-        pendingMessage = '';
-        updateCharCount();
-        hideInputBar();
-      } else {
-        // Show specific error feedback
-        input.style.borderColor = '#f44';
-        const msg = result === 'no_user' ? 'no username detected'
-          : result === 'auth_failed' ? 'auth failed — re-login to twitch'
-          : result === 'connect_failed' ? 'connection failed — try again'
-          : 'send failed — try again';
-        if (wysiwygEnabled) {
-          input.dataset.placeholder = msg;
-        } else {
-          input.placeholder = msg;
-        }
-        setTimeout(() => {
-          input.style.borderColor = '';
-          updateInputPlaceholder();
-        }, 2500);
-      }
-    });
-  }
-
-  // ============================================
-  // AUTHENTICATED IRC — BULLETPROOF SEND ENGINE
-  // ============================================
-  // Connection kept alive proactively. Dead sockets detected in <70s
-  // via PING/PONG. Auto-reconnect with backoff. Messages queued during
-  // reconnect window and drained when ready. SPA nav does NOT kill this.
-
-  const authState = {
-    ws: null,
-    ready: false,
-    connecting: false,
-    destroyed: false,
-    joined: new Set(),
-    joinWaiters: new Map(),
-    lastData: 0,
-    pongPending: false,
-    token: null,
-    nick: null,
-    keepaliveTimer: null,
-    reconnectTimer: null,
-    reconnectDelay: 1000,
-    sendQueue: [], // Capped at 50 — drop oldest if full
-  }
-  const MAX_SEND_QUEUE = 50
-
-  function authIrcAlive() {
-    return authState.ws?.readyState === WebSocket.OPEN && authState.ready
-  }
-
-  function cleanupAuthIrc(destroy = false) {
-    if (destroy) authState.destroyed = true;
-    if (authState.keepaliveTimer) { clearInterval(authState.keepaliveTimer); authState.keepaliveTimer = null; }
-    if (authState.reconnectTimer) { clearTimeout(authState.reconnectTimer); authState.reconnectTimer = null; }
-    const prevJoined = [...authState.joined];
-    if (authState.ws) {
-      authState.ws.onclose = null;
-      authState.ws.onerror = null;
-      authState.ws.onmessage = null;
-      try { authState.ws.close(); } catch {}
-    }
-    authState.ws = null;
-    authState.ready = false;
-    authState.connecting = false;
-    authState.lastData = 0;
-    authState.pongPending = false;
-    authState.joined.clear();
-    for (const [, w] of authState.joinWaiters) {
-      clearTimeout(w.timer);
-      w.resolve(false);
-    }
-    authState.joinWaiters.clear();
-    return prevJoined;
-  }
-
-  function handleAuthIrcMessage(event) {
-    authState.lastData = Date.now();
-    for (const line of event.data.split('\r\n')) {
-      if (!line) continue;
-      if (line.startsWith('PING')) {
-        try { authState.ws.send(line.replace('PING', 'PONG') + '\r\n'); } catch {}
-        continue;
-      }
-      if (line.includes('PONG')) { authState.pongPending = false; continue; }
-
-      const joinMatch = line.match(/:(\w+)!\w+@\w+\.tmi\.twitch\.tv JOIN #(\w+)/);
-      if (joinMatch) {
-        const ch = joinMatch[2].toLowerCase();
-        authState.joined.add(ch);
-        const w = authState.joinWaiters.get(ch);
-        if (w) { clearTimeout(w.timer); w.resolve(true); authState.joinWaiters.delete(ch); }
-        continue;
-      }
-      const partMatch = line.match(/:(\w+)!\w+@\w+\.tmi\.twitch\.tv PART #(\w+)/);
-      if (partMatch) { authState.joined.delete(partMatch[2].toLowerCase()); continue; }
-      if (line.includes('NOTICE') && MC_DEBUG) console.warn('[HS] Auth IRC NOTICE:', line.slice(0, 200));
-      if (line.includes('RECONNECT')) {
-        log('Auth IRC: Twitch sent RECONNECT');
-        const prev = cleanupAuthIrc();
-        scheduleReconnect(prev);
-        return;
-      }
-      if (line.includes('WHISPER')) {
-        const msg = parseIrcLine(line)
-        if (msg?.type === 'whisper') handleIncomingWhisper(msg)
-        continue
-      }
-      if (line.includes(' 353 ') || line.includes(' 366 ') || line.includes('ROOMSTATE')) continue;
-      if (MC_DEBUG) console.warn('[HS] IRC ←', line.slice(0, 200));
-    }
-  }
-
-  function scheduleReconnect(prevChannels) {
-    if (authState.destroyed || !authState.token || !authState.nick) return;
-    if (authState.reconnectTimer) return;
-    const delay = authState.reconnectDelay;
-    authState.reconnectDelay = Math.min(delay * 2, 30000);
-    log(`Auth IRC reconnect in ${delay}ms...`);
-    authState.reconnectTimer = setTimeout(async () => {
-      authState.reconnectTimer = null;
-      if (authState.destroyed || authIrcAlive()) return;
-      const ok = await connectAuthIrc(authState.token, authState.nick);
-      if (ok === true) {
-        for (const ch of (prevChannels || [])) await joinChannel(ch);
-        drainSendQueue();
-        log('Auth IRC reconnected, rejoined:', (prevChannels || []).join(', ') || '(none)');
-      } else if (ok !== 'auth_failed') {
-        scheduleReconnect(prevChannels);
-      }
-    }, delay);
-  }
-
-  // ═══ Whisper/DM handling ═══
-
-  let _whisperSaveTimer = null
-  function whisperSaveDebounced() {
-    if (_whisperSaveTimer) clearTimeout(_whisperSaveTimer)
-    _whisperSaveTimer = setTimeout(saveWhispers, 500)
-  }
-
-  function saveWhispers() {
-    const data = {}
-    let count = 0
-    for (const [key, conv] of whisperConversations) {
-      if (count >= 30) break
-      data[key] = {
-        platform: conv.platform,
-        userId: conv.userId,
-        displayName: conv.displayName,
-        color: conv.color,
-        lastTime: conv.lastTime,
-        unread: conv.unread,
-        msgs: conv.msgs.slice(-50)
-      }
-      count++
-    }
-    try { chrome.storage.local.set({ hs_whispers: data }) } catch {}
-  }
-
-  function loadWhispers() {
-    try {
-      chrome.storage.local.get(['hs_whispers']).then(stored => {
-        const data = stored.hs_whispers
-        if (!data) return
-        for (const [key, conv] of Object.entries(data)) {
-          if (!whisperConversations.has(key)) {
-            whisperConversations.set(key, {
-              msgs: conv.msgs || [],
-              platform: conv.platform,
-              userId: conv.userId,
-              displayName: conv.displayName,
-              color: conv.color || '#fff',
-              lastTime: conv.lastTime || 0,
-              unread: conv.unread || 0
-            })
-          }
-        }
-        whisperTotalUnread = 0
-        for (const conv of whisperConversations.values()) whisperTotalUnread += conv.unread
-        updateWhisperBadge()
-      }).catch(() => {})
-    } catch {}
-  }
-
-  function getOrCreateConversation(key, platform, userId, displayName, color) {
-    if (!whisperConversations.has(key)) {
-      whisperConversations.set(key, {
-        msgs: [],
-        platform,
-        userId,
-        displayName,
-        color: color || '#fff',
-        lastTime: 0,
-        unread: 0
-      })
-    }
-    return whisperConversations.get(key)
-  }
-
-  function handleIncomingWhisper(msg) {
-    const key = `twitch:${msg.user.toLowerCase()}`
-    const conv = getOrCreateConversation(key, 'twitch', msg.userId, msg.user, msg.color)
-    conv.msgs.push({
-      user: msg.user,
-      text: msg.text,
-      color: msg.color,
-      time: msg.time,
-      self: false
-    })
-    if (conv.msgs.length > 200) conv.msgs.splice(0, conv.msgs.length - 200)
-    conv.lastTime = msg.time
-    conv.displayName = msg.user
-    conv.color = msg.color
-
-    if (currentTab === 'whispers' && activeWhisperUser === key) {
-      renderWhispersTab()
-    } else {
-      conv.unread++
-      whisperTotalUnread++
-      updateWhisperBadge()
-      // Inline DM notification in chat
-      injectInlineNotif('dm', {
-        type: 'inline-dm',
-        user: msg.user,
-        text: msg.text,
-        color: msg.color,
-        time: msg.time,
-        platform: 'twitch'
-      })
-    }
-    whisperSaveDebounced()
-  }
-
-  function handleIncomingDm(data) {
-    const key = `hs:${data.from_user_id}`
-    const conv = getOrCreateConversation(key, 'heatsync', data.from_user_id, data.from_display_name, data.from_color)
-    conv.msgs.push({
-      user: data.from_display_name,
-      text: data.content,
-      color: data.from_color || '#ff8700',
-      time: data.created_at ? new Date(data.created_at).getTime() : Date.now(),
-      self: false
-    })
-    if (conv.msgs.length > 200) conv.msgs.splice(0, conv.msgs.length - 200)
-    conv.lastTime = Date.now()
-    conv.displayName = data.from_display_name
-    conv.color = data.from_color || '#ff8700'
-
-    if (currentTab === 'whispers' && activeWhisperUser === key) {
-      renderWhispersTab()
-    } else {
-      conv.unread++
-      whisperTotalUnread++
-      updateWhisperBadge()
-      // Inline DM notification in chat
-      injectInlineNotif('dm', {
-        type: 'inline-dm',
-        user: data.from_display_name,
-        text: data.content,
-        color: data.from_color || '#ff8700',
-        time: data.created_at ? new Date(data.created_at).getTime() : Date.now(),
-        platform: 'heatsync'
-      })
-    }
-    whisperSaveDebounced()
-  }
-
-  function updateWhisperBadge() {
-    if (!tabBarElement) return
-    const tab = tabBarElement.querySelector('[data-tab="whispers"]')
-    if (tab) {
-      tab.classList.toggle('has-new', whisperTotalUnread > 0)
-    }
-  }
-
-  async function sendWhisperMessage(key, text) {
-    const conv = whisperConversations.get(key)
-    if (!conv) return
-
-    if (key.startsWith('twitch:')) {
-      try {
-        await gqlProxy('SendWhisper', {
-          input: {
-            recipientID: conv.userId,
-            message: text,
-            nonce: Math.random().toString(36).slice(2)
-          }
-        }, { rawQuery: 'mutation SendWhisper($input: SendWhisperInput!) { sendWhisper(input: $input) { error { code } } }' })
-      } catch (e) {
-        log('Whisper send failed:', e.message)
-        return
-      }
-    } else if (key.startsWith('hs:')) {
-      const toUserId = key.slice(3)
-      const resp = await apiFetch('/api/dm', {
-        method: 'POST',
-        body: { toUserId, content: text }
-      })
-      if (!resp.ok) {
-        log('DM send failed:', resp.error)
-        return
-      }
-    }
-
-    conv.msgs.push({
-      user: 'you',
-      text,
-      color: '#aaa',
-      time: Date.now(),
-      self: true
-    })
-    if (conv.msgs.length > 200) conv.msgs.splice(0, conv.msgs.length - 200)
-    conv.lastTime = Date.now()
-
-    if (currentTab === 'whispers' && activeWhisperUser === key) {
-      renderWhispersTab()
-    }
-    whisperSaveDebounced()
-  }
-
-  function renderWhispersTab() {
-    const msgsEl = document.getElementById('hs-mc-messages')
-    if (!msgsEl) return
-
-    if (!activeWhisperUser) {
-      // Conversation list mode
-      if (!whisperDmsLoaded && hsAuthToken) {
-        whisperDmsLoaded = true
-        apiFetch('/api/dm').then(resp => {
-          if (resp.ok && resp.data && Array.isArray(resp.data)) {
-            for (const dm of resp.data) {
-              const key = `hs:${dm.other_user_id}`
-              const conv = getOrCreateConversation(key, 'heatsync', dm.other_user_id, dm.other_display_name, dm.other_color)
-              if (dm.last_message) {
-                conv.lastTime = Math.max(conv.lastTime, new Date(dm.last_message.created_at).getTime())
-              }
-              conv.displayName = dm.other_display_name
-              conv.color = dm.other_color || '#ff8700'
-            }
-            if (currentTab === 'whispers' && !activeWhisperUser) renderWhispersTab()
-          }
-        })
-      }
-
-      const sorted = [...whisperConversations.entries()]
-        .sort((a, b) => b[1].lastTime - a[1].lastTime)
-
-      if (sorted.length === 0) {
-        msgsEl.innerHTML = '<div class="hs-mc-empty">no whispers yet</div>'
-        return
-      }
-
-      msgsEl.textContent = ''
-      const frag = document.createDocumentFragment()
-      for (const [key, conv] of sorted) {
-        const row = document.createElement('div')
-        row.className = 'hs-whisper-conv'
-        row.dataset.whisperKey = key
-
-        const platBadge = conv.platform === 'twitch' ? '[T]' : '[HS]'
-        const platColor = conv.platform === 'twitch' ? '#9146ff' : '#ff8700'
-        const lastMsg = conv.msgs.length > 0 ? conv.msgs[conv.msgs.length - 1] : null
-        const preview = lastMsg ? escapeHtml(lastMsg.text.length > 50 ? lastMsg.text.slice(0, 50) + '...' : lastMsg.text) : ''
-        const ago = conv.lastTime ? formatRelativeTime(conv.lastTime) : ''
-        const unreadBadge = conv.unread > 0 ? `<span class="hs-whisper-unread">${conv.unread}</span>` : ''
-
-        // All dynamic values pass through escapeHtml/sanitizeColor — safe innerHTML
-        row.innerHTML = `<span style="color:${platColor};font-size:10px;font-weight:700;margin-right:4px">${platBadge}</span><span style="color:${sanitizeColor(conv.color)};font-weight:600">${escapeHtml(conv.displayName)}</span> ${unreadBadge}<span class="hs-whisper-time">${ago}</span><div class="hs-whisper-preview">${preview}</div>`
-
-        row.addEventListener('click', () => {
-          activeWhisperUser = key
-          const c = whisperConversations.get(key)
-          if (c) {
-            whisperTotalUnread -= c.unread
-            c.unread = 0
-            updateWhisperBadge()
-          }
-          renderWhispersTab()
-          updateInputPlaceholder()
-          if (inputBarElement) {
-            inputBarElement.classList.remove('hs-hidden')
-            inputBarVisible = true
-          }
-        })
-        frag.appendChild(row)
-      }
-      msgsEl.appendChild(frag)
-      return
-    }
-
-    // Active conversation mode
-    const conv = whisperConversations.get(activeWhisperUser)
-    if (!conv) {
-      activeWhisperUser = null
-      renderWhispersTab()
-      return
-    }
-
-    // Lazy-load HeatSync DM history
-    if (activeWhisperUser.startsWith('hs:') && conv.msgs.length <= 1) {
-      const userId = activeWhisperUser.slice(3)
-      apiFetch(`/api/dm/${userId}`).then(resp => {
-        if (resp.ok && resp.data && Array.isArray(resp.data)) {
-          const existing = new Set(conv.msgs.map(m => m.time))
-          for (const dm of resp.data) {
-            const t = new Date(dm.created_at).getTime()
-            if (existing.has(t)) continue
-            conv.msgs.push({
-              user: dm.from_display_name || dm.from_user_id,
-              text: dm.content,
-              color: dm.from_color || '#ff8700',
-              time: t,
-              self: dm.from_user_id !== userId
-            })
-          }
-          conv.msgs.sort((a, b) => a.time - b.time)
-          if (conv.msgs.length > 200) conv.msgs.splice(0, conv.msgs.length - 200)
-          if (currentTab === 'whispers' && activeWhisperUser === `hs:${userId}`) renderWhispersTab()
-        }
-      })
-    }
-
-    msgsEl.textContent = ''
-    const frag = document.createDocumentFragment()
-
-    // Back button + header
-    const header = document.createElement('div')
-    header.className = 'hs-whisper-header'
-    // sanitizeColor + escapeHtml guard all dynamic values
-    header.innerHTML = `<span class="hs-whisper-back">\u2190</span> <span style="color:${sanitizeColor(conv.color)};font-weight:600">${escapeHtml(conv.displayName)}</span>`
-    header.querySelector('.hs-whisper-back').addEventListener('click', () => {
-      activeWhisperUser = null
-      renderWhispersTab()
-      updateInputPlaceholder()
-    })
-    frag.appendChild(header)
-
-    // Messages
-    let zebraCount = 0
-    for (const m of conv.msgs) {
-      const div = document.createElement('div')
-      div.className = m.self ? 'hs-mc-msg hs-whisper-self' : 'hs-mc-msg'
-      zebraCount++
-      if (zebraEnabled && zebraCount % 2 === 0) div.classList.add('hs-mc-zebra')
-
-      const ts = formatTimeFromTs(m.time)
-      const tsHtml = ts ? `<span class="hs-mc-ts" data-ts="${m.time}">${ts}</span>` : ''
-      const userColor = m.self ? '#aaa' : sanitizeColor(m.color || conv.color)
-      const userName = m.self ? 'you' : escapeHtml(m.user)
-      // All dynamic values sanitized — safe innerHTML (matches buildMessageDiv pattern)
-      div.innerHTML = `${tsHtml}<span style="color:${userColor};font-weight:600">${userName}</span>: ${processEmotes(escapeHtml(m.text), null)}`
-      frag.appendChild(div)
-    }
-
-    msgsEl.appendChild(frag)
-    msgsEl.scrollTop = msgsEl.scrollHeight
-  }
-
-  function formatRelativeTime(ts) {
-    const diff = Date.now() - ts
-    if (diff < 60000) return 'now'
-    if (diff < 3600000) return Math.floor(diff / 60000) + 'm'
-    if (diff < 86400000) return Math.floor(diff / 3600000) + 'h'
-    return Math.floor(diff / 86400000) + 'd'
-  }
-
-  async function connectAuthIrc(token, nick) {
-    if (authState.connecting) {
-      for (let i = 0; i < 80; i++) {
-        await new Promise(r => setTimeout(r, 100));
-        if (authIrcAlive()) return true;
-        if (!authState.connecting) break;
-      }
-      return authIrcAlive();
-    }
-    cleanupAuthIrc();
-    authState.connecting = true;
-    authState.token = token;
-    authState.nick = nick;
-    authState.destroyed = false;
-    try {
-      const ws = new WebSocket('wss://irc-ws.chat.twitch.tv:443');
-      authState.ws = ws;
-      await new Promise((resolve, reject) => {
-        const timeout = setTimeout(() => reject(new Error('timeout')), 8000);
-        ws.onopen = () => {
-          ws.send(`PASS oauth:${token}\r\n`);
-          ws.send(`NICK ${nick}\r\n`);
-          ws.send('CAP REQ :twitch.tv/commands twitch.tv/tags\r\n');
-        };
-        ws.onmessage = (event) => {
-          if (event.data.includes(' 001 ')) {
-            authState.ready = true;
-            authState.lastData = Date.now();
-            authState.reconnectDelay = 1000;
-            clearTimeout(timeout);
-            resolve();
-          }
-          if (event.data.includes('Login authentication failed') || event.data.includes('Login unsuccessful')) {
-            clearTimeout(timeout);
-            reject(new Error('auth_failed'));
-          }
-          for (const l of event.data.split('\r\n')) {
-            if (l.startsWith('PING')) try { ws.send(l.replace('PING', 'PONG') + '\r\n'); } catch {}
-          }
-        };
-        ws.onerror = () => { clearTimeout(timeout); reject(new Error('ws_error')); };
-        ws.onclose = () => { clearTimeout(timeout); reject(new Error('ws_closed')); };
-      });
-      ws.onmessage = handleAuthIrcMessage;
-      ws.onclose = () => {
-        log('Auth IRC disconnected');
-        const prev = cleanupAuthIrc();
-        scheduleReconnect(prev);
-      };
-      ws.onerror = () => {};
-      // Keepalive PING every 60s — detect dead sockets fast
-      authState.keepaliveTimer = cleanup.setInterval(() => {
-        if (!authState.ws || authState.ws.readyState !== WebSocket.OPEN) return;
-        if (authState.pongPending) {
-          log('Auth IRC: PONG timeout, reconnecting');
-          const prev = cleanupAuthIrc();
-          scheduleReconnect(prev);
-          return;
-        }
-        authState.pongPending = true;
-        try { authState.ws.send('PING :hs\r\n'); } catch {}
-      }, 60000);
-      authState.connecting = false;
-      return true;
-    } catch (e) {
-      log('Auth IRC connect failed:', e.message);
-      authState.connecting = false;
-      cleanupAuthIrc();
-      return e.message === 'auth_failed' ? 'auth_failed' : false;
-    }
-  }
-
-  function joinChannel(channel) {
-    channel = channel.toLowerCase();
-    if (authState.joined.has(channel)) return Promise.resolve(true);
-    if (!authIrcAlive()) return Promise.resolve(false);
-    try { authState.ws.send(`JOIN #${channel}\r\n`); } catch { return Promise.resolve(false); }
-    return new Promise(resolve => {
-      const timer = setTimeout(() => {
-        authState.joinWaiters.delete(channel);
-        authState.joined.add(channel);
-        resolve(true);
-      }, 3000);
-      authState.joinWaiters.set(channel, { resolve, timer });
-    });
-  }
-
-  function drainSendQueue() {
-    while (authState.sendQueue.length && authIrcAlive()) {
-      const { channel, text } = authState.sendQueue.shift();
-      try {
-        authState.ws.send(`PRIVMSG #${channel} :${text}\r\n`);
-        log('Drained queued msg to #' + channel);
-      } catch {
-        authState.sendQueue.unshift({ channel, text });
-        break;
-      }
-    }
-  }
-
-  async function sendIrcMessage(channel, text, token, replyParentId) {
-    const nick = currentUsername || getCurrentUsername();
-    if (!nick) { console.warn('[HS] SEND FAIL: no username'); return 'no_user'; }
-    channel = channel.toLowerCase();
-    const prefix = replyParentId ? `@reply-parent-msg-id=${replyParentId} ` : ''
-
-    for (let attempt = 0; attempt < 3; attempt++) {
-      try {
-        if (!authIrcAlive()) {
-          const result = await connectAuthIrc(token, nick);
-          if (result === 'auth_failed') return 'auth_failed';
-          if (!result) {
-            if (attempt < 2) continue;
-            if (authState.sendQueue.length < MAX_SEND_QUEUE) authState.sendQueue.push({ channel, text });
-            scheduleReconnect([channel]);
-            log('Queued message for reconnect');
-            return true;
-          }
-        }
-        if (!authState.joined.has(channel)) await joinChannel(channel);
-        if (!authIrcAlive()) {
-          if (attempt < 2) { cleanupAuthIrc(); continue; }
-          if (authState.sendQueue.length < MAX_SEND_QUEUE) authState.sendQueue.push({ channel, text });
-          scheduleReconnect([channel]);
-          return true;
-        }
-        authState.ws.send(`${prefix}PRIVMSG #${channel} :${text}\r\n`);
-        if (MC_DEBUG) console.warn('[HS] IRC SEND →', `#${channel}`, `nick=${nick}`, replyParentId ? `reply=${replyParentId}` : '', text.slice(0, 40));
-        return true;
-      } catch (e) {
-        log('Send error attempt', attempt, ':', e.message || e);
-        cleanupAuthIrc();
-        if (attempt === 2) {
-          if (authState.sendQueue.length < MAX_SEND_QUEUE) authState.sendQueue.push({ channel, text });
-          scheduleReconnect([channel]);
-          return true;
-        }
-      }
-    }
-    return 'send_error';
-  }
 
   function updateTabBar() {
     if (!tabBarElement) return;
@@ -7061,638 +10824,6 @@
   }
 
   // ============================================
-  // SOCIAL TABS (FEED & NOTIFICATIONS)
-  // ============================================
-
-  // API proxy — routes through background.js to bypass CORS + attach auth
-  function apiFetch(path, opts = {}) {
-    return new Promise((resolve) => {
-      try {
-        chrome.runtime.sendMessage({
-          type: 'api_fetch',
-          path,
-          method: opts.method || 'GET',
-          auth: opts.auth !== false,
-          body: opts.body
-        }, (resp) => resolve(resp || { ok: false, error: 'no response' }));
-      } catch (e) {
-        resolve({ ok: false, error: 'context invalidated' });
-      }
-    });
-  }
-
-  // Load heatsync auth state from storage
-  async function loadHsAuth() {
-    try {
-      const data = await chrome.storage.local.get(['auth_token_encrypted', 'auth_token']);
-      hsAuthToken = !!(data.auth_token_encrypted || data.auth_token);
-      log('Heatsync auth:', hsAuthToken ? 'logged in' : 'anonymous');
-    } catch (e) {
-      hsAuthToken = false;
-    }
-
-    // Watch for auth changes (login/logout on heatsync.org)
-    if (!window._hsMcAuthWatcher) {
-      window._hsMcAuthWatcher = true;
-      chrome.storage.onChanged.addListener((changes, area) => {
-        if (area !== 'local') return;
-        if (changes.auth_token_encrypted || changes.auth_token) {
-          const wasAuthed = hsAuthToken;
-          hsAuthToken = !!(
-            changes.auth_token_encrypted?.newValue ||
-            changes.auth_token?.newValue
-          );
-          if (wasAuthed !== hsAuthToken) {
-            log('Auth state changed:', hsAuthToken ? 'logged in' : 'logged out');
-            // Reset feed/notif data on auth change
-            feedLoaded = false;
-            feedMessages = [];
-            notifLoaded = false;
-            notifMessages = [];
-            unreadNotifCount = 0;
-            updateNotifBadge();
-            if (currentTab === 'feed') {
-              renderMessages(currentTab);
-            }
-          }
-        }
-      });
-    }
-  }
-
-  // Listen for social events from background (new messages, notifications)
-  function listenForSocialEvents() {
-    // Guard: only register once (survives SPA reinit via chrome listener persistence)
-    if (window._hsMcSocialListener) return;
-    window._hsMcSocialListener = true;
-
-    chrome.runtime?.onMessage?.addListener((msg) => {
-      if (msg.type === 'new-message' && msg.data) {
-        if (!feedLoaded) return;
-        // Dedup: skip if already in feed
-        const id = msg.data.base36_id;
-        if (id && feedMessages.some(m => m.base36_id === id)) return;
-
-        feedMessages.unshift(msg.data);
-        if (feedMessages.length > 150) feedMessages.pop();
-
-        if (currentTab === 'feed') {
-          renderFeed();
-        } else {
-          updateTabIndicator('feed');
-          // Inline notification in chat (routed through toggle system)
-          const f = msg.data;
-          const t = new Date(f.created_at).getTime();
-          if (!isNaN(t)) {
-            const notifType = f.is_thread_op ? 'mop' : (f.is_op != null ? !!f.is_op : !f.reply_to) ? 'op' : 're'
-            injectInlineNotif(notifType, {
-              type: 'feed-post',
-              base36_id: f.base36_id,
-              feedUser: f.username || f.display_name || 'anon',
-              text: f.content || '',
-              color: f.user_color || '#fff',
-              time: t,
-              reply_to: f.reply_to,
-              emote_refs: f.emote_refs,
-              is_op: f.is_op,
-              is_thread_op: f.is_thread_op
-            })
-          }
-        }
-      }
-      if (msg.type === 'dm_new' && msg.data) {
-        handleIncomingDm(msg.data)
-      }
-      if (msg.type === 'youtube_chat_message') {
-        // Bidirectional dedup: skip if we already displayed this message from either source
-        if (isYtDuplicate(msg.user, msg.text)) return
-
-        // Track for dedup (both server and content script messages)
-        trackYtServerMsg(msg.user, msg.text)
-
-        const ytMsg = {
-          user: msg.user,
-          text: msg.text,
-          color: msg.color || '#ff0000',
-          channel: 'youtube',
-          time: msg.time,
-          platform: 'youtube',
-          emotes: msg.emotes || [],
-          msgType: msg.msgType || 'text',
-          amount: msg.amount || '',
-          scColor: msg.scColor || '',
-          sticker: msg.sticker || null,
-        }
-
-        const targetChannelId = msg.channelId
-        if (targetChannelId && targetChannelId !== 'global') {
-          // Per-channel YouTube → route to that channel tab
-          if (!channelYtMessages.has(targetChannelId)) channelYtMessages.set(targetChannelId, [])
-          const buf = channelYtMessages.get(targetChannelId)
-          buf.push(ytMsg)
-          if (buf.length > MAX_BUFFER + 50) buf.splice(0, buf.length - MAX_BUFFER)
-          if (currentTab === targetChannelId) {
-            appendMessage(ytMsg, targetChannelId) || renderMessages(currentTab)
-          } else {
-            updateTabIndicator(targetChannelId)
-          }
-        }
-      }
-      if (msg.type === 'youtube_status') {
-        const targetChannelId = msg.channelId
-        if (targetChannelId && targetChannelId !== 'global') {
-          // Per-channel YouTube status
-          const link = youtubeLinks.get(targetChannelId) || { url: '', videoId: '', channelName: '' }
-          if (msg.status === 'connected') {
-            link.videoId = msg.videoId || ''
-            link.channelName = msg.channelName || ''
-            youtubeLinks.set(targetChannelId, link)
-            log('YouTube connected for channel', targetChannelId, ':', link.channelName)
-          }
-          // Show status in channel tab if viewing it
-          if (currentTab === targetChannelId) {
-            const msgsEl = document.getElementById('hs-mc-messages')
-            if (msgsEl && msg.status === 'connected' && !(channelYtMessages.get(targetChannelId)?.length)) {
-              const el = document.createElement('div')
-              el.className = 'hs-mc-empty'
-              el.textContent = 'youtube connected: ' + (link.channelName || msg.videoId) + ' — waiting for messages...'
-              msgsEl.appendChild(el)
-              trimChildren(msgsEl, 150)
-            } else if (msgsEl && (msg.status === 'ended' || msg.status === 'error')) {
-              const el = document.createElement('div')
-              el.className = 'hs-mc-empty'
-              el.textContent = msg.status === 'ended' ? 'youtube stream ended' : (msg.error || 'youtube connection error')
-              el.style.color = '#ff4444'
-              msgsEl.appendChild(el)
-              trimChildren(msgsEl, 150)
-            }
-          }
-        }
-      }
-      if (msg.type === 'notification:new') {
-        unreadNotifCount++;
-        updateNotifBadge();
-      }
-    });
-  }
-
-  // Update notif tab badge (reuse existing element to avoid DOM churn)
-  function updateNotifBadge() {
-    if (!tabBarElement) return
-    const tab = tabBarElement.querySelector('[data-tab="activity"]')
-    if (!tab) return
-    // Remove any legacy badge element
-    const badge = tab.querySelector('.hs-badge')
-    if (badge) badge.remove()
-    // Just use color indicator — no counter
-    tab.classList.toggle('has-new', unreadNotifCount > 0)
-  }
-
-  // ---- FEED ----
-
-  async function fetchFeed(append = false) {
-    if (feedLoading) return;
-    feedLoading = true;
-    const page = append ? feedPage + 1 : 1;
-    const resp = await apiFetch(`/api/messages?sort=time&limit=30&page=${page}`, { auth: false });
-    feedLoading = false;
-    if (!resp.ok) {
-      console.error('[heatsync-mc] Feed fetch failed — full resp:', JSON.stringify(resp));
-      if (currentTab === 'feed') {
-        const msgsEl = document.getElementById('hs-mc-messages');
-        if (msgsEl && feedMessages.length === 0) {
-          msgsEl.innerHTML = `<div class="hs-mc-empty">failed to load feed${resp.status === 401 ? ' — log in at heatsync.org' : ''}</div>`;
-        }
-      }
-      return;
-    }
-    const msgs = resp.data?.messages || [];
-    if (append) {
-      feedMessages.push(...msgs);
-      feedPage = page;
-    } else {
-      feedMessages = msgs;
-      feedPage = 1;
-    }
-    feedHasMore = resp.data?.pagination?.hasMore ?? msgs.length >= 30;
-    feedLoaded = true;
-    feedLastFetch = Date.now();
-    if (currentTab === 'feed') renderFeed();
-  }
-
-  function renderFeed() {
-    const msgsEl = document.getElementById('hs-mc-messages');
-    if (!msgsEl) return;
-
-    // Feed is public — no auth required to view, only to post
-    const isStale = feedLoaded && (Date.now() - feedLastFetch > FEED_STALE_MS);
-    if ((!feedLoaded || isStale) && !feedLoading) {
-      msgsEl.innerHTML = '<div class="hs-mc-empty">loading feed...</div>';
-      fetchFeed();
-      return;
-    }
-
-    if (feedMessages.length === 0) {
-      msgsEl.innerHTML = '<div class="hs-mc-empty">no posts yet</div>';
-      return;
-    }
-
-    isProgrammaticScroll = true;
-    msgsEl.textContent = '';
-    const frag = document.createDocumentFragment();
-    const feedToRender = feedMessages.slice(-150);
-    let zebraCount = 0;
-    for (const m of feedToRender) {
-      const msgDiv = buildFeedMessageDiv(m);
-      if (zebraEnabled && ++zebraCount % 2 === 0) msgDiv.classList.add('hs-mc-zebra');
-      frag.appendChild(msgDiv);
-      // If this message is expanded, show thread replies
-      if (expandedThreadId === m.base36_id && threadReplies.length > 0) {
-        for (const r of threadReplies) {
-          const replyDiv = buildFeedMessageDiv(r, m.username);
-          replyDiv.classList.add('hs-feed-reply');
-          if (zebraEnabled && ++zebraCount % 2 === 0) replyDiv.classList.add('hs-mc-zebra');
-          frag.appendChild(replyDiv);
-        }
-      }
-    }
-    if (feedHasMore) {
-      const loader = document.createElement('div');
-      loader.className = 'hs-mc-empty hs-feed-loader';
-      loader.textContent = 'scroll for more...';
-      frag.appendChild(loader);
-    }
-    msgsEl.appendChild(frag);
-
-    // Feed scrolls to top (newest-first), not bottom like IRC
-    isProgrammaticScroll = true;
-    msgsEl.scrollTop = 0;
-    requestAnimationFrame(() => { isProgrammaticScroll = false; });
-
-    // Setup infinite scroll
-    if (!msgsEl._hsFeedScroll) {
-      msgsEl._hsFeedScroll = true;
-      let feedScrollTimer = null
-      msgsEl.addEventListener('scroll', () => {
-        if (mcSignal?.aborted) return;
-        if (currentTab !== 'feed' || feedLoading || !feedHasMore) return;
-        if (feedScrollTimer) return // Throttle: one check per 200ms
-        feedScrollTimer = cleanup.setTimeout(() => {
-          feedScrollTimer = null
-          const { scrollTop, scrollHeight, clientHeight } = msgsEl;
-          if (scrollHeight - scrollTop - clientHeight < 100) {
-            fetchFeed(true);
-          }
-        }, 200)
-      });
-    }
-  }
-
-  function buildFeedMessageDiv(m, opUsername) {
-    const div = document.createElement('div');
-    div.className = 'hs-feed-msg';
-    div.dataset.msgId = m.base36_id;
-
-    const time = formatRelativeTime(m.created_at);
-    const avatarUrl = `https://heatsync.org/api/avatar/${encodeURIComponent(m.username)}`;
-    const heat = m.heat || 0;
-    const replies = m.reply_count || 0;
-    // renderFeedContent sanitizes via escapeHtml + emote ref escaping
-    const content = renderFeedContent(m.content, m.emote_refs);
-
-    // Thread link: >>id (yellow, links to post on heatsync.org)
-    const shortId = (m.base36_id || '').replace(/^0+/, '') || '0';
-    const threadLink = `<a href="https://heatsync.org/post/${encodeURIComponent(m.base36_id)}" target="_blank" class="hs-feed-thread-link">&gt;&gt;${escapeHtml(shortId)}</a>`;
-
-    // Post type tag: [OP] red = original post, [OP] magenta = OP replying in own thread, [RE] = reply
-    const isOp = m.is_op != null ? !!m.is_op : (!m.reply_to || m.reply_to === '');
-    const isThreadOp = !!m.is_thread_op;
-    const typeTag = isThreadOp
-      ? '<span class="hs-feed-tag hs-feed-tag-mop">[OP]</span>'
-      : isOp
-        ? '<span class="hs-feed-tag hs-feed-tag-op">[OP]</span>'
-        : '<span class="hs-feed-tag hs-feed-tag-re">[RE]</span>';
-
-    const isAnon = !m.platform || m.username === 'Anonymous';
-
-    // Platform badge: [T]/[K]/[YT] (hidden for anonymous)
-    const platLabel = m.platform === 'kick' ? '[K]' : m.platform === 'youtube' ? '[YT]' : m.platform === 'twitch' ? '[T]' : '';
-    const platColors = { twitch: '#9146ff', kick: '#53fc18', youtube: '#ff0000' };
-    const platBadge = platLabel ? `<span class="hs-feed-tag" style="color:${platColors[m.platform]}">${platLabel}</span>` : '';
-
-    // Relative timestamp always shown in feed (compact, essential context)
-    const timeHtml = `<span class="hs-feed-time">${escapeHtml(time)}</span>`;
-
-    // All dynamic values sanitized: avatarUrl via encodeURIComponent,
-    // username/time via escapeHtml, color via sanitizeColor, content via renderFeedContent
-    const repliesSpan = replies > 0 ? `<span class="hs-feed-stat hs-feed-replies" title="replies">💬${replies}</span>` : '';
-    const stats = repliesSpan ? ` ${repliesSpan}` : '';
-
-    const anonAvatar = avatarsEnabled ? `<img class="hs-feed-avatar" src="https://heatsync.org/anon.webp" alt="" loading="lazy">` : '';
-    const userAvatar = avatarsEnabled ? `<img class="hs-feed-avatar" src="${avatarUrl}" alt="" loading="lazy" onerror="this.style.display='none'">` : '';
-    const userHtml = isAnon
-      ? `${anonAvatar}<span class="hs-feed-user" style="color:#808080">Anonymous</span>`
-      : `${userAvatar}<a href="https://heatsync.org/user/${encodeURIComponent(m.username)}" target="_blank" class="hs-feed-user hs-mc-user" data-username="${escapeHtml((m.username || 'anon').toLowerCase())}" style="color:${sanitizeColor(m.user_color || '#fff')}">${escapeHtml(m.username || 'anon')}</a>`;
-
-    div.innerHTML = `${threadLink}${typeTag}${platBadge}${userHtml}${timeHtml}${stats}: <span class="hs-feed-body">${content}</span>`;
-
-    // Click replies to expand thread
-    const repliesEl = div.querySelector('.hs-feed-replies');
-    if (repliesEl && replies > 0) {
-      repliesEl.style.cursor = 'pointer';
-      repliesEl.addEventListener('click', (e) => {
-        e.stopPropagation();
-        toggleThread(m.base36_id);
-      });
-    }
-
-    return div;
-  }
-
-  // Format text with markdown-style syntax (matches heatsync.org rendering)
-  // Must be called AFTER escapeHtml — operates on escaped HTML strings
-  function formatText(html) {
-    // Greentext: >text< (escaped as &gt;text&lt;)
-    html = html.replace(/(&gt;)([^<>&]+)(&lt;)/g, '<span class="hs-greentext">&gt;$2&lt;</span>')
-    // Inline code: `text`
-    html = html.replace(/`([^`]+)`/g, '<code class="hs-inline-code">$1</code>')
-    // Bold: **text** or __text__
-    html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-    html = html.replace(/__(.+?)__/g, '<strong>$1</strong>')
-    // Italic: *text* or _text_ (not if part of bold)
-    html = html.replace(/(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)/g, '<em>$1</em>')
-    html = html.replace(/(?<!_)_(?!_)(.+?)(?<!_)_(?!_)/g, '<em>$1</em>')
-    // Strikethrough: ~~text~~
-    html = html.replace(/~~(.+?)~~/g, '<del>$1</del>')
-    // Spoilers: ||text||
-    html = html.replace(/\|\|(.+?)\|\|/g, '<span class="hs-spoiler">$1</span>')
-    return html
-  }
-
-  function renderFeedContent(content, emoteRefs) {
-    if (!content) return '';
-    let html = escapeHtml(String(content));
-    // Text formatting (bold, italic, spoilers, etc.)
-    html = formatText(html)
-    // Linkify URLs BEFORE emote replacement (avoids corrupting img src attributes)
-    // Split by HTML tags to only linkify text segments (like heatsync.org does)
-    if (linksEnabled) {
-      const parts = html.split(/(<[^>]+>)/)
-      html = parts.map((part, i) => {
-        if (i % 2 === 1) return part // skip HTML tags
-        part = part.replace(/(https?:\/\/[^\s<"]+)/gi, '<a href="$1" target="_blank" rel="noopener" class="hs-mc-link">$1</a>')
-        part = part.replace(/(?<!\/\/)([a-z0-9-]+(?:\.[a-z0-9-]+)+\/[^\s<"]*)/gi, (m) => {
-          return `<a href="https://${m}" target="_blank" rel="noopener" class="hs-mc-link">${m}</a>`
-        })
-        return part
-      }).join('')
-    }
-    // Render emote refs as inline images (AFTER linkification so img tags aren't corrupted)
-    // emote_refs can be { name: url } or { name: { url, hash, name, provider } }
-    if (emoteRefs && typeof emoteRefs === 'object') {
-      for (const [name, val] of Object.entries(emoteRefs)) {
-        const url = typeof val === 'string' ? val : val?.url
-        if (!url) continue
-        const escaped = escapeHtml(name);
-        const safeUrl = escapeHtml(url);
-        html = html.replace(
-          new RegExp(`\\b${escaped.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'g'),
-          `<img class="hs-mc-emote" src="${safeUrl}" alt="${escaped}" title="${escaped}" loading="lazy">`
-        );
-      }
-    }
-    return html;
-  }
-
-  function formatRelativeTime(isoDate) {
-    if (!isoDate) return '';
-    return formatRelativeMs(Date.now() - new Date(isoDate).getTime());
-  }
-
-  function formatRelativeMs(diff) {
-    if (diff < 0) return 'now';
-    const mins = Math.floor(diff / 60000);
-    if (mins < 1) return 'now';
-    if (mins < 60) return `${mins}m`;
-    const hours = Math.floor(mins / 60);
-    if (hours < 24) return `${hours}h`;
-    const days = Math.floor(hours / 24);
-    return `${days}d`;
-  }
-
-  function formatTimeFromTs(ts) {
-    if (!ts) return '';
-    return formatRelativeMs(Date.now() - ts);
-  }
-
-  // Refresh timestamps every 30s — lightweight DOM-only update, no rebuild
-  cleanup.setInterval(() => {
-    const msgsEl = document.getElementById('hs-mc-messages');
-    if (!msgsEl) return;
-    const now = Date.now();
-    for (const el of msgsEl.querySelectorAll('.hs-mc-ts[data-ts]')) {
-      const ts = parseInt(el.dataset.ts);
-      if (ts) {
-        const newText = formatRelativeMs(now - ts);
-        if (el.textContent !== newText) el.textContent = newText;
-      }
-    }
-  }, 30000);
-
-  async function toggleThread(msgId) {
-    if (expandedThreadId === msgId) {
-      expandedThreadId = null;
-      threadReplies = [];
-      renderFeed();
-      return;
-    }
-    expandedThreadId = msgId;
-    threadReplies = [];
-    renderFeed(); // Show loading state
-
-    const resp = await apiFetch(`/api/messages/${msgId}/replies`);
-    if (resp.ok) {
-      threadReplies = resp.data?.replies || [];
-    }
-    renderFeed();
-  }
-
-  async function postFeedMessage(text) {
-    const input = document.getElementById('hs-mc-input');
-    if (!input) return;
-
-    if (!hsAuthToken) {
-      if (wysiwygEnabled) {
-        input.dataset.placeholder = 'log in at heatsync.org first';
-      } else {
-        input.placeholder = 'log in at heatsync.org first';
-      }
-      setTimeout(() => updateInputPlaceholder(), 2000);
-      return;
-    }
-
-    const body = { content: text };
-    // If replying to an expanded thread, set reply_to
-    if (expandedThreadId) {
-      body.reply_to = expandedThreadId;
-    }
-
-    const resp = await apiFetch('/api/messages', { method: 'POST', auth: true, body });
-    if (resp.ok) {
-      if (wysiwygEnabled) {
-        input.innerHTML = '';
-      } else {
-        input.value = '';
-      }
-      pendingMessage = '';
-      updateCharCount();
-      hideInputBar();
-      // Message will appear via WebSocket real-time
-    } else {
-      input.style.borderColor = '#f44';
-      const errMsg = resp.status === 401 ? 'log in first'
-        : resp.status === 429 ? 'slow down'
-        : resp.status === 409 ? 'duplicate message'
-        : 'failed to post';
-      showToast(errMsg);
-      setTimeout(() => { input.style.borderColor = ''; }, 1500);
-      log('Post failed:', resp.status || resp.error);
-    }
-  }
-
-  // ---- NOTIFICATIONS ----
-
-  async function fetchNotifications() {
-    try {
-      const resp = await apiFetch('/api/notifications');
-      if (resp.ok) {
-        notifications = resp.data || { mentions: 0, op_replies: 0, re_replies: 0, total: 0 };
-        unreadNotifCount = notifications.total || 0;
-        updateNotifBadge();
-      } else if (resp.status === 401) {
-        notifLoaded = true;
-        return; // Not logged in
-      }
-      // Fetch actual notification messages (mentions, op replies, re replies)
-      const msgResp = await apiFetch('/api/messages?filter_type=mentions&limit=20');
-      if (msgResp.ok) {
-        notifMessages = msgResp.data?.messages || [];
-      }
-    } catch (e) {
-      log('Notification fetch error:', e);
-    }
-    notifLoaded = true;
-  }
-
-  function renderActivity() {
-    const msgsEl = document.getElementById('hs-mc-messages');
-    if (!msgsEl) return;
-
-    // Hide resume button on initial render (shown only when new content arrives while scrolled)
-    if (!isScrolledUp) {
-      const newBtn = document.getElementById('hs-mc-new-msgs');
-      if (newBtn) newBtn.style.display = 'none';
-    }
-
-    if (!hsAuthToken && activityEvents.length === 0) {
-      msgsEl.innerHTML = '<div class="hs-mc-empty">log in at <a href="https://heatsync.org" target="_blank" style="color:#ff6b35">heatsync.org</a> to see activity</div>';
-      return;
-    }
-
-    if (hsAuthToken && !notifLoaded) {
-      msgsEl.innerHTML = '<div class="hs-mc-empty">loading...</div>';
-      fetchNotifications().then(() => {
-        if (currentTab === 'activity') renderActivity();
-      });
-      return;
-    }
-
-    // Mark notifs as read when viewing
-    if (unreadNotifCount > 0) {
-      apiFetch('/api/notifications/mark-read', { method: 'POST', body: { type: 'all' } });
-      unreadNotifCount = 0;
-      updateNotifBadge();
-      try { chrome.runtime.sendMessage({ type: 'notifs_viewed' }); } catch (e) {}
-    }
-
-    // Merge notifMessages + activityEvents, sort descending by time
-    const normalized = [
-      ...notifMessages.map(m => ({ ...m, _time: new Date(m.created_at).getTime(), _src: 'notif' })),
-      ...activityEvents.map(m => ({ ...m, _time: m.time, _src: 'event' }))
-    ];
-    normalized.sort((a, b) => b._time - a._time);
-    const merged = normalized.slice(0, 150);
-
-    if (merged.length === 0) {
-      msgsEl.innerHTML = '<div class="hs-mc-empty">no activity yet</div>';
-      return;
-    }
-
-    msgsEl.textContent = '';
-    const frag = document.createDocumentFragment();
-
-    // Summary header (notifs only)
-    if (notifications.total > 0) {
-      const header = document.createElement('div');
-      header.className = 'hs-notif-header';
-      const parts = [];
-      if (notifications.mentions > 0) parts.push(`${notifications.mentions} mention${notifications.mentions > 1 ? 's' : ''}`);
-      if (notifications.op_replies > 0) parts.push(`${notifications.op_replies} OP repl${notifications.op_replies > 1 ? 'ies' : 'y'}`);
-      if (notifications.re_replies > 0) parts.push(`${notifications.re_replies} RE repl${notifications.re_replies > 1 ? 'ies' : 'y'}`);
-      header.textContent = parts.join(', ');
-      frag.appendChild(header);
-    }
-
-    for (const m of merged) {
-      if (m._src === 'event') {
-        const div = document.createElement('div');
-        div.className = `hs-mc-stream-event ${m.eventClass || ''}`;
-        const ts = formatRelativeMs(Date.now() - m.time);
-        const tsSpan = `<span class="hs-feed-time">${escapeHtml(ts)}</span>`;
-        // Show channel name in magenta for activity context
-        // Strip [channel] prefix from follow events (we add our own #channel)
-        let evtText = m.text
-        if (m.channel) evtText = evtText.replace(new RegExp(`^\\[${m.channel}\\]\\s*`), '')
-        const chanColor = _profileCache.get(m.channel?.toLowerCase())?.profile?.twitch_color || '#fff';
-        const chanLabel = m.channel ? `<a href="https://heatsync.org/twitch/${encodeURIComponent(m.channel)}" target="_blank" class="hs-feed-user hs-mc-user" data-username="${escapeHtml(m.channel.toLowerCase())}" style="color:${sanitizeColor(chanColor)};font-weight:bold">${escapeHtml(m.channel)}</a> ` : '';
-        let evtHtml = escapeHtml(evtText)
-        evtHtml = evtHtml.replace(/(switched to |went live \u2014 )(.+)$/, '$1<span style="color:#fff">$2</span>')
-        div.innerHTML = `${tsSpan}${chanLabel}${evtHtml}`;
-        frag.appendChild(div);
-      } else {
-        frag.appendChild(buildNotifDiv(m));
-      }
-    }
-    msgsEl.appendChild(frag);
-  }
-
-  function buildNotifDiv(m) {
-    const div = document.createElement('div');
-    div.className = 'hs-notif';
-    const time = formatRelativeTime(m.created_at);
-    // Safe: renderFeedContent escapes via escapeHtml first, then adds safe formatting tags
-    const content = renderFeedContent(m.content, m.emote_refs);
-
-    // Safe: username through escapeHtml+encodeURIComponent, time through escapeHtml, content through renderFeedContent (which escapes via escapeHtml then adds safe formatting)
-    div.innerHTML = `<a href="https://heatsync.org/user/${encodeURIComponent(m.username)}" target="_blank" class="hs-feed-user hs-mc-user" data-username="${escapeHtml((m.username || 'anon').toLowerCase())}" style="color:${sanitizeColor(m.user_color || '#fff')}">${escapeHtml(m.username || 'anon')}</a> <span class="hs-feed-time">${escapeHtml(time)}</span>: <span class="hs-feed-body">${content}</span>`;
-
-    // Click to switch to feed and show this thread (but not if clicking interactive content)
-    div.addEventListener('click', (e) => {
-      const spoiler = e.target.closest('.hs-spoiler')
-      if (spoiler) { spoiler.classList.toggle('revealed'); return }
-      if (e.target.closest('a, .hs-mc-emote, .hs-mc-link')) return
-      const threadId = m.reply_to || m.base36_id;
-      expandedThreadId = threadId;
-      threadReplies = [];
-      switchTab('feed');
-      // Fetch thread after switching
-      toggleThread(threadId);
-    });
-
-    return div;
-  }
-
-  // ============================================
   // TAB/CHANNEL MANAGEMENT
   // ============================================
 
@@ -8203,2018 +11334,13 @@ m.type === 'usernotice' ? 'hs-mc-msg hs-mc-system' :
     }
   }
 
-  function escapeHtml(str) {
-    if (str == null) return ''
-    return String(str).replace(/[&<>"']/g, c => ({
-      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
-    })[c]);
-  }
-
   function sanitizeColor(color) {
     return /^#[0-9a-fA-F]{3,6}$/.test(color) ? color : '#ffffff';
   }
 
-  // Twitch IRC badge rendering
-  const BADGE_STYLES = {
-    broadcaster: { label: 'LIVE', bg: '#e91916', fg: '#fff' },
-    moderator: { label: 'MOD', bg: '#00ad03', fg: '#fff' },
-    vip: { label: 'VIP', bg: '#e005b9', fg: '#fff' },
-    subscriber: { label: 'SUB', bg: '#8205b4', fg: '#fff' },
-    predictions: { label: 'PRED', bg: '#1f69ff', fg: '#fff' },
-    premium: { label: 'PRIME', bg: '#0d6efd', fg: '#fff' },
-    admin: { label: 'ADMIN', bg: '#faaf19', fg: '#000' },
-    staff: { label: 'STAFF', bg: '#faaf19', fg: '#000' },
-    global_mod: { label: 'GMOD', bg: '#00ad03', fg: '#fff' },
-    partner: { label: '✓', bg: '#9147ff', fg: '#fff' },
-    'bits-leader': { label: 'BITS', bg: '#ffd700', fg: '#000' },
-    'sub-gifter': { label: 'GIFT', bg: '#8205b4', fg: '#fff' },
-    artist: { label: 'ART', bg: '#ff6b35', fg: '#fff' },
-    turbo: { label: 'T+', bg: '#6441a5', fg: '#fff' },
-    founder: { label: 'FND', bg: '#8205b4', fg: '#fff' },
-  }
 
-  // Twitch badge image URLs: "setID/version" → image_url
-  const twitchBadgeUrls = new Map()
-  const ffzBadgeKeys = new Set() // tracks which channel:badgeName entries are FFZ (need bg color)
-  const badgesFetchedChannels = new Set()
-  let globalBadgesFetched = false
-  const TWITCH_GQL = 'https://gql.twitch.tv/gql'
-  const TWITCH_CLIENT_ID = 'kimne78kx3ncx6brgo4mv6wki5h1ko'
 
-  // ═══ GQL Proxy — routes calls through MAIN world to use fresh hashes ═══
-  // Twitch rotates persisted query hashes; the MAIN world fetch interceptor
-  // captures them from Twitch's own code so we never hardcode stale hashes.
 
-  // Cache for intercepted GQL data pushed from MAIN world
-  const _gqlDataCache = {} // operationName → { data, ts }
-
-  // Listen for passively intercepted GQL data from MAIN world
-  window.addEventListener('message', (e) => {
-    if (e.origin !== location.origin) return
-    if (e.data?.type === 'heatsync-gql-data') {
-      const { operation, data, errors } = e.data
-      if (data && !errors?.length) {
-        _gqlDataCache[operation] = { data, ts: Date.now() }
-        // Auto-refresh Twitch tab if prediction/poll data arrives while tab is visible
-        const container = document.getElementById('hs-mc-tab-twitch')
-        if (container && container.style.display !== 'none') {
-          renderTwitchTab()
-        }
-      }
-    }
-  })
-
-  // Send GQL request through MAIN world proxy (uses captured hashes + integrity)
-  function gqlProxy(operation, variables, opts) {
-    return new Promise((resolve, reject) => {
-      const id = Math.random().toString(36).slice(2)
-      const handler = (e) => {
-        if (e.data?.type === 'heatsync-gql-response' && e.data.id === id) {
-          window.removeEventListener('message', handler)
-          clearTimeout(timer)
-          if (e.data.error) reject(new Error(e.data.error))
-          else resolve(e.data.data)
-        }
-      }
-      window.addEventListener('message', handler)
-      const msg = { type: 'heatsync-gql-request', id, operation, variables }
-      if (opts?.rawQuery) msg.rawQuery = opts.rawQuery
-      if (opts?.batch) msg.batch = opts.batch
-      window.postMessage(msg, location.origin)
-      const timer = setTimeout(() => {
-        window.removeEventListener('message', handler)
-        reject(new Error('GQL proxy timeout'))
-      }, 10000)
-    })
-  }
-
-  // Request cached data from MAIN world
-  function gqlGetCache(operations) {
-    return new Promise((resolve) => {
-      const id = Math.random().toString(36).slice(2)
-      const handler = (e) => {
-        if (e.data?.type === 'heatsync-gql-cache-response' && e.data.id === id) {
-          window.removeEventListener('message', handler)
-          clearTimeout(timer)
-          resolve(e.data)
-        }
-      }
-      window.addEventListener('message', handler)
-      window.postMessage({ type: 'heatsync-gql-get-cache', id, operations }, location.origin)
-      const timer = setTimeout(() => {
-        window.removeEventListener('message', handler)
-        resolve({ data: {}, hashes: [] })
-      }, 3000)
-    })
-  }
-
-  async function fetchGlobalBadges() {
-    if (globalBadgesFetched) return
-    globalBadgesFetched = true
-    try {
-      const resp = await fetch(TWITCH_GQL, {
-        method: 'POST',
-        headers: { 'Client-Id': TWITCH_CLIENT_ID, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query: '{ badges { imageURL(size: NORMAL) setID version } }' }),
-        signal: AbortSignal.timeout(5000)
-      })
-      if (!resp.ok) return
-      const data = await resp.json()
-      const badges = data?.data?.badges
-      if (!badges) return
-      for (const b of badges) {
-        twitchBadgeUrls.set(`${b.setID}/${b.version}`, b.imageURL)
-      }
-      log('Loaded global badges:', twitchBadgeUrls.size)
-    } catch (e) {
-      globalBadgesFetched = false
-      log('Failed to fetch global badges:', e.message)
-    }
-  }
-
-  // Prediction state
-  let _predictionPollTimer = null
-  let _predictionChannel = null
-  const _userBets = new Map() // eventId → { outcomeId, points }
-
-  // Rewards state
-  let _rewardsCache = null
-  let _rewardsCacheChannel = null
-
-  async function fetchPrediction(channelLogin) {
-    const safe = channelLogin.replace(/[^a-z0-9_]/g, '')
-    if (!safe) return null
-    try {
-      // First check MAIN world cache (intercepted from Twitch's own calls)
-      const cached = await gqlGetCache(['ChannelPointsPredictionContext', 'CommunityPointsContext'])
-      const predCache = cached.data?.ChannelPointsPredictionContext
-      const pointsCache = cached.data?.CommunityPointsContext
-
-      let predEvent = null
-      let balance = null
-
-      if (predCache && Date.now() - predCache.ts < 30000) {
-        predEvent = predCache.data?.user?.activePredictionEvent || null
-      }
-      if (pointsCache && Date.now() - pointsCache.ts < 30000) {
-        balance = pointsCache.data?.community?.channel?.self?.communityPoints?.balance ?? null
-      }
-
-      // If cache miss, try proxy call with captured hashes
-      if (!predCache || Date.now() - predCache.ts >= 30000) {
-        try {
-          const data = await gqlProxy('ChannelPointsPredictionContext', { channelLogin: safe })
-          if (Array.isArray(data)) {
-            predEvent = data[0]?.data?.user?.activePredictionEvent || null
-            balance = data[1]?.data?.community?.channel?.self?.communityPoints?.balance ?? balance
-          } else {
-            predEvent = data?.data?.user?.activePredictionEvent || data?.user?.activePredictionEvent || null
-          }
-        } catch (e) {
-          log('GQL proxy prediction failed:', e.message)
-        }
-      }
-      if (balance == null && (!pointsCache || Date.now() - pointsCache.ts >= 30000)) {
-        try {
-          const data = await gqlProxy('CommunityPointsContext', { channelLogin: safe })
-          const d = Array.isArray(data) ? data[0]?.data : (data?.data || data)
-          balance = d?.community?.channel?.self?.communityPoints?.balance ?? null
-        } catch (e) {
-          log('GQL proxy points failed:', e.message)
-        }
-      }
-
-      return { prediction: predEvent, balance }
-    } catch (e) {
-      log('Failed to fetch prediction:', e.message)
-      return null
-    }
-  }
-
-  async function placePredictionBet(eventId, outcomeId, points, transactionId) {
-    const token = getTwitchAuthToken()
-    if (!token) return { error: 'not logged in' }
-    try {
-      const data = await gqlProxy('MakePrediction', {
-        input: {
-          eventID: eventId,
-          outcomeID: outcomeId,
-          points: points,
-          transactionID: transactionId || crypto.randomUUID()
-        }
-      })
-      const d = Array.isArray(data) ? data[0] : data
-      if (d?.errors?.length) return { error: d.errors[0].message }
-      _userBets.set(eventId, { outcomeId, points })
-      return { ok: true }
-    } catch (e) {
-      return { error: e.message }
-    }
-  }
-
-  async function fetchChannelRewards(channelLogin) {
-    const safe = channelLogin.replace(/[^a-z0-9_]/g, '')
-    if (!safe) return null
-    if (_rewardsCacheChannel === safe && _rewardsCache && Date.now() - _rewardsCache.fetchedAt < 60000) {
-      return _rewardsCache
-    }
-    const token = getTwitchAuthToken()
-    if (!token) return null
-    try {
-      // Try proxy with captured ChannelPointsContext hash first
-      const data = await gqlProxy('ChannelPointsContext', { channelLogin: safe }).catch(() => null)
-      let user = null
-      if (data) {
-        const d = Array.isArray(data) ? data[0] : data
-        user = d?.data?.community?.channel || d?.data?.user || d?.community?.channel || d?.user
-      }
-      // Fallback: try raw GQL (may work for some fields)
-      if (!user) {
-        const resp = await fetch(TWITCH_GQL, {
-          method: 'POST',
-          headers: {
-            'Client-Id': TWITCH_CLIENT_ID,
-            'Content-Type': 'application/json',
-            'Authorization': `OAuth ${token}`
-          },
-          body: JSON.stringify({
-            query: `{
-              user(login: "${safe}") {
-                id
-                communityPointsSettings {
-                  customRewards {
-                    id title cost backgroundColor isEnabled isPaused isInStock
-                    isUserInputRequired cooldownExpiresAt prompt
-                    globalCooldownSetting { globalCooldownSeconds isEnabled }
-                    image { url }
-                    defaultImage { url }
-                  }
-                }
-                self {
-                  communityPoints {
-                    balance
-                    availableClaim { id }
-                  }
-                }
-              }
-            }`
-          })
-        })
-        if (resp.ok) {
-          const raw = await resp.json()
-          user = raw?.data?.user
-        }
-      }
-      if (!user) return null
-      const settings = user.communityPointsSettings || user.communityPointsSetting || {}
-      const rewards = (settings.customRewards || []).filter(r => r.isEnabled)
-      const self = user.self || {}
-      const cp = self.communityPoints || {}
-      const balance = cp.balance ?? null
-      const availableClaim = cp.availableClaim?.id ?? null
-      _rewardsCache = { rewards, balance, availableClaim, channelId: user.id, fetchedAt: Date.now() }
-      _rewardsCacheChannel = safe
-      return _rewardsCache
-    } catch (e) {
-      log('Failed to fetch rewards:', e.message)
-      return null
-    }
-  }
-
-  async function redeemChannelReward(channelId, rewardId, cost, title, textInput) {
-    const token = getTwitchAuthToken()
-    if (!token) return { error: 'not logged in' }
-    try {
-      const input = {
-        channelID: channelId,
-        rewardID: rewardId,
-        cost,
-        title,
-        transactionID: crypto.randomUUID()
-      }
-      if (textInput) input.textInput = textInput
-      // Try proxy first (uses captured hash + integrity)
-      try {
-        const data = await gqlProxy('RedeemCommunityPointsCustomReward', { input })
-        const d = Array.isArray(data) ? data[0] : data
-        if (d?.errors?.length) return { error: d.errors[0].message }
-        const err = d?.data?.redeemCommunityPointsCustomReward?.error
-        if (err) return { error: err.code || 'redemption failed' }
-        return { ok: true }
-      } catch(proxyErr) {
-        // Fallback to raw GQL mutation
-        const resp = await fetch(TWITCH_GQL, {
-          method: 'POST',
-          headers: {
-            'Client-Id': TWITCH_CLIENT_ID,
-            'Content-Type': 'application/json',
-            'Authorization': `OAuth ${token}`
-          },
-          body: JSON.stringify({
-            query: `mutation($input: RedeemCommunityPointsCustomRewardInput!) {
-              redeemCommunityPointsCustomReward(input: $input) {
-                redemption { id }
-                error { code }
-              }
-            }`,
-            variables: { input }
-          })
-        })
-        if (!resp.ok) return { error: `HTTP ${resp.status}` }
-        const data = await resp.json()
-        if (data?.errors?.length) return { error: data.errors[0].message }
-        const err = data?.data?.redeemCommunityPointsCustomReward?.error
-        if (err) return { error: err.code || 'redemption failed' }
-        return { ok: true }
-      }
-    } catch (e) {
-      return { error: e.message }
-    }
-  }
-
-  async function claimCommunityPoints(claimId, channelId) {
-    const token = getTwitchAuthToken()
-    if (!token) return
-    try {
-      await gqlProxy('ClaimCommunityPoints', {
-        input: { claimID: claimId, channelID: channelId }
-      }).catch(async () => {
-        // Fallback to raw GQL
-        await fetch(TWITCH_GQL, {
-          method: 'POST',
-          headers: {
-            'Client-Id': TWITCH_CLIENT_ID,
-            'Content-Type': 'application/json',
-            'Authorization': `OAuth ${token}`
-          },
-          body: JSON.stringify({
-            query: `mutation($input: ClaimCommunityPointsInput!) {
-              claimCommunityPoints(input: $input) { claim { id } }
-            }`,
-            variables: { input: { claimID: claimId, channelID: channelId } }
-          })
-        })
-      })
-    } catch (e) {
-      log('Failed to claim bonus points:', e.message)
-    }
-  }
-
-  async function fetchPoll(channelLogin) {
-    const safe = channelLogin.replace(/[^a-z0-9_]/g, '')
-    if (!safe) return null
-    try {
-      // Try MAIN world cache first (intercepted from Twitch's own calls)
-      const cached = await gqlGetCache(['ActivePoll', 'ChannelPollContext'])
-      for (const key of ['ActivePoll', 'ChannelPollContext']) {
-        const c = cached.data?.[key]
-        if (c && Date.now() - c.ts < 15000) {
-          const poll = c.data?.user?.activePoll || c.data?.channel?.activePoll || null
-          if (poll) return poll
-        }
-      }
-      // Try proxy with captured hash
-      try {
-        const data = await gqlProxy('ActivePoll', { channelLogin: safe })
-        const d = Array.isArray(data) ? data[0] : data
-        return d?.data?.user?.activePoll || d?.user?.activePoll || null
-      } catch(e) {
-        log('GQL proxy poll failed:', e.message)
-      }
-      // Fallback to raw GQL
-      const token = getTwitchAuthToken()
-      const headers = { 'Client-Id': TWITCH_CLIENT_ID, 'Content-Type': 'application/json' }
-      if (token) headers['Authorization'] = 'OAuth ' + token
-      const resp = await fetch(TWITCH_GQL, {
-        method: 'POST', headers,
-        body: JSON.stringify({
-          query: '{ user(login: "' + safe + '") { activePoll { id title status durationSeconds remainingDurationMilliseconds startedAt choices { id title totalVoters } totalVoters } } }'
-        })
-      })
-      if (!resp.ok) return null
-      const data = await resp.json()
-      return data?.data?.user?.activePoll || null
-    } catch (e) {
-      log('Failed to fetch poll:', e.message)
-      return null
-    }
-  }
-
-  async function votePoll(pollId, choiceId) {
-    const token = getTwitchAuthToken()
-    if (!token) return { error: 'not logged in' }
-    try {
-      // Try proxy first
-      try {
-        const data = await gqlProxy('VotePoll', {
-          input: { pollID: pollId, choiceID: choiceId }
-        })
-        const d = Array.isArray(data) ? data[0] : data
-        if (d?.errors?.length) return { error: d.errors[0].message }
-        const err = d?.data?.votePoll?.error
-        if (err) return { error: err.code || 'vote failed' }
-        return { ok: true }
-      } catch(proxyErr) {
-        // Fallback to raw GQL
-        const resp = await fetch(TWITCH_GQL, {
-          method: 'POST',
-          headers: {
-            'Client-Id': TWITCH_CLIENT_ID,
-            'Content-Type': 'application/json',
-            'Authorization': 'OAuth ' + token
-          },
-          body: JSON.stringify({
-            query: 'mutation($input: VotePollInput!) { votePoll(input: $input) { error { code } } }',
-            variables: { input: { pollID: pollId, choiceID: choiceId } }
-          })
-        })
-        if (!resp.ok) return { error: 'HTTP ' + resp.status }
-        const data = await resp.json()
-        if (data?.errors?.length) return { error: data.errors[0].message }
-        const err = data?.data?.votePoll?.error
-        if (err) return { error: err.code || 'vote failed' }
-        return { ok: true }
-      }
-    } catch (e) {
-      return { error: e.message }
-    }
-  }
-
-  let _userPollVotes = new Map() // pollId → choiceId
-
-  function renderPoll(poll) {
-    const section = document.createElement('div')
-    section.className = 'hs-mc-poll'
-    section.dataset.pollId = poll.id
-
-    const isCompleted = poll.status === 'COMPLETED' || poll.status === 'ARCHIVED'
-    const totalVotes = poll.totalVoters || poll.choices.reduce((s, c) => s + (c.totalVoters || 0), 0)
-    const userVote = _userPollVotes.get(poll.id)
-
-    // Header
-    const header = document.createElement('div')
-    header.className = 'hs-mc-poll-header'
-    const title = document.createElement('div')
-    title.className = 'hs-mc-poll-title'
-    title.textContent = poll.title
-    header.appendChild(title)
-
-    if (isCompleted) {
-      const badge = document.createElement('span')
-      badge.className = 'hs-mc-poll-status hs-mc-poll-status-ended'
-      badge.textContent = 'ended'
-      header.appendChild(badge)
-    } else if (poll.remainingDurationMilliseconds != null) {
-      const timer = document.createElement('span')
-      timer.className = 'hs-mc-poll-timer'
-      timer.dataset.ends = Date.now() + poll.remainingDurationMilliseconds
-      header.appendChild(timer)
-    }
-    section.appendChild(header)
-
-    // Total votes
-    const meta = document.createElement('div')
-    meta.className = 'hs-mc-poll-meta'
-    meta.textContent = totalVotes + ' vote' + (totalVotes !== 1 ? 's' : '')
-    section.appendChild(meta)
-
-    // Choices
-    const choicesWrap = document.createElement('div')
-    choicesWrap.className = 'hs-mc-poll-choices'
-
-    // Find top choice for winner highlight
-    let topVotes = 0
-    for (const c of poll.choices) {
-      if ((c.totalVoters || 0) > topVotes) topVotes = c.totalVoters || 0
-    }
-
-    for (const choice of poll.choices) {
-      const votes = choice.totalVoters || 0
-      const pct = totalVotes > 0 ? Math.round((votes / totalVotes) * 100) : 0
-      const isTop = isCompleted && votes === topVotes && topVotes > 0
-      const isVoted = userVote === choice.id
-
-      const row = document.createElement('div')
-      row.className = 'hs-mc-poll-choice' + (isTop ? ' hs-mc-poll-choice-top' : '') + (isVoted ? ' hs-mc-poll-choice-voted' : '')
-
-      const track = document.createElement('div')
-      track.className = 'hs-mc-poll-choice-track'
-      const fill = document.createElement('div')
-      fill.className = 'hs-mc-poll-choice-fill'
-      fill.style.width = pct + '%'
-      track.appendChild(fill)
-
-      const label = document.createElement('div')
-      label.className = 'hs-mc-poll-choice-label'
-
-      const nameSpan = document.createElement('span')
-      nameSpan.className = 'hs-mc-poll-choice-name'
-      nameSpan.textContent = choice.title
-      if (isVoted) {
-        const check = document.createElement('span')
-        check.className = 'hs-mc-poll-voted-check'
-        check.textContent = ' \u2713'
-        nameSpan.appendChild(check)
-      }
-      label.appendChild(nameSpan)
-
-      const pctSpan = document.createElement('span')
-      pctSpan.className = 'hs-mc-poll-choice-pct'
-      pctSpan.textContent = pct + '%'
-      label.appendChild(pctSpan)
-
-      track.appendChild(label)
-      row.appendChild(track)
-
-      if (!isCompleted && !userVote) {
-        const voteBtn = document.createElement('button')
-        voteBtn.className = 'hs-mc-poll-vote-btn'
-        voteBtn.dataset.pollId = poll.id
-        voteBtn.dataset.choiceId = choice.id
-        voteBtn.textContent = 'vote'
-        row.appendChild(voteBtn)
-      }
-
-      choicesWrap.appendChild(row)
-    }
-
-    section.appendChild(choicesWrap)
-    return section
-  }
-
-  function attachPollHandlers() {
-    const container = document.getElementById('hs-mc-tab-twitch')
-    if (!container) return
-
-    container.querySelectorAll('.hs-mc-poll-vote-btn').forEach(btn => {
-      btn.addEventListener('click', async (e) => {
-        e.stopPropagation()
-        btn.disabled = true
-        btn.textContent = '...'
-        const result = await votePoll(btn.dataset.pollId, btn.dataset.choiceId)
-        if (result.error) {
-          btn.textContent = '!'
-          btn.title = result.error
-          setTimeout(() => { btn.textContent = 'vote'; btn.disabled = false; btn.title = '' }, 2000)
-        } else {
-          _userPollVotes.set(btn.dataset.pollId, btn.dataset.choiceId)
-          btn.textContent = '\u2713'
-          setTimeout(() => renderTwitchTab(), 500)
-        }
-      })
-    })
-
-    // Poll timers
-    container.querySelectorAll('.hs-mc-poll-timer').forEach(el => {
-      const endsAt = parseInt(el.dataset.ends)
-      const update = () => {
-        const remaining = Math.max(0, Math.ceil((endsAt - Date.now()) / 1000))
-        if (remaining <= 0) {
-          el.textContent = 'ended'
-          el.classList.add('hs-mc-poll-status-ended')
-          return
-        }
-        const m = Math.floor(remaining / 60)
-        const s = remaining % 60
-        el.textContent = m > 0 ? m + ':' + String(s).padStart(2, '0') : s + 's'
-      }
-      update()
-      const iv = cleanup.setInterval(() => {
-        if (!el.isConnected) { clearInterval(iv); return }
-        update()
-      }, 1000)
-    })
-  }
-
-  async function fetchChannelBadges(channelLogin) {
-    if (!channelLogin || badgesFetchedChannels.has(channelLogin)) return
-    // Sanitize: Twitch logins are alphanumeric + underscore only
-    const safe = channelLogin.replace(/[^a-z0-9_]/g, '')
-    if (!safe) return
-    badgesFetchedChannels.add(channelLogin)
-    // Evict oldest channel if cache exceeds 20
-    if (badgesFetchedChannels.size > 20) {
-      const oldest = badgesFetchedChannels.values().next().value;
-      badgesFetchedChannels.delete(oldest);
-      // Remove that channel's badge entries
-      for (const key of twitchBadgeUrls.keys()) {
-        if (key.startsWith(`${oldest}:`)) twitchBadgeUrls.delete(key);
-      }
-    }
-    try {
-      // Fetch Twitch GQL + FFZ badges in parallel
-      const [twitchResp, ffzResp] = await Promise.allSettled([
-        fetch(TWITCH_GQL, {
-          method: 'POST',
-          headers: { 'Client-Id': TWITCH_CLIENT_ID, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ query: `{ user(login: "${safe}") { broadcastBadges { imageURL(size: NORMAL) setID version } } }` }),
-          signal: AbortSignal.timeout(5000)
-        }),
-        fetch(`https://api.frankerfacez.com/v1/room/${safe}`, { signal: AbortSignal.timeout(5000) })
-      ])
-
-      // Twitch channel badges
-      if (twitchResp.status === 'fulfilled' && twitchResp.value.ok) {
-        const data = await twitchResp.value.json()
-        const badges = data?.data?.user?.broadcastBadges
-        if (badges) {
-          for (const b of badges) {
-            twitchBadgeUrls.set(`${channelLogin}:${b.setID}/${b.version}`, b.imageURL)
-          }
-        }
-      }
-
-      // FFZ custom mod/VIP badges — override Twitch versions
-      if (ffzResp.status === 'fulfilled' && ffzResp.value.ok) {
-        const ffz = await ffzResp.value.json()
-        const room = ffz?.room
-        if (room) {
-          // Custom mod badge
-          const modUrl = room.mod_urls?.['2'] || room.mod_urls?.['1'] || room.moderator_badge
-          if (modUrl) {
-            const src = modUrl.startsWith('//') ? 'https:' + modUrl : modUrl
-            twitchBadgeUrls.set(`${channelLogin}:moderator/1`, src)
-            ffzBadgeKeys.add(`${channelLogin}:moderator`)
-          }
-          // Custom VIP badge
-          const vipUrl = room.vip_badge?.['2'] || room.vip_badge?.['1']
-          if (vipUrl) {
-            const src = vipUrl.startsWith('//') ? 'https:' + vipUrl : vipUrl
-            twitchBadgeUrls.set(`${channelLogin}:vip/1`, src)
-            ffzBadgeKeys.add(`${channelLogin}:vip`)
-          }
-        }
-      }
-
-      log('Loaded channel badges for', channelLogin)
-    } catch (e) {
-      badgesFetchedChannels.delete(channelLogin)
-      log('Failed to fetch channel badges:', e.message)
-    }
-  }
-
-  function renderBadges(badgesStr, channel) {
-    if (!badgesStr) return ''
-    return badgesStr.split(',').map(badge => {
-      const [name, version] = badge.split('/')
-      // Channel-specific first, then global fallback
-      const url = (channel && twitchBadgeUrls.get(`${channel}:${name}/${version}`))
-        || twitchBadgeUrls.get(`${name}/${version}`)
-        || twitchBadgeUrls.get(`${name}/1`)
-      if (url) {
-        // FFZ custom badges are white icons on transparent bg — add badge-type background
-        const ffzKey = channel && `${channel}:${name}/`
-        const isFFZ = ffzKey && ffzBadgeKeys.has(`${channel}:${name}`)
-        const bgStyle = isFFZ && BADGE_STYLES[name] ? `background:${BADGE_STYLES[name].bg};padding:1px;border-radius:2px;` : ''
-        return `<img class="hs-mc-badge-img" src="${escapeHtml(url)}" alt="${escapeHtml(name)}" title="${escapeHtml(name)}" style="width:18px;height:18px;${bgStyle}">`
-      }
-      // Text fallback
-      const style = BADGE_STYLES[name]
-      if (!style) return ''
-      return `<span class="hs-mc-badge" style="background:${style.bg};color:${style.fg}" title="${escapeHtml(name)}">${style.label}</span>`
-    }).join('')
-  }
-
-  // Blocked emotes: stored by HASH (matches background.js/server)
-  // blockedEmoteHashes = Set of hashes from storage
-  // blockedEmoteNames = Set of names (derived via hashToName lookup, for processEmotes)
-  let blockedEmoteHashes = new Set();
-  let blockedEmoteNames = new Set();
-
-  function rebuildBlockedNames() {
-    blockedEmoteNames.clear();
-    for (const hash of blockedEmoteHashes) {
-      const name = hashToName.get(hash);
-      if (name) blockedEmoteNames.add(name);
-    }
-    log('Blocked names rebuilt:', blockedEmoteNames.size, 'from', blockedEmoteHashes.size, 'hashes');
-  }
-
-  async function loadBlockedEmotes() {
-    try {
-      const data = await chrome.storage.local.get(['blocked_emotes']);
-      blockedEmoteHashes = new Set(data.blocked_emotes || []);
-      rebuildBlockedNames();
-      log('Loaded', blockedEmoteHashes.size, 'blocked emote hashes');
-    } catch (e) {
-      log('Error loading blocked emotes:', e);
-    }
-  }
-
-  // Flash all wrappers for a given emote name
-  function flashAllEmotes(emoteName, flashClass) {
-    const wrappers = queryEmoteWrappers(emoteName)
-    if (wrappers.length === 0) return
-    // Batch read/write to avoid per-element reflow
-    for (const w of wrappers) {
-      w.classList.remove('hs-flash-paste', 'hs-flash-add', 'hs-flash-block', 'hs-flash-unblock', 'hs-flash-remove');
-    }
-    // Single reflow trigger for all elements
-    void document.body.offsetWidth
-    for (const w of wrappers) {
-      w.classList.add(flashClass);
-      w.addEventListener('animationend', () => w.classList.remove(flashClass), { once: true });
-    }
-  }
-
-  // Create emote <img> for WYSIWYG input
-  function createInputEmoteImg(emoteName) {
-    const emote = lookupEmote(emoteName)
-    if (!emote) return null
-    const img = document.createElement('img')
-    img.className = 'hs-input-emote'
-    img.src = getChatResUrl(emote.url)
-    img.alt = emoteName
-    img.dataset.emoteName = emoteName
-    img.draggable = false
-    if (emote.zeroWidth) img.dataset.zeroWidth = '1'
-    return img
-  }
-
-  // Stack a zero-width emote onto a base emote/stack in the input
-  function stackInputEmote(baseEl, overlayImg) {
-    if (baseEl.classList.contains('hs-input-stack')) {
-      baseEl.appendChild(overlayImg)
-      return baseEl
-    }
-    const stack = document.createElement('span')
-    stack.className = 'hs-input-stack'
-    baseEl.parentNode.insertBefore(stack, baseEl)
-    stack.appendChild(baseEl)
-    stack.appendChild(overlayImg)
-    return stack
-  }
-
-  // Find last emote element (img or stack) walking backwards, skipping whitespace
-  function findLastInputEmote(input) {
-    let node = input.lastChild
-    while (node) {
-      if (node.nodeType === Node.TEXT_NODE && node.textContent.trim() === '') {
-        node = node.previousSibling
-        continue
-      }
-      if (node.nodeType === Node.ELEMENT_NODE) {
-        if (node.tagName === 'IMG' && node.classList.contains('hs-input-emote')) return node
-        if (node.classList?.contains('hs-input-stack')) return node
-      }
-      break
-    }
-    return null
-  }
-
-  // Move cursor to end of input
-  function cursorToEnd(input) {
-    const range = document.createRange()
-    range.selectNodeContents(input)
-    range.collapse(false)
-    const sel = window.getSelection()
-    sel.removeAllRanges()
-    sel.addRange(range)
-  }
-
-  // Paste emote name to input
-  function pasteEmoteToInput(emoteName) {
-    const input = document.getElementById('hs-mc-input');
-    if (!input) return;
-    if (wysiwygEnabled || !('value' in input)) {
-      const img = createInputEmoteImg(emoteName)
-      if (img) {
-        const emote = lookupEmote(emoteName)
-        const isZeroWidth = emote && !!emote.zeroWidth
-
-        if (isZeroWidth) {
-          const target = findLastInputEmote(input)
-          if (target) {
-            // Remove trailing whitespace between target and end
-            let next = target.nextSibling
-            while (next) {
-              if (next.nodeType === Node.TEXT_NODE && next.textContent.trim() === '') {
-                const rm = next
-                next = next.nextSibling
-                rm.remove()
-              } else break
-            }
-            stackInputEmote(target, img)
-            input.appendChild(document.createTextNode('\u00A0'))
-            cursorToEnd(input)
-            pendingMessage = getInputText()
-            input.focus()
-            return
-          }
-        }
-
-        // Regular emote: append img + space
-        input.appendChild(img)
-        input.appendChild(document.createTextNode('\u00A0'))
-        cursorToEnd(input)
-      } else {
-        // Fallback: emote not in cache, insert as text
-        const text = input.textContent || ''
-        const space = text.length > 0 && !text.endsWith(' ') ? ' ' : ''
-        input.textContent = text + space + emoteName + ' '
-        cursorToEnd(input)
-      }
-      pendingMessage = getInputText()
-    } else {
-      const pos = input.selectionStart || input.value.length;
-      const before = input.value.slice(0, pos);
-      const after = input.value.slice(pos);
-      const space = before.length > 0 && !before.endsWith(' ') ? ' ' : '';
-      input.value = before + space + emoteName + ' ' + after;
-      pendingMessage = input.value;
-      input.selectionStart = input.selectionEnd = pos + space.length + emoteName.length + 1;
-    }
-    input.focus();
-  }
-
-  // Remove emote from inventory via background.js
-  async function removeEmoteFromInventory(emoteName, targetEl) {
-    if (!emoteName) return;
-    const hash = inventoryHashes.get(emoteName);
-    if (!hash) {
-      // Fallback: generate from emote URL
-      const emote = lookupEmote(emoteName);
-      const fallbackHash = emote?.url ? btoa(emote.url).slice(0, 32) : emoteName;
-      try {
-        const response = await new Promise((resolve) => {
-          chrome.runtime.sendMessage({
-            type: 'remove_from_inventory',
-            emoteHash: fallbackHash,
-            emoteName
-          }, resolve);
-        });
-        if (response?.success) handleRemoveSuccess(emoteName, targetEl);
-        else showToast(response?.error || `failed to remove: ${emoteName}`);
-      } catch (e) {
-        showToast(`error removing: ${emoteName}`);
-      }
-      return;
-    }
-    try {
-      const response = await new Promise((resolve) => {
-        chrome.runtime.sendMessage({
-          type: 'remove_from_inventory',
-          emoteHash: hash,
-          emoteName
-        }, resolve);
-      });
-      if (response?.success) handleRemoveSuccess(emoteName, targetEl);
-      else showToast(response?.error || `failed to remove: ${emoteName}`);
-    } catch (e) {
-      showToast(`error removing: ${emoteName}`);
-    }
-  }
-
-  function handleRemoveSuccess(emoteName, targetEl) {
-    inventoryEmotes.delete(emoteName);
-    inventoryHashes.delete(emoteName);
-    const cachedEmote = lookupEmote(emoteName);
-    if (cachedEmote) {
-      cachedEmote.state = ['7tv', 'bttv', 'ffz', 'twitch', 'kick'].includes(cachedEmote.source) ? 'global' : 'unadded';
-    }
-    // Update all wrappers in DOM
-    const newState = cachedEmote?.state || 'unadded';
-    queryEmoteWrappers(emoteName).forEach(w => {
-      w.classList.remove('hs-state-global', 'hs-state-channel', 'hs-state-owned', 'hs-state-blocked', 'hs-state-unadded');
-      w.classList.add(`hs-state-${newState}`);
-      w.dataset.state = newState;
-    });
-    showToast(`removed: ${emoteName}`);
-    flashAllEmotes(emoteName, 'hs-flash-remove');
-  }
-
-  function blockAllEmotesInStack(stack) {
-    const wrappers = stack.querySelectorAll('.hs-mc-emote-wrapper');
-    let count = 0;
-    wrappers.forEach(w => {
-      const name = w.dataset.emoteName;
-      if (name && w.dataset.state !== 'blocked') {
-        blockEmote(name);
-        count++;
-      }
-    });
-    if (count > 0) showToast(`blocked ${count} emotes`);
-    stack.classList.remove('expanded');
-    stack.setAttribute('title', 'expand');
-  }
-
-  function blockEmote(emoteName) {
-    if (!emoteName) return;
-
-    // Update local name-based tracking
-    blockedEmoteNames.add(emoteName);
-
-    // Get hash for API - prefer known hash, fallback to URL-derived
-    const hash = emoteHashes.get(emoteName) ||
-      (lookupEmote(emoteName)?.url ? btoa(lookupEmote(emoteName).url).slice(0, 32) : emoteName);
-    blockedEmoteHashes.add(hash);
-
-    // Sync to heatsync.org API via background.js (it handles storage)
-    syncBlockToAPI(emoteName, true);
-
-    // Instant DOM update - CSS visibility:hidden hides the img, no src swap needed
-    queryEmoteWrappers(emoteName).forEach(w => {
-      w.classList.remove('hs-state-global', 'hs-state-channel', 'hs-state-owned', 'hs-state-unadded');
-      w.classList.add('hs-state-blocked');
-      w.dataset.state = 'blocked';
-      const img = w.querySelector('img');
-      if (img) {
-        img.classList.remove('hs-emote-global', 'hs-emote-channel', 'hs-emote-owned', 'hs-emote-unadded');
-        img.classList.add('hs-emote-blocked');
-        img.dataset.state = 'blocked';
-      }
-    });
-
-    showToast(`blocked: ${emoteName}`);
-    flashAllEmotes(emoteName, 'hs-flash-block');
-  }
-
-  function unblockEmote(emoteName) {
-    if (!emoteName) return;
-
-    // Update local tracking
-    blockedEmoteNames.delete(emoteName);
-    const hash = emoteHashes.get(emoteName) ||
-      (lookupEmote(emoteName)?.url ? btoa(lookupEmote(emoteName).url).slice(0, 32) : emoteName);
-    blockedEmoteHashes.delete(hash);
-
-    // Sync to heatsync.org API via background.js
-    syncBlockToAPI(emoteName, false);
-
-    // Instant DOM update - restore images
-    const emote = lookupEmote(emoteName);
-    const realUrl = emote?.url || '';
-    const newState = emote ? getEmoteState(emoteName, emote.source) : 'global';
-    queryEmoteWrappers(emoteName).forEach(w => {
-      w.classList.remove('hs-state-global', 'hs-state-channel', 'hs-state-owned', 'hs-state-blocked', 'hs-state-unadded');
-      w.classList.add(`hs-state-${newState}`);
-      w.dataset.state = newState;
-      w.style.outline = '';
-      const img = w.querySelector('img');
-      if (img && realUrl) {
-        img.src = realUrl;
-        img.style.width = '';
-        img.style.height = '';
-        img.classList.remove('hs-emote-global', 'hs-emote-channel', 'hs-emote-owned', 'hs-emote-blocked', 'hs-emote-unadded');
-        img.classList.add(`hs-emote-${newState}`);
-        img.dataset.state = newState;
-      }
-    });
-
-    showToast(`unblocked: ${emoteName}`);
-    flashAllEmotes(emoteName, 'hs-flash-unblock');
-  }
-
-  // Add emote to inventory (click-to-add for unadded emotes)
-  async function addEmoteToInventory(emoteName, emoteUrl, emoteSource, targetEl) {
-    if (!emoteName) return;
-
-    try {
-      // Generate a hash from the URL for the API
-      const emoteHash = emoteUrl ? btoa(emoteUrl).slice(0, 32) : emoteName;
-
-      // Send to background script for API call with auth
-      const response = await new Promise((resolve) => {
-        chrome.runtime.sendMessage({
-          type: 'add_to_inventory',
-          emoteName: emoteName,
-          emoteHash: emoteHash,
-          emoteUrl: emoteUrl
-        }, resolve);
-      });
-
-      if (response?.success) {
-        // Update local cache - change from unadded to owned
-        inventoryEmotes.add(emoteName);
-        if (response.hash) inventoryHashes.set(emoteName, response.hash);
-        if (emoteCache.has(emoteName)) {
-          const emote = emoteCache.get(emoteName);
-          emote.state = 'owned';
-          emoteCache.set(emoteName, emote);
-        }
-
-        // Update all wrappers in DOM (no full re-render)
-        queryEmoteWrappers(emoteName).forEach(w => {
-          w.classList.remove('hs-state-global', 'hs-state-unadded', 'hs-state-blocked');
-          w.classList.add('hs-state-owned');
-          w.dataset.state = 'owned';
-        });
-
-        showToast(`added: ${emoteName}`);
-        flashAllEmotes(emoteName, 'hs-flash-add');
-      } else {
-        showToast(response?.error || `failed to add: ${emoteName}`);
-      }
-    } catch (e) {
-      log('Add emote error:', e);
-      showToast(`error adding: ${emoteName}`);
-    }
-  }
-
-  // Sync block/unblock to heatsync.org API via background script
-  async function syncBlockToAPI(emoteName, block) {
-    try {
-      // Background script expects message.hash - use emoteHashes (most complete mapping)
-      const hash = emoteHashes.get(emoteName) ||
-        (lookupEmote(emoteName)?.url ? btoa(lookupEmote(emoteName).url).slice(0, 32) : emoteName);
-      chrome.runtime.sendMessage({
-        type: block ? 'block_emote' : 'unblock_emote',
-        hash: hash,
-        emoteName: emoteName
-      });
-      log('Synced', block ? 'block' : 'unblock', emoteName, '(hash:', hash.substring(0, 8) + '...) to API');
-    } catch (e) {
-      log('API sync error:', e);
-    }
-  }
-
-  function showToast(msg) {
-    const existing = document.getElementById('hs-mc-toast');
-    if (existing) existing.remove();
-
-    const toast = document.createElement('div');
-    toast.id = 'hs-mc-toast';
-    toast.textContent = msg;
-    toast.style.cssText = `
-      position: fixed;
-      bottom: 70px;
-      right: 20px;
-      background: #000;
-      color: #fff;
-      border: 1px solid #fff;
-      padding: 6px 14px;
-      border-radius: 0;
-      font: bold 12px monospace;
-      z-index: 5000;
-      pointer-events: none;
-    `;
-    document.body.appendChild(toast);
-    setTimeout(() => toast.remove(), 1500);
-  }
-
-  // Emote hover tooltip (4x preview with source color)
-  let emoteTooltip = null;
-
-  function ensureEmoteTooltip() {
-    if (!emoteTooltip || !document.contains(emoteTooltip)) {
-      emoteTooltip = document.createElement('div');
-      emoteTooltip.id = 'hs-emote-tooltip';
-      emoteTooltip.innerHTML = `
-        <img src="" alt="">
-        <span class="tooltip-name"></span>
-        <span class="tooltip-source"></span>
-      `;
-      document.body.appendChild(emoteTooltip);
-    }
-    return emoteTooltip;
-  }
-
-  // Upgrade emote URL to highest resolution for tooltip
-  function getHighResUrl(url) {
-    if (!url) return url;
-    // 7TV: /1x → /4x
-    if (url.includes('cdn.7tv.app')) {
-      return url.replace('/1x', '/4x').replace('/2x', '/4x').replace('/3x', '/4x');
-    }
-    // BTTV: /1x → /3x (max)
-    if (url.includes('cdn.betterttv.net')) {
-      return url.replace('/1x', '/3x').replace('/2x', '/3x');
-    }
-    // FFZ: /1 → /4
-    if (url.includes('cdn.frankerfacez.com')) {
-      return url.replace(/\/1(?=\.|$)/, '/4').replace(/\/2(?=\.|$)/, '/4');
-    }
-    // Twitch: /1.0 → /3.0 (max)
-    if (url.includes('static-cdn.jtvnw.net')) {
-      return url.replace('/1.0', '/3.0').replace('/2.0', '/3.0');
-    }
-    return url;
-  }
-
-  function showEmoteTooltip(e, emoteName, emoteUrl, state, source, hoveredImg) {
-    const tooltip = ensureEmoteTooltip();
-    const img = tooltip.querySelector('img');
-    const nameEl = tooltip.querySelector('.tooltip-name');
-    const stateEl = tooltip.querySelector('.tooltip-source');
-
-    // Show 1x immediately (no stale image), upgrade to hi-res in background
-    const w4 = (hoveredImg?.offsetWidth || 28) * 4;
-    const h4 = (hoveredImg?.offsetHeight || 28) * 4;
-    img.style.width = w4 + 'px';
-    img.style.height = h4 + 'px';
-    img.src = emoteUrl;
-    img.alt = emoteName;
-    // Try loading hi-res — swap in if it works, keep 1x if it fails
-    const hiResUrl = getHighResUrl(emoteUrl);
-    if (hiResUrl !== emoteUrl) {
-      const hiRes = new Image();
-      hiRes.onload = () => { if (img.alt === emoteName) img.src = hiResUrl; };
-      hiRes.src = hiResUrl;
-    }
-    nameEl.textContent = emoteName;
-
-    // Show state with source for globals
-    let label;
-    if (state === 'owned') {
-      label = 'in your set';
-    } else if (state === 'unadded') {
-      label = 'click to add';
-    } else if (state === 'blocked') {
-      label = 'blocked (click to unblock)';
-    } else {
-      // Global or channel - show source
-      const sourceLabels = {
-        '7tv': '7TV',
-        'bttv': 'BTTV',
-        'ffz': 'FFZ',
-        'twitch': 'Twitch',
-        'kick': 'Kick',
-        'heatsync': 'Heatsync'
-      };
-      const sourceName = sourceLabels[source] || source || 'unknown';
-      const scope = state === 'channel' ? 'channel' : 'global';
-      label = `${scope} (${sourceName})`;
-    }
-    stateEl.textContent = label;
-    stateEl.className = 'tooltip-source ' + (state || 'global');
-
-    // Position: show tooltip above the emote, offset right of cursor
-    // First make visible off-screen to measure height
-    tooltip.style.left = '-9999px';
-    tooltip.style.top = '-9999px';
-    tooltip.classList.add('visible');
-
-    const rect = tooltip.getBoundingClientRect();
-    const tooltipH = rect.height;
-    const tooltipW = rect.width;
-    const gap = 12; // px gap between cursor and tooltip
-
-    // Prefer above cursor; if no room, go below
-    let x = Math.min(e.clientX + 15, window.innerWidth - tooltipW - 10);
-    x = Math.max(10, x);
-    let y;
-    if (e.clientY - tooltipH - gap > 10) {
-      y = e.clientY - tooltipH - gap; // above
-    } else {
-      y = e.clientY + gap + 20; // below (20px for emote height)
-    }
-    y = Math.max(10, Math.min(y, window.innerHeight - tooltipH - 10));
-
-    tooltip.style.left = x + 'px';
-    tooltip.style.top = y + 'px';
-  }
-
-  function showEmojiTooltip(e, emoji, name) {
-    const tooltip = ensureEmoteTooltip()
-    const img = tooltip.querySelector('img')
-    const nameEl = tooltip.querySelector('.tooltip-name')
-    const stateEl = tooltip.querySelector('.tooltip-source')
-
-    // Hide the image, show emoji character at 4x instead
-    img.style.display = 'none'
-
-    // Build emoji preview using safe DOM methods
-    nameEl.textContent = ''
-    const emojiChar = document.createElement('span')
-    Object.assign(emojiChar.style, { fontSize: '64px', lineHeight: '1', fontVariantEmoji: 'emoji', display: 'block', textAlign: 'center' })
-    emojiChar.textContent = emoji
-    const label = document.createElement('span')
-    Object.assign(label.style, { display: 'block', marginTop: '4px' })
-    label.textContent = ':' + name + ':'
-    nameEl.appendChild(emojiChar)
-    nameEl.appendChild(label)
-
-    stateEl.textContent = 'emoji'
-    stateEl.className = 'tooltip-source'
-
-    tooltip.style.left = '-9999px'
-    tooltip.style.top = '-9999px'
-    tooltip.classList.add('visible')
-
-    const rect = tooltip.getBoundingClientRect()
-    const gap = 12
-    let x = Math.min(e.clientX + 15, window.innerWidth - rect.width - 10)
-    x = Math.max(10, x)
-    let y = e.clientY - rect.height - gap > 10
-      ? e.clientY - rect.height - gap
-      : e.clientY + gap + 20
-    y = Math.max(10, Math.min(y, window.innerHeight - rect.height - 10))
-
-    tooltip.style.left = x + 'px'
-    tooltip.style.top = y + 'px'
-  }
-
-  function hideEmoteTooltip() {
-    if (emoteTooltip) {
-      emoteTooltip.classList.remove('visible');
-      // Reset img display for next emote hover
-      const img = emoteTooltip.querySelector('img')
-      if (img) img.style.display = ''
-    }
-  }
-
-  function setupEmoteTooltipHandlers() {
-    if (window._hsEmoteTooltipSetup) return;
-    window._hsEmoteTooltipSetup = true;
-
-    cleanup.addEventListener(document, 'mouseover', (e) => {
-      const target = e.target;
-
-      // Emoji hover: show 4x preview
-      const emojiSpan = target.closest('.hs-mc-emoji');
-      if (emojiSpan) {
-        const name = emojiSpan.dataset.emojiName || emojiSpan.title?.replace(/:/g, '') || '';
-        showEmojiTooltip(e, emojiSpan.textContent, name);
-        return;
-      }
-
-      // Check wrapper first, then IMG
-      const wrapper = target.closest('.hs-mc-emote-wrapper');
-      const img = wrapper ? wrapper.querySelector('img') : (
-        target.tagName === 'IMG' && (target.classList.contains('hs-mc-emote') || target.classList.contains('hs-mc-picker-emote')) ? target : null
-      );
-      if (!img && !wrapper) return;
-
-      const emoteName = wrapper?.dataset.emoteName || img?.alt || img?.dataset.emoteName || img?.title?.split(' ')[0];
-      if (!emoteName) return;
-
-      const emoteUrl = wrapper?.dataset.emoteUrl || img?.src;
-      const state = wrapper?.dataset.state || img?.dataset.state || 'global';
-      const source = wrapper?.dataset.source || img?.dataset.source || detectEmoteSource(emoteUrl);
-
-      showEmoteTooltip(e, emoteName, emoteUrl, state, source, img);
-
-      // Cross-highlight: add highlight to all wrappers with same emote name
-      queryEmoteWrappers(emoteName).forEach(w => {
-        w.classList.add('hs-emote-highlight');
-      });
-    }, 'mc-emote-tooltip-mouseover');
-
-    cleanup.addEventListener(document, 'mouseout', (e) => {
-      const target = e.target;
-      const wrapper = target.closest('.hs-mc-emote-wrapper');
-      const img = wrapper ? wrapper.querySelector('img') : (
-        target.tagName === 'IMG' && (target.classList.contains('hs-mc-emote') || target.classList.contains('hs-mc-picker-emote')) ? target : null
-      );
-      if (!img && !wrapper) return;
-
-      hideEmoteTooltip();
-
-      // Remove cross-highlight from all wrappers
-      const emoteName = wrapper?.dataset.emoteName || img?.alt || img?.dataset.emoteName;
-      if (emoteName) {
-        queryEmoteWrappers(emoteName).forEach(w => {
-          w.classList.remove('hs-emote-highlight');
-        });
-      }
-    }, 'mc-emote-tooltip-mouseout');
-
-    let _tooltipRafPending = false
-    cleanup.addEventListener(document, 'mousemove', (e) => {
-      // RAF-batch tooltip position updates to avoid per-mousemove style writes
-      if (_tooltipRafPending) return
-      _tooltipRafPending = true
-      const cx = e.clientX, cy = e.clientY, target = e.target
-      requestAnimationFrame(() => {
-        _tooltipRafPending = false
-        const onEmote = target?.closest?.('.hs-mc-emote-wrapper') ||
-          (target?.tagName === 'IMG' && (target.classList?.contains('hs-mc-emote') || target.classList?.contains('hs-mc-picker-emote')))
-        const onUser = target?.closest?.('.hs-mc-user')
-
-        // Kill emote tooltip instantly if not on an emote
-        if (emoteTooltip?.classList.contains('visible')) {
-          if (!onEmote) {
-            hideEmoteTooltip()
-            document.querySelectorAll('.hs-emote-highlight').forEach(w => w.classList.remove('hs-emote-highlight'))
-          } else {
-            const tooltipH = emoteTooltip.offsetHeight
-            const tooltipW = emoteTooltip.offsetWidth
-            const gap = 12
-            let x = Math.min(cx + 15, window.innerWidth - tooltipW - 10)
-            x = Math.max(10, x)
-            let y = cy - tooltipH - gap > 10 ? cy - tooltipH - gap : cy + gap + 20
-            y = Math.max(10, Math.min(y, window.innerHeight - tooltipH - 10))
-            emoteTooltip.style.left = x + 'px'
-            emoteTooltip.style.top = y + 'px'
-          }
-        }
-
-        // Kill user tooltip instantly if not on a username
-        if (userTooltip?.classList.contains('visible')) {
-          if (!onUser && !target?.closest?.('#hs-user-tooltip')) {
-            hideUserTooltip()
-          } else {
-            const x = Math.min(cx + 15, window.innerWidth - 220)
-            const y = Math.max(cy - 60, 10)
-            userTooltip.style.left = x + 'px'
-            userTooltip.style.top = y + 'px'
-          }
-        }
-
-        // Kill link tooltip if not on a link
-        const onLink = target?.closest?.('.hs-mc-link')
-        if (linkTooltip?.classList.contains('visible')) {
-          if (!onLink) {
-            hideLinkTooltip()
-          } else {
-            positionLinkTooltip(linkTooltip, cx, cy)
-          }
-        }
-      })
-    }, 'mc-tooltip-mousemove');
-  }
-
-  // User hover tooltip (profile preview)
-  let userTooltip = null;
-  const _profileCache = new Map(); // username -> { profile, ts }
-  const PROFILE_CACHE_TTL = 60000; // 60s
-  let _profileGen = 0; // generation counter to prevent stale renders
-
-  function ensureUserTooltip() {
-    if (!userTooltip || !document.contains(userTooltip)) {
-      userTooltip = document.createElement('div');
-      userTooltip.id = 'hs-user-tooltip';
-      document.body.appendChild(userTooltip);
-    }
-    return userTooltip;
-  }
-
-  function getHeatColor() {
-    return '#ff8700';
-  }
-
-  function formatCompact(n) {
-    if (n >= 1000000) return (n / 1000000).toFixed(1).replace(/\.0$/, '') + 'M';
-    if (n >= 1000) return (n / 1000).toFixed(1).replace(/\.0$/, '') + 'K';
-    return String(n);
-  }
-
-  function getAccountAge(dateStr) {
-    if (!dateStr) return null;
-    const d = new Date(dateStr);
-    const now = new Date();
-    const y = now.getFullYear() - d.getFullYear();
-    const m = now.getMonth() - d.getMonth();
-    const days = now.getDate() - d.getDate();
-    if (y > 0) return y + 'y';
-    if (m > 0) return m + 'm';
-    return Math.max(0, days) + 'd';
-  }
-
-  function getCompactRelTime(dateStr) {
-    if (!dateStr) return '';
-    const ms = Date.now() - new Date(dateStr).getTime();
-    const d = Math.floor(ms / 86400000);
-    if (d > 365) return Math.floor(d / 365) + 'y ago';
-    if (d > 30) return Math.floor(d / 30) + 'mo ago';
-    if (d > 0) return d + 'd ago';
-    const h = Math.floor(ms / 3600000);
-    if (h > 0) return h + 'h ago';
-    return 'just now';
-  }
-
-  function renderProfileCard(p) {
-    const pfp = p.twitch_profile_pic || p.kick_profile_pic || p.profile_image_url || 'https://heatsync.org/anon.webp';
-    const displayName = p.display_name || p.username || 'unknown';
-
-    // Platform badges
-    let platforms = '';
-    if (p.twitch_username) {
-      let ttv = `<span class="hs-pc-platform twitch">ttv:${escapeHtml(p.twitch_username)}</span>`;
-      if (p.twitch_verified) ttv += ' ✓';
-      if (p.twitch_is_live) {
-        const vc = p.twitch_viewer_count || 0;
-        ttv += ` <span style="color:#f00">🔴${vc > 0 ? ' ' + formatCompact(vc) : ''}</span>`;
-      }
-      platforms += ttv;
-    }
-    if (p.kick_username) {
-      let kk = `<span class="hs-pc-platform kick">kick:${escapeHtml(p.kick_username)}</span>`;
-      if (p.kick_verified) kk += ' ✓';
-      if (p.kick_is_live) {
-        const vc = p.kick_viewer_count || 0;
-        kk += ` <span style="color:#f00">🔴${vc > 0 ? ' ' + formatCompact(vc) : ''}</span>`;
-      }
-      platforms += kk;
-    }
-    if (!platforms) {
-      platforms = `<span class="hs-pc-name">${escapeHtml(displayName)}</span>`;
-    }
-
-    // Role badge
-    let role = '';
-    const bt = p.twitch_broadcaster_type;
-    if (bt === 'partner') role = '<span class="hs-pc-role partner">partner</span>';
-    else if (bt === 'affiliate') role = '<span class="hs-pc-role affiliate">affiliate</span>';
-    else if (p.role === 'admin') role = '<span class="hs-pc-role admin">admin</span>';
-    else if (p.role === 'staff') role = '<span class="hs-pc-role staff">staff</span>';
-
-    // Account age
-    const dates = [p.twitch_created_at, p.kick_created_at].filter(Boolean);
-    const oldest = dates.length ? dates.reduce((a, b) => new Date(b) < new Date(a) ? b : a) : null;
-    const age = getAccountAge(oldest);
-    const ageHtml = age ? `<span class="hs-pc-age">${age}</span>` : '';
-
-    // Bio
-    const bio = p.bio ? `<div class="hs-pc-bio">${escapeHtml(p.bio)}</div>` : '';
-
-    // Stats
-    const stats = p.stats || {};
-    const heat = stats.total_heat || 0;
-    const op = stats.op_count || p.opCount || 0;
-    const mop = stats.mop_count || p.mopCount || 0;
-    const re = stats.re_count || p.reCount || 0;
-    const followers = Math.max(stats.followers || 0, p.twitch_followers || 0, p.kick_followers || 0);
-    const following = Math.max(stats.following || 0, p.twitch_following_count || 0, p.kick_following_count || 0);
-
-    const statBadges = [];
-    statBadges.push(`<span class="hs-pc-stat heat" style="color:#ff8700"><span class="hs-pc-num">${formatCompact(heat)}</span>°</span>`);
-    if (op > 0) statBadges.push(`<span class="hs-pc-stat op"><span class="hs-pc-num">${formatCompact(op)}</span> [OP]</span>`);
-    if (mop > 0) statBadges.push(`<span class="hs-pc-stat mop"><span class="hs-pc-num">${formatCompact(mop)}</span> <span style="color:#ff00ff">[OP]</span></span>`);
-    if (re > 0) statBadges.push(`<span class="hs-pc-stat re"><span class="hs-pc-num">${formatCompact(re)}</span> [RE]</span>`);
-    if (followers > 0) statBadges.push(`<span class="hs-pc-stat"><span class="hs-pc-num">${formatCompact(followers)}</span> followers</span>`);
-    if (following > 0) statBadges.push(`<span class="hs-pc-stat">following <span class="hs-pc-num">${formatCompact(following)}</span></span>`);
-
-    // Relationship
-    const rel = p.relationship || {};
-    const relBadges = [];
-    const followsYou = rel.profileFollowsViewerOnTwitch || rel.profileFollowsViewerOnKick || rel.followsYou;
-    if (followsYou) {
-      const since = rel.profileFollowsViewerOnTwitchSince || rel.followsYouSince;
-      relBadges.push(`<span class="hs-pc-rel-badge mutual">follows you${since ? ' ' + getCompactRelTime(since) : ''}</span>`);
-    }
-    if (rel.profileSubbedToViewerOnTwitch || rel.subscribesToYou) {
-      const since = rel.profileTwitchSubSince || rel.subscribesToYouSince;
-      relBadges.push(`<span class="hs-pc-rel-badge supporter">subs to you${since ? ' ' + getCompactRelTime(since) : ''}</span>`);
-    }
-
-    return `
-      ${pfp ? `<img class="hs-pc-avatar" src="${escapeHtml(pfp)}" alt="${escapeHtml(displayName)}">` : ''}
-      <div class="hs-pc-info">
-        <div class="hs-pc-header">${platforms} ${role} ${ageHtml}</div>
-        ${bio}
-        ${statBadges.length ? `<div class="hs-pc-stats">${statBadges.join('')}</div>` : ''}
-        ${relBadges.length ? `<div class="hs-pc-rel">${relBadges.join(' ')}</div>` : ''}
-      </div>`;
-  }
-
-  async function showUserTooltip(e, username, color) {
-    const tooltip = ensureUserTooltip();
-    const gen = ++_profileGen;
-
-    // Show loading state immediately
-    tooltip.innerHTML = `<div class="hs-pc-loading" style="color:${color || '#fff'}">${escapeHtml(username)}...</div>`;
-
-    const x = Math.min(e.clientX + 15, window.innerWidth - 280);
-    const y = Math.max(e.clientY - 80, 10);
-    tooltip.style.left = x + 'px';
-    tooltip.style.top = y + 'px';
-    tooltip.classList.add('visible');
-
-    // Check cache
-    const cached = _profileCache.get(username.toLowerCase());
-    if (cached && Date.now() - cached.ts < PROFILE_CACHE_TTL) {
-      if (gen !== _profileGen) return;
-      tooltip.innerHTML = renderProfileCard(cached.profile);
-      repositionTooltip(tooltip, e);
-      return;
-    }
-
-    // Fetch profile
-    const resp = await apiFetch(`/api/profile/${encodeURIComponent(username)}`);
-    if (gen !== _profileGen) return; // user moved away
-
-    if (resp?.ok && resp.data?.profile) {
-      const profile = resp.data.profile;
-      _profileCache.set(username.toLowerCase(), { profile, ts: Date.now() });
-      // Prune cache
-      if (_profileCache.size > 100) {
-        const oldest = [..._profileCache.entries()].sort((a, b) => a[1].ts - b[1].ts).slice(0, 50);
-        for (const [k] of oldest) _profileCache.delete(k);
-      }
-      tooltip.innerHTML = renderProfileCard(profile);
-      repositionTooltip(tooltip, e);
-    } else {
-      // Fallback — show basic info
-      tooltip.innerHTML = `<div class="hs-pc-info"><div class="hs-pc-header"><span class="hs-pc-name">${escapeHtml(username)}</span></div></div>`;
-    }
-  }
-
-  function repositionTooltip(tooltip, e) {
-    // Re-position after content changes size
-    const rect = tooltip.getBoundingClientRect();
-    const x = Math.min(e.clientX + 15, window.innerWidth - rect.width - 10);
-    const y = e.clientY - rect.height - 10 > 0
-      ? e.clientY - rect.height - 10
-      : e.clientY + 20;
-    tooltip.style.left = Math.max(5, x) + 'px';
-    tooltip.style.top = Math.max(5, y) + 'px';
-  }
-
-  function hideUserTooltip() {
-    _profileGen++;
-    if (userTooltip) {
-      userTooltip.classList.remove('visible');
-    }
-  }
-
-  function setupUserTooltipHandlers() {
-    if (window._hsUserTooltipSetup) return;
-    window._hsUserTooltipSetup = true;
-
-    cleanup.addEventListener(document, 'mouseover', (e) => {
-      const target = e.target.closest('.hs-mc-user');
-      if (target) {
-        const username = target.textContent;
-        const color = target.style.color;
-        showUserTooltip(e, username, color);
-
-        // Highlight all matching usernames
-        const name = target.dataset.username;
-        if (name) {
-          const overlay = document.getElementById('hs-mc-overlay');
-          if (overlay) {
-            overlay.querySelectorAll(`.hs-mc-user[data-username="${CSS.escape(name)}"]`).forEach(el => {
-              el.classList.add('hs-user-highlight');
-            });
-          }
-        }
-      }
-    }, 'mc-user-tooltip-mouseover');
-
-    cleanup.addEventListener(document, 'mouseout', (e) => {
-      const target = e.target.closest('.hs-mc-user');
-      if (target) {
-        hideUserTooltip();
-
-        // Remove all username highlights
-        const overlay = document.getElementById('hs-mc-overlay');
-        if (overlay) {
-          overlay.querySelectorAll('.hs-user-highlight').forEach(el => {
-            el.classList.remove('hs-user-highlight');
-          });
-        }
-      }
-    }, 'mc-user-tooltip-mouseout');
-  }
-
-  // Link preview tooltip (Chatterino-style)
-  let linkTooltip = null;
-  const _linkPreviewCache = new Map(); // url -> { title, description, image } | null
-  let _linkHoverUrl = null;
-
-  function ensureLinkTooltip() {
-    if (linkTooltip) return linkTooltip;
-    linkTooltip = document.createElement('div');
-    linkTooltip.id = 'hs-link-tooltip';
-    document.body.appendChild(linkTooltip);
-    return linkTooltip;
-  }
-
-  function showLinkTooltip(e, url) {
-    if (!linksEnabled || !url) return;
-    _linkHoverUrl = url;
-    const tip = ensureLinkTooltip();
-    let hostname = '';
-    try { hostname = new URL(url).hostname; } catch { hostname = url; }
-
-    // Show loading state immediately
-    const loadWrap = document.createElement('div');
-    loadWrap.className = 'link-text';
-    const loadSpan = document.createElement('span');
-    loadSpan.className = 'link-loading';
-    loadSpan.textContent = 'loading...';
-    const domainSpan = document.createElement('span');
-    domainSpan.className = 'link-domain';
-    domainSpan.textContent = hostname;
-    loadWrap.appendChild(loadSpan);
-    loadWrap.appendChild(domainSpan);
-    tip.replaceChildren(loadWrap);
-    positionLinkTooltip(tip, e.clientX, e.clientY);
-    tip.classList.add('visible');
-
-    // Check cache
-    if (_linkPreviewCache.has(url)) {
-      const cached = _linkPreviewCache.get(url);
-      if (_linkHoverUrl === url) renderLinkPreview(tip, cached, url);
-      return;
-    }
-
-    // Fetch from background
-    safeSendMessage({ type: 'fetch_link_preview', url }).then(data => {
-      _linkPreviewCache.set(url, data);
-      if (_linkHoverUrl === url && tip.classList.contains('visible')) {
-        renderLinkPreview(tip, data, url);
-      }
-    });
-  }
-
-  function renderLinkPreview(tip, data, url) {
-    let hostname = '';
-    try { hostname = new URL(url).hostname; } catch { hostname = url; }
-    tip.replaceChildren(); // clear
-    let hasContent = false;
-    const textWrap = document.createElement('div');
-    textWrap.className = 'link-text';
-    if (data) {
-      if (data.image && /^https?:\/\//i.test(data.image)) {
-        const img = document.createElement('img');
-        img.src = data.image;
-        img.alt = '';
-        img.loading = 'lazy';
-        tip.appendChild(img);
-        hasContent = true;
-      }
-      if (data.title) {
-        const t = document.createElement('span');
-        t.className = 'link-title';
-        t.textContent = data.title;
-        textWrap.appendChild(t);
-        hasContent = true;
-      }
-      if (data.description) {
-        const d = document.createElement('span');
-        d.className = 'link-desc';
-        d.textContent = data.description;
-        textWrap.appendChild(d);
-        hasContent = true;
-      }
-    }
-    // If no og data at all, show full URL instead of just domain
-    const dom = document.createElement('span');
-    dom.className = 'link-domain';
-    dom.textContent = hasContent ? hostname : url;
-    textWrap.appendChild(dom);
-    tip.appendChild(textWrap);
-  }
-
-  function positionLinkTooltip(tip, cx, cy) {
-    tip.style.left = '-9999px';
-    tip.style.top = '-9999px';
-    requestAnimationFrame(() => {
-      const h = tip.offsetHeight;
-      const w = tip.offsetWidth;
-      let x = Math.min(cx + 15, window.innerWidth - w - 10);
-      x = Math.max(10, x);
-      let y = cy - h - 12 > 10 ? cy - h - 12 : cy + 24;
-      y = Math.max(10, Math.min(y, window.innerHeight - h - 10));
-      tip.style.left = x + 'px';
-      tip.style.top = y + 'px';
-    });
-  }
-
-  function hideLinkTooltip() {
-    _linkHoverUrl = null;
-    if (linkTooltip) linkTooltip.classList.remove('visible');
-  }
-
-  function setupLinkTooltipHandlers() {
-    if (window._hsLinkTooltipSetup) return;
-    window._hsLinkTooltipSetup = true;
-
-    cleanup.addEventListener(document, 'mouseover', (e) => {
-      const link = e.target.closest('.hs-mc-link');
-      if (link) showLinkTooltip(e, link.href);
-    }, 'mc-link-tooltip-mouseover');
-
-    cleanup.addEventListener(document, 'mouseout', (e) => {
-      const link = e.target.closest('.hs-mc-link');
-      if (link) hideLinkTooltip();
-    }, 'mc-link-tooltip-mouseout');
-  }
-
-  // Emote cache (loaded from storage)
-  // Format: Map<name, {url, source, state}>
-  // States: 'owned' (in inventory), 'global' (third-party), 'unadded' (heatsync, not owned)
-  let emoteCache = new Map(); // Global + inventory emotes (no channel emotes!)
-  let channelEmoteCaches = {}; // Per-channel emotes: { channelName: Map<name, emoteData> }
-  let inventoryEmotes = new Set(); // Names of emotes in user's inventory
-
-  // Look up emote from global cache + current channel cache
-  function lookupEmote(name) {
-    return emoteCache.get(name) || channelEmoteCaches[currentTab]?.get(name) || channelEmoteCaches[getLiveChannel()]?.get(name) || channelEmoteCaches[getCurrentChannel()]?.get(name);
-  }
-  let inventoryHashes = new Map(); // name → hash for remove_from_inventory
-  let emoteHashes = new Map(); // name → hash for ALL emotes (block/unblock API)
-  let hashToName = new Map(); // hash → name (reverse lookup for loading blocked from storage)
-
-  // Detect emote source from URL
-  function detectEmoteSource(url, hint = null) {
-    if (!url) return hint || 'unknown';
-    if (url.includes('cdn.7tv.app')) return '7tv';
-    if (url.includes('cdn.betterttv.net')) return 'bttv';
-    if (url.includes('cdn.frankerfacez.com')) return 'ffz';
-    if (url.includes('static-cdn.jtvnw.net')) return 'twitch';
-    if (url.includes('kick.com') || url.includes('kick-static')) return 'kick';
-    if (url.includes('heatsync.org')) return 'heatsync';
-    return hint || 'unknown';
-  }
-
-  // Determine emote state: owned > global > unadded
-  function getEmoteState(name, source) {
-    if (inventoryEmotes.has(name)) return 'owned';
-    // Third-party emotes are always "global" (can't add to heatsync inventory)
-    if (['7tv', 'bttv', 'ffz', 'twitch', 'kick'].includes(source)) return 'global';
-    // Heatsync emotes not in inventory are "unadded"
-    return 'unadded';
-  }
-
-  async function loadEmotes() {
-    try {
-      const stored = await chrome.storage.local.get(['global_emotes', 'emote_inventory', 'channel_emotes_map']);
-      emoteCache.clear();
-      channelEmoteCaches = {};
-      inventoryEmotes.clear();
-      inventoryHashes.clear();
-      emoteHashes.clear();
-      hashToName.clear();
-
-      // Helper to register hash↔name mapping
-      const registerHash = (name, hash) => {
-        if (name && hash) {
-          emoteHashes.set(name, hash);
-          hashToName.set(hash, name);
-        }
-      };
-
-      // First, build inventory set (emotes user owns)
-      (stored.emote_inventory || []).forEach(e => {
-        if (e.name) {
-          inventoryEmotes.add(e.name);
-          if (e.hash) {
-            inventoryHashes.set(e.name, e.hash);
-            registerHash(e.name, e.hash);
-          }
-        }
-      });
-
-      // Add global emotes (heatsync globals - may or may not be in inventory)
-      (stored.global_emotes || []).forEach(e => {
-        if (e.name && e.url) {
-          const source = e.source || detectEmoteSource(e.url, 'heatsync');
-          const state = getEmoteState(e.name, source);
-          emoteCache.set(e.name, { url: e.url, source, state, zeroWidth: !!e.zeroWidth });
-          if (e.hash) registerHash(e.name, e.hash);
-        }
-      });
-
-      // Add inventory emotes (definitely owned)
-      (stored.emote_inventory || []).forEach(e => {
-        if (e.name && e.url) {
-          const source = e.source || 'heatsync';
-          emoteCache.set(e.name, { url: e.url, source, state: 'owned', zeroWidth: !!e.zeroWidth });
-        }
-      });
-
-      // Load per-channel emotes into separate caches (prevents cross-channel leaking)
-      const map = stored.channel_emotes_map || {};
-      for (const [ch, emotes] of Object.entries(map)) {
-        const chCache = new Map();
-        (emotes || []).forEach(e => {
-          if (e.name && e.url) {
-            const source = e.source || detectEmoteSource(e.url, '7tv');
-            chCache.set(e.name, { url: e.url, source, state: 'channel', zeroWidth: !!e.zeroWidth });
-            if (e.hash) registerHash(e.name, e.hash);
-          }
-        });
-        channelEmoteCaches[ch] = chCache;
-      }
-      // Evict oldest channel emote caches if exceeds 20
-      const channelKeys = Object.keys(channelEmoteCaches);
-      if (channelKeys.length > 20) {
-        for (const old of channelKeys.slice(0, channelKeys.length - 20)) {
-          delete channelEmoteCaches[old];
-        }
-      }
-      log('Channel emote caches:', Object.entries(channelEmoteCaches).map(([c, m]) => `${c}: ${m.size}`).join(', '));
-
-      // Rebuild blockedEmoteNames from loaded hashes
-      rebuildBlockedNames();
-
-      log('Loaded', emoteCache.size, 'emotes (inventory:', inventoryEmotes.size, ', hashes:', emoteHashes.size, ')');
-    } catch (e) {
-      log('Error loading emotes:', e);
-    }
-
-    // Also scan DOM for third-party emotes (BTTV, FFZ, 7TV)
-    scanDomForEmotes();
-  }
-
-  // Scan DOM for emotes rendered in chat — route to the current channel's cache, not global
-  function scanDomForEmotes() {
-    const ch = getCurrentChannel();
-    if (!ch) return;
-
-    // Ensure channel cache exists
-    if (!channelEmoteCaches[ch]) channelEmoteCaches[ch] = new Map();
-    // Evict oldest if exceeds 20
-    const chKeys = Object.keys(channelEmoteCaches);
-    if (chKeys.length > 20) {
-      delete channelEmoteCaches[chKeys[0]];
-    }
-    const cache = channelEmoteCaches[ch];
-
-    // Cap per-channel to prevent unbounded growth
-    if (cache.size >= 5000) return;
-
-    // Single combined selector — one DOM scan instead of 7 separate querySelectorAll calls
-    const combinedSelector = '.chat-line__message img[alt], [class*="chat-line"] img[alt], .seventv-emote, .bttv-emote, .ffz-emote, img.emote, img[data-a-target="emote-name"]';
-
-    let found = 0;
-    for (const img of document.querySelectorAll(combinedSelector)) {
-      if (cache.size >= 5000) break;
-      const name = img.alt || img.getAttribute('data-emote-name');
-      const url = img.src;
-      if (name && url && !cache.has(name) && !emoteCache.has(name)) {
-        const source = detectEmoteSource(url);
-        cache.set(name, { url, source, state: 'channel', zeroWidth: false });
-        found++;
-      }
-    }
-
-    if (found > 0) {
-      log('Scanned', found, 'emotes from DOM →', ch, ', total:', cache.size);
-    }
-  }
-
-  // Periodically scan for new emotes
-  cleanup.setInterval(scanDomForEmotes, 10000, 'emote-scan');
-
-  // Process text and replace emote codes with images
-  // Supports 7TV zero-width (overlay) emotes that stack on base emotes
-  function processEmotes(text, channel) {
-    if (emoteCache.size === 0 && !channelEmoteCaches[channel]) return escapeHtml(text);
-
-    // Split adjacent Kick emotes and text touching emotes (e.g. "word[emote:id:name]")
-    const words = text.replace(/\]\[emote:/g, '] [emote:').replace(/([^\s\[])\[emote:/g, '$1 [emote:').replace(/\]([^\s\]])/g, '] $1').split(/(\s+)/);
-    const result = [];
-    let pendingStack = null; // { base: html, overlays: [html...] }
-    let pendingWhitespace = ''; // Accumulate whitespace - don't flush stack on spaces
-
-    for (const word of words) {
-      // Whitespace - accumulate, don't flush yet (overlays are space-separated)
-      if (/^\s+$/.test(word)) {
-        pendingWhitespace += word;
-        continue;
-      }
-
-      // Kick emote format: [emote:ID:NAME] → render as image from Kick CDN
-      const kickEmoteMatch = word.match(/^\[emote:(\d+):([^\]]+)\]$/)
-      if (kickEmoteMatch) {
-        const [, emoteId, emoteName] = kickEmoteMatch
-        const kickUrl = `https://files.kick.com/emotes/${emoteId}/fullsize`
-        const safeUrl = escapeHtml(kickUrl)
-        const safeName = escapeHtml(emoteName)
-        // Cross-reference caches to find real provider (7tv/bttv/ffz), fall back to kick
-        const cached = emoteCache.get(emoteName) || (channel && channelEmoteCaches[channel]?.get(emoteName))
-        const provider = cached?.source || 'kick'
-        const imgHtml = `<span class="hs-mc-emote-wrapper hs-state-channel" data-emote-name="${safeName}" data-emote-url="${safeUrl}" data-state="channel" data-source="${escapeHtml(provider)}"><img src="${safeUrl}" alt="${safeName}" title="${safeName} (${escapeHtml(provider)} via kick)" class="hs-mc-emote hs-emote-channel" data-emote-name="${safeName}" data-state="channel" data-source="${escapeHtml(provider)}"></span>`
-        if (pendingStack) {
-          result.push(renderEmoteStack(pendingStack))
-        }
-        if (pendingWhitespace) {
-          result.push(pendingWhitespace)
-          pendingWhitespace = ''
-        }
-        pendingStack = { base: imgHtml, overlays: [] }
-        continue
-      }
-
-      // Try name0 overlay convention: "fire0" → look up "fire" as overlay
-      let emote = null
-      let isOverlayEmote = false
-      const endsWithZero = word.endsWith('0') && word.length > 1
-      if (endsWithZero) {
-        const baseName = word.slice(0, -1)
-        emote = emoteCache.get(baseName) || (channel && channelEmoteCaches[channel]?.get(baseName))
-        if (emote) isOverlayEmote = true
-      }
-      if (!emote) {
-        emote = emoteCache.get(word) || (channel && channelEmoteCaches[channel]?.get(word))
-        if (emote) isOverlayEmote = !!emote.zeroWidth
-      }
-      if (emote) {
-        const isBlocked = blockedEmoteNames.has(word);
-        const state = isBlocked ? 'blocked' : (emote.state || 'global');
-        const source = escapeHtml(emote.source || 'unknown');
-        const imgSrc = escapeHtml(getChatResUrl(emote.url)); // Upgrade to 2x/4x based on emote size setting
-        const safeHash = emote.hash ? escapeHtml(emote.hash) : '';
-        const displayName = escapeHtml(endsWithZero && isOverlayEmote ? word : word)
-        const imgHtml = `<span class="hs-mc-emote-wrapper hs-state-${state}" data-emote-name="${displayName}" data-emote-url="${imgSrc}" data-state="${state}" data-source="${source}"${safeHash ? ` data-emote-hash="${safeHash}"` : ''}><img src="${imgSrc}" alt="${displayName}" title="${displayName}" class="hs-mc-emote hs-emote-${state}" data-emote-name="${displayName}" data-state="${state}" data-source="${source}"></span>`;
-
-        if (isOverlayEmote) {
-          // Overlay emote - stack on previous base (discard whitespace between)
-          log('FOUND zeroWidth emote:', word, '| hasBase:', !!pendingStack);
-          if (pendingStack) {
-            pendingStack.overlays.push(imgHtml);
-            pendingWhitespace = '';
-          } else {
-            // No base to stack on - render standalone
-            if (pendingWhitespace) {
-              result.push(pendingWhitespace);
-              pendingWhitespace = '';
-            }
-            result.push(imgHtml);
-          }
-        } else {
-          // Base emote - flush previous stack, start new one
-          if (pendingStack) {
-            result.push(renderEmoteStack(pendingStack));
-          }
-          if (pendingWhitespace) {
-            result.push(pendingWhitespace);
-            pendingWhitespace = '';
-          }
-          pendingStack = { base: imgHtml, overlays: [] };
-        }
-      } else {
-        // Check for emoji :shortcode: — treat as stackable base
-        if (typeof EMOJI_BY_NAME !== 'undefined' && word.startsWith(':') && word.endsWith(':') && word.length > 2) {
-          const emojiName = word.slice(1, -1)
-          const emojiEntry = EMOJI_BY_NAME.get(emojiName)
-          if (emojiEntry) {
-            if (pendingStack) {
-              result.push(renderEmoteStack(pendingStack))
-            }
-            if (pendingWhitespace) {
-              result.push(pendingWhitespace)
-              pendingWhitespace = ''
-            }
-            const emojiHtml = `<span class="hs-mc-emoji" title=":${escapeHtml(emojiName)}:">${emojiEntry.emoji}</span>`
-            pendingStack = { base: emojiHtml, overlays: [] }
-            continue
-          }
-        }
-        // Check for Unicode emoji — treat as stackable base
-        if (/^[\p{Extended_Pictographic}\p{Emoji_Presentation}\uFE0F\u200D]+$/u.test(word)) {
-          if (pendingStack) {
-            result.push(renderEmoteStack(pendingStack))
-          }
-          if (pendingWhitespace) {
-            result.push(pendingWhitespace)
-            pendingWhitespace = ''
-          }
-          const emojiHtml = `<span class="hs-mc-emoji">${escapeHtml(word)}</span>`
-          pendingStack = { base: emojiHtml, overlays: [] }
-          continue
-        }
-        // Text - flush stack and add text
-        if (pendingStack) {
-          result.push(renderEmoteStack(pendingStack));
-          pendingStack = null;
-        }
-        if (pendingWhitespace) {
-          result.push(pendingWhitespace);
-          pendingWhitespace = '';
-        }
-        // Color @mentions using known chatter colors
-        if (word.startsWith('@') && word.length > 1) {
-          const name = word.slice(1).replace(/[,.:!?]+$/, '').toLowerCase();
-          const color = knownColors.get(name);
-          if (color) {
-            result.push(`<span style="color:${sanitizeColor(color)};font-weight:bold">${escapeHtml(word)}</span>`);
-          } else {
-            result.push(escapeHtml(word));
-          }
-        } else if (linksEnabled && /^(https?:\/\/\S+|[a-z0-9-]+(\.[a-z0-9-]+)+\/\S*)/i.test(word)) {
-          // Validate URL protocol before creating link (block javascript:, data:, etc.)
-          const hasProtocol = /^https?:\/\//i.test(word);
-          const fullUrl = hasProtocol ? word : `https://${word}`;
-          if (/^https?:\/\//i.test(fullUrl)) {
-            const safeUrl = escapeHtml(word);
-            const safeHref = escapeHtml(fullUrl);
-            result.push(`<a href="${safeHref}" target="_blank" rel="noopener noreferrer" class="hs-mc-link">${safeUrl}</a>`);
-          } else {
-            result.push(escapeHtml(word));
-          }
-        } else {
-          result.push(escapeHtml(word));
-        }
-      }
-    }
-
-    // Flush any remaining stack
-    if (pendingStack) {
-      result.push(renderEmoteStack(pendingStack));
-    }
-    if (pendingWhitespace) {
-      result.push(pendingWhitespace);
-    }
-
-    return result.join('');
-  }
-
-  // Render an emote stack (base + overlays)
-  function renderEmoteStack(stack) {
-    if (stack.overlays.length === 0) {
-      return stack.base;
-    }
-    const overlayHtml = stack.overlays.map(o =>
-      o.replace('class="hs-mc-emote ', 'class="hs-mc-emote hs-mc-overlay-emote ')
-    ).join('');
-    const count = stack.overlays.length + 1;
-    return `<span class="hs-mc-emote-stack" data-stack-count="${count}" title="expand"><span class="hs-mc-emote-stack-emotes">${stack.base}${overlayHtml}</span><span class="hs-mc-stack-collapse" title="collapse">\u00d7</span><span class="hs-mc-stack-block-all" title="block all">\u2298</span></span>`;
-  }
 
   function renderAddChannelForm(msgsEl) {
     msgsEl.textContent = ''
@@ -11688,4 +12814,6 @@ m.type === 'usernotice' ? 'hs-mc-msg hs-mc-system' :
     }
   }, 500, 'spa-nav-check');
 
+
+}
 })();

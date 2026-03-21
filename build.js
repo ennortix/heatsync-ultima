@@ -61,6 +61,14 @@ const ASSETS = [
   'COGGERS-1x.webp',
 ]
 
+// Strip ES module syntax from bundled files
+function stripExports(content) {
+  return content
+    .replace(/^export\s+default\s+\w+\s*;?\s*$/gm, '')
+    .replace(/^export\s*\{[^}]*\}\s*;?\s*$/gm, '')
+    .replace(/^export\s+(const|let|var|function|class)\s+/gm, '$1 ')
+}
+
 // Read lib files
 function readLib() {
   const libDir = join(SRC_DIR, 'lib')
@@ -69,45 +77,71 @@ function readLib() {
 
   for (const file of files) {
     const content = readFileSync(join(libDir, file), 'utf8')
-    // Remove ES module exports (we're bundling into IIFE)
-    const stripped = content
-      // Remove "export default foo" entirely
-      .replace(/^export\s+default\s+\w+\s*;?\s*$/gm, '')
-      // Remove "export { foo, bar }" entirely
-      .replace(/^export\s*\{[^}]*\}\s*;?\s*$/gm, '')
-      // Convert "export const/let/var/function/class" to just the declaration
-      .replace(/^export\s+(const|let|var|function|class)\s+/gm, '$1 ')
-    combined += `\n// --- ${file} ---\n${stripped}\n`
+    combined += `\n// --- ${file} ---\n${stripExports(content)}\n`
   }
 
   combined += '// === END HEATSYNC LIB ===\n\n'
   return combined
 }
 
+// Read multichat module files (only bundled into multichat.js)
+const MULTICHAT_MODULES = [
+  'bootstrap.js',
+  'irc.js',
+  'auth-irc.js',
+  'emotes.js',
+  'tooltips.js',
+  'twitch-api.js',
+  'social.js',
+  'whispers.js',
+  'input.js',
+]
+
+function readMultichatModules() {
+  const mcDir = join(SRC_DIR, 'multichat')
+  let combined = '// === MULTICHAT MODULES (auto-bundled) ===\n'
+
+  for (const file of MULTICHAT_MODULES) {
+    const filePath = join(mcDir, file)
+    if (!existsSync(filePath)) continue
+    const content = readFileSync(filePath, 'utf8')
+    combined += `\n// --- multichat/${file} ---\n${stripExports(content)}\n`
+  }
+
+  combined += '// === END MULTICHAT MODULES ===\n\n'
+  return combined
+}
+
 // Inject lib at top of content script
 // Lib goes at IIFE scope, original content gets a nested block scope
 // so const/let declarations (DEBUG, cleanup, etc.) don't conflict
-function bundleContentScript(srcPath, lib) {
+function bundleContentScript(srcPath, lib, mcModules) {
   let content = readFileSync(srcPath, 'utf8')
 
   // Check if already has lib bundled (from previous build of src file)
   if (content.includes('=== HEATSYNC LIB')) {
-    // Already bundled, this is a built file being used as src - strip it
     content = content.replace(/\/\/ === HEATSYNC LIB[\s\S]*?\/\/ === END HEATSYNC LIB ===\n\n/, '')
+  }
+  if (content.includes('=== MULTICHAT MODULES')) {
+    content = content.replace(/\/\/ === MULTICHAT MODULES[\s\S]*?\/\/ === END MULTICHAT MODULES ===\n\n/, '')
   }
 
   // Strip existing IIFE wrapper so we can rebuild cleanly
+  // Strip leading block comments before checking for IIFE
   let body = content
-  if (content.trim().startsWith('(function()') || content.trim().startsWith('(() =>')) {
-    // Remove opening: (function() { 'use strict';
-    body = content.replace(/^\s*\((?:function\s*\(\)|(?:\(\)\s*=>))\s*\{[\s\n]*(?:'use strict';?\s*)?/, '')
+  const stripped = content.replace(/^\s*\/\*[\s\S]*?\*\/\s*/, '').trim()
+  if (stripped.startsWith('(function()') || stripped.startsWith('(() =>')) {
+    // Remove opening: optional block comment + (function() { 'use strict';
+    body = content.replace(/^[\s\S]*?\((?:function\s*\(\)|(?:\(\)\s*=>))\s*\{[\s\n]*(?:'use strict';?\s*)?/, '')
     // Remove closing: })();
     body = body.replace(/\}\s*\)\s*\(\s*\)\s*;?\s*$/, '')
   }
 
   // Build: IIFE > lib at outer scope > content in block scope
-  // Block scope prevents const/let collisions (DEBUG, cleanup, etc.)
-  return `(function() {\n'use strict';\n\n${lib}\n{\n${body}\n}\n})();`
+  // Multichat modules go before body: bootstrap.js declares cleanup/log first,
+  // then modules declare their state + functions, then body has state + init()
+  const modules = mcModules ? `${mcModules}\n` : ''
+  return `(function() {\n'use strict';\n\n${lib}\n{\n${modules}${body}\n}\n})();`
 }
 
 // Build for a specific browser
@@ -126,16 +160,25 @@ function build(browser) {
 
   // Read lib
   const lib = readLib()
+  const mcModules = readMultichatModules()
 
   // Bundle content scripts
   for (const file of CONTENT_SCRIPTS) {
-    const srcPath = join(chromeDir, file)
+    // multichat.js source lives in src/multichat/main.js (chrome/multichat.js is build output)
+    const srcPath = file === 'multichat.js'
+      ? join(SRC_DIR, 'multichat', 'main.js')
+      : join(chromeDir, file)
     if (!existsSync(srcPath)) {
       console.log(`  Skip ${file} (not found)`)
       continue
     }
-    const bundled = bundleContentScript(srcPath, lib)
+    const modules = file === 'multichat.js' ? mcModules : null
+    const bundled = bundleContentScript(srcPath, lib, modules)
     writeFileSync(join(outDir, file), bundled)
+    // Also write to chrome/ so unpacked extension loads the bundled version
+    if (file === 'multichat.js') {
+      writeFileSync(join(chromeDir, file), bundled)
+    }
     console.log(`  Bundled ${file}`)
   }
 

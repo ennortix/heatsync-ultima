@@ -4536,14 +4536,27 @@ m.type === 'usernotice' ? 'hs-mc-msg hs-mc-system' :
       }
     }
 
-    updateTabBadges();
-
-    if (msgs.length === 0) {
-      msgsEl.innerHTML = '<div class="hs-mc-empty">no messages yet</div>';
-      return;
+    // Merge global stream events into every tab (game changes, online/offline)
+    if (activityEvents.length > 0) {
+      const existingTimes = new Set(msgs.filter(m => m.type === 'stream-event').map(m => `${m.time}:${m.text}`))
+      const missing = activityEvents.filter(e => !existingTimes.has(`${e.time}:${e.text}`))
+      if (missing.length > 0) {
+        msgs = [...msgs, ...missing].sort((a, b) => a.time - b.time)
+      }
     }
 
-    const toRender = msgs.slice(-150);
+    updateTabBadges()
+
+    if (msgs.length === 0) {
+      msgsEl.textContent = ''
+      const empty = document.createElement('div')
+      empty.className = 'hs-mc-empty'
+      empty.textContent = 'no messages yet'
+      msgsEl.appendChild(empty)
+      return
+    }
+
+    const toRender = msgs.slice(-150)
     isProgrammaticScroll = true;
     msgsEl.textContent = '';
     msgsEl._zebraCount = 0;

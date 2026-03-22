@@ -2402,8 +2402,9 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
     (async () => {
       try {
         const opts = { method: message.method || 'GET', headers: {} }
-        if (message.auth && authToken) {
-          opts.headers['Authorization'] = `Bearer ${authToken}`
+        if (message.auth) {
+          const token = authToken || await getAuthCookie()
+          if (token) opts.headers['Authorization'] = `Bearer ${token}`
         }
         if (message.body) {
           opts.headers['Content-Type'] = 'application/json'
@@ -2428,12 +2429,11 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
 async function initialize() {
   log(' 🚀 Starting background script...');
 
-  // Load stored auth token (from encrypted storage)
+  // Load auth token (encrypted storage → cookie fallback)
   try {
-    const stored = await retrieveToken();
-    if (stored) {
-      authToken = stored;
-      log(' ✓ Loaded auth token from encrypted storage');
+    const token = await getAuthCookie();
+    if (token) {
+      log(' ✓ Loaded auth token');
     }
   } catch (err) {
     log(' Could not load auth token:', err.message);

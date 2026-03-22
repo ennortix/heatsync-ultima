@@ -7331,25 +7331,28 @@ const STORAGE_KEY = 'heatsync_multichat';
   let streamEventsLoaded = false;
 
   // Inject stream events into IRC buffers + activityEvents (deduped)
-  function injectStreamEventsIntoBuffers(events) {
+  // recentOnly: only inject events <15min old into chat buffers (on reload)
+  function injectStreamEventsIntoBuffers(events, recentOnly = false) {
     const liveCh = getLiveChannel()
     const liveBuffer = liveCh ? irc?.channels?.get(liveCh) : null
+    const chatCutoff = recentOnly ? Date.now() - 900000 : 0 // 15min
     let added = 0
 
     for (const evt of events) {
       const ch = evt.channel
       if (!ch) continue
 
-      // Always inject into live buffer (follow events show on live tab)
-      // Dedup by text only — same event text should never appear twice
-      if (liveBuffer) {
+      const injectToChat = !recentOnly || (evt.time && evt.time > chatCutoff)
+
+      // Inject into live buffer only if recent enough
+      if (injectToChat && liveBuffer) {
         const existing = liveBuffer.getAll()
         const isDupe = existing.some(m => m.type === 'stream-event' && m.text === evt.text)
         if (!isDupe) { liveBuffer.push(evt); added++ }
       }
 
       // Also inject into the matching channel buffer if different from live
-      if (ch !== liveCh) {
+      if (injectToChat && ch !== liveCh) {
         const buffer = irc?.channels?.get(ch)
         if (buffer) {
           const existing = buffer.getAll()
@@ -7358,7 +7361,7 @@ const STORAGE_KEY = 'heatsync_multichat';
         }
       }
 
-      // Also push to activityEvents (dedup by text)
+      // Always push to activityEvents regardless of age
       const isDupeActivity = activityEvents.some(m => m.text === evt.text)
       if (!isDupeActivity) activityEvents.push(evt)
     }
@@ -7373,7 +7376,7 @@ const STORAGE_KEY = 'heatsync_multichat';
       const cutoff = Date.now() - 86400000 // 24h expiry
       const valid = events.filter(e => e.time > cutoff)
 
-      injectStreamEventsIntoBuffers(valid)
+      injectStreamEventsIntoBuffers(valid, true)
 
       // Prune expired from storage
       if (valid.length < events.length) {

@@ -37,7 +37,8 @@
     {
       "matches": ["*://*.twitch.tv/*"],
       "js": ["early-inject-main.js"],
-      "run_at": "document_start"
+      "run_at": "document_start",
+      "world": "MAIN"
     },
     {
       "matches": ["*://*.twitch.tv/*", "*://*.kick.com/*"],
@@ -110,7 +111,7 @@
   "browser_specific_settings": {
     "gecko": {
       "id": "heatsync@heatsync.org",
-      "strict_min_version": "109.0"
+      "strict_min_version": "128.0"
     }
   }
 }

@@ -150,6 +150,17 @@ async function sendWhisperMessage(key, text) {
   const conv = whisperConversations.get(key)
   if (!conv) return
 
+  // Add message optimistically so it shows immediately
+  const msg = { user: 'you', text, color: '#aaa', time: Date.now(), self: true }
+  conv.msgs.push(msg)
+  if (conv.msgs.length > 200) conv.msgs.splice(0, conv.msgs.length - 200)
+  conv.lastTime = Date.now()
+
+  if (currentTab === 'whispers' && activeWhisperUser === key) {
+    renderWhispersTab()
+  }
+  whisperSaveDebounced()
+
   if (key.startsWith('twitch:')) {
     try {
       await gqlProxy('SendWhisper', {
@@ -161,7 +172,7 @@ async function sendWhisperMessage(key, text) {
       }, { rawQuery: 'mutation SendWhisper($input: SendWhisperInput!) { sendWhisper(input: $input) { error { code } } }' })
     } catch (e) {
       log('Whisper send failed:', e.message)
-      return
+      showToast('whisper failed: ' + e.message)
     }
   } else if (key.startsWith('hs:')) {
     const toUserId = key.slice(3)
@@ -171,24 +182,9 @@ async function sendWhisperMessage(key, text) {
     })
     if (!resp.ok) {
       log('DM send failed:', resp.error)
-      return
+      showToast('dm failed: ' + (resp.error || 'unknown error'))
     }
   }
-
-  conv.msgs.push({
-    user: 'you',
-    text,
-    color: '#aaa',
-    time: Date.now(),
-    self: true
-  })
-  if (conv.msgs.length > 200) conv.msgs.splice(0, conv.msgs.length - 200)
-  conv.lastTime = Date.now()
-
-  if (currentTab === 'whispers' && activeWhisperUser === key) {
-    renderWhispersTab()
-  }
-  whisperSaveDebounced()
 }
 
 function renderWhispersTab() {

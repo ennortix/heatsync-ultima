@@ -5723,6 +5723,17 @@ async function sendWhisperMessage(key, text) {
   const conv = whisperConversations.get(key)
   if (!conv) return
 
+  // Add message optimistically so it shows immediately
+  const msg = { user: 'you', text, color: '#aaa', time: Date.now(), self: true }
+  conv.msgs.push(msg)
+  if (conv.msgs.length > 200) conv.msgs.splice(0, conv.msgs.length - 200)
+  conv.lastTime = Date.now()
+
+  if (currentTab === 'whispers' && activeWhisperUser === key) {
+    renderWhispersTab()
+  }
+  whisperSaveDebounced()
+
   if (key.startsWith('twitch:')) {
     try {
       await gqlProxy('SendWhisper', {
@@ -5734,7 +5745,7 @@ async function sendWhisperMessage(key, text) {
       }, { rawQuery: 'mutation SendWhisper($input: SendWhisperInput!) { sendWhisper(input: $input) { error { code } } }' })
     } catch (e) {
       log('Whisper send failed:', e.message)
-      return
+      showToast('whisper failed: ' + e.message)
     }
   } else if (key.startsWith('hs:')) {
     const toUserId = key.slice(3)
@@ -5744,24 +5755,9 @@ async function sendWhisperMessage(key, text) {
     })
     if (!resp.ok) {
       log('DM send failed:', resp.error)
-      return
+      showToast('dm failed: ' + (resp.error || 'unknown error'))
     }
   }
-
-  conv.msgs.push({
-    user: 'you',
-    text,
-    color: '#aaa',
-    time: Date.now(),
-    self: true
-  })
-  if (conv.msgs.length > 200) conv.msgs.splice(0, conv.msgs.length - 200)
-  conv.lastTime = Date.now()
-
-  if (currentTab === 'whispers' && activeWhisperUser === key) {
-    renderWhispersTab()
-  }
-  whisperSaveDebounced()
 }
 
 function renderWhispersTab() {
@@ -7631,7 +7627,7 @@ const STORAGE_KEY = 'heatsync_multichat';
   let avatarsEnabled = false;
 
   // Show offline stream events (default off)
-  let showOfflineEvents = false;
+  let showOfflineEvents = true;
 
   // Input bar auto-hide — hidden when empty, shown on first keystroke
   let autoHideInput = true;
@@ -8445,12 +8441,12 @@ const STORAGE_KEY = 'heatsync_multichat';
         timestampsEnabled = false;
         avatarsEnabled = false;
         platformBadgesEnabled = true;
-        showOfflineEvents = false;
+        showOfflineEvents = true;
         for (const [k, v] of Object.entries(INLINE_NOTIF_TYPES)) inlineNotifs[k] = v.defaultOn;
         const settings = {
           wysiwygEnabled: false, linksEnabled: true, viMode: false,
           zebra: true, autoHideInput: true, timestamps: false,
-          avatars: false, showPlatformBadges: true, showOfflineEvents: false,
+          avatars: false, showPlatformBadges: true, showOfflineEvents: true,
           inlineNotifs: { ...inlineNotifs },
         };
         try { chrome.storage.local.get(['ui_settings']).then(s => chrome.storage.local.set({ ui_settings: { ...s.ui_settings, ...settings } })); } catch {}
@@ -8693,6 +8689,7 @@ const STORAGE_KEY = 'heatsync_multichat';
       .hs-mc-stream-event.event-online { color: #f44; }
       .hs-mc-stream-event.event-online .hs-evt-game { color: #fff; }
       .hs-mc-stream-event.event-offline { color: #808080; opacity: 1; }
+      .hs-mc-stream-event.event-offline .hs-evt-bracket { color: #808080 !important; }
       /* Inline feed posts in chat timeline */
       .hs-mc-feed-inline {
         padding: 2px 8px;
@@ -11552,7 +11549,7 @@ const STORAGE_KEY = 'heatsync_multichat';
       const userLink = `<a href="https://twitch.tv/${encodeURIComponent(ch)}" target="_blank" class="hs-mc-user hs-evt-user" data-username="${escapeHtml(ch)}" style="${colorStyle}">${escapeHtml(ch)}</a>`
       const textAfterChannel = escapeHtml(m.text).replace(/^\[[^\]]+\]\s*/, '')
       const actionHtml = textAfterChannel.replace(/(switched to |now playing |went live \u2014 )(.+)$/, '$1<span class="hs-evt-game">$2</span>')
-      div.innerHTML = `${tsSpan}<span style="color:#fff">[</span>${userLink}<span style="color:#fff">]</span> ${actionHtml}`
+      div.innerHTML = `${tsSpan}<span class="hs-evt-bracket" style="color:#fff">[</span>${userLink}<span class="hs-evt-bracket" style="color:#fff">]</span> ${actionHtml}`
       // Async fetch color if not cached
       if (!userColor && ch) {
         apiFetch(`/api/profile/${encodeURIComponent(ch)}`).then(resp => {
@@ -11855,9 +11852,12 @@ m.type === 'usernotice' ? 'hs-mc-msg hs-mc-system' :
     }
 
     // Merge global stream events into every tab (game changes, online/offline)
-    if (activityEvents.length > 0) {
+    // Only include events within the time range of existing messages so old events
+    // don't pile up as a wall before chat history starts
+    if (activityEvents.length > 0 && msgs.length > 0) {
+      const oldestMsg = msgs.reduce((min, m) => m.time < min ? m.time : min, msgs[0].time)
       const existingTexts = new Set(msgs.filter(m => m.type === 'stream-event').map(m => m.text))
-      const missing = activityEvents.filter(e => !existingTexts.has(e.text))
+      const missing = activityEvents.filter(e => !existingTexts.has(e.text) && e.time >= oldestMsg)
       if (missing.length > 0) {
         msgs = [...msgs, ...missing].sort((a, b) => a.time - b.time)
       }
@@ -13259,7 +13259,7 @@ m.type === 'usernotice' ? 'hs-mc-msg hs-mc-system' :
         builtEvents.push(evt)
       }
 
-      const added = injectStreamEventsIntoBuffers(builtEvents)
+      const added = injectStreamEventsIntoBuffers(builtEvents, true)
       if (builtEvents.length > 0) saveStreamEventsBatch(builtEvents)
 
       if (added > 0) {

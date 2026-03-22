@@ -4133,11 +4133,21 @@ function attachPredictionHandlers() {
   })
 }
 
+// Get Twitch channel for the active multichat tab (channel tab → twitch name, live → URL channel)
+function getActiveTwitchChannel() {
+  if (currentTab === 'live' || currentTab === 'feed' || currentTab === 'mentions' || currentTab === 'whispers') {
+    return getLiveChannel()
+  }
+  const ch = config.channels.find(c => (typeof c === 'string' ? c : c.id) === currentTab)
+  if (!ch) return getLiveChannel()
+  return typeof ch === 'string' ? ch : ch.twitch || ch.id
+}
+
 async function renderTwitchTab() {
   const container = document.getElementById('hs-mc-tab-twitch')
   if (!container) return
 
-  const channel = getCurrentChannel()
+  const channel = getActiveTwitchChannel()
   if (!channel) {
     container.textContent = ''
     const empty = document.createElement('div')

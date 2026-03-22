@@ -407,6 +407,17 @@ style.textContent = `
     color: #000 !important;
   }
 
+  .hs-pc-subbed {
+    background: #9146ff !important;
+    color: #fff !important;
+    padding: 2px 4px !important;
+    border-radius: 0 !important;
+    font-size: 10px !important;
+    font-weight: 900 !important;
+    letter-spacing: 0.3px !important;
+    white-space: nowrap !important;
+  }
+
   .hs-pc-follows-you {
     background: #00aaaa !important;
     color: #fff !important;
@@ -3894,11 +3905,20 @@ function updateEmoteState(hash, emoteName, state) {
       subSpan.textContent = 'subs to you' + formatRelTime(since)
       row1.appendChild(subSpan)
     }
-    if (rel.isFollowing) {
+    if (rel.isFollowing || rel.followsOnTwitch) {
+      const since = rel.followsOnTwitchSince || rel.followedAt
       const fgSpan = document.createElement('span')
       fgSpan.className = 'hs-pc-following'
-      fgSpan.textContent = 'following'
+      fgSpan.textContent = 'following' + formatRelTime(since)
       row1.appendChild(fgSpan)
+    }
+    if (rel.subscribedOnTwitch || rel.isSubscribed) {
+      const since = rel.subscribedAt
+      const tier = rel.twitchSubTier || rel.subTier
+      const subSpan = document.createElement('span')
+      subSpan.className = 'hs-pc-subbed'
+      subSpan.textContent = 'subbed' + (tier && tier > 1 ? ` T${tier}` : '') + formatRelTime(since)
+      row1.appendChild(subSpan)
     }
     info.appendChild(row1)
 

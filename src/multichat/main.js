@@ -4245,27 +4245,45 @@
       div.className = `hs-mc-stream-event ${m.eventClass || ''}`
       const tsVal = timestampsEnabled ? formatTimeFromTs(m.time) : ''
       const tsSpan = tsVal ? `<span class="hs-mc-ts" data-ts="${m.time}">${tsVal}</span>` : ''
-      // Look up user's Twitch color from IRC buffers
       const ch = m.channel || ''
-      let userColor = '#ffff00'
-      if (ch && irc?.channels) {
+      // Look up color: profile cache → IRC buffers → async fetch
+      let userColor = ''
+      const cached = _profileCache.get(ch)
+      if (cached?.profile?.twitch_color) {
+        userColor = cached.profile.twitch_color
+      }
+      if (!userColor && ch && irc?.channels) {
         for (const [, buf] of irc.channels) {
           const msgs = buf.getAll()
           for (let i = msgs.length - 1; i >= 0; i--) {
             if (msgs[i].user?.toLowerCase() === ch) {
-              userColor = msgs[i].color || '#ffff00'
+              userColor = msgs[i].color || ''
               break
             }
           }
-          if (userColor !== '#ffff00') break
+          if (userColor) break
         }
       }
       // Build structured HTML: [username] ◆ action game
-      const userLink = `<a href="https://twitch.tv/${encodeURIComponent(ch)}" target="_blank" class="hs-mc-user" data-username="${escapeHtml(ch)}" style="color:${sanitizeColor(userColor)}">${escapeHtml(ch)}</a>`
-      // Parse the rest of the text after "[channel] "
+      const colorStyle = userColor ? `color:${sanitizeColor(userColor)}` : 'color:#ffff00'
+      const userLink = `<a href="https://twitch.tv/${encodeURIComponent(ch)}" target="_blank" class="hs-mc-user hs-evt-user" data-username="${escapeHtml(ch)}" style="${colorStyle}">${escapeHtml(ch)}</a>`
       const textAfterChannel = escapeHtml(m.text).replace(/^\[[^\]]+\]\s*/, '')
       const actionHtml = textAfterChannel.replace(/(switched to |now playing |went live \u2014 )(.+)$/, '$1<span class="hs-evt-game">$2</span>')
       div.innerHTML = `${tsSpan}[${userLink}] ${actionHtml}`
+      // Async fetch color if not cached
+      if (!userColor && ch) {
+        apiFetch(`/api/profile/${encodeURIComponent(ch)}`).then(resp => {
+          if (resp?.ok && resp.data?.profile) {
+            const profile = resp.data.profile
+            const color = profile.twitch_color
+            if (color) {
+              const el = div.querySelector('.hs-evt-user')
+              if (el) el.style.color = sanitizeColor(color)
+            }
+            _profileCache.set(ch, { profile, ts: Date.now() })
+          }
+        })
+      }
       return div
     }
 

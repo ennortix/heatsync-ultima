@@ -4131,9 +4131,6 @@
       expandedThreadId = null;
       threadReplies = [];
     }
-    // Reset whisper conversation view when leaving whispers
-    if (currentTab === 'whispers' && id !== 'whispers') activeWhisperUser = null
-
     currentTab = id;
 
     // Mark mentions as seen when switching to that tab
@@ -4142,10 +4139,10 @@
       updateTabBadges();
     }
 
-    // Clear whisper unread when viewing active conversation
-    if (id === 'whispers' && activeWhisperUser) {
-      const conv = whisperConversations.get(activeWhisperUser)
-      if (conv) { whisperTotalUnread -= conv.unread; conv.unread = 0 }
+    // Clear whisper unread when switching to whispers tab
+    if (id === 'whispers') {
+      whisperLastViewedTime = Date.now()
+      whisperTotalUnread = 0
       updateWhisperBadge()
     }
 
@@ -4207,7 +4204,7 @@
     // Hide input bar on add-channel form, or when auto-hide is on
     if (inputBarElement) {
       const pickerOpen = document.getElementById('hs-mc-emote-picker')?.classList.contains('visible');
-      if (id === 'add' || (id === 'whispers' && !activeWhisperUser)) {
+      if (id === 'add') {
         inputBarElement.classList.add('hs-hidden');
         inputBarVisible = false;
       } else if (autoHideInput && !pickerOpen) {

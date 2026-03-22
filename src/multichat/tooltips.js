@@ -254,12 +254,8 @@
         if (userTooltip?.classList.contains('visible')) {
           if (!onUser && !target?.closest?.('#hs-user-tooltip')) {
             hideUserTooltip()
-          } else {
-            const x = Math.min(cx + 15, window.innerWidth - 220)
-            const y = Math.max(cy - 60, 10)
-            userTooltip.style.left = x + 'px'
-            userTooltip.style.top = y + 'px'
           }
+          // Don't reposition — stays anchored to element like website
         }
 
         // Kill link tooltip if not on a link

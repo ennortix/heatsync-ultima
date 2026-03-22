@@ -3773,7 +3773,7 @@ function updateEmoteState(hash, emoteName, state) {
     }
 
     try {
-      const data = await HS.apiFetch(`/api/profile/${encodeURIComponent(username)}`)
+      const data = await HS.apiFetch(`/api/profile/${encodeURIComponent(username)}`, { auth: true })
       const profile = data.profile || data
       profileCache.set(key, { data: profile, ts: Date.now() })
       if (profileCache.size > PROFILE_CACHE_MAX) {
@@ -4048,16 +4048,13 @@ function updateEmoteState(hash, emoteName, state) {
     if (!chatInput) return
 
     chatInput.focus()
-    navigator.clipboard.writeText(command).then(() => {
-      document.execCommand('selectAll')
-      document.execCommand('paste')
-      cleanup.setTimeout(() => {
-        const enterEvent = new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', keyCode: 13, bubbles: true })
-        chatInput.dispatchEvent(enterEvent)
-      }, 100)
-    }).catch(() => {
-      log(' Failed to inject chat command')
-    })
+    // Clear existing text and insert command without touching clipboard
+    document.execCommand('selectAll')
+    document.execCommand('insertText', false, command)
+    cleanup.setTimeout(() => {
+      const enterEvent = new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', keyCode: 13, bubbles: true })
+      chatInput.dispatchEvent(enterEvent)
+    }, 100)
   }
 
   // Handle action button clicks
@@ -4267,26 +4264,16 @@ function insertEmoteIntoChat(emoteName) {
   log(' insertEmoteIntoChat - isContentEditable:', isContentEditable);
 
   if (isContentEditable) {
-    // TWITCH: Write to clipboard, show toast for Ctrl+V
-    // This is most reliable - Twitch's Slate editor blocks synthetic events
-    navigator.clipboard.writeText(textToInsert).then(() => {
-      log(' ✅ Copied to clipboard:', emoteName);
-      log(' Clipboard write successful:', textToInsert);
-      const notif = document.createElement('div');
-      notif.textContent = `${emoteName} copied - Ctrl+V`;
-      notif.style.cssText = `
-        position: fixed; bottom: 80px; left: 50%; transform: translateX(-50%);
-        background: #000; color: #fff; border: 1px solid #fff; padding: 6px 14px; border-radius: 0;
-        font: bold 12px monospace; z-index: 10000;
-      `;
-      document.body.appendChild(notif);
-      cleanup.setTimeout(() => notif.remove(), 1500);
-
-      // Focus chat input for easy paste
-      chatInput.focus();
-    }).catch(err => {
-      warn(' Clipboard failed:', err);
-    });
+    // Insert directly via execCommand (same approach as heatsync-button.js)
+    chatInput.focus();
+    // Move cursor to end
+    const sel = window.getSelection();
+    const range = document.createRange();
+    range.selectNodeContents(chatInput);
+    range.collapse(false);
+    sel.removeAllRanges();
+    sel.addRange(range);
+    document.execCommand('insertText', false, textToInsert);
   } else {
     // KICK: textarea - always insert at end
     chatInput.focus();

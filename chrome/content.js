@@ -378,6 +378,23 @@ style.textContent = `
     white-space: nowrap !important;
   }
 
+  .hs-pc-live {
+    background: #ff0000 !important;
+    color: #fff !important;
+    padding: 2px 3px !important;
+    border-radius: 0 !important;
+    font-size: 10px !important;
+    font-weight: 900 !important;
+    border: 1px solid #000 !important;
+    letter-spacing: 0.3px !important;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.5) !important;
+    white-space: nowrap !important;
+  }
+  .hs-pc-live-kick {
+    background: #53fc18 !important;
+    color: #000 !important;
+  }
+
   .hs-pc-follows-you {
     background: #00aaaa !important;
     color: #fff !important;
@@ -3821,6 +3838,22 @@ function updateEmoteState(hash, emoteName, state) {
       ageSpan.textContent = age
       row1.appendChild(ageSpan)
     }
+    // Live status
+    if (profile.twitch_is_live) {
+      const liveSpan = document.createElement('span')
+      liveSpan.className = 'hs-pc-live'
+      liveSpan.textContent = '\uD83D\uDD34 LIVE' + (profile.twitch_viewer_count > 0 ? ` ${formatNum(profile.twitch_viewer_count)}` : '')
+      if (profile.twitch_game) liveSpan.title = profile.twitch_game
+      row1.appendChild(liveSpan)
+    }
+    if (profile.kick_is_live) {
+      const liveSpan = document.createElement('span')
+      liveSpan.className = 'hs-pc-live hs-pc-live-kick'
+      liveSpan.textContent = '\uD83D\uDD34 LIVE' + (profile.kick_viewer_count > 0 ? ` ${formatNum(profile.kick_viewer_count)}` : '')
+      if (profile.kick_category) liveSpan.title = profile.kick_category
+      row1.appendChild(liveSpan)
+    }
+
     // Relationship badges
     const rel = profile.relationship || {}
     const followsYou = rel.profileFollowsViewerOnTwitch || rel.profileFollowsViewerOnKick || rel.followsYou

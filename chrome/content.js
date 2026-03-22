@@ -4114,26 +4114,30 @@ function updateEmoteState(hash, emoteName, state) {
       cardEl.appendChild(buildCardDOM(profile, username))
       positionCard(cardEl, e)
 
-      // Live-poll viewer count every 1s while card is visible
+      // Live-poll viewer count every 1s while card is visible (lightweight endpoint)
       if (cardPollInterval) { clearInterval(cardPollInterval); cardPollInterval = null }
       if (profile && (profile.twitch_is_live || profile.kick_is_live)) {
         cardPollInterval = setInterval(async () => {
           if (!cardEl) { clearInterval(cardPollInterval); cardPollInterval = null; return }
-          const fresh = await fetchProfile(username, true)
-          if (!fresh || !cardEl) return
-          // Update twitch live span
-          const twitchLive = cardEl.querySelector('.hs-pc-live:not(.hs-pc-live-kick)')
-          if (twitchLive && fresh.twitch_is_live) {
-            twitchLive.textContent = '\uD83D\uDD34 LIVE' + (fresh.twitch_viewer_count > 0 ? ` ${formatNum(fresh.twitch_viewer_count)}` : '')
-          } else if (twitchLive && !fresh.twitch_is_live) {
-            twitchLive.remove()
-          }
-          // Update kick live span
-          const kickLive = cardEl.querySelector('.hs-pc-live-kick')
-          if (kickLive && fresh.kick_is_live) {
-            kickLive.textContent = '\uD83D\uDD34 LIVE' + (fresh.kick_viewer_count > 0 ? ` ${formatNum(fresh.kick_viewer_count)}` : '')
-          } else if (kickLive && !fresh.kick_is_live) {
-            kickLive.remove()
+          try {
+            const fresh = await HS.apiFetch(`/api/profile/${encodeURIComponent(username)}/live`)
+            if (!fresh || !cardEl) return
+            // Update twitch live span
+            const twitchLive = cardEl.querySelector('.hs-pc-live:not(.hs-pc-live-kick)')
+            if (twitchLive && fresh.twitch_is_live) {
+              twitchLive.textContent = '\uD83D\uDD34 LIVE' + (fresh.twitch_viewer_count > 0 ? ` ${formatNum(fresh.twitch_viewer_count)}` : '')
+            } else if (twitchLive && !fresh.twitch_is_live) {
+              twitchLive.remove()
+            }
+            // Update kick live span
+            const kickLive = cardEl.querySelector('.hs-pc-live-kick')
+            if (kickLive && fresh.kick_is_live) {
+              kickLive.textContent = '\uD83D\uDD34 LIVE' + (fresh.kick_viewer_count > 0 ? ` ${formatNum(fresh.kick_viewer_count)}` : '')
+            } else if (kickLive && !fresh.kick_is_live) {
+              kickLive.remove()
+            }
+          } catch (err) {
+            // Silently ignore poll failures
           }
         }, 1000)
       }

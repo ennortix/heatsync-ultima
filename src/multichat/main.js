@@ -1437,6 +1437,8 @@
       .hs-mc-stream-event .hs-mc-user { text-decoration: none; font-weight: bold; }
       .hs-mc-stream-event .hs-mc-user:hover { text-decoration: underline; }
       .hs-mc-stream-event .hs-evt-game { color: #fff; font-style: normal; }
+      .hs-mc-stream-event.event-online { color: #f44; }
+      .hs-mc-stream-event.event-online .hs-evt-game { color: #fff; }
       .hs-mc-stream-event.event-offline { opacity: 0.6; }
       /* Inline feed posts in chat timeline */
       .hs-mc-feed-inline {

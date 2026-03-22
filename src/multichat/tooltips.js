@@ -405,13 +405,13 @@
     // Viewer follows profile
     if (rel.isFollowing || rel.followsOnTwitch) {
       const since = rel.followsOnTwitchSince || rel.followedAt;
-      relBadges.push(`<span class="hs-pc-rel-badge following">following${since ? ' ' + getCompactRelTime(since) : ''}</span>`);
+      relBadges.push(`<span class="hs-pc-rel-badge following">you follow${since ? ' ' + getCompactRelTime(since) : ''}</span>`);
     }
     // Viewer subbed to profile
     if (rel.isSubscribed || rel.subscribedOnTwitch) {
       const tier = rel.twitchSubTier || rel.subTier || 1;
       const since = rel.twitchSubSince || rel.subscribedAt;
-      relBadges.push(`<span class="hs-pc-rel-badge subbed">subbed${tier > 1 ? ' T' + tier : ''}${since ? ' ' + getCompactRelTime(since) : ''}</span>`);
+      relBadges.push(`<span class="hs-pc-rel-badge subbed">you sub${tier > 1 ? ' T' + tier : ''}${since ? ' ' + getCompactRelTime(since) : ''}</span>`);
     }
 
     return `

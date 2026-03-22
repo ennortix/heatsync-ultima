@@ -4091,7 +4091,7 @@ function updateEmoteState(hash, emoteName, state) {
       const since = rel.followsOnTwitchSince || rel.followedAt
       const fgSpan = document.createElement('span')
       fgSpan.className = 'hs-pc-following'
-      fgSpan.textContent = 'following' + formatRelTime(since)
+      fgSpan.textContent = 'you follow' + formatRelTime(since)
       row1.appendChild(fgSpan)
     }
     if (rel.subscribedOnTwitch || rel.isSubscribed) {
@@ -4099,7 +4099,7 @@ function updateEmoteState(hash, emoteName, state) {
       const tier = rel.twitchSubTier || rel.subTier
       const subSpan = document.createElement('span')
       subSpan.className = 'hs-pc-subbed'
-      subSpan.textContent = 'subbed' + (tier && tier > 1 ? ` T${tier}` : '') + formatRelTime(since)
+      subSpan.textContent = 'you sub' + (tier && tier > 1 ? ` T${tier}` : '') + formatRelTime(since)
       row1.appendChild(subSpan)
     }
     info.appendChild(row1)

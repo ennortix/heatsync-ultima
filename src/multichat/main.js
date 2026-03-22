@@ -4277,7 +4277,7 @@
       const userLink = `<a href="https://twitch.tv/${encodeURIComponent(ch)}" target="_blank" class="hs-mc-user hs-evt-user" data-username="${escapeHtml(ch)}" style="${colorStyle}">${escapeHtml(ch)}</a>`
       const textAfterChannel = escapeHtml(m.text).replace(/^\[[^\]]+\]\s*/, '')
       const actionHtml = textAfterChannel.replace(/(switched to |now playing |went live \u2014 )(.+)$/, '$1<span class="hs-evt-game">$2</span>')
-      div.innerHTML = `${tsSpan}[${userLink}] ${actionHtml}`
+      div.innerHTML = `${tsSpan}<span style="color:#fff">[</span>${userLink}<span style="color:#fff">]</span> ${actionHtml}`
       // Async fetch color if not cached
       if (!userColor && ch) {
         apiFetch(`/api/profile/${encodeURIComponent(ch)}`).then(resp => {

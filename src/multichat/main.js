@@ -5970,68 +5970,79 @@ m.type === 'usernotice' ? 'hs-mc-msg hs-mc-system' :
       window._hsMcFollowColorsListener = true;
       chrome.runtime?.onMessage?.addListener((msg) => {
         if (msg.type !== 'follow_colors') return;
-        const colors = msg.colors;
-        if (!colors || typeof colors !== 'object') return;
-        for (const [login, color] of Object.entries(colors)) {
-          if (color) streamColorMap.set(login.toLowerCase(), color);
+        processFollowColors(msg.colors);
+      });
+    }
+
+    // Process follow history events (shared by listener + on-demand request)
+    function processFollowHistory(events) {
+      if (!Array.isArray(events) || events.length === 0) return;
+
+      const builtEvents = [];
+      for (const e of events) {
+        const channel = e.channel?.toLowerCase();
+        if (!channel) continue;
+
+        let text = '', eventClass = '';
+        if (e.type === 'follow:stream:update' && e.game) {
+          text = e.prevGame
+            ? `[${channel}] \u25C6 switched to ${e.game}`
+            : `[${channel}] \u25C6 now playing ${e.game}`;
+          eventClass = 'event-follow event-update';
+        } else if (e.type === 'follow:stream:online') {
+          text = e.game ? `[${channel}] \u25C6 went live \u2014 ${e.game}` : `[${channel}] \u25C6 went live`;
+          eventClass = 'event-follow event-online';
+        } else if (e.type === 'follow:stream:offline') {
+          text = `[${channel}] \u25C6 went offline`;
+          eventClass = 'event-follow event-offline';
         }
-        log('[FollowColors]', streamColorMap.size, 'colors received');
-        // Re-render active tab so persisted events pick up the colors
+        if (!text) continue;
+
+        const evt = { type: 'stream-event', eventClass, text, channel, time: e.time, color: e.color || '' };
+        builtEvents.push(evt)
+      }
+
+      const added = injectStreamEventsIntoBuffers(builtEvents)
+      for (const evt of builtEvents) {
+        saveStreamEvent(evt)
+      }
+
+      if (added > 0) {
+        log('[FollowHistory]', added, 'events loaded');
         const active = currentTab;
         if (active === 'live' || config.channels.some(ch => (typeof ch === 'string' ? ch : ch.id) === active)) {
           renderMessages(active);
         }
-      });
+      }
     }
 
-    // Handle event history from server (for new connections / other browsers)
+    // Process follow colors (shared by listener + on-demand request)
+    function processFollowColors(colors) {
+      if (!colors || typeof colors !== 'object') return;
+      for (const [login, color] of Object.entries(colors)) {
+        if (color) streamColorMap.set(login.toLowerCase(), color);
+      }
+      log('[FollowColors]', streamColorMap.size, 'colors received');
+      const active = currentTab;
+      if (active === 'live' || config.channels.some(ch => (typeof ch === 'string' ? ch : ch.id) === active)) {
+        renderMessages(active);
+      }
+    }
+
+    // Handle real-time follow_history from background broadcast
     if (!window._hsMcFollowHistoryListener) {
       window._hsMcFollowHistoryListener = true;
       chrome.runtime?.onMessage?.addListener((msg) => {
         if (msg.type !== 'follow_history') return;
-        const events = msg.events;
-        if (!Array.isArray(events) || events.length === 0) return;
-
-        // Build event objects from server history
-        const builtEvents = [];
-        for (const e of events) {
-          const channel = e.channel?.toLowerCase();
-          if (!channel) continue;
-
-          let text = '', eventClass = '';
-          if (e.type === 'follow:stream:update' && e.game) {
-            text = e.prevGame
-              ? `[${channel}] \u25C6 switched to ${e.game}`
-              : `[${channel}] \u25C6 now playing ${e.game}`;
-            eventClass = 'event-follow event-update';
-          } else if (e.type === 'follow:stream:online') {
-            text = e.game ? `[${channel}] \u25C6 went live \u2014 ${e.game}` : `[${channel}] \u25C6 went live`;
-            eventClass = 'event-follow event-online';
-          } else if (e.type === 'follow:stream:offline') {
-            text = `[${channel}] \u25C6 went offline`;
-            eventClass = 'event-follow event-offline';
-          }
-          if (!text) continue;
-
-          const evt = { type: 'stream-event', eventClass, text, channel, time: e.time, color: e.color || '' };
-          builtEvents.push(evt)
-        }
-
-        // Inject into IRC buffers + activityEvents (deduped) and persist
-        const added = injectStreamEventsIntoBuffers(builtEvents)
-        for (const evt of builtEvents) {
-          saveStreamEvent(evt)
-        }
-
-        if (added > 0) {
-          log('[FollowHistory]', added, 'events loaded from server');
-          const active = currentTab;
-          if (active === 'live' || config.channels.some(ch => (typeof ch === 'string' ? ch : ch.id) === active)) {
-            renderMessages(active);
-          }
-        }
+        processFollowHistory(msg.events);
       });
     }
+
+    // Request cached follow history from background (handles race condition on load)
+    safeSendMessage({ type: 'get_follow_history' }).then(resp => {
+      if (resp?.colors) processFollowColors(resp.colors);
+      if (resp?.history) processFollowHistory(resp.history);
+    });
 
     // === BULLETPROOF CONNECTION MAINTENANCE ===
 

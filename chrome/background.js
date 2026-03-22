@@ -68,6 +68,8 @@ let lastBroadcastWasEmpty = false; // Track to prevent spamming 0-emote broadcas
 let currentChannel = null;
 let pendingChannelJoin = null; // Store channel join request if socket not ready
 let unreadNotifCount = 0; // Unread notification count for extension badge
+let cachedFollowHistory = null; // Cache follow:history for late-loading content scripts
+let cachedFollowColors = null; // Cache follow:colors for late-loading content scripts
 let activeYoutubeVideoId = null; // Currently subscribed YouTube videoId (for WS reconnect)
 const ytVideoToChannel = new Map(); // videoId → channelId (for per-channel YouTube routing)
 const MAX_YT_VIDEO_ENTRIES = 100; // LRU cap — evict oldest when full
@@ -1733,16 +1735,18 @@ function handleWSMessage(msg) {
       break
 
     case 'follow:colors':
+      cachedFollowColors = msg.colors || {}
       broadcastToTabs({
         type: 'follow_colors',
-        colors: msg.colors || {}
+        colors: cachedFollowColors
       })
       break
 
     case 'follow:history':
+      cachedFollowHistory = msg.events || []
       broadcastToTabs({
         type: 'follow_history',
-        events: msg.events || []
+        events: cachedFollowHistory
       })
       break
 
@@ -2365,6 +2369,12 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
   } else if (message.type === 'notifs_viewed') {
     unreadNotifCount = 0;
     updateExtensionBadge();
+  } else if (message.type === 'get_follow_history') {
+    // Content scripts request cached follow history (handles race condition on load)
+    sendResponse({
+      history: cachedFollowHistory,
+      colors: cachedFollowColors
+    });
   } else if (message.type === 'api_fetch') {
     // Generic API proxy — content scripts route through here to bypass CORS
     if (!message.path || !message.path.startsWith('/api/')) {

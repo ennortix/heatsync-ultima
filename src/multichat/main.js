@@ -1448,7 +1448,7 @@
       .hs-mc-stream-event .hs-evt-game { color: #fff; font-style: normal; }
       .hs-mc-stream-event.event-online { color: #f44; }
       .hs-mc-stream-event.event-online .hs-evt-game { color: #fff; }
-      .hs-mc-stream-event.event-offline { opacity: 0.6; }
+      .hs-mc-stream-event.event-offline { color: #808080; opacity: 1; }
       /* Inline feed posts in chat timeline */
       .hs-mc-feed-inline {
         padding: 2px 8px;

@@ -3755,7 +3755,8 @@ function updateEmoteState(hash, emoteName, state) {
   async function fetchProfile(username) {
     const key = username.toLowerCase()
     const cached = profileCache.get(key)
-    if (cached && Date.now() - cached.ts < PROFILE_TTL) return cached.data
+    const ttl = cached?.data?.twitch_is_live || cached?.data?.kick_is_live ? 60000 : PROFILE_TTL
+    if (cached && Date.now() - cached.ts < ttl) return cached.data
 
     try {
       const data = await HS.apiFetch(`/api/profile/${encodeURIComponent(username)}`)

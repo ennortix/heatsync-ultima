@@ -3385,25 +3385,22 @@ async function sendIrcMessage(channel, text, token, replyParentId) {
       </div>`;
   }
 
-  async function showUserTooltip(e, username, color) {
+  // NOTE: innerHTML usage is XSS-safe — all user content goes through escapeHtml() in renderProfileCard
+  async function showUserTooltip(targetEl, username, color) {
     const tooltip = ensureUserTooltip();
     const gen = ++_profileGen;
 
-    // Show loading state immediately
+    // Show loading state immediately (username is escaped)
     tooltip.innerHTML = `<div class="hs-pc-loading" style="color:${color || '#fff'}">${escapeHtml(username)}...</div>`;
-
-    const x = Math.min(e.clientX + 15, window.innerWidth - 280);
-    const y = Math.max(e.clientY - 80, 10);
-    tooltip.style.left = x + 'px';
-    tooltip.style.top = y + 'px';
     tooltip.classList.add('visible');
+    positionTooltipAtElement(tooltip, targetEl);
 
     // Check cache
     const cached = _profileCache.get(username.toLowerCase());
     if (cached && Date.now() - cached.ts < PROFILE_CACHE_TTL) {
       if (gen !== _profileGen) return;
       tooltip.innerHTML = renderProfileCard(cached.profile);
-      repositionTooltip(tooltip, e);
+      positionTooltipAtElement(tooltip, targetEl);
       return;
     }
 
@@ -3420,20 +3417,32 @@ async function sendIrcMessage(channel, text, token, replyParentId) {
         for (const [k] of oldest) _profileCache.delete(k);
       }
       tooltip.innerHTML = renderProfileCard(profile);
-      repositionTooltip(tooltip, e);
+      positionTooltipAtElement(tooltip, targetEl);
     } else {
-      // Fallback - show basic info
+      // Fallback - show basic info (username is escaped)
       tooltip.innerHTML = `<div class="hs-pc-info"><div class="hs-pc-header"><span class="hs-pc-name">${escapeHtml(username)}</span></div></div>`;
     }
   }
 
-  function repositionTooltip(tooltip, e) {
-    // Re-position after content changes size
-    const rect = tooltip.getBoundingClientRect();
-    const x = Math.min(e.clientX + 15, window.innerWidth - rect.width - 10);
-    const y = e.clientY - rect.height - 10 > 0
-      ? e.clientY - rect.height - 10
-      : e.clientY + 20;
+  function positionTooltipAtElement(tooltip, targetEl) {
+    // Anchor to element like website hover cards
+    const elRect = targetEl.getBoundingClientRect();
+    const tipRect = tooltip.getBoundingClientRect();
+
+    // Position above if room, otherwise below
+    let y;
+    if (elRect.top - tipRect.height - 5 > 5) {
+      y = elRect.top - tipRect.height - 5;
+    } else {
+      y = elRect.bottom + 5;
+    }
+
+    // Horizontal: align to element left, clamp to viewport
+    let x = elRect.left;
+    if (x + tipRect.width > window.innerWidth - 10) {
+      x = window.innerWidth - tipRect.width - 10;
+    }
+
     tooltip.style.left = Math.max(5, x) + 'px';
     tooltip.style.top = Math.max(5, y) + 'px';
   }
@@ -3454,7 +3463,7 @@ async function sendIrcMessage(channel, text, token, replyParentId) {
       if (target) {
         const username = target.textContent;
         const color = target.style.color;
-        showUserTooltip(e, username, color);
+        showUserTooltip(target, username, color);
 
         // Highlight all matching usernames
         const name = target.dataset.username;

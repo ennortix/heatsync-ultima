@@ -1721,6 +1721,23 @@ function handleWSMessage(msg) {
     case 'follow:stream:update':
     case 'follow:stream:online':
     case 'follow:stream:offline':
+      // Append to cached history so content scripts get it on refresh
+      if (!cachedFollowHistory) cachedFollowHistory = []
+      {
+        cachedFollowHistory.push({
+          type: msg.type,
+          platform: msg.platform,
+          channel: msg.channel,
+          game: msg.game || '',
+          title: msg.title || '',
+          prevGame: msg.prevGame || '',
+          prevTitle: msg.prevTitle || '',
+          color: msg.color || '',
+          time: Date.now()
+        })
+        // Keep capped at 200
+        if (cachedFollowHistory.length > 200) cachedFollowHistory.splice(0, cachedFollowHistory.length - 200)
+      }
       broadcastToTabs({
         type: 'follow_stream_event',
         eventType: msg.type.replace('follow:', ''),

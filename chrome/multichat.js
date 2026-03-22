@@ -13091,7 +13091,6 @@ m.type === 'usernotice' ? 'hs-mc-msg hs-mc-system' :
           text = msg.game ? `[${channel}] \u25C6 went live \u2014 ${msg.game}` : `[${channel}] \u25C6 went live`;
           eventClass = 'event-online';
         } else if (msg.eventType === 'stream:offline') {
-          if (!showOfflineEvents) return;
           text = `[${channel}] \u25C6 went offline`;
           eventClass = 'event-offline';
         }
@@ -13167,7 +13166,6 @@ m.type === 'usernotice' ? 'hs-mc-msg hs-mc-system' :
           text = msg.game ? `[${channel}] \u25C6 went live \u2014 ${msg.game}` : `[${channel}] \u25C6 went live`;
           eventClass = 'event-follow event-online';
         } else if (msg.eventType === 'stream:offline') {
-          if (!showOfflineEvents) return;
           text = `[${channel}] \u25C6 went offline`;
           eventClass = 'event-follow event-offline';
         }

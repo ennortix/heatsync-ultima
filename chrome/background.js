@@ -2375,6 +2375,7 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
       history: cachedFollowHistory,
       colors: cachedFollowColors
     });
+    return true; // Required for Firefox — sendResponse ignored without this
   } else if (message.type === 'api_fetch') {
     // Generic API proxy — content scripts route through here to bypass CORS
     if (!message.path || !message.path.startsWith('/api/')) {

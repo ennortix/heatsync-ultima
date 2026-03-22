@@ -34,20 +34,19 @@ let hsAuthToken = null; // Heatsync auth state (loaded from storage)
 // ============================================
 
 // API proxy — routes through background.js to bypass CORS + attach auth
-function apiFetch(path, opts = {}) {
-  return new Promise((resolve) => {
-    try {
-      chrome.runtime.sendMessage({
-        type: 'api_fetch',
-        path,
-        method: opts.method || 'GET',
-        auth: opts.auth !== false,
-        body: opts.body
-      }, (resp) => resolve(resp || { ok: false, error: 'no response' }));
-    } catch (e) {
-      resolve({ ok: false, error: 'context invalidated' });
-    }
-  });
+async function apiFetch(path, opts = {}) {
+  try {
+    const resp = await api.runtime.sendMessage({
+      type: 'api_fetch',
+      path,
+      method: opts.method || 'GET',
+      auth: opts.auth !== false,
+      body: opts.body
+    })
+    return resp || { ok: false, error: 'no response' }
+  } catch (e) {
+    return { ok: false, error: 'context invalidated' }
+  }
 }
 
 // Load heatsync auth state from storage

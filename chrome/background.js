@@ -528,10 +528,18 @@ function sanitizeEmoteList(emotes) {
 }
 
 // Fetch BTTV channel emotes
-async function fetchBTTVChannelEmotes(channelName) {
+async function fetchBTTVChannelEmotes(channelName, channelId = null) {
   try {
-    // First get Twitch user ID
-    const userResponse = await fetchWithTimeout(`https://api.betterttv.net/3/cached/users/twitch/${channelName}`);
+    // BTTV API requires numeric Twitch user ID, not username
+    let twitchId = channelId
+    if (!twitchId) {
+      twitchId = await lookupTwitchUserId(channelName)
+      if (!twitchId) {
+        log(' BTTV: Could not resolve Twitch ID for', channelName)
+        return []
+      }
+    }
+    const userResponse = await fetchWithTimeout(`https://api.betterttv.net/3/cached/users/twitch/${twitchId}`);
     if (!userResponse.ok) return [];
 
     const userData = await userResponse.json();
@@ -561,9 +569,10 @@ async function fetchFFZChannelEmotes(channelName) {
     for (const setId in data.sets) {
       const set = data.sets[setId];
       for (const emote of (set.emoticons || [])) {
+        const rawUrl = emote.urls['1'] || emote.urls['2'] || emote.urls['4']
         emotes.push({
           name: emote.name,
-          url: emote.urls['1'] || emote.urls['2'] || emote.urls['4'],
+          url: rawUrl.startsWith('https:') ? rawUrl : `https:${rawUrl}`,
           source: 'ffz',
           hash: `ffz-${emote.id}`
         });
@@ -692,10 +701,16 @@ async function fetchChannelOwnerEmotes(channelName, channelId = null) {
       }));
     }
 
+    // Resolve Twitch user ID once for BTTV + 7TV (both need numeric ID)
+    if (!channelId) {
+      channelId = await lookupTwitchUserId(channelName)
+      if (channelId) log(' Resolved Twitch ID for', channelName + ':', channelId)
+    }
+
     // Fetch third-party emotes in PARALLEL for speed
     broadcastToTabs({ type: 'loading_status', text: 'fetching third-party emotes...' });
     const [bttvEmotes, ffzEmotes, sevenTVEmotes, twitchChannelEmotes] = await Promise.all([
-      fetchBTTVChannelEmotes(channelName),
+      fetchBTTVChannelEmotes(channelName, channelId),
       fetchFFZChannelEmotes(channelName),
       fetch7TVChannelEmotes(channelName, channelId),
       fetchTwitchChannelEmotes(channelName)
@@ -759,11 +774,12 @@ async function fetchFFZEmotes() {
     for (const set of Object.values(data.sets)) {
       if (data.default_sets.includes(set.id)) {
         for (const emote of (set.emoticons || [])) {
+          const rawUrl = emote.urls['1'] || emote.urls['2'] || emote.urls['4']
           emotes.push({
             name: emote.name,
-            url: `https:${emote.urls['1'] || emote.urls['2'] || emote.urls['4']}`,
+            url: rawUrl.startsWith('https:') ? rawUrl : `https:${rawUrl}`,
             source: 'ffz',
-            hash: String(emote.id)
+            hash: `ffz-${emote.id}`
           });
         }
       }
@@ -1189,11 +1205,14 @@ async function unblockEmote(hash) {
 }
 
 // Extension badge for unread notifications
+// Firefox MV2 uses browserAction, Chrome MV3 uses action
+const badgeApi = browser.action || browser.browserAction
 function updateExtensionBadge() {
+  if (!badgeApi) return
   const text = unreadNotifCount > 0 ? String(unreadNotifCount) : ''
-  browser.action.setBadgeText({ text }).catch(() => {})
+  badgeApi.setBadgeText({ text }).catch(() => {})
   if (unreadNotifCount > 0) {
-    browser.action.setBadgeBackgroundColor({ color: '#ff6b35' }).catch(() => {})
+    badgeApi.setBadgeBackgroundColor({ color: '#ff6b35' }).catch(() => {})
   }
 }
 

@@ -14,13 +14,13 @@
   const STORAGE_KEY = 'heatsync_multichat';
   const LOG_PREFIX = '[heatsync-mc]';
 
-  // Safe chrome.runtime.sendMessage wrapper (context invalidation guard)
+  // Safe runtime.sendMessage wrapper (context invalidation guard, Firefox-compatible)
   function safeSendMessage(message) {
     try {
-      return chrome.runtime.sendMessage(message);
+      return api.runtime.sendMessage(message)
     } catch (e) {
-      log('sendMessage failed:', e.message);
-      return Promise.resolve({ ok: false, error: 'context invalidated' });
+      log('sendMessage failed:', e.message)
+      return Promise.resolve({ ok: false, error: 'context invalidated' })
     }
   }
 
@@ -2393,8 +2393,29 @@
         color: #fff;
       }
       #hs-mc-input.over-limit {
-        color: #ff4444 !important;
+        /* text color handled by highlight overlay */
       }
+      /* Wrapper to position overlay over the input */
+      #hs-mc-input-wrap {
+        position: relative;
+        flex: 1;
+        display: flex;
+      }
+      #hs-mc-input-wrap #hs-mc-input { flex: 1; }
+      /* Overlay that mirrors input text with overflow highlighting */
+      #hs-mc-input-highlight {
+        position: absolute;
+        top: 0; left: 0; right: 0; bottom: 0;
+        padding: 8px 12px;
+        font-size: 13px;
+        font-family: inherit;
+        white-space: pre;
+        overflow: hidden;
+        pointer-events: none;
+        border: 1px solid transparent;
+      }
+      #hs-mc-input-highlight .hl-safe { color: #000; }
+      #hs-mc-input-highlight .hl-over { color: #ff4444; }
       #hs-mc-send {
         padding: 8px 12px;
         background: #9147ff;
@@ -5269,32 +5290,59 @@ m.type === 'usernotice' ? 'hs-mc-msg hs-mc-system' :
            new RegExp(`\\b${escapeRegex(currentUsername)}\\b`, 'i').test(text)
   }
 
-  // Browser notification for mentions (gated by hs_notifications setting)
+  // Browser notifications (gated by hs_notifications setting)
   let notificationsEnabled = false
-  chrome.storage.local.get('hs_notifications').then(data => {
+  let notificationPermission = typeof Notification !== 'undefined' ? Notification.permission : 'denied'
+  api.storage.local.get('hs_notifications').then(data => {
     notificationsEnabled = data.hs_notifications === true
+    // Request permission on Firefox (Chrome extensions get it automatically)
+    if (notificationsEnabled && notificationPermission === 'default' && typeof Notification !== 'undefined') {
+      Notification.requestPermission().then(p => { notificationPermission = p })
+    }
   })
-  chrome.storage.onChanged.addListener((changes) => {
-    if (changes.hs_notifications) notificationsEnabled = changes.hs_notifications.newValue === true
+  api.storage.onChanged.addListener((changes) => {
+    if (changes.hs_notifications) {
+      notificationsEnabled = changes.hs_notifications.newValue === true
+      if (notificationsEnabled && notificationPermission === 'default' && typeof Notification !== 'undefined') {
+        Notification.requestPermission().then(p => { notificationPermission = p })
+      }
+    }
   })
 
-  function notifyMention(msg) {
+  function fireNotification(title, body, tag) {
     if (!notificationsEnabled) return
-    if (document.hasFocus()) return // don't notify if tab is focused
-    const channel = msg.channel ? ` in #${msg.channel}` : ''
-    const title = `${msg.user}${channel}`
-    const body = msg.text.length > 200 ? msg.text.slice(0, 200) + '...' : msg.text
-    // Chrome extensions have notification permission by default
+    if (notificationPermission === 'denied') return
     try {
-      const n = new Notification(title, {
-        body,
-        icon: chrome.runtime.getURL('icon-48.png'),
-        tag: 'hs-mention-' + Date.now(),
-        silent: false
-      })
+      const iconUrl = api.runtime.getURL('icon-48.png')
+      const n = new Notification(title, { body, icon: iconUrl, tag, silent: false })
       n.onclick = () => { window.focus(); n.close() }
       setTimeout(() => n.close(), 8000)
     } catch {}
+  }
+
+  function notifyMention(msg) {
+    if (!notificationsEnabled) return
+    if (document.hasFocus()) return
+    const channel = msg.channel ? ` in #${msg.channel}` : ''
+    const title = `${msg.user}${channel}`
+    const body = msg.text.length > 200 ? msg.text.slice(0, 200) + '...' : msg.text
+    fireNotification(title, body, 'hs-mention-' + Date.now())
+  }
+
+  function notifyStreamEvent(channel, eventType, game) {
+    if (!notificationsEnabled) return
+    if (document.hasFocus()) return
+    let title, body
+    if (eventType === 'stream:online') {
+      title = `${channel} went live`
+      body = game || ''
+    } else if (eventType === 'stream:update') {
+      title = `${channel} switched game`
+      body = game || ''
+    } else {
+      return
+    }
+    fireNotification(title, body, `hs-stream-${channel}-${Date.now()}`)
   }
 
   /**
@@ -5794,6 +5842,7 @@ m.type === 'usernotice' ? 'hs-mc-msg hs-mc-system' :
         if (!text) return;
 
         log('[Stream]', channel, text);
+        notifyStreamEvent(channel, msg.eventType, msg.game);
         const evt = { type: 'stream-event', eventClass, text, channel, time: Date.now() };
 
         // Push into the live channel buffer so it shows on the live tab
@@ -5863,6 +5912,7 @@ m.type === 'usernotice' ? 'hs-mc-msg hs-mc-system' :
         if (!text) return;
 
         log('[FollowStream]', channel, text);
+        notifyStreamEvent(channel, msg.eventType, msg.game);
         const evt = { type: 'stream-event', eventClass, text, channel, time: Date.now(), color: msg.color || '' };
 
         // Push into the live channel buffer (follow events show in current chat)

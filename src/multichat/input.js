@@ -139,6 +139,11 @@ function initInput() {
   input.addEventListener('keydown', handleInputKeydown);
   input.addEventListener('input', handleInputChange);
   input.addEventListener('input', updateCharCount);
+  // Sync highlight overlay scroll with input scroll
+  input.addEventListener('scroll', () => {
+    const hl = document.getElementById('hs-mc-input-highlight');
+    if (hl) hl.scrollLeft = input.scrollLeft;
+  });
   input.addEventListener('input', () => {
     const hasText = (input.value || input.textContent || '').trim().length > 0
     if (hasText) showInputBar()
@@ -157,7 +162,20 @@ function initInput() {
     input.addEventListener('paste', (e) => {
       e.preventDefault();
       const text = e.clipboardData.getData('text/plain');
-      document.execCommand('insertText', false, text);
+      if (!text) return;
+      if (!document.execCommand('insertText', false, text)) {
+        // Fallback: insert via Selection/Range API
+        const sel = window.getSelection();
+        if (sel.rangeCount) {
+          const range = sel.getRangeAt(0);
+          range.deleteContents();
+          range.insertNode(document.createTextNode(text));
+          range.collapse(false);
+          sel.removeAllRanges();
+          sel.addRange(range);
+          input.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+      }
     });
   }
 
@@ -215,15 +233,38 @@ function initInput() {
       if (currentTab === 'add') return
       const input = document.getElementById('hs-mc-input')
       if (!input) return
-      // Only printable chars — skip modifiers, nav, function keys
-      if (e.ctrlKey || e.altKey || e.metaKey) return
-      if (e.key.length !== 1) return
       // Don't steal focus from other inputs
       const active = document.activeElement
       if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable)) return
+      // Only printable chars — skip modifiers, nav, function keys
+      if (e.ctrlKey || e.altKey || e.metaKey) return
+      if (e.key.length !== 1) return
       showInputBar()
       input.focus()
       // Character will flow into the now-focused input naturally
+    }, { signal: mcSignal })
+
+    // Catch paste when input bar is hidden — reveal bar and insert text
+    document.addEventListener('paste', (e) => {
+      if (inputBarVisible) return
+      if (currentTab === 'add') return
+      const input = document.getElementById('hs-mc-input')
+      if (!input) return
+      // Don't steal paste from other inputs
+      const active = document.activeElement
+      if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable)) return
+      const text = e.clipboardData?.getData('text/plain')
+      if (!text) return
+      e.preventDefault()
+      showInputBar()
+      input.focus()
+      // Insert pasted text into the input
+      if (input.tagName === 'INPUT' || input.tagName === 'TEXTAREA') {
+        input.value = text
+        input.dispatchEvent(new Event('input', { bubbles: true }))
+      } else {
+        document.execCommand('insertText', false, text)
+      }
     }, { signal: mcSignal })
   }
 
@@ -657,8 +698,51 @@ function handleInputChange(e) {
 function updateCharCount() {
   const input = document.getElementById('hs-mc-input');
   if (!input) return;
-  const len = getInputText().length;
-  input.classList.toggle('over-limit', len > 500)
+  const text = getInputText();
+  const len = text.length;
+  const over = len > 500;
+  input.classList.toggle('over-limit', over);
+
+  // Highlight overflow chars for plain <input> using overlay div
+  if (input.tagName === 'INPUT') {
+    let wrap = document.getElementById('hs-mc-input-wrap');
+    // Wrap input in container on first use
+    if (!wrap && input.parentElement) {
+      wrap = document.createElement('div');
+      wrap.id = 'hs-mc-input-wrap';
+      input.parentElement.insertBefore(wrap, input);
+      wrap.appendChild(input);
+    }
+    let hl = document.getElementById('hs-mc-input-highlight');
+    if (over) {
+      if (!hl && wrap) {
+        hl = document.createElement('div');
+        hl.id = 'hs-mc-input-highlight';
+        wrap.appendChild(hl);
+      }
+      if (hl) {
+        // Build overlay using safe DOM methods
+        hl.textContent = '';
+        const safeSpan = document.createElement('span');
+        safeSpan.className = 'hl-safe';
+        safeSpan.textContent = text.slice(0, 500);
+        const overSpan = document.createElement('span');
+        overSpan.className = 'hl-over';
+        overSpan.textContent = text.slice(500);
+        hl.appendChild(safeSpan);
+        hl.appendChild(overSpan);
+        hl.scrollLeft = input.scrollLeft;
+        hl.style.display = '';
+      }
+      // Make real input text transparent so overlay shows through
+      input.style.color = 'transparent';
+      input.style.caretColor = '#000';
+    } else {
+      if (hl) hl.style.display = 'none';
+      input.style.color = '';
+      input.style.caretColor = '';
+    }
+  }
 }
 
 function getCurrentWord(input) {

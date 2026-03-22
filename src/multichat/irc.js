@@ -20,9 +20,16 @@ function parseIrcLine(raw, channel) {
     const privmsg = raw.match(/PRIVMSG #([^ ]+) :(.+)$/)
     if (privmsg) {
       const displayName = tags['display-name'] || 'anonymous'
+      // /me sends as \x01ACTION text\x01
+      let text = privmsg[2]
+      let isAction = false
+      if (text.charCodeAt(0) === 1 && text.startsWith('\x01ACTION ')) {
+        text = text.slice(8, text.endsWith('\x01') ? -1 : undefined)
+        isAction = true
+      }
       const msg = {
         user: displayName,
-        text: privmsg[2],
+        text: text,
         color: sanitizeColor(tags.color || '#fff'),
         badges: tags.badges || '',
         channel: channel || privmsg[1].toLowerCase(),
@@ -33,6 +40,7 @@ function parseIrcLine(raw, channel) {
           text: tags['reply-parent-msg-body'] ? decodeURIComponent(tags['reply-parent-msg-body'].replace(/\\s/g, ' ')) : ''
         } : null
       }
+      if (isAction) msg.isAction = true
       if (tags['custom-reward-id']) msg.redeemed = true
       if (tags['first-msg'] === '1') msg.isFirstMsg = true
       return msg

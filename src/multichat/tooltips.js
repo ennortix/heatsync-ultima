@@ -379,7 +379,11 @@
     const following = Math.max(stats.following || 0, p.twitch_following_count || 0, p.kick_following_count || 0);
 
     const statBadges = [];
-    statBadges.push(`<span class="hs-pc-stat heat" style="color:#ff8700"><span class="hs-pc-num">${formatCompact(heat)}</span>°</span>`);
+    const hd = getHeatDisplay(heat)
+    const heatColor = hd ? hd.color : '#666'
+    const heatEmoji = hd ? hd.emoji : ''
+    const heatGlow = hd?.glow ? ';text-shadow:0 0 6px rgba(255,135,0,0.8)' : ''
+    statBadges.push(`<span class="hs-pc-stat heat" style="color:${heatColor};font-weight:700${heatGlow}">${heatEmoji}<span class="hs-pc-num">${formatCompact(heat)}</span>°</span>`);
     if (op > 0) statBadges.push(`<span class="hs-pc-stat op"><span class="hs-pc-num">${formatCompact(op)}</span> [OP]</span>`);
     if (mop > 0) statBadges.push(`<span class="hs-pc-stat mop"><span class="hs-pc-num">${formatCompact(mop)}</span> <span style="color:#ff00ff">[OP]</span></span>`);
     if (re > 0) statBadges.push(`<span class="hs-pc-stat re"><span class="hs-pc-num">${formatCompact(re)}</span> [RE]</span>`);

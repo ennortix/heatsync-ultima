@@ -614,7 +614,6 @@
       if (data.hs_chat_width) {
         chatWidth = data.hs_chat_width;
         applyChatWidth();
-        updateWidthInput();
         log('Loaded chat width:', chatWidth);
       }
     } catch (e) {
@@ -629,10 +628,12 @@
     const chatroom = document.getElementById('channel-chatroom')
     if (!chatroom) return
     chatroom.style.setProperty('width', chatWidth + 'px', 'important')
+    document.documentElement.style.setProperty('--hs-kick-chat-width', chatWidth + 'px')
   }
 
   /**
    * Setup resize handle for Kick — left edge of fixed #channel-chatroom panel
+   * Uses rAF batching, iframe overlay, and kills Kick's native transitions
    */
   function setupKickResizeHandle() {
     const chatroom = document.getElementById('channel-chatroom')
@@ -645,6 +646,16 @@
     let isResizing = false
     let startX = 0
     let startWidth = 0
+    let rafId = 0
+    let pendingWidth = 0
+    let overlay = null
+
+    function applyResize() {
+      rafId = 0
+      chatWidth = pendingWidth
+      chatroom.style.setProperty('width', chatWidth + 'px', 'important')
+      document.documentElement.style.setProperty('--hs-kick-chat-width', chatWidth + 'px')
+    }
 
     handle.addEventListener('mousedown', (e) => {
       isResizing = true
@@ -652,31 +663,44 @@
       startWidth = chatWidth
       document.body.style.cursor = 'col-resize'
       document.body.style.userSelect = 'none'
+      // Kill transitions during drag
+      chatroom.style.setProperty('transition', 'none', 'important')
+      const main = document.querySelector('main')
+      if (main) main.style.setProperty('transition', 'none', 'important')
+      // Transparent overlay catches mouse over iframes/video
+      overlay = document.createElement('div')
+      overlay.id = 'hs-resize-overlay'
+      overlay.style.cssText = 'position:fixed;inset:0;z-index:99999;cursor:col-resize'
+      document.body.appendChild(overlay)
       e.preventDefault()
     })
 
     cleanup.addEventListener(document, 'mousemove', (e) => {
       if (!isResizing) return
-      // Dragging left = bigger chat, dragging right = smaller chat
       const delta = startX - e.clientX
-      const newWidth = Math.min(MAX_CHAT_WIDTH, Math.max(MIN_CHAT_WIDTH, startWidth + delta))
-      chatWidth = newWidth
-      applyKickChatWidth()
+      pendingWidth = Math.min(MAX_CHAT_WIDTH, Math.max(MIN_CHAT_WIDTH, startWidth + delta))
+      if (!rafId) rafId = requestAnimationFrame(applyResize)
     })
 
     cleanup.addEventListener(document, 'mouseup', () => {
-      if (isResizing) {
-        isResizing = false
-        document.body.style.cursor = ''
-        document.body.style.userSelect = ''
-        saveChatWidth()
-      }
+      if (!isResizing) return
+      isResizing = false
+      if (rafId) { cancelAnimationFrame(rafId); rafId = 0 }
+      // Apply final width
+      chatWidth = pendingWidth || chatWidth
+      applyKickChatWidth()
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
+      // Remove overlay
+      if (overlay) { overlay.remove(); overlay = null }
+      // Restore transitions
+      chatroom.style.removeProperty('transition')
+      const main = document.querySelector('main')
+      if (main) main.style.removeProperty('transition')
+      saveChatWidth()
     })
 
-    // Load saved width
-    loadChatWidth().then(() => {
-      applyKickChatWidth()
-    })
+    loadChatWidth().then(() => { applyKickChatWidth() })
   }
 
   // Emote size functions
@@ -3615,7 +3639,7 @@
       .hs-native-hidden div.editor-input {
         display: none !important;
       }
-      .hs-native-hidden#channel-chatroom > *:not(#hs-mc-container) {
+      .hs-native-hidden#channel-chatroom > *:not(#hs-mc-container):not(#hs-kick-resize-handle) {
         display: none !important;
       }
       /* Force Kick chatroom into a fixed side panel — Kick stacks chat below video
@@ -3625,28 +3649,76 @@
         right: 0 !important;
         top: 0 !important;
         bottom: 0 !important;
-        width: 340px !important;
+        width: var(--hs-kick-chat-width, 340px) !important;
         height: 100vh !important;
         z-index: 9999 !important;
         display: flex !important;
         flex-direction: column !important;
         background: #000 !important;
+        transition: none !important;
+      }
+      /* Shrink Kick's main content to make room for HeatSync panel */
+      body:has(.hs-native-hidden#channel-chatroom) main {
+        margin-right: var(--hs-kick-chat-width, 340px) !important;
+        transition: none !important;
+      }
+      /* On live tab (native chat showing), hide overlay + input but keep tabs visible */
+      #channel-chatroom:not(.hs-native-hidden) > #hs-mc-container > #hs-mc-overlay,
+      #channel-chatroom:not(.hs-native-hidden) > #hs-mc-container > #hs-mc-emote-picker,
+      #channel-chatroom:not(.hs-native-hidden) > #hs-mc-container > .hs-mc-inputbar,
+      #channel-chatroom:not(.hs-native-hidden) > #hs-mc-container > #hs-kick-resize-handle {
+        display: none !important;
+      }
+      /* Keep tabbar visible over native chat — fixed panel, same width as HS chat */
+      #channel-chatroom:not(.hs-native-hidden) > #hs-mc-container {
+        position: fixed !important;
+        top: 0 !important;
+        right: 0 !important;
+        width: var(--hs-kick-chat-width, 340px) !important;
+        height: auto !important;
+        z-index: 10000 !important;
+        background: transparent !important;
+        pointer-events: none;
+        overflow: visible !important;
+        flex-direction: column !important;
+      }
+      #channel-chatroom:not(.hs-native-hidden) > #hs-mc-container > #hs-mc-tabbar {
+        pointer-events: auto;
+        background: var(--hs-bg, #18181b) !important;
+        position: relative !important;
+        flex-direction: row !important;
+        overflow: visible !important;
+        height: auto !important;
+        width: 100% !important;
+        flex-wrap: wrap;
       }
 
-      /* Kick resize handle — left edge of fixed chat panel */
+      /* Kick resize handle — left edge of fixed chat panel
+         8px hit zone, 2px visible bar on hover */
       #hs-kick-resize-handle {
         position: absolute;
         top: 0;
-        left: 0;
-        width: 4px;
+        left: -4px;
+        width: 8px;
         height: 100%;
         cursor: col-resize;
         z-index: 10000;
         background: transparent;
-        transition: none;
       }
-      #hs-kick-resize-handle:hover,
-      #hs-kick-resize-handle:active {
+      #hs-kick-resize-handle::after {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 3px;
+        width: 2px;
+        height: 100%;
+        background: transparent;
+        transition: background 0.15s;
+      }
+      #hs-kick-resize-handle:hover::after {
+        background: #ff8700;
+      }
+      body:has(#hs-resize-overlay) #hs-kick-resize-handle::after {
         background: #ff8700;
       }
 
@@ -4186,8 +4258,10 @@
       const threadLink = `<a href="https://heatsync.org/post/${encodeURIComponent(m.base36_id)}" target="_blank" class="hs-feed-thread-link">&gt;&gt;${escapeHtml(shortId)}</a>`
       const userLink = `<a href="https://heatsync.org/user/${encodeURIComponent(m.feedUser)}" target="_blank" class="hs-mc-user" data-username="${escapeHtml((m.feedUser || 'anon').toLowerCase())}" style="color:${sanitizeColor(m.color || '#fff')}">${escapeHtml(m.feedUser || 'anon')}</a>`
       const content = renderFeedContent(m.text, m.emote_refs)
-      // All values sanitized — safe innerHTML
-      div.innerHTML = `${tsSpan}${threadLink}${typeTag}${userLink}: <span class="hs-feed-body">${content}</span>`
+      const hd = getHeatDisplay(m.heat)
+      const heatHtml = hd ? ` <span style="font-weight:700;color:${hd.color}${hd.glow ? ';text-shadow:0 0 6px rgba(255,135,0,0.8)' : ''}">${hd.emoji}${m.heat}</span>` : ''
+      // All values sanitized — safe innerHTML (heat is numeric, emoji/color are hardcoded)
+      div.innerHTML = `${tsSpan}${threadLink}${typeTag}${userLink}${heatHtml}: <span class="hs-feed-body">${content}</span>`
       div.addEventListener('click', (e) => {
         const spoiler = e.target.closest('.hs-spoiler')
         if (spoiler) { spoiler.classList.toggle('revealed'); return }
@@ -4283,6 +4357,8 @@ m.type === 'usernotice' ? 'hs-mc-msg hs-mc-system' :
     const tsHtml = ts && showTs ? `<span class="hs-mc-ts" data-ts="${m.time}">${ts}</span>` : '';
     const msgBody = m.type === 'usernotice' && !m.text
       ? `${tsHtml}${systemLine}`
+      : m.isAction
+      ? `${tsHtml}${systemLine}${avatarHtml}${platformBadge}${scBadge}${badges}${userLink}${channelSpan} <span style="color:${sanitizeColor(m.color || '#fff')};font-style:italic">${processedText}</span>${stickerHtml}`
       : `${tsHtml}${systemLine}${avatarHtml}${platformBadge}${scBadge}${badges}${userLink}${channelSpan}: ${processedText}${stickerHtml}`
     div.innerHTML = `${replyBar}${msgBody}`;
     // Reply button for threading (Twitch/Kick — needs valid msg id)

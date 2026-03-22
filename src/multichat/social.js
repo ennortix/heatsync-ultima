@@ -1,5 +1,16 @@
 // Social - feed, notifications, activity, heatsync API
 
+// Heat tier display — emoji + color based on heat score
+function getHeatDisplay(heat) {
+  if (!heat || heat <= 0) return null
+  if (heat >= 5000) return { emoji: '💀', color: '#fff', glow: true }
+  if (heat >= 1000) return { emoji: '🌋', color: '#fff' }
+  if (heat >= 250)  return { emoji: '🌶️', color: '#fff' }
+  if (heat >= 50)   return { emoji: '🌡️', color: '#ff8700' }
+  if (heat >= 10)   return { emoji: '⚡', color: '#ff8700' }
+  return { emoji: '', color: '#666' }
+}
+
 // Feed & notifications state
 let feedMessages = [];
 let feedLoaded = false;
@@ -111,6 +122,7 @@ function listenForSocialEvents() {
             text: f.content || '',
             color: f.user_color || '#fff',
             time: t,
+            heat: f.heat || 0,
             reply_to: f.reply_to,
             emote_refs: f.emote_refs,
             is_op: f.is_op,
@@ -344,8 +356,11 @@ function buildFeedMessageDiv(m, opUsername) {
 
   // All dynamic values sanitized: avatarUrl via encodeURIComponent,
   // username/time via escapeHtml, color via sanitizeColor, content via renderFeedContent
+  const hd = getHeatDisplay(heat)
+  const heatSpan = hd ? `<span class="hs-feed-stat hs-feed-heat" style="font-weight:700;color:${hd.color}${hd.glow ? ';text-shadow:0 0 6px rgba(255,135,0,0.8)' : ''}">${hd.emoji}${heat}</span>` : ''
   const repliesSpan = replies > 0 ? `<span class="hs-feed-stat hs-feed-replies" title="replies">💬${replies}</span>` : '';
-  const stats = repliesSpan ? ` ${repliesSpan}` : '';
+  const stats = [heatSpan, repliesSpan].filter(Boolean).join(' ')
+  const statsHtml = stats ? ` ${stats}` : ''
 
   const anonAvatar = avatarsEnabled ? `<img class="hs-feed-avatar" src="https://heatsync.org/anon.webp" alt="" loading="lazy">` : '';
   const userAvatar = avatarsEnabled ? `<img class="hs-feed-avatar" src="${avatarUrl}" alt="" loading="lazy" onerror="this.style.display='none'">` : '';
@@ -353,7 +368,7 @@ function buildFeedMessageDiv(m, opUsername) {
     ? `${anonAvatar}<span class="hs-feed-user" style="color:#808080">Anonymous</span>`
     : `${userAvatar}<a href="https://heatsync.org/user/${encodeURIComponent(m.username)}" target="_blank" class="hs-feed-user hs-mc-user" data-username="${escapeHtml((m.username || 'anon').toLowerCase())}" style="color:${sanitizeColor(m.user_color || '#fff')}">${escapeHtml(m.username || 'anon')}</a>`;
 
-  div.innerHTML = `${timeHtml}${threadLink}${typeTag}${platBadge}${userHtml}${stats}: <span class="hs-feed-body">${content}</span>`;
+  div.innerHTML = `${timeHtml}${threadLink}${typeTag}${platBadge}${userHtml}${statsHtml}: <span class="hs-feed-body">${content}</span>`;
 
   // Click replies to expand thread
   const repliesEl = div.querySelector('.hs-feed-replies');

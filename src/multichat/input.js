@@ -1166,28 +1166,24 @@ async function handleSlashCommand(text, input) {
 
 async function sendSlashWhisper(platform, username, text, input) {
   const lowerUser = username.toLowerCase()
+  let key
 
   if (platform === 'twitch') {
-    // Check existing conversations
-    const key = `twitch:${lowerUser}`
-    if (whisperConversations.has(key)) {
-      await sendWhisperMessage(key, text)
-      clearInput(input)
-      return
-    }
-    // Resolve username → Twitch ID via decapi
-    try {
-      const resp = await fetch(`https://decapi.me/twitch/id/${encodeURIComponent(lowerUser)}`, { credentials: 'omit' })
-      const body = (await resp.text()).trim()
-      if (!resp.ok || !/^\d+$/.test(body)) {
-        showToast(`twitch user "${username}" not found`)
+    key = `twitch:${lowerUser}`
+    if (!whisperConversations.has(key)) {
+      // Resolve username → Twitch ID via decapi
+      try {
+        const resp = await fetch(`https://decapi.me/twitch/id/${encodeURIComponent(lowerUser)}`, { credentials: 'omit' })
+        const body = (await resp.text()).trim()
+        if (!resp.ok || !/^\d+$/.test(body)) {
+          showToast(`twitch user "${username}" not found`)
+          return
+        }
+        getOrCreateConversation(key, 'twitch', body, username, '#fff')
+      } catch (e) {
+        showToast('failed to resolve twitch user')
         return
       }
-      getOrCreateConversation(key, 'twitch', body, username, '#fff')
-      await sendWhisperMessage(key, text)
-      clearInput(input)
-    } catch (e) {
-      showToast('failed to resolve twitch user')
     }
   } else {
     // HeatSync DM — resolve username → user_id via profile API
@@ -1197,11 +1193,15 @@ async function sendSlashWhisper(platform, username, text, input) {
       return
     }
     const userId = profileResp.data.profile.user_id
-    const key = `hs:${userId}`
+    key = `hs:${userId}`
     getOrCreateConversation(key, 'heatsync', userId, profileResp.data.profile.display_name || username, profileResp.data.profile.user_color || '#fff')
-    await sendWhisperMessage(key, text)
-    clearInput(input)
   }
+
+  // Switch to the conversation so user sees the outbound message
+  activeWhisperUser = key
+  if (currentTab !== 'whispers') switchTab('whispers')
+  await sendWhisperMessage(key, text)
+  clearInput(input)
 }
 
 async function sendMessage() {

@@ -370,9 +370,9 @@ style.textContent = `
     border-radius: 0 !important;
     font-size: 10px !important;
     font-weight: 900 !important;
-    background: #000 !important;
-    color: #fff !important;
-    border: 1px solid #fff !important;
+    background: #ffff00 !important;
+    color: #000 !important;
+    border: 1px solid #000 !important;
     letter-spacing: 0.3px !important;
     box-shadow: 0 1px 2px rgba(0,0,0,0.5) !important;
     white-space: nowrap !important;

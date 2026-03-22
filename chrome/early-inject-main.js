@@ -110,7 +110,27 @@
     return hdrs
   }
 
-  function executeGqlProxy(req) {
+  async function refreshIntegrity() {
+    try {
+      const resp = await origFetch('https://gql.twitch.tv/integrity', {
+        method: 'POST',
+        headers: {
+          'Client-Id': gql.clientId || 'kimne78kx3ncx6brgo4mv6wki5h1ko',
+          'Authorization': 'OAuth ' + gql.authToken
+        }
+      })
+      if (resp.ok) {
+        const data = await resp.json()
+        if (data.token) {
+          gql.integrity = data.token
+          return true
+        }
+      }
+    } catch (e) {}
+    return false
+  }
+
+  async function executeGqlProxy(req) {
     const hash = gql.hashes[req.operation]
     if (!hash && !req.rawQuery) {
       window.postMessage({
@@ -142,6 +162,9 @@
       }, location.origin)
       return
     }
+
+    // Mutations need fresh integrity token
+    if (req.rawQuery) await refreshIntegrity()
 
     const hdrs = buildGqlHeaders()
     console.log('[heatsync-gql] proxy request:', req.operation || 'rawQuery', 'auth:', !!gql.authToken, 'integrity:', !!gql.integrity, 'clientId:', !!gql.clientId)

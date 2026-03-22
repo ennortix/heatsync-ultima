@@ -420,7 +420,7 @@
   }
 
   function positionTooltipAtElement(tooltip, targetEl) {
-    // Anchor to element like website hover cards
+    // Anchor to element like website hover cards — centered above
     const elRect = targetEl.getBoundingClientRect();
     const tipRect = tooltip.getBoundingClientRect();
 
@@ -432,11 +432,9 @@
       y = elRect.bottom + 5;
     }
 
-    // Horizontal: align to element left, clamp to viewport
-    let x = elRect.left;
-    if (x + tipRect.width > window.innerWidth - 10) {
-      x = window.innerWidth - tipRect.width - 10;
-    }
+    // Center horizontally over element, clamp to viewport
+    let x = elRect.left + (elRect.width / 2) - (tipRect.width / 2);
+    x = Math.min(x, window.innerWidth - tipRect.width - 10);
 
     tooltip.style.left = Math.max(5, x) + 'px';
     tooltip.style.top = Math.max(5, y) + 'px';

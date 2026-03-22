@@ -415,6 +415,7 @@
 
   // Timestamps on messages (default off)
   let timestampsEnabled = false;
+  window._hsTimestampsEnabled = false;
   let avatarsEnabled = false;
 
   // Show offline stream events (default off)
@@ -1033,6 +1034,7 @@
       if (stored.ui_settings?.timestamps !== undefined) {
         timestampsEnabled = stored.ui_settings.timestamps;
       }
+      window._hsTimestampsEnabled = timestampsEnabled;
     } catch {}
   }
 
@@ -1047,6 +1049,7 @@
 
   function toggleTimestamps() {
     timestampsEnabled = !timestampsEnabled;
+    window._hsTimestampsEnabled = timestampsEnabled;
     saveTimestampsSetting();
     renderMessages(currentTab);
   }

@@ -340,7 +340,7 @@
 
     const statBadges = [];
     const hd = getHeatDisplay(heat)
-    const heatColor = hd ? hd.color : '#666'
+    const heatColor = hd ? hd.color : '#808080'
     const heatEmoji = hd ? hd.emoji : ''
     const heatGlow = hd?.glow ? ';text-shadow:0 0 6px rgba(255,135,0,0.8)' : ''
     statBadges.push(`<span class="hs-pc-stat heat" style="color:${heatColor};font-weight:700${heatGlow}">${heatEmoji}<span class="hs-pc-num">${formatCompact(heat)}</span>°</span>`);

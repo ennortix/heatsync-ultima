@@ -8,7 +8,7 @@ function getHeatDisplay(heat) {
   if (heat >= 250)  return { emoji: '🌶️', color: '#fff' }
   if (heat >= 50)   return { emoji: '🌡️', color: '#ff8700' }
   if (heat >= 10)   return { emoji: '⚡', color: '#ff8700' }
-  return { emoji: '', color: '#666' }
+  return { emoji: '', color: '#808080' }
 }
 
 // Feed & notifications state
@@ -350,8 +350,7 @@ function buildFeedMessageDiv(m, opUsername) {
   const platColors = { twitch: '#9146ff', kick: '#53fc18', youtube: '#ff0000' };
   const platBadge = platLabel ? `<span class="hs-feed-tag" style="color:${platColors[m.platform]}">${platLabel}</span>` : '';
 
-  // Relative timestamp always shown in feed (compact, essential context)
-  const timeHtml = `<span class="hs-feed-time">${escapeHtml(time)}</span>`;
+  const timeHtml = window._hsTimestampsEnabled !== false ? `<span class="hs-feed-time">${escapeHtml(time)}</span>` : '';
 
   // All dynamic values sanitized: avatarUrl via encodeURIComponent,
   // username/time via escapeHtml, color via sanitizeColor, content via renderFeedContent
@@ -627,7 +626,7 @@ function renderActivity() {
       const div = document.createElement('div');
       div.className = `hs-mc-stream-event ${m.eventClass || ''}`;
       const ts = formatRelativeMs(Date.now() - m.time);
-      const tsSpan = `<span class="hs-feed-time">${escapeHtml(ts)}</span>`;
+      const tsSpan = window._hsTimestampsEnabled !== false ? `<span class="hs-feed-time">${escapeHtml(ts)}</span>` : '';
       // Show channel name in magenta for activity context
       // Strip [channel] prefix from follow events (we add our own #channel)
       let evtText = m.text
@@ -653,7 +652,8 @@ function buildNotifDiv(m) {
   const content = renderFeedContent(m.content, m.emote_refs);
 
   // Safe: username through escapeHtml+encodeURIComponent, time through escapeHtml, content through renderFeedContent (which escapes via escapeHtml then adds safe formatting)
-  div.innerHTML = `<span class="hs-feed-time">${escapeHtml(time)}</span><a href="https://heatsync.org/user/${encodeURIComponent(m.username)}" target="_blank" class="hs-feed-user hs-mc-user" data-username="${escapeHtml((m.username || 'anon').toLowerCase())}" style="color:${sanitizeColor(m.user_color || '#fff')}">${escapeHtml(m.username || 'anon')}</a>: <span class="hs-feed-body">${content}</span>`;
+  const tsHtml = window._hsTimestampsEnabled !== false ? `<span class="hs-feed-time">${escapeHtml(time)}</span>` : '';
+  div.innerHTML = `${tsHtml}<a href="https://heatsync.org/user/${encodeURIComponent(m.username)}" target="_blank" class="hs-feed-user hs-mc-user" data-username="${escapeHtml((m.username || 'anon').toLowerCase())}" style="color:${sanitizeColor(m.user_color || '#fff')}">${escapeHtml(m.username || 'anon')}</a>: <span class="hs-feed-body">${content}</span>`;
 
   // Click to switch to feed and show this thread (but not if clicking interactive content)
   div.addEventListener('click', (e) => {

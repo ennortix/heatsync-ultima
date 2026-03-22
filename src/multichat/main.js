@@ -170,15 +170,43 @@
     } catch {}
   }
 
+  // Queued storage writer — prevents concurrent read-modify-write races
+  let saveQueue = Promise.resolve()
+
   async function saveStreamEvent(evt) {
-    try {
-      const data = await api.storage.local.get(STREAM_EVENTS_KEY)
-      const events = data[STREAM_EVENTS_KEY] || []
-      events.push(evt)
-      // Prune old events (keep last STREAM_EVENTS_MAX)
-      if (events.length > STREAM_EVENTS_MAX) events.splice(0, events.length - STREAM_EVENTS_MAX)
-      await api.storage.local.set({ [STREAM_EVENTS_KEY]: events })
-    } catch {}
+    saveQueue = saveQueue.then(async () => {
+      try {
+        const data = await api.storage.local.get(STREAM_EVENTS_KEY)
+        const events = data[STREAM_EVENTS_KEY] || []
+        // Dedup by text before saving
+        if (!events.some(e => e.text === evt.text)) {
+          events.push(evt)
+        }
+        // Prune old events (keep last STREAM_EVENTS_MAX)
+        if (events.length > STREAM_EVENTS_MAX) events.splice(0, events.length - STREAM_EVENTS_MAX)
+        await api.storage.local.set({ [STREAM_EVENTS_KEY]: events })
+      } catch {}
+    })
+    return saveQueue
+  }
+
+  async function saveStreamEventsBatch(evts) {
+    saveQueue = saveQueue.then(async () => {
+      try {
+        const data = await api.storage.local.get(STREAM_EVENTS_KEY)
+        const events = data[STREAM_EVENTS_KEY] || []
+        const existingTexts = new Set(events.map(e => e.text))
+        for (const evt of evts) {
+          if (!existingTexts.has(evt.text)) {
+            events.push(evt)
+            existingTexts.add(evt.text)
+          }
+        }
+        if (events.length > STREAM_EVENTS_MAX) events.splice(0, events.length - STREAM_EVENTS_MAX)
+        await api.storage.local.set({ [STREAM_EVENTS_KEY]: events })
+      } catch {}
+    })
+    return saveQueue
   }
 
 
@@ -6016,9 +6044,7 @@ m.type === 'usernotice' ? 'hs-mc-msg hs-mc-system' :
       }
 
       const added = injectStreamEventsIntoBuffers(builtEvents)
-      for (const evt of builtEvents) {
-        saveStreamEvent(evt)
-      }
+      if (builtEvents.length > 0) saveStreamEventsBatch(builtEvents)
 
       if (added > 0) {
         log('[FollowHistory]', added, 'events loaded');

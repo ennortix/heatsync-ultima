@@ -7341,9 +7341,10 @@ const STORAGE_KEY = 'heatsync_multichat';
       if (!ch) continue
 
       // Always inject into live buffer (follow events show on live tab)
+      // Dedup by text only — same event text should never appear twice
       if (liveBuffer) {
         const existing = liveBuffer.getAll()
-        const isDupe = existing.some(m => m.type === 'stream-event' && m.time === evt.time && m.text === evt.text)
+        const isDupe = existing.some(m => m.type === 'stream-event' && m.text === evt.text)
         if (!isDupe) { liveBuffer.push(evt); added++ }
       }
 
@@ -7352,13 +7353,13 @@ const STORAGE_KEY = 'heatsync_multichat';
         const buffer = irc?.channels?.get(ch)
         if (buffer) {
           const existing = buffer.getAll()
-          const isDupe = existing.some(m => m.type === 'stream-event' && m.time === evt.time && m.text === evt.text)
+          const isDupe = existing.some(m => m.type === 'stream-event' && m.text === evt.text)
           if (!isDupe) buffer.push(evt)
         }
       }
 
-      // Also push to activityEvents (dedup by time+text)
-      const isDupeActivity = activityEvents.some(m => m.time === evt.time && m.text === evt.text)
+      // Also push to activityEvents (dedup by text)
+      const isDupeActivity = activityEvents.some(m => m.text === evt.text)
       if (!isDupeActivity) activityEvents.push(evt)
     }
     return added
@@ -7382,15 +7383,43 @@ const STORAGE_KEY = 'heatsync_multichat';
     } catch {}
   }
 
+  // Queued storage writer — prevents concurrent read-modify-write races
+  let saveQueue = Promise.resolve()
+
   async function saveStreamEvent(evt) {
-    try {
-      const data = await api.storage.local.get(STREAM_EVENTS_KEY)
-      const events = data[STREAM_EVENTS_KEY] || []
-      events.push(evt)
-      // Prune old events (keep last STREAM_EVENTS_MAX)
-      if (events.length > STREAM_EVENTS_MAX) events.splice(0, events.length - STREAM_EVENTS_MAX)
-      await api.storage.local.set({ [STREAM_EVENTS_KEY]: events })
-    } catch {}
+    saveQueue = saveQueue.then(async () => {
+      try {
+        const data = await api.storage.local.get(STREAM_EVENTS_KEY)
+        const events = data[STREAM_EVENTS_KEY] || []
+        // Dedup by text before saving
+        if (!events.some(e => e.text === evt.text)) {
+          events.push(evt)
+        }
+        // Prune old events (keep last STREAM_EVENTS_MAX)
+        if (events.length > STREAM_EVENTS_MAX) events.splice(0, events.length - STREAM_EVENTS_MAX)
+        await api.storage.local.set({ [STREAM_EVENTS_KEY]: events })
+      } catch {}
+    })
+    return saveQueue
+  }
+
+  async function saveStreamEventsBatch(evts) {
+    saveQueue = saveQueue.then(async () => {
+      try {
+        const data = await api.storage.local.get(STREAM_EVENTS_KEY)
+        const events = data[STREAM_EVENTS_KEY] || []
+        const existingTexts = new Set(events.map(e => e.text))
+        for (const evt of evts) {
+          if (!existingTexts.has(evt.text)) {
+            events.push(evt)
+            existingTexts.add(evt.text)
+          }
+        }
+        if (events.length > STREAM_EVENTS_MAX) events.splice(0, events.length - STREAM_EVENTS_MAX)
+        await api.storage.local.set({ [STREAM_EVENTS_KEY]: events })
+      } catch {}
+    })
+    return saveQueue
   }
 
 
@@ -8660,7 +8689,7 @@ const STORAGE_KEY = 'heatsync_multichat';
       .hs-mc-stream-event .hs-evt-game { color: #fff; font-style: normal; }
       .hs-mc-stream-event.event-online { color: #f44; }
       .hs-mc-stream-event.event-online .hs-evt-game { color: #fff; }
-      .hs-mc-stream-event.event-offline { opacity: 0.6; }
+      .hs-mc-stream-event.event-offline { color: #808080; opacity: 1; }
       /* Inline feed posts in chat timeline */
       .hs-mc-feed-inline {
         padding: 2px 8px;
@@ -11824,8 +11853,8 @@ m.type === 'usernotice' ? 'hs-mc-msg hs-mc-system' :
 
     // Merge global stream events into every tab (game changes, online/offline)
     if (activityEvents.length > 0) {
-      const existingTimes = new Set(msgs.filter(m => m.type === 'stream-event').map(m => `${m.time}:${m.text}`))
-      const missing = activityEvents.filter(e => !existingTimes.has(`${e.time}:${e.text}`))
+      const existingTexts = new Set(msgs.filter(m => m.type === 'stream-event').map(m => m.text))
+      const missing = activityEvents.filter(e => !existingTexts.has(e.text))
       if (missing.length > 0) {
         msgs = [...msgs, ...missing].sort((a, b) => a.time - b.time)
       }
@@ -13067,23 +13096,29 @@ m.type === 'usernotice' ? 'hs-mc-msg hs-mc-system' :
         notifyStreamEvent(channel, msg.eventType, msg.game);
         const evt = { type: 'stream-event', eventClass, text, channel, time: Date.now() };
 
-        // Push into the live channel buffer so it shows on the live tab
+        // Push into the live channel buffer (dedup by text to prevent doubles on reload)
         const liveChannel = getLiveChannel();
         const liveBuffer = liveChannel ? irc?.channels?.get(liveChannel) : null;
         if (liveBuffer) {
-          liveBuffer.push(evt);
-          saveStreamEvent(evt);
+          const existing = liveBuffer.getAll();
+          if (!existing.some(m => m.type === 'stream-event' && m.text === evt.text)) {
+            liveBuffer.push(evt);
+            saveStreamEvent(evt);
+          }
         }
 
         // Also push into the matching channel buffer if different from live
         if (channel !== liveChannel) {
           const chBuffer = irc?.channels?.get(channel);
           if (chBuffer) {
-            chBuffer.push(evt);
-            if (!liveBuffer) saveStreamEvent(evt);
+            const existing = chBuffer.getAll();
+            if (!existing.some(m => m.type === 'stream-event' && m.text === evt.text)) {
+              chBuffer.push(evt);
+              if (!liveBuffer) saveStreamEvent(evt);
+            }
           }
         }
-        activityEvents.push(evt);
+        if (!activityEvents.some(m => m.text === evt.text)) activityEvents.push(evt);
 
         // Highlight non-active tabs
         if (currentTab !== 'live') {
@@ -13137,23 +13172,29 @@ m.type === 'usernotice' ? 'hs-mc-msg hs-mc-system' :
         notifyStreamEvent(channel, msg.eventType, msg.game);
         const evt = { type: 'stream-event', eventClass, text, channel, time: Date.now(), color: msg.color || '' };
 
-        // Push into the live channel buffer (follow events show in current chat)
+        // Push into the live channel buffer (dedup by text)
         const liveChannel = getLiveChannel();
         const liveBuffer = liveChannel ? irc?.channels?.get(liveChannel) : null;
         if (liveBuffer) {
-          liveBuffer.push(evt);
-          saveStreamEvent(evt);
+          const existing = liveBuffer.getAll();
+          if (!existing.some(m => m.type === 'stream-event' && m.text === evt.text)) {
+            liveBuffer.push(evt);
+            saveStreamEvent(evt);
+          }
         }
 
         // Also push into matching channel buffer if different from live
         if (channel !== liveChannel) {
           const chBuffer = irc?.channels?.get(channel);
           if (chBuffer) {
-            chBuffer.push(evt);
-            if (!liveBuffer) saveStreamEvent(evt);
+            const existing = chBuffer.getAll();
+            if (!existing.some(m => m.type === 'stream-event' && m.text === evt.text)) {
+              chBuffer.push(evt);
+              if (!liveBuffer) saveStreamEvent(evt);
+            }
           }
         }
-        activityEvents.push(evt);
+        if (!activityEvents.some(m => m.text === evt.text)) activityEvents.push(evt);
 
         // Highlight non-active tabs
         if (currentTab !== 'live') {
@@ -13216,9 +13257,7 @@ m.type === 'usernotice' ? 'hs-mc-msg hs-mc-system' :
       }
 
       const added = injectStreamEventsIntoBuffers(builtEvents)
-      for (const evt of builtEvents) {
-        saveStreamEvent(evt)
-      }
+      if (builtEvents.length > 0) saveStreamEventsBatch(builtEvents)
 
       if (added > 0) {
         log('[FollowHistory]', added, 'events loaded');

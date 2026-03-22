@@ -1430,8 +1430,9 @@
         padding: 2px 8px;
         font-size: 13px;
         font-style: italic;
-        background: rgba(128, 128, 0, 0.25);
-        border-bottom: 1px solid #333;
+        border: 1px solid #ffff00;
+        border-radius: 2px;
+        margin: 2px 4px;
         color: #ffff00;
       }
       .hs-mc-stream-event .hs-mc-user { text-decoration: none; font-weight: bold; }

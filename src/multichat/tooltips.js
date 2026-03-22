@@ -90,10 +90,13 @@
     stateEl.className = 'tooltip-source ' + (state || 'global');
 
     // Position: anchor above the emote element
+    const anchorEl = hoveredImg || e.target;
     tooltip.style.left = '-9999px';
     tooltip.style.top = '-9999px';
     tooltip.classList.add('visible');
-    positionTooltipAtElement(tooltip, hoveredImg || e.target);
+    // Double-position: first pass gets approximate, rAF gets exact after layout
+    positionTooltipAtElement(tooltip, anchorEl);
+    requestAnimationFrame(() => positionTooltipAtElement(tooltip, anchorEl));
   }
 
   function showEmojiTooltip(targetEl, emoji, name) {
@@ -123,6 +126,7 @@
     tooltip.style.top = '-9999px'
     tooltip.classList.add('visible')
     positionTooltipAtElement(tooltip, targetEl)
+    requestAnimationFrame(() => positionTooltipAtElement(tooltip, targetEl))
   }
 
   function hideEmoteTooltip() {
@@ -424,12 +428,12 @@
     const elRect = targetEl.getBoundingClientRect();
     const tipRect = tooltip.getBoundingClientRect();
 
-    // Position above if room, otherwise below
+    // Position directly above if room, otherwise below (no gap, like website)
     let y;
-    if (elRect.top - tipRect.height - 5 > 5) {
-      y = elRect.top - tipRect.height - 5;
+    if (elRect.top - tipRect.height > 0) {
+      y = elRect.top - tipRect.height;
     } else {
-      y = elRect.bottom + 5;
+      y = elRect.bottom;
     }
 
     // Center horizontally over element, clamp to viewport

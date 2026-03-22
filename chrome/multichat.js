@@ -3051,10 +3051,13 @@ async function sendIrcMessage(channel, text, token, replyParentId) {
     stateEl.className = 'tooltip-source ' + (state || 'global');
 
     // Position: anchor above the emote element
+    const anchorEl = hoveredImg || e.target;
     tooltip.style.left = '-9999px';
     tooltip.style.top = '-9999px';
     tooltip.classList.add('visible');
-    positionTooltipAtElement(tooltip, hoveredImg || e.target);
+    // Double-position: first pass gets approximate, rAF gets exact after layout
+    positionTooltipAtElement(tooltip, anchorEl);
+    requestAnimationFrame(() => positionTooltipAtElement(tooltip, anchorEl));
   }
 
   function showEmojiTooltip(targetEl, emoji, name) {
@@ -3084,6 +3087,7 @@ async function sendIrcMessage(channel, text, token, replyParentId) {
     tooltip.style.top = '-9999px'
     tooltip.classList.add('visible')
     positionTooltipAtElement(tooltip, targetEl)
+    requestAnimationFrame(() => positionTooltipAtElement(tooltip, targetEl))
   }
 
   function hideEmoteTooltip() {
@@ -3385,12 +3389,12 @@ async function sendIrcMessage(channel, text, token, replyParentId) {
     const elRect = targetEl.getBoundingClientRect();
     const tipRect = tooltip.getBoundingClientRect();
 
-    // Position above if room, otherwise below
+    // Position directly above if room, otherwise below (no gap, like website)
     let y;
-    if (elRect.top - tipRect.height - 5 > 5) {
-      y = elRect.top - tipRect.height - 5;
+    if (elRect.top - tipRect.height > 0) {
+      y = elRect.top - tipRect.height;
     } else {
-      y = elRect.bottom + 5;
+      y = elRect.bottom;
     }
 
     // Center horizontally over element, clamp to viewport
@@ -9731,8 +9735,11 @@ const STORAGE_KEY = 'heatsync_multichat';
       #hs-emote-tooltip .tooltip-source {
         font-size: 11px;
         padding: 2px 6px;
+        margin: 2px -8px -8px;
         border-radius: 0;
         color: #fff;
+        width: calc(100% + 16px);
+        text-align: center;
       }
       #hs-emote-tooltip .tooltip-source.owned { background: #00ff00; color: #000; }
       #hs-emote-tooltip .tooltip-source.unadded { background: #8080ff; color: #fff; }

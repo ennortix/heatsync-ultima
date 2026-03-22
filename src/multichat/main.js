@@ -2304,8 +2304,11 @@
       #hs-emote-tooltip .tooltip-source {
         font-size: 11px;
         padding: 2px 6px;
+        margin: 2px -8px -8px;
         border-radius: 0;
         color: #fff;
+        width: calc(100% + 16px);
+        text-align: center;
       }
       #hs-emote-tooltip .tooltip-source.owned { background: #00ff00; color: #000; }
       #hs-emote-tooltip .tooltip-source.unadded { background: #8080ff; color: #fff; }

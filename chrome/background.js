@@ -1570,6 +1570,13 @@ function handleWSMessage(msg) {
         log(' Skipping feed post — anonymous');
         break;
       }
+      // Restore currentUsername from storage if lost (service worker restart)
+      if (!currentUsername) {
+        try {
+          const stored = await browser.storage.local.get('user_info')
+          if (stored.user_info?.username) currentUsername = stored.user_info.username
+        } catch {}
+      }
       if (currentUsername && msgUser === currentUsername.toLowerCase()) {
         // Always show own posts
       } else if (!followedUsers.some(u => u.toLowerCase() === msgUser)) {

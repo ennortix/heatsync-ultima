@@ -1713,6 +1713,13 @@ function handleWSMessage(msg) {
       })
       break
 
+    case 'follow:colors':
+      broadcastToTabs({
+        type: 'follow_colors',
+        colors: msg.colors || {}
+      })
+      break
+
     case 'error':
       break;
 

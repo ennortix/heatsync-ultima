@@ -108,6 +108,9 @@
       .catch(() => avatarFetching.delete(key))
   }
 
+  // Stream event user colors — login → color (populated from server on connect)
+  const streamColorMap = new Map();
+
   // Stream events persistence — survives tab switches AND page refresh
   const STREAM_EVENTS_KEY = 'hs_stream_events';
   const STREAM_EVENTS_MAX = 200;
@@ -4246,8 +4249,9 @@
       const tsVal = timestampsEnabled ? formatTimeFromTs(m.time) : ''
       const tsSpan = tsVal ? `<span class="hs-mc-ts" data-ts="${m.time}">${tsVal}</span>` : ''
       const ch = m.channel || ''
-      // Look up color: event data → profile cache → IRC buffers → async fetch
+      // Look up color: event data → color map → profile cache → IRC buffers → async fetch
       let userColor = m.color || ''
+      if (!userColor) userColor = streamColorMap.get(ch) || ''
       if (!userColor) {
         const cached = _profileCache.get(ch)
         if (cached?.profile?.twitch_color) userColor = cached.profile.twitch_color
@@ -5895,6 +5899,20 @@ m.type === 'usernotice' ? 'hs-mc-msg hs-mc-system' :
         if (activeTab === 'live' || config.channels.some(ch => (typeof ch === 'string' ? ch : ch.id) === activeTab)) {
           if (!appendMessage(evt, activeTab)) renderMessages(activeTab);
         }
+      });
+    }
+
+    // Handle color map from server (for persisted stream event history)
+    if (!window._hsMcFollowColorsListener) {
+      window._hsMcFollowColorsListener = true;
+      chrome.runtime?.onMessage?.addListener((msg) => {
+        if (msg.type !== 'follow_colors') return;
+        const colors = msg.colors;
+        if (!colors || typeof colors !== 'object') return;
+        for (const [login, color] of Object.entries(colors)) {
+          if (color) streamColorMap.set(login.toLowerCase(), color);
+        }
+        log('[FollowColors]', streamColorMap.size, 'colors received');
       });
     }
 

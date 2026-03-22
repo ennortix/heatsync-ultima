@@ -5913,6 +5913,11 @@ m.type === 'usernotice' ? 'hs-mc-msg hs-mc-system' :
           if (color) streamColorMap.set(login.toLowerCase(), color);
         }
         log('[FollowColors]', streamColorMap.size, 'colors received');
+        // Re-render active tab so persisted events pick up the colors
+        const active = currentTab;
+        if (active === 'live' || config.channels.some(ch => (typeof ch === 'string' ? ch : ch.id) === active)) {
+          renderMessages(active);
+        }
       });
     }
 

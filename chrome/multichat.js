@@ -5778,13 +5778,19 @@ async function sendWhisperMessage(key, text) {
 
   if (key.startsWith('twitch:')) {
     try {
-      await gqlProxy('SendWhisper', {
+      const resp = await gqlProxy('SendWhisper', {
         input: {
           recipientID: userInfo.userId,
           message: text,
           nonce: Math.random().toString(36).slice(2)
         }
       }, { rawQuery: 'mutation SendWhisper($input: SendWhisperInput!) { sendWhisper(input: $input) { error { code } } }' })
+      // Check mutation-level error
+      const errCode = resp?.data?.sendWhisper?.error?.code
+      if (errCode) {
+        log('Whisper mutation error:', errCode)
+        showToast('whisper error: ' + errCode)
+      }
     } catch (e) {
       log('Whisper send failed:', e.message)
       showToast('whisper failed: ' + e.message)

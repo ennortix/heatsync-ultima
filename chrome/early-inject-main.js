@@ -135,6 +135,14 @@
       variables: op.variables || {}
     })) : body
 
+    if (!gql.authToken) {
+      window.postMessage({
+        type: 'heatsync-gql-response', id: req.id,
+        error: 'no twitch auth token captured — refresh the page'
+      }, location.origin)
+      return
+    }
+
     origFetch('https://gql.twitch.tv/gql', {
       method: 'POST',
       headers: buildGqlHeaders(),

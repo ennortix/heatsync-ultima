@@ -378,6 +378,18 @@ style.textContent = `
     white-space: nowrap !important;
   }
 
+  .hs-pc-verified {
+    padding: 2px 3px !important;
+    border-radius: 0 !important;
+    font-size: 10px !important;
+    font-weight: 900 !important;
+    background: #9146ff !important;
+    color: #fff !important;
+    border: 1px solid #000 !important;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.5) !important;
+    white-space: nowrap !important;
+  }
+
   .hs-pc-live {
     background: #ff0000 !important;
     color: #fff !important;
@@ -3831,6 +3843,13 @@ function updateEmoteState(hash, emoteName, state) {
       aSpan.className = 'hs-pc-role affiliate'
       aSpan.textContent = 'affiliate'
       row1.appendChild(aSpan)
+    }
+    if (profile.twitch_verified || profile.kick_verified) {
+      const vSpan = document.createElement('span')
+      vSpan.className = 'hs-pc-verified'
+      vSpan.textContent = '✓'
+      vSpan.title = 'Verified'
+      row1.appendChild(vSpan)
     }
     if (age) {
       const ageSpan = document.createElement('span')

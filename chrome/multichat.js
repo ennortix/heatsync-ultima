@@ -3363,6 +3363,17 @@ async function sendIrcMessage(channel, text, token, replyParentId) {
       const since = rel.profileTwitchSubSince || rel.subscribesToYouSince;
       relBadges.push(`<span class="hs-pc-rel-badge supporter">subs to you${since ? ' ' + getCompactRelTime(since) : ''}</span>`);
     }
+    // Viewer follows profile
+    if (rel.isFollowing || rel.followsOnTwitch) {
+      const since = rel.followsOnTwitchSince || rel.followedAt;
+      relBadges.push(`<span class="hs-pc-rel-badge following">following${since ? ' ' + getCompactRelTime(since) : ''}</span>`);
+    }
+    // Viewer subbed to profile
+    if (rel.isSubscribed || rel.subscribedOnTwitch) {
+      const tier = rel.twitchSubTier || rel.subTier || 1;
+      const since = rel.twitchSubSince || rel.subscribedAt;
+      relBadges.push(`<span class="hs-pc-rel-badge subbed">subbed${tier > 1 ? ' T' + tier : ''}${since ? ' ' + getCompactRelTime(since) : ''}</span>`);
+    }
 
     return `
       ${pfp ? `<img class="hs-pc-avatar" src="${escapeHtml(pfp)}" alt="${escapeHtml(displayName)}">` : ''}
@@ -8689,7 +8700,7 @@ const STORAGE_KEY = 'heatsync_multichat';
       .hs-mc-stream-event.event-online { color: #f44; }
       .hs-mc-stream-event.event-online .hs-evt-game { color: #fff; }
       .hs-mc-stream-event.event-offline { color: #808080; opacity: 1; }
-      .hs-mc-stream-event.event-offline .hs-evt-bracket { color: #808080 !important; }
+      .hs-mc-stream-event .hs-evt-bracket { color: #808080 !important; }
       /* Inline feed posts in chat timeline */
       .hs-mc-feed-inline {
         padding: 2px 8px;
@@ -9289,6 +9300,8 @@ const STORAGE_KEY = 'heatsync_multichat';
       }
       #hs-user-tooltip .hs-pc-rel-badge.mutual { background: #00ffff; color: #8800ff; }
       #hs-user-tooltip .hs-pc-rel-badge.supporter { background: #ff0000; color: #ffff00; }
+      #hs-user-tooltip .hs-pc-rel-badge.following { background: #0099ff; color: #fff; }
+      #hs-user-tooltip .hs-pc-rel-badge.subbed { background: #9146ff; color: #fff; }
       #hs-user-tooltip .hs-pc-loading {
         color: #808080;
         font-size: 11px;

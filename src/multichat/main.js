@@ -1480,7 +1480,7 @@
       .hs-mc-stream-event.event-online { color: #f44; }
       .hs-mc-stream-event.event-online .hs-evt-game { color: #fff; }
       .hs-mc-stream-event.event-offline { color: #808080; opacity: 1; }
-      .hs-mc-stream-event.event-offline .hs-evt-bracket { color: #808080 !important; }
+      .hs-mc-stream-event .hs-evt-bracket { color: #808080 !important; }
       /* Inline feed posts in chat timeline */
       .hs-mc-feed-inline {
         padding: 2px 8px;
@@ -2080,6 +2080,8 @@
       }
       #hs-user-tooltip .hs-pc-rel-badge.mutual { background: #00ffff; color: #8800ff; }
       #hs-user-tooltip .hs-pc-rel-badge.supporter { background: #ff0000; color: #ffff00; }
+      #hs-user-tooltip .hs-pc-rel-badge.following { background: #0099ff; color: #fff; }
+      #hs-user-tooltip .hs-pc-rel-badge.subbed { background: #9146ff; color: #fff; }
       #hs-user-tooltip .hs-pc-loading {
         color: #808080;
         font-size: 11px;

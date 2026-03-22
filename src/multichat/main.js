@@ -117,58 +117,66 @@
   const STREAM_EVENTS_MAX = 200;
   let streamEventsLoaded = false;
 
+  // Inject stream events into IRC buffers + activityEvents (deduped)
+  function injectStreamEventsIntoBuffers(events) {
+    const liveCh = getLiveChannel()
+    const liveBuffer = liveCh ? irc?.channels?.get(liveCh) : null
+    let added = 0
+
+    for (const evt of events) {
+      const ch = evt.channel
+      if (!ch) continue
+
+      // Always inject into live buffer (follow events show on live tab)
+      if (liveBuffer) {
+        const existing = liveBuffer.getAll()
+        const isDupe = existing.some(m => m.type === 'stream-event' && m.time === evt.time && m.text === evt.text)
+        if (!isDupe) { liveBuffer.push(evt); added++ }
+      }
+
+      // Also inject into the matching channel buffer if different from live
+      if (ch !== liveCh) {
+        const buffer = irc?.channels?.get(ch)
+        if (buffer) {
+          const existing = buffer.getAll()
+          const isDupe = existing.some(m => m.type === 'stream-event' && m.time === evt.time && m.text === evt.text)
+          if (!isDupe) buffer.push(evt)
+        }
+      }
+
+      // Also push to activityEvents (dedup by time+text)
+      const isDupeActivity = activityEvents.some(m => m.time === evt.time && m.text === evt.text)
+      if (!isDupeActivity) activityEvents.push(evt)
+    }
+    return added
+  }
+
   async function loadStreamEvents() {
     try {
-      const data = await chrome.storage.local.get(STREAM_EVENTS_KEY);
-      const events = data[STREAM_EVENTS_KEY];
-      if (!Array.isArray(events) || events.length === 0) return;
-      const cutoff = Date.now() - 86400000; // 24h expiry
-      const valid = events.filter(e => e.time > cutoff);
-      const liveCh = getLiveChannel();
-      const liveBuffer = liveCh ? irc?.channels?.get(liveCh) : null;
+      const data = await api.storage.local.get(STREAM_EVENTS_KEY)
+      const events = data[STREAM_EVENTS_KEY]
+      if (!Array.isArray(events) || events.length === 0) return
+      const cutoff = Date.now() - 86400000 // 24h expiry
+      const valid = events.filter(e => e.time > cutoff)
 
-      // Inject into appropriate IRC buffers
-      for (const evt of valid) {
-        const ch = evt.channel;
-        if (!ch) continue;
+      injectStreamEventsIntoBuffers(valid)
 
-        // Always inject into live buffer (follow events show on live tab)
-        if (liveBuffer) {
-          const existing = liveBuffer.getAll();
-          const isDupe = existing.some(m => m.type === 'stream-event' && m.time === evt.time && m.text === evt.text);
-          if (!isDupe) liveBuffer.push(evt);
-        }
-
-        // Also inject into the matching channel buffer if different from live
-        if (ch !== liveCh) {
-          const buffer = irc?.channels?.get(ch);
-          if (buffer) {
-            const existing = buffer.getAll();
-            const isDupe = existing.some(m => m.type === 'stream-event' && m.time === evt.time && m.text === evt.text);
-            if (!isDupe) buffer.push(evt);
-          }
-        }
-
-        // Also push to activityEvents (dedup by time+text)
-        const isDupeActivity = activityEvents.some(m => m.time === evt.time && m.text === evt.text);
-        if (!isDupeActivity) activityEvents.push(evt);
-      }
       // Prune expired from storage
       if (valid.length < events.length) {
-        await chrome.storage.local.set({ [STREAM_EVENTS_KEY]: valid });
+        await api.storage.local.set({ [STREAM_EVENTS_KEY]: valid })
       }
-      streamEventsLoaded = true;
+      streamEventsLoaded = true
     } catch {}
   }
 
   async function saveStreamEvent(evt) {
     try {
-      const data = await chrome.storage.local.get(STREAM_EVENTS_KEY);
-      const events = data[STREAM_EVENTS_KEY] || [];
-      events.push(evt);
+      const data = await api.storage.local.get(STREAM_EVENTS_KEY)
+      const events = data[STREAM_EVENTS_KEY] || []
+      events.push(evt)
       // Prune old events (keep last STREAM_EVENTS_MAX)
-      if (events.length > STREAM_EVENTS_MAX) events.splice(0, events.length - STREAM_EVENTS_MAX);
-      await chrome.storage.local.set({ [STREAM_EVENTS_KEY]: events });
+      if (events.length > STREAM_EVENTS_MAX) events.splice(0, events.length - STREAM_EVENTS_MAX)
+      await api.storage.local.set({ [STREAM_EVENTS_KEY]: events })
     } catch {}
   }
 
@@ -4270,7 +4278,8 @@
     if (m.type === 'stream-event') {
       const div = document.createElement('div')
       div.className = `hs-mc-stream-event ${m.eventClass || ''}`
-      const tsVal = timestampsEnabled ? formatTimeFromTs(m.time) : ''
+      // Stream events always show timestamps — they're temporal markers
+      const tsVal = m.time ? formatTimeFromTs(m.time) : ''
       const tsSpan = tsVal ? `<span class="hs-mc-ts" data-ts="${m.time}">${tsVal}</span>` : ''
       const ch = m.channel || ''
       // Look up color: event data → color map → profile cache → IRC buffers → async fetch
@@ -5983,12 +5992,12 @@ m.type === 'usernotice' ? 'hs-mc-msg hs-mc-system' :
         const events = msg.events;
         if (!Array.isArray(events) || events.length === 0) return;
 
-        let added = 0;
+        // Build event objects from server history
+        const builtEvents = [];
         for (const e of events) {
           const channel = e.channel?.toLowerCase();
           if (!channel) continue;
 
-          // Build the same event format as real-time handlers
           let text = '', eventClass = '';
           if (e.type === 'follow:stream:update' && e.game) {
             text = e.prevGame
@@ -6005,14 +6014,13 @@ m.type === 'usernotice' ? 'hs-mc-msg hs-mc-system' :
           if (!text) continue;
 
           const evt = { type: 'stream-event', eventClass, text, channel, time: e.time, color: e.color || '' };
+          builtEvents.push(evt)
+        }
 
-          // Dedup against activityEvents
-          const isDupe = activityEvents.some(m => m.time === evt.time && m.text === evt.text);
-          if (isDupe) continue;
-
-          activityEvents.push(evt);
-          saveStreamEvent(evt);
-          added++;
+        // Inject into IRC buffers + activityEvents (deduped) and persist
+        const added = injectStreamEventsIntoBuffers(builtEvents)
+        for (const evt of builtEvents) {
+          saveStreamEvent(evt)
         }
 
         if (added > 0) {

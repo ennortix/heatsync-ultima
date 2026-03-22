@@ -52,7 +52,7 @@ async function apiFetch(path, opts = {}) {
 // Load heatsync auth state from storage
 async function loadHsAuth() {
   try {
-    const data = await chrome.storage.local.get(['auth_token_encrypted', 'auth_token']);
+    const data = await api.storage.local.get(['auth_token_encrypted', 'auth_token']);
     hsAuthToken = !!(data.auth_token_encrypted || data.auth_token);
     log('Heatsync auth:', hsAuthToken ? 'logged in' : 'anonymous');
   } catch (e) {
@@ -62,7 +62,7 @@ async function loadHsAuth() {
   // Watch for auth changes (login/logout on heatsync.org)
   if (!window._hsMcAuthWatcher) {
     window._hsMcAuthWatcher = true;
-    chrome.storage.onChanged.addListener((changes, area) => {
+    api.storage.onChanged.addListener((changes, area) => {
       if (area !== 'local') return;
       if (changes.auth_token_encrypted || changes.auth_token) {
         const wasAuthed = hsAuthToken;

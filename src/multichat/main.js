@@ -1426,15 +1426,15 @@
         padding: 2px 8px;
         font-size: 13px;
         font-style: italic;
-        border-left: 3px solid #ffff00;
+        background: rgba(128, 128, 0, 0.25);
         border-bottom: 1px solid #333;
+        color: #ddd;
       }
-      .hs-mc-stream-event.event-update { color: #ffff00; }
-      .hs-mc-stream-event.event-online { color: #f44; border-left-color: #f44; }
-      .hs-mc-stream-event.event-offline { color: #808080; border-left-color: #808080; }
-      .hs-mc-stream-event.event-follow { color: #ffff00; border-left-color: #ffff00; opacity: 0.8; }
-      .hs-mc-stream-event.event-follow.event-online { color: #f44; border-left-color: #f44; }
-      .hs-mc-stream-event.event-follow.event-offline { color: #808080; border-left-color: #808080; }
+      .hs-mc-stream-event .hs-evt-channel { color: #ffff00; }
+      .hs-mc-stream-event .hs-evt-game { color: #fff; }
+      .hs-mc-stream-event.event-online .hs-evt-channel { color: #f44; }
+      .hs-mc-stream-event.event-offline { opacity: 0.6; }
+      .hs-mc-stream-event.event-offline .hs-evt-channel { color: #808080; }
       /* Inline feed posts in chat timeline */
       .hs-mc-feed-inline {
         padding: 2px 8px;
@@ -4246,8 +4246,10 @@
       div.className = `hs-mc-stream-event ${m.eventClass || ''}`
       const tsVal = timestampsEnabled ? formatTimeFromTs(m.time) : ''
       const tsSpan = tsVal ? `<span class="hs-mc-ts" data-ts="${m.time}">${tsVal}</span>` : ''
+      // Parse "[channel] ◆ action — game" into structured spans
       let evtHtml = escapeHtml(m.text)
-      evtHtml = evtHtml.replace(/(switched to |went live \u2014 )(.+)$/, '$1<span style="color:#fff">$2</span>')
+      evtHtml = evtHtml.replace(/^\[([^\]]+)\]/, '[<span class="hs-evt-channel">$1</span>]')
+      evtHtml = evtHtml.replace(/(switched to |now playing |went live \u2014 )(.+)$/, '$1<span class="hs-evt-game">$2</span>')
       div.innerHTML = `${tsSpan}${evtHtml}`
       return div
     }

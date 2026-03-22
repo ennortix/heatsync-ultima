@@ -216,48 +216,56 @@
       return
     }
 
-    // Whisper via Helix API (bypasses integrity)
-    if (e.data?.type === 'heatsync-send-whisper') {
+    // Generic Helix API proxy — content scripts route through MAIN world for OAuth
+    if (e.data?.type === 'heatsync-helix') {
       const req = e.data
       ;(async () => {
         try {
           if (!gql.authToken) {
-            window.postMessage({ type: 'heatsync-whisper-response', id: req.id, error: 'not logged into twitch' }, location.origin)
+            window.postMessage({ type: 'heatsync-helix-response', id: req.id, error: 'not logged into twitch' }, location.origin)
             return
           }
           const cid = gql.clientId || 'kimne78kx3ncx6brgo4mv6wki5h1ko'
-          // Get sender's user ID
-          const meResp = await origFetch('https://api.twitch.tv/helix/users', {
-            headers: { 'Authorization': 'Bearer ' + gql.authToken, 'Client-Id': cid }
-          })
-          if (!meResp.ok) {
-            window.postMessage({ type: 'heatsync-whisper-response', id: req.id, error: 'failed to get user: ' + meResp.status }, location.origin)
-            return
+
+          // Resolve {me} placeholder in URL to cached user ID
+          let url = req.url
+          if (url.includes('{me}')) {
+            if (!gql.userId) {
+              const meResp = await origFetch('https://api.twitch.tv/helix/users', {
+                headers: { 'Authorization': 'Bearer ' + gql.authToken, 'Client-Id': cid }
+              })
+              if (meResp.ok) {
+                const meData = await meResp.json()
+                gql.userId = meData.data?.[0]?.id
+                gql.userLogin = meData.data?.[0]?.login
+              }
+            }
+            if (!gql.userId) {
+              window.postMessage({ type: 'heatsync-helix-response', id: req.id, error: 'could not resolve user ID' }, location.origin)
+              return
+            }
+            url = url.replace(/\{me\}/g, gql.userId)
           }
-          const meData = await meResp.json()
-          const fromId = meData.data?.[0]?.id
-          if (!fromId) {
-            window.postMessage({ type: 'heatsync-whisper-response', id: req.id, error: 'could not resolve sender ID' }, location.origin)
-            return
-          }
-          // Send whisper
-          const wResp = await origFetch(`https://api.twitch.tv/helix/whispers?from_user_id=${fromId}&to_user_id=${req.toUserId}`, {
-            method: 'POST',
-            headers: {
-              'Authorization': 'Bearer ' + gql.authToken,
-              'Client-Id': cid,
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({ message: req.message })
+
+          const hdrs = { 'Authorization': 'Bearer ' + gql.authToken, 'Client-Id': cid }
+          if (req.body) hdrs['Content-Type'] = 'application/json'
+          const resp = await origFetch(url, {
+            method: req.method || 'GET',
+            headers: hdrs,
+            body: req.body ? JSON.stringify(req.body) : undefined
           })
-          if (wResp.status === 204) {
-            window.postMessage({ type: 'heatsync-whisper-response', id: req.id, ok: true }, location.origin)
+          if (resp.status === 204) {
+            window.postMessage({ type: 'heatsync-helix-response', id: req.id, ok: true }, location.origin)
           } else {
-            const errBody = await wResp.text().catch(() => '')
-            window.postMessage({ type: 'heatsync-whisper-response', id: req.id, error: `helix ${wResp.status}: ${errBody}` }, location.origin)
+            const data = await resp.json().catch(() => null)
+            if (resp.ok) {
+              window.postMessage({ type: 'heatsync-helix-response', id: req.id, ok: true, data }, location.origin)
+            } else {
+              window.postMessage({ type: 'heatsync-helix-response', id: req.id, error: `${resp.status}: ${data?.message || JSON.stringify(data)}` }, location.origin)
+            }
           }
         } catch (err) {
-          window.postMessage({ type: 'heatsync-whisper-response', id: req.id, error: err.message }, location.origin)
+          window.postMessage({ type: 'heatsync-helix-response', id: req.id, error: err.message }, location.origin)
         }
       })()
       return

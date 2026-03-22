@@ -3279,6 +3279,101 @@
         cursor: default;
       }
 
+      /* ═══ Chat Color Picker ═══ */
+      .hs-mc-color-picker {
+        margin-top: 4px;
+      }
+      .hs-mc-color-current {
+        display: inline-block;
+        width: 14px;
+        height: 14px;
+        border-radius: 2px;
+        vertical-align: -2px;
+        margin-left: 6px;
+        border: 1px solid rgba(255,255,255,0.2);
+      }
+      .hs-mc-color-grid {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 3px;
+        padding: 4px 14px;
+      }
+      .hs-mc-color-swatch {
+        width: 20px;
+        height: 20px;
+        border-radius: 2px;
+        cursor: pointer;
+        border: 1px solid transparent;
+        transition: none;
+      }
+      .hs-mc-color-swatch:hover {
+        border-color: #fff;
+        transform: scale(1.2);
+      }
+      .hs-mc-color-custom {
+        display: flex;
+        gap: 4px;
+        padding: 4px 14px;
+      }
+      .hs-mc-color-hex {
+        flex: 1;
+        background: rgba(255,255,255,0.08);
+        border: 1px solid rgba(255,255,255,0.1);
+        color: #fff;
+        font-size: 11px;
+        padding: 3px 6px;
+        font-family: inherit;
+        border-radius: 0;
+      }
+      .hs-mc-color-hex:focus {
+        border-color: #9147ff;
+        outline: none;
+      }
+      .hs-mc-color-apply {
+        background: #9147ff;
+        border: none;
+        color: #fff;
+        font-size: 11px;
+        font-weight: 600;
+        padding: 3px 10px;
+        cursor: pointer;
+      }
+      .hs-mc-color-apply:hover {
+        background: #fff;
+        color: #000;
+      }
+
+      /* ═══ Chat Modes ═══ */
+      .hs-mc-chat-modes {
+        margin-top: 4px;
+      }
+      .hs-mc-modes-grid {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px;
+        padding: 4px 14px;
+      }
+      .hs-mc-mode-btn {
+        font-size: 10px;
+        padding: 3px 8px;
+        background: rgba(255,255,255,0.06);
+        color: #808080;
+        cursor: pointer;
+        border: 1px solid rgba(255,255,255,0.08);
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.3px;
+      }
+      .hs-mc-mode-btn:hover {
+        background: rgba(255,255,255,0.12);
+        color: #fff;
+      }
+      .hs-mc-mode-btn.active {
+        background: rgba(0,200,175,0.15);
+        color: #00c8af;
+        border-color: rgba(0,200,175,0.3);
+      }
+
       /* ═══ Settings tab ═══ */
       .hs-mc-settings-group {
         padding: 4px 0;

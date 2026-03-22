@@ -14,6 +14,7 @@ function renderQuickLinks() {
   links.className = 'hs-mc-pred-links'
 
   const items = [
+    { action: 'clip', accent: '#bf94ff', icon: '<svg width="16" height="16" viewBox="0 0 20 20"><path fill="currentColor" d="M18 7h-2V5a2 2 0 00-2-2H6a2 2 0 00-2 2v2H2v4l8 6 8-6V7zM6 5h8v2H6V5z"/></svg>', label: 'create clip' },
     { action: 'popout', accent: '#4a90d9', icon: '<svg width="16" height="16" viewBox="0 0 20 20"><path fill="currentColor" d="M4 4h6v2H6v8h8v-4h2v6H4V4zm8 0h4v4h-2V6.41l-4.3 4.3-1.4-1.42L12.58 6H11V4z"></path></svg>', label: 'popout chat' },
     { action: 'mod', accent: '#00c8af', icon: '<svg width="16" height="16" viewBox="0 0 20 20"><path fill="currentColor" d="M10 2l6 2.7V9c0 4.4-2.5 8.3-6 10-3.5-1.7-6-5.6-6-10V4.7L10 2z"/></svg>', label: 'mod view' }
   ]
@@ -23,10 +24,207 @@ function renderQuickLinks() {
     el.className = 'hs-mc-menu-item hs-mc-pred-link'
     el.dataset.action = item.action
     el.style.setProperty('--menu-accent', item.accent)
+    // Static HTML with SVG icons only — no dynamic values, safe innerHTML
     el.innerHTML = `<div class="hs-mc-menu-icon">${item.icon}</div><div class="hs-mc-menu-text"><div class="hs-mc-menu-title">${item.label}</div></div><svg class="hs-mc-menu-arrow" width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>`
     links.appendChild(el)
   }
   return links
+}
+
+// ═══ Chat Color Picker ═══
+
+const TWITCH_COLORS = [
+  { name: 'Red', hex: '#FF0000' },
+  { name: 'Blue', hex: '#0000FF' },
+  { name: 'Green', hex: '#00FF00' },
+  { name: 'FireBrick', hex: '#B22222' },
+  { name: 'Coral', hex: '#FF7F50' },
+  { name: 'YellowGreen', hex: '#9ACD32' },
+  { name: 'OrangeRed', hex: '#FF4500' },
+  { name: 'SeaGreen', hex: '#2E8B57' },
+  { name: 'GoldenRod', hex: '#DAA520' },
+  { name: 'Chocolate', hex: '#D2691E' },
+  { name: 'CadetBlue', hex: '#5F9EA0' },
+  { name: 'DodgerBlue', hex: '#1E90FF' },
+  { name: 'HotPink', hex: '#FF69B4' },
+  { name: 'BlueViolet', hex: '#8A2BE2' },
+  { name: 'SpringGreen', hex: '#00FF7F' },
+]
+
+function renderColorPicker() {
+  const section = document.createElement('div')
+  section.className = 'hs-mc-color-picker'
+
+  const header = document.createElement('div')
+  header.className = 'hs-mc-rewards-header'
+  const label = document.createElement('span')
+  label.className = 'hs-mc-rewards-label'
+  label.textContent = 'chat color'
+  header.appendChild(label)
+
+  const currentEl = document.createElement('span')
+  currentEl.className = 'hs-mc-color-current'
+  currentEl.id = 'hs-mc-current-color'
+  header.appendChild(currentEl)
+  section.appendChild(header)
+
+  const grid = document.createElement('div')
+  grid.className = 'hs-mc-color-grid'
+
+  for (const c of TWITCH_COLORS) {
+    const swatch = document.createElement('div')
+    swatch.className = 'hs-mc-color-swatch'
+    swatch.style.backgroundColor = c.hex
+    swatch.title = c.name
+    swatch.dataset.color = c.name
+    grid.appendChild(swatch)
+  }
+
+  // Custom hex input
+  const custom = document.createElement('div')
+  custom.className = 'hs-mc-color-custom'
+  const hexInput = document.createElement('input')
+  hexInput.type = 'text'
+  hexInput.placeholder = '#hex (turbo/sub)'
+  hexInput.className = 'hs-mc-color-hex'
+  hexInput.id = 'hs-mc-color-hex-input'
+  hexInput.maxLength = 7
+  custom.appendChild(hexInput)
+  const hexBtn = document.createElement('div')
+  hexBtn.className = 'hs-mc-color-apply'
+  hexBtn.textContent = 'set'
+  hexBtn.id = 'hs-mc-color-hex-btn'
+  custom.appendChild(hexBtn)
+
+  section.appendChild(grid)
+  section.appendChild(custom)
+  return section
+}
+
+function attachColorHandlers() {
+  const container = document.getElementById('hs-mc-tab-twitch')
+  if (!container) return
+
+  // Fetch current color
+  helixRequest('https://api.twitch.tv/helix/chat/color?user_id={me}').then(resp => {
+    if (resp.ok && resp.data?.data?.[0]?.color) {
+      const el = document.getElementById('hs-mc-current-color')
+      if (el) {
+        el.style.backgroundColor = resp.data.data[0].color
+        el.title = resp.data.data[0].color
+      }
+    }
+  })
+
+  // Preset swatches
+  container.querySelectorAll('.hs-mc-color-swatch').forEach(swatch => {
+    swatch.addEventListener('click', async () => {
+      const color = swatch.dataset.color
+      const resp = await helixRequest(`https://api.twitch.tv/helix/chat/color?user_id={me}&color=${encodeURIComponent(color)}`, 'PUT')
+      if (resp.ok) {
+        showToast('color: ' + color)
+        const el = document.getElementById('hs-mc-current-color')
+        if (el) { el.style.backgroundColor = swatch.style.backgroundColor; el.title = color }
+      } else {
+        showToast('color failed: ' + (resp.error || 'unknown'))
+      }
+    })
+  })
+
+  // Custom hex
+  const hexBtn = document.getElementById('hs-mc-color-hex-btn')
+  const hexInput = document.getElementById('hs-mc-color-hex-input')
+  if (hexBtn && hexInput) {
+    hexBtn.addEventListener('click', async () => {
+      const color = hexInput.value.trim()
+      if (!/^#[0-9a-f]{6}$/i.test(color)) { showToast('invalid hex — use #RRGGBB'); return }
+      const resp = await helixRequest(`https://api.twitch.tv/helix/chat/color?user_id={me}&color=${encodeURIComponent(color)}`, 'PUT')
+      if (resp.ok) {
+        showToast('color: ' + color)
+        const el = document.getElementById('hs-mc-current-color')
+        if (el) { el.style.backgroundColor = color; el.title = color }
+      } else {
+        showToast('color failed: ' + (resp.error || 'turbo/sub only for custom hex'))
+      }
+    })
+  }
+}
+
+// ═══ Chat Modes (mod/broadcaster) ═══
+
+async function renderChatModes(channel) {
+  const section = document.createElement('div')
+  section.className = 'hs-mc-chat-modes'
+  section.id = 'hs-mc-chat-modes'
+
+  // Resolve broadcaster ID
+  const userResp = await helixRequest(`https://api.twitch.tv/helix/users?login=${encodeURIComponent(channel)}`)
+  if (!userResp.ok || !userResp.data?.data?.[0]) return null
+  const broadcasterId = userResp.data.data[0].id
+
+  // Fetch current settings (fails with 403 if not mod — that's expected)
+  const settingsResp = await helixRequest(`https://api.twitch.tv/helix/chat/settings?broadcaster_id=${broadcasterId}&moderator_id={me}`)
+  if (!settingsResp.ok || !settingsResp.data?.data?.[0]) return null
+  const s = settingsResp.data.data[0]
+
+  const header = document.createElement('div')
+  header.className = 'hs-mc-rewards-header'
+  const label = document.createElement('span')
+  label.className = 'hs-mc-rewards-label'
+  label.textContent = 'chat modes'
+  header.appendChild(label)
+  section.appendChild(header)
+
+  const modes = [
+    { key: 'emote_mode', label: 'emote only', field: 'emote_mode' },
+    { key: 'follower_mode', label: 'follower', field: 'follower_mode' },
+    { key: 'slow_mode', label: 'slow', field: 'slow_mode' },
+    { key: 'subscriber_mode', label: 'sub only', field: 'subscriber_mode' },
+    { key: 'unique_chat_mode', label: 'unique', field: 'unique_chat_mode' },
+  ]
+
+  const grid = document.createElement('div')
+  grid.className = 'hs-mc-modes-grid'
+
+  for (const mode of modes) {
+    const btn = document.createElement('div')
+    btn.className = 'hs-mc-mode-btn' + (s[mode.field] ? ' active' : '')
+    btn.textContent = mode.label
+    btn.dataset.mode = mode.key
+    btn.dataset.broadcasterId = broadcasterId
+    btn.dataset.active = s[mode.field] ? '1' : '0'
+    grid.appendChild(btn)
+  }
+
+  section.appendChild(grid)
+  return section
+}
+
+function attachModeHandlers() {
+  const container = document.getElementById('hs-mc-tab-twitch')
+  if (!container) return
+
+  container.querySelectorAll('.hs-mc-mode-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const mode = btn.dataset.mode
+      const broadcasterId = btn.dataset.broadcasterId
+      const newVal = btn.dataset.active !== '1'
+      const body = { [mode]: newVal }
+      if (mode === 'slow_mode' && newVal) body.slow_mode_wait_time = 3
+      if (mode === 'follower_mode' && newVal) body.follower_mode_duration = 10
+
+      const resp = await helixRequest(
+        `https://api.twitch.tv/helix/chat/settings?broadcaster_id=${broadcasterId}&moderator_id={me}`,
+        'PATCH', body
+      )
+      if (resp.ok) {
+        btn.dataset.active = newVal ? '1' : '0'
+        btn.classList.toggle('active', newVal)
+      } else {
+        showToast('mode failed: ' + (resp.error || 'unknown'))
+      }
+    })
+  })
 }
 
 function makeCoinSvg(size) {
@@ -593,10 +791,24 @@ async function renderTwitchTab() {
     container.appendChild(renderRewards(rewardsResult.rewards, rewardsResult.balance, rewardsResult.channelId))
   }
 
+  // Color picker
+  container.appendChild(renderColorPicker())
+
+  // Chat modes (only renders if user is mod/broadcaster — fails silently otherwise)
+  renderChatModes(channel).then(modesEl => {
+    if (modesEl) {
+      const linksEl = container.querySelector('.hs-mc-pred-links')
+      if (linksEl) container.insertBefore(modesEl, linksEl)
+      else container.appendChild(modesEl)
+      attachModeHandlers()
+    }
+  })
+
   container.appendChild(renderQuickLinks())
   attachPredictionHandlers()
   attachPollHandlers()
   attachRewardHandlers()
+  attachColorHandlers()
   startPredictionPoll()
 }
 
@@ -620,8 +832,28 @@ function stopPredictionPoll() {
 }
 
 function triggerTwitchFeature(action) {
-  const channel = getCurrentChannel();
+  const channel = getActiveTwitchChannel() || getCurrentChannel();
   if (!channel) return false;
+
+  if (action === 'clip') {
+    // Create clip via Helix API
+    ;(async () => {
+      const userResp = await helixRequest(`https://api.twitch.tv/helix/users?login=${encodeURIComponent(channel)}`)
+      if (!userResp.ok || !userResp.data?.data?.[0]) { showToast('could not resolve channel'); return }
+      const broadcasterId = userResp.data.data[0].id
+      const resp = await helixRequest(`https://api.twitch.tv/helix/clips?broadcaster_id=${broadcasterId}`, 'POST')
+      if (resp.ok && resp.data?.data?.[0]) {
+        const editUrl = resp.data.data[0].edit_url
+        const clipId = resp.data.data[0].id
+        showToast('clip created! ' + clipId)
+        // Copy clip URL to clipboard
+        try { await navigator.clipboard.writeText(editUrl || `https://clips.twitch.tv/${clipId}`) } catch {}
+      } else {
+        showToast('clip failed: ' + (resp.error || 'stream must be live'))
+      }
+    })()
+    return true
+  }
 
   const actions = {
     popout: { url: `https://www.twitch.tv/popout/${channel}/chat?popout=`, opts: 'width=400,height=600' },
@@ -688,6 +920,29 @@ window.addEventListener('message', (e) => {
     }
   }
 })
+
+// Send Helix API request through MAIN world (uses captured OAuth token)
+// URL can contain {me} which resolves to the logged-in user's ID
+function helixRequest(url, method, body) {
+  return new Promise((resolve) => {
+    const id = Math.random().toString(36).slice(2)
+    const handler = (e) => {
+      if (e.data?.type === 'heatsync-helix-response' && e.data.id === id) {
+        window.removeEventListener('message', handler)
+        clearTimeout(timer)
+        resolve(e.data)
+      }
+    }
+    window.addEventListener('message', handler)
+    const msg = { type: 'heatsync-helix', id, url, method: method || 'GET' }
+    if (body) msg.body = body
+    window.postMessage(msg, location.origin)
+    const timer = setTimeout(() => {
+      window.removeEventListener('message', handler)
+      resolve({ error: 'helix timeout — refresh the page' })
+    }, 15000)
+  })
+}
 
 // Send GQL request through MAIN world proxy (uses captured hashes + integrity)
 function gqlProxy(operation, variables, opts) {

@@ -172,24 +172,9 @@ function handleIncomingDm(data) {
   whisperSaveDebounced()
 }
 
-// Send Twitch whisper via Helix API (MAIN world, bypasses integrity)
+// Send Twitch whisper via Helix API
 function sendTwitchWhisper(toUserId, message) {
-  return new Promise((resolve) => {
-    const id = Math.random().toString(36).slice(2)
-    const handler = (e) => {
-      if (e.data?.type === 'heatsync-whisper-response' && e.data.id === id) {
-        window.removeEventListener('message', handler)
-        clearTimeout(timer)
-        resolve(e.data)
-      }
-    }
-    window.addEventListener('message', handler)
-    window.postMessage({ type: 'heatsync-send-whisper', id, toUserId, message }, location.origin)
-    const timer = setTimeout(() => {
-      window.removeEventListener('message', handler)
-      resolve({ error: 'whisper timeout — MAIN world not running, refresh the page' })
-    }, 15000)
-  })
+  return helixRequest(`https://api.twitch.tv/helix/whispers?from_user_id={me}&to_user_id=${toUserId}`, 'POST', { message })
 }
 
 async function sendWhisperMessage(key, text) {

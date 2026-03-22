@@ -11842,8 +11842,7 @@ const STORAGE_KEY = 'heatsync_multichat';
     if (m.type === 'stream-event') {
       const div = document.createElement('div')
       div.className = `hs-mc-stream-event ${m.eventClass || ''}`
-      // Stream events always show timestamps — they're temporal markers
-      const tsVal = m.time ? formatTimeFromTs(m.time) : ''
+      const tsVal = timestampsEnabled && m.time ? formatTimeFromTs(m.time) : ''
       const tsSpan = tsVal ? `<span class="hs-mc-ts" data-ts="${m.time}">${tsVal}</span>` : ''
       const ch = m.channel || ''
       // Look up color: event data → color map → profile cache → IRC buffers → async fetch

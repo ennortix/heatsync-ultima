@@ -111,19 +111,6 @@
   // Stream event user colors — login → color (populated from server on connect)
   const streamColorMap = new Map();
 
-  // Twitch default chat colors (assigned by username hash when user hasn't set one)
-  const TWITCH_DEFAULT_COLORS = [
-    '#FF0000', '#0000FF', '#00FF00', '#B22222', '#FF7F50',
-    '#9ACD32', '#FF4500', '#2E8B57', '#DAA520', '#D2691E',
-    '#5F9EA0', '#1E90FF', '#FF69B4', '#8A2BE2', '#00FF7F'
-  ];
-  function twitchDefaultColor(username) {
-    let hash = 0;
-    for (let i = 0; i < username.length; i++) {
-      hash = username.charCodeAt(i) + ((hash << 5) - hash);
-    }
-    return TWITCH_DEFAULT_COLORS[Math.abs(hash) % TWITCH_DEFAULT_COLORS.length];
-  }
 
   // Stream events persistence — survives tab switches AND page refresh
   const STREAM_EVENTS_KEY = 'hs_stream_events';
@@ -4283,7 +4270,7 @@
         }
       }
       // Build structured HTML: [username] ◆ action game
-      if (!userColor) userColor = twitchDefaultColor(ch)
+      if (!userColor) userColor = '#fff'
       const colorStyle = `color:${sanitizeColor(userColor)}`
       const userLink = `<a href="https://twitch.tv/${encodeURIComponent(ch)}" target="_blank" class="hs-mc-user hs-evt-user" data-username="${escapeHtml(ch)}" style="${colorStyle}">${escapeHtml(ch)}</a>`
       const textAfterChannel = escapeHtml(m.text).replace(/^\[[^\]]+\]\s*/, '')

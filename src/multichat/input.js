@@ -479,12 +479,8 @@ function updateInputPlaceholder() {
     const channel = getCurrentChannel();
     placeholder = channel ? `send to #${channel}` : 'send a message...';
   } else if (currentTab === 'whispers') {
-    if (activeWhisperUser) {
-      const conv = whisperConversations.get(activeWhisperUser)
-      placeholder = `whisper to ${conv?.displayName || activeWhisperUser}`
-    } else {
-      placeholder = ''
-    }
+    const lastUser = lastWhisperKey ? whisperUsers.get(lastWhisperKey) : null
+    placeholder = lastUser ? `/r to reply to ${lastUser.displayName}` : '/w user msg · /dm user msg'
   } else if (currentTab === 'add') {
     placeholder = '';
   } else {
@@ -1161,6 +1157,15 @@ async function handleSlashCommand(text, input) {
     return true
   }
 
+  if (cmd === 'r' || cmd === 'reply') {
+    if (!rest.trim()) { showToast('usage: /r message'); return true }
+    if (!lastWhisperKey) { showToast('no one to reply to'); return true }
+    if (currentTab !== 'whispers') switchTab('whispers')
+    await sendWhisperMessage(lastWhisperKey, rest.trim())
+    clearInput(input)
+    return true
+  }
+
   return false
 }
 
@@ -1170,7 +1175,7 @@ async function sendSlashWhisper(platform, username, text, input) {
 
   if (platform === 'twitch') {
     key = `twitch:${lowerUser}`
-    if (!whisperConversations.has(key)) {
+    if (!whisperUsers.has(key)) {
       // Resolve username → Twitch ID via decapi
       try {
         const resp = await fetch(`https://decapi.me/twitch/id/${encodeURIComponent(lowerUser)}`, { credentials: 'omit' })
@@ -1179,7 +1184,7 @@ async function sendSlashWhisper(platform, username, text, input) {
           showToast(`twitch user "${username}" not found`)
           return
         }
-        getOrCreateConversation(key, 'twitch', body, username, '#fff')
+        whisperUsers.set(key, { platform: 'twitch', userId: body, displayName: username, color: '#fff' })
       } catch (e) {
         showToast('failed to resolve twitch user')
         return
@@ -1194,11 +1199,14 @@ async function sendSlashWhisper(platform, username, text, input) {
     }
     const userId = profileResp.data.profile.user_id
     key = `hs:${userId}`
-    getOrCreateConversation(key, 'heatsync', userId, profileResp.data.profile.display_name || username, profileResp.data.profile.user_color || '#fff')
+    whisperUsers.set(key, {
+      platform: 'heatsync',
+      userId,
+      displayName: profileResp.data.profile.display_name || username,
+      color: profileResp.data.profile.user_color || '#fff'
+    })
   }
 
-  // Switch to the conversation so user sees the outbound message
-  activeWhisperUser = key
   if (currentTab !== 'whispers') switchTab('whispers')
   await sendWhisperMessage(key, text)
   clearInput(input)
@@ -1217,12 +1225,11 @@ async function sendMessage() {
     if (handled) return
   }
 
-  // Whispers tab → send whisper/DM
-  if (currentTab === 'whispers' && activeWhisperUser) {
-    sendWhisperMessage(activeWhisperUser, text)
-    if (wysiwygEnabled) input.textContent = ''
-    else input.value = ''
-    pendingMessage = ''
+  // Whispers tab → plain text acts as /r (reply to last)
+  if (currentTab === 'whispers') {
+    if (!lastWhisperKey) { showToast('no one to reply to — use /w or /dm first'); return }
+    sendWhisperMessage(lastWhisperKey, text)
+    clearInput(input)
     return
   }
 

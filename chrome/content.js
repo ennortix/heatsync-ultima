@@ -1689,6 +1689,180 @@ function processExistingMessages() {
   }
 }
 
+// ============================================================
+// Chat message cache — persist messages across page reloads
+// Matches website behavior: 2000 msgs/channel, 24h TTL, debounced saves
+// ============================================================
+const MSG_CACHE_MAX = 2000
+const MSG_CACHE_TTL = 24 * 60 * 60 * 1000 // 24 hours
+let msgCacheBuffer = [] // in-memory buffer of {id, user, text, color, ts}
+let msgCacheSaveTimer = null
+let msgCacheChannel = null
+
+function getMsgCacheKey(channel) {
+  return `hs_msg_cache_${channel}`
+}
+
+// Extract serializable data from a DOM message element
+function serializeMessage(el) {
+  const id = el.getAttribute('data-msg-id') || ''
+  const user = getUsername(el)
+  if (!user) return null
+  const textEl = el.querySelector('[data-a-target="chat-message-text"], .text-fragment')
+  const text = textEl?.textContent?.trim() || ''
+  if (!text) return null
+  const nameEl = el.querySelector('.chat-author__display-name')
+  const color = nameEl?.style?.color || '#ffffff'
+  return { id, user, text, color, ts: Date.now() }
+}
+
+// Capture a message into the cache buffer (called from MutationObserver)
+function captureMessageToCache(el) {
+  if (!msgCacheChannel) return
+  const msg = serializeMessage(el)
+  if (!msg) return
+  // Dedup by id
+  if (msg.id && msgCacheBuffer.some(m => m.id === msg.id)) return
+  msgCacheBuffer.push(msg)
+  // Trim to cap
+  if (msgCacheBuffer.length > MSG_CACHE_MAX) {
+    msgCacheBuffer = msgCacheBuffer.slice(-MSG_CACHE_MAX)
+  }
+  // Debounced save
+  scheduleMsgCacheSave()
+}
+
+function scheduleMsgCacheSave() {
+  if (msgCacheSaveTimer) return
+  msgCacheSaveTimer = setTimeout(() => {
+    msgCacheSaveTimer = null
+    saveMsgCache()
+  }, 5000) // 5s debounce
+}
+
+function saveMsgCache() {
+  if (!msgCacheChannel || msgCacheBuffer.length === 0) return
+  try {
+    const key = getMsgCacheKey(msgCacheChannel)
+    localStorage.setItem(key, JSON.stringify({
+      messages: msgCacheBuffer.slice(-MSG_CACHE_MAX),
+      channel: msgCacheChannel,
+      savedAt: Date.now()
+    }))
+  } catch (e) {
+    // localStorage full — evict oldest channel caches
+    try {
+      const keys = []
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i)
+        if (k?.startsWith('hs_msg_cache_')) keys.push(k)
+      }
+      if (keys.length > 5) {
+        // Remove oldest 3
+        const sorted = keys.map(k => {
+          try { return { k, t: JSON.parse(localStorage.getItem(k)).savedAt || 0 } } catch { return { k, t: 0 } }
+        }).sort((a, b) => a.t - b.t)
+        for (let i = 0; i < 3 && i < sorted.length; i++) localStorage.removeItem(sorted[i].k)
+        // Retry save
+        localStorage.setItem(getMsgCacheKey(msgCacheChannel), JSON.stringify({
+          messages: msgCacheBuffer.slice(-MSG_CACHE_MAX),
+          channel: msgCacheChannel,
+          savedAt: Date.now()
+        }))
+      }
+    } catch {}
+  }
+}
+
+// Load cached messages and render them into the chat container
+function restoreMsgCache(channel, chatContainer) {
+  try {
+    const raw = localStorage.getItem(getMsgCacheKey(channel))
+    if (!raw) return 0
+    const data = JSON.parse(raw)
+    if (!data.messages?.length) return 0
+    // Check TTL
+    if (Date.now() - (data.savedAt || 0) > MSG_CACHE_TTL) {
+      localStorage.removeItem(getMsgCacheKey(channel))
+      return 0
+    }
+
+    // Collect existing message IDs from DOM for dedup
+    const existingIds = new Set()
+    const existingTexts = new Set()
+    chatContainer.querySelectorAll('[data-msg-id]').forEach(el => existingIds.add(el.dataset.msgId))
+    chatContainer.querySelectorAll('.chat-line__message').forEach(el => {
+      const user = el.querySelector('.chat-author__display-name')?.textContent?.trim()
+      const text = el.querySelector('[data-a-target="chat-message-text"]')?.textContent?.trim()
+      if (user && text) existingTexts.add(`${user.toLowerCase()}:${text.substring(0, 80)}`)
+    })
+
+    const fragment = document.createDocumentFragment()
+    let inserted = 0
+
+    for (const msg of data.messages) {
+      if (msg.id && existingIds.has(msg.id)) continue
+      const dedupKey = `${msg.user.toLowerCase()}:${msg.text.substring(0, 80)}`
+      if (existingTexts.has(dedupKey)) continue
+      existingTexts.add(dedupKey)
+
+      const div = document.createElement('div')
+      div.className = 'chat-line__message heatsync-cached'
+      div.setAttribute('data-heatsync-cached', 'true')
+      if (msg.id) div.setAttribute('data-msg-id', msg.id)
+
+      const nameSpan = document.createElement('span')
+      nameSpan.className = 'chat-author__display-name'
+      nameSpan.setAttribute('data-a-target', 'chat-message-username')
+      nameSpan.style.color = msg.color
+      nameSpan.textContent = msg.user
+
+      const colonSpan = document.createElement('span')
+      colonSpan.setAttribute('aria-hidden', 'true')
+      colonSpan.textContent = ': '
+
+      const textSpan = document.createElement('span')
+      textSpan.className = 'text-fragment'
+      textSpan.setAttribute('data-a-target', 'chat-message-text')
+      textSpan.textContent = msg.text
+
+      div.appendChild(nameSpan)
+      div.appendChild(colonSpan)
+      div.appendChild(textSpan)
+      fragment.appendChild(div)
+      inserted++
+    }
+
+    if (inserted > 0) {
+      chatContainer.insertBefore(fragment, chatContainer.firstChild)
+      log(` 💾 Restored ${inserted} cached messages`)
+      // Seed the in-memory buffer with cached data
+      msgCacheBuffer = data.messages
+    }
+    return inserted
+  } catch (e) {
+    log(' Cache restore error:', e)
+    return 0
+  }
+}
+
+// Initialize cache for current channel
+function initMsgCache(channel) {
+  msgCacheChannel = channel
+  if (msgCacheBuffer.length === 0) {
+    // Load existing cache into memory buffer
+    try {
+      const raw = localStorage.getItem(getMsgCacheKey(channel))
+      if (raw) {
+        const data = JSON.parse(raw)
+        if (data.messages?.length && Date.now() - (data.savedAt || 0) < MSG_CACHE_TTL) {
+          msgCacheBuffer = data.messages
+        }
+      }
+    } catch {}
+  }
+}
+
 // Backfill chat history from robotty recent-messages API
 // Fires once per channel join, fetches ~500 recent messages, deduplicates against
 // native Twitch messages, and inserts missing ones at the top of the chat container.
@@ -1787,6 +1961,14 @@ async function backfillChatHistory() {
       log(` 📜 Backfilled ${inserted} messages`)
       // Process emotes in backfilled messages
       processExistingMessages()
+    }
+
+    // Capture all native Twitch messages into cache (ones that were already in DOM)
+    if (msgCacheChannel) {
+      chatContainer.querySelectorAll('.chat-line__message:not([data-heatsync-cached]):not([data-heatsync-backfill])').forEach(el => {
+        captureMessageToCache(el)
+      })
+      saveMsgCache() // Force save after initial capture
     }
   } catch (e) {
     log(' Backfill error:', e)
@@ -4625,7 +4807,13 @@ function watchForNewMessages() {
           log(' 🔄 Processing batch of', batch.length, 'messages');
 
           try {
-            batch.forEach(processMessage);
+            batch.forEach(msg => {
+              processMessage(msg)
+              // Capture to localStorage cache (skip our own cached/backfilled msgs)
+              if (!msg.dataset.heatsyncCached && !msg.dataset.heatsyncBackfill) {
+                captureMessageToCache(msg)
+              }
+            });
           } catch (e) {
             log(' ❌ processMessage error:', e.message);
           } finally {
@@ -5280,6 +5468,12 @@ cleanup.setInterval(() => {
   }
 }, 30000, 'periodic-rescan');
 
+// Flush message cache on page unload so we don't lose the last 5s
+window.addEventListener('beforeunload', () => {
+  if (msgCacheSaveTimer) { clearTimeout(msgCacheSaveTimer); msgCacheSaveTimer = null }
+  saveMsgCache()
+})
+
 // Initialize
 setupEmoteClickHandlers();
 detectAndJoinChannel();
@@ -5293,6 +5487,18 @@ log(' Extension loaded');
 // (Twitch loads recent messages on page load, but we need to process them with emotes)
 cleanup.setTimeout(() => {
   log(' Processing chat history from page load...');
+  const channel = getPageChannel()
+
+  // Restore cached messages FIRST for instant render (before robotty backfill)
+  if (channel) {
+    initMsgCache(channel)
+    const chatContainer = findChatContainer()
+    if (chatContainer) {
+      const restored = restoreMsgCache(channel, chatContainer)
+      if (restored > 0) processExistingMessages()
+    }
+  }
+
   processExistingMessages();
   setupUsernameColoringObserver(); // Start persistent username coloring
   // Backfill after a short delay so native Twitch messages are loaded for dedup

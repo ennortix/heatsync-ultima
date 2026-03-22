@@ -1720,6 +1720,13 @@ function handleWSMessage(msg) {
       })
       break
 
+    case 'follow:history':
+      broadcastToTabs({
+        type: 'follow_history',
+        events: msg.events || []
+      })
+      break
+
     case 'error':
       break;
 

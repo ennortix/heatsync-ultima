@@ -5925,6 +5925,56 @@ m.type === 'usernotice' ? 'hs-mc-msg hs-mc-system' :
       });
     }
 
+    // Handle event history from server (for new connections / other browsers)
+    if (!window._hsMcFollowHistoryListener) {
+      window._hsMcFollowHistoryListener = true;
+      chrome.runtime?.onMessage?.addListener((msg) => {
+        if (msg.type !== 'follow_history') return;
+        const events = msg.events;
+        if (!Array.isArray(events) || events.length === 0) return;
+
+        let added = 0;
+        for (const e of events) {
+          const channel = e.channel?.toLowerCase();
+          if (!channel) continue;
+
+          // Build the same event format as real-time handlers
+          let text = '', eventClass = '';
+          if (e.type === 'follow:stream:update' && e.game) {
+            text = e.prevGame
+              ? `[${channel}] \u25C6 switched to ${e.game}`
+              : `[${channel}] \u25C6 now playing ${e.game}`;
+            eventClass = 'event-follow event-update';
+          } else if (e.type === 'follow:stream:online') {
+            text = e.game ? `[${channel}] \u25C6 went live \u2014 ${e.game}` : `[${channel}] \u25C6 went live`;
+            eventClass = 'event-follow event-online';
+          } else if (e.type === 'follow:stream:offline') {
+            text = `[${channel}] \u25C6 went offline`;
+            eventClass = 'event-follow event-offline';
+          }
+          if (!text) continue;
+
+          const evt = { type: 'stream-event', eventClass, text, channel, time: e.time, color: e.color || '' };
+
+          // Dedup against activityEvents
+          const isDupe = activityEvents.some(m => m.time === evt.time && m.text === evt.text);
+          if (isDupe) continue;
+
+          activityEvents.push(evt);
+          saveStreamEvent(evt);
+          added++;
+        }
+
+        if (added > 0) {
+          log('[FollowHistory]', added, 'events loaded from server');
+          const active = currentTab;
+          if (active === 'live' || config.channels.some(ch => (typeof ch === 'string' ? ch : ch.id) === active)) {
+            renderMessages(active);
+          }
+        }
+      });
+    }
+
     // === BULLETPROOF CONNECTION MAINTENANCE ===
 
     // 1. Detect extension context invalidation → auto-reload page

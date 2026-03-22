@@ -1470,9 +1470,9 @@
       }
       /* Inline stream event notifications */
       .hs-mc-stream-event {
-        padding: 1px 8px;
+        padding: 2px 4px;
         font-size: 13px;
-        line-height: 1.3;
+        line-height: 1.4;
         font-style: italic;
         background: rgba(128, 128, 0, 0.25);
         border-bottom: 1px solid #333;

@@ -143,18 +143,26 @@
       return
     }
 
+    const hdrs = buildGqlHeaders()
+    console.log('[heatsync-gql] proxy request:', req.operation || 'rawQuery', 'auth:', !!gql.authToken, 'integrity:', !!gql.integrity, 'clientId:', !!gql.clientId)
+
     origFetch('https://gql.twitch.tv/gql', {
       method: 'POST',
-      headers: buildGqlHeaders(),
+      headers: hdrs,
       body: JSON.stringify(payload)
     })
-    .then(r => r.json())
+    .then(r => {
+      console.log('[heatsync-gql] response status:', r.status)
+      return r.json()
+    })
     .then(data => {
+      console.log('[heatsync-gql] response data:', JSON.stringify(data).slice(0, 500))
       window.postMessage({
         type: 'heatsync-gql-response', id: req.id, data
       }, location.origin)
     })
     .catch(err => {
+      console.error('[heatsync-gql] fetch error:', err.message)
       window.postMessage({
         type: 'heatsync-gql-response', id: req.id, error: err.message
       }, location.origin)

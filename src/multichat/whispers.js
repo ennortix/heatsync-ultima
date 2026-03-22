@@ -196,11 +196,12 @@ async function sendWhisperMessage(key, text) {
     try {
       const resp = await gqlProxy('SendWhisper', {
         input: {
-          recipientID: userInfo.userId,
+          recipientUserID: userInfo.userId,
           message: text,
           nonce: Math.random().toString(36).slice(2)
         }
       }, { rawQuery: 'mutation SendWhisper($input: SendWhisperInput!) { sendWhisper(input: $input) { error { code } } }' })
+      console.log('[heatsync] SendWhisper response:', JSON.stringify(resp))
       // Check mutation-level error
       const errCode = resp?.data?.sendWhisper?.error?.code
       if (errCode) {

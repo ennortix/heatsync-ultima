@@ -120,17 +120,31 @@
       if (!Array.isArray(events) || events.length === 0) return;
       const cutoff = Date.now() - 86400000; // 24h expiry
       const valid = events.filter(e => e.time > cutoff);
+      const liveCh = getLiveChannel();
+      const liveBuffer = liveCh ? irc?.channels?.get(liveCh) : null;
+
       // Inject into appropriate IRC buffers
       for (const evt of valid) {
         const ch = evt.channel;
         if (!ch) continue;
-        const buffer = irc?.channels?.get(ch);
-        if (buffer) {
-          // Only inject if not already present (dedup by time+text)
-          const existing = buffer.getAll();
+
+        // Always inject into live buffer (follow events show on live tab)
+        if (liveBuffer) {
+          const existing = liveBuffer.getAll();
           const isDupe = existing.some(m => m.type === 'stream-event' && m.time === evt.time && m.text === evt.text);
-          if (!isDupe) buffer.push(evt);
+          if (!isDupe) liveBuffer.push(evt);
         }
+
+        // Also inject into the matching channel buffer if different from live
+        if (ch !== liveCh) {
+          const buffer = irc?.channels?.get(ch);
+          if (buffer) {
+            const existing = buffer.getAll();
+            const isDupe = existing.some(m => m.type === 'stream-event' && m.time === evt.time && m.text === evt.text);
+            if (!isDupe) buffer.push(evt);
+          }
+        }
+
         // Also push to activityEvents (dedup by time+text)
         const isDupeActivity = activityEvents.some(m => m.time === evt.time && m.text === evt.text);
         if (!isDupeActivity) activityEvents.push(evt);

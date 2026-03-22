@@ -172,6 +172,26 @@ function handleIncomingDm(data) {
   whisperSaveDebounced()
 }
 
+// Send Twitch whisper via Helix API (MAIN world, bypasses integrity)
+function sendTwitchWhisper(toUserId, message) {
+  return new Promise((resolve) => {
+    const id = Math.random().toString(36).slice(2)
+    const handler = (e) => {
+      if (e.data?.type === 'heatsync-whisper-response' && e.data.id === id) {
+        window.removeEventListener('message', handler)
+        clearTimeout(timer)
+        resolve(e.data)
+      }
+    }
+    window.addEventListener('message', handler)
+    window.postMessage({ type: 'heatsync-send-whisper', id, toUserId, message }, location.origin)
+    const timer = setTimeout(() => {
+      window.removeEventListener('message', handler)
+      resolve({ error: 'whisper timeout — MAIN world not running, refresh the page' })
+    }, 15000)
+  })
+}
+
 async function sendWhisperMessage(key, text) {
   const userInfo = whisperUsers.get(key)
   if (!userInfo) { showToast('unknown user — whisper someone first'); return }
@@ -194,19 +214,10 @@ async function sendWhisperMessage(key, text) {
 
   if (key.startsWith('twitch:')) {
     try {
-      const resp = await gqlProxy('SendWhisper', {
-        input: {
-          recipientUserID: userInfo.userId,
-          message: text,
-          nonce: Math.random().toString(36).slice(2)
-        }
-      }, { rawQuery: 'mutation SendWhisper($input: SendWhisperInput!) { sendWhisper(input: $input) { error { code } } }' })
-      console.log('[heatsync] SendWhisper response:', JSON.stringify(resp))
-      // Check mutation-level error
-      const errCode = resp?.data?.sendWhisper?.error?.code
-      if (errCode) {
-        log('Whisper mutation error:', errCode)
-        showToast('whisper error: ' + errCode)
+      const resp = await sendTwitchWhisper(userInfo.userId, text)
+      if (!resp.ok) {
+        log('Whisper send failed:', resp.error)
+        showToast('whisper failed: ' + resp.error)
       }
     } catch (e) {
       log('Whisper send failed:', e.message)

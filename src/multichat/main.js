@@ -5708,8 +5708,10 @@ m.type === 'usernotice' ? 'hs-mc-msg hs-mc-system' :
 
         // Build inline notification
         let text = '', eventClass = '';
-        if (msg.eventType === 'stream:update' && msg.prevGame && msg.game && msg.prevGame !== msg.game) {
-          text = `[${channel}] \u25C6 switched to ${msg.game}`;
+        if (msg.eventType === 'stream:update' && msg.game && msg.prevGame !== msg.game) {
+          text = msg.prevGame
+            ? `[${channel}] \u25C6 switched to ${msg.game}`
+            : `[${channel}] \u25C6 now playing ${msg.game}`;
           eventClass = 'event-update';
         } else if (msg.eventType === 'stream:online') {
           text = msg.game ? `[${channel}] \u25C6 went live \u2014 ${msg.game}` : `[${channel}] \u25C6 went live`;
@@ -5724,40 +5726,43 @@ m.type === 'usernotice' ? 'hs-mc-msg hs-mc-system' :
         log('[Stream]', channel, text);
         const evt = { type: 'stream-event', eventClass, text, channel, time: Date.now() };
 
-        // Push into IRC buffer so it survives tab switches + renders naturally
-        const buffer = irc?.channels?.get(channel);
-        if (buffer) {
-          buffer.push(evt);
+        // Push into the live channel buffer so it shows on the live tab
+        const liveChannel = getLiveChannel();
+        const liveBuffer = liveChannel ? irc?.channels?.get(liveChannel) : null;
+        if (liveBuffer) {
+          liveBuffer.push(evt);
           saveStreamEvent(evt);
+        }
+
+        // Also push into the matching channel buffer if different from live
+        if (channel !== liveChannel) {
+          const chBuffer = irc?.channels?.get(channel);
+          if (chBuffer) {
+            chBuffer.push(evt);
+            if (!liveBuffer) saveStreamEvent(evt);
+          }
         }
         activityEvents.push(evt);
 
-        // Magenta tab highlight
-        const liveChannel = getLiveChannel();
-        if (channel === liveChannel) {
-          if (currentTab !== 'live') {
-            const tab = tabBarElement?.querySelector('[data-tab="live"]');
-            if (tab) tab.classList.add('has-stream-event');
-          }
-          if (currentTab === 'live') {
-            if (!appendMessage(evt, 'live')) renderMessages('live');
-          }
+        // Highlight non-active tabs
+        if (currentTab !== 'live') {
+          const tab = tabBarElement?.querySelector('[data-tab="live"]');
+          if (tab) tab.classList.add('has-stream-event');
         }
-
-        // Check channel tabs too
         for (const ch of config.channels) {
           const twName = typeof ch === 'string' ? ch : ch.twitch;
           const kickName = typeof ch !== 'string' ? ch.kick : null;
           const tabId = typeof ch === 'string' ? ch : ch.id;
-          if (twName === channel || kickName === channel) {
-            if (currentTab !== tabId) {
-              const tab = tabBarElement?.querySelector(`[data-tab="${tabId}"]`);
-              if (tab) tab.classList.add('has-stream-event');
-            }
-            if (currentTab === tabId) {
-              if (!appendMessage(evt, tabId)) renderMessages(tabId);
-            }
+          if ((twName === channel || kickName === channel) && currentTab !== tabId) {
+            const tab = tabBarElement?.querySelector(`[data-tab="${tabId}"]`);
+            if (tab) tab.classList.add('has-stream-event');
           }
+        }
+
+        // Render on whatever tab is active (game changes are always relevant)
+        const activeTab = currentTab;
+        if (activeTab === 'live' || config.channels.some(ch => (typeof ch === 'string' ? ch : ch.id) === activeTab)) {
+          if (!appendMessage(evt, activeTab)) renderMessages(activeTab);
         }
       });
     }
@@ -5772,8 +5777,10 @@ m.type === 'usernotice' ? 'hs-mc-msg hs-mc-system' :
 
         // Build inline notification
         let text = '', eventClass = '';
-        if (msg.eventType === 'stream:update' && msg.prevGame && msg.game && msg.prevGame !== msg.game) {
-          text = `[${channel}] \u25C6 switched to ${msg.game}`;
+        if (msg.eventType === 'stream:update' && msg.game && msg.prevGame !== msg.game) {
+          text = msg.prevGame
+            ? `[${channel}] \u25C6 switched to ${msg.game}`
+            : `[${channel}] \u25C6 now playing ${msg.game}`;
           eventClass = 'event-follow event-update';
         } else if (msg.eventType === 'stream:online') {
           text = msg.game ? `[${channel}] \u25C6 went live \u2014 ${msg.game}` : `[${channel}] \u25C6 went live`;
@@ -5790,14 +5797,38 @@ m.type === 'usernotice' ? 'hs-mc-msg hs-mc-system' :
 
         // Push into the live channel buffer (follow events show in current chat)
         const liveChannel = getLiveChannel();
-        const buffer = liveChannel ? irc?.channels?.get(liveChannel) : null;
-        if (buffer) {
-          buffer.push(evt);
+        const liveBuffer = liveChannel ? irc?.channels?.get(liveChannel) : null;
+        if (liveBuffer) {
+          liveBuffer.push(evt);
           saveStreamEvent(evt);
+        }
+
+        // Also push into matching channel buffer if different from live
+        if (channel !== liveChannel) {
+          const chBuffer = irc?.channels?.get(channel);
+          if (chBuffer) {
+            chBuffer.push(evt);
+            if (!liveBuffer) saveStreamEvent(evt);
+          }
         }
         activityEvents.push(evt);
 
-        // Render inline
+        // Highlight non-active tabs
+        if (currentTab !== 'live') {
+          const tab = tabBarElement?.querySelector('[data-tab="live"]');
+          if (tab) tab.classList.add('has-stream-event');
+        }
+        for (const ch of config.channels) {
+          const twName = typeof ch === 'string' ? ch : ch.twitch;
+          const kickName = typeof ch !== 'string' ? ch.kick : null;
+          const tabId = typeof ch === 'string' ? ch : ch.id;
+          if ((twName === channel || kickName === channel) && currentTab !== tabId) {
+            const tab = tabBarElement?.querySelector(`[data-tab="${tabId}"]`);
+            if (tab) tab.classList.add('has-stream-event');
+          }
+        }
+
+        // Render on whatever tab is active
         const activeTab = currentTab;
         if (activeTab === 'live' || config.channels.some(ch => (typeof ch === 'string' ? ch : ch.id) === activeTab)) {
           if (!appendMessage(evt, activeTab)) renderMessages(activeTab);

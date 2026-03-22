@@ -78,7 +78,7 @@ function injectHoverBlockCSS() {
     #heatsync-emote-tooltip {
       position: fixed;
       z-index: 999999;
-      background: rgba(0, 0, 0, 0.95);
+      background: #000;
       border-radius: 0;
       padding: 4px;
       pointer-events: none;

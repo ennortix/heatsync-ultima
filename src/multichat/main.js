@@ -1430,9 +1430,8 @@
         padding: 2px 8px;
         font-size: 13px;
         font-style: italic;
-        border: 1px solid #ffff00;
-        border-radius: 2px;
-        margin: 2px 4px;
+        background: rgba(128, 128, 0, 0.25);
+        border-bottom: 1px solid #333;
         color: #ffff00;
       }
       .hs-mc-stream-event .hs-mc-user { text-decoration: none; font-weight: bold; }
@@ -1961,9 +1960,9 @@
         padding: 2px 3px;
         font-size: 10px;
         font-weight: 900;
-        border: 1px solid #000;
-        background: #cc5500;
-        color: #000;
+        border: 1px solid #ffff00;
+        background: transparent;
+        color: #ffff00;
         white-space: nowrap;
         letter-spacing: 0.3px;
       }

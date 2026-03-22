@@ -112,7 +112,7 @@
 
   function executeGqlProxy(req) {
     const hash = gql.hashes[req.operation]
-    if (!hash) {
+    if (!hash && !req.rawQuery) {
       window.postMessage({
         type: 'heatsync-gql-response', id: req.id,
         error: 'no hash for ' + req.operation

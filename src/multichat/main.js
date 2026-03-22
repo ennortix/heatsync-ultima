@@ -1428,13 +1428,12 @@
         font-style: italic;
         background: rgba(128, 128, 0, 0.25);
         border-bottom: 1px solid #333;
-        color: #ddd;
+        color: #ffff00;
       }
-      .hs-mc-stream-event .hs-evt-channel { color: #ffff00; }
-      .hs-mc-stream-event .hs-evt-game { color: #fff; }
-      .hs-mc-stream-event.event-online .hs-evt-channel { color: #f44; }
+      .hs-mc-stream-event .hs-mc-user { text-decoration: none; font-weight: bold; }
+      .hs-mc-stream-event .hs-mc-user:hover { text-decoration: underline; }
+      .hs-mc-stream-event .hs-evt-game { color: #fff; font-style: normal; }
       .hs-mc-stream-event.event-offline { opacity: 0.6; }
-      .hs-mc-stream-event.event-offline .hs-evt-channel { color: #808080; }
       /* Inline feed posts in chat timeline */
       .hs-mc-feed-inline {
         padding: 2px 8px;
@@ -4246,11 +4245,27 @@
       div.className = `hs-mc-stream-event ${m.eventClass || ''}`
       const tsVal = timestampsEnabled ? formatTimeFromTs(m.time) : ''
       const tsSpan = tsVal ? `<span class="hs-mc-ts" data-ts="${m.time}">${tsVal}</span>` : ''
-      // Parse "[channel] ◆ action — game" into structured spans
-      let evtHtml = escapeHtml(m.text)
-      evtHtml = evtHtml.replace(/^\[([^\]]+)\]/, '[<span class="hs-evt-channel">$1</span>]')
-      evtHtml = evtHtml.replace(/(switched to |now playing |went live \u2014 )(.+)$/, '$1<span class="hs-evt-game">$2</span>')
-      div.innerHTML = `${tsSpan}${evtHtml}`
+      // Look up user's Twitch color from IRC buffers
+      const ch = m.channel || ''
+      let userColor = '#ffff00'
+      if (ch && irc?.channels) {
+        for (const [, buf] of irc.channels) {
+          const msgs = buf.getAll()
+          for (let i = msgs.length - 1; i >= 0; i--) {
+            if (msgs[i].user?.toLowerCase() === ch) {
+              userColor = msgs[i].color || '#ffff00'
+              break
+            }
+          }
+          if (userColor !== '#ffff00') break
+        }
+      }
+      // Build structured HTML: [username] ◆ action game
+      const userLink = `<a href="https://twitch.tv/${encodeURIComponent(ch)}" target="_blank" class="hs-mc-user" data-username="${escapeHtml(ch)}" style="color:${sanitizeColor(userColor)}">${escapeHtml(ch)}</a>`
+      // Parse the rest of the text after "[channel] "
+      const textAfterChannel = escapeHtml(m.text).replace(/^\[[^\]]+\]\s*/, '')
+      const actionHtml = textAfterChannel.replace(/(switched to |now playing |went live \u2014 )(.+)$/, '$1<span class="hs-evt-game">$2</span>')
+      div.innerHTML = `${tsSpan}[${userLink}] ${actionHtml}`
       return div
     }
 

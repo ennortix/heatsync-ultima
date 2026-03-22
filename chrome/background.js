@@ -1709,6 +1709,7 @@ function handleWSMessage(msg) {
         title: msg.title || '',
         prevGame: msg.prevGame || '',
         prevTitle: msg.prevTitle || '',
+        color: msg.color || '',
       })
       break
 

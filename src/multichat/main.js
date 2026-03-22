@@ -4246,11 +4246,11 @@
       const tsVal = timestampsEnabled ? formatTimeFromTs(m.time) : ''
       const tsSpan = tsVal ? `<span class="hs-mc-ts" data-ts="${m.time}">${tsVal}</span>` : ''
       const ch = m.channel || ''
-      // Look up color: profile cache → IRC buffers → async fetch
-      let userColor = ''
-      const cached = _profileCache.get(ch)
-      if (cached?.profile?.twitch_color) {
-        userColor = cached.profile.twitch_color
+      // Look up color: event data → profile cache → IRC buffers → async fetch
+      let userColor = m.color || ''
+      if (!userColor) {
+        const cached = _profileCache.get(ch)
+        if (cached?.profile?.twitch_color) userColor = cached.profile.twitch_color
       }
       if (!userColor && ch && irc?.channels) {
         for (const [, buf] of irc.channels) {
@@ -5855,7 +5855,7 @@ m.type === 'usernotice' ? 'hs-mc-msg hs-mc-system' :
         if (!text) return;
 
         log('[FollowStream]', channel, text);
-        const evt = { type: 'stream-event', eventClass, text, channel, time: Date.now() };
+        const evt = { type: 'stream-event', eventClass, text, channel, time: Date.now(), color: msg.color || '' };
 
         // Push into the live channel buffer (follow events show in current chat)
         const liveChannel = getLiveChannel();

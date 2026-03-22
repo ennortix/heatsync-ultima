@@ -8686,7 +8686,6 @@ const STORAGE_KEY = 'heatsync_multichat';
       .hs-mc-stream-event.event-online { color: #f44; }
       .hs-mc-stream-event.event-online .hs-evt-game { color: #fff; }
       .hs-mc-stream-event.event-offline { color: #808080; opacity: 1; }
-      .hs-mc-stream-event .hs-evt-bracket { color: #808080 !important; }
       /* Inline feed posts in chat timeline */
       .hs-mc-feed-inline {
         padding: 2px 8px;
@@ -11545,7 +11544,7 @@ const STORAGE_KEY = 'heatsync_multichat';
       const userLink = `<a href="https://twitch.tv/${encodeURIComponent(ch)}" target="_blank" class="hs-mc-user hs-evt-user" data-username="${escapeHtml(ch)}" style="${colorStyle}">${escapeHtml(ch)}</a>`
       const textAfterChannel = escapeHtml(m.text).replace(/^\[[^\]]+\]\s*/, '')
       const actionHtml = textAfterChannel.replace(/(switched to |now playing |went live \u2014 )(.+)$/, '$1<span class="hs-evt-game">$2</span>')
-      div.innerHTML = `${tsSpan}<span class="hs-evt-bracket" style="color:#fff">[</span>${userLink}<span class="hs-evt-bracket" style="color:#fff">]</span> ${actionHtml}`
+      div.innerHTML = `${tsSpan}${userLink} ${actionHtml}`
       // Async fetch color if not cached
       if (!userColor && ch) {
         apiFetch(`/api/profile/${encodeURIComponent(ch)}`).then(resp => {

@@ -1467,8 +1467,9 @@
       }
       /* Inline stream event notifications */
       .hs-mc-stream-event {
-        padding: 2px 8px;
+        padding: 1px 8px;
         font-size: 13px;
+        line-height: 1.3;
         font-style: italic;
         background: rgba(128, 128, 0, 0.25);
         border-bottom: 1px solid #333;
@@ -4571,8 +4572,8 @@ m.type === 'usernotice' ? 'hs-mc-msg hs-mc-system' :
     const msgBody = m.type === 'usernotice' && !m.text
       ? `${tsHtml}${systemLine}`
       : m.isAction
-      ? `${tsHtml}${systemLine}${avatarHtml}${platformBadge}${scBadge}${badges}${userLink}${channelSpan} <span style="color:${sanitizeColor(m.color || '#fff')};font-style:italic">${processedText}</span>${stickerHtml}`
-      : `${tsHtml}${systemLine}${avatarHtml}${platformBadge}${scBadge}${badges}${userLink}${channelSpan}: ${processedText}${stickerHtml}`
+      ? `${tsHtml}${systemLine}${platformBadge}${scBadge}${badges}${avatarHtml}${userLink}${channelSpan} <span style="color:${sanitizeColor(m.color || '#fff')};font-style:italic">${processedText}</span>${stickerHtml}`
+      : `${tsHtml}${systemLine}${platformBadge}${scBadge}${badges}${avatarHtml}${userLink}${channelSpan}: ${processedText}${stickerHtml}`
     div.innerHTML = `${replyBar}${msgBody}`;
     // Reply button for threading (Twitch/Kick — needs valid msg id)
     if (m.id && m.platform !== 'youtube') {

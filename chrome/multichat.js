@@ -3050,33 +3050,14 @@ async function sendIrcMessage(channel, text, token, replyParentId) {
     stateEl.textContent = label;
     stateEl.className = 'tooltip-source ' + (state || 'global');
 
-    // Position: show tooltip above the emote, offset right of cursor
-    // First make visible off-screen to measure height
+    // Position: anchor above the emote element
     tooltip.style.left = '-9999px';
     tooltip.style.top = '-9999px';
     tooltip.classList.add('visible');
-
-    const rect = tooltip.getBoundingClientRect();
-    const tooltipH = rect.height;
-    const tooltipW = rect.width;
-    const gap = 12; // px gap between cursor and tooltip
-
-    // Prefer above cursor; if no room, go below
-    let x = Math.min(e.clientX + 15, window.innerWidth - tooltipW - 10);
-    x = Math.max(10, x);
-    let y;
-    if (e.clientY - tooltipH - gap > 10) {
-      y = e.clientY - tooltipH - gap; // above
-    } else {
-      y = e.clientY + gap + 20; // below (20px for emote height)
-    }
-    y = Math.max(10, Math.min(y, window.innerHeight - tooltipH - 10));
-
-    tooltip.style.left = x + 'px';
-    tooltip.style.top = y + 'px';
+    positionTooltipAtElement(tooltip, hoveredImg || e.target);
   }
 
-  function showEmojiTooltip(e, emoji, name) {
+  function showEmojiTooltip(targetEl, emoji, name) {
     const tooltip = ensureEmoteTooltip()
     const img = tooltip.querySelector('img')
     const nameEl = tooltip.querySelector('.tooltip-name')
@@ -3102,18 +3083,7 @@ async function sendIrcMessage(channel, text, token, replyParentId) {
     tooltip.style.left = '-9999px'
     tooltip.style.top = '-9999px'
     tooltip.classList.add('visible')
-
-    const rect = tooltip.getBoundingClientRect()
-    const gap = 12
-    let x = Math.min(e.clientX + 15, window.innerWidth - rect.width - 10)
-    x = Math.max(10, x)
-    let y = e.clientY - rect.height - gap > 10
-      ? e.clientY - rect.height - gap
-      : e.clientY + gap + 20
-    y = Math.max(10, Math.min(y, window.innerHeight - rect.height - 10))
-
-    tooltip.style.left = x + 'px'
-    tooltip.style.top = y + 'px'
+    positionTooltipAtElement(tooltip, targetEl)
   }
 
   function hideEmoteTooltip() {
@@ -3136,7 +3106,7 @@ async function sendIrcMessage(channel, text, token, replyParentId) {
       const emojiSpan = target.closest('.hs-mc-emoji');
       if (emojiSpan) {
         const name = emojiSpan.dataset.emojiName || emojiSpan.title?.replace(/:/g, '') || '';
-        showEmojiTooltip(e, emojiSpan.textContent, name);
+        showEmojiTooltip(emojiSpan, emojiSpan.textContent, name);
         return;
       }
 
@@ -3186,7 +3156,7 @@ async function sendIrcMessage(channel, text, token, replyParentId) {
       // RAF-batch tooltip position updates to avoid per-mousemove style writes
       if (_tooltipRafPending) return
       _tooltipRafPending = true
-      const cx = e.clientX, cy = e.clientY, target = e.target
+      const target = e.target
       requestAnimationFrame(() => {
         _tooltipRafPending = false
         const onEmote = target?.closest?.('.hs-mc-emote-wrapper') ||
@@ -3198,17 +3168,8 @@ async function sendIrcMessage(channel, text, token, replyParentId) {
           if (!onEmote) {
             hideEmoteTooltip()
             document.querySelectorAll('.hs-emote-highlight').forEach(w => w.classList.remove('hs-emote-highlight'))
-          } else {
-            const tooltipH = emoteTooltip.offsetHeight
-            const tooltipW = emoteTooltip.offsetWidth
-            const gap = 12
-            let x = Math.min(cx + 15, window.innerWidth - tooltipW - 10)
-            x = Math.max(10, x)
-            let y = cy - tooltipH - gap > 10 ? cy - tooltipH - gap : cy + gap + 20
-            y = Math.max(10, Math.min(y, window.innerHeight - tooltipH - 10))
-            emoteTooltip.style.left = x + 'px'
-            emoteTooltip.style.top = y + 'px'
           }
+          // Don't reposition — stays anchored to element
         }
 
         // Kill user tooltip instantly if not on a username
@@ -3224,9 +3185,8 @@ async function sendIrcMessage(channel, text, token, replyParentId) {
         if (linkTooltip?.classList.contains('visible')) {
           if (!onLink) {
             hideLinkTooltip()
-          } else {
-            positionLinkTooltip(linkTooltip, cx, cy)
           }
+          // Don't reposition — stays anchored to element
         }
       })
     }, 'mc-tooltip-mousemove');
@@ -3503,9 +3463,12 @@ async function sendIrcMessage(channel, text, token, replyParentId) {
     return linkTooltip;
   }
 
+  let _linkTargetEl = null;
+
   function showLinkTooltip(e, url) {
     if (!linksEnabled || !url) return;
     _linkHoverUrl = url;
+    _linkTargetEl = e.target.closest('.hs-mc-link') || e.target;
     const tip = ensureLinkTooltip();
     let hostname = '';
     try { hostname = new URL(url).hostname; } catch { hostname = url; }
@@ -3522,8 +3485,8 @@ async function sendIrcMessage(channel, text, token, replyParentId) {
     loadWrap.appendChild(loadSpan);
     loadWrap.appendChild(domainSpan);
     tip.replaceChildren(loadWrap);
-    positionLinkTooltip(tip, e.clientX, e.clientY);
     tip.classList.add('visible');
+    positionTooltipAtElement(tip, _linkTargetEl);
 
     // Check cache
     if (_linkPreviewCache.has(url)) {
@@ -3578,21 +3541,8 @@ async function sendIrcMessage(channel, text, token, replyParentId) {
     dom.textContent = hasContent ? hostname : url;
     textWrap.appendChild(dom);
     tip.appendChild(textWrap);
-  }
-
-  function positionLinkTooltip(tip, cx, cy) {
-    tip.style.left = '-9999px';
-    tip.style.top = '-9999px';
-    requestAnimationFrame(() => {
-      const h = tip.offsetHeight;
-      const w = tip.offsetWidth;
-      let x = Math.min(cx + 15, window.innerWidth - w - 10);
-      x = Math.max(10, x);
-      let y = cy - h - 12 > 10 ? cy - h - 12 : cy + 24;
-      y = Math.max(10, Math.min(y, window.innerHeight - h - 10));
-      tip.style.left = x + 'px';
-      tip.style.top = y + 'px';
-    });
+    // Reposition after content changed size
+    if (_linkTargetEl) positionTooltipAtElement(tip, _linkTargetEl);
   }
 
   function hideLinkTooltip() {
@@ -8946,8 +8896,9 @@ const STORAGE_KEY = 'heatsync_multichat';
       }
       /* Inline stream event notifications */
       .hs-mc-stream-event {
-        padding: 2px 8px;
+        padding: 1px 8px;
         font-size: 13px;
+        line-height: 1.3;
         font-style: italic;
         background: rgba(128, 128, 0, 0.25);
         border-bottom: 1px solid #333;
@@ -12050,8 +12001,8 @@ m.type === 'usernotice' ? 'hs-mc-msg hs-mc-system' :
     const msgBody = m.type === 'usernotice' && !m.text
       ? `${tsHtml}${systemLine}`
       : m.isAction
-      ? `${tsHtml}${systemLine}${avatarHtml}${platformBadge}${scBadge}${badges}${userLink}${channelSpan} <span style="color:${sanitizeColor(m.color || '#fff')};font-style:italic">${processedText}</span>${stickerHtml}`
-      : `${tsHtml}${systemLine}${avatarHtml}${platformBadge}${scBadge}${badges}${userLink}${channelSpan}: ${processedText}${stickerHtml}`
+      ? `${tsHtml}${systemLine}${platformBadge}${scBadge}${badges}${avatarHtml}${userLink}${channelSpan} <span style="color:${sanitizeColor(m.color || '#fff')};font-style:italic">${processedText}</span>${stickerHtml}`
+      : `${tsHtml}${systemLine}${platformBadge}${scBadge}${badges}${avatarHtml}${userLink}${channelSpan}: ${processedText}${stickerHtml}`
     div.innerHTML = `${replyBar}${msgBody}`;
     // Reply button for threading (Twitch/Kick — needs valid msg id)
     if (m.id && m.platform !== 'youtube') {

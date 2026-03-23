@@ -57,6 +57,7 @@ let globalEmotes = []; // BTTV, FFZ, 7TV global emotes
 let channelEmotesMap = {}; // Per-channel emotes: { channelName: emotes[] }
 let currentChannelOwner = null; // Track last-fetched channel (for content.js tab)
 let current7TVEmoteSetId = null; // Track current 7TV emote set ID for EventAPI
+let seventvEmoteSetIds = new Map(); // channelName → 7TV emote set ID
 let blockedEmotes = new Set();
 let localBlockedEmotes = new Set(); // Local blocks for anonymous users
 let mutedUsers = new Map(); // username -> expiresAt (null = permanent)
@@ -587,15 +588,22 @@ async function fetchFFZChannelEmotes(channelName) {
   }
 }
 
+// Cache Twitch user IDs to avoid repeated decapi lookups (especially for polling)
+const twitchIdCache = new Map();
+
 // Lookup Twitch user ID from username using decapi.me (free, no auth needed)
 async function lookupTwitchUserId(username) {
+  const cached = twitchIdCache.get(username);
+  if (cached) return cached;
   try {
     const response = await fetchWithTimeout(`https://decapi.me/twitch/id/${encodeURIComponent(username)}`);
     if (!response.ok) return null;
     const text = await response.text();
     // decapi returns just the ID as plain text, or error message
     if (/^\d+$/.test(text.trim())) {
-      return text.trim();
+      const id = text.trim();
+      twitchIdCache.set(username, id);
+      return id;
     }
     return null;
   } catch (e) {
@@ -647,19 +655,15 @@ async function fetch7TVChannelEmotes(channelName, channelId = null) {
     }
 
     const emoteSet = data.emote_set;
-    if (!emoteSet?.emotes) {
+    if (!emoteSet) {
       log(' 7TV: No emote set found for', identifier);
       return [];
     }
 
-    // Store emote set ID for EventAPI subscription
-    current7TVEmoteSetId = emoteSet.id;
-    log(' 7TV: Found', emoteSet.emotes.length, 'emotes for', identifier, '(set ID:', emoteSet.id + ')');
+    const emoteList = emoteSet.emotes || [];
+    log(' 7TV: Found', emoteList.length, 'emotes for', identifier, '(set ID:', emoteSet.id + ')');
 
-    // Connect to 7TV EventAPI for real-time updates
-    connect7TVEventAPI(emoteSet.id);
-
-    return sanitizeEmoteList(emoteSet.emotes.map(e => ({
+    const emotes = sanitizeEmoteList(emoteList.map(e => ({
       name: e.name,
       url: `https://cdn.7tv.app/emote/${e.id}/1x.webp`,
       source: '7tv',
@@ -667,6 +671,7 @@ async function fetch7TVChannelEmotes(channelName, channelId = null) {
       flags: e.flags || e.data?.flags || 0,
       zeroWidth: !!((e.flags & 257) || (e.data?.flags & 257))
     })));
+    return { emotes, setId: emoteSet.id };
   } catch (error) {
     log(' 7TV channel emotes error for:', channelName, error);
     return [];
@@ -711,12 +716,15 @@ async function fetchChannelOwnerEmotes(channelName, channelId = null) {
 
     // Fetch third-party emotes in PARALLEL for speed
     broadcastToTabs({ type: 'loading_status', text: 'fetching third-party emotes...' });
-    const [bttvEmotes, ffzEmotes, sevenTVEmotes, twitchChannelEmotes] = await Promise.all([
+    const [bttvEmotes, ffzEmotes, sevenTVResult, twitchChannelEmotes] = await Promise.all([
       fetchBTTVChannelEmotes(channelName, channelId),
       fetchFFZChannelEmotes(channelName),
       fetch7TVChannelEmotes(channelName, channelId),
       fetchTwitchChannelEmotes(channelName)
     ]);
+    // fetch7TVChannelEmotes returns { emotes, setId } or [] on error
+    const sevenTVEmotes = sevenTVResult?.emotes || sevenTVResult || [];
+    const sevenTVSetId = sevenTVResult?.setId || null;
     log(' BTTV channel:', bttvEmotes.length);
     log(' FFZ channel:', ffzEmotes.length);
     log(' 7TV channel:', sevenTVEmotes.length);
@@ -738,6 +746,14 @@ async function fetchChannelOwnerEmotes(channelName, channelId = null) {
 
     // Save per-channel map to storage for persistence
     await browser.storage.local.set({ channel_emotes_map: channelEmotesMap });
+
+    // Store 7TV set ID per channel and subscribe on shared EventAPI connection
+    if (sevenTVSetId) {
+      seventvEmoteSetIds.set(channelName, sevenTVSetId);
+      current7TVEmoteSetId = sevenTVSetId;
+      subscribe7TVEmoteSet(sevenTVSetId);
+      start7TVPolling();
+    }
   } catch (error) {
     log(' ❌ Channel emotes fetch failed:', error.message || error);
     broadcastToTabs({ type: 'loading_status', done: true });
@@ -944,27 +960,25 @@ async function fetchGlobalEmotes() {
 }
 
 // ========== 7TV EventAPI WebSocket for Real-Time Emote Updates ==========
+// Single shared connection, multiple subscriptions (one per channel's emote set).
+// 7TV allows up to 500 subs per connection.
 let seventvWebSocket = null;
 let seventvReconnectAttempts = 0;
 let seventvReconnectTimer = null;
+let seventvSubscribedSets = new Set(); // Track which set IDs we've subscribed to
+let seventvPendingSubs = new Set(); // Queued while connection is opening
 const SEVENTV_MAX_RECONNECT_ATTEMPTS = 5;
 
-function connect7TVEventAPI(emoteSetId) {
-  if (!emoteSetId) {
-    log(' 7TV EventAPI: No emote set ID provided');
-    return;
+function ensure7TVConnection() {
+  if (seventvWebSocket && (seventvWebSocket.readyState === WebSocket.OPEN || seventvWebSocket.readyState === WebSocket.CONNECTING)) {
+    return; // Already connected or connecting
   }
 
-  // Cancel pending reconnect and close existing connection
   clearTimeout(seventvReconnectTimer);
   seventvReconnectTimer = null;
-  if (seventvWebSocket) {
-    seventvWebSocket.onclose = null;
-    seventvWebSocket.close();
-    seventvWebSocket = null;
-  }
+  seventvSubscribedSets.clear();
 
-  log(' 7TV EventAPI: Connecting for emote set:', emoteSetId);
+  log(' 7TV EventAPI: Connecting...');
 
   try {
     seventvWebSocket = new WebSocket('wss://events.7tv.io/v3');
@@ -973,41 +987,32 @@ function connect7TVEventAPI(emoteSetId) {
       log(' 7TV EventAPI: Connected');
       seventvReconnectAttempts = 0;
 
-      // Subscribe to emote_set.update events (opcode 35)
-      const subscribeMessage = {
-        op: 35,
-        d: {
-          type: 'emote_set.update',
-          condition: {
-            object_id: emoteSetId
-          }
-        }
-      };
-
-      seventvWebSocket.send(JSON.stringify(subscribeMessage));
-      log(' 7TV EventAPI: Subscribed to emote set updates');
+      // Subscribe all pending emote sets
+      for (const setId of seventvPendingSubs) {
+        send7TVSubscribe(setId);
+      }
+      seventvPendingSubs.clear();
     };
 
     seventvWebSocket.onmessage = (event) => {
       try {
         const message = JSON.parse(event.data);
 
-        // Opcode 0 = Dispatch (actual event)
         if (message.op === 0) {
+          // Dispatch event
           const eventData = message.d;
           log(' 7TV EventAPI: Received event:', eventData.type);
-
           if (eventData.type === 'emote_set.update') {
             handle7TVEmoteSetUpdate(eventData.body);
           }
-        }
-        // Opcode 1 = Hello (connection established)
-        else if (message.op === 1) {
-          log(' 7TV EventAPI: Hello received, heartbeat:', message.d.heartbeat_interval, 'ms');
-        }
-        // Opcode 4 = Ack (subscription confirmed)
-        else if (message.op === 4) {
-          log(' 7TV EventAPI: Subscription acknowledged');
+        } else if (message.op === 1) {
+          log(' 7TV EventAPI: Hello received, session:', message.d.session_id);
+        } else if (message.op === 2) {
+          // Server heartbeat — no response needed
+        } else if (message.op === 5) {
+          const subType = message.d?.data?.type;
+          const subId = message.d?.data?.condition?.object_id;
+          log(' 7TV EventAPI: Subscription acknowledged for', subId?.slice(0, 12));
         }
       } catch (err) {
         console.error('[heatsync] 7TV EventAPI: Parse error:', err);
@@ -1021,14 +1026,19 @@ function connect7TVEventAPI(emoteSetId) {
     seventvWebSocket.onclose = () => {
       log(' 7TV EventAPI: Connection closed');
       seventvWebSocket = null;
+      seventvSubscribedSets.clear();
 
-      // Attempt reconnect with exponential backoff
-      if (seventvReconnectAttempts < SEVENTV_MAX_RECONNECT_ATTEMPTS && current7TVEmoteSetId) {
+      if (seventvReconnectAttempts < SEVENTV_MAX_RECONNECT_ATTEMPTS && seventvEmoteSetIds.size > 0) {
         const delay = Math.min(1000 * Math.pow(2, seventvReconnectAttempts), 30000);
         seventvReconnectAttempts++;
         log(` 7TV EventAPI: Reconnecting in ${delay}ms (attempt ${seventvReconnectAttempts}/${SEVENTV_MAX_RECONNECT_ATTEMPTS})`);
         clearTimeout(seventvReconnectTimer);
-        seventvReconnectTimer = setTimeout(() => connect7TVEventAPI(current7TVEmoteSetId), delay);
+        seventvReconnectTimer = setTimeout(() => {
+          // Re-subscribe all known sets on reconnect
+          for (const setId of seventvEmoteSetIds.values()) {
+            subscribe7TVEmoteSet(setId);
+          }
+        }, delay);
       }
     };
   } catch (err) {
@@ -1036,16 +1046,44 @@ function connect7TVEventAPI(emoteSetId) {
   }
 }
 
-function handle7TVEmoteSetUpdate(updateData) {
-  // updateData structure:
-  // {
-  //   id: "<emote_set_id>",
-  //   actor: { id, username, display_name },
-  //   pushed: [{ key: "emote_name", value: { id, name, ... } }], // Added emotes
-  //   pulled: [{ key: "emote_name", old_value: { id, name, ... } }] // Removed emotes
-  // }
+function send7TVSubscribe(setId) {
+  if (!seventvWebSocket || seventvWebSocket.readyState !== WebSocket.OPEN) return;
+  if (seventvSubscribedSets.has(setId)) return;
 
-  log(' 7TV: Emote set update:', updateData);
+  seventvWebSocket.send(JSON.stringify({
+    op: 35,
+    d: { type: 'emote_set.*', condition: { object_id: setId } }
+  }));
+  seventvSubscribedSets.add(setId);
+  log(' 7TV EventAPI: Subscribed to', setId.slice(0, 12));
+}
+
+function subscribe7TVEmoteSet(setId) {
+  if (!setId) return;
+
+  ensure7TVConnection();
+
+  if (seventvWebSocket.readyState === WebSocket.OPEN) {
+    send7TVSubscribe(setId);
+  } else {
+    // Queue for when connection opens
+    seventvPendingSubs.add(setId);
+  }
+}
+
+function handle7TVEmoteSetUpdate(updateData) {
+  // updateData.id is the emote set ID — look up which channel it belongs to
+  const setId = updateData.id;
+  let channelName = null;
+  for (const [ch, id] of seventvEmoteSetIds) {
+    if (id === setId) { channelName = ch; break; }
+  }
+  if (!channelName) {
+    log(' 7TV: Received update for unknown set:', setId);
+    return;
+  }
+
+  log(' 7TV: Emote set update for', channelName);
 
   let updated = false;
   const actor = updateData.actor?.display_name || updateData.actor?.username || '';
@@ -1061,13 +1099,12 @@ function handle7TVEmoteSetUpdate(updateData) {
         hash: emote.id
       };
 
-      // Add to channel emotes if not already present
-      const chEmotes = Array.isArray(channelEmotesMap[currentChannelOwner]) ? channelEmotesMap[currentChannelOwner] : [];
+      const chEmotes = Array.isArray(channelEmotesMap[channelName]) ? channelEmotesMap[channelName] : [];
       if (!chEmotes.some(e => e.hash === emote.id)) {
         chEmotes.push(newEmote);
-        channelEmotesMap[currentChannelOwner] = chEmotes;
+        channelEmotesMap[channelName] = chEmotes;
         updated = true;
-        log(' 7TV: Added emote:', emote.name);
+        log(' 7TV: Added emote:', emote.name, 'to', channelName);
 
         const msg = actor ? `${actor} added 7TV emote ${emote.name}` : `${emote.name} added to channel`;
         broadcastToTabs({
@@ -1083,14 +1120,14 @@ function handle7TVEmoteSetUpdate(updateData) {
   if (updateData.pulled && updateData.pulled.length > 0) {
     for (const item of updateData.pulled) {
       const emote = item.old_value;
-      const chEmotes = channelEmotesMap[currentChannelOwner] || [];
+      const chEmotes = channelEmotesMap[channelName] || [];
       const index = chEmotes.findIndex(e => e.hash === emote.id);
 
       if (index !== -1) {
         chEmotes.splice(index, 1);
-        channelEmotesMap[currentChannelOwner] = chEmotes;
+        channelEmotesMap[channelName] = chEmotes;
         updated = true;
-        log(' 7TV: Removed emote:', emote.name);
+        log(' 7TV: Removed emote:', emote.name, 'from', channelName);
 
         const msg = actor ? `${actor} removed 7TV emote ${emote.name}` : `${emote.name} removed from channel`;
         broadcastToTabs({
@@ -1106,18 +1143,132 @@ function handle7TVEmoteSetUpdate(updateData) {
   if (updated) {
     updateEmoteUrlMap();
 
-    // Broadcast updated channel emotes to all tabs
-    const updatedEmotes = Array.isArray(channelEmotesMap[currentChannelOwner]) ? channelEmotesMap[currentChannelOwner] : [];
+    const updatedEmotes = Array.isArray(channelEmotesMap[channelName]) ? channelEmotesMap[channelName] : [];
     broadcastToTabs({
       type: 'channel_emotes_update',
       emotes: updatedEmotes,
-      channelOwner: currentChannelOwner
+      channelOwner: channelName
     });
 
-    // Persist per-channel map
     browser.storage.local.set({ channel_emotes_map: channelEmotesMap }).catch(() => {});
+    log(' 7TV: Channel emotes updated for', channelName, '(now', updatedEmotes.length, 'total)');
+  }
+}
 
-    log(' 7TV: Channel emotes updated for', currentChannelOwner, '(now', updatedEmotes.length, 'total)');
+// ========== 7TV Polling Fallback ==========
+// EventAPI works but can be unreliable. Poll as backup — both paths diff against
+// channelEmotesMap so they naturally deduplicate (no double-fire).
+let seventvPollTimer = null;
+const SEVENTV_POLL_INTERVAL = 30000;
+
+function start7TVPolling() {
+  stop7TVPolling();
+  if (!currentChannelOwner) return;
+  log(' 7TV Poll: Starting for', currentChannelOwner);
+  seventvPollTimer = setInterval(poll7TVEmoteSet, SEVENTV_POLL_INTERVAL);
+}
+
+function stop7TVPolling() {
+  if (seventvPollTimer) {
+    clearInterval(seventvPollTimer);
+    seventvPollTimer = null;
+  }
+}
+
+async function poll7TVEmoteSet() {
+  if (!currentChannelOwner) return;
+  const channelName = currentChannelOwner;
+
+  try {
+    // Look up Twitch ID for the channel
+    const channelId = await lookupTwitchUserId(channelName);
+    if (!channelId) return;
+
+    const response = await fetchWithTimeout(`https://7tv.io/v3/users/twitch/${channelId}`);
+    if (!response.ok) return;
+    const data = await response.json();
+
+    const emoteSet = data.emote_set;
+    if (!emoteSet?.emotes) return;
+
+    // Check if emote set ID changed (user recreated their set)
+    if (emoteSet.id !== current7TVEmoteSetId) {
+      log(' 7TV Poll: Emote set ID changed:', current7TVEmoteSetId, '→', emoteSet.id);
+      current7TVEmoteSetId = emoteSet.id;
+      connect7TVEventAPI(emoteSet.id);
+    }
+
+    // Build current 7TV emote map from fetched data
+    const fetchedEmotes = new Map();
+    for (const e of emoteSet.emotes) {
+      fetchedEmotes.set(e.id, {
+        name: e.name,
+        url: `https://cdn.7tv.app/emote/${e.id}/1x.webp`,
+        source: '7tv',
+        hash: e.id,
+        flags: e.flags || e.data?.flags || 0,
+        zeroWidth: !!((e.flags & 257) || (e.data?.flags & 257))
+      });
+    }
+
+    // Get existing 7TV emotes for this channel
+    const chEmotes = Array.isArray(channelEmotesMap[channelName]) ? channelEmotesMap[channelName] : [];
+    const existing7TV = new Map();
+    for (const e of chEmotes) {
+      if (e.source === '7tv') existing7TV.set(e.hash, e);
+    }
+
+    // Diff: find added and removed
+    const added = [];
+    const removed = [];
+
+    for (const [id, emote] of fetchedEmotes) {
+      if (!existing7TV.has(id)) added.push(emote);
+    }
+    for (const [id, emote] of existing7TV) {
+      if (!fetchedEmotes.has(id)) removed.push(emote);
+    }
+
+    if (added.length === 0 && removed.length === 0) return;
+
+    log(' 7TV Poll: Detected changes — added:', added.length, 'removed:', removed.length);
+
+    // Apply changes to channelEmotesMap
+    let updatedEmotes = chEmotes.filter(e => e.source !== '7tv' || fetchedEmotes.has(e.hash));
+    updatedEmotes.push(...added);
+    channelEmotesMap[channelName] = updatedEmotes;
+    updateEmoteUrlMap();
+
+    // Broadcast individual add/remove notifications (system messages in chat)
+    for (const emote of added) {
+      log(' 7TV Poll: Added emote:', emote.name);
+      broadcastToTabs({
+        type: 'channel_emote_added',
+        emote,
+        message: `${emote.name} added to channel (7TV)`
+      });
+    }
+    for (const emote of removed) {
+      log(' 7TV Poll: Removed emote:', emote.name);
+      broadcastToTabs({
+        type: 'channel_emote_removed',
+        emoteName: emote.name,
+        emoteHash: emote.hash,
+        message: `${emote.name} removed from channel (7TV)`
+      });
+    }
+
+    // Broadcast full update
+    broadcastToTabs({
+      type: 'channel_emotes_update',
+      emotes: updatedEmotes,
+      channelOwner: channelName
+    });
+
+    browser.storage.local.set({ channel_emotes_map: channelEmotesMap }).catch(() => {});
+    log(' 7TV Poll: Channel emotes updated for', channelName, '(now', updatedEmotes.length, 'total)');
+  } catch (err) {
+    // Silent fail — poll will retry next interval
   }
 }
 
@@ -1797,7 +1948,7 @@ async function joinChannel(platform, channelName, channelId = null) {
   currentChannel = `${platform}/${channelName}`;
   log(' 🚪 Setting channel:', currentChannel, 'id:', channelId);
 
-  // Fetch channel owner's emotes (runs in parallel)
+  // Fetch channel owner's emotes (7TV EventAPI subscription happens inside)
   fetchChannelOwnerEmotes(channelName, channelId);
 
   // Ensure we're connected first

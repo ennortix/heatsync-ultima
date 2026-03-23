@@ -1202,14 +1202,16 @@ const showToast = window.HS?.showToast || function(msg) {
   cleanup.setTimeout(() => t.remove(), 2500)
 }
 
-// Inline system message in chat (gray text, like 7TV/BTTV notifications)
-function showChatSystemMessage(text) {
+// Inline system message in chat (like 7TV/BTTV notifications)
+// Returns true if message was shown, false if chat container not found/hidden
+function showChatSystemMessage(text, color = '#808080', bgColor = '') {
   const chatContainer = findChatContainer()
-  if (!chatContainer) return
+  if (!chatContainer || chatContainer.offsetHeight === 0) return false
   const el = document.createElement('div')
   el.className = 'hs-system-msg'
   el.textContent = text
-  el.style.cssText = 'color:#808080;font-size:12px;padding:2px 10px;font-family:inherit;'
+  const bg = bgColor ? `background:${bgColor};` : ''
+  el.style.cssText = `color:${color};font-size:12px;padding:4px 10px;font-family:inherit;${bg}`
   chatContainer.appendChild(el)
   // Auto-scroll if near bottom
   const scrollParent = chatContainer.closest('.simplebar-scroll-content') || chatContainer.parentElement
@@ -1217,6 +1219,7 @@ function showChatSystemMessage(text) {
     const isNearBottom = scrollParent.scrollHeight - scrollParent.scrollTop - scrollParent.clientHeight < 100
     if (isNearBottom) scrollParent.scrollTop = scrollParent.scrollHeight
   }
+  return true
 }
 
 // If on heatsync site, send auth token to background
@@ -1523,18 +1526,18 @@ chrome.runtime.onMessage.addListener((message) => {
       break;
 
     case 'channel_emote_added':
-      // 7TV emote added to channel — inline system message
+      // 7TV emote added to channel — inline chat notification
       if (message.emote && message.message) {
         log(' 🎉 Channel emote added:', message.emote.name);
-        showChatSystemMessage(message.message);
+        showChatSystemMessage(message.message, '#fff', '#008080');
       }
       break;
 
     case 'channel_emote_removed':
-      // 7TV emote removed from channel — inline system message
+      // 7TV emote removed from channel — inline chat notification
       if (message.emoteName && message.message) {
         log(' 🗑️ Channel emote removed:', message.emoteName);
-        showChatSystemMessage(message.message);
+        showChatSystemMessage(message.message, '#fff', '#008080');
       }
       break;
 

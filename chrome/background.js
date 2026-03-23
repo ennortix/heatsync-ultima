@@ -1195,7 +1195,7 @@ async function poll7TVEmoteSet() {
     if (emoteSet.id !== current7TVEmoteSetId) {
       log(' 7TV Poll: Emote set ID changed:', current7TVEmoteSetId, '→', emoteSet.id);
       current7TVEmoteSetId = emoteSet.id;
-      connect7TVEventAPI(emoteSet.id);
+      subscribe7TVEmoteSet(emoteSet.id);
     }
 
     // Build current 7TV emote map from fetched data

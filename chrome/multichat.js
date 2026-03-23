@@ -13198,6 +13198,35 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
         log('Emotes updated via message, reloading...');
         loadEmotes().then(() => renderMessages(currentTab));
       }
+
+      // 7TV emote add/remove → persistent stream-event in chat
+      if (msg.type === 'channel_emote_added' || msg.type === 'channel_emote_removed') {
+        const text = msg.message;
+        if (text) {
+          const eventClass = msg.type === 'channel_emote_added' ? 'event-online' : 'event-offline';
+          const evt = { type: 'stream-event', eventClass, text, channel: '7tv', time: Date.now() };
+
+          const liveChannel = getLiveChannel();
+          const liveBuffer = liveChannel ? irc?.channels?.get(liveChannel) : null;
+          if (liveBuffer) {
+            const existing = liveBuffer.getAll();
+            if (!existing.some(m => m.type === 'stream-event' && m.text === evt.text)) {
+              liveBuffer.push(evt);
+              saveStreamEvent(evt);
+            }
+          }
+          if (irc?.channels) {
+            for (const [ch, buf] of irc.channels) {
+              if (ch === liveChannel) continue;
+              const existing = buf.getAll();
+              if (!existing.some(m => m.type === 'stream-event' && m.text === evt.text)) {
+                buf.push(evt);
+              }
+            }
+          }
+          renderMessages(currentTab);
+        }
+      }
     });
 
     // Also listen for storage changes (more reliable)

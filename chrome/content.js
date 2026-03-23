@@ -1202,23 +1202,36 @@ const showToast = window.HS?.showToast || function(msg) {
   cleanup.setTimeout(() => t.remove(), 2500)
 }
 
-// Inline system message in chat (like 7TV/BTTV notifications)
-// Returns true if message was shown, false if chat container not found/hidden
+// Inline system notification banner in chat (persists through re-renders)
+// Uses a dedicated overlay div so multichat/React re-renders don't wipe it
 function showChatSystemMessage(text, color = '#808080', bgColor = '') {
-  const chatContainer = findChatContainer()
-  if (!chatContainer || chatContainer.offsetHeight === 0) return false
+  // Find or create a persistent notification container outside the message list
+  const anchor = document.getElementById('hs-mc-overlay') ||
+                 document.querySelector('.chat-room') ||
+                 document.querySelector('#chatroom')
+  if (!anchor || anchor.offsetHeight === 0) return false
+
+  let notifContainer = document.getElementById('hs-notif-container')
+  if (!notifContainer) {
+    notifContainer = document.createElement('div')
+    notifContainer.id = 'hs-notif-container'
+    notifContainer.style.cssText = 'position:absolute;bottom:40px;left:0;right:0;z-index:100;pointer-events:none;'
+    // Position relative to anchor
+    if (!anchor.style.position || anchor.style.position === 'static') {
+      anchor.style.position = 'relative'
+    }
+    anchor.appendChild(notifContainer)
+  }
+
   const el = document.createElement('div')
   el.className = 'hs-system-msg'
   el.textContent = text
   const bg = bgColor ? `background:${bgColor};` : ''
-  el.style.cssText = `color:${color};font-size:12px;padding:4px 10px;font-family:inherit;${bg}`
-  chatContainer.appendChild(el)
-  // Auto-scroll if near bottom
-  const scrollParent = chatContainer.closest('.simplebar-scroll-content') || chatContainer.parentElement
-  if (scrollParent) {
-    const isNearBottom = scrollParent.scrollHeight - scrollParent.scrollTop - scrollParent.clientHeight < 100
-    if (isNearBottom) scrollParent.scrollTop = scrollParent.scrollHeight
-  }
+  el.style.cssText = `color:${color};font-size:12px;padding:4px 10px;font-family:inherit;text-align:center;pointer-events:auto;${bg}`
+  notifContainer.appendChild(el)
+
+  // Auto-remove after 8s
+  cleanup.setTimeout(() => el.remove(), 8000)
   return true
 }
 
@@ -1526,19 +1539,11 @@ chrome.runtime.onMessage.addListener((message) => {
       break;
 
     case 'channel_emote_added':
-      // 7TV emote added to channel — inline chat notification
-      if (message.emote && message.message) {
-        log(' 🎉 Channel emote added:', message.emote.name);
-        showChatSystemMessage(message.message, '#fff', '#008080');
-      }
+      // Handled by multichat.js as a persistent stream-event
       break;
 
     case 'channel_emote_removed':
-      // 7TV emote removed from channel — inline chat notification
-      if (message.emoteName && message.message) {
-        log(' 🗑️ Channel emote removed:', message.emoteName);
-        showChatSystemMessage(message.message, '#fff', '#008080');
-      }
+      // Handled by multichat.js as a persistent stream-event
       break;
 
     case 'emote_removed_broadcast':

@@ -1373,6 +1373,10 @@ class IRC {
         if (silence > 60000 || !this.ws || this.ws.readyState !== WebSocket.OPEN) {
           log('Tab visible after', Math.round(silence / 1000), 's silence, reconnecting');
           this._forceReconnect();
+          // Reload history to fill gap from sleep
+          for (const ch of this.channels.keys()) {
+            this.loadHistory(ch);
+          }
         }
       }
     });
@@ -1402,7 +1406,7 @@ class IRC {
       this._reconnectAttempts = 0;
       this._lastData = Date.now();
       this.ws.send(`NICK ${this.nick}\r\n`);
-      this.ws.send('CAP REQ :twitch.tv/tags\r\n');
+      this.ws.send('CAP REQ :twitch.tv/tags twitch.tv/commands\r\n');
       for (const ch of this.channels.keys()) {
         if (this.ws.readyState !== WebSocket.OPEN) return;
         this.ws.send(`JOIN #${ch}\r\n`);

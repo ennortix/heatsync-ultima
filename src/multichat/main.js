@@ -4587,6 +4587,8 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
     const tsHtml = ts && showTs ? `<span class="hs-mc-ts" data-ts="${m.time}">${ts}</span>` : '';
     const msgBody = (m.type === 'usernotice' || m.type === 'notice') && !m.text
       ? `${tsHtml}${systemLine}`
+      : m.type === 'notice'
+      ? `${tsHtml}${processedText}`
       : m.isAction
       ? `${tsHtml}${systemLine}${platformBadge}${scBadge}${badges}${avatarHtml}${userLink}${channelSpan} <span style="color:${sanitizeColor(m.color || '#fff')};font-style:italic">${processedText}</span>${stickerHtml}`
       : `${tsHtml}${systemLine}${platformBadge}${scBadge}${badges}${avatarHtml}${userLink}${channelSpan}: ${processedText}${stickerHtml}`
@@ -5888,6 +5890,19 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
     // Initialize IRC (runs on both Twitch and Kick — cross-platform relay)
     irc = new IRC();
     irc.connect();
+
+    // Connect auth IRC eagerly for whisper reception
+    // Whispers arrive via IRC WHISPER command on authenticated connections
+    // (twitch.tv/commands cap). Without this, auth IRC only connects on first send.
+    if (hostPlatform === 'twitch') {
+      const token = getTwitchAuthToken()
+      const nick = currentUsername || getCurrentUsername()
+      if (token && nick) {
+        connectAuthIrc(token, nick).then(ok => {
+          if (ok === true) log('Auth IRC ready (whispers enabled)')
+        })
+      }
+    }
 
     // Initialize Kick chat (runs on both platforms — cross-platform relay)
     kickChat = new KickChat();

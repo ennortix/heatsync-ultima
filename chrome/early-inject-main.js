@@ -2,7 +2,6 @@
 // Intercepts image src/srcset setters to fix heatsync emote URLs
 (function() {
   'use strict'
-  console.log('[heatsync-early] MAIN world script loaded')
 
   const DEBUG = false
   const log = DEBUG ? console.log.bind(console, '[heatsync-early]') : () => {}
@@ -293,42 +292,6 @@
       return
     }
   })
-  // ═══ PubSub WebSocket Interception (Whispers) ═══
-  // Twitch no longer delivers WHISPER over IRC. Intercept the page's own
-  // PubSub WebSocket to capture incoming whispers and relay to content script.
-  // Hook WebSocket to intercept Twitch Hermes (real-time events including whispers)
-  const OrigWebSocket = window.WebSocket
-  const _hsWebSocketHook = function(url, protocols) {
-    const ws = protocols !== undefined
-      ? new OrigWebSocket(url, protocols)
-      : new OrigWebSocket(url)
-
-    if (typeof url === 'string') {
-      console.log('[heatsync-ws] new WebSocket:', url.slice(0, 80))
-    }
-
-    if (typeof url === 'string' && url.includes('hermes.twitch.tv')) {
-      console.log('[heatsync-ws] Hermes detected, attaching listener')
-
-      ws.addEventListener('message', (e) => {
-        try {
-          const msg = typeof e.data === 'string' ? JSON.parse(e.data) : e.data
-          if (msg.type) console.log('[heatsync-ws] Hermes:', msg.type, JSON.stringify(msg).slice(0, 400))
-        } catch {}
-      })
-    }
-
-    return ws
-  }
-  _hsWebSocketHook.prototype = OrigWebSocket.prototype
-  _hsWebSocketHook.CONNECTING = OrigWebSocket.CONNECTING
-  _hsWebSocketHook.OPEN = OrigWebSocket.OPEN
-  _hsWebSocketHook.CLOSING = OrigWebSocket.CLOSING
-  _hsWebSocketHook.CLOSED = OrigWebSocket.CLOSED
-  Object.defineProperty(_hsWebSocketHook, 'name', { value: 'WebSocket' })
-  window.WebSocket = _hsWebSocketHook
-  console.log('[heatsync-ws] WebSocket hook installed')
-
   let urlMapWasEmpty = true
 
   // Listen for URL map updates from content script

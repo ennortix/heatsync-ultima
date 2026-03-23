@@ -2237,10 +2237,10 @@
       }
 
       /* State colors via ::before */
-      .hs-mc-emote-wrapper.hs-state-global::before { background: #ffff00; }
+      .hs-mc-emote-wrapper.hs-state-global::before { background: #00ff00; }
       .hs-mc-emote-wrapper.hs-state-owned::before { background: #00ff00; }
-      .hs-mc-emote-wrapper.hs-state-unadded::before { background: #8080ff; }
-      .hs-mc-emote-wrapper.hs-state-channel::before { background: #ffff00; }
+      .hs-mc-emote-wrapper.hs-state-unadded::before { background: #ff8700; }
+      .hs-mc-emote-wrapper.hs-state-channel::before { background: #00ff00; }
       .hs-mc-emote-wrapper.hs-state-blocked::before { background: #ff0000; }
 
       /* Blocked emotes: hide img (keeps natural dimensions), dashed line via ::before */
@@ -2314,9 +2314,9 @@
         text-align: center;
       }
       #hs-emote-tooltip .tooltip-source.owned { background: #00ff00; color: #000; }
-      #hs-emote-tooltip .tooltip-source.unadded { background: #8080ff; color: #fff; }
-      #hs-emote-tooltip .tooltip-source.global { background: #ffff00; color: #000; }
-      #hs-emote-tooltip .tooltip-source.channel { background: #ffff00; color: #000; }
+      #hs-emote-tooltip .tooltip-source.unadded { background: #ff8700; color: #000; }
+      #hs-emote-tooltip .tooltip-source.global { background: #00ff00; color: #000; }
+      #hs-emote-tooltip .tooltip-source.channel { background: #00ff00; color: #000; }
       #hs-emote-tooltip .tooltip-source.blocked { background: #ff0000; color: #fff; }
 
       #hs-link-tooltip {
@@ -4522,7 +4522,7 @@
     const isKicksEvent = m.kicksEvent === true
     const cls = tabId === 'mentions' ? 'hs-mc-msg mention' :
 isKicksEvent ? 'hs-mc-msg hs-mc-system hs-mc-kicks' :
-m.type === 'usernotice' ? 'hs-mc-msg hs-mc-system' :
+m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
                 m.redeemed ? 'hs-mc-msg hs-mc-redeemed' :
                 isSuperChat ? 'hs-mc-msg hs-mc-superchat' :
                 isMention(m) ? 'hs-mc-msg mention' : 'hs-mc-msg';
@@ -4574,7 +4574,7 @@ m.type === 'usernotice' ? 'hs-mc-msg hs-mc-system' :
     const ts = formatTimeFromTs(m.time);
     const showTs = timestampsEnabled || tabId === 'mentions';
     const tsHtml = ts && showTs ? `<span class="hs-mc-ts" data-ts="${m.time}">${ts}</span>` : '';
-    const msgBody = m.type === 'usernotice' && !m.text
+    const msgBody = (m.type === 'usernotice' || m.type === 'notice') && !m.text
       ? `${tsHtml}${systemLine}`
       : m.isAction
       ? `${tsHtml}${systemLine}${platformBadge}${scBadge}${badges}${avatarHtml}${userLink}${channelSpan} <span style="color:${sanitizeColor(m.color || '#fff')};font-style:italic">${processedText}</span>${stickerHtml}`
@@ -6043,6 +6043,13 @@ m.type === 'usernotice' ? 'hs-mc-msg hs-mc-system' :
         const channel = msg.channel?.toLowerCase();
         if (!channel) return;
 
+        // Skip channels already in config — they get stream_event, avoid duplicates
+        if (config.channels.some(ch => {
+          const id = (typeof ch === 'string' ? ch : ch.id)?.toLowerCase()
+          const tw = (typeof ch === 'string' ? null : ch.twitch)?.toLowerCase()
+          return id === channel || tw === channel
+        })) return;
+
         // Build inline notification
         let text = '', eventClass = '';
         if (msg.eventType === 'stream:update' && msg.game && msg.prevGame !== msg.game) {
@@ -6127,6 +6134,13 @@ m.type === 'usernotice' ? 'hs-mc-msg hs-mc-system' :
       for (const e of events) {
         const channel = e.channel?.toLowerCase();
         if (!channel) continue;
+
+        // Skip channels already in config — they get stream_event directly
+        if (config.channels.some(ch => {
+          const id = (typeof ch === 'string' ? ch : ch.id)?.toLowerCase()
+          const tw = (typeof ch === 'string' ? null : ch.twitch)?.toLowerCase()
+          return id === channel || tw === channel
+        })) continue;
 
         let text = '', eventClass = '';
         if (e.type === 'follow:stream:update' && e.game) {

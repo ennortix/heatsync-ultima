@@ -896,17 +896,14 @@ function isEmoteImage(el) {
 
 function getEmoteColor(img) {
   const state = img.dataset?.heatsyncState;
-  if (state === 'owned') return '#00ff00';
-  if (state === 'unadded') return '#8080ff';
+  if (state === 'unadded') return '#ff8700';
   if (state === 'blocked') return '#ff0000';
-  if (state === 'global') return '#ffff00';
   // Fallback: read wrapper class from website
   const wrapper = img.closest?.('.emote-hover-wrapper');
-  if (wrapper?.classList.contains('in-set')) return '#00ff00';
-  if (wrapper?.classList.contains('neutral')) return '#8080ff';
+  if (wrapper?.classList.contains('neutral')) return '#ff8700';
   if (wrapper?.classList.contains('blocked')) return '#ff0000';
-  // Default: gold for third-party/global
-  return '#ffff00';
+  // Default: green for usable (owned + global + channel)
+  return '#00ff00';
 }
 
 function showEmoteOverlay(img) {

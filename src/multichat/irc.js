@@ -64,6 +64,63 @@ function parseIrcLine(raw, channel) {
       }
     }
 
+    // NOTICE: @tags :tmi.twitch.tv NOTICE #channel :message
+    // (also used by clearchatToNotice=true from recent-messages API)
+    const notice = raw.match(/NOTICE #([^ ]+) :(.+)$/)
+    if (notice) {
+      return {
+        type: 'notice',
+        user: 'system',
+        text: notice[2],
+        color: '#999',
+        badges: '',
+        channel: channel || notice[1].toLowerCase(),
+        time: parseInt(tags['tmi-sent-ts']) || Date.now(),
+        id: tags.id || `notice-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        systemMsg: notice[2]
+      }
+    }
+
+    // CLEARCHAT: @tags :tmi.twitch.tv CLEARCHAT #channel :username
+    // (timeout/ban of a user)
+    const clearchat = raw.match(/CLEARCHAT #([^ ]+)(?: :(.+))?$/)
+    if (clearchat) {
+      const target = clearchat[2] || ''
+      const duration = tags['ban-duration']
+      const text = target
+        ? (duration ? `${target} timed out for ${duration}s` : `${target} was permanently banned`)
+        : 'Chat was cleared'
+      return {
+        type: 'notice',
+        user: 'system',
+        text,
+        color: '#999',
+        badges: '',
+        channel: channel || clearchat[1].toLowerCase(),
+        time: parseInt(tags['tmi-sent-ts']) || Date.now(),
+        id: tags.id || `clearchat-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        systemMsg: text
+      }
+    }
+
+    // CLEARMSG: @tags :tmi.twitch.tv CLEARMSG #channel :deleted message text
+    // (single message deletion)
+    const clearmsg = raw.match(/CLEARMSG #([^ ]+) :(.+)$/)
+    if (clearmsg) {
+      const targetMsgId = tags['target-msg-id']
+      return {
+        type: 'notice',
+        user: 'system',
+        text: `Message from ${tags.login || 'unknown'} deleted`,
+        color: '#999',
+        badges: '',
+        channel: channel || clearmsg[1].toLowerCase(),
+        time: parseInt(tags['tmi-sent-ts']) || Date.now(),
+        id: targetMsgId || `clearmsg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        systemMsg: `Message from ${tags.login || 'unknown'} deleted`
+      }
+    }
+
     // WHISPER: @tags :user!user@user.tmi.twitch.tv WHISPER yourname :message
     const whisper = raw.match(/WHISPER \S+ :(.+)$/)
     if (whisper) {
@@ -89,7 +146,7 @@ function parseIrcLine(raw, channel) {
 // CIRCULAR BUFFER FOR CHANNEL MESSAGES
 // ============================================
 class CircularBuffer {
-  constructor(cap = 500) {
+  constructor(cap = 1500) {
     this.buf = new Array(cap);
     this.cap = cap;
     this.head = 0;
@@ -279,10 +336,12 @@ class IRC {
           this.channels.get(ch).push(msg);
           this.emit('message', msg);
         }
-      } else if (msg && msg.type === 'usernotice') {
+      } else if (msg && (msg.type === 'usernotice' || msg.type === 'notice')) {
         const ch = msg.channel;
-        usernameCache.add(msg.user);
-        knownColors.set(msg.user.toLowerCase(), msg.color);
+        if (msg.user !== 'system') {
+          usernameCache.add(msg.user);
+          knownColors.set(msg.user.toLowerCase(), msg.color);
+        }
         fetchChannelBadges(ch);
         if (this.channels.has(ch)) {
           this.channels.get(ch).push(msg);
@@ -295,7 +354,7 @@ class IRC {
   join(ch) {
     ch = ch.toLowerCase();
     if (this.channels.has(ch)) return;
-    this.channels.set(ch, new CircularBuffer(500));
+    this.channels.set(ch, new CircularBuffer(1500));
     if (this.ws?.readyState === WebSocket.OPEN) {
       this.ws.send(`JOIN #${ch}\r\n`);
     }
@@ -337,16 +396,24 @@ class IRC {
     await this._fetchHistory(ch, buffer, cacheKey);
   }
 
-  async _fetchHistory(ch, buffer, cacheKey) {
+  async _fetchHistory(ch, buffer, cacheKey, attempt = 0) {
     const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), 8000);
+    const timer = setTimeout(() => ctrl.abort(), 15000);
     try {
-      log('Fetching history for', ch);
-      const resp = await fetch(`https://recent-messages.robotty.de/api/v2/recent-messages/${ch}?limit=100`, {
-        signal: ctrl.signal,
-        credentials: 'omit'
-      });
-      if (!resp.ok) { log('History fetch failed:', resp.status); return; }
+      log('Fetching history for', ch, attempt > 0 ? `(retry ${attempt})` : '');
+      const resp = await fetch(
+        `https://recent-messages.robotty.de/api/v2/recent-messages/${ch}?limit=800&hide_moderation_messages=false&hide_moderated_messages=false&clearchatToNotice=true`,
+        { signal: ctrl.signal, credentials: 'omit' }
+      );
+      if (!resp.ok) {
+        log('History fetch failed:', resp.status);
+        if (attempt < 2) {
+          clearTimeout(timer);
+          await new Promise(r => setTimeout(r, 1500 * (attempt + 1)));
+          return this._fetchHistory(ch, buffer, cacheKey, attempt + 1);
+        }
+        return;
+      }
       const data = await resp.json();
       if (!data.messages?.length) return;
 
@@ -390,6 +457,11 @@ class IRC {
       }
     } catch (e) {
       log('Failed to load history for', ch, e.message);
+      clearTimeout(timer);
+      if (attempt < 2) {
+        await new Promise(r => setTimeout(r, 1500 * (attempt + 1)));
+        return this._fetchHistory(ch, buffer, cacheKey, attempt + 1);
+      }
     } finally {
       clearTimeout(timer);
     }
@@ -524,7 +596,7 @@ class KickChat {
   async join(kickUsername) {
     kickUsername = kickUsername.toLowerCase()
     if (this.channels.has(kickUsername)) return
-    this.channels.set(kickUsername, new CircularBuffer(500))
+    this.channels.set(kickUsername, new CircularBuffer(1500))
     // Tell background to join kick channel via HeatSync WS
     safeSendMessage({ type: 'ws_send', data: { type: 'channel:join', platform: 'kick', channel: kickUsername } })
     log('Kick joined', kickUsername, '(webhook mode)')

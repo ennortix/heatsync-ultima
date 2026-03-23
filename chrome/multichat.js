@@ -1244,6 +1244,63 @@ function parseIrcLine(raw, channel) {
       }
     }
 
+    // NOTICE: @tags :tmi.twitch.tv NOTICE #channel :message
+    // (also used by clearchatToNotice=true from recent-messages API)
+    const notice = raw.match(/NOTICE #([^ ]+) :(.+)$/)
+    if (notice) {
+      return {
+        type: 'notice',
+        user: 'system',
+        text: notice[2],
+        color: '#999',
+        badges: '',
+        channel: channel || notice[1].toLowerCase(),
+        time: parseInt(tags['tmi-sent-ts']) || Date.now(),
+        id: tags.id || `notice-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        systemMsg: notice[2]
+      }
+    }
+
+    // CLEARCHAT: @tags :tmi.twitch.tv CLEARCHAT #channel :username
+    // (timeout/ban of a user)
+    const clearchat = raw.match(/CLEARCHAT #([^ ]+)(?: :(.+))?$/)
+    if (clearchat) {
+      const target = clearchat[2] || ''
+      const duration = tags['ban-duration']
+      const text = target
+        ? (duration ? `${target} timed out for ${duration}s` : `${target} was permanently banned`)
+        : 'Chat was cleared'
+      return {
+        type: 'notice',
+        user: 'system',
+        text,
+        color: '#999',
+        badges: '',
+        channel: channel || clearchat[1].toLowerCase(),
+        time: parseInt(tags['tmi-sent-ts']) || Date.now(),
+        id: tags.id || `clearchat-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        systemMsg: text
+      }
+    }
+
+    // CLEARMSG: @tags :tmi.twitch.tv CLEARMSG #channel :deleted message text
+    // (single message deletion)
+    const clearmsg = raw.match(/CLEARMSG #([^ ]+) :(.+)$/)
+    if (clearmsg) {
+      const targetMsgId = tags['target-msg-id']
+      return {
+        type: 'notice',
+        user: 'system',
+        text: `Message from ${tags.login || 'unknown'} deleted`,
+        color: '#999',
+        badges: '',
+        channel: channel || clearmsg[1].toLowerCase(),
+        time: parseInt(tags['tmi-sent-ts']) || Date.now(),
+        id: targetMsgId || `clearmsg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        systemMsg: `Message from ${tags.login || 'unknown'} deleted`
+      }
+    }
+
     // WHISPER: @tags :user!user@user.tmi.twitch.tv WHISPER yourname :message
     const whisper = raw.match(/WHISPER \S+ :(.+)$/)
     if (whisper) {
@@ -1269,7 +1326,7 @@ function parseIrcLine(raw, channel) {
 // CIRCULAR BUFFER FOR CHANNEL MESSAGES
 // ============================================
 class CircularBuffer {
-  constructor(cap = 500) {
+  constructor(cap = 1500) {
     this.buf = new Array(cap);
     this.cap = cap;
     this.head = 0;
@@ -1459,10 +1516,12 @@ class IRC {
           this.channels.get(ch).push(msg);
           this.emit('message', msg);
         }
-      } else if (msg && msg.type === 'usernotice') {
+      } else if (msg && (msg.type === 'usernotice' || msg.type === 'notice')) {
         const ch = msg.channel;
-        usernameCache.add(msg.user);
-        knownColors.set(msg.user.toLowerCase(), msg.color);
+        if (msg.user !== 'system') {
+          usernameCache.add(msg.user);
+          knownColors.set(msg.user.toLowerCase(), msg.color);
+        }
         fetchChannelBadges(ch);
         if (this.channels.has(ch)) {
           this.channels.get(ch).push(msg);
@@ -1475,7 +1534,7 @@ class IRC {
   join(ch) {
     ch = ch.toLowerCase();
     if (this.channels.has(ch)) return;
-    this.channels.set(ch, new CircularBuffer(500));
+    this.channels.set(ch, new CircularBuffer(1500));
     if (this.ws?.readyState === WebSocket.OPEN) {
       this.ws.send(`JOIN #${ch}\r\n`);
     }
@@ -1517,16 +1576,24 @@ class IRC {
     await this._fetchHistory(ch, buffer, cacheKey);
   }
 
-  async _fetchHistory(ch, buffer, cacheKey) {
+  async _fetchHistory(ch, buffer, cacheKey, attempt = 0) {
     const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), 8000);
+    const timer = setTimeout(() => ctrl.abort(), 15000);
     try {
-      log('Fetching history for', ch);
-      const resp = await fetch(`https://recent-messages.robotty.de/api/v2/recent-messages/${ch}?limit=100`, {
-        signal: ctrl.signal,
-        credentials: 'omit'
-      });
-      if (!resp.ok) { log('History fetch failed:', resp.status); return; }
+      log('Fetching history for', ch, attempt > 0 ? `(retry ${attempt})` : '');
+      const resp = await fetch(
+        `https://recent-messages.robotty.de/api/v2/recent-messages/${ch}?limit=800&hide_moderation_messages=false&hide_moderated_messages=false&clearchatToNotice=true`,
+        { signal: ctrl.signal, credentials: 'omit' }
+      );
+      if (!resp.ok) {
+        log('History fetch failed:', resp.status);
+        if (attempt < 2) {
+          clearTimeout(timer);
+          await new Promise(r => setTimeout(r, 1500 * (attempt + 1)));
+          return this._fetchHistory(ch, buffer, cacheKey, attempt + 1);
+        }
+        return;
+      }
       const data = await resp.json();
       if (!data.messages?.length) return;
 
@@ -1570,6 +1637,11 @@ class IRC {
       }
     } catch (e) {
       log('Failed to load history for', ch, e.message);
+      clearTimeout(timer);
+      if (attempt < 2) {
+        await new Promise(r => setTimeout(r, 1500 * (attempt + 1)));
+        return this._fetchHistory(ch, buffer, cacheKey, attempt + 1);
+      }
     } finally {
       clearTimeout(timer);
     }
@@ -1704,7 +1776,7 @@ class KickChat {
   async join(kickUsername) {
     kickUsername = kickUsername.toLowerCase()
     if (this.channels.has(kickUsername)) return
-    this.channels.set(kickUsername, new CircularBuffer(500))
+    this.channels.set(kickUsername, new CircularBuffer(1500))
     // Tell background to join kick channel via HeatSync WS
     safeSendMessage({ type: 'ws_send', data: { type: 'channel:join', platform: 'kick', channel: kickUsername } })
     log('Kick joined', kickUsername, '(webhook mode)')
@@ -6496,7 +6568,10 @@ function initInput() {
           .map(w => w.dataset.emoteName)
           .filter(Boolean);
         if (names.length > 0) {
+          showInputBar();
           for (const name of names) pasteEmoteToInput(name);
+          const input = document.getElementById('hs-mc-input');
+          if (input) input.focus();
           flashAllEmotes(names[0], 'hs-flash-paste');
         }
         return;
@@ -6515,7 +6590,10 @@ function initInput() {
         unblockEmote(emoteName);
       } else if (state === 'owned' || state === 'global' || state === 'channel') {
         // Owned, global, or channel → paste to input + white flash
+        showInputBar();
         pasteEmoteToInput(emoteName);
+        const input = document.getElementById('hs-mc-input');
+        if (input) input.focus();
         flashAllEmotes(emoteName, 'hs-flash-paste');
       } else if (state === 'unadded') {
         // Unadded → add to inventory + green flash
@@ -9668,10 +9746,10 @@ const STORAGE_KEY = 'heatsync_multichat';
       }
 
       /* State colors via ::before */
-      .hs-mc-emote-wrapper.hs-state-global::before { background: #ffff00; }
+      .hs-mc-emote-wrapper.hs-state-global::before { background: #00ff00; }
       .hs-mc-emote-wrapper.hs-state-owned::before { background: #00ff00; }
-      .hs-mc-emote-wrapper.hs-state-unadded::before { background: #8080ff; }
-      .hs-mc-emote-wrapper.hs-state-channel::before { background: #ffff00; }
+      .hs-mc-emote-wrapper.hs-state-unadded::before { background: #ff8700; }
+      .hs-mc-emote-wrapper.hs-state-channel::before { background: #00ff00; }
       .hs-mc-emote-wrapper.hs-state-blocked::before { background: #ff0000; }
 
       /* Blocked emotes: hide img (keeps natural dimensions), dashed line via ::before */
@@ -9745,9 +9823,9 @@ const STORAGE_KEY = 'heatsync_multichat';
         text-align: center;
       }
       #hs-emote-tooltip .tooltip-source.owned { background: #00ff00; color: #000; }
-      #hs-emote-tooltip .tooltip-source.unadded { background: #8080ff; color: #fff; }
-      #hs-emote-tooltip .tooltip-source.global { background: #ffff00; color: #000; }
-      #hs-emote-tooltip .tooltip-source.channel { background: #ffff00; color: #000; }
+      #hs-emote-tooltip .tooltip-source.unadded { background: #ff8700; color: #000; }
+      #hs-emote-tooltip .tooltip-source.global { background: #00ff00; color: #000; }
+      #hs-emote-tooltip .tooltip-source.channel { background: #00ff00; color: #000; }
       #hs-emote-tooltip .tooltip-source.blocked { background: #ff0000; color: #fff; }
 
       #hs-link-tooltip {
@@ -11953,7 +12031,7 @@ const STORAGE_KEY = 'heatsync_multichat';
     const isKicksEvent = m.kicksEvent === true
     const cls = tabId === 'mentions' ? 'hs-mc-msg mention' :
 isKicksEvent ? 'hs-mc-msg hs-mc-system hs-mc-kicks' :
-m.type === 'usernotice' ? 'hs-mc-msg hs-mc-system' :
+m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
                 m.redeemed ? 'hs-mc-msg hs-mc-redeemed' :
                 isSuperChat ? 'hs-mc-msg hs-mc-superchat' :
                 isMention(m) ? 'hs-mc-msg mention' : 'hs-mc-msg';
@@ -12005,7 +12083,7 @@ m.type === 'usernotice' ? 'hs-mc-msg hs-mc-system' :
     const ts = formatTimeFromTs(m.time);
     const showTs = timestampsEnabled || tabId === 'mentions';
     const tsHtml = ts && showTs ? `<span class="hs-mc-ts" data-ts="${m.time}">${ts}</span>` : '';
-    const msgBody = m.type === 'usernotice' && !m.text
+    const msgBody = (m.type === 'usernotice' || m.type === 'notice') && !m.text
       ? `${tsHtml}${systemLine}`
       : m.isAction
       ? `${tsHtml}${systemLine}${platformBadge}${scBadge}${badges}${avatarHtml}${userLink}${channelSpan} <span style="color:${sanitizeColor(m.color || '#fff')};font-style:italic">${processedText}</span>${stickerHtml}`
@@ -13474,6 +13552,13 @@ m.type === 'usernotice' ? 'hs-mc-msg hs-mc-system' :
         const channel = msg.channel?.toLowerCase();
         if (!channel) return;
 
+        // Skip channels already in config — they get stream_event, avoid duplicates
+        if (config.channels.some(ch => {
+          const id = (typeof ch === 'string' ? ch : ch.id)?.toLowerCase()
+          const tw = (typeof ch === 'string' ? null : ch.twitch)?.toLowerCase()
+          return id === channel || tw === channel
+        })) return;
+
         // Build inline notification
         let text = '', eventClass = '';
         if (msg.eventType === 'stream:update' && msg.game && msg.prevGame !== msg.game) {
@@ -13558,6 +13643,13 @@ m.type === 'usernotice' ? 'hs-mc-msg hs-mc-system' :
       for (const e of events) {
         const channel = e.channel?.toLowerCase();
         if (!channel) continue;
+
+        // Skip channels already in config — they get stream_event directly
+        if (config.channels.some(ch => {
+          const id = (typeof ch === 'string' ? ch : ch.id)?.toLowerCase()
+          const tw = (typeof ch === 'string' ? null : ch.twitch)?.toLowerCase()
+          return id === channel || tw === channel
+        })) continue;
 
         let text = '', eventClass = '';
         if (e.type === 'follow:stream:update' && e.game) {

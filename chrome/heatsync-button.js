@@ -614,23 +614,14 @@
         visibility: hidden;
       }
 
-      /* Default hover = yellow (global/channel) */
+      /* Usable = green (inventory + global + channel) */
       .heatsync-emote-wrap:hover {
-        background: #ffff00;
-      }
-
-      /* Unadded emotes = blue */
-      .heatsync-emote-wrap.unadded:hover {
-        background: #8080ff;
-      }
-
-      /* In inventory = green */
-      .heatsync-emote-wrap.in-inventory:hover {
         background: #00ff00;
       }
 
-      .heatsync-emote-wrap.in-inventory img {
-        opacity: 1;
+      /* Available but not added = orange */
+      .heatsync-emote-wrap.unadded:hover {
+        background: #ff8700;
       }
 
       /* Blocked emotes: outline on img content area, not wrapper */
@@ -1964,11 +1955,7 @@
       wrap.style.minHeight = '32px';
       wrap.dataset.index = index;
 
-      if (isGlobal) {
-        wrap.classList.add('global-emote');
-      } else if (inInventory) {
-        wrap.classList.add('in-inventory');
-      } else if (currentTab !== 'mine') {
+      if (!isGlobal && !inInventory && currentTab !== 'mine') {
         wrap.classList.add('unadded');
       }
 

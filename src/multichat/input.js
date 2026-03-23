@@ -371,7 +371,10 @@ function initInput() {
           .map(w => w.dataset.emoteName)
           .filter(Boolean);
         if (names.length > 0) {
+          showInputBar();
           for (const name of names) pasteEmoteToInput(name);
+          const input = document.getElementById('hs-mc-input');
+          if (input) input.focus();
           flashAllEmotes(names[0], 'hs-flash-paste');
         }
         return;
@@ -390,7 +393,10 @@ function initInput() {
         unblockEmote(emoteName);
       } else if (state === 'owned' || state === 'global' || state === 'channel') {
         // Owned, global, or channel → paste to input + white flash
+        showInputBar();
         pasteEmoteToInput(emoteName);
+        const input = document.getElementById('hs-mc-input');
+        if (input) input.focus();
         flashAllEmotes(emoteName, 'hs-flash-paste');
       } else if (state === 'unadded') {
         // Unadded → add to inventory + green flash

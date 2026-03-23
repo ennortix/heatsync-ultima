@@ -5921,6 +5921,7 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
         notifyMention(msg);
 
         if (currentTab === 'mentions') {
+          mentionsSeenCount = mentionsBuffer.length;
           if (!appendMessage(msg, 'mentions')) renderMessages('mentions');
         } else {
           updateTabIndicator('mentions');
@@ -5957,6 +5958,7 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
         notifyMention(msg);
 
         if (currentTab === 'mentions') {
+          mentionsSeenCount = mentionsBuffer.length;
           if (!appendMessage(msg, 'mentions')) renderMessages('mentions');
         } else {
           updateTabIndicator('mentions');

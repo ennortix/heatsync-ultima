@@ -11795,6 +11795,17 @@ const STORAGE_KEY = 'heatsync_multichat';
             }
           }
         }
+        // Switching to a channel tab that matches live clears the live tab too
+        if (id !== 'live' && liveCh && t.dataset.tab === 'live') {
+          const ch = config.channels.find(c => (typeof c === 'string' ? c : c.id) === id)
+          if (ch) {
+            const tw = (typeof ch === 'string' ? ch : ch.twitch)?.toLowerCase()
+            const ki = (typeof ch === 'string' ? undefined : ch.kick)?.toLowerCase()
+            if (tw === liveCh || ki === liveCh) {
+              t.classList.remove('has-new', 'has-stream-event', 'has-mentions')
+            }
+          }
+        }
       });
     }
 
@@ -12677,6 +12688,13 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
     if (tabId === 'mentions') tab.classList.add('has-mentions');
   }
 
+  function updateTabMentionIndicator(tabId) {
+    const tab = tabBarElement?.querySelector(`[data-tab="${tabId}"]`)
+    if (tab && currentTab !== tabId) {
+      tab.classList.add('has-new', 'has-mentions')
+    }
+  }
+
   // ============================================
   // LIVE STATUS POLLING
   // ============================================
@@ -13409,12 +13427,14 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
 
     // Handle incoming IRC messages
     irc.on('message', (msg) => {
-      if (isMention(msg)) {
+      const isMent = isMention(msg)
+      if (isMent) {
         mentionsBuffer.push(msg);
         if (mentionsBuffer.length > MAX_BUFFER + 50) mentionsBuffer.splice(0, mentionsBuffer.length - MAX_BUFFER);
         notifyMention(msg);
 
         if (currentTab === 'mentions') {
+          mentionsSeenCount = mentionsBuffer.length;
           if (!appendMessage(msg, 'mentions')) renderMessages('mentions');
         } else {
           updateTabIndicator('mentions');
@@ -13428,6 +13448,7 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
         if (!appendMessage(msg, tabId)) renderMessages(tabId);
       } else if (tabId) {
         updateTabIndicator(tabId);
+        if (isMent) updateTabMentionIndicator(tabId)
       }
 
       // Live tab: show if this channel matches live OR is paired via config
@@ -13436,18 +13457,21 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
           if (!appendMessage(msg, 'live')) renderMessages('live');
         } else {
           updateTabIndicator('live');
+          if (isMent) updateTabMentionIndicator('live')
         }
       }
     });
 
     // Handle incoming Kick messages
     kickChat.on('message', (msg) => {
-      if (isMention(msg)) {
+      const isMent = isMention(msg)
+      if (isMent) {
         mentionsBuffer.push(msg);
         if (mentionsBuffer.length > MAX_BUFFER + 50) mentionsBuffer.splice(0, mentionsBuffer.length - MAX_BUFFER);
         notifyMention(msg);
 
         if (currentTab === 'mentions') {
+          mentionsSeenCount = mentionsBuffer.length;
           if (!appendMessage(msg, 'mentions')) renderMessages('mentions');
         } else {
           updateTabIndicator('mentions');
@@ -13461,6 +13485,7 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
         if (!appendMessage(msg, tabId)) renderMessages(tabId);
       } else if (tabId) {
         updateTabIndicator(tabId);
+        if (isMent) updateTabMentionIndicator(tabId)
       }
 
       // Live tab: show if this channel matches live OR is paired via config
@@ -13469,6 +13494,7 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
           if (!appendMessage(msg, 'live')) renderMessages('live');
         } else {
           updateTabIndicator('live');
+          if (isMent) updateTabMentionIndicator('live')
         }
       }
     });
@@ -13525,18 +13551,26 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
         }
         if (!activityEvents.some(m => m.text === evt.text)) activityEvents.push(evt);
 
-        // Highlight non-active tabs
-        if (currentTab !== 'live') {
-          const tab = tabBarElement?.querySelector('[data-tab="live"]');
-          if (tab) tab.classList.add('has-stream-event');
-        }
-        for (const ch of config.channels) {
-          const twName = typeof ch === 'string' ? ch : ch.twitch;
-          const kickName = typeof ch !== 'string' ? ch.kick : null;
-          const tabId = typeof ch === 'string' ? ch : ch.id;
-          if ((twName === channel || kickName === channel) && currentTab !== tabId) {
-            const tab = tabBarElement?.querySelector(`[data-tab="${tabId}"]`);
-            if (tab) tab.classList.add('has-stream-event');
+        // Yellow tab highlight only for game changes, and only when not viewing that channel
+        // (live tab and its matching channel tab are equivalent — viewing either counts)
+        if (msg.eventType === 'stream:update') {
+          const viewingChannel = currentTab === 'live' || config.channels.some(ch => {
+            const tw = (typeof ch === 'string' ? ch : ch.twitch)?.toLowerCase()
+            const ki = (typeof ch !== 'string' ? ch.kick : null)?.toLowerCase()
+            return currentTab === (typeof ch === 'string' ? ch : ch.id) && (tw === channel || ki === channel)
+          })
+          if (!viewingChannel) {
+            const liveTab = tabBarElement?.querySelector('[data-tab="live"]');
+            if (liveTab) liveTab.classList.add('has-stream-event');
+            for (const ch of config.channels) {
+              const twName = typeof ch === 'string' ? ch : ch.twitch;
+              const kickName = typeof ch !== 'string' ? ch.kick : null;
+              const tabId = typeof ch === 'string' ? ch : ch.id;
+              if ((twName === channel || kickName === channel) && currentTab !== tabId) {
+                const tab = tabBarElement?.querySelector(`[data-tab="${tabId}"]`);
+                if (tab) tab.classList.add('has-stream-event');
+              }
+            }
           }
         }
 
@@ -13607,19 +13641,10 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
         }
         if (!activityEvents.some(m => m.text === evt.text)) activityEvents.push(evt);
 
-        // Highlight non-active tabs
-        if (currentTab !== 'live') {
+        // Yellow tab highlight only for game changes, only when not viewing live
+        if (msg.eventType === 'stream:update' && currentTab !== 'live') {
           const tab = tabBarElement?.querySelector('[data-tab="live"]');
           if (tab) tab.classList.add('has-stream-event');
-        }
-        for (const ch of config.channels) {
-          const twName = typeof ch === 'string' ? ch : ch.twitch;
-          const kickName = typeof ch !== 'string' ? ch.kick : null;
-          const tabId = typeof ch === 'string' ? ch : ch.id;
-          if ((twName === channel || kickName === channel) && currentTab !== tabId) {
-            const tab = tabBarElement?.querySelector(`[data-tab="${tabId}"]`);
-            if (tab) tab.classList.add('has-stream-event');
-          }
         }
 
         // Render on whatever tab is active

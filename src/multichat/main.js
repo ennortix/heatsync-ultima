@@ -6047,8 +6047,13 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
             return currentTab === (typeof ch === 'string' ? ch : ch.id) && (tw === channel || ki === channel)
           })
           if (!viewingChannel) {
-            const liveTab = tabBarElement?.querySelector('[data-tab="live"]');
-            if (liveTab) liveTab.classList.add('has-stream-event');
+            // Only yellow the live tab if this event is for the live channel
+            const isLiveEvent = isLiveChannelMessage({ channel })
+            if (isLiveEvent) {
+              const liveTab = tabBarElement?.querySelector('[data-tab="live"]');
+              if (liveTab) liveTab.classList.add('has-stream-event');
+            }
+            // Yellow the matching channel tab
             for (const ch of config.channels) {
               const twName = typeof ch === 'string' ? ch : ch.twitch;
               const kickName = typeof ch !== 'string' ? ch.kick : null;
@@ -6128,8 +6133,8 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
         }
         if (!activityEvents.some(m => m.text === evt.text)) activityEvents.push(evt);
 
-        // Yellow tab highlight only for game changes, only when not viewing live
-        if (msg.eventType === 'stream:update' && currentTab !== 'live') {
+        // Yellow tab highlight only for game changes on the live channel, only when not viewing live
+        if (msg.eventType === 'stream:update' && currentTab !== 'live' && isLiveChannelMessage({ channel })) {
           const tab = tabBarElement?.querySelector('[data-tab="live"]');
           if (tab) tab.classList.add('has-stream-event');
         }

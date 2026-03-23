@@ -921,6 +921,21 @@ window.addEventListener('message', (e) => {
   }
 })
 
+// Listen for whispers intercepted from Twitch PubSub (MAIN world)
+window.addEventListener('message', (e) => {
+  if (e.origin !== location.origin) return
+  if (e.data?.type === 'heatsync-whisper') {
+    handleIncomingWhisper({
+      type: 'whisper',
+      user: e.data.user,
+      userId: e.data.userId,
+      text: e.data.text,
+      color: e.data.color,
+      time: e.data.time || Date.now()
+    })
+  }
+})
+
 // Send Helix API request through MAIN world (uses captured OAuth token)
 // URL can contain {me} which resolves to the logged-in user's ID
 function helixRequest(url, method, body) {

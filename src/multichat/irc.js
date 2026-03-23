@@ -33,7 +33,7 @@ function parseIrcLine(raw, channel) {
         color: sanitizeColor(tags.color || '#fff'),
         badges: tags.badges || '',
         channel: channel || privmsg[1].toLowerCase(),
-        time: parseInt(tags['tmi-sent-ts']) || Date.now(),
+        time: parseInt(tags['tmi-sent-ts']) || parseInt(tags['rm-received-ts']) || Date.now(),
         id: tags.id || '',
         replyTo: tags['reply-parent-display-name'] ? {
           user: decodeURIComponent(tags['reply-parent-display-name']),
@@ -57,7 +57,7 @@ function parseIrcLine(raw, channel) {
         color: sanitizeColor(tags.color || '#fff'),
         badges: tags.badges || '',
         channel: channel || usernotice[1].toLowerCase(),
-        time: parseInt(tags['tmi-sent-ts']) || Date.now(),
+        time: parseInt(tags['tmi-sent-ts']) || parseInt(tags['rm-received-ts']) || Date.now(),
         type: 'usernotice',
         msgId: tags['msg-id'] || '',
         id: tags.id || ''
@@ -75,7 +75,7 @@ function parseIrcLine(raw, channel) {
         color: '#999',
         badges: '',
         channel: channel || notice[1].toLowerCase(),
-        time: parseInt(tags['tmi-sent-ts']) || Date.now(),
+        time: parseInt(tags['tmi-sent-ts']) || parseInt(tags['rm-received-ts']) || Date.now(),
         id: tags.id || `notice-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
         systemMsg: notice[2]
       }
@@ -97,7 +97,7 @@ function parseIrcLine(raw, channel) {
         color: '#999',
         badges: '',
         channel: channel || clearchat[1].toLowerCase(),
-        time: parseInt(tags['tmi-sent-ts']) || Date.now(),
+        time: parseInt(tags['tmi-sent-ts']) || parseInt(tags['rm-received-ts']) || Date.now(),
         id: tags.id || `clearchat-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
         systemMsg: text
       }
@@ -115,7 +115,7 @@ function parseIrcLine(raw, channel) {
         color: '#999',
         badges: '',
         channel: channel || clearmsg[1].toLowerCase(),
-        time: parseInt(tags['tmi-sent-ts']) || Date.now(),
+        time: parseInt(tags['tmi-sent-ts']) || parseInt(tags['rm-received-ts']) || Date.now(),
         id: targetMsgId || `clearmsg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
         systemMsg: `Message from ${tags.login || 'unknown'} deleted`
       }
@@ -131,7 +131,7 @@ function parseIrcLine(raw, channel) {
         text: whisper[1],
         color: sanitizeColor(tags.color || '#fff'),
         badges: tags.badges || '',
-        time: parseInt(tags['tmi-sent-ts']) || Date.now(),
+        time: parseInt(tags['tmi-sent-ts']) || parseInt(tags['rm-received-ts']) || Date.now(),
         id: tags['message-id'] || ''
       }
     }

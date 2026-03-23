@@ -832,31 +832,24 @@ async function fetch7TVEmotes() {
 // Fetch Twitch native global emotes (Kappa, PogChamp, etc.)
 async function fetchTwitchGlobalEmotes() {
   try {
-    // Use Twitch's public API directly (no auth required for global emotes)
-    const response = await fetchWithTimeout('https://static-cdn.jtvnw.net/emoticons/v2/metadata');
+    const response = await fetchWithTimeout(`${API_URL}/api/emotes/twitch/global`);
     if (!response.ok) {
       log('⚠️ Twitch global emotes failed:', response.status);
       return [];
     }
 
     const data = await response.json();
-    log('✅ Loaded', data.emoteSets?.length || 0, 'Twitch emote sets');
-
-    // Twitch returns emote sets, flatten to individual emotes
-    const emotes = [];
-    for (const emoteSet of (data.emoteSets || [])) {
-      for (const emote of (emoteSet.emotes || [])) {
-        emotes.push({
-          name: emote.token,
-          url: `https://static-cdn.jtvnw.net/emoticons/v2/${emote.id}/default/dark/1.0`,
-          source: 'twitch',
-          hash: emote.id
-        });
-      }
-    }
+    const emotes = data.emotes.map(e => ({
+      name: e.name,
+      url: e.url,
+      url_2x: e.url_2x,
+      url_4x: e.url_4x,
+      source: 'twitch',
+      hash: e.id
+    }));
 
     const validated = sanitizeEmoteList(emotes)
-    log('✅ Loaded', validated.length, 'Twitch global emotes directly from Twitch');
+    log('✅ Loaded', validated.length, 'Twitch global emotes from server');
     return validated;
   } catch (error) {
     log('❌ Twitch global emotes error:', error);

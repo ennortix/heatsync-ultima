@@ -6054,9 +6054,28 @@ function handleIncomingDm(data) {
   whisperSaveDebounced()
 }
 
-// Send Twitch whisper via Helix API
-function sendTwitchWhisper(toUserId, message) {
-  return helixRequest(`https://api.twitch.tv/helix/whispers?from_user_id={me}&to_user_id=${toUserId}`, 'POST', { message })
+// Send Twitch whisper via GQL (Helix blocked by CORS from page context)
+async function sendTwitchWhisper(toUserId, message) {
+  const nonce = Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2)
+  try {
+    const data = await gqlProxy('SendWhisper', {
+      input: {
+        message,
+        nonce,
+        recipientUserID: toUserId
+      }
+    }, {
+      rawQuery: `mutation SendWhisper($input: SendWhisperInput!) {
+        sendWhisper(input: $input) {
+          message { id }
+        }
+      }`
+    })
+    if (data?.errors) return { ok: false, error: data.errors[0]?.message || 'gql error' }
+    return { ok: true }
+  } catch (e) {
+    return { ok: false, error: e.message }
+  }
 }
 
 async function sendWhisperMessage(key, text) {

@@ -309,15 +309,23 @@
           let url = req.url
           if (url.includes('{me}')) {
             if (!gql.userId) {
-              const meResp = await origFetch('https://api.twitch.tv/helix/users', {
-                headers: { 'Authorization': 'Bearer ' + gql.authToken, 'Client-Id': cid }
-              })
-              if (meResp.ok) {
-                const meData = await meResp.json()
-                gql.userId = meData.data?.[0]?.id
-                gql.userLogin = meData.data?.[0]?.login
-                if (gql.userId && gql.userLogin) channelIdToLogin[gql.userId] = gql.userLogin
-              }
+              // Use GQL (same-origin) instead of Helix (cross-origin, blocked by CORS)
+              try {
+                const gqlResp = await origFetch('https://gql.twitch.tv/gql', {
+                  method: 'POST',
+                  headers: buildGqlHeaders(),
+                  body: JSON.stringify({ query: '{ currentUser { id login } }' })
+                })
+                if (gqlResp.ok) {
+                  const gqlData = await gqlResp.json()
+                  const cu = gqlData?.data?.currentUser
+                  if (cu?.id) {
+                    gql.userId = cu.id
+                    gql.userLogin = cu.login
+                    if (cu.id && cu.login) channelIdToLogin[cu.id] = cu.login.toLowerCase()
+                  }
+                }
+              } catch {}
             }
             if (!gql.userId) {
               window.postMessage({ type: 'heatsync-helix-response', id: req.id, error: 'could not resolve user ID' }, location.origin)

@@ -591,6 +591,7 @@ async function fetchFFZChannelEmotes(channelName) {
 // Cache Twitch user IDs to avoid repeated decapi lookups (especially for polling)
 const twitchIdCache = new Map();
 const TWITCH_ID_CACHE_MAX = 200;
+const kickChannelIdCache = new Map();
 
 // Lookup Twitch user ID from username using decapi.me (free, no auth needed)
 async function lookupTwitchUserId(username) {
@@ -2567,6 +2568,59 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
       colors: cachedFollowColors
     });
     return true; // Required for Firefox — sendResponse ignored without this
+  } else if (message.type === 'kick_resolve_channel') {
+    // Resolve Kick channel slug → numeric channelId
+    (async () => {
+      try {
+        const slug = message.slug?.toLowerCase()
+        if (!slug) { sendResponse({ ok: false, error: 'no slug' }); return }
+        const cached = kickChannelIdCache.get(slug)
+        if (cached) { sendResponse({ channelId: cached }); return }
+        const resp = await fetchWithTimeout(`https://kick.com/api/v2/channels/${encodeURIComponent(slug)}`)
+        if (!resp.ok) { sendResponse({ ok: false, error: `kick api ${resp.status}` }); return }
+        const data = await resp.json()
+        const channelId = data?.id
+        if (!channelId) { sendResponse({ ok: false, error: 'no channel id' }); return }
+        // LRU cache (cap 100)
+        if (kickChannelIdCache.size >= 100) {
+          const oldest = kickChannelIdCache.keys().next().value
+          kickChannelIdCache.delete(oldest)
+        }
+        kickChannelIdCache.set(slug, channelId)
+        sendResponse({ channelId })
+      } catch (e) {
+        sendResponse({ ok: false, error: e.message })
+      }
+    })()
+    return true
+
+  } else if (message.type === 'kick_send_message') {
+    // Route Kick chat send through a kick.com tab (same-origin cookies)
+    (async () => {
+      try {
+        const { channelId, content } = message
+        if (!channelId || !content) { sendResponse({ ok: false, error: 'missing params' }); return }
+        // Get XSRF token from Kick cookies
+        const cookie = await browser.cookies.get({ url: 'https://kick.com', name: 'XSRF-TOKEN' })
+        if (!cookie?.value) { sendResponse({ ok: false, error: 'kick_not_logged_in' }); return }
+        // Find a kick.com tab to relay through
+        const tabs = await browser.tabs.query({ url: '*://*.kick.com/*' })
+        if (!tabs || tabs.length === 0) { sendResponse({ ok: false, error: 'no_kick_tab' }); return }
+        // Relay to first kick.com tab
+        const result = await browser.tabs.sendMessage(tabs[0].id, {
+          type: 'kick_send_relay',
+          channelId,
+          content,
+          xsrfToken: cookie.value
+        })
+        sendResponse(result || { ok: false, error: 'no response from tab' })
+      } catch (e) {
+        log('kick_send_message error:', e.message)
+        sendResponse({ ok: false, error: e.message })
+      }
+    })()
+    return true
+
   } else if (message.type === 'api_fetch') {
     // Generic API proxy — content scripts route through here to bypass CORS
     if (!message.path || !message.path.startsWith('/api/')) {

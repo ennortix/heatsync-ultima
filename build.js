@@ -89,6 +89,7 @@ const MULTICHAT_MODULES = [
   'bootstrap.js',
   'irc.js',
   'auth-irc.js',
+  'kick-send.js',
   'emotes.js',
   'tooltips.js',
   'twitch-api.js',

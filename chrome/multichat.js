@@ -2061,6 +2061,35 @@ async function sendIrcMessage(channel, text, token, replyParentId) {
 }
 
 
+// --- multichat/kick-send.js ---
+// Kick chat sending — routes through background.js → kick.com tab content script
+
+const kickChannelIdCache = new Map()
+
+async function resolveKickChannelId(slug) {
+  if (kickChannelIdCache.has(slug)) return kickChannelIdCache.get(slug)
+  const resp = await safeSendMessage({ type: 'kick_resolve_channel', slug })
+  if (resp?.channelId) {
+    kickChannelIdCache.set(slug, resp.channelId)
+    return resp.channelId
+  }
+  return null
+}
+
+async function sendKickMessage(kickSlug, text) {
+  const channelId = await resolveKickChannelId(kickSlug)
+  if (!channelId) return 'no_channel'
+  try {
+    const resp = await safeSendMessage({ type: 'kick_send_message', channelId, content: text })
+    if (resp?.ok) return true
+    return resp?.error || 'send_failed'
+  } catch (e) {
+    log('Kick send error:', e.message)
+    return 'send_failed'
+  }
+}
+
+
 // --- multichat/emotes.js ---
 // Emotes - cache, lookup, processing, picker, block/inventory
 
@@ -6256,6 +6285,10 @@ function renderWhispersTab() {
 // --- multichat/input.js ---
 // Input - chat input, autocomplete, send message, reply state
 
+// Echo dedup — suppress own message echoes from IRC/KickChat relay
+let _lastSentText = null
+let _lastSentTime = 0
+
 // Autocomplete state (Tab-only cycling, no dropdown)
 let acState = {
 matches: [],
@@ -7514,79 +7547,129 @@ async function sendMessage() {
     return;
   }
 
-  // Determine target channel
-  let targetChannel;
+  // Determine target channel + platform
+  let targetChannel
+  let ch = null
   if (currentTab === 'live') {
-    targetChannel = getLiveChannel();
+    targetChannel = getLiveChannel()
   } else if (currentTab === 'mentions') {
-    targetChannel = getCurrentChannel();
+    targetChannel = getCurrentChannel()
   } else if (currentTab === 'add') {
-    if (MC_DEBUG) console.warn('[HS] SEND BAIL: on add tab');
-    return;
+    if (MC_DEBUG) console.warn('[HS] SEND BAIL: on add tab')
+    return
   } else {
-    // Resolve twitch name from channel config (object or legacy string)
-    const ch = config.channels.find(c => (typeof c === 'string' ? c : c.id) === currentTab);
-    targetChannel = typeof ch === 'string' ? ch : ch?.twitch || currentTab;
+    ch = config.channels.find(c => (typeof c === 'string' ? c : c.id) === currentTab)
+    targetChannel = typeof ch === 'string' ? ch : ch?.twitch || ch?.kick || currentTab
   }
 
   if (!targetChannel) {
-    console.warn('[HS] SEND BAIL: no target channel, currentTab=' + currentTab);
-    return;
+    console.warn('[HS] SEND BAIL: no target channel, currentTab=' + currentTab)
+    return
   }
 
-  // Get auth token
-  const token = getTwitchAuthToken();
-  if (!token) {
-    console.warn('[HS] SEND BAIL: no auth token (cookie missing)');
-    if (wysiwygEnabled) {
-      input.dataset.placeholder = 'not logged in';
-    } else {
-      input.placeholder = 'not logged in';
-    }
-    setTimeout(() => updateInputPlaceholder(), 2000);
-    return;
-  }
+  // Resolve platform targets
+  const kickSlug = typeof ch !== 'string' ? ch?.kick : null
+  const twitchName = typeof ch === 'string' ? ch : ch?.twitch
+  const isLiveKick = currentTab === 'live' && hostPlatform === 'kick'
 
-  // Capture reply parent before clearing
+  const sendToKick = !!kickSlug || isLiveKick
+  const sendToTwitch = !!twitchName && !isLiveKick
+  const isDualSend = sendToKick && sendToTwitch
+
+  // Track for echo dedup
+  _lastSentText = text
+  _lastSentTime = Date.now()
+
   const replyParentId = replyState?.msgId || null
   clearReplyState()
 
-  // Send via IRC (fast async)
-  const wsState = authState.ws ? ['CONNECTING','OPEN','CLOSING','CLOSED'][authState.ws.readyState] : 'null';
-  log(`IRC SEND → #${targetChannel} ws=${wsState} ready=${authState.ready} queue=${authState.sendQueue.length}`);
+  // --- Kick send path (single or dual) ---
+  if (sendToKick) {
+    const slug = kickSlug || targetChannel
+    const kickPromise = sendKickMessage(slug, text)
+    const twitchPromise = sendToTwitch
+      ? sendIrcMessage(twitchName, text, getTwitchAuthToken(), replyParentId)
+      : Promise.resolve(null)
+
+    Promise.all([kickPromise, twitchPromise]).then(([kickResult, twitchResult]) => {
+      const kickOk = kickResult === true
+      const twitchOk = twitchResult === true || twitchResult === null
+
+      if (kickOk || twitchOk) {
+        // Optimistic display
+        const platform = isDualSend ? 'heatsync' : kickOk ? 'kick' : 'twitch'
+        const ownMsg = {
+          user: currentUsername || 'you',
+          text,
+          color: '#53fc18',
+          channel: slug,
+          time: Date.now(),
+          platform,
+          self: true
+        }
+        const buffer = kickChat?.channels?.get(slug) || irc?.channels?.get(twitchName)
+        if (buffer) buffer.push(ownMsg)
+        if (!appendMessage(ownMsg, currentTab)) renderMessages(currentTab)
+
+        // Clear input
+        if (wysiwygEnabled) input.textContent = ''
+        else input.value = ''
+        pendingMessage = ''
+        updateCharCount()
+        hideInputBar()
+
+        // Partial failure toast
+        if (isDualSend && !kickOk) showToast('sent to twitch only — ' + (kickResult || 'kick failed'))
+        else if (isDualSend && !twitchOk) showToast('sent to kick only — twitch failed')
+      } else {
+        // Both failed (or single Kick failed)
+        input.style.borderColor = '#f44'
+        const msg = kickResult === 'kick_not_logged_in' ? 'log in to kick.com first'
+          : kickResult === 'no_kick_tab' ? 'open kick.com in a tab'
+          : kickResult === 'no_channel' ? 'kick channel not found'
+          : 'send failed'
+        if (wysiwygEnabled) input.dataset.placeholder = msg
+        else input.placeholder = msg
+        setTimeout(() => { input.style.borderColor = ''; updateInputPlaceholder() }, 2500)
+      }
+    })
+    return
+  }
+
+  // --- Twitch-only send path (existing behavior) ---
+  const token = getTwitchAuthToken()
+  if (!token) {
+    console.warn('[HS] SEND BAIL: no auth token (cookie missing)')
+    if (wysiwygEnabled) input.dataset.placeholder = 'not logged in'
+    else input.placeholder = 'not logged in'
+    setTimeout(() => updateInputPlaceholder(), 2000)
+    return
+  }
+
+  const wsState = authState.ws ? ['CONNECTING','OPEN','CLOSING','CLOSED'][authState.ws.readyState] : 'null'
+  log(`IRC SEND → #${targetChannel} ws=${wsState} ready=${authState.ready} queue=${authState.sendQueue.length}`)
   sendIrcMessage(targetChannel, text, token, replyParentId).then(result => {
     if (result === true) {
-      // If ws wasn't OPEN when we sent, message was likely queued — show yellow indicator
       if (wsState !== 'OPEN') {
-        input.style.borderColor = '#ff0';
-        setTimeout(() => { input.style.borderColor = ''; }, 1500);
+        input.style.borderColor = '#ff0'
+        setTimeout(() => { input.style.borderColor = '' }, 1500)
       }
-      if (wysiwygEnabled) {
-        input.textContent = '';
-      } else {
-        input.value = '';
-      }
-      pendingMessage = '';
-      updateCharCount();
-      hideInputBar();
+      if (wysiwygEnabled) input.textContent = ''
+      else input.value = ''
+      pendingMessage = ''
+      updateCharCount()
+      hideInputBar()
     } else {
-      // Show specific error feedback
-      input.style.borderColor = '#f44';
+      input.style.borderColor = '#f44'
       const msg = result === 'no_user' ? 'no username detected'
         : result === 'auth_failed' ? 'auth failed — re-login to twitch'
         : result === 'connect_failed' ? 'connection failed — try again'
-        : 'send failed — try again';
-      if (wysiwygEnabled) {
-        input.dataset.placeholder = msg;
-      } else {
-        input.placeholder = msg;
-      }
-      setTimeout(() => {
-        input.style.borderColor = '';
-        updateInputPlaceholder();
-      }, 2500);
+        : 'send failed — try again'
+      if (wysiwygEnabled) input.dataset.placeholder = msg
+      else input.placeholder = msg
+      setTimeout(() => { input.style.borderColor = ''; updateInputPlaceholder() }, 2500)
     }
-  });
+  })
 }
 
 // === END MULTICHAT MODULES ===
@@ -13629,6 +13712,11 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
 
     // Handle incoming IRC messages
     irc.on('message', (msg) => {
+      // Suppress echo of own sent messages (dedup dual-send)
+      if (_lastSentText && msg.user?.toLowerCase() === currentUsername &&
+          msg.text === _lastSentText && Date.now() - _lastSentTime < 10000) {
+        return
+      }
       const isMent = isMention(msg)
       if (isMent) {
         mentionsBuffer.push(msg);
@@ -13666,6 +13754,11 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
 
     // Handle incoming Kick messages
     kickChat.on('message', (msg) => {
+      // Suppress echo of own sent messages (dedup dual-send)
+      if (_lastSentText && msg.user?.toLowerCase() === currentUsername &&
+          msg.text === _lastSentText && Date.now() - _lastSentTime < 10000) {
+        return
+      }
       const isMent = isMention(msg)
       if (isMent) {
         mentionsBuffer.push(msg);

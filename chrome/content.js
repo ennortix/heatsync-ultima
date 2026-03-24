@@ -1580,6 +1580,29 @@ chrome.runtime.onMessage.addListener((message) => {
   }
 });
 
+// Kick send relay — only active on kick.com tabs
+// Separate listener because it needs async sendResponse (return true)
+if (window.location.hostname.includes('kick.com')) {
+  chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    if (message.type !== 'kick_send_relay') return
+    fetch(`https://kick.com/api/v2/messages/send/${message.channelId}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-XSRF-TOKEN': decodeURIComponent(message.xsrfToken)
+      },
+      credentials: 'include',
+      body: JSON.stringify({ content: message.content, type: 'message' })
+    })
+    .then(r => {
+      if (r.ok) sendResponse({ ok: true })
+      else r.text().then(t => sendResponse({ ok: false, error: `${r.status}: ${t}` })).catch(() => sendResponse({ ok: false, error: `${r.status}` }))
+    })
+    .catch(e => sendResponse({ ok: false, error: e.message }))
+    return true // async sendResponse
+  })
+}
+
 // Debounce reprocessing so rapid emote updates only trigger one pass
 let reprocessDebounce = null;
 function debouncedProcessExistingMessages() {

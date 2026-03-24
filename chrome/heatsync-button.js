@@ -1767,13 +1767,9 @@
       });
     }
 
-    // Load all emotes
+    // Load all emotes — one background message for channel+global, one for inventory
     currentTab = 'channel';
-    await Promise.all([
-      loadChannelEmotes(channel),
-      loadGlobalEmotes(),
-      loadInventoryEmotes()
-    ]);
+    await loadAllEmotesFromBackground(channel);
     // Set emoji count
     if (typeof EMOJI_DATA !== 'undefined') {
       const countEl = document.getElementById('count-emoji')
@@ -2341,27 +2337,69 @@
     }
   }, { signal: btnSignal });
 
-  // Load user's inventory emotes
+  // Single background round-trip for channel + global + inventory emotes.
+  // Replaces the three individual load calls when opening the panel.
+  async function loadAllEmotesFromBackground(channel) {
+    // Show stale IndexedDB data instantly while waiting for background
+    const [staleChannel, staleGlobal] = await Promise.all([
+      channel ? getCachedEmotes(`channel:${channel}`) : Promise.resolve(null),
+      getCachedEmotes('global')
+    ]);
+    if (staleChannel) { channelEmotesCache = staleChannel; usingCachedData.channel = true; }
+    if (staleGlobal)  { globalEmotesCache  = staleGlobal;  usingCachedData.global  = true; }
+    if (staleChannel || staleGlobal) updateTabCounts();
+
+    isLoading.channel = true;
+    isLoading.global = true;
+    isLoading.inventory = true;
+
+    try {
+      const [pickerResp, invResp] = await Promise.all([
+        chrome.runtime.sendMessage({ type: 'get_picker_emotes', channel: channel || null, platform: detectPlatform() }),
+        chrome.runtime.sendMessage({ type: 'get_inventory' })
+      ]);
+
+      channelEmotesCache  = pickerResp?.channelEmotes  || [];
+      globalEmotesCache   = pickerResp?.globalEmotes   || [];
+      inventoryEmotesCache = invResp?.emotes           || [];
+
+      usingCachedData.channel = false;
+      usingCachedData.global  = false;
+      loadErrors.channel  = null;
+      loadErrors.global   = null;
+      loadErrors.inventory = null;
+      rebuildInventoryIndex();
+      updateTabCounts();
+
+      // Write fresh data back to IndexedDB for next cold open
+      if (channel && channelEmotesCache.length > 0) setCachedEmotes(`channel:${channel}`, channelEmotesCache);
+      if (globalEmotesCache.length  > 0) setCachedEmotes('global', globalEmotesCache);
+    } catch (err) {
+      log(' loadAllEmotesFromBackground error:', err.message);
+      // keep whatever stale data we have; show error only if nothing at all
+      if (!staleChannel) { channelEmotesCache = []; loadErrors.channel = 'failed to load channel emotes'; }
+      if (!staleGlobal)  { globalEmotesCache  = []; loadErrors.global  = 'failed to load global emotes'; }
+      inventoryEmotesCache = [];
+      rebuildInventoryIndex();
+      updateTabCounts();
+    } finally {
+      isLoading.channel   = false;
+      isLoading.global    = false;
+      isLoading.inventory = false;
+    }
+  }
+
+  // Load user's inventory emotes — delegates to background cache via get_picker_emotes
+  // (kept as separate function so retry handlers and addEmoteToInventorySilent can call it)
   async function loadInventoryEmotes() {
     isLoading.inventory = true;
     loadErrors.inventory = null;
-
     try {
-      const token = await getAuthToken();
-      if (!token) {
-        inventoryEmotesCache = [];
-        rebuildInventoryIndex()
-        loadErrors.inventory = null; // Not an error, just not logged in
-        updateTabCounts();
-        return;
-      }
-
-      const data = await HS.apiFetch('/api/user/emotes', { auth: true });
-      inventoryEmotesCache = data.emotes || [];
+      const resp = await chrome.runtime.sendMessage({ type: 'get_inventory' });
+      inventoryEmotesCache = resp?.emotes || [];
       rebuildInventoryIndex()
       loadErrors.inventory = null;
       updateTabCounts();
-
     } catch (err) {
       inventoryEmotesCache = [];
       rebuildInventoryIndex()
@@ -2372,7 +2410,8 @@
     }
   }
 
-  // Load channel emotes (7TV/BTTV/FFZ) - stale-while-revalidate
+  // Load channel emotes — reads from background's in-memory cache (no direct API fetch)
+  // Falls back to IndexedDB stale data while background loads, then updates once ready.
   async function loadChannelEmotes(channel) {
     if (!channel) {
       channelEmotesCache = [];
@@ -2386,79 +2425,71 @@
     loadErrors.channel = null;
     usingCachedData.channel = false;
 
-    // Show cached immediately if available
-    const cached = await getCachedEmotes(cacheKey);
-    if (cached) {
-      channelEmotesCache = cached;
+    // Show IndexedDB stale data immediately while background fetches
+    const stale = await getCachedEmotes(cacheKey);
+    if (stale) {
+      channelEmotesCache = stale;
       usingCachedData.channel = true;
-      log(' Loaded', channelEmotesCache.length, 'channel emotes (cached)');
+      log(' Loaded', channelEmotesCache.length, 'channel emotes (stale idb)');
       updateTabCounts();
-      // Don't render here - let openPanel() handle single render after all loads
     }
 
-    // Always fetch fresh in background
     try {
-      const data = await HS.apiFetch(`/api/channel/${channel}/emotes`);
-      const freshEmotes = data.emotes || [];
-
-      // Update if different (skip expensive JSON comparison, just update)
-      channelEmotesCache = freshEmotes;
-      log(' Updated', channelEmotesCache.length, 'channel emotes (fresh)');
-      updateTabCounts();
-
-      // Clear cached flag and error
+      const resp = await chrome.runtime.sendMessage({
+        type: 'get_picker_emotes',
+        channel,
+        platform: detectPlatform()
+      });
+      const fresh = resp?.channelEmotes || [];
+      channelEmotesCache = fresh;
       usingCachedData.channel = false;
       loadErrors.channel = null;
-
-      // Always update cache
-      setCachedEmotes(cacheKey, freshEmotes);
-
+      log(' Updated', channelEmotesCache.length, 'channel emotes (background cache)');
+      updateTabCounts();
+      // persist to IndexedDB so next open is instant
+      if (fresh.length > 0) setCachedEmotes(cacheKey, fresh);
     } catch (err) {
-      if (!cached) {
+      if (!stale) {
         channelEmotesCache = [];
         loadErrors.channel = 'failed to load channel emotes';
         updateTabCounts();
       }
-      // If we have cached data, keep using it but don't show error
     } finally {
       isLoading.channel = false;
     }
   }
 
-  // Load global emotes (BTTV/FFZ globals) - stale-while-revalidate
+  // Load global emotes — reads from background's in-memory cache (no direct API fetch)
   async function loadGlobalEmotes() {
     const cacheKey = 'global';
     isLoading.global = true;
     loadErrors.global = null;
     usingCachedData.global = false;
 
-    // Show cached immediately if available
-    const cached = await getCachedEmotes(cacheKey);
-    if (cached) {
-      globalEmotesCache = cached;
+    // Show IndexedDB stale data immediately
+    const stale = await getCachedEmotes(cacheKey);
+    if (stale) {
+      globalEmotesCache = stale;
       usingCachedData.global = true;
-      log(' Loaded', globalEmotesCache.length, 'global emotes (cached)');
+      log(' Loaded', globalEmotesCache.length, 'global emotes (stale idb)');
       updateTabCounts();
     }
 
-    // Always fetch fresh in background
     try {
-      const data = await HS.apiFetch('/api/emotes/global');
-      const freshEmotes = data.emotes || [];
-
-      globalEmotesCache = freshEmotes;
-      log(' Updated', globalEmotesCache.length, 'global emotes (fresh)');
-      updateTabCounts();
-
-      // Clear cached flag and error
+      const resp = await chrome.runtime.sendMessage({
+        type: 'get_picker_emotes',
+        channel: null,
+        platform: detectPlatform()
+      });
+      const fresh = resp?.globalEmotes || [];
+      globalEmotesCache = fresh;
       usingCachedData.global = false;
       loadErrors.global = null;
-
-      // Always update cache
-      setCachedEmotes(cacheKey, freshEmotes);
-
+      log(' Updated', globalEmotesCache.length, 'global emotes (background cache)');
+      updateTabCounts();
+      if (fresh.length > 0) setCachedEmotes(cacheKey, fresh);
     } catch (err) {
-      if (!cached) {
+      if (!stale) {
         globalEmotesCache = [];
         loadErrors.global = 'failed to load global emotes';
         updateTabCounts();
@@ -2664,11 +2695,7 @@
 
     try {
       // Load all emote sources in parallel (uses IndexedDB cache)
-      await Promise.all([
-        loadChannelEmotes(channel),
-        loadGlobalEmotes(),
-        loadInventoryEmotes()
-      ]);
+      await loadAllEmotesFromBackground(channel);
 
       const totalEmotes = channelEmotesCache.length + globalEmotesCache.length + inventoryEmotesCache.length;
       log(' ✅ Preloaded', totalEmotes, 'emotes metadata');

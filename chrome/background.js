@@ -2534,6 +2534,38 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
       }
     }
     sendResponse({ count: totalEmotes });
+  } else if (message.type === 'get_picker_emotes') {
+    // heatsync-button emote picker requests all emote data from background cache
+    // avoids duplicate API fetches — background already has everything loaded
+    ;(async () => {
+      if (initPromise) await initPromise
+      const channel = message.channel?.toLowerCase()
+      let chEmotes = channel && Array.isArray(channelEmotesMap[channel]) ? channelEmotesMap[channel] : null
+      // if channel emotes not yet cached, trigger fetch and wait (up to 8s)
+      if (channel && !chEmotes && channelEmotesMap[channel] !== 'loading') {
+        fetchChannelOwnerEmotes(channel, null, message.platform || 'twitch')
+      }
+      if (channel && !chEmotes) {
+        // wait for the sentinel to resolve (loading → array)
+        const deadline = Date.now() + 8000
+        await new Promise(resolve => {
+          const poll = setInterval(() => {
+            if (Array.isArray(channelEmotesMap[channel]) || Date.now() > deadline) {
+              clearInterval(poll)
+              resolve()
+            }
+          }, 100)
+        })
+        chEmotes = Array.isArray(channelEmotesMap[channel]) ? channelEmotesMap[channel] : []
+      }
+      sendResponse({
+        channelEmotes: chEmotes || [],
+        globalEmotes: globalEmotes,
+        inventoryEmotes: emoteInventory,
+        blocked: Array.from(blockedEmotes)
+      })
+    })()
+    return true
   } else if (message.type === 'refresh_all') {
     // Refresh all emotes (called from popup)
     (async () => {

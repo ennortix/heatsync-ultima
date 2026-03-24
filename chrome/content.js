@@ -1364,7 +1364,8 @@ if (window.location.hostname.includes('twitch.tv')) {
 loadInventory();
 
 // Listen for updates from background script
-chrome.runtime.onMessage.addListener((message) => {
+// Named function + remove-before-add prevents listener stacking on extension reload
+function _onMessageMain(message) {
   // Validate message
   if (!message || typeof message !== 'object' || !message.type) {
     warn(' Invalid message received:', message);
@@ -1578,29 +1579,33 @@ chrome.runtime.onMessage.addListener((message) => {
   } catch (err) {
     console.error('[heatsync] onMessage handler error:', err)
   }
-});
+}
+chrome.runtime.onMessage.removeListener(_onMessageMain)
+chrome.runtime.onMessage.addListener(_onMessageMain)
 
 // Kick send relay — only active on kick.com tabs
 // Separate listener because it needs async sendResponse (return true)
-if (window.location.hostname.includes('kick.com')) {
-  chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-    if (message.type !== 'kick_send_relay') return
-    fetch(`https://kick.com/api/v2/messages/send/${message.channelId}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-XSRF-TOKEN': decodeURIComponent(message.xsrfToken)
-      },
-      credentials: 'include',
-      body: JSON.stringify({ content: message.content, type: 'message' })
-    })
-    .then(r => {
-      if (r.ok) sendResponse({ ok: true })
-      else r.text().then(t => sendResponse({ ok: false, error: `${r.status}: ${t}` })).catch(() => sendResponse({ ok: false, error: `${r.status}` }))
-    })
-    .catch(e => sendResponse({ ok: false, error: e.message }))
-    return true // async sendResponse
+function _onMessageKickRelay(message, sender, sendResponse) {
+  if (message.type !== 'kick_send_relay') return
+  fetch(`https://kick.com/api/v2/messages/send/${message.channelId}`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-XSRF-TOKEN': decodeURIComponent(message.xsrfToken)
+    },
+    credentials: 'include',
+    body: JSON.stringify({ content: message.content, type: 'message' })
   })
+  .then(r => {
+    if (r.ok) sendResponse({ ok: true })
+    else r.text().then(t => sendResponse({ ok: false, error: `${r.status}: ${t}` })).catch(() => sendResponse({ ok: false, error: `${r.status}` }))
+  })
+  .catch(e => sendResponse({ ok: false, error: e.message }))
+  return true // async sendResponse
+}
+if (window.location.hostname.includes('kick.com')) {
+  chrome.runtime.onMessage.removeListener(_onMessageKickRelay)
+  chrome.runtime.onMessage.addListener(_onMessageKickRelay)
 }
 
 // Debounce reprocessing so rapid emote updates only trigger one pass
@@ -2987,9 +2992,11 @@ function stackAdjacentOverlayEmotes(messageElement, allEmotes) {
       imgs.forEach(img => {
         if (!img.complete) {
           img.onload = () => {
+            if (!stackContainer.isConnected) return
             // Double rAF ensures paint is complete before re-centering
             requestAnimationFrame(() => {
               requestAnimationFrame(() => {
+                if (!stackContainer.isConnected) return
                 const overlays = stackContainer.querySelectorAll('.heatsync-overlay');
                 overlays.forEach(overlay => {
                   overlay.style.transform = 'none';
@@ -3302,8 +3309,10 @@ function replaceEmotesWithStacking(element, allEmotes) {
     imgs.forEach(img => {
       if (!img.complete) {
         img.onload = () => {
+          if (!stackContainer.isConnected) return
           requestAnimationFrame(() => {
             requestAnimationFrame(() => {
+              if (!stackContainer.isConnected) return
               const overlays = stackContainer.querySelectorAll('.heatsync-overlay');
               overlays.forEach(overlay => {
                 overlay.style.transform = 'none';
@@ -3866,12 +3875,16 @@ function updateEmoteState(hash, emoteName, state) {
       previewEl.style.transform = 'none';
     }
     if (previewImg) {
-      previewImg.onload = repositionPreview;
+      previewImg.onload = () => {
+        if (!previewEl.isConnected) return
+        repositionPreview()
+      }
       // Try hi-res upgrade — swap in silently if it loads
       const e0 = emotesToShow[0];
       if (e0.hiRes && e0.hiRes !== e0.src) {
         const probe = new Image();
         probe.onload = () => {
+          if (!previewEl.isConnected) return
           previewEl.querySelectorAll('img').forEach((img, i) => {
             const hi = emotesToShow[i]?.hiRes;
             if (hi) { img.src = hi; repositionPreview(); }

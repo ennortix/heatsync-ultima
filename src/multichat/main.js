@@ -1215,6 +1215,17 @@
           </div>`).join('')}
         </div>
         <div class="hs-mc-settings-group">
+          <div class="hs-mc-settings-group-title">muted users</div>
+          ${mutedUsers.size === 0
+            ? `<div class="hs-mc-setting-row" style="color:#666;font-size:11px">no muted users</div>`
+            : [...mutedUsers].sort().map(u => `
+          <div class="hs-mc-setting-row">
+            <span class="hs-mc-setting-label" style="font-size:11px">${u}</span>
+            <button class="hs-mc-unmute-btn" data-username="${u}" style="background:none;border:1px solid #444;color:#999;font-size:11px;cursor:pointer;padding:1px 6px;line-height:1.4" title="unmute">&#x2715;</button>
+          </div>`).join('')
+          }
+        </div>
+        <div class="hs-mc-settings-group">
           <div class="hs-mc-setting-row" style="justify-content:flex-end">
             <button class="hs-mc-defaults-btn" style="background:#c0c0c0;border:2px outset #fff;padding:2px 10px;font-size:11px;font-weight:bold;cursor:pointer;font-family:'Liberation Mono',monospace;color:#000;box-shadow:1px 1px 0 #000">default</button>
           </div>
@@ -1270,6 +1281,18 @@
         if (size) {
           setEmoteSize(size);
           msgsEl.querySelectorAll('.hs-mc-size-btn').forEach(b => b.classList.toggle('active', parseInt(b.dataset.size) === size));
+        }
+        return;
+      }
+
+      const unmuteBtn = e.target.closest('.hs-mc-unmute-btn[data-username]');
+      if (unmuteBtn) {
+        const username = unmuteBtn.dataset.username;
+        if (username) {
+          mutedUsers.delete(username);
+          try { chrome.storage.local.set({ heatsync_mc_muted: [...mutedUsers] }); } catch {}
+          applyMcMutes();
+          renderSettingsTab();
         }
         return;
       }

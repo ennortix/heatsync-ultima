@@ -1,14 +1,21 @@
 // Social - feed, notifications, activity, heatsync API
 
-// Heat tier display — emoji + color based on heat score
+// Heat tier display — number + color glow, no emoji
 function getHeatDisplay(heat) {
   if (!heat || heat <= 0) return null
-  if (heat >= 5000) return { emoji: '💀', color: '#fff', glow: true }
-  if (heat >= 1000) return { emoji: '🌋', color: '#fff' }
-  if (heat >= 250)  return { emoji: '🌶️', color: '#fff' }
-  if (heat >= 50)   return { emoji: '🌡️', color: '#ff8700' }
-  if (heat >= 10)   return { emoji: '⚡', color: '#ff8700' }
-  return { emoji: '', color: '#808080' }
+  let color
+  let glow = false
+  if (heat >= 500) { color = '#fff'; glow = true }
+  else if (heat >= 250) color = '#ff0000'
+  else if (heat >= 100) color = '#ff2200'
+  else if (heat >= 50)  color = '#ff4400'
+  else if (heat >= 25)  color = '#ff6600'
+  else if (heat >= 10)  color = '#ff8700'
+  else if (heat >= 5)   color = '#888'
+  else if (heat >= 1)   color = '#666'
+  else                  color = '#444'
+  const suffix = heat >= 10 ? '°' : ''
+  return { color, glow, suffix }
 }
 
 // Feed & notifications state
@@ -361,7 +368,7 @@ function buildFeedMessageDiv(m, opUsername) {
   // All dynamic values sanitized: avatarUrl via encodeURIComponent,
   // username/time via escapeHtml, color via sanitizeColor, content via renderFeedContent
   const hd = getHeatDisplay(heat)
-  const heatSpan = hd ? `<span class="hs-feed-stat hs-feed-heat" style="font-weight:700;color:${hd.color}${hd.glow ? ';text-shadow:0 0 6px rgba(255,135,0,0.8)' : ''}">${hd.emoji}${heat}</span>` : ''
+  const heatSpan = hd ? `<span class="hs-feed-stat hs-feed-heat" style="font-weight:700;color:${hd.color}${hd.glow ? ';text-shadow:0 0 8px #ff8700,0 0 16px rgba(255,135,0,0.6)' : ''}">${heat}${hd.suffix}</span>` : ''
   const repliesSpan = replies > 0 ? `<span class="hs-feed-stat hs-feed-replies" title="replies">💬${replies}</span>` : '';
   const stats = [heatSpan, repliesSpan].filter(Boolean).join(' ')
   const statsHtml = stats ? ` ${stats}` : ''

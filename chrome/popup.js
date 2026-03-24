@@ -121,5 +121,19 @@
   document.addEventListener('DOMContentLoaded', () => {
     init().catch(e => console.error('popup init failed:', e))
     initPopout()
+
+    // Re-run init when auth token lands in storage (user logged in while popup was open)
+    chrome.storage.onChanged.addListener((changes, area) => {
+      if (area !== 'local') return
+      const authKeys = ['auth_token', 'auth_token_encrypted', 'user_info']
+      const relevant = authKeys.some(k => k in changes)
+      if (!relevant) return
+      // Only re-init when transitioning to/from logged-in state
+      const wasAuthed = authKeys.slice(0, 2).some(k => changes[k]?.oldValue)
+      const nowAuthed = authKeys.slice(0, 2).some(k => changes[k]?.newValue)
+      if (wasAuthed !== nowAuthed || (nowAuthed && 'user_info' in changes)) {
+        init().catch(e => console.error('popup re-init failed:', e))
+      }
+    })
   })
 })()

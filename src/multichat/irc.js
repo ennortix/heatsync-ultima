@@ -185,6 +185,7 @@ class IRC {
     this._heartbeatTimer = null;
     this._reconnectTimer = null;
     this._reconnectAttempts = 0;
+    this._ac = new AbortController();
     // Reconnect when tab becomes visible after silence
     document.addEventListener('visibilitychange', () => {
       if (this._destroyed) return;
@@ -199,7 +200,7 @@ class IRC {
           }
         }
       }
-    });
+    }, { signal: this._ac.signal });
   }
 
   connect() {
@@ -248,6 +249,7 @@ class IRC {
 
   destroy() {
     this._destroyed = true;
+    this._ac?.abort();
     this._stopHeartbeat();
     clearTimeout(this._reconnectTimer);
     if (this.ws) {

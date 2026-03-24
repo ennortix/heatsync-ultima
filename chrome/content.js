@@ -849,7 +849,8 @@ style.textContent = `
 
   /* Muted users — grey username, content stripped by JS */
   .hs-user-muted .chat-author__display-name,
-  .hs-user-muted [data-a-target="chat-message-username"] {
+  .hs-user-muted [data-a-target="chat-message-username"],
+  .hs-user-muted button.inline.font-bold {
     color: #808080 !important;
     background: none !important;
     -webkit-background-clip: unset !important;
@@ -1591,7 +1592,7 @@ let lastEmoteCount = 0;
 
 // Collect chatters from a message without full processing (for two-pass approach)
 function collectChatterFromMessage(messageElement) {
-  const usernameElement = messageElement.querySelector('.chat-author__display-name, [data-a-target="chat-message-username"]');
+  const usernameElement = messageElement.querySelector('.chat-author__display-name, [data-a-target="chat-message-username"], button.inline.font-bold');
   if (!usernameElement) return;
 
   const username = usernameElement.textContent?.trim().toLowerCase();
@@ -1701,10 +1702,10 @@ function serializeMessage(el) {
   const id = el.getAttribute('data-msg-id') || ''
   const user = getUsername(el)
   if (!user) return null
-  const textEl = el.querySelector('[data-a-target="chat-message-text"], .text-fragment')
+  const textEl = el.querySelector('[data-a-target="chat-message-text"], .text-fragment, span.font-normal')
   const text = textEl?.textContent?.trim() || ''
   if (!text) return null
-  const nameEl = el.querySelector('.chat-author__display-name')
+  const nameEl = el.querySelector('.chat-author__display-name, button.inline.font-bold')
   const color = nameEl?.style?.color || '#ffffff'
   return { id, user, text, color, ts: Date.now() }
 }
@@ -1727,7 +1728,7 @@ function captureMessageToCache(el) {
 
 function scheduleMsgCacheSave() {
   if (msgCacheSaveTimer) return
-  msgCacheSaveTimer = setTimeout(() => {
+  msgCacheSaveTimer = cleanup.setTimeout(() => {
     msgCacheSaveTimer = null
     saveMsgCache()
   }, 5000) // 5s debounce
@@ -2242,6 +2243,37 @@ function getCurrentUsername() {
     // Cookie access might fail
   }
 
+  // Kick methods
+  if (window.location.hostname.includes('kick.com')) {
+    // Method K1: Kick stores session info accessible via profile link
+    const kickProfileLink = document.querySelector('a[href^="/profile"]');
+    if (kickProfileLink) {
+      const href = kickProfileLink.getAttribute('href');
+      const match = href?.match(/\/profile\/([^/?]+)/);
+      if (match?.[1]) {
+        log(' ✅ Found Kick username from profile link:', match[1]);
+        cachedUsername = match[1].toLowerCase();
+        return cachedUsername;
+      }
+    }
+    // Method K2: Kick sidebar username element
+    const kickUserEl = document.querySelector('.sidebar-username, [class*="username"]');
+    if (kickUserEl?.textContent?.trim()) {
+      const name = kickUserEl.textContent.trim();
+      if (name.length > 0 && name.length < 30 && /^[a-zA-Z0-9_]+$/.test(name)) {
+        log(' ✅ Found Kick username from sidebar:', name);
+        cachedUsername = name.toLowerCase();
+        return cachedUsername;
+      }
+    }
+    // Method K3: Kick chat identity from own messages
+    const ownMsg = document.querySelector('#chatroom-messages [data-chat-entry] button.inline.font-bold');
+    if (ownMsg?.textContent?.trim()) {
+      // Can't reliably determine which message is ours without more context
+      // but we can check localStorage for Kick session
+    }
+  }
+
   // Schedule retry if we haven't found it yet and attempts < MAX
   if (usernameDetectionAttempts < MAX_USERNAME_ATTEMPTS && !usernameDetectionRetryTimer) {
     usernameDetectionRetryTimer = cleanup.setTimeout(() => {
@@ -2274,7 +2306,7 @@ function highlightUserMentions(messageElement) {
   }
 
   // CRITICAL: Skip messages sent BY the current user (don't highlight your own messages)
-  const authorElement = messageElement.querySelector('.chat-author__display-name, [data-a-target="chat-message-username"]');
+  const authorElement = messageElement.querySelector('.chat-author__display-name, [data-a-target="chat-message-username"], button.inline.font-bold');
   const messageAuthor = authorElement?.textContent?.toLowerCase()?.trim();
   if (messageAuthor === currentUser) {
     return; // Don't highlight your own messages
@@ -2282,7 +2314,7 @@ function highlightUserMentions(messageElement) {
 
   let shouldHighlight = false;
 
-  // Check explicit @mention elements
+  // Check explicit @mention elements (Twitch has .mention-fragment, Kick uses inline text)
   const mentions = messageElement.querySelectorAll('.mention-fragment, [class*="mention"], [data-a-target="chat-message-mention"]');
 
   // Check each mention to see if it matches current user
@@ -2297,7 +2329,7 @@ function highlightUserMentions(messageElement) {
   // Also check if username appears as standalone word in message BODY (not author)
   if (!shouldHighlight) {
     // Get just the message text, not the author name
-    const textFragments = messageElement.querySelectorAll('.text-fragment, [data-a-target="chat-message-text"]');
+    const textFragments = messageElement.querySelectorAll('.text-fragment, [data-a-target="chat-message-text"], span.font-normal');
     for (const frag of textFragments) {
       const fragText = frag.textContent.toLowerCase();
       if (_mentionRegex && _mentionRegex.test(fragText)) {
@@ -2311,13 +2343,13 @@ function highlightUserMentions(messageElement) {
     // FFZ-style: Just add a CSS class - let the stylesheet handle it
     log(' 🔴 FOUND MENTION OF YOU! Adding .hs-mentioned class');
 
-    // Find the parent .chat-line__message element
+    // Find the parent message element (Twitch: .chat-line__message, Kick: [data-index])
     let parent = messageElement;
-    while (parent && !parent.classList.contains('chat-line__message')) {
+    while (parent && !parent.classList.contains('chat-line__message') && !parent.hasAttribute('data-index')) {
       parent = parent.parentElement;
     }
 
-    const targetElement = parent && parent.classList.contains('chat-line__message') ? parent : messageElement;
+    const targetElement = (parent && (parent.classList.contains('chat-line__message') || parent.hasAttribute('data-index'))) ? parent : messageElement;
 
     // Add the class (CSS handles the rest with high specificity)
     targetElement.classList.add('hs-mentioned');
@@ -2330,7 +2362,7 @@ function highlightUserMentions(messageElement) {
 // Uses inline span injection - called repeatedly by MutationObserver
 function colorUsernameMentions(messageElement) {
   // Find all text fragments in the message
-  const textFragments = messageElement.querySelectorAll('.text-fragment, [data-a-target="chat-message-text"]');
+  const textFragments = messageElement.querySelectorAll('.text-fragment, [data-a-target="chat-message-text"], span.font-normal');
 
   for (const fragment of textFragments) {
     // Skip if already has our colored spans (check for our marker class)
@@ -2523,10 +2555,10 @@ function setupUsernameColoringObserver() {
     for (const mutation of mutations) {
       for (const node of mutation.addedNodes) {
         if (node.nodeType !== 1) continue
-        if (node.classList?.contains('chat-line__message')) {
+        if (node.classList?.contains('chat-line__message') || node.hasAttribute?.('data-index')) {
           if (!node.dataset.heatsyncUsernamesColored) newMessages.push(node)
         } else if (node.querySelectorAll) {
-          for (const msg of node.querySelectorAll('.chat-line__message:not([data-heatsync-usernames-colored])')) {
+          for (const msg of node.querySelectorAll('.chat-line__message:not([data-heatsync-usernames-colored]), [data-index]:not([data-heatsync-usernames-colored])')) {
             newMessages.push(msg)
           }
         }
@@ -2598,8 +2630,12 @@ function processMessage(messageElement) {
       knownChatters.set(lowerUser, color)
       // LRU eviction — keep map bounded for long sessions
       if (knownChatters.size > 500) {
-        const keys = [...knownChatters.keys()].slice(0, 200)
-        for (const k of keys) knownChatters.delete(k)
+        let evicted = 0
+        for (const k of knownChatters.keys()) {
+          if (evicted >= 200) break
+          knownChatters.delete(k)
+          evicted++
+        }
       }
     }
   }
@@ -2748,7 +2784,7 @@ function stackAdjacentOverlayEmotes(messageElement, allEmotes) {
   // Use comprehensive selectors for different Twitch DOM versions
   const heatsyncEmotes = messageElement.querySelectorAll('.heatsync-emote-wrapper');
 
-  // Comprehensive native emote selectors (Twitch changes DOM frequently)
+  // Comprehensive native emote selectors (Twitch + Kick)
   const nativeEmoteSelectors = [
     'img.chat-line__message--emote',           // Classic Twitch
     'img[data-a-target="emote-name"]',         // Data attribute variant
@@ -2758,6 +2794,8 @@ function stackAdjacentOverlayEmotes(messageElement, allEmotes) {
     '[class*="emote"] img',                     // Any class containing "emote"
     'img[alt][src*="static-cdn.jtvnw.net"]',   // Twitch CDN emotes by URL
     'img[alt][src*="emoticons"]',              // Emoticons URL pattern
+    'img[alt][src*="files.kick.com"]',         // Kick CDN emotes
+    'img[alt][src*="kick-emote"]',             // Kick emote variant
   ].join(', ');
 
   const nativeEmotes = messageElement.querySelectorAll(nativeEmoteSelectors);
@@ -4575,14 +4613,14 @@ function setupMessageContextMenu() {
 
 // Hide all messages from a blocked user
 function hideBlockedUser(username) {
-  document.querySelectorAll('.chat-line__message').forEach(msg => {
+  document.querySelectorAll('.chat-line__message, #chatroom-messages [data-index]').forEach(msg => {
     if (getUsername(msg) === username) msg.style.display = 'none';
   });
 }
 
 // Unhide all messages from an unblocked user
 function unhideBlockedUser(username) {
-  document.querySelectorAll('.chat-line__message').forEach(msg => {
+  document.querySelectorAll('.chat-line__message, #chatroom-messages [data-index]').forEach(msg => {
     if (getUsername(msg) === username) msg.style.display = '';
   });
 }
@@ -5383,6 +5421,10 @@ function interceptMessageSending() {
     return;
   }
   interceptRetryCount = 0;
+
+  // Prevent stacking listeners on SPA re-navigation
+  if (chatInput._hsInterceptBound) return;
+  chatInput._hsInterceptBound = true;
 
   log(' 📝 Found chat input:', chatInput.tagName, chatInput.className);
 

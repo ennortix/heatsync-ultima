@@ -990,8 +990,9 @@
 
   function loadSettings() {
     // Try chrome.storage first (async), fallback to localStorage
-    if (typeof chrome !== 'undefined' && chrome.storage?.local) {
-      chrome.storage.local.get('ui_settings', (result) => {
+    const api = (typeof browser !== 'undefined' && browser) || (typeof chrome !== 'undefined' && chrome)
+    if (api?.storage?.local) {
+      Promise.resolve(api.storage.local.get('ui_settings')).then((result) => {
         if (result?.ui_settings) {
           const wasEnabled = enabled
           enabled = !!result.ui_settings.viMode
@@ -999,7 +1000,7 @@
           else if (!enabled && wasEnabled) onDisable()
           log('Settings loaded from storage, viMode:', enabled)
         }
-      })
+      }).catch(() => {})
     }
     // Also check localStorage (sync fallback)
     try {
@@ -1033,9 +1034,10 @@
     }
   })
 
-  // Listen for chrome.storage changes
-  if (typeof chrome !== 'undefined' && chrome.storage?.onChanged) {
-    chrome.storage.onChanged.addListener((changes, area) => {
+  // Listen for storage changes (Firefox + Chrome compatible)
+  const viApi = (typeof browser !== 'undefined' && browser) || (typeof chrome !== 'undefined' && chrome)
+  if (viApi?.storage?.onChanged) {
+    viApi.storage.onChanged.addListener((changes, area) => {
       if (area === 'local' && changes.ui_settings?.newValue) {
         const wasEnabled = enabled
         enabled = !!changes.ui_settings.newValue.viMode

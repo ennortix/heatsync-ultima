@@ -149,8 +149,7 @@
       }
 
       // Always push to activityEvents regardless of age
-      const isDupeActivity = activityEvents.some(m => m.text === evt.text)
-      if (!isDupeActivity) activityEvents.push(evt)
+      pushActivityEvent(evt)
     }
     return added
   }
@@ -871,11 +870,12 @@
     msg.inlineNotifBorderColor = typeDef.borderColor
     msg.inlineNotifLabel = typeDef.label
 
-    // Persist into ALL channel IRC buffers so notification appears on every tab
+    // Persist into ALL channel buffers (IRC + Kick) so notification appears on every tab
     for (const ch of config.channels) {
       const twitchName = typeof ch === 'string' ? ch : ch?.twitch
-      if (!twitchName) continue
-      const buffer = irc?.channels?.get(twitchName)
+      const kickName = typeof ch === 'string' ? null : ch?.kick
+      const buffer = (twitchName && irc?.channels?.get(twitchName)) ||
+                     (kickName && kickChat?.channels?.get(kickName))
       if (buffer) buffer.push(msg)
     }
 
@@ -1307,19 +1307,24 @@
       tip.id = 'hs-settings-tip';
       document.body.appendChild(tip);
     }
-    msgsEl.addEventListener('mouseenter', (e) => {
-      const label = e.target.closest('.hs-mc-setting-label[data-tip]');
-      if (!label) return;
-      tip.textContent = label.dataset.tip;
-      const rect = label.getBoundingClientRect();
-      tip.style.left = rect.left + 'px';
-      tip.style.top = (rect.bottom + 4) + 'px';
-      tip.classList.add('visible');
-    }, true);
-    msgsEl.addEventListener('mouseleave', (e) => {
-      const label = e.target.closest('.hs-mc-setting-label[data-tip]');
-      if (label) tip.classList.remove('visible');
-    }, true);
+    if (!msgsEl._hsSettingsTipBound) {
+      msgsEl._hsSettingsTipBound = true;
+      msgsEl.addEventListener('mouseenter', (e) => {
+        const label = e.target.closest('.hs-mc-setting-label[data-tip]');
+        if (!label) return;
+        const t = document.getElementById('hs-settings-tip');
+        if (!t) return;
+        t.textContent = label.dataset.tip;
+        const rect = label.getBoundingClientRect();
+        t.style.left = rect.left + 'px';
+        t.style.top = (rect.bottom + 4) + 'px';
+        t.classList.add('visible');
+      }, true);
+      msgsEl.addEventListener('mouseleave', (e) => {
+        const label = e.target.closest('.hs-mc-setting-label[data-tip]');
+        if (label) { const t = document.getElementById('hs-settings-tip'); if (t) t.classList.remove('visible'); }
+      }, true);
+    }
   }
 
 
@@ -2660,7 +2665,12 @@
         max-height: calc(min(400px, 60vh) - 42px) !important;
         overflow-y: auto !important;
       }
-      /* Custom scrollbar */
+      /* Custom scrollbar — Chrome + Firefox */
+      .hs-mc-tab-content,
+      .hs-mc-picker-scroll {
+        scrollbar-width: thin;
+        scrollbar-color: rgba(255,255,255,0.12) transparent;
+      }
       .hs-mc-tab-content::-webkit-scrollbar,
       .hs-mc-picker-scroll::-webkit-scrollbar {
         width: 4px;
@@ -5493,6 +5503,26 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
       }
     } catch (e) {}
 
+    // Kick methods
+    if (hostPlatform === 'kick') {
+      // Method K1: Kick profile link in sidebar/nav
+      try {
+        const profileLink = document.querySelector('a[href^="/profile"]');
+        if (profileLink) {
+          const match = profileLink.getAttribute('href')?.match(/\/profile\/([^/?]+)/);
+          if (match?.[1]) return match[1].toLowerCase();
+        }
+      } catch (e) {}
+      // Method K2: Kick sidebar username
+      try {
+        const userEl = document.querySelector('.sidebar-username, nav [class*="username"]');
+        if (userEl?.textContent?.trim()) {
+          const name = userEl.textContent.trim();
+          if (name.length > 0 && name.length < 30 && /^[a-zA-Z0-9_]+$/.test(name)) return name.toLowerCase();
+        }
+      } catch (e) {}
+    }
+
     return null;
   }
 
@@ -5500,12 +5530,18 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
     return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
   }
 
+  let _mentionRe = null
+  let _mentionReUser = null
   function isMention(msg) {
     if (!currentUsername) return false
     if (msg.user && msg.user.toLowerCase() === currentUsername) return false
     const text = msg.text.toLowerCase()
-    return text.includes('@' + currentUsername) ||
-           new RegExp(`\\b${escapeRegex(currentUsername)}\\b`, 'i').test(text)
+    if (text.includes('@' + currentUsername)) return true
+    if (_mentionReUser !== currentUsername) {
+      _mentionRe = new RegExp(`\\b${escapeRegex(currentUsername)}\\b`, 'i')
+      _mentionReUser = currentUsername
+    }
+    return _mentionRe.test(text)
   }
 
   // Browser notifications (gated by hs_notifications setting)
@@ -5572,19 +5608,20 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
       return;
     }
 
-    const messages = document.querySelectorAll('[data-a-target="chat-line-message"]');
+    // Twitch + Kick message selectors
+    const messages = document.querySelectorAll('[data-a-target="chat-line-message"], #chatroom-messages [data-index]');
     log('Scanning', messages.length, 'existing messages for mentions of', currentUsername);
 
     let found = 0;
     const escaped = escapeRegex(currentUsername)
+    const mentionRe = new RegExp(`\\b${escaped}\\b`, 'i')
     messages.forEach(msgEl => {
       // Only check message text, not the full element (which includes sender name)
-      const messageEl = msgEl.querySelector('[data-a-target="chat-message-text"]');
+      const messageEl = msgEl.querySelector('[data-a-target="chat-message-text"], span.font-normal');
       const text = messageEl?.textContent || '';
       const textLower = text.toLowerCase();
-      if (textLower.includes('@' + currentUsername) ||
-          new RegExp(`\\b${escaped}\\b`, 'i').test(textLower)) {
-        const usernameEl = msgEl.querySelector('[data-a-target="chat-message-username"]');
+      if (textLower.includes('@' + currentUsername) || mentionRe.test(textLower)) {
+        const usernameEl = msgEl.querySelector('[data-a-target="chat-message-username"], button.inline.font-bold');
         const username = usernameEl?.textContent || 'unknown';
         // Skip own messages
         if (username.toLowerCase() === currentUsername) return;
@@ -6007,9 +6044,7 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
     });
 
     // Scan existing chat for mentions (before IRC catches new ones)
-    if (hostPlatform === 'twitch') {
-      setTimeout(() => scanExistingMentions(), 2000);
-    }
+    setTimeout(() => scanExistingMentions(), 2000);
 
     // Handle incoming IRC messages
     irc.on('message', (msg) => {
@@ -6115,7 +6150,7 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
 
         // Push into the live channel buffer (dedup by text to prevent doubles on reload)
         const liveChannel = getLiveChannel();
-        const liveBuffer = liveChannel ? irc?.channels?.get(liveChannel) : null;
+        const liveBuffer = liveChannel ? (irc?.channels?.get(liveChannel) || kickChat?.channels?.get(liveChannel)) : null;
         if (liveBuffer) {
           const existing = liveBuffer.getAll();
           if (!existing.some(m => m.type === 'stream-event' && m.text === evt.text)) {
@@ -6126,7 +6161,7 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
 
         // Also push into the matching channel buffer if different from live
         if (channel !== liveChannel) {
-          const chBuffer = irc?.channels?.get(channel);
+          const chBuffer = irc?.channels?.get(channel) || kickChat?.channels?.get(channel);
           if (chBuffer) {
             const existing = chBuffer.getAll();
             if (!existing.some(m => m.type === 'stream-event' && m.text === evt.text)) {
@@ -6135,7 +6170,7 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
             }
           }
         }
-        if (!activityEvents.some(m => m.text === evt.text)) activityEvents.push(evt);
+        pushActivityEvent(evt);
 
         // Yellow tab highlight only for game changes, and only when not viewing that channel
         // (live tab and its matching channel tab are equivalent — viewing either counts)
@@ -6227,14 +6262,14 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
           }
         }
       }
-      if (!activityEvents.some(m => m.text === evt.text)) activityEvents.push(evt)
+      pushActivityEvent(evt)
 
       // Render
       const activeTab = currentTab
       if (activeTab === 'live' || config.channels.some(ch => (typeof ch === 'string' ? ch : ch.id) === activeTab)) {
         if (!appendMessage(evt, activeTab)) renderMessages(activeTab)
       }
-    })
+    }, { signal: mcSignal })
 
     // Handle follow-driven stream events (from followed channels not currently viewed)
     if (!window._hsMcFollowStreamEventListener) {
@@ -6293,7 +6328,7 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
             }
           }
         }
-        if (!activityEvents.some(m => m.text === evt.text)) activityEvents.push(evt);
+        pushActivityEvent(evt);
 
         // Yellow tab highlight only for game changes on the live channel, only when not viewing live
         if (msg.eventType === 'stream:update' && currentTab !== 'live' && isLiveChannelMessage({ channel })) {

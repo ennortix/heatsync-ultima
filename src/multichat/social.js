@@ -24,6 +24,12 @@ let notifMessages = []; // Actual notification messages for display
 let notifLoaded = false;
 let unreadNotifCount = 0;
 const activityEvents = []; // Stream events for activity tab
+const ACTIVITY_EVENTS_MAX = 500;
+function pushActivityEvent(evt) {
+  if (activityEvents.some(m => m.text === evt.text)) return
+  activityEvents.push(evt)
+  if (activityEvents.length > ACTIVITY_EVENTS_MAX) activityEvents.splice(0, activityEvents.length - ACTIVITY_EVENTS_MAX)
+}
 let expandedThreadId = null; // Currently expanded thread in feed
 let threadReplies = []; // Replies for expanded thread
 let replyState = null; // { msgId, user, channel } when replying to a message

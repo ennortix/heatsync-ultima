@@ -1,5 +1,7 @@
 // Emotes - cache, lookup, processing, picker, block/inventory
 
+  const UNICODE_EMOJI_RE = /^[\p{Extended_Pictographic}\p{Emoji_Presentation}\uFE0F\u200D]+$/u;
+
   // Emote size (1, 2, or 4)
   let emoteSize = 1;
 
@@ -905,7 +907,7 @@
           }
         }
         // Check for Unicode emoji — treat as stackable base
-        if (/^[\p{Extended_Pictographic}\p{Emoji_Presentation}\uFE0F\u200D]+$/u.test(word)) {
+        if (UNICODE_EMOJI_RE.test(word)) {
           if (pendingStack) {
             result.push(renderEmoteStack(pendingStack))
           }

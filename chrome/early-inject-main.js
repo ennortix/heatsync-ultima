@@ -9,6 +9,79 @@
   // Store for emote URL mappings (populated by content script)
   window.__heatsyncEmoteUrls = window.__heatsyncEmoteUrls || {}
 
+  // ═══ Hermes Event Bus Interception ═══
+  // Twitch's internal real-time event bus (replaced PubSub Apr 2025).
+  // Passively read notifications from topics Twitch already subscribes to.
+  const OrigWebSocket = window.WebSocket
+  let hermesWs = null
+  const channelIdToLogin = {}
+
+  function handleHermesMessage(e) {
+    try {
+      const msg = typeof e.data === 'string' ? JSON.parse(e.data) : e.data
+      if (msg.type !== 'notification' || !msg.notification?.pubsub) return
+      const pubsub = typeof msg.notification.pubsub === 'string'
+        ? JSON.parse(msg.notification.pubsub)
+        : msg.notification.pubsub
+      const evtType = pubsub.type
+      if (!evtType) return
+
+      // Extract channel from topic string (format: "topic-name.<channelId>")
+      const topic = msg.notification.subscription?.id
+        ? '' // subscription ID, not topic — try to get channel from data
+        : ''
+      // Channel login from pubsub data or channelIdToLogin map
+      const resolveChannel = (id) => channelIdToLogin[id] || location.pathname.split('/')[1]?.toLowerCase() || id
+
+      if (evtType === 'raid_update_v5' && pubsub.raid) {
+        const r = pubsub.raid
+        window.postMessage({ type: 'heatsync-hermes-event', eventType: 'raid', channel: resolveChannel(r.source_id), data: {
+          target: r.target_login || r.target_display_name || 'unknown',
+          viewers: r.viewer_count || 0
+        }}, location.origin)
+      } else if (evtType === 'hype-train-start' && pubsub.data) {
+        const d = pubsub.data
+        window.postMessage({ type: 'heatsync-hermes-event', eventType: 'hype-train-start', channel: resolveChannel(d.channel_id), data: {
+          level: d.progress?.level?.value || 1
+        }}, location.origin)
+      } else if (evtType === 'hype-train-progression' && pubsub.data) {
+        // Skip progressions — too spammy, only show start/end
+      } else if (evtType === 'hype-train-end' && pubsub.data) {
+        const d = pubsub.data
+        window.postMessage({ type: 'heatsync-hermes-event', eventType: 'hype-train-end', channel: resolveChannel(d.channel_id), data: {
+          level: d.ending_reason === 'COMPLETED' ? (d.progress?.level?.value || 1) : (d.progress?.level?.value || 1)
+        }}, location.origin)
+      } else if (evtType === 'reward-redeemed' && pubsub.data?.redemption) {
+        const r = pubsub.data.redemption
+        window.postMessage({ type: 'heatsync-hermes-event', eventType: 'redeem', channel: resolveChannel(r.channel_id), data: {
+          user: r.user?.display_name || r.user?.login || 'unknown',
+          title: r.reward?.title || 'reward',
+          cost: r.reward?.cost || 0
+        }}, location.origin)
+      }
+      // Sub gifts — exact payload TBD, add when discovered
+    } catch (err) {
+      log('Hermes parse error:', err)
+    }
+  }
+
+  window.WebSocket = function(url, protocols) {
+    const ws = protocols !== undefined
+      ? new OrigWebSocket(url, protocols)
+      : new OrigWebSocket(url)
+    if (typeof url === 'string' && url.includes('hermes.twitch.tv')) {
+      hermesWs = ws
+      ws.addEventListener('message', handleHermesMessage)
+      log('Hermes WebSocket intercepted')
+    }
+    return ws
+  }
+  window.WebSocket.prototype = OrigWebSocket.prototype
+  window.WebSocket.CONNECTING = OrigWebSocket.CONNECTING
+  window.WebSocket.OPEN = OrigWebSocket.OPEN
+  window.WebSocket.CLOSING = OrigWebSocket.CLOSING
+  window.WebSocket.CLOSED = OrigWebSocket.CLOSED
+
   // ═══ Twitch GQL Interception ═══
   // Captures persisted query hashes, integrity tokens, and response data
   // from Twitch's own GQL calls. Proxies GQL requests from content scripts.
@@ -76,6 +149,11 @@
             const opName = item?.extensions?.operationName
             if (!opName) continue
             gql.cache[opName] = { data: item.data, ts: Date.now() }
+            // Extract user ID → login mappings for Hermes channel resolution
+            try {
+              const u = item.data?.user || item.data?.channel?.owner
+              if (u?.id && u?.login) channelIdToLogin[u.id] = u.login.toLowerCase()
+            } catch {}
             // Forward prediction/poll/points data to content script
             if (GQL_OPS_TO_CACHE.some(n => opName.includes(n) || opName.toLowerCase().includes(n.toLowerCase()))) {
               window.postMessage({
@@ -238,6 +316,7 @@
                 const meData = await meResp.json()
                 gql.userId = meData.data?.[0]?.id
                 gql.userLogin = meData.data?.[0]?.login
+                if (gql.userId && gql.userLogin) channelIdToLogin[gql.userId] = gql.userLogin
               }
             }
             if (!gql.userId) {

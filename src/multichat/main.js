@@ -438,6 +438,16 @@
   const inlineNotifs = {}
   for (const [k, v] of Object.entries(INLINE_NOTIF_TYPES)) inlineNotifs[k] = v.defaultOn
 
+  // Hermes event toggles (Twitch-native events: raids, hype trains, etc.)
+  const HERMES_EVENT_TYPES = {
+    raid:   { color: '#9146ff', defaultOn: true,  desc: 'raids' },
+    hype:   { color: '#ff8700', defaultOn: true,  desc: 'hype trains' },
+    sub:    { color: '#00ff7f', defaultOn: true,  desc: 'gift subs' },
+    redeem: { color: '#00bfff', defaultOn: false, desc: 'channel point redeems' },
+  }
+  const hermesToggles = {}
+  for (const [k, v] of Object.entries(HERMES_EVENT_TYPES)) hermesToggles[k] = v.defaultOn
+
   function showInputBar() {
     if (inputBarVisible) return
     inputBarVisible = true
@@ -829,6 +839,27 @@
     } catch {}
   }
 
+  async function loadHermesSettings() {
+    try {
+      const stored = await chrome.storage.local.get(['ui_settings'])
+      const saved = stored.ui_settings?.hermesEvents
+      if (saved) {
+        for (const k of Object.keys(HERMES_EVENT_TYPES)) {
+          if (saved[k] !== undefined) hermesToggles[k] = saved[k]
+        }
+      }
+    } catch {}
+  }
+
+  async function saveHermesSettings() {
+    try {
+      const stored = await chrome.storage.local.get(['ui_settings'])
+      const settings = stored.ui_settings || {}
+      settings.hermesEvents = { ...hermesToggles }
+      await chrome.storage.local.set({ ui_settings: settings })
+    } catch {}
+  }
+
   // Inject an inline notification into active chat tabs
   function injectInlineNotif(notifType, msg) {
     if (!inlineNotifs[notifType]) return
@@ -1176,6 +1207,14 @@
           </div>`).join('')}
         </div>
         <div class="hs-mc-settings-group">
+          <div class="hs-mc-settings-group-title">twitch events</div>
+          ${Object.entries(HERMES_EVENT_TYPES).map(([key, def]) => `
+          <div class="hs-mc-setting-row">
+            <span class="hs-mc-setting-label" data-tip="${def.desc}"><span style="color:${def.color}">\u25C6</span> ${def.desc}</span>
+            <button class="hs-mc-toggle-pill ${hermesToggles[key] ? 'active' : ''}" data-setting="hermes_${key}"><span class="hs-mc-toggle-knob"></span></button>
+          </div>`).join('')}
+        </div>
+        <div class="hs-mc-settings-group">
           <div class="hs-mc-setting-row" style="justify-content:flex-end">
             <button class="hs-mc-defaults-btn" style="background:#c0c0c0;border:2px outset #fff;padding:2px 10px;font-size:11px;font-weight:bold;cursor:pointer;font-family:'Liberation Mono',monospace;color:#000;box-shadow:1px 1px 0 #000">default</button>
           </div>
@@ -1195,6 +1234,16 @@
           if (INLINE_NOTIF_TYPES[notifKey] !== undefined) {
             inlineNotifs[notifKey] = !inlineNotifs[notifKey]
             saveInlineNotifSettings()
+            toggle.classList.toggle('active')
+          }
+          return
+        }
+        // Hermes event toggles (hermes_raid, hermes_hype, etc.)
+        if (setting.startsWith('hermes_')) {
+          const key = setting.slice(7)
+          if (HERMES_EVENT_TYPES[key] !== undefined) {
+            hermesToggles[key] = !hermesToggles[key]
+            saveHermesSettings()
             toggle.classList.toggle('active')
           }
           return
@@ -1237,11 +1286,12 @@
         platformBadgesEnabled = true;
         showOfflineEvents = true;
         for (const [k, v] of Object.entries(INLINE_NOTIF_TYPES)) inlineNotifs[k] = v.defaultOn;
+        for (const [k, v] of Object.entries(HERMES_EVENT_TYPES)) hermesToggles[k] = v.defaultOn;
         const settings = {
           wysiwygEnabled: false, linksEnabled: true, viMode: false,
           zebra: true, autoHideInput: true, timestamps: false,
           avatars: false, showPlatformBadges: true, showOfflineEvents: true,
-          inlineNotifs: { ...inlineNotifs },
+          inlineNotifs: { ...inlineNotifs }, hermesEvents: { ...hermesToggles },
         };
         try { chrome.storage.local.get(['ui_settings']).then(s => chrome.storage.local.set({ ui_settings: { ...s.ui_settings, ...settings } })); } catch {}
         renderSettingsTab();
@@ -1484,6 +1534,10 @@
       .hs-mc-stream-event.event-online { color: #f44; }
       .hs-mc-stream-event.event-online .hs-evt-game { color: #fff; }
       .hs-mc-stream-event.event-offline { color: #808080; opacity: 1; }
+      .hs-mc-stream-event.event-raid { color: #9146ff; }
+      .hs-mc-stream-event.event-hype { color: #ff8700; }
+      .hs-mc-stream-event.event-sub { color: #00ff7f; }
+      .hs-mc-stream-event.event-redeem { color: #00bfff; }
       /* Inline feed posts in chat timeline */
       .hs-mc-feed-inline {
         padding: 2px 8px;
@@ -5859,6 +5913,7 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
     await loadLinksSetting();
     await loadViModeSetting();
     await loadInlineNotifSettings();
+    await loadHermesSettings();
     await loadPlatformBadgesSetting();
     await loadZebraSetting();
     await loadAutoHideSetting();
@@ -6117,6 +6172,69 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
         }
       });
     }
+
+    // Handle Hermes events (raids, hype trains, redeems, sub gifts) from MAIN world
+    window.addEventListener('message', (e) => {
+      if (e.origin !== location.origin || e.data?.type !== 'heatsync-hermes-event') return
+      const { eventType, channel, data } = e.data
+      if (!eventType || !channel) return
+
+      // Map eventType to toggle key and eventClass
+      let toggleKey, eventClass, text
+      if (eventType === 'raid') {
+        toggleKey = 'raid'
+        eventClass = 'event-raid'
+        text = `[${channel}] \u25C6 raided ${escapeHtml(data.target)} with ${data.viewers} viewers`
+      } else if (eventType === 'hype-train-start') {
+        toggleKey = 'hype'
+        eventClass = 'event-hype'
+        text = `[${channel}] \u25C6 hype train started`
+      } else if (eventType === 'hype-train-end') {
+        toggleKey = 'hype'
+        eventClass = 'event-hype'
+        text = `[${channel}] \u25C6 hype train ended at level ${data.level}`
+      } else if (eventType === 'sub-gift') {
+        toggleKey = 'sub'
+        eventClass = 'event-sub'
+        text = `[${channel}] \u25C6 ${escapeHtml(data.user)} gifted ${data.count} subs`
+      } else if (eventType === 'redeem') {
+        toggleKey = 'redeem'
+        eventClass = 'event-redeem'
+        text = `[${channel}] \u25C6 ${escapeHtml(data.user)} redeemed "${escapeHtml(data.title)}"`
+      } else return
+
+      if (!hermesToggles[toggleKey]) return
+
+      const evt = { type: 'stream-event', eventClass, text, channel, time: Date.now() }
+
+      // Push into relevant buffers (same pattern as stream_event handler)
+      const liveChannel = getLiveChannel()
+      const liveBuffer = liveChannel ? irc?.channels?.get(liveChannel) : null
+      if (liveBuffer) {
+        const existing = liveBuffer.getAll()
+        if (!existing.some(m => m.type === 'stream-event' && m.text === evt.text)) {
+          liveBuffer.push(evt)
+          saveStreamEvent(evt)
+        }
+      }
+      if (channel !== liveChannel) {
+        const chBuffer = irc?.channels?.get(channel)
+        if (chBuffer) {
+          const existing = chBuffer.getAll()
+          if (!existing.some(m => m.type === 'stream-event' && m.text === evt.text)) {
+            chBuffer.push(evt)
+            if (!liveBuffer) saveStreamEvent(evt)
+          }
+        }
+      }
+      if (!activityEvents.some(m => m.text === evt.text)) activityEvents.push(evt)
+
+      // Render
+      const activeTab = currentTab
+      if (activeTab === 'live' || config.channels.some(ch => (typeof ch === 'string' ? ch : ch.id) === activeTab)) {
+        if (!appendMessage(evt, activeTab)) renderMessages(activeTab)
+      }
+    })
 
     // Handle follow-driven stream events (from followed channels not currently viewed)
     if (!window._hsMcFollowStreamEventListener) {

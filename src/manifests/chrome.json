@@ -19,6 +19,7 @@
     "https://heatsync.org/*",
     "https://*.heatsync.org/*",
     "https://*.twitch.tv/*",
+    "https://api.twitch.tv/*",
     "https://*.kick.com/*",
     "https://*.youtube.com/*",
     "https://api.betterttv.net/*",

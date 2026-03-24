@@ -455,7 +455,7 @@ function initInput() {
         showToast(`muted ${username}`);
       }
       chrome.storage.local.set({ heatsync_mc_muted: [...mutedUsers] });
-      applyMcMutes();
+      renderMessages(currentTab);
     }, { signal: mcSignal });
   }
 }
@@ -464,9 +464,22 @@ function applyMcMutes() {
     const userEl = msg.querySelector('.hs-mc-user');
     const username = userEl?.textContent?.trim()?.toLowerCase();
     if (username && mutedUsers.has(username)) {
-      msg.classList.add('hs-mc-muted');
+      stripMcMutedMessage(msg);
     } else {
       msg.classList.remove('hs-mc-muted');
+    }
+  });
+}
+function stripMcMutedMessage(msg) {
+  msg.classList.add('hs-mc-muted');
+  // Message content is raw text nodes on the div — CSS can't hide those
+  [...msg.childNodes].forEach(node => {
+    if (node.nodeType === 3) node.textContent = '';
+  });
+  // Remove emote images and other content (not user/badge/timestamp/platform)
+  msg.querySelectorAll('img:not(.hs-mc-badge-img), .heatsync-emote-wrapper, .hs-mc-emote').forEach(el => {
+    if (!el.closest('.hs-mc-user') && !el.classList.contains('hs-mc-badge-img') && !el.classList.contains('hs-mc-platform-badge')) {
+      el.remove();
     }
   });
 }

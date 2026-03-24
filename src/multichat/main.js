@@ -4735,10 +4735,10 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
     // Trim oldest messages beyond 150
     trimChildren(msgsEl, 150);
 
-    // Apply mute to just this message (CSS handles opacity/blur via .hs-mc-muted)
+    // Apply mute to just this message — strip content for muted users
     const username = div.querySelector('.hs-mc-user')?.textContent?.trim()?.toLowerCase();
     if (username && mutedUsers.has(username)) {
-      div.classList.add('hs-mc-muted');
+      stripMcMutedMessage(div);
     }
 
     updateTabBadges();

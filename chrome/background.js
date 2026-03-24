@@ -2555,12 +2555,12 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
           opts.body = JSON.stringify(message.body)
         }
         const resp = await fetchWithTimeout(`${API_URL}${message.path}`, opts)
+        const data = await resp.json().catch(() => null)
         if (!resp.ok) {
-          sendResponse({ ok: false, status: resp.status })
+          sendResponse({ ok: false, status: resp.status, error: data?.error || `${resp.status}` })
           return
         }
-        const data = await resp.json()
-        sendResponse({ ok: true, data })
+        sendResponse(data?.ok !== undefined ? data : { ok: true, data })
       } catch (err) {
         sendResponse({ ok: false, error: err.message })
       }

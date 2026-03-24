@@ -847,10 +847,7 @@ style.textContent = `
     text-decoration: underline !important;
   }
 
-  /* Muted users — hide content, gray username, no animations */
-  .hs-user-muted {
-    user-select: none !important;
-  }
+  /* Muted users — grey username, content stripped by JS */
   .hs-user-muted .chat-author__display-name,
   .hs-user-muted [data-a-target="chat-message-username"] {
     color: #808080 !important;
@@ -859,15 +856,6 @@ style.textContent = `
     -webkit-text-fill-color: #808080 !important;
     animation: none !important;
     text-shadow: none !important;
-  }
-  .hs-user-muted .text-fragment,
-  .hs-user-muted .mention-fragment,
-  .hs-user-muted .heatsync-emote-wrapper,
-  .hs-user-muted .chat-image,
-  .hs-user-muted .chat-line__message--emote-button,
-  .hs-user-muted img.emote,
-  .hs-user-muted [data-a-target="emote-name"] {
-    display: none !important;
   }
 `;
 document.head.appendChild(style);
@@ -2633,9 +2621,9 @@ function processMessage(messageElement) {
     return;
   }
 
-  // Check if user is muted — hide content, gray username
+  // Check if user is muted — strip content, gray username
   if (mutedUsers.has(username)) {
-    messageElement.classList.add('hs-user-muted');
+    stripMutedMessage(messageElement);
     return;
   }
 
@@ -4557,7 +4545,7 @@ function getUsername(messageElement) {
   return usernameEl ? usernameEl.textContent.trim() : '';
 }
 
-// Right-click context menu on chat messages (Chatterino-style)
+// Right-click on chat message or username → instant 24h mute
 function setupMessageContextMenu() {
   document.addEventListener('contextmenu', (e) => {
     // Don't intercept emote right-clicks
@@ -4566,72 +4554,22 @@ function setupMessageContextMenu() {
     const msgEl = e.target.closest('.chat-line__message, #chatroom-messages [data-index]');
     if (!msgEl) return;
 
+    const username = getUsername(msgEl);
+    if (!username) return;
+
     e.preventDefault();
 
-    // Remove any existing context menu
-    document.getElementById('hs-msg-ctx-menu')?.remove();
-
-    const username = getUsername(msgEl);
-    const menu = document.createElement('div');
-    menu.id = 'hs-msg-ctx-menu';
-    menu.style.cssText = 'position:fixed;z-index:99999;background:#000;border:1px solid #808080;border-radius:3px;padding:4px 0;min-width:160px;font-size:12px;font-family:inherit;';
-
-    const mkItem = (label, color, fn) => {
-      const item = document.createElement('div');
-      item.textContent = label;
-      item.style.cssText = `padding:6px 12px;cursor:pointer;color:${color};`;
-      item.addEventListener('mouseenter', () => { item.style.background = '#fff'; item.style.color = '#000'; });
-      item.addEventListener('mouseleave', () => { item.style.background = ''; item.style.color = color; });
-      item.addEventListener('click', () => { menu.remove(); fn(); });
-      menu.appendChild(item);
-    };
-
-    // 1. Copy message
-    mkItem('copy message', '#fff', () => {
-      const fragments = msgEl.querySelectorAll('.text-fragment');
-      const text = Array.from(fragments).map(f => f.textContent).join('');
-      navigator.clipboard.writeText(text).catch(() => {});
-    });
-
-    // 2. Reply
-    mkItem('reply', '#fff', () => {
-      // Hover to reveal Twitch action buttons, then click reply
-      msgEl.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }));
-      cleanup.setTimeout(() => {
-        const replyBtn = msgEl.querySelector('button[data-a-target="chat-reply"]') ||
-                         msgEl.querySelector('[data-test-selector="chat-reply-button"]') ||
-                         msgEl.querySelector('button[aria-label="Reply"]');
-        if (replyBtn) replyBtn.click();
-      }, 150);
-    });
-
-    // 3. Delete message (DOM-only)
-    mkItem('delete message', '#ff4444', () => {
-      msgEl.remove();
-    });
-
-    // 4. Mute user (24h)
-    if (username) {
-      mkItem(`mute ${username} (24h)`, '#fff', () => {
-        safeSendMessage({ type: 'mute_user', username, expiresAt: Date.now() + 86400000 }).catch(() => {});
-        showToast(`muted ${username} for 24h`);
-      });
-
-      // 5. Block user
-      mkItem(`block ${username}`, '#ff4444', () => {
-        safeSendMessage({ type: 'block_user', username }).catch(() => {});
-        showToast(`blocked ${username}`);
-      });
+    if (mutedUsers.has(username)) {
+      mutedUsers.delete(username);
+      safeSendMessage({ type: 'unmute_user', username }).catch(() => {});
+      unmuteUser(username);
+      showToast(`unmuted ${username}`);
+    } else {
+      mutedUsers.add(username);
+      safeSendMessage({ type: 'mute_user', username, expiresAt: Date.now() + 86400000 }).catch(() => {});
+      muteUser(username);
+      showToast(`muted ${username} for 24h`);
     }
-
-    // Position + clamp to viewport
-    document.body.appendChild(menu);
-    const mw = menu.offsetWidth, mh = menu.offsetHeight;
-    menu.style.left = Math.min(e.clientX, window.innerWidth - mw - 4) + 'px';
-    menu.style.top = Math.min(e.clientY, window.innerHeight - mh - 4) + 'px';
-
-    const dismiss = (ev) => { if (!menu.contains(ev.target)) { menu.remove(); document.removeEventListener('click', dismiss); } };
-    cleanup.setTimeout(() => cleanup.addEventListener(document, 'click', dismiss), 0);
   }, { signal });
 }
 
@@ -4649,9 +4587,9 @@ function unhideBlockedUser(username) {
   });
 }
 
-// Undo mute styling on all messages from user
+// Undo mute — can't restore stripped DOM, just remove class for future messages
 function unmuteUser(username) {
-  document.querySelectorAll('.chat-line__message').forEach(msg => {
+  document.querySelectorAll('.hs-user-muted').forEach(msg => {
     if (getUsername(msg) === username) {
       msg.classList.remove('hs-user-muted');
     }
@@ -4729,11 +4667,49 @@ function showUnblockedEmote(hash) {
 
 // Hide muted user content, gray username
 function muteUser(username) {
-  document.querySelectorAll('.chat-line__message').forEach(msg => {
+  document.querySelectorAll('.chat-line__message, #chatroom-messages [data-index]').forEach(msg => {
     if (getUsername(msg) === username) {
-      msg.classList.add('hs-user-muted');
+      stripMutedMessage(msg);
     }
   });
+}
+
+// Strip all content from a muted user's message, leaving only username + badges
+function stripMutedMessage(messageElement) {
+  messageElement.classList.add('hs-user-muted');
+  // Remove message body (native Twitch)
+  const body = messageElement.querySelector('[data-a-target="chat-line-message-body"]');
+  if (body) { body.textContent = ''; }
+  // Remove text fragments (backfill + Kick + any remaining)
+  messageElement.querySelectorAll('.text-fragment, .mention-fragment, .heatsync-emote-wrapper, .link-fragment, a[href]').forEach(el => el.remove());
+  // Remove the colon separator after username
+  const usernameContainer = messageElement.querySelector('.chat-line__username-container');
+  if (usernameContainer) {
+    let node = usernameContainer.nextSibling;
+    while (node) {
+      const next = node.nextSibling;
+      // Keep the (now-empty) message body span for layout, remove colon and others
+      if (node !== body) node.parentNode.removeChild(node);
+      node = next;
+    }
+  }
+  // Backfill messages: flat structure — remove siblings after display-name
+  if (messageElement.classList.contains('heatsync-backfill')) {
+    const nameEl = messageElement.querySelector('.chat-author__display-name');
+    if (nameEl) {
+      let node = nameEl.nextSibling;
+      while (node) {
+        const next = node.nextSibling;
+        node.parentNode.removeChild(node);
+        node = next;
+      }
+    }
+  }
+  // Kick: remove content after username button
+  const kickUser = messageElement.querySelector('button.inline.font-bold');
+  if (kickUser) {
+    messageElement.querySelectorAll('span.font-normal').forEach(el => el.remove());
+  }
 }
 
 // Escape regex special characters

@@ -5888,6 +5888,31 @@ let lastWhisperKey = null // for /r — last person involved in a whisper
 let whisperTotalUnread = 0
 let whisperLastViewedTime = 0
 let whisperDmsLoaded = false
+let selfWhisperColor = null // current user's Twitch color
+
+// Resolve own color from IRC buffers, chat DOM, or Twitch cookie color
+function resolveSelfColor() {
+  if (selfWhisperColor) return
+  const me = (currentUsername || '').toLowerCase()
+  if (!me) return
+  // Check IRC message buffers for our own messages (they contain our color)
+  if (typeof irc !== 'undefined' && irc?.channels) {
+    for (const [, buf] of irc.channels) {
+      const msgs = buf.getAll ? buf.getAll() : []
+      for (let i = msgs.length - 1; i >= 0; i--) {
+        if (msgs[i].user?.toLowerCase() === me && msgs[i].color) {
+          selfWhisperColor = msgs[i].color
+          return
+        }
+      }
+    }
+  }
+  // Check DOM for our username color
+  try {
+    const el = document.querySelector(`.chat-author__display-name[data-a-user="${me}"]`)
+    if (el) { selfWhisperColor = el.style.color || getComputedStyle(el).color; return }
+  } catch {}
+}
 
 let _whisperSaveTimer = null
 function whisperSaveDebounced() {
@@ -6054,25 +6079,15 @@ function handleIncomingDm(data) {
   whisperSaveDebounced()
 }
 
-// Send Twitch whisper via GQL (Helix blocked by CORS from page context)
+// Send Twitch whisper via heatsync server (Helix proxy — bypasses CORS + Kasada)
 async function sendTwitchWhisper(toUserId, message) {
-  const nonce = Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2)
   try {
-    const data = await gqlProxy('SendWhisper', {
-      input: {
-        message,
-        nonce,
-        recipientUserID: toUserId
-      }
-    }, {
-      rawQuery: `mutation SendWhisper($input: SendWhisperInput!) {
-        sendWhisper(input: $input) {
-          message { id }
-        }
-      }`
+    const resp = await apiFetch('/api/twitch/whisper', {
+      method: 'POST',
+      body: { toUserId, message }
     })
-    if (data?.errors) return { ok: false, error: data.errors[0]?.message || 'gql error' }
-    return { ok: true }
+    if (resp?.ok) return { ok: true }
+    return { ok: false, error: resp?.error || 'unknown error' }
   } catch (e) {
     return { ok: false, error: e.message }
   }
@@ -6125,6 +6140,7 @@ async function sendWhisperMessage(key, text) {
 function renderWhispersTab() {
   const msgsEl = document.getElementById('hs-mc-messages')
   if (!msgsEl) return
+  resolveSelfColor()
 
   // Fetch HS DMs on first render to backfill timeline
   if (!whisperDmsLoaded && hsAuthToken) {
@@ -6196,19 +6212,29 @@ function renderWhispersTab() {
     const platTag = m.platform === 'twitch' ? 'T' : 'HS'
     const arrow = m.self ? '\u2192' : '\u2190'
 
-    // For outbound show recipient; for inbound show sender
-    let userDisplay, userColor
-    if (m.self) {
-      const target = whisperUsers.get(m.key)
-      userDisplay = target ? escapeHtml(target.displayName) : escapeHtml(m.key)
-      userColor = target ? sanitizeColor(target.color) : '#fff'
-    } else {
-      userDisplay = escapeHtml(m.user)
-      userColor = sanitizeColor(m.color)
+    // Show sender -> recipient for both directions
+    const target = whisperUsers.get(m.key)
+    const me = currentUsername || 'you'
+    const myColor = sanitizeColor(selfWhisperColor || '#fff')
+    const them = target?.displayName || m.user || m.key
+    const theirColor = target ? sanitizeColor(target.color) : sanitizeColor(m.color)
+    const theirUsername = (target?.displayName || m.user || '').toLowerCase()
+
+    // Build username links with hs-mc-user class for tooltip + click
+    function userLink(name, color, username) {
+      const safe = escapeHtml(name)
+      const safeUser = escapeHtml(username.toLowerCase())
+      const href = m.platform === 'heatsync'
+        ? `https://heatsync.org/user/${encodeURIComponent(username)}`
+        : `https://heatsync.org/twitch/${encodeURIComponent(username)}`
+      return `<a href="${href}" target="_blank" class="hs-mc-user" data-username="${safeUser}" style="color:${color};font-weight:600">${safe}</a>`
     }
 
-    // All dynamic values pass through escapeHtml/sanitizeColor — safe innerHTML
-    div.innerHTML = `${tsHtml}<span style="color:${platColor};font-size:10px;font-weight:700">[${platTag}]</span> <span style="color:#666">${arrow}</span> <span style="color:${userColor};font-weight:600">${userDisplay}</span>: ${processEmotes(escapeHtml(m.text), null)}`
+    const senderLink = m.self ? userLink(me, myColor, me) : userLink(them, theirColor, theirUsername)
+    const recipientLink = m.self ? userLink(them, theirColor, theirUsername) : userLink(me, myColor, me)
+
+    // All dynamic values pass through escapeHtml/sanitizeColor — safe innerHTML (all values escaped above)
+    div.innerHTML = `${tsHtml}<span style="color:${platColor};font-size:10px;font-weight:700">[${platTag}]</span> ${senderLink} <span style="color:#666">-&gt;</span> ${recipientLink}: ${processEmotes(escapeHtml(m.text), null)}`
     frag.appendChild(div)
   }
 
@@ -6675,7 +6701,7 @@ function initInput() {
         showToast(`muted ${username}`);
       }
       chrome.storage.local.set({ heatsync_mc_muted: [...mutedUsers] });
-      applyMcMutes();
+      renderMessages(currentTab);
     }, { signal: mcSignal });
   }
 }
@@ -6684,9 +6710,22 @@ function applyMcMutes() {
     const userEl = msg.querySelector('.hs-mc-user');
     const username = userEl?.textContent?.trim()?.toLowerCase();
     if (username && mutedUsers.has(username)) {
-      msg.classList.add('hs-mc-muted');
+      stripMcMutedMessage(msg);
     } else {
       msg.classList.remove('hs-mc-muted');
+    }
+  });
+}
+function stripMcMutedMessage(msg) {
+  msg.classList.add('hs-mc-muted');
+  // Message content is raw text nodes on the div — CSS can't hide those
+  [...msg.childNodes].forEach(node => {
+    if (node.nodeType === 3) node.textContent = '';
+  });
+  // Remove emote images and other content (not user/badge/timestamp/platform)
+  msg.querySelectorAll('img:not(.hs-mc-badge-img), .heatsync-emote-wrapper, .hs-mc-emote').forEach(el => {
+    if (!el.closest('.hs-mc-user') && !el.classList.contains('hs-mc-badge-img') && !el.classList.contains('hs-mc-platform-badge')) {
+      el.remove();
     }
   });
 }
@@ -12267,10 +12306,10 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
     // Trim oldest messages beyond 150
     trimChildren(msgsEl, 150);
 
-    // Apply mute to just this message (CSS handles opacity/blur via .hs-mc-muted)
+    // Apply mute to just this message — strip content for muted users
     const username = div.querySelector('.hs-mc-user')?.textContent?.trim()?.toLowerCase();
     if (username && mutedUsers.has(username)) {
-      div.classList.add('hs-mc-muted');
+      stripMcMutedMessage(div);
     }
 
     updateTabBadges();

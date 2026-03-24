@@ -6286,8 +6286,35 @@ function renderWhispersTab() {
 // Input - chat input, autocomplete, send message, reply state
 
 // Echo dedup — suppress own message echoes from IRC/KickChat relay
-let _lastSentText = null
-let _lastSentTime = 0
+// Uses a Set of {text, time} to handle rapid sends without overwriting
+const _recentSentMessages = []
+const SENT_DEDUP_WINDOW = 10000 // 10s
+
+function trackSentMessage(text) {
+  _recentSentMessages.push({ text, time: Date.now() })
+  // Prune old entries
+  const cutoff = Date.now() - SENT_DEDUP_WINDOW
+  while (_recentSentMessages.length > 0 && _recentSentMessages[0].time < cutoff) {
+    _recentSentMessages.shift()
+  }
+}
+
+function isSentEcho(msgText) {
+  const cutoff = Date.now() - SENT_DEDUP_WINDOW
+  for (let i = _recentSentMessages.length - 1; i >= 0; i--) {
+    const entry = _recentSentMessages[i]
+    if (entry.time < cutoff) break
+    if (entry.text === msgText) {
+      // Consume — only suppress once per platform echo (allow 2 for dual-send: 1 twitch + 1 kick)
+      entry.suppressed = (entry.suppressed || 0) + 1
+      if (entry.suppressed >= (entry.dualSend ? 2 : 1)) {
+        _recentSentMessages.splice(i, 1)
+      }
+      return true
+    }
+  }
+  return false
+}
 
 // Autocomplete state (Tab-only cycling, no dropdown)
 let acState = {
@@ -7577,8 +7604,12 @@ async function sendMessage() {
   const isDualSend = sendToKick && sendToTwitch
 
   // Track for echo dedup
-  _lastSentText = text
-  _lastSentTime = Date.now()
+  trackSentMessage(text)
+  if (isDualSend) {
+    // Mark last entry as dual-send so dedup allows 2 suppressions
+    const last = _recentSentMessages[_recentSentMessages.length - 1]
+    if (last) last.dualSend = true
+  }
 
   const replyParentId = replyState?.msgId || null
   clearReplyState()
@@ -7596,22 +7627,8 @@ async function sendMessage() {
       const twitchOk = twitchResult === true || twitchResult === null
 
       if (kickOk || twitchOk) {
-        // Optimistic display
-        const platform = isDualSend ? 'heatsync' : kickOk ? 'kick' : 'twitch'
-        const ownMsg = {
-          user: currentUsername || 'you',
-          text,
-          color: '#53fc18',
-          channel: slug,
-          time: Date.now(),
-          platform,
-          self: true
-        }
-        const buffer = kickChat?.channels?.get(slug) || irc?.channels?.get(twitchName)
-        if (buffer) buffer.push(ownMsg)
-        if (!appendMessage(ownMsg, currentTab)) renderMessages(currentTab)
-
-        // Clear input
+        // Clear input (don't show optimistic — let echo render naturally via dedup)
+        // The IRC/Kick echo will render the message with correct colors
         if (wysiwygEnabled) input.textContent = ''
         else input.value = ''
         pendingMessage = ''
@@ -13713,10 +13730,7 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
     // Handle incoming IRC messages
     irc.on('message', (msg) => {
       // Suppress echo of own sent messages (dedup dual-send)
-      if (_lastSentText && msg.user?.toLowerCase() === currentUsername &&
-          msg.text === _lastSentText && Date.now() - _lastSentTime < 10000) {
-        return
-      }
+      if (isSentEcho(msg.text)) return
       const isMent = isMention(msg)
       if (isMent) {
         mentionsBuffer.push(msg);
@@ -13755,10 +13769,7 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
     // Handle incoming Kick messages
     kickChat.on('message', (msg) => {
       // Suppress echo of own sent messages (dedup dual-send)
-      if (_lastSentText && msg.user?.toLowerCase() === currentUsername &&
-          msg.text === _lastSentText && Date.now() - _lastSentTime < 10000) {
-        return
-      }
+      if (isSentEcho(msg.text)) return
       const isMent = isMention(msg)
       if (isMent) {
         mentionsBuffer.push(msg);

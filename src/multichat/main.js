@@ -6049,10 +6049,7 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
     // Handle incoming IRC messages
     irc.on('message', (msg) => {
       // Suppress echo of own sent messages (dedup dual-send)
-      if (_lastSentText && msg.user?.toLowerCase() === currentUsername &&
-          msg.text === _lastSentText && Date.now() - _lastSentTime < 10000) {
-        return
-      }
+      if (isSentEcho(msg.text)) return
       const isMent = isMention(msg)
       if (isMent) {
         mentionsBuffer.push(msg);
@@ -6091,10 +6088,7 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
     // Handle incoming Kick messages
     kickChat.on('message', (msg) => {
       // Suppress echo of own sent messages (dedup dual-send)
-      if (_lastSentText && msg.user?.toLowerCase() === currentUsername &&
-          msg.text === _lastSentText && Date.now() - _lastSentTime < 10000) {
-        return
-      }
+      if (isSentEcho(msg.text)) return
       const isMent = isMention(msg)
       if (isMent) {
         mentionsBuffer.push(msg);

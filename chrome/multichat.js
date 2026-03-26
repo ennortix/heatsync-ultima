@@ -3417,7 +3417,7 @@ async function sendKickMessage(kickSlug, text) {
     const statBadges = [];
     const hd = getHeatDisplay(heat)
     const heatColor = hd ? hd.color : '#808080'
-    const heatEmoji = hd ? hd.emoji : ''
+    const heatEmoji = hd?.emoji || ''
     const heatGlow = hd?.glow ? ';text-shadow:0 0 6px rgba(255,135,0,0.8)' : ''
     statBadges.push(`<span class="hs-pc-stat heat" style="color:${heatColor};border-color:${heatColor};font-weight:700${heatGlow}">${heatEmoji}<span class="hs-pc-num">${formatCompact(heat)}</span>°</span>`);
     if (op > 0) statBadges.push(`<span class="hs-pc-stat op"><span class="hs-pc-num">${formatCompact(op)}</span> [OP]</span>`);

@@ -243,9 +243,9 @@
       return
     }
 
-    // Mutations need valid integrity — we capture from Twitch's own /integrity calls
-    if (req.rawQuery && !hasValidIntegrity()) {
-      console.warn('[heatsync-gql] integrity token stale/missing — try interacting with Twitch UI first')
+    // Mutations need valid integrity — reads work without it
+    if (req.rawQuery && !hasValidIntegrity() && /mutation\s/i.test(req.rawQuery)) {
+      console.warn('[heatsync-gql] integrity token stale/missing — mutations may fail')
     }
 
     const hdrs = buildGqlHeaders()

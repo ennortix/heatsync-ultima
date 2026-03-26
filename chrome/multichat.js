@@ -12483,7 +12483,7 @@ const STORAGE_KEY = 'heatsync_multichat';
       const userLink = `<a href="https://heatsync.org/user/${encodeURIComponent(m.feedUser)}" target="_blank" class="hs-mc-user" data-username="${escapeHtml((m.feedUser || 'anon').toLowerCase())}" style="color:${sanitizeColor(m.color || '#fff')}">${escapeHtml(m.feedUser || 'anon')}</a>`
       const content = renderFeedContent(m.text, m.emote_refs)
       const hd = getHeatDisplay(m.heat)
-      const heatHtml = hd ? ` <span style="font-weight:700;color:${hd.color}${hd.glow ? ';text-shadow:0 0 6px rgba(255,135,0,0.8)' : ''}">${hd.emoji}${m.heat}</span>` : ''
+      const heatHtml = hd ? ` <span style="font-weight:700;color:${hd.color}${hd.glow ? ';text-shadow:0 0 6px rgba(255,135,0,0.8)' : ''}">${hd.emoji || ''}${m.heat}</span>` : ''
       // All values sanitized — safe innerHTML (heat is numeric, emoji/color are hardcoded)
       div.innerHTML = `${tsSpan}${threadLink}${typeTag}${userLink}${heatHtml}: <span class="hs-feed-body">${content}</span>`
       div.addEventListener('click', (e) => {

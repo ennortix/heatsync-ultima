@@ -3825,6 +3825,13 @@
       .hs-feed-tag-re {
         color: #00ffff;
       }
+      .hs-feed-heat-breathe {
+        animation: hs-feed-heat-breathe 2.5s ease-in-out infinite;
+      }
+      @keyframes hs-feed-heat-breathe {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.8; }
+      }
       .hs-thread-op {
         border-bottom: 1px solid #ff8700;
         padding-bottom: 4px;

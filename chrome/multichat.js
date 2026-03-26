@@ -5247,22 +5247,32 @@ function renderBadges(badgesStr, channel) {
 // --- multichat/social.js ---
 // Social - feed, notifications, activity, heatsync API
 
-// Heat tier display — number + color glow, no emoji
+// Heat tier display — number + color glow + row effects, no emoji
 function getHeatDisplay(heat) {
   if (!heat || heat <= 0) return null
-  let color
-  let glow = false
-  if (heat >= 500) { color = '#fff'; glow = true }
-  else if (heat >= 250) color = '#ff0000'
-  else if (heat >= 100) color = '#ff2200'
-  else if (heat >= 50)  color = '#ff4400'
-  else if (heat >= 25)  color = '#ff6600'
-  else if (heat >= 10)  color = '#ff8700'
-  else if (heat >= 5)   color = '#888'
-  else if (heat >= 1)   color = '#666'
-  else                  color = '#444'
+  let color, glow = false, border = '#555', borderWidth = 2, bg = ''
+  if (heat >= 5000) {
+    color = '#fff'; glow = true; border = '#fff'; borderWidth = 4
+    bg = 'rgba(60,20,0,0.15)'; // + breathing animation applied separately
+  } else if (heat >= 500) {
+    color = '#fff'; glow = true; border = '#fff'; borderWidth = 4
+    bg = 'rgba(60,20,0,0.15)'
+  } else if (heat >= 100) {
+    color = '#ffaa00'; border = '#ffaa00'; borderWidth = 3
+    bg = 'rgba(50,15,0,0.10)'
+  } else if (heat >= 25) {
+    color = '#ff8700'; border = '#ff8700'; borderWidth = 3
+    bg = 'rgba(40,12,0,0.07)'
+  } else if (heat >= 10) {
+    color = '#ff8700'; border = '#ff8700'; borderWidth = 2
+  } else if (heat >= 1) {
+    color = '#666'; border = '#555'; borderWidth = 2
+  } else {
+    color = '#444'
+  }
   const suffix = heat >= 10 ? '°' : ''
-  return { color, glow, suffix }
+  const breathe = heat >= 500
+  return { color, glow, suffix, border, borderWidth, bg, breathe }
 }
 
 // Feed & notifications state
@@ -5644,6 +5654,12 @@ function buildFeedMessageDiv(m, opUsername) {
   // All dynamic values sanitized: avatarUrl via encodeURIComponent,
   // username/time via escapeHtml, color via sanitizeColor, content via renderFeedContent
   const hd = getHeatDisplay(heat)
+  if (hd) {
+    let rowStyle = `border-left:${hd.borderWidth}px solid ${hd.border};`
+    if (hd.bg) rowStyle += `background:${hd.bg};`
+    if (hd.breathe) div.className += ' hs-feed-heat-breathe'
+    div.setAttribute('style', rowStyle)
+  }
   const heatSpan = hd ? `<span class="hs-feed-stat hs-feed-heat" style="font-weight:700;color:${hd.color}${hd.glow ? ';text-shadow:0 0 8px #ff8700,0 0 16px rgba(255,135,0,0.6)' : ''}">${heat}${hd.suffix}</span>` : ''
   const repliesSpan = replies > 0 ? `<span class="hs-feed-stat hs-feed-replies" title="replies">💬${replies}</span>` : '';
   const stats = [heatSpan, repliesSpan].filter(Boolean).join(' ')
@@ -11620,6 +11636,13 @@ const STORAGE_KEY = 'heatsync_multichat';
       }
       .hs-feed-tag-re {
         color: #00ffff;
+      }
+      .hs-feed-heat-breathe {
+        animation: hs-feed-heat-breathe 2.5s ease-in-out infinite;
+      }
+      @keyframes hs-feed-heat-breathe {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.8; }
       }
       .hs-thread-op {
         border-bottom: 1px solid #ff8700;

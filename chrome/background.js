@@ -27,6 +27,10 @@ browser.runtime.onInstalled.addListener((details) => {
   // Clear any stale intervals from previous version
   activeIntervals.forEach(clearInterval);
   activeIntervals.length = 0;
+  // Clear channel emote cache (in-memory + storage) so stale data doesn't block refetches
+  channelEmotesMap = {};
+  channelEmotesFetchedAt = {};
+  browser.storage.local.remove('channel_emotes_map');
   if (details.reason === 'install') {
     browser.tabs.create({
       url: browser.runtime.getURL('welcome.html')
@@ -55,6 +59,8 @@ browser.storage.local.get(['channel_emotes', 'channel_emotes_owner']).then(async
 let emoteInventory = [];
 let globalEmotes = []; // BTTV, FFZ, 7TV global emotes
 let channelEmotesMap = {}; // Per-channel emotes: { channelName: emotes[] }
+let channelEmotesFetchedAt = {}; // channelName → timestamp of last successful fetch
+const CHANNEL_EMOTES_TTL = 30 * 60 * 1000; // 30 minutes
 let currentChannelOwner = null; // Track last-fetched channel (for content.js tab)
 let current7TVEmoteSetId = null; // Track current 7TV emote set ID for EventAPI
 let seventvEmoteSetIds = new Map(); // channelName → 7TV emote set ID
@@ -593,20 +599,41 @@ const twitchIdCache = new Map();
 const TWITCH_ID_CACHE_MAX = 200;
 const kickChannelIdCache = new Map();
 
-// Lookup Twitch user ID from username using decapi.me (free, no auth needed)
+// Lookup Twitch user ID from username — try Twitch GQL first (fast, no rate limit), decapi fallback
 async function lookupTwitchUserId(username) {
   const cached = twitchIdCache.get(username);
   if (cached) { twitchIdCache.delete(username); twitchIdCache.set(username, cached); return cached; }
   try {
+    // Twitch GQL — same client ID used by the website, no auth needed
+    const gqlResp = await fetchWithTimeout('https://gql.twitch.tv/gql', {
+      method: 'POST',
+      headers: { 'Client-Id': 'kimne78kx3ncx6brgo4mv6wki5h1ko', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query: `{ user(login: "${username.replace(/[^a-z0-9_]/gi, '')}") { id } }` })
+    });
+    if (gqlResp.ok) {
+      const gqlData = await gqlResp.json();
+      const id = gqlData?.data?.user?.id;
+      if (id) {
+        if (twitchIdCache.size >= TWITCH_ID_CACHE_MAX) {
+          twitchIdCache.delete(twitchIdCache.keys().next().value);
+        }
+        twitchIdCache.set(username, id);
+        console.log('[hs-bg] GQL lookup', username, '→', id);
+        return id;
+      }
+    }
+  } catch (e) {
+    log(' GQL user lookup failed, trying decapi:', e.message);
+  }
+  // Fallback to decapi.me
+  try {
     const response = await fetchWithTimeout(`https://decapi.me/twitch/id/${encodeURIComponent(username)}`);
     if (!response.ok) return null;
     const text = await response.text();
-    // decapi returns just the ID as plain text, or error message
     if (/^\d+$/.test(text.trim())) {
       const id = text.trim();
       if (twitchIdCache.size >= TWITCH_ID_CACHE_MAX) {
-        const oldest = twitchIdCache.keys().next().value;
-        twitchIdCache.delete(oldest);
+        twitchIdCache.delete(twitchIdCache.keys().next().value);
       }
       twitchIdCache.set(username, id);
       return id;
@@ -622,10 +649,11 @@ async function lookupTwitchUserId(username) {
 // Supports Twitch (user ID or username) and Kick (username) lookups
 async function fetch7TVChannelEmotes(channelName, channelId = null, platform = 'twitch') {
   try {
-    let response, data;
+    let response, data, identifier;
 
     if (platform === 'kick') {
       // Kick: use 7TV's kick endpoint directly
+      identifier = channelName;
       log(' 7TV: Fetching Kick channel emotes for:', channelName);
       response = await fetchWithTimeout(`https://7tv.io/v3/users/kick/${channelName}`);
       if (!response.ok) {
@@ -636,7 +664,7 @@ async function fetch7TVChannelEmotes(channelName, channelId = null, platform = '
       log(' ✅ 7TV: Kick lookup succeeded');
     } else {
       // Twitch: use channelId if available, otherwise lookup via decapi.me
-      let identifier = channelId;
+      identifier = channelId;
       if (!identifier) {
         log(' 7TV: No channelId provided, looking up via decapi.me...');
         identifier = await lookupTwitchUserId(channelName);
@@ -653,7 +681,9 @@ async function fetch7TVChannelEmotes(channelName, channelId = null, platform = '
       log(' 7TV: Fetching with identifier:', identifier, '(channelId:', channelId, ')');
 
       // Try Twitch ID lookup first
-      response = await fetchWithTimeout(`https://7tv.io/v3/users/twitch/${identifier}`);
+      const sevenTvUrl = `https://7tv.io/v3/users/twitch/${identifier}`;
+      response = await fetchWithTimeout(sevenTvUrl);
+      broadcastToTabs({ type: 'debug_log', msg: `7TV fetch ${channelName}: ${sevenTvUrl} → ${response.status}` });
 
       if (!response.ok) {
         log(' 7TV: Twitch ID lookup failed (' + response.status + '), trying username fallback...');
@@ -692,17 +722,28 @@ async function fetch7TVChannelEmotes(channelName, channelId = null, platform = '
     })));
     return { emotes, setId: emoteSet.id };
   } catch (error) {
-    log(' 7TV channel emotes error for:', channelName, error);
+    console.error('[hs-bg] 7TV FETCH ERROR for', channelName, ':', error?.message || error);
+    broadcastToTabs({ type: 'debug_log', msg: `7TV ERROR ${channelName}: ${error?.message || error}` });
     return [];
   }
 }
 
 // Fetch channel owner's emotes (public API) + third-party channel emotes
 async function fetchChannelOwnerEmotes(channelName, channelId = null, platform = 'twitch') {
-  // Skip if already fetched or currently fetching (sentinel prevents race)
-  if (channelEmotesMap[channelName]) {
-    log(' Channel emotes already fetched/loading for', channelName, '- skipping');
+  // Skip if already fetched with results, or currently loading (sentinel prevents race)
+  // Empty array [] is truthy — don't treat zero-result fetches as cached (allow retry)
+  const cached = channelEmotesMap[channelName];
+  if (cached === 'loading') {
+    log(' Channel emotes currently loading for', channelName, '- skipping');
     return;
+  }
+  if (Array.isArray(cached) && cached.length > 0) {
+    const age = Date.now() - (channelEmotesFetchedAt[channelName] || 0);
+    if (age < CHANNEL_EMOTES_TTL) {
+      log(' Channel emotes already fetched for', channelName, '- skipping (', cached.length, 'emotes,', Math.round(age / 1000) + 's old)');
+      return;
+    }
+    log(' Channel emotes stale for', channelName, '(', Math.round(age / 1000) + 's) - refetching');
   }
   channelEmotesMap[channelName] = 'loading';
 
@@ -730,7 +771,7 @@ async function fetchChannelOwnerEmotes(channelName, channelId = null, platform =
     // Resolve Twitch user ID once for BTTV + 7TV (both need numeric ID) — skip for Kick
     if (platform !== 'kick' && !channelId) {
       channelId = await lookupTwitchUserId(channelName)
-      if (channelId) log(' Resolved Twitch ID for', channelName + ':', channelId)
+      broadcastToTabs({ type: 'debug_log', msg: `decapi/gql lookup ${channelName} → ${channelId || 'FAILED'}` })
     }
 
     // Fetch third-party emotes in PARALLEL for speed
@@ -745,17 +786,16 @@ async function fetchChannelOwnerEmotes(channelName, channelId = null, platform =
     // fetch7TVChannelEmotes returns { emotes, setId } or [] on error
     const sevenTVEmotes = sevenTVResult?.emotes || sevenTVResult || [];
     const sevenTVSetId = sevenTVResult?.setId || null;
-    log(' BTTV channel:', bttvEmotes.length);
-    log(' FFZ channel:', ffzEmotes.length);
-    log(' 7TV channel:', sevenTVEmotes.length);
+    broadcastToTabs({ type: 'debug_log', msg: `${channelName} BTTV:${bttvEmotes.length} FFZ:${ffzEmotes.length} 7TV:${sevenTVEmotes.length} Twitch:${twitchChannelEmotes.length} HS:${heatsyncEmotes.length}` });
 
     // Store emotes for this specific channel (prune old entries to bound memory)
     const emotes = [...heatsyncEmotes, ...bttvEmotes, ...ffzEmotes, ...sevenTVEmotes, ...twitchChannelEmotes];
     channelEmotesMap[channelName] = emotes;
+    channelEmotesFetchedAt[channelName] = Date.now();
     const channelKeys = Object.keys(channelEmotesMap).filter(k => channelEmotesMap[k] !== 'loading');
     if (channelKeys.length > 20) {
       for (const old of channelKeys.slice(0, channelKeys.length - 20)) {
-        if (old !== channelName) delete channelEmotesMap[old];
+        if (old !== channelName) { delete channelEmotesMap[old]; delete channelEmotesFetchedAt[old]; }
       }
     }
     updateEmoteUrlMap();
@@ -770,8 +810,12 @@ async function fetchChannelOwnerEmotes(channelName, channelId = null, platform =
     // Broadcast to content scripts (include channel owner name for filtering)
     broadcastToTabs({ type: 'channel_emotes_update', emotes, channelOwner: channelName });
 
-    // Save per-channel map to storage for persistence
-    await browser.storage.local.set({ channel_emotes_map: channelEmotesMap });
+    // Save per-channel map to storage for persistence (filter out 'loading' sentinels)
+    const storableMap = {};
+    for (const [k, v] of Object.entries(channelEmotesMap)) {
+      if (Array.isArray(v)) storableMap[k] = v;
+    }
+    await browser.storage.local.set({ channel_emotes_map: storableMap });
 
     // Store 7TV set ID per channel and subscribe on shared EventAPI connection
     if (sevenTVSetId) {
@@ -1776,6 +1820,10 @@ function handleWSMessage(msg) {
         type: 'new-message',
         data: msg
       });
+      break;
+
+    case 'message-updated':
+      broadcastToTabs({ type: 'message-updated', data: msg });
       break;
 
     case 'notification:new':

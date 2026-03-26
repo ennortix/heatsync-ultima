@@ -1,5 +1,8 @@
 // Input - chat input, autocomplete, send message, reply state
 
+// Cache own badge string from IRC messages for optimistic display
+let _ownBadges = ''
+
 // Echo dedup — suppress own message echoes from IRC/KickChat relay
 // Uses a Set of {text, time} to handle rapid sends without overwriting
 const _recentSentMessages = []
@@ -20,12 +23,13 @@ function isSentEcho(msgText) {
     const entry = _recentSentMessages[i]
     if (entry.time < cutoff) break
     if (entry.text === msgText) {
-      // Consume — only suppress once per platform echo (allow 2 for dual-send: 1 twitch + 1 kick)
+      // Dual-send only: first echo displays, second is suppressed
       entry.suppressed = (entry.suppressed || 0) + 1
-      if (entry.suppressed >= (entry.dualSend ? 2 : 1)) {
+      if (entry.suppressed >= 2) {
         _recentSentMessages.splice(i, 1)
+        return true
       }
-      return true
+      return false
     }
   }
   return false
@@ -1318,16 +1322,20 @@ async function sendMessage() {
   const sendToTwitch = !!twitchName && !isLiveKick
   const isDualSend = sendToKick && sendToTwitch
 
-  // Track for echo dedup
-  trackSentMessage(text)
+  // Track for echo dedup (dual-send only — suppress second platform's duplicate)
   if (isDualSend) {
-    // Mark last entry as dual-send so dedup allows 2 suppressions
-    const last = _recentSentMessages[_recentSentMessages.length - 1]
-    if (last) last.dualSend = true
+    trackSentMessage(text)
   }
 
   const replyParentId = replyState?.msgId || null
   clearReplyState()
+
+  // Clear input immediately
+  if (wysiwygEnabled) input.textContent = ''
+  else input.value = ''
+  pendingMessage = ''
+  updateCharCount()
+  hideInputBar()
 
   // --- Kick send path (single or dual) ---
   if (sendToKick) {
@@ -1342,13 +1350,6 @@ async function sendMessage() {
       const twitchOk = twitchResult === true || twitchResult === null
 
       if (kickOk || twitchOk) {
-        // Clear input (don't show optimistic — let echo render naturally via dedup)
-        // The IRC/Kick echo will render the message with correct colors
-        if (wysiwygEnabled) input.textContent = ''
-        else input.value = ''
-        pendingMessage = ''
-        updateCharCount()
-        hideInputBar()
 
         // Partial failure toast
         if (isDualSend && !kickOk) showToast('sent to twitch only — ' + (kickResult || 'kick failed'))
@@ -1386,11 +1387,6 @@ async function sendMessage() {
         input.style.borderColor = '#ff0'
         setTimeout(() => { input.style.borderColor = '' }, 1500)
       }
-      if (wysiwygEnabled) input.textContent = ''
-      else input.value = ''
-      pendingMessage = ''
-      updateCharCount()
-      hideInputBar()
     } else {
       input.style.borderColor = '#f44'
       const msg = result === 'no_user' ? 'no username detected'

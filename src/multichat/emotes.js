@@ -729,9 +729,11 @@
 
       // Load per-channel emotes into separate caches (prevents cross-channel leaking)
       const map = stored.channel_emotes_map || {};
+      console.log('[heatsync-debug] loadEmotes channel_emotes_map:', Object.entries(map).map(([k, v]) => `${k}:${Array.isArray(v) ? v.length : v}`).join(', ') || '(empty)');
       for (const [ch, emotes] of Object.entries(map)) {
+        if (!Array.isArray(emotes)) continue; // skip 'loading' sentinels
         const chCache = new Map();
-        (emotes || []).forEach(e => {
+        emotes.forEach(e => {
           if (e.name && e.url) {
             const source = e.source || detectEmoteSource(e.url, '7tv');
             chCache.set(e.name, { url: e.url, source, state: 'channel', zeroWidth: !!e.zeroWidth });
@@ -739,6 +741,7 @@
           }
         });
         channelEmoteCaches[ch] = chCache;
+        console.log('[heatsync-debug] channel emote cache for', ch, ':', chCache.size, 'emotes, sample:', Array.from(chCache.keys()).slice(0, 5).join(', '));
       }
       // Evict oldest channel emote caches if exceeds 20
       const channelKeys = Object.keys(channelEmoteCaches);

@@ -37,8 +37,7 @@ function pushActivityEvent(evt) {
   activityEvents.push(evt)
   if (activityEvents.length > ACTIVITY_EVENTS_MAX) activityEvents.splice(0, activityEvents.length - ACTIVITY_EVENTS_MAX)
 }
-let expandedThreadId = null; // Currently expanded thread in feed
-let threadReplies = []; // Replies for expanded thread
+let activeThread = null // { id, op, replies[] } — when set, feed shows thread view
 let replyState = null; // { msgId, user, channel } when replying to a message
 let hsAuthToken = null; // Heatsync auth state (loaded from storage)
 
@@ -117,6 +116,20 @@ function listenForSocialEvents() {
       if (msg.data.username === 'Anonymous') return
       feedMessages.unshift(msg.data);
       if (feedMessages.length > 150) feedMessages.pop();
+
+      // Real-time thread update: if reply to the active thread, append it
+      const replyTo = msg.data.reply_to;
+      if (replyTo && activeThread && activeThread.id === replyTo) {
+        if (!activeThread.replies.some(r => r.base36_id === id)) {
+          activeThread.replies.push(msg.data);
+          if (activeThread.op) activeThread.op.reply_count = (activeThread.op.reply_count || 0) + 1;
+        }
+      }
+      // Update OP reply count in feed data
+      if (replyTo) {
+        const parent = feedMessages.find(m => m.base36_id === replyTo);
+        if (parent) parent.reply_count = (parent.reply_count || 0) + 1;
+      }
 
       if (currentTab === 'feed') {
         renderFeed();
@@ -212,6 +225,14 @@ function listenForSocialEvents() {
         }
       }
     }
+    if (msg.type === 'message-updated' && msg.data) {
+      const uid = msg.data.base36_id;
+      const idx = feedMessages.findIndex(m => m.base36_id === uid);
+      if (idx >= 0) Object.assign(feedMessages[idx], msg.data);
+      if (activeThread && activeThread.op && activeThread.op.base36_id === uid) {
+        Object.assign(activeThread.op, msg.data);
+      }
+    }
     if (msg.type === 'notification:new') {
       unreadNotifCount++;
       updateNotifBadge();
@@ -267,16 +288,34 @@ function renderFeed() {
   const msgsEl = document.getElementById('hs-mc-messages');
   if (!msgsEl) return;
 
-  // Feed shows posts from followed users (requires auth)
+  // Update feed tab button text
+  const feedTabBtn = tabBarElement?.querySelector('[data-tab="feed"]');
+  if (feedTabBtn) feedTabBtn.textContent = activeThread ? '<- back' : 'feed';
+
+  // Thread view — show OP + replies
+  if (activeThread) {
+    renderThreadView(msgsEl);
+    return;
+  }
+
+  // Feed list view
   const isStale = feedLoaded && (Date.now() - feedLastFetch > FEED_STALE_MS);
   if ((!feedLoaded || isStale) && !feedLoading) {
-    msgsEl.innerHTML = '<div class="hs-mc-empty">loading following feed...</div>';
+    msgsEl.textContent = '';
+    const loading = document.createElement('div');
+    loading.className = 'hs-mc-empty';
+    loading.textContent = 'loading following feed...';
+    msgsEl.appendChild(loading);
     fetchFeed();
     return;
   }
 
   if (feedMessages.length === 0) {
-    msgsEl.innerHTML = '<div class="hs-mc-empty">no posts yet</div>';
+    msgsEl.textContent = '';
+    const empty = document.createElement('div');
+    empty.className = 'hs-mc-empty';
+    empty.textContent = 'no posts yet';
+    msgsEl.appendChild(empty);
     return;
   }
 
@@ -289,15 +328,6 @@ function renderFeed() {
     const msgDiv = buildFeedMessageDiv(m);
     if (zebraEnabled && ++zebraCount % 2 === 0) msgDiv.classList.add('hs-mc-zebra');
     frag.appendChild(msgDiv);
-    // If this message is expanded, show thread replies
-    if (expandedThreadId === m.base36_id && threadReplies.length > 0) {
-      for (const r of threadReplies) {
-        const replyDiv = buildFeedMessageDiv(r, m.username);
-        replyDiv.classList.add('hs-feed-reply');
-        if (zebraEnabled && ++zebraCount % 2 === 0) replyDiv.classList.add('hs-mc-zebra');
-        frag.appendChild(replyDiv);
-      }
-    }
   }
   if (feedHasMore) {
     const loader = document.createElement('div');
@@ -307,7 +337,6 @@ function renderFeed() {
   }
   msgsEl.appendChild(frag);
 
-  // Feed scrolls to top (newest-first), not bottom like IRC
   isProgrammaticScroll = true;
   msgsEl.scrollTop = 0;
   requestAnimationFrame(() => { isProgrammaticScroll = false; });
@@ -343,9 +372,9 @@ function buildFeedMessageDiv(m, opUsername) {
   // renderFeedContent sanitizes via escapeHtml + emote ref escaping
   const content = renderFeedContent(m.content, m.emote_refs);
 
-  // Thread link: >>id (yellow, links to post on heatsync.org)
+  // Thread link: >>id — always expands thread inline (never navigates away)
   const shortId = (m.base36_id || '').replace(/^0+/, '') || '0';
-  const threadLink = `<a href="https://heatsync.org/post/${encodeURIComponent(m.base36_id)}" target="_blank" class="hs-feed-thread-link">&gt;&gt;${escapeHtml(shortId)}</a>`;
+  const threadLink = `<span class="hs-feed-thread-link hs-thread-toggle" style="cursor:pointer">&gt;&gt;${escapeHtml(shortId)}</span>`;
 
   // Post type tag: [OP] red = original post, [OP] magenta = OP replying in own thread, [RE] = reply
   const isOp = m.is_op != null ? !!m.is_op : (!m.reply_to || m.reply_to === '');
@@ -381,7 +410,15 @@ function buildFeedMessageDiv(m, opUsername) {
 
   div.innerHTML = `${timeHtml}${threadLink}${typeTag}${platBadge}${userHtml}${statsHtml}: <span class="hs-feed-body">${content}</span>`;
 
-  // Click replies to expand thread
+  // Click >>id to expand/collapse thread inline — never leaves the stream
+  const threadLinkEl = div.querySelector('.hs-thread-toggle');
+  if (threadLinkEl) {
+    threadLinkEl.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      toggleThread(m.base36_id);
+    });
+  }
   const repliesEl = div.querySelector('.hs-feed-replies');
   if (repliesEl && replies > 0) {
     repliesEl.style.cursor = 'pointer';
@@ -484,22 +521,79 @@ cleanup.setInterval(() => {
   }
 }, 30000);
 
-async function toggleThread(msgId) {
-  if (expandedThreadId === msgId) {
-    expandedThreadId = null;
-    threadReplies = [];
-    renderFeed();
-    return;
-  }
-  expandedThreadId = msgId;
-  threadReplies = [];
-  renderFeed(); // Show loading state
+// Open thread view — replaces feed with OP + replies + reply input
+async function openThread(msgId) {
+  // Find OP in feed or fetch it
+  let op = feedMessages.find(m => m.base36_id === msgId);
+  activeThread = { id: msgId, op: op || null, replies: [], loading: true };
+  renderFeed();
 
   const resp = await apiFetch(`/api/messages/${msgId}/replies`);
   if (resp.ok) {
-    threadReplies = resp.data?.replies || [];
+    activeThread.replies = resp.data?.replies || [];
   }
+  activeThread.loading = false;
   renderFeed();
+}
+
+function closeThread() {
+  activeThread = null;
+  renderFeed();
+}
+
+function toggleThread(msgId) {
+  if (activeThread && activeThread.id === msgId) {
+    closeThread();
+  } else {
+    openThread(msgId);
+  }
+}
+
+// Render the thread view (OP + replies + back button)
+function renderThreadView(msgsEl) {
+  const t = activeThread;
+  isProgrammaticScroll = true;
+  msgsEl.textContent = '';
+  const frag = document.createDocumentFragment();
+
+  // OP message
+  if (t.op) {
+    const opDiv = buildFeedMessageDiv(t.op);
+    opDiv.classList.add('hs-thread-op');
+    frag.appendChild(opDiv);
+  }
+
+  // Thread container with replies
+  const container = document.createElement('div');
+  container.className = 'hs-thread-container';
+  container.dataset.thread = t.id;
+
+  if (t.loading) {
+    const loading = document.createElement('div');
+    loading.className = 'hs-mc-empty';
+    loading.textContent = 'loading...';
+    loading.style.fontSize = '11px';
+    container.appendChild(loading);
+  } else if (t.replies.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'hs-mc-empty';
+    empty.textContent = 'no replies yet';
+    empty.style.fontSize = '11px';
+    container.appendChild(empty);
+  } else {
+    for (const r of t.replies) {
+      const replyDiv = buildFeedMessageDiv(r, t.op?.username);
+      replyDiv.classList.add('hs-thread-reply');
+      if (r.is_thread_op) replyDiv.classList.add('is-thread-op');
+      container.appendChild(replyDiv);
+    }
+  }
+  frag.appendChild(container);
+  msgsEl.appendChild(frag);
+
+  isProgrammaticScroll = true;
+  msgsEl.scrollTop = 0;
+  requestAnimationFrame(() => { isProgrammaticScroll = false; });
 }
 
 async function postFeedMessage(text, { topLevel = false } = {}) {
@@ -517,9 +611,9 @@ async function postFeedMessage(text, { topLevel = false } = {}) {
   }
 
   const body = { content: text };
-  // If replying to an expanded thread, set reply_to
-  if (expandedThreadId && !topLevel) {
-    body.reply_to = expandedThreadId;
+  // In thread view, global input posts as a reply to the active thread
+  if (activeThread) {
+    body.reply_to = activeThread.id;
   }
 
   const resp = await apiFetch('/api/messages', { method: 'POST', auth: true, body });
@@ -534,9 +628,21 @@ async function postFeedMessage(text, { topLevel = false } = {}) {
     hideInputBar();
     // Insert own post immediately from response (fetchFeed unreliable — service worker gets killed)
     const posted = resp.data?.message
-    if (posted && !feedMessages.some(f => f.base36_id === posted.base36_id)) {
-      feedMessages.unshift(posted)
-      if (feedMessages.length > 150) feedMessages.pop()
+    if (posted) {
+      if (!feedMessages.some(f => f.base36_id === posted.base36_id)) {
+        feedMessages.unshift(posted)
+        if (feedMessages.length > 150) feedMessages.pop()
+      }
+      // If in thread view, append reply to the thread
+      if (activeThread && activeThread.id === posted.reply_to) {
+        if (!activeThread.replies.some(r => r.base36_id === posted.base36_id)) {
+          activeThread.replies.push(posted)
+        }
+        // Update OP reply count
+        if (activeThread.op) activeThread.op.reply_count = (activeThread.op.reply_count || 0) + 1;
+        const parent = feedMessages.find(m => m.base36_id === activeThread.id);
+        if (parent) parent.reply_count = (parent.reply_count || 0) + 1;
+      }
     }
     if (currentTab === 'feed') renderFeed()
   } else {
@@ -674,11 +780,8 @@ function buildNotifDiv(m) {
     if (spoiler) { spoiler.classList.toggle('revealed'); return }
     if (e.target.closest('a, .hs-mc-emote, .hs-mc-link')) return
     const threadId = m.reply_to || m.base36_id;
-    expandedThreadId = threadId;
-    threadReplies = [];
     switchTab('feed');
-    // Fetch thread after switching
-    toggleThread(threadId);
+    openThread(threadId);
   });
 
   return div;

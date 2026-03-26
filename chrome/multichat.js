@@ -1968,7 +1968,7 @@ async function connectAuthIrc(token, nick) {
       scheduleReconnect(prev);
     };
     ws.onerror = () => {};
-    // Keepalive PING every 60s — detect dead sockets fast
+    // Keepalive PING every 30s — detect dead sockets fast
     authState.keepaliveTimer = cleanup.setInterval(() => {
       if (!authState.ws || authState.ws.readyState !== WebSocket.OPEN) return;
       if (authState.pongPending) {
@@ -1979,8 +1979,11 @@ async function connectAuthIrc(token, nick) {
       }
       authState.pongPending = true;
       try { authState.ws.send('PING :hs\r\n'); } catch {}
-    }, 60000);
+    }, 30000);
     authState.connecting = false;
+    // Pre-join current channel so first send is instant
+    const ch = getCurrentChannel()?.toLowerCase();
+    if (ch) joinChannel(ch);
     return true;
   } catch (e) {
     log('Auth IRC connect failed:', e.message);
@@ -2000,7 +2003,7 @@ function joinChannel(channel) {
       authState.joinWaiters.delete(channel);
       authState.joined.add(channel);
       resolve(true);
-    }, 3000);
+    }, 500);
     authState.joinWaiters.set(channel, { resolve, timer });
   });
 }
@@ -2822,9 +2825,11 @@ async function sendKickMessage(kickSlug, text) {
 
       // Load per-channel emotes into separate caches (prevents cross-channel leaking)
       const map = stored.channel_emotes_map || {};
+      console.log('[heatsync-debug] loadEmotes channel_emotes_map:', Object.entries(map).map(([k, v]) => `${k}:${Array.isArray(v) ? v.length : v}`).join(', ') || '(empty)');
       for (const [ch, emotes] of Object.entries(map)) {
+        if (!Array.isArray(emotes)) continue; // skip 'loading' sentinels
         const chCache = new Map();
-        (emotes || []).forEach(e => {
+        emotes.forEach(e => {
           if (e.name && e.url) {
             const source = e.source || detectEmoteSource(e.url, '7tv');
             chCache.set(e.name, { url: e.url, source, state: 'channel', zeroWidth: !!e.zeroWidth });
@@ -2832,6 +2837,7 @@ async function sendKickMessage(kickSlug, text) {
           }
         });
         channelEmoteCaches[ch] = chCache;
+        console.log('[heatsync-debug] channel emote cache for', ch, ':', chCache.size, 'emotes, sample:', Array.from(chCache.keys()).slice(0, 5).join(', '));
       }
       // Evict oldest channel emote caches if exceeds 20
       const channelKeys = Object.keys(channelEmoteCaches);
@@ -3426,7 +3432,7 @@ async function sendKickMessage(kickSlug, text) {
     const followsYou = rel.profileFollowsViewerOnTwitch || rel.profileFollowsViewerOnKick || rel.followsYou;
     if (followsYou) {
       const since = rel.profileFollowsViewerOnTwitchSince || rel.followsYouSince;
-      relBadges.push(`<span class="hs-pc-rel-badge mutual">follows you${since ? ' ' + getCompactRelTime(since) : ''}</span>`);
+      relBadges.push(`<span class="hs-pc-rel-badge mutual">follows you${since ? ' · ' + getCompactRelTime(since).replace(' ago', '') : ''}</span>`);
     }
     if (rel.profileSubbedToViewerOnTwitch || rel.subscribesToYou) {
       const since = rel.profileTwitchSubSince || rel.subscribesToYouSince;
@@ -3435,7 +3441,7 @@ async function sendKickMessage(kickSlug, text) {
     // Viewer follows profile
     if (rel.isFollowing || rel.followsOnTwitch) {
       const since = rel.followsOnTwitchSince || rel.followedAt;
-      relBadges.push(`<span class="hs-pc-rel-badge following">you follow${since ? ' ' + getCompactRelTime(since) : ''}</span>`);
+      relBadges.push(`<span class="hs-pc-rel-badge following">following${since ? ' · ' + getCompactRelTime(since).replace(' ago', '') : ''}</span>`);
     }
     // Viewer subbed to profile
     if (rel.isSubscribed || rel.subscribedOnTwitch) {
@@ -3528,7 +3534,7 @@ async function sendKickMessage(kickSlug, text) {
     cleanup.addEventListener(document, 'mouseover', (e) => {
       const target = e.target.closest('.hs-mc-user');
       if (target) {
-        const username = target.textContent;
+        const username = target.dataset.username || target.textContent.replace(/^@/, '');
         const color = target.style.color;
         showUserTooltip(target, username, color);
 
@@ -4686,6 +4692,7 @@ async function fetchGlobalBadges() {
       twitchBadgeUrls.set(`${b.setID}/${b.version}`, b.imageURL)
     }
     log('Loaded global badges:', twitchBadgeUrls.size)
+    renderMessages(currentTab)
   } catch (e) {
     globalBadgesFetched = false
     log('Failed to fetch global badges:', e.message)
@@ -5207,6 +5214,7 @@ async function fetchChannelBadges(channelLogin) {
     }
 
     log('Loaded channel badges for', channelLogin)
+    renderMessages(currentTab)
   } catch (e) {
     badgesFetchedChannels.delete(channelLogin)
     log('Failed to fetch channel badges:', e.message)
@@ -5239,15 +5247,22 @@ function renderBadges(badgesStr, channel) {
 // --- multichat/social.js ---
 // Social - feed, notifications, activity, heatsync API
 
-// Heat tier display — emoji + color based on heat score
+// Heat tier display — number + color glow, no emoji
 function getHeatDisplay(heat) {
   if (!heat || heat <= 0) return null
-  if (heat >= 5000) return { emoji: '💀', color: '#fff', glow: true }
-  if (heat >= 1000) return { emoji: '🌋', color: '#fff' }
-  if (heat >= 250)  return { emoji: '🌶️', color: '#fff' }
-  if (heat >= 50)   return { emoji: '🌡️', color: '#ff8700' }
-  if (heat >= 10)   return { emoji: '⚡', color: '#ff8700' }
-  return { emoji: '', color: '#808080' }
+  let color
+  let glow = false
+  if (heat >= 500) { color = '#fff'; glow = true }
+  else if (heat >= 250) color = '#ff0000'
+  else if (heat >= 100) color = '#ff2200'
+  else if (heat >= 50)  color = '#ff4400'
+  else if (heat >= 25)  color = '#ff6600'
+  else if (heat >= 10)  color = '#ff8700'
+  else if (heat >= 5)   color = '#888'
+  else if (heat >= 1)   color = '#666'
+  else                  color = '#444'
+  const suffix = heat >= 10 ? '°' : ''
+  return { color, glow, suffix }
 }
 
 // Feed & notifications state
@@ -5269,8 +5284,7 @@ function pushActivityEvent(evt) {
   activityEvents.push(evt)
   if (activityEvents.length > ACTIVITY_EVENTS_MAX) activityEvents.splice(0, activityEvents.length - ACTIVITY_EVENTS_MAX)
 }
-let expandedThreadId = null; // Currently expanded thread in feed
-let threadReplies = []; // Replies for expanded thread
+let activeThread = null // { id, op, replies[] } — when set, feed shows thread view
 let replyState = null; // { msgId, user, channel } when replying to a message
 let hsAuthToken = null; // Heatsync auth state (loaded from storage)
 
@@ -5349,6 +5363,20 @@ function listenForSocialEvents() {
       if (msg.data.username === 'Anonymous') return
       feedMessages.unshift(msg.data);
       if (feedMessages.length > 150) feedMessages.pop();
+
+      // Real-time thread update: if reply to the active thread, append it
+      const replyTo = msg.data.reply_to;
+      if (replyTo && activeThread && activeThread.id === replyTo) {
+        if (!activeThread.replies.some(r => r.base36_id === id)) {
+          activeThread.replies.push(msg.data);
+          if (activeThread.op) activeThread.op.reply_count = (activeThread.op.reply_count || 0) + 1;
+        }
+      }
+      // Update OP reply count in feed data
+      if (replyTo) {
+        const parent = feedMessages.find(m => m.base36_id === replyTo);
+        if (parent) parent.reply_count = (parent.reply_count || 0) + 1;
+      }
 
       if (currentTab === 'feed') {
         renderFeed();
@@ -5444,6 +5472,14 @@ function listenForSocialEvents() {
         }
       }
     }
+    if (msg.type === 'message-updated' && msg.data) {
+      const uid = msg.data.base36_id;
+      const idx = feedMessages.findIndex(m => m.base36_id === uid);
+      if (idx >= 0) Object.assign(feedMessages[idx], msg.data);
+      if (activeThread && activeThread.op && activeThread.op.base36_id === uid) {
+        Object.assign(activeThread.op, msg.data);
+      }
+    }
     if (msg.type === 'notification:new') {
       unreadNotifCount++;
       updateNotifBadge();
@@ -5499,16 +5535,34 @@ function renderFeed() {
   const msgsEl = document.getElementById('hs-mc-messages');
   if (!msgsEl) return;
 
-  // Feed shows posts from followed users (requires auth)
+  // Update feed tab button text
+  const feedTabBtn = tabBarElement?.querySelector('[data-tab="feed"]');
+  if (feedTabBtn) feedTabBtn.textContent = activeThread ? '<- back' : 'feed';
+
+  // Thread view — show OP + replies
+  if (activeThread) {
+    renderThreadView(msgsEl);
+    return;
+  }
+
+  // Feed list view
   const isStale = feedLoaded && (Date.now() - feedLastFetch > FEED_STALE_MS);
   if ((!feedLoaded || isStale) && !feedLoading) {
-    msgsEl.innerHTML = '<div class="hs-mc-empty">loading following feed...</div>';
+    msgsEl.textContent = '';
+    const loading = document.createElement('div');
+    loading.className = 'hs-mc-empty';
+    loading.textContent = 'loading following feed...';
+    msgsEl.appendChild(loading);
     fetchFeed();
     return;
   }
 
   if (feedMessages.length === 0) {
-    msgsEl.innerHTML = '<div class="hs-mc-empty">no posts yet</div>';
+    msgsEl.textContent = '';
+    const empty = document.createElement('div');
+    empty.className = 'hs-mc-empty';
+    empty.textContent = 'no posts yet';
+    msgsEl.appendChild(empty);
     return;
   }
 
@@ -5521,15 +5575,6 @@ function renderFeed() {
     const msgDiv = buildFeedMessageDiv(m);
     if (zebraEnabled && ++zebraCount % 2 === 0) msgDiv.classList.add('hs-mc-zebra');
     frag.appendChild(msgDiv);
-    // If this message is expanded, show thread replies
-    if (expandedThreadId === m.base36_id && threadReplies.length > 0) {
-      for (const r of threadReplies) {
-        const replyDiv = buildFeedMessageDiv(r, m.username);
-        replyDiv.classList.add('hs-feed-reply');
-        if (zebraEnabled && ++zebraCount % 2 === 0) replyDiv.classList.add('hs-mc-zebra');
-        frag.appendChild(replyDiv);
-      }
-    }
   }
   if (feedHasMore) {
     const loader = document.createElement('div');
@@ -5539,7 +5584,6 @@ function renderFeed() {
   }
   msgsEl.appendChild(frag);
 
-  // Feed scrolls to top (newest-first), not bottom like IRC
   isProgrammaticScroll = true;
   msgsEl.scrollTop = 0;
   requestAnimationFrame(() => { isProgrammaticScroll = false; });
@@ -5575,9 +5619,9 @@ function buildFeedMessageDiv(m, opUsername) {
   // renderFeedContent sanitizes via escapeHtml + emote ref escaping
   const content = renderFeedContent(m.content, m.emote_refs);
 
-  // Thread link: >>id (yellow, links to post on heatsync.org)
+  // Thread link: >>id — always expands thread inline (never navigates away)
   const shortId = (m.base36_id || '').replace(/^0+/, '') || '0';
-  const threadLink = `<a href="https://heatsync.org/post/${encodeURIComponent(m.base36_id)}" target="_blank" class="hs-feed-thread-link">&gt;&gt;${escapeHtml(shortId)}</a>`;
+  const threadLink = `<span class="hs-feed-thread-link hs-thread-toggle" style="cursor:pointer">&gt;&gt;${escapeHtml(shortId)}</span>`;
 
   // Post type tag: [OP] red = original post, [OP] magenta = OP replying in own thread, [RE] = reply
   const isOp = m.is_op != null ? !!m.is_op : (!m.reply_to || m.reply_to === '');
@@ -5600,7 +5644,7 @@ function buildFeedMessageDiv(m, opUsername) {
   // All dynamic values sanitized: avatarUrl via encodeURIComponent,
   // username/time via escapeHtml, color via sanitizeColor, content via renderFeedContent
   const hd = getHeatDisplay(heat)
-  const heatSpan = hd ? `<span class="hs-feed-stat hs-feed-heat" style="font-weight:700;color:${hd.color}${hd.glow ? ';text-shadow:0 0 6px rgba(255,135,0,0.8)' : ''}">${hd.emoji}${heat}</span>` : ''
+  const heatSpan = hd ? `<span class="hs-feed-stat hs-feed-heat" style="font-weight:700;color:${hd.color}${hd.glow ? ';text-shadow:0 0 8px #ff8700,0 0 16px rgba(255,135,0,0.6)' : ''}">${heat}${hd.suffix}</span>` : ''
   const repliesSpan = replies > 0 ? `<span class="hs-feed-stat hs-feed-replies" title="replies">💬${replies}</span>` : '';
   const stats = [heatSpan, repliesSpan].filter(Boolean).join(' ')
   const statsHtml = stats ? ` ${stats}` : ''
@@ -5613,7 +5657,15 @@ function buildFeedMessageDiv(m, opUsername) {
 
   div.innerHTML = `${timeHtml}${threadLink}${typeTag}${platBadge}${userHtml}${statsHtml}: <span class="hs-feed-body">${content}</span>`;
 
-  // Click replies to expand thread
+  // Click >>id to expand/collapse thread inline — never leaves the stream
+  const threadLinkEl = div.querySelector('.hs-thread-toggle');
+  if (threadLinkEl) {
+    threadLinkEl.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      toggleThread(m.base36_id);
+    });
+  }
   const repliesEl = div.querySelector('.hs-feed-replies');
   if (repliesEl && replies > 0) {
     repliesEl.style.cursor = 'pointer';
@@ -5716,22 +5768,79 @@ cleanup.setInterval(() => {
   }
 }, 30000);
 
-async function toggleThread(msgId) {
-  if (expandedThreadId === msgId) {
-    expandedThreadId = null;
-    threadReplies = [];
-    renderFeed();
-    return;
-  }
-  expandedThreadId = msgId;
-  threadReplies = [];
-  renderFeed(); // Show loading state
+// Open thread view — replaces feed with OP + replies + reply input
+async function openThread(msgId) {
+  // Find OP in feed or fetch it
+  let op = feedMessages.find(m => m.base36_id === msgId);
+  activeThread = { id: msgId, op: op || null, replies: [], loading: true };
+  renderFeed();
 
   const resp = await apiFetch(`/api/messages/${msgId}/replies`);
   if (resp.ok) {
-    threadReplies = resp.data?.replies || [];
+    activeThread.replies = resp.data?.replies || [];
   }
+  activeThread.loading = false;
   renderFeed();
+}
+
+function closeThread() {
+  activeThread = null;
+  renderFeed();
+}
+
+function toggleThread(msgId) {
+  if (activeThread && activeThread.id === msgId) {
+    closeThread();
+  } else {
+    openThread(msgId);
+  }
+}
+
+// Render the thread view (OP + replies + back button)
+function renderThreadView(msgsEl) {
+  const t = activeThread;
+  isProgrammaticScroll = true;
+  msgsEl.textContent = '';
+  const frag = document.createDocumentFragment();
+
+  // OP message
+  if (t.op) {
+    const opDiv = buildFeedMessageDiv(t.op);
+    opDiv.classList.add('hs-thread-op');
+    frag.appendChild(opDiv);
+  }
+
+  // Thread container with replies
+  const container = document.createElement('div');
+  container.className = 'hs-thread-container';
+  container.dataset.thread = t.id;
+
+  if (t.loading) {
+    const loading = document.createElement('div');
+    loading.className = 'hs-mc-empty';
+    loading.textContent = 'loading...';
+    loading.style.fontSize = '11px';
+    container.appendChild(loading);
+  } else if (t.replies.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'hs-mc-empty';
+    empty.textContent = 'no replies yet';
+    empty.style.fontSize = '11px';
+    container.appendChild(empty);
+  } else {
+    for (const r of t.replies) {
+      const replyDiv = buildFeedMessageDiv(r, t.op?.username);
+      replyDiv.classList.add('hs-thread-reply');
+      if (r.is_thread_op) replyDiv.classList.add('is-thread-op');
+      container.appendChild(replyDiv);
+    }
+  }
+  frag.appendChild(container);
+  msgsEl.appendChild(frag);
+
+  isProgrammaticScroll = true;
+  msgsEl.scrollTop = 0;
+  requestAnimationFrame(() => { isProgrammaticScroll = false; });
 }
 
 async function postFeedMessage(text, { topLevel = false } = {}) {
@@ -5749,9 +5858,9 @@ async function postFeedMessage(text, { topLevel = false } = {}) {
   }
 
   const body = { content: text };
-  // If replying to an expanded thread, set reply_to
-  if (expandedThreadId && !topLevel) {
-    body.reply_to = expandedThreadId;
+  // In thread view, global input posts as a reply to the active thread
+  if (activeThread) {
+    body.reply_to = activeThread.id;
   }
 
   const resp = await apiFetch('/api/messages', { method: 'POST', auth: true, body });
@@ -5766,9 +5875,21 @@ async function postFeedMessage(text, { topLevel = false } = {}) {
     hideInputBar();
     // Insert own post immediately from response (fetchFeed unreliable — service worker gets killed)
     const posted = resp.data?.message
-    if (posted && !feedMessages.some(f => f.base36_id === posted.base36_id)) {
-      feedMessages.unshift(posted)
-      if (feedMessages.length > 150) feedMessages.pop()
+    if (posted) {
+      if (!feedMessages.some(f => f.base36_id === posted.base36_id)) {
+        feedMessages.unshift(posted)
+        if (feedMessages.length > 150) feedMessages.pop()
+      }
+      // If in thread view, append reply to the thread
+      if (activeThread && activeThread.id === posted.reply_to) {
+        if (!activeThread.replies.some(r => r.base36_id === posted.base36_id)) {
+          activeThread.replies.push(posted)
+        }
+        // Update OP reply count
+        if (activeThread.op) activeThread.op.reply_count = (activeThread.op.reply_count || 0) + 1;
+        const parent = feedMessages.find(m => m.base36_id === activeThread.id);
+        if (parent) parent.reply_count = (parent.reply_count || 0) + 1;
+      }
     }
     if (currentTab === 'feed') renderFeed()
   } else {
@@ -5906,11 +6027,8 @@ function buildNotifDiv(m) {
     if (spoiler) { spoiler.classList.toggle('revealed'); return }
     if (e.target.closest('a, .hs-mc-emote, .hs-mc-link')) return
     const threadId = m.reply_to || m.base36_id;
-    expandedThreadId = threadId;
-    threadReplies = [];
     switchTab('feed');
-    // Fetch thread after switching
-    toggleThread(threadId);
+    openThread(threadId);
   });
 
   return div;
@@ -6228,6 +6346,7 @@ function renderWhispersTab() {
   whisperLastViewedTime = Date.now()
   whisperTotalUnread = 0
   updateWhisperBadge()
+  whisperSaveDebounced()
 
   if (whisperTimeline.length === 0) {
     // All dynamic values below are string literals — safe innerHTML
@@ -6285,6 +6404,9 @@ function renderWhispersTab() {
 // --- multichat/input.js ---
 // Input - chat input, autocomplete, send message, reply state
 
+// Cache own badge string from IRC messages for optimistic display
+let _ownBadges = ''
+
 // Echo dedup — suppress own message echoes from IRC/KickChat relay
 // Uses a Set of {text, time} to handle rapid sends without overwriting
 const _recentSentMessages = []
@@ -6305,12 +6427,13 @@ function isSentEcho(msgText) {
     const entry = _recentSentMessages[i]
     if (entry.time < cutoff) break
     if (entry.text === msgText) {
-      // Consume — only suppress once per platform echo (allow 2 for dual-send: 1 twitch + 1 kick)
+      // Dual-send only: first echo displays, second is suppressed
       entry.suppressed = (entry.suppressed || 0) + 1
-      if (entry.suppressed >= (entry.dualSend ? 2 : 1)) {
+      if (entry.suppressed >= 2) {
         _recentSentMessages.splice(i, 1)
+        return true
       }
-      return true
+      return false
     }
   }
   return false
@@ -7603,16 +7726,20 @@ async function sendMessage() {
   const sendToTwitch = !!twitchName && !isLiveKick
   const isDualSend = sendToKick && sendToTwitch
 
-  // Track for echo dedup
-  trackSentMessage(text)
+  // Track for echo dedup (dual-send only — suppress second platform's duplicate)
   if (isDualSend) {
-    // Mark last entry as dual-send so dedup allows 2 suppressions
-    const last = _recentSentMessages[_recentSentMessages.length - 1]
-    if (last) last.dualSend = true
+    trackSentMessage(text)
   }
 
   const replyParentId = replyState?.msgId || null
   clearReplyState()
+
+  // Clear input immediately
+  if (wysiwygEnabled) input.textContent = ''
+  else input.value = ''
+  pendingMessage = ''
+  updateCharCount()
+  hideInputBar()
 
   // --- Kick send path (single or dual) ---
   if (sendToKick) {
@@ -7627,13 +7754,6 @@ async function sendMessage() {
       const twitchOk = twitchResult === true || twitchResult === null
 
       if (kickOk || twitchOk) {
-        // Clear input (don't show optimistic — let echo render naturally via dedup)
-        // The IRC/Kick echo will render the message with correct colors
-        if (wysiwygEnabled) input.textContent = ''
-        else input.value = ''
-        pendingMessage = ''
-        updateCharCount()
-        hideInputBar()
 
         // Partial failure toast
         if (isDualSend && !kickOk) showToast('sent to twitch only — ' + (kickResult || 'kick failed'))
@@ -7671,11 +7791,6 @@ async function sendMessage() {
         input.style.borderColor = '#ff0'
         setTimeout(() => { input.style.borderColor = '' }, 1500)
       }
-      if (wysiwygEnabled) input.textContent = ''
-      else input.value = ''
-      pendingMessage = ''
-      updateCharCount()
-      hideInputBar()
     } else {
       input.style.borderColor = '#f44'
       const msg = result === 'no_user' ? 'no username detected'
@@ -7698,7 +7813,10 @@ const STORAGE_KEY = 'heatsync_multichat';
   // Safe runtime.sendMessage wrapper (context invalidation guard, Firefox-compatible)
   function safeSendMessage(message) {
     try {
-      return api.runtime.sendMessage(message)
+      return api.runtime.sendMessage(message).catch(e => {
+        log('sendMessage failed:', e.message)
+        return { ok: false, error: e.message }
+      })
     } catch (e) {
       log('sendMessage failed:', e.message)
       return Promise.resolve({ ok: false, error: 'context invalidated' })
@@ -7969,19 +8087,7 @@ const STORAGE_KEY = 'heatsync_multichat';
     const container = document.createElement('div');
     container.id = 'hs-mc-tabbar';
     // Static hardcoded tab buttons — no user input, safe innerHTML
-    // Kick: only live/feed/activity (no IRC tabs)
-    // Static hardcoded tab buttons — no user input, safe innerHTML
-    container.innerHTML = isKick ? `
-      <button class="hs-mc-tab active" data-tab="feed">feed</button>
-      <button class="hs-mc-tab" data-tab="whispers">whispers</button>
-      <button class="hs-mc-tab" data-tab="live">live</button>
-      <div class="hs-mc-tab-utils">
-        <button class="hs-mc-tab hs-mc-util-btn hs-mc-rotate" data-tab="rotate" title="rotate tabs (T)">T</button>
-        <button class="hs-mc-tab hs-mc-util-btn hs-mc-font-btn" data-font-dir="-1" title="smaller text">A-</button>
-        <button class="hs-mc-tab hs-mc-util-btn hs-mc-font-btn" data-font-dir="1" title="larger text">A+</button>
-        <button class="hs-mc-tab hs-mc-util-btn" data-tab="settings" title="settings">\u2699</button>
-      </div>
-    ` : `
+    container.innerHTML = `
       <button class="hs-mc-tab active" data-tab="feed">feed</button>
       <button class="hs-mc-tab" data-tab="whispers">whispers</button>
       <button class="hs-mc-tab" data-tab="mentions">mentions</button>
@@ -8075,6 +8181,7 @@ const STORAGE_KEY = 'heatsync_multichat';
 
   // Track scroll state for "new messages" button
   let isScrolledUp = false;
+  let emoteReloadTimer = null;
   let newMessageCount = 0;
   let isProgrammaticScroll = false; // Flag to ignore programmatic scrolls
 
@@ -8896,6 +9003,17 @@ const STORAGE_KEY = 'heatsync_multichat';
           </div>`).join('')}
         </div>
         <div class="hs-mc-settings-group">
+          <div class="hs-mc-settings-group-title">muted users</div>
+          ${mutedUsers.size === 0
+            ? `<div class="hs-mc-setting-row" style="color:#666;font-size:11px">no muted users</div>`
+            : [...mutedUsers].sort().map(u => `
+          <div class="hs-mc-setting-row">
+            <span class="hs-mc-setting-label" style="font-size:11px">${u}</span>
+            <button class="hs-mc-unmute-btn" data-username="${u}" style="background:none;border:1px solid #444;color:#999;font-size:11px;cursor:pointer;padding:1px 6px;line-height:1.4" title="unmute">&#x2715;</button>
+          </div>`).join('')
+          }
+        </div>
+        <div class="hs-mc-settings-group">
           <div class="hs-mc-setting-row" style="justify-content:flex-end">
             <button class="hs-mc-defaults-btn" style="background:#c0c0c0;border:2px outset #fff;padding:2px 10px;font-size:11px;font-weight:bold;cursor:pointer;font-family:'Liberation Mono',monospace;color:#000;box-shadow:1px 1px 0 #000">default</button>
           </div>
@@ -8951,6 +9069,18 @@ const STORAGE_KEY = 'heatsync_multichat';
         if (size) {
           setEmoteSize(size);
           msgsEl.querySelectorAll('.hs-mc-size-btn').forEach(b => b.classList.toggle('active', parseInt(b.dataset.size) === size));
+        }
+        return;
+      }
+
+      const unmuteBtn = e.target.closest('.hs-mc-unmute-btn[data-username]');
+      if (unmuteBtn) {
+        const username = unmuteBtn.dataset.username;
+        if (username) {
+          mutedUsers.delete(username);
+          try { chrome.storage.local.set({ heatsync_mc_muted: [...mutedUsers] }); } catch {}
+          applyMcMutes();
+          renderSettingsTab();
         }
         return;
       }
@@ -11491,10 +11621,26 @@ const STORAGE_KEY = 'heatsync_multichat';
       .hs-feed-tag-re {
         color: #00ffff;
       }
-      .hs-feed-reply {
-        margin-left: 16px;
-        border-left: 2px solid #808080;
-        padding-left: 6px;
+      .hs-thread-op {
+        border-bottom: 1px solid #ff8700;
+        padding-bottom: 4px;
+        margin-bottom: 4px;
+      }
+      .hs-thread-container {
+        margin-left: 12px;
+        border-left: 2px solid #ff8700;
+        padding-left: 8px;
+        margin-bottom: 4px;
+      }
+      .hs-thread-reply {
+        padding: 1px 4px;
+        line-height: 1.3;
+        font-size: 12px;
+      }
+      .hs-thread-reply.is-thread-op {
+        border-left: 2px solid #ff00ff;
+        margin-left: -2px;
+        padding-left: 10px;
       }
       .hs-feed-loader {
         cursor: default;
@@ -11972,10 +12118,15 @@ const STORAGE_KEY = 'heatsync_multichat';
     log('switchTab called:', id);
     editingChannel = false;
 
-    // Reset expanded thread when leaving feed
+    // Clicking feed tab while in thread view → go back to feed, don't switch tabs
+    if (id === 'feed' && currentTab === 'feed' && activeThread) {
+      closeThread();
+      return;
+    }
+
+    // Close thread view when leaving feed
     if (currentTab === 'feed' && id !== 'feed') {
-      expandedThreadId = null;
-      threadReplies = [];
+      activeThread = null;
     }
     currentTab = id;
 
@@ -11990,6 +12141,7 @@ const STORAGE_KEY = 'heatsync_multichat';
       whisperLastViewedTime = Date.now()
       whisperTotalUnread = 0
       updateWhisperBadge()
+      whisperSaveDebounced()
     }
 
     // Persist active tab across refreshes/popouts (skip transient tabs)
@@ -12241,10 +12393,8 @@ const STORAGE_KEY = 'heatsync_multichat';
         const spoiler = e.target.closest('.hs-spoiler')
         if (spoiler) { spoiler.classList.toggle('revealed'); return }
         if (e.target.closest('a, .hs-mc-emote, .hs-mc-link')) return
-        expandedThreadId = m.reply_to || m.base36_id
-        threadReplies = []
         switchTab('feed')
-        toggleThread(expandedThreadId)
+        openThread(m.reply_to || m.base36_id)
       })
       return div
     }
@@ -13454,10 +13604,14 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
           applyTabsPosition();
         }
       }
+      if (msg.type === 'debug_log') console.log('[hs-bg]', msg.msg);
       // Listen for emote updates from background
       if (msg.type === 'global_emotes_update' || msg.type === 'channel_emotes_update') {
-        log('Emotes updated via message, reloading...');
-        loadEmotes().then(() => renderMessages(currentTab));
+        console.log('[heatsync-debug] received', msg.type, msg.channelOwner || '');
+        clearTimeout(emoteReloadTimer);
+        emoteReloadTimer = setTimeout(() => {
+          loadEmotes().then(() => renderMessages(currentTab));
+        }, 300);
       }
 
       // 7TV emote add/remove → persistent stream-event in chat
@@ -13507,15 +13661,15 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
         }
       }
 
-      // Emote updates - reload when storage changes
+      // Emote updates - reload when storage changes (debounced to avoid spam)
       if (changes.global_emotes || changes.channel_emotes_map || changes.emote_inventory) {
-        log('Emotes updated via storage, reloading...');
-        loadEmotes().then(() => {
-          // Re-render current tab to show new emotes
-          if (!isScrolledUp) {
-            renderMessages(currentTab);
-          }
-        });
+        console.log('[heatsync-debug] storage changed:', changes.channel_emotes_map ? 'channel_emotes_map' : '', changes.global_emotes ? 'global_emotes' : '', changes.emote_inventory ? 'emote_inventory' : '');
+        clearTimeout(emoteReloadTimer);
+        emoteReloadTimer = setTimeout(() => {
+          loadEmotes().then(() => {
+            if (!isScrolledUp) renderMessages(currentTab);
+          });
+        }, 300);
       }
 
       // Blocked emotes
@@ -13610,6 +13764,13 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
     }
 
     currentUsername = getCurrentUsername();
+    // Fallback: get username from HeatSync user_info in storage
+    if (!currentUsername) {
+      try {
+        const ui = await chrome.storage.local.get('user_info')
+        if (ui.user_info?.username) currentUsername = ui.user_info.username.toLowerCase()
+      } catch {}
+    }
     log('Username:', currentUsername);
 
     // Load muted users from chrome.storage.local
@@ -13706,8 +13867,9 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
       if (twitchName) {
         irc.join(twitchName);
         try {
+          console.log('[heatsync-debug] sending join_channel for:', twitchName);
           chrome.runtime.sendMessage({ type: 'join_channel', platform: 'twitch', channel: twitchName });
-        } catch (e) { /* context invalidated */ }
+        } catch (e) { console.log('[heatsync-debug] join_channel failed:', e.message); }
       }
       if (kickName) {
         kickChat.join(kickName);
@@ -13729,6 +13891,10 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
 
     // Handle incoming IRC messages
     irc.on('message', (msg) => {
+      // Cache own badges for optimistic display
+      if (msg.user?.toLowerCase() === currentUsername?.toLowerCase() && msg.badges) {
+        _ownBadges = msg.badges
+      }
       // Suppress echo of own sent messages (dedup dual-send)
       if (isSentEcho(msg.text)) return
       const isMent = isMention(msg)
@@ -14326,8 +14492,7 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
       feedLastFetch = 0;
       notifLoaded = false;
       notifMessages = [];
-      expandedThreadId = null;
-      threadReplies = [];
+      activeThread = null;
       // Reset feed scroll listener flag (new DOM element)
       const oldMsgs = document.getElementById('hs-mc-messages');
       if (oldMsgs) oldMsgs._hsFeedScroll = false;

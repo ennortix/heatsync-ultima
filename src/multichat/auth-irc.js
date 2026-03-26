@@ -154,7 +154,7 @@ async function connectAuthIrc(token, nick) {
       scheduleReconnect(prev);
     };
     ws.onerror = () => {};
-    // Keepalive PING every 60s — detect dead sockets fast
+    // Keepalive PING every 30s — detect dead sockets fast
     authState.keepaliveTimer = cleanup.setInterval(() => {
       if (!authState.ws || authState.ws.readyState !== WebSocket.OPEN) return;
       if (authState.pongPending) {
@@ -165,8 +165,11 @@ async function connectAuthIrc(token, nick) {
       }
       authState.pongPending = true;
       try { authState.ws.send('PING :hs\r\n'); } catch {}
-    }, 60000);
+    }, 30000);
     authState.connecting = false;
+    // Pre-join current channel so first send is instant
+    const ch = getCurrentChannel()?.toLowerCase();
+    if (ch) joinChannel(ch);
     return true;
   } catch (e) {
     log('Auth IRC connect failed:', e.message);
@@ -186,7 +189,7 @@ function joinChannel(channel) {
       authState.joinWaiters.delete(channel);
       authState.joined.add(channel);
       resolve(true);
-    }, 3000);
+    }, 500);
     authState.joinWaiters.set(channel, { resolve, timer });
   });
 }

@@ -17,7 +17,10 @@
   // Safe runtime.sendMessage wrapper (context invalidation guard, Firefox-compatible)
   function safeSendMessage(message) {
     try {
-      return api.runtime.sendMessage(message)
+      return api.runtime.sendMessage(message).catch(e => {
+        log('sendMessage failed:', e.message)
+        return { ok: false, error: e.message }
+      })
     } catch (e) {
       log('sendMessage failed:', e.message)
       return Promise.resolve({ ok: false, error: 'context invalidated' })
@@ -288,19 +291,7 @@
     const container = document.createElement('div');
     container.id = 'hs-mc-tabbar';
     // Static hardcoded tab buttons — no user input, safe innerHTML
-    // Kick: only live/feed/activity (no IRC tabs)
-    // Static hardcoded tab buttons — no user input, safe innerHTML
-    container.innerHTML = isKick ? `
-      <button class="hs-mc-tab active" data-tab="feed">feed</button>
-      <button class="hs-mc-tab" data-tab="whispers">whispers</button>
-      <button class="hs-mc-tab" data-tab="live">live</button>
-      <div class="hs-mc-tab-utils">
-        <button class="hs-mc-tab hs-mc-util-btn hs-mc-rotate" data-tab="rotate" title="rotate tabs (T)">T</button>
-        <button class="hs-mc-tab hs-mc-util-btn hs-mc-font-btn" data-font-dir="-1" title="smaller text">A-</button>
-        <button class="hs-mc-tab hs-mc-util-btn hs-mc-font-btn" data-font-dir="1" title="larger text">A+</button>
-        <button class="hs-mc-tab hs-mc-util-btn" data-tab="settings" title="settings">\u2699</button>
-      </div>
-    ` : `
+    container.innerHTML = `
       <button class="hs-mc-tab active" data-tab="feed">feed</button>
       <button class="hs-mc-tab" data-tab="whispers">whispers</button>
       <button class="hs-mc-tab" data-tab="mentions">mentions</button>
@@ -394,6 +385,7 @@
 
   // Track scroll state for "new messages" button
   let isScrolledUp = false;
+  let emoteReloadTimer = null;
   let newMessageCount = 0;
   let isProgrammaticScroll = false; // Flag to ignore programmatic scrolls
 
@@ -3833,10 +3825,26 @@
       .hs-feed-tag-re {
         color: #00ffff;
       }
-      .hs-feed-reply {
-        margin-left: 16px;
-        border-left: 2px solid #808080;
-        padding-left: 6px;
+      .hs-thread-op {
+        border-bottom: 1px solid #ff8700;
+        padding-bottom: 4px;
+        margin-bottom: 4px;
+      }
+      .hs-thread-container {
+        margin-left: 12px;
+        border-left: 2px solid #ff8700;
+        padding-left: 8px;
+        margin-bottom: 4px;
+      }
+      .hs-thread-reply {
+        padding: 1px 4px;
+        line-height: 1.3;
+        font-size: 12px;
+      }
+      .hs-thread-reply.is-thread-op {
+        border-left: 2px solid #ff00ff;
+        margin-left: -2px;
+        padding-left: 10px;
       }
       .hs-feed-loader {
         cursor: default;
@@ -4314,10 +4322,15 @@
     log('switchTab called:', id);
     editingChannel = false;
 
-    // Reset expanded thread when leaving feed
+    // Clicking feed tab while in thread view → go back to feed, don't switch tabs
+    if (id === 'feed' && currentTab === 'feed' && activeThread) {
+      closeThread();
+      return;
+    }
+
+    // Close thread view when leaving feed
     if (currentTab === 'feed' && id !== 'feed') {
-      expandedThreadId = null;
-      threadReplies = [];
+      activeThread = null;
     }
     currentTab = id;
 
@@ -4332,6 +4345,7 @@
       whisperLastViewedTime = Date.now()
       whisperTotalUnread = 0
       updateWhisperBadge()
+      whisperSaveDebounced()
     }
 
     // Persist active tab across refreshes/popouts (skip transient tabs)
@@ -4583,10 +4597,8 @@
         const spoiler = e.target.closest('.hs-spoiler')
         if (spoiler) { spoiler.classList.toggle('revealed'); return }
         if (e.target.closest('a, .hs-mc-emote, .hs-mc-link')) return
-        expandedThreadId = m.reply_to || m.base36_id
-        threadReplies = []
         switchTab('feed')
-        toggleThread(expandedThreadId)
+        openThread(m.reply_to || m.base36_id)
       })
       return div
     }
@@ -5796,10 +5808,14 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
           applyTabsPosition();
         }
       }
+      if (msg.type === 'debug_log') console.log('[hs-bg]', msg.msg);
       // Listen for emote updates from background
       if (msg.type === 'global_emotes_update' || msg.type === 'channel_emotes_update') {
-        log('Emotes updated via message, reloading...');
-        loadEmotes().then(() => renderMessages(currentTab));
+        console.log('[heatsync-debug] received', msg.type, msg.channelOwner || '');
+        clearTimeout(emoteReloadTimer);
+        emoteReloadTimer = setTimeout(() => {
+          loadEmotes().then(() => renderMessages(currentTab));
+        }, 300);
       }
 
       // 7TV emote add/remove → persistent stream-event in chat
@@ -5849,15 +5865,15 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
         }
       }
 
-      // Emote updates - reload when storage changes
+      // Emote updates - reload when storage changes (debounced to avoid spam)
       if (changes.global_emotes || changes.channel_emotes_map || changes.emote_inventory) {
-        log('Emotes updated via storage, reloading...');
-        loadEmotes().then(() => {
-          // Re-render current tab to show new emotes
-          if (!isScrolledUp) {
-            renderMessages(currentTab);
-          }
-        });
+        console.log('[heatsync-debug] storage changed:', changes.channel_emotes_map ? 'channel_emotes_map' : '', changes.global_emotes ? 'global_emotes' : '', changes.emote_inventory ? 'emote_inventory' : '');
+        clearTimeout(emoteReloadTimer);
+        emoteReloadTimer = setTimeout(() => {
+          loadEmotes().then(() => {
+            if (!isScrolledUp) renderMessages(currentTab);
+          });
+        }, 300);
       }
 
       // Blocked emotes
@@ -5952,6 +5968,13 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
     }
 
     currentUsername = getCurrentUsername();
+    // Fallback: get username from HeatSync user_info in storage
+    if (!currentUsername) {
+      try {
+        const ui = await chrome.storage.local.get('user_info')
+        if (ui.user_info?.username) currentUsername = ui.user_info.username.toLowerCase()
+      } catch {}
+    }
     log('Username:', currentUsername);
 
     // Load muted users from chrome.storage.local
@@ -6048,8 +6071,9 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
       if (twitchName) {
         irc.join(twitchName);
         try {
+          console.log('[heatsync-debug] sending join_channel for:', twitchName);
           chrome.runtime.sendMessage({ type: 'join_channel', platform: 'twitch', channel: twitchName });
-        } catch (e) { /* context invalidated */ }
+        } catch (e) { console.log('[heatsync-debug] join_channel failed:', e.message); }
       }
       if (kickName) {
         kickChat.join(kickName);
@@ -6071,6 +6095,10 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
 
     // Handle incoming IRC messages
     irc.on('message', (msg) => {
+      // Cache own badges for optimistic display
+      if (msg.user?.toLowerCase() === currentUsername?.toLowerCase() && msg.badges) {
+        _ownBadges = msg.badges
+      }
       // Suppress echo of own sent messages (dedup dual-send)
       if (isSentEcho(msg.text)) return
       const isMent = isMention(msg)
@@ -6668,8 +6696,7 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
       feedLastFetch = 0;
       notifLoaded = false;
       notifMessages = [];
-      expandedThreadId = null;
-      threadReplies = [];
+      activeThread = null;
       // Reset feed scroll listener flag (new DOM element)
       const oldMsgs = document.getElementById('hs-mc-messages');
       if (oldMsgs) oldMsgs._hsFeedScroll = false;

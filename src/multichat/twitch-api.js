@@ -1006,6 +1006,7 @@ async function fetchGlobalBadges() {
       twitchBadgeUrls.set(`${b.setID}/${b.version}`, b.imageURL)
     }
     log('Loaded global badges:', twitchBadgeUrls.size)
+    renderMessages(currentTab)
   } catch (e) {
     globalBadgesFetched = false
     log('Failed to fetch global badges:', e.message)
@@ -1527,6 +1528,7 @@ async function fetchChannelBadges(channelLogin) {
     }
 
     log('Loaded channel badges for', channelLogin)
+    renderMessages(currentTab)
   } catch (e) {
     badgesFetchedChannels.delete(channelLogin)
     log('Failed to fetch channel badges:', e.message)

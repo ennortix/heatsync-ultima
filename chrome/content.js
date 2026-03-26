@@ -58,7 +58,7 @@ let cachedAllEmotes = null
 let allEmotesDirty = true
 
 // Safe wrapper for chrome.runtime.sendMessage - handles context invalidation
-async function safeSendMessage(message) {
+async function safeSendMessage(message, _retry = 0) {
   if (!extensionContextValid) {
     warn(' Extension context invalidated - please refresh the page');
     return { success: false, error: 'Extension context invalidated' };
@@ -71,6 +71,11 @@ async function safeSendMessage(message) {
       extensionContextValid = false;
       warn(' ⚠️ Extension was reloaded - please refresh this page');
       showToast('Extension updated - refresh page to continue', 'warning');
+    } else if (_retry < 3 && (err.message?.includes('Receiving end does not exist') ||
+               err.message?.includes('Could not establish connection'))) {
+      // Service worker waking up — retry after short delay
+      await new Promise(r => setTimeout(r, 200 * (_retry + 1)));
+      return safeSendMessage(message, _retry + 1);
     }
     throw err;
   }
@@ -4808,6 +4813,7 @@ function createEmoteRegex(emoteName) {
 
 // Watch for new messages (MutationObserver)
 let messageObserver = null;
+let observedContainer = null;
 let watchRetryCount = 0;
 function watchForNewMessages() {
   const chatContainer = findChatContainer();
@@ -4879,6 +4885,7 @@ function watchForNewMessages() {
     }
   }), 'message-observer');
 
+  observedContainer = chatContainer;
   messageObserver.observe(chatContainer, { childList: true, subtree: true });
   log(' 👁️ Watching for new messages in chat container');
 }
@@ -5519,6 +5526,25 @@ cleanup.setInterval(() => {
     }, 500, 'url-change-rescan');
   }
 }, 1000, 'url-watcher');
+
+// Check if observed container was replaced by React (e.g. after sending a message)
+// Always compare against live DOM — old container may still be isConnected but orphaned from React tree
+cleanup.setInterval(() => {
+  const freshContainer = findChatContainer();
+  if (freshContainer && freshContainer !== observedContainer) {
+    log(' 🔄 Chat container changed, re-hooking observer');
+    watchForNewMessages();
+    if (usernameColoringObserver) {
+      usernameColoringObserver.disconnect();
+      usernameColoringObserver = null;
+    }
+    setupUsernameColoringObserver();
+  } else if (!freshContainer && observedContainer && !observedContainer.isConnected) {
+    log(' ⚠️ Chat container removed from DOM, clearing observer');
+    if (messageObserver) { messageObserver.disconnect(); messageObserver = null; }
+    observedContainer = null;
+  }
+}, 2000, 'observer-health-check');
 
 // Periodic re-scan to catch messages that might have been missed (30s — observer handles most)
 cleanup.setInterval(() => {

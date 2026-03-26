@@ -307,6 +307,7 @@ function renderWhispersTab() {
   whisperLastViewedTime = Date.now()
   whisperTotalUnread = 0
   updateWhisperBadge()
+  whisperSaveDebounced()
 
   if (whisperTimeline.length === 0) {
     // All dynamic values below are string literals — safe innerHTML

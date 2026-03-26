@@ -356,7 +356,7 @@
     const followsYou = rel.profileFollowsViewerOnTwitch || rel.profileFollowsViewerOnKick || rel.followsYou;
     if (followsYou) {
       const since = rel.profileFollowsViewerOnTwitchSince || rel.followsYouSince;
-      relBadges.push(`<span class="hs-pc-rel-badge mutual">follows you${since ? ' ' + getCompactRelTime(since) : ''}</span>`);
+      relBadges.push(`<span class="hs-pc-rel-badge mutual">follows you${since ? ' · ' + getCompactRelTime(since).replace(' ago', '') : ''}</span>`);
     }
     if (rel.profileSubbedToViewerOnTwitch || rel.subscribesToYou) {
       const since = rel.profileTwitchSubSince || rel.subscribesToYouSince;
@@ -365,7 +365,7 @@
     // Viewer follows profile
     if (rel.isFollowing || rel.followsOnTwitch) {
       const since = rel.followsOnTwitchSince || rel.followedAt;
-      relBadges.push(`<span class="hs-pc-rel-badge following">you follow${since ? ' ' + getCompactRelTime(since) : ''}</span>`);
+      relBadges.push(`<span class="hs-pc-rel-badge following">following${since ? ' · ' + getCompactRelTime(since).replace(' ago', '') : ''}</span>`);
     }
     // Viewer subbed to profile
     if (rel.isSubscribed || rel.subscribedOnTwitch) {
@@ -458,7 +458,7 @@
     cleanup.addEventListener(document, 'mouseover', (e) => {
       const target = e.target.closest('.hs-mc-user');
       if (target) {
-        const username = target.textContent;
+        const username = target.dataset.username || target.textContent.replace(/^@/, '');
         const color = target.style.color;
         showUserTooltip(target, username, color);
 

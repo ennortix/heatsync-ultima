@@ -3528,10 +3528,10 @@ async function sendKickMessage(kickSlug, text) {
     const badge = document.createElement('span')
     if (followedAt) {
       badge.className = 'hs-pc-followage'
-      badge.textContent = 'following ' + getCompactRelTime(followedAt).replace(' ago', '')
+      badge.textContent = 'following ' + channelLogin + ' ' + getCompactRelTime(followedAt).replace(' ago', '')
     } else {
       badge.className = 'hs-pc-followage hs-pc-nofollow'
-      badge.textContent = 'not following'
+      badge.textContent = 'not following ' + channelLogin
     }
     header.appendChild(badge)
   }

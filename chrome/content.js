@@ -4460,10 +4460,10 @@ function updateEmoteState(hash, emoteName, state) {
           const badge = document.createElement('span')
           if (followedAt) {
             badge.className = 'hs-pc-followage'
-            badge.textContent = 'following ' + formatAge(followedAt)
+            badge.textContent = 'following ' + channelLogin + ' ' + formatAge(followedAt)
           } else if (followedAt === null) {
             badge.className = 'hs-pc-followage hs-pc-nofollow'
-            badge.textContent = 'not following'
+            badge.textContent = 'not following ' + channelLogin
           }
           if (badge.textContent) headerLine.appendChild(badge)
         })

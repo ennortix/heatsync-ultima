@@ -4042,14 +4042,14 @@ function updateEmoteState(hash, emoteName, state) {
     return excluded.includes(ch) ? null : ch
   }
 
-  // Followage lookup via Twitch GQL (MAIN world proxy)
+  // Followage + follow counts lookup via Twitch GQL (MAIN world proxy)
   const followageCache = new Map()
   async function lookupFollowage(username, channelLogin) {
     if (!username || !channelLogin) return undefined
     if (username.toLowerCase() === channelLogin.toLowerCase()) return undefined
     const key = `${username.toLowerCase()}:${channelLogin.toLowerCase()}`
     const cached = followageCache.get(key)
-    if (cached && Date.now() - cached.ts < 300000) return cached.followedAt
+    if (cached && Date.now() - cached.ts < 300000) return cached.result
 
     return new Promise((resolve) => {
       const id = Math.random().toString(36).slice(2)
@@ -4057,10 +4057,15 @@ function updateEmoteState(hash, emoteName, state) {
         if (e.data?.type === 'heatsync-gql-response' && e.data.id === id) {
           window.removeEventListener('message', handler)
           clearTimeout(timer)
-          const followedAt = e.data.data?.data?.user?.follow?.followedAt || null
-          followageCache.set(key, { followedAt, ts: Date.now() })
+          const user = e.data.data?.data?.user
+          const result = {
+            followedAt: user?.follow?.followedAt || null,
+            followingCount: user?.follows?.totalCount ?? null,
+            followerCount: user?.followers?.totalCount ?? null,
+          }
+          followageCache.set(key, { result, ts: Date.now() })
           if (followageCache.size > 500) followageCache.delete(followageCache.keys().next().value)
-          resolve(followedAt)
+          resolve(result)
         }
       }
       window.addEventListener('message', handler)
@@ -4071,7 +4076,7 @@ function updateEmoteState(hash, emoteName, state) {
         id,
         operation: null,
         variables: {},
-        rawQuery: `{ user(login: "${safeUser}") { follow(targetLogin: "${safeChan}") { followedAt } } }`
+        rawQuery: `{ user(login: "${safeUser}") { follow(targetLogin: "${safeChan}") { followedAt } follows { totalCount } followers { totalCount } } }`
       }, location.origin)
       const timer = setTimeout(() => {
         window.removeEventListener('message', handler)
@@ -4448,24 +4453,43 @@ function updateEmoteState(hash, emoteName, state) {
       cardEl.appendChild(buildCardDOM(profile, username))
       positionCard(cardEl, e)
 
-      // Fetch followage async and append to card
+      // Fetch followage + live follow counts async and append to card
       const channelLogin = getChannelLogin()
       if (channelLogin && getPlatform() === 'twitch') {
-        lookupFollowage(username, channelLogin).then(followedAt => {
-          if (!cardEl || cardEl.style.display === 'none') return
+        lookupFollowage(username, channelLogin).then(result => {
+          if (!result || !cardEl || cardEl.style.display === 'none') return
           const headerLine = cardEl.querySelector('.hs-pc-header-line')
           if (!headerLine) return
+          // Followage badge
           const existing = headerLine.querySelector('.hs-pc-followage')
           if (existing) existing.remove()
           const badge = document.createElement('span')
-          if (followedAt) {
+          if (result.followedAt) {
             badge.className = 'hs-pc-followage'
-            badge.textContent = 'following ' + channelLogin + ' ' + formatAge(followedAt)
-          } else if (followedAt === null) {
+            badge.textContent = 'following ' + channelLogin + ' ' + formatAge(result.followedAt)
+          } else if (result.followedAt === null) {
             badge.className = 'hs-pc-followage hs-pc-nofollow'
             badge.textContent = 'not following ' + channelLogin
           }
           if (badge.textContent) headerLine.appendChild(badge)
+          // Update following count with live GQL data
+          const statsLine = cardEl.querySelector('.hs-pc-stats-line')
+          if (statsLine && result.followingCount != null) {
+            let followingEl = statsLine.querySelector('.hs-pc-following-count')
+            if (!followingEl) {
+              followingEl = document.createElement('span')
+              followingEl.className = 'hs-pc-following-count'
+              statsLine.appendChild(followingEl)
+            }
+            followingEl.textContent = 'following ' + formatNum(result.followingCount)
+          }
+          // Update followers with live data
+          if (statsLine && result.followerCount != null) {
+            const followersEl = statsLine.querySelector('.hs-pc-followers')
+            if (followersEl) {
+              followersEl.textContent = formatNum(result.followerCount) + ' followers'
+            }
+          }
         })
       }
 

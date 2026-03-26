@@ -1559,7 +1559,7 @@ function renderBadges(badgesStr, channel) {
 
 // ═══ Followage Lookup ═══
 
-const _followageCache = new Map() // "user:channel" → { followedAt, ts }
+const _followageCache = new Map() // "user:channel" → { result, ts }
 const FOLLOWAGE_CACHE_TTL = 300000 // 5min
 
 async function lookupFollowage(username, channelLogin) {
@@ -1567,20 +1567,25 @@ async function lookupFollowage(username, channelLogin) {
   if (username.toLowerCase() === channelLogin.toLowerCase()) return null
   const key = `${username.toLowerCase()}:${channelLogin.toLowerCase()}`
   const cached = _followageCache.get(key)
-  if (cached && Date.now() - cached.ts < FOLLOWAGE_CACHE_TTL) return cached.followedAt
+  if (cached && Date.now() - cached.ts < FOLLOWAGE_CACHE_TTL) return cached.result
 
   try {
     const safeUser = username.replace(/[^a-z0-9_]/gi, '')
     const safeChan = channelLogin.replace(/[^a-z0-9_]/gi, '')
     const data = await gqlProxy(null, null, {
-      rawQuery: `{ user(login: "${safeUser}") { follow(targetLogin: "${safeChan}") { followedAt } } }`
+      rawQuery: `{ user(login: "${safeUser}") { follow(targetLogin: "${safeChan}") { followedAt } follows { totalCount } followers { totalCount } } }`
     })
-    const followedAt = data?.data?.user?.follow?.followedAt || null
-    _followageCache.set(key, { followedAt, ts: Date.now() })
+    const user = data?.data?.user
+    const result = {
+      followedAt: user?.follow?.followedAt || null,
+      followingCount: user?.follows?.totalCount ?? null,
+      followerCount: user?.followers?.totalCount ?? null,
+    }
+    _followageCache.set(key, { result, ts: Date.now() })
     if (_followageCache.size > 500) {
       _followageCache.delete(_followageCache.keys().next().value)
     }
-    return followedAt
+    return result
   } catch {
     return null
   }

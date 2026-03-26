@@ -3423,8 +3423,8 @@ async function sendKickMessage(kickSlug, text) {
     if (op > 0) statBadges.push(`<span class="hs-pc-stat op"><span class="hs-pc-num">${formatCompact(op)}</span> [OP]</span>`);
     if (mop > 0) statBadges.push(`<span class="hs-pc-stat mop"><span class="hs-pc-num">${formatCompact(mop)}</span> <span style="color:#ff00ff">[OP]</span></span>`);
     if (re > 0) statBadges.push(`<span class="hs-pc-stat re"><span class="hs-pc-num">${formatCompact(re)}</span> [RE]</span>`);
-    if (followers > 0) statBadges.push(`<span class="hs-pc-stat"><span class="hs-pc-num">${formatCompact(followers)}</span> followers</span>`);
-    if (following > 0) statBadges.push(`<span class="hs-pc-stat">following <span class="hs-pc-num">${formatCompact(following)}</span></span>`);
+    if (followers > 0) statBadges.push(`<span class="hs-pc-stat hs-pc-stat-followers">${formatCompact(followers)} followers</span>`);
+    if (following > 0) statBadges.push(`<span class="hs-pc-stat hs-pc-stat-following">following ${formatCompact(following)}</span>`);
 
     // Relationship
     const rel = p.relationship || {};
@@ -3519,21 +3519,46 @@ async function sendKickMessage(kickSlug, text) {
     const channelLogin = getTooltipChannelContext()
     if (!channelLogin) return
     if (typeof lookupFollowage !== 'function') return
-    const followedAt = await lookupFollowage(username, channelLogin)
-    if (gen !== _profileGen) return
+    const result = await lookupFollowage(username, channelLogin)
+    if (gen !== _profileGen || !result) return
     const header = tooltip.querySelector('.hs-pc-header')
     if (!header) return
+    // Followage badge
     const existing = header.querySelector('.hs-pc-followage')
     if (existing) existing.remove()
     const badge = document.createElement('span')
-    if (followedAt) {
+    if (result.followedAt) {
       badge.className = 'hs-pc-followage'
-      badge.textContent = 'following ' + channelLogin + ' ' + getCompactRelTime(followedAt).replace(' ago', '')
+      badge.textContent = 'following ' + channelLogin + ' ' + getCompactRelTime(result.followedAt).replace(' ago', '')
     } else {
       badge.className = 'hs-pc-followage hs-pc-nofollow'
       badge.textContent = 'not following ' + channelLogin
     }
     header.appendChild(badge)
+    // Update following/follower counts from live GQL data
+    const statsEl = tooltip.querySelector('.hs-pc-stats')
+    if (statsEl && result.followingCount != null) {
+      // Replace stale following stat or add new one
+      let followingStat = statsEl.querySelector('.hs-pc-stat-following')
+      if (!followingStat) {
+        followingStat = document.createElement('span')
+        followingStat.className = 'hs-pc-stat hs-pc-stat-following'
+        statsEl.appendChild(followingStat)
+      }
+      followingStat.textContent = 'following ' + formatCompact(result.followingCount)
+    }
+    if (statsEl && result.followerCount != null) {
+      // Update followers with live data
+      const followerStat = statsEl.querySelector('.hs-pc-stat-followers')
+      if (followerStat) {
+        followerStat.textContent = formatCompact(result.followerCount) + ' followers'
+      } else {
+        const el = document.createElement('span')
+        el.className = 'hs-pc-stat hs-pc-stat-followers'
+        el.textContent = formatCompact(result.followerCount) + ' followers'
+        statsEl.appendChild(el)
+      }
+    }
   }
 
   function positionTooltipAtElement(tooltip, targetEl) {
@@ -5282,7 +5307,7 @@ function renderBadges(badgesStr, channel) {
 
 // ═══ Followage Lookup ═══
 
-const _followageCache = new Map() // "user:channel" → { followedAt, ts }
+const _followageCache = new Map() // "user:channel" → { result, ts }
 const FOLLOWAGE_CACHE_TTL = 300000 // 5min
 
 async function lookupFollowage(username, channelLogin) {
@@ -5290,20 +5315,25 @@ async function lookupFollowage(username, channelLogin) {
   if (username.toLowerCase() === channelLogin.toLowerCase()) return null
   const key = `${username.toLowerCase()}:${channelLogin.toLowerCase()}`
   const cached = _followageCache.get(key)
-  if (cached && Date.now() - cached.ts < FOLLOWAGE_CACHE_TTL) return cached.followedAt
+  if (cached && Date.now() - cached.ts < FOLLOWAGE_CACHE_TTL) return cached.result
 
   try {
     const safeUser = username.replace(/[^a-z0-9_]/gi, '')
     const safeChan = channelLogin.replace(/[^a-z0-9_]/gi, '')
     const data = await gqlProxy(null, null, {
-      rawQuery: `{ user(login: "${safeUser}") { follow(targetLogin: "${safeChan}") { followedAt } } }`
+      rawQuery: `{ user(login: "${safeUser}") { follow(targetLogin: "${safeChan}") { followedAt } follows { totalCount } followers { totalCount } } }`
     })
-    const followedAt = data?.data?.user?.follow?.followedAt || null
-    _followageCache.set(key, { followedAt, ts: Date.now() })
+    const user = data?.data?.user
+    const result = {
+      followedAt: user?.follow?.followedAt || null,
+      followingCount: user?.follows?.totalCount ?? null,
+      followerCount: user?.followers?.totalCount ?? null,
+    }
+    _followageCache.set(key, { result, ts: Date.now() })
     if (_followageCache.size > 500) {
       _followageCache.delete(_followageCache.keys().next().value)
     }
-    return followedAt
+    return result
   } catch {
     return null
   }

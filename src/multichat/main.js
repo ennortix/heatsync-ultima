@@ -2158,6 +2158,20 @@
       #hs-user-tooltip .hs-pc-rel-badge.supporter { background: #ff0000; color: #ffff00; }
       #hs-user-tooltip .hs-pc-rel-badge.following { background: #0099ff; color: #fff; }
       #hs-user-tooltip .hs-pc-rel-badge.subbed { background: #9146ff; color: #fff; }
+      #hs-user-tooltip .hs-pc-followage {
+        padding: 2px 3px;
+        font-size: 10px;
+        font-weight: 900;
+        white-space: nowrap;
+        letter-spacing: 0.3px;
+        background: #00aa00;
+        color: #fff;
+      }
+      #hs-user-tooltip .hs-pc-followage.hs-pc-nofollow {
+        background: transparent;
+        color: #666;
+        border: 1px solid #444;
+      }
       #hs-user-tooltip .hs-pc-loading {
         color: #808080;
         font-size: 11px;

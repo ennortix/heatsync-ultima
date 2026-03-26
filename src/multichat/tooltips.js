@@ -384,12 +384,24 @@
       </div>`;
   }
 
+  // Determine Twitch channel context for followage lookups
+  function getTooltipChannelContext() {
+    if (!location.hostname.includes('twitch.tv')) return null
+    // Live tab → current channel from URL or override
+    if (currentTab === 'live') return getLiveChannel()
+    // Channel tab → look up twitch name from config
+    const ch = config.channels.find(c => (typeof c === 'string' ? c : c.id) === currentTab)
+    if (ch) return typeof ch === 'string' ? ch : ch.twitch
+    return getLiveChannel()
+  }
+
   // NOTE: innerHTML usage is XSS-safe — all user content goes through escapeHtml() in renderProfileCard
+  // (escapeHtml converts &, <, >, ", ' to HTML entities before any innerHTML assignment)
   async function showUserTooltip(targetEl, username, color) {
     const tooltip = ensureUserTooltip();
     const gen = ++_profileGen;
 
-    // Show loading state immediately (username is escaped)
+    // Show loading state immediately (username is escaped via escapeHtml)
     tooltip.innerHTML = `<div class="hs-pc-loading" style="color:${color || '#fff'}">${escapeHtml(username)}...</div>`;
     tooltip.classList.add('visible');
     positionTooltipAtElement(tooltip, targetEl);
@@ -400,6 +412,7 @@
       if (gen !== _profileGen) return;
       tooltip.innerHTML = renderProfileCard(cached.profile);
       positionTooltipAtElement(tooltip, targetEl);
+      fetchAndShowFollowage(tooltip, username, gen);
       return;
     }
 
@@ -417,10 +430,34 @@
       }
       tooltip.innerHTML = renderProfileCard(profile);
       positionTooltipAtElement(tooltip, targetEl);
+      fetchAndShowFollowage(tooltip, username, gen);
     } else {
-      // Fallback - show basic info (username is escaped)
+      // Fallback — show basic info (username sanitized via escapeHtml)
       tooltip.innerHTML = `<div class="hs-pc-info"><div class="hs-pc-header"><span class="hs-pc-name">${escapeHtml(username)}</span></div></div>`;
+      fetchAndShowFollowage(tooltip, username, gen);
     }
+  }
+
+  // Async followage fetch — appends to tooltip after profile renders (DOM methods, no innerHTML)
+  async function fetchAndShowFollowage(tooltip, username, gen) {
+    const channelLogin = getTooltipChannelContext()
+    if (!channelLogin) return
+    if (typeof lookupFollowage !== 'function') return
+    const followedAt = await lookupFollowage(username, channelLogin)
+    if (gen !== _profileGen) return
+    const header = tooltip.querySelector('.hs-pc-header')
+    if (!header) return
+    const existing = header.querySelector('.hs-pc-followage')
+    if (existing) existing.remove()
+    const badge = document.createElement('span')
+    if (followedAt) {
+      badge.className = 'hs-pc-followage'
+      badge.textContent = 'following ' + getCompactRelTime(followedAt).replace(' ago', '')
+    } else {
+      badge.className = 'hs-pc-followage hs-pc-nofollow'
+      badge.textContent = 'not following'
+    }
+    header.appendChild(badge)
   }
 
   function positionTooltipAtElement(tooltip, targetEl) {

@@ -3460,12 +3460,24 @@ async function sendKickMessage(kickSlug, text) {
       </div>`;
   }
 
+  // Determine Twitch channel context for followage lookups
+  function getTooltipChannelContext() {
+    if (!location.hostname.includes('twitch.tv')) return null
+    // Live tab → current channel from URL or override
+    if (currentTab === 'live') return getLiveChannel()
+    // Channel tab → look up twitch name from config
+    const ch = config.channels.find(c => (typeof c === 'string' ? c : c.id) === currentTab)
+    if (ch) return typeof ch === 'string' ? ch : ch.twitch
+    return getLiveChannel()
+  }
+
   // NOTE: innerHTML usage is XSS-safe — all user content goes through escapeHtml() in renderProfileCard
+  // (escapeHtml converts &, <, >, ", ' to HTML entities before any innerHTML assignment)
   async function showUserTooltip(targetEl, username, color) {
     const tooltip = ensureUserTooltip();
     const gen = ++_profileGen;
 
-    // Show loading state immediately (username is escaped)
+    // Show loading state immediately (username is escaped via escapeHtml)
     tooltip.innerHTML = `<div class="hs-pc-loading" style="color:${color || '#fff'}">${escapeHtml(username)}...</div>`;
     tooltip.classList.add('visible');
     positionTooltipAtElement(tooltip, targetEl);
@@ -3476,6 +3488,7 @@ async function sendKickMessage(kickSlug, text) {
       if (gen !== _profileGen) return;
       tooltip.innerHTML = renderProfileCard(cached.profile);
       positionTooltipAtElement(tooltip, targetEl);
+      fetchAndShowFollowage(tooltip, username, gen);
       return;
     }
 
@@ -3493,10 +3506,34 @@ async function sendKickMessage(kickSlug, text) {
       }
       tooltip.innerHTML = renderProfileCard(profile);
       positionTooltipAtElement(tooltip, targetEl);
+      fetchAndShowFollowage(tooltip, username, gen);
     } else {
-      // Fallback - show basic info (username is escaped)
+      // Fallback — show basic info (username sanitized via escapeHtml)
       tooltip.innerHTML = `<div class="hs-pc-info"><div class="hs-pc-header"><span class="hs-pc-name">${escapeHtml(username)}</span></div></div>`;
+      fetchAndShowFollowage(tooltip, username, gen);
     }
+  }
+
+  // Async followage fetch — appends to tooltip after profile renders (DOM methods, no innerHTML)
+  async function fetchAndShowFollowage(tooltip, username, gen) {
+    const channelLogin = getTooltipChannelContext()
+    if (!channelLogin) return
+    if (typeof lookupFollowage !== 'function') return
+    const followedAt = await lookupFollowage(username, channelLogin)
+    if (gen !== _profileGen) return
+    const header = tooltip.querySelector('.hs-pc-header')
+    if (!header) return
+    const existing = header.querySelector('.hs-pc-followage')
+    if (existing) existing.remove()
+    const badge = document.createElement('span')
+    if (followedAt) {
+      badge.className = 'hs-pc-followage'
+      badge.textContent = 'following ' + getCompactRelTime(followedAt).replace(' ago', '')
+    } else {
+      badge.className = 'hs-pc-followage hs-pc-nofollow'
+      badge.textContent = 'not following'
+    }
+    header.appendChild(badge)
   }
 
   function positionTooltipAtElement(tooltip, targetEl) {
@@ -5241,6 +5278,35 @@ function renderBadges(badgesStr, channel) {
     if (!style) return ''
     return `<span class="hs-mc-badge" style="background:${style.bg};color:${style.fg}" title="${escapeHtml(name)}">${style.label}</span>`
   }).join('')
+}
+
+// ═══ Followage Lookup ═══
+
+const _followageCache = new Map() // "user:channel" → { followedAt, ts }
+const FOLLOWAGE_CACHE_TTL = 300000 // 5min
+
+async function lookupFollowage(username, channelLogin) {
+  if (!username || !channelLogin) return null
+  if (username.toLowerCase() === channelLogin.toLowerCase()) return null
+  const key = `${username.toLowerCase()}:${channelLogin.toLowerCase()}`
+  const cached = _followageCache.get(key)
+  if (cached && Date.now() - cached.ts < FOLLOWAGE_CACHE_TTL) return cached.followedAt
+
+  try {
+    const safeUser = username.replace(/[^a-z0-9_]/gi, '')
+    const safeChan = channelLogin.replace(/[^a-z0-9_]/gi, '')
+    const data = await gqlProxy(null, null, {
+      rawQuery: `{ user(login: "${safeUser}") { follow(targetLogin: "${safeChan}") { followedAt } } }`
+    })
+    const followedAt = data?.data?.user?.follow?.followedAt || null
+    _followageCache.set(key, { followedAt, ts: Date.now() })
+    if (_followageCache.size > 500) {
+      _followageCache.delete(_followageCache.keys().next().value)
+    }
+    return followedAt
+  } catch {
+    return null
+  }
 }
 
 
@@ -9967,6 +10033,20 @@ const STORAGE_KEY = 'heatsync_multichat';
       #hs-user-tooltip .hs-pc-rel-badge.supporter { background: #ff0000; color: #ffff00; }
       #hs-user-tooltip .hs-pc-rel-badge.following { background: #0099ff; color: #fff; }
       #hs-user-tooltip .hs-pc-rel-badge.subbed { background: #9146ff; color: #fff; }
+      #hs-user-tooltip .hs-pc-followage {
+        padding: 2px 3px;
+        font-size: 10px;
+        font-weight: 900;
+        white-space: nowrap;
+        letter-spacing: 0.3px;
+        background: #00aa00;
+        color: #fff;
+      }
+      #hs-user-tooltip .hs-pc-followage.hs-pc-nofollow {
+        background: transparent;
+        color: #666;
+        border: 1px solid #444;
+      }
       #hs-user-tooltip .hs-pc-loading {
         color: #808080;
         font-size: 11px;

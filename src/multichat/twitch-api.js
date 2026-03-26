@@ -1556,3 +1556,32 @@ function renderBadges(badgesStr, channel) {
     return `<span class="hs-mc-badge" style="background:${style.bg};color:${style.fg}" title="${escapeHtml(name)}">${style.label}</span>`
   }).join('')
 }
+
+// ═══ Followage Lookup ═══
+
+const _followageCache = new Map() // "user:channel" → { followedAt, ts }
+const FOLLOWAGE_CACHE_TTL = 300000 // 5min
+
+async function lookupFollowage(username, channelLogin) {
+  if (!username || !channelLogin) return null
+  if (username.toLowerCase() === channelLogin.toLowerCase()) return null
+  const key = `${username.toLowerCase()}:${channelLogin.toLowerCase()}`
+  const cached = _followageCache.get(key)
+  if (cached && Date.now() - cached.ts < FOLLOWAGE_CACHE_TTL) return cached.followedAt
+
+  try {
+    const safeUser = username.replace(/[^a-z0-9_]/gi, '')
+    const safeChan = channelLogin.replace(/[^a-z0-9_]/gi, '')
+    const data = await gqlProxy(null, null, {
+      rawQuery: `{ user(login: "${safeUser}") { follow(targetLogin: "${safeChan}") { followedAt } } }`
+    })
+    const followedAt = data?.data?.user?.follow?.followedAt || null
+    _followageCache.set(key, { followedAt, ts: Date.now() })
+    if (_followageCache.size > 500) {
+      _followageCache.delete(_followageCache.keys().next().value)
+    }
+    return followedAt
+  } catch {
+    return null
+  }
+}

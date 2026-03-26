@@ -453,6 +453,21 @@ style.textContent = `
     letter-spacing: 0.3px !important;
     white-space: nowrap !important;
   }
+  .hs-pc-followage {
+    background: #00aa00 !important;
+    color: #fff !important;
+    padding: 2px 4px !important;
+    border-radius: 0 !important;
+    font-size: 10px !important;
+    font-weight: 900 !important;
+    letter-spacing: 0.3px !important;
+    white-space: nowrap !important;
+  }
+  .hs-pc-followage.hs-pc-nofollow {
+    background: transparent !important;
+    color: #666 !important;
+    border: 1px solid #444 !important;
+  }
   .hs-pc-bio {
     color: #aaa !important;
     font-size: 11px !important;
@@ -4017,6 +4032,54 @@ function updateEmoteState(hash, emoteName, state) {
     return 'twitch'
   }
 
+  // Get current channel login from URL
+  function getChannelLogin() {
+    if (!window.location.hostname.includes('twitch.tv')) return null
+    const match = window.location.pathname.match(/^\/(?:popout\/|embed\/)?([a-zA-Z0-9_]+)/)
+    if (!match) return null
+    const ch = match[1].toLowerCase()
+    const excluded = ['directory', 'settings', 'videos', 'moderator', 'subscriptions', 'search', 'downloads', 'p']
+    return excluded.includes(ch) ? null : ch
+  }
+
+  // Followage lookup via Twitch GQL (MAIN world proxy)
+  const followageCache = new Map()
+  async function lookupFollowage(username, channelLogin) {
+    if (!username || !channelLogin) return undefined
+    if (username.toLowerCase() === channelLogin.toLowerCase()) return undefined
+    const key = `${username.toLowerCase()}:${channelLogin.toLowerCase()}`
+    const cached = followageCache.get(key)
+    if (cached && Date.now() - cached.ts < 300000) return cached.followedAt
+
+    return new Promise((resolve) => {
+      const id = Math.random().toString(36).slice(2)
+      const handler = (e) => {
+        if (e.data?.type === 'heatsync-gql-response' && e.data.id === id) {
+          window.removeEventListener('message', handler)
+          clearTimeout(timer)
+          const followedAt = e.data.data?.data?.user?.follow?.followedAt || null
+          followageCache.set(key, { followedAt, ts: Date.now() })
+          if (followageCache.size > 500) followageCache.delete(followageCache.keys().next().value)
+          resolve(followedAt)
+        }
+      }
+      window.addEventListener('message', handler)
+      const safeUser = username.replace(/[^a-z0-9_]/gi, '')
+      const safeChan = channelLogin.replace(/[^a-z0-9_]/gi, '')
+      window.postMessage({
+        type: 'heatsync-gql-request',
+        id,
+        operation: null,
+        variables: {},
+        rawQuery: `{ user(login: "${safeUser}") { follow(targetLogin: "${safeChan}") { followedAt } } }`
+      }, location.origin)
+      const timer = setTimeout(() => {
+        window.removeEventListener('message', handler)
+        resolve(undefined)
+      }, 5000)
+    })
+  }
+
   // Fetch profile (cached)
   async function fetchProfile(username, force = false) {
     const key = username.toLowerCase()
@@ -4384,6 +4447,27 @@ function updateEmoteState(hash, emoteName, state) {
       cardEl.textContent = ''
       cardEl.appendChild(buildCardDOM(profile, username))
       positionCard(cardEl, e)
+
+      // Fetch followage async and append to card
+      const channelLogin = getChannelLogin()
+      if (channelLogin && getPlatform() === 'twitch') {
+        lookupFollowage(username, channelLogin).then(followedAt => {
+          if (!cardEl || cardEl.style.display === 'none') return
+          const headerLine = cardEl.querySelector('.hs-pc-header-line')
+          if (!headerLine) return
+          const existing = headerLine.querySelector('.hs-pc-followage')
+          if (existing) existing.remove()
+          const badge = document.createElement('span')
+          if (followedAt) {
+            badge.className = 'hs-pc-followage'
+            badge.textContent = 'following ' + formatAge(followedAt)
+          } else if (followedAt === null) {
+            badge.className = 'hs-pc-followage hs-pc-nofollow'
+            badge.textContent = 'not following'
+          }
+          if (badge.textContent) headerLine.appendChild(badge)
+        })
+      }
 
       // Live-poll viewer count every 1s while card is visible (lightweight endpoint)
       if (cardPollInterval) { clearInterval(cardPollInterval); cardPollInterval = null }

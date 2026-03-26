@@ -5417,11 +5417,9 @@ function listenForSocialEvents() {
       handleIncomingDm(msg.data)
     }
     if (msg.type === 'youtube_chat_message') {
-      // Bidirectional dedup: skip if we already displayed this message from either source
-      if (isYtDuplicate(msg.user, msg.text)) return
-
-      // Track for dedup (both server and content script messages)
-      trackYtServerMsg(msg.user, msg.text)
+      const targetChannelId = msg.channelId
+      // Dedup against message buffer (survives WS reconnects unlike 5s hash)
+      if (targetChannelId && isYtDuplicate(msg.user, msg.text, targetChannelId)) return
 
       const ytMsg = {
         user: msg.user,
@@ -5437,7 +5435,6 @@ function listenForSocialEvents() {
         sticker: msg.sticker || null,
       }
 
-      const targetChannelId = msg.channelId
       if (targetChannelId && targetChannelId !== 'global') {
         // Per-channel YouTube → route to that channel tab
         if (!channelYtMessages.has(targetChannelId)) channelYtMessages.set(targetChannelId, [])
@@ -8028,7 +8025,6 @@ const STORAGE_KEY = 'heatsync_multichat';
 
 
   // Dedup: track recent server-sourced YouTube messages to skip content-script duplicates
-  const ytServerMsgHashes = new Set();
 
   // Normalize YouTube URL — accepts full URLs or bare username
   const normalizeYtUrl = (raw) => {
@@ -12318,20 +12314,18 @@ const STORAGE_KEY = 'heatsync_multichat';
 
 
 
-  // Dedup helper: hash user+text for 5s window
-  function ytMsgHash(user, text) {
-    return `${user}:${text.slice(0, 50)}`
-  }
-
-  function trackYtServerMsg(user, text) {
-    const hash = ytMsgHash(user, text)
-    ytServerMsgHashes.add(hash)
-    // auto-clean after 5s
-    setTimeout(() => ytServerMsgHashes.delete(hash), 5000)
-  }
-
-  function isYtDuplicate(user, text) {
-    return ytServerMsgHashes.has(ytMsgHash(user, text))
+  // Dedup helper: check against actual message buffers (survives WS reconnects)
+  function isYtDuplicate(user, text, channelId) {
+    const buf = channelYtMessages.get(channelId)
+    if (!buf || buf.length === 0) return false
+    // check last 200 messages in buffer (matches server recentMessages cap)
+    const start = Math.max(0, buf.length - 200)
+    const needle = `${user}:${text.slice(0, 50)}`
+    for (let i = buf.length - 1; i >= start; i--) {
+      const m = buf[i]
+      if (`${m.user}:${m.text.slice(0, 50)}` === needle) return true
+    }
+    return false
   }
 
   // Build a message div element (shared by full rebuild and incremental append)

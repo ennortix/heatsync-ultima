@@ -216,7 +216,6 @@
 
 
   // Dedup: track recent server-sourced YouTube messages to skip content-script duplicates
-  const ytServerMsgHashes = new Set();
 
   // Normalize YouTube URL — accepts full URLs or bare username
   const normalizeYtUrl = (raw) => {
@@ -4506,20 +4505,18 @@
 
 
 
-  // Dedup helper: hash user+text for 5s window
-  function ytMsgHash(user, text) {
-    return `${user}:${text.slice(0, 50)}`
-  }
-
-  function trackYtServerMsg(user, text) {
-    const hash = ytMsgHash(user, text)
-    ytServerMsgHashes.add(hash)
-    // auto-clean after 5s
-    setTimeout(() => ytServerMsgHashes.delete(hash), 5000)
-  }
-
-  function isYtDuplicate(user, text) {
-    return ytServerMsgHashes.has(ytMsgHash(user, text))
+  // Dedup helper: check against actual message buffers (survives WS reconnects)
+  function isYtDuplicate(user, text, channelId) {
+    const buf = channelYtMessages.get(channelId)
+    if (!buf || buf.length === 0) return false
+    // check last 200 messages in buffer (matches server recentMessages cap)
+    const start = Math.max(0, buf.length - 200)
+    const needle = `${user}:${text.slice(0, 50)}`
+    for (let i = buf.length - 1; i >= start; i--) {
+      const m = buf[i]
+      if (`${m.user}:${m.text.slice(0, 50)}` === needle) return true
+    }
+    return false
   }
 
   // Build a message div element (shared by full rebuild and incremental append)

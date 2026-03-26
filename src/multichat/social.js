@@ -170,11 +170,9 @@ function listenForSocialEvents() {
       handleIncomingDm(msg.data)
     }
     if (msg.type === 'youtube_chat_message') {
-      // Bidirectional dedup: skip if we already displayed this message from either source
-      if (isYtDuplicate(msg.user, msg.text)) return
-
-      // Track for dedup (both server and content script messages)
-      trackYtServerMsg(msg.user, msg.text)
+      const targetChannelId = msg.channelId
+      // Dedup against message buffer (survives WS reconnects unlike 5s hash)
+      if (targetChannelId && isYtDuplicate(msg.user, msg.text, targetChannelId)) return
 
       const ytMsg = {
         user: msg.user,
@@ -190,7 +188,6 @@ function listenForSocialEvents() {
         sticker: msg.sticker || null,
       }
 
-      const targetChannelId = msg.channelId
       if (targetChannelId && targetChannelId !== 'global') {
         // Per-channel YouTube → route to that channel tab
         if (!channelYtMessages.has(targetChannelId)) channelYtMessages.set(targetChannelId, [])

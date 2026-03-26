@@ -22,24 +22,27 @@
   let chatReady = false;
 
   // Set up message listener IMMEDIATELY (not inside async init)
-  chrome.runtime.onMessage.addListener((message) => {
-  log(' 📬 Got runtime message:', message.type, message);
-  if (message.type === 'new-message') {
-    log(' 📬 Calling handleNewMessage with:', message.data);
-    if (chatReady) {
-      handleNewMessage(message.data);
-    } else {
-      log(' Chat not ready, queueing message');
-      if (!window._queuedMessages) window._queuedMessages = [];
-      if (window._queuedMessages.length < 200) {
-        window._queuedMessages.push(message.data);
+  // Named reference so we can removeListener before re-adding on SPA navigation
+  function _onMessageInjector(message) {
+    log(' 📬 Got runtime message:', message.type, message);
+    if (message.type === 'new-message') {
+      log(' 📬 Calling handleNewMessage with:', message.data);
+      if (chatReady) {
+        handleNewMessage(message.data);
+      } else {
+        log(' Chat not ready, queueing message');
+        if (!window._queuedMessages) window._queuedMessages = [];
+        if (window._queuedMessages.length < 200) {
+          window._queuedMessages.push(message.data);
+        }
       }
+    } else if (message.type === 'followed_users_updated') {
+      followedUsers = new Set(message.users);
+      log(' Updated followed users:', followedUsers.size);
     }
-  } else if (message.type === 'followed_users_updated') {
-    followedUsers = new Set(message.users);
-    log(' Updated followed users:', followedUsers.size);
   }
-});
+  chrome.runtime.onMessage.removeListener(_onMessageInjector)
+  chrome.runtime.onMessage.addListener(_onMessageInjector)
 
 /**
  * Inject CSS to prevent hover effects on injected messages

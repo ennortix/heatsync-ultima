@@ -12535,7 +12535,7 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
       if (emote.alt && emote.url) {
         const escaped = escapeHtml(emote.alt).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
         const re = new RegExp(escaped, 'g')
-        result = result.replace(re, `<img src="${escapeHtml(emote.url)}" alt="${escapeHtml(emote.alt)}" class="hs-mc-emote" style="height:1.2em;vertical-align:middle;" />`)
+        result = result.replace(re, () => `<img src="${escapeHtml(emote.url)}" alt="${escapeHtml(emote.alt)}" class="hs-mc-emote" style="height:1.2em;vertical-align:middle;" />`)
       }
     }
     return result

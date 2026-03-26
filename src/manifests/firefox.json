@@ -38,8 +38,7 @@
     {
       "matches": ["*://*.twitch.tv/*"],
       "js": ["early-inject-main.js"],
-      "run_at": "document_start",
-      "world": "MAIN"
+      "run_at": "document_start"
     },
     {
       "matches": ["*://*.twitch.tv/*", "*://*.kick.com/*"],

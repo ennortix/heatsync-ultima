@@ -468,6 +468,16 @@ style.textContent = `
     color: #666 !important;
     border: 1px solid #444 !important;
   }
+  .hs-pc-channel-follows {
+    background: #daa520 !important;
+    color: #000 !important;
+    padding: 2px 4px !important;
+    border-radius: 0 !important;
+    font-size: 10px !important;
+    font-weight: 900 !important;
+    letter-spacing: 0.3px !important;
+    white-space: nowrap !important;
+  }
   .hs-pc-sub-tenure {
     background: #e91e8c !important;
     color: #fff !important;
@@ -4109,6 +4119,7 @@ function updateEmoteState(hash, emoteName, state) {
             followedAt: user?.follow?.followedAt || null,
             followingCount: user?.follows?.totalCount ?? null,
             followerCount: user?.followers?.totalCount ?? null,
+            channelFollowedAt: e.data.data?.data?.channel?.follow?.followedAt || null,
           }
           followageCache.set(key, { result, ts: Date.now() })
           if (followageCache.size > 500) followageCache.delete(followageCache.keys().next().value)
@@ -4123,7 +4134,7 @@ function updateEmoteState(hash, emoteName, state) {
         id,
         operation: null,
         variables: {},
-        rawQuery: `{ user(login: "${safeUser}") { follow(targetLogin: "${safeChan}") { followedAt } follows { totalCount } followers { totalCount } } }`
+        rawQuery: `{ user(login: "${safeUser}") { follow(targetLogin: "${safeChan}") { followedAt } follows { totalCount } followers { totalCount } } channel: user(login: "${safeChan}") { follow(targetLogin: "${safeUser}") { followedAt } } }`
       }, location.origin)
       const timer = setTimeout(() => {
         window.removeEventListener('message', handler)
@@ -4528,6 +4539,13 @@ function updateEmoteState(hash, emoteName, state) {
             badge.textContent = 'not following ' + channelLogin
           }
           if (badge.textContent) headerLine.appendChild(badge)
+          // "followed by {channel}" badge
+          if (result.channelFollowedAt) {
+            const cfBadge = document.createElement('span')
+            cfBadge.className = 'hs-pc-channel-follows'
+            cfBadge.textContent = 'followed by ' + channelLogin
+            headerLine.appendChild(cfBadge)
+          }
           // Update following count with live GQL data
           const statsLine = cardEl.querySelector('.hs-pc-stats-line')
           if (statsLine && result.followingCount != null) {

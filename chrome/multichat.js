@@ -3597,6 +3597,13 @@ async function sendKickMessage(kickSlug, text) {
       badge.textContent = 'not following ' + channelLogin
     }
     header.appendChild(badge)
+    // "followed by {channel}" badge — streamer follows this user
+    if (result.channelFollowedAt) {
+      const cfBadge = document.createElement('span')
+      cfBadge.className = 'hs-pc-channel-follows'
+      cfBadge.textContent = 'followed by ' + channelLogin
+      header.appendChild(cfBadge)
+    }
     // Update following/follower counts from live GQL data
     const statsEl = tooltip.querySelector('.hs-pc-stats')
     if (statsEl && result.followingCount != null) {
@@ -5383,13 +5390,14 @@ async function lookupFollowage(username, channelLogin) {
     const safeUser = username.replace(/[^a-z0-9_]/gi, '')
     const safeChan = channelLogin.replace(/[^a-z0-9_]/gi, '')
     const data = await gqlProxy(null, null, {
-      rawQuery: `{ user(login: "${safeUser}") { follow(targetLogin: "${safeChan}") { followedAt } follows { totalCount } followers { totalCount } } }`
+      rawQuery: `{ user(login: "${safeUser}") { follow(targetLogin: "${safeChan}") { followedAt } follows { totalCount } followers { totalCount } } channel: user(login: "${safeChan}") { follow(targetLogin: "${safeUser}") { followedAt } } }`
     })
     const user = data?.data?.user
     const result = {
       followedAt: user?.follow?.followedAt || null,
       followingCount: user?.follows?.totalCount ?? null,
       followerCount: user?.followers?.totalCount ?? null,
+      channelFollowedAt: data?.data?.channel?.follow?.followedAt || null,
     }
     _followageCache.set(key, { result, ts: Date.now() })
     if (_followageCache.size > 500) {
@@ -10138,6 +10146,15 @@ const STORAGE_KEY = 'heatsync_multichat';
         background: transparent;
         color: #666;
         border: 1px solid #444;
+      }
+      #hs-user-tooltip .hs-pc-channel-follows {
+        padding: 2px 3px;
+        font-size: 10px;
+        font-weight: 900;
+        white-space: nowrap;
+        letter-spacing: 0.3px;
+        background: #daa520;
+        color: #000;
       }
       #hs-user-tooltip .hs-pc-sub-tenure {
         padding: 2px 3px;

@@ -2172,6 +2172,15 @@
         color: #666;
         border: 1px solid #444;
       }
+      #hs-user-tooltip .hs-pc-channel-follows {
+        padding: 2px 3px;
+        font-size: 10px;
+        font-weight: 900;
+        white-space: nowrap;
+        letter-spacing: 0.3px;
+        background: #daa520;
+        color: #000;
+      }
       #hs-user-tooltip .hs-pc-sub-tenure {
         padding: 2px 3px;
         font-size: 10px;

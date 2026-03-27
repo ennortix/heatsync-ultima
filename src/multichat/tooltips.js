@@ -513,6 +513,13 @@
       badge.textContent = 'not following ' + channelLogin
     }
     header.appendChild(badge)
+    // "followed by {channel}" badge — streamer follows this user
+    if (result.channelFollowedAt) {
+      const cfBadge = document.createElement('span')
+      cfBadge.className = 'hs-pc-channel-follows'
+      cfBadge.textContent = 'followed by ' + channelLogin
+      header.appendChild(cfBadge)
+    }
     // Update following/follower counts from live GQL data
     const statsEl = tooltip.querySelector('.hs-pc-stats')
     if (statsEl && result.followingCount != null) {

@@ -444,8 +444,8 @@ style.textContent = `
     white-space: nowrap !important;
   }
   .hs-pc-subs-you {
-    background: #ff0000 !important;
-    color: #ffff00 !important;
+    background: #ff8700 !important;
+    color: #000 !important;
     padding: 2px 4px !important;
     border-radius: 0 !important;
     font-size: 10px !important;
@@ -469,7 +469,7 @@ style.textContent = `
     border: 1px solid #444 !important;
   }
   .hs-pc-sub-tenure {
-    background: #9146ff !important;
+    background: #e91e8c !important;
     color: #fff !important;
     padding: 2px 4px !important;
     border-radius: 0 !important;

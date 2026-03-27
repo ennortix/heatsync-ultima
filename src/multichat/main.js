@@ -2154,8 +2154,8 @@
         white-space: nowrap;
         letter-spacing: 0.3px;
       }
-      #hs-user-tooltip .hs-pc-rel-badge.mutual { background: #00ffff; color: #8800ff; }
-      #hs-user-tooltip .hs-pc-rel-badge.supporter { background: #ff0000; color: #ffff00; }
+      #hs-user-tooltip .hs-pc-rel-badge.mutual { background: #00aaaa; color: #fff; }
+      #hs-user-tooltip .hs-pc-rel-badge.supporter { background: #ff8700; color: #000; }
       #hs-user-tooltip .hs-pc-rel-badge.following { background: #0099ff; color: #fff; }
       #hs-user-tooltip .hs-pc-rel-badge.subbed { background: #9146ff; color: #fff; }
       #hs-user-tooltip .hs-pc-followage {
@@ -2178,7 +2178,7 @@
         font-weight: 900;
         white-space: nowrap;
         letter-spacing: 0.3px;
-        background: #9146ff;
+        background: #e91e8c;
         color: #fff;
       }
       #hs-user-tooltip .hs-pc-loading {

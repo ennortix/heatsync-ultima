@@ -3512,6 +3512,9 @@ async function sendKickMessage(kickSlug, text) {
     const tooltip = ensureUserTooltip();
     const gen = ++_profileGen;
 
+    // Get channel from the message element for sub tenure lookup
+    const msgChannel = targetEl.closest?.('.hs-mc-msg')?.dataset?.msgChannel
+
     // Show loading state immediately (username is escaped via escapeHtml)
     tooltip.innerHTML = `<div class="hs-pc-loading" style="color:${color || '#fff'}">${escapeHtml(username)}...</div>`;
     tooltip.classList.add('visible');
@@ -3523,7 +3526,7 @@ async function sendKickMessage(kickSlug, text) {
       if (gen !== _profileGen) return;
       // NOTE: innerHTML is XSS-safe — all user content goes through escapeHtml() in renderProfileCard
       tooltip.innerHTML = renderProfileCard(cached.profile);
-      appendSubTenureBadge(tooltip, username);
+      appendSubTenureBadge(tooltip, username, msgChannel);
       positionTooltipAtElement(tooltip, targetEl);
       fetchAndShowFollowage(tooltip, username, gen);
       return;
@@ -3543,20 +3546,21 @@ async function sendKickMessage(kickSlug, text) {
       }
       // NOTE: innerHTML is XSS-safe — all user content goes through escapeHtml() in renderProfileCard
       tooltip.innerHTML = renderProfileCard(profile);
-      appendSubTenureBadge(tooltip, username);
+      appendSubTenureBadge(tooltip, username, msgChannel);
       positionTooltipAtElement(tooltip, targetEl);
       fetchAndShowFollowage(tooltip, username, gen);
     } else {
       // Fallback — show basic info (username sanitized via escapeHtml)
       tooltip.innerHTML = `<div class="hs-pc-info"><div class="hs-pc-header"><span class="hs-pc-name">${escapeHtml(username)}</span></div></div>`;
-      appendSubTenureBadge(tooltip, username);
+      appendSubTenureBadge(tooltip, username, msgChannel);
       fetchAndShowFollowage(tooltip, username, gen);
     }
   }
 
   // Append sub tenure badge from local IRC data (sync, no fetch)
-  function appendSubTenureBadge(tooltip, username) {
-    const channelLogin = getTooltipChannelContext()
+  function appendSubTenureBadge(tooltip, username, msgChannel) {
+    // Try message's channel first, fall back to tooltip channel context
+    const channelLogin = msgChannel || getTooltipChannelContext()
     if (!channelLogin) return
     const channelMap = subTenureMap.get(channelLogin)
     if (!channelMap) return
@@ -10115,8 +10119,8 @@ const STORAGE_KEY = 'heatsync_multichat';
         white-space: nowrap;
         letter-spacing: 0.3px;
       }
-      #hs-user-tooltip .hs-pc-rel-badge.mutual { background: #00ffff; color: #8800ff; }
-      #hs-user-tooltip .hs-pc-rel-badge.supporter { background: #ff0000; color: #ffff00; }
+      #hs-user-tooltip .hs-pc-rel-badge.mutual { background: #00aaaa; color: #fff; }
+      #hs-user-tooltip .hs-pc-rel-badge.supporter { background: #ff8700; color: #000; }
       #hs-user-tooltip .hs-pc-rel-badge.following { background: #0099ff; color: #fff; }
       #hs-user-tooltip .hs-pc-rel-badge.subbed { background: #9146ff; color: #fff; }
       #hs-user-tooltip .hs-pc-followage {
@@ -10139,7 +10143,7 @@ const STORAGE_KEY = 'heatsync_multichat';
         font-weight: 900;
         white-space: nowrap;
         letter-spacing: 0.3px;
-        background: #9146ff;
+        background: #e91e8c;
         color: #fff;
       }
       #hs-user-tooltip .hs-pc-loading {

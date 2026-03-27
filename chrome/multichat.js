@@ -1572,6 +1572,7 @@ class IRC {
           for (const msg of messages) {
             usernameCache.add(msg.user);
             knownColors.set(msg.user.toLowerCase(), msg.color);
+            if (msg.subMonths) trackSubTenure(ch, msg.user, msg.subMonths);
             buffer.push(msg);
           }
           if (currentTab === ch || (currentTab === 'live' && getLiveChannel() === ch)) {
@@ -1626,6 +1627,7 @@ class IRC {
         if (msg.id && liveIds.has(msg.id)) continue;
         usernameCache.add(msg.user);
         knownColors.set(msg.user.toLowerCase(), msg.color);
+        if (msg.subMonths) trackSubTenure(ch, msg.user, msg.subMonths);
         parsed.push(msg);
       }
 

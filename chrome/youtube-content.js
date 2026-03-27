@@ -43,7 +43,9 @@
   // Extract avatar URL from author photo
   function extractAvatar(el) {
     const img = el.querySelector('#author-photo img')
-    return img?.src || ''
+    if (!img?.src) return ''
+    // Upgrade to 64px square (strip -c circle crop, bump s32→s64)
+    return img.src.replace(/=s\d+[^=]*$/, '=s64-k-c0x00ffffff-no-rj')
   }
 
   // Extract badges (member badge, mod wrench, etc.)

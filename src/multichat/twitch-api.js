@@ -1570,6 +1570,26 @@ async function lookupFollowage(username, channelLogin) {
   if (cached && Date.now() - cached.ts < FOLLOWAGE_CACHE_TTL) return cached.result
 
   try {
+    // Try server-side API first (works everywhere, including multichat on heatsync.org)
+    const resp = typeof apiFetch === 'function'
+      ? await apiFetch(`/api/twitch/followage?user=${encodeURIComponent(username)}&channel=${encodeURIComponent(channelLogin)}`)
+      : null
+    if (resp?.ok && resp.data) {
+      const d = resp.data
+      const result = {
+        followedAt: d.followedAt || null,
+        followingCount: d.followingCount ?? null,
+        followerCount: d.followerCount ?? null,
+        channelFollowedAt: d.channelFollowedAt || null,
+      }
+      _followageCache.set(key, { result, ts: Date.now() })
+      if (_followageCache.size > 500) {
+        _followageCache.delete(_followageCache.keys().next().value)
+      }
+      return result
+    }
+
+    // Fallback: direct GQL proxy (works on Twitch tabs with MAIN world script)
     const safeUser = username.replace(/[^a-z0-9_]/gi, '')
     const safeChan = channelLogin.replace(/[^a-z0-9_]/gi, '')
     const data = await gqlProxy(null, null, {

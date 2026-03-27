@@ -384,15 +384,20 @@ style.textContent = `
   }
 
   .hs-pc-verified {
-    padding: 2px 3px !important;
-    border-radius: 0 !important;
-    font-size: 10px !important;
-    font-weight: 900 !important;
-    background: #9146ff !important;
-    color: #fff !important;
-    border: 1px solid #000 !important;
-    box-shadow: 0 1px 2px rgba(0,0,0,0.5) !important;
-    white-space: nowrap !important;
+    display: inline-block !important;
+    width: 14px !important;
+    height: 14px !important;
+    vertical-align: middle !important;
+    margin-left: 2px !important;
+    background: none !important;
+    border: none !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+  }
+  .hs-pc-verified svg {
+    width: 14px !important;
+    height: 14px !important;
+    display: block !important;
   }
 
   .hs-pc-live {
@@ -4239,11 +4244,40 @@ function updateEmoteState(hash, emoteName, state) {
       aSpan.textContent = 'affiliate'
       row1.appendChild(aSpan)
     }
-    if (profile.twitch_verified || profile.kick_verified) {
+    if (profile.twitch_verified) {
       const vSpan = document.createElement('span')
       vSpan.className = 'hs-pc-verified'
-      vSpan.textContent = '✓'
-      vSpan.title = 'Verified'
+      vSpan.title = 'Twitch Verified'
+      const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
+      svg.setAttribute('viewBox', '0 0 16 16')
+      svg.setAttribute('fill', 'none')
+      const bg = document.createElementNS('http://www.w3.org/2000/svg', 'path')
+      bg.setAttribute('d', 'M14.54 6.29L13.09 4.63l.26-2.17-2.13-.49L10.09.24 8 1.14 5.91.24 4.78 1.97l-2.13.49.26 2.17L1.46 6.29 2.72 8 1.46 9.71l1.45 1.66-.26 2.17 2.13.49L5.91 15.76 8 14.86l2.09.9 1.13-1.73 2.13-.49-.26-2.17 1.45-1.66L13.28 8l1.26-1.71z')
+      bg.setAttribute('fill', '#9146ff')
+      const check = document.createElementNS('http://www.w3.org/2000/svg', 'path')
+      check.setAttribute('d', 'M6.5 11.17L3.83 8.5l1.18-1.17L6.5 8.83l4.49-4.5L12.17 5.5 6.5 11.17z')
+      check.setAttribute('fill', '#fff')
+      svg.appendChild(bg)
+      svg.appendChild(check)
+      vSpan.appendChild(svg)
+      row1.appendChild(vSpan)
+    }
+    if (profile.kick_verified) {
+      const vSpan = document.createElement('span')
+      vSpan.className = 'hs-pc-verified'
+      vSpan.title = 'Kick Verified'
+      const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
+      svg.setAttribute('viewBox', '0 0 16 16')
+      svg.setAttribute('fill', 'none')
+      const bg = document.createElementNS('http://www.w3.org/2000/svg', 'path')
+      bg.setAttribute('d', 'M14.54 6.29L13.09 4.63l.26-2.17-2.13-.49L10.09.24 8 1.14 5.91.24 4.78 1.97l-2.13.49.26 2.17L1.46 6.29 2.72 8 1.46 9.71l1.45 1.66-.26 2.17 2.13.49L5.91 15.76 8 14.86l2.09.9 1.13-1.73 2.13-.49-.26-2.17 1.45-1.66L13.28 8l1.26-1.71z')
+      bg.setAttribute('fill', '#53fc18')
+      const check = document.createElementNS('http://www.w3.org/2000/svg', 'path')
+      check.setAttribute('d', 'M6.5 11.17L3.83 8.5l1.18-1.17L6.5 8.83l4.49-4.5L12.17 5.5 6.5 11.17z')
+      check.setAttribute('fill', '#000')
+      svg.appendChild(bg)
+      svg.appendChild(check)
+      vSpan.appendChild(svg)
       row1.appendChild(vSpan)
     }
     if (age) {

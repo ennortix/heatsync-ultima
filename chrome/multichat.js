@@ -3449,7 +3449,6 @@ async function sendKickMessage(kickSlug, text) {
     const mop = stats.mop_count || p.mopCount || 0;
     const re = stats.re_count || p.reCount || 0;
     const followers = Math.max(stats.followers || 0, p.twitch_followers || 0, p.kick_followers || 0);
-    const following = Math.max(stats.following || 0, p.twitch_following_count || 0, p.kick_following_count || 0);
 
     const statBadges = [];
     const hd = getHeatDisplay(heat)
@@ -3461,7 +3460,6 @@ async function sendKickMessage(kickSlug, text) {
     if (mop > 0) statBadges.push(`<span class="hs-pc-stat mop"><span class="hs-pc-num">${formatCompact(mop)}</span> <span style="color:#ff00ff">[OP]</span></span>`);
     if (re > 0) statBadges.push(`<span class="hs-pc-stat re"><span class="hs-pc-num">${formatCompact(re)}</span> [RE]</span>`);
     if (followers > 0) statBadges.push(`<span class="hs-pc-stat hs-pc-stat-followers">${formatCompact(followers)} followers</span>`);
-    if (following > 0) statBadges.push(`<span class="hs-pc-stat hs-pc-stat-following">following ${formatCompact(following)}</span>`);
 
     // Relationship
     const rel = p.relationship || {};
@@ -3604,18 +3602,8 @@ async function sendKickMessage(kickSlug, text) {
       cfBadge.textContent = 'followed by ' + channelLogin
       header.appendChild(cfBadge)
     }
-    // Update following/follower counts from live GQL data
+    // Update follower count from live data
     const statsEl = tooltip.querySelector('.hs-pc-stats')
-    if (statsEl && result.followingCount != null) {
-      // Replace stale following stat or add new one
-      let followingStat = statsEl.querySelector('.hs-pc-stat-following')
-      if (!followingStat) {
-        followingStat = document.createElement('span')
-        followingStat.className = 'hs-pc-stat hs-pc-stat-following'
-        statsEl.appendChild(followingStat)
-      }
-      followingStat.textContent = 'following ' + formatCompact(result.followingCount)
-    }
     if (statsEl && result.followerCount != null) {
       // Update followers with live data
       const followerStat = statsEl.querySelector('.hs-pc-stat-followers')
@@ -5395,7 +5383,6 @@ async function lookupFollowage(username, channelLogin) {
       const d = resp.data
       const result = {
         followedAt: d.followedAt || null,
-        followingCount: d.followingCount ?? null,
         followerCount: d.followerCount ?? null,
         channelFollowedAt: d.channelFollowedAt || null,
       }
@@ -5410,12 +5397,11 @@ async function lookupFollowage(username, channelLogin) {
     const safeUser = username.replace(/[^a-z0-9_]/gi, '')
     const safeChan = channelLogin.replace(/[^a-z0-9_]/gi, '')
     const data = await gqlProxy(null, null, {
-      rawQuery: `{ user(login: "${safeUser}") { follow(targetLogin: "${safeChan}") { followedAt } follows { totalCount } followers { totalCount } } channel: user(login: "${safeChan}") { follow(targetLogin: "${safeUser}") { followedAt } } }`
+      rawQuery: `{ user(login: "${safeUser}") { follow(targetLogin: "${safeChan}") { followedAt } followers { totalCount } } channel: user(login: "${safeChan}") { follow(targetLogin: "${safeUser}") { followedAt } } }`
     })
     const user = data?.data?.user
     const result = {
       followedAt: user?.follow?.followedAt || null,
-      followingCount: user?.follows?.totalCount ?? null,
       followerCount: user?.followers?.totalCount ?? null,
       channelFollowedAt: data?.data?.channel?.follow?.followedAt || null,
     }

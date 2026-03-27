@@ -1578,7 +1578,6 @@ async function lookupFollowage(username, channelLogin) {
       const d = resp.data
       const result = {
         followedAt: d.followedAt || null,
-        followingCount: d.followingCount ?? null,
         followerCount: d.followerCount ?? null,
         channelFollowedAt: d.channelFollowedAt || null,
       }
@@ -1593,12 +1592,11 @@ async function lookupFollowage(username, channelLogin) {
     const safeUser = username.replace(/[^a-z0-9_]/gi, '')
     const safeChan = channelLogin.replace(/[^a-z0-9_]/gi, '')
     const data = await gqlProxy(null, null, {
-      rawQuery: `{ user(login: "${safeUser}") { follow(targetLogin: "${safeChan}") { followedAt } follows { totalCount } followers { totalCount } } channel: user(login: "${safeChan}") { follow(targetLogin: "${safeUser}") { followedAt } } }`
+      rawQuery: `{ user(login: "${safeUser}") { follow(targetLogin: "${safeChan}") { followedAt } followers { totalCount } } channel: user(login: "${safeChan}") { follow(targetLogin: "${safeUser}") { followedAt } } }`
     })
     const user = data?.data?.user
     const result = {
       followedAt: user?.follow?.followedAt || null,
-      followingCount: user?.follows?.totalCount ?? null,
       followerCount: user?.followers?.totalCount ?? null,
       channelFollowedAt: data?.data?.channel?.follow?.followedAt || null,
     }

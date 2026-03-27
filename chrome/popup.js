@@ -92,7 +92,7 @@
     const input = document.getElementById('popout-input')
     const btn = document.getElementById('popout-btn')
 
-    // auto-fill from active tab if on twitch
+    // auto-fill from active tab if on twitch or kick
     chrome.tabs.query({ active: true, currentWindow: true }).then(([tab]) => {
       if (!tab?.url) return
       try {
@@ -100,6 +100,11 @@
         if (url.hostname.includes('twitch.tv')) {
           const m = url.pathname.match(/^\/(?:popout\/|embed\/)?([a-zA-Z0-9_]+)/)
           if (m && !['directory', 'settings', 'videos', 'moderator', 'subscriptions'].includes(m[1].toLowerCase())) {
+            input.value = m[1].toLowerCase()
+          }
+        } else if (url.hostname.includes('kick.com')) {
+          const m = url.pathname.match(/^\/([a-zA-Z0-9_]+)/)
+          if (m && !['categories', 'following', 'settings', 'search'].includes(m[1].toLowerCase())) {
             input.value = m[1].toLowerCase()
           }
         }

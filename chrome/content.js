@@ -2342,7 +2342,7 @@ function getCurrentUsername() {
       }
     }
     // Method K2: Kick sidebar username element
-    const kickUserEl = document.querySelector('.sidebar-username, [class*="username"]');
+    const kickUserEl = document.querySelector('.sidebar-username, [data-testid="user-profile-name"], .profile-username');
     if (kickUserEl?.textContent?.trim()) {
       const name = kickUserEl.textContent.trim();
       if (name.length > 0 && name.length < 30 && /^[a-zA-Z0-9_]+$/.test(name)) {
@@ -4604,7 +4604,7 @@ function updateEmoteState(hash, emoteName, state) {
       // Live-poll viewer count every 1s while card is visible (lightweight endpoint)
       if (cardPollInterval) { clearInterval(cardPollInterval); cardPollInterval = null }
       if (profile && (profile.twitch_is_live || profile.kick_is_live)) {
-        cardPollInterval = setInterval(async () => {
+        cardPollInterval = cleanup.setInterval(async () => {
           if (!cardEl) { clearInterval(cardPollInterval); cardPollInterval = null; return }
           try {
             const fresh = await HS.apiFetch(`/api/profile/${encodeURIComponent(username)}/live`)
@@ -4637,13 +4637,10 @@ function updateEmoteState(hash, emoteName, state) {
     }
   }
 
-  // Hover/click listeners — guarded to prevent duplicate registration
-  let profileCardListenersAdded = false;
-  if (!profileCardListenersAdded) {
-    profileCardListenersAdded = true;
+  // Hover/click listeners (signal-bound — cleaned up on abort)
 
-    // Hover handler — instant show on mouseenter for HS-colored usernames
-    document.addEventListener('mouseover', (e) => {
+  // Hover handler — instant show on mouseenter for HS-colored usernames
+  document.addEventListener('mouseover', (e) => {
       const target = e.target.closest(usernameSelectors)
       if (!target) return
       const isHsMention = target.classList.contains('hs-username-colored') || target.classList.contains('hs-mention-colored')
@@ -4710,7 +4707,6 @@ function updateEmoteState(hash, emoteName, state) {
         closeCard()
       }
     }, { signal })
-  }
 
   log(' ✅ Profile card (click) setup')
 })();

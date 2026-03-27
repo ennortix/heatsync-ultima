@@ -2833,7 +2833,7 @@ async function sendKickMessage(kickSlug, text) {
 
       // Load per-channel emotes into separate caches (prevents cross-channel leaking)
       const map = stored.channel_emotes_map || {};
-      console.log('[heatsync-debug] loadEmotes channel_emotes_map:', Object.entries(map).map(([k, v]) => `${k}:${Array.isArray(v) ? v.length : v}`).join(', ') || '(empty)');
+      log('loadEmotes channel_emotes_map:', Object.entries(map).map(([k, v]) => `${k}:${Array.isArray(v) ? v.length : v}`).join(', ') || '(empty)');
       for (const [ch, emotes] of Object.entries(map)) {
         if (!Array.isArray(emotes)) continue; // skip 'loading' sentinels
         const chCache = new Map();
@@ -2845,7 +2845,7 @@ async function sendKickMessage(kickSlug, text) {
           }
         });
         channelEmoteCaches[ch] = chCache;
-        console.log('[heatsync-debug] channel emote cache for', ch, ':', chCache.size, 'emotes, sample:', Array.from(chCache.keys()).slice(0, 5).join(', '));
+        log('channel emote cache for', ch, ':', chCache.size, 'emotes, sample:', Array.from(chCache.keys()).slice(0, 5).join(', '));
       }
       // Evict oldest channel emote caches if exceeds 20
       const channelKeys = Object.keys(channelEmoteCaches);
@@ -8472,7 +8472,7 @@ const STORAGE_KEY = 'heatsync_multichat';
     }
 
     // Setup scroll detection after DOM insertion
-    setTimeout(() => {
+    cleanup.setTimeout(() => {
       const msgsEl = document.getElementById('hs-mc-messages');
       const newBtn = document.getElementById('hs-mc-new-msgs');
       if (!msgsEl || !newBtn) return;
@@ -12674,10 +12674,10 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
       }
     }
 
-    // Process text: replace YouTube emoji with inline images
+    // Process text: heatsync/7TV/BTTV/FFZ emotes first, then YouTube native emoji
     let processedText = processEmotes(m.text, m.channel)
     if (m.emotes && m.emotes.length > 0) {
-      processedText = processYtEmotes(m.text, m.emotes)
+      processedText = processYtEmotes(processedText, m.emotes, true)
     }
 
     // Sticker for super stickers
@@ -12724,17 +12724,19 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
   }
 
   // Process YouTube emotes (inline emoji images from innertube)
-  function processYtEmotes(text, emotes) {
-    if (!emotes || emotes.length === 0) return escapeHtml(text)
+  // preEscaped=true when input is already HTML-escaped (chained after processEmotes)
+  function processYtEmotes(text, emotes, preEscaped) {
+    if (!emotes || emotes.length === 0) return preEscaped ? text : escapeHtml(text)
 
     // Build result by replacing emoji alt text with img tags
-    let result = escapeHtml(text)
+    let result = preEscaped ? text : escapeHtml(text)
     for (const emote of emotes) {
-      if (emote.alt && emote.url) {
-        const escaped = escapeHtml(emote.alt).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-        const re = new RegExp(escaped, 'g')
-        result = result.replace(re, () => `<img src="${escapeHtml(emote.url)}" alt="${escapeHtml(emote.alt)}" class="hs-mc-emote" style="height:1.2em;vertical-align:middle;" />`)
-      }
+      const url = typeof emote.url === 'string' ? emote.url.trim() : ''
+      const alt = typeof emote.alt === 'string' ? emote.alt : ''
+      if (!alt || !url || !(url.startsWith('http') || url.startsWith('//'))) continue
+      const escaped = escapeHtml(alt).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+      const re = new RegExp(escaped, 'g')
+      result = result.replace(re, () => `<img src="${escapeHtml(url)}" alt="${escapeHtml(alt)}" class="hs-mc-emote" style="height:1.2em;vertical-align:middle;" />`)
     }
     return result
   }
@@ -13828,7 +13830,7 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
       if (msg.type === 'debug_log') console.log('[hs-bg]', msg.msg);
       // Listen for emote updates from background
       if (msg.type === 'global_emotes_update' || msg.type === 'channel_emotes_update') {
-        console.log('[heatsync-debug] received', msg.type, msg.channelOwner || '');
+        log('received', msg.type, msg.channelOwner || '');
         clearTimeout(emoteReloadTimer);
         emoteReloadTimer = setTimeout(() => {
           loadEmotes().then(() => renderMessages(currentTab));
@@ -13884,7 +13886,7 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
 
       // Emote updates - reload when storage changes (debounced to avoid spam)
       if (changes.global_emotes || changes.channel_emotes_map || changes.emote_inventory) {
-        console.log('[heatsync-debug] storage changed:', changes.channel_emotes_map ? 'channel_emotes_map' : '', changes.global_emotes ? 'global_emotes' : '', changes.emote_inventory ? 'emote_inventory' : '');
+        log('storage changed:', changes.channel_emotes_map ? 'channel_emotes_map' : '', changes.global_emotes ? 'global_emotes' : '', changes.emote_inventory ? 'emote_inventory' : '');
         clearTimeout(emoteReloadTimer);
         emoteReloadTimer = setTimeout(() => {
           loadEmotes().then(() => {
@@ -14088,9 +14090,9 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
       if (twitchName) {
         irc.join(twitchName);
         try {
-          console.log('[heatsync-debug] sending join_channel for:', twitchName);
+          log('sending join_channel for:', twitchName);
           chrome.runtime.sendMessage({ type: 'join_channel', platform: 'twitch', channel: twitchName });
-        } catch (e) { console.log('[heatsync-debug] join_channel failed:', e.message); }
+        } catch (e) { log('join_channel failed:', e.message); }
       }
       if (kickName) {
         kickChat.join(kickName);
@@ -14108,7 +14110,7 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
     });
 
     // Scan existing chat for mentions (before IRC catches new ones)
-    setTimeout(() => scanExistingMentions(), 2000);
+    cleanup.setTimeout(() => scanExistingMentions(), 2000);
 
     // Handle incoming IRC messages
     irc.on('message', (msg) => {

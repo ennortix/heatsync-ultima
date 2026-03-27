@@ -4749,11 +4749,12 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
     // Build result by replacing emoji alt text with img tags
     let result = escapeHtml(text)
     for (const emote of emotes) {
-      if (emote.alt && emote.url) {
-        const escaped = escapeHtml(emote.alt).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-        const re = new RegExp(escaped, 'g')
-        result = result.replace(re, () => `<img src="${escapeHtml(emote.url)}" alt="${escapeHtml(emote.alt)}" class="hs-mc-emote" style="height:1.2em;vertical-align:middle;" />`)
-      }
+      const url = typeof emote.url === 'string' ? emote.url.trim() : ''
+      const alt = typeof emote.alt === 'string' ? emote.alt : ''
+      if (!alt || !url || !(url.startsWith('http') || url.startsWith('//'))) continue
+      const escaped = escapeHtml(alt).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+      const re = new RegExp(escaped, 'g')
+      result = result.replace(re, () => `<img src="${escapeHtml(url)}" alt="${escapeHtml(alt)}" class="hs-mc-emote" style="height:1.2em;vertical-align:middle;" />`)
     }
     return result
   }

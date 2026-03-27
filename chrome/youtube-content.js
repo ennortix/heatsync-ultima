@@ -34,12 +34,21 @@
     if (!user) return null
 
     // Build text from child nodes — text nodes + img alt for emoji
+    // Also collect emoji image URLs for rendering in multichat
     let text = ''
+    const emotes = []
+    const seenAlts = new Set()
     for (const node of messageEl.childNodes) {
       if (node.nodeType === Node.TEXT_NODE) {
         text += node.textContent
       } else if (node.nodeName === 'IMG') {
-        text += node.alt || ''
+        const alt = node.alt || ''
+        text += alt
+        // Collect unique emoji images for multichat rendering
+        if (alt && node.src && !seenAlts.has(alt)) {
+          seenAlts.add(alt)
+          emotes.push({ alt, url: node.src })
+        }
       } else if (node.textContent) {
         text += node.textContent
       }
@@ -47,7 +56,7 @@
     text = text.trim()
     if (!text) return null
 
-    return { user, text }
+    return { user, text, emotes }
   }
 
   const SUPPORTED_RENDERERS = new Set([
@@ -102,7 +111,8 @@
       msgType,
       color: '#ff0000',
       time: Date.now(),
-      platform: 'youtube'
+      platform: 'youtube',
+      emotes: msg.emotes.length > 0 ? msg.emotes : undefined
     }
 
     if (msgType === 'superchat') {

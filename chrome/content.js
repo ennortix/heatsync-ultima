@@ -468,6 +468,16 @@ style.textContent = `
     color: #666 !important;
     border: 1px solid #444 !important;
   }
+  .hs-pc-sub-tenure {
+    background: #9146ff !important;
+    color: #fff !important;
+    padding: 2px 4px !important;
+    border-radius: 0 !important;
+    font-size: 10px !important;
+    font-weight: 900 !important;
+    letter-spacing: 0.3px !important;
+    white-space: nowrap !important;
+  }
   .hs-pc-bio {
     color: #aaa !important;
     font-size: 11px !important;
@@ -2044,6 +2054,18 @@ let usernameDetectionRetryTimer = null;
 // Track all chatters who have sent messages (for username coloring)
 const knownChatters = new Map(); // username -> color
 
+// Sub tenure tracking — extracted from Twitch badge alt text (subscriber badge)
+const subTenureMap = new Map() // usernameLC -> months
+
+function formatSubTenure(months) {
+  if (months >= 12) {
+    const y = Math.floor(months / 12)
+    const m = months % 12
+    return m > 0 ? `${y}y ${m}mo` : `${y}y`
+  }
+  return `${months}mo`
+}
+
 // ============================================
 // HEAT CACHE + BATCH FETCHER
 // ============================================
@@ -2683,6 +2705,31 @@ function processMessage(messageElement) {
           if (evicted >= 200) break
           knownChatters.delete(k)
           evicted++
+        }
+      }
+    }
+  }
+
+  // Extract sub tenure from Twitch subscriber badge alt text
+  if (username) {
+    const lowerUser = username.toLowerCase()
+    if (!subTenureMap.has(lowerUser)) {
+      const badgeImgs = messageElement.querySelectorAll('[data-a-target="chat-badge"] img, .chat-badge img')
+      for (const img of badgeImgs) {
+        const alt = img.alt || img.getAttribute('aria-label') || ''
+        const match = alt.match(/(\d+)-Month Subscriber/i)
+        if (match) {
+          subTenureMap.set(lowerUser, parseInt(match[1]))
+          // LRU eviction
+          if (subTenureMap.size > 500) {
+            let evicted = 0
+            for (const k of subTenureMap.keys()) {
+              if (evicted >= 200) break
+              subTenureMap.delete(k)
+              evicted++
+            }
+          }
+          break
         }
       }
     }
@@ -4241,6 +4288,15 @@ function updateEmoteState(hash, emoteName, state) {
       subSpan.className = 'hs-pc-subbed'
       subSpan.textContent = 'you sub' + (tier && tier > 1 ? ` T${tier}` : '') + formatRelTime(since)
       row1.appendChild(subSpan)
+    }
+    // Sub tenure from chat badge data (how long they've been subbed to this channel)
+    const subMonths = subTenureMap.get(username.toLowerCase())
+    if (subMonths) {
+      const channelLogin = getChannelLogin()
+      const stSpan = document.createElement('span')
+      stSpan.className = 'hs-pc-sub-tenure'
+      stSpan.textContent = 'subbed' + (channelLogin ? ' ' + channelLogin : '') + ' ' + formatSubTenure(subMonths)
+      row1.appendChild(stSpan)
     }
     info.appendChild(row1)
 

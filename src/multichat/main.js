@@ -2172,6 +2172,15 @@
         color: #666;
         border: 1px solid #444;
       }
+      #hs-user-tooltip .hs-pc-sub-tenure {
+        padding: 2px 3px;
+        font-size: 10px;
+        font-weight: 900;
+        white-space: nowrap;
+        letter-spacing: 0.3px;
+        background: #9146ff;
+        color: #fff;
+      }
       #hs-user-tooltip .hs-pc-loading {
         color: #808080;
         font-size: 11px;
@@ -6113,6 +6122,10 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
 
     // Handle incoming IRC messages
     irc.on('message', (msg) => {
+      // Track sub tenure from IRC badge-info
+      if (msg.subMonths && msg.channel) {
+        trackSubTenure(msg.channel, msg.user, msg.subMonths)
+      }
       // Cache own badges for optimistic display
       if (msg.user?.toLowerCase() === currentUsername?.toLowerCase() && msg.badges) {
         _ownBadges = msg.badges

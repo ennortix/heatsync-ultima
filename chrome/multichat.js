@@ -1223,6 +1223,12 @@ function parseIrcLine(raw, channel) {
       if (isAction) msg.isAction = true
       if (tags['custom-reward-id']) msg.redeemed = true
       if (tags['first-msg'] === '1') msg.isFirstMsg = true
+      // Extract sub tenure from badge-info (subscriber/N = cumulative months)
+      const badgeInfo = tags['badge-info']
+      if (badgeInfo) {
+        const subMatch = badgeInfo.match(/subscriber\/(\d+)/)
+        if (subMatch) msg.subMonths = parseInt(subMatch[1])
+      }
       return msg
     }
 
@@ -3311,6 +3317,35 @@ async function sendKickMessage(kickSlug, text) {
     }, 'mc-tooltip-mousemove');
   }
 
+  // Sub tenure tracking — populated from IRC badge-info (subscriber/N = cumulative months)
+  const subTenureMap = new Map() // channel -> Map<usernameLC, months>
+  function trackSubTenure(channel, username, months) {
+    if (!channel || !username || !months) return
+    let channelMap = subTenureMap.get(channel)
+    if (!channelMap) {
+      channelMap = new Map()
+      subTenureMap.set(channel, channelMap)
+    }
+    channelMap.set(username.toLowerCase(), months)
+    // LRU per channel
+    if (channelMap.size > 500) {
+      let evicted = 0
+      for (const k of channelMap.keys()) {
+        if (evicted >= 200) break
+        channelMap.delete(k)
+        evicted++
+      }
+    }
+  }
+  function formatSubTenure(months) {
+    if (months >= 12) {
+      const y = Math.floor(months / 12)
+      const m = months % 12
+      return m > 0 ? `${y}y ${m}mo` : `${y}y`
+    }
+    return `${months}mo`
+  }
+
   // User hover tooltip (profile preview)
   let userTooltip = null;
   const _profileCache = new Map(); // username -> { profile, ts }
@@ -3486,7 +3521,9 @@ async function sendKickMessage(kickSlug, text) {
     const cached = _profileCache.get(username.toLowerCase());
     if (cached && Date.now() - cached.ts < PROFILE_CACHE_TTL) {
       if (gen !== _profileGen) return;
+      // NOTE: innerHTML is XSS-safe — all user content goes through escapeHtml() in renderProfileCard
       tooltip.innerHTML = renderProfileCard(cached.profile);
+      appendSubTenureBadge(tooltip, username);
       positionTooltipAtElement(tooltip, targetEl);
       fetchAndShowFollowage(tooltip, username, gen);
       return;
@@ -3504,14 +3541,33 @@ async function sendKickMessage(kickSlug, text) {
         const oldest = [..._profileCache.entries()].sort((a, b) => a[1].ts - b[1].ts).slice(0, 50);
         for (const [k] of oldest) _profileCache.delete(k);
       }
+      // NOTE: innerHTML is XSS-safe — all user content goes through escapeHtml() in renderProfileCard
       tooltip.innerHTML = renderProfileCard(profile);
+      appendSubTenureBadge(tooltip, username);
       positionTooltipAtElement(tooltip, targetEl);
       fetchAndShowFollowage(tooltip, username, gen);
     } else {
       // Fallback — show basic info (username sanitized via escapeHtml)
       tooltip.innerHTML = `<div class="hs-pc-info"><div class="hs-pc-header"><span class="hs-pc-name">${escapeHtml(username)}</span></div></div>`;
+      appendSubTenureBadge(tooltip, username);
       fetchAndShowFollowage(tooltip, username, gen);
     }
+  }
+
+  // Append sub tenure badge from local IRC data (sync, no fetch)
+  function appendSubTenureBadge(tooltip, username) {
+    const channelLogin = getTooltipChannelContext()
+    if (!channelLogin) return
+    const channelMap = subTenureMap.get(channelLogin)
+    if (!channelMap) return
+    const months = channelMap.get(username.toLowerCase())
+    if (!months) return
+    const header = tooltip.querySelector('.hs-pc-header')
+    if (!header) return
+    const badge = document.createElement('span')
+    badge.className = 'hs-pc-sub-tenure'
+    badge.textContent = 'subbed ' + channelLogin + ' ' + formatSubTenure(months)
+    header.appendChild(badge)
   }
 
   // Async followage fetch — appends to tooltip after profile renders (DOM methods, no innerHTML)
@@ -10077,6 +10133,15 @@ const STORAGE_KEY = 'heatsync_multichat';
         color: #666;
         border: 1px solid #444;
       }
+      #hs-user-tooltip .hs-pc-sub-tenure {
+        padding: 2px 3px;
+        font-size: 10px;
+        font-weight: 900;
+        white-space: nowrap;
+        letter-spacing: 0.3px;
+        background: #9146ff;
+        color: #fff;
+      }
       #hs-user-tooltip .hs-pc-loading {
         color: #808080;
         font-size: 11px;
@@ -14018,6 +14083,10 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
 
     // Handle incoming IRC messages
     irc.on('message', (msg) => {
+      // Track sub tenure from IRC badge-info
+      if (msg.subMonths && msg.channel) {
+        trackSubTenure(msg.channel, msg.user, msg.subMonths)
+      }
       // Cache own badges for optimistic display
       if (msg.user?.toLowerCase() === currentUsername?.toLowerCase() && msg.badges) {
         _ownBadges = msg.badges

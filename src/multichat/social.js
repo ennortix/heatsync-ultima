@@ -186,6 +186,9 @@ function listenForSocialEvents() {
         amount: msg.amount || '',
         scColor: msg.scColor || '',
         sticker: msg.sticker || null,
+        avatar: msg.avatar || undefined,
+        badges: msg.badges || undefined,
+        systemMsg: msg.systemMsg || undefined,
       }
 
       if (targetChannelId && targetChannelId !== 'global') {

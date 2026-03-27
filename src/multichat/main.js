@@ -4665,15 +4665,32 @@
 
     const showChannel = tabId === 'mentions';
     const isSuperChat = m.platform === 'youtube' && (m.msgType === 'superchat' || m.msgType === 'supersticker')
+    const isMembership = m.platform === 'youtube' && m.msgType === 'membership'
     const isKicksEvent = m.kicksEvent === true
     const cls = tabId === 'mentions' ? 'hs-mc-msg mention' :
 isKicksEvent ? 'hs-mc-msg hs-mc-system hs-mc-kicks' :
+isMembership ? 'hs-mc-msg hs-mc-system' :
 m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
                 m.redeemed ? 'hs-mc-msg hs-mc-redeemed' :
                 isSuperChat ? 'hs-mc-msg hs-mc-superchat' :
                 isMention(m) ? 'hs-mc-msg mention' : 'hs-mc-msg';
     const channelSpan = showChannel && m.channel ? `<span class="hs-mc-channel">${escapeHtml(m.channel)}</span>` : '';
-    const badges = renderBadges(m.badges, m.channel)
+    // Render badges — YouTube sends array of {type,label,url}, Twitch/Kick send IRC badge string
+    let badges = ''
+    if (m.platform === 'youtube' && Array.isArray(m.badges)) {
+      badges = m.badges.map(b => {
+        if (b.url) {
+          return `<img class="hs-mc-badge-img" src="${escapeHtml(b.url)}" alt="${escapeHtml(b.label)}" title="${escapeHtml(b.label)}" style="width:18px;height:18px;">`
+        }
+        // Text fallback for owner/mod without image
+        const ytBadgeStyles = { owner: { bg: '#ffd600', fg: '#000', label: '\u2606' }, moderator: { bg: '#5e84f1', fg: '#fff', label: '\u2694' } }
+        const style = ytBadgeStyles[b.type]
+        if (style) return `<span class="hs-mc-badge" style="background:${style.bg};color:${style.fg}" title="${escapeHtml(b.label)}">${style.label}</span>`
+        return ''
+      }).join('')
+    } else {
+      badges = renderBadges(m.badges, m.channel)
+    }
     const plat = m.platform === 'youtube' ? 'yt' : m.platform === 'kick' ? 'kick' : 'twitch'
     const platLabel = plat === 'yt' ? '[YT]' : plat === 'kick' ? '[K]' : '[T]'
     const platColors = { twitch: '#9146ff', kick: '#53fc18', yt: '#ff0000' }
@@ -4684,10 +4701,15 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
     let avatarHtml = ''
     if (avatarsEnabled) {
       const userKey = m.user.toLowerCase()
+      // YouTube messages carry avatar URL directly — cache it and skip decapi
+      if (m.avatar && m.platform === 'youtube') {
+        avatarCache.set(userKey, m.avatar)
+      }
       const cachedUrl = avatarCache.get(userKey)
       if (cachedUrl) {
         avatarHtml = `<img class="hs-mc-avatar" src="${escapeHtml(cachedUrl)}" alt="" loading="lazy" decoding="async" onerror="this.style.display='none'">`
-      } else {
+      } else if (m.platform !== 'youtube') {
+        // Only fetch from decapi for Twitch users
         avatarHtml = `<img class="hs-mc-avatar" data-user="${escapeHtml(userKey)}" src="" alt="" style="display:none" loading="lazy" decoding="async">`
         fetchAvatar(userKey)
       }

@@ -1850,14 +1850,17 @@ function handleWSMessage(msg) {
             channelId,
             user: ytMsg.user,
             text: ytMsg.text,
-            color: '#ff0000',
+            color: ytMsg.color || '#ff0000',
             time: ytMsg.timestamp || Date.now(),
             platform: 'youtube',
             emotes: ytMsg.emotes || [],
             msgType: ytMsg.type, // 'text', 'superchat', 'supersticker'
             amount: ytMsg.amount || '',
-            scColor: ytMsg.color || '',
+            scColor: ytMsg.scColor || '',
             sticker: ytMsg.sticker || null,
+            avatar: ytMsg.avatar || undefined,
+            badges: ytMsg.badges || undefined,
+            systemMsg: ytMsg.systemMsg || undefined,
             source: 'server', // distinguish from content script messages
           })
         }

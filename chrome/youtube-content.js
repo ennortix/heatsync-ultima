@@ -1,4 +1,4 @@
-// YouTube Live Chat content script — read-only message extraction
+// YouTube Live Chat content script — message extraction with full metadata
 // Sends chat messages to background for multichat relay
 (function() {
   'use strict'
@@ -25,6 +25,53 @@
     })
   }
 
+  // Extract author color from computed style (mods=blue, owner=gold, members=green, regular=white)
+  function extractColor(authorEl) {
+    if (!authorEl) return '#ffffff'
+    const computed = window.getComputedStyle(authorEl)
+    const color = computed.color
+    if (!color || color === 'rgba(0, 0, 0, 0)') return '#ffffff'
+    // Convert rgb/rgba to hex
+    const m = color.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/)
+    if (!m) return '#ffffff'
+    const r = parseInt(m[1]), g = parseInt(m[2]), b = parseInt(m[3])
+    // Skip near-white/transparent (regular users) — use YouTube red for identity
+    if (r > 200 && g > 200 && b > 200) return '#ff0000'
+    return '#' + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1)
+  }
+
+  // Extract avatar URL from author photo
+  function extractAvatar(el) {
+    const img = el.querySelector('#author-photo img')
+    return img?.src || ''
+  }
+
+  // Extract badges (member badge, mod wrench, etc.)
+  function extractBadges(el) {
+    const authorType = el.getAttribute('author-type') || ''
+    const badges = []
+
+    // Author-type badge (mod/owner)
+    if (authorType === 'owner') badges.push({ type: 'owner', label: 'Owner' })
+    else if (authorType === 'moderator') badges.push({ type: 'moderator', label: 'Mod' })
+
+    // Member badge images from #author-badges
+    const badgeContainer = el.querySelector('#author-badges')
+    if (badgeContainer) {
+      const badgeRenderers = badgeContainer.querySelectorAll('yt-live-chat-author-badge-renderer')
+      for (const br of badgeRenderers) {
+        const img = br.querySelector('img')
+        if (img?.src) {
+          const tooltip = br.getAttribute('aria-label') || br.getAttribute('shared-tooltip-text') ||
+                          img.alt || img.getAttribute('shared-tooltip-text') || 'Member'
+          badges.push({ type: 'member', label: tooltip, url: img.src })
+        }
+      }
+    }
+
+    return badges.length > 0 ? badges : undefined
+  }
+
   function extractMessage(el) {
     const authorEl = el.querySelector('#author-name')
     const messageEl = el.querySelector('#message')
@@ -32,6 +79,10 @@
 
     const user = authorEl.textContent.trim()
     if (!user) return null
+
+    const color = extractColor(authorEl)
+    const avatar = extractAvatar(el)
+    const badges = extractBadges(el)
 
     // Build text from child nodes — text nodes + img alt for emoji
     // Also collect emoji image URLs for rendering in multichat
@@ -56,7 +107,7 @@
     text = text.trim()
     if (!text) return null
 
-    return { user, text, emotes }
+    return { user, text, emotes, color, avatar, badges }
   }
 
   const SUPPORTED_RENDERERS = new Set([
@@ -88,8 +139,9 @@
     const amountEl = el.querySelector('#purchase-amount-chip')
     const amount = amountEl?.textContent?.trim() || ''
     const stickerEl = el.querySelector('#sticker img')
-    const sticker = stickerEl?.src || ''
-    return { amount, sticker }
+    const url = stickerEl?.src || ''
+    const alt = stickerEl?.alt || 'sticker'
+    return { amount, sticker: { url, alt } }
   }
 
   function processNode(node) {
@@ -109,10 +161,12 @@
       user: msg.user,
       text: msg.text,
       msgType,
-      color: '#ff0000',
+      color: msg.color,
       time: Date.now(),
       platform: 'youtube',
-      emotes: msg.emotes.length > 0 ? msg.emotes : undefined
+      emotes: msg.emotes.length > 0 ? msg.emotes : undefined,
+      avatar: msg.avatar || undefined,
+      badges: msg.badges
     }
 
     if (msgType === 'superchat') {
@@ -123,6 +177,10 @@
       const st = extractStickerData(node)
       payload.amount = st.amount
       payload.sticker = st.sticker
+    } else if (msgType === 'membership') {
+      // Membership events — extract the header text as system message
+      const headerEl = node.querySelector('#header-subtext, #header-primary-text')
+      if (headerEl) payload.systemMsg = headerEl.textContent.trim()
     }
 
     log('yt msg:', msgType, msg.user, msg.text)

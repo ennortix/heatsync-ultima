@@ -6,6 +6,13 @@
   const DEBUG = false
   const log = DEBUG ? console.log.bind(console, '[heatsync-early]') : () => {}
 
+  // Firefox marks some globals (WebSocket, fetch, Image) as read-only
+  function safeOverride(obj, prop, value) {
+    try { obj[prop] = value } catch {
+      Object.defineProperty(obj, prop, { value, writable: true, configurable: true })
+    }
+  }
+
   // Store for emote URL mappings (populated by content script)
   window.__heatsyncEmoteUrls = window.__heatsyncEmoteUrls || {}
 
@@ -82,16 +89,7 @@
   HsWebSocket.CLOSING = OrigWebSocket.CLOSING
   HsWebSocket.CLOSED = OrigWebSocket.CLOSED
 
-  try {
-    window.WebSocket = HsWebSocket
-  } catch {
-    // Firefox marks WebSocket as read-only — use defineProperty
-    Object.defineProperty(window, 'WebSocket', {
-      value: HsWebSocket,
-      writable: true,
-      configurable: true
-    })
-  }
+  safeOverride(window, 'WebSocket', HsWebSocket)
 
   // ═══ Twitch GQL Interception ═══
   // Captures persisted query hashes, integrity tokens, and response data
@@ -113,7 +111,7 @@
 
   // Hook fetch to intercept Twitch GQL traffic
   const origFetch = window.fetch
-  window.fetch = function(input, init) {
+  const hsFetch = function(input, init) {
     const url = typeof input === 'string' ? input : input?.url
     if (url && url.includes('gql.twitch.tv') && init?.method === 'POST') {
       // Capture headers
@@ -205,6 +203,7 @@
 
     return origFetch.apply(this, arguments)
   }
+  safeOverride(window, 'fetch', hsFetch)
 
   function buildGqlHeaders() {
     const hdrs = { 'Content-Type': 'application/json' }
@@ -460,7 +459,7 @@
 
   // Override setAttribute for src and srcset
   const origSetAttr = Element.prototype.setAttribute
-  Element.prototype.setAttribute = function(name, value) {
+  const hsSetAttribute = function(name, value) {
     if (this.tagName === 'IMG' && (name === 'src' || name === 'srcset')) {
       const fixed = fixUrl(value)
       if (fixed) {
@@ -471,6 +470,7 @@
     }
     return origSetAttr.call(this, name, value)
   }
+  safeOverride(Element.prototype, 'setAttribute', hsSetAttribute)
 
   // Override srcset property setter
   const srcsetDesc = Object.getOwnPropertyDescriptor(HTMLImageElement.prototype, 'srcset')
@@ -492,7 +492,7 @@
 
   // Override Image constructor
   const OrigImage = window.Image
-  window.Image = function(width, height) {
+  const HsImage = function(width, height) {
     const img = new OrigImage(width, height)
     const instSrcDesc = Object.getOwnPropertyDescriptor(HTMLImageElement.prototype, 'src')
     Object.defineProperty(img, 'src', {
@@ -510,11 +510,12 @@
     })
     return img
   }
-  window.Image.prototype = OrigImage.prototype
+  HsImage.prototype = OrigImage.prototype
+  safeOverride(window, 'Image', HsImage)
 
   // Override createElement for img tags
   const origCreateElement = document.createElement.bind(document)
-  document.createElement = function(tag, options) {
+  const hsCreateElement = function(tag, options) {
     const el = origCreateElement(tag, options)
     if (tag.toLowerCase() === 'img') {
       const instSrcDesc = Object.getOwnPropertyDescriptor(HTMLImageElement.prototype, 'src')
@@ -534,5 +535,6 @@
     }
     return el
   }
+  safeOverride(document, 'createElement', hsCreateElement)
 
 })()

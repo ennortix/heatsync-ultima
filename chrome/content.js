@@ -1590,7 +1590,7 @@ function _onMessageMain(message) {
 
     case 'emote_removed_broadcast':
       // Another user removed an emote, clear their pending broadcast
-      const removeKey = `${message.username}:${message.emoteName}`;
+      const removeKey = `${message.username.toLowerCase()}:${message.emoteName}`;
       if (pendingEmoteBroadcasts.has(removeKey)) {
         log(' 🗑️ Clearing broadcast (user removed emote):', removeKey);
         pendingEmoteBroadcasts.delete(removeKey);
@@ -1599,7 +1599,7 @@ function _onMessageMain(message) {
 
     case 'emote_broadcast':
       // Another user sent an emote, store for upcoming message
-      const broadcastKey = `${message.username}:${message.emoteName}`;
+      const broadcastKey = `${message.username.toLowerCase()}:${message.emoteName}`;
       log(' 📥 RECEIVED BROADCAST:', {
         username: message.username,
         emoteName: message.emoteName,
@@ -2825,10 +2825,10 @@ function processMessage(messageElement) {
   if (pendingEmoteBroadcasts.size === 0 || !username) {
     allEmotes = cachedAllEmotes
   } else {
-    const prefix = username + ':'
+    const prefix = username.toLowerCase() + ':'
     const userBroadcasts = new Map()
     for (const [broadcastKey, emoteData] of pendingEmoteBroadcasts) {
-      if (broadcastKey.startsWith(prefix)) {
+      if (broadcastKey.toLowerCase().startsWith(prefix)) {
         const emoteName = broadcastKey.slice(prefix.length)
         userBroadcasts.set(emoteName, {
           name: emoteName,
@@ -4790,7 +4790,7 @@ function retroactivelyProcessBroadcast(username, emoteName, emoteData) {
 
   recentMessages.forEach(messageElement => {
     const messageUsername = getUsername(messageElement);
-    if (messageUsername !== username) return;
+    if (messageUsername.toLowerCase() !== username.toLowerCase()) return;
 
     const textElement = messageElement.querySelector('.text-fragment') ||
                         messageElement.querySelector('span.font-normal') ||

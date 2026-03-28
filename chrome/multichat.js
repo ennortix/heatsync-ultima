@@ -1034,7 +1034,6 @@ const runtime = {
     } catch (err) {
       // Extension context invalidated (common during updates)
       if (err.message?.includes('Extension context invalidated')) {
-        console.warn('[heatsync] Extension context invalidated')
         return null
       }
       throw err

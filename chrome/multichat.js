@@ -2840,7 +2840,8 @@ async function sendKickMessage(kickSlug, text) {
         emotes.forEach(e => {
           if (e.name && e.url) {
             const source = e.source || detectEmoteSource(e.url, '7tv');
-            chCache.set(e.name, { url: e.url, source, state: 'channel', zeroWidth: !!e.zeroWidth });
+            const state = getEmoteState(e.name, source);
+            chCache.set(e.name, { url: e.url, source, state, zeroWidth: !!e.zeroWidth });
             if (e.hash) registerHash(e.name, e.hash);
           }
         });
@@ -2903,7 +2904,7 @@ async function sendKickMessage(kickSlug, text) {
       const url = img.src;
       if (name && url && !cache.has(name) && !emoteCache.has(name)) {
         const source = detectEmoteSource(url);
-        cache.set(name, { url, source, state: 'channel', zeroWidth: false });
+        cache.set(name, { url, source, state: getEmoteState(name, source), zeroWidth: false });
         found++;
       }
     }

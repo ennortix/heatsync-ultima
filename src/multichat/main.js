@@ -2322,7 +2322,8 @@
         font-size: 0;
       }
       .hs-mc-emote-wrapper > img {
-        display: block;
+        display: inline-block;
+        vertical-align: top;
       }
       .hs-mc-emote-wrapper::before {
         content: '';

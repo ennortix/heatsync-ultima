@@ -65,7 +65,7 @@
     }
   }
 
-  window.WebSocket = function(url, protocols) {
+  const HsWebSocket = function(url, protocols) {
     const ws = protocols !== undefined
       ? new OrigWebSocket(url, protocols)
       : new OrigWebSocket(url)
@@ -76,11 +76,22 @@
     }
     return ws
   }
-  window.WebSocket.prototype = OrigWebSocket.prototype
-  window.WebSocket.CONNECTING = OrigWebSocket.CONNECTING
-  window.WebSocket.OPEN = OrigWebSocket.OPEN
-  window.WebSocket.CLOSING = OrigWebSocket.CLOSING
-  window.WebSocket.CLOSED = OrigWebSocket.CLOSED
+  HsWebSocket.prototype = OrigWebSocket.prototype
+  HsWebSocket.CONNECTING = OrigWebSocket.CONNECTING
+  HsWebSocket.OPEN = OrigWebSocket.OPEN
+  HsWebSocket.CLOSING = OrigWebSocket.CLOSING
+  HsWebSocket.CLOSED = OrigWebSocket.CLOSED
+
+  try {
+    window.WebSocket = HsWebSocket
+  } catch {
+    // Firefox marks WebSocket as read-only — use defineProperty
+    Object.defineProperty(window, 'WebSocket', {
+      value: HsWebSocket,
+      writable: true,
+      configurable: true
+    })
+  }
 
   // ═══ Twitch GQL Interception ═══
   // Captures persisted query hashes, integrity tokens, and response data

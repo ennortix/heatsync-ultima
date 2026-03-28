@@ -2180,12 +2180,12 @@ async function removeFromInventory(emoteHash, emoteName) {
       return { success: false, error: 'Emote not found in your set' };
     }
 
-    if (!emote.slot) {
+    if (emote.slot == null) {
       // Refetch to get correct slot numbers
       await fetchEmoteInventory();
       // Try again after refetch
       const refreshedEmote = emoteInventory.find(e => e.hash === emoteHash || e.name === emoteName);
-      if (!refreshedEmote?.slot) {
+      if (refreshedEmote?.slot == null) {
         broadcastToTabs({
           type: 'emote_remove_failed',
           emoteName,

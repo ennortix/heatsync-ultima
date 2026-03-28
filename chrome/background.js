@@ -120,6 +120,12 @@ browser.cookies.onChanged.addListener((changeInfo) => {
 const API_URL = 'https://heatsync.org'; // Production
 const WS_URL = 'wss://heatsync.org'; // Production WebSocket
 
+// Normalize relative emote URLs to absolute (API returns /uploads/... paths)
+function absUrl(url) {
+  if (!url) return url
+  return url.startsWith('/') ? API_URL + url : url
+}
+
 // Track intervals for cleanup (memory leak prevention)
 const activeIntervals = [];
 function trackInterval(id) {
@@ -354,7 +360,7 @@ async function fetchEmoteInventory() {
     // Backend returns 'custom_name', extension expects 'name'
     const inventoryEmotes = (data.emotes || []).map(emote => ({
       name: emote.custom_name,  // Map custom_name to name
-      url: emote.url,
+      url: absUrl(emote.url),
       hash: emote.hash,
       width: emote.width,
       height: emote.height,
@@ -367,7 +373,7 @@ async function fetchEmoteInventory() {
     // Transform subscription emotes
     const subEmotes = (data.subscriptionEmotes || []).map(emote => ({
       name: emote.custom_name,
-      url: emote.url,
+      url: absUrl(emote.url),
       hash: emote.hash,
       width: emote.width || 28,
       height: emote.height || 28,
@@ -762,7 +768,7 @@ async function fetchChannelOwnerEmotes(channelName, channelId = null, platform =
       const data = await response.json();
       heatsyncEmotes = (data.emotes || []).map(e => ({
         name: e.name,
-        url: e.url,
+        url: absUrl(e.url),
         hash: e.hash || e.name,
         provider: e.provider || 'upload'
       }));
@@ -1743,6 +1749,7 @@ function handleWSMessage(msg) {
       break;
 
     case 'emote:broadcast':
+      if (msg.emoteData?.url) msg.emoteData.url = absUrl(msg.emoteData.url)
       log(' 📢 EMOTE BROADCAST RECEIVED:', {
         username: msg.username,
         emoteName: msg.emoteName,

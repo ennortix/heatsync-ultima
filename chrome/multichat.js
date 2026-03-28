@@ -10204,7 +10204,6 @@ const STORAGE_KEY = 'heatsync_multichat';
       .hs-mc-emote {
         height: var(--hs-emote-size, 32px);
         width: auto;
-        max-width: none;
         vertical-align: middle;
         margin: 0 2px;
         padding: 4px;
@@ -10314,8 +10313,7 @@ const STORAGE_KEY = 'heatsync_multichat';
         font-size: 0;
       }
       .hs-mc-emote-wrapper > img {
-        display: inline-block;
-        vertical-align: top;
+        display: block;
       }
       .hs-mc-emote-wrapper::before {
         content: '';

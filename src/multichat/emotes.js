@@ -682,7 +682,7 @@
 
   async function loadEmotes() {
     try {
-      const stored = await chrome.storage.local.get(['global_emotes', 'emote_inventory', 'channel_emotes_map']);
+      const stored = await chrome.storage.local.get(['global_emotes', 'emote_inventory', 'channel_emotes_map', 'native_twitch_emotes']);
       emoteCache.clear();
       channelEmoteCaches = {};
       inventoryEmotes.clear();
@@ -751,6 +751,14 @@
         }
       }
       log('Channel emote caches:', Object.entries(channelEmoteCaches).map(([c, m]) => `${c}: ${m.size}`).join(', '));
+
+      // Native Twitch emotes (sub emotes) — available in ALL channels
+      (stored.native_twitch_emotes || []).forEach(e => {
+        if (e.name && e.url && !emoteCache.has(e.name)) {
+          emoteCache.set(e.name, { url: e.url, source: 'twitch', state: 'global' });
+          if (e.hash) registerHash(e.name, e.hash);
+        }
+      });
 
       // Rebuild blockedEmoteNames from loaded hashes
       rebuildBlockedNames();

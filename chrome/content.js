@@ -129,6 +129,13 @@ cleanup.addEventListener(window, 'message', async (event) => {
     log(' Settings changed via postMessage:', event.data.settings)
     applyUiSettings(event.data.settings)
   }
+
+  // Native Twitch emotes from autocomplete-hook.js (MAIN world) — store for multichat
+  if (event.data?.type === 'heatsync-native-emotes' && Array.isArray(event.data.emotes)) {
+    const emotes = event.data.emotes
+    log(' Received', emotes.length, 'native Twitch emotes from MAIN world')
+    browser.storage.local.set({ native_twitch_emotes: emotes })
+  }
 }, 'auth-message-handler');
 
 // Inject CSS for emote hover effects (full emote background like website)

@@ -2786,7 +2786,7 @@ async function sendKickMessage(kickSlug, text) {
 
   async function loadEmotes() {
     try {
-      const stored = await chrome.storage.local.get(['global_emotes', 'emote_inventory', 'channel_emotes_map']);
+      const stored = await chrome.storage.local.get(['global_emotes', 'emote_inventory', 'channel_emotes_map', 'native_twitch_emotes']);
       emoteCache.clear();
       channelEmoteCaches = {};
       inventoryEmotes.clear();
@@ -2855,6 +2855,14 @@ async function sendKickMessage(kickSlug, text) {
         }
       }
       log('Channel emote caches:', Object.entries(channelEmoteCaches).map(([c, m]) => `${c}: ${m.size}`).join(', '));
+
+      // Native Twitch emotes (sub emotes) — available in ALL channels
+      (stored.native_twitch_emotes || []).forEach(e => {
+        if (e.name && e.url && !emoteCache.has(e.name)) {
+          emoteCache.set(e.name, { url: e.url, source: 'twitch', state: 'global' });
+          if (e.hash) registerHash(e.name, e.hash);
+        }
+      });
 
       // Rebuild blockedEmoteNames from loaded hashes
       rebuildBlockedNames();
@@ -13910,7 +13918,7 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
       }
 
       // Emote updates - reload when storage changes (debounced to avoid spam)
-      if (changes.global_emotes || changes.channel_emotes_map || changes.emote_inventory) {
+      if (changes.global_emotes || changes.channel_emotes_map || changes.emote_inventory || changes.native_twitch_emotes) {
         log('storage changed:', changes.channel_emotes_map ? 'channel_emotes_map' : '', changes.global_emotes ? 'global_emotes' : '', changes.emote_inventory ? 'emote_inventory' : '');
         clearTimeout(emoteReloadTimer);
         emoteReloadTimer = setTimeout(() => {

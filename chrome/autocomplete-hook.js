@@ -4,6 +4,7 @@
   const DEBUG = false
   const log = DEBUG ? console.log.bind(console, '[heatsync-ac]') : () => {}
 
+
   // Kill previous instance on extension reload (old hooks accumulate otherwise)
   if (window.__heatsyncAcLifecycle) {
     try { window.__heatsyncAcLifecycle.abort() } catch (_) {}
@@ -365,6 +366,46 @@
 
   let chatInputInst = null;
 
+  // Get native Twitch emotes from React props (includes sub emotes from all channels)
+  function getNativeTwitchEmotes() {
+    const inst = chatInputInstance || chatInputInst;
+    if (!inst?.props?.emotes) return [];
+    const emotes = [];
+    for (const set of inst.props.emotes) {
+      if (!set?.emotes || set.id === 'HeatSyncEmotes') continue;
+      for (const e of set.emotes) {
+        if (!e.token) continue;
+        emotes.push({
+          name: e.token,
+          nameLower: e.token.toLowerCase(),
+          hash: e.id,
+          url: `https://static-cdn.jtvnw.net/emoticons/v2/${e.id}/default/dark/1.0`,
+          native: true
+        });
+      }
+    }
+    return emotes;
+  }
+
+  // Get all emotes for Tab cycling (bridge + native Twitch)
+  function getAllEmotesForCycling() {
+    const bridgeEmotes = getEmotesForFix();
+    const seen = new Set();
+    const all = [];
+    for (const e of bridgeEmotes) {
+      if (seen.has(e.name)) continue;
+      seen.add(e.name);
+      if (!e.nameLower) e.nameLower = (e.name || '').toLowerCase();
+      all.push(e);
+    }
+    for (const e of getNativeTwitchEmotes()) {
+      if (seen.has(e.name)) continue;
+      seen.add(e.name);
+      all.push(e);
+    }
+    return all;
+  }
+
   // Cached emotes to avoid repeated JSON parsing
   let _cachedEmotes = [];
   let _lastEmoteData = '';
@@ -430,7 +471,7 @@
 
   // Find React ChatInput instance
   function findChatInput() {
-    const el = document.querySelector('[data-a-target="chat-input"]');
+    const el = document.querySelector('[data-a-target="chat-input"]') || document.querySelector('[data-slate-editor="true"]');
     if (!el) return null;
 
     let fiber = getFiber(el);
@@ -507,6 +548,31 @@
       id: 'HeatSyncEmotes',
       owner: null
     };
+  }
+
+  // Export native Twitch emotes (sub emotes) to content.js via postMessage
+  // Content.js stores them to chrome.storage.local so multichat can read them
+  function exportNativeEmotes() {
+    const inst = chatInputInstance || chatInputInst;
+    if (!inst?.props?.emotes) return;
+
+    const emotes = [];
+    for (const set of inst.props.emotes) {
+      if (!set?.emotes || set.id === 'HeatSyncEmotes') continue;
+      for (const e of set.emotes) {
+        if (!e.token) continue;
+        emotes.push({
+          name: e.token,
+          hash: e.id,
+          url: `https://static-cdn.jtvnw.net/emoticons/v2/${e.id}/default/dark/1.0`
+        });
+      }
+    }
+
+    if (emotes.length > 0) {
+      window.postMessage({ type: 'heatsync-native-emotes', emotes }, location.origin);
+      log('📺 Exported', emotes.length, 'native Twitch emotes via postMessage');
+    }
   }
 
   // Inject fake emotes into Twitch's emote array
@@ -664,6 +730,16 @@
           hsMatches.push(emote);
         }
 
+        // Include native Twitch emotes (sub emotes, etc.) that Twitch's own getMatches missed
+        // (Twitch's native getMatches returns 0 for non-colon searches)
+        const hsMatchNames = new Set(hsMatches.map(e => e.name));
+        const resultNames = new Set(results.map(r => r.replacement || r.emote?.token));
+        for (const emote of getNativeTwitchEmotes()) {
+          if (hsMatchNames.has(emote.name) || resultNames.has(emote.name)) continue;
+          if (!emote.nameLower.includes(searchLower)) continue;
+          hsMatches.push(emote);
+        }
+
         // Add usernames that match (with or without @ prefix)
         const usernameMatches = [];
         const searchWithoutAt = searchLower.startsWith('@') ? searchLower.slice(1) : searchLower;
@@ -735,15 +811,22 @@
           // Check if already in results
           if (results.some(r => r.emote?.token === emote.name)) continue;
 
+          const emoteId = emote.native ? emote.hash : HEATSYNC_PREFIX + emote.hash + HEATSYNC_SUFFIX;
+          const setId = emote.native ? 'TwitchEmotes' : 'HeatSyncEmotes';
+          let srcSet = emote.url + ' 1x, ' + emote.url + ' 2x';
+          if (emote.native) {
+            const base = `https://static-cdn.jtvnw.net/emoticons/v2/${emote.hash}`;
+            srcSet = `${base}/default/dark/1.0 1x, ${base}/default/dark/2.0 2x`;
+          }
           results.push({
             current: input,
             replacement: emote.name,
             element: null,
             emote: {
-              id: HEATSYNC_PREFIX + emote.hash + HEATSYNC_SUFFIX,
-              setID: 'HeatSyncEmotes',
+              id: emoteId,
+              setID: setId,
               token: emote.name,
-              srcSet: emote.url + ' 1x, ' + emote.url + ' 2x'
+              srcSet: srcSet
             }
           });
         }
@@ -982,19 +1065,34 @@
     if (emoteUrl && (emoteUrl.startsWith('/uploads/') || emoteUrl.startsWith('/emotes/'))) {
       emoteUrl = 'https://heatsync.org' + emoteUrl;
     }
+
+    // Native Twitch emotes use real emote ID and CDN URLs
+    const isNative = matchedEmote.native;
+    let emoteID, img1x, img2x, img4x;
+    if (isNative) {
+      emoteID = matchedEmote.hash; // Real Twitch emote ID
+      const base = `https://static-cdn.jtvnw.net/emoticons/v2/${emoteID}`;
+      img1x = `${base}/default/dark/1.0`;
+      img2x = `${base}/default/dark/2.0`;
+      img4x = `${base}/default/dark/3.0`;
+    } else {
+      emoteID = HEATSYNC_PREFIX + (matchedEmote.hash || matchedEmote.name) + HEATSYNC_SUFFIX;
+      img1x = emoteUrl; img2x = emoteUrl; img4x = emoteUrl;
+    }
+
     const emoteNode = {
       type: 'emote',
       emoteData: {
         type: 6,
         content: {
           images: {
-            dark: { '1x': emoteUrl, '2x': emoteUrl, '4x': emoteUrl },
-            light: { '1x': emoteUrl, '2x': emoteUrl, '4x': emoteUrl },
+            dark: { '1x': img1x, '2x': img2x, '4x': img4x },
+            light: { '1x': img1x, '2x': img2x, '4x': img4x },
             themed: false
           },
           alt: matchedEmote.name,
           // CRITICAL: Must match the ID format in fake emote set for Twitch to find it on re-render
-          emoteID: HEATSYNC_PREFIX + (matchedEmote.hash || matchedEmote.name) + HEATSYNC_SUFFIX
+          emoteID: emoteID
         }
       },
       emoteName: matchedEmote.name,
@@ -1310,11 +1408,11 @@
         const searchMatches = cycleState.searchTerm &&
           (currentSearch.includes(cycleState.searchTerm) || cycleState.searchTerm.includes(currentSearch));
 
-        // If user typed something NEW, reset stale matches
-        if (hasMultipleMatches && !searchMatches && currentSearch.length >= 2) {
+        // Build or rebuild matches: either stale (new search term) or empty (first Tab)
+        if ((!hasMultipleMatches || !searchMatches) && currentSearch.length >= 2) {
           log(' 🔄 Current input "' + currentSearch + '" doesn\'t match stored "' + cycleState.searchTerm + '" - rebuilding matches');
-          // Build fresh matches for current input
-          const hsEmotes = getEmotesForFix();
+          // Build fresh matches for current input (bridge + native Twitch sub emotes)
+          const hsEmotes = getAllEmotesForCycling();
           const prefixMatches = [];
           const substringMatches = [];
           for (const em of hsEmotes) {
@@ -2179,6 +2277,7 @@
       hookNormalizer(chatInputInst);         // Block emote conversion when WYSIWYG off
       hookEmojiAutoConvert(chatInputInst);   // Auto-convert :shortcode: → emoji on closing colon
       injectFakeEmotes(chatInputInst); // Inject fake emotes for inline rendering
+      exportNativeEmotes(); // Share sub emotes with multichat via storage
       installImageObserver(); // Watch for images to fix
       if (!clickHandlerInstalled) {
         installAutocompleteClickHandler(); // Handle clicks on our emotes
@@ -2200,14 +2299,21 @@
     }
   }), 'autocomplete-nav-observer').observe(document, { subtree: true, childList: true });
 
-  // Initial run
-  cleanup.setTimeout(init, 1000, 'autocomplete-initial');
+  // Initial run with retry — chat component may load after document_end
+  let initAttempts = 0;
+  function tryInit() {
+    initAttempts++;
+    init();
+    if (!chatInputInst && initAttempts < 10) {
+      cleanup.setTimeout(tryInit, 1000, 'autocomplete-retry-' + initAttempts);
+    }
+  }
+  cleanup.setTimeout(tryInit, 1000, 'autocomplete-initial');
 
-  // Listen for emote updates - re-inject fake emotes when inventory changes
+  // Listen for emote updates - re-inject fake emotes and re-append native emotes
   const bridge = document.getElementById('heatsync-emote-bridge');
   if (bridge) {
     bridge.addEventListener('heatsync-emotes-updated', () => {
-      // Re-inject fake emotes to reflect inventory changes (added/removed emotes)
       if (chatInputInstance) {
         injectFakeEmotes(chatInputInstance);
       }

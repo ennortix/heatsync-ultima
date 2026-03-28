@@ -5926,7 +5926,7 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
       }
 
       // Emote updates - reload when storage changes (debounced to avoid spam)
-      if (changes.global_emotes || changes.channel_emotes_map || changes.emote_inventory) {
+      if (changes.global_emotes || changes.channel_emotes_map || changes.emote_inventory || changes.native_twitch_emotes) {
         log('storage changed:', changes.channel_emotes_map ? 'channel_emotes_map' : '', changes.global_emotes ? 'global_emotes' : '', changes.emote_inventory ? 'emote_inventory' : '');
         clearTimeout(emoteReloadTimer);
         emoteReloadTimer = setTimeout(() => {

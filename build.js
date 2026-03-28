@@ -49,6 +49,7 @@ const COPY_FILES = [
   'options.html',
   'options.js',
   'vi-mode.js',
+  'autocomplete-loader.js',
 ]
 
 // Assets (images, etc)

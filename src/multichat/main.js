@@ -2212,6 +2212,7 @@
       .hs-mc-emote {
         height: var(--hs-emote-size, 32px);
         width: auto;
+        max-width: none;
         vertical-align: middle;
         margin: 0 2px;
         padding: 4px;

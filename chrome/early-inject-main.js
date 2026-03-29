@@ -384,7 +384,7 @@
               error: 'hash not available for ' + req.operation
             }, location.origin)
           }
-        }, 8000)
+        }, 2000)
       }
       return
     }

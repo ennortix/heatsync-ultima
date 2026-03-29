@@ -747,68 +747,70 @@ async function renderTwitchTab() {
 
   _predictionChannel = channel
 
-  if (!container.querySelector('.hs-mc-prediction, .hs-mc-pred-empty')) {
-    container.textContent = ''
-    const loading = document.createElement('div')
-    loading.className = 'hs-mc-pred-loading'
-    loading.textContent = 'loading...'
-    container.appendChild(loading)
-  }
-
-  const [result, rewardsResult, pollResult] = await Promise.all([
-    fetchPrediction(channel),
-    fetchChannelRewards(channel),
-    fetchPoll(channel)
-  ])
-
   container.textContent = ''
 
-  // Auto-claim bonus points
-  if (rewardsResult?.availableClaim && rewardsResult.channelId) {
-    claimCommunityPoints(rewardsResult.availableClaim, rewardsResult.channelId)
-  }
+  // Placeholder slots for progressive rendering
+  const predSlot = document.createElement('div')
+  predSlot.className = 'hs-mc-pred-loading'
+  predSlot.textContent = 'loading...'
+  const pollSlot = document.createElement('div')
+  const rewardsSlot = document.createElement('div')
+  container.appendChild(predSlot)
+  container.appendChild(pollSlot)
+  container.appendChild(rewardsSlot)
 
-  if (!result) {
-    const empty = document.createElement('div')
-    empty.className = 'hs-mc-pred-empty'
-    const msg = document.createElement('div')
-    msg.className = 'hs-mc-pred-empty-text'
-    msg.textContent = "couldn't load predictions"
-    empty.appendChild(msg)
-    container.appendChild(empty)
-  } else if (result.prediction) {
-    container.appendChild(renderPrediction(result.prediction, result.balance))
-  } else {
-    container.appendChild(renderNoPrediction(result.balance))
-  }
-
-  // Poll
-  if (pollResult) {
-    container.appendChild(renderPoll(pollResult))
-  }
-
-  if (rewardsResult?.rewards?.length) {
-    container.appendChild(renderRewards(rewardsResult.rewards, rewardsResult.balance, rewardsResult.channelId))
-  }
-
-  // Color picker
+  // Color picker + links rendered immediately (no network needed)
   container.appendChild(renderColorPicker())
+  const modesSlot = document.createElement('div')
+  container.appendChild(modesSlot)
+  container.appendChild(renderQuickLinks())
+  attachColorHandlers()
 
-  // Chat modes (only renders if user is mod/broadcaster — fails silently otherwise)
+  // Chat modes (non-blocking)
   renderChatModes(channel).then(modesEl => {
     if (modesEl) {
-      const linksEl = container.querySelector('.hs-mc-pred-links')
-      if (linksEl) container.insertBefore(modesEl, linksEl)
-      else container.appendChild(modesEl)
+      modesSlot.appendChild(modesEl)
       attachModeHandlers()
     }
   })
 
-  container.appendChild(renderQuickLinks())
-  attachPredictionHandlers()
-  attachPollHandlers()
-  attachRewardHandlers()
-  attachColorHandlers()
+  // Fetch all 3 in parallel, render each as it arrives
+  fetchPrediction(channel).then(result => {
+    predSlot.textContent = ''
+    predSlot.className = ''
+    if (!result) {
+      const empty = document.createElement('div')
+      empty.className = 'hs-mc-pred-empty'
+      const msg = document.createElement('div')
+      msg.className = 'hs-mc-pred-empty-text'
+      msg.textContent = "couldn't load predictions"
+      empty.appendChild(msg)
+      predSlot.appendChild(empty)
+    } else if (result.prediction) {
+      predSlot.appendChild(renderPrediction(result.prediction, result.balance))
+    } else {
+      predSlot.appendChild(renderNoPrediction(result.balance))
+    }
+    attachPredictionHandlers()
+  })
+
+  fetchPoll(channel).then(pollResult => {
+    if (pollResult) {
+      pollSlot.appendChild(renderPoll(pollResult))
+      attachPollHandlers()
+    }
+  })
+
+  fetchChannelRewards(channel).then(rewardsResult => {
+    if (rewardsResult?.availableClaim && rewardsResult.channelId) {
+      claimCommunityPoints(rewardsResult.availableClaim, rewardsResult.channelId)
+    }
+    if (rewardsResult?.rewards?.length) {
+      rewardsSlot.appendChild(renderRewards(rewardsResult.rewards, rewardsResult.balance, rewardsResult.channelId))
+      attachRewardHandlers()
+    }
+  })
+
   startPredictionPoll()
 }
 
@@ -964,7 +966,7 @@ function gqlProxy(operation, variables, opts) {
     const timer = setTimeout(() => {
       window.removeEventListener('message', handler)
       reject(new Error('GQL proxy timeout'))
-    }, 10000)
+    }, 4000)
   })
 }
 
@@ -1026,23 +1028,34 @@ async function fetchPrediction(channelLogin) {
   const safe = channelLogin.replace(/[^a-z0-9_]/g, '')
   if (!safe) return null
   try {
-    // First check MAIN world cache (intercepted from Twitch's own calls)
-    const cached = await gqlGetCache(['ChannelPointsPredictionContext', 'CommunityPointsContext'])
-    const predCache = cached.data?.ChannelPointsPredictionContext
-    const pointsCache = cached.data?.CommunityPointsContext
-
     let predEvent = null
     let balance = null
 
-    if (predCache && Date.now() - predCache.ts < 30000) {
-      predEvent = predCache.data?.user?.activePredictionEvent || null
+    // Check local content-script cache first (no postMessage round-trip)
+    const localPred = _gqlDataCache['ChannelPointsPredictionContext']
+    const localPoints = _gqlDataCache['CommunityPointsContext']
+    if (localPred && Date.now() - localPred.ts < 30000) {
+      predEvent = localPred.data?.user?.activePredictionEvent || null
     }
-    if (pointsCache && Date.now() - pointsCache.ts < 30000) {
-      balance = pointsCache.data?.community?.channel?.self?.communityPoints?.balance ?? null
+    if (localPoints && Date.now() - localPoints.ts < 30000) {
+      balance = localPoints.data?.community?.channel?.self?.communityPoints?.balance ?? null
     }
 
-    // If cache miss, try proxy call with captured hashes
-    if (!predCache || Date.now() - predCache.ts >= 30000) {
+    // If local cache miss, check MAIN world cache
+    if (!predEvent && !localPred) {
+      const cached = await gqlGetCache(['ChannelPointsPredictionContext', 'CommunityPointsContext'])
+      const predCache = cached.data?.ChannelPointsPredictionContext
+      const pointsCache = cached.data?.CommunityPointsContext
+      if (predCache && Date.now() - predCache.ts < 30000) {
+        predEvent = predCache.data?.user?.activePredictionEvent || null
+      }
+      if (balance == null && pointsCache && Date.now() - pointsCache.ts < 30000) {
+        balance = pointsCache.data?.community?.channel?.self?.communityPoints?.balance ?? null
+      }
+    }
+
+    // If still no data, try proxy call with captured hashes
+    if (predEvent === null && (!localPred || Date.now() - (localPred?.ts || 0) >= 30000)) {
       try {
         const data = await gqlProxy('ChannelPointsPredictionContext', { channelLogin: safe })
         if (Array.isArray(data)) {
@@ -1055,7 +1068,7 @@ async function fetchPrediction(channelLogin) {
         log('GQL proxy prediction failed:', e.message)
       }
     }
-    if (balance == null && (!pointsCache || Date.now() - pointsCache.ts >= 30000)) {
+    if (balance == null) {
       try {
         const data = await gqlProxy('CommunityPointsContext', { channelLogin: safe })
         const d = Array.isArray(data) ? data[0]?.data : (data?.data || data)
@@ -1118,6 +1131,7 @@ async function fetchChannelRewards(channelLogin) {
           'Content-Type': 'application/json',
           'Authorization': `OAuth ${token}`
         },
+        signal: AbortSignal.timeout(5000),
         body: JSON.stringify({
           query: `{
             user(login: "${safe}") {
@@ -1245,7 +1259,15 @@ async function fetchPoll(channelLogin) {
   const safe = channelLogin.replace(/[^a-z0-9_]/g, '')
   if (!safe) return null
   try {
-    // Try MAIN world cache first (intercepted from Twitch's own calls)
+    // Check local content-script cache first (no postMessage round-trip)
+    for (const key of ['ActivePoll', 'ChannelPollContext']) {
+      const c = _gqlDataCache[key]
+      if (c && Date.now() - c.ts < 15000) {
+        const poll = c.data?.user?.activePoll || c.data?.channel?.activePoll || null
+        if (poll) return poll
+      }
+    }
+    // Check MAIN world cache
     const cached = await gqlGetCache(['ActivePoll', 'ChannelPollContext'])
     for (const key of ['ActivePoll', 'ChannelPollContext']) {
       const c = cached.data?.[key]
@@ -1268,6 +1290,7 @@ async function fetchPoll(channelLogin) {
     if (token) headers['Authorization'] = 'OAuth ' + token
     const resp = await fetch(TWITCH_GQL, {
       method: 'POST', headers,
+      signal: AbortSignal.timeout(5000),
       body: JSON.stringify({
         query: '{ user(login: "' + safe + '") { activePoll { id title status durationSeconds remainingDurationMilliseconds startedAt choices { id title totalVoters } totalVoters } } }'
       })

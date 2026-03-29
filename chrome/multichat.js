@@ -8647,11 +8647,9 @@ const STORAGE_KEY = 'heatsync_multichat';
     // (position:absolute, Twitch sizes it to default chat width).
     const innerCol = rightCol.querySelector('.channel-root__right-column')
     if (innerCol) {
-      if (isVertical) {
-        innerCol.style.setProperty('width', '100%', 'important')
-      } else {
-        innerCol.style.removeProperty('width')
-      }
+      // Always fill parent — Twitch leaves a scrollbar gap (right: 47px)
+      // that's wasted space when native chat is hidden
+      innerCol.style.setProperty('width', '100%', 'important')
     }
   }
 

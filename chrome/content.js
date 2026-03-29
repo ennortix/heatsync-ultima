@@ -56,6 +56,10 @@ const getFiber = window.HS?.getFiber || function(el) {
 // Track if extension context is still valid
 let extensionContextValid = true;
 
+// Emote size setting (1x, 2x, 4x) — synced with multichat via chrome.storage
+let hsEmoteSize = 1
+const HS_EMOTE_BASE_PX = 28 // Twitch native emote height
+
 // Cached allEmotes map — rebuilt only when emote data changes
 let cachedAllEmotes = null
 let allEmotesDirty = true
@@ -118,8 +122,18 @@ updateAuthBridge()
 // Keep bridge in sync when token changes
 function storageChangeHandler(changes) {
   if (changes.auth_token) updateAuthBridge()
+  if (changes.hs_emote_size) applyEmoteSize(changes.hs_emote_size.newValue || 1)
 }
 chrome.storage.onChanged.addListener(storageChangeHandler)
+
+// Emote size — sync with multichat setting
+function applyEmoteSize(size) {
+  hsEmoteSize = [1, 2, 4].includes(size) ? size : 1
+  document.documentElement.style.setProperty('--hs-emote-height', (HS_EMOTE_BASE_PX * hsEmoteSize) + 'px')
+}
+chrome.storage.local.get(['hs_emote_size']).then(data => {
+  applyEmoteSize(data.hs_emote_size || 1)
+}).catch(() => {})
 
 // Non-sensitive postMessage handlers (no tokens)
 const TRUSTED_ORIGINS = ['https://www.twitch.tv', 'https://twitch.tv', 'https://kick.com', 'https://www.kick.com'];
@@ -175,7 +189,7 @@ style.textContent = `
   .heatsync-emote-wrapper > img {
     display: block !important;
     width: auto !important;
-    height: auto !important;
+    height: var(--hs-emote-height, 28px) !important;
     max-width: none !important;
     max-height: none !important;
   }
@@ -1228,41 +1242,6 @@ cleanup.setInterval(() => {
 let pendingOperations = new Set(); // Track in-flight operations to prevent double-clicks
 let pendingRemovals = new Set(); // Emote names pending removal — suppress inventory_update re-adds
 
-// Emote timeline — tracks when emotes were added/removed for per-message rendering on refresh
-// { emoteName: { url, hash, added: ts, removed: ts|null } }
-let emoteTimeline = {}
-function loadEmoteTimeline() {
-  try {
-    const raw = localStorage.getItem('hs_emote_timeline')
-    if (raw) emoteTimeline = JSON.parse(raw)
-  } catch {}
-}
-function saveEmoteTimeline() {
-  try {
-    localStorage.setItem('hs_emote_timeline', JSON.stringify(emoteTimeline))
-  } catch {}
-}
-function recordEmoteAdd(name, url, hash) {
-  emoteTimeline[name] = { url, hash, added: Date.now(), removed: emoteTimeline[name]?.removed || null }
-  saveEmoteTimeline()
-}
-function recordEmoteRemove(name) {
-  if (emoteTimeline[name]) {
-    emoteTimeline[name].removed = Date.now()
-  } else {
-    emoteTimeline[name] = { url: '', hash: '', added: 0, removed: Date.now() }
-  }
-  saveEmoteTimeline()
-}
-// Check if emote was in user's set at a given timestamp
-function wasEmoteActiveAt(name, ts) {
-  const entry = emoteTimeline[name]
-  if (!entry) return false
-  if (entry.added > ts) return false // added after this message
-  if (!entry.removed || entry.removed > ts) return true // not removed, or removed after this message
-  return entry.added > entry.removed // re-added after last removal
-}
-loadEmoteTimeline()
 // O(1) lookup sets — rebuilt when arrays change (via allEmotesDirty flag)
 let inventoryHashSet = new Set();
 let cachedEmotesByHash = new Map(); // hash → emote, O(1) lookup for hover previews
@@ -1496,17 +1475,6 @@ function _onMessageMain(message) {
       allEmotesDirty = true
       emoteGeneration++
       _tabEmoteMapDirty = true
-      // Seed timeline for emotes in inventory that don't have entries yet
-      for (const e of emoteInventory) {
-        if (!emoteTimeline[e.name]) {
-          emoteTimeline[e.name] = { url: e.url, hash: e.hash || '', added: Date.now(), removed: null }
-        } else if (emoteTimeline[e.name].removed && !emoteTimeline[e.name].added) {
-          // Was removed but now back — update added timestamp
-          emoteTimeline[e.name].added = Date.now()
-          emoteTimeline[e.name].url = e.url
-        }
-      }
-      saveEmoteTimeline()
       log(' Inventory updated:', emoteInventory.length, 'emotes');
       log(' Sample inventory:', emoteInventory.slice(0, 3).map(e => ({ name: e.name, hash: e.hash?.substring(0, 8) })));
 
@@ -1538,7 +1506,6 @@ function _onMessageMain(message) {
         hash: message.hash,
         url: message.url
       });
-      recordEmoteAdd(message.emoteName, message.url, message.hash);
       updateEmoteState(message.hash, message.emoteName, 'added');
       updateEmoteBridgeDebounced(); // Update Twitch autocomplete hook
       // Notify MAIN world (heatsync-button.js) to refresh panel if open
@@ -1563,7 +1530,6 @@ function _onMessageMain(message) {
       _tabEmoteMapDirty = true
       log(' ✅ Emote removed from your set:', message.emoteName);
       emoteInventory = emoteInventory.filter(e => e.hash !== message.hash && e.name !== message.emoteName);
-      recordEmoteRemove(message.emoteName);
       updateEmoteState(message.hash, message.emoteName, 'neutral');
       updateEmoteBridgeDebounced(); // Update Twitch autocomplete hook
       // Notify MAIN world (heatsync-button.js) to refresh panel if open
@@ -1963,7 +1929,6 @@ function restoreMsgCache(channel, chatContainer) {
       const div = document.createElement('div')
       div.className = 'chat-line__message heatsync-cached'
       div.setAttribute('data-heatsync-cached', 'true')
-      if (msg.ts) div.setAttribute('data-hs-ts', msg.ts)
       if (msg.id) div.setAttribute('data-msg-id', msg.id)
 
       const nameSpan = document.createElement('span')
@@ -2869,12 +2834,11 @@ function processMessage(messageElement) {
       cachedAllEmotes.set(emote.name, { ...emote, hash: emote.hash || btoa(emote.url), isGlobal: true })
     })
 
-    // Add inventory emotes (mark as inventory for timeline filtering)
+    // Add inventory emotes
     emoteInventory.forEach(emote => {
       cachedAllEmotes.set(emote.name, {
         ...emote,
-        url: emote.url?.startsWith('http') ? emote.url : `${API_URL}${emote.url}`,
-        isInventory: true
+        url: emote.url?.startsWith('http') ? emote.url : `${API_URL}${emote.url}`
       })
     })
 
@@ -2925,31 +2889,6 @@ function processMessage(messageElement) {
         get(name) { return userBroadcasts.get(name) || cachedAllEmotes.get(name) },
         has(name) { return userBroadcasts.has(name) || cachedAllEmotes.has(name) },
         get size() { return cachedAllEmotes.size + userBroadcasts.size }
-      }
-    }
-  }
-
-  // For cached messages with timestamps, use emote timeline for per-message accuracy
-  // This preserves rendering across refreshes: emotes render based on set state at post time
-  const msgTs = parseInt(messageElement.getAttribute('data-hs-ts'))
-  if (msgTs && Object.keys(emoteTimeline).length > 0) {
-    const timelineEmotes = new Map()
-    for (const [name, entry] of Object.entries(emoteTimeline)) {
-      // Emote not in current allEmotes but was active at message time → add it
-      if (!allEmotes.has(name) && wasEmoteActiveAt(name, msgTs) && entry.url) {
-        timelineEmotes.set(name, {
-          name,
-          url: entry.url.startsWith('http') ? entry.url : `${API_URL}${entry.url}`,
-          hash: entry.hash || ''
-        })
-      }
-    }
-    if (timelineEmotes.size > 0) {
-      const base = allEmotes
-      allEmotes = {
-        get(name) { return timelineEmotes.get(name) || base.get(name) },
-        has(name) { return timelineEmotes.has(name) || base.has(name) },
-        get size() { return base.size + timelineEmotes.size }
       }
     }
   }
@@ -3555,11 +3494,12 @@ function generateEmoteElement(emote, isOverlay) {
     // Overlay emotes render at 1x native size (their designed display size)
     const imgSrc = emote.url;
 
-    // Create image - native size, no constraints
+    // Create image
     const img = document.createElement('img');
     img.src = imgSrc;
     img.alt = emote.name;
-    img.style.cssText = `display: block !important; width: auto !important; height: auto !important; max-width: none !important; max-height: none !important; ${blocked ? 'opacity: 0;' : ''} cursor: pointer;`;
+    const heightRule = isOverlay ? 'height: auto !important;' : `height: var(--hs-emote-height, ${HS_EMOTE_BASE_PX}px) !important;`
+    img.style.cssText = `display: block !important; width: auto !important; ${heightRule} max-width: none !important; max-height: none !important; ${blocked ? 'opacity: 0;' : ''} cursor: pointer;`;
     // Force overlay images to render at native 1x dimensions once loaded
     if (isOverlay && !blocked) {
       img.onload = function() {

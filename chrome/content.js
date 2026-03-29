@@ -5743,6 +5743,73 @@ window.addEventListener('beforeunload', () => {
   saveMsgCache()
 })
 
+// Auto-claim Twitch channel points bonus
+let autoClaimObserver = null
+let autoClaimEnabled = true
+
+function setupAutoClaimPoints() {
+  if (autoClaimObserver) { autoClaimObserver.disconnect(); autoClaimObserver = null }
+  if (!autoClaimEnabled || !location.hostname.includes('twitch.tv')) return
+
+  function tryClaimBonus(container) {
+    if (!container) return
+    // The main button has aria-label "Bits and Points Balances" — any other button is the claim
+    const buttons = container.querySelectorAll('button')
+    for (const btn of buttons) {
+      const label = (btn.getAttribute('aria-label') || '').toLowerCase()
+      if (label.includes('bits and points') || label.includes('balance')) continue
+      // Also skip buttons that are part of dropdowns/menus
+      if (btn.closest('[role="dialog"]') || btn.closest('[role="menu"]')) continue
+      // This is likely the bonus claim button
+      log(' 🎁 Auto-claiming channel points bonus')
+      btn.click()
+      return
+    }
+    // Fallback: look for any claimable-bonus element
+    const claimable = container.querySelector('[class*="claimable"], [class*="click-claim"]')
+    if (claimable) {
+      log(' 🎁 Auto-claiming channel points bonus (fallback)')
+      claimable.click()
+    }
+  }
+
+  function attachObserver() {
+    const container = document.querySelector('[data-test-selector="community-points-summary"]')
+    if (!container) {
+      cleanup.setTimeout(attachObserver, 3000, 'auto-claim-retry')
+      return
+    }
+
+    // Check immediately in case bonus is already showing
+    tryClaimBonus(container)
+
+    autoClaimObserver = cleanup.trackObserver(new MutationObserver(() => {
+      tryClaimBonus(container)
+    }))
+    autoClaimObserver.observe(container, { childList: true, subtree: true })
+    log(' 💰 Auto-claim channel points observer active')
+  }
+
+  attachObserver()
+}
+
+// Load auto-claim setting and start
+;(async function loadAutoClaimSetting() {
+  try {
+    const stored = await chrome.storage.local.get('hs_auto_claim_points')
+    autoClaimEnabled = stored.hs_auto_claim_points !== false // default ON
+  } catch { /* default on */ }
+  setupAutoClaimPoints()
+})()
+
+// React to setting changes
+chrome.storage.onChanged.addListener((changes) => {
+  if (changes.hs_auto_claim_points) {
+    autoClaimEnabled = changes.hs_auto_claim_points.newValue !== false
+    setupAutoClaimPoints()
+  }
+})
+
 // Initialize
 setupEmoteClickHandlers();
 detectAndJoinChannel();

@@ -3,7 +3,8 @@
 
   const DEFAULTS = {
     hs_emote_size: 'medium',
-    hs_notifications: false
+    hs_notifications: false,
+    hs_auto_claim_points: true
   }
 
   const toast = document.getElementById('toast')
@@ -49,6 +50,7 @@
     const s = { ...DEFAULTS, ...data }
 
     bindRadio('emote-size', 'hs_emote_size', s.hs_emote_size)
+    bindToggle('auto-claim-points', 'hs_auto_claim_points', s.hs_auto_claim_points)
     bindToggle('notifications', 'hs_notifications', s.hs_notifications)
   }
 

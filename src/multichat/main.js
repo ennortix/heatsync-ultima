@@ -3898,7 +3898,7 @@
       .hs-post-highlight {
         outline: 2px solid #ffff00;
         outline-offset: -2px;
-        animation: hs-post-highlight-pulse 2s ease-out forwards;
+        animation: hs-post-highlight-pulse 1s ease-out forwards;
       }
       .hs-thread-op {
         border-bottom: 1px solid #ff8700;

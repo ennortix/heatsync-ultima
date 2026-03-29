@@ -582,7 +582,7 @@ async function openThread(msgId, highlightId) {
     if (target) {
       target.scrollIntoView({ behavior: 'instant', block: 'center' });
       target.classList.add('hs-post-highlight');
-      setTimeout(() => target.classList.remove('hs-post-highlight'), 2000);
+      setTimeout(() => target.classList.remove('hs-post-highlight'), 1000);
     }
   }
 }

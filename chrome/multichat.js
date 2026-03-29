@@ -5580,7 +5580,7 @@ async function openThread(msgId, highlightId) {
     if (target) {
       target.scrollIntoView({ behavior: 'instant', block: 'center' });
       target.classList.add('hs-post-highlight');
-      setTimeout(() => target.classList.remove('hs-post-highlight'), 2000);
+      setTimeout(() => target.classList.remove('hs-post-highlight'), 1000);
     }
   }
 }
@@ -11499,7 +11499,7 @@ const STORAGE_KEY = 'heatsync_multichat';
       .hs-post-highlight {
         outline: 2px solid #ffff00;
         outline-offset: -2px;
-        animation: hs-post-highlight-pulse 2s ease-out forwards;
+        animation: hs-post-highlight-pulse 1s ease-out forwards;
       }
       .hs-thread-op {
         border-bottom: 1px solid #ff8700;

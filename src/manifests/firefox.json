@@ -48,7 +48,8 @@
     {
       "matches": ["*://*.twitch.tv/*"],
       "js": ["emoji-data.js", "autocomplete-hook.js"],
-      "run_at": "document_end"
+      "run_at": "document_end",
+      "world": "MAIN"
     },
     {
       "matches": [

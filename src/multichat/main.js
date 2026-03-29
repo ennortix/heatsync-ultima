@@ -6005,7 +6005,7 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
     let fastChecks = 0
     const fastId = cleanup.setInterval(() => {
       checkOffline()
-      if (++fastChecks >= 10) cleanup.clearInterval(fastId)
+      if (++fastChecks >= 10) clearInterval(fastId)
     }, 1000)
 
     // Steady-state polling

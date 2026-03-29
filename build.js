@@ -70,6 +70,21 @@ function stripExports(content) {
     .replace(/^export\s+(const|let|var|function|class)\s+/gm, '$1 ')
 }
 
+// Read lib files
+function readLib() {
+  const libDir = join(SRC_DIR, 'lib')
+  const files = ['config.js', 'utils.js', 'cleanup.js', 'browser-api.js']
+  let combined = '// === HEATSYNC LIB (auto-bundled) ===\n'
+
+  for (const file of files) {
+    const content = readFileSync(join(libDir, file), 'utf8')
+    combined += `\n// --- ${file} ---\n${stripExports(content)}\n`
+  }
+
+  combined += '// === END HEATSYNC LIB ===\n\n'
+  return combined
+}
+
 // Read multichat module files (only bundled into multichat.js)
 const MULTICHAT_MODULES = [
   'bootstrap.js',
@@ -99,11 +114,13 @@ function readMultichatModules() {
   return combined
 }
 
-// Inject modules + wrap content script in IIFE
-function bundleContentScript(srcPath, mcModules) {
+// Inject lib at top of content script
+// Lib goes at IIFE scope, original content gets a nested block scope
+// so const/let declarations (DEBUG, cleanup, etc.) don't conflict
+function bundleContentScript(srcPath, lib, mcModules) {
   let content = readFileSync(srcPath, 'utf8')
 
-  // Remove any previously bundled sections (re-build of src file)
+  // Check if already has lib bundled (from previous build of src file)
   if (content.includes('=== HEATSYNC LIB')) {
     content = content.replace(/\/\/ === HEATSYNC LIB[\s\S]*?\/\/ === END HEATSYNC LIB ===\n\n/, '')
   }
@@ -112,16 +129,21 @@ function bundleContentScript(srcPath, mcModules) {
   }
 
   // Strip existing IIFE wrapper so we can rebuild cleanly
+  // Strip leading block comments before checking for IIFE
   let body = content
   const stripped = content.replace(/^\s*\/\*[\s\S]*?\*\/\s*/, '').trim()
   if (stripped.startsWith('(function()') || stripped.startsWith('(() =>')) {
+    // Remove opening: optional block comment + (function() { 'use strict';
     body = content.replace(/^[\s\S]*?\((?:function\s*\(\)|(?:\(\)\s*=>))\s*\{[\s\n]*(?:'use strict';?\s*)?/, '')
+    // Remove closing: })();
     body = body.replace(/\}\s*\)\s*\(\s*\)\s*;?\s*$/, '')
   }
 
-  // Build: IIFE > content in block scope (with optional multichat modules)
+  // Build: IIFE > lib at outer scope > content in block scope
+  // Multichat modules go before body: bootstrap.js declares cleanup/log first,
+  // then modules declare their state + functions, then body has state + init()
   const modules = mcModules ? `${mcModules}\n` : ''
-  return `(function() {\n'use strict';\n\n{\n${modules}${body}\n}\n})();`
+  return `(function() {\n'use strict';\n\n${lib}\n{\n${modules}${body}\n}\n})();`
 }
 
 // Build for a specific browser
@@ -138,7 +160,8 @@ function build(browser) {
   // Use Chrome source as base (it has the latest fixes)
   const chromeDir = join(__dirname, 'chrome')
 
-  // Read multichat modules
+  // Read lib
+  const lib = readLib()
   const mcModules = readMultichatModules()
 
   // Bundle content scripts
@@ -152,7 +175,7 @@ function build(browser) {
       continue
     }
     const modules = file === 'multichat.js' ? mcModules : null
-    const bundled = bundleContentScript(srcPath, modules)
+    const bundled = bundleContentScript(srcPath, lib, modules)
     writeFileSync(join(outDir, file), bundled)
     // Also write to chrome/ so unpacked extension loads the bundled version
     if (file === 'multichat.js') {

@@ -1,8 +1,5 @@
 // Bootstrap - lifecycle controller, cleanup utilities, debug log
 
-// Browser API compat (chrome.* vs browser.*)
-const api = typeof browser !== 'undefined' ? browser : chrome
-
 const MC_DEBUG = false
 function log(...args) {
   if (MC_DEBUG) console.log(LOG_PREFIX, ...args)
@@ -28,8 +25,6 @@ window.addEventListener('pagehide', () => lifecycle.abort())
 const cleanup = {
   setInterval(fn, ms) { const id = setInterval(fn, ms); _timers.intervals.push(id); return id },
   setTimeout(fn, ms) { const id = setTimeout(fn, ms); _timers.timeouts.push(id); return id },
-  clearInterval(id) { clearInterval(id); const i = _timers.intervals.indexOf(id); if (i !== -1) _timers.intervals.splice(i, 1) },
-  clearTimeout(id) { clearTimeout(id); const i = _timers.timeouts.indexOf(id); if (i !== -1) _timers.timeouts.splice(i, 1) },
   addEventListener(target, event, handler) {
     target.addEventListener(event, handler, { signal: mcSignal })
   },

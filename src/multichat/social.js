@@ -384,7 +384,10 @@ function buildFeedMessageDiv(m, opUsername) {
 
   // Thread link: >>id — always expands thread inline (never navigates away)
   const shortId = (m.base36_id || '').replace(/^0+/, '') || '0';
-  const threadLink = `<span class="hs-feed-thread-link hs-thread-toggle" style="cursor:pointer">&gt;&gt;${escapeHtml(shortId)}</span>`;
+  const inThread = !!opUsername;
+  const threadLink = inThread
+    ? `<span class="hs-feed-thread-link" style="color:#ffff00">${escapeHtml(shortId)}</span>`
+    : `<span class="hs-feed-thread-link hs-thread-toggle" style="cursor:pointer">&gt;&gt;${escapeHtml(shortId)}</span>`;
 
   // Post type tag: [OP] red = original post, [OP] magenta = OP replying in own thread, [RE] = reply
   const isOp = m.is_op != null ? !!m.is_op : (!m.reply_to || m.reply_to === '');
@@ -610,7 +613,7 @@ function renderThreadView(msgsEl) {
 
   // OP message
   if (t.op) {
-    const opDiv = buildFeedMessageDiv(t.op);
+    const opDiv = buildFeedMessageDiv(t.op, t.op?.username);
     opDiv.classList.add('hs-thread-op');
     frag.appendChild(opDiv);
   }

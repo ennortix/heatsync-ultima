@@ -2127,15 +2127,24 @@
         font-weight: 700;
         border-color: #ff0000;
       }
+      #hs-user-tooltip .hs-pc-stat.op .hs-pc-num {
+        color: #fff;
+      }
       #hs-user-tooltip .hs-pc-stat.mop {
         color: #ff00ff;
         font-weight: 700;
         border-color: #ff00ff;
       }
+      #hs-user-tooltip .hs-pc-stat.mop .hs-pc-num {
+        color: #fff;
+      }
       #hs-user-tooltip .hs-pc-stat.re {
         color: #00ffff;
         font-weight: 700;
         border-color: #00ffff;
+      }
+      #hs-user-tooltip .hs-pc-stat.re .hs-pc-num {
+        color: #fff;
       }
       #hs-user-tooltip .hs-pc-rel {
         display: flex;

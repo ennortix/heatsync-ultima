@@ -194,6 +194,28 @@ style.textContent = `
     max-height: none !important;
   }
 
+  /* Hover state color overlay — ::before rect hidden by default */
+  .heatsync-emote-wrapper::before {
+    content: '' !important;
+    position: absolute !important;
+    inset: 2px !important;
+    opacity: 0 !important;
+    z-index: 1 !important;
+    pointer-events: none !important;
+    transition: opacity 0.1s !important;
+  }
+  .heatsync-emote-wrapper:hover::before {
+    opacity: 1 !important;
+  }
+  .heatsync-emote-wrapper:hover > img {
+    visibility: hidden !important;
+  }
+  /* State colors */
+  .heatsync-emote-wrapper.emote-overlay-owned::before { background: #00ff00 !important; }
+  .heatsync-emote-wrapper.emote-overlay-global::before { background: #808080 !important; }
+  .heatsync-emote-wrapper.emote-overlay-unadded::before { background: #ff8700 !important; }
+  .heatsync-emote-wrapper.emote-overlay-blocked::before { background: #ff0000 !important; }
+
   /* Emote cursor */
   img[src*="cdn.7tv.app"],
   img[src*="cdn.betterttv.net"],

@@ -5384,7 +5384,7 @@ function buildFeedMessageDiv(m, opUsername) {
   const shortId = (m.base36_id || '').replace(/^0+/, '') || '0';
   const inThread = !!opUsername;
   const threadLink = inThread
-    ? `<span class="hs-feed-thread-link" style="color:#ffff00">${escapeHtml(shortId)}</span>`
+    ? `<span class="hs-feed-thread-link hs-quote-insert" data-quote-id="${escapeHtml(shortId)}" style="color:#ffff00;cursor:pointer">${escapeHtml(shortId)}</span>`
     : `<span class="hs-feed-thread-link hs-thread-toggle" style="cursor:pointer">&gt;&gt;${escapeHtml(shortId)}</span>`;
 
   // Post type tag: [OP] red = original post, [OP] magenta = OP replying in own thread, [RE] = reply
@@ -5462,6 +5462,29 @@ function buildFeedMessageDiv(m, opUsername) {
       openThread(threadId, targetId);
     });
   });
+
+  // Click post ID in thread view → insert >>id into input
+  const quoteEl = div.querySelector('.hs-quote-insert');
+  if (quoteEl) {
+    quoteEl.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const qid = quoteEl.dataset.quoteId;
+      if (!qid) return;
+      const input = document.getElementById('hs-mc-input');
+      if (!input) return;
+      const quote = `>>${qid} `;
+      if (wysiwygEnabled) {
+        input.focus();
+        document.execCommand('insertText', false, quote);
+      } else {
+        const pos = input.selectionStart || input.value.length;
+        input.value = input.value.slice(0, pos) + quote + input.value.slice(pos);
+        input.focus();
+        input.selectionStart = input.selectionEnd = pos + quote.length;
+      }
+    });
+  }
 
   return div;
 }

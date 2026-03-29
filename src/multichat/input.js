@@ -1351,9 +1351,8 @@ async function sendMessage() {
 
       if (kickOk || twitchOk) {
 
-        // Partial failure toast
-        if (isDualSend && !kickOk) showToast('sent to twitch only — ' + (kickResult || 'kick failed'))
-        else if (isDualSend && !twitchOk) showToast('sent to kick only — twitch failed')
+        // Partial failure toast — only show for unexpected errors, not missing platform login
+        if (isDualSend && !twitchOk) showToast('sent to kick only — twitch failed')
       } else {
         // Both failed (or single Kick failed)
         input.style.borderColor = '#f44'

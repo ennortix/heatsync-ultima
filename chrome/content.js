@@ -1225,6 +1225,7 @@ cleanup.setInterval(() => {
   }
 }, 30000);
 let pendingOperations = new Set(); // Track in-flight operations to prevent double-clicks
+let pendingRemovals = new Set(); // Emote names pending removal — suppress inventory_update re-adds
 // O(1) lookup sets — rebuilt when arrays change (via allEmotesDirty flag)
 let inventoryHashSet = new Set();
 let cachedEmotesByHash = new Map(); // hash → emote, O(1) lookup for hover previews
@@ -1436,13 +1437,27 @@ function _onMessageMain(message) {
       }
       break;
 
-    case 'inventory_update':
+    case 'inventory_update': {
       // Normalize URLs when receiving inventory update
-      emoteInventory = (message.emotes || []).map(e => ({
+      let newInv = (message.emotes || []).map(e => ({
         ...e,
         url: normalizeEmoteUrl(e.url)
       }));
+      // Filter out emotes pending removal (race: fetchEmoteInventory runs before DELETE completes)
+      if (pendingRemovals.size > 0) {
+        const serverNames = new Set(newInv.map(e => e.name));
+        // Clear pendingRemovals for emotes confirmed gone from server
+        for (const name of pendingRemovals) {
+          if (!serverNames.has(name)) pendingRemovals.delete(name);
+        }
+        // Filter any still-pending (server hasn't caught up yet)
+        if (pendingRemovals.size > 0) {
+          newInv = newInv.filter(e => !pendingRemovals.has(e.name));
+        }
+      }
+      emoteInventory = newInv;
       allEmotesDirty = true
+      _tabEmoteMapDirty = true
       log(' Inventory updated:', emoteInventory.length, 'emotes');
       log(' Sample inventory:', emoteInventory.slice(0, 3).map(e => ({ name: e.name, hash: e.hash?.substring(0, 8) })));
 
@@ -1463,6 +1478,7 @@ function _onMessageMain(message) {
       // Notify MAIN world (heatsync-button.js) to refresh panel if open
       window.postMessage({ type: 'heatsync-inventory-update', count: emoteInventory.length }, location.origin);
       break;
+    }
 
     case 'emote_added':
       // Emote was successfully added to your set
@@ -1482,6 +1498,7 @@ function _onMessageMain(message) {
     case 'emote_removed':
       // Emote was successfully removed from your set
       allEmotesDirty = true
+      _tabEmoteMapDirty = true
       log(' ✅ Emote removed from your set:', message.emoteName);
       emoteInventory = emoteInventory.filter(e => e.hash !== message.hash && e.name !== message.emoteName);
       updateEmoteState(message.hash, message.emoteName, 'neutral');
@@ -2801,8 +2818,10 @@ function processMessage(messageElement) {
       })
     })
 
-    // Add channel emotes (available to everyone in this channel)
+    // Add channel emotes (third-party only — BTTV/FFZ/7TV/Twitch)
+    // HeatSync emotes render via emoteInventory (own set) or pendingEmoteBroadcasts (others)
     channelEmotes.forEach(emote => {
+      if (!emote.source) return
       cachedAllEmotes.set(emote.name, {
         ...emote,
         url: emote.url?.startsWith('http') ? emote.url : `${API_URL}${emote.url}`
@@ -3640,7 +3659,12 @@ function setupEmoteClickHandlers() {
 
       // Optimistically update UI first
       const previousInventory = [...emoteInventory];
+      console.warn('[hs-debug] REMOVING:', emoteName, 'hash:', hash, 'invBefore:', emoteInventory.length);
       emoteInventory = emoteInventory.filter(e => e.hash !== hash && e.name !== emoteName);
+      console.warn('[hs-debug] REMOVED:', emoteName, 'invAfter:', emoteInventory.length, 'stillHas:', emoteInventory.some(e => e.name === emoteName));
+      pendingRemovals.add(emoteName);
+      allEmotesDirty = true
+      _tabEmoteMapDirty = true
       updateEmoteState(hash, emoteName, 'neutral');
 
       try {
@@ -3653,6 +3677,7 @@ function setupEmoteClickHandlers() {
         wrapper.style.opacity = '';
 
         if (result?.success) {
+          // Don't clear pendingRemovals here — wait for inventory_update to confirm server-side deletion
           showToast(`Removed ${emoteName} from your set`, 'success');
           // Clear any pending broadcasts for this emote
           for (const key of pendingEmoteBroadcasts.keys()) {
@@ -3663,7 +3688,10 @@ function setupEmoteClickHandlers() {
           }
         } else {
           // Rollback optimistic update on failure
+          pendingRemovals.delete(emoteName);
           emoteInventory = previousInventory;
+          allEmotesDirty = true
+          _tabEmoteMapDirty = true
           updateEmoteState(hash, emoteName, 'added');
           showToast(`Failed to remove: ${result?.error || 'Unknown error'}`, 'error');
         }
@@ -3671,7 +3699,10 @@ function setupEmoteClickHandlers() {
         wrapper.style.opacity = '';
         if (!extensionContextValid) return; // Don't rollback/show error if context invalidated
         // Rollback on error
+        pendingRemovals.delete(emoteName);
         emoteInventory = previousInventory;
+        allEmotesDirty = true
+        _tabEmoteMapDirty = true
         updateEmoteState(hash, emoteName, 'added');
         showToast(`Failed to remove: ${err.message}`, 'error');
       } finally {
@@ -5258,8 +5289,9 @@ function buildEmoteMap() {
     }
   });
 
-  // Add channel emotes
+  // Add channel emotes (third-party only — HeatSync emotes come from inventory)
   channelEmotes.forEach(emote => {
+    if (!emote.source) return
     const key = emote.name.toLowerCase();
     if (!map.has(key)) {
       map.set(key, {
@@ -5698,13 +5730,13 @@ function interceptMessageSending() {
       if (!message) return;
 
       // Check if message contains any of MY emotes (use cached regex from createEmoteRegex)
-      log(' 🔍 Checking outgoing message for personal emotes. Inventory:', emoteInventory.length);
+      console.warn('[hs-debug] Enter pressed, inv:', emoteInventory.length, 'pending:', Array.from(pendingRemovals), 'msg:', message.substring(0, 50));
       emoteInventory.forEach(emote => {
         if (!emote._outgoingRegex) {
           emote._outgoingRegex = new RegExp(`\\b${escapeRegex(emote.name)}\\b`);
         }
         if (emote._outgoingRegex.test(message)) {
-          log(' ✅ DETECTED EMOTE IN OUTGOING MESSAGE:', emote.name);
+          console.warn('[hs-debug] BROADCASTING EMOTE:', emote.name, emote.hash?.substring(0, 12));
           // Notify background script to broadcast
           safeSendMessage({
             type: 'emote_sent',

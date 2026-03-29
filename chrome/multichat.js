@@ -5425,12 +5425,15 @@ function buildFeedMessageDiv(m, opUsername) {
   div.innerHTML = `${timeHtml}${threadLink}${typeTag}${platBadge}${userHtml}${statsHtml}: <span class="hs-feed-body">${content}</span>`;
 
   // Click >>id to expand/collapse thread inline — never leaves the stream
+  // If this post is a reply, open the parent thread and highlight this post
   const threadLinkEl = div.querySelector('.hs-thread-toggle');
   if (threadLinkEl) {
     threadLinkEl.addEventListener('click', (e) => {
       e.preventDefault();
       e.stopPropagation();
-      toggleThread(m.base36_id);
+      const threadId = m.reply_to || m.base36_id;
+      const highlightId = m.reply_to ? m.base36_id : null;
+      toggleThread(threadId, highlightId);
     });
   }
   const repliesEl = div.querySelector('.hs-feed-replies');
@@ -5438,9 +5441,23 @@ function buildFeedMessageDiv(m, opUsername) {
     repliesEl.style.cursor = 'pointer';
     repliesEl.addEventListener('click', (e) => {
       e.stopPropagation();
-      toggleThread(m.base36_id);
+      toggleThread(m.reply_to || m.base36_id);
     });
   }
+
+  // Click >>id post-links in message content
+  div.querySelectorAll('.hs-post-link').forEach(link => {
+    link.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const targetId = link.dataset.id;
+      if (!targetId) return;
+      // Find the target in feedMessages to determine its thread
+      const target = feedMessages.find(f => f.base36_id === targetId);
+      const threadId = target ? (target.reply_to || target.base36_id) : targetId;
+      openThread(threadId, targetId);
+    });
+  });
 
   return div;
 }
@@ -5483,6 +5500,13 @@ function renderFeedContent(content, emoteRefs) {
       return part
     }).join('')
   }
+  // Parse >>id post-links (like website does)
+  html = html.replace(/(?:&gt;&gt;|>>)(\w{1,6})/g, (match, id) => {
+    const paddedId = id.padStart(6, '0');
+    const displayId = id.replace(/^0+/, '') || '0';
+    return `<span class="hs-post-link" data-id="${paddedId}" style="cursor:pointer">&gt;&gt;${displayId}</span>`;
+  });
+
   // Render emote refs as inline images (AFTER linkification so img tags aren't corrupted)
   // emote_refs can be { name: url } or { name: { url, hash, name, provider } }
   if (emoteRefs && typeof emoteRefs === 'object') {
@@ -5536,10 +5560,10 @@ cleanup.setInterval(() => {
 }, 30000);
 
 // Open thread view — replaces feed with OP + replies + reply input
-async function openThread(msgId) {
+async function openThread(msgId, highlightId) {
   // Find OP in feed or fetch it
   let op = feedMessages.find(m => m.base36_id === msgId);
-  activeThread = { id: msgId, op: op || null, replies: [], loading: true };
+  activeThread = { id: msgId, op: op || null, replies: [], loading: true, highlightId: highlightId || null };
   renderFeed();
 
   const resp = await apiFetch(`/api/messages/${msgId}/replies`);
@@ -5548,6 +5572,17 @@ async function openThread(msgId) {
   }
   activeThread.loading = false;
   renderFeed();
+
+  // Scroll to and highlight the target post
+  if (highlightId) {
+    const msgsEl = document.getElementById('hs-mc-messages');
+    const target = msgsEl?.querySelector(`[data-msg-id="${highlightId}"]`);
+    if (target) {
+      target.scrollIntoView({ behavior: 'instant', block: 'center' });
+      target.classList.add('hs-post-highlight');
+      setTimeout(() => target.classList.remove('hs-post-highlight'), 2000);
+    }
+  }
 }
 
 function closeThread() {
@@ -5555,11 +5590,11 @@ function closeThread() {
   renderFeed();
 }
 
-function toggleThread(msgId) {
-  if (activeThread && activeThread.id === msgId) {
+function toggleThread(msgId, highlightId) {
+  if (activeThread && activeThread.id === msgId && !highlightId) {
     closeThread();
   } else {
-    openThread(msgId);
+    openThread(msgId, highlightId);
   }
 }
 
@@ -11448,6 +11483,23 @@ const STORAGE_KEY = 'heatsync_multichat';
       @keyframes hs-feed-heat-breathe {
         0%, 100% { opacity: 1; }
         50% { opacity: 0.8; }
+      }
+      .hs-post-link {
+        color: #ffff00;
+        font-weight: 700;
+        cursor: pointer;
+      }
+      .hs-post-link:hover {
+        text-decoration: underline;
+      }
+      @keyframes hs-post-highlight-pulse {
+        0%   { outline-color: rgba(255, 255, 0, 1); background-color: rgba(255, 255, 0, 0.15); }
+        100% { outline-color: rgba(255, 255, 0, 0); background-color: transparent; }
+      }
+      .hs-post-highlight {
+        outline: 2px solid #ffff00;
+        outline-offset: -2px;
+        animation: hs-post-highlight-pulse 2s ease-out forwards;
       }
       .hs-thread-op {
         border-bottom: 1px solid #ff8700;

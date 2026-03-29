@@ -3883,6 +3883,23 @@
         0%, 100% { opacity: 1; }
         50% { opacity: 0.8; }
       }
+      .hs-post-link {
+        color: #ffff00;
+        font-weight: 700;
+        cursor: pointer;
+      }
+      .hs-post-link:hover {
+        text-decoration: underline;
+      }
+      @keyframes hs-post-highlight-pulse {
+        0%   { outline-color: rgba(255, 255, 0, 1); background-color: rgba(255, 255, 0, 0.15); }
+        100% { outline-color: rgba(255, 255, 0, 0); background-color: transparent; }
+      }
+      .hs-post-highlight {
+        outline: 2px solid #ffff00;
+        outline-offset: -2px;
+        animation: hs-post-highlight-pulse 2s ease-out forwards;
+      }
       .hs-thread-op {
         border-bottom: 1px solid #ff8700;
         padding-bottom: 4px;

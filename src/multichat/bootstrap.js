@@ -1,5 +1,8 @@
 // Bootstrap - lifecycle controller, cleanup utilities, debug log
 
+// Browser API compat (chrome.* vs browser.*)
+const api = typeof browser !== 'undefined' ? browser : chrome
+
 const MC_DEBUG = false
 function log(...args) {
   if (MC_DEBUG) console.log(LOG_PREFIX, ...args)

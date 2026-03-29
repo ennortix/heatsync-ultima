@@ -22,6 +22,10 @@
   const OrigWebSocket = window.WebSocket
   let hermesWs = null
   const channelIdToLogin = {}
+  function capChannelIdMap() {
+    const keys = Object.keys(channelIdToLogin)
+    if (keys.length > 200) delete channelIdToLogin[keys[0]]
+  }
 
   function handleHermesMessage(e) {
     try {
@@ -161,7 +165,7 @@
             // Extract user ID → login mappings for Hermes channel resolution
             try {
               const u = item.data?.user || item.data?.channel?.owner
-              if (u?.id && u?.login) channelIdToLogin[u.id] = u.login.toLowerCase()
+              if (u?.id && u?.login) { channelIdToLogin[u.id] = u.login.toLowerCase(); capChannelIdMap() }
             } catch {}
             // Forward prediction/poll/points data to content script
             if (GQL_OPS_TO_CACHE.some(n => opName.includes(n) || opName.toLowerCase().includes(n.toLowerCase()))) {
@@ -332,7 +336,7 @@
                   if (cu?.id) {
                     gql.userId = cu.id
                     gql.userLogin = cu.login
-                    if (cu.id && cu.login) channelIdToLogin[cu.id] = cu.login.toLowerCase()
+                    if (cu.id && cu.login) { channelIdToLogin[cu.id] = cu.login.toLowerCase(); capChannelIdMap() }
                   }
                 }
               } catch {}

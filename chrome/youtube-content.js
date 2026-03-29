@@ -210,6 +210,7 @@
 
       observer.observe(container, { childList: true })
       ac.signal.addEventListener('abort', () => observer.disconnect())
+      window.addEventListener('pagehide', () => ac.abort(), { signal: ac.signal })
 
       log('observer active, videoId:', videoId)
     } catch (err) {

@@ -649,7 +649,8 @@
 
     // Fetch from background
     safeSendMessage({ type: 'fetch_link_preview', url }).then(data => {
-      _linkPreviewCache.set(url, data);
+      _linkPreviewCache.set(url, data)
+      if (_linkPreviewCache.size > 200) { const oldest = _linkPreviewCache.keys().next().value; _linkPreviewCache.delete(oldest) }
       if (_linkHoverUrl === url && tip.classList.contains('visible')) {
         renderLinkPreview(tip, data, url);
       }

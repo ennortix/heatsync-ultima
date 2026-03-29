@@ -40,7 +40,6 @@
 
   const BUTTON_ID = 'heatsync-chat-button';
   const PANEL_ID = 'heatsync-panel';
-  const COGGERS_URL = 'https://cdn.betterttv.net/emote/5ab6f0eba80c0b25ff2495fc/2x';
 
   const API_URL = 'https://heatsync.org';
 
@@ -206,17 +205,10 @@
     return null;
   };
 
-  // Detect current platform
-  function detectPlatform() {
-    if (window.location.hostname.includes('twitch.tv')) return 'twitch';
-    if (window.location.hostname.includes('kick.com')) return 'kick';
-    return null;
-  }
-
   // Detect current channel from URL
   function detectChannel() {
     const path = window.location.pathname;
-    const platform = detectPlatform();
+    const platform = window.heatsyncPlatform?.detectPlatform() || 'unknown';
 
     if (platform === 'kick') {
       // Handle popout/embed: /popout/channel/chat or /embed/channel/chat
@@ -2355,7 +2347,7 @@
 
     try {
       const [pickerResp, invResp] = await Promise.all([
-        chrome.runtime.sendMessage({ type: 'get_picker_emotes', channel: channel || null, platform: detectPlatform() }),
+        chrome.runtime.sendMessage({ type: 'get_picker_emotes', channel: channel || null, platform: window.heatsyncPlatform?.detectPlatform() || 'unknown' }),
         chrome.runtime.sendMessage({ type: 'get_inventory' })
       ]);
 
@@ -2438,7 +2430,7 @@
       const resp = await chrome.runtime.sendMessage({
         type: 'get_picker_emotes',
         channel,
-        platform: detectPlatform()
+        platform: window.heatsyncPlatform?.detectPlatform() || 'unknown'
       });
       const fresh = resp?.channelEmotes || [];
       channelEmotesCache = fresh;
@@ -2479,7 +2471,7 @@
       const resp = await chrome.runtime.sendMessage({
         type: 'get_picker_emotes',
         channel: null,
-        platform: detectPlatform()
+        platform: window.heatsyncPlatform?.detectPlatform() || 'unknown'
       });
       const fresh = resp?.globalEmotes || [];
       globalEmotesCache = fresh;
@@ -2501,7 +2493,7 @@
 
   // Insert emote name into Twitch chat input
   function insertEmoteIntoChat(emoteName) {
-    const platform = detectPlatform();
+    const platform = window.heatsyncPlatform?.detectPlatform() || 'unknown';
 
     let chatInput;
     if (platform === 'kick') {

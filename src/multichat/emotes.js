@@ -872,7 +872,7 @@
         const source = escapeHtml(emote.source || 'unknown');
         const imgSrc = escapeHtml(getChatResUrl(emote.url)); // Upgrade to 2x/4x based on emote size setting
         const safeHash = emote.hash ? escapeHtml(emote.hash) : '';
-        const displayName = escapeHtml(endsWithZero && isOverlayEmote ? word : word)
+        const displayName = escapeHtml(word)
         const imgHtml = `<span class="hs-mc-emote-wrapper hs-state-${state}" data-emote-name="${displayName}" data-emote-url="${imgSrc}" data-state="${state}" data-source="${source}"${safeHash ? ` data-emote-hash="${safeHash}"` : ''}><img src="${imgSrc}" alt="${displayName}" title="${displayName}" class="hs-mc-emote hs-emote-${state}" data-emote-name="${displayName}" data-state="${state}" data-source="${source}"></span>`;
 
         if (isOverlayEmote) {

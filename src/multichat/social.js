@@ -388,7 +388,8 @@ function buildFeedMessageDiv(m, opUsername) {
 
   // Post type tag: [OP] red = original post, [OP] magenta = OP replying in own thread, [RE] = reply
   const isOp = m.is_op != null ? !!m.is_op : (!m.reply_to || m.reply_to === '');
-  const isThreadOp = !!m.is_thread_op;
+  const isThreadOp = m.is_thread_op != null ? !!m.is_thread_op
+    : (opUsername && m.reply_to && m.username?.toLowerCase() === opUsername.toLowerCase());
   const typeTag = isThreadOp
     ? '<span class="hs-feed-tag hs-feed-tag-mop">[OP]</span>'
     : isOp

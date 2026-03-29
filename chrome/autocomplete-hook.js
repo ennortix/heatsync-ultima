@@ -534,6 +534,7 @@
 
   // Export native Twitch emotes (sub emotes) to content.js via postMessage
   // Content.js stores them to chrome.storage.local so multichat can read them
+  let _lastExportCount = 0;
   function exportNativeEmotes() {
     const inst = chatInputInstance || chatInputInst;
     if (!inst?.props?.emotes) return;
@@ -551,10 +552,12 @@
       }
     }
 
-    if (emotes.length > 0) {
-      window.postMessage({ type: 'heatsync-native-emotes', emotes }, location.origin);
-      log('📺 Exported', emotes.length, 'native Twitch emotes via postMessage');
-    }
+    // Skip if nothing changed (avoid redundant storage writes)
+    if (emotes.length === 0 || emotes.length === _lastExportCount) return;
+    _lastExportCount = emotes.length;
+
+    window.postMessage({ type: 'heatsync-native-emotes', emotes }, location.origin);
+    log('📺 Exported', emotes.length, 'native Twitch emotes via postMessage');
   }
 
   // Inject fake emotes into Twitch's emote array
@@ -883,6 +886,7 @@
   }
 
   // Hook componentDidUpdate to re-inject emotes when props change (FFZ-style)
+  let _exportDebounce = null;
   function hookComponentDidUpdate(inst) {
     if (inst._heatsync_cdu_hooked) return;
 
@@ -891,6 +895,9 @@
       try {
         if (prevProps.emotes !== this.props.emotes && Array.isArray(this.props.emotes)) {
           injectFakeEmotes(this);
+          // Re-export native emotes when Twitch lazy-loads sub/follower sets
+          clearTimeout(_exportDebounce);
+          _exportDebounce = setTimeout(exportNativeEmotes, 500);
         }
       } catch (e) {
       }

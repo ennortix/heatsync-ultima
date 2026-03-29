@@ -12465,6 +12465,15 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
   }
 
   // Full rebuild — used for tab switches, scroll resume, and initial load
+  // Invalidate cached rendered HTML on all messages (when emote data changes)
+  function clearRenderedHtmlCache() {
+    const clearBuf = (msgs) => { for (const m of msgs) delete m._renderedHtml };
+    if (irc?.channels) for (const [, buf] of irc.channels) clearBuf(buf.getAll());
+    if (kickChat?.channels) for (const [, buf] of kickChat.channels) clearBuf(buf.getAll());
+    clearBuf(mentionsBuffer);
+    for (const msgs of channelYtMessages.values()) clearBuf(msgs);
+  }
+
   function renderMessages(id) {
     if (editingChannel) return;
     // Social tabs have their own renderers
@@ -13565,7 +13574,11 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
 
       // Emote updates - reload when storage changes (debounced to avoid spam)
       if (changes.global_emotes || changes.channel_emotes_map || changes.emote_inventory || changes.native_twitch_emotes) {
-        log('storage changed:', changes.channel_emotes_map ? 'channel_emotes_map' : '', changes.global_emotes ? 'global_emotes' : '', changes.emote_inventory ? 'emote_inventory' : '');
+        log('storage changed:', changes.channel_emotes_map ? 'channel_emotes_map' : '', changes.global_emotes ? 'global_emotes' : '', changes.emote_inventory ? 'emote_inventory' : '', changes.native_twitch_emotes ? 'native_twitch_emotes' : '');
+        // New emote data = invalidate render cache so messages re-process with new emotes
+        if (changes.global_emotes || changes.channel_emotes_map || changes.native_twitch_emotes) {
+          clearRenderedHtmlCache();
+        }
         clearTimeout(emoteReloadTimer);
         emoteReloadTimer = setTimeout(() => {
           loadEmotes().then(() => {

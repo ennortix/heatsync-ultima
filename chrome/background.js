@@ -60,6 +60,14 @@ let emoteInventory = [];
 let globalEmotes = []; // BTTV, FFZ, 7TV global emotes
 let channelEmotesMap = {}; // Per-channel emotes: { channelName: emotes[] }
 let channelEmotesFetchedAt = {}; // channelName → timestamp of last successful fetch
+
+function getStorableChannelEmotes() {
+  const map = {}
+  for (const [ch, data] of Object.entries(channelEmotesMap)) {
+    if (data !== 'loading') map[ch] = data
+  }
+  return map
+}
 const CHANNEL_EMOTES_TTL = 30 * 60 * 1000; // 30 minutes
 let currentChannelOwner = null; // Track last-fetched channel (for content.js tab)
 let current7TVEmoteSetId = null; // Track current 7TV emote set ID for EventAPI
@@ -73,7 +81,6 @@ let currentUsername = null; // Logged-in user's username
 let socket = null;
 let lastBroadcastWasEmpty = false; // Track to prevent spamming 0-emote broadcasts
 let currentChannel = null;
-let pendingChannelJoin = null; // Store channel join request if socket not ready
 let unreadNotifCount = 0; // Unread notification count for extension badge
 let cachedFollowHistory = null; // Cache follow:history for late-loading content scripts
 let cachedFollowColors = null; // Cache follow:colors for late-loading content scripts
@@ -500,7 +507,8 @@ async function fetchUserInfo() {
     }
 
     const response = await fetchWithTimeout(`${API_URL}/api/auth/me`, {
-      credentials: 'include'
+      credentials: 'include',
+      headers: { 'Authorization': `Bearer ${authToken}` }
     })
 
     if (!response.ok) {
@@ -801,7 +809,7 @@ async function fetchChannelOwnerEmotes(channelName, channelId = null, platform =
     const channelKeys = Object.keys(channelEmotesMap).filter(k => channelEmotesMap[k] !== 'loading');
     if (channelKeys.length > 20) {
       for (const old of channelKeys.slice(0, channelKeys.length - 20)) {
-        if (old !== channelName) { delete channelEmotesMap[old]; delete channelEmotesFetchedAt[old]; }
+        if (old !== channelName) { delete channelEmotesMap[old]; delete channelEmotesFetchedAt[old]; seventvEmoteSetIds.delete(old); }
       }
     }
     updateEmoteUrlMap();
@@ -817,11 +825,7 @@ async function fetchChannelOwnerEmotes(channelName, channelId = null, platform =
     broadcastToTabs({ type: 'channel_emotes_update', emotes, channelOwner: channelName });
 
     // Save per-channel map to storage for persistence (filter out 'loading' sentinels)
-    const storableMap = {};
-    for (const [k, v] of Object.entries(channelEmotesMap)) {
-      if (Array.isArray(v)) storableMap[k] = v;
-    }
-    await browser.storage.local.set({ channel_emotes_map: storableMap });
+    await browser.storage.local.set({ channel_emotes_map: getStorableChannelEmotes(), channel_emotes_fetched_at: channelEmotesFetchedAt });
 
     // Store 7TV set ID per channel and subscribe on shared EventAPI connection
     if (sevenTVSetId) {
@@ -1219,7 +1223,7 @@ function handle7TVEmoteSetUpdate(updateData) {
       channelOwner: channelName
     });
 
-    browser.storage.local.set({ channel_emotes_map: channelEmotesMap }).catch(() => {});
+    browser.storage.local.set({ channel_emotes_map: getStorableChannelEmotes(), channel_emotes_fetched_at: channelEmotesFetchedAt }).catch(() => {});
     log(' 7TV: Channel emotes updated for', channelName, '(now', updatedEmotes.length, 'total)');
   }
 }
@@ -1339,7 +1343,7 @@ async function poll7TVEmoteSet() {
       channelOwner: channelName
     });
 
-    browser.storage.local.set({ channel_emotes_map: channelEmotesMap }).catch(() => {});
+    browser.storage.local.set({ channel_emotes_map: getStorableChannelEmotes(), channel_emotes_fetched_at: channelEmotesFetchedAt }).catch(() => {});
     log(' 7TV Poll: Channel emotes updated for', channelName, '(now', updatedEmotes.length, 'total)');
   } catch (err) {
     // Silent fail — poll will retry next interval
@@ -1520,9 +1524,18 @@ function isSocketOpen() {
   return socket && socket.readyState === WebSocket.OPEN;
 }
 
+const MESSAGE_QUEUE_TTL = 30000; // 30 seconds — drop stale messages on flush
+
 // Flush queued messages when socket becomes ready
 function flushMessageQueue() {
   if (!isSocketOpen()) return;
+
+  const now = Date.now();
+  // Drop messages older than TTL before counting
+  while (messageQueue.length > 0 && now - messageQueue[0]._queuedAt > MESSAGE_QUEUE_TTL) {
+    log(` 🗑 Dropping stale queued message: ${messageQueue[0].type}`);
+    messageQueue.shift();
+  }
 
   const queued = messageQueue.length;
   if (queued > 0) {
@@ -1531,6 +1544,10 @@ function flushMessageQueue() {
 
   while (messageQueue.length > 0 && isSocketOpen()) {
     const msg = messageQueue.shift();
+    if (now - msg._queuedAt > MESSAGE_QUEUE_TTL) {
+      log(` 🗑 Dropping stale queued message: ${msg.type}`);
+      continue;
+    }
     try {
       socket.send(JSON.stringify(msg));
       log(` 📤 Sent queued: ${msg.type}`);
@@ -1714,6 +1731,7 @@ function wsSend(msg) {
 
   // Queue the message and ensure we're connecting
   log(` 📥 Queueing message: ${msg.type}`);
+  msg._queuedAt = Date.now();
   messageQueue.push(msg);
 
   // Limit queue size to prevent memory issues
@@ -1739,7 +1757,6 @@ function handleWSMessage(msg) {
       log(' ✅ Authenticated, userId:', msg.userId);
       isAuthenticated = true;
       wsState = WS_STATE.AUTHENTICATED;
-      pendingChannelJoin = null;
       // Flush any queued messages now that we're authenticated
       flushMessageQueue();
       break;
@@ -2253,80 +2270,7 @@ async function removeFromInventory(emoteHash, emoteName) {
   }
 }
 
-// ========== COSMETICS (FFZ Badges, BTTV Badges) ==========
-
-// Cosmetics data stores (FFZ + BTTV badges)
-const cosmeticsData = {
-  // FFZ badges: badgeId -> { name, title, color, urls, userIds: Set }
-  ffzBadges: new Map(),
-  // FFZ user lookup: twitchId -> [badgeId, ...]
-  ffzUserBadges: new Map(),
-  // BTTV badges: twitchId -> { type, description, svg }
-  bttvUserBadges: new Map(),
-}
-
-// Fetch FFZ badges (bulk endpoint - all users in one call)
-async function fetchFFZBadges() {
-  try {
-    const response = await fetchWithTimeout('https://api.frankerfacez.com/v1/badges/ids')
-    if (!response.ok) return
-
-    const data = await response.json()
-    cosmeticsData.ffzBadges.clear()
-    cosmeticsData.ffzUserBadges.clear()
-
-    // data.badges = array of badge definitions
-    // data.users = { badgeId: [userId, ...] }
-    for (const badge of (data.badges || [])) {
-      cosmeticsData.ffzBadges.set(badge.id, {
-        id: badge.id,
-        name: badge.name,
-        title: badge.title,
-        color: badge.color,
-        urls: badge.urls
-      })
-    }
-
-    // Build user -> badges lookup
-    for (const [badgeId, userIds] of Object.entries(data.users || {})) {
-      const id = parseInt(badgeId)
-      for (const userId of userIds) {
-        const uid = String(userId)
-        if (!cosmeticsData.ffzUserBadges.has(uid)) {
-          cosmeticsData.ffzUserBadges.set(uid, [])
-        }
-        cosmeticsData.ffzUserBadges.get(uid).push(id)
-      }
-    }
-
-    log(' FFZ badges loaded:', cosmeticsData.ffzBadges.size, 'badges,', cosmeticsData.ffzUserBadges.size, 'users')
-  } catch (err) {
-    log(' FFZ badges error:', err.message)
-  }
-}
-
-// Fetch BTTV badges (bulk endpoint - ~158 users)
-async function fetchBTTVBadges() {
-  try {
-    const response = await fetchWithTimeout('https://api.betterttv.net/3/cached/badges')
-    if (!response.ok) return
-
-    const data = await response.json()
-    cosmeticsData.bttvUserBadges.clear()
-
-    for (const entry of data) {
-      cosmeticsData.bttvUserBadges.set(String(entry.providerId), {
-        type: entry.badge?.type || entry.type,
-        description: entry.badge?.description || entry.description,
-        svg: entry.badge?.svg || entry.svg
-      })
-    }
-
-    log(' BTTV badges loaded:', cosmeticsData.bttvUserBadges.size, 'users')
-  } catch (err) {
-    log(' BTTV badges error:', err.message)
-  }
-}
+// ========== COSMETICS ==========
 
 // Handle messages from content scripts
 browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
@@ -2586,7 +2530,7 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
     // Multichat/content requesting channel emotes (may have missed the broadcast)
     const totalEmotes = Object.values(channelEmotesMap).reduce((sum, e) => sum + (Array.isArray(e) ? e.length : 0), 0);
     if (totalEmotes > 0) {
-      browser.storage.local.set({ channel_emotes_map: channelEmotesMap });
+      browser.storage.local.set({ channel_emotes_map: getStorableChannelEmotes(), channel_emotes_fetched_at: channelEmotesFetchedAt });
       for (const [ch, emotes] of Object.entries(channelEmotesMap)) {
         if (Array.isArray(emotes)) broadcastToTabs({ type: 'channel_emotes_update', emotes, channelOwner: ch });
       }
@@ -2766,6 +2710,15 @@ async function initialize() {
     }
   } catch {}
 
+  // Restore channelEmotesFetchedAt so TTL checks survive service worker restart
+  try {
+    const stored = await browser.storage.local.get('channel_emotes_fetched_at');
+    if (stored.channel_emotes_fetched_at && typeof stored.channel_emotes_fetched_at === 'object') {
+      channelEmotesFetchedAt = stored.channel_emotes_fetched_at;
+      log(' ✓ Restored channelEmotesFetchedAt for', Object.keys(channelEmotesFetchedAt).length, 'channels');
+    }
+  } catch {}
+
   // Load muted users from storage (migrate old array format to map)
   try {
     const stored = await browser.storage.local.get('muted_users');
@@ -2810,8 +2763,6 @@ async function initialize() {
     fetchEmoteInventory(),
     fetchBlockedEmotes(),
     fetchFollowedUsers(),
-    fetchFFZBadges(),
-    fetchBTTVBadges(),
     fetchUserInfo()
   ]);
 
@@ -2835,11 +2786,6 @@ async function initialize() {
   // Refresh global emotes every 24 hours
   trackInterval(setInterval(fetchGlobalEmotes, 86400000));
 
-  // Refresh FFZ/BTTV badge definitions every hour
-  trackInterval(setInterval(() => {
-    fetchFFZBadges()
-    fetchBTTVBadges()
-  }, 3600000));
 }
 
 log(' 🚀 Calling initialize()...');

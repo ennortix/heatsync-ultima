@@ -24,8 +24,8 @@ function authIrcAlive() {
 
 function cleanupAuthIrc(destroy = false) {
   if (destroy) authState.destroyed = true;
-  if (authState.keepaliveTimer) { clearInterval(authState.keepaliveTimer); authState.keepaliveTimer = null; }
-  if (authState.reconnectTimer) { clearTimeout(authState.reconnectTimer); authState.reconnectTimer = null; }
+  if (authState.keepaliveTimer) { cleanup.clearInterval(authState.keepaliveTimer); authState.keepaliveTimer = null; }
+  if (authState.reconnectTimer) { cleanup.clearTimeout(authState.reconnectTimer); authState.reconnectTimer = null; }
   const prevJoined = [...authState.joined];
   if (authState.ws) {
     authState.ws.onclose = null;
@@ -90,7 +90,7 @@ function scheduleReconnect(prevChannels) {
   const delay = authState.reconnectDelay;
   authState.reconnectDelay = Math.min(delay * 2, 30000);
   log(`Auth IRC reconnect in ${delay}ms...`);
-  authState.reconnectTimer = setTimeout(async () => {
+  authState.reconnectTimer = cleanup.setTimeout(async () => {
     authState.reconnectTimer = null;
     if (authState.destroyed || authIrcAlive()) return;
     const ok = await connectAuthIrc(authState.token, authState.nick);

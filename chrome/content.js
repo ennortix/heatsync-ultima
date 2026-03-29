@@ -22,6 +22,9 @@ signal.addEventListener('abort', () => {
   _timers.intervals.forEach(clearInterval)
   _timers.timeouts.forEach(clearTimeout)
   _timers.observers.forEach(o => o.disconnect())
+  chrome.runtime.onMessage.removeListener(_onMessageMain)
+  chrome.runtime.onMessage.removeListener(_onMessageKickRelay)
+  chrome.storage.onChanged.removeListener(_onStorageChanged)
 })
 window.addEventListener('pagehide', () => lifecycle.abort())
 
@@ -56,6 +59,14 @@ let extensionContextValid = true;
 // Cached allEmotes map — rebuilt only when emote data changes
 let cachedAllEmotes = null
 let allEmotesDirty = true
+let emoteGeneration = 0
+
+// Emote display size
+let hsEmoteSize = 1
+const HS_EMOTE_BASE_PX = 28
+function applyEmoteSize() {
+  document.documentElement.style.setProperty('--hs-emote-height', (HS_EMOTE_BASE_PX * hsEmoteSize) + 'px')
+}
 
 // Safe wrapper for chrome.runtime.sendMessage - handles context invalidation
 async function safeSendMessage(message, _retry = 0) {
@@ -111,9 +122,14 @@ async function updateAuthBridge() {
 updateAuthBridge()
 
 // Keep bridge in sync when token changes
-chrome.storage.onChanged.addListener((changes) => {
+function _onStorageChanged(changes) {
   if (changes.auth_token) updateAuthBridge()
-})
+  if (changes.hs_emote_size != null) {
+    hsEmoteSize = parseFloat(changes.hs_emote_size.newValue) || 1
+    applyEmoteSize()
+  }
+}
+chrome.storage.onChanged.addListener(_onStorageChanged)
 
 // Non-sensitive postMessage handlers (no tokens)
 const TRUSTED_ORIGINS = ['https://www.twitch.tv', 'https://twitch.tv', 'https://kick.com', 'https://www.kick.com'];
@@ -169,9 +185,12 @@ style.textContent = `
   .heatsync-emote-wrapper > img {
     display: block !important;
     width: auto !important;
-    height: auto !important;
+    height: var(--hs-emote-height, 28px) !important;
     max-width: none !important;
     max-height: none !important;
+  }
+  .heatsync-emote-wrapper.heatsync-overlay > img {
+    height: auto !important;
   }
 
   /* Emote cursor */
@@ -629,11 +648,6 @@ style.textContent = `
     visibility: hidden !important;
   }
 
-  /* Prevent ANY element with tooltip data from showing tooltips on heatsync emotes */
-  .heatsync-emote-wrapper[aria-describedby],
-  .heatsync-emote-wrapper [aria-describedby] {
-  }
-
   /* Suppress ALL hover backgrounds on heatsync emotes */
   .heatsync-emote-wrapper:hover,
   .heatsync-emote-wrapper *:hover,
@@ -784,6 +798,27 @@ style.textContent = `
     max-height: none !important;
     object-fit: none !important;
   }
+
+  /* Emote hover color status indicator via ::before */
+  .heatsync-emote-wrapper::before {
+    content: '' !important;
+    position: absolute !important;
+    inset: 0 !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
+    z-index: 1 !important;
+    transition: opacity 0.1s !important;
+  }
+  .heatsync-emote-wrapper:hover::before {
+    opacity: 1 !important;
+  }
+  .heatsync-emote-wrapper:hover > img {
+    visibility: hidden !important;
+  }
+  .heatsync-emote-wrapper.emote-overlay-owned::before { background: #00ff00 !important; }
+  .heatsync-emote-wrapper.emote-overlay-global::before { background: #808080 !important; }
+  .heatsync-emote-wrapper.emote-overlay-unadded::before { background: #ff8700 !important; }
+  .heatsync-emote-wrapper.emote-overlay-blocked::before { background: #ff0000 !important; }
 
   /* ============================================ */
   /* EMOTE STACK EXPAND/COLLAPSE (website parity) */
@@ -1148,6 +1183,17 @@ function applyUiSettings(settings) {
   }
 })();
 
+// Load emote size setting
+;(async function loadEmoteSize() {
+  try {
+    const stored = await chrome.storage.local.get('hs_emote_size')
+    if (stored.hs_emote_size != null) {
+      hsEmoteSize = parseFloat(stored.hs_emote_size) || 1
+    }
+    applyEmoteSize()
+  } catch { applyEmoteSize() }
+})()
+
 // Loading indicator with coggers emote
 const COGGERS_URL = chrome.runtime.getURL('COGGERS-1x.webp');
 let loadingIndicator = null;
@@ -1457,6 +1503,7 @@ function _onMessageMain(message) {
       }
       emoteInventory = newInv;
       allEmotesDirty = true
+      emoteGeneration++
       _tabEmoteMapDirty = true
       log(' Inventory updated:', emoteInventory.length, 'emotes');
       log(' Sample inventory:', emoteInventory.slice(0, 3).map(e => ({ name: e.name, hash: e.hash?.substring(0, 8) })));
@@ -1483,6 +1530,7 @@ function _onMessageMain(message) {
     case 'emote_added':
       // Emote was successfully added to your set
       allEmotesDirty = true
+      emoteGeneration++
       log(' ✅ Emote added to your set:', message.emoteName);
       emoteInventory.push({
         name: message.emoteName,
@@ -1498,6 +1546,7 @@ function _onMessageMain(message) {
     case 'emote_removed':
       // Emote was successfully removed from your set
       allEmotesDirty = true
+      emoteGeneration++
       _tabEmoteMapDirty = true
       log(' ✅ Emote removed from your set:', message.emoteName);
       emoteInventory = emoteInventory.filter(e => e.hash !== message.hash && e.name !== message.emoteName);
@@ -1510,6 +1559,7 @@ function _onMessageMain(message) {
     case 'global_emotes_update':
       globalEmotes = message.emotes;
       allEmotesDirty = true
+      emoteGeneration++
       log(' Global emotes updated:', globalEmotes.length);
       if (globalEmotes.length > 0) {
         log(' Sample global emotes:', globalEmotes.slice(0, 5).map(e => e.name));
@@ -1530,7 +1580,8 @@ function _onMessageMain(message) {
         ...e,
         url: normalizeEmoteUrl(e.url)
       }));
-      allEmotesDirty = true;
+      allEmotesDirty = true
+      emoteGeneration++
       currentChannelOwner = emoteOwner || null;
       log(' Channel owner emotes updated:', channelEmotes.length, 'for channel:', currentChannelOwner);
       if (channelEmotes.length > 0) {
@@ -1684,9 +1735,6 @@ function debouncedProcessExistingMessages() {
   reprocessDebounce = cleanup.setTimeout(() => processExistingMessages(), 200);
 }
 
-// Track emote count to know when to re-process
-let lastEmoteCount = 0;
-
 // Collect chatters from a message without full processing (for two-pass approach)
 function collectChatterFromMessage(messageElement) {
   const usernameElement = messageElement.querySelector('.chat-author__display-name, [data-a-target="chat-message-username"], button.inline.font-bold');
@@ -1709,22 +1757,7 @@ function processExistingMessages() {
   log(' 🔍 processExistingMessages: chatContainer=', chatContainer ? 'FOUND' : 'NULL');
   if (!chatContainer) return;
 
-  // Calculate current emote count
-  const currentEmoteCount = globalEmotes.length + emoteInventory.length + channelEmotes.length;
-
-  // If emote count changed, clear processed markers so messages get re-processed
-  // This handles: initial load, channel emotes arriving late, new emotes added
-  if (currentEmoteCount !== lastEmoteCount) {
-    log(' Emote count changed:', lastEmoteCount, '→', currentEmoteCount, '- clearing processed markers');
-    chatContainer.querySelectorAll('[data-heatsync-processed]').forEach(el => {
-      delete el.dataset.heatsyncProcessed;
-    });
-    // Also clear username coloring markers so they get re-colored with updated chatter list
-    chatContainer.querySelectorAll('[data-heatsync-usernames-colored]').forEach(el => {
-      delete el.dataset.heatsyncUsernamesColored;
-    });
-  }
-  lastEmoteCount = currentEmoteCount;
+  const gen = emoteGeneration;
 
   // Twitch messages (regular + system notices like subs, raids, gifts)
   let messages = chatContainer.querySelectorAll('.chat-line__message, .user-notice-line');
@@ -1749,16 +1782,18 @@ function processExistingMessages() {
 
   // Pass 2: Process messages (now username coloring will work for all known chatters)
   // PRIORITIZE VISIBLE MESSAGES - process them first for instant load
-  // Skip already-processed messages to avoid unnecessary getBoundingClientRect calls
-  const unprocessed = messageArray.filter(msg => !msg.dataset.heatsyncProcessed);
+  // Filter by generation: messages from older generations need reprocessing
+  const unprocessed = messageArray.filter(msg => msg.dataset.heatsyncGeneration != gen);
   const visibleMessages = [];
   const hiddenMessages = [];
 
   if (unprocessed.length > 0) {
-    const containerRect = chatContainer.getBoundingClientRect();
+    const containerTop = chatContainer.offsetTop;
+    const containerBottom = containerTop + chatContainer.offsetHeight;
     for (const msg of unprocessed) {
-      const rect = msg.getBoundingClientRect();
-      if (rect.top < containerRect.bottom && rect.bottom > containerRect.top) {
+      const msgTop = msg.offsetTop;
+      const msgBottom = msgTop + msg.offsetHeight;
+      if (msgTop < containerBottom && msgBottom > containerTop) {
         visibleMessages.push(msg);
       } else {
         hiddenMessages.push(msg);
@@ -2091,7 +2126,16 @@ const MAX_USERNAME_ATTEMPTS = 30; // More attempts to handle slow page loads
 let usernameDetectionRetryTimer = null;
 
 // Track all chatters who have sent messages (for username coloring)
-const knownChatters = new Map(); // username -> color
+// LRU Map: re-insert on get to maintain access order, evict oldest when > 500
+const knownChatters = new class extends Map {
+  get(k) {
+    if (!this.has(k)) return undefined
+    const v = super.get(k)
+    super.delete(k)
+    super.set(k, v)
+    return v
+  }
+}()
 
 // Sub tenure tracking — extracted from Twitch badge alt text (subscriber badge)
 const subTenureMap = new Map() // usernameLC -> months
@@ -2701,7 +2745,7 @@ function setupUsernameColoringObserver() {
           highlightUserMentions(msg)
           colorUsernameMentions(msg)
           // Only stack if processMessage hasn't already done it
-          if (!msg.dataset.heatsyncProcessed) {
+          if (msg.dataset.heatsyncGeneration != emoteGeneration) {
             stackAdjacentOverlayEmotes(msg, allEmotes)
           }
         }
@@ -2720,10 +2764,10 @@ function setupUsernameColoringObserver() {
 // Process individual message for emote replacement
 function processMessage(messageElement) {
   if (!messageElement || !document.contains(messageElement)) return
-  if (messageElement.dataset.heatsyncProcessed) return
+  if (messageElement.dataset.heatsyncGeneration == emoteGeneration) return
   if (messageElement.querySelector('.heatsync-emote-wrapper')) return
 
-  messageElement.dataset.heatsyncProcessed = 'true'
+  messageElement.dataset.heatsyncGeneration = emoteGeneration
 
   const textElements = messageElement.querySelectorAll('.text-fragment, span.font-normal')
   if (textElements.length === 0) return
@@ -2737,15 +2781,7 @@ function processMessage(messageElement) {
       const usernameElement = messageElement.querySelector('.chat-author__display-name, [data-a-target="chat-message-username"]')
       const color = usernameElement?.style.color || '#ffffff'
       knownChatters.set(lowerUser, color)
-      // LRU eviction — keep map bounded for long sessions
-      if (knownChatters.size > 500) {
-        let evicted = 0
-        for (const k of knownChatters.keys()) {
-          if (evicted >= 200) break
-          knownChatters.delete(k)
-          evicted++
-        }
-      }
+      while (knownChatters.size > 500) knownChatters.delete(knownChatters.keys().next().value)
     }
   }
 
@@ -2759,15 +2795,7 @@ function processMessage(messageElement) {
         const match = alt.match(/(\d+)-Month Subscriber/i)
         if (match) {
           subTenureMap.set(lowerUser, parseInt(match[1]))
-          // LRU eviction
-          if (subTenureMap.size > 500) {
-            let evicted = 0
-            for (const k of subTenureMap.keys()) {
-              if (evicted >= 200) break
-              subTenureMap.delete(k)
-              evicted++
-            }
-          }
+          while (subTenureMap.size > 500) subTenureMap.delete(subTenureMap.keys().next().value)
           break
         }
       }
@@ -3206,20 +3234,6 @@ function wrapExistingHeatsyncEmotes(messageElement, allEmotes) {
   }
 }
 
-// Upgrade emote URL to native resolution (overlays must render full-size, not 1x)
-function upgradeEmoteUrl(url) {
-  if (!url) return url;
-  if (url.includes('cdn.7tv.app')) {
-    return url.includes('.webp') ? url.replace(/\/[123]x\.webp/, '/3x.webp') : url.replace(/\/[123]x$/, '/3x');
-  }
-  if (url.includes('cdn.betterttv.net')) {
-    return url.includes('.webp') ? url.replace(/\/[12]x\.webp/, '/3x.webp') : url.replace(/\/[12]x/, '/3x');
-  }
-  if (url.includes('cdn.frankerfacez.com')) {
-    return url.replace(/\/[123]$/, '/4').replace(/\/[123]\?/, '/4?');
-  }
-  return url;
-}
 
 // Unicode emoji detection — matches emoji sequences (presentation + ZWJ combos)
 const UNICODE_EMOJI_RE = /^[\p{Extended_Pictographic}\p{Emoji_Presentation}\uFE0F\u200D]+$/u
@@ -3488,7 +3502,7 @@ function generateEmoteElement(emote, isOverlay) {
     const img = document.createElement('img');
     img.src = imgSrc;
     img.alt = emote.name;
-    img.style.cssText = `display: block !important; width: auto !important; height: auto !important; max-width: none !important; max-height: none !important; ${blocked ? 'opacity: 0;' : ''} cursor: pointer;`;
+    img.style.cssText = `display: block !important; width: auto !important; height: ${isOverlay ? 'auto' : 'var(--hs-emote-height, 28px)'} !important; max-width: none !important; max-height: none !important; ${blocked ? 'opacity: 0;' : ''} cursor: pointer;`;
     // Force overlay images to render at native 1x dimensions once loaded
     if (isOverlay && !blocked) {
       img.onload = function() {
@@ -3659,11 +3673,10 @@ function setupEmoteClickHandlers() {
 
       // Optimistically update UI first
       const previousInventory = [...emoteInventory];
-      console.warn('[hs-debug] REMOVING:', emoteName, 'hash:', hash, 'invBefore:', emoteInventory.length);
       emoteInventory = emoteInventory.filter(e => e.hash !== hash && e.name !== emoteName);
-      console.warn('[hs-debug] REMOVED:', emoteName, 'invAfter:', emoteInventory.length, 'stillHas:', emoteInventory.some(e => e.name === emoteName));
       pendingRemovals.add(emoteName);
       allEmotesDirty = true
+      emoteGeneration++
       _tabEmoteMapDirty = true
       updateEmoteState(hash, emoteName, 'neutral');
 
@@ -3691,6 +3704,7 @@ function setupEmoteClickHandlers() {
           pendingRemovals.delete(emoteName);
           emoteInventory = previousInventory;
           allEmotesDirty = true
+          emoteGeneration++
           _tabEmoteMapDirty = true
           updateEmoteState(hash, emoteName, 'added');
           showToast(`Failed to remove: ${result?.error || 'Unknown error'}`, 'error');
@@ -3702,6 +3716,7 @@ function setupEmoteClickHandlers() {
         pendingRemovals.delete(emoteName);
         emoteInventory = previousInventory;
         allEmotesDirty = true
+        emoteGeneration++
         _tabEmoteMapDirty = true
         updateEmoteState(hash, emoteName, 'added');
         showToast(`Failed to remove: ${err.message}`, 'error');
@@ -3748,7 +3763,7 @@ function updateEmoteState(hash, emoteName, state) {
 
   // Query by hash OR name (handles old vs normalized hash mismatch)
   const selector = `[data-emote-hash="${hash}"], [data-emote-name="${emoteName}"]`;
-  const elements = document.querySelectorAll(selector);
+  const elements = (findChatContainer() || document).querySelectorAll(selector);
   log(` updateEmoteState found ${elements.length} elements for selector:`, selector);
 
   elements.forEach(el => {
@@ -3826,63 +3841,6 @@ function updateEmoteState(hash, emoteName, state) {
 
   let currentWrapper = null;
   let hideTimeout = null;
-
-  // Get max size URL from emote hash - uses our stored emote data
-  function getMaxSizeUrl(hash, src) {
-    if (!hash && !src) return null;
-
-    // Helper to upgrade URL to max size
-    function upgradeUrl(url) {
-      if (!url) return null;
-
-      // 7TV: /1x.webp, /2x.webp, /1x, /2x -> /4x.webp or /4x
-      if (url.includes('cdn.7tv.app')) {
-        if (url.includes('.webp')) {
-          return url.replace(/\/[123]x\.webp/, '/4x.webp');
-        } else {
-          return url.replace(/\/[123]x$/, '/4x');
-        }
-      }
-
-      // BTTV: /1x, /2x -> /3x (max)
-      if (url.includes('cdn.betterttv.net')) {
-        if (url.includes('.webp')) {
-          return url.replace(/\/[12]x\.webp/, '/3x.webp');
-        } else {
-          return url.replace(/\/[12]x/, '/3x');
-        }
-      }
-
-      // FFZ: /1, /2 -> /4
-      if (url.includes('cdn.frankerfacez.com')) {
-        return url.replace(/\/[123]$/, '/4').replace(/\/[123]\?/, '/4?');
-      }
-
-      // Twitch: /1.0, /2.0 -> /3.0
-      if (url.includes('static-cdn.jtvnw.net')) {
-        return url.replace(/\/[12]\.0/, '/3.0');
-      }
-
-      return url;
-    }
-
-    // O(1) hash lookup via parallel map (built during cache rebuild)
-    const emote = cachedEmotesByHash.get(hash) || null;
-
-    if (emote && emote.url) {
-      const upgraded = upgradeUrl(emote.url);
-      log(' Preview URL upgrade:', emote.url, '->', upgraded);
-      return upgraded;
-    }
-
-    // Fallback: parse src directly
-    if (src) {
-      log(' Preview using src fallback:', src);
-      return upgradeUrl(src);
-    }
-
-    return null;
-  }
 
   function showPreview(wrapper) {
     if (currentWrapper === wrapper) return;
@@ -4144,12 +4102,16 @@ function updateEmoteState(hash, emoteName, state) {
 
   // Followage + follow counts lookup via Twitch GQL (MAIN world proxy)
   const followageCache = new Map()
+  const FOLLOWAGE_TTL = 300000
   async function lookupFollowage(username, channelLogin) {
     if (!username || !channelLogin) return undefined
     if (username.toLowerCase() === channelLogin.toLowerCase()) return undefined
     const key = `${username.toLowerCase()}:${channelLogin.toLowerCase()}`
     const cached = followageCache.get(key)
-    if (cached && Date.now() - cached.ts < 300000) return cached.result
+    if (cached) {
+      if (Date.now() - cached.ts >= FOLLOWAGE_TTL) { followageCache.delete(key) }
+      else return cached.result
+    }
 
     return new Promise((resolve) => {
       const id = Math.random().toString(36).slice(2)
@@ -4165,7 +4127,7 @@ function updateEmoteState(hash, emoteName, state) {
             channelFollowedAt: e.data.data?.data?.channel?.follow?.followedAt || null,
           }
           followageCache.set(key, { result, ts: Date.now() })
-          if (followageCache.size > 500) followageCache.delete(followageCache.keys().next().value)
+          while (followageCache.size > 500) followageCache.delete(followageCache.keys().next().value)
           resolve(result)
         }
       }
@@ -4191,17 +4153,18 @@ function updateEmoteState(hash, emoteName, state) {
     const key = username.toLowerCase()
     const cached = profileCache.get(key)
     if (!force) {
-      const ttl = cached?.data?.twitch_is_live || cached?.data?.kick_is_live ? 60000 : PROFILE_TTL
-      if (cached && Date.now() - cached.ts < ttl) return cached.data
+      if (cached) {
+        const ttl = cached.data?.twitch_is_live || cached.data?.kick_is_live ? 60000 : PROFILE_TTL
+        if (Date.now() - cached.ts >= ttl) { profileCache.delete(key) }
+        else return cached.data
+      }
     }
 
     try {
       const data = await HS.apiFetch(`/api/profile/${encodeURIComponent(username)}`, { auth: true })
       const profile = data.profile || data
       profileCache.set(key, { data: profile, ts: Date.now() })
-      if (profileCache.size > PROFILE_CACHE_MAX) {
-        profileCache.delete(profileCache.keys().next().value)
-      }
+      while (profileCache.size > PROFILE_CACHE_MAX) profileCache.delete(profileCache.keys().next().value)
       return profile
     } catch (err) {
       log(' Profile fetch failed:', username, err.message)
@@ -4749,55 +4712,6 @@ function updateEmoteState(hash, emoteName, state) {
   log(' ✅ Profile card (click) setup')
 })();
 
-// Insert emote name into Twitch/Kick chat input - always at END
-function insertEmoteIntoChat(emoteName) {
-  log(' insertEmoteIntoChat called with:', emoteName);
-
-  const chatInput = document.querySelector('[data-a-target="chat-input"]') || // Twitch
-                    document.querySelector('div.editor-input') || // Kick
-                    document.querySelector('textarea');
-
-  if (!chatInput) {
-    warn(' Chat input not found');
-    return;
-  }
-
-  const isContentEditable = chatInput.getAttribute('contenteditable') === 'true';
-  const textToInsert = emoteName + ' ';
-
-  log(' insertEmoteIntoChat - isContentEditable:', isContentEditable);
-
-  if (isContentEditable) {
-    // Insert directly via execCommand (same approach as heatsync-button.js)
-    chatInput.focus();
-    // Move cursor to end
-    const sel = window.getSelection();
-    const range = document.createRange();
-    range.selectNodeContents(chatInput);
-    range.collapse(false);
-    sel.removeAllRanges();
-    sel.addRange(range);
-    document.execCommand('insertText', false, textToInsert);
-  } else {
-    // KICK: textarea - always insert at end
-    chatInput.focus();
-
-    const text = chatInput.value;
-    const newValue = text + textToInsert;
-    const newPos = newValue.length;
-
-    chatInput.value = newValue;
-    chatInput.selectionStart = newPos;
-    chatInput.selectionEnd = newPos;
-
-    // Trigger events
-    chatInput.dispatchEvent(new Event('input', { bubbles: true }));
-    chatInput.dispatchEvent(new Event('change', { bubbles: true }));
-  }
-
-  log(' Inserted emote at end:', emoteName);
-}
-
 // Retroactively process messages when broadcast arrives
 function retroactivelyProcessBroadcast(username, emoteName, emoteData) {
   log(' 🔄 Retroactively processing messages for:', username, emoteName);
@@ -4904,21 +4818,21 @@ function setupMessageContextMenu() {
 
 // Hide all messages from a blocked user
 function hideBlockedUser(username) {
-  document.querySelectorAll('.chat-line__message, #chatroom-messages [data-index]').forEach(msg => {
+  (findChatContainer() || document).querySelectorAll('.chat-line__message, #chatroom-messages [data-index]').forEach(msg => {
     if (getUsername(msg) === username) msg.style.display = 'none';
   });
 }
 
 // Unhide all messages from an unblocked user
 function unhideBlockedUser(username) {
-  document.querySelectorAll('.chat-line__message, #chatroom-messages [data-index]').forEach(msg => {
+  (findChatContainer() || document).querySelectorAll('.chat-line__message, #chatroom-messages [data-index]').forEach(msg => {
     if (getUsername(msg) === username) msg.style.display = '';
   });
 }
 
 // Undo mute — can't restore stripped DOM, just remove class for future messages
 function unmuteUser(username) {
-  document.querySelectorAll('.hs-user-muted').forEach(msg => {
+  (findChatContainer() || document).querySelectorAll('.hs-user-muted').forEach(msg => {
     if (getUsername(msg) === username) {
       msg.classList.remove('hs-user-muted');
     }
@@ -4963,7 +4877,7 @@ function showUnblockedEmote(hash) {
 
     // Check if in your set or global
     const inInventory = inventoryHashSet.has(hash) || inventoryNameSet.has(emoteName);
-    const isGlobalEmote = globalEmotes.some(g => g.name === emoteName);
+    const isGlobalEmote = globalNameSet.has(emoteName);
 
     wrapper.classList.remove('emote-overlay-blocked', 'emote-overlay-owned', 'emote-overlay-unadded', 'emote-overlay-global');
 
@@ -4996,7 +4910,7 @@ function showUnblockedEmote(hash) {
 
 // Hide muted user content, gray username
 function muteUser(username) {
-  document.querySelectorAll('.chat-line__message, #chatroom-messages [data-index]').forEach(msg => {
+  (findChatContainer() || document).querySelectorAll('.chat-line__message, #chatroom-messages [data-index]').forEach(msg => {
     if (getUsername(msg) === username) {
       stripMutedMessage(msg);
     }
@@ -5152,16 +5066,6 @@ function getTwitchChannelId() {
       if (channelId) return channelId;
     }
 
-    // Method 2: Look for channel ID in Twitch's React fiber/store
-    const chatContainer = document.querySelector('[data-a-target="chat-room-component"]');
-    if (chatContainer) {
-      // Try to find channel ID from data attributes or nearby elements
-      const channelLink = document.querySelector('[data-a-target="user-channel-header-item"]');
-      if (channelLink?.href) {
-        // Extract from href if it contains channel ID
-      }
-    }
-
     // Method 3: Look for it in window object (Twitch sometimes exposes it)
     if (window.__twilight_client__?.store) {
       const state = window.__twilight_client__.store.getState();
@@ -5169,13 +5073,7 @@ function getTwitchChannelId() {
       if (channelId) return channelId;
     }
 
-    // Method 4: Extract from meta tags or other page elements
-    const metaOgUrl = document.querySelector('meta[property="og:url"]');
-    if (metaOgUrl) {
-      // Sometimes contains channel info
-    }
-
-    // Method 5: Parse from any script containing channel data
+    // Method 4: Parse from any script containing channel data
     const scripts = document.querySelectorAll('script:not([src])');
     for (const script of scripts) {
       const text = script.textContent;
@@ -5474,7 +5372,8 @@ function injectTwitchAutocompleteHook() {
 }
 
 // Update emotes in the bridge for the injected script
-function updateEmoteBridge() {
+let _emoteBridgeDebounce = null
+function updateEmoteBridgeImmediate() {
   const bridge = document.getElementById('heatsync-emote-bridge');
   if (!bridge) return;
   // Combine all emote sources: personal inventory + global + channel
@@ -5516,6 +5415,11 @@ function updateEmoteBridge() {
   }
   // Use postMessage to communicate with MAIN world (early-inject.js)
   window.postMessage({ type: 'heatsync-url-map', urlMap }, location.origin);
+}
+
+function updateEmoteBridge() {
+  clearTimeout(_emoteBridgeDebounce)
+  _emoteBridgeDebounce = cleanup.setTimeout(() => updateEmoteBridgeImmediate(), 100)
 }
 
 // NOTE: injectTwitchAutocompleteHook() is called earlier, before loadInventory()
@@ -5730,13 +5634,11 @@ function interceptMessageSending() {
       if (!message) return;
 
       // Check if message contains any of MY emotes (use cached regex from createEmoteRegex)
-      console.warn('[hs-debug] Enter pressed, inv:', emoteInventory.length, 'pending:', Array.from(pendingRemovals), 'msg:', message.substring(0, 50));
       emoteInventory.forEach(emote => {
         if (!emote._outgoingRegex) {
           emote._outgoingRegex = new RegExp(`\\b${escapeRegex(emote.name)}\\b`);
         }
         if (emote._outgoingRegex.test(message)) {
-          console.warn('[hs-debug] BROADCASTING EMOTE:', emote.name, emote.hash?.substring(0, 12));
           // Notify background script to broadcast
           safeSendMessage({
             type: 'emote_sent',

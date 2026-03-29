@@ -245,15 +245,7 @@
       subTenureMap.set(channel, channelMap)
     }
     channelMap.set(username.toLowerCase(), months)
-    // LRU per channel
-    if (channelMap.size > 500) {
-      let evicted = 0
-      for (const k of channelMap.keys()) {
-        if (evicted >= 200) break
-        channelMap.delete(k)
-        evicted++
-      }
-    }
+    while (channelMap.size > 500) channelMap.delete(channelMap.keys().next().value)
   }
   function formatSubTenure(months) {
     if (months >= 12) {
@@ -650,6 +642,7 @@
     // Fetch from background
     safeSendMessage({ type: 'fetch_link_preview', url }).then(data => {
       _linkPreviewCache.set(url, data);
+      while (_linkPreviewCache.size > 200) _linkPreviewCache.delete(_linkPreviewCache.keys().next().value);
       if (_linkHoverUrl === url && tip.classList.contains('visible')) {
         renderLinkPreview(tip, data, url);
       }

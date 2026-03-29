@@ -427,24 +427,6 @@
       }
       _cachedEmotes = emotes;
 
-      // Debug: check if CoffeeTime is in the autocomplete emotes
-      const coffeeTest = emotes.find(e => e.name === 'CoffeeTime');
-      if (coffeeTest) {
-        log('🔍 [autocomplete-hook] CoffeeTime found:', coffeeTest);
-      } else {
-        log('❌ [autocomplete-hook] CoffeeTime NOT found in', emotes.length, 'emotes');
-      }
-
-      // Debug: check if BillyApprove is in autocomplete emotes
-      const billyTest = emotes.find(e => e.name === 'BillyApprove');
-      if (billyTest) {
-        log('🔍 [autocomplete-hook] BillyApprove found:', billyTest);
-      } else {
-        log('❌ [autocomplete-hook] BillyApprove NOT found in', emotes.length, 'emotes');
-        // Show emotes with "approve" in name
-        const approveEmotes = emotes.filter(e => e.name.toLowerCase().includes('approve'));
-        log('   Emotes with "approve":', approveEmotes.map(e => e.name).join(', '));
-      }
       // Populate URL map for early-inject.js interceptor (both in MAIN world)
       if (emotes.length > 0) {
         window.__heatsyncEmoteUrls = {};
@@ -754,24 +736,6 @@
         }
         log('📋 Found', usernameMatches.length, 'username matches');
 
-        // Debug: check if CoffeeTime matched for "coffee" search
-        if (searchLower === 'coffee') {
-          const coffeeMatch = hsMatches.find(e => e.name === 'CoffeeTime');
-          if (coffeeMatch) {
-            log('✅ [autocomplete] "coffee" matched CoffeeTime');
-          } else {
-            log('❌ [autocomplete] "coffee" did NOT match CoffeeTime');
-            // Check if CoffeeTime exists in hsEmotes at all
-            const coffeeExists = hsEmotes.find(e => e.name === 'CoffeeTime');
-            if (coffeeExists) {
-              log('   CoffeeTime exists in hsEmotes but failed .includes() check');
-              log('   coffeeExists.nameLower:', coffeeExists.nameLower, 'searchLower:', searchLower);
-            } else {
-              log('   CoffeeTime does not exist in hsEmotes array');
-            }
-          }
-        }
-
         // 7TV-style fix: Modify srcSet on React elements for our emotes
         results.forEach((m) => {
           if (!m.element || !Array.isArray(m.element) || !m.element[0]) return;
@@ -1026,29 +990,6 @@
       // Restore dropdown visibility
       document.body.classList.remove('heatsync-cycling');
     }, 1500);
-  }
-
-  function hookInsertReplacement(inst) {
-    const autocomplete = inst?.autocompleteInputRef;
-    if (!autocomplete || autocomplete._heatsync_ir_hooked) return;
-
-    const origInsertReplacement = autocomplete.insertReplacement;
-    if (!origInsertReplacement) return;
-
-    // Restore original on abort (extension reload) so hooks don't stack
-    acSignal.addEventListener('abort', () => {
-      autocomplete.insertReplacement = origInsertReplacement;
-      autocomplete._heatsync_ir_hooked = false;
-    });
-
-    autocomplete.insertReplacement = function(args) {
-      // BULLETPROOF: Always pass through to native. NEVER intercept.
-      // Intercepting this function breaks Twitch's message send flow.
-      return origInsertReplacement.call(this, args);
-    };
-
-    autocomplete._heatsync_ir_hooked = true;
-    log(' ✅ Hooked insertReplacement');
   }
 
   // Shared function to insert emote via Slate API (used by click and keydown handlers)
@@ -2273,7 +2214,6 @@
       log('✅ Chat input FOUND, installing handlers');
       overrideEmoteProvider(chatInputInst); // Override getMatches like FFZ
       hookComponentDidUpdate(chatInputInst); // Re-inject when props change
-      hookInsertReplacement(chatInputInst);  // Pass-through hook (cleanup on reload)
       hookNormalizer(chatInputInst);         // Block emote conversion when WYSIWYG off
       hookEmojiAutoConvert(chatInputInst);   // Auto-convert :shortcode: → emoji on closing colon
       injectFakeEmotes(chatInputInst); // Inject fake emotes for inline rendering

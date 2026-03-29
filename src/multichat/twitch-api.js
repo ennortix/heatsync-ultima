@@ -615,7 +615,7 @@ function attachRewardHandlers() {
   container.querySelectorAll('.hs-mc-reward-reason[data-cooldown-ends]').forEach(el => {
     const endsAt = parseInt(el.dataset.cooldownEnds)
     const iv = cleanup.setInterval(() => {
-      if (!el.isConnected) { clearInterval(iv); return }
+      if (!el.isConnected) { cleanup.clearInterval(iv); return }
       const secs = Math.max(0, Math.ceil((endsAt - Date.now()) / 1000))
       if (secs <= 0) {
         _rewardsCache = null
@@ -828,7 +828,7 @@ function startPredictionPoll() {
 
 function stopPredictionPoll() {
   if (_predictionPollTimer) {
-    clearInterval(_predictionPollTimer)
+    cleanup.clearInterval(_predictionPollTimer)
     _predictionPollTimer = null
   }
 }

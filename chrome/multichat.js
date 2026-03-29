@@ -674,7 +674,9 @@ window.addEventListener('pagehide', () => lifecycle.abort())
 
 const cleanup = {
   setInterval(fn, ms) { const id = setInterval(fn, ms); _timers.intervals.push(id); return id },
+  clearInterval(id) { clearInterval(id); const i = _timers.intervals.indexOf(id); if (i !== -1) _timers.intervals.splice(i, 1) },
   setTimeout(fn, ms) { const id = setTimeout(fn, ms); _timers.timeouts.push(id); return id },
+  clearTimeout(id) { clearTimeout(id); const i = _timers.timeouts.indexOf(id); if (i !== -1) _timers.timeouts.splice(i, 1) },
   addEventListener(target, event, handler) {
     target.addEventListener(event, handler, { signal: mcSignal })
   },
@@ -1352,8 +1354,8 @@ function authIrcAlive() {
 
 function cleanupAuthIrc(destroy = false) {
   if (destroy) authState.destroyed = true;
-  if (authState.keepaliveTimer) { clearInterval(authState.keepaliveTimer); authState.keepaliveTimer = null; }
-  if (authState.reconnectTimer) { clearTimeout(authState.reconnectTimer); authState.reconnectTimer = null; }
+  if (authState.keepaliveTimer) { cleanup.clearInterval(authState.keepaliveTimer); authState.keepaliveTimer = null; }
+  if (authState.reconnectTimer) { cleanup.clearTimeout(authState.reconnectTimer); authState.reconnectTimer = null; }
   const prevJoined = [...authState.joined];
   if (authState.ws) {
     authState.ws.onclose = null;
@@ -1418,7 +1420,7 @@ function scheduleReconnect(prevChannels) {
   const delay = authState.reconnectDelay;
   authState.reconnectDelay = Math.min(delay * 2, 30000);
   log(`Auth IRC reconnect in ${delay}ms...`);
-  authState.reconnectTimer = setTimeout(async () => {
+  authState.reconnectTimer = cleanup.setTimeout(async () => {
     authState.reconnectTimer = null;
     if (authState.destroyed || authIrcAlive()) return;
     const ok = await connectAuthIrc(authState.token, authState.nick);
@@ -2482,7 +2484,7 @@ async function sendKickMessage(kickSlug, text) {
         const source = escapeHtml(emote.source || 'unknown');
         const imgSrc = escapeHtml(getChatResUrl(emote.url)); // Upgrade to 2x/4x based on emote size setting
         const safeHash = emote.hash ? escapeHtml(emote.hash) : '';
-        const displayName = escapeHtml(endsWithZero && isOverlayEmote ? word : word)
+        const displayName = escapeHtml(word)
         const imgHtml = `<span class="hs-mc-emote-wrapper hs-state-${state}" data-emote-name="${displayName}" data-emote-url="${imgSrc}" data-state="${state}" data-source="${source}"${safeHash ? ` data-emote-hash="${safeHash}"` : ''}><img src="${imgSrc}" alt="${displayName}" title="${displayName}" class="hs-mc-emote hs-emote-${state}" data-emote-name="${displayName}" data-state="${state}" data-source="${source}"></span>`;
 
         if (isOverlayEmote) {
@@ -2844,15 +2846,7 @@ async function sendKickMessage(kickSlug, text) {
       subTenureMap.set(channel, channelMap)
     }
     channelMap.set(username.toLowerCase(), months)
-    // LRU per channel
-    if (channelMap.size > 500) {
-      let evicted = 0
-      for (const k of channelMap.keys()) {
-        if (evicted >= 200) break
-        channelMap.delete(k)
-        evicted++
-      }
-    }
+    while (channelMap.size > 500) channelMap.delete(channelMap.keys().next().value)
   }
   function formatSubTenure(months) {
     if (months >= 12) {
@@ -3249,6 +3243,7 @@ async function sendKickMessage(kickSlug, text) {
     // Fetch from background
     safeSendMessage({ type: 'fetch_link_preview', url }).then(data => {
       _linkPreviewCache.set(url, data);
+      while (_linkPreviewCache.size > 200) _linkPreviewCache.delete(_linkPreviewCache.keys().next().value);
       if (_linkHoverUrl === url && tip.classList.contains('visible')) {
         renderLinkPreview(tip, data, url);
       }
@@ -3935,7 +3930,7 @@ function attachRewardHandlers() {
   container.querySelectorAll('.hs-mc-reward-reason[data-cooldown-ends]').forEach(el => {
     const endsAt = parseInt(el.dataset.cooldownEnds)
     const iv = cleanup.setInterval(() => {
-      if (!el.isConnected) { clearInterval(iv); return }
+      if (!el.isConnected) { cleanup.clearInterval(iv); return }
       const secs = Math.max(0, Math.ceil((endsAt - Date.now()) / 1000))
       if (secs <= 0) {
         _rewardsCache = null
@@ -4148,7 +4143,7 @@ function startPredictionPoll() {
 
 function stopPredictionPoll() {
   if (_predictionPollTimer) {
-    clearInterval(_predictionPollTimer)
+    cleanup.clearInterval(_predictionPollTimer)
     _predictionPollTimer = null
   }
 }
@@ -13526,7 +13521,7 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
     let fastChecks = 0
     const fastId = cleanup.setInterval(() => {
       checkOffline()
-      if (++fastChecks >= 10) clearInterval(fastId)
+      if (++fastChecks >= 10) cleanup.clearInterval(fastId)
     }, 1000)
 
     // Steady-state polling

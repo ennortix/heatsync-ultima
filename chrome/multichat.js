@@ -12164,6 +12164,12 @@ const STORAGE_KEY = 'heatsync_multichat';
       cleanup.raf(() => {
         fixChatTransform();
         applyChatWidth()
+        // Re-render after expand — container was display:none while collapsed
+        const rightCol = document.querySelector('.right-column')
+        if (rightCol && !rightCol.classList.contains('right-column--collapsed')) {
+          ensureUIElements()
+          renderMessages(currentTab)
+        }
       }, 'column-transform-fix');
     }), 'column-class-watcher');
 

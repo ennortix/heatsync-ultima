@@ -11674,19 +11674,32 @@ const STORAGE_KEY = 'heatsync_multichat';
         position: absolute;
         left: 0;
         right: 0;
-        bottom: 52px;
+        bottom: 44px;
         top: auto;
-        padding: 6px 10px;
+        padding: 3px 8px;
         border-top: 1px solid #fff;
         border-bottom: none;
         z-index: 1001;
       }
+      .hs-tabs-bottom #hs-mc-inputbar {
+        padding: 4px 8px;
+      }
       .hs-tabs-bottom #hs-mc-overlay {
         top: 0;
-        bottom: 90px; /* tab bar + input bar */
+        bottom: 75px; /* tab bar + input bar */
       }
       .hs-tabs-bottom #hs-mc-emote-picker {
-        bottom: 90px; /* tab bar + input bar */
+        bottom: 75px; /* tab bar + input bar */
+      }
+      /* When inputbar is hidden, tabs flush to bottom */
+      .hs-tabs-bottom:has(#hs-mc-inputbar.hs-hidden) #hs-mc-tabbar {
+        bottom: 0;
+      }
+      .hs-tabs-bottom:has(#hs-mc-inputbar.hs-hidden) #hs-mc-overlay {
+        bottom: 31px; /* tab bar only */
+      }
+      .hs-tabs-bottom:has(#hs-mc-inputbar.hs-hidden) #hs-mc-emote-picker {
+        bottom: 31px;
       }
 
       /* LEFT SIDE TABS LAYOUT - flex child, no fixed positioning */

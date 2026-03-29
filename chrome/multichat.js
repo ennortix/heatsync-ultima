@@ -12013,6 +12013,8 @@ const STORAGE_KEY = 'heatsync_multichat';
     // Close thread view when leaving feed
     if (currentTab === 'feed' && id !== 'feed') {
       activeThread = null;
+      const feedTabBtn = tabBarElement?.querySelector('[data-tab="feed"]');
+      if (feedTabBtn) feedTabBtn.textContent = 'feed';
     }
     currentTab = id;
 

@@ -1529,6 +1529,7 @@ function _onMessageMain(message) {
 
     case 'emote_added':
       // Emote was successfully added to your set
+      pendingRemovals.delete(message.emoteName);
       allEmotesDirty = true
       emoteGeneration++
       log(' ✅ Emote added to your set:', message.emoteName);
@@ -1543,16 +1544,39 @@ function _onMessageMain(message) {
       window.postMessage({ type: 'heatsync-inventory-update', count: emoteInventory.length }, location.origin);
       break;
 
+    case 'emote_removing':
+      // Background is about to remove this emote — suppress it in new messages immediately
+      pendingRemovals.add(message.emoteName);
+      emoteInventory = emoteInventory.filter(e => e.name !== message.emoteName);
+      allEmotesDirty = true
+      _tabEmoteMapDirty = true
+      log(' ⏳ Emote removal starting:', message.emoteName);
+      break;
+
+    case 'emote_removing_cancel':
+      // Removal failed — allow emote again
+      pendingRemovals.delete(message.emoteName);
+      allEmotesDirty = true
+      _tabEmoteMapDirty = true
+      log(' ↩️ Emote removal cancelled:', message.emoteName);
+      break;
+
     case 'emote_removed':
       // Emote was successfully removed from your set
+      pendingRemovals.add(message.emoteName);
       allEmotesDirty = true
       emoteGeneration++
       _tabEmoteMapDirty = true
       log(' ✅ Emote removed from your set:', message.emoteName);
       emoteInventory = emoteInventory.filter(e => e.hash !== message.hash && e.name !== message.emoteName);
+      // Clear any stale broadcasts for this emote
+      for (const key of pendingEmoteBroadcasts.keys()) {
+        if (key.endsWith(`:${message.emoteName}`)) {
+          pendingEmoteBroadcasts.delete(key);
+        }
+      }
       updateEmoteState(message.hash, message.emoteName, 'neutral');
-      updateEmoteBridge(); // Update Twitch autocomplete hook
-      // Notify MAIN world (heatsync-button.js) to refresh panel if open
+      updateEmoteBridge();
       window.postMessage({ type: 'heatsync-inventory-update', count: emoteInventory.length }, location.origin);
       break;
 
@@ -1666,6 +1690,11 @@ function _onMessageMain(message) {
       break;
 
     case 'emote_broadcast':
+      // Reject broadcasts for emotes we're actively removing (WS echo race condition)
+      if (pendingRemovals.has(message.emoteName)) {
+        log(' 🚫 Rejecting broadcast for removed emote:', message.emoteName);
+        break;
+      }
       // Another user sent an emote, store for upcoming message
       const broadcastKey = `${message.username.toLowerCase()}:${message.emoteName}`;
       log(' 📥 RECEIVED BROADCAST:', {
@@ -2877,6 +2906,8 @@ function processMessage(messageElement) {
     for (const [broadcastKey, emoteData] of pendingEmoteBroadcasts) {
       if (broadcastKey.toLowerCase().startsWith(prefix)) {
         const emoteName = broadcastKey.slice(prefix.length)
+        // Skip emotes we're actively removing
+        if (pendingRemovals.has(emoteName)) continue
         userBroadcasts.set(emoteName, {
           name: emoteName,
           url: emoteData.url?.startsWith('http') ? emoteData.url : `${API_URL}${emoteData.url}`,

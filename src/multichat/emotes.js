@@ -285,7 +285,8 @@
     if (!overlay) return;
     const container = document.getElementById('hs-mc-container');
     const hasBottomTabs = container?.classList.contains('hs-tabs-bottom');
-    const barBase = inputBarVisible ? (hasBottomTabs ? 90 : 52) : 0;
+    // Always reserve input bar space to prevent layout shift when it shows/hides
+    const barBase = hasBottomTabs ? 90 : 52;
     const pickerEl = document.getElementById('hs-mc-emote-picker');
     const pickerHeight = open && pickerEl ? pickerEl.offsetHeight : 0;
     overlay.style.bottom = (barBase + pickerHeight) + 'px';
@@ -446,37 +447,35 @@
   // Remove emote from inventory via background.js
   async function removeEmoteFromInventory(emoteName, targetEl) {
     if (!emoteName) return;
-    const hash = inventoryHashes.get(emoteName);
-    if (!hash) {
-      // Fallback: generate from emote URL
-      const emote = lookupEmote(emoteName);
-      const fallbackHash = emote?.url ? btoa(emote.url).slice(0, 32) : emoteName;
-      try {
-        const response = await new Promise((resolve) => {
-          chrome.runtime.sendMessage({
-            type: 'remove_from_inventory',
-            emoteHash: fallbackHash,
-            emoteName
-          }, resolve);
-        });
-        if (response?.success) handleRemoveSuccess(emoteName, targetEl);
-        else showToast(response?.error || `failed to remove: ${emoteName}`);
-      } catch (e) {
-        showToast(`error removing: ${emoteName}`);
-      }
-      return;
-    }
+    pendingEmoteOps.add(emoteName);
+    try { await _removeEmoteFromInventory(emoteName, targetEl) }
+    finally { pendingEmoteOps.delete(emoteName) }
+  }
+  async function _removeEmoteFromInventory(emoteName, targetEl) {
+    // Try inventoryHashes first, then wrapper's data-emote-hash, then emoteHashes, then lookup
+    const wrapper = targetEl?.closest?.('.hs-mc-emote-wrapper') || targetEl;
+    const emoteHash = inventoryHashes.get(emoteName)
+      || wrapper?.dataset?.emoteHash
+      || emoteHashes.get(emoteName)
+      || lookupEmote(emoteName)?.hash
+      || emoteName;
+    document.body.dataset.hsDebugRemove = `removing: ${emoteName} hash=${emoteHash?.substring(0, 12)}`;
     try {
-      const response = await new Promise((resolve) => {
+      const response = await new Promise((resolve, reject) => {
         chrome.runtime.sendMessage({
           type: 'remove_from_inventory',
-          emoteHash: hash,
+          emoteHash,
           emoteName
-        }, resolve);
+        }, (resp) => {
+          if (chrome.runtime.lastError) reject(new Error(chrome.runtime.lastError.message));
+          else resolve(resp);
+        });
       });
+      document.body.dataset.hsDebugRemove = `response: ${JSON.stringify(response)}`;
       if (response?.success) handleRemoveSuccess(emoteName, targetEl);
       else showToast(response?.error || `failed to remove: ${emoteName}`);
     } catch (e) {
+      document.body.dataset.hsDebugRemove = `error: ${e.message}`;
       showToast(`error removing: ${emoteName}`);
     }
   }
@@ -486,15 +485,33 @@
     inventoryHashes.delete(emoteName);
     const cachedEmote = lookupEmote(emoteName);
     if (cachedEmote) {
-      cachedEmote.state = ['7tv', 'bttv', 'ffz', 'twitch', 'kick'].includes(cachedEmote.source) ? 'global' : 'unadded';
+      const isThirdParty = ['7tv', 'bttv', 'ffz', 'twitch', 'kick'].includes(cachedEmote.source);
+      if (isThirdParty) {
+        cachedEmote.state = 'global';
+      } else {
+        // HeatSync emote — mark unadded then remove from cache so it stops rendering in new messages
+        cachedEmote.state = 'unadded';
+        emoteCache.delete(emoteName);
+        for (const cache of Object.values(channelEmoteCaches)) {
+          cache.delete(emoteName);
+        }
+      }
+    } else {
+      // Not found via lookupEmote but might still be in caches
+      emoteCache.delete(emoteName);
+      for (const cache of Object.values(channelEmoteCaches)) {
+        cache.delete(emoteName);
+      }
     }
-    // Update all wrappers in DOM
+    // Update all existing wrappers in DOM
     const newState = cachedEmote?.state || 'unadded';
     queryEmoteWrappers(emoteName).forEach(w => {
       w.classList.remove('hs-state-global', 'hs-state-channel', 'hs-state-owned', 'hs-state-blocked', 'hs-state-unadded');
       w.classList.add(`hs-state-${newState}`);
       w.dataset.state = newState;
     });
+    // Refresh tooltip if visible (state text needs to update instantly)
+    refreshEmoteTooltip(emoteName, newState);
     showToast(`removed: ${emoteName}`);
     flashAllEmotes(emoteName, 'hs-flash-remove');
   }
@@ -516,6 +533,10 @@
 
   function blockEmote(emoteName) {
     if (!emoteName) return;
+
+    // Blocking and owning are mutually exclusive
+    inventoryEmotes.delete(emoteName);
+    inventoryHashes.delete(emoteName);
 
     // Update local name-based tracking
     blockedEmoteNames.add(emoteName);
@@ -541,6 +562,7 @@
       }
     });
 
+    refreshEmoteTooltip(emoteName, 'blocked');
     showToast(`blocked: ${emoteName}`);
     flashAllEmotes(emoteName, 'hs-flash-block');
   }
@@ -577,6 +599,7 @@
       }
     });
 
+    refreshEmoteTooltip(emoteName, newState);
     showToast(`unblocked: ${emoteName}`);
     flashAllEmotes(emoteName, 'hs-flash-unblock');
   }
@@ -584,7 +607,7 @@
   // Add emote to inventory (click-to-add for unadded emotes)
   async function addEmoteToInventory(emoteName, emoteUrl, emoteSource, targetEl) {
     if (!emoteName) return;
-
+    pendingEmoteOps.add(emoteName);
     try {
       // Generate a hash from the URL for the API
       const emoteHash = emoteUrl ? btoa(emoteUrl).slice(0, 32) : emoteName;
@@ -601,13 +624,21 @@
 
       if (response?.success) {
         // Update local cache - change from unadded to owned
+        // Adding and blocking are mutually exclusive
+        blockedEmoteNames.delete(emoteName);
+        const serverHash = response.hash || emoteHash;
         inventoryEmotes.add(emoteName);
-        if (response.hash) inventoryHashes.set(emoteName, response.hash);
+        inventoryHashes.set(emoteName, serverHash);
         if (emoteCache.has(emoteName)) {
-          const emote = emoteCache.get(emoteName);
-          emote.state = 'owned';
-          emoteCache.set(emoteName, emote);
+          const cached = emoteCache.get(emoteName);
+          cached.state = 'owned';
+          if (!cached.hash) cached.hash = serverHash;
+        } else {
+          emoteCache.set(emoteName, { url: emoteUrl, source: emoteSource || 'heatsync', state: 'owned', hash: serverHash });
         }
+        // Update hash lookup maps
+        emoteHashes.set(emoteName, serverHash);
+        hashToName.set(serverHash, emoteName);
 
         // Update all wrappers in DOM (no full re-render)
         queryEmoteWrappers(emoteName).forEach(w => {
@@ -616,6 +647,7 @@
           w.dataset.state = 'owned';
         });
 
+        refreshEmoteTooltip(emoteName, 'owned');
         showToast(`added: ${emoteName}`);
         flashAllEmotes(emoteName, 'hs-flash-add');
       } else {
@@ -624,6 +656,8 @@
     } catch (e) {
       log('Add emote error:', e);
       showToast(`error adding: ${emoteName}`);
+    } finally {
+      pendingEmoteOps.delete(emoteName);
     }
   }
 

@@ -4680,7 +4680,9 @@
         : '<span style="color:#ff8700;font-size:10px;font-weight:700;margin-right:3px">[HS]</span>'
       const userName = `<span style="color:${sanitizeColor(m.color)};font-weight:600">${escapeHtml(m.user)}</span>`
       // All values sanitized — safe innerHTML
-      div.innerHTML = `${tsSpan}${label}${platBadge}${userName}: ${processEmotes(escapeHtml(m.text), null)}`
+      if (m._renderedHtml == null) m._renderedHtml = processEmotes(escapeHtml(m.text), null)
+      // All values already sanitized via escapeHtml/processEmotes — safe innerHTML (existing pattern)
+      div.innerHTML = `${tsSpan}${label}${platBadge}${userName}: ${m._renderedHtml}`
       div.style.cursor = 'pointer'
       div.addEventListener('click', (e) => {
         if (e.target.closest('a, .hs-mc-emote')) return
@@ -4742,9 +4744,16 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
     }
 
     // Process text: heatsync/7TV/BTTV/FFZ emotes first, then YouTube native emoji
-    let processedText = processEmotes(m.text, m.channel)
-    if (m.emotes && m.emotes.length > 0) {
-      processedText = processYtEmotes(processedText, m.emotes, true)
+    // Cache rendered HTML on message object so re-renders preserve emote state at post time
+    let processedText
+    if (m._renderedHtml != null) {
+      processedText = m._renderedHtml
+    } else {
+      processedText = processEmotes(m.text, m.channel)
+      if (m.emotes && m.emotes.length > 0) {
+        processedText = processYtEmotes(processedText, m.emotes, true)
+      }
+      m._renderedHtml = processedText
     }
 
     // Sticker for super stickers
@@ -4776,6 +4785,18 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
       ? `${tsHtml}${systemLine}${platformBadge}${scBadge}${badges}${avatarHtml}${userLink}${channelSpan} <span style="color:${sanitizeColor(m.color || '#fff')};font-style:italic">${processedText}</span>${stickerHtml}`
       : `${tsHtml}${systemLine}${platformBadge}${scBadge}${badges}${avatarHtml}${userLink}${channelSpan}: ${processedText}${stickerHtml}`
     div.innerHTML = `${replyBar}${msgBody}`;
+    // Correct emote states based on current inventory + blocked (cached HTML may have stale states)
+    for (const w of div.querySelectorAll('.hs-mc-emote-wrapper[data-source="heatsync"]')) {
+      const name = w.dataset.emoteName;
+      const newState = blockedEmoteNames.has(name) ? 'blocked'
+        : inventoryEmotes.has(name) ? 'owned'
+        : 'unadded';
+      if (w.dataset.state !== newState) {
+        w.classList.remove('hs-state-owned', 'hs-state-unadded', 'hs-state-blocked', 'hs-state-global', 'hs-state-channel');
+        w.classList.add(`hs-state-${newState}`);
+        w.dataset.state = newState;
+      }
+    }
     // Reply button for threading (Twitch/Kick — needs valid msg id)
     if (m.id && m.platform !== 'youtube') {
       div.dataset.msgId = m.id
@@ -5902,6 +5923,31 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
         emoteReloadTimer = setTimeout(() => {
           loadEmotes().then(() => renderMessages(currentTab));
         }, 300);
+      }
+      // Inventory changes: update membership + ensure emotes are in cache for tab completion
+      // Old messages keep their rendered emotes, new messages use updated inventory
+      if (msg.type === 'inventory_update') {
+        inventoryEmotes.clear();
+        inventoryHashes.clear();
+        (msg.emotes || []).forEach(e => {
+          if (e.name) {
+            inventoryEmotes.add(e.name);
+            if (e.hash) inventoryHashes.set(e.name, e.hash);
+            // Ensure emote is in cache for tab completion + rendering
+            if (!emoteCache.has(e.name) && e.url) {
+              emoteCache.set(e.name, { url: e.url, source: 'heatsync', state: 'owned', hash: e.hash });
+            } else if (emoteCache.has(e.name)) {
+              emoteCache.get(e.name).state = 'owned';
+            }
+          }
+        });
+        // Remove emotes no longer in inventory from cache (if heatsync source)
+        for (const [name, emote] of emoteCache) {
+          if (emote.source === 'heatsync' && !inventoryEmotes.has(name)) {
+            emoteCache.delete(name);
+          }
+        }
+        log('inventory_update:', inventoryEmotes.size, 'emotes');
       }
 
       // 7TV emote add/remove → persistent stream-event in chat

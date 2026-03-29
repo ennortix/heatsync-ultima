@@ -129,6 +129,18 @@
     requestAnimationFrame(() => positionTooltipAtElement(tooltip, targetEl))
   }
 
+  // Refresh tooltip text/color if it's currently showing the given emote
+  function refreshEmoteTooltip(emoteName, newState) {
+    if (!emoteTooltip || !emoteTooltip.classList.contains('visible')) return;
+    const nameEl = emoteTooltip.querySelector('.tooltip-name');
+    if (nameEl?.textContent !== emoteName) return;
+    const stateEl = emoteTooltip.querySelector('.tooltip-source');
+    if (!stateEl) return;
+    const labels = { owned: 'in your set', unadded: 'click to add', blocked: 'blocked (click to unblock)' };
+    stateEl.textContent = labels[newState] || newState;
+    stateEl.className = 'tooltip-source ' + (newState || 'global');
+  }
+
   function hideEmoteTooltip() {
     if (emoteTooltip) {
       emoteTooltip.classList.remove('visible');

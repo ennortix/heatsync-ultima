@@ -1,5 +1,8 @@
 // Input - chat input, autocomplete, send message, reply state
 
+// Per-emote operation lock to prevent race conditions from rapid clicking
+const pendingEmoteOps = new Set();
+
 // Cache own badge string from IRC messages for optimistic display
 let _ownBadges = ''
 
@@ -361,14 +364,14 @@ function initInput() {
 
       const { emoteName, state } = emoteInfo;
 
+      // Prevent race conditions from rapid clicking
+      if (pendingEmoteOps.has(emoteName)) return;
+
       if (state === 'blocked') {
-        // Blocked → unblock + yellow flash
         unblockEmote(emoteName);
       } else if (state === 'owned') {
-        // Owned → remove from inventory + white flash
         removeEmoteFromInventory(emoteName, e.target);
       } else {
-        // Global or unadded → block + red flash
         blockEmote(emoteName);
       }
     }, { capture: true, signal: mcSignal });
@@ -424,17 +427,16 @@ function initInput() {
       const { emoteName, state, emoteUrl, source } = emoteInfo;
 
       if (state === 'blocked') {
-        // Blocked → unblock + yellow flash
         unblockEmote(emoteName);
       } else if (state === 'owned' || state === 'global' || state === 'channel') {
-        // Owned, global, or channel → paste to input + white flash
+        // Paste to input (no lock needed — instant, no async)
         showInputBar();
         pasteEmoteToInput(emoteName);
         const input = document.getElementById('hs-mc-input');
         if (input) input.focus();
         flashAllEmotes(emoteName, 'hs-flash-paste');
       } else if (state === 'unadded') {
-        // Unadded → add to inventory + green flash
+        if (pendingEmoteOps.has(emoteName)) return;
         addEmoteToInventory(emoteName, emoteUrl, source, e.target);
         flashAllEmotes(emoteName, 'hs-flash-add');
       }
@@ -857,6 +859,8 @@ function findEmoteMatches(search) {
     const acChCache = channelEmoteCaches[currentTab] || channelEmoteCaches[getCurrentChannel()];
     if (acChCache) for (const [k, v] of acChCache) acEmotes.set(k, v);
     for (const [name, emote] of acEmotes) {
+      // Only tab-complete heatsync emotes you own (can't send emotes not in your set)
+      if (emote.source === 'heatsync' && emote.state !== 'owned') continue;
       if (name.toLowerCase().startsWith(searchLower)) {
         matches.push({ name, url: emote.url, source: emote.source, priority: 0, type: 'emote' });
       } else if (name.toLowerCase().includes(searchLower)) {

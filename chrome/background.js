@@ -2158,7 +2158,7 @@ async function addToInventory(emoteName, emoteHash, emoteUrl) {
     // Also update storage for persistence
     await browser.storage.local.set({ emote_inventory: emoteInventory });
 
-    return { success: true, slot: data.slot, alreadyExists: data.alreadyExists };
+    return { success: true, slot: data.slot, hash: data.hash || emoteHash, alreadyExists: data.alreadyExists };
   } catch (error) {
     broadcastToTabs({
       type: 'emote_add_failed',
@@ -2184,17 +2184,26 @@ async function removeFromInventory(emoteHash, emoteName) {
 
     log(' Removing from your set via API:', emoteName, 'hash:', emoteHash?.substring(0, 8));
 
+    // Tell content scripts early so they suppress this emote in new messages immediately
+    // This must happen BEFORE any fetchEmoteInventory() which would broadcast inventory_update
+    broadcastToTabs({ type: 'emote_removing', emoteName });
+
     // Find slot number by hash or name
-    const emote = emoteInventory.find(e => e.hash === emoteHash || e.name === emoteName);
+    let emote = emoteInventory.find(e => e.hash === emoteHash || e.name === emoteName);
     if (!emote) {
-      // Still try to refetch in case local state is stale
+      // Refetch in case local state is stale, then retry
+      log(' Emote not in local inventory, refetching...', emoteName, emoteHash?.substring(0, 8));
       await fetchEmoteInventory();
-      broadcastToTabs({
-        type: 'emote_remove_failed',
-        emoteName,
-        error: 'Emote not found in your set'
-      });
-      return { success: false, error: 'Emote not found in your set' };
+      emote = emoteInventory.find(e => e.hash === emoteHash || e.name === emoteName);
+      if (!emote) {
+        broadcastToTabs({ type: 'emote_removing_cancel', emoteName });
+        broadcastToTabs({
+          type: 'emote_remove_failed',
+          emoteName,
+          error: 'Emote not found in your set'
+        });
+        return { success: false, error: 'Emote not found in your set' };
+      }
     }
 
     if (emote.slot == null) {
@@ -2203,6 +2212,7 @@ async function removeFromInventory(emoteHash, emoteName) {
       // Try again after refetch
       const refreshedEmote = emoteInventory.find(e => e.hash === emoteHash || e.name === emoteName);
       if (refreshedEmote?.slot == null) {
+        broadcastToTabs({ type: 'emote_removing_cancel', emoteName });
         broadcastToTabs({
           type: 'emote_remove_failed',
           emoteName,
@@ -2225,6 +2235,7 @@ async function removeFromInventory(emoteHash, emoteName) {
     const data = await response.json().catch(() => ({ error: 'Invalid response' }));
 
     if (!response.ok) {
+      broadcastToTabs({ type: 'emote_removing_cancel', emoteName });
       broadcastToTabs({
         type: 'emote_remove_failed',
         emoteName,
@@ -2261,6 +2272,7 @@ async function removeFromInventory(emoteHash, emoteName) {
 
     return { success: true, slot: emote.slot };
   } catch (error) {
+    broadcastToTabs({ type: 'emote_removing_cancel', emoteName });
     broadcastToTabs({
       type: 'emote_remove_failed',
       emoteName,

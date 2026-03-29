@@ -198,7 +198,7 @@ style.textContent = `
   .heatsync-emote-wrapper::before {
     content: '' !important;
     position: absolute !important;
-    inset: 2px !important;
+    inset: 0 !important;
     opacity: 0 !important;
     z-index: 1 !important;
     pointer-events: none !important;

@@ -11,13 +11,13 @@
     "tabs",
     "cookies",
     "alarms",
-    "notifications",
     "webRequest",
     "webRequestBlocking",
     "https://static-cdn.jtvnw.net/*",
     "https://heatsync.org/*",
-    "https://*.heatsync.org/*",
+    "https://www.heatsync.org/*",
     "https://*.twitch.tv/*",
+    "https://kick.com/*",
     "https://*.kick.com/*",
     "https://api.betterttv.net/*",
     "https://api.frankerfacez.com/*",
@@ -26,8 +26,7 @@
     "https://cdn.7tv.app/*",
     "https://recent-messages.robotty.de/*",
     "https://decapi.me/*",
-    "https://*.youtube.com/*",
-    "https://api.twitch.tv/*"
+    "https://www.youtube.com/*"
   ],
 
   "background": {
@@ -36,44 +35,44 @@
 
   "content_scripts": [
     {
-      "matches": ["*://*.twitch.tv/*"],
+      "matches": ["https://*.twitch.tv/*"],
       "js": ["early-inject-main.js"],
       "run_at": "document_start"
     },
     {
-      "matches": ["*://*.twitch.tv/*", "*://*.kick.com/*"],
+      "matches": ["https://*.twitch.tv/*", "https://*.kick.com/*"],
       "js": ["vi-mode.js"],
       "run_at": "document_end"
     },
     {
-      "matches": ["*://*.twitch.tv/*"],
+      "matches": ["https://*.twitch.tv/*"],
       "js": ["emoji-data.js", "autocomplete-hook.js"],
       "run_at": "document_end",
       "world": "MAIN"
     },
     {
-      "matches": ["*://*.kick.com/*"],
+      "matches": ["https://*.kick.com/*"],
       "js": ["emoji-data.js", "kick-autocomplete-hook.js"],
       "run_at": "document_end"
     },
     {
       "matches": [
-        "*://*.twitch.tv/*",
-        "*://*.kick.com/*",
+        "https://*.twitch.tv/*",
+        "https://*.kick.com/*",
         "https://heatsync.org/*",
-        "https://*.heatsync.org/*"
+        "https://www.heatsync.org/*"
       ],
       "js": ["emoji-data.js", "shared-utils.js", "platform-detector.js", "chat-injector.js", "content.js"],
       "css": ["injected-message.css"],
       "run_at": "document_end"
     },
     {
-      "matches": ["*://*.twitch.tv/*", "*://*.kick.com/*"],
+      "matches": ["https://*.twitch.tv/*", "https://*.kick.com/*"],
       "js": ["emoji-data.js", "heatsync-button.js"],
       "run_at": "document_idle"
     },
     {
-      "matches": ["*://*.twitch.tv/*", "*://*.kick.com/*"],
+      "matches": ["https://*.twitch.tv/*", "https://*.kick.com/*"],
       "js": ["emoji-data.js", "shared-utils.js", "multichat.js"],
       "run_at": "document_idle"
     },
@@ -107,7 +106,6 @@
 
   "web_accessible_resources": [
     "autocomplete-hook.js",
-    "vi-mode.js",
     "icon-16.png",
     "icon-48.png",
     "icon-48-black.png",

@@ -8,10 +8,10 @@
  * - Copies assets
  *
  * Usage:
- *   bun run extension/build.js                    # Build both
- *   bun run extension/build.js chrome             # Chrome only
- *   bun run extension/build.js --package          # Build + zip
- *   bun run extension/build.js --deploy           # Build + zip + rsync to server
+ *   bun run build.js                    # Build both
+ *   bun run build.js chrome             # Chrome only
+ *   bun run build.js --package          # Build + zip
+ *   bun run build.js --deploy           # Build + zip + rsync to server
  */
 
 import { readFileSync, writeFileSync, mkdirSync, cpSync, existsSync, rmSync, readdirSync } from 'fs'
@@ -49,7 +49,6 @@ const COPY_FILES = [
   'options.html',
   'options.js',
   'vi-mode.js',
-  'autocomplete-loader.js',
   'kick-autocomplete-hook.js',
 ]
 
@@ -205,15 +204,6 @@ function build(browser) {
   cpSync(manifestSrc, join(outDir, 'manifest.json'))
   console.log(`  Copied manifest (${browser})`)
 
-  // Firefox-specific adjustments
-  if (browser === 'firefox') {
-    // Firefox MV2 doesn't need offscreen
-    const offscreenPath = join(outDir, 'offscreen.js')
-    const offscreenHtmlPath = join(outDir, 'offscreen.html')
-    if (existsSync(offscreenPath)) rmSync(offscreenPath)
-    if (existsSync(offscreenHtmlPath)) rmSync(offscreenHtmlPath)
-  }
-
   console.log(`✓ Built ${browser} → ${outDir}`)
 }
 
@@ -239,7 +229,7 @@ function packageBrowser(browser) {
   if (existsSync(zipPath)) rmSync(zipPath)
 
   // Zip from inside the build dir so paths are relative
-  execSync(`cd "${outDir}" && zip -r "${zipPath}" .`, { stdio: 'pipe' })
+  execSync(`cd "${outDir}" && zip -r "${zipPath}" .`, { stdio: 'inherit' })
   console.log(`  ${zipName}`)
   return zipPath
 }

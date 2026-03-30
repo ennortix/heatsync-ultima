@@ -1163,6 +1163,8 @@ function handle7TVEmoteSetUpdate(updateData) {
 
   // Handle added emotes
   if (updateData.pushed && updateData.pushed.length > 0) {
+    // Large batch = likely initial sync on subscription, not real additions — suppress per-emote spam
+    const isBulkSync = updateData.pushed.length > 3;
     for (const item of updateData.pushed) {
       const emote = item.value;
       const newEmote = {
@@ -1177,15 +1179,20 @@ function handle7TVEmoteSetUpdate(updateData) {
         chEmotes.push(newEmote);
         channelEmotesMap[channelName] = chEmotes;
         updated = true;
-        log(' 7TV: Added emote:', emote.name, 'to', channelName);
 
-        const msg = actor ? `${actor} added 7TV emote ${emote.name}` : `${emote.name} added to channel`;
-        broadcastToTabs({
-          type: 'channel_emote_added',
-          emote: newEmote,
-          message: msg
-        });
+        if (!isBulkSync) {
+          log(' 7TV: Added emote:', emote.name, 'to', channelName);
+          const msg = actor ? `${actor} added 7TV emote ${emote.name}` : `${emote.name} added to channel`;
+          broadcastToTabs({
+            type: 'channel_emote_added',
+            emote: newEmote,
+            message: msg
+          });
+        }
       }
+    }
+    if (isBulkSync) {
+      log(' 7TV: Bulk sync — added', updateData.pushed.length, 'emotes to', channelName, '(notifications suppressed)');
     }
   }
 
@@ -1317,23 +1324,28 @@ async function poll7TVEmoteSet() {
     channelEmotesMap[channelName] = updatedEmotes;
     updateEmoteUrlMap();
 
-    // Broadcast individual add/remove notifications (system messages in chat)
-    for (const emote of added) {
-      log(' 7TV Poll: Added emote:', emote.name);
-      broadcastToTabs({
-        type: 'channel_emote_added',
-        emote,
-        message: `${emote.name} added to channel (7TV)`
-      });
-    }
-    for (const emote of removed) {
-      log(' 7TV Poll: Removed emote:', emote.name);
-      broadcastToTabs({
-        type: 'channel_emote_removed',
-        emoteName: emote.name,
-        emoteHash: emote.hash,
-        message: `${emote.name} removed from channel (7TV)`
-      });
+    // Only broadcast individual notifications for real changes (not initial load)
+    // If baseline was empty, this is just the first poll after joining — not actual adds
+    if (existing7TV.size > 0) {
+      for (const emote of added) {
+        log(' 7TV Poll: Added emote:', emote.name);
+        broadcastToTabs({
+          type: 'channel_emote_added',
+          emote,
+          message: `${emote.name} added to channel (7TV)`
+        });
+      }
+      for (const emote of removed) {
+        log(' 7TV Poll: Removed emote:', emote.name);
+        broadcastToTabs({
+          type: 'channel_emote_removed',
+          emoteName: emote.name,
+          emoteHash: emote.hash,
+          message: `${emote.name} removed from channel (7TV)`
+        });
+      }
+    } else {
+      log(' 7TV Poll: Skipping notifications for initial load (' + added.length + ' emotes)');
     }
 
     // Broadcast full update

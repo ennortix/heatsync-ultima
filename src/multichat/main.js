@@ -35,13 +35,11 @@
   let irc = null;
   let kickChat = null;
   let currentUsername = null;
-  let chatRoomComponent = null;
   let originalRender = null;
   let tabBarElement = null;
   let overlayElement = null;
   let inputBarElement = null;  // Separate input bar (always visible)
   let pendingMessage = '';     // Persists across tab switches
-  let isHooked = false;
   let tabPosition = 'top'; // 'top', 'right', 'bottom', 'left'
   let resizeObserver = null; // Tracks overlay top sync observer
 
@@ -88,14 +86,19 @@
   // Avatar URL cache: username → CDN URL (fetched from decapi)
   const avatarCache = new Map()
   const avatarFetching = new Set() // prevent duplicate fetches
+  let _activeAvatarFetches = 0
+  const MAX_AVATAR_FETCHES = 5
   function fetchAvatar(username) {
     const key = username.toLowerCase()
     if (avatarCache.has(key) || avatarFetching.has(key)) return
+    if (_activeAvatarFetches >= MAX_AVATAR_FETCHES) return
     avatarFetching.add(key)
+    _activeAvatarFetches++
     fetch(`https://decapi.me/twitch/avatar/${encodeURIComponent(key)}`, { credentials: 'omit' })
       .then(r => r.ok ? r.text() : null)
       .then(url => {
         avatarFetching.delete(key)
+        _activeAvatarFetches--
         if (!url || !url.startsWith('https://')) return
         avatarCache.set(key, url.trim())
         if (avatarCache.size > 500) {
@@ -108,12 +111,29 @@
           })
         }
       })
-      .catch(() => avatarFetching.delete(key))
+      .catch(() => { avatarFetching.delete(key); _activeAvatarFetches-- })
   }
 
   // Stream event user colors — login → color (populated from server on connect)
   const streamColorMap = new Map();
 
+  // Batched ui_settings writer — coalesces multiple saves into one read-modify-write
+  let _pendingSettings = null
+  let _settingsSaveTimer = null
+
+  function saveUiSetting(key, value) {
+    if (!_pendingSettings) _pendingSettings = {}
+    _pendingSettings[key] = value
+    if (_settingsSaveTimer) clearTimeout(_settingsSaveTimer)
+    _settingsSaveTimer = setTimeout(() => {
+      const pending = _pendingSettings
+      _pendingSettings = null
+      _settingsSaveTimer = null
+      chrome.storage.local.get(['ui_settings']).then(s => {
+        chrome.storage.local.set({ ui_settings: { ...s.ui_settings, ...pending } })
+      })
+    }, 100)
+  }
 
   // Stream events persistence — survives tab switches AND page refresh
   const STREAM_EVENTS_KEY = 'hs_stream_events';
@@ -527,30 +547,33 @@
       });
 
       // Use wheel event to detect intentional user scrolling
+      // Note: newBtn.innerHTML uses only static safe content (arrow + count), no user data
+      let _wheelCheckTimer = null
       msgsEl.addEventListener('wheel', (e) => {
         if (isStaticTab()) {
-          // Static tabs: track scroll position but don't show button from scrolling alone
-          setTimeout(() => { isScrolledUp = msgsEl.scrollTop > 50; }, 50);
           if (msgsEl.scrollTop <= 50) { newBtn.style.display = 'none'; newMessageCount = 0; }
-          return;
-        }
-        if (e.deltaY < 0) {
+        } else if (e.deltaY < 0) {
           // Scrolling up with wheel = user intent
-          isScrolledUp = true;
-          newBtn.innerHTML = newMessageCount > 0 ? `<span class="hs-arrow-down">▼</span> ${newMessageCount} new` : '<span class="hs-arrow-down">▼</span> resume';
-          newBtn.style.display = 'flex';
-        } else if (e.deltaY > 0) {
-          // Scrolling down - check if we're now at bottom to re-lock
-          setTimeout(() => {
-            const atBottom = msgsEl.scrollHeight - msgsEl.scrollTop - msgsEl.clientHeight < 50;
-            if (atBottom) {
-              isScrolledUp = false;
-              newMessageCount = 0;
-              newBtn.style.display = 'none';
-            }
-          }, 50); // Small delay to let scroll finish
+          isScrolledUp = true
+          newBtn.innerHTML = newMessageCount > 0 ? `<span class="hs-arrow-down">\u25BC</span> ${newMessageCount} new` : '<span class="hs-arrow-down">\u25BC</span> resume'
+          newBtn.style.display = 'flex'
         }
-      });
+        // Debounced scroll position check (covers both static and chat tabs)
+        if (_wheelCheckTimer) clearTimeout(_wheelCheckTimer)
+        _wheelCheckTimer = setTimeout(() => {
+          _wheelCheckTimer = null
+          if (isStaticTab()) {
+            isScrolledUp = msgsEl.scrollTop > 50
+          } else {
+            const atBottom = msgsEl.scrollHeight - msgsEl.scrollTop - msgsEl.clientHeight < 50
+            if (atBottom) {
+              isScrolledUp = false
+              newMessageCount = 0
+              newBtn.style.display = 'none'
+            }
+          }
+        }, 50)
+      })
 
       newBtn.addEventListener('click', () => {
         isScrolledUp = false;
@@ -825,13 +848,8 @@
     } catch {}
   }
 
-  async function saveInlineNotifSettings() {
-    try {
-      const stored = await chrome.storage.local.get(['ui_settings'])
-      const settings = stored.ui_settings || {}
-      settings.inlineNotifs = { ...inlineNotifs }
-      await chrome.storage.local.set({ ui_settings: settings })
-    } catch {}
+  function saveInlineNotifSettings() {
+    saveUiSetting('inlineNotifs', { ...inlineNotifs })
   }
 
   async function loadHermesSettings() {
@@ -846,13 +864,8 @@
     } catch {}
   }
 
-  async function saveHermesSettings() {
-    try {
-      const stored = await chrome.storage.local.get(['ui_settings'])
-      const settings = stored.ui_settings || {}
-      settings.hermesEvents = { ...hermesToggles }
-      await chrome.storage.local.set({ ui_settings: settings })
-    } catch {}
+  function saveHermesSettings() {
+    saveUiSetting('hermesEvents', { ...hermesToggles })
   }
 
   // Inject an inline notification into active chat tabs
@@ -894,22 +907,8 @@
     }
   }
 
-  async function saveWysiwygSetting() {
-    try {
-      const stored = await chrome.storage.local.get(['ui_settings']);
-      const settings = stored.ui_settings || {};
-      settings.wysiwygEnabled = wysiwygEnabled;
-      await chrome.storage.local.set({ ui_settings: settings });
-    } catch (e) {
-      log('Error saving WYSIWYG setting:', e);
-    }
-  }
-
-  function toggleWysiwyg() {
-    wysiwygEnabled = !wysiwygEnabled;
-    saveWysiwygSetting();
-    rebuildInput();
-    log('WYSIWYG:', wysiwygEnabled ? 'enabled' : 'disabled');
+  function saveWysiwygSetting() {
+    saveUiSetting('wysiwygEnabled', wysiwygEnabled)
   }
 
   // Clickable links setting
@@ -924,21 +923,8 @@
     }
   }
 
-  async function saveLinksSetting() {
-    try {
-      const stored = await chrome.storage.local.get(['ui_settings']);
-      const settings = stored.ui_settings || {};
-      settings.linksEnabled = linksEnabled;
-      await chrome.storage.local.set({ ui_settings: settings });
-    } catch (e) {
-      log('Error saving links setting:', e);
-    }
-  }
-
-  function toggleLinks() {
-    linksEnabled = !linksEnabled;
-    saveLinksSetting();
-    log('Links:', linksEnabled ? 'enabled' : 'disabled');
+  function saveLinksSetting() {
+    saveUiSetting('linksEnabled', linksEnabled)
   }
 
   // Vi mode setting
@@ -953,29 +939,16 @@
     }
   }
 
-  async function saveViModeSetting() {
+  function saveViModeSetting() {
+    saveUiSetting('viMode', viModeEnabled)
+    // Sync to localStorage for vi-mode.js
     try {
-      const stored = await chrome.storage.local.get(['ui_settings']);
-      const settings = stored.ui_settings || {};
-      settings.viMode = viModeEnabled;
-      await chrome.storage.local.set({ ui_settings: settings });
-      // Sync to localStorage for vi-mode.js
-      try {
-        const ls = JSON.parse(localStorage.getItem('heatsync-extension-settings') || '{}')
-        ls.viMode = viModeEnabled
-        localStorage.setItem('heatsync-extension-settings', JSON.stringify(ls))
-      } catch (_) {}
-      // Notify vi-mode.js
-      window.postMessage({ type: 'heatsync-settings-changed', settings: { ...settings } }, location.origin);
-    } catch (e) {
-      log('Error saving vi mode setting:', e);
-    }
-  }
-
-  function toggleViMode() {
-    viModeEnabled = !viModeEnabled;
-    saveViModeSetting();
-    log('Vi mode:', viModeEnabled ? 'enabled' : 'disabled');
+      const ls = JSON.parse(localStorage.getItem('heatsync-extension-settings') || '{}')
+      ls.viMode = viModeEnabled
+      localStorage.setItem('heatsync-extension-settings', JSON.stringify(ls))
+    } catch (_) {}
+    // Notify vi-mode.js
+    window.postMessage({ type: 'heatsync-settings-changed', settings: { viMode: viModeEnabled } }, location.origin)
   }
 
   // Platform badges setting
@@ -1001,13 +974,8 @@
     } catch {}
   }
 
-  async function saveZebraSetting() {
-    try {
-      const stored = await chrome.storage.local.get(['ui_settings']);
-      const settings = stored.ui_settings || {};
-      settings.zebra = zebraEnabled;
-      await chrome.storage.local.set({ ui_settings: settings });
-    } catch {}
+  function saveZebraSetting() {
+    saveUiSetting('zebra', zebraEnabled)
   }
 
   function toggleZebra() {
@@ -1028,13 +996,8 @@
     } catch {}
   }
 
-  async function saveAutoHideSetting() {
-    try {
-      const stored = await chrome.storage.local.get(['ui_settings']);
-      const settings = stored.ui_settings || {};
-      settings.autoHideEmpty = autoHideInput;
-      await chrome.storage.local.set({ ui_settings: settings });
-    } catch {}
+  function saveAutoHideSetting() {
+    saveUiSetting('autoHideEmpty', autoHideInput)
   }
 
   function toggleAutoHide() {
@@ -1065,13 +1028,8 @@
     } catch {}
   }
 
-  async function saveTimestampsSetting() {
-    try {
-      const stored = await chrome.storage.local.get(['ui_settings']);
-      const settings = stored.ui_settings || {};
-      settings.timestamps = timestampsEnabled;
-      await chrome.storage.local.set({ ui_settings: settings });
-    } catch {}
+  function saveTimestampsSetting() {
+    saveUiSetting('timestamps', timestampsEnabled)
   }
 
   function toggleTimestamps() {
@@ -1091,13 +1049,8 @@
     } catch {}
   }
 
-  async function saveOfflineEventsSetting() {
-    try {
-      const stored = await chrome.storage.local.get(['ui_settings']);
-      const settings = stored.ui_settings || {};
-      settings.showOfflineEvents = showOfflineEvents;
-      await chrome.storage.local.set({ ui_settings: settings });
-    } catch {}
+  function saveOfflineEventsSetting() {
+    saveUiSetting('showOfflineEvents', showOfflineEvents)
   }
 
   function toggleOfflineEvents() {
@@ -1115,13 +1068,8 @@
     } catch {}
   }
 
-  async function saveAvatarsSetting() {
-    try {
-      const stored = await chrome.storage.local.get(['ui_settings']);
-      const settings = stored.ui_settings || {};
-      settings.avatars = avatarsEnabled;
-      await chrome.storage.local.set({ ui_settings: settings });
-    } catch {}
+  function saveAvatarsSetting() {
+    saveUiSetting('avatars', avatarsEnabled)
   }
 
   function toggleAvatars() {
@@ -1312,7 +1260,7 @@
           avatars: false, showPlatformBadges: true, showOfflineEvents: true,
           inlineNotifs: { ...inlineNotifs }, hermesEvents: { ...hermesToggles },
         };
-        try { chrome.storage.local.get(['ui_settings']).then(s => chrome.storage.local.set({ ui_settings: { ...s.ui_settings, ...settings } })); } catch {}
+        try { for (const [k, v] of Object.entries(settings)) saveUiSetting(k, v) } catch {}
         renderSettingsTab();
         return;
       }
@@ -4531,14 +4479,8 @@
     // Persist active tab across refreshes/popouts (skip transient tabs)
     if (id !== 'add') {
       try {
-        chrome.storage.local.get(['ui_settings']).then(stored => {
-          try {
-            const settings = stored.ui_settings || {};
-            settings.activeTab = id;
-            settings.liveChannel = liveChannel;
-            chrome.storage.local.set({ ui_settings: settings });
-          } catch (e) { /* context invalidated */ }
-        }).catch(() => {});
+        saveUiSetting('activeTab', id)
+        saveUiSetting('liveChannel', liveChannel)
       } catch (e) { /* context invalidated */ }
     }
 
@@ -6013,16 +5955,8 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
     renderMessages(currentTab);
   }
 
-  async function saveTabPosition() {
-    try {
-      const stored = await chrome.storage.local.get(['ui_settings']);
-      const settings = stored.ui_settings || {};
-      settings.tabPosition = tabPosition;
-      delete settings.tabsOnRight; // Remove old setting
-      await chrome.storage.local.set({ ui_settings: settings });
-    } catch (e) {
-      log('Error saving tab position:', e);
-    }
+  function saveTabPosition() {
+    saveUiSetting('tabPosition', tabPosition)
   }
 
   function listenForSettingsChanges() {
@@ -6038,7 +5972,7 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
           applyTabsPosition();
         }
       }
-      if (msg.type === 'debug_log') console.log('[hs-bg]', msg.msg);
+      if (msg.type === 'debug_log' && MC_DEBUG) console.log('[hs-bg]', msg.msg)
       // Listen for emote updates from background
       if (msg.type === 'global_emotes_update' || msg.type === 'channel_emotes_update') {
         log('received', msg.type, msg.channelOwner || '');
@@ -6537,23 +6471,23 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
       if (eventType === 'raid') {
         toggleKey = 'raid'
         eventClass = 'event-raid'
-        text = `[${channel}] \u25C6 raided ${escapeHtml(data.target)} with ${data.viewers} viewers`
+        text = `[${escapeHtml(channel)}] \u25C6 raided ${escapeHtml(data.target)} with ${Number(data.viewers) || 0} viewers`
       } else if (eventType === 'hype-train-start') {
         toggleKey = 'hype'
         eventClass = 'event-hype'
-        text = `[${channel}] \u25C6 hype train started`
+        text = `[${escapeHtml(channel)}] \u25C6 hype train started`
       } else if (eventType === 'hype-train-end') {
         toggleKey = 'hype'
         eventClass = 'event-hype'
-        text = `[${channel}] \u25C6 hype train ended at level ${data.level}`
+        text = `[${escapeHtml(channel)}] \u25C6 hype train ended at level ${Number(data.level) || 0}`
       } else if (eventType === 'sub-gift') {
         toggleKey = 'sub'
         eventClass = 'event-sub'
-        text = `[${channel}] \u25C6 ${escapeHtml(data.user)} gifted ${data.count} subs`
+        text = `[${escapeHtml(channel)}] \u25C6 ${escapeHtml(data.user)} gifted ${Number(data.count) || 0} subs`
       } else if (eventType === 'redeem') {
         toggleKey = 'redeem'
         eventClass = 'event-redeem'
-        text = `[${channel}] \u25C6 ${escapeHtml(data.user)} redeemed "${escapeHtml(data.title)}"`
+        text = `[${escapeHtml(channel)}] \u25C6 ${escapeHtml(data.user)} redeemed "${escapeHtml(data.title)}"`
       } else return
 
       if (!hermesToggles[toggleKey]) return
@@ -6830,7 +6764,6 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
       const chatRoom = findChatRoomComponent();
       if (chatRoom) {
         log('Found chat room component');
-        chatRoomComponent = chatRoom;
         patchChatRoomRender(chatRoom);
         ensureUIElements();
         switchTab(_savedActiveTab || 'live');
@@ -6903,7 +6836,10 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
           }
         }
       }
-    }), 'layout-observer').observe(document.body, { childList: true, subtree: true });
+    }), 'layout-observer').observe(
+      document.getElementById('hs-mc-container')?.parentElement || document.body,
+      { childList: true }
+    )
   }
 
   // ============================================
@@ -6947,7 +6883,6 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
       overlayElement = null;
       inputBarElement = null;
       if (resizeObserver) { resizeObserver.disconnect(); resizeObserver = null; }
-      isHooked = false;
       mcInitialized = false; // Allow init() to run again
 
       // Reset social tab state (stale on nav)

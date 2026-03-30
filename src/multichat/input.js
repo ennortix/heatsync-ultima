@@ -177,11 +177,16 @@ function initInput() {
   input.addEventListener('keydown', handleInputKeydown);
   input.addEventListener('input', handleInputChange);
   input.addEventListener('input', updateCharCount);
-  // Sync highlight overlay scroll with input scroll
+  // Sync highlight overlay scroll with input scroll (RAF-throttled)
+  let _inputScrollRaf = null
   input.addEventListener('scroll', () => {
-    const hl = document.getElementById('hs-mc-input-highlight');
-    if (hl) hl.scrollLeft = input.scrollLeft;
-  });
+    if (_inputScrollRaf) return
+    _inputScrollRaf = requestAnimationFrame(() => {
+      _inputScrollRaf = null
+      const hl = document.getElementById('hs-mc-input-highlight')
+      if (hl) hl.scrollLeft = input.scrollLeft
+    })
+  })
   input.addEventListener('input', () => {
     const hasText = (input.value || input.textContent || '').trim().length > 0
     if (hasText) showInputBar()

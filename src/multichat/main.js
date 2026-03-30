@@ -1438,9 +1438,10 @@
       .hs-mc-util-btn {
         flex: 0 0 auto !important;
         min-width: 0 !important;
-        padding: 4px 0 !important;
-        font-size: 13px !important;
+        padding: 3px 6px !important;
+        font-size: 12px !important;
         font-weight: 700 !important;
+        white-space: nowrap !important;
       }
       /* Whisper conversation list */
       .hs-whisper-conv {

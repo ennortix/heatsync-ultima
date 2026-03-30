@@ -1343,25 +1343,28 @@
         display: flex;
         flex-wrap: nowrap;
         gap: 4px;
-        padding: 6px 10px;
+        padding: 4px 6px;
         background: #000;
-        border-bottom: 1px solid #fff;
+        border-bottom: 1px solid #808080;
         flex-shrink: 0;
         order: -1;
         z-index: 10;
+        align-items: center;
       }
 
       /* Chatterino-style composable tab states: idle → has-new → active */
       .hs-mc-tab {
-        padding: 3px 8px !important;
+        padding: 2px 8px !important;
         background: #000 !important;
-        color: #808080 !important;
+        color: #fff !important;
         border: 1px solid #808080 !important;
         border-radius: 0 !important;
         cursor: pointer !important;
         font-family: inherit;
         font-size: 12px !important;
         line-height: 1 !important;
+        font-weight: 400 !important;
+        white-space: nowrap !important;
         transition: none;
         text-align: center;
         display: inline-flex;
@@ -1429,19 +1432,34 @@
         flex: 1;
         min-width: 0;
       }
-      /* Fixed utility buttons — always visible */
+      /* Fixed utility buttons — always visible, square like website live-control-btn */
       .hs-mc-tab-utils {
         display: flex;
-        gap: 4px;
+        gap: 2px;
         flex-shrink: 0;
+        align-items: center;
+        margin-left: auto;
       }
       .hs-mc-util-btn {
-        flex: 0 0 auto !important;
-        min-width: 0 !important;
-        padding: 3px 6px !important;
+        width: 24px !important;
+        height: 24px !important;
+        padding: 0 !important;
+        background: #000 !important;
+        border: 1px solid #808080 !important;
+        color: #808080 !important;
         font-size: 12px !important;
         font-weight: 700 !important;
+        border-radius: 0 !important;
+        cursor: pointer !important;
+        display: inline-flex !important;
+        align-items: center !important;
+        justify-content: center !important;
         white-space: nowrap !important;
+        transition: none;
+      }
+      .hs-mc-util-btn:hover {
+        background: #fff !important;
+        color: #000 !important;
       }
       /* Whisper conversation list */
       .hs-whisper-conv {
@@ -3588,16 +3606,7 @@
         display: none !important;
       }
 
-      /* Rotation button styling */
-      .hs-mc-rotate {
-        margin-left: auto;
-        background: #000 !important;
-        font-weight: bold;
-      }
-      .hs-mc-rotate:hover {
-        background: #fff !important;
-        color: #000 !important;
-      }
+      /* Rotation button — inherits from .hs-mc-util-btn */
 
       /* RIGHT SIDE TABS LAYOUT - absolute position at right edge */
       .hs-tabs-right #hs-mc-tabbar {

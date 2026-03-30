@@ -260,12 +260,12 @@
     }
 
     // Mutations need valid integrity — reads work without it
-    if (req.rawQuery && !hasValidIntegrity() && /mutation\s/i.test(req.rawQuery)) {
+    if (DEBUG && req.rawQuery && !hasValidIntegrity() && /mutation\s/i.test(req.rawQuery)) {
       console.warn('[heatsync-gql] integrity token stale/missing — mutations may fail')
     }
 
     const hdrs = buildGqlHeaders()
-    console.log('[heatsync-gql] proxy request:', req.operation || 'rawQuery', 'auth:', !!gql.authToken, 'integrity:', !!gql.integrity, 'clientId:', !!gql.clientId)
+    if (DEBUG) console.log('[heatsync-gql] proxy request:', req.operation || 'rawQuery', 'auth:', !!gql.authToken, 'integrity:', !!gql.integrity, 'clientId:', !!gql.clientId)
 
     origFetch('https://gql.twitch.tv/gql', {
       method: 'POST',
@@ -273,11 +273,11 @@
       body: JSON.stringify(payload)
     })
     .then(r => {
-      console.log('[heatsync-gql] response status:', r.status)
+      if (DEBUG) console.log('[heatsync-gql] response status:', r.status)
       return r.json()
     })
     .then(data => {
-      console.log('[heatsync-gql] response data:', JSON.stringify(data).slice(0, 500))
+      if (DEBUG) console.log('[heatsync-gql] response data:', JSON.stringify(data).slice(0, 500))
       window.postMessage({
         type: 'heatsync-gql-response', id: req.id, data
       }, location.origin)

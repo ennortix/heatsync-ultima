@@ -78,20 +78,6 @@
   cursor: pointer !important;
 }
 
-/* Pulse effect for new messages */
-@keyframes heatsync-pulse {
-  0%, 100% {
-    box-shadow: 0 0 0 0 rgba(255, 0, 0, 0.7);
-  }
-  50% {
-    box-shadow: 0 0 0 8px rgba(255, 0, 0, 0);
-  }
-}
-
-.heatsync-injected-message.heatsync-new {
-  animation: heatsync-pulse 1.5s ease-out !important;
-}
-
 /* Emote support in injected messages */
 .heatsync-injected-message img.heatsync-emote {
   vertical-align: middle !important;
@@ -108,49 +94,4 @@
   width: 100% !important;
 }
 
-/* ============================================
-   MINIMAL CHAT MODE - Toggle-controlled via body class
-   Enable with: document.body.classList.add('heatsync-minimal')
-   ============================================ */
-
-/* Hide top nav bar (68px header) - ALWAYS ON for popout/embed chat */
-body.heatsync-minimal .eOHCrm,
-body.heatsync-minimal nav[aria-label="Primary"],
-body.heatsync-minimal .top-nav,
-body.heatsync-minimal [data-a-target="top-nav-container"] {
-  display: none !important;
-}
-
-/* Hide side panels */
-body.heatsync-minimal .side-nav,
-body.heatsync-minimal [data-a-target="side-nav-bar"] {
-  display: none !important;
-}
-
-/* Hide video player (chat-only mode) */
-body.heatsync-minimal .video-player,
-body.heatsync-minimal .persistent-player,
-body.heatsync-minimal [data-a-target="video-player"] {
-  display: none !important;
-}
-
-/* Make chat fullscreen when minimal mode enabled */
-body.heatsync-minimal .chat-shell,
-body.heatsync-minimal .stream-chat,
-body.heatsync-minimal [data-test-selector="stream-chat"] {
-  width: 100% !important;
-  height: 100vh !important;
-  max-width: 100% !important;
-  position: fixed !important;
-  top: 0 !important;
-  left: 0 !important;
-  right: 0 !important;
-  bottom: 0 !important;
-}
-
-/* Hide Twitch footer */
-body.heatsync-minimal .tw-root__footer,
-body.heatsync-minimal footer {
-  display: none !important;
-}
 

@@ -2,7 +2,7 @@
   'use strict'
 
   const DEFAULTS = {
-    hs_emote_size: 'medium',
+    hs_emote_size: 2,
     hs_notifications: false,
     hs_auto_claim_points: true
   }
@@ -28,14 +28,17 @@
   }
 
   function bindRadio(groupId, storageKey, value) {
-    const safeValue = String(value || '').replace(/[^a-zA-Z0-9_-]/g, '')
-    const radio = safeValue ? document.querySelector(
+    // Migrate legacy string values to numbers
+    const sizeMap = { small: 1, medium: 2, large: 4 }
+    const numValue = sizeMap[value] || Number(value) || 2
+    const safeValue = String(numValue)
+    const radio = document.querySelector(
       `#${groupId} input[value="${safeValue}"]`
-    ) : null
+    )
     if (radio) radio.checked = true
 
     document.getElementById(groupId).addEventListener('change', (e) => {
-      if (e.target.type === 'radio') save(storageKey, e.target.value)
+      if (e.target.type === 'radio') save(storageKey, Number(e.target.value))
     })
   }
 

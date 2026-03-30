@@ -30,7 +30,8 @@ browser.runtime.onInstalled.addListener((details) => {
   // Clear channel emote cache (in-memory + storage) so stale data doesn't block refetches
   channelEmotesMap = {};
   channelEmotesFetchedAt = {};
-  browser.storage.local.remove('channel_emotes_map');
+  browser.storage.local.remove('channel_emotes_map')
+  browser.storage.local.remove('channel_emotes_fetched_at')
   if (details.reason === 'install') {
     browser.tabs.create({
       url: browser.runtime.getURL('welcome.html')
@@ -68,8 +69,28 @@ function getStorableChannelEmotes() {
   }
   return map
 }
-const CHANNEL_EMOTES_TTL = 30 * 60 * 1000; // 30 minutes
-let currentChannelOwner = null; // Track last-fetched channel (for content.js tab)
+const CHANNEL_EMOTES_TTL = 30 * 60 * 1000 // 30 minutes
+const CHANNEL_EMOTES_EMPTY_TTL = 5 * 60 * 1000 // 5 minutes for zero-result channels
+const tabChannels = new Map() // tabId → { channel, channelOwner }
+
+// Get the most recently set channel owner from any tab
+function getActiveChannelOwner() {
+  let latest = null
+  for (const entry of tabChannels.values()) {
+    if (entry.channelOwner) latest = entry.channelOwner
+  }
+  return latest
+}
+
+// Get the channel string for a specific tab
+function getTabChannel(tabId) {
+  return tabChannels.get(tabId)?.channel || null
+}
+
+// Clean up tab tracking on close
+chrome.tabs.onRemoved.addListener((tabId) => {
+  tabChannels.delete(tabId)
+})
 let current7TVEmoteSetId = null; // Track current 7TV emote set ID for EventAPI
 let seventvEmoteSetIds = new Map(); // channelName → 7TV emote set ID
 let blockedEmotes = new Set();
@@ -79,8 +100,17 @@ let blockedUsers = new Set();
 let followedUsers = []; // Users the current user follows
 let currentUsername = null; // Logged-in user's username
 let socket = null;
-let lastBroadcastWasEmpty = false; // Track to prevent spamming 0-emote broadcasts
-let currentChannel = null;
+let lastBroadcastWasEmpty = false // Track to prevent spamming 0-emote broadcasts
+let lastInventoryFetch = 0 // Timestamp of last successful inventory fetch
+let inventoryRefreshTimer = null // Debounce WS-triggered inventory refreshes
+
+function scheduleInventoryRefresh() {
+  if (inventoryRefreshTimer) clearTimeout(inventoryRefreshTimer)
+  inventoryRefreshTimer = setTimeout(() => {
+    inventoryRefreshTimer = null
+    fetchEmoteInventory()
+  }, 2000)
+}
 let unreadNotifCount = 0; // Unread notification count for extension badge
 let cachedFollowHistory = null; // Cache follow:history for late-loading content scripts
 let cachedFollowColors = null; // Cache follow:colors for late-loading content scripts
@@ -101,27 +131,31 @@ let initPromise = null; // Track init completion for message handlers
 
 // Auto-detect login/logout via httpOnly cookie changes
 browser.cookies.onChanged.addListener((changeInfo) => {
-  const c = changeInfo.cookie
-  if (c.name !== 'auth' || !c.domain.includes('heatsync.org')) return
+  try {
+    const c = changeInfo.cookie
+    if (c.name !== 'auth' || !c.domain.includes('heatsync.org')) return
 
-  if (changeInfo.removed) {
-    log(' Auth cookie removed — logging out')
-    authToken = null
-    emoteInventory = []
-    blockedEmotes = new Set()
-    followedUsers = []
-    browser.storage.local.remove(['emote_inventory', 'blocked_emotes', 'auth_token_encrypted', 'auth_token', 'user_info'])
-    broadcastToTabs({ type: 'auth_changed', loggedIn: false })
-  } else {
-    log(' Auth cookie set — logging in')
-    authToken = c.value
-    storeToken(c.value)
-    fetchEmoteInventory()
-    fetchBlockedEmotes()
-    fetchFollowedUsers()
-    fetchUserInfo()
-    connectWebSocket()
-    broadcastToTabs({ type: 'auth_changed', loggedIn: true })
+    if (changeInfo.removed) {
+      log(' Auth cookie removed — logging out')
+      authToken = null
+      emoteInventory = []
+      blockedEmotes = new Set()
+      followedUsers = []
+      browser.storage.local.remove(['emote_inventory', 'blocked_emotes', 'auth_token_encrypted', 'auth_token', 'user_info']).catch(err => log(' storage remove failed:', err?.message))
+      broadcastToTabs({ type: 'auth_changed', loggedIn: false })
+    } else {
+      log(' Auth cookie set — logging in')
+      authToken = c.value
+      storeToken(c.value).catch(err => log(' storeToken failed:', err?.message))
+      fetchEmoteInventory().catch(err => log(' fetchEmoteInventory failed:', err?.message))
+      fetchBlockedEmotes().catch(err => log(' fetchBlockedEmotes failed:', err?.message))
+      fetchFollowedUsers().catch(err => log(' fetchFollowedUsers failed:', err?.message))
+      fetchUserInfo().catch(err => log(' fetchUserInfo failed:', err?.message))
+      connectWebSocket().catch(err => log(' connectWebSocket failed:', err?.message))
+      broadcastToTabs({ type: 'auth_changed', loggedIn: true })
+    }
+  } catch (err) {
+    log(' cookies.onChanged error:', err?.message)
   }
 })
 const API_URL = 'https://heatsync.org'; // Production
@@ -328,8 +362,13 @@ async function getAuthCookie() {
 
 // Fetch user's emote inventory via HTTP
 async function fetchEmoteInventory() {
+  // Skip if fetched within 10s (WS events already deliver fresh data)
+  if (Date.now() - lastInventoryFetch < 10000) {
+    log(' Inventory fetch skipped — last fetch was', Math.round((Date.now() - lastInventoryFetch) / 1000) + 's ago')
+    return
+  }
   try {
-    const authToken = await getAuthCookie();
+    const authToken = await getAuthCookie()
     if (!authToken) {
       log(' No auth token for inventory fetch');
       emoteInventory = [];
@@ -397,8 +436,9 @@ async function fetchEmoteInventory() {
     if (emoteInventory.length > 0) {
       log(' Sample emotes:', emoteInventory.slice(0, 3).map(e => e.name));
     }
-    lastBroadcastWasEmpty = false; // Reset - we have real emotes now
-    broadcastToTabs({ type: 'inventory_update', emotes: emoteInventory });
+    lastBroadcastWasEmpty = false // Reset - we have real emotes now
+    lastInventoryFetch = Date.now()
+    broadcastToTabs({ type: 'inventory_update', emotes: emoteInventory })
   } catch (error) {
     console.error('[heatsync] fetchEmoteInventory failed:', error.message || error)
     emoteInventory = [];
@@ -632,7 +672,7 @@ async function lookupTwitchUserId(username) {
           twitchIdCache.delete(twitchIdCache.keys().next().value);
         }
         twitchIdCache.set(username, id);
-        console.log('[hs-bg] GQL lookup', username, '→', id);
+        log('[hs-bg] GQL lookup', username, '→', id)
         return id;
       }
     }
@@ -697,7 +737,7 @@ async function fetch7TVChannelEmotes(channelName, channelId = null, platform = '
       // Try Twitch ID lookup first
       const sevenTvUrl = `https://7tv.io/v3/users/twitch/${identifier}`;
       response = await fetchWithTimeout(sevenTvUrl);
-      broadcastToTabs({ type: 'debug_log', msg: `7TV fetch ${channelName}: ${sevenTvUrl} → ${response.status}` });
+      if (DEBUG) broadcastToTabs({ type: 'debug_log', msg: `7TV fetch ${channelName}: ${sevenTvUrl} → ${response.status}` })
 
       if (!response.ok) {
         log(' 7TV: Twitch ID lookup failed (' + response.status + '), trying username fallback...');
@@ -737,27 +777,27 @@ async function fetch7TVChannelEmotes(channelName, channelId = null, platform = '
     return { emotes, setId: emoteSet.id };
   } catch (error) {
     console.error('[hs-bg] 7TV FETCH ERROR for', channelName, ':', error?.message || error);
-    broadcastToTabs({ type: 'debug_log', msg: `7TV ERROR ${channelName}: ${error?.message || error}` });
+    if (DEBUG) broadcastToTabs({ type: 'debug_log', msg: `7TV ERROR ${channelName}: ${error?.message || error}` })
     return [];
   }
 }
 
 // Fetch channel owner's emotes (public API) + third-party channel emotes
 async function fetchChannelOwnerEmotes(channelName, channelId = null, platform = 'twitch') {
-  // Skip if already fetched with results, or currently loading (sentinel prevents race)
-  // Empty array [] is truthy — don't treat zero-result fetches as cached (allow retry)
-  const cached = channelEmotesMap[channelName];
+  // Skip if already fetched, or currently loading (sentinel prevents race)
+  const cached = channelEmotesMap[channelName]
   if (cached === 'loading') {
-    log(' Channel emotes currently loading for', channelName, '- skipping');
-    return;
+    log(' Channel emotes currently loading for', channelName, '- skipping')
+    return
   }
-  if (Array.isArray(cached) && cached.length > 0) {
-    const age = Date.now() - (channelEmotesFetchedAt[channelName] || 0);
-    if (age < CHANNEL_EMOTES_TTL) {
-      log(' Channel emotes already fetched for', channelName, '- skipping (', cached.length, 'emotes,', Math.round(age / 1000) + 's old)');
-      return;
+  if (Array.isArray(cached)) {
+    const age = Date.now() - (channelEmotesFetchedAt[channelName] || 0)
+    const ttl = cached.length > 0 ? CHANNEL_EMOTES_TTL : CHANNEL_EMOTES_EMPTY_TTL
+    if (age < ttl) {
+      log(' Channel emotes already fetched for', channelName, '- skipping (', cached.length, 'emotes,', Math.round(age / 1000) + 's old)')
+      return
     }
-    log(' Channel emotes stale for', channelName, '(', Math.round(age / 1000) + 's) - refetching');
+    log(' Channel emotes stale for', channelName, '(', Math.round(age / 1000) + 's) - refetching')
   }
   channelEmotesMap[channelName] = 'loading';
 
@@ -785,7 +825,7 @@ async function fetchChannelOwnerEmotes(channelName, channelId = null, platform =
     // Resolve Twitch user ID once for BTTV + 7TV (both need numeric ID) — skip for Kick
     if (platform !== 'kick' && !channelId) {
       channelId = await lookupTwitchUserId(channelName)
-      broadcastToTabs({ type: 'debug_log', msg: `decapi/gql lookup ${channelName} → ${channelId || 'FAILED'}` })
+      if (DEBUG) broadcastToTabs({ type: 'debug_log', msg: `decapi/gql lookup ${channelName} → ${channelId || 'FAILED'}` })
     }
 
     // Fetch third-party emotes in PARALLEL for speed
@@ -800,7 +840,7 @@ async function fetchChannelOwnerEmotes(channelName, channelId = null, platform =
     // fetch7TVChannelEmotes returns { emotes, setId } or [] on error
     const sevenTVEmotes = sevenTVResult?.emotes || sevenTVResult || [];
     const sevenTVSetId = sevenTVResult?.setId || null;
-    broadcastToTabs({ type: 'debug_log', msg: `${channelName} BTTV:${bttvEmotes.length} FFZ:${ffzEmotes.length} 7TV:${sevenTVEmotes.length} Twitch:${twitchChannelEmotes.length} HS:${heatsyncEmotes.length}` });
+    if (DEBUG) broadcastToTabs({ type: 'debug_log', msg: `${channelName} BTTV:${bttvEmotes.length} FFZ:${ffzEmotes.length} 7TV:${sevenTVEmotes.length} Twitch:${twitchChannelEmotes.length} HS:${heatsyncEmotes.length}` })
 
     // Store emotes for this specific channel (prune old entries to bound memory)
     const emotes = [...heatsyncEmotes, ...bttvEmotes, ...ffzEmotes, ...sevenTVEmotes, ...twitchChannelEmotes];
@@ -814,7 +854,12 @@ async function fetchChannelOwnerEmotes(channelName, channelId = null, platform =
     }
     updateEmoteUrlMap();
 
-    currentChannelOwner = channelName;
+    // Update channelOwner in all tab entries that match this channel
+    for (const [tabId, entry] of tabChannels) {
+      if (entry.channel?.endsWith('/' + channelName)) {
+        entry.channelOwner = channelName
+      }
+    }
     log(' ✅ Channel emotes loaded for', channelName + ':', emotes.length,
       `(heatsync: ${heatsyncEmotes.length}, bttv: ${bttvEmotes.length}, ffz: ${ffzEmotes.length}, 7tv: ${sevenTVEmotes.length})`);
 
@@ -1134,13 +1179,13 @@ function send7TVSubscribe(setId) {
 function subscribe7TVEmoteSet(setId) {
   if (!setId) return;
 
-  ensure7TVConnection();
+  ensure7TVConnection()
 
-  if (seventvWebSocket.readyState === WebSocket.OPEN) {
-    send7TVSubscribe(setId);
+  if (seventvWebSocket && seventvWebSocket.readyState === WebSocket.OPEN) {
+    send7TVSubscribe(setId)
   } else {
     // Queue for when connection opens
-    seventvPendingSubs.add(setId);
+    seventvPendingSubs.add(setId)
   }
 }
 
@@ -1242,10 +1287,11 @@ let seventvPollTimer = null;
 const SEVENTV_POLL_INTERVAL = 30000;
 
 function start7TVPolling() {
-  stop7TVPolling();
-  if (!currentChannelOwner) return;
-  log(' 7TV Poll: Starting for', currentChannelOwner);
-  seventvPollTimer = setInterval(poll7TVEmoteSet, SEVENTV_POLL_INTERVAL);
+  stop7TVPolling()
+  const owner = getActiveChannelOwner()
+  if (!owner) return
+  log(' 7TV Poll: Starting for', owner)
+  seventvPollTimer = trackInterval(setInterval(poll7TVEmoteSet, SEVENTV_POLL_INTERVAL))
 }
 
 function stop7TVPolling() {
@@ -1256,9 +1302,16 @@ function stop7TVPolling() {
 }
 
 async function poll7TVEmoteSet() {
-  if (!currentChannelOwner) return;
-  const channelName = currentChannelOwner;
-  const platform = currentChannel?.split('/')[0] || 'twitch';
+  const channelName = getActiveChannelOwner()
+  if (!channelName) return
+  // Find the platform from any tab tracking this channel owner
+  let platform = 'twitch'
+  for (const entry of tabChannels.values()) {
+    if (entry.channelOwner === channelName && entry.channel) {
+      platform = entry.channel.split('/')[0] || 'twitch'
+      break
+    }
+  }
 
   try {
     let response;
@@ -1462,7 +1515,7 @@ function updateExtensionBadge() {
 // Persist muted users to storage as { username, expiresAt } objects
 function persistMutedUsers() {
   const arr = Array.from(mutedUsers.entries()).map(([username, expiresAt]) => ({ username, expiresAt }));
-  browser.storage.local.set({ muted_users: arr });
+  browser.storage.local.set({ muted_users: arr }).catch(() => {})
 }
 
 // Remove expired mutes and broadcast unmutes
@@ -1489,13 +1542,13 @@ trackInterval(setInterval(pruneExpiredMutes, 60000));
 
 // Broadcast updates to all content scripts AND update storage
 async function broadcastToTabs(message) {
-  // Update storage for instant access
+  // Fire-and-forget storage writes so tab messaging isn't blocked
   if (message.type === 'inventory_update') {
-    await browser.storage.local.set({ emote_inventory: message.emotes });
+    browser.storage.local.set({ emote_inventory: message.emotes }).catch(() => {})
   } else if (message.type === 'global_emotes_update') {
-    await browser.storage.local.set({ global_emotes: message.emotes });
+    browser.storage.local.set({ global_emotes: message.emotes }).catch(() => {})
   } else if (message.type === 'blocked_update') {
-    await browser.storage.local.set({ blocked_emotes: message.blocked });
+    browser.storage.local.set({ blocked_emotes: message.blocked }).catch(() => {})
   }
 
   // Broadcast to streaming tabs only (filtered query instead of all-tabs scan)
@@ -1634,8 +1687,8 @@ async function connectWebSocket() {
       wsState = WS_STATE.CONNECTED;
 
       // Start heartbeat to keep connection alive (server has 2min idle timeout)
-      if (heartbeatInterval) clearInterval(heartbeatInterval);
-      heartbeatInterval = setInterval(() => {
+      if (heartbeatInterval) clearInterval(heartbeatInterval)
+      heartbeatInterval = trackInterval(setInterval(() => {
         if (isSocketOpen()) {
           try {
             socket.send(JSON.stringify({ type: 'presence:heartbeat' }));
@@ -1643,13 +1696,17 @@ async function connectWebSocket() {
             log(' Heartbeat send failed:', err?.message);
           }
         }
-      }, 30000); // Every 30 seconds
+      }, 90000)) // Every 90 seconds (well within 2min server timeout)
 
-      // Join channel immediately
-      if (currentChannel) {
-        const [platform, channel] = currentChannel.split('/');
-        log(' 📺 Joining channel:', { platform, channel });
-        wsSendDirect({ type: 'channel:join', platform, channel });
+      // Rejoin all tracked tab channels
+      const rejoinedChannels = new Set()
+      for (const entry of tabChannels.values()) {
+        if (entry.channel && !rejoinedChannels.has(entry.channel)) {
+          const [platform, channel] = entry.channel.split('/')
+          log(' 📺 Rejoining channel:', { platform, channel })
+          wsSendDirect({ type: 'channel:join', platform, channel })
+          rejoinedChannels.add(entry.channel)
+        }
       }
 
       // Authenticate if we have a token
@@ -1782,9 +1839,8 @@ function handleWSMessage(msg) {
       log(' 📢 EMOTE BROADCAST RECEIVED:', {
         username: msg.username,
         emoteName: msg.emoteName,
-        currentChannel: currentChannel,
         emoteUrl: msg.emoteData?.url
-      });
+      })
       broadcastToTabs({
         type: 'emote_broadcast',
         username: msg.username,
@@ -1797,8 +1853,8 @@ function handleWSMessage(msg) {
       // Could be broadcast (other users) OR personal inventory removal
       if (msg.slot !== undefined) {
         // Personal inventory removal (has slot number)
-        log(' 🗑️ EMOTE REMOVED FROM YOUR INVENTORY:', msg.name, 'slot:', msg.slot);
-        fetchEmoteInventory();
+        log(' 🗑️ EMOTE REMOVED FROM YOUR INVENTORY:', msg.name, 'slot:', msg.slot)
+        scheduleInventoryRefresh()
       } else if (msg.username) {
         // Broadcast from other user
         log(' 🗑️ EMOTE REMOVED BROADCAST:', msg);
@@ -1812,10 +1868,10 @@ function handleWSMessage(msg) {
 
     case 'emote:added':
       // Server notifies when emote is added to YOUR inventory (e.g., uploaded on website)
-      log(' ✅ EMOTE ADDED TO INVENTORY:', msg.name, 'slot:', msg.slot);
-      // Refresh inventory to get the new emote
-      fetchEmoteInventory();
-      break;
+      log(' ✅ EMOTE ADDED TO INVENTORY:', msg.name, 'slot:', msg.slot)
+      // Refresh inventory to get the new emote (debounced)
+      scheduleInventoryRefresh()
+      break
 
     case 'emote:blocked':
       if (msg.hash && !blockedEmotes.has(msg.hash)) {
@@ -2055,32 +2111,38 @@ function scheduleReconnect() {
 }
 
 // Join channel room for emote broadcasting
-async function joinChannel(platform, channelName, channelId = null) {
-  currentChannel = `${platform}/${channelName}`;
-  log(' 🚪 Setting channel:', currentChannel, 'id:', channelId);
+async function joinChannel(platform, channelName, channelId = null, senderTabId = null) {
+  const channelKey = `${platform}/${channelName}`
+  if (senderTabId) {
+    tabChannels.set(senderTabId, { channel: channelKey, channelOwner: null })
+  }
+  log(' 🚪 Setting channel:', channelKey, 'id:', channelId, 'tab:', senderTabId)
 
   // Fetch channel owner's emotes (7TV EventAPI subscription happens inside)
-  fetchChannelOwnerEmotes(channelName, channelId, platform);
+  fetchChannelOwnerEmotes(channelName, channelId, platform)
 
   // Ensure we're connected first
   if (!isSocketOpen()) {
-    await connectWebSocket();
+    await connectWebSocket()
   }
 
   // Always send channel:join (wsSend queues if not ready)
-  wsSend({ type: 'channel:join', platform, channel: channelName });
-  log(' 🚪 Joined channel:', currentChannel);
+  wsSend({ type: 'channel:join', platform, channel: channelName })
+  log(' 🚪 Joined channel:', channelKey)
 }
 
 // Broadcast emote usage - returns success status
-function broadcastEmoteUsage(emoteName, emoteHash) {
-  if (!isSocketOpen() || !isAuthenticated || !currentChannel) {
-    log(' ⚠️ Cannot broadcast emote - socket open:', isSocketOpen(), 'authenticated:', isAuthenticated, 'channel:', currentChannel);
-    return { success: false, reason: 'not_ready', socketOpen: isSocketOpen(), authenticated: isAuthenticated, channel: currentChannel };
+function broadcastEmoteUsage(emoteName, emoteHash, senderTabId = null) {
+  const senderChannel = senderTabId ? getTabChannel(senderTabId) : null
+  // Fall back to any active tab's channel if sender tab unknown
+  const channelStr = senderChannel || (tabChannels.size > 0 ? [...tabChannels.values()].pop().channel : null)
+  if (!isSocketOpen() || !isAuthenticated || !channelStr) {
+    log(' ⚠️ Cannot broadcast emote - socket open:', isSocketOpen(), 'authenticated:', isAuthenticated, 'channel:', channelStr)
+    return { success: false, reason: 'not_ready', socketOpen: isSocketOpen(), authenticated: isAuthenticated, channel: channelStr }
   }
 
   // Parse platform and channel from combined format
-  const [platform, channel] = currentChannel.split('/');
+  const [platform, channel] = channelStr.split('/')
 
   log(' 📤 BROADCASTING EMOTE USAGE:', {
     emoteName,
@@ -2271,15 +2333,22 @@ async function removeFromInventory(emoteHash, emoteName) {
     });
 
     // Broadcast removal to other clients so they clear pending broadcasts
-    if (isSocketOpen() && currentChannel) {
-      const [platform, channel] = currentChannel.split('/');
-      wsSend({
-        type: 'emote:removed',
-        platform,
-        channel,
-        emoteName: emoteName
-      });
-      log(' 📤 Broadcasted emote removal:', emoteName);
+    // Send to all active channels
+    const sentChannels = new Set()
+    for (const entry of tabChannels.values()) {
+      if (entry.channel && isSocketOpen() && !sentChannels.has(entry.channel)) {
+        const [platform, channel] = entry.channel.split('/')
+        wsSend({
+          type: 'emote:removed',
+          platform,
+          channel,
+          emoteName: emoteName
+        })
+        sentChannels.add(entry.channel)
+      }
+    }
+    if (sentChannels.size > 0) {
+      log(' 📤 Broadcasted emote removal:', emoteName)
     }
 
     return { success: true, slot: emote.slot };
@@ -2540,15 +2609,15 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   } else if (message.type === 'join_channel') {
     // Content script detected channel change
-    log(' 📺 Content script requesting channel join:', message.platform, '/', message.channel, 'id:', message.channelId);
-    joinChannel(message.platform, message.channel, message.channelId);
-    sendResponse({ received: true });
+    log(' 📺 Content script requesting channel join:', message.platform, '/', message.channel, 'id:', message.channelId)
+    joinChannel(message.platform, message.channel, message.channelId, sender.tab?.id)
+    sendResponse({ received: true })
   } else if (message.type === 'emote_sent') {
     // Content script detected user sent emote
     log(' 💬 Content script detected emote sent:', message.emoteName);
-    const result = broadcastEmoteUsage(message.emoteName, message.emoteHash);
-    log(' 📤 Broadcast result:', result);
-    sendResponse(result || { success: false, reason: 'unknown' });
+    const result = broadcastEmoteUsage(message.emoteName, message.emoteHash, sender.tab?.id)
+    log(' 📤 Broadcast result:', result)
+    sendResponse(result || { success: false, reason: 'unknown' })
     return true; // Keep channel open for response
   } else if (message.type === 'get_channel_emotes') {
     // Multichat/content requesting channel emotes (may have missed the broadcast)
@@ -2734,12 +2803,17 @@ async function initialize() {
     }
   } catch {}
 
-  // Restore channelEmotesFetchedAt so TTL checks survive service worker restart
+  // Restore channel emotes and fetch timestamps so TTL checks survive service worker restart
   try {
-    const stored = await browser.storage.local.get('channel_emotes_fetched_at');
+    const stored = await browser.storage.local.get(['channel_emotes_fetched_at', 'channel_emotes_map'])
     if (stored.channel_emotes_fetched_at && typeof stored.channel_emotes_fetched_at === 'object') {
-      channelEmotesFetchedAt = stored.channel_emotes_fetched_at;
-      log(' ✓ Restored channelEmotesFetchedAt for', Object.keys(channelEmotesFetchedAt).length, 'channels');
+      channelEmotesFetchedAt = stored.channel_emotes_fetched_at
+      log(' ✓ Restored channelEmotesFetchedAt for', Object.keys(channelEmotesFetchedAt).length, 'channels')
+    }
+    if (stored.channel_emotes_map && typeof stored.channel_emotes_map === 'object') {
+      Object.assign(channelEmotesMap, stored.channel_emotes_map)
+      updateEmoteUrlMap()
+      log(' ✓ Restored channelEmotesMap for', Object.keys(stored.channel_emotes_map).length, 'channels')
     }
   } catch {}
 

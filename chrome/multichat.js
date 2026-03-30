@@ -7931,12 +7931,15 @@ const STORAGE_KEY = 'heatsync_multichat';
     const container = document.createElement('div');
     container.id = 'hs-mc-tabbar';
     // Static hardcoded tab buttons — no user input, safe innerHTML
+    // Two sections: scrollable channel tabs + fixed utility buttons (always visible)
     container.innerHTML = `
-      <button class="hs-mc-tab active" data-tab="feed">feed</button>
-      <button class="hs-mc-tab" data-tab="whispers">whispers</button>
-      <button class="hs-mc-tab" data-tab="mentions">mentions</button>
-      <button class="hs-mc-tab" data-tab="live">live</button>
-      <button class="hs-mc-tab" data-tab="add">+</button>
+      <div class="hs-mc-tabs-scroll">
+        <button class="hs-mc-tab active" data-tab="feed">feed</button>
+        <button class="hs-mc-tab" data-tab="whispers">whispers</button>
+        <button class="hs-mc-tab" data-tab="mentions">mentions</button>
+        <button class="hs-mc-tab" data-tab="live">live</button>
+        <button class="hs-mc-tab" data-tab="add">+</button>
+      </div>
       <div class="hs-mc-tab-utils">
         <button class="hs-mc-tab hs-mc-util-btn hs-mc-rotate" data-tab="rotate" title="rotate tabs (T)">T</button>
         <button class="hs-mc-tab hs-mc-util-btn hs-mc-font-btn" data-font-dir="-1" title="smaller text">A-</button>
@@ -8999,18 +9002,17 @@ const STORAGE_KEY = 'heatsync_multichat';
     const existingChannelTabs = tabBarElement.querySelectorAll('.hs-mc-tab[data-tab]:not([data-tab="live"]):not([data-tab="feed"]):not([data-tab="mentions"]):not([data-tab="whispers"]):not([data-tab="add"]):not([data-tab="rotate"]):not([data-tab="settings"])');
     existingChannelTabs.forEach(t => t.remove());
 
-    // Add channel tabs before the + button (or append if no + button, e.g. Kick)
-    const addBtn = tabBarElement.querySelector('[data-tab="add"]');
-    const rotateBtn = tabBarElement.querySelector('[data-tab="rotate"]');
-    const insertBefore = addBtn || rotateBtn;
+    // Add channel tabs before the + button in the scroll section
+    const scrollSection = tabBarElement.querySelector('.hs-mc-tabs-scroll') || tabBarElement;
+    const addBtn = scrollSection.querySelector('[data-tab="add"]');
     config.channels.forEach(ch => {
       const tab = document.createElement('button');
       tab.className = 'hs-mc-tab';
       const id = typeof ch === 'string' ? ch : ch.id;
       tab.dataset.tab = id;
       tab.textContent = id;
-      if (insertBefore) insertBefore.before(tab);
-      else tabBarElement.appendChild(tab);
+      if (addBtn) addBtn.before(tab);
+      else scrollSection.appendChild(tab);
     });
 
     // Update active state
@@ -9112,13 +9114,25 @@ const STORAGE_KEY = 'heatsync_multichat';
         color: #000 !important;
       }
       /* Utility button row (T, A, A, ⚙) */
+      /* Scrollable section for channel tabs */
+      .hs-mc-tabs-scroll {
+        display: flex;
+        gap: 4px;
+        overflow-x: auto;
+        overflow-y: hidden;
+        flex: 1;
+        min-width: 0;
+        scrollbar-width: none;
+      }
+      .hs-mc-tabs-scroll::-webkit-scrollbar { display: none; }
+      /* Fixed utility buttons — always visible */
       .hs-mc-tab-utils {
         display: flex;
         gap: 4px;
-        width: 100%;
+        flex-shrink: 0;
       }
       .hs-mc-util-btn {
-        flex: 1 !important;
+        flex: 0 0 auto !important;
         min-width: 0 !important;
         padding: 4px 0 !important;
         font-size: 13px !important;
@@ -11308,8 +11322,16 @@ const STORAGE_KEY = 'heatsync_multichat';
         box-sizing: border-box;
         flex: 0 0 auto;
       }
-      .hs-tabs-right .hs-mc-rotate {
-        margin-left: 0;
+      .hs-tabs-right .hs-mc-tabs-scroll {
+        flex-direction: column;
+        overflow-y: auto;
+        overflow-x: hidden;
+        flex: 1;
+        min-height: 0;
+      }
+      .hs-tabs-right .hs-mc-tab-utils {
+        flex-direction: column;
+        border-top: 1px solid #333;
         margin-top: auto;
       }
       .hs-tabs-right #hs-mc-overlay {
@@ -11388,6 +11410,18 @@ const STORAGE_KEY = 'heatsync_multichat';
         text-align: center;
         box-sizing: border-box;
         flex: 0 0 auto;
+      }
+      .hs-tabs-left .hs-mc-tabs-scroll {
+        flex-direction: column;
+        overflow-y: auto;
+        overflow-x: hidden;
+        flex: 1;
+        min-height: 0;
+      }
+      .hs-tabs-left .hs-mc-tab-utils {
+        flex-direction: column;
+        border-top: 1px solid #333;
+        margin-top: auto;
       }
       .hs-tabs-left .hs-mc-rotate {
         margin-left: 0;

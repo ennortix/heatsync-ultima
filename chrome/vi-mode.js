@@ -11,6 +11,11 @@
   const DEBUG = false
   const log = DEBUG ? console.log.bind(console, '[hs-vi]') : () => {}
 
+  // Lifecycle controller — abort() tears down ALL listeners
+  const lifecycle = new AbortController()
+  const { signal } = lifecycle
+  window.addEventListener('pagehide', () => lifecycle.abort(), { once: true })
+
   // Chat input selectors
   const INPUT_SELECTORS = [
     '[data-a-target="chat-input"]',        // Twitch (contenteditable)
@@ -1026,24 +1031,29 @@
 
   // Listen for settings changes via postMessage (from heatsync-button.js)
   window.addEventListener('message', (e) => {
+    if (e.origin !== location.origin) return
     if (e.data?.type === 'heatsync-settings-changed' && e.data.settings) {
       const wasEnabled = enabled
       enabled = !!e.data.settings.viMode
       if (enabled && !wasEnabled) onEnable()
       else if (!enabled && wasEnabled) onDisable()
     }
-  })
+  }, { signal })
 
   // Listen for storage changes (Firefox + Chrome compatible)
   const viApi = (typeof browser !== 'undefined' && browser) || (typeof chrome !== 'undefined' && chrome)
   if (viApi?.storage?.onChanged) {
-    viApi.storage.onChanged.addListener((changes, area) => {
+    const storageListener = (changes, area) => {
       if (area === 'local' && changes.ui_settings?.newValue) {
         const wasEnabled = enabled
         enabled = !!changes.ui_settings.newValue.viMode
         if (enabled && !wasEnabled) onEnable()
         else if (!enabled && wasEnabled) onDisable()
       }
+    }
+    viApi.storage.onChanged.addListener(storageListener)
+    signal.addEventListener('abort', () => {
+      viApi.storage.onChanged.removeListener(storageListener)
     })
   }
 
@@ -1084,12 +1094,12 @@
     loadSettings()
 
     // Keydown at capture phase on window — fires before all other handlers
-    window.addEventListener('keydown', handleKeyDown, { capture: true })
+    window.addEventListener('keydown', handleKeyDown, { capture: true, signal })
 
     // Track focus
     document.addEventListener('focusin', (e) => {
       if (matchesInput(e.target)) attach(e.target)
-    })
+    }, { signal })
 
     document.addEventListener('focusout', (e) => {
       if (e.target === activeEl) {
@@ -1097,7 +1107,7 @@
           if (document.activeElement !== activeEl) detach()
         }, 150)
       }
-    })
+    }, { signal })
 
     // Try to find existing focused input
     for (const sel of INPUT_SELECTORS) {

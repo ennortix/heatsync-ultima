@@ -1245,76 +1245,6 @@
       log(' No rules to apply (all settings false)');
     }
 
-    // DISABLED - welcome message removal was breaking chat layout
-    // The parent-walking logic was too aggressive and removed important containers
-    // if (settings.hideChatHeader) {
-    //   startWelcomeMessageRemoval();
-    // } else {
-    //   stopWelcomeMessageRemoval();
-    // }
-    stopWelcomeMessageRemoval(); // Always stop, never start
-  }
-
-  // Aggressive welcome message removal
-  let welcomeRemovalInterval = null;
-
-  function removeWelcomeMessage() {
-    // Only target the specific welcome message element
-    const selectors = [
-      '[data-a-target="chat-welcome-message"]'
-    ];
-
-    let removed = 0;
-    selectors.forEach(selector => {
-      document.querySelectorAll(selector).forEach(el => {
-        // Walk up and remove empty parent wrappers too
-        let current = el;
-        while (current && current.parentElement) {
-          const parent = current.parentElement;
-          current.remove();
-          removed++;
-          // Stop if parent has other children or is a main container
-          if (parent.children.length > 0 ||
-              parent.classList.contains('chat-scrollable-area__message-container') ||
-              parent.classList.contains('chat-list--default') ||
-              parent.classList.contains('scrollable-area')) {
-            break;
-          }
-          current = parent;
-        }
-      });
-    });
-
-    if (removed > 0) {
-      log(' Removed', removed, 'welcome message elements');
-    }
-    return removed;
-  }
-
-  function startWelcomeMessageRemoval() {
-    // Stop any existing interval
-    stopWelcomeMessageRemoval();
-
-    // Remove immediately
-    removeWelcomeMessage();
-
-    // Keep checking for 10 seconds (Twitch might re-add it)
-    let attempts = 0;
-    welcomeRemovalInterval = setInterval(() => {
-      removeWelcomeMessage();
-      attempts++;
-      if (attempts >= 20) { // 10 seconds (500ms * 20)
-        clearInterval(welcomeRemovalInterval);
-        welcomeRemovalInterval = null;
-      }
-    }, 500);
-  }
-
-  function stopWelcomeMessageRemoval() {
-    if (welcomeRemovalInterval) {
-      clearInterval(welcomeRemovalInterval);
-      welcomeRemovalInterval = null;
-    }
   }
 
   // Cached settings (loaded async on init, updated on change)
@@ -1859,8 +1789,8 @@
       grid.innerHTML = `
         <div class="heatsync-error-state">
           <div class="heatsync-error-icon">⚠️</div>
-          <div class="heatsync-error-msg">${currentError}</div>
-          <button class="heatsync-retry-btn" onclick="window.dispatchEvent(new CustomEvent('heatsync-retry', {detail: '${currentTab}'}))">
+          <div class="heatsync-error-msg">${escapeHtml(currentError)}</div>
+          <button class="heatsync-retry-btn" onclick="window.dispatchEvent(new CustomEvent('heatsync-retry', {detail: '${escapeHtml(currentTab)}'}))">
             retry
           </button>
         </div>
@@ -2590,7 +2520,7 @@
       // Show preview grid (first 24 emotes)
       const previewEmotes = emotes.slice(0, 24);
       previewEl.innerHTML = previewEmotes.map(e =>
-        `<img src="${e.url}" alt="${escapeHtml(e.name)}" title="${escapeHtml(e.name)} (${escapeHtml(e.provider)})" loading="lazy" referrerpolicy="no-referrer">`
+        `<img src="${escapeHtml(e.url)}" alt="${escapeHtml(e.name)}" title="${escapeHtml(e.name)} (${escapeHtml(e.provider)})" loading="lazy" referrerpolicy="no-referrer">`
       ).join('');
       previewEl.style.display = 'grid';
 
@@ -2763,17 +2693,17 @@
 
     log(' Retry interval started');
 
-    // Watch for SPA navigation
+    // Watch for SPA navigation (poll instead of subtree observer on body)
     let lastUrl = location.href;
-    cleanup.trackObserver(new MutationObserver(() => {
+    cleanup.setInterval(() => {
       if (location.href !== lastUrl) {
         lastUrl = location.href;
         buttonInjected = false;
         emotesPreloaded = false; // Reset so emotes reload for new channel
         closePanel();
-        cleanup.setTimeout(injectButton, 500, 'button-nav-reinject');
+        cleanup.setTimeout(injectButton, 500);
       }
-    }), 'button-nav-observer').observe(document.body, { childList: true, subtree: true });
+    }, 1000);
 
     // Listen for inventory updates from content script - refresh panel if open (debounced)
     let inventoryRefreshTimeout = null;

@@ -276,9 +276,9 @@
     if (months >= 12) {
       const y = Math.floor(months / 12)
       const m = months % 12
-      return m > 0 ? `${y}y ${m}M` : `${y}y`
+      return m > 0 ? `${y}y ${m}mo` : `${y}y`
     }
-    return `${months}M`
+    return `${months}mo`
   }
 
   // User hover tooltip (profile preview)

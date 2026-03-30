@@ -250,17 +250,20 @@ function initInput() {
   // Update placeholder based on current tab
   updateInputPlaceholder();
 
-  // Global Tab key to focus input from anywhere
+  // Global Tab key to focus input — only when multichat panel is active
   if (!window._hsMcTabHandler) {
     window._hsMcTabHandler = true;
     document.addEventListener('keydown', (e) => {
       if (e.key !== 'Tab') return;
       if (currentTab === 'add') return;
+      const active = document.activeElement;
+      const mcContainer = document.getElementById('hs-mc-container');
+      if (!mcContainer?.contains(active) && active?.id !== 'hs-mc-input') return;
       const input = document.getElementById('hs-mc-input');
       if (!input) return;
 
       // If not already in our input, reveal bar and focus it
-      if (document.activeElement !== input) {
+      if (active !== input) {
         e.preventDefault();
         showInputBar();
         input.focus();

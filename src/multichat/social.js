@@ -3,7 +3,7 @@
 // Heat tier display — number + color glow + row effects, no emoji
 function getHeatDisplay(heat) {
   if (!heat || heat <= 0) return null
-  let color, glow = false, border = '#555', borderWidth = 2, bg = ''
+  let color, glow = false, border = '#808080', borderWidth = 2, bg = ''
   if (heat >= 5000) {
     color = '#fff'; glow = true; border = '#fff'; borderWidth = 4
     bg = 'rgba(60,20,0,0.15)'; // + breathing animation applied separately
@@ -19,9 +19,9 @@ function getHeatDisplay(heat) {
   } else if (heat >= 10) {
     color = '#ff8700'; border = '#ff8700'; borderWidth = 2
   } else if (heat >= 1) {
-    color = '#666'; border = '#555'; borderWidth = 2
+    color = '#808080'; border = '#808080'; borderWidth = 2
   } else {
-    color = '#444'
+    color = '#000'
   }
   const suffix = heat >= 10 ? '°' : ''
   const breathe = heat >= 500
@@ -423,7 +423,7 @@ function buildFeedMessageDiv(m, opUsername) {
   const statsHtml = stats ? ` ${stats}` : ''
 
   const anonAvatar = avatarsEnabled ? `<img class="hs-feed-avatar" src="https://heatsync.org/anon.webp" alt="" loading="lazy">` : '';
-  const userAvatar = avatarsEnabled ? `<img class="hs-feed-avatar" src="${avatarUrl}" alt="" loading="lazy" onerror="this.style.display='none'">` : '';
+  const userAvatar = avatarsEnabled ? `<img class="hs-feed-avatar" src="${escapeHtml(avatarUrl)}" alt="" loading="lazy" onerror="this.style.display='none'">` : '';
   const userHtml = isAnon
     ? `${anonAvatar}<span class="hs-feed-user" style="color:#808080">Anonymous</span>`
     : `${userAvatar}<a href="https://heatsync.org/user/${encodeURIComponent(m.username)}" target="_blank" class="hs-feed-user hs-mc-user" data-username="${escapeHtml((m.username || 'anon').toLowerCase())}" style="color:${sanitizeColor(m.user_color || '#fff')}">${escapeHtml(m.username || 'anon')}</a>`;
@@ -511,6 +511,7 @@ function formatText(html) {
   return html
 }
 
+const _feedEmoteRegexCache = new Map()
 function renderFeedContent(content, emoteRefs) {
   if (!content) return '';
   let html = escapeHtml(String(content));
@@ -522,9 +523,13 @@ function renderFeedContent(content, emoteRefs) {
     const parts = html.split(/(<[^>]+>)/)
     html = parts.map((part, i) => {
       if (i % 2 === 1) return part // skip HTML tags
-      part = part.replace(/(https?:\/\/[^\s<"]+)/gi, '<a href="$1" target="_blank" rel="noopener" class="hs-mc-link">$1</a>')
+      part = part.replace(/(https?:\/\/[^\s<"]+)/gi, (match) => {
+        const escaped = escapeHtml(match)
+        return `<a href="${escaped}" target="_blank" rel="noopener" class="hs-mc-link">${escaped}</a>`
+      })
       part = part.replace(/(?<!\/\/)([a-z0-9-]+(?:\.[a-z0-9-]+)+\/[^\s<"]*)/gi, (m) => {
-        return `<a href="https://${m}" target="_blank" rel="noopener" class="hs-mc-link">${m}</a>`
+        const escaped = escapeHtml(m)
+        return `<a href="https://${escaped}" target="_blank" rel="noopener" class="hs-mc-link">${escaped}</a>`
       })
       return part
     }).join('')
@@ -544,10 +549,14 @@ function renderFeedContent(content, emoteRefs) {
       if (!url) continue
       const escaped = escapeHtml(name);
       const safeUrl = escapeHtml(url);
-      html = html.replace(
-        new RegExp(`\\b${escaped.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'g'),
-        `<img class="hs-mc-emote" src="${safeUrl}" alt="${escaped}" title="${escaped}" loading="lazy">`
-      );
+      const cacheKey = escaped
+      let re = _feedEmoteRegexCache.get(cacheKey)
+      if (!re) {
+        re = new RegExp(`\\b${escaped.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'g')
+        _feedEmoteRegexCache.set(cacheKey, re)
+        if (_feedEmoteRegexCache.size > 500) _feedEmoteRegexCache.delete(_feedEmoteRegexCache.keys().next().value)
+      }
+      html = html.replace(re, `<img class="hs-mc-emote" src="${safeUrl}" alt="${escaped}" title="${escaped}" loading="lazy">`);
     }
   }
   return html;
@@ -752,6 +761,7 @@ async function fetchNotifications() {
     const msgResp = await apiFetch('/api/messages?filter_type=mentions&limit=20');
     if (msgResp.ok) {
       notifMessages = msgResp.data?.messages || [];
+      if (notifMessages.length > 500) notifMessages = notifMessages.slice(-500);
     }
   } catch (e) {
     log('Notification fetch error:', e);
@@ -831,7 +841,9 @@ function renderActivity() {
       const chanColor = _profileCache.get(m.channel?.toLowerCase())?.profile?.twitch_color || '#fff';
       const chanLabel = m.channel ? `<a href="https://heatsync.org/twitch/${encodeURIComponent(m.channel)}" target="_blank" class="hs-feed-user hs-mc-user" data-username="${escapeHtml(m.channel.toLowerCase())}" style="color:${sanitizeColor(chanColor)};font-weight:bold">${escapeHtml(m.channel)}</a> ` : '';
       let evtHtml = escapeHtml(evtText)
-      evtHtml = evtHtml.replace(/(switched to |went live \u2014 )(.+)$/, '$1<span style="color:#fff">$2</span>')
+      evtHtml = evtHtml.replace(/(switched to |went live \u2014 )(.+)$/, (_, prefix, game) => {
+        return `${prefix}<span style="color:#fff">${game}</span>`
+      })
       div.innerHTML = `${tsSpan}${chanLabel}${evtHtml}`;
       frag.appendChild(div);
     } else {

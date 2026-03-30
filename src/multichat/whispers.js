@@ -219,7 +219,7 @@ async function sendWhisperMessage(key, text) {
   whisperTimeline.push({
     user: 'you',
     text,
-    color: '#aaa',
+    color: '#808080',
     time: Date.now(),
     self: true,
     platform: userInfo.platform,
@@ -284,7 +284,7 @@ function renderWhispersTab() {
             whisperTimeline.push({
               user: isSelf ? 'you' : dm.other_display_name,
               text: m.content,
-              color: isSelf ? '#aaa' : (dm.other_color || '#ff8700'),
+              color: isSelf ? '#808080' : (dm.other_color || '#ff8700'),
               time: t,
               self: isSelf,
               platform: 'heatsync',
@@ -353,7 +353,7 @@ function renderWhispersTab() {
     const recipientLink = m.self ? userLink(them, theirColor, theirUsername) : userLink(me, myColor, me)
 
     // All dynamic values pass through escapeHtml/sanitizeColor — safe innerHTML (all values escaped above)
-    div.innerHTML = `${tsHtml}<span style="color:${platColor};font-size:10px;font-weight:700">[${platTag}]</span> ${senderLink} <span style="color:#666">-&gt;</span> ${recipientLink}: ${processEmotes(escapeHtml(m.text), null)}`
+    div.innerHTML = `${tsHtml}<span style="color:${platColor};font-size:10px;font-weight:700">[${platTag}]</span> ${senderLink} <span style="color:#808080">-&gt;</span> ${recipientLink}: ${processEmotes(escapeHtml(m.text), null)}`
     frag.appendChild(div)
   }
 

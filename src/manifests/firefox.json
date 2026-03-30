@@ -25,6 +25,7 @@
     "https://cdn.betterttv.net/*",
     "https://cdn.7tv.app/*",
     "https://recent-messages.robotty.de/*",
+    "https://api.twitch.tv/*",
     "https://decapi.me/*",
     "https://www.youtube.com/*"
   ],
@@ -46,13 +47,13 @@
     },
     {
       "matches": ["https://*.twitch.tv/*"],
-      "js": ["emoji-data.js", "autocomplete-hook.js"],
+      "js": ["autocomplete-hook.js"],
       "run_at": "document_end",
       "world": "MAIN"
     },
     {
       "matches": ["https://*.kick.com/*"],
-      "js": ["emoji-data.js", "kick-autocomplete-hook.js"],
+      "js": ["kick-autocomplete-hook.js"],
       "run_at": "document_end"
     },
     {
@@ -68,12 +69,12 @@
     },
     {
       "matches": ["https://*.twitch.tv/*", "https://*.kick.com/*"],
-      "js": ["emoji-data.js", "heatsync-button.js"],
+      "js": ["heatsync-button.js"],
       "run_at": "document_idle"
     },
     {
       "matches": ["https://*.twitch.tv/*", "https://*.kick.com/*"],
-      "js": ["emoji-data.js", "shared-utils.js", "multichat.js"],
+      "js": ["shared-utils.js", "multichat.js"],
       "run_at": "document_idle"
     },
     {

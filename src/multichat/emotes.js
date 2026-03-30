@@ -263,7 +263,7 @@
 
     // Close when clicking outside (remove any previous handler first)
     if (_pickerCloseHandler) document.removeEventListener('click', _pickerCloseHandler);
-    setTimeout(() => {
+    cleanup.setTimeout(() => {
       _pickerCloseHandler = (e) => {
         if (mcSignal?.aborted) { document.removeEventListener('click', _pickerCloseHandler); _pickerCloseHandler = null; return; }
         if (!picker.contains(e.target) && !e.target.closest('#hs-mc-emote-btn')) {
@@ -275,7 +275,7 @@
           _pickerCloseHandler = null;
         }
       };
-      document.addEventListener('click', _pickerCloseHandler);
+      cleanup.addEventListener(document, 'click', _pickerCloseHandler, 'mc-picker-close');
     }, 0);
   }
 
@@ -636,6 +636,7 @@
           if (!cached.hash) cached.hash = serverHash;
         } else {
           emoteCache.set(emoteName, { url: emoteUrl, source: emoteSource || 'heatsync', state: 'owned', hash: serverHash });
+          while (emoteCache.size > 2000) { emoteCache.delete(emoteCache.keys().next().value) }
         }
         // Update hash lookup maps
         emoteHashes.set(emoteName, serverHash);
@@ -672,7 +673,7 @@
         type: block ? 'block_emote' : 'unblock_emote',
         hash: hash,
         emoteName: emoteName
-      });
+      }).catch(() => {});
       log('Synced', block ? 'block' : 'unblock', emoteName, '(hash:', hash.substring(0, 8) + '...) to API');
     } catch (e) {
       log('API sync error:', e);
@@ -750,6 +751,7 @@
           const source = e.source || detectEmoteSource(e.url, 'heatsync');
           const state = getEmoteState(e.name, source);
           emoteCache.set(e.name, { url: e.url, source, state, zeroWidth: !!e.zeroWidth });
+          while (emoteCache.size > 2000) { emoteCache.delete(emoteCache.keys().next().value) }
           if (e.hash) registerHash(e.name, e.hash);
         }
       });
@@ -759,6 +761,7 @@
         if (e.name && e.url) {
           const source = e.source || 'heatsync';
           emoteCache.set(e.name, { url: e.url, source, state: 'owned', zeroWidth: !!e.zeroWidth });
+          while (emoteCache.size > 2000) { emoteCache.delete(emoteCache.keys().next().value) }
         }
       });
 
@@ -792,6 +795,7 @@
       (stored.native_twitch_emotes || []).forEach(e => {
         if (e.name && e.url && !emoteCache.has(e.name)) {
           emoteCache.set(e.name, { url: e.url, source: 'twitch', state: 'global' });
+          while (emoteCache.size > 2000) { emoteCache.delete(emoteCache.keys().next().value) }
           if (e.hash) registerHash(e.name, e.hash);
         }
       });
@@ -978,7 +982,7 @@
         // Color @mentions — always hoverable for profile cards
         if (word.startsWith('@') && word.length > 1) {
           const name = word.slice(1).replace(/[,.:!?]+$/, '').toLowerCase();
-          const color = knownColors.get(name) || '#dedede';
+          const color = knownColors.get(name) || '#fff';
           result.push(`<a href="https://heatsync.org/user/${encodeURIComponent(name)}" target="_blank" class="hs-mc-user" data-username="${escapeHtml(name)}" style="color:${sanitizeColor(color)};font-weight:bold">${escapeHtml(word)}</a>`);
         } else if (linksEnabled && /^(https?:\/\/\S+|[a-z0-9-]+(\.[a-z0-9-]+)+\/\S*)/i.test(word)) {
           // Validate URL protocol before creating link (block javascript:, data:, etc.)

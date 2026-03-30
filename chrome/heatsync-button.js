@@ -1127,7 +1127,7 @@
       .hs-emote-ctx {
         position: fixed;
         z-index: 5001;
-        background: #1a1a2e;
+        background: #000;
         border: 1px solid #808080;
         border-radius: 4px;
         padding: 4px 0;

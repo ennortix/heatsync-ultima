@@ -373,7 +373,7 @@
       const ch = config.channels.find(c => (typeof c === 'string' ? c : c.id) === tabId);
       const menu = document.createElement('div');
       menu.id = 'hs-mc-ctx-menu';
-      menu.style.cssText = 'position:fixed;z-index:99999;background:#000;border:1px solid #444;border-radius:0;padding:4px 0;min-width:150px;font-size:12px;font-family:inherit;';
+      menu.style.cssText = 'position:fixed;z-index:99999;background:#000;border:1px solid #808080;border-radius:0;padding:4px 0;min-width:150px;font-size:12px;font-family:inherit;';
 
       const mkItem = (label, color, fn) => {
         const item = document.createElement('div');
@@ -1161,17 +1161,17 @@
         <div class="hs-mc-settings-group">
           <div class="hs-mc-settings-group-title">muted users</div>
           ${mutedUsers.size === 0
-            ? `<div class="hs-mc-setting-row" style="color:#666;font-size:11px">no muted users</div>`
+            ? `<div class="hs-mc-setting-row" style="color:#808080;font-size:11px">no muted users</div>`
             : [...mutedUsers].sort().map(u => `
           <div class="hs-mc-setting-row">
             <span class="hs-mc-setting-label" style="font-size:11px">${u}</span>
-            <button class="hs-mc-unmute-btn" data-username="${u}" style="background:none;border:1px solid #444;color:#999;font-size:11px;cursor:pointer;padding:1px 6px;line-height:1.4" title="unmute">&#x2715;</button>
+            <button class="hs-mc-unmute-btn" data-username="${u}" style="background:none;border:1px solid #808080;color:#808080;font-size:11px;cursor:pointer;padding:1px 6px;line-height:1.4" title="unmute">&#x2715;</button>
           </div>`).join('')
           }
         </div>
         <div class="hs-mc-settings-group">
           <div class="hs-mc-setting-row" style="justify-content:flex-end">
-            <button class="hs-mc-defaults-btn" style="background:#c0c0c0;border:2px outset #fff;padding:2px 10px;font-size:11px;font-weight:bold;cursor:pointer;font-family:'Liberation Mono',monospace;color:#000;box-shadow:1px 1px 0 #000">default</button>
+            <button class="hs-mc-defaults-btn" style="background:#808080;border:2px outset #fff;padding:2px 10px;font-size:11px;font-weight:bold;cursor:pointer;font-family:'Liberation Mono',monospace;color:#000;box-shadow:1px 1px 0 #000">default</button>
           </div>
         </div>
       </div>
@@ -1446,7 +1446,7 @@
       .hs-whisper-conv {
         padding: 6px 8px;
         cursor: pointer;
-        border-bottom: 1px solid #222;
+        border-bottom: 1px solid #000;
       }
       .hs-whisper-conv:hover {
         background: #fff;
@@ -1454,7 +1454,7 @@
       }
       .hs-whisper-conv:hover .hs-whisper-preview,
       .hs-whisper-conv:hover .hs-whisper-time {
-        color: #444;
+        color: #808080;
       }
       .hs-whisper-preview {
         color: #808080;
@@ -1480,7 +1480,7 @@
       }
       .hs-whisper-header {
         padding: 6px 8px;
-        border-bottom: 1px solid #444;
+        border-bottom: 1px solid #808080;
         font-size: 13px;
         position: sticky;
         top: 0;
@@ -1505,7 +1505,7 @@
         line-height: 1.4;
         font-style: italic;
         background: rgba(128, 128, 0, 0.25);
-        border-bottom: 1px solid #333;
+        border-bottom: 1px solid #000;
         color: #ffff00;
       }
       .hs-mc-stream-event .hs-mc-user { text-decoration: none; font-weight: bold; }
@@ -1523,11 +1523,11 @@
         padding: 2px 8px;
         font-size: 13px;
         border-left: 3px solid #ff0000;
-        border-bottom: 1px solid #333;
-        color: #ccc;
+        border-bottom: 1px solid #000;
+        color: #fff;
       }
       .hs-mc-feed-inline .hs-mc-ts { margin-right: 4px; }
-      .hs-mc-feed-inline .hs-feed-body { color: #ddd; }
+      .hs-mc-feed-inline .hs-feed-body { color: #fff; }
       .hs-mc-feed-inline .hs-feed-thread-link {
         color: #ffff00; text-decoration: none; font-size: 10px; margin-right: 4px;
       }
@@ -1762,7 +1762,7 @@
       }
 
       .hs-mc-ts {
-        color: #555;
+        color: #808080;
         font-size: 10px;
         margin-right: 4px;
         font-variant-numeric: tabular-nums;
@@ -1789,7 +1789,7 @@
         color: #ffffff;
       }
       .hs-mc-msg.hs-mc-zebra, .hs-feed-msg.hs-mc-zebra {
-        background: #111;
+        background: #000;
       }
       .hs-mc-msg:hover {
       }
@@ -1801,9 +1801,9 @@
         position: absolute;
         top: 1px;
         right: 2px;
-        background: #222;
-        border: 1px solid #444;
-        color: #aaa;
+        background: #000;
+        border: 1px solid #808080;
+        color: #fff;
         font-size: 11px;
         padding: 0 4px;
         cursor: pointer;
@@ -1821,11 +1821,11 @@
         display: flex;
         align-items: center;
         justify-content: space-between;
-        background: #111;
-        border-bottom: 1px solid #333;
+        background: #000;
+        border-bottom: 1px solid #000;
         padding: 2px 6px;
         font-size: 11px;
-        color: #aaa;
+        color: #fff;
       }
       #hs-mc-reply-indicator span {
         overflow: hidden;
@@ -1835,7 +1835,7 @@
       #hs-mc-reply-cancel {
         background: none;
         border: none;
-        color: #888;
+        color: #808080;
         cursor: pointer;
         font-size: 13px;
         padding: 0 2px;
@@ -1901,8 +1901,8 @@
       }
       .hs-mc-msg.mention .hs-mc-reply-ctx,
       .hs-mc-msg.mention .hs-mc-reply-user {
-        color: #ccc;
-        border-left-color: #ccc;
+        color: #fff;
+        border-left-color: #fff;
       }
       .hs-mc-msg.tweet {
         background: rgba(212, 73, 73, 0.3);
@@ -2139,8 +2139,8 @@
       }
       #hs-user-tooltip .hs-pc-followage.hs-pc-nofollow {
         background: transparent;
-        color: #666;
-        border: 1px solid #444;
+        color: #808080;
+        border: 1px solid #808080;
       }
       #hs-user-tooltip .hs-pc-channel-follows {
         padding: 2px 3px;
@@ -2434,7 +2434,7 @@
         -webkit-box-orient: vertical;
       }
       #hs-link-tooltip .link-desc {
-        color: #aaa;
+        color: #fff;
         font-size: 11px;
         overflow: hidden;
         text-overflow: ellipsis;
@@ -2447,7 +2447,7 @@
         font-size: 10px;
       }
       #hs-link-tooltip .link-loading {
-        color: #888;
+        color: #808080;
         font-size: 11px;
       }
 
@@ -3274,7 +3274,7 @@
       }
       .hs-mc-rewards-empty {
         font-size: 11px;
-        color: #555;
+        color: #808080;
         padding: 8px 14px;
       }
       .hs-mc-rewards-grid {
@@ -3492,17 +3492,17 @@
         background: rgba(255,255,255,0.06);
       }
       .hs-mc-setting-label {
-        color: #ccc !important;
+        color: #fff !important;
         font-size: 13px !important;
         cursor: help;
-        border-bottom: 1px dotted #666;
+        border-bottom: 1px dotted #808080;
       }
       #hs-settings-tip {
         position: fixed;
         z-index: 99999;
-        background: #1a1a1a;
-        color: #ddd;
-        border: 1px solid #555;
+        background: #000;
+        color: #fff;
+        border: 1px solid #808080;
         padding: 6px 8px;
         font-size: 11px;
         line-height: 1.4;
@@ -3636,7 +3636,7 @@
       }
       .hs-tabs-right .hs-mc-tab-utils {
         flex-direction: column;
-        border-top: 1px solid #333;
+        border-top: 1px solid #000;
         margin-top: auto;
       }
       .hs-tabs-right #hs-mc-overlay {
@@ -3726,7 +3726,7 @@
       }
       .hs-tabs-left .hs-mc-tab-utils {
         flex-direction: column;
-        border-top: 1px solid #333;
+        border-top: 1px solid #000;
         margin-top: auto;
       }
       .hs-tabs-left .hs-mc-rotate {
@@ -3913,7 +3913,7 @@
 
       /* ---- TEXT FORMATTING ---- */
       .hs-spoiler {
-        background: #aaa;
+        background: #808080;
         color: transparent;
         cursor: pointer;
         border-radius: 2px;
@@ -3928,7 +3928,7 @@
         color: #789922;
       }
       .hs-inline-code {
-        background: #2a2a2a;
+        background: #000;
         padding: 1px 4px;
         border-radius: 2px;
         font-family: monospace;
@@ -4020,7 +4020,7 @@
       }
       #channel-chatroom:not(.hs-native-hidden) ~ #hs-mc-container > #hs-mc-tabbar {
         pointer-events: auto;
-        background: var(--hs-bg, #18181b) !important;
+        background: var(--hs-bg, #000) !important;
         position: relative !important;
       }
       /* Top tabs (default) — horizontal bar at top of chat */
@@ -4871,6 +4871,7 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
 
   // Process YouTube emotes (inline emoji images from innertube)
   // preEscaped=true when input is already HTML-escaped (chained after processEmotes)
+  const _ytEmoteRegexCache = new Map()
   function processYtEmotes(text, emotes, preEscaped) {
     if (!emotes || emotes.length === 0) return preEscaped ? text : escapeHtml(text)
 
@@ -4881,7 +4882,12 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
       const alt = typeof emote.alt === 'string' ? emote.alt : ''
       if (!alt || !url || !(url.startsWith('http') || url.startsWith('//'))) continue
       const escaped = escapeHtml(alt).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-      const re = new RegExp(escaped, 'g')
+      let re = _ytEmoteRegexCache.get(escaped)
+      if (!re) {
+        re = new RegExp(escaped, 'g')
+        _ytEmoteRegexCache.set(escaped, re)
+        if (_ytEmoteRegexCache.size > 500) _ytEmoteRegexCache.delete(_ytEmoteRegexCache.keys().next().value)
+      }
       result = result.replace(re, () => `<img src="${escapeHtml(url)}" alt="${escapeHtml(alt)}" class="hs-mc-emote" style="height:1.2em;vertical-align:middle;" />`)
     }
     return result
@@ -5093,7 +5099,7 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
 
     const desc = document.createElement('div')
     desc.textContent = 'enter at least one platform'
-    desc.style.cssText = 'font-size:13px;color:#626262;margin-bottom:2px;'
+    desc.style.cssText = 'font-size:13px;color:#808080;margin-bottom:2px;'
     wrapper.appendChild(desc)
 
     const makeRow = (label, placeholder) => {
@@ -5133,14 +5139,14 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
       btn.textContent = text
       const base = primary
         ? 'background:transparent;color:#ffffff;border:1px solid #ffffff;'
-        : 'background:transparent;color:#626262;border:1px solid #444444;'
+        : 'background:transparent;color:#808080;border:1px solid #808080;'
       btn.style.cssText = base + 'padding:6px 22px;border-radius:0;cursor:pointer;font-weight:600;font-size:14px;font-family:inherit;min-width:80px;transition:all .15s;'
       btn.addEventListener('mouseenter', () => {
         btn.style.background = '#ffffff'; btn.style.color = '#000000'
       })
       btn.addEventListener('mouseleave', () => {
         btn.style.background = 'transparent'
-        btn.style.color = primary ? '#ffffff' : '#626262'
+        btn.style.color = primary ? '#ffffff' : '#808080'
       })
       return btn
     }
@@ -5312,14 +5318,14 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
       btn.textContent = text;
       const base = primary
         ? 'background:transparent;color:#ffffff;border:1px solid #ffffff;'
-        : 'background:transparent;color:#626262;border:1px solid #444444;';
+        : 'background:transparent;color:#808080;border:1px solid #808080;';
       btn.style.cssText = base + 'padding:6px 22px;border-radius:0;cursor:pointer;font-weight:600;font-size:14px;font-family:inherit;min-width:80px;transition:all .15s;';
       btn.addEventListener('mouseenter', () => {
         btn.style.background = '#ffffff'; btn.style.color = '#000000';
       });
       btn.addEventListener('mouseleave', () => {
         btn.style.background = 'transparent';
-        btn.style.color = primary ? '#ffffff' : '#626262';
+        btn.style.color = primary ? '#ffffff' : '#808080';
       });
       return btn;
     };
@@ -5620,7 +5626,7 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
     const menu = document.createElement('div');
     menu.id = 'hs-mc-live-picker';
     const rect = anchorEl.getBoundingClientRect();
-    menu.style.cssText = `position:fixed;z-index:99999;background:#111;border:1px solid #444;padding:4px 0;min-width:130px;font-size:12px;font-family:inherit;left:${rect.left}px;top:${rect.bottom + 2}px;`;
+    menu.style.cssText = `position:fixed;z-index:99999;background:#000;border:1px solid #808080;padding:4px 0;min-width:130px;font-size:12px;font-family:inherit;left:${rect.left}px;top:${rect.bottom + 2}px;`;
 
     const curLive = getLiveChannel()?.toLowerCase();
 
@@ -6865,9 +6871,8 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
 
       // Close old read-only IRC to prevent zombie WebSocket reconnect loops
       // NOTE: auth IRC (for sending) is NOT killed here — it survives SPA navigation
-      if (irc?.ws) {
-        irc.ws.onclose = null; // prevent auto-reconnect
-        irc.ws.close();
+      if (irc) {
+        irc.destroy();
       }
       irc = null;
 

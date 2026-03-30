@@ -48,8 +48,8 @@
       #${DROPDOWN_ID} {
         position: fixed;
         z-index: 99999;
-        background: #1a1a2e;
-        border: 1px solid #333;
+        background: #000;
+        border: 1px solid #000;
         border-radius: 6px;
         padding: 4px 0;
         max-height: 280px;
@@ -65,7 +65,7 @@
         gap: 8px;
         padding: 6px 12px;
         cursor: pointer;
-        color: #ccc;
+        color: #fff;
       }
       #${DROPDOWN_ID} .hs-ac-item.selected,
       #${DROPDOWN_ID} .hs-ac-item:hover {
@@ -78,7 +78,7 @@
         text-align: center;
       }
       #${DROPDOWN_ID} .hs-ac-name {
-        color: #999;
+        color: #808080;
       }
     `
     document.head.appendChild(style)

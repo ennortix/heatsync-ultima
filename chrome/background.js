@@ -128,6 +128,7 @@ function setYtVideoChannel(videoId, channelId) {
 
 let authToken = null; // Will be set by content script or loaded from storage
 let initPromise = null; // Track init completion for message handlers
+let authFailedBlock = false; // Prevent reconnect loop after authentication_failed
 
 // Auto-detect login/logout via httpOnly cookie changes
 browser.cookies.onChanged.addListener((changeInfo) => {
@@ -146,6 +147,7 @@ browser.cookies.onChanged.addListener((changeInfo) => {
     } else {
       log(' Auth cookie set — logging in')
       authToken = c.value
+      authFailedBlock = false
       storeToken(c.value).catch(err => log(' storeToken failed:', err?.message))
       fetchEmoteInventory().catch(err => log(' fetchEmoteInventory failed:', err?.message))
       fetchBlockedEmotes().catch(err => log(' fetchBlockedEmotes failed:', err?.message))
@@ -341,7 +343,9 @@ async function getAuthCookie() {
       authToken = stored
       return stored
     }
-  } catch (err) {}
+  } catch (err) {
+    console.error('[HS] retrieveToken error:', err)
+  }
 
   // Read httpOnly auth cookie directly via cookies API
   try {
@@ -914,7 +918,7 @@ async function fetchFFZEmotes() {
     const data = await response.json();
     const emotes = [];
 
-    for (const set of Object.values(data.sets)) {
+    for (const set of Object.values(data?.sets || {})) {
       if (data.default_sets.includes(set.id)) {
         for (const emote of (set.emoticons || [])) {
           const rawUrl = emote.urls['1'] || emote.urls['2'] || emote.urls['4']
@@ -941,7 +945,7 @@ async function fetch7TVEmotes() {
     if (!response.ok) return [];
 
     const data = await response.json();
-    return sanitizeEmoteList(data.emotes.map(e => ({
+    return sanitizeEmoteList((data?.emotes || []).map(e => ({
       name: e.name,
       url: `https://cdn.7tv.app/emote/${e.id}/1x.webp`,
       source: '7tv',
@@ -964,7 +968,7 @@ async function fetchTwitchGlobalEmotes() {
     }
 
     const data = await response.json();
-    const emotes = data.emotes.map(e => ({
+    const emotes = (data?.emotes || []).map(e => ({
       name: e.name,
       url: e.url,
       url_2x: e.url_2x,
@@ -994,7 +998,7 @@ async function fetchTwitchChannelEmotes(channelName) {
     const data = await response.json();
     log(' Loaded', data.count, 'Twitch channel emotes for', channelName);
 
-    return sanitizeEmoteList(data.emotes.map(e => ({
+    return sanitizeEmoteList((data?.emotes || []).map(e => ({
       name: e.name,
       url: e.url,
       source: 'twitch',
@@ -1018,7 +1022,7 @@ async function fetchGlobalEmotes() {
     log(' Global emotes response:', response.status, response.ok);
     if (response.ok) {
       const data = await response.json();
-      globalEmotes = sanitizeEmoteList(data.emotes.map(e => ({
+      globalEmotes = sanitizeEmoteList((data?.emotes || []).map(e => ({
         name: e.name,
         url: e.url,
         source: e.provider,
@@ -1147,16 +1151,24 @@ function ensure7TVConnection() {
       seventvSubscribedSets.clear();
 
       if (seventvReconnectAttempts < SEVENTV_MAX_RECONNECT_ATTEMPTS && seventvEmoteSetIds.size > 0) {
-        const delay = Math.min(1000 * Math.pow(2, seventvReconnectAttempts), 30000);
+        const jitter7tv = Math.random() * 1000;
+        const delay = Math.min(1000 * Math.pow(2, seventvReconnectAttempts), 30000) + jitter7tv;
         seventvReconnectAttempts++;
-        log(` 7TV EventAPI: Reconnecting in ${delay}ms (attempt ${seventvReconnectAttempts}/${SEVENTV_MAX_RECONNECT_ATTEMPTS})`);
+        log(` 7TV EventAPI: Reconnecting in ${Math.round(delay)}ms (attempt ${seventvReconnectAttempts}/${SEVENTV_MAX_RECONNECT_ATTEMPTS})`);
         clearTimeout(seventvReconnectTimer);
         seventvReconnectTimer = setTimeout(() => {
+          seventvReconnectTimer = null;
           // Re-subscribe all known sets on reconnect
           for (const setId of seventvEmoteSetIds.values()) {
             subscribe7TVEmoteSet(setId);
           }
         }, delay);
+      } else if (seventvReconnectAttempts >= SEVENTV_MAX_RECONNECT_ATTEMPTS) {
+        log(' 7TV EventAPI: Max reconnect attempts reached, giving up. Will retry in 10 minutes.');
+        setTimeout(() => {
+          seventvReconnectAttempts = 0;
+          ensure7TVConnection();
+        }, 600000);
       }
     };
   } catch (err) {
@@ -1557,7 +1569,9 @@ async function broadcastToTabs(message) {
     for (const tab of tabs) {
       browser.tabs.sendMessage(tab.id, message).catch(() => {})
     }
-  } catch (e) {}
+  } catch (e) {
+    console.error('[HS] broadcastToTabs error:', e)
+  }
 }
 
 // =============================================================================
@@ -1795,6 +1809,7 @@ function wsSend(msg) {
       socket.send(JSON.stringify(msg));
       return true;
     } catch (err) {
+      return false;
     }
   }
 
@@ -1832,6 +1847,9 @@ function handleWSMessage(msg) {
 
     case 'authentication_failed':
       isAuthenticated = false;
+      authToken = null;
+      authFailedBlock = true;
+      if (socket) { socket.close(); }
       break;
 
     case 'emote:broadcast':
@@ -2098,11 +2116,13 @@ function handleWSMessage(msg) {
 
 // Reconnect with exponential backoff
 function scheduleReconnect() {
+  if (authFailedBlock) return; // Auth failed — don't loop
   if (reconnectTimer) return; // Already scheduled
 
-  const delay = Math.min(1000 * Math.pow(2, reconnectAttempts), 30000); // Max 30s
+  const jitter = Math.random() * 1000;
+  const delay = Math.min(1000 * Math.pow(2, reconnectAttempts), 30000) + jitter; // Max 30s + jitter
   reconnectAttempts++;
-  log(` Reconnecting in ${delay}ms (attempt ${reconnectAttempts})`);
+  log(` Reconnecting in ${Math.round(delay)}ms (attempt ${reconnectAttempts})`);
 
   reconnectTimer = setTimeout(() => {
     reconnectTimer = null;
@@ -2119,7 +2139,7 @@ async function joinChannel(platform, channelName, channelId = null, senderTabId 
   log(' 🚪 Setting channel:', channelKey, 'id:', channelId, 'tab:', senderTabId)
 
   // Fetch channel owner's emotes (7TV EventAPI subscription happens inside)
-  fetchChannelOwnerEmotes(channelName, channelId, platform)
+  fetchChannelOwnerEmotes(channelName, channelId, platform).catch(() => {})
 
   // Ensure we're connected first
   if (!isSocketOpen()) {
@@ -2441,7 +2461,7 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === 'fetch_live_status') {
     const channels = message.channels
     if (!channels?.length) { sendResponse(null); return true }
-    fetch(`https://heatsync.org/api/platform/live-status?channels=${encodeURIComponent(channels.join(','))}`)
+    fetch(`https://heatsync.org/api/platform/live-status?channels=${encodeURIComponent(channels.join(','))}`, { signal: AbortSignal.timeout(6000) })
       .then(r => r.ok ? r.json() : null)
       .then(data => sendResponse(data))
       .catch(() => sendResponse(null))
@@ -2530,14 +2550,14 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
     followedUsers = [];
     browser.storage.local.remove(['emote_inventory', 'blocked_emotes']);
     // Persist new token to encrypted storage
-    storeToken(message.token);
+    storeToken(message.token).catch(() => {});
     // Fetch inventory now that we have token
-    fetchEmoteInventory();
-    fetchBlockedEmotes();
-    fetchFollowedUsers();
+    fetchEmoteInventory().catch(() => {});
+    fetchBlockedEmotes().catch(() => {});
+    fetchFollowedUsers().catch(() => {});
     // IMPORTANT: Reconnect WebSocket with new token (fixes stale auth after login switch)
     log(' 🔄 Reconnecting WebSocket with new auth token...');
-    connectWebSocket();
+    connectWebSocket().catch(() => {});
     sendResponse({ ok: true });
   } else if (message.type === 'block_emote') {
     // Async - send response when done
@@ -2876,7 +2896,7 @@ async function initialize() {
   log(' ✅ READY - Stored in browser.storage');
   log(' Storage check:', globalEmotes.length, 'global,', emoteInventory.length, 'personal');
 
-  connectWebSocket();
+  connectWebSocket().catch(() => {});
 
   // Refresh inventory every 60 seconds
   trackInterval(setInterval(fetchEmoteInventory, 60000));

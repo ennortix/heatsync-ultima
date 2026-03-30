@@ -20,7 +20,6 @@
   // Twitch's internal real-time event bus (replaced PubSub Apr 2025).
   // Passively read notifications from topics Twitch already subscribes to.
   const OrigWebSocket = window.WebSocket
-  let hermesWs = null
   const channelIdToLogin = {}
   function setChannelId(id, login) {
     if (Object.keys(channelIdToLogin).length >= 200) {
@@ -39,10 +38,6 @@
       const evtType = pubsub.type
       if (!evtType) return
 
-      // Extract channel from topic string (format: "topic-name.<channelId>")
-      const topic = msg.notification.subscription?.id
-        ? '' // subscription ID, not topic — try to get channel from data
-        : ''
       // Channel login from pubsub data or channelIdToLogin map
       const resolveChannel = (id) => channelIdToLogin[id] || location.pathname.split('/')[1]?.toLowerCase() || id
 
@@ -62,7 +57,7 @@
       } else if (evtType === 'hype-train-end' && pubsub.data) {
         const d = pubsub.data
         window.postMessage({ type: 'heatsync-hermes-event', eventType: 'hype-train-end', channel: resolveChannel(d.channel_id), data: {
-          level: d.ending_reason === 'COMPLETED' ? (d.progress?.level?.value || 1) : (d.progress?.level?.value || 1)
+          level: d.progress?.level?.value || 1
         }}, location.origin)
       } else if (evtType === 'reward-redeemed' && pubsub.data?.redemption) {
         const r = pubsub.data.redemption
@@ -83,7 +78,6 @@
       ? new OrigWebSocket(url, protocols)
       : new OrigWebSocket(url)
     if (typeof url === 'string' && url.includes('hermes.twitch.tv')) {
-      hermesWs = ws
       ws.addEventListener('message', handleHermesMessage)
       log('Hermes WebSocket intercepted')
     }

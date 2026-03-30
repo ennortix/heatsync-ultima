@@ -430,7 +430,15 @@ window.addEventListener('pagehide', () => lifecycle.abort())
 const cleanup = {
   setInterval(fn, ms) { const id = setInterval(fn, ms); _timers.intervals.push(id); return id },
   clearInterval(id) { clearInterval(id); const i = _timers.intervals.indexOf(id); if (i !== -1) _timers.intervals.splice(i, 1) },
-  setTimeout(fn, ms) { const id = setTimeout(fn, ms); _timers.timeouts.push(id); return id },
+  setTimeout(fn, ms) {
+    const id = setTimeout(() => {
+      const idx = _timers.timeouts.indexOf(id)
+      if (idx !== -1) _timers.timeouts.splice(idx, 1)
+      fn()
+    }, ms)
+    _timers.timeouts.push(id)
+    return id
+  },
   clearTimeout(id) { clearTimeout(id); const i = _timers.timeouts.indexOf(id); if (i !== -1) _timers.timeouts.splice(i, 1) },
   addEventListener(target, event, handler) {
     target.addEventListener(event, handler, { signal: mcSignal })
@@ -521,7 +529,7 @@ function parseIrcLine(raw, channel) {
         type: 'notice',
         user: 'system',
         text: notice[2],
-        color: '#999',
+        color: '#808080',
         badges: '',
         channel: channel || notice[1].toLowerCase(),
         time: parseInt(tags['tmi-sent-ts']) || parseInt(tags['rm-received-ts']) || Date.now(),
@@ -543,7 +551,7 @@ function parseIrcLine(raw, channel) {
         type: 'notice',
         user: 'system',
         text,
-        color: '#999',
+        color: '#808080',
         badges: '',
         channel: channel || clearchat[1].toLowerCase(),
         time: parseInt(tags['tmi-sent-ts']) || parseInt(tags['rm-received-ts']) || Date.now(),
@@ -561,7 +569,7 @@ function parseIrcLine(raw, channel) {
         type: 'notice',
         user: 'system',
         text: `Message from ${tags.login || 'unknown'} deleted`,
-        color: '#999',
+        color: '#808080',
         badges: '',
         channel: channel || clearmsg[1].toLowerCase(),
         time: parseInt(tags['tmi-sent-ts']) || parseInt(tags['rm-received-ts']) || Date.now(),
@@ -1630,7 +1638,7 @@ async function sendKickMessage(kickSlug, text) {
 
     // Close when clicking outside (remove any previous handler first)
     if (_pickerCloseHandler) document.removeEventListener('click', _pickerCloseHandler);
-    setTimeout(() => {
+    cleanup.setTimeout(() => {
       _pickerCloseHandler = (e) => {
         if (mcSignal?.aborted) { document.removeEventListener('click', _pickerCloseHandler); _pickerCloseHandler = null; return; }
         if (!picker.contains(e.target) && !e.target.closest('#hs-mc-emote-btn')) {
@@ -1642,7 +1650,7 @@ async function sendKickMessage(kickSlug, text) {
           _pickerCloseHandler = null;
         }
       };
-      document.addEventListener('click', _pickerCloseHandler);
+      cleanup.addEventListener(document, 'click', _pickerCloseHandler, 'mc-picker-close');
     }, 0);
   }
 
@@ -2003,6 +2011,7 @@ async function sendKickMessage(kickSlug, text) {
           if (!cached.hash) cached.hash = serverHash;
         } else {
           emoteCache.set(emoteName, { url: emoteUrl, source: emoteSource || 'heatsync', state: 'owned', hash: serverHash });
+          while (emoteCache.size > 2000) { emoteCache.delete(emoteCache.keys().next().value) }
         }
         // Update hash lookup maps
         emoteHashes.set(emoteName, serverHash);
@@ -2039,7 +2048,7 @@ async function sendKickMessage(kickSlug, text) {
         type: block ? 'block_emote' : 'unblock_emote',
         hash: hash,
         emoteName: emoteName
-      });
+      }).catch(() => {});
       log('Synced', block ? 'block' : 'unblock', emoteName, '(hash:', hash.substring(0, 8) + '...) to API');
     } catch (e) {
       log('API sync error:', e);
@@ -2117,6 +2126,7 @@ async function sendKickMessage(kickSlug, text) {
           const source = e.source || detectEmoteSource(e.url, 'heatsync');
           const state = getEmoteState(e.name, source);
           emoteCache.set(e.name, { url: e.url, source, state, zeroWidth: !!e.zeroWidth });
+          while (emoteCache.size > 2000) { emoteCache.delete(emoteCache.keys().next().value) }
           if (e.hash) registerHash(e.name, e.hash);
         }
       });
@@ -2126,6 +2136,7 @@ async function sendKickMessage(kickSlug, text) {
         if (e.name && e.url) {
           const source = e.source || 'heatsync';
           emoteCache.set(e.name, { url: e.url, source, state: 'owned', zeroWidth: !!e.zeroWidth });
+          while (emoteCache.size > 2000) { emoteCache.delete(emoteCache.keys().next().value) }
         }
       });
 
@@ -2159,6 +2170,7 @@ async function sendKickMessage(kickSlug, text) {
       (stored.native_twitch_emotes || []).forEach(e => {
         if (e.name && e.url && !emoteCache.has(e.name)) {
           emoteCache.set(e.name, { url: e.url, source: 'twitch', state: 'global' });
+          while (emoteCache.size > 2000) { emoteCache.delete(emoteCache.keys().next().value) }
           if (e.hash) registerHash(e.name, e.hash);
         }
       });
@@ -2345,7 +2357,7 @@ async function sendKickMessage(kickSlug, text) {
         // Color @mentions — always hoverable for profile cards
         if (word.startsWith('@') && word.length > 1) {
           const name = word.slice(1).replace(/[,.:!?]+$/, '').toLowerCase();
-          const color = knownColors.get(name) || '#dedede';
+          const color = knownColors.get(name) || '#fff';
           result.push(`<a href="https://heatsync.org/user/${encodeURIComponent(name)}" target="_blank" class="hs-mc-user" data-username="${escapeHtml(name)}" style="color:${sanitizeColor(color)};font-weight:bold">${escapeHtml(word)}</a>`);
         } else if (linksEnabled && /^(https?:\/\/\S+|[a-z0-9-]+(\.[a-z0-9-]+)+\/\S*)/i.test(word)) {
           // Validate URL protocol before creating link (block javascript:, data:, etc.)
@@ -2731,8 +2743,8 @@ async function sendKickMessage(kickSlug, text) {
       let ttv = `<span class="hs-pc-platform twitch">ttv:${escapeHtml(p.twitch_username)}</span>`;
       if (p.twitch_verified) ttv += ' <span class="hs-pc-verified" title="Twitch Verified"><svg viewBox="0 0 16 16" fill="none" width="12" height="12" style="vertical-align:middle"><path d="M14.54 6.29L13.09 4.63l.26-2.17-2.13-.49L10.09.24 8 1.14 5.91.24 4.78 1.97l-2.13.49.26 2.17L1.46 6.29 2.72 8 1.46 9.71l1.45 1.66-.26 2.17 2.13.49L5.91 15.76 8 14.86l2.09.9 1.13-1.73 2.13-.49-.26-2.17 1.45-1.66L13.28 8l1.26-1.71z" fill="#9146ff"/><path d="M6.5 11.17L3.83 8.5l1.18-1.17L6.5 8.83l4.49-4.5L12.17 5.5 6.5 11.17z" fill="#fff"/></svg></span>';
       if (p.twitch_is_live) {
-        const vc = p.twitch_viewer_count || 0;
-        ttv += ` <span style="color:#f00">🔴${vc > 0 ? ' ' + formatCompact(vc) : ''}</span>`;
+        const vc = Number(p.twitch_viewer_count) || 0;
+        ttv += ` <span style="color:#f00">🔴${vc > 0 ? ' ' + escapeHtml(formatCompact(vc)) : ''}</span>`;
       }
       platforms += ttv;
     }
@@ -2740,8 +2752,8 @@ async function sendKickMessage(kickSlug, text) {
       let kk = `<span class="hs-pc-platform kick">kick:${escapeHtml(p.kick_username)}</span>`;
       if (p.kick_verified) kk += ' <span class="hs-pc-verified" title="Kick Verified"><svg viewBox="0 0 16 16" fill="none" width="12" height="12" style="vertical-align:middle"><path d="M14.54 6.29L13.09 4.63l.26-2.17-2.13-.49L10.09.24 8 1.14 5.91.24 4.78 1.97l-2.13.49.26 2.17L1.46 6.29 2.72 8 1.46 9.71l1.45 1.66-.26 2.17 2.13.49L5.91 15.76 8 14.86l2.09.9 1.13-1.73 2.13-.49-.26-2.17 1.45-1.66L13.28 8l1.26-1.71z" fill="#53fc18"/><path d="M6.5 11.17L3.83 8.5l1.18-1.17L6.5 8.83l4.49-4.5L12.17 5.5 6.5 11.17z" fill="#000"/></svg></span>';
       if (p.kick_is_live) {
-        const vc = p.kick_viewer_count || 0;
-        kk += ` <span style="color:#f00">🔴${vc > 0 ? ' ' + formatCompact(vc) : ''}</span>`;
+        const vc = Number(p.kick_viewer_count) || 0;
+        kk += ` <span style="color:#f00">🔴${vc > 0 ? ' ' + escapeHtml(formatCompact(vc)) : ''}</span>`;
       }
       platforms += kk;
     }
@@ -4043,6 +4055,10 @@ window.addEventListener('message', (e) => {
     const { operation, data, errors } = e.data
     if (data && !errors?.length) {
       _gqlDataCache[operation] = { data, ts: Date.now() }
+      if (Object.keys(_gqlDataCache).length > 50) {
+        const oldest = Object.entries(_gqlDataCache).reduce((a, b) => a[1].ts < b[1].ts ? a : b)[0]
+        delete _gqlDataCache[oldest]
+      }
       // Auto-refresh Twitch tab if prediction/poll data arrives while tab is visible
       const container = document.getElementById('hs-mc-tab-twitch')
       if (container && container.style.display !== 'none') {
@@ -4050,26 +4066,28 @@ window.addEventListener('message', (e) => {
       }
     }
   }
-})
+}, { signal: mcSignal })
 
 // Send Helix API request through MAIN world (uses captured OAuth token)
 // URL can contain {me} which resolves to the logged-in user's ID
 function helixRequest(url, method, body) {
   return new Promise((resolve) => {
     const id = Math.random().toString(36).slice(2)
+    const ac = new AbortController()
+    const signal = mcSignal ? AbortSignal.any([mcSignal, ac.signal]) : ac.signal
     const handler = (e) => {
       if (e.data?.type === 'heatsync-helix-response' && e.data.id === id) {
-        window.removeEventListener('message', handler)
+        ac.abort()
         clearTimeout(timer)
         resolve(e.data)
       }
     }
-    window.addEventListener('message', handler)
+    window.addEventListener('message', handler, { signal })
     const msg = { type: 'heatsync-helix', id, url, method: method || 'GET' }
     if (body) msg.body = body
     window.postMessage(msg, location.origin)
     const timer = setTimeout(() => {
-      window.removeEventListener('message', handler)
+      ac.abort()
       resolve({ error: 'helix timeout — refresh the page' })
     }, 15000)
   })
@@ -4079,21 +4097,23 @@ function helixRequest(url, method, body) {
 function gqlProxy(operation, variables, opts) {
   return new Promise((resolve, reject) => {
     const id = Math.random().toString(36).slice(2)
+    const ac = new AbortController()
+    const signal = mcSignal ? AbortSignal.any([mcSignal, ac.signal]) : ac.signal
     const handler = (e) => {
       if (e.data?.type === 'heatsync-gql-response' && e.data.id === id) {
-        window.removeEventListener('message', handler)
+        ac.abort()
         clearTimeout(timer)
         if (e.data.error) reject(new Error(e.data.error))
         else resolve(e.data.data)
       }
     }
-    window.addEventListener('message', handler)
+    window.addEventListener('message', handler, { signal })
     const msg = { type: 'heatsync-gql-request', id, operation, variables }
     if (opts?.rawQuery) msg.rawQuery = opts.rawQuery
     if (opts?.batch) msg.batch = opts.batch
     window.postMessage(msg, location.origin)
     const timer = setTimeout(() => {
-      window.removeEventListener('message', handler)
+      ac.abort()
       reject(new Error('GQL proxy timeout'))
     }, 4000)
   })
@@ -4103,17 +4123,19 @@ function gqlProxy(operation, variables, opts) {
 function gqlGetCache(operations) {
   return new Promise((resolve) => {
     const id = Math.random().toString(36).slice(2)
+    const ac = new AbortController()
+    const signal = mcSignal ? AbortSignal.any([mcSignal, ac.signal]) : ac.signal
     const handler = (e) => {
       if (e.data?.type === 'heatsync-gql-cache-response' && e.data.id === id) {
-        window.removeEventListener('message', handler)
+        ac.abort()
         clearTimeout(timer)
         resolve(e.data)
       }
     }
-    window.addEventListener('message', handler)
+    window.addEventListener('message', handler, { signal })
     window.postMessage({ type: 'heatsync-gql-get-cache', id, operations }, location.origin)
     const timer = setTimeout(() => {
-      window.removeEventListener('message', handler)
+      ac.abort()
       resolve({ data: {}, hashes: [] })
     }, 3000)
   })
@@ -4769,7 +4791,7 @@ async function lookupFollowage(username, channelLogin) {
 // Heat tier display — number + color glow + row effects, no emoji
 function getHeatDisplay(heat) {
   if (!heat || heat <= 0) return null
-  let color, glow = false, border = '#555', borderWidth = 2, bg = ''
+  let color, glow = false, border = '#808080', borderWidth = 2, bg = ''
   if (heat >= 5000) {
     color = '#fff'; glow = true; border = '#fff'; borderWidth = 4
     bg = 'rgba(60,20,0,0.15)'; // + breathing animation applied separately
@@ -4785,9 +4807,9 @@ function getHeatDisplay(heat) {
   } else if (heat >= 10) {
     color = '#ff8700'; border = '#ff8700'; borderWidth = 2
   } else if (heat >= 1) {
-    color = '#666'; border = '#555'; borderWidth = 2
+    color = '#808080'; border = '#808080'; borderWidth = 2
   } else {
-    color = '#444'
+    color = '#000'
   }
   const suffix = heat >= 10 ? '°' : ''
   const breathe = heat >= 500
@@ -5189,7 +5211,7 @@ function buildFeedMessageDiv(m, opUsername) {
   const statsHtml = stats ? ` ${stats}` : ''
 
   const anonAvatar = avatarsEnabled ? `<img class="hs-feed-avatar" src="https://heatsync.org/anon.webp" alt="" loading="lazy">` : '';
-  const userAvatar = avatarsEnabled ? `<img class="hs-feed-avatar" src="${avatarUrl}" alt="" loading="lazy" onerror="this.style.display='none'">` : '';
+  const userAvatar = avatarsEnabled ? `<img class="hs-feed-avatar" src="${escapeHtml(avatarUrl)}" alt="" loading="lazy" onerror="this.style.display='none'">` : '';
   const userHtml = isAnon
     ? `${anonAvatar}<span class="hs-feed-user" style="color:#808080">Anonymous</span>`
     : `${userAvatar}<a href="https://heatsync.org/user/${encodeURIComponent(m.username)}" target="_blank" class="hs-feed-user hs-mc-user" data-username="${escapeHtml((m.username || 'anon').toLowerCase())}" style="color:${sanitizeColor(m.user_color || '#fff')}">${escapeHtml(m.username || 'anon')}</a>`;
@@ -5277,6 +5299,7 @@ function formatText(html) {
   return html
 }
 
+const _feedEmoteRegexCache = new Map()
 function renderFeedContent(content, emoteRefs) {
   if (!content) return '';
   let html = escapeHtml(String(content));
@@ -5288,9 +5311,13 @@ function renderFeedContent(content, emoteRefs) {
     const parts = html.split(/(<[^>]+>)/)
     html = parts.map((part, i) => {
       if (i % 2 === 1) return part // skip HTML tags
-      part = part.replace(/(https?:\/\/[^\s<"]+)/gi, '<a href="$1" target="_blank" rel="noopener" class="hs-mc-link">$1</a>')
+      part = part.replace(/(https?:\/\/[^\s<"]+)/gi, (match) => {
+        const escaped = escapeHtml(match)
+        return `<a href="${escaped}" target="_blank" rel="noopener" class="hs-mc-link">${escaped}</a>`
+      })
       part = part.replace(/(?<!\/\/)([a-z0-9-]+(?:\.[a-z0-9-]+)+\/[^\s<"]*)/gi, (m) => {
-        return `<a href="https://${m}" target="_blank" rel="noopener" class="hs-mc-link">${m}</a>`
+        const escaped = escapeHtml(m)
+        return `<a href="https://${escaped}" target="_blank" rel="noopener" class="hs-mc-link">${escaped}</a>`
       })
       return part
     }).join('')
@@ -5310,10 +5337,14 @@ function renderFeedContent(content, emoteRefs) {
       if (!url) continue
       const escaped = escapeHtml(name);
       const safeUrl = escapeHtml(url);
-      html = html.replace(
-        new RegExp(`\\b${escaped.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'g'),
-        `<img class="hs-mc-emote" src="${safeUrl}" alt="${escaped}" title="${escaped}" loading="lazy">`
-      );
+      const cacheKey = escaped
+      let re = _feedEmoteRegexCache.get(cacheKey)
+      if (!re) {
+        re = new RegExp(`\\b${escaped.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'g')
+        _feedEmoteRegexCache.set(cacheKey, re)
+        if (_feedEmoteRegexCache.size > 500) _feedEmoteRegexCache.delete(_feedEmoteRegexCache.keys().next().value)
+      }
+      html = html.replace(re, `<img class="hs-mc-emote" src="${safeUrl}" alt="${escaped}" title="${escaped}" loading="lazy">`);
     }
   }
   return html;
@@ -5518,6 +5549,7 @@ async function fetchNotifications() {
     const msgResp = await apiFetch('/api/messages?filter_type=mentions&limit=20');
     if (msgResp.ok) {
       notifMessages = msgResp.data?.messages || [];
+      if (notifMessages.length > 500) notifMessages = notifMessages.slice(-500);
     }
   } catch (e) {
     log('Notification fetch error:', e);
@@ -5597,7 +5629,9 @@ function renderActivity() {
       const chanColor = _profileCache.get(m.channel?.toLowerCase())?.profile?.twitch_color || '#fff';
       const chanLabel = m.channel ? `<a href="https://heatsync.org/twitch/${encodeURIComponent(m.channel)}" target="_blank" class="hs-feed-user hs-mc-user" data-username="${escapeHtml(m.channel.toLowerCase())}" style="color:${sanitizeColor(chanColor)};font-weight:bold">${escapeHtml(m.channel)}</a> ` : '';
       let evtHtml = escapeHtml(evtText)
-      evtHtml = evtHtml.replace(/(switched to |went live \u2014 )(.+)$/, '$1<span style="color:#fff">$2</span>')
+      evtHtml = evtHtml.replace(/(switched to |went live \u2014 )(.+)$/, (_, prefix, game) => {
+        return `${prefix}<span style="color:#fff">${game}</span>`
+      })
       div.innerHTML = `${tsSpan}${chanLabel}${evtHtml}`;
       frag.appendChild(div);
     } else {
@@ -5855,7 +5889,7 @@ async function sendWhisperMessage(key, text) {
   whisperTimeline.push({
     user: 'you',
     text,
-    color: '#aaa',
+    color: '#808080',
     time: Date.now(),
     self: true,
     platform: userInfo.platform,
@@ -5920,7 +5954,7 @@ function renderWhispersTab() {
             whisperTimeline.push({
               user: isSelf ? 'you' : dm.other_display_name,
               text: m.content,
-              color: isSelf ? '#aaa' : (dm.other_color || '#ff8700'),
+              color: isSelf ? '#808080' : (dm.other_color || '#ff8700'),
               time: t,
               self: isSelf,
               platform: 'heatsync',
@@ -5989,7 +6023,7 @@ function renderWhispersTab() {
     const recipientLink = m.self ? userLink(them, theirColor, theirUsername) : userLink(me, myColor, me)
 
     // All dynamic values pass through escapeHtml/sanitizeColor — safe innerHTML (all values escaped above)
-    div.innerHTML = `${tsHtml}<span style="color:${platColor};font-size:10px;font-weight:700">[${platTag}]</span> ${senderLink} <span style="color:#666">-&gt;</span> ${recipientLink}: ${processEmotes(escapeHtml(m.text), null)}`
+    div.innerHTML = `${tsHtml}<span style="color:${platColor};font-size:10px;font-weight:700">[${platTag}]</span> ${senderLink} <span style="color:#808080">-&gt;</span> ${recipientLink}: ${processEmotes(escapeHtml(m.text), null)}`
     frag.appendChild(div)
   }
 
@@ -6251,17 +6285,20 @@ function initInput() {
   // Update placeholder based on current tab
   updateInputPlaceholder();
 
-  // Global Tab key to focus input from anywhere
+  // Global Tab key to focus input — only when multichat panel is active
   if (!window._hsMcTabHandler) {
     window._hsMcTabHandler = true;
     document.addEventListener('keydown', (e) => {
       if (e.key !== 'Tab') return;
       if (currentTab === 'add') return;
+      const active = document.activeElement;
+      const mcContainer = document.getElementById('hs-mc-container');
+      if (!mcContainer?.contains(active) && active?.id !== 'hs-mc-input') return;
       const input = document.getElementById('hs-mc-input');
       if (!input) return;
 
       // If not already in our input, reveal bar and focus it
-      if (document.activeElement !== input) {
+      if (active !== input) {
         e.preventDefault();
         showInputBar();
         input.focus();
@@ -7774,7 +7811,7 @@ const STORAGE_KEY = 'heatsync_multichat';
       const ch = config.channels.find(c => (typeof c === 'string' ? c : c.id) === tabId);
       const menu = document.createElement('div');
       menu.id = 'hs-mc-ctx-menu';
-      menu.style.cssText = 'position:fixed;z-index:99999;background:#000;border:1px solid #444;border-radius:0;padding:4px 0;min-width:150px;font-size:12px;font-family:inherit;';
+      menu.style.cssText = 'position:fixed;z-index:99999;background:#000;border:1px solid #808080;border-radius:0;padding:4px 0;min-width:150px;font-size:12px;font-family:inherit;';
 
       const mkItem = (label, color, fn) => {
         const item = document.createElement('div');
@@ -8562,17 +8599,17 @@ const STORAGE_KEY = 'heatsync_multichat';
         <div class="hs-mc-settings-group">
           <div class="hs-mc-settings-group-title">muted users</div>
           ${mutedUsers.size === 0
-            ? `<div class="hs-mc-setting-row" style="color:#666;font-size:11px">no muted users</div>`
+            ? `<div class="hs-mc-setting-row" style="color:#808080;font-size:11px">no muted users</div>`
             : [...mutedUsers].sort().map(u => `
           <div class="hs-mc-setting-row">
             <span class="hs-mc-setting-label" style="font-size:11px">${u}</span>
-            <button class="hs-mc-unmute-btn" data-username="${u}" style="background:none;border:1px solid #444;color:#999;font-size:11px;cursor:pointer;padding:1px 6px;line-height:1.4" title="unmute">&#x2715;</button>
+            <button class="hs-mc-unmute-btn" data-username="${u}" style="background:none;border:1px solid #808080;color:#808080;font-size:11px;cursor:pointer;padding:1px 6px;line-height:1.4" title="unmute">&#x2715;</button>
           </div>`).join('')
           }
         </div>
         <div class="hs-mc-settings-group">
           <div class="hs-mc-setting-row" style="justify-content:flex-end">
-            <button class="hs-mc-defaults-btn" style="background:#c0c0c0;border:2px outset #fff;padding:2px 10px;font-size:11px;font-weight:bold;cursor:pointer;font-family:'Liberation Mono',monospace;color:#000;box-shadow:1px 1px 0 #000">default</button>
+            <button class="hs-mc-defaults-btn" style="background:#808080;border:2px outset #fff;padding:2px 10px;font-size:11px;font-weight:bold;cursor:pointer;font-family:'Liberation Mono',monospace;color:#000;box-shadow:1px 1px 0 #000">default</button>
           </div>
         </div>
       </div>
@@ -8847,7 +8884,7 @@ const STORAGE_KEY = 'heatsync_multichat';
       .hs-whisper-conv {
         padding: 6px 8px;
         cursor: pointer;
-        border-bottom: 1px solid #222;
+        border-bottom: 1px solid #000;
       }
       .hs-whisper-conv:hover {
         background: #fff;
@@ -8855,7 +8892,7 @@ const STORAGE_KEY = 'heatsync_multichat';
       }
       .hs-whisper-conv:hover .hs-whisper-preview,
       .hs-whisper-conv:hover .hs-whisper-time {
-        color: #444;
+        color: #808080;
       }
       .hs-whisper-preview {
         color: #808080;
@@ -8881,7 +8918,7 @@ const STORAGE_KEY = 'heatsync_multichat';
       }
       .hs-whisper-header {
         padding: 6px 8px;
-        border-bottom: 1px solid #444;
+        border-bottom: 1px solid #808080;
         font-size: 13px;
         position: sticky;
         top: 0;
@@ -8906,7 +8943,7 @@ const STORAGE_KEY = 'heatsync_multichat';
         line-height: 1.4;
         font-style: italic;
         background: rgba(128, 128, 0, 0.25);
-        border-bottom: 1px solid #333;
+        border-bottom: 1px solid #000;
         color: #ffff00;
       }
       .hs-mc-stream-event .hs-mc-user { text-decoration: none; font-weight: bold; }
@@ -8924,11 +8961,11 @@ const STORAGE_KEY = 'heatsync_multichat';
         padding: 2px 8px;
         font-size: 13px;
         border-left: 3px solid #ff0000;
-        border-bottom: 1px solid #333;
-        color: #ccc;
+        border-bottom: 1px solid #000;
+        color: #fff;
       }
       .hs-mc-feed-inline .hs-mc-ts { margin-right: 4px; }
-      .hs-mc-feed-inline .hs-feed-body { color: #ddd; }
+      .hs-mc-feed-inline .hs-feed-body { color: #fff; }
       .hs-mc-feed-inline .hs-feed-thread-link {
         color: #ffff00; text-decoration: none; font-size: 10px; margin-right: 4px;
       }
@@ -9163,7 +9200,7 @@ const STORAGE_KEY = 'heatsync_multichat';
       }
 
       .hs-mc-ts {
-        color: #555;
+        color: #808080;
         font-size: 10px;
         margin-right: 4px;
         font-variant-numeric: tabular-nums;
@@ -9190,7 +9227,7 @@ const STORAGE_KEY = 'heatsync_multichat';
         color: #ffffff;
       }
       .hs-mc-msg.hs-mc-zebra, .hs-feed-msg.hs-mc-zebra {
-        background: #111;
+        background: #000;
       }
       .hs-mc-msg:hover {
       }
@@ -9202,9 +9239,9 @@ const STORAGE_KEY = 'heatsync_multichat';
         position: absolute;
         top: 1px;
         right: 2px;
-        background: #222;
-        border: 1px solid #444;
-        color: #aaa;
+        background: #000;
+        border: 1px solid #808080;
+        color: #fff;
         font-size: 11px;
         padding: 0 4px;
         cursor: pointer;
@@ -9222,11 +9259,11 @@ const STORAGE_KEY = 'heatsync_multichat';
         display: flex;
         align-items: center;
         justify-content: space-between;
-        background: #111;
-        border-bottom: 1px solid #333;
+        background: #000;
+        border-bottom: 1px solid #000;
         padding: 2px 6px;
         font-size: 11px;
-        color: #aaa;
+        color: #fff;
       }
       #hs-mc-reply-indicator span {
         overflow: hidden;
@@ -9236,7 +9273,7 @@ const STORAGE_KEY = 'heatsync_multichat';
       #hs-mc-reply-cancel {
         background: none;
         border: none;
-        color: #888;
+        color: #808080;
         cursor: pointer;
         font-size: 13px;
         padding: 0 2px;
@@ -9302,8 +9339,8 @@ const STORAGE_KEY = 'heatsync_multichat';
       }
       .hs-mc-msg.mention .hs-mc-reply-ctx,
       .hs-mc-msg.mention .hs-mc-reply-user {
-        color: #ccc;
-        border-left-color: #ccc;
+        color: #fff;
+        border-left-color: #fff;
       }
       .hs-mc-msg.tweet {
         background: rgba(212, 73, 73, 0.3);
@@ -9540,8 +9577,8 @@ const STORAGE_KEY = 'heatsync_multichat';
       }
       #hs-user-tooltip .hs-pc-followage.hs-pc-nofollow {
         background: transparent;
-        color: #666;
-        border: 1px solid #444;
+        color: #808080;
+        border: 1px solid #808080;
       }
       #hs-user-tooltip .hs-pc-channel-follows {
         padding: 2px 3px;
@@ -9835,7 +9872,7 @@ const STORAGE_KEY = 'heatsync_multichat';
         -webkit-box-orient: vertical;
       }
       #hs-link-tooltip .link-desc {
-        color: #aaa;
+        color: #fff;
         font-size: 11px;
         overflow: hidden;
         text-overflow: ellipsis;
@@ -9848,7 +9885,7 @@ const STORAGE_KEY = 'heatsync_multichat';
         font-size: 10px;
       }
       #hs-link-tooltip .link-loading {
-        color: #888;
+        color: #808080;
         font-size: 11px;
       }
 
@@ -10675,7 +10712,7 @@ const STORAGE_KEY = 'heatsync_multichat';
       }
       .hs-mc-rewards-empty {
         font-size: 11px;
-        color: #555;
+        color: #808080;
         padding: 8px 14px;
       }
       .hs-mc-rewards-grid {
@@ -10893,17 +10930,17 @@ const STORAGE_KEY = 'heatsync_multichat';
         background: rgba(255,255,255,0.06);
       }
       .hs-mc-setting-label {
-        color: #ccc !important;
+        color: #fff !important;
         font-size: 13px !important;
         cursor: help;
-        border-bottom: 1px dotted #666;
+        border-bottom: 1px dotted #808080;
       }
       #hs-settings-tip {
         position: fixed;
         z-index: 99999;
-        background: #1a1a1a;
-        color: #ddd;
-        border: 1px solid #555;
+        background: #000;
+        color: #fff;
+        border: 1px solid #808080;
         padding: 6px 8px;
         font-size: 11px;
         line-height: 1.4;
@@ -11037,7 +11074,7 @@ const STORAGE_KEY = 'heatsync_multichat';
       }
       .hs-tabs-right .hs-mc-tab-utils {
         flex-direction: column;
-        border-top: 1px solid #333;
+        border-top: 1px solid #000;
         margin-top: auto;
       }
       .hs-tabs-right #hs-mc-overlay {
@@ -11127,7 +11164,7 @@ const STORAGE_KEY = 'heatsync_multichat';
       }
       .hs-tabs-left .hs-mc-tab-utils {
         flex-direction: column;
-        border-top: 1px solid #333;
+        border-top: 1px solid #000;
         margin-top: auto;
       }
       .hs-tabs-left .hs-mc-rotate {
@@ -11314,7 +11351,7 @@ const STORAGE_KEY = 'heatsync_multichat';
 
       /* ---- TEXT FORMATTING ---- */
       .hs-spoiler {
-        background: #aaa;
+        background: #808080;
         color: transparent;
         cursor: pointer;
         border-radius: 2px;
@@ -11329,7 +11366,7 @@ const STORAGE_KEY = 'heatsync_multichat';
         color: #789922;
       }
       .hs-inline-code {
-        background: #2a2a2a;
+        background: #000;
         padding: 1px 4px;
         border-radius: 2px;
         font-family: monospace;
@@ -11421,7 +11458,7 @@ const STORAGE_KEY = 'heatsync_multichat';
       }
       #channel-chatroom:not(.hs-native-hidden) ~ #hs-mc-container > #hs-mc-tabbar {
         pointer-events: auto;
-        background: var(--hs-bg, #18181b) !important;
+        background: var(--hs-bg, #000) !important;
         position: relative !important;
       }
       /* Top tabs (default) — horizontal bar at top of chat */
@@ -12272,6 +12309,7 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
 
   // Process YouTube emotes (inline emoji images from innertube)
   // preEscaped=true when input is already HTML-escaped (chained after processEmotes)
+  const _ytEmoteRegexCache = new Map()
   function processYtEmotes(text, emotes, preEscaped) {
     if (!emotes || emotes.length === 0) return preEscaped ? text : escapeHtml(text)
 
@@ -12282,7 +12320,12 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
       const alt = typeof emote.alt === 'string' ? emote.alt : ''
       if (!alt || !url || !(url.startsWith('http') || url.startsWith('//'))) continue
       const escaped = escapeHtml(alt).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-      const re = new RegExp(escaped, 'g')
+      let re = _ytEmoteRegexCache.get(escaped)
+      if (!re) {
+        re = new RegExp(escaped, 'g')
+        _ytEmoteRegexCache.set(escaped, re)
+        if (_ytEmoteRegexCache.size > 500) _ytEmoteRegexCache.delete(_ytEmoteRegexCache.keys().next().value)
+      }
       result = result.replace(re, () => `<img src="${escapeHtml(url)}" alt="${escapeHtml(alt)}" class="hs-mc-emote" style="height:1.2em;vertical-align:middle;" />`)
     }
     return result
@@ -12494,7 +12537,7 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
 
     const desc = document.createElement('div')
     desc.textContent = 'enter at least one platform'
-    desc.style.cssText = 'font-size:13px;color:#626262;margin-bottom:2px;'
+    desc.style.cssText = 'font-size:13px;color:#808080;margin-bottom:2px;'
     wrapper.appendChild(desc)
 
     const makeRow = (label, placeholder) => {
@@ -12534,14 +12577,14 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
       btn.textContent = text
       const base = primary
         ? 'background:transparent;color:#ffffff;border:1px solid #ffffff;'
-        : 'background:transparent;color:#626262;border:1px solid #444444;'
+        : 'background:transparent;color:#808080;border:1px solid #808080;'
       btn.style.cssText = base + 'padding:6px 22px;border-radius:0;cursor:pointer;font-weight:600;font-size:14px;font-family:inherit;min-width:80px;transition:all .15s;'
       btn.addEventListener('mouseenter', () => {
         btn.style.background = '#ffffff'; btn.style.color = '#000000'
       })
       btn.addEventListener('mouseleave', () => {
         btn.style.background = 'transparent'
-        btn.style.color = primary ? '#ffffff' : '#626262'
+        btn.style.color = primary ? '#ffffff' : '#808080'
       })
       return btn
     }
@@ -12713,14 +12756,14 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
       btn.textContent = text;
       const base = primary
         ? 'background:transparent;color:#ffffff;border:1px solid #ffffff;'
-        : 'background:transparent;color:#626262;border:1px solid #444444;';
+        : 'background:transparent;color:#808080;border:1px solid #808080;';
       btn.style.cssText = base + 'padding:6px 22px;border-radius:0;cursor:pointer;font-weight:600;font-size:14px;font-family:inherit;min-width:80px;transition:all .15s;';
       btn.addEventListener('mouseenter', () => {
         btn.style.background = '#ffffff'; btn.style.color = '#000000';
       });
       btn.addEventListener('mouseleave', () => {
         btn.style.background = 'transparent';
-        btn.style.color = primary ? '#ffffff' : '#626262';
+        btn.style.color = primary ? '#ffffff' : '#808080';
       });
       return btn;
     };
@@ -13021,7 +13064,7 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
     const menu = document.createElement('div');
     menu.id = 'hs-mc-live-picker';
     const rect = anchorEl.getBoundingClientRect();
-    menu.style.cssText = `position:fixed;z-index:99999;background:#111;border:1px solid #444;padding:4px 0;min-width:130px;font-size:12px;font-family:inherit;left:${rect.left}px;top:${rect.bottom + 2}px;`;
+    menu.style.cssText = `position:fixed;z-index:99999;background:#000;border:1px solid #808080;padding:4px 0;min-width:130px;font-size:12px;font-family:inherit;left:${rect.left}px;top:${rect.bottom + 2}px;`;
 
     const curLive = getLiveChannel()?.toLowerCase();
 
@@ -14266,9 +14309,8 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
 
       // Close old read-only IRC to prevent zombie WebSocket reconnect loops
       // NOTE: auth IRC (for sending) is NOT killed here — it survives SPA navigation
-      if (irc?.ws) {
-        irc.ws.onclose = null; // prevent auto-reconnect
-        irc.ws.close();
+      if (irc) {
+        irc.destroy();
       }
       irc = null;
 

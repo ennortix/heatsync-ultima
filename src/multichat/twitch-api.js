@@ -914,6 +914,10 @@ window.addEventListener('message', (e) => {
     const { operation, data, errors } = e.data
     if (data && !errors?.length) {
       _gqlDataCache[operation] = { data, ts: Date.now() }
+      if (Object.keys(_gqlDataCache).length > 50) {
+        const oldest = Object.entries(_gqlDataCache).reduce((a, b) => a[1].ts < b[1].ts ? a : b)[0]
+        delete _gqlDataCache[oldest]
+      }
       // Auto-refresh Twitch tab if prediction/poll data arrives while tab is visible
       const container = document.getElementById('hs-mc-tab-twitch')
       if (container && container.style.display !== 'none') {
@@ -921,26 +925,28 @@ window.addEventListener('message', (e) => {
       }
     }
   }
-})
+}, { signal: mcSignal })
 
 // Send Helix API request through MAIN world (uses captured OAuth token)
 // URL can contain {me} which resolves to the logged-in user's ID
 function helixRequest(url, method, body) {
   return new Promise((resolve) => {
     const id = Math.random().toString(36).slice(2)
+    const ac = new AbortController()
+    const signal = mcSignal ? AbortSignal.any([mcSignal, ac.signal]) : ac.signal
     const handler = (e) => {
       if (e.data?.type === 'heatsync-helix-response' && e.data.id === id) {
-        window.removeEventListener('message', handler)
+        ac.abort()
         clearTimeout(timer)
         resolve(e.data)
       }
     }
-    window.addEventListener('message', handler)
+    window.addEventListener('message', handler, { signal })
     const msg = { type: 'heatsync-helix', id, url, method: method || 'GET' }
     if (body) msg.body = body
     window.postMessage(msg, location.origin)
     const timer = setTimeout(() => {
-      window.removeEventListener('message', handler)
+      ac.abort()
       resolve({ error: 'helix timeout — refresh the page' })
     }, 15000)
   })
@@ -950,21 +956,23 @@ function helixRequest(url, method, body) {
 function gqlProxy(operation, variables, opts) {
   return new Promise((resolve, reject) => {
     const id = Math.random().toString(36).slice(2)
+    const ac = new AbortController()
+    const signal = mcSignal ? AbortSignal.any([mcSignal, ac.signal]) : ac.signal
     const handler = (e) => {
       if (e.data?.type === 'heatsync-gql-response' && e.data.id === id) {
-        window.removeEventListener('message', handler)
+        ac.abort()
         clearTimeout(timer)
         if (e.data.error) reject(new Error(e.data.error))
         else resolve(e.data.data)
       }
     }
-    window.addEventListener('message', handler)
+    window.addEventListener('message', handler, { signal })
     const msg = { type: 'heatsync-gql-request', id, operation, variables }
     if (opts?.rawQuery) msg.rawQuery = opts.rawQuery
     if (opts?.batch) msg.batch = opts.batch
     window.postMessage(msg, location.origin)
     const timer = setTimeout(() => {
-      window.removeEventListener('message', handler)
+      ac.abort()
       reject(new Error('GQL proxy timeout'))
     }, 4000)
   })
@@ -974,17 +982,19 @@ function gqlProxy(operation, variables, opts) {
 function gqlGetCache(operations) {
   return new Promise((resolve) => {
     const id = Math.random().toString(36).slice(2)
+    const ac = new AbortController()
+    const signal = mcSignal ? AbortSignal.any([mcSignal, ac.signal]) : ac.signal
     const handler = (e) => {
       if (e.data?.type === 'heatsync-gql-cache-response' && e.data.id === id) {
-        window.removeEventListener('message', handler)
+        ac.abort()
         clearTimeout(timer)
         resolve(e.data)
       }
     }
-    window.addEventListener('message', handler)
+    window.addEventListener('message', handler, { signal })
     window.postMessage({ type: 'heatsync-gql-get-cache', id, operations }, location.origin)
     const timer = setTimeout(() => {
-      window.removeEventListener('message', handler)
+      ac.abort()
       resolve({ data: {}, hashes: [] })
     }, 3000)
   })

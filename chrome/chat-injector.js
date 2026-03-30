@@ -16,6 +16,9 @@
   const lifecycle = new AbortController()
   const injSignal = lifecycle.signal
   window.addEventListener('pagehide', () => lifecycle.abort())
+  injSignal.addEventListener('abort', () => {
+    document.getElementById('heatsync-emote-tooltip')?.remove()
+  })
 
   let followedUsers = new Set(); // Users the current user follows
   let injectedMessages = new Set(); // Track injected message IDs to prevent duplicates

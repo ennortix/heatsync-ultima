@@ -94,5 +94,4 @@
     waitForChatContainer
   };
 
-  log(' Detected platform:', detectPlatform());
 })();

@@ -4027,30 +4027,81 @@
       #channel-chatroom:not(.hs-native-hidden) > #hs-mc-container > #hs-kick-resize-handle {
         display: none !important;
       }
-      /* Keep tabbar visible over native chat — fixed panel, same width as HS chat */
+      /* Keep tabbar visible over native chat — fixed panel, respects tab position */
       #channel-chatroom:not(.hs-native-hidden) > #hs-mc-container {
         position: fixed !important;
-        top: 0 !important;
-        right: 0 !important;
-        width: var(--hs-kick-chat-width, 340px) !important;
-        height: auto !important;
         z-index: 10000 !important;
         background: transparent !important;
         pointer-events: none;
         overflow: visible !important;
-        flex-direction: column !important;
       }
       #channel-chatroom:not(.hs-native-hidden) > #hs-mc-container > #hs-mc-tabbar {
         pointer-events: auto;
         background: var(--hs-bg, #18181b) !important;
         position: relative !important;
+      }
+      /* Top tabs (default) — horizontal bar at top of chat */
+      .hs-tabs-top #channel-chatroom:not(.hs-native-hidden) > #hs-mc-container {
+        top: 0 !important; right: 0 !important;
+        width: var(--hs-kick-chat-width, 340px) !important;
+        height: auto !important;
+        flex-direction: column !important;
+      }
+      .hs-tabs-top #channel-chatroom:not(.hs-native-hidden) > #hs-mc-container > #hs-mc-tabbar {
         flex-direction: row !important;
+        flex-wrap: nowrap !important;
         overflow-x: auto !important;
         overflow-y: hidden !important;
-        height: auto !important;
         max-height: 32px !important;
         width: 100% !important;
+      }
+      /* Bottom tabs — horizontal bar at bottom of chat */
+      .hs-tabs-bottom #channel-chatroom:not(.hs-native-hidden) > #hs-mc-container {
+        bottom: 0 !important; right: 0 !important;
+        width: var(--hs-kick-chat-width, 340px) !important;
+        height: auto !important;
+        flex-direction: column-reverse !important;
+      }
+      .hs-tabs-bottom #channel-chatroom:not(.hs-native-hidden) > #hs-mc-container > #hs-mc-tabbar {
+        flex-direction: row !important;
         flex-wrap: nowrap !important;
+        overflow-x: auto !important;
+        overflow-y: hidden !important;
+        max-height: 32px !important;
+        width: 100% !important;
+      }
+      /* Right tabs — vertical bar on right edge */
+      .hs-tabs-right #channel-chatroom:not(.hs-native-hidden) > #hs-mc-container {
+        top: 0 !important; right: 0 !important; bottom: 0 !important;
+        width: auto !important;
+        height: 100% !important;
+        flex-direction: row !important;
+      }
+      .hs-tabs-right #channel-chatroom:not(.hs-native-hidden) > #hs-mc-container > #hs-mc-tabbar {
+        flex-direction: column !important;
+        overflow-y: auto !important;
+        overflow-x: hidden !important;
+        width: 90px !important;
+        height: 100% !important;
+        max-height: none !important;
+        border-left: 1px solid #fff;
+      }
+      /* Left tabs — vertical bar on left edge of chat area */
+      .hs-tabs-left #channel-chatroom:not(.hs-native-hidden) > #hs-mc-container {
+        top: 0 !important; right: auto !important; bottom: 0 !important;
+        left: calc(100vw - var(--hs-kick-chat-width, 340px)) !important;
+        width: auto !important;
+        height: 100% !important;
+        flex-direction: row-reverse !important;
+      }
+      .hs-tabs-left #channel-chatroom:not(.hs-native-hidden) > #hs-mc-container > #hs-mc-tabbar {
+        flex-direction: column !important;
+        overflow-y: auto !important;
+        overflow-x: hidden !important;
+        width: 90px !important;
+        height: 100% !important;
+        max-height: none !important;
+        border-right: 1px solid #fff;
       }
 
       /* Kick resize handle — left edge of fixed chat panel

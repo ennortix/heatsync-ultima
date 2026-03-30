@@ -7749,6 +7749,7 @@ const STORAGE_KEY = 'heatsync_multichat';
     container.id = 'hs-mc-tabbar';
     // Static hardcoded tab buttons — no user input, safe innerHTML
     // Two sections: scrollable channel tabs + fixed utility buttons (always visible)
+    // Static hardcoded buttons — all in one wrapping flow, no user input
     container.innerHTML = `
       <div class="hs-mc-tabs-scroll">
         <button class="hs-mc-tab active" data-tab="feed">feed</button>
@@ -7756,8 +7757,6 @@ const STORAGE_KEY = 'heatsync_multichat';
         <button class="hs-mc-tab" data-tab="mentions">mentions</button>
         <button class="hs-mc-tab" data-tab="live">live</button>
         <button class="hs-mc-tab" data-tab="add">+</button>
-      </div>
-      <div class="hs-mc-tab-utils">
         <button class="hs-mc-tab hs-mc-util-btn hs-mc-rotate" data-tab="rotate" title="rotate tabs (T)">T</button>
         <button class="hs-mc-tab hs-mc-util-btn hs-mc-font-btn" data-font-dir="-1" title="smaller text">A-</button>
         <button class="hs-mc-tab hs-mc-util-btn hs-mc-font-btn" data-font-dir="1" title="larger text">A+</button>
@@ -8779,7 +8778,7 @@ const STORAGE_KEY = 'heatsync_multichat';
       /* Tab bar - positioned at top of chat via render injection */
       #hs-mc-tabbar {
         display: flex;
-        flex-wrap: nowrap;
+        flex-wrap: wrap;
         gap: 4px;
         padding: 4px 6px;
         background: #000;
@@ -8867,37 +8866,12 @@ const STORAGE_KEY = 'heatsync_multichat';
         display: flex;
         flex-wrap: wrap;
         gap: 4px;
-        flex: 1;
-        min-width: 0;
-      }
-      /* Fixed utility buttons — always visible, square like website live-control-btn */
-      .hs-mc-tab-utils {
-        display: flex;
-        gap: 2px;
-        flex-shrink: 0;
+        width: 100%;
         align-items: center;
-        margin-left: auto;
       }
+      /* Util buttons — same size as tabs, flow inline and wrap naturally */
       .hs-mc-util-btn {
-        width: 24px !important;
-        height: 24px !important;
-        padding: 0 !important;
-        background: #000 !important;
-        border: 1px solid #808080 !important;
-        color: #808080 !important;
-        font-size: 12px !important;
         font-weight: 700 !important;
-        border-radius: 0 !important;
-        cursor: pointer !important;
-        display: inline-flex !important;
-        align-items: center !important;
-        justify-content: center !important;
-        white-space: nowrap !important;
-        transition: none;
-      }
-      .hs-mc-util-btn:hover {
-        background: #fff !important;
-        color: #000 !important;
       }
       /* Whisper conversation list */
       .hs-whisper-conv {
@@ -11082,11 +11056,6 @@ const STORAGE_KEY = 'heatsync_multichat';
         flex: 1;
         min-height: 0;
       }
-      .hs-tabs-right .hs-mc-tab-utils {
-        flex-direction: column;
-        border-top: 1px solid #000;
-        margin-top: auto;
-      }
       .hs-tabs-right #hs-mc-overlay {
         top: 0;
         left: 0;
@@ -11171,11 +11140,6 @@ const STORAGE_KEY = 'heatsync_multichat';
         overflow-x: hidden;
         flex: 1;
         min-height: 0;
-      }
-      .hs-tabs-left .hs-mc-tab-utils {
-        flex-direction: column;
-        border-top: 1px solid #000;
-        margin-top: auto;
       }
       .hs-tabs-left .hs-mc-rotate {
         margin-left: 0;

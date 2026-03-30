@@ -9034,7 +9034,7 @@ const STORAGE_KEY = 'heatsync_multichat';
       /* Tab bar - positioned at top of chat via render injection */
       #hs-mc-tabbar {
         display: flex;
-        flex-wrap: wrap;
+        flex-wrap: nowrap;
         gap: 4px;
         padding: 6px 10px;
         background: #000;
@@ -9042,6 +9042,7 @@ const STORAGE_KEY = 'heatsync_multichat';
         flex-shrink: 0;
         order: -1;
         z-index: 10;
+        overflow: hidden;
       }
 
       /* Chatterino-style composable tab states: idle → has-new → active */
@@ -11727,9 +11728,7 @@ const STORAGE_KEY = 'heatsync_multichat';
       .hs-tabs-top #channel-chatroom:not(.hs-native-hidden) ~ #hs-mc-container > #hs-mc-tabbar {
         flex-direction: row !important;
         flex-wrap: nowrap !important;
-        overflow-x: auto !important;
-        overflow-y: hidden !important;
-        max-height: 32px !important;
+        overflow: hidden !important;
         width: 100% !important;
       }
       /* Bottom tabs — horizontal bar at bottom of chat */
@@ -11742,9 +11741,7 @@ const STORAGE_KEY = 'heatsync_multichat';
       .hs-tabs-bottom #channel-chatroom:not(.hs-native-hidden) ~ #hs-mc-container > #hs-mc-tabbar {
         flex-direction: row !important;
         flex-wrap: nowrap !important;
-        overflow-x: auto !important;
-        overflow-y: hidden !important;
-        max-height: 32px !important;
+        overflow: hidden !important;
         width: 100% !important;
       }
       /* Right tabs — vertical bar on right edge */
@@ -13641,9 +13638,7 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
   }
   function _applyTabsPositionInner() {
     document.body.classList.remove('hs-tabs-top', 'hs-tabs-right', 'hs-tabs-bottom', 'hs-tabs-left');
-    if (tabPosition !== 'top') {
-      document.body.classList.add(`hs-tabs-${tabPosition}`);
-    }
+    document.body.classList.add(`hs-tabs-${tabPosition}`);
 
     // Re-apply column width (accounts for vertical tab offset)
     applyChatWidth()

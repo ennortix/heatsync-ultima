@@ -11638,12 +11638,15 @@ const STORAGE_KEY = 'heatsync_multichat';
       .hs-native-hidden div.editor-input {
         display: none !important;
       }
-      .hs-native-hidden#channel-chatroom > *:not(#hs-mc-container):not(#hs-kick-resize-handle) {
+      .hs-native-hidden#channel-chatroom > *:not(#hs-kick-resize-handle) {
         display: none !important;
       }
-      /* Force Kick chatroom into a fixed side panel — Kick stacks chat below video
-         which collapses to ~0px. Override to fixed right panel like Twitch. */
+      /* Force Kick chatroom hidden — container (sibling) becomes the panel */
       .hs-native-hidden#channel-chatroom {
+        display: none !important;
+      }
+      /* Container becomes the fixed side panel when native is hidden */
+      .hs-native-hidden#channel-chatroom ~ #hs-mc-container {
         position: fixed !important;
         right: 0 !important;
         top: 0 !important;
@@ -11652,7 +11655,6 @@ const STORAGE_KEY = 'heatsync_multichat';
         height: 100vh !important;
         z-index: 9999 !important;
         display: flex !important;
-        flex-direction: column !important;
         background: #000 !important;
         transition: none !important;
       }
@@ -11662,33 +11664,33 @@ const STORAGE_KEY = 'heatsync_multichat';
         transition: none !important;
       }
       /* On live tab (native chat showing), hide overlay + input but keep tabs visible */
-      #channel-chatroom:not(.hs-native-hidden) > #hs-mc-container > #hs-mc-overlay,
-      #channel-chatroom:not(.hs-native-hidden) > #hs-mc-container > #hs-mc-emote-picker,
-      #channel-chatroom:not(.hs-native-hidden) > #hs-mc-container > .hs-mc-inputbar,
-      #channel-chatroom:not(.hs-native-hidden) > #hs-mc-container > #hs-kick-resize-handle {
+      #channel-chatroom:not(.hs-native-hidden) ~ #hs-mc-container > #hs-mc-overlay,
+      #channel-chatroom:not(.hs-native-hidden) ~ #hs-mc-container > #hs-mc-emote-picker,
+      #channel-chatroom:not(.hs-native-hidden) ~ #hs-mc-container > .hs-mc-inputbar,
+      #channel-chatroom:not(.hs-native-hidden) ~ #hs-mc-container > #hs-kick-resize-handle {
         display: none !important;
       }
       /* Keep tabbar visible over native chat — fixed panel, respects tab position */
-      #channel-chatroom:not(.hs-native-hidden) > #hs-mc-container {
+      #channel-chatroom:not(.hs-native-hidden) ~ #hs-mc-container {
         position: fixed !important;
         z-index: 10000 !important;
         background: transparent !important;
         pointer-events: none;
         overflow: visible !important;
       }
-      #channel-chatroom:not(.hs-native-hidden) > #hs-mc-container > #hs-mc-tabbar {
+      #channel-chatroom:not(.hs-native-hidden) ~ #hs-mc-container > #hs-mc-tabbar {
         pointer-events: auto;
         background: var(--hs-bg, #18181b) !important;
         position: relative !important;
       }
       /* Top tabs (default) — horizontal bar at top of chat */
-      .hs-tabs-top #channel-chatroom:not(.hs-native-hidden) > #hs-mc-container {
+      .hs-tabs-top #channel-chatroom:not(.hs-native-hidden) ~ #hs-mc-container {
         top: 0 !important; right: 0 !important;
         width: var(--hs-kick-chat-width, 340px) !important;
         height: auto !important;
         flex-direction: column !important;
       }
-      .hs-tabs-top #channel-chatroom:not(.hs-native-hidden) > #hs-mc-container > #hs-mc-tabbar {
+      .hs-tabs-top #channel-chatroom:not(.hs-native-hidden) ~ #hs-mc-container > #hs-mc-tabbar {
         flex-direction: row !important;
         flex-wrap: nowrap !important;
         overflow-x: auto !important;
@@ -11697,13 +11699,13 @@ const STORAGE_KEY = 'heatsync_multichat';
         width: 100% !important;
       }
       /* Bottom tabs — horizontal bar at bottom of chat */
-      .hs-tabs-bottom #channel-chatroom:not(.hs-native-hidden) > #hs-mc-container {
+      .hs-tabs-bottom #channel-chatroom:not(.hs-native-hidden) ~ #hs-mc-container {
         bottom: 0 !important; right: 0 !important;
         width: var(--hs-kick-chat-width, 340px) !important;
         height: auto !important;
         flex-direction: column-reverse !important;
       }
-      .hs-tabs-bottom #channel-chatroom:not(.hs-native-hidden) > #hs-mc-container > #hs-mc-tabbar {
+      .hs-tabs-bottom #channel-chatroom:not(.hs-native-hidden) ~ #hs-mc-container > #hs-mc-tabbar {
         flex-direction: row !important;
         flex-wrap: nowrap !important;
         overflow-x: auto !important;
@@ -11712,13 +11714,13 @@ const STORAGE_KEY = 'heatsync_multichat';
         width: 100% !important;
       }
       /* Right tabs — vertical bar on right edge */
-      .hs-tabs-right #channel-chatroom:not(.hs-native-hidden) > #hs-mc-container {
+      .hs-tabs-right #channel-chatroom:not(.hs-native-hidden) ~ #hs-mc-container {
         top: 0 !important; right: 0 !important; bottom: 0 !important;
         width: auto !important;
         height: 100% !important;
         flex-direction: row !important;
       }
-      .hs-tabs-right #channel-chatroom:not(.hs-native-hidden) > #hs-mc-container > #hs-mc-tabbar {
+      .hs-tabs-right #channel-chatroom:not(.hs-native-hidden) ~ #hs-mc-container > #hs-mc-tabbar {
         flex-direction: column !important;
         overflow-y: auto !important;
         overflow-x: hidden !important;
@@ -11728,14 +11730,14 @@ const STORAGE_KEY = 'heatsync_multichat';
         border-left: 1px solid #fff;
       }
       /* Left tabs — vertical bar on left edge of chat area */
-      .hs-tabs-left #channel-chatroom:not(.hs-native-hidden) > #hs-mc-container {
+      .hs-tabs-left #channel-chatroom:not(.hs-native-hidden) ~ #hs-mc-container {
         top: 0 !important; right: auto !important; bottom: 0 !important;
         left: calc(100vw - var(--hs-kick-chat-width, 340px)) !important;
         width: auto !important;
         height: 100% !important;
         flex-direction: row-reverse !important;
       }
-      .hs-tabs-left #channel-chatroom:not(.hs-native-hidden) > #hs-mc-container > #hs-mc-tabbar {
+      .hs-tabs-left #channel-chatroom:not(.hs-native-hidden) ~ #hs-mc-container > #hs-mc-tabbar {
         flex-direction: column !important;
         overflow-y: auto !important;
         overflow-x: hidden !important;
@@ -11939,12 +11941,18 @@ const STORAGE_KEY = 'heatsync_multichat';
     if (container && document.contains(container)) return container
     container = document.createElement('div')
     container.id = 'hs-mc-container'
-    // On Kick: append directly to #channel-chatroom (must be direct child for CSS rules)
+    // On Kick: insert as SIBLING of #channel-chatroom (not child!) to avoid
+    // breaking Kick's React virtual scroll. React's reconciliation errors
+    // corrupt native chat when our container is inside its managed tree.
     // On Twitch: insert into chat-shell (which has proper dimensions)
     const parent = isKick
-      ? chatRoom
+      ? chatRoom.parentElement
       : (document.querySelector('.chat-shell') || document.querySelector('[class*="chat-shell"]') || chatRoom.parentElement)
-    parent.appendChild(container)
+    if (isKick) {
+      chatRoom.after(container)
+    } else {
+      parent.appendChild(container)
+    }
     log('Created #hs-mc-container in', parent.tagName + '.' + [...parent.classList].join('.'))
     return container
   }

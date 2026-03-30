@@ -1895,8 +1895,9 @@ async function sendKickMessage(kickSlug, text) {
   function adjustOverlayForPicker(open) {
     const overlay = document.getElementById('hs-mc-overlay');
     if (!overlay) return;
-    const container = document.getElementById('hs-mc-container');
-    const hasBottomTabs = container?.classList.contains('hs-tabs-bottom');
+    // For vertical tabs (left/right), CSS handles overlay positioning — don't override
+    if (tabPosition === 'left' || tabPosition === 'right') return;
+    const hasBottomTabs = tabPosition === 'bottom';
     // Always reserve input bar space to prevent layout shift when it shows/hides
     const barBase = hasBottomTabs ? 90 : 52;
     const pickerEl = document.getElementById('hs-mc-emote-picker');
@@ -8103,7 +8104,11 @@ const STORAGE_KEY = 'heatsync_multichat';
     const bar = document.getElementById('hs-mc-inputbar')
     if (bar) bar.classList.add('hs-hidden')
     const overlay = document.getElementById('hs-mc-overlay')
-    if (overlay) overlay.style.bottom = '0'
+    // For horizontal tabs, extend overlay to fill input bar space
+    // For vertical tabs, CSS :has() handles it — don't set inline bottom
+    if (overlay && tabPosition !== 'left' && tabPosition !== 'right') {
+      overlay.style.bottom = '0'
+    }
   }
 
   // Chat width state
@@ -11663,28 +11668,81 @@ const STORAGE_KEY = 'heatsync_multichat';
       #channel-chatroom:not(.hs-native-hidden) > #hs-mc-container > #hs-kick-resize-handle {
         display: none !important;
       }
-      /* Keep tabbar visible over native chat — fixed panel, same width as HS chat */
+      /* Keep tabbar visible over native chat — fixed panel, respects tab position */
       #channel-chatroom:not(.hs-native-hidden) > #hs-mc-container {
         position: fixed !important;
-        top: 0 !important;
-        right: 0 !important;
-        width: var(--hs-kick-chat-width, 340px) !important;
-        height: auto !important;
         z-index: 10000 !important;
         background: transparent !important;
         pointer-events: none;
         overflow: visible !important;
-        flex-direction: column !important;
       }
       #channel-chatroom:not(.hs-native-hidden) > #hs-mc-container > #hs-mc-tabbar {
         pointer-events: auto;
         background: var(--hs-bg, #18181b) !important;
         position: relative !important;
-        flex-direction: row !important;
-        overflow: visible !important;
+      }
+      /* Top tabs (default) — horizontal bar at top of chat */
+      .hs-tabs-top #channel-chatroom:not(.hs-native-hidden) > #hs-mc-container {
+        top: 0 !important; right: 0 !important;
+        width: var(--hs-kick-chat-width, 340px) !important;
         height: auto !important;
+        flex-direction: column !important;
+      }
+      .hs-tabs-top #channel-chatroom:not(.hs-native-hidden) > #hs-mc-container > #hs-mc-tabbar {
+        flex-direction: row !important;
+        flex-wrap: nowrap !important;
+        overflow-x: auto !important;
+        overflow-y: hidden !important;
+        max-height: 32px !important;
         width: 100% !important;
-        flex-wrap: wrap;
+      }
+      /* Bottom tabs — horizontal bar at bottom of chat */
+      .hs-tabs-bottom #channel-chatroom:not(.hs-native-hidden) > #hs-mc-container {
+        bottom: 0 !important; right: 0 !important;
+        width: var(--hs-kick-chat-width, 340px) !important;
+        height: auto !important;
+        flex-direction: column-reverse !important;
+      }
+      .hs-tabs-bottom #channel-chatroom:not(.hs-native-hidden) > #hs-mc-container > #hs-mc-tabbar {
+        flex-direction: row !important;
+        flex-wrap: nowrap !important;
+        overflow-x: auto !important;
+        overflow-y: hidden !important;
+        max-height: 32px !important;
+        width: 100% !important;
+      }
+      /* Right tabs — vertical bar on right edge */
+      .hs-tabs-right #channel-chatroom:not(.hs-native-hidden) > #hs-mc-container {
+        top: 0 !important; right: 0 !important; bottom: 0 !important;
+        width: auto !important;
+        height: 100% !important;
+        flex-direction: row !important;
+      }
+      .hs-tabs-right #channel-chatroom:not(.hs-native-hidden) > #hs-mc-container > #hs-mc-tabbar {
+        flex-direction: column !important;
+        overflow-y: auto !important;
+        overflow-x: hidden !important;
+        width: 90px !important;
+        height: 100% !important;
+        max-height: none !important;
+        border-left: 1px solid #fff;
+      }
+      /* Left tabs — vertical bar on left edge of chat area */
+      .hs-tabs-left #channel-chatroom:not(.hs-native-hidden) > #hs-mc-container {
+        top: 0 !important; right: auto !important; bottom: 0 !important;
+        left: calc(100vw - var(--hs-kick-chat-width, 340px)) !important;
+        width: auto !important;
+        height: 100% !important;
+        flex-direction: row-reverse !important;
+      }
+      .hs-tabs-left #channel-chatroom:not(.hs-native-hidden) > #hs-mc-container > #hs-mc-tabbar {
+        flex-direction: column !important;
+        overflow-y: auto !important;
+        overflow-x: hidden !important;
+        width: 90px !important;
+        height: 100% !important;
+        max-height: none !important;
+        border-right: 1px solid #fff;
       }
 
       /* Kick resize handle — left edge of fixed chat panel
@@ -11993,7 +12051,9 @@ const STORAGE_KEY = 'heatsync_multichat';
       resizeObserver = new ResizeObserver(() => {
         if (!tabBarElement || !overlayElement) return
         if (tabPosition === 'left' || tabPosition === 'right') {
-          overlayElement.style.top = '0';
+          // Clear any inline overrides — let CSS handle vertical tab layout
+          overlayElement.style.removeProperty('top')
+          overlayElement.style.removeProperty('bottom')
           return;
         }
         const h = tabBarElement.getBoundingClientRect().height;
@@ -12001,7 +12061,10 @@ const STORAGE_KEY = 'heatsync_multichat';
       });
       resizeObserver.observe(tabBarElement);
       cleanup.trackObserver(resizeObserver);
-      if (tabPosition !== 'left' && tabPosition !== 'right') {
+      if (tabPosition === 'left' || tabPosition === 'right') {
+        overlayElement.style.removeProperty('top')
+        overlayElement.style.removeProperty('bottom')
+      } else {
         const h = tabBarElement.getBoundingClientRect().height;
         if (h > 0) overlayElement.style.top = h + 'px';
       }

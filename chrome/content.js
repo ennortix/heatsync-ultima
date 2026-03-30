@@ -31,7 +31,15 @@ window.addEventListener('pagehide', () => lifecycle.abort())
 // Helpers matching old cleanup API but wired to AbortController
 const cleanup = {
   setInterval(fn, ms) { const id = setInterval(fn, ms); _timers.intervals.push(id); return id },
-  setTimeout(fn, ms) { const id = setTimeout(fn, ms); _timers.timeouts.push(id); return id },
+  setTimeout(fn, ms) {
+    const id = setTimeout(() => {
+      const idx = _timers.timeouts.indexOf(id)
+      if (idx !== -1) _timers.timeouts.splice(idx, 1)
+      fn()
+    }, ms)
+    _timers.timeouts.push(id)
+    return id
+  },
   addEventListener(target, event, handler) {
     target.addEventListener(event, handler, { signal })
   },
@@ -109,9 +117,9 @@ function getOrCreateAuthBridge() {
 
 async function updateAuthBridge() {
   try {
-    const stored = await chrome.storage.local.get('auth_token')
+    const stored = await chrome.storage.local.get(['auth_token', 'auth_token_encrypted'])
     const bridge = getOrCreateAuthBridge()
-    bridge.dataset.token = stored.auth_token || ''
+    bridge.dataset.token = stored.auth_token || (stored.auth_token_encrypted ? 'encrypted' : '')
     bridge.dataset.ready = '1'
   } catch {
     const bridge = getOrCreateAuthBridge()
@@ -123,7 +131,7 @@ updateAuthBridge()
 
 // Keep bridge in sync when token changes
 function _onStorageChanged(changes) {
-  if (changes.auth_token) updateAuthBridge()
+  if (changes.auth_token || changes.auth_token_encrypted) updateAuthBridge()
   if (changes.hs_emote_size != null) {
     hsEmoteSize = parseFloat(changes.hs_emote_size.newValue) || 1
     applyEmoteSize()
@@ -150,7 +158,7 @@ cleanup.addEventListener(window, 'message', async (event) => {
   if (event.data?.type === 'heatsync-native-emotes' && Array.isArray(event.data.emotes)) {
     const emotes = event.data.emotes
     log(' Received', emotes.length, 'native Twitch emotes from MAIN world')
-    browser.storage.local.set({ native_twitch_emotes: emotes })
+    chrome.storage.local.set({ native_twitch_emotes: emotes })
   }
 }, 'auth-message-handler');
 
@@ -3556,15 +3564,17 @@ function generateEmoteElement(emote, isOverlay) {
         this.style.setProperty('height', nh + 'px', 'important')
         this.style.setProperty('min-width', nw + 'px', 'important')
         this.style.setProperty('min-height', nh + 'px', 'important')
-        // Debug: walk up DOM and log what might constrain us
-        let el = this, chain = []
-        for (let i = 0; i < 8 && el; i++) {
-          const cs = getComputedStyle(el)
-          chain.push(`${el.tagName}.${el.className.split(' ')[0] || ''}: ${el.clientWidth}x${el.clientHeight} ow=${cs.overflow} mw=${cs.maxWidth} mh=${cs.maxHeight}`)
-          el = el.parentElement
+        if (HEATSYNC_DEBUG) {
+          // Debug: walk up DOM and log what might constrain us
+          let el = this, chain = []
+          for (let i = 0; i < 8 && el; i++) {
+            const cs = getComputedStyle(el)
+            chain.push(`${el.tagName}.${el.className.split(' ')[0] || ''}: ${el.clientWidth}x${el.clientHeight} ow=${cs.overflow} mw=${cs.maxWidth} mh=${cs.maxHeight}`)
+            el = el.parentElement
+          }
+          log(' 📐 Overlay', emote.name, `natural=${nw}x${nh} rendered=${this.clientWidth}x${this.clientHeight}`)
+          log(' 📐 DOM chain:', chain.join(' → '))
         }
-        log(' 📐 Overlay', emote.name, `natural=${nw}x${nh} rendered=${this.clientWidth}x${this.clientHeight}`)
-        log(' 📐 DOM chain:', chain.join(' → '))
       }
     }
     // For blocked emotes, lock dimensions on load so outline matches exactly
@@ -3612,7 +3622,9 @@ function replaceEmoteInText(element, emote) {
         frag.appendChild(emoteEl)
       }
     }
-    textNode.parentNode.replaceChild(frag, textNode)
+    if (textNode.parentNode) {
+      textNode.parentNode.replaceChild(frag, textNode)
+    }
   }
 }
 
@@ -4647,7 +4659,7 @@ function updateEmoteState(hash, emoteName, state) {
         })
       }
 
-      // Live-poll viewer count every 1s while card is visible (lightweight endpoint)
+      // Live-poll viewer count every 10s while card is visible (lightweight endpoint)
       if (cardPollInterval) { clearInterval(cardPollInterval); cardPollInterval = null }
       if (profile && (profile.twitch_is_live || profile.kick_is_live)) {
         cardPollInterval = cleanup.setInterval(async () => {
@@ -4672,7 +4684,7 @@ function updateEmoteState(hash, emoteName, state) {
           } catch (err) {
             // Silently ignore poll failures
           }
-        }, 1000)
+        }, 10000)
       }
     } catch (err) {
       warn(' showCard error:', err)
@@ -4823,12 +4835,9 @@ function retroactivelyProcessBroadcast(username, emoteName, emoteData) {
 
 // Get username from message element
 function getUsername(messageElement) {
-  // Twitch selectors
-  const usernameEl = messageElement.querySelector('.chat-author__display-name') ||
-                     messageElement.querySelector('.chat-line__username') ||
-                     // Kick selectors
-                     messageElement.querySelector('button.inline.font-bold') ||
-                     messageElement.querySelector('[class*="username"]');
+  const usernameEl = messageElement.querySelector(
+    '.chat-author__display-name, .chat-line__username, button.inline.font-bold, [class*="username"]'
+  )
 
   return usernameEl ? usernameEl.textContent.trim() : '';
 }
@@ -5716,6 +5725,8 @@ cleanup.setInterval(() => {
   if (location.href !== lastChatUrl) {
     log(' 🔄 URL changed from', lastChatUrl, 'to', location.href);
     lastChatUrl = location.href;
+    channelEmotes = []
+    allEmotesDirty = true
     detectAndJoinChannel();
     cleanup.setTimeout(() => {
       watchForNewMessages();

@@ -3021,9 +3021,8 @@ async function sendKickMessage(kickSlug, text) {
     const statBadges = [];
     const hd = getHeatDisplay(heat)
     const heatColor = hd ? hd.color : '#808080'
-    const heatEmoji = hd?.emoji || ''
     const heatGlow = hd?.glow ? ';text-shadow:0 0 6px rgba(255,135,0,0.8)' : ''
-    statBadges.push(`<span class="hs-pc-stat heat" style="color:${heatColor};border-color:${heatColor};font-weight:700${heatGlow}">${heatEmoji}<span class="hs-pc-num">${formatCompact(heat)}</span>°</span>`);
+    statBadges.push(`<span class="hs-pc-stat heat" style="color:${heatColor};border-color:${heatColor};font-weight:700${heatGlow}"><span class="hs-pc-num">${formatCompact(heat)}</span>°</span>`);
     if (op > 0) statBadges.push(`<span class="hs-pc-stat op"><span class="hs-pc-num">${formatCompact(op)}</span> [OP]</span>`);
     if (mop > 0) statBadges.push(`<span class="hs-pc-stat mop"><span class="hs-pc-num">${formatCompact(mop)}</span> <span style="color:#ff00ff">[OP]</span></span>`);
     if (re > 0) statBadges.push(`<span class="hs-pc-stat re"><span class="hs-pc-num">${formatCompact(re)}</span> [RE]</span>`);
@@ -5264,7 +5263,7 @@ function listenForSocialEvents() {
 // Update notif tab badge (reuse existing element to avoid DOM churn)
 function updateNotifBadge() {
   if (!tabBarElement) return
-  const tab = tabBarElement.querySelector('[data-tab="activity"]')
+  const tab = tabBarElement.querySelector('[data-tab="mentions"]')
   if (!tab) return
   // Remove any legacy badge element
   const badge = tab.querySelector('.hs-badge')
@@ -12312,7 +12311,7 @@ const STORAGE_KEY = 'heatsync_multichat';
       const userLink = `<a href="https://heatsync.org/user/${encodeURIComponent(m.feedUser)}" target="_blank" class="hs-mc-user" data-username="${escapeHtml((m.feedUser || 'anon').toLowerCase())}" style="color:${sanitizeColor(m.color || '#fff')}">${escapeHtml(m.feedUser || 'anon')}</a>`
       const content = renderFeedContent(m.text, m.emote_refs)
       const hd = getHeatDisplay(m.heat)
-      const heatHtml = hd ? ` <span style="font-weight:700;color:${hd.color}${hd.glow ? ';text-shadow:0 0 6px rgba(255,135,0,0.8)' : ''}">${hd.emoji || ''}${m.heat}</span>` : ''
+      const heatHtml = hd ? ` <span style="font-weight:700;color:${hd.color}${hd.glow ? ';text-shadow:0 0 6px rgba(255,135,0,0.8)' : ''}">${m.heat}</span>` : ''
       // All values sanitized — safe innerHTML (heat is numeric, emoji/color are hardcoded)
       div.innerHTML = `${tsSpan}${threadLink}${typeTag}${userLink}${heatHtml}: <span class="hs-feed-body">${content}</span>`
       div.addEventListener('click', (e) => {

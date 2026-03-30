@@ -50,6 +50,7 @@ const COPY_FILES = [
   'options.js',
   'vi-mode.js',
   'autocomplete-loader.js',
+  'kick-autocomplete-hook.js',
 ]
 
 // Assets (images, etc)

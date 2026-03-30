@@ -52,6 +52,11 @@
       "world": "MAIN"
     },
     {
+      "matches": ["*://*.kick.com/*"],
+      "js": ["emoji-data.js", "kick-autocomplete-hook.js"],
+      "run_at": "document_end"
+    },
+    {
       "matches": [
         "*://*.twitch.tv/*",
         "*://*.kick.com/*",

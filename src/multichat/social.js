@@ -253,7 +253,7 @@ function listenForSocialEvents() {
 // Update notif tab badge (reuse existing element to avoid DOM churn)
 function updateNotifBadge() {
   if (!tabBarElement) return
-  const tab = tabBarElement.querySelector('[data-tab="activity"]')
+  const tab = tabBarElement.querySelector('[data-tab="mentions"]')
   if (!tab) return
   // Remove any legacy badge element
   const badge = tab.querySelector('.hs-badge')

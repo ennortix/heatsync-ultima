@@ -1401,7 +1401,6 @@
         flex-shrink: 0;
         order: -1;
         z-index: 10;
-        overflow: hidden;
       }
 
       /* Chatterino-style composable tab states: idle → has-new → active */
@@ -1474,17 +1473,14 @@
         color: #000 !important;
       }
       /* Utility button row (T, A, A, ⚙) */
-      /* Scrollable section for channel tabs */
+      /* Wrapping section for channel tabs */
       .hs-mc-tabs-scroll {
         display: flex;
+        flex-wrap: wrap;
         gap: 4px;
-        overflow-x: auto;
-        overflow-y: hidden;
         flex: 1;
         min-width: 0;
-        scrollbar-width: none;
       }
-      .hs-mc-tabs-scroll::-webkit-scrollbar { display: none; }
       /* Fixed utility buttons — always visible */
       .hs-mc-tab-utils {
         display: flex;
@@ -3684,6 +3680,7 @@
       }
       .hs-tabs-right .hs-mc-tabs-scroll {
         flex-direction: column;
+        flex-wrap: nowrap;
         overflow-y: auto;
         overflow-x: hidden;
         flex: 1;
@@ -3773,6 +3770,7 @@
       }
       .hs-tabs-left .hs-mc-tabs-scroll {
         flex-direction: column;
+        flex-wrap: nowrap;
         overflow-y: auto;
         overflow-x: hidden;
         flex: 1;
@@ -4087,7 +4085,6 @@
       .hs-tabs-top #channel-chatroom:not(.hs-native-hidden) ~ #hs-mc-container > #hs-mc-tabbar {
         flex-direction: row !important;
         flex-wrap: nowrap !important;
-        overflow: hidden !important;
         width: 100% !important;
       }
       /* Bottom tabs — horizontal bar at bottom of chat */
@@ -4100,7 +4097,6 @@
       .hs-tabs-bottom #channel-chatroom:not(.hs-native-hidden) ~ #hs-mc-container > #hs-mc-tabbar {
         flex-direction: row !important;
         flex-wrap: nowrap !important;
-        overflow: hidden !important;
         width: 100% !important;
       }
       /* Right tabs — vertical bar on right edge */

@@ -1833,17 +1833,22 @@ function processExistingMessages() {
     }
   }
 
-  // Process visible messages first (instant)
-  visibleMessages.forEach(msg => processMessage(msg));
+  // On Kick, skip DOM modifications — they corrupt React's virtual scroll
+  if (!isKick) {
+    // Process visible messages first (instant)
+    visibleMessages.forEach(msg => processMessage(msg));
 
-  // Process hidden messages after a short delay (don't block UI)
-  if (hiddenMessages.length > 0) {
-    cleanup.setTimeout(() => {
-      hiddenMessages.forEach(msg => processMessage(msg));
-      log(` ⏱️ Processed ${messages.length} messages (${visibleMessages.length} visible, ${hiddenMessages.length} hidden) in ${(performance.now() - startTime).toFixed(0)}ms`);
-    }, 50);
+    // Process hidden messages after a short delay (don't block UI)
+    if (hiddenMessages.length > 0) {
+      cleanup.setTimeout(() => {
+        hiddenMessages.forEach(msg => processMessage(msg));
+        log(` ⏱️ Processed ${messages.length} messages (${visibleMessages.length} visible, ${hiddenMessages.length} hidden) in ${(performance.now() - startTime).toFixed(0)}ms`);
+      }, 50);
+    } else {
+      log(` ⏱️ Processed ${visibleMessages.length} visible messages in ${(performance.now() - startTime).toFixed(0)}ms`);
+    }
   } else {
-    log(` ⏱️ Processed ${visibleMessages.length} visible messages in ${(performance.now() - startTime).toFixed(0)}ms`);
+    log(` ⏱️ Kick: skipped processMessage (${messages.length} messages cached only)`);
   }
 }
 
@@ -2725,6 +2730,12 @@ function setupUsernameColoringObserver() {
 
   if (usernameColoringObserver) {
     log(' Observer already setup, skipping');
+    return;
+  }
+
+  // On Kick, skip native chat DOM modifications — they corrupt React's virtual scroll
+  if (isKick) {
+    log(' Skipping username coloring observer on Kick (React virtual scroll protection)');
     return;
   }
 
@@ -5067,7 +5078,11 @@ function watchForNewMessages() {
 
           try {
             batch.forEach(msg => {
-              processMessage(msg)
+              // On Kick, skip DOM modifications to native chat — they corrupt
+              // React's virtual scroll. Only cache messages for multichat overlay.
+              if (!isKick) {
+                processMessage(msg)
+              }
               // Capture to localStorage cache (skip our own cached/backfilled msgs)
               if (!msg.dataset.heatsyncCached && !msg.dataset.heatsyncBackfill) {
                 captureMessageToCache(msg)

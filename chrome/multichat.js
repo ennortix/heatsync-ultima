@@ -2841,6 +2841,16 @@ async function sendKickMessage(kickSlug, text) {
       }
     }, 'mc-emote-tooltip-mouseout');
 
+    // Hide tooltip on scroll (wheel scrolls don't fire mousemove/mouseout)
+    cleanup.addEventListener(document, 'wheel', () => {
+      if (emoteTooltip?.classList.contains('visible')) {
+        hideEmoteTooltip()
+        document.querySelectorAll('.hs-emote-highlight').forEach(w => w.classList.remove('hs-emote-highlight'))
+      }
+      if (linkTooltip?.classList.contains('visible')) hideLinkTooltip()
+      if (userTooltip?.classList.contains('visible')) hideUserTooltip()
+    })
+
     let _tooltipRafPending = false
     cleanup.addEventListener(document, 'mousemove', (e) => {
       // RAF-batch tooltip position updates to avoid per-mousemove style writes
@@ -10310,8 +10320,8 @@ const STORAGE_KEY = 'heatsync_multichat';
         content: '';
         position: absolute;
         top: 0;
-        left: 20%;
-        right: 20%;
+        left: 0;
+        right: 0;
         height: 2px;
         background: #ff6b35;
       }

@@ -2682,8 +2682,8 @@
         content: '';
         position: absolute;
         top: 0;
-        left: 20%;
-        right: 20%;
+        left: 0;
+        right: 0;
         height: 2px;
         background: #ff6b35;
       }

@@ -960,7 +960,10 @@ function isEmoteImage(el) {
   if (el.tagName !== 'IMG') return false;
   if (el.classList.contains('pfp') || el.classList.contains('cluster-pfp-img')) return false;
   if (el.classList.contains('hs-mc-badge-img')) return false;
+  if (el.closest('#emote-picker-btn')) return false;
   const src = el.src || '';
+  // Exclude icon images (not emotes)
+  if (src.includes('/icons/')) return false;
   // Exclude FFZ badge images (room mod/vip badges use cdn.frankerfacez.com/room-badge/)
   if (src.includes('cdn.frankerfacez.com/room-badge/')) return false;
   return src.includes('cdn.7tv.app') ||

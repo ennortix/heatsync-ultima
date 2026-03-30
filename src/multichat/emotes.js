@@ -283,8 +283,9 @@
   function adjustOverlayForPicker(open) {
     const overlay = document.getElementById('hs-mc-overlay');
     if (!overlay) return;
-    const container = document.getElementById('hs-mc-container');
-    const hasBottomTabs = container?.classList.contains('hs-tabs-bottom');
+    // For vertical tabs (left/right), CSS handles overlay positioning — don't override
+    if (tabPosition === 'left' || tabPosition === 'right') return;
+    const hasBottomTabs = tabPosition === 'bottom';
     // Always reserve input bar space to prevent layout shift when it shows/hides
     const barBase = hasBottomTabs ? 90 : 52;
     const pickerEl = document.getElementById('hs-mc-emote-picker');

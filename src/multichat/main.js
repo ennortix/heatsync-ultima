@@ -463,7 +463,11 @@
     const bar = document.getElementById('hs-mc-inputbar')
     if (bar) bar.classList.add('hs-hidden')
     const overlay = document.getElementById('hs-mc-overlay')
-    if (overlay) overlay.style.bottom = '0'
+    // For horizontal tabs, extend overlay to fill input bar space
+    // For vertical tabs, CSS :has() handles it — don't set inline bottom
+    if (overlay && tabPosition !== 'left' && tabPosition !== 'right') {
+      overlay.style.bottom = '0'
+    }
   }
 
   // Chat width state
@@ -4041,10 +4045,12 @@
         background: var(--hs-bg, #18181b) !important;
         position: relative !important;
         flex-direction: row !important;
-        overflow: visible !important;
+        overflow-x: auto !important;
+        overflow-y: hidden !important;
         height: auto !important;
+        max-height: 32px !important;
         width: 100% !important;
-        flex-wrap: wrap;
+        flex-wrap: nowrap !important;
       }
 
       /* Kick resize handle — left edge of fixed chat panel
@@ -4353,7 +4359,9 @@
       resizeObserver = new ResizeObserver(() => {
         if (!tabBarElement || !overlayElement) return
         if (tabPosition === 'left' || tabPosition === 'right') {
-          overlayElement.style.top = '0';
+          // Clear any inline overrides — let CSS handle vertical tab layout
+          overlayElement.style.removeProperty('top')
+          overlayElement.style.removeProperty('bottom')
           return;
         }
         const h = tabBarElement.getBoundingClientRect().height;
@@ -4361,7 +4369,10 @@
       });
       resizeObserver.observe(tabBarElement);
       cleanup.trackObserver(resizeObserver);
-      if (tabPosition !== 'left' && tabPosition !== 'right') {
+      if (tabPosition === 'left' || tabPosition === 'right') {
+        overlayElement.style.removeProperty('top')
+        overlayElement.style.removeProperty('bottom')
+      } else {
         const h = tabBarElement.getBoundingClientRect().height;
         if (h > 0) overlayElement.style.top = h + 'px';
       }

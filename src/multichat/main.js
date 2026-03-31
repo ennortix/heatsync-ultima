@@ -1005,6 +1005,12 @@
       if (stored.ui_settings?.autoHideEmpty !== undefined) {
         autoHideInput = stored.ui_settings.autoHideEmpty;
       }
+      // Migrate: default changed to false — reset users who never explicitly toggled
+      if (autoHideInput && !stored.ui_settings?._autoHideMigrated) {
+        autoHideInput = false;
+        saveUiSetting('autoHideEmpty', false)
+        saveUiSetting('_autoHideMigrated', true)
+      }
     } catch {}
   }
 
@@ -6467,22 +6473,6 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
       });
     }
 
-    // Handle Hermes whisper events from MAIN world
-    window.addEventListener('message', (e) => {
-      if (e.origin !== location.origin || e.data?.type !== 'heatsync-hermes-whisper') return
-      const d = e.data.data
-      if (!d?.text) return
-      handleIncomingWhisper({
-        type: 'whisper',
-        user: d.user || 'unknown',
-        userId: d.userId || '',
-        text: d.text,
-        color: d.color || '#fff',
-        badges: d.badges || '',
-        time: d.time || Date.now(),
-        id: d.id || ''
-      })
-    })
 
     // Handle Hermes events (raids, hype trains, redeems, sub gifts) from MAIN world
     window.addEventListener('message', (e) => {

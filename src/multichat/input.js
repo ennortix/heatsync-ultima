@@ -266,12 +266,13 @@ function initInput() {
     window._hsMcTabHandler = true;
     document.addEventListener('keydown', (e) => {
       if (e.key !== 'Tab') return;
-      if (currentTab === 'add') return;
+      if (currentTab === 'add' || currentTab === 'settings') return;
       const active = document.activeElement;
-      const mcContainer = document.getElementById('hs-mc-container');
-      if (!mcContainer?.contains(active) && active?.id !== 'hs-mc-input') return;
       const input = document.getElementById('hs-mc-input');
       if (!input) return;
+      // Don't steal Tab from other inputs (except Twitch's chat input)
+      if (active && active !== document.body && active.tagName === 'INPUT' && active.id !== 'hs-mc-input' && !active.dataset?.aTarget) return;
+      if (active && active !== document.body && active.tagName === 'TEXTAREA' && active.id !== 'hs-mc-input') return;
 
       // If not already in our input, reveal bar and focus it
       if (active !== input) {

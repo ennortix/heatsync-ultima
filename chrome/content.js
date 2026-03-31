@@ -9,6 +9,8 @@ const warn = HEATSYNC_DEBUG ? console.warn.bind(console, '[heatsync]') : () => {
 
 log('🚀 Script loaded on:', window.location.href);
 
+const isKick = window.location.hostname.includes('kick.com');
+
 // Chrome compatibility - use 'browser' namespace like Firefox
 // Firefox uses native browser API
 
@@ -3013,7 +3015,7 @@ function stackAdjacentOverlayEmotes(messageElement, allEmotes) {
   const allEmoteElements = [...messageElement.querySelectorAll(COMBINED_EMOTE_SELECTOR)]
     .filter(el => !el.closest('.heatsync-emote-stack'))
 
-  log(' 🔍 stackAdjacentOverlayEmotes: heatsync=' + heatsyncEmotes.length + ', combined=' + allEmoteElements.length);
+  log(' 🔍 stackAdjacentOverlayEmotes: combined=' + allEmoteElements.length);
 
   if (allEmoteElements.length < 2) {
     log(' 🔍 Not enough emotes to stack:', allEmoteElements.length);

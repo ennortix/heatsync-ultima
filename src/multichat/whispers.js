@@ -119,7 +119,7 @@ function updateWhisperBadge() {
 }
 
 function handleIncomingWhisper(msg) {
-  // Dedup — Hermes + EventSub may both deliver the same whisper
+  // Dedup by message ID
   if (msg.id && whisperTimeline.some(m => m.id === msg.id)) return
 
   const key = `twitch:${msg.user.toLowerCase()}`
@@ -201,42 +201,22 @@ function handleIncomingDm(data) {
   whisperSaveDebounced()
 }
 
-// Send Twitch whisper — 3-tier cascade: Helix API → GQL → heatsync proxy
+// Send Twitch whisper via heatsync server proxy (uses properly scoped OAuth tokens)
 async function sendTwitchWhisper(toUserId, message) {
-  // 1. Helix API via MAIN world proxy (no integrity needed, just OAuth)
-  try {
-    const resp = await helixRequest(
-      `https://api.twitch.tv/helix/whispers?from_user_id={me}&to_user_id=${encodeURIComponent(toUserId)}`,
-      'POST',
-      { message }
-    )
-    if (resp?.ok) return { ok: true }
-    if (resp?.error) log('Helix whisper failed:', resp.error)
-  } catch (e) { log('Helix whisper error:', e.message) }
-
-  // 2. GQL SendWhisper mutation (needs integrity token)
-  try {
-    const data = await gqlProxy('SendWhisper', { input: { toID: toUserId, message } }, {
-      rawQuery: `mutation SendWhisper($input: SendWhisperInput!) {
-        sendWhisper(input: $input) {
-          error { code }
-        }
-      }`
-    })
-    const err = data?.data?.sendWhisper?.error
-    if (err) log('GQL whisper error:', err.code)
-    else return { ok: true }
-  } catch (e) { log('GQL whisper failed:', e.message) }
-
-  // 3. heatsync server proxy (needs HS auth)
   try {
     const resp = await apiFetch('/api/twitch/whisper', {
       method: 'POST',
       body: { toUserId, message }
     })
     if (resp?.ok) return { ok: true }
-    return { ok: false, error: resp?.error || 'all whisper methods failed' }
+    if (resp?.status === 401) {
+      showToast('log in to heatsync.org to send whispers')
+      return { ok: false, error: 'not authenticated' }
+    }
+    showToast('whisper failed: ' + (resp?.error || 'unknown'))
+    return { ok: false, error: resp?.error || 'unknown' }
   } catch (e) {
+    showToast('whisper failed: ' + e.message)
     return { ok: false, error: e.message }
   }
 }

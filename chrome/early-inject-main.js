@@ -67,19 +67,6 @@
           cost: r.reward?.cost || 0
         }}, location.origin)
       }
-      // Whisper interception — forward to content script
-      } else if (evtType.includes('whisper') || msg.notification?.topic?.includes('whispers')) {
-        const d = pubsub.data_object || pubsub.data || pubsub
-        window.postMessage({ type: 'heatsync-hermes-whisper', data: {
-          user: d.tags?.display_name || d.from_id || 'unknown',
-          userId: d.from_id || d.tags?.user_id || '',
-          text: d.body || d.message || d.text || '',
-          color: d.tags?.color || '#fff',
-          time: Date.now(),
-          id: d.id || d.message_id || ''
-        }}, location.origin)
-        if (DEBUG) log('Hermes whisper:', JSON.stringify(msg.notification).slice(0, 500))
-      }
       // Sub gifts — exact payload TBD, add when discovered
     } catch (err) {
       log('Hermes parse error:', err)
@@ -218,11 +205,22 @@
   }
   safeOverride(window, 'fetch', hsFetch)
 
+  // Read auth-token cookie as fallback when fetch interception missed it
+  function getAuthToken() {
+    if (gql.authToken) return gql.authToken
+    try {
+      const m = document.cookie.match(/(?:^|;\s*)auth-token=([^;]+)/)
+      if (m) { gql.authToken = m[1]; return m[1] }
+    } catch {}
+    return null
+  }
+
   function buildGqlHeaders() {
     const hdrs = { 'Content-Type': 'application/json' }
     if (gql.clientId) hdrs['Client-Id'] = gql.clientId
     else hdrs['Client-Id'] = 'kimne78kx3ncx6brgo4mv6wki5h1ko'
-    if (gql.authToken) hdrs['Authorization'] = 'OAuth ' + gql.authToken
+    const token = getAuthToken()
+    if (token) hdrs['Authorization'] = 'OAuth ' + token
     if (gql.integrity) hdrs['Client-Integrity'] = gql.integrity
     return hdrs
   }
@@ -258,7 +256,7 @@
       variables: op.variables || {}
     })) : body
 
-    if (!gql.authToken) {
+    if (!getAuthToken()) {
       window.postMessage({
         type: 'heatsync-gql-response', id: req.id,
         error: 'no twitch auth token captured — refresh the page'
@@ -267,12 +265,7 @@
     }
 
     // Mutations need valid integrity — reads work without it
-    if (DEBUG && req.rawQuery && !hasValidIntegrity() && /mutation\s/i.test(req.rawQuery)) {
-      console.warn('[heatsync-gql] integrity token stale/missing — mutations may fail')
-    }
-
     const hdrs = buildGqlHeaders()
-    if (DEBUG) console.log('[heatsync-gql] proxy request:', req.operation || 'rawQuery', 'auth:', !!gql.authToken, 'integrity:', !!gql.integrity, 'clientId:', !!gql.clientId)
 
     origFetch('https://gql.twitch.tv/gql', {
       method: 'POST',
@@ -322,7 +315,7 @@
       const req = e.data
       ;(async () => {
         try {
-          if (!gql.authToken) {
+          if (!getAuthToken()) {
             window.postMessage({ type: 'heatsync-helix-response', id: req.id, error: 'not logged into twitch' }, location.origin)
             return
           }
@@ -357,7 +350,7 @@
             url = url.replace(/\{me\}/g, gql.userId)
           }
 
-          const hdrs = { 'Authorization': 'Bearer ' + gql.authToken, 'Client-Id': cid }
+          const hdrs = { 'Authorization': 'Bearer ' + getAuthToken(), 'Client-Id': cid }
           if (req.body) hdrs['Content-Type'] = 'application/json'
           const resp = await origFetch(url, {
             method: req.method || 'GET',

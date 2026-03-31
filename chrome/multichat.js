@@ -1167,7 +1167,7 @@ function handleAuthIrcMessage(event) {
       scheduleReconnect(prev);
       return;
     }
-    // Legacy: Twitch killed IRC whispers Feb 2023. Kept for compat — whispers now arrive via EventSub/Hermes.
+    // Whispers arrive via IRC WHISPER with twitch.tv/commands cap (same as Chatterino)
     if (line.includes('WHISPER')) {
       const msg = parseIrcLine(line)
       if (msg?.type === 'whisper') handleIncomingWhisper(msg)
@@ -4958,9 +4958,6 @@ function listenForSocialEvents() {
     if (msg.type === 'dm_new' && msg.data) {
       handleIncomingDm(msg.data)
     }
-    if (msg.type === 'twitch_whisper' && msg.data) {
-      handleIncomingWhisper(msg.data)
-    }
     if (msg.type === 'youtube_chat_message') {
       const targetChannelId = msg.channelId
       // Dedup against message buffer (survives WS reconnects unlike 5s hash)
@@ -5793,7 +5790,7 @@ function updateWhisperBadge() {
 }
 
 function handleIncomingWhisper(msg) {
-  // Dedup — Hermes + EventSub may both deliver the same whisper
+  // Dedup by message ID
   if (msg.id && whisperTimeline.some(m => m.id === msg.id)) return
 
   const key = `twitch:${msg.user.toLowerCase()}`
@@ -5875,42 +5872,22 @@ function handleIncomingDm(data) {
   whisperSaveDebounced()
 }
 
-// Send Twitch whisper — 3-tier cascade: Helix API → GQL → heatsync proxy
+// Send Twitch whisper via heatsync server proxy (uses properly scoped OAuth tokens)
 async function sendTwitchWhisper(toUserId, message) {
-  // 1. Helix API via MAIN world proxy (no integrity needed, just OAuth)
-  try {
-    const resp = await helixRequest(
-      `https://api.twitch.tv/helix/whispers?from_user_id={me}&to_user_id=${encodeURIComponent(toUserId)}`,
-      'POST',
-      { message }
-    )
-    if (resp?.ok) return { ok: true }
-    if (resp?.error) log('Helix whisper failed:', resp.error)
-  } catch (e) { log('Helix whisper error:', e.message) }
-
-  // 2. GQL SendWhisper mutation (needs integrity token)
-  try {
-    const data = await gqlProxy('SendWhisper', { input: { toID: toUserId, message } }, {
-      rawQuery: `mutation SendWhisper($input: SendWhisperInput!) {
-        sendWhisper(input: $input) {
-          error { code }
-        }
-      }`
-    })
-    const err = data?.data?.sendWhisper?.error
-    if (err) log('GQL whisper error:', err.code)
-    else return { ok: true }
-  } catch (e) { log('GQL whisper failed:', e.message) }
-
-  // 3. heatsync server proxy (needs HS auth)
   try {
     const resp = await apiFetch('/api/twitch/whisper', {
       method: 'POST',
       body: { toUserId, message }
     })
     if (resp?.ok) return { ok: true }
-    return { ok: false, error: resp?.error || 'all whisper methods failed' }
+    if (resp?.status === 401) {
+      showToast('log in to heatsync.org to send whispers')
+      return { ok: false, error: 'not authenticated' }
+    }
+    showToast('whisper failed: ' + (resp?.error || 'unknown'))
+    return { ok: false, error: resp?.error || 'unknown' }
   } catch (e) {
+    showToast('whisper failed: ' + e.message)
     return { ok: false, error: e.message }
   }
 }
@@ -6335,12 +6312,13 @@ function initInput() {
     window._hsMcTabHandler = true;
     document.addEventListener('keydown', (e) => {
       if (e.key !== 'Tab') return;
-      if (currentTab === 'add') return;
+      if (currentTab === 'add' || currentTab === 'settings') return;
       const active = document.activeElement;
-      const mcContainer = document.getElementById('hs-mc-container');
-      if (!mcContainer?.contains(active) && active?.id !== 'hs-mc-input') return;
       const input = document.getElementById('hs-mc-input');
       if (!input) return;
+      // Don't steal Tab from other inputs (except Twitch's chat input)
+      if (active && active !== document.body && active.tagName === 'INPUT' && active.id !== 'hs-mc-input' && !active.dataset?.aTarget) return;
+      if (active && active !== document.body && active.tagName === 'TEXTAREA' && active.id !== 'hs-mc-input') return;
 
       // If not already in our input, reveal bar and focus it
       if (active !== input) {
@@ -8477,6 +8455,12 @@ const STORAGE_KEY = 'heatsync_multichat';
       const stored = await chrome.storage.local.get(['ui_settings']);
       if (stored.ui_settings?.autoHideEmpty !== undefined) {
         autoHideInput = stored.ui_settings.autoHideEmpty;
+      }
+      // Migrate: default changed to false — reset users who never explicitly toggled
+      if (autoHideInput && !stored.ui_settings?._autoHideMigrated) {
+        autoHideInput = false;
+        saveUiSetting('autoHideEmpty', false)
+        saveUiSetting('_autoHideMigrated', true)
       }
     } catch {}
   }
@@ -13940,22 +13924,6 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
       });
     }
 
-    // Handle Hermes whisper events from MAIN world
-    window.addEventListener('message', (e) => {
-      if (e.origin !== location.origin || e.data?.type !== 'heatsync-hermes-whisper') return
-      const d = e.data.data
-      if (!d?.text) return
-      handleIncomingWhisper({
-        type: 'whisper',
-        user: d.user || 'unknown',
-        userId: d.userId || '',
-        text: d.text,
-        color: d.color || '#fff',
-        badges: d.badges || '',
-        time: d.time || Date.now(),
-        id: d.id || ''
-      })
-    })
 
     // Handle Hermes events (raids, hype trains, redeems, sub gifts) from MAIN world
     window.addEventListener('message', (e) => {

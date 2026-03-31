@@ -11850,8 +11850,8 @@ const STORAGE_KEY = 'heatsync_multichat';
     if (tabBarElement && overlayElement && !resizeObserver) {
       resizeObserver = new ResizeObserver(() => {
         if (!tabBarElement || !overlayElement) return
-        if (tabPosition === 'left' || tabPosition === 'right') {
-          // Clear any inline overrides — let CSS handle vertical tab layout
+        if (tabPosition !== 'top') {
+          // Only top tabs need dynamic top offset — all others use CSS positioning
           overlayElement.style.removeProperty('top')
           overlayElement.style.removeProperty('bottom')
           return;
@@ -11861,7 +11861,7 @@ const STORAGE_KEY = 'heatsync_multichat';
       });
       resizeObserver.observe(tabBarElement);
       cleanup.trackObserver(resizeObserver);
-      if (tabPosition === 'left' || tabPosition === 'right') {
+      if (tabPosition !== 'top') {
         overlayElement.style.removeProperty('top')
         overlayElement.style.removeProperty('bottom')
       } else {
@@ -13400,6 +13400,12 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
   function _applyTabsPositionInner() {
     document.body.classList.remove('hs-tabs-top', 'hs-tabs-right', 'hs-tabs-bottom', 'hs-tabs-left');
     document.body.classList.add(`hs-tabs-${tabPosition}`);
+
+    // Clear stale inline positioning from ResizeObserver — CSS handles non-top layouts
+    if (overlayElement) {
+      overlayElement.style.removeProperty('top')
+      overlayElement.style.removeProperty('bottom')
+    }
 
     // Re-apply column width (accounts for vertical tab offset)
     applyChatWidth()

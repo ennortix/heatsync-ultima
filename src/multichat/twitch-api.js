@@ -1301,7 +1301,8 @@ function updateChatBanners(predResult, pollData) {
     const timer = document.createElement('span')
     timer.className = 'hs-mc-chat-banner-timer'
     const durMs = (pollData.durationSeconds || 60) * 1000
-    const pollEndTime = pollData.endedAt ? new Date(pollData.endedAt).getTime() : (new Date(pollData.createdAt).getTime() + durMs)
+    const startTime = pollData.startedAt || pollData.createdAt
+    const pollEndTime = startTime ? (new Date(startTime).getTime() + durMs) : (Date.now() + (pollData.remainingDurationMilliseconds || durMs))
     _startBannerTimer(timer, pollEndTime)
     row.appendChild(timer)
 
@@ -2246,24 +2247,41 @@ async function votePoll(pollId, choiceId) {
   }
 }
 
+const POLL_FIELDS = 'id title status durationSeconds remainingDurationMilliseconds startedAt choices { id title totalVoters } totalVoters'
+
 async function createTwitchPoll(channelId, title, durationSeconds, choices) {
-  return predictionMutation(
-    'CreatePoll', 'createPoll',
-    'mutation($input: CreatePollInput!) { createPoll(input: $input) { poll { id } error { code } } }',
-    { input: { ownedBy: channelId, title, choices: choices.map(t => ({ title: t })), durationSeconds } }
-  )
+  const rawQuery = 'mutation($input: CreatePollInput!) { createPoll(input: $input) { poll { ' + POLL_FIELDS + ' } error { code } } }'
+  const variables = { input: { ownedBy: channelId, title, choices: choices.map(t => ({ title: t })), durationSeconds } }
+  try {
+    const data = await gqlMutation(rawQuery, variables)
+    const result = data?.data?.createPoll
+    if (result?.error) return { error: result.error.code || 'create poll failed' }
+    if (data?.errors?.length) return { error: data.errors[0].message || 'create poll failed' }
+    const poll = result?.poll
+    if (poll) {
+      // Cache the created poll so the UI can display it immediately
+      _gqlDataCache['ActivePoll'] = { data: { user: { activePoll: poll, id: channelId } }, ts: Date.now() }
+    }
+    return { ok: true, poll }
+  } catch (e) {
+    return { error: e.message }
+  }
 }
 
 async function endTwitchPoll(pollId) {
-  // TerminatePollPayload has no error field
-  const apolloResult = await apolloMutate({
-    searchTerm: 'TerminatePoll',
-    variables: { input: { pollID: pollId } },
-    resultField: null,
-    rawQuery: 'mutation($input: TerminatePollInput!) { terminatePoll(input: $input) { poll { id } } }'
-  })
-  if (apolloResult.ok) return { ok: true }
-  return { error: apolloResult.error || 'end poll failed' }
+  const rawQuery = 'mutation($input: TerminatePollInput!) { terminatePoll(input: $input) { poll { ' + POLL_FIELDS + ' } } }'
+  const variables = { input: { pollID: pollId } }
+  try {
+    const data = await gqlMutation(rawQuery, variables)
+    if (data?.errors?.length) return { error: data.errors[0].message || 'end poll failed' }
+    const poll = data?.data?.terminatePoll?.poll
+    if (poll) {
+      _gqlDataCache['ActivePoll'] = { data: { user: { activePoll: poll, id: _twitchChannelId } }, ts: Date.now() }
+    }
+    return { ok: true }
+  } catch (e) {
+    return { error: e.message }
+  }
 }
 
 let _userPollVotes = new Map() // pollId → choiceId

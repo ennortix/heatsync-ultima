@@ -256,7 +256,20 @@ function outcomeColor(color) {
   return map[color] || '#387aff'
 }
 
-function renderPrediction(pred, balance, channelId, isMod) {
+function makePointIcon(size, cpImage) {
+  if (cpImage) {
+    const img = document.createElement('img')
+    img.src = cpImage
+    img.width = size
+    img.height = size
+    img.style.verticalAlign = '-2px'
+    img.style.borderRadius = '50%'
+    return img
+  }
+  return makeCoinSvg(size)
+}
+
+function renderPrediction(pred, balance, channelId, isMod, cpImage, cpName) {
   const frag = document.createDocumentFragment()
   const isLocked = pred.status === 'LOCKED'
   const isResolved = pred.status === 'RESOLVED'
@@ -309,8 +322,8 @@ function renderPrediction(pred, balance, channelId, isMod) {
   if (balance != null && !isEnded) {
     const bal = document.createElement('div')
     bal.className = 'hs-mc-pred-balance'
-    bal.appendChild(makeCoinSvg(14))
-    bal.appendChild(document.createTextNode(' ' + formatPoints(balance)))
+    bal.appendChild(makePointIcon(14, cpImage))
+    bal.appendChild(document.createTextNode(' ' + formatPoints(balance) + (cpName ? ' ' + cpName : '')))
     wrapper.appendChild(bal)
   }
 
@@ -323,7 +336,7 @@ function renderPrediction(pred, balance, channelId, isMod) {
       const winOutcome = pred.outcomes.find(o => o.id === winningId)
       const pct = totalPoints > 0 && winOutcome ? (winOutcome.totalPoints / totalPoints) : 1
       const payout = pct > 0 ? Math.floor(userBet.points / pct) : userBet.points
-      banner.appendChild(makeCoinSvg(18))
+      banner.appendChild(makePointIcon(18, cpImage))
       const amt = document.createElement('span')
       amt.className = 'hs-mc-pred-result-amount'
       amt.textContent = ' +' + formatPoints(payout)
@@ -346,7 +359,7 @@ function renderPrediction(pred, balance, channelId, isMod) {
   } else if (isCanceled && userBet) {
     const banner = document.createElement('div')
     banner.className = 'hs-mc-pred-result hs-mc-pred-result-refund'
-    banner.appendChild(makeCoinSvg(18))
+    banner.appendChild(makePointIcon(18, cpImage))
     const amt = document.createElement('span')
     amt.className = 'hs-mc-pred-result-amount'
     amt.textContent = ' +' + formatPoints(userBet.points)
@@ -501,7 +514,7 @@ function renderPrediction(pred, balance, channelId, isMod) {
   return frag
 }
 
-function renderNoPrediction(balance, channelId, isMod) {
+function renderNoPrediction(balance, channelId, isMod, cpImage, cpName) {
   const wrap = document.createElement('div')
   wrap.className = 'hs-mc-pred-empty'
   if (channelId) wrap.dataset.channelId = channelId
@@ -515,8 +528,8 @@ function renderNoPrediction(balance, channelId, isMod) {
     const bal = document.createElement('div')
     bal.className = 'hs-mc-pred-balance'
     bal.style.marginTop = '8px'
-    bal.appendChild(makeCoinSvg(14))
-    bal.appendChild(document.createTextNode(' ' + formatPoints(balance)))
+    bal.appendChild(makePointIcon(14, cpImage))
+    bal.appendChild(document.createTextNode(' ' + formatPoints(balance) + (cpName ? ' ' + cpName : '')))
     wrap.appendChild(bal)
   }
 
@@ -1134,9 +1147,9 @@ async function renderTwitchTab() {
       empty.appendChild(msg)
       predSlot.appendChild(empty)
     } else if (result.prediction) {
-      predSlot.appendChild(renderPrediction(result.prediction, result.balance, result.channelId, result.isMod))
+      predSlot.appendChild(renderPrediction(result.prediction, result.balance, result.channelId, result.isMod, result.cpImage, result.cpName))
     } else {
-      predSlot.appendChild(renderNoPrediction(result.balance, result.channelId, result.isMod))
+      predSlot.appendChild(renderNoPrediction(result.balance, result.channelId, result.isMod, result.cpImage, result.cpName))
     }
     attachPredictionHandlers()
   })
@@ -1203,9 +1216,9 @@ async function refreshPredictionSlot() {
     msg.textContent = "couldn't load predictions"
     newSlot.appendChild(msg)
   } else if (result.prediction) {
-    newSlot.appendChild(renderPrediction(result.prediction, result.balance, result.channelId, result.isMod))
+    newSlot.appendChild(renderPrediction(result.prediction, result.balance, result.channelId, result.isMod, result.cpImage, result.cpName))
   } else {
-    newSlot.appendChild(renderNoPrediction(result.balance, result.channelId, result.isMod))
+    newSlot.appendChild(renderNoPrediction(result.balance, result.channelId, result.isMod, result.cpImage, result.cpName))
   }
   slot.replaceWith(newSlot)
   attachPredictionHandlers()
@@ -1493,10 +1506,15 @@ async function fetchPrediction(channelLogin) {
       log('GQL prediction query failed:', e.message)
     }
 
-    // Fetch balance via direct GQL
+    // Fetch balance + channel points settings (custom icon/name)
+    let cpImage = null
+    let cpName = null
     try {
-      const data = await twitchGql('{ user(login: "' + safe + '") { channel { self { communityPoints { balance } } } } }')
-      balance = data?.data?.user?.channel?.self?.communityPoints?.balance ?? null
+      const data = await twitchGql('{ channel(name: "' + safe + '") { communityPointsSettings { image { url url2x } name } self { communityPoints { balance } } } }')
+      const ch2 = data?.data?.channel
+      balance = ch2?.self?.communityPoints?.balance ?? null
+      cpImage = ch2?.communityPointsSettings?.image?.url2x || ch2?.communityPointsSettings?.image?.url || null
+      cpName = ch2?.communityPointsSettings?.name || null
     } catch (e) {
       // Fallback to proxy for balance
       try {
@@ -1506,7 +1524,7 @@ async function fetchPrediction(channelLogin) {
       } catch {}
     }
 
-    return { prediction: predEvent, balance, channelId, isMod }
+    return { prediction: predEvent, balance, channelId, isMod, cpImage, cpName }
   } catch (e) {
     log('Failed to fetch prediction:', e.message)
     return null

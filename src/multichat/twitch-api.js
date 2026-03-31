@@ -1107,6 +1107,25 @@ function attachPredictionHandlers() {
     })
   })
 
+  // Create prediction keyboard nav
+  container.querySelectorAll('.hs-mc-pred-create-input').forEach(input => {
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Tab') {
+        e.preventDefault()
+        const inputs = [...container.querySelectorAll('.hs-mc-pred-create-input')]
+        const idx = inputs.indexOf(input)
+        const next = inputs[(idx + 1) % inputs.length]
+        next?.focus()
+      } else if (e.key === 'Enter') {
+        e.preventDefault()
+        container.querySelector('.hs-mc-pred-create-submit')?.click()
+      } else if (e.key === 'Escape') {
+        e.preventDefault()
+        container.querySelector('.hs-mc-pred-create-toggle')?.click()
+      }
+    })
+  })
+
   // Start countdown timers
   container.querySelectorAll('.hs-mc-pred-timer').forEach(el => {
     const endsAt = parseInt(el.dataset.ends)

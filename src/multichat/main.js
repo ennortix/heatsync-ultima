@@ -1668,6 +1668,16 @@
         border-bottom: 1px solid rgba(0,200,100,0.25);
         color: #80e0a0;
       }
+      .hs-mc-chat-banner-pin {
+        background: linear-gradient(90deg, rgba(191,148,255,0.12), rgba(145,70,255,0.08));
+        border-bottom: 1px solid rgba(191,148,255,0.2);
+        color: #d4bfff;
+      }
+      .hs-mc-chat-banner-hype {
+        background: linear-gradient(90deg, rgba(255,135,0,0.15), rgba(255,60,60,0.1));
+        border-bottom: 1px solid rgba(255,135,0,0.3);
+        color: #ffb060;
+      }
       .hs-mc-chat-banner-icon {
         font-size: 14px;
         flex-shrink: 0;
@@ -6756,6 +6766,12 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
         toggleKey = 'redeem'
         eventClass = 'event-redeem'
         text = `[${escapeHtml(channel)}] \u25C6 ${escapeHtml(data.user)} redeemed "${escapeHtml(data.title)}"`
+      } else if (eventType === 'pin') {
+        if (typeof onPinnedMessage === 'function') onPinnedMessage({ message: data.message, sender: data.sender, id: data.id, channel })
+        return
+      } else if (eventType === 'unpin') {
+        if (typeof clearPinnedMessage === 'function') clearPinnedMessage()
+        return
       } else return
 
       if (!hermesToggles[toggleKey]) return

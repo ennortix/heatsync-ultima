@@ -3571,7 +3571,7 @@ function renderPrediction(pred, balance, channelId, isMod, cpImage, cpName) {
 
     const stats = document.createElement('div')
     stats.className = 'hs-mc-pred-outcome-stats'
-    let statsText = formatPoints(points) + ' pts \u00b7 ' + userCount + ' voter' + (userCount !== 1 ? 's' : '')
+    let statsText = formatPoints(points) + ' pts \u00b7 ' + userCount + ' bettor' + (userCount !== 1 ? 's' : '')
     if (isBetOn) statsText += ' \u00b7 your bet: ' + formatPoints(userBet.points)
     stats.textContent = statsText
     card.appendChild(stats)
@@ -3957,7 +3957,7 @@ function optimisticBetUpdate(container, outcomeId, points) {
     if (!statsEl) return
     const text = statsEl.textContent
     const ptsMatch = text.match(/([\d,.]+[KMB]?)\s*pts/i)
-    const voterMatch = text.match(/(\d+)\s*voter/)
+    const voterMatch = text.match(/(\d+)\s*bettor/)
     const betMatch = text.match(/your bet:\s*([\d,.]+[KMB]?)/i)
     const currentPts = ptsMatch ? parsePoints(ptsMatch[1]) : 0
     const currentVoters = voterMatch ? parseInt(voterMatch[1]) : 0

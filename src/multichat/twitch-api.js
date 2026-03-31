@@ -70,7 +70,7 @@ function renderColorPicker() {
   header.className = 'hs-mc-rewards-header'
   const label = document.createElement('span')
   label.className = 'hs-mc-rewards-label'
-  label.textContent = 'chat color'
+  label.textContent = 'username color'
   header.appendChild(label)
 
   const currentEl = document.createElement('span')
@@ -1382,8 +1382,9 @@ async function renderTwitchTab() {
     }
   })
 
-  // Fetch all 3 in parallel, render each as it arrives
-  fetchPrediction(channel).then(result => {
+  // Fetch all in parallel, render each as it arrives
+  // Prediction sets _twitchIsMod — poll needs it as fallback for mod controls
+  const predPromise = fetchPrediction(channel).then(result => {
     _lastPredResult = result
     updateChatBanners(_lastPredResult, _lastPollData)
     predSlot.textContent = ''
@@ -1404,7 +1405,9 @@ async function renderTwitchTab() {
     attachPredictionHandlers()
   })
 
-  fetchPoll(channel).then(pollResult => {
+  // Start poll fetch in parallel, but wait for pred to set _twitchIsMod before rendering
+  const pollPromise = fetchPoll(channel)
+  Promise.all([predPromise, pollPromise]).then(([, pollResult]) => {
     _lastPollData = pollResult?.poll || pollResult
     updateChatBanners(_lastPredResult, _lastPollData)
     if (pollResult?.poll) {
@@ -1725,6 +1728,8 @@ async function fetchGlobalBadges() {
 // Prediction state
 let _predictionPollTimer = null
 let _predictionChannel = null
+let _twitchIsMod = false  // cached from fetchPrediction (most reliable isMod source)
+let _twitchChannelId = null
 const _userBets = new Map() // eventId → { outcomeId, points }
 
 // Rewards state
@@ -1823,6 +1828,8 @@ async function fetchPrediction(channelLogin) {
       } catch {}
     }
 
+    _twitchIsMod = isMod
+    _twitchChannelId = channelId
     return { prediction: predEvent, balance, channelId, isMod, cpImage, cpName }
   } catch (e) {
     log('Failed to fetch prediction:', e.message)
@@ -2193,24 +2200,10 @@ async function fetchPoll(channelLogin) {
     } catch(e) {
       log('GQL proxy poll failed:', e.message)
     }
-    // Fallback to raw GQL
-    const token = getTwitchAuthToken()
-    const headers = { 'Client-Id': TWITCH_CLIENT_ID, 'Content-Type': 'application/json' }
-    if (token) headers['Authorization'] = 'OAuth ' + token
-    const resp = await fetch(TWITCH_GQL, {
-      method: 'POST', headers,
-      signal: AbortSignal.timeout(5000),
-      body: JSON.stringify({
-        query: '{ user(login: "' + safe + '") { id self { isModerator } activePoll { id title status durationSeconds remainingDurationMilliseconds startedAt choices { id title totalVoters } totalVoters } } currentUser { id } }'
-      })
-    })
-    if (!resp.ok) return { poll: null, channelId: null, isMod: false }
-    const data = await resp.json()
-    const user = data?.data?.user
-    const channelId = user?.id || null
-    const currentUserId = data?.data?.currentUser?.id || null
-    const isMod = user?.self?.isModerator || (channelId && currentUserId && channelId === currentUserId)
-    return { poll: user?.activePoll || null, channelId, isMod }
+    // activePoll is persisted-query-only (not in public GQL schema),
+    // so if proxy failed and no cache hit, we have no poll data.
+    // Use cached isMod/channelId from fetchPrediction as fallback.
+    return { poll: null, channelId: _twitchChannelId, isMod: _twitchIsMod }
   } catch (e) {
     log('Failed to fetch poll:', e.message)
     return null

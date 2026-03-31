@@ -12,9 +12,9 @@
     }
     body {
       min-height: 100vh;
-      background: linear-gradient(135deg, #000 0%, #000 100%);
+      background: #000;
       color: #fff;
-      font-family: Inter, -apple-system, BlinkMacSystemFont, sans-serif;
+      font-family: monospace, 'Noto Color Emoji';
       display: flex;
       align-items: center;
       justify-content: center;
@@ -30,18 +30,21 @@
       margin-bottom: 24px;
     }
     h1 {
-      font-size: 28px;
+      font-size: 24px;
+      font-weight: normal;
       margin-bottom: 12px;
-      color: #ff6b35;
+      color: #ff8700;
+      letter-spacing: 4px;
+      text-transform: lowercase;
     }
     .tagline {
-      font-size: 16px;
+      font-size: 14px;
       color: #808080;
       margin-bottom: 32px;
     }
     .steps {
       background: #000;
-      border-radius: 0;
+      border: 1px solid #1a1a1a;
       padding: 24px;
       text-align: left;
       margin-bottom: 32px;
@@ -58,50 +61,49 @@
     .step-number {
       width: 28px;
       height: 28px;
-      background: #ff6b35;
-      border-radius: 50%;
+      background: #ff8700;
+      color: #000;
       display: flex;
       align-items: center;
       justify-content: center;
-      font-weight: 600;
+      font-weight: normal;
       font-size: 14px;
       flex-shrink: 0;
     }
     .step-text {
-      font-size: 15px;
+      font-size: 14px;
       line-height: 1.5;
+      color: #aaa;
     }
     .step-text strong {
       color: #fff;
+      font-weight: normal;
     }
     .cta-btn {
       display: inline-block;
-      padding: 14px 32px;
-      background: #ff6b35;
-      color: #fff;
+      padding: 12px 24px;
+      background: #ff8700;
+      color: #000;
       text-decoration: none;
-      border-radius: 0;
-      font-size: 16px;
-      font-weight: 600;
-      transition: background 0.15s;
+      font-size: 14px;
+      font-family: monospace;
+      border: 1px solid #ff8700;
     }
     .cta-btn:hover {
-      background: #fff;
-      color: #000;
+      background: #000;
+      color: #ff8700;
     }
     .note {
       margin-top: 24px;
-      font-size: 13px;
-      color: #808080;
+      font-size: 12px;
+      color: #555;
     }
     .note a {
-      color: #9147ff;
+      color: #555;
       text-decoration: none;
     }
     .note a:hover {
-      background: #fff;
-      color: #000;
-      text-decoration: none;
+      color: #aaa;
     }
   </style>
 </head>
@@ -123,7 +125,7 @@
         <div class="step-number">2</div>
         <div class="step-text">
           <strong>upload your emotes</strong><br>
-          add any images - no slot limits, all formats supported
+          add any images — no slot limits, all formats supported
         </div>
       </div>
       <div class="step">
@@ -135,11 +137,11 @@
       </div>
     </div>
 
-    <a href="https://heatsync.org" target="_blank" class="cta-btn">get started →</a>
+    <a href="https://heatsync.org" target="_blank" class="cta-btn">get started</a>
 
     <p class="note">
-      need help? <a href="https://heatsync.org/privacy.html#extension" target="_blank">privacy policy</a> ·
-      <a href="https://github.com/mellen9999/heatsync" target="_blank">github</a>
+      <a href="https://heatsync.org/privacy.html#extension" target="_blank">privacy</a> &middot;
+      <a href="https://github.com/mellen9999/heatsync-extension" target="_blank">source</a>
     </p>
   </div>
 </body>

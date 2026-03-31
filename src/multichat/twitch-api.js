@@ -2533,12 +2533,12 @@ function attachPollHandlers() {
       btn.textContent = '...'
       const result = await endTwitchPoll(btn.dataset.pollId)
       if (result.error) {
-        btn.textContent = '!'
+        btn.textContent = result.error
         btn.title = result.error
-        setTimeout(() => { btn.textContent = 'end poll'; btn.disabled = false; btn.title = '' }, 2000)
+        setTimeout(() => { btn.textContent = 'end poll'; btn.disabled = false; btn.title = '' }, 3000)
       } else {
         btn.textContent = '\u2713'
-        setTimeout(() => refreshPollSlot(), 1000)
+        refreshPollSlot()
       }
     })
   })
@@ -2584,12 +2584,14 @@ function attachPollHandlers() {
       btn.textContent = '...'
       const result = await createTwitchPoll(channelId, title, secs, choices)
       if (result.error) {
-        btn.textContent = '!'
+        const errMap = { POLL_ALREADY_ACTIVE: 'poll already active', FORBIDDEN: 'no permission', UNAUTHORIZED: 'not logged in' }
+        const msg = errMap[result.error] || result.error
+        btn.textContent = msg
         btn.title = result.error
-        setTimeout(() => { btn.textContent = 'create poll'; btn.disabled = false; btn.title = '' }, 2000)
+        setTimeout(() => { btn.textContent = 'create poll'; btn.disabled = false; btn.title = '' }, 3000)
       } else {
         btn.textContent = '\u2713'
-        setTimeout(() => refreshPollSlot(), 1000)
+        refreshPollSlot()
       }
     })
   })

@@ -292,7 +292,9 @@ function renderPrediction(pred, balance, channelId, isMod, cpImage, cpName) {
   header.className = 'hs-mc-pred-header'
   const title = document.createElement('div')
   title.className = 'hs-mc-pred-title'
-  title.textContent = pred.title
+  // Render emotes/emoji in prediction title — content sanitized via escapeHtml() then processEmotes()
+  // This is the same pattern used for all chat messages in main.js (existing safe innerHTML pattern)
+  title.innerHTML = typeof processEmotes === 'function' ? processEmotes(escapeHtml(pred.title), null) : escapeHtml(pred.title)
   header.appendChild(title)
 
   if (isCanceled) {
@@ -401,7 +403,8 @@ function renderPrediction(pred, balance, channelId, isMod, cpImage, cpName) {
     head.className = 'hs-mc-pred-outcome-head'
     const titleSpan = document.createElement('span')
     titleSpan.className = 'hs-mc-pred-outcome-title'
-    titleSpan.textContent = outcome.title
+    // Render emotes/emoji in outcome title — sanitized via escapeHtml() + processEmotes() (same as chat messages)
+    titleSpan.innerHTML = typeof processEmotes === 'function' ? processEmotes(escapeHtml(outcome.title), null) : escapeHtml(outcome.title)
     if (isWinner) {
       const winBadge = document.createElement('span')
       winBadge.className = 'hs-mc-pred-winner-badge'
@@ -988,9 +991,14 @@ function attachPredictionHandlers() {
     })
   })
 
-  // Create form: Enter submits, Escape closes
-  container.querySelectorAll('.hs-mc-pred-create-input').forEach(input => {
+  // Create form: Tab cycles inputs, Enter submits, Escape closes
+  const createInputs = [...container.querySelectorAll('.hs-mc-pred-create-input')]
+  createInputs.forEach((input, i) => {
     input.addEventListener('keydown', (e) => {
+      if (e.key === 'Tab') {
+        e.preventDefault()
+        createInputs[(i + (e.shiftKey ? createInputs.length - 1 : 1)) % createInputs.length].focus()
+      }
       if (e.key === 'Enter') {
         e.preventDefault()
         const submit = input.closest('.hs-mc-pred-create-form')?.querySelector('.hs-mc-pred-create-submit')

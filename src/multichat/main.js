@@ -2926,6 +2926,12 @@
         line-height: 1.3;
         flex: 1;
       }
+      .hs-mc-pred-title img,
+      .hs-mc-pred-outcome-title img {
+        height: 1.2em;
+        vertical-align: -0.2em;
+        margin: 0 1px;
+      }
       .hs-mc-pred-locked {
         font-size: 10px;
         padding: 2px 6px;

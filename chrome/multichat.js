@@ -4025,7 +4025,7 @@ function attachPredictionHandlers() {
     if (!code) return 'failed'
     const c = code.toUpperCase()
     if (c.includes('EVENT_MANAGER') || c.includes('OWNER')) return "can't bet on own"
-    if (c.includes('ACCEPT') || c.includes('TOS')) return 'accepting terms...'
+    if (c.includes('ACCEPT') || c.includes('TOS')) return 'try again'
     if (c.includes('NOT_FOUND')) return 'prediction ended'
     if (c.includes('LOCKED')) return 'betting locked'
     if (c.includes('INSUFFICIENT') || c.includes('BALANCE')) return 'not enough points'
@@ -4849,19 +4849,25 @@ async function placePredictionBet(eventId, outcomeId, points, transactionId) {
   const token = getTwitchAuthToken()
   if (!token) return { error: 'not logged in' }
   try {
-    const txId = transactionId || crypto.randomUUID()
-    const makeInput = { eventID: eventId, outcomeID: outcomeId, points, transactionID: txId }
-    let data = await gqlPersistedMutation('MakePrediction', { input: makeInput })
-    // Check for TOS error
     const isTosError = (d) => {
       const msg = d?.errors?.[0]?.message || ''
       const code = d?.data?.makePrediction?.error?.code || ''
       return msg.includes('ACCEPT') || msg.includes('TOS') || code.includes('ACCEPT') || code.includes('TOS')
     }
+    const tryBet = () => {
+      const makeInput = { eventID: eventId, outcomeID: outcomeId, points, transactionID: crypto.randomUUID() }
+      return gqlPersistedMutation('MakePrediction', { input: makeInput })
+    }
+
+    let data = await tryBet()
     if (isTosError(data)) {
+      // Accept terms, wait for propagation, retry up to 3 times with backoff
       await acceptPredictionTerms()
-      makeInput.transactionID = crypto.randomUUID()
-      data = await gqlPersistedMutation('MakePrediction', { input: makeInput })
+      for (let attempt = 0; attempt < 3; attempt++) {
+        await new Promise(r => setTimeout(r, 500 * (attempt + 1)))
+        data = await tryBet()
+        if (!isTosError(data)) break
+      }
     }
     if (data?.errors?.length) return { error: data.errors[0].message }
     const mutError = data?.data?.makePrediction?.error

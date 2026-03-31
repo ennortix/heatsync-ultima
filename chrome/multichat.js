@@ -4791,9 +4791,9 @@ function apolloMutate({ searchTerm, variables, resultField, rawQuery }) {
 async function acceptPredictionTerms() {
   const result = await apolloMutate({
     searchTerm: 'AcceptPredictionTerms',
-    variables: { input: {} },
+    variables: { input: { hasAcceptedTOS: true } },
     resultField: 'updateUserPredictionSettings',
-    rawQuery: 'mutation($input: UpdateUserPredictionSettingsInput!) { updateUserPredictionSettings(input: $input) { error { code } } }'
+    rawQuery: 'mutation($input: UpdateUserPredictionSettingsInput!) { updateUserPredictionSettings(input: $input) { error { code } settings { hasAcceptedTOS } } }'
   })
   return !!result.ok
 }
@@ -4860,12 +4860,15 @@ async function placePredictionBet(eventId, outcomeId, points, transactionId) {
     }
 
     let data = await tryBet()
+    console.log('[hs-pred] bet attempt 1:', JSON.stringify(data?.data?.makePrediction?.error || data?.errors?.[0] || 'ok'))
     if (isTosError(data)) {
       // Accept terms, wait for propagation, retry up to 3 times with backoff
-      await acceptPredictionTerms()
+      const accepted = await acceptPredictionTerms()
+      console.log('[hs-pred] acceptTerms result:', accepted)
       for (let attempt = 0; attempt < 3; attempt++) {
         await new Promise(r => setTimeout(r, 500 * (attempt + 1)))
         data = await tryBet()
+        console.log('[hs-pred] retry', attempt + 1, ':', JSON.stringify(data?.data?.makePrediction?.error || data?.errors?.[0] || 'ok'))
         if (!isTosError(data)) break
       }
     }

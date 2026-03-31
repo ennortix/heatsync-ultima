@@ -1136,64 +1136,53 @@ let _lastPredResult = null
 let _lastPollData = null
 let _lastPinnedMsg = null
 let _hypeTrainActive = null // { level, startedAt }
+let _bannerFingerprint = '' // avoid rebuilding if nothing changed
 
 function clearBannerTimers() {
   _bannerTimers.forEach(id => clearInterval(id))
   _bannerTimers = []
 }
 
-function _makeBannerTimer(endsAt) {
-  const timer = document.createElement('span')
-  timer.className = 'hs-mc-chat-banner-timer'
+function _startBannerTimer(el, endsAt) {
   const update = () => {
     const remaining = Math.max(0, Math.ceil((endsAt - Date.now()) / 1000))
-    if (remaining <= 0) { timer.textContent = 'closing'; return }
+    if (remaining <= 0) { el.textContent = 'closing'; return }
     const m = Math.floor(remaining / 60)
     const s = remaining % 60
-    timer.textContent = m > 0 ? m + ':' + String(s).padStart(2, '0') : s + 's'
+    el.textContent = m > 0 ? m + ':' + String(s).padStart(2, '0') : s + 's'
   }
   update()
   _bannerTimers.push(cleanup.setInterval(() => {
-    if (!timer.isConnected) return
+    if (!el.isConnected) return
     update()
   }, 1000))
-  return timer
-}
-
-function _makeBannerRow(className, icon, titleText, rightEl) {
-  const row = document.createElement('div')
-  row.className = 'hs-mc-chat-banner-item ' + className
-  const iconEl = document.createElement('span')
-  iconEl.className = 'hs-mc-chat-banner-icon'
-  iconEl.textContent = icon
-  row.appendChild(iconEl)
-  const title = document.createElement('span')
-  title.className = 'hs-mc-chat-banner-title'
-  title.textContent = titleText
-  row.appendChild(title)
-  if (rightEl) row.appendChild(rightEl)
-  row.style.cursor = 'pointer'
-  row.addEventListener('click', () => {
-    const twitchTab = document.querySelector('[data-tab="live"]')
-    if (twitchTab) twitchTab.click()
-  })
-  return row
 }
 
 function updateChatBanners(predResult, pollData) {
   const msgsEl = document.getElementById('hs-mc-messages')
   if (!msgsEl) return
-  // hermesToggles is in the shared scope from main.js
   const t = typeof hermesToggles !== 'undefined' ? hermesToggles : {}
-
-  const old = msgsEl.querySelector('.hs-mc-chat-banner')
-  clearBannerTimers()
 
   const pred = predResult?.prediction
   const hasPred = t.pred !== false && pred && (pred.status === 'ACTIVE' || pred.status === 'LOCKED')
   const hasPoll = t.poll !== false && pollData && pollData.status === 'ACTIVE'
   const hasPin = t.pin !== false && _lastPinnedMsg
   const hasHype = t.hype !== false && _hypeTrainActive
+
+  // Fingerprint to avoid unnecessary rebuilds (prevents flash on bet/refresh)
+  const userBet = pred ? _userBets.get(pred.id) : null
+  const fp = [
+    hasPred ? pred.id + ':' + pred.status + ':' + (userBet?.points || 0) : '',
+    hasPoll ? pollData.id + ':' + pollData.status : '',
+    hasPin ? (_lastPinnedMsg.id || _lastPinnedMsg.message) : '',
+    hasHype ? 'hype:' + _hypeTrainActive.level : ''
+  ].join('|')
+
+  if (fp === _bannerFingerprint) return
+  _bannerFingerprint = fp
+
+  const old = msgsEl.querySelector('.hs-mc-chat-banner')
+  clearBannerTimers()
 
   if (!hasPred && !hasPoll && !hasPin && !hasHype) {
     if (old) old.remove()
@@ -1204,44 +1193,113 @@ function updateChatBanners(predResult, pollData) {
   banner.className = 'hs-mc-chat-banner'
   banner.innerHTML = ''
 
+  const goToTwitch = (e) => {
+    const twitchTab = document.querySelector('[data-tab="live"]')
+    if (twitchTab) twitchTab.click()
+  }
+
   // Pinned message
   if (hasPin) {
-    const badge = document.createElement('span')
-    badge.className = 'hs-mc-chat-banner-badge'
-    badge.textContent = 'pinned'
-    badge.style.color = '#bf94ff'
-    banner.appendChild(_makeBannerRow('hs-mc-chat-banner-pin', '\u{1F4CC}', _lastPinnedMsg.message || _lastPinnedMsg.text || '', badge))
+    const row = document.createElement('div')
+    row.className = 'hs-mc-chat-banner-item hs-mc-chat-banner-pin'
+    row.innerHTML = '<span class="hs-mc-chat-banner-icon">\u{1F4CC}</span>'
+    const title = document.createElement('span')
+    title.className = 'hs-mc-chat-banner-title'
+    title.textContent = _lastPinnedMsg.message || ''
+    row.appendChild(title)
+    if (_lastPinnedMsg.sender) {
+      const sender = document.createElement('span')
+      sender.className = 'hs-mc-chat-banner-badge'
+      sender.textContent = _lastPinnedMsg.sender
+      sender.style.color = '#bf94ff'
+      row.appendChild(sender)
+    }
+    banner.appendChild(row)
   }
 
-  // Prediction
+  // Prediction with vital info
   if (hasPred) {
-    let rightEl
+    const row = document.createElement('div')
+    row.className = 'hs-mc-chat-banner-item hs-mc-chat-banner-pred'
+    row.style.cursor = 'pointer'
+    row.addEventListener('click', goToTwitch)
+
+    // Build: 🔮 title · outcome1 45% vs outcome2 55% · [your bet: 100] · 2:30
+    row.innerHTML = '<span class="hs-mc-chat-banner-icon">\u{1F52E}</span>'
+
+    const info = document.createElement('span')
+    info.className = 'hs-mc-chat-banner-title'
+    const totalPts = pred.outcomes.reduce((s, o) => s + (o.totalPoints || 0), 0)
+    const parts = pred.outcomes.map(o => {
+      const pct = totalPts > 0 ? Math.round((o.totalPoints / totalPts) * 100) : 0
+      return o.title + ' ' + pct + '%'
+    })
+    let text = pred.title + ' \u00b7 ' + parts.join(' vs ')
+    if (userBet) {
+      const betOutcome = pred.outcomes.find(o => o.id === userBet.outcomeId)
+      text += ' \u00b7 bet: ' + formatPoints(userBet.points) + (betOutcome ? ' ' + betOutcome.title : '')
+    }
+    info.textContent = text
+    row.appendChild(info)
+
     if (pred.status === 'ACTIVE') {
+      const timer = document.createElement('span')
+      timer.className = 'hs-mc-chat-banner-timer'
       const createdAt = new Date(pred.createdAt).getTime()
       const windowMs = (pred.predictionWindowSeconds || 120) * 1000
-      rightEl = _makeBannerTimer(createdAt + windowMs)
+      _startBannerTimer(timer, createdAt + windowMs)
+      row.appendChild(timer)
     } else {
-      rightEl = document.createElement('span')
-      rightEl.className = 'hs-mc-chat-banner-badge'
-      rightEl.textContent = 'locked'
+      const badge = document.createElement('span')
+      badge.className = 'hs-mc-chat-banner-badge'
+      badge.textContent = 'locked'
+      row.appendChild(badge)
     }
-    banner.appendChild(_makeBannerRow('hs-mc-chat-banner-pred', '\u{1F52E}', pred.title, rightEl))
+
+    banner.appendChild(row)
   }
 
-  // Poll
+  // Poll with vital info
   if (hasPoll) {
+    const row = document.createElement('div')
+    row.className = 'hs-mc-chat-banner-item hs-mc-chat-banner-poll'
+    row.style.cursor = 'pointer'
+    row.addEventListener('click', goToTwitch)
+
+    row.innerHTML = '<span class="hs-mc-chat-banner-icon">\u{1F4CA}</span>'
+
+    const info = document.createElement('span')
+    info.className = 'hs-mc-chat-banner-title'
+    const totalVotes = pollData.choices?.reduce((s, c) => s + (c.votes?.totalCount || c.totalVotes || 0), 0) || 0
+    const choiceParts = pollData.choices?.slice(0, 4).map(c => {
+      const votes = c.votes?.totalCount || c.totalVotes || 0
+      const pct = totalVotes > 0 ? Math.round((votes / totalVotes) * 100) : 0
+      return c.title + ' ' + pct + '%'
+    }) || []
+    info.textContent = pollData.title + (choiceParts.length ? ' \u00b7 ' + choiceParts.join(' vs ') : '')
+    row.appendChild(info)
+
+    const timer = document.createElement('span')
+    timer.className = 'hs-mc-chat-banner-timer'
     const durMs = (pollData.durationSeconds || 60) * 1000
     const pollEndTime = pollData.endedAt ? new Date(pollData.endedAt).getTime() : (new Date(pollData.createdAt).getTime() + durMs)
-    banner.appendChild(_makeBannerRow('hs-mc-chat-banner-poll', '\u{1F4CA}', pollData.title, _makeBannerTimer(pollEndTime)))
+    _startBannerTimer(timer, pollEndTime)
+    row.appendChild(timer)
+
+    banner.appendChild(row)
   }
 
   // Hype train
   if (hasHype) {
+    const row = document.createElement('div')
+    row.className = 'hs-mc-chat-banner-item hs-mc-chat-banner-hype'
+    row.innerHTML = '<span class="hs-mc-chat-banner-icon">\u{1F682}</span><span class="hs-mc-chat-banner-title">hype train</span>'
     const badge = document.createElement('span')
     badge.className = 'hs-mc-chat-banner-badge'
     badge.textContent = 'lvl ' + (_hypeTrainActive.level || 1)
     badge.style.color = '#ff8700'
-    banner.appendChild(_makeBannerRow('hs-mc-chat-banner-hype', '\u{1F682}', 'hype train', badge))
+    row.appendChild(badge)
+    banner.appendChild(row)
   }
 
   if (!old) msgsEl.prepend(banner)

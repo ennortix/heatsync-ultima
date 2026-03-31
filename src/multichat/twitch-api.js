@@ -1101,8 +1101,8 @@ function attachPredictionHandlers() {
         btn.title = result.error
         setTimeout(() => { btn.textContent = 'create prediction'; btn.disabled = false; btn.title = '' }, 2000)
       } else {
-        btn.textContent = '\u2713'
-        setTimeout(() => refreshPredictionSlot(), 1000)
+        form.style.display = 'none'
+        refreshPredictionSlot()
       }
     })
   })
@@ -2626,7 +2626,8 @@ function attachPollHandlers() {
         btn.title = result.error
         setTimeout(() => { btn.textContent = 'create poll'; btn.disabled = false; btn.title = '' }, 3000)
       } else {
-        btn.textContent = '\u2713'
+        // Close create form so refreshPollSlot's guard doesn't skip
+        form.style.display = 'none'
         refreshPollSlot()
       }
     })

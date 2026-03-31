@@ -329,20 +329,36 @@
         }, location.origin)
         try {
           // Find Apollo client from React fiber tree
+          // React 18 uses __reactContainer$, React 17 uses __reactFiber$
+          // Apollo client lives in a context provider's props.value (BFS down from root)
           const root = document.getElementById('root')
-          const fiberKey = root && Object.keys(root).find(k => k.startsWith('__reactFiber$'))
+          const fiberKey = root && Object.keys(root).find(k => k.startsWith('__reactContainer$') || k.startsWith('__reactFiber$'))
           let apolloClient = null
           if (fiberKey) {
-            let node = root[fiberKey]
-            for (let i = 0; i < 200 && node; i++) {
+            const queue = [root[fiberKey]]
+            const visited = new Set()
+            let steps = 0
+            while (queue.length && steps < 500 && !apolloClient) {
+              const node = queue.shift()
+              if (!node || visited.has(node)) continue
+              visited.add(node)
+              steps++
+              // Check memoizedState chain
               let state = node.memoizedState
               while (state) {
                 const val = state.memoizedState
                 if (val?.client?.mutate && val?.client?.query) { apolloClient = val.client; break }
                 state = state.next
               }
-              if (apolloClient) break
-              node = node.return
+              // Check context provider props
+              if (!apolloClient) {
+                const ctx = node.memoizedProps?.value
+                if (ctx?.client?.mutate && ctx?.client?.query) apolloClient = ctx.client
+              }
+              if (!apolloClient) {
+                if (node.child) queue.push(node.child)
+                if (node.sibling) queue.push(node.sibling)
+              }
             }
           }
 

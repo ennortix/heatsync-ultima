@@ -108,6 +108,7 @@
         if (avatarsEnabled) {
           document.querySelectorAll(`.hs-mc-avatar[data-user="${CSS.escape(key)}"]`).forEach(img => {
             img.src = avatarCache.get(key)
+            img.style.display = ''
           })
         }
       })
@@ -319,6 +320,8 @@
         <button class="hs-mc-tab" data-tab="mentions">mentions</button>
         <button class="hs-mc-tab" data-tab="live">live</button>
         <button class="hs-mc-tab" data-tab="add">+</button>
+      </div>
+      <div class="hs-mc-util-row">
         <button class="hs-mc-tab hs-mc-util-btn hs-mc-rotate" data-tab="rotate" title="rotate tabs (T)">T</button>
         <button class="hs-mc-tab hs-mc-util-btn hs-mc-font-btn" data-font-dir="-1" title="smaller text">A-</button>
         <button class="hs-mc-tab hs-mc-util-btn hs-mc-font-btn" data-font-dir="1" title="larger text">A+</button>
@@ -357,11 +360,21 @@
       localStorage.setItem('heatsync-chat-font-size', next);
     });
 
-    // Right-click channel tabs → context menu (edit youtube / remove)
+    // Right-click tabs → mark as read + channel context menu
     container.addEventListener('contextmenu', (e) => {
       const tab = e.target.closest('.hs-mc-tab');
       if (!tab) return;
       const tabId = tab.dataset.tab;
+      // Right-click any tab clears red (mentions) indicator only
+      if (tab.classList.contains('has-mentions')) {
+        e.preventDefault();
+        tab.classList.remove('has-mentions');
+        // Sync seen count so updateTabBadges doesn't re-add it
+        mentionsSeenCount = mentionsBuffer.length;
+        return;
+      }
+
+      // Channel tabs get edit/remove context menu
       const reserved = ['live', 'feed', 'mentions', 'whispers', 'add', 'rotate', 'settings'];
       if (reserved.includes(tabId)) return;
       e.preventDefault();
@@ -434,7 +447,7 @@
   let showOfflineEvents = true;
 
   // Input bar auto-hide — hidden when empty, shown on first keystroke
-  let autoHideInput = true;
+  let autoHideInput = false;
   let inputBarVisible = true;
 
   // ═══ Inline notification routing ═══
@@ -453,9 +466,9 @@
   // Hermes event toggles (Twitch-native events: raids, hype trains, etc.)
   const HERMES_EVENT_TYPES = {
     raid:   { color: '#9146ff', defaultOn: true,  desc: 'raids' },
-    hype:   { color: '#ff8700', defaultOn: true,  desc: 'hype trains' },
+    hype:   { color: '#ff8700', defaultOn: false, desc: 'hype trains' },
     sub:    { color: '#00ff7f', defaultOn: true,  desc: 'gift subs' },
-    redeem: { color: '#00bfff', defaultOn: false, desc: 'channel point redeems' },
+    redeem: { color: '#00bfff', defaultOn: true,  desc: 'channel point redeems' },
   }
   const hermesToggles = {}
   for (const [k, v] of Object.entries(HERMES_EVENT_TYPES)) hermesToggles[k] = v.defaultOn
@@ -1246,7 +1259,7 @@
         linksEnabled = true;
         viModeEnabled = false;
         zebraEnabled = true;
-        autoHideInput = true;
+        autoHideInput = false;
         timestampsEnabled = false;
         avatarsEnabled = false;
         platformBadgesEnabled = true;
@@ -1255,7 +1268,7 @@
         for (const [k, v] of Object.entries(HERMES_EVENT_TYPES)) hermesToggles[k] = v.defaultOn;
         const settings = {
           wysiwygEnabled: false, linksEnabled: true, viMode: false,
-          zebra: true, autoHideInput: true, timestamps: false,
+          zebra: true, autoHideInput: false, timestamps: false,
           avatars: false, showPlatformBadges: true, showOfflineEvents: true,
           inlineNotifs: { ...inlineNotifs }, hermesEvents: { ...hermesToggles },
         };
@@ -1355,7 +1368,7 @@
       .hs-mc-tab {
         padding: 2px 8px !important;
         background: #000 !important;
-        color: #fff !important;
+        color: #808080 !important;
         border: 1px solid #808080 !important;
         border-radius: 0 !important;
         cursor: pointer !important;
@@ -1430,6 +1443,18 @@
         gap: 4px;
         width: 100%;
         align-items: center;
+      }
+      /* Util row — always a single row of 4, fits container width */
+      .hs-mc-util-row {
+        display: grid;
+        grid-template-columns: 1fr 1fr 1fr 1fr;
+        gap: 4px;
+        width: 100%;
+        box-sizing: border-box;
+      }
+      .hs-mc-util-row .hs-mc-tab {
+        min-width: 0 !important;
+        padding: 2px 0 !important;
       }
       /* Util buttons — same size as tabs, flow inline and wrap naturally */
       .hs-mc-util-btn {
@@ -1782,7 +1807,7 @@
         color: #ffffff;
       }
       .hs-mc-msg.hs-mc-zebra, .hs-feed-msg.hs-mc-zebra {
-        background: #000;
+        background: rgba(255,255,255,0.04);
       }
       .hs-mc-msg:hover {
       }
@@ -3613,6 +3638,7 @@
       .hs-tabs-right .hs-mc-tabs-scroll {
         flex-direction: column;
         flex-wrap: nowrap;
+        align-items: stretch;
         overflow-y: auto;
         overflow-x: hidden;
         flex: 1;
@@ -3698,6 +3724,7 @@
       .hs-tabs-left .hs-mc-tabs-scroll {
         flex-direction: column;
         flex-wrap: nowrap;
+        align-items: stretch;
         overflow-y: auto;
         overflow-x: hidden;
         flex: 1;
@@ -4513,7 +4540,7 @@
     // Hide input bar on add-channel form, or when auto-hide is on
     if (inputBarElement) {
       const pickerOpen = document.getElementById('hs-mc-emote-picker')?.classList.contains('visible');
-      if (id === 'add') {
+      if (id === 'add' || id === 'settings') {
         inputBarElement.classList.add('hs-hidden');
         inputBarVisible = false;
       } else if (autoHideInput && !pickerOpen) {

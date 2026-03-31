@@ -4111,8 +4111,14 @@ function attachPredictionHandlers() {
         btn.title = result.error
         setTimeout(() => { btn.textContent = 'lock betting'; btn.disabled = false; btn.title = '' }, 3000)
       } else {
-        btn.textContent = '\u2713'
-        setTimeout(() => refreshPredictionSlot(), 1000)
+        // Hide bet rows + lock button immediately, keep resolve/cancel
+        const pred = btn.closest('.hs-mc-prediction') || container.querySelector('.hs-mc-prediction')
+        if (pred) {
+          pred.querySelectorAll('.hs-mc-pred-bet-row').forEach(el => el.remove())
+          pred.querySelector('.hs-mc-pred-lock-btn')?.remove()
+        }
+        btn.textContent = '\u2713 locked'
+        setTimeout(() => refreshPredictionSlot(), 2000)
       }
     })
   })
@@ -4134,8 +4140,14 @@ function attachPredictionHandlers() {
         btn.title = result.error
         setTimeout(() => { btn.textContent = 'pick winner'; btn.disabled = false; btn.title = '' }, 3000)
       } else {
-        btn.textContent = '\u2713'
-        setTimeout(() => refreshPredictionSlot(), 1000)
+        // Immediately clean up stale UI
+        const pred = btn.closest('.hs-mc-prediction') || container.querySelector('.hs-mc-prediction')
+        if (pred) {
+          pred.querySelectorAll('.hs-mc-pred-mod-row, .hs-mc-pred-mod-notice, .hs-mc-pred-bet-row, .hs-mc-pred-resolve-btn').forEach(el => el.remove())
+          pred.classList.add('hs-mc-pred-resolved')
+        }
+        btn.textContent = '\u2713 ended'
+        setTimeout(() => refreshPredictionSlot(), 2000)
       }
     })
   })
@@ -4155,8 +4167,13 @@ function attachPredictionHandlers() {
         btn.title = result.error
         setTimeout(() => { btn.textContent = 'cancel (refund)'; btn.disabled = false; btn.title = '' }, 3000)
       } else {
-        btn.textContent = '\u2713'
-        setTimeout(() => refreshPredictionSlot(), 1000)
+        const pred = btn.closest('.hs-mc-prediction') || container.querySelector('.hs-mc-prediction')
+        if (pred) {
+          pred.querySelectorAll('.hs-mc-pred-mod-row, .hs-mc-pred-mod-notice, .hs-mc-pred-bet-row, .hs-mc-pred-resolve-btn').forEach(el => el.remove())
+          pred.classList.add('hs-mc-pred-canceled')
+        }
+        btn.textContent = '\u2713 refunded'
+        setTimeout(() => refreshPredictionSlot(), 2000)
       }
     })
   })

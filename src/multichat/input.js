@@ -1,5 +1,16 @@
 // Input - chat input, autocomplete, send message, reply state
 
+// Brief red flash on input to indicate message can't be sent from this tab
+function flashInputError(input) {
+  if (!input) return
+  input.style.background = '#400000'
+  input.style.borderColor = '#ff0000'
+  setTimeout(() => {
+    input.style.background = ''
+    input.style.borderColor = ''
+  }, 600)
+}
+
 // Per-emote operation lock to prevent race conditions from rapid clicking
 const pendingEmoteOps = new Set();
 
@@ -1291,18 +1302,10 @@ async function sendMessage() {
     if (handled) return
   }
 
-  // Whispers tab → plain text acts as /r (reply to last)
-  if (currentTab === 'whispers') {
-    if (!lastWhisperKey) { showToast('no one to reply to — use /w or /dm first'); return }
-    sendWhisperMessage(lastWhisperKey, text)
-    clearInput(input)
+  // Non-chat tabs — plain text not allowed, use slash commands
+  if (currentTab === 'whispers' || currentTab === 'feed' || currentTab === 'mentions') {
+    flashInputError(input)
     return
-  }
-
-  // Feed/notifs tab → post to heatsync API
-  if (currentTab === 'feed') {
-    postFeedMessage(text);
-    return;
   }
 
   // Determine target channel + platform
@@ -1310,10 +1313,8 @@ async function sendMessage() {
   let ch = null
   if (currentTab === 'live') {
     targetChannel = getLiveChannel()
-  } else if (currentTab === 'mentions') {
-    targetChannel = getCurrentChannel()
-  } else if (currentTab === 'add') {
-    if (MC_DEBUG) console.warn('[HS] SEND BAIL: on add tab')
+  } else if (currentTab === 'add' || currentTab === 'settings') {
+    flashInputError(input)
     return
   } else {
     ch = config.channels.find(c => (typeof c === 'string' ? c : c.id) === currentTab)
@@ -1321,7 +1322,7 @@ async function sendMessage() {
   }
 
   if (!targetChannel) {
-    console.warn('[HS] SEND BAIL: no target channel, currentTab=' + currentTab)
+    flashInputError(input)
     return
   }
 

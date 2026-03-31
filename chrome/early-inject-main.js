@@ -67,6 +67,19 @@
           cost: r.reward?.cost || 0
         }}, location.origin)
       }
+      // Whisper interception — forward to content script
+      } else if (evtType.includes('whisper') || msg.notification?.topic?.includes('whispers')) {
+        const d = pubsub.data_object || pubsub.data || pubsub
+        window.postMessage({ type: 'heatsync-hermes-whisper', data: {
+          user: d.tags?.display_name || d.from_id || 'unknown',
+          userId: d.from_id || d.tags?.user_id || '',
+          text: d.body || d.message || d.text || '',
+          color: d.tags?.color || '#fff',
+          time: Date.now(),
+          id: d.id || d.message_id || ''
+        }}, location.origin)
+        if (DEBUG) log('Hermes whisper:', JSON.stringify(msg.notification).slice(0, 500))
+      }
       // Sub gifts — exact payload TBD, add when discovered
     } catch (err) {
       log('Hermes parse error:', err)

@@ -169,6 +169,9 @@ function listenForSocialEvents() {
     if (msg.type === 'dm_new' && msg.data) {
       handleIncomingDm(msg.data)
     }
+    if (msg.type === 'twitch_whisper' && msg.data) {
+      handleIncomingWhisper(msg.data)
+    }
     if (msg.type === 'youtube_chat_message') {
       const targetChannelId = msg.channelId
       // Dedup against message buffer (survives WS reconnects unlike 5s hash)

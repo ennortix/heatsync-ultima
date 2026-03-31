@@ -74,6 +74,7 @@ function handleAuthIrcMessage(event) {
       scheduleReconnect(prev);
       return;
     }
+    // Legacy: Twitch killed IRC whispers Feb 2023. Kept for compat — whispers now arrive via EventSub/Hermes.
     if (line.includes('WHISPER')) {
       const msg = parseIrcLine(line)
       if (msg?.type === 'whisper') handleIncomingWhisper(msg)

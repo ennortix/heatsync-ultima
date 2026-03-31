@@ -95,7 +95,10 @@
   // Captures persisted query hashes, integrity tokens, and response data
   // from Twitch's own GQL calls. Proxies GQL requests from content scripts.
   const gql = {
-    hashes: {},       // operationName → sha256Hash
+    hashes: {         // operationName → sha256Hash (seeded with known working hashes)
+      MakePrediction: 'b44682ecc88358817009f20e69d75081b1e58825bb40aa53d5dbadcc17c881d8',
+      ChannelPointsPredictionContext: 'beb846598256b75bd7c1fe54a80431335996153e358ca9c7837ce7bb83d7d383'
+    },
     integrity: null,  // Client-Integrity token
     clientId: null,   // Client-Id
     authToken: null,  // OAuth token
@@ -108,6 +111,7 @@
     'ChannelPointsContext', 'ActivePoll', 'CreatePoll',
     'MakePrediction', 'ChannelPointsRewardRedemption'
   ]
+
 
   // Hook fetch to intercept Twitch GQL traffic
   const origFetch = window.fetch
@@ -307,6 +311,98 @@
         data: result,
         hashes: Object.keys(gql.hashes)
       }, location.origin)
+      return
+    }
+
+    // ═══ Apollo mutation proxy ═══
+    // Generic handler: find Twitch's Apollo client + webpack mutation document,
+    // call client.mutate() with full auth/integrity context.
+    // Used for AcceptPredictionTerms and any mutation that needs persisted query hashes.
+    if (e.data?.type === 'heatsync-apollo-mutate') {
+      const reqId = e.data.id
+      const searchTerm = e.data.searchTerm   // string to find in webpack module factory source
+      const variables = e.data.variables || {}
+      const resultField = e.data.resultField  // e.g. 'updateUserPredictionSettings'
+      ;(async () => {
+        const respond = (data) => window.postMessage({
+          type: 'heatsync-apollo-mutate-response', id: reqId, data
+        }, location.origin)
+        try {
+          // Find Apollo client from React fiber tree
+          const root = document.getElementById('root')
+          const fiberKey = root && Object.keys(root).find(k => k.startsWith('__reactFiber$'))
+          let apolloClient = null
+          if (fiberKey) {
+            let node = root[fiberKey]
+            for (let i = 0; i < 200 && node; i++) {
+              let state = node.memoizedState
+              while (state) {
+                const val = state.memoizedState
+                if (val?.client?.mutate && val?.client?.query) { apolloClient = val.client; break }
+                state = state.next
+              }
+              if (apolloClient) break
+              node = node.return
+            }
+          }
+
+          if (apolloClient && searchTerm) {
+            // Load the mutation document from Twitch's webpack modules
+            const chunks = window.webpackChunktwitch_twilight || []
+            let doc = null
+            for (const chunk of chunks) {
+              const mods = chunk[1]
+              if (!mods || typeof mods !== 'object') continue
+              for (const [, factory] of Object.entries(mods)) {
+                if (typeof factory !== 'function') continue
+                const src = factory.toString()
+                if (!src.includes(searchTerm)) continue
+                const m = { exports: {} }
+                try { factory(m, m.exports, function() { return {} }) } catch {}
+                if (m.exports?.kind === 'Document') { doc = m.exports; break }
+              }
+              if (doc) break
+            }
+            log('apollo-mutate[' + searchTerm + ']: doc=' + !!doc)
+
+            if (doc) {
+              const result = await apolloClient.mutate({ mutation: doc, variables })
+              log('apollo-mutate[' + searchTerm + ']: result=' + JSON.stringify(result?.data).slice(0, 200))
+              if (resultField) {
+                const field = result?.data?.[resultField]
+                const err = field?.error
+                respond(err ? { error: err.code || 'mutation error' } : { ok: true, data: result.data })
+              } else {
+                respond({ ok: true, data: result.data })
+              }
+              return
+            }
+          }
+
+          // Fallback: raw query with integrity (works for some mutations)
+          if (e.data.rawQuery) {
+            log('apollo-mutate[' + searchTerm + ']: fallback to raw query')
+            const hdrs = buildGqlHeaders()
+            const resp = await origFetch('https://gql.twitch.tv/gql', {
+              method: 'POST', headers: hdrs,
+              body: JSON.stringify({ query: e.data.rawQuery, variables })
+            })
+            const data = await resp.json()
+            if (data?.errors?.length) {
+              respond({ error: data.errors[0].message })
+            } else if (resultField && data?.data?.[resultField]?.error) {
+              respond({ error: data.data[resultField].error.code })
+            } else {
+              respond({ ok: true, data: data?.data })
+            }
+          } else {
+            respond({ error: 'apollo client or webpack module not found' })
+          }
+        } catch (err) {
+          log('apollo-mutate: exception=' + err.message)
+          respond({ error: err.message })
+        }
+      })()
       return
     }
 

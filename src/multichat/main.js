@@ -3004,35 +3004,43 @@
         flex-wrap: wrap;
       }
       .hs-mc-pred-bet-btn {
-        background: rgba(255,255,255,0.08);
-        border: none;
-        color: #808080;
+        background: rgba(0,0,0,0.7);
+        border: 1px solid rgba(255,255,255,0.2);
+        color: #fff;
         font-size: 11px;
         padding: 3px 8px;
-        border-radius: 0;
         cursor: pointer;
-        transition: none;
+        font-family: inherit;
       }
       .hs-mc-pred-bet-btn:hover {
         background: #fff;
         color: #000;
       }
       .hs-mc-pred-bet-btn:disabled {
-        opacity: 0.5;
+        opacity: 0.3;
         cursor: default;
+      }
+      .hs-mc-pred-bet-btn:disabled:hover {
+        background: rgba(0,0,0,0.7);
+        color: #fff;
       }
       .hs-mc-pred-bet-custom {
         width: 52px;
-        background: rgba(255,255,255,0.08);
-        border: 1px solid rgba(255,255,255,0.1);
-        color: #808080;
+        background: #fff;
+        border: 1px solid rgba(255,255,255,0.2);
+        color: #000;
         font-size: 11px;
         padding: 2px 6px;
-        border-radius: 0;
         outline: none;
+        font-family: inherit;
       }
       .hs-mc-pred-bet-custom:focus {
-        border-color: var(--oc, #387aff);
+        border-color: #ff8700;
+      }
+      .hs-mc-pred-bet-custom:disabled {
+        background: rgba(255,255,255,0.08);
+        color: #808080;
+        opacity: 0.3;
       }
       .hs-mc-pred-bet-custom::-webkit-inner-spin-button,
       .hs-mc-pred-bet-custom::-webkit-outer-spin-button {
@@ -3040,23 +3048,26 @@
         margin: 0;
       }
       .hs-mc-pred-bet-go {
-        background: var(--oc, #387aff);
-        border: none;
+        background: rgba(0,0,0,0.7);
+        border: 1px solid rgba(255,255,255,0.2);
         color: #fff;
         font-size: 11px;
         font-weight: 600;
         padding: 3px 10px;
-        border-radius: 0;
         cursor: pointer;
-        transition: none;
+        font-family: inherit;
       }
       .hs-mc-pred-bet-go:hover {
         background: #fff;
         color: #000;
       }
       .hs-mc-pred-bet-go:disabled {
-        opacity: 0.5;
+        opacity: 0.3;
         cursor: default;
+      }
+      .hs-mc-pred-bet-go:disabled:hover {
+        background: rgba(0,0,0,0.7);
+        color: #fff;
       }
       .hs-mc-pred-bet-max {
         font-weight: 600;
@@ -3131,6 +3142,114 @@
         letter-spacing: 0.5px;
         vertical-align: middle;
         margin-left: 4px;
+      }
+
+      /* ═══ Mod controls ═══ */
+      .hs-mc-pred-mod-row {
+        display: flex;
+        gap: 6px;
+        margin-top: 8px;
+      }
+      .hs-mc-pred-mod-btn {
+        font-size: 11px;
+        padding: 4px 10px;
+        background: rgba(0,0,0,0.7);
+        color: #fff;
+        border: 1px solid rgba(255,255,255,0.2);
+        cursor: pointer;
+        font-family: inherit;
+      }
+      .hs-mc-pred-mod-btn:hover {
+        background: #fff;
+        color: #000;
+      }
+      .hs-mc-pred-mod-btn:disabled {
+        opacity: 0.3;
+        cursor: default;
+      }
+      .hs-mc-pred-mod-btn:disabled:hover {
+        background: rgba(0,0,0,0.7);
+        color: #fff;
+      }
+      .hs-mc-pred-lock-btn:hover,
+      .hs-mc-pred-cancel-btn:hover {
+        background: #fff;
+        color: #000;
+      }
+      .hs-mc-pred-resolve-btn {
+        margin-top: 6px;
+        width: 100%;
+        color: var(--oc);
+        border-color: var(--oc);
+      }
+      .hs-mc-pred-resolve-btn:hover {
+        background: var(--oc);
+        color: #000;
+      }
+
+      /* ═══ Create prediction form ═══ */
+      .hs-mc-pred-create {
+        margin-top: 10px;
+      }
+      .hs-mc-pred-create-toggle {
+        width: 100%;
+        text-align: center;
+      }
+      .hs-mc-pred-create-form {
+        flex-direction: column;
+        gap: 6px;
+        margin-top: 8px;
+      }
+      .hs-mc-pred-create-input {
+        font-size: 12px;
+        padding: 2px 8px;
+        background: #fff;
+        color: #000;
+        border: none;
+        font-family: inherit;
+        outline: none;
+      }
+      .hs-mc-pred-create-input:focus {
+        outline: 1px solid #ff8700;
+      }
+      .hs-mc-pred-create-dur-row {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        flex-wrap: wrap;
+      }
+      .hs-mc-pred-create-dur-label {
+        font-size: 11px;
+        color: #808080;
+        margin-right: 2px;
+      }
+      .hs-mc-pred-create-dur {
+        font-size: 10px;
+        padding: 2px 6px;
+        background: rgba(0,0,0,0.7);
+        color: #aaa;
+        border: 1px solid rgba(255,255,255,0.2);
+        cursor: pointer;
+        font-family: inherit;
+      }
+      .hs-mc-pred-create-dur:hover {
+        background: #fff;
+        color: #000;
+      }
+      .hs-mc-pred-create-dur-active {
+        background: #ff8700;
+        color: #000;
+        border-color: #ff8700;
+      }
+      .hs-mc-pred-create-submit {
+        background: rgba(0,0,0,0.7);
+        color: #ff8700;
+        border-color: #ff8700;
+        font-weight: 600;
+      }
+      .hs-mc-pred-create-submit:hover {
+        background: #ff8700;
+        color: #000;
       }
 
       /* ═══ Polls ═══ */

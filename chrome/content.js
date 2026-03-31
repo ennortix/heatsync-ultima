@@ -2929,9 +2929,18 @@ function processMessage(messageElement) {
 
   // 2-tier lookup: cached base + per-user broadcast emotes (avoids cloning entire Map)
   // Fast path: skip broadcast scan when no broadcasts pending (common case)
+  // For our own messages, skip broadcasts — our inventory is authoritative
   let allEmotes
-  if (pendingEmoteBroadcasts.size === 0 || !username) {
+  const currentUser = getCurrentUsername()
+  const isOwnMessage = currentUser && username && username.toLowerCase() === currentUser.toLowerCase()
+  if (pendingEmoteBroadcasts.size === 0 || !username || isOwnMessage) {
     allEmotes = cachedAllEmotes
+    // DEBUG: trace where emotes come from for own messages
+    if (isOwnMessage && cachedAllEmotes.has('CHOMPER')) {
+      const src = cachedAllEmotes.get('CHOMPER')
+      console.warn('[heatsync-debug] CHOMPER in cachedAllEmotes for own msg:', JSON.stringify({ name: src.name, hash: src.hash?.substring(0, 8), url: src.url?.substring(0, 60), isGlobal: src.isGlobal, source: src.source }))
+      console.warn('[heatsync-debug] inInventory:', emoteInventory.some(e => e.name === 'CHOMPER'), 'inGlobal:', globalEmotes.some(e => e.name === 'CHOMPER'), 'inChannel:', channelEmotes.some(e => e.name === 'CHOMPER'))
+    }
   } else {
     const userKey = username.toLowerCase()
     const userBroadcastMap = pendingBroadcastsByUser.get(userKey)

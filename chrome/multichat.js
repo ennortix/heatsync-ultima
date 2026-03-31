@@ -3144,6 +3144,17 @@ async function sendKickMessage(kickSlug, text) {
 
 // ═══ Predictions & Betting ═══
 
+function parsePoints(str) {
+  if (!str) return 0
+  str = str.trim().toLowerCase()
+  const m = str.match(/^(\d+(?:\.\d+)?)\s*(k|m)?$/)
+  if (!m) return parseInt(str) || 0
+  const num = parseFloat(m[1])
+  if (m[2] === 'k') return Math.floor(num * 1000)
+  if (m[2] === 'm') return Math.floor(num * 1000000)
+  return Math.floor(num)
+}
+
 function formatPoints(n) {
   if (n == null) return '?'
   if (n >= 1000000) return (n / 1000000).toFixed(1).replace(/\.0$/, '') + 'M'
@@ -3227,7 +3238,7 @@ function renderColorPicker() {
   custom.className = 'hs-mc-color-custom'
   const hexInput = document.createElement('input')
   hexInput.type = 'text'
-  hexInput.placeholder = '#hex (turbo/sub)'
+  hexInput.placeholder = '#hex'
   hexInput.className = 'hs-mc-color-hex'
   hexInput.id = 'hs-mc-color-hex-input'
   hexInput.maxLength = 7
@@ -3286,7 +3297,7 @@ function attachColorHandlers() {
         const el = document.getElementById('hs-mc-current-color')
         if (el) { el.style.backgroundColor = color; el.title = color }
       } else {
-        showToast('color failed: ' + (resp.error || 'turbo/sub only for custom hex'))
+        showToast('color failed: ' + (resp.error || 'color change failed'))
       }
     })
   }
@@ -3382,7 +3393,12 @@ function makeCoinSvg(size) {
   return svg
 }
 
-function renderPrediction(pred, balance) {
+function outcomeColor(color) {
+  const map = { PINK: '#f5009b', BLUE: '#387aff', ORANGE: '#ff8700', GREEN: '#00c853', TEAL: '#00bcd4', PURPLE: '#9c27b0', YELLOW: '#fdd835', LIGHT_BLUE: '#4fc3f7', RED: '#e53935', BROWN: '#795548' }
+  return map[color] || '#387aff'
+}
+
+function renderPrediction(pred, balance, channelId, isMod) {
   const frag = document.createDocumentFragment()
   const isLocked = pred.status === 'LOCKED'
   const isResolved = pred.status === 'RESOLVED'
@@ -3398,6 +3414,7 @@ function renderPrediction(pred, balance) {
   const wrapper = document.createElement('div')
   wrapper.className = 'hs-mc-prediction' + (isResolved ? ' hs-mc-pred-resolved' : '') + (isCanceled ? ' hs-mc-pred-canceled' : '')
   wrapper.dataset.eventId = pred.id
+  if (channelId) wrapper.dataset.channelId = channelId
 
   // Header
   const header = document.createElement('div')
@@ -3466,7 +3483,7 @@ function renderPrediction(pred, balance) {
 
   for (const outcome of pred.outcomes) {
     const pct = totalPoints > 0 ? Math.round((outcome.totalPoints / totalPoints) * 100) : 0
-    const color = outcome.color === 'PINK' ? '#f5009b' : '#387aff'
+    const color = outcomeColor(outcome.color)
     const userCount = outcome.totalUsers || 0
     const points = outcome.totalPoints || 0
     const isWinner = winningId === outcome.id
@@ -3514,7 +3531,7 @@ function renderPrediction(pred, balance) {
     stats.textContent = statsText
     card.appendChild(stats)
 
-    if (!isLocked && !isEnded) {
+    if (!isLocked && !isEnded && (!userBet || isBetOn)) {
       const betRow = document.createElement('div')
       betRow.className = 'hs-mc-pred-bet-row'
       for (const amt of [100, 1000, 5000]) {
@@ -3541,11 +3558,10 @@ function renderPrediction(pred, balance) {
 
       const customInput = document.createElement('input')
       customInput.className = 'hs-mc-pred-bet-custom'
-      customInput.type = 'number'
-      customInput.min = '1'
-      if (balance != null) customInput.max = String(balance)
+      customInput.type = 'text'
       customInput.placeholder = 'amt'
       customInput.dataset.outcome = outcome.id
+      if (balance != null && balance <= 0) customInput.disabled = true
       betRow.appendChild(customInput)
 
       const goBtn = document.createElement('button')
@@ -3553,26 +3569,61 @@ function renderPrediction(pred, balance) {
       goBtn.dataset.outcome = outcome.id
       goBtn.style.setProperty('--oc', color)
       goBtn.textContent = 'bet'
+      if (balance != null && balance <= 0) goBtn.disabled = true
       betRow.appendChild(goBtn)
 
       card.appendChild(betRow)
+    }
+
+    // Mod resolve button per outcome (when locked)
+    if (isLocked && isMod) {
+      const resolveBtn = document.createElement('button')
+      resolveBtn.className = 'hs-mc-pred-mod-btn hs-mc-pred-resolve-btn'
+      resolveBtn.dataset.outcome = outcome.id
+      resolveBtn.style.setProperty('--oc', color)
+      resolveBtn.textContent = 'pick winner'
+      card.appendChild(resolveBtn)
     }
 
     outcomesWrap.appendChild(card)
   }
 
   wrapper.appendChild(outcomesWrap)
+
+  // Mod controls
+  if (!isEnded && isMod) {
+    const modRow = document.createElement('div')
+    modRow.className = 'hs-mc-pred-mod-row'
+
+    if (!isLocked) {
+      const lockBtn = document.createElement('button')
+      lockBtn.className = 'hs-mc-pred-mod-btn hs-mc-pred-lock-btn'
+      lockBtn.textContent = 'lock betting'
+      modRow.appendChild(lockBtn)
+    }
+
+    const cancelBtn = document.createElement('button')
+    cancelBtn.className = 'hs-mc-pred-mod-btn hs-mc-pred-cancel-btn'
+    cancelBtn.textContent = 'cancel (refund)'
+    modRow.appendChild(cancelBtn)
+
+    wrapper.appendChild(modRow)
+  }
+
   frag.appendChild(wrapper)
   return frag
 }
 
-function renderNoPrediction(balance) {
+function renderNoPrediction(balance, channelId, isMod) {
   const wrap = document.createElement('div')
   wrap.className = 'hs-mc-pred-empty'
+  if (channelId) wrap.dataset.channelId = channelId
+
   const text = document.createElement('div')
   text.className = 'hs-mc-pred-empty-text'
   text.textContent = 'no active prediction'
   wrap.appendChild(text)
+
   if (balance != null) {
     const bal = document.createElement('div')
     bal.className = 'hs-mc-pred-balance'
@@ -3581,6 +3632,64 @@ function renderNoPrediction(balance) {
     bal.appendChild(document.createTextNode(' ' + formatPoints(balance)))
     wrap.appendChild(bal)
   }
+
+  // Create prediction form (mod feature)
+  if (!isMod) return wrap
+  const createWrap = document.createElement('div')
+  createWrap.className = 'hs-mc-pred-create'
+
+  const toggle = document.createElement('button')
+  toggle.className = 'hs-mc-pred-mod-btn hs-mc-pred-create-toggle'
+  toggle.textContent = '+ new prediction'
+  createWrap.appendChild(toggle)
+
+  const form = document.createElement('div')
+  form.className = 'hs-mc-pred-create-form'
+  form.style.display = 'none'
+
+  const titleInput = document.createElement('input')
+  titleInput.className = 'hs-mc-pred-create-input'
+  titleInput.placeholder = 'prediction title'
+  titleInput.maxLength = 45
+  form.appendChild(titleInput)
+
+  const opt1 = document.createElement('input')
+  opt1.className = 'hs-mc-pred-create-input hs-mc-pred-create-outcome'
+  opt1.placeholder = 'option 1 (blue)'
+  opt1.maxLength = 25
+  form.appendChild(opt1)
+
+  const opt2 = document.createElement('input')
+  opt2.className = 'hs-mc-pred-create-input hs-mc-pred-create-outcome'
+  opt2.placeholder = 'option 2 (pink)'
+  opt2.maxLength = 25
+  form.appendChild(opt2)
+
+  const durRow = document.createElement('div')
+  durRow.className = 'hs-mc-pred-create-dur-row'
+  const durLabel = document.createElement('span')
+  durLabel.className = 'hs-mc-pred-create-dur-label'
+  durLabel.textContent = 'duration:'
+  durRow.appendChild(durLabel)
+  for (const secs of [30, 60, 120, 300, 600, 1800]) {
+    const btn = document.createElement('button')
+    btn.className = 'hs-mc-pred-create-dur' + (secs === 120 ? ' hs-mc-pred-create-dur-active' : '')
+    btn.dataset.secs = secs
+    btn.tabIndex = -1
+    btn.textContent = secs < 60 ? secs + 's' : (secs / 60) + 'm'
+    durRow.appendChild(btn)
+  }
+  form.appendChild(durRow)
+
+  const submitBtn = document.createElement('button')
+  submitBtn.className = 'hs-mc-pred-mod-btn hs-mc-pred-create-submit'
+  submitBtn.tabIndex = -1
+  submitBtn.textContent = 'create prediction'
+  form.appendChild(submitBtn)
+
+  createWrap.appendChild(form)
+  wrap.appendChild(createWrap)
+
   return wrap
 }
 
@@ -3770,6 +3879,76 @@ function attachRewardHandlers() {
   })
 }
 
+// Optimistic UI update after a bet — patches DOM immediately without server round-trip
+function optimisticBetUpdate(container, outcomeId, points) {
+  // Find which card has this outcome by checking all data-outcome elements
+  const allOutcomeEls = container.querySelectorAll('[data-outcome]')
+  const targetCards = new Set()
+  const otherCards = new Set()
+  allOutcomeEls.forEach(el => {
+    const card = el.closest('.hs-mc-pred-outcome')
+    if (!card) return
+    if (el.dataset.outcome === outcomeId) targetCards.add(card)
+    else otherCards.add(card)
+  })
+
+  // Update target outcome stats
+  targetCards.forEach(card => {
+    const statsEl = card.querySelector('.hs-mc-pred-outcome-stats')
+    if (!statsEl) return
+    const text = statsEl.textContent
+    const ptsMatch = text.match(/([\d,.]+[KMB]?)\s*pts/i)
+    const voterMatch = text.match(/(\d+)\s*voter/)
+    const betMatch = text.match(/your bet:\s*([\d,.]+[KMB]?)/i)
+    const currentPts = ptsMatch ? parsePoints(ptsMatch[1]) : 0
+    const currentVoters = voterMatch ? parseInt(voterMatch[1]) : 0
+    const existingBet = betMatch ? parsePoints(betMatch[1]) : 0
+
+    const newPts = currentPts + points
+    const newVoters = existingBet ? currentVoters : currentVoters + 1
+    const newBet = existingBet + points
+
+    let newText = formatPoints(newPts) + ' pts \u00b7 ' + newVoters + ' voter' + (newVoters !== 1 ? 's' : '')
+    newText += ' \u00b7 your bet: ' + formatPoints(newBet)
+    statsEl.textContent = newText
+    card.classList.add('hs-mc-pred-outcome-yours')
+  })
+
+  // Hide bet rows on other outcomes
+  otherCards.forEach(card => {
+    if (targetCards.has(card)) return
+    const betRow = card.querySelector('.hs-mc-pred-bet-row')
+    if (betRow) betRow.style.display = 'none'
+  })
+
+  // Update bar percentages across all outcomes
+  const pred = container.querySelector('.hs-mc-prediction')
+  if (!pred) return
+  const outcomes = pred.querySelectorAll('.hs-mc-pred-outcome')
+  let total = 0
+  const ptsArr = []
+  outcomes.forEach(card => {
+    const text = card.querySelector('.hs-mc-pred-outcome-stats')?.textContent || ''
+    const m = text.match(/([\d,.]+[KMB]?)\s*pts/i)
+    ptsArr.push(m ? parsePoints(m[1]) : 0)
+    total += ptsArr[ptsArr.length - 1]
+  })
+  outcomes.forEach((card, i) => {
+    const pct = total > 0 ? Math.round((ptsArr[i] / total) * 100) : 0
+    const pctEl = card.querySelector('.hs-mc-pred-outcome-pct')
+    if (pctEl) pctEl.textContent = pct + '%'
+    const fill = card.querySelector('.hs-mc-pred-bar-fill')
+    if (fill) fill.style.width = pct + '%'
+  })
+
+  // Update balance
+  const balEl = pred.querySelector('.hs-mc-pred-balance')
+  if (balEl && balEl.lastChild) {
+    const currentBal = parsePoints(balEl.textContent.trim())
+    balEl.lastChild.textContent = ' ' + formatPoints(Math.max(0, currentBal - points))
+  }
+}
+
 function attachPredictionHandlers() {
   const container = document.getElementById('hs-mc-tab-twitch')
   if (!container) return
@@ -3790,14 +3969,20 @@ function attachPredictionHandlers() {
       if (!eventId) return
       btn.disabled = true
       btn.textContent = '...'
-      const result = await placePredictionBet(eventId, btn.dataset.outcome, parseInt(btn.dataset.points))
+      const betPoints = parseInt(btn.dataset.points)
+      const result = await placePredictionBet(eventId, btn.dataset.outcome, betPoints)
       if (result.error) {
-        btn.textContent = '!'
+        btn.textContent = result.error.slice(0, 15)
         btn.title = result.error
-        setTimeout(() => { btn.textContent = formatPoints(parseInt(btn.dataset.points)); btn.disabled = false; btn.title = '' }, 2000)
+        setTimeout(() => { btn.textContent = formatPoints(betPoints); btn.disabled = false; btn.title = '' }, 4000)
       } else {
         btn.textContent = '\u2713'
-        setTimeout(() => renderTwitchTab(), 500)
+        try {
+          optimisticBetUpdate(container, btn.dataset.outcome, betPoints)
+        } catch (e) {
+          console.error('[hs-pred] optimistic update failed:', e)
+        }
+        setTimeout(() => refreshPredictionSlot(), 3000)
       }
     })
   })
@@ -3809,7 +3994,7 @@ function attachPredictionHandlers() {
       const eventId = container.querySelector('.hs-mc-prediction')?.dataset.eventId
       if (!eventId) return
       const input = container.querySelector(`.hs-mc-pred-bet-custom[data-outcome="${btn.dataset.outcome}"]`)
-      const points = parseInt(input?.value)
+      const points = parsePoints(input?.value)
       if (!points || points < 1) return
       btn.disabled = true
       btn.textContent = '...'
@@ -3820,8 +4005,9 @@ function attachPredictionHandlers() {
         setTimeout(() => { btn.textContent = 'bet'; btn.disabled = false; btn.title = '' }, 2000)
       } else {
         btn.textContent = '\u2713'
+        optimisticBetUpdate(container, btn.dataset.outcome, points)
         input.value = ''
-        setTimeout(() => renderTwitchTab(), 500)
+        setTimeout(() => refreshPredictionSlot(), 3000)
       }
     })
   })
@@ -3833,6 +4019,137 @@ function attachPredictionHandlers() {
         e.preventDefault()
         const goBtn = container.querySelector(`.hs-mc-pred-bet-go[data-outcome="${input.dataset.outcome}"]`)
         if (goBtn && !goBtn.disabled) goBtn.click()
+      }
+    })
+  })
+
+  // Mod: lock betting
+  container.querySelectorAll('.hs-mc-pred-lock-btn').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation()
+      const eventId = btn.closest('.hs-mc-prediction')?.dataset.eventId
+        || container.querySelector('.hs-mc-prediction')?.dataset.eventId
+      if (!eventId) { btn.textContent = 'no event'; return }
+      btn.disabled = true
+      btn.textContent = '...'
+      const result = await lockPrediction(eventId)
+      if (result.error) {
+        btn.textContent = result.error.slice(0, 15)
+        btn.title = result.error
+        setTimeout(() => { btn.textContent = 'lock betting'; btn.disabled = false; btn.title = '' }, 3000)
+      } else {
+        btn.textContent = '\u2713'
+        setTimeout(() => refreshPredictionSlot(), 1000)
+      }
+    })
+  })
+
+  // Mod: resolve (pick winner)
+  container.querySelectorAll('.hs-mc-pred-resolve-btn').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation()
+      const eventId = btn.closest('.hs-mc-prediction')?.dataset.eventId
+        || container.querySelector('.hs-mc-prediction')?.dataset.eventId
+      if (!eventId) { btn.textContent = 'no event'; return }
+      const outcomeId = btn.dataset.outcome
+      if (!outcomeId) { btn.textContent = 'no outcome'; return }
+      btn.disabled = true
+      btn.textContent = '...'
+      const result = await resolvePrediction(eventId, outcomeId)
+      if (result.error) {
+        btn.textContent = result.error.slice(0, 15)
+        btn.title = result.error
+        setTimeout(() => { btn.textContent = 'pick winner'; btn.disabled = false; btn.title = '' }, 3000)
+      } else {
+        btn.textContent = '\u2713'
+        setTimeout(() => refreshPredictionSlot(), 1000)
+      }
+    })
+  })
+
+  // Mod: cancel (refund)
+  container.querySelectorAll('.hs-mc-pred-cancel-btn').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation()
+      const eventId = btn.closest('.hs-mc-prediction')?.dataset.eventId
+        || container.querySelector('.hs-mc-prediction')?.dataset.eventId
+      if (!eventId) { btn.textContent = 'no event'; return }
+      btn.disabled = true
+      btn.textContent = '...'
+      const result = await cancelPrediction(eventId)
+      if (result.error) {
+        btn.textContent = result.error.slice(0, 15)
+        btn.title = result.error
+        setTimeout(() => { btn.textContent = 'cancel (refund)'; btn.disabled = false; btn.title = '' }, 3000)
+      } else {
+        btn.textContent = '\u2713'
+        setTimeout(() => refreshPredictionSlot(), 1000)
+      }
+    })
+  })
+
+  // Create form: Enter submits, Escape closes
+  container.querySelectorAll('.hs-mc-pred-create-input').forEach(input => {
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault()
+        const submit = input.closest('.hs-mc-pred-create-form')?.querySelector('.hs-mc-pred-create-submit')
+        if (submit && !submit.disabled) submit.click()
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        const toggle = input.closest('.hs-mc-pred-create')?.querySelector('.hs-mc-pred-create-toggle')
+        if (toggle) toggle.click()
+      }
+    })
+  })
+
+  // Create prediction form toggle + submit
+  container.querySelectorAll('.hs-mc-pred-create-toggle').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation()
+      const form = btn.parentElement.querySelector('.hs-mc-pred-create-form')
+      if (form) {
+        const showing = form.style.display !== 'none'
+        form.style.display = showing ? 'none' : 'flex'
+        btn.textContent = showing ? '+ new prediction' : 'cancel'
+      }
+    })
+  })
+
+  // Duration picker
+  container.querySelectorAll('.hs-mc-pred-create-dur').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation()
+      container.querySelectorAll('.hs-mc-pred-create-dur').forEach(b => b.classList.remove('hs-mc-pred-create-dur-active'))
+      btn.classList.add('hs-mc-pred-create-dur-active')
+    })
+  })
+
+  // Create submit
+  container.querySelectorAll('.hs-mc-pred-create-submit').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation()
+      const channelId = container.querySelector('[data-channel-id]')?.dataset.channelId
+      if (!channelId) { btn.textContent = 'no channel'; return }
+      const form = btn.closest('.hs-mc-pred-create-form')
+      const inputs = form.querySelectorAll('.hs-mc-pred-create-input')
+      const title = inputs[0]?.value?.trim()
+      const outcomes = [...form.querySelectorAll('.hs-mc-pred-create-outcome')].map(i => i.value.trim()).filter(Boolean)
+      if (!title) { inputs[0].focus(); return }
+      if (outcomes.length < 2) { form.querySelectorAll('.hs-mc-pred-create-outcome')[outcomes.length]?.focus(); return }
+      const durBtn = form.querySelector('.hs-mc-pred-create-dur-active')
+      const secs = parseInt(durBtn?.dataset.secs || '120')
+      btn.disabled = true
+      btn.textContent = '...'
+      const result = await createPrediction(channelId, title, secs, outcomes)
+      if (result.error) {
+        btn.textContent = '!'
+        btn.title = result.error
+        setTimeout(() => { btn.textContent = 'create prediction'; btn.disabled = false; btn.title = '' }, 2000)
+      } else {
+        btn.textContent = '\u2713'
+        setTimeout(() => refreshPredictionSlot(), 1000)
       }
     })
   })
@@ -3894,6 +4211,7 @@ async function renderTwitchTab() {
   // Placeholder slots for progressive rendering
   const predSlot = document.createElement('div')
   predSlot.className = 'hs-mc-pred-loading'
+  predSlot.dataset.predSlot = '1'
   predSlot.textContent = 'loading...'
   const pollSlot = document.createElement('div')
   const rewardsSlot = document.createElement('div')
@@ -3929,9 +4247,9 @@ async function renderTwitchTab() {
       empty.appendChild(msg)
       predSlot.appendChild(empty)
     } else if (result.prediction) {
-      predSlot.appendChild(renderPrediction(result.prediction, result.balance))
+      predSlot.appendChild(renderPrediction(result.prediction, result.balance, result.channelId, result.isMod))
     } else {
-      predSlot.appendChild(renderNoPrediction(result.balance))
+      predSlot.appendChild(renderNoPrediction(result.balance, result.channelId, result.isMod))
     }
     attachPredictionHandlers()
   })
@@ -3964,8 +4282,46 @@ function startPredictionPoll() {
       stopPredictionPoll()
       return
     }
-    renderTwitchTab()
+    // Don't refresh while create form is open
+    if (container.querySelector('.hs-mc-pred-create-form[style*="flex"]')) return
+    refreshPredictionSlot()
   }, 15000)
+}
+
+// Refresh only the prediction slot without tearing down the whole Twitch tab
+async function refreshPredictionSlot() {
+  const container = document.getElementById('hs-mc-tab-twitch')
+  if (!container) return
+  const channel = getActiveTwitchChannel()
+  if (!channel) return
+
+  const result = await fetchPrediction(channel)
+
+  // Find the prediction slot — it's always a direct child of container marked with data-pred-slot
+  let slot = container.querySelector('[data-pred-slot]')
+  if (!slot) {
+    // Fallback: find by class
+    slot = container.querySelector('.hs-mc-prediction')
+      || container.querySelector('.hs-mc-pred-empty')
+      || container.querySelector('.hs-mc-pred-loading')
+  }
+  if (!slot) return
+
+  const newSlot = document.createElement('div')
+  newSlot.dataset.predSlot = '1'
+  if (!result) {
+    newSlot.className = 'hs-mc-pred-empty'
+    const msg = document.createElement('div')
+    msg.className = 'hs-mc-pred-empty-text'
+    msg.textContent = "couldn't load predictions"
+    newSlot.appendChild(msg)
+  } else if (result.prediction) {
+    newSlot.appendChild(renderPrediction(result.prediction, result.balance, result.channelId, result.isMod))
+  } else {
+    newSlot.appendChild(renderNoPrediction(result.balance, result.channelId, result.isMod))
+  }
+  slot.replaceWith(newSlot)
+  attachPredictionHandlers()
 }
 
 function stopPredictionPoll() {
@@ -4176,64 +4532,233 @@ const _userBets = new Map() // eventId → { outcomeId, points }
 let _rewardsCache = null
 let _rewardsCacheChannel = null
 
+const PRED_FIELDS = 'id title status createdAt endedAt predictionWindowSeconds winningOutcome { id } outcomes { id title totalPoints totalUsers color } self { prediction { outcome { id } points } }'
+
+// GQL call — tries direct fetch first (Chrome MV3), falls back to MAIN world proxy (Firefox MV2)
+async function twitchGql(query, variables) {
+  // Try direct fetch (works in Chrome MV3 content scripts with host_permissions)
+  try {
+    const token = getTwitchAuthToken()
+    const hdrs = { 'Content-Type': 'application/json', 'Client-Id': 'kimne78kx3ncx6brgo4mv6wki5h1ko' }
+    if (token) hdrs['Authorization'] = 'OAuth ' + token
+    const body = variables ? { query, variables } : { query }
+    const resp = await fetch('https://gql.twitch.tv/gql', {
+      method: 'POST', headers: hdrs, body: JSON.stringify(body),
+      signal: AbortSignal.timeout(8000)
+    })
+    if (!resp.ok) throw new Error('GQL ' + resp.status)
+    return resp.json()
+  } catch (directErr) {
+    // Direct fetch failed (Firefox CORS) — fall back to MAIN world proxy
+    try {
+      const data = await gqlProxy('twitchGql', variables || {}, { rawQuery: query })
+      const d = Array.isArray(data) ? data[0] : data
+      // Proxy wraps in { data } or returns raw — normalize
+      return d?.data ? d : { data: d }
+    } catch (proxyErr) {
+      throw new Error('GQL failed: direct=' + directErr.message + ' proxy=' + proxyErr.message)
+    }
+  }
+}
+
 async function fetchPrediction(channelLogin) {
   const safe = channelLogin.replace(/[^a-z0-9_]/g, '')
   if (!safe) return null
   try {
     let predEvent = null
     let balance = null
+    let channelId = null
+    let isMod = false
 
-    // Check local content-script cache first (no postMessage round-trip)
-    const localPred = _gqlDataCache['ChannelPointsPredictionContext']
-    const localPoints = _gqlDataCache['CommunityPointsContext']
-    if (localPred && Date.now() - localPred.ts < 30000) {
-      predEvent = localPred.data?.user?.activePredictionEvent || null
-    }
-    if (localPoints && Date.now() - localPoints.ts < 30000) {
-      balance = localPoints.data?.community?.channel?.self?.communityPoints?.balance ?? null
-    }
+    // Direct GQL query — fetch active + locked + most recent resolved + mod check
+    try {
+      const data = await twitchGql('{ user(login: "' + safe + '") { id self { isModerator } channel { activePredictionEvents { ' + PRED_FIELDS + ' } lockedPredictionEvents { ' + PRED_FIELDS + ' } resolvedPredictionEvents(first: 1) { edges { node { ' + PRED_FIELDS + ' } } } } } currentUser { id } }')
+      const ch = data?.data?.user?.channel
+      const userId = data?.data?.user?.id
+      const currentUserId = data?.data?.currentUser?.id
+      if (userId) channelId = userId
+      isMod = data?.data?.user?.self?.isModerator || (userId && currentUserId && userId === currentUserId)
 
-    // If local cache miss, check MAIN world cache
-    if (!predEvent && !localPred) {
-      const cached = await gqlGetCache(['ChannelPointsPredictionContext', 'CommunityPointsContext'])
-      const predCache = cached.data?.ChannelPointsPredictionContext
-      const pointsCache = cached.data?.CommunityPointsContext
-      if (predCache && Date.now() - predCache.ts < 30000) {
-        predEvent = predCache.data?.user?.activePredictionEvent || null
+      // Priority: ACTIVE > LOCKED > recently RESOLVED (< 5 min ago)
+      const active = ch?.activePredictionEvents
+      const locked = ch?.lockedPredictionEvents
+      const resolved = ch?.resolvedPredictionEvents?.edges?.[0]?.node
+
+      if (Array.isArray(active) && active.length) {
+        predEvent = active.find(e => e.status === 'ACTIVE') || active[0]
+      } else if (Array.isArray(locked) && locked.length) {
+        predEvent = locked[0]
+      } else if (resolved) {
+        // Show resolved predictions briefly so users see the result
+        const resolvedTime = resolved.endedAt || resolved.createdAt
+        const resolvedAge = Date.now() - new Date(resolvedTime).getTime()
+        if (resolvedAge < 300000) predEvent = resolved
       }
-      if (balance == null && pointsCache && Date.now() - pointsCache.ts < 30000) {
-        balance = pointsCache.data?.community?.channel?.self?.communityPoints?.balance ?? null
-      }
-    }
 
-    // If still no data, try proxy call with captured hashes
-    if (predEvent === null && (!localPred || Date.now() - (localPred?.ts || 0) >= 30000)) {
-      try {
-        const data = await gqlProxy('ChannelPointsPredictionContext', { channelLogin: safe })
-        if (Array.isArray(data)) {
-          predEvent = data[0]?.data?.user?.activePredictionEvent || null
-          balance = data[1]?.data?.community?.channel?.self?.communityPoints?.balance ?? balance
-        } else {
-          predEvent = data?.data?.user?.activePredictionEvent || data?.user?.activePredictionEvent || null
+      // Populate _userBets from self.prediction
+      if (predEvent?.self?.prediction) {
+        const sp = predEvent.self.prediction
+        if (sp.outcome?.id && sp.points) {
+          _userBets.set(predEvent.id, { outcomeId: sp.outcome.id, points: sp.points })
         }
-      } catch (e) {
-        log('GQL proxy prediction failed:', e.message)
       }
+    } catch (e) {
+      log('GQL prediction query failed:', e.message)
     }
-    if (balance == null) {
+
+    // Fetch balance via direct GQL
+    try {
+      const data = await twitchGql('{ user(login: "' + safe + '") { channel { self { communityPoints { balance } } } } }')
+      balance = data?.data?.user?.channel?.self?.communityPoints?.balance ?? null
+    } catch (e) {
+      // Fallback to proxy for balance
       try {
         const data = await gqlProxy('CommunityPointsContext', { channelLogin: safe })
         const d = Array.isArray(data) ? data[0]?.data : (data?.data || data)
         balance = d?.community?.channel?.self?.communityPoints?.balance ?? null
-      } catch (e) {
-        log('GQL proxy points failed:', e.message)
-      }
+      } catch {}
     }
 
-    return { prediction: predEvent, balance }
+    return { prediction: predEvent, balance, channelId, isMod }
   } catch (e) {
     log('Failed to fetch prediction:', e.message)
     return null
+  }
+}
+
+// ═══ Mod prediction management (direct GQL — no MAIN world proxy) ═══
+
+// Mod prediction mutations — try Apollo client (has integrity + correct hashes),
+// fallback to raw query through MAIN world proxy (has integrity), final fallback direct fetch
+async function predictionMutation(searchTerm, resultField, rawQuery, variables) {
+  // Try Apollo client first (most reliable — uses Twitch's own persisted hashes)
+  const apolloResult = await apolloMutate({ searchTerm, variables, resultField, rawQuery })
+  if (apolloResult.ok) return { ok: true }
+  // Apollo failed — try raw query through MAIN world proxy (has integrity)
+  try {
+    const data = await gqlMutation(rawQuery, variables)
+    const err = data?.data?.[resultField]?.error
+    if (err) return { error: err.code || resultField + ' failed' }
+    return { ok: true }
+  } catch (e) { return { error: apolloResult.error || e.message } }
+}
+
+async function lockPrediction(eventId) {
+  return predictionMutation(
+    'LockPredictionEvent', 'lockPredictionEvent',
+    'mutation($input: LockPredictionEventInput!) { lockPredictionEvent(input: $input) { error { code } } }',
+    { input: { id: eventId } }
+  )
+}
+
+async function resolvePrediction(eventId, outcomeId) {
+  return predictionMutation(
+    'ResolvePredictionEvent', 'resolvePredictionEvent',
+    'mutation($input: ResolvePredictionEventInput!) { resolvePredictionEvent(input: $input) { error { code } } }',
+    { input: { eventID: eventId, outcomeID: outcomeId } }
+  )
+}
+
+async function cancelPrediction(eventId) {
+  return predictionMutation(
+    'CancelPredictionEvent', 'cancelPredictionEvent',
+    'mutation($input: CancelPredictionEventInput!) { cancelPredictionEvent(input: $input) { error { code } } }',
+    { input: { id: eventId } }
+  )
+}
+
+async function createPrediction(channelId, title, windowSeconds, outcomes) {
+  const colors = ['BLUE', 'PINK', 'ORANGE', 'GREEN', 'TEAL', 'PURPLE', 'YELLOW', 'LIGHT_BLUE', 'RED', 'BROWN']
+  return predictionMutation(
+    'CreatePredictionEvent', 'createPredictionEvent',
+    'mutation($input: CreatePredictionEventInput!) { createPredictionEvent(input: $input) { error { code } } }',
+    { input: { channelID: channelId, title, predictionWindowSeconds: windowSeconds, outcomes: outcomes.map((t, i) => ({ title: t, color: colors[i] || colors[0] })) } }
+  )
+}
+
+// Route a mutation through Twitch's own Apollo client in the MAIN world.
+// searchTerm: string to find the webpack module (e.g. 'AcceptPredictionTerms')
+// variables: GQL variables object
+// resultField: the mutation's return field name (for error extraction)
+// rawQuery: optional fallback raw query string
+function apolloMutate({ searchTerm, variables, resultField, rawQuery }) {
+  return new Promise((resolve) => {
+    const id = Math.random().toString(36).slice(2)
+    const ac = new AbortController()
+    const signal = mcSignal ? AbortSignal.any([mcSignal, ac.signal]) : ac.signal
+    const handler = (e) => {
+      if (e.data?.type === 'heatsync-apollo-mutate-response' && e.data.id === id) {
+        ac.abort()
+        clearTimeout(timer)
+        resolve(e.data.data || { error: 'no response' })
+      }
+    }
+    window.addEventListener('message', handler, { signal })
+    window.postMessage({
+      type: 'heatsync-apollo-mutate', id, searchTerm, variables,
+      resultField, rawQuery
+    }, location.origin)
+    const timer = setTimeout(() => {
+      ac.abort()
+      resolve({ error: 'apollo mutation timeout' })
+    }, 8000)
+  })
+}
+
+async function acceptPredictionTerms() {
+  const result = await apolloMutate({
+    searchTerm: 'AcceptPredictionTerms',
+    variables: { input: {} },
+    resultField: 'updateUserPredictionSettings',
+    rawQuery: 'mutation($input: UpdateUserPredictionSettingsInput!) { updateUserPredictionSettings(input: $input) { error { code } } }'
+  })
+  return !!result.ok
+}
+
+// Known working persisted query hashes (from Twitch's own client)
+const TWITCH_HASHES = {
+  MakePrediction: 'b44682ecc88358817009f20e69d75081b1e58825bb40aa53d5dbadcc17c881d8'
+}
+
+// Route mutation through MAIN world proxy (has integrity token) with direct fetch fallback
+async function gqlMutation(query, variables) {
+  try {
+    const data = await gqlProxy('twitchGql', variables || {}, { rawQuery: query })
+    const d = Array.isArray(data) ? data[0] : data
+    return d?.data ? d : { data: d }
+  } catch {
+    return twitchGql(query, variables)
+  }
+}
+
+// Use persisted query hash for MakePrediction — raw queries are dead for mutations
+async function gqlPersistedMutation(operationName, variables) {
+  const hash = TWITCH_HASHES[operationName]
+  if (!hash) return gqlMutation('mutation ' + operationName + '($input: ' + operationName + 'Input!) { ' + operationName.replace(/^[A-Z]/, c => c.toLowerCase()) + '(input: $input) { error { code } } }', variables)
+  const token = getTwitchAuthToken()
+  const hdrs = { 'Content-Type': 'application/json', 'Client-Id': 'kimne78kx3ncx6brgo4mv6wki5h1ko' }
+  if (token) hdrs['Authorization'] = 'OAuth ' + token
+  try {
+    const resp = await fetch('https://gql.twitch.tv/gql', {
+      method: 'POST', headers: hdrs,
+      body: JSON.stringify({
+        operationName,
+        variables,
+        extensions: { persistedQuery: { version: 1, sha256Hash: hash } }
+      }),
+      signal: AbortSignal.timeout(8000)
+    })
+    if (!resp.ok) throw new Error('GQL ' + resp.status)
+    return resp.json()
+  } catch (directErr) {
+    // Firefox CORS fallback — route through MAIN world proxy with hash
+    try {
+      const data = await gqlProxy(operationName, variables)
+      const d = Array.isArray(data) ? data[0] : data
+      return d?.data ? d : { data: d }
+    } catch {
+      throw directErr
+    }
   }
 }
 
@@ -4241,16 +4766,23 @@ async function placePredictionBet(eventId, outcomeId, points, transactionId) {
   const token = getTwitchAuthToken()
   if (!token) return { error: 'not logged in' }
   try {
-    const data = await gqlProxy('MakePrediction', {
-      input: {
-        eventID: eventId,
-        outcomeID: outcomeId,
-        points: points,
-        transactionID: transactionId || crypto.randomUUID()
-      }
-    })
-    const d = Array.isArray(data) ? data[0] : data
-    if (d?.errors?.length) return { error: d.errors[0].message }
+    const txId = transactionId || crypto.randomUUID()
+    const makeInput = { eventID: eventId, outcomeID: outcomeId, points, transactionID: txId }
+    let data = await gqlPersistedMutation('MakePrediction', { input: makeInput })
+    // Check for TOS error
+    const isTosError = (d) => {
+      const msg = d?.errors?.[0]?.message || ''
+      const code = d?.data?.makePrediction?.error?.code || ''
+      return msg.includes('ACCEPT') || msg.includes('TOS') || code.includes('ACCEPT') || code.includes('TOS')
+    }
+    if (isTosError(data)) {
+      await acceptPredictionTerms()
+      makeInput.transactionID = crypto.randomUUID()
+      data = await gqlPersistedMutation('MakePrediction', { input: makeInput })
+    }
+    if (data?.errors?.length) return { error: data.errors[0].message }
+    const mutError = data?.data?.makePrediction?.error
+    if (mutError) return { error: mutError.code || 'bet failed' }
     _userBets.set(eventId, { outcomeId, points })
     return { ok: true }
   } catch (e) {
@@ -10455,35 +10987,43 @@ const STORAGE_KEY = 'heatsync_multichat';
         flex-wrap: wrap;
       }
       .hs-mc-pred-bet-btn {
-        background: rgba(255,255,255,0.08);
-        border: none;
-        color: #808080;
+        background: rgba(0,0,0,0.7);
+        border: 1px solid rgba(255,255,255,0.2);
+        color: #fff;
         font-size: 11px;
         padding: 3px 8px;
-        border-radius: 0;
         cursor: pointer;
-        transition: none;
+        font-family: inherit;
       }
       .hs-mc-pred-bet-btn:hover {
         background: #fff;
         color: #000;
       }
       .hs-mc-pred-bet-btn:disabled {
-        opacity: 0.5;
+        opacity: 0.3;
         cursor: default;
+      }
+      .hs-mc-pred-bet-btn:disabled:hover {
+        background: rgba(0,0,0,0.7);
+        color: #fff;
       }
       .hs-mc-pred-bet-custom {
         width: 52px;
-        background: rgba(255,255,255,0.08);
-        border: 1px solid rgba(255,255,255,0.1);
-        color: #808080;
+        background: #fff;
+        border: 1px solid rgba(255,255,255,0.2);
+        color: #000;
         font-size: 11px;
         padding: 2px 6px;
-        border-radius: 0;
         outline: none;
+        font-family: inherit;
       }
       .hs-mc-pred-bet-custom:focus {
-        border-color: var(--oc, #387aff);
+        border-color: #ff8700;
+      }
+      .hs-mc-pred-bet-custom:disabled {
+        background: rgba(255,255,255,0.08);
+        color: #808080;
+        opacity: 0.3;
       }
       .hs-mc-pred-bet-custom::-webkit-inner-spin-button,
       .hs-mc-pred-bet-custom::-webkit-outer-spin-button {
@@ -10491,23 +11031,26 @@ const STORAGE_KEY = 'heatsync_multichat';
         margin: 0;
       }
       .hs-mc-pred-bet-go {
-        background: var(--oc, #387aff);
-        border: none;
+        background: rgba(0,0,0,0.7);
+        border: 1px solid rgba(255,255,255,0.2);
         color: #fff;
         font-size: 11px;
         font-weight: 600;
         padding: 3px 10px;
-        border-radius: 0;
         cursor: pointer;
-        transition: none;
+        font-family: inherit;
       }
       .hs-mc-pred-bet-go:hover {
         background: #fff;
         color: #000;
       }
       .hs-mc-pred-bet-go:disabled {
-        opacity: 0.5;
+        opacity: 0.3;
         cursor: default;
+      }
+      .hs-mc-pred-bet-go:disabled:hover {
+        background: rgba(0,0,0,0.7);
+        color: #fff;
       }
       .hs-mc-pred-bet-max {
         font-weight: 600;
@@ -10582,6 +11125,114 @@ const STORAGE_KEY = 'heatsync_multichat';
         letter-spacing: 0.5px;
         vertical-align: middle;
         margin-left: 4px;
+      }
+
+      /* ═══ Mod controls ═══ */
+      .hs-mc-pred-mod-row {
+        display: flex;
+        gap: 6px;
+        margin-top: 8px;
+      }
+      .hs-mc-pred-mod-btn {
+        font-size: 11px;
+        padding: 4px 10px;
+        background: rgba(0,0,0,0.7);
+        color: #fff;
+        border: 1px solid rgba(255,255,255,0.2);
+        cursor: pointer;
+        font-family: inherit;
+      }
+      .hs-mc-pred-mod-btn:hover {
+        background: #fff;
+        color: #000;
+      }
+      .hs-mc-pred-mod-btn:disabled {
+        opacity: 0.3;
+        cursor: default;
+      }
+      .hs-mc-pred-mod-btn:disabled:hover {
+        background: rgba(0,0,0,0.7);
+        color: #fff;
+      }
+      .hs-mc-pred-lock-btn:hover,
+      .hs-mc-pred-cancel-btn:hover {
+        background: #fff;
+        color: #000;
+      }
+      .hs-mc-pred-resolve-btn {
+        margin-top: 6px;
+        width: 100%;
+        color: var(--oc);
+        border-color: var(--oc);
+      }
+      .hs-mc-pred-resolve-btn:hover {
+        background: var(--oc);
+        color: #000;
+      }
+
+      /* ═══ Create prediction form ═══ */
+      .hs-mc-pred-create {
+        margin-top: 10px;
+      }
+      .hs-mc-pred-create-toggle {
+        width: 100%;
+        text-align: center;
+      }
+      .hs-mc-pred-create-form {
+        flex-direction: column;
+        gap: 6px;
+        margin-top: 8px;
+      }
+      .hs-mc-pred-create-input {
+        font-size: 12px;
+        padding: 2px 8px;
+        background: #fff;
+        color: #000;
+        border: none;
+        font-family: inherit;
+        outline: none;
+      }
+      .hs-mc-pred-create-input:focus {
+        outline: 1px solid #ff8700;
+      }
+      .hs-mc-pred-create-dur-row {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        flex-wrap: wrap;
+      }
+      .hs-mc-pred-create-dur-label {
+        font-size: 11px;
+        color: #808080;
+        margin-right: 2px;
+      }
+      .hs-mc-pred-create-dur {
+        font-size: 10px;
+        padding: 2px 6px;
+        background: rgba(0,0,0,0.7);
+        color: #aaa;
+        border: 1px solid rgba(255,255,255,0.2);
+        cursor: pointer;
+        font-family: inherit;
+      }
+      .hs-mc-pred-create-dur:hover {
+        background: #fff;
+        color: #000;
+      }
+      .hs-mc-pred-create-dur-active {
+        background: #ff8700;
+        color: #000;
+        border-color: #ff8700;
+      }
+      .hs-mc-pred-create-submit {
+        background: rgba(0,0,0,0.7);
+        color: #ff8700;
+        border-color: #ff8700;
+        font-weight: 600;
+      }
+      .hs-mc-pred-create-submit:hover {
+        background: #ff8700;
+        color: #000;
       }
 
       /* ═══ Polls ═══ */

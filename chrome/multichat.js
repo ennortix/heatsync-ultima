@@ -4271,6 +4271,137 @@ function attachPredictionHandlers() {
   })
 }
 
+// ═══ Chat overlay banners (predictions + polls at top of messages) ═══
+
+let _bannerTimers = []
+let _lastPredResult = null
+let _lastPollData = null
+
+function clearBannerTimers() {
+  _bannerTimers.forEach(id => clearInterval(id))
+  _bannerTimers = []
+}
+
+function updateChatBanners(predResult, pollData) {
+  const msgsEl = document.getElementById('hs-mc-messages')
+  if (!msgsEl) return
+
+  // Remove existing banner
+  const old = msgsEl.querySelector('.hs-mc-chat-banner')
+  clearBannerTimers()
+
+  const pred = predResult?.prediction
+  const hasPred = pred && (pred.status === 'ACTIVE' || pred.status === 'LOCKED')
+  const hasPoll = pollData && pollData.status === 'ACTIVE'
+
+  if (!hasPred && !hasPoll) {
+    if (old) old.remove()
+    return
+  }
+
+  const banner = old || document.createElement('div')
+  banner.className = 'hs-mc-chat-banner'
+  banner.innerHTML = ''
+
+  if (hasPred) {
+    const row = document.createElement('div')
+    row.className = 'hs-mc-chat-banner-item hs-mc-chat-banner-pred'
+    row.dataset.type = 'prediction'
+
+    const icon = document.createElement('span')
+    icon.className = 'hs-mc-chat-banner-icon'
+    icon.textContent = '\u{1F52E}'
+    row.appendChild(icon)
+
+    const title = document.createElement('span')
+    title.className = 'hs-mc-chat-banner-title'
+    title.textContent = pred.title
+    row.appendChild(title)
+
+    if (pred.status === 'ACTIVE') {
+      const timer = document.createElement('span')
+      timer.className = 'hs-mc-chat-banner-timer'
+      const createdAt = new Date(pred.createdAt).getTime()
+      const windowMs = (pred.predictionWindowSeconds || 120) * 1000
+      const endsAt = createdAt + windowMs
+      const updateTimer = () => {
+        const remaining = Math.max(0, Math.ceil((endsAt - Date.now()) / 1000))
+        if (remaining <= 0) { timer.textContent = 'closing'; return }
+        const m = Math.floor(remaining / 60)
+        const s = remaining % 60
+        timer.textContent = m > 0 ? m + ':' + String(s).padStart(2, '0') : s + 's'
+      }
+      updateTimer()
+      _bannerTimers.push(cleanup.setInterval(() => {
+        if (!timer.isConnected) return
+        updateTimer()
+      }, 1000))
+      row.appendChild(timer)
+    } else {
+      const badge = document.createElement('span')
+      badge.className = 'hs-mc-chat-banner-badge'
+      badge.textContent = 'locked'
+      row.appendChild(badge)
+    }
+
+    // Click to go to twitch tab
+    row.style.cursor = 'pointer'
+    row.addEventListener('click', () => {
+      if (typeof switchTab === 'function') switchTab('live')
+      const twitchTab = document.querySelector('[data-tab="live"]')
+      if (twitchTab) twitchTab.click()
+    })
+
+    banner.appendChild(row)
+  }
+
+  if (hasPoll) {
+    const row = document.createElement('div')
+    row.className = 'hs-mc-chat-banner-item hs-mc-chat-banner-poll'
+    row.dataset.type = 'poll'
+
+    const icon = document.createElement('span')
+    icon.className = 'hs-mc-chat-banner-icon'
+    icon.textContent = '\u{1F4CA}'
+    row.appendChild(icon)
+
+    const title = document.createElement('span')
+    title.className = 'hs-mc-chat-banner-title'
+    title.textContent = pollData.title
+    row.appendChild(title)
+
+    const timer = document.createElement('span')
+    timer.className = 'hs-mc-chat-banner-timer'
+    const pollEnds = new Date(pollData.endedAt || pollData.createdAt).getTime()
+    const durMs = (pollData.durationSeconds || 60) * 1000
+    const pollEndTime = pollData.endedAt ? pollEnds : (new Date(pollData.createdAt).getTime() + durMs)
+    const updatePollTimer = () => {
+      const remaining = Math.max(0, Math.ceil((pollEndTime - Date.now()) / 1000))
+      if (remaining <= 0) { timer.textContent = 'ended'; return }
+      const m = Math.floor(remaining / 60)
+      const s = remaining % 60
+      timer.textContent = m > 0 ? m + ':' + String(s).padStart(2, '0') : s + 's'
+    }
+    updatePollTimer()
+    _bannerTimers.push(cleanup.setInterval(() => {
+      if (!timer.isConnected) return
+      updatePollTimer()
+    }, 1000))
+    row.appendChild(timer)
+
+    row.style.cursor = 'pointer'
+    row.addEventListener('click', () => {
+      if (typeof switchTab === 'function') switchTab('live')
+      const twitchTab = document.querySelector('[data-tab="live"]')
+      if (twitchTab) twitchTab.click()
+    })
+
+    banner.appendChild(row)
+  }
+
+  if (!old) msgsEl.prepend(banner)
+}
+
 // Get Twitch channel for the active multichat tab (channel tab → twitch name, live → URL channel)
 function getActiveTwitchChannel() {
   if (currentTab === 'live' || currentTab === 'feed' || currentTab === 'mentions' || currentTab === 'whispers') {
@@ -4309,6 +4440,7 @@ async function renderTwitchTab() {
   predSlot.dataset.predSlot = '1'
   predSlot.textContent = 'loading...'
   const pollSlot = document.createElement('div')
+  pollSlot.dataset.pollSlot = '1'
   const rewardsSlot = document.createElement('div')
   container.appendChild(predSlot)
   container.appendChild(pollSlot)
@@ -4380,6 +4512,7 @@ function startPredictionPoll() {
     // Don't refresh while create form is open
     if (container.querySelector('.hs-mc-pred-create-form[style*="flex"]')) return
     refreshPredictionSlot()
+    refreshPollSlot()
   }, 15000)
 }
 
@@ -4391,6 +4524,10 @@ async function refreshPredictionSlot() {
   if (!channel) return
 
   const result = await fetchPrediction(channel)
+
+  // Update chat overlay banner
+  _lastPredResult = result
+  updateChatBanners(_lastPredResult, _lastPollData)
 
   // Find the prediction slot — it's always a direct child of container marked with data-pred-slot
   let slot = container.querySelector('[data-pred-slot]')
@@ -4417,6 +4554,32 @@ async function refreshPredictionSlot() {
   }
   slot.replaceWith(newSlot)
   attachPredictionHandlers()
+}
+
+// Refresh only the poll slot without tearing down the whole Twitch tab
+async function refreshPollSlot() {
+  const container = document.getElementById('hs-mc-tab-twitch')
+  if (!container) return
+  const channel = getActiveTwitchChannel()
+  if (!channel) return
+
+  const poll = await fetchPoll(channel)
+  _lastPollData = poll
+  updateChatBanners(_lastPredResult, _lastPollData)
+
+  let slot = container.querySelector('[data-poll-slot]')
+  if (!slot) {
+    slot = container.querySelector('.hs-mc-poll')
+  }
+  if (!slot) return
+
+  const newSlot = document.createElement('div')
+  newSlot.dataset.pollSlot = '1'
+  if (poll) {
+    newSlot.appendChild(renderPoll(poll))
+  }
+  slot.replaceWith(newSlot)
+  if (poll) attachPollHandlers()
 }
 
 function stopPredictionPoll() {
@@ -4511,10 +4674,18 @@ window.addEventListener('message', (e) => {
         const oldest = Object.entries(_gqlDataCache).reduce((a, b) => a[1].ts < b[1].ts ? a : b)[0]
         delete _gqlDataCache[oldest]
       }
-      // Auto-refresh Twitch tab if prediction/poll data arrives while tab is visible
+      // Auto-refresh individual slots when relevant GQL data arrives
       const container = document.getElementById('hs-mc-tab-twitch')
       if (container && container.style.display !== 'none') {
-        renderTwitchTab()
+        const pollOps = ['ActivePoll', 'CreatePoll', 'ChannelPollContext']
+        const predOps = ['ChannelPointsPredictionContext', 'MakePrediction']
+        if (pollOps.includes(operation)) {
+          refreshPollSlot()
+        } else if (predOps.includes(operation)) {
+          refreshPredictionSlot()
+        } else {
+          renderTwitchTab()
+        }
       }
     }
   }
@@ -5239,6 +5410,49 @@ function renderPoll(poll) {
   return section
 }
 
+// Optimistic UI update after voting — patch DOM immediately without round-trip
+function optimisticPollVoteUpdate(pollSection, choiceId) {
+  if (!pollSection) return
+  const choices = pollSection.querySelectorAll('.hs-mc-poll-choice')
+  const metaEl = pollSection.querySelector('.hs-mc-poll-meta')
+  const totalMatch = metaEl?.textContent?.match(/(\d+)/)
+  const oldTotal = totalMatch ? parseInt(totalMatch[1]) : 0
+
+  // Reconstruct per-choice vote counts from percentages
+  const entries = []
+  for (const choice of choices) {
+    const pctEl = choice.querySelector('.hs-mc-poll-choice-pct')
+    const nameEl = choice.querySelector('.hs-mc-poll-choice-name')
+    const voteBtn = choice.querySelector('.hs-mc-poll-vote-btn')
+    const isTarget = voteBtn?.dataset?.choiceId === choiceId
+    const oldPct = pctEl ? parseInt(pctEl.textContent) : 0
+    let votes = oldTotal > 0 ? Math.round((oldPct / 100) * oldTotal) : 0
+    if (isTarget) votes += 1
+    entries.push({ choice, votes, pctEl, nameEl, voteBtn, isTarget })
+  }
+
+  const total = entries.reduce((s, v) => s + v.votes, 0) || 1
+  if (metaEl) metaEl.textContent = total + ' vote' + (total !== 1 ? 's' : '')
+
+  for (const { choice, votes, pctEl, nameEl, voteBtn, isTarget } of entries) {
+    const pct = Math.round((votes / total) * 100)
+    if (pctEl) pctEl.textContent = pct + '%'
+    const fill = choice.querySelector('.hs-mc-poll-choice-fill')
+    if (fill) fill.style.width = pct + '%'
+    if (isTarget) {
+      choice.classList.add('hs-mc-poll-choice-voted')
+      if (nameEl && !nameEl.querySelector('.hs-mc-poll-voted-check')) {
+        const check = document.createElement('span')
+        check.className = 'hs-mc-poll-voted-check'
+        check.textContent = ' \u2713'
+        nameEl.appendChild(check)
+      }
+    }
+    // Remove all vote buttons (user already voted)
+    if (voteBtn) voteBtn.remove()
+  }
+}
+
 function attachPollHandlers() {
   const container = document.getElementById('hs-mc-tab-twitch')
   if (!container) return
@@ -5255,8 +5469,9 @@ function attachPollHandlers() {
         setTimeout(() => { btn.textContent = 'vote'; btn.disabled = false; btn.title = '' }, 2000)
       } else {
         _userPollVotes.set(btn.dataset.pollId, btn.dataset.choiceId)
-        btn.textContent = '\u2713'
-        setTimeout(() => renderTwitchTab(), 500)
+        const pollSection = btn.closest('.hs-mc-poll')
+        optimisticPollVoteUpdate(pollSection, btn.dataset.choiceId)
+        setTimeout(() => refreshPollSlot(), 3000)
       }
     })
   })

@@ -323,15 +323,44 @@ function renderPrediction(pred, balance, channelId, isMod) {
       const winOutcome = pred.outcomes.find(o => o.id === winningId)
       const pct = totalPoints > 0 && winOutcome ? (winOutcome.totalPoints / totalPoints) : 1
       const payout = pct > 0 ? Math.floor(userBet.points / pct) : userBet.points
-      banner.textContent = 'you won +' + formatPoints(payout)
+      banner.appendChild(makeCoinSvg(18))
+      const amt = document.createElement('span')
+      amt.className = 'hs-mc-pred-result-amount'
+      amt.textContent = ' +' + formatPoints(payout)
+      banner.appendChild(amt)
+      const label = document.createElement('span')
+      label.className = 'hs-mc-pred-result-label'
+      label.textContent = ' won'
+      banner.appendChild(label)
     } else {
-      banner.textContent = 'you lost ' + formatPoints(userBet.points)
+      const amt = document.createElement('span')
+      amt.className = 'hs-mc-pred-result-amount'
+      amt.textContent = '-' + formatPoints(userBet.points)
+      banner.appendChild(amt)
+      const label = document.createElement('span')
+      label.className = 'hs-mc-pred-result-label'
+      label.textContent = ' lost'
+      banner.appendChild(label)
     }
     wrapper.appendChild(banner)
   } else if (isCanceled && userBet) {
     const banner = document.createElement('div')
     banner.className = 'hs-mc-pred-result hs-mc-pred-result-refund'
-    banner.textContent = formatPoints(userBet.points) + ' returned'
+    banner.appendChild(makeCoinSvg(18))
+    const amt = document.createElement('span')
+    amt.className = 'hs-mc-pred-result-amount'
+    amt.textContent = ' +' + formatPoints(userBet.points)
+    banner.appendChild(amt)
+    const label = document.createElement('span')
+    label.className = 'hs-mc-pred-result-label'
+    label.textContent = ' refunded'
+    banner.appendChild(label)
+    wrapper.appendChild(banner)
+  } else if (isResolved && !userBet) {
+    const banner = document.createElement('div')
+    banner.className = 'hs-mc-pred-result hs-mc-pred-result-neutral'
+    const winOutcome = pred.outcomes.find(o => o.id === winningId)
+    banner.textContent = winOutcome ? '\u2713 ' + winOutcome.title : 'ended'
     wrapper.appendChild(banner)
   }
 

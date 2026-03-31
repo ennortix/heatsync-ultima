@@ -3465,15 +3465,44 @@ function renderPrediction(pred, balance, channelId, isMod) {
       const winOutcome = pred.outcomes.find(o => o.id === winningId)
       const pct = totalPoints > 0 && winOutcome ? (winOutcome.totalPoints / totalPoints) : 1
       const payout = pct > 0 ? Math.floor(userBet.points / pct) : userBet.points
-      banner.textContent = 'you won +' + formatPoints(payout)
+      banner.appendChild(makeCoinSvg(18))
+      const amt = document.createElement('span')
+      amt.className = 'hs-mc-pred-result-amount'
+      amt.textContent = ' +' + formatPoints(payout)
+      banner.appendChild(amt)
+      const label = document.createElement('span')
+      label.className = 'hs-mc-pred-result-label'
+      label.textContent = ' won'
+      banner.appendChild(label)
     } else {
-      banner.textContent = 'you lost ' + formatPoints(userBet.points)
+      const amt = document.createElement('span')
+      amt.className = 'hs-mc-pred-result-amount'
+      amt.textContent = '-' + formatPoints(userBet.points)
+      banner.appendChild(amt)
+      const label = document.createElement('span')
+      label.className = 'hs-mc-pred-result-label'
+      label.textContent = ' lost'
+      banner.appendChild(label)
     }
     wrapper.appendChild(banner)
   } else if (isCanceled && userBet) {
     const banner = document.createElement('div')
     banner.className = 'hs-mc-pred-result hs-mc-pred-result-refund'
-    banner.textContent = formatPoints(userBet.points) + ' returned'
+    banner.appendChild(makeCoinSvg(18))
+    const amt = document.createElement('span')
+    amt.className = 'hs-mc-pred-result-amount'
+    amt.textContent = ' +' + formatPoints(userBet.points)
+    banner.appendChild(amt)
+    const label = document.createElement('span')
+    label.className = 'hs-mc-pred-result-label'
+    label.textContent = ' refunded'
+    banner.appendChild(label)
+    wrapper.appendChild(banner)
+  } else if (isResolved && !userBet) {
+    const banner = document.createElement('div')
+    banner.className = 'hs-mc-pred-result hs-mc-pred-result-neutral'
+    const winOutcome = pred.outcomes.find(o => o.id === winningId)
+    banner.textContent = winOutcome ? '\u2713 ' + winOutcome.title : 'ended'
     wrapper.appendChild(banner)
   }
 
@@ -11082,26 +11111,53 @@ const STORAGE_KEY = 'heatsync_multichat';
 
       /* Result banners */
       .hs-mc-pred-result {
-        font-size: 13px;
-        font-weight: 700;
-        padding: 6px 10px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 2px;
+        padding: 8px 12px;
         margin-bottom: 8px;
+        border-radius: 4px;
         text-align: center;
       }
+      .hs-mc-pred-result-amount {
+        font-size: 18px;
+        font-weight: 900;
+        font-family: 'Inter', 'Segoe UI', system-ui, sans-serif;
+        letter-spacing: -0.5px;
+      }
+      .hs-mc-pred-result-label {
+        font-size: 12px;
+        font-weight: 600;
+        opacity: 0.7;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        margin-left: 4px;
+      }
       .hs-mc-pred-result-won {
-        background: rgba(0,200,100,0.12);
-        color: #00c864;
-        border-left: 3px solid #00c864;
+        background: linear-gradient(135deg, rgba(0,200,100,0.15), rgba(255,135,0,0.1));
+        color: #00e070;
+        border: 1px solid rgba(0,200,100,0.3);
+      }
+      .hs-mc-pred-result-won .hs-mc-pred-result-amount {
+        text-shadow: 0 0 12px rgba(0,224,112,0.4);
       }
       .hs-mc-pred-result-lost {
-        background: rgba(255,60,60,0.1);
-        color: #ff3c3c;
-        border-left: 3px solid #ff3c3c;
+        background: rgba(255,60,60,0.08);
+        color: #ff5050;
+        border: 1px solid rgba(255,60,60,0.2);
       }
       .hs-mc-pred-result-refund {
-        background: rgba(255,255,255,0.06);
-        color: #808080;
-        border-left: 3px solid #808080;
+        background: linear-gradient(135deg, rgba(255,135,0,0.1), rgba(255,191,0,0.08));
+        color: #ff8700;
+        border: 1px solid rgba(255,135,0,0.25);
+      }
+      .hs-mc-pred-result-neutral {
+        font-size: 12px;
+        font-weight: 600;
+        color: rgba(255,255,255,0.5);
+        background: rgba(255,255,255,0.04);
+        border: 1px solid rgba(255,255,255,0.08);
       }
 
       /* Outcome states */

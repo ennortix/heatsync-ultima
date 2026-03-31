@@ -3626,7 +3626,12 @@ function renderPrediction(pred, balance, channelId, isMod, cpImage, cpName) {
       resolveBtn.className = 'hs-mc-pred-mod-btn hs-mc-pred-resolve-btn'
       resolveBtn.dataset.outcome = outcome.id
       resolveBtn.style.setProperty('--oc', color)
-      resolveBtn.textContent = 'pick winner'
+      if (isBetOn) {
+        resolveBtn.textContent = 'pick winner (your bet)'
+        resolveBtn.classList.add('hs-mc-pred-resolve-yours')
+      } else {
+        resolveBtn.textContent = 'pick winner'
+      }
       card.appendChild(resolveBtn)
     }
 
@@ -3634,6 +3639,15 @@ function renderPrediction(pred, balance, channelId, isMod, cpImage, cpName) {
   }
 
   wrapper.appendChild(outcomesWrap)
+
+  // Mod conflict notice — mod bet on this prediction and needs to resolve it
+  if (isLocked && isMod && userBet) {
+    const notice = document.createElement('div')
+    notice.className = 'hs-mc-pred-mod-notice'
+    const betOutcome = pred.outcomes.find(o => o.id === userBet.outcomeId)
+    notice.textContent = 'you bet ' + formatPoints(userBet.points) + ' on ' + (betOutcome?.title || '?') + ' \u2014 pick the actual winner'
+    wrapper.appendChild(notice)
+  }
 
   // Mod controls
   if (!isEnded && isMod) {
@@ -4006,6 +4020,20 @@ function attachPredictionHandlers() {
     })
   })
 
+  // Human-readable prediction error messages
+  const predErrorMsg = (code) => {
+    if (!code) return 'failed'
+    const c = code.toUpperCase()
+    if (c.includes('EVENT_MANAGER') || c.includes('OWNER')) return "can't bet on own"
+    if (c.includes('ACCEPT') || c.includes('TOS')) return 'accepting terms...'
+    if (c.includes('NOT_FOUND')) return 'prediction ended'
+    if (c.includes('LOCKED')) return 'betting locked'
+    if (c.includes('INSUFFICIENT') || c.includes('BALANCE')) return 'not enough points'
+    if (c.includes('ALREADY')) return 'already bet'
+    if (c.includes('FORBIDDEN')) return 'no permission'
+    return code.toLowerCase().slice(0, 15)
+  }
+
   // Bet button handlers
   container.querySelectorAll('.hs-mc-pred-bet-btn').forEach(btn => {
     btn.addEventListener('click', async (e) => {
@@ -4017,7 +4045,7 @@ function attachPredictionHandlers() {
       const betPoints = parseInt(btn.dataset.points)
       const result = await placePredictionBet(eventId, btn.dataset.outcome, betPoints)
       if (result.error) {
-        btn.textContent = result.error.slice(0, 15)
+        btn.textContent = predErrorMsg(result.error)
         btn.title = result.error
         setTimeout(() => { btn.textContent = formatPoints(betPoints); btn.disabled = false; btn.title = '' }, 4000)
       } else {
@@ -4045,9 +4073,9 @@ function attachPredictionHandlers() {
       btn.textContent = '...'
       const result = await placePredictionBet(eventId, btn.dataset.outcome, points)
       if (result.error) {
-        btn.textContent = '!'
+        btn.textContent = predErrorMsg(result.error)
         btn.title = result.error
-        setTimeout(() => { btn.textContent = 'bet'; btn.disabled = false; btn.title = '' }, 2000)
+        setTimeout(() => { btn.textContent = 'bet'; btn.disabled = false; btn.title = '' }, 3000)
       } else {
         btn.textContent = '\u2713'
         optimisticBetUpdate(container, btn.dataset.outcome, points)
@@ -4079,7 +4107,7 @@ function attachPredictionHandlers() {
       btn.textContent = '...'
       const result = await lockPrediction(eventId)
       if (result.error) {
-        btn.textContent = result.error.slice(0, 15)
+        btn.textContent = predErrorMsg(result.error)
         btn.title = result.error
         setTimeout(() => { btn.textContent = 'lock betting'; btn.disabled = false; btn.title = '' }, 3000)
       } else {
@@ -4102,7 +4130,7 @@ function attachPredictionHandlers() {
       btn.textContent = '...'
       const result = await resolvePrediction(eventId, outcomeId)
       if (result.error) {
-        btn.textContent = result.error.slice(0, 15)
+        btn.textContent = predErrorMsg(result.error)
         btn.title = result.error
         setTimeout(() => { btn.textContent = 'pick winner'; btn.disabled = false; btn.title = '' }, 3000)
       } else {
@@ -4123,7 +4151,7 @@ function attachPredictionHandlers() {
       btn.textContent = '...'
       const result = await cancelPrediction(eventId)
       if (result.error) {
-        btn.textContent = result.error.slice(0, 15)
+        btn.textContent = predErrorMsg(result.error)
         btn.title = result.error
         setTimeout(() => { btn.textContent = 'cancel (refund)'; btn.disabled = false; btn.title = '' }, 3000)
       } else {
@@ -11216,6 +11244,24 @@ const STORAGE_KEY = 'heatsync_multichat';
       }
 
       /* ═══ Mod controls ═══ */
+      .hs-mc-pred-mod-notice {
+        font-size: 11px;
+        color: #ff8700;
+        background: rgba(255,135,0,0.08);
+        border: 1px solid rgba(255,135,0,0.2);
+        border-radius: 3px;
+        padding: 5px 8px;
+        margin-top: 6px;
+        text-align: center;
+      }
+      .hs-mc-pred-resolve-yours {
+        border-color: #ff8700 !important;
+        color: #ff8700 !important;
+      }
+      .hs-mc-pred-resolve-yours:hover {
+        background: #ff8700 !important;
+        color: #000 !important;
+      }
       .hs-mc-pred-mod-row {
         display: flex;
         gap: 6px;

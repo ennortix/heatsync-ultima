@@ -3178,6 +3178,24 @@
       }
 
       /* ═══ Mod controls ═══ */
+      .hs-mc-pred-mod-notice {
+        font-size: 11px;
+        color: #ff8700;
+        background: rgba(255,135,0,0.08);
+        border: 1px solid rgba(255,135,0,0.2);
+        border-radius: 3px;
+        padding: 5px 8px;
+        margin-top: 6px;
+        text-align: center;
+      }
+      .hs-mc-pred-resolve-yours {
+        border-color: #ff8700 !important;
+        color: #ff8700 !important;
+      }
+      .hs-mc-pred-resolve-yours:hover {
+        background: #ff8700 !important;
+        color: #000 !important;
+      }
       .hs-mc-pred-mod-row {
         display: flex;
         gap: 6px;

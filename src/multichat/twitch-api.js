@@ -1383,8 +1383,8 @@ async function renderTwitchTab() {
   })
 
   // Fetch all in parallel, render each as it arrives
-  // Prediction sets _twitchIsMod — poll needs it as fallback for mod controls
-  const predPromise = fetchPrediction(channel).then(result => {
+  const modBefore = _twitchIsMod
+  fetchPrediction(channel).then(result => {
     _lastPredResult = result
     updateChatBanners(_lastPredResult, _lastPollData)
     predSlot.textContent = ''
@@ -1403,11 +1403,11 @@ async function renderTwitchTab() {
       predSlot.appendChild(renderNoPrediction(result.balance, result.channelId, result.isMod, result.cpImage, result.cpName))
     }
     attachPredictionHandlers()
+    // If prediction fetch revealed mod status, refresh poll slot to show mod controls
+    if (_twitchIsMod && !modBefore) refreshPollSlot()
   })
 
-  // Start poll fetch in parallel, but wait for pred to set _twitchIsMod before rendering
-  const pollPromise = fetchPoll(channel)
-  Promise.all([predPromise, pollPromise]).then(([, pollResult]) => {
+  fetchPoll(channel).then(pollResult => {
     _lastPollData = pollResult?.poll || pollResult
     updateChatBanners(_lastPredResult, _lastPollData)
     if (pollResult?.poll) {

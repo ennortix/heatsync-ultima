@@ -2179,27 +2179,62 @@ async function claimCommunityPoints(claimId, channelId) {
   }
 }
 
+// Persist active poll to storage (survives reloads; Twitch has no public poll query)
+function _savePollToStorage(poll, channelId) {
+  if (!poll?.id) return
+  try {
+    chrome.storage.local.set({ hs_active_poll: { poll, channelId, savedAt: Date.now() } })
+  } catch {}
+}
+function _clearPollFromStorage() {
+  try { chrome.storage.local.remove('hs_active_poll') } catch {}
+}
+
+// Recompute remainingDurationMilliseconds from startedAt + durationSeconds
+function _refreshPollTiming(poll) {
+  if (!poll?.startedAt || !poll?.durationSeconds) return poll
+  const elapsed = Date.now() - new Date(poll.startedAt).getTime()
+  const totalMs = poll.durationSeconds * 1000
+  poll.remainingDurationMilliseconds = Math.max(0, totalMs - elapsed)
+  // Auto-mark as completed if time expired
+  if (poll.remainingDurationMilliseconds <= 0 && poll.status === 'ACTIVE') {
+    poll.status = 'COMPLETED'
+  }
+  return poll
+}
+
 async function fetchPoll(channelLogin) {
   const safe = channelLogin.replace(/[^a-z0-9_]/g, '')
   if (!safe) return null
   try {
-    // Check local content-script cache first (instant, no round-trip)
+    // 1. Check GQL interception cache (from Twitch's own traffic)
     for (const key of ['ActivePoll', 'ChannelPollContext']) {
       const c = _gqlDataCache[key]
       if (c && Date.now() - c.ts < 15000) {
         const poll = c.data?.user?.activePoll || c.data?.channel?.activePoll || null
         if (poll) {
-          const channelId = c.data?.user?.id || c.data?.channel?.id || null
+          _refreshPollTiming(poll)
+          _savePollToStorage(poll, c.data?.user?.id || _twitchChannelId)
           const isMod = c.data?.user?.self?.isModerator || _twitchIsMod
-          return { poll, channelId: channelId || _twitchChannelId, isMod }
+          return { poll, channelId: c.data?.user?.id || _twitchChannelId, isMod }
         }
       }
     }
-    // activePoll is persisted-query-only (not in public GQL schema).
-    // MAIN world cache + GQL proxy have 3-4s timeouts and no seeded hash,
-    // so skip them — if a poll starts, Twitch's own GQL traffic will populate
-    // _gqlDataCache via the heatsync-gql-data listener, triggering a refresh.
-    // Use cached isMod/channelId from fetchPrediction as fallback.
+    // 2. Check persistent storage (survives reloads, no 15s TTL)
+    //    activePoll is persisted-query-only — no public GQL query exists
+    try {
+      const stored = await chrome.storage.local.get('hs_active_poll')
+      const entry = stored?.hs_active_poll
+      if (entry?.poll && entry.channelId === _twitchChannelId) {
+        const poll = _refreshPollTiming(entry.poll)
+        // Clear expired/completed polls from storage
+        if (poll.status === 'COMPLETED' || poll.status === 'ARCHIVED' || poll.status === 'TERMINATED') {
+          _clearPollFromStorage()
+        } else {
+          return { poll, channelId: entry.channelId, isMod: _twitchIsMod }
+        }
+      }
+    } catch {}
     return { poll: null, channelId: _twitchChannelId, isMod: _twitchIsMod }
   } catch (e) {
     log('Failed to fetch poll:', e.message)
@@ -2259,8 +2294,8 @@ async function createTwitchPoll(channelId, title, durationSeconds, choices) {
     if (data?.errors?.length) return { error: data.errors[0].message || 'create poll failed' }
     const poll = result?.poll
     if (poll) {
-      // Cache the created poll so the UI can display it immediately
       _gqlDataCache['ActivePoll'] = { data: { user: { activePoll: poll, id: channelId } }, ts: Date.now() }
+      _savePollToStorage(poll, channelId)
     }
     return { ok: true, poll }
   } catch (e) {
@@ -2278,6 +2313,7 @@ async function endTwitchPoll(pollId) {
     if (poll) {
       _gqlDataCache['ActivePoll'] = { data: { user: { activePoll: poll, id: _twitchChannelId } }, ts: Date.now() }
     }
+    _clearPollFromStorage()
     return { ok: true }
   } catch (e) {
     return { error: e.message }

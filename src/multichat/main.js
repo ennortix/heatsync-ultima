@@ -444,7 +444,7 @@
   let avatarsEnabled = false;
 
   // Show offline stream events (default off)
-  let showOfflineEvents = true;
+  let showOfflineEvents = false;
 
   // Input bar auto-hide — hidden when empty, shown on first keystroke
   let autoHideInput = false;
@@ -1062,6 +1062,13 @@
     try {
       const stored = await chrome.storage.local.get(['ui_settings']);
       if (stored.ui_settings?.showOfflineEvents !== undefined) {
+        // migrate: old default was true, new default is false — clear stale stored value
+        if (stored.ui_settings.showOfflineEvents === true && !stored.ui_settings._offlineDefaultMigrated) {
+          saveUiSetting('showOfflineEvents', false)
+          saveUiSetting('_offlineDefaultMigrated', true)
+          showOfflineEvents = false
+          return
+        }
         showOfflineEvents = stored.ui_settings.showOfflineEvents;
       }
     } catch {}
@@ -1269,13 +1276,13 @@
         timestampsEnabled = false;
         avatarsEnabled = false;
         platformBadgesEnabled = true;
-        showOfflineEvents = true;
+        showOfflineEvents = false;
         for (const [k, v] of Object.entries(INLINE_NOTIF_TYPES)) inlineNotifs[k] = v.defaultOn;
         for (const [k, v] of Object.entries(HERMES_EVENT_TYPES)) hermesToggles[k] = v.defaultOn;
         const settings = {
           wysiwygEnabled: false, linksEnabled: true, viMode: false,
           zebra: true, autoHideInput: false, timestamps: false,
-          avatars: false, showPlatformBadges: true, showOfflineEvents: true,
+          avatars: false, showPlatformBadges: true, showOfflineEvents: false,
           inlineNotifs: { ...inlineNotifs }, hermesEvents: { ...hermesToggles },
         };
         try { for (const [k, v] of Object.entries(settings)) saveUiSetting(k, v) } catch {}

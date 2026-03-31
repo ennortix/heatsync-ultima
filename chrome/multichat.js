@@ -12086,21 +12086,25 @@ const STORAGE_KEY = 'heatsync_multichat';
         margin-top: 6px;
       }
       .hs-mc-poll-mod-btn {
-        background: transparent;
-        border: 1px solid rgba(255,255,255,0.15);
-        color: #aaa;
         font-size: 11px;
         padding: 4px 10px;
+        background: rgba(0,0,0,0.7);
+        color: #fff;
+        border: 1px solid rgba(255,255,255,0.2);
         cursor: pointer;
-        transition: none;
+        font-family: inherit;
       }
       .hs-mc-poll-mod-btn:hover {
-        border-color: #ff8700;
-        color: #ff8700;
+        background: #fff;
+        color: #000;
       }
       .hs-mc-poll-mod-btn:disabled {
-        opacity: 0.5;
+        opacity: 0.3;
         cursor: default;
+      }
+      .hs-mc-poll-mod-btn:disabled:hover {
+        background: rgba(0,0,0,0.7);
+        color: #fff;
       }
       .hs-mc-poll-empty {
         padding: 0 12px;

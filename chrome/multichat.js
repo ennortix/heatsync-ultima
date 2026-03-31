@@ -5305,45 +5305,22 @@ async function fetchPoll(channelLogin) {
   const safe = channelLogin.replace(/[^a-z0-9_]/g, '')
   if (!safe) return null
   try {
-    // Check local content-script cache first (no postMessage round-trip)
+    // Check local content-script cache first (instant, no round-trip)
     for (const key of ['ActivePoll', 'ChannelPollContext']) {
       const c = _gqlDataCache[key]
       if (c && Date.now() - c.ts < 15000) {
         const poll = c.data?.user?.activePoll || c.data?.channel?.activePoll || null
         if (poll) {
           const channelId = c.data?.user?.id || c.data?.channel?.id || null
-          const isMod = c.data?.user?.self?.isModerator || false
-          return { poll, channelId, isMod }
+          const isMod = c.data?.user?.self?.isModerator || _twitchIsMod
+          return { poll, channelId: channelId || _twitchChannelId, isMod }
         }
       }
     }
-    // Check MAIN world cache
-    const cached = await gqlGetCache(['ActivePoll', 'ChannelPollContext'])
-    for (const key of ['ActivePoll', 'ChannelPollContext']) {
-      const c = cached.data?.[key]
-      if (c && Date.now() - c.ts < 15000) {
-        const poll = c.data?.user?.activePoll || c.data?.channel?.activePoll || null
-        if (poll) {
-          const channelId = c.data?.user?.id || c.data?.channel?.id || null
-          const isMod = c.data?.user?.self?.isModerator || false
-          return { poll, channelId, isMod }
-        }
-      }
-    }
-    // Try proxy with captured hash
-    try {
-      const data = await gqlProxy('ActivePoll', { channelLogin: safe })
-      const d = Array.isArray(data) ? data[0] : data
-      const poll = d?.data?.user?.activePoll || d?.user?.activePoll || null
-      if (poll) {
-        const user = d?.data?.user || d?.user
-        return { poll, channelId: user?.id || null, isMod: user?.self?.isModerator || false }
-      }
-    } catch(e) {
-      log('GQL proxy poll failed:', e.message)
-    }
-    // activePoll is persisted-query-only (not in public GQL schema),
-    // so if proxy failed and no cache hit, we have no poll data.
+    // activePoll is persisted-query-only (not in public GQL schema).
+    // MAIN world cache + GQL proxy have 3-4s timeouts and no seeded hash,
+    // so skip them — if a poll starts, Twitch's own GQL traffic will populate
+    // _gqlDataCache via the heatsync-gql-data listener, triggering a refresh.
     // Use cached isMod/channelId from fetchPrediction as fallback.
     return { poll: null, channelId: _twitchChannelId, isMod: _twitchIsMod }
   } catch (e) {

@@ -469,6 +469,9 @@
     hype:   { color: '#ff8700', defaultOn: false, desc: 'hype trains' },
     sub:    { color: '#00ff7f', defaultOn: true,  desc: 'gift subs' },
     redeem: { color: '#00bfff', defaultOn: true,  desc: 'channel point redeems' },
+    pred:   { color: '#387aff', defaultOn: true,  desc: 'prediction banner' },
+    poll:   { color: '#00c853', defaultOn: true,  desc: 'poll banner' },
+    pin:    { color: '#bf94ff', defaultOn: true,  desc: 'pinned messages' },
   }
   const hermesToggles = {}
   for (const [k, v] of Object.entries(HERMES_EVENT_TYPES)) hermesToggles[k] = v.defaultOn
@@ -4888,6 +4891,7 @@
   function buildMessageDiv(m, tabId) {
     // Stream event — render as magenta inline notification
     if (m.type === 'stream-event') {
+      if (!showOfflineEvents && (m.eventClass || '').includes('event-offline')) return null
       const div = document.createElement('div')
       div.className = `hs-mc-stream-event ${m.eventClass || ''}`
       const tsVal = timestampsEnabled && m.time ? formatTimeFromTs(m.time) : ''
@@ -5188,6 +5192,7 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
     if (empty) empty.remove();
 
     const div = buildMessageDiv(msg, tabId);
+    if (!div) return false;
     if (zebraEnabled && msg.type !== 'stream-event' && msg.type !== 'feed-post' && msg.type !== 'inline-dm') {
       if (!msgsEl._zebraCount) msgsEl._zebraCount = 0;
       msgsEl._zebraCount++;
@@ -5310,6 +5315,7 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
     const frag = document.createDocumentFragment();
     for (const m of toRender) {
       const div = buildMessageDiv(m, id);
+      if (!div) continue;
       if (zebraEnabled && m.type !== 'stream-event' && m.type !== 'feed-post') {
         msgsEl._zebraCount++;
         if (msgsEl._zebraCount % 2 === 0) div.classList.add('hs-mc-zebra');
@@ -6736,10 +6742,12 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
         toggleKey = 'hype'
         eventClass = 'event-hype'
         text = `[${escapeHtml(channel)}] \u25C6 hype train started`
+        if (typeof onHypeTrainStart === 'function') onHypeTrainStart(data.level)
       } else if (eventType === 'hype-train-end') {
         toggleKey = 'hype'
         eventClass = 'event-hype'
         text = `[${escapeHtml(channel)}] \u25C6 hype train ended at level ${Number(data.level) || 0}`
+        if (typeof onHypeTrainEnd === 'function') onHypeTrainEnd()
       } else if (eventType === 'sub-gift') {
         toggleKey = 'sub'
         eventClass = 'event-sub'

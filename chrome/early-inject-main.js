@@ -67,6 +67,19 @@
           cost: r.reward?.cost || 0
         }}, location.origin)
       }
+      // Pinned messages
+      else if ((evtType === 'pin-message' || evtType === 'pinned-chat') && pubsub.data) {
+        const d = pubsub.data
+        const text = d.message?.message?.text || d.message?.text || d.text || ''
+        const sender = d.message?.sender?.displayName || d.message?.sender?.login || d.pinned_by?.display_name || ''
+        if (text) {
+          window.postMessage({ type: 'heatsync-hermes-event', eventType: 'pin', channel: resolveChannel(d.channel_id || ''), data: {
+            message: text, sender, id: d.id || d.message?.id || ''
+          }}, location.origin)
+        }
+      } else if (evtType === 'unpin-message' || evtType === 'unpinned-chat') {
+        window.postMessage({ type: 'heatsync-hermes-event', eventType: 'unpin', channel: resolveChannel(pubsub.data?.channel_id || ''), data: {} }, location.origin)
+      }
       // Sub gifts — exact payload TBD, add when discovered
     } catch (err) {
       log('Hermes parse error:', err)

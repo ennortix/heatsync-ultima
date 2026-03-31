@@ -1134,25 +1134,68 @@ function attachPredictionHandlers() {
 let _bannerTimers = []
 let _lastPredResult = null
 let _lastPollData = null
+let _lastPinnedMsg = null
+let _hypeTrainActive = null // { level, startedAt }
 
 function clearBannerTimers() {
   _bannerTimers.forEach(id => clearInterval(id))
   _bannerTimers = []
 }
 
+function _makeBannerTimer(endsAt) {
+  const timer = document.createElement('span')
+  timer.className = 'hs-mc-chat-banner-timer'
+  const update = () => {
+    const remaining = Math.max(0, Math.ceil((endsAt - Date.now()) / 1000))
+    if (remaining <= 0) { timer.textContent = 'closing'; return }
+    const m = Math.floor(remaining / 60)
+    const s = remaining % 60
+    timer.textContent = m > 0 ? m + ':' + String(s).padStart(2, '0') : s + 's'
+  }
+  update()
+  _bannerTimers.push(cleanup.setInterval(() => {
+    if (!timer.isConnected) return
+    update()
+  }, 1000))
+  return timer
+}
+
+function _makeBannerRow(className, icon, titleText, rightEl) {
+  const row = document.createElement('div')
+  row.className = 'hs-mc-chat-banner-item ' + className
+  const iconEl = document.createElement('span')
+  iconEl.className = 'hs-mc-chat-banner-icon'
+  iconEl.textContent = icon
+  row.appendChild(iconEl)
+  const title = document.createElement('span')
+  title.className = 'hs-mc-chat-banner-title'
+  title.textContent = titleText
+  row.appendChild(title)
+  if (rightEl) row.appendChild(rightEl)
+  row.style.cursor = 'pointer'
+  row.addEventListener('click', () => {
+    const twitchTab = document.querySelector('[data-tab="live"]')
+    if (twitchTab) twitchTab.click()
+  })
+  return row
+}
+
 function updateChatBanners(predResult, pollData) {
   const msgsEl = document.getElementById('hs-mc-messages')
   if (!msgsEl) return
+  // hermesToggles is in the shared scope from main.js
+  const t = typeof hermesToggles !== 'undefined' ? hermesToggles : {}
 
-  // Remove existing banner
   const old = msgsEl.querySelector('.hs-mc-chat-banner')
   clearBannerTimers()
 
   const pred = predResult?.prediction
-  const hasPred = pred && (pred.status === 'ACTIVE' || pred.status === 'LOCKED')
-  const hasPoll = pollData && pollData.status === 'ACTIVE'
+  const hasPred = t.pred !== false && pred && (pred.status === 'ACTIVE' || pred.status === 'LOCKED')
+  const hasPoll = t.poll !== false && pollData && pollData.status === 'ACTIVE'
+  const hasPin = t.pin !== false && _lastPinnedMsg
+  const hasHype = t.hype !== false && _hypeTrainActive
 
-  if (!hasPred && !hasPoll) {
+  if (!hasPred && !hasPoll && !hasPin && !hasHype) {
     if (old) old.remove()
     return
   }
@@ -1161,103 +1204,65 @@ function updateChatBanners(predResult, pollData) {
   banner.className = 'hs-mc-chat-banner'
   banner.innerHTML = ''
 
-  if (hasPred) {
-    const row = document.createElement('div')
-    row.className = 'hs-mc-chat-banner-item hs-mc-chat-banner-pred'
-    row.dataset.type = 'prediction'
-
-    const icon = document.createElement('span')
-    icon.className = 'hs-mc-chat-banner-icon'
-    icon.textContent = '\u{1F52E}'
-    row.appendChild(icon)
-
-    const title = document.createElement('span')
-    title.className = 'hs-mc-chat-banner-title'
-    title.textContent = pred.title
-    row.appendChild(title)
-
-    if (pred.status === 'ACTIVE') {
-      const timer = document.createElement('span')
-      timer.className = 'hs-mc-chat-banner-timer'
-      const createdAt = new Date(pred.createdAt).getTime()
-      const windowMs = (pred.predictionWindowSeconds || 120) * 1000
-      const endsAt = createdAt + windowMs
-      const updateTimer = () => {
-        const remaining = Math.max(0, Math.ceil((endsAt - Date.now()) / 1000))
-        if (remaining <= 0) { timer.textContent = 'closing'; return }
-        const m = Math.floor(remaining / 60)
-        const s = remaining % 60
-        timer.textContent = m > 0 ? m + ':' + String(s).padStart(2, '0') : s + 's'
-      }
-      updateTimer()
-      _bannerTimers.push(cleanup.setInterval(() => {
-        if (!timer.isConnected) return
-        updateTimer()
-      }, 1000))
-      row.appendChild(timer)
-    } else {
-      const badge = document.createElement('span')
-      badge.className = 'hs-mc-chat-banner-badge'
-      badge.textContent = 'locked'
-      row.appendChild(badge)
-    }
-
-    // Click to go to twitch tab
-    row.style.cursor = 'pointer'
-    row.addEventListener('click', () => {
-      if (typeof switchTab === 'function') switchTab('live')
-      const twitchTab = document.querySelector('[data-tab="live"]')
-      if (twitchTab) twitchTab.click()
-    })
-
-    banner.appendChild(row)
+  // Pinned message
+  if (hasPin) {
+    const badge = document.createElement('span')
+    badge.className = 'hs-mc-chat-banner-badge'
+    badge.textContent = 'pinned'
+    badge.style.color = '#bf94ff'
+    banner.appendChild(_makeBannerRow('hs-mc-chat-banner-pin', '\u{1F4CC}', _lastPinnedMsg.message || _lastPinnedMsg.text || '', badge))
   }
 
-  if (hasPoll) {
-    const row = document.createElement('div')
-    row.className = 'hs-mc-chat-banner-item hs-mc-chat-banner-poll'
-    row.dataset.type = 'poll'
-
-    const icon = document.createElement('span')
-    icon.className = 'hs-mc-chat-banner-icon'
-    icon.textContent = '\u{1F4CA}'
-    row.appendChild(icon)
-
-    const title = document.createElement('span')
-    title.className = 'hs-mc-chat-banner-title'
-    title.textContent = pollData.title
-    row.appendChild(title)
-
-    const timer = document.createElement('span')
-    timer.className = 'hs-mc-chat-banner-timer'
-    const pollEnds = new Date(pollData.endedAt || pollData.createdAt).getTime()
-    const durMs = (pollData.durationSeconds || 60) * 1000
-    const pollEndTime = pollData.endedAt ? pollEnds : (new Date(pollData.createdAt).getTime() + durMs)
-    const updatePollTimer = () => {
-      const remaining = Math.max(0, Math.ceil((pollEndTime - Date.now()) / 1000))
-      if (remaining <= 0) { timer.textContent = 'ended'; return }
-      const m = Math.floor(remaining / 60)
-      const s = remaining % 60
-      timer.textContent = m > 0 ? m + ':' + String(s).padStart(2, '0') : s + 's'
+  // Prediction
+  if (hasPred) {
+    let rightEl
+    if (pred.status === 'ACTIVE') {
+      const createdAt = new Date(pred.createdAt).getTime()
+      const windowMs = (pred.predictionWindowSeconds || 120) * 1000
+      rightEl = _makeBannerTimer(createdAt + windowMs)
+    } else {
+      rightEl = document.createElement('span')
+      rightEl.className = 'hs-mc-chat-banner-badge'
+      rightEl.textContent = 'locked'
     }
-    updatePollTimer()
-    _bannerTimers.push(cleanup.setInterval(() => {
-      if (!timer.isConnected) return
-      updatePollTimer()
-    }, 1000))
-    row.appendChild(timer)
+    banner.appendChild(_makeBannerRow('hs-mc-chat-banner-pred', '\u{1F52E}', pred.title, rightEl))
+  }
 
-    row.style.cursor = 'pointer'
-    row.addEventListener('click', () => {
-      if (typeof switchTab === 'function') switchTab('live')
-      const twitchTab = document.querySelector('[data-tab="live"]')
-      if (twitchTab) twitchTab.click()
-    })
+  // Poll
+  if (hasPoll) {
+    const durMs = (pollData.durationSeconds || 60) * 1000
+    const pollEndTime = pollData.endedAt ? new Date(pollData.endedAt).getTime() : (new Date(pollData.createdAt).getTime() + durMs)
+    banner.appendChild(_makeBannerRow('hs-mc-chat-banner-poll', '\u{1F4CA}', pollData.title, _makeBannerTimer(pollEndTime)))
+  }
 
-    banner.appendChild(row)
+  // Hype train
+  if (hasHype) {
+    const badge = document.createElement('span')
+    badge.className = 'hs-mc-chat-banner-badge'
+    badge.textContent = 'lvl ' + (_hypeTrainActive.level || 1)
+    badge.style.color = '#ff8700'
+    banner.appendChild(_makeBannerRow('hs-mc-chat-banner-hype', '\u{1F682}', 'hype train', badge))
   }
 
   if (!old) msgsEl.prepend(banner)
+}
+
+// Called from main.js hermes event handler
+function onHypeTrainStart(level) {
+  _hypeTrainActive = { level: level || 1, startedAt: Date.now() }
+  updateChatBanners(_lastPredResult, _lastPollData)
+}
+function onHypeTrainEnd() {
+  _hypeTrainActive = null
+  updateChatBanners(_lastPredResult, _lastPollData)
+}
+function onPinnedMessage(msg) {
+  _lastPinnedMsg = msg
+  updateChatBanners(_lastPredResult, _lastPollData)
+}
+function clearPinnedMessage() {
+  _lastPinnedMsg = null
+  updateChatBanners(_lastPredResult, _lastPollData)
 }
 
 // Get Twitch channel for the active multichat tab (channel tab → twitch name, live → URL channel)

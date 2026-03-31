@@ -1405,10 +1405,13 @@ async function renderTwitchTab() {
   })
 
   fetchPoll(channel).then(pollResult => {
-    _lastPollData = pollResult
+    _lastPollData = pollResult?.poll || pollResult
     updateChatBanners(_lastPredResult, _lastPollData)
-    if (pollResult) {
-      pollSlot.appendChild(renderPoll(pollResult))
+    if (pollResult?.poll) {
+      pollSlot.appendChild(renderPoll(pollResult.poll, pollResult.channelId, pollResult.isMod))
+      attachPollHandlers()
+    } else if (pollResult) {
+      pollSlot.appendChild(renderNoPoll(pollResult.channelId, pollResult.isMod))
       attachPollHandlers()
     }
   })
@@ -1488,23 +1491,28 @@ async function refreshPollSlot() {
   const channel = getActiveTwitchChannel()
   if (!channel) return
 
-  const poll = await fetchPoll(channel)
-  _lastPollData = poll
+  // Don't refresh while create form is open
+  if (container.querySelector('.hs-mc-poll-create-form[style*="flex"]')) return
+  const result = await fetchPoll(channel)
+  _lastPollData = result?.poll || result
   updateChatBanners(_lastPredResult, _lastPollData)
 
   let slot = container.querySelector('[data-poll-slot]')
   if (!slot) {
     slot = container.querySelector('.hs-mc-poll')
+      || container.querySelector('.hs-mc-poll-empty')
   }
   if (!slot) return
 
   const newSlot = document.createElement('div')
   newSlot.dataset.pollSlot = '1'
-  if (poll) {
-    newSlot.appendChild(renderPoll(poll))
+  if (result?.poll) {
+    newSlot.appendChild(renderPoll(result.poll, result.channelId, result.isMod))
+  } else if (result) {
+    newSlot.appendChild(renderNoPoll(result.channelId, result.isMod))
   }
   slot.replaceWith(newSlot)
-  if (poll) attachPollHandlers()
+  attachPollHandlers()
 }
 
 function stopPredictionPoll() {
@@ -2153,7 +2161,11 @@ async function fetchPoll(channelLogin) {
       const c = _gqlDataCache[key]
       if (c && Date.now() - c.ts < 15000) {
         const poll = c.data?.user?.activePoll || c.data?.channel?.activePoll || null
-        if (poll) return poll
+        if (poll) {
+          const channelId = c.data?.user?.id || c.data?.channel?.id || null
+          const isMod = c.data?.user?.self?.isModerator || false
+          return { poll, channelId, isMod }
+        }
       }
     }
     // Check MAIN world cache
@@ -2162,14 +2174,22 @@ async function fetchPoll(channelLogin) {
       const c = cached.data?.[key]
       if (c && Date.now() - c.ts < 15000) {
         const poll = c.data?.user?.activePoll || c.data?.channel?.activePoll || null
-        if (poll) return poll
+        if (poll) {
+          const channelId = c.data?.user?.id || c.data?.channel?.id || null
+          const isMod = c.data?.user?.self?.isModerator || false
+          return { poll, channelId, isMod }
+        }
       }
     }
     // Try proxy with captured hash
     try {
       const data = await gqlProxy('ActivePoll', { channelLogin: safe })
       const d = Array.isArray(data) ? data[0] : data
-      return d?.data?.user?.activePoll || d?.user?.activePoll || null
+      const poll = d?.data?.user?.activePoll || d?.user?.activePoll || null
+      if (poll) {
+        const user = d?.data?.user || d?.user
+        return { poll, channelId: user?.id || null, isMod: user?.self?.isModerator || false }
+      }
     } catch(e) {
       log('GQL proxy poll failed:', e.message)
     }
@@ -2181,12 +2201,16 @@ async function fetchPoll(channelLogin) {
       method: 'POST', headers,
       signal: AbortSignal.timeout(5000),
       body: JSON.stringify({
-        query: '{ user(login: "' + safe + '") { activePoll { id title status durationSeconds remainingDurationMilliseconds startedAt choices { id title totalVoters } totalVoters } } }'
+        query: '{ user(login: "' + safe + '") { id self { isModerator } activePoll { id title status durationSeconds remainingDurationMilliseconds startedAt choices { id title totalVoters } totalVoters } } currentUser { id } }'
       })
     })
-    if (!resp.ok) return null
+    if (!resp.ok) return { poll: null, channelId: null, isMod: false }
     const data = await resp.json()
-    return data?.data?.user?.activePoll || null
+    const user = data?.data?.user
+    const channelId = user?.id || null
+    const currentUserId = data?.data?.currentUser?.id || null
+    const isMod = user?.self?.isModerator || (channelId && currentUserId && channelId === currentUserId)
+    return { poll: user?.activePoll || null, channelId, isMod }
   } catch (e) {
     log('Failed to fetch poll:', e.message)
     return null
@@ -2233,12 +2257,29 @@ async function votePoll(pollId, choiceId) {
   }
 }
 
+async function createTwitchPoll(channelId, title, durationSeconds, choices) {
+  return predictionMutation(
+    'CreatePoll', 'createPoll',
+    'mutation($input: CreatePollInput!) { createPoll(input: $input) { poll { id } error { code } } }',
+    { input: { channelID: channelId, title, choices: choices.map(t => ({ title: t })), durationSeconds, isMultiChoice: false, isBitsVotingEnabled: false, isChannelPointsVotingEnabled: false } }
+  )
+}
+
+async function endTwitchPoll(pollId) {
+  return predictionMutation(
+    'TerminatePoll', 'terminatePoll',
+    'mutation($input: TerminatePollInput!) { terminatePoll(input: $input) { poll { id } error { code } } }',
+    { input: { pollID: pollId } }
+  )
+}
+
 let _userPollVotes = new Map() // pollId → choiceId
 
-function renderPoll(poll) {
+function renderPoll(poll, channelId, isMod) {
   const section = document.createElement('div')
   section.className = 'hs-mc-poll'
   section.dataset.pollId = poll.id
+  if (channelId) section.dataset.channelId = channelId
 
   const isCompleted = poll.status === 'COMPLETED' || poll.status === 'ARCHIVED'
   const totalVotes = poll.totalVoters || poll.choices.reduce((s, c) => s + (c.totalVoters || 0), 0)
@@ -2332,7 +2373,79 @@ function renderPoll(poll) {
   }
 
   section.appendChild(choicesWrap)
+
+  // Mod controls — end poll
+  if (!isCompleted && isMod) {
+    const modRow = document.createElement('div')
+    modRow.className = 'hs-mc-poll-mod-row'
+    const endBtn = document.createElement('button')
+    endBtn.className = 'hs-mc-poll-mod-btn hs-mc-poll-end-btn'
+    endBtn.dataset.pollId = poll.id
+    endBtn.textContent = 'end poll'
+    modRow.appendChild(endBtn)
+    section.appendChild(modRow)
+  }
+
   return section
+}
+
+function renderNoPoll(channelId, isMod) {
+  const wrap = document.createElement('div')
+  wrap.className = 'hs-mc-poll-empty'
+  if (!isMod) return wrap
+
+  const createWrap = document.createElement('div')
+  createWrap.className = 'hs-mc-poll-create'
+  if (channelId) createWrap.dataset.channelId = channelId
+
+  const toggle = document.createElement('button')
+  toggle.className = 'hs-mc-poll-mod-btn hs-mc-poll-create-toggle'
+  toggle.textContent = '+ new poll'
+  createWrap.appendChild(toggle)
+
+  const form = document.createElement('div')
+  form.className = 'hs-mc-poll-create-form'
+  form.style.display = 'none'
+
+  const titleInput = document.createElement('input')
+  titleInput.className = 'hs-mc-poll-create-input'
+  titleInput.placeholder = 'poll question'
+  titleInput.maxLength = 60
+  form.appendChild(titleInput)
+
+  for (let i = 0; i < 4; i++) {
+    const opt = document.createElement('input')
+    opt.className = 'hs-mc-poll-create-input hs-mc-poll-create-choice'
+    opt.placeholder = 'choice ' + (i + 1) + (i < 2 ? '' : ' (optional)')
+    opt.maxLength = 25
+    form.appendChild(opt)
+  }
+
+  const durRow = document.createElement('div')
+  durRow.className = 'hs-mc-poll-create-dur-row'
+  const durLabel = document.createElement('span')
+  durLabel.className = 'hs-mc-poll-create-dur-label'
+  durLabel.textContent = 'duration:'
+  durRow.appendChild(durLabel)
+  for (const secs of [30, 60, 120, 300, 600, 1800]) {
+    const btn = document.createElement('button')
+    btn.className = 'hs-mc-poll-create-dur' + (secs === 60 ? ' hs-mc-poll-create-dur-active' : '')
+    btn.dataset.secs = secs
+    btn.tabIndex = -1
+    btn.textContent = secs < 60 ? secs + 's' : (secs / 60) + 'm'
+    durRow.appendChild(btn)
+  }
+  form.appendChild(durRow)
+
+  const submitBtn = document.createElement('button')
+  submitBtn.className = 'hs-mc-poll-mod-btn hs-mc-poll-create-submit'
+  submitBtn.tabIndex = -1
+  submitBtn.textContent = 'create poll'
+  form.appendChild(submitBtn)
+
+  createWrap.appendChild(form)
+  wrap.appendChild(createWrap)
+  return wrap
 }
 
 // Optimistic UI update after voting — patch DOM immediately without round-trip
@@ -2397,6 +2510,94 @@ function attachPollHandlers() {
         const pollSection = btn.closest('.hs-mc-poll')
         optimisticPollVoteUpdate(pollSection, btn.dataset.choiceId)
         setTimeout(() => refreshPollSlot(), 3000)
+      }
+    })
+  })
+
+  // End poll (mod)
+  container.querySelectorAll('.hs-mc-poll-end-btn').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation()
+      btn.disabled = true
+      btn.textContent = '...'
+      const result = await endTwitchPoll(btn.dataset.pollId)
+      if (result.error) {
+        btn.textContent = '!'
+        btn.title = result.error
+        setTimeout(() => { btn.textContent = 'end poll'; btn.disabled = false; btn.title = '' }, 2000)
+      } else {
+        btn.textContent = '\u2713'
+        setTimeout(() => refreshPollSlot(), 1000)
+      }
+    })
+  })
+
+  // Create poll toggle
+  container.querySelectorAll('.hs-mc-poll-create-toggle').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation()
+      const form = btn.parentElement.querySelector('.hs-mc-poll-create-form')
+      if (form) {
+        const showing = form.style.display !== 'none'
+        form.style.display = showing ? 'none' : 'flex'
+        btn.textContent = showing ? '+ new poll' : 'cancel'
+      }
+    })
+  })
+
+  // Create poll duration picker
+  container.querySelectorAll('.hs-mc-poll-create-dur').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation()
+      container.querySelectorAll('.hs-mc-poll-create-dur').forEach(b => b.classList.remove('hs-mc-poll-create-dur-active'))
+      btn.classList.add('hs-mc-poll-create-dur-active')
+    })
+  })
+
+  // Create poll submit
+  container.querySelectorAll('.hs-mc-poll-create-submit').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation()
+      const createWrap = btn.closest('.hs-mc-poll-create')
+      const channelId = createWrap?.dataset.channelId
+      if (!channelId) { btn.textContent = 'no channel'; return }
+      const form = btn.closest('.hs-mc-poll-create-form')
+      const inputs = form.querySelectorAll('.hs-mc-poll-create-input')
+      const title = inputs[0]?.value?.trim()
+      const choices = [...form.querySelectorAll('.hs-mc-poll-create-choice')].map(i => i.value.trim()).filter(Boolean)
+      if (!title) { inputs[0].focus(); return }
+      if (choices.length < 2) { form.querySelectorAll('.hs-mc-poll-create-choice')[choices.length]?.focus(); return }
+      const durBtn = form.querySelector('.hs-mc-poll-create-dur-active')
+      const secs = parseInt(durBtn?.dataset.secs || '60')
+      btn.disabled = true
+      btn.textContent = '...'
+      const result = await createTwitchPoll(channelId, title, secs, choices)
+      if (result.error) {
+        btn.textContent = '!'
+        btn.title = result.error
+        setTimeout(() => { btn.textContent = 'create poll'; btn.disabled = false; btn.title = '' }, 2000)
+      } else {
+        btn.textContent = '\u2713'
+        setTimeout(() => refreshPollSlot(), 1000)
+      }
+    })
+  })
+
+  // Create poll keyboard nav
+  container.querySelectorAll('.hs-mc-poll-create-input').forEach(input => {
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Tab') {
+        e.preventDefault()
+        const inputs = [...container.querySelectorAll('.hs-mc-poll-create-input')]
+        const idx = inputs.indexOf(input)
+        const next = inputs[(idx + 1) % inputs.length]
+        next?.focus()
+      } else if (e.key === 'Enter') {
+        e.preventDefault()
+        container.querySelector('.hs-mc-poll-create-submit')?.click()
+      } else if (e.key === 'Escape') {
+        e.preventDefault()
+        container.querySelector('.hs-mc-poll-create-toggle')?.click()
       }
     })
   })

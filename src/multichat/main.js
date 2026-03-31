@@ -3512,6 +3512,97 @@
         opacity: 0.5;
         cursor: default;
       }
+      .hs-mc-poll-mod-row {
+        display: flex;
+        gap: 6px;
+        margin-top: 6px;
+      }
+      .hs-mc-poll-mod-btn {
+        background: transparent;
+        border: 1px solid rgba(255,255,255,0.15);
+        color: #aaa;
+        font-size: 11px;
+        padding: 4px 10px;
+        cursor: pointer;
+        transition: none;
+      }
+      .hs-mc-poll-mod-btn:hover {
+        border-color: #ff8700;
+        color: #ff8700;
+      }
+      .hs-mc-poll-mod-btn:disabled {
+        opacity: 0.5;
+        cursor: default;
+      }
+      .hs-mc-poll-empty {
+        padding: 0 12px;
+      }
+      .hs-mc-poll-create {
+        border-top: 1px solid rgba(255,255,255,0.06);
+        padding-top: 8px;
+        margin-top: 4px;
+      }
+      .hs-mc-poll-create-toggle {
+        width: 100%;
+        text-align: center;
+      }
+      .hs-mc-poll-create-form {
+        flex-direction: column;
+        gap: 6px;
+        margin-top: 6px;
+      }
+      .hs-mc-poll-create-input {
+        background: rgba(255,255,255,0.08);
+        border: 1px solid rgba(255,255,255,0.12);
+        color: #fff;
+        font-size: 12px;
+        padding: 6px 8px;
+        outline: none;
+      }
+      .hs-mc-poll-create-input:focus {
+        border-color: #ff8700;
+      }
+      .hs-mc-poll-create-input::placeholder {
+        color: #666;
+      }
+      .hs-mc-poll-create-dur-row {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        flex-wrap: wrap;
+      }
+      .hs-mc-poll-create-dur-label {
+        font-size: 11px;
+        color: #808080;
+        margin-right: 2px;
+      }
+      .hs-mc-poll-create-dur {
+        background: rgba(255,255,255,0.06);
+        border: 1px solid rgba(255,255,255,0.1);
+        color: #aaa;
+        font-size: 10px;
+        padding: 2px 6px;
+        cursor: pointer;
+        transition: none;
+      }
+      .hs-mc-poll-create-dur:hover {
+        border-color: #ff8700;
+        color: #ff8700;
+      }
+      .hs-mc-poll-create-dur-active {
+        border-color: #ff8700;
+        color: #ff8700;
+        background: rgba(255,135,0,0.1);
+      }
+      .hs-mc-poll-create-submit {
+        width: 100%;
+        text-align: center;
+        border-color: #ff8700;
+        color: #ff8700;
+      }
+      .hs-mc-poll-create-submit:hover {
+        background: rgba(255,135,0,0.15);
+      }
 
       .hs-mc-pred-links {
         border-top: 1px solid rgba(255,255,255,0.06);

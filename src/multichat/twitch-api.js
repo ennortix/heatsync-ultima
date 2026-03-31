@@ -1321,6 +1321,8 @@ async function renderTwitchTab() {
 
   // Fetch all 3 in parallel, render each as it arrives
   fetchPrediction(channel).then(result => {
+    _lastPredResult = result
+    updateChatBanners(_lastPredResult, _lastPollData)
     predSlot.textContent = ''
     predSlot.className = ''
     if (!result) {
@@ -1340,6 +1342,8 @@ async function renderTwitchTab() {
   })
 
   fetchPoll(channel).then(pollResult => {
+    _lastPollData = pollResult
+    updateChatBanners(_lastPredResult, _lastPollData)
     if (pollResult) {
       pollSlot.appendChild(renderPoll(pollResult))
       attachPollHandlers()

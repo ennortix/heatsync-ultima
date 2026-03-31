@@ -1625,6 +1625,69 @@
         box-sizing: border-box;
       }
 
+      /* Chat overlay banners (predictions + polls at top of messages) */
+      .hs-mc-chat-banner {
+        position: sticky;
+        top: 0;
+        z-index: 10;
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        margin: -8px -8px 6px -8px;
+        padding: 0;
+      }
+      .hs-mc-chat-banner-item {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 5px 10px;
+        font-size: 12px;
+        font-weight: 600;
+        transition: background 0.15s;
+      }
+      .hs-mc-chat-banner-item:hover {
+        filter: brightness(1.2);
+      }
+      .hs-mc-chat-banner-pred {
+        background: linear-gradient(90deg, rgba(56,122,255,0.2), rgba(245,0,155,0.15));
+        border-bottom: 1px solid rgba(56,122,255,0.3);
+        color: #a8c8ff;
+      }
+      .hs-mc-chat-banner-poll {
+        background: linear-gradient(90deg, rgba(0,200,100,0.15), rgba(0,188,212,0.1));
+        border-bottom: 1px solid rgba(0,200,100,0.25);
+        color: #80e0a0;
+      }
+      .hs-mc-chat-banner-icon {
+        font-size: 14px;
+        flex-shrink: 0;
+      }
+      .hs-mc-chat-banner-title {
+        flex: 1;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        color: #fff;
+      }
+      .hs-mc-chat-banner-timer {
+        font-family: 'SF Mono', 'Consolas', monospace;
+        font-size: 11px;
+        font-weight: 700;
+        color: #ff8700;
+        background: rgba(0,0,0,0.4);
+        padding: 1px 5px;
+        border-radius: 3px;
+        flex-shrink: 0;
+      }
+      .hs-mc-chat-banner-badge {
+        font-size: 10px;
+        font-weight: 700;
+        color: #ff5050;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        flex-shrink: 0;
+      }
+
       /* New messages button - floats above messages */
       #hs-mc-new-msgs {
         position: absolute;

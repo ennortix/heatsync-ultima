@@ -12045,7 +12045,7 @@ const STORAGE_KEY = 'heatsync_multichat';
       }
       .hs-mc-poll-timer {
         font-size: 12px;
-        color: #ff6b35;
+        color: #ff8700;
         font-weight: 600;
         font-variant-numeric: tabular-nums;
         white-space: nowrap;
@@ -12127,14 +12127,14 @@ const STORAGE_KEY = 'heatsync_multichat';
         padding: 4px 10px;
         cursor: pointer;
         white-space: nowrap;
-        transition: none;
+        font-family: inherit;
       }
       .hs-mc-poll-vote-btn:hover {
-        background: #9147ff;
-        color: #fff;
+        background: #fff;
+        color: #000;
       }
       .hs-mc-poll-vote-btn:disabled {
-        opacity: 0.5;
+        opacity: 0.3;
         cursor: default;
       }
       .hs-mc-poll-mod-row {
@@ -12207,7 +12207,7 @@ const STORAGE_KEY = 'heatsync_multichat';
         font-size: 10px;
         padding: 2px 6px;
         background: rgba(0,0,0,0.7);
-        color: #aaa;
+        color: #808080;
         border: 1px solid rgba(255,255,255,0.2);
         cursor: pointer;
         font-family: inherit;

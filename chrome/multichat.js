@@ -5373,16 +5373,20 @@ async function createTwitchPoll(channelId, title, durationSeconds, choices) {
   return predictionMutation(
     'CreatePoll', 'createPoll',
     'mutation($input: CreatePollInput!) { createPoll(input: $input) { poll { id } error { code } } }',
-    { input: { channelID: channelId, title, choices: choices.map(t => ({ title: t })), durationSeconds, isMultiChoice: false, isBitsVotingEnabled: false, isChannelPointsVotingEnabled: false } }
+    { input: { ownedBy: channelId, title, choices: choices.map(t => ({ title: t })), durationSeconds } }
   )
 }
 
 async function endTwitchPoll(pollId) {
-  return predictionMutation(
-    'TerminatePoll', 'terminatePoll',
-    'mutation($input: TerminatePollInput!) { terminatePoll(input: $input) { poll { id } error { code } } }',
-    { input: { pollID: pollId } }
-  )
+  // TerminatePollPayload has no error field
+  const apolloResult = await apolloMutate({
+    searchTerm: 'TerminatePoll',
+    variables: { input: { pollID: pollId } },
+    resultField: null,
+    rawQuery: 'mutation($input: TerminatePollInput!) { terminatePoll(input: $input) { poll { id } } }'
+  })
+  if (apolloResult.ok) return { ok: true }
+  return { error: apolloResult.error || 'end poll failed' }
 }
 
 let _userPollVotes = new Map() // pollId → choiceId
@@ -12098,21 +12102,19 @@ const STORAGE_KEY = 'heatsync_multichat';
       .hs-mc-poll-create-form {
         flex-direction: column;
         gap: 6px;
-        margin-top: 6px;
+        margin-top: 8px;
       }
       .hs-mc-poll-create-input {
-        background: rgba(255,255,255,0.08);
-        border: 1px solid rgba(255,255,255,0.12);
-        color: #fff;
         font-size: 12px;
-        padding: 6px 8px;
+        padding: 2px 8px;
+        background: #fff;
+        color: #000;
+        border: none;
+        font-family: inherit;
         outline: none;
       }
       .hs-mc-poll-create-input:focus {
-        border-color: #ff8700;
-      }
-      .hs-mc-poll-create-input::placeholder {
-        color: #666;
+        outline: 1px solid #ff8700;
       }
       .hs-mc-poll-create-dur-row {
         display: flex;
@@ -12126,31 +12128,34 @@ const STORAGE_KEY = 'heatsync_multichat';
         margin-right: 2px;
       }
       .hs-mc-poll-create-dur {
-        background: rgba(255,255,255,0.06);
-        border: 1px solid rgba(255,255,255,0.1);
-        color: #aaa;
         font-size: 10px;
         padding: 2px 6px;
+        background: rgba(0,0,0,0.7);
+        color: #aaa;
+        border: 1px solid rgba(255,255,255,0.2);
         cursor: pointer;
-        transition: none;
+        font-family: inherit;
       }
       .hs-mc-poll-create-dur:hover {
-        border-color: #ff8700;
-        color: #ff8700;
+        background: #fff;
+        color: #000;
       }
       .hs-mc-poll-create-dur-active {
+        background: #ff8700;
+        color: #000;
         border-color: #ff8700;
-        color: #ff8700;
-        background: rgba(255,135,0,0.1);
       }
       .hs-mc-poll-create-submit {
         width: 100%;
         text-align: center;
-        border-color: #ff8700;
+        background: rgba(0,0,0,0.7);
         color: #ff8700;
+        border-color: #ff8700;
+        font-weight: 600;
       }
       .hs-mc-poll-create-submit:hover {
-        background: rgba(255,135,0,0.15);
+        background: #ff8700;
+        color: #000;
       }
 
       .hs-mc-pred-links {

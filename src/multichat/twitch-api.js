@@ -2231,16 +2231,20 @@ async function createTwitchPoll(channelId, title, durationSeconds, choices) {
   return predictionMutation(
     'CreatePoll', 'createPoll',
     'mutation($input: CreatePollInput!) { createPoll(input: $input) { poll { id } error { code } } }',
-    { input: { channelID: channelId, title, choices: choices.map(t => ({ title: t })), durationSeconds, isMultiChoice: false, isBitsVotingEnabled: false, isChannelPointsVotingEnabled: false } }
+    { input: { ownedBy: channelId, title, choices: choices.map(t => ({ title: t })), durationSeconds } }
   )
 }
 
 async function endTwitchPoll(pollId) {
-  return predictionMutation(
-    'TerminatePoll', 'terminatePoll',
-    'mutation($input: TerminatePollInput!) { terminatePoll(input: $input) { poll { id } error { code } } }',
-    { input: { pollID: pollId } }
-  )
+  // TerminatePollPayload has no error field
+  const apolloResult = await apolloMutate({
+    searchTerm: 'TerminatePoll',
+    variables: { input: { pollID: pollId } },
+    resultField: null,
+    rawQuery: 'mutation($input: TerminatePollInput!) { terminatePoll(input: $input) { poll { id } } }'
+  })
+  if (apolloResult.ok) return { ok: true }
+  return { error: apolloResult.error || 'end poll failed' }
 }
 
 let _userPollVotes = new Map() // pollId → choiceId

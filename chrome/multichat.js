@@ -9967,6 +9967,9 @@ const STORAGE_KEY = 'heatsync_multichat';
   // Auto-claim Twitch channel points bonus chest (default on)
   let autoClaimPoints = true;
 
+  // Dim timed-out/banned messages instead of hiding (default on)
+  let dimTimeouts = true;
+
   // Input bar auto-hide — hidden when empty, shown on first keystroke
   let autoHideInput = false;
   let inputBarVisible = true;
@@ -10660,6 +10663,20 @@ const STORAGE_KEY = 'heatsync_multichat';
     } catch {}
   }
 
+  async function loadDimTimeoutsSetting() {
+    try {
+      const stored = await chrome.storage.local.get(['hs_dim_timeouts']);
+      if (stored.hs_dim_timeouts !== undefined) {
+        dimTimeouts = stored.hs_dim_timeouts;
+      }
+    } catch {}
+  }
+
+  function toggleDimTimeouts() {
+    dimTimeouts = !dimTimeouts;
+    chrome.storage.local.set({ hs_dim_timeouts: dimTimeouts });
+  }
+
   function toggleAutoClaim() {
     autoClaimPoints = !autoClaimPoints;
     chrome.storage.local.set({ hs_auto_claim_points: autoClaimPoints });
@@ -10751,6 +10768,10 @@ const STORAGE_KEY = 'heatsync_multichat';
             <span class="hs-mc-setting-label" data-tip="Automatically clicks the bonus channel points chest on Twitch when it appears. Free points, zero effort.">${t('mc_settings_auto_claim')}</span>
             <button class="hs-mc-toggle-pill ${autoClaimPoints ? 'active' : ''}" data-setting="autoclaim"><span class="hs-mc-toggle-knob"></span></button>
           </div>
+          <div class="hs-mc-setting-row">
+            <span class="hs-mc-setting-label" data-tip="Show timed-out and banned messages at 50% opacity instead of hiding them. Like FFZ/BTTV.">${t('mc_settings_dim_timeouts')}</span>
+            <button class="hs-mc-toggle-pill ${dimTimeouts ? 'active' : ''}" data-setting="dimtimeouts"><span class="hs-mc-toggle-knob"></span></button>
+          </div>
         </div>
         <div class="hs-mc-settings-group">
           <div class="hs-mc-settings-group-title">${t('mc_settings_muted_users')}</div>
@@ -10806,6 +10827,7 @@ const STORAGE_KEY = 'heatsync_multichat';
           timestamps: () => { toggleTimestamps(); },
           avatars: () => { toggleAvatars(); },
           autoclaim: () => { toggleAutoClaim(); },
+          dimtimeouts: () => { toggleDimTimeouts(); },
         };
         if (toggleMap[setting]) {
           toggleMap[setting]();
@@ -10848,6 +10870,7 @@ const STORAGE_KEY = 'heatsync_multichat';
         platformBadgesEnabled = true;
         showOfflineEvents = false;
         autoClaimPoints = true;
+        dimTimeouts = true;
         for (const [k, v] of Object.entries(INLINE_NOTIF_TYPES)) inlineNotifs[k] = v.defaultOn;
         for (const [k, v] of Object.entries(HERMES_EVENT_TYPES)) hermesToggles[k] = v.defaultOn;
         const settings = {
@@ -16246,6 +16269,7 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
     await loadTimestampsSetting();
     await loadAvatarsSetting();
     await loadAutoClaimSetting();
+    await loadDimTimeoutsSetting();
     await loadOfflineEventsSetting();
     await loadBlockedEmotes();
     await loadEmotes();

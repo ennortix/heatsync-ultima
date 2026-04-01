@@ -966,7 +966,7 @@ style.textContent = `
     text-decoration: underline !important;
   }
 
-  /* Muted users — grey username, content stripped by JS */
+  /* Muted users — grey username, hide all message content via CSS (React-safe) */
   .hs-user-muted .chat-author__display-name,
   .hs-user-muted [data-a-target="chat-message-username"],
   .hs-user-muted button.inline.font-bold {
@@ -976,6 +976,23 @@ style.textContent = `
     -webkit-text-fill-color: #808080 !important;
     animation: none !important;
     text-shadow: none !important;
+  }
+  /* Hide message body, text, emotes, links — everything after the username */
+  .hs-user-muted [data-a-target="chat-line-message-body"],
+  .hs-user-muted .text-fragment,
+  .hs-user-muted .mention-fragment,
+  .hs-user-muted .heatsync-emote-wrapper,
+  .hs-user-muted .heatsync-emote-stack,
+  .hs-user-muted .link-fragment,
+  .hs-user-muted span.font-normal,
+  .hs-user-muted .chat-line__message--emote-button,
+  .hs-user-muted [class*="emote-button"] {
+    display: none !important;
+  }
+
+  /* Timed-out / banned user messages — dimmed but visible */
+  .hs-timed-out {
+    opacity: 0.5 !important;
   }
 
   /* Third-party cosmetic badges (BTTV/FFZ/7TV) */
@@ -2314,6 +2331,8 @@ let ffzBadgeMap = new Map()
 let chatterinoBadgeMap = new Map()
 const heatsyncColorMap = new Map() // username → HeatSync API color (from follow:colors)
 let cosmeticsEnabled = true // toggle for BTTV/FFZ/7TV cosmetics
+let dimTimeoutsEnabled = true // dim timed-out/banned messages instead of hiding
+const originalMessageBodies = new Map() // msg-id → innerHTML (for restoring on timeout)
 const cosmeticsCache = new Map()
 const COSMETICS_TTL = 30 * 60 * 1000
 const COSMETICS_MAX = 500
@@ -2766,48 +2785,8 @@ function setupUsernameColoringObserver() {
     log(' ✅ Username click handler deferred to profile card');
 
     // Emote stack expand/collapse handlers
+    // Click-to-expand, stays open until × or click outside. No mouse auto-collapse.
 
-    // Hover-to-expand: mouseover expands, mouseout collapses with 300ms delay
-    const stackCollapseTimers = new WeakMap();
-    document.addEventListener('mouseover', (e) => {
-      const stack = e.target.closest?.('.heatsync-emote-stack');
-      if (!stack) return;
-      // Cancel any pending collapse
-      const timer = stackCollapseTimers.get(stack);
-      if (timer) { clearTimeout(timer); stackCollapseTimers.delete(stack); }
-      if (!stack.classList.contains('expanded')) {
-        stack.classList.add('expanded');
-        log(' ✅ Stack expanded via hover');
-      }
-    }, { signal });
-
-    // Track last known mouse position for collapse checks
-    let lastMouseX = 0, lastMouseY = 0;
-    document.addEventListener('mousemove', (e) => { lastMouseX = e.clientX; lastMouseY = e.clientY; }, { signal, passive: true });
-
-    document.addEventListener('mouseout', (e) => {
-      const stack = e.target.closest?.('.heatsync-emote-stack');
-      if (!stack || !stack.classList.contains('expanded')) return;
-      // Stay open if mouse moved to another element inside the stack
-      if (e.relatedTarget && stack.contains(e.relatedTarget)) return;
-      // Delay collapse — verify mouse actually left the stack rect before collapsing
-      const existing = stackCollapseTimers.get(stack);
-      if (existing) clearTimeout(existing);
-      stackCollapseTimers.set(stack, setTimeout(() => {
-        // Re-check: is mouse still over the stack? (DOM changes can cause spurious mouseout)
-        const rect = stack.getBoundingClientRect();
-        if (lastMouseX >= rect.left && lastMouseX <= rect.right &&
-            lastMouseY >= rect.top && lastMouseY <= rect.bottom) {
-          stackCollapseTimers.delete(stack);
-          return; // Mouse is still over the stack, don't collapse
-        }
-        stack.classList.remove('expanded');
-        stackCollapseTimers.delete(stack);
-        log(' ✅ Stack collapsed via mouse leave');
-      }, 300));
-    }, { signal });
-
-    // Click handlers (capture phase)
     document.addEventListener('click', (e) => {
       // Handle collapse button (×)
       const collapseBtn = e.target.closest('.heatsync-stack-collapse');
@@ -2815,10 +2794,7 @@ function setupUsernameColoringObserver() {
         e.preventDefault();
         e.stopPropagation();
         const stack = collapseBtn.closest('.heatsync-emote-stack');
-        if (stack) {
-          stack.classList.remove('expanded');
-          log(' ✅ Stack collapsed via × button');
-        }
+        if (stack) stack.classList.remove('expanded');
         return;
       }
 
@@ -2836,7 +2812,6 @@ function setupUsernameColoringObserver() {
           const names = [];
 
           if (allBlocked) {
-            // SHOW ALL - unblock all emotes in stack
             emoteWrappers.forEach(wrapper => {
               const hash = wrapper.dataset.emoteHash;
               const name = wrapper.dataset.emoteName;
@@ -2850,9 +2825,7 @@ function setupUsernameColoringObserver() {
             blockAllBtn.textContent = '⊘';
             blockAllBtn.title = t('btn_block_all');
             showToast(t('content_toast_unblocked', [names.join(', ')]), 'success');
-            log(' ✅ Unblocked all emotes in stack');
           } else {
-            // BLOCK ALL - block all emotes in stack
             emoteWrappers.forEach(wrapper => {
               const hash = wrapper.dataset.emoteHash;
               const name = wrapper.dataset.emoteName;
@@ -2866,36 +2839,44 @@ function setupUsernameColoringObserver() {
             blockAllBtn.textContent = '◉';
             blockAllBtn.title = t('btn_show_all');
             showToast(t('content_toast_blocked', [names.join(', ')]), 'info');
-            log(' 🚫 Blocked all emotes in stack');
           }
 
           chrome.storage.local.set({ blocked_emotes: Array.from(blockedEmotes) });
-          stack.classList.remove('expanded');
         }
         return;
       }
 
-      // Click on collapsed stack → Expand (fallback for touch/keyboard)
+      // Click anywhere on a stack → absorb click (prevent mute/other handlers)
+      const stack = e.target.closest('.heatsync-emote-stack');
+      if (stack) {
+        if (!stack.classList.contains('expanded')) {
+          // Collapsed → expand
+          e.preventDefault();
+          e.stopPropagation();
+          stack.classList.add('expanded');
+        } else if (!e.target.closest('.heatsync-emote-wrapper')) {
+          // Expanded but clicked gap between emotes → absorb, don't leak
+          e.preventDefault();
+          e.stopPropagation();
+        }
+        // Expanded + clicked on emote wrapper → let normal emote handling work
+        return;
+      }
+
+      // Click outside any expanded stack → collapse all
+      const expanded = document.querySelectorAll('.heatsync-emote-stack.expanded');
+      if (expanded.length) {
+        expanded.forEach(s => s.classList.remove('expanded'));
+      }
+    }, { capture: true, signal });
+
+    // Right-click on collapsed stack → expand, let block handler fire on next right-click
+    document.addEventListener('contextmenu', (e) => {
       const stack = e.target.closest('.heatsync-emote-stack');
       if (stack && !stack.classList.contains('expanded')) {
         e.preventDefault();
         e.stopPropagation();
         stack.classList.add('expanded');
-        log(' ✅ Stack expanded via left click');
-        return;
-      }
-
-      // If stack is expanded and clicking on emote, let normal emote handling work (don't stop)
-    }, { capture: true, signal });
-
-    // Right-click on collapsed stack → expand + let emote block handler fire
-    document.addEventListener('contextmenu', (e) => {
-      const stack = e.target.closest('.heatsync-emote-stack');
-      if (stack && !stack.classList.contains('expanded')) {
-        // Expand the stack so individual emotes are visible/clickable
-        stack.classList.add('expanded');
-        log(' ✅ Stack expanded via right click');
-        // DON'T preventDefault or stopPropagation — let the emote contextmenu handler fire
       }
     }, { capture: true, signal });
 
@@ -3002,6 +2983,21 @@ function processMessage(messageElement) {
   if (messageElement.dataset.heatsyncGeneration == emoteGeneration) return
 
   messageElement.dataset.heatsyncGeneration = emoteGeneration
+
+  // Cache message body for timeout restoration (before emote processing modifies it)
+  if (dimTimeoutsEnabled) {
+    const msgId = messageElement.dataset.msgId || messageElement.getAttribute('data-msg-id')
+    if (msgId) {
+      const body = messageElement.querySelector('[data-a-target="chat-line-message-body"]')
+      if (body && !originalMessageBodies.has(msgId)) {
+        originalMessageBodies.set(msgId, body.innerHTML)
+        // Cap cache size
+        if (originalMessageBodies.size > 300) {
+          originalMessageBodies.delete(originalMessageBodies.keys().next().value)
+        }
+      }
+    }
+  }
 
   const textElements = messageElement.querySelectorAll('.text-fragment, span.font-normal')
   if (textElements.length === 0) return
@@ -5279,6 +5275,27 @@ function fetchCosmeticBadges() {
 }
 
 // =============================================================================
+// TIMEOUT / BAN DIMMING
+// =============================================================================
+// Restores cached message body when Twitch replaces it with "message deleted"
+// The cached content was rendered by our own processMessage (already sanitized)
+
+function restoreDeletedMessage(bodyEl, msgId) {
+  const cached = originalMessageBodies.get(msgId)
+  if (!cached) return
+  // Use a template element to safely parse the cached HTML (our own output)
+  const template = document.createElement('template')
+  template.innerHTML = cached
+  bodyEl.textContent = '' // clear "message deleted" text
+  bodyEl.appendChild(template.content)
+}
+
+// Load dimTimeouts setting from storage
+chrome.storage.local.get('hs_dim_timeouts').then(data => {
+  if (data.hs_dim_timeouts !== undefined) dimTimeoutsEnabled = data.hs_dim_timeouts
+}).catch(() => {})
+
+// =============================================================================
 // KICK COSMETICS (7TV paints + badges by username)
 // =============================================================================
 // BTTV/FFZ badges use Twitch user IDs — not available on Kick.
@@ -5507,42 +5524,9 @@ function muteUser(username) {
   });
 }
 
-// Strip all content from a muted user's message, leaving only username + badges
+// Mark a message as muted — CSS hides the content (React-safe, survives re-renders)
 function stripMutedMessage(messageElement) {
   messageElement.classList.add('hs-user-muted');
-  // Remove message body (native Twitch)
-  const body = messageElement.querySelector('[data-a-target="chat-line-message-body"]');
-  if (body) { body.textContent = ''; }
-  // Remove text fragments (backfill + Kick + any remaining)
-  messageElement.querySelectorAll('.text-fragment, .mention-fragment, .heatsync-emote-wrapper, .link-fragment, a[href]').forEach(el => el.remove());
-  // Remove the colon separator after username
-  const usernameContainer = messageElement.querySelector('.chat-line__username-container');
-  if (usernameContainer) {
-    let node = usernameContainer.nextSibling;
-    while (node) {
-      const next = node.nextSibling;
-      // Keep the (now-empty) message body span for layout, remove colon and others
-      if (node !== body) node.parentNode.removeChild(node);
-      node = next;
-    }
-  }
-  // Backfill messages: flat structure — remove siblings after display-name
-  if (messageElement.classList.contains('heatsync-backfill')) {
-    const nameEl = messageElement.querySelector('.chat-author__display-name');
-    if (nameEl) {
-      let node = nameEl.nextSibling;
-      while (node) {
-        const next = node.nextSibling;
-        node.parentNode.removeChild(node);
-        node = next;
-      }
-    }
-  }
-  // Kick: remove content after username button
-  const kickUser = messageElement.querySelector('button.inline.font-bold');
-  if (kickUser) {
-    messageElement.querySelectorAll('span.font-normal').forEach(el => el.remove());
-  }
 }
 
 // Escape regex special characters
@@ -5600,7 +5584,6 @@ function watchForNewMessages() {
           if (node.classList.contains('chat-line__message')) {
             processingQueue.push(node);
           }
-          // Kick chat message
           // Kick chat message (div with data-index inside #chatroom-messages)
           else if (node.hasAttribute?.('data-index') && node.closest?.('#chatroom-messages')) {
             processingQueue.push(node);
@@ -5611,6 +5594,23 @@ function watchForNewMessages() {
           }
         }
       });
+
+      // Detect timeout/ban: Twitch React re-renders messages, replacing body with "message deleted"
+      // We restore our cached body (already sanitized by escapeHtml during processMessage) and dim it
+      if (dimTimeoutsEnabled && mutation.target) {
+        const msgEl = mutation.target.closest?.('.chat-line__message')
+        if (msgEl && !msgEl.classList.contains('hs-timed-out')) {
+          const msgId = msgEl.dataset.msgId || msgEl.getAttribute('data-msg-id')
+          if (msgId && originalMessageBodies.has(msgId)) {
+            const body = msgEl.querySelector('[data-a-target="chat-line-message-body"]')
+            if (body && body.textContent.trim().toLowerCase().includes('message deleted')) {
+              // Restore from our own cache — content was already sanitized when originally rendered
+              restoreDeletedMessage(body, msgId)
+              msgEl.classList.add('hs-timed-out')
+            }
+          }
+        }
+      }
     });
 
     // Defer processing to let React settle (prevents DOM conflicts)

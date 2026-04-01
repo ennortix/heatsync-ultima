@@ -903,7 +903,12 @@ function buildNotifDiv(m) {
   div.className = 'hs-notif';
   const time = formatRelativeTime(m.created_at);
   // Safe: renderFeedContent escapes via escapeHtml first, then adds safe formatting tags
-  const content = renderFeedContent(m.content, m.emote_refs);
+  // Fallback to processEmotes (local cache) when emote_refs is absent
+  const rawContent = m.content || m.text || '';
+  const hasEmoteRefs = m.emote_refs && typeof m.emote_refs === 'object' && Object.keys(m.emote_refs).length > 0;
+  const content = hasEmoteRefs
+    ? renderFeedContent(rawContent, m.emote_refs)
+    : processEmotes(escapeHtml(rawContent), null);
 
   // Safe: username through escapeHtml+encodeURIComponent, time through escapeHtml, content through renderFeedContent (which escapes via escapeHtml then adds safe formatting)
   const tsHtml = window._hsTimestampsEnabled !== false ? `<span class="hs-feed-time">${escapeHtml(time)}</span>` : '';

@@ -5830,6 +5830,9 @@ async function fetchChannelBadges(channelLogin) {
     for (const key of twitchBadgeUrls.keys()) {
       if (key.startsWith(`${oldest}:`)) twitchBadgeUrls.delete(key);
     }
+    for (const key of ffzBadgeKeys) {
+      if (key.startsWith(`${oldest}:`)) ffzBadgeKeys.delete(key);
+    }
   }
   try {
     // Fetch Twitch GQL + FFZ badges in parallel
@@ -15660,6 +15663,7 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
     // Process follow colors (shared by listener + on-demand request)
     function processFollowColors(colors) {
       if (!colors || typeof colors !== 'object') return;
+      if (streamColorMap.size > 500) streamColorMap.clear();
       for (const [login, color] of Object.entries(colors)) {
         if (color) streamColorMap.set(login.toLowerCase(), color);
       }

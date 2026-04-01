@@ -50,6 +50,7 @@ window.addEventListener('pagehide', () => lifecycle.abort())
 // Helpers matching old cleanup API but wired to AbortController
 const cleanup = {
   setInterval(fn, ms) { const id = setInterval(fn, ms); _timers.intervals.push(id); return id },
+  clearInterval(id) { clearInterval(id); const idx = _timers.intervals.indexOf(id); if (idx !== -1) _timers.intervals.splice(idx, 1) },
   setTimeout(fn, ms) {
     const id = setTimeout(() => {
       const idx = _timers.timeouts.indexOf(id)
@@ -5727,6 +5728,8 @@ cleanup.setInterval(() => {
     log(' 🔄 URL changed from', lastChatUrl, 'to', location.href);
     lastChatUrl = location.href;
     channelEmotes = []
+    msgCacheBuffer = []
+    subTenureMap.clear()
     allEmotesDirty = true
     detectAndJoinChannel();
     cleanup.setTimeout(() => {

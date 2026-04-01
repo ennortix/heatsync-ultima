@@ -2688,6 +2688,9 @@ async function fetchChannelBadges(channelLogin) {
     for (const key of twitchBadgeUrls.keys()) {
       if (key.startsWith(`${oldest}:`)) twitchBadgeUrls.delete(key);
     }
+    for (const key of ffzBadgeKeys) {
+      if (key.startsWith(`${oldest}:`)) ffzBadgeKeys.delete(key);
+    }
   }
   try {
     // Fetch Twitch GQL + FFZ badges in parallel

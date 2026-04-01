@@ -888,6 +888,7 @@ async function fetchChannelOwnerEmotes(channelName, channelId = null, platform =
     broadcastToTabs({ type: 'loading_status', done: true });
     // Clear sentinel so retry works on next join_channel
     delete channelEmotesMap[channelName];
+    seventvEmoteSetIds.delete(channelName);
   }
 }
 

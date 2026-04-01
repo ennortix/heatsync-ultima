@@ -1499,7 +1499,7 @@
       }
 
       setTimeout(() => {
-        document.addEventListener('click', handleClickOutside);
+        document.addEventListener('click', handleClickOutside, { signal: btnSignal });
       }, 10);
       return;
     }
@@ -1668,7 +1668,7 @@
 
     // Close on click outside
     setTimeout(() => {
-      document.addEventListener('click', handleClickOutside);
+      document.addEventListener('click', handleClickOutside, { signal: btnSignal });
     }, 10);
 
     // Retry event listener for error states (only add once)

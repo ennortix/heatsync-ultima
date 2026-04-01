@@ -174,6 +174,10 @@
           for (const item of items) {
             const opName = item?.extensions?.operationName
             if (!opName) continue
+            if (Object.keys(gql.cache).length > 50) {
+              const oldest = Object.entries(gql.cache).reduce((a, b) => a[1].ts < b[1].ts ? a : b)
+              delete gql.cache[oldest[0]]
+            }
             gql.cache[opName] = { data: item.data, ts: Date.now() }
             // Extract user ID → login mappings for Hermes channel resolution
             try {

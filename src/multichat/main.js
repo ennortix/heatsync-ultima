@@ -7035,6 +7035,7 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
     // Process follow colors (shared by listener + on-demand request)
     function processFollowColors(colors) {
       if (!colors || typeof colors !== 'object') return;
+      if (streamColorMap.size > 500) streamColorMap.clear();
       for (const [login, color] of Object.entries(colors)) {
         if (color) streamColorMap.set(login.toLowerCase(), color);
       }

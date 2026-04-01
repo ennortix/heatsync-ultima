@@ -6785,15 +6785,28 @@ function listenForSocialEvents() {
       }
 
       if (targetChannelId && targetChannelId !== 'global') {
-        // Per-channel YouTube → route to that channel tab
-        if (!channelYtMessages.has(targetChannelId)) channelYtMessages.set(targetChannelId, [])
-        const buf = channelYtMessages.get(targetChannelId)
-        buf.push(ytMsg)
-        if (buf.length > MAX_BUFFER + 50) buf.splice(0, buf.length - MAX_BUFFER)
-        if (currentTab === targetChannelId) {
-          appendMessage(ytMsg, targetChannelId) || renderMessages(currentTab)
+        // Auto-YouTube for live tab
+        if (targetChannelId === '__live_yt_auto__') {
+          if (!channelYtMessages.has(targetChannelId)) channelYtMessages.set(targetChannelId, [])
+          const buf = channelYtMessages.get(targetChannelId)
+          buf.push(ytMsg)
+          if (buf.length > MAX_BUFFER + 50) buf.splice(0, buf.length - MAX_BUFFER)
+          if (currentTab === 'live') {
+            appendMessage(ytMsg, 'live') || renderMessages('live')
+          } else {
+            updateTabIndicator('live')
+          }
         } else {
-          updateTabIndicator(targetChannelId)
+          // Per-channel YouTube → route to that channel tab
+          if (!channelYtMessages.has(targetChannelId)) channelYtMessages.set(targetChannelId, [])
+          const buf = channelYtMessages.get(targetChannelId)
+          buf.push(ytMsg)
+          if (buf.length > MAX_BUFFER + 50) buf.splice(0, buf.length - MAX_BUFFER)
+          if (currentTab === targetChannelId) {
+            appendMessage(ytMsg, targetChannelId) || renderMessages(currentTab)
+          } else {
+            updateTabIndicator(targetChannelId)
+          }
         }
       }
     }
@@ -15105,9 +15118,9 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
         const linked = config.channels.find(ch => typeof ch !== 'string' && ch.twitch === curCh && ch.kick);
         if (linked) kickMsgs = kickChat?.getMessages(linked.kick) || [];
       }
-      // YouTube messages for live tab: find linked YouTube channel
-      let ytMsgs = [];
-      if (curCh) {
+      // YouTube messages for live tab: auto-discovered or linked via config
+      let ytMsgs = channelYtMessages.get('__live_yt_auto__') || [];
+      if (!ytMsgs.length && curCh) {
         const linkedYt = config.channels.find(ch => typeof ch !== 'string' && (ch.twitch === curCh || ch.kick === curCh) && ch.youtube);
         if (linkedYt) ytMsgs = channelYtMessages.get(linkedYt.id) || [];
       }
@@ -16464,22 +16477,29 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
     kickChat = new KickChat();
     kickChat.connect();
 
-    // Auto-join current channel on native platform
+    // Auto-join current channel on native platform + cross-platform
     const currentChannel = getCurrentChannel();
     if (currentChannel) {
       if (hostPlatform === 'twitch') {
         irc.join(currentChannel);
-        kickChat.join(currentChannel); // Join same-name Kick channel if it exists
+        kickChat.join(currentChannel); // Join same-name Kick channel
       } else if (hostPlatform === 'kick') {
         kickChat.join(currentChannel);
+        irc.join(currentChannel); // Join same-name Twitch channel
       }
-      log('Auto-joined current channel:', currentChannel);
+      // Auto-subscribe YouTube @channelname/live for cross-platform combo
+      const ytAutoUrl = `https://youtube.com/@${currentChannel}/live`
+      chrome.runtime.sendMessage({
+        type: 'youtube_ws_subscribe', url: ytAutoUrl, channelId: '__live_yt_auto__'
+      }).catch(() => {})
+      log('Auto-joined current channel:', currentChannel, '(all platforms)');
     }
 
-    // Ensure live channel override is also joined (may differ from URL channel)
+    // Ensure live channel override is also joined on all platforms
     const liveCh = getLiveChannel();
-    if (liveCh && liveCh !== currentChannel && hostPlatform === 'twitch') {
-      irc.join(liveCh);
+    if (liveCh && liveCh !== currentChannel) {
+      irc?.join(liveCh);
+      kickChat?.join(liveCh);
       log('Auto-joined live channel override:', liveCh);
     }
 
@@ -17131,6 +17151,12 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
 
     // Flag prevents layout watcher from re-injecting elements we're about to remove
     spaReinitializing = true;
+
+    // Unsubscribe auto-YouTube from previous channel
+    chrome.runtime.sendMessage({
+      type: 'youtube_ws_unsubscribe', channelId: '__live_yt_auto__'
+    }).catch(() => {})
+    channelYtMessages.delete('__live_yt_auto__')
 
     // Close old read-only IRC to prevent zombie WebSocket reconnect loops
     // NOTE: auth IRC (for sending) is NOT killed here — it survives SPA navigation

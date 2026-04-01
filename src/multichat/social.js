@@ -235,15 +235,28 @@ function listenForSocialEvents() {
       }
 
       if (targetChannelId && targetChannelId !== 'global') {
-        // Per-channel YouTube → route to that channel tab
-        if (!channelYtMessages.has(targetChannelId)) channelYtMessages.set(targetChannelId, [])
-        const buf = channelYtMessages.get(targetChannelId)
-        buf.push(ytMsg)
-        if (buf.length > MAX_BUFFER + 50) buf.splice(0, buf.length - MAX_BUFFER)
-        if (currentTab === targetChannelId) {
-          appendMessage(ytMsg, targetChannelId) || renderMessages(currentTab)
+        // Auto-YouTube for live tab
+        if (targetChannelId === '__live_yt_auto__') {
+          if (!channelYtMessages.has(targetChannelId)) channelYtMessages.set(targetChannelId, [])
+          const buf = channelYtMessages.get(targetChannelId)
+          buf.push(ytMsg)
+          if (buf.length > MAX_BUFFER + 50) buf.splice(0, buf.length - MAX_BUFFER)
+          if (currentTab === 'live') {
+            appendMessage(ytMsg, 'live') || renderMessages('live')
+          } else {
+            updateTabIndicator('live')
+          }
         } else {
-          updateTabIndicator(targetChannelId)
+          // Per-channel YouTube → route to that channel tab
+          if (!channelYtMessages.has(targetChannelId)) channelYtMessages.set(targetChannelId, [])
+          const buf = channelYtMessages.get(targetChannelId)
+          buf.push(ytMsg)
+          if (buf.length > MAX_BUFFER + 50) buf.splice(0, buf.length - MAX_BUFFER)
+          if (currentTab === targetChannelId) {
+            appendMessage(ytMsg, targetChannelId) || renderMessages(currentTab)
+          } else {
+            updateTabIndicator(targetChannelId)
+          }
         }
       }
     }

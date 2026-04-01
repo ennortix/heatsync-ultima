@@ -32,7 +32,9 @@
 
   // Inject CSS to make chat input emote spans auto-size to their content
   // BULLETPROOF: Wide emotes must expand span to fit, never clip
+  if (!document.getElementById('heatsync-autocomplete-styles')) {
   const style = document.createElement('style');
+  style.id = 'heatsync-autocomplete-styles';
   style.textContent = `
     /* Emote void elements in chat input - must be inline-block to stay on same line */
     [data-slate-editor="true"] [data-slate-void="true"] {
@@ -73,6 +75,7 @@
     }
   `;
   document.head.appendChild(style);
+  }
 
   // ========== CRITICAL: Intercept img.src setter to fix broken URLs ==========
   // Use FFZ's exact format for preview creation

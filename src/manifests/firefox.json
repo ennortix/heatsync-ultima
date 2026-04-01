@@ -33,6 +33,8 @@
     "https://api.chatterino.com/*"
   ],
 
+  "content_security_policy": "script-src 'self'; object-src 'none'",
+
   "background": {
     "scripts": ["background.js"]
   },

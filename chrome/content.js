@@ -64,6 +64,7 @@ const cleanup = {
     target.addEventListener(event, handler, { signal })
   },
   trackObserver(obs) { _timers.observers.push(obs); return obs },
+  untrackObserver(obs) { const i = _timers.observers.indexOf(obs); if (i !== -1) _timers.observers.splice(i, 1) },
 }
 
 // HTML escaping for safe interpolation into innerHTML templates
@@ -2060,6 +2061,7 @@ function processExistingMessages() {
 const MSG_CACHE_MAX = 2000
 const MSG_CACHE_TTL = 24 * 60 * 60 * 1000 // 24 hours
 let msgCacheBuffer = [] // in-memory buffer of {id, user, text, color, ts}
+const msgCacheIds = new Set() // O(1) dedup lookup for message IDs
 let msgCacheSaveTimer = null
 let msgCacheChannel = null
 
@@ -2085,12 +2087,14 @@ function captureMessageToCache(el) {
   if (!msgCacheChannel) return
   const msg = serializeMessage(el)
   if (!msg) return
-  // Dedup by id
-  if (msg.id && msgCacheBuffer.some(m => m.id === msg.id)) return
+  // Dedup by id (O(1) via Set)
+  if (msg.id && msgCacheIds.has(msg.id)) return
+  if (msg.id) msgCacheIds.add(msg.id)
   msgCacheBuffer.push(msg)
   // Trim to cap
   if (msgCacheBuffer.length > MSG_CACHE_MAX) {
-    msgCacheBuffer = msgCacheBuffer.slice(-MSG_CACHE_MAX)
+    const removed = msgCacheBuffer.splice(0, msgCacheBuffer.length - MSG_CACHE_MAX)
+    for (const r of removed) if (r.id) msgCacheIds.delete(r.id)
   }
   // Debounced save
   scheduleMsgCacheSave()
@@ -2815,7 +2819,7 @@ function colorUsernameMentions(messageElement) {
         const span = document.createElement('span');
         span.className = 'hs-username-colored';
         const safeColor = /^(#[0-9a-f]{3,8}|rgb\(.+\)|[a-z]+)$/i.test(color) ? color : '#ffffff';
-        span.style.cssText = `color: ${safeColor} !important; font-weight: bold !important; cursor: pointer !important;`;
+        span.style.cssText = `color: ${safeColor}; font-weight: bold; cursor: pointer;`;
         span.textContent = word;
         span.dataset.hsUsername = cleanWord;
         newNodes.push(span);
@@ -2846,7 +2850,7 @@ function colorUsernameMentions(messageElement) {
     const username = mention.textContent.replace('@', '').trim().toLowerCase();
     if (!username) continue;
     const color = knownChatters.get(username) || '#fff';
-    mention.style.cssText = `color: ${color} !important; font-weight: bold !important; cursor: pointer !important; pointer-events: auto !important;`;
+    mention.style.cssText = `color: ${color}; font-weight: bold; cursor: pointer; pointer-events: auto;`;
     mention.classList.add('hs-mention-colored');
     mention.dataset.hsUsername = username;
   }
@@ -3170,22 +3174,22 @@ function processMessage(messageElement) {
     allEmotesDirty = false // Set early to prevent redundant rebuilds in same batch
     cachedAllEmotes = new Map()
 
-    // Add global emotes
+    // Add global emotes (lowest priority)
     globalEmotes.forEach(emote => {
       cachedAllEmotes.set(emote.name, Object.assign({}, emote, { hash: emote.hash || btoa(emote.url), isGlobal: true }))
-    })
-
-    // Add inventory emotes
-    emoteInventory.forEach(emote => {
-      cachedAllEmotes.set(emote.name, Object.assign({}, emote, {
-        url: emote.url?.startsWith('http') ? emote.url : `${API_URL}${emote.url}`
-      }))
     })
 
     // Add channel emotes (third-party only — BTTV/FFZ/7TV/Twitch)
     // HeatSync emotes render via emoteInventory (own set) or pendingEmoteBroadcasts (others)
     channelEmotes.forEach(emote => {
       if (!emote.source) return
+      cachedAllEmotes.set(emote.name, Object.assign({}, emote, {
+        url: emote.url?.startsWith('http') ? emote.url : `${API_URL}${emote.url}`
+      }))
+    })
+
+    // Add inventory emotes LAST (highest priority — user's own emotes always win)
+    emoteInventory.forEach(emote => {
       cachedAllEmotes.set(emote.name, Object.assign({}, emote, {
         url: emote.url?.startsWith('http') ? emote.url : `${API_URL}${emote.url}`
       }))
@@ -5429,7 +5433,7 @@ function applyPendingKickCosmetics(slugs) {
 
 // Right-click on chat message or username → instant 24h mute
 function setupMessageContextMenu() {
-  document.addEventListener('contextmenu', (e) => {
+  cleanup.addEventListener(document, 'contextmenu', (e) => {
     // Don't intercept emote right-clicks
     if (e.target.closest('.heatsync-emote-wrapper')) return;
 
@@ -5654,19 +5658,18 @@ function watchForNewMessages() {
           const batch = processingQueue.splice(0); // Copy and clear queue
           log(' 🔄 Processing batch of', batch.length, 'messages');
 
-          try {
-            batch.forEach(msg => {
+          batch.forEach(msg => {
+            try {
               processMessage(msg)
               // Capture to localStorage cache (skip our own cached/backfilled msgs)
               if (!msg.dataset.heatsyncCached && !msg.dataset.heatsyncBackfill) {
                 captureMessageToCache(msg)
               }
-            });
-          } catch (e) {
-            log(' ❌ processMessage error:', e.message);
-          } finally {
-            processingScheduled = false;
-          }
+            } catch (e) {
+              log(' ❌ processMessage error:', e.message);
+            }
+          });
+          processingScheduled = false;
         }, 16); // Wait one frame for React to settle (animated emotes need this)
       });
     }
@@ -6330,7 +6333,7 @@ window.addEventListener('message', (event) => {
   if (event.data?.type === 'heatsync-nav') handleNavigation()
   if (event.data?.type === 'heatsync-clear-history') {
     safeSendMessage({ type: 'clear_history' }).then(r => {
-      window.postMessage({ type: 'heatsync-clear-history-result', result: r }, '*')
+      window.postMessage({ type: 'heatsync-clear-history-result', result: r }, location.origin)
     })
   }
 }, { signal })

@@ -43,7 +43,9 @@
   let activeInput = null
 
   function injectStyles() {
+    if (document.getElementById('heatsync-kick-ac-styles')) return
     const style = document.createElement('style')
+    style.id = 'heatsync-kick-ac-styles'
     style.textContent = `
       #${DROPDOWN_ID} {
         position: fixed;

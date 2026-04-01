@@ -10,8 +10,8 @@ const log = DEBUG ? console.log.bind(console, '[heatsync]') : () => {};
 log('🔥 BACKGROUND SCRIPT LOADING...');
 
 // Keepalive alarm — prevent Chrome from killing the service worker
-// The alarm fires every 25s, which resets Chrome's 30s inactivity timer
-browser.alarms?.create('keepalive', { periodInMinutes: 25 / 60 });
+// Chrome minimum alarm period is 0.5 minutes (30s), which resets the inactivity timer
+browser.alarms?.create('keepalive', { periodInMinutes: 0.5 });
 browser.alarms?.onAlarm?.addListener((alarm) => {
   if (alarm.name === 'keepalive') {
     // Just existing is enough to keep the worker alive
@@ -2882,6 +2882,7 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   if (message.type === 'set_auth_token') {
     authToken = message.token;
+    authFailedBlock = false;
     log(' Received auth token from content script');
     // Clear old cached inventory before setting new token (prevents wrong user's emotes)
     emoteInventory = [];

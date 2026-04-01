@@ -2658,7 +2658,7 @@
       /* Emote hover tooltip - 4x preview */
       #hs-emote-tooltip {
         position: fixed;
-        z-index: 5000;
+        z-index: 100001;
         pointer-events: none;
         background: #000;
         border: 2px solid #808080;

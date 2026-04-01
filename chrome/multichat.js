@@ -2423,7 +2423,7 @@ async function sendKickMessage(kickSlug, text) {
 
     // Instant DOM update - CSS visibility:hidden hides the img, no src swap needed
     queryEmoteWrappers(emoteName).forEach(w => {
-      w.classList.remove('hs-state-global', 'hs-state-channel', 'hs-state-owned', 'hs-state-unadded');
+      w.classList.remove('hs-state-global', 'hs-state-channel', 'hs-state-owned', 'hs-state-unadded', 'hs-emote-highlight');
       w.classList.add('hs-state-blocked');
       w.dataset.state = 'blocked';
       const img = w.querySelector('img');
@@ -2456,7 +2456,7 @@ async function sendKickMessage(kickSlug, text) {
     const realUrl = emote?.url || '';
     const newState = emote ? getEmoteState(emoteName, emote.source) : 'global';
     queryEmoteWrappers(emoteName).forEach(w => {
-      w.classList.remove('hs-state-global', 'hs-state-channel', 'hs-state-owned', 'hs-state-blocked', 'hs-state-unadded');
+      w.classList.remove('hs-state-global', 'hs-state-channel', 'hs-state-owned', 'hs-state-blocked', 'hs-state-unadded', 'hs-emote-highlight');
       w.classList.add(`hs-state-${newState}`);
       w.dataset.state = newState;
       w.style.outline = '';
@@ -12077,7 +12077,7 @@ const STORAGE_KEY = 'heatsync_multichat';
       /* Emote hover tooltip - 4x preview */
       #hs-emote-tooltip {
         position: fixed;
-        z-index: 5000;
+        z-index: 100001;
         pointer-events: none;
         background: #000;
         border: 2px solid #808080;

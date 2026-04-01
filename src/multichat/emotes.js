@@ -552,7 +552,7 @@
 
     // Instant DOM update - CSS visibility:hidden hides the img, no src swap needed
     queryEmoteWrappers(emoteName).forEach(w => {
-      w.classList.remove('hs-state-global', 'hs-state-channel', 'hs-state-owned', 'hs-state-unadded');
+      w.classList.remove('hs-state-global', 'hs-state-channel', 'hs-state-owned', 'hs-state-unadded', 'hs-emote-highlight');
       w.classList.add('hs-state-blocked');
       w.dataset.state = 'blocked';
       const img = w.querySelector('img');
@@ -585,7 +585,7 @@
     const realUrl = emote?.url || '';
     const newState = emote ? getEmoteState(emoteName, emote.source) : 'global';
     queryEmoteWrappers(emoteName).forEach(w => {
-      w.classList.remove('hs-state-global', 'hs-state-channel', 'hs-state-owned', 'hs-state-blocked', 'hs-state-unadded');
+      w.classList.remove('hs-state-global', 'hs-state-channel', 'hs-state-owned', 'hs-state-blocked', 'hs-state-unadded', 'hs-emote-highlight');
       w.classList.add(`hs-state-${newState}`);
       w.dataset.state = newState;
       w.style.outline = '';

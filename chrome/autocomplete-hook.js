@@ -810,45 +810,16 @@
           });
         }
 
-        // Add emoji matches when searching with :prefix (Discord/Slack style)
-        if (actualInput.startsWith(':') && search.length >= 2) {
-          const emojiMatches = [];
-          for (const [name, emoji] of EMOJI_ENTRIES) {
-            if (name.includes(searchLower)) {
-              emojiMatches.push({ name, emoji, isExact: name === searchLower, isPrefix: name.startsWith(searchLower) });
-            }
-          }
-          // Sort: exact > prefix > contains, then alphabetical
-          emojiMatches.sort((a, b) => {
-            if (a.isExact && !b.isExact) return -1;
-            if (!a.isExact && b.isExact) return 1;
-            if (a.isPrefix && !b.isPrefix) return -1;
-            if (!a.isPrefix && b.isPrefix) return 1;
-            return a.name.localeCompare(b.name);
-          });
-          // Add top 10 emoji matches
-          for (const { name, emoji } of emojiMatches.slice(0, 10)) {
-            results.push({
-              current: input,
-              replacement: emoji + ' ',  // Insert emoji + space
-              isEmoji: true,
-              emojiName: name,
-              element: null
-            });
-          }
-          if (emojiMatches.length > 0) {
-            log(' 😀 Found', emojiMatches.length, 'emoji matches for:', search);
-          }
-        }
+        // Emoji shortcodes (:name:) handled by Tab cycling only — not injected into dropdown
 
-        // Sort results: EMOTES first, then EMOJIS, then USERNAMES
+        // Sort results: EMOTES first, then USERNAMES
         // Pre-compute sort keys to avoid repeated toLowerCase() in comparator
         for (const r of results) {
-          r._sortKey = (r.emojiName || r.replacement || r.emote?.token || '').toLowerCase()
-          r._sortType = r.emote ? 0 : r.isEmoji ? 1 : 2 // 0=emote, 1=emoji, 2=username
+          r._sortKey = (r.replacement || r.emote?.token || '').toLowerCase()
+          r._sortType = r.emote ? 0 : 1 // 0=emote, 1=username
         }
         results.sort((a, b) => {
-          // Category sort: emotes < emojis < usernames
+          // Category sort: emotes < usernames
           if (a._sortType !== b._sortType) return a._sortType - b._sortType;
 
           // Usernames: alphabetical only
@@ -1401,9 +1372,10 @@
 
         // Allow cycling if:
         // - Multiple matches exist AND
-        // - Either: emote was already inserted (justCycled), OR no dropdown visible (handle first Tab ourselves)
+        // - Either: emote was already inserted (justCycled), OR no dropdown visible, OR matches include emojis
         const justCycled = cycleState.lastCycledEmote !== null;
-        const shouldCycle = hasMultipleMatches && (justCycled || !dropdownVisible);
+        const hasEmojiMatches = cycleState.matches.some(m => m.isEmoji);
+        const shouldCycle = hasMultipleMatches && (justCycled || !dropdownVisible || hasEmojiMatches);
 
         log(' 🔍 Tab pressed - cycling check:', {
           hasMultipleMatches,
@@ -1429,8 +1401,9 @@
           const nextEmote = cycleState.matches[cycleState.index];
           cycleState.lastTime = now;
 
+          const tooltipLabel = nextEmote.isEmoji ? nextEmote.emoji + ' ' + nextEmote.name : nextEmote.name;
           log(' ⌨️ Manual Tab cycling:', cycleState.index + 1, '/', cycleState.matches.length, '→', nextEmote.name, justCycled ? '(cycling)' : '(first)');
-          showCycleTooltip(cycleState.index + 1, cycleState.matches.length, nextEmote.name);
+          showCycleTooltip(cycleState.index + 1, cycleState.matches.length, tooltipLabel);
 
           const inst = chatInputInst || findChatInput();
           if (!inst) {
@@ -1442,12 +1415,15 @@
           if (nextEmote.isEmoji) {
             const slateEditor = inst?.chatInputRef?.state?.slateEditor;
             if (slateEditor) {
+              const settings = getExtensionSettings();
+              const addSpace = settings.emoteSpaceAfter !== false;
               const endPt = slateEditor.end([]);
               slateEditor.select(endPt);
               if (justCycled) {
-                // Delete previous emoji + space
-                const prevEmote = cycleState.lastCycledEmote;
-                const deleteLen = prevEmote ? prevEmote.length + 1 : 0;
+                // Delete previous emoji + space (use spread for accurate grapheme count)
+                const prevEmoji = cycleState.lastCycledEmote;
+                const graphemeLen = prevEmoji ? [...prevEmoji].length : 0;
+                const deleteLen = graphemeLen + (addSpace ? 1 : 0);
                 for (let i = 0; i < deleteLen; i++) {
                   slateEditor.deleteBackward('character');
                 }
@@ -1460,7 +1436,7 @@
                   slateEditor.deleteBackward('character');
                 }
               }
-              slateEditor.insertText(nextEmote.emoji + ' ');
+              slateEditor.insertText(nextEmote.emoji + (addSpace ? ' ' : ''));
               cycleState.lastCycledEmote = nextEmote.emoji;
               const focusEl = getInputElement();
               if (focusEl) focusEl.focus();
@@ -1535,8 +1511,9 @@
           const prevEmote = cycleState.matches[cycleState.index];
           cycleState.lastTime = Date.now();
 
+          const shiftLabel = prevEmote.isEmoji ? prevEmote.emoji + ' ' + prevEmote.name : prevEmote.name;
           log(' ⌨️ Shift+Tab cycling backwards:', cycleState.index + 1, '/', cycleState.matches.length, '→', prevEmote.name);
-          showCycleTooltip(cycleState.index + 1, cycleState.matches.length, prevEmote.name);
+          showCycleTooltip(cycleState.index + 1, cycleState.matches.length, shiftLabel);
 
           const inst = chatInputInst || findChatInput();
           if (!inst) {
@@ -1548,14 +1525,17 @@
           if (prevEmote.isEmoji) {
             const slateEditor = inst?.chatInputRef?.state?.slateEditor;
             if (slateEditor) {
+              const settings = getExtensionSettings();
+              const addSpace = settings.emoteSpaceAfter !== false;
               const endPt = slateEditor.end([]);
               slateEditor.select(endPt);
-              const prevName = cycleState.lastCycledEmote;
-              const deleteLen = prevName ? prevName.length + 1 : 0;
+              const prevEmoji = cycleState.lastCycledEmote;
+              const graphemeLen = prevEmoji ? [...prevEmoji].length : 0;
+              const deleteLen = graphemeLen + (addSpace ? 1 : 0);
               for (let i = 0; i < deleteLen; i++) {
                 slateEditor.deleteBackward('character');
               }
-              slateEditor.insertText(prevEmote.emoji + ' ');
+              slateEditor.insertText(prevEmote.emoji + (addSpace ? ' ' : ''));
               cycleState.lastCycledEmote = prevEmote.emoji;
               const focusEl = getInputElement();
               if (focusEl) focusEl.focus();
@@ -1613,9 +1593,9 @@
       if (!targetItem) return;
 
       const img = targetItem.querySelector('img');
-      if (!img) {
-        return;
-      }
+      const itemText = targetItem.textContent?.trim();
+
+      if (!img) return;
 
       const src = img.src || img.srcset || '';
       log(' 🔍 Tab - img src:', src.substring(0, 80));
@@ -1626,7 +1606,6 @@
       }
 
       // Find which emote this is
-      const itemText = targetItem.textContent?.trim();
       const hsEmotes = getHeatsyncEmotes();
       const matchedEmote = hsEmotes.find(em =>
         itemText?.includes(em.name) ||
@@ -1648,8 +1627,8 @@
       const inst = chatInputInst || findChatInput();
       if (insertEmoteViaSlate(matchedEmote, inst)) {
         // Close dropdown by clicking elsewhere
-        const inputEl = getInputElement();
-        if (inputEl) inputEl.focus();
+        const focusEl = getInputElement();
+        if (focusEl) focusEl.focus();
       }
     }, { capture: true, signal: acSignal }); // Capture phase
 

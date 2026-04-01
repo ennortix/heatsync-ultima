@@ -167,7 +167,7 @@
       </div>
       <div class="hs-mc-picker-tabs">
         <button class="hs-mc-picker-tab ${pickerTab === 'emotes' ? 'active' : ''}" data-tab="emotes">emotes</button>
-        <button class="hs-mc-picker-tab ${pickerTab === 'twitch' ? 'active' : ''}" data-tab="twitch">twitch</button>
+        <button class="hs-mc-picker-tab ${pickerTab === 'twitch' ? 'active' : ''}" data-tab="twitch">${hostPlatform === 'kick' ? 'kick' : hostPlatform === 'yt' ? 'youtube' : 'twitch'}</button>
       </div>
     `;
 

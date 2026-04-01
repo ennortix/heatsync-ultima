@@ -1244,20 +1244,20 @@
 
     // Tooltip descriptions for settings — all static strings, no user input
     const settingTips = {
-      emoteSize: 'Resolution multiplier for emotes in chat. 1x is crisp and compact, 2x is the sweet spot for most displays, 4x is for when you want to see every pixel of that emote art.',
-      wysiwyg: 'Shows emotes as images directly in the input box as you type, instead of plain text names. What you see is what you send.',
-      links: "Turns URLs in chat messages into clickable hyperlinks. Disable if you prefer to copy-paste or just don't trust strangers on the internet.",
-      vi: 'Vim-style keybindings for chat navigation. j/k to scroll, g/G for top/bottom, / to search. For people who think mice are for casuals.',
-      zebra: 'Alternating row shading on chat messages. Makes it easier to track long messages across the window, especially during fast chat.',
-      autohide: "Hides the input bar when you're not actively composing a message. Click or start typing to bring it back. Maximizes chat viewing space.",
-      timestamps: 'Shows the time each message was sent, right next to the username. Useful for catching up on what happened while you were AFK.',
-      avatars: 'Displays profile pictures next to usernames in chat. Makes it easier to visually identify regulars at a glance, costs a bit of vertical space.',
+      emoteSize: t('mc_settings_emote_size_desc'),
+      wysiwyg: t('mc_settings_input_preview_desc'),
+      links: t('mc_settings_clickable_links_desc'),
+      vi: t('mc_settings_vi_mode_desc'),
+      zebra: t('mc_settings_zebra_desc'),
+      autohide: t('mc_settings_auto_hide_desc'),
+      timestamps: t('mc_settings_timestamps_desc'),
+      avatars: t('mc_settings_avatars_desc'),
     }
     const notifTips = {
-      op: 'Notification in your active chat tab when someone creates a new original post on the feed. Keeps you in the loop without switching tabs.',
-      mop: 'Notification when the original poster replies in their own thread. Useful for tracking when an OP responds to discussion.',
-      re: 'Notification for every reply posted to any thread on the feed. Can get noisy during active discussions.',
-      dm: 'Notification when you receive a whisper or DM. You probably want this on unless you are intentionally ignoring someone.',
+      op: t('mc_settings_notif_op_desc'),
+      mop: t('mc_settings_notif_mop_desc'),
+      re: t('mc_settings_notif_re_desc'),
+      dm: t('mc_settings_notif_dm_desc'),
     }
 
     // Static settings HTML — no user input, all tooltip values are hardcoded strings above
@@ -7112,7 +7112,7 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
       } else if (eventType === 'sub-gift') {
         toggleKey = 'sub'
         eventClass = 'event-sub'
-        text = `[${escapeHtml(channel)}] \u25C6 ${escapeHtml(data.user)} gifted ${Number(data.count) || 0} subs`
+        text = `[${escapeHtml(channel)}] \u25C6 ${t('mc_irc_gift_subs', [escapeHtml(data.user), String(Number(data.count) || 0), escapeHtml(channel)])}`
       } else if (eventType === 'redeem') {
         toggleKey = 'redeem'
         eventClass = 'event-redeem'

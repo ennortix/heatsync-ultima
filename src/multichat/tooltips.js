@@ -119,7 +119,7 @@
     nameEl.appendChild(emojiChar)
     nameEl.appendChild(label)
 
-    stateEl.textContent = 'emoji'
+    stateEl.textContent = t('mc_tip_emoji')
     stateEl.className = 'tooltip-source'
 
     tooltip.style.left = '-9999px'
@@ -136,7 +136,7 @@
     if (nameEl?.textContent !== emoteName) return;
     const stateEl = emoteTooltip.querySelector('.tooltip-source');
     if (!stateEl) return;
-    const labels = { owned: 'in your set', unadded: 'click to add', blocked: 'blocked (click to unblock)' };
+    const labels = { owned: t('mc_emote_in_set'), unadded: t('mc_emote_click_add'), blocked: t('mc_emote_blocked') };
     stateEl.textContent = labels[newState] || newState;
     stateEl.className = 'tooltip-source ' + (newState || 'global');
   }
@@ -391,7 +391,7 @@
     if (op > 0) statBadges.push(`<span class="hs-pc-stat op"><span class="hs-pc-num">${formatCompact(op)}</span> [OP]</span>`);
     if (mop > 0) statBadges.push(`<span class="hs-pc-stat mop"><span class="hs-pc-num">${formatCompact(mop)}</span> <span style="color:#ff00ff">[OP]</span></span>`);
     if (re > 0) statBadges.push(`<span class="hs-pc-stat re"><span class="hs-pc-num">${formatCompact(re)}</span> [RE]</span>`);
-    if (followers > 0) statBadges.push(`<span class="hs-pc-stat hs-pc-stat-followers">${formatCompact(followers)} followers</span>`);
+    if (followers > 0) statBadges.push(`<span class="hs-pc-stat hs-pc-stat-followers">${t('mc_tip_followers', [formatCompact(followers)])}</span>`);
 
     // Relationship
     const rel = p.relationship || {};
@@ -502,7 +502,7 @@
     if (!header) return
     const badge = document.createElement('span')
     badge.className = 'hs-pc-sub-tenure'
-    badge.textContent = 'subbed ' + channelLogin + ' ' + formatSubTenure(months)
+    badge.textContent = t('mc_tip_subbed', [channelLogin, formatSubTenure(months)])
     header.appendChild(badge)
   }
 
@@ -521,17 +521,17 @@
     const badge = document.createElement('span')
     if (result.followedAt) {
       badge.className = 'hs-pc-followage'
-      badge.textContent = 'following ' + channelLogin + ' ' + getCompactRelTime(result.followedAt).replace(' ago', '')
+      badge.textContent = t('mc_tip_following', [channelLogin, getCompactRelTime(result.followedAt).replace(' ago', '')])
     } else {
       badge.className = 'hs-pc-followage hs-pc-nofollow'
-      badge.textContent = 'not following ' + channelLogin
+      badge.textContent = t('mc_tip_not_following', [channelLogin])
     }
     header.appendChild(badge)
     // "followed by {channel}" badge — streamer follows this user
     if (result.channelFollowedAt) {
       const cfBadge = document.createElement('span')
       cfBadge.className = 'hs-pc-channel-follows'
-      cfBadge.textContent = 'followed by ' + channelLogin
+      cfBadge.textContent = t('mc_tip_followed_by', [channelLogin])
       header.appendChild(cfBadge)
     }
     // Update follower count from live data
@@ -540,11 +540,11 @@
       // Update followers with live data
       const followerStat = statsEl.querySelector('.hs-pc-stat-followers')
       if (followerStat) {
-        followerStat.textContent = formatCompact(result.followerCount) + ' followers'
+        followerStat.textContent = t('mc_tip_followers', [formatCompact(result.followerCount)])
       } else {
         const el = document.createElement('span')
         el.className = 'hs-pc-stat hs-pc-stat-followers'
-        el.textContent = formatCompact(result.followerCount) + ' followers'
+        el.textContent = t('mc_tip_followers', [formatCompact(result.followerCount)])
         statsEl.appendChild(el)
       }
     }
@@ -646,7 +646,7 @@
     loadWrap.className = 'link-text';
     const loadSpan = document.createElement('span');
     loadSpan.className = 'link-loading';
-    loadSpan.textContent = 'loading...';
+    loadSpan.textContent = t('common_loading');
     const domainSpan = document.createElement('span');
     domainSpan.className = 'link-domain';
     domainSpan.textContent = hostname;

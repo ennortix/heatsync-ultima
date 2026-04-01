@@ -318,7 +318,7 @@ async function fetchFeed(append = false) {
     if (currentTab === 'feed') {
       const msgsEl = document.getElementById('hs-mc-messages');
       if (msgsEl && feedMessages.length === 0) {
-        msgsEl.innerHTML = `<div class="hs-mc-empty">failed to load feed${resp.status === 401 ? ' — log in at heatsync.org' : ''}</div>`;
+        msgsEl.innerHTML = `<div class="hs-mc-empty">${resp.status === 401 ? t('mc_social_failed_feed_auth') : t('mc_social_failed_feed')}</div>`;
       }
     }
     return;
@@ -343,7 +343,7 @@ function renderFeed() {
 
   // Update feed tab button text
   const feedTabBtn = tabBarElement?.querySelector('[data-tab="feed"]');
-  if (feedTabBtn) feedTabBtn.textContent = activeThread ? '<- back' : 'feed';
+  if (feedTabBtn) feedTabBtn.textContent = activeThread ? t('mc_social_back') : t('mc_tab_feed');
 
   // Thread view — show OP + replies
   if (activeThread) {
@@ -357,7 +357,7 @@ function renderFeed() {
     msgsEl.textContent = '';
     const loading = document.createElement('div');
     loading.className = 'hs-mc-empty';
-    loading.textContent = 'loading following feed...';
+    loading.textContent = t('mc_social_loading_feed');
     msgsEl.appendChild(loading);
     fetchFeed();
     return;
@@ -367,7 +367,7 @@ function renderFeed() {
     msgsEl.textContent = '';
     const empty = document.createElement('div');
     empty.className = 'hs-mc-empty';
-    empty.textContent = 'no posts yet';
+    empty.textContent = t('mc_social_no_posts');
     msgsEl.appendChild(empty);
     return;
   }
@@ -385,7 +385,7 @@ function renderFeed() {
   if (feedHasMore) {
     const loader = document.createElement('div');
     loader.className = 'hs-mc-empty hs-feed-loader';
-    loader.textContent = 'scroll for more...';
+    loader.textContent = t('mc_social_scroll_more');
     frag.appendChild(loader);
   }
   msgsEl.appendChild(frag);
@@ -709,7 +709,7 @@ function renderThreadView(msgsEl) {
   } else if (t.replies.length === 0) {
     const empty = document.createElement('div');
     empty.className = 'hs-mc-empty';
-    empty.textContent = 'no replies yet';
+    empty.textContent = t('mc_social_no_replies');
     empty.style.fontSize = '11px';
     container.appendChild(empty);
   } else {
@@ -734,9 +734,9 @@ async function postFeedMessage(text, { topLevel = false } = {}) {
 
   if (!hsAuthToken) {
     if (wysiwygEnabled) {
-      input.dataset.placeholder = 'log in at heatsync.org first';
+      input.dataset.placeholder = t('mc_social_login_first');
     } else {
-      input.placeholder = 'log in at heatsync.org first';
+      input.placeholder = t('mc_social_login_first');
     }
     setTimeout(() => updateInputPlaceholder(), 2000);
     return;
@@ -779,10 +779,10 @@ async function postFeedMessage(text, { topLevel = false } = {}) {
     if (currentTab === 'feed') renderFeed()
   } else {
     input.style.borderColor = '#f44';
-    const errMsg = resp.status === 401 ? 'log in first'
-      : resp.status === 429 ? 'slow down'
-      : resp.status === 409 ? 'duplicate message'
-      : 'failed to post';
+    const errMsg = resp.status === 401 ? t('mc_social_log_in_first')
+      : resp.status === 429 ? t('mc_social_slow_down')
+      : resp.status === 409 ? t('mc_social_duplicate')
+      : t('mc_social_failed_post');
     showToast(errMsg);
     setTimeout(() => { input.style.borderColor = ''; }, 1500);
     log('Post failed:', resp.status || resp.error);
@@ -825,7 +825,7 @@ function renderActivity() {
   }
 
   if (!hsAuthToken && activityEvents.length === 0) {
-    msgsEl.innerHTML = '<div class="hs-mc-empty">log in at <a href="https://heatsync.org" target="_blank" style="color:#ff6b35">heatsync.org</a> to see activity</div>';
+    msgsEl.innerHTML = `<div class="hs-mc-empty">${t('mc_social_login_activity')}</div>`;
     return;
   }
 
@@ -854,7 +854,7 @@ function renderActivity() {
   const merged = normalized.slice(0, 150);
 
   if (merged.length === 0) {
-    msgsEl.innerHTML = '<div class="hs-mc-empty">no activity yet</div>';
+    msgsEl.innerHTML = `<div class="hs-mc-empty">${t('mc_no_activity')}</div>`;
     return;
   }
 

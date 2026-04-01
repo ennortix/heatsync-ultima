@@ -1,0 +1,1052 @@
+{
+  "manifest_name": {
+    "message": "heatsync"
+  },
+  "manifest_description": {
+    "message": "Emotes personnalisés pour Twitch, Kick et YouTube chat. Slots illimités, complétion par tab, synchronisation en temps réel."
+  },
+
+  "common_loading": {
+    "message": "chargement..."
+  },
+  "common_extension_updated": {
+    "message": "Extension mise à jour — recharge la page"
+  },
+  "common_no_matches": {
+    "message": "aucun résultat"
+  },
+  "common_retry": {
+    "message": "réessayer"
+  },
+  "common_cancel": {
+    "message": "annuler"
+  },
+  "common_save": {
+    "message": "enregistrer"
+  },
+  "common_add": {
+    "message": "ajouter"
+  },
+  "common_edit": {
+    "message": "modifier"
+  },
+  "common_remove": {
+    "message": "supprimer"
+  },
+  "common_done": {
+    "message": "fait"
+  },
+  "common_ended": {
+    "message": "terminé"
+  },
+  "common_vote": {
+    "message": "voter"
+  },
+  "common_set": {
+    "message": "définir"
+  },
+  "common_default": {
+    "message": "défaut"
+  },
+  "common_mention": {
+    "message": "mention"
+  },
+  "common_user_not_found": {
+    "message": "utilisateur introuvable"
+  },
+
+  "popup_title": {
+    "message": "heatsync"
+  },
+  "popup_status_checking": {
+    "message": "vérification..."
+  },
+  "popup_status_connected": {
+    "message": "connecté"
+  },
+  "popup_status_api_error": {
+    "message": "erreur api"
+  },
+  "popup_status_offline": {
+    "message": "hors ligne"
+  },
+  "popup_user_stats": {
+    "message": "$EMOTES$ emotes · $GLOBALS$ global",
+    "placeholders": {
+      "emotes": { "content": "$1" },
+      "globals": { "content": "$2" }
+    }
+  },
+  "popup_user_stats_heat": {
+    "message": "$EMOTES$ emotes · $GLOBALS$ global · $HEAT$ heat",
+    "placeholders": {
+      "emotes": { "content": "$1" },
+      "globals": { "content": "$2" },
+      "heat": { "content": "$3" }
+    }
+  },
+  "popup_btn_emotes": {
+    "message": "emotes"
+  },
+  "popup_btn_refresh": {
+    "message": "actualiser"
+  },
+  "popup_btn_site": {
+    "message": "site"
+  },
+  "popup_btn_done": {
+    "message": "fait"
+  },
+  "popup_login_prompt": {
+    "message": "connecte-toi pour synchroniser tes emotes"
+  },
+  "popup_channel_placeholder": {
+    "message": "chaîne"
+  },
+  "popup_btn_popout": {
+    "message": "popout"
+  },
+  "popup_hint": {
+    "message": "paramètres d'emote dans le panneau du chat"
+  },
+
+  "welcome_title": {
+    "message": "bienvenue sur heatsync"
+  },
+  "welcome_tagline": {
+    "message": "tes emotes, partout où tu tchat"
+  },
+  "welcome_step1_title": {
+    "message": "connecte-toi sur heatsync.org"
+  },
+  "welcome_step1_desc": {
+    "message": "connecte-toi avec Twitch ou Kick pour créer ton compte"
+  },
+  "welcome_step2_title": {
+    "message": "uploade tes emotes"
+  },
+  "welcome_step2_desc": {
+    "message": "ajoute n'importe quelle image — aucune limite de slots, tous les formats supportés"
+  },
+  "welcome_step3_title": {
+    "message": "utilise-les dans le chat"
+  },
+  "welcome_step3_desc": {
+    "message": "clique sur le bouton heatsync dans le chat Twitch/Kick pour accéder à tes emotes"
+  },
+  "welcome_cta": {
+    "message": "commencer"
+  },
+  "welcome_privacy": {
+    "message": "confidentialité"
+  },
+  "welcome_source": {
+    "message": "code source"
+  },
+
+  "btn_auth_login": {
+    "message": "se connecter"
+  },
+  "btn_auth_save_emotes": {
+    "message": "pour sauvegarder des emotes dans ton set"
+  },
+  "btn_tab_channel": {
+    "message": "chaîne"
+  },
+  "btn_tab_global": {
+    "message": "global"
+  },
+  "btn_tab_mine": {
+    "message": "les miens"
+  },
+  "btn_tab_emoji": {
+    "message": "emoji"
+  },
+  "btn_search_placeholder": {
+    "message": "chercher des emotes..."
+  },
+  "btn_rotate_title": {
+    "message": "faire pivoter la barre d'onglets"
+  },
+  "btn_settings_title": {
+    "message": "paramètres"
+  },
+  "btn_no_emotes": {
+    "message": "aucun emote"
+  },
+  "btn_login_save_emotes": {
+    "message": "connecte-toi sur heatsync.org pour sauvegarder des emotes"
+  },
+  "btn_cached": {
+    "message": "en cache"
+  },
+  "btn_loading_emotes": {
+    "message": "chargement des emotes"
+  },
+  "btn_no_third_party": {
+    "message": "aucun emote tiers trouvé"
+  },
+  "btn_no_emotes_import": {
+    "message": "aucun emote à importer"
+  },
+  "btn_import_count": {
+    "message": "importer $COUNT$ emotes",
+    "placeholders": {
+      "count": { "content": "$1" }
+    }
+  },
+  "btn_failed_load": {
+    "message": "échec du chargement des emotes"
+  },
+  "btn_retry_loading": {
+    "message": "réessayer le chargement"
+  },
+  "btn_ctx_block": {
+    "message": "bloquer l'emote"
+  },
+  "btn_ctx_unblock": {
+    "message": "débloquer l'emote"
+  },
+  "btn_ctx_remove_inventory": {
+    "message": "retirer de l'inventaire"
+  },
+  "btn_ctx_add_inventory": {
+    "message": "ajouter à l'inventaire"
+  },
+  "btn_ctx_copy_name": {
+    "message": "copier le nom de l'emote"
+  },
+  "btn_ctx_copy_url": {
+    "message": "copier l'url de l'emote"
+  },
+  "btn_toast_unblocked": {
+    "message": "débloqué"
+  },
+  "btn_toast_blocked": {
+    "message": "bloqué"
+  },
+  "btn_toast_removed": {
+    "message": "supprimé"
+  },
+  "btn_toast_added": {
+    "message": "ajouté"
+  },
+  "btn_toast_copied": {
+    "message": "copié !"
+  },
+  "btn_settings_tab_completion": {
+    "message": "complétion par tab"
+  },
+  "btn_settings_chat_ui": {
+    "message": "interface du chat"
+  },
+  "btn_settings_input": {
+    "message": "saisie"
+  },
+  "btn_settings_wysiwyg": {
+    "message": "emotes wysiwyg"
+  },
+  "btn_settings_space_after": {
+    "message": "espace après emote"
+  },
+  "btn_settings_placeholder_mode": {
+    "message": "mode placeholder"
+  },
+  "btn_settings_placeholder_desc": {
+    "message": "afficher des cases colorées"
+  },
+  "btn_settings_hide_header": {
+    "message": "masquer l'en-tête"
+  },
+  "btn_settings_always_popout": {
+    "message": "(toujours actif en popout)"
+  },
+  "btn_settings_compact_input": {
+    "message": "saisie compacte"
+  },
+  "btn_settings_highlight_mentions": {
+    "message": "mettre en évidence les mentions"
+  },
+  "btn_settings_platform_badges": {
+    "message": "badges de plateforme"
+  },
+  "btn_settings_platform_badges_desc": {
+    "message": "[T] [K] [YT] sur les messages"
+  },
+  "btn_settings_cosmetics": {
+    "message": "cosmétiques"
+  },
+  "btn_settings_cosmetics_desc": {
+    "message": "7TV/BTTV/FFZ paints + badges"
+  },
+  "btn_settings_vi_mode": {
+    "message": "mode vi"
+  },
+  "btn_settings_vi_mode_desc": {
+    "message": "raccourcis vim pour la saisie du chat"
+  },
+  "btn_size_1x": {
+    "message": "1x"
+  },
+  "btn_size_2x": {
+    "message": "2x"
+  },
+  "btn_size_4x": {
+    "message": "4x"
+  },
+  "btn_expand": {
+    "message": "développer"
+  },
+  "btn_collapse": {
+    "message": "réduire"
+  },
+  "btn_block_all": {
+    "message": "tout bloquer"
+  },
+  "btn_show_all": {
+    "message": "tout afficher"
+  },
+  "btn_click_expand": {
+    "message": "cliquer pour développer"
+  },
+
+  "content_toast_failed_add": {
+    "message": "Échec de l'ajout de $NAME$ : $ERROR$",
+    "placeholders": {
+      "name": { "content": "$1" },
+      "error": { "content": "$2" }
+    }
+  },
+  "content_toast_failed_remove": {
+    "message": "Échec de la suppression de $NAME$ : $ERROR$",
+    "placeholders": {
+      "name": { "content": "$1" },
+      "error": { "content": "$2" }
+    }
+  },
+  "content_toast_unblocked": {
+    "message": "Débloqué $NAME$",
+    "placeholders": {
+      "name": { "content": "$1" }
+    }
+  },
+  "content_toast_failed_unblock": {
+    "message": "Échec du déblocage : $ERROR$",
+    "placeholders": {
+      "error": { "content": "$1" }
+    }
+  },
+  "content_toast_removed": {
+    "message": "Retiré $NAME$ de ton set",
+    "placeholders": {
+      "name": { "content": "$1" }
+    }
+  },
+  "content_toast_failed_block": {
+    "message": "Échec du blocage : $ERROR$",
+    "placeholders": {
+      "error": { "content": "$1" }
+    }
+  },
+  "content_toast_blocked": {
+    "message": "Bloqué $NAME$",
+    "placeholders": {
+      "name": { "content": "$1" }
+    }
+  },
+  "content_toast_unmuted": {
+    "message": "son rétabli pour $NAME$",
+    "placeholders": {
+      "name": { "content": "$1" }
+    }
+  },
+  "content_toast_muted_24h": {
+    "message": "$NAME$ mis en sourdine 24h",
+    "placeholders": {
+      "name": { "content": "$1" }
+    }
+  },
+  "content_card_follows_you": {
+    "message": "te suit"
+  },
+  "content_card_subs_to_you": {
+    "message": "abonné à toi"
+  },
+  "content_card_you_follow": {
+    "message": "tu suis"
+  },
+  "content_card_you_sub": {
+    "message": "tu es abonné"
+  },
+  "content_card_you_sub_tier": {
+    "message": "abonné T$TIER$",
+    "placeholders": {
+      "tier": { "content": "$1" }
+    }
+  },
+  "content_card_subbed": {
+    "message": "abonné à $CHANNEL$ $TENURE$",
+    "placeholders": {
+      "channel": { "content": "$1" },
+      "tenure": { "content": "$2" }
+    }
+  },
+  "content_card_following": {
+    "message": "suit $CHANNEL$ $AGE$",
+    "placeholders": {
+      "channel": { "content": "$1" },
+      "age": { "content": "$2" }
+    }
+  },
+  "content_card_not_following": {
+    "message": "ne suit pas $CHANNEL$",
+    "placeholders": {
+      "channel": { "content": "$1" }
+    }
+  },
+  "content_card_followed_by": {
+    "message": "suivi par $CHANNEL$",
+    "placeholders": {
+      "channel": { "content": "$1" }
+    }
+  },
+  "content_card_following_count": {
+    "message": "suit $COUNT$",
+    "placeholders": {
+      "count": { "content": "$1" }
+    }
+  },
+  "content_card_followers": {
+    "message": "$COUNT$ abonnés",
+    "placeholders": {
+      "count": { "content": "$1" }
+    }
+  },
+  "content_card_partner": {
+    "message": "partenaire"
+  },
+  "content_card_affiliate": {
+    "message": "affilié"
+  },
+  "content_card_live": {
+    "message": "EN DIRECT $VIEWERS$",
+    "placeholders": {
+      "viewers": { "content": "$1" }
+    }
+  },
+  "content_card_twitch_verified": {
+    "message": "Twitch Vérifié"
+  },
+  "content_card_kick_verified": {
+    "message": "Kick Vérifié"
+  },
+  "content_view_on_heatsync": {
+    "message": "voir sur heatsync"
+  },
+  "content_in_your_set": {
+    "message": "dans ton set"
+  },
+  "content_click_to_add": {
+    "message": "cliquer pour ajouter"
+  },
+  "content_blocked_click_unblock": {
+    "message": "bloqué (cliquer pour débloquer)"
+  },
+
+  "mc_tab_feed": {
+    "message": "feed"
+  },
+  "mc_tab_whispers": {
+    "message": "chuchotements"
+  },
+  "mc_tab_mentions": {
+    "message": "mentions"
+  },
+  "mc_tab_activity": {
+    "message": "activité"
+  },
+  "mc_tab_live": {
+    "message": "en direct"
+  },
+  "mc_tab_live_channel": {
+    "message": "en direct · $CHANNEL$",
+    "placeholders": {
+      "channel": { "content": "$1" }
+    }
+  },
+  "mc_btn_rotate_tabs": {
+    "message": "faire pivoter les onglets (T)"
+  },
+  "mc_btn_smaller_text": {
+    "message": "texte plus petit"
+  },
+  "mc_btn_larger_text": {
+    "message": "texte plus grand"
+  },
+  "mc_btn_settings": {
+    "message": "paramètres"
+  },
+  "mc_new_messages": {
+    "message": "$COUNT$ nouveaux",
+    "placeholders": {
+      "count": { "content": "$1" }
+    }
+  },
+  "mc_resume": {
+    "message": "reprendre"
+  },
+  "mc_no_messages": {
+    "message": "aucun message pour l'instant"
+  },
+  "mc_no_activity": {
+    "message": "aucune activité pour l'instant"
+  },
+  "mc_add_channel": {
+    "message": "ajouter une chaîne"
+  },
+  "mc_enter_platform": {
+    "message": "entre au moins une plateforme"
+  },
+  "mc_username_placeholder": {
+    "message": "pseudo"
+  },
+  "mc_username_url_placeholder": {
+    "message": "pseudo ou url"
+  },
+  "mc_reserved_name": {
+    "message": "nom réservé"
+  },
+  "mc_channel_exists": {
+    "message": "la chaîne existe déjà"
+  },
+  "mc_twitch_exists": {
+    "message": "chaîne Twitch déjà ajoutée"
+  },
+  "mc_kick_exists": {
+    "message": "chaîne Kick déjà ajoutée"
+  },
+  "mc_edit_channel": {
+    "message": "modifier $CHANNEL$",
+    "placeholders": {
+      "channel": { "content": "$1" }
+    }
+  },
+  "mc_no_channel_detected": {
+    "message": "aucune chaîne détectée"
+  },
+
+  "mc_settings_display": {
+    "message": "affichage"
+  },
+  "mc_settings_emote_size": {
+    "message": "taille des emotes"
+  },
+  "mc_settings_input_preview": {
+    "message": "aperçu de saisie"
+  },
+  "mc_settings_clickable_links": {
+    "message": "liens cliquables"
+  },
+  "mc_settings_vi_mode": {
+    "message": "mode vi"
+  },
+  "mc_settings_zebra": {
+    "message": "lignes alternées"
+  },
+  "mc_settings_auto_hide": {
+    "message": "masquer la saisie automatiquement"
+  },
+  "mc_settings_timestamps": {
+    "message": "horodatages"
+  },
+  "mc_settings_avatars": {
+    "message": "avatars"
+  },
+  "mc_settings_emote_size_desc": {
+    "message": "Multiplicateur de résolution pour les emotes dans le chat. 1x est net et compact, 2x est le bon équilibre pour la plupart des écrans, 4x c'est pour voir chaque pixel de cet emote."
+  },
+  "mc_settings_input_preview_desc": {
+    "message": "Affiche les emotes en tant qu'images directement dans la zone de saisie pendant la frappe, plutôt que les noms en texte. Ce que tu vois est ce que tu envoies."
+  },
+  "mc_settings_clickable_links_desc": {
+    "message": "Transforme les URLs dans les messages du chat en hyperliens cliquables. Désactive si tu préfères copier-coller ou si tu ne fais tout simplement pas confiance aux inconnus sur internet."
+  },
+  "mc_settings_vi_mode_desc": {
+    "message": "Raccourcis style Vim pour naviguer dans le chat. j/k pour défiler, g/G pour haut/bas, / pour chercher. Pour ceux qui pensent que la souris c'est pour les débutants."
+  },
+  "mc_settings_zebra_desc": {
+    "message": "Ombrage alterné sur les messages du chat. Facilite le suivi des longs messages dans la fenêtre, surtout pendant les chats rapides."
+  },
+  "mc_settings_auto_hide_desc": {
+    "message": "Masque la barre de saisie quand tu ne composes pas de message. Clique ou commence à taper pour la faire réapparaître. Maximise l'espace de visualisation du chat."
+  },
+  "mc_settings_timestamps_desc": {
+    "message": "Affiche l'heure d'envoi de chaque message, juste à côté du pseudo. Utile pour rattraper ce qui s'est passé pendant ton AFK."
+  },
+  "mc_settings_avatars_desc": {
+    "message": "Affiche les photos de profil à côté des pseudos dans le chat. Facilite l'identification visuelle des habitués d'un coup d'œil, au prix d'un peu d'espace vertical."
+  },
+  "mc_settings_inline_notifs": {
+    "message": "notifications inline"
+  },
+  "mc_settings_notif_op": {
+    "message": "[OP] posts originaux"
+  },
+  "mc_settings_notif_op_reply": {
+    "message": "[OP] OP répond dans son propre fil"
+  },
+  "mc_settings_notif_re": {
+    "message": "[RE] réponses"
+  },
+  "mc_settings_notif_dm": {
+    "message": "[DM] chuchotements et DMs"
+  },
+  "mc_settings_notif_op_desc": {
+    "message": "Notification dans ton onglet de chat actif quand quelqu'un crée un nouveau post original sur le feed."
+  },
+  "mc_settings_notif_op_reply_desc": {
+    "message": "Notification quand l'auteur original répond dans son propre fil."
+  },
+  "mc_settings_notif_re_desc": {
+    "message": "Notification pour chaque réponse postée dans n'importe quel fil du feed."
+  },
+  "mc_settings_notif_dm_desc": {
+    "message": "Notification quand tu reçois un chuchotement ou un DM."
+  },
+  "mc_settings_twitch_events": {
+    "message": "événements Twitch"
+  },
+  "mc_settings_raids": {
+    "message": "raids"
+  },
+  "mc_settings_hype_trains": {
+    "message": "hype trains"
+  },
+  "mc_settings_gift_subs": {
+    "message": "abonnements offerts"
+  },
+  "mc_settings_redeems": {
+    "message": "échanges de points de chaîne"
+  },
+  "mc_settings_prediction_banner": {
+    "message": "bannière de prédiction"
+  },
+  "mc_settings_poll_banner": {
+    "message": "bannière de sondage"
+  },
+  "mc_settings_pinned_messages": {
+    "message": "messages épinglés"
+  },
+  "mc_settings_features": {
+    "message": "fonctionnalités"
+  },
+  "mc_settings_auto_claim": {
+    "message": "réclamer les points automatiquement"
+  },
+  "mc_settings_auto_claim_desc": {
+    "message": "Clique automatiquement sur le coffre de points bonus de chaîne sur Twitch quand il apparaît. Des points gratuits, zéro effort."
+  },
+  "mc_settings_muted_users": {
+    "message": "utilisateurs mis en sourdine"
+  },
+  "mc_settings_no_muted": {
+    "message": "aucun utilisateur en sourdine"
+  },
+  "mc_settings_unmute": {
+    "message": "rétablir le son"
+  },
+
+  "mc_pred_no_active": {
+    "message": "aucune prédiction active"
+  },
+  "mc_pred_new": {
+    "message": "+ nouvelle prédiction"
+  },
+  "mc_pred_title_placeholder": {
+    "message": "titre de la prédiction"
+  },
+  "mc_pred_option1": {
+    "message": "option 1 (bleu)"
+  },
+  "mc_pred_option2": {
+    "message": "option 2 (rose)"
+  },
+  "mc_pred_duration": {
+    "message": "durée :"
+  },
+  "mc_pred_create": {
+    "message": "créer une prédiction"
+  },
+  "mc_pred_refunded": {
+    "message": "remboursé"
+  },
+  "mc_pred_locked": {
+    "message": "verrouillé"
+  },
+  "mc_pred_winner": {
+    "message": "gagnant"
+  },
+  "mc_pred_won": {
+    "message": " a gagné"
+  },
+  "mc_pred_lost": {
+    "message": " a perdu"
+  },
+  "mc_pred_lock_betting": {
+    "message": "verrouiller les paris"
+  },
+  "mc_pred_cancel_refund": {
+    "message": "annuler (remboursement)"
+  },
+  "mc_pred_pick_winner": {
+    "message": "choisir le gagnant"
+  },
+  "mc_pred_pick_winner_your_bet": {
+    "message": "choisir le gagnant (ton pari)"
+  },
+  "mc_pred_failed_load": {
+    "message": "impossible de charger les prédictions"
+  },
+  "mc_pred_bet_own": {
+    "message": "impossible de parier sur sa propre chaîne"
+  },
+  "mc_pred_try_again": {
+    "message": "réessayer"
+  },
+  "mc_pred_ended": {
+    "message": "prédiction terminée"
+  },
+  "mc_pred_betting_locked": {
+    "message": "paris verrouillés"
+  },
+  "mc_pred_not_enough": {
+    "message": "points insuffisants"
+  },
+  "mc_pred_already_bet": {
+    "message": "déjà parié"
+  },
+  "mc_pred_no_permission": {
+    "message": "pas de permission"
+  },
+  "mc_pred_failed": {
+    "message": "échec"
+  },
+  "mc_pred_no_event": {
+    "message": "aucun événement"
+  },
+  "mc_pred_no_outcome": {
+    "message": "aucun résultat"
+  },
+  "mc_pred_closing": {
+    "message": "fermeture..."
+  },
+  "mc_pred_you_bet": {
+    "message": "tu as parié $POINTS$ sur $OUTCOME$ — choisis le vrai gagnant",
+    "placeholders": {
+      "points": { "content": "$1" },
+      "outcome": { "content": "$2" }
+    }
+  },
+
+  "mc_poll_new": {
+    "message": "+ nouveau sondage"
+  },
+  "mc_poll_question": {
+    "message": "question du sondage"
+  },
+  "mc_poll_choice": {
+    "message": "choix $NUM$",
+    "placeholders": {
+      "num": { "content": "$1" }
+    }
+  },
+  "mc_poll_choice_optional": {
+    "message": "choix $NUM$ (optionnel)",
+    "placeholders": {
+      "num": { "content": "$1" }
+    }
+  },
+  "mc_poll_create": {
+    "message": "créer un sondage"
+  },
+  "mc_poll_end": {
+    "message": "terminer le sondage"
+  },
+  "mc_poll_votes": {
+    "message": "$COUNT$ votes",
+    "placeholders": {
+      "count": { "content": "$1" }
+    }
+  },
+  "mc_poll_vote_single": {
+    "message": "$COUNT$ vote",
+    "placeholders": {
+      "count": { "content": "$1" }
+    }
+  },
+  "mc_poll_already_active": {
+    "message": "sondage déjà actif"
+  },
+  "mc_poll_not_logged_in": {
+    "message": "non connecté"
+  },
+
+  "mc_reward_rewards": {
+    "message": "récompenses"
+  },
+  "mc_reward_none": {
+    "message": "aucune récompense disponible"
+  },
+  "mc_reward_paused": {
+    "message": "en pause"
+  },
+  "mc_reward_out_of_stock": {
+    "message": "épuisé"
+  },
+  "mc_reward_cooldown_min": {
+    "message": "cooldown de $MIN$m",
+    "placeholders": {
+      "min": { "content": "$1" }
+    }
+  },
+  "mc_reward_cooldown_sec": {
+    "message": "cooldown de $SEC$s",
+    "placeholders": {
+      "sec": { "content": "$1" }
+    }
+  },
+  "mc_reward_enter_text": {
+    "message": "entrer du texte..."
+  },
+  "mc_reward_redeem": {
+    "message": "échanger"
+  },
+
+  "mc_chat_username_color": {
+    "message": "couleur du pseudo"
+  },
+  "mc_chat_hex_placeholder": {
+    "message": "#hex"
+  },
+  "mc_chat_modes": {
+    "message": "modes du chat"
+  },
+  "mc_chat_emote_only": {
+    "message": "emotes seulement"
+  },
+  "mc_chat_follower": {
+    "message": "abonné"
+  },
+  "mc_chat_slow": {
+    "message": "lent"
+  },
+  "mc_chat_sub_only": {
+    "message": "abonnés uniquement"
+  },
+  "mc_chat_unique": {
+    "message": "unique"
+  },
+  "mc_chat_hype_train": {
+    "message": "hype train"
+  },
+  "mc_chat_hype_level": {
+    "message": "niv $LEVEL$",
+    "placeholders": {
+      "level": { "content": "$1" }
+    }
+  },
+
+  "mc_input_send_message": {
+    "message": "envoyer un message..."
+  },
+  "mc_input_post_heatsync": {
+    "message": "publier sur heatsync..."
+  },
+  "mc_input_send_channel": {
+    "message": "envoyer à #$CHANNEL$",
+    "placeholders": {
+      "channel": { "content": "$1" }
+    }
+  },
+  "mc_input_replying_to": {
+    "message": "Réponse à @$USER$",
+    "placeholders": {
+      "user": { "content": "$1" }
+    }
+  },
+  "mc_input_cancel_reply": {
+    "message": "Annuler la réponse"
+  },
+  "mc_input_not_logged_in": {
+    "message": "non connecté"
+  },
+  "mc_input_login_kick": {
+    "message": "connecte-toi sur kick.com d'abord"
+  },
+  "mc_input_open_kick": {
+    "message": "ouvre kick.com dans un onglet"
+  },
+  "mc_input_kick_not_found": {
+    "message": "chaîne Kick introuvable"
+  },
+  "mc_input_send_failed": {
+    "message": "envoi échoué"
+  },
+  "mc_input_no_username": {
+    "message": "aucun pseudo détecté"
+  },
+  "mc_input_auth_failed": {
+    "message": "authentification échouée — reconnecte-toi à Twitch"
+  },
+  "mc_input_connection_failed": {
+    "message": "connexion échouée — réessaie"
+  },
+  "mc_input_send_failed_retry": {
+    "message": "envoi échoué — réessaie"
+  },
+
+  "mc_social_back": {
+    "message": "<- retour"
+  },
+  "mc_social_no_posts": {
+    "message": "aucun post pour l'instant"
+  },
+  "mc_social_loading_feed": {
+    "message": "chargement du feed des abonnements..."
+  },
+  "mc_social_scroll_more": {
+    "message": "défile pour voir plus..."
+  },
+  "mc_social_no_replies": {
+    "message": "aucune réponse pour l'instant"
+  },
+  "mc_social_login_first": {
+    "message": "connecte-toi d'abord sur heatsync.org"
+  },
+  "mc_social_login_activity": {
+    "message": "connecte-toi sur heatsync.org pour voir l'activité"
+  },
+  "mc_social_failed_feed_auth": {
+    "message": "échec du chargement du feed — connecte-toi sur heatsync.org"
+  },
+  "mc_social_failed_feed": {
+    "message": "échec du chargement du feed"
+  },
+  "mc_social_log_in_first": {
+    "message": "connecte-toi d'abord"
+  },
+  "mc_social_slow_down": {
+    "message": "ralentis"
+  },
+  "mc_social_duplicate": {
+    "message": "message dupliqué"
+  },
+  "mc_social_failed_post": {
+    "message": "échec de la publication"
+  },
+
+  "mc_tip_emoji": {
+    "message": "emoji"
+  },
+  "mc_tip_subbed": {
+    "message": "abonné à $CHANNEL$ $TENURE$",
+    "placeholders": {
+      "channel": { "content": "$1" },
+      "tenure": { "content": "$2" }
+    }
+  },
+  "mc_tip_following": {
+    "message": "suit $CHANNEL$ $AGE$",
+    "placeholders": {
+      "channel": { "content": "$1" },
+      "age": { "content": "$2" }
+    }
+  },
+  "mc_tip_not_following": {
+    "message": "ne suit pas $CHANNEL$",
+    "placeholders": {
+      "channel": { "content": "$1" }
+    }
+  },
+  "mc_tip_followed_by": {
+    "message": "suivi par $CHANNEL$",
+    "placeholders": {
+      "channel": { "content": "$1" }
+    }
+  },
+  "mc_tip_followers": {
+    "message": "$COUNT$ abonnés",
+    "placeholders": {
+      "count": { "content": "$1" }
+    }
+  },
+
+  "mc_whisper_hint": {
+    "message": "/w pseudo msg · /dm pseudo msg · /r msg"
+  },
+  "mc_whisper_login": {
+    "message": "connecte-toi sur heatsync.org pour envoyer des chuchotements"
+  },
+  "mc_whisper_user_not_found": {
+    "message": "utilisateur Twitch \"$USER$\" introuvable",
+    "placeholders": {
+      "user": { "content": "$1" }
+    }
+  },
+  "mc_whisper_resolve_failed": {
+    "message": "échec de la résolution de l'utilisateur Twitch"
+  },
+  "mc_whisper_hs_not_found": {
+    "message": "utilisateur heatsync \"$USER$\" introuvable",
+    "placeholders": {
+      "user": { "content": "$1" }
+    }
+  },
+
+  "mc_irc_chat_cleared": {
+    "message": "Le chat a été effacé"
+  },
+  "mc_irc_msg_deleted": {
+    "message": "Message de $USER$ supprimé",
+    "placeholders": {
+      "user": { "content": "$1" }
+    }
+  },
+  "mc_irc_gift_subs": {
+    "message": "$USER$ a offert $AMOUNT$ abonnements à $CHANNEL$",
+    "placeholders": {
+      "user": { "content": "$1" },
+      "amount": { "content": "$2" },
+      "channel": { "content": "$3" }
+    }
+  },
+
+  "mc_yt_connected": {
+    "message": "YouTube connecté : $CHANNEL$ — en attente de messages...",
+    "placeholders": {
+      "channel": { "content": "$1" }
+    }
+  },
+  "mc_yt_ended": {
+    "message": "stream YouTube terminé"
+  },
+  "mc_yt_error": {
+    "message": "erreur de connexion YouTube"
+  },
+
+  "mc_emote_search_placeholder": {
+    "message": "chercher des emotes..."
+  },
+  "mc_emote_no_loaded": {
+    "message": "aucun emote chargé"
+  },
+  "mc_emote_in_set": {
+    "message": "dans ton set"
+  },
+  "mc_emote_click_add": {
+    "message": "cliquer pour ajouter"
+  },
+  "mc_emote_blocked": {
+    "message": "bloqué (cliquer pour débloquer)"
+  }
+}

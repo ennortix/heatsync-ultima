@@ -84,14 +84,14 @@ function rebuildInput() {
     const div = document.createElement('div');
     div.id = 'hs-mc-input';
     div.contentEditable = 'true';
-    div.setAttribute('data-placeholder', 'send a message...');
+    div.setAttribute('data-placeholder', t('mc_input_send_message'));
     div.spellcheck = false;
     if (emoteBtn) bar.insertBefore(div, emoteBtn);
   } else {
     const input = document.createElement('input');
     input.type = 'text';
     input.id = 'hs-mc-input';
-    input.placeholder = 'send a message...';
+    input.placeholder = t('mc_input_send_message');
     input.autocomplete = 'off';
     input.spellcheck = false;
     if (emoteBtn) bar.insertBefore(input, emoteBtn);
@@ -120,8 +120,8 @@ function createInputBar() {
   const iconBlackUrl = chrome.runtime.getURL('icon-48-black.png');
 
   const inputHtml = wysiwygEnabled
-    ? `<div id="hs-mc-input" contenteditable="true" data-placeholder="send a message..." spellcheck="false"></div>`
-    : `<input type="text" id="hs-mc-input" placeholder="send a message..." autocomplete="off" spellcheck="false">`;
+    ? `<div id="hs-mc-input" contenteditable="true" data-placeholder="${t('mc_input_send_message')}" spellcheck="false"></div>`
+    : `<input type="text" id="hs-mc-input" placeholder="${t('mc_input_send_message')}" autocomplete="off" spellcheck="false">`;
 
   bar.innerHTML = `
     ${inputHtml}
@@ -558,23 +558,23 @@ function updateInputPlaceholder() {
 
   let placeholder;
   if (currentTab === 'feed') {
-    placeholder = 'post to heatsync...';
+    placeholder = t('mc_input_post_heatsync');
   } else if (currentTab === 'live') {
     const channel = getLiveChannel();
-    placeholder = channel ? `send to #${channel}` : 'send a message...';
+    placeholder = channel ? t('mc_input_send_channel', [channel]) : t('mc_input_send_message');
   } else if (currentTab === 'mentions') {
     const channel = getCurrentChannel();
-    placeholder = channel ? `send to #${channel}` : 'send a message...';
+    placeholder = channel ? t('mc_input_send_channel', [channel]) : t('mc_input_send_message');
   } else if (currentTab === 'whispers') {
     const lastUser = lastWhisperKey ? whisperUsers.get(lastWhisperKey) : null
-    placeholder = lastUser ? `/r to reply to ${lastUser.displayName}` : '/w user msg · /dm user msg'
+    placeholder = lastUser ? `/r to reply to ${lastUser.displayName}` : t('mc_whisper_hint')
   } else if (currentTab === 'add') {
     placeholder = '';
   } else {
     // Channel tab — resolve twitch name for placeholder
     const ch = config.channels.find(c => (typeof c === 'string' ? c : c.id) === currentTab);
     const twitchName = typeof ch === 'string' ? ch : ch?.twitch;
-    placeholder = twitchName ? `send to #${twitchName}` : `send to #${currentTab}`;
+    placeholder = twitchName ? t('mc_input_send_channel', [twitchName]) : t('mc_input_send_channel', [currentTab]);
   }
 
   if (wysiwygEnabled) {
@@ -1361,11 +1361,11 @@ function setReplyState(state) {
   const indicator = document.createElement('div')
   indicator.id = 'hs-mc-reply-indicator'
   const label = document.createElement('span')
-  label.textContent = `↩ Replying to @${state.user}`
+  label.textContent = '\u21a9 ' + t('mc_input_replying_to', [state.user])
   const cancel = document.createElement('button')
   cancel.id = 'hs-mc-reply-cancel'
   cancel.textContent = '✕'
-  cancel.title = 'Cancel reply'
+  cancel.title = t('mc_input_cancel_reply')
   cancel.addEventListener('click', clearReplyState)
   indicator.appendChild(label)
   indicator.appendChild(cancel)
@@ -1466,12 +1466,12 @@ async function sendSlashWhisper(platform, username, text, input) {
         const resp = await fetch(`https://decapi.me/twitch/id/${encodeURIComponent(lowerUser)}`, { credentials: 'omit' })
         const body = (await resp.text()).trim()
         if (!resp.ok || !/^\d+$/.test(body)) {
-          showToast(`twitch user "${username}" not found`)
+          showToast(t('mc_whisper_user_not_found', [username]))
           return
         }
         whisperUsers.set(key, { platform: 'twitch', userId: body, displayName: username, color: '#fff' })
       } catch (e) {
-        showToast('failed to resolve twitch user')
+        showToast(t('mc_whisper_resolve_failed'))
         return
       }
     }
@@ -1479,7 +1479,7 @@ async function sendSlashWhisper(platform, username, text, input) {
     // HeatSync DM — resolve username → user_id via profile API
     const profileResp = await apiFetch(`/api/profile/${encodeURIComponent(lowerUser)}`)
     if (!profileResp.ok || !profileResp.data?.profile?.user_id) {
-      showToast(`heatsync user "${username}" not found`)
+      showToast(t('mc_whisper_hs_not_found', [username]))
       return
     }
     const userId = profileResp.data.profile.user_id
@@ -1577,10 +1577,10 @@ async function sendMessage() {
       } else {
         // Both failed (or single Kick failed)
         input.style.borderColor = '#f44'
-        const msg = kickResult === 'kick_not_logged_in' ? 'log in to kick.com first'
-          : kickResult === 'no_kick_tab' ? 'open kick.com in a tab'
-          : kickResult === 'no_channel' ? 'kick channel not found'
-          : 'send failed'
+        const msg = kickResult === 'kick_not_logged_in' ? t('mc_input_login_kick')
+          : kickResult === 'no_kick_tab' ? t('mc_input_open_kick')
+          : kickResult === 'no_channel' ? t('mc_input_kick_not_found')
+          : t('mc_input_send_failed')
         if (wysiwygEnabled) input.dataset.placeholder = msg
         else input.placeholder = msg
         setTimeout(() => { input.style.borderColor = ''; updateInputPlaceholder() }, 2500)
@@ -1593,8 +1593,8 @@ async function sendMessage() {
   const token = getTwitchAuthToken()
   if (!token) {
     console.warn('[HS] SEND BAIL: no auth token (cookie missing)')
-    if (wysiwygEnabled) input.dataset.placeholder = 'not logged in'
-    else input.placeholder = 'not logged in'
+    if (wysiwygEnabled) input.dataset.placeholder = t('mc_input_not_logged_in')
+    else input.placeholder = t('mc_input_not_logged_in')
     setTimeout(() => updateInputPlaceholder(), 2000)
     return
   }
@@ -1609,10 +1609,10 @@ async function sendMessage() {
       }
     } else {
       input.style.borderColor = '#f44'
-      const msg = result === 'no_user' ? 'no username detected'
-        : result === 'auth_failed' ? 'auth failed — re-login to twitch'
-        : result === 'connect_failed' ? 'connection failed — try again'
-        : 'send failed — try again'
+      const msg = result === 'no_user' ? t('mc_input_no_username')
+        : result === 'auth_failed' ? t('mc_input_auth_failed')
+        : result === 'connect_failed' ? t('mc_input_connection_failed')
+        : t('mc_input_send_failed_retry')
       if (wysiwygEnabled) input.dataset.placeholder = msg
       else input.placeholder = msg
       setTimeout(() => { input.style.borderColor = ''; updateInputPlaceholder() }, 2500)

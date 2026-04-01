@@ -3005,7 +3005,7 @@ async function sendKickMessage(kickSlug, text) {
     nameEl.appendChild(emojiChar)
     nameEl.appendChild(label)
 
-    stateEl.textContent = 'emoji'
+    stateEl.textContent = t('mc_tip_emoji')
     stateEl.className = 'tooltip-source'
 
     tooltip.style.left = '-9999px'
@@ -3022,7 +3022,7 @@ async function sendKickMessage(kickSlug, text) {
     if (nameEl?.textContent !== emoteName) return;
     const stateEl = emoteTooltip.querySelector('.tooltip-source');
     if (!stateEl) return;
-    const labels = { owned: 'in your set', unadded: 'click to add', blocked: 'blocked (click to unblock)' };
+    const labels = { owned: t('mc_emote_in_set'), unadded: t('mc_emote_click_add'), blocked: t('mc_emote_blocked') };
     stateEl.textContent = labels[newState] || newState;
     stateEl.className = 'tooltip-source ' + (newState || 'global');
   }
@@ -3277,7 +3277,7 @@ async function sendKickMessage(kickSlug, text) {
     if (op > 0) statBadges.push(`<span class="hs-pc-stat op"><span class="hs-pc-num">${formatCompact(op)}</span> [OP]</span>`);
     if (mop > 0) statBadges.push(`<span class="hs-pc-stat mop"><span class="hs-pc-num">${formatCompact(mop)}</span> <span style="color:#ff00ff">[OP]</span></span>`);
     if (re > 0) statBadges.push(`<span class="hs-pc-stat re"><span class="hs-pc-num">${formatCompact(re)}</span> [RE]</span>`);
-    if (followers > 0) statBadges.push(`<span class="hs-pc-stat hs-pc-stat-followers">${formatCompact(followers)} followers</span>`);
+    if (followers > 0) statBadges.push(`<span class="hs-pc-stat hs-pc-stat-followers">${t('mc_tip_followers', [formatCompact(followers)])}</span>`);
 
     // Relationship
     const rel = p.relationship || {};
@@ -3388,7 +3388,7 @@ async function sendKickMessage(kickSlug, text) {
     if (!header) return
     const badge = document.createElement('span')
     badge.className = 'hs-pc-sub-tenure'
-    badge.textContent = 'subbed ' + channelLogin + ' ' + formatSubTenure(months)
+    badge.textContent = t('mc_tip_subbed', [channelLogin, formatSubTenure(months)])
     header.appendChild(badge)
   }
 
@@ -3407,17 +3407,17 @@ async function sendKickMessage(kickSlug, text) {
     const badge = document.createElement('span')
     if (result.followedAt) {
       badge.className = 'hs-pc-followage'
-      badge.textContent = 'following ' + channelLogin + ' ' + getCompactRelTime(result.followedAt).replace(' ago', '')
+      badge.textContent = t('mc_tip_following', [channelLogin, getCompactRelTime(result.followedAt).replace(' ago', '')])
     } else {
       badge.className = 'hs-pc-followage hs-pc-nofollow'
-      badge.textContent = 'not following ' + channelLogin
+      badge.textContent = t('mc_tip_not_following', [channelLogin])
     }
     header.appendChild(badge)
     // "followed by {channel}" badge — streamer follows this user
     if (result.channelFollowedAt) {
       const cfBadge = document.createElement('span')
       cfBadge.className = 'hs-pc-channel-follows'
-      cfBadge.textContent = 'followed by ' + channelLogin
+      cfBadge.textContent = t('mc_tip_followed_by', [channelLogin])
       header.appendChild(cfBadge)
     }
     // Update follower count from live data
@@ -3426,11 +3426,11 @@ async function sendKickMessage(kickSlug, text) {
       // Update followers with live data
       const followerStat = statsEl.querySelector('.hs-pc-stat-followers')
       if (followerStat) {
-        followerStat.textContent = formatCompact(result.followerCount) + ' followers'
+        followerStat.textContent = t('mc_tip_followers', [formatCompact(result.followerCount)])
       } else {
         const el = document.createElement('span')
         el.className = 'hs-pc-stat hs-pc-stat-followers'
-        el.textContent = formatCompact(result.followerCount) + ' followers'
+        el.textContent = t('mc_tip_followers', [formatCompact(result.followerCount)])
         statsEl.appendChild(el)
       }
     }
@@ -3532,7 +3532,7 @@ async function sendKickMessage(kickSlug, text) {
     loadWrap.className = 'link-text';
     const loadSpan = document.createElement('span');
     loadSpan.className = 'link-loading';
-    loadSpan.textContent = 'loading...';
+    loadSpan.textContent = t('common_loading');
     const domainSpan = document.createElement('span');
     domainSpan.className = 'link-domain';
     domainSpan.textContent = hostname;
@@ -6792,7 +6792,7 @@ async function fetchFeed(append = false) {
     if (currentTab === 'feed') {
       const msgsEl = document.getElementById('hs-mc-messages');
       if (msgsEl && feedMessages.length === 0) {
-        msgsEl.innerHTML = `<div class="hs-mc-empty">failed to load feed${resp.status === 401 ? ' — log in at heatsync.org' : ''}</div>`;
+        msgsEl.innerHTML = `<div class="hs-mc-empty">${resp.status === 401 ? t('mc_social_failed_feed_auth') : t('mc_social_failed_feed')}</div>`;
       }
     }
     return;
@@ -6817,7 +6817,7 @@ function renderFeed() {
 
   // Update feed tab button text
   const feedTabBtn = tabBarElement?.querySelector('[data-tab="feed"]');
-  if (feedTabBtn) feedTabBtn.textContent = activeThread ? '<- back' : 'feed';
+  if (feedTabBtn) feedTabBtn.textContent = activeThread ? t('mc_social_back') : t('mc_tab_feed');
 
   // Thread view — show OP + replies
   if (activeThread) {
@@ -6831,7 +6831,7 @@ function renderFeed() {
     msgsEl.textContent = '';
     const loading = document.createElement('div');
     loading.className = 'hs-mc-empty';
-    loading.textContent = 'loading following feed...';
+    loading.textContent = t('mc_social_loading_feed');
     msgsEl.appendChild(loading);
     fetchFeed();
     return;
@@ -6841,7 +6841,7 @@ function renderFeed() {
     msgsEl.textContent = '';
     const empty = document.createElement('div');
     empty.className = 'hs-mc-empty';
-    empty.textContent = 'no posts yet';
+    empty.textContent = t('mc_social_no_posts');
     msgsEl.appendChild(empty);
     return;
   }
@@ -6859,7 +6859,7 @@ function renderFeed() {
   if (feedHasMore) {
     const loader = document.createElement('div');
     loader.className = 'hs-mc-empty hs-feed-loader';
-    loader.textContent = 'scroll for more...';
+    loader.textContent = t('mc_social_scroll_more');
     frag.appendChild(loader);
   }
   msgsEl.appendChild(frag);
@@ -7183,7 +7183,7 @@ function renderThreadView(msgsEl) {
   } else if (t.replies.length === 0) {
     const empty = document.createElement('div');
     empty.className = 'hs-mc-empty';
-    empty.textContent = 'no replies yet';
+    empty.textContent = t('mc_social_no_replies');
     empty.style.fontSize = '11px';
     container.appendChild(empty);
   } else {
@@ -7208,9 +7208,9 @@ async function postFeedMessage(text, { topLevel = false } = {}) {
 
   if (!hsAuthToken) {
     if (wysiwygEnabled) {
-      input.dataset.placeholder = 'log in at heatsync.org first';
+      input.dataset.placeholder = t('mc_social_login_first');
     } else {
-      input.placeholder = 'log in at heatsync.org first';
+      input.placeholder = t('mc_social_login_first');
     }
     setTimeout(() => updateInputPlaceholder(), 2000);
     return;
@@ -7253,10 +7253,10 @@ async function postFeedMessage(text, { topLevel = false } = {}) {
     if (currentTab === 'feed') renderFeed()
   } else {
     input.style.borderColor = '#f44';
-    const errMsg = resp.status === 401 ? 'log in first'
-      : resp.status === 429 ? 'slow down'
-      : resp.status === 409 ? 'duplicate message'
-      : 'failed to post';
+    const errMsg = resp.status === 401 ? t('mc_social_log_in_first')
+      : resp.status === 429 ? t('mc_social_slow_down')
+      : resp.status === 409 ? t('mc_social_duplicate')
+      : t('mc_social_failed_post');
     showToast(errMsg);
     setTimeout(() => { input.style.borderColor = ''; }, 1500);
     log('Post failed:', resp.status || resp.error);
@@ -7299,7 +7299,7 @@ function renderActivity() {
   }
 
   if (!hsAuthToken && activityEvents.length === 0) {
-    msgsEl.innerHTML = '<div class="hs-mc-empty">log in at <a href="https://heatsync.org" target="_blank" style="color:#ff6b35">heatsync.org</a> to see activity</div>';
+    msgsEl.innerHTML = `<div class="hs-mc-empty">${t('mc_social_login_activity')}</div>`;
     return;
   }
 
@@ -7328,7 +7328,7 @@ function renderActivity() {
   const merged = normalized.slice(0, 150);
 
   if (merged.length === 0) {
-    msgsEl.innerHTML = '<div class="hs-mc-empty">no activity yet</div>';
+    msgsEl.innerHTML = `<div class="hs-mc-empty">${t('mc_no_activity')}</div>`;
     return;
   }
 
@@ -7865,14 +7865,14 @@ function rebuildInput() {
     const div = document.createElement('div');
     div.id = 'hs-mc-input';
     div.contentEditable = 'true';
-    div.setAttribute('data-placeholder', 'send a message...');
+    div.setAttribute('data-placeholder', t('mc_input_send_message'));
     div.spellcheck = false;
     if (emoteBtn) bar.insertBefore(div, emoteBtn);
   } else {
     const input = document.createElement('input');
     input.type = 'text';
     input.id = 'hs-mc-input';
-    input.placeholder = 'send a message...';
+    input.placeholder = t('mc_input_send_message');
     input.autocomplete = 'off';
     input.spellcheck = false;
     if (emoteBtn) bar.insertBefore(input, emoteBtn);
@@ -7901,8 +7901,8 @@ function createInputBar() {
   const iconBlackUrl = chrome.runtime.getURL('icon-48-black.png');
 
   const inputHtml = wysiwygEnabled
-    ? `<div id="hs-mc-input" contenteditable="true" data-placeholder="send a message..." spellcheck="false"></div>`
-    : `<input type="text" id="hs-mc-input" placeholder="send a message..." autocomplete="off" spellcheck="false">`;
+    ? `<div id="hs-mc-input" contenteditable="true" data-placeholder="${t('mc_input_send_message')}" spellcheck="false"></div>`
+    : `<input type="text" id="hs-mc-input" placeholder="${t('mc_input_send_message')}" autocomplete="off" spellcheck="false">`;
 
   bar.innerHTML = `
     ${inputHtml}
@@ -8339,23 +8339,23 @@ function updateInputPlaceholder() {
 
   let placeholder;
   if (currentTab === 'feed') {
-    placeholder = 'post to heatsync...';
+    placeholder = t('mc_input_post_heatsync');
   } else if (currentTab === 'live') {
     const channel = getLiveChannel();
-    placeholder = channel ? `send to #${channel}` : 'send a message...';
+    placeholder = channel ? t('mc_input_send_channel', [channel]) : t('mc_input_send_message');
   } else if (currentTab === 'mentions') {
     const channel = getCurrentChannel();
-    placeholder = channel ? `send to #${channel}` : 'send a message...';
+    placeholder = channel ? t('mc_input_send_channel', [channel]) : t('mc_input_send_message');
   } else if (currentTab === 'whispers') {
     const lastUser = lastWhisperKey ? whisperUsers.get(lastWhisperKey) : null
-    placeholder = lastUser ? `/r to reply to ${lastUser.displayName}` : '/w user msg · /dm user msg'
+    placeholder = lastUser ? `/r to reply to ${lastUser.displayName}` : t('mc_whisper_hint')
   } else if (currentTab === 'add') {
     placeholder = '';
   } else {
     // Channel tab — resolve twitch name for placeholder
     const ch = config.channels.find(c => (typeof c === 'string' ? c : c.id) === currentTab);
     const twitchName = typeof ch === 'string' ? ch : ch?.twitch;
-    placeholder = twitchName ? `send to #${twitchName}` : `send to #${currentTab}`;
+    placeholder = twitchName ? t('mc_input_send_channel', [twitchName]) : t('mc_input_send_channel', [currentTab]);
   }
 
   if (wysiwygEnabled) {
@@ -9142,11 +9142,11 @@ function setReplyState(state) {
   const indicator = document.createElement('div')
   indicator.id = 'hs-mc-reply-indicator'
   const label = document.createElement('span')
-  label.textContent = `↩ Replying to @${state.user}`
+  label.textContent = '\u21a9 ' + t('mc_input_replying_to', [state.user])
   const cancel = document.createElement('button')
   cancel.id = 'hs-mc-reply-cancel'
   cancel.textContent = '✕'
-  cancel.title = 'Cancel reply'
+  cancel.title = t('mc_input_cancel_reply')
   cancel.addEventListener('click', clearReplyState)
   indicator.appendChild(label)
   indicator.appendChild(cancel)
@@ -9247,12 +9247,12 @@ async function sendSlashWhisper(platform, username, text, input) {
         const resp = await fetch(`https://decapi.me/twitch/id/${encodeURIComponent(lowerUser)}`, { credentials: 'omit' })
         const body = (await resp.text()).trim()
         if (!resp.ok || !/^\d+$/.test(body)) {
-          showToast(`twitch user "${username}" not found`)
+          showToast(t('mc_whisper_user_not_found', [username]))
           return
         }
         whisperUsers.set(key, { platform: 'twitch', userId: body, displayName: username, color: '#fff' })
       } catch (e) {
-        showToast('failed to resolve twitch user')
+        showToast(t('mc_whisper_resolve_failed'))
         return
       }
     }
@@ -9260,7 +9260,7 @@ async function sendSlashWhisper(platform, username, text, input) {
     // HeatSync DM — resolve username → user_id via profile API
     const profileResp = await apiFetch(`/api/profile/${encodeURIComponent(lowerUser)}`)
     if (!profileResp.ok || !profileResp.data?.profile?.user_id) {
-      showToast(`heatsync user "${username}" not found`)
+      showToast(t('mc_whisper_hs_not_found', [username]))
       return
     }
     const userId = profileResp.data.profile.user_id
@@ -9358,10 +9358,10 @@ async function sendMessage() {
       } else {
         // Both failed (or single Kick failed)
         input.style.borderColor = '#f44'
-        const msg = kickResult === 'kick_not_logged_in' ? 'log in to kick.com first'
-          : kickResult === 'no_kick_tab' ? 'open kick.com in a tab'
-          : kickResult === 'no_channel' ? 'kick channel not found'
-          : 'send failed'
+        const msg = kickResult === 'kick_not_logged_in' ? t('mc_input_login_kick')
+          : kickResult === 'no_kick_tab' ? t('mc_input_open_kick')
+          : kickResult === 'no_channel' ? t('mc_input_kick_not_found')
+          : t('mc_input_send_failed')
         if (wysiwygEnabled) input.dataset.placeholder = msg
         else input.placeholder = msg
         setTimeout(() => { input.style.borderColor = ''; updateInputPlaceholder() }, 2500)
@@ -9374,8 +9374,8 @@ async function sendMessage() {
   const token = getTwitchAuthToken()
   if (!token) {
     console.warn('[HS] SEND BAIL: no auth token (cookie missing)')
-    if (wysiwygEnabled) input.dataset.placeholder = 'not logged in'
-    else input.placeholder = 'not logged in'
+    if (wysiwygEnabled) input.dataset.placeholder = t('mc_input_not_logged_in')
+    else input.placeholder = t('mc_input_not_logged_in')
     setTimeout(() => updateInputPlaceholder(), 2000)
     return
   }
@@ -9390,10 +9390,10 @@ async function sendMessage() {
       }
     } else {
       input.style.borderColor = '#f44'
-      const msg = result === 'no_user' ? 'no username detected'
-        : result === 'auth_failed' ? 'auth failed — re-login to twitch'
-        : result === 'connect_failed' ? 'connection failed — try again'
-        : 'send failed — try again'
+      const msg = result === 'no_user' ? t('mc_input_no_username')
+        : result === 'auth_failed' ? t('mc_input_auth_failed')
+        : result === 'connect_failed' ? t('mc_input_connection_failed')
+        : t('mc_input_send_failed_retry')
       if (wysiwygEnabled) input.dataset.placeholder = msg
       else input.placeholder = msg
       setTimeout(() => { input.style.borderColor = ''; updateInputPlaceholder() }, 2500)
@@ -10637,20 +10637,20 @@ const STORAGE_KEY = 'heatsync_multichat';
 
     // Tooltip descriptions for settings — all static strings, no user input
     const settingTips = {
-      emoteSize: 'Resolution multiplier for emotes in chat. 1x is crisp and compact, 2x is the sweet spot for most displays, 4x is for when you want to see every pixel of that emote art.',
-      wysiwyg: 'Shows emotes as images directly in the input box as you type, instead of plain text names. What you see is what you send.',
-      links: "Turns URLs in chat messages into clickable hyperlinks. Disable if you prefer to copy-paste or just don't trust strangers on the internet.",
-      vi: 'Vim-style keybindings for chat navigation. j/k to scroll, g/G for top/bottom, / to search. For people who think mice are for casuals.',
-      zebra: 'Alternating row shading on chat messages. Makes it easier to track long messages across the window, especially during fast chat.',
-      autohide: "Hides the input bar when you're not actively composing a message. Click or start typing to bring it back. Maximizes chat viewing space.",
-      timestamps: 'Shows the time each message was sent, right next to the username. Useful for catching up on what happened while you were AFK.',
-      avatars: 'Displays profile pictures next to usernames in chat. Makes it easier to visually identify regulars at a glance, costs a bit of vertical space.',
+      emoteSize: t('mc_settings_emote_size_desc'),
+      wysiwyg: t('mc_settings_input_preview_desc'),
+      links: t('mc_settings_clickable_links_desc'),
+      vi: t('mc_settings_vi_mode_desc'),
+      zebra: t('mc_settings_zebra_desc'),
+      autohide: t('mc_settings_auto_hide_desc'),
+      timestamps: t('mc_settings_timestamps_desc'),
+      avatars: t('mc_settings_avatars_desc'),
     }
     const notifTips = {
-      op: 'Notification in your active chat tab when someone creates a new original post on the feed. Keeps you in the loop without switching tabs.',
-      mop: 'Notification when the original poster replies in their own thread. Useful for tracking when an OP responds to discussion.',
-      re: 'Notification for every reply posted to any thread on the feed. Can get noisy during active discussions.',
-      dm: 'Notification when you receive a whisper or DM. You probably want this on unless you are intentionally ignoring someone.',
+      op: t('mc_settings_notif_op_desc'),
+      mop: t('mc_settings_notif_mop_desc'),
+      re: t('mc_settings_notif_re_desc'),
+      dm: t('mc_settings_notif_dm_desc'),
     }
 
     // Static settings HTML — no user input, all tooltip values are hardcoded strings above
@@ -16505,7 +16505,7 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
       } else if (eventType === 'sub-gift') {
         toggleKey = 'sub'
         eventClass = 'event-sub'
-        text = `[${escapeHtml(channel)}] \u25C6 ${escapeHtml(data.user)} gifted ${Number(data.count) || 0} subs`
+        text = `[${escapeHtml(channel)}] \u25C6 ${t('mc_irc_gift_subs', [escapeHtml(data.user), String(Number(data.count) || 0), escapeHtml(channel)])}`
       } else if (eventType === 'redeem') {
         toggleKey = 'redeem'
         eventClass = 'event-redeem'

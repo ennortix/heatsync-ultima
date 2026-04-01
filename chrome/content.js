@@ -3631,7 +3631,7 @@ function replaceEmotesWithStacking(element, allEmotes) {
     const blockAllBtn = document.createElement('span');
     blockAllBtn.className = 'heatsync-stack-block-all';
     blockAllBtn.textContent = '⊘';
-    blockAllBtn.title = 'block all';
+    blockAllBtn.title = t('btn_block_all');
     stackContainer.appendChild(blockAllBtn);
 
     // Force overlay re-center when images load (fixes centering on first render)

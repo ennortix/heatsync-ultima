@@ -10092,40 +10092,98 @@ const STORAGE_KEY = 'heatsync_multichat';
     let isResizing = false
     let startX = 0
     let startWidth = 0
+    let rafId = 0
+    let pendingWidth = 0
+    let overlay = null
+    let dragStyle = null
+    const isVertical = () => tabPosition === 'left' || tabPosition === 'right'
+    // Cache the flex parent that holds both video and rightCol
+    const flexParent = rightCol.closest('[class*="Layout"][class*=" "]')?.parentElement?.closest('[style], [class]') || rightCol.parentElement?.parentElement
+
+    function applyResize() {
+      rafId = 0
+      chatWidth = pendingWidth
+      const w = chatWidth + (isVertical() ? 90 : 0)
+      // Only update CSS var — rightCol reads it via the injected drag style rule
+      document.documentElement.style.setProperty('--hs-tw-chat-width', w + 'px')
+    }
 
     handle.addEventListener('mousedown', (e) => {
       isResizing = true
       startX = e.clientX
       startWidth = chatWidth
+      const w = (chatWidth + (isVertical() ? 90 : 0))
+      const rect = rightCol.getBoundingClientRect()
       document.body.style.cursor = 'ew-resize'
       document.body.style.userSelect = 'none'
+      document.documentElement.style.setProperty('--hs-tw-chat-width', w + 'px')
+      // Pull rightCol out of flex flow — position:fixed like Kick does
+      // This prevents expensive flex recalc + video re-render on every frame
+      dragStyle = document.createElement('style')
+      dragStyle.id = 'hs-drag-perf'
+      dragStyle.textContent = `
+        * { transition: none !important; }
+      `
+      document.head.appendChild(dragStyle)
+      rightCol.style.setProperty('position', 'fixed', 'important')
+      rightCol.style.setProperty('top', rect.top + 'px', 'important')
+      rightCol.style.setProperty('right', '0', 'important')
+      rightCol.style.setProperty('bottom', '0', 'important')
+      rightCol.style.setProperty('width', w + 'px', 'important')
+      rightCol.style.setProperty('z-index', '9999', 'important')
+      // Placeholder margin so video area fills the gap
+      const wrapper = rightCol.parentElement
+      if (wrapper) wrapper.style.setProperty('margin-right', w + 'px', 'important')
+      // Transparent overlay catches mouse over iframes/video
+      overlay = document.createElement('div')
+      overlay.id = 'hs-resize-overlay'
+      overlay.style.cssText = 'position:fixed;inset:0;z-index:99999;cursor:ew-resize'
+      document.body.appendChild(overlay)
       e.preventDefault()
     })
 
     cleanup.addEventListener(document, 'mousemove', (e) => {
       if (!isResizing) return
-      // Dragging left = bigger chat, dragging right = smaller chat
       const delta = startX - e.clientX
-      const newWidth = Math.min(MAX_CHAT_WIDTH, Math.max(MIN_CHAT_WIDTH, startWidth + delta))
-      chatWidth = newWidth
-      applyChatWidth()
+      pendingWidth = Math.min(MAX_CHAT_WIDTH, Math.max(MIN_CHAT_WIDTH, startWidth + delta))
+      if (!rafId) rafId = requestAnimationFrame(() => {
+        rafId = 0
+        chatWidth = pendingWidth
+        const w = chatWidth + (isVertical() ? 90 : 0)
+        rightCol.style.setProperty('width', w + 'px', 'important')
+        const wrapper = rightCol.parentElement
+        if (wrapper) wrapper.style.setProperty('margin-right', w + 'px', 'important')
+      })
     })
 
     cleanup.addEventListener(document, 'mouseup', () => {
-      if (isResizing) {
-        isResizing = false
-        document.body.style.cursor = ''
-        document.body.style.userSelect = ''
-        saveChatWidth()
-      }
+      if (!isResizing) return
+      isResizing = false
+      if (rafId) { cancelAnimationFrame(rafId); rafId = 0 }
+      chatWidth = pendingWidth || chatWidth
+      // Restore rightCol to normal flow
+      rightCol.style.removeProperty('position')
+      rightCol.style.removeProperty('top')
+      rightCol.style.removeProperty('right')
+      rightCol.style.removeProperty('bottom')
+      rightCol.style.removeProperty('z-index')
+      const wrapper = rightCol.parentElement
+      if (wrapper) wrapper.style.removeProperty('margin-right')
+      document.documentElement.style.removeProperty('--hs-tw-chat-width')
+      if (dragStyle) { dragStyle.remove(); dragStyle = null }
+      applyChatWidth(rightCol)
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
+      if (overlay) { overlay.remove(); overlay = null }
+      saveChatWidth()
     })
 
     // Load saved width
     loadChatWidth()
   }
 
-  function applyChatWidth() {
-    const rightCol = document.querySelector('.right-column')
+  function applyChatWidth(cachedRightCol) {
+    const rightCol = cachedRightCol || document.querySelector('.right-column')
     if (!rightCol) return
     const collapsed = rightCol.classList.contains('right-column--collapsed')
 
@@ -10155,21 +10213,12 @@ const STORAGE_KEY = 'heatsync_multichat';
     const isVertical = tabPosition === 'left' || tabPosition === 'right'
     const colWidth = chatWidth + (isVertical ? 90 : 0)
 
-    // Parent is display:block, so flex-basis alone won't work — need inline width.
-    // Don't override display — Twitch's native display:block works correctly.
-    // Setting display:flex breaks internal child layout (flex-direction:row default).
-    // Player sizing fix is handled by CSS rule in injected-message.css.
     rightCol.style.setProperty('width', colWidth + 'px', 'important')
     rightCol.style.setProperty('min-width', colWidth + 'px', 'important')
     rightCol.style.setProperty('flex-shrink', '0', 'important')
 
-    // Vertical tabs: widen the inner column chain so .stream-chat fills the
-    // wider .right-column. The bottleneck is .channel-root__right-column
-    // (position:absolute, Twitch sizes it to default chat width).
     const innerCol = rightCol.querySelector('.channel-root__right-column')
     if (innerCol) {
-      // Always fill parent — Twitch leaves a scrollbar gap (right: 47px)
-      // that's wasted space when native chat is hidden
       innerCol.style.setProperty('width', '100%', 'important')
     }
   }
@@ -10198,8 +10247,10 @@ const STORAGE_KEY = 'heatsync_multichat';
   function applyKickChatWidth() {
     const chatroom = document.getElementById('channel-chatroom')
     if (!chatroom) return
+    chatWidth = Math.min(MAX_CHAT_WIDTH, Math.max(MIN_CHAT_WIDTH, chatWidth))
     chatroom.style.setProperty('width', chatWidth + 'px', 'important')
     document.documentElement.style.setProperty('--hs-kick-chat-width', chatWidth + 'px')
+    document.documentElement.style.setProperty('--chat-width', chatWidth + 'px')
   }
 
   /**
@@ -10208,11 +10259,12 @@ const STORAGE_KEY = 'heatsync_multichat';
    */
   function setupKickResizeHandle() {
     const chatroom = document.getElementById('channel-chatroom')
-    if (!chatroom || document.getElementById('hs-kick-resize-handle')) return
+    const mcContainer = document.getElementById('hs-mc-container')
+    if (!chatroom || !mcContainer || document.getElementById('hs-kick-resize-handle')) return
 
     const handle = document.createElement('div')
     handle.id = 'hs-kick-resize-handle'
-    chatroom.insertBefore(handle, chatroom.firstChild)
+    mcContainer.insertBefore(handle, mcContainer.firstChild)
 
     let isResizing = false
     let startX = 0
@@ -10226,7 +10278,11 @@ const STORAGE_KEY = 'heatsync_multichat';
       chatWidth = pendingWidth
       chatroom.style.setProperty('width', chatWidth + 'px', 'important')
       document.documentElement.style.setProperty('--hs-kick-chat-width', chatWidth + 'px')
+      document.documentElement.style.setProperty('--chat-width', chatWidth + 'px')
     }
+
+    const chatroomParent = chatroom.parentElement
+    const kickMain = document.querySelector('main')
 
     handle.addEventListener('mousedown', (e) => {
       isResizing = true
@@ -10236,8 +10292,8 @@ const STORAGE_KEY = 'heatsync_multichat';
       document.body.style.userSelect = 'none'
       // Kill transitions during drag
       chatroom.style.setProperty('transition', 'none', 'important')
-      const main = document.querySelector('main')
-      if (main) main.style.setProperty('transition', 'none', 'important')
+      if (chatroomParent) chatroomParent.style.setProperty('transition', 'none', 'important')
+      if (kickMain) kickMain.style.setProperty('transition', 'none', 'important')
       // Transparent overlay catches mouse over iframes/video
       overlay = document.createElement('div')
       overlay.id = 'hs-resize-overlay'
@@ -10257,17 +10313,15 @@ const STORAGE_KEY = 'heatsync_multichat';
       if (!isResizing) return
       isResizing = false
       if (rafId) { cancelAnimationFrame(rafId); rafId = 0 }
-      // Apply final width
       chatWidth = pendingWidth || chatWidth
       applyKickChatWidth()
       document.body.style.cursor = ''
       document.body.style.userSelect = ''
-      // Remove overlay
       if (overlay) { overlay.remove(); overlay = null }
       // Restore transitions
       chatroom.style.removeProperty('transition')
-      const main = document.querySelector('main')
-      if (main) main.style.removeProperty('transition')
+      if (chatroomParent) chatroomParent.style.removeProperty('transition')
+      if (kickMain) kickMain.style.removeProperty('transition')
       saveChatWidth()
     })
 
@@ -11114,16 +11168,15 @@ const STORAGE_KEY = 'heatsync_multichat';
         position: absolute;
         top: 0;
         left: 0;
-        width: 5px;
+        width: 6px;
         height: 100%;
         cursor: ew-resize;
         z-index: 2000;
         background: transparent;
-        transition: none;
       }
       #hs-mc-resize-handle:hover,
       #hs-mc-resize-handle:active {
-        background: #9147ff;
+        background: #ff8700;
       }
 
       #hs-mc-messages {
@@ -13900,7 +13953,7 @@ const STORAGE_KEY = 'heatsync_multichat';
       .hs-native-hidden div.editor-input {
         display: none !important;
       }
-      .hs-native-hidden#channel-chatroom > *:not(#hs-kick-resize-handle) {
+      .hs-native-hidden#channel-chatroom > * {
         display: none !important;
       }
       /* Force Kick chatroom hidden — container (sibling) becomes the panel */
@@ -13928,8 +13981,7 @@ const STORAGE_KEY = 'heatsync_multichat';
       /* On live tab (native chat showing), hide overlay + input but keep tabs visible */
       #channel-chatroom:not(.hs-native-hidden) ~ #hs-mc-container > #hs-mc-overlay,
       #channel-chatroom:not(.hs-native-hidden) ~ #hs-mc-container > #hs-mc-emote-picker,
-      #channel-chatroom:not(.hs-native-hidden) ~ #hs-mc-container > .hs-mc-inputbar,
-      #channel-chatroom:not(.hs-native-hidden) ~ #hs-mc-container > #hs-kick-resize-handle {
+      #channel-chatroom:not(.hs-native-hidden) ~ #hs-mc-container > .hs-mc-inputbar {
         display: none !important;
       }
       /* Keep tabbar visible over native chat — fixed panel, respects tab position */
@@ -14008,28 +14060,23 @@ const STORAGE_KEY = 'heatsync_multichat';
       #hs-kick-resize-handle {
         position: absolute;
         top: 0;
-        left: -4px;
-        width: 8px;
+        left: 0;
+        width: 6px;
         height: 100%;
         cursor: col-resize;
         z-index: 10000;
         background: transparent;
+        pointer-events: auto;
       }
-      #hs-kick-resize-handle::after {
-        content: '';
-        position: absolute;
-        top: 0;
-        left: 3px;
-        width: 2px;
-        height: 100%;
-        background: transparent;
-        transition: background 0.15s;
-      }
-      #hs-kick-resize-handle:hover::after {
+      #hs-kick-resize-handle:hover,
+      body:has(#hs-resize-overlay) #hs-kick-resize-handle {
         background: #ff8700;
       }
-      body:has(#hs-resize-overlay) #hs-kick-resize-handle::after {
-        background: #ff8700;
+
+      /* Boost Kick's popover/tooltip z-index above our panels */
+      .z-popover, .z-tooltip, .z-modal, .z-dropdown,
+      [data-radix-popper-content-wrapper] {
+        z-index: 100000 !important;
       }
 
       /* Prevent channel accent color bleed on offline/home pages */

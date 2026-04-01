@@ -1,7 +1,7 @@
 {
   "manifest_version": 2,
   "name": "heatsync",
-  "version": "0.1.0",
+  "version": "1.2.1",
   "description": "Custom emotes for Twitch, Kick, and YouTube chat. Unlimited slots, tab completion, real-time sync.",
   "author": "heatsync.org",
   "homepage_url": "https://heatsync.org",

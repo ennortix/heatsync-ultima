@@ -23,33 +23,30 @@ upload any image to [heatsync.org](https://heatsync.org), install the extension,
 
 other emote extensions gate uploads behind approval queues, limit your slots, and keep emote sets separate per platform. heatsync gives you unlimited emotes with one upload — same set works on twitch, kick, and youtube.
 
-| | **heatsync** | **ffz** | **7tv** | **bttv** |
-|---|---|---|---|---|
-| **platforms** | twitch, kick, youtube | twitch | twitch, kick, youtube | twitch, youtube (beta) |
-| **emote upload** | instant, unlimited, no approval | 50 free slots, up to 500 paid, manual approval | instant, 1000 free slots | 30 free slots, up to 200 paid, auto-approved |
-| **cross-platform emotes** | yes — one set everywhere | no | no — separate sets per platform | no — separate sets per platform |
-| **multichat** | built-in (tabs, IRC, mentions, youtube) | no | no | no |
-| **cosmetics** | bttv/ffz/7tv badges + 7tv paints | own badges, custom mod/VIP badges | own paints + badges | own badges |
-| **third-party emotes** | loads bttv/ffz/7tv automatically | own only (bttv/7tv via opt-in add-ons) | loads ffz natively | own emotes only |
+| | platforms | emote upload | cross-platform | multichat | cosmetics | third-party emotes |
+|---|---|---|---|---|---|---|
+| **heatsync** | twitch, kick, youtube | instant, unlimited, no approval | one set everywhere | tabs, IRC, mentions, youtube | bttv/ffz/7tv badges + 7tv paints | bttv/ffz/7tv automatic |
+| **ffz** | twitch | 50 free, 500 paid, manual approval | no | no | own badges, custom mod/VIP | own only (bttv/7tv opt-in add-ons) |
+| **7tv** | twitch, kick, youtube | instant, 1000 free slots | separate sets per platform | no | own paints + badges | loads ffz natively |
+| **bttv** | twitch, youtube (beta) | 30 free, 200 paid, auto-approved | separate sets per platform | no | own badges | own only |
 
 ### technical comparison
 
 every twitch emote extension uses react fiber walking — it's the only reliable way to modify twitch's react-owned DOM. the difference is how deep each one goes.
 
-| | **heatsync** | **ffz** | **7tv** | **bttv** |
-|---|---|---|---|---|
-| **approach** | fiber walking + DOM injection (ffz-style) | deep react prototype patching | react vnode interception | DOM-first, react for data |
-| **fiber walking** | `getFiber()` + `.return` chain | `Fine.getReactInstance()` | `getVNodeFromDOM()` | reads fiber, rarely writes |
-| **render patching** | multichat only — wraps column component `render()` | systematic class prototype patching (core arch) | patches `render`, lifecycle, props interception | minimal — reads props, rarely patches |
-| **MutationObserver** | chat container + polling fallback | component discovery + 500ms poll | `awaitComponents()` | **primary** mechanism (`DOMObserver` class) |
-| **MAIN world injection** | yes — `document_start` before twitch scripts load | no | no | no |
-| **SPA nav handling** | hooks `history.pushState` at `document_start`, polling fallback | hooks react router fiber directly | hooks `RouterComponent.componentDidUpdate` | monkey-patches `window.history.pushState` |
-| **own UI framework** | vanilla JS | custom module system | vue 3 (full SPA) | preact |
-| **webpack hooking** | minimal — apollo mutations for predictions/polls | yes — deep (`webpackChunktwitch_twilight`) | indirect via fiber | minimal — TMI constants only |
-| **shadow DOM** | no | no | no | no |
-| **HTML sanitization** | `escapeHtml()` on all user content | DOM `textContent` round-trip | vue template auto-escaping | `textContent`/`innerText` only, no innerHTML |
-| **URL sanitization** | `safeUrl()` (https/http only) + CDN allowlist | none | coerced to `https://` via `new URL()` | CDN-only URLs, regex-strict |
-| **postMessage origin** | validated (`location.origin` check) | varies | not used | not used |
+| | approach | MAIN world | SPA nav | UI framework | webpack |
+|---|---|---|---|---|---|
+| **heatsync** | fiber walking + DOM injection | yes — `document_start` | hooks `history.pushState` before twitch | vanilla JS | minimal — apollo mutations |
+| **ffz** | deep react prototype patching | no | hooks react router fiber | custom module system | deep (`webpackChunktwitch_twilight`) |
+| **7tv** | react vnode interception | no | hooks `RouterComponent` update | vue 3 (full SPA) | indirect via fiber |
+| **bttv** | DOM-first, react for data | no | monkey-patches `history.pushState` | preact | minimal — TMI constants |
+
+| | HTML sanitization | URL sanitization | postMessage origin |
+|---|---|---|---|
+| **heatsync** | `escapeHtml()` on all user content | `safeUrl()` https/http only + CDN allowlist | validated (`location.origin`) |
+| **ffz** | DOM `textContent` round-trip | none | varies |
+| **7tv** | vue template auto-escaping | coerced to `https://` via `new URL()` | not used |
+| **bttv** | `textContent`/`innerText` only, no innerHTML | CDN-only URLs, regex-strict | not used |
 
 **heatsync's MAIN world injection is unique** — none of the others run at `document_start` in page context. this allows intercepting browser APIs (websocket, fetch, history) before twitch's scripts load.
 

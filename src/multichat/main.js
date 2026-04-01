@@ -4588,6 +4588,9 @@
         background: var(--hs-bg, #000) !important;
         position: relative !important;
       }
+      #channel-chatroom:not(.hs-native-hidden) ~ #hs-mc-container > #hs-kick-resize-handle {
+        pointer-events: auto;
+      }
       /* Top tabs (default) — horizontal bar at top of chat */
       .hs-tabs-top #channel-chatroom:not(.hs-native-hidden) ~ #hs-mc-container {
         top: 0 !important; right: 0 !important;
@@ -7078,10 +7081,21 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
           }
         }
 
-        // Render on whatever tab is active (game changes are always relevant)
+        // Render only on tabs whose channel matches this event
         const activeTab = currentTab;
-        if (activeTab === 'live' || config.channels.some(ch => (typeof ch === 'string' ? ch : ch.id) === activeTab)) {
-          if (!appendMessage(evt, activeTab)) renderMessages(activeTab);
+        if (activeTab === 'live') {
+          if (isLiveChannelMessage({ channel })) {
+            if (!appendMessage(evt, activeTab)) renderMessages(activeTab);
+          }
+        } else {
+          const tabCh = config.channels.find(ch => (typeof ch === 'string' ? ch : ch.id) === activeTab)
+          if (tabCh) {
+            const tw = (typeof tabCh === 'string' ? tabCh : tabCh.twitch)?.toLowerCase()
+            const ki = (typeof tabCh === 'string' ? undefined : tabCh.kick)?.toLowerCase()
+            if (tw === channel || ki === channel) {
+              if (!appendMessage(evt, activeTab)) renderMessages(activeTab);
+            }
+          }
         }
       });
     }
@@ -7152,10 +7166,21 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
       }
       pushActivityEvent(evt)
 
-      // Render
+      // Render only on tabs whose channel matches this event
       const activeTab = currentTab
-      if (activeTab === 'live' || config.channels.some(ch => (typeof ch === 'string' ? ch : ch.id) === activeTab)) {
-        if (!appendMessage(evt, activeTab)) renderMessages(activeTab)
+      if (activeTab === 'live') {
+        if (isLiveChannelMessage({ channel })) {
+          if (!appendMessage(evt, activeTab)) renderMessages(activeTab)
+        }
+      } else {
+        const tabCh = config.channels.find(ch => (typeof ch === 'string' ? ch : ch.id) === activeTab)
+        if (tabCh) {
+          const tw = (typeof tabCh === 'string' ? tabCh : tabCh.twitch)?.toLowerCase()
+          const ki = (typeof tabCh === 'string' ? undefined : tabCh.kick)?.toLowerCase()
+          if (tw === channel || ki === channel) {
+            if (!appendMessage(evt, activeTab)) renderMessages(activeTab)
+          }
+        }
       }
     }, { signal: mcSignal })
 
@@ -7224,10 +7249,21 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
           if (tab) tab.classList.add('has-stream-event');
         }
 
-        // Render on whatever tab is active
+        // Render only on tabs whose channel matches this event
         const activeTab = currentTab;
-        if (activeTab === 'live' || config.channels.some(ch => (typeof ch === 'string' ? ch : ch.id) === activeTab)) {
-          if (!appendMessage(evt, activeTab)) renderMessages(activeTab);
+        if (activeTab === 'live') {
+          if (isLiveChannelMessage({ channel })) {
+            if (!appendMessage(evt, activeTab)) renderMessages(activeTab);
+          }
+        } else {
+          const tabCh = config.channels.find(ch => (typeof ch === 'string' ? ch : ch.id) === activeTab)
+          if (tabCh) {
+            const tw = (typeof tabCh === 'string' ? tabCh : tabCh.twitch)?.toLowerCase()
+            const ki = (typeof tabCh === 'string' ? undefined : tabCh.kick)?.toLowerCase()
+            if (tw === channel || ki === channel) {
+              if (!appendMessage(evt, activeTab)) renderMessages(activeTab);
+            }
+          }
         }
       });
     }

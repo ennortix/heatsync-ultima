@@ -1482,7 +1482,8 @@ async function loadInventory() {
         safeSendMessage({ type: 'get_bulk_badges' }).then(resp => {
           if (resp?.bttvBadges) bttvBadgeMap = new Map(Object.entries(resp.bttvBadges))
           if (resp?.ffzBadges) ffzBadgeMap = new Map(Object.entries(resp.ffzBadges))
-          log(' Initial cosmetics: BTTV', bttvBadgeMap.size, 'FFZ', ffzBadgeMap.size)
+          if (resp?.chatterinoBadges) chatterinoBadgeMap = new Map(Object.entries(resp.chatterinoBadges))
+          log(' Initial cosmetics: BTTV', bttvBadgeMap.size, 'FFZ', ffzBadgeMap.size, 'Chatterino', chatterinoBadgeMap.size)
           reapplyBadgesToExistingMessages()
         }).catch(() => {})
 
@@ -1816,7 +1817,8 @@ function _onMessageMain(message) {
     case 'cosmetics_update':
       bttvBadgeMap = new Map(Object.entries(message.bttvBadges || {}))
       ffzBadgeMap = new Map(Object.entries(message.ffzBadges || {}))
-      log(' Cosmetics loaded: BTTV', bttvBadgeMap.size, 'FFZ', ffzBadgeMap.size)
+      chatterinoBadgeMap = new Map(Object.entries(message.chatterinoBadges || {}))
+      log(' Cosmetics loaded: BTTV', bttvBadgeMap.size, 'FFZ', ffzBadgeMap.size, 'Chatterino', chatterinoBadgeMap.size)
       reapplyBadgesToExistingMessages()
       break
 
@@ -2309,6 +2311,7 @@ let heatFirstBatch = true // first batch fires immediately
 // Third-party cosmetics
 let bttvBadgeMap = new Map()
 let ffzBadgeMap = new Map()
+let chatterinoBadgeMap = new Map()
 const heatsyncColorMap = new Map() // username → HeatSync API color (from follow:colors)
 let cosmeticsEnabled = true // toggle for BTTV/FFZ/7TV cosmetics
 const cosmeticsCache = new Map()
@@ -5057,7 +5060,8 @@ function get7TVBadgeUrl(badge) {
   const file = files.find(f => f.name?.endsWith('.webp')) || files.find(f => f.name?.endsWith('.avif')) || files[0]
   if (!file) return ''
   const base = badge.host.url || ''
-  return (base.endsWith('/') ? base : base + '/') + file.name
+  const fullBase = base.startsWith('//') ? 'https:' + base : base
+  return (fullBase.endsWith('/') ? fullBase : fullBase + '/') + file.name
 }
 
 // Apply BTTV/FFZ badges and 7TV paints/badges to a message element
@@ -5105,6 +5109,17 @@ function applyCosmeticsToMessage(el, userId) {
       if (b.color) img.style.backgroundColor = b.color
       nameEl.parentNode.insertBefore(img, nameEl)
     }
+  }
+
+  // Chatterino badge
+  if (chatterinoBadgeMap.has(userId) && !el.querySelector('.hs-chatterino-badge')) {
+    const b = chatterinoBadgeMap.get(userId)
+    const img = document.createElement('img')
+    img.className = 'hs-chatterino-badge hs-cosmetic-badge'
+    img.src = b.url
+    img.title = b.tooltip
+    img.alt = b.tooltip
+    nameEl.parentNode.insertBefore(img, nameEl)
   }
 
   // 7TV cosmetics
@@ -5198,7 +5213,7 @@ function applyHeatsyncColorsToExisting() {
 
 // Re-apply BTTV/FFZ badges to messages that were processed before badge maps loaded
 function reapplyBadgesToExistingMessages() {
-  if (bttvBadgeMap.size === 0 && ffzBadgeMap.size === 0) return
+  if (bttvBadgeMap.size === 0 && ffzBadgeMap.size === 0 && chatterinoBadgeMap.size === 0) return
   const container = findChatContainer()
   if (!container) return
   container.querySelectorAll('[data-hs-cosmetic-user-id]').forEach(el => {
@@ -5206,7 +5221,8 @@ function reapplyBadgesToExistingMessages() {
     if (!uid) return
     const needsBttv = bttvBadgeMap.has(uid) && !el.querySelector('.hs-bttv-badge')
     const needsFfz = ffzBadgeMap.has(uid) && !el.querySelector('.hs-ffz-badge')
-    if (needsBttv || needsFfz) applyCosmeticsToMessage(el, uid)
+    const needsChatterino = chatterinoBadgeMap.has(uid) && !el.querySelector('.hs-chatterino-badge')
+    if (needsBttv || needsFfz || needsChatterino) applyCosmeticsToMessage(el, uid)
   })
 }
 

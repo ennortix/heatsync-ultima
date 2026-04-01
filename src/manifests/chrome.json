@@ -30,7 +30,8 @@
     "https://cdn.betterttv.net/*",
     "https://cdn.7tv.app/*",
     "https://recent-messages.robotty.de/*",
-    "https://decapi.me/*"
+    "https://decapi.me/*",
+    "https://api.chatterino.com/*"
   ],
 
   "background": {

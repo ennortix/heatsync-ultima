@@ -29,7 +29,8 @@
     "https://recent-messages.robotty.de/*",
     "https://api.twitch.tv/*",
     "https://decapi.me/*",
-    "https://www.youtube.com/*"
+    "https://www.youtube.com/*",
+    "https://api.chatterino.com/*"
   ],
 
   "background": {

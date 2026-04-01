@@ -101,6 +101,7 @@ let blockedUsers = new Set();
 // Third-party cosmetics (BTTV/FFZ badges, 7TV paints+badges)
 let bttvBadgeMap = new Map()    // twitchUserId → { description, url }
 let ffzBadgeMap = new Map()     // twitchUserId → [{ title, color, url }]
+let chatterinoBadgeMap = new Map()  // twitchUserId → { tooltip, url }
 const userCosmeticsCache = new Map() // twitchUserId → { paint, badge, fetchedAt }
 let badgesFetchedAt = 0
 const BADGES_TTL = 24 * 60 * 60 * 1000
@@ -890,9 +891,10 @@ async function fetchBulkBadges() {
   if (Date.now() - badgesFetchedAt < BADGES_TTL) return
   badgesFetchedAt = Date.now()
   try {
-    const [bttvResp, ffzResp] = await Promise.allSettled([
+    const [bttvResp, ffzResp, chatterinoResp] = await Promise.allSettled([
       fetchWithTimeout('https://api.betterttv.net/3/cached/badges'),
-      fetchWithTimeout('https://api.frankerfacez.com/v1/badges/ids')
+      fetchWithTimeout('https://api.frankerfacez.com/v1/badges/ids'),
+      fetchWithTimeout('https://api.chatterino.com/badges')
     ])
     if (bttvResp.status === 'fulfilled' && bttvResp.value.ok) {
       const data = await bttvResp.value.json()
@@ -924,6 +926,18 @@ async function fetchBulkBadges() {
       }
       log(' FFZ badges loaded:', ffzBadgeMap.size, 'users')
     }
+    if (chatterinoResp.status === 'fulfilled' && chatterinoResp.value.ok) {
+      const data = await chatterinoResp.value.json()
+      chatterinoBadgeMap.clear()
+      for (const badge of (data.badges || [])) {
+        const url = badge.image2 || badge.image1
+        if (!url || !badge.users) continue
+        for (const uid of badge.users) {
+          chatterinoBadgeMap.set(String(uid), { tooltip: badge.tooltip || 'Chatterino', url })
+        }
+      }
+      log(' Chatterino badges loaded:', chatterinoBadgeMap.size, 'users')
+    }
     broadcastBadgeMaps()
   } catch (e) {
     log(' fetchBulkBadges failed:', e.message)
@@ -936,7 +950,9 @@ function broadcastBadgeMaps() {
   for (const [k, v] of bttvBadgeMap) bttvObj[k] = v
   const ffzObj = {}
   for (const [k, v] of ffzBadgeMap) ffzObj[k] = v
-  broadcastToTabs({ type: 'cosmetics_update', bttvBadges: bttvObj, ffzBadges: ffzObj })
+  const chatterinoObj = {}
+  for (const [k, v] of chatterinoBadgeMap) chatterinoObj[k] = v
+  broadcastToTabs({ type: 'cosmetics_update', bttvBadges: bttvObj, ffzBadges: ffzObj, chatterinoBadges: chatterinoObj })
 }
 
 // Fetch channel owner's emotes (public API) + third-party channel emotes
@@ -3029,7 +3045,9 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
     for (const [k, v] of bttvBadgeMap) bttvObj[k] = v
     const ffzObj = {}
     for (const [k, v] of ffzBadgeMap) ffzObj[k] = v
-    sendResponse({ bttvBadges: bttvObj, ffzBadges: ffzObj })
+    const chatterinoObj = {}
+    for (const [k, v] of chatterinoBadgeMap) chatterinoObj[k] = v
+    sendResponse({ bttvBadges: bttvObj, ffzBadges: ffzObj, chatterinoBadges: chatterinoObj })
     return
   } else if (message.type === 'mention_detected') {
     // Fire a browser notification if the user has hs_notifications enabled

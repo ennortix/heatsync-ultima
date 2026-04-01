@@ -419,14 +419,19 @@ class IRC {
       const data = stored[storageKey]
       if (data?.msgs?.length > 0 && Date.now() - data.ts < 86400000) {
         // Filter out 7TV emote change system messages that leaked into buffers
-        // and dedup stream events that were saved multiple times
+        // Normalize + dedup stream events that were saved multiple times
         const seenEventTexts = new Set()
         const filtered = data.msgs.filter(m => {
           const t = m.text || m.systemMsg || ''
           if (t.includes('removed from channel') || t.includes('added to channel') ||
               t.includes('removed 7TV emote') || t.includes('added 7TV emote')) return false
-          // Dedup stream events by text
+          // Normalize + dedup stream events by text
           if (m.type === 'stream-event' && m.text) {
+            // Normalize old "channel ◆" format to "[channel] ◆"
+            if (!m.text.startsWith('[')) {
+              const em = m.text.match(/^([a-zA-Z0-9_]+) \u25C6/)
+              if (em) m.text = `[${em[1]}]` + m.text.slice(em[1].length)
+            }
             if (seenEventTexts.has(m.text)) return false
             seenEventTexts.add(m.text)
           }
@@ -727,6 +732,10 @@ class KickChat {
           if (t.includes('removed from channel') || t.includes('added to channel') ||
               t.includes('removed 7TV emote') || t.includes('added 7TV emote')) return false
           if (m.type === 'stream-event' && m.text) {
+            if (!m.text.startsWith('[')) {
+              const em = m.text.match(/^([a-zA-Z0-9_]+) \u25C6/)
+              if (em) m.text = `[${em[1]}]` + m.text.slice(em[1].length)
+            }
             if (seenEventTexts.has(m.text)) return false
             seenEventTexts.add(m.text)
           }

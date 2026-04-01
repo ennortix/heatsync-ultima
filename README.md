@@ -19,6 +19,39 @@ upload any image to [heatsync.org](https://heatsync.org), install the extension,
 - **vi-mode** — vim keybindings for chat input
 - **real-time sync** — websocket broadcasts emotes per channel instantly
 
+## why heatsync
+
+bttv, ffz, and 7tv are twitch-only. heatsync is the only emote extension that works across twitch, kick, and youtube with a single emote set — upload once, use everywhere.
+
+| | **heatsync** | **ffz** | **7tv** | **bttv** |
+|---|---|---|---|---|
+| **platforms** | twitch, kick, youtube | twitch | twitch (kick via separate ext) | twitch |
+| **emote upload** | instant, unlimited, no approval | channel-limited slots | approval queue + slot limits | channel-limited slots |
+| **cross-platform emotes** | yes — one set everywhere | no | no | no |
+| **multichat** | built-in (tabs, IRC, mentions, youtube) | no | no | no |
+| **cosmetics** | renders 7tv paints + ffz/bttv badges | own badge system | own paints + badges | own badges |
+| **third-party emotes** | loads bttv/ffz/7tv automatically | own + some bttv | own emotes only | own emotes only |
+
+### technical comparison
+
+every twitch emote extension uses react fiber walking — it's the only reliable way to modify twitch's react-owned DOM. the difference is how deep each one goes.
+
+| | **heatsync** | **ffz** | **7tv** | **bttv** |
+|---|---|---|---|---|
+| **approach** | work with react (ffz-style) | deep react integration | deep react integration | DOM-first, react for data |
+| **fiber walking** | `getFiber()` + `.return` chain | `Fine.getReactInstance()` | `getVNodeFromDOM()` | reads fiber, rarely writes |
+| **render patching** | wraps `render()`, modifies output | systematic class prototype patching (core arch) | patches `render`, lifecycle, props interception | minimal — reads props, rarely patches |
+| **MutationObserver** | chat container + polling fallback | component discovery + 500ms poll | `awaitComponents()` | **primary** mechanism (`DOMObserver` class) |
+| **MAIN world injection** | yes — `document_start` before react mounts | no | no | no |
+| **SPA nav handling** | MutationObserver + re-walk fibers | hooks react router fiber directly | hooks `RouterComponent.componentDidUpdate` | monkey-patches `window.history.pushState` |
+| **own UI framework** | vanilla JS | custom module system | vue 3 (full SPA) | preact |
+| **webpack hooking** | no | yes — deep (`webpackChunktwitch_twilight`) | indirect via fiber | minimal — TMI constants only |
+| **shadow DOM** | no | no | no | no |
+
+**heatsync's MAIN world injection is unique** — none of the others run at `document_start` in page context. this allows intercepting twitch internals before react mounts, which is impossible from a content script.
+
+**bttv is the outlier** — it treats the DOM as its primary API and only dips into react to read data. ffz, 7tv, and heatsync all patch react's render pipeline directly, making modifications survive re-renders.
+
 ## install
 
 ### chrome / edge

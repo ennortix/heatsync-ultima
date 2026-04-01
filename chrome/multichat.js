@@ -9943,13 +9943,28 @@ const STORAGE_KEY = 'heatsync_multichat';
     return added
   }
 
+  // Normalize stream event text to [channel] ◆ format (old events may lack brackets)
+  function normalizeStreamEventText(text, channel) {
+    if (!text) return text
+    // Already has brackets — keep as-is
+    if (text.startsWith('[')) return text
+    // Migrate: "channel ◆ ..." → "[channel] ◆ ..."
+    if (channel && text.startsWith(channel + ' \u25C6')) {
+      return `[${channel}] \u25C6` + text.slice(channel.length + 2)
+    }
+    // Try to extract channel from "channelname ◆ ..." pattern
+    const m = text.match(/^([a-zA-Z0-9_]+) \u25C6/)
+    if (m) return `[${m[1]}]` + text.slice(m[1].length)
+    return text
+  }
+
   async function loadStreamEvents() {
     try {
       const data = await api.storage.local.get(STREAM_EVENTS_KEY)
       const events = data[STREAM_EVENTS_KEY]
       if (!Array.isArray(events) || events.length === 0) return
       const cutoff = Date.now() - 86400000 // 24h expiry
-      // Dedup by text (multi-tab race can create duplicate entries in storage)
+      // Dedup by normalized text (multi-tab race can create duplicate entries in storage)
       const seenTexts = new Set()
       const valid = []
       for (const e of events) {
@@ -9958,6 +9973,8 @@ const STORAGE_KEY = 'heatsync_multichat';
         const evtText = e.text || e.message || ''
         if (evtText.includes('removed from channel') || evtText.includes('added to channel') ||
             evtText.includes('removed 7TV emote') || evtText.includes('added 7TV emote')) continue
+        // Normalize old unbracketed format to [channel] format
+        e.text = normalizeStreamEventText(e.text, e.channel)
         if (e.text && seenTexts.has(e.text)) continue
         seenTexts.add(e.text)
         valid.push(e)

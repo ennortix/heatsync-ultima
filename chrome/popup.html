@@ -106,19 +106,19 @@
 <body>
   <div class="header">
     <img src="icon-48.png" alt="">
-    <span class="header-title">heatsync</span>
-    <span class="status-dot yellow" id="status-dot" title="checking..."></span>
+    <span class="header-title" data-i18n="popup_title">heatsync</span>
+    <span class="status-dot yellow" id="status-dot" data-i18n-title="popup_status_checking" title="checking..."></span>
   </div>
 
   <div id="content"></div>
 
   <div class="popout-section">
     <div class="popout-row">
-      <input type="text" class="popout-input" id="popout-input" placeholder="channel" spellcheck="false">
-      <button class="action-btn popout-btn" id="popout-btn">popout</button>
+      <input type="text" class="popout-input" id="popout-input" data-i18n-placeholder="popup_channel_placeholder" placeholder="channel" spellcheck="false">
+      <button class="action-btn popout-btn" id="popout-btn" data-i18n="popup_btn_popout">popout</button>
     </div>
   </div>
-  <div class="hint">emote settings in picker panel on chat</div>
+  <div class="hint" data-i18n="popup_hint">emote settings in picker panel on chat</div>
 
   <script src="popup.js"></script>
 </body>

@@ -110,39 +110,45 @@
 <body>
   <div class="container">
     <img src="icon-128.png" alt="heatsync" class="logo">
-    <h1>welcome to heatsync</h1>
-    <p class="tagline">your emotes, everywhere you chat</p>
+    <h1 data-i18n="welcome_title">welcome to heatsync</h1>
+    <p class="tagline" data-i18n="welcome_tagline">your emotes, everywhere you chat</p>
 
     <div class="steps">
       <div class="step">
         <div class="step-number">1</div>
         <div class="step-text">
-          <strong>log in at heatsync.org</strong><br>
-          sign in with twitch or kick to create your account
+          <strong data-i18n="welcome_step1_title">log in at heatsync.org</strong><br>
+          <span data-i18n="welcome_step1_desc">sign in with twitch or kick to create your account</span>
         </div>
       </div>
       <div class="step">
         <div class="step-number">2</div>
         <div class="step-text">
-          <strong>upload your emotes</strong><br>
-          add any images — no slot limits, all formats supported
+          <strong data-i18n="welcome_step2_title">upload your emotes</strong><br>
+          <span data-i18n="welcome_step2_desc">add any images — no slot limits, all formats supported</span>
         </div>
       </div>
       <div class="step">
         <div class="step-number">3</div>
         <div class="step-text">
-          <strong>use them in chat</strong><br>
-          click the heatsync button in twitch/kick chat to access your emotes
+          <strong data-i18n="welcome_step3_title">use them in chat</strong><br>
+          <span data-i18n="welcome_step3_desc">click the heatsync button in twitch/kick chat to access your emotes</span>
         </div>
       </div>
     </div>
 
-    <a href="https://heatsync.org" target="_blank" class="cta-btn">get started</a>
+    <a href="https://heatsync.org" target="_blank" class="cta-btn" data-i18n="welcome_cta">get started</a>
 
     <p class="note">
-      <a href="https://heatsync.org/privacy.html#extension" target="_blank">privacy</a> &middot;
-      <a href="https://github.com/mellen9999/heatsync-extension" target="_blank">source</a>
+      <a href="https://heatsync.org/privacy.html#extension" target="_blank" data-i18n="welcome_privacy">privacy</a> &middot;
+      <a href="https://github.com/mellen9999/heatsync-extension" target="_blank" data-i18n="welcome_source">source</a>
     </p>
   </div>
+  <script>
+    function t(k) { try { return chrome.i18n.getMessage(k) || k } catch { return k } }
+    for (const el of document.querySelectorAll('[data-i18n]'))
+      el.textContent = t(el.dataset.i18n) || el.textContent
+    document.title = t('welcome_title')
+  </script>
 </body>
 </html>

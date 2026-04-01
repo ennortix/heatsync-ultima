@@ -4,6 +4,19 @@
 
   const API_URL = 'https://heatsync.org'
 
+  function t(key, subs) {
+    try { return chrome.i18n.getMessage(key, subs) || key } catch { return key }
+  }
+
+  function hydrateI18n(root = document) {
+    for (const el of root.querySelectorAll('[data-i18n]'))
+      el.textContent = t(el.dataset.i18n) || el.textContent
+    for (const el of root.querySelectorAll('[data-i18n-placeholder]'))
+      el.placeholder = t(el.dataset.i18nPlaceholder) || el.placeholder
+    for (const el of root.querySelectorAll('[data-i18n-title]'))
+      el.title = t(el.dataset.i18nTitle) || el.title
+  }
+
   function escapeHtml(str) {
     if (str == null) return ''
     return String(str)
@@ -30,14 +43,14 @@
       const resp = await fetch(`${API_URL}/api/health`, { signal: controller.signal })
       if (resp.ok) {
         dot.className = 'status-dot green'
-        dot.title = 'connected'
+        dot.title = t('popup_status_connected')
       } else {
         dot.className = 'status-dot red'
-        dot.title = 'api error'
+        dot.title = t('popup_status_api_error')
       }
     } catch {
       dot.className = 'status-dot red'
-      dot.title = 'offline'
+      dot.title = t('popup_status_offline')
     }
 
     const token = stored.auth_token || stored.auth_token_encrypted
@@ -58,14 +71,14 @@
             ${avatar ? `<img src="${escapeHtml(avatar)}" class="user-avatar" alt="">` : '<div class="user-avatar"></div>'}
             <div>
               <div class="user-name">${escapeHtml(name)}</div>
-              <div class="user-stats">${emoteCount} emotes · ${globalCount} global${heat ? ` · ${heat} heat` : ''}</div>
+              <div class="user-stats">${heat ? t('popup_user_stats_heat', [String(emoteCount), String(globalCount), String(heat)]) : t('popup_user_stats', [String(emoteCount), String(globalCount)])}</div>
             </div>
           </div>
         </div>
         <div class="actions">
-          <a href="https://heatsync.org/emotes" target="_blank" rel="noopener noreferrer" class="action-btn">emotes</a>
-          <button class="action-btn" id="refresh-btn">refresh</button>
-          <a href="https://heatsync.org" target="_blank" rel="noopener noreferrer" class="action-btn">site</a>
+          <a href="https://heatsync.org/emotes" target="_blank" rel="noopener noreferrer" class="action-btn">${t('popup_btn_emotes')}</a>
+          <button class="action-btn" id="refresh-btn">${t('popup_btn_refresh')}</button>
+          <a href="https://heatsync.org" target="_blank" rel="noopener noreferrer" class="action-btn">${t('popup_btn_site')}</a>
         </div>
       `
 
@@ -73,14 +86,14 @@
         e.target.textContent = '...'
         e.target.disabled = true
         await chrome.runtime.sendMessage({ type: 'refresh_all' })
-        e.target.textContent = 'done'
-        setTimeout(() => { e.target.textContent = 'refresh'; e.target.disabled = false }, 1000)
+        e.target.textContent = t('popup_btn_done')
+        setTimeout(() => { e.target.textContent = t('popup_btn_refresh'); e.target.disabled = false }, 1000)
       })
     } else {
       // Not logged in
       content.innerHTML = `
         <div class="login-section">
-          log in to sync emotes
+          ${t('popup_login_prompt')}
           <br>
           <a href="https://heatsync.org" target="_blank" rel="noopener noreferrer" class="login-btn">heatsync.org</a>
         </div>
@@ -130,6 +143,7 @@
   }
 
   document.addEventListener('DOMContentLoaded', () => {
+    hydrateI18n()
     init().catch(e => console.error('popup init failed:', e))
     initPopout()
 

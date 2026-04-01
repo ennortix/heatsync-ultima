@@ -223,10 +223,28 @@ const api = {
   raw: rawApi
 }
 
+/**
+ * i18n helper — thin wrapper around chrome.i18n.getMessage
+ */
+function t(key, substitutions) {
+  try {
+    return chrome.i18n.getMessage(key, substitutions) || key
+  } catch { return key }
+}
+
+function hydrateI18n(root = document) {
+  for (const el of root.querySelectorAll('[data-i18n]'))
+    el.textContent = t(el.dataset.i18n) || el.textContent
+  for (const el of root.querySelectorAll('[data-i18n-placeholder]'))
+    el.placeholder = t(el.dataset.i18nPlaceholder) || el.placeholder
+  for (const el of root.querySelectorAll('[data-i18n-title]'))
+    el.title = t(el.dataset.i18nTitle) || el.title
+}
+
 // Global export for non-module scripts
 if (typeof window !== 'undefined') {
   window.heatsyncApi = api
 }
 
-export { api, storage, runtime, tabs, platform, isContextValid }
+export { api, storage, runtime, tabs, platform, isContextValid, t, hydrateI18n }
 export default api

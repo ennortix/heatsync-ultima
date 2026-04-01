@@ -1,0 +1,110 @@
+{
+  "manifest_name": {
+    "message": "heatsync"
+  },
+  "manifest_description": {
+    "message": "Custom emotes for Twitch, Kick, and YouTube chat. Unlimited slots, tab completion, real-time sync."
+  },
+
+  "common_loading": {
+    "message": "loading..."
+  },
+  "common_extension_updated": {
+    "message": "Extension updated — please refresh the page"
+  },
+  "common_no_matches": {
+    "message": "no matches"
+  },
+  "common_retry": {
+    "message": "retry"
+  },
+
+  "popup_title": {
+    "message": "heatsync"
+  },
+  "popup_status_checking": {
+    "message": "checking..."
+  },
+  "popup_status_connected": {
+    "message": "connected"
+  },
+  "popup_status_api_error": {
+    "message": "api error"
+  },
+  "popup_status_offline": {
+    "message": "offline"
+  },
+  "popup_user_stats": {
+    "message": "$EMOTES$ emotes · $GLOBALS$ global",
+    "placeholders": {
+      "emotes": { "content": "$1" },
+      "globals": { "content": "$2" }
+    }
+  },
+  "popup_user_stats_heat": {
+    "message": "$EMOTES$ emotes · $GLOBALS$ global · $HEAT$ heat",
+    "placeholders": {
+      "emotes": { "content": "$1" },
+      "globals": { "content": "$2" },
+      "heat": { "content": "$3" }
+    }
+  },
+  "popup_btn_emotes": {
+    "message": "emotes"
+  },
+  "popup_btn_refresh": {
+    "message": "refresh"
+  },
+  "popup_btn_site": {
+    "message": "site"
+  },
+  "popup_btn_done": {
+    "message": "done"
+  },
+  "popup_login_prompt": {
+    "message": "log in to sync emotes"
+  },
+  "popup_channel_placeholder": {
+    "message": "channel"
+  },
+  "popup_btn_popout": {
+    "message": "popout"
+  },
+  "popup_hint": {
+    "message": "emote settings in picker panel on chat"
+  },
+
+  "welcome_title": {
+    "message": "welcome to heatsync"
+  },
+  "welcome_tagline": {
+    "message": "your emotes, everywhere you chat"
+  },
+  "welcome_step1_title": {
+    "message": "log in at heatsync.org"
+  },
+  "welcome_step1_desc": {
+    "message": "sign in with twitch or kick to create your account"
+  },
+  "welcome_step2_title": {
+    "message": "upload your emotes"
+  },
+  "welcome_step2_desc": {
+    "message": "add any images — no slot limits, all formats supported"
+  },
+  "welcome_step3_title": {
+    "message": "use them in chat"
+  },
+  "welcome_step3_desc": {
+    "message": "click the heatsync button in twitch/kick chat to access your emotes"
+  },
+  "welcome_cta": {
+    "message": "get started"
+  },
+  "welcome_privacy": {
+    "message": "privacy"
+  },
+  "welcome_source": {
+    "message": "source"
+  }
+}

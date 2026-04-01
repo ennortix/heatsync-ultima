@@ -1,8 +1,9 @@
 {
   "manifest_version": 2,
-  "name": "heatsync",
+  "default_locale": "en",
+  "name": "__MSG_manifest_name__",
   "version": "1.2.1",
-  "description": "Custom emotes for Twitch, Kick, and YouTube chat. Unlimited slots, tab completion, real-time sync.",
+  "description": "__MSG_manifest_description__",
   "author": "heatsync.org",
   "homepage_url": "https://heatsync.org",
 
@@ -93,7 +94,7 @@
       "16": "icon-16.png",
       "48": "icon-48.png"
     },
-    "default_title": "heatsync"
+    "default_title": "__MSG_manifest_name__"
   },
 
 

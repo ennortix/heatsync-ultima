@@ -202,6 +202,14 @@ function build(browser) {
   cpSync(manifestSrc, join(outDir, 'manifest.json'))
   console.log(`  Copied manifest (${browser})`)
 
+  // Copy _locales
+  const localesDir = join(SRC_DIR, '_locales')
+  if (existsSync(localesDir)) {
+    cpSync(localesDir, join(outDir, '_locales'), { recursive: true })
+    cpSync(localesDir, join(chromeDir, '_locales'), { recursive: true })
+    console.log(`  Copied _locales`)
+  }
+
   console.log(`✓ Built ${browser} → ${outDir}`)
 }
 

@@ -720,16 +720,40 @@ async function fetch7TVChannelEmotes(channelName, channelId = null, platform = '
     let response, data, identifier;
 
     if (platform === 'kick') {
-      // Kick: use 7TV's kick endpoint directly
-      identifier = channelName;
+      // Kick: 7TV requires numeric user ID, not slug — resolve via GQL search
       log(' 7TV: Fetching Kick channel emotes for:', channelName);
-      response = await fetchWithTimeout(`https://7tv.io/v3/users/kick/${channelName}`);
+      let kickId = channelId // may already be numeric from content script
+      if (!kickId) {
+        try {
+          const gqlResp = await fetchWithTimeout('https://7tv.io/v3/gql', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              query: `query { users(query: "${channelName.replace(/[^a-z0-9_]/gi, '')}") { connections { platform id username } } }`
+            })
+          })
+          if (gqlResp.ok) {
+            const gqlData = await gqlResp.json()
+            const users = gqlData?.data?.users || []
+            for (const u of users) {
+              const conn = u.connections?.find(c => c.platform === 'KICK' && c.username?.toLowerCase() === channelName.toLowerCase())
+              if (conn) { kickId = conn.id; break }
+            }
+          }
+        } catch (e) { log(' 7TV: GQL Kick lookup failed:', e.message) }
+      }
+      if (!kickId) {
+        log(' 7TV: Could not resolve Kick user ID for', channelName);
+        return [];
+      }
+      identifier = kickId;
+      response = await fetchWithTimeout(`https://7tv.io/v3/users/kick/${kickId}`);
       if (!response.ok) {
         log(' 7TV: Kick lookup failed (' + response.status + ')');
         return [];
       }
       data = await response.json();
-      log(' ✅ 7TV: Kick lookup succeeded');
+      log(' ✅ 7TV: Kick lookup succeeded (id:', kickId + ')');
     } else {
       // Twitch: use channelId if available, otherwise lookup via decapi.me
       identifier = channelId;

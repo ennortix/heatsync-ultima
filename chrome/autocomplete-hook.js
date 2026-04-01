@@ -706,11 +706,23 @@
         const hsEmotes = getHeatsyncEmotes();
         const searchLower = search.toLowerCase();
 
+        // Fuzzy match: sequential character match with scoring
+        function fuzzyMatch(query, name) {
+          if (name.includes(query)) return 2 + (query.length / name.length) // exact substring
+          let qi = 0
+          for (let i = 0; i < name.length && qi < query.length; i++) {
+            if (name[i] === query[qi]) qi++
+          }
+          return qi >= query.length ? qi / name.length : 0
+        }
+
         // Filter matching heatsync emotes (array, not Map — avoids allocation per keystroke)
         const hsMatches = [];
         for (const emote of hsEmotes) {
           if (!emote.hash) continue;
-          if (!emote.nameLower.includes(searchLower)) continue;
+          const score = fuzzyMatch(searchLower, emote.nameLower)
+          if (score <= 0) continue;
+          emote._score = score
           hsMatches.push(emote);
         }
 
@@ -720,7 +732,9 @@
         const resultNames = new Set(results.map(r => r.replacement || r.emote?.token));
         for (const emote of getNativeTwitchEmotes()) {
           if (hsMatchNames.has(emote.name) || resultNames.has(emote.name)) continue;
-          if (!emote.nameLower.includes(searchLower)) continue;
+          const score = fuzzyMatch(searchLower, emote.nameLower)
+          if (score <= 0) continue;
+          emote._score = score
           hsMatches.push(emote);
         }
 

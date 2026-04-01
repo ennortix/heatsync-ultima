@@ -2770,12 +2770,13 @@ function renderBadges(badgesStr, channel) {
       const ffzKey = channel && `${channel}:${name}/`
       const isFFZ = ffzKey && ffzBadgeKeys.has(`${channel}:${name}`)
       const bgStyle = isFFZ && BADGE_STYLES[name] ? `background:${BADGE_STYLES[name].bg};padding:1px;border-radius:2px;` : ''
-      return `<img class="hs-mc-badge-img" src="${escapeHtml(url)}" alt="${escapeHtml(name)}" title="${escapeHtml(name)}" style="width:18px;height:18px;${bgStyle}">`
+      const label = BADGE_STYLES[name]?.label || name
+      return `<img class="hs-mc-badge-img" src="${escapeHtml(url)}" alt="${escapeHtml(name)}" title="${escapeHtml(label)}" style="width:18px;height:18px;${bgStyle}">`
     }
     // Text fallback
     const style = BADGE_STYLES[name]
     if (!style) return ''
-    return `<span class="hs-mc-badge" style="background:${style.bg};color:${style.fg}" title="${escapeHtml(name)}">${style.label}</span>`
+    return `<span class="hs-mc-badge" style="background:${style.bg};color:${style.fg}" title="${escapeHtml(style.label)}">${style.label}</span>`
   }).join('')
 }
 

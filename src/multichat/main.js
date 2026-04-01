@@ -282,11 +282,28 @@
       const events = data[STREAM_EVENTS_KEY]
       if (!Array.isArray(events) || events.length === 0) return
       const cutoff = Date.now() - 86400000 // 24h expiry
-      const valid = events.filter(e => e.time > cutoff)
+      // Dedup by text (multi-tab race can create duplicate entries in storage)
+      const seenTexts = new Set()
+      const valid = []
+      for (const e of events) {
+        if (e.time <= cutoff) continue
+        // Prune 7TV emote change messages that were incorrectly saved as stream events
+        if (e.text && (e.text.includes('removed from channel (7TV)') || e.text.includes('added to channel (7TV)'))) continue
+        if (e.text && seenTexts.has(e.text)) continue
+        seenTexts.add(e.text)
+        valid.push(e)
+      }
 
       injectStreamEventsIntoBuffers(valid, true)
 
-      // Prune expired from storage
+      // Seed dedup map so realtime handlers don't re-add loaded events
+      if (!window._hsStreamEventDedup) window._hsStreamEventDedup = new Map()
+      const now = Date.now()
+      for (const e of valid) {
+        if (e.text) window._hsStreamEventDedup.set(e.text, now)
+      }
+
+      // Prune expired + deduped from storage
       if (valid.length < events.length) {
         await api.storage.local.set({ [STREAM_EVENTS_KEY]: valid })
       }
@@ -2653,6 +2670,45 @@
       /* Legacy img classes (for picker, tooltips) */
       .hs-mc-emote, .hs-mc-picker-emote {
         position: relative;
+      }
+
+      /* Badge hover tooltip - 4x preview */
+      #hs-badge-tooltip {
+        position: fixed;
+        z-index: 100001;
+        pointer-events: none;
+        background: #000;
+        border: 2px solid #808080;
+        border-radius: 0;
+        padding: 8px;
+        display: none;
+        flex-direction: column;
+        align-items: center;
+        gap: 4px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.6);
+      }
+      #hs-badge-tooltip.visible {
+        display: flex;
+      }
+      #hs-badge-tooltip img {
+        object-fit: contain;
+        image-rendering: pixelated;
+        image-rendering: -moz-crisp-edges;
+      }
+      #hs-badge-tooltip .tooltip-name {
+        color: #fff;
+        font-size: 13px;
+        font-weight: 600;
+      }
+      #hs-badge-tooltip .tooltip-source {
+        font-size: 11px;
+        padding: 2px 6px;
+        margin: 2px -8px -8px;
+        border-radius: 0;
+        color: #fff;
+        width: calc(100% + 16px);
+        text-align: center;
+        background: #808080;
       }
 
       /* Emote hover tooltip - 4x preview */

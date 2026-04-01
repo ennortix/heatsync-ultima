@@ -2975,6 +2975,57 @@ async function sendKickMessage(kickSlug, text) {
     setTimeout(() => toast.remove(), 1500);
   }
 
+  // Badge hover tooltip (4x preview with name)
+  let badgeTooltip = null
+
+  function ensureBadgeTooltip() {
+    if (!badgeTooltip || !document.contains(badgeTooltip)) {
+      badgeTooltip = document.createElement('div')
+      badgeTooltip.id = 'hs-badge-tooltip'
+      const img = document.createElement('img')
+      const name = document.createElement('span')
+      name.className = 'tooltip-name'
+      const source = document.createElement('span')
+      source.className = 'tooltip-source'
+      badgeTooltip.appendChild(img)
+      badgeTooltip.appendChild(name)
+      badgeTooltip.appendChild(source)
+      document.body.appendChild(badgeTooltip)
+    }
+    return badgeTooltip
+  }
+
+  function showBadgeTooltip(badgeImg, badgeName) {
+    const tooltip = ensureBadgeTooltip()
+    const img = tooltip.querySelector('img')
+    img.src = badgeImg.src
+    img.alt = badgeName
+    img.style.width = '72px'
+    img.style.height = '72px'
+    tooltip.querySelector('.tooltip-name').textContent = badgeName
+    // Detect source from URL
+    const src = badgeImg.src
+    const sourceLabel = src.includes('betterttv') ? 'BTTV'
+      : src.includes('frankerfacez') ? 'FFZ'
+      : src.includes('7tv') ? '7TV'
+      : src.includes('jtvnw.net') ? 'Twitch'
+      : src.includes('kick') ? 'Kick'
+      : ''
+    const sourceEl = tooltip.querySelector('.tooltip-source')
+    sourceEl.textContent = sourceLabel
+    sourceEl.className = 'tooltip-source'
+
+    tooltip.style.left = '-9999px'
+    tooltip.style.top = '-9999px'
+    tooltip.classList.add('visible')
+    positionTooltipAtElement(tooltip, badgeImg)
+    requestAnimationFrame(() => positionTooltipAtElement(tooltip, badgeImg))
+  }
+
+  function hideBadgeTooltip() {
+    if (badgeTooltip) badgeTooltip.classList.remove('visible')
+  }
+
   // Emote hover tooltip (4x preview with source color)
   let emoteTooltip = null;
 
@@ -3107,6 +3158,16 @@ async function sendKickMessage(kickSlug, text) {
     cleanup.addEventListener(document, 'mouseover', (e) => {
       const target = e.target;
 
+      // Badge hover: show 4x preview with name
+      const badgeImg = target.tagName === 'IMG' && target.classList.contains('hs-mc-badge-img') ? target : null
+      if (badgeImg) {
+        const badgeName = badgeImg.title || badgeImg.alt || ''
+        if (badgeName) {
+          showBadgeTooltip(badgeImg, badgeName)
+        }
+        return
+      }
+
       // Emoji hover: show 4x preview
       const emojiSpan = target.closest('.hs-mc-emoji');
       if (emojiSpan) {
@@ -3139,6 +3200,13 @@ async function sendKickMessage(kickSlug, text) {
 
     cleanup.addEventListener(document, 'mouseout', (e) => {
       const target = e.target;
+
+      // Badge mouseout
+      if (target.tagName === 'IMG' && target.classList.contains('hs-mc-badge-img')) {
+        hideBadgeTooltip()
+        return
+      }
+
       const wrapper = target.closest('.hs-mc-emote-wrapper');
       const img = wrapper ? wrapper.querySelector('img') : (
         target.tagName === 'IMG' && (target.classList.contains('hs-mc-emote') || target.classList.contains('hs-mc-picker-emote')) ? target : null
@@ -3162,6 +3230,7 @@ async function sendKickMessage(kickSlug, text) {
         hideEmoteTooltip()
         document.querySelectorAll('.hs-emote-highlight').forEach(w => w.classList.remove('hs-emote-highlight'))
       }
+      hideBadgeTooltip()
       if (linkTooltip?.classList.contains('visible')) hideLinkTooltip()
       if (userTooltip?.classList.contains('visible')) hideUserTooltip()
     }
@@ -3180,6 +3249,12 @@ async function sendKickMessage(kickSlug, text) {
         const onEmote = target?.closest?.('.hs-mc-emote-wrapper') ||
           (target?.tagName === 'IMG' && (target.classList?.contains('hs-mc-emote') || target.classList?.contains('hs-mc-picker-emote')))
         const onUser = target?.closest?.('.hs-mc-user')
+        const onBadge = target?.tagName === 'IMG' && target.classList?.contains('hs-mc-badge-img')
+
+        // Kill badge tooltip if not on a badge
+        if (badgeTooltip?.classList.contains('visible') && !onBadge) {
+          hideBadgeTooltip()
+        }
 
         // Kill emote tooltip instantly if not on an emote
         if (emoteTooltip?.classList.contains('visible')) {
@@ -6458,12 +6533,13 @@ function renderBadges(badgesStr, channel) {
       const ffzKey = channel && `${channel}:${name}/`
       const isFFZ = ffzKey && ffzBadgeKeys.has(`${channel}:${name}`)
       const bgStyle = isFFZ && BADGE_STYLES[name] ? `background:${BADGE_STYLES[name].bg};padding:1px;border-radius:2px;` : ''
-      return `<img class="hs-mc-badge-img" src="${escapeHtml(url)}" alt="${escapeHtml(name)}" title="${escapeHtml(name)}" style="width:18px;height:18px;${bgStyle}">`
+      const label = BADGE_STYLES[name]?.label || name
+      return `<img class="hs-mc-badge-img" src="${escapeHtml(url)}" alt="${escapeHtml(name)}" title="${escapeHtml(label)}" style="width:18px;height:18px;${bgStyle}">`
     }
     // Text fallback
     const style = BADGE_STYLES[name]
     if (!style) return ''
-    return `<span class="hs-mc-badge" style="background:${style.bg};color:${style.fg}" title="${escapeHtml(name)}">${style.label}</span>`
+    return `<span class="hs-mc-badge" style="background:${style.bg};color:${style.fg}" title="${escapeHtml(style.label)}">${style.label}</span>`
   }).join('')
 }
 
@@ -9765,11 +9841,28 @@ const STORAGE_KEY = 'heatsync_multichat';
       const events = data[STREAM_EVENTS_KEY]
       if (!Array.isArray(events) || events.length === 0) return
       const cutoff = Date.now() - 86400000 // 24h expiry
-      const valid = events.filter(e => e.time > cutoff)
+      // Dedup by text (multi-tab race can create duplicate entries in storage)
+      const seenTexts = new Set()
+      const valid = []
+      for (const e of events) {
+        if (e.time <= cutoff) continue
+        // Prune 7TV emote change messages that were incorrectly saved as stream events
+        if (e.text && (e.text.includes('removed from channel (7TV)') || e.text.includes('added to channel (7TV)'))) continue
+        if (e.text && seenTexts.has(e.text)) continue
+        seenTexts.add(e.text)
+        valid.push(e)
+      }
 
       injectStreamEventsIntoBuffers(valid, true)
 
-      // Prune expired from storage
+      // Seed dedup map so realtime handlers don't re-add loaded events
+      if (!window._hsStreamEventDedup) window._hsStreamEventDedup = new Map()
+      const now = Date.now()
+      for (const e of valid) {
+        if (e.text) window._hsStreamEventDedup.set(e.text, now)
+      }
+
+      // Prune expired + deduped from storage
       if (valid.length < events.length) {
         await api.storage.local.set({ [STREAM_EVENTS_KEY]: valid })
       }
@@ -12136,6 +12229,45 @@ const STORAGE_KEY = 'heatsync_multichat';
       /* Legacy img classes (for picker, tooltips) */
       .hs-mc-emote, .hs-mc-picker-emote {
         position: relative;
+      }
+
+      /* Badge hover tooltip - 4x preview */
+      #hs-badge-tooltip {
+        position: fixed;
+        z-index: 100001;
+        pointer-events: none;
+        background: #000;
+        border: 2px solid #808080;
+        border-radius: 0;
+        padding: 8px;
+        display: none;
+        flex-direction: column;
+        align-items: center;
+        gap: 4px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.6);
+      }
+      #hs-badge-tooltip.visible {
+        display: flex;
+      }
+      #hs-badge-tooltip img {
+        object-fit: contain;
+        image-rendering: pixelated;
+        image-rendering: -moz-crisp-edges;
+      }
+      #hs-badge-tooltip .tooltip-name {
+        color: #fff;
+        font-size: 13px;
+        font-weight: 600;
+      }
+      #hs-badge-tooltip .tooltip-source {
+        font-size: 11px;
+        padding: 2px 6px;
+        margin: 2px -8px -8px;
+        border-radius: 0;
+        color: #fff;
+        width: calc(100% + 16px);
+        text-align: center;
+        background: #808080;
       }
 
       /* Emote hover tooltip - 4x preview */

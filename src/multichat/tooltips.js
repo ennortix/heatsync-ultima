@@ -25,6 +25,57 @@
     setTimeout(() => toast.remove(), 1500);
   }
 
+  // Badge hover tooltip (4x preview with name)
+  let badgeTooltip = null
+
+  function ensureBadgeTooltip() {
+    if (!badgeTooltip || !document.contains(badgeTooltip)) {
+      badgeTooltip = document.createElement('div')
+      badgeTooltip.id = 'hs-badge-tooltip'
+      const img = document.createElement('img')
+      const name = document.createElement('span')
+      name.className = 'tooltip-name'
+      const source = document.createElement('span')
+      source.className = 'tooltip-source'
+      badgeTooltip.appendChild(img)
+      badgeTooltip.appendChild(name)
+      badgeTooltip.appendChild(source)
+      document.body.appendChild(badgeTooltip)
+    }
+    return badgeTooltip
+  }
+
+  function showBadgeTooltip(badgeImg, badgeName) {
+    const tooltip = ensureBadgeTooltip()
+    const img = tooltip.querySelector('img')
+    img.src = badgeImg.src
+    img.alt = badgeName
+    img.style.width = '72px'
+    img.style.height = '72px'
+    tooltip.querySelector('.tooltip-name').textContent = badgeName
+    // Detect source from URL
+    const src = badgeImg.src
+    const sourceLabel = src.includes('betterttv') ? 'BTTV'
+      : src.includes('frankerfacez') ? 'FFZ'
+      : src.includes('7tv') ? '7TV'
+      : src.includes('jtvnw.net') ? 'Twitch'
+      : src.includes('kick') ? 'Kick'
+      : ''
+    const sourceEl = tooltip.querySelector('.tooltip-source')
+    sourceEl.textContent = sourceLabel
+    sourceEl.className = 'tooltip-source'
+
+    tooltip.style.left = '-9999px'
+    tooltip.style.top = '-9999px'
+    tooltip.classList.add('visible')
+    positionTooltipAtElement(tooltip, badgeImg)
+    requestAnimationFrame(() => positionTooltipAtElement(tooltip, badgeImg))
+  }
+
+  function hideBadgeTooltip() {
+    if (badgeTooltip) badgeTooltip.classList.remove('visible')
+  }
+
   // Emote hover tooltip (4x preview with source color)
   let emoteTooltip = null;
 
@@ -157,6 +208,16 @@
     cleanup.addEventListener(document, 'mouseover', (e) => {
       const target = e.target;
 
+      // Badge hover: show 4x preview with name
+      const badgeImg = target.tagName === 'IMG' && target.classList.contains('hs-mc-badge-img') ? target : null
+      if (badgeImg) {
+        const badgeName = badgeImg.title || badgeImg.alt || ''
+        if (badgeName) {
+          showBadgeTooltip(badgeImg, badgeName)
+        }
+        return
+      }
+
       // Emoji hover: show 4x preview
       const emojiSpan = target.closest('.hs-mc-emoji');
       if (emojiSpan) {
@@ -189,6 +250,13 @@
 
     cleanup.addEventListener(document, 'mouseout', (e) => {
       const target = e.target;
+
+      // Badge mouseout
+      if (target.tagName === 'IMG' && target.classList.contains('hs-mc-badge-img')) {
+        hideBadgeTooltip()
+        return
+      }
+
       const wrapper = target.closest('.hs-mc-emote-wrapper');
       const img = wrapper ? wrapper.querySelector('img') : (
         target.tagName === 'IMG' && (target.classList.contains('hs-mc-emote') || target.classList.contains('hs-mc-picker-emote')) ? target : null
@@ -212,6 +280,7 @@
         hideEmoteTooltip()
         document.querySelectorAll('.hs-emote-highlight').forEach(w => w.classList.remove('hs-emote-highlight'))
       }
+      hideBadgeTooltip()
       if (linkTooltip?.classList.contains('visible')) hideLinkTooltip()
       if (userTooltip?.classList.contains('visible')) hideUserTooltip()
     }
@@ -230,6 +299,12 @@
         const onEmote = target?.closest?.('.hs-mc-emote-wrapper') ||
           (target?.tagName === 'IMG' && (target.classList?.contains('hs-mc-emote') || target.classList?.contains('hs-mc-picker-emote')))
         const onUser = target?.closest?.('.hs-mc-user')
+        const onBadge = target?.tagName === 'IMG' && target.classList?.contains('hs-mc-badge-img')
+
+        // Kill badge tooltip if not on a badge
+        if (badgeTooltip?.classList.contains('visible') && !onBadge) {
+          hideBadgeTooltip()
+        }
 
         // Kill emote tooltip instantly if not on an emote
         if (emoteTooltip?.classList.contains('visible')) {

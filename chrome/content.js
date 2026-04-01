@@ -1002,10 +1002,92 @@ style.textContent = `
     height: 18px;
     vertical-align: middle;
     margin-right: 2px;
+    cursor: default;
+  }
+
+  /* Badge hover tooltip — 4x preview with name */
+  #hs-badge-tooltip {
+    position: fixed;
+    z-index: 999999;
+    background: #000;
+    border: 2px solid #808080;
+    border-radius: 0;
+    padding: 8px;
+    pointer-events: none;
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    transform: translate(-50%, -100%);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.6);
+  }
+  #hs-badge-tooltip.active {
+    display: flex;
+  }
+  #hs-badge-tooltip img {
+    display: block;
+    width: 72px;
+    height: 72px;
+    object-fit: contain;
+    image-rendering: pixelated;
+    image-rendering: -moz-crisp-edges;
+  }
+  #hs-badge-tooltip .hs-badge-tooltip-name {
+    color: #fff;
+    font-size: 13px;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  #hs-badge-tooltip .hs-badge-tooltip-source {
+    font-size: 11px;
+    font-weight: 600;
+    padding: 2px 6px;
+    margin: 2px -8px -8px;
+    width: calc(100% + 16px);
+    text-align: center;
+    background: #808080;
+    color: #fff;
   }
 `;
 document.head.appendChild(style);
 log(' 🎨 CSS injected for emote hover effects');
+
+// Badge hover tooltip for cosmetic badges (BTTV/FFZ/7TV/Chatterino)
+function createBadgeTooltip() {
+  const tooltip = document.createElement('div')
+  tooltip.id = 'hs-badge-tooltip'
+  const img = document.createElement('img')
+  const name = document.createElement('span')
+  name.className = 'hs-badge-tooltip-name'
+  const source = document.createElement('span')
+  source.className = 'hs-badge-tooltip-source'
+  tooltip.appendChild(img)
+  tooltip.appendChild(name)
+  tooltip.appendChild(source)
+  document.body.appendChild(tooltip)
+  return tooltip
+}
+
+function showBadgeTooltip(badgeImg) {
+  let tooltip = document.getElementById('hs-badge-tooltip') || createBadgeTooltip()
+  const img = tooltip.querySelector('img')
+  img.src = badgeImg.src
+  img.alt = badgeImg.alt || ''
+  tooltip.querySelector('.hs-badge-tooltip-name').textContent = badgeImg.title || badgeImg.alt || ''
+  const src = badgeImg.src
+  const sourceLabel = src.includes('betterttv') ? 'BTTV' : src.includes('frankerfacez') ? 'FFZ' : src.includes('7tv') ? '7TV' : src.includes('chatterino') ? 'Chatterino' : ''
+  tooltip.querySelector('.hs-badge-tooltip-source').textContent = sourceLabel
+
+  const rect = badgeImg.getBoundingClientRect()
+  tooltip.style.left = Math.max(50, Math.min(window.innerWidth - 50, rect.left + rect.width / 2)) + 'px'
+  tooltip.style.top = (rect.top - 8) + 'px'
+  tooltip.classList.add('active')
+}
+
+function hideBadgeTooltip() {
+  const tooltip = document.getElementById('hs-badge-tooltip')
+  if (tooltip) tooltip.classList.remove('active')
+}
 
 // =============================================================================
 // EMOTE HOVER OVERLAY (solid colored rectangle on hover)
@@ -5062,6 +5144,12 @@ function applyCosmeticsToMessage(el, userId) {
   const nameEl = el.querySelector('.chat-author__display-name, [data-a-target="chat-message-username"]')
   if (!nameEl) return
 
+  // Helper: attach badge tooltip listeners
+  function attachBadgeTooltip(img) {
+    img.addEventListener('mouseenter', () => showBadgeTooltip(img))
+    img.addEventListener('mouseleave', hideBadgeTooltip)
+  }
+
   // BTTV badge
   if (bttvBadgeMap.has(userId) && !el.querySelector('.hs-bttv-badge')) {
     const b = bttvBadgeMap.get(userId)
@@ -5070,6 +5158,7 @@ function applyCosmeticsToMessage(el, userId) {
     img.src = b.url
     img.title = b.description
     img.alt = b.description
+    attachBadgeTooltip(img)
     nameEl.parentNode.insertBefore(img, nameEl)
   }
 
@@ -5082,6 +5171,7 @@ function applyCosmeticsToMessage(el, userId) {
       img.title = b.title
       img.alt = b.title
       if (b.color) img.style.backgroundColor = b.color
+      attachBadgeTooltip(img)
       nameEl.parentNode.insertBefore(img, nameEl)
     }
   }
@@ -5094,6 +5184,7 @@ function applyCosmeticsToMessage(el, userId) {
     img.src = b.url
     img.title = b.tooltip
     img.alt = b.tooltip
+    attachBadgeTooltip(img)
     nameEl.parentNode.insertBefore(img, nameEl)
   }
 
@@ -5108,6 +5199,7 @@ function applyCosmeticsToMessage(el, userId) {
         img.src = url
         img.title = cosmetic.badge.tooltip || cosmetic.badge.name || '7TV'
         img.alt = '7TV'
+        attachBadgeTooltip(img)
         nameEl.parentNode.insertBefore(img, nameEl)
       }
     }

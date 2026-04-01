@@ -722,44 +722,26 @@
     let overlay = null
     let dragStyle = null
     const isVertical = () => tabPosition === 'left' || tabPosition === 'right'
-    // Cache the flex parent that holds both video and rightCol
-    const flexParent = rightCol.closest('[class*="Layout"][class*=" "]')?.parentElement?.closest('[style], [class]') || rightCol.parentElement?.parentElement
 
     function applyResize() {
       rafId = 0
       chatWidth = pendingWidth
       const w = chatWidth + (isVertical() ? 90 : 0)
-      // Only update CSS var — rightCol reads it via the injected drag style rule
-      document.documentElement.style.setProperty('--hs-tw-chat-width', w + 'px')
+      rightCol.style.setProperty('width', w + 'px', 'important')
+      rightCol.style.setProperty('min-width', w + 'px', 'important')
     }
 
     handle.addEventListener('mousedown', (e) => {
       isResizing = true
       startX = e.clientX
       startWidth = chatWidth
-      const w = (chatWidth + (isVertical() ? 90 : 0))
-      const rect = rightCol.getBoundingClientRect()
       document.body.style.cursor = 'ew-resize'
       document.body.style.userSelect = 'none'
-      document.documentElement.style.setProperty('--hs-tw-chat-width', w + 'px')
-      // Pull rightCol out of flex flow — position:fixed like Kick does
-      // This prevents expensive flex recalc + video re-render on every frame
+      // Kill ALL transitions — Twitch has transition:all on every Layout component
       dragStyle = document.createElement('style')
       dragStyle.id = 'hs-drag-perf'
-      dragStyle.textContent = `
-        * { transition: none !important; }
-      `
+      dragStyle.textContent = '* { transition: none !important; }'
       document.head.appendChild(dragStyle)
-      rightCol.style.setProperty('position', 'fixed', 'important')
-      rightCol.style.setProperty('top', rect.top + 'px', 'important')
-      rightCol.style.setProperty('right', '0', 'important')
-      rightCol.style.setProperty('bottom', '0', 'important')
-      rightCol.style.setProperty('width', w + 'px', 'important')
-      rightCol.style.setProperty('z-index', '9999', 'important')
-      // Placeholder margin so video area fills the gap
-      const wrapper = rightCol.parentElement
-      if (wrapper) wrapper.style.setProperty('margin-right', w + 'px', 'important')
-      // Transparent overlay catches mouse over iframes/video
       overlay = document.createElement('div')
       overlay.id = 'hs-resize-overlay'
       overlay.style.cssText = 'position:fixed;inset:0;z-index:99999;cursor:ew-resize'
@@ -771,14 +753,7 @@
       if (!isResizing) return
       const delta = startX - e.clientX
       pendingWidth = Math.min(MAX_CHAT_WIDTH, Math.max(MIN_CHAT_WIDTH, startWidth + delta))
-      if (!rafId) rafId = requestAnimationFrame(() => {
-        rafId = 0
-        chatWidth = pendingWidth
-        const w = chatWidth + (isVertical() ? 90 : 0)
-        rightCol.style.setProperty('width', w + 'px', 'important')
-        const wrapper = rightCol.parentElement
-        if (wrapper) wrapper.style.setProperty('margin-right', w + 'px', 'important')
-      })
+      if (!rafId) rafId = requestAnimationFrame(applyResize)
     })
 
     cleanup.addEventListener(document, 'mouseup', () => {
@@ -786,20 +761,11 @@
       isResizing = false
       if (rafId) { cancelAnimationFrame(rafId); rafId = 0 }
       chatWidth = pendingWidth || chatWidth
-      // Restore rightCol to normal flow
-      rightCol.style.removeProperty('position')
-      rightCol.style.removeProperty('top')
-      rightCol.style.removeProperty('right')
-      rightCol.style.removeProperty('bottom')
-      rightCol.style.removeProperty('z-index')
-      const wrapper = rightCol.parentElement
-      if (wrapper) wrapper.style.removeProperty('margin-right')
-      document.documentElement.style.removeProperty('--hs-tw-chat-width')
-      if (dragStyle) { dragStyle.remove(); dragStyle = null }
       applyChatWidth(rightCol)
       document.body.style.cursor = ''
       document.body.style.userSelect = ''
       if (overlay) { overlay.remove(); overlay = null }
+      if (dragStyle) { dragStyle.remove(); dragStyle = null }
       saveChatWidth()
     })
 

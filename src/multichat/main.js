@@ -2264,7 +2264,7 @@
       /* Username hover tooltip - profile preview */
       #hs-user-tooltip {
         position: fixed;
-        z-index: 5000;
+        z-index: 100000;
         pointer-events: none;
         background: #000;
         border: 2px solid #00ff00;
@@ -7431,6 +7431,7 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
       if (!Array.isArray(events) || events.length === 0) return;
 
       const builtEvents = [];
+      const now = Date.now()
       for (const e of events) {
         const channel = e.channel?.toLowerCase();
         if (!channel) continue;
@@ -7456,6 +7457,10 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
           eventClass = 'event-follow event-offline';
         }
         if (!text) continue;
+
+        // Dedup against realtime events (same map as stream_event / follow_stream_event)
+        if (streamEventDedup.has(text) && now - streamEventDedup.get(text) < 60000) continue
+        streamEventDedup.set(text, now)
 
         const evt = { type: 'stream-event', eventClass, text, channel, time: e.time, color: e.color || '' };
         builtEvents.push(evt)

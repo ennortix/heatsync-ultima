@@ -123,6 +123,7 @@ function scheduleInventoryRefresh() {
 }
 let unreadNotifCount = 0; // Unread notification count for extension badge
 let cachedFollowHistory = null; // Cache follow:history for late-loading content scripts
+const wsStreamEventDedup = new Map(); // Dedup stream events across stream:* and follow:stream:*
 let cachedFollowColors = null; // Cache follow:colors for late-loading content scripts
 let activeYoutubeVideoId = null; // Currently subscribed YouTube videoId (for WS reconnect)
 const ytVideoToChannel = new Map(); // videoId → channelId (for per-channel YouTube routing)
@@ -2236,7 +2237,15 @@ function handleWSMessage(msg) {
 
     case 'stream:update':
     case 'stream:online':
-    case 'stream:offline':
+    case 'stream:offline': {
+      // Dedup: same channel+event within 60s (prevents dupes from stream:* and follow:stream:*)
+      const streamKey = `${msg.channel}:${msg.type}:${msg.game || ''}`
+      const streamNow = Date.now()
+      if (wsStreamEventDedup.has(streamKey) && streamNow - wsStreamEventDedup.get(streamKey) < 60000) break
+      wsStreamEventDedup.set(streamKey, streamNow)
+      if (wsStreamEventDedup.size > 200) {
+        for (const [k, t] of wsStreamEventDedup) { if (streamNow - t > 60000) wsStreamEventDedup.delete(k) }
+      }
       broadcastToTabs({
         type: 'stream_event',
         eventType: msg.type,
@@ -2249,6 +2258,7 @@ function handleWSMessage(msg) {
         isLive: msg.isLive
       })
       break
+    }
 
     case 'stream:redeem':
       broadcastToTabs({
@@ -2297,24 +2307,28 @@ function handleWSMessage(msg) {
 
     case 'follow:stream:update':
     case 'follow:stream:online':
-    case 'follow:stream:offline':
+    case 'follow:stream:offline': {
+      // Dedup: same channel+event within 60s (shared map with stream:*)
+      const fStreamKey = `${msg.channel}:${msg.type.replace('follow:', '')}:${msg.game || ''}`
+      const fStreamNow = Date.now()
+      if (wsStreamEventDedup.has(fStreamKey) && fStreamNow - wsStreamEventDedup.get(fStreamKey) < 60000) break
+      wsStreamEventDedup.set(fStreamKey, fStreamNow)
+
       // Append to cached history so content scripts get it on refresh
       if (!cachedFollowHistory) cachedFollowHistory = []
-      {
-        cachedFollowHistory.push({
-          type: msg.type,
-          platform: msg.platform,
-          channel: msg.channel,
-          game: msg.game || '',
-          title: msg.title || '',
-          prevGame: msg.prevGame || '',
-          prevTitle: msg.prevTitle || '',
-          color: msg.color || '',
-          time: Date.now()
-        })
-        // Keep capped at 200
-        if (cachedFollowHistory.length > 200) cachedFollowHistory.splice(0, cachedFollowHistory.length - 200)
-      }
+      cachedFollowHistory.push({
+        type: msg.type,
+        platform: msg.platform,
+        channel: msg.channel,
+        game: msg.game || '',
+        title: msg.title || '',
+        prevGame: msg.prevGame || '',
+        prevTitle: msg.prevTitle || '',
+        color: msg.color || '',
+        time: fStreamNow
+      })
+      // Keep capped at 200
+      if (cachedFollowHistory.length > 200) cachedFollowHistory.splice(0, cachedFollowHistory.length - 200)
       broadcastToTabs({
         type: 'follow_stream_event',
         eventType: msg.type.replace('follow:', ''),
@@ -2327,6 +2341,7 @@ function handleWSMessage(msg) {
         color: msg.color || '',
       })
       break
+    }
 
     case 'follow:colors':
       cachedFollowColors = msg.colors || {}

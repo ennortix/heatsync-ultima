@@ -7144,23 +7144,23 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
 
       const evt = { type: 'stream-event', eventClass, text, channel, time: Date.now() }
 
-      // Push into relevant buffers (same pattern as stream_event handler)
+      // Push into relevant buffers — only the channel the event belongs to
       const liveChannel = getLiveChannel()
-      const liveBuffer = liveChannel ? irc?.channels?.get(liveChannel) : null
-      if (liveBuffer) {
-        const existing = liveBuffer.getAll()
+      const chBuffer = irc?.channels?.get(channel)
+      if (chBuffer) {
+        const existing = chBuffer.getAll()
         if (!existing.some(m => m.type === 'stream-event' && m.text === evt.text)) {
-          liveBuffer.push(evt)
+          chBuffer.push(evt)
           saveStreamEvent(evt)
         }
       }
-      if (channel !== liveChannel) {
-        const chBuffer = irc?.channels?.get(channel)
-        if (chBuffer) {
-          const existing = chBuffer.getAll()
+      // Also push into live buffer if this event's channel IS the live channel
+      if (channel === liveChannel) {
+        const liveBuffer = irc?.channels?.get(liveChannel)
+        if (liveBuffer && liveBuffer !== chBuffer) {
+          const existing = liveBuffer.getAll()
           if (!existing.some(m => m.type === 'stream-event' && m.text === evt.text)) {
-            chBuffer.push(evt)
-            if (!liveBuffer) saveStreamEvent(evt)
+            liveBuffer.push(evt)
           }
         }
       }

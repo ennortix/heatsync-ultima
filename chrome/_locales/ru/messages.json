@@ -5,7 +5,6 @@
   "manifest_description": {
     "message": "Custom emotes for Twitch, Kick, and YouTube chat. Unlimited slots, tab completion, real-time sync."
   },
-
   "common_loading": {
     "message": "loading..."
   },
@@ -54,7 +53,6 @@
   "common_user_not_found": {
     "message": "user not found"
   },
-
   "popup_title": {
     "message": "heatsync"
   },
@@ -73,16 +71,26 @@
   "popup_user_stats": {
     "message": "$EMOTES$ emotes · $GLOBALS$ global",
     "placeholders": {
-      "emotes": { "content": "$1" },
-      "globals": { "content": "$2" }
+      "emotes": {
+        "content": "$1"
+      },
+      "globals": {
+        "content": "$2"
+      }
     }
   },
   "popup_user_stats_heat": {
     "message": "$EMOTES$ emotes · $GLOBALS$ global · $HEAT$ heat",
     "placeholders": {
-      "emotes": { "content": "$1" },
-      "globals": { "content": "$2" },
-      "heat": { "content": "$3" }
+      "emotes": {
+        "content": "$1"
+      },
+      "globals": {
+        "content": "$2"
+      },
+      "heat": {
+        "content": "$3"
+      }
     }
   },
   "popup_btn_emotes": {
@@ -109,7 +117,6 @@
   "popup_hint": {
     "message": "emote settings in picker panel on chat"
   },
-
   "welcome_title": {
     "message": "welcome to heatsync"
   },
@@ -143,7 +150,6 @@
   "welcome_source": {
     "message": "source"
   },
-
   "btn_auth_login": {
     "message": "log in"
   },
@@ -192,7 +198,9 @@
   "btn_import_count": {
     "message": "import $COUNT$ emotes",
     "placeholders": {
-      "count": { "content": "$1" }
+      "count": {
+        "content": "$1"
+      }
     }
   },
   "btn_failed_load": {
@@ -309,61 +317,82 @@
   "btn_click_expand": {
     "message": "click to expand"
   },
-
   "content_toast_failed_add": {
     "message": "Failed to add $NAME$: $ERROR$",
     "placeholders": {
-      "name": { "content": "$1" },
-      "error": { "content": "$2" }
+      "name": {
+        "content": "$1"
+      },
+      "error": {
+        "content": "$2"
+      }
     }
   },
   "content_toast_failed_remove": {
     "message": "Failed to remove $NAME$: $ERROR$",
     "placeholders": {
-      "name": { "content": "$1" },
-      "error": { "content": "$2" }
+      "name": {
+        "content": "$1"
+      },
+      "error": {
+        "content": "$2"
+      }
     }
   },
   "content_toast_unblocked": {
     "message": "Unblocked $NAME$",
     "placeholders": {
-      "name": { "content": "$1" }
+      "name": {
+        "content": "$1"
+      }
     }
   },
   "content_toast_failed_unblock": {
     "message": "Failed to unblock: $ERROR$",
     "placeholders": {
-      "error": { "content": "$1" }
+      "error": {
+        "content": "$1"
+      }
     }
   },
   "content_toast_removed": {
     "message": "Removed $NAME$ from your set",
     "placeholders": {
-      "name": { "content": "$1" }
+      "name": {
+        "content": "$1"
+      }
     }
   },
   "content_toast_failed_block": {
     "message": "Failed to block: $ERROR$",
     "placeholders": {
-      "error": { "content": "$1" }
+      "error": {
+        "content": "$1"
+      }
     }
   },
   "content_toast_blocked": {
     "message": "Blocked $NAME$",
     "placeholders": {
-      "name": { "content": "$1" }
+      "name": {
+        "content": "$1"
+      }
     }
   },
   "content_toast_unmuted": {
     "message": "unmuted $NAME$",
     "placeholders": {
-      "name": { "content": "$1" }
+      "name": {
+        "content": "$1"
+      }
     }
   },
   "content_toast_muted_24h": {
     "message": "muted $NAME$ for 24h",
     "placeholders": {
-      "name": { "content": "$1" }
+      "name": {
+        "content": "$1"
+      }
     }
   },
   "content_card_follows_you": {
@@ -381,45 +410,63 @@
   "content_card_you_sub_tier": {
     "message": "you sub T$TIER$",
     "placeholders": {
-      "tier": { "content": "$1" }
+      "tier": {
+        "content": "$1"
+      }
     }
   },
   "content_card_subbed": {
     "message": "subbed $CHANNEL$ $TENURE$",
     "placeholders": {
-      "channel": { "content": "$1" },
-      "tenure": { "content": "$2" }
+      "channel": {
+        "content": "$1"
+      },
+      "tenure": {
+        "content": "$2"
+      }
     }
   },
   "content_card_following": {
     "message": "following $CHANNEL$ $AGE$",
     "placeholders": {
-      "channel": { "content": "$1" },
-      "age": { "content": "$2" }
+      "channel": {
+        "content": "$1"
+      },
+      "age": {
+        "content": "$2"
+      }
     }
   },
   "content_card_not_following": {
     "message": "not following $CHANNEL$",
     "placeholders": {
-      "channel": { "content": "$1" }
+      "channel": {
+        "content": "$1"
+      }
     }
   },
   "content_card_followed_by": {
     "message": "followed by $CHANNEL$",
     "placeholders": {
-      "channel": { "content": "$1" }
+      "channel": {
+        "content": "$1"
+      }
     }
   },
   "content_card_following_count": {
     "message": "following $COUNT$",
     "placeholders": {
-      "count": { "content": "$1" }
+      "count": {
+        "content": "$1"
+      }
     }
   },
   "content_card_followers": {
     "message": "$COUNT$ followers",
     "placeholders": {
-      "count": { "content": "$1" }
+      "count": {
+        "content": "$1"
+      }
     }
   },
   "content_card_partner": {
@@ -431,7 +478,9 @@
   "content_card_live": {
     "message": "LIVE $VIEWERS$",
     "placeholders": {
-      "viewers": { "content": "$1" }
+      "viewers": {
+        "content": "$1"
+      }
     }
   },
   "content_card_twitch_verified": {
@@ -452,7 +501,6 @@
   "content_blocked_click_unblock": {
     "message": "blocked (click to unblock)"
   },
-
   "mc_tab_feed": {
     "message": "feed"
   },
@@ -471,7 +519,9 @@
   "mc_tab_live_channel": {
     "message": "live · $CHANNEL$",
     "placeholders": {
-      "channel": { "content": "$1" }
+      "channel": {
+        "content": "$1"
+      }
     }
   },
   "mc_btn_rotate_tabs": {
@@ -489,7 +539,9 @@
   "mc_new_messages": {
     "message": "$COUNT$ new",
     "placeholders": {
-      "count": { "content": "$1" }
+      "count": {
+        "content": "$1"
+      }
     }
   },
   "mc_resume": {
@@ -528,13 +580,14 @@
   "mc_edit_channel": {
     "message": "edit $CHANNEL$",
     "placeholders": {
-      "channel": { "content": "$1" }
+      "channel": {
+        "content": "$1"
+      }
     }
   },
   "mc_no_channel_detected": {
     "message": "no channel detected"
   },
-
   "mc_settings_display": {
     "message": "display"
   },
@@ -590,16 +643,16 @@
     "message": "inline notifications"
   },
   "mc_settings_notif_op": {
-    "message": "[OP] original posts"
+    "message": "original posts"
   },
   "mc_settings_notif_op_reply": {
-    "message": "[OP] OP replies in own thread"
+    "message": "OP replies in own thread"
   },
   "mc_settings_notif_re": {
-    "message": "[RE] replies"
+    "message": "replies"
   },
   "mc_settings_notif_dm": {
-    "message": "[DM] whispers & DMs"
+    "message": "whispers & DMs"
   },
   "mc_settings_notif_op_desc": {
     "message": "Notification in your active chat tab when someone creates a new original post on the feed."
@@ -655,7 +708,6 @@
   "mc_settings_unmute": {
     "message": "unmute"
   },
-
   "mc_pred_no_active": {
     "message": "no active prediction"
   },
@@ -743,11 +795,14 @@
   "mc_pred_you_bet": {
     "message": "you bet $POINTS$ on $OUTCOME$ — pick the actual winner",
     "placeholders": {
-      "points": { "content": "$1" },
-      "outcome": { "content": "$2" }
+      "points": {
+        "content": "$1"
+      },
+      "outcome": {
+        "content": "$2"
+      }
     }
   },
-
   "mc_poll_new": {
     "message": "+ new poll"
   },
@@ -757,13 +812,17 @@
   "mc_poll_choice": {
     "message": "choice $NUM$",
     "placeholders": {
-      "num": { "content": "$1" }
+      "num": {
+        "content": "$1"
+      }
     }
   },
   "mc_poll_choice_optional": {
     "message": "choice $NUM$ (optional)",
     "placeholders": {
-      "num": { "content": "$1" }
+      "num": {
+        "content": "$1"
+      }
     }
   },
   "mc_poll_create": {
@@ -775,13 +834,17 @@
   "mc_poll_votes": {
     "message": "$COUNT$ votes",
     "placeholders": {
-      "count": { "content": "$1" }
+      "count": {
+        "content": "$1"
+      }
     }
   },
   "mc_poll_vote_single": {
     "message": "$COUNT$ vote",
     "placeholders": {
-      "count": { "content": "$1" }
+      "count": {
+        "content": "$1"
+      }
     }
   },
   "mc_poll_already_active": {
@@ -790,7 +853,6 @@
   "mc_poll_not_logged_in": {
     "message": "not logged in"
   },
-
   "mc_reward_rewards": {
     "message": "rewards"
   },
@@ -806,13 +868,17 @@
   "mc_reward_cooldown_min": {
     "message": "$MIN$m cooldown",
     "placeholders": {
-      "min": { "content": "$1" }
+      "min": {
+        "content": "$1"
+      }
     }
   },
   "mc_reward_cooldown_sec": {
     "message": "$SEC$s cooldown",
     "placeholders": {
-      "sec": { "content": "$1" }
+      "sec": {
+        "content": "$1"
+      }
     }
   },
   "mc_reward_enter_text": {
@@ -821,7 +887,6 @@
   "mc_reward_redeem": {
     "message": "redeem"
   },
-
   "mc_chat_username_color": {
     "message": "username color"
   },
@@ -852,10 +917,11 @@
   "mc_chat_hype_level": {
     "message": "lvl $LEVEL$",
     "placeholders": {
-      "level": { "content": "$1" }
+      "level": {
+        "content": "$1"
+      }
     }
   },
-
   "mc_input_send_message": {
     "message": "send a message..."
   },
@@ -865,13 +931,17 @@
   "mc_input_send_channel": {
     "message": "send to #$CHANNEL$",
     "placeholders": {
-      "channel": { "content": "$1" }
+      "channel": {
+        "content": "$1"
+      }
     }
   },
   "mc_input_replying_to": {
     "message": "Replying to @$USER$",
     "placeholders": {
-      "user": { "content": "$1" }
+      "user": {
+        "content": "$1"
+      }
     }
   },
   "mc_input_cancel_reply": {
@@ -904,7 +974,6 @@
   "mc_input_send_failed_retry": {
     "message": "send failed — try again"
   },
-
   "mc_social_back": {
     "message": "<- back"
   },
@@ -944,43 +1013,55 @@
   "mc_social_failed_post": {
     "message": "failed to post"
   },
-
   "mc_tip_emoji": {
     "message": "emoji"
   },
   "mc_tip_subbed": {
     "message": "subbed $CHANNEL$ $TENURE$",
     "placeholders": {
-      "channel": { "content": "$1" },
-      "tenure": { "content": "$2" }
+      "channel": {
+        "content": "$1"
+      },
+      "tenure": {
+        "content": "$2"
+      }
     }
   },
   "mc_tip_following": {
     "message": "following $CHANNEL$ $AGE$",
     "placeholders": {
-      "channel": { "content": "$1" },
-      "age": { "content": "$2" }
+      "channel": {
+        "content": "$1"
+      },
+      "age": {
+        "content": "$2"
+      }
     }
   },
   "mc_tip_not_following": {
     "message": "not following $CHANNEL$",
     "placeholders": {
-      "channel": { "content": "$1" }
+      "channel": {
+        "content": "$1"
+      }
     }
   },
   "mc_tip_followed_by": {
     "message": "followed by $CHANNEL$",
     "placeholders": {
-      "channel": { "content": "$1" }
+      "channel": {
+        "content": "$1"
+      }
     }
   },
   "mc_tip_followers": {
     "message": "$COUNT$ followers",
     "placeholders": {
-      "count": { "content": "$1" }
+      "count": {
+        "content": "$1"
+      }
     }
   },
-
   "mc_whisper_hint": {
     "message": "/w user msg · /dm user msg · /r msg"
   },
@@ -990,7 +1071,9 @@
   "mc_whisper_user_not_found": {
     "message": "twitch user \"$USER$\" not found",
     "placeholders": {
-      "user": { "content": "$1" }
+      "user": {
+        "content": "$1"
+      }
     }
   },
   "mc_whisper_resolve_failed": {
@@ -999,32 +1082,42 @@
   "mc_whisper_hs_not_found": {
     "message": "heatsync user \"$USER$\" not found",
     "placeholders": {
-      "user": { "content": "$1" }
+      "user": {
+        "content": "$1"
+      }
     }
   },
-
   "mc_irc_chat_cleared": {
     "message": "Chat was cleared"
   },
   "mc_irc_msg_deleted": {
     "message": "Message from $USER$ deleted",
     "placeholders": {
-      "user": { "content": "$1" }
+      "user": {
+        "content": "$1"
+      }
     }
   },
   "mc_irc_gift_subs": {
     "message": "$USER$ gifted $AMOUNT$ subs to $CHANNEL$",
     "placeholders": {
-      "user": { "content": "$1" },
-      "amount": { "content": "$2" },
-      "channel": { "content": "$3" }
+      "user": {
+        "content": "$1"
+      },
+      "amount": {
+        "content": "$2"
+      },
+      "channel": {
+        "content": "$3"
+      }
     }
   },
-
   "mc_yt_connected": {
     "message": "youtube connected: $CHANNEL$ — waiting for messages...",
     "placeholders": {
-      "channel": { "content": "$1" }
+      "channel": {
+        "content": "$1"
+      }
     }
   },
   "mc_yt_ended": {
@@ -1033,7 +1126,6 @@
   "mc_yt_error": {
     "message": "youtube connection error"
   },
-
   "mc_emote_search_placeholder": {
     "message": "search emotes..."
   },
@@ -1049,7 +1141,6 @@
   "mc_emote_blocked": {
     "message": "blocked (click to unblock)"
   },
-
   "content_toast_unknown_error": {
     "message": "Unknown error"
   },
@@ -1079,5 +1170,11 @@
   },
   "btn_error_inventory": {
     "message": "failed to load your emotes"
+  },
+  "mc_settings_notif_mop": {
+    "message": "OP replies in own thread"
+  },
+  "mc_settings_notif_mop_desc": {
+    "message": "Notification when the original poster replies in their own thread."
   }
 }

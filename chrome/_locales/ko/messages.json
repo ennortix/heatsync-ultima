@@ -643,16 +643,16 @@
     "message": "인라인 알림"
   },
   "mc_settings_notif_op": {
-    "message": "[OP] 오리지널 포스트"
+    "message": "오리지널 포스트"
   },
   "mc_settings_notif_op_reply": {
-    "message": "[OP] 자신의 스레드에 OP 답글"
+    "message": "자신의 스레드에 OP 답글"
   },
   "mc_settings_notif_re": {
-    "message": "[RE] 답글"
+    "message": "답글"
   },
   "mc_settings_notif_dm": {
-    "message": "[DM] 귓속말 & DM"
+    "message": "귓속말 & DM"
   },
   "mc_settings_notif_op_desc": {
     "message": "누군가 피드에 새 오리지널 포스트를 작성하면 활성 채팅 탭에 알림."
@@ -1170,5 +1170,11 @@
   },
   "btn_error_inventory": {
     "message": "내 이모트 로드 실패"
+  },
+  "mc_settings_notif_mop": {
+    "message": "자신의 스레드에 OP 답글"
+  },
+  "mc_settings_notif_mop_desc": {
+    "message": "원작자가 자신의 스레드에 답글을 달 때 알림."
   }
 }

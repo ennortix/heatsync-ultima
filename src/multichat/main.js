@@ -5730,12 +5730,17 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
       // Ensure channel is joined + history loaded (handles picker overrides, SPA nav)
       if (curCh && irc && !irc.channels.has(curCh.toLowerCase())) irc.join(curCh);
       const ircMsgs = curCh ? (irc?.getMessages(curCh) || []) : [];
-      // Kick messages for live tab: same channel name, or linked via config
+      // Kick messages for live tab: same channel name, linked via config, or URL channel on Kick
       let kickMsgs = curCh ? (kickChat?.getMessages(curCh) || []) : [];
       if (!kickMsgs.length && curCh) {
         // Check if any config entry links current channel to a Kick channel
         const linked = config.channels.find(ch => typeof ch !== 'string' && ch.twitch === curCh && ch.kick);
         if (linked) kickMsgs = kickChat?.getMessages(linked.kick) || [];
+      }
+      // On Kick, also pull messages from the URL channel (may differ from live override)
+      if (!kickMsgs.length && hostPlatform === 'kick') {
+        const urlCh = getCurrentChannel();
+        if (urlCh && urlCh !== curCh) kickMsgs = kickChat?.getMessages(urlCh) || [];
       }
       // YouTube messages for live tab: auto-discovered or linked via config
       let ytMsgs = channelYtMessages.get('__live_yt_auto__') || [];
@@ -6301,6 +6306,8 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
       const ki = ch.kick?.toLowerCase()
       return (tw === curCh && ki === mc) || (ki === curCh && tw === mc)
     })
+    // On Kick, URL channel messages always belong to live tab
+    || (hostPlatform === 'kick' && mc === getCurrentChannel()?.toLowerCase())
   }
 
   /** Update the live tab button label to show selected channel */

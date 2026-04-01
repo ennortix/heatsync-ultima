@@ -351,6 +351,7 @@ class IRC {
 
         if (this.channels.has(ch)) {
           this.channels.get(ch).push(msg);
+          this.persistBuffer(ch);
           this.emit('message', msg);
         }
       } else if (msg && (msg.type === 'usernotice' || msg.type === 'notice')) {
@@ -362,6 +363,7 @@ class IRC {
         fetchChannelBadges(ch);
         if (this.channels.has(ch)) {
           this.channels.get(ch).push(msg);
+          this.persistBuffer(ch);
           this.emit('message', msg);
         }
       }
@@ -380,19 +382,61 @@ class IRC {
     this.loadHistory(ch);
   }
 
+  // Persist buffers to chrome.storage.local (debounced)
+  _persistTimers = {}
+  _PERSIST_MAX = 200
+
+  persistBuffer(ch) {
+    if (this._persistTimers[ch]) return
+    this._persistTimers[ch] = setTimeout(() => {
+      delete this._persistTimers[ch]
+      const buffer = this.channels.get(ch)
+      if (!buffer) return
+      const msgs = buffer.getAll().slice(-this._PERSIST_MAX).map(m => ({
+        user: m.user, userId: m.userId, text: m.text, color: m.color,
+        badges: m.badges, channel: m.channel, time: m.time, id: m.id,
+        isAction: m.isAction || undefined, replyTo: m.replyTo || undefined,
+        subMonths: m.subMonths || undefined
+      }))
+      chrome.storage?.local?.set({ [`hs_irc_${ch}`]: { msgs, ts: Date.now() } }).catch(() => {})
+    }, 5000)
+  }
+
   async loadHistory(ch) {
     const buffer = this.channels.get(ch);
     if (!buffer) return;
 
     const cacheKey = `hs_chat_history_${ch}`;
-    const CACHE_TTL = 300000; // 5 min
+    const storageKey = `hs_irc_${ch}`
 
-    // 1. Try localStorage cache for instant render
+    // 1. Try chrome.storage.local (own persisted messages — survives refresh reliably)
+    try {
+      const stored = await chrome.storage.local.get(storageKey)
+      const data = stored[storageKey]
+      if (data?.msgs?.length > 0 && Date.now() - data.ts < 86400000) {
+        log('Storage hit:', data.msgs.length, 'msgs for', ch)
+        for (const msg of data.msgs) {
+          msg.isHistory = true
+          usernameCache.add(msg.user)
+          knownColors.set(msg.user.toLowerCase(), msg.color)
+          if (msg.subMonths) trackSubTenure(ch, msg.user, msg.subMonths)
+          buffer.push(msg)
+        }
+        if (currentTab === ch || (currentTab === 'live' && getLiveChannel() === ch)) {
+          renderMessages(currentTab)
+        }
+        // Refresh in background (robotty may have newer messages)
+        this._fetchHistory(ch, buffer, cacheKey)
+        return
+      }
+    } catch {}
+
+    // 2. Try localStorage cache (robotty data from previous session)
     try {
       const cached = localStorage.getItem(cacheKey);
       if (cached) {
         const { messages, timestamp } = JSON.parse(cached);
-        if (Date.now() - timestamp < CACHE_TTL && messages?.length > 0) {
+        if (Date.now() - timestamp < 3600000 && messages?.length > 0) {
           log('Cache hit:', messages.length, 'msgs for', ch);
           for (const msg of messages) {
             usernameCache.add(msg.user);
@@ -410,7 +454,7 @@ class IRC {
       }
     } catch {}
 
-    // 2. No valid cache — fetch synchronously
+    // 3. No valid cache — fetch synchronously from robotty
     await this._fetchHistory(ch, buffer, cacheKey);
   }
 
@@ -456,12 +500,29 @@ class IRC {
         parsed.push(msg);
       }
 
-      // Merge: clear buffer, add history first, then any live messages on top
-      buffer.clear();
-      for (const msg of parsed) buffer.push(msg);
-      for (const msg of liveMessages) buffer.push(msg);
+      // Merge strategy: on background refresh, only ADD newer messages — never clear
+      // On initial load (empty buffer), replace entirely
+      const existingAll = buffer.getAll();
+      if (existingAll.length === 0) {
+        // Initial load — just fill the buffer
+        for (const msg of parsed) buffer.push(msg);
+        log('Loaded history for', ch, '- parsed:', parsed.length);
+      } else {
+        // Background refresh — only add messages newer than what we have
+        const latestTime = Math.max(...existingAll.map(m => m.time || 0))
+        const newer = parsed.filter(m => m.time > latestTime)
+        const existingIds = new Set(existingAll.filter(m => m.id).map(m => m.id))
+        const dedupedNewer = newer.filter(m => !m.id || !existingIds.has(m.id))
+        if (dedupedNewer.length > 0) {
+          for (const msg of dedupedNewer) buffer.push(msg)
+          log('Background refresh for', ch, '- added', dedupedNewer.length, 'newer messages, total:', buffer.getAll().length)
+        } else {
+          log('Background refresh for', ch, '- no new messages from robotty')
+        }
+      }
 
-      log('Loaded history for', ch, '- parsed:', parsed.length, 'total:', buffer.getAll().length);
+      // Persist to chrome.storage.local for reliable refresh
+      this.persistBuffer(ch);
 
       // Cache for next time
       try {

@@ -110,10 +110,10 @@ async function safeSendMessage(message, _retry = 0) {
       extensionContextValid = false;
       warn(' ⚠️ Extension was reloaded - please refresh this page');
       showToast('Extension updated - refresh page to continue', 'warning');
-    } else if (_retry < 3 && (err.message?.includes('Receiving end does not exist') ||
+    } else if (_retry < 5 && (err.message?.includes('Receiving end does not exist') ||
                err.message?.includes('Could not establish connection'))) {
-      // Service worker waking up — retry after short delay
-      await new Promise(r => setTimeout(r, 200 * (_retry + 1)));
+      // Service worker waking up — retry with backoff (200, 400, 800, 1600, 3200ms)
+      await new Promise(r => setTimeout(r, 200 * Math.pow(2, _retry)));
       return safeSendMessage(message, _retry + 1);
     }
     throw err;
@@ -1530,6 +1530,20 @@ async function loadInventory() {
 
   hideLoadingStatus();
   log(' Will receive emotes when service worker broadcasts them');
+
+  // Safety net: if emotes arrive late via broadcast, we need to ensure existing messages get processed.
+  // Set up a one-shot listener that fires processExistingMessages on first emote data arrival.
+  const _lateEmoteHandler = (msg) => {
+    if (msg.type === 'inventory_update' || msg.type === 'global_emotes_update') {
+      chrome.runtime.onMessage.removeListener(_lateEmoteHandler)
+      // Emote data just arrived — make sure observer is running and reprocess
+      watchForNewMessages()
+      setupUsernameColoringObserver()
+    }
+  }
+  chrome.runtime.onMessage.addListener(_lateEmoteHandler)
+  // Also clean up if emotes never come (don't leak listener forever)
+  cleanup.setTimeout(() => chrome.runtime.onMessage.removeListener(_lateEmoteHandler), 120000)
 }
 
 // Create emote bridge BEFORE loading inventory so updateEmoteBridge() works
@@ -5490,9 +5504,10 @@ let watchRetryCount = 0;
 function watchForNewMessages() {
   const chatContainer = findChatContainer();
   if (!chatContainer) {
-    if (++watchRetryCount > 30) return;
-    log(' ⏳ watchForNewMessages: no container found, retrying in 1s');
-    cleanup.setTimeout(watchForNewMessages, 1000);
+    if (++watchRetryCount > 60) return;
+    const delay = watchRetryCount <= 30 ? 1000 : 2000
+    log(' ⏳ watchForNewMessages: no container found, retrying in', delay, 'ms (attempt', watchRetryCount, ')');
+    cleanup.setTimeout(watchForNewMessages, delay);
     return;
   }
   watchRetryCount = 0;
@@ -6237,12 +6252,12 @@ cleanup.setInterval(() => {
   }
 }, 2000, 'observer-health-check');
 
-// Periodic re-scan to catch messages that might have been missed (30s — observer handles most)
+// Periodic re-scan to catch messages that might have been missed (10s — observer handles most)
 cleanup.setInterval(() => {
   if (emoteInventory.length > 0 || globalEmotes.length > 0) {
     processExistingMessages();
   }
-}, 30000, 'periodic-rescan');
+}, 10000, 'periodic-rescan');
 
 // Flush message cache on page unload so we don't lose the last 5s
 window.addEventListener('beforeunload', () => {

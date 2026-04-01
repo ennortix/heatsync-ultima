@@ -1200,6 +1200,7 @@ class IRC {
 
         if (this.channels.has(ch)) {
           this.channels.get(ch).push(msg);
+          this.persistBuffer(ch);
           this.emit('message', msg);
         }
       } else if (msg && (msg.type === 'usernotice' || msg.type === 'notice')) {
@@ -1211,6 +1212,7 @@ class IRC {
         fetchChannelBadges(ch);
         if (this.channels.has(ch)) {
           this.channels.get(ch).push(msg);
+          this.persistBuffer(ch);
           this.emit('message', msg);
         }
       }
@@ -1229,19 +1231,61 @@ class IRC {
     this.loadHistory(ch);
   }
 
+  // Persist buffers to chrome.storage.local (debounced)
+  _persistTimers = {}
+  _PERSIST_MAX = 200
+
+  persistBuffer(ch) {
+    if (this._persistTimers[ch]) return
+    this._persistTimers[ch] = setTimeout(() => {
+      delete this._persistTimers[ch]
+      const buffer = this.channels.get(ch)
+      if (!buffer) return
+      const msgs = buffer.getAll().slice(-this._PERSIST_MAX).map(m => ({
+        user: m.user, userId: m.userId, text: m.text, color: m.color,
+        badges: m.badges, channel: m.channel, time: m.time, id: m.id,
+        isAction: m.isAction || undefined, replyTo: m.replyTo || undefined,
+        subMonths: m.subMonths || undefined
+      }))
+      chrome.storage?.local?.set({ [`hs_irc_${ch}`]: { msgs, ts: Date.now() } }).catch(() => {})
+    }, 5000)
+  }
+
   async loadHistory(ch) {
     const buffer = this.channels.get(ch);
     if (!buffer) return;
 
     const cacheKey = `hs_chat_history_${ch}`;
-    const CACHE_TTL = 300000; // 5 min
+    const storageKey = `hs_irc_${ch}`
 
-    // 1. Try localStorage cache for instant render
+    // 1. Try chrome.storage.local (own persisted messages — survives refresh reliably)
+    try {
+      const stored = await chrome.storage.local.get(storageKey)
+      const data = stored[storageKey]
+      if (data?.msgs?.length > 0 && Date.now() - data.ts < 86400000) {
+        log('Storage hit:', data.msgs.length, 'msgs for', ch)
+        for (const msg of data.msgs) {
+          msg.isHistory = true
+          usernameCache.add(msg.user)
+          knownColors.set(msg.user.toLowerCase(), msg.color)
+          if (msg.subMonths) trackSubTenure(ch, msg.user, msg.subMonths)
+          buffer.push(msg)
+        }
+        if (currentTab === ch || (currentTab === 'live' && getLiveChannel() === ch)) {
+          renderMessages(currentTab)
+        }
+        // Refresh in background (robotty may have newer messages)
+        this._fetchHistory(ch, buffer, cacheKey)
+        return
+      }
+    } catch {}
+
+    // 2. Try localStorage cache (robotty data from previous session)
     try {
       const cached = localStorage.getItem(cacheKey);
       if (cached) {
         const { messages, timestamp } = JSON.parse(cached);
-        if (Date.now() - timestamp < CACHE_TTL && messages?.length > 0) {
+        if (Date.now() - timestamp < 3600000 && messages?.length > 0) {
           log('Cache hit:', messages.length, 'msgs for', ch);
           for (const msg of messages) {
             usernameCache.add(msg.user);
@@ -1259,7 +1303,7 @@ class IRC {
       }
     } catch {}
 
-    // 2. No valid cache — fetch synchronously
+    // 3. No valid cache — fetch synchronously from robotty
     await this._fetchHistory(ch, buffer, cacheKey);
   }
 
@@ -1305,12 +1349,29 @@ class IRC {
         parsed.push(msg);
       }
 
-      // Merge: clear buffer, add history first, then any live messages on top
-      buffer.clear();
-      for (const msg of parsed) buffer.push(msg);
-      for (const msg of liveMessages) buffer.push(msg);
+      // Merge strategy: on background refresh, only ADD newer messages — never clear
+      // On initial load (empty buffer), replace entirely
+      const existingAll = buffer.getAll();
+      if (existingAll.length === 0) {
+        // Initial load — just fill the buffer
+        for (const msg of parsed) buffer.push(msg);
+        log('Loaded history for', ch, '- parsed:', parsed.length);
+      } else {
+        // Background refresh — only add messages newer than what we have
+        const latestTime = Math.max(...existingAll.map(m => m.time || 0))
+        const newer = parsed.filter(m => m.time > latestTime)
+        const existingIds = new Set(existingAll.filter(m => m.id).map(m => m.id))
+        const dedupedNewer = newer.filter(m => !m.id || !existingIds.has(m.id))
+        if (dedupedNewer.length > 0) {
+          for (const msg of dedupedNewer) buffer.push(msg)
+          log('Background refresh for', ch, '- added', dedupedNewer.length, 'newer messages, total:', buffer.getAll().length)
+        } else {
+          log('Background refresh for', ch, '- no new messages from robotty')
+        }
+      }
 
-      log('Loaded history for', ch, '- parsed:', parsed.length, 'total:', buffer.getAll().length);
+      // Persist to chrome.storage.local for reliable refresh
+      this.persistBuffer(ch);
 
       // Cache for next time
       try {
@@ -7298,7 +7359,12 @@ function buildNotifDiv(m) {
   div.className = 'hs-notif';
   const time = formatRelativeTime(m.created_at);
   // Safe: renderFeedContent escapes via escapeHtml first, then adds safe formatting tags
-  const content = renderFeedContent(m.content, m.emote_refs);
+  // Fallback to processEmotes (local cache) when emote_refs is absent
+  const rawContent = m.content || m.text || '';
+  const hasEmoteRefs = m.emote_refs && typeof m.emote_refs === 'object' && Object.keys(m.emote_refs).length > 0;
+  const content = hasEmoteRefs
+    ? renderFeedContent(rawContent, m.emote_refs)
+    : processEmotes(escapeHtml(rawContent), null);
 
   // Safe: username through escapeHtml+encodeURIComponent, time through escapeHtml, content through renderFeedContent (which escapes via escapeHtml then adds safe formatting)
   const tsHtml = window._hsTimestampsEnabled !== false ? `<span class="hs-feed-time">${escapeHtml(time)}</span>` : '';
@@ -9467,7 +9533,8 @@ const STORAGE_KEY = 'heatsync_multichat';
     const cosmetic = mcUserCosmetics.get(userId)
     const paint = cosmetic?.paint
     if (!paint || !paint.function) return ''
-    if (paint.function === 'url' && paint.image_url) {
+    const fn = paint.function.toLowerCase()
+    if (fn === 'url' && paint.image_url) {
       let style = `background-image:url(${paint.image_url});background-size:cover;-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text`
       if (paint.shadows?.length) {
         style += ';filter:' + paint.shadows.map(s => {
@@ -9480,7 +9547,7 @@ const STORAGE_KEY = 'heatsync_multichat';
       }
       return style
     }
-    if ((paint.function === 'linear-gradient' || paint.function === 'radial-gradient') && paint.stops?.length) {
+    if ((fn === 'linear-gradient' || fn === 'radial-gradient' || fn === 'linear_gradient' || fn === 'radial_gradient') && paint.stops?.length) {
       const stops = paint.stops.map(s => {
         const r = (s.color >>> 24) & 0xff
         const g = (s.color >>> 16) & 0xff
@@ -9488,7 +9555,7 @@ const STORAGE_KEY = 'heatsync_multichat';
         const a = (s.color & 0xff) / 255
         return `rgba(${r},${g},${b},${a.toFixed(2)}) ${Math.round(s.at * 100)}%`
       }).join(', ')
-      const grad = paint.function === 'linear-gradient'
+      const grad = (fn === 'linear-gradient' || fn === 'linear_gradient')
         ? `linear-gradient(${paint.angle || 0}deg, ${stops})`
         : `radial-gradient(${paint.shape || 'circle'}, ${stops})`
       let style = `background:${grad};-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text`
@@ -11425,6 +11492,23 @@ const STORAGE_KEY = 'heatsync_multichat';
         background: rgba(145, 71, 255, 0.15);
         border-left: 3px solid #9147ff;
         padding-left: 8px;
+      }
+      .hs-mc-msg.hs-mc-highlighted {
+        background: rgba(255, 215, 0, 0.1);
+        border-left: 3px solid #ffd700;
+        padding-left: 8px;
+      }
+      .hs-mc-redeem-label {
+        color: #9147ff;
+        font-size: 11px;
+        font-style: normal;
+        font-weight: 600;
+      }
+      .hs-mc-highlight-label {
+        color: #ffd700;
+        font-size: 11px;
+        font-style: normal;
+        font-weight: 600;
       }
       .hs-mc-reply-ctx {
         font-size: 11px;
@@ -14602,6 +14686,7 @@ const STORAGE_KEY = 'heatsync_multichat';
 isKicksEvent ? 'hs-mc-msg hs-mc-system hs-mc-kicks' :
 isMembership ? 'hs-mc-msg hs-mc-system' :
 m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
+                m.isHighlighted ? 'hs-mc-msg hs-mc-highlighted' :
                 m.redeemed ? 'hs-mc-msg hs-mc-redeemed' :
                 isSuperChat ? 'hs-mc-msg hs-mc-superchat' :
                 isMention(m) ? 'hs-mc-msg mention' : 'hs-mc-msg';
@@ -14681,8 +14766,18 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
     }
     // Reply context bar (Chatterino-style) — all values escaped via escapeHtml
     const replyBar = m.replyTo ? `<div class="hs-mc-reply-ctx">&#8618; Replying to <a href="https://heatsync.org/user/${encodeURIComponent(m.replyTo.user)}" target="_blank" class="hs-mc-user hs-mc-reply-user" data-username="${escapeHtml(m.replyTo.user.toLowerCase())}">@${escapeHtml(m.replyTo.user)}</a>${m.replyTo.text ? ': ' + escapeHtml(m.replyTo.text.length > 80 ? m.replyTo.text.slice(0, 80) + '...' : m.replyTo.text) : ''}</div>` : ''
+    // Redeem label — look up reward title from Hermes cache
+    let redeemLabel = ''
+    if (m.redeemed && m.rewardId) {
+      const reward = redeemTitleMap.get(m.rewardId)
+      redeemLabel = reward
+        ? `<span class="hs-mc-system-text hs-mc-redeem-label">\u25C6 ${escapeHtml(reward.title)} \u00B7 ${Number(reward.cost).toLocaleString()} pts</span>`
+        : `<span class="hs-mc-system-text hs-mc-redeem-label">\u25C6 channel point redeem</span>`
+    } else if (m.isHighlighted) {
+      redeemLabel = `<span class="hs-mc-system-text hs-mc-highlight-label">\u2728 highlighted message</span>`
+    }
     // USERNOTICE system line (all values go through escapeHtml — same pattern as existing innerHTML above)
-    const systemLine = m.systemMsg ? `<span class="hs-mc-system-text">${escapeHtml(m.systemMsg)}</span>` : ''
+    const systemLine = (m.systemMsg ? `<span class="hs-mc-system-text">${escapeHtml(m.systemMsg)}</span>` : '') + redeemLabel
     const ts = formatTimeFromTs(m.time);
     const showTs = timestampsEnabled || tabId === 'mentions';
     const tsHtml = ts && showTs ? `<span class="hs-mc-ts" data-ts="${m.time}">${ts}</span>` : '';

@@ -158,7 +158,8 @@
     const cosmetic = mcUserCosmetics.get(userId)
     const paint = cosmetic?.paint
     if (!paint || !paint.function) return ''
-    if (paint.function === 'url' && paint.image_url) {
+    const fn = paint.function.toLowerCase()
+    if (fn === 'url' && paint.image_url) {
       let style = `background-image:url(${paint.image_url});background-size:cover;-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text`
       if (paint.shadows?.length) {
         style += ';filter:' + paint.shadows.map(s => {
@@ -171,7 +172,7 @@
       }
       return style
     }
-    if ((paint.function === 'linear-gradient' || paint.function === 'radial-gradient') && paint.stops?.length) {
+    if ((fn === 'linear-gradient' || fn === 'radial-gradient' || fn === 'linear_gradient' || fn === 'radial_gradient') && paint.stops?.length) {
       const stops = paint.stops.map(s => {
         const r = (s.color >>> 24) & 0xff
         const g = (s.color >>> 16) & 0xff
@@ -179,7 +180,7 @@
         const a = (s.color & 0xff) / 255
         return `rgba(${r},${g},${b},${a.toFixed(2)}) ${Math.round(s.at * 100)}%`
       }).join(', ')
-      const grad = paint.function === 'linear-gradient'
+      const grad = (fn === 'linear-gradient' || fn === 'linear_gradient')
         ? `linear-gradient(${paint.angle || 0}deg, ${stops})`
         : `radial-gradient(${paint.shape || 'circle'}, ${stops})`
       let style = `background:${grad};-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text`

@@ -100,7 +100,7 @@ function parseIrcLine(raw, channel) {
       const duration = tags['ban-duration']
       const text = target
         ? (duration ? `${target} timed out for ${duration}s` : `${target} was permanently banned`)
-        : 'Chat was cleared'
+        : t('mc_irc_chat_cleared')
       return {
         type: 'notice',
         user: 'system',
@@ -122,13 +122,13 @@ function parseIrcLine(raw, channel) {
       return {
         type: 'notice',
         user: 'system',
-        text: `Message from ${tags.login || 'unknown'} deleted`,
+        text: t('mc_irc_msg_deleted', [tags.login || 'unknown']),
         color: '#808080',
         badges: '',
         channel: channel || clearmsg[1].toLowerCase(),
         time: parseInt(tags['tmi-sent-ts']) || parseInt(tags['rm-received-ts']) || Date.now(),
         id: targetMsgId || `clearmsg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-        systemMsg: `Message from ${tags.login || 'unknown'} deleted`
+        systemMsg: t('mc_irc_msg_deleted', [tags.login || 'unknown'])
       }
     }
 

@@ -67,11 +67,11 @@
     // Show state with source for globals
     let label;
     if (state === 'owned') {
-      label = 'in your set';
+      label = t('mc_emote_in_set');
     } else if (state === 'unadded') {
-      label = 'click to add';
+      label = t('mc_emote_click_add');
     } else if (state === 'blocked') {
-      label = 'blocked (click to unblock)';
+      label = t('mc_emote_blocked');
     } else {
       // Global or channel - show source
       const sourceLabels = {

@@ -70,7 +70,7 @@
       .map(k => ({ key: k, label: SECTION_LABELS[k] || k, emotes: groups[k] }))
   }
 
-  function renderEmoteSections(sections, emptyMsg = 'no emotes loaded') {
+  function renderEmoteSections(sections, emptyMsg = t('mc_emote_no_loaded')) {
     if (!sections.length) return `<div class="hs-mc-picker-empty">${escapeHtml(emptyMsg)}</div>`
     // Only render section headers + first CHUNK_SIZE emotes per section for instant open
     // Rest gets appended via chunkedRenderRemaining()
@@ -155,7 +155,7 @@
         <div class="hs-mc-picker-header">
           <div class="hs-mc-search-wrap">
             <svg class="hs-mc-search-icon" width="14" height="14" viewBox="0 0 20 20"><path fill="#000" d="M13.74 12.33l4.04 4.04a1 1 0 01-1.42 1.42l-4.04-4.04a7 7 0 111.42-1.42zM9 14A5 5 0 109 4a5 5 0 000 10z"/></svg>
-            <input type="text" id="hs-mc-emote-search" placeholder="search emotes..." autocomplete="off">
+            <input type="text" id="hs-mc-emote-search" placeholder="${t('mc_emote_search_placeholder')}" autocomplete="off">
           </div>
         </div>
         <div class="hs-mc-picker-scroll" id="hs-mc-emote-grid">
@@ -163,7 +163,7 @@
         </div>
       </div>
       <div class="hs-mc-tab-content" id="hs-mc-tab-twitch" style="display: ${pickerTab === 'twitch' ? 'flex' : 'none'}; flex-direction: column; padding: 8px 0;">
-        <div class="hs-mc-pred-loading">loading...</div>
+        <div class="hs-mc-pred-loading">${t('common_loading')}</div>
       </div>
       <div class="hs-mc-picker-tabs">
         <button class="hs-mc-picker-tab ${pickerTab === 'emotes' ? 'active' : ''}" data-tab="emotes">emotes</button>
@@ -194,7 +194,7 @@
           if (name.toLowerCase().includes(query)) filtered.set(name, emote);
         }
         const filteredSections = groupEmotes(filtered);
-        grid.innerHTML = renderEmoteSections(filteredSections, 'no matches');
+        grid.innerHTML = renderEmoteSections(filteredSections, t('common_no_matches'));
         chunkedRenderRemaining(filteredSections, grid);
       }, 150);
     });

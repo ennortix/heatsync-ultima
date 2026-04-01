@@ -1048,5 +1048,36 @@
   },
   "mc_emote_blocked": {
     "message": "engellendi (kaldırmak için tıkla)"
+  },
+
+  "content_toast_unknown_error": {
+    "message": "Bilinmeyen hata"
+  },
+  "content_toast_loading_emotes": {
+    "message": "emote'lar yükleniyor..."
+  },
+  "content_toast_fetching_emotes": {
+    "message": "emote'lar alınıyor..."
+  },
+  "content_card_action_ban": {
+    "message": "banla"
+  },
+  "content_card_action_unban": {
+    "message": "ban kaldır"
+  },
+  "content_card_action_block": {
+    "message": "engelle"
+  },
+  "btn_close": {
+    "message": "Kapat"
+  },
+  "btn_error_channel": {
+    "message": "kanal emote'ları yüklenemedi"
+  },
+  "btn_error_global": {
+    "message": "global emote'lar yüklenemedi"
+  },
+  "btn_error_inventory": {
+    "message": "emote'ların yüklenemedi"
   }
 }

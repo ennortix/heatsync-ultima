@@ -210,7 +210,7 @@ async function sendTwitchWhisper(toUserId, message) {
     })
     if (resp?.ok) return { ok: true }
     if (resp?.status === 401) {
-      showToast('log in to heatsync.org to send whispers')
+      showToast(t('mc_whisper_login'))
       return { ok: false, error: 'not authenticated' }
     }
     showToast('whisper failed: ' + (resp?.error || 'unknown'))
@@ -321,7 +321,7 @@ function renderWhispersTab() {
 
   if (whisperTimeline.length === 0) {
     // All dynamic values below are string literals — safe innerHTML
-    msgsEl.innerHTML = '<div class="hs-mc-empty">/w user msg \u00b7 /dm user msg \u00b7 /r msg</div>'
+    msgsEl.innerHTML = `<div class="hs-mc-empty">${t('mc_whisper_hint')}</div>`
     return
   }
 

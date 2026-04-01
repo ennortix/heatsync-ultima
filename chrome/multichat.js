@@ -967,7 +967,7 @@ function parseIrcLine(raw, channel) {
       const duration = tags['ban-duration']
       const text = target
         ? (duration ? `${target} timed out for ${duration}s` : `${target} was permanently banned`)
-        : 'Chat was cleared'
+        : t('mc_irc_chat_cleared')
       return {
         type: 'notice',
         user: 'system',
@@ -989,13 +989,13 @@ function parseIrcLine(raw, channel) {
       return {
         type: 'notice',
         user: 'system',
-        text: `Message from ${tags.login || 'unknown'} deleted`,
+        text: t('mc_irc_msg_deleted', [tags.login || 'unknown']),
         color: '#808080',
         badges: '',
         channel: channel || clearmsg[1].toLowerCase(),
         time: parseInt(tags['tmi-sent-ts']) || parseInt(tags['rm-received-ts']) || Date.now(),
         id: targetMsgId || `clearmsg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-        systemMsg: `Message from ${tags.login || 'unknown'} deleted`
+        systemMsg: t('mc_irc_msg_deleted', [tags.login || 'unknown'])
       }
     }
 
@@ -1928,7 +1928,7 @@ async function sendKickMessage(kickSlug, text) {
       .map(k => ({ key: k, label: SECTION_LABELS[k] || k, emotes: groups[k] }))
   }
 
-  function renderEmoteSections(sections, emptyMsg = 'no emotes loaded') {
+  function renderEmoteSections(sections, emptyMsg = t('mc_emote_no_loaded')) {
     if (!sections.length) return `<div class="hs-mc-picker-empty">${escapeHtml(emptyMsg)}</div>`
     // Only render section headers + first CHUNK_SIZE emotes per section for instant open
     // Rest gets appended via chunkedRenderRemaining()
@@ -2013,7 +2013,7 @@ async function sendKickMessage(kickSlug, text) {
         <div class="hs-mc-picker-header">
           <div class="hs-mc-search-wrap">
             <svg class="hs-mc-search-icon" width="14" height="14" viewBox="0 0 20 20"><path fill="#000" d="M13.74 12.33l4.04 4.04a1 1 0 01-1.42 1.42l-4.04-4.04a7 7 0 111.42-1.42zM9 14A5 5 0 109 4a5 5 0 000 10z"/></svg>
-            <input type="text" id="hs-mc-emote-search" placeholder="search emotes..." autocomplete="off">
+            <input type="text" id="hs-mc-emote-search" placeholder="${t('mc_emote_search_placeholder')}" autocomplete="off">
           </div>
         </div>
         <div class="hs-mc-picker-scroll" id="hs-mc-emote-grid">
@@ -2021,7 +2021,7 @@ async function sendKickMessage(kickSlug, text) {
         </div>
       </div>
       <div class="hs-mc-tab-content" id="hs-mc-tab-twitch" style="display: ${pickerTab === 'twitch' ? 'flex' : 'none'}; flex-direction: column; padding: 8px 0;">
-        <div class="hs-mc-pred-loading">loading...</div>
+        <div class="hs-mc-pred-loading">${t('common_loading')}</div>
       </div>
       <div class="hs-mc-picker-tabs">
         <button class="hs-mc-picker-tab ${pickerTab === 'emotes' ? 'active' : ''}" data-tab="emotes">emotes</button>
@@ -2052,7 +2052,7 @@ async function sendKickMessage(kickSlug, text) {
           if (name.toLowerCase().includes(query)) filtered.set(name, emote);
         }
         const filteredSections = groupEmotes(filtered);
-        grid.innerHTML = renderEmoteSections(filteredSections, 'no matches');
+        grid.innerHTML = renderEmoteSections(filteredSections, t('common_no_matches'));
         chunkedRenderRemaining(filteredSections, grid);
       }, 150);
     });
@@ -2953,11 +2953,11 @@ async function sendKickMessage(kickSlug, text) {
     // Show state with source for globals
     let label;
     if (state === 'owned') {
-      label = 'in your set';
+      label = t('mc_emote_in_set');
     } else if (state === 'unadded') {
-      label = 'click to add';
+      label = t('mc_emote_click_add');
     } else if (state === 'blocked') {
-      label = 'blocked (click to unblock)';
+      label = t('mc_emote_blocked');
     } else {
       // Global or channel - show source
       const sourceLabels = {
@@ -3694,7 +3694,7 @@ function renderColorPicker() {
   header.className = 'hs-mc-rewards-header'
   const label = document.createElement('span')
   label.className = 'hs-mc-rewards-label'
-  label.textContent = 'username color'
+  label.textContent = t('mc_chat_username_color')
   header.appendChild(label)
 
   const currentEl = document.createElement('span')
@@ -3720,7 +3720,7 @@ function renderColorPicker() {
   custom.className = 'hs-mc-color-custom'
   const hexInput = document.createElement('input')
   hexInput.type = 'text'
-  hexInput.placeholder = '#hex'
+  hexInput.placeholder = t('mc_chat_hex_placeholder')
   hexInput.className = 'hs-mc-color-hex'
   hexInput.id = 'hs-mc-color-hex-input'
   hexInput.maxLength = 7
@@ -3806,16 +3806,16 @@ async function renderChatModes(channel) {
   header.className = 'hs-mc-rewards-header'
   const label = document.createElement('span')
   label.className = 'hs-mc-rewards-label'
-  label.textContent = 'chat modes'
+  label.textContent = t('mc_chat_modes')
   header.appendChild(label)
   section.appendChild(header)
 
   const modes = [
-    { key: 'emote_mode', label: 'emote only', field: 'emote_mode' },
-    { key: 'follower_mode', label: 'follower', field: 'follower_mode' },
-    { key: 'slow_mode', label: 'slow', field: 'slow_mode' },
-    { key: 'subscriber_mode', label: 'sub only', field: 'subscriber_mode' },
-    { key: 'unique_chat_mode', label: 'unique', field: 'unique_chat_mode' },
+    { key: 'emote_mode', label: t('mc_chat_mode_emote_only'), field: 'emote_mode' },
+    { key: 'follower_mode', label: t('mc_chat_mode_follower'), field: 'follower_mode' },
+    { key: 'slow_mode', label: t('mc_chat_mode_slow'), field: 'slow_mode' },
+    { key: 'subscriber_mode', label: t('mc_chat_mode_sub_only'), field: 'subscriber_mode' },
+    { key: 'unique_chat_mode', label: t('mc_chat_mode_unique'), field: 'unique_chat_mode' },
   ]
 
   const grid = document.createElement('div')
@@ -3924,17 +3924,17 @@ function renderPrediction(pred, balance, channelId, isMod, cpImage, cpName) {
   if (isCanceled) {
     const badge = document.createElement('span')
     badge.className = 'hs-mc-pred-status hs-mc-pred-status-canceled'
-    badge.textContent = 'refunded'
+    badge.textContent = t('mc_pred_refunded')
     header.appendChild(badge)
   } else if (isResolved) {
     const badge = document.createElement('span')
     badge.className = 'hs-mc-pred-status hs-mc-pred-status-resolved'
-    badge.textContent = 'ended'
+    badge.textContent = t('mc_pred_ended')
     header.appendChild(badge)
   } else if (isLocked) {
     const badge = document.createElement('span')
     badge.className = 'hs-mc-pred-locked'
-    badge.textContent = 'locked'
+    badge.textContent = t('mc_pred_locked')
     header.appendChild(badge)
   } else {
     const timer = document.createElement('span')
@@ -3992,14 +3992,14 @@ function renderPrediction(pred, balance, channelId, isMod, cpImage, cpName) {
     banner.appendChild(amt)
     const label = document.createElement('span')
     label.className = 'hs-mc-pred-result-label'
-    label.textContent = ' refunded'
+    label.textContent = ' ' + t('mc_pred_refunded')
     banner.appendChild(label)
     wrapper.appendChild(banner)
   } else if (isResolved && !userBet) {
     const banner = document.createElement('div')
     banner.className = 'hs-mc-pred-result hs-mc-pred-result-neutral'
     const winOutcome = pred.outcomes.find(o => o.id === winningId)
-    banner.textContent = winOutcome ? '\u2713 ' + winOutcome.title : 'ended'
+    banner.textContent = winOutcome ? '\u2713 ' + winOutcome.title : t('mc_pred_ended')
     wrapper.appendChild(banner)
   }
 
@@ -4032,7 +4032,7 @@ function renderPrediction(pred, balance, channelId, isMod, cpImage, cpName) {
     if (isWinner) {
       const winBadge = document.createElement('span')
       winBadge.className = 'hs-mc-pred-winner-badge'
-      winBadge.textContent = 'winner'
+      winBadge.textContent = t('mc_pred_winner')
       titleSpan.appendChild(document.createTextNode(' '))
       titleSpan.appendChild(winBadge)
     }
@@ -4109,10 +4109,10 @@ function renderPrediction(pred, balance, channelId, isMod, cpImage, cpName) {
       resolveBtn.dataset.outcome = outcome.id
       resolveBtn.style.setProperty('--oc', color)
       if (isBetOn) {
-        resolveBtn.textContent = 'pick winner (your bet)'
+        resolveBtn.textContent = t('mc_pred_pick_winner_bet')
         resolveBtn.classList.add('hs-mc-pred-resolve-yours')
       } else {
-        resolveBtn.textContent = 'pick winner'
+        resolveBtn.textContent = t('mc_pred_pick_winner')
       }
       card.appendChild(resolveBtn)
     }
@@ -4139,13 +4139,13 @@ function renderPrediction(pred, balance, channelId, isMod, cpImage, cpName) {
     if (!isLocked) {
       const lockBtn = document.createElement('button')
       lockBtn.className = 'hs-mc-pred-mod-btn hs-mc-pred-lock-btn'
-      lockBtn.textContent = 'lock betting'
+      lockBtn.textContent = t('mc_pred_lock_betting')
       modRow.appendChild(lockBtn)
     }
 
     const cancelBtn = document.createElement('button')
     cancelBtn.className = 'hs-mc-pred-mod-btn hs-mc-pred-cancel-btn'
-    cancelBtn.textContent = 'cancel (refund)'
+    cancelBtn.textContent = t('mc_pred_cancel_refund')
     modRow.appendChild(cancelBtn)
 
     wrapper.appendChild(modRow)
@@ -4162,7 +4162,7 @@ function renderNoPrediction(balance, channelId, isMod, cpImage, cpName) {
 
   const text = document.createElement('div')
   text.className = 'hs-mc-pred-empty-text'
-  text.textContent = 'no active prediction'
+  text.textContent = t('mc_pred_no_active')
   wrap.appendChild(text)
 
   if (balance != null) {
@@ -4181,7 +4181,7 @@ function renderNoPrediction(balance, channelId, isMod, cpImage, cpName) {
 
   const toggle = document.createElement('button')
   toggle.className = 'hs-mc-pred-mod-btn hs-mc-pred-create-toggle'
-  toggle.textContent = '+ new prediction'
+  toggle.textContent = t('mc_pred_new')
   createWrap.appendChild(toggle)
 
   const form = document.createElement('div')
@@ -4190,19 +4190,19 @@ function renderNoPrediction(balance, channelId, isMod, cpImage, cpName) {
 
   const titleInput = document.createElement('input')
   titleInput.className = 'hs-mc-pred-create-input'
-  titleInput.placeholder = 'prediction title'
+  titleInput.placeholder = t('mc_pred_title')
   titleInput.maxLength = 45
   form.appendChild(titleInput)
 
   const opt1 = document.createElement('input')
   opt1.className = 'hs-mc-pred-create-input hs-mc-pred-create-outcome'
-  opt1.placeholder = 'option 1 (blue)'
+  opt1.placeholder = t('mc_pred_option1')
   opt1.maxLength = 25
   form.appendChild(opt1)
 
   const opt2 = document.createElement('input')
   opt2.className = 'hs-mc-pred-create-input hs-mc-pred-create-outcome'
-  opt2.placeholder = 'option 2 (pink)'
+  opt2.placeholder = t('mc_pred_option2')
   opt2.maxLength = 25
   form.appendChild(opt2)
 
@@ -4210,7 +4210,7 @@ function renderNoPrediction(balance, channelId, isMod, cpImage, cpName) {
   durRow.className = 'hs-mc-pred-create-dur-row'
   const durLabel = document.createElement('span')
   durLabel.className = 'hs-mc-pred-create-dur-label'
-  durLabel.textContent = 'duration:'
+  durLabel.textContent = t('mc_pred_duration')
   durRow.appendChild(durLabel)
   for (const secs of [30, 60, 120, 300, 600, 1800]) {
     const btn = document.createElement('button')
@@ -4225,7 +4225,7 @@ function renderNoPrediction(balance, channelId, isMod, cpImage, cpName) {
   const submitBtn = document.createElement('button')
   submitBtn.className = 'hs-mc-pred-mod-btn hs-mc-pred-create-submit'
   submitBtn.tabIndex = -1
-  submitBtn.textContent = 'create prediction'
+  submitBtn.textContent = t('mc_pred_create')
   form.appendChild(submitBtn)
 
   createWrap.appendChild(form)
@@ -4242,7 +4242,7 @@ function renderRewards(rewards, balance, channelId) {
   header.className = 'hs-mc-rewards-header'
   const label = document.createElement('span')
   label.className = 'hs-mc-rewards-label'
-  label.textContent = 'rewards'
+  label.textContent = t('mc_reward_rewards')
   header.appendChild(label)
   if (balance != null) {
     const bal = document.createElement('span')
@@ -4265,7 +4265,7 @@ function renderRewards(rewards, balance, channelId) {
   if (!rewards.length) {
     const empty = document.createElement('div')
     empty.className = 'hs-mc-rewards-empty'
-    empty.textContent = 'no rewards available'
+    empty.textContent = t('mc_reward_no_rewards')
     section.appendChild(empty)
     return section
   }
@@ -4322,8 +4322,8 @@ function renderRewards(rewards, balance, channelId) {
     if (!available) {
       const reason = document.createElement('div')
       reason.className = 'hs-mc-reward-reason'
-      if (reward.isPaused) reason.textContent = 'paused'
-      else if (!reward.isInStock) reason.textContent = 'out of stock'
+      if (reward.isPaused) reason.textContent = t('mc_reward_paused')
+      else if (!reward.isInStock) reason.textContent = t('mc_reward_out_of_stock')
       else if (onCooldown) {
         const secs = Math.ceil((new Date(reward.cooldownExpiresAt).getTime() - now) / 1000)
         reason.textContent = secs > 60 ? `${Math.ceil(secs / 60)}m cooldown` : `${secs}s cooldown`
@@ -4357,10 +4357,10 @@ function attachRewardHandlers() {
         const input = document.createElement('input')
         input.className = 'hs-mc-reward-input'
         input.type = 'text'
-        input.placeholder = card.dataset.prompt || 'enter text...'
+        input.placeholder = card.dataset.prompt || t('mc_reward_enter_text')
         const btn = document.createElement('button')
         btn.className = 'hs-mc-reward-submit'
-        btn.textContent = 'redeem'
+        btn.textContent = t('mc_reward_redeem')
         row.appendChild(input)
         row.appendChild(btn)
         card.after(row)
@@ -4376,7 +4376,7 @@ function attachRewardHandlers() {
           if (result.error) {
             btn.textContent = '!'
             btn.title = result.error
-            setTimeout(() => { btn.textContent = 'redeem'; btn.disabled = false; btn.title = '' }, 2000)
+            setTimeout(() => { btn.textContent = t('mc_reward_redeem'); btn.disabled = false; btn.title = '' }, 2000)
           } else {
             btn.textContent = '\u2713'
             _rewardsCache = null
@@ -4591,7 +4591,7 @@ function attachPredictionHandlers() {
       if (result.error) {
         btn.textContent = predErrorMsg(result.error)
         btn.title = result.error
-        setTimeout(() => { btn.textContent = 'lock betting'; btn.disabled = false; btn.title = '' }, 3000)
+        setTimeout(() => { btn.textContent = t('mc_pred_lock_betting'); btn.disabled = false; btn.title = '' }, 3000)
       } else {
         // Hide bet rows + lock button immediately, keep resolve/cancel
         const pred = btn.closest('.hs-mc-prediction') || container.querySelector('.hs-mc-prediction')
@@ -4599,7 +4599,7 @@ function attachPredictionHandlers() {
           pred.querySelectorAll('.hs-mc-pred-bet-row').forEach(el => el.remove())
           pred.querySelector('.hs-mc-pred-lock-btn')?.remove()
         }
-        btn.textContent = '\u2713 locked'
+        btn.textContent = '\u2713 ' + t('mc_pred_locked')
         setTimeout(() => refreshPredictionSlot(), 2000)
       }
     })
@@ -4620,7 +4620,7 @@ function attachPredictionHandlers() {
       if (result.error) {
         btn.textContent = predErrorMsg(result.error)
         btn.title = result.error
-        setTimeout(() => { btn.textContent = 'pick winner'; btn.disabled = false; btn.title = '' }, 3000)
+        setTimeout(() => { btn.textContent = t('mc_pred_pick_winner'); btn.disabled = false; btn.title = '' }, 3000)
       } else {
         // Immediately clean up stale UI
         const pred = btn.closest('.hs-mc-prediction') || container.querySelector('.hs-mc-prediction')
@@ -4628,7 +4628,7 @@ function attachPredictionHandlers() {
           pred.querySelectorAll('.hs-mc-pred-mod-row, .hs-mc-pred-mod-notice, .hs-mc-pred-bet-row, .hs-mc-pred-resolve-btn').forEach(el => el.remove())
           pred.classList.add('hs-mc-pred-resolved')
         }
-        btn.textContent = '\u2713 ended'
+        btn.textContent = '\u2713 ' + t('mc_pred_ended')
         setTimeout(() => refreshPredictionSlot(), 2000)
       }
     })
@@ -4647,14 +4647,14 @@ function attachPredictionHandlers() {
       if (result.error) {
         btn.textContent = predErrorMsg(result.error)
         btn.title = result.error
-        setTimeout(() => { btn.textContent = 'cancel (refund)'; btn.disabled = false; btn.title = '' }, 3000)
+        setTimeout(() => { btn.textContent = t('mc_pred_cancel_refund'); btn.disabled = false; btn.title = '' }, 3000)
       } else {
         const pred = btn.closest('.hs-mc-prediction') || container.querySelector('.hs-mc-prediction')
         if (pred) {
           pred.querySelectorAll('.hs-mc-pred-mod-row, .hs-mc-pred-mod-notice, .hs-mc-pred-bet-row, .hs-mc-pred-resolve-btn').forEach(el => el.remove())
           pred.classList.add('hs-mc-pred-canceled')
         }
-        btn.textContent = '\u2713 refunded'
+        btn.textContent = '\u2713 ' + t('mc_pred_refunded')
         setTimeout(() => refreshPredictionSlot(), 2000)
       }
     })
@@ -4689,7 +4689,7 @@ function attachPredictionHandlers() {
       if (form) {
         const showing = form.style.display !== 'none'
         form.style.display = showing ? 'none' : 'flex'
-        btn.textContent = showing ? '+ new prediction' : 'cancel'
+        btn.textContent = showing ? t('mc_pred_new') : t('mc_pred_cancel_form')
       }
     })
   })
@@ -4723,7 +4723,7 @@ function attachPredictionHandlers() {
       if (result.error) {
         btn.textContent = '!'
         btn.title = result.error
-        setTimeout(() => { btn.textContent = 'create prediction'; btn.disabled = false; btn.title = '' }, 2000)
+        setTimeout(() => { btn.textContent = t('mc_pred_create'); btn.disabled = false; btn.title = '' }, 2000)
       } else {
         form.style.display = 'none'
         refreshPredictionSlot()
@@ -4895,7 +4895,7 @@ function updateChatBanners(predResult, pollData) {
     } else {
       const badge = document.createElement('span')
       badge.className = 'hs-mc-chat-banner-badge'
-      badge.textContent = 'locked'
+      badge.textContent = t('mc_pred_locked')
       row.appendChild(badge)
     }
 
@@ -4937,10 +4937,10 @@ function updateChatBanners(predResult, pollData) {
   if (hasHype) {
     const row = document.createElement('div')
     row.className = 'hs-mc-chat-banner-item hs-mc-chat-banner-hype'
-    row.innerHTML = '<span class="hs-mc-chat-banner-icon">\u{1F682}</span><span class="hs-mc-chat-banner-title">hype train</span>'
+    row.innerHTML = `<span class="hs-mc-chat-banner-icon">\u{1F682}</span><span class="hs-mc-chat-banner-title">${t('mc_chat_hype_train')}</span>`
     const badge = document.createElement('span')
     badge.className = 'hs-mc-chat-banner-badge'
-    badge.textContent = 'lvl ' + (_hypeTrainActive.level || 1)
+    badge.textContent = t('mc_chat_hype_level', [String(_hypeTrainActive.level || 1)])
     badge.style.color = '#ff8700'
     row.appendChild(badge)
     banner.appendChild(row)
@@ -5038,7 +5038,7 @@ async function renderTwitchTab() {
       empty.className = 'hs-mc-pred-empty'
       const msg = document.createElement('div')
       msg.className = 'hs-mc-pred-empty-text'
-      msg.textContent = "couldn't load predictions"
+      msg.textContent = t('mc_pred_load_failed')
       empty.appendChild(msg)
       predSlot.appendChild(empty)
     } else if (result.prediction) {
@@ -5120,7 +5120,7 @@ async function refreshPredictionSlot() {
     newSlot.className = 'hs-mc-pred-empty'
     const msg = document.createElement('div')
     msg.className = 'hs-mc-pred-empty-text'
-    msg.textContent = "couldn't load predictions"
+    msg.textContent = t('mc_pred_load_failed')
     newSlot.appendChild(msg)
   } else if (result.prediction) {
     newSlot.appendChild(renderPrediction(result.prediction, result.balance, result.channelId, result.isMod, result.cpImage, result.cpName))
@@ -5967,7 +5967,7 @@ function renderPoll(poll, channelId, isMod) {
   if (isCompleted) {
     const badge = document.createElement('span')
     badge.className = 'hs-mc-poll-status hs-mc-poll-status-ended'
-    badge.textContent = 'ended'
+    badge.textContent = t('mc_poll_ended')
     header.appendChild(badge)
   } else if (poll.remainingDurationMilliseconds != null) {
     const timer = document.createElement('span')
@@ -6052,7 +6052,7 @@ function renderPoll(poll, channelId, isMod) {
     const endBtn = document.createElement('button')
     endBtn.className = 'hs-mc-poll-mod-btn hs-mc-poll-end-btn'
     endBtn.dataset.pollId = poll.id
-    endBtn.textContent = 'end poll'
+    endBtn.textContent = t('mc_poll_end')
     modRow.appendChild(endBtn)
     section.appendChild(modRow)
   }
@@ -6071,7 +6071,7 @@ function renderNoPoll(channelId, isMod) {
 
   const toggle = document.createElement('button')
   toggle.className = 'hs-mc-poll-mod-btn hs-mc-poll-create-toggle'
-  toggle.textContent = '+ new poll'
+  toggle.textContent = t('mc_poll_new')
   createWrap.appendChild(toggle)
 
   const form = document.createElement('div')
@@ -6080,14 +6080,14 @@ function renderNoPoll(channelId, isMod) {
 
   const titleInput = document.createElement('input')
   titleInput.className = 'hs-mc-poll-create-input'
-  titleInput.placeholder = 'poll question'
+  titleInput.placeholder = t('mc_poll_question')
   titleInput.maxLength = 60
   form.appendChild(titleInput)
 
   for (let i = 0; i < 4; i++) {
     const opt = document.createElement('input')
     opt.className = 'hs-mc-poll-create-input hs-mc-poll-create-choice'
-    opt.placeholder = 'choice ' + (i + 1) + (i < 2 ? '' : ' (optional)')
+    opt.placeholder = t('mc_poll_choice', [String(i + 1)]) + (i < 2 ? '' : ' (' + t('mc_poll_optional') + ')')
     opt.maxLength = 25
     form.appendChild(opt)
   }
@@ -6096,7 +6096,7 @@ function renderNoPoll(channelId, isMod) {
   durRow.className = 'hs-mc-poll-create-dur-row'
   const durLabel = document.createElement('span')
   durLabel.className = 'hs-mc-poll-create-dur-label'
-  durLabel.textContent = 'duration:'
+  durLabel.textContent = t('mc_pred_duration')
   durRow.appendChild(durLabel)
   for (const secs of [30, 60, 120, 300, 600, 1800]) {
     const btn = document.createElement('button')
@@ -6111,7 +6111,7 @@ function renderNoPoll(channelId, isMod) {
   const submitBtn = document.createElement('button')
   submitBtn.className = 'hs-mc-poll-mod-btn hs-mc-poll-create-submit'
   submitBtn.tabIndex = -1
-  submitBtn.textContent = 'create poll'
+  submitBtn.textContent = t('mc_poll_create')
   form.appendChild(submitBtn)
 
   createWrap.appendChild(form)
@@ -6195,7 +6195,7 @@ function attachPollHandlers() {
       if (result.error) {
         btn.textContent = result.error
         btn.title = result.error
-        setTimeout(() => { btn.textContent = 'end poll'; btn.disabled = false; btn.title = '' }, 3000)
+        setTimeout(() => { btn.textContent = t('mc_poll_end'); btn.disabled = false; btn.title = '' }, 3000)
       } else {
         btn.textContent = '\u2713'
         refreshPollSlot()
@@ -6211,7 +6211,7 @@ function attachPollHandlers() {
       if (form) {
         const showing = form.style.display !== 'none'
         form.style.display = showing ? 'none' : 'flex'
-        btn.textContent = showing ? '+ new poll' : 'cancel'
+        btn.textContent = showing ? t('mc_poll_new') : t('mc_pred_cancel_form')
       }
     })
   })
@@ -6244,11 +6244,11 @@ function attachPollHandlers() {
       btn.textContent = '...'
       const result = await createTwitchPoll(channelId, title, secs, choices)
       if (result.error) {
-        const errMap = { POLL_ALREADY_ACTIVE: 'poll already active', FORBIDDEN: 'no permission', UNAUTHORIZED: 'not logged in' }
+        const errMap = { POLL_ALREADY_ACTIVE: t('mc_error_poll_active'), FORBIDDEN: t('mc_error_no_permission'), UNAUTHORIZED: t('mc_error_not_logged_in') }
         const msg = errMap[result.error] || result.error
         btn.textContent = msg
         btn.title = result.error
-        setTimeout(() => { btn.textContent = 'create poll'; btn.disabled = false; btn.title = '' }, 3000)
+        setTimeout(() => { btn.textContent = t('mc_poll_create'); btn.disabled = false; btn.title = '' }, 3000)
       } else {
         // Close create form so refreshPollSlot's guard doesn't skip
         form.style.display = 'none'
@@ -6282,7 +6282,7 @@ function attachPollHandlers() {
     const update = () => {
       const remaining = Math.max(0, Math.ceil((endsAt - Date.now()) / 1000))
       if (remaining <= 0) {
-        el.textContent = 'ended'
+        el.textContent = t('mc_poll_ended')
         el.classList.add('hs-mc-poll-status-ended')
         return
       }
@@ -7616,7 +7616,7 @@ async function sendTwitchWhisper(toUserId, message) {
     })
     if (resp?.ok) return { ok: true }
     if (resp?.status === 401) {
-      showToast('log in to heatsync.org to send whispers')
+      showToast(t('mc_whisper_login'))
       return { ok: false, error: 'not authenticated' }
     }
     showToast('whisper failed: ' + (resp?.error || 'unknown'))
@@ -7727,7 +7727,7 @@ function renderWhispersTab() {
 
   if (whisperTimeline.length === 0) {
     // All dynamic values below are string literals — safe innerHTML
-    msgsEl.innerHTML = '<div class="hs-mc-empty">/w user msg \u00b7 /dm user msg \u00b7 /r msg</div>'
+    msgsEl.innerHTML = `<div class="hs-mc-empty">${t('mc_whisper_hint')}</div>`
     return
   }
 
@@ -14411,7 +14411,7 @@ const STORAGE_KEY = 'heatsync_multichat';
     if (currentTab === 'feed' && id !== 'feed') {
       activeThread = null;
       const feedTabBtn = tabBarElement?.querySelector('[data-tab="feed"]');
-      if (feedTabBtn) feedTabBtn.textContent = 'feed';
+      if (feedTabBtn) feedTabBtn.textContent = t('mc_tab_feed');
     }
     currentTab = id;
 

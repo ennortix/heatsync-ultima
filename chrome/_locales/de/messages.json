@@ -1048,5 +1048,36 @@
   },
   "mc_emote_blocked": {
     "message": "blockiert (klicken zum Entsperren)"
+  },
+
+  "content_toast_unknown_error": {
+    "message": "Unbekannter Fehler"
+  },
+  "content_toast_loading_emotes": {
+    "message": "Emotes werden geladen..."
+  },
+  "content_toast_fetching_emotes": {
+    "message": "Emotes werden abgerufen..."
+  },
+  "content_card_action_ban": {
+    "message": "bannen"
+  },
+  "content_card_action_unban": {
+    "message": "entbannen"
+  },
+  "content_card_action_block": {
+    "message": "blockieren"
+  },
+  "btn_close": {
+    "message": "Schließen"
+  },
+  "btn_error_channel": {
+    "message": "Channel-Emotes konnten nicht geladen werden"
+  },
+  "btn_error_global": {
+    "message": "Globale Emotes konnten nicht geladen werden"
+  },
+  "btn_error_inventory": {
+    "message": "Deine Emotes konnten nicht geladen werden"
   }
 }

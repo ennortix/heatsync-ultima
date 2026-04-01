@@ -1048,5 +1048,36 @@
   },
   "mc_emote_blocked": {
     "message": "bloqueado (clic para desbloquear)"
+  },
+
+  "content_toast_unknown_error": {
+    "message": "Error desconocido"
+  },
+  "content_toast_loading_emotes": {
+    "message": "cargando emotes..."
+  },
+  "content_toast_fetching_emotes": {
+    "message": "obteniendo emotes..."
+  },
+  "content_card_action_ban": {
+    "message": "banear"
+  },
+  "content_card_action_unban": {
+    "message": "desbanear"
+  },
+  "content_card_action_block": {
+    "message": "bloquear"
+  },
+  "btn_close": {
+    "message": "Cerrar"
+  },
+  "btn_error_channel": {
+    "message": "error al cargar emotes del canal"
+  },
+  "btn_error_global": {
+    "message": "error al cargar emotes globales"
+  },
+  "btn_error_inventory": {
+    "message": "error al cargar tus emotes"
   }
 }

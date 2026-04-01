@@ -5,7 +5,6 @@
   "manifest_description": {
     "message": "Twitch、Kick、YouTubeチャット用カスタムエモート。スロット無制限、タブ補完、リアルタイム同期。"
   },
-
   "common_loading": {
     "message": "読み込み中..."
   },
@@ -54,7 +53,6 @@
   "common_user_not_found": {
     "message": "ユーザーが見つかりません"
   },
-
   "popup_title": {
     "message": "heatsync"
   },
@@ -73,16 +71,26 @@
   "popup_user_stats": {
     "message": "$EMOTES$ エモート · $GLOBALS$ グローバル",
     "placeholders": {
-      "emotes": { "content": "$1" },
-      "globals": { "content": "$2" }
+      "emotes": {
+        "content": "$1"
+      },
+      "globals": {
+        "content": "$2"
+      }
     }
   },
   "popup_user_stats_heat": {
     "message": "$EMOTES$ エモート · $GLOBALS$ グローバル · $HEAT$ heat",
     "placeholders": {
-      "emotes": { "content": "$1" },
-      "globals": { "content": "$2" },
-      "heat": { "content": "$3" }
+      "emotes": {
+        "content": "$1"
+      },
+      "globals": {
+        "content": "$2"
+      },
+      "heat": {
+        "content": "$3"
+      }
     }
   },
   "popup_btn_emotes": {
@@ -109,7 +117,6 @@
   "popup_hint": {
     "message": "チャットのピッカーパネルでエモート設定"
   },
-
   "welcome_title": {
     "message": "heatsyncへようこそ"
   },
@@ -143,7 +150,6 @@
   "welcome_source": {
     "message": "ソース"
   },
-
   "btn_auth_login": {
     "message": "ログイン"
   },
@@ -192,7 +198,9 @@
   "btn_import_count": {
     "message": "$COUNT$個のエモートをインポート",
     "placeholders": {
-      "count": { "content": "$1" }
+      "count": {
+        "content": "$1"
+      }
     }
   },
   "btn_failed_load": {
@@ -309,61 +317,82 @@
   "btn_click_expand": {
     "message": "クリックして展開"
   },
-
   "content_toast_failed_add": {
     "message": "$NAME$の追加に失敗: $ERROR$",
     "placeholders": {
-      "name": { "content": "$1" },
-      "error": { "content": "$2" }
+      "name": {
+        "content": "$1"
+      },
+      "error": {
+        "content": "$2"
+      }
     }
   },
   "content_toast_failed_remove": {
     "message": "$NAME$の削除に失敗: $ERROR$",
     "placeholders": {
-      "name": { "content": "$1" },
-      "error": { "content": "$2" }
+      "name": {
+        "content": "$1"
+      },
+      "error": {
+        "content": "$2"
+      }
     }
   },
   "content_toast_unblocked": {
     "message": "$NAME$のブロックを解除",
     "placeholders": {
-      "name": { "content": "$1" }
+      "name": {
+        "content": "$1"
+      }
     }
   },
   "content_toast_failed_unblock": {
     "message": "ブロック解除に失敗: $ERROR$",
     "placeholders": {
-      "error": { "content": "$1" }
+      "error": {
+        "content": "$1"
+      }
     }
   },
   "content_toast_removed": {
     "message": "セットから$NAME$を削除",
     "placeholders": {
-      "name": { "content": "$1" }
+      "name": {
+        "content": "$1"
+      }
     }
   },
   "content_toast_failed_block": {
     "message": "ブロックに失敗: $ERROR$",
     "placeholders": {
-      "error": { "content": "$1" }
+      "error": {
+        "content": "$1"
+      }
     }
   },
   "content_toast_blocked": {
     "message": "$NAME$をブロック",
     "placeholders": {
-      "name": { "content": "$1" }
+      "name": {
+        "content": "$1"
+      }
     }
   },
   "content_toast_unmuted": {
     "message": "$NAME$のミュートを解除",
     "placeholders": {
-      "name": { "content": "$1" }
+      "name": {
+        "content": "$1"
+      }
     }
   },
   "content_toast_muted_24h": {
     "message": "$NAME$を24時間ミュート",
     "placeholders": {
-      "name": { "content": "$1" }
+      "name": {
+        "content": "$1"
+      }
     }
   },
   "content_card_follows_you": {
@@ -381,45 +410,63 @@
   "content_card_you_sub_tier": {
     "message": "T$TIER$サブ中",
     "placeholders": {
-      "tier": { "content": "$1" }
+      "tier": {
+        "content": "$1"
+      }
     }
   },
   "content_card_subbed": {
     "message": "$CHANNEL$を$TENURE$サブ中",
     "placeholders": {
-      "channel": { "content": "$1" },
-      "tenure": { "content": "$2" }
+      "channel": {
+        "content": "$1"
+      },
+      "tenure": {
+        "content": "$2"
+      }
     }
   },
   "content_card_following": {
     "message": "$CHANNEL$を$AGE$フォロー中",
     "placeholders": {
-      "channel": { "content": "$1" },
-      "age": { "content": "$2" }
+      "channel": {
+        "content": "$1"
+      },
+      "age": {
+        "content": "$2"
+      }
     }
   },
   "content_card_not_following": {
     "message": "$CHANNEL$をフォローしていない",
     "placeholders": {
-      "channel": { "content": "$1" }
+      "channel": {
+        "content": "$1"
+      }
     }
   },
   "content_card_followed_by": {
     "message": "$CHANNEL$にフォローされている",
     "placeholders": {
-      "channel": { "content": "$1" }
+      "channel": {
+        "content": "$1"
+      }
     }
   },
   "content_card_following_count": {
     "message": "$COUNT$フォロー中",
     "placeholders": {
-      "count": { "content": "$1" }
+      "count": {
+        "content": "$1"
+      }
     }
   },
   "content_card_followers": {
     "message": "フォロワー$COUNT$人",
     "placeholders": {
-      "count": { "content": "$1" }
+      "count": {
+        "content": "$1"
+      }
     }
   },
   "content_card_partner": {
@@ -431,7 +478,9 @@
   "content_card_live": {
     "message": "LIVE $VIEWERS$",
     "placeholders": {
-      "viewers": { "content": "$1" }
+      "viewers": {
+        "content": "$1"
+      }
     }
   },
   "content_card_twitch_verified": {
@@ -452,7 +501,6 @@
   "content_blocked_click_unblock": {
     "message": "ブロック済み (クリックで解除)"
   },
-
   "mc_tab_feed": {
     "message": "フィード"
   },
@@ -471,7 +519,9 @@
   "mc_tab_live_channel": {
     "message": "ライブ · $CHANNEL$",
     "placeholders": {
-      "channel": { "content": "$1" }
+      "channel": {
+        "content": "$1"
+      }
     }
   },
   "mc_btn_rotate_tabs": {
@@ -489,7 +539,9 @@
   "mc_new_messages": {
     "message": "$COUNT$件の新着",
     "placeholders": {
-      "count": { "content": "$1" }
+      "count": {
+        "content": "$1"
+      }
     }
   },
   "mc_resume": {
@@ -528,13 +580,14 @@
   "mc_edit_channel": {
     "message": "$CHANNEL$を編集",
     "placeholders": {
-      "channel": { "content": "$1" }
+      "channel": {
+        "content": "$1"
+      }
     }
   },
   "mc_no_channel_detected": {
     "message": "チャンネルが検出されません"
   },
-
   "mc_settings_display": {
     "message": "表示"
   },
@@ -655,7 +708,6 @@
   "mc_settings_unmute": {
     "message": "ミュート解除"
   },
-
   "mc_pred_no_active": {
     "message": "アクティブな予測なし"
   },
@@ -743,11 +795,14 @@
   "mc_pred_you_bet": {
     "message": "$OUTCOME$に$POINTS$ポイントベット — 実際の勝者を選んでください",
     "placeholders": {
-      "points": { "content": "$1" },
-      "outcome": { "content": "$2" }
+      "points": {
+        "content": "$1"
+      },
+      "outcome": {
+        "content": "$2"
+      }
     }
   },
-
   "mc_poll_new": {
     "message": "+ 新しい投票"
   },
@@ -757,13 +812,17 @@
   "mc_poll_choice": {
     "message": "選択肢$NUM$",
     "placeholders": {
-      "num": { "content": "$1" }
+      "num": {
+        "content": "$1"
+      }
     }
   },
   "mc_poll_choice_optional": {
     "message": "選択肢$NUM$ (任意)",
     "placeholders": {
-      "num": { "content": "$1" }
+      "num": {
+        "content": "$1"
+      }
     }
   },
   "mc_poll_create": {
@@ -775,13 +834,17 @@
   "mc_poll_votes": {
     "message": "$COUNT$票",
     "placeholders": {
-      "count": { "content": "$1" }
+      "count": {
+        "content": "$1"
+      }
     }
   },
   "mc_poll_vote_single": {
     "message": "$COUNT$票",
     "placeholders": {
-      "count": { "content": "$1" }
+      "count": {
+        "content": "$1"
+      }
     }
   },
   "mc_poll_already_active": {
@@ -790,7 +853,6 @@
   "mc_poll_not_logged_in": {
     "message": "ログインしていません"
   },
-
   "mc_reward_rewards": {
     "message": "リワード"
   },
@@ -806,13 +868,17 @@
   "mc_reward_cooldown_min": {
     "message": "$MIN$分クールダウン",
     "placeholders": {
-      "min": { "content": "$1" }
+      "min": {
+        "content": "$1"
+      }
     }
   },
   "mc_reward_cooldown_sec": {
     "message": "$SEC$秒クールダウン",
     "placeholders": {
-      "sec": { "content": "$1" }
+      "sec": {
+        "content": "$1"
+      }
     }
   },
   "mc_reward_enter_text": {
@@ -821,7 +887,6 @@
   "mc_reward_redeem": {
     "message": "交換"
   },
-
   "mc_chat_username_color": {
     "message": "ユーザー名の色"
   },
@@ -852,10 +917,11 @@
   "mc_chat_hype_level": {
     "message": "レベル$LEVEL$",
     "placeholders": {
-      "level": { "content": "$1" }
+      "level": {
+        "content": "$1"
+      }
     }
   },
-
   "mc_input_send_message": {
     "message": "メッセージを送信..."
   },
@@ -865,13 +931,17 @@
   "mc_input_send_channel": {
     "message": "#$CHANNEL$に送信",
     "placeholders": {
-      "channel": { "content": "$1" }
+      "channel": {
+        "content": "$1"
+      }
     }
   },
   "mc_input_replying_to": {
     "message": "@$USER$に返信",
     "placeholders": {
-      "user": { "content": "$1" }
+      "user": {
+        "content": "$1"
+      }
     }
   },
   "mc_input_cancel_reply": {
@@ -904,7 +974,6 @@
   "mc_input_send_failed_retry": {
     "message": "送信失敗 — 再試行してください"
   },
-
   "mc_social_back": {
     "message": "<- 戻る"
   },
@@ -944,43 +1013,55 @@
   "mc_social_failed_post": {
     "message": "投稿失敗"
   },
-
   "mc_tip_emoji": {
     "message": "絵文字"
   },
   "mc_tip_subbed": {
     "message": "$CHANNEL$を$TENURE$サブ中",
     "placeholders": {
-      "channel": { "content": "$1" },
-      "tenure": { "content": "$2" }
+      "channel": {
+        "content": "$1"
+      },
+      "tenure": {
+        "content": "$2"
+      }
     }
   },
   "mc_tip_following": {
     "message": "$CHANNEL$を$AGE$フォロー中",
     "placeholders": {
-      "channel": { "content": "$1" },
-      "age": { "content": "$2" }
+      "channel": {
+        "content": "$1"
+      },
+      "age": {
+        "content": "$2"
+      }
     }
   },
   "mc_tip_not_following": {
     "message": "$CHANNEL$をフォローしていない",
     "placeholders": {
-      "channel": { "content": "$1" }
+      "channel": {
+        "content": "$1"
+      }
     }
   },
   "mc_tip_followed_by": {
     "message": "$CHANNEL$にフォローされている",
     "placeholders": {
-      "channel": { "content": "$1" }
+      "channel": {
+        "content": "$1"
+      }
     }
   },
   "mc_tip_followers": {
     "message": "フォロワー$COUNT$人",
     "placeholders": {
-      "count": { "content": "$1" }
+      "count": {
+        "content": "$1"
+      }
     }
   },
-
   "mc_whisper_hint": {
     "message": "/w ユーザー メッセージ · /dm ユーザー メッセージ · /r メッセージ"
   },
@@ -990,7 +1071,9 @@
   "mc_whisper_user_not_found": {
     "message": "twitchユーザー\"$USER$\"が見つかりません",
     "placeholders": {
-      "user": { "content": "$1" }
+      "user": {
+        "content": "$1"
+      }
     }
   },
   "mc_whisper_resolve_failed": {
@@ -999,32 +1082,42 @@
   "mc_whisper_hs_not_found": {
     "message": "heatyncユーザー\"$USER$\"が見つかりません",
     "placeholders": {
-      "user": { "content": "$1" }
+      "user": {
+        "content": "$1"
+      }
     }
   },
-
   "mc_irc_chat_cleared": {
     "message": "チャットがクリアされました"
   },
   "mc_irc_msg_deleted": {
     "message": "$USER$のメッセージが削除されました",
     "placeholders": {
-      "user": { "content": "$1" }
+      "user": {
+        "content": "$1"
+      }
     }
   },
   "mc_irc_gift_subs": {
     "message": "$USER$が$CHANNEL$に$AMOUNT$サブをギフト",
     "placeholders": {
-      "user": { "content": "$1" },
-      "amount": { "content": "$2" },
-      "channel": { "content": "$3" }
+      "user": {
+        "content": "$1"
+      },
+      "amount": {
+        "content": "$2"
+      },
+      "channel": {
+        "content": "$3"
+      }
     }
   },
-
   "mc_yt_connected": {
     "message": "YouTube接続済み: $CHANNEL$ — メッセージ待機中...",
     "placeholders": {
-      "channel": { "content": "$1" }
+      "channel": {
+        "content": "$1"
+      }
     }
   },
   "mc_yt_ended": {
@@ -1033,7 +1126,6 @@
   "mc_yt_error": {
     "message": "YouTube接続エラー"
   },
-
   "mc_emote_search_placeholder": {
     "message": "エモートを検索..."
   },
@@ -1048,5 +1140,35 @@
   },
   "mc_emote_blocked": {
     "message": "ブロック済み (クリックで解除)"
+  },
+  "content_toast_unknown_error": {
+    "message": "不明なエラー"
+  },
+  "content_toast_loading_emotes": {
+    "message": "emoteを読み込み中..."
+  },
+  "content_toast_fetching_emotes": {
+    "message": "emoteを取得中..."
+  },
+  "content_card_action_ban": {
+    "message": "BAN"
+  },
+  "content_card_action_unban": {
+    "message": "BAN解除"
+  },
+  "content_card_action_block": {
+    "message": "ブロック"
+  },
+  "btn_close": {
+    "message": "閉じる"
+  },
+  "btn_error_channel": {
+    "message": "チャンネルemoteの読み込みに失敗"
+  },
+  "btn_error_global": {
+    "message": "グローバルemoteの読み込みに失敗"
+  },
+  "btn_error_inventory": {
+    "message": "emoteの読み込みに失敗"
   }
 }

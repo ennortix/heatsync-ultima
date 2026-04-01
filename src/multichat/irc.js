@@ -593,6 +593,8 @@ class KickChat {
     this.handlers = new Map()
     this._destroyed = false
     this._listener = null
+    this._persistTimers = {}
+    this._PERSIST_MAX = 200
   }
 
   connect() {
@@ -623,6 +625,11 @@ class KickChat {
           } : null
         }
         this.channels.get(channel).push(msg)
+        if (msg.user) {
+          usernameCache.add(msg.user)
+          knownColors.set(msg.user.toLowerCase(), msg.color)
+        }
+        this.persistBuffer(channel)
         this.emit('message', msg)
       }
 
@@ -645,6 +652,7 @@ class KickChat {
           id: ''
         }
         this.channels.get(channel).push(msg)
+        this.persistBuffer(channel)
         this.emit('message', msg)
       }
 
@@ -666,11 +674,52 @@ class KickChat {
           id: ''
         }
         this.channels.get(channel).push(msg)
+        this.persistBuffer(channel)
         this.emit('message', msg)
       }
     }
     chrome.runtime?.onMessage?.addListener(this._listener)
     log('Kick chat listener registered (webhook mode)')
+  }
+
+  persistBuffer(ch) {
+    if (this._persistTimers[ch]) return
+    this._persistTimers[ch] = setTimeout(() => {
+      delete this._persistTimers[ch]
+      const buffer = this.channels.get(ch)
+      if (!buffer) return
+      const msgs = buffer.getAll().slice(-this._PERSIST_MAX).map(m => ({
+        user: m.user, text: m.text, color: m.color, badges: m.badges,
+        channel: m.channel, time: m.time, platform: 'kick',
+        type: m.type || undefined, systemMsg: m.systemMsg || undefined,
+        replyTo: m.replyTo || undefined, kicksEvent: m.kicksEvent || undefined
+      }))
+      chrome.storage?.local?.set({ [`hs_kick_${ch}`]: { msgs, ts: Date.now() } }).catch(() => {})
+    }, 5000)
+  }
+
+  async loadHistory(ch) {
+    const buffer = this.channels.get(ch)
+    if (!buffer) return
+    const storageKey = `hs_kick_${ch}`
+    try {
+      const stored = await chrome.storage.local.get(storageKey)
+      const data = stored[storageKey]
+      if (data?.msgs?.length > 0 && Date.now() - data.ts < 86400000) {
+        log('Kick storage hit:', data.msgs.length, 'msgs for', ch)
+        for (const msg of data.msgs) {
+          msg.isHistory = true
+          if (msg.user) {
+            usernameCache.add(msg.user)
+            knownColors.set(msg.user.toLowerCase(), msg.color)
+          }
+          buffer.push(msg)
+        }
+        if (currentTab === ch || (currentTab === 'live' && getLiveChannel() === ch)) {
+          renderMessages(currentTab)
+        }
+      }
+    } catch {}
   }
 
   destroy() {
@@ -690,6 +739,8 @@ class KickChat {
     kickUsername = kickUsername.toLowerCase()
     if (this.channels.has(kickUsername)) return
     this.channels.set(kickUsername, new CircularBuffer(1500))
+    // Load persisted history before joining (so messages appear instantly)
+    await this.loadHistory(kickUsername)
     // Tell background to join kick channel via HeatSync WS
     safeSendMessage({ type: 'ws_send', data: { type: 'channel:join', platform: 'kick', channel: kickUsername } })
     log('Kick joined', kickUsername, '(webhook mode)')

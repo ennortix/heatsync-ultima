@@ -785,6 +785,7 @@ style.textContent = `
     align-items: center !important;
     justify-content: center !important;
     overflow: visible !important;
+    transition: gap 0.12s ease, padding 0.12s ease, background 0.12s ease !important;
   }
 
   /* Force overflow visible on Twitch emote containers inside stacks */
@@ -856,23 +857,26 @@ style.textContent = `
     cursor: pointer !important;
   }
 
-  /* COLLAPSED STACK HOVER - highlight ALL emotes instantly when hovering anywhere on stack */
-  /* Method 1: Direct stack hover */
-  .heatsync-emote-stack:not(.expanded):hover .heatsync-emote-wrapper::before {
+  /* Collapsed stack count badge */
+  .heatsync-emote-stack:not(.expanded)::after {
+    content: attr(data-stack-count) !important;
+    position: absolute !important;
+    top: -4px !important;
+    right: -6px !important;
+    background: #ff8700 !important;
+    color: #000 !important;
+    font-size: 9px !important;
+    font-weight: bold !important;
+    line-height: 1 !important;
+    padding: 1px 3px !important;
+    border-radius: 6px !important;
+    z-index: 10 !important;
+    pointer-events: none !important;
+    opacity: 0 !important;
+    transition: opacity 0.1s !important;
+  }
+  .heatsync-emote-stack:not(.expanded):hover::after {
     opacity: 1 !important;
-  }
-  .heatsync-emote-stack:not(.expanded):hover .heatsync-emote-wrapper > img.heatsync-emote {
-    opacity: 0 !important;
-  }
-  .heatsync-emote-stack:not(.expanded):hover .heatsync-emote-wrapper > img:not(.heatsync-emote) {
-    opacity: 0 !important;
-  }
-  /* Method 2: Hover on wide overlay that extends beyond stack bounds - use :has() */
-  .heatsync-emote-stack:not(.expanded):has(.heatsync-emote-wrapper:hover) .heatsync-emote-wrapper::before {
-    opacity: 1 !important;
-  }
-  .heatsync-emote-stack:not(.expanded):has(.heatsync-emote-wrapper:hover) .heatsync-emote-wrapper > img {
-    opacity: 0 !important;
   }
 
   /* Expanded state - spread emotes horizontally */
@@ -883,7 +887,7 @@ style.textContent = `
     align-items: center !important;
     gap: 6px !important;
     background: #000000 !important;
-    border-radius: 0 !important;
+    border-radius: 4px !important;
     padding: 4px 8px !important;
   }
 
@@ -895,6 +899,7 @@ style.textContent = `
     left: auto !important;
     transform: none !important;
     pointer-events: auto !important;
+    transition: position 0s, top 0s, left 0s, transform 0.12s ease !important;
   }
 
 
@@ -946,8 +951,8 @@ style.textContent = `
     pointer-events: auto !important;
   }
   .heatsync-emote-stack.expanded .heatsync-stack-block-all:hover {
-    background: #fff !important;
-    color: #000 !important;
+    background: #c00000 !important;
+    color: #fff !important;
   }
 
   /* Username mention links — hover underline */
@@ -1449,6 +1454,8 @@ async function loadInventory() {
       hideLoadingStatus();
       debouncedProcessExistingMessages();
       updateEmoteBridge(); // Update Twitch autocomplete hook
+      // Fetch cosmetic badges (BTTV/FFZ/Chatterino) — not cached in storage
+      fetchCosmeticBadges()
       return;
     }
   } catch (err) {
@@ -1478,14 +1485,8 @@ async function loadInventory() {
           if (r?.users) followedByCurrentUser = new Set(r.users);
         }).catch(() => {});
 
-        // Fetch bulk BTTV/FFZ badges
-        safeSendMessage({ type: 'get_bulk_badges' }).then(resp => {
-          if (resp?.bttvBadges) bttvBadgeMap = new Map(Object.entries(resp.bttvBadges))
-          if (resp?.ffzBadges) ffzBadgeMap = new Map(Object.entries(resp.ffzBadges))
-          if (resp?.chatterinoBadges) chatterinoBadgeMap = new Map(Object.entries(resp.chatterinoBadges))
-          log(' Initial cosmetics: BTTV', bttvBadgeMap.size, 'FFZ', ffzBadgeMap.size, 'Chatterino', chatterinoBadgeMap.size)
-          reapplyBadgesToExistingMessages()
-        }).catch(() => {})
+        // Fetch bulk BTTV/FFZ/Chatterino badges
+        fetchCosmeticBadges()
 
         // Fetch HeatSync API colors for followed users + current user
         safeSendMessage({ type: 'get_follow_history' }).then(resp => {
@@ -1818,7 +1819,6 @@ function _onMessageMain(message) {
       bttvBadgeMap = new Map(Object.entries(message.bttvBadges || {}))
       ffzBadgeMap = new Map(Object.entries(message.ffzBadges || {}))
       chatterinoBadgeMap = new Map(Object.entries(message.chatterinoBadges || {}))
-      log(' Cosmetics loaded: BTTV', bttvBadgeMap.size, 'FFZ', ffzBadgeMap.size, 'Chatterino', chatterinoBadgeMap.size)
       reapplyBadgesToExistingMessages()
       break
 
@@ -2765,7 +2765,49 @@ function setupUsernameColoringObserver() {
     usernameClickHandlerInstalled = true;
     log(' ✅ Username click handler deferred to profile card');
 
-    // Emote stack expand/collapse handlers (LEFT CLICK)
+    // Emote stack expand/collapse handlers
+
+    // Hover-to-expand: mouseover expands, mouseout collapses with 300ms delay
+    const stackCollapseTimers = new WeakMap();
+    document.addEventListener('mouseover', (e) => {
+      const stack = e.target.closest?.('.heatsync-emote-stack');
+      if (!stack) return;
+      // Cancel any pending collapse
+      const timer = stackCollapseTimers.get(stack);
+      if (timer) { clearTimeout(timer); stackCollapseTimers.delete(stack); }
+      if (!stack.classList.contains('expanded')) {
+        stack.classList.add('expanded');
+        log(' ✅ Stack expanded via hover');
+      }
+    }, { signal });
+
+    // Track last known mouse position for collapse checks
+    let lastMouseX = 0, lastMouseY = 0;
+    document.addEventListener('mousemove', (e) => { lastMouseX = e.clientX; lastMouseY = e.clientY; }, { signal, passive: true });
+
+    document.addEventListener('mouseout', (e) => {
+      const stack = e.target.closest?.('.heatsync-emote-stack');
+      if (!stack || !stack.classList.contains('expanded')) return;
+      // Stay open if mouse moved to another element inside the stack
+      if (e.relatedTarget && stack.contains(e.relatedTarget)) return;
+      // Delay collapse — verify mouse actually left the stack rect before collapsing
+      const existing = stackCollapseTimers.get(stack);
+      if (existing) clearTimeout(existing);
+      stackCollapseTimers.set(stack, setTimeout(() => {
+        // Re-check: is mouse still over the stack? (DOM changes can cause spurious mouseout)
+        const rect = stack.getBoundingClientRect();
+        if (lastMouseX >= rect.left && lastMouseX <= rect.right &&
+            lastMouseY >= rect.top && lastMouseY <= rect.bottom) {
+          stackCollapseTimers.delete(stack);
+          return; // Mouse is still over the stack, don't collapse
+        }
+        stack.classList.remove('expanded');
+        stackCollapseTimers.delete(stack);
+        log(' ✅ Stack collapsed via mouse leave');
+      }, 300));
+    }, { signal });
+
+    // Click handlers (capture phase)
     document.addEventListener('click', (e) => {
       // Handle collapse button (×)
       const collapseBtn = e.target.closest('.heatsync-stack-collapse');
@@ -2788,11 +2830,10 @@ function setupUsernameColoringObserver() {
         const stack = blockAllBtn.closest('.heatsync-emote-stack');
         if (stack) {
           const emoteWrappers = stack.querySelectorAll('.heatsync-emote-wrapper');
-
-          // Check if all emotes are currently blocked
           const allBlocked = Array.from(emoteWrappers).every(wrapper =>
             wrapper.classList.contains('emote-overlay-blocked')
           );
+          const names = [];
 
           if (allBlocked) {
             // SHOW ALL - unblock all emotes in stack
@@ -2801,18 +2842,14 @@ function setupUsernameColoringObserver() {
               const name = wrapper.dataset.emoteName;
               if (hash || name) {
                 blockedEmotes.delete(hash || name);
-                wrapper.classList.remove('emote-overlay-blocked');
-                // Restore appropriate class based on inventory status
-                const inInventory = inventoryHashSet.has(hash) || inventoryNameSet.has(name);
-                if (inInventory) {
-                  wrapper.classList.add('emote-overlay-owned');
-                } else {
-                  wrapper.classList.add('emote-overlay-unadded');
-                }
+                updateEmoteState(hash, name, globalNameSet.has(name) ? 'global' : 'neutral');
+                safeSendMessage({ type: 'unblock_emote', hash });
+                names.push(name);
               }
             });
             blockAllBtn.textContent = '⊘';
             blockAllBtn.title = t('btn_block_all');
+            showToast(t('content_toast_unblocked', [names.join(', ')]), 'success');
             log(' ✅ Unblocked all emotes in stack');
           } else {
             // BLOCK ALL - block all emotes in stack
@@ -2821,23 +2858,24 @@ function setupUsernameColoringObserver() {
               const name = wrapper.dataset.emoteName;
               if (hash || name) {
                 blockedEmotes.add(hash || name);
-                wrapper.classList.add('emote-overlay-blocked');
-                wrapper.classList.remove('emote-overlay-owned', 'emote-overlay-unadded', 'emote-overlay-global');
+                updateEmoteState(hash, name, 'blocked');
+                safeSendMessage({ type: 'block_emote', hash });
+                names.push(name);
               }
             });
             blockAllBtn.textContent = '◉';
             blockAllBtn.title = t('btn_show_all');
+            showToast(t('content_toast_blocked', [names.join(', ')]), 'info');
             log(' 🚫 Blocked all emotes in stack');
           }
 
-          // Save blocked emotes
           chrome.storage.local.set({ blocked_emotes: Array.from(blockedEmotes) });
           stack.classList.remove('expanded');
         }
         return;
       }
 
-      // Click on collapsed stack → Expand (left click)
+      // Click on collapsed stack → Expand (fallback for touch/keyboard)
       const stack = e.target.closest('.heatsync-emote-stack');
       if (stack && !stack.classList.contains('expanded')) {
         e.preventDefault();
@@ -2850,17 +2888,15 @@ function setupUsernameColoringObserver() {
       // If stack is expanded and clicking on emote, let normal emote handling work (don't stop)
     }, { capture: true, signal });
 
-    // Right-click on collapsed stack → Expand (same as left click)
+    // Right-click on collapsed stack → expand + let emote block handler fire
     document.addEventListener('contextmenu', (e) => {
       const stack = e.target.closest('.heatsync-emote-stack');
       if (stack && !stack.classList.contains('expanded')) {
-        e.preventDefault();
-        e.stopPropagation();
+        // Expand the stack so individual emotes are visible/clickable
         stack.classList.add('expanded');
         log(' ✅ Stack expanded via right click');
-        return;
+        // DON'T preventDefault or stopPropagation — let the emote contextmenu handler fire
       }
-      // If expanded, let normal right-click handling work (block emote)
     }, { capture: true, signal });
 
     log(' ✅ Emote stack expand/collapse handler installed');
@@ -3863,6 +3899,9 @@ function setupEmoteClickHandlers() {
     const isGlobalEmote = wrapper.classList.contains('emote-overlay-global') ||
                           globalNameSet.has(emoteName);
 
+    // In a stack context, skip "remove from set" — go straight to block
+    const inStack = !!wrapper.closest('.heatsync-emote-stack');
+
     if (isBlocked) {
       // BLOCKED → NEUTRAL (unblock)
       pendingOperations.add(operationKey);
@@ -3878,8 +3917,8 @@ function setupEmoteClickHandlers() {
       } finally {
         pendingOperations.delete(operationKey);
       }
-    } else if (inInventory && !isGlobalEmote) {
-      // ADDED → NEUTRAL (remove from your set) - only for non-global emotes
+    } else if (inInventory && !isGlobalEmote && !inStack) {
+      // ADDED → NEUTRAL (remove from your set) - only for non-global, non-stacked emotes
       pendingOperations.add(operationKey);
       log(' ➖ Removing from your set:', emoteName);
 
@@ -5213,17 +5252,30 @@ function applyHeatsyncColorsToExisting() {
 
 // Re-apply BTTV/FFZ badges to messages that were processed before badge maps loaded
 function reapplyBadgesToExistingMessages() {
-  if (bttvBadgeMap.size === 0 && ffzBadgeMap.size === 0 && chatterinoBadgeMap.size === 0) return
+  if (bttvBadgeMap.size === 0 && ffzBadgeMap.size === 0 && chatterinoBadgeMap.size === 0) {
+    return
+  }
   const container = findChatContainer()
-  if (!container) return
+  let matched = 0
   container.querySelectorAll('[data-hs-cosmetic-user-id]').forEach(el => {
     const uid = el.dataset.hsCosmeticUserId
     if (!uid) return
     const needsBttv = bttvBadgeMap.has(uid) && !el.querySelector('.hs-bttv-badge')
     const needsFfz = ffzBadgeMap.has(uid) && !el.querySelector('.hs-ffz-badge')
     const needsChatterino = chatterinoBadgeMap.has(uid) && !el.querySelector('.hs-chatterino-badge')
-    if (needsBttv || needsFfz || needsChatterino) applyCosmeticsToMessage(el, uid)
+    if (needsBttv || needsFfz || needsChatterino) { applyCosmeticsToMessage(el, uid); matched++ }
   })
+}
+
+// Fetch BTTV/FFZ/Chatterino badge maps from background
+function fetchCosmeticBadges() {
+  safeSendMessage({ type: 'get_bulk_badges' }).then(resp => {
+    if (resp?.bttvBadges) bttvBadgeMap = new Map(Object.entries(resp.bttvBadges))
+    if (resp?.ffzBadges) ffzBadgeMap = new Map(Object.entries(resp.ffzBadges))
+    if (resp?.chatterinoBadges) chatterinoBadgeMap = new Map(Object.entries(resp.chatterinoBadges))
+    log(' Initial cosmetics: BTTV', bttvBadgeMap.size, 'FFZ', ffzBadgeMap.size, 'Chatterino', chatterinoBadgeMap.size)
+    reapplyBadgesToExistingMessages()
+  }).catch(() => {})
 }
 
 // =============================================================================

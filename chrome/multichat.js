@@ -5926,9 +5926,10 @@ function renderThirdPartyBadges(userId) {
   const cosmetic = mcUserCosmetics.get(userId)
   if (cosmetic?.badge) {
     const files = cosmetic.badge.host?.files || []
-    const file = files.find(f => f.name?.endsWith('.webp')) || files[0]
+    const file = files.find(f => f.name?.endsWith('.webp')) || files.find(f => f.name?.endsWith('.avif')) || files[0]
     if (file) {
-      const url = (cosmetic.badge.host?.url || '') + '/' + file.name
+      const base = cosmetic.badge.host?.url || ''
+      const url = (base.endsWith('/') ? base : base + '/') + file.name
       html += `<img class="hs-mc-badge-img" src="${escapeHtml(url)}" alt="7TV" title="${escapeHtml(cosmetic.badge.tooltip || '7TV')}" style="width:18px;height:18px;">`
     }
   }
@@ -8809,6 +8810,19 @@ const STORAGE_KEY = 'heatsync_multichat';
     const cosmetic = mcUserCosmetics.get(userId)
     const paint = cosmetic?.paint
     if (!paint || !paint.function) return ''
+    if (paint.function === 'url' && paint.image_url) {
+      let style = `background-image:url(${paint.image_url});background-size:cover;-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text`
+      if (paint.shadows?.length) {
+        style += ';filter:' + paint.shadows.map(s => {
+          const r = (s.color >>> 24) & 0xff
+          const g = (s.color >>> 16) & 0xff
+          const b = (s.color >>> 8) & 0xff
+          const a = (s.color & 0xff) / 255
+          return `drop-shadow(${s.x_offset || 0}px ${s.y_offset || 0}px ${s.radius || 0}px rgba(${r},${g},${b},${a.toFixed(2)}))`
+        }).join(' ')
+      }
+      return style
+    }
     if ((paint.function === 'linear-gradient' || paint.function === 'radial-gradient') && paint.stops?.length) {
       const stops = paint.stops.map(s => {
         const r = (s.color >>> 24) & 0xff
@@ -9621,13 +9635,17 @@ const STORAGE_KEY = 'heatsync_multichat';
     msg.inlineNotifBorderColor = typeDef.borderColor
     msg.inlineNotifLabel = typeDef.label
 
-    // Persist into ALL channel buffers (IRC + Kick) so notification appears on every tab
+    // Persist into ALL channel buffers (IRC + Kick + YouTube) so notification appears on every tab
     for (const ch of config.channels) {
       const twitchName = typeof ch === 'string' ? ch : ch?.twitch
       const kickName = typeof ch === 'string' ? null : ch?.kick
+      const chId = typeof ch === 'string' ? ch : ch?.id
       const buffer = (twitchName && irc?.channels?.get(twitchName)) ||
                      (kickName && kickChat?.channels?.get(kickName))
       if (buffer) buffer.push(msg)
+      // Also inject into YouTube channel buffers
+      const ytBuf = chId && channelYtMessages.get(chId)
+      if (ytBuf) ytBuf.push(msg)
     }
 
     // Live-append to current tab if it's a chat tab
@@ -13872,7 +13890,8 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
     const safeScColor = sanitizeColor(m.scColor || '#ffd600')
     const scBadge = isSuperChat && m.amount ? `<span class="hs-mc-sc-badge" style="background:${safeScColor};color:#000;padding:0 4px;border-radius:0;font-size:10px;font-weight:700;margin-right:3px;">${escapeHtml(m.amount)}</span>` : ''
     const paintStyle = m.userId ? getMcPaintStyle(m.userId) : ''
-    const userLink = `<a href="https://heatsync.org/${plat === 'yt' ? 'user' : plat}/${encodeURIComponent(m.user)}" target="_blank" class="hs-mc-user" data-username="${escapeHtml(m.user.toLowerCase())}" style="${paintStyle || 'color:' + sanitizeColor(m.color || '#fff')}">${escapeHtml(m.user)}</a>`;
+    const userBaseUrl = plat === 'kick' ? 'https://kick.com' : plat === 'yt' ? 'https://youtube.com/@' : 'https://twitch.tv'
+    const userLink = `<a href="${userBaseUrl}/${encodeURIComponent(m.user)}" target="_blank" class="hs-mc-user" data-username="${escapeHtml(m.user.toLowerCase())}" style="${paintStyle || 'color:' + sanitizeColor(m.color || '#fff')}">${escapeHtml(m.user)}</a>`;
     let avatarHtml = ''
     if (avatarsEnabled) {
       const userKey = m.user.toLowerCase()
@@ -13883,8 +13902,8 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
       const cachedUrl = avatarCache.get(userKey)
       if (cachedUrl) {
         avatarHtml = `<img class="hs-mc-avatar" src="${escapeHtml(cachedUrl)}" alt="" loading="lazy" decoding="async" onerror="this.style.display='none'">`
-      } else if (m.platform !== 'youtube') {
-        // Only fetch from decapi for Twitch users
+      } else if (!m.platform || m.platform === 'twitch') {
+        // Only fetch from decapi for Twitch users (Kick/YouTube don't have decapi endpoints)
         avatarHtml = `<img class="hs-mc-avatar" data-user="${escapeHtml(userKey)}" src="" alt="" style="display:none" loading="lazy" decoding="async">`
         fetchAvatar(userKey)
       }
@@ -14102,8 +14121,15 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
         const linked = config.channels.find(ch => typeof ch !== 'string' && ch.twitch === curCh && ch.kick);
         if (linked) kickMsgs = kickChat?.getMessages(linked.kick) || [];
       }
-      if (kickMsgs.length > 0) {
-        msgs = [...ircMsgs, ...kickMsgs].sort((a, b) => a.time - b.time);
+      // YouTube messages for live tab: find linked YouTube channel
+      let ytMsgs = [];
+      if (curCh) {
+        const linkedYt = config.channels.find(ch => typeof ch !== 'string' && (ch.twitch === curCh || ch.kick === curCh) && ch.youtube);
+        if (linkedYt) ytMsgs = channelYtMessages.get(linkedYt.id) || [];
+      }
+      const extraMsgs = [...kickMsgs, ...ytMsgs];
+      if (extraMsgs.length > 0) {
+        msgs = [...ircMsgs, ...extraMsgs].sort((a, b) => a.time - b.time);
       } else {
         msgs = ircMsgs;
       }
@@ -14276,9 +14302,13 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
         showErr('channel already exists')
         return
       }
-      // Check duplicate Twitch username across channels
+      // Check duplicate Twitch/Kick username across channels
       if (twitchVal && config.channels.some(c => (typeof c === 'string' ? c : c.twitch) === twitchVal)) {
         showErr('twitch channel already added')
+        return
+      }
+      if (kickVal && config.channels.some(c => typeof c !== 'string' && c.kick === kickVal)) {
+        showErr('kick channel already added')
         return
       }
 
@@ -14442,9 +14472,13 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
         return;
       }
 
-      // Check duplicate twitch (excluding self)
+      // Check duplicate twitch/kick (excluding self)
       if (twitchVal && config.channels.some(c => c !== ch && (typeof c === 'string' ? c : c.twitch) === twitchVal)) {
         showErr('twitch channel already added');
+        return;
+      }
+      if (kickVal && config.channels.some(c => c !== ch && typeof c !== 'string' && c.kick === kickVal)) {
+        showErr('kick channel already added');
         return;
       }
 
@@ -15079,6 +15113,7 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
       if (msg.type === 'cosmetics_update') {
         mcBttvBadgeMap = new Map(Object.entries(msg.bttvBadges || {}))
         mcFfzBadgeMap = new Map(Object.entries(msg.ffzBadges || {}))
+        renderMessages(currentTab)
       }
       // Listen for emote updates from background
       if (msg.type === 'global_emotes_update' || msg.type === 'channel_emotes_update') {

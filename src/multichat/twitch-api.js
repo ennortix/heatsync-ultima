@@ -2783,9 +2783,10 @@ function renderThirdPartyBadges(userId) {
   const cosmetic = mcUserCosmetics.get(userId)
   if (cosmetic?.badge) {
     const files = cosmetic.badge.host?.files || []
-    const file = files.find(f => f.name?.endsWith('.webp')) || files[0]
+    const file = files.find(f => f.name?.endsWith('.webp')) || files.find(f => f.name?.endsWith('.avif')) || files[0]
     if (file) {
-      const url = (cosmetic.badge.host?.url || '') + '/' + file.name
+      const base = cosmetic.badge.host?.url || ''
+      const url = (base.endsWith('/') ? base : base + '/') + file.name
       html += `<img class="hs-mc-badge-img" src="${escapeHtml(url)}" alt="7TV" title="${escapeHtml(cosmetic.badge.tooltip || '7TV')}" style="width:18px;height:18px;">`
     }
   }

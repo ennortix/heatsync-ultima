@@ -695,4 +695,62 @@
 
   window.addEventListener('popstate', notifyNav)
 
+  // ═══ Stamp Twitch user IDs on chat messages (for cosmetics in content script) ═══
+  // Content scripts can't see __reactFiber$ (isolated world), so we stamp data-user-id
+  // from MAIN world where fibers are accessible.
+  function stampUserIds(container) {
+    const msgs = container.querySelectorAll('.chat-line__message:not([data-user-id])')
+    for (const msg of msgs) {
+      const key = Object.keys(msg).find(k => k.startsWith('__reactFiber$'))
+      if (!key) continue
+      let fiber = msg[key]
+      let depth = 0
+      while (fiber && depth < 20) {
+        const uid = fiber.memoizedProps?.message?.user?.userID
+        if (uid) { msg.setAttribute('data-user-id', uid); break }
+        fiber = fiber.return
+        depth++
+      }
+    }
+  }
+
+  const uidObserver = new MutationObserver(mutations => {
+    for (const m of mutations) {
+      for (const node of m.addedNodes) {
+        if (node.nodeType !== 1) continue
+        if (node.classList?.contains('chat-line__message')) {
+          const key = Object.keys(node).find(k => k.startsWith('__reactFiber$'))
+          if (key) {
+            let fiber = node[key], depth = 0
+            while (fiber && depth < 20) {
+              const uid = fiber.memoizedProps?.message?.user?.userID
+              if (uid) { node.setAttribute('data-user-id', uid); break }
+              fiber = fiber.return
+              depth++
+            }
+          }
+        } else if (node.querySelector) {
+          stampUserIds(node)
+        }
+      }
+    }
+  })
+
+  // Start observing once chat container appears
+  function startUidObserver() {
+    const container = document.querySelector('[class*="chat-scrollable-area__message-container"], [data-test-selector="chat-scrollable-area__message-container"]')
+    if (container) {
+      stampUserIds(container)
+      uidObserver.observe(container, { childList: true, subtree: true })
+      return true
+    }
+    return false
+  }
+
+  // Poll for chat container (SPA — may not exist yet)
+  let uidPollCount = 0
+  const uidPoll = setInterval(() => {
+    if (startUidObserver() || ++uidPollCount > 60) clearInterval(uidPoll)
+  }, 1000)
+
 })()

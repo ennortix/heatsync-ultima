@@ -179,7 +179,7 @@ dist/                        ← build output (gitignored)
 
 ## performance
 
-built for 8+ hour streaming sessions. every resource is tracked and cleaned up.
+built for 24/7 continuous operation. every resource is tracked and cleaned up.
 
 - message processing stays under 5ms per message
 - memory growth stays under 50MB over 8 hours

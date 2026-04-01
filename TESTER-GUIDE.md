@@ -34,7 +34,7 @@ same as chrome, use the chrome zip
 
 ## test checklist
 
-open twitch.tv or kick.com and try these:
+open twitch.tv, kick.com, or a youtube live stream and try these:
 
 ### basic functionality
 - [ ] emotes from your set appear in chat when you type them
@@ -55,7 +55,8 @@ open twitch.tv or kick.com and try these:
 ### cross-platform
 - [ ] test on twitch.tv
 - [ ] test on kick.com
-- [ ] emotes work on both
+- [ ] test on youtube live chat
+- [ ] emotes work on all three
 
 ### performance
 - [ ] open browser devtools (F12)
@@ -90,6 +91,7 @@ screenshot: [attach if possible]
 
 - firefox: extension unloads on browser restart (temporary install limitation)
 - kick: some chat layouts may not be detected yet
+- youtube: only works in live chat (not regular comments)
 
 ---
 

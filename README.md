@@ -1,155 +1,193 @@
-# Heatsync Browser Extension
+# heatsync
 
-Injects your personal unlimited heatsync emote set into Twitch and Kick chat.
+custom emotes for twitch, kick, and youtube chat.
 
-## Overview
+upload any image to [heatsync.org](https://heatsync.org), install the extension, and your emotes work in live chat — no approval queue, no slot limits. other heatsync users see them in real time.
 
-The extension syncs your heatsync emotes to streaming platform chats, allowing you to use your custom emotes anywhere. It also displays emotes from other heatsync users in real-time.
+## features
 
-## Platforms
+- **unlimited emote slots** — upload as many as you want, use them immediately
+- **cross-platform** — same emotes work in twitch, kick, and youtube live chat
+- **tab completion** — start typing an emote name, press tab, pick from the dropdown
+- **emote picker** — button in chat input to browse and insert emotes
+- **third-party emotes** — bttv, ffz, and 7tv emotes load automatically
+- **7tv cosmetics** — paints (username gradients) and badges render natively
+- **zero-width stacking** — layer emotes on top of each other
+- **multichat** — view multiple channels in one panel with tabs, mentions, and IRC
+- **emote blocking** — right-click any emote to hide it, syncs across devices
+- **user muting** — temporarily or permanently hide users from chat
+- **vi-mode** — vim keybindings for chat input
+- **real-time sync** — websocket connection broadcasts emotes per channel instantly
 
-| Platform | Folder | Status |
-|----------|--------|--------|
-| Chrome | `chrome/` | ✅ Ready (Manifest v3) |
-| Firefox | `firefox/` | ✅ Ready (WebExtensions) |
+## install
 
-## Features
+### chrome
 
-- **unlimited emote set** - Your personal collection, synced from heatsync.org
-- **Global emotes included** - BTTV, FFZ, 7TV globals (refreshed every 24hrs)
-- **Real-time broadcasting** - See emotes from other heatsync users in chat
-- **Emote autocomplete** - Tab completion with inline preview (FFZ-style)
-- **Emote set panel** - Quick access to your emotes from Twitch chat
-- **Right-click actions** - Block emotes, mute users instantly
-- **Cross-platform** - Works on Twitch and Kick
+**from source:**
+1. clone this repo
+2. `bun run build.js chrome`
+3. open `chrome://extensions`, enable developer mode
+4. load unpacked → select `dist/chrome/`
 
-## Installation
+### firefox
 
-### Chrome (Manifest v3)
+**from source:**
+1. clone this repo
+2. `bun run build.js firefox`
+3. open `about:debugging#/runtime/this-firefox`
+4. load temporary add-on → select `dist/firefox/manifest.json`
 
-**Development:**
+### edge
+
+use the chrome build.
+
+## how it works
+
+### architecture
+
+```
+background.js (service worker)
+  ├── fetches emotes from heatsync.org API
+  ├── manages websocket connection (real-time emote broadcasts per channel)
+  ├── fetches 7tv/ffz/bttv cosmetics (paints, badges)
+  └── broadcasts to all twitch/kick/youtube tabs
+
+content.js (injected per tab)
+  ├── MutationObserver watches for new chat messages
+  ├── processes each message: finds emote names, replaces with images
+  ├── renders cosmetics: 7tv paint gradients, ffz/bttv badges
+  └── communicates with background via chrome.runtime.sendMessage
+
+multichat.js
+  ├── multi-channel chat panel with tabbed interface
+  ├── IRC client for direct twitch chat
+  ├── mention tracking and notification counts
+  └── youtube live chat integration per channel
+```
+
+### react hooking (ffz-style)
+
+the extension works **with** react, not around it. this is the same approach FrankerFaceZ uses, and it's the only way to reliably modify twitch's UI without constant breakage.
+
+**fiber walking** — every react-rendered DOM element has a `__reactFiber$` property pointing to its fiber node. `getFiber(element)` grabs this, then walks the `.return` chain to find the component instance that owns the element. this gives direct access to component props, state, and methods.
+
+```js
+// walk up the fiber tree to find a specific component
+function findComponent(fiber, predicate) {
+  let current = fiber
+  while (current) {
+    if (current.stateNode && predicate(current.stateNode)) {
+      return current.stateNode
+    }
+    current = current.return
+  }
+  return null
+}
+```
+
+**render patching** — once you have the component, you can wrap its `render()` method. call the original, inspect the react element tree it returns, and modify or inject elements before react commits them to the DOM. the component doesn't know anything changed.
+
+**why not just modify the DOM?** because react owns the DOM. if you insert an element with `appendChild`, react will remove it on the next render. if you modify a text node, react will overwrite it. fiber hooking means your changes survive re-renders because they're part of the render output.
+
+**re-hooking** — twitch's SPA navigation unmounts and remounts components. the extension uses a MutationObserver watching for chat container elements, with a polling fallback. when the container reappears, it re-walks the fiber tree and re-patches.
+
+**DOM injection with CSS order** — for elements that need to appear in specific positions within flex containers (like badges before usernames), the extension inserts the element and uses CSS `order` properties instead of fragile `insertBefore` calls that break when react reconciles.
+
+### message flow
+
+1. page loads → content script starts MutationObserver on chat container
+2. new chat message appears → observer fires
+3. `processMessage()` walks the message DOM, finds text nodes containing emote names
+4. text nodes are replaced with `<img>` elements pointing to emote CDN URLs
+5. cosmetics are applied: paint gradients on usernames, badges before usernames
+6. total processing time target: <5ms per message
+
+### early injection
+
+`early-inject-main.js` runs at `document_start` in the MAIN world (page context, not extension context). this executes before twitch's own scripts load, allowing interception of twitch internals before react mounts.
+
+### state
+
+| store | refresh | scope |
+|-------|---------|-------|
+| `emoteInventory` | 60s | user's heatsync emotes |
+| `globalEmotes` | 24h | bttv/ffz/7tv globals |
+| `channelEmotesMap` | per-channel | channel-specific emotes |
+| `blockedEmotes` | on change | server-synced blocks |
+| `mutedUsers` | on change | username → expiry map |
+
+## build
+
 ```bash
-# 1. Open Chrome extensions
-chrome://extensions
-
-# 2. Enable "Developer mode" (top right)
-
-# 3. Click "Load unpacked"
-
-# 4. Select: extension/chrome/
+bun run build.js           # both browsers
+bun run build.js chrome    # chrome only
+bun run build.js firefox   # firefox only
+bun run build.js --package # build + zip for store submission
 ```
 
-**Production:** Install from Chrome Web Store (pending)
+the build script reads source from `chrome/`, bundles shared modules from `src/lib/` into content scripts (wrapped in IIFE with `'use strict'`), and outputs to `dist/{chrome,firefox}/`. firefox gets a converted manifest (mv2 with gecko ID).
 
-### Firefox
-
-**Development:**
-```bash
-# 1. Open Firefox debugging
-about:debugging#/runtime/this-firefox
-
-# 2. Click "Load Temporary Add-on"
-
-# 3. Select: extension/firefox/manifest.json
-```
-
-**Production:** Install from Firefox Add-ons (pending)
-
-## Architecture
+## file layout
 
 ```
-extension/
-├── chrome/              # Chrome extension (Manifest v3)
-│   ├── manifest.json    # Extension config
-│   ├── background.js        # Service worker
-│   ├── content.js       # Main injection script
-│   ├── autocomplete-hook.js # Tab completion
-│   ├── chat-injector.js     # Emote rendering
-│   ├── heatsync-button.js   # Emote set panel
-│   └── platform-detector.js # Twitch/Kick detection
-│
-├── firefox/             # Firefox extension (WebExtensions)
-│   ├── manifest.json    # Extension config
-│   ├── background.js    # Background script
-│   └── ...              # Similar structure
-│
-├── dist/                # Built extensions + packaged .zip files
-└── STORE-LISTINGS.md    # Store descriptions and metadata
+chrome/                    ← source (edit here)
+  background.js            ← service worker: emote fetching, websocket, cosmetics
+  content.js               ← injected into twitch/kick: DOM mutation, emote replacement
+  multichat.js             ← multi-channel chat panel
+  youtube-content.js       ← youtube live chat support
+  heatsync-button.js       ← emote picker in chat input
+  autocomplete-hook.js     ← tab completion for emote names
+  chat-injector.js         ← chat message interception
+  platform-detector.js     ← twitch vs kick vs youtube detection
+  shared-utils.js          ← fiber walking, react helpers
+  early-inject-main.js     ← document_start injection (MAIN world)
+  vi-mode.js               ← vim keybindings for chat input
+  popup.html/js            ← toolbar popup
+  options.html/js          ← settings page
+  welcome.html             ← first install page
+
+src/
+  lib/                     ← shared modules (bundled at build time)
+    browser-api.js         ← chrome.* vs browser.* compat
+    utils.js               ← escapeHtml, debounce, throttle, waitForElement
+  manifests/
+    chrome.json            ← mv3 manifest
+    firefox.json           ← mv2 manifest
+  multichat/               ← multichat module source
+
+dist/                      ← build output (gitignored)
 ```
 
-## Key Files
+## performance
 
-| File | Purpose |
-|------|---------|
-| `autocomplete-hook.js` | Tab completion, inline emote preview |
-| `chat-injector.js` | Renders emotes in chat messages |
-| `heatsync-button.js` | Emote set panel UI |
-| `content.js` | Main orchestration, WebSocket connection |
-| `background.js` | Service worker for API calls (Chrome) |
+this runs during 8+ hour streaming sessions. memory leaks kill it.
 
-## API Endpoints Used
+- message processing must stay under 5ms per message
+- memory growth must stay under 50MB over 8 hours
+- all intervals, timeouts, and observers go through the cleanup system (`src/lib/cleanup.js`) for tracked teardown
+- DOM selectors are cached, mutations are batched
+- visual updates use `requestAnimationFrame`
+- scroll and resize handlers are debounced
 
-The extension communicates with heatsync.org (or localhost:3001 in dev):
+## manifest differences
 
-```
-GET  /api/user/emotes          # Fetch user's unlimited inventory
-GET  /api/user/emotes/blocked  # Fetch blocked emotes
-POST /api/user/emotes/block    # Block emote by hash
-GET  /api/emotes/globals       # Global emotes (BTTV, FFZ, 7TV)
-WS   /socket.io                # Real-time emote broadcasts
-```
+| | chrome (mv3) | firefox (mv2) |
+|--|-------------|---------------|
+| background | `service_worker` | `scripts: [...]` |
+| permissions | `host_permissions` separate | all in `permissions` |
+| action | `action` | `browser_action` |
+| MAIN world | `"world": "MAIN"` | supported since ff 109 |
 
-## Development
+## external APIs
 
-### Testing Changes
+| provider | endpoint | purpose |
+|----------|----------|---------|
+| heatsync | `GET /api/user/emotes` | user's emote inventory |
+| heatsync | `wss://heatsync.org` | real-time emote broadcasts |
+| 7tv | `POST https://7tv.io/v3/gql` | cosmetics (paints + badges) |
+| ffz | `GET https://api.frankerfacez.com/v1/badges/ids` | badges |
+| bttv | `GET https://api.betterttv.net/3/cached/badges` | badges |
 
-1. Make changes to extension files
-2. Reload extension:
-   - **Chrome:** Click refresh icon on extension card
-   - **Firefox:** Click "Reload" in about:debugging
-3. Refresh Twitch/Kick page
-4. Test in chat
+## license
 
-### Building for Store
-
-```bash
-bun run extension/build.js --package    # Build + zip both browsers
-bun run extension/build.js chrome       # Chrome only
-bun run extension/build.js --deploy     # Build + zip + rsync to server
-```
-
-### Version Bumping
-
-Update version in:
-- `src/manifests/chrome.json`
-- `src/manifests/firefox.json`
-
-Then rebuild — `build.js` reads version from `src/manifests/chrome.json`.
-
-## Debugging
-
-**Chrome DevTools:**
-- Background: `chrome://extensions` → "Inspect views: service worker"
-- Content script: Regular DevTools (F12) → Console
-
-**Firefox DevTools:**
-- Background: `about:debugging` → "Inspect"
-- Content script: Regular DevTools (F12) → Console
-
-**Common Issues:**
-
-| Issue | Solution |
-|-------|----------|
-| Emotes not loading | Check if logged into heatsync.org |
-| Autocomplete not working | Reload extension, check console for errors |
-| WebSocket disconnects | Check network tab for WS connection status |
-
-## Store Listings
-
-See `STORE-LISTINGS.md` for Chrome Web Store and Firefox Add-ons descriptions.
-
-## Related Documentation
-
-- `chrome/README.md` - Chrome extension details + FFZ React hooking guide
-- `STORE-LISTINGS.md` - Store listing copy
-- `TESTER-GUIDE.md` - Beta tester instructions
+MIT

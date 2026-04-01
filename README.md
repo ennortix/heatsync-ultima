@@ -42,7 +42,7 @@ every twitch emote extension uses react fiber walking — it's the only reliable
 | **render patching** | wraps `render()`, injects via DOM | systematic class prototype patching (core arch) | patches `render`, lifecycle, props interception | minimal — reads props, rarely patches |
 | **MutationObserver** | chat container + polling fallback | component discovery + 500ms poll | `awaitComponents()` | **primary** mechanism (`DOMObserver` class) |
 | **MAIN world injection** | yes — `document_start` before react mounts | no | no | no |
-| **SPA nav handling** | polling `location.href` + re-walk fibers | hooks react router fiber directly | hooks `RouterComponent.componentDidUpdate` | monkey-patches `window.history.pushState` |
+| **SPA nav handling** | hooks `history.pushState` at `document_start` (before twitch) | hooks react router fiber directly | hooks `RouterComponent.componentDidUpdate` | monkey-patches `window.history.pushState` |
 | **own UI framework** | vanilla JS | custom module system | vue 3 (full SPA) | preact |
 | **webpack hooking** | minimal — apollo mutations | yes — deep (`webpackChunktwitch_twilight`) | indirect via fiber | minimal — TMI constants only |
 | **shadow DOM** | no | no | no | no |

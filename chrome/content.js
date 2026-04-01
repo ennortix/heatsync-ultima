@@ -5721,28 +5721,36 @@ function interceptMessageSending() {
   log(' Message interceptor attached');
 }
 
-// Watch for URL changes (SPA navigation) — lightweight polling instead of document MutationObserver
+// SPA navigation handler — event-driven via early-inject-main.js history hooks
 let lastChatUrl = location.href;
-cleanup.setInterval(() => {
-  if (location.href !== lastChatUrl) {
-    log(' 🔄 URL changed from', lastChatUrl, 'to', location.href);
-    lastChatUrl = location.href;
-    channelEmotes = []
-    msgCacheBuffer = []
-    subTenureMap.clear()
-    allEmotesDirty = true
-    detectAndJoinChannel();
-    cleanup.setTimeout(() => {
-      watchForNewMessages();
-      setupUsernameColoringObserver();
-      if (emoteInventory.length > 0 || globalEmotes.length > 0) {
-        processExistingMessages();
-      }
-      // Backfill new channel after native messages load
-      cleanup.setTimeout(() => backfillChatHistory(), 500);
-    }, 500, 'url-change-rescan');
-  }
-}, 1000, 'url-watcher');
+function handleNavigation() {
+  if (location.href === lastChatUrl) return
+  log(' 🔄 URL changed from', lastChatUrl, 'to', location.href);
+  lastChatUrl = location.href;
+  channelEmotes = []
+  msgCacheBuffer = []
+  subTenureMap.clear()
+  allEmotesDirty = true
+  detectAndJoinChannel();
+  cleanup.setTimeout(() => {
+    watchForNewMessages();
+    setupUsernameColoringObserver();
+    if (emoteInventory.length > 0 || globalEmotes.length > 0) {
+      processExistingMessages();
+    }
+    // Backfill new channel after native messages load
+    cleanup.setTimeout(() => backfillChatHistory(), 500);
+  }, 500, 'url-change-rescan');
+}
+
+// Primary: instant notification from MAIN world history hooks
+window.addEventListener('message', (event) => {
+  if (event.origin !== location.origin) return
+  if (event.data?.type === 'heatsync-nav') handleNavigation()
+}, { signal })
+
+// Fallback: polling in case MAIN world script didn't load (e.g. Firefox edge cases)
+cleanup.setInterval(() => handleNavigation(), 5000, 'url-watcher-fallback');
 
 // Check if observed container was replaced by React (e.g. after sending a message)
 // Always compare against live DOM — old container may still be isConnected but orphaned from React tree

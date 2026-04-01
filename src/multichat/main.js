@@ -7233,58 +7233,66 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
     init();
   }
 
-  // SPA navigation handler
+  // SPA navigation handler — event-driven via early-inject-main.js history hooks
   let lastPath = location.pathname;
   let spaReinitializing = false;
-  cleanup.setInterval(() => {
-    if (location.pathname !== lastPath) {
-      lastPath = location.pathname;
-      log('Navigation detected, reinitializing...');
+  function handleMcNav() {
+    if (location.pathname === lastPath) return
+    lastPath = location.pathname;
+    log('Navigation detected, reinitializing...');
 
-      // Flag prevents layout watcher from re-injecting elements we're about to remove
-      spaReinitializing = true;
+    // Flag prevents layout watcher from re-injecting elements we're about to remove
+    spaReinitializing = true;
 
-      // Close old read-only IRC to prevent zombie WebSocket reconnect loops
-      // NOTE: auth IRC (for sending) is NOT killed here — it survives SPA navigation
-      if (irc) {
-        irc.destroy();
-      }
-      irc = null;
-
-      // Destroy old KickChat to prevent stale message listeners
-      if (kickChat) {
-        kickChat.destroy();
-        kickChat = null;
-      }
-
-      // Clean up — remove entire container (our elements are inside it)
-      document.getElementById('hs-mc-container')?.remove();
-      tabBarElement = null;
-      overlayElement = null;
-      inputBarElement = null;
-      if (resizeObserver) { resizeObserver.disconnect(); resizeObserver = null; }
-      mcInitialized = false; // Allow init() to run again
-
-      // Reset social tab state (stale on nav)
-      feedLoaded = false;
-      feedLoading = false;
-      feedMessages = [];
-      feedPage = 1;
-      feedHasMore = true;
-      feedLastFetch = 0;
-      notifLoaded = false;
-      notifMessages = [];
-      activeThread = null;
-      // Reset feed scroll listener flag (new DOM element)
-      const oldMsgs = document.getElementById('hs-mc-messages');
-      if (oldMsgs) oldMsgs._hsFeedScroll = false;
-
-      // Reinitialize after short delay
-      cleanup.setTimeout(() => {
-        spaReinitializing = false;
-        init();
-      }, 1000, 'spa-reinit');
+    // Close old read-only IRC to prevent zombie WebSocket reconnect loops
+    // NOTE: auth IRC (for sending) is NOT killed here — it survives SPA navigation
+    if (irc) {
+      irc.destroy();
     }
-  }, 500, 'spa-nav-check');
+    irc = null;
+
+    // Destroy old KickChat to prevent stale message listeners
+    if (kickChat) {
+      kickChat.destroy();
+      kickChat = null;
+    }
+
+    // Clean up — remove entire container (our elements are inside it)
+    document.getElementById('hs-mc-container')?.remove();
+    tabBarElement = null;
+    overlayElement = null;
+    inputBarElement = null;
+    if (resizeObserver) { resizeObserver.disconnect(); resizeObserver = null; }
+    mcInitialized = false; // Allow init() to run again
+
+    // Reset social tab state (stale on nav)
+    feedLoaded = false;
+    feedLoading = false;
+    feedMessages = [];
+    feedPage = 1;
+    feedHasMore = true;
+    feedLastFetch = 0;
+    notifLoaded = false;
+    notifMessages = [];
+    activeThread = null;
+    // Reset feed scroll listener flag (new DOM element)
+    const oldMsgs = document.getElementById('hs-mc-messages');
+    if (oldMsgs) oldMsgs._hsFeedScroll = false;
+
+    // Reinitialize after short delay
+    cleanup.setTimeout(() => {
+      spaReinitializing = false;
+      init();
+    }, 1000, 'spa-reinit');
+  }
+
+  // Primary: instant notification from MAIN world history hooks
+  window.addEventListener('message', (event) => {
+    if (event.origin !== location.origin) return
+    if (event.data?.type === 'heatsync-nav') handleMcNav()
+  }, { signal: mcSignal })
+
+  // Fallback: polling in case MAIN world script didn't load
+  cleanup.setInterval(() => handleMcNav(), 5000, 'spa-nav-fallback');
 
 })();

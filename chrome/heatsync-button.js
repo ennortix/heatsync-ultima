@@ -2693,17 +2693,21 @@
 
     log(' Retry interval started');
 
-    // Watch for SPA navigation (poll instead of subtree observer on body)
+    // SPA navigation — event-driven via early-inject-main.js history hooks
     let lastUrl = location.href;
-    cleanup.setInterval(() => {
-      if (location.href !== lastUrl) {
-        lastUrl = location.href;
-        buttonInjected = false;
-        emotesPreloaded = false; // Reset so emotes reload for new channel
-        closePanel();
-        cleanup.setTimeout(injectButton, 500);
-      }
-    }, 1000);
+    function handleButtonNav() {
+      if (location.href === lastUrl) return
+      lastUrl = location.href;
+      buttonInjected = false;
+      emotesPreloaded = false;
+      closePanel();
+      cleanup.setTimeout(injectButton, 500);
+    }
+    window.addEventListener('message', (event) => {
+      if (event.origin !== location.origin) return
+      if (event.data?.type === 'heatsync-nav') handleButtonNav()
+    })
+    cleanup.setInterval(() => handleButtonNav(), 5000, 'button-nav-fallback');
 
     // Listen for inventory updates from content script - refresh panel if open (debounced)
     let inventoryRefreshTimeout = null;

@@ -29,6 +29,7 @@ function parseIrcLine(raw, channel) {
       }
       const msg = {
         user: displayName,
+        userId: tags['user-id'] || '',
         text: text,
         color: sanitizeColor(tags.color || '#fff'),
         badges: tags.badges || '',

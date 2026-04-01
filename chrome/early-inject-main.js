@@ -672,4 +672,27 @@
   }
   safeOverride(document, 'createElement', hsCreateElement)
 
+  // ========== NAVIGATION INTERCEPTION ==========
+  // Hook history.pushState/replaceState + popstate BEFORE Twitch loads.
+  // Content scripts listen for 'heatsync-nav' messages instead of polling location.href.
+
+  const origPushState = history.pushState.bind(history)
+  const origReplaceState = history.replaceState.bind(history)
+
+  function notifyNav() {
+    window.postMessage({ type: 'heatsync-nav', url: location.href }, location.origin)
+  }
+
+  history.pushState = function(...args) {
+    origPushState(...args)
+    notifyNav()
+  }
+
+  history.replaceState = function(...args) {
+    origReplaceState(...args)
+    notifyNav()
+  }
+
+  window.addEventListener('popstate', notifyNav)
+
 })()

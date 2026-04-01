@@ -306,8 +306,8 @@ style.textContent = `
   /* HEAT MESSAGE BORDERS (by heat tier)          */
   /* ============================================ */
   @keyframes hs-heat-breathe {
-    0%, 100% { filter: drop-shadow(0 0 20px rgba(255, 200, 0, 0.4)); }
-    50% { filter: drop-shadow(0 0 30px rgba(255, 100, 0, 0.7)); }
+    0%, 100% { box-shadow: 0 0 20px rgba(255, 200, 0, 0.4); }
+    50% { box-shadow: 0 0 30px rgba(255, 100, 0, 0.7); }
   }
 
   /* ============================================ */
@@ -1409,6 +1409,10 @@ let emoteInventory = [];
 let globalEmotes = [];
 let channelEmotes = []; // Channel owner's emotes (for THIS tab's channel only)
 let currentChannelOwner = null; // Track channel owner for emote filtering
+
+// Hoisted regex constants — avoids per-call allocation in hot paths
+const COLOR_RE = /^(#[0-9a-f]{3,8}|rgb\(.+\)|[a-z]+)$/i
+const SUB_TENURE_RE = /(\d+)-Month Subscriber/i
 
 // Get channel name from current page URL
 function getPageChannel() {
@@ -2780,7 +2784,7 @@ function getCurrentUsername() {
 }
 
 // Highlight messages that mention the current user ONLY
-function highlightUserMentions(messageElement) {
+function highlightUserMentions(messageElement, authorElement) {
   const currentUser = getCurrentUsername();
   if (!currentUser) {
     return; // Skip if username not detected yet
@@ -2792,8 +2796,8 @@ function highlightUserMentions(messageElement) {
   }
 
   // CRITICAL: Skip messages sent BY the current user (don't highlight your own messages)
-  const authorElement = messageElement.querySelector('.chat-author__display-name, [data-a-target="chat-message-username"], button.inline.font-bold');
-  const messageAuthor = authorElement?.textContent?.toLowerCase()?.trim();
+  const _authorEl = authorElement || messageElement.querySelector('.chat-author__display-name, [data-a-target="chat-message-username"], button.inline.font-bold');
+  const messageAuthor = _authorEl?.textContent?.toLowerCase()?.trim();
   if (messageAuthor === currentUser) {
     return; // Don't highlight your own messages
   }
@@ -2856,9 +2860,9 @@ function highlightUserMentions(messageElement) {
 
 // Color @username mentions AND any username from known chatters (Chatterino-style)
 // Uses inline span injection - called repeatedly by MutationObserver
-function colorUsernameMentions(messageElement) {
-  // Find all text fragments in the message
-  const textFragments = messageElement.querySelectorAll('.text-fragment, [data-a-target="chat-message-text"], span.font-normal');
+function colorUsernameMentions(messageElement, preQueriedFragments) {
+  // Use pre-queried fragments when available (avoids redundant DOM query from processMessage)
+  const textFragments = preQueriedFragments || messageElement.querySelectorAll('.text-fragment, [data-a-target="chat-message-text"], span.font-normal');
 
   for (const fragment of textFragments) {
     // Skip if already has our colored spans (check for our marker class)
@@ -2881,7 +2885,7 @@ function colorUsernameMentions(messageElement) {
         const color = knownChatters.get(cleanWord);
         const span = document.createElement('span');
         span.className = 'hs-username-colored';
-        const safeColor = /^(#[0-9a-f]{3,8}|rgb\(.+\)|[a-z]+)$/i.test(color) ? color : '#ffffff';
+        const safeColor = COLOR_RE.test(color) ? color : '#ffffff';
         span.style.cssText = `color: ${safeColor}; font-weight: bold; cursor: pointer;`;
         span.textContent = word;
         span.dataset.hsUsername = cleanWord;
@@ -3152,12 +3156,13 @@ function processMessage(messageElement) {
   if (textElements.length === 0) return
 
   const username = getUsername(messageElement)
+  // Query author element once — passed to highlightUserMentions/colorUsernameMentions to avoid re-querying
+  const usernameElement = messageElement.querySelector('.chat-author__display-name, [data-a-target="chat-message-username"], button.inline.font-bold')
 
   // Add to known chatters (for username coloring) - extract their Twitch color
   // Priority: HeatSync API color > Twitch native color > white fallback
   if (username) {
     const lowerUser = username.toLowerCase()
-    const usernameElement = messageElement.querySelector('.chat-author__display-name, [data-a-target="chat-message-username"]')
     const hsColor = heatsyncColorMap.get(lowerUser)
     if (hsColor) {
       // HeatSync API color takes priority — apply it to the DOM element too
@@ -3177,7 +3182,7 @@ function processMessage(messageElement) {
       const badgeImgs = messageElement.querySelectorAll('[data-a-target="chat-badge"] img, .chat-badge img')
       for (const img of badgeImgs) {
         const alt = img.alt || img.getAttribute('aria-label') || ''
-        const match = alt.match(/(\d+)-Month Subscriber/i)
+        const match = alt.match(SUB_TENURE_RE)
         if (match) {
           subTenureMap.set(lowerUser, parseInt(match[1]))
           while (subTenureMap.size > 500) subTenureMap.delete(subTenureMap.keys().next().value)
@@ -3230,7 +3235,7 @@ function processMessage(messageElement) {
   }
 
   // Highlight mentions of current user (FFZ-style red background on entire line)
-  highlightUserMentions(messageElement);
+  highlightUserMentions(messageElement, usernameElement);
 
   // Ensure emote map is current (rebuilt eagerly by event handlers, fallback here)
   rebuildEmoteMapIfDirty()
@@ -3293,7 +3298,7 @@ function processMessage(messageElement) {
 
   // Color all @username mentions (Chatterino-style) - AFTER emote replacement
   // so replaceChildren() doesn't wipe out the colored spans
-  colorUsernameMentions(messageElement);
+  colorUsernameMentions(messageElement, textElements);
 
 }
 
@@ -3323,6 +3328,7 @@ function isZeroWidthEmote(emoteName, emoteData, allEmotes) {
 
 // Post-process message to stack overlay emotes on adjacent base emotes
 function stackAdjacentOverlayEmotes(messageElement, allEmotes) {
+  if (!messageElement.querySelector('.heatsync-emote-wrapper')) return
   // Find ALL emotes: heatsync wrappers AND native Twitch/platform emotes
   // Use comprehensive selectors for different Twitch DOM versions
   // Single querySelectorAll preserves DOM order — no sort needed
@@ -6424,6 +6430,7 @@ function handleNavigation() {
   log(' 🔄 URL changed from', lastChatUrl, 'to', location.href);
   lastChatUrl = location.href;
   channelEmotes = []
+  currentChannelOwner = null
   msgCacheBuffer = []
   subTenureMap.clear()
   allEmotesDirty = true

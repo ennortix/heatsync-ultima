@@ -1,6 +1,8 @@
 // Emotes - cache, lookup, processing, picker, block/inventory
 
   const UNICODE_EMOJI_RE = /^[\p{Extended_Pictographic}\p{Emoji_Presentation}\uFE0F\u200D]+$/u;
+  const WS_RE = /^\s+$/
+  const LINK_RE = /^(https?:\/\/\S+|[a-z0-9-]+(\.[a-z0-9-]+)+\/\S*)/i
 
   // Emote size (1, 2, or 4)
   let emoteSize = 1;
@@ -179,8 +181,8 @@
     let _searchTimer = null;
     const searchInput = document.getElementById('hs-mc-emote-search');
     searchInput?.addEventListener('input', (e) => {
-      clearTimeout(_searchTimer);
-      _searchTimer = setTimeout(() => {
+      cleanup.clearTimeout(_searchTimer);
+      _searchTimer = cleanup.setTimeout(() => {
         const query = e.target.value.toLowerCase();
         const grid = document.getElementById('hs-mc-emote-grid');
         if (!grid) return;
@@ -865,7 +867,7 @@
 
     for (const word of words) {
       // Whitespace - accumulate, don't flush yet (overlays are space-separated)
-      if (/^\s+$/.test(word)) {
+      if (WS_RE.test(word)) {
         pendingWhitespace += word;
         continue;
       }
@@ -984,7 +986,7 @@
           const name = word.slice(1).replace(/[,.:!?]+$/, '').toLowerCase();
           const color = knownColors.get(name) || '#fff';
           result.push(`<a href="https://heatsync.org/user/${encodeURIComponent(name)}" target="_blank" class="hs-mc-user" data-username="${escapeHtml(name)}" style="color:${sanitizeColor(color)};font-weight:bold">${escapeHtml(word)}</a>`);
-        } else if (linksEnabled && /^(https?:\/\/\S+|[a-z0-9-]+(\.[a-z0-9-]+)+\/\S*)/i.test(word)) {
+        } else if (linksEnabled && LINK_RE.test(word)) {
           // Validate URL protocol before creating link (block javascript:, data:, etc.)
           const hasProtocol = /^https?:\/\//i.test(word);
           const fullUrl = hasProtocol ? word : `https://${word}`;

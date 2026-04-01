@@ -1256,6 +1256,7 @@ class IRC {
   // Persist buffers to chrome.storage.local (debounced)
   _persistTimers = {}
   _PERSIST_MAX = 200
+  _historyInFlight = new Set()
 
   persistBuffer(ch) {
     if (this._persistTimers[ch]) return
@@ -1361,6 +1362,10 @@ class IRC {
   }
 
   async _fetchHistory(ch, buffer, cacheKey, attempt = 0) {
+    if (attempt === 0) {
+      if (this._historyInFlight.has(ch)) return
+      this._historyInFlight.add(ch)
+    }
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), 15000);
     try {
@@ -1448,6 +1453,7 @@ class IRC {
       }
     } finally {
       clearTimeout(timer);
+      this._historyInFlight.delete(ch)
     }
   }
 
@@ -1965,6 +1971,8 @@ async function sendKickMessage(kickSlug, text) {
 // Emotes - cache, lookup, processing, picker, block/inventory
 
   const UNICODE_EMOJI_RE = /^[\p{Extended_Pictographic}\p{Emoji_Presentation}\uFE0F\u200D]+$/u;
+  const WS_RE = /^\s+$/
+  const LINK_RE = /^(https?:\/\/\S+|[a-z0-9-]+(\.[a-z0-9-]+)+\/\S*)/i
 
   // Emote size (1, 2, or 4)
   let emoteSize = 1;
@@ -2143,8 +2151,8 @@ async function sendKickMessage(kickSlug, text) {
     let _searchTimer = null;
     const searchInput = document.getElementById('hs-mc-emote-search');
     searchInput?.addEventListener('input', (e) => {
-      clearTimeout(_searchTimer);
-      _searchTimer = setTimeout(() => {
+      cleanup.clearTimeout(_searchTimer);
+      _searchTimer = cleanup.setTimeout(() => {
         const query = e.target.value.toLowerCase();
         const grid = document.getElementById('hs-mc-emote-grid');
         if (!grid) return;
@@ -2829,7 +2837,7 @@ async function sendKickMessage(kickSlug, text) {
 
     for (const word of words) {
       // Whitespace - accumulate, don't flush yet (overlays are space-separated)
-      if (/^\s+$/.test(word)) {
+      if (WS_RE.test(word)) {
         pendingWhitespace += word;
         continue;
       }
@@ -2948,7 +2956,7 @@ async function sendKickMessage(kickSlug, text) {
           const name = word.slice(1).replace(/[,.:!?]+$/, '').toLowerCase();
           const color = knownColors.get(name) || '#fff';
           result.push(`<a href="https://heatsync.org/user/${encodeURIComponent(name)}" target="_blank" class="hs-mc-user" data-username="${escapeHtml(name)}" style="color:${sanitizeColor(color)};font-weight:bold">${escapeHtml(word)}</a>`);
-        } else if (linksEnabled && /^(https?:\/\/\S+|[a-z0-9-]+(\.[a-z0-9-]+)+\/\S*)/i.test(word)) {
+        } else if (linksEnabled && LINK_RE.test(word)) {
           // Validate URL protocol before creating link (block javascript:, data:, etc.)
           const hasProtocol = /^https?:\/\//i.test(word);
           const fullUrl = hasProtocol ? word : `https://${word}`;
@@ -7668,8 +7676,8 @@ function resolveSelfColor() {
 
 let _whisperSaveTimer = null
 function whisperSaveDebounced() {
-  if (_whisperSaveTimer) clearTimeout(_whisperSaveTimer)
-  _whisperSaveTimer = setTimeout(saveWhispers, 500)
+  if (_whisperSaveTimer) cleanup.clearTimeout(_whisperSaveTimer)
+  _whisperSaveTimer = cleanup.setTimeout(saveWhispers, 500)
 }
 
 function saveWhispers() {
@@ -8777,8 +8785,8 @@ function handleInputChange(e) {
   pendingMessage = getInputText();
 
   // Debounced emoji dropdown autocomplete
-  if (_emojiAcDebounce) clearTimeout(_emojiAcDebounce)
-  _emojiAcDebounce = setTimeout(checkEmojiAutocomplete, 80)
+  if (_emojiAcDebounce) cleanup.clearTimeout(_emojiAcDebounce)
+  _emojiAcDebounce = cleanup.setTimeout(checkEmojiAutocomplete, 80)
 
   // Reset autocomplete cycling on any text change
   if (acState.active) {
@@ -9746,6 +9754,21 @@ async function sendMessage() {
 const STORAGE_KEY = 'heatsync_multichat';
   const LOG_PREFIX = '[heatsync-mc]';
 
+  const COLOR_RE = /^#[0-9a-fA-F]{3,6}$/
+
+  // Reverse-lookup Map for config.channels — rebuilt on config changes
+  let _channelLookup = null
+  function getChannelLookup() {
+    if (_channelLookup) return _channelLookup
+    _channelLookup = { twitch: new Map(), kick: new Map() }
+    for (const ch of config.channels) {
+      const c = typeof ch === 'string' ? { twitch: ch } : ch
+      if (c.twitch) _channelLookup.twitch.set(c.twitch, ch)
+      if (c.kick) _channelLookup.kick.set(c.kick, ch)
+    }
+    return _channelLookup
+  }
+
   // Safe runtime.sendMessage wrapper (context invalidation guard, Firefox-compatible)
   function safeSendMessage(message) {
     try {
@@ -9868,7 +9891,7 @@ const STORAGE_KEY = 'heatsync_multichat';
     if (!userId || mcUserCosmetics.has(userId)) return
     mcCosmeticsPending.add(userId)
     if (!mcCosmeticsTimer) {
-      mcCosmeticsTimer = setTimeout(() => {
+      mcCosmeticsTimer = cleanup.setTimeout(() => {
         mcCosmeticsTimer = null
         flushMcCosmeticsBatch()
       }, 500)
@@ -9888,7 +9911,7 @@ const STORAGE_KEY = 'heatsync_multichat';
       if (changed) renderMessages(currentTab)
     }).catch(() => {})
     if (mcCosmeticsPending.size > 0) {
-      mcCosmeticsTimer = setTimeout(() => { mcCosmeticsTimer = null; flushMcCosmeticsBatch() }, 2000)
+      mcCosmeticsTimer = cleanup.setTimeout(() => { mcCosmeticsTimer = null; flushMcCosmeticsBatch() }, 2000)
     }
   }
 
@@ -9956,8 +9979,8 @@ const STORAGE_KEY = 'heatsync_multichat';
   function saveUiSetting(key, value) {
     if (!_pendingSettings) _pendingSettings = {}
     _pendingSettings[key] = value
-    if (_settingsSaveTimer) clearTimeout(_settingsSaveTimer)
-    _settingsSaveTimer = setTimeout(() => {
+    if (_settingsSaveTimer) cleanup.clearTimeout(_settingsSaveTimer)
+    _settingsSaveTimer = cleanup.setTimeout(() => {
       const pending = _pendingSettings
       _pendingSettings = null
       _settingsSaveTimer = null
@@ -15531,7 +15554,7 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
   }
 
   function sanitizeColor(color) {
-    return /^#[0-9a-fA-F]{3,6}$/.test(color) ? color : '#ffffff';
+    return COLOR_RE.test(color) ? color : '#ffffff';
   }
 
 
@@ -16325,6 +16348,7 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
     try {
       const s = await chrome.storage.local.get([STORAGE_KEY]);
       config = { channels: [], enabled: true, ...s[STORAGE_KEY] };
+      _channelLookup = null
       // Migrate old string channels to object format
       let needsSave = false;
       if (config.channels.some(c => typeof c === 'string')) {
@@ -16347,6 +16371,7 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
   let _skipNextConfigSync = false
 
   async function saveConfig() {
+    _channelLookup = null
     try {
       _skipNextConfigSync = true
       await chrome.storage.local.set({ [STORAGE_KEY]: config });
@@ -16459,8 +16484,8 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
       // Listen for emote updates from background
       if (msg.type === 'global_emotes_update' || msg.type === 'channel_emotes_update') {
         log('received', msg.type, msg.channelOwner || '');
-        clearTimeout(emoteReloadTimer);
-        emoteReloadTimer = setTimeout(() => {
+        cleanup.clearTimeout(emoteReloadTimer);
+        emoteReloadTimer = cleanup.setTimeout(() => {
           loadEmotes().then(() => renderMessages(currentTab));
         }, 300);
       }
@@ -16538,8 +16563,8 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
         if (changes.global_emotes || changes.channel_emotes_map || changes.native_twitch_emotes) {
           clearRenderedHtmlCache();
         }
-        clearTimeout(emoteReloadTimer);
-        emoteReloadTimer = setTimeout(() => {
+        cleanup.clearTimeout(emoteReloadTimer);
+        emoteReloadTimer = cleanup.setTimeout(() => {
           loadEmotes().then(() => {
             if (!isScrolledUp) renderMessages(currentTab);
           });
@@ -16601,6 +16626,7 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
 
           // Update config and UI
           config.channels = newChannels
+          _channelLookup = null
           config.enabled = newConfig.enabled !== undefined ? newConfig.enabled : config.enabled
           updateTabBar()
           // If current tab was removed, switch to live
@@ -16642,7 +16668,7 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
       // Fast poll until video found, then slow poll
       const fastPoll = cleanup.setInterval(() => {
         checkKickLive()
-        if (kickLiveFound) { clearInterval(fastPoll); cleanup.setInterval(checkKickLive, 10000) }
+        if (kickLiveFound) { cleanup.clearInterval(fastPoll); cleanup.setInterval(checkKickLive, 10000) }
       }, 1000)
       return
     }
@@ -16898,7 +16924,7 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
       }
 
       // Channel tab routing
-      const chTabId = config.channels.find(ch => (typeof ch === 'string' ? ch : ch.twitch) === msg.channel);
+      const chTabId = getChannelLookup().twitch.get(msg.channel);
       const tabId = typeof chTabId === 'string' ? chTabId : chTabId?.id;
       if (tabId && currentTab === tabId) {
         if (!appendMessage(msg, tabId)) renderMessages(tabId);
@@ -16937,7 +16963,7 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
       }
 
       // Channel tab routing — find config entry where ch.kick matches
-      const chConfig = config.channels.find(ch => typeof ch !== 'string' && ch.kick === msg.channel);
+      const chConfig = getChannelLookup().kick.get(msg.channel);
       const tabId = chConfig?.id;
       if (tabId && currentTab === tabId) {
         if (!appendMessage(msg, tabId)) renderMessages(tabId);

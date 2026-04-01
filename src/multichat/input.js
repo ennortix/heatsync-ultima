@@ -768,8 +768,8 @@ function handleInputChange(e) {
   pendingMessage = getInputText();
 
   // Debounced emoji dropdown autocomplete
-  if (_emojiAcDebounce) clearTimeout(_emojiAcDebounce)
-  _emojiAcDebounce = setTimeout(checkEmojiAutocomplete, 80)
+  if (_emojiAcDebounce) cleanup.clearTimeout(_emojiAcDebounce)
+  _emojiAcDebounce = cleanup.setTimeout(checkEmojiAutocomplete, 80)
 
   // Reset autocomplete cycling on any text change
   if (acState.active) {

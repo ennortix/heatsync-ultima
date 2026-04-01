@@ -389,6 +389,7 @@ class IRC {
   // Persist buffers to chrome.storage.local (debounced)
   _persistTimers = {}
   _PERSIST_MAX = 200
+  _historyInFlight = new Set()
 
   persistBuffer(ch) {
     if (this._persistTimers[ch]) return
@@ -494,6 +495,10 @@ class IRC {
   }
 
   async _fetchHistory(ch, buffer, cacheKey, attempt = 0) {
+    if (attempt === 0) {
+      if (this._historyInFlight.has(ch)) return
+      this._historyInFlight.add(ch)
+    }
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), 15000);
     try {
@@ -581,6 +586,7 @@ class IRC {
       }
     } finally {
       clearTimeout(timer);
+      this._historyInFlight.delete(ch)
     }
   }
 

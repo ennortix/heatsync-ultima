@@ -14,6 +14,21 @@
   const STORAGE_KEY = 'heatsync_multichat';
   const LOG_PREFIX = '[heatsync-mc]';
 
+  const COLOR_RE = /^#[0-9a-fA-F]{3,6}$/
+
+  // Reverse-lookup Map for config.channels — rebuilt on config changes
+  let _channelLookup = null
+  function getChannelLookup() {
+    if (_channelLookup) return _channelLookup
+    _channelLookup = { twitch: new Map(), kick: new Map() }
+    for (const ch of config.channels) {
+      const c = typeof ch === 'string' ? { twitch: ch } : ch
+      if (c.twitch) _channelLookup.twitch.set(c.twitch, ch)
+      if (c.kick) _channelLookup.kick.set(c.kick, ch)
+    }
+    return _channelLookup
+  }
+
   // Safe runtime.sendMessage wrapper (context invalidation guard, Firefox-compatible)
   function safeSendMessage(message) {
     try {
@@ -136,7 +151,7 @@
     if (!userId || mcUserCosmetics.has(userId)) return
     mcCosmeticsPending.add(userId)
     if (!mcCosmeticsTimer) {
-      mcCosmeticsTimer = setTimeout(() => {
+      mcCosmeticsTimer = cleanup.setTimeout(() => {
         mcCosmeticsTimer = null
         flushMcCosmeticsBatch()
       }, 500)
@@ -156,7 +171,7 @@
       if (changed) renderMessages(currentTab)
     }).catch(() => {})
     if (mcCosmeticsPending.size > 0) {
-      mcCosmeticsTimer = setTimeout(() => { mcCosmeticsTimer = null; flushMcCosmeticsBatch() }, 2000)
+      mcCosmeticsTimer = cleanup.setTimeout(() => { mcCosmeticsTimer = null; flushMcCosmeticsBatch() }, 2000)
     }
   }
 
@@ -224,8 +239,8 @@
   function saveUiSetting(key, value) {
     if (!_pendingSettings) _pendingSettings = {}
     _pendingSettings[key] = value
-    if (_settingsSaveTimer) clearTimeout(_settingsSaveTimer)
-    _settingsSaveTimer = setTimeout(() => {
+    if (_settingsSaveTimer) cleanup.clearTimeout(_settingsSaveTimer)
+    _settingsSaveTimer = cleanup.setTimeout(() => {
       const pending = _pendingSettings
       _pendingSettings = null
       _settingsSaveTimer = null
@@ -5799,7 +5814,7 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
   }
 
   function sanitizeColor(color) {
-    return /^#[0-9a-fA-F]{3,6}$/.test(color) ? color : '#ffffff';
+    return COLOR_RE.test(color) ? color : '#ffffff';
   }
 
 
@@ -6593,6 +6608,7 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
     try {
       const s = await chrome.storage.local.get([STORAGE_KEY]);
       config = { channels: [], enabled: true, ...s[STORAGE_KEY] };
+      _channelLookup = null
       // Migrate old string channels to object format
       let needsSave = false;
       if (config.channels.some(c => typeof c === 'string')) {
@@ -6615,6 +6631,7 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
   let _skipNextConfigSync = false
 
   async function saveConfig() {
+    _channelLookup = null
     try {
       _skipNextConfigSync = true
       await chrome.storage.local.set({ [STORAGE_KEY]: config });
@@ -6727,8 +6744,8 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
       // Listen for emote updates from background
       if (msg.type === 'global_emotes_update' || msg.type === 'channel_emotes_update') {
         log('received', msg.type, msg.channelOwner || '');
-        clearTimeout(emoteReloadTimer);
-        emoteReloadTimer = setTimeout(() => {
+        cleanup.clearTimeout(emoteReloadTimer);
+        emoteReloadTimer = cleanup.setTimeout(() => {
           loadEmotes().then(() => renderMessages(currentTab));
         }, 300);
       }
@@ -6806,8 +6823,8 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
         if (changes.global_emotes || changes.channel_emotes_map || changes.native_twitch_emotes) {
           clearRenderedHtmlCache();
         }
-        clearTimeout(emoteReloadTimer);
-        emoteReloadTimer = setTimeout(() => {
+        cleanup.clearTimeout(emoteReloadTimer);
+        emoteReloadTimer = cleanup.setTimeout(() => {
           loadEmotes().then(() => {
             if (!isScrolledUp) renderMessages(currentTab);
           });
@@ -6869,6 +6886,7 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
 
           // Update config and UI
           config.channels = newChannels
+          _channelLookup = null
           config.enabled = newConfig.enabled !== undefined ? newConfig.enabled : config.enabled
           updateTabBar()
           // If current tab was removed, switch to live
@@ -6910,7 +6928,7 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
       // Fast poll until video found, then slow poll
       const fastPoll = cleanup.setInterval(() => {
         checkKickLive()
-        if (kickLiveFound) { clearInterval(fastPoll); cleanup.setInterval(checkKickLive, 10000) }
+        if (kickLiveFound) { cleanup.clearInterval(fastPoll); cleanup.setInterval(checkKickLive, 10000) }
       }, 1000)
       return
     }
@@ -7166,7 +7184,7 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
       }
 
       // Channel tab routing
-      const chTabId = config.channels.find(ch => (typeof ch === 'string' ? ch : ch.twitch) === msg.channel);
+      const chTabId = getChannelLookup().twitch.get(msg.channel);
       const tabId = typeof chTabId === 'string' ? chTabId : chTabId?.id;
       if (tabId && currentTab === tabId) {
         if (!appendMessage(msg, tabId)) renderMessages(tabId);
@@ -7205,7 +7223,7 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
       }
 
       // Channel tab routing — find config entry where ch.kick matches
-      const chConfig = config.channels.find(ch => typeof ch !== 'string' && ch.kick === msg.channel);
+      const chConfig = getChannelLookup().kick.get(msg.channel);
       const tabId = chConfig?.id;
       if (tabId && currentTab === tabId) {
         if (!appendMessage(msg, tabId)) renderMessages(tabId);

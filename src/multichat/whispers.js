@@ -34,8 +34,8 @@ function resolveSelfColor() {
 
 let _whisperSaveTimer = null
 function whisperSaveDebounced() {
-  if (_whisperSaveTimer) clearTimeout(_whisperSaveTimer)
-  _whisperSaveTimer = setTimeout(saveWhispers, 500)
+  if (_whisperSaveTimer) cleanup.clearTimeout(_whisperSaveTimer)
+  _whisperSaveTimer = cleanup.setTimeout(saveWhispers, 500)
 }
 
 function saveWhispers() {

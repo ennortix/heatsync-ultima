@@ -100,6 +100,11 @@ function saveTabChannels() {
 chrome.tabs.onRemoved.addListener((tabId) => {
   tabChannels.delete(tabId)
   saveTabChannels()
+  _cachedTabs = null // Invalidate tab cache
+})
+
+chrome.tabs.onUpdated.addListener(() => {
+  _cachedTabs = null // Invalidate tab cache on navigation/load
 })
 let current7TVEmoteSetId = null; // Track current 7TV emote set ID for EventAPI
 let seventvEmoteSetIds = new Map(); // channelName → 7TV emote set ID
@@ -1817,6 +1822,19 @@ function pruneExpiredMutes() {
 // Prune expired mutes every 60s
 trackInterval(setInterval(pruneExpiredMutes, 60000));
 
+// Cached tab list to avoid repeated browser.tabs.query IPC on burst broadcasts
+let _cachedTabs = null
+let _cachedTabsAt = 0
+const TAB_CACHE_TTL = 2000 // 2 seconds
+
+async function getMatchingTabs() {
+  const now = Date.now()
+  if (_cachedTabs && now - _cachedTabsAt < TAB_CACHE_TTL) return _cachedTabs
+  _cachedTabs = await browser.tabs.query({ url: ['*://*.twitch.tv/*', '*://*.kick.com/*', '*://*.youtube.com/*', '*://*.heatsync.org/*', '*://heatsync.org/*'] })
+  _cachedTabsAt = now
+  return _cachedTabs
+}
+
 // Broadcast updates to all content scripts AND update storage
 async function broadcastToTabs(message) {
   // Fire-and-forget storage writes so tab messaging isn't blocked
@@ -1830,7 +1848,7 @@ async function broadcastToTabs(message) {
 
   // Broadcast to streaming tabs only (filtered query instead of all-tabs scan)
   try {
-    const tabs = await browser.tabs.query({ url: ['*://*.twitch.tv/*', '*://*.kick.com/*', '*://*.youtube.com/*', '*://*.heatsync.org/*', '*://heatsync.org/*'] })
+    const tabs = await getMatchingTabs()
     for (const tab of tabs) {
       browser.tabs.sendMessage(tab.id, message).catch(() => {})
     }
@@ -1863,12 +1881,13 @@ let heartbeatInterval = null; // Keep connection alive
 let reconnectTimer = null;
 let messageQueue = []; // Queue messages when socket not ready
 let connectionPromise = null; // Track ongoing connection attempt
+let lastWsDataReceived = 0; // Timestamp of last received WS message (zombie detection)
 
 function isSocketOpen() {
   return socket && socket.readyState === WebSocket.OPEN;
 }
 
-const MESSAGE_QUEUE_TTL = 30000; // 30 seconds — drop stale messages on flush
+const MESSAGE_QUEUE_TTL = 60000; // 60 seconds — matches max reconnect backoff + jitter
 
 // Flush queued messages when socket becomes ready
 function flushMessageQueue() {
@@ -1973,6 +1992,12 @@ async function connectWebSocket() {
         if (heartbeatInterval) clearInterval(heartbeatInterval)
         heartbeatInterval = trackInterval(setInterval(() => {
           if (isSocketOpen()) {
+            // Zombie detection: if no data received in 2min, connection is silently dead
+            if (lastWsDataReceived && Date.now() - lastWsDataReceived > 120000) {
+              log('WS zombie detected, reconnecting')
+              socket.close()
+              return
+            }
             try {
               socket.send(JSON.stringify({ type: 'presence:heartbeat' }));
             } catch (err) {
@@ -2025,6 +2050,7 @@ async function connectWebSocket() {
       };
 
       socket.onmessage = (event) => {
+        lastWsDataReceived = Date.now();
         try {
           const msg = JSON.parse(event.data);
           handleWSMessage(msg);
@@ -2172,7 +2198,7 @@ function handleWSMessage(msg) {
           emoteInventory = emoteInventory.filter(e => e.hash !== msg.hash)
           broadcastToTabs({ type: 'inventory_update', emotes: emoteInventory })
         }
-        broadcastToTabs({ type: 'blocked_update', blocked: Array.from(blockedEmotes) })
+        broadcastToTabs({ type: 'blocked_update', blocked: [...blockedEmotes, ...localBlockedEmotes] })
         broadcastToTabs({ type: 'emote_blocked', hash: msg.hash })
       }
       break
@@ -2180,7 +2206,7 @@ function handleWSMessage(msg) {
     case 'emote:unblocked':
       if (msg.hash && blockedEmotes.has(msg.hash)) {
         blockedEmotes.delete(msg.hash)
-        broadcastToTabs({ type: 'blocked_update', blocked: Array.from(blockedEmotes) })
+        broadcastToTabs({ type: 'blocked_update', blocked: [...blockedEmotes, ...localBlockedEmotes] })
         broadcastToTabs({ type: 'emote_unblocked', hash: msg.hash })
       }
       break
@@ -2528,9 +2554,9 @@ async function joinChannel(platform, channelName, channelId = null, senderTabId 
 // Broadcast emote usage - returns success status
 function broadcastEmoteUsage(emoteName, emoteHash, senderTabId = null) {
   const senderChannel = senderTabId ? getTabChannel(senderTabId) : null
-  // Fall back to any active tab's channel if sender tab unknown
-  const channelStr = senderChannel || (tabChannels.size > 0 ? [...tabChannels.values()].pop().channel : null)
-  if (!isSocketOpen() || !isAuthenticated || !channelStr) {
+  const channelStr = senderChannel || null
+  if (!channelStr) return { success: false, reason: 'no_channel' }
+  if (!isSocketOpen() || !isAuthenticated) {
     log(' ⚠️ Cannot broadcast emote - socket open:', isSocketOpen(), 'authenticated:', isAuthenticated, 'channel:', channelStr)
     return { success: false, reason: 'not_ready', socketOpen: isSocketOpen(), authenticated: isAuthenticated, channel: channelStr }
   }
@@ -3309,7 +3335,7 @@ async function initialize() {
     const stored = await browser.storage.local.get([
       'user_info', 'channel_emotes_fetched_at', 'channel_emotes_map', 'seventv_emote_set_ids',
       'muted_users', 'blocked_users', 'global_emotes', 'emote_inventory', 'blocked_emotes',
-      'youtube_channel_urls'
+      'local_blocked_emotes', 'youtube_channel_urls'
     ]);
 
     if (stored.user_info?.username) {
@@ -3361,6 +3387,10 @@ async function initialize() {
     if (stored.blocked_emotes?.length) {
       blockedEmotes = new Set(stored.blocked_emotes);
       log(' ✓ Warm cache:', blockedEmotes.size, 'blocked emotes from storage');
+    }
+    if (stored.local_blocked_emotes && Array.isArray(stored.local_blocked_emotes)) {
+      localBlockedEmotes = new Set(stored.local_blocked_emotes);
+      log(' ✓ Warm cache:', localBlockedEmotes.size, 'local blocked emotes from storage');
     }
     if (stored.youtube_channel_urls && typeof stored.youtube_channel_urls === 'object') {
       Object.assign(youtubeChannelUrls, stored.youtube_channel_urls);

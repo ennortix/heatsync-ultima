@@ -419,10 +419,18 @@ class IRC {
       const data = stored[storageKey]
       if (data?.msgs?.length > 0 && Date.now() - data.ts < 86400000) {
         // Filter out 7TV emote change system messages that leaked into buffers
+        // and dedup stream events that were saved multiple times
+        const seenEventTexts = new Set()
         const filtered = data.msgs.filter(m => {
           const t = m.text || m.systemMsg || ''
-          return !t.includes('removed from channel') && !t.includes('added to channel') &&
-                 !t.includes('removed 7TV emote') && !t.includes('added 7TV emote')
+          if (t.includes('removed from channel') || t.includes('added to channel') ||
+              t.includes('removed 7TV emote') || t.includes('added 7TV emote')) return false
+          // Dedup stream events by text
+          if (m.type === 'stream-event' && m.text) {
+            if (seenEventTexts.has(m.text)) return false
+            seenEventTexts.add(m.text)
+          }
+          return true
         })
         log('Storage hit:', filtered.length, 'msgs for', ch)
         for (const msg of filtered) {
@@ -712,13 +720,19 @@ class KickChat {
       const stored = await chrome.storage.local.get(storageKey)
       const data = stored[storageKey]
       if (data?.msgs?.length > 0 && Date.now() - data.ts < 86400000) {
-        // Filter out 7TV emote change system messages that leaked into wrong channel buffers
+        // Filter out 7TV emote change system messages and dedup stream events
+        const seenEventTexts = new Set()
         const filtered = data.msgs.filter(m => {
           const t = m.text || m.systemMsg || ''
-          return !t.includes('removed from channel') && !t.includes('added to channel') &&
-                 !t.includes('removed 7TV emote') && !t.includes('added 7TV emote')
+          if (t.includes('removed from channel') || t.includes('added to channel') ||
+              t.includes('removed 7TV emote') || t.includes('added 7TV emote')) return false
+          if (m.type === 'stream-event' && m.text) {
+            if (seenEventTexts.has(m.text)) return false
+            seenEventTexts.add(m.text)
+          }
+          return true
         })
-        log('Kick storage hit:', filtered.length, 'msgs for', ch, data.msgs.length !== filtered.length ? `(pruned ${data.msgs.length - filtered.length} 7TV spam)` : '')
+        log('Kick storage hit:', filtered.length, 'msgs for', ch, data.msgs.length !== filtered.length ? `(pruned ${data.msgs.length - filtered.length} spam/dupes)` : '')
         for (const msg of filtered) {
           msg.isHistory = true
           if (msg.user) {

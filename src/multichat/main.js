@@ -155,6 +155,19 @@
     const cosmetic = mcUserCosmetics.get(userId)
     const paint = cosmetic?.paint
     if (!paint || !paint.function) return ''
+    if (paint.function === 'url' && paint.image_url) {
+      let style = `background-image:url(${paint.image_url});background-size:cover;-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text`
+      if (paint.shadows?.length) {
+        style += ';filter:' + paint.shadows.map(s => {
+          const r = (s.color >>> 24) & 0xff
+          const g = (s.color >>> 16) & 0xff
+          const b = (s.color >>> 8) & 0xff
+          const a = (s.color & 0xff) / 255
+          return `drop-shadow(${s.x_offset || 0}px ${s.y_offset || 0}px ${s.radius || 0}px rgba(${r},${g},${b},${a.toFixed(2)}))`
+        }).join(' ')
+      }
+      return style
+    }
     if ((paint.function === 'linear-gradient' || paint.function === 'radial-gradient') && paint.stops?.length) {
       const stops = paint.stops.map(s => {
         const r = (s.color >>> 24) & 0xff
@@ -5448,8 +5461,15 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
         const linked = config.channels.find(ch => typeof ch !== 'string' && ch.twitch === curCh && ch.kick);
         if (linked) kickMsgs = kickChat?.getMessages(linked.kick) || [];
       }
-      if (kickMsgs.length > 0) {
-        msgs = [...ircMsgs, ...kickMsgs].sort((a, b) => a.time - b.time);
+      // YouTube messages for live tab: find linked YouTube channel
+      let ytMsgs = [];
+      if (curCh) {
+        const linkedYt = config.channels.find(ch => typeof ch !== 'string' && (ch.twitch === curCh || ch.kick === curCh) && ch.youtube);
+        if (linkedYt) ytMsgs = channelYtMessages.get(linkedYt.id) || [];
+      }
+      const extraMsgs = [...kickMsgs, ...ytMsgs];
+      if (extraMsgs.length > 0) {
+        msgs = [...ircMsgs, ...extraMsgs].sort((a, b) => a.time - b.time);
       } else {
         msgs = ircMsgs;
       }
@@ -6425,6 +6445,7 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
       if (msg.type === 'cosmetics_update') {
         mcBttvBadgeMap = new Map(Object.entries(msg.bttvBadges || {}))
         mcFfzBadgeMap = new Map(Object.entries(msg.ffzBadges || {}))
+        renderMessages(currentTab)
       }
       // Listen for emote updates from background
       if (msg.type === 'global_emotes_update' || msg.type === 'channel_emotes_update') {

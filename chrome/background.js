@@ -590,7 +590,7 @@ async function fetchUserInfo() {
 }
 
 // Validate emote objects from third-party APIs to bound string sizes and URL patterns
-const EMOTE_CDN_PATTERN = /^https:\/\/(cdn\.(betterttv\.net|7tv\.app|frankerfacez\.com)|static-cdn\.jtvnw\.net|heatsync\.org)\//
+const EMOTE_CDN_PATTERN = /^https:\/\/(cdn\.(betterttv\.net|7tv\.app|frankerfacez\.com)|static-cdn\.jtvnw\.net|heatsync\.org|files\.kick\.com)\//
 const MAX_EMOTE_NAME_LEN = 100
 const MAX_EMOTES_PER_SOURCE = 5000
 function sanitizeEmote(e) {
@@ -821,8 +821,9 @@ async function fetchBulkBadges() {
       const data = await bttvResp.value.json()
       bttvBadgeMap.clear()
       for (const entry of data) {
-        if (entry.providerId && entry.badge?.svg) {
-          bttvBadgeMap.set(entry.providerId, { description: entry.badge.description || 'BTTV', url: entry.badge.svg })
+        const url = entry.badge?.svg || entry.badge?.png
+        if (entry.providerId && url) {
+          bttvBadgeMap.set(entry.providerId, { description: entry.badge.description || 'BTTV', url })
         }
       }
       log(' BTTV badges loaded:', bttvBadgeMap.size)
@@ -911,7 +912,7 @@ async function fetchChannelOwnerEmotes(channelName, channelId = null, platform =
     broadcastToTabs({ type: 'loading_status', text: 'fetching third-party emotes...' });
     const fetches = [
       platform !== 'kick' ? fetchBTTVChannelEmotes(channelName, channelId) : Promise.resolve([]),
-      fetchFFZChannelEmotes(channelName),
+      platform !== 'kick' ? fetchFFZChannelEmotes(channelName) : Promise.resolve([]),
       fetch7TVChannelEmotes(channelName, channelId, platform),
       platform !== 'kick' ? fetchTwitchChannelEmotes(channelName) : Promise.resolve([])
     ];
@@ -2509,7 +2510,7 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
   // Query all open Twitch/Kick tabs to find channels the user is watching
   if (message.type === 'get_watching_channels') {
     const skip = new Set(['directory', 'settings', 'videos', 'moderator', 'subscriptions', 'downloads', 'search', 'categories', 'following'])
-    browser.tabs.query({ url: ['*://*.twitch.tv/*', '*://*.kick.com/*'] }).then(tabs => {
+    browser.tabs.query({ url: ['*://*.twitch.tv/*', '*://kick.com/*', '*://*.kick.com/*', '*://*.youtube.com/*'] }).then(tabs => {
       const channels = []
       const seen = new Set()
       for (const tab of tabs) {
@@ -2522,6 +2523,14 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
             match = url.pathname.match(/^\/(popout|embed)\/([a-zA-Z0-9_-]+)/)
             if (match) match = [null, match[2]] // normalize to [_, channel]
             else match = url.pathname.match(/^\/([a-zA-Z0-9_-]+)/)
+          } else if (url.hostname.includes('youtube.com')) {
+            // YouTube watch pages — extract video ID as channel identifier
+            const v = url.searchParams.get('v')
+            if (v && !seen.has(v)) {
+              seen.add(v)
+              channels.push({ name: v, platform: 'youtube' })
+            }
+            continue
           }
           if (match?.[1]) {
             const ch = match[1].toLowerCase()
@@ -2738,7 +2747,7 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
       let chEmotes = channel && Array.isArray(channelEmotesMap[channel]) ? channelEmotesMap[channel] : null
       // if channel emotes not yet cached, trigger fetch and wait (up to 8s)
       if (channel && !chEmotes && channelEmotesMap[channel] !== 'loading') {
-        fetchChannelOwnerEmotes(channel, null, message.platform || 'twitch')
+        fetchChannelOwnerEmotes(channel, null, message.platform || (sender?.url?.includes('kick.com') ? 'kick' : 'twitch'))
       }
       if (channel && !chEmotes) {
         // wait for the sentinel to resolve (loading → array)

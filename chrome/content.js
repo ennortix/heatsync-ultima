@@ -1837,7 +1837,7 @@ function processExistingMessages() {
 
   // Kick messages (if Twitch selector didn't work)
   if (messages.length === 0) {
-    messages = chatContainer.querySelectorAll('#chatroom-messages [data-index]');
+    messages = chatContainer.querySelectorAll('[data-index]');
   }
 
   log(' 📨 Found', messages.length, 'messages to process');
@@ -1980,6 +1980,8 @@ function saveMsgCache() {
 
 // Load cached messages and render them into the chat container
 function restoreMsgCache(channel, chatContainer) {
+  // Skip on Kick — injecting Twitch-classed DOM into React virtual scroll corrupts it
+  if (isKick) return 0
   try {
     const raw = localStorage.getItem(getMsgCacheKey(channel))
     if (!raw) return 0
@@ -2365,7 +2367,7 @@ function applyHeatBorders() {
   const chatContainer = findChatContainer()
   if (!chatContainer) return
 
-  const messages = chatContainer.querySelectorAll('.chat-line__message:not([data-hs-heat-applied]), #chatroom-messages [data-index]:not([data-hs-heat-applied])')
+  const messages = chatContainer.querySelectorAll('.chat-line__message:not([data-hs-heat-applied]), [data-index]:not([data-hs-heat-applied])')
   for (const msg of messages) {
     const username = getUsername(msg)
     if (!username) continue
@@ -2911,9 +2913,7 @@ function processMessage(messageElement) {
     if (userId) {
       messageElement.dataset.hsCosmeticUserId = userId
       applyCosmeticsToMessage(messageElement, userId)
-      if (!cosmeticsCache.has(userId)) {
-        queueCosmeticsLookup(userId)
-      }
+      queueCosmeticsLookup(userId)
     }
   }
 
@@ -4828,7 +4828,7 @@ function retroactivelyProcessBroadcast(username, emoteName, emoteData) {
   // appears a split second before broadcast arrives. Old messages should not be replaced.
   let messages = chatContainer.querySelectorAll('.chat-line__message');
   if (messages.length === 0) {
-    messages = chatContainer.querySelectorAll('#chatroom-messages [data-index]');
+    messages = chatContainer.querySelectorAll('[data-index]');
   }
 
   // Process last 5 messages - handles fast chats where message appears after broadcast
@@ -4890,20 +4890,9 @@ function getUsername(messageElement) {
 // Get Twitch user ID from message element via React fiber
 function getTwitchUserId(messageElement) {
   if (isKick) return null
-  try {
-    let fiber = getFiber(messageElement)
-    let depth = 0
-    while (fiber && depth < 30) {
-      const props = fiber.memoizedProps
-      if (props) {
-        const uid = props.message?.user?.userID || props.message?.user?.id || props.userId || props.userID
-        if (uid) return String(uid)
-      }
-      fiber = fiber.return
-      depth++
-    }
-  } catch (e) {}
-  return null
+  // Read data-user-id stamped by early-inject-main.js (MAIN world)
+  // Content scripts can't access __reactFiber$ (isolated world)
+  return messageElement.getAttribute('data-user-id') || null
 }
 
 // Apply 7TV paint gradient to a username element
@@ -4964,6 +4953,23 @@ function get7TVBadgeUrl(badge) {
 // Apply BTTV/FFZ badges and 7TV paints/badges to a message element
 function applyCosmeticsToMessage(el, userId) {
   if (!userId) return
+  // Detect recycled DOM node — clear stale cosmetics if userId changed
+  const prevUserId = el.dataset.hsCosmeticAppliedFor
+  if (prevUserId && prevUserId !== userId) {
+    el.querySelectorAll('.hs-cosmetic-badge').forEach(b => b.remove())
+    delete el.dataset.hsCosmeticDone
+    const nameEl = el.querySelector('.chat-author__display-name, [data-a-target="chat-message-username"]')
+    if (nameEl) {
+      delete nameEl.dataset.hsPaintApplied
+      nameEl.style.removeProperty('background-image')
+      nameEl.style.removeProperty('background-size')
+      nameEl.style.removeProperty('-webkit-background-clip')
+      nameEl.style.removeProperty('-webkit-text-fill-color')
+      nameEl.style.removeProperty('background-clip')
+      nameEl.style.removeProperty('filter')
+    }
+  }
+  el.dataset.hsCosmeticAppliedFor = userId
   const nameEl = el.querySelector('.chat-author__display-name, [data-a-target="chat-message-username"]')
   if (!nameEl) return
 
@@ -5015,7 +5021,8 @@ function applyCosmeticsToMessage(el, userId) {
 // Queue a Twitch user ID for 7TV cosmetics batch fetch
 function queueCosmeticsLookup(userId) {
   if (isKick || !userId) return
-  if (cosmeticsCache.has(userId)) return
+  const cached = cosmeticsCache.get(userId)
+  if (cached && Date.now() - cached.fetchedAt < COSMETICS_TTL) return
   cosmeticsPending.add(userId)
   if (!cosmeticsBatchTimer) {
     cosmeticsBatchTimer = cleanup.setTimeout(() => {
@@ -5092,14 +5099,14 @@ function setupMessageContextMenu() {
 
 // Hide all messages from a blocked user
 function hideBlockedUser(username) {
-  (findChatContainer() || document).querySelectorAll('.chat-line__message, #chatroom-messages [data-index]').forEach(msg => {
+  (findChatContainer() || document).querySelectorAll('.chat-line__message, [data-index]').forEach(msg => {
     if (getUsername(msg) === username) msg.style.display = 'none';
   });
 }
 
 // Unhide all messages from an unblocked user
 function unhideBlockedUser(username) {
-  (findChatContainer() || document).querySelectorAll('.chat-line__message, #chatroom-messages [data-index]').forEach(msg => {
+  (findChatContainer() || document).querySelectorAll('.chat-line__message, [data-index]').forEach(msg => {
     if (getUsername(msg) === username) msg.style.display = '';
   });
 }
@@ -5184,7 +5191,7 @@ function showUnblockedEmote(hash) {
 
 // Hide muted user content, gray username
 function muteUser(username) {
-  (findChatContainer() || document).querySelectorAll('.chat-line__message, #chatroom-messages [data-index]').forEach(msg => {
+  (findChatContainer() || document).querySelectorAll('.chat-line__message, [data-index]').forEach(msg => {
     if (getUsername(msg) === username) {
       stripMutedMessage(msg);
     }
@@ -5708,17 +5715,35 @@ function completeEmoteInInput(element, emote, startPos) {
   const emoteName = emote.name;
   const wordToReplace = tabCompleteState.lastInserted || tabCompleteState.originalWord || '';
 
-  // KICK: Standard textarea manipulation
   const replaceLen = wordToReplace.length;
   const textToInsert = emoteName + ' ';
 
-  const beforeText = element.value.substring(0, startPos);
-  const afterText = element.value.substring(startPos + replaceLen);
-  const completedText = beforeText + textToInsert + afterText;
-  element.value = completedText;
-  element.dispatchEvent(new Event('input', { bubbles: true }));
-  const newCursorPos = startPos + textToInsert.length;
-  element.setSelectionRange(newCursorPos, newCursorPos);
+  if (element.isContentEditable) {
+    // Kick: contenteditable div.editor-input
+    const sel = window.getSelection();
+    const text = element.textContent || '';
+    const beforeText = text.substring(0, startPos);
+    const afterText = text.substring(startPos + replaceLen);
+    element.textContent = beforeText + textToInsert + afterText;
+    const newPos = startPos + textToInsert.length;
+    const newNode = element.firstChild;
+    if (newNode) {
+      const range = document.createRange();
+      range.setStart(newNode, Math.min(newPos, newNode.length));
+      range.collapse(true);
+      sel.removeAllRanges();
+      sel.addRange(range);
+    }
+    element.dispatchEvent(new Event('input', { bubbles: true }));
+  } else {
+    // Fallback for textarea
+    const beforeText = element.value.substring(0, startPos);
+    const afterText = element.value.substring(startPos + replaceLen);
+    element.value = beforeText + textToInsert + afterText;
+    element.dispatchEvent(new Event('input', { bubbles: true }));
+    const newCursorPos = startPos + textToInsert.length;
+    element.setSelectionRange(newCursorPos, newCursorPos);
+  }
   tabCompleteState.lastInserted = textToInsert;
 }
 

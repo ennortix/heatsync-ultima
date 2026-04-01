@@ -76,7 +76,7 @@
 
   function extractMessage(el) {
     const authorEl = el.querySelector('#author-name')
-    const messageEl = el.querySelector('#message')
+    const messageEl = el.querySelector('#message') || el.querySelector('#header-subtext') || el.querySelector('#header-primary-text')
     if (!authorEl || !messageEl) return null
 
     const user = authorEl.textContent.trim()
@@ -122,7 +122,7 @@
   function getMsgType(tagName) {
     switch (tagName) {
       case 'YT-LIVE-CHAT-PAID-MESSAGE-RENDERER': return 'superchat'
-      case 'YT-LIVE-CHAT-PAID-STICKER-RENDERER': return 'sticker'
+      case 'YT-LIVE-CHAT-PAID-STICKER-RENDERER': return 'supersticker'
       case 'YT-LIVE-CHAT-MEMBERSHIP-ITEM-RENDERER': return 'membership'
       default: return 'text'
     }
@@ -160,6 +160,7 @@
     const payload = {
       type: 'youtube_chat_message',
       videoId,
+      channelId: videoId,
       user: msg.user,
       text: msg.text,
       msgType,
@@ -175,7 +176,7 @@
       const sc = extractSuperchatData(node)
       payload.amount = sc.amount
       payload.scColor = sc.scColor
-    } else if (msgType === 'sticker') {
+    } else if (msgType === 'supersticker') {
       const st = extractStickerData(node)
       payload.amount = st.amount
       payload.sticker = st.sticker

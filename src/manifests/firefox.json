@@ -41,7 +41,7 @@
       "run_at": "document_start"
     },
     {
-      "matches": ["https://*.twitch.tv/*", "https://*.kick.com/*"],
+      "matches": ["https://*.twitch.tv/*", "https://kick.com/*", "https://*.kick.com/*"],
       "js": ["vi-mode.js"],
       "run_at": "document_end"
     },
@@ -52,13 +52,14 @@
       "world": "MAIN"
     },
     {
-      "matches": ["https://*.kick.com/*"],
+      "matches": ["https://kick.com/*", "https://*.kick.com/*"],
       "js": ["kick-autocomplete-hook.js"],
       "run_at": "document_end"
     },
     {
       "matches": [
         "https://*.twitch.tv/*",
+        "https://kick.com/*",
         "https://*.kick.com/*",
         "https://heatsync.org/*",
         "https://www.heatsync.org/*"
@@ -68,19 +69,20 @@
       "run_at": "document_end"
     },
     {
-      "matches": ["https://*.twitch.tv/*", "https://*.kick.com/*"],
+      "matches": ["https://*.twitch.tv/*", "https://kick.com/*", "https://*.kick.com/*"],
       "js": ["heatsync-button.js"],
       "run_at": "document_idle"
     },
     {
-      "matches": ["https://*.twitch.tv/*", "https://*.kick.com/*"],
+      "matches": ["https://*.twitch.tv/*", "https://kick.com/*", "https://*.kick.com/*"],
       "js": ["shared-utils.js", "multichat.js"],
       "run_at": "document_idle"
     },
     {
       "matches": ["https://www.youtube.com/live_chat*"],
       "js": ["youtube-content.js"],
-      "run_at": "document_end"
+      "run_at": "document_end",
+      "all_frames": true
     }
   ],
 

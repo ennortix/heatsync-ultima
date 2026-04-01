@@ -405,6 +405,20 @@ function completeUsername(input, username, startPos, isSlate) {
 
   if (isSlate) {
     setSlateText(input, completedText);
+  } else if (input.isContentEditable) {
+    // Kick: contenteditable div.editor-input
+    const sel = window.getSelection();
+    input.textContent = completedText;
+    const newPos = startPos + (needsAt ? 1 : 0) + username.length + 1;
+    const newNode = input.firstChild;
+    if (newNode) {
+      const range = document.createRange();
+      range.setStart(newNode, Math.min(newPos, newNode.length));
+      range.collapse(true);
+      sel.removeAllRanges();
+      sel.addRange(range);
+    }
+    input.dispatchEvent(new Event('input', { bubbles: true }));
   } else {
     input.value = completedText;
     input.dispatchEvent(new Event('input', { bubbles: true }));

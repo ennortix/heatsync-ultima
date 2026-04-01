@@ -93,16 +93,19 @@
     const btn = document.getElementById('popout-btn')
 
     // auto-fill from active tab if on twitch or kick
+    let detectedPlatform = 'twitch'
     chrome.tabs.query({ active: true, currentWindow: true }).then(([tab]) => {
       if (!tab?.url) return
       try {
         const url = new URL(tab.url)
         if (url.hostname.includes('twitch.tv')) {
+          detectedPlatform = 'twitch'
           const m = url.pathname.match(/^\/(?:popout\/|embed\/)?([a-zA-Z0-9_]+)/)
           if (m && !['directory', 'settings', 'videos', 'moderator', 'subscriptions'].includes(m[1].toLowerCase())) {
             input.value = m[1].toLowerCase()
           }
         } else if (url.hostname.includes('kick.com')) {
+          detectedPlatform = 'kick'
           const m = url.pathname.match(/^\/([a-zA-Z0-9_]+)/)
           if (m && !['categories', 'following', 'settings', 'search'].includes(m[1].toLowerCase())) {
             input.value = m[1].toLowerCase()
@@ -112,9 +115,12 @@
     })
 
     function openPopout() {
-      const channel = input.value.trim().toLowerCase().replace(/[^a-z0-9_]/g, '')
+      const channel = input.value.trim().toLowerCase().replace(/[^a-z0-9_-]/g, '')
       if (!channel) { input.focus(); return }
-      chrome.tabs.create({ url: `https://www.twitch.tv/popout/${channel}/chat` })
+      const url = detectedPlatform === 'kick'
+        ? `https://kick.com/${channel}`
+        : `https://www.twitch.tv/popout/${channel}/chat`
+      chrome.tabs.create({ url })
     }
 
     btn.addEventListener('click', openPopout)

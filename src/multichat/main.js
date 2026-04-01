@@ -6525,9 +6525,16 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
     } catch (e) {}
   }
 
+  let _skipNextConfigSync = false
+
   async function saveConfig() {
     try {
+      _skipNextConfigSync = true
       await chrome.storage.local.set({ [STORAGE_KEY]: config });
+      // Sync to server for cross-device sync
+      try {
+        chrome.runtime.sendMessage({ type: 'ws_send', data: { type: 'multichat:sync', channels: config.channels } })
+      } catch (e) { /* context invalidated */ }
     } catch (e) {}
   }
 
@@ -6724,6 +6731,71 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
             if (!isScrolledUp) renderMessages(currentTab);
           });
         }, 300);
+      }
+
+      // Multichat config sync (cross-tab + cross-device)
+      if (changes.heatsync_multichat) {
+        if (_skipNextConfigSync) {
+          _skipNextConfigSync = false
+        } else {
+          const newConfig = changes.heatsync_multichat.newValue || { channels: [], enabled: true }
+          const oldChannels = config.channels || []
+          const newChannels = newConfig.channels || []
+
+          // Diff: find added and removed channels
+          const oldIds = new Set(oldChannels.map(c => typeof c === 'string' ? c : c.id))
+          const newIds = new Set(newChannels.map(c => typeof c === 'string' ? c : c.id))
+
+          // Part removed channels
+          for (const ch of oldChannels) {
+            const id = typeof ch === 'string' ? ch : ch.id
+            if (!newIds.has(id)) {
+              const twitchName = typeof ch === 'string' ? ch : ch.twitch
+              if (twitchName) irc?.part(twitchName)
+              const kickName = typeof ch === 'string' ? null : ch.kick
+              if (kickName) kickChat?.part(kickName)
+              if (typeof ch !== 'string' && ch.youtube) {
+                const link = youtubeLinks.get(id)
+                chrome.runtime.sendMessage({
+                  type: 'youtube_ws_unsubscribe',
+                  videoId: link?.videoId || '',
+                  url: ch.youtube,
+                  channelId: id,
+                }).catch(() => {})
+                youtubeLinks.delete(id)
+                channelYtMessages.delete(id)
+              }
+            }
+          }
+
+          // Join added channels
+          for (const ch of newChannels) {
+            const id = typeof ch === 'string' ? ch : ch.id
+            if (!oldIds.has(id)) {
+              const twitchName = typeof ch === 'string' ? ch : ch.twitch
+              if (twitchName) {
+                irc?.join(twitchName)
+                try { chrome.runtime.sendMessage({ type: 'join_channel', platform: 'twitch', channel: twitchName }) } catch (e) {}
+              }
+              const kickName = typeof ch === 'string' ? null : ch.kick
+              if (kickName) kickChat?.join(kickName)
+              if (typeof ch !== 'string' && ch.youtube) {
+                youtubeLinks.set(id, { url: ch.youtube, videoId: '', channelName: '' })
+                chrome.runtime.sendMessage({ type: 'youtube_ws_subscribe', url: ch.youtube, channelId: id }).catch(() => {})
+              }
+            }
+          }
+
+          // Update config and UI
+          config.channels = newChannels
+          config.enabled = newConfig.enabled !== undefined ? newConfig.enabled : config.enabled
+          updateTabBar()
+          // If current tab was removed, switch to live
+          if (currentTab !== 'live' && currentTab !== 'feed' && currentTab !== 'mentions' && currentTab !== 'whispers' && !newIds.has(currentTab)) {
+            switchTab('live')
+          }
+          log('Config synced from another tab/device:', newChannels.length, 'channels')
+        }
       }
 
       // Blocked emotes

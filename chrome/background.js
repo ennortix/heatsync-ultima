@@ -2087,6 +2087,22 @@ function handleWSMessage(msg) {
       }
       break
 
+    case 'multichat:config':
+      // Cross-device sync: server sent updated multichat config
+      if (Array.isArray(msg.channels)) {
+        log(' 📋 Multichat config sync received:', msg.channels.length, 'channels')
+        browser.storage.local.get(['heatsync_multichat']).then(data => {
+          const current = data.heatsync_multichat || { channels: [], enabled: true }
+          // Only write if channels actually changed
+          const currentJson = JSON.stringify(current.channels)
+          const newJson = JSON.stringify(msg.channels)
+          if (currentJson !== newJson) {
+            browser.storage.local.set({ heatsync_multichat: { ...current, channels: msg.channels } })
+          }
+        }).catch(() => {})
+      }
+      break
+
     case 'new-message':
       log(' New message received:', msg);
       // Only show posts from followed users, exclude anonymous
@@ -2716,7 +2732,7 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   // Forward WS message from content scripts (used by multichat kick channels)
   if (message.type === 'ws_send') {
-    const allowedWsTypes = ['channel:join', 'channel:leave', 'emote:used', 'youtube:subscribe', 'youtube:unsubscribe']
+    const allowedWsTypes = ['channel:join', 'channel:leave', 'emote:used', 'youtube:subscribe', 'youtube:unsubscribe', 'multichat:sync']
     if (message.data && allowedWsTypes.includes(message.data.type)) {
       wsSend(message.data)
     }

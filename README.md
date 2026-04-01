@@ -37,7 +37,7 @@ every twitch emote extension uses react fiber walking — it's the only reliable
 
 | | **heatsync** | **ffz** | **7tv** | **bttv** |
 |---|---|---|---|---|
-| **approach** | work with react (ffz-style) | deep react integration | deep react integration | DOM-first, react for data |
+| **approach** | fiber walking + DOM injection (ffz-style) | deep react prototype patching | react vnode interception | DOM-first, react for data |
 | **fiber walking** | `getFiber()` + `.return` chain | `Fine.getReactInstance()` | `getVNodeFromDOM()` | reads fiber, rarely writes |
 | **render patching** | wraps `render()`, injects via DOM | systematic class prototype patching (core arch) | patches `render`, lifecycle, props interception | minimal — reads props, rarely patches |
 | **MutationObserver** | chat container + polling fallback | component discovery + 500ms poll | `awaitComponents()` | **primary** mechanism (`DOMObserver` class) |
@@ -46,10 +46,15 @@ every twitch emote extension uses react fiber walking — it's the only reliable
 | **own UI framework** | vanilla JS | custom module system | vue 3 (full SPA) | preact |
 | **webpack hooking** | minimal — apollo mutations | yes — deep (`webpackChunktwitch_twilight`) | indirect via fiber | minimal — TMI constants only |
 | **shadow DOM** | no | no | no | no |
+| **HTML sanitization** | `escapeHtml()` on all user content | DOM `textContent` round-trip | vue template auto-escaping | `textContent`/`innerText` only, no innerHTML |
+| **URL sanitization** | `safeUrl()` (https/http only) + CDN allowlist | none | coerced to `https://` via `new URL()` | CDN-only URLs, regex-strict |
+| **postMessage origin** | validated (`location.origin` check) | **not validated** | not used | not used |
 
 **heatsync's MAIN world injection is unique** — none of the others run at `document_start` in page context. this allows intercepting twitch internals before react mounts, which is impossible from a content script.
 
 **bttv is the outlier** — it treats the DOM as its primary API and only dips into react to read data. ffz and 7tv patch react's render pipeline deeply, modifying component output directly. heatsync hooks render for injection points but primarily injects via DOM.
+
+**security note** — all four extensions handle HTML escaping correctly (different techniques, same result). the key differentiator is URL sanitization: heatsync explicitly validates URL schemes and restricts emote CDN origins. ffz has no URL sanitizer and doesn't validate postMessage origins, meaning any cross-origin frame could manipulate user settings via its bridge API.
 
 ## install
 

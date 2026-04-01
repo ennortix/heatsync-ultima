@@ -97,6 +97,12 @@
   "popup_btn_done": {
     "message": "done"
   },
+  "popup_btn_logout": {
+    "message": "logout"
+  },
+  "btn_recent": {
+    "message": "recent"
+  },
   "popup_login_prompt": {
     "message": "log in to sync emotes"
   },

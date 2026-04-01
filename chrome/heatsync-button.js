@@ -50,6 +50,34 @@
   let searchQuery = '';
   let emotesPreloaded = false;
   let preloadingInProgress = false;
+  let recentEmotes = []; // LRU list of recently-used emote names
+  const RECENT_MAX = 20;
+  let focusedEmoteIndex = -1; // keyboard nav tracking
+
+  // Load recent emotes from storage
+  chrome.storage.local.get('recent_emotes', (r) => {
+    if (r.recent_emotes) recentEmotes = r.recent_emotes
+  })
+
+  function recordRecentEmote(emote) {
+    const key = emote.isEmoji ? `:${emote.name}:` : emote.name
+    recentEmotes = recentEmotes.filter(r => r.key !== key)
+    recentEmotes.unshift({ key, name: emote.name, url: emote.url, emoji: emote.emoji, isEmoji: emote.isEmoji, provider: emote.provider, hash: emote.hash })
+    if (recentEmotes.length > RECENT_MAX) recentEmotes.length = RECENT_MAX
+    chrome.storage.local.set({ recent_emotes: recentEmotes })
+  }
+
+  // Fuzzy match scorer: sequential character match
+  function fuzzyScore(query, name) {
+    const lower = name.toLowerCase()
+    if (lower.includes(query)) return 2 + (query.length / lower.length) // exact substring bonus
+    let qi = 0
+    for (let i = 0; i < lower.length && qi < query.length; i++) {
+      if (lower[i] === query[qi]) qi++
+    }
+    if (qi < query.length) return 0 // not all chars matched
+    return qi / lower.length // partial sequential match
+  }
 
   // Error and loading state tracking
   let loadErrors = {
@@ -582,6 +610,12 @@
         border-radius: 0;
         cursor: pointer;
         flex-shrink: 0;
+      }
+
+      /* Keyboard focus highlight */
+      .heatsync-emote-wrap.hs-kb-focus {
+        outline: 2px solid #ff8700;
+        outline-offset: -2px;
       }
 
       /* Unadded = slightly dimmed */
@@ -1647,6 +1681,7 @@
     panel.querySelectorAll('.heatsync-tab').forEach(tab => {
       tab.addEventListener('click', () => {
         currentTab = tab.dataset.tab;
+        focusedEmoteIndex = -1;
         panel.querySelectorAll('.heatsync-tab').forEach(t => t.classList.remove('active'));
         tab.classList.add('active');
         settingsBtn.classList.remove('active');
@@ -1659,6 +1694,7 @@
     const searchInput = panel.querySelector('#heatsync-search');
     searchInput.addEventListener('input', (e) => {
       searchQuery = e.target.value.toLowerCase();
+      focusedEmoteIndex = -1;
       clearTimeout(_searchDebounce)
       _searchDebounce = setTimeout(() => renderEmoteGrid(), 150)
     });
@@ -1820,9 +1856,12 @@
       }
     }
 
-    // Filter by search
+    // Filter by search (fuzzy matching)
     if (searchQuery) {
-      emotes = emotes.filter(e => e.name.toLowerCase().includes(searchQuery));
+      emotes = emotes
+        .map(e => ({ ...e, _score: fuzzyScore(searchQuery, e.name) }))
+        .filter(e => e._score > 0)
+        .sort((a, b) => b._score - a._score)
     }
 
     if (emotes.length === 0) {
@@ -1875,6 +1914,7 @@
 
       // Click to insert
       wrap.addEventListener('click', () => {
+        recordRecentEmote(e)
         if (e.isEmoji) {
           insertEmoteIntoChat(`:${e.name}:`)
         } else if (!isGlobal && !inInventory && isLoggedIn && currentTab !== 'mine') {
@@ -1983,10 +2023,47 @@
 
     // Build all emotes at once with images - no lazy loading
     const fragment = document.createDocumentFragment();
+    let globalIndex = 0;
+
+    // Recent emotes section (only on channel/global tabs, not when searching)
+    if (!searchQuery && recentEmotes.length > 0 && (currentTab === 'channel' || currentTab === 'global' || currentTab === 'mine')) {
+      const header = document.createElement('div')
+      header.className = 'heatsync-section-header'
+      header.textContent = t('btn_recent') || 'recent'
+      header.style.cssText = 'width: 100%; font-size: 11px; color: #808080; padding: 2px 4px; margin-bottom: 2px;'
+      fragment.appendChild(header)
+
+      for (const r of recentEmotes) {
+        const recentEmote = { ...r, pickerUrl: r.url ? getResolutionUrl(getAnimatedUrl(r.url), currentSize) : null }
+        const wrap = createEmoteElement(recentEmote, globalIndex)
+        if (r.isEmoji) {
+          const emojiSpan = document.createElement('span')
+          emojiSpan.className = 'heatsync-emoji-cell'
+          emojiSpan.textContent = r.emoji
+          emojiSpan.title = `:${r.name}:`
+          wrap.appendChild(emojiSpan)
+        } else if (recentEmote.pickerUrl) {
+          const img = document.createElement('img')
+          img.referrerPolicy = 'no-referrer'
+          img.loading = 'eager'
+          img.decoding = 'async'
+          img.src = recentEmote.pickerUrl
+          img.alt = r.name
+          img.title = r.name
+          wrap.appendChild(img)
+        }
+        fragment.appendChild(wrap)
+        globalIndex++
+      }
+
+      const divider = document.createElement('div')
+      divider.style.cssText = 'width: 100%; border-top: 1px solid #333; margin: 4px 0;'
+      fragment.appendChild(divider)
+    }
 
     for (let i = 0; i < pickerEmotes.length; i++) {
       const e = pickerEmotes[i];
-      const wrap = createEmoteElement(e, i);
+      const wrap = createEmoteElement(e, globalIndex++);
 
       if (e.isEmoji) {
         // Emoji: render as unicode text, not image
@@ -2244,7 +2321,49 @@
     if (_ctxMenu && !_ctxMenu.contains(e.target)) dismissContextMenu();
   }, { signal: btnSignal });
   document.addEventListener('keydown', (e) => {
-    if (_ctxMenu && e.key === 'Escape') dismissContextMenu();
+    if (_ctxMenu && e.key === 'Escape') { dismissContextMenu(); return }
+
+    // Keyboard navigation in emote picker
+    if (!panelOpen) return
+    const grid = document.getElementById('heatsync-emote-grid')
+    if (!grid) return
+
+    if (e.key === 'Escape') { closePanel(); e.preventDefault(); return }
+
+    const wraps = grid.querySelectorAll('.heatsync-emote-wrap')
+    if (wraps.length === 0) return
+
+    if (e.key === 'ArrowRight' || e.key === 'ArrowLeft' || e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'Enter') {
+      e.preventDefault()
+
+      if (e.key === 'Enter' && focusedEmoteIndex >= 0 && focusedEmoteIndex < wraps.length) {
+        wraps[focusedEmoteIndex].click()
+        return
+      }
+
+      // Calculate items per row from layout
+      let itemsPerRow = 1
+      if (wraps.length >= 2) {
+        const firstTop = wraps[0].offsetTop
+        for (let i = 1; i < wraps.length; i++) {
+          if (wraps[i].offsetTop !== firstTop) { itemsPerRow = i; break }
+        }
+      }
+
+      let newIdx = focusedEmoteIndex
+      if (e.key === 'ArrowRight') newIdx = Math.min(newIdx + 1, wraps.length - 1)
+      else if (e.key === 'ArrowLeft') newIdx = Math.max(newIdx - 1, 0)
+      else if (e.key === 'ArrowDown') newIdx = Math.min(newIdx + itemsPerRow, wraps.length - 1)
+      else if (e.key === 'ArrowUp') newIdx = Math.max(newIdx - itemsPerRow, 0)
+
+      if (newIdx < 0) newIdx = 0
+
+      // Update focus
+      if (focusedEmoteIndex >= 0 && focusedEmoteIndex < wraps.length) wraps[focusedEmoteIndex].classList.remove('hs-kb-focus')
+      focusedEmoteIndex = newIdx
+      wraps[focusedEmoteIndex].classList.add('hs-kb-focus')
+      wraps[focusedEmoteIndex].scrollIntoView({ block: 'nearest' })
+    }
   }, { signal: btnSignal });
 
   // Sync blocked hash set from content.js

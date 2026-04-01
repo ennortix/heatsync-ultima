@@ -80,7 +80,7 @@
     },
     {
       "matches": ["https://*.twitch.tv/*", "https://kick.com/*", "https://*.kick.com/*"],
-      "js": ["shared-utils.js", "multichat.js"],
+      "js": ["emoji-data.js", "shared-utils.js", "multichat.js"],
       "run_at": "document_idle"
     },
     {

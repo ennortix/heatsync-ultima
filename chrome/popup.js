@@ -79,6 +79,7 @@
           <a href="https://heatsync.org/emotes" target="_blank" rel="noopener noreferrer" class="action-btn">${t('popup_btn_emotes')}</a>
           <button class="action-btn" id="refresh-btn">${t('popup_btn_refresh')}</button>
           <a href="https://heatsync.org" target="_blank" rel="noopener noreferrer" class="action-btn">${t('popup_btn_site')}</a>
+          <button class="action-btn" id="logout-btn" style="color:#808080">${t('popup_btn_logout') || 'logout'}</button>
         </div>
       `
 
@@ -88,6 +89,12 @@
         await chrome.runtime.sendMessage({ type: 'refresh_all' })
         e.target.textContent = t('popup_btn_done')
         setTimeout(() => { e.target.textContent = t('popup_btn_refresh'); e.target.disabled = false }, 1000)
+      })
+
+      document.getElementById('logout-btn')?.addEventListener('click', async () => {
+        await chrome.storage.local.remove(['auth_token', 'auth_token_encrypted', 'user_info', 'emote_inventory', 'blocked_emotes'])
+        await chrome.runtime.sendMessage({ type: 'clear_auth' })
+        init().catch(() => {})
       })
     } else {
       // Not logged in

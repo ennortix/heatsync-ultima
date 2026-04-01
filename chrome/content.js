@@ -306,8 +306,8 @@ style.textContent = `
   /* HEAT MESSAGE BORDERS (by heat tier)          */
   /* ============================================ */
   @keyframes hs-heat-breathe {
-    0%, 100% { box-shadow: 0 0 20px rgba(255, 200, 0, 0.4); }
-    50% { box-shadow: 0 0 30px rgba(255, 100, 0, 0.7), inset 0 0 30px rgba(255, 100, 0, 0.15); }
+    0%, 100% { filter: drop-shadow(0 0 20px rgba(255, 200, 0, 0.4)); }
+    50% { filter: drop-shadow(0 0 30px rgba(255, 100, 0, 0.7)); }
   }
 
   /* ============================================ */
@@ -1465,6 +1465,45 @@ let cachedEmotesByHash = new Map(); // hash → emote, O(1) lookup for hover pre
 let inventoryNameSet = new Set();
 let globalNameSet = new Set();
 
+// Rebuild combined emote map eagerly (called from event handlers + fallback in processMessage)
+function rebuildEmoteMapIfDirty() {
+  if (!allEmotesDirty && cachedAllEmotes) return
+  allEmotesDirty = false
+  cachedAllEmotes = new Map()
+
+  // Global emotes (lowest priority)
+  globalEmotes.forEach(emote => {
+    cachedAllEmotes.set(emote.name, Object.assign({}, emote, { hash: emote.hash || btoa(emote.url), isGlobal: true }))
+  })
+
+  // Channel emotes (third-party only — BTTV/FFZ/7TV/Twitch)
+  channelEmotes.forEach(emote => {
+    if (!emote.source) return
+    cachedAllEmotes.set(emote.name, Object.assign({}, emote, {
+      url: emote.url?.startsWith('http') ? emote.url : `${API_URL}${emote.url}`
+    }))
+  })
+
+  // Inventory emotes LAST (highest priority — user's own emotes always win)
+  emoteInventory.forEach(emote => {
+    cachedAllEmotes.set(emote.name, Object.assign({}, emote, {
+      url: emote.url?.startsWith('http') ? emote.url : `${API_URL}${emote.url}`
+    }))
+  })
+
+  // Rebuild O(1) lookup sets
+  inventoryHashSet = new Set()
+  for (const e of emoteInventory) inventoryHashSet.add(e.hash)
+  inventoryNameSet = new Set()
+  for (const e of emoteInventory) inventoryNameSet.add(e.name)
+  globalNameSet = new Set()
+  for (const e of globalEmotes) globalNameSet.add(e.name)
+  cachedEmotesByHash = new Map()
+  for (const e of cachedAllEmotes.values()) {
+    if (e.hash) cachedEmotesByHash.set(e.hash, e)
+  }
+}
+
 // Toast — use shared-utils if available, inline fallback
 const showToast = window.HS?.showToast || function(msg) {
   const el = document.getElementById('heatsync-toast')
@@ -1698,6 +1737,7 @@ function _onMessageMain(message) {
       allEmotesDirty = true
       emoteGeneration++
       _tabEmoteMapDirty = true
+      rebuildEmoteMapIfDirty()
       log(' Inventory updated:', emoteInventory.length, 'emotes');
       log(' Sample inventory:', emoteInventory.slice(0, 3).map(e => ({ name: e.name, hash: e.hash?.substring(0, 8) })));
 
@@ -1727,10 +1767,12 @@ function _onMessageMain(message) {
       emoteGeneration++
       log(' ✅ Emote added to your set:', message.emoteName);
       emoteInventory.push({
+
         name: message.emoteName,
         hash: message.hash,
         url: message.url
       });
+      rebuildEmoteMapIfDirty()
       updateEmoteState(message.hash, message.emoteName, 'added');
       updateEmoteBridge(); // Update Twitch autocomplete hook
       // Notify MAIN world (heatsync-button.js) to refresh panel if open
@@ -1743,6 +1785,7 @@ function _onMessageMain(message) {
       emoteInventory = emoteInventory.filter(e => e.name !== message.emoteName);
       allEmotesDirty = true
       _tabEmoteMapDirty = true
+      rebuildEmoteMapIfDirty()
       log(' ⏳ Emote removal starting:', message.emoteName);
       break;
 
@@ -1751,6 +1794,7 @@ function _onMessageMain(message) {
       pendingRemovals.delete(message.emoteName);
       allEmotesDirty = true
       _tabEmoteMapDirty = true
+      rebuildEmoteMapIfDirty()
       log(' ↩️ Emote removal cancelled:', message.emoteName);
       break;
 
@@ -1768,6 +1812,7 @@ function _onMessageMain(message) {
           _deleteBroadcast(key);
         }
       }
+      rebuildEmoteMapIfDirty()
       updateEmoteState(message.hash, message.emoteName, 'neutral');
       updateEmoteBridge();
       window.postMessage({ type: 'heatsync-inventory-update', count: emoteInventory.length }, location.origin);
@@ -1777,6 +1822,7 @@ function _onMessageMain(message) {
       globalEmotes = message.emotes;
       allEmotesDirty = true
       emoteGeneration++
+      rebuildEmoteMapIfDirty()
       log(' Global emotes updated:', globalEmotes.length);
       if (globalEmotes.length > 0) {
         log(' Sample global emotes:', globalEmotes.slice(0, 5).map(e => e.name));
@@ -1799,6 +1845,7 @@ function _onMessageMain(message) {
       }));
       allEmotesDirty = true
       emoteGeneration++
+      rebuildEmoteMapIfDirty()
       currentChannelOwner = emoteOwner || null;
       log(' Channel owner emotes updated:', channelEmotes.length, 'for channel:', currentChannelOwner);
       if (channelEmotes.length > 0) {
@@ -3169,44 +3216,8 @@ function processMessage(messageElement) {
   // Highlight mentions of current user (FFZ-style red background on entire line)
   highlightUserMentions(messageElement);
 
-  // Build combined emote map (cached, rebuilt only when emote data changes)
-  if (allEmotesDirty || !cachedAllEmotes) {
-    allEmotesDirty = false // Set early to prevent redundant rebuilds in same batch
-    cachedAllEmotes = new Map()
-
-    // Add global emotes (lowest priority)
-    globalEmotes.forEach(emote => {
-      cachedAllEmotes.set(emote.name, Object.assign({}, emote, { hash: emote.hash || btoa(emote.url), isGlobal: true }))
-    })
-
-    // Add channel emotes (third-party only — BTTV/FFZ/7TV/Twitch)
-    // HeatSync emotes render via emoteInventory (own set) or pendingEmoteBroadcasts (others)
-    channelEmotes.forEach(emote => {
-      if (!emote.source) return
-      cachedAllEmotes.set(emote.name, Object.assign({}, emote, {
-        url: emote.url?.startsWith('http') ? emote.url : `${API_URL}${emote.url}`
-      }))
-    })
-
-    // Add inventory emotes LAST (highest priority — user's own emotes always win)
-    emoteInventory.forEach(emote => {
-      cachedAllEmotes.set(emote.name, Object.assign({}, emote, {
-        url: emote.url?.startsWith('http') ? emote.url : `${API_URL}${emote.url}`
-      }))
-    })
-
-    // Rebuild O(1) lookup sets
-    inventoryHashSet = new Set()
-    for (const e of emoteInventory) inventoryHashSet.add(e.hash)
-    inventoryNameSet = new Set()
-    for (const e of emoteInventory) inventoryNameSet.add(e.name)
-    globalNameSet = new Set()
-    for (const e of globalEmotes) globalNameSet.add(e.name)
-    cachedEmotesByHash = new Map()
-    for (const e of cachedAllEmotes.values()) {
-      if (e.hash) cachedEmotesByHash.set(e.hash, e)
-    }
-  }
+  // Ensure emote map is current (rebuilt eagerly by event handlers, fallback here)
+  rebuildEmoteMapIfDirty()
 
   // 2-tier lookup: cached base + per-user broadcast emotes (avoids cloning entire Map)
   // Fast path: skip broadcast scan when no broadcasts pending (common case)
@@ -6315,6 +6326,7 @@ function handleNavigation() {
   msgCacheBuffer = []
   subTenureMap.clear()
   allEmotesDirty = true
+  rebuildEmoteMapIfDirty()
   detectAndJoinChannel();
   cleanup.setTimeout(() => {
     watchForNewMessages();

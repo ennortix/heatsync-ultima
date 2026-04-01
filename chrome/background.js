@@ -12,9 +12,12 @@ log('🔥 BACKGROUND SCRIPT LOADING...');
 // Keepalive alarm — prevent Chrome from killing the service worker
 // Chrome minimum alarm period is 0.5 minutes (30s), which resets the inactivity timer
 browser.alarms?.create('keepalive', { periodInMinutes: 0.5 });
+browser.alarms?.create('refresh-global-emotes', { periodInMinutes: 60 });
 browser.alarms?.onAlarm?.addListener((alarm) => {
   if (alarm.name === 'keepalive') {
     // Just existing is enough to keep the worker alive
+  } else if (alarm.name === 'refresh-global-emotes') {
+    fetchGlobalEmotes().catch(() => {})
   }
 });
 
@@ -87,9 +90,16 @@ function getTabChannel(tabId) {
   return tabChannels.get(tabId)?.channel || null
 }
 
+// Persist tabChannels to session storage (survives worker restarts, not browser restarts)
+function saveTabChannels() {
+  const data = Object.fromEntries(tabChannels)
+  browser.storage.session?.set({ tab_channels: data }).catch(() => {})
+}
+
 // Clean up tab tracking on close
 chrome.tabs.onRemoved.addListener((tabId) => {
   tabChannels.delete(tabId)
+  saveTabChannels()
 })
 let current7TVEmoteSetId = null; // Track current 7TV emote set ID for EventAPI
 let seventvEmoteSetIds = new Map(); // channelName → 7TV emote set ID
@@ -323,18 +333,25 @@ try {
   log('[heatsync] webRequest not available (Chrome MV3) - using direct URLs');
 }
 
-// Update the emote URL map
+// Update the emote URL map (capped at 10K entries to prevent memory growth)
+const MAX_EMOTE_URL_ENTRIES = 10000
 function updateEmoteUrlMap() {
   emoteUrlMap.clear();
-  const allEmotes = [...emoteInventory, ...globalEmotes];
-  // Include all channel emotes from every channel
-  for (const emotes of Object.values(channelEmotesMap)) {
-    if (Array.isArray(emotes)) allEmotes.push(...emotes);
+  // Inventory + globals first (always kept)
+  for (const emote of emoteInventory) {
+    if (emote.hash && emote.url) emoteUrlMap.set(emote.hash, emote.url)
   }
-  for (const emote of allEmotes) {
-    if (emote.hash && emote.url) {
-      emoteUrlMap.set(emote.hash, emote.url);
+  for (const emote of globalEmotes) {
+    if (emote.hash && emote.url) emoteUrlMap.set(emote.hash, emote.url)
+  }
+  // Channel emotes fill remaining capacity
+  for (const emotes of Object.values(channelEmotesMap)) {
+    if (!Array.isArray(emotes)) continue
+    for (const emote of emotes) {
+      if (emoteUrlMap.size >= MAX_EMOTE_URL_ENTRIES) break
+      if (emote.hash && emote.url) emoteUrlMap.set(emote.hash, emote.url)
     }
+    if (emoteUrlMap.size >= MAX_EMOTE_URL_ENTRIES) break
   }
   log(' 📍 Updated emoteUrlMap:', emoteUrlMap.size, 'entries');
 }
@@ -1028,11 +1045,14 @@ async function fetchChannelOwnerEmotes(channelName, channelId = null, platform =
     updateEmoteUrlMap();
 
     // Update channelOwner in all tab entries that match this channel
+    let ownerUpdated = false
     for (const [tabId, entry] of tabChannels) {
       if (entry.channel?.endsWith('/' + channelName)) {
         entry.channelOwner = channelName
+        ownerUpdated = true
       }
     }
+    if (ownerUpdated) saveTabChannels()
     log(' ✅ Channel emotes loaded for', channelName + ':', emotes.length,
       `(heatsync: ${heatsyncEmotes.length}, bttv: ${bttvEmotes.length}, ffz: ${ffzEmotes.length}, 7tv: ${sevenTVEmotes.length})`);
 
@@ -2450,6 +2470,7 @@ async function joinChannel(platform, channelName, channelId = null, senderTabId 
   const channelKey = `${platform}/${channelName}`
   if (senderTabId) {
     tabChannels.set(senderTabId, { channel: channelKey, channelOwner: null })
+    saveTabChannels()
   }
   log(' 🚪 Setting channel:', channelKey, 'id:', channelId, 'tab:', senderTabId)
 
@@ -3307,6 +3328,17 @@ async function initialize() {
     log(' Storage restore failed:', err.message);
   }
 
+  // Restore tabChannels from session storage (survives worker restarts)
+  try {
+    const session = await browser.storage.session?.get('tab_channels')
+    if (session?.tab_channels) {
+      for (const [tabId, entry] of Object.entries(session.tab_channels)) {
+        tabChannels.set(Number(tabId), entry)
+      }
+      log(' ✓ Restored', tabChannels.size, 'tab channels from session storage')
+    }
+  } catch {}
+
   // Start WebSocket immediately (don't wait for API fetches)
   connectWebSocket().catch(() => {});
 
@@ -3333,8 +3365,7 @@ async function initialize() {
   // Refresh inventory every 60 seconds
   trackInterval(setInterval(fetchEmoteInventory, 60000));
 
-  // Refresh global emotes every 24 hours
-  trackInterval(setInterval(fetchGlobalEmotes, 86400000));
+  // Global emotes refresh handled by chrome.alarms (MV3 setInterval unreliable for long durations)
 
 }
 

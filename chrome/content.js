@@ -109,7 +109,7 @@ async function safeSendMessage(message, _retry = 0) {
         err.message?.includes('context invalidated')) {
       extensionContextValid = false;
       warn(' ⚠️ Extension was reloaded - please refresh this page');
-      showToast('Extension updated - refresh page to continue', 'warning');
+      showToast(t('common_extension_updated'), 'warning');
     } else if (_retry < 5 && (err.message?.includes('Receiving end does not exist') ||
                err.message?.includes('Could not establish connection'))) {
       // Service worker waking up — retry with backoff (200, 400, 800, 1600, 3200ms)
@@ -1730,14 +1730,14 @@ function _onMessageMain(message) {
 
     case 'emote_add_failed':
       log(' ❌ Failed to add emote:', message.emoteName, message.error);
-      showToast(`Failed to add ${message.emoteName}: ${message.error}`, 'error');
+      showToast(t('content_toast_failed_add', [message.emoteName, String(message.error)]), 'error');
       // Clear pending operation
       pendingOperations.delete(`add:${message.emoteName}`);
       break;
 
     case 'emote_remove_failed':
       log(' ❌ Failed to remove emote:', message.emoteName, message.error);
-      showToast(`Failed to remove ${message.emoteName}: ${message.error}`, 'error');
+      showToast(t('content_toast_failed_remove', [message.emoteName, String(message.error)]), 'error');
       // Rollback optimistic removal - re-add to local inventory
       // (actual rollback happens on next inventory sync)
       pendingOperations.delete(`remove:${message.emoteName}`);
@@ -2809,7 +2809,7 @@ function setupUsernameColoringObserver() {
               }
             });
             blockAllBtn.textContent = '⊘';
-            blockAllBtn.title = 'block all';
+            blockAllBtn.title = t('btn_block_all');
             log(' ✅ Unblocked all emotes in stack');
           } else {
             // BLOCK ALL - block all emotes in stack
@@ -2823,7 +2823,7 @@ function setupUsernameColoringObserver() {
               }
             });
             blockAllBtn.textContent = '◉';
-            blockAllBtn.title = 'show all';
+            blockAllBtn.title = t('btn_show_all');
             log(' 🚫 Blocked all emotes in stack');
           }
 
@@ -3302,13 +3302,13 @@ function stackAdjacentOverlayEmotes(messageElement, allEmotes) {
       const stackContainer = document.createElement('span');
       stackContainer.className = 'heatsync-emote-stack';
       stackContainer.dataset.stackCount = '2'; // Will be updated when more overlays added
-      stackContainer.title = 'click to expand';
+      stackContainer.title = t('btn_click_expand');
 
       // Add collapse button (×)
       const collapseBtn = document.createElement('span');
       collapseBtn.className = 'heatsync-stack-collapse';
       collapseBtn.textContent = '×';
-      collapseBtn.title = 'collapse';
+      collapseBtn.title = t('btn_collapse');
       stackContainer.appendChild(collapseBtn);
 
       // Insert stack container before baseWrapper
@@ -3325,7 +3325,7 @@ function stackAdjacentOverlayEmotes(messageElement, allEmotes) {
       const blockAllBtn = document.createElement('span');
       blockAllBtn.className = 'heatsync-stack-block-all';
       blockAllBtn.textContent = '⊘';
-      blockAllBtn.title = 'block all';
+      blockAllBtn.title = t('btn_block_all');
       stackContainer.appendChild(blockAllBtn);
 
       log('[hs-overlay] Stack HTML:', stackContainer.outerHTML.substring(0, 500));
@@ -3609,13 +3609,13 @@ function replaceEmotesWithStacking(element, allEmotes) {
     const stackContainer = document.createElement('span');
     stackContainer.className = 'heatsync-emote-stack';
     stackContainer.dataset.stackCount = String(stack.length);
-    stackContainer.title = 'click to expand';
+    stackContainer.title = t('btn_click_expand');
 
     // Add collapse button (×)
     const collapseBtn = document.createElement('span');
     collapseBtn.className = 'heatsync-stack-collapse';
     collapseBtn.textContent = '×';
-    collapseBtn.title = 'collapse';
+    collapseBtn.title = t('btn_collapse');
     stackContainer.appendChild(collapseBtn);
 
     // Add emotes and emojis
@@ -3814,9 +3814,9 @@ function setupEmoteClickHandlers() {
           blockedEmotes.delete(hash);
           updateEmoteState(hash, emoteName, 'neutral');
           log(' ✅ Unblocked:', emoteName);
-          showToast(`Unblocked ${emoteName}`, 'success');
+          showToast(t('content_toast_unblocked', [emoteName]), 'success');
         } else {
-          showToast(`Failed to unblock: ${result?.error || 'Unknown error'}`, 'error');
+          showToast(t('content_toast_failed_unblock', [String(result?.error || 'Unknown error')]), 'error');
         }
       } finally {
         pendingOperations.delete(operationKey);
@@ -3870,7 +3870,7 @@ function setupEmoteClickHandlers() {
           updateEmoteState(hash, emoteName, isGlobalEmote ? 'global' : 'neutral');
           log(' ✅ Unblocked:', emoteName);
         } else {
-          showToast(`Failed to unblock: ${result?.error || 'Unknown error'}`, 'error');
+          showToast(t('content_toast_failed_unblock', [String(result?.error || 'Unknown error')]), 'error');
         }
       } finally {
         pendingOperations.delete(operationKey);
@@ -3903,7 +3903,7 @@ function setupEmoteClickHandlers() {
 
         if (result?.success) {
           // Don't clear pendingRemovals here — wait for inventory_update to confirm server-side deletion
-          showToast(`Removed ${emoteName} from your set`, 'success');
+          showToast(t('content_toast_removed', [emoteName]), 'success');
           // Clear any pending broadcasts for this emote
           for (const key of pendingEmoteBroadcasts.keys()) {
             if (key.endsWith(`:${emoteName}`)) {
@@ -3919,7 +3919,7 @@ function setupEmoteClickHandlers() {
           emoteGeneration++
           _tabEmoteMapDirty = true
           updateEmoteState(hash, emoteName, 'added');
-          showToast(`Failed to remove: ${result?.error || 'Unknown error'}`, 'error');
+          showToast(t('content_toast_failed_remove', [emoteName, String(result?.error || 'Unknown error')]), 'error');
         }
       } catch (err) {
         wrapper.style.opacity = '';
@@ -3931,7 +3931,7 @@ function setupEmoteClickHandlers() {
         emoteGeneration++
         _tabEmoteMapDirty = true
         updateEmoteState(hash, emoteName, 'added');
-        showToast(`Failed to remove: ${err.message}`, 'error');
+        showToast(t('content_toast_failed_remove', [emoteName, String(err.message)]), 'error');
       } finally {
         pendingOperations.delete(operationKey);
       }
@@ -3947,19 +3947,19 @@ function setupEmoteClickHandlers() {
         const result = await safeSendMessage({ type: 'block_emote', hash });
         if (result?.success) {
           log(' 🚫 Blocked:', emoteName);
-          showToast(`Blocked ${emoteName}`, 'info');
+          showToast(t('content_toast_blocked', [emoteName]), 'info');
         } else {
           // Rollback on failure
           blockedEmotes.delete(hash);
           updateEmoteState(hash, emoteName, 'neutral');
-          showToast(`Failed to block: ${result?.error || 'Unknown error'}`, 'error');
+          showToast(t('content_toast_failed_block', [String(result?.error || 'Unknown error')]), 'error');
         }
       } catch (err) {
         if (!extensionContextValid) return; // Don't rollback/show error if context invalidated
         // Rollback on error
         blockedEmotes.delete(hash);
         updateEmoteState(hash, emoteName, 'neutral');
-        showToast(`Failed to block: ${err.message}`, 'error');
+        showToast(t('content_toast_failed_block', [String(err.message)]), 'error');
       } finally {
         pendingOperations.delete(operationKey);
       }
@@ -4391,7 +4391,7 @@ function updateEmoteState(hash, emoteName, state) {
     if (!profile) {
       const msg = document.createElement('div')
       msg.className = 'hs-pc-loading'
-      msg.textContent = 'user not found'
+      msg.textContent = t('common_user_not_found')
       frag.appendChild(msg)
       return frag
     }
@@ -4449,18 +4449,18 @@ function updateEmoteState(hash, emoteName, state) {
     if (broadcasterType === 'partner') {
       const pSpan = document.createElement('span')
       pSpan.className = 'hs-pc-role partner'
-      pSpan.textContent = 'partner'
+      pSpan.textContent = t('content_card_partner')
       row1.appendChild(pSpan)
     } else if (broadcasterType === 'affiliate') {
       const aSpan = document.createElement('span')
       aSpan.className = 'hs-pc-role affiliate'
-      aSpan.textContent = 'affiliate'
+      aSpan.textContent = t('content_card_affiliate')
       row1.appendChild(aSpan)
     }
     if (profile.twitch_verified) {
       const vSpan = document.createElement('span')
       vSpan.className = 'hs-pc-verified'
-      vSpan.title = 'Twitch Verified'
+      vSpan.title = t('content_card_twitch_verified')
       const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
       svg.setAttribute('viewBox', '0 0 16 16')
       svg.setAttribute('fill', 'none')
@@ -4478,7 +4478,7 @@ function updateEmoteState(hash, emoteName, state) {
     if (profile.kick_verified) {
       const vSpan = document.createElement('span')
       vSpan.className = 'hs-pc-verified'
-      vSpan.title = 'Kick Verified'
+      vSpan.title = t('content_card_kick_verified')
       const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
       svg.setAttribute('viewBox', '0 0 16 16')
       svg.setAttribute('fill', 'none')
@@ -4503,14 +4503,14 @@ function updateEmoteState(hash, emoteName, state) {
     if (profile.twitch_is_live) {
       const liveSpan = document.createElement('span')
       liveSpan.className = 'hs-pc-live'
-      liveSpan.textContent = '\uD83D\uDD34 LIVE' + (profile.twitch_viewer_count > 0 ? ` ${formatNum(profile.twitch_viewer_count)}` : '')
+      liveSpan.textContent = t('content_card_live', [String(profile.twitch_viewer_count > 0 ? formatNum(profile.twitch_viewer_count) : '')])
       if (profile.twitch_game) liveSpan.title = profile.twitch_game
       row1.appendChild(liveSpan)
     }
     if (profile.kick_is_live) {
       const liveSpan = document.createElement('span')
       liveSpan.className = 'hs-pc-live hs-pc-live-kick'
-      liveSpan.textContent = '\uD83D\uDD34 LIVE' + (profile.kick_viewer_count > 0 ? ` ${formatNum(profile.kick_viewer_count)}` : '')
+      liveSpan.textContent = t('content_card_live', [String(profile.kick_viewer_count > 0 ? formatNum(profile.kick_viewer_count) : '')])
       if (profile.kick_category) liveSpan.title = profile.kick_category
       row1.appendChild(liveSpan)
     }
@@ -4522,21 +4522,21 @@ function updateEmoteState(hash, emoteName, state) {
       const since = rel.profileFollowsViewerOnTwitchSince || rel.followsYouSince
       const fySpan = document.createElement('span')
       fySpan.className = 'hs-pc-follows-you'
-      fySpan.textContent = 'follows you' + formatRelTime(since)
+      fySpan.textContent = t('content_card_follows_you') + formatRelTime(since)
       row1.appendChild(fySpan)
     }
     if (rel.profileSubbedToViewerOnTwitch || rel.subscribesToYou) {
       const since = rel.profileTwitchSubSince || rel.subscribesToYouSince
       const subSpan = document.createElement('span')
       subSpan.className = 'hs-pc-subs-you'
-      subSpan.textContent = 'subs to you' + formatRelTime(since)
+      subSpan.textContent = t('content_card_subs_to_you') + formatRelTime(since)
       row1.appendChild(subSpan)
     }
     if (rel.isFollowing || rel.followsOnTwitch) {
       const since = rel.followsOnTwitchSince || rel.followedAt
       const fgSpan = document.createElement('span')
       fgSpan.className = 'hs-pc-following'
-      fgSpan.textContent = 'you follow' + formatRelTime(since)
+      fgSpan.textContent = t('content_card_you_follow') + formatRelTime(since)
       row1.appendChild(fgSpan)
     }
     if (rel.subscribedOnTwitch || rel.isSubscribed) {
@@ -4544,7 +4544,7 @@ function updateEmoteState(hash, emoteName, state) {
       const tier = rel.twitchSubTier || rel.subTier
       const subSpan = document.createElement('span')
       subSpan.className = 'hs-pc-subbed'
-      subSpan.textContent = 'you sub' + (tier && tier > 1 ? ` T${tier}` : '') + formatRelTime(since)
+      subSpan.textContent = (tier && tier > 1 ? t('content_card_you_sub_tier', [String(tier)]) : t('content_card_you_sub')) + formatRelTime(since)
       row1.appendChild(subSpan)
     }
     // Sub tenure from chat badge data (how long they've been subbed to this channel)
@@ -4553,7 +4553,7 @@ function updateEmoteState(hash, emoteName, state) {
       const channelLogin = getChannelLogin()
       const stSpan = document.createElement('span')
       stSpan.className = 'hs-pc-sub-tenure'
-      stSpan.textContent = 'subbed' + (channelLogin ? ' ' + channelLogin : '') + ' ' + formatSubTenure(subMonths)
+      stSpan.textContent = t('content_card_subbed', [channelLogin || '', formatSubTenure(subMonths)])
       row1.appendChild(stSpan)
     }
     info.appendChild(row1)
@@ -4604,7 +4604,7 @@ function updateEmoteState(hash, emoteName, state) {
       if (followers > 0) {
         const fSpan = document.createElement('span')
         fSpan.className = 'hs-pc-followers'
-        fSpan.textContent = `${formatNum(followers)} followers`
+        fSpan.textContent = t('content_card_followers', [String(formatNum(followers))])
         row2.appendChild(fSpan)
       }
       info.appendChild(row2)
@@ -4618,7 +4618,7 @@ function updateEmoteState(hash, emoteName, state) {
     link.href = `https://heatsync.org/${platform}/${encodeURIComponent(username)}/posts`
     link.target = '_blank'
     link.rel = 'noopener'
-    link.textContent = 'view on heatsync'
+    link.textContent = t('content_view_on_heatsync')
     row3.appendChild(link)
 
     const actions = [
@@ -4757,7 +4757,7 @@ function updateEmoteState(hash, emoteName, state) {
       cardEl.textContent = ''
       const loadingDiv = document.createElement('div')
       loadingDiv.className = 'hs-pc-loading'
-      loadingDiv.textContent = 'loading...'
+      loadingDiv.textContent = t('common_loading')
       cardEl.appendChild(loadingDiv)
       cardEl.style.display = 'flex'
       positionCard(cardEl, e)
@@ -4780,17 +4780,17 @@ function updateEmoteState(hash, emoteName, state) {
           const badge = document.createElement('span')
           if (result.followedAt) {
             badge.className = 'hs-pc-followage'
-            badge.textContent = 'following ' + channelLogin + ' ' + formatAge(result.followedAt)
+            badge.textContent = t('content_card_following', [channelLogin, formatAge(result.followedAt)])
           } else if (result.followedAt === null) {
             badge.className = 'hs-pc-followage hs-pc-nofollow'
-            badge.textContent = 'not following ' + channelLogin
+            badge.textContent = t('content_card_not_following', [channelLogin])
           }
           if (badge.textContent) headerLine.appendChild(badge)
           // "followed by {channel}" badge
           if (result.channelFollowedAt) {
             const cfBadge = document.createElement('span')
             cfBadge.className = 'hs-pc-channel-follows'
-            cfBadge.textContent = 'followed by ' + channelLogin
+            cfBadge.textContent = t('content_card_followed_by', [channelLogin])
             headerLine.appendChild(cfBadge)
           }
           // Update following count with live GQL data
@@ -4802,13 +4802,13 @@ function updateEmoteState(hash, emoteName, state) {
               followingEl.className = 'hs-pc-following-count'
               statsLine.appendChild(followingEl)
             }
-            followingEl.textContent = 'following ' + formatNum(result.followingCount)
+            followingEl.textContent = t('content_card_following_count', [String(formatNum(result.followingCount))])
           }
           // Update followers with live data
           if (statsLine && result.followerCount != null) {
             const followersEl = statsLine.querySelector('.hs-pc-followers')
             if (followersEl) {
-              followersEl.textContent = formatNum(result.followerCount) + ' followers'
+              followersEl.textContent = t('content_card_followers', [String(formatNum(result.followerCount))])
             }
           }
         })
@@ -4825,14 +4825,14 @@ function updateEmoteState(hash, emoteName, state) {
             // Update twitch live span
             const twitchLive = cardEl.querySelector('.hs-pc-live:not(.hs-pc-live-kick)')
             if (twitchLive && fresh.twitch_is_live) {
-              twitchLive.textContent = '\uD83D\uDD34 LIVE' + (fresh.twitch_viewer_count > 0 ? ` ${formatNum(fresh.twitch_viewer_count)}` : '')
+              twitchLive.textContent = t('content_card_live', [String(fresh.twitch_viewer_count > 0 ? formatNum(fresh.twitch_viewer_count) : '')])
             } else if (twitchLive && !fresh.twitch_is_live) {
               twitchLive.remove()
             }
             // Update kick live span
             const kickLive = cardEl.querySelector('.hs-pc-live-kick')
             if (kickLive && fresh.kick_is_live) {
-              kickLive.textContent = '\uD83D\uDD34 LIVE' + (fresh.kick_viewer_count > 0 ? ` ${formatNum(fresh.kick_viewer_count)}` : '')
+              kickLive.textContent = t('content_card_live', [String(fresh.kick_viewer_count > 0 ? formatNum(fresh.kick_viewer_count) : '')])
             } else if (kickLive && !fresh.kick_is_live) {
               kickLive.remove()
             }
@@ -5328,12 +5328,12 @@ function setupMessageContextMenu() {
       mutedUsers.delete(username);
       safeSendMessage({ type: 'unmute_user', username }).catch(() => {});
       unmuteUser(username);
-      showToast(`unmuted ${username}`);
+      showToast(t('content_toast_unmuted', [username]));
     } else {
       mutedUsers.add(username);
       safeSendMessage({ type: 'mute_user', username, expiresAt: Date.now() + 86400000 }).catch(() => {});
       muteUser(username);
-      showToast(`muted ${username} for 24h`);
+      showToast(t('content_toast_muted_24h', [username]));
     }
   }, { signal });
 }

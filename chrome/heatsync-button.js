@@ -1336,79 +1336,79 @@
     grid.innerHTML = `
       <div class="heatsync-settings">
         <div class="heatsync-settings-section">
-          <div class="heatsync-settings-section-title">tab completion</div>
+          <div class="heatsync-settings-section-title">${t('btn_settings_tab_completion')}</div>
 
           <div class="heatsync-setting-row">
             <div>
-              <div class="heatsync-setting-label">wysiwyg emotes</div>
+              <div class="heatsync-setting-label">${t('btn_settings_wysiwyg')}</div>
             </div>
             <div class="heatsync-toggle ${settings.emoteWysiwyg ? 'active' : ''}" data-setting="emoteWysiwyg"></div>
           </div>
 
           <div class="heatsync-setting-row">
             <div>
-              <div class="heatsync-setting-label">space after emote</div>
+              <div class="heatsync-setting-label">${t('btn_settings_space_after')}</div>
             </div>
             <div class="heatsync-toggle ${settings.emoteSpaceAfter ? 'active' : ''}" data-setting="emoteSpaceAfter"></div>
           </div>
 
           <div class="heatsync-setting-row">
             <div>
-              <div class="heatsync-setting-label">placeholder mode</div>
-              <div class="heatsync-setting-desc">show colored boxes</div>
+              <div class="heatsync-setting-label">${t('btn_settings_placeholder_mode')}</div>
+              <div class="heatsync-setting-desc">${t('btn_settings_placeholder_desc')}</div>
             </div>
             <div class="heatsync-toggle ${settings.emotePlaceholderMode ? 'active' : ''}" data-setting="emotePlaceholderMode"></div>
           </div>
         </div>
 
         <div class="heatsync-settings-section">
-          <div class="heatsync-settings-section-title">chat ui</div>
+          <div class="heatsync-settings-section-title">${t('btn_settings_chat_ui')}</div>
 
           <div class="heatsync-setting-row">
             <div>
-              <div class="heatsync-setting-label">hide header <span style="color:#808080;font-size:11px">(always on in popout)</span></div>
+              <div class="heatsync-setting-label">${t('btn_settings_hide_header')} <span style="color:#808080;font-size:11px">${t('btn_settings_always_popout')}</span></div>
             </div>
             <div class="heatsync-toggle ${settings.hideChatHeader ? 'active' : ''}" data-setting="hideChatHeader"></div>
           </div>
 
           <div class="heatsync-setting-row">
             <div>
-              <div class="heatsync-setting-label">compact input</div>
+              <div class="heatsync-setting-label">${t('btn_settings_compact_input')}</div>
             </div>
             <div class="heatsync-toggle ${settings.compactChatInput ? 'active' : ''}" data-setting="compactChatInput"></div>
           </div>
 
           <div class="heatsync-setting-row">
             <div>
-              <div class="heatsync-setting-label">highlight mentions</div>
+              <div class="heatsync-setting-label">${t('btn_settings_highlight_mentions')}</div>
             </div>
             <div class="heatsync-toggle ${settings.highlightMentions ? 'active' : ''}" data-setting="highlightMentions"></div>
           </div>
 
           <div class="heatsync-setting-row">
             <div>
-              <div class="heatsync-setting-label">platform badges</div>
-              <div class="heatsync-setting-desc">[T] [K] [YT] on messages</div>
+              <div class="heatsync-setting-label">${t('btn_settings_platform_badges')}</div>
+              <div class="heatsync-setting-desc">${t('btn_settings_platform_badges_desc')}</div>
             </div>
             <div class="heatsync-toggle ${settings.showPlatformBadges ? 'active' : ''}" data-setting="showPlatformBadges"></div>
           </div>
 
           <div class="heatsync-setting-row">
             <div>
-              <div class="heatsync-setting-label">cosmetics</div>
-              <div class="heatsync-setting-desc">7TV/BTTV/FFZ paints + badges</div>
+              <div class="heatsync-setting-label">${t('btn_settings_cosmetics')}</div>
+              <div class="heatsync-setting-desc">${t('btn_settings_cosmetics_desc')}</div>
             </div>
             <div class="heatsync-toggle ${settings.showCosmetics !== false ? 'active' : ''}" data-setting="showCosmetics"></div>
           </div>
         </div>
 
         <div class="heatsync-settings-section">
-          <div class="heatsync-settings-section-title">input</div>
+          <div class="heatsync-settings-section-title">${t('btn_settings_input')}</div>
 
           <div class="heatsync-setting-row">
             <div>
-              <div class="heatsync-setting-label">vi mode</div>
-              <div class="heatsync-setting-desc">vim keybindings for chat input</div>
+              <div class="heatsync-setting-label">${t('btn_settings_vi_mode')}</div>
+              <div class="heatsync-setting-desc">${t('btn_settings_vi_mode_desc')}</div>
             </div>
             <div class="heatsync-toggle ${settings.viMode ? 'active' : ''}" data-setting="viMode"></div>
           </div>
@@ -1543,43 +1543,43 @@
       ${!isLoggedIn ? `
       <div class="heatsync-auth-banner">
         <span>🔑</span>
-        <span><a href="https://heatsync.org" target="_blank">log in</a> to save emotes to your set</span>
+        <span><a href="https://heatsync.org" target="_blank">${t('btn_auth_login')}</a> ${t('btn_auth_save_emotes')}</span>
       </div>
       ` : ''}
       <div class="heatsync-panel-content">
         <div class="heatsync-tabs">
           <button class="heatsync-tab active" data-tab="channel">
-            channel<span class="heatsync-tab-count" id="count-channel">...</span>
+            ${t('btn_tab_channel')}<span class="heatsync-tab-count" id="count-channel">...</span>
           </button>
           <button class="heatsync-tab" data-tab="global">
-            global<span class="heatsync-tab-count" id="count-global">...</span>
+            ${t('btn_tab_global')}<span class="heatsync-tab-count" id="count-global">...</span>
           </button>
           <button class="heatsync-tab" data-tab="mine">
-            mine<span class="heatsync-tab-count" id="count-mine">...</span>
+            ${t('btn_tab_mine')}<span class="heatsync-tab-count" id="count-mine">...</span>
           </button>
           <button class="heatsync-tab" data-tab="emoji">
-            emoji<span class="heatsync-tab-count" id="count-emoji">...</span>
+            ${t('btn_tab_emoji')}<span class="heatsync-tab-count" id="count-emoji">...</span>
           </button>
         </div>
         <div class="heatsync-emote-grid" id="heatsync-emote-grid">
-          <div class="heatsync-empty">loading...</div>
+          <div class="heatsync-empty">${t('common_loading')}</div>
         </div>
       </div>
       <div class="heatsync-panel-bottom">
         <div class="heatsync-search">
-          <input type="text" id="heatsync-search" placeholder="search emotes..." autocomplete="off">
+          <input type="text" id="heatsync-search" placeholder="${t('btn_search_placeholder')}" autocomplete="off">
         </div>
         <div class="heatsync-panel-footer">
           <div class="heatsync-size-buttons">
-            <button class="heatsync-size-btn" data-size="1x">1x</button>
-            <button class="heatsync-size-btn" data-size="2x">2x</button>
-            <button class="heatsync-size-btn active" data-size="4x">4x</button>
+            <button class="heatsync-size-btn" data-size="1x">${t('btn_size_1x')}</button>
+            <button class="heatsync-size-btn" data-size="2x">${t('btn_size_2x')}</button>
+            <button class="heatsync-size-btn active" data-size="4x">${t('btn_size_4x')}</button>
           </div>
           <div style="display:flex;gap:4px;align-items:center;">
-            <button class="heatsync-settings-cog" id="heatsync-rotate-btn" title="rotate tab bar position">
+            <button class="heatsync-settings-cog" id="heatsync-rotate-btn" title="${t('btn_rotate_title')}">
               <svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M7.11 8.53L5.7 7.11C4.8 8.27 4.24 9.61 4.07 11h2.02c.14-.87.49-1.72 1.02-2.47zM6.09 13H4.07c.17 1.39.72 2.73 1.62 3.89l1.41-1.42c-.52-.75-.88-1.6-1.01-2.47zM7.1 18.32c1.16.9 2.51 1.44 3.9 1.61V17.9c-.87-.15-1.71-.49-2.46-1.03L7.1 18.32zM13 4.07V1l-4 4 4 4V6.09c2.84.48 5 2.94 5 5.91s-2.16 5.43-5 5.91v2.02c3.95-.49 7-3.85 7-7.93s-3.05-7.44-7-7.93z"/></svg>
             </button>
-            <button class="heatsync-settings-cog" id="heatsync-settings-btn" title="settings">
+            <button class="heatsync-settings-cog" id="heatsync-settings-btn" title="${t('btn_settings_title')}">
               <svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M19.14 12.94c.04-.31.06-.63.06-.94 0-.31-.02-.63-.06-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.04.31-.06.63-.06.94s.02.63.06.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg>
             </button>
           </div>
@@ -1788,7 +1788,7 @@
           <div class="heatsync-error-icon">⚠️</div>
           <div class="heatsync-error-msg">${escapeHtml(currentError)}</div>
           <button class="heatsync-retry-btn" onclick="window.dispatchEvent(new CustomEvent('heatsync-retry', {detail: '${escapeHtml(currentTab)}'}))">
-            retry
+            ${t('common_retry')}
           </button>
         </div>
       `;
@@ -1796,7 +1796,7 @@
     }
 
     if (currentLoading) {
-      grid.innerHTML = `<div class="heatsync-empty">loading...</div>`;
+      grid.innerHTML = `<div class="heatsync-empty">${t('common_loading')}</div>`;
       return;
     }
 
@@ -1827,9 +1827,9 @@
 
     if (emotes.length === 0) {
       if (currentTab === 'mine' && !isLoggedIn) {
-        grid.innerHTML = `<div class="heatsync-login-msg">log in at <a href="https://heatsync.org" target="_blank">heatsync.org</a> to save emotes</div>`;
+        grid.innerHTML = `<div class="heatsync-login-msg">${t('btn_login_save_emotes')}</div>`;
       } else {
-        grid.innerHTML = `<div class="heatsync-empty">${searchQuery ? 'no matches' : 'no emotes'}</div>`;
+        grid.innerHTML = `<div class="heatsync-empty">${searchQuery ? t('common_no_matches') : t('btn_no_emotes')}</div>`;
       }
       return;
     }
@@ -1838,7 +1838,7 @@
     if (isCached) {
       const countEl = document.getElementById(`count-${currentTab}`);
       if (countEl && !countEl.querySelector('.heatsync-cached-badge')) {
-        countEl.innerHTML += `<span class="heatsync-cached-badge">cached</span>`;
+        countEl.innerHTML += `<span class="heatsync-cached-badge">${t('btn_cached')}</span>`;
       }
     }
 
@@ -2084,7 +2084,7 @@
     } catch (err) {
       if (err.message?.includes('Extension context invalidated')) {
         const toast = document.createElement('div');
-        toast.textContent = 'Extension updated — please refresh the page';
+        toast.textContent = t('common_extension_updated');
         toast.style.cssText = 'position:fixed;top:20px;left:50%;transform:translateX(-50%);background:#f44;color:#fff;padding:8px 16px;border-radius:4px;z-index:99999;font-size:14px;';
         document.body.appendChild(toast);
         setTimeout(() => toast.remove(), 5000);
@@ -2133,18 +2133,18 @@
     if (tab !== 'mine') {
       const blockBtn = document.createElement('button');
       blockBtn.className = 'hs-emote-ctx-item';
-      blockBtn.textContent = isBlocked ? 'unblock emote' : 'block emote';
+      blockBtn.textContent = isBlocked ? t('btn_ctx_unblock') : t('btn_ctx_block');
       blockBtn.addEventListener('click', async () => {
         dismissContextMenu();
         if (isBlocked) {
           try {
             await chrome.runtime.sendMessage({ type: 'unblock_emote', hash });
             _blockedHashSet.delete(hash);
-            showPickerToast('unblocked');
+            showPickerToast(t('btn_toast_unblocked'));
           } catch (err) {
             if (err.message?.includes('Extension context invalidated')) {
               const toast = document.createElement('div');
-              toast.textContent = 'Extension updated — please refresh the page';
+              toast.textContent = t('common_extension_updated');
               toast.style.cssText = 'position:fixed;top:20px;left:50%;transform:translateX(-50%);background:#f44;color:#fff;padding:8px 16px;border-radius:4px;z-index:99999;font-size:14px;';
               document.body.appendChild(toast);
               setTimeout(() => toast.remove(), 5000);
@@ -2154,7 +2154,7 @@
         } else {
           blockEmote(emote);
           _blockedHashSet.add(hash);
-          showPickerToast('blocked');
+          showPickerToast(t('btn_toast_blocked'));
         }
       });
       menu.appendChild(blockBtn);
@@ -2164,12 +2164,12 @@
     if (tab === 'mine' || inInv) {
       const removeBtn = document.createElement('button');
       removeBtn.className = 'hs-emote-ctx-item';
-      removeBtn.textContent = 'remove from inventory';
+      removeBtn.textContent = t('btn_ctx_remove_inventory');
       removeBtn.addEventListener('click', async () => {
         dismissContextMenu();
         try {
           await chrome.runtime.sendMessage({ type: 'remove_from_inventory', emoteHash: hash, emoteName: emote.name });
-          showPickerToast('removed');
+          showPickerToast(t('btn_toast_removed'));
           if (tab === 'mine') {
             inventoryEmotesCache = inventoryEmotesCache.filter(e => e.name !== emote.name);
             rebuildInventoryIndex()
@@ -2179,7 +2179,7 @@
         } catch (err) {
           if (err.message?.includes('Extension context invalidated')) {
             const toast = document.createElement('div');
-            toast.textContent = 'Extension updated — please refresh the page';
+            toast.textContent = t('common_extension_updated');
             toast.style.cssText = 'position:fixed;top:20px;left:50%;transform:translateX(-50%);background:#f44;color:#fff;padding:8px 16px;border-radius:4px;z-index:99999;font-size:14px;';
             document.body.appendChild(toast);
             setTimeout(() => toast.remove(), 5000);
@@ -2191,11 +2191,11 @@
     } else if (cachedAuthToken) {
       const addBtn = document.createElement('button');
       addBtn.className = 'hs-emote-ctx-item';
-      addBtn.textContent = 'add to inventory';
+      addBtn.textContent = t('btn_ctx_add_inventory');
       addBtn.addEventListener('click', () => {
         dismissContextMenu();
         addEmoteToInventorySilent(emote);
-        showPickerToast('added');
+        showPickerToast(t('btn_toast_added'));
       });
       menu.appendChild(addBtn);
     }
@@ -2208,22 +2208,22 @@
     // Copy name
     const copyName = document.createElement('button');
     copyName.className = 'hs-emote-ctx-item';
-    copyName.textContent = 'copy emote name';
+    copyName.textContent = t('btn_ctx_copy_name');
     copyName.addEventListener('click', () => {
       dismissContextMenu();
       navigator.clipboard.writeText(emote.name).catch(() => {});
-      showPickerToast('copied!');
+      showPickerToast(t('btn_toast_copied'));
     });
     menu.appendChild(copyName);
 
     // Copy URL
     const copyUrl = document.createElement('button');
     copyUrl.className = 'hs-emote-ctx-item';
-    copyUrl.textContent = 'copy emote url';
+    copyUrl.textContent = t('btn_ctx_copy_url');
     copyUrl.addEventListener('click', () => {
       dismissContextMenu();
       navigator.clipboard.writeText(emote.url || emote.pickerUrl || '').catch(() => {});
-      showPickerToast('copied!');
+      showPickerToast(t('btn_toast_copied'));
     });
     menu.appendChild(copyUrl);
 
@@ -2485,7 +2485,7 @@
     const importBtn = document.getElementById('heatsync-import-channel');
     if (importBtn) {
       importBtn.disabled = true;
-      importBtn.innerHTML = `<span class="heatsync-status loading">loading emotes</span>`;
+      importBtn.innerHTML = `<span class="heatsync-status loading">${t('btn_loading_emotes')}</span>`;
     }
 
     try {
@@ -2498,11 +2498,11 @@
       channelEmotesCache = emotes;
 
       if (emotes.length === 0) {
-        previewEl.innerHTML = '<div class="heatsync-status">no third-party emotes found</div>';
+        previewEl.innerHTML = `<div class="heatsync-status">${t('btn_no_third_party')}</div>`;
         previewEl.style.display = 'block';
         if (importBtn) {
           importBtn.disabled = true;
-          importBtn.textContent = 'no emotes to import';
+          importBtn.textContent = t('btn_no_emotes_import');
         }
         return;
       }
@@ -2531,13 +2531,13 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M12 5v14M5 12h14"/>
           </svg>
-          import ${emotes.length} emotes
+          ${t('btn_import_count', [String(emotes.length)])}
           <span class="heatsync-emote-count">${providerBadges}</span>
         `;
       }
 
     } catch (err) {
-      previewEl.innerHTML = '<div class="heatsync-status">failed to load emotes</div>';
+      previewEl.innerHTML = `<div class="heatsync-status">${t('btn_failed_load')}</div>`;
       previewEl.style.display = 'block';
       if (importBtn) {
         importBtn.disabled = false;
@@ -2545,7 +2545,7 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M12 5v14M5 12h14"/>
           </svg>
-          retry loading
+          ${t('btn_retry_loading')}
         `;
       }
     }

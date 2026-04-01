@@ -405,18 +405,18 @@
     // Static hardcoded buttons — all in one wrapping flow, no user input
     container.innerHTML = `
       <div class="hs-mc-tabs-scroll">
-        <button class="hs-mc-tab active" data-tab="feed">feed</button>
-        <button class="hs-mc-tab" data-tab="whispers">whispers</button>
-        <button class="hs-mc-tab" data-tab="mentions">mentions</button>
-        <button class="hs-mc-tab" data-tab="activity">activity</button>
-        <button class="hs-mc-tab" data-tab="live">live</button>
+        <button class="hs-mc-tab active" data-tab="feed">${t('mc_tab_feed')}</button>
+        <button class="hs-mc-tab" data-tab="whispers">${t('mc_tab_whispers')}</button>
+        <button class="hs-mc-tab" data-tab="mentions">${t('mc_tab_mentions')}</button>
+        <button class="hs-mc-tab" data-tab="activity">${t('mc_tab_activity')}</button>
+        <button class="hs-mc-tab" data-tab="live">${t('mc_tab_live')}</button>
         <button class="hs-mc-tab" data-tab="add">+</button>
       </div>
       <div class="hs-mc-util-row">
-        <button class="hs-mc-tab hs-mc-util-btn hs-mc-rotate" data-tab="rotate" title="rotate tabs (T)">T</button>
-        <button class="hs-mc-tab hs-mc-util-btn hs-mc-font-btn" data-font-dir="-1" title="smaller text">A-</button>
-        <button class="hs-mc-tab hs-mc-util-btn hs-mc-font-btn" data-font-dir="1" title="larger text">A+</button>
-        <button class="hs-mc-tab hs-mc-util-btn" data-tab="settings" title="settings">\u2699</button>
+        <button class="hs-mc-tab hs-mc-util-btn hs-mc-rotate" data-tab="rotate" title="${t('mc_btn_rotate_tabs')}">T</button>
+        <button class="hs-mc-tab hs-mc-util-btn hs-mc-font-btn" data-font-dir="-1" title="${t('mc_btn_smaller_text')}">A-</button>
+        <button class="hs-mc-tab hs-mc-util-btn hs-mc-font-btn" data-font-dir="1" title="${t('mc_btn_larger_text')}">A+</button>
+        <button class="hs-mc-tab hs-mc-util-btn" data-tab="settings" title="${t('mc_btn_settings')}">\u2699</button>
       </div>
     `;
 
@@ -548,10 +548,10 @@
   // Modular registry: each type can be toggled independently
   // Colors match website conventions
   const INLINE_NOTIF_TYPES = {
-    op:      { label: '[OP]',  color: '#ff0000', borderColor: '#ff0000', defaultOn: true,  desc: 'original posts' },
-    mop:     { label: '[OP]',  color: '#ff00ff', borderColor: '#ff00ff', defaultOn: true,  desc: 'OP replies in own thread' },
-    re:      { label: '[RE]',  color: '#00ffff', borderColor: '#00ffff', defaultOn: false, desc: 'replies' },
-    dm:      { label: '[DM]',  color: '#ffff00', borderColor: '#ffff00', defaultOn: false, desc: 'whispers & DMs' },
+    op:      { label: '[OP]',  color: '#ff0000', borderColor: '#ff0000', defaultOn: true,  desc: t('mc_settings_notif_op') },
+    mop:     { label: '[OP]',  color: '#ff00ff', borderColor: '#ff00ff', defaultOn: true,  desc: t('mc_settings_notif_mop') },
+    re:      { label: '[RE]',  color: '#00ffff', borderColor: '#00ffff', defaultOn: false, desc: t('mc_settings_notif_re') },
+    dm:      { label: '[DM]',  color: '#ffff00', borderColor: '#ffff00', defaultOn: false, desc: t('mc_settings_notif_dm') },
   }
   // Runtime state: { op: true, re: false, dm: false, mention: true }
   const inlineNotifs = {}
@@ -559,13 +559,13 @@
 
   // Hermes event toggles (Twitch-native events: raids, hype trains, etc.)
   const HERMES_EVENT_TYPES = {
-    raid:   { color: '#9146ff', defaultOn: true,  desc: 'raids' },
-    hype:   { color: '#ff8700', defaultOn: false, desc: 'hype trains' },
-    sub:    { color: '#00ff7f', defaultOn: true,  desc: 'gift subs' },
-    redeem: { color: '#00bfff', defaultOn: true,  desc: 'channel point redeems' },
-    pred:   { color: '#387aff', defaultOn: true,  desc: 'prediction banner' },
-    poll:   { color: '#00c853', defaultOn: true,  desc: 'poll banner' },
-    pin:    { color: '#bf94ff', defaultOn: true,  desc: 'pinned messages' },
+    raid:   { color: '#9146ff', defaultOn: true,  desc: t('mc_settings_raids') },
+    hype:   { color: '#ff8700', defaultOn: false, desc: t('mc_settings_hype_trains') },
+    sub:    { color: '#00ff7f', defaultOn: true,  desc: t('mc_settings_gift_subs') },
+    redeem: { color: '#00bfff', defaultOn: true,  desc: t('mc_settings_redeems') },
+    pred:   { color: '#387aff', defaultOn: true,  desc: t('mc_settings_pred_banner') },
+    poll:   { color: '#00c853', defaultOn: true,  desc: t('mc_settings_poll_banner') },
+    pin:    { color: '#bf94ff', defaultOn: true,  desc: t('mc_settings_pinned') },
   }
   const hermesToggles = {}
   for (const [k, v] of Object.entries(HERMES_EVENT_TYPES)) hermesToggles[k] = v.defaultOn
@@ -614,7 +614,7 @@
     // Static hardcoded layout — no user input, safe innerHTML
     overlay.innerHTML = `
       <div id="hs-mc-messages">
-        <div class="hs-mc-empty">no messages yet</div>
+        <div class="hs-mc-empty">${t('mc_no_messages')}</div>
       </div>
       <button id="hs-mc-new-msgs" style="display:none"></button>
     `;
@@ -650,7 +650,7 @@
           newBtn.style.display = 'none';
         } else {
           isScrolledUp = true;
-          newBtn.innerHTML = newMessageCount > 0 ? `<span class="hs-arrow-down">▼</span> ${newMessageCount} new` : '<span class="hs-arrow-down">▼</span> resume';
+          newBtn.innerHTML = newMessageCount > 0 ? `<span class="hs-arrow-down">▼</span> ${t('mc_new_messages', [String(newMessageCount)])}` : `<span class="hs-arrow-down">▼</span> ${t('mc_resume')}`;
           newBtn.style.display = 'flex';
         }
       });
@@ -664,7 +664,7 @@
         } else if (e.deltaY < 0) {
           // Scrolling up with wheel = user intent
           isScrolledUp = true
-          newBtn.innerHTML = newMessageCount > 0 ? `<span class="hs-arrow-down">\u25BC</span> ${newMessageCount} new` : '<span class="hs-arrow-down">\u25BC</span> resume'
+          newBtn.innerHTML = newMessageCount > 0 ? `<span class="hs-arrow-down">\u25BC</span> ${t('mc_new_messages', [String(newMessageCount)])}` : `<span class="hs-arrow-down">\u25BC</span> ${t('mc_resume')}`
           newBtn.style.display = 'flex'
         }
         // Debounced scroll position check (covers both static and chat tabs)
@@ -1264,9 +1264,9 @@
     msgsEl.innerHTML = `
       <div class="hs-mc-settings-panel">
         <div class="hs-mc-settings-group">
-          <div class="hs-mc-settings-group-title">display</div>
+          <div class="hs-mc-settings-group-title">${t('mc_settings_display')}</div>
           <div class="hs-mc-setting-row">
-            <span class="hs-mc-setting-label" data-tip="${settingTips.emoteSize}">emote size</span>
+            <span class="hs-mc-setting-label" data-tip="${settingTips.emoteSize}">${t('mc_settings_emote_size')}</span>
             <div class="hs-mc-size-btns">
               <button class="hs-mc-size-btn ${emoteSize === 1 ? 'active' : ''}" data-size="1">1x</button>
               <button class="hs-mc-size-btn ${emoteSize === 2 ? 'active' : ''}" data-size="2">2x</button>
@@ -1274,36 +1274,36 @@
             </div>
           </div>
           <div class="hs-mc-setting-row">
-            <span class="hs-mc-setting-label" data-tip="${settingTips.wysiwyg}">input preview</span>
+            <span class="hs-mc-setting-label" data-tip="${settingTips.wysiwyg}">${t('mc_settings_input_preview')}</span>
             <button class="hs-mc-toggle-pill ${wysiwygEnabled ? 'active' : ''}" data-setting="wysiwyg"><span class="hs-mc-toggle-knob"></span></button>
           </div>
           <div class="hs-mc-setting-row">
-            <span class="hs-mc-setting-label" data-tip="${settingTips.links}">clickable links</span>
+            <span class="hs-mc-setting-label" data-tip="${settingTips.links}">${t('mc_settings_clickable_links')}</span>
             <button class="hs-mc-toggle-pill ${linksEnabled ? 'active' : ''}" data-setting="links"><span class="hs-mc-toggle-knob"></span></button>
           </div>
           <div class="hs-mc-setting-row">
-            <span class="hs-mc-setting-label" data-tip="${settingTips.vi}">vi mode</span>
+            <span class="hs-mc-setting-label" data-tip="${settingTips.vi}">${t('mc_settings_vi_mode')}</span>
             <button class="hs-mc-toggle-pill ${viModeEnabled ? 'active' : ''}" data-setting="vi"><span class="hs-mc-toggle-knob"></span></button>
           </div>
           <div class="hs-mc-setting-row">
-            <span class="hs-mc-setting-label" data-tip="${settingTips.zebra}">zebra striping</span>
+            <span class="hs-mc-setting-label" data-tip="${settingTips.zebra}">${t('mc_settings_zebra')}</span>
             <button class="hs-mc-toggle-pill ${zebraEnabled ? 'active' : ''}" data-setting="zebra"><span class="hs-mc-toggle-knob"></span></button>
           </div>
           <div class="hs-mc-setting-row">
-            <span class="hs-mc-setting-label" data-tip="${settingTips.autohide}">auto-hide input</span>
+            <span class="hs-mc-setting-label" data-tip="${settingTips.autohide}">${t('mc_settings_auto_hide')}</span>
             <button class="hs-mc-toggle-pill ${autoHideInput ? 'active' : ''}" data-setting="autohide"><span class="hs-mc-toggle-knob"></span></button>
           </div>
           <div class="hs-mc-setting-row">
-            <span class="hs-mc-setting-label" data-tip="${settingTips.timestamps}">timestamps</span>
+            <span class="hs-mc-setting-label" data-tip="${settingTips.timestamps}">${t('mc_settings_timestamps')}</span>
             <button class="hs-mc-toggle-pill ${timestampsEnabled ? 'active' : ''}" data-setting="timestamps"><span class="hs-mc-toggle-knob"></span></button>
           </div>
           <div class="hs-mc-setting-row">
-            <span class="hs-mc-setting-label" data-tip="${settingTips.avatars}">avatars</span>
+            <span class="hs-mc-setting-label" data-tip="${settingTips.avatars}">${t('mc_settings_avatars')}</span>
             <button class="hs-mc-toggle-pill ${avatarsEnabled ? 'active' : ''}" data-setting="avatars"><span class="hs-mc-toggle-knob"></span></button>
           </div>
         </div>
         <div class="hs-mc-settings-group">
-          <div class="hs-mc-settings-group-title">inline notifications</div>
+          <div class="hs-mc-settings-group-title">${t('mc_settings_inline_notifs')}</div>
           ${Object.entries(INLINE_NOTIF_TYPES).map(([key, def]) => `
           <div class="hs-mc-setting-row">
             <span class="hs-mc-setting-label" data-tip="${notifTips[key] || def.desc}"><span style="color:${def.color}">${def.label}</span> ${def.desc}</span>
@@ -1311,7 +1311,7 @@
           </div>`).join('')}
         </div>
         <div class="hs-mc-settings-group">
-          <div class="hs-mc-settings-group-title">twitch events</div>
+          <div class="hs-mc-settings-group-title">${t('mc_settings_twitch_events')}</div>
           ${Object.entries(HERMES_EVENT_TYPES).map(([key, def]) => `
           <div class="hs-mc-setting-row">
             <span class="hs-mc-setting-label" data-tip="${def.desc}"><span style="color:${def.color}">\u25C6</span> ${def.desc}</span>
@@ -1319,20 +1319,20 @@
           </div>`).join('')}
         </div>
         <div class="hs-mc-settings-group">
-          <div class="hs-mc-settings-group-title">features</div>
+          <div class="hs-mc-settings-group-title">${t('mc_settings_features')}</div>
           <div class="hs-mc-setting-row">
-            <span class="hs-mc-setting-label" data-tip="Automatically clicks the bonus channel points chest on Twitch when it appears. Free points, zero effort.">auto-claim channel points</span>
+            <span class="hs-mc-setting-label" data-tip="Automatically clicks the bonus channel points chest on Twitch when it appears. Free points, zero effort.">${t('mc_settings_auto_claim')}</span>
             <button class="hs-mc-toggle-pill ${autoClaimPoints ? 'active' : ''}" data-setting="autoclaim"><span class="hs-mc-toggle-knob"></span></button>
           </div>
         </div>
         <div class="hs-mc-settings-group">
-          <div class="hs-mc-settings-group-title">muted users</div>
+          <div class="hs-mc-settings-group-title">${t('mc_settings_muted_users')}</div>
           ${mutedUsers.size === 0
-            ? `<div class="hs-mc-setting-row" style="color:#808080;font-size:11px">no muted users</div>`
+            ? `<div class="hs-mc-setting-row" style="color:#808080;font-size:11px">${t('mc_settings_no_muted')}</div>`
             : [...mutedUsers].sort().map(u => `
           <div class="hs-mc-setting-row">
             <span class="hs-mc-setting-label" style="font-size:11px">${u}</span>
-            <button class="hs-mc-unmute-btn" data-username="${u}" style="background:none;border:1px solid #808080;color:#808080;font-size:11px;cursor:pointer;padding:1px 6px;line-height:1.4" title="unmute">&#x2715;</button>
+            <button class="hs-mc-unmute-btn" data-username="${u}" style="background:none;border:1px solid #808080;color:#808080;font-size:11px;cursor:pointer;padding:1px 6px;line-height:1.4" title="${t('mc_settings_unmute')}">&#x2715;</button>
           </div>`).join('')
           }
         </div>
@@ -5644,7 +5644,7 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
       msgsEl.textContent = ''
       const empty = document.createElement('div')
       empty.className = 'hs-mc-empty'
-      empty.textContent = 'no messages yet'
+      empty.textContent = t('mc_no_messages')
       msgsEl.appendChild(empty)
       return
     }
@@ -5687,12 +5687,12 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
     wrapper.style.cssText = 'display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:12px;color:#a8a8a8;font-size:13px;padding:20px;box-sizing:border-box;'
 
     const title = document.createElement('div')
-    title.textContent = 'add channel'
+    title.textContent = t('mc_add_channel')
     title.style.cssText = 'font-size:17px;font-weight:700;color:#ffffff;letter-spacing:.5px;'
     wrapper.appendChild(title)
 
     const desc = document.createElement('div')
-    desc.textContent = 'enter at least one platform'
+    desc.textContent = t('mc_enter_platform')
     desc.style.cssText = 'font-size:13px;color:#808080;margin-bottom:2px;'
     wrapper.appendChild(desc)
 
@@ -5711,9 +5711,9 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
       return { row, input }
     }
 
-    const twitch = makeRow('twitch', 'username')
-    const kick = makeRow('kick', 'username')
-    const yt = makeRow('youtube', 'username or url')
+    const twitch = makeRow('twitch', t('mc_username_placeholder'))
+    const kick = makeRow('kick', t('mc_username_placeholder'))
+    const yt = makeRow('youtube', t('mc_username_url_placeholder'))
 
     wrapper.appendChild(twitch.row)
     wrapper.appendChild(kick.row)
@@ -5765,27 +5765,27 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
       const ytVal = yt.input.value.trim() ? normalizeYtUrl(yt.input.value.trim()) : ''
 
       if (!twitchVal && !kickVal && !ytVal) {
-        showErr('enter at least one platform')
+        showErr(t('mc_enter_platform'))
         return
       }
 
       const id = twitchVal || kickVal || ('yt-' + Date.now())
       const reserved = ['live', 'feed', 'mentions', 'whispers', 'add', 'rotate', 'settings']
       if (reserved.includes(id)) {
-        showErr('reserved name')
+        showErr(t('mc_reserved_name'))
         return
       }
       if (config.channels.some(c => (typeof c === 'string' ? c : c.id) === id)) {
-        showErr('channel already exists')
+        showErr(t('mc_channel_exists'))
         return
       }
       // Check duplicate Twitch/Kick username across channels
       if (twitchVal && config.channels.some(c => (typeof c === 'string' ? c : c.twitch) === twitchVal)) {
-        showErr('twitch channel already added')
+        showErr(t('mc_twitch_exists'))
         return
       }
       if (kickVal && config.channels.some(c => typeof c !== 'string' && c.kick === kickVal)) {
-        showErr('kick channel already added')
+        showErr(t('mc_kick_exists'))
         return
       }
 
@@ -5876,7 +5876,7 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
     wrapper.style.cssText = 'display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:12px;color:#a8a8a8;font-size:13px;padding:20px;box-sizing:border-box;';
 
     const title = document.createElement('div');
-    title.textContent = 'edit ' + tabId;
+    title.textContent = t('mc_edit_channel', [tabId]);
     title.style.cssText = 'font-size:17px;font-weight:700;color:#ffffff;letter-spacing:.5px;';
     wrapper.appendChild(title);
 
@@ -5896,9 +5896,9 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
       return { row, input };
     };
 
-    const twitch = makeRow('twitch', 'username', ch.twitch);
-    const kick = makeRow('kick', 'username', ch.kick);
-    const yt = makeRow('youtube', 'username or url', ch.youtube);
+    const twitch = makeRow('twitch', t('mc_username_placeholder'), ch.twitch);
+    const kick = makeRow('kick', t('mc_username_placeholder'), ch.kick);
+    const yt = makeRow('youtube', t('mc_username_url_placeholder'), ch.youtube);
     wrapper.appendChild(twitch.row);
     wrapper.appendChild(kick.row);
     wrapper.appendChild(yt.row);
@@ -5945,17 +5945,17 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
       const ytVal = yt.input.value.trim() ? normalizeYtUrl(yt.input.value.trim()) : '';
 
       if (!twitchVal && !kickVal && !ytVal) {
-        showErr('enter at least one platform');
+        showErr(t('mc_enter_platform'));
         return;
       }
 
       // Check duplicate twitch/kick (excluding self)
       if (twitchVal && config.channels.some(c => c !== ch && (typeof c === 'string' ? c : c.twitch) === twitchVal)) {
-        showErr('twitch channel already added');
+        showErr(t('mc_twitch_exists'));
         return;
       }
       if (kickVal && config.channels.some(c => c !== ch && typeof c !== 'string' && c.kick === kickVal)) {
-        showErr('kick channel already added');
+        showErr(t('mc_kick_exists'));
         return;
       }
 
@@ -6170,9 +6170,9 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
     const ch = liveChannel;
     // Show channel name when overridden to a non-URL channel
     if (ch && ch !== getCurrentChannel()?.toLowerCase()) {
-      liveTab.textContent = `live \u00b7 ${ch}`;
+      liveTab.textContent = t('mc_tab_live_channel', [ch]);
     } else {
-      liveTab.textContent = 'live';
+      liveTab.textContent = t('mc_tab_live');
     }
   }
 

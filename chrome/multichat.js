@@ -15030,13 +15030,14 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
       }
     }
 
-    // Merge global stream events into every tab (game changes, online/offline)
-    // Only include events within the time range of existing messages so old events
-    // don't pile up as a wall before chat history starts
+    // Merge follow stream events into every tab (went live, switched game, went offline)
+    // Channel-specific events (redeems, raids, hype trains) stay in their own channel buffer
     if (activityEvents.length > 0 && msgs.length > 0) {
       const oldestMsg = msgs.reduce((min, m) => m.time < min ? m.time : min, msgs[0].time)
       const existingTexts = new Set(msgs.filter(m => m.type === 'stream-event').map(m => m.text))
-      const missing = activityEvents.filter(e => !existingTexts.has(e.text) && e.time >= oldestMsg)
+      const missing = activityEvents.filter(e =>
+        e.eventClass?.includes('event-follow') && !existingTexts.has(e.text) && e.time >= oldestMsg
+      )
       if (missing.length > 0) {
         msgs = [...msgs, ...missing].sort((a, b) => a.time - b.time)
       }

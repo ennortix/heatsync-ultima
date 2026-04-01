@@ -961,10 +961,11 @@ async function fetchBulkBadges() {
     if (ffzResp.status === 'fulfilled' && ffzResp.value.ok) {
       const data = await ffzResp.value.json()
       ffzBadgeMap.clear()
-      const badges = data.badges || {}
+      const badgeById = {}
+      for (const b of (data.badges || [])) badgeById[b.id] = b
       const users = data.users || {}
       for (const [badgeId, userIds] of Object.entries(users)) {
-        const badge = badges[badgeId]
+        const badge = badgeById[badgeId]
         if (!badge) continue
         const url = badge.urls?.['2'] || badge.urls?.['1'] || badge.urls?.['4']
         if (!url) continue

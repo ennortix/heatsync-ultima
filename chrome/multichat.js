@@ -3545,8 +3545,9 @@ async function sendKickMessage(kickSlug, text) {
     tooltip.classList.add('visible');
     positionTooltipAtElement(tooltip, targetEl);
 
-    // Check cache
-    const cached = _profileCache.get(username.toLowerCase());
+    // Check cache (keyed by platform:username to avoid cross-platform collisions)
+    const cacheKey = `${platform || 'unknown'}:${username.toLowerCase()}`
+    const cached = _profileCache.get(cacheKey);
     if (cached && Date.now() - cached.ts < PROFILE_CACHE_TTL) {
       if (gen !== _profileGen) return;
       // NOTE: innerHTML is XSS-safe — all user content goes through escapeHtml() in renderProfileCard
@@ -3557,13 +3558,14 @@ async function sendKickMessage(kickSlug, text) {
       return;
     }
 
-    // Fetch profile
-    const resp = await apiFetch(`/api/profile/${encodeURIComponent(username)}`);
+    // Fetch profile — pass platform so server can disambiguate same-name users across platforms
+    const platParam = platform ? `?platform=${encodeURIComponent(platform)}` : ''
+    const resp = await apiFetch(`/api/profile/${encodeURIComponent(username)}${platParam}`);
     if (gen !== _profileGen) return; // user moved away
 
     if (resp?.ok && resp.data?.profile) {
       const profile = resp.data.profile;
-      _profileCache.set(username.toLowerCase(), { profile, ts: Date.now() });
+      _profileCache.set(cacheKey, { profile, ts: Date.now() });
       // Prune cache
       if (_profileCache.size > 100) {
         const oldest = [..._profileCache.entries()].sort((a, b) => a[1].ts - b[1].ts).slice(0, 50);

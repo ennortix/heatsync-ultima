@@ -4621,6 +4621,10 @@
       }
       #channel-chatroom:not(.hs-native-hidden) ~ #hs-mc-container > #hs-kick-resize-handle {
         pointer-events: auto;
+        position: fixed !important;
+        left: calc(100vw - var(--hs-kick-chat-width, 340px)) !important;
+        top: 0 !important;
+        height: 100% !important;
       }
       /* Top tabs (default) — horizontal bar at top of chat */
       .hs-tabs-top #channel-chatroom:not(.hs-native-hidden) ~ #hs-mc-container {

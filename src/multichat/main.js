@@ -244,21 +244,29 @@
       if (!ch) continue
 
       const injectToChat = !recentOnly || (evt.time && evt.time > chatCutoff)
+      const isFollowEvent = evt.eventClass?.includes('event-follow')
 
-      // Inject into live buffer only if recent enough
-      if (injectToChat && liveBuffer) {
-        const existing = liveBuffer.getAll()
-        const isDupe = existing.some(m => m.type === 'stream-event' && m.text === evt.text)
-        if (!isDupe) { liveBuffer.push(evt); added++ }
-      }
-
-      // Also inject into the matching channel buffer if different from live
-      if (injectToChat && ch !== liveCh) {
+      // Inject into the channel's own buffer
+      if (injectToChat) {
         const buffer = irc?.channels?.get(ch)
         if (buffer) {
           const existing = buffer.getAll()
           const isDupe = existing.some(m => m.type === 'stream-event' && m.text === evt.text)
-          if (!isDupe) buffer.push(evt)
+          if (!isDupe) { buffer.push(evt); added++ }
+        }
+      }
+
+      // Follow events (went live, switched game) go into live buffer for all followed channels
+      // Channel-specific events (redeems, raids, hype) only go to live buffer if channel matches
+      if (injectToChat && liveBuffer) {
+        const liveBufferMatch = isFollowEvent || ch === liveCh
+        if (liveBufferMatch) {
+          const chBuffer = irc?.channels?.get(ch)
+          if (liveBuffer !== chBuffer) {
+            const existing = liveBuffer.getAll()
+            const isDupe = existing.some(m => m.type === 'stream-event' && m.text === evt.text)
+            if (!isDupe) { liveBuffer.push(evt); added++ }
+          }
         }
       }
 

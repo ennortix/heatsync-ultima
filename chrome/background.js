@@ -97,6 +97,15 @@ let blockedEmotes = new Set();
 let localBlockedEmotes = new Set(); // Local blocks for anonymous users
 let mutedUsers = new Map(); // username -> expiresAt (null = permanent)
 let blockedUsers = new Set();
+
+// Third-party cosmetics (BTTV/FFZ badges, 7TV paints+badges)
+let bttvBadgeMap = new Map()    // twitchUserId → { description, url }
+let ffzBadgeMap = new Map()     // twitchUserId → [{ title, color, url }]
+const userCosmeticsCache = new Map() // twitchUserId → { paint, badge, fetchedAt }
+let badgesFetchedAt = 0
+const BADGES_TTL = 24 * 60 * 60 * 1000
+const USER_COSMETICS_TTL = 30 * 60 * 1000
+const USER_COSMETICS_MAX = 500
 let followedUsers = []; // Users the current user follows
 let currentUsername = null; // Logged-in user's username
 let socket = null;
@@ -778,12 +787,78 @@ async function fetch7TVChannelEmotes(channelName, channelId = null, platform = '
       flags: e.flags || e.data?.flags || 0,
       zeroWidth: !!((e.flags & 257) || (e.data?.flags & 257))
     })));
-    return { emotes, setId: emoteSet.id };
+    const ownerCosmetic = extract7TVCosmetic(data)
+    return { emotes, setId: emoteSet.id, ownerCosmetic };
   } catch (error) {
     console.error('[hs-bg] 7TV FETCH ERROR for', channelName, ':', error?.message || error);
     if (DEBUG) broadcastToTabs({ type: 'debug_log', msg: `7TV ERROR ${channelName}: ${error?.message || error}` })
     return [];
   }
+}
+
+function extract7TVCosmetic(data) {
+  const style = data?.user?.style || data?.style
+  if (!style) return null
+  return { paint: style.paint || null, badge: style.badge || null }
+}
+
+function setUserCosmetic(twitchId, cosmetic) {
+  if (userCosmeticsCache.size >= USER_COSMETICS_MAX) {
+    userCosmeticsCache.delete(userCosmeticsCache.keys().next().value)
+  }
+  userCosmeticsCache.set(twitchId, { ...(cosmetic || { paint: null, badge: null }), fetchedAt: Date.now() })
+}
+
+async function fetchBulkBadges() {
+  if (Date.now() - badgesFetchedAt < BADGES_TTL) return
+  badgesFetchedAt = Date.now()
+  try {
+    const [bttvResp, ffzResp] = await Promise.allSettled([
+      fetchWithTimeout('https://api.betterttv.net/3/cached/badges'),
+      fetchWithTimeout('https://api.frankerfacez.com/v1/badges/ids')
+    ])
+    if (bttvResp.status === 'fulfilled' && bttvResp.value.ok) {
+      const data = await bttvResp.value.json()
+      bttvBadgeMap.clear()
+      for (const entry of data) {
+        if (entry.providerId && entry.badge?.svg) {
+          bttvBadgeMap.set(entry.providerId, { description: entry.badge.description || 'BTTV', url: entry.badge.svg })
+        }
+      }
+      log(' BTTV badges loaded:', bttvBadgeMap.size)
+    }
+    if (ffzResp.status === 'fulfilled' && ffzResp.value.ok) {
+      const data = await ffzResp.value.json()
+      ffzBadgeMap.clear()
+      const badges = data.badges || {}
+      const users = data.users || {}
+      for (const [badgeId, userIds] of Object.entries(users)) {
+        const badge = badges[badgeId]
+        if (!badge) continue
+        const url = badge.urls?.['2'] || badge.urls?.['1'] || badge.urls?.['4']
+        if (!url) continue
+        const normalized = { title: badge.title || 'FFZ', color: badge.color || null, url: url.startsWith('//') ? 'https:' + url : url }
+        for (const uid of userIds) {
+          const uidStr = String(uid)
+          if (!ffzBadgeMap.has(uidStr)) ffzBadgeMap.set(uidStr, [])
+          ffzBadgeMap.get(uidStr).push(normalized)
+        }
+      }
+      log(' FFZ badges loaded:', ffzBadgeMap.size, 'users')
+    }
+    broadcastBadgeMaps()
+  } catch (e) {
+    log(' fetchBulkBadges failed:', e.message)
+    badgesFetchedAt = 0
+  }
+}
+
+function broadcastBadgeMaps() {
+  const bttvObj = {}
+  for (const [k, v] of bttvBadgeMap) bttvObj[k] = v
+  const ffzObj = {}
+  for (const [k, v] of ffzBadgeMap) ffzObj[k] = v
+  broadcastToTabs({ type: 'cosmetics_update', bttvBadges: bttvObj, ffzBadges: ffzObj })
 }
 
 // Fetch channel owner's emotes (public API) + third-party channel emotes
@@ -841,9 +916,12 @@ async function fetchChannelOwnerEmotes(channelName, channelId = null, platform =
       platform !== 'kick' ? fetchTwitchChannelEmotes(channelName) : Promise.resolve([])
     ];
     const [bttvEmotes, ffzEmotes, sevenTVResult, twitchChannelEmotes] = await Promise.all(fetches);
-    // fetch7TVChannelEmotes returns { emotes, setId } or [] on error
+    // fetch7TVChannelEmotes returns { emotes, setId, ownerCosmetic } or [] on error
     const sevenTVEmotes = sevenTVResult?.emotes || sevenTVResult || [];
     const sevenTVSetId = sevenTVResult?.setId || null;
+    if (sevenTVResult?.ownerCosmetic && channelId) {
+      setUserCosmetic(String(channelId), sevenTVResult.ownerCosmetic)
+    }
     if (DEBUG) broadcastToTabs({ type: 'debug_log', msg: `${channelName} BTTV:${bttvEmotes.length} FFZ:${ffzEmotes.length} 7TV:${sevenTVEmotes.length} Twitch:${twitchChannelEmotes.length} HS:${heatsyncEmotes.length}` })
 
     // Store emotes for this specific channel (prune old entries to bound memory)
@@ -1080,6 +1158,7 @@ async function fetchGlobalEmotes() {
   } catch (error) {
     console.error('[heatsync] fetchGlobalEmotes failed:', error.message || error)
   }
+  fetchBulkBadges()
 }
 
 // ========== 7TV EventAPI WebSocket for Real-Time Emote Updates ==========
@@ -2798,6 +2877,39 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
       }
     })()
     return true
+  } else if (message.type === 'get_user_cosmetics') {
+    const ids = (message.twitchIds || []).slice(0, 10)
+    ;(async () => {
+      const result = {}
+      const toFetch = []
+      for (const id of ids) {
+        const cached = userCosmeticsCache.get(id)
+        if (cached && Date.now() - cached.fetchedAt < USER_COSMETICS_TTL) {
+          result[id] = { paint: cached.paint, badge: cached.badge }
+        } else {
+          toFetch.push(id)
+        }
+      }
+      for (const id of toFetch) {
+        try {
+          const resp = await fetchWithTimeout(`https://7tv.io/v3/users/twitch/${id}`)
+          if (!resp.ok) { setUserCosmetic(id, null); result[id] = null; continue }
+          const data = await resp.json()
+          const cosmetic = extract7TVCosmetic(data)
+          setUserCosmetic(id, cosmetic)
+          result[id] = cosmetic
+        } catch (e) { setUserCosmetic(id, null); result[id] = null }
+      }
+      sendResponse({ cosmetics: result })
+    })()
+    return true
+  } else if (message.type === 'get_bulk_badges') {
+    const bttvObj = {}
+    for (const [k, v] of bttvBadgeMap) bttvObj[k] = v
+    const ffzObj = {}
+    for (const [k, v] of ffzBadgeMap) ffzObj[k] = v
+    sendResponse({ bttvBadges: bttvObj, ffzBadges: ffzObj })
+    return
   }
 });
 

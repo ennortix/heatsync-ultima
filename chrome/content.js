@@ -972,6 +972,15 @@ style.textContent = `
     animation: none !important;
     text-shadow: none !important;
   }
+
+  /* Third-party cosmetic badges (BTTV/FFZ/7TV) */
+  .hs-cosmetic-badge {
+    display: inline-block;
+    width: 18px;
+    height: 18px;
+    vertical-align: middle;
+    margin-right: 2px;
+  }
 `;
 document.head.appendChild(style);
 log(' 🎨 CSS injected for emote hover effects');
@@ -1451,6 +1460,13 @@ async function loadInventory() {
           if (r?.users) followedByCurrentUser = new Set(r.users);
         }).catch(() => {});
 
+        // Fetch bulk BTTV/FFZ badges
+        safeSendMessage({ type: 'get_bulk_badges' }).then(resp => {
+          if (resp?.bttvBadges) bttvBadgeMap = new Map(Object.entries(resp.bttvBadges))
+          if (resp?.ffzBadges) ffzBadgeMap = new Map(Object.entries(resp.ffzBadges))
+          log(' Initial cosmetics: BTTV', bttvBadgeMap.size, 'FFZ', ffzBadgeMap.size)
+        }).catch(() => {})
+
         log(' Received inventory via message:', emoteInventory.length, 'personal,', globalEmotes.length, 'global');
 
         if (globalEmotes.length > 0) {
@@ -1743,6 +1759,12 @@ function _onMessageMain(message) {
     case 'ui_settings_changed':
       applyUiSettings(message.settings);
       break;
+
+    case 'cosmetics_update':
+      bttvBadgeMap = new Map(Object.entries(message.bttvBadges || {}))
+      ffzBadgeMap = new Map(Object.entries(message.ffzBadges || {}))
+      log(' Cosmetics loaded: BTTV', bttvBadgeMap.size, 'FFZ', ffzBadgeMap.size)
+      break
 
     default:
       log(' Unknown message type:', message.type);
@@ -2222,6 +2244,15 @@ cleanup.setInterval(() => {
 const heatPending = new Set() // usernames awaiting batch fetch
 let heatBatchTimer = null
 let heatFirstBatch = true // first batch fires immediately
+
+// Third-party cosmetics
+let bttvBadgeMap = new Map()
+let ffzBadgeMap = new Map()
+const cosmeticsCache = new Map()
+const COSMETICS_TTL = 30 * 60 * 1000
+const COSMETICS_MAX = 500
+const cosmeticsPending = new Set()
+let cosmeticsBatchTimer = null
 
 // Heat tier config — matches client/config/colors.js
 const HEAT_GRADIENT = [
@@ -2871,6 +2902,18 @@ function processMessage(messageElement) {
       applyHeatBorderToElement(messageElement, cached.heat)
     } else {
       queueHeatLookup(lowerUser)
+    }
+  }
+
+  // Apply third-party cosmetics (BTTV/FFZ badges + 7TV paints/badges)
+  if (!isKick) {
+    const userId = getTwitchUserId(messageElement)
+    if (userId) {
+      messageElement.dataset.hsCosmeticUserId = userId
+      applyCosmeticsToMessage(messageElement, userId)
+      if (!cosmeticsCache.has(userId)) {
+        queueCosmeticsLookup(userId)
+      }
     }
   }
 
@@ -4842,6 +4885,181 @@ function getUsername(messageElement) {
   )
 
   return usernameEl ? usernameEl.textContent.trim() : '';
+}
+
+// Get Twitch user ID from message element via React fiber
+function getTwitchUserId(messageElement) {
+  if (isKick) return null
+  try {
+    let fiber = getFiber(messageElement)
+    let depth = 0
+    while (fiber && depth < 30) {
+      const props = fiber.memoizedProps
+      if (props) {
+        const uid = props.message?.user?.userID || props.message?.user?.id || props.userId || props.userID
+        if (uid) return String(uid)
+      }
+      fiber = fiber.return
+      depth++
+    }
+  } catch (e) {}
+  return null
+}
+
+// Apply 7TV paint gradient to a username element
+function applyPaintToElement(el, paint) {
+  if (!paint) return
+  const fn = paint.function
+  if (fn === 'url' && paint.image_url) {
+    el.style.backgroundImage = `url(${paint.image_url})`
+    el.style.backgroundSize = 'cover'
+  } else if ((fn === 'linear-gradient' || fn === 'radial-gradient') && paint.stops?.length) {
+    const stops = paint.stops.map(s => {
+      const r = (s.color >>> 24) & 0xff
+      const g = (s.color >>> 16) & 0xff
+      const b = (s.color >>> 8) & 0xff
+      const a = (s.color & 0xff) / 255
+      return `rgba(${r},${g},${b},${a.toFixed(2)}) ${Math.round(s.at * 100)}%`
+    }).join(', ')
+    if (fn === 'linear-gradient') {
+      el.style.backgroundImage = `linear-gradient(${paint.angle || 0}deg, ${stops})`
+    } else {
+      el.style.backgroundImage = `radial-gradient(${paint.shape || 'circle'}, ${stops})`
+    }
+  } else if (paint.color) {
+    const r = (paint.color >>> 24) & 0xff
+    const g = (paint.color >>> 16) & 0xff
+    const b = (paint.color >>> 8) & 0xff
+    const a = (paint.color & 0xff) / 255
+    el.style.color = `rgba(${r},${g},${b},${a.toFixed(2)})`
+    return
+  } else {
+    return
+  }
+  el.style.webkitBackgroundClip = 'text'
+  el.style.webkitTextFillColor = 'transparent'
+  el.style.backgroundClip = 'text'
+  if (paint.shadows?.length) {
+    el.style.filter = paint.shadows.map(s => {
+      const r = (s.color >>> 24) & 0xff
+      const g = (s.color >>> 16) & 0xff
+      const b = (s.color >>> 8) & 0xff
+      const a = (s.color & 0xff) / 255
+      return `drop-shadow(${s.x_offset || 0}px ${s.y_offset || 0}px ${s.radius || 0}px rgba(${r},${g},${b},${a.toFixed(2)}))`
+    }).join(' ')
+  }
+  el.dataset.hsPaintApplied = '1'
+}
+
+// Get the best URL from a 7TV badge host object
+function get7TVBadgeUrl(badge) {
+  if (!badge?.host) return ''
+  const files = badge.host.files || []
+  const file = files.find(f => f.name?.endsWith('.webp')) || files.find(f => f.name?.endsWith('.avif')) || files[0]
+  if (!file) return ''
+  const base = badge.host.url || ''
+  return (base.endsWith('/') ? base : base + '/') + file.name
+}
+
+// Apply BTTV/FFZ badges and 7TV paints/badges to a message element
+function applyCosmeticsToMessage(el, userId) {
+  if (!userId) return
+  const nameEl = el.querySelector('.chat-author__display-name, [data-a-target="chat-message-username"]')
+  if (!nameEl) return
+
+  // BTTV badge
+  if (bttvBadgeMap.has(userId) && !el.querySelector('.hs-bttv-badge')) {
+    const b = bttvBadgeMap.get(userId)
+    const img = document.createElement('img')
+    img.className = 'hs-bttv-badge hs-cosmetic-badge'
+    img.src = b.url
+    img.title = b.description
+    img.alt = b.description
+    nameEl.parentNode.insertBefore(img, nameEl)
+  }
+
+  // FFZ badges
+  if (ffzBadgeMap.has(userId) && !el.querySelector('.hs-ffz-badge')) {
+    for (const b of ffzBadgeMap.get(userId)) {
+      const img = document.createElement('img')
+      img.className = 'hs-ffz-badge hs-cosmetic-badge'
+      img.src = b.url
+      img.title = b.title
+      img.alt = b.title
+      if (b.color) img.style.backgroundColor = b.color
+      nameEl.parentNode.insertBefore(img, nameEl)
+    }
+  }
+
+  // 7TV cosmetics
+  const cosmetic = cosmeticsCache.get(userId)
+  if (cosmetic) {
+    if (cosmetic.badge && !el.querySelector('.hs-7tv-badge')) {
+      const url = get7TVBadgeUrl(cosmetic.badge)
+      if (url) {
+        const img = document.createElement('img')
+        img.className = 'hs-7tv-badge hs-cosmetic-badge'
+        img.src = url
+        img.title = cosmetic.badge.tooltip || cosmetic.badge.name || '7TV'
+        img.alt = '7TV'
+        nameEl.parentNode.insertBefore(img, nameEl)
+      }
+    }
+    if (cosmetic.paint && !nameEl.dataset.hsPaintApplied) {
+      applyPaintToElement(nameEl, cosmetic.paint)
+    }
+    el.dataset.hsCosmeticDone = '1'
+  }
+}
+
+// Queue a Twitch user ID for 7TV cosmetics batch fetch
+function queueCosmeticsLookup(userId) {
+  if (isKick || !userId) return
+  if (cosmeticsCache.has(userId)) return
+  cosmeticsPending.add(userId)
+  if (!cosmeticsBatchTimer) {
+    cosmeticsBatchTimer = cleanup.setTimeout(() => {
+      cosmeticsBatchTimer = null
+      flushCosmeticsBatch()
+    }, 500)
+  }
+}
+
+async function flushCosmeticsBatch() {
+  if (cosmeticsPending.size === 0) return
+  const batch = [...cosmeticsPending].slice(0, 10)
+  batch.forEach(id => cosmeticsPending.delete(id))
+  try {
+    const resp = await safeSendMessage({ type: 'get_user_cosmetics', twitchIds: batch })
+    if (!resp?.cosmetics) return
+    const now = Date.now()
+    for (const [userId, cosmetic] of Object.entries(resp.cosmetics)) {
+      if (cosmeticsCache.size >= COSMETICS_MAX) {
+        cosmeticsCache.delete(cosmeticsCache.keys().next().value)
+      }
+      cosmeticsCache.set(userId, { ...(cosmetic || { paint: null, badge: null }), fetchedAt: now })
+    }
+    applyPendingCosmetics(Object.keys(resp.cosmetics))
+  } catch (e) {
+    log(' flushCosmeticsBatch failed:', e?.message)
+  }
+  if (cosmeticsPending.size > 0 && !cosmeticsBatchTimer) {
+    cosmeticsBatchTimer = cleanup.setTimeout(() => {
+      cosmeticsBatchTimer = null
+      flushCosmeticsBatch()
+    }, 2000)
+  }
+}
+
+function applyPendingCosmetics(userIds) {
+  const container = findChatContainer()
+  if (!container) return
+  const idSet = new Set(userIds)
+  container.querySelectorAll('[data-hs-cosmetic-user-id]').forEach(el => {
+    if (el.dataset.hsCosmeticDone === '1') return
+    const uid = el.dataset.hsCosmeticUserId
+    if (idSet.has(uid)) applyCosmeticsToMessage(el, uid)
+  })
 }
 
 // Right-click on chat message or username → instant 24h mute

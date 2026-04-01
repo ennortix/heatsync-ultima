@@ -2767,6 +2767,31 @@ function renderBadges(badgesStr, channel) {
   }).join('')
 }
 
+function renderThirdPartyBadges(userId) {
+  if (!userId) return ''
+  let html = ''
+  const bttv = mcBttvBadgeMap.get(userId)
+  if (bttv) {
+    html += `<img class="hs-mc-badge-img" src="${escapeHtml(bttv.url)}" alt="${escapeHtml(bttv.description)}" title="${escapeHtml(bttv.description)}" style="width:18px;height:18px;">`
+  }
+  const ffzList = mcFfzBadgeMap.get(userId)
+  if (ffzList) {
+    for (const b of ffzList) {
+      html += `<img class="hs-mc-badge-img" src="${escapeHtml(b.url)}" alt="${escapeHtml(b.title)}" title="${escapeHtml(b.title)}" style="width:18px;height:18px;${b.color ? 'background:' + b.color + ';border-radius:2px;' : ''}">`
+    }
+  }
+  const cosmetic = mcUserCosmetics.get(userId)
+  if (cosmetic?.badge) {
+    const files = cosmetic.badge.host?.files || []
+    const file = files.find(f => f.name?.endsWith('.webp')) || files[0]
+    if (file) {
+      const url = (cosmetic.badge.host?.url || '') + '/' + file.name
+      html += `<img class="hs-mc-badge-img" src="${escapeHtml(url)}" alt="7TV" title="${escapeHtml(cosmetic.badge.tooltip || '7TV')}" style="width:18px;height:18px;">`
+    }
+  }
+  return html
+}
+
 // ═══ Followage Lookup ═══
 
 const _followageCache = new Map() // "user:channel" → { result, ts }

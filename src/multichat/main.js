@@ -78,6 +78,12 @@
 
   // YouTube global state (per-channel only now — global removed)
 
+  // Third-party cosmetics state (BTTV/FFZ badges, 7TV paints+badges)
+  let mcBttvBadgeMap = new Map()
+  let mcFfzBadgeMap = new Map()
+  const mcUserCosmetics = new Map()
+  const mcCosmeticsPending = new Set()
+  let mcCosmeticsTimer = null
 
   // Username cache for tab completion
   const usernameCache = new Set();
@@ -113,6 +119,73 @@
         }
       })
       .catch(() => { avatarFetching.delete(key); _activeAvatarFetches-- })
+  }
+
+  // 7TV cosmetics queue — batch lookups to avoid per-message requests
+  function queueMcCosmeticsLookup(userId) {
+    if (!userId || mcUserCosmetics.has(userId)) return
+    mcCosmeticsPending.add(userId)
+    if (!mcCosmeticsTimer) {
+      mcCosmeticsTimer = setTimeout(() => {
+        mcCosmeticsTimer = null
+        flushMcCosmeticsBatch()
+      }, 500)
+    }
+  }
+
+  function flushMcCosmeticsBatch() {
+    if (!mcCosmeticsPending.size) return
+    const batch = [...mcCosmeticsPending].slice(0, 10)
+    batch.forEach(id => mcCosmeticsPending.delete(id))
+    safeSendMessage({ type: 'get_user_cosmetics', twitchIds: batch }).then(resp => {
+      if (!resp?.cosmetics) return
+      let changed = false
+      for (const [uid, c] of Object.entries(resp.cosmetics)) {
+        if (c) { mcUserCosmetics.set(uid, c); changed = true }
+      }
+      if (changed) renderMessages(currentTab)
+    }).catch(() => {})
+    if (mcCosmeticsPending.size > 0) {
+      mcCosmeticsTimer = setTimeout(() => { mcCosmeticsTimer = null; flushMcCosmeticsBatch() }, 2000)
+    }
+  }
+
+  // 7TV paint → CSS style string
+  function getMcPaintStyle(userId) {
+    const cosmetic = mcUserCosmetics.get(userId)
+    const paint = cosmetic?.paint
+    if (!paint || !paint.function) return ''
+    if ((paint.function === 'linear-gradient' || paint.function === 'radial-gradient') && paint.stops?.length) {
+      const stops = paint.stops.map(s => {
+        const r = (s.color >>> 24) & 0xff
+        const g = (s.color >>> 16) & 0xff
+        const b = (s.color >>> 8) & 0xff
+        const a = (s.color & 0xff) / 255
+        return `rgba(${r},${g},${b},${a.toFixed(2)}) ${Math.round(s.at * 100)}%`
+      }).join(', ')
+      const grad = paint.function === 'linear-gradient'
+        ? `linear-gradient(${paint.angle || 0}deg, ${stops})`
+        : `radial-gradient(${paint.shape || 'circle'}, ${stops})`
+      let style = `background:${grad};-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text`
+      if (paint.shadows?.length) {
+        style += ';filter:' + paint.shadows.map(s => {
+          const r = (s.color >>> 24) & 0xff
+          const g = (s.color >>> 16) & 0xff
+          const b = (s.color >>> 8) & 0xff
+          const a = (s.color & 0xff) / 255
+          return `drop-shadow(${s.x_offset || 0}px ${s.y_offset || 0}px ${s.radius || 0}px rgba(${r},${g},${b},${a.toFixed(2)}))`
+        }).join(' ')
+      }
+      return style
+    }
+    if (paint.color) {
+      const r = (paint.color >>> 24) & 0xff
+      const g = (paint.color >>> 16) & 0xff
+      const b = (paint.color >>> 8) & 0xff
+      const a = (paint.color & 0xff) / 255
+      return `color:rgba(${r},${g},${b},${a.toFixed(2)})`
+    }
+    return ''
   }
 
   // Stream event user colors — login → color (populated from server on connect)
@@ -5134,13 +5207,18 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
     } else {
       badges = renderBadges(m.badges, m.channel)
     }
+    if (m.userId) {
+      badges += renderThirdPartyBadges(m.userId)
+      if (!mcUserCosmetics.has(m.userId)) queueMcCosmeticsLookup(m.userId)
+    }
     const plat = m.platform === 'youtube' ? 'yt' : m.platform === 'kick' ? 'kick' : 'twitch'
     const platLabel = plat === 'yt' ? '[YT]' : plat === 'kick' ? '[K]' : '[T]'
     const platColors = { twitch: '#9146ff', kick: '#53fc18', yt: '#ff0000' }
     const platformBadge = (platformBadgesEnabled || plat !== hostPlatform) ? `<span class="hs-mc-platform-badge hs-mc-pb-${plat}" style="font-size:10px;margin-right:3px;font-weight:700;vertical-align:middle;color:${platColors[plat]}">${platLabel}</span>` : ''
     const safeScColor = sanitizeColor(m.scColor || '#ffd600')
     const scBadge = isSuperChat && m.amount ? `<span class="hs-mc-sc-badge" style="background:${safeScColor};color:#000;padding:0 4px;border-radius:0;font-size:10px;font-weight:700;margin-right:3px;">${escapeHtml(m.amount)}</span>` : ''
-    const userLink = `<a href="https://heatsync.org/${plat === 'yt' ? 'user' : plat}/${encodeURIComponent(m.user)}" target="_blank" class="hs-mc-user" data-username="${escapeHtml(m.user.toLowerCase())}" style="color:${sanitizeColor(m.color || '#fff')}">${escapeHtml(m.user)}</a>`;
+    const paintStyle = m.userId ? getMcPaintStyle(m.userId) : ''
+    const userLink = `<a href="https://heatsync.org/${plat === 'yt' ? 'user' : plat}/${encodeURIComponent(m.user)}" target="_blank" class="hs-mc-user" data-username="${escapeHtml(m.user.toLowerCase())}" style="${paintStyle || 'color:' + sanitizeColor(m.color || '#fff')}">${escapeHtml(m.user)}</a>`;
     let avatarHtml = ''
     if (avatarsEnabled) {
       const userKey = m.user.toLowerCase()
@@ -6344,6 +6422,10 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
         }
       }
       if (msg.type === 'debug_log' && MC_DEBUG) console.log('[hs-bg]', msg.msg)
+      if (msg.type === 'cosmetics_update') {
+        mcBttvBadgeMap = new Map(Object.entries(msg.bttvBadges || {}))
+        mcFfzBadgeMap = new Map(Object.entries(msg.ffzBadges || {}))
+      }
       // Listen for emote updates from background
       if (msg.type === 'global_emotes_update' || msg.type === 'channel_emotes_update') {
         log('received', msg.type, msg.channelOwner || '');
@@ -6579,6 +6661,12 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
     setupUserTooltipHandlers();
     setupLinkTooltipHandlers();
     listenForSettingsChanges();
+
+    // Request initial BTTV/FFZ badge maps from background
+    safeSendMessage({ type: 'get_bulk_badges' }).then(resp => {
+      if (resp?.bttvBadges) mcBttvBadgeMap = new Map(Object.entries(resp.bttvBadges))
+      if (resp?.ffzBadges) mcFfzBadgeMap = new Map(Object.entries(resp.ffzBadges))
+    }).catch(() => {})
 
     // Load heatsync auth state
     loadHsAuth();

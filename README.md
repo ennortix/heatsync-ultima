@@ -160,7 +160,7 @@ dist/                      ← build output (gitignored)
 
 ## performance
 
-this runs during 8+ hour streaming sessions. memory leaks kill it.
+built for 8+ hour streaming sessions. every resource is tracked and cleaned up.
 
 - message processing must stay under 5ms per message
 - memory growth must stay under 50MB over 8 hours

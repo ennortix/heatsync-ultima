@@ -1470,6 +1470,9 @@ function handle7TVEmoteSetUpdate(updateData) {
 // channelEmotesMap so they naturally deduplicate (no double-fire).
 let seventvPollTimer = null;
 const SEVENTV_POLL_INTERVAL = 30000;
+// Track channels that have completed their first poll in this session
+// Prevents spammy "removed" notifications when diffing stale cache on startup
+const seventvPolledChannels = new Set();
 
 function start7TVPolling() {
   stop7TVPolling()
@@ -1564,8 +1567,9 @@ async function poll7TVEmoteSet() {
       channelEmotesMap[channelName] = updatedEmotes
       updateEmoteUrlMap()
 
-      // Only broadcast individual notifications for real changes (not initial load)
-      if (existing7TV.size > 0) {
+      // Only broadcast individual notifications after first successful poll this session
+      // Prevents spammy "removed" notifications when diffing stale cache on startup
+      if (seventvPolledChannels.has(channelName)) {
         for (const emote of added) {
           log(' 7TV Poll: Added emote:', emote.name, 'to', channelName)
           broadcastToTabs({
@@ -1584,7 +1588,8 @@ async function poll7TVEmoteSet() {
           })
         }
       } else {
-        log(' 7TV Poll: Skipping notifications for initial load of', channelName, '(' + added.length + ' emotes)')
+        log(' 7TV Poll: Skipping notifications for initial load of', channelName, '(' + added.length + ' added,', removed.length, 'removed)')
+        seventvPolledChannels.add(channelName)
       }
 
       // Broadcast full update

@@ -16154,33 +16154,9 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
         log('inventory_update:', inventoryEmotes.size, 'emotes');
       }
 
-      // 7TV emote add/remove → persistent stream-event in chat
+      // 7TV emote add/remove — just reload emotes, don't spam chat
       if (msg.type === 'channel_emote_added' || msg.type === 'channel_emote_removed') {
-        const text = msg.message;
-        if (text) {
-          const eventClass = msg.type === 'channel_emote_added' ? 'event-online' : 'event-offline';
-          const evt = { type: 'stream-event', eventClass, text, channel: '7tv', time: Date.now() };
-
-          const liveChannel = getLiveChannel();
-          const liveBuffer = liveChannel ? irc?.channels?.get(liveChannel) : null;
-          if (liveBuffer) {
-            const existing = liveBuffer.getAll();
-            if (!existing.some(m => m.type === 'stream-event' && m.text === evt.text)) {
-              liveBuffer.push(evt);
-              saveStreamEvent(evt);
-            }
-          }
-          if (irc?.channels) {
-            for (const [ch, buf] of irc.channels) {
-              if (ch === liveChannel) continue;
-              const existing = buf.getAll();
-              if (!existing.some(m => m.type === 'stream-event' && m.text === evt.text)) {
-                buf.push(evt);
-              }
-            }
-          }
-          renderMessages(currentTab);
-        }
+        log('7TV emote change:', msg.message);
       }
     });
 
@@ -16617,6 +16593,11 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
       }
     });
 
+    // Global dedup for stream events — prevents dupes from multiple sources
+    // (Twitch EventSub + Kick webhook + follow poll can all fire for the same event)
+    if (!window._hsStreamEventDedup) window._hsStreamEventDedup = new Map()
+    const streamEventDedup = window._hsStreamEventDedup
+
     // Handle stream events (game switch, online/offline) from HeatSync WS
     if (!window._hsMcStreamEventListener) {
       window._hsMcStreamEventListener = true;
@@ -16661,6 +16642,15 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
           eventClass = 'event-sub';
         }
         if (!text) return;
+
+        // Dedup: skip if same text was shown in last 60s
+        const now = Date.now()
+        if (streamEventDedup.has(text) && now - streamEventDedup.get(text) < 60000) return
+        streamEventDedup.set(text, now)
+        // Prune old entries
+        if (streamEventDedup.size > 100) {
+          for (const [k, t] of streamEventDedup) { if (now - t > 60000) streamEventDedup.delete(k) }
+        }
 
         log('[Stream]', channel, text);
         notifyStreamEvent(channel, msg.eventType, msg.game);
@@ -16851,6 +16841,11 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
           eventClass = 'event-follow event-offline';
         }
         if (!text) return;
+
+        // Dedup: skip if same text was shown in last 60s (same dedup map as stream_event)
+        const now = Date.now()
+        if (streamEventDedup.has(text) && now - streamEventDedup.get(text) < 60000) return
+        streamEventDedup.set(text, now)
 
         log('[FollowStream]', channel, text);
         notifyStreamEvent(channel, msg.eventType, msg.game);

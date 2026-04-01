@@ -4621,10 +4621,6 @@
       }
       #channel-chatroom:not(.hs-native-hidden) ~ #hs-mc-container > #hs-kick-resize-handle {
         pointer-events: auto;
-        position: fixed !important;
-        left: calc(100vw - var(--hs-kick-chat-width, 340px)) !important;
-        top: 0 !important;
-        height: 100% !important;
       }
       /* Top tabs (default) — horizontal bar at top of chat */
       .hs-tabs-top #channel-chatroom:not(.hs-native-hidden) ~ #hs-mc-container {
@@ -5033,9 +5029,7 @@
     }
 
     // Always ensure native chat is hidden when our UI is active
-    if (!(isKick && currentTab === 'live')) {
-      setNativeChatHidden(true);
-    }
+    setNativeChatHidden(true);
   }
 
   // ============================================
@@ -5132,13 +5126,7 @@
     const newBtn = document.getElementById('hs-mc-new-msgs');
     if (newBtn) newBtn.style.display = 'none';
 
-    // Kick live tab: show native chat only when viewing the page's own channel
-    if (isKick && id === 'live' && (!liveChannel || liveChannel === getCurrentChannel()?.toLowerCase())) {
-      setNativeChatHidden(false);
-      if (overlayElement) overlayElement.classList.remove('visible');
-      if (inputBarElement) inputBarElement.classList.add('hs-hidden');
-      return;
-    }
+    // Native chat always hidden — multichat handles all tabs including live on Kick
 
     // Hide input bar on add-channel form, or when auto-hide is on
     if (inputBarElement) {

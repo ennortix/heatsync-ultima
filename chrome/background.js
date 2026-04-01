@@ -1740,7 +1740,7 @@ async function broadcastToTabs(message) {
 
   // Broadcast to streaming tabs only (filtered query instead of all-tabs scan)
   try {
-    const tabs = await browser.tabs.query({ url: ['*://*.twitch.tv/*', '*://*.kick.com/*', '*://*.youtube.com/*'] })
+    const tabs = await browser.tabs.query({ url: ['*://*.twitch.tv/*', '*://*.kick.com/*', '*://*.youtube.com/*', '*://*.heatsync.org/*', '*://heatsync.org/*'] })
     for (const tab of tabs) {
       browser.tabs.sendMessage(tab.id, message).catch(() => {})
     }

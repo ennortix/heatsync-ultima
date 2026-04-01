@@ -3913,66 +3913,6 @@ function setupEmoteClickHandlers() {
       } finally {
         pendingOperations.delete(operationKey);
       }
-    } else if (inInventory && !isGlobalEmote && !inStack) {
-      // ADDED → NEUTRAL (remove from your set) - only for non-global, non-stacked emotes
-      pendingOperations.add(operationKey);
-      log(' ➖ Removing from your set:', emoteName);
-
-      // Show loading state
-      wrapper.style.opacity = '0.5';
-
-      // Optimistically update UI first
-      const previousInventory = [...emoteInventory];
-      emoteInventory = emoteInventory.filter(e => e.hash !== hash && e.name !== emoteName);
-      pendingRemovals.add(emoteName);
-      allEmotesDirty = true
-      emoteGeneration++
-      _tabEmoteMapDirty = true
-      updateEmoteState(hash, emoteName, 'neutral');
-
-      try {
-        const result = await safeSendMessage({
-          type: 'remove_from_inventory',
-          emoteHash: hash,
-          emoteName: emoteName
-        });
-
-        wrapper.style.opacity = '';
-
-        if (result?.success) {
-          // Don't clear pendingRemovals here — wait for inventory_update to confirm server-side deletion
-          showToast(t('content_toast_removed', [emoteName]), 'success');
-          // Clear any pending broadcasts for this emote
-          for (const key of pendingEmoteBroadcasts.keys()) {
-            if (key.endsWith(`:${emoteName}`)) {
-              log(' 🗑️ Clearing stale broadcast:', key);
-              _deleteBroadcast(key);
-            }
-          }
-        } else {
-          // Rollback optimistic update on failure
-          pendingRemovals.delete(emoteName);
-          emoteInventory = previousInventory;
-          allEmotesDirty = true
-          emoteGeneration++
-          _tabEmoteMapDirty = true
-          updateEmoteState(hash, emoteName, 'added');
-          showToast(t('content_toast_failed_remove', [emoteName, String(result?.error || 'Unknown error')]), 'error');
-        }
-      } catch (err) {
-        wrapper.style.opacity = '';
-        if (!extensionContextValid) return; // Don't rollback/show error if context invalidated
-        // Rollback on error
-        pendingRemovals.delete(emoteName);
-        emoteInventory = previousInventory;
-        allEmotesDirty = true
-        emoteGeneration++
-        _tabEmoteMapDirty = true
-        updateEmoteState(hash, emoteName, 'added');
-        showToast(t('content_toast_failed_remove', [emoteName, String(err.message)]), 'error');
-      } finally {
-        pendingOperations.delete(operationKey);
-      }
     } else {
       // NEUTRAL → BLOCKED
       pendingOperations.add(operationKey);

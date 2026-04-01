@@ -42,7 +42,11 @@ function parseIrcLine(raw, channel) {
         } : null
       }
       if (isAction) msg.isAction = true
-      if (tags['custom-reward-id']) msg.redeemed = true
+      if (tags['custom-reward-id']) {
+        msg.redeemed = true
+        msg.rewardId = tags['custom-reward-id']
+      }
+      if (tags['msg-id'] === 'highlighted-message') msg.isHighlighted = true
       if (tags['first-msg'] === '1') msg.isFirstMsg = true
       // Extract sub tenure from badge-info (subscriber/N = cumulative months)
       const badgeInfo = tags['badge-info']

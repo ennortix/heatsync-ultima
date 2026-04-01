@@ -64,7 +64,8 @@
         window.postMessage({ type: 'heatsync-hermes-event', eventType: 'redeem', channel: resolveChannel(r.channel_id), data: {
           user: r.user?.display_name || r.user?.login || 'unknown',
           title: r.reward?.title || 'reward',
-          cost: r.reward?.cost || 0
+          cost: r.reward?.cost || 0,
+          rewardId: r.reward?.id || ''
         }}, location.origin)
       }
       // Pinned messages

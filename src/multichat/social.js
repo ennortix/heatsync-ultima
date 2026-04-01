@@ -1,31 +1,74 @@
 // Social - feed, notifications, activity, heatsync API
 
-// Heat tier display — number + color glow + row effects, no emoji
+// Heat tier display — big scaling numbers + color glow + row effects, no emoji
+// Matches website colors.js: #444 → #888 → #cc6600 → #ff8700 → #ffaa33 → #fff
+function formatHeat(heat) {
+  if (heat >= 1000) {
+    const k = heat / 1000
+    const f = k.toFixed(1)
+    return f.endsWith('.0') ? f.slice(0, -2) + 'k' : f + 'k'
+  }
+  return String(heat)
+}
+
+function getHeatNumberStyle(heat, isReply) {
+  let fontSize, color, textShadow, animation
+  if (isReply) {
+    if (heat > 500) fontSize = 20
+    else if (heat > 100) fontSize = 18
+    else if (heat > 50) fontSize = 16
+    else if (heat > 10) fontSize = 14
+    else fontSize = 12
+  } else {
+    if (heat > 500) fontSize = 32
+    else if (heat > 100) fontSize = 26
+    else if (heat > 50) fontSize = 22
+    else if (heat > 10) fontSize = 18
+    else fontSize = 14
+  }
+  if (heat > 500) {
+    color = '#fff'
+    textShadow = '0 0 6px rgba(255,255,255,1),0 0 15px rgba(255,200,100,1),0 0 30px rgba(255,135,0,0.9),0 0 50px rgba(255,80,0,0.6)'
+    animation = 'hs-heat-breathe 2s ease-in-out infinite'
+  } else if (heat > 100) {
+    color = '#ffaa33'
+    textShadow = '0 0 6px rgba(255,170,50,0.9),0 0 16px rgba(255,135,0,0.6),0 0 30px rgba(255,80,0,0.3)'
+  } else if (heat > 50) {
+    color = '#ff8700'
+    textShadow = '0 0 6px rgba(255,135,0,0.7),0 0 14px rgba(255,135,0,0.3)'
+  } else if (heat > 10) {
+    color = heat > 30 ? '#cc6600' : '#888'
+    textShadow = heat > 30 ? '0 0 4px rgba(204,102,0,0.3)' : undefined
+  } else {
+    color = '#444'
+    textShadow = undefined
+  }
+  let style = `font-size:${fontSize}px;color:${color};font-weight:900;line-height:1;`
+  if (textShadow) style += `text-shadow:${textShadow};`
+  if (animation) style += `animation:${animation};`
+  return style
+}
+
 function getHeatDisplay(heat) {
   if (!heat || heat <= 0) return null
-  let color, glow = false, border = '#808080', borderWidth = 2, bg = ''
-  if (heat >= 5000) {
-    color = '#fff'; glow = true; border = '#fff'; borderWidth = 4
-    bg = 'rgba(60,20,0,0.15)'; // + breathing animation applied separately
-  } else if (heat >= 500) {
-    color = '#fff'; glow = true; border = '#fff'; borderWidth = 4
+  let border = '#444', borderWidth = 2, bg = ''
+  if (heat >= 500) {
+    border = '#fff'; borderWidth = 4
     bg = 'rgba(60,20,0,0.15)'
   } else if (heat >= 100) {
-    color = '#ffaa00'; border = '#ffaa00'; borderWidth = 3
+    border = '#ffaa33'; borderWidth = 3
     bg = 'rgba(50,15,0,0.10)'
   } else if (heat >= 25) {
-    color = '#ff8700'; border = '#ff8700'; borderWidth = 3
+    border = '#ff8700'; borderWidth = 3
     bg = 'rgba(40,12,0,0.07)'
   } else if (heat >= 10) {
-    color = '#ff8700'; border = '#ff8700'; borderWidth = 2
-  } else if (heat >= 1) {
-    color = '#808080'; border = '#808080'; borderWidth = 2
+    border = '#ff8700'; borderWidth = 2
   } else {
-    color = '#000'
+    border = '#444'; borderWidth = 2
   }
   const suffix = heat >= 10 ? '°' : ''
   const breathe = heat >= 500
-  return { color, glow, suffix, border, borderWidth, bg, breathe }
+  return { suffix, border, borderWidth, bg, breathe }
 }
 
 // Feed & notifications state
@@ -417,7 +460,9 @@ function buildFeedMessageDiv(m, opUsername) {
     if (hd.breathe) div.className += ' hs-feed-heat-breathe'
     div.setAttribute('style', rowStyle)
   }
-  const heatSpan = hd ? `<span class="hs-feed-stat hs-feed-heat" style="font-weight:700;color:${hd.color}${hd.glow ? ';text-shadow:0 0 8px #ff8700,0 0 16px rgba(255,135,0,0.6)' : ''}">${heat}${hd.suffix}</span>` : ''
+  const isReply = !!m.reply_to
+  const heatStyle = hd ? getHeatNumberStyle(heat, isReply) : ''
+  const heatSpan = hd ? `<span class="hs-feed-stat hs-feed-heat" style="${heatStyle}">${formatHeat(heat)}${hd.suffix}</span>` : ''
   const repliesSpan = replies > 0 ? `<span class="hs-feed-stat hs-feed-replies" title="replies">💬${replies}</span>` : '';
   const stats = [heatSpan, repliesSpan].filter(Boolean).join(' ')
   const statsHtml = stats ? ` ${stats}` : ''

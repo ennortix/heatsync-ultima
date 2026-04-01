@@ -98,7 +98,6 @@
     "default_title": "heatsync"
   },
 
-  "options_page": "options.html",
 
   "icons": {
     "16": "icon-16.png",

@@ -17,13 +17,15 @@
     _intervals: new Set(),
     _timeouts: new Set(),
     _observers: new Set(),
+    _listeners: [],
     setInterval(fn, ms) { const id = setInterval(fn, ms); this._intervals.add(id); return id },
     clearInterval(id) { clearInterval(id); this._intervals.delete(id) },
     setTimeout(fn, ms) { const id = setTimeout(() => { this._timeouts.delete(id); fn() }, ms); this._timeouts.add(id); return id },
     clearTimeout(id) { clearTimeout(id); this._timeouts.delete(id) },
     trackObserver(obs) { this._observers.add(obs); return obs },
     untrackObserver(obs) { try { obs.disconnect() } catch (_) {} this._observers.delete(obs) },
-    destroyAll() { for (const id of this._intervals) clearInterval(id); this._intervals.clear(); for (const id of this._timeouts) clearTimeout(id); this._timeouts.clear(); for (const obs of this._observers) { try { obs.disconnect() } catch (_) {} } this._observers.clear() }
+    addEventListener(target, event, handler, opts) { target.addEventListener(event, handler, opts); this._listeners.push({ target, event, handler, opts }) },
+    destroyAll() { for (const id of this._intervals) clearInterval(id); this._intervals.clear(); for (const id of this._timeouts) clearTimeout(id); this._timeouts.clear(); for (const obs of this._observers) { try { obs.disconnect() } catch (_) {} } this._observers.clear(); for (const l of this._listeners) { try { l.target.removeEventListener(l.event, l.handler, l.opts) } catch (_) {} } this._listeners.length = 0 }
   }
   acSignal.addEventListener('abort', () => cleanup.destroyAll())
   window.__heatsyncAcLifecycle = { abort: () => ac.abort() }

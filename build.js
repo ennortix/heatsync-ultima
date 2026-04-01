@@ -46,8 +46,6 @@ const COPY_FILES = [
   'welcome.html',
   'injected-message.css',
   'youtube-content.js',
-  'options.html',
-  'options.js',
   'vi-mode.js',
   'kick-autocomplete-hook.js',
 ]

@@ -46,6 +46,9 @@
   // Muted users (right-click to hide) — loaded async from chrome.storage.local
   let mutedUsers = new Set();
 
+  // Channel point redeem title cache: rewardId → { title, cost }
+  const redeemTitleMap = new Map();
+
   // Buffers
   const mentionsBuffer = [];
   const MAX_BUFFER = 500;
@@ -2113,6 +2116,23 @@
         background: rgba(145, 71, 255, 0.15);
         border-left: 3px solid #9147ff;
         padding-left: 8px;
+      }
+      .hs-mc-msg.hs-mc-highlighted {
+        background: rgba(255, 215, 0, 0.1);
+        border-left: 3px solid #ffd700;
+        padding-left: 8px;
+      }
+      .hs-mc-redeem-label {
+        color: #9147ff;
+        font-size: 11px;
+        font-style: normal;
+        font-weight: 600;
+      }
+      .hs-mc-highlight-label {
+        color: #ffd700;
+        font-size: 11px;
+        font-style: normal;
+        font-weight: 600;
       }
       .hs-mc-reply-ctx {
         font-size: 11px;
@@ -4387,8 +4407,12 @@
         animation: hs-feed-heat-breathe 2.5s ease-in-out infinite;
       }
       @keyframes hs-feed-heat-breathe {
-        0%, 100% { opacity: 1; }
-        50% { opacity: 0.8; }
+        0%, 100% { background: rgba(60,20,0,0.15); }
+        50% { background: rgba(80,25,0,0.25); }
+      }
+      @keyframes hs-heat-breathe {
+        0%, 100% { transform: scale(1); opacity: 1; }
+        50% { transform: scale(1.04); opacity: 0.9; }
       }
       .hs-post-link {
         color: #ffff00;
@@ -5286,6 +5310,7 @@
 isKicksEvent ? 'hs-mc-msg hs-mc-system hs-mc-kicks' :
 isMembership ? 'hs-mc-msg hs-mc-system' :
 m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
+                m.isHighlighted ? 'hs-mc-msg hs-mc-highlighted' :
                 m.redeemed ? 'hs-mc-msg hs-mc-redeemed' :
                 isSuperChat ? 'hs-mc-msg hs-mc-superchat' :
                 isMention(m) ? 'hs-mc-msg mention' : 'hs-mc-msg';
@@ -5365,8 +5390,18 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
     }
     // Reply context bar (Chatterino-style) — all values escaped via escapeHtml
     const replyBar = m.replyTo ? `<div class="hs-mc-reply-ctx">&#8618; Replying to <a href="https://heatsync.org/user/${encodeURIComponent(m.replyTo.user)}" target="_blank" class="hs-mc-user hs-mc-reply-user" data-username="${escapeHtml(m.replyTo.user.toLowerCase())}">@${escapeHtml(m.replyTo.user)}</a>${m.replyTo.text ? ': ' + escapeHtml(m.replyTo.text.length > 80 ? m.replyTo.text.slice(0, 80) + '...' : m.replyTo.text) : ''}</div>` : ''
+    // Redeem label — look up reward title from Hermes cache
+    let redeemLabel = ''
+    if (m.redeemed && m.rewardId) {
+      const reward = redeemTitleMap.get(m.rewardId)
+      redeemLabel = reward
+        ? `<span class="hs-mc-system-text hs-mc-redeem-label">\u25C6 ${escapeHtml(reward.title)} \u00B7 ${Number(reward.cost).toLocaleString()} pts</span>`
+        : `<span class="hs-mc-system-text hs-mc-redeem-label">\u25C6 channel point redeem</span>`
+    } else if (m.isHighlighted) {
+      redeemLabel = `<span class="hs-mc-system-text hs-mc-highlight-label">\u2728 highlighted message</span>`
+    }
     // USERNOTICE system line (all values go through escapeHtml — same pattern as existing innerHTML above)
-    const systemLine = m.systemMsg ? `<span class="hs-mc-system-text">${escapeHtml(m.systemMsg)}</span>` : ''
+    const systemLine = (m.systemMsg ? `<span class="hs-mc-system-text">${escapeHtml(m.systemMsg)}</span>` : '') + redeemLabel
     const ts = formatTimeFromTs(m.time);
     const showTs = timestampsEnabled || tabId === 'mentions';
     const tsHtml = ts && showTs ? `<span class="hs-mc-ts" data-ts="${m.time}">${ts}</span>` : '';
@@ -7068,6 +7103,7 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
         toggleKey = 'redeem'
         eventClass = 'event-redeem'
         text = `[${escapeHtml(channel)}] \u25C6 ${escapeHtml(data.user)} redeemed "${escapeHtml(data.title)}"`
+        if (data.rewardId) redeemTitleMap.set(data.rewardId, { title: data.title, cost: data.cost })
       } else if (eventType === 'pin') {
         if (typeof onPinnedMessage === 'function') onPinnedMessage({ message: data.message, sender: data.sender, id: data.id, channel })
         return

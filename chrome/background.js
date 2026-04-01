@@ -1429,6 +1429,8 @@ function handle7TVEmoteSetUpdate(updateData) {
 
   // Handle removed emotes
   if (updateData.pulled && updateData.pulled.length > 0) {
+    const isBulkRemoval = updateData.pulled.length > 3;
+    let removedCount = 0;
     for (const item of updateData.pulled) {
       const emote = item.old_value;
       const chEmotes = channelEmotesMap[channelName] || [];
@@ -1438,16 +1440,28 @@ function handle7TVEmoteSetUpdate(updateData) {
         chEmotes.splice(index, 1);
         channelEmotesMap[channelName] = chEmotes;
         updated = true;
-        log(' 7TV: Removed emote:', emote.name, 'from', channelName);
+        removedCount++;
 
-        const msg = actor ? `${actor} removed 7TV emote ${emote.name}` : `${emote.name} removed from channel`;
-        broadcastToTabs({
-          type: 'channel_emote_removed',
-          emoteName: emote.name,
-          emoteHash: emote.id,
-          message: msg
-        });
+        if (!isBulkRemoval) {
+          log(' 7TV: Removed emote:', emote.name, 'from', channelName);
+          const msg = actor ? `${actor} removed 7TV emote ${emote.name}` : `${emote.name} removed from channel`;
+          broadcastToTabs({
+            type: 'channel_emote_removed',
+            emoteName: emote.name,
+            emoteHash: emote.id,
+            message: msg
+          });
+        }
       }
+    }
+    if (isBulkRemoval && removedCount > 0) {
+      log(' 7TV: Bulk removal —', removedCount, 'emotes removed from', channelName, '(notifications suppressed)');
+      broadcastToTabs({
+        type: 'channel_emote_removed',
+        emoteName: null,
+        emoteHash: null,
+        message: `${removedCount} 7TV emotes removed from channel (set changed)`
+      });
     }
   }
 
@@ -1571,22 +1585,42 @@ async function poll7TVEmoteSet() {
       // Only broadcast individual notifications after first successful poll this session
       // Prevents spammy "removed" notifications when diffing stale cache on startup
       if (seventvPolledChannels.has(channelName)) {
-        for (const emote of added) {
-          log(' 7TV Poll: Added emote:', emote.name, 'to', channelName)
-          broadcastToTabs({
-            type: 'channel_emote_added',
-            emote,
-            message: `${emote.name} added to channel (7TV)`
-          })
-        }
-        for (const emote of removed) {
-          log(' 7TV Poll: Removed emote:', emote.name, 'from', channelName)
-          broadcastToTabs({
-            type: 'channel_emote_removed',
-            emoteName: emote.name,
-            emoteHash: emote.hash,
-            message: `${emote.name} removed from channel (7TV)`
-          })
+        const isBulk = added.length > 3 || removed.length > 3
+        if (isBulk) {
+          log(' 7TV Poll: Bulk set change for', channelName, '—', added.length, 'added,', removed.length, 'removed (notifications suppressed)')
+          if (added.length > 0) {
+            broadcastToTabs({
+              type: 'channel_emote_added',
+              emote: null,
+              message: `${added.length} 7TV emotes added to channel (set changed)`
+            })
+          }
+          if (removed.length > 0) {
+            broadcastToTabs({
+              type: 'channel_emote_removed',
+              emoteName: null,
+              emoteHash: null,
+              message: `${removed.length} 7TV emotes removed from channel (set changed)`
+            })
+          }
+        } else {
+          for (const emote of added) {
+            log(' 7TV Poll: Added emote:', emote.name, 'to', channelName)
+            broadcastToTabs({
+              type: 'channel_emote_added',
+              emote,
+              message: `${emote.name} added to channel (7TV)`
+            })
+          }
+          for (const emote of removed) {
+            log(' 7TV Poll: Removed emote:', emote.name, 'from', channelName)
+            broadcastToTabs({
+              type: 'channel_emote_removed',
+              emoteName: emote.name,
+              emoteHash: emote.hash,
+              message: `${emote.name} removed from channel (7TV)`
+            })
+          }
         }
       } else {
         log(' 7TV Poll: Skipping notifications for initial load of', channelName, '(' + added.length + ' added,', removed.length, 'removed)')

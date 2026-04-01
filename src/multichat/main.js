@@ -288,7 +288,9 @@
       for (const e of events) {
         if (e.time <= cutoff) continue
         // Prune 7TV emote change messages that were incorrectly saved as stream events
-        if (e.text && (e.text.includes('removed from channel (7TV)') || e.text.includes('added to channel (7TV)'))) continue
+        const evtText = e.text || e.message || ''
+        if (evtText.includes('removed from channel') || evtText.includes('added to channel') ||
+            evtText.includes('removed 7TV emote') || evtText.includes('added 7TV emote')) continue
         if (e.text && seenTexts.has(e.text)) continue
         seenTexts.add(e.text)
         valid.push(e)

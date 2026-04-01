@@ -2693,6 +2693,22 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true
   }
 
+  // Clear all heatsync message history and stream events
+  if (message.type === 'clear_history') {
+    browser.storage.local.get(null).then(all => {
+      const keys = Object.keys(all).filter(k => k === 'hs_stream_events' || k.startsWith('hs_irc_'))
+      if (keys.length > 0) {
+        browser.storage.local.remove(keys).then(() => {
+          log('Cleared', keys.length, 'history keys')
+          sendResponse({ ok: true, cleared: keys.length })
+        }).catch(e => sendResponse({ ok: false, error: e.message }))
+      } else {
+        sendResponse({ ok: true, cleared: 0 })
+      }
+    }).catch(e => sendResponse({ ok: false, error: e.message }))
+    return true
+  }
+
   // YouTube chat relay — forward to Twitch/Kick tabs only (not back to YouTube)
   if (message.type === 'youtube_chat_message' && !message.source) {
     // Only relay content-script-sourced messages (no source field)

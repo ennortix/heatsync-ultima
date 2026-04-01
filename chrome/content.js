@@ -6328,6 +6328,11 @@ function handleNavigation() {
 window.addEventListener('message', (event) => {
   if (event.origin !== location.origin) return
   if (event.data?.type === 'heatsync-nav') handleNavigation()
+  if (event.data?.type === 'heatsync-clear-history') {
+    safeSendMessage({ type: 'clear_history' }).then(r => {
+      window.postMessage({ type: 'heatsync-clear-history-result', result: r }, '*')
+    })
+  }
 }, { signal })
 
 // Fallback: polling in case MAIN world script didn't load (e.g. Firefox edge cases)

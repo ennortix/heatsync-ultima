@@ -1285,8 +1285,14 @@ class IRC {
       const stored = await chrome.storage.local.get(storageKey)
       const data = stored[storageKey]
       if (data?.msgs?.length > 0 && Date.now() - data.ts < 86400000) {
-        log('Storage hit:', data.msgs.length, 'msgs for', ch)
-        for (const msg of data.msgs) {
+        // Filter out 7TV emote change system messages that leaked into buffers
+        const filtered = data.msgs.filter(m => {
+          const t = m.text || m.systemMsg || ''
+          return !t.includes('removed from channel') && !t.includes('added to channel') &&
+                 !t.includes('removed 7TV emote') && !t.includes('added 7TV emote')
+        })
+        log('Storage hit:', filtered.length, 'msgs for', ch)
+        for (const msg of filtered) {
           msg.isHistory = true
           if (msg.user) {
             usernameCache.add(msg.user)
@@ -1573,8 +1579,14 @@ class KickChat {
       const stored = await chrome.storage.local.get(storageKey)
       const data = stored[storageKey]
       if (data?.msgs?.length > 0 && Date.now() - data.ts < 86400000) {
-        log('Kick storage hit:', data.msgs.length, 'msgs for', ch)
-        for (const msg of data.msgs) {
+        // Filter out 7TV emote change system messages that leaked into wrong channel buffers
+        const filtered = data.msgs.filter(m => {
+          const t = m.text || m.systemMsg || ''
+          return !t.includes('removed from channel') && !t.includes('added to channel') &&
+                 !t.includes('removed 7TV emote') && !t.includes('added 7TV emote')
+        })
+        log('Kick storage hit:', filtered.length, 'msgs for', ch, data.msgs.length !== filtered.length ? `(pruned ${data.msgs.length - filtered.length} 7TV spam)` : '')
+        for (const msg of filtered) {
           msg.isHistory = true
           if (msg.user) {
             usernameCache.add(msg.user)

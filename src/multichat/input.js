@@ -621,6 +621,15 @@ function handleInputKeydown(e) {
         acState.index = allMatches.findIndex(m => m.type === 'emoji' && m.emoji === emojiMatch.emoji)
         if (acState.index === -1) acState.index = 0
         acState.active = true
+        // For plain text input, set wordStart/afterText so cycling works
+        if (!wysiwygEnabled && input.value !== undefined) {
+          const val = input.value
+          const cursor = input.selectionStart
+          // The emoji was just inserted — find where it starts
+          acState.wordStart = cursor - emojiMatch.emoji.length
+          // afterText is everything after cursor
+          acState.afterText = val.slice(cursor)
+        }
         // For WYSIWYG, mark the inserted emoji span as cycling element
         if (wysiwygEnabled) {
           const input = document.getElementById('hs-mc-input')

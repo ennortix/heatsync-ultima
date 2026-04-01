@@ -1207,8 +1207,10 @@ class IRC {
       if (msg && !msg.type) {
         // PRIVMSG
         const ch = msg.channel;
-        usernameCache.add(msg.user);
-        knownColors.set(msg.user.toLowerCase(), msg.color);
+        if (msg.user) {
+          usernameCache.add(msg.user);
+          knownColors.set(msg.user.toLowerCase(), msg.color);
+        }
         if (usernameCache.size > 500) {
           usernameCache.delete(usernameCache.values().next().value);
           const oldest = knownColors.keys().next().value;
@@ -1224,8 +1226,10 @@ class IRC {
       } else if (msg && (msg.type === 'usernotice' || msg.type === 'notice')) {
         const ch = msg.channel;
         if (msg.user !== 'system') {
-          usernameCache.add(msg.user);
-          knownColors.set(msg.user.toLowerCase(), msg.color);
+          if (msg.user) {
+            usernameCache.add(msg.user)
+            knownColors.set(msg.user.toLowerCase(), msg.color)
+          }
         }
         fetchChannelBadges(ch);
         if (this.channels.has(ch)) {
@@ -1284,8 +1288,10 @@ class IRC {
         log('Storage hit:', data.msgs.length, 'msgs for', ch)
         for (const msg of data.msgs) {
           msg.isHistory = true
-          usernameCache.add(msg.user)
-          knownColors.set(msg.user.toLowerCase(), msg.color)
+          if (msg.user) {
+            usernameCache.add(msg.user)
+            knownColors.set(msg.user.toLowerCase(), msg.color)
+          }
           if (msg.subMonths) trackSubTenure(ch, msg.user, msg.subMonths)
           buffer.push(msg)
         }
@@ -1306,8 +1312,13 @@ class IRC {
         if (Date.now() - timestamp < 3600000 && messages?.length > 0) {
           log('Cache hit:', messages.length, 'msgs for', ch);
           for (const msg of messages) {
-            usernameCache.add(msg.user);
-            knownColors.set(msg.user.toLowerCase(), msg.color);
+            if (msg.user) {
+
+              usernameCache.add(msg.user)
+
+              knownColors.set(msg.user.toLowerCase(), msg.color)
+
+            }
             if (msg.subMonths) trackSubTenure(ch, msg.user, msg.subMonths);
             buffer.push(msg);
           }
@@ -1361,8 +1372,10 @@ class IRC {
         if (!msg) continue;
         msg.isHistory = true;
         if (msg.id && liveIds.has(msg.id)) continue;
-        usernameCache.add(msg.user);
-        knownColors.set(msg.user.toLowerCase(), msg.color);
+        if (msg.user) {
+          usernameCache.add(msg.user)
+          knownColors.set(msg.user.toLowerCase(), msg.color)
+        }
         if (msg.subMonths) trackSubTenure(ch, msg.user, msg.subMonths);
         parsed.push(msg);
       }
@@ -5093,6 +5106,7 @@ function startPredictionPoll() {
 
 // Refresh only the prediction slot without tearing down the whole Twitch tab
 async function refreshPredictionSlot() {
+  _predResultCache = null // always fetch fresh on explicit refresh
   const container = document.getElementById('hs-mc-tab-twitch')
   if (!container) return
   const channel = getActiveTwitchChannel()
@@ -5380,6 +5394,10 @@ const _userBets = new Map() // eventId → { outcomeId, points }
 let _rewardsCache = null
 let _rewardsCacheChannel = null
 
+// Prediction result cache — avoids redundant GQL on quick tab switches
+let _predResultCache = null // { result, channel, ts }
+const PRED_CACHE_TTL = 5000 // 5s — fresh enough to feel instant, short enough to stay current
+
 const PRED_FIELDS = 'id title status createdAt endedAt predictionWindowSeconds winningOutcome { id } outcomes { id title totalPoints totalUsers color } self { prediction { outcome { id } points } }'
 
 // GQL call — tries direct fetch first (Chrome MV3), falls back to MAIN world proxy (Firefox MV2)
@@ -5412,15 +5430,23 @@ async function twitchGql(query, variables) {
 async function fetchPrediction(channelLogin) {
   const safe = channelLogin.replace(/[^a-z0-9_]/g, '')
   if (!safe) return null
+
+  // Return cached result if fresh (avoids GQL on quick tab switches)
+  if (_predResultCache && _predResultCache.channel === safe && Date.now() - _predResultCache.ts < PRED_CACHE_TTL) {
+    return _predResultCache.result
+  }
+
   try {
     let predEvent = null
     let balance = null
     let channelId = null
     let isMod = false
+    let cpImage = null
+    let cpName = null
 
-    // Direct GQL query — fetch active + locked + most recent resolved + mod check
+    // Single combined GQL query — predictions + balance + channel points settings
     try {
-      const data = await twitchGql('{ user(login: "' + safe + '") { id self { isModerator } channel { activePredictionEvents { ' + PRED_FIELDS + ' } lockedPredictionEvents { ' + PRED_FIELDS + ' } resolvedPredictionEvents(first: 1) { edges { node { ' + PRED_FIELDS + ' } } } } } currentUser { id } }')
+      const data = await twitchGql('{ user(login: "' + safe + '") { id self { isModerator } channel { activePredictionEvents { ' + PRED_FIELDS + ' } lockedPredictionEvents { ' + PRED_FIELDS + ' } resolvedPredictionEvents(first: 1) { edges { node { ' + PRED_FIELDS + ' } } } } } currentUser { id } channel(name: "' + safe + '") { communityPointsSettings { image { url url2x } name } self { communityPoints { balance } } } }')
       const ch = data?.data?.user?.channel
       const userId = data?.data?.user?.id
       const currentUserId = data?.data?.currentUser?.id
@@ -5450,21 +5476,18 @@ async function fetchPrediction(channelLogin) {
           _userBets.set(predEvent.id, { outcomeId: sp.outcome.id, points: sp.points })
         }
       }
-    } catch (e) {
-      log('GQL prediction query failed:', e.message)
-    }
 
-    // Fetch balance + channel points settings (custom icon/name)
-    let cpImage = null
-    let cpName = null
-    try {
-      const data = await twitchGql('{ channel(name: "' + safe + '") { communityPointsSettings { image { url url2x } name } self { communityPoints { balance } } } }')
+      // Extract balance + channel points settings from same response
       const ch2 = data?.data?.channel
       balance = ch2?.self?.communityPoints?.balance ?? null
       cpImage = ch2?.communityPointsSettings?.image?.url2x || ch2?.communityPointsSettings?.image?.url || null
       cpName = ch2?.communityPointsSettings?.name || null
     } catch (e) {
-      // Fallback to proxy for balance
+      log('GQL prediction query failed:', e.message)
+    }
+
+    // Fallback: fetch balance via proxy if combined query didn't get it
+    if (balance === null) {
       try {
         const data = await gqlProxy('CommunityPointsContext', { channelLogin: safe })
         const d = Array.isArray(data) ? data[0]?.data : (data?.data || data)
@@ -5474,7 +5497,9 @@ async function fetchPrediction(channelLogin) {
 
     _twitchIsMod = isMod
     _twitchChannelId = channelId
-    return { prediction: predEvent, balance, channelId, isMod, cpImage, cpName }
+    const result = { prediction: predEvent, balance, channelId, isMod, cpImage, cpName }
+    _predResultCache = { result, channel: safe, ts: Date.now() }
+    return result
   } catch (e) {
     log('Failed to fetch prediction:', e.message)
     return null
@@ -8685,6 +8710,7 @@ function findEmoteMatches(search) {
   // Search usernames if @ prefix or if it could be a username
   if (isUserSearch || searchTerm.length >= 2) {
     for (const username of usernameCache) {
+      if (!username) continue
       const userLower = username.toLowerCase();
       if (userLower.startsWith(searchLower)) {
         matches.push({ name: '@' + username, url: null, priority: isUserSearch ? 0 : 2, type: 'user' });

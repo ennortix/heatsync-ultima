@@ -5,6 +5,7 @@
   "manifest_description": {
     "message": "Twitch, Kick ve YouTube sohbeti için özel emote'lar. Sınırsız slot, tab tamamlama, gerçek zamanlı senkronizasyon."
   },
+
   "common_loading": {
     "message": "yükleniyor..."
   },
@@ -53,6 +54,7 @@
   "common_user_not_found": {
     "message": "kullanıcı bulunamadı"
   },
+
   "popup_title": {
     "message": "heatsync"
   },
@@ -71,26 +73,16 @@
   "popup_user_stats": {
     "message": "$EMOTES$ emote · $GLOBALS$ global",
     "placeholders": {
-      "emotes": {
-        "content": "$1"
-      },
-      "globals": {
-        "content": "$2"
-      }
+      "emotes": { "content": "$1" },
+      "globals": { "content": "$2" }
     }
   },
   "popup_user_stats_heat": {
     "message": "$EMOTES$ emote · $GLOBALS$ global · $HEAT$ heat",
     "placeholders": {
-      "emotes": {
-        "content": "$1"
-      },
-      "globals": {
-        "content": "$2"
-      },
-      "heat": {
-        "content": "$3"
-      }
+      "emotes": { "content": "$1" },
+      "globals": { "content": "$2" },
+      "heat": { "content": "$3" }
     }
   },
   "popup_btn_emotes": {
@@ -117,6 +109,7 @@
   "popup_hint": {
     "message": "emote ayarları sohbetteki picker panelinde"
   },
+
   "welcome_title": {
     "message": "heatsync'e hoş geldin"
   },
@@ -150,6 +143,7 @@
   "welcome_source": {
     "message": "kaynak kod"
   },
+
   "btn_auth_login": {
     "message": "giriş yap"
   },
@@ -198,9 +192,7 @@
   "btn_import_count": {
     "message": "$COUNT$ emote içe aktar",
     "placeholders": {
-      "count": {
-        "content": "$1"
-      }
+      "count": { "content": "$1" }
     }
   },
   "btn_failed_load": {
@@ -317,82 +309,61 @@
   "btn_click_expand": {
     "message": "genişletmek için tıkla"
   },
+
   "content_toast_failed_add": {
     "message": "$NAME$ eklenemedi: $ERROR$",
     "placeholders": {
-      "name": {
-        "content": "$1"
-      },
-      "error": {
-        "content": "$2"
-      }
+      "name": { "content": "$1" },
+      "error": { "content": "$2" }
     }
   },
   "content_toast_failed_remove": {
     "message": "$NAME$ kaldırılamadı: $ERROR$",
     "placeholders": {
-      "name": {
-        "content": "$1"
-      },
-      "error": {
-        "content": "$2"
-      }
+      "name": { "content": "$1" },
+      "error": { "content": "$2" }
     }
   },
   "content_toast_unblocked": {
     "message": "$NAME$ engeli kaldırıldı",
     "placeholders": {
-      "name": {
-        "content": "$1"
-      }
+      "name": { "content": "$1" }
     }
   },
   "content_toast_failed_unblock": {
     "message": "Engel kaldırılamadı: $ERROR$",
     "placeholders": {
-      "error": {
-        "content": "$1"
-      }
+      "error": { "content": "$1" }
     }
   },
   "content_toast_removed": {
     "message": "$NAME$ setinden kaldırıldı",
     "placeholders": {
-      "name": {
-        "content": "$1"
-      }
+      "name": { "content": "$1" }
     }
   },
   "content_toast_failed_block": {
     "message": "Engellenemedi: $ERROR$",
     "placeholders": {
-      "error": {
-        "content": "$1"
-      }
+      "error": { "content": "$1" }
     }
   },
   "content_toast_blocked": {
     "message": "$NAME$ engellendi",
     "placeholders": {
-      "name": {
-        "content": "$1"
-      }
+      "name": { "content": "$1" }
     }
   },
   "content_toast_unmuted": {
     "message": "$NAME$ sessizliği kaldırıldı",
     "placeholders": {
-      "name": {
-        "content": "$1"
-      }
+      "name": { "content": "$1" }
     }
   },
   "content_toast_muted_24h": {
     "message": "$NAME$ 24 saat sessize alındı",
     "placeholders": {
-      "name": {
-        "content": "$1"
-      }
+      "name": { "content": "$1" }
     }
   },
   "content_card_follows_you": {
@@ -410,63 +381,45 @@
   "content_card_you_sub_tier": {
     "message": "T$TIER$ sub'sun",
     "placeholders": {
-      "tier": {
-        "content": "$1"
-      }
+      "tier": { "content": "$1" }
     }
   },
   "content_card_subbed": {
     "message": "$CHANNEL$ kanalına sub $TENURE$",
     "placeholders": {
-      "channel": {
-        "content": "$1"
-      },
-      "tenure": {
-        "content": "$2"
-      }
+      "channel": { "content": "$1" },
+      "tenure": { "content": "$2" }
     }
   },
   "content_card_following": {
     "message": "$CHANNEL$ takip ediliyor $AGE$",
     "placeholders": {
-      "channel": {
-        "content": "$1"
-      },
-      "age": {
-        "content": "$2"
-      }
+      "channel": { "content": "$1" },
+      "age": { "content": "$2" }
     }
   },
   "content_card_not_following": {
     "message": "$CHANNEL$ takip edilmiyor",
     "placeholders": {
-      "channel": {
-        "content": "$1"
-      }
+      "channel": { "content": "$1" }
     }
   },
   "content_card_followed_by": {
     "message": "$CHANNEL$ tarafından takip ediliyor",
     "placeholders": {
-      "channel": {
-        "content": "$1"
-      }
+      "channel": { "content": "$1" }
     }
   },
   "content_card_following_count": {
     "message": "$COUNT$ takip edilen",
     "placeholders": {
-      "count": {
-        "content": "$1"
-      }
+      "count": { "content": "$1" }
     }
   },
   "content_card_followers": {
     "message": "$COUNT$ takipçi",
     "placeholders": {
-      "count": {
-        "content": "$1"
-      }
+      "count": { "content": "$1" }
     }
   },
   "content_card_partner": {
@@ -478,9 +431,7 @@
   "content_card_live": {
     "message": "CANLI $VIEWERS$",
     "placeholders": {
-      "viewers": {
-        "content": "$1"
-      }
+      "viewers": { "content": "$1" }
     }
   },
   "content_card_twitch_verified": {
@@ -501,6 +452,7 @@
   "content_blocked_click_unblock": {
     "message": "engellendi (kaldırmak için tıkla)"
   },
+
   "mc_tab_feed": {
     "message": "feed"
   },
@@ -519,9 +471,7 @@
   "mc_tab_live_channel": {
     "message": "canlı · $CHANNEL$",
     "placeholders": {
-      "channel": {
-        "content": "$1"
-      }
+      "channel": { "content": "$1" }
     }
   },
   "mc_btn_rotate_tabs": {
@@ -539,9 +489,7 @@
   "mc_new_messages": {
     "message": "$COUNT$ yeni",
     "placeholders": {
-      "count": {
-        "content": "$1"
-      }
+      "count": { "content": "$1" }
     }
   },
   "mc_resume": {
@@ -580,14 +528,13 @@
   "mc_edit_channel": {
     "message": "$CHANNEL$ düzenle",
     "placeholders": {
-      "channel": {
-        "content": "$1"
-      }
+      "channel": { "content": "$1" }
     }
   },
   "mc_no_channel_detected": {
     "message": "kanal tespit edilemedi"
   },
+
   "mc_settings_display": {
     "message": "görünüm"
   },
@@ -643,16 +590,16 @@
     "message": "satır içi bildirimler"
   },
   "mc_settings_notif_op": {
-    "message": "orijinal gönderiler"
+    "message": "[OP] orijinal gönderiler"
   },
   "mc_settings_notif_op_reply": {
-    "message": "OP kendi thread'inde yanıtlıyor"
+    "message": "[OP] OP kendi thread'inde yanıtlıyor"
   },
   "mc_settings_notif_re": {
-    "message": "yanıtlar"
+    "message": "[RE] yanıtlar"
   },
   "mc_settings_notif_dm": {
-    "message": "fısıltılar & DM'ler"
+    "message": "[DM] fısıltılar & DM'ler"
   },
   "mc_settings_notif_op_desc": {
     "message": "Birisi feed'de yeni bir orijinal gönderi oluşturduğunda aktif sohbet sekmesinde bildirim."
@@ -708,6 +655,7 @@
   "mc_settings_unmute": {
     "message": "sesi aç"
   },
+
   "mc_pred_no_active": {
     "message": "aktif tahmin yok"
   },
@@ -795,14 +743,11 @@
   "mc_pred_you_bet": {
     "message": "$OUTCOME$ üzerine $POINTS$ bahis yaptın — gerçek kazananı seç",
     "placeholders": {
-      "points": {
-        "content": "$1"
-      },
-      "outcome": {
-        "content": "$2"
-      }
+      "points": { "content": "$1" },
+      "outcome": { "content": "$2" }
     }
   },
+
   "mc_poll_new": {
     "message": "+ yeni anket"
   },
@@ -812,17 +757,13 @@
   "mc_poll_choice": {
     "message": "seçenek $NUM$",
     "placeholders": {
-      "num": {
-        "content": "$1"
-      }
+      "num": { "content": "$1" }
     }
   },
   "mc_poll_choice_optional": {
     "message": "seçenek $NUM$ (isteğe bağlı)",
     "placeholders": {
-      "num": {
-        "content": "$1"
-      }
+      "num": { "content": "$1" }
     }
   },
   "mc_poll_create": {
@@ -834,17 +775,13 @@
   "mc_poll_votes": {
     "message": "$COUNT$ oy",
     "placeholders": {
-      "count": {
-        "content": "$1"
-      }
+      "count": { "content": "$1" }
     }
   },
   "mc_poll_vote_single": {
     "message": "$COUNT$ oy",
     "placeholders": {
-      "count": {
-        "content": "$1"
-      }
+      "count": { "content": "$1" }
     }
   },
   "mc_poll_already_active": {
@@ -853,6 +790,7 @@
   "mc_poll_not_logged_in": {
     "message": "giriş yapılmadı"
   },
+
   "mc_reward_rewards": {
     "message": "ödüller"
   },
@@ -868,17 +806,13 @@
   "mc_reward_cooldown_min": {
     "message": "$MIN$d bekleme",
     "placeholders": {
-      "min": {
-        "content": "$1"
-      }
+      "min": { "content": "$1" }
     }
   },
   "mc_reward_cooldown_sec": {
     "message": "$SEC$sn bekleme",
     "placeholders": {
-      "sec": {
-        "content": "$1"
-      }
+      "sec": { "content": "$1" }
     }
   },
   "mc_reward_enter_text": {
@@ -887,6 +821,7 @@
   "mc_reward_redeem": {
     "message": "kullan"
   },
+
   "mc_chat_username_color": {
     "message": "kullanıcı adı rengi"
   },
@@ -917,11 +852,10 @@
   "mc_chat_hype_level": {
     "message": "svye $LEVEL$",
     "placeholders": {
-      "level": {
-        "content": "$1"
-      }
+      "level": { "content": "$1" }
     }
   },
+
   "mc_input_send_message": {
     "message": "mesaj gönder..."
   },
@@ -931,17 +865,13 @@
   "mc_input_send_channel": {
     "message": "#$CHANNEL$ kanalına gönder",
     "placeholders": {
-      "channel": {
-        "content": "$1"
-      }
+      "channel": { "content": "$1" }
     }
   },
   "mc_input_replying_to": {
     "message": "@$USER$ kullanıcısına yanıt veriliyor",
     "placeholders": {
-      "user": {
-        "content": "$1"
-      }
+      "user": { "content": "$1" }
     }
   },
   "mc_input_cancel_reply": {
@@ -974,6 +904,7 @@
   "mc_input_send_failed_retry": {
     "message": "gönderilemedi — tekrar dene"
   },
+
   "mc_social_back": {
     "message": "<- geri"
   },
@@ -1013,55 +944,43 @@
   "mc_social_failed_post": {
     "message": "gönderi başarısız"
   },
+
   "mc_tip_emoji": {
     "message": "emoji"
   },
   "mc_tip_subbed": {
     "message": "$CHANNEL$ kanalına sub $TENURE$",
     "placeholders": {
-      "channel": {
-        "content": "$1"
-      },
-      "tenure": {
-        "content": "$2"
-      }
+      "channel": { "content": "$1" },
+      "tenure": { "content": "$2" }
     }
   },
   "mc_tip_following": {
     "message": "$CHANNEL$ takip ediliyor $AGE$",
     "placeholders": {
-      "channel": {
-        "content": "$1"
-      },
-      "age": {
-        "content": "$2"
-      }
+      "channel": { "content": "$1" },
+      "age": { "content": "$2" }
     }
   },
   "mc_tip_not_following": {
     "message": "$CHANNEL$ takip edilmiyor",
     "placeholders": {
-      "channel": {
-        "content": "$1"
-      }
+      "channel": { "content": "$1" }
     }
   },
   "mc_tip_followed_by": {
     "message": "$CHANNEL$ tarafından takip ediliyor",
     "placeholders": {
-      "channel": {
-        "content": "$1"
-      }
+      "channel": { "content": "$1" }
     }
   },
   "mc_tip_followers": {
     "message": "$COUNT$ takipçi",
     "placeholders": {
-      "count": {
-        "content": "$1"
-      }
+      "count": { "content": "$1" }
     }
   },
+
   "mc_whisper_hint": {
     "message": "/w user msg · /dm user msg · /r msg"
   },
@@ -1071,9 +990,7 @@
   "mc_whisper_user_not_found": {
     "message": "\"$USER$\" Twitch kullanıcısı bulunamadı",
     "placeholders": {
-      "user": {
-        "content": "$1"
-      }
+      "user": { "content": "$1" }
     }
   },
   "mc_whisper_resolve_failed": {
@@ -1082,42 +999,32 @@
   "mc_whisper_hs_not_found": {
     "message": "\"$USER$\" heatsync kullanıcısı bulunamadı",
     "placeholders": {
-      "user": {
-        "content": "$1"
-      }
+      "user": { "content": "$1" }
     }
   },
+
   "mc_irc_chat_cleared": {
     "message": "Sohbet temizlendi"
   },
   "mc_irc_msg_deleted": {
     "message": "$USER$ kullanıcısının mesajı silindi",
     "placeholders": {
-      "user": {
-        "content": "$1"
-      }
+      "user": { "content": "$1" }
     }
   },
   "mc_irc_gift_subs": {
     "message": "$USER$, $CHANNEL$ kanalına $AMOUNT$ sub hediye etti",
     "placeholders": {
-      "user": {
-        "content": "$1"
-      },
-      "amount": {
-        "content": "$2"
-      },
-      "channel": {
-        "content": "$3"
-      }
+      "user": { "content": "$1" },
+      "amount": { "content": "$2" },
+      "channel": { "content": "$3" }
     }
   },
+
   "mc_yt_connected": {
     "message": "YouTube bağlandı: $CHANNEL$ — mesajlar bekleniyor...",
     "placeholders": {
-      "channel": {
-        "content": "$1"
-      }
+      "channel": { "content": "$1" }
     }
   },
   "mc_yt_ended": {
@@ -1126,6 +1033,7 @@
   "mc_yt_error": {
     "message": "YouTube bağlantı hatası"
   },
+
   "mc_emote_search_placeholder": {
     "message": "emote ara..."
   },
@@ -1141,6 +1049,7 @@
   "mc_emote_blocked": {
     "message": "engellendi (kaldırmak için tıkla)"
   },
+
   "content_toast_unknown_error": {
     "message": "Bilinmeyen hata"
   },
@@ -1170,11 +1079,5 @@
   },
   "btn_error_inventory": {
     "message": "emote'ların yüklenemedi"
-  },
-  "mc_settings_notif_mop": {
-    "message": "OP kendi thread'inde yanıtlıyor"
-  },
-  "mc_settings_notif_mop_desc": {
-    "message": "Orijinal poster kendi thread'inde yanıtladığında bildirim."
   }
 }

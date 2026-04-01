@@ -340,8 +340,10 @@ class IRC {
       if (msg && !msg.type) {
         // PRIVMSG
         const ch = msg.channel;
-        usernameCache.add(msg.user);
-        knownColors.set(msg.user.toLowerCase(), msg.color);
+        if (msg.user) {
+          usernameCache.add(msg.user);
+          knownColors.set(msg.user.toLowerCase(), msg.color);
+        }
         if (usernameCache.size > 500) {
           usernameCache.delete(usernameCache.values().next().value);
           const oldest = knownColors.keys().next().value;
@@ -357,8 +359,10 @@ class IRC {
       } else if (msg && (msg.type === 'usernotice' || msg.type === 'notice')) {
         const ch = msg.channel;
         if (msg.user !== 'system') {
-          usernameCache.add(msg.user);
-          knownColors.set(msg.user.toLowerCase(), msg.color);
+          if (msg.user) {
+            usernameCache.add(msg.user)
+            knownColors.set(msg.user.toLowerCase(), msg.color)
+          }
         }
         fetchChannelBadges(ch);
         if (this.channels.has(ch)) {
@@ -417,8 +421,10 @@ class IRC {
         log('Storage hit:', data.msgs.length, 'msgs for', ch)
         for (const msg of data.msgs) {
           msg.isHistory = true
-          usernameCache.add(msg.user)
-          knownColors.set(msg.user.toLowerCase(), msg.color)
+          if (msg.user) {
+            usernameCache.add(msg.user)
+            knownColors.set(msg.user.toLowerCase(), msg.color)
+          }
           if (msg.subMonths) trackSubTenure(ch, msg.user, msg.subMonths)
           buffer.push(msg)
         }
@@ -439,8 +445,13 @@ class IRC {
         if (Date.now() - timestamp < 3600000 && messages?.length > 0) {
           log('Cache hit:', messages.length, 'msgs for', ch);
           for (const msg of messages) {
-            usernameCache.add(msg.user);
-            knownColors.set(msg.user.toLowerCase(), msg.color);
+            if (msg.user) {
+
+              usernameCache.add(msg.user)
+
+              knownColors.set(msg.user.toLowerCase(), msg.color)
+
+            }
             if (msg.subMonths) trackSubTenure(ch, msg.user, msg.subMonths);
             buffer.push(msg);
           }
@@ -494,8 +505,10 @@ class IRC {
         if (!msg) continue;
         msg.isHistory = true;
         if (msg.id && liveIds.has(msg.id)) continue;
-        usernameCache.add(msg.user);
-        knownColors.set(msg.user.toLowerCase(), msg.color);
+        if (msg.user) {
+          usernameCache.add(msg.user)
+          knownColors.set(msg.user.toLowerCase(), msg.color)
+        }
         if (msg.subMonths) trackSubTenure(ch, msg.user, msg.subMonths);
         parsed.push(msg);
       }

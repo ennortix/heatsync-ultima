@@ -5,6 +5,7 @@
   "manifest_description": {
     "message": "Twitch、Kick 和 YouTube 聊天自定义表情。无限槽位，Tab 补全，实时同步。"
   },
+
   "common_loading": {
     "message": "加载中..."
   },
@@ -53,6 +54,7 @@
   "common_user_not_found": {
     "message": "找不到用户"
   },
+
   "popup_title": {
     "message": "heatsync"
   },
@@ -71,26 +73,16 @@
   "popup_user_stats": {
     "message": "$EMOTES$ 个表情 · $GLOBALS$ 个全局",
     "placeholders": {
-      "emotes": {
-        "content": "$1"
-      },
-      "globals": {
-        "content": "$2"
-      }
+      "emotes": { "content": "$1" },
+      "globals": { "content": "$2" }
     }
   },
   "popup_user_stats_heat": {
     "message": "$EMOTES$ 个表情 · $GLOBALS$ 个全局 · $HEAT$ heat",
     "placeholders": {
-      "emotes": {
-        "content": "$1"
-      },
-      "globals": {
-        "content": "$2"
-      },
-      "heat": {
-        "content": "$3"
-      }
+      "emotes": { "content": "$1" },
+      "globals": { "content": "$2" },
+      "heat": { "content": "$3" }
     }
   },
   "popup_btn_emotes": {
@@ -117,6 +109,7 @@
   "popup_hint": {
     "message": "在聊天的选择器面板中设置表情"
   },
+
   "welcome_title": {
     "message": "欢迎使用 heatsync"
   },
@@ -150,6 +143,7 @@
   "welcome_source": {
     "message": "源码"
   },
+
   "btn_auth_login": {
     "message": "登录"
   },
@@ -198,9 +192,7 @@
   "btn_import_count": {
     "message": "导入 $COUNT$ 个表情",
     "placeholders": {
-      "count": {
-        "content": "$1"
-      }
+      "count": { "content": "$1" }
     }
   },
   "btn_failed_load": {
@@ -317,82 +309,61 @@
   "btn_click_expand": {
     "message": "点击展开"
   },
+
   "content_toast_failed_add": {
     "message": "添加 $NAME$ 失败: $ERROR$",
     "placeholders": {
-      "name": {
-        "content": "$1"
-      },
-      "error": {
-        "content": "$2"
-      }
+      "name": { "content": "$1" },
+      "error": { "content": "$2" }
     }
   },
   "content_toast_failed_remove": {
     "message": "移除 $NAME$ 失败: $ERROR$",
     "placeholders": {
-      "name": {
-        "content": "$1"
-      },
-      "error": {
-        "content": "$2"
-      }
+      "name": { "content": "$1" },
+      "error": { "content": "$2" }
     }
   },
   "content_toast_unblocked": {
     "message": "已取消屏蔽 $NAME$",
     "placeholders": {
-      "name": {
-        "content": "$1"
-      }
+      "name": { "content": "$1" }
     }
   },
   "content_toast_failed_unblock": {
     "message": "取消屏蔽失败: $ERROR$",
     "placeholders": {
-      "error": {
-        "content": "$1"
-      }
+      "error": { "content": "$1" }
     }
   },
   "content_toast_removed": {
     "message": "已从套装中移除 $NAME$",
     "placeholders": {
-      "name": {
-        "content": "$1"
-      }
+      "name": { "content": "$1" }
     }
   },
   "content_toast_failed_block": {
     "message": "屏蔽失败: $ERROR$",
     "placeholders": {
-      "error": {
-        "content": "$1"
-      }
+      "error": { "content": "$1" }
     }
   },
   "content_toast_blocked": {
     "message": "已屏蔽 $NAME$",
     "placeholders": {
-      "name": {
-        "content": "$1"
-      }
+      "name": { "content": "$1" }
     }
   },
   "content_toast_unmuted": {
     "message": "已取消静音 $NAME$",
     "placeholders": {
-      "name": {
-        "content": "$1"
-      }
+      "name": { "content": "$1" }
     }
   },
   "content_toast_muted_24h": {
     "message": "已静音 $NAME$ 24小时",
     "placeholders": {
-      "name": {
-        "content": "$1"
-      }
+      "name": { "content": "$1" }
     }
   },
   "content_card_follows_you": {
@@ -410,63 +381,45 @@
   "content_card_you_sub_tier": {
     "message": "T$TIER$ 订阅中",
     "placeholders": {
-      "tier": {
-        "content": "$1"
-      }
+      "tier": { "content": "$1" }
     }
   },
   "content_card_subbed": {
     "message": "订阅 $CHANNEL$ $TENURE$",
     "placeholders": {
-      "channel": {
-        "content": "$1"
-      },
-      "tenure": {
-        "content": "$2"
-      }
+      "channel": { "content": "$1" },
+      "tenure": { "content": "$2" }
     }
   },
   "content_card_following": {
     "message": "关注 $CHANNEL$ $AGE$",
     "placeholders": {
-      "channel": {
-        "content": "$1"
-      },
-      "age": {
-        "content": "$2"
-      }
+      "channel": { "content": "$1" },
+      "age": { "content": "$2" }
     }
   },
   "content_card_not_following": {
     "message": "未关注 $CHANNEL$",
     "placeholders": {
-      "channel": {
-        "content": "$1"
-      }
+      "channel": { "content": "$1" }
     }
   },
   "content_card_followed_by": {
     "message": "被 $CHANNEL$ 关注",
     "placeholders": {
-      "channel": {
-        "content": "$1"
-      }
+      "channel": { "content": "$1" }
     }
   },
   "content_card_following_count": {
     "message": "关注 $COUNT$ 人",
     "placeholders": {
-      "count": {
-        "content": "$1"
-      }
+      "count": { "content": "$1" }
     }
   },
   "content_card_followers": {
     "message": "$COUNT$ 个粉丝",
     "placeholders": {
-      "count": {
-        "content": "$1"
-      }
+      "count": { "content": "$1" }
     }
   },
   "content_card_partner": {
@@ -478,9 +431,7 @@
   "content_card_live": {
     "message": "直播中 $VIEWERS$",
     "placeholders": {
-      "viewers": {
-        "content": "$1"
-      }
+      "viewers": { "content": "$1" }
     }
   },
   "content_card_twitch_verified": {
@@ -501,6 +452,7 @@
   "content_blocked_click_unblock": {
     "message": "已屏蔽 (点击解除)"
   },
+
   "mc_tab_feed": {
     "message": "动态"
   },
@@ -519,9 +471,7 @@
   "mc_tab_live_channel": {
     "message": "直播 · $CHANNEL$",
     "placeholders": {
-      "channel": {
-        "content": "$1"
-      }
+      "channel": { "content": "$1" }
     }
   },
   "mc_btn_rotate_tabs": {
@@ -539,9 +489,7 @@
   "mc_new_messages": {
     "message": "$COUNT$ 条新消息",
     "placeholders": {
-      "count": {
-        "content": "$1"
-      }
+      "count": { "content": "$1" }
     }
   },
   "mc_resume": {
@@ -580,14 +528,13 @@
   "mc_edit_channel": {
     "message": "编辑 $CHANNEL$",
     "placeholders": {
-      "channel": {
-        "content": "$1"
-      }
+      "channel": { "content": "$1" }
     }
   },
   "mc_no_channel_detected": {
     "message": "未检测到频道"
   },
+
   "mc_settings_display": {
     "message": "显示"
   },
@@ -643,16 +590,16 @@
     "message": "内联通知"
   },
   "mc_settings_notif_op": {
-    "message": "原创帖子"
+    "message": "[OP] 原创帖子"
   },
   "mc_settings_notif_op_reply": {
-    "message": "OP 在自己的帖子中回复"
+    "message": "[OP] OP 在自己的帖子中回复"
   },
   "mc_settings_notif_re": {
-    "message": "回复"
+    "message": "[RE] 回复"
   },
   "mc_settings_notif_dm": {
-    "message": "悄悄话 & DM"
+    "message": "[DM] 悄悄话 & DM"
   },
   "mc_settings_notif_op_desc": {
     "message": "当有人在动态中发布新原创帖子时，在当前聊天标签中通知。"
@@ -708,6 +655,7 @@
   "mc_settings_unmute": {
     "message": "取消静音"
   },
+
   "mc_pred_no_active": {
     "message": "没有活跃的预测"
   },
@@ -795,14 +743,11 @@
   "mc_pred_you_bet": {
     "message": "你在 $OUTCOME$ 下注了 $POINTS$ — 请选择实际获胜者",
     "placeholders": {
-      "points": {
-        "content": "$1"
-      },
-      "outcome": {
-        "content": "$2"
-      }
+      "points": { "content": "$1" },
+      "outcome": { "content": "$2" }
     }
   },
+
   "mc_poll_new": {
     "message": "+ 新建投票"
   },
@@ -812,17 +757,13 @@
   "mc_poll_choice": {
     "message": "选项 $NUM$",
     "placeholders": {
-      "num": {
-        "content": "$1"
-      }
+      "num": { "content": "$1" }
     }
   },
   "mc_poll_choice_optional": {
     "message": "选项 $NUM$ (可选)",
     "placeholders": {
-      "num": {
-        "content": "$1"
-      }
+      "num": { "content": "$1" }
     }
   },
   "mc_poll_create": {
@@ -834,17 +775,13 @@
   "mc_poll_votes": {
     "message": "$COUNT$ 票",
     "placeholders": {
-      "count": {
-        "content": "$1"
-      }
+      "count": { "content": "$1" }
     }
   },
   "mc_poll_vote_single": {
     "message": "$COUNT$ 票",
     "placeholders": {
-      "count": {
-        "content": "$1"
-      }
+      "count": { "content": "$1" }
     }
   },
   "mc_poll_already_active": {
@@ -853,6 +790,7 @@
   "mc_poll_not_logged_in": {
     "message": "未登录"
   },
+
   "mc_reward_rewards": {
     "message": "奖励"
   },
@@ -868,17 +806,13 @@
   "mc_reward_cooldown_min": {
     "message": "$MIN$ 分钟冷却",
     "placeholders": {
-      "min": {
-        "content": "$1"
-      }
+      "min": { "content": "$1" }
     }
   },
   "mc_reward_cooldown_sec": {
     "message": "$SEC$ 秒冷却",
     "placeholders": {
-      "sec": {
-        "content": "$1"
-      }
+      "sec": { "content": "$1" }
     }
   },
   "mc_reward_enter_text": {
@@ -887,6 +821,7 @@
   "mc_reward_redeem": {
     "message": "兑换"
   },
+
   "mc_chat_username_color": {
     "message": "用户名颜色"
   },
@@ -917,11 +852,10 @@
   "mc_chat_hype_level": {
     "message": "等级 $LEVEL$",
     "placeholders": {
-      "level": {
-        "content": "$1"
-      }
+      "level": { "content": "$1" }
     }
   },
+
   "mc_input_send_message": {
     "message": "发送消息..."
   },
@@ -931,17 +865,13 @@
   "mc_input_send_channel": {
     "message": "发送到 #$CHANNEL$",
     "placeholders": {
-      "channel": {
-        "content": "$1"
-      }
+      "channel": { "content": "$1" }
     }
   },
   "mc_input_replying_to": {
     "message": "回复 @$USER$",
     "placeholders": {
-      "user": {
-        "content": "$1"
-      }
+      "user": { "content": "$1" }
     }
   },
   "mc_input_cancel_reply": {
@@ -974,6 +904,7 @@
   "mc_input_send_failed_retry": {
     "message": "发送失败 — 请重试"
   },
+
   "mc_social_back": {
     "message": "<- 返回"
   },
@@ -1013,55 +944,43 @@
   "mc_social_failed_post": {
     "message": "发布失败"
   },
+
   "mc_tip_emoji": {
     "message": "表情符号"
   },
   "mc_tip_subbed": {
     "message": "订阅 $CHANNEL$ $TENURE$",
     "placeholders": {
-      "channel": {
-        "content": "$1"
-      },
-      "tenure": {
-        "content": "$2"
-      }
+      "channel": { "content": "$1" },
+      "tenure": { "content": "$2" }
     }
   },
   "mc_tip_following": {
     "message": "关注 $CHANNEL$ $AGE$",
     "placeholders": {
-      "channel": {
-        "content": "$1"
-      },
-      "age": {
-        "content": "$2"
-      }
+      "channel": { "content": "$1" },
+      "age": { "content": "$2" }
     }
   },
   "mc_tip_not_following": {
     "message": "未关注 $CHANNEL$",
     "placeholders": {
-      "channel": {
-        "content": "$1"
-      }
+      "channel": { "content": "$1" }
     }
   },
   "mc_tip_followed_by": {
     "message": "被 $CHANNEL$ 关注",
     "placeholders": {
-      "channel": {
-        "content": "$1"
-      }
+      "channel": { "content": "$1" }
     }
   },
   "mc_tip_followers": {
     "message": "$COUNT$ 个粉丝",
     "placeholders": {
-      "count": {
-        "content": "$1"
-      }
+      "count": { "content": "$1" }
     }
   },
+
   "mc_whisper_hint": {
     "message": "/w 用户 消息 · /dm 用户 消息 · /r 消息"
   },
@@ -1071,9 +990,7 @@
   "mc_whisper_user_not_found": {
     "message": "找不到 twitch 用户 \"$USER$\"",
     "placeholders": {
-      "user": {
-        "content": "$1"
-      }
+      "user": { "content": "$1" }
     }
   },
   "mc_whisper_resolve_failed": {
@@ -1082,42 +999,32 @@
   "mc_whisper_hs_not_found": {
     "message": "找不到 heatsync 用户 \"$USER$\"",
     "placeholders": {
-      "user": {
-        "content": "$1"
-      }
+      "user": { "content": "$1" }
     }
   },
+
   "mc_irc_chat_cleared": {
     "message": "聊天已被清空"
   },
   "mc_irc_msg_deleted": {
     "message": "$USER$ 的消息已被删除",
     "placeholders": {
-      "user": {
-        "content": "$1"
-      }
+      "user": { "content": "$1" }
     }
   },
   "mc_irc_gift_subs": {
     "message": "$USER$ 向 $CHANNEL$ 赠送了 $AMOUNT$ 个订阅",
     "placeholders": {
-      "user": {
-        "content": "$1"
-      },
-      "amount": {
-        "content": "$2"
-      },
-      "channel": {
-        "content": "$3"
-      }
+      "user": { "content": "$1" },
+      "amount": { "content": "$2" },
+      "channel": { "content": "$3" }
     }
   },
+
   "mc_yt_connected": {
     "message": "YouTube 已连接: $CHANNEL$ — 等待消息...",
     "placeholders": {
-      "channel": {
-        "content": "$1"
-      }
+      "channel": { "content": "$1" }
     }
   },
   "mc_yt_ended": {
@@ -1126,6 +1033,7 @@
   "mc_yt_error": {
     "message": "YouTube 连接错误"
   },
+
   "mc_emote_search_placeholder": {
     "message": "搜索表情..."
   },
@@ -1141,6 +1049,7 @@
   "mc_emote_blocked": {
     "message": "已屏蔽 (点击解除)"
   },
+
   "content_toast_unknown_error": {
     "message": "未知错误"
   },
@@ -1170,11 +1079,5 @@
   },
   "btn_error_inventory": {
     "message": "加载你的表情失败"
-  },
-  "mc_settings_notif_mop": {
-    "message": "OP 在自己的帖子中回复"
-  },
-  "mc_settings_notif_mop_desc": {
-    "message": "原帖作者在自己的帖子中回复时通知。"
   }
 }

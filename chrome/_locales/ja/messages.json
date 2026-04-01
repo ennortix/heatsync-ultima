@@ -643,16 +643,16 @@
     "message": "インライン通知"
   },
   "mc_settings_notif_op": {
-    "message": "オリジナルポスト"
+    "message": "[OP] オリジナルポスト"
   },
   "mc_settings_notif_op_reply": {
-    "message": "自分のスレッドへのOP返信"
+    "message": "[OP] 自分のスレッドへのOP返信"
   },
   "mc_settings_notif_re": {
-    "message": "返信"
+    "message": "[RE] 返信"
   },
   "mc_settings_notif_dm": {
-    "message": "ウィスパー & DM"
+    "message": "[DM] ウィスパー & DM"
   },
   "mc_settings_notif_op_desc": {
     "message": "誰かがフィードに新しいオリジナルポストを投稿したとき、アクティブなチャットタブに通知。"
@@ -1170,11 +1170,5 @@
   },
   "btn_error_inventory": {
     "message": "emoteの読み込みに失敗"
-  },
-  "mc_settings_notif_mop": {
-    "message": "自分のスレッドへのOP返信"
-  },
-  "mc_settings_notif_mop_desc": {
-    "message": "オリジナル投稿者が自分のスレッドに返信したときに通知。"
   }
 }

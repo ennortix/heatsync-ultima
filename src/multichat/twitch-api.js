@@ -1469,6 +1469,7 @@ function startPredictionPoll() {
 
 // Refresh only the prediction slot without tearing down the whole Twitch tab
 async function refreshPredictionSlot() {
+  _predResultCache = null // always fetch fresh on explicit refresh
   const container = document.getElementById('hs-mc-tab-twitch')
   if (!container) return
   const channel = getActiveTwitchChannel()
@@ -1756,6 +1757,10 @@ const _userBets = new Map() // eventId → { outcomeId, points }
 let _rewardsCache = null
 let _rewardsCacheChannel = null
 
+// Prediction result cache — avoids redundant GQL on quick tab switches
+let _predResultCache = null // { result, channel, ts }
+const PRED_CACHE_TTL = 5000 // 5s — fresh enough to feel instant, short enough to stay current
+
 const PRED_FIELDS = 'id title status createdAt endedAt predictionWindowSeconds winningOutcome { id } outcomes { id title totalPoints totalUsers color } self { prediction { outcome { id } points } }'
 
 // GQL call — tries direct fetch first (Chrome MV3), falls back to MAIN world proxy (Firefox MV2)
@@ -1788,15 +1793,23 @@ async function twitchGql(query, variables) {
 async function fetchPrediction(channelLogin) {
   const safe = channelLogin.replace(/[^a-z0-9_]/g, '')
   if (!safe) return null
+
+  // Return cached result if fresh (avoids GQL on quick tab switches)
+  if (_predResultCache && _predResultCache.channel === safe && Date.now() - _predResultCache.ts < PRED_CACHE_TTL) {
+    return _predResultCache.result
+  }
+
   try {
     let predEvent = null
     let balance = null
     let channelId = null
     let isMod = false
+    let cpImage = null
+    let cpName = null
 
-    // Direct GQL query — fetch active + locked + most recent resolved + mod check
+    // Single combined GQL query — predictions + balance + channel points settings
     try {
-      const data = await twitchGql('{ user(login: "' + safe + '") { id self { isModerator } channel { activePredictionEvents { ' + PRED_FIELDS + ' } lockedPredictionEvents { ' + PRED_FIELDS + ' } resolvedPredictionEvents(first: 1) { edges { node { ' + PRED_FIELDS + ' } } } } } currentUser { id } }')
+      const data = await twitchGql('{ user(login: "' + safe + '") { id self { isModerator } channel { activePredictionEvents { ' + PRED_FIELDS + ' } lockedPredictionEvents { ' + PRED_FIELDS + ' } resolvedPredictionEvents(first: 1) { edges { node { ' + PRED_FIELDS + ' } } } } } currentUser { id } channel(name: "' + safe + '") { communityPointsSettings { image { url url2x } name } self { communityPoints { balance } } } }')
       const ch = data?.data?.user?.channel
       const userId = data?.data?.user?.id
       const currentUserId = data?.data?.currentUser?.id
@@ -1826,21 +1839,18 @@ async function fetchPrediction(channelLogin) {
           _userBets.set(predEvent.id, { outcomeId: sp.outcome.id, points: sp.points })
         }
       }
-    } catch (e) {
-      log('GQL prediction query failed:', e.message)
-    }
 
-    // Fetch balance + channel points settings (custom icon/name)
-    let cpImage = null
-    let cpName = null
-    try {
-      const data = await twitchGql('{ channel(name: "' + safe + '") { communityPointsSettings { image { url url2x } name } self { communityPoints { balance } } } }')
+      // Extract balance + channel points settings from same response
       const ch2 = data?.data?.channel
       balance = ch2?.self?.communityPoints?.balance ?? null
       cpImage = ch2?.communityPointsSettings?.image?.url2x || ch2?.communityPointsSettings?.image?.url || null
       cpName = ch2?.communityPointsSettings?.name || null
     } catch (e) {
-      // Fallback to proxy for balance
+      log('GQL prediction query failed:', e.message)
+    }
+
+    // Fallback: fetch balance via proxy if combined query didn't get it
+    if (balance === null) {
       try {
         const data = await gqlProxy('CommunityPointsContext', { channelLogin: safe })
         const d = Array.isArray(data) ? data[0]?.data : (data?.data || data)
@@ -1850,7 +1860,9 @@ async function fetchPrediction(channelLogin) {
 
     _twitchIsMod = isMod
     _twitchChannelId = channelId
-    return { prediction: predEvent, balance, channelId, isMod, cpImage, cpName }
+    const result = { prediction: predEvent, balance, channelId, isMod, cpImage, cpName }
+    _predResultCache = { result, channel: safe, ts: Date.now() }
+    return result
   } catch (e) {
     log('Failed to fetch prediction:', e.message)
     return null

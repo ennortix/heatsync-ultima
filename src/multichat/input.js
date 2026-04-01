@@ -904,6 +904,7 @@ function findEmoteMatches(search) {
   // Search usernames if @ prefix or if it could be a username
   if (isUserSearch || searchTerm.length >= 2) {
     for (const username of usernameCache) {
+      if (!username) continue
       const userLower = username.toLowerCase();
       if (userLower.startsWith(searchLower)) {
         matches.push({ name: '@' + username, url: null, priority: isUserSearch ? 0 : 2, type: 'user' });

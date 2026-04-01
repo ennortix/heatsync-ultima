@@ -788,7 +788,8 @@ async function fetch7TVChannelEmotes(channelName, channelId = null, platform = '
       flags: e.flags || e.data?.flags || 0,
       zeroWidth: !!((e.flags & 257) || (e.data?.flags & 257))
     })));
-    const ownerCosmetic = extract7TVCosmetic(data)
+    const cosmeticIds = extract7TVCosmeticIds(data)
+    const ownerCosmetic = await resolve7TVCosmeticIds(cosmeticIds)
     return { emotes, setId: emoteSet.id, ownerCosmetic };
   } catch (error) {
     console.error('[hs-bg] 7TV FETCH ERROR for', channelName, ':', error?.message || error);
@@ -1194,6 +1195,7 @@ async function fetchGlobalEmotes() {
       log('📊 Total global emotes:', globalEmotes.length);
 
       broadcastToTabs({ type: 'global_emotes_update', emotes: globalEmotes });
+      fetchBulkBadges()
       return;
     }
     log(' Server API failed, trying fallback');
@@ -2960,17 +2962,17 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
           toFetch.push(id)
         }
       }
-      for (const id of toFetch) {
+      await Promise.all(toFetch.map(async (id) => {
         try {
           const resp = await fetchWithTimeout(`https://7tv.io/v3/users/twitch/${id}`)
-          if (!resp.ok) { setUserCosmetic(id, null); result[id] = null; continue }
+          if (!resp.ok) { setUserCosmetic(id, null); result[id] = null; return }
           const data = await resp.json()
           const ids7tv = extract7TVCosmeticIds(data)
           const cosmetic = await resolve7TVCosmeticIds(ids7tv)
           setUserCosmetic(id, cosmetic)
           result[id] = cosmetic
         } catch (e) { setUserCosmetic(id, null); result[id] = null }
-      }
+      }))
       sendResponse({ cosmetics: result })
     })()
     return true
@@ -2978,23 +2980,23 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
     const usernames = (message.kickUsernames || []).slice(0, 10)
     ;(async () => {
       const result = {}
-      for (const username of usernames) {
+      await Promise.all(usernames.map(async (username) => {
         const cacheKey = `kick:${username}`
         const cached = userCosmeticsCache.get(cacheKey)
         if (cached && Date.now() - cached.fetchedAt < USER_COSMETICS_TTL) {
           result[username] = { paint: cached.paint, badge: cached.badge }
-          continue
+          return
         }
         try {
           const resp = await fetchWithTimeout(`https://7tv.io/v3/users/kick/${username}`)
-          if (!resp.ok) { setUserCosmetic(cacheKey, null); result[username] = null; continue }
+          if (!resp.ok) { setUserCosmetic(cacheKey, null); result[username] = null; return }
           const data = await resp.json()
           const ids7tv = extract7TVCosmeticIds(data)
           const cosmetic = await resolve7TVCosmeticIds(ids7tv)
           setUserCosmetic(cacheKey, cosmetic)
           result[username] = cosmetic
         } catch (e) { setUserCosmetic(cacheKey, null); result[username] = null }
-      }
+      }))
       sendResponse({ cosmetics: result })
     })()
     return true

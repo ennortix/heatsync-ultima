@@ -980,13 +980,14 @@ async function fetchChannelOwnerEmotes(channelName, channelId = null, platform =
     // Show loading indicator
     broadcastToTabs({ type: 'loading_status', text: 'loading channel emotes...' });
 
-    // Fetch heatsync emotes (platform-agnostic)
-    broadcastToTabs({ type: 'loading_status', text: 'fetching heatsync emotes...' });
-    const response = await fetchWithTimeout(`${API_URL}/api/emotes/user/${encodeURIComponent(channelName)}`);
+    // Fetch heatsync emotes + resolve Twitch ID in PARALLEL (both needed before third-party fetch)
+    const [heatsyncResult, resolvedChannelId] = await Promise.all([
+      fetchWithTimeout(`${API_URL}/api/emotes/user/${encodeURIComponent(channelName)}`).catch(() => null),
+      (platform !== 'kick' && !channelId) ? lookupTwitchUserId(channelName) : Promise.resolve(channelId)
+    ]);
     let heatsyncEmotes = [];
-
-    if (response.ok) {
-      const data = await response.json();
+    if (heatsyncResult?.ok) {
+      const data = await heatsyncResult.json();
       heatsyncEmotes = (data.emotes || []).map(e => ({
         name: e.name,
         url: absUrl(e.url),
@@ -994,12 +995,7 @@ async function fetchChannelOwnerEmotes(channelName, channelId = null, platform =
         provider: e.provider || 'upload'
       }));
     }
-
-    // Resolve Twitch user ID once for BTTV + 7TV (both need numeric ID) — skip for Kick
-    if (platform !== 'kick' && !channelId) {
-      channelId = await lookupTwitchUserId(channelName)
-      if (DEBUG) broadcastToTabs({ type: 'debug_log', msg: `decapi/gql lookup ${channelName} → ${channelId || 'FAILED'}` })
-    }
+    channelId = resolvedChannelId;
 
     // Fetch third-party emotes in PARALLEL for speed
     broadcastToTabs({ type: 'loading_status', text: 'fetching third-party emotes...' });
@@ -3081,100 +3077,89 @@ async function initialize() {
     log(' Could not load auth token:', err.message);
   }
 
-  // Restore currentUsername from storage (survives service worker restart)
+  // Batch-load all cached state from storage in ONE read
   try {
-    const stored = await browser.storage.local.get('user_info');
+    const stored = await browser.storage.local.get([
+      'user_info', 'channel_emotes_fetched_at', 'channel_emotes_map', 'seventv_emote_set_ids',
+      'muted_users', 'blocked_users', 'global_emotes', 'emote_inventory', 'blocked_emotes'
+    ]);
+
     if (stored.user_info?.username) {
       currentUsername = stored.user_info.username;
-      log(' ✓ Restored username from storage:', currentUsername);
+      log(' ✓ Restored username:', currentUsername);
     }
-  } catch {}
-
-  // Restore channel emotes and fetch timestamps so TTL checks survive service worker restart
-  try {
-    const stored = await browser.storage.local.get(['channel_emotes_fetched_at', 'channel_emotes_map', 'seventv_emote_set_ids'])
     if (stored.channel_emotes_fetched_at && typeof stored.channel_emotes_fetched_at === 'object') {
-      channelEmotesFetchedAt = stored.channel_emotes_fetched_at
-      log(' ✓ Restored channelEmotesFetchedAt for', Object.keys(channelEmotesFetchedAt).length, 'channels')
+      channelEmotesFetchedAt = stored.channel_emotes_fetched_at;
+      log(' ✓ Restored channelEmotesFetchedAt for', Object.keys(channelEmotesFetchedAt).length, 'channels');
     }
     if (stored.channel_emotes_map && typeof stored.channel_emotes_map === 'object') {
-      Object.assign(channelEmotesMap, stored.channel_emotes_map)
-      updateEmoteUrlMap()
-      log(' ✓ Restored channelEmotesMap for', Object.keys(stored.channel_emotes_map).length, 'channels')
+      Object.assign(channelEmotesMap, stored.channel_emotes_map);
+      updateEmoteUrlMap();
+      log(' ✓ Restored channelEmotesMap for', Object.keys(stored.channel_emotes_map).length, 'channels');
     }
-    // Restore 7TV emote set IDs so polling covers ALL previously tracked channels after SW restart
     if (stored.seventv_emote_set_ids && typeof stored.seventv_emote_set_ids === 'object') {
       for (const [ch, id] of Object.entries(stored.seventv_emote_set_ids)) {
-        seventvEmoteSetIds.set(ch, id)
+        seventvEmoteSetIds.set(ch, id);
       }
       if (seventvEmoteSetIds.size > 0) {
-        log(' ✓ Restored seventvEmoteSetIds for', seventvEmoteSetIds.size, 'channels — resuming polling')
-        start7TVPolling()
-        for (const setId of seventvEmoteSetIds.values()) subscribe7TVEmoteSet(setId)
+        log(' ✓ Restored seventvEmoteSetIds for', seventvEmoteSetIds.size, 'channels');
+        start7TVPolling();
+        for (const setId of seventvEmoteSetIds.values()) subscribe7TVEmoteSet(setId);
       }
     }
-  } catch {}
-
-  // Load muted users from storage (migrate old array format to map)
-  try {
-    const stored = await browser.storage.local.get('muted_users');
     if (stored.muted_users && Array.isArray(stored.muted_users)) {
       mutedUsers = new Map();
       for (const entry of stored.muted_users) {
-        if (typeof entry === 'string') {
-          // Old format: plain string → permanent mute
-          mutedUsers.set(entry, null);
-        } else if (entry && entry.username) {
-          mutedUsers.set(entry.username, entry.expiresAt || null);
-        }
+        if (typeof entry === 'string') mutedUsers.set(entry, null);
+        else if (entry?.username) mutedUsers.set(entry.username, entry.expiresAt || null);
       }
-      // Re-persist in new format if migrated
-      if (stored.muted_users.length > 0 && typeof stored.muted_users[0] === 'string') {
-        persistMutedUsers();
-      }
+      if (stored.muted_users.length > 0 && typeof stored.muted_users[0] === 'string') persistMutedUsers();
       pruneExpiredMutes();
-      log(' ✓ Loaded', mutedUsers.size, 'muted users from storage');
+      log(' ✓ Loaded', mutedUsers.size, 'muted users');
     }
-  } catch (err) {
-    log(' Could not load muted users:', err.message);
-  }
-
-  // Load blocked users from storage
-  try {
-    const stored = await browser.storage.local.get('blocked_users');
     if (stored.blocked_users && Array.isArray(stored.blocked_users)) {
       blockedUsers = new Set(stored.blocked_users);
-      log(' ✓ Loaded', blockedUsers.size, 'blocked users from storage');
+      log(' ✓ Loaded', blockedUsers.size, 'blocked users');
+    }
+    // Warm emote arrays from storage cache (instant availability while API fetches run)
+    if (stored.global_emotes?.length) {
+      globalEmotes = stored.global_emotes;
+      log(' ✓ Warm cache:', globalEmotes.length, 'global emotes from storage');
+    }
+    if (stored.emote_inventory?.length) {
+      emoteInventory = stored.emote_inventory;
+      log(' ✓ Warm cache:', emoteInventory.length, 'inventory emotes from storage');
+    }
+    if (stored.blocked_emotes?.length) {
+      blockedEmotes = new Set(stored.blocked_emotes);
+      log(' ✓ Warm cache:', blockedEmotes.size, 'blocked emotes from storage');
     }
   } catch (err) {
-    log(' Could not load blocked users:', err.message);
+    log(' Storage restore failed:', err.message);
   }
 
-  broadcastToTabs({ type: 'loading_status', text: 'loading emotes...' });
-  log(' Fetching emotes in parallel...');
+  // Start WebSocket immediately (don't wait for API fetches)
+  connectWebSocket().catch(() => {});
 
-  // Fetch everything in parallel for speed
-  await Promise.all([
+  broadcastToTabs({ type: 'loading_status', text: 'loading emotes...' });
+
+  // Fetch fresh data in parallel (updates warm cache)
+  Promise.all([
     fetchGlobalEmotes(),
     fetchEmoteInventory(),
     fetchBlockedEmotes(),
     fetchFollowedUsers(),
     fetchUserInfo()
-  ]);
-
-  log(' ✓ All fetches complete - global:', globalEmotes.length, 'personal:', emoteInventory.length);
-  broadcastToTabs({ type: 'loading_status', done: true });
-
-  // Store in browser.storage for instant access by content scripts
-  await browser.storage.local.set({
-    global_emotes: globalEmotes,
-    emote_inventory: emoteInventory,
-    blocked_emotes: Array.from(blockedEmotes)
-  });
-  log(' ✅ READY - Stored in browser.storage');
-  log(' Storage check:', globalEmotes.length, 'global,', emoteInventory.length, 'personal');
-
-  connectWebSocket().catch(() => {});
+  ]).then(() => {
+    log(' ✓ All fetches complete - global:', globalEmotes.length, 'personal:', emoteInventory.length);
+    broadcastToTabs({ type: 'loading_status', done: true });
+    // Persist fresh data (fire-and-forget, don't await)
+    browser.storage.local.set({
+      global_emotes: globalEmotes,
+      emote_inventory: emoteInventory,
+      blocked_emotes: Array.from(blockedEmotes)
+    }).catch(() => {});
+  }).catch(err => log(' Fetch error:', err.message));
 
   // Refresh inventory every 60 seconds
   trackInterval(setInterval(fetchEmoteInventory, 60000));

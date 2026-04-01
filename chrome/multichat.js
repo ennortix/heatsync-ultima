@@ -14769,6 +14769,17 @@ const STORAGE_KEY = 'heatsync_multichat';
       return div
     }
 
+    // Guard against messages with no user (malformed IRC / system messages)
+    if (!m.user) {
+      if (m.text || m.systemMsg) {
+        const div = document.createElement('div')
+        div.className = 'hs-mc-msg hs-mc-system'
+        div.textContent = m.systemMsg || m.text || ''
+        return div
+      }
+      return null
+    }
+
     const showChannel = tabId === 'mentions';
     const isSuperChat = m.platform === 'youtube' && (m.msgType === 'superchat' || m.msgType === 'supersticker')
     const isMembership = m.platform === 'youtube' && m.msgType === 'membership'
@@ -16158,7 +16169,19 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
   // ============================================
 
   function detectOfflineState() {
-    if (isKick) return
+    // On Kick, detect live status from page and set the live tab dot
+    if (isKick) {
+      function checkKickLive() {
+        const isLive = !!document.querySelector('video')
+        const liveTab = tabBarElement?.querySelector('[data-tab="live"]')
+        if (liveTab) liveTab.dataset.live = String(isLive)
+        const curCh = getCurrentChannel()?.toLowerCase()
+        if (curCh && isLive) liveChannelSet.add(curCh)
+      }
+      checkKickLive()
+      cleanup.setInterval(checkKickLive, 10000)
+      return
+    }
     // Popout chat has no video — don't mark as offline
     if (location.pathname.match(/^\/(popout|embed)\//)) return
 

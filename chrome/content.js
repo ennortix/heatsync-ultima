@@ -6297,6 +6297,12 @@ function setupTabCompletion() {
 
 // Intercept message input to detect emote usage
 let interceptRetryCount = 0;
+// Message history — up/down arrow recalls previously sent messages (like terminal/IRC)
+const messageHistory = []
+const MESSAGE_HISTORY_MAX = 50
+let historyIndex = -1
+let historyDraft = '' // saves current draft when entering history
+
 function interceptMessageSending() {
   // Only run on Twitch/Kick
   if (!window.location.hostname.includes('twitch.tv') && !window.location.hostname.includes('kick.com')) {
@@ -6321,12 +6327,57 @@ function interceptMessageSending() {
 
   log(' 📝 Found chat input:', chatInput.tagName, chatInput.className);
 
+  function getInputText() {
+    return (chatInput.isContentEditable ? chatInput.innerText : chatInput.value || chatInput.innerText || '').trim()
+  }
+
+  function setInputText(text) {
+    chatInput.focus()
+    if (chatInput.isContentEditable) {
+      document.execCommand('selectAll', false, null)
+      document.execCommand('insertText', false, text)
+    } else {
+      chatInput.value = text
+      chatInput.dispatchEvent(new Event('input', { bubbles: true }))
+    }
+  }
+
   chatInput.addEventListener('keydown', (e) => {
+    // Message history navigation (ArrowUp/ArrowDown or vi j/k via synthetic events)
+    if ((e.key === 'ArrowUp' || e.key === 'ArrowDown') && !e.shiftKey && !e.ctrlKey && !e.altKey && messageHistory.length > 0) {
+      const currentText = getInputText()
+      // Only activate history when input is empty or already browsing history
+      if (historyIndex >= 0 || (e.key === 'ArrowUp' && currentText.length === 0) || (e.key === 'ArrowUp' && messageHistory.includes(currentText))) {
+        e.preventDefault()
+        e.stopPropagation()
+        if (e.key === 'ArrowUp') {
+          if (historyIndex < 0) historyDraft = currentText
+          historyIndex = Math.min(historyIndex + 1, messageHistory.length - 1)
+        } else {
+          historyIndex--
+        }
+        if (historyIndex < 0) {
+          historyIndex = -1
+          setInputText(historyDraft)
+        } else {
+          setInputText(messageHistory[historyIndex])
+        }
+        return
+      }
+    }
+
     if (e.key === 'Enter' && !e.shiftKey) {
       // textarea uses .value, contenteditable uses .innerText
       const message = (chatInput.isContentEditable ? chatInput.innerText : chatInput.value || chatInput.innerText || '').trim();
       log(' 📤 Enter pressed, message:', message);
       if (!message) return;
+
+      // Push to message history (dedup consecutive, cap at max)
+      if (messageHistory[0] !== message) {
+        messageHistory.unshift(message)
+        if (messageHistory.length > MESSAGE_HISTORY_MAX) messageHistory.length = MESSAGE_HISTORY_MAX
+      }
+      historyIndex = -1
 
       // Check if message contains any of MY emotes (use cached regex from createEmoteRegex)
       emoteInventory.forEach(emote => {

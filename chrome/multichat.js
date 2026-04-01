@@ -8009,6 +8009,12 @@ function renderWhispersTab() {
 // --- multichat/input.js ---
 // Input - chat input, autocomplete, send message, reply state
 
+// Message history — up/down arrow recalls previously sent messages
+const mcMessageHistory = []
+const MC_HISTORY_MAX = 50
+let mcHistoryIndex = -1
+let mcHistoryDraft = ''
+
 // Brief red flash on input to indicate message can't be sent from this tab
 function flashInputError(input) {
   if (!input) return
@@ -8678,6 +8684,28 @@ function handleInputKeydown(e) {
     if (e.key === 'Escape') {
       e.preventDefault()
       hideEmojiDropdown()
+      return
+    }
+  }
+
+  // Message history navigation (ArrowUp/ArrowDown)
+  if ((e.key === 'ArrowUp' || e.key === 'ArrowDown') && !e.shiftKey && !e.ctrlKey && mcMessageHistory.length > 0) {
+    const currentText = getInputText().trim()
+    if (mcHistoryIndex >= 0 || (e.key === 'ArrowUp' && currentText.length === 0) || (e.key === 'ArrowUp' && mcMessageHistory.includes(currentText))) {
+      e.preventDefault()
+      if (e.key === 'ArrowUp') {
+        if (mcHistoryIndex < 0) mcHistoryDraft = currentText
+        mcHistoryIndex = Math.min(mcHistoryIndex + 1, mcMessageHistory.length - 1)
+      } else {
+        mcHistoryIndex--
+      }
+      const text = mcHistoryIndex < 0 ? mcHistoryDraft : mcMessageHistory[mcHistoryIndex]
+      if (wysiwygEnabled) {
+        input.textContent = text
+      } else {
+        input.value = text
+      }
+      mcHistoryIndex = Math.max(mcHistoryIndex, -1)
       return
     }
   }
@@ -9631,6 +9659,13 @@ async function sendMessage() {
   if (isDualSend) {
     trackSentMessage(text)
   }
+
+  // Push to message history (dedup consecutive, cap at max)
+  if (mcMessageHistory[0] !== text) {
+    mcMessageHistory.unshift(text)
+    if (mcMessageHistory.length > MC_HISTORY_MAX) mcMessageHistory.length = MC_HISTORY_MAX
+  }
+  mcHistoryIndex = -1
 
   const replyParentId = replyState?.msgId || null
   clearReplyState()

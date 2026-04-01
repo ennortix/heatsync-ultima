@@ -18,25 +18,8 @@
     })[c])
   }
 
-  // Lifecycle controller — abort() tears down ALL listeners, timers, observers
-  const lifecycle = new AbortController()
-  const btnSignal = lifecycle.signal
-  const _timers = { intervals: [], timeouts: [], observers: [] }
-  btnSignal.addEventListener('abort', () => {
-    _timers.intervals.forEach(clearInterval)
-    _timers.timeouts.forEach(clearTimeout)
-    _timers.observers.forEach(o => o.disconnect())
-  })
-  window.addEventListener('pagehide', () => lifecycle.abort())
-
-  const cleanup = {
-    setInterval(fn, ms) { const id = setInterval(fn, ms); _timers.intervals.push(id); return id },
-    setTimeout(fn, ms) { const id = setTimeout(fn, ms); _timers.timeouts.push(id); return id },
-    addEventListener(target, event, handler) {
-      target.addEventListener(event, handler, { signal: btnSignal })
-    },
-    trackObserver(obs) { _timers.observers.push(obs); return obs },
-  }
+  // Lifecycle controller — delegates to shared window.HS.createLifecycle
+  const { signal: btnSignal, cleanup, abort: _abortLifecycle } = window.HS.createLifecycle()
 
   const BUTTON_ID = 'heatsync-chat-button';
   const PANEL_ID = 'heatsync-panel';

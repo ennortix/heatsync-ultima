@@ -10,29 +10,9 @@
     try { window.__heatsyncAcLifecycle.abort() } catch (_) {}
   }
 
-  // Lifecycle controller — abort() tears down ALL listeners, timers, observers
-  const lifecycle = new AbortController()
-  window.__heatsyncAcLifecycle = lifecycle
-  const acSignal = lifecycle.signal
-  const _timers = { intervals: [], timeouts: [], observers: [] }
-  acSignal.addEventListener('abort', () => {
-    _timers.intervals.forEach(clearInterval)
-    _timers.timeouts.forEach(clearTimeout)
-    _timers.observers.forEach(o => o.disconnect())
-    _timers.intervals.length = 0
-    _timers.timeouts.length = 0
-    _timers.observers.length = 0
-  })
-  window.addEventListener('pagehide', () => lifecycle.abort())
-
-  const cleanup = {
-    setInterval(fn, ms) { const id = setInterval(fn, ms); _timers.intervals.push(id); return id },
-    setTimeout(fn, ms) { const id = setTimeout(fn, ms); _timers.timeouts.push(id); return id },
-    addEventListener(target, event, handler) {
-      target.addEventListener(event, handler, { signal: acSignal })
-    },
-    trackObserver(obs) { _timers.observers.push(obs); return obs },
-  }
+  // Lifecycle controller — delegates to shared window.HS.createLifecycle
+  const { signal: acSignal, cleanup, abort: _abortLifecycle } = window.HS.createLifecycle()
+  window.__heatsyncAcLifecycle = { abort: _abortLifecycle }
 
   // Inject CSS to make chat input emote spans auto-size to their content
   // BULLETPROOF: Wide emotes must expand span to fit, never clip

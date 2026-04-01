@@ -21,13 +21,13 @@ upload any image to [heatsync.org](https://heatsync.org), install the extension,
 
 ## why heatsync
 
-bttv, ffz, and 7tv are twitch-only. heatsync is the only emote extension that works across twitch, kick, and youtube with a single emote set — upload once, use everywhere.
+other emote extensions either lock you to one platform, gate emotes behind approval queues, or limit your slots. heatsync gives you unlimited emotes across every platform with one upload.
 
 | | **heatsync** | **ffz** | **7tv** | **bttv** |
 |---|---|---|---|---|
-| **platforms** | twitch, kick, youtube | twitch | twitch (kick via separate ext) | twitch |
+| **platforms** | twitch, kick, youtube | twitch | twitch, kick, youtube | twitch, youtube (beta) |
 | **emote upload** | instant, unlimited, no approval | channel-limited slots | approval queue + slot limits | channel-limited slots |
-| **cross-platform emotes** | yes — one set everywhere | no | no | no |
+| **cross-platform emotes** | yes — one set everywhere | no | no — separate emote sets per platform | no — separate emote sets per platform |
 | **multichat** | built-in (tabs, IRC, mentions, youtube) | no | no | no |
 | **cosmetics** | renders 7tv paints + ffz/bttv badges | own badge system | own paints + badges | own badges |
 | **third-party emotes** | loads bttv/ffz/7tv automatically | own + some bttv | own emotes only | own emotes only |

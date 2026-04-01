@@ -16171,15 +16171,21 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
   function detectOfflineState() {
     // On Kick, detect live status from page and set the live tab dot
     if (isKick) {
+      let kickLiveFound = false
       function checkKickLive() {
         const isLive = !!document.querySelector('video')
         const liveTab = tabBarElement?.querySelector('[data-tab="live"]')
         if (liveTab) liveTab.dataset.live = String(isLive)
         const curCh = getCurrentChannel()?.toLowerCase()
         if (curCh && isLive) liveChannelSet.add(curCh)
+        if (isLive) kickLiveFound = true
       }
       checkKickLive()
-      cleanup.setInterval(checkKickLive, 10000)
+      // Fast poll until video found, then slow poll
+      const fastPoll = cleanup.setInterval(() => {
+        checkKickLive()
+        if (kickLiveFound) { clearInterval(fastPoll); cleanup.setInterval(checkKickLive, 10000) }
+      }, 1000)
       return
     }
     // Popout chat has no video — don't mark as offline

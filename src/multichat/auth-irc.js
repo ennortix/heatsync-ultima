@@ -208,8 +208,8 @@ function drainSendQueue() {
   }
 }
 
-async function sendIrcMessage(channel, text, token, replyParentId) {
-  const nick = currentUsername || getCurrentUsername();
+async function sendIrcMessage(channel, text, token, replyParentId, overrideNick) {
+  const nick = overrideNick || currentUsername || getCurrentUsername();
   if (!nick) { console.warn('[HS] SEND FAIL: no username'); return 'no_user'; }
   channel = channel.toLowerCase();
   const prefix = replyParentId ? `@reply-parent-msg-id=${replyParentId} ` : ''

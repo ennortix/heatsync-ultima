@@ -5498,7 +5498,7 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
       div.style.paddingLeft = '4px'
     }
     // Reply context bar (Chatterino-style) — all values escaped via escapeHtml
-    const replyBar = m.replyTo ? `<div class="hs-mc-reply-ctx">&#8618; Replying to <a href="https://heatsync.org/user/${encodeURIComponent(m.replyTo.user)}" target="_blank" class="hs-mc-user hs-mc-reply-user" data-username="${escapeHtml(m.replyTo.user.toLowerCase())}">@${escapeHtml(m.replyTo.user)}</a>${m.replyTo.text ? ': ' + escapeHtml(m.replyTo.text.length > 80 ? m.replyTo.text.slice(0, 80) + '...' : m.replyTo.text) : ''}</div>` : ''
+    const replyBar = m.replyTo ? `<div class="hs-mc-reply-ctx" title="${escapeHtml(m.replyTo.user)}: ${escapeHtml(m.replyTo.text || '')}">&#8618; Replying to <a href="https://heatsync.org/user/${encodeURIComponent(m.replyTo.user)}" target="_blank" class="hs-mc-user hs-mc-reply-user" data-username="${escapeHtml(m.replyTo.user.toLowerCase())}">@${escapeHtml(m.replyTo.user)}</a>${m.replyTo.text ? ': ' + escapeHtml(m.replyTo.text.length > 80 ? m.replyTo.text.slice(0, 80) + '...' : m.replyTo.text) : ''}</div>` : ''
     // Redeem label — look up reward title from Hermes cache
     let redeemLabel = ''
     if (m.redeemed && m.rewardId) {
@@ -5539,6 +5539,7 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
       div.dataset.msgId = m.id
       div.dataset.msgUser = m.user
       div.dataset.msgChannel = m.channel || ''
+      div.dataset.msgPlatform = m.platform || ''
       const replyBtn = document.createElement('button')
       replyBtn.className = 'hs-mc-reply-btn'
       replyBtn.textContent = '↩'
@@ -6729,6 +6730,24 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
         log('inventory_update:', inventoryEmotes.size, 'emotes');
       }
 
+      // Cross-platform mute sync (from background.js — other tabs, server WS, or expiry)
+      if (msg.type === 'user_muted') {
+        const u = msg.username?.toLowerCase()
+        if (u && !mutedUsers.has(u)) {
+          mutedUsers.add(u)
+          chrome.storage.local.set({ heatsync_mc_muted: [...mutedUsers] })
+          applyMcMutes()
+        }
+      }
+      if (msg.type === 'user_unmuted') {
+        const u = msg.username?.toLowerCase()
+        if (u && mutedUsers.has(u)) {
+          mutedUsers.delete(u)
+          chrome.storage.local.set({ heatsync_mc_muted: [...mutedUsers] })
+          applyMcMutes()
+        }
+      }
+
       // 7TV emote add/remove — just reload emotes, don't spam chat
       if (msg.type === 'channel_emote_added' || msg.type === 'channel_emote_removed') {
         log('7TV emote change:', msg.message);
@@ -6951,11 +6970,21 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
     }
     log('Username:', currentUsername);
 
-    // Load muted users from chrome.storage.local
+    // Load muted users from both multichat and content.js storage (unified)
     try {
-      const stored = await chrome.storage.local.get(['heatsync_mc_muted']);
+      const stored = await chrome.storage.local.get(['heatsync_mc_muted', 'muted_users']);
+      // Multichat local mutes
       if (stored.heatsync_mc_muted && Array.isArray(stored.heatsync_mc_muted)) {
-        mutedUsers = new Set(stored.heatsync_mc_muted);
+        for (const u of stored.heatsync_mc_muted) mutedUsers.add(u)
+      }
+      // Content.js / background.js mutes (with expiry check)
+      if (stored.muted_users && Array.isArray(stored.muted_users)) {
+        const now = Date.now()
+        for (const entry of stored.muted_users) {
+          const u = (typeof entry === 'string' ? entry : entry.username)?.toLowerCase()
+          const exp = typeof entry === 'string' ? null : entry.expiresAt
+          if (u && (!exp || exp > now)) mutedUsers.add(u)
+        }
       }
     } catch (e) {
       log('Error loading muted users:', e);

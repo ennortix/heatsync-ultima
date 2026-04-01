@@ -2393,6 +2393,31 @@ function handleWSMessage(msg) {
       })
       break
 
+    case 'user:muted': {
+      // Server confirmed mute — update local state and broadcast to all tabs
+      const muteUser = msg.username?.toLowerCase()
+      if (muteUser) {
+        const rawExp = msg.expiresAt || msg.expires_at
+        const expiresAt = rawExp ? new Date(rawExp).getTime() : null
+        mutedUsers.set(muteUser, expiresAt)
+        persistMutedUsers()
+        broadcastToTabs({ type: 'user_muted', username: muteUser, expiresAt })
+        log(' Server muted user:', muteUser, expiresAt ? `(expires ${new Date(expiresAt).toISOString()})` : '(permanent)')
+      }
+      break
+    }
+
+    case 'user:unmuted': {
+      const unmuteUser = msg.username?.toLowerCase()
+      if (unmuteUser) {
+        mutedUsers.delete(unmuteUser)
+        persistMutedUsers()
+        broadcastToTabs({ type: 'user_unmuted', username: unmuteUser })
+        log(' Server unmuted user:', unmuteUser)
+      }
+      break
+    }
+
     case 'error':
       break;
 
@@ -2847,7 +2872,7 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   // Forward WS message from content scripts (used by multichat kick channels)
   if (message.type === 'ws_send') {
-    const allowedWsTypes = ['channel:join', 'channel:leave', 'emote:used', 'youtube:subscribe', 'youtube:unsubscribe', 'multichat:sync']
+    const allowedWsTypes = ['channel:join', 'channel:leave', 'emote:used', 'youtube:subscribe', 'youtube:unsubscribe', 'multichat:sync', 'user:mute']
     if (message.data && allowedWsTypes.includes(message.data.type)) {
       wsSend(message.data)
     }
@@ -2922,6 +2947,18 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
     log(' Unblocked user:', message.username);
   } else if (message.type === 'get_blocked_users') {
     sendResponse({ users: Array.from(blockedUsers) });
+  } else if (message.type === 'get_twitch_auth_token') {
+    // Cross-domain Twitch cookie access (for sending from Kick/YouTube pages)
+    Promise.all([
+      browser.cookies.get({ url: 'https://www.twitch.tv', name: 'auth-token' }),
+      browser.cookies.get({ url: 'https://www.twitch.tv', name: 'name' })
+    ]).then(([tokenCookie, nameCookie]) => {
+      sendResponse({
+        token: tokenCookie?.value || null,
+        username: nameCookie?.value ? decodeURIComponent(nameCookie.value).toLowerCase() : (userInfo?.twitch_username || null)
+      });
+    }).catch(() => sendResponse({ token: null, username: null }));
+    return true;
   } else if (message.type === 'get_inventory') {
     // Async - wait for init to complete first
     (async () => {

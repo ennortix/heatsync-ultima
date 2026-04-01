@@ -504,12 +504,16 @@
 
   // Determine Twitch channel context for followage lookups
   function getTooltipChannelContext() {
-    if (!location.hostname.includes('twitch.tv')) return null
     // Live tab → current channel from URL or override
     if (currentTab === 'live') return getLiveChannel()
-    // Channel tab → look up twitch name from config
+    // Channel tab → look up twitch or kick name from config
     const ch = config.channels.find(c => (typeof c === 'string' ? c : c.id) === currentTab)
-    if (ch) return typeof ch === 'string' ? ch : ch.twitch
+    if (ch) {
+      if (typeof ch === 'string') return ch
+      // Return whichever platform matches the current host, or twitch as default
+      if (location.hostname.includes('kick.com')) return ch.kick || ch.twitch
+      return ch.twitch || ch.kick
+    }
     return getLiveChannel()
   }
 

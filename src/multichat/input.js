@@ -501,7 +501,7 @@ function initInput() {
     }, { signal: mcSignal })
   }
 
-  // Right-click on message → mute/unmute user
+  // Right-click on message → mute/unmute user (synced across all tabs + devices via server WS)
   if (!window._hsMcMsgContextHandler) {
     window._hsMcMsgContextHandler = true;
     document.addEventListener('contextmenu', (e) => {
@@ -518,10 +518,18 @@ function initInput() {
       if (mutedUsers.has(username)) {
         mutedUsers.delete(username);
         showToast(`unmuted ${username}`);
+        // Sync: tell background to unmute (broadcasts to all tabs — server mute expires naturally)
+        safeSendMessage({ type: 'unmute_user', username });
       } else {
         mutedUsers.add(username);
-        showToast(`muted ${username}`);
+        showToast(`muted ${username} (24h)`);
+        // Sync: tell background to mute with 24h expiry (broadcasts to all tabs)
+        const expiresAt = Date.now() + 86400000;
+        safeSendMessage({ type: 'mute_user', username, expiresAt });
+        // Also sync to server via WS (syncs across devices)
+        safeSendMessage({ type: 'ws_send', data: { type: 'user:mute', username, duration: 86400000 } });
       }
+      // Also persist locally for offline/fallback
       chrome.storage.local.set({ heatsync_mc_muted: [...mutedUsers] });
       renderMessages(currentTab);
     }, { signal: mcSignal });
@@ -602,7 +610,53 @@ function handleInputKeydown(e) {
     }
     if (e.key === 'Enter' || e.key === 'Tab') {
       e.preventDefault()
-      insertEmojiFromDropdown(emojiAcState.matches[emojiAcState.index])
+      const emojiMatch = emojiAcState.matches[emojiAcState.index]
+      // Build full match list for Tab cycling (emotes + emojis matching the query)
+      const allMatches = findEmoteMatches(':' + emojiAcState.query)
+      insertEmojiFromDropdown(emojiMatch)
+      // Set up acState so subsequent Tabs cycle through all matches
+      if (e.key === 'Tab' && allMatches.length > 1) {
+        acState.matches = allMatches
+        // Find the inserted emoji's index in the full match list
+        acState.index = allMatches.findIndex(m => m.type === 'emoji' && m.emoji === emojiMatch.emoji)
+        if (acState.index === -1) acState.index = 0
+        acState.active = true
+        // For WYSIWYG, mark the inserted emoji span as cycling element
+        if (wysiwygEnabled) {
+          const input = document.getElementById('hs-mc-input')
+          const sel = window.getSelection()
+          if (sel?.rangeCount && input) {
+            // Find the emoji text we just inserted and wrap it in cycling span
+            const range = sel.getRangeAt(0)
+            const node = range.startContainer
+            if (node?.nodeType === Node.TEXT_NODE) {
+              const text = node.textContent
+              const emojiIdx = text.lastIndexOf(emojiMatch.emoji)
+              if (emojiIdx >= 0) {
+                const before = text.slice(0, emojiIdx)
+                const after = text.slice(emojiIdx + emojiMatch.emoji.length)
+                node.textContent = before
+                const span = document.createElement('span')
+                span.className = 'hs-cycling-text'
+                span.textContent = emojiMatch.emoji
+                span.dataset.completionName = emojiMatch.name
+                const afterNode = document.createTextNode(after)
+                const parent = node.parentNode
+                const next = node.nextSibling
+                if (next) {
+                  parent.insertBefore(span, next)
+                  parent.insertBefore(afterNode, next)
+                } else {
+                  parent.appendChild(span)
+                  parent.appendChild(afterNode)
+                }
+                placeCaretAfter(afterNode.textContent ? afterNode : span)
+              }
+            }
+          }
+        }
+        showCycleTooltip()
+      }
       return
     }
     if (e.key === 'Escape') {
@@ -1395,6 +1449,19 @@ function getTwitchAuthToken() {
   return null;
 }
 
+// Async version — returns { token, username } for cross-platform Twitch posting
+// Tries document.cookie first, falls back to background.js cookies API
+async function getTwitchAuthTokenAsync() {
+  const localToken = getTwitchAuthToken()
+  if (localToken) return { token: localToken, username: null }
+  // Cross-domain: ask background.js to read Twitch cookies
+  try {
+    const resp = await safeSendMessage({ type: 'get_twitch_auth_token' })
+    return { token: resp?.token || null, username: resp?.username || null }
+  } catch {}
+  return { token: null, username: null }
+}
+
 // Send message to current tab's channel
 // Build emoji lookup map (once)
 const _emojiMap = new Map()
@@ -1564,7 +1631,8 @@ async function sendMessage() {
     const slug = kickSlug || targetChannel
     const kickPromise = sendKickMessage(slug, text)
     const twitchPromise = sendToTwitch
-      ? sendIrcMessage(twitchName, text, getTwitchAuthToken(), replyParentId)
+      ? getTwitchAuthTokenAsync().then(({ token: tok, username: twitchNick }) =>
+          sendIrcMessage(twitchName, text, tok, replyParentId, twitchNick))
       : Promise.resolve(null)
 
     Promise.all([kickPromise, twitchPromise]).then(([kickResult, twitchResult]) => {
@@ -1591,7 +1659,7 @@ async function sendMessage() {
   }
 
   // --- Twitch-only send path (existing behavior) ---
-  const token = getTwitchAuthToken()
+  const { token, username: twitchNick } = await getTwitchAuthTokenAsync()
   if (!token) {
     console.warn('[HS] SEND BAIL: no auth token (cookie missing)')
     if (wysiwygEnabled) input.dataset.placeholder = t('mc_input_not_logged_in')
@@ -1602,7 +1670,7 @@ async function sendMessage() {
 
   const wsState = authState.ws ? ['CONNECTING','OPEN','CLOSING','CLOSED'][authState.ws.readyState] : 'null'
   log(`IRC SEND → #${targetChannel} ws=${wsState} ready=${authState.ready} queue=${authState.sendQueue.length}`)
-  sendIrcMessage(targetChannel, text, token, replyParentId).then(result => {
+  sendIrcMessage(targetChannel, text, token, replyParentId, twitchNick).then(result => {
     if (result === true) {
       if (wsState !== 'OPEN') {
         input.style.borderColor = '#ff0'

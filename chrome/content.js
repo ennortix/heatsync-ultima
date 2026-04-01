@@ -1465,6 +1465,7 @@ async function loadInventory() {
           if (resp?.bttvBadges) bttvBadgeMap = new Map(Object.entries(resp.bttvBadges))
           if (resp?.ffzBadges) ffzBadgeMap = new Map(Object.entries(resp.ffzBadges))
           log(' Initial cosmetics: BTTV', bttvBadgeMap.size, 'FFZ', ffzBadgeMap.size)
+          reapplyBadgesToExistingMessages()
         }).catch(() => {})
 
         log(' Received inventory via message:', emoteInventory.length, 'personal,', globalEmotes.length, 'global');
@@ -1764,6 +1765,7 @@ function _onMessageMain(message) {
       bttvBadgeMap = new Map(Object.entries(message.bttvBadges || {}))
       ffzBadgeMap = new Map(Object.entries(message.ffzBadges || {}))
       log(' Cosmetics loaded: BTTV', bttvBadgeMap.size, 'FFZ', ffzBadgeMap.size)
+      reapplyBadgesToExistingMessages()
       break
 
     default:
@@ -2482,32 +2484,39 @@ function getCurrentUsername() {
 
   // Kick methods
   if (window.location.hostname.includes('kick.com')) {
-    // Method K1: Kick stores session info accessible via profile link
-    const kickProfileLink = document.querySelector('a[href^="/profile"]');
-    if (kickProfileLink) {
-      const href = kickProfileLink.getAttribute('href');
-      const match = href?.match(/\/profile\/([^/?]+)/);
-      if (match?.[1]) {
-        log(' ✅ Found Kick username from profile link:', match[1]);
-        cachedUsername = match[1].toLowerCase();
-        return cachedUsername;
+    // Method K1: Kick stores session data in localStorage
+    try {
+      const kickSession = localStorage.getItem('kick-session')
+      if (kickSession) {
+        const session = JSON.parse(kickSession)
+        const name = session?.user?.username || session?.username
+        if (name && /^[a-zA-Z0-9_]+$/.test(name)) {
+          log(' ✅ Found Kick username from session storage:', name)
+          cachedUsername = name.toLowerCase()
+          return cachedUsername
+        }
+      }
+    } catch {}
+    // Method K2: Kick nav bar username link (current DOM)
+    const kickUserLink = document.querySelector('a[href*="/dashboard"], nav a[href^="/"]')
+    if (kickUserLink) {
+      const href = kickUserLink.getAttribute('href')
+      const match = href?.match(/^\/([a-zA-Z0-9_]+)(?:\/|$)/)
+      if (match?.[1] && !['categories', 'following', 'settings', 'search', 'dashboard'].includes(match[1].toLowerCase())) {
+        log(' ✅ Found Kick username from nav link:', match[1])
+        cachedUsername = match[1].toLowerCase()
+        return cachedUsername
       }
     }
-    // Method K2: Kick sidebar username element
-    const kickUserEl = document.querySelector('.sidebar-username, [data-testid="user-profile-name"], .profile-username');
-    if (kickUserEl?.textContent?.trim()) {
-      const name = kickUserEl.textContent.trim();
+    // Method K3: Kick chat input identity — look for "Send a message" placeholder owner
+    const kickChatIdentity = document.querySelector('.chat-identity-name, [class*="chat-identity"] span')
+    if (kickChatIdentity?.textContent?.trim()) {
+      const name = kickChatIdentity.textContent.trim()
       if (name.length > 0 && name.length < 30 && /^[a-zA-Z0-9_]+$/.test(name)) {
-        log(' ✅ Found Kick username from sidebar:', name);
-        cachedUsername = name.toLowerCase();
-        return cachedUsername;
+        log(' ✅ Found Kick username from chat identity:', name)
+        cachedUsername = name.toLowerCase()
+        return cachedUsername
       }
-    }
-    // Method K3: Kick chat identity from own messages
-    const ownMsg = document.querySelector('#chatroom-messages [data-chat-entry] button.inline.font-bold');
-    if (ownMsg?.textContent?.trim()) {
-      // Can't reliably determine which message is ours without more context
-      // but we can check localStorage for Kick session
     }
   }
 
@@ -5058,6 +5067,20 @@ function applyPendingCosmetics(userIds) {
   })
 }
 
+// Re-apply BTTV/FFZ badges to messages that were processed before badge maps loaded
+function reapplyBadgesToExistingMessages() {
+  if (bttvBadgeMap.size === 0 && ffzBadgeMap.size === 0) return
+  const container = findChatContainer()
+  if (!container) return
+  container.querySelectorAll('[data-hs-cosmetic-user-id]').forEach(el => {
+    const uid = el.dataset.hsCosmeticUserId
+    if (!uid) return
+    const needsBttv = bttvBadgeMap.has(uid) && !el.querySelector('.hs-bttv-badge')
+    const needsFfz = ffzBadgeMap.has(uid) && !el.querySelector('.hs-ffz-badge')
+    if (needsBttv || needsFfz) applyCosmeticsToMessage(el, uid)
+  })
+}
+
 // Right-click on chat message or username → instant 24h mute
 function setupMessageContextMenu() {
   document.addEventListener('contextmenu', (e) => {
@@ -5916,8 +5939,8 @@ function interceptMessageSending() {
 
   chatInput.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
-      // For contenteditable DIVs (Twitch WYSIWYG), use innerText
-      const message = (chatInput.value || chatInput.innerText || chatInput.textContent || '').trim();
+      // textarea uses .value, contenteditable uses .innerText
+      const message = (chatInput.isContentEditable ? chatInput.innerText : chatInput.value || chatInput.innerText || '').trim();
       log(' 📤 Enter pressed, message:', message);
       if (!message) return;
 

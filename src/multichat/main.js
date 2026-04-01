@@ -980,13 +980,17 @@
     msg.inlineNotifBorderColor = typeDef.borderColor
     msg.inlineNotifLabel = typeDef.label
 
-    // Persist into ALL channel buffers (IRC + Kick) so notification appears on every tab
+    // Persist into ALL channel buffers (IRC + Kick + YouTube) so notification appears on every tab
     for (const ch of config.channels) {
       const twitchName = typeof ch === 'string' ? ch : ch?.twitch
       const kickName = typeof ch === 'string' ? null : ch?.kick
+      const chId = typeof ch === 'string' ? ch : ch?.id
       const buffer = (twitchName && irc?.channels?.get(twitchName)) ||
                      (kickName && kickChat?.channels?.get(kickName))
       if (buffer) buffer.push(msg)
+      // Also inject into YouTube channel buffers
+      const ytBuf = chId && channelYtMessages.get(chId)
+      if (ytBuf) ytBuf.push(msg)
     }
 
     // Live-append to current tab if it's a chat tab
@@ -5231,7 +5235,8 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
     const safeScColor = sanitizeColor(m.scColor || '#ffd600')
     const scBadge = isSuperChat && m.amount ? `<span class="hs-mc-sc-badge" style="background:${safeScColor};color:#000;padding:0 4px;border-radius:0;font-size:10px;font-weight:700;margin-right:3px;">${escapeHtml(m.amount)}</span>` : ''
     const paintStyle = m.userId ? getMcPaintStyle(m.userId) : ''
-    const userLink = `<a href="https://heatsync.org/${plat === 'yt' ? 'user' : plat}/${encodeURIComponent(m.user)}" target="_blank" class="hs-mc-user" data-username="${escapeHtml(m.user.toLowerCase())}" style="${paintStyle || 'color:' + sanitizeColor(m.color || '#fff')}">${escapeHtml(m.user)}</a>`;
+    const userBaseUrl = plat === 'kick' ? 'https://kick.com' : plat === 'yt' ? 'https://youtube.com/@' : 'https://twitch.tv'
+    const userLink = `<a href="${userBaseUrl}/${encodeURIComponent(m.user)}" target="_blank" class="hs-mc-user" data-username="${escapeHtml(m.user.toLowerCase())}" style="${paintStyle || 'color:' + sanitizeColor(m.color || '#fff')}">${escapeHtml(m.user)}</a>`;
     let avatarHtml = ''
     if (avatarsEnabled) {
       const userKey = m.user.toLowerCase()
@@ -5242,8 +5247,8 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
       const cachedUrl = avatarCache.get(userKey)
       if (cachedUrl) {
         avatarHtml = `<img class="hs-mc-avatar" src="${escapeHtml(cachedUrl)}" alt="" loading="lazy" decoding="async" onerror="this.style.display='none'">`
-      } else if (m.platform !== 'youtube') {
-        // Only fetch from decapi for Twitch users
+      } else if (!m.platform || m.platform === 'twitch') {
+        // Only fetch from decapi for Twitch users (Kick/YouTube don't have decapi endpoints)
         avatarHtml = `<img class="hs-mc-avatar" data-user="${escapeHtml(userKey)}" src="" alt="" style="display:none" loading="lazy" decoding="async">`
         fetchAvatar(userKey)
       }
@@ -5642,9 +5647,13 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
         showErr('channel already exists')
         return
       }
-      // Check duplicate Twitch username across channels
+      // Check duplicate Twitch/Kick username across channels
       if (twitchVal && config.channels.some(c => (typeof c === 'string' ? c : c.twitch) === twitchVal)) {
         showErr('twitch channel already added')
+        return
+      }
+      if (kickVal && config.channels.some(c => typeof c !== 'string' && c.kick === kickVal)) {
+        showErr('kick channel already added')
         return
       }
 
@@ -5808,9 +5817,13 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
         return;
       }
 
-      // Check duplicate twitch (excluding self)
+      // Check duplicate twitch/kick (excluding self)
       if (twitchVal && config.channels.some(c => c !== ch && (typeof c === 'string' ? c : c.twitch) === twitchVal)) {
         showErr('twitch channel already added');
+        return;
+      }
+      if (kickVal && config.channels.some(c => c !== ch && typeof c !== 'string' && c.kick === kickVal)) {
+        showErr('kick channel already added');
         return;
       }
 

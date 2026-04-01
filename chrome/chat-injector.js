@@ -231,6 +231,7 @@ async function initChatInjector() {
 
     log(' ✅ Initialized successfully');
   } catch (error) {
+    console.error('[heatsync] chat-injector init failed:', error);
   }
 }
 
@@ -245,6 +246,7 @@ async function loadFollowedUsers() {
       log(' Loaded followed users:', followedUsers.size);
     }
   } catch (error) {
+    // Extension context may be invalidated — non-fatal
   }
 }
 
@@ -252,7 +254,7 @@ async function loadFollowedUsers() {
  * Get input state from either textarea or contenteditable (Slate)
  */
 function getInputState(element) {
-  const isContentEditable = element.getAttribute('contenteditable') === 'true' ||
+  const isContentEditable = element.isContentEditable ||
                             element.hasAttribute('data-slate-editor');
 
   if (isContentEditable) {

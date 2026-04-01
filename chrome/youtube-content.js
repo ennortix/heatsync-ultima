@@ -8,6 +8,9 @@
 
   const ac = new AbortController()
 
+  // Skip chat replays (VODs) — only process live chat
+  if (window.location.pathname.includes('live_chat_replay')) return
+
   // Extract videoId from URL (?v= param or /live_chat?v=)
   const videoId = new URLSearchParams(window.location.search).get('v') || ''
 
@@ -35,8 +38,8 @@
     const m = color.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/)
     if (!m) return '#ffffff'
     const r = parseInt(m[1]), g = parseInt(m[2]), b = parseInt(m[3])
-    // Skip near-white/transparent (regular users) — use YouTube red for identity
-    if (r > 200 && g > 200 && b > 200) return '#ff0000'
+    // Skip near-white/transparent (regular users) — use neutral white
+    if (r > 200 && g > 200 && b > 200) return '#ffffff'
     return '#' + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1)
   }
 

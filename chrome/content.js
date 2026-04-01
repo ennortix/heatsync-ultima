@@ -1090,6 +1090,17 @@ function hideBadgeTooltip() {
   if (tooltip) tooltip.classList.remove('active')
 }
 
+// Delegated badge tooltip — single listener on document instead of per-image
+;(function setupBadgeTooltipDelegation() {
+  document.addEventListener('mouseover', e => {
+    const badge = e.target.closest('.hs-cosmetic-badge')
+    if (badge) showBadgeTooltip(badge)
+  }, true)
+  document.addEventListener('mouseout', e => {
+    if (e.target.closest('.hs-cosmetic-badge')) hideBadgeTooltip()
+  }, true)
+})()
+
 // =============================================================================
 // EMOTE HOVER OVERLAY (solid colored rectangle on hover)
 // Uses event delegation - survives React re-renders
@@ -1659,6 +1670,11 @@ async function loadInventory() {
 
       }
     } catch (err) {
+      if (err?.message?.includes('Extension context invalidated')) {
+        extensionContextValid = false
+        return
+      }
+      log('loadInventory attempt', attempts, 'failed:', err?.message)
     }
 
     attempts++;
@@ -3219,6 +3235,9 @@ function processMessage(messageElement) {
   // Ensure emote map is current (rebuilt eagerly by event handlers, fallback here)
   rebuildEmoteMapIfDirty()
 
+  // Guard: emotes not yet loaded — reprocess will catch this message once inventory arrives
+  if (cachedAllEmotes === null) return
+
   // 2-tier lookup: cached base + per-user broadcast emotes (avoids cloning entire Map)
   // Fast path: skip broadcast scan when no broadcasts pending (common case)
   // For our own messages, skip broadcasts — our inventory is authoritative
@@ -4433,6 +4452,7 @@ function updateEmoteState(hash, emoteName, state) {
       const safeChan = channelLogin.replace(/[^a-z0-9_]/gi, '')
       window.postMessage({
         type: 'heatsync-gql-request',
+        nonce: window.HS?.getMainWorldNonce?.() || null,
         id,
         operation: null,
         variables: {},
@@ -5199,12 +5219,6 @@ function applyCosmeticsToMessage(el, userId) {
   const nameEl = el.querySelector('.chat-author__display-name, [data-a-target="chat-message-username"]')
   if (!nameEl) return
 
-  // Helper: attach badge tooltip listeners
-  function attachBadgeTooltip(img) {
-    img.addEventListener('mouseenter', () => showBadgeTooltip(img))
-    img.addEventListener('mouseleave', hideBadgeTooltip)
-  }
-
   // BTTV badge
   if (bttvBadgeMap.has(userId) && !el.querySelector('.hs-bttv-badge')) {
     const b = bttvBadgeMap.get(userId)
@@ -5213,7 +5227,6 @@ function applyCosmeticsToMessage(el, userId) {
     img.src = b.url
     img.title = b.description
     img.alt = b.description
-    attachBadgeTooltip(img)
     nameEl.parentNode.insertBefore(img, nameEl)
   }
 
@@ -5226,7 +5239,6 @@ function applyCosmeticsToMessage(el, userId) {
       img.title = b.title
       img.alt = b.title
       if (b.color) img.style.backgroundColor = b.color
-      attachBadgeTooltip(img)
       nameEl.parentNode.insertBefore(img, nameEl)
     }
   }
@@ -5239,7 +5251,6 @@ function applyCosmeticsToMessage(el, userId) {
     img.src = b.url
     img.title = b.tooltip
     img.alt = b.tooltip
-    attachBadgeTooltip(img)
     nameEl.parentNode.insertBefore(img, nameEl)
   }
 
@@ -5254,7 +5265,6 @@ function applyCosmeticsToMessage(el, userId) {
         img.src = url
         img.title = cosmetic.badge.tooltip || cosmetic.badge.name || '7TV'
         img.alt = '7TV'
-        attachBadgeTooltip(img)
         nameEl.parentNode.insertBefore(img, nameEl)
       }
     }
@@ -6544,6 +6554,7 @@ chrome.storage.onChanged.addListener((changes) => {
 })
 
 // Initialize
+if (window.HS?.initMainWorldNonce) window.HS.initMainWorldNonce() // secure MAIN world GQL/Helix handlers
 setupEmoteClickHandlers();
 detectAndJoinChannel();
 setupMessageContextMenu();

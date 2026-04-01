@@ -24,6 +24,7 @@
     "https://api.betterttv.net/*",
     "https://api.frankerfacez.com/*",
     "https://7tv.io/*",
+    "https://events.7tv.io/*",
     "https://cdn.betterttv.net/*",
     "https://cdn.7tv.app/*",
     "https://recent-messages.robotty.de/*",
@@ -43,7 +44,8 @@
     {
       "matches": ["https://*.twitch.tv/*"],
       "js": ["early-inject-main.js"],
-      "run_at": "document_start"
+      "run_at": "document_start",
+      "world": "MAIN"
     },
     {
       "matches": ["https://*.twitch.tv/*", "https://kick.com/*", "https://*.kick.com/*"],

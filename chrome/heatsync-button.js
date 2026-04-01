@@ -18,6 +18,14 @@
     })[c])
   }
 
+  // Wait for shared-utils.js to expose window.HS before starting
+  function waitForHS(cb, attempts = 0) {
+    if (window.HS) return cb()
+    if (attempts >= 50) return // give up after 5s
+    setTimeout(() => waitForHS(cb, attempts + 1), 100)
+  }
+
+  waitForHS(() => {
   // Kill previous instance on extension reload
   if (window.__heatsyncBtnLifecycle) {
     try { window.__heatsyncBtnLifecycle.abort() } catch (_) {}
@@ -96,7 +104,6 @@
     global: false,
     inventory: false
   };
-  let retryListenerAdded = false; // Prevent duplicate event listeners
 
   // IndexedDB cache for emote metadata
   const DB_NAME = 'heatsync-emote-cache';
@@ -1704,22 +1711,19 @@
       document.addEventListener('click', handleClickOutside, { signal: btnSignal });
     }, 10);
 
-    // Retry event listener for error states (only add once)
-    if (!retryListenerAdded) {
-      retryListenerAdded = true;
-      window.addEventListener('heatsync-retry', async (e) => {
-        const tab = e.detail;
-        log(' Retrying load for tab:', tab);
-        if (tab === 'channel') {
-          await loadChannelEmotes(currentChannel);
-        } else if (tab === 'global') {
-          await loadGlobalEmotes();
-        } else if (tab === 'mine' || tab === 'inventory') {
-          await loadInventoryEmotes();
-        }
-        renderEmoteGrid();
-      });
-    }
+    // Retry event listener for error states
+    window.addEventListener('heatsync-retry', async (e) => {
+      const tab = e.detail;
+      log(' Retrying load for tab:', tab);
+      if (tab === 'channel') {
+        await loadChannelEmotes(currentChannel);
+      } else if (tab === 'global') {
+        await loadGlobalEmotes();
+      } else if (tab === 'mine' || tab === 'inventory') {
+        await loadInventoryEmotes();
+      }
+      renderEmoteGrid();
+    }, { signal: btnSignal });
 
     // Load all emotes — one background message for channel+global, one for inventory
     currentTab = 'channel';
@@ -2822,7 +2826,7 @@
     window.addEventListener('message', (event) => {
       if (event.origin !== location.origin) return
       if (event.data?.type === 'heatsync-nav') handleButtonNav()
-    })
+    }, { signal: btnSignal })
     cleanup.setInterval(() => handleButtonNav(), 5000, 'button-nav-fallback');
 
     // Listen for inventory updates from content script - refresh panel if open (debounced)
@@ -2849,4 +2853,5 @@
   } else {
     init();
   }
+  }) // end waitForHS
 })();

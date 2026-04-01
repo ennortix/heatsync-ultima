@@ -154,6 +154,31 @@
     return resp.data
   }
 
+  // ── MAIN-world nonce ──────────────────────────────────────────────
+  // Generates a random per-session nonce and sends it to early-inject-main.js
+  // (MAIN world) so that subsequent GQL/Helix/Apollo messages can be verified.
+  // content.js MUST call HS.initMainWorldNonce() once after the page loads.
+  //
+  // Note: postMessage is visible to page JS — this is defence-in-depth, not
+  // a cryptographic barrier. It prevents static/replay attacks and raises the
+  // bar for any adversarial code that hasn't already hooked addEventListener.
+  function generateNonce() {
+    return Array.from(crypto.getRandomValues(new Uint8Array(16)))
+      .map(b => b.toString(16).padStart(2, '0')).join('')
+  }
+
+  let _mainWorldNonce = null
+
+  function initMainWorldNonce() {
+    if (_mainWorldNonce) return _mainWorldNonce
+    _mainWorldNonce = generateNonce()
+    window.postMessage({ type: 'heatsync-init-nonce', nonce: _mainWorldNonce }, location.origin)
+    return _mainWorldNonce
+  }
+
+  // Returns current nonce (call initMainWorldNonce first)
+  function getMainWorldNonce() { return _mainWorldNonce }
+
   window.HS = {
     createLifecycle,
     getFiber,
@@ -161,5 +186,7 @@
     safeSend,
     apiFetch,
     showToast,
+    initMainWorldNonce,
+    getMainWorldNonce,
   }
 })()

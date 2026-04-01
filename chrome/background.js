@@ -137,6 +137,7 @@ const wsStreamEventDedup = new Map(); // Dedup stream events across stream:* and
 let cachedFollowColors = null; // Cache follow:colors for late-loading content scripts
 let activeYoutubeVideoId = null; // Currently subscribed YouTube videoId (for WS reconnect)
 const ytVideoToChannel = new Map(); // videoId → channelId (for per-channel YouTube routing)
+const youtubeChannelUrls = {} // channelId → url (in-memory source of truth, persisted to storage)
 const MAX_YT_VIDEO_ENTRIES = 100; // LRU cap — evict oldest when full
 function setYtVideoChannel(videoId, channelId) {
   ytVideoToChannel.delete(videoId) // Re-insert for LRU ordering
@@ -210,67 +211,94 @@ function fetchWithTimeout(url, opts = {}, ms = 10000) {
 // ============================================
 // TOKEN ENCRYPTION (SubtleCrypto)
 // ============================================
-// Encrypts auth tokens at rest using extension ID as key derivation seed
-// This prevents casual inspection of stored tokens
+// Encrypts auth tokens at rest using a random per-user salt
+// Salt is generated on first use and persisted in local storage
 
-async function getEncryptionKey() {
-  // Use extension ID as seed for key derivation (stable per-install)
-  const extensionId = browser.runtime.id || 'heatsync-default';
-  const encoder = new TextEncoder();
+async function getOrCreateEncryptionSalt() {
+  const stored = await browser.storage.local.get('encryption_salt')
+  if (stored.encryption_salt) {
+    // hex → Uint8Array
+    const hex = stored.encryption_salt
+    const arr = new Uint8Array(hex.length / 2)
+    for (let i = 0; i < arr.length; i++) arr[i] = parseInt(hex.slice(i * 2, i * 2 + 2), 16)
+    return arr
+  }
+  const salt = crypto.getRandomValues(new Uint8Array(32))
+  const hex = Array.from(salt).map(b => b.toString(16).padStart(2, '0')).join('')
+  await browser.storage.local.set({ encryption_salt: hex })
+  return salt
+}
+
+async function getEncryptionKey(salt) {
+  const extensionId = browser.runtime.id || 'heatsync-default'
+  const encoder = new TextEncoder()
   const keyMaterial = await crypto.subtle.importKey(
     'raw',
     encoder.encode(extensionId + '-heatsync-token-key'),
     'PBKDF2',
     false,
     ['deriveKey']
-  );
+  )
   return crypto.subtle.deriveKey(
-    { name: 'PBKDF2', salt: encoder.encode('heatsync-salt'), iterations: 100000, hash: 'SHA-256' },
+    { name: 'PBKDF2', salt, iterations: 100000, hash: 'SHA-256' },
     keyMaterial,
     { name: 'AES-GCM', length: 256 },
     false,
     ['encrypt', 'decrypt']
-  );
+  )
 }
 
 async function encryptToken(token) {
-  if (!token) return null;
+  if (!token) return null
   try {
-    const key = await getEncryptionKey();
-    const iv = crypto.getRandomValues(new Uint8Array(12));
-    const encoder = new TextEncoder();
+    const salt = await getOrCreateEncryptionSalt()
+    const key = await getEncryptionKey(salt)
+    const iv = crypto.getRandomValues(new Uint8Array(12))
+    const encoder = new TextEncoder()
     const encrypted = await crypto.subtle.encrypt(
       { name: 'AES-GCM', iv },
       key,
       encoder.encode(token)
-    );
+    )
     // Store as base64: iv + encrypted data
-    const combined = new Uint8Array(iv.length + encrypted.byteLength);
-    combined.set(iv);
-    combined.set(new Uint8Array(encrypted), iv.length);
-    return btoa(String.fromCharCode(...combined));
+    const combined = new Uint8Array(iv.length + encrypted.byteLength)
+    combined.set(iv)
+    combined.set(new Uint8Array(encrypted), iv.length)
+    return btoa(String.fromCharCode(...combined))
   } catch (err) {
-    log(' Encryption failed:', err.message);
-    return null;
+    log(' Encryption failed:', err.message)
+    return null
   }
 }
 
 async function decryptToken(encryptedBase64) {
-  if (!encryptedBase64) return null;
+  if (!encryptedBase64) return null
+  const combined = Uint8Array.from(atob(encryptedBase64), c => c.charCodeAt(0))
+  const iv = combined.slice(0, 12)
+  const encrypted = combined.slice(12)
+
+  // Try with random per-user salt first
   try {
-    const key = await getEncryptionKey();
-    const combined = Uint8Array.from(atob(encryptedBase64), c => c.charCodeAt(0));
-    const iv = combined.slice(0, 12);
-    const encrypted = combined.slice(12);
-    const decrypted = await crypto.subtle.decrypt(
-      { name: 'AES-GCM', iv },
-      key,
-      encrypted
-    );
-    return new TextDecoder().decode(decrypted);
-  } catch (err) {
-    log(' Decryption failed:', err.message);
-    return null;
+    const salt = await getOrCreateEncryptionSalt()
+    const key = await getEncryptionKey(salt)
+    const decrypted = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, encrypted)
+    return new TextDecoder().decode(decrypted)
+  } catch {
+    // Migration: token may have been encrypted with old hardcoded salt — try it
+    try {
+      const encoder = new TextEncoder()
+      const oldKey = await getEncryptionKey(encoder.encode('heatsync-salt'))
+      const decrypted = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, oldKey, encrypted)
+      const token = new TextDecoder().decode(decrypted)
+      log(' Migrating token from static salt to random salt')
+      // Re-encrypt with new random salt (getOrCreateEncryptionSalt already wrote it above)
+      const newEncrypted = await encryptToken(token)
+      if (newEncrypted) await browser.storage.local.set({ auth_token_encrypted: newEncrypted })
+      return token
+    } catch (err) {
+      log(' Decryption failed:', err.message)
+      return null
+    }
   }
 }
 
@@ -1359,7 +1387,9 @@ function ensure7TVConnection() {
         }, delay);
       } else if (seventvReconnectAttempts >= SEVENTV_MAX_RECONNECT_ATTEMPTS) {
         log(' 7TV EventAPI: Max reconnect attempts reached, giving up. Will retry in 10 minutes.');
-        setTimeout(() => {
+        clearTimeout(seventvReconnectTimer);
+        seventvReconnectTimer = setTimeout(() => {
+          seventvReconnectTimer = null;
           seventvReconnectAttempts = 0;
           ensure7TVConnection();
         }, 600000);
@@ -1890,133 +1920,141 @@ async function connectWebSocket() {
     log(' 🔄 Token changed, reconnecting...');
     clearTimeout(reconnectTimer);
     reconnectTimer = null;
+    socket.onclose = null; // prevent scheduleReconnect on intentional close
     socket.close();
     wsState = WS_STATE.DISCONNECTED;
     isAuthenticated = false;
   }
 
-  // Make sure we have auth token before connecting
-  if (!authToken) {
-    log(' Loading auth token before connecting...');
-    await getAuthCookie();
-  }
-
-  socketAuthToken = authToken;
+  // Claim CONNECTING state BEFORE any await to block concurrent callers
   wsState = WS_STATE.CONNECTING;
-
-  const wsEndpoint = `${WS_URL.replace('https://', 'wss://').replace('http://', 'ws://')}/ws`;
-  log(' 🔌 Connecting to WebSocket:', wsEndpoint, 'with auth:', !!authToken);
-
   connectionPromise = new Promise((resolve, reject) => {
-    try {
-      socket = new WebSocket(wsEndpoint);
-    } catch (err) {
-      wsState = WS_STATE.DISCONNECTED;
-      connectionPromise = null;
-      scheduleReconnect();
-      reject(err);
-      return;
-    }
+    // Run async work inside the promise executor so the lock is held before any yield
+    ;(async () => {
+      // Load auth token if needed (async — but lock is already held above)
+      if (!authToken) {
+        log(' Loading auth token before connecting...');
+        await getAuthCookie();
+      }
 
-    // Connection timeout (10 seconds)
-    const connectTimeout = setTimeout(() => {
-      if (wsState === WS_STATE.CONNECTING) {
-        socket.close();
+      socketAuthToken = authToken;
+
+      const wsEndpoint = `${WS_URL.replace('https://', 'wss://').replace('http://', 'ws://')}/ws`;
+      log(' 🔌 Connecting to WebSocket:', wsEndpoint, 'with auth:', !!authToken);
+
+      try {
+        socket = new WebSocket(wsEndpoint);
+      } catch (err) {
         wsState = WS_STATE.DISCONNECTED;
         connectionPromise = null;
         scheduleReconnect();
-        reject(new Error('Connection timeout'));
+        reject(err);
+        return;
       }
-    }, 10000);
 
-    socket.onopen = () => {
-      clearTimeout(connectTimeout);
-      log(' ✅ WebSocket connected');
-      reconnectAttempts = 0;
-      wsState = WS_STATE.CONNECTED;
+      // Connection timeout (10 seconds)
+      const connectTimeout = setTimeout(() => {
+        if (wsState === WS_STATE.CONNECTING) {
+          socket.close();
+          wsState = WS_STATE.DISCONNECTED;
+          connectionPromise = null;
+          scheduleReconnect();
+          reject(new Error('Connection timeout'));
+        }
+      }, 10000);
 
-      // Start heartbeat to keep connection alive (server has 2min idle timeout)
-      if (heartbeatInterval) clearInterval(heartbeatInterval)
-      heartbeatInterval = trackInterval(setInterval(() => {
-        if (isSocketOpen()) {
-          try {
-            socket.send(JSON.stringify({ type: 'presence:heartbeat' }));
-          } catch (err) {
-            log(' Heartbeat send failed:', err?.message);
+      socket.onopen = () => {
+        clearTimeout(connectTimeout);
+        log(' ✅ WebSocket connected');
+        reconnectAttempts = 0;
+        wsState = WS_STATE.CONNECTED;
+
+        // Start heartbeat to keep connection alive (server has 2min idle timeout)
+        if (heartbeatInterval) clearInterval(heartbeatInterval)
+        heartbeatInterval = trackInterval(setInterval(() => {
+          if (isSocketOpen()) {
+            try {
+              socket.send(JSON.stringify({ type: 'presence:heartbeat' }));
+            } catch (err) {
+              log(' Heartbeat send failed:', err?.message);
+            }
+          }
+        }, 90000)) // Every 90 seconds (well within 2min server timeout)
+
+        // Rejoin all tracked tab channels
+        const rejoinedChannels = new Set()
+        for (const entry of tabChannels.values()) {
+          if (entry.channel && !rejoinedChannels.has(entry.channel)) {
+            const [platform, channel] = entry.channel.split('/')
+            log(' 📺 Rejoining channel:', { platform, channel })
+            wsSendDirect({ type: 'channel:join', platform, channel })
+            rejoinedChannels.add(entry.channel)
           }
         }
-      }, 90000)) // Every 90 seconds (well within 2min server timeout)
 
-      // Rejoin all tracked tab channels
-      const rejoinedChannels = new Set()
-      for (const entry of tabChannels.values()) {
-        if (entry.channel && !rejoinedChannels.has(entry.channel)) {
-          const [platform, channel] = entry.channel.split('/')
-          log(' 📺 Rejoining channel:', { platform, channel })
-          wsSendDirect({ type: 'channel:join', platform, channel })
-          rejoinedChannels.add(entry.channel)
+        // Authenticate if we have a token
+        if (authToken) {
+          log(' 🔐 Authenticating...');
+          wsSendDirect({ type: 'authenticate', token: authToken });
+        } else {
+          log(' ℹ️ No auth token - viewer mode');
+          // Flush queue even without auth (for channel joins etc)
+          flushMessageQueue();
         }
-      }
 
-      // Authenticate if we have a token
-      if (authToken) {
-        log(' 🔐 Authenticating...');
-        wsSendDirect({ type: 'authenticate', token: authToken });
-      } else {
-        log(' ℹ️ No auth token - viewer mode');
-        // Flush queue even without auth (for channel joins etc)
-        flushMessageQueue();
-      }
-
-      // Re-subscribe to YouTube channels (global + per-channel)
-      log('[hs-bg] WS connected, re-subscribing YouTube channels...')
-      browser.storage.local.get(['youtube_url', 'youtube_channel_urls']).then(data => {
-        log('[hs-bg] stored youtube data:', JSON.stringify(data))
-        // Global YouTube (live tab)
-        if (data.youtube_url) {
-          const vidMatch = data.youtube_url.match(/[?&]v=([^&]+)/) || data.youtube_url.match(/\/live\/([^?&\/]+)/) || data.youtube_url.match(/youtu\.be\/([^?&]+)/)
-          if (vidMatch) setYtVideoChannel(vidMatch[1], 'global')
-          wsSend({ type: 'youtube:subscribe', url: data.youtube_url })
-        }
-        // Per-channel YouTube URLs
-        if (data.youtube_channel_urls) {
-          for (const [channelId, url] of Object.entries(data.youtube_channel_urls)) {
+        // Re-subscribe to YouTube channels (global + per-channel)
+        log('[hs-bg] WS connected, re-subscribing YouTube channels...')
+        browser.storage.local.get(['youtube_url']).then(data => {
+          log('[hs-bg] stored youtube data:', JSON.stringify(data))
+          // Global YouTube (live tab)
+          if (data.youtube_url) {
+            const vidMatch = data.youtube_url.match(/[?&]v=([^&]+)/) || data.youtube_url.match(/\/live\/([^?&\/]+)/) || data.youtube_url.match(/youtu\.be\/([^?&]+)/)
+            if (vidMatch) setYtVideoChannel(vidMatch[1], 'global')
+            wsSend({ type: 'youtube:subscribe', url: data.youtube_url })
+          }
+          // Per-channel YouTube URLs from in-memory map
+          for (const [channelId, url] of Object.entries(youtubeChannelUrls)) {
             const vidMatch = url.match(/[?&]v=([^&]+)/) || url.match(/\/live\/([^?&\/]+)/) || url.match(/youtu\.be\/([^?&]+)/)
             if (vidMatch) setYtVideoChannel(vidMatch[1], channelId)
             wsSend({ type: 'youtube:subscribe', url, channelId })
           }
+        }).catch(() => {})
+
+        connectionPromise = null;
+        resolve();
+      };
+
+      socket.onmessage = (event) => {
+        try {
+          const msg = JSON.parse(event.data);
+          handleWSMessage(msg);
+        } catch (err) {
+          log(' WS message parse error:', err?.message);
         }
-      }).catch(() => {})
+      };
 
-      connectionPromise = null;
-      resolve();
-    };
+      socket.onclose = (event) => {
+        clearTimeout(connectTimeout);
+        if (heartbeatInterval) {
+          clearInterval(heartbeatInterval);
+          heartbeatInterval = null;
+        }
+        log(' ⚠️ WebSocket disconnected:', event.code, event.reason);
+        wsState = WS_STATE.DISCONNECTED;
+        isAuthenticated = false;
+        connectionPromise = null;
+        scheduleReconnect();
+      };
 
-    socket.onmessage = (event) => {
-      try {
-        const msg = JSON.parse(event.data);
-        handleWSMessage(msg);
-      } catch (err) {
-        log(' WS message parse error:', err?.message);
-      }
-    };
-
-    socket.onclose = (event) => {
-      clearTimeout(connectTimeout);
-      if (heartbeatInterval) {
-        clearInterval(heartbeatInterval);
-        heartbeatInterval = null;
-      }
-      log(' ⚠️ WebSocket disconnected:', event.code, event.reason);
+      socket.onerror = (err) => {
+        log(' WebSocket error:', err?.message || 'unknown')
+      };
+    })().catch(err => {
       wsState = WS_STATE.DISCONNECTED;
-      isAuthenticated = false;
       connectionPromise = null;
       scheduleReconnect();
-    };
-
-    socket.onerror = (err) => {
-      log(' WebSocket error:', err?.message || 'unknown')
-    };
+      reject(err);
+    });
   });
 
   return connectionPromise;
@@ -2848,11 +2886,8 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
       if (channelId === 'global') {
         browser.storage.local.set({ youtube_url: url })
       } else {
-        browser.storage.local.get(['youtube_channel_urls']).then(data => {
-          const urls = data.youtube_channel_urls || {}
-          urls[channelId] = url
-          browser.storage.local.set({ youtube_channel_urls: urls })
-        }).catch(() => {})
+        youtubeChannelUrls[channelId] = url
+        browser.storage.local.set({ youtube_channel_urls: { ...youtubeChannelUrls } })
       }
       log(' YouTube subscribe:', url, 'channel:', channelId, isSocketOpen() ? '' : '(queued for reconnect)')
     }
@@ -2880,11 +2915,8 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (channelId === 'global') {
       browser.storage.local.remove(['youtube_url'])
     } else {
-      browser.storage.local.get(['youtube_channel_urls']).then(data => {
-        const urls = data.youtube_channel_urls || {}
-        delete urls[channelId]
-        browser.storage.local.set({ youtube_channel_urls: urls })
-      }).catch(() => {})
+      delete youtubeChannelUrls[channelId]
+      browser.storage.local.set({ youtube_channel_urls: { ...youtubeChannelUrls } })
     }
     log(' YouTube unsubscribe:', videoId || '(no videoId)', 'channel:', channelId)
     sendResponse({ ok: true })
@@ -3276,7 +3308,8 @@ async function initialize() {
   try {
     const stored = await browser.storage.local.get([
       'user_info', 'channel_emotes_fetched_at', 'channel_emotes_map', 'seventv_emote_set_ids',
-      'muted_users', 'blocked_users', 'global_emotes', 'emote_inventory', 'blocked_emotes'
+      'muted_users', 'blocked_users', 'global_emotes', 'emote_inventory', 'blocked_emotes',
+      'youtube_channel_urls'
     ]);
 
     if (stored.user_info?.username) {
@@ -3328,6 +3361,10 @@ async function initialize() {
     if (stored.blocked_emotes?.length) {
       blockedEmotes = new Set(stored.blocked_emotes);
       log(' ✓ Warm cache:', blockedEmotes.size, 'blocked emotes from storage');
+    }
+    if (stored.youtube_channel_urls && typeof stored.youtube_channel_urls === 'object') {
+      Object.assign(youtubeChannelUrls, stored.youtube_channel_urls);
+      log(' ✓ Restored youtubeChannelUrls for', Object.keys(youtubeChannelUrls).length, 'channels');
     }
   } catch (err) {
     log(' Storage restore failed:', err.message);

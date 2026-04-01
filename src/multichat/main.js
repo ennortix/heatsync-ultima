@@ -85,6 +85,13 @@
   let mcBttvBadgeMap = new Map()
   let mcFfzBadgeMap = new Map()
   const mcUserCosmetics = new Map()
+  const MC_COSMETICS_MAX = 500
+  function setMcCosmetic(uid, c) {
+    mcUserCosmetics.set(uid, c)
+    if (mcUserCosmetics.size > MC_COSMETICS_MAX) {
+      mcUserCosmetics.delete(mcUserCosmetics.keys().next().value)
+    }
+  }
   const mcCosmeticsPending = new Set()
   let mcCosmeticsTimer = null
 
@@ -144,7 +151,7 @@
       if (!resp?.cosmetics) return
       let changed = false
       for (const [uid, c] of Object.entries(resp.cosmetics)) {
-        if (c) { mcUserCosmetics.set(uid, c); changed = true }
+        if (c) { setMcCosmetic(uid, c); changed = true }
       }
       if (changed) renderMessages(currentTab)
     }).catch(() => {})
@@ -160,7 +167,9 @@
     if (!paint || !paint.function) return ''
     const fn = paint.function.toLowerCase()
     if (fn === 'url' && paint.image_url) {
-      let style = `background-image:url(${paint.image_url});background-size:cover;-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text`
+      if (!/^https:\/\//.test(paint.image_url)) return ''
+      const safeUrl = escapeHtml(paint.image_url)
+      let style = `background-image:url(${safeUrl});background-size:cover;-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text`
       if (paint.shadows?.length) {
         style += ';filter:' + paint.shadows.map(s => {
           const r = (s.color >>> 24) & 0xff

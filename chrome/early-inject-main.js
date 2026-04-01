@@ -312,9 +312,31 @@
     })
   }
 
+  // ═══ Nonce-based request authentication ═══
+  // content.js (ISOLATED world) generates a random nonce on load and sends it here via
+  // heatsync-init-nonce. All subsequent heatsync-gql-request / heatsync-helix /
+  // heatsync-apollo-mutate messages must carry a matching nonce field.
+  //
+  // LIMITATION: postMessage and the DOM are both visible to page JS, so a determined
+  // attacker with code running on the Twitch page could intercept the init message.
+  // This raises the bar significantly against passive/static injection attacks but is
+  // not a cryptographic guarantee. Per-session rotation limits replay windows.
+  //
+  // content.js MUST send on load:
+  //   window.postMessage({ type: 'heatsync-init-nonce', nonce: <16-byte hex> }, location.origin)
+  let _hsNonce = null
+
   // Handle GQL requests from content script
+  // event.source === window: blocks cross-frame attacks; same-page scripts still pass (accepted MAIN-world limitation)
   window.addEventListener('message', (e) => {
+    if (e.source !== window) return
     if (e.origin !== location.origin) return
+
+    // Accept nonce from content script (ISOLATED world) on initialisation
+    if (e.data?.type === 'heatsync-init-nonce' && typeof e.data.nonce === 'string') {
+      _hsNonce = e.data.nonce
+      return
+    }
 
     // Content script requesting cached GQL data
     if (e.data?.type === 'heatsync-gql-get-cache') {
@@ -337,6 +359,10 @@
     // call client.mutate() with full auth/integrity context.
     // Used for AcceptPredictionTerms and any mutation that needs persisted query hashes.
     if (e.data?.type === 'heatsync-apollo-mutate') {
+      if (!_hsNonce || e.data.nonce !== _hsNonce) {
+        log('heatsync-apollo-mutate: rejected — missing or invalid nonce')
+        return
+      }
       const reqId = e.data.id
       const searchTerm = e.data.searchTerm   // string to find in webpack module factory source
       const variables = e.data.variables || {}
@@ -442,6 +468,11 @@
 
     // Generic Helix API proxy — content scripts route through MAIN world for OAuth
     if (e.data?.type === 'heatsync-helix') {
+      if (!_hsNonce || e.data.nonce !== _hsNonce) {
+        log('heatsync-helix: rejected — missing or invalid nonce')
+        window.postMessage({ type: 'heatsync-helix-response', id: e.data.id, error: 'invalid nonce' }, location.origin)
+        return
+      }
       const req = e.data
       ;(async () => {
         try {
@@ -506,6 +537,13 @@
 
     // Content script requesting GQL proxy call
     if (e.data?.type === 'heatsync-gql-request') {
+      if (!_hsNonce || e.data.nonce !== _hsNonce) {
+        log('heatsync-gql-request: rejected — missing or invalid nonce')
+        window.postMessage({
+          type: 'heatsync-gql-response', id: e.data.id, error: 'invalid nonce'
+        }, location.origin)
+        return
+      }
       const req = e.data
       if (req.rawQuery || gql.hashes[req.operation]) {
         executeGqlProxy(req)
@@ -529,6 +567,7 @@
 
   // Listen for URL map updates from content script
   window.addEventListener('message', (e) => {
+    if (e.source !== window) return
     if (e.origin !== location.origin) return
     if (e.data?.type === 'heatsync-url-map' && e.data.urlMap) {
       const wasEmpty = urlMapWasEmpty

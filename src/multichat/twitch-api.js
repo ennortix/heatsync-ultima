@@ -1663,7 +1663,7 @@ function helixRequest(url, method, body) {
       }
     }
     window.addEventListener('message', handler, { signal })
-    const msg = { type: 'heatsync-helix', id, url, method: method || 'GET' }
+    const msg = { type: 'heatsync-helix', id, url, method: method || 'GET', nonce: window.HS?.getMainWorldNonce?.() || null }
     if (body) msg.body = body
     window.postMessage(msg, location.origin)
     const timer = setTimeout(() => {
@@ -1688,7 +1688,7 @@ function gqlProxy(operation, variables, opts) {
       }
     }
     window.addEventListener('message', handler, { signal })
-    const msg = { type: 'heatsync-gql-request', id, operation, variables }
+    const msg = { type: 'heatsync-gql-request', id, operation, variables, nonce: window.HS?.getMainWorldNonce?.() || null }
     if (opts?.rawQuery) msg.rawQuery = opts.rawQuery
     if (opts?.batch) msg.batch = opts.batch
     window.postMessage(msg, location.origin)
@@ -1939,7 +1939,7 @@ function apolloMutate({ searchTerm, variables, resultField, rawQuery }) {
     window.addEventListener('message', handler, { signal })
     window.postMessage({
       type: 'heatsync-apollo-mutate', id, searchTerm, variables,
-      resultField, rawQuery
+      resultField, rawQuery, nonce: window.HS?.getMainWorldNonce?.() || null
     }, location.origin)
     const timer = setTimeout(() => {
       ac.abort()

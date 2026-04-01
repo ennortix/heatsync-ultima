@@ -47,6 +47,17 @@
   chrome.runtime.onMessage.removeListener(_onMessageInjector)
   chrome.runtime.onMessage.addListener(_onMessageInjector)
 
+  // SPA navigation handler — reset stale state on channel switch
+  window.addEventListener('message', (event) => {
+    if (event.origin !== location.origin) return
+    if (event.data?.type === 'heatsync-nav') {
+      chatReady = false
+      injectedMessages.clear()
+      followedUsers = new Set()
+      initChatInjector()
+    }
+  }, { signal: injSignal })
+
 /**
  * Inject CSS to prevent hover effects on injected messages
  */

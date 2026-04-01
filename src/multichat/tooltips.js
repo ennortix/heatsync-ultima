@@ -503,23 +503,37 @@
   }
 
   // Determine Twitch channel context for followage lookups
-  function getTooltipChannelContext() {
+  // userPlatform: the platform of the user being looked up (from data-platform)
+  function getTooltipChannelContext(userPlatform) {
+    // If looking up a Twitch user, always resolve to the Twitch channel name
+    const wantTwitch = !userPlatform || userPlatform === 'twitch'
     // Live tab → current channel from URL or override
-    if (currentTab === 'live') return getLiveChannel()
-    // Channel tab → look up twitch or kick name from config
+    if (currentTab === 'live') {
+      if (wantTwitch && location.hostname.includes('kick.com')) {
+        // On Kick live tab but need Twitch channel — find from config
+        const liveCh = getLiveChannel()
+        const ch = config.channels.find(c => {
+          if (typeof c === 'string') return c === liveCh
+          return c.kick === liveCh || c.id === liveCh
+        })
+        if (ch && typeof ch !== 'string' && ch.twitch) return ch.twitch
+      }
+      return getLiveChannel()
+    }
+    // Channel tab → look up from config
     const ch = config.channels.find(c => (typeof c === 'string' ? c : c.id) === currentTab)
     if (ch) {
       if (typeof ch === 'string') return ch
-      // Return whichever platform matches the current host, or twitch as default
-      if (location.hostname.includes('kick.com')) return ch.kick || ch.twitch
-      return ch.twitch || ch.kick
+      // For Twitch users, always return Twitch channel; for Kick users, Kick channel
+      if (wantTwitch) return ch.twitch || ch.kick
+      return ch.kick || ch.twitch
     }
     return getLiveChannel()
   }
 
   // NOTE: innerHTML usage is XSS-safe — all user content goes through escapeHtml() in renderProfileCard
   // (escapeHtml converts &, <, >, ", ' to HTML entities before any innerHTML assignment)
-  async function showUserTooltip(targetEl, username, color) {
+  async function showUserTooltip(targetEl, username, color, platform) {
     const tooltip = ensureUserTooltip();
     const gen = ++_profileGen;
 
@@ -539,7 +553,7 @@
       tooltip.innerHTML = renderProfileCard(cached.profile);
       appendSubTenureBadge(tooltip, username, msgChannel);
       positionTooltipAtElement(tooltip, targetEl);
-      fetchAndShowFollowage(tooltip, username, gen);
+      fetchAndShowFollowage(tooltip, username, gen, platform);
       return;
     }
 
@@ -559,12 +573,12 @@
       tooltip.innerHTML = renderProfileCard(profile);
       appendSubTenureBadge(tooltip, username, msgChannel);
       positionTooltipAtElement(tooltip, targetEl);
-      fetchAndShowFollowage(tooltip, username, gen);
+      fetchAndShowFollowage(tooltip, username, gen, platform);
     } else {
       // Fallback — show basic info (username sanitized via escapeHtml)
       tooltip.innerHTML = `<div class="hs-pc-info"><div class="hs-pc-header"><span class="hs-pc-name">${escapeHtml(username)}</span></div></div>`;
       appendSubTenureBadge(tooltip, username, msgChannel);
-      fetchAndShowFollowage(tooltip, username, gen);
+      fetchAndShowFollowage(tooltip, username, gen, platform);
     }
   }
 
@@ -586,8 +600,10 @@
   }
 
   // Async followage fetch — appends to tooltip after profile renders (DOM methods, no innerHTML)
-  async function fetchAndShowFollowage(tooltip, username, gen) {
-    const channelLogin = getTooltipChannelContext()
+  async function fetchAndShowFollowage(tooltip, username, gen, userPlatform) {
+    // Only show followage for Twitch users (followage API is Twitch-only)
+    if (userPlatform && userPlatform !== 'twitch') return
+    const channelLogin = getTooltipChannelContext(userPlatform)
     if (!channelLogin) return
     if (typeof lookupFollowage !== 'function') return
     const result = await lookupFollowage(username, channelLogin)
@@ -666,7 +682,8 @@
       if (target) {
         const username = target.dataset.username || target.textContent.replace(/^@/, '');
         const color = target.style.color;
-        showUserTooltip(target, username, color);
+        const platform = target.dataset.platform || null;
+        showUserTooltip(target, username, color, platform);
 
         // Highlight all matching usernames
         const name = target.dataset.username;

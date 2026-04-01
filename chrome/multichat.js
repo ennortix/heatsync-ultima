@@ -1493,7 +1493,7 @@ class KickChat {
           time: d.timestamp || Date.now(),
           platform: 'kick',
           replyTo: d.replyTo ? {
-            user: d.replyTo.username,
+            user: d.replyTo.username || 'unknown',
             text: d.replyTo.content || ''
           } : null
         }
@@ -3465,23 +3465,37 @@ async function sendKickMessage(kickSlug, text) {
   }
 
   // Determine Twitch channel context for followage lookups
-  function getTooltipChannelContext() {
+  // userPlatform: the platform of the user being looked up (from data-platform)
+  function getTooltipChannelContext(userPlatform) {
+    // If looking up a Twitch user, always resolve to the Twitch channel name
+    const wantTwitch = !userPlatform || userPlatform === 'twitch'
     // Live tab → current channel from URL or override
-    if (currentTab === 'live') return getLiveChannel()
-    // Channel tab → look up twitch or kick name from config
+    if (currentTab === 'live') {
+      if (wantTwitch && location.hostname.includes('kick.com')) {
+        // On Kick live tab but need Twitch channel — find from config
+        const liveCh = getLiveChannel()
+        const ch = config.channels.find(c => {
+          if (typeof c === 'string') return c === liveCh
+          return c.kick === liveCh || c.id === liveCh
+        })
+        if (ch && typeof ch !== 'string' && ch.twitch) return ch.twitch
+      }
+      return getLiveChannel()
+    }
+    // Channel tab → look up from config
     const ch = config.channels.find(c => (typeof c === 'string' ? c : c.id) === currentTab)
     if (ch) {
       if (typeof ch === 'string') return ch
-      // Return whichever platform matches the current host, or twitch as default
-      if (location.hostname.includes('kick.com')) return ch.kick || ch.twitch
-      return ch.twitch || ch.kick
+      // For Twitch users, always return Twitch channel; for Kick users, Kick channel
+      if (wantTwitch) return ch.twitch || ch.kick
+      return ch.kick || ch.twitch
     }
     return getLiveChannel()
   }
 
   // NOTE: innerHTML usage is XSS-safe — all user content goes through escapeHtml() in renderProfileCard
   // (escapeHtml converts &, <, >, ", ' to HTML entities before any innerHTML assignment)
-  async function showUserTooltip(targetEl, username, color) {
+  async function showUserTooltip(targetEl, username, color, platform) {
     const tooltip = ensureUserTooltip();
     const gen = ++_profileGen;
 
@@ -3501,7 +3515,7 @@ async function sendKickMessage(kickSlug, text) {
       tooltip.innerHTML = renderProfileCard(cached.profile);
       appendSubTenureBadge(tooltip, username, msgChannel);
       positionTooltipAtElement(tooltip, targetEl);
-      fetchAndShowFollowage(tooltip, username, gen);
+      fetchAndShowFollowage(tooltip, username, gen, platform);
       return;
     }
 
@@ -3521,12 +3535,12 @@ async function sendKickMessage(kickSlug, text) {
       tooltip.innerHTML = renderProfileCard(profile);
       appendSubTenureBadge(tooltip, username, msgChannel);
       positionTooltipAtElement(tooltip, targetEl);
-      fetchAndShowFollowage(tooltip, username, gen);
+      fetchAndShowFollowage(tooltip, username, gen, platform);
     } else {
       // Fallback — show basic info (username sanitized via escapeHtml)
       tooltip.innerHTML = `<div class="hs-pc-info"><div class="hs-pc-header"><span class="hs-pc-name">${escapeHtml(username)}</span></div></div>`;
       appendSubTenureBadge(tooltip, username, msgChannel);
-      fetchAndShowFollowage(tooltip, username, gen);
+      fetchAndShowFollowage(tooltip, username, gen, platform);
     }
   }
 
@@ -3548,8 +3562,10 @@ async function sendKickMessage(kickSlug, text) {
   }
 
   // Async followage fetch — appends to tooltip after profile renders (DOM methods, no innerHTML)
-  async function fetchAndShowFollowage(tooltip, username, gen) {
-    const channelLogin = getTooltipChannelContext()
+  async function fetchAndShowFollowage(tooltip, username, gen, userPlatform) {
+    // Only show followage for Twitch users (followage API is Twitch-only)
+    if (userPlatform && userPlatform !== 'twitch') return
+    const channelLogin = getTooltipChannelContext(userPlatform)
     if (!channelLogin) return
     if (typeof lookupFollowage !== 'function') return
     const result = await lookupFollowage(username, channelLogin)
@@ -3628,7 +3644,8 @@ async function sendKickMessage(kickSlug, text) {
       if (target) {
         const username = target.dataset.username || target.textContent.replace(/^@/, '');
         const color = target.style.color;
-        showUserTooltip(target, username, color);
+        const platform = target.dataset.platform || null;
+        showUserTooltip(target, username, color, platform);
 
         // Highlight all matching usernames
         const name = target.dataset.username;
@@ -8485,11 +8502,9 @@ function initInput() {
       } else {
         mutedUsers.add(username);
         showToast(`muted ${username} (24h)`);
-        // Sync: tell background to mute with 24h expiry (broadcasts to all tabs)
+        // Sync: tell background to mute with 24h expiry (broadcasts to all tabs + server)
         const expiresAt = Date.now() + 86400000;
         safeSendMessage({ type: 'mute_user', username, expiresAt });
-        // Also sync to server via WS (syncs across devices)
-        safeSendMessage({ type: 'ws_send', data: { type: 'user:mute', username, duration: 86400000 } });
       }
       // Also persist locally for offline/fallback
       chrome.storage.local.set({ heatsync_mc_muted: [...mutedUsers] });
@@ -9611,9 +9626,9 @@ async function sendMessage() {
       const twitchOk = twitchResult === true || twitchResult === null
 
       if (kickOk || twitchOk) {
-
-        // Partial failure toast — only show for unexpected errors, not missing platform login
+        // Partial failure toasts for dual-send
         if (isDualSend && !twitchOk) showToast('sent to kick only — twitch failed')
+        if (isDualSend && !kickOk) showToast('sent to twitch only — kick failed')
       } else {
         // Both failed (or single Kick failed)
         input.style.borderColor = '#f44'
@@ -11104,6 +11119,8 @@ const STORAGE_KEY = 'heatsync_multichat';
         if (username) {
           mutedUsers.delete(username);
           try { chrome.storage.local.set({ heatsync_mc_muted: [...mutedUsers] }); } catch {}
+          // Sync to background (broadcasts to all tabs + server)
+          safeSendMessage({ type: 'unmute_user', username });
           applyMcMutes();
           renderSettingsTab();
         }
@@ -15104,7 +15121,7 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
     const scBadge = isSuperChat && m.amount ? `<span class="hs-mc-sc-badge" style="background:${safeScColor};color:#000;padding:0 4px;border-radius:0;font-size:10px;font-weight:700;margin-right:3px;">${escapeHtml(m.amount)}</span>` : ''
     const paintStyle = m.userId ? getMcPaintStyle(m.userId) : ''
     const userBaseUrl = plat === 'kick' ? 'https://kick.com' : plat === 'yt' ? 'https://youtube.com/@' : 'https://twitch.tv'
-    const userLink = `<a href="${userBaseUrl}/${encodeURIComponent(m.user)}" target="_blank" class="hs-mc-user" data-username="${escapeHtml(m.user.toLowerCase())}" style="${paintStyle || 'color:' + sanitizeColor(m.color || '#fff')}">${escapeHtml(m.user)}</a>`;
+    const userLink = `<a href="${userBaseUrl}/${encodeURIComponent(m.user)}" target="_blank" class="hs-mc-user" data-username="${escapeHtml(m.user.toLowerCase())}" data-platform="${plat}" style="${paintStyle || 'color:' + sanitizeColor(m.color || '#fff')}">${escapeHtml(m.user)}</a>`;
     let avatarHtml = ''
     if (avatarsEnabled) {
       const userKey = m.user.toLowerCase()

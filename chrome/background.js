@@ -2948,12 +2948,17 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
     const expiresAt = message.expiresAt || null;
     mutedUsers.set(message.username, expiresAt);
     persistMutedUsers();
-    broadcastToTabs({ type: 'user_muted', username: message.username });
+    broadcastToTabs({ type: 'user_muted', username: message.username, expiresAt });
+    // Sync to server for cross-device muting
+    const duration = expiresAt ? expiresAt - Date.now() : null;
+    if (duration && duration > 0) wsSend({ type: 'user:mute', username: message.username, duration });
     log(' Muted user:', message.username, expiresAt ? `(expires ${new Date(expiresAt).toISOString()})` : '(permanent)');
   } else if (message.type === 'unmute_user') {
     mutedUsers.delete(message.username);
     persistMutedUsers();
     broadcastToTabs({ type: 'user_unmuted', username: message.username });
+    // Sync to server for cross-device unmuting
+    wsSend({ type: 'user:unmute', username: message.username });
     log(' Unmuted user:', message.username);
   } else if (message.type === 'get_muted_users') {
     sendResponse({ users: Array.from(mutedUsers.keys()) });

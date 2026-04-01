@@ -1452,6 +1452,8 @@
         if (username) {
           mutedUsers.delete(username);
           try { chrome.storage.local.set({ heatsync_mc_muted: [...mutedUsers] }); } catch {}
+          // Sync to background (broadcasts to all tabs + server)
+          safeSendMessage({ type: 'unmute_user', username });
           applyMcMutes();
           renderSettingsTab();
         }
@@ -5452,7 +5454,7 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
     const scBadge = isSuperChat && m.amount ? `<span class="hs-mc-sc-badge" style="background:${safeScColor};color:#000;padding:0 4px;border-radius:0;font-size:10px;font-weight:700;margin-right:3px;">${escapeHtml(m.amount)}</span>` : ''
     const paintStyle = m.userId ? getMcPaintStyle(m.userId) : ''
     const userBaseUrl = plat === 'kick' ? 'https://kick.com' : plat === 'yt' ? 'https://youtube.com/@' : 'https://twitch.tv'
-    const userLink = `<a href="${userBaseUrl}/${encodeURIComponent(m.user)}" target="_blank" class="hs-mc-user" data-username="${escapeHtml(m.user.toLowerCase())}" style="${paintStyle || 'color:' + sanitizeColor(m.color || '#fff')}">${escapeHtml(m.user)}</a>`;
+    const userLink = `<a href="${userBaseUrl}/${encodeURIComponent(m.user)}" target="_blank" class="hs-mc-user" data-username="${escapeHtml(m.user.toLowerCase())}" data-platform="${plat}" style="${paintStyle || 'color:' + sanitizeColor(m.color || '#fff')}">${escapeHtml(m.user)}</a>`;
     let avatarHtml = ''
     if (avatarsEnabled) {
       const userKey = m.user.toLowerCase()

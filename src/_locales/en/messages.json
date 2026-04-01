@@ -404,6 +404,12 @@
       "age": { "content": "$2" }
     }
   },
+  "content_card_follows_channel": {
+    "message": "follows $CHANNEL$",
+    "placeholders": {
+      "channel": { "content": "$1" }
+    }
+  },
   "content_card_not_following": {
     "message": "not following $CHANNEL$",
     "placeholders": {

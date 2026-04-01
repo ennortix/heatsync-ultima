@@ -626,7 +626,7 @@ class KickChat {
           time: d.timestamp || Date.now(),
           platform: 'kick',
           replyTo: d.replyTo ? {
-            user: d.replyTo.username,
+            user: d.replyTo.username || 'unknown',
             text: d.replyTo.content || ''
           } : null
         }

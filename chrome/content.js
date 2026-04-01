@@ -4377,14 +4377,24 @@ function updateEmoteState(hash, emoteName, state) {
     return 'twitch'
   }
 
-  // Get current channel login from URL
+  // Get current channel login from URL (works on both Twitch and Kick)
   function getChannelLogin() {
-    if (!window.location.hostname.includes('twitch.tv')) return null
-    const match = window.location.pathname.match(/^\/(?:popout\/|embed\/)?([a-zA-Z0-9_]+)/)
-    if (!match) return null
-    const ch = match[1].toLowerCase()
-    const excluded = ['directory', 'settings', 'videos', 'moderator', 'subscriptions', 'search', 'downloads', 'p']
-    return excluded.includes(ch) ? null : ch
+    const hostname = window.location.hostname
+    if (hostname.includes('twitch.tv')) {
+      const match = window.location.pathname.match(/^\/(?:popout\/|embed\/)?([a-zA-Z0-9_]+)/)
+      if (!match) return null
+      const ch = match[1].toLowerCase()
+      const excluded = ['directory', 'settings', 'videos', 'moderator', 'subscriptions', 'search', 'downloads', 'p']
+      return excluded.includes(ch) ? null : ch
+    }
+    if (hostname.includes('kick.com')) {
+      const match = window.location.pathname.match(/^\/(?:popout\/|embed\/)?([a-zA-Z0-9_-]+)/)
+      if (!match) return null
+      const ch = match[1].toLowerCase()
+      const excluded = ['categories', 'following', 'settings', 'search', 'dashboard', 'messages']
+      return excluded.includes(ch) ? null : ch
+    }
+    return null
   }
 
   // Followage + follow counts lookup via Twitch GQL (MAIN world proxy)
@@ -4844,7 +4854,10 @@ function updateEmoteState(hash, emoteName, state) {
 
       // Fetch followage + live follow counts async and append to card
       const channelLogin = getChannelLogin()
-      if (channelLogin && getPlatform() === 'twitch') {
+      const platform = getPlatform()
+
+      // Twitch: live GQL followage data
+      if (channelLogin && platform === 'twitch') {
         lookupFollowage(username, channelLogin).then(result => {
           if (!result || !cardEl || cardEl.style.display === 'none') return
           const headerLine = cardEl.querySelector('.hs-pc-header-line')
@@ -4887,6 +4900,33 @@ function updateEmoteState(hash, emoteName, state) {
             }
           }
         })
+      }
+
+      // Kick: use HeatSync profile relationship data (already fetched)
+      if (channelLogin && platform === 'kick' && profile) {
+        const headerLine = cardEl.querySelector('.hs-pc-header-line')
+        if (headerLine) {
+          const rel = profile.relationship || {}
+          if (rel.youFollow) {
+            const badge = document.createElement('span')
+            badge.className = 'hs-pc-followage'
+            badge.textContent = rel.youFollowSince
+              ? t('content_card_following', [channelLogin, formatAge(rel.youFollowSince)])
+              : t('content_card_follows_channel', [channelLogin]) || `follows ${esc(channelLogin)}`
+            headerLine.appendChild(badge)
+          } else {
+            const badge = document.createElement('span')
+            badge.className = 'hs-pc-followage hs-pc-nofollow'
+            badge.textContent = t('content_card_not_following', [channelLogin])
+            headerLine.appendChild(badge)
+          }
+          if (rel.followsYou) {
+            const cfBadge = document.createElement('span')
+            cfBadge.className = 'hs-pc-channel-follows'
+            cfBadge.textContent = t('content_card_followed_by', [channelLogin])
+            headerLine.appendChild(cfBadge)
+          }
+        }
       }
 
       // Live-poll viewer count every 10s while card is visible (lightweight endpoint)

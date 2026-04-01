@@ -523,11 +523,9 @@ function initInput() {
       } else {
         mutedUsers.add(username);
         showToast(`muted ${username} (24h)`);
-        // Sync: tell background to mute with 24h expiry (broadcasts to all tabs)
+        // Sync: tell background to mute with 24h expiry (broadcasts to all tabs + server)
         const expiresAt = Date.now() + 86400000;
         safeSendMessage({ type: 'mute_user', username, expiresAt });
-        // Also sync to server via WS (syncs across devices)
-        safeSendMessage({ type: 'ws_send', data: { type: 'user:mute', username, duration: 86400000 } });
       }
       // Also persist locally for offline/fallback
       chrome.storage.local.set({ heatsync_mc_muted: [...mutedUsers] });
@@ -1649,9 +1647,9 @@ async function sendMessage() {
       const twitchOk = twitchResult === true || twitchResult === null
 
       if (kickOk || twitchOk) {
-
-        // Partial failure toast — only show for unexpected errors, not missing platform login
+        // Partial failure toasts for dual-send
         if (isDualSend && !twitchOk) showToast('sent to kick only — twitch failed')
+        if (isDualSend && !kickOk) showToast('sent to twitch only — kick failed')
       } else {
         // Both failed (or single Kick failed)
         input.style.borderColor = '#f44'

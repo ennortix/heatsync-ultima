@@ -749,8 +749,19 @@
 
   // Poll for chat container (SPA — may not exist yet)
   let uidPollCount = 0
-  const uidPoll = setInterval(() => {
-    if (startUidObserver() || ++uidPollCount > 60) clearInterval(uidPoll)
+  let uidPollId = setInterval(() => {
+    if (startUidObserver() || ++uidPollCount > 60) {
+      clearInterval(uidPollId)
+      uidPollId = null
+    }
   }, 1000)
+
+  window.addEventListener('pagehide', () => {
+    if (uidPollId !== null) {
+      clearInterval(uidPollId)
+      uidPollId = null
+    }
+    uidObserver.disconnect()
+  })
 
 })()

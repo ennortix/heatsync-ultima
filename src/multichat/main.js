@@ -404,6 +404,7 @@
         <button class="hs-mc-tab active" data-tab="feed">feed</button>
         <button class="hs-mc-tab" data-tab="whispers">whispers</button>
         <button class="hs-mc-tab" data-tab="mentions">mentions</button>
+        <button class="hs-mc-tab" data-tab="activity">activity</button>
         <button class="hs-mc-tab" data-tab="live">live</button>
         <button class="hs-mc-tab" data-tab="add">+</button>
       </div>
@@ -461,7 +462,7 @@
       }
 
       // Channel tabs get edit/remove context menu
-      const reserved = ['live', 'feed', 'mentions', 'whispers', 'add', 'rotate', 'settings'];
+      const reserved = ['live', 'feed', 'mentions', 'activity', 'whispers', 'add', 'rotate', 'settings'];
       if (reserved.includes(tabId)) return;
       e.preventDefault();
 
@@ -531,6 +532,9 @@
 
   // Show offline stream events (default off)
   let showOfflineEvents = false;
+
+  // Auto-claim Twitch channel points bonus chest (default on)
+  let autoClaimPoints = true;
 
   // Input bar auto-hide — hidden when empty, shown on first keystroke
   let autoHideInput = false;
@@ -1196,6 +1200,20 @@
     renderMessages(currentTab);
   }
 
+  async function loadAutoClaimSetting() {
+    try {
+      const stored = await chrome.storage.local.get(['hs_auto_claim_points']);
+      if (stored.hs_auto_claim_points !== undefined) {
+        autoClaimPoints = stored.hs_auto_claim_points;
+      }
+    } catch {}
+  }
+
+  function toggleAutoClaim() {
+    autoClaimPoints = !autoClaimPoints;
+    chrome.storage.local.set({ hs_auto_claim_points: autoClaimPoints });
+  }
+
   function renderSettingsTab() {
     const msgsEl = document.getElementById('hs-mc-messages');
     if (!msgsEl) return;
@@ -1277,6 +1295,13 @@
           </div>`).join('')}
         </div>
         <div class="hs-mc-settings-group">
+          <div class="hs-mc-settings-group-title">features</div>
+          <div class="hs-mc-setting-row">
+            <span class="hs-mc-setting-label" data-tip="Automatically clicks the bonus channel points chest on Twitch when it appears. Free points, zero effort.">auto-claim channel points</span>
+            <button class="hs-mc-toggle-pill ${autoClaimPoints ? 'active' : ''}" data-setting="autoclaim"><span class="hs-mc-toggle-knob"></span></button>
+          </div>
+        </div>
+        <div class="hs-mc-settings-group">
           <div class="hs-mc-settings-group-title">muted users</div>
           ${mutedUsers.size === 0
             ? `<div class="hs-mc-setting-row" style="color:#808080;font-size:11px">no muted users</div>`
@@ -1329,6 +1354,7 @@
           autohide: () => { toggleAutoHide(); },
           timestamps: () => { toggleTimestamps(); },
           avatars: () => { toggleAvatars(); },
+          autoclaim: () => { toggleAutoClaim(); },
         };
         if (toggleMap[setting]) {
           toggleMap[setting]();
@@ -1370,6 +1396,7 @@
         avatarsEnabled = false;
         platformBadgesEnabled = true;
         showOfflineEvents = false;
+        autoClaimPoints = true;
         for (const [k, v] of Object.entries(INLINE_NOTIF_TYPES)) inlineNotifs[k] = v.defaultOn;
         for (const [k, v] of Object.entries(HERMES_EVENT_TYPES)) hermesToggles[k] = v.defaultOn;
         const settings = {
@@ -1378,7 +1405,10 @@
           avatars: false, showPlatformBadges: true, showOfflineEvents: false,
           inlineNotifs: { ...inlineNotifs }, hermesEvents: { ...hermesToggles },
         };
-        try { for (const [k, v] of Object.entries(settings)) saveUiSetting(k, v) } catch {}
+        try {
+          for (const [k, v] of Object.entries(settings)) saveUiSetting(k, v);
+          chrome.storage.local.set({ hs_auto_claim_points: true });
+        } catch {}
         renderSettingsTab();
         return;
       }
@@ -1424,7 +1454,7 @@
     if (!tabBarElement) return;
 
     // Clear existing channel tabs (keep built-in tabs)
-    const existingChannelTabs = tabBarElement.querySelectorAll('.hs-mc-tab[data-tab]:not([data-tab="live"]):not([data-tab="feed"]):not([data-tab="mentions"]):not([data-tab="whispers"]):not([data-tab="add"]):not([data-tab="rotate"]):not([data-tab="settings"])');
+    const existingChannelTabs = tabBarElement.querySelectorAll('.hs-mc-tab[data-tab]:not([data-tab="live"]):not([data-tab="feed"]):not([data-tab="mentions"]):not([data-tab="activity"]):not([data-tab="whispers"]):not([data-tab="add"]):not([data-tab="rotate"]):not([data-tab="settings"])');
     existingChannelTabs.forEach(t => t.remove());
 
     // Add channel tabs before the + button in the scroll section
@@ -1436,6 +1466,11 @@
       const id = typeof ch === 'string' ? ch : ch.id;
       tab.dataset.tab = id;
       tab.textContent = id;
+      // Restore live dot from cached liveChannelSet (survives tab recreate)
+      if (liveChannelSet.size > 0) {
+        const twitch = typeof ch === 'string' ? ch : ch.twitch || ch.id
+        tab.dataset.live = String(liveChannelSet.has(twitch.toLowerCase()))
+      }
       if (addBtn) addBtn.before(tab);
       else scrollSection.appendChild(tab);
     });
@@ -2693,6 +2728,47 @@
       #hs-mc-input .hs-input-stack > img:not(:first-child) { z-index: 2; }
       .hs-mc-emoji {
         font-variant-emoji: emoji;
+      }
+      /* Emoji autocomplete dropdown */
+      #hs-mc-emoji-dropdown {
+        display: none;
+        position: absolute;
+        bottom: 100%;
+        left: 8px;
+        right: 8px;
+        background: #000;
+        border: 1px solid #808080;
+        z-index: 1004;
+        max-height: 280px;
+        overflow-y: auto;
+        margin-bottom: 2px;
+      }
+      .hs-mc-emoji-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 6px 10px;
+        cursor: pointer;
+        font-size: 13px;
+        color: #fff;
+      }
+      .hs-mc-emoji-row:hover,
+      .hs-mc-emoji-row.selected {
+        background: #808080;
+      }
+      .hs-mc-emoji-preview {
+        font-size: 18px;
+        width: 24px;
+        text-align: center;
+        font-variant-emoji: emoji;
+      }
+      .hs-mc-emoji-name {
+        color: #808080;
+        font-size: 12px;
+      }
+      .hs-mc-emoji-row.selected .hs-mc-emoji-name,
+      .hs-mc-emoji-row:hover .hs-mc-emoji-name {
+        color: #fff;
       }
       /* Toggle button */
       .hs-mc-toggle-btn {
@@ -4914,6 +4990,12 @@
       updateTabBadges();
     }
 
+    // Clear activity badge when switching to activity tab
+    if (id === 'activity' && unreadNotifCount > 0) {
+      unreadNotifCount = 0;
+      updateNotifBadge();
+    }
+
     // Clear whisper unread when switching to whispers tab
     if (id === 'whispers') {
       whisperLastViewedTime = Date.now()
@@ -5430,6 +5512,7 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
     if (editingChannel) return;
     // Social tabs have their own renderers
     if (id === 'feed') { renderFeed(); return; }
+    if (id === 'activity') { renderActivity(); return; }
     if (id === 'whispers') { renderWhispersTab(); return; }
     if (id === 'settings') { renderSettingsTab(); return; }
 
@@ -6682,6 +6765,7 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
     await loadAutoHideSetting();
     await loadTimestampsSetting();
     await loadAvatarsSetting();
+    await loadAutoClaimSetting();
     await loadOfflineEventsSetting();
     await loadBlockedEmotes();
     await loadEmotes();

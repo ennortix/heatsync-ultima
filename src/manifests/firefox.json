@@ -11,6 +11,7 @@
     "tabs",
     "cookies",
     "alarms",
+    "notifications",
     "webRequest",
     "webRequestBlocking",
     "https://static-cdn.jtvnw.net/*",

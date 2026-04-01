@@ -10,9 +10,23 @@
     try { window.__heatsyncAcLifecycle.abort() } catch (_) {}
   }
 
-  // Lifecycle controller — delegates to shared window.HS.createLifecycle
-  const { signal: acSignal, cleanup, abort: _abortLifecycle } = window.HS.createLifecycle()
-  window.__heatsyncAcLifecycle = { abort: _abortLifecycle }
+  // Lifecycle controller — inline because this runs in MAIN world (no window.HS)
+  const ac = new AbortController()
+  const acSignal = ac.signal
+  const cleanup = {
+    _intervals: new Set(),
+    _timeouts: new Set(),
+    _observers: new Set(),
+    setInterval(fn, ms) { const id = setInterval(fn, ms); this._intervals.add(id); return id },
+    clearInterval(id) { clearInterval(id); this._intervals.delete(id) },
+    setTimeout(fn, ms) { const id = setTimeout(() => { this._timeouts.delete(id); fn() }, ms); this._timeouts.add(id); return id },
+    clearTimeout(id) { clearTimeout(id); this._timeouts.delete(id) },
+    trackObserver(obs) { this._observers.add(obs); return obs },
+    untrackObserver(obs) { try { obs.disconnect() } catch (_) {} this._observers.delete(obs) },
+    destroyAll() { for (const id of this._intervals) clearInterval(id); this._intervals.clear(); for (const id of this._timeouts) clearTimeout(id); this._timeouts.clear(); for (const obs of this._observers) { try { obs.disconnect() } catch (_) {} } this._observers.clear() }
+  }
+  acSignal.addEventListener('abort', () => cleanup.destroyAll())
+  window.__heatsyncAcLifecycle = { abort: () => ac.abort() }
 
   // Inject CSS to make chat input emote spans auto-size to their content
   // BULLETPROOF: Wide emotes must expand span to fit, never clip

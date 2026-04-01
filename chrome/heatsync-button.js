@@ -18,8 +18,14 @@
     })[c])
   }
 
+  // Kill previous instance on extension reload
+  if (window.__heatsyncBtnLifecycle) {
+    try { window.__heatsyncBtnLifecycle.abort() } catch (_) {}
+  }
+
   // Lifecycle controller — delegates to shared window.HS.createLifecycle
   const { signal: btnSignal, cleanup, abort: _abortLifecycle } = window.HS.createLifecycle()
+  window.__heatsyncBtnLifecycle = { abort: _abortLifecycle }
 
   const BUTTON_ID = 'heatsync-chat-button';
   const PANEL_ID = 'heatsync-panel';
@@ -1385,6 +1391,14 @@
               <div class="heatsync-setting-desc">[T] [K] [YT] on messages</div>
             </div>
             <div class="heatsync-toggle ${settings.showPlatformBadges ? 'active' : ''}" data-setting="showPlatformBadges"></div>
+          </div>
+
+          <div class="heatsync-setting-row">
+            <div>
+              <div class="heatsync-setting-label">cosmetics</div>
+              <div class="heatsync-setting-desc">7TV/BTTV/FFZ paints + badges</div>
+            </div>
+            <div class="heatsync-toggle ${settings.showCosmetics !== false ? 'active' : ''}" data-setting="showCosmetics"></div>
           </div>
         </div>
 

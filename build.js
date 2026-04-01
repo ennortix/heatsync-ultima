@@ -73,7 +73,7 @@ function stripExports(content) {
 // Read lib files
 function readLib() {
   const libDir = join(SRC_DIR, 'lib')
-  const files = ['utils.js', 'browser-api.js']
+  const files = ['config.js', 'cleanup.js', 'utils.js', 'browser-api.js']
   let combined = '// === HEATSYNC LIB (auto-bundled) ===\n'
 
   for (const file of files) {

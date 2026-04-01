@@ -57,6 +57,16 @@ active: false,  // true when cycling through matches
 wordStart: 0,   // Position where the completion word starts
 afterText: ''   // Text after the completion
 };
+
+// Emoji dropdown autocomplete state
+let emojiAcState = {
+  active: false,
+  matches: [],
+  index: 0,
+  query: '',
+  colonPos: -1,    // position of the triggering ':'
+}
+let _emojiAcDebounce = null
 function rebuildInput() {
   const bar = document.getElementById('hs-mc-inputbar');
   if (!bar) return;
@@ -205,6 +215,7 @@ function initInput() {
   });
   input.addEventListener('blur', () => {
     setTimeout(hideAutocomplete, 150)
+    setTimeout(hideEmojiDropdown, 150)
     // Hide input bar after blur if empty (delay to allow click-to-emote-picker)
     // Skip if window lost focus — prevents hiding when switching apps
     setTimeout(() => { if (document.hasFocus()) hideInputBar() }, 200)
@@ -575,6 +586,32 @@ function updateInputPlaceholder() {
 function handleInputKeydown(e) {
   const input = e.target;
 
+  // Emoji dropdown navigation — intercept before other handlers
+  if (emojiAcState.active) {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault()
+      emojiAcState.index = (emojiAcState.index + 1) % emojiAcState.matches.length
+      showEmojiDropdown(emojiAcState.matches, emojiAcState.index)
+      return
+    }
+    if (e.key === 'ArrowUp') {
+      e.preventDefault()
+      emojiAcState.index = (emojiAcState.index - 1 + emojiAcState.matches.length) % emojiAcState.matches.length
+      showEmojiDropdown(emojiAcState.matches, emojiAcState.index)
+      return
+    }
+    if (e.key === 'Enter' || e.key === 'Tab') {
+      e.preventDefault()
+      insertEmojiFromDropdown(emojiAcState.matches[emojiAcState.index])
+      return
+    }
+    if (e.key === 'Escape') {
+      e.preventDefault()
+      hideEmojiDropdown()
+      return
+    }
+  }
+
   // Tab - cycle through emote completions
   if (e.key === 'Tab') {
     e.preventDefault();
@@ -640,6 +677,10 @@ function handleInputKeydown(e) {
 function handleInputChange(e) {
   // Save pending message (persists across tab switches)
   pendingMessage = getInputText();
+
+  // Debounced emoji dropdown autocomplete
+  if (_emojiAcDebounce) clearTimeout(_emojiAcDebounce)
+  _emojiAcDebounce = setTimeout(checkEmojiAutocomplete, 80)
 
   // Reset autocomplete cycling on any text change
   if (acState.active) {
@@ -1144,6 +1185,171 @@ function hideAutocomplete() {
   }
 }
 
+// --- Emoji dropdown autocomplete ---
+
+function getEmojiColonContext(input) {
+  // Returns { query, colonPos } if user is typing :shortcode, else null
+  if (wysiwygEnabled) {
+    const sel = window.getSelection()
+    if (!sel?.rangeCount) return null
+    const range = sel.getRangeAt(0)
+    const node = range.startContainer
+    if (node?.nodeType !== Node.TEXT_NODE) return null
+    const text = node.textContent
+    const cursor = range.startOffset
+    const before = text.slice(0, cursor)
+    // Find last unmatched ':' — must not contain spaces or a closing ':'
+    const match = before.match(/:([a-z0-9_]{2,})$/)
+    if (!match) return null
+    // Make sure this ':' isn't part of a completed :shortcode:
+    const colonIdx = before.lastIndexOf(':')
+    return { query: match[1], colonPos: colonIdx, textNode: node }
+  }
+  // Standard input
+  const text = input.value
+  const cursor = input.selectionStart
+  const before = text.slice(0, cursor)
+  const match = before.match(/:([a-z0-9_]{2,})$/)
+  if (!match) return null
+  const colonIdx = before.lastIndexOf(':')
+  return { query: match[1], colonPos: colonIdx, textNode: null }
+}
+
+function filterEmoji(query) {
+  if (_emojiMap.size === 0) return []
+  const results = []
+  const q = query.toLowerCase()
+  for (const entry of EMOJI_DATA) {
+    if (results.length >= 8) break
+    if (entry.name.startsWith(q)) {
+      results.push(entry)
+    }
+  }
+  // If we have room, add substring matches
+  if (results.length < 8) {
+    for (const entry of EMOJI_DATA) {
+      if (results.length >= 8) break
+      if (!entry.name.startsWith(q) && entry.name.includes(q)) {
+        results.push(entry)
+      }
+    }
+  }
+  return results
+}
+
+function showEmojiDropdown(matches, selectedIndex) {
+  let dd = document.getElementById('hs-mc-emoji-dropdown')
+  if (!dd) {
+    dd = document.createElement('div')
+    dd.id = 'hs-mc-emoji-dropdown'
+    document.getElementById('hs-mc-inputbar')?.appendChild(dd)
+  }
+  dd.textContent = ''
+  matches.forEach((entry, i) => {
+    const row = document.createElement('div')
+    row.className = 'hs-mc-emoji-row' + (i === selectedIndex ? ' selected' : '')
+    row.dataset.index = i
+
+    const emojiSpan = document.createElement('span')
+    emojiSpan.className = 'hs-mc-emoji-preview'
+    emojiSpan.textContent = entry.emoji
+
+    const nameSpan = document.createElement('span')
+    nameSpan.className = 'hs-mc-emoji-name'
+    nameSpan.textContent = ':' + entry.name + ':'
+
+    row.appendChild(emojiSpan)
+    row.appendChild(nameSpan)
+
+    row.addEventListener('mousedown', (e) => {
+      e.preventDefault()
+      insertEmojiFromDropdown(entry)
+    })
+
+    dd.appendChild(row)
+  })
+  dd.style.display = 'block'
+}
+
+function hideEmojiDropdown() {
+  emojiAcState.active = false
+  emojiAcState.matches = []
+  emojiAcState.index = 0
+  emojiAcState.query = ''
+  emojiAcState.colonPos = -1
+  const dd = document.getElementById('hs-mc-emoji-dropdown')
+  if (dd) dd.style.display = 'none'
+}
+
+function insertEmojiFromDropdown(entry) {
+  const input = document.getElementById('hs-mc-input')
+  if (!input) return
+
+  if (wysiwygEnabled) {
+    // Find the text node with the :query and replace it
+    const sel = window.getSelection()
+    if (!sel?.rangeCount) { hideEmojiDropdown(); return }
+    const range = sel.getRangeAt(0)
+    const node = range.startContainer
+    if (node?.nodeType !== Node.TEXT_NODE) { hideEmojiDropdown(); return }
+    const text = node.textContent
+    const cursor = range.startOffset
+    const before = text.slice(0, cursor)
+    const colonIdx = before.lastIndexOf(':')
+    if (colonIdx === -1) { hideEmojiDropdown(); return }
+
+    // Replace :query with emoji
+    const newText = text.slice(0, colonIdx) + entry.emoji + text.slice(cursor)
+    node.textContent = newText
+    const newPos = colonIdx + entry.emoji.length
+    const newRange = document.createRange()
+    newRange.setStart(node, Math.min(newPos, node.textContent.length))
+    newRange.collapse(true)
+    sel.removeAllRanges()
+    sel.addRange(newRange)
+  } else {
+    const text = input.value
+    const cursor = input.selectionStart
+    const before = text.slice(0, cursor)
+    const colonIdx = before.lastIndexOf(':')
+    if (colonIdx === -1) { hideEmojiDropdown(); return }
+
+    input.value = text.slice(0, colonIdx) + entry.emoji + text.slice(cursor)
+    const newPos = colonIdx + entry.emoji.length
+    input.selectionStart = input.selectionEnd = newPos
+  }
+
+  pendingMessage = getInputText()
+  updateCharCount()
+  hideEmojiDropdown()
+  input.focus()
+}
+
+function checkEmojiAutocomplete() {
+  const input = document.getElementById('hs-mc-input')
+  if (!input) return
+  if (typeof EMOJI_DATA === 'undefined') return
+
+  const ctx = getEmojiColonContext(input)
+  if (!ctx) {
+    if (emojiAcState.active) hideEmojiDropdown()
+    return
+  }
+
+  const matches = filterEmoji(ctx.query)
+  if (matches.length === 0) {
+    if (emojiAcState.active) hideEmojiDropdown()
+    return
+  }
+
+  emojiAcState.active = true
+  emojiAcState.matches = matches
+  emojiAcState.query = ctx.query
+  emojiAcState.colonPos = ctx.colonPos
+  emojiAcState.index = 0
+  showEmojiDropdown(matches, 0)
+}
+
 // Reply state management
 function setReplyState(state) {
   replyState = state
@@ -1202,6 +1408,7 @@ function convertEmojiShortcodes(text) {
 }
 
 function clearInput(input) {
+  hideEmojiDropdown()
   if (wysiwygEnabled) input.textContent = ''
   else input.value = ''
   pendingMessage = ''

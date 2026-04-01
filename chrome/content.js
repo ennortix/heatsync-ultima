@@ -1208,6 +1208,24 @@ function applyUiSettings(settings) {
     document.head.appendChild(uiHidingStyle);
     log(' Applied UI hiding CSS:', rules.length, 'rules');
   }
+
+  // Cosmetics toggle
+  if (settings.showCosmetics === false) {
+    cosmeticsEnabled = false
+    // Remove existing cosmetic badges from DOM
+    document.querySelectorAll('.hs-cosmetic-badge').forEach(b => b.remove())
+    document.querySelectorAll('[data-hs-paint-applied]').forEach(el => {
+      el.style.removeProperty('background-image')
+      el.style.removeProperty('background-size')
+      el.style.removeProperty('-webkit-background-clip')
+      el.style.removeProperty('-webkit-text-fill-color')
+      el.style.removeProperty('background-clip')
+      el.style.removeProperty('filter')
+      delete el.dataset.hsPaintApplied
+    })
+  } else {
+    cosmeticsEnabled = true
+  }
 }
 
 // Load and apply UI settings on startup
@@ -1466,6 +1484,26 @@ async function loadInventory() {
           if (resp?.ffzBadges) ffzBadgeMap = new Map(Object.entries(resp.ffzBadges))
           log(' Initial cosmetics: BTTV', bttvBadgeMap.size, 'FFZ', ffzBadgeMap.size)
           reapplyBadgesToExistingMessages()
+        }).catch(() => {})
+
+        // Fetch HeatSync API colors for followed users + current user
+        safeSendMessage({ type: 'get_follow_history' }).then(resp => {
+          if (resp?.colors && typeof resp.colors === 'object') {
+            for (const [login, color] of Object.entries(resp.colors)) {
+              if (color) heatsyncColorMap.set(login.toLowerCase(), color)
+            }
+          }
+          // Also load current user's own HeatSync color from storage
+          chrome.storage.local.get('user_info').then(data => {
+            if (data.user_info?.color && data.user_info?.username) {
+              heatsyncColorMap.set(data.user_info.username.toLowerCase(), data.user_info.color)
+            }
+            log(' HeatSync colors loaded:', heatsyncColorMap.size)
+            applyHeatsyncColorsToExisting()
+          }).catch(() => {
+            log(' HeatSync colors loaded:', heatsyncColorMap.size)
+            applyHeatsyncColorsToExisting()
+          })
         }).catch(() => {})
 
         log(' Received inventory via message:', emoteInventory.length, 'personal,', globalEmotes.length, 'global');
@@ -1766,6 +1804,16 @@ function _onMessageMain(message) {
       ffzBadgeMap = new Map(Object.entries(message.ffzBadges || {}))
       log(' Cosmetics loaded: BTTV', bttvBadgeMap.size, 'FFZ', ffzBadgeMap.size)
       reapplyBadgesToExistingMessages()
+      break
+
+    case 'follow_colors':
+      if (message.colors && typeof message.colors === 'object') {
+        for (const [login, color] of Object.entries(message.colors)) {
+          if (color) heatsyncColorMap.set(login.toLowerCase(), color)
+        }
+        log(' HeatSync colors loaded:', heatsyncColorMap.size)
+        applyHeatsyncColorsToExisting()
+      }
       break
 
     default:
@@ -2247,6 +2295,8 @@ let heatFirstBatch = true // first batch fires immediately
 // Third-party cosmetics
 let bttvBadgeMap = new Map()
 let ffzBadgeMap = new Map()
+const heatsyncColorMap = new Map() // username → HeatSync API color (from follow:colors)
+let cosmeticsEnabled = true // toggle for BTTV/FFZ/7TV cosmetics
 const cosmeticsCache = new Map()
 const COSMETICS_TTL = 30 * 60 * 1000
 const COSMETICS_MAX = 500
@@ -2813,6 +2863,7 @@ function setupUsernameColoringObserver() {
   usernameColoringObserver = cleanup.trackObserver(new MutationObserver((mutations) => {
     // Collect new chat messages from addedNodes directly — avoid full container scan
     const newMessages = []
+    const cosmeticRefresh = []
     for (const mutation of mutations) {
       for (const node of mutation.addedNodes) {
         if (node.nodeType !== 1) continue
@@ -2822,9 +2873,32 @@ function setupUsernameColoringObserver() {
           for (const msg of node.querySelectorAll('.chat-line__message:not([data-heatsync-usernames-colored]), [data-index]:not([data-heatsync-usernames-colored])')) {
             newMessages.push(msg)
           }
+          // Detect React re-rendering username elements inside already-processed messages
+          // When React replaces a username span, the paint styles are lost
+          const msgParent = node.closest?.('.chat-line__message, [data-index]')
+          if (msgParent?.dataset.hsCosmeticDone === '1') {
+            const nameEl = msgParent.querySelector('.chat-author__display-name, [data-a-target="chat-message-username"]')
+            if (nameEl && !nameEl.dataset.hsPaintApplied) {
+              cosmeticRefresh.push(msgParent)
+            }
+          }
         }
       }
     }
+
+    // Re-apply cosmetics to messages where React replaced the username element
+    if (cosmeticRefresh.length > 0) {
+      requestAnimationFrame(() => {
+        for (const msg of cosmeticRefresh) {
+          delete msg.dataset.hsCosmeticDone
+          const uid = msg.dataset.hsCosmeticUserId
+          const kickUser = msg.dataset.hsCosmeticKickUser
+          if (uid) applyCosmeticsToMessage(msg, uid)
+          else if (kickUser) applyKickCosmeticsToMessage(msg, kickUser)
+        }
+      })
+    }
+
     if (newMessages.length === 0) return
 
     // Debounce - only process once per animation frame
@@ -2882,10 +2956,16 @@ function processMessage(messageElement) {
   const username = getUsername(messageElement)
 
   // Add to known chatters (for username coloring) - extract their Twitch color
+  // Priority: HeatSync API color > Twitch native color > white fallback
   if (username) {
     const lowerUser = username.toLowerCase()
-    if (!knownChatters.has(lowerUser)) {
-      const usernameElement = messageElement.querySelector('.chat-author__display-name, [data-a-target="chat-message-username"]')
+    const usernameElement = messageElement.querySelector('.chat-author__display-name, [data-a-target="chat-message-username"]')
+    const hsColor = heatsyncColorMap.get(lowerUser)
+    if (hsColor) {
+      // HeatSync API color takes priority — apply it to the DOM element too
+      if (usernameElement) usernameElement.style.color = hsColor
+      knownChatters.set(lowerUser, hsColor)
+    } else if (!knownChatters.has(lowerUser)) {
       const color = usernameElement?.style.color || '#ffffff'
       knownChatters.set(lowerUser, color)
       while (knownChatters.size > 500) knownChatters.delete(knownChatters.keys().next().value)
@@ -2921,19 +3001,21 @@ function processMessage(messageElement) {
   }
 
   // Apply third-party cosmetics (BTTV/FFZ badges + 7TV paints/badges)
-  if (isKick) {
-    if (username) {
-      const kickSlug = username.toLowerCase()
-      messageElement.dataset.hsCosmeticKickUser = kickSlug
-      applyKickCosmeticsToMessage(messageElement, kickSlug)
-      queueKickCosmeticsLookup(kickSlug)
-    }
-  } else {
-    const userId = getTwitchUserId(messageElement)
-    if (userId) {
-      messageElement.dataset.hsCosmeticUserId = userId
-      applyCosmeticsToMessage(messageElement, userId)
-      queueCosmeticsLookup(userId)
+  if (cosmeticsEnabled) {
+    if (isKick) {
+      if (username) {
+        const kickSlug = username.toLowerCase()
+        messageElement.dataset.hsCosmeticKickUser = kickSlug
+        applyKickCosmeticsToMessage(messageElement, kickSlug)
+        queueKickCosmeticsLookup(kickSlug)
+      }
+    } else {
+      const userId = getTwitchUserId(messageElement)
+      if (userId) {
+        messageElement.dataset.hsCosmeticUserId = userId
+        applyCosmeticsToMessage(messageElement, userId)
+        queueCosmeticsLookup(userId)
+      }
     }
   }
 
@@ -4912,7 +4994,7 @@ function getTwitchUserId(messageElement) {
 // Apply 7TV paint gradient to a username element
 function applyPaintToElement(el, paint) {
   if (!paint) return
-  const fn = paint.function
+  const fn = (paint.function || '').toLowerCase()
   if (fn === 'url' && paint.image_url) {
     el.style.backgroundImage = `url(${paint.image_url})`
     el.style.backgroundSize = 'cover'
@@ -5080,6 +5162,23 @@ function applyPendingCosmetics(userIds) {
     if (el.dataset.hsCosmeticDone === '1') return
     const uid = el.dataset.hsCosmeticUserId
     if (idSet.has(uid)) applyCosmeticsToMessage(el, uid)
+  })
+}
+
+// Apply HeatSync API colors to existing messages in the chat container
+function applyHeatsyncColorsToExisting() {
+  const container = findChatContainer()
+  if (!container) return
+  container.querySelectorAll('.chat-line__message, [data-index]').forEach(el => {
+    const nameEl = el.querySelector('.chat-author__display-name, [data-a-target="chat-message-username"]')
+    if (!nameEl) return
+    const username = nameEl.textContent?.trim().toLowerCase()
+    if (!username) return
+    const hsColor = heatsyncColorMap.get(username)
+    if (hsColor && !nameEl.dataset.hsPaintApplied) {
+      nameEl.style.color = hsColor
+      knownChatters.set(username, hsColor)
+    }
   })
 }
 

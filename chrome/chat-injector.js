@@ -68,7 +68,7 @@ function injectHoverBlockCSS() {
       cursor: pointer !important;
     }
     .heatsync-injected-message .heatsync-clickable:hover:not(.emote-hovered) {
-      background: #808000 !important;
+      background: rgba(255, 135, 0, 0.15) !important;
     }
     .heatsync-injected-message .heatsync-emote {
       cursor: pointer !important;
@@ -217,9 +217,6 @@ async function initChatInjector() {
     // Load followed users list
     await loadFollowedUsers();
 
-    // Setup tab completion
-    await setupTabCompletion(platform);
-
     chatReady = true;
 
     // Process queued messages
@@ -247,185 +244,6 @@ async function loadFollowedUsers() {
     }
   } catch (error) {
     // Extension context may be invalidated — non-fatal
-  }
-}
-
-/**
- * Get input state from either textarea or contenteditable (Slate)
- */
-function getInputState(element) {
-  const isContentEditable = element.isContentEditable ||
-                            element.hasAttribute('data-slate-editor');
-
-  if (isContentEditable) {
-    const selection = window.getSelection();
-    if (!selection.rangeCount) return { text: '', cursorPos: 0, isSlate: true };
-
-    const range = selection.getRangeAt(0);
-    const text = (element.textContent || '').replace(/\n/g, '');
-
-    // Calculate cursor position by walking text nodes
-    let cursorPos = 0;
-    const treeWalker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
-    let node;
-    while ((node = treeWalker.nextNode())) {
-      if (node === range.startContainer) {
-        cursorPos += range.startOffset;
-        break;
-      }
-      cursorPos += node.textContent.length;
-    }
-
-    return { text, cursorPos, isSlate: true };
-  } else {
-    return {
-      text: element.value || '',
-      cursorPos: element.selectionStart || 0,
-      isSlate: false
-    };
-  }
-}
-
-/**
- * Set text in contenteditable (Slate) element
- */
-function setSlateText(element, newText) {
-  // Clear existing content
-  element.textContent = newText;
-
-  // Dispatch input event for React/Slate to sync
-  element.dispatchEvent(new InputEvent('input', {
-    bubbles: true,
-    cancelable: true,
-    inputType: 'insertText',
-    data: newText
-  }));
-
-  // Move cursor to end
-  const selection = window.getSelection();
-  const range = document.createRange();
-  range.selectNodeContents(element);
-  range.collapse(false); // false = collapse to end
-  selection.removeAllRanges();
-  selection.addRange(range);
-}
-
-/**
- * Setup tab completion for @username mentions
- */
-async function setupTabCompletion(platform) {
-  // Tab completion state
-  let autocompleteMatches = [];
-  let autocompleteIndex = -1;
-  let autocompleteActive = false;
-  let autocompleteStartPos = 0;
-
-  // Wait for chat input field
-  let chatInput = null;
-  const maxAttempts = 50;
-  for (let i = 0; i < maxAttempts; i++) {
-    if (platform === 'twitch') {
-      chatInput = document.querySelector('[data-a-target="chat-input"]');
-    } else if (platform === 'kick') {
-      chatInput = document.querySelector('div.editor-input');
-    }
-
-    if (chatInput) break;
-    await new Promise(resolve => setTimeout(resolve, 200));
-  }
-
-  if (!chatInput) {
-    return;
-  }
-
-  log(' Tab completion enabled on', platform);
-
-  chatInput.addEventListener('keydown', (e) => {
-    if (e.key === 'Tab') {
-      e.preventDefault();
-
-      const state = getInputState(chatInput);
-      const textBeforeCursor = state.text.substring(0, state.cursorPos);
-
-      // Find current word (from last space or @)
-      const lastAtIndex = textBeforeCursor.lastIndexOf('@');
-      const lastSpaceIndex = textBeforeCursor.lastIndexOf(' ');
-      const wordStart = Math.max(lastAtIndex, lastSpaceIndex) + 1;
-      const currentWord = textBeforeCursor.substring(wordStart);
-
-      // If cycling through matches
-      if (autocompleteActive && autocompleteMatches.length > 0) {
-        autocompleteIndex = (autocompleteIndex + 1) % autocompleteMatches.length;
-        completeUsername(chatInput, autocompleteMatches[autocompleteIndex], autocompleteStartPos, state.isSlate);
-        return;
-      }
-
-      // New autocomplete session
-      const partialWord = currentWord.replace(/^@/, '').toLowerCase();
-
-      if (!partialWord || followedUsers.size === 0) {
-        autocompleteActive = false;
-        return;
-      }
-
-      // Find matching usernames
-      autocompleteMatches = Array.from(followedUsers).filter(username =>
-        username.toLowerCase().includes(partialWord)
-      ).sort();
-
-      if (autocompleteMatches.length > 0) {
-        autocompleteStartPos = wordStart;
-        autocompleteIndex = 0;
-        autocompleteActive = true;
-        completeUsername(chatInput, autocompleteMatches[0], wordStart, state.isSlate);
-      } else {
-        autocompleteActive = false;
-      }
-    } else if (e.key === 'Escape' && autocompleteActive) {
-      e.preventDefault();
-      autocompleteMatches = [];
-      autocompleteIndex = -1;
-      autocompleteActive = false;
-    } else {
-      // Any other key resets autocomplete
-      autocompleteMatches = [];
-      autocompleteIndex = -1;
-      autocompleteActive = false;
-    }
-  }, { signal: injSignal });
-}
-
-/**
- * Complete username in input field
- */
-function completeUsername(input, username, startPos, isSlate) {
-  const state = getInputState(input);
-  const prefix = state.text.substring(0, startPos);
-  const textAfterWord = state.text.substring(state.cursorPos);
-  const needsAt = !prefix.endsWith('@');
-  const completedText = prefix + (needsAt ? '@' : '') + username + ' ' + textAfterWord;
-
-  if (isSlate) {
-    setSlateText(input, completedText);
-  } else if (input.isContentEditable) {
-    // Kick: contenteditable div.editor-input
-    const sel = window.getSelection();
-    input.textContent = completedText;
-    const newPos = startPos + (needsAt ? 1 : 0) + username.length + 1;
-    const newNode = input.firstChild;
-    if (newNode) {
-      const range = document.createRange();
-      range.setStart(newNode, Math.min(newPos, newNode.length));
-      range.collapse(true);
-      sel.removeAllRanges();
-      sel.addRange(range);
-    }
-    input.dispatchEvent(new Event('input', { bubbles: true }));
-  } else {
-    input.value = completedText;
-    input.dispatchEvent(new Event('input', { bubbles: true }));
-    const newCursorPos = startPos + (needsAt ? 1 : 0) + username.length + 1;
-    input.setSelectionRange(newCursorPos, newCursorPos);
   }
 }
 

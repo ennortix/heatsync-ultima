@@ -579,7 +579,8 @@ async function fetchUserInfo() {
       display_name: user.display_name || user.twitch_username || user.kick_username || '',
       username: user.username || user.twitch_username || '',
       avatar_url: user.twitch_profile_pic || user.kick_profile_pic || user.profile_image_url || '',
-      heat: user.heat || 0
+      heat: user.heat || 0,
+      color: user.color || ''
     }
     browser.storage.local.set({ user_info: userInfo })
     currentUsername = userInfo.username
@@ -796,10 +797,61 @@ async function fetch7TVChannelEmotes(channelName, channelId = null, platform = '
   }
 }
 
-function extract7TVCosmetic(data) {
+// Cache of resolved 7TV cosmetic objects by ID (paint_id/badge_id → full object)
+const cosmeticObjectCache = new Map()
+
+function extract7TVCosmeticIds(data) {
   const style = data?.user?.style || data?.style
   if (!style) return null
-  return { paint: style.paint || null, badge: style.badge || null }
+  // Old API returned full objects; new API returns IDs only
+  if (style.paint || style.badge) return { paint: style.paint || null, badge: style.badge || null }
+  const paintId = style.paint_id || null
+  const badgeId = style.badge_id || null
+  if (!paintId && !badgeId) return null
+  return { paintId, badgeId }
+}
+
+async function resolve7TVCosmeticIds(ids) {
+  if (!ids) return null
+  // Already resolved (old API format)
+  if (ids.paint !== undefined && ids.badge !== undefined && !ids.paintId) return ids
+
+  const toFetch = []
+  const result = { paint: null, badge: null }
+
+  // Check cache first
+  if (ids.paintId) {
+    const cached = cosmeticObjectCache.get(ids.paintId)
+    if (cached) { result.paint = cached } else { toFetch.push(ids.paintId) }
+  }
+  if (ids.badgeId) {
+    const cached = cosmeticObjectCache.get(ids.badgeId)
+    if (cached) { result.badge = cached } else { toFetch.push(ids.badgeId) }
+  }
+  if (toFetch.length === 0) return result
+
+  try {
+    const query = `query($list:[ObjectID!]){cosmetics(list:$list){paints{id name function color stops{at color}angle shape image_url repeat shadows{x_offset y_offset radius color}}badges{id name tooltip tag host{url files{name format width height}}}}}`
+    const resp = await fetchWithTimeout('https://7tv.io/v3/gql', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query, variables: { list: toFetch } })
+    })
+    if (!resp.ok) return result
+    const data = await resp.json()
+    const paints = data?.data?.cosmetics?.paints || []
+    const badges = data?.data?.cosmetics?.badges || []
+    for (const p of paints) { cosmeticObjectCache.set(p.id, p); if (p.id === ids.paintId) result.paint = p }
+    for (const b of badges) { cosmeticObjectCache.set(b.id, b); if (b.id === ids.badgeId) result.badge = b }
+    // Cap cache
+    if (cosmeticObjectCache.size > 200) {
+      const first = cosmeticObjectCache.keys().next().value
+      cosmeticObjectCache.delete(first)
+    }
+  } catch (e) {
+    log(' resolve7TVCosmeticIds failed:', e?.message)
+  }
+  return result
 }
 
 function setUserCosmetic(twitchId, cosmetic) {
@@ -957,10 +1009,12 @@ async function fetchChannelOwnerEmotes(channelName, channelId = null, platform =
 
     // Store 7TV set ID per channel and subscribe on shared EventAPI connection
     if (sevenTVSetId) {
-      seventvEmoteSetIds.set(channelName, sevenTVSetId);
-      current7TVEmoteSetId = sevenTVSetId;
-      subscribe7TVEmoteSet(sevenTVSetId);
-      start7TVPolling();
+      seventvEmoteSetIds.set(channelName, sevenTVSetId)
+      current7TVEmoteSetId = sevenTVSetId
+      subscribe7TVEmoteSet(sevenTVSetId)
+      start7TVPolling()
+      // Persist so all channels survive service worker restart
+      browser.storage.local.set({ seventv_emote_set_ids: Object.fromEntries(seventvEmoteSetIds) }).catch(() => {})
     }
   } catch (error) {
     log(' ❌ Channel emotes fetch failed:', error.message || error);
@@ -2786,17 +2840,21 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
   } else if (message.type === 'clear_blocked') {
     // Clear all blocked emotes (both server-synced and local)
-    blockedEmotes.clear();
-    localBlockedEmotes.clear();
-    browser.storage.local.set({ blocked_emotes: [], local_blocked_emotes: [] });
-    if (authToken) {
-      fetchWithTimeout(`${API_URL}/api/user/emotes/blocks/clear`, {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${authToken}` }
-      }).catch(err => log(' Clear blocked emotes failed:', err?.message));
-    }
-    broadcastToTabs({ type: 'blocked_update', blocked: [] });
-    sendResponse({ success: true });
+    blockedEmotes.clear()
+    localBlockedEmotes.clear()
+    browser.storage.local.set({ blocked_emotes: [], local_blocked_emotes: [] })
+    broadcastToTabs({ type: 'blocked_update', blocked: [] })
+    ;(async () => {
+      const token = await getAuthCookie()
+      if (token) {
+        fetchWithTimeout(`${API_URL}/api/user/emotes/blocks/clear`, {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${token}` }
+        }).catch(err => log(' Clear blocked emotes failed:', err?.message))
+      }
+      sendResponse({ success: true })
+    })()
+    return true
   } else if (message.type === 'notifs_viewed') {
     unreadNotifCount = 0;
     updateExtensionBadge();
@@ -2907,7 +2965,8 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
           const resp = await fetchWithTimeout(`https://7tv.io/v3/users/twitch/${id}`)
           if (!resp.ok) { setUserCosmetic(id, null); result[id] = null; continue }
           const data = await resp.json()
-          const cosmetic = extract7TVCosmetic(data)
+          const ids7tv = extract7TVCosmeticIds(data)
+          const cosmetic = await resolve7TVCosmeticIds(ids7tv)
           setUserCosmetic(id, cosmetic)
           result[id] = cosmetic
         } catch (e) { setUserCosmetic(id, null); result[id] = null }
@@ -2930,7 +2989,8 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
           const resp = await fetchWithTimeout(`https://7tv.io/v3/users/kick/${username}`)
           if (!resp.ok) { setUserCosmetic(cacheKey, null); result[username] = null; continue }
           const data = await resp.json()
-          const cosmetic = extract7TVCosmetic(data)
+          const ids7tv = extract7TVCosmeticIds(data)
+          const cosmetic = await resolve7TVCosmeticIds(ids7tv)
           setUserCosmetic(cacheKey, cosmetic)
           result[username] = cosmetic
         } catch (e) { setUserCosmetic(cacheKey, null); result[username] = null }
@@ -2949,11 +3009,12 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
     // Fire a browser notification if the user has hs_notifications enabled
     browser.storage.local.get('hs_notifications').then(data => {
       if (!data.hs_notifications) return
+      if (!browser.notifications) return
       const notifId = 'hs-mention-' + Date.now()
       browser.notifications.create(notifId, {
         type: 'basic',
         iconUrl: browser.runtime.getURL('icon-128.png'),
-        title: message.username ? `${message.username} mentioned you` : 'You were mentioned',
+        title: message.username || 'mention',
         message: message.text || ''
       }).catch(() => {})
     }).catch(() => {})
@@ -2987,7 +3048,7 @@ async function initialize() {
 
   // Restore channel emotes and fetch timestamps so TTL checks survive service worker restart
   try {
-    const stored = await browser.storage.local.get(['channel_emotes_fetched_at', 'channel_emotes_map'])
+    const stored = await browser.storage.local.get(['channel_emotes_fetched_at', 'channel_emotes_map', 'seventv_emote_set_ids'])
     if (stored.channel_emotes_fetched_at && typeof stored.channel_emotes_fetched_at === 'object') {
       channelEmotesFetchedAt = stored.channel_emotes_fetched_at
       log(' ✓ Restored channelEmotesFetchedAt for', Object.keys(channelEmotesFetchedAt).length, 'channels')
@@ -2996,6 +3057,17 @@ async function initialize() {
       Object.assign(channelEmotesMap, stored.channel_emotes_map)
       updateEmoteUrlMap()
       log(' ✓ Restored channelEmotesMap for', Object.keys(stored.channel_emotes_map).length, 'channels')
+    }
+    // Restore 7TV emote set IDs so polling covers ALL previously tracked channels after SW restart
+    if (stored.seventv_emote_set_ids && typeof stored.seventv_emote_set_ids === 'object') {
+      for (const [ch, id] of Object.entries(stored.seventv_emote_set_ids)) {
+        seventvEmoteSetIds.set(ch, id)
+      }
+      if (seventvEmoteSetIds.size > 0) {
+        log(' ✓ Restored seventvEmoteSetIds for', seventvEmoteSetIds.size, 'channels — resuming polling')
+        start7TVPolling()
+        for (const setId of seventvEmoteSetIds.values()) subscribe7TVEmoteSet(setId)
+      }
     }
   } catch {}
 

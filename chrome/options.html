@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>heatsync settings</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: #000;
+      color: #fff;
+      font-family: monospace, 'Noto Color Emoji';
+      font-size: 14px;
+      max-width: 480px;
+      margin: 0 auto;
+      padding: 24px 20px;
+    }
+    .header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 24px;
+    }
+    .header img { width: 32px; height: 32px; }
+    .header-title { font-size: 18px; font-weight: 600; }
+
+    .section {
+      margin-bottom: 20px;
+    }
+    .section-title {
+      font-size: 12px;
+      color: #808080;
+      text-transform: lowercase;
+      margin-bottom: 8px;
+      padding-bottom: 4px;
+      border-bottom: 1px solid #333;
+    }
+
+    .setting-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 0;
+    }
+    .setting-label {
+      font-size: 13px;
+    }
+    .setting-desc {
+      font-size: 11px;
+      color: #808080;
+      margin-top: 2px;
+    }
+
+    .toggle {
+      width: 36px;
+      height: 20px;
+      background: #333;
+      border-radius: 10px;
+      cursor: pointer;
+      position: relative;
+      flex-shrink: 0;
+      transition: background 0.15s;
+    }
+    .toggle.active {
+      background: #ff8700;
+    }
+    .toggle::after {
+      content: '';
+      position: absolute;
+      top: 2px;
+      left: 2px;
+      width: 16px;
+      height: 16px;
+      background: #fff;
+      border-radius: 50%;
+      transition: left 0.15s;
+    }
+    .toggle.active::after {
+      left: 18px;
+    }
+
+    .footer {
+      margin-top: 24px;
+      text-align: center;
+      color: #808080;
+      font-size: 11px;
+    }
+    .footer a { color: #ff8700; text-decoration: none; }
+    .footer a:hover { color: #fff; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <img src="icon-48.png" alt="">
+    <span class="header-title">heatsync settings</span>
+  </div>
+
+  <div class="section">
+    <div class="section-title">tab completion</div>
+    <div class="setting-row">
+      <div>
+        <div class="setting-label">wysiwyg emotes</div>
+        <div class="setting-desc">show emote images in chat input while typing</div>
+      </div>
+      <div class="toggle" data-setting="emoteWysiwyg"></div>
+    </div>
+    <div class="setting-row">
+      <div>
+        <div class="setting-label">space after emote</div>
+        <div class="setting-desc">auto-insert space after tab completion</div>
+      </div>
+      <div class="toggle" data-setting="emoteSpaceAfter"></div>
+    </div>
+    <div class="setting-row">
+      <div>
+        <div class="setting-label">placeholder mode</div>
+        <div class="setting-desc">show colored boxes instead of emote images</div>
+      </div>
+      <div class="toggle" data-setting="emotePlaceholderMode"></div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">chat ui</div>
+    <div class="setting-row">
+      <div>
+        <div class="setting-label">hide header</div>
+        <div class="setting-desc">hide chat room header bar</div>
+      </div>
+      <div class="toggle" data-setting="hideChatHeader"></div>
+    </div>
+    <div class="setting-row">
+      <div>
+        <div class="setting-label">compact input</div>
+        <div class="setting-desc">minimize chat input buttons</div>
+      </div>
+      <div class="toggle" data-setting="compactChatInput"></div>
+    </div>
+    <div class="setting-row">
+      <div>
+        <div class="setting-label">highlight mentions</div>
+        <div class="setting-desc">red background on chat lines mentioning you</div>
+      </div>
+      <div class="toggle" data-setting="highlightMentions"></div>
+    </div>
+    <div class="setting-row">
+      <div>
+        <div class="setting-label">platform badges</div>
+        <div class="setting-desc">[T] [K] [YT] labels on messages</div>
+      </div>
+      <div class="toggle" data-setting="showPlatformBadges"></div>
+    </div>
+    <div class="setting-row">
+      <div>
+        <div class="setting-label">cosmetics</div>
+        <div class="setting-desc">7TV/BTTV/FFZ paints and badges</div>
+      </div>
+      <div class="toggle" data-setting="showCosmetics"></div>
+    </div>
+    <div class="setting-row">
+      <div>
+        <div class="setting-label">hide stream title</div>
+        <div class="setting-desc">hide the stream title above chat</div>
+      </div>
+      <div class="toggle" data-setting="hideStreamTitle"></div>
+    </div>
+    <div class="setting-row">
+      <div>
+        <div class="setting-label">hide viewer count</div>
+        <div class="setting-desc">hide viewer count display</div>
+      </div>
+      <div class="toggle" data-setting="hideViewerCount"></div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">input</div>
+    <div class="setting-row">
+      <div>
+        <div class="setting-label">vi mode</div>
+        <div class="setting-desc">vim keybindings for chat input</div>
+      </div>
+      <div class="toggle" data-setting="viMode"></div>
+    </div>
+  </div>
+
+  <div class="footer">
+    <a href="https://heatsync.org" target="_blank">heatsync.org</a> &middot;
+    <a href="https://github.com/mellen9999/heatsync-extension" target="_blank">source</a>
+  </div>
+
+  <script src="options.js"></script>
+</body>
+</html>

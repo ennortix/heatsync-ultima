@@ -39,6 +39,8 @@ const COPY_FILES = [
   'background.js',
   'popup.js',
   'popup.html',
+  'options.js',
+  'options.html',
   'early-inject-main.js',
   'platform-detector.js',
   'shared-utils.js',

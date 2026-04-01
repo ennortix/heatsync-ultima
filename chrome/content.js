@@ -2253,6 +2253,11 @@ const COSMETICS_MAX = 500
 const cosmeticsPending = new Set()
 let cosmeticsBatchTimer = null
 
+// Kick cosmetics (7TV paints/badges by username)
+const kickCosmeticsCache = new Map()  // username → { paint, badge, fetchedAt }
+const kickCosmeticsPending = new Set()
+let kickCosmeticsBatchTimer = null
+
 // Heat tier config — matches client/config/colors.js
 const HEAT_GRADIENT = [
   '#808080', '#cc6e00', '#ff8700', '#ff9900', '#ff6600',
@@ -2601,6 +2606,16 @@ function highlightUserMentions(messageElement) {
     targetElement.classList.add('hs-mentioned');
 
     log(' 🔴 Added .hs-mentioned class to:', targetElement.className);
+
+    // Notify background for browser notification (if hs_notifications enabled)
+    const msgText = Array.from(
+      messageElement.querySelectorAll('.text-fragment, [data-a-target="chat-message-text"], .mention-fragment, span.font-normal')
+    ).map(el => el.textContent).join(' ').trim()
+    safeSendMessage({
+      type: 'mention_detected',
+      username: messageAuthor || '',
+      text: msgText.slice(0, 200)
+    }).catch(() => {})
   }
 }
 
@@ -2906,7 +2921,14 @@ function processMessage(messageElement) {
   }
 
   // Apply third-party cosmetics (BTTV/FFZ badges + 7TV paints/badges)
-  if (!isKick) {
+  if (isKick) {
+    if (username) {
+      const kickSlug = username.toLowerCase()
+      messageElement.dataset.hsCosmeticKickUser = kickSlug
+      applyKickCosmeticsToMessage(messageElement, kickSlug)
+      queueKickCosmeticsLookup(kickSlug)
+    }
+  } else {
     const userId = getTwitchUserId(messageElement)
     if (userId) {
       messageElement.dataset.hsCosmeticUserId = userId
@@ -5075,6 +5097,106 @@ function reapplyBadgesToExistingMessages() {
   })
 }
 
+// =============================================================================
+// KICK COSMETICS (7TV paints + badges by username)
+// =============================================================================
+// BTTV/FFZ badges use Twitch user IDs — not available on Kick.
+// 7TV supports Kick natively via /v3/users/kick/{username}.
+
+function applyKickCosmeticsToMessage(el, kickSlug) {
+  if (!kickSlug) return
+  const prevSlug = el.dataset.hsCosmeticAppliedFor
+  if (prevSlug && prevSlug !== kickSlug) {
+    el.querySelectorAll('.hs-cosmetic-badge').forEach(b => b.remove())
+    delete el.dataset.hsCosmeticDone
+    const nameEl = el.querySelector('button.inline.font-bold')
+    if (nameEl) {
+      delete nameEl.dataset.hsPaintApplied
+      nameEl.style.removeProperty('background-image')
+      nameEl.style.removeProperty('background-size')
+      nameEl.style.removeProperty('-webkit-background-clip')
+      nameEl.style.removeProperty('-webkit-text-fill-color')
+      nameEl.style.removeProperty('background-clip')
+      nameEl.style.removeProperty('filter')
+    }
+  }
+  el.dataset.hsCosmeticAppliedFor = kickSlug
+  const nameEl = el.querySelector('button.inline.font-bold')
+  if (!nameEl) return
+
+  const cosmetic = kickCosmeticsCache.get(kickSlug)
+  if (!cosmetic) return
+
+  // 7TV badge
+  if (cosmetic.badge && !el.querySelector('.hs-7tv-badge')) {
+    const url = get7TVBadgeUrl(cosmetic.badge)
+    if (url) {
+      const img = document.createElement('img')
+      img.className = 'hs-7tv-badge hs-cosmetic-badge'
+      img.src = url
+      img.title = cosmetic.badge.tooltip || cosmetic.badge.name || '7TV'
+      img.alt = '7TV'
+      nameEl.parentNode.insertBefore(img, nameEl)
+    }
+  }
+
+  // 7TV paint
+  if (cosmetic.paint && !nameEl.dataset.hsPaintApplied) {
+    applyPaintToElement(nameEl, cosmetic.paint)
+  }
+  el.dataset.hsCosmeticDone = '1'
+}
+
+function queueKickCosmeticsLookup(kickSlug) {
+  if (!isKick || !kickSlug) return
+  const cached = kickCosmeticsCache.get(kickSlug)
+  if (cached && Date.now() - cached.fetchedAt < COSMETICS_TTL) return
+  kickCosmeticsPending.add(kickSlug)
+  if (!kickCosmeticsBatchTimer) {
+    kickCosmeticsBatchTimer = cleanup.setTimeout(() => {
+      kickCosmeticsBatchTimer = null
+      flushKickCosmeticsBatch()
+    }, 500)
+  }
+}
+
+async function flushKickCosmeticsBatch() {
+  if (kickCosmeticsPending.size === 0) return
+  const batch = [...kickCosmeticsPending].slice(0, 10)
+  batch.forEach(slug => kickCosmeticsPending.delete(slug))
+  try {
+    const resp = await safeSendMessage({ type: 'get_kick_user_cosmetics', kickUsernames: batch })
+    if (!resp?.cosmetics) return
+    const now = Date.now()
+    for (const [slug, cosmetic] of Object.entries(resp.cosmetics)) {
+      if (kickCosmeticsCache.size >= COSMETICS_MAX) {
+        kickCosmeticsCache.delete(kickCosmeticsCache.keys().next().value)
+      }
+      kickCosmeticsCache.set(slug, { ...(cosmetic || { paint: null, badge: null }), fetchedAt: now })
+    }
+    applyPendingKickCosmetics(Object.keys(resp.cosmetics))
+  } catch (e) {
+    log(' flushKickCosmeticsBatch failed:', e?.message)
+  }
+  if (kickCosmeticsPending.size > 0 && !kickCosmeticsBatchTimer) {
+    kickCosmeticsBatchTimer = cleanup.setTimeout(() => {
+      kickCosmeticsBatchTimer = null
+      flushKickCosmeticsBatch()
+    }, 2000)
+  }
+}
+
+function applyPendingKickCosmetics(slugs) {
+  const container = findChatContainer()
+  if (!container) return
+  const slugSet = new Set(slugs)
+  container.querySelectorAll('[data-hs-cosmetic-kick-user]').forEach(el => {
+    if (el.dataset.hsCosmeticDone === '1') return
+    const slug = el.dataset.hsCosmeticKickUser
+    if (slugSet.has(slug)) applyKickCosmeticsToMessage(el, slug)
+  })
+}
+
 // Right-click on chat message or username → instant 24h mute
 function setupMessageContextMenu() {
   document.addEventListener('contextmenu', (e) => {
@@ -5353,14 +5475,14 @@ function getTwitchChannelId() {
       if (channelId) return channelId;
     }
 
-    // Method 3: Look for it in window object (Twitch sometimes exposes it)
+    // Method 2: Look for it in window object (Twitch sometimes exposes it)
     if (window.__twilight_client__?.store) {
       const state = window.__twilight_client__.store.getState();
       const channelId = state?.channel?.currentChannelID;
       if (channelId) return channelId;
     }
 
-    // Method 4: Parse from any script containing channel data
+    // Method 3: Parse from any script containing channel data
     const scripts = document.querySelectorAll('script:not([src])');
     for (const script of scripts) {
       const text = script.textContent;
@@ -6062,7 +6184,7 @@ function setupAutoClaimPoints() {
   function attachObserver() {
     const container = document.querySelector('[data-test-selector="community-points-summary"]')
     if (!container) {
-      cleanup.setTimeout(attachObserver, 3000, 'auto-claim-retry')
+      cleanup.setTimeout(attachObserver, 3000)
       return
     }
 

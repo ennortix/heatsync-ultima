@@ -1381,9 +1381,8 @@ const SEVENTV_POLL_INTERVAL = 30000;
 
 function start7TVPolling() {
   stop7TVPolling()
-  const owner = getActiveChannelOwner()
-  if (!owner) return
-  log(' 7TV Poll: Starting for', owner)
+  if (seventvEmoteSetIds.size === 0) return
+  log(' 7TV Poll: Starting for', seventvEmoteSetIds.size, 'channel(s)')
   seventvPollTimer = trackInterval(setInterval(poll7TVEmoteSet, SEVENTV_POLL_INTERVAL))
 }
 
@@ -1395,116 +1394,119 @@ function stop7TVPolling() {
 }
 
 async function poll7TVEmoteSet() {
-  const channelName = getActiveChannelOwner()
-  if (!channelName) return
-  // Find the platform from any tab tracking this channel owner
-  let platform = 'twitch'
-  for (const entry of tabChannels.values()) {
-    if (entry.channelOwner === channelName && entry.channel) {
-      platform = entry.channel.split('/')[0] || 'twitch'
-      break
-    }
-  }
+  // Poll ALL channels that have an active 7TV emote set ID
+  const channels = Array.from(seventvEmoteSetIds.keys())
+  if (channels.length === 0) return
 
-  try {
-    let response;
-    if (platform === 'kick') {
-      response = await fetchWithTimeout(`https://7tv.io/v3/users/kick/${channelName}`);
-    } else {
-      // Look up Twitch ID for the channel
-      const channelId = await lookupTwitchUserId(channelName);
-      if (!channelId) return;
-      response = await fetchWithTimeout(`https://7tv.io/v3/users/twitch/${channelId}`);
-    }
-    if (!response.ok) return;
-    const data = await response.json();
-
-    const emoteSet = data.emote_set;
-    if (!emoteSet?.emotes) return;
-
-    // Check if emote set ID changed (user recreated their set)
-    if (emoteSet.id !== current7TVEmoteSetId) {
-      log(' 7TV Poll: Emote set ID changed:', current7TVEmoteSetId, '→', emoteSet.id);
-      current7TVEmoteSetId = emoteSet.id;
-      subscribe7TVEmoteSet(emoteSet.id);
-    }
-
-    // Build current 7TV emote map from fetched data
-    const fetchedEmotes = new Map();
-    for (const e of emoteSet.emotes) {
-      fetchedEmotes.set(e.id, {
-        name: e.name,
-        url: `https://cdn.7tv.app/emote/${e.id}/1x.webp`,
-        source: '7tv',
-        hash: e.id,
-        flags: e.flags || e.data?.flags || 0,
-        zeroWidth: !!((e.flags & 257) || (e.data?.flags & 257))
-      });
-    }
-
-    // Get existing 7TV emotes for this channel
-    const chEmotes = Array.isArray(channelEmotesMap[channelName]) ? channelEmotesMap[channelName] : [];
-    const existing7TV = new Map();
-    for (const e of chEmotes) {
-      if (e.source === '7tv') existing7TV.set(e.hash, e);
-    }
-
-    // Diff: find added and removed
-    const added = [];
-    const removed = [];
-
-    for (const [id, emote] of fetchedEmotes) {
-      if (!existing7TV.has(id)) added.push(emote);
-    }
-    for (const [id, emote] of existing7TV) {
-      if (!fetchedEmotes.has(id)) removed.push(emote);
-    }
-
-    if (added.length === 0 && removed.length === 0) return;
-
-    log(' 7TV Poll: Detected changes — added:', added.length, 'removed:', removed.length);
-
-    // Apply changes to channelEmotesMap
-    let updatedEmotes = chEmotes.filter(e => e.source !== '7tv' || fetchedEmotes.has(e.hash));
-    updatedEmotes.push(...added);
-    channelEmotesMap[channelName] = updatedEmotes;
-    updateEmoteUrlMap();
-
-    // Only broadcast individual notifications for real changes (not initial load)
-    // If baseline was empty, this is just the first poll after joining — not actual adds
-    if (existing7TV.size > 0) {
-      for (const emote of added) {
-        log(' 7TV Poll: Added emote:', emote.name);
-        broadcastToTabs({
-          type: 'channel_emote_added',
-          emote,
-          message: `${emote.name} added to channel (7TV)`
-        });
+  for (const channelName of channels) {
+    // Find the platform from any tab tracking this channel owner
+    let platform = 'twitch'
+    for (const entry of tabChannels.values()) {
+      if (entry.channelOwner === channelName && entry.channel) {
+        platform = entry.channel.split('/')[0] || 'twitch'
+        break
       }
-      for (const emote of removed) {
-        log(' 7TV Poll: Removed emote:', emote.name);
-        broadcastToTabs({
-          type: 'channel_emote_removed',
-          emoteName: emote.name,
-          emoteHash: emote.hash,
-          message: `${emote.name} removed from channel (7TV)`
-        });
-      }
-    } else {
-      log(' 7TV Poll: Skipping notifications for initial load (' + added.length + ' emotes)');
     }
 
-    // Broadcast full update
-    broadcastToTabs({
-      type: 'channel_emotes_update',
-      emotes: updatedEmotes,
-      channelOwner: channelName
-    });
+    try {
+      let response
+      if (platform === 'kick') {
+        response = await fetchWithTimeout(`https://7tv.io/v3/users/kick/${channelName}`)
+      } else {
+        const channelId = await lookupTwitchUserId(channelName)
+        if (!channelId) continue
+        response = await fetchWithTimeout(`https://7tv.io/v3/users/twitch/${channelId}`)
+      }
+      if (!response.ok) continue
+      const data = await response.json()
 
-    browser.storage.local.set({ channel_emotes_map: getStorableChannelEmotes(), channel_emotes_fetched_at: channelEmotesFetchedAt }).catch(() => {});
-    log(' 7TV Poll: Channel emotes updated for', channelName, '(now', updatedEmotes.length, 'total)');
-  } catch (err) {
-    // Silent fail — poll will retry next interval
+      const emoteSet = data.emote_set
+      if (!emoteSet?.emotes) continue
+
+      // Check if emote set ID changed (user recreated their set)
+      const knownSetId = seventvEmoteSetIds.get(channelName)
+      if (emoteSet.id !== knownSetId) {
+        log(' 7TV Poll: Emote set ID changed for', channelName, ':', knownSetId, '→', emoteSet.id)
+        seventvEmoteSetIds.set(channelName, emoteSet.id)
+        if (channelName === getActiveChannelOwner()) current7TVEmoteSetId = emoteSet.id
+        subscribe7TVEmoteSet(emoteSet.id)
+      }
+
+      // Build current 7TV emote map from fetched data
+      const fetchedEmotes = new Map()
+      for (const e of emoteSet.emotes) {
+        fetchedEmotes.set(e.id, {
+          name: e.name,
+          url: `https://cdn.7tv.app/emote/${e.id}/1x.webp`,
+          source: '7tv',
+          hash: e.id,
+          flags: e.flags || e.data?.flags || 0,
+          zeroWidth: !!((e.flags & 257) || (e.data?.flags & 257))
+        })
+      }
+
+      // Get existing 7TV emotes for this channel
+      const chEmotes = Array.isArray(channelEmotesMap[channelName]) ? channelEmotesMap[channelName] : []
+      const existing7TV = new Map()
+      for (const e of chEmotes) {
+        if (e.source === '7tv') existing7TV.set(e.hash, e)
+      }
+
+      // Diff: find added and removed
+      const added = []
+      const removed = []
+      for (const [id, emote] of fetchedEmotes) {
+        if (!existing7TV.has(id)) added.push(emote)
+      }
+      for (const [id, emote] of existing7TV) {
+        if (!fetchedEmotes.has(id)) removed.push(emote)
+      }
+
+      if (added.length === 0 && removed.length === 0) continue
+
+      log(' 7TV Poll: Detected changes for', channelName, '— added:', added.length, 'removed:', removed.length)
+
+      // Apply changes to channelEmotesMap
+      let updatedEmotes = chEmotes.filter(e => e.source !== '7tv' || fetchedEmotes.has(e.hash))
+      updatedEmotes.push(...added)
+      channelEmotesMap[channelName] = updatedEmotes
+      updateEmoteUrlMap()
+
+      // Only broadcast individual notifications for real changes (not initial load)
+      if (existing7TV.size > 0) {
+        for (const emote of added) {
+          log(' 7TV Poll: Added emote:', emote.name, 'to', channelName)
+          broadcastToTabs({
+            type: 'channel_emote_added',
+            emote,
+            message: `${emote.name} added to channel (7TV)`
+          })
+        }
+        for (const emote of removed) {
+          log(' 7TV Poll: Removed emote:', emote.name, 'from', channelName)
+          broadcastToTabs({
+            type: 'channel_emote_removed',
+            emoteName: emote.name,
+            emoteHash: emote.hash,
+            message: `${emote.name} removed from channel (7TV)`
+          })
+        }
+      } else {
+        log(' 7TV Poll: Skipping notifications for initial load of', channelName, '(' + added.length + ' emotes)')
+      }
+
+      // Broadcast full update
+      broadcastToTabs({
+        type: 'channel_emotes_update',
+        emotes: updatedEmotes,
+        channelOwner: channelName
+      })
+
+      browser.storage.local.set({ channel_emotes_map: getStorableChannelEmotes(), channel_emotes_fetched_at: channelEmotesFetchedAt }).catch(() => {})
+      log(' 7TV Poll: Channel emotes updated for', channelName, '(now', updatedEmotes.length, 'total)')
+    } catch (err) {
+      // Silent fail — poll will retry next interval
+    }
   }
 }
 
@@ -2783,9 +2785,10 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
     })();
     return true;
   } else if (message.type === 'clear_blocked') {
-    // Clear all blocked emotes
+    // Clear all blocked emotes (both server-synced and local)
     blockedEmotes.clear();
-    browser.storage.local.set({ blocked_emotes: [] });
+    localBlockedEmotes.clear();
+    browser.storage.local.set({ blocked_emotes: [], local_blocked_emotes: [] });
     if (authToken) {
       fetchWithTimeout(`${API_URL}/api/user/emotes/blocks/clear`, {
         method: 'POST',
@@ -2912,12 +2915,49 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
       sendResponse({ cosmetics: result })
     })()
     return true
+  } else if (message.type === 'get_kick_user_cosmetics') {
+    const usernames = (message.kickUsernames || []).slice(0, 10)
+    ;(async () => {
+      const result = {}
+      for (const username of usernames) {
+        const cacheKey = `kick:${username}`
+        const cached = userCosmeticsCache.get(cacheKey)
+        if (cached && Date.now() - cached.fetchedAt < USER_COSMETICS_TTL) {
+          result[username] = { paint: cached.paint, badge: cached.badge }
+          continue
+        }
+        try {
+          const resp = await fetchWithTimeout(`https://7tv.io/v3/users/kick/${username}`)
+          if (!resp.ok) { setUserCosmetic(cacheKey, null); result[username] = null; continue }
+          const data = await resp.json()
+          const cosmetic = extract7TVCosmetic(data)
+          setUserCosmetic(cacheKey, cosmetic)
+          result[username] = cosmetic
+        } catch (e) { setUserCosmetic(cacheKey, null); result[username] = null }
+      }
+      sendResponse({ cosmetics: result })
+    })()
+    return true
   } else if (message.type === 'get_bulk_badges') {
     const bttvObj = {}
     for (const [k, v] of bttvBadgeMap) bttvObj[k] = v
     const ffzObj = {}
     for (const [k, v] of ffzBadgeMap) ffzObj[k] = v
     sendResponse({ bttvBadges: bttvObj, ffzBadges: ffzObj })
+    return
+  } else if (message.type === 'mention_detected') {
+    // Fire a browser notification if the user has hs_notifications enabled
+    browser.storage.local.get('hs_notifications').then(data => {
+      if (!data.hs_notifications) return
+      const notifId = 'hs-mention-' + Date.now()
+      browser.notifications.create(notifId, {
+        type: 'basic',
+        iconUrl: browser.runtime.getURL('icon-128.png'),
+        title: message.username ? `${message.username} mentioned you` : 'You were mentioned',
+        message: message.text || ''
+      }).catch(() => {})
+    }).catch(() => {})
+    sendResponse({ ok: true })
     return
   }
 });

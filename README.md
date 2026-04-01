@@ -11,7 +11,6 @@ upload any image to [heatsync.org](https://heatsync.org), install the extension,
 - **tab completion** — start typing an emote name, press tab, pick from the dropdown
 - **emote picker** — button in chat input to browse and insert emotes
 - **third-party emotes** — bttv, ffz, and 7tv emotes load automatically
-- **7tv cosmetics** — paints (username gradients) and badges render natively
 - **zero-width stacking** — layer emotes on top of each other
 - **multichat** — multiple channels in one panel with tabs, mentions, and IRC
 - **emote blocking** — right-click any emote to hide it, syncs across devices
@@ -21,16 +20,16 @@ upload any image to [heatsync.org](https://heatsync.org), install the extension,
 
 ## why heatsync
 
-other emote extensions either lock you to one platform, gate emotes behind approval queues, or limit your slots. heatsync gives you unlimited emotes across every platform with one upload.
+other emote extensions gate uploads behind approval queues, limit your slots, and keep emote sets separate per platform. heatsync gives you unlimited emotes with one upload — same set works on twitch, kick, and youtube.
 
 | | **heatsync** | **ffz** | **7tv** | **bttv** |
 |---|---|---|---|---|
 | **platforms** | twitch, kick, youtube | twitch | twitch, kick, youtube | twitch, youtube (beta) |
-| **emote upload** | instant, unlimited, no approval | channel-limited slots | approval queue + slot limits | channel-limited slots |
-| **cross-platform emotes** | yes — one set everywhere | no | no — separate emote sets per platform | no — separate emote sets per platform |
+| **emote upload** | instant, unlimited, no approval | 25 free slots, up to 500 paid, manual approval | instant, 1000 free slots | 15 free slots, up to 200 paid, auto-approved |
+| **cross-platform emotes** | yes — one set everywhere | no | no — separate sets per platform | no — separate sets per platform |
 | **multichat** | built-in (tabs, IRC, mentions, youtube) | no | no | no |
-| **cosmetics** | renders 7tv paints + ffz/bttv badges | own badge system | own paints + badges | own badges |
-| **third-party emotes** | loads bttv/ffz/7tv automatically | own + some bttv | own emotes only | own emotes only |
+| **cosmetics** | ffz badges (multichat) | own badges, custom mod/VIP badges | own paints + badges | own badges |
+| **third-party emotes** | loads bttv/ffz/7tv automatically | own only (bttv/7tv via opt-in add-ons) | loads bttv/ffz natively | own emotes only |
 
 ### technical comparison
 
@@ -40,17 +39,17 @@ every twitch emote extension uses react fiber walking — it's the only reliable
 |---|---|---|---|---|
 | **approach** | work with react (ffz-style) | deep react integration | deep react integration | DOM-first, react for data |
 | **fiber walking** | `getFiber()` + `.return` chain | `Fine.getReactInstance()` | `getVNodeFromDOM()` | reads fiber, rarely writes |
-| **render patching** | wraps `render()`, modifies output | systematic class prototype patching (core arch) | patches `render`, lifecycle, props interception | minimal — reads props, rarely patches |
+| **render patching** | wraps `render()`, injects via DOM | systematic class prototype patching (core arch) | patches `render`, lifecycle, props interception | minimal — reads props, rarely patches |
 | **MutationObserver** | chat container + polling fallback | component discovery + 500ms poll | `awaitComponents()` | **primary** mechanism (`DOMObserver` class) |
 | **MAIN world injection** | yes — `document_start` before react mounts | no | no | no |
-| **SPA nav handling** | MutationObserver + re-walk fibers | hooks react router fiber directly | hooks `RouterComponent.componentDidUpdate` | monkey-patches `window.history.pushState` |
+| **SPA nav handling** | polling `location.href` + re-walk fibers | hooks react router fiber directly | hooks `RouterComponent.componentDidUpdate` | monkey-patches `window.history.pushState` |
 | **own UI framework** | vanilla JS | custom module system | vue 3 (full SPA) | preact |
-| **webpack hooking** | no | yes — deep (`webpackChunktwitch_twilight`) | indirect via fiber | minimal — TMI constants only |
+| **webpack hooking** | minimal — apollo mutations | yes — deep (`webpackChunktwitch_twilight`) | indirect via fiber | minimal — TMI constants only |
 | **shadow DOM** | no | no | no | no |
 
 **heatsync's MAIN world injection is unique** — none of the others run at `document_start` in page context. this allows intercepting twitch internals before react mounts, which is impossible from a content script.
 
-**bttv is the outlier** — it treats the DOM as its primary API and only dips into react to read data. ffz, 7tv, and heatsync all patch react's render pipeline directly, making modifications survive re-renders.
+**bttv is the outlier** — it treats the DOM as its primary API and only dips into react to read data. ffz and 7tv patch react's render pipeline deeply, modifying component output directly. heatsync hooks render for injection points but primarily injects via DOM.
 
 ## install
 
@@ -76,13 +75,12 @@ every twitch emote extension uses react fiber walking — it's the only reliable
 background.js (service worker)
   ├── fetches emotes from heatsync.org API
   ├── manages websocket connection (real-time broadcasts per channel)
-  ├── fetches 7tv/ffz/bttv emotes and cosmetics
+  ├── fetches 7tv/ffz/bttv emotes
   └── broadcasts updates to all twitch/kick/youtube tabs
 
 content.js (injected per tab)
   ├── MutationObserver watches for new chat messages
   ├── processes each message: finds emote names, replaces with images
-  ├── renders 7tv paint gradients and ffz/bttv badges
   └── communicates with background via chrome.runtime.sendMessage
 
 multichat.js (built from src/multichat/)
@@ -124,11 +122,11 @@ function findComponent(startEl, predicate, maxDepth = 50) {
 }
 ```
 
-**render patching** — once you have the component, wrap its `render()` method. call the original, inspect the react element tree it returns, modify or inject elements before react commits them to the DOM. the component doesn't know anything changed.
+**render patching** — once you have the component, wrap its `render()` method. call the original, then use the render cycle as an injection point to attach UI elements via DOM. the hook ensures the extension re-injects whenever react re-renders the component.
 
-**why not just modify the DOM?** react owns the DOM. `appendChild` gets removed on re-render. modified text nodes get overwritten. fiber hooking makes changes survive because they're part of the render output.
+**why not just modify the DOM?** react owns the DOM. `appendChild` gets removed on re-render. modified text nodes get overwritten. hooking render guarantees the extension gets a callback every time react updates, so injected elements are always restored.
 
-**re-hooking** — twitch's SPA navigation unmounts and remounts components constantly. a MutationObserver watches for chat container elements with a polling fallback. when the container reappears, the extension re-walks the fiber tree and re-patches.
+**re-hooking** — twitch's SPA navigation unmounts and remounts components constantly. polling watches `location.href` for navigation changes, and a MutationObserver detects when react replaces the chat container. when either fires, the extension re-walks the fiber tree and re-patches.
 
 **CSS order injection** — for elements that need specific positions in flex containers (badges before usernames), the extension uses CSS `order` properties instead of `insertBefore` calls that break when react reconciles.
 
@@ -140,8 +138,7 @@ function findComponent(startEl, predicate, maxDepth = 50) {
 2. new message appears → observer fires → `processMessage()`
 3. walks the message DOM, finds text nodes containing emote names
 4. replaces text nodes with `<img>` elements pointing to CDN URLs
-5. applies cosmetics: paint gradients on usernames, badges injected before them
-6. target: <5ms per message
+5. target: <5ms per message
 
 ### state
 
@@ -168,7 +165,7 @@ reads source from `chrome/`, bundles shared modules from `src/lib/` into content
 
 ```
 chrome/                      ← source (edit here)
-  background.js              ← service worker: API, websocket, cosmetics
+  background.js              ← service worker: API, websocket, emote fetching
   content.js                 ← chat injection: DOM mutation, emote replacement
   multichat.js               ← built output (source in src/multichat/)
   youtube-content.js         ← youtube live chat support

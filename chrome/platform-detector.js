@@ -42,10 +42,11 @@
     } else if (platform === 'kick') {
       return {
         container: '#chatroom-messages .no-scrollbar',
-        message: '[data-index]',
-        username: 'button.inline.font-bold',
-        messageText: 'span.font-normal',
-        messageContainer: '[data-index]'
+        containerFallback: '#chatroom-messages',
+        message: '[data-index], [data-chat-entry], #chatroom-messages .no-scrollbar > div > div',
+        username: 'button.inline.font-bold, [class*="chat-entry-username"], [class*="chat-message-identity"] button',
+        messageText: 'span.font-normal, [class*="chat-entry-content"], [class*="chat-message"] > span',
+        messageContainer: '[data-index], [data-chat-entry], #chatroom-messages .no-scrollbar > div > div'
       };
     } else if (platform === 'youtube') {
       return {
@@ -73,11 +74,16 @@
     return new Promise((resolve, reject) => {
       let elapsed = 0
       const check = () => {
-        const container = document.querySelector(selectors.container)
-        if (container) {
+        const container = document.querySelector(selectors.container) ||
+          (selectors.containerFallback ? document.querySelector(selectors.containerFallback) : null)
+        if (container && container.offsetHeight > 0) {
           resolve(container)
         } else if (elapsed >= 15000) {
-          reject(new Error('Chat container not found after 15s'))
+          // Accept hidden container as fallback (Kick may show it later)
+          const hidden = document.querySelector(selectors.container) ||
+            (selectors.containerFallback ? document.querySelector(selectors.containerFallback) : null)
+          if (hidden) resolve(hidden)
+          else reject(new Error('Chat container not found after 15s'))
         } else {
           elapsed += 500
           setTimeout(check, 500)

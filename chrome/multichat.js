@@ -16638,6 +16638,27 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
         } else if (msg.eventType === 'stream:offline') {
           text = `[${channel}] \u25C6 went offline`;
           eventClass = 'event-offline';
+        } else if (msg.eventType === 'stream:redeem') {
+          if (!hermesToggles?.redeem) return;
+          text = `[${channel}] \u25C6 ${escapeHtml(msg.user)} redeemed "${escapeHtml(msg.title)}"`;
+          if (msg.cost) text += ` (${msg.cost})`;
+          eventClass = 'event-redeem';
+        } else if (msg.eventType === 'stream:raid') {
+          if (!hermesToggles?.raid) return;
+          text = `[${channel}] \u25C6 raided ${escapeHtml(msg.target)} with ${msg.viewers || 0} viewers`;
+          eventClass = 'event-raid';
+        } else if (msg.eventType === 'stream:hype-start') {
+          if (!hermesToggles?.hype) return;
+          text = `[${channel}] \u25C6 hype train started`;
+          eventClass = 'event-hype';
+        } else if (msg.eventType === 'stream:hype-end') {
+          if (!hermesToggles?.hype) return;
+          text = `[${channel}] \u25C6 hype train ended at level ${msg.level || 0}`;
+          eventClass = 'event-hype';
+        } else if (msg.eventType === 'stream:sub-gift') {
+          if (!hermesToggles?.sub) return;
+          text = `[${channel}] \u25C6 ${escapeHtml(msg.user)} gifted ${msg.count || 0} subs`;
+          eventClass = 'event-sub';
         }
         if (!text) return;
 

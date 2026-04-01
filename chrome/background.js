@@ -2245,6 +2245,51 @@ function handleWSMessage(msg) {
       })
       break
 
+    case 'stream:redeem':
+      broadcastToTabs({
+        type: 'stream_event',
+        eventType: 'stream:redeem',
+        platform: msg.platform,
+        channel: msg.channel,
+        user: msg.user || '',
+        title: msg.title || '',
+        cost: msg.cost || 0
+      })
+      break
+
+    case 'stream:raid':
+      broadcastToTabs({
+        type: 'stream_event',
+        eventType: 'stream:raid',
+        platform: msg.platform,
+        channel: msg.channel,
+        target: msg.target || '',
+        viewers: msg.viewers || 0
+      })
+      break
+
+    case 'stream:hype-start':
+    case 'stream:hype-end':
+      broadcastToTabs({
+        type: 'stream_event',
+        eventType: msg.type,
+        platform: msg.platform,
+        channel: msg.channel,
+        level: msg.level || 0
+      })
+      break
+
+    case 'stream:sub-gift':
+      broadcastToTabs({
+        type: 'stream_event',
+        eventType: 'stream:sub-gift',
+        platform: msg.platform,
+        channel: msg.channel,
+        user: msg.user || '',
+        count: msg.count || 0
+      })
+      break
+
     case 'follow:stream:update':
     case 'follow:stream:online':
     case 'follow:stream:offline':

@@ -1267,7 +1267,8 @@ class IRC {
         user: m.user, userId: m.userId, text: m.text, color: m.color,
         badges: m.badges, channel: m.channel, time: m.time, id: m.id,
         isAction: m.isAction || undefined, replyTo: m.replyTo || undefined,
-        subMonths: m.subMonths || undefined
+        subMonths: m.subMonths || undefined,
+        type: m.type || undefined, eventClass: m.eventClass || undefined
       }))
       chrome.storage?.local?.set({ [`hs_irc_${ch}`]: { msgs, ts: Date.now() } }).catch(() => {})
     }, 5000)
@@ -1293,7 +1294,11 @@ class IRC {
           if (t.includes('removed from channel') || t.includes('added to channel') ||
               t.includes('removed 7TV emote') || t.includes('added 7TV emote')) return false
           // Normalize + dedup stream events by text
-          if (m.type === 'stream-event' && m.text) {
+          // Detect stream events by type OR by text pattern (old persisted events may lack type)
+          const isStreamEvent = m.type === 'stream-event' || (m.text && m.text.includes('\u25C6') && !m.user)
+          if (isStreamEvent && m.text) {
+            // Restore type if missing (old persisted events)
+            if (!m.type) m.type = 'stream-event'
             // Normalize old "channel ◆" format to "[channel] ◆"
             if (!m.text.startsWith('[')) {
               const em = m.text.match(/^([a-zA-Z0-9_]+) \u25C6/)
@@ -1598,7 +1603,9 @@ class KickChat {
           const t = m.text || m.systemMsg || ''
           if (t.includes('removed from channel') || t.includes('added to channel') ||
               t.includes('removed 7TV emote') || t.includes('added 7TV emote')) return false
-          if (m.type === 'stream-event' && m.text) {
+          const isStreamEvent = m.type === 'stream-event' || (m.text && m.text.includes('\u25C6') && !m.user)
+          if (isStreamEvent && m.text) {
+            if (!m.type) m.type = 'stream-event'
             if (!m.text.startsWith('[')) {
               const em = m.text.match(/^([a-zA-Z0-9_]+) \u25C6/)
               if (em) m.text = `[${em[1]}]` + m.text.slice(em[1].length)

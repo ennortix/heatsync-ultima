@@ -1095,10 +1095,10 @@ function hideBadgeTooltip() {
   document.addEventListener('mouseover', e => {
     const badge = e.target.closest('.hs-cosmetic-badge')
     if (badge) showBadgeTooltip(badge)
-  }, true)
+  }, { capture: true, signal })
   document.addEventListener('mouseout', e => {
     if (e.target.closest('.hs-cosmetic-badge')) hideBadgeTooltip()
-  }, true)
+  }, { capture: true, signal })
 })()
 
 // =============================================================================
@@ -1994,6 +1994,7 @@ function _onMessageMain(message) {
         for (const [login, color] of Object.entries(message.colors)) {
           if (color) heatsyncColorMap.set(login.toLowerCase(), color)
         }
+        while (heatsyncColorMap.size > HEATSYNC_COLOR_MAP_MAX) heatsyncColorMap.delete(heatsyncColorMap.keys().next().value)
         log(' HeatSync colors loaded:', heatsyncColorMap.size)
         applyHeatsyncColorsToExisting()
       }
@@ -2087,37 +2088,25 @@ function processExistingMessages() {
   }
 
   // Pass 2: Process messages (now username coloring will work for all known chatters)
-  // PRIORITIZE VISIBLE MESSAGES - process them first for instant load
   // Filter by generation: messages from older generations need reprocessing
   const unprocessed = messageArray.filter(msg => msg.dataset.heatsyncGeneration != gen);
-  const visibleMessages = [];
-  const hiddenMessages = [];
+  if (unprocessed.length === 0) return
 
-  if (unprocessed.length > 0) {
-    const containerTop = chatContainer.offsetTop;
-    const containerBottom = containerTop + chatContainer.offsetHeight;
-    for (const msg of unprocessed) {
-      const msgTop = msg.offsetTop;
-      const msgBottom = msgTop + msg.offsetHeight;
-      if (msgTop < containerBottom && msgBottom > containerTop) {
-        visibleMessages.push(msg);
-      } else {
-        hiddenMessages.push(msg);
-      }
-    }
-  }
+  // Process last ~50 messages first (bottom of chat = visible in scrolling container)
+  // This avoids expensive offsetTop/offsetHeight layout reads for visibility detection
+  const VISIBLE_ESTIMATE = 50
+  const tail = unprocessed.slice(-VISIBLE_ESTIMATE)
+  const head = unprocessed.length > VISIBLE_ESTIMATE ? unprocessed.slice(0, -VISIBLE_ESTIMATE) : []
 
-  // Process visible messages first (instant)
-  visibleMessages.forEach(msg => processMessage(msg));
+  tail.forEach(msg => processMessage(msg))
 
-  // Process hidden messages after a short delay (don't block UI)
-  if (hiddenMessages.length > 0) {
+  if (head.length > 0) {
     cleanup.setTimeout(() => {
-      hiddenMessages.forEach(msg => processMessage(msg));
-      log(` ⏱️ Processed ${messages.length} messages (${visibleMessages.length} visible, ${hiddenMessages.length} hidden) in ${(performance.now() - startTime).toFixed(0)}ms`);
-    }, 50);
+      head.forEach(msg => processMessage(msg))
+      log(` ⏱️ Processed ${unprocessed.length} messages (${tail.length} tail, ${head.length} deferred) in ${(performance.now() - startTime).toFixed(0)}ms`)
+    }, 50)
   } else {
-    log(` ⏱️ Processed ${visibleMessages.length} visible messages in ${(performance.now() - startTime).toFixed(0)}ms`);
+    log(` ⏱️ Processed ${tail.length} messages in ${(performance.now() - startTime).toFixed(0)}ms`)
   }
 }
 
@@ -2412,23 +2401,27 @@ async function backfillChatHistory() {
   }
 }
 
-// Find Twitch or Kick chat container
+// Find Twitch or Kick chat container (cached — invalidated on nav via invalidateChatContainerCache)
+let _cachedChatContainer = null
 function findChatContainer() {
+  // Return cache if still in DOM
+  if (_cachedChatContainer && document.contains(_cachedChatContainer)) return _cachedChatContainer
+
   // Twitch popout chat
   if (window.location.hostname.includes('twitch.tv')) {
-    return document.querySelector('.chat-scrollable-area__message-container') ||
-           document.querySelector('.chat-list--default');
-  }
-
-  // Kick chat
-  if (window.location.hostname.includes('kick.com')) {
-    return document.querySelector('#chatroom-messages .no-scrollbar') ||
+    _cachedChatContainer = document.querySelector('.chat-scrollable-area__message-container') ||
+           document.querySelector('.chat-list--default')
+  } else if (window.location.hostname.includes('kick.com')) {
+    _cachedChatContainer = document.querySelector('#chatroom-messages .no-scrollbar') ||
            document.querySelector('#chatroom-messages') ||
-           document.querySelector('#channel-chatroom');
+           document.querySelector('#channel-chatroom')
+  } else {
+    _cachedChatContainer = null
   }
 
-  return null;
+  return _cachedChatContainer
 }
+function invalidateChatContainerCache() { _cachedChatContainer = null }
 
 // Cache username once detected
 let cachedUsername = null;
@@ -2483,6 +2476,7 @@ let bttvBadgeMap = new Map()
 let ffzBadgeMap = new Map()
 let chatterinoBadgeMap = new Map()
 const heatsyncColorMap = new Map() // username → HeatSync API color (from follow:colors)
+const HEATSYNC_COLOR_MAP_MAX = 2000
 let cosmeticsEnabled = true // toggle for BTTV/FFZ/7TV cosmetics
 let dimTimeoutsEnabled = true // dim timed-out/banned messages instead of hiding
 const originalMessageBodies = new Map() // msg-id → innerHTML (for restoring on timeout)
@@ -2784,7 +2778,7 @@ function getCurrentUsername() {
 }
 
 // Highlight messages that mention the current user ONLY
-function highlightUserMentions(messageElement, authorElement) {
+function highlightUserMentions(messageElement, authorElement, preQueriedTextElements) {
   const currentUser = getCurrentUsername();
   if (!currentUser) {
     return; // Skip if username not detected yet
@@ -2818,8 +2812,7 @@ function highlightUserMentions(messageElement, authorElement) {
 
   // Also check if username appears as standalone word in message BODY (not author)
   if (!shouldHighlight) {
-    // Get just the message text, not the author name
-    const textFragments = messageElement.querySelectorAll('.text-fragment, [data-a-target="chat-message-text"], span.font-normal');
+    const textFragments = preQueriedTextElements || messageElement.querySelectorAll('.text-fragment, [data-a-target="chat-message-text"], span.font-normal');
     for (const frag of textFragments) {
       const fragText = frag.textContent.toLowerCase();
       if (_mentionRegex && _mentionRegex.test(fragText)) {
@@ -3216,7 +3209,7 @@ function processMessage(messageElement) {
       const userId = getTwitchUserId(messageElement)
       if (userId) {
         messageElement.dataset.hsCosmeticUserId = userId
-        applyCosmeticsToMessage(messageElement, userId)
+        applyCosmeticsToMessage(messageElement, userId, usernameElement)
         queueCosmeticsLookup(userId)
       }
     }
@@ -3235,7 +3228,7 @@ function processMessage(messageElement) {
   }
 
   // Highlight mentions of current user (FFZ-style red background on entire line)
-  highlightUserMentions(messageElement, usernameElement);
+  highlightUserMentions(messageElement, usernameElement, textElements);
 
   // Ensure emote map is current (rebuilt eagerly by event handlers, fallback here)
   rebuildEmoteMapIfDirty()
@@ -5203,26 +5196,26 @@ function get7TVBadgeUrl(badge) {
 }
 
 // Apply BTTV/FFZ badges and 7TV paints/badges to a message element
-function applyCosmeticsToMessage(el, userId) {
+function applyCosmeticsToMessage(el, userId, preQueriedNameEl) {
   if (!userId) return
   // Detect recycled DOM node — clear stale cosmetics if userId changed
   const prevUserId = el.dataset.hsCosmeticAppliedFor
   if (prevUserId && prevUserId !== userId) {
     el.querySelectorAll('.hs-cosmetic-badge').forEach(b => b.remove())
     delete el.dataset.hsCosmeticDone
-    const nameEl = el.querySelector('.chat-author__display-name, [data-a-target="chat-message-username"]')
-    if (nameEl) {
-      delete nameEl.dataset.hsPaintApplied
-      nameEl.style.removeProperty('background-image')
-      nameEl.style.removeProperty('background-size')
-      nameEl.style.removeProperty('-webkit-background-clip')
-      nameEl.style.removeProperty('-webkit-text-fill-color')
-      nameEl.style.removeProperty('background-clip')
-      nameEl.style.removeProperty('filter')
+    const oldNameEl = preQueriedNameEl || el.querySelector('.chat-author__display-name, [data-a-target="chat-message-username"]')
+    if (oldNameEl) {
+      delete oldNameEl.dataset.hsPaintApplied
+      oldNameEl.style.removeProperty('background-image')
+      oldNameEl.style.removeProperty('background-size')
+      oldNameEl.style.removeProperty('-webkit-background-clip')
+      oldNameEl.style.removeProperty('-webkit-text-fill-color')
+      oldNameEl.style.removeProperty('background-clip')
+      oldNameEl.style.removeProperty('filter')
     }
   }
   el.dataset.hsCosmeticAppliedFor = userId
-  const nameEl = el.querySelector('.chat-author__display-name, [data-a-target="chat-message-username"]')
+  const nameEl = preQueriedNameEl || el.querySelector('.chat-author__display-name, [data-a-target="chat-message-username"]')
   if (!nameEl) return
 
   // BTTV badge
@@ -6433,6 +6426,7 @@ function handleNavigation() {
   currentChannelOwner = null
   msgCacheBuffer = []
   subTenureMap.clear()
+  invalidateChatContainerCache()
   allEmotesDirty = true
   rebuildEmoteMapIfDirty()
   detectAndJoinChannel();

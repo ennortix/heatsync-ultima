@@ -453,6 +453,7 @@ async function fetchEmoteInventory() {
     });
 
     if (!response.ok) {
+      response.body?.cancel()
       emoteInventory = [];
       // Only broadcast empty once
       if (!lastBroadcastWasEmpty) {
@@ -531,7 +532,7 @@ async function fetchBlockedEmotes() {
       }
     });
 
-    if (!response.ok) return;
+    if (!response.ok) { response.body?.cancel(); return; }
 
     const data = await response.json();
     // Server returns blocked_emotes array with hash property
@@ -588,6 +589,7 @@ async function fetchFollowedUsers() {
     });
 
     if (!response.ok) {
+      response.body?.cancel()
       followedUsers = [];
       return;
     }
@@ -617,6 +619,7 @@ async function fetchUserInfo() {
     })
 
     if (!response.ok) {
+      response.body?.cancel()
       browser.storage.local.remove('user_info')
       return
     }
@@ -690,7 +693,7 @@ async function fetchBTTVChannelEmotes(channelName, channelId = null) {
 async function fetchFFZChannelEmotes(channelName) {
   try {
     const response = await fetchWithTimeout(`https://api.frankerfacez.com/v1/room/${channelName}`);
-    if (!response.ok) return [];
+    if (!response.ok) { response.body?.cancel(); return []; }
 
     const data = await response.json();
     const emotes = [];
@@ -748,7 +751,7 @@ async function lookupTwitchUserId(username) {
   // Fallback to decapi.me
   try {
     const response = await fetchWithTimeout(`https://decapi.me/twitch/id/${encodeURIComponent(username)}`);
-    if (!response.ok) return null;
+    if (!response.ok) { response.body?.cancel(); return null; }
     const text = await response.text();
     if (/^\d+$/.test(text.trim())) {
       const id = text.trim();
@@ -801,6 +804,7 @@ async function fetch7TVChannelEmotes(channelName, channelId = null, platform = '
       identifier = kickId;
       response = await fetchWithTimeout(`https://7tv.io/v3/users/kick/${kickId}`);
       if (!response.ok) {
+        response.body?.cancel()
         log(' 7TV: Kick lookup failed (' + response.status + ')');
         return [];
       }
@@ -830,11 +834,13 @@ async function fetch7TVChannelEmotes(channelName, channelId = null, platform = '
       if (DEBUG) broadcastToTabs({ type: 'debug_log', msg: `7TV fetch ${channelName}: ${sevenTvUrl} → ${response.status}` })
 
       if (!response.ok) {
+        response.body?.cancel()
         log(' 7TV: Twitch ID lookup failed (' + response.status + '), trying username fallback...');
 
         // Fallback to username-based lookup
         response = await fetchWithTimeout(`https://7tv.io/v3/users/${channelName}`);
         if (!response.ok) {
+          response.body?.cancel()
           log(' 7TV: Username lookup also failed (' + response.status + ')');
           return [];
         }
@@ -1121,7 +1127,7 @@ async function fetchChannelOwnerEmotes(channelName, channelId = null, platform =
 async function fetchBTTVEmotes() {
   try {
     const response = await fetchWithTimeout('https://api.betterttv.net/3/cached/emotes/global');
-    if (!response.ok) return [];
+    if (!response.ok) { response.body?.cancel(); return []; }
 
     const emotes = await response.json();
     return sanitizeEmoteList(emotes.map(e => ({
@@ -1139,7 +1145,7 @@ async function fetchBTTVEmotes() {
 async function fetchFFZEmotes() {
   try {
     const response = await fetchWithTimeout('https://api.frankerfacez.com/v1/set/global');
-    if (!response.ok) return [];
+    if (!response.ok) { response.body?.cancel(); return []; }
 
     const data = await response.json();
     const emotes = [];
@@ -1168,7 +1174,7 @@ async function fetchFFZEmotes() {
 async function fetch7TVEmotes() {
   try {
     const response = await fetchWithTimeout('https://7tv.io/v3/emote-sets/global');
-    if (!response.ok) return [];
+    if (!response.ok) { response.body?.cancel(); return []; }
 
     const data = await response.json();
     return sanitizeEmoteList((data?.emotes || []).map(e => ({
@@ -1189,6 +1195,7 @@ async function fetchTwitchGlobalEmotes() {
   try {
     const response = await fetchWithTimeout(`${API_URL}/api/emotes/twitch/global`);
     if (!response.ok) {
+      response.body?.cancel()
       log('⚠️ Twitch global emotes failed:', response.status);
       return [];
     }
@@ -1217,6 +1224,7 @@ async function fetchTwitchChannelEmotes(channelName) {
   try {
     const response = await fetchWithTimeout(`${API_URL}/api/emotes/twitch/channel/${channelName}`);
     if (!response.ok) {
+      response.body?.cancel()
       log(' Twitch channel emotes failed for', channelName, ':', response.status);
       return [];
     }
@@ -1320,8 +1328,8 @@ let seventvPendingSubs = new Set(); // Queued while connection is opening
 const SEVENTV_MAX_RECONNECT_ATTEMPTS = 5;
 
 function ensure7TVConnection() {
-  if (seventvWebSocket && (seventvWebSocket.readyState === WebSocket.OPEN || seventvWebSocket.readyState === WebSocket.CONNECTING)) {
-    return; // Already connected or connecting
+  if (seventvWebSocket && seventvWebSocket.readyState !== WebSocket.CLOSED) {
+    return; // Already connected, connecting, or closing
   }
 
   clearTimeout(seventvReconnectTimer);
@@ -3142,7 +3150,7 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
         fetchWithTimeout(`${API_URL}/api/user/emotes/blocks/clear`, {
           method: 'POST',
           headers: { 'Authorization': `Bearer ${token}` }
-        }).catch(err => log(' Clear blocked emotes failed:', err?.message))
+        }).then(r => r.body?.cancel()).catch(err => log(' Clear blocked emotes failed:', err?.message))
       }
       sendResponse({ success: true })
     })()

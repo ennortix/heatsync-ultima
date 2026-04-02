@@ -275,14 +275,20 @@
     }, 'mc-emote-tooltip-mouseout');
 
     // Hide tooltip+highlight on any scroll (wheel/trackpad/drag — mouseout doesn't fire when elements scroll away)
+    let _dismissRafPending = false
     function dismissAllTooltips() {
-      if (emoteTooltip?.classList.contains('visible')) {
-        hideEmoteTooltip()
-        document.querySelectorAll('.hs-emote-highlight').forEach(w => w.classList.remove('hs-emote-highlight'))
-      }
-      hideBadgeTooltip()
-      if (linkTooltip?.classList.contains('visible')) hideLinkTooltip()
-      if (userTooltip?.classList.contains('visible')) hideUserTooltip()
+      if (_dismissRafPending) return
+      _dismissRafPending = true
+      requestAnimationFrame(() => {
+        _dismissRafPending = false
+        if (emoteTooltip?.classList.contains('visible')) {
+          hideEmoteTooltip()
+          document.querySelectorAll('.hs-emote-highlight').forEach(w => w.classList.remove('hs-emote-highlight'))
+        }
+        hideBadgeTooltip()
+        if (linkTooltip?.classList.contains('visible')) hideLinkTooltip()
+        if (userTooltip?.classList.contains('visible')) hideUserTooltip()
+      })
     }
     cleanup.addEventListener(document, 'wheel', dismissAllTooltips)
     // scroll doesn't bubble — capture phase catches scroll on any child container

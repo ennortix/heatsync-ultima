@@ -17288,11 +17288,18 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
         kickChat.join(currentChannel);
       }
       if (hostPlatform !== 'yt') {
-        // Auto-subscribe YouTube @channelname/live for cross-platform combo
-        const ytAutoUrl = `https://youtube.com/@${currentChannel}/live`
-        chrome.runtime.sendMessage({
-          type: 'youtube_ws_subscribe', url: ytAutoUrl, channelId: '__live_yt_auto__'
-        }).catch(() => {})
+        // Only auto-subscribe YouTube if user explicitly linked a YT channel in config
+        // Otherwise active YT chats (e.g. LofiGirl) drown out Twitch IRC messages
+        const hasLinkedYt = config.channels.some(ch =>
+          typeof ch !== 'string' && ch.youtube &&
+          (ch.twitch === currentChannel || ch.kick === currentChannel)
+        )
+        if (hasLinkedYt) {
+          const ytAutoUrl = `https://youtube.com/@${currentChannel}/live`
+          chrome.runtime.sendMessage({
+            type: 'youtube_ws_subscribe', url: ytAutoUrl, channelId: '__live_yt_auto__'
+          }).catch(() => {})
+        }
       }
       log('Auto-joined current channel:', currentChannel, '(all platforms)');
     }

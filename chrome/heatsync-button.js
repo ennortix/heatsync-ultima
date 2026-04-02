@@ -62,6 +62,12 @@
   const RECENT_MAX = 20;
   let focusedEmoteIndex = -1; // keyboard nav tracking
 
+  // Virtual scroll state
+  let _virtualPickerEmotes = [] // current filtered emote list for virtual scroll
+  let _virtualRecentCount = 0 // number of recent emotes rendered (non-virtualized)
+  let _virtualScrollHandler = null // scroll listener reference
+  let _virtualGridDelegated = false // whether event delegation is set up
+
   // Load recent emotes from storage
   chrome.storage.local.get('recent_emotes', (r) => {
     if (r.recent_emotes) recentEmotes = r.recent_emotes
@@ -1830,6 +1836,8 @@
     const isCached = usingCachedData[currentTab];
 
     if (currentError && !currentLoading) {
+      _virtualPickerEmotes = []
+      _virtualRecentCount = 0
       grid.innerHTML = `
         <div class="heatsync-error-state">
           <div class="heatsync-error-icon">⚠️</div>
@@ -1843,6 +1851,8 @@
     }
 
     if (currentLoading) {
+      _virtualPickerEmotes = []
+      _virtualRecentCount = 0
       grid.innerHTML = `<div class="heatsync-empty">${t('common_loading')}</div>`;
       return;
     }
@@ -1876,6 +1886,8 @@
     }
 
     if (emotes.length === 0) {
+      _virtualPickerEmotes = []
+      _virtualRecentCount = 0
       if (currentTab === 'mine' && !isLoggedIn) {
         grid.innerHTML = `<div class="heatsync-login-msg">${t('btn_login_save_emotes')}</div>`;
       } else {
@@ -1901,51 +1913,40 @@
       pickerUrl: getResolutionUrl(getAnimatedUrl(e.url), currentSize)
     }));
 
-    grid.innerHTML = '';
-    grid.style.display = 'flex';
-    grid.style.flexWrap = 'wrap';
-    grid.style.gap = '4px';
-    grid.style.alignContent = 'start';
+    while (grid.firstChild) grid.removeChild(grid.firstChild)
 
-    // Create emote element (placeholder until visible)
+    // --- Virtual scroll helpers ---
+    const GAP = 4
+    const sizeMap = { '1x': 32, '2x': 56, '4x': 112 }
+    const emoteSize = sizeMap[currentSize] || 32
+    const gridPadding = 8 // padding on .heatsync-emote-grid
+
+    function getItemsPerRow() {
+      const gridWidth = grid.clientWidth - gridPadding * 2
+      return Math.max(1, Math.floor((gridWidth + GAP) / (emoteSize + GAP)))
+    }
+
+    // Create emote element — no click/contextmenu listeners (delegated on grid)
     function createEmoteElement(e, index) {
-      const wrap = document.createElement('div');
-      const providerClass = getProviderClass(e.provider);
-      const inInventory = isInInventory(e);
-      const isGlobal = currentTab === 'global';
+      const wrap = document.createElement('div')
+      const providerClass = getProviderClass(e.provider)
+      const inInventory = isInInventory(e)
+      const isGlobal = currentTab === 'global'
 
-      wrap.className = `heatsync-emote-wrap ${providerClass}`;
-      wrap.style.minWidth = '32px';
-      wrap.style.minHeight = '32px';
-      wrap.dataset.index = index;
+      wrap.className = `heatsync-emote-wrap ${providerClass}`
+      wrap.style.minWidth = '32px'
+      wrap.style.minHeight = '32px'
+      wrap.dataset.index = index
 
       if (!isGlobal && !inInventory && currentTab !== 'mine') {
-        wrap.classList.add('unadded');
+        wrap.classList.add('unadded')
       }
 
-      // Click to insert
-      wrap.addEventListener('click', () => {
-        recordRecentEmote(e)
-        if (e.isEmoji) {
-          insertEmoteIntoChat(`:${e.name}:`)
-        } else if (!isGlobal && !inInventory && isLoggedIn && currentTab !== 'mine') {
-          addEmoteToInventorySilent(e).then(() => insertEmoteIntoChat(e.name));
-        } else {
-          insertEmoteIntoChat(e.name);
-        }
-      });
-
-      // Right-click context menu
-      wrap.addEventListener('contextmenu', (evt) => {
-        showContextMenu(evt, e, currentTab);
-      });
-
-      // Hover preview - show 4x version above emote
-      let previewTooltip = null;
+      // Hover preview — must be per-element for positioning
+      let previewTooltip = null
       wrap.addEventListener('mouseenter', () => {
-        // Create preview tooltip
-        previewTooltip = document.createElement('div');
-        previewTooltip.className = 'heatsync-emote-hover-preview';
+        previewTooltip = document.createElement('div')
+        previewTooltip.className = 'heatsync-emote-hover-preview'
 
         if (e.isEmoji) {
           const emojiPreview = document.createElement('span')
@@ -1974,118 +1975,57 @@
           return
         }
 
-        const previewImg = document.createElement('img');
-        previewImg.referrerPolicy = 'no-referrer';
-        const previewUrl = getResolutionUrl(getAnimatedUrl(e.url), '4x');
-        previewImg.src = previewUrl;
-        previewImg.alt = e.name;
+        const previewImg = document.createElement('img')
+        previewImg.referrerPolicy = 'no-referrer'
+        const previewUrl = getResolutionUrl(getAnimatedUrl(e.url), '4x')
+        previewImg.src = previewUrl
+        previewImg.alt = e.name
 
-        const nameLabel = document.createElement('div');
-        nameLabel.className = 'heatsync-emote-hover-preview-name';
-        nameLabel.textContent = e.name;
+        const nameLabel = document.createElement('div')
+        nameLabel.className = 'heatsync-emote-hover-preview-name'
+        nameLabel.textContent = e.name
 
-        previewTooltip.appendChild(previewImg);
-        previewTooltip.appendChild(nameLabel);
-        document.body.appendChild(previewTooltip);
+        previewTooltip.appendChild(previewImg)
+        previewTooltip.appendChild(nameLabel)
+        document.body.appendChild(previewTooltip)
 
-        // Wait for image to load to get accurate dimensions
         previewImg.onload = () => {
           if (!previewTooltip?.isConnected) return
-          // Position above the emote
-          const rect = wrap.getBoundingClientRect();
-          const tooltipRect = previewTooltip.getBoundingClientRect();
+          const rect = wrap.getBoundingClientRect()
+          const tooltipRect = previewTooltip.getBoundingClientRect()
+          let left = rect.left + (rect.width / 2) - (tooltipRect.width / 2)
+          let top = rect.top - tooltipRect.height - 8
+          const padding = 8
+          if (left < padding) left = padding
+          else if (left + tooltipRect.width > window.innerWidth - padding) left = window.innerWidth - tooltipRect.width - padding
+          if (top < padding) top = rect.bottom + 8
+          previewTooltip.style.left = `${left}px`
+          previewTooltip.style.top = `${top}px`
+        }
 
-          // Center horizontally above the emote
-          let left = rect.left + (rect.width / 2) - (tooltipRect.width / 2);
-          let top = rect.top - tooltipRect.height - 8;
-
-          // Keep tooltip within viewport horizontally
-          const padding = 8;
-          if (left < padding) {
-            left = padding;
-          } else if (left + tooltipRect.width > window.innerWidth - padding) {
-            left = window.innerWidth - tooltipRect.width - padding;
-          }
-
-          // Keep tooltip within viewport vertically
-          if (top < padding) {
-            // If not enough space above, show below instead
-            top = rect.bottom + 8;
-          }
-
-          previewTooltip.style.left = `${left}px`;
-          previewTooltip.style.top = `${top}px`;
-        };
-
-        // Set initial position immediately (will be adjusted after image loads)
-        const rect = wrap.getBoundingClientRect();
-        previewTooltip.style.left = `${rect.left}px`;
-        previewTooltip.style.top = `${rect.top - 20}px`;
-      });
+        const rect = wrap.getBoundingClientRect()
+        previewTooltip.style.left = `${rect.left}px`
+        previewTooltip.style.top = `${rect.top - 20}px`
+      })
 
       wrap.addEventListener('mouseleave', () => {
         if (previewTooltip && previewTooltip.parentNode) {
-          previewTooltip.remove();
-          previewTooltip = null;
+          previewTooltip.remove()
+          previewTooltip = null
         }
-      });
+      })
 
-      return wrap;
+      return wrap
     }
 
-    // Build all emotes at once with images - no lazy loading
-    const fragment = document.createDocumentFragment();
-    let globalIndex = 0;
-
-    // Recent emotes section (only on channel/global tabs, not when searching)
-    if (!searchQuery && recentEmotes.length > 0 && (currentTab === 'channel' || currentTab === 'global' || currentTab === 'mine')) {
-      const header = document.createElement('div')
-      header.className = 'heatsync-section-header'
-      header.textContent = t('btn_recent') || 'recent'
-      header.style.cssText = 'width: 100%; font-size: 11px; color: #808080; padding: 2px 4px; margin-bottom: 2px;'
-      fragment.appendChild(header)
-
-      for (const r of recentEmotes) {
-        const recentEmote = { ...r, pickerUrl: r.url ? getResolutionUrl(getAnimatedUrl(r.url), currentSize) : null }
-        const wrap = createEmoteElement(recentEmote, globalIndex)
-        if (r.isEmoji) {
-          const emojiSpan = document.createElement('span')
-          emojiSpan.className = 'heatsync-emoji-cell'
-          emojiSpan.textContent = r.emoji
-          emojiSpan.title = `:${r.name}:`
-          wrap.appendChild(emojiSpan)
-        } else if (recentEmote.pickerUrl) {
-          const img = document.createElement('img')
-          img.referrerPolicy = 'no-referrer'
-          img.loading = 'eager'
-          img.decoding = 'async'
-          img.src = recentEmote.pickerUrl
-          img.alt = r.name
-          img.title = r.name
-          wrap.appendChild(img)
-        }
-        fragment.appendChild(wrap)
-        globalIndex++
-      }
-
-      const divider = document.createElement('div')
-      divider.style.cssText = 'width: 100%; border-top: 1px solid #333; margin: 4px 0;'
-      fragment.appendChild(divider)
-    }
-
-    for (let i = 0; i < pickerEmotes.length; i++) {
-      const e = pickerEmotes[i];
-      const wrap = createEmoteElement(e, globalIndex++);
-
+    function appendEmoteContent(wrap, e) {
       if (e.isEmoji) {
-        // Emoji: render as unicode text, not image
         const emojiSpan = document.createElement('span')
         emojiSpan.className = 'heatsync-emoji-cell'
         emojiSpan.textContent = e.emoji
         emojiSpan.title = `:${e.name}:`
         wrap.appendChild(emojiSpan)
       } else {
-        // Emote: render as image
         const img = document.createElement('img')
         img.referrerPolicy = 'no-referrer'
         img.loading = 'eager'
@@ -2095,12 +2035,161 @@
         img.title = e.name
         wrap.appendChild(img)
       }
-
-      fragment.appendChild(wrap);
     }
 
-    // Single DOM write
-    grid.appendChild(fragment);
+    // Store emotes for event delegation
+    _virtualPickerEmotes = pickerEmotes
+
+    // --- Set up event delegation on grid (once) ---
+    if (!_virtualGridDelegated) {
+      _virtualGridDelegated = true
+
+      // Click delegation
+      grid.addEventListener('click', (evt) => {
+        const wrap = evt.target.closest('.heatsync-emote-wrap')
+        if (!wrap) return
+        const idx = parseInt(wrap.dataset.index, 10)
+        if (isNaN(idx)) return
+
+        // Determine which emote list this index refers to
+        let e
+        if (idx < _virtualRecentCount) {
+          e = recentEmotes[idx]
+          if (!e) return
+          e = { ...e, pickerUrl: e.url ? getResolutionUrl(getAnimatedUrl(e.url), localStorage.getItem('heatsync-emote-size') || '1x') : null }
+        } else {
+          e = _virtualPickerEmotes[idx - _virtualRecentCount]
+          if (!e) return
+        }
+
+        const inInventory = isInInventory(e)
+        const isGlobal = currentTab === 'global'
+        const isLoggedIn = cachedAuthToken !== null
+        recordRecentEmote(e)
+        if (e.isEmoji) {
+          insertEmoteIntoChat(`:${e.name}:`)
+        } else if (!isGlobal && !inInventory && isLoggedIn && currentTab !== 'mine') {
+          addEmoteToInventorySilent(e).then(() => insertEmoteIntoChat(e.name))
+        } else {
+          insertEmoteIntoChat(e.name)
+        }
+      })
+
+      // Context menu delegation
+      grid.addEventListener('contextmenu', (evt) => {
+        const wrap = evt.target.closest('.heatsync-emote-wrap')
+        if (!wrap) return
+        const idx = parseInt(wrap.dataset.index, 10)
+        if (isNaN(idx)) return
+
+        let e
+        if (idx < _virtualRecentCount) {
+          e = recentEmotes[idx]
+          if (!e) return
+        } else {
+          e = _virtualPickerEmotes[idx - _virtualRecentCount]
+          if (!e) return
+        }
+        showContextMenu(evt, e, currentTab)
+      })
+    }
+
+    // --- Recent emotes section (non-virtualized, always small) ---
+    const recentContainer = document.createElement('div')
+    recentContainer.className = 'heatsync-recent-section'
+    recentContainer.style.cssText = 'display: flex; flex-wrap: wrap; gap: 4px; align-content: start;'
+    let globalIndex = 0
+    _virtualRecentCount = 0
+
+    if (!searchQuery && recentEmotes.length > 0 && (currentTab === 'channel' || currentTab === 'global' || currentTab === 'mine')) {
+      const header = document.createElement('div')
+      header.className = 'heatsync-section-header'
+      header.textContent = t('btn_recent') || 'recent'
+      header.style.cssText = 'width: 100%; font-size: 11px; color: #808080; padding: 2px 4px; margin-bottom: 2px;'
+      recentContainer.appendChild(header)
+
+      for (const r of recentEmotes) {
+        const recentEmote = { ...r, pickerUrl: r.url ? getResolutionUrl(getAnimatedUrl(r.url), currentSize) : null }
+        const wrap = createEmoteElement(recentEmote, globalIndex)
+        appendEmoteContent(wrap, recentEmote)
+        recentContainer.appendChild(wrap)
+        globalIndex++
+      }
+      _virtualRecentCount = recentEmotes.length
+
+      const divider = document.createElement('div')
+      divider.style.cssText = 'width: 100%; border-top: 1px solid #333; margin: 4px 0;'
+      recentContainer.appendChild(divider)
+    }
+
+    grid.appendChild(recentContainer)
+
+    // --- Virtual scroll container for main emotes ---
+    const itemsPerRow = getItemsPerRow()
+    const totalRows = Math.ceil(pickerEmotes.length / itemsPerRow)
+    const rowHeight = emoteSize + GAP
+    const totalHeight = totalRows * rowHeight
+
+    const virtualContainer = document.createElement('div')
+    virtualContainer.className = 'heatsync-virtual-container'
+    virtualContainer.style.cssText = `position: relative; width: 100%; height: ${totalHeight}px;`
+    grid.appendChild(virtualContainer)
+
+    // Track last rendered range to avoid redundant DOM thrashing
+    let _lastRenderedStart = -1
+    let _lastRenderedEnd = -1
+
+    function renderVisibleEmotes() {
+      const scrollTop = grid.scrollTop - recentContainer.offsetHeight
+      const viewHeight = grid.clientHeight
+      const clampedScroll = Math.max(0, scrollTop)
+
+      const startRow = Math.max(0, Math.floor(clampedScroll / rowHeight) - 2)
+      const endRow = Math.min(totalRows, Math.ceil((clampedScroll + viewHeight) / rowHeight) + 2)
+
+      // Skip if same range already rendered
+      if (startRow === _lastRenderedStart && endRow === _lastRenderedEnd) return
+      _lastRenderedStart = startRow
+      _lastRenderedEnd = endRow
+
+      const fragment = document.createDocumentFragment()
+      const startIdx = startRow * itemsPerRow
+      const endIdx = Math.min(endRow * itemsPerRow, pickerEmotes.length)
+
+      for (let i = startIdx; i < endIdx; i++) {
+        const e = pickerEmotes[i]
+        const row = Math.floor(i / itemsPerRow)
+        const col = i % itemsPerRow
+        const wrap = createEmoteElement(e, i + _virtualRecentCount)
+        wrap.style.position = 'absolute'
+        wrap.style.top = `${row * rowHeight}px`
+        wrap.style.left = `${col * (emoteSize + GAP)}px`
+        wrap.style.width = `${emoteSize}px`
+        wrap.style.height = `${emoteSize}px`
+        appendEmoteContent(wrap, e)
+        fragment.appendChild(wrap)
+      }
+
+      while (virtualContainer.firstChild) virtualContainer.removeChild(virtualContainer.firstChild)
+      virtualContainer.appendChild(fragment)
+    }
+
+    // Initial render
+    renderVisibleEmotes()
+
+    // Remove old scroll handler, attach new one
+    if (_virtualScrollHandler) {
+      grid.removeEventListener('scroll', _virtualScrollHandler)
+    }
+    let _scrollRaf = 0
+    _virtualScrollHandler = () => {
+      if (_scrollRaf) return
+      _scrollRaf = requestAnimationFrame(() => {
+        _scrollRaf = 0
+        renderVisibleEmotes()
+      })
+    }
+    grid.addEventListener('scroll', _virtualScrollHandler, { passive: true });
   }
 
   // Silent add to inventory (no UI feedback, used for click-to-use)
@@ -2348,39 +2437,64 @@
 
     if (e.key === 'Escape') { closePanel(); e.preventDefault(); return }
 
-    const wraps = grid.querySelectorAll('.heatsync-emote-wrap')
-    if (wraps.length === 0) return
+    const totalEmotes = _virtualRecentCount + _virtualPickerEmotes.length
+    if (totalEmotes === 0) return
 
     if (e.key === 'ArrowRight' || e.key === 'ArrowLeft' || e.key === 'ArrowDown' || e.key === 'ArrowUp' || e.key === 'Enter') {
       e.preventDefault()
 
-      if (e.key === 'Enter' && focusedEmoteIndex >= 0 && focusedEmoteIndex < wraps.length) {
-        wraps[focusedEmoteIndex].click()
+      if (e.key === 'Enter' && focusedEmoteIndex >= 0 && focusedEmoteIndex < totalEmotes) {
+        const focusedWrap = grid.querySelector(`.heatsync-emote-wrap[data-index="${focusedEmoteIndex}"]`)
+        if (focusedWrap) focusedWrap.click()
         return
       }
 
-      // Calculate items per row from layout
-      let itemsPerRow = 1
-      if (wraps.length >= 2) {
-        const firstTop = wraps[0].offsetTop
-        for (let i = 1; i < wraps.length; i++) {
-          if (wraps[i].offsetTop !== firstTop) { itemsPerRow = i; break }
-        }
-      }
+      // Calculate items per row from grid width
+      const sizeMap = { '1x': 32, '2x': 56, '4x': 112 }
+      const emoteSize = sizeMap[localStorage.getItem('heatsync-emote-size') || '1x'] || 32
+      const gridPadding = 8
+      const gridWidth = grid.clientWidth - gridPadding * 2
+      const itemsPerRow = Math.max(1, Math.floor((gridWidth + 4) / (emoteSize + 4)))
 
       let newIdx = focusedEmoteIndex
-      if (e.key === 'ArrowRight') newIdx = Math.min(newIdx + 1, wraps.length - 1)
+      if (e.key === 'ArrowRight') newIdx = Math.min(newIdx + 1, totalEmotes - 1)
       else if (e.key === 'ArrowLeft') newIdx = Math.max(newIdx - 1, 0)
-      else if (e.key === 'ArrowDown') newIdx = Math.min(newIdx + itemsPerRow, wraps.length - 1)
+      else if (e.key === 'ArrowDown') newIdx = Math.min(newIdx + itemsPerRow, totalEmotes - 1)
       else if (e.key === 'ArrowUp') newIdx = Math.max(newIdx - itemsPerRow, 0)
 
       if (newIdx < 0) newIdx = 0
 
-      // Update focus
-      if (focusedEmoteIndex >= 0 && focusedEmoteIndex < wraps.length) wraps[focusedEmoteIndex].classList.remove('hs-kb-focus')
+      // Remove old focus
+      const oldFocused = grid.querySelector('.hs-kb-focus')
+      if (oldFocused) oldFocused.classList.remove('hs-kb-focus')
       focusedEmoteIndex = newIdx
-      wraps[focusedEmoteIndex].classList.add('hs-kb-focus')
-      wraps[focusedEmoteIndex].scrollIntoView({ block: 'nearest' })
+
+      // For virtualized emotes, scroll to ensure the target is rendered
+      if (newIdx >= _virtualRecentCount) {
+        const virtualIdx = newIdx - _virtualRecentCount
+        const rowHeight = emoteSize + 4
+        const row = Math.floor(virtualIdx / itemsPerRow)
+        const recentSection = grid.querySelector('.heatsync-recent-section')
+        const recentHeight = recentSection ? recentSection.offsetHeight : 0
+        const targetTop = recentHeight + row * rowHeight
+        const targetBottom = targetTop + rowHeight
+
+        // Scroll grid to show the target row
+        if (targetTop < grid.scrollTop) {
+          grid.scrollTop = targetTop
+        } else if (targetBottom > grid.scrollTop + grid.clientHeight) {
+          grid.scrollTop = targetBottom - grid.clientHeight
+        }
+      }
+
+      // Find and focus the element (may need a frame for virtual scroll to render it)
+      requestAnimationFrame(() => {
+        const newFocused = grid.querySelector(`.heatsync-emote-wrap[data-index="${focusedEmoteIndex}"]`)
+        if (newFocused) {
+          newFocused.classList.add('hs-kb-focus')
+          newFocused.scrollIntoView({ block: 'nearest' })
+        }
+      })
     }
   }, { signal: btnSignal });
 

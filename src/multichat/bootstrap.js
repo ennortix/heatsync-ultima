@@ -19,6 +19,8 @@ mcSignal.addEventListener('abort', () => {
   delete window._hsMcEmoteClickHandler
   delete window._hsEmoteTooltipSetup
   delete window._hsMcSettingsListener
+  delete window._hsMcTabHandler
+  delete window._hsMcTypeRevealHandler
 })
 window.addEventListener('pagehide', () => lifecycle.abort())
 

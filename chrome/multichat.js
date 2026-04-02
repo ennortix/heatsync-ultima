@@ -356,14 +356,34 @@ if (typeof window !== 'undefined') {
 
   function _untrackListener(target, event, handler) {
     if (!target || !event || !handler) return
-    target.removeEventListener(event, handler)
-    // remove all matching entries (same target + event + handler reference)
+    // find matching entry to get original options (needed for capture-phase removal)
+    let opts
     for (let i = _listeners.length - 1; i >= 0; i--) {
       const l = _listeners[i]
       if (l.target === target && l.event === event && l.handler === handler) {
+        opts = l.options
         _listeners.splice(i, 1)
       }
     }
+    target.removeEventListener(event, handler, opts)
+  }
+
+  // --- requestAnimationFrame ---
+
+  const _rafs = new Set()
+
+  function _raf(fn) {
+    const id = requestAnimationFrame(() => {
+      _rafs.delete(id)
+      fn()
+    })
+    _rafs.add(id)
+    return id
+  }
+
+  function _cancelRaf(id) {
+    cancelAnimationFrame(id)
+    _rafs.delete(id)
   }
 
   // --- nuclear ---
@@ -379,6 +399,9 @@ if (typeof window !== 'undefined') {
       try { obs.disconnect() } catch (e) {}
     })
     _observers.clear()
+
+    _rafs.forEach(id => cancelAnimationFrame(id))
+    _rafs.clear()
 
     for (let i = _listeners.length - 1; i >= 0; i--) {
       const l = _listeners[i]
@@ -396,6 +419,10 @@ if (typeof window !== 'undefined') {
     untrackObserver: _untrackObserver,
     trackListener: _trackListener,
     untrackListener: _untrackListener,
+    addEventListener: _trackListener,
+    removeEventListener: _untrackListener,
+    raf: _raf,
+    cancelRaf: _cancelRaf,
     destroyAll: _destroyAll,
   }
 })()
@@ -840,6 +867,8 @@ mcSignal.addEventListener('abort', () => {
   delete window._hsMcEmoteClickHandler
   delete window._hsEmoteTooltipSetup
   delete window._hsMcSettingsListener
+  delete window._hsMcTabHandler
+  delete window._hsMcTypeRevealHandler
 })
 window.addEventListener('pagehide', () => lifecycle.abort())
 
@@ -1130,6 +1159,8 @@ class IRC {
     this._ac?.abort();
     this._stopHeartbeat();
     clearTimeout(this._reconnectTimer);
+    for (const id of Object.values(this._persistTimers)) clearTimeout(id);
+    this._persistTimers = {};
     if (this.ws) {
       this.ws.onclose = null;
       try { this.ws.close(); } catch {}
@@ -1212,9 +1243,9 @@ class IRC {
           knownColors.set(msg.user.toLowerCase(), msg.color);
         }
         if (usernameCache.size > 500) {
-          usernameCache.delete(usernameCache.values().next().value);
-          const oldest = knownColors.keys().next().value;
-          knownColors.delete(oldest);
+          const evicted = usernameCache.values().next().value;
+          usernameCache.delete(evicted);
+          knownColors.delete(evicted.toLowerCase());
         }
         fetchChannelBadges(ch);
 
@@ -1643,6 +1674,8 @@ class KickChat {
       chrome.runtime?.onMessage?.removeListener(this._listener)
       this._listener = null
     }
+    for (const id of Object.values(this._persistTimers)) clearTimeout(id);
+    this._persistTimers = {};
     // Leave all channels
     for (const username of this.channels.keys()) {
       safeSendMessage({ type: 'ws_send', data: { type: 'channel:leave', platform: 'kick', channel: username } })
@@ -4630,7 +4663,7 @@ function attachRewardHandlers() {
       if (secs <= 0) {
         _rewardsCache = null
         renderTwitchTab()
-        clearInterval(iv)
+        cleanup.clearInterval(iv)
         return
       }
       el.textContent = secs > 60 ? `${Math.ceil(secs / 60)}m cooldown` : `${secs}s cooldown`
@@ -4984,7 +5017,7 @@ function attachPredictionHandlers() {
     }
     update()
     const iv = cleanup.setInterval(() => {
-      if (!el.isConnected) { clearInterval(iv); return }
+      if (!el.isConnected) { cleanup.clearInterval(iv); return }
       update()
     }, 1000)
   })
@@ -5000,7 +5033,7 @@ let _hypeTrainActive = null // { level, startedAt }
 let _bannerFingerprint = '' // avoid rebuilding if nothing changed
 
 function clearBannerTimers() {
-  _bannerTimers.forEach(id => clearInterval(id))
+  _bannerTimers.forEach(id => cleanup.clearInterval(id))
   _bannerTimers = []
 }
 
@@ -6522,7 +6555,7 @@ function attachPollHandlers() {
     }
     update()
     const iv = cleanup.setInterval(() => {
-      if (!el.isConnected) { clearInterval(iv); return }
+      if (!el.isConnected) { cleanup.clearInterval(iv); return }
       update()
     }, 1000)
   })
@@ -7652,6 +7685,13 @@ function buildNotifDiv(m) {
 
 const whisperTimeline = [] // { user, text, color, time, self, platform, key }
 const whisperUsers = new Map() // key → { platform, userId, displayName, color }
+const WHISPER_USERS_MAX = 200
+function whisperUsersSet(key, value) {
+  whisperUsers.set(key, value)
+  if (whisperUsers.size > WHISPER_USERS_MAX) {
+    whisperUsers.delete(whisperUsers.keys().next().value)
+  }
+}
 let lastWhisperKey = null // for /r — last person involved in a whisper
 let whisperTotalUnread = 0
 let whisperLastViewedTime = 0
@@ -7730,7 +7770,7 @@ function loadWhispers() {
       if (v1 && typeof v1 === 'object' && !v1.timeline) {
         for (const [key, conv] of Object.entries(v1)) {
           if (!conv || !conv.msgs) continue
-          whisperUsers.set(key, {
+          whisperUsersSet(key, {
             platform: conv.platform || (key.startsWith('hs:') ? 'heatsync' : 'twitch'),
             userId: conv.userId,
             displayName: conv.displayName,
@@ -7773,7 +7813,7 @@ function handleIncomingWhisper(msg) {
   if (msg.id && whisperTimeline.some(m => m.id === msg.id)) return
 
   const key = `twitch:${msg.user.toLowerCase()}`
-  whisperUsers.set(key, {
+  whisperUsersSet(key, {
     platform: 'twitch',
     userId: msg.userId,
     displayName: msg.user,
@@ -7813,7 +7853,7 @@ function handleIncomingWhisper(msg) {
 
 function handleIncomingDm(data) {
   const key = `hs:${data.from_user_id}`
-  whisperUsers.set(key, {
+  whisperUsersSet(key, {
     platform: 'heatsync',
     userId: data.from_user_id,
     displayName: data.from_display_name,
@@ -7927,7 +7967,7 @@ function renderWhispersTab() {
       if (!resp.ok || !Array.isArray(resp.data)) return
       for (const dm of resp.data) {
         const key = `hs:${dm.other_user_id}`
-        whisperUsers.set(key, {
+        whisperUsersSet(key, {
           platform: 'heatsync',
           userId: dm.other_user_id,
           displayName: dm.other_display_name,
@@ -9597,7 +9637,7 @@ async function sendSlashWhisper(platform, username, text, input) {
           showToast(t('mc_whisper_user_not_found', [username]))
           return
         }
-        whisperUsers.set(key, { platform: 'twitch', userId: body, displayName: username, color: '#fff' })
+        whisperUsersSet(key, { platform: 'twitch', userId: body, displayName: username, color: '#fff' })
       } catch (e) {
         showToast(t('mc_whisper_resolve_failed'))
         return
@@ -9612,7 +9652,7 @@ async function sendSlashWhisper(platform, username, text, input) {
     }
     const userId = profileResp.data.profile.user_id
     key = `hs:${userId}`
-    whisperUsers.set(key, {
+    whisperUsersSet(key, {
       platform: 'heatsync',
       userId,
       displayName: profileResp.data.profile.display_name || username,
@@ -16345,6 +16385,7 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
           channel: getCurrentChannel() || 'live',
           time: Date.now() - (messages.length - found) * 1000 // Approximate time
         });
+        if (mentionsBuffer.length > MAX_BUFFER) mentionsBuffer.splice(0, mentionsBuffer.length - MAX_BUFFER);
         found++;
       }
     });
@@ -17163,7 +17204,10 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
         toggleKey = 'redeem'
         eventClass = 'event-redeem'
         text = `[${escapeHtml(channel)}] \u25C6 ${escapeHtml(data.user)} redeemed "${escapeHtml(data.title)}"`
-        if (data.rewardId) redeemTitleMap.set(data.rewardId, { title: data.title, cost: data.cost })
+        if (data.rewardId) {
+          redeemTitleMap.set(data.rewardId, { title: data.title, cost: data.cost })
+          if (redeemTitleMap.size > 200) redeemTitleMap.delete(redeemTitleMap.keys().next().value)
+        }
       } else if (eventType === 'pin') {
         if (typeof onPinnedMessage === 'function') onPinnedMessage({ message: data.message, sender: data.sender, id: data.id, channel })
         return

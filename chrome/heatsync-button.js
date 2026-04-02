@@ -1345,7 +1345,7 @@
   }
 
   // Listen for settings changes from popup.js or other tabs
-  chrome.storage.onChanged.addListener((changes, area) => {
+  function _onStorageChanged(changes, area) {
     if (area === 'local' && changes.ui_settings) {
       const newSettings = changes.ui_settings.newValue;
       if (newSettings) {
@@ -1360,6 +1360,10 @@
         log('Settings updated from storage:', cachedSettings);
       }
     }
+  }
+  chrome.storage.onChanged.addListener(_onStorageChanged);
+  btnSignal.addEventListener('abort', () => {
+    chrome.storage.onChanged.removeListener(_onStorageChanged);
   });
 
   // Render settings view
@@ -1537,6 +1541,7 @@
       }
 
       setTimeout(() => {
+        document.removeEventListener('click', handleClickOutside);
         document.addEventListener('click', handleClickOutside, { signal: btnSignal });
       }, 10);
       return;
@@ -1708,6 +1713,7 @@
 
     // Close on click outside
     setTimeout(() => {
+      document.removeEventListener('click', handleClickOutside);
       document.addEventListener('click', handleClickOutside, { signal: btnSignal });
     }, 10);
 

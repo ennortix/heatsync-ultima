@@ -310,6 +310,15 @@ function injectMessage(message) {
   // Inject at the bottom of chat (new messages appear at bottom)
   container.appendChild(messageElement);
 
+  // Prune oldest injected messages to prevent unbounded DOM growth
+  const injected = container.querySelectorAll('.heatsync-injected-message');
+  if (injected.length > 50) {
+    const toRemove = injected.length - 50;
+    for (let i = 0; i < toRemove; i++) {
+      injected[i].remove();
+    }
+  }
+
   // Setup emote hover tooltips for this message
   setupEmoteHoverListeners(messageElement);
 

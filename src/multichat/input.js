@@ -1572,7 +1572,7 @@ async function sendSlashWhisper(platform, username, text, input) {
           showToast(t('mc_whisper_user_not_found', [username]))
           return
         }
-        whisperUsers.set(key, { platform: 'twitch', userId: body, displayName: username, color: '#fff' })
+        whisperUsersSet(key, { platform: 'twitch', userId: body, displayName: username, color: '#fff' })
       } catch (e) {
         showToast(t('mc_whisper_resolve_failed'))
         return
@@ -1587,7 +1587,7 @@ async function sendSlashWhisper(platform, username, text, input) {
     }
     const userId = profileResp.data.profile.user_id
     key = `hs:${userId}`
-    whisperUsers.set(key, {
+    whisperUsersSet(key, {
       platform: 'heatsync',
       userId,
       displayName: profileResp.data.profile.display_name || username,

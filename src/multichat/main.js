@@ -6597,6 +6597,7 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
           channel: getCurrentChannel() || 'live',
           time: Date.now() - (messages.length - found) * 1000 // Approximate time
         });
+        if (mentionsBuffer.length > MAX_BUFFER) mentionsBuffer.splice(0, mentionsBuffer.length - MAX_BUFFER);
         found++;
       }
     });
@@ -7415,7 +7416,10 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
         toggleKey = 'redeem'
         eventClass = 'event-redeem'
         text = `[${escapeHtml(channel)}] \u25C6 ${escapeHtml(data.user)} redeemed "${escapeHtml(data.title)}"`
-        if (data.rewardId) redeemTitleMap.set(data.rewardId, { title: data.title, cost: data.cost })
+        if (data.rewardId) {
+          redeemTitleMap.set(data.rewardId, { title: data.title, cost: data.cost })
+          if (redeemTitleMap.size > 200) redeemTitleMap.delete(redeemTitleMap.keys().next().value)
+        }
       } else if (eventType === 'pin') {
         if (typeof onPinnedMessage === 'function') onPinnedMessage({ message: data.message, sender: data.sender, id: data.id, channel })
         return

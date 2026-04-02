@@ -1887,10 +1887,13 @@
       }
     }), 'autocomplete-image-observer');
 
-    imageObserver.observe(document.body, {
+    // Narrow observer to chat container when available; attribute watching is
+    // only useful inside the input/autocomplete area so limit it accordingly.
+    const observeRoot = chatInputContainer || document.body;
+    imageObserver.observe(observeRoot, {
       childList: true,
       subtree: true,
-      attributes: true,
+      attributes: !!chatInputContainer, // only when scoped — too expensive on body
       attributeFilter: ['src', 'srcset', 'style']
     });
 
@@ -2304,14 +2307,15 @@
     }
   }
 
-  // Handle navigation
+  // Handle navigation — poll URL instead of a full-document subtree observer
+  // (early-inject-main.js already sends heatsync-nav events; this is a cheap fallback)
   let lastUrl = location.href;
-  cleanup.trackObserver(new MutationObserver(() => {
+  cleanup.setInterval(() => {
     if (location.href !== lastUrl) {
       lastUrl = location.href;
       cleanup.setTimeout(init, 500, 'autocomplete-nav-reinit');
     }
-  }), 'autocomplete-nav-observer').observe(document, { subtree: true, childList: true });
+  }, 5000, 'autocomplete-nav-poll');
 
   // Initial run with retry — chat component may load after document_end
   let initAttempts = 0;

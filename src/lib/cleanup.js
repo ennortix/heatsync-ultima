@@ -79,14 +79,34 @@
 
   function _untrackListener(target, event, handler) {
     if (!target || !event || !handler) return
-    target.removeEventListener(event, handler)
-    // remove all matching entries (same target + event + handler reference)
+    // find matching entry to get original options (needed for capture-phase removal)
+    let opts
     for (let i = _listeners.length - 1; i >= 0; i--) {
       const l = _listeners[i]
       if (l.target === target && l.event === event && l.handler === handler) {
+        opts = l.options
         _listeners.splice(i, 1)
       }
     }
+    target.removeEventListener(event, handler, opts)
+  }
+
+  // --- requestAnimationFrame ---
+
+  const _rafs = new Set()
+
+  function _raf(fn) {
+    const id = requestAnimationFrame(() => {
+      _rafs.delete(id)
+      fn()
+    })
+    _rafs.add(id)
+    return id
+  }
+
+  function _cancelRaf(id) {
+    cancelAnimationFrame(id)
+    _rafs.delete(id)
   }
 
   // --- nuclear ---
@@ -102,6 +122,9 @@
       try { obs.disconnect() } catch (e) {}
     })
     _observers.clear()
+
+    _rafs.forEach(id => cancelAnimationFrame(id))
+    _rafs.clear()
 
     for (let i = _listeners.length - 1; i >= 0; i--) {
       const l = _listeners[i]
@@ -119,6 +142,10 @@
     untrackObserver: _untrackObserver,
     trackListener: _trackListener,
     untrackListener: _untrackListener,
+    addEventListener: _trackListener,
+    removeEventListener: _untrackListener,
+    raf: _raf,
+    cancelRaf: _cancelRaf,
     destroyAll: _destroyAll,
   }
 })()

@@ -2,6 +2,13 @@
 
 const whisperTimeline = [] // { user, text, color, time, self, platform, key }
 const whisperUsers = new Map() // key → { platform, userId, displayName, color }
+const WHISPER_USERS_MAX = 200
+function whisperUsersSet(key, value) {
+  whisperUsers.set(key, value)
+  if (whisperUsers.size > WHISPER_USERS_MAX) {
+    whisperUsers.delete(whisperUsers.keys().next().value)
+  }
+}
 let lastWhisperKey = null // for /r — last person involved in a whisper
 let whisperTotalUnread = 0
 let whisperLastViewedTime = 0
@@ -80,7 +87,7 @@ function loadWhispers() {
       if (v1 && typeof v1 === 'object' && !v1.timeline) {
         for (const [key, conv] of Object.entries(v1)) {
           if (!conv || !conv.msgs) continue
-          whisperUsers.set(key, {
+          whisperUsersSet(key, {
             platform: conv.platform || (key.startsWith('hs:') ? 'heatsync' : 'twitch'),
             userId: conv.userId,
             displayName: conv.displayName,
@@ -123,7 +130,7 @@ function handleIncomingWhisper(msg) {
   if (msg.id && whisperTimeline.some(m => m.id === msg.id)) return
 
   const key = `twitch:${msg.user.toLowerCase()}`
-  whisperUsers.set(key, {
+  whisperUsersSet(key, {
     platform: 'twitch',
     userId: msg.userId,
     displayName: msg.user,
@@ -163,7 +170,7 @@ function handleIncomingWhisper(msg) {
 
 function handleIncomingDm(data) {
   const key = `hs:${data.from_user_id}`
-  whisperUsers.set(key, {
+  whisperUsersSet(key, {
     platform: 'heatsync',
     userId: data.from_user_id,
     displayName: data.from_display_name,
@@ -277,7 +284,7 @@ function renderWhispersTab() {
       if (!resp.ok || !Array.isArray(resp.data)) return
       for (const dm of resp.data) {
         const key = `hs:${dm.other_user_id}`
-        whisperUsers.set(key, {
+        whisperUsersSet(key, {
           platform: 'heatsync',
           userId: dm.other_user_id,
           displayName: dm.other_display_name,

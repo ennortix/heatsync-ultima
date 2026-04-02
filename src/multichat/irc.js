@@ -263,6 +263,8 @@ class IRC {
     this._ac?.abort();
     this._stopHeartbeat();
     clearTimeout(this._reconnectTimer);
+    for (const id of Object.values(this._persistTimers)) clearTimeout(id);
+    this._persistTimers = {};
     if (this.ws) {
       this.ws.onclose = null;
       try { this.ws.close(); } catch {}
@@ -345,9 +347,9 @@ class IRC {
           knownColors.set(msg.user.toLowerCase(), msg.color);
         }
         if (usernameCache.size > 500) {
-          usernameCache.delete(usernameCache.values().next().value);
-          const oldest = knownColors.keys().next().value;
-          knownColors.delete(oldest);
+          const evicted = usernameCache.values().next().value;
+          usernameCache.delete(evicted);
+          knownColors.delete(evicted.toLowerCase());
         }
         fetchChannelBadges(ch);
 
@@ -776,6 +778,8 @@ class KickChat {
       chrome.runtime?.onMessage?.removeListener(this._listener)
       this._listener = null
     }
+    for (const id of Object.values(this._persistTimers)) clearTimeout(id);
+    this._persistTimers = {};
     // Leave all channels
     for (const username of this.channels.keys()) {
       safeSendMessage({ type: 'ws_send', data: { type: 'channel:leave', platform: 'kick', channel: username } })

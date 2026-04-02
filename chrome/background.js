@@ -28,8 +28,8 @@ const LINK_PREVIEW_API = 'https://heatsync.org/api/link-preview'
 browser.runtime.onInstalled.addListener((details) => {
   log(' 📦 onInstalled - extension installed/updated', details.reason);
   // Clear any stale intervals from previous version
-  activeIntervals.forEach(clearInterval);
-  activeIntervals.length = 0;
+  activeIntervals.forEach(id => clearInterval(id));
+  activeIntervals.clear();
   // Clear channel emote cache (in-memory + storage) so stale data doesn't block refetches
   channelEmotesMap = {};
   channelEmotesFetchedAt = {};
@@ -197,10 +197,14 @@ function absUrl(url) {
 }
 
 // Track intervals for cleanup (memory leak prevention)
-const activeIntervals = [];
+const activeIntervals = new Set();
 function trackInterval(id) {
-  activeIntervals.push(id);
+  activeIntervals.add(id);
   return id;
+}
+function untrackInterval(id) {
+  clearInterval(id);
+  activeIntervals.delete(id);
 }
 
 // Fetch with 10s timeout to prevent hung requests
@@ -1562,7 +1566,7 @@ function start7TVPolling() {
 
 function stop7TVPolling() {
   if (seventvPollTimer) {
-    clearInterval(seventvPollTimer);
+    untrackInterval(seventvPollTimer);
     seventvPollTimer = null;
   }
 }
@@ -1949,6 +1953,9 @@ async function connectWebSocket() {
     clearTimeout(reconnectTimer);
     reconnectTimer = null;
     socket.onclose = null; // prevent scheduleReconnect on intentional close
+    socket.onmessage = null;
+    socket.onopen = null;
+    socket.onerror = null;
     socket.close();
     wsState = WS_STATE.DISCONNECTED;
     isAuthenticated = false;
@@ -1998,7 +2005,7 @@ async function connectWebSocket() {
         wsState = WS_STATE.CONNECTED;
 
         // Start heartbeat to keep connection alive (server has 2min idle timeout)
-        if (heartbeatInterval) clearInterval(heartbeatInterval)
+        if (heartbeatInterval) untrackInterval(heartbeatInterval)
         heartbeatInterval = trackInterval(setInterval(() => {
           if (isSocketOpen()) {
             // Zombie detection: if no data received in 2min, connection is silently dead
@@ -2071,7 +2078,7 @@ async function connectWebSocket() {
       socket.onclose = (event) => {
         clearTimeout(connectTimeout);
         if (heartbeatInterval) {
-          clearInterval(heartbeatInterval);
+          untrackInterval(heartbeatInterval);
           heartbeatInterval = null;
         }
         log(' ⚠️ WebSocket disconnected:', event.code, event.reason);
@@ -2370,7 +2377,7 @@ function handleWSMessage(msg) {
       const streamNow = Date.now()
       if (wsStreamEventDedup.has(streamKey) && streamNow - wsStreamEventDedup.get(streamKey) < 60000) break
       wsStreamEventDedup.set(streamKey, streamNow)
-      if (wsStreamEventDedup.size > 200) {
+      if (wsStreamEventDedup.size > 100) {
         for (const [k, t] of wsStreamEventDedup) { if (streamNow - t > 60000) wsStreamEventDedup.delete(k) }
       }
       broadcastToTabs({
@@ -3413,8 +3420,12 @@ async function initialize() {
   try {
     const session = await browser.storage.session?.get('tab_channels')
     if (session?.tab_channels) {
+      // Validate restored tab IDs still exist
+      const allTabs = await browser.tabs.query({})
+      const validIds = new Set(allTabs.map(t => t.id))
       for (const [tabId, entry] of Object.entries(session.tab_channels)) {
-        tabChannels.set(Number(tabId), entry)
+        const id = Number(tabId)
+        if (validIds.has(id)) tabChannels.set(id, entry)
       }
       log(' ✓ Restored', tabChannels.size, 'tab channels from session storage')
     }

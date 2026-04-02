@@ -4773,7 +4773,7 @@ function updateEmoteState(hash, emoteName, state) {
 
   let cardDragAC = null
   function closeCard() {
-    if (cardPollInterval) { clearInterval(cardPollInterval); cardPollInterval = null }
+    if (cardPollInterval) { cleanup.clearInterval(cardPollInterval); cardPollInterval = null }
     if (cardDragAC) { cardDragAC.abort(); cardDragAC = null }
     if (cardEl) {
       cardEl.remove()
@@ -4949,10 +4949,10 @@ function updateEmoteState(hash, emoteName, state) {
       }
 
       // Live-poll viewer count every 10s while card is visible (lightweight endpoint)
-      if (cardPollInterval) { clearInterval(cardPollInterval); cardPollInterval = null }
+      if (cardPollInterval) { cleanup.clearInterval(cardPollInterval); cardPollInterval = null }
       if (profile && (profile.twitch_is_live || profile.kick_is_live)) {
         cardPollInterval = cleanup.setInterval(async () => {
-          if (!cardEl) { clearInterval(cardPollInterval); cardPollInterval = null; return }
+          if (!cardEl) { cleanup.clearInterval(cardPollInterval); cardPollInterval = null; return }
           try {
             const fresh = await HS.apiFetch(`/api/profile/${encodeURIComponent(username)}/live`)
             if (!fresh || !cardEl) return
@@ -5662,9 +5662,10 @@ function watchForNewMessages() {
 
   log(' ✅ watchForNewMessages: found container:', chatContainer.className?.substring(0, 100));
 
-  // Disconnect existing observer if any
+  // Disconnect and untrack existing observer if any
   if (messageObserver) {
-    messageObserver.disconnect();
+    cleanup.untrackObserver(messageObserver)
+    messageObserver = null
     log(' 🔌 Disconnected previous message observer');
   }
 
@@ -6104,7 +6105,7 @@ function updateEmoteBridgeImmediate() {
 }
 
 function updateEmoteBridge() {
-  clearTimeout(_emoteBridgeDebounce)
+  if (_emoteBridgeDebounce) { cleanup.clearTimeout(_emoteBridgeDebounce); _emoteBridgeDebounce = null }
   _emoteBridgeDebounce = cleanup.setTimeout(() => updateEmoteBridgeImmediate(), 100)
 }
 
@@ -6425,6 +6426,7 @@ function handleNavigation() {
   channelEmotes = []
   currentChannelOwner = null
   msgCacheBuffer = []
+  msgCacheIds.clear()
   subTenureMap.clear()
   invalidateChatContainerCache()
   allEmotesDirty = true
@@ -6463,13 +6465,13 @@ cleanup.setInterval(() => {
     log(' 🔄 Chat container changed, re-hooking observer');
     watchForNewMessages();
     if (usernameColoringObserver) {
-      usernameColoringObserver.disconnect();
+      cleanup.untrackObserver(usernameColoringObserver)
       usernameColoringObserver = null;
     }
     setupUsernameColoringObserver();
   } else if (!freshContainer && observedContainer && !observedContainer.isConnected) {
     log(' ⚠️ Chat container removed from DOM, clearing observer');
-    if (messageObserver) { messageObserver.disconnect(); messageObserver = null; }
+    if (messageObserver) { cleanup.untrackObserver(messageObserver); messageObserver = null; }
     observedContainer = null;
   }
 }, 2000, 'observer-health-check');

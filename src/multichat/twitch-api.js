@@ -788,7 +788,7 @@ function attachRewardHandlers() {
       if (secs <= 0) {
         _rewardsCache = null
         renderTwitchTab()
-        clearInterval(iv)
+        cleanup.clearInterval(iv)
         return
       }
       el.textContent = secs > 60 ? `${Math.ceil(secs / 60)}m cooldown` : `${secs}s cooldown`
@@ -1142,7 +1142,7 @@ function attachPredictionHandlers() {
     }
     update()
     const iv = cleanup.setInterval(() => {
-      if (!el.isConnected) { clearInterval(iv); return }
+      if (!el.isConnected) { cleanup.clearInterval(iv); return }
       update()
     }, 1000)
   })
@@ -1158,7 +1158,7 @@ let _hypeTrainActive = null // { level, startedAt }
 let _bannerFingerprint = '' // avoid rebuilding if nothing changed
 
 function clearBannerTimers() {
-  _bannerTimers.forEach(id => clearInterval(id))
+  _bannerTimers.forEach(id => cleanup.clearInterval(id))
   _bannerTimers = []
 }
 
@@ -2680,7 +2680,7 @@ function attachPollHandlers() {
     }
     update()
     const iv = cleanup.setInterval(() => {
-      if (!el.isConnected) { clearInterval(iv); return }
+      if (!el.isConnected) { cleanup.clearInterval(iv); return }
       update()
     }, 1000)
   })

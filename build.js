@@ -32,6 +32,7 @@ const CONTENT_SCRIPTS = [
   'heatsync-button.js',
   'autocomplete-hook.js',
   'chat-injector.js',
+  'youtube-content.js',
 ]
 
 // Files to copy as-is (no lib bundling needed)
@@ -47,7 +48,6 @@ const COPY_FILES = [
   'emoji-data.js',
   'welcome.html',
   'injected-message.css',
-  'youtube-content.js',
   'vi-mode.js',
   'kick-autocomplete-hook.js',
 ]
@@ -202,6 +202,10 @@ function build(browser) {
 
   // Copy manifest
   cpSync(manifestSrc, join(outDir, 'manifest.json'))
+  // Also write to chrome/ so unpacked extension loads the updated manifest
+  if (browser === 'chrome') {
+    cpSync(manifestSrc, join(__dirname, 'chrome', 'manifest.json'))
+  }
   console.log(`  Copied manifest (${browser})`)
 
   // Copy _locales

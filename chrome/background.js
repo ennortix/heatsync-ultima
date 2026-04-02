@@ -894,8 +894,13 @@ async function fetch7TVChannelEmotes(channelName, channelId = null, platform = '
       zeroWidth: !!((e.flags & 257) || (e.data?.flags & 257))
     })));
     const cosmeticIds = extract7TVCosmeticIds(data)
-    const ownerCosmetic = await resolve7TVCosmeticIds(cosmeticIds)
-    return { emotes, setId: emoteSet.id, ownerCosmetic };
+    // Resolve cosmetics async — dont block emote return
+    if (cosmeticIds && channelId) {
+      resolve7TVCosmeticIds(cosmeticIds).then(cosmetic => {
+        if (cosmetic) setUserCosmetic(String(channelId), cosmetic)
+      }).catch(() => {})
+    }
+    return { emotes, setId: emoteSet.id }
   } catch (error) {
     console.error('[hs-bg] 7TV FETCH ERROR for', channelName, ':', error?.message || error);
     if (DEBUG) broadcastToTabs({ type: 'debug_log', msg: `7TV ERROR ${channelName}: ${error?.message || error}` })
@@ -973,17 +978,34 @@ async function resolve7TVCosmeticIds(ids) {
   return result
 }
 
+let cosmeticsSaveTimer = null
+const COSMETICS_STORAGE_MAX = 200
+
+function debounceSaveCosmetics() {
+  if (cosmeticsSaveTimer) clearTimeout(cosmeticsSaveTimer)
+  cosmeticsSaveTimer = setTimeout(() => {
+    cosmeticsSaveTimer = null
+    const entries = [...userCosmeticsCache.entries()]
+      .filter(([, v]) => Date.now() - v.fetchedAt < USER_COSMETICS_TTL)
+      .slice(-COSMETICS_STORAGE_MAX)
+    browser.storage.local.set({
+      user_cosmetics_cache: entries.map(([k, v]) => [k, { paint: v.paint, badge: v.badge, fetchedAt: v.fetchedAt }])
+    }).catch(() => {})
+  }, 5000)
+}
+
 function setUserCosmetic(twitchId, cosmetic) {
   if (userCosmeticsCache.size >= USER_COSMETICS_MAX) {
     userCosmeticsCache.delete(userCosmeticsCache.keys().next().value)
   }
   userCosmeticsCache.set(twitchId, { ...(cosmetic || { paint: null, badge: null }), fetchedAt: Date.now() })
+  debounceSaveCosmetics()
 }
 
 async function fetchBulkBadges() {
-  if (Date.now() - badgesFetchedAt < BADGES_TTL) return
+  const mapsPopulated = ffzBadgeMap.size > 0 || bttvBadgeMap.size > 0 || chatterinoBadgeMap.size > 0
+  if (mapsPopulated && Date.now() - badgesFetchedAt < BADGES_TTL) return
   badgesFetchedAt = Date.now()
-  browser.storage.local.set({ badges_fetched_at: badgesFetchedAt }).catch(() => {})
   try {
     const [bttvResp, ffzResp, chatterinoResp] = await Promise.allSettled([
       fetchWithTimeout('https://api.betterttv.net/3/cached/badges'),
@@ -1037,6 +1059,19 @@ async function fetchBulkBadges() {
       log(' Chatterino badges loaded:', chatterinoBadgeMap.size, 'users')
     }
     broadcastBadgeMaps()
+    // Persist badge maps + timestamp so they survive MV3 service worker restarts
+    const bttvObj = {}
+    for (const [k, v] of bttvBadgeMap) bttvObj[k] = v
+    const ffzObj = {}
+    for (const [k, v] of ffzBadgeMap) ffzObj[k] = v
+    const chatterinoObj = {}
+    for (const [k, v] of chatterinoBadgeMap) chatterinoObj[k] = v
+    browser.storage.local.set({
+      badges_fetched_at: badgesFetchedAt,
+      bttv_badge_map: bttvObj,
+      ffz_badge_map: ffzObj,
+      chatterino_badge_map: chatterinoObj
+    }).catch(() => {})
   } catch (e) {
     log(' fetchBulkBadges failed:', e.message)
     badgesFetchedAt = 0
@@ -1111,12 +1146,9 @@ async function fetchChannelOwnerEmotes(channelName, channelId = null, platform =
       platform !== 'kick' ? fetchTwitchChannelEmotes(channelName) : Promise.resolve([])
     ];
     const [bttvEmotes, ffzEmotes, sevenTVResult, twitchChannelEmotes] = await Promise.all(fetches);
-    // fetch7TVChannelEmotes returns { emotes, setId, ownerCosmetic } or [] on error
+    // fetch7TVChannelEmotes returns { emotes, setId } or [] on error (cosmetics resolve async)
     const sevenTVEmotes = sevenTVResult?.emotes || sevenTVResult || [];
     const sevenTVSetId = sevenTVResult?.setId || null;
-    if (sevenTVResult?.ownerCosmetic && channelId) {
-      setUserCosmetic(String(channelId), sevenTVResult.ownerCosmetic)
-    }
     if (DEBUG) broadcastToTabs({ type: 'debug_log', msg: `${channelName} BTTV:${bttvEmotes.length} FFZ:${ffzEmotes.length} 7TV:${sevenTVEmotes.length} Twitch:${twitchChannelEmotes.length} HS:${heatsyncEmotes.length}` })
 
     // Store emotes for this specific channel (prune old entries to bound memory)
@@ -1336,7 +1368,6 @@ function fetchGlobalEmotes() {
       log('📊 Total global emotes:', globalEmotes.length);
 
       broadcastToTabs({ type: 'global_emotes_update', emotes: globalEmotes });
-      fetchBulkBadges()
       return;
     }
     log(' Server API failed, trying fallback');
@@ -1358,7 +1389,6 @@ function fetchGlobalEmotes() {
   } finally {
     globalEmotesFetchPromise = null
   }
-  fetchBulkBadges()
   })()
   return globalEmotesFetchPromise
 }
@@ -2966,9 +2996,12 @@ async function handleMessage(message, sender, sendResponse) {
           } else if (url.hostname.includes('youtube.com')) {
             // YouTube watch pages — extract video ID as channel identifier
             const v = url.searchParams.get('v')
-            if (v && !seen.has(v)) {
-              seen.add(v)
-              channels.push({ name: v, platform: 'youtube' })
+            // Also try to extract @handle from /@channel paths
+            const handleMatch = url.pathname.match(/^\/@([^/]+)/)
+            const channelName = handleMatch ? handleMatch[1] : v
+            if (channelName && !seen.has('yt:' + channelName)) {
+              seen.add('yt:' + channelName)
+              channels.push({ name: channelName, platform: 'youtube' })
             }
             continue
           }
@@ -3319,6 +3352,27 @@ async function handleMessage(message, sender, sendResponse) {
     })()
     return true
 
+  } else if (message.type === 'youtube_send_message') {
+    (async () => {
+      try {
+        const { text } = message
+        if (!text) { sendResponse({ ok: false, error: 'missing params' }); return }
+        // Find a YouTube tab — sendMessage reaches all frames including the live_chat iframe
+        const tabs = await browser.tabs.query({ url: '*://www.youtube.com/*' })
+        if (!tabs || tabs.length === 0) { sendResponse({ ok: false, error: 'no_youtube_tab' }); return }
+        // Relay to first YouTube tab (youtube-content.js in the iframe handles it)
+        const result = await browser.tabs.sendMessage(tabs[0].id, {
+          type: 'youtube_send_relay',
+          text
+        })
+        sendResponse(result || { ok: false, error: 'no response from tab' })
+      } catch (e) {
+        log('youtube_send_message error:', e.message)
+        sendResponse({ ok: false, error: e.message })
+      }
+    })()
+    return true
+
   } else if (message.type === 'api_fetch') {
     // Generic API proxy — content scripts route through here to bypass CORS
     if (!message.path || !message.path.startsWith('/api/') || /\.\./.test(message.path)) {
@@ -3445,7 +3499,8 @@ async function initialize() {
     const stored = await browser.storage.local.get([
       'user_info', 'channel_emotes_fetched_at', 'channel_emotes_map', 'seventv_emote_set_ids',
       'muted_users', 'blocked_users', 'global_emotes', 'emote_inventory', 'blocked_emotes',
-      'local_blocked_emotes', 'youtube_channel_urls', 'badges_fetched_at'
+      'local_blocked_emotes', 'youtube_channel_urls', 'badges_fetched_at',
+      'bttv_badge_map', 'ffz_badge_map', 'chatterino_badge_map', 'user_cosmetics_cache'
     ]);
 
     if (stored.user_info?.username) {
@@ -3510,6 +3565,17 @@ async function initialize() {
       badgesFetchedAt = stored.badges_fetched_at;
       log(' ✓ Restored badgesFetchedAt:', new Date(badgesFetchedAt).toISOString());
     }
+    if (stored.user_cosmetics_cache && Array.isArray(stored.user_cosmetics_cache)) {
+      const now = Date.now()
+      let restored = 0
+      for (const [key, val] of stored.user_cosmetics_cache) {
+        if (val?.fetchedAt && now - val.fetchedAt < USER_COSMETICS_TTL) {
+          userCosmeticsCache.set(key, val)
+          restored++
+        }
+      }
+      if (restored > 0) log(' ✓ Warm cache:', restored, 'user cosmetics from storage')
+    }
   } catch (err) {
     log(' Storage restore failed:', err.message);
   }
@@ -3531,6 +3597,11 @@ async function initialize() {
     console.warn('session storage restore failed:', e)
   }
 
+  // Broadcast warm-cached badges immediately (before fresh fetch)
+  if (bttvBadgeMap.size > 0 || ffzBadgeMap.size > 0 || chatterinoBadgeMap.size > 0) {
+    broadcastBadgeMaps()
+  }
+
   // Start WebSocket immediately (don't wait for API fetches)
   connectWebSocket().catch(() => {});
 
@@ -3539,6 +3610,7 @@ async function initialize() {
   // Fetch fresh data in parallel (updates warm cache)
   Promise.all([
     fetchGlobalEmotes(),
+    fetchBulkBadges(),
     fetchEmoteInventory(),
     fetchBlockedEmotes(),
     fetchFollowedUsers(),

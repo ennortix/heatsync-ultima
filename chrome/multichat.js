@@ -177,6 +177,16 @@ const CONFIG = {
     NATIVE_EMOTE_IMG: 'img[data-a-target="emote-name"]',
     NATIVE_EMOTE_BUTTON_IMG: 'button[data-a-target="emote-button"] img',
     NATIVE_EMOTE_CLASS: '[class*="emote"] img',
+
+    // YouTube chat (live_chat iframe)
+    YT_CHAT_CONTAINER: 'yt-live-chat-item-list-renderer #items',
+    YT_MESSAGE: 'yt-live-chat-text-message-renderer',
+    YT_USERNAME: '#author-name',
+    YT_MESSAGE_TEXT: '#message',
+    YT_CHAT_INPUT: 'yt-live-chat-text-input-field-renderer div#input[contenteditable]',
+    YT_SEND_BUTTON: '#send-button button, yt-button-shape button',
+    YT_INPUT_RENDERER: 'yt-live-chat-text-input-field-renderer',
+    YT_EMOJI_BUTTON: '#emoji-suggestions-button, #picker-buttons yt-live-chat-icon-toggle-button-renderer',
   },
 
   // ─── CSS classes injected by HeatSync ───────────────────────────────────────
@@ -5249,6 +5259,28 @@ async function renderTwitchTab() {
   if (!container) return
 
   const channel = getActiveTwitchChannel()
+
+  // YouTube/Kick: Twitch features (predictions, polls, rewards, color, clips) require
+  // the Twitch page context (auth cookie + GQL proxy). Show what's available instead.
+  if (hostPlatform === 'yt' || hostPlatform === 'kick') {
+    container.textContent = ''
+    const notice = document.createElement('div')
+    notice.className = 'hs-mc-pred-empty'
+    notice.style.cssText = 'padding:20px;text-align:center;'
+    const msg = document.createElement('div')
+    msg.className = 'hs-mc-pred-empty-text'
+    msg.textContent = hostPlatform === 'yt'
+      ? 'twitch features (predictions, polls, rewards, clips) are available when viewing on twitch'
+      : 'some features require the twitch page'
+    notice.appendChild(msg)
+    container.appendChild(notice)
+    // Popout chat still works — opens in new window
+    if (channel) {
+      container.appendChild(renderQuickLinks())
+    }
+    return
+  }
+
   if (!channel) {
     container.textContent = ''
     const empty = document.createElement('div')
@@ -9729,6 +9761,10 @@ async function sendMessage() {
 
   const sendToKick = !!kickSlug || isLiveKick
   const sendToTwitch = !!twitchName && !isLiveKick
+
+  const ytUrl = typeof ch !== 'string' ? ch?.youtube : null
+  const isLiveYt = currentTab === 'live' && hostPlatform === 'yt'
+  const sendToYoutube = !!ytUrl || isLiveYt
   const isDualSend = sendToKick && sendToTwitch
 
   // Track for echo dedup (dual-send only — suppress second platform's duplicate)
@@ -9785,6 +9821,18 @@ async function sendMessage() {
     return
   }
 
+  // --- YouTube send path ---
+  if (sendToYoutube && !sendToKick) {
+    sendYoutubeMessage(text).then(result => {
+      if (result !== true) {
+        const errorMsg = result === 'no_youtube_tab' ? 'open youtube live chat first'
+          : 'youtube send failed'
+        showToast(errorMsg)
+      }
+    })
+    return
+  }
+
   // --- Twitch-only send path (existing behavior) ---
   const { token, username: twitchNick } = await getTwitchAuthTokenAsync()
   if (!token) {
@@ -9816,11 +9864,25 @@ async function sendMessage() {
   })
 }
 
+async function sendYoutubeMessage(text) {
+  try {
+    const resp = await safeSendMessage({ type: 'youtube_send_message', text })
+    if (resp?.ok) return true
+    return resp?.error || 'send_failed'
+  } catch (e) {
+    log('YouTube send error:', e.message)
+    return 'send_failed'
+  }
+}
+
 // === END MULTICHAT MODULES ===
 
 
 const STORAGE_KEY = 'heatsync_multichat';
   const LOG_PREFIX = '[heatsync-mc]';
+
+  // DEBUG: temporary marker to verify script injection on YouTube
+  document.documentElement.dataset.hsMcLoaded = '1';
 
   const COLOR_RE = /^#[0-9a-fA-F]{3,6}$/
 
@@ -9972,24 +10034,62 @@ const STORAGE_KEY = 'heatsync_multichat';
       mcCosmeticsTimer = cleanup.setTimeout(() => {
         mcCosmeticsTimer = null
         flushMcCosmeticsBatch()
-      }, 500)
+      }, 100)
     }
   }
 
   function flushMcCosmeticsBatch() {
     if (!mcCosmeticsPending.size) return
-    const batch = [...mcCosmeticsPending].slice(0, 10)
+    const batch = [...mcCosmeticsPending].slice(0, 25)
     batch.forEach(id => mcCosmeticsPending.delete(id))
     safeSendMessage({ type: 'get_user_cosmetics', twitchIds: batch }).then(resp => {
       if (!resp?.cosmetics) return
-      let changed = false
+      const changedIds = []
       for (const [uid, c] of Object.entries(resp.cosmetics)) {
-        if (c) { setMcCosmetic(uid, c); changed = true }
+        if (c) { setMcCosmetic(uid, c); changedIds.push(uid) }
       }
-      if (changed) renderMessages(currentTab)
+      if (changedIds.length) updateCosmeticsInPlace(changedIds)
     }).catch(() => {})
     if (mcCosmeticsPending.size > 0) {
-      mcCosmeticsTimer = cleanup.setTimeout(() => { mcCosmeticsTimer = null; flushMcCosmeticsBatch() }, 2000)
+      mcCosmeticsTimer = cleanup.setTimeout(() => { mcCosmeticsTimer = null; flushMcCosmeticsBatch() }, 500)
+    }
+  }
+
+  // Update cosmetics (badges + paint) in-place without full re-render
+  function updateCosmeticsInPlace(userIds) {
+    const container = document.getElementById('hs-mc-messages')
+    if (!container) return
+    for (const uid of userIds) {
+      const cosmetic = mcUserCosmetics.get(uid)
+      if (!cosmetic) continue
+      const divs = container.querySelectorAll(`[data-uid="${uid}"]`)
+      for (const div of divs) {
+        // Update paint on username link
+        const userLink = div.querySelector('.hs-mc-user')
+        if (userLink) {
+          const paintStyle = getMcPaintStyle(uid)
+          if (paintStyle) {
+            userLink.setAttribute('style', paintStyle)
+          }
+        }
+        // Add 7TV badge if not already present and cosmetic has one
+        if (cosmetic.badge && !div.querySelector('.hs-mc-7tv-badge')) {
+          const files = cosmetic.badge.host?.files || []
+          const file = files.find(f => f.name?.endsWith('.webp')) || files.find(f => f.name?.endsWith('.avif')) || files[0]
+          if (file) {
+            const base = cosmetic.badge.host?.url || ''
+            const url = (base.endsWith('/') ? base : base + '/') + file.name
+            const img = document.createElement('img')
+            img.className = 'hs-mc-badge-img hs-mc-7tv-badge'
+            img.src = url
+            img.alt = '7TV'
+            img.title = cosmetic.badge.tooltip || '7TV'
+            img.style.cssText = 'width:18px;height:18px;'
+            // Insert before the username link
+            if (userLink) userLink.parentNode.insertBefore(img, userLink)
+          }
+        }
+      }
     }
   }
 
@@ -14798,12 +14898,23 @@ const STORAGE_KEY = 'heatsync_multichat';
     // breaking Kick's React virtual scroll. React's reconciliation errors
     // corrupt native chat when our container is inside its managed tree.
     // On Twitch: insert into chat-shell (which has proper dimensions)
-    const parent = isKick
-      ? chatRoom.parentElement
-      : (document.querySelector('.chat-shell') || document.querySelector('[class*="chat-shell"]') || chatRoom.parentElement)
-    if (isKick) {
+    // On YouTube: insert after the live chat frame in #chat-container or #secondary
+    let parent
+    if (hostPlatform === 'yt') {
+      parent = chatRoom
+      // Hide native YouTube chat iframe, replace with multichat
+      const ytChatFrame = parent.querySelector('ytd-live-chat-frame#chat')
+      if (ytChatFrame) {
+        const frameHeight = ytChatFrame.offsetHeight || 500
+        ytChatFrame.style.display = 'none'
+        container.style.cssText = `position:relative;display:flex;flex-direction:column;height:${frameHeight}px;overflow:hidden;`
+      }
+      parent.appendChild(container)
+    } else if (isKick) {
+      parent = chatRoom.parentElement
       chatRoom.after(container)
     } else {
+      parent = document.querySelector('.chat-shell') || document.querySelector('[class*="chat-shell"]') || chatRoom.parentElement
       parent.appendChild(container)
     }
     log('Created #hs-mc-container in', parent.tagName + '.' + [...parent.classList].join('.'))
@@ -14813,25 +14924,32 @@ const STORAGE_KEY = 'heatsync_multichat';
   function ensureUIElements() {
     // Always watch for collapse/expand class changes so we can clean up
     // inline styles when the user clicks the expand arrow
-    startColumnClassWatcher();
+    if (hostPlatform !== 'yt') startColumnClassWatcher();
 
     // Don't fight Twitch when chat is collapsed — let the native expand arrow work
-    const rightCol = document.querySelector('.right-column')
-    const collapsed = rightCol && rightCol.classList.contains('right-column--collapsed')
-
-    if (collapsed) return
-
-    // Make sure chat column is visible (only when expanded)
-    ensureChatColumnVisible();
+    if (hostPlatform !== 'yt') {
+      const rightCol = document.querySelector('.right-column')
+      const collapsed = rightCol && rightCol.classList.contains('right-column--collapsed')
+      if (collapsed) return
+      // Make sure chat column is visible (only when expanded)
+      ensureChatColumnVisible();
+    }
 
     // Find the React-controlled chat room
-    const chatRoom = isKick
-      ? (document.getElementById('channel-chatroom') || document.querySelector('[id*="chatroom"]'))
-      : (document.querySelector('[class*="chat-room__content"]') ||
-         document.querySelector('[data-a-target="chat-room-component"]') ||
-         document.querySelector('.chat-shell') ||
-         document.querySelector('[class*="stream-chat"]') ||
-         document.querySelector('.chat-room'));
+    let chatRoom
+    if (hostPlatform === 'yt') {
+      chatRoom = document.querySelector('#chat-container') ||
+                 document.querySelector('ytd-live-chat-frame#chat')?.parentElement ||
+                 document.querySelector('#secondary')
+    } else if (isKick) {
+      chatRoom = document.getElementById('channel-chatroom') || document.querySelector('[id*="chatroom"]')
+    } else {
+      chatRoom = document.querySelector('[class*="chat-room__content"]') ||
+                 document.querySelector('[data-a-target="chat-room-component"]') ||
+                 document.querySelector('.chat-shell') ||
+                 document.querySelector('[class*="stream-chat"]') ||
+                 document.querySelector('.chat-room')
+    }
 
     if (!chatRoom) return;
 
@@ -15358,6 +15476,7 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
 
     const div = document.createElement('div');
     div.className = cls;
+    if (m.userId) div.dataset.uid = m.userId
     if (isSuperChat && m.scColor) {
       const safeBg = sanitizeColor(m.scColor)
       div.style.background = safeBg + '22'
@@ -15675,6 +15794,8 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
       input.type = 'text'
       input.placeholder = placeholder
       input.style.cssText = 'flex:1;background:#ffffff;color:#000000;border:1px solid #808080;padding:6px 10px;border-radius:0;font-size:14px;outline:none;font-family:inherit;'
+      // Stop YouTube/Kick keyboard shortcuts from stealing keystrokes
+      input.addEventListener('keydown', (e) => e.stopPropagation())
       row.appendChild(lbl)
       row.appendChild(input)
       return { row, input }
@@ -15864,6 +15985,8 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
       input.placeholder = placeholder;
       input.value = value || '';
       input.style.cssText = 'flex:1;background:#ffffff;color:#000000;border:1px solid #808080;padding:6px 10px;border-radius:0;font-size:14px;outline:none;font-family:inherit;';
+      // Stop YouTube/Kick keyboard shortcuts from stealing keystrokes
+      input.addEventListener('keydown', (e) => e.stopPropagation())
       row.appendChild(lbl);
       row.appendChild(input);
       return { row, input };
@@ -16101,6 +16224,17 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
    * Get current channel from URL
    */
   function getCurrentChannel() {
+    // YouTube: /@handle/live, /watch?v=, /live/videoId
+    if (location.hostname.includes('youtube.com')) {
+      const handleMatch = location.pathname.match(/^\/@([^/]+)/)
+      if (handleMatch) return handleMatch[1].toLowerCase()
+      const vParam = new URLSearchParams(location.search).get('v')
+      if (vParam) return vParam
+      const liveMatch = location.pathname.match(/^\/live\/([^/?]+)/)
+      if (liveMatch) return liveMatch[1]
+      return null
+    }
+
     // Match /username or /popout/username/chat or /embed/username/chat
     const match = location.pathname.match(/^\/(?:popout\/|embed\/)?([a-zA-Z0-9_]+)/);
     if (match && match[1]) {
@@ -16820,7 +16954,13 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
   let mcInitialized = false;
   async function init() {
     let isPopout = false;
-    if (isKick) {
+    if (hostPlatform === 'yt') {
+      // YouTube: run on watch pages, live pages, and @channel/live
+      const isYtLive = !!location.pathname.match(/^\/@[^/]+\/live/) ||
+                       !!location.pathname.match(/^\/watch/) ||
+                       !!location.pathname.match(/^\/live\//)
+      if (!isYtLive) return;
+    } else if (isKick) {
       // Kick: run on channel pages (/<channel>) or popout
       const isKickChannel = location.pathname.match(/^\/[a-zA-Z0-9_-]+\/?$/);
       if (!isKickChannel) return;
@@ -16949,12 +17089,25 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
       } else if (hostPlatform === 'kick') {
         kickChat.join(currentChannel);
         irc.join(currentChannel); // Join same-name Twitch channel
+      } else if (hostPlatform === 'yt') {
+        // YouTube: subscribe to live chat, no IRC/Kick needed for host channel
+        const ytUrl = currentChannel.length > 20
+          ? `https://youtube.com/watch?v=${currentChannel}`
+          : `https://youtube.com/@${currentChannel}/live`
+        chrome.runtime.sendMessage({
+          type: 'youtube_ws_subscribe', url: ytUrl, channelId: '__live_yt_auto__'
+        }).catch(() => {})
+        // Still join IRC/Kick for cross-platform relay
+        irc.join(currentChannel);
+        kickChat.join(currentChannel);
       }
-      // Auto-subscribe YouTube @channelname/live for cross-platform combo
-      const ytAutoUrl = `https://youtube.com/@${currentChannel}/live`
-      chrome.runtime.sendMessage({
-        type: 'youtube_ws_subscribe', url: ytAutoUrl, channelId: '__live_yt_auto__'
-      }).catch(() => {})
+      if (hostPlatform !== 'yt') {
+        // Auto-subscribe YouTube @channelname/live for cross-platform combo
+        const ytAutoUrl = `https://youtube.com/@${currentChannel}/live`
+        chrome.runtime.sendMessage({
+          type: 'youtube_ws_subscribe', url: ytAutoUrl, channelId: '__live_yt_auto__'
+        }).catch(() => {})
+      }
       log('Auto-joined current channel:', currentChannel, '(all platforms)');
     }
 
@@ -17527,7 +17680,26 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
       }
     }, { signal: mcSignal });
 
-    if (isKick) {
+    if (hostPlatform === 'yt') {
+      // YouTube: wait for chat container, then inject directly
+      let ytAttempts = 0;
+      const tryInjectYt = () => {
+        if (mcSignal?.aborted) return;
+        ytAttempts++;
+        const chatContainer = document.getElementById('chat-container') ||
+                              document.querySelector('ytd-live-chat-frame#chat')?.parentElement;
+        if (chatContainer) {
+          ensureUIElements();
+          switchTab(_savedActiveTab || 'live');
+          startLayoutWatcher();
+        } else if (ytAttempts < 30) {
+          cleanup.setTimeout(tryInjectYt, 500);
+        } else {
+          log('Failed to find YouTube chat container after 30 attempts');
+        }
+      };
+      tryInjectYt();
+    } else if (isKick) {
       // Kick: no React hook needed, just inject directly
       let kickAttempts = 0;
       const tryInjectKick = () => {
@@ -17725,6 +17897,11 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
     if (event.origin !== location.origin) return
     if (event.data?.type === 'heatsync-nav') handleMcNav()
   }, { signal: mcSignal })
+
+  // YouTube SPA navigation
+  if (hostPlatform === 'yt') {
+    document.addEventListener('yt-navigate-finish', () => handleMcNav(), { signal: mcSignal })
+  }
 
   // Fallback: polling in case MAIN world script didn't load
   cleanup.setInterval(() => handleMcNav(), 5000, 'spa-nav-fallback');

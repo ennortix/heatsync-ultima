@@ -2559,7 +2559,9 @@
     const platform = window.heatsyncPlatform?.detectPlatform() || 'unknown';
 
     let chatInput;
-    if (platform === 'kick') {
+    if (platform === 'youtube') {
+      chatInput = document.querySelector('yt-live-chat-text-input-field-renderer div#input[contenteditable]')
+    } else if (platform === 'kick') {
       // Kick uses a regular input or textarea
       chatInput = document.querySelector('div.editor-input');
     } else {
@@ -2571,7 +2573,15 @@
       return;
     }
 
-    if (platform === 'kick') {
+    if (platform === 'youtube') {
+      // YouTube: contenteditable div inside live chat iframe
+      const currentText = chatInput.textContent || ''
+      const needsSpace = currentText.length > 0 && !currentText.endsWith(' ')
+      const textToInsert = (needsSpace ? ' ' : '') + emoteName + ' '
+
+      chatInput.focus()
+      document.execCommand('insertText', false, textToInsert)
+    } else if (platform === 'kick') {
       // Kick: contenteditable div.editor-input
       const currentText = chatInput.textContent || '';
       const needsSpace = currentText.length > 0 && !currentText.endsWith(' ');
@@ -2708,6 +2718,14 @@
                document.querySelector('[class*="chat-input"]')?.parentElement ||
                document.querySelector('#message-input')?.parentElement;
       insertAfter = false; // append inside the container on Kick
+    }
+
+    // YouTube live chat iframe — inject near the chat input
+    if (!anchor && window.location.hostname.includes('youtube.com')) {
+      anchor = document.querySelector('yt-live-chat-text-input-field-renderer #buttons') ||
+               document.querySelector('yt-live-chat-text-input-field-renderer') ||
+               document.querySelector('#chat-messages')?.closest('yt-live-chat-renderer')?.querySelector('#input-panel')
+      insertAfter = false // append inside container
     }
 
     if (!anchor) {

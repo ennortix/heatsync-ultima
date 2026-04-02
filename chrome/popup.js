@@ -130,6 +130,19 @@
           if (m && !['categories', 'following', 'settings', 'search'].includes(m[1].toLowerCase())) {
             input.value = m[1].toLowerCase()
           }
+        } else if (url.hostname.includes('youtube.com')) {
+          detectedPlatform = 'youtube'
+          // Extract @handle from /@channel/live
+          const handleMatch = url.pathname.match(/^\/@([^/]+)/)
+          if (handleMatch) {
+            input.value = handleMatch[1].toLowerCase()
+          } else {
+            // Extract video ID from /watch?v= or /live/
+            const vParam = url.searchParams.get('v')
+            const liveMatch = url.pathname.match(/^\/live\/([^/?]+)/)
+            if (vParam) input.value = vParam
+            else if (liveMatch) input.value = liveMatch[1]
+          }
         }
       } catch {}
     })
@@ -137,7 +150,9 @@
     function openPopout() {
       const channel = input.value.trim().toLowerCase().replace(/[^a-z0-9_-]/g, '')
       if (!channel) { input.focus(); return }
-      const url = detectedPlatform === 'kick'
+      const url = detectedPlatform === 'youtube'
+        ? `https://www.youtube.com/live_chat?v=${channel}&is_popout=1`
+        : detectedPlatform === 'kick'
         ? `https://kick.com/${channel}`
         : `https://www.twitch.tv/popout/${channel}/chat`
       chrome.tabs.create({ url })

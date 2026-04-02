@@ -171,6 +171,16 @@ const CONFIG = {
     NATIVE_EMOTE_IMG: 'img[data-a-target="emote-name"]',
     NATIVE_EMOTE_BUTTON_IMG: 'button[data-a-target="emote-button"] img',
     NATIVE_EMOTE_CLASS: '[class*="emote"] img',
+
+    // YouTube chat (live_chat iframe)
+    YT_CHAT_CONTAINER: 'yt-live-chat-item-list-renderer #items',
+    YT_MESSAGE: 'yt-live-chat-text-message-renderer',
+    YT_USERNAME: '#author-name',
+    YT_MESSAGE_TEXT: '#message',
+    YT_CHAT_INPUT: 'yt-live-chat-text-input-field-renderer div#input[contenteditable]',
+    YT_SEND_BUTTON: '#send-button button, yt-button-shape button',
+    YT_INPUT_RENDERER: 'yt-live-chat-text-input-field-renderer',
+    YT_EMOJI_BUTTON: '#emoji-suggestions-button, #picker-buttons yt-live-chat-icon-toggle-button-renderer',
   },
 
   // ─── CSS classes injected by HeatSync ───────────────────────────────────────

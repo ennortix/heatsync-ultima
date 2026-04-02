@@ -1644,6 +1644,10 @@ async function sendMessage() {
 
   const sendToKick = !!kickSlug || isLiveKick
   const sendToTwitch = !!twitchName && !isLiveKick
+
+  const ytUrl = typeof ch !== 'string' ? ch?.youtube : null
+  const isLiveYt = currentTab === 'live' && hostPlatform === 'yt'
+  const sendToYoutube = !!ytUrl || isLiveYt
   const isDualSend = sendToKick && sendToTwitch
 
   // Track for echo dedup (dual-send only — suppress second platform's duplicate)
@@ -1700,6 +1704,18 @@ async function sendMessage() {
     return
   }
 
+  // --- YouTube send path ---
+  if (sendToYoutube && !sendToKick) {
+    sendYoutubeMessage(text).then(result => {
+      if (result !== true) {
+        const errorMsg = result === 'no_youtube_tab' ? 'open youtube live chat first'
+          : 'youtube send failed'
+        showToast(errorMsg)
+      }
+    })
+    return
+  }
+
   // --- Twitch-only send path (existing behavior) ---
   const { token, username: twitchNick } = await getTwitchAuthTokenAsync()
   if (!token) {
@@ -1729,4 +1745,15 @@ async function sendMessage() {
       setTimeout(() => { input.style.borderColor = ''; updateInputPlaceholder() }, 2500)
     }
   })
+}
+
+async function sendYoutubeMessage(text) {
+  try {
+    const resp = await safeSendMessage({ type: 'youtube_send_message', text })
+    if (resp?.ok) return true
+    return resp?.error || 'send_failed'
+  } catch (e) {
+    log('YouTube send error:', e.message)
+    return 'send_failed'
+  }
 }

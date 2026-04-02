@@ -15860,7 +15860,7 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
   // dominates any region of the output — even when their time ranges
   // don't overlap (e.g. IRC history from hours ago + YT from seconds ago).
   function fairMerge(sources) {
-    console.log('[HS] fairMerge called, sources:', sources.map(s => s.length))
+    log('fairMerge sources:', sources.map(s => s.length))
     const active = sources.filter(s => s.length > 0)
     if (active.length === 0) return []
     if (active.length === 1) return active[0]

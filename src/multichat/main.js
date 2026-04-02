@@ -5958,46 +5958,50 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
     for (const msgs of channelYtMessages.values()) clearBuf(msgs);
   }
 
-  // Merge multiple platform sources into 150 messages with fair representation.
-  // Guarantees each platform at least MIN_GUARANTEED recent messages,
-  // fills remaining slots chronologically. Result sorted by time so
-  // messages from different platforms are naturally interleaved.
-  const MIN_GUARANTEED = 25
+  // Merge multiple platform sources into ~150 messages with proportional
+  // interleaving. Each platform's messages maintain internal chronological
+  // order, but platforms are woven together evenly so no single source
+  // dominates any region of the output — even when their time ranges
+  // don't overlap (e.g. IRC history from hours ago + YT from seconds ago).
   function fairMerge(sources) {
     const active = sources.filter(s => s.length > 0)
     if (active.length === 0) return []
     if (active.length === 1) return active[0]
 
     const limit = 150
-    const guaranteed = MIN_GUARANTEED
+    const perSource = Math.ceil(limit / active.length)
+    // Take each platform's most recent messages (internally chronological)
+    const slices = active.map(s => s.slice(-perSource))
+    const total = slices.reduce((n, s) => n + s.length, 0)
 
-    // Step 1: reserve the most recent N from each platform
-    const reserved = []
-    const reservedSet = new Set()
-    for (const src of active) {
-      for (const m of src.slice(-guaranteed)) {
-        reserved.push(m)
-        reservedSet.add(m)
+    // Proportional interleave: distribute each source evenly across output
+    // using Bresenham-style stepping so platforms are sprinkled throughout
+    const result = new Array(total)
+    const positions = slices.map(() => [])
+
+    // Assign output positions to each source proportionally
+    for (let si = 0; si < slices.length; si++) {
+      const count = slices[si].length
+      if (count === 0) continue
+      const step = total / count
+      for (let i = 0; i < count; i++) {
+        positions[si].push(Math.floor(i * step + si * step / slices.length))
       }
     }
 
-    // Step 2: fill remaining slots chronologically from all sources
-    const remaining = limit - reserved.length
-    if (remaining > 0) {
-      // Merge non-reserved messages, sort by time, take most recent
-      const pool = []
-      for (const src of active) {
-        for (const m of src) {
-          if (!reservedSet.has(m)) pool.push(m)
-        }
+    // Fill result array — resolve collisions by finding next free slot
+    const used = new Uint8Array(total)
+    for (let si = 0; si < slices.length; si++) {
+      for (let i = 0; i < slices[si].length; i++) {
+        let pos = positions[si][i]
+        while (pos < total && used[pos]) pos++
+        if (pos >= total) { pos = 0; while (used[pos]) pos++ }
+        result[pos] = slices[si][i]
+        used[pos] = 1
       }
-      pool.sort((a, b) => a.time - b.time)
-      const fill = pool.slice(-remaining)
-      reserved.push(...fill)
     }
 
-    reserved.sort((a, b) => a.time - b.time)
-    return reserved.slice(-limit)
+    return result.filter(Boolean).slice(-limit)
   }
 
   function renderMessages(id) {

@@ -864,7 +864,7 @@
   // Process text and replace emote codes with images
   // Supports 7TV zero-width (overlay) emotes that stack on base emotes
   function processEmotes(text, channel) {
-    if (emoteCache.size === 0 && !channelEmoteCaches[channel]) return escapeHtml(text);
+    if (emoteCache.size === 0 && !channelEmoteCaches[channel]) return text;
 
     // Split adjacent Kick emotes and text touching emotes (e.g. "word[emote:id:name]")
     const words = text.replace(/\]\[emote:/g, '] [emote:').replace(/([^\s\[])\[emote:/g, '$1 [emote:').replace(/\]([^\s\]])/g, '] $1').split(/(\s+)/);
@@ -992,20 +992,18 @@
         if (word.startsWith('@') && word.length > 1) {
           const name = word.slice(1).replace(/[,.:!?]+$/, '').toLowerCase();
           const color = knownColors.get(name) || '#fff';
-          result.push(`<a href="https://heatsync.org/user/${encodeURIComponent(name)}" target="_blank" class="hs-mc-user" data-username="${escapeHtml(name)}" style="color:${sanitizeColor(color)};font-weight:bold">${escapeHtml(word)}</a>`);
+          result.push(`<a href="https://heatsync.org/user/${encodeURIComponent(name)}" target="_blank" class="hs-mc-user" data-username="${name}" style="color:${sanitizeColor(color)};font-weight:bold">${word}</a>`);
         } else if (linksEnabled && LINK_RE.test(word)) {
           // Validate URL protocol before creating link (block javascript:, data:, etc.)
           const hasProtocol = /^https?:\/\//i.test(word);
           const fullUrl = hasProtocol ? word : `https://${word}`;
           if (/^https?:\/\//i.test(fullUrl)) {
-            const safeUrl = escapeHtml(word);
-            const safeHref = escapeHtml(fullUrl);
-            result.push(`<a href="${safeHref}" target="_blank" rel="noopener noreferrer" class="hs-mc-link">${safeUrl}</a>`);
+            result.push(`<a href="${fullUrl}" target="_blank" rel="noopener noreferrer" class="hs-mc-link">${word}</a>`);
           } else {
-            result.push(escapeHtml(word));
+            result.push(word);
           }
         } else {
-          result.push(escapeHtml(word));
+          result.push(word);
         }
       }
     }

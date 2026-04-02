@@ -5824,39 +5824,39 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
 
   // Process YouTube emotes (inline emoji images from innertube)
   // preEscaped=true when input is already HTML-escaped (chained after processEmotes)
-  const _ytEmoteRegexCache = new Map()
   function processYtEmotes(text, emotes, preEscaped) {
     if (!emotes || emotes.length === 0) return preEscaped ? text : escapeHtml(text)
 
-    // Build result by replacing emoji alt text with img tags
     let result = preEscaped ? text : escapeHtml(text)
-    const htmlAltEmotes = emotes.filter(e => typeof e.alt === 'string' && e.alt.includes('<') && e.url)
-    if (htmlAltEmotes.length > 0) log('YT emotes with HTML alt:', htmlAltEmotes.length, 'of', emotes.length, 'total. Alts:', emotes.map(e => e.alt?.slice(0, 30)))
+
+    // Build replacement map: escaped alt text → img HTML
+    const replacements = new Map()
+    const altPatterns = []
     for (const emote of emotes) {
       const url = typeof emote.url === 'string' ? emote.url.trim() : ''
       const alt = typeof emote.alt === 'string' ? emote.alt : ''
       if (!alt || !url || !(url.startsWith('http') || url.startsWith('//'))) continue
-      // Skip emotes with HTML-like alt (server bug: raw img tags as alt text)
       if (alt.includes('<') || alt.includes('&lt;')) continue
-      const escaped = escapeHtml(alt).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-      let re = _ytEmoteRegexCache.get(escaped)
-      if (!re) {
-        re = new RegExp(escaped, 'g')
-        _ytEmoteRegexCache.set(escaped, re)
-        if (_ytEmoteRegexCache.size > 500) _ytEmoteRegexCache.delete(_ytEmoteRegexCache.keys().next().value)
-      }
-      result = result.replace(re, () => `<img src="${escapeHtml(url)}" alt="${escapeHtml(alt)}" class="hs-mc-emote" style="height:1.2em;vertical-align:middle;" />`)
+      const escaped = escapeHtml(alt)
+      if (replacements.has(escaped)) continue
+      const imgHtml = `<img src="${escapeHtml(url)}" alt="${escaped}" class="hs-mc-emote" style="height:1.2em;vertical-align:middle;" />`
+      replacements.set(escaped, imgHtml)
+      altPatterns.push(escaped.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
     }
-    // Clean up any escaped HTML img tags in text — with or without closing tag
-    // Handles both complete (&lt;img...&gt;) and truncated (&lt;img src=&quot;...&quot;) fragments
-    if (htmlAltEmotes.length > 0) {
-      let ei = 0
-      result = result.replace(/&lt;img\b(?:[^]*?(?:\/&gt;|&gt;)|[^<]*)/g, (match) => {
-        // Don't replace if this is inside a real HTML tag (already rendered emote)
-        if (match.includes('class=')) return match
-        const e = htmlAltEmotes[ei++ % htmlAltEmotes.length]
-        return e ? `<img src="${escapeHtml(e.url)}" alt="emoji" class="hs-mc-emote" style="height:1.2em;vertical-align:middle;" />` : ''
+
+    // Single-pass replacement that skips HTML tags — prevents matching inside
+    // attributes of already-rendered emote/emoji spans from processEmotes
+    if (altPatterns.length > 0) {
+      const combined = new RegExp(`(<[^>]*>)|(${altPatterns.join('|')})`, 'g')
+      result = result.replace(combined, (match, htmlTag) => {
+        if (htmlTag) return htmlTag
+        return replacements.get(match) || match
       })
+    }
+
+    // Clean up escaped HTML img tag fragments (from emotes with HTML alt text)
+    if (result.includes('&lt;img')) {
+      result = result.replace(/&lt;img\b(?:[^]*?(?:\/&gt;|&gt;)|[^<]*)/g, '')
     }
     return result
   }

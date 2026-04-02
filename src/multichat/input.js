@@ -602,6 +602,9 @@ function updateInputPlaceholder() {
 function handleInputKeydown(e) {
   const input = e.target;
 
+  // Stop propagation so platform shortcuts (Kick theater "t", etc.) don't fire
+  e.stopPropagation()
+
   // Emoji dropdown navigation — intercept before other handlers
   if (emojiAcState.active) {
     if (e.key === 'ArrowDown') {

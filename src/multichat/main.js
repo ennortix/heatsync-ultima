@@ -1048,6 +1048,92 @@
     loadChatWidth().then(() => { applyKickChatWidth() })
   }
 
+  /**
+   * Apply chat width to YouTube's #secondary sidebar
+   */
+  function applyYouTubeChatWidth() {
+    const secondary = document.querySelector('#secondary, ytd-watch-flexy #secondary')
+    if (!secondary) return
+    chatWidth = Math.min(MAX_CHAT_WIDTH, Math.max(MIN_CHAT_WIDTH, chatWidth))
+    secondary.style.setProperty('width', chatWidth + 'px', 'important')
+    secondary.style.setProperty('min-width', chatWidth + 'px', 'important')
+    secondary.style.setProperty('max-width', chatWidth + 'px', 'important')
+    secondary.style.setProperty('flex', 'none', 'important')
+    // Also resize the hs-mc-container to fill
+    const container = document.getElementById('hs-mc-container')
+    if (container) container.style.setProperty('width', '100%', 'important')
+  }
+
+  /**
+   * Setup resize handle for YouTube — left edge of #secondary sidebar
+   */
+  function setupYouTubeResizeHandle() {
+    const secondary = document.querySelector('#secondary, ytd-watch-flexy #secondary')
+    const mcContainer = document.getElementById('hs-mc-container')
+    if (!secondary || !mcContainer || document.getElementById('hs-yt-resize-handle')) return
+
+    const handle = document.createElement('div')
+    handle.id = 'hs-yt-resize-handle'
+    secondary.style.position = 'relative'
+    secondary.insertBefore(handle, secondary.firstChild)
+
+    let isResizing = false
+    let startX = 0
+    let startWidth = 0
+    let rafId = 0
+    let pendingWidth = 0
+    let overlay = null
+    let dragStyle = null
+
+    function applyResize() {
+      rafId = 0
+      chatWidth = pendingWidth
+      secondary.style.setProperty('width', chatWidth + 'px', 'important')
+      secondary.style.setProperty('min-width', chatWidth + 'px', 'important')
+      secondary.style.setProperty('max-width', chatWidth + 'px', 'important')
+      secondary.style.setProperty('flex', 'none', 'important')
+    }
+
+    handle.addEventListener('mousedown', (e) => {
+      isResizing = true
+      startX = e.clientX
+      startWidth = chatWidth
+      document.body.style.cursor = 'ew-resize'
+      document.body.style.userSelect = 'none'
+      dragStyle = document.createElement('style')
+      dragStyle.id = 'hs-drag-perf'
+      dragStyle.textContent = '* { transition: none !important; }'
+      document.head.appendChild(dragStyle)
+      overlay = document.createElement('div')
+      overlay.id = 'hs-resize-overlay'
+      overlay.style.cssText = 'position:fixed;inset:0;z-index:99999;cursor:ew-resize'
+      document.body.appendChild(overlay)
+      e.preventDefault()
+    })
+
+    cleanup.addEventListener(document, 'mousemove', (e) => {
+      if (!isResizing) return
+      const delta = startX - e.clientX
+      pendingWidth = Math.min(MAX_CHAT_WIDTH, Math.max(MIN_CHAT_WIDTH, startWidth + delta))
+      if (!rafId) rafId = requestAnimationFrame(applyResize)
+    })
+
+    cleanup.addEventListener(document, 'mouseup', () => {
+      if (!isResizing) return
+      isResizing = false
+      if (rafId) { cancelAnimationFrame(rafId); rafId = 0 }
+      chatWidth = pendingWidth || chatWidth
+      applyYouTubeChatWidth()
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
+      if (overlay) { overlay.remove(); overlay = null }
+      if (dragStyle) { dragStyle.remove(); dragStyle = null }
+      saveChatWidth()
+    })
+
+    loadChatWidth().then(() => { applyYouTubeChatWidth() })
+  }
+
   // Emote size functions
   function setEmoteSize(size) {
     if ([1, 2, 4].includes(size)) {
@@ -1927,6 +2013,22 @@
       }
       #hs-mc-resize-handle:hover,
       #hs-mc-resize-handle:active {
+        background: #ff8700;
+      }
+
+      /* YouTube resize handle — left edge of #secondary sidebar */
+      #hs-yt-resize-handle {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 6px;
+        height: 100%;
+        cursor: ew-resize;
+        z-index: 2000;
+        background: transparent;
+      }
+      #hs-yt-resize-handle:hover,
+      #hs-yt-resize-handle:active {
         background: #ff8700;
       }
 
@@ -5208,7 +5310,9 @@
     }
 
     // Ensure resize handle exists on left edge of chat panel
-    if (isKick) {
+    if (hostPlatform === 'yt') {
+      setupYouTubeResizeHandle()
+    } else if (isKick) {
       setupKickResizeHandle()
     } else {
       setupResizeHandle()

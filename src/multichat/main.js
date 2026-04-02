@@ -286,6 +286,22 @@
   // Stream event user colors — login → color (populated from server on connect)
   const streamColorMap = new Map();
 
+  // One-time migration: copy ui_settings from storage.local to storage.sync
+  async function migrateSettingsToSync() {
+    try {
+      const [syncData, localData] = await Promise.all([
+        chrome.storage.sync.get(['ui_settings']),
+        chrome.storage.local.get(['ui_settings']),
+      ])
+      if (!syncData.ui_settings && localData.ui_settings) {
+        await chrome.storage.sync.set({ ui_settings: localData.ui_settings })
+        log('Migrated ui_settings from local to sync')
+      }
+    } catch (e) {
+      log('Settings migration error:', e)
+    }
+  }
+
   // Batched ui_settings writer — coalesces multiple saves into one read-modify-write
   let _pendingSettings = null
   let _settingsSaveTimer = null
@@ -298,8 +314,8 @@
       const pending = _pendingSettings
       _pendingSettings = null
       _settingsSaveTimer = null
-      chrome.storage.local.get(['ui_settings']).then(s => {
-        chrome.storage.local.set({ ui_settings: { ...s.ui_settings, ...pending } })
+      chrome.storage.sync.get(['ui_settings']).then(s => {
+        chrome.storage.sync.set({ ui_settings: { ...s.ui_settings, ...pending } })
       })
     }, 100)
   }
@@ -1206,7 +1222,7 @@
   // Inline notification settings
   async function loadInlineNotifSettings() {
     try {
-      const stored = await chrome.storage.local.get(['ui_settings'])
+      const stored = await chrome.storage.sync.get(['ui_settings'])
       const saved = stored.ui_settings?.inlineNotifs
       if (saved) {
         for (const k of Object.keys(INLINE_NOTIF_TYPES)) {
@@ -1222,7 +1238,7 @@
 
   async function loadHermesSettings() {
     try {
-      const stored = await chrome.storage.local.get(['ui_settings'])
+      const stored = await chrome.storage.sync.get(['ui_settings'])
       const saved = stored.ui_settings?.hermesEvents
       if (saved) {
         for (const k of Object.keys(HERMES_EVENT_TYPES)) {
@@ -1270,7 +1286,7 @@
   // WYSIWYG setting
   async function loadWysiwygSetting() {
     try {
-      const stored = await chrome.storage.local.get(['ui_settings']);
+      const stored = await chrome.storage.sync.get(['ui_settings']);
       if (stored.ui_settings?.wysiwygEnabled !== undefined) {
         wysiwygEnabled = stored.ui_settings.wysiwygEnabled;
       }
@@ -1286,7 +1302,7 @@
   // Clickable links setting
   async function loadLinksSetting() {
     try {
-      const stored = await chrome.storage.local.get(['ui_settings']);
+      const stored = await chrome.storage.sync.get(['ui_settings']);
       if (stored.ui_settings?.linksEnabled !== undefined) {
         linksEnabled = stored.ui_settings.linksEnabled;
       }
@@ -1302,7 +1318,7 @@
   // Vi mode setting
   async function loadViModeSetting() {
     try {
-      const stored = await chrome.storage.local.get(['ui_settings']);
+      const stored = await chrome.storage.sync.get(['ui_settings']);
       if (stored.ui_settings?.viMode !== undefined) {
         viModeEnabled = stored.ui_settings.viMode;
       }
@@ -1326,7 +1342,7 @@
   // Platform badges setting
   async function loadPlatformBadgesSetting() {
     try {
-      const stored = await chrome.storage.local.get(['ui_settings']);
+      const stored = await chrome.storage.sync.get(['ui_settings']);
       if (stored.ui_settings?.showPlatformBadges !== undefined) {
         platformBadgesEnabled = stored.ui_settings.showPlatformBadges;
       }
@@ -1339,7 +1355,7 @@
   // Zebra striping setting
   async function loadZebraSetting() {
     try {
-      const stored = await chrome.storage.local.get(['ui_settings']);
+      const stored = await chrome.storage.sync.get(['ui_settings']);
       if (stored.ui_settings?.zebra !== undefined) {
         zebraEnabled = stored.ui_settings.zebra;
       }
@@ -1361,7 +1377,7 @@
   // Auto-hide input setting
   async function loadAutoHideSetting() {
     try {
-      const stored = await chrome.storage.local.get(['ui_settings']);
+      const stored = await chrome.storage.sync.get(['ui_settings']);
       if (stored.ui_settings?.autoHideEmpty !== undefined) {
         autoHideInput = stored.ui_settings.autoHideEmpty;
       }
@@ -1398,7 +1414,7 @@
   // Timestamps setting
   async function loadTimestampsSetting() {
     try {
-      const stored = await chrome.storage.local.get(['ui_settings']);
+      const stored = await chrome.storage.sync.get(['ui_settings']);
       if (stored.ui_settings?.timestamps !== undefined) {
         timestampsEnabled = stored.ui_settings.timestamps;
       }
@@ -1420,7 +1436,7 @@
   // Offline events setting
   async function loadOfflineEventsSetting() {
     try {
-      const stored = await chrome.storage.local.get(['ui_settings']);
+      const stored = await chrome.storage.sync.get(['ui_settings']);
       if (stored.ui_settings?.showOfflineEvents !== undefined) {
         // migrate: old default was true, new default is false — clear stale stored value
         if (stored.ui_settings.showOfflineEvents === true && !stored.ui_settings._offlineDefaultMigrated) {
@@ -1446,7 +1462,7 @@
   // Avatars setting
   async function loadAvatarsSetting() {
     try {
-      const stored = await chrome.storage.local.get(['ui_settings']);
+      const stored = await chrome.storage.sync.get(['ui_settings']);
       if (stored.ui_settings?.avatars !== undefined) {
         avatarsEnabled = stored.ui_settings.avatars;
       }
@@ -7163,13 +7179,13 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
 
   async function loadTabsPosition() {
     try {
-      const stored = await chrome.storage.local.get(['ui_settings']);
+      const stored = await chrome.storage.sync.get(['ui_settings']);
       // Migration: tabsOnRight → tabPosition
       if (stored.ui_settings?.tabsOnRight !== undefined && stored.ui_settings?.tabPosition === undefined) {
         tabPosition = stored.ui_settings.tabsOnRight ? 'right' : 'top';
         stored.ui_settings.tabPosition = tabPosition;
         delete stored.ui_settings.tabsOnRight;
-        await chrome.storage.local.set({ ui_settings: stored.ui_settings });
+        await chrome.storage.sync.set({ ui_settings: stored.ui_settings });
         log('Migrated tabsOnRight to tabPosition:', tabPosition);
       } else if (stored.ui_settings?.tabPosition !== undefined) {
         tabPosition = stored.ui_settings.tabPosition;
@@ -7184,7 +7200,7 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
   const BUILTIN_TABS = ['live', 'feed', 'mentions', 'add'];
   async function loadActiveTab() {
     try {
-      const stored = await chrome.storage.local.get(['ui_settings']);
+      const stored = await chrome.storage.sync.get(['ui_settings']);
       const saved = stored.ui_settings?.activeTab || 'live';
       // Validate: must be a built-in tab or a configured channel (never restore 'add')
       const channelIds = config.channels.map(c => typeof c === 'string' ? c : c.id);
@@ -7316,20 +7332,84 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
     // Remove previous storage listener to prevent accumulation on SPA nav
     if (_mcStorageListener) chrome.storage.onChanged.removeListener(_mcStorageListener)
     _mcStorageListener = (changes, area) => {
-      if (area !== 'local') return;
+      // UI settings synced via storage.sync (cross-tab + cross-device)
+      if (area === 'sync' && changes.ui_settings) {
+        const ns = changes.ui_settings.newValue || {}
+        log('Settings synced:', Object.keys(ns).join(', '))
+        let needsRender = false
 
-      // UI settings
-      if (changes.ui_settings) {
-        const newSettings = changes.ui_settings.newValue || {};
-        log('Settings changed via storage:', newSettings);
-        if (newSettings.tabPosition !== undefined && newSettings.tabPosition !== tabPosition) {
-          tabPosition = newSettings.tabPosition;
-          applyTabsPosition();
+        if (ns.tabPosition !== undefined && ns.tabPosition !== tabPosition) {
+          tabPosition = ns.tabPosition
+          applyTabsPosition()
+          needsRender = true
         }
-        if (newSettings.showPlatformBadges !== undefined) {
-          platformBadgesEnabled = newSettings.showPlatformBadges;
+        if (ns.showPlatformBadges !== undefined && ns.showPlatformBadges !== platformBadgesEnabled) {
+          platformBadgesEnabled = ns.showPlatformBadges
+          needsRender = true
         }
+        if (ns.wysiwygEnabled !== undefined && ns.wysiwygEnabled !== wysiwygEnabled) {
+          wysiwygEnabled = ns.wysiwygEnabled
+          rebuildInput()
+        }
+        if (ns.linksEnabled !== undefined && ns.linksEnabled !== linksEnabled) {
+          linksEnabled = ns.linksEnabled
+          needsRender = true
+        }
+        if (ns.viMode !== undefined && ns.viMode !== viModeEnabled) {
+          viModeEnabled = ns.viMode
+          try {
+            const ls = JSON.parse(localStorage.getItem('heatsync-extension-settings') || '{}')
+            ls.viMode = viModeEnabled
+            localStorage.setItem('heatsync-extension-settings', JSON.stringify(ls))
+          } catch (_) {}
+          window.postMessage({ type: 'heatsync-settings-changed', settings: { viMode: viModeEnabled } }, location.origin)
+        }
+        if (ns.zebra !== undefined && ns.zebra !== zebraEnabled) {
+          zebraEnabled = ns.zebra
+          needsRender = true
+        }
+        if (ns.autoHideEmpty !== undefined && ns.autoHideEmpty !== autoHideInput) {
+          autoHideInput = ns.autoHideEmpty
+          const bar = document.getElementById('hs-mc-inputbar')
+          const pickerOpen = document.getElementById('hs-mc-emote-picker')?.classList.contains('visible') || false
+          if (autoHideInput) {
+            if (bar) bar.classList.add('hs-hidden')
+            inputBarVisible = false
+          } else {
+            if (bar) bar.classList.remove('hs-hidden')
+            inputBarVisible = true
+          }
+          adjustOverlayForPicker(pickerOpen)
+        }
+        if (ns.timestamps !== undefined && ns.timestamps !== timestampsEnabled) {
+          timestampsEnabled = ns.timestamps
+          window._hsTimestampsEnabled = timestampsEnabled
+          needsRender = true
+        }
+        if (ns.avatars !== undefined && ns.avatars !== avatarsEnabled) {
+          avatarsEnabled = ns.avatars
+          needsRender = true
+        }
+        if (ns.showOfflineEvents !== undefined && ns.showOfflineEvents !== showOfflineEvents) {
+          showOfflineEvents = ns.showOfflineEvents
+        }
+        if (ns.inlineNotifs) {
+          for (const k of Object.keys(INLINE_NOTIF_TYPES)) {
+            if (ns.inlineNotifs[k] !== undefined) inlineNotifs[k] = ns.inlineNotifs[k]
+          }
+        }
+        if (ns.hermesEvents) {
+          for (const k of Object.keys(HERMES_EVENT_TYPES)) {
+            if (ns.hermesEvents[k] !== undefined) hermesToggles[k] = ns.hermesEvents[k]
+          }
+        }
+
+        if (needsRender) renderMessages(currentTab)
+        // Update settings panel toggles if visible
+        if (currentTab === 'settings') renderSettingsTab()
       }
+
+      if (area !== 'local') return
 
       // Emote updates - reload when storage changes (debounced to avoid spam)
       if (changes.global_emotes || changes.channel_emotes_map || changes.emote_inventory || changes.native_twitch_emotes) {
@@ -7557,6 +7637,7 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
 
     injectStyles();
     detectOfflineState();
+    await migrateSettingsToSync();
     await loadActiveTab();
     await loadTabsPosition();
     await loadLivePlatformMap();

@@ -19,7 +19,7 @@
   let settings = { ...DEFAULTS }
 
   async function load() {
-    const stored = await chrome.storage.local.get('ui_settings')
+    const stored = await chrome.storage.sync.get('ui_settings')
     if (stored.ui_settings) {
       settings = { ...DEFAULTS, ...stored.ui_settings }
       // showCosmetics: absent = true
@@ -51,7 +51,7 @@
   }
 
   async function save() {
-    await chrome.storage.local.set({ ui_settings: settings })
+    await chrome.storage.sync.set({ ui_settings: settings })
   }
 
   document.addEventListener('click', (e) => {

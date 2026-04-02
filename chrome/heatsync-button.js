@@ -1306,7 +1306,7 @@
   // Load settings from chrome.storage.local (async)
   async function loadExtensionSettings() {
     try {
-      const stored = await chrome.storage.local.get('ui_settings');
+      const stored = await chrome.storage.sync.get('ui_settings');
       if (stored.ui_settings) {
         cachedSettings = { ...cachedSettings, ...stored.ui_settings };
       }
@@ -1329,7 +1329,7 @@
     try {
       cachedSettings = { ...settings };
       // Save to chrome.storage.local (same key as popup.js)
-      chrome.storage.local.set({ ui_settings: settings }).then(() => {
+      chrome.storage.sync.set({ ui_settings: settings }).then(() => {
         log(' Settings saved to storage');
       }).catch(err => {
         console.error('[heatsync-button] Failed to save to storage:', err);

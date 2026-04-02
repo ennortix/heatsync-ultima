@@ -1361,7 +1361,7 @@ function applyUiSettings(settings) {
 // Load and apply UI settings on startup
 (async function loadUiSettings() {
   try {
-    const stored = await chrome.storage.local.get('ui_settings');
+    const stored = await chrome.storage.sync.get('ui_settings');
     const settings = stored.ui_settings || {}
     // Always run applyUiSettings so popout auto-hides header even with no stored settings
     applyUiSettings(settings)

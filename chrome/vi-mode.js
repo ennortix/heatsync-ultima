@@ -996,8 +996,8 @@
   function loadSettings() {
     // Try chrome.storage first (async), fallback to localStorage
     const api = (typeof browser !== 'undefined' && browser) || (typeof chrome !== 'undefined' && chrome)
-    if (api?.storage?.local) {
-      Promise.resolve(api.storage.local.get('ui_settings')).then((result) => {
+    if (api?.storage?.sync) {
+      Promise.resolve(api.storage.sync.get('ui_settings')).then((result) => {
         if (result?.ui_settings) {
           const wasEnabled = enabled
           enabled = !!result.ui_settings.viMode

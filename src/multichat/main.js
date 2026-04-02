@@ -758,12 +758,6 @@
     inputBarVisible = false
     const bar = document.getElementById('hs-mc-inputbar')
     if (bar) bar.classList.add('hs-hidden')
-    const overlay = document.getElementById('hs-mc-overlay')
-    // For horizontal tabs, extend overlay to fill input bar space
-    // For vertical tabs, CSS :has() handles it — don't set inline bottom
-    if (overlay && tabPosition !== 'left' && tabPosition !== 'right') {
-      overlay.style.bottom = '0'
-    }
   }
 
   // Chat width state
@@ -4509,6 +4503,18 @@
 
       /* Rotation button — inherits from .hs-mc-util-btn */
 
+      /* When input bar is hidden, overlay fills the gap */
+      .hs-tabs-top:has(#hs-mc-inputbar.hs-hidden) #hs-mc-overlay,
+      .hs-tabs-right:has(#hs-mc-inputbar.hs-hidden) #hs-mc-overlay,
+      .hs-tabs-left:has(#hs-mc-inputbar.hs-hidden) #hs-mc-overlay {
+        bottom: 0 !important;
+      }
+      .hs-tabs-top:has(#hs-mc-inputbar.hs-hidden) #hs-mc-emote-picker,
+      .hs-tabs-right:has(#hs-mc-inputbar.hs-hidden) #hs-mc-emote-picker,
+      .hs-tabs-left:has(#hs-mc-inputbar.hs-hidden) #hs-mc-emote-picker {
+        bottom: 0 !important;
+      }
+
       /* RIGHT SIDE TABS LAYOUT - absolute position at right edge */
       .hs-tabs-right #hs-mc-tabbar {
         position: absolute !important;
@@ -4589,10 +4595,10 @@
         bottom: 0;
       }
       .hs-tabs-bottom:has(#hs-mc-inputbar.hs-hidden) #hs-mc-overlay {
-        bottom: 31px; /* tab bar only */
+        bottom: 31px !important; /* tab bar only — override generic rule */
       }
       .hs-tabs-bottom:has(#hs-mc-inputbar.hs-hidden) #hs-mc-emote-picker {
-        bottom: 31px;
+        bottom: 31px !important;
       }
 
       /* LEFT SIDE TABS LAYOUT - flex child, no fixed positioning */

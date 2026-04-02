@@ -5964,6 +5964,7 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
   // dominates any region of the output — even when their time ranges
   // don't overlap (e.g. IRC history from hours ago + YT from seconds ago).
   function fairMerge(sources) {
+    console.log('[HS] fairMerge called, sources:', sources.map(s => s.length))
     const active = sources.filter(s => s.length > 0)
     if (active.length === 0) return []
     if (active.length === 1) return active[0]
@@ -6082,14 +6083,26 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
 
     // Merge follow stream events into every tab (went live, switched game, went offline)
     // Channel-specific events (redeems, raids, hype trains) stay in their own channel buffer
+    // NOTE: append-only — do NOT re-sort, as msgs may be proportionally interleaved
     if (activityEvents.length > 0 && msgs.length > 0) {
-      const oldestMsg = msgs.reduce((min, m) => m.time < min ? m.time : min, msgs[0].time)
       const existingTexts = new Set(msgs.filter(m => m.type === 'stream-event').map(m => m.text))
       const missing = activityEvents.filter(e =>
-        e.eventClass?.includes('event-follow') && !existingTexts.has(e.text) && e.time >= oldestMsg
+        e.eventClass?.includes('event-follow') && !existingTexts.has(e.text)
       )
       if (missing.length > 0) {
-        msgs = [...msgs, ...missing].sort((a, b) => a.time - b.time)
+        // Insert stream events at their approximate chronological position
+        // without re-sorting the entire array
+        for (const evt of missing) {
+          let inserted = false
+          for (let i = msgs.length - 1; i >= 0; i--) {
+            if (msgs[i].time && msgs[i].time <= evt.time) {
+              msgs.splice(i + 1, 0, evt)
+              inserted = true
+              break
+            }
+          }
+          if (!inserted) msgs.unshift(evt)
+        }
       }
     }
 

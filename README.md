@@ -7,17 +7,19 @@ upload any image to [heatsync.org](https://heatsync.org), install the extension,
 ## features
 
 - **unlimited emote slots** — upload as many as you want, use them immediately
-- **cross-platform** — same emotes work in twitch, kick, and youtube live chat
-- **tab completion** — start typing an emote name, press tab, pick from the dropdown
-- **emote picker** — button in chat input to browse and insert emotes
+- **cross-platform** — same emotes work in twitch, kick, and youtube live chat (youtube via multichat panel)
+- **tab completion** — start typing an emote name, press tab, pick from the dropdown. supports WYSIWYG mode (emotes render as images in the input)
+- **emote picker** — button in chat input to browse, search, and insert emotes
 - **third-party emotes** — bttv, ffz, and 7tv emotes load automatically
 - **zero-width stacking** — layer emotes on top of each other
-- **multichat** — multiple channels in one panel with tabs, mentions, and IRC
-- **cosmetics** — 7tv paints + badges, ffz badges, bttv badges on twitch chat
-- **emote blocking** — right-click emotes to hide them, syncs across devices
+- **multichat** — multiple channels in one panel with tabs, mentions, whispers, social feed, and IRC
+- **cosmetics** — 7tv paints + badges, ffz badges, bttv badges, chatterino badges on twitch chat
+- **heat borders** — colored message borders based on heatsync heat tier, with glow and breathing animations at high tiers
+- **emote blocking** — right-click emotes to hide them, syncs across devices for logged-in users
 - **user muting** — temporarily or permanently hide users from chat
-- **vi-mode** — vim keybindings for chat input
-- **real-time sync** — websocket broadcasts emotes per channel instantly
+- **op injection** — posts from followed heatsync users appear inline in twitch/kick chat
+- **vi-mode** — vim keybindings for chat input (twitch, kick, and multichat)
+- **real-time sync** — websocket broadcasts emotes, stream events, mutes, and config across devices
 
 ## why heatsync
 
@@ -25,7 +27,7 @@ other emote extensions gate uploads behind approval queues, limit your slots, an
 
 | | platforms | emote upload | cross-platform | multichat | cosmetics | third-party emotes |
 |---|---|---|---|---|---|---|
-| **heatsync** | twitch, kick, youtube | instant, unlimited, no approval | one set everywhere | tabs, IRC, mentions, youtube | bttv/ffz/7tv badges + 7tv paints | bttv/ffz/7tv automatic |
+| **heatsync** | twitch, kick, youtube | instant, unlimited, no approval | one set everywhere | tabs, IRC, mentions, whispers, youtube | bttv/ffz/7tv/chatterino badges + 7tv paints | bttv/ffz/7tv automatic |
 | **ffz** | twitch | 50 free, 500 paid, manual approval | no | no | own badges, custom mod/VIP | own only (bttv/7tv opt-in add-ons) |
 | **7tv** | twitch, kick, youtube | instant, 1000 free slots | separate sets per platform | no | own paints + badges | loads ffz natively |
 | **bttv** | twitch, youtube (beta) | 30 free, 200 paid, auto-approved | separate sets per platform | no | own badges | own only |
@@ -43,7 +45,7 @@ every twitch emote extension uses react fiber walking — it's the only reliable
 
 | | HTML sanitization | URL sanitization | postMessage origin |
 |---|---|---|---|
-| **heatsync** | `escapeHtml()` on all user content | `safeUrl()` https/http only + CDN allowlist | validated (`location.origin`) |
+| **heatsync** | `escapeHtml()` + `textContent` round-trip | `safeUrl()` https/http only | validated (`location.origin` + `event.source`) |
 | **ffz** | DOM `textContent` round-trip | none | varies |
 | **7tv** | vue template auto-escaping | coerced to `https://` via `new URL()` | not used |
 | **bttv** | `textContent`/`innerText` only, no innerHTML | CDN-only URLs, regex-strict | not used |
@@ -76,11 +78,12 @@ every twitch emote extension uses react fiber walking — it's the only reliable
 
 ```
 background.js (service worker)
-  ├── fetches emotes from heatsync.org API
-  ├── manages heatsync websocket (real-time broadcasts per channel)
-  ├── manages 7tv EventAPI websocket (real-time emote updates)
-  ├── fetches 7tv/ffz/bttv emotes + cosmetics (badges, paints)
-  └── broadcasts updates to all twitch/kick/youtube tabs
+  ├── fetches emotes from heatsync.org API (inventory, globals, channel, twitch native)
+  ├── manages heatsync websocket (emotes, stream events, DMs, youtube relay, kick relay, mutes, config sync)
+  ├── manages 7tv EventAPI websocket (real-time emote set updates + polling fallback)
+  ├── fetches 7tv/ffz/bttv/chatterino emotes + cosmetics (badges, paints)
+  ├── auth token encryption at rest (AES-GCM + PBKDF2)
+  └── broadcasts updates to all twitch/kick/youtube/heatsync.org tabs
 
 content.js (injected per tab)
   ├── MutationObserver watches for new chat messages
@@ -91,14 +94,15 @@ content.js (injected per tab)
 
 early-inject-main.js (MAIN world, document_start)
   ├── intercepts twitch websocket (hermes event bus)
+  ├── intercepts fetch (captures GQL hashes, auth tokens, integrity tokens)
   ├── hooks history.pushState/replaceState for SPA navigation
-  ├── intercepts image src/srcset setters
+  ├── intercepts image src/srcset setters + Image constructor + createElement
   └── iterates webpack chunks for apollo mutation documents
 
 multichat.js (built from src/multichat/)
   ├── multi-channel chat panel with tabbed interface
-  ├── read-only + authenticated twitch IRC clients
-  ├── mention tracking and notification counts
+  ├── read-only twitch IRC + kick chat receive + authenticated IRC for sending
+  ├── mention tracking, whispers, social feed, and notification counts
   └── youtube live chat integration per channel
 ```
 
@@ -134,7 +138,7 @@ function findComponent(startEl, predicate, maxDepth = 50) {
 }
 ```
 
-**DOM injection** — the primary injection mechanism. MutationObserver detects new chat messages, then the extension queries specific span elements (`.text-fragment`, `span.font-normal`), splits text on emote names, and rebuilds the node content with emote wrapper elements via `replaceChildren()`. visual updates are batched through `requestAnimationFrame`.
+**DOM injection** — the primary injection mechanism. MutationObserver detects new chat messages, then the extension queries specific span elements (`.text-fragment`, `span.font-normal`), tokenizes text on whitespace, looks up each word in the emote map, and rebuilds the node content with emote wrapper elements via `replaceChildren()`. visual updates are batched through `requestAnimationFrame`.
 
 **why not just modify the DOM?** react owns the DOM. `appendChild` gets removed on re-render. modified text nodes get overwritten. the MutationObserver fires on every react update, so injected elements are always restored.
 
@@ -142,27 +146,29 @@ function findComponent(startEl, predicate, maxDepth = 50) {
 
 **CSS order injection** — for elements that need specific positions in flex containers (badges before usernames), the extension uses CSS `order` properties instead of `insertBefore` calls that break when react reconciles.
 
-**early injection** — `early-inject-main.js` runs at `document_start` in the MAIN world (page context, not extension sandbox). this executes before twitch's scripts load, allowing interception of browser APIs (websocket, fetch, history) before twitch initializes.
+**early injection** — `early-inject-main.js` runs at `document_start` in the MAIN world (page context, not extension sandbox). this executes before twitch's scripts load, allowing interception of browser APIs (WebSocket, fetch, history, Image constructor) before twitch initializes. the fetch hook captures GQL persisted query hashes, auth tokens, and integrity tokens from twitch's own requests.
 
 ### message processing
 
 1. content script starts MutationObserver on chat container
 2. new message appears → observer fires → node queued via `requestAnimationFrame` + `setTimeout`
 3. `processMessage()` queries `.text-fragment` and `span.font-normal` elements
-4. splits text content on emote names, rebuilds with emote wrapper spans containing `<img>` elements
-5. cosmetics applied: badges inserted before username, 7tv paints set as inline gradient styles
+4. tokenizes text on whitespace, looks up each word in the emote map, rebuilds with emote wrapper spans containing `<img>` elements
+5. cosmetics applied: badges inserted before username, 7tv paints set as inline styles (gradients, image URLs, or solid colors)
 6. target: <5ms per message
 
 ### state
 
 | store | refresh | scope |
 |-------|---------|-------|
-| `emoteInventory` | 60s | user's heatsync emotes |
-| `globalEmotes` | 24h | bttv/ffz/7tv globals |
-| `channelEmotesMap` | per-channel | channel-specific emotes (background) |
-| `blockedEmotes` | 60s (with inventory) | server-synced blocks |
+| `emoteInventory` | 60s polling + WS-triggered 2s debounce | user's heatsync emotes |
+| `globalEmotes` | 1h (chrome.alarms) | bttv/ffz/7tv/twitch globals |
+| `channelEmotesMap` | per-channel (30min TTL, 5min if empty) | channel-specific emotes (background) |
+| `blockedEmotes` | event-driven (auth change, WS reconnect, block/unblock) | server-synced blocks |
+| `localBlockedEmotes` | on change | local-only blocks for anonymous users |
 | `mutedUsers` | on change | Map in background (username → expiry), Set in content |
-| `bttvBadgeMap` / `ffzBadgeMap` | 24h | bulk badge lookups by twitch user ID |
+| `blockedUsers` | on change | Set in both background and content |
+| `bttvBadgeMap` / `ffzBadgeMap` / `chatterinoBadgeMap` | 24h | bulk badge lookups by twitch user ID |
 | `userCosmeticsCache` | 30min TTL | 7tv per-user paints + badges (LRU, 500 cap) |
 
 ## build
@@ -175,7 +181,7 @@ bun run build.js --package # build + zip for store submission
 bun run build.js --deploy  # build + zip + rsync to server
 ```
 
-reads source from `chrome/`, bundles shared modules from `src/lib/` into content scripts (wrapped in IIFE), outputs to `dist/{chrome,firefox}/`. multichat is assembled from `src/multichat/` modules. firefox gets a converted mv2 manifest with gecko ID.
+reads source from `chrome/`, bundles shared modules from `src/lib/` (config, cleanup, utils, browser-api) into content scripts (wrapped in IIFE), outputs to `dist/{chrome,firefox}/`. multichat is assembled from `src/multichat/` modules. firefox uses a separate pre-authored mv2 manifest with gecko ID.
 
 ## project structure
 
@@ -186,40 +192,43 @@ chrome/                      ← source (edit here)
   content.js                 ← chat injection: DOM mutation, emote replacement, cosmetics
   multichat.js               ← built output (source in src/multichat/)
   youtube-content.js         ← youtube live chat support
-  heatsync-button.js         ← emote picker in chat input
-  autocomplete-hook.js       ← twitch tab completion (MAIN world, document_end)
-  kick-autocomplete-hook.js  ← kick tab completion
+  heatsync-button.js         ← emote picker panel (browse, search, import, settings)
+  autocomplete-hook.js       ← twitch tab completion + emoji :shortcode: (MAIN world)
+  kick-autocomplete-hook.js  ← kick tab completion + emoji :shortcode:
   autocomplete-loader.js     ← postMessage bridge to inject autocomplete into MAIN world
-  chat-injector.js           ← OP post injection from followed users
+  chat-injector.js           ← injects heatsync posts from followed users into twitch/kick chat
   platform-detector.js       ← twitch vs kick vs youtube detection
   shared-utils.js            ← getFiber, findComponent, createLifecycle, window.HS
-  early-inject-main.js       ← document_start MAIN world: websocket/fetch/history interception
+  early-inject-main.js       ← document_start MAIN world: websocket/fetch/history/image interception
   emoji-data.js              ← native emoji dataset
   vi-mode.js                 ← vim keybindings for chat input
   injected-message.css       ← styles for injected chat elements
   popup.html/js              ← toolbar popup
   options.html/js            ← settings page
   welcome.html               ← first install page
+  _locales/                  ← i18n strings (11 languages)
 
 src/
   lib/
+    config.js                ← API URLs, timing constants, limits, selectors, CSS classes, z-index
+    cleanup.js               ← tracked intervals/timeouts/observers/listeners for teardown
+    utils.js                 ← escapeHtml, createElement, $/$$ selectors, getFiber, findComponent, logging
     browser-api.js           ← chrome.* vs browser.* compat
-    utils.js                 ← escapeHtml, debounce, throttle, waitForElement
   manifests/
     chrome.json              ← mv3 manifest template
-    firefox.json             ← mv2 manifest template
+    firefox.json             ← mv2 manifest (separate file, not converted from chrome)
   multichat/                 ← multichat source modules
-    main.js                  ← UI, tabs, channel management
-    irc.js                   ← read-only twitch IRC client
-    auth-irc.js              ← authenticated IRC for sending messages
-    emotes.js                ← emote rendering in multichat
-    input.js                 ← chat input handling
-    social.js                ← heat tiers, social features
-    tooltips.js              ← user info tooltips
-    twitch-api.js            ← twitch API, GQL proxy, badges, predictions, polls
-    whispers.js              ← DM handling
-    kick-send.js             ← kick message sending
-    bootstrap.js             ← init and cleanup
+    main.js                  ← UI, tabs, channel management, youtube routing, mentions
+    irc.js                   ← read-only twitch IRC client + kick chat receive (KickChat class)
+    auth-irc.js              ← authenticated IRC for sending messages + whisper receive
+    emotes.js                ← emote cache, lookup, processing, picker, block/inventory
+    input.js                 ← chat input, autocomplete, send, reply state
+    social.js                ← apiFetch client, feed, notifications, activity, heat tiers
+    tooltips.js              ← toasts, emote tooltips, user profile cards, link previews
+    twitch-api.js            ← twitch GQL proxy, badges, predictions, polls, rewards
+    whispers.js              ← unified whisper + DM timeline
+    kick-send.js             ← kick message sending via background relay
+    bootstrap.js             ← lifecycle controller, cleanup utilities, debug log
 
 dist/                        ← build output (gitignored)
 ```
@@ -242,7 +251,10 @@ built for 24/7 continuous operation. every resource is tracked and cleaned up.
 | background | `service_worker` | `scripts: [...]` |
 | permissions | `host_permissions` separate | all in `permissions` |
 | action | `action` | `browser_action` |
-| MAIN world | `"world": "MAIN"` | `"world": "MAIN"` (requires ff 128+) |
+| web requests | n/a (MV3 dropped blocking webRequest) | `webRequest` + `webRequestBlocking` |
+| CSP format | `{ "extension_pages": "..." }` object | plain string |
+| web_accessible_resources | array of `{ resources, matches }` | flat array of filenames |
+| MAIN world | `"world": "MAIN"` | `"world": "MAIN"` (`strict_min_version: 128.0`) |
 
 ## license
 

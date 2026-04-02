@@ -19,4 +19,4 @@ please don't open a public GitHub issue for security bugs. we'll acknowledge wit
 
 this is a browser extension — no server component, no backend, no user data collection. all processing is local to the browser tab.
 
-user-supplied content (chat messages, emote names) is passed through `escapeHtml()` before any `innerHTML` assignment. urls are validated via `sanitizeUrl()` which allowlists `http`, `https`, and `data:image` schemes only.
+user-supplied content (chat messages, emote names) is passed through `escapeHtml()` before any `innerHTML` assignment. urls are validated via `safeUrl()` which allows `http` and `https` schemes only.

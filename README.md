@@ -235,14 +235,13 @@ dist/                        ← build output (gitignored)
 
 ## performance
 
-built for 24/7 continuous operation. every resource is tracked and cleaned up.
+built for 24/7 continuous operation.
 
-- message processing stays under 5ms per message
-- memory growth stays under 50MB over 8 hours
-- all intervals, timeouts, and observers are tracked for teardown
-- DOM selectors are cached, mutations are batched
-- visual updates use `requestAnimationFrame`
-- scroll and resize handlers are debounced
+- **emote lookup** — O(1) hash via pre-built `Map<name, emote>`, rebuilt only on state change. single-pass whitespace tokenization per message, no per-emote regex on the hot path
+- **message batching** — MutationObserver queues new messages, deferred via `requestAnimationFrame` + `setTimeout(16)` to let React settle before processing
+- **memory** — most caches are LRU-capped: knownChatters 500, heatCache 1000, cosmeticsCache 500, msgCacheBuffer 2000, channelEmotesMap 20 channels, userCosmeticsCache 500. badge maps (bttv/ffz/chatterino) are stable after initial load but uncapped
+- **cleanup** — content scripts use AbortController-backed lifecycle; long-lived intervals and observers go through the cleanup system. some short-lived timeouts and event listeners in secondary scripts (heatsync-button, vi-mode, autocomplete-hook) are not tracked
+- **scroll/resize** — most handlers are throttled (200ms timer guard, rAF-gated, or native `scrollend`). drag-resize uses rAF. `ResizeObserver` for layout sync
 
 ## manifest differences
 

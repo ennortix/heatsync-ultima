@@ -155,7 +155,8 @@
     initPopout()
 
     // Re-run init when auth token lands in storage (user logged in while popup was open)
-    chrome.storage.onChanged.addListener((changes, area) => {
+    if (window._hsPopupStorageListener) chrome.storage.onChanged.removeListener(window._hsPopupStorageListener)
+    window._hsPopupStorageListener = (changes, area) => {
       if (area !== 'local') return
       const authKeys = ['auth_token', 'auth_token_encrypted', 'user_info']
       const relevant = authKeys.some(k => k in changes)
@@ -166,6 +167,7 @@
       if (wasAuthed !== nowAuthed || (nowAuthed && 'user_info' in changes)) {
         init().catch(e => console.error('popup re-init failed:', e))
       }
-    })
+    }
+    chrome.storage.onChanged.addListener(window._hsPopupStorageListener)
   })
 })()

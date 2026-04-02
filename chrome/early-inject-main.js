@@ -339,7 +339,7 @@
     }
 
     // Content script requesting cached GQL data
-    if (e.data?.type === 'heatsync-gql-get-cache') {
+    if (e.data?.type === 'heatsync-gql-get-cache' && _hsNonce && e.data.nonce === _hsNonce) {
       const ops = e.data.operations || []
       const result = {}
       for (const op of ops) {

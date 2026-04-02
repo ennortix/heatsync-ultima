@@ -57,6 +57,7 @@
   let pendingMessage = '';     // Persists across tab switches
   let tabPosition = 'top'; // 'top', 'right', 'bottom', 'left'
   let resizeObserver = null; // Tracks overlay top sync observer
+  let _mcStorageListener = null;
 
   // Muted users (right-click to hide) — loaded async from chrome.storage.local
   let mutedUsers = new Set();
@@ -190,8 +191,8 @@
     const fn = paint.function.toLowerCase()
     if (fn === 'url' && paint.image_url) {
       if (!/^https:\/\//.test(paint.image_url)) return ''
-      const safeUrl = escapeHtml(paint.image_url)
-      let style = `background-image:url(${safeUrl});background-size:cover;-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text`
+      const safeCssUrl = paint.image_url.replace(/[()'"\\]/g, encodeURIComponent)
+      let style = `background-image:url(${safeCssUrl});background-size:cover;-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text`
       if (paint.shadows?.length) {
         style += ';filter:' + paint.shadows.map(s => {
           const r = (s.color >>> 24) & 0xff
@@ -211,9 +212,11 @@
         const a = (s.color & 0xff) / 255
         return `rgba(${r},${g},${b},${a.toFixed(2)}) ${Math.round(s.at * 100)}%`
       }).join(', ')
+      const safeAngle = Number.isFinite(Number(paint.angle)) ? Number(paint.angle) : 0
+      const safeShape = /^(circle|ellipse)$/.test(paint.shape) ? paint.shape : 'circle'
       const grad = (fn === 'linear-gradient' || fn === 'linear_gradient')
-        ? `linear-gradient(${paint.angle || 0}deg, ${stops})`
-        : `radial-gradient(${paint.shape || 'circle'}, ${stops})`
+        ? `linear-gradient(${safeAngle}deg, ${stops})`
+        : `radial-gradient(${safeShape}, ${stops})`
       let style = `background:${grad};-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text`
       if (paint.shadows?.length) {
         style += ';filter:' + paint.shadows.map(s => {
@@ -1427,8 +1430,8 @@
             ? `<div class="hs-mc-setting-row" style="color:#808080;font-size:11px">${t('mc_settings_no_muted')}</div>`
             : [...mutedUsers].sort().map(u => `
           <div class="hs-mc-setting-row">
-            <span class="hs-mc-setting-label" style="font-size:11px">${u}</span>
-            <button class="hs-mc-unmute-btn" data-username="${u}" style="background:none;border:1px solid #808080;color:#808080;font-size:11px;cursor:pointer;padding:1px 6px;line-height:1.4" title="${t('mc_settings_unmute')}">&#x2715;</button>
+            <span class="hs-mc-setting-label" style="font-size:11px">${escapeHtml(u)}</span>
+            <button class="hs-mc-unmute-btn" data-username="${escapeHtml(u)}" style="background:none;border:1px solid #808080;color:#808080;font-size:11px;cursor:pointer;padding:1px 6px;line-height:1.4" title="${t('mc_settings_unmute')}">&#x2715;</button>
           </div>`).join('')
           }
         </div>
@@ -1558,11 +1561,11 @@
         t.style.left = rect.left + 'px';
         t.style.top = (rect.bottom + 4) + 'px';
         t.classList.add('visible');
-      }, true);
+      }, { capture: true, signal: mcSignal });
       msgsEl.addEventListener('mouseleave', (e) => {
         const label = e.target.closest('.hs-mc-setting-label[data-tip]');
         if (label) { const t = document.getElementById('hs-settings-tip'); if (t) t.classList.remove('visible'); }
-      }, true);
+      }, { capture: true, signal: mcSignal });
     }
   }
 
@@ -6819,7 +6822,9 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
     });
 
     // Also listen for storage changes (more reliable)
-    chrome.storage.onChanged.addListener((changes, area) => {
+    // Remove previous storage listener to prevent accumulation on SPA nav
+    if (_mcStorageListener) chrome.storage.onChanged.removeListener(_mcStorageListener)
+    _mcStorageListener = (changes, area) => {
       if (area !== 'local') return;
 
       // UI settings
@@ -6924,7 +6929,8 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
           }
         });
       }
-    });
+    }
+    chrome.storage.onChanged.addListener(_mcStorageListener)
   }
 
   // ============================================
@@ -6984,10 +6990,12 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
     cleanup.setInterval(checkOffline, 5000)
 
     // MutationObserver for instant transitions
-    const root = document.querySelector('[class*="channel-root"]') || document.body
-    const observer = new MutationObserver(() => checkOffline())
-    observer.observe(root, { childList: true, subtree: true, attributes: true, attributeFilter: ['class'] })
-    cleanup.trackObserver(observer)
+    const root = document.querySelector('[class*="channel-root"]')
+    if (root) {
+      const observer = new MutationObserver(() => checkOffline())
+      observer.observe(root, { childList: true, subtree: true, attributes: true, attributeFilter: ['class'] })
+      cleanup.trackObserver(observer)
+    }
   }
 
   // ============================================
@@ -7872,6 +7880,9 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
     overlayElement = null;
     inputBarElement = null;
     if (resizeObserver) { resizeObserver.disconnect(); resizeObserver = null; }
+    // Disconnect all tracked observers from previous channel to prevent accumulation
+    _timers.observers.forEach(o => { try { o.disconnect() } catch {} })
+    _timers.observers.length = 0
     mcInitialized = false; // Allow init() to run again
 
     // Reset social tab state (stale on nav)

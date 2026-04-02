@@ -275,6 +275,7 @@ function renderPrediction(pred, balance, channelId, isMod, cpImage, cpName) {
   const isResolved = pred.status === 'RESOLVED'
   const isCanceled = pred.status === 'CANCELED'
   const isEnded = isResolved || isCanceled
+  if (isEnded) _userBets.delete(pred.id)
   const totalPoints = pred.outcomes.reduce((s, o) => s + (o.totalPoints || 0), 0)
   const createdAt = new Date(pred.createdAt).getTime()
   const windowMs = (pred.predictionWindowSeconds || 120) * 1000
@@ -1751,7 +1752,7 @@ let _predictionPollTimer = null
 let _predictionChannel = null
 let _twitchIsMod = false  // cached from fetchPrediction (most reliable isMod source)
 let _twitchChannelId = null
-const _userBets = new Map() // eventId → { outcomeId, points }
+const _userBets = new Map() // eventId → { outcomeId, points } (capped at 50)
 
 // Rewards state
 let _rewardsCache = null
@@ -1836,6 +1837,7 @@ async function fetchPrediction(channelLogin) {
       if (predEvent?.self?.prediction) {
         const sp = predEvent.self.prediction
         if (sp.outcome?.id && sp.points) {
+          if (_userBets.size > 50) _userBets.delete(_userBets.keys().next().value)
           _userBets.set(predEvent.id, { outcomeId: sp.outcome.id, points: sp.points })
         }
       }
@@ -2035,6 +2037,7 @@ async function placePredictionBet(eventId, outcomeId, points, transactionId) {
     if (data?.errors?.length) return { error: data.errors[0].message }
     const mutError = data?.data?.makePrediction?.error
     if (mutError) return { error: mutError.code || 'bet failed' }
+    if (_userBets.size > 50) _userBets.delete(_userBets.keys().next().value)
     _userBets.set(eventId, { outcomeId, points })
     return { ok: true }
   } catch (e) {
@@ -2565,6 +2568,7 @@ function attachPollHandlers() {
         btn.title = result.error
         setTimeout(() => { btn.textContent = 'vote'; btn.disabled = false; btn.title = '' }, 2000)
       } else {
+        if (_userPollVotes.size > 50) _userPollVotes.delete(_userPollVotes.keys().next().value)
         _userPollVotes.set(btn.dataset.pollId, btn.dataset.choiceId)
         const pollSection = btn.closest('.hs-mc-poll')
         optimisticPollVoteUpdate(pollSection, btn.dataset.choiceId)

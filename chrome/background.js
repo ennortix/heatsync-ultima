@@ -12,7 +12,7 @@ log('🔥 BACKGROUND SCRIPT LOADING...');
 // Keepalive alarm — prevent Chrome from killing the service worker
 // Chrome minimum alarm period is 0.5 minutes (30s), which resets the inactivity timer
 browser.alarms?.create('keepalive', { periodInMinutes: 0.5 });
-browser.alarms?.create('refresh-global-emotes', { periodInMinutes: 60 });
+browser.alarms?.create('refresh-global-emotes', { periodInMinutes: 1440 });
 browser.alarms?.onAlarm?.addListener((alarm) => {
   if (alarm.name === 'keepalive') {
     // Just existing is enough to keep the worker alive
@@ -502,7 +502,7 @@ async function fetchEmoteInventory() {
     }));
 
     // Combine inventory + subscription emotes
-    emoteInventory = [...inventoryEmotes, ...subEmotes];
+    emoteInventory = sanitizeEmoteList([...inventoryEmotes, ...subEmotes]);
     updateEmoteUrlMap();
 
     log(' Loaded', inventoryEmotes.length, 'inventory emotes');
@@ -1284,22 +1284,15 @@ async function fetchGlobalEmotes() {
         fetch7TVEmotes()
       ]);
 
-      // Merge with cached emotes (avoid duplicates by name)
-      const existingNames = new Set(globalEmotes.map(e => e.name));
-
-      if (twitchGlobals.length > 0) {
-        const newTwitchEmotes = twitchGlobals.filter(e => !existingNames.has(e.name));
-        globalEmotes.push(...newTwitchEmotes);
-        log('✅ Added', newTwitchEmotes.length, 'Twitch globals');
-        newTwitchEmotes.forEach(e => existingNames.add(e.name));
-      }
-
-      if (seventvGlobals.length > 0) {
-        const new7TVEmotes = seventvGlobals.filter(e => !existingNames.has(e.name));
-        globalEmotes.push(...new7TVEmotes);
-        log('✅ Added', new7TVEmotes.length, '7TV globals');
-
-      }
+      // Rebuild merged array (prevents duplicate accumulation on reconnects)
+      const seen = new Set()
+      const merged = []
+      // Server emotes first (authoritative), then Twitch, then 7TV
+      for (const e of globalEmotes) { if (!seen.has(e.name)) { seen.add(e.name); merged.push(e) } }
+      for (const e of twitchGlobals) { if (!seen.has(e.name)) { seen.add(e.name); merged.push(e) } }
+      for (const e of seventvGlobals) { if (!seen.has(e.name)) { seen.add(e.name); merged.push(e) } }
+      globalEmotes = merged
+      log('✅ Merged globals:', globalEmotes.length, '(twitch:', twitchGlobals.length, '7tv:', seventvGlobals.length, ')')
 
       updateEmoteUrlMap();
       log('📊 Total global emotes:', globalEmotes.length);
@@ -1334,6 +1327,8 @@ async function fetchGlobalEmotes() {
 let seventvWebSocket = null;
 let seventvReconnectAttempts = 0;
 let seventvReconnectTimer = null;
+let seventvLastData = 0
+let seventvZombieTimer = null
 let seventvSubscribedSets = new Set(); // Track which set IDs we've subscribed to
 let seventvPendingSubs = new Set(); // Queued while connection is opening
 const SEVENTV_MAX_RECONNECT_ATTEMPTS = 5;
@@ -1355,6 +1350,16 @@ function ensure7TVConnection() {
     seventvWebSocket.onopen = () => {
       log(' 7TV EventAPI: Connected');
       seventvReconnectAttempts = 0;
+      seventvLastData = Date.now()
+      // Zombie detection: force close if no data for 3 minutes
+      if (seventvZombieTimer) { untrackInterval(seventvZombieTimer); seventvZombieTimer = null }
+      seventvZombieTimer = trackInterval(setInterval(() => {
+        if (seventvLastData && Date.now() - seventvLastData > 180000) {
+          log(' 7TV EventAPI: Zombie detected, forcing reconnect')
+          if (seventvWebSocket) { try { seventvWebSocket.close() } catch {} }
+          if (seventvZombieTimer) { untrackInterval(seventvZombieTimer); seventvZombieTimer = null }
+        }
+      }, 60000))
 
       // Subscribe all pending emote sets
       for (const setId of seventvPendingSubs) {
@@ -1364,6 +1369,7 @@ function ensure7TVConnection() {
     };
 
     seventvWebSocket.onmessage = (event) => {
+      seventvLastData = Date.now()
       try {
         const message = JSON.parse(event.data);
 
@@ -1396,6 +1402,7 @@ function ensure7TVConnection() {
       log(' 7TV EventAPI: Connection closed');
       seventvWebSocket = null;
       seventvSubscribedSets.clear();
+      if (seventvZombieTimer) { untrackInterval(seventvZombieTimer); seventvZombieTimer = null }
 
       if (seventvReconnectAttempts < SEVENTV_MAX_RECONNECT_ATTEMPTS && seventvEmoteSetIds.size > 0) {
         const jitter7tv = Math.random() * 1000;
@@ -1473,8 +1480,9 @@ function handle7TVEmoteSetUpdate(updateData) {
     const isBulkSync = updateData.pushed.length > 3;
     for (const item of updateData.pushed) {
       const emote = item.value;
+      if (!/^[a-f0-9]{24}$/.test(emote.id)) continue
       const newEmote = {
-        name: emote.name,
+        name: String(emote.name || '').slice(0, 100),
         url: `https://cdn.7tv.app/emote/${emote.id}/1x.webp`,
         source: '7tv',
         hash: emote.id
@@ -2237,14 +2245,21 @@ function handleWSMessage(msg) {
     case 'multichat:config':
       // Cross-device sync: server sent updated multichat config
       if (Array.isArray(msg.channels)) {
-        log(' 📋 Multichat config sync received:', msg.channels.length, 'channels')
+        // Validate channel objects — reject malformed data to prevent CRLF injection in IRC
+        const validChannels = msg.channels.filter(ch => {
+          if (!ch || typeof ch !== 'object') return false
+          for (const key of ['twitch', 'kick', 'youtube']) {
+            if (ch[key] && (typeof ch[key] !== 'string' || !/^[a-zA-Z0-9_]{1,25}$/.test(ch[key]))) return false
+          }
+          return true
+        })
+        log(' 📋 Multichat config sync received:', validChannels.length, 'channels')
         browser.storage.local.get(['heatsync_multichat']).then(data => {
           const current = data.heatsync_multichat || { channels: [], enabled: true }
-          // Only write if channels actually changed
           const currentJson = JSON.stringify(current.channels)
-          const newJson = JSON.stringify(msg.channels)
+          const newJson = JSON.stringify(validChannels)
           if (currentJson !== newJson) {
-            browser.storage.local.set({ heatsync_multichat: { ...current, channels: msg.channels } })
+            browser.storage.local.set({ heatsync_multichat: { ...current, channels: validChannels } })
           }
         }).catch(() => {})
       }

@@ -296,7 +296,8 @@
     }
     if (attempts < 20) {
       if (sig?.aborted) return
-      setTimeout(tryInit, 1000)
+      const _t = setTimeout(tryInit, 1000)
+      sig?.addEventListener('abort', () => clearTimeout(_t), { once: true })
     }
   }
 
@@ -305,14 +306,17 @@
   const obs = new MutationObserver(() => {
     if (location.href !== lastUrl) {
       lastUrl = location.href
-      setTimeout(() => {
+      const _nt = setTimeout(() => {
+        if (sig?.aborted) return
         const input = document.querySelector('div.editor-input')
         if (input && !input._hsEmojiHooked) findAndHook()
       }, 1500)
+      sig?.addEventListener('abort', () => clearTimeout(_nt), { once: true })
     }
   })
   obs.observe(document, { subtree: true, childList: true })
   sig.addEventListener('abort', () => obs.disconnect())
 
-  setTimeout(tryInit, 500)
+  const _initT = setTimeout(tryInit, 500)
+  sig?.addEventListener('abort', () => clearTimeout(_initT), { once: true })
 })()

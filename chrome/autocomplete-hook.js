@@ -148,12 +148,15 @@
   const EMOJI_ENTRIES = typeof EMOJI_DATA !== 'undefined' ? EMOJI_DATA.map(e => [e.name, e.emoji]) : []
 
   // Extract usernames from chat messages
+  let _usernameTrackerActive = false
   function trackUsernamesFromChat() {
+    if (_usernameTrackerActive) return
     // Observe chat for new messages
     const chatContainer = document.querySelector('[data-test-selector="chat-scrollable-area__message-container"]') ||
                           document.querySelector('.chat-scrollable-area__message-container');
 
     if (!chatContainer) return;
+    _usernameTrackerActive = true
 
     cleanup.trackObserver(new MutationObserver((mutations) => {
       for (const mutation of mutations) {
@@ -206,7 +209,7 @@
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', trackUsernamesFromChat, { signal: acSignal });
   } else {
-    setTimeout(trackUsernamesFromChat, 1000);  // Delay for Twitch to render chat
+    cleanup.setTimeout(trackUsernamesFromChat, 1000);  // Delay for Twitch to render chat
   }
 
   // ========== Extension Settings ==========
@@ -881,7 +884,7 @@
           injectFakeEmotes(this);
           // Re-export native emotes when Twitch lazy-loads sub/follower sets
           clearTimeout(_exportDebounce);
-          _exportDebounce = setTimeout(exportNativeEmotes, 500);
+          _exportDebounce = cleanup.setTimeout(exportNativeEmotes, 500);
         }
       } catch (e) {
       }
@@ -975,8 +978,8 @@
     cycleTooltip.style.opacity = '1';
 
     // Auto-hide after 1.5s
-    if (cycleTooltipTimeout) clearTimeout(cycleTooltipTimeout);
-    cycleTooltipTimeout = setTimeout(() => {
+    if (cycleTooltipTimeout) cleanup.clearTimeout(cycleTooltipTimeout);
+    cycleTooltipTimeout = cleanup.setTimeout(() => {
       if (cycleTooltip) cycleTooltip.style.opacity = '0';
       // Restore dropdown visibility
       document.body.classList.remove('heatsync-cycling');

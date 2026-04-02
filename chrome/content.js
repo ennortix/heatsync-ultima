@@ -310,8 +310,8 @@ style.textContent = `
   /* HEAT MESSAGE BORDERS (by heat tier)          */
   /* ============================================ */
   @keyframes hs-heat-breathe {
-    0%, 100% { box-shadow: 0 0 20px rgba(255, 200, 0, 0.4); }
-    50% { box-shadow: 0 0 30px rgba(255, 100, 0, 0.7); }
+    0%, 100% { filter: drop-shadow(0 0 10px rgba(255, 200, 0, 0.4)); }
+    50% { filter: drop-shadow(0 0 15px rgba(255, 100, 0, 0.7)); }
   }
 
   /* ============================================ */
@@ -2584,22 +2584,16 @@ function applyHeatBorderToElement(messageElement, heat) {
   if (heat < 5) return // no visual for low heat
   const tier = getHeatTier(heat)
   const color = HEAT_GRADIENT[tier]
-
-  // Border width scales with tier
   const borderWidth = tier >= 8 ? 6 : tier >= 5 ? 5 : tier >= 3 ? 4 : 3
-  messageElement.style.borderLeft = `${borderWidth}px solid ${color}`
-
-  // Glow for tier 5+ (100+ heat)
+  let css = `border-left:${borderWidth}px solid ${color}`
   if (tier >= 5) {
     const glowAlpha = Math.min(0.3 + (tier - 5) * 0.1, 0.7)
-    messageElement.style.boxShadow = `0 0 ${10 + (tier - 5) * 3}px rgba(${parseInt(color.slice(1,3),16)}, ${parseInt(color.slice(3,5),16)}, ${parseInt(color.slice(5,7),16)}, ${glowAlpha})`
+    css += `;filter:drop-shadow(0 0 ${10 + (tier - 5) * 3}px rgba(${parseInt(color.slice(1,3),16)}, ${parseInt(color.slice(3,5),16)}, ${parseInt(color.slice(5,7),16)}, ${glowAlpha}))`
   }
-
-  // Breathing animation for tier 8+ (1000+ heat)
   if (tier >= 8) {
-    messageElement.style.animation = 'hs-heat-breathe 2s ease-in-out infinite'
+    css += ';animation:hs-heat-breathe 2s ease-in-out infinite'
   }
-
+  messageElement.style.cssText += ';' + css
   messageElement.dataset.hsHeatApplied = '1'
 }
 
@@ -3155,9 +3149,9 @@ function processMessage(messageElement) {
   const textElements = messageElement.querySelectorAll('.text-fragment, span.font-normal')
   if (textElements.length === 0) return
 
-  const username = getUsername(messageElement)
   // Query author element once — passed to highlightUserMentions/colorUsernameMentions to avoid re-querying
   const usernameElement = messageElement.querySelector('.chat-author__display-name, [data-a-target="chat-message-username"], button.inline.font-bold')
+  const username = usernameElement ? usernameElement.textContent.trim() : ''
 
   // Add to known chatters (for username coloring) - extract their Twitch color
   // Priority: HeatSync API color > Twitch native color > white fallback
@@ -3282,9 +3276,8 @@ function processMessage(messageElement) {
   }
 
   // Process ALL text fragments with overlay stacking support
+  if (!document.contains(messageElement)) return
   for (const textElement of textElements) {
-    // Skip if already processed or removed from DOM
-    if (!document.contains(textElement)) continue
     if (textElement.querySelector('.heatsync-emote-wrapper')) continue
 
     replaceEmotesWithStacking(textElement, allEmotes)
@@ -4845,9 +4838,14 @@ function updateEmoteState(hash, emoteName, state) {
           cardDragAC = new AbortController()
           dragX = ev.clientX - cardEl.offsetLeft
           dragY = ev.clientY - cardEl.offsetTop
+          let dragRaf = null
           const onMove = (me) => {
-            cardEl.style.left = (me.clientX - dragX) + 'px'
-            cardEl.style.top = (me.clientY - dragY) + 'px'
+            if (dragRaf) return
+            dragRaf = requestAnimationFrame(() => {
+              dragRaf = null
+              cardEl.style.left = (me.clientX - dragX) + 'px'
+              cardEl.style.top = (me.clientY - dragY) + 'px'
+            })
           }
           const onUp = () => {
             if (cardDragAC) { cardDragAC.abort(); cardDragAC = null }
@@ -6495,14 +6493,14 @@ cleanup.setInterval(() => {
 window.addEventListener('beforeunload', () => {
   if (msgCacheSaveTimer) { clearTimeout(msgCacheSaveTimer); msgCacheSaveTimer = null }
   saveMsgCache()
-})
+}, { signal })
 
 // Auto-claim Twitch channel points bonus
 let autoClaimObserver = null
 let autoClaimEnabled = true
 
 function setupAutoClaimPoints() {
-  if (autoClaimObserver) { autoClaimObserver.disconnect(); autoClaimObserver = null }
+  if (autoClaimObserver) { cleanup.untrackObserver(autoClaimObserver); autoClaimObserver = null }
   if (!autoClaimEnabled || !location.hostname.includes('twitch.tv')) return
 
   function tryClaimBonus(container) {

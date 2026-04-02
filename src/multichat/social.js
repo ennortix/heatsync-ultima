@@ -422,7 +422,7 @@ function renderFeed() {
           fetchFeed(true);
         }
       }, 200)
-    });
+    }, { signal: mcSignal });
   }
 }
 

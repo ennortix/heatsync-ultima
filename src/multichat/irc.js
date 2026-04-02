@@ -262,8 +262,8 @@ class IRC {
     this._destroyed = true;
     this._ac?.abort();
     this._stopHeartbeat();
-    clearTimeout(this._reconnectTimer);
-    for (const id of Object.values(this._persistTimers)) clearTimeout(id);
+    cleanup.clearTimeout(this._reconnectTimer);
+    for (const id of Object.values(this._persistTimers)) cleanup.clearTimeout(id);
     this._persistTimers = {};
     if (this.ws) {
       this.ws.onclose = null;
@@ -274,7 +274,7 @@ class IRC {
 
   _startHeartbeat() {
     this._stopHeartbeat();
-    this._heartbeatTimer = setInterval(() => {
+    this._heartbeatTimer = cleanup.setInterval(() => {
       if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
         this._stopHeartbeat();
         if (!this._destroyed) this._scheduleReconnect();
@@ -294,7 +294,7 @@ class IRC {
 
   _stopHeartbeat() {
     if (this._heartbeatTimer) {
-      clearInterval(this._heartbeatTimer);
+      cleanup.clearInterval(this._heartbeatTimer);
       this._heartbeatTimer = null;
     }
   }
@@ -312,11 +312,11 @@ class IRC {
 
   _scheduleReconnect() {
     if (this._destroyed) return;
-    clearTimeout(this._reconnectTimer);
+    cleanup.clearTimeout(this._reconnectTimer);
     const delay = Math.min(2000 * Math.pow(2, this._reconnectAttempts), 30000);
     this._reconnectAttempts++;
     log('Reconnecting in', delay, 'ms (attempt', this._reconnectAttempts, ')');
-    this._reconnectTimer = setTimeout(() => {
+    this._reconnectTimer = cleanup.setTimeout(() => {
       if (!this._destroyed) this.connect();
     }, delay);
   }
@@ -395,7 +395,7 @@ class IRC {
 
   persistBuffer(ch) {
     if (this._persistTimers[ch]) return
-    this._persistTimers[ch] = setTimeout(() => {
+    this._persistTimers[ch] = cleanup.setTimeout(() => {
       delete this._persistTimers[ch]
       const buffer = this.channels.get(ch)
       if (!buffer) return
@@ -716,7 +716,7 @@ class KickChat {
 
   persistBuffer(ch) {
     if (this._persistTimers[ch]) return
-    this._persistTimers[ch] = setTimeout(() => {
+    this._persistTimers[ch] = cleanup.setTimeout(() => {
       delete this._persistTimers[ch]
       const buffer = this.channels.get(ch)
       if (!buffer) return
@@ -778,7 +778,7 @@ class KickChat {
       chrome.runtime?.onMessage?.removeListener(this._listener)
       this._listener = null
     }
-    for (const id of Object.values(this._persistTimers)) clearTimeout(id);
+    for (const id of Object.values(this._persistTimers)) cleanup.clearTimeout(id);
     this._persistTimers = {};
     // Leave all channels
     for (const username of this.channels.keys()) {

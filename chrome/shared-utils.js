@@ -18,11 +18,13 @@
     const controller = new AbortController()
     const signal = controller.signal
     const _timers = { intervals: new Set(), timeouts: new Set(), observers: [] }
+    const _pendingRafs = new Set()
 
     signal.addEventListener('abort', () => {
       _timers.intervals.forEach(clearInterval)
       _timers.timeouts.forEach(clearTimeout)
       _timers.observers.forEach(o => o.disconnect())
+      _pendingRafs.forEach(cancelAnimationFrame); _pendingRafs.clear()
       if (opts.onAbort) opts.onAbort()
     })
 
@@ -35,7 +37,13 @@
         target.addEventListener(event, handler, { signal, ...extra })
       },
       trackObserver(obs) { _timers.observers.push(obs); return obs },
-      raf(fn) { return requestAnimationFrame(fn) },
+      raf(fn) {
+        let id
+        id = requestAnimationFrame(() => { _pendingRafs.delete(id); fn() })
+        _pendingRafs.add(id)
+        return id
+      },
+      cancelRaf(id) { cancelAnimationFrame(id); _pendingRafs.delete(id) },
     }
 
     return { signal, cleanup, abort: () => controller.abort() }

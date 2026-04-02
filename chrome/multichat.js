@@ -356,16 +356,13 @@ if (typeof window !== 'undefined') {
 
   function _untrackListener(target, event, handler) {
     if (!target || !event || !handler) return
-    // find matching entry to get original options (needed for capture-phase removal)
-    let opts
     for (let i = _listeners.length - 1; i >= 0; i--) {
       const l = _listeners[i]
       if (l.target === target && l.event === event && l.handler === handler) {
-        opts = l.options
+        target.removeEventListener(event, handler, l.options)
         _listeners.splice(i, 1)
       }
     }
-    target.removeEventListener(event, handler, opts)
   }
 
   // --- requestAnimationFrame ---
@@ -857,10 +854,12 @@ function log(...args) {
 const lifecycle = new AbortController()
 const mcSignal = lifecycle.signal
 const _timers = { intervals: [], timeouts: [], observers: [] }
+const _pendingRafs = new Set()
 mcSignal.addEventListener('abort', () => {
   _timers.intervals.forEach(clearInterval)
   _timers.timeouts.forEach(clearTimeout)
   _timers.observers.forEach(o => o.disconnect())
+  _pendingRafs.forEach(cancelAnimationFrame); _pendingRafs.clear()
   if (irc) { irc.destroy(); }
   if (kickChat) { kickChat.destroy(); }
   delete window._hsMcEmoteContextHandler
@@ -889,7 +888,13 @@ const cleanup = {
     target.addEventListener(event, handler, { signal: mcSignal })
   },
   trackObserver(obs) { _timers.observers.push(obs); return obs },
-  raf(fn) { return requestAnimationFrame(fn) },
+  raf(fn) {
+    let id
+    id = requestAnimationFrame(() => { _pendingRafs.delete(id); fn() })
+    _pendingRafs.add(id)
+    return id
+  },
+  cancelRaf(id) { cancelAnimationFrame(id); _pendingRafs.delete(id) },
 }
 
 
@@ -1158,8 +1163,8 @@ class IRC {
     this._destroyed = true;
     this._ac?.abort();
     this._stopHeartbeat();
-    clearTimeout(this._reconnectTimer);
-    for (const id of Object.values(this._persistTimers)) clearTimeout(id);
+    cleanup.clearTimeout(this._reconnectTimer);
+    for (const id of Object.values(this._persistTimers)) cleanup.clearTimeout(id);
     this._persistTimers = {};
     if (this.ws) {
       this.ws.onclose = null;
@@ -1170,7 +1175,7 @@ class IRC {
 
   _startHeartbeat() {
     this._stopHeartbeat();
-    this._heartbeatTimer = setInterval(() => {
+    this._heartbeatTimer = cleanup.setInterval(() => {
       if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
         this._stopHeartbeat();
         if (!this._destroyed) this._scheduleReconnect();
@@ -1190,7 +1195,7 @@ class IRC {
 
   _stopHeartbeat() {
     if (this._heartbeatTimer) {
-      clearInterval(this._heartbeatTimer);
+      cleanup.clearInterval(this._heartbeatTimer);
       this._heartbeatTimer = null;
     }
   }
@@ -1208,11 +1213,11 @@ class IRC {
 
   _scheduleReconnect() {
     if (this._destroyed) return;
-    clearTimeout(this._reconnectTimer);
+    cleanup.clearTimeout(this._reconnectTimer);
     const delay = Math.min(2000 * Math.pow(2, this._reconnectAttempts), 30000);
     this._reconnectAttempts++;
     log('Reconnecting in', delay, 'ms (attempt', this._reconnectAttempts, ')');
-    this._reconnectTimer = setTimeout(() => {
+    this._reconnectTimer = cleanup.setTimeout(() => {
       if (!this._destroyed) this.connect();
     }, delay);
   }
@@ -1291,7 +1296,7 @@ class IRC {
 
   persistBuffer(ch) {
     if (this._persistTimers[ch]) return
-    this._persistTimers[ch] = setTimeout(() => {
+    this._persistTimers[ch] = cleanup.setTimeout(() => {
       delete this._persistTimers[ch]
       const buffer = this.channels.get(ch)
       if (!buffer) return
@@ -1612,7 +1617,7 @@ class KickChat {
 
   persistBuffer(ch) {
     if (this._persistTimers[ch]) return
-    this._persistTimers[ch] = setTimeout(() => {
+    this._persistTimers[ch] = cleanup.setTimeout(() => {
       delete this._persistTimers[ch]
       const buffer = this.channels.get(ch)
       if (!buffer) return
@@ -1674,7 +1679,7 @@ class KickChat {
       chrome.runtime?.onMessage?.removeListener(this._listener)
       this._listener = null
     }
-    for (const id of Object.values(this._persistTimers)) clearTimeout(id);
+    for (const id of Object.values(this._persistTimers)) cleanup.clearTimeout(id);
     this._persistTimers = {};
     // Leave all channels
     for (const username of this.channels.keys()) {
@@ -4150,6 +4155,7 @@ function renderPrediction(pred, balance, channelId, isMod, cpImage, cpName) {
   const isResolved = pred.status === 'RESOLVED'
   const isCanceled = pred.status === 'CANCELED'
   const isEnded = isResolved || isCanceled
+  if (isEnded) _userBets.delete(pred.id)
   const totalPoints = pred.outcomes.reduce((s, o) => s + (o.totalPoints || 0), 0)
   const createdAt = new Date(pred.createdAt).getTime()
   const windowMs = (pred.predictionWindowSeconds || 120) * 1000
@@ -5626,7 +5632,7 @@ let _predictionPollTimer = null
 let _predictionChannel = null
 let _twitchIsMod = false  // cached from fetchPrediction (most reliable isMod source)
 let _twitchChannelId = null
-const _userBets = new Map() // eventId → { outcomeId, points }
+const _userBets = new Map() // eventId → { outcomeId, points } (capped at 50)
 
 // Rewards state
 let _rewardsCache = null
@@ -5711,6 +5717,7 @@ async function fetchPrediction(channelLogin) {
       if (predEvent?.self?.prediction) {
         const sp = predEvent.self.prediction
         if (sp.outcome?.id && sp.points) {
+          if (_userBets.size > 50) _userBets.delete(_userBets.keys().next().value)
           _userBets.set(predEvent.id, { outcomeId: sp.outcome.id, points: sp.points })
         }
       }
@@ -5910,6 +5917,7 @@ async function placePredictionBet(eventId, outcomeId, points, transactionId) {
     if (data?.errors?.length) return { error: data.errors[0].message }
     const mutError = data?.data?.makePrediction?.error
     if (mutError) return { error: mutError.code || 'bet failed' }
+    if (_userBets.size > 50) _userBets.delete(_userBets.keys().next().value)
     _userBets.set(eventId, { outcomeId, points })
     return { ok: true }
   } catch (e) {
@@ -6440,6 +6448,7 @@ function attachPollHandlers() {
         btn.title = result.error
         setTimeout(() => { btn.textContent = 'vote'; btn.disabled = false; btn.title = '' }, 2000)
       } else {
+        if (_userPollVotes.size > 50) _userPollVotes.delete(_userPollVotes.keys().next().value)
         _userPollVotes.set(btn.dataset.pollId, btn.dataset.choiceId)
         const pollSection = btn.closest('.hs-mc-poll')
         optimisticPollVoteUpdate(pollSection, btn.dataset.choiceId)
@@ -7160,7 +7169,7 @@ function renderFeed() {
           fetchFeed(true);
         }
       }, 200)
-    });
+    }, { signal: mcSignal });
   }
 }
 
@@ -9845,6 +9854,7 @@ const STORAGE_KEY = 'heatsync_multichat';
   let pendingMessage = '';     // Persists across tab switches
   let tabPosition = 'top'; // 'top', 'right', 'bottom', 'left'
   let resizeObserver = null; // Tracks overlay top sync observer
+  let _mcStorageListener = null;
 
   // Muted users (right-click to hide) — loaded async from chrome.storage.local
   let mutedUsers = new Set();
@@ -9978,8 +9988,8 @@ const STORAGE_KEY = 'heatsync_multichat';
     const fn = paint.function.toLowerCase()
     if (fn === 'url' && paint.image_url) {
       if (!/^https:\/\//.test(paint.image_url)) return ''
-      const safeUrl = escapeHtml(paint.image_url)
-      let style = `background-image:url(${safeUrl});background-size:cover;-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text`
+      const safeCssUrl = paint.image_url.replace(/[()'"\\]/g, encodeURIComponent)
+      let style = `background-image:url(${safeCssUrl});background-size:cover;-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text`
       if (paint.shadows?.length) {
         style += ';filter:' + paint.shadows.map(s => {
           const r = (s.color >>> 24) & 0xff
@@ -9999,9 +10009,11 @@ const STORAGE_KEY = 'heatsync_multichat';
         const a = (s.color & 0xff) / 255
         return `rgba(${r},${g},${b},${a.toFixed(2)}) ${Math.round(s.at * 100)}%`
       }).join(', ')
+      const safeAngle = Number.isFinite(Number(paint.angle)) ? Number(paint.angle) : 0
+      const safeShape = /^(circle|ellipse)$/.test(paint.shape) ? paint.shape : 'circle'
       const grad = (fn === 'linear-gradient' || fn === 'linear_gradient')
-        ? `linear-gradient(${paint.angle || 0}deg, ${stops})`
-        : `radial-gradient(${paint.shape || 'circle'}, ${stops})`
+        ? `linear-gradient(${safeAngle}deg, ${stops})`
+        : `radial-gradient(${safeShape}, ${stops})`
       let style = `background:${grad};-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text`
       if (paint.shadows?.length) {
         style += ';filter:' + paint.shadows.map(s => {
@@ -11215,8 +11227,8 @@ const STORAGE_KEY = 'heatsync_multichat';
             ? `<div class="hs-mc-setting-row" style="color:#808080;font-size:11px">${t('mc_settings_no_muted')}</div>`
             : [...mutedUsers].sort().map(u => `
           <div class="hs-mc-setting-row">
-            <span class="hs-mc-setting-label" style="font-size:11px">${u}</span>
-            <button class="hs-mc-unmute-btn" data-username="${u}" style="background:none;border:1px solid #808080;color:#808080;font-size:11px;cursor:pointer;padding:1px 6px;line-height:1.4" title="${t('mc_settings_unmute')}">&#x2715;</button>
+            <span class="hs-mc-setting-label" style="font-size:11px">${escapeHtml(u)}</span>
+            <button class="hs-mc-unmute-btn" data-username="${escapeHtml(u)}" style="background:none;border:1px solid #808080;color:#808080;font-size:11px;cursor:pointer;padding:1px 6px;line-height:1.4" title="${t('mc_settings_unmute')}">&#x2715;</button>
           </div>`).join('')
           }
         </div>
@@ -11346,11 +11358,11 @@ const STORAGE_KEY = 'heatsync_multichat';
         t.style.left = rect.left + 'px';
         t.style.top = (rect.bottom + 4) + 'px';
         t.classList.add('visible');
-      }, true);
+      }, { capture: true, signal: mcSignal });
       msgsEl.addEventListener('mouseleave', (e) => {
         const label = e.target.closest('.hs-mc-setting-label[data-tip]');
         if (label) { const t = document.getElementById('hs-settings-tip'); if (t) t.classList.remove('visible'); }
-      }, true);
+      }, { capture: true, signal: mcSignal });
     }
   }
 
@@ -16607,7 +16619,9 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
     });
 
     // Also listen for storage changes (more reliable)
-    chrome.storage.onChanged.addListener((changes, area) => {
+    // Remove previous storage listener to prevent accumulation on SPA nav
+    if (_mcStorageListener) chrome.storage.onChanged.removeListener(_mcStorageListener)
+    _mcStorageListener = (changes, area) => {
       if (area !== 'local') return;
 
       // UI settings
@@ -16712,7 +16726,8 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
           }
         });
       }
-    });
+    }
+    chrome.storage.onChanged.addListener(_mcStorageListener)
   }
 
   // ============================================
@@ -16772,10 +16787,12 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
     cleanup.setInterval(checkOffline, 5000)
 
     // MutationObserver for instant transitions
-    const root = document.querySelector('[class*="channel-root"]') || document.body
-    const observer = new MutationObserver(() => checkOffline())
-    observer.observe(root, { childList: true, subtree: true, attributes: true, attributeFilter: ['class'] })
-    cleanup.trackObserver(observer)
+    const root = document.querySelector('[class*="channel-root"]')
+    if (root) {
+      const observer = new MutationObserver(() => checkOffline())
+      observer.observe(root, { childList: true, subtree: true, attributes: true, attributeFilter: ['class'] })
+      cleanup.trackObserver(observer)
+    }
   }
 
   // ============================================
@@ -17660,6 +17677,9 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
     overlayElement = null;
     inputBarElement = null;
     if (resizeObserver) { resizeObserver.disconnect(); resizeObserver = null; }
+    // Disconnect all tracked observers from previous channel to prevent accumulation
+    _timers.observers.forEach(o => { try { o.disconnect() } catch {} })
+    _timers.observers.length = 0
     mcInitialized = false; // Allow init() to run again
 
     // Reset social tab state (stale on nav)

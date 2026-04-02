@@ -212,6 +212,7 @@
           if (attempts >= 20) resolve(cachedAuthToken)
         }
       }, 50)
+      btnSignal?.addEventListener('abort', () => clearInterval(interval), { once: true })
     })
   }
 

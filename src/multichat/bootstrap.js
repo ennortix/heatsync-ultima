@@ -9,10 +9,12 @@ function log(...args) {
 const lifecycle = new AbortController()
 const mcSignal = lifecycle.signal
 const _timers = { intervals: [], timeouts: [], observers: [] }
+const _pendingRafs = new Set()
 mcSignal.addEventListener('abort', () => {
   _timers.intervals.forEach(clearInterval)
   _timers.timeouts.forEach(clearTimeout)
   _timers.observers.forEach(o => o.disconnect())
+  _pendingRafs.forEach(cancelAnimationFrame); _pendingRafs.clear()
   if (irc) { irc.destroy(); }
   if (kickChat) { kickChat.destroy(); }
   delete window._hsMcEmoteContextHandler
@@ -41,5 +43,11 @@ const cleanup = {
     target.addEventListener(event, handler, { signal: mcSignal })
   },
   trackObserver(obs) { _timers.observers.push(obs); return obs },
-  raf(fn) { return requestAnimationFrame(fn) },
+  raf(fn) {
+    let id
+    id = requestAnimationFrame(() => { _pendingRafs.delete(id); fn() })
+    _pendingRafs.add(id)
+    return id
+  },
+  cancelRaf(id) { cancelAnimationFrame(id); _pendingRafs.delete(id) },
 }

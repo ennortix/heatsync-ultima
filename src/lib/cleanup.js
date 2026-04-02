@@ -79,16 +79,13 @@
 
   function _untrackListener(target, event, handler) {
     if (!target || !event || !handler) return
-    // find matching entry to get original options (needed for capture-phase removal)
-    let opts
     for (let i = _listeners.length - 1; i >= 0; i--) {
       const l = _listeners[i]
       if (l.target === target && l.event === event && l.handler === handler) {
-        opts = l.options
+        target.removeEventListener(event, handler, l.options)
         _listeners.splice(i, 1)
       }
     }
-    target.removeEventListener(event, handler, opts)
   }
 
   // --- requestAnimationFrame ---

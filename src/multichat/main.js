@@ -5619,6 +5619,11 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
       if (m.emotes && m.emotes.length > 0) {
         processedText = processYtEmotes(processedText, m.emotes, true)
       }
+      // Safety net: strip any remaining escaped HTML img tag fragments that leaked through
+      // Matches &lt;img followed by escaped attributes, with or without closing &gt;
+      if (processedText.includes('&lt;img')) {
+        processedText = processedText.replace(/&lt;img\b[^<]*/g, '')
+      }
       m._renderedHtml = processedText
     }
 
@@ -5698,13 +5703,13 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
     // Build result by replacing emoji alt text with img tags
     let result = preEscaped ? text : escapeHtml(text)
     const htmlAltEmotes = emotes.filter(e => typeof e.alt === 'string' && e.alt.includes('<') && e.url)
+    if (htmlAltEmotes.length > 0) log('YT emotes with HTML alt:', htmlAltEmotes.length, 'of', emotes.length, 'total. Alts:', emotes.map(e => e.alt?.slice(0, 30)))
     for (const emote of emotes) {
       const url = typeof emote.url === 'string' ? emote.url.trim() : ''
       const alt = typeof emote.alt === 'string' ? emote.alt : ''
       if (!alt || !url || !(url.startsWith('http') || url.startsWith('//'))) continue
       // Skip emotes with HTML-like alt (server bug: raw img tags as alt text)
-      // These are handled by the escaped-img-tag cleanup below
-      if (alt.includes('<')) continue
+      if (alt.includes('<') || alt.includes('&lt;')) continue
       const escaped = escapeHtml(alt).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
       let re = _ytEmoteRegexCache.get(escaped)
       if (!re) {
@@ -5714,11 +5719,13 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
       }
       result = result.replace(re, () => `<img src="${escapeHtml(url)}" alt="${escapeHtml(alt)}" class="hs-mc-emote" style="height:1.2em;vertical-align:middle;" />`)
     }
-    // Clean up escaped HTML img tags left in text (from server sending raw HTML as emoji)
-    // Replace each with the corresponding HTML-alt emote image, or remove if no match
+    // Clean up any escaped HTML img tags in text — with or without closing tag
+    // Handles both complete (&lt;img...&gt;) and truncated (&lt;img src=&quot;...&quot;) fragments
     if (htmlAltEmotes.length > 0) {
       let ei = 0
-      result = result.replace(/&lt;img\b[^]*?(?:\/&gt;|&gt;)/g, () => {
+      result = result.replace(/&lt;img\b(?:[^]*?(?:\/&gt;|&gt;)|[^<]*)/g, (match) => {
+        // Don't replace if this is inside a real HTML tag (already rendered emote)
+        if (match.includes('class=')) return match
         const e = htmlAltEmotes[ei++ % htmlAltEmotes.length]
         return e ? `<img src="${escapeHtml(e.url)}" alt="emoji" class="hs-mc-emote" style="height:1.2em;vertical-align:middle;" />` : ''
       })

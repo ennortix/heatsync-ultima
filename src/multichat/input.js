@@ -583,10 +583,10 @@ function updateInputPlaceholder() {
   } else if (currentTab === 'add') {
     placeholder = '';
   } else {
-    // Channel tab — resolve twitch name for placeholder
+    // Channel tab — resolve display name for placeholder
     const ch = config.channels.find(c => (typeof c === 'string' ? c : c.id) === currentTab);
-    const twitchName = typeof ch === 'string' ? ch : ch?.twitch;
-    placeholder = twitchName ? t('mc_input_send_channel', [twitchName]) : t('mc_input_send_channel', [currentTab]);
+    const chanName = typeof ch === 'string' ? ch : (ch?.twitch || ch?.kick || ch?.youtube?.replace(/^https?:\/\/(www\.)?youtube\.com\/@?/, '').replace(/\/.*/, '') || ch?.id);
+    placeholder = t('mc_input_send_channel', [chanName]);
   }
 
   if (wysiwygEnabled) {

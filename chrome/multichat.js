@@ -16825,6 +16825,20 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
 
     log('Initializing...');
 
+    // Apply font settings from extension options
+    try {
+      const stored = await chrome.storage.local.get('ui_settings')
+      if (stored.ui_settings) {
+        const fontFamily = stored.ui_settings.fontFamily || 'CozetteVector'
+        const fontSize = stored.ui_settings.fontSize || '13'
+        const customName = stored.ui_settings.customFontName || ''
+        let fontValue = fontFamily === 'custom' && customName ? `'${customName}'` : fontFamily === 'monospace' ? 'monospace' : `'${fontFamily}'`
+        const fontStyle = document.createElement('style')
+        fontStyle.textContent = `.hs-mc-panel, .hs-mc-panel * { --hs-font: ${fontValue}; font-family: var(--hs-font), monospace !important; font-size: ${fontSize}px; }`
+        document.head.appendChild(fontStyle)
+      }
+    } catch(e) { /* font settings not critical */ }
+
     // Add popout class to body for CSS targeting
     if (isPopout) {
       document.body.classList.add('hs-popout');

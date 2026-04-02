@@ -35,6 +35,19 @@
       const key = toggle.dataset.setting
       toggle.classList.toggle('active', !!settings[key])
     }
+
+    // Font settings
+    const fontSelect = document.getElementById('ext-font-family')
+    const fontSizeSelect = document.getElementById('ext-font-size')
+    const customFontInput = document.getElementById('ext-custom-font')
+    const customFontRow = document.getElementById('ext-custom-font-row')
+
+    if (fontSelect) {
+      fontSelect.value = settings.fontFamily || 'CozetteVector'
+      if (customFontRow) customFontRow.style.display = fontSelect.value === 'custom' ? '' : 'none'
+    }
+    if (fontSizeSelect) fontSizeSelect.value = settings.fontSize || '13'
+    if (customFontInput) customFontInput.value = settings.customFontName || ''
   }
 
   async function save() {
@@ -48,6 +61,24 @@
     settings[key] = !settings[key]
     toggle.classList.toggle('active', settings[key])
     save()
+  })
+
+  // Font selector handlers
+  document.addEventListener('change', (e) => {
+    if (e.target.id === 'ext-font-family') {
+      settings.fontFamily = e.target.value
+      const customRow = document.getElementById('ext-custom-font-row')
+      if (customRow) customRow.style.display = e.target.value === 'custom' ? '' : 'none'
+      save()
+    }
+    if (e.target.id === 'ext-font-size') {
+      settings.fontSize = e.target.value
+      save()
+    }
+    if (e.target.id === 'ext-custom-font') {
+      settings.customFontName = e.target.value.trim()
+      save()
+    }
   })
 
   load()

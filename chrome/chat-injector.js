@@ -328,9 +328,9 @@ function injectMessage(message) {
   const isNearBottom = scrollParent.scrollTop + scrollParent.clientHeight >= scrollParent.scrollHeight - 100;
 
   if (isNearBottom) {
-    setTimeout(() => {
-      scrollParent.scrollTop = scrollParent.scrollHeight;
-    }, 10);
+    requestAnimationFrame(() => {
+      scrollParent.scrollTop = scrollParent.scrollHeight
+    })
   }
 }
 

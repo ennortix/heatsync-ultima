@@ -1990,6 +1990,7 @@
 
         // Wait for image to load to get accurate dimensions
         previewImg.onload = () => {
+          if (!previewTooltip?.isConnected) return
           // Position above the emote
           const rect = wrap.getBoundingClientRect();
           const tooltipRect = previewTooltip.getBoundingClientRect();
@@ -2199,9 +2200,15 @@
     div.textContent = msg;
     msgsEl.appendChild(div);
     // Trim oldest
-    while (msgsEl.children.length > 150) msgsEl.removeChild(msgsEl.firstChild);
+    const excess = msgsEl.children.length - 150
+    if (excess > 0) {
+      const range = document.createRange()
+      range.setStartBefore(msgsEl.firstChild)
+      range.setEndBefore(msgsEl.children[excess])
+      range.deleteContents()
+    }
     // Auto-scroll if not scrolled up
-    msgsEl.scrollTop = msgsEl.scrollHeight;
+    requestAnimationFrame(() => { msgsEl.scrollTop = msgsEl.scrollHeight })
   }
 
   function showContextMenu(evt, emote, tab) {

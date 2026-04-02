@@ -33,8 +33,15 @@ browser.runtime.onInstalled.addListener((details) => {
   // Clear channel emote cache (in-memory + storage) so stale data doesn't block refetches
   channelEmotesMap = {};
   channelEmotesFetchedAt = {};
-  browser.storage.local.remove('channel_emotes_map')
-  browser.storage.local.remove('channel_emotes_fetched_at')
+  browser.storage.local.remove('channel_emotes_map').catch(() => {})
+  browser.storage.local.remove('channel_emotes_fetched_at').catch(() => {})
+  if (details.reason === 'update') {
+    browser.tabs.query({ url: ['*://*.twitch.tv/*', '*://*.kick.com/*', '*://*.youtube.com/*'] }).then(tabs => {
+      for (const tab of tabs) {
+        browser.scripting?.executeScript({ target: { tabId: tab.id }, files: ['content.js'] }).catch(() => {})
+      }
+    }).catch(() => {})
+  }
   if (details.reason === 'install') {
     browser.tabs.create({
       url: browser.runtime.getURL('welcome.html')
@@ -122,7 +129,7 @@ let bttvBadgeMap = new Map()    // twitchUserId → { description, url }
 let ffzBadgeMap = new Map()     // twitchUserId → [{ title, color, url }]
 let chatterinoBadgeMap = new Map()  // twitchUserId → { tooltip, url }
 const userCosmeticsCache = new Map() // twitchUserId → { paint, badge, fetchedAt }
-let badgesFetchedAt = 0
+let badgesFetchedAt = 0 // persisted to storage in fetchBulkBadges, restored in initialize()
 const BADGES_TTL = 24 * 60 * 60 * 1000
 const USER_COSMETICS_TTL = 30 * 60 * 1000
 const USER_COSMETICS_MAX = 500
@@ -132,6 +139,8 @@ let socket = null;
 let lastBroadcastWasEmpty = false // Track to prevent spamming 0-emote broadcasts
 let lastInventoryFetch = 0 // Timestamp of last successful inventory fetch
 let inventoryRefreshTimer = null // Debounce WS-triggered inventory refreshes
+let inventoryFetchPromise = null // In-flight guard for fetchEmoteInventory
+let globalEmotesFetchPromise = null // In-flight guard for fetchGlobalEmotes
 
 function scheduleInventoryRefresh() {
   if (inventoryRefreshTimer) clearTimeout(inventoryRefreshTimer)
@@ -434,12 +443,14 @@ async function getAuthCookie() {
 }
 
 // Fetch user's emote inventory via HTTP
-async function fetchEmoteInventory() {
+function fetchEmoteInventory() {
   // Skip if fetched within 10s (WS events already deliver fresh data)
   if (Date.now() - lastInventoryFetch < 10000) {
     log(' Inventory fetch skipped — last fetch was', Math.round((Date.now() - lastInventoryFetch) / 1000) + 's ago')
-    return
+    return Promise.resolve()
   }
+  if (inventoryFetchPromise) return inventoryFetchPromise
+  inventoryFetchPromise = (async () => {
   try {
     const authToken = await getAuthCookie()
     if (!authToken) {
@@ -521,7 +532,11 @@ async function fetchEmoteInventory() {
       broadcastToTabs({ type: 'inventory_update', emotes: emoteInventory });
       lastBroadcastWasEmpty = true;
     }
+  } finally {
+    inventoryFetchPromise = null
   }
+  })()
+  return inventoryFetchPromise
 }
 
 // Fetch blocked emotes
@@ -913,11 +928,21 @@ async function resolve7TVCosmeticIds(ids) {
   // Check cache first
   if (ids.paintId) {
     const cached = cosmeticObjectCache.get(ids.paintId)
-    if (cached) { result.paint = cached } else { toFetch.push(ids.paintId) }
+    if (cached) {
+      // Move to end for LRU ordering
+      cosmeticObjectCache.delete(ids.paintId)
+      cosmeticObjectCache.set(ids.paintId, cached)
+      result.paint = cached
+    } else { toFetch.push(ids.paintId) }
   }
   if (ids.badgeId) {
     const cached = cosmeticObjectCache.get(ids.badgeId)
-    if (cached) { result.badge = cached } else { toFetch.push(ids.badgeId) }
+    if (cached) {
+      // Move to end for LRU ordering
+      cosmeticObjectCache.delete(ids.badgeId)
+      cosmeticObjectCache.set(ids.badgeId, cached)
+      result.badge = cached
+    } else { toFetch.push(ids.badgeId) }
   }
   if (toFetch.length === 0) return result
 
@@ -958,6 +983,7 @@ function setUserCosmetic(twitchId, cosmetic) {
 async function fetchBulkBadges() {
   if (Date.now() - badgesFetchedAt < BADGES_TTL) return
   badgesFetchedAt = Date.now()
+  browser.storage.local.set({ badges_fetched_at: badgesFetchedAt }).catch(() => {})
   try {
     const [bttvResp, ffzResp, chatterinoResp] = await Promise.allSettled([
       fetchWithTimeout('https://api.betterttv.net/3/cached/badges'),
@@ -1055,7 +1081,14 @@ async function fetchChannelOwnerEmotes(channelName, channelId = null, platform =
       (platform !== 'kick' && !channelId) ? lookupTwitchUserId(channelName) : Promise.resolve(channelId)
     ]);
     let heatsyncEmotes = [];
-    if (heatsyncResult?.ok) {
+    if (heatsyncResult?.status === 429) {
+      console.warn('[heatsync] fetchChannelOwnerEmotes: rate limited (429) for', channelName, '- skipping, will retry on next channel join')
+      heatsyncResult.body?.cancel()
+      // Clear sentinel so retry is possible on next join, but don't store empty result
+      delete channelEmotesMap[channelName]
+      broadcastToTabs({ type: 'loading_status', done: true })
+      return
+    } else if (heatsyncResult?.ok) {
       const data = await heatsyncResult.json();
       heatsyncEmotes = (data.emotes || []).map(e => ({
         name: e.name,
@@ -1259,7 +1292,9 @@ async function fetchTwitchChannelEmotes(channelName) {
   }
 }
 
-async function fetchGlobalEmotes() {
+function fetchGlobalEmotes() {
+  if (globalEmotesFetchPromise) return globalEmotesFetchPromise
+  globalEmotesFetchPromise = (async () => {
   try {
     log(' Fetching global emotes from', `${API_URL}/api/emotes`);
     // Try server API first (has all providers cached)
@@ -1317,8 +1352,12 @@ async function fetchGlobalEmotes() {
     broadcastToTabs({ type: 'global_emotes_update', emotes: globalEmotes });
   } catch (error) {
     console.error('[heatsync] fetchGlobalEmotes failed:', error.message || error)
+  } finally {
+    globalEmotesFetchPromise = null
   }
   fetchBulkBadges()
+  })()
+  return globalEmotesFetchPromise
 }
 
 // ========== 7TV EventAPI WebSocket for Real-Time Emote Updates ==========
@@ -1420,9 +1459,10 @@ function ensure7TVConnection() {
       } else if (seventvReconnectAttempts >= SEVENTV_MAX_RECONNECT_ATTEMPTS) {
         log(' 7TV EventAPI: Max reconnect attempts reached, giving up. Will retry in 10 minutes.');
         clearTimeout(seventvReconnectTimer);
+        seventvReconnectAttempts = 0;
+        seventvWebSocket = null;
         seventvReconnectTimer = setTimeout(() => {
           seventvReconnectTimer = null;
-          seventvReconnectAttempts = 0;
           ensure7TVConnection();
         }, 600000);
       }
@@ -2841,6 +2881,15 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true
   }
 
+  // Ensure in-memory state is populated before any handler reads it (MV3 SW restart race)
+  ;(async () => {
+    if (initPromise) await initPromise
+    handleMessage(message, sender, sendResponse)
+  })()
+  return true
+})
+
+async function handleMessage(message, sender, sendResponse) {
   // Clear all heatsync message history and stream events
   if (message.type === 'clear_history') {
     browser.storage.local.get(null).then(all => {
@@ -3357,7 +3406,7 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
     sendResponse({ ok: true })
     return
   }
-});
+}
 
 // Initialize on startup
 async function initialize() {
@@ -3378,7 +3427,7 @@ async function initialize() {
     const stored = await browser.storage.local.get([
       'user_info', 'channel_emotes_fetched_at', 'channel_emotes_map', 'seventv_emote_set_ids',
       'muted_users', 'blocked_users', 'global_emotes', 'emote_inventory', 'blocked_emotes',
-      'local_blocked_emotes', 'youtube_channel_urls'
+      'local_blocked_emotes', 'youtube_channel_urls', 'badges_fetched_at'
     ]);
 
     if (stored.user_info?.username) {
@@ -3439,6 +3488,10 @@ async function initialize() {
       Object.assign(youtubeChannelUrls, stored.youtube_channel_urls);
       log(' ✓ Restored youtubeChannelUrls for', Object.keys(youtubeChannelUrls).length, 'channels');
     }
+    if (stored.badges_fetched_at && typeof stored.badges_fetched_at === 'number') {
+      badgesFetchedAt = stored.badges_fetched_at;
+      log(' ✓ Restored badgesFetchedAt:', new Date(badgesFetchedAt).toISOString());
+    }
   } catch (err) {
     log(' Storage restore failed:', err.message);
   }
@@ -3456,7 +3509,9 @@ async function initialize() {
       }
       log(' ✓ Restored', tabChannels.size, 'tab channels from session storage')
     }
-  } catch {}
+  } catch (e) {
+    console.warn('session storage restore failed:', e)
+  }
 
   // Start WebSocket immediately (don't wait for API fetches)
   connectWebSocket().catch(() => {});

@@ -2794,7 +2794,8 @@ function renderThirdPartyBadges(userId) {
   const ffzList = mcFfzBadgeMap.get(userId)
   if (ffzList) {
     for (const b of ffzList) {
-      html += `<img class="hs-mc-badge-img" src="${escapeHtml(b.url)}" alt="${escapeHtml(b.title)}" title="${escapeHtml(b.title)}" style="width:18px;height:18px;${b.color ? 'background:' + b.color + ';border-radius:2px;' : ''}">`
+      const safeColor = /^#[0-9a-fA-F]{3,8}$/.test(b.color) ? b.color : ''
+      html += `<img class="hs-mc-badge-img" src="${escapeHtml(b.url)}" alt="${escapeHtml(b.title)}" title="${escapeHtml(b.title)}" style="width:18px;height:18px;${safeColor ? 'background:' + safeColor + ';border-radius:2px;' : ''}">`
     }
   }
   const cosmetic = mcUserCosmetics.get(userId)

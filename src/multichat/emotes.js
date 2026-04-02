@@ -88,6 +88,11 @@
 
   const EMOTE_CHUNK_SIZE = 80
   let _chunkedRafId = null
+  if (typeof mcSignal !== 'undefined') {
+    mcSignal.addEventListener('abort', () => {
+      if (_chunkedRafId) { cancelAnimationFrame(_chunkedRafId); _chunkedRafId = null }
+    })
+  }
 
   function emoteImgHtml([name, emote]) {
     return `<img src="${escapeHtml(emote.url)}" alt="${escapeHtml(name)}" title="${escapeHtml(name)} (${escapeHtml(emote.source)})" class="hs-mc-picker-emote hs-emote-${escapeHtml(emote.source)}" data-name="${escapeHtml(name)}" data-source="${escapeHtml(emote.source)}" loading="lazy">`

@@ -862,6 +862,7 @@ mcSignal.addEventListener('abort', () => {
   _pendingRafs.forEach(cancelAnimationFrame); _pendingRafs.clear()
   if (irc) { irc.destroy(); }
   if (kickChat) { kickChat.destroy(); }
+  cleanupAuthIrc(true)
   delete window._hsMcEmoteContextHandler
   delete window._hsMcEmoteClickHandler
   delete window._hsEmoteTooltipSetup
@@ -2096,6 +2097,11 @@ async function sendKickMessage(kickSlug, text) {
 
   const EMOTE_CHUNK_SIZE = 80
   let _chunkedRafId = null
+  if (typeof mcSignal !== 'undefined') {
+    mcSignal.addEventListener('abort', () => {
+      if (_chunkedRafId) { cancelAnimationFrame(_chunkedRafId); _chunkedRafId = null }
+    })
+  }
 
   function emoteImgHtml([name, emote]) {
     return `<img src="${escapeHtml(emote.url)}" alt="${escapeHtml(name)}" title="${escapeHtml(name)} (${escapeHtml(emote.source)})" class="hs-mc-picker-emote hs-emote-${escapeHtml(emote.source)}" data-name="${escapeHtml(name)}" data-source="${escapeHtml(emote.source)}" loading="lazy">`
@@ -6674,7 +6680,8 @@ function renderThirdPartyBadges(userId) {
   const ffzList = mcFfzBadgeMap.get(userId)
   if (ffzList) {
     for (const b of ffzList) {
-      html += `<img class="hs-mc-badge-img" src="${escapeHtml(b.url)}" alt="${escapeHtml(b.title)}" title="${escapeHtml(b.title)}" style="width:18px;height:18px;${b.color ? 'background:' + b.color + ';border-radius:2px;' : ''}">`
+      const safeColor = /^#[0-9a-fA-F]{3,8}$/.test(b.color) ? b.color : ''
+      html += `<img class="hs-mc-badge-img" src="${escapeHtml(b.url)}" alt="${escapeHtml(b.title)}" title="${escapeHtml(b.title)}" style="width:18px;height:18px;${safeColor ? 'background:' + safeColor + ';border-radius:2px;' : ''}">`
     }
   }
   const cosmetic = mcUserCosmetics.get(userId)
@@ -10536,14 +10543,19 @@ const STORAGE_KEY = 'heatsync_multichat';
       // Use wheel event to detect intentional user scrolling
       // Note: newBtn.innerHTML uses only static safe content (arrow + count), no user data
       let _wheelCheckTimer = null
+      mcSignal.addEventListener('abort', () => {
+        if (_wheelCheckTimer) { clearTimeout(_wheelCheckTimer); _wheelCheckTimer = null }
+      })
       msgsEl.addEventListener('wheel', (e) => {
         if (isStaticTab()) {
           if (msgsEl.scrollTop <= 50) { newBtn.style.display = 'none'; newMessageCount = 0; }
         } else if (e.deltaY < 0) {
-          // Scrolling up with wheel = user intent
-          isScrolledUp = true
-          newBtn.innerHTML = newMessageCount > 0 ? `<span class="hs-arrow-down">\u25BC</span> ${t('mc_new_messages', [String(newMessageCount)])}` : `<span class="hs-arrow-down">\u25BC</span> ${t('mc_resume')}`
-          newBtn.style.display = 'flex'
+          // Scrolling up with wheel = user intent — only update DOM if state changes
+          if (!isScrolledUp) {
+            isScrolledUp = true
+            newBtn.innerHTML = newMessageCount > 0 ? `<span class="hs-arrow-down">\u25BC</span> ${t('mc_new_messages', [String(newMessageCount)])}` : `<span class="hs-arrow-down">\u25BC</span> ${t('mc_resume')}`
+            newBtn.style.display = 'flex'
+          }
         }
         // Debounced scroll position check (covers both static and chat tabs)
         if (_wheelCheckTimer) clearTimeout(_wheelCheckTimer)
@@ -10560,7 +10572,7 @@ const STORAGE_KEY = 'heatsync_multichat';
             }
           }
         }, 50)
-      })
+      }, { passive: true })
 
       newBtn.addEventListener('click', () => {
         isScrolledUp = false;
@@ -11299,7 +11311,6 @@ const STORAGE_KEY = 'heatsync_multichat';
         const username = unmuteBtn.dataset.username;
         if (username) {
           mutedUsers.delete(username);
-          try { chrome.storage.local.set({ heatsync_mc_muted: [...mutedUsers] }); } catch {}
           // Sync to background (broadcasts to all tabs + server)
           safeSendMessage({ type: 'unmute_user', username });
           applyMcMutes();
@@ -15211,7 +15222,7 @@ const STORAGE_KEY = 'heatsync_multichat';
       const userLink = `<a href="https://heatsync.org/user/${encodeURIComponent(m.feedUser)}" target="_blank" class="hs-mc-user" data-username="${escapeHtml((m.feedUser || 'anon').toLowerCase())}" style="color:${sanitizeColor(m.color || '#fff')}">${escapeHtml(m.feedUser || 'anon')}</a>`
       const content = renderFeedContent(m.text, m.emote_refs)
       const hd = getHeatDisplay(m.heat)
-      const heatHtml = hd ? ` <span style="font-weight:700;color:${hd.color}${hd.glow ? ';text-shadow:0 0 6px rgba(255,135,0,0.8)' : ''}">${m.heat}</span>` : ''
+      const heatHtml = hd ? ` <span style="font-weight:700;color:${hd.color}${hd.glow ? ';text-shadow:0 0 6px rgba(255,135,0,0.8)' : ''}">${escapeHtml(String(m.heat))}</span>` : ''
       // All values sanitized — safe innerHTML (heat is numeric, emoji/color are hardcoded)
       div.innerHTML = `${tsSpan}${threadLink}${typeTag}${userLink}${heatHtml}: <span class="hs-feed-body">${content}</span>`
       div.addEventListener('click', (e) => {
@@ -15326,7 +15337,7 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
     if (m._renderedHtml != null) {
       processedText = m._renderedHtml
     } else {
-      processedText = processEmotes(m.text, m.channel)
+      processedText = processEmotes(escapeHtml(m.text), m.channel)
       if (m.emotes && m.emotes.length > 0) {
         processedText = processYtEmotes(processedText, m.emotes, true)
       }
@@ -16458,7 +16469,7 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
       try {
         chrome.runtime.sendMessage({ type: 'ws_send', data: { type: 'multichat:sync', channels: config.channels } })
       } catch (e) { /* context invalidated */ }
-    } catch (e) {}
+    } catch (e) { console.warn('saveConfig failed:', e) }
   }
 
   // ============================================
@@ -16599,7 +16610,6 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
         const u = msg.username?.toLowerCase()
         if (u && !mutedUsers.has(u)) {
           mutedUsers.add(u)
-          chrome.storage.local.set({ heatsync_mc_muted: [...mutedUsers] })
           applyMcMutes()
         }
       }
@@ -16607,7 +16617,6 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
         const u = msg.username?.toLowerCase()
         if (u && mutedUsers.has(u)) {
           mutedUsers.delete(u)
-          chrome.storage.local.set({ heatsync_mc_muted: [...mutedUsers] })
           applyMcMutes()
         }
       }
@@ -16825,20 +16834,6 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
 
     log('Initializing...');
 
-    // Apply font settings from extension options
-    try {
-      const stored = await chrome.storage.local.get('ui_settings')
-      if (stored.ui_settings) {
-        const fontFamily = stored.ui_settings.fontFamily || 'CozetteVector'
-        const fontSize = stored.ui_settings.fontSize || '13'
-        const customName = stored.ui_settings.customFontName || ''
-        let fontValue = fontFamily === 'custom' && customName ? `'${customName}'` : fontFamily === 'monospace' ? 'monospace' : `'${fontFamily}'`
-        const fontStyle = document.createElement('style')
-        fontStyle.textContent = `.hs-mc-panel, .hs-mc-panel * { --hs-font: ${fontValue}; font-family: var(--hs-font), monospace !important; font-size: ${fontSize}px; }`
-        document.head.appendChild(fontStyle)
-      }
-    } catch(e) { /* font settings not critical */ }
-
     // Add popout class to body for CSS targeting
     if (isPopout) {
       document.body.classList.add('hs-popout');
@@ -16854,14 +16849,9 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
     }
     log('Username:', currentUsername);
 
-    // Load muted users from both multichat and content.js storage (unified)
+    // Load muted users from background muted_users key (with expiry check)
     try {
-      const stored = await chrome.storage.local.get(['heatsync_mc_muted', 'muted_users']);
-      // Multichat local mutes
-      if (stored.heatsync_mc_muted && Array.isArray(stored.heatsync_mc_muted)) {
-        for (const u of stored.heatsync_mc_muted) mutedUsers.add(u)
-      }
-      // Content.js / background.js mutes (with expiry check)
+      const stored = await chrome.storage.local.get(['muted_users']);
       if (stored.muted_users && Array.isArray(stored.muted_users)) {
         const now = Date.now()
         for (const entry of stored.muted_users) {

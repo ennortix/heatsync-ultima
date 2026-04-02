@@ -17,6 +17,7 @@ mcSignal.addEventListener('abort', () => {
   _pendingRafs.forEach(cancelAnimationFrame); _pendingRafs.clear()
   if (irc) { irc.destroy(); }
   if (kickChat) { kickChat.destroy(); }
+  cleanupAuthIrc(true)
   delete window._hsMcEmoteContextHandler
   delete window._hsMcEmoteClickHandler
   delete window._hsEmoteTooltipSetup

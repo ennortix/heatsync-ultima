@@ -87,7 +87,8 @@
 
   /**
    * Safe wrapper for chrome.runtime.sendMessage.
-   * Handles "Extension context invalidated" errors gracefully.
+   * Handles "Extension context invalidated" errors gracefully,
+   * and retries up to 5 times with exponential backoff on connection errors.
    *
    * @param {Object} message
    * @param {Object} opts
@@ -99,15 +100,25 @@
     if (!_contextValid) {
       return { success: false, error: 'Extension context invalidated' }
     }
-    try {
-      return await chrome.runtime.sendMessage(message)
-    } catch (err) {
-      if (err.message?.includes('Extension context invalidated') ||
-          err.message?.includes('context invalidated')) {
-        _contextValid = false
-        if (opts.onInvalidated) opts.onInvalidated()
+    const MAX_RETRIES = 5
+    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+      try {
+        return await chrome.runtime.sendMessage(message)
+      } catch (err) {
+        if (err.message?.includes('Extension context invalidated') ||
+            err.message?.includes('context invalidated')) {
+          _contextValid = false
+          if (opts.onInvalidated) opts.onInvalidated()
+          throw err
+        }
+        const isConnErr = err.message?.includes('Receiving end does not exist') ||
+            err.message?.includes('Could not establish connection')
+        if (isConnErr && attempt < MAX_RETRIES) {
+          await new Promise(r => setTimeout(r, 200 * Math.pow(2, attempt)))
+          continue
+        }
+        throw err
       }
-      throw err
     }
   }
 

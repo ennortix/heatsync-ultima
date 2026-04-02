@@ -3,6 +3,13 @@
 (function() {
   'use strict'
 
+  // Re-entry guard: if script already ran, remove old listeners before re-registering
+  if (window.__heatsyncEarlyInject) {
+    const prev = window.__heatsyncEarlyInject
+    if (prev.removeListeners) prev.removeListeners()
+  }
+  window.__heatsyncEarlyInject = {}
+
   const DEBUG = false
   const log = DEBUG ? console.log.bind(console, '[heatsync-early]') : () => {}
 
@@ -328,7 +335,7 @@
 
   // Handle GQL requests from content script
   // event.source === window: blocks cross-frame attacks; same-page scripts still pass (accepted MAIN-world limitation)
-  window.addEventListener('message', (e) => {
+  const hsMessageHandler = (e) => {
     if (e.source !== window) return
     if (e.origin !== location.origin) return
 
@@ -361,6 +368,26 @@
     if (e.data?.type === 'heatsync-apollo-mutate') {
       if (!_hsNonce || e.data.nonce !== _hsNonce) {
         log('heatsync-apollo-mutate: rejected — missing or invalid nonce')
+        return
+      }
+      if (e.data.rawQuery) {
+        window.postMessage({ type: 'heatsync-apollo-mutate-error', error: 'raw queries not allowed', requestId: e.data.requestId }, location.origin)
+        return
+      }
+      const ALLOWED_MUTATIONS = [
+        'ChannelPointsPrediction',
+        'CommunityPointsClaim',
+        'MakePrediction',
+        'EventPrediction',
+        'VotePoll',
+        'CreatePoll',
+        'RedeemCustomReward',
+        'SendChatMessage',
+        'JoinRaid',
+      ]
+      if (e.data.searchTerm && !ALLOWED_MUTATIONS.some(m => e.data.searchTerm.includes(m))) {
+        log('heatsync-apollo-mutate: rejected — searchTerm not in allowlist:', e.data.searchTerm)
+        window.postMessage({ type: 'heatsync-apollo-mutate-error', error: 'mutation not allowed', requestId: e.data.requestId }, location.origin)
         return
       }
       const reqId = e.data.id
@@ -476,6 +503,11 @@
       const req = e.data
       ;(async () => {
         try {
+          const allowedPrefixes = ['https://api.twitch.tv/helix/', 'https://gql.twitch.tv/']
+          if (!req.url || !allowedPrefixes.some(p => req.url.startsWith(p))) {
+            window.postMessage({ type: e.data.type + '-error', error: 'URL not allowed', requestId: e.data.requestId }, location.origin)
+            return
+          }
           if (!getAuthToken()) {
             window.postMessage({ type: 'heatsync-helix-response', id: req.id, error: 'not logged into twitch' }, location.origin)
             return
@@ -562,11 +594,13 @@
       }
       return
     }
-  })
+  }
+  window.addEventListener('message', hsMessageHandler)
+
   let urlMapWasEmpty = true
 
   // Listen for URL map updates from content script
-  window.addEventListener('message', (e) => {
+  const hsUrlMapHandler = (e) => {
     if (e.source !== window) return
     if (e.origin !== location.origin) return
     if (e.data?.type === 'heatsync-url-map' && e.data.urlMap) {
@@ -578,7 +612,8 @@
         fixExistingImages()
       }
     }
-  })
+  }
+  window.addEventListener('message', hsUrlMapHandler)
 
   function fixExistingImages() {
     const images = document.querySelectorAll('img[src*="__FFZ__999999"]')
@@ -735,6 +770,13 @@
 
   window.addEventListener('popstate', notifyNav)
 
+  function hsRemoveListeners() {
+    window.removeEventListener('message', hsMessageHandler)
+    window.removeEventListener('message', hsUrlMapHandler)
+    window.removeEventListener('popstate', notifyNav)
+  }
+  window.__heatsyncEarlyInject.removeListeners = hsRemoveListeners
+
   // ═══ Stamp Twitch user IDs on chat messages (for cosmetics in content script) ═══
   // Content scripts can't see __reactFiber$ (isolated world), so we stamp data-user-id
   // from MAIN world where fibers are accessible.
@@ -802,6 +844,7 @@
       uidPollId = null
     }
     uidObserver.disconnect()
+    hsRemoveListeners()
   })
 
 })()

@@ -310,8 +310,8 @@ style.textContent = `
   /* HEAT MESSAGE BORDERS (by heat tier)          */
   /* ============================================ */
   @keyframes hs-heat-breathe {
-    0%, 100% { filter: drop-shadow(0 0 10px rgba(255, 200, 0, 0.4)); }
-    50% { filter: drop-shadow(0 0 15px rgba(255, 100, 0, 0.7)); }
+    0%, 100% { transform: scale(1); opacity: 1; }
+    50% { transform: scale(1.04); opacity: 0.9; }
   }
 
   /* ============================================ */
@@ -1078,10 +1078,12 @@ function showBadgeTooltip(badgeImg) {
   const img = tooltip.querySelector('img')
   img.src = badgeImg.src
   img.alt = badgeImg.alt || ''
-  tooltip.querySelector('.hs-badge-tooltip-name').textContent = badgeImg.title || badgeImg.alt || ''
+  const nameEl = tooltip.querySelector('.hs-badge-tooltip-name')
+  if (nameEl) nameEl.textContent = badgeImg.title || badgeImg.alt || ''
   const src = badgeImg.src
   const sourceLabel = src.includes('betterttv') ? 'BTTV' : src.includes('frankerfacez') ? 'FFZ' : src.includes('7tv') ? '7TV' : src.includes('chatterino') ? 'Chatterino' : ''
-  tooltip.querySelector('.hs-badge-tooltip-source').textContent = sourceLabel
+  const srcEl = tooltip.querySelector('.hs-badge-tooltip-source')
+  if (srcEl) srcEl.textContent = sourceLabel
 
   const rect = badgeImg.getBoundingClientRect()
   tooltip.style.left = Math.max(50, Math.min(window.innerWidth - 50, rect.left + rect.width / 2)) + 'px'
@@ -1396,7 +1398,8 @@ function showLoadingStatus(text) {
     document.body.appendChild(loadingIndicator);
     log(' Loading indicator created');
   }
-  loadingIndicator.querySelector('.loading-text').textContent = text;
+  const loadingText = loadingIndicator?.querySelector('.loading-text')
+  if (loadingText) loadingText.textContent = text
   loadingIndicator.style.display = 'flex';
 }
 
@@ -1791,12 +1794,13 @@ function _onMessageMain(message) {
       allEmotesDirty = true
       emoteGeneration++
       log(' ✅ Emote added to your set:', message.emoteName);
-      emoteInventory.push({
-
-        name: message.emoteName,
-        hash: message.hash,
-        url: message.url
-      });
+      if (!emoteInventory.some(e => e.hash === message.hash)) {
+        emoteInventory.push({
+          name: message.emoteName,
+          hash: message.hash,
+          url: message.url
+        })
+      }
       rebuildEmoteMapIfDirty()
       updateEmoteState(message.hash, message.emoteName, 'added');
       updateEmoteBridge(); // Update Twitch autocomplete hook
@@ -2026,7 +2030,8 @@ function _onMessageKickRelay(message, sender, sendResponse) {
       'X-XSRF-TOKEN': decodeURIComponent(message.xsrfToken)
     },
     credentials: 'include',
-    body: JSON.stringify({ content: message.content, type: 'message' })
+    body: JSON.stringify({ content: message.content, type: 'message' }),
+    signal: AbortSignal.timeout(10000)
   })
   .then(r => {
     if (r.ok) sendResponse({ ok: true })
@@ -2315,7 +2320,7 @@ async function backfillChatHistory() {
   log(' 📜 Backfilling chat history for', channel)
 
   try {
-    const resp = await fetch(`https://recent-messages.robotty.de/api/v2/recent-messages/${channel}?limit=500`)
+    const resp = await fetch(`https://recent-messages.robotty.de/api/v2/recent-messages/${channel}?limit=500`, { signal: AbortSignal.timeout(15000) })
     if (!resp.ok) {
       log(' Backfill fetch failed:', resp.status)
       return
@@ -2585,15 +2590,15 @@ function applyHeatBorderToElement(messageElement, heat) {
   const tier = getHeatTier(heat)
   const color = HEAT_GRADIENT[tier]
   const borderWidth = tier >= 8 ? 6 : tier >= 5 ? 5 : tier >= 3 ? 4 : 3
-  let css = `border-left:${borderWidth}px solid ${color}`
+  const s = messageElement.style
+  s.setProperty('border-left', `${borderWidth}px solid ${color}`)
   if (tier >= 5) {
     const glowAlpha = Math.min(0.3 + (tier - 5) * 0.1, 0.7)
-    css += `;filter:drop-shadow(0 0 ${10 + (tier - 5) * 3}px rgba(${parseInt(color.slice(1,3),16)}, ${parseInt(color.slice(3,5),16)}, ${parseInt(color.slice(5,7),16)}, ${glowAlpha}))`
+    s.setProperty('filter', `drop-shadow(0 0 ${10 + (tier - 5) * 3}px rgba(${parseInt(color.slice(1,3),16)}, ${parseInt(color.slice(3,5),16)}, ${parseInt(color.slice(5,7),16)}, ${glowAlpha}))`)
   }
   if (tier >= 8) {
-    css += ';animation:hs-heat-breathe 2s ease-in-out infinite'
+    s.setProperty('animation', 'hs-heat-breathe 2s ease-in-out infinite')
   }
-  messageElement.style.cssText += ';' + css
   messageElement.dataset.hsHeatApplied = '1'
 }
 
@@ -2986,7 +2991,7 @@ function setupUsernameColoringObserver() {
             showToast(t('content_toast_blocked', [names.join(', ')]), 'info');
           }
 
-          chrome.storage.local.set({ blocked_emotes: Array.from(blockedEmotes) });
+          // block_emote messages above handle server sync; no direct storage write needed
         }
         return;
       }
@@ -3100,17 +3105,21 @@ function setupUsernameColoringObserver() {
       const allEmotes = cachedAllEmotes || new Map()
 
       const vh = window.innerHeight
+      // Read pass: collect visible messages (avoid layout thrashing)
+      const visible = []
       for (const msg of batch) {
         if (msg.dataset.heatsyncUsernamesColored) continue
         const rect = msg.getBoundingClientRect()
-        if (rect.top < vh && rect.bottom > 0) {
-          msg.dataset.heatsyncUsernamesColored = '1'
-          highlightUserMentions(msg)
-          colorUsernameMentions(msg)
-          // Only stack if processMessage hasn't already done it
-          if (msg.dataset.heatsyncGeneration != emoteGeneration) {
-            stackAdjacentOverlayEmotes(msg, allEmotes)
-          }
+        if (rect.top < vh && rect.bottom > 0) visible.push(msg)
+      }
+      // Write pass: process collected messages
+      for (const msg of visible) {
+        msg.dataset.heatsyncUsernamesColored = '1'
+        highlightUserMentions(msg)
+        colorUsernameMentions(msg)
+        // Only stack if processMessage hasn't already done it
+        if (msg.dataset.heatsyncGeneration != emoteGeneration) {
+          stackAdjacentOverlayEmotes(msg, allEmotes)
         }
       }
     })
@@ -5826,6 +5835,7 @@ function detectAndJoinChannel() {
       log(' ✅ join_channel sent, response:', response);
     }).catch(err => {
       if (!extensionContextValid) return;
+      log(' ⚠️ detectAndJoinChannel error:', err?.message || err);
     });
   }
 }
@@ -6441,6 +6451,7 @@ function handleNavigation() {
   cleanup.setTimeout(() => {
     watchForNewMessages();
     setupUsernameColoringObserver();
+    interceptMessageSending();
     if (emoteInventory.length > 0 || globalEmotes.length > 0) {
       processExistingMessages();
     }
@@ -6525,9 +6536,14 @@ function setupAutoClaimPoints() {
     }
   }
 
+  let attachAttempts = 0
   function attachObserver() {
     const container = document.querySelector('[data-test-selector="community-points-summary"]')
     if (!container) {
+      if (++attachAttempts >= 20) {
+        log(' ⚠️ Auto-claim: points container not found after 20 attempts, giving up')
+        return
+      }
       cleanup.setTimeout(attachObserver, 3000)
       return
     }

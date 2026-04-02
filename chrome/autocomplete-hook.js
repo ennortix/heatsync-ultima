@@ -936,6 +936,7 @@
   // Cycle indicator tooltip (shows "1/5 emotename" above input)
   let cycleTooltip = null;
   let cycleTooltipTimeout = null;
+  acSignal.addEventListener('abort', () => { cycleTooltip?.remove(); cycleTooltip = null })
 
   function showCycleTooltip(index, total, emoteName) {
     // Create tooltip if needed

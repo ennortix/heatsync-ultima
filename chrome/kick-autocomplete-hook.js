@@ -303,7 +303,7 @@
 
   // Retry on navigation (Kick is an SPA)
   let lastUrl = location.href
-  const obs = new MutationObserver(() => {
+  const urlCheckInterval = setInterval(() => {
     if (location.href !== lastUrl) {
       lastUrl = location.href
       const _nt = setTimeout(() => {
@@ -313,9 +313,8 @@
       }, 1500)
       sig?.addEventListener('abort', () => clearTimeout(_nt), { once: true })
     }
-  })
-  obs.observe(document, { subtree: true, childList: true })
-  sig.addEventListener('abort', () => obs.disconnect())
+  }, 2000)
+  sig.addEventListener('abort', () => clearInterval(urlCheckInterval))
 
   const _initT = setTimeout(tryInit, 500)
   sig?.addEventListener('abort', () => clearTimeout(_initT), { once: true })

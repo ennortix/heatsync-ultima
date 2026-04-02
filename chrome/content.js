@@ -55,6 +55,7 @@ const overlayMap = new WeakMap()
 const cleanup = {
   setInterval(fn, ms) { const id = setInterval(fn, ms); _timers.intervals.push(id); return id },
   clearInterval(id) { clearInterval(id); const idx = _timers.intervals.indexOf(id); if (idx !== -1) _timers.intervals.splice(idx, 1) },
+  clearTimeout(id) { clearTimeout(id); const idx = _timers.timeouts.indexOf(id); if (idx !== -1) _timers.timeouts.splice(idx, 1) },
   setTimeout(fn, ms) {
     const id = setTimeout(() => {
       const idx = _timers.timeouts.indexOf(id)
@@ -220,9 +221,12 @@ style.textContent = `
   .heatsync-emote-wrapper > img {
     display: block !important;
     width: auto !important;
-    height: var(--hs-emote-height, 28px) !important;
+    height: auto !important;
     max-width: none !important;
     max-height: none !important;
+  }
+  .heatsync-emote-wrapper.heatsync-own-emote > img {
+    height: var(--hs-emote-height, 28px) !important;
   }
   .heatsync-emote-wrapper.heatsync-overlay > img {
     height: auto !important;
@@ -2246,7 +2250,7 @@ function restoreMsgCache(channel, chatContainer) {
       existingTexts.add(dedupKey)
 
       const div = document.createElement('div')
-      div.className = 'chat-line__message heatsync-cached'
+      div.className = 'chat-line__message heatsync-cached' + (msg.timedOut ? ' hs-timed-out' : '')
       div.setAttribute('data-heatsync-cached', 'true')
       if (msg.id) div.setAttribute('data-msg-id', msg.id)
 
@@ -3149,7 +3153,7 @@ function processMessage(messageElement) {
     if (msgId) {
       const body = messageElement.querySelector('[data-a-target="chat-line-message-body"]')
       if (body && !originalMessageBodies.has(msgId)) {
-        originalMessageBodies.set(msgId, body.innerHTML)
+        originalMessageBodies.set(msgId, { html: body.innerHTML, ts: Date.now() })
         // Cap cache size
         if (originalMessageBodies.size > 300) {
           originalMessageBodies.delete(originalMessageBodies.keys().next().value)
@@ -3570,7 +3574,7 @@ function wrapExistingHeatsyncEmotes(messageElement, allEmotes) {
 
     // Create wrapper and move image into it
     const wrapper = document.createElement('span');
-    wrapper.className = `heatsync-emote-wrapper ${overlayClass}`;
+    wrapper.className = `heatsync-emote-wrapper ${overlayClass}` + (isHeatsyncCdn ? ' heatsync-own-emote' : '');
     wrapper.dataset.emoteName = emote.name;
     wrapper.dataset.emoteHash = emote.hash || '';
     wrapper.dataset.inInventory = String(inInventory);
@@ -3854,7 +3858,8 @@ function generateEmoteElement(emote, isOverlay) {
 
     // Create wrapper span
     const wrapper = document.createElement('span');
-    wrapper.className = `heatsync-emote-wrapper ${overlayClass}${overlayWrapperClass}`;
+    const ownClass = !isThirdPartyCdn ? ' heatsync-own-emote' : '';
+    wrapper.className = `heatsync-emote-wrapper ${overlayClass}${overlayWrapperClass}${ownClass}`;
     wrapper.dataset.emoteHash = emote.hash;
     wrapper.dataset.emoteName = emote.name;
     wrapper.dataset.inInventory = String(inInventory);
@@ -5399,13 +5404,22 @@ function fetchCosmeticBadges() {
 // The cached content was rendered by our own processMessage (already sanitized)
 
 function restoreDeletedMessage(bodyEl, msgId) {
-  const cached = originalMessageBodies.get(msgId)
-  if (!cached) return
-  // Use a template element to safely parse the cached HTML (our own output)
+  const entry = originalMessageBodies.get(msgId)
+  if (!entry) return
+  // Restore from our own cache — content was already sanitized by escapeHtml during processMessage
   const template = document.createElement('template')
-  template.innerHTML = cached
-  bodyEl.textContent = '' // clear "message deleted" text
+  template.innerHTML = entry.html  // safe: our own sanitized output from processMessage
+  bodyEl.textContent = ''
   bodyEl.appendChild(template.content)
+}
+
+// Mark a message as timed out in the localStorage cache so it persists across reloads
+function markCachedMessageTimedOut(msgId) {
+  const idx = msgCacheBuffer.findIndex(m => m.id === msgId)
+  if (idx !== -1) {
+    msgCacheBuffer[idx].timedOut = true
+    scheduleMsgCacheSave()
+  }
 }
 
 // Load dimTimeouts setting from storage
@@ -5714,21 +5728,50 @@ function watchForNewMessages() {
         }
       });
 
-      // Detect timeout/ban: Twitch React re-renders messages, replacing body with "message deleted"
-      // We restore our cached body (already sanitized by escapeHtml during processMessage) and dim it
-      if (dimTimeoutsEnabled && mutation.target) {
-        const msgEl = mutation.target.closest?.('.chat-line__message')
-        if (msgEl && !msgEl.classList.contains('hs-timed-out')) {
-          const msgId = msgEl.dataset.msgId || msgEl.getAttribute('data-msg-id')
-          if (msgId && originalMessageBodies.has(msgId)) {
-            const body = msgEl.querySelector('[data-a-target="chat-line-message-body"]')
-            if (body && body.textContent.trim().toLowerCase().includes('message deleted')) {
-              // Restore from our own cache — content was already sanitized when originally rendered
-              restoreDeletedMessage(body, msgId)
-              msgEl.classList.add('hs-timed-out')
+      // Detect timeout/ban: two cases to handle
+      if (dimTimeoutsEnabled) {
+        // Case 1: Twitch replaces body with "message deleted" (mod view / show deleted msgs)
+        if (mutation.target) {
+          const msgEl = mutation.target.closest?.('.chat-line__message')
+          if (msgEl && !msgEl.classList.contains('hs-timed-out')) {
+            const msgId = msgEl.dataset.msgId || msgEl.getAttribute('data-msg-id')
+            if (msgId && originalMessageBodies.has(msgId)) {
+              const body = msgEl.querySelector('[data-a-target="chat-line-message-body"]')
+              if (body && body.textContent.trim().toLowerCase().includes('message deleted')) {
+                restoreDeletedMessage(body, msgId)
+                msgEl.classList.add('hs-timed-out')
+                markCachedMessageTimedOut(msgId)
+              }
             }
           }
         }
+
+        // Case 2: Twitch removes the message entirely (non-mod viewer timeout/purge)
+        // Only re-insert recent messages (<60s) — old removals are scroll-off, not timeouts
+        mutation.removedNodes.forEach(node => {
+          if (node.nodeType !== 1) return
+          const msgs = node.classList?.contains('chat-line__message')
+            ? [node]
+            : Array.from(node.querySelectorAll?.('.chat-line__message') || [])
+          for (const msgEl of msgs) {
+            if (msgEl.classList.contains('hs-timed-out')) continue
+            const msgId = msgEl.dataset.msgId || msgEl.getAttribute('data-msg-id')
+            if (!msgId) continue
+            const entry = originalMessageBodies.get(msgId)
+            if (!entry || Date.now() - entry.ts > 60000) continue
+            // Re-insert at original position with dimmed styling
+            msgEl.classList.add('hs-timed-out')
+            markCachedMessageTimedOut(msgId)
+            const container = mutation.target
+            if (container && container.nodeType === 1) {
+              if (mutation.nextSibling) {
+                container.insertBefore(msgEl, mutation.nextSibling)
+              } else {
+                container.appendChild(msgEl)
+              }
+            }
+          }
+        })
       }
     });
 

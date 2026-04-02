@@ -41,6 +41,23 @@ function parseIrcLine(raw, channel) {
           text: tags['reply-parent-msg-body'] ? decodeURIComponent(tags['reply-parent-msg-body'].replace(/\\s/g, ' ')) : ''
         } : null
       }
+      // Parse Twitch IRC emote positions → { name: url } map for rendering
+      // Format: emoteId:start-end,start-end/emoteId:start-end
+      if (tags.emotes) {
+        const twitchEmotes = {}
+        for (const part of tags.emotes.split('/')) {
+          const [emoteId, posStr] = part.split(':')
+          if (!emoteId || !posStr) continue
+          const firstPos = posStr.split(',')[0]
+          const [start, end] = firstPos.split('-').map(Number)
+          if (isNaN(start) || isNaN(end)) continue
+          const name = text.slice(start, end + 1)
+          if (name && !twitchEmotes[name]) {
+            twitchEmotes[name] = `https://static-cdn.jtvnw.net/emoticons/v2/${emoteId}/default/dark/2.0`
+          }
+        }
+        if (Object.keys(twitchEmotes).length > 0) msg.twitchEmotes = twitchEmotes
+      }
       if (isAction) msg.isAction = true
       if (tags['custom-reward-id']) {
         msg.redeemed = true
@@ -405,7 +422,7 @@ class IRC {
         user: m.user, userId: m.userId, text: m.text, color: m.color,
         badges: m.badges, channel: m.channel, time: m.time, id: m.id,
         isAction: m.isAction || undefined, replyTo: m.replyTo || undefined,
-        subMonths: m.subMonths || undefined,
+        subMonths: m.subMonths || undefined, twitchEmotes: m.twitchEmotes || undefined,
         type: m.type || undefined, eventClass: m.eventClass || undefined
       }))
       chrome.storage?.local?.set({ [`hs_irc_${ch}`]: { msgs, ts: Date.now() } }).catch(() => {})

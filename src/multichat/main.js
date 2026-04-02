@@ -5605,6 +5605,17 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
       processedText = m._renderedHtml
     } else {
       processedText = processEmotes(escapeHtml(m.text), m.channel)
+      // Twitch native emotes (from IRC tags) — replace text not already handled by processEmotes
+      if (m.twitchEmotes) {
+        for (const [name, url] of Object.entries(m.twitchEmotes)) {
+          const escaped = escapeHtml(name)
+          const safeUrl = escapeHtml(url)
+          // Only replace bare text (not already inside an HTML tag)
+          const re = new RegExp(`(?<![\\w"=/])${escaped.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![\\w"<])`, 'g')
+          processedText = processedText.replace(re,
+            `<span class="hs-mc-emote-wrapper hs-state-global" data-emote-name="${escaped}" data-emote-url="${safeUrl}" data-state="global" data-source="twitch"><img src="${safeUrl}" alt="${escaped}" title="${escaped}" class="hs-mc-emote hs-emote-global" data-emote-name="${escaped}" data-state="global" data-source="twitch"></span>`)
+        }
+      }
       if (m.emotes && m.emotes.length > 0) {
         processedText = processYtEmotes(processedText, m.emotes, true)
       }
@@ -5686,10 +5697,14 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
 
     // Build result by replacing emoji alt text with img tags
     let result = preEscaped ? text : escapeHtml(text)
+    const htmlAltEmotes = emotes.filter(e => typeof e.alt === 'string' && e.alt.includes('<') && e.url)
     for (const emote of emotes) {
       const url = typeof emote.url === 'string' ? emote.url.trim() : ''
       const alt = typeof emote.alt === 'string' ? emote.alt : ''
       if (!alt || !url || !(url.startsWith('http') || url.startsWith('//'))) continue
+      // Skip emotes with HTML-like alt (server bug: raw img tags as alt text)
+      // These are handled by the escaped-img-tag cleanup below
+      if (alt.includes('<')) continue
       const escaped = escapeHtml(alt).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
       let re = _ytEmoteRegexCache.get(escaped)
       if (!re) {
@@ -5698,6 +5713,15 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
         if (_ytEmoteRegexCache.size > 500) _ytEmoteRegexCache.delete(_ytEmoteRegexCache.keys().next().value)
       }
       result = result.replace(re, () => `<img src="${escapeHtml(url)}" alt="${escapeHtml(alt)}" class="hs-mc-emote" style="height:1.2em;vertical-align:middle;" />`)
+    }
+    // Clean up escaped HTML img tags left in text (from server sending raw HTML as emoji)
+    // Replace each with the corresponding HTML-alt emote image, or remove if no match
+    if (htmlAltEmotes.length > 0) {
+      let ei = 0
+      result = result.replace(/&lt;img\b[^]*?(?:\/&gt;|&gt;)/g, () => {
+        const e = htmlAltEmotes[ei++ % htmlAltEmotes.length]
+        return e ? `<img src="${escapeHtml(e.url)}" alt="emoji" class="hs-mc-emote" style="height:1.2em;vertical-align:middle;" />` : ''
+      })
     }
     return result
   }
@@ -5847,7 +5871,19 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
       const kickName = typeof ch === 'string' ? null : ch?.kick;
       const ircMsgs = twitchName ? (irc?.getMessages(twitchName) || []) : [];
       const kickMsgs = kickName ? (kickChat?.getMessages(kickName) || []) : [];
-      const ytMsgs = channelYtMessages.get(id) || [];
+      let ytMsgs = channelYtMessages.get(id) || [];
+      // Also include auto-discovered YouTube messages if this channel matches live
+      const autoYt = channelYtMessages.get('__live_yt_auto__') || []
+      if (autoYt.length > 0 && isLiveChannelMessage({ channel: twitchName || kickName || id })) {
+        if (ytMsgs.length > 0) {
+          // Merge + dedup by user+text+time
+          const seen = new Set(ytMsgs.map(m => `${m.user}:${m.text?.slice(0, 50)}:${m.time}`))
+          const extra = autoYt.filter(m => !seen.has(`${m.user}:${m.text?.slice(0, 50)}:${m.time}`))
+          if (extra.length > 0) ytMsgs = [...ytMsgs, ...extra]
+        } else {
+          ytMsgs = autoYt
+        }
+      }
       const extraMsgs = [...kickMsgs, ...ytMsgs];
       if (extraMsgs.length > 0) {
         msgs = [...ircMsgs, ...extraMsgs].sort((a, b) => a.time - b.time);
@@ -8024,6 +8060,7 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
     notifLoaded = false;
     notifMessages = [];
     activeThread = null;
+    _autoYtVideoId = null;
     // Reset feed scroll listener flag (new DOM element)
     const oldMsgs = document.getElementById('hs-mc-messages');
     if (oldMsgs) oldMsgs._hsFeedScroll = false;

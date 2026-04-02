@@ -1,4 +1,5 @@
 // Social - feed, notifications, activity, heatsync API
+let _autoYtVideoId = null  // videoId for this tab's __live_yt_auto__ subscription (cross-tab filter)
 
 // Heat tier display — big scaling numbers + color glow + row effects, no emoji
 // Matches website colors.js: #444 → #888 → #cc6600 → #ff8700 → #ffaa33 → #fff
@@ -214,6 +215,12 @@ function listenForSocialEvents() {
     }
     if (msg.type === 'youtube_chat_message') {
       const targetChannelId = msg.channelId
+      // Filter __live_yt_auto__ messages: only accept if videoId matches this tab's subscription
+      // (prevents cross-tab leaking — e.g., lofigirl YouTube showing on a Twitch tab)
+      if (targetChannelId === '__live_yt_auto__') {
+        if (!_autoYtVideoId) return  // no confirmed subscription yet — reject
+        if (msg.videoId && msg.videoId !== _autoYtVideoId) return  // wrong video
+      }
       // Dedup against message buffer (survives WS reconnects unlike 5s hash)
       if (targetChannelId && isYtDuplicate(msg.user, msg.text, targetChannelId)) return
 
@@ -262,6 +269,11 @@ function listenForSocialEvents() {
     }
     if (msg.type === 'youtube_status') {
       const targetChannelId = msg.channelId
+      // Track auto-YouTube videoId for cross-tab filtering
+      if (targetChannelId === '__live_yt_auto__' && msg.status === 'connected' && msg.videoId) {
+        _autoYtVideoId = msg.videoId
+        log('Auto YouTube videoId:', msg.videoId)
+      }
       if (targetChannelId && targetChannelId !== 'global') {
         // Per-channel YouTube status
         const link = youtubeLinks.get(targetChannelId) || { url: '', videoId: '', channelName: '' }

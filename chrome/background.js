@@ -1099,11 +1099,13 @@ async function fetchChannelOwnerEmotes(channelName, channelId = null, platform =
   if (Array.isArray(cached)) {
     const age = Date.now() - (channelEmotesFetchedAt[channelName] || 0)
     const ttl = cached.length > 0 ? CHANNEL_EMOTES_TTL : CHANNEL_EMOTES_EMPTY_TTL
+    // Always broadcast cached data immediately — content script needs emotes NOW
+    broadcastToTabs({ type: 'channel_emotes_update', emotes: cached, channelOwner: channelName });
     if (age < ttl) {
       log(' Channel emotes already fetched for', channelName, '- skipping (', cached.length, 'emotes,', Math.round(age / 1000) + 's old)')
       return
     }
-    log(' Channel emotes stale for', channelName, '(', Math.round(age / 1000) + 's) - refetching')
+    log(' Channel emotes stale for', channelName, '(', Math.round(age / 1000) + 's) - refetching in background')
   }
   channelEmotesMap[channelName] = 'loading';
 
@@ -1815,6 +1817,11 @@ async function blockEmote(hash) {
       return { success: true, local: true };
     }
 
+    // Optimistically add to blockedEmotes BEFORE HTTP request
+    // Prevents race where WS emote:blocked arrives before HTTP response
+    // and triggers inventory_update → emoteGeneration++ → stack rebuild
+    blockedEmotes.add(hash);
+
     const response = await fetchWithTimeout(`${API_URL}/api/user/emotes/block`, {
       method: 'POST',
       headers: {
@@ -1825,12 +1832,11 @@ async function blockEmote(hash) {
     });
 
     if (!response.ok) {
+      // Rollback optimistic add
+      blockedEmotes.delete(hash);
       const error = await response.json().catch(() => ({ error: 'Unknown error' }));
       return { success: false, error: error.error || `HTTP ${response.status}` };
     }
-
-    // Only update local state AFTER server confirms
-    blockedEmotes.add(hash);
 
     // Also remove from local inventory if present (server does this too)
     const removedEmote = emoteInventory.find(e => e.hash === hash);
@@ -1864,6 +1870,10 @@ async function unblockEmote(hash) {
       return { success: true, local: true };
     }
 
+    // Optimistically remove from blockedEmotes BEFORE HTTP request
+    // Prevents race where WS emote:unblocked arrives before HTTP response
+    blockedEmotes.delete(hash);
+
     const response = await fetchWithTimeout(`${API_URL}/api/user/emotes/blocked/${hash}`, {
       method: 'DELETE',
       headers: {
@@ -1872,12 +1882,12 @@ async function unblockEmote(hash) {
     });
 
     if (!response.ok) {
+      // Rollback optimistic delete
+      blockedEmotes.add(hash);
       const error = await response.json().catch(() => ({ error: 'Unknown error' }));
       return { success: false, error: error.error || `HTTP ${response.status}` };
     }
 
-    // Only update local state AFTER server confirms
-    blockedEmotes.delete(hash);
     broadcastToTabs({ type: 'emote_unblocked', hash });
     return { success: true };
   } catch (error) {
@@ -3208,10 +3218,14 @@ async function handleMessage(message, sender, sendResponse) {
     });
     return true;
   } else if (message.type === 'join_channel') {
-    // Content script detected channel change
+    // Content script detected channel change — wait for init so cached channel emotes are available
     log(' 📺 Content script requesting channel join:', message.platform, '/', message.channel, 'id:', message.channelId)
-    joinChannel(message.platform, message.channel, message.channelId, sender.tab?.id)
-    sendResponse({ received: true })
+    ;(async () => {
+      if (initPromise) await initPromise;
+      joinChannel(message.platform, message.channel, message.channelId, sender.tab?.id)
+      sendResponse({ received: true })
+    })();
+    return true; // Keep channel open for async response
   } else if (message.type === 'emote_sent') {
     // Content script detected user sent emote
     log(' 💬 Content script detected emote sent:', message.emoteName);

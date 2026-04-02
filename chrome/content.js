@@ -253,6 +253,12 @@ style.textContent = `
     outline-offset: -2px !important;
   }
 
+  /* Blocked emotes inside expanded stacks - keep dimensions locked so layout doesn't shift */
+  .heatsync-emote-stack.expanded .heatsync-emote-wrapper.emote-overlay-blocked {
+    min-width: var(--hs-emote-width, 28px) !important;
+    min-height: var(--hs-emote-height, 28px) !important;
+  }
+
   /* Blocked emotes - white outline when expanded (managing) */
   .heatsync-emote-stack.expanded .heatsync-emote-wrapper.emote-overlay-blocked > img.heatsync-emote {
     outline-color: #fff !important;
@@ -1768,14 +1774,18 @@ function _onMessageMain(message) {
           newInv = newInv.filter(e => !pendingRemovals.has(e.name));
         }
       }
+
+      // Skip reprocessing if inventory hasn't actually changed (prevents stack rebuild on 60s poll)
+      const oldHashes = new Set(emoteInventory.map(e => e.hash));
+      const newHashes = new Set(newInv.map(e => e.hash));
+      const inventoryChanged = oldHashes.size !== newHashes.size ||
+        [...newHashes].some(h => !oldHashes.has(h));
+
       emoteInventory = newInv;
       allEmotesDirty = true
-      emoteGeneration++
       _tabEmoteMapDirty = true
       rebuildEmoteMapIfDirty()
-      log(' Inventory updated:', emoteInventory.length, 'emotes');
-      log(' Sample inventory:', emoteInventory.slice(0, 3).map(e => ({ name: e.name, hash: e.hash?.substring(0, 8) })));
-
+      log(' Inventory updated:', emoteInventory.length, 'emotes', inventoryChanged ? '(CHANGED)' : '(unchanged)');
 
       // If on own channel, sync channel emotes with inventory (remove stale ones)
       // Channel emotes for owner = their personal inventory, so keep them in sync
@@ -1788,7 +1798,12 @@ function _onMessageMain(message) {
         }
       }
 
-      debouncedProcessExistingMessages();
+      // Only bump generation + reprocess if inventory actually changed
+      // Prevents 60s poll and block-triggered refreshes from destroying expanded stacks
+      if (inventoryChanged) {
+        emoteGeneration++
+        debouncedProcessExistingMessages();
+      }
       updateEmoteBridge(); // Update Twitch autocomplete hook
       // Notify MAIN world (heatsync-button.js) to refresh panel if open
       window.postMessage({ type: 'heatsync-inventory-update', count: emoteInventory.length }, location.origin);
@@ -1875,10 +1890,17 @@ function _onMessageMain(message) {
         log(' Ignoring channel emotes for', emoteOwner, '(this tab is', myChannel + ')');
         break;
       }
-      channelEmotes = (message.emotes || []).map(e => ({
+      const newEmotes = (message.emotes || []).map(e => ({
         ...e,
         url: normalizeEmoteUrl(e.url)
       }));
+      // Skip reprocessing if emotes haven't actually changed (e.g. cached broadcast on rejoin)
+      if (channelEmotes.length === newEmotes.length && channelEmotes.length > 0 &&
+          channelEmotes.every((e, i) => e.hash === newEmotes[i]?.hash && e.name === newEmotes[i]?.name)) {
+        log(' Channel emotes unchanged for', emoteOwner, '- skipping reprocess');
+        break;
+      }
+      channelEmotes = newEmotes;
       allEmotesDirty = true
       emoteGeneration++
       rebuildEmoteMapIfDirty()
@@ -2942,16 +2964,54 @@ function setupUsernameColoringObserver() {
     log(' ✅ Username click handler deferred to profile card');
 
     // Emote stack expand/collapse handlers
-    // Click-to-expand, stays open until × or click outside. No mouse auto-collapse.
+    // Click-to-expand, stays open until × button. Bulletproof — nothing else collapses.
+
+    // Guard: MutationObserver catches ANY external removal of 'expanded' class
+    // (Twitch React re-renders, other extensions, etc.) and re-asserts it
+    const stackGuardObserver = new MutationObserver((mutations) => {
+      for (const m of mutations) {
+        if (m.type !== 'attributes' || m.attributeName !== 'class') continue;
+        const stack = m.target;
+        if (!stack.classList.contains('heatsync-emote-stack')) continue;
+        // If stack was expanded (locked) but class was removed externally, re-add it
+        if (stack.dataset.hsLocked === '1' && !stack.classList.contains('expanded')) {
+          stack.classList.add('expanded');
+        }
+      }
+    });
+    stackGuardObserver.observe(document.body, {
+      attributes: true,
+      attributeFilter: ['class'],
+      subtree: true,
+    });
+
+    // CRITICAL: Intercept mousedown/pointerdown on stacks in capture phase
+    // Right-click generates mousedown BEFORE contextmenu — Twitch React handles
+    // mousedown on emote buttons and re-renders the message, destroying our stack DOM.
+    // Must stop propagation before it reaches any React handler.
+    for (const evt of ['mousedown', 'pointerdown']) {
+      document.addEventListener(evt, (e) => {
+        const stack = e.target.closest('.heatsync-emote-stack');
+        if (!stack) return;
+        // Only block right-click (button=2) and middle-click (button=1) from propagating
+        // Left-click (button=0) is handled by our click handler below
+        if (e.button === 2 || e.button === 1) {
+          e.stopPropagation();
+        }
+      }, { capture: true, signal });
+    }
 
     document.addEventListener('click', (e) => {
-      // Handle collapse button (×)
+      // Handle collapse button (×) — the ONLY way to close an expanded stack
       const collapseBtn = e.target.closest('.heatsync-stack-collapse');
       if (collapseBtn) {
         e.preventDefault();
         e.stopPropagation();
         const stack = collapseBtn.closest('.heatsync-emote-stack');
-        if (stack) stack.classList.remove('expanded');
+        if (stack) {
+          delete stack.dataset.hsLocked;
+          stack.classList.remove('expanded');
+        }
         return;
       }
 
@@ -3007,33 +3067,94 @@ function setupUsernameColoringObserver() {
       const stack = e.target.closest('.heatsync-emote-stack');
       if (stack) {
         if (!stack.classList.contains('expanded')) {
-          // Collapsed → expand
+          // Collapsed → expand + lock
           e.preventDefault();
           e.stopPropagation();
+          stack.dataset.hsLocked = '1';
           stack.classList.add('expanded');
-        } else if (!e.target.closest('.heatsync-emote-wrapper')) {
-          // Expanded but clicked gap between emotes → absorb, don't leak
+        } else {
+          // Expanded stack — absorb ALL clicks to prevent Twitch React re-render
+          // which would destroy the stack DOM. Emote insert handled below.
           e.preventDefault();
-          e.stopPropagation();
+          e.stopImmediatePropagation();
+          // If clicked on an emote wrapper, trigger insert directly (since bubble handler won't fire)
+          const wrapper = e.target.closest('.heatsync-emote-wrapper');
+          if (wrapper) {
+            const hash = wrapper.dataset.emoteHash || '';
+            const emoteName = wrapper.dataset.emoteName;
+            const isBlocked = hash ? blockedEmotes.has(hash) : blockedEmotes.has(emoteName);
+            if (isBlocked) {
+              // BLOCKED → UNBLOCK on left click
+              safeSendMessage({ type: 'unblock_emote', hash }).then(result => {
+                if (result?.success) {
+                  blockedEmotes.delete(hash);
+                  updateEmoteState(hash, emoteName, 'neutral');
+                  showToast(t('content_toast_unblocked', [emoteName]), 'success');
+                }
+              });
+            } else {
+              // NOT BLOCKED → INSERT into chat
+              const imgEl = wrapper.querySelector('img');
+              const emoteUrl = imgEl?.src || '';
+              window.postMessage({
+                type: 'heatsync-insert-emote',
+                name: emoteName,
+                hash: hash || emoteName,
+                url: emoteUrl
+              }, location.origin);
+            }
+          }
         }
-        // Expanded + clicked on emote wrapper → let normal emote handling work
         return;
       }
 
-      // Click outside any expanded stack → collapse all
-      const expanded = document.querySelectorAll('.heatsync-emote-stack.expanded');
-      if (expanded.length) {
-        expanded.forEach(s => s.classList.remove('expanded'));
-      }
+      // Click outside does NOT close expanded stacks — only × button closes them
     }, { capture: true, signal });
 
-    // Right-click on collapsed stack → expand, let block handler fire on next right-click
+    // Right-click on stack — ALL right-click handling for stacks lives here (capture phase)
+    // stopImmediatePropagation prevents Twitch React + our bubble handlers from firing
     document.addEventListener('contextmenu', (e) => {
       const stack = e.target.closest('.heatsync-emote-stack');
-      if (stack && !stack.classList.contains('expanded')) {
-        e.preventDefault();
-        e.stopPropagation();
+      if (!stack) return;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      if (!stack.classList.contains('expanded')) {
+        // Collapsed → expand + lock
+        stack.dataset.hsLocked = '1';
         stack.classList.add('expanded');
+      } else {
+        // Expanded — handle emote block/unblock directly (bubble handler won't fire)
+        const wrapper = e.target.closest('.heatsync-emote-wrapper');
+        if (wrapper) {
+          const hash = wrapper.dataset.emoteHash;
+          const emoteName = wrapper.dataset.emoteName;
+          if (hash) {
+            const isBlocked = blockedEmotes.has(hash);
+            const isGlobalEmote = wrapper.classList.contains('emote-overlay-global') || globalNameSet.has(emoteName);
+            if (isBlocked) {
+              safeSendMessage({ type: 'unblock_emote', hash }).then(result => {
+                if (result?.success) {
+                  blockedEmotes.delete(hash);
+                  updateEmoteState(hash, emoteName, isGlobalEmote ? 'global' : 'neutral');
+                }
+                stack.classList.add('expanded');
+              });
+            } else {
+              blockedEmotes.add(hash);
+              updateEmoteState(hash, emoteName, 'blocked');
+              safeSendMessage({ type: 'block_emote', hash }).then(result => {
+                if (!result?.success) {
+                  blockedEmotes.delete(hash);
+                  updateEmoteState(hash, emoteName, 'neutral');
+                  showToast(t('content_toast_failed_block', [String(result?.error || 'Unknown error')]), 'error');
+                } else {
+                  showToast(t('content_toast_blocked', [emoteName]), 'info');
+                }
+                stack.classList.add('expanded');
+              });
+            }
+          }
+        }
       }
     }, { capture: true, signal });
 
@@ -3426,7 +3547,7 @@ function stackAdjacentOverlayEmotes(messageElement, allEmotes) {
     }
 
     // Force overlay positioning — use overflow: visible so wide overlays aren't clipped
-    currentWrapper.style.cssText = 'position: absolute !important; top: 50% !important; left: 50% !important; transform: translate(-50%, -50%) !important; width: auto !important; height: auto !important; display: flex !important; align-items: center !important; justify-content: center !important; z-index: 2 !important; pointer-events: auto !important; overflow: visible !important;';
+    currentWrapper.style.cssText = 'position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: auto; height: auto; display: flex; align-items: center; justify-content: center; z-index: 2; pointer-events: auto; overflow: visible;';
     // Ensure overlay image renders at native resolution, centered
     const overlayImgEl = currentWrapper.querySelector('img');
     if (overlayImgEl) {
@@ -3865,7 +3986,7 @@ function generateEmoteElement(emote, isOverlay) {
     wrapper.dataset.inInventory = String(inInventory);
     if (isOverlay) {
       // Overlay wrapper: absolute positioned, centered on base emote
-      wrapper.style.cssText = 'position: absolute !important; top: 50% !important; left: 50% !important; transform: translate(-50%, -50%) !important; width: auto !important; height: auto !important; display: inline-block !important; z-index: 2 !important; pointer-events: auto !important; overflow: visible !important; cursor: pointer;';
+      wrapper.style.cssText = 'position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: auto; height: auto; display: inline-block; z-index: 2; pointer-events: auto; overflow: visible; cursor: pointer;';
     } else {
       wrapper.style.cssText = 'display: inline-block; vertical-align: middle; cursor: pointer; position: relative; line-height: 0; font-size: 0;';
     }
@@ -4029,7 +4150,13 @@ function setupEmoteClickHandlers() {
                           globalNameSet.has(emoteName);
 
     // In a stack context, skip "remove from set" — go straight to block
-    const inStack = !!wrapper.closest('.heatsync-emote-stack');
+    const parentStack = wrapper.closest('.heatsync-emote-stack');
+    const inStack = !!parentStack;
+
+    // Guard: lock expanded state before any mutation so nothing can collapse it
+    if (parentStack && parentStack.classList.contains('expanded')) {
+      parentStack.dataset.hsLocked = '1';
+    }
 
     if (isBlocked) {
       // BLOCKED → NEUTRAL (unblock)
@@ -4045,6 +4172,11 @@ function setupEmoteClickHandlers() {
         }
       } finally {
         pendingOperations.delete(operationKey);
+        // Re-assert expanded — bulletproof against any async class removal
+        if (parentStack) {
+          parentStack.classList.add('expanded');
+          requestAnimationFrame(() => parentStack.classList.add('expanded'));
+        }
       }
     } else {
       // NEUTRAL → BLOCKED
@@ -4073,6 +4205,11 @@ function setupEmoteClickHandlers() {
         showToast(t('content_toast_failed_block', [String(err.message)]), 'error');
       } finally {
         pendingOperations.delete(operationKey);
+        // Re-assert expanded — bulletproof against any async class removal
+        if (parentStack) {
+          parentStack.classList.add('expanded');
+          requestAnimationFrame(() => parentStack.classList.add('expanded'));
+        }
       }
     }
   }, 'emote-contextmenu');
@@ -4118,11 +4255,25 @@ function updateEmoteState(hash, emoteName, state) {
     // Update based on new state (overlay classes)
     if (wrapper) {
       wrapper.classList.remove('emote-overlay-blocked', 'emote-overlay-owned', 'emote-overlay-unadded', 'emote-overlay-global');
+      // Clear locked dimensions from previous blocked state
+      wrapper.style.removeProperty('--hs-emote-width');
+      wrapper.style.removeProperty('--hs-emote-height');
     }
 
     switch(effectiveState) {
       case 'blocked':
-        if (wrapper) wrapper.classList.add('emote-overlay-blocked');
+        if (wrapper) {
+          wrapper.classList.add('emote-overlay-blocked');
+          // Lock wrapper dimensions so expanded stack layout doesn't shift
+          if (wrapper.closest('.heatsync-emote-stack')) {
+            const w = wrapper.offsetWidth;
+            const h = wrapper.offsetHeight;
+            if (w && h) {
+              wrapper.style.setProperty('--hs-emote-width', w + 'px');
+              wrapper.style.setProperty('--hs-emote-height', h + 'px');
+            }
+          }
+        }
         // Lock dimensions so outline matches the emote exactly (even wide ones like 96x32)
         if (img.naturalWidth) {
           img.style.width = img.naturalWidth + 'px'

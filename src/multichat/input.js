@@ -309,7 +309,7 @@ function initInput() {
     window._hsMcTypeRevealHandler = true
     document.addEventListener('keydown', (e) => {
       if (inputBarVisible) return
-      if (currentTab === 'add') return
+      if (currentTab === 'add' || currentTab === 'settings') return
       const input = document.getElementById('hs-mc-input')
       if (!input) return
       // Don't steal focus from other inputs
@@ -318,10 +318,19 @@ function initInput() {
       // Only printable chars — skip modifiers, nav, function keys
       if (e.ctrlKey || e.altKey || e.metaKey) return
       if (e.key.length !== 1) return
+      // Prevent platform shortcuts (Kick fullscreen "f", theater "t", etc.)
+      e.preventDefault()
+      e.stopImmediatePropagation()
       showInputBar()
       input.focus()
-      // Character will flow into the now-focused input naturally
-    }, { signal: mcSignal })
+      // Manually insert the character since we prevented default
+      if (input.isContentEditable) {
+        document.execCommand('insertText', false, e.key)
+      } else {
+        input.value += e.key
+        input.dispatchEvent(new Event('input', { bubbles: true }))
+      }
+    }, { capture: true, signal: mcSignal })
 
     // Catch paste when input bar is hidden — reveal bar and insert text
     document.addEventListener('paste', (e) => {

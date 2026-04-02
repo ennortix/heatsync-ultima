@@ -113,7 +113,14 @@
   // Username cache for tab completion
   const usernameCache = new Set();
   // Username → color map for @mention coloring (LRU-bounded)
-  const knownColors = new Map();
+  const knownColors = new Map()
+  function setKnownColor(user, color) {
+    knownColors.set(user, color)
+    if (knownColors.size > 2000) {
+      const iter = knownColors.keys()
+      for (let i = 0; i < 500; i++) knownColors.delete(iter.next().value)
+    }
+  }
   // Avatar URL cache: username → CDN URL (fetched from decapi)
   const avatarCache = new Map()
   const avatarFetching = new Set() // prevent duplicate fetches
@@ -566,7 +573,7 @@
       menu.style.top = Math.min(e.clientY, window.innerHeight - mh - 4) + 'px';
 
       const dismiss = (ev) => { if (!menu.contains(ev.target)) { menu.remove(); document.removeEventListener('click', dismiss); } };
-      setTimeout(() => document.addEventListener('click', dismiss), 0);
+      setTimeout(() => document.addEventListener('click', dismiss, { signal: mcSignal }), 0);
     });
 
     return container;
@@ -5985,6 +5992,10 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
     const kickName = typeof ch === 'string' ? null : ch?.kick;
     if (kickName) kickChat?.part(kickName);
 
+    // Clean up per-channel sub tenure data to prevent stale map growth
+    if (twitchName) subTenureMap.delete(twitchName.toLowerCase());
+    if (kickName) subTenureMap.delete(kickName.toLowerCase());
+
     // Unsubscribe per-channel YouTube (pass URL as fallback if videoId not yet received)
     if (ch && typeof ch !== 'string' && ch.youtube) {
       const link = youtubeLinks.get(tabId);
@@ -6428,7 +6439,7 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
         document.removeEventListener('click', dismiss, true);
       }
     };
-    setTimeout(() => document.addEventListener('click', dismiss, true), 0);
+    setTimeout(() => document.addEventListener('click', dismiss, { capture: true, signal: mcSignal }), 0);
   }
 
   function getCurrentUsername() {
@@ -7702,6 +7713,7 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
       // Kick: no React hook needed, just inject directly
       let kickAttempts = 0;
       const tryInjectKick = () => {
+        if (mcSignal?.aborted) return;
         kickAttempts++;
         const chatroom = document.getElementById('channel-chatroom') || document.querySelector('[id*="chatroom"]');
         if (chatroom) {
@@ -7729,6 +7741,7 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
     const maxAttempts = 30;
 
     const tryHook = () => {
+      if (mcSignal?.aborted) return;
       attempts++;
 
       // First, try to find and patch the chat room component

@@ -344,7 +344,7 @@ class IRC {
         const ch = msg.channel;
         if (msg.user) {
           usernameCache.add(msg.user);
-          knownColors.set(msg.user.toLowerCase(), msg.color);
+          setKnownColor(msg.user.toLowerCase(), msg.color);
         }
         if (usernameCache.size > 500) {
           const evicted = usernameCache.values().next().value;
@@ -363,7 +363,7 @@ class IRC {
         if (msg.user !== 'system') {
           if (msg.user) {
             usernameCache.add(msg.user)
-            knownColors.set(msg.user.toLowerCase(), msg.color)
+            setKnownColor(msg.user.toLowerCase(), msg.color)
           }
         }
         fetchChannelBadges(ch);
@@ -450,7 +450,7 @@ class IRC {
           msg.isHistory = true
           if (msg.user) {
             usernameCache.add(msg.user)
-            knownColors.set(msg.user.toLowerCase(), msg.color)
+            setKnownColor(msg.user.toLowerCase(), msg.color)
           }
           if (msg.subMonths) trackSubTenure(ch, msg.user, msg.subMonths)
           buffer.push(msg)
@@ -476,7 +476,7 @@ class IRC {
 
               usernameCache.add(msg.user)
 
-              knownColors.set(msg.user.toLowerCase(), msg.color)
+              setKnownColor(msg.user.toLowerCase(), msg.color)
 
             }
             if (msg.subMonths) trackSubTenure(ch, msg.user, msg.subMonths);
@@ -538,7 +538,7 @@ class IRC {
         if (msg.id && liveIds.has(msg.id)) continue;
         if (msg.user) {
           usernameCache.add(msg.user)
-          knownColors.set(msg.user.toLowerCase(), msg.color)
+          setKnownColor(msg.user.toLowerCase(), msg.color)
         }
         if (msg.subMonths) trackSubTenure(ch, msg.user, msg.subMonths);
         parsed.push(msg);
@@ -659,7 +659,7 @@ class KickChat {
         this.channels.get(channel).push(msg)
         if (msg.user) {
           usernameCache.add(msg.user)
-          knownColors.set(msg.user.toLowerCase(), msg.color)
+          setKnownColor(msg.user.toLowerCase(), msg.color)
         }
         this.persistBuffer(channel)
         this.emit('message', msg)
@@ -761,7 +761,7 @@ class KickChat {
           msg.isHistory = true
           if (msg.user) {
             usernameCache.add(msg.user)
-            knownColors.set(msg.user.toLowerCase(), msg.color)
+            setKnownColor(msg.user.toLowerCase(), msg.color)
           }
           buffer.push(msg)
         }

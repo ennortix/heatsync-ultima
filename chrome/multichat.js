@@ -11506,9 +11506,16 @@ const STORAGE_KEY = 'heatsync_multichat';
       tab.className = 'hs-mc-tab';
       const id = typeof ch === 'string' ? ch : ch.id;
       tab.dataset.tab = id;
-      // Show best human-readable name: twitch > kick > youtube channel name > id
-      const label = typeof ch === 'string' ? ch
-        : ch.twitch || ch.kick || (ch.youtube ? ch.youtube.replace(/^https?:\/\/(www\.)?youtube\.com\/@?/, '').replace(/\/.*$/, '') : id);
+      // Show best human-readable name: twitch > kick > youtube channel > id
+      let label = id
+      if (typeof ch !== 'string') {
+        if (ch.twitch) label = ch.twitch
+        else if (ch.kick) label = ch.kick
+        else if (ch.youtube) {
+          const m = ch.youtube.match(/@([^/]+)/)
+          label = m ? m[1] : ch.youtube.replace(/^https?:\/\/(www\.)?youtube\.com\//, '').replace(/\/.*$/, '')
+        }
+      }
       tab.textContent = label;
       // Restore live dot from cached liveChannelSet (survives tab recreate)
       if (liveChannelSet.size > 0) {

@@ -410,19 +410,19 @@
 
   // Cached emotes to avoid repeated JSON parsing
   let _cachedEmotes = [];
-  let _lastEmoteData = '';
+  let _lastVersion = '';
 
   // Get heatsync emotes from bridge (cached)
   function getHeatsyncEmotes() {
     const bridge = document.getElementById('heatsync-emote-bridge');
     if (!bridge) return [];
     try {
-      const rawData = bridge.dataset.emotes || '[]';
-      // Only re-parse if data changed
-      if (rawData === _lastEmoteData) return _cachedEmotes;
-      _lastEmoteData = rawData;
+      const version = bridge.dataset.version || '';
+      // Only re-parse if version counter changed (tiny string compare vs 4MB)
+      if (version === _lastVersion) return _cachedEmotes;
+      _lastVersion = version;
 
-      const emotes = JSON.parse(rawData);
+      const emotes = JSON.parse(bridge.dataset.emotes || '[]');
       // Pre-index lowercase names for O(1) lookups (avoids 50k toLowerCase() calls per search)
       for (const e of emotes) {
         e.nameLower = e.name.toLowerCase();

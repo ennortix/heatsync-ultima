@@ -6083,6 +6083,7 @@ function injectTwitchAutocompleteHook() {
 
 // Update emotes in the bridge for the injected script
 let _emoteBridgeDebounce = null
+let _bridgeVersion = 0
 function updateEmoteBridgeImmediate() {
   const bridge = document.getElementById('heatsync-emote-bridge');
   if (!bridge) return;
@@ -6116,6 +6117,7 @@ function updateEmoteBridgeImmediate() {
 
   log(' Updating emote bridge:', allEmotes.length, 'total emotes');
   bridge.dataset.emotes = JSON.stringify(allEmotes);
+  bridge.dataset.version = String(++_bridgeVersion);
   bridge.dispatchEvent(new Event('heatsync-emotes-updated'));
 
   // Populate window.__heatsyncEmoteUrls for early-inject interceptor via postMessage

@@ -9945,6 +9945,7 @@ const STORAGE_KEY = 'heatsync_multichat';
   let config = { channels: [], enabled: true };
   let currentTab = 'feed';
   let liveChannel = null;        // override channel for live tab (null = use URL channel)
+  let livePlatformMap = {};      // per-URL-channel platform overrides: { [urlCh]: { twitch, kick, youtube } }
   let liveChannelSet = new Set(); // channels currently live (lowercase twitch names)
   let irc = null;
   let kickChat = null;
@@ -10482,8 +10483,31 @@ const STORAGE_KEY = 'heatsync_multichat';
         return;
       }
 
+      // Live tab gets platform edit context menu
+      if (tabId === 'live') {
+        e.preventDefault();
+        document.getElementById('hs-mc-ctx-menu')?.remove();
+        const menu = document.createElement('div');
+        menu.id = 'hs-mc-ctx-menu';
+        menu.style.cssText = 'position:fixed;z-index:99999;background:#000;border:1px solid #808080;border-radius:0;padding:4px 0;min-width:150px;font-size:12px;font-family:inherit;';
+        const item = document.createElement('div');
+        item.textContent = 'edit platforms';
+        item.style.cssText = 'padding:6px 12px;cursor:pointer;color:#fff;';
+        item.addEventListener('mouseenter', () => item.style.background = 'rgba(255,255,255,0.06)');
+        item.addEventListener('mouseleave', () => item.style.background = '');
+        item.addEventListener('click', () => { menu.remove(); showEditLivePlatforms(); });
+        menu.appendChild(item);
+        document.body.appendChild(menu);
+        const mw = menu.offsetWidth, mh = menu.offsetHeight;
+        menu.style.left = Math.min(e.clientX, window.innerWidth - mw - 4) + 'px';
+        menu.style.top = Math.min(e.clientY, window.innerHeight - mh - 4) + 'px';
+        const dismiss = (ev) => { if (!menu.contains(ev.target)) { menu.remove(); document.removeEventListener('click', dismiss); } };
+        setTimeout(() => document.addEventListener('click', dismiss, { signal: mcSignal }), 0);
+        return;
+      }
+
       // Channel tabs get edit/remove context menu
-      const reserved = ['live', 'feed', 'mentions', 'activity', 'whispers', 'add', 'rotate', 'settings'];
+      const reserved = ['feed', 'mentions', 'activity', 'whispers', 'add', 'rotate', 'settings'];
       if (reserved.includes(tabId)) return;
       e.preventDefault();
 
@@ -15932,11 +15956,15 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
       return;
     } else if (id === 'live') {
       const curCh = getLiveChannel();
-      // Ensure channel is joined + history loaded (handles picker overrides, SPA nav)
-      if (curCh && irc && !irc.channels.has(curCh.toLowerCase())) irc.join(curCh);
-      const ircMsgs = curCh ? (irc?.getMessages(curCh) || []) : [];
-      // Kick messages for live tab: same channel name, linked via config, or URL channel on Kick
-      let kickMsgs = curCh ? (kickChat?.getMessages(curCh) || []) : [];
+      const platNames = getLivePlatformNames()
+      // Use platform-specific names (may differ from curCh if overridden)
+      const twitchCh = platNames.twitch || curCh
+      const kickCh = platNames.kick || curCh
+      // Ensure channels are joined + history loaded
+      if (twitchCh && irc && !irc.channels.has(twitchCh.toLowerCase())) irc.join(twitchCh)
+      if (kickCh && kickChat && !kickChat.channels.has(kickCh.toLowerCase())) kickChat.join(kickCh)
+      const ircMsgs = twitchCh ? (irc?.getMessages(twitchCh) || []) : []
+      let kickMsgs = kickCh ? (kickChat?.getMessages(kickCh) || []) : []
       if (!kickMsgs.length && curCh) {
         // Check if any config entry links current channel to a Kick channel
         const linked = config.channels.find(ch => typeof ch !== 'string' && ch.twitch === curCh && ch.kick);
@@ -16225,6 +16253,140 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
 
     updateTabBar();
     if (currentTab === tabId) switchTab('live');
+  }
+
+  // Get platform overrides for the current live channel (or defaults from URL)
+  function getLivePlatformNames() {
+    const urlCh = getCurrentChannel()?.toLowerCase()
+    if (!urlCh) return { twitch: '', kick: '', youtube: '' }
+    const overrides = livePlatformMap[urlCh]
+    return {
+      twitch: overrides?.twitch ?? urlCh,
+      kick: overrides?.kick ?? urlCh,
+      youtube: overrides?.youtube ?? `https://youtube.com/@${urlCh}/live`
+    }
+  }
+
+  function saveLivePlatformMap() {
+    chrome.storage.local.set({ hs_live_platform_map: livePlatformMap })
+  }
+
+  async function loadLivePlatformMap() {
+    try {
+      const data = await chrome.storage.local.get('hs_live_platform_map')
+      if (data.hs_live_platform_map) livePlatformMap = data.hs_live_platform_map
+    } catch {}
+  }
+
+  // Apply live platform overrides — join the correct channels on each platform
+  function applyLivePlatformOverrides() {
+    const names = getLivePlatformNames()
+    if (names.twitch) irc?.join(names.twitch)
+    if (names.kick) kickChat?.join(names.kick)
+    if (names.youtube) {
+      chrome.runtime.sendMessage({
+        type: 'youtube_ws_subscribe', url: names.youtube, channelId: '__live_yt_auto__'
+      }).catch(() => {})
+    }
+    renderMessages(currentTab)
+  }
+
+  function showEditLivePlatforms() {
+    const urlCh = getCurrentChannel()?.toLowerCase()
+    if (!urlCh) return
+    editingChannel = true
+    const names = getLivePlatformNames()
+
+    const msgsEl = document.getElementById('hs-mc-messages')
+    if (!msgsEl) return
+    msgsEl.textContent = ''
+
+    const wrapper = document.createElement('div')
+    wrapper.style.cssText = 'display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:12px;color:#a8a8a8;font-size:13px;padding:20px;box-sizing:border-box;'
+
+    const title = document.createElement('div')
+    title.textContent = `edit live — ${urlCh}`
+    title.style.cssText = 'font-size:17px;font-weight:700;color:#ffffff;letter-spacing:.5px;'
+    wrapper.appendChild(title)
+
+    const makeRow = (label, placeholder, value) => {
+      const row = document.createElement('div')
+      row.style.cssText = 'display:flex;align-items:center;gap:8px;width:100%;max-width:300px;'
+      const lbl = document.createElement('span')
+      lbl.textContent = label
+      lbl.style.cssText = 'font-size:13px;font-weight:600;min-width:56px;color:#949494;text-transform:lowercase;'
+      const input = document.createElement('input')
+      input.type = 'text'
+      input.placeholder = placeholder
+      input.value = value || ''
+      input.style.cssText = 'flex:1;background:#ffffff;color:#000000;border:1px solid #808080;padding:6px 10px;border-radius:0;font-size:14px;outline:none;font-family:inherit;'
+      input.addEventListener('keydown', (e) => e.stopPropagation())
+      row.appendChild(lbl)
+      row.appendChild(input)
+      return { row, input }
+    }
+
+    const twitch = makeRow('twitch', 'username', names.twitch)
+    const kick = makeRow('kick', 'username', names.kick)
+    const yt = makeRow('youtube', 'url or @handle', names.youtube)
+    wrapper.appendChild(twitch.row)
+    wrapper.appendChild(kick.row)
+    wrapper.appendChild(yt.row)
+
+    const btnRow = document.createElement('div')
+    btnRow.style.cssText = 'display:flex;gap:8px;margin-top:4px;'
+
+    const makeMcBtn = (text, primary) => {
+      const btn = document.createElement('button')
+      btn.textContent = text
+      const base = primary
+        ? 'background:transparent;color:#ffffff;border:1px solid #ffffff;'
+        : 'background:transparent;color:#808080;border:1px solid #808080;'
+      btn.style.cssText = base + 'padding:6px 22px;border-radius:0;cursor:pointer;font-weight:600;font-size:14px;font-family:inherit;min-width:80px;transition:all .15s;'
+      btn.addEventListener('mouseenter', () => { btn.style.background = '#ffffff'; btn.style.color = '#000000' })
+      btn.addEventListener('mouseleave', () => { btn.style.background = 'transparent'; btn.style.color = primary ? '#ffffff' : '#808080' })
+      return btn
+    }
+
+    const saveBtn = makeMcBtn('save', true)
+    const cancelBtn = makeMcBtn('cancel', false)
+    const resetBtn = makeMcBtn('reset', false)
+    btnRow.appendChild(saveBtn)
+    btnRow.appendChild(cancelBtn)
+    btnRow.appendChild(resetBtn)
+    wrapper.appendChild(btnRow)
+    msgsEl.appendChild(wrapper)
+
+    cancelBtn.addEventListener('click', () => { editingChannel = false; switchTab('live') })
+
+    resetBtn.addEventListener('click', () => {
+      delete livePlatformMap[urlCh]
+      saveLivePlatformMap()
+      editingChannel = false
+      applyLivePlatformOverrides()
+      switchTab('live')
+    })
+
+    const doSave = () => {
+      const tw = twitch.input.value.trim().toLowerCase().replace(/^@/, '')
+      const ki = kick.input.value.trim().toLowerCase().replace(/^@/, '')
+      const ytVal = yt.input.value.trim() ? normalizeYtUrl(yt.input.value.trim()) : ''
+
+      livePlatformMap[urlCh] = { twitch: tw, kick: ki, youtube: ytVal }
+      saveLivePlatformMap()
+      editingChannel = false
+      applyLivePlatformOverrides()
+      switchTab('live')
+    }
+
+    saveBtn.addEventListener('click', doSave)
+    // Enter in any input saves
+    ;[twitch.input, kick.input, yt.input].forEach(inp => {
+      inp.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); doSave() } })
+    })
+    // Esc cancels
+    wrapper.addEventListener('keydown', (e) => { if (e.key === 'Escape') { editingChannel = false; switchTab('live') } })
+    twitch.input.focus()
   }
 
   function showEditChannelForm(tabId) {
@@ -17293,6 +17455,7 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
     detectOfflineState();
     await loadActiveTab();
     await loadTabsPosition();
+    await loadLivePlatformMap();
     await loadEmoteSize();
     await loadWysiwygSetting();
     await loadLinksSetting();
@@ -17356,35 +17519,34 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
     kickChat = new KickChat();
     kickChat.connect();
 
-    // Auto-join current channel on native platform + cross-platform
+    // Auto-join current channel on all platforms (using overrides if set)
     const currentChannel = getCurrentChannel();
     if (currentChannel) {
-      if (hostPlatform === 'twitch') {
-        irc.join(currentChannel);
-        kickChat.join(currentChannel); // Join same-name Kick channel
-      } else if (hostPlatform === 'kick') {
-        kickChat.join(currentChannel);
-        irc.join(currentChannel); // Join same-name Twitch channel
-      } else if (hostPlatform === 'yt') {
-        // YouTube: subscribe to live chat, no IRC/Kick needed for host channel
-        const ytUrl = currentChannel.length > 20
-          ? `https://youtube.com/watch?v=${currentChannel}`
-          : `https://youtube.com/@${currentChannel}/live`
+      const platNames = getLivePlatformNames()
+      const twitchCh = platNames.twitch || currentChannel
+      const kickCh = platNames.kick || currentChannel
+      const ytUrl = platNames.youtube || `https://youtube.com/@${currentChannel}/live`
+
+      irc.join(twitchCh)
+      kickChat.join(kickCh)
+      // Also join the URL channel name if different (for native platform messages)
+      if (twitchCh !== currentChannel) irc.join(currentChannel)
+      if (kickCh !== currentChannel) kickChat.join(currentChannel)
+
+      // Subscribe YouTube
+      if (hostPlatform === 'yt' && currentChannel.length > 20) {
+        // On YouTube watch page, use the video URL directly
+        chrome.runtime.sendMessage({
+          type: 'youtube_ws_subscribe',
+          url: `https://youtube.com/watch?v=${currentChannel}`,
+          channelId: '__live_yt_auto__'
+        }).catch(() => {})
+      } else {
         chrome.runtime.sendMessage({
           type: 'youtube_ws_subscribe', url: ytUrl, channelId: '__live_yt_auto__'
         }).catch(() => {})
-        // Still join IRC/Kick for cross-platform relay
-        irc.join(currentChannel);
-        kickChat.join(currentChannel);
       }
-      if (hostPlatform !== 'yt') {
-        // Auto-subscribe YouTube @channelname/live for cross-platform combo
-        const ytAutoUrl = `https://youtube.com/@${currentChannel}/live`
-        chrome.runtime.sendMessage({
-          type: 'youtube_ws_subscribe', url: ytAutoUrl, channelId: '__live_yt_auto__'
-        }).catch(() => {})
-      }
-      log('Auto-joined current channel:', currentChannel, '(all platforms)');
+      log('Auto-joined current channel:', currentChannel, 'platforms:', twitchCh, kickCh, ytUrl);
     }
 
     // Ensure live channel override is also joined on all platforms

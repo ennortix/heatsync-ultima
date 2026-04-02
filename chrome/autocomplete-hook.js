@@ -1929,7 +1929,8 @@
       }
       const emoteByHash = _cachedEmoteByHash
 
-      for (const img of document.querySelectorAll('img')) {
+      const imgScope = document.querySelector('[class*="chat-autocomplete"], [class*="autocomplete"], [class*="chat-input"], [class*="chat-scrollable-area"]') || document
+      for (const img of imgScope.querySelectorAll('img')) {
         const src = img.src || '';
         const srcset = img.srcset || '';
         const srcsetNeedsFix = srcset.includes('jtvnw.net');

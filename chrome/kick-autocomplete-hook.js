@@ -288,12 +288,14 @@
 
   let attempts = 0
   function tryInit() {
+    if (sig?.aborted) return
     attempts++
     if (findAndHook()) {
       log('ready')
       return
     }
     if (attempts < 20) {
+      if (sig?.aborted) return
       setTimeout(tryInit, 1000)
     }
   }

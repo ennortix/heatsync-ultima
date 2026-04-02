@@ -18,6 +18,7 @@
   window.addEventListener('pagehide', () => lifecycle.abort())
   injSignal.addEventListener('abort', () => {
     document.getElementById('heatsync-emote-tooltip')?.remove()
+    chrome.runtime.onMessage.removeListener(_onMessageInjector)
   })
 
   let followedUsers = new Set(); // Users the current user follows

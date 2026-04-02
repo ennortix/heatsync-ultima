@@ -26,7 +26,7 @@
       if (opts.onAbort) opts.onAbort()
     })
 
-    window.addEventListener('pagehide', () => controller.abort())
+    window.addEventListener('pagehide', () => controller.abort(), { once: true })
 
     const cleanup = {
       setInterval(fn, ms) { const id = setInterval(fn, ms); _timers.intervals.add(id); return id },

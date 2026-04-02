@@ -44,8 +44,12 @@ signal.addEventListener('abort', () => {
   chrome.runtime.onMessage.removeListener(_onMessageMain)
   chrome.runtime.onMessage.removeListener(_onMessageKickRelay)
   chrome.storage.onChanged.removeListener(_onStorageChanged)
+  chrome.storage.onChanged.removeListener(_onAutoClaimStorageChanged)
 })
 window.addEventListener('pagehide', () => lifecycle.abort())
+
+// WeakMap for emote overlay references — avoids DOM property leaks
+const overlayMap = new WeakMap()
 
 // Helpers matching old cleanup API but wired to AbortController
 const cleanup = {
@@ -1175,13 +1179,14 @@ function showEmoteOverlay(img) {
   activeOverlay = overlay;
 
   // Store reference on img for cleanup
-  img._heatsyncOverlay = overlay;
+  overlayMap.set(img, overlay)
 }
 
 function hideEmoteOverlay(img) {
-  if (img._heatsyncOverlay) {
-    img._heatsyncOverlay.remove();
-    img._heatsyncOverlay = null;
+  const overlay = overlayMap.get(img)
+  if (overlay) {
+    overlay.remove()
+    overlayMap.delete(img)
   }
   if (activeOverlay) {
     activeOverlay.remove();
@@ -3084,7 +3089,9 @@ function setupUsernameColoringObserver() {
     // Debounce - only process once per animation frame
     if (usernameColoringObserver._pending) {
       // Stash nodes for next frame
-      usernameColoringObserver._queued = (usernameColoringObserver._queued || []).concat(newMessages)
+      const q = usernameColoringObserver._queued || []
+      q.push(...newMessages)
+      usernameColoringObserver._queued = q
       return
     }
     usernameColoringObserver._pending = true
@@ -4446,7 +4453,7 @@ function updateEmoteState(hash, emoteName, state) {
           resolve(result)
         }
       }
-      window.addEventListener('message', handler)
+      window.addEventListener('message', handler, { signal })
       const safeUser = username.replace(/[^a-z0-9_]/gi, '')
       const safeChan = channelLogin.replace(/[^a-z0-9_]/gi, '')
       window.postMessage({
@@ -4457,7 +4464,7 @@ function updateEmoteState(hash, emoteName, state) {
         variables: {},
         rawQuery: `{ user(login: "${safeUser}") { follow(targetLogin: "${safeChan}") { followedAt } follows { totalCount } followers { totalCount } } channel: user(login: "${safeChan}") { follow(targetLogin: "${safeUser}") { followedAt } } }`
       }, location.origin)
-      const timer = setTimeout(() => {
+      const timer = cleanup.setTimeout(() => {
         window.removeEventListener('message', handler)
         resolve(undefined)
       }, 5000)
@@ -6428,6 +6435,7 @@ function handleNavigation() {
   msgCacheBuffer = []
   msgCacheIds.clear()
   subTenureMap.clear()
+  originalMessageBodies.clear()
   invalidateChatContainerCache()
   allEmotesDirty = true
   rebuildEmoteMapIfDirty()
@@ -6549,12 +6557,13 @@ function setupAutoClaimPoints() {
 })()
 
 // React to setting changes
-chrome.storage.onChanged.addListener((changes) => {
+function _onAutoClaimStorageChanged(changes) {
   if (changes.hs_auto_claim_points) {
     autoClaimEnabled = changes.hs_auto_claim_points.newValue !== false
     setupAutoClaimPoints()
   }
-})
+}
+chrome.storage.onChanged.addListener(_onAutoClaimStorageChanged)
 
 // Initialize
 if (window.HS?.initMainWorldNonce) window.HS.initMainWorldNonce() // secure MAIN world GQL/Helix handlers

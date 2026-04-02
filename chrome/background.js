@@ -103,8 +103,12 @@ chrome.tabs.onRemoved.addListener((tabId) => {
   _cachedTabs = null // Invalidate tab cache
 })
 
-chrome.tabs.onUpdated.addListener(() => {
+chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
   _cachedTabs = null // Invalidate tab cache on navigation/load
+  if (tabChannels.has(tabId) && changeInfo.url && !/twitch\.tv|kick\.com|youtube\.com/.test(changeInfo.url)) {
+    tabChannels.delete(tabId)
+    saveTabChannels()
+  }
 })
 let current7TVEmoteSetId = null; // Track current 7TV emote set ID for EventAPI
 let seventvEmoteSetIds = new Map(); // channelName → 7TV emote set ID
@@ -932,8 +936,11 @@ async function resolve7TVCosmeticIds(ids) {
     for (const b of badges) { cosmeticObjectCache.set(b.id, b); if (b.id === ids.badgeId) result.badge = b }
     // Cap cache
     if (cosmeticObjectCache.size > 200) {
-      const first = cosmeticObjectCache.keys().next().value
-      cosmeticObjectCache.delete(first)
+      let count = 0
+      for (const key of cosmeticObjectCache.keys()) {
+        if (count++ >= 50) break
+        cosmeticObjectCache.delete(key)
+      }
     }
   } catch (e) {
     log(' resolve7TVCosmeticIds failed:', e?.message)
@@ -1083,7 +1090,7 @@ async function fetchChannelOwnerEmotes(channelName, channelId = null, platform =
     const channelKeys = Object.keys(channelEmotesMap).filter(k => channelEmotesMap[k] !== 'loading');
     if (channelKeys.length > 20) {
       for (const old of channelKeys.slice(0, channelKeys.length - 20)) {
-        if (old !== channelName) { delete channelEmotesMap[old]; delete channelEmotesFetchedAt[old]; seventvEmoteSetIds.delete(old); }
+        if (old !== channelName) { delete channelEmotesMap[old]; delete channelEmotesFetchedAt[old]; seventvEmoteSetIds.delete(old); seventvPolledChannels.delete(old); }
       }
     }
     updateEmoteUrlMap();
@@ -2929,6 +2936,10 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
         browser.storage.local.set({ youtube_url: url })
       } else {
         youtubeChannelUrls[channelId] = url
+        const ytUrlKeys = Object.keys(youtubeChannelUrls)
+        if (ytUrlKeys.length > 50) {
+          delete youtubeChannelUrls[ytUrlKeys[0]]
+        }
         browser.storage.local.set({ youtube_channel_urls: { ...youtubeChannelUrls } })
       }
       log(' YouTube subscribe:', url, 'channel:', channelId, isSocketOpen() ? '' : '(queued for reconnect)')
@@ -3116,12 +3127,13 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
         // wait for the sentinel to resolve (loading → array)
         const deadline = Date.now() + 8000
         await new Promise(resolve => {
-          const poll = setInterval(() => {
+          const poll = trackInterval(setInterval(() => {
             if (Array.isArray(channelEmotesMap[channel]) || Date.now() > deadline) {
               clearInterval(poll)
+              untrackInterval(poll)
               resolve()
             }
-          }, 100)
+          }, 100))
         })
         chEmotes = Array.isArray(channelEmotesMap[channel]) ? channelEmotesMap[channel] : []
       }

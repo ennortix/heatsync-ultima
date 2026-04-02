@@ -645,9 +645,11 @@
           emoteCache.set(emoteName, { url: emoteUrl, source: emoteSource || 'heatsync', state: 'owned', hash: serverHash });
           while (emoteCache.size > 2000) { emoteCache.delete(emoteCache.keys().next().value) }
         }
-        // Update hash lookup maps
+        // Update hash lookup maps (bounded to emoteCache size)
         emoteHashes.set(emoteName, serverHash);
         hashToName.set(serverHash, emoteName);
+        while (emoteHashes.size > 2000) { emoteHashes.delete(emoteHashes.keys().next().value) }
+        while (hashToName.size > 2000) { hashToName.delete(hashToName.keys().next().value) }
 
         // Update all wrappers in DOM (no full re-render)
         queryEmoteWrappers(emoteName).forEach(w => {

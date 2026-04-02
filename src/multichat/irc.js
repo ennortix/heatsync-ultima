@@ -324,6 +324,8 @@ class IRC {
   parse(data) {
     this._lastData = Date.now();
     this.partial += data;
+    // Cap partial buffer to prevent unbounded growth on malformed data
+    if (this.partial.length > 65536) this.partial = ''
     const lines = this.partial.split('\r\n');
     this.partial = lines.pop();
     for (const line of lines) {

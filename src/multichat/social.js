@@ -604,7 +604,7 @@ function renderFeedContent(content, emoteRefs) {
   if (emoteRefs && typeof emoteRefs === 'object') {
     for (const [name, val] of Object.entries(emoteRefs)) {
       const url = typeof val === 'string' ? val : val?.url
-      if (!url) continue
+      if (!url || !/^https:\/\//.test(url)) continue
       const escaped = escapeHtml(name);
       const safeUrl = escapeHtml(url);
       const cacheKey = escaped

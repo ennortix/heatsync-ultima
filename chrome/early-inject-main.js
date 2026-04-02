@@ -577,7 +577,13 @@
         return
       }
       const req = e.data
-      if (req.rawQuery || gql.hashes[req.operation]) {
+      if (req.rawQuery) {
+        window.postMessage({
+          type: 'heatsync-gql-response', id: req.id, error: 'raw queries not allowed'
+        }, location.origin)
+        return
+      }
+      if (gql.hashes[req.operation]) {
         executeGqlProxy(req)
       } else {
         // Queue request — hash might arrive soon from Twitch's own calls
@@ -837,6 +843,25 @@
       uidPollId = null
     }
   }, 1000)
+
+  // Re-attach uidObserver on SPA navigation (disconnect old, re-poll for new container)
+  function resetUidObserver() {
+    uidObserver.disconnect()
+    uidPollCount = 0
+    if (uidPollId !== null) clearInterval(uidPollId)
+    uidPollId = setInterval(() => {
+      if (startUidObserver() || ++uidPollCount > 60) {
+        clearInterval(uidPollId)
+        uidPollId = null
+      }
+    }, 1000)
+  }
+
+  // Listen for SPA navigation from our own history hooks
+  window.addEventListener('message', (e) => {
+    if (e.source !== window || e.origin !== location.origin) return
+    if (e.data?.type === 'heatsync-nav') resetUidObserver()
+  })
 
   window.addEventListener('pagehide', () => {
     if (uidPollId !== null) {

@@ -180,7 +180,10 @@ cleanup.addEventListener(window, 'message', async (event) => {
 
   // Native Twitch emotes from autocomplete-hook.js (MAIN world) — store for multichat
   if (event.data?.type === 'heatsync-native-emotes' && Array.isArray(event.data.emotes)) {
-    const emotes = event.data.emotes
+    const emotes = event.data.emotes.filter(e =>
+      e && typeof e.name === 'string' && e.name.length < 100 &&
+      (!e.url || (typeof e.url === 'string' && /^https:\/\//.test(e.url)))
+    )
     log(' Received', emotes.length, 'native Twitch emotes from MAIN world')
     chrome.storage.local.set({ native_twitch_emotes: emotes })
   }
@@ -2789,7 +2792,7 @@ function highlightUserMentions(messageElement, authorElement, preQueriedTextElem
   }
   // Cache mention regex — only rebuild when username changes
   if (currentUser !== _mentionUser) {
-    _mentionRegex = new RegExp('\\b' + currentUser + '\\b', 'i');
+    _mentionRegex = new RegExp('\\b' + currentUser.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b', 'i');
     _mentionUser = currentUser;
   }
 
@@ -3869,6 +3872,7 @@ function generateEmoteElement(emote, isOverlay) {
     const img = document.createElement('img');
     img.src = imgSrc;
     img.alt = emote.name;
+    img.decoding = 'async';
     img.style.cssText = `display: block !important; width: auto !important; height: ${isOverlay ? 'auto' : 'var(--hs-emote-height, 28px)'} !important; max-width: none !important; max-height: none !important; ${blocked ? 'opacity: 0;' : ''} cursor: pointer;`;
     // Force overlay images to render at native 1x dimensions once loaded
     if (isOverlay && !blocked) {
@@ -5158,7 +5162,9 @@ function applyPaintToElement(el, paint) {
   if (!paint) return
   const fn = (paint.function || '').toLowerCase()
   if (fn === 'url' && paint.image_url) {
-    el.style.backgroundImage = `url(${paint.image_url})`
+    if (!/^https:\/\//.test(paint.image_url)) return
+    const safeCssUrl = paint.image_url.replace(/[()'"\\]/g, encodeURIComponent)
+    el.style.backgroundImage = `url(${safeCssUrl})`
     el.style.backgroundSize = 'cover'
   } else if ((fn === 'linear-gradient' || fn === 'radial-gradient') && paint.stops?.length) {
     const stops = paint.stops.map(s => {
@@ -5168,10 +5174,12 @@ function applyPaintToElement(el, paint) {
       const a = (s.color & 0xff) / 255
       return `rgba(${r},${g},${b},${a.toFixed(2)}) ${Math.round(s.at * 100)}%`
     }).join(', ')
+    const safeAngle = Number.isFinite(Number(paint.angle)) ? Number(paint.angle) : 0
+    const safeShape = /^(circle|ellipse)$/.test(paint.shape) ? paint.shape : 'circle'
     if (fn === 'linear-gradient') {
-      el.style.backgroundImage = `linear-gradient(${paint.angle || 0}deg, ${stops})`
+      el.style.backgroundImage = `linear-gradient(${safeAngle}deg, ${stops})`
     } else {
-      el.style.backgroundImage = `radial-gradient(${paint.shape || 'circle'}, ${stops})`
+      el.style.backgroundImage = `radial-gradient(${safeShape}, ${stops})`
     }
   } else if (paint.color) {
     const r = (paint.color >>> 24) & 0xff

@@ -1226,6 +1226,8 @@ class IRC {
   parse(data) {
     this._lastData = Date.now();
     this.partial += data;
+    // Cap partial buffer to prevent unbounded growth on malformed data
+    if (this.partial.length > 65536) this.partial = ''
     const lines = this.partial.split('\r\n');
     this.partial = lines.pop();
     for (const line of lines) {
@@ -2654,9 +2656,11 @@ async function sendKickMessage(kickSlug, text) {
           emoteCache.set(emoteName, { url: emoteUrl, source: emoteSource || 'heatsync', state: 'owned', hash: serverHash });
           while (emoteCache.size > 2000) { emoteCache.delete(emoteCache.keys().next().value) }
         }
-        // Update hash lookup maps
+        // Update hash lookup maps (bounded to emoteCache size)
         emoteHashes.set(emoteName, serverHash);
         hashToName.set(serverHash, emoteName);
+        while (emoteHashes.size > 2000) { emoteHashes.delete(emoteHashes.keys().next().value) }
+        while (hashToName.size > 2000) { hashToName.delete(hashToName.keys().next().value) }
 
         // Update all wrappers in DOM (no full re-render)
         queryEmoteWrappers(emoteName).forEach(w => {
@@ -7358,7 +7362,7 @@ function renderFeedContent(content, emoteRefs) {
   if (emoteRefs && typeof emoteRefs === 'object') {
     for (const [name, val] of Object.entries(emoteRefs)) {
       const url = typeof val === 'string' ? val : val?.url
-      if (!url) continue
+      if (!url || !/^https:\/\//.test(url)) continue
       const escaped = escapeHtml(name);
       const safeUrl = escapeHtml(url);
       const cacheKey = escaped
@@ -9912,6 +9916,7 @@ const STORAGE_KEY = 'heatsync_multichat';
       mcUserCosmetics.delete(mcUserCosmetics.keys().next().value)
     }
   }
+  const MC_COSMETICS_PENDING_MAX = 500
   const mcCosmeticsPending = new Set()
   let mcCosmeticsTimer = null
 
@@ -9961,6 +9966,7 @@ const STORAGE_KEY = 'heatsync_multichat';
   // 7TV cosmetics queue — batch lookups to avoid per-message requests
   function queueMcCosmeticsLookup(userId) {
     if (!userId || mcUserCosmetics.has(userId)) return
+    if (mcCosmeticsPending.size >= MC_COSMETICS_PENDING_MAX) return
     mcCosmeticsPending.add(userId)
     if (!mcCosmeticsTimer) {
       mcCosmeticsTimer = cleanup.setTimeout(() => {
@@ -16340,14 +16346,17 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
       Notification.requestPermission().then(p => { notificationPermission = p })
     }
   })
-  api.storage.onChanged.addListener((changes) => {
-    if (changes.hs_notifications) {
-      notificationsEnabled = changes.hs_notifications.newValue === true
-      if (notificationsEnabled && notificationPermission === 'default' && typeof Notification !== 'undefined') {
-        Notification.requestPermission().then(p => { notificationPermission = p })
+  if (!window._hsMcNotifStorageListener) {
+    window._hsMcNotifStorageListener = true
+    api.storage.onChanged.addListener((changes) => {
+      if (changes.hs_notifications) {
+        notificationsEnabled = changes.hs_notifications.newValue === true
+        if (notificationsEnabled && notificationPermission === 'default' && typeof Notification !== 'undefined') {
+          Notification.requestPermission().then(p => { notificationPermission = p })
+        }
       }
-    }
-  })
+    })
+  }
 
   function fireNotification(title, body, tag) {
     if (!notificationsEnabled) return
@@ -16356,7 +16365,7 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
       const iconUrl = api.runtime.getURL('icon-48.png')
       const n = new Notification(title, { body, icon: iconUrl, tag, silent: false })
       n.onclick = () => { window.focus(); n.close() }
-      setTimeout(() => n.close(), 8000)
+      cleanup.setTimeout(() => n.close(), 8000)
     } catch {}
   }
 
@@ -17530,7 +17539,7 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
           switchTab(_savedActiveTab || 'live');
           startLayoutWatcher();
         } else if (kickAttempts < 30) {
-          setTimeout(tryInjectKick, 500);
+          cleanup.setTimeout(tryInjectKick, 500);
         } else {
           log('Failed to find Kick chatroom after 30 attempts');
         }
@@ -17580,7 +17589,7 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
       }
 
       if (attempts < maxAttempts) {
-        setTimeout(tryHook, 500);
+        cleanup.setTimeout(tryHook, 500);
       } else {
         log('Failed to find chat components after', maxAttempts, 'attempts');
       }
@@ -17593,7 +17602,10 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
    * Watch for layout changes and re-inject elements if needed
    * This handles theatre mode, popouts, SPA navigation
    */
+  let _layoutWatcherStarted = false
   function startLayoutWatcher() {
+    if (_layoutWatcherStarted) return
+    _layoutWatcherStarted = true
     // Periodic check — only needed for container removal (rare, SPA nav)
     cleanup.setInterval(() => {
       if (spaReinitializing) return;
@@ -17655,6 +17667,7 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
 
     // Flag prevents layout watcher from re-injecting elements we're about to remove
     spaReinitializing = true;
+    _layoutWatcherStarted = false;
 
     // Unsubscribe auto-YouTube from previous channel
     chrome.runtime.sendMessage({

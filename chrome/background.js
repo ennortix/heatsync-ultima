@@ -994,7 +994,8 @@ async function fetchBulkBadges() {
       const data = await bttvResp.value.json()
       bttvBadgeMap.clear()
       for (const entry of data) {
-        const url = entry.badge?.svg || entry.badge?.png
+        let url = entry.badge?.svg || entry.badge?.png
+        if (url && !url.startsWith('https://')) url = url.startsWith('//') ? 'https:' + url : null
         if (entry.providerId && url) {
           bttvBadgeMap.set(entry.providerId, { description: entry.badge.description || 'BTTV', url })
         }
@@ -1012,7 +1013,9 @@ async function fetchBulkBadges() {
         if (!badge) continue
         const url = badge.urls?.['2'] || badge.urls?.['1'] || badge.urls?.['4']
         if (!url) continue
-        const normalized = { title: badge.title || 'FFZ', color: badge.color || null, url: url.startsWith('//') ? 'https:' + url : url }
+        const normalizedUrl = url.startsWith('//') ? 'https:' + url : url
+        if (!/^https:\/\//.test(normalizedUrl)) continue
+        const normalized = { title: badge.title || 'FFZ', color: badge.color || null, url: normalizedUrl }
         for (const uid of userIds) {
           const uidStr = String(uid)
           if (!ffzBadgeMap.has(uidStr)) ffzBadgeMap.set(uidStr, [])
@@ -1026,7 +1029,7 @@ async function fetchBulkBadges() {
       chatterinoBadgeMap.clear()
       for (const badge of (data.badges || [])) {
         const url = badge.image2 || badge.image1
-        if (!url || !badge.users) continue
+        if (!url || !badge.users || !/^https:\/\//.test(url)) continue
         for (const uid of badge.users) {
           chatterinoBadgeMap.set(String(uid), { tooltip: badge.tooltip || 'Chatterino', url })
         }
@@ -2223,7 +2226,11 @@ function handleWSMessage(msg) {
       break;
 
     case 'emote:broadcast':
-      if (msg.emoteData?.url) msg.emoteData.url = absUrl(msg.emoteData.url)
+      if (msg.emoteData?.url) {
+        msg.emoteData.url = absUrl(msg.emoteData.url)
+        if (!/^https:\/\//.test(msg.emoteData.url)) break
+      }
+      if (msg.emoteName) msg.emoteName = String(msg.emoteName).slice(0, 100)
       log(' 📢 EMOTE BROADCAST RECEIVED:', {
         username: msg.username,
         emoteName: msg.emoteName,
@@ -2713,8 +2720,11 @@ async function addToInventory(emoteName, emoteHash, emoteUrl) {
     };
 
     // Check if already in your set (by hash) to avoid duplicates
-    if (!emoteInventory.some(e => e.hash === newEmote.hash)) {
-      emoteInventory.push(newEmote);
+    // Use snapshot to prevent race with concurrent filter/reassign
+    const currentInventory = [...emoteInventory]
+    if (!currentInventory.some(e => e.hash === newEmote.hash)) {
+      currentInventory.push(newEmote)
+      emoteInventory = currentInventory
     }
 
     // Broadcast success to tabs
@@ -2922,6 +2932,14 @@ async function handleMessage(message, sender, sendResponse) {
   if (message.type === 'fetch_link_preview') {
     const url = message.url
     if (!url || !/^https?:\/\//i.test(url)) { sendResponse(null); return true }
+    // Block internal/private URLs from being proxied through the server
+    try {
+      const parsed = new URL(url)
+      if (/^(localhost|127\.|10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.)/.test(parsed.hostname) ||
+          parsed.hostname === '0.0.0.0' || parsed.hostname === '::1') {
+        sendResponse(null); return true
+      }
+    } catch { sendResponse(null); return true }
     fetch(`${LINK_PREVIEW_API}?url=${encodeURIComponent(url)}`, { signal: AbortSignal.timeout(6000) })
       .then(r => r.ok ? r.json() : null)
       .then(data => sendResponse(data))
@@ -3303,7 +3321,7 @@ async function handleMessage(message, sender, sendResponse) {
 
   } else if (message.type === 'api_fetch') {
     // Generic API proxy — content scripts route through here to bypass CORS
-    if (!message.path || !message.path.startsWith('/api/')) {
+    if (!message.path || !message.path.startsWith('/api/') || /\.\./.test(message.path)) {
       sendResponse({ ok: false, error: 'invalid path' });
       return true;
     }

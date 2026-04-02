@@ -5958,6 +5958,48 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
     for (const msgs of channelYtMessages.values()) clearBuf(msgs);
   }
 
+  // Merge multiple platform sources into 150 messages with fair representation.
+  // Guarantees each platform at least MIN_GUARANTEED recent messages,
+  // fills remaining slots chronologically. Result sorted by time so
+  // messages from different platforms are naturally interleaved.
+  const MIN_GUARANTEED = 25
+  function fairMerge(sources) {
+    const active = sources.filter(s => s.length > 0)
+    if (active.length === 0) return []
+    if (active.length === 1) return active[0]
+
+    const limit = 150
+    const guaranteed = MIN_GUARANTEED
+
+    // Step 1: reserve the most recent N from each platform
+    const reserved = []
+    const reservedSet = new Set()
+    for (const src of active) {
+      for (const m of src.slice(-guaranteed)) {
+        reserved.push(m)
+        reservedSet.add(m)
+      }
+    }
+
+    // Step 2: fill remaining slots chronologically from all sources
+    const remaining = limit - reserved.length
+    if (remaining > 0) {
+      // Merge non-reserved messages, sort by time, take most recent
+      const pool = []
+      for (const src of active) {
+        for (const m of src) {
+          if (!reservedSet.has(m)) pool.push(m)
+        }
+      }
+      pool.sort((a, b) => a.time - b.time)
+      const fill = pool.slice(-remaining)
+      reserved.push(...fill)
+    }
+
+    reserved.sort((a, b) => a.time - b.time)
+    return reserved.slice(-limit)
+  }
+
   function renderMessages(id) {
     if (editingChannel) return;
     // Social tabs have their own renderers
@@ -6010,14 +6052,7 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
         const linkedYt = config.channels.find(ch => typeof ch !== 'string' && (ch.twitch === curCh || ch.kick === curCh) && ch.youtube);
         if (linkedYt) ytMsgs = channelYtMessages.get(linkedYt.id) || [];
       }
-      // Fair merge: cap each platform so no single source drowns others
-      const liveSources = [ircMsgs, kickMsgs, ytMsgs].filter(s => s.length > 0)
-      if (liveSources.length > 1) {
-        const perSource = Math.ceil(150 / liveSources.length)
-        msgs = liveSources.flatMap(s => s.slice(-perSource)).sort((a, b) => a.time - b.time)
-      } else if (liveSources.length === 1) {
-        msgs = liveSources[0]
-      }
+      msgs = fairMerge([ircMsgs, kickMsgs, ytMsgs])
     } else {
       // Channel tab — merge IRC + Kick + per-channel YouTube messages
       const ch = config.channels.find(c => (typeof c === 'string' ? c : c.id) === id);
@@ -6038,14 +6073,7 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
           ytMsgs = autoYt
         }
       }
-      // Fair merge: cap each platform so no single source drowns others
-      const chSources = [ircMsgs, kickMsgs, ytMsgs].filter(s => s.length > 0)
-      if (chSources.length > 1) {
-        const perSource = Math.ceil(150 / chSources.length)
-        msgs = chSources.flatMap(s => s.slice(-perSource)).sort((a, b) => a.time - b.time)
-      } else if (chSources.length === 1) {
-        msgs = chSources[0]
-      }
+      msgs = fairMerge([ircMsgs, kickMsgs, ytMsgs])
     }
 
     // Merge follow stream events into every tab (went live, switched game, went offline)

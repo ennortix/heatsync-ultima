@@ -81,7 +81,11 @@ function rebuildInput() {
   const oldInput = document.getElementById('hs-mc-input');
   const savedText = oldInput ? getInputText() : pendingMessage;
 
-  // Remove old input
+  // Remove old input and its wrap/highlight overlay (created by updateCharCount for plain <input>)
+  const oldWrap = document.getElementById('hs-mc-input-wrap');
+  if (oldWrap) oldWrap.remove();
+  const oldHighlight = document.getElementById('hs-mc-input-highlight');
+  if (oldHighlight) oldHighlight.remove();
   if (oldInput) oldInput.remove();
 
   // Create new input element

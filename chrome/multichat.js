@@ -15865,11 +15865,13 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
         const linkedYt = config.channels.find(ch => typeof ch !== 'string' && (ch.twitch === curCh || ch.kick === curCh) && ch.youtube);
         if (linkedYt) ytMsgs = channelYtMessages.get(linkedYt.id) || [];
       }
-      const extraMsgs = [...kickMsgs, ...ytMsgs];
-      if (extraMsgs.length > 0) {
-        msgs = [...ircMsgs, ...extraMsgs].sort((a, b) => a.time - b.time);
-      } else {
-        msgs = ircMsgs;
+      // Fair merge: cap each platform so no single source drowns others
+      const liveSources = [ircMsgs, kickMsgs, ytMsgs].filter(s => s.length > 0)
+      if (liveSources.length > 1) {
+        const perSource = Math.ceil(150 / liveSources.length)
+        msgs = liveSources.flatMap(s => s.slice(-perSource)).sort((a, b) => a.time - b.time)
+      } else if (liveSources.length === 1) {
+        msgs = liveSources[0]
       }
     } else {
       // Channel tab — merge IRC + Kick + per-channel YouTube messages
@@ -15891,11 +15893,13 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
           ytMsgs = autoYt
         }
       }
-      const extraMsgs = [...kickMsgs, ...ytMsgs];
-      if (extraMsgs.length > 0) {
-        msgs = [...ircMsgs, ...extraMsgs].sort((a, b) => a.time - b.time);
-      } else {
-        msgs = ircMsgs;
+      // Fair merge: cap each platform so no single source drowns others
+      const chSources = [ircMsgs, kickMsgs, ytMsgs].filter(s => s.length > 0)
+      if (chSources.length > 1) {
+        const perSource = Math.ceil(150 / chSources.length)
+        msgs = chSources.flatMap(s => s.slice(-perSource)).sort((a, b) => a.time - b.time)
+      } else if (chSources.length === 1) {
+        msgs = chSources[0]
       }
     }
 
@@ -17288,18 +17292,11 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
         kickChat.join(currentChannel);
       }
       if (hostPlatform !== 'yt') {
-        // Only auto-subscribe YouTube if user explicitly linked a YT channel in config
-        // Otherwise active YT chats (e.g. LofiGirl) drown out Twitch IRC messages
-        const hasLinkedYt = config.channels.some(ch =>
-          typeof ch !== 'string' && ch.youtube &&
-          (ch.twitch === currentChannel || ch.kick === currentChannel)
-        )
-        if (hasLinkedYt) {
-          const ytAutoUrl = `https://youtube.com/@${currentChannel}/live`
-          chrome.runtime.sendMessage({
-            type: 'youtube_ws_subscribe', url: ytAutoUrl, channelId: '__live_yt_auto__'
-          }).catch(() => {})
-        }
+        // Auto-subscribe YouTube @channelname/live for cross-platform combo
+        const ytAutoUrl = `https://youtube.com/@${currentChannel}/live`
+        chrome.runtime.sendMessage({
+          type: 'youtube_ws_subscribe', url: ytAutoUrl, channelId: '__live_yt_auto__'
+        }).catch(() => {})
       }
       log('Auto-joined current channel:', currentChannel, '(all platforms)');
     }

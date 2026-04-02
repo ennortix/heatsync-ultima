@@ -5874,9 +5874,50 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
 
   // Incremental append for single messages on the active tab (hot path)
   // Returns true if handled, false if full rebuild needed
+  // Check if a tab has multiple platform sources active (needs fair merge)
+  let _multiPlatformRenderTimer = null
+  function isMultiPlatformTab(tabId) {
+    if (tabId === 'live') {
+      const curCh = getLiveChannel()
+      let count = 0
+      if (curCh && irc?.getMessages(curCh)?.length) count++
+      if (curCh && kickChat?.getMessages(curCh)?.length) count++
+      if ((channelYtMessages.get('__live_yt_auto__')?.length) || 0) count++
+      if (count < 2) {
+        // Also check config-linked platforms
+        const linked = config.channels.find(ch => typeof ch !== 'string' && (ch.twitch === curCh || ch.kick === curCh))
+        if (linked?.kick && kickChat?.getMessages(linked.kick)?.length) count++
+        if (linked?.youtube && channelYtMessages.get(linked.id)?.length) count++
+      }
+      return count > 1
+    }
+    const ch = config.channels.find(c => (typeof c === 'string' ? c : c.id) === tabId)
+    if (!ch || typeof ch === 'string') return false
+    let count = 0
+    if (ch.twitch && irc?.getMessages(ch.twitch)?.length) count++
+    if (ch.kick && kickChat?.getMessages(ch.kick)?.length) count++
+    const ytMsgs = channelYtMessages.get(tabId)?.length || channelYtMessages.get('__live_yt_auto__')?.length || 0
+    if (ytMsgs) count++
+    return count > 1
+  }
+
   function appendMessage(msg, tabId) {
     if (editingChannel) return false;
     if (isScrolledUp || currentTab !== tabId) return false;
+
+    // Multi-platform tabs: skip appendMessage (trimChildren is platform-blind
+    // and lets the fastest source push others out). Debounce to renderMessages
+    // which has fair per-platform capping.
+    if (isMultiPlatformTab(tabId)) {
+      if (!_multiPlatformRenderTimer) {
+        _multiPlatformRenderTimer = requestAnimationFrame(() => {
+          _multiPlatformRenderTimer = null
+          renderMessages(currentTab)
+        })
+      }
+      return true // tell caller we handled it
+    }
+
     const msgsEl = document.getElementById('hs-mc-messages');
     if (!msgsEl) return false;
 

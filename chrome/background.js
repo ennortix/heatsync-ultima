@@ -1341,7 +1341,8 @@ function fetchGlobalEmotes() {
         name: e.name,
         url: e.url,
         source: e.provider,
-        hash: e.hash
+        hash: e.hash,
+        zeroWidth: !!e.zeroWidth
       })));
       updateEmoteUrlMap();
       log(' Loaded', globalEmotes.length, 'global emotes from server');
@@ -1355,12 +1356,13 @@ function fetchGlobalEmotes() {
       ]);
 
       // Rebuild merged array (prevents duplicate accumulation on reconnects)
+      // 7TV globals override server emotes (server cache lacks zeroWidth flags)
       const seen = new Set()
       const merged = []
-      // Server emotes first (authoritative), then Twitch, then 7TV
-      for (const e of globalEmotes) { if (!seen.has(e.name)) { seen.add(e.name); merged.push(e) } }
-      for (const e of twitchGlobals) { if (!seen.has(e.name)) { seen.add(e.name); merged.push(e) } }
+      // 7TV first (has authoritative zeroWidth flags), then Twitch, then server emotes
       for (const e of seventvGlobals) { if (!seen.has(e.name)) { seen.add(e.name); merged.push(e) } }
+      for (const e of twitchGlobals) { if (!seen.has(e.name)) { seen.add(e.name); merged.push(e) } }
+      for (const e of globalEmotes) { if (!seen.has(e.name)) { seen.add(e.name); merged.push(e) } }
       globalEmotes = merged
       log('✅ Merged globals:', globalEmotes.length, '(twitch:', twitchGlobals.length, '7tv:', seventvGlobals.length, ')')
 

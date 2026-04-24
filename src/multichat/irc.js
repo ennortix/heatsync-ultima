@@ -425,7 +425,7 @@ class IRC {
         subMonths: m.subMonths || undefined, twitchEmotes: m.twitchEmotes || undefined,
         type: m.type || undefined, eventClass: m.eventClass || undefined
       }))
-      chrome.storage?.local?.set({ [`hs_irc_${ch}`]: { msgs, ts: Date.now() } }).catch(() => {})
+      try { chrome.storage?.local?.set({ [`hs_irc_${ch}`]: { msgs, ts: Date.now() } })?.catch(() => {}) } catch {}
     }, 5000)
   }
 
@@ -745,7 +745,7 @@ class KickChat {
         type: m.type || undefined, systemMsg: m.systemMsg || undefined,
         replyTo: m.replyTo || undefined, kicksEvent: m.kicksEvent || undefined
       }))
-      chrome.storage?.local?.set({ [`hs_kick_${ch}`]: { msgs, ts: Date.now() } }).catch(() => {})
+      try { chrome.storage?.local?.set({ [`hs_kick_${ch}`]: { msgs, ts: Date.now() } })?.catch(() => {}) } catch {}
     }, 5000)
   }
 

@@ -170,6 +170,9 @@ function getInputText() {
             text += child.dataset.emoteName || child.alt || ''
           }
         }
+      } else if (node.nodeType === Node.ELEMENT_NODE && node.classList?.contains('hs-mc-user')) {
+        // Bare-username mention chip: send as raw username
+        text += node.dataset.username || node.textContent || ''
       } else if (node.nodeType === Node.ELEMENT_NODE) {
         text += node.textContent || ''
       }
@@ -998,6 +1001,27 @@ function getCurrentWord(input) {
   return '';
 }
 
+function getRecencyMap() {
+  // Returns Map<usernameLower, recencyRank> from current tab's chat buffer.
+  // Lower rank = more recent. Caps at 50 unique users for sub-ms cost.
+  const out = new Map()
+  if (typeof smartCompletion === 'undefined' || !smartCompletion) return out
+  if (typeof irc === 'undefined' || !irc?.channels) return out
+  let ch = currentTab
+  if (currentTab === 'live' && typeof getLiveChannel === 'function') ch = getLiveChannel()
+  if (!ch) return out
+  const buffer = irc.channels.get(typeof ch === 'string' ? ch.toLowerCase() : ch)
+  if (!buffer?.getAll) return out
+  const msgs = buffer.getAll()
+  let rank = 0
+  for (let i = msgs.length - 1; i >= 0 && rank < 50; i--) {
+    const u = (msgs[i]?.user || '').toLowerCase()
+    if (!u || out.has(u)) continue
+    out.set(u, rank++)
+  }
+  return out
+}
+
 function findEmoteMatches(search) {
   const matches = [];
 
@@ -1006,15 +1030,26 @@ function findEmoteMatches(search) {
   const searchTerm = isUserSearch ? search.slice(1) : search;
   const searchLower = searchTerm.toLowerCase();
 
+  const recency = getRecencyMap()
+
   // Search usernames if @ prefix or if it could be a username
   if (isUserSearch || searchTerm.length >= 2) {
     for (const username of usernameCache) {
       if (!username) continue
       const userLower = username.toLowerCase();
-      if (userLower.startsWith(searchLower)) {
-        matches.push({ name: '@' + username, url: null, priority: isUserSearch ? 0 : 2, type: 'user' });
-      } else if (!isUserSearch && userLower.includes(searchLower)) {
-        matches.push({ name: '@' + username, url: null, priority: 3, type: 'user' });
+      const color = (typeof knownColors !== 'undefined' && knownColors.get(userLower)) || '#fff'
+      const recencyRank = recency.get(userLower)
+      if (isUserSearch) {
+        if (userLower.startsWith(searchLower)) {
+          matches.push({ name: '@' + username, url: null, priority: 0, type: 'user', recencyRank });
+        }
+      } else {
+        // No @ prefix: bare-name completion that renders as a styled mention chip
+        if (userLower.startsWith(searchLower)) {
+          matches.push({ name: username, url: null, priority: 0, type: 'user-bare', color, recencyRank });
+        } else if (userLower.includes(searchLower)) {
+          matches.push({ name: username, url: null, priority: 2, type: 'user-bare', color, recencyRank });
+        }
       }
     }
   }
@@ -1053,9 +1088,12 @@ function findEmoteMatches(search) {
     }
   }
 
-  // Sort: prefix matches first, then alphabetical
+  // Sort: prefix matches first, then by recency for username matches, then alphabetical
   matches.sort((a, b) => {
     if (a.priority !== b.priority) return a.priority - b.priority;
+    const ar = (a.recencyRank ?? Infinity)
+    const br = (b.recencyRank ?? Infinity)
+    if (ar !== br) return ar - br;
     return a.name.localeCompare(b.name);
   });
 
@@ -1088,14 +1126,37 @@ function insertCompletionKeepOpen(match) {
   updateCharCount();
 }
 
+// Build a styled mention chip span for bare-username completion
+function createUserMentionSpan(username, color) {
+  const span = document.createElement('span')
+  span.className = 'hs-mc-user hs-cycling-user'
+  const lower = username.toLowerCase()
+  span.dataset.username = lower
+  span.dataset.completionType = 'user-bare'
+  span.textContent = username
+  const safeColor = (typeof sanitizeColor === 'function') ? sanitizeColor(color || '#fff') : (color || '#fff')
+  span.style.color = safeColor
+  span.style.fontWeight = 'bold'
+  span.style.cursor = 'pointer'
+  span.contentEditable = 'false'
+  // Click opens user profile — contenteditable swallows anchor clicks, so use explicit handler
+  span.addEventListener('mousedown', (e) => {
+    e.preventDefault()
+    e.stopPropagation()
+    window.open(`https://heatsync.org/user/${encodeURIComponent(lower)}`, '_blank', 'noopener,noreferrer')
+  })
+  return span
+}
+
 // WYSIWYG emote insertion
 function insertCompletionWysiwyg(match) {
   const input = document.getElementById('hs-mc-input');
   if (!input) return;
 
-  // Check if we're replacing an existing cycling element (emote img or text span)
+  // Check if we're replacing an existing cycling element (emote img, text span, or user span)
   const existingEmote = input.querySelector('img.hs-cycling-emote');
   const existingText = input.querySelector('span.hs-cycling-text');
+  const existingUser = input.querySelector('span.hs-cycling-user');
   if (existingEmote) {
     if (match.url) {
       existingEmote.src = match.url;
@@ -1112,6 +1173,12 @@ function insertCompletionWysiwyg(match) {
       const space = span.nextSibling
       if (space) placeCaretAfter(space, 1)
       else placeCaretAfter(span)
+    } else if (match.type === 'user-bare') {
+      const userSpan = createUserMentionSpan(match.name, match.color)
+      existingEmote.replaceWith(userSpan)
+      const space = userSpan.nextSibling
+      if (space) placeCaretAfter(space, 1)
+      else placeCaretAfter(userSpan)
     } else {
       const textNode = document.createTextNode(match.name + ' ');
       existingEmote.replaceWith(textNode);
@@ -1140,9 +1207,55 @@ function insertCompletionWysiwyg(match) {
       const space = existingText.nextSibling
       if (space) placeCaretAfter(space, 1)
       else placeCaretAfter(existingText)
+    } else if (match.type === 'user-bare') {
+      const userSpan = createUserMentionSpan(match.name, match.color)
+      existingText.replaceWith(userSpan)
+      const space = userSpan.nextSibling
+      if (space) placeCaretAfter(space, 1)
+      else placeCaretAfter(userSpan)
     } else {
       const textNode = document.createTextNode(match.name + ' ')
       existingText.replaceWith(textNode)
+      placeCaretAfter(textNode)
+    }
+    pendingMessage = getInputText()
+    updateCharCount()
+    return
+  }
+  if (existingUser) {
+    if (match.url) {
+      // Replace user span with emote img
+      const img = document.createElement('img')
+      img.src = match.url
+      img.alt = match.name
+      img.dataset.emoteName = match.name
+      img.className = 'hs-input-emote hs-cycling-emote'
+      img.draggable = false
+      existingUser.replaceWith(img)
+      const space = img.nextSibling
+      if (space) placeCaretAfter(space, 1)
+      else placeCaretAfter(img)
+    } else if (match.type === 'emoji') {
+      const span = document.createElement('span')
+      span.className = 'hs-cycling-text'
+      span.textContent = match.emoji
+      span.dataset.completionName = match.name
+      existingUser.replaceWith(span)
+      const space = span.nextSibling
+      if (space) placeCaretAfter(space, 1)
+      else placeCaretAfter(span)
+    } else if (match.type === 'user-bare') {
+      // Update existing user span in place
+      existingUser.textContent = match.name
+      existingUser.dataset.username = match.name.toLowerCase()
+      const safeColor = (typeof sanitizeColor === 'function') ? sanitizeColor(match.color || '#fff') : (match.color || '#fff')
+      existingUser.style.color = safeColor
+      const space = existingUser.nextSibling
+      if (space) placeCaretAfter(space, 1)
+      else placeCaretAfter(existingUser)
+    } else {
+      const textNode = document.createTextNode(match.name + ' ')
+      existingUser.replaceWith(textNode)
       placeCaretAfter(textNode)
     }
     pendingMessage = getInputText()
@@ -1218,6 +1331,10 @@ function insertCompletionWysiwyg(match) {
     span.textContent = match.emoji
     span.dataset.completionName = match.name
     insertElement(span)
+  } else if (match.type === 'user-bare') {
+    // Bare-name mention chip: colored, hoverable, clickable
+    const userSpan = createUserMentionSpan(match.name, match.color)
+    insertElement(userSpan)
   } else {
     // User/text completion - just insert text
     const newText = before + match.name + ' ' + after;
@@ -1287,6 +1404,11 @@ function hideAutocomplete() {
       // Replace span with plain text node
       const textNode = document.createTextNode(cyclingText.textContent);
       cyclingText.replaceWith(textNode);
+    }
+    const cyclingUser = input?.querySelector('.hs-cycling-user');
+    if (cyclingUser) {
+      // Keep the styled mention span — just clear the cycling marker
+      cyclingUser.classList.remove('hs-cycling-user');
     }
   }
 }

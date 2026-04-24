@@ -1590,7 +1590,7 @@
       <div class="hs-mc-settings-panel">
         <div class="hs-mc-settings-group">
           <div class="hs-mc-settings-group-title">${t('mc_settings_display')}</div>
-          <div class="hs-mc-setting-row">
+          <div class="hs-mc-setting-row hs-mc-setting-row-split">
             <span class="hs-mc-setting-label" data-tip="${settingTips.emoteSize}">${t('mc_settings_emote_size')}</span>
             <div class="hs-mc-size-btns">
               <button class="hs-mc-size-btn ${emoteSize === 1 ? 'active' : ''}" data-size="1">1x</button>
@@ -1599,40 +1599,40 @@
             </div>
           </div>
           <div class="hs-mc-setting-row">
-            <span class="hs-mc-setting-label" data-tip="${settingTips.wysiwyg}">${t('mc_settings_input_preview')}</span>
             <button class="hs-mc-toggle-pill ${wysiwygEnabled ? 'active' : ''}" data-setting="wysiwyg"><span class="hs-mc-toggle-knob"></span></button>
+            <span class="hs-mc-setting-label" data-tip="${settingTips.wysiwyg}">${t('mc_settings_input_preview')}</span>
           </div>
           <div class="hs-mc-setting-row">
-            <span class="hs-mc-setting-label" data-tip="${settingTips.links}">${t('mc_settings_clickable_links')}</span>
             <button class="hs-mc-toggle-pill ${linksEnabled ? 'active' : ''}" data-setting="links"><span class="hs-mc-toggle-knob"></span></button>
+            <span class="hs-mc-setting-label" data-tip="${settingTips.links}">${t('mc_settings_clickable_links')}</span>
           </div>
           <div class="hs-mc-setting-row">
-            <span class="hs-mc-setting-label" data-tip="${settingTips.vi}">${t('mc_settings_vi_mode')}</span>
             <button class="hs-mc-toggle-pill ${viModeEnabled ? 'active' : ''}" data-setting="vi"><span class="hs-mc-toggle-knob"></span></button>
+            <span class="hs-mc-setting-label" data-tip="${settingTips.vi}">${t('mc_settings_vi_mode')}</span>
           </div>
           <div class="hs-mc-setting-row">
-            <span class="hs-mc-setting-label" data-tip="${settingTips.zebra}">${t('mc_settings_zebra')}</span>
             <button class="hs-mc-toggle-pill ${zebraEnabled ? 'active' : ''}" data-setting="zebra"><span class="hs-mc-toggle-knob"></span></button>
+            <span class="hs-mc-setting-label" data-tip="${settingTips.zebra}">${t('mc_settings_zebra')}</span>
           </div>
           <div class="hs-mc-setting-row">
-            <span class="hs-mc-setting-label" data-tip="${settingTips.autohide}">${t('mc_settings_auto_hide')}</span>
             <button class="hs-mc-toggle-pill ${autoHideInput ? 'active' : ''}" data-setting="autohide"><span class="hs-mc-toggle-knob"></span></button>
+            <span class="hs-mc-setting-label" data-tip="${settingTips.autohide}">${t('mc_settings_auto_hide')}</span>
           </div>
           <div class="hs-mc-setting-row">
-            <span class="hs-mc-setting-label" data-tip="${settingTips.timestamps}">${t('mc_settings_timestamps')}</span>
             <button class="hs-mc-toggle-pill ${timestampsEnabled ? 'active' : ''}" data-setting="timestamps"><span class="hs-mc-toggle-knob"></span></button>
+            <span class="hs-mc-setting-label" data-tip="${settingTips.timestamps}">${t('mc_settings_timestamps')}</span>
           </div>
           <div class="hs-mc-setting-row">
-            <span class="hs-mc-setting-label" data-tip="${settingTips.avatars}">${t('mc_settings_avatars')}</span>
             <button class="hs-mc-toggle-pill ${avatarsEnabled ? 'active' : ''}" data-setting="avatars"><span class="hs-mc-toggle-knob"></span></button>
+            <span class="hs-mc-setting-label" data-tip="${settingTips.avatars}">${t('mc_settings_avatars')}</span>
           </div>
           <div class="hs-mc-setting-row">
-            <span class="hs-mc-setting-label" data-tip="${t('mc_settings_smart_completion_desc')}">${t('mc_settings_smart_completion')}</span>
             <button class="hs-mc-toggle-pill ${smartCompletion ? 'active' : ''}" data-setting="smartcompletion"><span class="hs-mc-toggle-knob"></span></button>
+            <span class="hs-mc-setting-label" data-tip="${t('mc_settings_smart_completion_desc')}">${t('mc_settings_smart_completion')}</span>
           </div>
           <div class="hs-mc-setting-row">
-            <span class="hs-mc-setting-label" data-tip="${t('mc_settings_first_chatter_desc')}">${t('mc_settings_first_chatter')}</span>
             <button class="hs-mc-toggle-pill ${firstChatterGlow ? 'active' : ''}" data-setting="firstchatter"><span class="hs-mc-toggle-knob"></span></button>
+            <span class="hs-mc-setting-label" data-tip="${t('mc_settings_first_chatter_desc')}">${t('mc_settings_first_chatter')}</span>
           </div>
           <div class="hs-mc-setting-row hs-mc-setting-row-block">
             <span class="hs-mc-setting-label" data-tip="${t('mc_settings_keyword_highlights_desc')}">${t('mc_settings_keyword_highlights')}</span>
@@ -1643,27 +1643,27 @@
           <div class="hs-mc-settings-group-title">${t('mc_settings_inline_notifs')}</div>
           ${Object.entries(INLINE_NOTIF_TYPES).map(([key, def]) => `
           <div class="hs-mc-setting-row">
-            <span class="hs-mc-setting-label" data-tip="${escapeHtml(def.desc)}"><span style="color:${def.color}">${def.tag}</span> ${escapeHtml(def.label.replace(def.tag, '').trim())}</span>
             <button class="hs-mc-toggle-pill ${inlineNotifs[key] ? 'active' : ''}" data-setting="notif_${key}"><span class="hs-mc-toggle-knob"></span></button>
+            <span class="hs-mc-setting-label" data-tip="${escapeHtml(def.desc)}"><span style="color:${def.color}">${def.tag}</span> ${escapeHtml(def.label.replace(def.tag, '').trim())}</span>
           </div>`).join('')}
         </div>
         <div class="hs-mc-settings-group">
           <div class="hs-mc-settings-group-title">${t('mc_settings_twitch_events')}</div>
           ${Object.entries(HERMES_EVENT_TYPES).map(([key, def]) => `
           <div class="hs-mc-setting-row">
-            <span class="hs-mc-setting-label" data-tip="${escapeHtml(def.desc)}"><span style="color:${def.color}">\u25C6</span> ${escapeHtml(def.label)}</span>
             <button class="hs-mc-toggle-pill ${hermesToggles[key] ? 'active' : ''}" data-setting="hermes_${key}"><span class="hs-mc-toggle-knob"></span></button>
+            <span class="hs-mc-setting-label" data-tip="${escapeHtml(def.desc)}"><span style="color:${def.color}">\u25C6</span> ${escapeHtml(def.label)}</span>
           </div>`).join('')}
         </div>
         <div class="hs-mc-settings-group">
           <div class="hs-mc-settings-group-title">${t('mc_settings_features')}</div>
           <div class="hs-mc-setting-row">
-            <span class="hs-mc-setting-label" data-tip="${t('mc_settings_auto_claim_desc')}">${t('mc_settings_auto_claim')}</span>
             <button class="hs-mc-toggle-pill ${autoClaimPoints ? 'active' : ''}" data-setting="autoclaim"><span class="hs-mc-toggle-knob"></span></button>
+            <span class="hs-mc-setting-label" data-tip="${t('mc_settings_auto_claim_desc')}">${t('mc_settings_auto_claim')}</span>
           </div>
           <div class="hs-mc-setting-row">
-            <span class="hs-mc-setting-label" data-tip="${t('mc_settings_dim_timeouts_desc')}">${t('mc_settings_dim_timeouts')}</span>
             <button class="hs-mc-toggle-pill ${dimTimeouts ? 'active' : ''}" data-setting="dimtimeouts"><span class="hs-mc-toggle-knob"></span></button>
+            <span class="hs-mc-setting-label" data-tip="${t('mc_settings_dim_timeouts_desc')}">${t('mc_settings_dim_timeouts')}</span>
           </div>
         </div>
         <div class="hs-mc-settings-group">
@@ -1671,7 +1671,7 @@
           ${mutedUsers.size === 0
             ? `<div class="hs-mc-setting-row" style="color:#808080;font-size:11px">${t('mc_settings_no_muted')}</div>`
             : [...mutedUsers].sort().map(u => `
-          <div class="hs-mc-setting-row">
+          <div class="hs-mc-setting-row hs-mc-setting-row-split">
             <span class="hs-mc-setting-label" style="font-size:11px">${escapeHtml(u)}</span>
             <button class="hs-mc-unmute-btn" data-username="${escapeHtml(u)}" style="background:none;border:1px solid #808080;color:#808080;font-size:11px;cursor:pointer;padding:1px 6px;line-height:1.4" title="${t('mc_settings_unmute')}">&#x2715;</button>
           </div>`).join('')
@@ -4499,11 +4499,14 @@
       .hs-mc-setting-row {
         display: flex !important;
         align-items: center !important;
-        justify-content: space-between !important;
+        gap: 8px !important;
         padding: 6px 14px !important;
         font-size: 12px !important;
         color: #fff !important;
         visibility: visible !important;
+      }
+      .hs-mc-setting-row.hs-mc-setting-row-split {
+        justify-content: space-between !important;
       }
       .hs-mc-setting-row:nth-child(even) {
         background: rgba(255,255,255,0.03);
@@ -4586,7 +4589,7 @@
       .hs-mc-toggle-pill {
         width: 16px;
         height: 16px;
-        background: #f00;
+        background: #cc0000;
         border: none;
         border-radius: 0;
         cursor: pointer;
@@ -4595,7 +4598,7 @@
         flex-shrink: 0;
       }
       .hs-mc-toggle-pill.active {
-        background: #0f0;
+        background: #00dd00;
       }
       .hs-mc-toggle-knob {
         display: none;

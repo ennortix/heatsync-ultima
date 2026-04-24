@@ -1695,7 +1695,7 @@
         for (const [k, v] of Object.entries(HERMES_EVENT_TYPES)) hermesToggles[k] = v.defaultOn;
         const settings = {
           wysiwygEnabled: false, linksEnabled: true, viMode: false,
-          zebra: true, autoHideInput: false, timestamps: false,
+          zebra: true, autoHideEmpty: false, timestamps: false,
           avatars: false, showPlatformBadges: true, showOfflineEvents: false,
           inlineNotifs: { ...inlineNotifs }, hermesEvents: { ...hermesToggles },
         };

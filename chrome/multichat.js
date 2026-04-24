@@ -10752,6 +10752,40 @@ const STORAGE_KEY = 'heatsync_multichat';
   let autoHideInput = false;
   let inputBarVisible = true;
 
+  // Smart tab-completion ranking — recent chatters surface first (default on)
+  let smartCompletion = true;
+
+  // First-time chatter highlight — orange edge on first message from a user this session (default on)
+  let firstChatterGlow = true;
+  // channelLower → Set<usernameLower> seen this session
+  const seenChattersByChannel = new Map();
+  function markChatterSeen(channel, username) {
+    if (!channel || !username) return false
+    const ch = channel.toLowerCase()
+    const u = username.toLowerCase()
+    let set = seenChattersByChannel.get(ch)
+    if (!set) { set = new Set(); seenChattersByChannel.set(ch, set) }
+    if (set.has(u)) return false
+    set.add(u)
+    // LRU cap to 5000 per channel
+    if (set.size > 5000) {
+      const iter = set.values()
+      for (let i = 0; i < 1000; i++) set.delete(iter.next().value)
+    }
+    return true
+  }
+
+  // Keyword highlights — newline-separated terms; messages containing any get an orange tint
+  let keywordHighlights = '';
+  let keywordHighlightsRegex = null;
+  function rebuildKeywordRegex() {
+    const terms = keywordHighlights.split(/\n/).map(s => s.trim()).filter(Boolean)
+    if (!terms.length) { keywordHighlightsRegex = null; return }
+    const escaped = terms.map(t => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+    try { keywordHighlightsRegex = new RegExp('\\b(' + escaped.join('|') + ')\\b', 'i') }
+    catch { keywordHighlightsRegex = null }
+  }
+
   // ═══ Inline notification routing ═══
   // Modular registry: each type can be toggled independently
   // Colors match website conventions
@@ -11545,6 +11579,41 @@ const STORAGE_KEY = 'heatsync_multichat';
     chrome.storage.local.set({ hs_auto_claim_points: autoClaimPoints });
   }
 
+  async function loadSmartCompletionSetting() {
+    try {
+      const stored = await chrome.storage.sync.get(['ui_settings']);
+      if (stored.ui_settings?.smartCompletion !== undefined) smartCompletion = !!stored.ui_settings.smartCompletion;
+    } catch {}
+  }
+  function toggleSmartCompletion() {
+    smartCompletion = !smartCompletion;
+    saveUiSetting('smartCompletion', smartCompletion);
+  }
+
+  async function loadFirstChatterGlowSetting() {
+    try {
+      const stored = await chrome.storage.sync.get(['ui_settings']);
+      if (stored.ui_settings?.firstChatterGlow !== undefined) firstChatterGlow = !!stored.ui_settings.firstChatterGlow;
+    } catch {}
+  }
+  function toggleFirstChatterGlow() {
+    firstChatterGlow = !firstChatterGlow;
+    saveUiSetting('firstChatterGlow', firstChatterGlow);
+    renderMessages(currentTab);
+  }
+
+  async function loadKeywordHighlightsSetting() {
+    try {
+      const stored = await chrome.storage.sync.get(['ui_settings']);
+      if (typeof stored.ui_settings?.keywordHighlights === 'string') keywordHighlights = stored.ui_settings.keywordHighlights;
+    } catch {}
+    rebuildKeywordRegex();
+  }
+  function saveKeywordHighlightsSetting() {
+    saveUiSetting('keywordHighlights', keywordHighlights);
+    rebuildKeywordRegex();
+  }
+
   function renderSettingsTab() {
     const msgsEl = document.getElementById('hs-mc-messages');
     if (!msgsEl) return;
@@ -11607,6 +11676,18 @@ const STORAGE_KEY = 'heatsync_multichat';
           <div class="hs-mc-setting-row">
             <span class="hs-mc-setting-label" data-tip="${settingTips.avatars}">${t('mc_settings_avatars')}</span>
             <button class="hs-mc-toggle-pill ${avatarsEnabled ? 'active' : ''}" data-setting="avatars"><span class="hs-mc-toggle-knob"></span></button>
+          </div>
+          <div class="hs-mc-setting-row">
+            <span class="hs-mc-setting-label" data-tip="recent chatters surface first in tab completion">smart completion</span>
+            <button class="hs-mc-toggle-pill ${smartCompletion ? 'active' : ''}" data-setting="smartcompletion"><span class="hs-mc-toggle-knob"></span></button>
+          </div>
+          <div class="hs-mc-setting-row">
+            <span class="hs-mc-setting-label" data-tip="orange edge on first message from a user this session">first-chatter glow</span>
+            <button class="hs-mc-toggle-pill ${firstChatterGlow ? 'active' : ''}" data-setting="firstchatter"><span class="hs-mc-toggle-knob"></span></button>
+          </div>
+          <div class="hs-mc-setting-row hs-mc-setting-row-block">
+            <span class="hs-mc-setting-label" data-tip="newline-separated terms; matches get an orange tint">keyword highlights</span>
+            <textarea class="hs-mc-setting-textarea" data-setting="keywordhighlights" placeholder="one per line" rows="3">${escapeHtml(keywordHighlights)}</textarea>
           </div>
         </div>
         <div class="hs-mc-settings-group">
@@ -11691,6 +11772,8 @@ const STORAGE_KEY = 'heatsync_multichat';
           avatars: () => { toggleAvatars(); },
           autoclaim: () => { toggleAutoClaim(); },
           dimtimeouts: () => { toggleDimTimeouts(); },
+          smartcompletion: () => { toggleSmartCompletion(); },
+          firstchatter: () => { toggleFirstChatterGlow(); },
         };
         if (toggleMap[setting]) {
           toggleMap[setting]();
@@ -11735,12 +11818,17 @@ const STORAGE_KEY = 'heatsync_multichat';
         showOfflineEvents = false;
         autoClaimPoints = true;
         dimTimeouts = true;
+        smartCompletion = true;
+        firstChatterGlow = true;
+        keywordHighlights = '';
+        rebuildKeywordRegex();
         for (const [k, v] of Object.entries(INLINE_NOTIF_TYPES)) inlineNotifs[k] = v.defaultOn;
         for (const [k, v] of Object.entries(HERMES_EVENT_TYPES)) hermesToggles[k] = v.defaultOn;
         const settings = {
           wysiwygEnabled: false, linksEnabled: true, viMode: false,
           zebra: true, autoHideEmpty: false, timestamps: false,
           avatars: false, showPlatformBadges: true, showOfflineEvents: false,
+          smartCompletion: true, firstChatterGlow: true, keywordHighlights: '',
           inlineNotifs: { ...inlineNotifs }, hermesEvents: { ...hermesToggles },
         };
         try {
@@ -11752,6 +11840,22 @@ const STORAGE_KEY = 'heatsync_multichat';
       }
     };
     msgsEl.addEventListener('click', msgsEl._hsSettingsClick);
+
+    // Keyword highlights textarea — debounced save on input
+    if (!msgsEl._hsSettingsInput) {
+      msgsEl._hsSettingsInput = true;
+      let kwDebounce = null;
+      msgsEl.addEventListener('input', (e) => {
+        const ta = e.target.closest('textarea[data-setting="keywordhighlights"]');
+        if (!ta) return;
+        if (kwDebounce) cleanup.clearTimeout(kwDebounce);
+        kwDebounce = cleanup.setTimeout(() => {
+          keywordHighlights = ta.value;
+          saveKeywordHighlightsSetting();
+          renderMessages(currentTab);
+        }, 400);
+      });
+    }
 
     // Custom tooltip for settings labels (native title doesn't work in content scripts)
     let tip = document.getElementById('hs-settings-tip');
@@ -12516,6 +12620,13 @@ const STORAGE_KEY = 'heatsync_multichat';
         color: #fff;
         border-left-color: #fff;
       }
+      .hs-mc-msg.hs-first-msg {
+        box-shadow: inset 2px 0 0 #ff8700;
+      }
+      .hs-mc-msg.hs-kw-match {
+        background: rgba(255, 135, 0, 0.18);
+        box-shadow: inset 0 0 0 1px #ff8700;
+      }
       .hs-mc-msg.tweet {
         background: rgba(212, 73, 73, 0.3);
       }
@@ -12740,6 +12851,8 @@ const STORAGE_KEY = 'heatsync_multichat';
       #hs-user-tooltip .hs-pc-rel-badge.supporter { background: #ff8700; color: #000; }
       #hs-user-tooltip .hs-pc-rel-badge.following { background: #0099ff; color: #fff; }
       #hs-user-tooltip .hs-pc-rel-badge.subbed { background: #9146ff; color: #fff; }
+      #hs-user-tooltip .hs-pc-rel-badge.mutual-follow { background: #000; color: #fff; border: 1px solid #00aaaa; }
+      #hs-user-tooltip .hs-pc-rel-badge.mutual-sub { background: #000; color: #fff; border: 1px solid #ff8700; }
       #hs-user-tooltip .hs-pc-followage {
         padding: 2px 3px;
         font-size: 10px;
@@ -14470,6 +14583,27 @@ const STORAGE_KEY = 'heatsync_multichat';
         font-family: 'Liberation Mono', monospace;
       }
       #hs-settings-tip.visible { display: block; }
+      .hs-mc-setting-row.hs-mc-setting-row-block {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 4px;
+      }
+      .hs-mc-setting-textarea {
+        background: #000;
+        color: #fff;
+        border: 1px solid #808080;
+        font-family: 'Liberation Mono', monospace;
+        font-size: 12px;
+        padding: 4px 6px;
+        resize: vertical;
+        min-height: 48px;
+        width: 100%;
+        box-sizing: border-box;
+      }
+      .hs-mc-setting-textarea:focus {
+        outline: none;
+        border-color: #ff8700;
+      }
       .hs-mc-setting-row .hs-mc-toggle-pill,
       .hs-mc-setting-row .hs-mc-size-btns {
         flex-shrink: 0;
@@ -15835,6 +15969,16 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
       div.style.background = safeBg + '22'
       div.style.borderLeft = `3px solid ${safeBg}`
       div.style.paddingLeft = '4px'
+    }
+    // First-time chatter highlight (this session, per channel)
+    if (firstChatterGlow && m.user && m.channel && !isMembership && !isKicksEvent && m.type !== 'usernotice' && m.type !== 'notice') {
+      if (markChatterSeen(m.channel, m.user)) {
+        div.classList.add('hs-first-msg')
+      }
+    }
+    // Keyword highlight — message text matches a user-defined term
+    if (keywordHighlightsRegex && m.text && keywordHighlightsRegex.test(m.text)) {
+      div.classList.add('hs-kw-match')
     }
     // Reply context bar (Chatterino-style) — all values escaped via escapeHtml
     const replyBar = m.replyTo ? `<div class="hs-mc-reply-ctx" title="${escapeHtml(m.replyTo.user)}: ${escapeHtml(m.replyTo.text || '')}">&#8618; Replying to <a href="https://heatsync.org/user/${encodeURIComponent(m.replyTo.user)}" target="_blank" class="hs-mc-user hs-mc-reply-user" data-username="${escapeHtml(m.replyTo.user.toLowerCase())}">@${escapeHtml(m.replyTo.user)}</a>${m.replyTo.text ? ': ' + escapeHtml(m.replyTo.text.length > 80 ? m.replyTo.text.slice(0, 80) + '...' : m.replyTo.text) : ''}</div>` : ''
@@ -17443,6 +17587,18 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
         if (ns.showOfflineEvents !== undefined && ns.showOfflineEvents !== showOfflineEvents) {
           showOfflineEvents = ns.showOfflineEvents
         }
+        if (ns.smartCompletion !== undefined && ns.smartCompletion !== smartCompletion) {
+          smartCompletion = !!ns.smartCompletion
+        }
+        if (ns.firstChatterGlow !== undefined && ns.firstChatterGlow !== firstChatterGlow) {
+          firstChatterGlow = !!ns.firstChatterGlow
+          needsRender = true
+        }
+        if (typeof ns.keywordHighlights === 'string' && ns.keywordHighlights !== keywordHighlights) {
+          keywordHighlights = ns.keywordHighlights
+          rebuildKeywordRegex()
+          needsRender = true
+        }
         if (ns.inlineNotifs) {
           for (const k of Object.keys(INLINE_NOTIF_TYPES)) {
             if (ns.inlineNotifs[k] !== undefined) inlineNotifs[k] = ns.inlineNotifs[k]
@@ -17704,6 +17860,9 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
     await loadAvatarsSetting();
     await loadAutoClaimSetting();
     await loadDimTimeoutsSetting();
+    await loadSmartCompletionSetting();
+    await loadFirstChatterGlowSetting();
+    await loadKeywordHighlightsSetting();
     await loadOfflineEventsSetting();
     await loadBlockedEmotes();
     await loadEmotes();

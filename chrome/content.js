@@ -529,6 +529,28 @@ style.textContent = `
     letter-spacing: 0.3px !important;
     white-space: nowrap !important;
   }
+  .hs-pc-mutual-follow {
+    background: #000 !important;
+    color: #fff !important;
+    padding: 2px 4px !important;
+    border: 1px solid #00aaaa !important;
+    border-radius: 0 !important;
+    font-size: 10px !important;
+    font-weight: 900 !important;
+    letter-spacing: 0.3px !important;
+    white-space: nowrap !important;
+  }
+  .hs-pc-mutual-sub {
+    background: #000 !important;
+    color: #fff !important;
+    padding: 2px 4px !important;
+    border: 1px solid #ff8700 !important;
+    border-radius: 0 !important;
+    font-size: 10px !important;
+    font-weight: 900 !important;
+    letter-spacing: 0.3px !important;
+    white-space: nowrap !important;
+  }
   .hs-pc-followage {
     background: #00aa00 !important;
     color: #fff !important;
@@ -4788,37 +4810,53 @@ function updateEmoteState(hash, emoteName, state) {
       row1.appendChild(liveSpan)
     }
 
-    // Relationship badges
+    // Relationship badges — covers all four angles across Twitch and Kick
     const rel = profile.relationship || {}
     const followsYou = rel.profileFollowsViewerOnTwitch || rel.profileFollowsViewerOnKick || rel.followsYou
     if (followsYou) {
-      const since = rel.profileFollowsViewerOnTwitchSince || rel.followsYouSince
+      const since = rel.profileFollowsViewerOnTwitchSince || rel.profileFollowsViewerOnKickSince || rel.followsYouSince
       const fySpan = document.createElement('span')
       fySpan.className = 'hs-pc-follows-you'
       fySpan.textContent = t('content_card_follows_you') + formatRelTime(since)
       row1.appendChild(fySpan)
     }
-    if (rel.profileSubbedToViewerOnTwitch || rel.subscribesToYou) {
-      const since = rel.profileTwitchSubSince || rel.subscribesToYouSince
+    const subsYou = rel.profileSubbedToViewerOnTwitch || rel.profileSubbedToViewerOnKick || rel.subscribesToYou
+    if (subsYou) {
+      const since = rel.profileTwitchSubSince || rel.profileKickSubSince || rel.subscribesToYouSince
       const subSpan = document.createElement('span')
       subSpan.className = 'hs-pc-subs-you'
       subSpan.textContent = t('content_card_subs_to_you') + formatRelTime(since)
       row1.appendChild(subSpan)
     }
-    if (rel.isFollowing || rel.followsOnTwitch) {
-      const since = rel.followsOnTwitchSince || rel.followedAt
+    const youFollow = rel.isFollowing || rel.followsOnTwitch || rel.followsOnKick
+    if (youFollow) {
+      const since = rel.followsOnTwitchSince || rel.followsOnKickSince || rel.followedAt
       const fgSpan = document.createElement('span')
       fgSpan.className = 'hs-pc-following'
       fgSpan.textContent = t('content_card_you_follow') + formatRelTime(since)
       row1.appendChild(fgSpan)
     }
-    if (rel.subscribedOnTwitch || rel.isSubscribed) {
-      const since = rel.subscribedAt
-      const tier = rel.twitchSubTier || rel.subTier
+    const youSub = rel.subscribedOnTwitch || rel.subscribedOnKick || rel.isSubscribed
+    if (youSub) {
+      const since = rel.subscribedAt || rel.twitchSubSince || rel.kickSubSince
+      const tier = rel.twitchSubTier || rel.kickSubTier || rel.subTier
       const subSpan = document.createElement('span')
       subSpan.className = 'hs-pc-subbed'
       subSpan.textContent = (tier && tier > 1 ? t('content_card_you_sub_tier', [String(tier)]) : t('content_card_you_sub')) + formatRelTime(since)
       row1.appendChild(subSpan)
+    }
+    // Mutual indicators when both directions present
+    if (followsYou && youFollow) {
+      const mSpan = document.createElement('span')
+      mSpan.className = 'hs-pc-mutual-follow'
+      mSpan.textContent = 'mutual'
+      row1.appendChild(mSpan)
+    }
+    if (subsYou && youSub) {
+      const mSpan = document.createElement('span')
+      mSpan.className = 'hs-pc-mutual-sub'
+      mSpan.textContent = 'mutual sub'
+      row1.appendChild(mSpan)
     }
     // Sub tenure from chat badge data (how long they've been subbed to this channel)
     const subMonths = subTenureMap.get(username.toLowerCase())

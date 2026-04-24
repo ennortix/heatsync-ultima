@@ -474,28 +474,40 @@
     if (re > 0) statBadges.push(`<span class="hs-pc-stat re"><span class="hs-pc-num">${formatCompact(re)}</span> [RE]</span>`);
     if (followers > 0) statBadges.push(`<span class="hs-pc-stat hs-pc-stat-followers">${t('mc_tip_followers', [formatCompact(followers)])}</span>`);
 
-    // Relationship
+    // Relationship — covers all four angles across Twitch and Kick
     const rel = p.relationship || {};
     const relBadges = [];
+    // They → you (follow)
     const followsYou = rel.profileFollowsViewerOnTwitch || rel.profileFollowsViewerOnKick || rel.followsYou;
     if (followsYou) {
-      const since = rel.profileFollowsViewerOnTwitchSince || rel.followsYouSince;
+      const since = rel.profileFollowsViewerOnTwitchSince || rel.profileFollowsViewerOnKickSince || rel.followsYouSince;
       relBadges.push(`<span class="hs-pc-rel-badge mutual">follows you${since ? ' · ' + getCompactRelTime(since).replace(' ago', '') : ''}</span>`);
     }
-    if (rel.profileSubbedToViewerOnTwitch || rel.subscribesToYou) {
-      const since = rel.profileTwitchSubSince || rel.subscribesToYouSince;
-      relBadges.push(`<span class="hs-pc-rel-badge supporter">subs to you${since ? ' ' + getCompactRelTime(since) : ''}</span>`);
+    // They → you (sub)
+    const subsYou = rel.profileSubbedToViewerOnTwitch || rel.profileSubbedToViewerOnKick || rel.subscribesToYou;
+    if (subsYou) {
+      const since = rel.profileTwitchSubSince || rel.profileKickSubSince || rel.subscribesToYouSince;
+      relBadges.push(`<span class="hs-pc-rel-badge supporter">subs to you${since ? ' · ' + getCompactRelTime(since).replace(' ago', '') : ''}</span>`);
     }
-    // Viewer follows profile
-    if (rel.isFollowing || rel.followsOnTwitch) {
-      const since = rel.followsOnTwitchSince || rel.followedAt;
+    // You → them (follow)
+    const youFollow = rel.isFollowing || rel.followsOnTwitch || rel.followsOnKick;
+    if (youFollow) {
+      const since = rel.followsOnTwitchSince || rel.followsOnKickSince || rel.followedAt;
       relBadges.push(`<span class="hs-pc-rel-badge following">following${since ? ' · ' + getCompactRelTime(since).replace(' ago', '') : ''}</span>`);
     }
-    // Viewer subbed to profile
-    if (rel.isSubscribed || rel.subscribedOnTwitch) {
-      const tier = rel.twitchSubTier || rel.subTier || 1;
-      const since = rel.twitchSubSince || rel.subscribedAt;
-      relBadges.push(`<span class="hs-pc-rel-badge subbed">you sub${tier > 1 ? ' T' + tier : ''}${since ? ' ' + getCompactRelTime(since) : ''}</span>`);
+    // You → them (sub)
+    const youSub = rel.isSubscribed || rel.subscribedOnTwitch || rel.subscribedOnKick;
+    if (youSub) {
+      const tier = rel.twitchSubTier || rel.kickSubTier || rel.subTier || 1;
+      const since = rel.twitchSubSince || rel.kickSubSince || rel.subscribedAt;
+      relBadges.push(`<span class="hs-pc-rel-badge subbed">you sub${tier > 1 ? ' T' + tier : ''}${since ? ' · ' + getCompactRelTime(since).replace(' ago', '') : ''}</span>`);
+    }
+    // Mutual indicators when both directions present
+    if (followsYou && youFollow) {
+      relBadges.push(`<span class="hs-pc-rel-badge mutual-follow">mutual</span>`);
+    }
+    if (subsYou && youSub) {
+      relBadges.push(`<span class="hs-pc-rel-badge mutual-sub">mutual sub</span>`);
     }
 
     return `

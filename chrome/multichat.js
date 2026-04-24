@@ -1327,17 +1327,21 @@ class IRC {
   persistBuffer(ch) {
     if (this._persistTimers[ch]) return
     this._persistTimers[ch] = cleanup.setTimeout(() => {
-      delete this._persistTimers[ch]
-      const buffer = this.channels.get(ch)
-      if (!buffer) return
-      const msgs = buffer.getAll().slice(-this._PERSIST_MAX).map(m => ({
-        user: m.user, userId: m.userId, text: m.text, color: m.color,
-        badges: m.badges, channel: m.channel, time: m.time, id: m.id,
-        isAction: m.isAction || undefined, replyTo: m.replyTo || undefined,
-        subMonths: m.subMonths || undefined, twitchEmotes: m.twitchEmotes || undefined,
-        type: m.type || undefined, eventClass: m.eventClass || undefined
-      }))
-      try { chrome.storage?.local?.set({ [`hs_irc_${ch}`]: { msgs, ts: Date.now() } })?.catch(() => {}) } catch {}
+      try {
+        delete this._persistTimers[ch]
+        if (!chrome?.runtime?.id) return
+        const buffer = this.channels.get(ch)
+        if (!buffer) return
+        const msgs = buffer.getAll().slice(-this._PERSIST_MAX).map(m => ({
+          user: m.user, userId: m.userId, text: m.text, color: m.color,
+          badges: m.badges, channel: m.channel, time: m.time, id: m.id,
+          isAction: m.isAction || undefined, replyTo: m.replyTo || undefined,
+          subMonths: m.subMonths || undefined, twitchEmotes: m.twitchEmotes || undefined,
+          type: m.type || undefined, eventClass: m.eventClass || undefined
+        }))
+        const p = chrome.storage.local.set({ [`hs_irc_${ch}`]: { msgs, ts: Date.now() } })
+        if (p && typeof p.catch === 'function') p.catch(() => {})
+      } catch {}
     }, 5000)
   }
 
@@ -1648,16 +1652,20 @@ class KickChat {
   persistBuffer(ch) {
     if (this._persistTimers[ch]) return
     this._persistTimers[ch] = cleanup.setTimeout(() => {
-      delete this._persistTimers[ch]
-      const buffer = this.channels.get(ch)
-      if (!buffer) return
-      const msgs = buffer.getAll().slice(-this._PERSIST_MAX).map(m => ({
-        user: m.user, text: m.text, color: m.color, badges: m.badges,
-        channel: m.channel, time: m.time, platform: 'kick',
-        type: m.type || undefined, systemMsg: m.systemMsg || undefined,
-        replyTo: m.replyTo || undefined, kicksEvent: m.kicksEvent || undefined
-      }))
-      try { chrome.storage?.local?.set({ [`hs_kick_${ch}`]: { msgs, ts: Date.now() } })?.catch(() => {}) } catch {}
+      try {
+        delete this._persistTimers[ch]
+        if (!chrome?.runtime?.id) return
+        const buffer = this.channels.get(ch)
+        if (!buffer) return
+        const msgs = buffer.getAll().slice(-this._PERSIST_MAX).map(m => ({
+          user: m.user, text: m.text, color: m.color, badges: m.badges,
+          channel: m.channel, time: m.time, platform: 'kick',
+          type: m.type || undefined, systemMsg: m.systemMsg || undefined,
+          replyTo: m.replyTo || undefined, kicksEvent: m.kicksEvent || undefined
+        }))
+        const p = chrome.storage.local.set({ [`hs_kick_${ch}`]: { msgs, ts: Date.now() } })
+        if (p && typeof p.catch === 'function') p.catch(() => {})
+      } catch {}
     }, 5000)
   }
 
@@ -10817,6 +10825,8 @@ const STORAGE_KEY = 'heatsync_multichat';
     inputBarVisible = true
     const bar = document.getElementById('hs-mc-inputbar')
     if (bar) bar.classList.remove('hs-hidden')
+    const overlay = document.getElementById('hs-mc-overlay')
+    if (overlay) overlay.style.bottom = ''
     const picker = document.getElementById('hs-mc-emote-picker')
     adjustOverlayForPicker(picker?.classList.contains('visible') || false)
   }
@@ -10836,6 +10846,8 @@ const STORAGE_KEY = 'heatsync_multichat';
     inputBarVisible = false
     const bar = document.getElementById('hs-mc-inputbar')
     if (bar) bar.classList.add('hs-hidden')
+    const overlay = document.getElementById('hs-mc-overlay')
+    if (overlay) overlay.style.bottom = '0'
   }
 
   // Chat width state
@@ -15662,8 +15674,10 @@ const STORAGE_KEY = 'heatsync_multichat';
 
     if (overlayElement) {
       overlayElement.classList.add('visible');
-      // Sync overlay bottom with input bar visibility
-      if (!inputBarVisible) overlayElement.style.bottom = '0'
+      // Sync overlay bottom with input bar visibility — clear inline style when
+      // input is back so the CSS bottom-padding-for-input-bar reapplies
+      if (inputBarVisible) overlayElement.style.bottom = ''
+      else overlayElement.style.bottom = '0'
       renderMessages(id);
     } else {
       log('No overlay element to show!');

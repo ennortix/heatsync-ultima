@@ -415,17 +415,21 @@ class IRC {
   persistBuffer(ch) {
     if (this._persistTimers[ch]) return
     this._persistTimers[ch] = cleanup.setTimeout(() => {
-      delete this._persistTimers[ch]
-      const buffer = this.channels.get(ch)
-      if (!buffer) return
-      const msgs = buffer.getAll().slice(-this._PERSIST_MAX).map(m => ({
-        user: m.user, userId: m.userId, text: m.text, color: m.color,
-        badges: m.badges, channel: m.channel, time: m.time, id: m.id,
-        isAction: m.isAction || undefined, replyTo: m.replyTo || undefined,
-        subMonths: m.subMonths || undefined, twitchEmotes: m.twitchEmotes || undefined,
-        type: m.type || undefined, eventClass: m.eventClass || undefined
-      }))
-      try { chrome.storage?.local?.set({ [`hs_irc_${ch}`]: { msgs, ts: Date.now() } })?.catch(() => {}) } catch {}
+      try {
+        delete this._persistTimers[ch]
+        if (!chrome?.runtime?.id) return
+        const buffer = this.channels.get(ch)
+        if (!buffer) return
+        const msgs = buffer.getAll().slice(-this._PERSIST_MAX).map(m => ({
+          user: m.user, userId: m.userId, text: m.text, color: m.color,
+          badges: m.badges, channel: m.channel, time: m.time, id: m.id,
+          isAction: m.isAction || undefined, replyTo: m.replyTo || undefined,
+          subMonths: m.subMonths || undefined, twitchEmotes: m.twitchEmotes || undefined,
+          type: m.type || undefined, eventClass: m.eventClass || undefined
+        }))
+        const p = chrome.storage.local.set({ [`hs_irc_${ch}`]: { msgs, ts: Date.now() } })
+        if (p && typeof p.catch === 'function') p.catch(() => {})
+      } catch {}
     }, 5000)
   }
 
@@ -736,16 +740,20 @@ class KickChat {
   persistBuffer(ch) {
     if (this._persistTimers[ch]) return
     this._persistTimers[ch] = cleanup.setTimeout(() => {
-      delete this._persistTimers[ch]
-      const buffer = this.channels.get(ch)
-      if (!buffer) return
-      const msgs = buffer.getAll().slice(-this._PERSIST_MAX).map(m => ({
-        user: m.user, text: m.text, color: m.color, badges: m.badges,
-        channel: m.channel, time: m.time, platform: 'kick',
-        type: m.type || undefined, systemMsg: m.systemMsg || undefined,
-        replyTo: m.replyTo || undefined, kicksEvent: m.kicksEvent || undefined
-      }))
-      try { chrome.storage?.local?.set({ [`hs_kick_${ch}`]: { msgs, ts: Date.now() } })?.catch(() => {}) } catch {}
+      try {
+        delete this._persistTimers[ch]
+        if (!chrome?.runtime?.id) return
+        const buffer = this.channels.get(ch)
+        if (!buffer) return
+        const msgs = buffer.getAll().slice(-this._PERSIST_MAX).map(m => ({
+          user: m.user, text: m.text, color: m.color, badges: m.badges,
+          channel: m.channel, time: m.time, platform: 'kick',
+          type: m.type || undefined, systemMsg: m.systemMsg || undefined,
+          replyTo: m.replyTo || undefined, kicksEvent: m.kicksEvent || undefined
+        }))
+        const p = chrome.storage.local.set({ [`hs_kick_${ch}`]: { msgs, ts: Date.now() } })
+        if (p && typeof p.catch === 'function') p.catch(() => {})
+      } catch {}
     }, 5000)
   }
 

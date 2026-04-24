@@ -773,6 +773,8 @@
     inputBarVisible = true
     const bar = document.getElementById('hs-mc-inputbar')
     if (bar) bar.classList.remove('hs-hidden')
+    const overlay = document.getElementById('hs-mc-overlay')
+    if (overlay) overlay.style.bottom = ''
     const picker = document.getElementById('hs-mc-emote-picker')
     adjustOverlayForPicker(picker?.classList.contains('visible') || false)
   }
@@ -792,6 +794,8 @@
     inputBarVisible = false
     const bar = document.getElementById('hs-mc-inputbar')
     if (bar) bar.classList.add('hs-hidden')
+    const overlay = document.getElementById('hs-mc-overlay')
+    if (overlay) overlay.style.bottom = '0'
   }
 
   // Chat width state
@@ -5618,8 +5622,10 @@
 
     if (overlayElement) {
       overlayElement.classList.add('visible');
-      // Sync overlay bottom with input bar visibility
-      if (!inputBarVisible) overlayElement.style.bottom = '0'
+      // Sync overlay bottom with input bar visibility — clear inline style when
+      // input is back so the CSS bottom-padding-for-input-bar reapplies
+      if (inputBarVisible) overlayElement.style.bottom = ''
+      else overlayElement.style.bottom = '0'
       renderMessages(id);
     } else {
       log('No overlay element to show!');

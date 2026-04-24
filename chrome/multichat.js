@@ -10790,10 +10790,10 @@ const STORAGE_KEY = 'heatsync_multichat';
   // Modular registry: each type can be toggled independently
   // Colors match website conventions
   const INLINE_NOTIF_TYPES = {
-    op:      { label: '[OP]',  color: '#ff0000', borderColor: '#ff0000', defaultOn: true,  desc: t('mc_settings_notif_op') },
-    mop:     { label: '[OP]',  color: '#ff00ff', borderColor: '#ff00ff', defaultOn: true,  desc: t('mc_settings_notif_mop') },
-    re:      { label: '[RE]',  color: '#00ffff', borderColor: '#00ffff', defaultOn: false, desc: t('mc_settings_notif_re') },
-    dm:      { label: '[DM]',  color: '#ffff00', borderColor: '#ffff00', defaultOn: false, desc: t('mc_settings_notif_dm') },
+    op:      { tag: '[OP]', color: '#ff0000', borderColor: '#ff0000', defaultOn: true,  label: t('mc_settings_notif_op'),       desc: t('mc_settings_notif_op_desc') },
+    mop:     { tag: '[OP]', color: '#ff00ff', borderColor: '#ff00ff', defaultOn: true,  label: t('mc_settings_notif_op_reply'), desc: t('mc_settings_notif_op_reply_desc') },
+    re:      { tag: '[RE]', color: '#00ffff', borderColor: '#00ffff', defaultOn: false, label: t('mc_settings_notif_re'),       desc: t('mc_settings_notif_re_desc') },
+    dm:      { tag: '[DM]', color: '#ffff00', borderColor: '#ffff00', defaultOn: false, label: t('mc_settings_notif_dm'),       desc: t('mc_settings_notif_dm_desc') },
   }
   // Runtime state: { op: true, re: false, dm: false, mention: true }
   const inlineNotifs = {}
@@ -10801,13 +10801,13 @@ const STORAGE_KEY = 'heatsync_multichat';
 
   // Hermes event toggles (Twitch-native events: raids, hype trains, etc.)
   const HERMES_EVENT_TYPES = {
-    raid:   { color: '#9146ff', defaultOn: true,  desc: t('mc_settings_raids') },
-    hype:   { color: '#ff8700', defaultOn: false, desc: t('mc_settings_hype_trains') },
-    sub:    { color: '#00ff7f', defaultOn: true,  desc: t('mc_settings_gift_subs') },
-    redeem: { color: '#00bfff', defaultOn: true,  desc: t('mc_settings_redeems') },
-    pred:   { color: '#387aff', defaultOn: true,  desc: t('mc_settings_pred_banner') },
-    poll:   { color: '#00c853', defaultOn: true,  desc: t('mc_settings_poll_banner') },
-    pin:    { color: '#bf94ff', defaultOn: true,  desc: t('mc_settings_pinned') },
+    raid:   { color: '#9146ff', defaultOn: true,  label: t('mc_settings_raids'),              desc: t('mc_settings_raids_desc') },
+    hype:   { color: '#ff8700', defaultOn: false, label: t('mc_settings_hype_trains'),        desc: t('mc_settings_hype_trains_desc') },
+    sub:    { color: '#00ff7f', defaultOn: true,  label: t('mc_settings_gift_subs'),          desc: t('mc_settings_gift_subs_desc') },
+    redeem: { color: '#00bfff', defaultOn: true,  label: t('mc_settings_redeems'),            desc: t('mc_settings_redeems_desc') },
+    pred:   { color: '#387aff', defaultOn: true,  label: t('mc_settings_prediction_banner'),  desc: t('mc_settings_prediction_banner_desc') },
+    poll:   { color: '#00c853', defaultOn: true,  label: t('mc_settings_poll_banner'),        desc: t('mc_settings_poll_banner_desc') },
+    pin:    { color: '#bf94ff', defaultOn: true,  label: t('mc_settings_pinned_messages'),    desc: t('mc_settings_pinned_messages_desc') },
   }
   const hermesToggles = {}
   for (const [k, v] of Object.entries(HERMES_EVENT_TYPES)) hermesToggles[k] = v.defaultOn
@@ -11333,7 +11333,7 @@ const STORAGE_KEY = 'heatsync_multichat';
     msg.inlineNotifType = notifType
     msg.inlineNotifColor = typeDef.color
     msg.inlineNotifBorderColor = typeDef.borderColor
-    msg.inlineNotifLabel = typeDef.label
+    msg.inlineNotifLabel = typeDef.tag
 
     // Persist into ALL channel buffers (IRC + Kick + YouTube) so notification appears on every tab
     for (const ch of config.channels) {
@@ -11629,13 +11629,6 @@ const STORAGE_KEY = 'heatsync_multichat';
       timestamps: t('mc_settings_timestamps_desc'),
       avatars: t('mc_settings_avatars_desc'),
     }
-    const notifTips = {
-      op: t('mc_settings_notif_op_desc'),
-      mop: t('mc_settings_notif_mop_desc'),
-      re: t('mc_settings_notif_re_desc'),
-      dm: t('mc_settings_notif_dm_desc'),
-    }
-
     // Static settings HTML — no user input, all tooltip values are hardcoded strings above
     msgsEl.innerHTML = `
       <div class="hs-mc-settings-panel">
@@ -11678,23 +11671,23 @@ const STORAGE_KEY = 'heatsync_multichat';
             <button class="hs-mc-toggle-pill ${avatarsEnabled ? 'active' : ''}" data-setting="avatars"><span class="hs-mc-toggle-knob"></span></button>
           </div>
           <div class="hs-mc-setting-row">
-            <span class="hs-mc-setting-label" data-tip="recent chatters surface first in tab completion">smart completion</span>
+            <span class="hs-mc-setting-label" data-tip="${t('mc_settings_smart_completion_desc')}">${t('mc_settings_smart_completion')}</span>
             <button class="hs-mc-toggle-pill ${smartCompletion ? 'active' : ''}" data-setting="smartcompletion"><span class="hs-mc-toggle-knob"></span></button>
           </div>
           <div class="hs-mc-setting-row">
-            <span class="hs-mc-setting-label" data-tip="orange edge on first message from a user this session">first-chatter glow</span>
+            <span class="hs-mc-setting-label" data-tip="${t('mc_settings_first_chatter_desc')}">${t('mc_settings_first_chatter')}</span>
             <button class="hs-mc-toggle-pill ${firstChatterGlow ? 'active' : ''}" data-setting="firstchatter"><span class="hs-mc-toggle-knob"></span></button>
           </div>
           <div class="hs-mc-setting-row hs-mc-setting-row-block">
-            <span class="hs-mc-setting-label" data-tip="newline-separated terms; matches get an orange tint">keyword highlights</span>
-            <textarea class="hs-mc-setting-textarea" data-setting="keywordhighlights" placeholder="one per line" rows="3">${escapeHtml(keywordHighlights)}</textarea>
+            <span class="hs-mc-setting-label" data-tip="${t('mc_settings_keyword_highlights_desc')}">${t('mc_settings_keyword_highlights')}</span>
+            <textarea class="hs-mc-setting-textarea" data-setting="keywordhighlights" placeholder="${t('mc_settings_keyword_highlights_placeholder')}" rows="3">${escapeHtml(keywordHighlights)}</textarea>
           </div>
         </div>
         <div class="hs-mc-settings-group">
           <div class="hs-mc-settings-group-title">${t('mc_settings_inline_notifs')}</div>
           ${Object.entries(INLINE_NOTIF_TYPES).map(([key, def]) => `
           <div class="hs-mc-setting-row">
-            <span class="hs-mc-setting-label" data-tip="${notifTips[key] || def.desc}"><span style="color:${def.color}">${def.label}</span> ${def.desc}</span>
+            <span class="hs-mc-setting-label" data-tip="${escapeHtml(def.desc)}"><span style="color:${def.color}">${def.tag}</span> ${escapeHtml(def.label.replace(def.tag, '').trim())}</span>
             <button class="hs-mc-toggle-pill ${inlineNotifs[key] ? 'active' : ''}" data-setting="notif_${key}"><span class="hs-mc-toggle-knob"></span></button>
           </div>`).join('')}
         </div>
@@ -11702,18 +11695,18 @@ const STORAGE_KEY = 'heatsync_multichat';
           <div class="hs-mc-settings-group-title">${t('mc_settings_twitch_events')}</div>
           ${Object.entries(HERMES_EVENT_TYPES).map(([key, def]) => `
           <div class="hs-mc-setting-row">
-            <span class="hs-mc-setting-label" data-tip="${def.desc}"><span style="color:${def.color}">\u25C6</span> ${def.desc}</span>
+            <span class="hs-mc-setting-label" data-tip="${escapeHtml(def.desc)}"><span style="color:${def.color}">\u25C6</span> ${escapeHtml(def.label)}</span>
             <button class="hs-mc-toggle-pill ${hermesToggles[key] ? 'active' : ''}" data-setting="hermes_${key}"><span class="hs-mc-toggle-knob"></span></button>
           </div>`).join('')}
         </div>
         <div class="hs-mc-settings-group">
           <div class="hs-mc-settings-group-title">${t('mc_settings_features')}</div>
           <div class="hs-mc-setting-row">
-            <span class="hs-mc-setting-label" data-tip="Automatically clicks the bonus channel points chest on Twitch when it appears. Free points, zero effort.">${t('mc_settings_auto_claim')}</span>
+            <span class="hs-mc-setting-label" data-tip="${t('mc_settings_auto_claim_desc')}">${t('mc_settings_auto_claim')}</span>
             <button class="hs-mc-toggle-pill ${autoClaimPoints ? 'active' : ''}" data-setting="autoclaim"><span class="hs-mc-toggle-knob"></span></button>
           </div>
           <div class="hs-mc-setting-row">
-            <span class="hs-mc-setting-label" data-tip="Show timed-out and banned messages at 50% opacity instead of hiding them. Like FFZ/BTTV.">${t('mc_settings_dim_timeouts')}</span>
+            <span class="hs-mc-setting-label" data-tip="${t('mc_settings_dim_timeouts_desc')}">${t('mc_settings_dim_timeouts')}</span>
             <button class="hs-mc-toggle-pill ${dimTimeouts ? 'active' : ''}" data-setting="dimtimeouts"><span class="hs-mc-toggle-knob"></span></button>
           </div>
         </div>

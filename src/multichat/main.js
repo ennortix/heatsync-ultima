@@ -7535,6 +7535,30 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
     saveUiSetting('tabPosition', tabPosition)
   }
 
+  // Render a small banner inside the multichat panel when an upstream API is unreachable.
+  // Auto-removes when state flips back to 'up'. Only renders when our panel is mounted.
+  function showApiStatusBanner(source, state) {
+    const container = document.getElementById('hs-mc-container')
+    if (!container) return
+    const id = 'hs-mc-api-banner-' + (source || 'unknown').replace(/[^a-z0-9_-]/gi, '')
+    const existing = document.getElementById(id)
+    if (state === 'up') { existing?.remove(); return }
+    if (existing) return
+    const banner = document.createElement('div')
+    banner.id = id
+    banner.className = 'hs-mc-api-banner'
+    banner.style.cssText = 'background:#ff8700;color:#000;font:600 11px/1.4 monospace;padding:6px 10px;text-align:center;display:flex;align-items:center;justify-content:center;gap:8px;'
+    const label = source === 'heatsync' ? 'heatsync.org unreachable — reconnecting' : `${source} unreachable`
+    const text = document.createElement('span')
+    text.textContent = label
+    const dismiss = document.createElement('span')
+    dismiss.textContent = '×'
+    dismiss.style.cssText = 'cursor:pointer;font-weight:700;padding:0 4px;'
+    dismiss.addEventListener('click', () => banner.remove())
+    banner.append(text, dismiss)
+    container.insertBefore(banner, container.firstChild)
+  }
+
   function listenForSettingsChanges() {
     if (window._hsMcSettingsListener) return;
     window._hsMcSettingsListener = true;
@@ -7549,6 +7573,9 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
         }
       }
       if (msg.type === 'debug_log' && MC_DEBUG) console.log('[hs-bg]', msg.msg)
+      if (msg.type === 'api_status') {
+        try { showApiStatusBanner(msg.source, msg.state) } catch (e) {}
+      }
       if (msg.type === 'cosmetics_update') {
         mcBttvBadgeMap = new Map(Object.entries(msg.bttvBadges || {}))
         mcFfzBadgeMap = new Map(Object.entries(msg.ffzBadges || {}))

@@ -156,11 +156,16 @@ async function updateAuthBridge() {
 updateAuthBridge()
 
 // Keep bridge in sync when token changes
-function _onStorageChanged(changes) {
+function _onStorageChanged(changes, areaName) {
   if (changes.auth_token || changes.auth_token_encrypted) updateAuthBridge()
   if (changes.hs_emote_size != null) {
     hsEmoteSize = parseFloat(changes.hs_emote_size.newValue) || 1
     applyEmoteSize()
+  }
+  // Live-apply ui_settings changes from options page (sync storage)
+  if (areaName === 'sync' && changes.ui_settings) {
+    const next = changes.ui_settings.newValue
+    if (next) applyUiSettings(next)
   }
 }
 chrome.storage.onChanged.addListener(_onStorageChanged)
@@ -1384,6 +1389,16 @@ function applyUiSettings(settings) {
   } else {
     cosmeticsEnabled = true
   }
+
+  // Debug logging toggle — sync localStorage so next page load picks up the new state.
+  // (DEBUG is captured at IIFE start; runtime change requires reload.)
+  try {
+    if (settings.debugLogging === true) {
+      localStorage.setItem('heatsync_debug', 'true')
+    } else if (settings.debugLogging === false) {
+      localStorage.removeItem('heatsync_debug')
+    }
+  } catch (e) {}
 }
 
 // Load and apply UI settings on startup

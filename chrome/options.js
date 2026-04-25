@@ -13,7 +13,8 @@
     showCosmetics: true,
     viMode: false,
     hideStreamTitle: false,
-    hideViewerCount: false
+    hideViewerCount: false,
+    debugLogging: false
   }
 
   let settings = { ...DEFAULTS }

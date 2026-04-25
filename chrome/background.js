@@ -2114,6 +2114,10 @@ async function connectWebSocket() {
       socket.onopen = () => {
         clearTimeout(connectTimeout);
         log(' ✅ WebSocket connected');
+        // Clear "down" banner once we reconnect
+        if (reconnectAttempts >= 3) {
+          broadcastToTabs({ type: 'api_status', source: 'heatsync', state: 'up' })
+        }
         reconnectAttempts = 0;
         wsState = WS_STATE.CONNECTED;
 
@@ -2662,6 +2666,12 @@ function scheduleReconnect() {
   const delay = Math.min(1000 * Math.pow(2, reconnectAttempts), 30000) + jitter; // Max 30s + jitter
   reconnectAttempts++;
   log(` Reconnecting in ${Math.round(delay)}ms (attempt ${reconnectAttempts})`);
+
+  // After 3 consecutive failures, surface a "down" banner to UIs.
+  // Cleared in socket.onopen when we reconnect.
+  if (reconnectAttempts === 3) {
+    broadcastToTabs({ type: 'api_status', source: 'heatsync', state: 'down' })
+  }
 
   reconnectTimer = setTimeout(() => {
     reconnectTimer = null;

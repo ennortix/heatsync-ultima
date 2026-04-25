@@ -2913,7 +2913,16 @@ async function sendKickMessage(kickSlug, text) {
     if (emoteCache.size === 0 && !channelEmoteCaches[channel]) return text;
 
     // Split adjacent Kick emotes and text touching emotes (e.g. "word[emote:id:name]")
-    const words = text.replace(/\]\[emote:/g, '] [emote:').replace(/([^\s\[])\[emote:/g, '$1 [emote:').replace(/\]([^\s\]])/g, '] $1').split(/(\s+)/);
+    // Also split unicode emoji from adjacent non-emoji chars so `🌆<3` becomes
+    // `🌆` (rendered big) + `<3` (text). Preserves multi-codepoint emoji sequences:
+    // skin tone modifiers, ZWJ joins, and VS16 variation selectors stay intact.
+    const words = text
+      .replace(/\]\[emote:/g, '] [emote:')
+      .replace(/([^\s\[])\[emote:/g, '$1 [emote:')
+      .replace(/\]([^\s\]])/g, '] $1')
+      .replace(/([\p{Extended_Pictographic}\p{Emoji_Modifier}\uFE0F])(?=[^\s\p{Extended_Pictographic}\p{Emoji_Modifier}\uFE0F\u200D])/gu, '$1 ')
+      .replace(/([^\s\p{Extended_Pictographic}\p{Emoji_Modifier}\uFE0F\u200D])(?=\p{Extended_Pictographic})/gu, '$1 ')
+      .split(/(\s+)/);
     const result = [];
     let pendingStack = null; // { base: html, overlays: [html...] }
     let pendingWhitespace = ''; // Accumulate whitespace - don't flush stack on spaces

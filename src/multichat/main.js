@@ -5910,6 +5910,10 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
       if (processedText.includes('&lt;img')) {
         processedText = processedText.replace(/&lt;img\b[^<]*/g, '')
       }
+      // Highlight @mentions and bare-name mentions for known chatters.
+      // Run AFTER emote processing so emote names already replaced into <img> tags
+      // (and thus inside HTML) won't be touched by the mention regex.
+      processedText = highlightMentionsInHtml(processedText)
       m._renderedHtml = processedText
     }
 
@@ -6027,6 +6031,30 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
       result = result.replace(/&lt;img\b(?:[^]*?(?:\/&gt;|&gt;)|[^<]*)/g, '')
     }
     return result
+  }
+
+  // Highlight @mentions and bare known usernames in rendered chat HTML.
+  // Splits on tags so substitution only happens in text segments.
+  function highlightMentionsInHtml(html) {
+    if (!html || (!html.includes('@') && knownColors.size === 0)) return html
+    const parts = html.split(/(<[^>]+>)/)
+    for (let i = 0; i < parts.length; i += 2) {
+      const seg = parts[i]
+      if (!seg) continue
+      parts[i] = seg.replace(
+        /(^|[\s.,!?;:()\[\]"'])(@?)([A-Za-z0-9_]{3,25})(?=$|[\s.,!?;:()\[\]"'])/g,
+        (m, lead, at, name) => {
+          const lower = name.toLowerCase()
+          const known = knownColors.has(lower)
+          if (!at && !known) return m
+          const color = sanitizeColor(knownColors.get(lower) || '#fff')
+          const safeName = escapeHtml(name)
+          const safeLower = escapeHtml(lower)
+          return `${lead}<a href="https://heatsync.org/user/${encodeURIComponent(lower)}" target="_blank" class="hs-mc-user hs-mc-mention" data-username="${safeLower}" style="color:${color}">${at}${safeName}</a>`
+        }
+      )
+    }
+    return parts.join('')
   }
 
   // Show "new" button for static tabs (activity/feed) — points up since newest is at top

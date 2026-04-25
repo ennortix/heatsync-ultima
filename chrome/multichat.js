@@ -17618,6 +17618,9 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
       // Listen for emote updates from background
       if (msg.type === 'global_emotes_update' || msg.type === 'channel_emotes_update') {
         log('received', msg.type, msg.channelOwner || '');
+        // Invalidate per-message rendered HTML cache so history re-processes
+        // with the freshly arrived emote data (otherwise raw text sticks)
+        clearRenderedHtmlCache();
         cleanup.clearTimeout(emoteReloadTimer);
         emoteReloadTimer = cleanup.setTimeout(() => {
           loadEmotes().then(() => renderMessages(currentTab));

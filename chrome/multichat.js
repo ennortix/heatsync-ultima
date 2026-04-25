@@ -16404,6 +16404,16 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
 
     const toRender = msgs.slice(-150)
     isProgrammaticScroll = true;
+
+    const expandedStacks = []
+    for (const stack of msgsEl.querySelectorAll('.hs-mc-emote-stack.expanded')) {
+      const msg = stack.closest('.hs-mc-msg[data-msg-id]')
+      if (!msg) continue
+      const allStacks = [...msg.querySelectorAll('.hs-mc-emote-stack')]
+      const idx = allStacks.indexOf(stack)
+      if (idx >= 0) expandedStacks.push([msg.dataset.msgId, idx])
+    }
+
     msgsEl.textContent = '';
     msgsEl._zebraCount = 0;
     const frag = document.createDocumentFragment();
@@ -16417,6 +16427,14 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
       frag.appendChild(div);
     }
     msgsEl.appendChild(frag);
+
+    for (const [msgId, idx] of expandedStacks) {
+      const msg = msgsEl.querySelector(`.hs-mc-msg[data-msg-id="${CSS.escape(msgId)}"]`)
+      if (!msg) continue
+      const stacks = msg.querySelectorAll('.hs-mc-emote-stack')
+      if (stacks[idx]) stacks[idx].classList.add('expanded')
+    }
+
     applyMcMutes();
 
     requestAnimationFrame(() => { isProgrammaticScroll = false; });

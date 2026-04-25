@@ -226,6 +226,23 @@
       </div>
       <div class="toggle" data-setting="debugLogging"></div>
     </div>
+    <div class="setting-row">
+      <div>
+        <div class="setting-label">crash telemetry</div>
+        <div class="setting-desc">capture errors locally for diagnosis (never auto-uploaded)</div>
+      </div>
+      <div class="toggle" data-setting="crashTelemetry"></div>
+    </div>
+    <div class="setting-row" id="crash-log-row" style="display:none;flex-direction:column;align-items:stretch;gap:8px">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <div class="setting-label">recent errors</div>
+        <div style="display:flex;gap:8px">
+          <button id="crash-copy" style="background:#000;color:#fff;border:1px solid #808080;padding:4px 10px;font-size:11px;cursor:pointer;font-family:monospace">copy</button>
+          <button id="crash-clear" style="background:#000;color:#fff;border:1px solid #808080;padding:4px 10px;font-size:11px;cursor:pointer;font-family:monospace">clear</button>
+        </div>
+      </div>
+      <pre id="crash-log" style="background:#0a0a0a;color:#c0c0c0;border:1px solid #333;padding:8px;font-size:10px;max-height:200px;overflow:auto;white-space:pre-wrap;word-break:break-all;margin:0"></pre>
+    </div>
   </div>
 
   <div class="footer">

@@ -102,6 +102,35 @@ function applyEmoteSize() {
   document.documentElement.style.setProperty('--hs-emote-height', (HS_EMOTE_BASE_PX * hsEmoteSize) + 'px')
 }
 
+// Crash telemetry: capture unhandled errors and unhandled promise rejections.
+// Filtered to only forward errors that look like ours (heatsync stack frames or
+// triggered from our injected scripts). Page-side noise gets dropped.
+let _lastCrashMessage = ''
+let _lastCrashTs = 0
+function _maybeReportCrash(source, message, stack, url) {
+  if (!message) return
+  const msg = String(message).slice(0, 500)
+  const stk = String(stack || '')
+  // Drop unrelated page errors — only forward when stack mentions our scripts.
+  const ours = /heatsync|content\.js|multichat\.js|heatsync-button\.js/.test(stk + ' ' + url)
+  if (!ours) return
+  // Dedup within 5s
+  const now = Date.now()
+  if (msg === _lastCrashMessage && now - _lastCrashTs < 5000) return
+  _lastCrashMessage = msg
+  _lastCrashTs = now
+  try {
+    safeSendMessage({ type: 'crash_report', source, message: msg, stack: stk, url }).catch(() => {})
+  } catch (e) {}
+}
+window.addEventListener('error', (ev) => {
+  _maybeReportCrash('content', ev.message, ev.error?.stack, ev.filename)
+})
+window.addEventListener('unhandledrejection', (ev) => {
+  const r = ev.reason
+  _maybeReportCrash('content', r?.message || String(r), r?.stack, '')
+})
+
 // Safe wrapper for chrome.runtime.sendMessage - handles context invalidation
 async function safeSendMessage(message, _retry = 0) {
   if (!extensionContextValid) {

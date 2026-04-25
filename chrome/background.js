@@ -2956,6 +2956,27 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true
   }
 
+  // Crash telemetry from content scripts (no auth needed — best-effort logging)
+  if (message.type === 'crash_report') {
+    recordCrash(message.source || 'content', message.message, message.stack, message.url || senderUrl)
+    sendResponse({ ok: true })
+    return true
+  }
+
+  // Read crash log (for options page)
+  if (message.type === 'get_crash_log') {
+    browser.storage.local.get(CRASH_LOG_KEY).then(stored => {
+      sendResponse({ ok: true, log: stored[CRASH_LOG_KEY] || [] })
+    }).catch(() => sendResponse({ ok: false, log: [] }))
+    return true
+  }
+
+  // Clear crash log
+  if (message.type === 'clear_crash_log') {
+    browser.storage.local.remove(CRASH_LOG_KEY).then(() => sendResponse({ ok: true }))
+    return true
+  }
+
   // Ensure in-memory state is populated before any handler reads it (MV3 SW restart race)
   ;(async () => {
     if (initPromise) await initPromise
@@ -3674,4 +3695,46 @@ async function initialize() {
 log(' 🚀 Calling initialize()...');
 initPromise = initialize().catch(err => {
   console.error('[heatsync] Initialize failed:', err);
+  recordCrash('bg', err?.message || String(err), err?.stack || '', 'initialize')
 });
+
+// ============================================
+// CRASH TELEMETRY (opt-in)
+// ============================================
+// Captures unhandled errors to chrome.storage.local, capped at 50.
+// User views/copies via options page. Upload to server requires explicit opt-in
+// via ui_settings.shareCrashReports — endpoint stubbed for future use.
+const CRASH_LOG_KEY = 'hs_crash_log'
+const CRASH_LOG_MAX = 50
+
+async function recordCrash(source, message, stack, url) {
+  try {
+    if (!message) return
+    const entry = {
+      ts: Date.now(),
+      source,
+      message: String(message).slice(0, 500),
+      stack: String(stack || '').slice(0, 2000),
+      url: String(url || '').slice(0, 200)
+    }
+    const stored = await browser.storage.local.get(CRASH_LOG_KEY)
+    const log = Array.isArray(stored[CRASH_LOG_KEY]) ? stored[CRASH_LOG_KEY] : []
+    // Dedup consecutive identical messages (don't spam log when one bug fires repeatedly)
+    if (log.length > 0 && log[log.length - 1].message === entry.message) {
+      log[log.length - 1].ts = entry.ts
+      log[log.length - 1].count = (log[log.length - 1].count || 1) + 1
+    } else {
+      log.push(entry)
+    }
+    while (log.length > CRASH_LOG_MAX) log.shift()
+    await browser.storage.local.set({ [CRASH_LOG_KEY]: log })
+  } catch (e) { /* swallow — telemetry must never crash the SW */ }
+}
+
+self.addEventListener('error', (ev) => {
+  recordCrash('bg', ev.message, ev.error?.stack, ev.filename)
+})
+self.addEventListener('unhandledrejection', (ev) => {
+  const r = ev.reason
+  recordCrash('bg', r?.message || String(r), r?.stack, '')
+})

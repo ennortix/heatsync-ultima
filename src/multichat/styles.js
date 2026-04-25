@@ -554,7 +554,7 @@ function injectStyles() {
       box-sizing: border-box;
       color: #ffffff;
       content-visibility: auto;
-      contain-intrinsic-size: 0 28px;
+      contain-intrinsic-size: auto 28px;
     }
     .hs-mc-msg.hs-mc-zebra, .hs-feed-msg.hs-mc-zebra {
       background: rgba(255,255,255,0.04);
@@ -569,7 +569,7 @@ function injectStyles() {
     }
     .hs-mc-feed-inline, .hs-mc-stream-event {
       content-visibility: auto;
-      contain-intrinsic-size: 0 32px;
+      contain-intrinsic-size: auto 32px;
     }
     .hs-mc-msg[data-msg-id] {
       position: relative;

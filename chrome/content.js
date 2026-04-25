@@ -6092,6 +6092,14 @@ function watchForNewMessages() {
 // Extract Twitch channel ID from page (needed for 7TV API)
 function getTwitchChannelId() {
   try {
+    // Method 0 (fast): dataset attribute set by early-inject MAIN-world script
+    // when it captures channel ID from Twitch's own GQL traffic / Apollo cache.
+    // This is the modern path — the others only work on legacy SPA hydration.
+    const slug = location.pathname.match(/^\/([^/?#]+)/)?.[1]?.toLowerCase()
+    const dsId = document.documentElement.dataset.hsTwitchChannelId
+    const dsLogin = document.documentElement.dataset.hsTwitchChannelLogin
+    if (dsId && dsLogin && dsLogin === slug) return dsId
+
     // Method 1: Check __NEXT_DATA__ for channel ID
     const nextData = document.getElementById('__NEXT_DATA__');
     if (nextData) {
@@ -6124,7 +6132,29 @@ function getTwitchChannelId() {
 }
 
 // Detect channel and join room
-function detectAndJoinChannel() {
+// Wait briefly for early-inject (MAIN world) to deliver channel ID via the
+// dataset attribute it stamps on documentElement. Resolves to ID or null on timeout.
+function waitForTwitchChannelId(slug, timeoutMs) {
+  return new Promise(resolve => {
+    const sync = getTwitchChannelId();
+    if (sync) return resolve(sync);
+    const handler = (e) => {
+      if (e.source !== window || e.origin !== location.origin) return;
+      if (e.data?.type === 'heatsync-page-channel-id' && e.data.login === slug && e.data.channelId) {
+        cleanup();
+        resolve(e.data.channelId);
+      }
+    };
+    const timer = setTimeout(() => { cleanup(); resolve(null); }, timeoutMs);
+    function cleanup() {
+      window.removeEventListener('message', handler);
+      clearTimeout(timer);
+    }
+    window.addEventListener('message', handler);
+  });
+}
+
+async function detectAndJoinChannel() {
   const url = window.location.href;
   let platform, channelName, channelId;
 
@@ -6139,10 +6169,12 @@ function detectAndJoinChannel() {
       log(' Skipping system path:', channelName);
       channelName = null;
     }
-    // Try to get channel ID for 7TV API
-    channelId = getTwitchChannelId();
-    if (channelId) {
-      log(' Got Twitch channel ID:', channelId);
+    // Try to get channel ID for 7TV API — wait briefly for early-inject if not yet available
+    if (channelName) {
+      const slug = channelName.toLowerCase();
+      channelId = await waitForTwitchChannelId(slug, 600);
+      if (channelId) log(' Got Twitch channel ID:', channelId);
+      else log(' No channel ID after 600ms wait — background will GQL-resolve');
     }
   } else if (url.includes('kick.com')) {
     platform = 'kick';
@@ -6171,6 +6203,27 @@ function detectAndJoinChannel() {
       if (!extensionContextValid) return;
       log(' ⚠️ detectAndJoinChannel error:', err?.message || err);
     });
+
+    // If we still don't have an ID but early-inject discovers it later,
+    // forward to background so it's available for subsequent operations / next reload.
+    if (platform === 'twitch' && !channelId) {
+      const slug = channelName.toLowerCase();
+      const lateHandler = (e) => {
+        if (e.source !== window || e.origin !== location.origin) return;
+        if (e.data?.type === 'heatsync-page-channel-id' && e.data.login === slug && e.data.channelId) {
+          window.removeEventListener('message', lateHandler);
+          safeSendMessage({
+            type: 'update_channel_id',
+            platform,
+            channel: channelName,
+            channelId: e.data.channelId
+          }).catch(() => {});
+        }
+      };
+      window.addEventListener('message', lateHandler);
+      // Auto-cleanup after 30s to avoid lingering listeners
+      setTimeout(() => window.removeEventListener('message', lateHandler), 30000);
+    }
   }
 }
 

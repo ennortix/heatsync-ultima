@@ -150,6 +150,7 @@ let lastBroadcastWasEmpty = false // Track to prevent spamming 0-emote broadcast
 let lastInventoryFetch = 0 // Timestamp of last successful inventory fetch
 let inventoryRefreshTimer = null // Debounce WS-triggered inventory refreshes
 let inventoryFetchPromise = null // In-flight guard for fetchEmoteInventory
+let pendingUserInfoToPersist = null // Buffered for batched init write
 let globalEmotesFetchPromise = null // In-flight guard for fetchGlobalEmotes
 
 function scheduleInventoryRefresh() {
@@ -674,7 +675,7 @@ async function fetchUserInfo() {
       heat: user.heat || 0,
       color: user.color || ''
     }
-    browser.storage.local.set({ user_info: userInfo })
+    pendingUserInfoToPersist = userInfo
     currentUsername = userInfo.username
     log(' User info loaded:', userInfo.display_name)
   } catch (error) {
@@ -787,7 +788,7 @@ async function lookupTwitchUserId(username) {
   }
   // Fallback to decapi.me
   try {
-    const response = await fetchWithTimeout(`https://decapi.me/twitch/id/${encodeURIComponent(username)}`);
+    const response = await fetchWithTimeout(`https://decapi.me/twitch/id/${encodeURIComponent(username)}`, {}, 2000);
     if (!response.ok) { response.body?.cancel(); return null; }
     const text = await response.text();
     if (/^\d+$/.test(text.trim())) {
@@ -1153,18 +1154,42 @@ async function fetchChannelOwnerEmotes(channelName, channelId = null, platform =
     }
     channelId = resolvedChannelId;
 
-    // Fetch third-party emotes in PARALLEL for speed
+    // Fetch third-party emotes in PARALLEL — broadcast progressively as each provider
+    // returns so the user sees BTTV/FFZ instantly while 7TV resolves (avoids "no emotes
+    // until everything's done"). Keep slots fixed so priority order is stable.
     broadcastToTabs({ type: 'loading_status', text: 'fetching third-party emotes...' });
-    const fetches = [
-      platform !== 'kick' ? fetchBTTVChannelEmotes(channelName, channelId) : Promise.resolve([]),
-      platform !== 'kick' ? fetchFFZChannelEmotes(channelName) : Promise.resolve([]),
-      fetch7TVChannelEmotes(channelName, channelId, platform),
-      platform !== 'kick' ? fetchTwitchChannelEmotes(channelName) : Promise.resolve([])
-    ];
-    const [bttvEmotes, ffzEmotes, sevenTVResult, twitchChannelEmotes] = await Promise.all(fetches);
-    // fetch7TVChannelEmotes returns { emotes, setId } or [] on error (cosmetics resolve async)
-    const sevenTVEmotes = sevenTVResult?.emotes || sevenTVResult || [];
-    const sevenTVSetId = sevenTVResult?.setId || null;
+    const slots = { bttv: [], ffz: [], sevenTV: [], twitch: [] }
+    let sevenTVResult = null
+    let coalesceTimer = null
+    const broadcastCurrent = () => {
+      clearTimeout(coalesceTimer)
+      coalesceTimer = setTimeout(() => {
+        coalesceTimer = null
+        const partial = [...heatsyncEmotes, ...slots.bttv, ...slots.ffz, ...slots.sevenTV, ...slots.twitch]
+        broadcastToTabs({ type: 'channel_emotes_update', emotes: partial, channelOwner: channelName })
+      }, 40)
+    }
+
+    const tasks = []
+    if (platform !== 'kick') {
+      tasks.push(fetchBTTVChannelEmotes(channelName, channelId).then(e => { slots.bttv = e || []; broadcastCurrent() }).catch(() => {}))
+      tasks.push(fetchFFZChannelEmotes(channelName).then(e => { slots.ffz = e || []; broadcastCurrent() }).catch(() => {}))
+      tasks.push(fetchTwitchChannelEmotes(channelName).then(e => { slots.twitch = e || []; broadcastCurrent() }).catch(() => {}))
+    }
+    tasks.push(fetch7TVChannelEmotes(channelName, channelId, platform).then(r => {
+      sevenTVResult = r
+      slots.sevenTV = r?.emotes || (Array.isArray(r) ? r : []) || []
+      broadcastCurrent()
+    }).catch(() => {}))
+
+    await Promise.all(tasks);
+    // Final consolidated broadcast (force-flush any pending coalesce)
+    if (coalesceTimer) { clearTimeout(coalesceTimer); coalesceTimer = null }
+    const sevenTVEmotes = slots.sevenTV
+    const sevenTVSetId = sevenTVResult?.setId || null
+    const bttvEmotes = slots.bttv
+    const ffzEmotes = slots.ffz
+    const twitchChannelEmotes = slots.twitch
     if (DEBUG) broadcastToTabs({ type: 'debug_log', msg: `${channelName} BTTV:${bttvEmotes.length} FFZ:${ffzEmotes.length} 7TV:${sevenTVEmotes.length} Twitch:${twitchChannelEmotes.length} HS:${heatsyncEmotes.length}` })
 
     // Store emotes for this specific channel (prune old entries to bound memory)
@@ -3278,6 +3303,17 @@ async function handleMessage(message, sender, sendResponse) {
       sendResponse({ received: true })
     })();
     return true; // Keep channel open for async response
+  } else if (message.type === 'update_channel_id') {
+    // Content script late-discovered the Twitch channel ID via early-inject MAIN-world.
+    // Cache it so subsequent fetches skip the GQL roundtrip; if current fetch is in flight
+    // without an ID, it stays in flight (we don't abort) but emote map will refresh on next nav.
+    if (message.channel && message.channelId) {
+      const ch = message.channel.toLowerCase()
+      twitchIdCache.set(ch, String(message.channelId))
+      log(' 📺 Late channel ID cached:', ch, '→', message.channelId)
+    }
+    sendResponse({ ok: true })
+    return true
   } else if (message.type === 'emote_sent') {
     // Content script detected user sent emote
     log(' 💬 Content script detected emote sent:', message.emoteName);
@@ -3552,24 +3588,24 @@ async function handleMessage(message, sender, sendResponse) {
 async function initialize() {
   log(' 🚀 Starting background script...');
 
-  // Load auth token (encrypted storage → cookie fallback)
-  try {
-    const token = await getAuthCookie();
-    if (token) {
-      log(' ✓ Loaded auth token');
-    }
-  } catch (err) {
-    log(' Could not load auth token:', err.message);
-  }
+  // Run auth load + storage batch reads + session restore in PARALLEL — all independent.
+  // Saves ~60-90ms of serial waits vs. awaiting them sequentially.
+  const tokenP = getAuthCookie().catch(err => { log(' Could not load auth token:', err.message); return null })
+  const storedP = browser.storage.local.get([
+    'user_info', 'channel_emotes_fetched_at', 'channel_emotes_map', 'seventv_emote_set_ids',
+    'muted_users', 'blocked_users', 'global_emotes', 'emote_inventory', 'blocked_emotes',
+    'local_blocked_emotes', 'youtube_channel_urls', 'badges_fetched_at',
+    'bttv_badge_map', 'ffz_badge_map', 'chatterino_badge_map', 'user_cosmetics_cache'
+  ]).catch(err => { log(' Storage restore failed:', err.message); return {} })
+  const sessionP = (browser.storage.session?.get('tab_channels') ?? Promise.resolve(null))
+    .catch(e => { console.warn('session storage restore failed:', e); return null })
+
+  // Kick off WebSocket connect AS SOON AS auth resolves — don't wait for storage to finish.
+  tokenP.then(() => connectWebSocket()).catch(() => {})
 
   // Batch-load all cached state from storage in ONE read
   try {
-    const stored = await browser.storage.local.get([
-      'user_info', 'channel_emotes_fetched_at', 'channel_emotes_map', 'seventv_emote_set_ids',
-      'muted_users', 'blocked_users', 'global_emotes', 'emote_inventory', 'blocked_emotes',
-      'local_blocked_emotes', 'youtube_channel_urls', 'badges_fetched_at',
-      'bttv_badge_map', 'ffz_badge_map', 'chatterino_badge_map', 'user_cosmetics_cache'
-    ]);
+    const stored = await storedP;
 
     if (stored.user_info?.username) {
       currentUsername = stored.user_info.username;
@@ -3648,9 +3684,9 @@ async function initialize() {
     log(' Storage restore failed:', err.message);
   }
 
-  // Restore tabChannels from session storage (survives worker restarts)
+  // Restore tabChannels from session storage (survives worker restarts) — already in flight from initialize()
   try {
-    const session = await browser.storage.session?.get('tab_channels')
+    const session = await sessionP
     if (session?.tab_channels) {
       // Validate restored tab IDs still exist
       const allTabs = await browser.tabs.query({})
@@ -3686,12 +3722,17 @@ async function initialize() {
   ]).then(() => {
     log(' ✓ All fetches complete - global:', globalEmotes.length, 'personal:', emoteInventory.length);
     broadcastToTabs({ type: 'loading_status', done: true });
-    // Persist fresh data (fire-and-forget, don't await)
-    browser.storage.local.set({
+    // Persist fresh data — single batched write (fire-and-forget, don't await)
+    const persist = {
       global_emotes: globalEmotes,
       emote_inventory: emoteInventory,
       blocked_emotes: Array.from(blockedEmotes)
-    }).catch(() => {});
+    }
+    if (pendingUserInfoToPersist) {
+      persist.user_info = pendingUserInfoToPersist
+      pendingUserInfoToPersist = null
+    }
+    browser.storage.local.set(persist).catch(() => {});
   }).catch(err => log(' Fetch error:', err.message));
 
   // Inventory refresh driven by chrome.alarms 'refresh-emote-inventory' (MV3 setInterval dies with SW)

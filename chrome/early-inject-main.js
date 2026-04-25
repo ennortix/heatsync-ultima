@@ -33,6 +33,17 @@
       delete channelIdToLogin[Object.keys(channelIdToLogin)[0]]
     }
     channelIdToLogin[id] = login
+    // Stamp dataset for ISOLATED-world content script to read synchronously when
+    // the captured login matches the current URL channel.
+    try {
+      const slug = location.pathname.match(/^\/([^/]+)/)?.[1]?.toLowerCase()
+      if (slug && login === slug && id) {
+        document.documentElement.dataset.hsTwitchChannelId = String(id)
+        document.documentElement.dataset.hsTwitchChannelLogin = login
+        // Also broadcast — content.js can react instantly without polling
+        window.postMessage({ type: 'heatsync-page-channel-id', channelId: String(id), login }, location.origin)
+      }
+    } catch {}
   }
 
   function handleHermesMessage(e) {
@@ -111,6 +122,48 @@
   HsWebSocket.CLOSED = OrigWebSocket.CLOSED
 
   safeOverride(window, 'WebSocket', HsWebSocket)
+
+  // ═══ Eager channel ID discovery ═══
+  // Twitch sometimes hydrates __NEXT_DATA__ or __APOLLO_STATE__ early; check periodically
+  // until we have an ID for the current URL slug.
+  function discoverChannelIdFromGlobals() {
+    const slug = location.pathname.match(/^\/([^/]+)/)?.[1]?.toLowerCase()
+    if (!slug) return
+    if (document.documentElement.dataset.hsTwitchChannelLogin === slug) return // already found
+    try {
+      const apollo = window.__APOLLO_STATE__ || window.__APOLLO_CLIENT__?.cache?.extract?.()
+      if (apollo) {
+        for (const [key, val] of Object.entries(apollo)) {
+          // Apollo cache keys often look like "User:12345" or "Channel:12345"
+          if (val?.login?.toLowerCase?.() === slug && val?.id) {
+            setChannelId(String(val.id), slug)
+            return
+          }
+          if (val?.__typename === 'User' && val?.login?.toLowerCase?.() === slug && val?.id) {
+            setChannelId(String(val.id), slug)
+            return
+          }
+        }
+      }
+    } catch {}
+    try {
+      const nextData = document.getElementById('__NEXT_DATA__')
+      if (nextData?.textContent) {
+        const data = JSON.parse(nextData.textContent)
+        const ch = data?.props?.pageProps?.channelId || data?.props?.relayEnvironment?.store?.['client:root']?.channel?.id
+        if (ch) setChannelId(String(ch), slug)
+      }
+    } catch {}
+  }
+  // Try once now, then poll briefly until found or 10s elapses
+  discoverChannelIdFromGlobals()
+  let _idDiscoveryAttempts = 0
+  const _idDiscoveryPoll = setInterval(() => {
+    discoverChannelIdFromGlobals()
+    if (++_idDiscoveryAttempts >= 20 || document.documentElement.dataset.hsTwitchChannelLogin) {
+      clearInterval(_idDiscoveryPoll)
+    }
+  }, 500)
 
   // ═══ Twitch GQL Interception ═══
   // Captures persisted query hashes, integrity tokens, and response data

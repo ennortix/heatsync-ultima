@@ -706,11 +706,12 @@ async function fetchBTTVChannelEmotes(channelName, channelId = null) {
       twitchId = await lookupTwitchUserId(channelName)
       if (!twitchId) {
         log(' BTTV: Could not resolve Twitch ID for', channelName)
-        return []
+        return null // transient: ID lookup failed, retry next time
       }
     }
     const userResponse = await fetchWithTimeout(`https://api.betterttv.net/3/cached/users/twitch/${twitchId}`);
-    if (!userResponse.ok) return [];
+    if (userResponse.status === 404) { userResponse.body?.cancel(); return [] } // genuine: user has no BTTV
+    if (!userResponse.ok) { userResponse.body?.cancel(); return null } // transient: 5xx etc.
 
     const userData = await userResponse.json();
     const emotes = [...(userData.channelEmotes || []), ...(userData.sharedEmotes || [])];
@@ -722,8 +723,8 @@ async function fetchBTTVChannelEmotes(channelName, channelId = null) {
       hash: e.id
     })));
   } catch (error) {
-    log(' BTTV channel emotes not found for:', channelName);
-    return [];
+    log(' BTTV channel emotes error for:', channelName, error?.message);
+    return null // transient: network/timeout
   }
 }
 
@@ -731,7 +732,8 @@ async function fetchBTTVChannelEmotes(channelName, channelId = null) {
 async function fetchFFZChannelEmotes(channelName) {
   try {
     const response = await fetchWithTimeout(`https://api.frankerfacez.com/v1/room/${channelName}`);
-    if (!response.ok) { response.body?.cancel(); return []; }
+    if (response.status === 404) { response.body?.cancel(); return [] } // genuine: channel has no FFZ
+    if (!response.ok) { response.body?.cancel(); return null } // transient: 5xx etc.
 
     const data = await response.json();
     const emotes = [];
@@ -750,8 +752,8 @@ async function fetchFFZChannelEmotes(channelName) {
     }
     return sanitizeEmoteList(emotes);
   } catch (error) {
-    log(' FFZ channel emotes not found for:', channelName);
-    return [];
+    log(' FFZ channel emotes error for:', channelName, error?.message);
+    return null // transient
   }
 }
 
@@ -837,14 +839,15 @@ async function fetch7TVChannelEmotes(channelName, channelId = null, platform = '
       }
       if (!kickId) {
         log(' 7TV: Could not resolve Kick user ID for', channelName);
-        return [];
+        return null // transient: ID lookup failed
       }
       identifier = kickId;
       response = await fetchWithTimeout(`https://7tv.io/v3/users/kick/${kickId}`);
+      if (response.status === 404) { response.body?.cancel(); return [] } // genuine: user has no 7TV
       if (!response.ok) {
         response.body?.cancel()
         log(' 7TV: Kick lookup failed (' + response.status + ')');
-        return [];
+        return null // transient: 5xx etc.
       }
       data = await response.json();
       log(' ✅ 7TV: Kick lookup succeeded (id:', kickId + ')');
@@ -872,15 +875,22 @@ async function fetch7TVChannelEmotes(channelName, channelId = null, platform = '
       if (DEBUG) broadcastToTabs({ type: 'debug_log', msg: `7TV fetch ${channelName}: ${sevenTvUrl} → ${response.status}` })
 
       if (!response.ok) {
+        const firstStatus = response.status
         response.body?.cancel()
-        log(' 7TV: Twitch ID lookup failed (' + response.status + '), trying username fallback...');
+        log(' 7TV: Twitch ID lookup failed (' + firstStatus + '), trying username fallback...');
 
         // Fallback to username-based lookup
         response = await fetchWithTimeout(`https://7tv.io/v3/users/${channelName}`);
+        if (response.status === 404) {
+          response.body?.cancel()
+          // Both Twitch ID and username 404 = user genuinely has no 7TV account
+          if (firstStatus === 404) return []
+          return null // mixed: first was 5xx, second was 404 — treat as transient
+        }
         if (!response.ok) {
           response.body?.cancel()
           log(' 7TV: Username lookup also failed (' + response.status + ')');
-          return [];
+          return null // transient: 5xx etc.
         }
 
         data = await response.json();
@@ -894,7 +904,7 @@ async function fetch7TVChannelEmotes(channelName, channelId = null, platform = '
     const emoteSet = data.emote_set;
     if (!emoteSet) {
       log(' 7TV: No emote set found for', identifier);
-      return [];
+      return [] // genuine: user has no emote set
     }
 
     const emoteList = emoteSet.emotes || [];
@@ -919,7 +929,7 @@ async function fetch7TVChannelEmotes(channelName, channelId = null, platform = '
   } catch (error) {
     console.error('[hs-bg] 7TV FETCH ERROR for', channelName, ':', error?.message || error);
     if (DEBUG) broadcastToTabs({ type: 'debug_log', msg: `7TV ERROR ${channelName}: ${error?.message || error}` })
-    return [];
+    return null // transient: network/timeout
   }
 }
 
@@ -994,24 +1004,39 @@ async function resolve7TVCosmeticIds(ids) {
 }
 
 let cosmeticsSaveTimer = null
-const COSMETICS_STORAGE_MAX = 200
+let cosmeticsLastFlushAt = 0
+const COSMETICS_STORAGE_MAX = USER_COSMETICS_MAX // match in-memory cap so eviction doesn't lose data
+const COSMETICS_FORCE_FLUSH_INTERVAL = 30000 // when at-cap, flush at most every 30s
+
+function flushCosmeticsToStorage() {
+  cosmeticsLastFlushAt = Date.now()
+  const entries = [...userCosmeticsCache.entries()]
+    .filter(([, v]) => Date.now() - v.fetchedAt < USER_COSMETICS_TTL)
+    .slice(-COSMETICS_STORAGE_MAX)
+  browser.storage.local.set({
+    user_cosmetics_cache: entries.map(([k, v]) => [k, { paint: v.paint, badge: v.badge, fetchedAt: v.fetchedAt }])
+  }).catch(() => {})
+}
 
 function debounceSaveCosmetics() {
   if (cosmeticsSaveTimer) clearTimeout(cosmeticsSaveTimer)
   cosmeticsSaveTimer = setTimeout(() => {
     cosmeticsSaveTimer = null
-    const entries = [...userCosmeticsCache.entries()]
-      .filter(([, v]) => Date.now() - v.fetchedAt < USER_COSMETICS_TTL)
-      .slice(-COSMETICS_STORAGE_MAX)
-    browser.storage.local.set({
-      user_cosmetics_cache: entries.map(([k, v]) => [k, { paint: v.paint, badge: v.badge, fetchedAt: v.fetchedAt }])
-    }).catch(() => {})
+    flushCosmeticsToStorage()
   }, 5000)
 }
 
 function setUserCosmetic(twitchId, cosmetic) {
   if (userCosmeticsCache.size >= USER_COSMETICS_MAX) {
     userCosmeticsCache.delete(userCosmeticsCache.keys().next().value)
+    // At-cap path: flush immediately (rate-limited) so eviction can't lose data
+    // before the 5s debounce fires.
+    if (Date.now() - cosmeticsLastFlushAt > COSMETICS_FORCE_FLUSH_INTERVAL) {
+      if (cosmeticsSaveTimer) { clearTimeout(cosmeticsSaveTimer); cosmeticsSaveTimer = null }
+      userCosmeticsCache.set(twitchId, { ...(cosmetic || { paint: null, badge: null }), fetchedAt: Date.now() })
+      flushCosmeticsToStorage()
+      return
+    }
   }
   userCosmeticsCache.set(twitchId, { ...(cosmetic || { paint: null, badge: null }), fetchedAt: Date.now() })
   debounceSaveCosmetics()
@@ -1159,6 +1184,7 @@ async function fetchChannelOwnerEmotes(channelName, channelId = null, platform =
     // until everything's done"). Keep slots fixed so priority order is stable.
     broadcastToTabs({ type: 'loading_status', text: 'fetching third-party emotes...' });
     const slots = { bttv: [], ffz: [], sevenTV: [], twitch: [] }
+    const failed = { bttv: false, ffz: false, sevenTV: false, twitch: false }
     let sevenTVResult = null
     let coalesceTimer = null
     const broadcastCurrent = () => {
@@ -1172,15 +1198,16 @@ async function fetchChannelOwnerEmotes(channelName, channelId = null, platform =
 
     const tasks = []
     if (platform !== 'kick') {
-      tasks.push(fetchBTTVChannelEmotes(channelName, channelId).then(e => { slots.bttv = e || []; broadcastCurrent() }).catch(() => {}))
-      tasks.push(fetchFFZChannelEmotes(channelName).then(e => { slots.ffz = e || []; broadcastCurrent() }).catch(() => {}))
-      tasks.push(fetchTwitchChannelEmotes(channelName).then(e => { slots.twitch = e || []; broadcastCurrent() }).catch(() => {}))
+      tasks.push(fetchBTTVChannelEmotes(channelName, channelId).then(e => { if (e === null) failed.bttv = true; slots.bttv = e || []; broadcastCurrent() }).catch(() => { failed.bttv = true }))
+      tasks.push(fetchFFZChannelEmotes(channelName).then(e => { if (e === null) failed.ffz = true; slots.ffz = e || []; broadcastCurrent() }).catch(() => { failed.ffz = true }))
+      tasks.push(fetchTwitchChannelEmotes(channelName).then(e => { if (e === null) failed.twitch = true; slots.twitch = e || []; broadcastCurrent() }).catch(() => { failed.twitch = true }))
     }
     tasks.push(fetch7TVChannelEmotes(channelName, channelId, platform).then(r => {
+      if (r === null) { failed.sevenTV = true; slots.sevenTV = []; broadcastCurrent(); return }
       sevenTVResult = r
       slots.sevenTV = r?.emotes || (Array.isArray(r) ? r : []) || []
       broadcastCurrent()
-    }).catch(() => {}))
+    }).catch(() => { failed.sevenTV = true }))
 
     await Promise.all(tasks);
     // Final consolidated broadcast (force-flush any pending coalesce)
@@ -1194,8 +1221,12 @@ async function fetchChannelOwnerEmotes(channelName, channelId = null, platform =
 
     // Store emotes for this specific channel (prune old entries to bound memory)
     const emotes = [...heatsyncEmotes, ...bttvEmotes, ...ffzEmotes, ...sevenTVEmotes, ...twitchChannelEmotes];
+    const anyFailed = failed.bttv || failed.ffz || failed.sevenTV || failed.twitch
     channelEmotesMap[channelName] = emotes;
-    channelEmotesFetchedAt[channelName] = Date.now();
+    // If any provider had a transient failure, backdate fetchedAt so the next
+    // channel join refetches within ~60s (regardless of empty/non-empty TTL).
+    channelEmotesFetchedAt[channelName] = anyFailed ? (Date.now() - CHANNEL_EMOTES_TTL + 60000) : Date.now();
+    if (anyFailed) log(' ⚠️ Channel emotes fetched with failures', failed, '— will retry in ~60s')
     const channelKeys = Object.keys(channelEmotesMap).filter(k => channelEmotesMap[k] !== 'loading');
     if (channelKeys.length > 20) {
       for (const old of channelKeys.slice(0, channelKeys.length - 20)) {
@@ -1343,10 +1374,11 @@ async function fetchTwitchGlobalEmotes() {
 async function fetchTwitchChannelEmotes(channelName) {
   try {
     const response = await fetchWithTimeout(`${API_URL}/api/emotes/twitch/channel/${channelName}`);
+    if (response.status === 404) { response.body?.cancel(); return [] } // genuine: channel has no twitch emotes
     if (!response.ok) {
       response.body?.cancel()
       log(' Twitch channel emotes failed for', channelName, ':', response.status);
-      return [];
+      return null // transient: 5xx etc.
     }
 
     const data = await response.json();
@@ -1363,8 +1395,8 @@ async function fetchTwitchChannelEmotes(channelName) {
       emote_type: e.emote_type
     })));
   } catch (error) {
-    log(' Twitch channel emotes error for', channelName, ':', error);
-    return [];
+    log(' Twitch channel emotes error for', channelName, ':', error?.message);
+    return null // transient
   }
 }
 

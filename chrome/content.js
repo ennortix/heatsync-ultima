@@ -5490,11 +5490,18 @@ function get7TVBadgeUrl(badge) {
 // Apply BTTV/FFZ badges and 7TV paints/badges to a message element
 function applyCosmeticsToMessage(el, userId, preQueriedNameEl) {
   if (!userId) return
+  // Fast path: same user + already fully applied → no work, no queries
+  if (el.dataset.hsCosmeticAppliedFor === userId && el.dataset.hsCosmeticDone === '1') return
+
   // Detect recycled DOM node — clear stale cosmetics if userId changed
   const prevUserId = el.dataset.hsCosmeticAppliedFor
   if (prevUserId && prevUserId !== userId) {
     el.querySelectorAll('.hs-cosmetic-badge').forEach(b => b.remove())
     delete el.dataset.hsCosmeticDone
+    delete el.dataset.hsBttvDone
+    delete el.dataset.hsFfzDone
+    delete el.dataset.hsChatterinoDone
+    delete el.dataset.hs7tvBadgeDone
     const oldNameEl = preQueriedNameEl || el.querySelector('.chat-author__display-name, [data-a-target="chat-message-username"]')
     if (oldNameEl) {
       delete oldNameEl.dataset.hsPaintApplied
@@ -5510,8 +5517,8 @@ function applyCosmeticsToMessage(el, userId, preQueriedNameEl) {
   const nameEl = preQueriedNameEl || el.querySelector('.chat-author__display-name, [data-a-target="chat-message-username"]')
   if (!nameEl) return
 
-  // BTTV badge
-  if (bttvBadgeMap.has(userId) && !el.querySelector('.hs-bttv-badge')) {
+  // BTTV badge — dataset flag avoids querySelector
+  if (!el.dataset.hsBttvDone && bttvBadgeMap.has(userId)) {
     const b = bttvBadgeMap.get(userId)
     const img = document.createElement('img')
     img.className = 'hs-bttv-badge hs-cosmetic-badge'
@@ -5519,10 +5526,11 @@ function applyCosmeticsToMessage(el, userId, preQueriedNameEl) {
     img.title = b.description
     img.alt = b.description
     nameEl.parentNode.insertBefore(img, nameEl)
+    el.dataset.hsBttvDone = '1'
   }
 
   // FFZ badges
-  if (ffzBadgeMap.has(userId) && !el.querySelector('.hs-ffz-badge')) {
+  if (!el.dataset.hsFfzDone && ffzBadgeMap.has(userId)) {
     for (const b of ffzBadgeMap.get(userId)) {
       const img = document.createElement('img')
       img.className = 'hs-ffz-badge hs-cosmetic-badge'
@@ -5532,10 +5540,11 @@ function applyCosmeticsToMessage(el, userId, preQueriedNameEl) {
       if (b.color) img.style.backgroundColor = b.color
       nameEl.parentNode.insertBefore(img, nameEl)
     }
+    el.dataset.hsFfzDone = '1'
   }
 
   // Chatterino badge
-  if (chatterinoBadgeMap.has(userId) && !el.querySelector('.hs-chatterino-badge')) {
+  if (!el.dataset.hsChatterinoDone && chatterinoBadgeMap.has(userId)) {
     const b = chatterinoBadgeMap.get(userId)
     const img = document.createElement('img')
     img.className = 'hs-chatterino-badge hs-cosmetic-badge'
@@ -5543,12 +5552,13 @@ function applyCosmeticsToMessage(el, userId, preQueriedNameEl) {
     img.title = b.tooltip
     img.alt = b.tooltip
     nameEl.parentNode.insertBefore(img, nameEl)
+    el.dataset.hsChatterinoDone = '1'
   }
 
   // 7TV cosmetics
   const cosmetic = cosmeticsCache.get(userId)
   if (cosmetic) {
-    if (cosmetic.badge && !el.querySelector('.hs-7tv-badge')) {
+    if (cosmetic.badge && !el.dataset.hs7tvBadgeDone) {
       const url = get7TVBadgeUrl(cosmetic.badge)
       if (url) {
         const img = document.createElement('img')
@@ -5557,6 +5567,7 @@ function applyCosmeticsToMessage(el, userId, preQueriedNameEl) {
         img.title = cosmetic.badge.tooltip || cosmetic.badge.name || '7TV'
         img.alt = '7TV'
         nameEl.parentNode.insertBefore(img, nameEl)
+        el.dataset.hs7tvBadgeDone = '1'
       }
     }
     if (cosmetic.paint && !nameEl.dataset.hsPaintApplied) {

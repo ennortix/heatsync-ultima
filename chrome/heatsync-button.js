@@ -1861,7 +1861,10 @@
     if (currentTab === 'channel') {
       emotes = channelEmotesCache;
     } else if (currentTab === 'global') {
-      emotes = globalEmotesCache;
+      // Channel emotes shadow globals — same name in both means channel wins.
+      // Hide from the global tab so users find it under "channel".
+      const channelNames = new Set(channelEmotesCache.map(e => e.name))
+      emotes = globalEmotesCache.filter(e => !channelNames.has(e.name))
     } else if (currentTab === 'mine') {
       emotes = inventoryEmotesCache;
     } else if (currentTab === 'emoji') {
@@ -2224,7 +2227,11 @@
     const countGlobal = document.getElementById('count-global');
     const countMine = document.getElementById('count-mine');
     if (countChannel) countChannel.textContent = channelEmotesCache.length || '0';
-    if (countGlobal) countGlobal.textContent = globalEmotesCache.length || '0';
+    if (countGlobal) {
+      const channelNames = new Set(channelEmotesCache.map(e => e.name))
+      const dedupedGlobal = globalEmotesCache.filter(e => !channelNames.has(e.name))
+      countGlobal.textContent = dedupedGlobal.length || '0';
+    }
     if (countMine) countMine.textContent = inventoryEmotesCache.length || '0';
   }
 

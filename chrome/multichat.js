@@ -950,7 +950,9 @@ function parseIrcLine(raw, channel) {
         id: tags.id || '',
         replyTo: tags['reply-parent-display-name'] ? {
           user: decodeURIComponent(tags['reply-parent-display-name']),
-          text: tags['reply-parent-msg-body'] ? decodeURIComponent(tags['reply-parent-msg-body'].replace(/\\s/g, ' ')) : ''
+          text: tags['reply-parent-msg-body'] ? decodeURIComponent(tags['reply-parent-msg-body'].replace(/\\s/g, ' ')) : '',
+          id: tags['reply-parent-msg-id'] || '',
+          threadId: tags['reply-thread-parent-msg-id'] || tags['reply-parent-msg-id'] || ''
         } : null
       }
       // Parse Twitch IRC emote positions → { name: url } map for rendering
@@ -1588,7 +1590,9 @@ class KickChat {
           platform: 'kick',
           replyTo: d.replyTo ? {
             user: d.replyTo.username || 'unknown',
-            text: d.replyTo.content || ''
+            text: d.replyTo.content || '',
+            id: d.replyTo.id || d.replyTo.message_id || '',
+            threadId: d.replyTo.thread_id || d.replyTo.id || d.replyTo.message_id || ''
           } : null
         }
         this.channels.get(channel).push(msg)
@@ -10959,6 +10963,47 @@ const STORAGE_KEY = 'heatsync_multichat';
           renderMessages(currentTab);
         }
       });
+
+      // Hover-thread highlight — yellow border on related reply chain (mirrors website)
+      let _threadHover = null
+      const clearThreadHover = () => {
+        if (!_threadHover) return
+        for (const el of msgsEl.querySelectorAll('.hs-mc-thread-highlight')) {
+          el.classList.remove('hs-mc-thread-highlight')
+        }
+        _threadHover = null
+      }
+      msgsEl.addEventListener('mouseover', (e) => {
+        const msg = e.target.closest('.hs-mc-msg')
+        if (!msg || msg === _threadHover) return
+        const own = msg.dataset.msgId || ''
+        const parent = msg.dataset.replyId || ''
+        const root = msg.dataset.replyThreadId || ''
+        if (!parent && !root) {
+          // Not a reply — only highlight if it has children (other msgs replying to it)
+          if (!own) return clearThreadHover()
+          const childSel = `[data-reply-id="${CSS.escape(own)}"], [data-reply-thread-id="${CSS.escape(own)}"]`
+          if (!msgsEl.querySelector(childSel)) return clearThreadHover()
+        }
+        clearThreadHover()
+        _threadHover = msg
+        const ids = new Set([own, parent, root].filter(Boolean))
+        const sels = []
+        for (const id of ids) {
+          const safe = CSS.escape(id)
+          sels.push(`[data-msg-id="${safe}"]`, `[data-reply-id="${safe}"]`, `[data-reply-thread-id="${safe}"]`)
+        }
+        for (const el of msgsEl.querySelectorAll(sels.join(','))) {
+          el.classList.add('hs-mc-thread-highlight')
+        }
+      }, { passive: true, signal: mcSignal })
+      msgsEl.addEventListener('mouseout', (e) => {
+        if (!_threadHover) return
+        if (_threadHover.contains(e.relatedTarget)) return
+        const stillIn = e.relatedTarget && _threadHover === e.relatedTarget.closest?.('.hs-mc-msg')
+        if (stillIn) return
+        clearThreadHover()
+      }, { passive: true, signal: mcSignal })
     }, 100);
 
     return overlay;
@@ -12505,6 +12550,13 @@ const STORAGE_KEY = 'heatsync_multichat';
         background: rgba(255,255,255,0.04);
       }
       .hs-mc-msg:hover {
+      }
+      .hs-mc-msg.hs-mc-thread-highlight {
+        outline: 2px solid #ffff00 !important;
+        outline-offset: -2px !important;
+        background: #000 !important;
+        position: relative;
+        z-index: 2;
       }
       .hs-mc-msg[data-msg-id] {
         position: relative;
@@ -16051,6 +16103,11 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
       replyBtn.textContent = '↩'
       replyBtn.title = 'Reply'
       div.appendChild(replyBtn)
+    }
+    // Reply-thread linkage for hover highlight
+    if (m.replyTo) {
+      if (m.replyTo.id) div.dataset.replyId = m.replyTo.id
+      if (m.replyTo.threadId) div.dataset.replyThreadId = m.replyTo.threadId
     }
     return div;
   }

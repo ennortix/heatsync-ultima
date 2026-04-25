@@ -38,7 +38,9 @@ function parseIrcLine(raw, channel) {
         id: tags.id || '',
         replyTo: tags['reply-parent-display-name'] ? {
           user: decodeURIComponent(tags['reply-parent-display-name']),
-          text: tags['reply-parent-msg-body'] ? decodeURIComponent(tags['reply-parent-msg-body'].replace(/\\s/g, ' ')) : ''
+          text: tags['reply-parent-msg-body'] ? decodeURIComponent(tags['reply-parent-msg-body'].replace(/\\s/g, ' ')) : '',
+          id: tags['reply-parent-msg-id'] || '',
+          threadId: tags['reply-thread-parent-msg-id'] || tags['reply-parent-msg-id'] || ''
         } : null
       }
       // Parse Twitch IRC emote positions → { name: url } map for rendering
@@ -676,7 +678,9 @@ class KickChat {
           platform: 'kick',
           replyTo: d.replyTo ? {
             user: d.replyTo.username || 'unknown',
-            text: d.replyTo.content || ''
+            text: d.replyTo.content || '',
+            id: d.replyTo.id || d.replyTo.message_id || '',
+            threadId: d.replyTo.thread_id || d.replyTo.id || d.replyTo.message_id || ''
           } : null
         }
         this.channels.get(channel).push(msg)

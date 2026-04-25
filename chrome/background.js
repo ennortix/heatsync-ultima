@@ -13,11 +13,21 @@ log('🔥 BACKGROUND SCRIPT LOADING...');
 // Chrome minimum alarm period is 0.5 minutes (30s), which resets the inactivity timer
 browser.alarms?.create('keepalive', { periodInMinutes: 0.5 });
 browser.alarms?.create('refresh-global-emotes', { periodInMinutes: 1440 });
+browser.alarms?.create('refresh-emote-inventory', { periodInMinutes: 1 });
+browser.alarms?.create('prune-expired-mutes', { periodInMinutes: 1 });
 browser.alarms?.onAlarm?.addListener((alarm) => {
   if (alarm.name === 'keepalive') {
     // Just existing is enough to keep the worker alive
   } else if (alarm.name === 'refresh-global-emotes') {
     fetchGlobalEmotes().catch(() => {})
+  } else if (alarm.name === 'refresh-emote-inventory') {
+    if (typeof fetchEmoteInventory === 'function') {
+      try { const p = fetchEmoteInventory(); if (p?.catch) p.catch(() => {}) } catch (e) {}
+    }
+  } else if (alarm.name === 'prune-expired-mutes') {
+    if (typeof pruneExpiredMutes === 'function') {
+      try { pruneExpiredMutes() } catch (e) {}
+    }
   }
 });
 
@@ -227,7 +237,11 @@ function fetchWithTimeout(url, opts = {}, ms = 10000) {
   if (opts.signal) {
     opts.signal.addEventListener('abort', () => ctrl.abort())
   }
-  return fetch(url, { ...opts, signal: ctrl.signal }).finally(() => clearTimeout(timer))
+  // Default credentials: 'omit' for third-party APIs (no cookie leakage to 7TV/FFZ/BTTV/etc).
+  // heatsync.org calls override with credentials: 'include' explicitly.
+  const isHeatsync = typeof url === 'string' && /^https?:\/\/(www\.)?heatsync\.org/.test(url)
+  const credentials = opts.credentials ?? (isHeatsync ? 'include' : 'omit')
+  return fetch(url, { ...opts, credentials, signal: ctrl.signal }).finally(() => clearTimeout(timer))
 }
 
 // ============================================
@@ -1932,8 +1946,7 @@ function pruneExpiredMutes() {
   }
 }
 
-// Prune expired mutes every 60s
-trackInterval(setInterval(pruneExpiredMutes, 60000));
+// Prune expired mutes — driven by chrome.alarms 'prune-expired-mutes' (MV3 SW survives across wakeups)
 
 // Cached tab list to avoid repeated browser.tabs.query IPC on burst broadcasts
 let _cachedTabs = null
@@ -3642,8 +3655,7 @@ async function initialize() {
     }).catch(() => {});
   }).catch(err => log(' Fetch error:', err.message));
 
-  // Refresh inventory every 60 seconds
-  trackInterval(setInterval(fetchEmoteInventory, 60000));
+  // Inventory refresh driven by chrome.alarms 'refresh-emote-inventory' (MV3 setInterval dies with SW)
 
   // Global emotes refresh handled by chrome.alarms (MV3 setInterval unreliable for long durations)
 

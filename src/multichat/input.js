@@ -220,7 +220,7 @@ function initInput() {
       const hl = document.getElementById('hs-mc-input-highlight')
       if (hl) hl.scrollLeft = input.scrollLeft
     })
-  })
+  }, { passive: true })
   input.addEventListener('input', () => {
     const hasText = (input.value || input.textContent || '').trim().length > 0
     if (hasText) showInputBar()

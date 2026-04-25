@@ -2015,6 +2015,18 @@ function _onMessageMain(message) {
         log(' 🚫 Rejecting broadcast for removed emote:', message.emoteName);
         break;
       }
+      // Defense-in-depth: re-validate emote URL at content-script intake.
+      // Background already filters, but content trusts no one.
+      {
+        const u = message.emoteData?.url
+        if (typeof u !== 'string' || !u) break
+        const isAbs = u.startsWith('http://') || u.startsWith('https://')
+        const isRel = u.startsWith('/')
+        if (!isAbs && !isRel) break
+        if (isAbs && !u.startsWith('https://')) break
+        if (typeof message.emoteName !== 'string' || message.emoteName.length === 0 || message.emoteName.length > 100) break
+        if (typeof message.username !== 'string' || !/^[a-zA-Z0-9_]{1,32}$/.test(message.username)) break
+      }
       // Another user sent an emote, store for upcoming message
       const broadcastKey = `${message.username.toLowerCase()}:${message.emoteName}`;
       log(' 📥 RECEIVED BROADCAST:', {
@@ -2371,7 +2383,7 @@ async function backfillChatHistory() {
   log(' 📜 Backfilling chat history for', channel)
 
   try {
-    const resp = await fetch(`https://recent-messages.robotty.de/api/v2/recent-messages/${channel}?limit=500`, { signal: AbortSignal.timeout(15000) })
+    const resp = await fetch(`https://recent-messages.robotty.de/api/v2/recent-messages/${channel}?limit=500`, { credentials: 'omit', signal: AbortSignal.timeout(15000) })
     if (!resp.ok) {
       log(' Backfill fetch failed:', resp.status)
       return
@@ -2545,6 +2557,7 @@ const cosmeticsCache = new Map()
 const COSMETICS_TTL = 30 * 60 * 1000
 const COSMETICS_MAX = 500
 const cosmeticsPending = new Set()
+const COSMETICS_PENDING_MAX = 500
 let cosmeticsBatchTimer = null
 
 // Kick cosmetics (7TV paints/badges by username)
@@ -3645,16 +3658,11 @@ function stackAdjacentOverlayEmotes(messageElement, allEmotes) {
         if (!img.complete) {
           img.onload = () => {
             if (!stackContainer.isConnected) return
-            // Double rAF ensures paint is complete before re-centering
             requestAnimationFrame(() => {
-              requestAnimationFrame(() => {
-                if (!stackContainer.isConnected) return
-                const overlays = stackContainer.querySelectorAll('.heatsync-overlay');
-                overlays.forEach(overlay => {
-                  overlay.style.transform = 'none';
-                  void overlay.offsetHeight;
-                  overlay.style.transform = '';
-                });
+              if (!stackContainer.isConnected) return
+              const overlays = stackContainer.querySelectorAll('.heatsync-overlay');
+              overlays.forEach(overlay => {
+                overlay.style.transform = ''
               });
             });
           };
@@ -3950,14 +3958,10 @@ function replaceEmotesWithStacking(element, allEmotes) {
         img.onload = () => {
           if (!stackContainer.isConnected) return
           requestAnimationFrame(() => {
-            requestAnimationFrame(() => {
-              if (!stackContainer.isConnected) return
-              const overlays = stackContainer.querySelectorAll('.heatsync-overlay');
-              overlays.forEach(overlay => {
-                overlay.style.transform = 'none';
-                void overlay.offsetHeight;
-                overlay.style.transform = '';
-              });
+            if (!stackContainer.isConnected) return
+            const overlays = stackContainer.querySelectorAll('.heatsync-overlay');
+            overlays.forEach(overlay => {
+              overlay.style.transform = ''
             });
           });
         };
@@ -4547,10 +4551,16 @@ function updateEmoteState(hash, emoteName, state) {
   }
 
   function safeUrl(url) {
-    if (!url) return ''
+    if (!url || typeof url !== 'string') return ''
+    // Defense-in-depth: explicit deny before parsing — guards against URL() oddities
+    // (lone strings like "javascript:alert(1)" do parse and return that protocol)
+    const head = url.trim().slice(0, 32).toLowerCase()
+    if (head.startsWith('javascript:') || head.startsWith('data:') ||
+        head.startsWith('vbscript:') || head.startsWith('blob:') ||
+        head.startsWith('file:') || head.startsWith('about:')) return ''
     try {
       const u = new URL(url)
-      return ['https:', 'http:'].includes(u.protocol) ? u.href : ''
+      return (u.protocol === 'https:' || u.protocol === 'http:') ? u.href : ''
     } catch { return '' }
   }
 
@@ -5496,6 +5506,14 @@ function queueCosmeticsLookup(userId) {
   const cached = cosmeticsCache.get(userId)
   if (cached && Date.now() - cached.fetchedAt < COSMETICS_TTL) return
   cosmeticsPending.add(userId)
+  if (cosmeticsPending.size >= COSMETICS_PENDING_MAX) {
+    if (cosmeticsBatchTimer) {
+      cleanup.clearTimeout(cosmeticsBatchTimer)
+      cosmeticsBatchTimer = null
+    }
+    flushCosmeticsBatch()
+    return
+  }
   if (!cosmeticsBatchTimer) {
     cosmeticsBatchTimer = cleanup.setTimeout(() => {
       cosmeticsBatchTimer = null
@@ -5671,6 +5689,14 @@ function queueKickCosmeticsLookup(kickSlug) {
   const cached = kickCosmeticsCache.get(kickSlug)
   if (cached && Date.now() - cached.fetchedAt < COSMETICS_TTL) return
   kickCosmeticsPending.add(kickSlug)
+  if (kickCosmeticsPending.size >= COSMETICS_PENDING_MAX) {
+    if (kickCosmeticsBatchTimer) {
+      cleanup.clearTimeout(kickCosmeticsBatchTimer)
+      kickCosmeticsBatchTimer = null
+    }
+    flushKickCosmeticsBatch()
+    return
+  }
   if (!kickCosmeticsBatchTimer) {
     kickCosmeticsBatchTimer = cleanup.setTimeout(() => {
       kickCosmeticsBatchTimer = null
@@ -5855,19 +5881,21 @@ function escapeRegex(str) {
   return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-// Create emote matching regex that handles both word and non-word character emotes
-// \b doesn't work for emotes like ")))" since ) is not a word character
+// Create emote matching regex that handles both word and non-word character emotes.
+// \b doesn't work for emotes like ")))" since ) is not a word character.
+// Cache per-emote-name so we don't recompile on retroactive replacement passes.
+const _emoteRegexCache = new Map()
 function createEmoteRegex(emoteName) {
-  const escaped = escapeRegex(emoteName);
-  // Check if emote contains any word characters
-  const hasWordChars = /\w/.test(emoteName);
-  if (hasWordChars) {
-    // Use word boundaries for emotes with letters/numbers
-    return new RegExp(`\\b${escaped}\\b`, 'g');
-  } else {
-    // Use whitespace/boundary lookahead for symbol-only emotes like ")))"
-    return new RegExp(`(?<=^|\\s)${escaped}(?=\\s|$)`, 'g');
-  }
+  const cached = _emoteRegexCache.get(emoteName)
+  if (cached) { cached.lastIndex = 0; return cached }
+  const escaped = escapeRegex(emoteName)
+  const hasWordChars = /\w/.test(emoteName)
+  const re = hasWordChars
+    ? new RegExp(`\\b${escaped}\\b`, 'g')
+    : new RegExp(`(?<=^|\\s)${escaped}(?=\\s|$)`, 'g')
+  if (_emoteRegexCache.size > 5000) _emoteRegexCache.clear()
+  _emoteRegexCache.set(emoteName, re)
+  return re
 }
 
 // Watch for new messages (MutationObserver)
@@ -6742,10 +6770,16 @@ cleanup.setInterval(() => {
   }
 }, 10000, 'periodic-rescan');
 
-// Flush message cache on page unload so we don't lose the last 5s
-window.addEventListener('beforeunload', () => {
+// Flush message cache on page hide/unload so we don't lose the last 5s.
+// pagehide+visibilitychange are more reliable than beforeunload on mobile/bfcache.
+function flushMsgCacheNow() {
   if (msgCacheSaveTimer) { clearTimeout(msgCacheSaveTimer); msgCacheSaveTimer = null }
   saveMsgCache()
+}
+window.addEventListener('pagehide', flushMsgCacheNow, { signal })
+window.addEventListener('beforeunload', flushMsgCacheNow, { signal })
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') flushMsgCacheNow()
 }, { signal })
 
 // Auto-claim Twitch channel points bonus

@@ -8,5 +8,8 @@
     "build:firefox": "bun run build.js firefox",
     "package": "bun run build.js --package"
   },
-  "type": "module"
+  "type": "module",
+  "devDependencies": {
+    "esbuild": "^0.28.0"
+  }
 }

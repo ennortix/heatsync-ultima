@@ -18,6 +18,7 @@ import { readFileSync, writeFileSync, mkdirSync, cpSync, existsSync, rmSync, rea
 import { join, dirname } from 'path'
 import { fileURLToPath } from 'url'
 import { execSync } from 'child_process'
+import { transformSync } from 'esbuild'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
@@ -257,6 +258,42 @@ function deploy() {
   console.log('✓ Deployed')
 }
 
+// Minify a content script in place inside its dist dir.
+// Preserves the IIFE wrapper; safe-mode flags so we don't break runtime semantics.
+function minifyDistFile(outDir, file) {
+  const path = join(outDir, file)
+  if (!existsSync(path)) return
+  const src = readFileSync(path, 'utf8')
+  try {
+    const result = transformSync(src, {
+      loader: 'js',
+      minify: true,
+      target: 'es2020',
+      legalComments: 'none',
+      keepNames: true, // helps stack traces in prod
+    })
+    writeFileSync(path, result.code)
+  } catch (e) {
+    console.warn(`  ⚠ minify ${file} skipped: ${e.message?.split('\n')[0]}`)
+  }
+}
+
+function minifyDist(outDir) {
+  const targets = [...CONTENT_SCRIPTS, ...COPY_FILES.filter(f => f.endsWith('.js'))]
+  let bytesBefore = 0, bytesAfter = 0
+  for (const f of targets) {
+    const p = join(outDir, f)
+    if (!existsSync(p)) continue
+    bytesBefore += readFileSync(p).length
+    minifyDistFile(outDir, f)
+    bytesAfter += readFileSync(p).length
+  }
+  if (bytesBefore > 0) {
+    const pct = ((1 - bytesAfter / bytesBefore) * 100).toFixed(1)
+    console.log(`  Minified ${targets.length} files: ${(bytesBefore/1024).toFixed(0)}KB → ${(bytesAfter/1024).toFixed(0)}KB (${pct}% smaller)`)
+  }
+}
+
 // Main
 const args = process.argv.slice(2)
 const flags = new Set(args.filter(a => a.startsWith('--')))
@@ -264,17 +301,20 @@ const targets = args.filter(a => !a.startsWith('--'))
 const target = targets[0] || null
 const shouldPackage = flags.has('--package') || flags.has('--deploy')
 const shouldDeploy = flags.has('--deploy')
+const shouldMinify = flags.has('--minify') || shouldPackage || shouldDeploy
 
 console.log('Building heatsync extension...\n')
 
 if (!target || target === 'chrome') {
   console.log('Chrome:')
   build('chrome')
+  if (shouldMinify) minifyDist(CHROME_OUT)
 }
 
 if (!target || target === 'firefox') {
   console.log('\nFirefox:')
   build('firefox')
+  if (shouldMinify) minifyDist(FIREFOX_OUT)
 }
 
 if (shouldPackage) {

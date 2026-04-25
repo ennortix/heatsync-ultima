@@ -434,7 +434,7 @@ function renderFeed() {
           fetchFeed(true);
         }
       }, 200)
-    }, { signal: mcSignal });
+    }, { signal: mcSignal, passive: true });
   }
 }
 

@@ -2739,7 +2739,7 @@ async function fetchChannelBadges(channelLogin) {
         body: JSON.stringify({ query: `{ user(login: "${safe}") { broadcastBadges { imageURL(size: NORMAL) setID version } } }` }),
         signal: AbortSignal.timeout(5000)
       }),
-      fetch(`https://api.frankerfacez.com/v1/room/${safe}`, { signal: AbortSignal.timeout(5000) })
+      fetch(`https://api.frankerfacez.com/v1/room/${safe}`, { credentials: 'omit', signal: AbortSignal.timeout(5000) })
     ])
 
     // Twitch channel badges

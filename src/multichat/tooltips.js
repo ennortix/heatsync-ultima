@@ -291,9 +291,9 @@
         if (userTooltip?.classList.contains('visible')) hideUserTooltip()
       })
     }
-    cleanup.addEventListener(document, 'wheel', dismissAllTooltips)
+    cleanup.addEventListener(document, 'wheel', dismissAllTooltips, { passive: true })
     // scroll doesn't bubble — capture phase catches scroll on any child container
-    document.addEventListener('scroll', dismissAllTooltips, { capture: true, signal: mcSignal })
+    document.addEventListener('scroll', dismissAllTooltips, { capture: true, passive: true, signal: mcSignal })
 
     let _tooltipRafPending = false
     cleanup.addEventListener(document, 'mousemove', (e) => {

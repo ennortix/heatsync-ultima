@@ -15,7 +15,9 @@
     hideStreamTitle: false,
     hideViewerCount: false,
     debugLogging: false,
-    crashTelemetry: false
+    crashTelemetry: false,
+    automodAllCaps: false,
+    automodRegex: ''
   }
 
   let settings = { ...DEFAULTS }
@@ -54,6 +56,9 @@
     }
     if (fontSizeSelect) fontSizeSelect.value = settings.fontSize || '13'
     if (customFontInput) customFontInput.value = settings.customFontName || ''
+
+    const automodRegex = document.getElementById('automod-regex')
+    if (automodRegex) automodRegex.value = settings.automodRegex || ''
   }
 
   async function save() {
@@ -85,6 +90,17 @@
       settings.customFontName = e.target.value.trim()
       save()
     }
+  })
+
+  // Live-save automod regex on input (debounced)
+  let _automodSaveTimer = null
+  document.addEventListener('input', (e) => {
+    if (e.target.id !== 'automod-regex') return
+    clearTimeout(_automodSaveTimer)
+    _automodSaveTimer = setTimeout(() => {
+      settings.automodRegex = e.target.value
+      save()
+    }, 400)
   })
 
   function fmtTs(ts) {

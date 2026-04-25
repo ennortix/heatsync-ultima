@@ -218,6 +218,24 @@
   </div>
 
   <div class="section">
+    <div class="section-title">automod</div>
+    <div class="setting-row">
+      <div>
+        <div class="setting-label">hide all-caps spam</div>
+        <div class="setting-desc">hide messages over 10 chars that are mostly uppercase</div>
+      </div>
+      <div class="toggle" data-setting="automodAllCaps"></div>
+    </div>
+    <div class="setting-row" style="flex-direction:column;align-items:stretch;gap:6px">
+      <div>
+        <div class="setting-label">filter regex</div>
+        <div class="setting-desc">one pattern per line, case-insensitive — matching messages get hidden</div>
+      </div>
+      <textarea id="automod-regex" placeholder="bit\.ly\\nfree\\s+v[\\-]?bucks" style="background:#000;color:#fff;border:1px solid #808080;padding:6px 8px;font-family:monospace;font-size:11px;width:100%;min-height:60px;resize:vertical"></textarea>
+    </div>
+  </div>
+
+  <div class="section">
     <div class="section-title">advanced</div>
     <div class="setting-row">
       <div>

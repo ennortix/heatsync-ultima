@@ -1434,6 +1434,47 @@
     } catch {}
   }
 
+  // ============================================
+  // AUTOMOD — client-side filter applied before pushing to buffers.
+  // ============================================
+  let automodAllCaps = false
+  let automodCompiled = null
+
+  function compileAutomod(rawSettings) {
+    automodAllCaps = !!rawSettings?.automodAllCaps
+    const raw = (rawSettings?.automodRegex || '').trim()
+    if (!raw) { automodCompiled = null; return }
+    const patterns = raw.split(/\r?\n/).map(s => s.trim()).filter(Boolean)
+    if (patterns.length === 0) { automodCompiled = null; return }
+    try {
+      automodCompiled = new RegExp(patterns.join('|'), 'i')
+    } catch (e) {
+      // bad regex — fall back to literal join (escaped)
+      const esc = patterns.map(p => p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')
+      try { automodCompiled = new RegExp(esc, 'i') } catch { automodCompiled = null }
+    }
+  }
+
+  async function loadAutomodSettings() {
+    try {
+      const stored = await chrome.storage.sync.get(['ui_settings'])
+      compileAutomod(stored.ui_settings || {})
+    } catch {}
+  }
+
+  function shouldAutomod(text) {
+    if (!text) return false
+    if (automodCompiled && automodCompiled.test(text)) return true
+    if (automodAllCaps && text.length > 10) {
+      const letters = text.replace(/[^A-Za-z]/g, '')
+      if (letters.length >= 8) {
+        const upper = letters.replace(/[^A-Z]/g, '').length
+        if (upper / letters.length > 0.7) return true
+      }
+    }
+    return false
+  }
+
   function saveHermesSettings() {
     saveUiSetting('hermesEvents', { ...hermesToggles })
   }
@@ -7748,6 +7789,10 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
         log('Settings synced:', Object.keys(ns).join(', '))
         let needsRender = false
 
+        if (ns.automodAllCaps !== undefined || ns.automodRegex !== undefined) {
+          compileAutomod(ns)
+        }
+
         if (ns.tabPosition !== undefined && ns.tabPosition !== tabPosition) {
           tabPosition = ns.tabPosition
           applyTabsPosition()
@@ -8069,6 +8114,7 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
     await loadViModeSetting();
     await loadInlineNotifSettings();
     await loadHermesSettings();
+    await loadAutomodSettings();
     await loadPlatformBadgesSetting();
     await loadZebraSetting();
     await loadAutoHideSetting();
@@ -8207,6 +8253,9 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
       }
       // Suppress echo of own sent messages (dedup dual-send)
       if (isSentEcho(msg.text)) return
+      // Automod: drop messages matching user-defined filter or all-caps spam.
+      // Don't filter own messages (you saw what you typed).
+      if (msg.user?.toLowerCase() !== currentUsername?.toLowerCase() && shouldAutomod(msg.text)) return
       const isMent = isMention(msg)
       bumpStreamStats(msg.channel, msg, isMent)
       if (isMent) {
@@ -8247,6 +8296,7 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
     kickChat.on('message', (msg) => {
       // Suppress echo of own sent messages (dedup dual-send)
       if (isSentEcho(msg.text)) return
+      if (msg.user?.toLowerCase() !== currentUsername?.toLowerCase() && shouldAutomod(msg.text)) return
       const isMent = isMention(msg)
       bumpStreamStats(msg.channel, msg, isMent)
       if (isMent) {

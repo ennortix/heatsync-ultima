@@ -1659,35 +1659,57 @@ function clearInput(input) {
   updateCharCount()
 }
 
+// Slash commands we own. Anything not in here falls through to the platform
+// (Twitch IRC / Kick) so /ban /timeout /mod /vip /raid /clear /slow /me etc
+// just work for users with mod perms.
+//
+// Handler return contract:
+//   true     -> consumed, do nothing else
+//   string   -> rewrite the outgoing text to this and continue normal send
+//   anything else -> not a slash command we handle, pass through unchanged
+const SLASH_ALIASES = {
+  post: 'op',
+  whisper: 'w',
+  re: 'r',
+  reply: 'r',
+  unban: null,        // pass through to platform
+  untimeout: null,    // pass through to platform
+  lc: 'lclear',
+  '?': 'help',
+}
+
 async function handleSlashCommand(text, input) {
-  const parts = text.match(/^\/(\w+)\s*(.*)$/)
+  const parts = text.match(/^\/(\w+|\?)\s*(.*)$/)
   if (!parts) return false
-  const [, cmd, rest] = parts
+  let [, cmd, rest] = parts
+  cmd = cmd.toLowerCase()
+  if (SLASH_ALIASES[cmd] === null) return false  // explicit pass-through
+  if (typeof SLASH_ALIASES[cmd] === 'string') cmd = SLASH_ALIASES[cmd]
 
   if (cmd === 'op') {
-    if (!rest.trim()) { showToast('usage: /op message'); return true }
+    if (!rest.trim()) { showToast('usage: /op <text>'); return true }
     await postFeedMessage(rest.trim(), { topLevel: true })
     return true
   }
 
-  if (cmd === 'w' || cmd === 'whisper') {
-    const match = rest.match(/^(\S+)\s+(.+)$/)
-    if (!match) { showToast('usage: /w username message'); return true }
+  if (cmd === 'w') {
+    const match = rest.match(/^@?(\S+)\s+(.+)$/)
+    if (!match) { showToast('usage: /w <user> <message>'); return true }
     const [, username, msg] = match
     await sendSlashWhisper('twitch', username, msg, input)
     return true
   }
 
   if (cmd === 'dm') {
-    const match = rest.match(/^(\S+)\s+(.+)$/)
-    if (!match) { showToast('usage: /dm username message'); return true }
+    const match = rest.match(/^@?(\S+)\s+(.+)$/)
+    if (!match) { showToast('usage: /dm <user> <message>'); return true }
     const [, username, msg] = match
     await sendSlashWhisper('heatsync', username, msg, input)
     return true
   }
 
-  if (cmd === 'r' || cmd === 'reply') {
-    if (!rest.trim()) { showToast('usage: /r message'); return true }
+  if (cmd === 'r') {
+    if (!rest.trim()) { showToast('usage: /r <message>'); return true }
     if (!lastWhisperKey) { showToast('no one to reply to'); return true }
     if (currentTab !== 'whispers') switchTab('whispers')
     await sendWhisperMessage(lastWhisperKey, rest.trim())
@@ -1695,7 +1717,91 @@ async function handleSlashCommand(text, input) {
     return true
   }
 
+  if (cmd === 'mute') {
+    const u = rest.trim().replace(/^@/, '').toLowerCase()
+    if (!u) { showToast('usage: /mute <user>'); return true }
+    if (mutedUsers.has(u)) { showToast(`${u} already muted`); return true }
+    mutedUsers.add(u)
+    chrome.storage.local.set({ heatsync_mc_muted: [...mutedUsers] })
+    safeSendMessage({ type: 'mute_user', username: u, expiresAt: Date.now() + 86400000 })
+    showToast(`muted ${u} (24h)`)
+    renderMessages(currentTab)
+    return true
+  }
+
+  if (cmd === 'unmute') {
+    const u = rest.trim().replace(/^@/, '').toLowerCase()
+    if (!u) { showToast('usage: /unmute <user>'); return true }
+    if (!mutedUsers.has(u)) { showToast(`${u} not muted`); return true }
+    mutedUsers.delete(u)
+    chrome.storage.local.set({ heatsync_mc_muted: [...mutedUsers] })
+    safeSendMessage({ type: 'unmute_user', username: u })
+    showToast(`unmuted ${u}`)
+    renderMessages(currentTab)
+    return true
+  }
+
+  if (cmd === 'shrug') {
+    return (rest.trim() ? rest.trim() + ' ' : '') + '¯\\_(ツ)_/¯'
+  }
+
+  if (cmd === 'tableflip') {
+    return (rest.trim() ? rest.trim() + ' ' : '') + '(╯°□°)╯︵ ┻━┻'
+  }
+
+  if (cmd === 'unflip') {
+    return (rest.trim() ? rest.trim() + ' ' : '') + '┬─┬ノ( ゜-゜ノ)'
+  }
+
+  if (cmd === 'lclear') {
+    let cleared = 0
+    if (irc?.channels?.has(currentTab)) { irc.channels.get(currentTab).clear?.(); cleared++ }
+    if (kickChat?.channels?.has(currentTab)) { kickChat.channels.get(currentTab).clear?.(); cleared++ }
+    renderMessages(currentTab)
+    showToast(cleared ? 'local buffer cleared' : 'nothing to clear here')
+    clearInput(input)
+    return true
+  }
+
+  if (cmd === 'help') {
+    showSlashHelp()
+    clearInput(input)
+    return true
+  }
+
   return false
+}
+
+const SLASH_HELP_LINES = [
+  '/op <text>           — post to feed',
+  '/w <user> <msg>      — twitch whisper',
+  '/dm <user> <msg>     — heatsync DM',
+  '/r <msg>             — reply to last whisper',
+  '/mute <user>         — local mute (24h)',
+  '/unmute <user>       — local unmute',
+  '/shrug [text]        — append ¯\\_(ツ)_/¯',
+  '/tableflip [text]    — append (╯°□°)╯︵ ┻━┻',
+  '/unflip [text]       — append ┬─┬ノ( ゜-゜ノ)',
+  '/lclear              — clear current tab locally',
+  '/help                — this list',
+  '',
+  'mod commands (/ban /timeout /unban /mod /vip /raid',
+  '/slow /clear /followers /emoteonly /color /me etc.)',
+  'pass through to twitch & kick when you have permission.',
+]
+
+function showSlashHelp() {
+  // Reuse toast for short feedback — but the help list is multi-line, so build a
+  // lightweight inline overlay instead.
+  let panel = document.getElementById('hs-mc-slash-help')
+  if (panel) { panel.remove(); return }
+  panel = document.createElement('div')
+  panel.id = 'hs-mc-slash-help'
+  panel.style.cssText = 'position:fixed;bottom:60px;right:20px;z-index:99999;background:#000;border:2px solid #ff8700;padding:10px 14px;font:12px/1.4 monospace;color:#fff;white-space:pre;max-width:420px;box-shadow:0 0 12px rgba(255,135,0,0.5)'
+  panel.textContent = SLASH_HELP_LINES.join('\n')
+  panel.addEventListener('click', () => panel.remove())
+  document.body.appendChild(panel)
+  setTimeout(() => panel?.remove(), 12000)
 }
 
 async function sendSlashWhisper(platform, username, text, input) {
@@ -1745,13 +1851,17 @@ async function sendMessage() {
   const input = document.getElementById('hs-mc-input');
   if (!input) { console.warn('[HS] SEND BAIL: no input element'); return; }
 
-  const text = convertEmojiShortcodes(getInputText().trim());
+  let text = convertEmojiShortcodes(getInputText().trim());
   if (!text) { console.warn('[HS] SEND BAIL: empty text'); return; }
 
-  // Slash commands — work from any tab
+  // Slash commands — work from any tab. Handler may return:
+  //   true   -> consumed, exit
+  //   string -> rewrite outgoing text and continue normal send
+  //   else   -> not ours, pass raw text through to platform
   if (text.startsWith('/')) {
-    const handled = await handleSlashCommand(text, input)
-    if (handled) return
+    const result = await handleSlashCommand(text, input)
+    if (result === true) return
+    if (typeof result === 'string') text = result
   }
 
   // Non-chat tabs — plain text not allowed, use slash commands

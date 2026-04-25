@@ -138,7 +138,8 @@
       label = `${scope} (${sourceName})`;
     }
     stateEl.textContent = label;
-    stateEl.className = 'tooltip-source ' + (state || 'global');
+    const srcClass = (state === 'global' || state === 'channel') && source ? ' src-' + source.toLowerCase().replace(/[^a-z0-9]/g, '') : ''
+    stateEl.className = 'tooltip-source ' + (state || 'global') + srcClass;
 
     // Position: anchor above the emote element
     const anchorEl = hoveredImg || e.target;

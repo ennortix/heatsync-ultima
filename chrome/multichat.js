@@ -3236,7 +3236,8 @@ async function sendKickMessage(kickSlug, text) {
       label = `${scope} (${sourceName})`;
     }
     stateEl.textContent = label;
-    stateEl.className = 'tooltip-source ' + (state || 'global');
+    const srcClass = (state === 'global' || state === 'channel') && source ? ' src-' + source.toLowerCase().replace(/[^a-z0-9]/g, '') : ''
+    stateEl.className = 'tooltip-source ' + (state || 'global') + srcClass;
 
     // Position: anchor above the emote element
     const anchorEl = hoveredImg || e.target;
@@ -13244,6 +13245,13 @@ const STORAGE_KEY = 'heatsync_multichat';
       #hs-emote-tooltip .tooltip-source.global { background: #00ff00; color: #000; }
       #hs-emote-tooltip .tooltip-source.channel { background: #00ff00; color: #000; }
       #hs-emote-tooltip .tooltip-source.blocked { background: #ff0000; color: #fff; }
+      /* Per-provider source label colors (override .global/.channel) */
+      #hs-emote-tooltip .tooltip-source.src-7tv { background: #29d8f6; color: #000; }
+      #hs-emote-tooltip .tooltip-source.src-bttv { background: #d50014; color: #fff; }
+      #hs-emote-tooltip .tooltip-source.src-ffz { background: #0086c8; color: #fff; }
+      #hs-emote-tooltip .tooltip-source.src-twitch { background: #9146ff; color: #fff; }
+      #hs-emote-tooltip .tooltip-source.src-kick { background: #53fc18; color: #000; }
+      #hs-emote-tooltip .tooltip-source.src-heatsync { background: #ff8700; color: #000; }
 
       #hs-link-tooltip {
         position: fixed;

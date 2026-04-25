@@ -2395,6 +2395,14 @@ function handleWSMessage(msg) {
       broadcastToTabs({ type: 'message-updated', data: msg });
       break;
 
+    case 'message-edited':
+      broadcastToTabs({ type: 'message-edited', data: msg });
+      break;
+
+    case 'message-deleted':
+      broadcastToTabs({ type: 'message-deleted', data: msg });
+      break;
+
     case 'notification:new':
       log(' Notification received:', msg);
       unreadNotifCount++;

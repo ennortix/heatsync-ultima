@@ -235,9 +235,30 @@ function initInput() {
   });
   sendBtn?.addEventListener('click', sendMessage);
 
+  // Set up drag-drop handlers for media upload
+  setupMediaDropHandlers();
+
+  // Pasted image handler — applies in BOTH wysiwyg and plain modes
+  input.addEventListener('paste', (e) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    for (const item of items) {
+      if (item.kind === 'file' && item.type.startsWith('image/')) {
+        const file = item.getAsFile();
+        if (file) {
+          e.preventDefault();
+          handleMediaUpload(file);
+          return;
+        }
+      }
+    }
+  });
+
   // WYSIWYG: handle paste to strip formatting
   if (wysiwygEnabled) {
     input.addEventListener('paste', (e) => {
+      // If a previous handler already prevented default (image upload), skip
+      if (e.defaultPrevented) return;
       e.preventDefault();
       const text = e.clipboardData.getData('text/plain');
       if (!text) return;
@@ -344,6 +365,20 @@ function initInput() {
       // Don't steal paste from other inputs
       const active = document.activeElement
       if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable)) return
+      // Check for pasted image first
+      const items = e.clipboardData?.items
+      if (items) {
+        for (const item of items) {
+          if (item.kind === 'file' && item.type.startsWith('image/')) {
+            const file = item.getAsFile()
+            if (file) {
+              e.preventDefault()
+              handleMediaUpload(file)
+              return
+            }
+          }
+        }
+      }
       const text = e.clipboardData?.getData('text/plain')
       if (!text) return
       e.preventDefault()
@@ -2007,4 +2042,162 @@ async function sendYoutubeMessage(text) {
     log('YouTube send error:', e.message)
     return 'send_failed'
   }
+}
+
+// ============================================
+// MEDIA UPLOAD — paste image, drag-drop file
+// ============================================
+
+const MC_UPLOAD_MAX_IMG = 5 * 1024 * 1024   // 5MB
+const MC_UPLOAD_MAX_VID = 50 * 1024 * 1024  // 50MB
+let _mcUploading = false
+
+function showUploadStatus(msg, isError) {
+  const bar = document.getElementById('hs-mc-upload-status')
+  if (msg) {
+    if (bar) {
+      bar.textContent = msg
+      bar.style.color = isError ? '#ff4444' : '#ff8700'
+      bar.style.display = 'block'
+      return
+    }
+    const inputbar = document.getElementById('hs-mc-inputbar')
+    if (!inputbar) return
+    const el = document.createElement('div')
+    el.id = 'hs-mc-upload-status'
+    el.style.cssText = 'padding:2px 8px;font-size:11px;color:#ff8700;background:#000;border-top:1px solid #808080;'
+    el.textContent = msg
+    inputbar.insertBefore(el, inputbar.firstChild)
+  } else if (bar) {
+    bar.remove()
+  }
+}
+
+async function uploadMediaFile(file) {
+  if (_mcUploading) {
+    showUploadStatus('upload in progress...', true)
+    return null
+  }
+  if (!file) return null
+  const isImage = file.type.startsWith('image/')
+  const isVideo = file.type.startsWith('video/')
+  if (!isImage && !isVideo) {
+    showUploadStatus('only images/videos allowed', true)
+    setTimeout(() => showUploadStatus(null), 2500)
+    return null
+  }
+  const maxSize = isImage ? MC_UPLOAD_MAX_IMG : MC_UPLOAD_MAX_VID
+  if (file.size > maxSize) {
+    showUploadStatus(`file too large (max ${maxSize / 1048576}MB)`, true)
+    setTimeout(() => showUploadStatus(null), 2500)
+    return null
+  }
+  _mcUploading = true
+  showUploadStatus('uploading 0%...')
+  try {
+    const formData = new FormData()
+    formData.append('file', file)
+    const url = await new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest()
+      xhr.upload.addEventListener('progress', (e) => {
+        if (e.lengthComputable) {
+          const pct = Math.round((e.loaded / e.total) * 100)
+          showUploadStatus(`uploading ${pct}%...`)
+        }
+      })
+      xhr.addEventListener('load', () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          try {
+            const data = JSON.parse(xhr.responseText)
+            if (data.success && data.url) resolve(data.url)
+            else reject(new Error(data.error || 'upload failed'))
+          } catch { reject(new Error('bad response')) }
+        } else {
+          try {
+            const err = JSON.parse(xhr.responseText)
+            reject(new Error(err.error || `http ${xhr.status}`))
+          } catch { reject(new Error(`http ${xhr.status}`)) }
+        }
+      })
+      xhr.addEventListener('error', () => reject(new Error('network error')))
+      xhr.addEventListener('abort', () => reject(new Error('cancelled')))
+      xhr.open('POST', `${CONFIG.API_URL}/api/upload`)
+      xhr.withCredentials = true
+      xhr.send(formData)
+    })
+    showUploadStatus('upload done')
+    setTimeout(() => showUploadStatus(null), 1500)
+    return url
+  } catch (e) {
+    showUploadStatus(`upload failed: ${e.message}`, true)
+    setTimeout(() => showUploadStatus(null), 3500)
+    return null
+  } finally {
+    _mcUploading = false
+  }
+}
+
+async function handleMediaUpload(file) {
+  const url = await uploadMediaFile(file)
+  if (!url) return
+  const input = document.getElementById('hs-mc-input')
+  if (!input) return
+  showInputBar()
+  input.focus()
+  if (input.isContentEditable) {
+    if (!document.execCommand('insertText', false, url + ' ')) {
+      input.textContent = (input.textContent || '') + url + ' '
+    }
+  } else {
+    input.value = (input.value || '') + url + ' '
+    input.dispatchEvent(new Event('input', { bubbles: true }))
+  }
+}
+
+let _mcDropHandlersInstalled = false
+function setupMediaDropHandlers() {
+  if (_mcDropHandlersInstalled) return
+  _mcDropHandlersInstalled = true
+  const overlay = document.getElementById('hs-mc-overlay')
+  if (!overlay) return
+
+  let dragCounter = 0
+  const showDropZone = () => {
+    let dz = document.getElementById('hs-mc-drop-zone')
+    if (!dz) {
+      dz = document.createElement('div')
+      dz.id = 'hs-mc-drop-zone'
+      dz.style.cssText = 'position:absolute;inset:0;background:rgba(255,135,0,0.15);border:2px dashed #ff8700;display:flex;align-items:center;justify-content:center;color:#fff;font-size:14px;z-index:99998;pointer-events:none;'
+      dz.textContent = 'drop image/video to upload'
+      overlay.appendChild(dz)
+    }
+  }
+  const hideDropZone = () => {
+    document.getElementById('hs-mc-drop-zone')?.remove()
+    dragCounter = 0
+  }
+
+  overlay.addEventListener('dragenter', (e) => {
+    if (!e.dataTransfer?.types?.includes('Files')) return
+    e.preventDefault()
+    dragCounter++
+    showDropZone()
+  }, { signal: mcSignal })
+  overlay.addEventListener('dragover', (e) => {
+    if (!e.dataTransfer?.types?.includes('Files')) return
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'copy'
+  }, { signal: mcSignal })
+  overlay.addEventListener('dragleave', (e) => {
+    if (!e.dataTransfer?.types?.includes('Files')) return
+    dragCounter--
+    if (dragCounter <= 0) hideDropZone()
+  }, { signal: mcSignal })
+  overlay.addEventListener('drop', (e) => {
+    if (!e.dataTransfer?.files?.length) return
+    e.preventDefault()
+    hideDropZone()
+    const file = e.dataTransfer.files[0]
+    handleMediaUpload(file)
+  }, { signal: mcSignal })
 }

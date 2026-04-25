@@ -94,6 +94,140 @@ function pushActivityEvent(evt) {
 let activeThread = null // { id, op, replies[] } — when set, feed shows thread view
 let replyState = null; // { msgId, user, channel } when replying to a message
 let hsAuthToken = null; // Heatsync auth state (loaded from storage)
+let hsCurrentUsername = null; // Heatsync username (loaded from storage user_info)
+
+// Load + watch heatsync username for own-post detection (edit/delete UI)
+async function loadHsUsername() {
+  try {
+    const data = await api.storage.local.get('user_info')
+    hsCurrentUsername = data?.user_info?.username?.toLowerCase() || null
+  } catch (e) { hsCurrentUsername = null }
+}
+function isOwnFeedPost(m) {
+  return !!(hsCurrentUsername && m?.username && m.username.toLowerCase() === hsCurrentUsername)
+}
+
+const EDIT_WINDOW_MS = 10 * 60 * 1000 // 10 min — server enforces
+
+// Inline edit UI for own feed posts
+function showFeedEditUI(div, msg) {
+  if (div.querySelector('.hs-feed-edit-form')) return
+  const body = div.querySelector('.hs-feed-body')
+  if (!body) return
+  const original = msg.content || ''
+  const form = document.createElement('div')
+  form.className = 'hs-feed-edit-form'
+  form.style.cssText = 'display:flex;gap:4px;align-items:flex-start;margin-top:4px;'
+  const ta = document.createElement('textarea')
+  ta.value = original
+  ta.maxLength = 500
+  ta.rows = 2
+  ta.style.cssText = 'flex:1;background:#000;color:#fff;border:1px solid #808080;padding:4px;font-family:inherit;font-size:13px;resize:vertical;'
+  const saveBtn = document.createElement('button')
+  saveBtn.textContent = 'save'
+  saveBtn.style.cssText = 'background:#ff8700;color:#000;border:none;padding:4px 8px;font-family:inherit;font-size:12px;cursor:pointer;'
+  const cancelBtn = document.createElement('button')
+  cancelBtn.textContent = 'cancel'
+  cancelBtn.style.cssText = 'background:#000;color:#fff;border:1px solid #808080;padding:4px 8px;font-family:inherit;font-size:12px;cursor:pointer;'
+  const errEl = document.createElement('div')
+  errEl.style.cssText = 'font-size:11px;color:#ff4444;margin-top:2px;'
+  form.append(ta, saveBtn, cancelBtn)
+  body.style.display = 'none'
+  body.parentNode.insertBefore(form, body.nextSibling)
+  body.parentNode.insertBefore(errEl, form.nextSibling)
+  ta.focus()
+  ta.select()
+
+  const close = () => {
+    body.style.display = ''
+    form.remove()
+    errEl.remove()
+  }
+  cancelBtn.addEventListener('click', close)
+  ta.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') { e.preventDefault(); close() }
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); saveBtn.click() }
+  })
+  saveBtn.addEventListener('click', async () => {
+    const newContent = ta.value.trim()
+    if (!newContent) { errEl.textContent = 'content cannot be empty'; return }
+    if (newContent === original) { close(); return }
+    saveBtn.disabled = true
+    saveBtn.textContent = 'saving...'
+    errEl.textContent = ''
+    const resp = await apiFetch(`/api/messages/${encodeURIComponent(msg.base36_id)}`, {
+      method: 'PATCH',
+      body: { content: newContent }
+    })
+    if (resp?.ok && resp.data?.success) {
+      msg.content = resp.data.message?.content || newContent
+      msg.edited_at = resp.data.message?.edited_at
+      msg.edit_count = resp.data.message?.edit_count
+      close()
+      // Re-render entire feed to pick up sanitized content + emote refs
+      if (typeof renderFeed === 'function') renderFeed()
+    } else {
+      errEl.textContent = resp?.data?.error || resp?.error || 'edit failed'
+      saveBtn.disabled = false
+      saveBtn.textContent = 'save'
+    }
+  })
+}
+
+async function deleteFeedPost(msg) {
+  if (!confirm('delete this post?')) return
+  const resp = await apiFetch(`/api/messages/${encodeURIComponent(msg.base36_id)}`, {
+    method: 'DELETE'
+  })
+  if (resp?.ok) {
+    const div = document.querySelector(`.hs-feed-msg[data-msg-id="${CSS.escape(msg.base36_id)}"]`)
+    if (div) div.remove()
+    const idx = feedMessages.findIndex(m => m.base36_id === msg.base36_id)
+    if (idx >= 0) feedMessages.splice(idx, 1)
+  }
+}
+
+function showFeedPostContextMenu(e, div, msg) {
+  e.preventDefault()
+  e.stopPropagation()
+  document.getElementById('hs-mc-ctx-menu')?.remove()
+  const menu = document.createElement('div')
+  menu.id = 'hs-mc-ctx-menu'
+  menu.style.cssText = 'position:fixed;z-index:99999;background:#000;border:1px solid #808080;border-radius:0;padding:4px 0;min-width:120px;font-size:12px;font-family:inherit;'
+
+  const createdAt = new Date(msg.created_at).getTime()
+  const elapsed = Date.now() - createdAt
+  const remaining = EDIT_WINDOW_MS - elapsed
+  const canEdit = remaining > 0
+
+  const mkItem = (label, color, fn, disabled) => {
+    const item = document.createElement('div')
+    item.textContent = label
+    item.style.cssText = `padding:6px 12px;cursor:${disabled ? 'not-allowed' : 'pointer'};color:${color};opacity:${disabled ? 0.5 : 1};`
+    if (!disabled) {
+      item.addEventListener('mouseenter', () => item.style.background = 'rgba(255,255,255,0.06)')
+      item.addEventListener('mouseleave', () => item.style.background = '')
+      item.addEventListener('click', () => { menu.remove(); fn() })
+    }
+    menu.appendChild(item)
+  }
+
+  if (canEdit) {
+    const mins = Math.floor(remaining / 60000)
+    const secs = Math.floor((remaining % 60000) / 1000)
+    mkItem(`edit (${mins}:${String(secs).padStart(2, '0')} left)`, '#fff', () => showFeedEditUI(div, msg))
+  } else {
+    mkItem('edit (window expired)', '#fff', () => {}, true)
+  }
+  mkItem('delete', '#ff4444', () => deleteFeedPost(msg))
+
+  document.body.appendChild(menu)
+  const mw = menu.offsetWidth, mh = menu.offsetHeight
+  menu.style.left = Math.min(e.clientX, window.innerWidth - mw - 4) + 'px'
+  menu.style.top = Math.min(e.clientY, window.innerHeight - mh - 4) + 'px'
+  const dismiss = (ev) => { if (!menu.contains(ev.target)) { menu.remove(); document.removeEventListener('click', dismiss) } }
+  setTimeout(() => document.addEventListener('click', dismiss, { signal: mcSignal }), 0)
+}
 
 // ============================================
 // SOCIAL TABS (FEED & NOTIFICATIONS)
@@ -124,12 +258,16 @@ async function loadHsAuth() {
   } catch (e) {
     hsAuthToken = false;
   }
+  loadHsUsername()
 
   // Watch for auth changes (login/logout on heatsync.org)
   if (!window._hsMcAuthWatcher) {
     window._hsMcAuthWatcher = true;
     api.storage.onChanged.addListener((changes, area) => {
       if (area !== 'local') return;
+      if (changes.user_info) {
+        hsCurrentUsername = changes.user_info.newValue?.username?.toLowerCase() || null
+      }
       if (changes.auth_token_encrypted || changes.auth_token) {
         const wasAuthed = hsAuthToken;
         hsAuthToken = !!(
@@ -212,6 +350,49 @@ function listenForSocialEvents() {
     }
     if (msg.type === 'dm_new' && msg.data) {
       handleIncomingDm(msg.data)
+    }
+    if (msg.type === 'message-edited' && msg.data) {
+      const d = msg.data.message_id ? msg.data : msg.data.data
+      const id = d?.message_id
+      if (!id) return
+      // Update feedMessages buffer
+      const found = feedMessages.find(m => m.base36_id === id)
+      if (found) {
+        found.content = d.content
+        found.subject = d.subject
+        found.edited_at = d.edited_at
+        found.edit_count = d.edit_count
+      }
+      // Update active thread if applicable
+      if (activeThread) {
+        if (activeThread.op?.base36_id === id) {
+          activeThread.op.content = d.content
+          activeThread.op.subject = d.subject
+          activeThread.op.edited_at = d.edited_at
+        }
+        const reply = activeThread.replies?.find(r => r.base36_id === id)
+        if (reply) {
+          reply.content = d.content
+          reply.edited_at = d.edited_at
+        }
+      }
+      if (currentTab === 'feed') renderFeed()
+    }
+    if (msg.type === 'message-deleted' && msg.data) {
+      const d = msg.data.message_id ? msg.data : msg.data.data
+      const id = d?.message_id
+      if (!id) return
+      const idx = feedMessages.findIndex(m => m.base36_id === id)
+      if (idx >= 0) feedMessages.splice(idx, 1)
+      if (activeThread) {
+        if (activeThread.op?.base36_id === id) {
+          activeThread = null
+        } else if (activeThread.replies) {
+          const ri = activeThread.replies.findIndex(r => r.base36_id === id)
+          if (ri >= 0) activeThread.replies.splice(ri, 1)
+        }
+      }
+      if (currentTab === 'feed') renderFeed()
     }
     if (msg.type === 'youtube_chat_message') {
       const targetChannelId = msg.channelId
@@ -534,6 +715,27 @@ function buildFeedMessageDiv(m, opUsername) {
       openThread(threadId, targetId);
     });
   });
+
+  // Right-click own posts → edit/delete menu
+  if (isOwnFeedPost(m)) {
+    div.classList.add('hs-feed-own')
+    div.addEventListener('contextmenu', (e) => {
+      // Only handle right-click directly on the post (not on links/quotes inside)
+      if (e.target.closest('a, .hs-feed-thread-link, .hs-quote-insert, .hs-post-link')) return
+      showFeedPostContextMenu(e, div, m)
+    })
+  }
+  // Show edited badge if message was edited
+  if (m.edited_at && !div.querySelector('.hs-feed-edited')) {
+    const body = div.querySelector('.hs-feed-body')
+    if (body) {
+      const badge = document.createElement('span')
+      badge.className = 'hs-feed-edited'
+      badge.textContent = ' (edited)'
+      badge.style.cssText = 'color:#888;font-size:11px;font-style:italic;margin-left:4px;'
+      body.appendChild(badge)
+    }
+  }
 
   // Click post ID in thread view → insert >>id into input
   const quoteEl = div.querySelector('.hs-quote-insert');

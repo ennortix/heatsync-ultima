@@ -5952,18 +5952,18 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
     if (m._renderedHtml != null) {
       processedText = m._renderedHtml
     } else {
-      processedText = processEmotes(escapeHtml(m.text), m.channel)
-      // Twitch native emotes (from IRC tags) — replace text not already handled by processEmotes
+      // Pass Twitch native emotes (per-message IRC tags) into processEmotes so
+      // they participate in the overlay-stack pipeline alongside 7TV emotes —
+      // without this a 7TV zero-width emote following a Twitch sub emote would
+      // render with whitespace between them instead of overlaying.
+      let twitchExtra = null
       if (m.twitchEmotes) {
+        twitchExtra = new Map()
         for (const [name, url] of Object.entries(m.twitchEmotes)) {
-          const escaped = escapeHtml(name)
-          const safeUrl = escapeHtml(url)
-          // Only replace bare text (not already inside an HTML tag)
-          const re = new RegExp(`(?<![\\w"=/])${escaped.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![\\w"<])`, 'g')
-          processedText = processedText.replace(re,
-            `<span class="hs-mc-emote-wrapper hs-state-global" data-emote-name="${escaped}" data-emote-url="${safeUrl}" data-state="global" data-source="twitch"><img src="${safeUrl}" alt="${escaped}" title="${escaped}" class="hs-mc-emote hs-emote-global" data-emote-name="${escaped}" data-state="global" data-source="twitch"></span>`)
+          twitchExtra.set(name, { url, source: 'twitch', state: 'global', zeroWidth: false })
         }
       }
+      processedText = processEmotes(escapeHtml(m.text), m.channel, twitchExtra)
       if (m.emotes && m.emotes.length > 0) {
         processedText = processYtEmotes(processedText, m.emotes, true)
       }

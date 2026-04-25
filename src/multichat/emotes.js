@@ -863,8 +863,10 @@
 
   // Process text and replace emote codes with images
   // Supports 7TV zero-width (overlay) emotes that stack on base emotes
-  function processEmotes(text, channel) {
-    if (emoteCache.size === 0 && !channelEmoteCaches[channel]) return text;
+  // extraCache: optional Map<name, emoteData> for per-message Twitch native
+  // emotes (so they participate in the overlay stack pipeline)
+  function processEmotes(text, channel, extraCache) {
+    if (emoteCache.size === 0 && !channelEmoteCaches[channel] && !extraCache?.size) return text;
 
     // Split adjacent Kick emotes and text touching emotes (e.g. "word[emote:id:name]")
     // Also split unicode emoji from adjacent non-emoji chars so `🌆<3` becomes
@@ -916,12 +918,14 @@
       const endsWithZero = word.endsWith('0') && word.length > 1
       if (endsWithZero) {
         const baseName = word.slice(0, -1)
-        emote = emoteCache.get(baseName) || (channel && channelEmoteCaches[channel]?.get(baseName))
+        emote = emoteCache.get(baseName) || (channel && channelEmoteCaches[channel]?.get(baseName)) || extraCache?.get(baseName)
         if (emote) isOverlayEmote = true
       }
       if (!emote) {
-        emote = emoteCache.get(word) || (channel && channelEmoteCaches[channel]?.get(word))
-        if (emote) isOverlayEmote = !!emote.zeroWidth
+        emote = emoteCache.get(word) || (channel && channelEmoteCaches[channel]?.get(word)) || extraCache?.get(word)
+        // Honor zero-width flag, OR fall back to the "name0" naming convention
+        // when an uploader didn't set the flag despite naming the emote for overlay use.
+        if (emote) isOverlayEmote = !!emote.zeroWidth || endsWithZero
       }
       if (emote) {
         const isBlocked = blockedEmoteNames.has(word);

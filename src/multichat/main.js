@@ -2487,9 +2487,8 @@
       .hs-mc-msg:hover {
       }
       .hs-mc-msg.hs-mc-thread-highlight {
-        outline: 2px solid #ffff00 !important;
-        outline-offset: -2px !important;
-        background: #000 !important;
+        box-shadow: inset 0 0 0 2px #ffff00 !important;
+        background: rgba(255,255,0,0.06) !important;
         position: relative;
         z-index: 2;
       }

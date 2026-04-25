@@ -8749,6 +8749,9 @@ function stripMcMutedMessage(msg) {
   [...msg.childNodes].forEach(node => {
     if (node.nodeType === 3) node.textContent = '';
   });
+  // Mention links share .hs-mc-user (so they get color/hover) but live inside
+  // the message body — strip them or they leak through the muted CSS.
+  msg.querySelectorAll('.hs-mc-mention, .hs-mc-reply-ctx').forEach(el => el.remove());
   // Remove emote images and other content (not user/badge/timestamp/platform)
   msg.querySelectorAll('img:not(.hs-mc-badge-img), .heatsync-emote-wrapper, .hs-mc-emote').forEach(el => {
     if (!el.closest('.hs-mc-user') && !el.classList.contains('hs-mc-badge-img') && !el.classList.contains('hs-mc-platform-badge')) {
@@ -12552,9 +12555,8 @@ const STORAGE_KEY = 'heatsync_multichat';
       .hs-mc-msg:hover {
       }
       .hs-mc-msg.hs-mc-thread-highlight {
-        outline: 2px solid #ffff00 !important;
-        outline-offset: -2px !important;
-        background: #000 !important;
+        box-shadow: inset 0 0 0 2px #ffff00 !important;
+        background: rgba(255,255,0,0.06) !important;
         position: relative;
         z-index: 2;
       }

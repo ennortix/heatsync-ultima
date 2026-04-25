@@ -3778,6 +3778,16 @@ function wrapExistingHeatsyncEmotes(messageElement, allEmotes) {
 // Unicode emoji detection — matches emoji sequences (presentation + ZWJ combos)
 const UNICODE_EMOJI_RE = /^[\p{Extended_Pictographic}\p{Emoji_Presentation}\uFE0F\u200D]+$/u
 
+// BTTV/FFZ modifier emotes — applied as a CSS class on the next emote.
+// w! = wide, h! = tall, v! = vertical flip, l! = horizontal flip, c! = rotate.
+const HS_MODIFIER_CLASSES = {
+  'w!': 'heatsync-mod-wide',
+  'h!': 'heatsync-mod-tall',
+  'v!': 'heatsync-mod-vmirror',
+  'l!': 'heatsync-mod-hflip',
+  'c!': 'heatsync-mod-cursed'
+}
+
 // Replace emotes with overlay stacking support (emotes ending in 0 stack on previous)
 // Using DOM nodes instead of innerHTML to avoid React conflicts
 function replaceEmotesWithStacking(element, allEmotes) {
@@ -3790,6 +3800,7 @@ function replaceEmotesWithStacking(element, allEmotes) {
   const resultNodes = [];
   let currentStack = [];
   let pendingWhitespace = '';
+  let pendingModifier = null; // BTTV/FFZ modifier waiting to apply to next emote
 
   for (let i = 0; i < words.length; i++) {
     const word = words[i];
@@ -3799,6 +3810,13 @@ function replaceEmotesWithStacking(element, allEmotes) {
     if (!trimmed) {
       pendingWhitespace += word;
       continue;
+    }
+
+    // BTTV/FFZ modifier emote — capture and apply to the next renderable emote.
+    if (HS_MODIFIER_CLASSES[trimmed]) {
+      pendingModifier = HS_MODIFIER_CLASSES[trimmed]
+      pendingWhitespace = '' // modifier absorbs preceding space
+      continue
     }
 
     // Check if word ends with 0 - potential overlay (e.g., "TriHard0" → use "TriHard")
@@ -3829,7 +3847,8 @@ function replaceEmotesWithStacking(element, allEmotes) {
 
     if (emote && isOverlay && currentStack.length > 0) {
       // Overlay emote with existing base - add to stack, discard pending whitespace
-      currentStack.push({ emote, isOverlay: true, originalWord: trimmed });
+      currentStack.push({ emote, isOverlay: true, originalWord: trimmed, modifier: pendingModifier });
+      pendingModifier = null
       pendingWhitespace = '';
     } else if (emote && isOverlay && currentStack.length === 0) {
       // Overlay emote but NO base in our emote map (base might be native Twitch emote)
@@ -3839,7 +3858,8 @@ function replaceEmotesWithStacking(element, allEmotes) {
         pendingWhitespace = '';
       }
       // Mark as overlay so stackAdjacentOverlayEmotes knows to stack it
-      resultNodes.push(generateEmoteElement(emote, true));
+      resultNodes.push(generateEmoteElement(emote, true, pendingModifier));
+      pendingModifier = null
     } else if (emote) {
       // Non-overlay emote - flush previous stack first
       if (currentStack.length > 0) {
@@ -3851,7 +3871,8 @@ function replaceEmotesWithStacking(element, allEmotes) {
         resultNodes.push(document.createTextNode(pendingWhitespace));
         pendingWhitespace = '';
       }
-      currentStack.push({ emote, isOverlay: false, originalWord: trimmed });
+      currentStack.push({ emote, isOverlay: false, originalWord: trimmed, modifier: pendingModifier });
+      pendingModifier = null
     } else {
       // Check for emoji :shortcode:
       if (typeof EMOJI_BY_NAME !== 'undefined' && trimmed.startsWith(':') && trimmed.endsWith(':') && trimmed.length > 2) {
@@ -3935,7 +3956,7 @@ function replaceEmotesWithStacking(element, allEmotes) {
     if (stack.length === 1) {
       const entry = stack[0]
       if (entry.isEmoji) return generateEmojiElement(entry.emoji, entry.emojiName)
-      return generateEmoteElement(entry.emote, entry.isOverlay);
+      return generateEmoteElement(entry.emote, entry.isOverlay, entry.modifier);
     }
     // Multiple emotes - wrap in stack container with buttons
     const stackContainer = document.createElement('span');
@@ -3955,7 +3976,7 @@ function replaceEmotesWithStacking(element, allEmotes) {
       if (entry.isEmoji) {
         stackContainer.appendChild(generateEmojiElement(entry.emoji, entry.emojiName))
       } else {
-        stackContainer.appendChild(generateEmoteElement(entry.emote, entry.isOverlay))
+        stackContainer.appendChild(generateEmoteElement(entry.emote, entry.isOverlay, entry.modifier))
       }
     });
 
@@ -3988,7 +4009,7 @@ function replaceEmotesWithStacking(element, allEmotes) {
 }
 
 // Generate DOM element for a single emote (React-safe, no innerHTML)
-function generateEmoteElement(emote, isOverlay) {
+function generateEmoteElement(emote, isOverlay, modifierClass) {
     const blocked = blockedEmotes.has(emote.hash);
     const inInventory = inventoryHashSet.has(emote.hash) || inventoryNameSet.has(emote.name);
 
@@ -4017,11 +4038,12 @@ function generateEmoteElement(emote, isOverlay) {
     else if (isThirdPartyCdn) cssClasses.push('emote-global');
 
     const overlayWrapperClass = isOverlay ? ' heatsync-overlay' : '';
+    const modClass = modifierClass ? ` ${modifierClass}` : '';
 
     // Create wrapper span
     const wrapper = document.createElement('span');
     const ownClass = !isThirdPartyCdn ? ' heatsync-own-emote' : '';
-    wrapper.className = `heatsync-emote-wrapper ${overlayClass}${overlayWrapperClass}${ownClass}`;
+    wrapper.className = `heatsync-emote-wrapper ${overlayClass}${overlayWrapperClass}${ownClass}${modClass}`;
     wrapper.dataset.emoteHash = emote.hash;
     wrapper.dataset.emoteName = emote.name;
     wrapper.dataset.inInventory = String(inInventory);

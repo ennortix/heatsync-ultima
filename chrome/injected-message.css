@@ -94,4 +94,27 @@ body:has(#hs-mc-container) .channel-root__player--with-chat {
   width: 100% !important;
 }
 
-
+/* ============================================
+   BTTV/FFZ EMOTE MODIFIERS
+   Applied as CSS classes on .heatsync-emote-wrapper when a modifier word
+   (w!, h!, v!, l!, c!) precedes the emote in chat.
+   ============================================ */
+.heatsync-emote-wrapper.heatsync-mod-wide img {
+  transform: scaleX(2) !important;
+  transform-origin: left center !important;
+  margin-right: 28px !important;
+}
+.heatsync-emote-wrapper.heatsync-mod-tall img {
+  transform: scaleY(2) !important;
+  transform-origin: bottom center !important;
+  margin-top: 28px !important;
+}
+.heatsync-emote-wrapper.heatsync-mod-vmirror img {
+  transform: scaleY(-1) !important;
+}
+.heatsync-emote-wrapper.heatsync-mod-hflip img {
+  transform: scaleX(-1) !important;
+}
+.heatsync-emote-wrapper.heatsync-mod-cursed img {
+  transform: rotate(180deg) !important;
+}

@@ -13945,8 +13945,8 @@ async function sendMessage() {
     return
   }
 
-  // --- YouTube send path ---
-  if (sendToYoutube && !sendToKick) {
+  // --- YouTube-only send path (no Twitch, no Kick) ---
+  if (sendToYoutube && !sendToKick && !sendToTwitch) {
     sendYoutubeMessage(text).then(result => {
       if (result !== true) {
         const errorMsg = result === 'no_youtube_tab' ? 'open youtube live chat first'
@@ -13955,6 +13955,15 @@ async function sendMessage() {
       }
     })
     return
+  }
+  // Twitch + YouTube (and no Kick) — fire YouTube as best-effort alongside Twitch send below
+  if (sendToYoutube && sendToTwitch && !sendToKick) {
+    sendYoutubeMessage(text).then(result => {
+      if (result !== true && result !== 'no_youtube_tab') {
+        showToast('youtube send failed')
+      }
+    })
+    // fall through to Twitch path
   }
 
   // --- Twitch-only send path (existing behavior) ---

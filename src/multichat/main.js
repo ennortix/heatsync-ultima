@@ -120,11 +120,20 @@
   const usernameCache = new Set();
   // Username → color map for @mention coloring (LRU-bounded)
   const knownColors = new Map()
-  function setKnownColor(user, color) {
+  // Username → Twitch userId for paint cosmetics on @mentions
+  const knownUserIds = new Map()
+  function setKnownColor(user, color, userId) {
     knownColors.set(user, color)
     if (knownColors.size > 2000) {
       const iter = knownColors.keys()
       for (let i = 0; i < 500; i++) knownColors.delete(iter.next().value)
+    }
+    if (userId) {
+      knownUserIds.set(user, userId)
+      if (knownUserIds.size > 2000) {
+        const iter = knownUserIds.keys()
+        for (let i = 0; i < 500; i++) knownUserIds.delete(iter.next().value)
+      }
     }
   }
   // Avatar URL cache: username → CDN URL (fetched from decapi)
@@ -196,12 +205,18 @@
     for (const uid of userIds) {
       const cosmetic = mcUserCosmetics.get(uid)
       if (!cosmetic) continue
-      const divs = container.querySelectorAll(`[data-uid="${uid}"]`)
+      const paintStyle = getMcPaintStyle(uid)
+      // Repaint inline @mentions of this user across all visible messages
+      if (paintStyle) {
+        for (const mention of container.querySelectorAll(`a.hs-mc-mention[data-uid="${uid}"]`)) {
+          mention.setAttribute('style', paintStyle)
+        }
+      }
+      const divs = container.querySelectorAll(`.hs-mc-msg[data-uid="${uid}"]`)
       for (const div of divs) {
         // Update paint on username link
         const userLink = div.querySelector('.hs-mc-user')
         if (userLink) {
-          const paintStyle = getMcPaintStyle(uid)
           if (paintStyle) {
             userLink.setAttribute('style', paintStyle)
           }
@@ -2487,8 +2502,8 @@
       .hs-mc-msg:hover {
       }
       .hs-mc-msg.hs-mc-thread-highlight {
-        box-shadow: inset 0 0 0 2px #ffff00 !important;
-        background: rgba(255,255,0,0.06) !important;
+        background: rgba(255,255,0,0.14) !important;
+        box-shadow: inset 3px 0 0 #ffff00 !important;
         position: relative;
         z-index: 2;
       }
@@ -6087,6 +6102,7 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
 
   // Highlight @mentions and bare known usernames in rendered chat HTML.
   // Splits on tags so substitution only happens in text segments.
+  // Applies 7TV paint cosmetics if the mentioned user's userId + paint are cached.
   function highlightMentionsInHtml(html) {
     if (!html || (!html.includes('@') && knownColors.size === 0)) return html
     const parts = html.split(/(<[^>]+>)/)
@@ -6102,7 +6118,16 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
           const color = sanitizeColor(knownColors.get(lower) || '#fff')
           const safeName = escapeHtml(name)
           const safeLower = escapeHtml(lower)
-          return `${lead}<a href="https://heatsync.org/user/${encodeURIComponent(lower)}" target="_blank" class="hs-mc-user hs-mc-mention" data-username="${safeLower}" style="color:${color}">${at}${safeName}</a>`
+          const uid = knownUserIds.get(lower) || ''
+          let style = `color:${color}`
+          let uidAttr = ''
+          if (uid) {
+            uidAttr = ` data-uid="${escapeHtml(uid)}"`
+            if (!mcUserCosmetics.has(uid)) queueMcCosmeticsLookup(uid)
+            const paint = getMcPaintStyle(uid)
+            if (paint) style = paint
+          }
+          return `${lead}<a href="https://heatsync.org/user/${encodeURIComponent(lower)}" target="_blank" class="hs-mc-user hs-mc-mention" data-username="${safeLower}"${uidAttr} style="${style}">${at}${safeName}</a>`
         }
       )
     }

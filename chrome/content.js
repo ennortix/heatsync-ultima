@@ -2339,16 +2339,16 @@ function _onMessageMain(message) {
       break;
 
     case 'cosmetics_invalidated':
-      // 7TV EventAPI pushed a user.update — drop our local cache for that
-      // twitch ID, clear applied-flags on their messages, and re-fetch.
+      // 7TV EventAPI pushed a user update — drop the local cache for that
+      // twitch ID and trigger a fresh lookup. We DON'T strip badges from DOM
+      // here (no flicker): applyCosmeticsToMessage diff-updates the badge
+      // src in-place if changed, removes if revoked, or no-ops if unchanged.
       if (message.twitchId) {
         cosmeticsCache.delete(message.twitchId)
-        document.querySelectorAll(`[data-hs-cosmetic-applied-for="${CSS.escape(message.twitchId)}"]`).forEach(el => {
-          el.querySelectorAll('.hs-cosmetic-badge').forEach(b => b.remove())
-          delete el.dataset.hsCosmeticDone
-          delete el.dataset.hs7tvBadgeDone
-          delete el.dataset.hsCosmeticAppliedFor
-        })
+        // Clear the fast-path bail flag on existing messages so applyPending
+        // can re-run the diff-update after the next fetch lands.
+        const sel = `[data-hs-cosmetic-applied-for="${CSS.escape(message.twitchId)}"]`
+        document.querySelectorAll(sel).forEach(el => { delete el.dataset.hsCosmeticDone })
         queueCosmeticsLookup(message.twitchId)
       }
       break;
@@ -3040,6 +3040,35 @@ function applyHeatBorders() {
 }
 
 // Get current user's username from Twitch DOM
+// Console diagnostic — run `__hsdiag()` in DevTools to see why a 7TV badge
+// isn't appearing. Logs twitch ID source, cosmetic cache state, fetch result.
+window.__hsdiag = async function() {
+  const out = { ok: true }
+  try { out.twilight_user = JSON.parse(localStorage.getItem('twilight.user') || 'null') } catch { out.twilight_user = null }
+  out.self_twitch_id = out.twilight_user?.id || null
+  out.cosmetics_enabled = cosmeticsEnabled
+  out.cosmetics_cache_size = cosmeticsCache.size
+  out.self_cached = out.self_twitch_id ? cosmeticsCache.get(String(out.self_twitch_id)) : null
+  const stamped = document.querySelectorAll('[data-user-id]').length
+  const ourStamped = document.querySelectorAll('[data-hs-cosmetic-user-id]').length
+  out.dom_data_user_id_count = stamped
+  out.dom_hs_cosmetic_user_id_count = ourStamped
+  out.dom_existing_7tv_badge_count = document.querySelectorAll('.hs-7tv-badge').length
+  if (out.self_twitch_id) {
+    try {
+      const resp = await safeSendMessage({ type: 'get_user_cosmetics', twitchIds: [String(out.self_twitch_id)] })
+      out.bg_response = resp
+    } catch (e) { out.bg_response_error = e?.message }
+    try {
+      const r = await fetch(`https://7tv.io/v3/users/twitch/${out.self_twitch_id}`, { credentials: 'omit' })
+      const d = r.ok ? await r.json() : null
+      out.seventv_direct = { status: r.status, style: d?.user?.style, has_user: !!d?.user }
+    } catch (e) { out.seventv_direct_error = e?.message }
+  }
+  console.log('%c[hs-diag]', 'color:#ff8700;font-weight:bold', out)
+  return out
+}
+
 function getCurrentUsername() {
   // Return cached value if we already found it
   if (cachedUsername) {
@@ -6320,23 +6349,42 @@ function applyCosmeticsToMessage(el, userId, preQueriedNameEl) {
     el.dataset.hsChatterinoDone = '1'
   }
 
-  // 7TV cosmetics
+  // 7TV cosmetics — diff-update so cosmetics_invalidated swaps cleanly
   const cosmetic = cosmeticsCache.get(userId)
   if (cosmetic) {
-    if (cosmetic.badge && !el.dataset.hs7tvBadgeDone) {
+    if (cosmetic.badge) {
       const url = get7TVBadgeUrl(cosmetic.badge)
       if (url) {
-        const img = document.createElement('img')
-        img.className = 'hs-7tv-badge hs-cosmetic-badge'
-        img.src = url
-        img.title = cosmetic.badge.tooltip || cosmetic.badge.name || '7TV'
-        img.alt = '7TV'
-        nameEl.parentNode.insertBefore(img, nameEl)
+        const existing = el.querySelector('.hs-7tv-badge')
+        if (!existing) {
+          const img = document.createElement('img')
+          img.className = 'hs-7tv-badge hs-cosmetic-badge'
+          img.src = url
+          img.title = cosmetic.badge.tooltip || cosmetic.badge.name || '7TV'
+          img.alt = '7TV'
+          nameEl.parentNode.insertBefore(img, nameEl)
+        } else if (existing.src !== url) {
+          existing.src = url
+          existing.title = cosmetic.badge.tooltip || cosmetic.badge.name || '7TV'
+        }
         el.dataset.hs7tvBadgeDone = '1'
       }
+    } else if (el.dataset.hs7tvBadgeDone) {
+      // Cosmetic was revoked — remove existing badge
+      el.querySelector('.hs-7tv-badge')?.remove()
+      delete el.dataset.hs7tvBadgeDone
     }
     if (cosmetic.paint && !nameEl.dataset.hsPaintApplied) {
       applyPaintToElement(nameEl, cosmetic.paint)
+    } else if (!cosmetic.paint && nameEl.dataset.hsPaintApplied) {
+      // Paint revoked — clear paint styles
+      nameEl.style.removeProperty('background-image')
+      nameEl.style.removeProperty('background-size')
+      nameEl.style.removeProperty('-webkit-background-clip')
+      nameEl.style.removeProperty('-webkit-text-fill-color')
+      nameEl.style.removeProperty('background-clip')
+      nameEl.style.removeProperty('filter')
+      delete nameEl.dataset.hsPaintApplied
     }
     el.dataset.hsCosmeticDone = '1'
   }

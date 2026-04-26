@@ -100,21 +100,28 @@
     channel: null,
     global: null,
     mine: null,
-    sets: null
+    sets: null,
+    history: null
   };
   let isLoading = {
     channel: false,
     global: false,
     mine: false,
-    sets: false
+    sets: false,
+    history: false
   };
   let isOffline = false;
   let usingCachedData = {
     channel: false,
     global: false,
     mine: false,
-    sets: false
+    sets: false,
+    history: false
   };
+
+  // Removed emotes history — lazy-loaded on first 'history' tab open
+  let removedEmotesCache = []
+  let historyLoaded = false
 
   // Saved emote sets — list of { id, name, emote_count, starred, source_type, source_username }
   // Loaded lazy on first 'sets' tab open via api_fetch through background.
@@ -886,6 +893,87 @@
         border-color: #00cc66;
       }
       .heatsync-set-apply-btn.failed {
+        background: #ff4444;
+        color: #fff;
+        border-color: #ff4444;
+      }
+
+      /* Removed emotes history list */
+      .heatsync-history-list {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        padding: 8px;
+      }
+      .heatsync-history-item {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 10px;
+        background: rgba(255,255,255,0.04);
+        border: 1px solid #333;
+      }
+      .heatsync-history-item:hover {
+        background: rgba(255,255,255,0.08);
+      }
+      .heatsync-history-thumb {
+        width: 28px;
+        height: 28px;
+        object-fit: contain;
+        flex-shrink: 0;
+        image-rendering: pixelated;
+      }
+      .heatsync-history-info {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        min-width: 0;
+        flex: 1;
+      }
+      .heatsync-history-name {
+        font-size: 13px;
+        font-weight: 600;
+        color: #fff;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .heatsync-history-meta {
+        font-size: 11px;
+        color: #a0a0a0;
+      }
+      .heatsync-restore-btn {
+        background: #000;
+        color: #fff;
+        border: 1px solid #808080;
+        padding: 4px 10px;
+        font: inherit;
+        font-size: 11px;
+        font-weight: 600;
+        cursor: pointer;
+        text-transform: lowercase;
+        flex-shrink: 0;
+      }
+      .heatsync-restore-btn:hover {
+        background: #fff;
+        color: #000;
+        border-color: #fff;
+      }
+      .heatsync-restore-btn.confirming {
+        background: #ff8700;
+        color: #000;
+        border-color: #ff8700;
+      }
+      .heatsync-restore-btn.restoring {
+        opacity: 0.6;
+        cursor: wait;
+      }
+      .heatsync-restore-btn.restored {
+        background: #00cc66;
+        color: #000;
+        border-color: #00cc66;
+      }
+      .heatsync-restore-btn.failed {
         background: #ff4444;
         color: #fff;
         border-color: #ff4444;
@@ -1710,6 +1798,9 @@
           <button class="heatsync-tab" data-tab="sets">
             ${t('btn_tab_sets') || 'sets'}<span class="heatsync-tab-count" id="count-sets">...</span>
           </button>
+          <button class="heatsync-tab" data-tab="history">
+            history<span class="heatsync-tab-count" id="count-history">...</span>
+          </button>
           <button class="heatsync-tab" data-tab="emoji">
             ${t('btn_tab_emoji')}<span class="heatsync-tab-count" id="count-emoji">...</span>
           </button>
@@ -1902,6 +1993,10 @@
         setsLoaded = false
         loadErrors.sets = null
         await loadSets();
+      } else if (tab === 'history') {
+        historyLoaded = false
+        loadErrors.history = null
+        await loadHistory();
       }
       renderEmoteGrid();
     }, { signal: btnSignal });
@@ -2029,6 +2124,13 @@
       _virtualPickerEmotes = []
       _virtualRecentCount = 0
       renderSetsList(grid, isLoggedIn)
+      return
+    }
+
+    if (currentTab === 'history') {
+      _virtualPickerEmotes = []
+      _virtualRecentCount = 0
+      renderHistoryList(grid, isLoggedIn)
       return
     }
 
@@ -2536,6 +2638,185 @@
       return true
     } catch (err) {
       log(' applySet error:', err?.message)
+      return false
+    }
+  }
+
+  // ===== Removed Emotes History =====
+  // Render list of removed emotes with inline confirm restore.
+  function renderHistoryList(grid, isLoggedIn) {
+    while (grid.firstChild) grid.removeChild(grid.firstChild)
+
+    if (!isLoggedIn) {
+      const msg = document.createElement('div')
+      msg.className = 'heatsync-login-msg'
+      msg.textContent = 'log in to view removed emotes'
+      grid.appendChild(msg)
+      return
+    }
+
+    if (!historyLoaded && !isLoading.history) {
+      isLoading.history = true
+      const loadingEl = document.createElement('div')
+      loadingEl.className = 'heatsync-empty'
+      loadingEl.textContent = t('common_loading')
+      grid.appendChild(loadingEl)
+      loadHistory().finally(() => {
+        isLoading.history = false
+        if (currentTab === 'history') renderEmoteGrid()
+      })
+      return
+    }
+
+    if (loadErrors.history) {
+      const err = document.createElement('div')
+      err.className = 'heatsync-empty'
+      err.textContent = loadErrors.history
+      grid.appendChild(err)
+      return
+    }
+
+    if (!removedEmotesCache.length) {
+      const empty = document.createElement('div')
+      empty.className = 'heatsync-empty'
+      empty.textContent = 'no removed emotes'
+      grid.appendChild(empty)
+      return
+    }
+
+    if (!grid.dataset.hsHistoryDelegated) {
+      grid.dataset.hsHistoryDelegated = '1'
+      grid.addEventListener('click', handleRestoreClick)
+    }
+
+    const list = document.createElement('div')
+    list.className = 'heatsync-history-list'
+    for (const e of removedEmotesCache) {
+      const item = document.createElement('div')
+      item.className = 'heatsync-history-item'
+
+      const imgUrl = safeUrl(e.url || '')
+      if (imgUrl) {
+        const img = document.createElement('img')
+        img.className = 'heatsync-history-thumb'
+        img.src = imgUrl
+        img.alt = escapeHtml(e.name)
+        img.loading = 'lazy'
+        img.referrerPolicy = 'no-referrer'
+        item.appendChild(img)
+      }
+
+      const info = document.createElement('div')
+      info.className = 'heatsync-history-info'
+
+      const name = document.createElement('div')
+      name.className = 'heatsync-history-name'
+      name.textContent = e.name || '(unnamed)'
+      info.appendChild(name)
+
+      const meta = document.createElement('div')
+      meta.className = 'heatsync-history-meta'
+      const removedAt = e.removed_at ? new Date(e.removed_at).toLocaleDateString() : ''
+      meta.textContent = removedAt ? `removed ${removedAt}` : 'removed'
+      info.appendChild(meta)
+
+      item.appendChild(info)
+
+      const restoreBtn = document.createElement('button')
+      restoreBtn.className = 'heatsync-restore-btn'
+      restoreBtn.type = 'button'
+      restoreBtn.textContent = 'restore'
+      restoreBtn.dataset.emoteId = String(e.id)
+      restoreBtn.dataset.emoteName = e.name || ''
+      item.appendChild(restoreBtn)
+
+      list.appendChild(item)
+    }
+    grid.appendChild(list)
+  }
+
+  async function handleRestoreClick(e) {
+    const btn = e.target.closest('.heatsync-restore-btn')
+    if (!btn) return
+    e.stopPropagation()
+    if (btn.disabled) return
+
+    if (!btn.classList.contains('confirming')) {
+      btn.classList.add('confirming')
+      btn.textContent = 'restore?'
+      const timer = setTimeout(() => {
+        btn.classList.remove('confirming')
+        btn.textContent = 'restore'
+      }, 4000)
+      btn.dataset.confirmTimer = String(timer)
+      return
+    }
+
+    clearTimeout(parseInt(btn.dataset.confirmTimer || '0'))
+    btn.classList.remove('confirming')
+    btn.classList.add('restoring')
+    btn.disabled = true
+    btn.textContent = 'restoring…'
+    const ok = await restoreEmote(btn.dataset.emoteId)
+    if (ok) {
+      btn.classList.remove('restoring')
+      btn.classList.add('restored')
+      btn.textContent = 'restored'
+      // Remove from local cache so it disappears from list
+      const id = parseInt(btn.dataset.emoteId)
+      removedEmotesCache = removedEmotesCache.filter(x => x.id !== id)
+      const countEl = document.getElementById('count-history')
+      if (countEl) countEl.textContent = String(removedEmotesCache.length)
+      // Refresh inventory so the emote shows up in mine tab
+      loadInventoryEmotes()
+    } else {
+      btn.classList.remove('restoring')
+      btn.classList.add('failed')
+      btn.textContent = 'failed'
+      setTimeout(() => {
+        btn.classList.remove('failed')
+        btn.disabled = false
+        btn.textContent = 'restore'
+      }, 2000)
+    }
+  }
+
+  async function loadHistory() {
+    try {
+      const resp = await chrome.runtime.sendMessage({
+        type: 'api_fetch',
+        path: '/api/user/emotes/removed',
+        method: 'GET',
+        auth: true
+      })
+      if (!resp || resp.ok === false) {
+        loadErrors.history = resp?.error || 'failed to load history'
+        removedEmotesCache = []
+        return
+      }
+      const data = resp.data || resp
+      removedEmotesCache = Array.isArray(data?.emotes) ? data.emotes : (Array.isArray(data) ? data : [])
+      historyLoaded = true
+      loadErrors.history = null
+      const countEl = document.getElementById('count-history')
+      if (countEl) countEl.textContent = String(removedEmotesCache.length)
+    } catch (err) {
+      loadErrors.history = 'failed to load history'
+      removedEmotesCache = []
+    }
+  }
+
+  async function restoreEmote(emoteId) {
+    try {
+      const resp = await chrome.runtime.sendMessage({
+        type: 'api_fetch',
+        path: `/api/user/emotes/removed/${encodeURIComponent(emoteId)}/restore`,
+        method: 'POST',
+        auth: true
+      })
+      return !!(resp && resp.ok !== false)
+    } catch (err) {
+      log(' restoreEmote error:', err?.message)
       return false
     }
   }

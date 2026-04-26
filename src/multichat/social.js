@@ -1957,12 +1957,17 @@ function renderDiscoverPostRow(m) {
   return row;
 }
 
-function makeDiscoverSection(titleText, metaText, extraClass) {
-  const section = document.createElement('div');
+function makeDiscoverSection(titleText, subtitleText, metaText, extraClass) {
+  const section = document.createElement('section');
   section.className = 'hs-discover-section' + (extraClass ? ' ' + extraClass : '');
   const heading = document.createElement('div');
   heading.className = 'hs-discover-heading';
-  heading.appendChild(document.createTextNode(titleText));
+
+  const titleWrap = document.createElement('span');
+  titleWrap.className = 'hs-discover-heading-title';
+  titleWrap.textContent = titleText;
+  heading.appendChild(titleWrap);
+
   if (metaText) {
     const meta = document.createElement('span');
     meta.className = 'hs-discover-meta';
@@ -1970,7 +1975,18 @@ function makeDiscoverSection(titleText, metaText, extraClass) {
     heading.appendChild(meta);
   }
   section.appendChild(heading);
-  return section;
+
+  if (subtitleText) {
+    const sub = document.createElement('div');
+    sub.className = 'hs-discover-subtitle';
+    sub.textContent = subtitleText;
+    section.appendChild(sub);
+  }
+
+  const body = document.createElement('div');
+  body.className = 'hs-discover-section-body';
+  section.appendChild(body);
+  return { section, body };
 }
 
 function renderDiscoverTab() {
@@ -1989,10 +2005,10 @@ function renderDiscoverTab() {
   }
 
   msgsEl.textContent = '';
-  const frag = document.createDocumentFragment();
 
-  // Filter chips — always render so user can flip filters even before data
-  frag.appendChild(renderDiscoverChipsBar());
+  // Container query root — gives us responsive layout based on panel width, not viewport
+  const root = document.createElement('div');
+  root.className = 'hs-discover-root';
 
   const filteredProfiles = discoverProfiles.filter(profileMatchesPlatformFilter);
   const filteredPosts = discoverPosts.filter(postMatchesPlatformFilter);
@@ -2013,95 +2029,141 @@ function renderDiscoverTab() {
     1
   );
 
+  // Status strip — at-a-glance counts
+  const status = document.createElement('div');
+  status.className = 'hs-discover-status';
+  const statusBits = [
+    `${discoverProfiles.length} profiles`,
+    `${liveProfiles.length} live`,
+    `${discoverPosts.length} hot posts`,
+  ];
+  if (discoverPlatformFilter !== 'all') statusBits.push(`filter: ${discoverPlatformFilter}`);
+  status.textContent = statusBits.join(' · ');
+  root.appendChild(status);
+
+  // Filter chips
+  root.appendChild(renderDiscoverChipsBar());
+
+  // Top row — LIVE NOW + HOT POSTS side by side when wide
+  const topRow = document.createElement('div');
+  topRow.className = 'hs-discover-row1';
+
   // ● LIVE NOW
-  if (liveProfiles.length > 0) {
-    const section = makeDiscoverSection(
-      '● live now',
-      `${liveProfiles.length} stream${liveProfiles.length === 1 ? '' : 's'}`,
+  {
+    const { section, body } = makeDiscoverSection(
+      'live now',
+      'broadcasting on twitch / kick',
+      liveProfiles.length > 0 ? `${liveProfiles.length}` : '0',
       'hs-discover-section-live'
     );
-    let rank = 1;
-    for (const profile of liveProfiles) {
-      const username = profile.username || profile.name || '';
-      if (!username) continue;
-      const row = renderDiscoverProfileRow(profile, username, rank++, maxHeat);
-      if (row) section.appendChild(row);
+    if (liveProfiles.length === 0) {
+      const empty = document.createElement('div');
+      empty.className = 'hs-discover-section-empty';
+      empty.textContent = 'no streams live right now';
+      body.appendChild(empty);
+    } else {
+      let rank = 1;
+      for (const profile of liveProfiles) {
+        const username = profile.username || profile.name || '';
+        if (!username) continue;
+        const row = renderDiscoverProfileRow(profile, username, rank++, maxHeat);
+        if (row) body.appendChild(row);
+      }
     }
-    frag.appendChild(section);
+    topRow.appendChild(section);
   }
 
-  // 🔥 HOT POSTS
-  if (filteredPosts.length > 0) {
-    const section = makeDiscoverSection(
+  // HOT POSTS
+  {
+    const { section, body } = makeDiscoverSection(
       'hot posts',
-      `${filteredPosts.length}`,
+      'top heat in the social feed',
+      filteredPosts.length > 0 ? `${filteredPosts.length}` : '0',
       'hs-discover-section-posts'
     );
-    for (const m of filteredPosts) {
-      const row = renderDiscoverPostRow(m);
-      if (row) section.appendChild(row);
+    if (filteredPosts.length === 0) {
+      const empty = document.createElement('div');
+      empty.className = 'hs-discover-section-empty';
+      empty.textContent = 'no hot posts in this filter';
+      body.appendChild(empty);
+    } else {
+      for (const m of filteredPosts) {
+        const row = renderDiscoverPostRow(m);
+        if (row) body.appendChild(row);
+      }
     }
-    frag.appendChild(section);
+    topRow.appendChild(section);
   }
 
-  // TRENDING profiles (non-live)
-  if (restProfiles.length > 0) {
-    const sortLabel = discoverSort === 'active' ? 'by activity' : 'by heat';
-    const section = makeDiscoverSection(
-      'trending',
-      `${restProfiles.length} · ${sortLabel}`,
+  root.appendChild(topRow);
+
+  // LEADERBOARD — non-live profiles, multi-column when wide
+  {
+    const sortLabel = discoverSort === 'active' ? 'sorted by activity' : 'sorted by heat';
+    const { section, body } = makeDiscoverSection(
+      'leaderboard',
+      `top profiles, ${sortLabel}`,
+      `${restProfiles.length}`,
       'hs-discover-section-trending'
     );
-    let rank = 1;
-    for (const profile of restProfiles) {
-      const username = profile.username || profile.name || '';
-      if (!username) continue;
-      const row = renderDiscoverProfileRow(profile, username, rank++, maxHeat);
-      if (row) section.appendChild(row);
-    }
-    frag.appendChild(section);
-  }
-
-  // TAGS
-  if (discoverTags.length > 0) {
-    const section = makeDiscoverSection('tags', `${discoverTags.length}`, 'hs-discover-section-tags');
-    const chips = document.createElement('div');
-    chips.className = 'hs-discover-chips';
-    for (const tag of discoverTags) {
-      const name = typeof tag === 'string' ? tag : (tag.name || tag.tag || '');
-      if (!name) continue;
-      const chip = document.createElement('a');
-      chip.className = 'hs-discover-chip';
-      chip.href = `https://heatsync.org/tags/${encodeURIComponent(name)}`;
-      chip.target = '_blank';
-      chip.rel = 'noopener noreferrer';
-      chip.textContent = name;
-      const count = typeof tag === 'object' ? (tag.count || tag.usage || 0) : 0;
-      if (count > 0) {
-        const c = document.createElement('span');
-        c.className = 'hs-discover-chip-count';
-        c.textContent = formatDiscoverCount(count);
-        chip.appendChild(c);
+    body.classList.add('hs-discover-leaderboard-body');
+    if (restProfiles.length === 0) {
+      const empty = document.createElement('div');
+      empty.className = 'hs-discover-section-empty';
+      empty.textContent = 'no profiles match this filter';
+      body.appendChild(empty);
+    } else {
+      let rank = 1;
+      for (const profile of restProfiles) {
+        const username = profile.username || profile.name || '';
+        if (!username) continue;
+        const row = renderDiscoverProfileRow(profile, username, rank++, maxHeat);
+        if (row) body.appendChild(row);
       }
-      chips.appendChild(chip);
     }
-    section.appendChild(chips);
-    frag.appendChild(section);
+    root.appendChild(section);
   }
 
-  if (
-    liveProfiles.length === 0 &&
-    restProfiles.length === 0 &&
-    filteredPosts.length === 0 &&
-    discoverTags.length === 0
-  ) {
-    const empty = document.createElement('div');
-    empty.className = 'hs-mc-empty';
-    empty.textContent = discoverPlatformFilter !== 'all' ? `nothing for ${discoverPlatformFilter}` : 'nothing to show';
-    frag.appendChild(empty);
+  // TAGS — always render
+  {
+    const { section, body } = makeDiscoverSection(
+      'hashtags',
+      'trending across heatsync',
+      `${discoverTags.length}`,
+      'hs-discover-section-tags'
+    );
+    if (discoverTags.length === 0) {
+      const empty = document.createElement('div');
+      empty.className = 'hs-discover-section-empty';
+      empty.textContent = 'no trending tags right now';
+      body.appendChild(empty);
+    } else {
+      const chips = document.createElement('div');
+      chips.className = 'hs-discover-chips';
+      for (const tag of discoverTags) {
+        const name = typeof tag === 'string' ? tag : (tag.name || tag.tag || '');
+        if (!name) continue;
+        const chip = document.createElement('a');
+        chip.className = 'hs-discover-chip';
+        chip.href = `https://heatsync.org/tags/${encodeURIComponent(name)}`;
+        chip.target = '_blank';
+        chip.rel = 'noopener noreferrer';
+        chip.textContent = name;
+        const count = typeof tag === 'object' ? (tag.count || tag.usage || 0) : 0;
+        if (count > 0) {
+          const c = document.createElement('span');
+          c.className = 'hs-discover-chip-count';
+          c.textContent = formatDiscoverCount(count);
+          chip.appendChild(c);
+        }
+        chips.appendChild(chip);
+      }
+      body.appendChild(chips);
+    }
+    root.appendChild(section);
   }
 
-  msgsEl.appendChild(frag);
+  msgsEl.appendChild(root);
 }
 
 // Pinned messages tab

@@ -2609,6 +2609,42 @@ function injectStyles() {
       background: #fff;
     }
 
+    /* Per-tab platform filter toggles (T/K/YT) in inputbar */
+    #hs-mc-platfilter {
+      display: flex;
+      gap: 2px;
+      align-items: center;
+      flex-shrink: 0;
+    }
+    #hs-mc-platfilter:empty { display: none; }
+    .hs-mc-pf-btn {
+      background: transparent;
+      border: 1px solid;
+      color: #fff;
+      font-size: 10px;
+      font-weight: 700;
+      padding: 0 5px;
+      height: 22px;
+      min-width: 22px;
+      cursor: pointer;
+      font-family: inherit;
+      line-height: 1;
+      box-sizing: border-box;
+    }
+    .hs-mc-pf-btn.hs-mc-pf-twitch { border-color: #9146ff; background: #9146ff; color: #fff; }
+    .hs-mc-pf-btn.hs-mc-pf-kick { border-color: #53fc18; background: #53fc18; color: #000; }
+    .hs-mc-pf-btn.hs-mc-pf-youtube { border-color: #ff0000; background: #ff0000; color: #fff; }
+    .hs-mc-pf-btn.off {
+      background: transparent !important;
+      color: #555 !important;
+      border-color: #333 !important;
+    }
+    .hs-mc-pf-btn:hover { filter: brightness(1.2); }
+    .hs-mc-pf-btn.off:hover {
+      background: rgba(255,255,255,0.06) !important;
+      color: #aaa !important;
+    }
+
     /* Emote picker panel — full-width section above inputbar */
     #hs-mc-emote-picker {
       display: none;
@@ -4646,31 +4682,87 @@ function injectStyles() {
       color: #808080;
       font-size: 12px;
     }
-    /* btop-style discover: dense single-line rows, readable sizes */
-    .hs-discover-section { padding: 0; }
-    .hs-discover-section + .hs-discover-section { margin-top: 1px; }
-    .hs-discover-heading {
+    /* btop-style discover: bordered widgets, distinct accents per section */
+    .hs-discover-root {
+      container-type: inline-size;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      margin: -8px;
+      padding: 6px;
+    }
+    .hs-discover-status {
       font-size: 11px;
+      color: #888;
+      padding: 2px 4px 0;
+      font-family: ui-monospace, SFMono-Regular, monospace;
+      font-variant-numeric: tabular-nums;
+      letter-spacing: 0.3px;
+    }
+    .hs-discover-row1 {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 6px;
+    }
+    @container (min-width: 460px) {
+      .hs-discover-row1 {
+        grid-template-columns: 1fr 1fr;
+      }
+    }
+    .hs-discover-section {
+      padding: 0;
+      border: 1px solid rgba(255,255,255,0.08);
+      background: rgba(0,0,0,0.18);
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+    .hs-discover-section + .hs-discover-section { margin-top: 0; }
+    .hs-discover-heading {
+      font-size: 12px;
       color: #ff8700;
       font-weight: 700;
       text-transform: uppercase;
-      letter-spacing: 0.5px;
+      letter-spacing: 0.6px;
       margin: 0;
-      padding: 3px 8px;
-      background: rgba(255,135,0,0.06);
-      border-bottom: 1px solid rgba(255,135,0,0.18);
+      padding: 4px 8px;
+      background: rgba(255,135,0,0.08);
+      border-bottom: 1px solid rgba(255,135,0,0.2);
       line-height: 1.3;
       display: flex;
       justify-content: space-between;
-      align-items: center;
+      align-items: baseline;
+      gap: 6px;
+    }
+    .hs-discover-heading-title {
+      flex-shrink: 0;
+    }
+    .hs-discover-subtitle {
+      font-size: 10px;
+      color: #707070;
+      padding: 2px 8px 3px;
+      border-bottom: 1px solid rgba(255,255,255,0.04);
+      font-style: italic;
+      line-height: 1.2;
+    }
+    .hs-discover-section-body {
+      padding: 1px 0;
+    }
+    .hs-discover-section-empty {
+      padding: 8px;
+      color: #555;
+      font-size: 11px;
+      font-style: italic;
+      text-align: center;
     }
     .hs-discover-meta {
-      color: #808080;
+      color: #aaa;
       font-size: 11px;
-      font-weight: 500;
+      font-weight: 600;
       text-transform: none;
       letter-spacing: 0;
       font-variant-numeric: tabular-nums;
+      flex-shrink: 0;
     }
     .hs-discover-live-count {
       color: #ff3030;
@@ -4877,26 +4969,67 @@ function injectStyles() {
       color: #000;
     }
 
-    /* Section colour variants */
+    /* Section colour variants — distinct accent borders + headers per widget */
+    .hs-discover-section-live {
+      border-color: rgba(255,48,48,0.35);
+    }
     .hs-discover-section-live > .hs-discover-heading {
       background: rgba(255,48,48,0.10);
       border-bottom-color: rgba(255,48,48,0.35);
       color: #ff5050;
     }
-    .hs-discover-section-live > .hs-discover-heading::before {
+    .hs-discover-section-live > .hs-discover-heading .hs-discover-heading-title::before {
       content: '';
       display: inline-block;
-      width: 5px;
-      height: 5px;
+      width: 6px;
+      height: 6px;
       border-radius: 50%;
       background: #ff3030;
-      box-shadow: 0 0 4px #ff3030;
-      margin-right: 4px;
+      box-shadow: 0 0 5px #ff3030;
+      margin-right: 5px;
       vertical-align: middle;
       animation: hs-pulse-live 1.6s ease-in-out infinite;
     }
+    .hs-discover-section-posts {
+      border-color: rgba(255,135,0,0.3);
+    }
     .hs-discover-section-posts > .hs-discover-heading {
-      background: rgba(255,135,0,0.06);
+      background: rgba(255,135,0,0.10);
+      color: #ffaa44;
+    }
+    .hs-discover-section-trending {
+      border-color: rgba(0,180,255,0.28);
+    }
+    .hs-discover-section-trending > .hs-discover-heading {
+      background: rgba(0,180,255,0.08);
+      color: #4dc6ff;
+      border-bottom-color: rgba(0,180,255,0.3);
+    }
+    .hs-discover-section-tags {
+      border-color: rgba(80,255,120,0.28);
+    }
+    .hs-discover-section-tags > .hs-discover-heading {
+      background: rgba(80,255,120,0.08);
+      color: #6dff8d;
+      border-bottom-color: rgba(80,255,120,0.3);
+    }
+
+    /* Leaderboard multi-column when wide — fewer scrolls */
+    .hs-discover-leaderboard-body .hs-discover-profile-row {
+      break-inside: avoid;
+      page-break-inside: avoid;
+    }
+    @container (min-width: 520px) {
+      .hs-discover-leaderboard-body {
+        columns: 2;
+        column-gap: 0;
+        column-rule: 1px solid rgba(255,255,255,0.05);
+      }
+    }
+    @container (min-width: 800px) {
+      .hs-discover-leaderboard-body {
+        columns: 3;
+      }
     }
 
     /* Post rows */
@@ -13342,12 +13475,17 @@ function renderDiscoverPostRow(m) {
   return row;
 }
 
-function makeDiscoverSection(titleText, metaText, extraClass) {
-  const section = document.createElement('div');
+function makeDiscoverSection(titleText, subtitleText, metaText, extraClass) {
+  const section = document.createElement('section');
   section.className = 'hs-discover-section' + (extraClass ? ' ' + extraClass : '');
   const heading = document.createElement('div');
   heading.className = 'hs-discover-heading';
-  heading.appendChild(document.createTextNode(titleText));
+
+  const titleWrap = document.createElement('span');
+  titleWrap.className = 'hs-discover-heading-title';
+  titleWrap.textContent = titleText;
+  heading.appendChild(titleWrap);
+
   if (metaText) {
     const meta = document.createElement('span');
     meta.className = 'hs-discover-meta';
@@ -13355,7 +13493,18 @@ function makeDiscoverSection(titleText, metaText, extraClass) {
     heading.appendChild(meta);
   }
   section.appendChild(heading);
-  return section;
+
+  if (subtitleText) {
+    const sub = document.createElement('div');
+    sub.className = 'hs-discover-subtitle';
+    sub.textContent = subtitleText;
+    section.appendChild(sub);
+  }
+
+  const body = document.createElement('div');
+  body.className = 'hs-discover-section-body';
+  section.appendChild(body);
+  return { section, body };
 }
 
 function renderDiscoverTab() {
@@ -13374,10 +13523,10 @@ function renderDiscoverTab() {
   }
 
   msgsEl.textContent = '';
-  const frag = document.createDocumentFragment();
 
-  // Filter chips — always render so user can flip filters even before data
-  frag.appendChild(renderDiscoverChipsBar());
+  // Container query root — gives us responsive layout based on panel width, not viewport
+  const root = document.createElement('div');
+  root.className = 'hs-discover-root';
 
   const filteredProfiles = discoverProfiles.filter(profileMatchesPlatformFilter);
   const filteredPosts = discoverPosts.filter(postMatchesPlatformFilter);
@@ -13398,95 +13547,141 @@ function renderDiscoverTab() {
     1
   );
 
+  // Status strip — at-a-glance counts
+  const status = document.createElement('div');
+  status.className = 'hs-discover-status';
+  const statusBits = [
+    `${discoverProfiles.length} profiles`,
+    `${liveProfiles.length} live`,
+    `${discoverPosts.length} hot posts`,
+  ];
+  if (discoverPlatformFilter !== 'all') statusBits.push(`filter: ${discoverPlatformFilter}`);
+  status.textContent = statusBits.join(' · ');
+  root.appendChild(status);
+
+  // Filter chips
+  root.appendChild(renderDiscoverChipsBar());
+
+  // Top row — LIVE NOW + HOT POSTS side by side when wide
+  const topRow = document.createElement('div');
+  topRow.className = 'hs-discover-row1';
+
   // ● LIVE NOW
-  if (liveProfiles.length > 0) {
-    const section = makeDiscoverSection(
-      '● live now',
-      `${liveProfiles.length} stream${liveProfiles.length === 1 ? '' : 's'}`,
+  {
+    const { section, body } = makeDiscoverSection(
+      'live now',
+      'broadcasting on twitch / kick',
+      liveProfiles.length > 0 ? `${liveProfiles.length}` : '0',
       'hs-discover-section-live'
     );
-    let rank = 1;
-    for (const profile of liveProfiles) {
-      const username = profile.username || profile.name || '';
-      if (!username) continue;
-      const row = renderDiscoverProfileRow(profile, username, rank++, maxHeat);
-      if (row) section.appendChild(row);
+    if (liveProfiles.length === 0) {
+      const empty = document.createElement('div');
+      empty.className = 'hs-discover-section-empty';
+      empty.textContent = 'no streams live right now';
+      body.appendChild(empty);
+    } else {
+      let rank = 1;
+      for (const profile of liveProfiles) {
+        const username = profile.username || profile.name || '';
+        if (!username) continue;
+        const row = renderDiscoverProfileRow(profile, username, rank++, maxHeat);
+        if (row) body.appendChild(row);
+      }
     }
-    frag.appendChild(section);
+    topRow.appendChild(section);
   }
 
-  // 🔥 HOT POSTS
-  if (filteredPosts.length > 0) {
-    const section = makeDiscoverSection(
+  // HOT POSTS
+  {
+    const { section, body } = makeDiscoverSection(
       'hot posts',
-      `${filteredPosts.length}`,
+      'top heat in the social feed',
+      filteredPosts.length > 0 ? `${filteredPosts.length}` : '0',
       'hs-discover-section-posts'
     );
-    for (const m of filteredPosts) {
-      const row = renderDiscoverPostRow(m);
-      if (row) section.appendChild(row);
+    if (filteredPosts.length === 0) {
+      const empty = document.createElement('div');
+      empty.className = 'hs-discover-section-empty';
+      empty.textContent = 'no hot posts in this filter';
+      body.appendChild(empty);
+    } else {
+      for (const m of filteredPosts) {
+        const row = renderDiscoverPostRow(m);
+        if (row) body.appendChild(row);
+      }
     }
-    frag.appendChild(section);
+    topRow.appendChild(section);
   }
 
-  // TRENDING profiles (non-live)
-  if (restProfiles.length > 0) {
-    const sortLabel = discoverSort === 'active' ? 'by activity' : 'by heat';
-    const section = makeDiscoverSection(
-      'trending',
-      `${restProfiles.length} · ${sortLabel}`,
+  root.appendChild(topRow);
+
+  // LEADERBOARD — non-live profiles, multi-column when wide
+  {
+    const sortLabel = discoverSort === 'active' ? 'sorted by activity' : 'sorted by heat';
+    const { section, body } = makeDiscoverSection(
+      'leaderboard',
+      `top profiles, ${sortLabel}`,
+      `${restProfiles.length}`,
       'hs-discover-section-trending'
     );
-    let rank = 1;
-    for (const profile of restProfiles) {
-      const username = profile.username || profile.name || '';
-      if (!username) continue;
-      const row = renderDiscoverProfileRow(profile, username, rank++, maxHeat);
-      if (row) section.appendChild(row);
-    }
-    frag.appendChild(section);
-  }
-
-  // TAGS
-  if (discoverTags.length > 0) {
-    const section = makeDiscoverSection('tags', `${discoverTags.length}`, 'hs-discover-section-tags');
-    const chips = document.createElement('div');
-    chips.className = 'hs-discover-chips';
-    for (const tag of discoverTags) {
-      const name = typeof tag === 'string' ? tag : (tag.name || tag.tag || '');
-      if (!name) continue;
-      const chip = document.createElement('a');
-      chip.className = 'hs-discover-chip';
-      chip.href = `https://heatsync.org/tags/${encodeURIComponent(name)}`;
-      chip.target = '_blank';
-      chip.rel = 'noopener noreferrer';
-      chip.textContent = name;
-      const count = typeof tag === 'object' ? (tag.count || tag.usage || 0) : 0;
-      if (count > 0) {
-        const c = document.createElement('span');
-        c.className = 'hs-discover-chip-count';
-        c.textContent = formatDiscoverCount(count);
-        chip.appendChild(c);
+    body.classList.add('hs-discover-leaderboard-body');
+    if (restProfiles.length === 0) {
+      const empty = document.createElement('div');
+      empty.className = 'hs-discover-section-empty';
+      empty.textContent = 'no profiles match this filter';
+      body.appendChild(empty);
+    } else {
+      let rank = 1;
+      for (const profile of restProfiles) {
+        const username = profile.username || profile.name || '';
+        if (!username) continue;
+        const row = renderDiscoverProfileRow(profile, username, rank++, maxHeat);
+        if (row) body.appendChild(row);
       }
-      chips.appendChild(chip);
     }
-    section.appendChild(chips);
-    frag.appendChild(section);
+    root.appendChild(section);
   }
 
-  if (
-    liveProfiles.length === 0 &&
-    restProfiles.length === 0 &&
-    filteredPosts.length === 0 &&
-    discoverTags.length === 0
-  ) {
-    const empty = document.createElement('div');
-    empty.className = 'hs-mc-empty';
-    empty.textContent = discoverPlatformFilter !== 'all' ? `nothing for ${discoverPlatformFilter}` : 'nothing to show';
-    frag.appendChild(empty);
+  // TAGS — always render
+  {
+    const { section, body } = makeDiscoverSection(
+      'hashtags',
+      'trending across heatsync',
+      `${discoverTags.length}`,
+      'hs-discover-section-tags'
+    );
+    if (discoverTags.length === 0) {
+      const empty = document.createElement('div');
+      empty.className = 'hs-discover-section-empty';
+      empty.textContent = 'no trending tags right now';
+      body.appendChild(empty);
+    } else {
+      const chips = document.createElement('div');
+      chips.className = 'hs-discover-chips';
+      for (const tag of discoverTags) {
+        const name = typeof tag === 'string' ? tag : (tag.name || tag.tag || '');
+        if (!name) continue;
+        const chip = document.createElement('a');
+        chip.className = 'hs-discover-chip';
+        chip.href = `https://heatsync.org/tags/${encodeURIComponent(name)}`;
+        chip.target = '_blank';
+        chip.rel = 'noopener noreferrer';
+        chip.textContent = name;
+        const count = typeof tag === 'object' ? (tag.count || tag.usage || 0) : 0;
+        if (count > 0) {
+          const c = document.createElement('span');
+          c.className = 'hs-discover-chip-count';
+          c.textContent = formatDiscoverCount(count);
+          chip.appendChild(c);
+        }
+        chips.appendChild(chip);
+      }
+      body.appendChild(chips);
+    }
+    root.appendChild(section);
   }
 
-  msgsEl.appendChild(frag);
+  msgsEl.appendChild(root);
 }
 
 // Pinned messages tab
@@ -14144,9 +14339,15 @@ function createInputBar() {
     <button id="hs-mc-emote-btn"><img src="${iconUrl}" data-src="${iconUrl}" data-src-black="${iconBlackUrl}" alt="hs"></button>
   `;
 
+  // Prepend platform filter group container (populated by renderPlatformFilterButtons)
+  const platfilter = document.createElement('div');
+  platfilter.id = 'hs-mc-platfilter';
+  bar.insertBefore(platfilter, bar.firstChild);
+
   // Initialize input after DOM insertion
   setTimeout(() => {
     initInput();
+    renderPlatformFilterButtons();
     const btn = bar.querySelector('#hs-mc-emote-btn');
     const img = btn?.querySelector('img');
     if (btn && img) {
@@ -16275,6 +16476,9 @@ const STORAGE_KEY = 'heatsync_multichat';
   // Muted users (right-click to hide) — loaded async from chrome.storage.local
   let mutedUsers = new Set();
 
+  // Per-tab platform filters: { [tabId]: { twitch, kick, youtube } }, defaults all true
+  let platformFilters = {};
+
 
   // Channel point redeem title cache: rewardId → { title, cost }
   const redeemTitleMap = new Map();
@@ -17787,6 +17991,78 @@ const STORAGE_KEY = 'heatsync_multichat';
     renderMessages(currentTab);
   }
 
+  // Platform filters — per-tab toggle to mute Twitch/Kick/YT messages
+  async function loadPlatformFilters() {
+    try {
+      const stored = await chrome.storage.sync.get(['ui_settings']);
+      if (stored.ui_settings?.platformFilters) platformFilters = stored.ui_settings.platformFilters;
+    } catch {}
+  }
+
+  function getPlatformFilter(tabId) {
+    const f = platformFilters[tabId] || {};
+    return { twitch: f.twitch !== false, kick: f.kick !== false, youtube: f.youtube !== false };
+  }
+
+  function togglePlatformFilter(tabId, plat) {
+    const f = getPlatformFilter(tabId);
+    f[plat] = !f[plat];
+    platformFilters[tabId] = f;
+    saveUiSetting('platformFilters', platformFilters);
+  }
+
+  function isPlatformFilterTab(tabId) {
+    return tabId === 'live' || config.channels.some(c => (typeof c === 'string' ? c : c.id) === tabId);
+  }
+
+  function renderPlatformFilterButtons() {
+    const group = document.getElementById('hs-mc-platfilter');
+    if (!group) return;
+    const tab = currentTab;
+    if (!isPlatformFilterTab(tab)) {
+      group.style.display = 'none';
+      return;
+    }
+    group.style.display = '';
+
+    // Determine which platforms apply to this tab
+    let hasTwitch = true, hasKick = true, hasYt = true;
+    if (tab !== 'live') {
+      const ch = config.channels.find(c => (typeof c === 'string' ? c : c.id) === tab);
+      if (ch && typeof ch !== 'string') {
+        hasTwitch = !!ch.twitch;
+        hasKick = !!ch.kick;
+        hasYt = !!ch.youtube;
+      }
+    }
+
+    const filt = getPlatformFilter(tab);
+    const meta = [
+      { key: 'twitch', label: 'T', show: hasTwitch },
+      { key: 'kick', label: 'K', show: hasKick },
+      { key: 'youtube', label: 'YT', show: hasYt }
+    ];
+
+    while (group.firstChild) group.removeChild(group.firstChild);
+    for (const p of meta) {
+      if (!p.show) continue;
+      const btn = document.createElement('button');
+      btn.className = 'hs-mc-pf-btn hs-mc-pf-' + p.key;
+      btn.dataset.platform = p.key;
+      btn.classList.toggle('off', !filt[p.key]);
+      btn.textContent = p.label;
+      btn.title = (filt[p.key] ? 'Hide ' : 'Show ') + p.key + ' messages';
+      btn.addEventListener('click', () => {
+        togglePlatformFilter(currentTab, p.key);
+        const on = getPlatformFilter(currentTab)[p.key];
+        btn.classList.toggle('off', !on);
+        btn.title = (on ? 'Hide ' : 'Show ') + p.key + ' messages';
+        renderMessages(currentTab);
+      });
+      group.appendChild(btn);
+    }
+  }
+
 
   // Auto-hide input setting
   async function loadAutoHideSetting() {
@@ -18680,6 +18956,9 @@ const STORAGE_KEY = 'heatsync_multichat';
       } catch (e) { /* context invalidated */ }
     }
 
+    // Refresh platform filter buttons for the new tab
+    renderPlatformFilterButtons();
+
     // Update tab bar active state
     if (tabBarElement) {
       const liveCh = getLiveChannel()?.toLowerCase()
@@ -19311,6 +19590,12 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     if (editingChannel) return false;
     if (isScrolledUp || currentTab !== tabId) return false;
 
+    // Platform filter: skip messages for muted platforms (single-platform tab path)
+    if (msg.platform && isPlatformFilterTab(tabId)) {
+      const k = msg.platform === 'youtube' ? 'youtube' : msg.platform;
+      if (getPlatformFilter(tabId)[k] === false) return true;
+    }
+
     // Multi-platform tabs: skip appendMessage (trimChildren is platform-blind
     // and lets the fastest source push others out). Debounce to renderMessages
     // which has fair per-platform capping.
@@ -19476,7 +19761,12 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
         const linkedYt = config.channels.find(ch => typeof ch !== 'string' && (ch.twitch === curCh || ch.kick === curCh) && ch.youtube);
         if (linkedYt) ytMsgs = channelYtMessages.get(linkedYt.id) || [];
       }
-      msgs = fairMerge([ircMsgs, kickMsgs, ytMsgs])
+      const filt = getPlatformFilter('live')
+      msgs = fairMerge([
+        filt.twitch ? ircMsgs : [],
+        filt.kick ? kickMsgs : [],
+        filt.youtube ? ytMsgs : []
+      ])
     } else {
       // Channel tab — merge IRC + Kick + per-channel YouTube messages
       const ch = config.channels.find(c => (typeof c === 'string' ? c : c.id) === id);
@@ -19497,7 +19787,12 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
           ytMsgs = autoYt
         }
       }
-      msgs = fairMerge([ircMsgs, kickMsgs, ytMsgs])
+      const filt = getPlatformFilter(id)
+      msgs = fairMerge([
+        filt.twitch ? ircMsgs : [],
+        filt.kick ? kickMsgs : [],
+        filt.youtube ? ytMsgs : []
+      ])
     }
 
     // Merge follow stream events into every tab (went live, switched game, went offline)
@@ -20995,6 +21290,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     await loadAutomodSettings();
     await loadPlatformBadgesSetting();
     await loadZebraSetting();
+    await loadPlatformFilters();
     await loadAutoHideSetting();
     await loadTimestampsSetting();
     await loadAvatarsSetting();

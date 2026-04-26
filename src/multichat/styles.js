@@ -1576,6 +1576,42 @@ function injectStyles() {
       background: #fff;
     }
 
+    /* Per-tab platform filter toggles (T/K/YT) in inputbar */
+    #hs-mc-platfilter {
+      display: flex;
+      gap: 2px;
+      align-items: center;
+      flex-shrink: 0;
+    }
+    #hs-mc-platfilter:empty { display: none; }
+    .hs-mc-pf-btn {
+      background: transparent;
+      border: 1px solid;
+      color: #fff;
+      font-size: 10px;
+      font-weight: 700;
+      padding: 0 5px;
+      height: 22px;
+      min-width: 22px;
+      cursor: pointer;
+      font-family: inherit;
+      line-height: 1;
+      box-sizing: border-box;
+    }
+    .hs-mc-pf-btn.hs-mc-pf-twitch { border-color: #9146ff; background: #9146ff; color: #fff; }
+    .hs-mc-pf-btn.hs-mc-pf-kick { border-color: #53fc18; background: #53fc18; color: #000; }
+    .hs-mc-pf-btn.hs-mc-pf-youtube { border-color: #ff0000; background: #ff0000; color: #fff; }
+    .hs-mc-pf-btn.off {
+      background: transparent !important;
+      color: #555 !important;
+      border-color: #333 !important;
+    }
+    .hs-mc-pf-btn:hover { filter: brightness(1.2); }
+    .hs-mc-pf-btn.off:hover {
+      background: rgba(255,255,255,0.06) !important;
+      color: #aaa !important;
+    }
+
     /* Emote picker panel — full-width section above inputbar */
     #hs-mc-emote-picker {
       display: none;
@@ -3613,31 +3649,87 @@ function injectStyles() {
       color: #808080;
       font-size: 12px;
     }
-    /* btop-style discover: dense single-line rows, readable sizes */
-    .hs-discover-section { padding: 0; }
-    .hs-discover-section + .hs-discover-section { margin-top: 1px; }
-    .hs-discover-heading {
+    /* btop-style discover: bordered widgets, distinct accents per section */
+    .hs-discover-root {
+      container-type: inline-size;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      margin: -8px;
+      padding: 6px;
+    }
+    .hs-discover-status {
       font-size: 11px;
+      color: #888;
+      padding: 2px 4px 0;
+      font-family: ui-monospace, SFMono-Regular, monospace;
+      font-variant-numeric: tabular-nums;
+      letter-spacing: 0.3px;
+    }
+    .hs-discover-row1 {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 6px;
+    }
+    @container (min-width: 460px) {
+      .hs-discover-row1 {
+        grid-template-columns: 1fr 1fr;
+      }
+    }
+    .hs-discover-section {
+      padding: 0;
+      border: 1px solid rgba(255,255,255,0.08);
+      background: rgba(0,0,0,0.18);
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+    .hs-discover-section + .hs-discover-section { margin-top: 0; }
+    .hs-discover-heading {
+      font-size: 12px;
       color: #ff8700;
       font-weight: 700;
       text-transform: uppercase;
-      letter-spacing: 0.5px;
+      letter-spacing: 0.6px;
       margin: 0;
-      padding: 3px 8px;
-      background: rgba(255,135,0,0.06);
-      border-bottom: 1px solid rgba(255,135,0,0.18);
+      padding: 4px 8px;
+      background: rgba(255,135,0,0.08);
+      border-bottom: 1px solid rgba(255,135,0,0.2);
       line-height: 1.3;
       display: flex;
       justify-content: space-between;
-      align-items: center;
+      align-items: baseline;
+      gap: 6px;
+    }
+    .hs-discover-heading-title {
+      flex-shrink: 0;
+    }
+    .hs-discover-subtitle {
+      font-size: 10px;
+      color: #707070;
+      padding: 2px 8px 3px;
+      border-bottom: 1px solid rgba(255,255,255,0.04);
+      font-style: italic;
+      line-height: 1.2;
+    }
+    .hs-discover-section-body {
+      padding: 1px 0;
+    }
+    .hs-discover-section-empty {
+      padding: 8px;
+      color: #555;
+      font-size: 11px;
+      font-style: italic;
+      text-align: center;
     }
     .hs-discover-meta {
-      color: #808080;
+      color: #aaa;
       font-size: 11px;
-      font-weight: 500;
+      font-weight: 600;
       text-transform: none;
       letter-spacing: 0;
       font-variant-numeric: tabular-nums;
+      flex-shrink: 0;
     }
     .hs-discover-live-count {
       color: #ff3030;
@@ -3844,26 +3936,67 @@ function injectStyles() {
       color: #000;
     }
 
-    /* Section colour variants */
+    /* Section colour variants — distinct accent borders + headers per widget */
+    .hs-discover-section-live {
+      border-color: rgba(255,48,48,0.35);
+    }
     .hs-discover-section-live > .hs-discover-heading {
       background: rgba(255,48,48,0.10);
       border-bottom-color: rgba(255,48,48,0.35);
       color: #ff5050;
     }
-    .hs-discover-section-live > .hs-discover-heading::before {
+    .hs-discover-section-live > .hs-discover-heading .hs-discover-heading-title::before {
       content: '';
       display: inline-block;
-      width: 5px;
-      height: 5px;
+      width: 6px;
+      height: 6px;
       border-radius: 50%;
       background: #ff3030;
-      box-shadow: 0 0 4px #ff3030;
-      margin-right: 4px;
+      box-shadow: 0 0 5px #ff3030;
+      margin-right: 5px;
       vertical-align: middle;
       animation: hs-pulse-live 1.6s ease-in-out infinite;
     }
+    .hs-discover-section-posts {
+      border-color: rgba(255,135,0,0.3);
+    }
     .hs-discover-section-posts > .hs-discover-heading {
-      background: rgba(255,135,0,0.06);
+      background: rgba(255,135,0,0.10);
+      color: #ffaa44;
+    }
+    .hs-discover-section-trending {
+      border-color: rgba(0,180,255,0.28);
+    }
+    .hs-discover-section-trending > .hs-discover-heading {
+      background: rgba(0,180,255,0.08);
+      color: #4dc6ff;
+      border-bottom-color: rgba(0,180,255,0.3);
+    }
+    .hs-discover-section-tags {
+      border-color: rgba(80,255,120,0.28);
+    }
+    .hs-discover-section-tags > .hs-discover-heading {
+      background: rgba(80,255,120,0.08);
+      color: #6dff8d;
+      border-bottom-color: rgba(80,255,120,0.3);
+    }
+
+    /* Leaderboard multi-column when wide — fewer scrolls */
+    .hs-discover-leaderboard-body .hs-discover-profile-row {
+      break-inside: avoid;
+      page-break-inside: avoid;
+    }
+    @container (min-width: 520px) {
+      .hs-discover-leaderboard-body {
+        columns: 2;
+        column-gap: 0;
+        column-rule: 1px solid rgba(255,255,255,0.05);
+      }
+    }
+    @container (min-width: 800px) {
+      .hs-discover-leaderboard-body {
+        columns: 3;
+      }
     }
 
     /* Post rows */

@@ -510,7 +510,7 @@
 
         const chEl = document.createElement('span');
         chEl.className = 'bm-channel';
-        chEl.textContent = escapeHtml(b.channel || '');
+        chEl.textContent = b.channel || '';
         a.appendChild(chEl);
 
         const content = String(b.content || b.message || b.text || '');
@@ -601,7 +601,7 @@
 
         const codeEl = document.createElement('span');
         codeEl.className = 'ref-code';
-        codeEl.textContent = escapeHtml(code);
+        codeEl.textContent = code;
         row.appendChild(codeEl);
 
         const usesEl = document.createElement('span');
@@ -798,7 +798,7 @@
 
     const backBtn = document.createElement('button');
     backBtn.className = 'livenow-back';
-    backBtn.textContent = '← ' + escapeHtml(categoryName);
+    backBtn.textContent = '← ' + categoryName;
     backBtn.addEventListener('click', onBack);
     container.appendChild(backBtn);
 

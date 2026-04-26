@@ -1643,9 +1643,11 @@
     }
   }
 
-  // Listen for settings changes from popup.js or other tabs
+  // Listen for settings changes from popup.js or other tabs.
+  // Settings are stored in chrome.storage.sync (browser-account synced),
+  // not local — gate area check accordingly.
   function _onStorageChanged(changes, area) {
-    if (area === 'local' && changes.ui_settings) {
+    if (area === 'sync' && changes.ui_settings) {
       const newSettings = changes.ui_settings.newValue;
       if (newSettings) {
         cachedSettings = { ...cachedSettings, ...newSettings };
@@ -2758,6 +2760,10 @@
       btn.classList.remove('applying')
       btn.classList.add('applied')
       btn.textContent = 'applied'
+      // Show success state for ~1.5s, then refresh the list
+      setTimeout(() => {
+        if (currentTab === 'sets') renderEmoteGrid()
+      }, 1500)
     } else {
       btn.classList.remove('applying')
       btn.classList.add('failed')
@@ -2796,6 +2802,10 @@
   }
 
   async function applySet(setId) {
+    // NOTE: do NOT call renderEmoteGrid() inside this function — the caller
+    // handleSetApplyClick mutates the apply button's classes/text after the
+    // promise resolves. Re-rendering here destroys the button before the
+    // 'applied' state is shown. Caller is responsible for refresh.
     try {
       const resp = await chrome.runtime.sendMessage({
         type: 'api_fetch',
@@ -2804,10 +2814,8 @@
         auth: true
       })
       if (!resp || resp.ok === false) return false
-      // Refresh inventory + sets list (counts may have changed)
+      // Refresh inventory + sets list data (DOM not re-rendered yet)
       await Promise.all([loadInventoryEmotes(), loadSets()])
-      // Re-render to refresh starred/count display
-      renderEmoteGrid()
       return true
     } catch (err) {
       log(' applySet error:', err?.message)

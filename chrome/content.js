@@ -5624,7 +5624,8 @@ function updateEmoteState(hash, emoteName, state) {
     const profileId = profile && profile.id
     const isSelf = currentUser && username && currentUser.toLowerCase() === username.toLowerCase()
     if (profileId && !isSelf) {
-      let following = !!(profile.relationship && profile.relationship.isFollowing)
+      // Server uses youFollow on /api/profile responses; isFollowing on some other endpoints. Accept either.
+      let following = !!(profile.relationship && (profile.relationship.youFollow ?? profile.relationship.isFollowing))
       const followBtn = document.createElement('button')
       followBtn.className = 'hs-pc-btn hs-pc-follow-btn' + (following ? ' hs-pc-following' : '')
       followBtn.textContent = following ? 'unfollow' : 'follow'
@@ -5857,6 +5858,8 @@ function updateEmoteState(hash, emoteName, state) {
       }
 
       const profile = await fetchProfile(username)
+      // Card may have been closed during the await — bail to avoid NPE on cardEl.textContent
+      if (!cardEl) return
       cardEl.textContent = ''
 
       if (usePanelMode) {

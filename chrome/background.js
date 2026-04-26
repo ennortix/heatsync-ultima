@@ -3775,6 +3775,14 @@ async function initialize() {
     browser.storage.local.set(persist).catch(() => {});
   }).catch(err => log(' Fetch error:', err.message));
 
+  // Re-register push subscription after MV3 service worker restart.
+  // The cookie-onChanged path only fires on login/logout; on cold SW wake
+  // with an existing valid token, push must be re-confirmed against the server
+  // so the endpoint stays active.
+  if (authToken) {
+    subscribeToPush(authToken).catch(err => log(' subscribeToPush retry failed:', err?.message))
+  }
+
   // Inventory refresh driven by chrome.alarms 'refresh-emote-inventory' (MV3 setInterval dies with SW)
 
   // Global emotes refresh handled by chrome.alarms (MV3 setInterval unreliable for long durations)
@@ -3914,14 +3922,15 @@ async function unsubscribeFromPush(token) {
 self.addEventListener('push', (ev) => {
   let title = 'HeatSync'
   let body = ''
-  let icon = '/icon-48.png'
+  // Use runtime.getURL so the icon resolves inside the extension package
+  let icon = browser.runtime.getURL('icon-48.png')
   let data = {}
   try {
     if (ev.data) {
       const payload = ev.data.json()
       title = payload.title || title
       body = payload.body || body
-      icon = payload.icon || icon
+      // Don't accept payload.icon — would let server set arbitrary URLs
       data = payload.data || {}
     }
   } catch (e) {
@@ -3935,7 +3944,8 @@ self.addEventListener('push', (ev) => {
 self.addEventListener('notificationclick', (ev) => {
   ev.notification.close()
   const url = ev.notification.data?.url
-  if (url) {
+  // Only open URLs on our own origin — server payloads are untrusted
+  if (typeof url === 'string' && url.startsWith('https://heatsync.org/')) {
     ev.waitUntil(clients.openWindow(url))
   }
 })

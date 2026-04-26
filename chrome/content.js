@@ -3040,47 +3040,6 @@ function applyHeatBorders() {
 }
 
 // Get current user's username from Twitch DOM
-// Console diagnostic — `__hsdiag()` in DevTools console (any world). Logs
-// twitch ID, cosmetic cache state, DOM counts, fresh 7TV API response.
-async function _runHsDiag() {
-  const out = { ok: true }
-  try { out.twilight_user = JSON.parse(localStorage.getItem('twilight.user') || 'null') } catch { out.twilight_user = null }
-  out.self_twitch_id = out.twilight_user?.id || null
-  out.cosmetics_enabled = cosmeticsEnabled
-  out.cosmetics_cache_size = cosmeticsCache.size
-  out.self_cached = out.self_twitch_id ? cosmeticsCache.get(String(out.self_twitch_id)) : null
-  out.dom_data_user_id_count = document.querySelectorAll('[data-user-id]').length
-  out.dom_hs_cosmetic_user_id_count = document.querySelectorAll('[data-hs-cosmetic-user-id]').length
-  out.dom_existing_7tv_badge_count = document.querySelectorAll('.hs-7tv-badge').length
-  if (out.self_twitch_id) {
-    try {
-      const resp = await safeSendMessage({ type: 'get_user_cosmetics', twitchIds: [String(out.self_twitch_id)] })
-      out.bg_response = resp
-    } catch (e) { out.bg_response_error = e?.message }
-    try {
-      const r = await fetch(`https://7tv.io/v3/users/twitch/${out.self_twitch_id}`, { credentials: 'omit' })
-      const d = r.ok ? await r.json() : null
-      out.seventv_direct = { status: r.status, style: d?.user?.style, seventv_user_id: d?.user?.id, has_user: !!d?.user }
-    } catch (e) { out.seventv_direct_error = e?.message }
-  }
-  console.log('%c[hs-diag]', 'color:#ff8700;font-weight:bold', out)
-  return out
-}
-// Make it callable from the page world too via a custom event bridge
-window.__hsdiag = _runHsDiag
-window.addEventListener('hsdiag:request', () => {
-  _runHsDiag().then(out => {
-    window.dispatchEvent(new CustomEvent('hsdiag:response', { detail: out }))
-  })
-})
-// Inject a tiny shim into the page world so console can call __hsdiag()
-try {
-  const s = document.createElement('script')
-  s.textContent = `window.__hsdiag = function(){return new Promise(r => { const h=e=>{window.removeEventListener('hsdiag:response',h);console.log('%c[hs-diag]','color:#ff8700;font-weight:bold',e.detail);r(e.detail)};window.addEventListener('hsdiag:response',h);window.dispatchEvent(new CustomEvent('hsdiag:request'))})}`
-  ;(document.head || document.documentElement).appendChild(s)
-  s.remove()
-} catch {}
-
 function getCurrentUsername() {
   // Return cached value if we already found it
   if (cachedUsername) {

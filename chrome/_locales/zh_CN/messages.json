@@ -70,58 +70,28 @@
   },
   "popup_user_stats": {
     "message": "$EMOTES$ 个表情 · $GLOBALS$ 个全局",
-    "placeholders": [
-      [
-        "emotes",
-        [
-          [
-            "content",
-            "$1"
-          ]
-        ]
-      ],
-      [
-        "globals",
-        [
-          [
-            "content",
-            "$2"
-          ]
-        ]
-      ]
-    ]
+    "placeholders": {
+      "emotes": {
+        "content": "$1"
+      },
+      "globals": {
+        "content": "$2"
+      }
+    }
   },
   "popup_user_stats_heat": {
     "message": "$EMOTES$ 个表情 · $GLOBALS$ 个全局 · $HEAT$ heat",
-    "placeholders": [
-      [
-        "emotes",
-        [
-          [
-            "content",
-            "$1"
-          ]
-        ]
-      ],
-      [
-        "globals",
-        [
-          [
-            "content",
-            "$2"
-          ]
-        ]
-      ],
-      [
-        "heat",
-        [
-          [
-            "content",
-            "$3"
-          ]
-        ]
-      ]
-    ]
+    "placeholders": {
+      "emotes": {
+        "content": "$1"
+      },
+      "globals": {
+        "content": "$2"
+      },
+      "heat": {
+        "content": "$3"
+      }
+    }
   },
   "popup_btn_emotes": {
     "message": "表情"
@@ -227,17 +197,11 @@
   },
   "btn_import_count": {
     "message": "导入 $COUNT$ 个表情",
-    "placeholders": [
-      [
-        "count",
-        [
-          [
-            "content",
-            "$1"
-          ]
-        ]
-      ]
-    ]
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
   },
   "btn_failed_load": {
     "message": "表情加载失败"
@@ -355,147 +319,81 @@
   },
   "content_toast_failed_add": {
     "message": "添加 $NAME$ 失败: $ERROR$",
-    "placeholders": [
-      [
-        "name",
-        [
-          [
-            "content",
-            "$1"
-          ]
-        ]
-      ],
-      [
-        "error",
-        [
-          [
-            "content",
-            "$2"
-          ]
-        ]
-      ]
-    ]
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      },
+      "error": {
+        "content": "$2"
+      }
+    }
   },
   "content_toast_failed_remove": {
     "message": "移除 $NAME$ 失败: $ERROR$",
-    "placeholders": [
-      [
-        "name",
-        [
-          [
-            "content",
-            "$1"
-          ]
-        ]
-      ],
-      [
-        "error",
-        [
-          [
-            "content",
-            "$2"
-          ]
-        ]
-      ]
-    ]
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      },
+      "error": {
+        "content": "$2"
+      }
+    }
   },
   "content_toast_unblocked": {
     "message": "已取消屏蔽 $NAME$",
-    "placeholders": [
-      [
-        "name",
-        [
-          [
-            "content",
-            "$1"
-          ]
-        ]
-      ]
-    ]
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
   },
   "content_toast_failed_unblock": {
     "message": "取消屏蔽失败: $ERROR$",
-    "placeholders": [
-      [
-        "error",
-        [
-          [
-            "content",
-            "$1"
-          ]
-        ]
-      ]
-    ]
+    "placeholders": {
+      "error": {
+        "content": "$1"
+      }
+    }
   },
   "content_toast_removed": {
     "message": "已从套装中移除 $NAME$",
-    "placeholders": [
-      [
-        "name",
-        [
-          [
-            "content",
-            "$1"
-          ]
-        ]
-      ]
-    ]
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
   },
   "content_toast_failed_block": {
     "message": "屏蔽失败: $ERROR$",
-    "placeholders": [
-      [
-        "error",
-        [
-          [
-            "content",
-            "$1"
-          ]
-        ]
-      ]
-    ]
+    "placeholders": {
+      "error": {
+        "content": "$1"
+      }
+    }
   },
   "content_toast_blocked": {
     "message": "已屏蔽 $NAME$",
-    "placeholders": [
-      [
-        "name",
-        [
-          [
-            "content",
-            "$1"
-          ]
-        ]
-      ]
-    ]
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
   },
   "content_toast_unmuted": {
     "message": "已取消静音 $NAME$",
-    "placeholders": [
-      [
-        "name",
-        [
-          [
-            "content",
-            "$1"
-          ]
-        ]
-      ]
-    ]
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
   },
   "content_toast_muted_24h": {
     "message": "已静音 $NAME$ 24小时",
-    "placeholders": [
-      [
-        "name",
-        [
-          [
-            "content",
-            "$1"
-          ]
-        ]
-      ]
-    ]
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
   },
   "content_card_follows_you": {
     "message": "关注了你"
@@ -511,119 +409,65 @@
   },
   "content_card_you_sub_tier": {
     "message": "T$TIER$ 订阅中",
-    "placeholders": [
-      [
-        "tier",
-        [
-          [
-            "content",
-            "$1"
-          ]
-        ]
-      ]
-    ]
+    "placeholders": {
+      "tier": {
+        "content": "$1"
+      }
+    }
   },
   "content_card_subbed": {
     "message": "订阅 $CHANNEL$ $TENURE$",
-    "placeholders": [
-      [
-        "channel",
-        [
-          [
-            "content",
-            "$1"
-          ]
-        ]
-      ],
-      [
-        "tenure",
-        [
-          [
-            "content",
-            "$2"
-          ]
-        ]
-      ]
-    ]
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      },
+      "tenure": {
+        "content": "$2"
+      }
+    }
   },
   "content_card_following": {
     "message": "关注 $CHANNEL$ $AGE$",
-    "placeholders": [
-      [
-        "channel",
-        [
-          [
-            "content",
-            "$1"
-          ]
-        ]
-      ],
-      [
-        "age",
-        [
-          [
-            "content",
-            "$2"
-          ]
-        ]
-      ]
-    ]
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      },
+      "age": {
+        "content": "$2"
+      }
+    }
   },
   "content_card_not_following": {
     "message": "未关注 $CHANNEL$",
-    "placeholders": [
-      [
-        "channel",
-        [
-          [
-            "content",
-            "$1"
-          ]
-        ]
-      ]
-    ]
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      }
+    }
   },
   "content_card_followed_by": {
     "message": "被 $CHANNEL$ 关注",
-    "placeholders": [
-      [
-        "channel",
-        [
-          [
-            "content",
-            "$1"
-          ]
-        ]
-      ]
-    ]
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      }
+    }
   },
   "content_card_following_count": {
     "message": "关注 $COUNT$ 人",
-    "placeholders": [
-      [
-        "count",
-        [
-          [
-            "content",
-            "$1"
-          ]
-        ]
-      ]
-    ]
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
   },
   "content_card_followers": {
     "message": "$COUNT$ 个粉丝",
-    "placeholders": [
-      [
-        "count",
-        [
-          [
-            "content",
-            "$1"
-          ]
-        ]
-      ]
-    ]
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
   },
   "content_card_partner": {
     "message": "合作伙伴"
@@ -633,17 +477,11 @@
   },
   "content_card_live": {
     "message": "直播中 $VIEWERS$",
-    "placeholders": [
-      [
-        "viewers",
-        [
-          [
-            "content",
-            "$1"
-          ]
-        ]
-      ]
-    ]
+    "placeholders": {
+      "viewers": {
+        "content": "$1"
+      }
+    }
   },
   "content_card_twitch_verified": {
     "message": "Twitch 认证"
@@ -686,17 +524,11 @@
   },
   "mc_tab_live_channel": {
     "message": "直播 · $CHANNEL$",
-    "placeholders": [
-      [
-        "channel",
-        [
-          [
-            "content",
-            "$1"
-          ]
-        ]
-      ]
-    ]
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      }
+    }
   },
   "mc_btn_rotate_tabs": {
     "message": "切换标签位置 (T)"
@@ -712,17 +544,11 @@
   },
   "mc_new_messages": {
     "message": "$COUNT$ 条新消息",
-    "placeholders": [
-      [
-        "count",
-        [
-          [
-            "content",
-            "$1"
-          ]
-        ]
-      ]
-    ]
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
   },
   "mc_resume": {
     "message": "继续"
@@ -759,17 +585,11 @@
   },
   "mc_edit_channel": {
     "message": "编辑 $CHANNEL$",
-    "placeholders": [
-      [
-        "channel",
-        [
-          [
-            "content",
-            "$1"
-          ]
-        ]
-      ]
-    ]
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      }
+    }
   },
   "mc_no_channel_detected": {
     "message": "未检测到频道"
@@ -980,26 +800,14 @@
   },
   "mc_pred_you_bet": {
     "message": "你在 $OUTCOME$ 下注了 $POINTS$ — 请选择实际获胜者",
-    "placeholders": [
-      [
-        "points",
-        [
-          [
-            "content",
-            "$1"
-          ]
-        ]
-      ],
-      [
-        "outcome",
-        [
-          [
-            "content",
-            "$2"
-          ]
-        ]
-      ]
-    ]
+    "placeholders": {
+      "points": {
+        "content": "$1"
+      },
+      "outcome": {
+        "content": "$2"
+      }
+    }
   },
   "mc_poll_new": {
     "message": "+ 新建投票"
@@ -1009,31 +817,19 @@
   },
   "mc_poll_choice": {
     "message": "选项 $NUM$",
-    "placeholders": [
-      [
-        "num",
-        [
-          [
-            "content",
-            "$1"
-          ]
-        ]
-      ]
-    ]
+    "placeholders": {
+      "num": {
+        "content": "$1"
+      }
+    }
   },
   "mc_poll_choice_optional": {
     "message": "选项 $NUM$ (可选)",
-    "placeholders": [
-      [
-        "num",
-        [
-          [
-            "content",
-            "$1"
-          ]
-        ]
-      ]
-    ]
+    "placeholders": {
+      "num": {
+        "content": "$1"
+      }
+    }
   },
   "mc_poll_create": {
     "message": "创建投票"
@@ -1043,31 +839,19 @@
   },
   "mc_poll_votes": {
     "message": "$COUNT$ 票",
-    "placeholders": [
-      [
-        "count",
-        [
-          [
-            "content",
-            "$1"
-          ]
-        ]
-      ]
-    ]
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
   },
   "mc_poll_vote_single": {
     "message": "$COUNT$ 票",
-    "placeholders": [
-      [
-        "count",
-        [
-          [
-            "content",
-            "$1"
-          ]
-        ]
-      ]
-    ]
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
   },
   "mc_poll_already_active": {
     "message": "已有进行中的投票"
@@ -1089,31 +873,19 @@
   },
   "mc_reward_cooldown_min": {
     "message": "$MIN$ 分钟冷却",
-    "placeholders": [
-      [
-        "min",
-        [
-          [
-            "content",
-            "$1"
-          ]
-        ]
-      ]
-    ]
+    "placeholders": {
+      "min": {
+        "content": "$1"
+      }
+    }
   },
   "mc_reward_cooldown_sec": {
     "message": "$SEC$ 秒冷却",
-    "placeholders": [
-      [
-        "sec",
-        [
-          [
-            "content",
-            "$1"
-          ]
-        ]
-      ]
-    ]
+    "placeholders": {
+      "sec": {
+        "content": "$1"
+      }
+    }
   },
   "mc_reward_enter_text": {
     "message": "输入文字..."
@@ -1150,17 +922,11 @@
   },
   "mc_chat_hype_level": {
     "message": "等级 $LEVEL$",
-    "placeholders": [
-      [
-        "level",
-        [
-          [
-            "content",
-            "$1"
-          ]
-        ]
-      ]
-    ]
+    "placeholders": {
+      "level": {
+        "content": "$1"
+      }
+    }
   },
   "mc_input_send_message": {
     "message": "发送消息..."
@@ -1170,31 +936,19 @@
   },
   "mc_input_send_channel": {
     "message": "发送到 #$CHANNEL$",
-    "placeholders": [
-      [
-        "channel",
-        [
-          [
-            "content",
-            "$1"
-          ]
-        ]
-      ]
-    ]
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      }
+    }
   },
   "mc_input_replying_to": {
     "message": "回复 @$USER$",
-    "placeholders": [
-      [
-        "user",
-        [
-          [
-            "content",
-            "$1"
-          ]
-        ]
-      ]
-    ]
+    "placeholders": {
+      "user": {
+        "content": "$1"
+      }
+    }
   },
   "mc_input_cancel_reply": {
     "message": "取消回复"
@@ -1270,91 +1024,49 @@
   },
   "mc_tip_subbed": {
     "message": "订阅 $CHANNEL$ $TENURE$",
-    "placeholders": [
-      [
-        "channel",
-        [
-          [
-            "content",
-            "$1"
-          ]
-        ]
-      ],
-      [
-        "tenure",
-        [
-          [
-            "content",
-            "$2"
-          ]
-        ]
-      ]
-    ]
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      },
+      "tenure": {
+        "content": "$2"
+      }
+    }
   },
   "mc_tip_following": {
     "message": "关注 $CHANNEL$ $AGE$",
-    "placeholders": [
-      [
-        "channel",
-        [
-          [
-            "content",
-            "$1"
-          ]
-        ]
-      ],
-      [
-        "age",
-        [
-          [
-            "content",
-            "$2"
-          ]
-        ]
-      ]
-    ]
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      },
+      "age": {
+        "content": "$2"
+      }
+    }
   },
   "mc_tip_not_following": {
     "message": "未关注 $CHANNEL$",
-    "placeholders": [
-      [
-        "channel",
-        [
-          [
-            "content",
-            "$1"
-          ]
-        ]
-      ]
-    ]
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      }
+    }
   },
   "mc_tip_followed_by": {
     "message": "被 $CHANNEL$ 关注",
-    "placeholders": [
-      [
-        "channel",
-        [
-          [
-            "content",
-            "$1"
-          ]
-        ]
-      ]
-    ]
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      }
+    }
   },
   "mc_tip_followers": {
     "message": "$COUNT$ 个粉丝",
-    "placeholders": [
-      [
-        "count",
-        [
-          [
-            "content",
-            "$1"
-          ]
-        ]
-      ]
-    ]
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
   },
   "mc_whisper_hint": {
     "message": "/w 用户 消息 · /dm 用户 消息 · /r 消息"
@@ -1364,97 +1076,55 @@
   },
   "mc_whisper_user_not_found": {
     "message": "找不到 twitch 用户 \"$USER$\"",
-    "placeholders": [
-      [
-        "user",
-        [
-          [
-            "content",
-            "$1"
-          ]
-        ]
-      ]
-    ]
+    "placeholders": {
+      "user": {
+        "content": "$1"
+      }
+    }
   },
   "mc_whisper_resolve_failed": {
     "message": "解析 twitch 用户失败"
   },
   "mc_whisper_hs_not_found": {
     "message": "找不到 heatsync 用户 \"$USER$\"",
-    "placeholders": [
-      [
-        "user",
-        [
-          [
-            "content",
-            "$1"
-          ]
-        ]
-      ]
-    ]
+    "placeholders": {
+      "user": {
+        "content": "$1"
+      }
+    }
   },
   "mc_irc_chat_cleared": {
     "message": "聊天已被清空"
   },
   "mc_irc_msg_deleted": {
     "message": "$USER$ 的消息已被删除",
-    "placeholders": [
-      [
-        "user",
-        [
-          [
-            "content",
-            "$1"
-          ]
-        ]
-      ]
-    ]
+    "placeholders": {
+      "user": {
+        "content": "$1"
+      }
+    }
   },
   "mc_irc_gift_subs": {
     "message": "$USER$ 向 $CHANNEL$ 赠送了 $AMOUNT$ 个订阅",
-    "placeholders": [
-      [
-        "user",
-        [
-          [
-            "content",
-            "$1"
-          ]
-        ]
-      ],
-      [
-        "amount",
-        [
-          [
-            "content",
-            "$2"
-          ]
-        ]
-      ],
-      [
-        "channel",
-        [
-          [
-            "content",
-            "$3"
-          ]
-        ]
-      ]
-    ]
+    "placeholders": {
+      "user": {
+        "content": "$1"
+      },
+      "amount": {
+        "content": "$2"
+      },
+      "channel": {
+        "content": "$3"
+      }
+    }
   },
   "mc_yt_connected": {
     "message": "YouTube 已连接: $CHANNEL$ — 等待消息...",
-    "placeholders": [
-      [
-        "channel",
-        [
-          [
-            "content",
-            "$1"
-          ]
-        ]
-      ]
-    ]
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      }
+    }
   },
   "mc_yt_ended": {
     "message": "YouTube 直播已结束"

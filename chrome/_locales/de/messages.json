@@ -70,58 +70,28 @@
   },
   "popup_user_stats": {
     "message": "$EMOTES$ Emotes · $GLOBALS$ global",
-    "placeholders": [
-      [
-        "emotes",
-        [
-          [
-            "content",
-            "$1"
-          ]
-        ]
-      ],
-      [
-        "globals",
-        [
-          [
-            "content",
-            "$2"
-          ]
-        ]
-      ]
-    ]
+    "placeholders": {
+      "emotes": {
+        "content": "$1"
+      },
+      "globals": {
+        "content": "$2"
+      }
+    }
   },
   "popup_user_stats_heat": {
     "message": "$EMOTES$ Emotes · $GLOBALS$ global · $HEAT$ heat",
-    "placeholders": [
-      [
-        "emotes",
-        [
-          [
-            "content",
-            "$1"
-          ]
-        ]
-      ],
-      [
-        "globals",
-        [
-          [
-            "content",
-            "$2"
-          ]
-        ]
-      ],
-      [
-        "heat",
-        [
-          [
-            "content",
-            "$3"
-          ]
-        ]
-      ]
-    ]
+    "placeholders": {
+      "emotes": {
+        "content": "$1"
+      },
+      "globals": {
+        "content": "$2"
+      },
+      "heat": {
+        "content": "$3"
+      }
+    }
   },
   "popup_btn_emotes": {
     "message": "emotes"
@@ -227,17 +197,11 @@
   },
   "btn_import_count": {
     "message": "$COUNT$ Emotes importieren",
-    "placeholders": [
-      [
-        "count",
-        [
-          [
-            "content",
-            "$1"
-          ]
-        ]
-      ]
-    ]
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
   },
   "btn_failed_load": {
     "message": "Emotes konnten nicht geladen werden"
@@ -355,147 +319,81 @@
   },
   "content_toast_failed_add": {
     "message": "Hinzufügen von $NAME$ fehlgeschlagen: $ERROR$",
-    "placeholders": [
-      [
-        "name",
-        [
-          [
-            "content",
-            "$1"
-          ]
-        ]
-      ],
-      [
-        "error",
-        [
-          [
-            "content",
-            "$2"
-          ]
-        ]
-      ]
-    ]
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      },
+      "error": {
+        "content": "$2"
+      }
+    }
   },
   "content_toast_failed_remove": {
     "message": "Entfernen von $NAME$ fehlgeschlagen: $ERROR$",
-    "placeholders": [
-      [
-        "name",
-        [
-          [
-            "content",
-            "$1"
-          ]
-        ]
-      ],
-      [
-        "error",
-        [
-          [
-            "content",
-            "$2"
-          ]
-        ]
-      ]
-    ]
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      },
+      "error": {
+        "content": "$2"
+      }
+    }
   },
   "content_toast_unblocked": {
     "message": "$NAME$ entsperrt",
-    "placeholders": [
-      [
-        "name",
-        [
-          [
-            "content",
-            "$1"
-          ]
-        ]
-      ]
-    ]
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
   },
   "content_toast_failed_unblock": {
     "message": "Entsperren fehlgeschlagen: $ERROR$",
-    "placeholders": [
-      [
-        "error",
-        [
-          [
-            "content",
-            "$1"
-          ]
-        ]
-      ]
-    ]
+    "placeholders": {
+      "error": {
+        "content": "$1"
+      }
+    }
   },
   "content_toast_removed": {
     "message": "$NAME$ aus deinem Set entfernt",
-    "placeholders": [
-      [
-        "name",
-        [
-          [
-            "content",
-            "$1"
-          ]
-        ]
-      ]
-    ]
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
   },
   "content_toast_failed_block": {
     "message": "Blockieren fehlgeschlagen: $ERROR$",
-    "placeholders": [
-      [
-        "error",
-        [
-          [
-            "content",
-            "$1"
-          ]
-        ]
-      ]
-    ]
+    "placeholders": {
+      "error": {
+        "content": "$1"
+      }
+    }
   },
   "content_toast_blocked": {
     "message": "$NAME$ blockiert",
-    "placeholders": [
-      [
-        "name",
-        [
-          [
-            "content",
-            "$1"
-          ]
-        ]
-      ]
-    ]
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
   },
   "content_toast_unmuted": {
     "message": "$NAME$ stummschaltung aufgehoben",
-    "placeholders": [
-      [
-        "name",
-        [
-          [
-            "content",
-            "$1"
-          ]
-        ]
-      ]
-    ]
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
   },
   "content_toast_muted_24h": {
     "message": "$NAME$ für 24h stummgeschaltet",
-    "placeholders": [
-      [
-        "name",
-        [
-          [
-            "content",
-            "$1"
-          ]
-        ]
-      ]
-    ]
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
   },
   "content_card_follows_you": {
     "message": "folgt dir"
@@ -511,119 +409,65 @@
   },
   "content_card_you_sub_tier": {
     "message": "du bist sub T$TIER$",
-    "placeholders": [
-      [
-        "tier",
-        [
-          [
-            "content",
-            "$1"
-          ]
-        ]
-      ]
-    ]
+    "placeholders": {
+      "tier": {
+        "content": "$1"
+      }
+    }
   },
   "content_card_subbed": {
     "message": "sub bei $CHANNEL$ $TENURE$",
-    "placeholders": [
-      [
-        "channel",
-        [
-          [
-            "content",
-            "$1"
-          ]
-        ]
-      ],
-      [
-        "tenure",
-        [
-          [
-            "content",
-            "$2"
-          ]
-        ]
-      ]
-    ]
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      },
+      "tenure": {
+        "content": "$2"
+      }
+    }
   },
   "content_card_following": {
     "message": "folgt $CHANNEL$ $AGE$",
-    "placeholders": [
-      [
-        "channel",
-        [
-          [
-            "content",
-            "$1"
-          ]
-        ]
-      ],
-      [
-        "age",
-        [
-          [
-            "content",
-            "$2"
-          ]
-        ]
-      ]
-    ]
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      },
+      "age": {
+        "content": "$2"
+      }
+    }
   },
   "content_card_not_following": {
     "message": "folgt $CHANNEL$ nicht",
-    "placeholders": [
-      [
-        "channel",
-        [
-          [
-            "content",
-            "$1"
-          ]
-        ]
-      ]
-    ]
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      }
+    }
   },
   "content_card_followed_by": {
     "message": "gefolgt von $CHANNEL$",
-    "placeholders": [
-      [
-        "channel",
-        [
-          [
-            "content",
-            "$1"
-          ]
-        ]
-      ]
-    ]
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      }
+    }
   },
   "content_card_following_count": {
     "message": "folgt $COUNT$",
-    "placeholders": [
-      [
-        "count",
-        [
-          [
-            "content",
-            "$1"
-          ]
-        ]
-      ]
-    ]
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
   },
   "content_card_followers": {
     "message": "$COUNT$ Follower",
-    "placeholders": [
-      [
-        "count",
-        [
-          [
-            "content",
-            "$1"
-          ]
-        ]
-      ]
-    ]
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
   },
   "content_card_partner": {
     "message": "partner"
@@ -633,17 +477,11 @@
   },
   "content_card_live": {
     "message": "LIVE $VIEWERS$",
-    "placeholders": [
-      [
-        "viewers",
-        [
-          [
-            "content",
-            "$1"
-          ]
-        ]
-      ]
-    ]
+    "placeholders": {
+      "viewers": {
+        "content": "$1"
+      }
+    }
   },
   "content_card_twitch_verified": {
     "message": "Twitch Verified"
@@ -686,17 +524,11 @@
   },
   "mc_tab_live_channel": {
     "message": "live · $CHANNEL$",
-    "placeholders": [
-      [
-        "channel",
-        [
-          [
-            "content",
-            "$1"
-          ]
-        ]
-      ]
-    ]
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      }
+    }
   },
   "mc_btn_rotate_tabs": {
     "message": "Tabs rotieren (T)"
@@ -712,17 +544,11 @@
   },
   "mc_new_messages": {
     "message": "$COUNT$ neu",
-    "placeholders": [
-      [
-        "count",
-        [
-          [
-            "content",
-            "$1"
-          ]
-        ]
-      ]
-    ]
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
   },
   "mc_resume": {
     "message": "fortsetzen"
@@ -759,17 +585,11 @@
   },
   "mc_edit_channel": {
     "message": "$CHANNEL$ bearbeiten",
-    "placeholders": [
-      [
-        "channel",
-        [
-          [
-            "content",
-            "$1"
-          ]
-        ]
-      ]
-    ]
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      }
+    }
   },
   "mc_no_channel_detected": {
     "message": "kein channel erkannt"
@@ -980,26 +800,14 @@
   },
   "mc_pred_you_bet": {
     "message": "du hast $POINTS$ auf $OUTCOME$ gewettet — wähle den echten Gewinner",
-    "placeholders": [
-      [
-        "points",
-        [
-          [
-            "content",
-            "$1"
-          ]
-        ]
-      ],
-      [
-        "outcome",
-        [
-          [
-            "content",
-            "$2"
-          ]
-        ]
-      ]
-    ]
+    "placeholders": {
+      "points": {
+        "content": "$1"
+      },
+      "outcome": {
+        "content": "$2"
+      }
+    }
   },
   "mc_poll_new": {
     "message": "+ neue Umfrage"
@@ -1009,31 +817,19 @@
   },
   "mc_poll_choice": {
     "message": "option $NUM$",
-    "placeholders": [
-      [
-        "num",
-        [
-          [
-            "content",
-            "$1"
-          ]
-        ]
-      ]
-    ]
+    "placeholders": {
+      "num": {
+        "content": "$1"
+      }
+    }
   },
   "mc_poll_choice_optional": {
     "message": "option $NUM$ (optional)",
-    "placeholders": [
-      [
-        "num",
-        [
-          [
-            "content",
-            "$1"
-          ]
-        ]
-      ]
-    ]
+    "placeholders": {
+      "num": {
+        "content": "$1"
+      }
+    }
   },
   "mc_poll_create": {
     "message": "Umfrage erstellen"
@@ -1043,31 +839,19 @@
   },
   "mc_poll_votes": {
     "message": "$COUNT$ Stimmen",
-    "placeholders": [
-      [
-        "count",
-        [
-          [
-            "content",
-            "$1"
-          ]
-        ]
-      ]
-    ]
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
   },
   "mc_poll_vote_single": {
     "message": "$COUNT$ Stimme",
-    "placeholders": [
-      [
-        "count",
-        [
-          [
-            "content",
-            "$1"
-          ]
-        ]
-      ]
-    ]
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
   },
   "mc_poll_already_active": {
     "message": "Umfrage bereits aktiv"
@@ -1089,31 +873,19 @@
   },
   "mc_reward_cooldown_min": {
     "message": "$MIN$m cooldown",
-    "placeholders": [
-      [
-        "min",
-        [
-          [
-            "content",
-            "$1"
-          ]
-        ]
-      ]
-    ]
+    "placeholders": {
+      "min": {
+        "content": "$1"
+      }
+    }
   },
   "mc_reward_cooldown_sec": {
     "message": "$SEC$s cooldown",
-    "placeholders": [
-      [
-        "sec",
-        [
-          [
-            "content",
-            "$1"
-          ]
-        ]
-      ]
-    ]
+    "placeholders": {
+      "sec": {
+        "content": "$1"
+      }
+    }
   },
   "mc_reward_enter_text": {
     "message": "Text eingeben..."
@@ -1150,17 +922,11 @@
   },
   "mc_chat_hype_level": {
     "message": "lvl $LEVEL$",
-    "placeholders": [
-      [
-        "level",
-        [
-          [
-            "content",
-            "$1"
-          ]
-        ]
-      ]
-    ]
+    "placeholders": {
+      "level": {
+        "content": "$1"
+      }
+    }
   },
   "mc_input_send_message": {
     "message": "Nachricht senden..."
@@ -1170,31 +936,19 @@
   },
   "mc_input_send_channel": {
     "message": "an #$CHANNEL$ senden",
-    "placeholders": [
-      [
-        "channel",
-        [
-          [
-            "content",
-            "$1"
-          ]
-        ]
-      ]
-    ]
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      }
+    }
   },
   "mc_input_replying_to": {
     "message": "Antwort an @$USER$",
-    "placeholders": [
-      [
-        "user",
-        [
-          [
-            "content",
-            "$1"
-          ]
-        ]
-      ]
-    ]
+    "placeholders": {
+      "user": {
+        "content": "$1"
+      }
+    }
   },
   "mc_input_cancel_reply": {
     "message": "Antwort abbrechen"
@@ -1270,91 +1024,49 @@
   },
   "mc_tip_subbed": {
     "message": "sub bei $CHANNEL$ $TENURE$",
-    "placeholders": [
-      [
-        "channel",
-        [
-          [
-            "content",
-            "$1"
-          ]
-        ]
-      ],
-      [
-        "tenure",
-        [
-          [
-            "content",
-            "$2"
-          ]
-        ]
-      ]
-    ]
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      },
+      "tenure": {
+        "content": "$2"
+      }
+    }
   },
   "mc_tip_following": {
     "message": "folgt $CHANNEL$ $AGE$",
-    "placeholders": [
-      [
-        "channel",
-        [
-          [
-            "content",
-            "$1"
-          ]
-        ]
-      ],
-      [
-        "age",
-        [
-          [
-            "content",
-            "$2"
-          ]
-        ]
-      ]
-    ]
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      },
+      "age": {
+        "content": "$2"
+      }
+    }
   },
   "mc_tip_not_following": {
     "message": "folgt $CHANNEL$ nicht",
-    "placeholders": [
-      [
-        "channel",
-        [
-          [
-            "content",
-            "$1"
-          ]
-        ]
-      ]
-    ]
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      }
+    }
   },
   "mc_tip_followed_by": {
     "message": "gefolgt von $CHANNEL$",
-    "placeholders": [
-      [
-        "channel",
-        [
-          [
-            "content",
-            "$1"
-          ]
-        ]
-      ]
-    ]
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      }
+    }
   },
   "mc_tip_followers": {
     "message": "$COUNT$ Follower",
-    "placeholders": [
-      [
-        "count",
-        [
-          [
-            "content",
-            "$1"
-          ]
-        ]
-      ]
-    ]
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
   },
   "mc_whisper_hint": {
     "message": "/w user msg · /dm user msg · /r msg"
@@ -1364,97 +1076,55 @@
   },
   "mc_whisper_user_not_found": {
     "message": "Twitch-Nutzer \"$USER$\" nicht gefunden",
-    "placeholders": [
-      [
-        "user",
-        [
-          [
-            "content",
-            "$1"
-          ]
-        ]
-      ]
-    ]
+    "placeholders": {
+      "user": {
+        "content": "$1"
+      }
+    }
   },
   "mc_whisper_resolve_failed": {
     "message": "Twitch-Nutzer konnte nicht aufgelöst werden"
   },
   "mc_whisper_hs_not_found": {
     "message": "heatsync-Nutzer \"$USER$\" nicht gefunden",
-    "placeholders": [
-      [
-        "user",
-        [
-          [
-            "content",
-            "$1"
-          ]
-        ]
-      ]
-    ]
+    "placeholders": {
+      "user": {
+        "content": "$1"
+      }
+    }
   },
   "mc_irc_chat_cleared": {
     "message": "Chat wurde geleert"
   },
   "mc_irc_msg_deleted": {
     "message": "Nachricht von $USER$ gelöscht",
-    "placeholders": [
-      [
-        "user",
-        [
-          [
-            "content",
-            "$1"
-          ]
-        ]
-      ]
-    ]
+    "placeholders": {
+      "user": {
+        "content": "$1"
+      }
+    }
   },
   "mc_irc_gift_subs": {
     "message": "$USER$ hat $AMOUNT$ Subs an $CHANNEL$ verschenkt",
-    "placeholders": [
-      [
-        "user",
-        [
-          [
-            "content",
-            "$1"
-          ]
-        ]
-      ],
-      [
-        "amount",
-        [
-          [
-            "content",
-            "$2"
-          ]
-        ]
-      ],
-      [
-        "channel",
-        [
-          [
-            "content",
-            "$3"
-          ]
-        ]
-      ]
-    ]
+    "placeholders": {
+      "user": {
+        "content": "$1"
+      },
+      "amount": {
+        "content": "$2"
+      },
+      "channel": {
+        "content": "$3"
+      }
+    }
   },
   "mc_yt_connected": {
     "message": "YouTube verbunden: $CHANNEL$ — warte auf Nachrichten...",
-    "placeholders": [
-      [
-        "channel",
-        [
-          [
-            "content",
-            "$1"
-          ]
-        ]
-      ]
-    ]
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      }
+    }
   },
   "mc_yt_ended": {
     "message": "YouTube-Stream beendet"

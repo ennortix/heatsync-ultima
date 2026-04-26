@@ -4179,6 +4179,133 @@ function injectStyles() {
       font-size: 12px;
     }
 
+    /* ---- ENGAGEMENT BAR ---- */
+    .hs-feed-engage {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      margin-top: 2px;
+      padding-left: 2px;
+    }
+    .hs-feed-heat-btn,
+    .hs-feed-bm-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 2px;
+      background: none;
+      border: none;
+      padding: 1px 3px;
+      cursor: pointer;
+      color: #808080;
+      font-size: 11px;
+      font-family: inherit;
+      line-height: 1;
+    }
+    .hs-feed-heat-btn:hover .hs-fe-icon path,
+    .hs-feed-bm-btn:hover .hs-fe-icon path {
+      stroke: #ff8700;
+    }
+    .hs-feed-heat-btn.active .hs-fe-count {
+      color: #ff8700;
+    }
+    .hs-fe-count {
+      font-size: 10px;
+      color: #808080;
+      min-width: 0;
+    }
+    .hs-fe-icon {
+      display: block;
+      flex-shrink: 0;
+    }
+    .hs-feed-react-row {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 2px;
+    }
+    .hs-feed-react-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 2px;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid #444;
+      padding: 1px 3px;
+      cursor: pointer;
+      font-size: 10px;
+      color: #808080;
+      font-family: inherit;
+      line-height: 1;
+    }
+    .hs-feed-react-chip.active {
+      border-color: #ff8700;
+      color: #ff8700;
+    }
+    .hs-feed-react-chip:hover {
+      border-color: #808080;
+    }
+    .hs-feed-react-img {
+      width: 14px;
+      height: 14px;
+      vertical-align: middle;
+    }
+    .hs-feed-react-add {
+      background: none;
+      border: 1px solid #444;
+      color: #808080;
+      padding: 1px 4px;
+      cursor: pointer;
+      font-size: 11px;
+      font-family: inherit;
+      line-height: 1;
+    }
+    .hs-feed-react-add:hover {
+      border-color: #ff8700;
+      color: #ff8700;
+    }
+    .hs-mc-react-picker {
+      position: fixed;
+      z-index: 99999;
+      background: #111;
+      border: 1px solid #808080;
+      padding: 6px;
+      width: 200px;
+      max-height: 220px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .hs-mc-react-search {
+      width: 100%;
+      box-sizing: border-box;
+      background: #000;
+      border: 1px solid #808080;
+      color: #fff;
+      padding: 3px 5px;
+      font-family: inherit;
+      font-size: 11px;
+    }
+    .hs-mc-react-grid {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 2px;
+      overflow-y: auto;
+      max-height: 160px;
+    }
+    .hs-mc-react-emote {
+      background: none;
+      border: 1px solid transparent;
+      padding: 2px;
+      cursor: pointer;
+    }
+    .hs-mc-react-emote:hover {
+      border-color: #ff8700;
+    }
+    .hs-mc-react-emote img {
+      width: 28px;
+      height: 28px;
+      display: block;
+    }
+
     /* ---- TEXT FORMATTING ---- */
     .hs-spoiler {
       background: #808080;
@@ -4383,6 +4510,89 @@ function injectStyles() {
       background: #000;
     }
     /* Collapsed chat rules moved to injectStyles() so they're always active */
+
+    /* Mentions search bar */
+    #hs-mc-search-bar {
+      display: none;
+      flex-shrink: 0;
+      padding: 4px 6px;
+      border-bottom: 1px solid #333;
+      background: #000;
+    }
+    #hs-mc-search-bar.visible {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    #hs-mc-search-input {
+      flex: 1;
+      padding: 5px 10px;
+      background: #111;
+      color: #e0e0e0;
+      border: 1px solid #444;
+      border-radius: 0;
+      font-size: 12px;
+      font-family: inherit;
+      outline: none;
+    }
+    #hs-mc-search-input:focus {
+      border-color: #ff8700;
+    }
+    #hs-mc-search-input::placeholder {
+      color: #555;
+    }
+    #hs-mc-search-spinner {
+      display: none;
+      width: 14px;
+      height: 14px;
+      border: 2px solid #333;
+      border-top-color: #ff8700;
+      border-radius: 50%;
+      animation: hs-spin 0.6s linear infinite;
+      flex-shrink: 0;
+    }
+    #hs-mc-search-spinner.visible {
+      display: block;
+    }
+    @keyframes hs-spin {
+      to { transform: rotate(360deg); }
+    }
+    .hs-mc-search-result {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      padding: 5px 8px;
+      border-bottom: 1px solid #1a1a1a;
+      cursor: pointer;
+      font-size: 12px;
+    }
+    .hs-mc-search-result:hover {
+      background: #111;
+    }
+    .hs-mc-search-result:last-child {
+      border-bottom: none;
+    }
+    .hs-mc-search-meta {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      color: #666;
+      font-size: 11px;
+    }
+    .hs-mc-search-user {
+      font-weight: bold;
+      color: #ff8700;
+    }
+    .hs-mc-search-content {
+      color: #ccc;
+      word-break: break-word;
+    }
+    .hs-mc-search-empty {
+      padding: 16px;
+      text-align: center;
+      color: #555;
+      font-size: 12px;
+    }
   `;
   document.head.appendChild(style);
 }
@@ -10843,6 +11053,11 @@ let feedPage = 1;
 let feedHasMore = true;
 let feedLastFetch = 0; // Timestamp of last feed fetch
 const FEED_STALE_MS = 120000; // 2 minutes
+
+// Engagement state — optimistic local cache
+const feedLiked = new Set()     // base36_ids the user has liked
+const feedBookmarked = new Set() // base36_ids the user has bookmarked
+const feedReactionsCache = new Map() // base36_id → [{ emote_id, emote_url, emote_name, count, user_reacted }]
 let notifications = { mentions: 0, op_replies: 0, re_replies: 0, total: 0 };
 let notifMessages = []; // Actual notification messages for display
 let notifLoaded = false;
@@ -11304,6 +11519,9 @@ async function fetchFeed(append = false) {
   feedLoaded = true;
   feedLastFetch = Date.now();
   if (currentTab === 'feed') renderFeed();
+  // Async: check bookmark state for loaded messages (non-blocking)
+  const ids = msgs.map(msg => msg.base36_id).filter(Boolean)
+  checkFeedBookmarks(ids)
 }
 
 function renderFeed() {
@@ -11380,6 +11598,291 @@ function renderFeed() {
       }, 200)
     }, { signal: mcSignal, passive: true });
   }
+}
+
+// ---- ENGAGEMENT: heat, bookmark, reactions ----
+
+// Batch-check bookmark status for a list of ids after feed loads
+async function checkFeedBookmarks(ids) {
+  if (!ids.length || !hsAuthToken) return
+  try {
+    const resp = await apiFetch('/api/bookmarks/check', { method: 'POST', auth: true, body: { messageIds: ids } })
+    if (!resp.ok) return
+    const list = resp.data?.bookmarked || resp.bookmarked || []
+    feedBookmarked.clear()
+    for (const id of list) feedBookmarked.add(id)
+    for (const id of ids) {
+      const btn = document.querySelector(`.hs-feed-bm-btn[data-id="${CSS.escape(id)}"]`)
+      if (btn) _applyBookmarkState(btn, feedBookmarked.has(id))
+    }
+  } catch (e) { /* silent */ }
+}
+
+function _makeSvg(pathD, filled, size) {
+  const ns = 'http://www.w3.org/2000/svg'
+  const svg = document.createElementNS(ns, 'svg')
+  svg.setAttribute('viewBox', '0 0 24 24')
+  svg.setAttribute('width', String(size || 13))
+  svg.setAttribute('height', String(size || 13))
+  svg.setAttribute('class', 'hs-fe-icon')
+  const path = document.createElementNS(ns, 'path')
+  path.setAttribute('d', pathD)
+  path.setAttribute('fill', filled ? '#ff8700' : 'none')
+  path.setAttribute('stroke', filled ? '#ff8700' : '#808080')
+  path.setAttribute('stroke-width', '2')
+  path.setAttribute('stroke-linejoin', 'round')
+  svg.appendChild(path)
+  return svg
+}
+
+function _applyBookmarkState(btn, active) {
+  btn.classList.toggle('active', active)
+  btn.title = active ? 'remove bookmark' : 'bookmark'
+  const path = btn.querySelector('path')
+  if (path) {
+    path.setAttribute('fill', active ? '#ff8700' : 'none')
+    path.setAttribute('stroke', active ? '#ff8700' : '#808080')
+  }
+}
+
+function _applyHeatState(btn, active, count) {
+  btn.classList.toggle('active', active)
+  const path = btn.querySelector('path')
+  if (path) {
+    path.setAttribute('fill', active ? '#ff8700' : 'none')
+    path.setAttribute('stroke', active ? '#ff8700' : '#808080')
+  }
+  const countEl = btn.querySelector('.hs-fe-count')
+  if (countEl) countEl.textContent = count > 0 ? String(count) : ''
+}
+
+async function toggleHeat(msgId, btn, m) {
+  if (!hsAuthToken) { showToast(t('mc_social_log_in_first')); return }
+  const wasLiked = feedLiked.has(msgId)
+  const newLiked = !wasLiked
+  const delta = newLiked ? 1 : -1
+  if (newLiked) feedLiked.add(msgId); else feedLiked.delete(msgId)
+  m.heat = (m.heat || 0) + delta
+  _applyHeatState(btn, newLiked, m.heat)
+  const resp = await apiFetch(`/api/messages/${encodeURIComponent(msgId)}/like`, { method: 'POST', auth: true })
+  if (!resp.ok) {
+    if (newLiked) feedLiked.delete(msgId); else feedLiked.add(msgId)
+    m.heat = (m.heat || 0) - delta
+    _applyHeatState(btn, wasLiked, m.heat)
+  }
+}
+
+async function toggleBookmark(msgId, btn) {
+  if (!hsAuthToken) { showToast(t('mc_social_log_in_first')); return }
+  const wasBookmarked = feedBookmarked.has(msgId)
+  const newState = !wasBookmarked
+  if (newState) feedBookmarked.add(msgId); else feedBookmarked.delete(msgId)
+  _applyBookmarkState(btn, newState)
+  const method = newState ? 'POST' : 'DELETE'
+  const resp = await apiFetch(`/api/bookmarks/${encodeURIComponent(msgId)}`, { method, auth: true })
+  if (!resp.ok) {
+    if (newState) feedBookmarked.delete(msgId); else feedBookmarked.add(msgId)
+    _applyBookmarkState(btn, wasBookmarked)
+  }
+}
+
+async function loadReactions(msgId, engageEl) {
+  const resp = await apiFetch(`/api/messages/${encodeURIComponent(msgId)}/reactions`, { auth: true })
+  if (!resp.ok) return
+  const reactions = resp.data?.reactions || resp.reactions || []
+  feedReactionsCache.set(msgId, reactions)
+  _renderReactionsIntoRow(engageEl, msgId, reactions)
+}
+
+function _makeReactChip(r, msgId, engageEl) {
+  const chip = document.createElement('button')
+  chip.className = 'hs-feed-react-chip' + (r.user_reacted ? ' active' : '')
+  chip.title = r.emote_name || ''
+  chip.dataset.emoteId = String(r.emote_id)
+  const img = document.createElement('img')
+  img.src = r.emote_url || ''
+  img.alt = r.emote_name || ''
+  img.className = 'hs-feed-react-img'
+  const cnt = document.createElement('span')
+  cnt.className = 'hs-fe-count'
+  cnt.textContent = String(r.count)
+  chip.appendChild(img)
+  chip.appendChild(cnt)
+  chip.addEventListener('click', (e) => {
+    e.stopPropagation()
+    const row = chip.closest('.hs-feed-react-row')
+    handleReactionChip(msgId, r, chip, row, engageEl)
+  })
+  return chip
+}
+
+function _renderReactionsIntoRow(engageEl, msgId, reactions) {
+  let row = engageEl.querySelector('.hs-feed-react-row')
+  if (!row) return
+  // Remove old chips (keep the "+" add button at end)
+  const addBtn = row.querySelector('.hs-feed-react-add')
+  row.textContent = ''
+  for (const r of reactions) row.appendChild(_makeReactChip(r, msgId, engageEl))
+  if (addBtn) row.appendChild(addBtn)
+}
+
+async function handleReactionChip(msgId, reaction, chip, row, engageEl) {
+  if (!hsAuthToken) { showToast(t('mc_social_log_in_first')); return }
+  const wasReacted = reaction.user_reacted
+  reaction.user_reacted = !wasReacted
+  reaction.count = (reaction.count || 1) + (wasReacted ? -1 : 1)
+  chip.classList.toggle('active', reaction.user_reacted)
+  const countEl = chip.querySelector('.hs-fe-count')
+  if (countEl) countEl.textContent = String(reaction.count)
+  if (reaction.count <= 0) chip.remove()
+  const method = wasReacted ? 'DELETE' : 'POST'
+  const path = wasReacted
+    ? `/api/messages/${encodeURIComponent(msgId)}/react/${encodeURIComponent(reaction.emote_id)}`
+    : `/api/messages/${encodeURIComponent(msgId)}/react`
+  const body = wasReacted ? undefined : { emote_id: reaction.emote_id }
+  const resp = await apiFetch(path, { method, auth: true, body })
+  if (!resp.ok) {
+    reaction.user_reacted = wasReacted
+    reaction.count = (reaction.count || 1) + (wasReacted ? 1 : -1)
+    _renderReactionsIntoRow(engageEl, msgId, feedReactionsCache.get(msgId) || [])
+  }
+}
+
+function openReactionPicker(e, msgId, engageEl) {
+  if (!hsAuthToken) { showToast(t('mc_social_log_in_first')); return }
+  document.getElementById('hs-mc-react-picker')?.remove()
+  const emotes = []
+  if (typeof emoteCache !== 'undefined') {
+    for (const [name, data] of emoteCache) {
+      if (data.url && data.source === 'heatsync') emotes.push({ name, url: data.url, id: data.id || name })
+    }
+  }
+  if (!emotes.length) { showToast('no emotes available'); return }
+
+  const picker = document.createElement('div')
+  picker.id = 'hs-mc-react-picker'
+  picker.className = 'hs-mc-react-picker'
+
+  const searchEl = document.createElement('input')
+  searchEl.type = 'text'
+  searchEl.className = 'hs-mc-react-search'
+  searchEl.placeholder = 'search emotes'
+  const grid = document.createElement('div')
+  grid.className = 'hs-mc-react-grid'
+  picker.appendChild(searchEl)
+  picker.appendChild(grid)
+
+  function fillGrid(filter) {
+    grid.textContent = ''
+    const q = filter.toLowerCase()
+    const shown = q ? emotes.filter(em => em.name.toLowerCase().includes(q)).slice(0, 40) : emotes.slice(0, 40)
+    for (const em of shown) {
+      const btn = document.createElement('button')
+      btn.className = 'hs-mc-react-emote'
+      btn.title = em.name
+      const img = document.createElement('img')
+      img.src = em.url
+      img.alt = em.name
+      img.loading = 'lazy'
+      btn.appendChild(img)
+      btn.addEventListener('click', async (ev) => {
+        ev.stopPropagation()
+        picker.remove()
+        if (!hsAuthToken) return
+        const cached = feedReactionsCache.get(msgId) || []
+        const existing = cached.find(r => String(r.emote_id) === String(em.id))
+        if (existing) {
+          const chip = engageEl.querySelector(`.hs-feed-react-chip[data-emote-id="${CSS.escape(String(em.id))}"]`)
+          const row = engageEl.querySelector('.hs-feed-react-row')
+          if (chip && row) handleReactionChip(msgId, existing, chip, row, engageEl)
+          return
+        }
+        const resp = await apiFetch(`/api/messages/${encodeURIComponent(msgId)}/react`, {
+          method: 'POST', auth: true, body: { emote_id: em.id }
+        })
+        if (resp.ok) await loadReactions(msgId, engageEl)
+      })
+      grid.appendChild(btn)
+    }
+  }
+  fillGrid('')
+  searchEl.addEventListener('input', () => fillGrid(searchEl.value))
+
+  document.body.appendChild(picker)
+  const rect = e.target.getBoundingClientRect()
+  const pw = picker.offsetWidth || 200
+  const ph = picker.offsetHeight || 220
+  picker.style.left = Math.min(rect.left, window.innerWidth - pw - 4) + 'px'
+  picker.style.top = Math.max(rect.top - ph - 4, 4) + 'px'
+
+  setTimeout(() => {
+    const dismiss = (ev) => {
+      if (!picker.contains(ev.target)) { picker.remove(); document.removeEventListener('click', dismiss) }
+    }
+    document.addEventListener('click', dismiss, { signal: mcSignal })
+  }, 0)
+  searchEl.focus()
+}
+
+function buildEngagementBar(m) {
+  const bar = document.createElement('div')
+  bar.className = 'hs-feed-engage'
+
+  const liked = feedLiked.has(m.base36_id) || !!m.user_liked
+  const heatCount = m.heat || 0
+
+  // Heat/like button — flame SVG
+  const heatBtn = document.createElement('button')
+  heatBtn.className = 'hs-feed-heat-btn' + (liked ? ' active' : '')
+  heatBtn.title = liked ? 'unlike' : 'heat'
+  heatBtn.dataset.id = m.base36_id
+  heatBtn.appendChild(_makeSvg('M12 2C9 7 5 9 5 14a7 7 0 0014 0c0-5-4-7-7-12z', liked))
+  const heatCount2 = document.createElement('span')
+  heatCount2.className = 'hs-fe-count'
+  heatCount2.textContent = heatCount > 0 ? String(heatCount) : ''
+  heatBtn.appendChild(heatCount2)
+
+  // Bookmark button — ribbon SVG
+  const bookmarked = feedBookmarked.has(m.base36_id)
+  const bmBtn = document.createElement('button')
+  bmBtn.className = 'hs-feed-bm-btn' + (bookmarked ? ' active' : '')
+  bmBtn.title = bookmarked ? 'remove bookmark' : 'bookmark'
+  bmBtn.dataset.id = m.base36_id
+  bmBtn.appendChild(_makeSvg('M5 2h14a1 1 0 011 1v18l-8-5-8 5V3a1 1 0 011-1z', bookmarked))
+
+  bar.appendChild(heatBtn)
+  bar.appendChild(bmBtn)
+
+  // Reactions row
+  const reactRow = document.createElement('div')
+  reactRow.className = 'hs-feed-react-row'
+  const cached = feedReactionsCache.get(m.base36_id)
+  if (cached?.length) {
+    for (const r of cached) reactRow.appendChild(_makeReactChip(r, m.base36_id, bar))
+  }
+  const addReactBtn = document.createElement('button')
+  addReactBtn.className = 'hs-feed-react-add'
+  addReactBtn.title = 'react'
+  addReactBtn.textContent = '+'
+  reactRow.appendChild(addReactBtn)
+  bar.appendChild(reactRow)
+
+  return bar
+}
+
+function attachEngagementHandlers(div, m) {
+  const bar = div.querySelector('.hs-feed-engage')
+  if (!bar) return
+  if (m.user_liked) feedLiked.add(m.base36_id)
+
+  const heatBtn = bar.querySelector('.hs-feed-heat-btn')
+  if (heatBtn) heatBtn.addEventListener('click', (e) => { e.stopPropagation(); toggleHeat(m.base36_id, heatBtn, m) })
+
+  const bmBtn = bar.querySelector('.hs-feed-bm-btn')
+  if (bmBtn) bmBtn.addEventListener('click', (e) => { e.stopPropagation(); toggleBookmark(m.base36_id, bmBtn) })
+
+  const addReactBtn = bar.querySelector('.hs-feed-react-add')
+  if (addReactBtn) addReactBtn.addEventListener('click', (e) => { e.stopPropagation(); openReactionPicker(e, m.base36_id, bar) })
 }
 
 function buildFeedMessageDiv(m, opUsername) {
@@ -11522,6 +12025,11 @@ function buildFeedMessageDiv(m, opUsername) {
       }
     });
   }
+
+  // Engagement bar: heat, bookmark, reactions
+  const engageBar = buildEngagementBar(m);
+  div.appendChild(engageBar);
+  attachEngagementHandlers(div, m);
 
   return div;
 }
@@ -15336,8 +15844,13 @@ const STORAGE_KEY = 'heatsync_multichat';
   function createOverlay() {
     const overlay = document.createElement('div');
     overlay.id = 'hs-mc-overlay';
-    // Static hardcoded layout — no user input, safe innerHTML
+    // Static hardcoded layout — only static strings, no user input, safe innerHTML
+    const searchPlaceholder = 'search messages…'
     overlay.innerHTML = `
+      <div id="hs-mc-search-bar">
+        <input id="hs-mc-search-input" type="text" placeholder="${searchPlaceholder}" autocomplete="off" spellcheck="false" />
+        <div id="hs-mc-search-spinner"></div>
+      </div>
       <div id="hs-mc-messages">
         <div class="hs-mc-empty">${t('mc_no_messages')}</div>
       </div>
@@ -15470,7 +15983,102 @@ const STORAGE_KEY = 'heatsync_multichat';
       }, { passive: true, signal: mcSignal })
     }, 100);
 
+    // Search bar wiring — debounce 250ms then call /api/search
+    const searchInput = overlay.querySelector('#hs-mc-search-input')
+    const searchSpinner = overlay.querySelector('#hs-mc-search-spinner')
+    let _searchTimer = null
+    let _searchActive = false
+
+    if (searchInput && searchSpinner) {
+      searchInput.addEventListener('input', () => {
+        if (_searchTimer) { cleanup.clearTimeout(_searchTimer); _searchTimer = null }
+        const q = searchInput.value.trim()
+        if (!q) {
+          _searchActive = false
+          searchSpinner.classList.remove('visible')
+          if (currentTab === 'mentions') renderMessages('mentions')
+          return
+        }
+        _searchActive = true
+        searchSpinner.classList.add('visible')
+        _searchTimer = cleanup.setTimeout(async () => {
+          _searchTimer = null
+          if (!_searchActive) return
+          const msgsEl = document.getElementById('hs-mc-messages')
+          if (!msgsEl || currentTab !== 'mentions') return
+          try {
+            const resp = await apiFetch(`/api/search?q=${encodeURIComponent(q)}&mode=messages&limit=50`)
+            if (!_searchActive || currentTab !== 'mentions') return
+            searchSpinner.classList.remove('visible')
+            const results = resp?.data?.results || resp?.results || []
+            renderSearchResults(msgsEl, results, q)
+          } catch (e) {
+            searchSpinner.classList.remove('visible')
+          }
+        }, 250)
+      })
+
+      // Clear search state when input is cleared via keyboard
+      searchInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+          searchInput.value = ''
+          _searchActive = false
+          searchSpinner.classList.remove('visible')
+          if (_searchTimer) { cleanup.clearTimeout(_searchTimer); _searchTimer = null }
+          if (currentTab === 'mentions') renderMessages('mentions')
+        }
+      })
+    }
+
     return overlay;
+  }
+
+  function renderSearchResults(msgsEl, results, query) {
+    msgsEl.textContent = ''
+    if (!results.length) {
+      const empty = document.createElement('div')
+      empty.className = 'hs-mc-search-empty'
+      empty.textContent = 'no results'
+      msgsEl.appendChild(empty)
+      return
+    }
+    const frag = document.createDocumentFragment()
+    for (const r of results) {
+      const div = document.createElement('div')
+      div.className = 'hs-mc-search-result'
+
+      const ts = r.created_at ? new Date(r.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''
+      const user = escapeHtml(r.display_name || r.username || '')
+      const content = escapeHtml(r.content || '')
+      const msgId = r.base36_id || ''
+      const permalink = msgId ? `https://heatsync.org/m/${msgId}` : null
+
+      const meta = document.createElement('div')
+      meta.className = 'hs-mc-search-meta'
+      if (ts) {
+        const tsSpan = document.createElement('span')
+        tsSpan.textContent = ts
+        meta.appendChild(tsSpan)
+      }
+      const userSpan = document.createElement('span')
+      userSpan.className = 'hs-mc-search-user'
+      userSpan.innerHTML = user
+      meta.appendChild(userSpan)
+
+      const body = document.createElement('div')
+      body.className = 'hs-mc-search-content'
+      body.innerHTML = content
+
+      div.appendChild(meta)
+      div.appendChild(body)
+
+      if (permalink) {
+        div.addEventListener('click', () => window.open(permalink, '_blank', 'noopener'))
+      }
+
+      frag.appendChild(div)
+    }
+    msgsEl.appendChild(frag)
   }
 
   /**
@@ -16842,6 +17450,10 @@ const STORAGE_KEY = 'heatsync_multichat';
       updateTabBadges();
     }
 
+    // Show/hide search bar on mentions tab
+    const searchBar = document.getElementById('hs-mc-search-bar')
+    if (searchBar) searchBar.classList.toggle('visible', id === 'mentions')
+
     // Clear activity badge when switching to activity tab
     if (id === 'activity' && unreadNotifCount > 0) {
       unreadNotifCount = 0;
@@ -17602,6 +18214,12 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     if (id === 'activity') { renderActivity(); return; }
     if (id === 'whispers') { renderWhispersTab(); return; }
     if (id === 'settings') { renderSettingsTab(); return; }
+
+    // If search is active on mentions tab, don't clobber search results
+    if (id === 'mentions') {
+      const searchInput = document.getElementById('hs-mc-search-input')
+      if (searchInput && searchInput.value.trim()) return
+    }
 
     const msgsEl = document.getElementById('hs-mc-messages');
     if (!msgsEl) return;

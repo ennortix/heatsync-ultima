@@ -1132,6 +1132,31 @@ style.textContent = `
   .heatsync-emote-wrapper.emote-overlay-unadded::before { background: #ff8700 !important; }
   .heatsync-emote-wrapper.emote-overlay-blocked::before { background: #ff0000 !important; }
 
+  /* Collapsed stack: suppress per-wrapper hover overlays — show one unified
+     overlay on the stack itself sized to the base emote (largest in the nest). */
+  .heatsync-emote-stack:not(.expanded) .heatsync-emote-wrapper::before {
+    display: none !important;
+  }
+  .heatsync-emote-stack:not(.expanded) .heatsync-emote-wrapper:hover > img {
+    visibility: visible !important;
+  }
+  .heatsync-emote-stack:not(.expanded)::before {
+    content: '' !important;
+    position: absolute !important;
+    inset: 0 !important;
+    background: #ff8700 !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
+    z-index: 3 !important;
+    transition: opacity 0.1s !important;
+  }
+  .heatsync-emote-stack:not(.expanded):hover::before {
+    opacity: 1 !important;
+  }
+  .heatsync-emote-stack:not(.expanded):hover > .heatsync-emote-wrapper > img {
+    visibility: hidden !important;
+  }
+
   /* ============================================ */
   /* EMOTE STACK EXPAND/COLLAPSE (website parity) */
   /* ============================================ */
@@ -1302,7 +1327,6 @@ style.textContent = `
     flex-direction: column;
     align-items: center;
     gap: 4px;
-    transform: translate(-50%, -100%);
     box-shadow: 0 4px 12px rgba(0,0,0,0.6);
   }
   #hs-badge-tooltip.active {
@@ -1364,24 +1388,33 @@ function showBadgeTooltip(badgeImg) {
   const srcEl = tooltip.querySelector('.hs-badge-tooltip-source')
   if (srcEl) srcEl.textContent = sourceLabel
 
+  // Reset position before measuring so stale offsets don't bias offsetWidth
+  tooltip.style.left = '0px'
+  tooltip.style.top = '0px'
+  tooltip.style.transform = 'none'
   tooltip.classList.add('active')
-  // Measure after activating so we can clamp by actual tooltip dimensions
+  // Force reflow + measure
+  const ttW = tooltip.offsetWidth || 200
+  const ttH = tooltip.offsetHeight || 100
   const rect = badgeImg.getBoundingClientRect()
-  const ttRect = tooltip.getBoundingClientRect()
-  const ttW = ttRect.width || 100
-  const ttH = ttRect.height || 100
   const pad = 8
   const centerX = rect.left + rect.width / 2
-  const clampedX = Math.max(ttW / 2 + pad, Math.min(window.innerWidth - ttW / 2 - pad, centerX))
-  // Above badge by default. If no room, flip below.
+  // Clamp left edge directly (no transform translateX) so we never assume width prematurely
+  let leftPx = centerX - ttW / 2
+  if (leftPx < pad) leftPx = pad
+  if (leftPx + ttW > window.innerWidth - pad) leftPx = window.innerWidth - ttW - pad
+  // Above badge by default. If no room above, flip below.
+  let topPx
   if (rect.top >= ttH + pad) {
-    tooltip.style.top = (rect.top - pad) + 'px'
-    tooltip.style.transform = 'translate(-50%, -100%)'
+    topPx = rect.top - ttH - pad
   } else {
-    tooltip.style.top = (rect.bottom + pad) + 'px'
-    tooltip.style.transform = 'translate(-50%, 0)'
+    topPx = rect.bottom + pad
   }
-  tooltip.style.left = clampedX + 'px'
+  if (topPx < pad) topPx = pad
+  if (topPx + ttH > window.innerHeight - pad) topPx = window.innerHeight - ttH - pad
+  tooltip.style.left = leftPx + 'px'
+  tooltip.style.top = topPx + 'px'
+  tooltip.style.transform = 'none'
 }
 
 function hideBadgeTooltip() {
@@ -4445,6 +4478,9 @@ function setupEmoteClickHandlers() {
   cleanup.addEventListener(document, 'contextmenu', async (e) => {
     const wrapper = e.target.closest('.heatsync-emote-wrapper');
     if (!wrapper) return;
+    // Stacks are handled by the capture-phase contextmenu handler in
+    // setupUsernameColoringObserver — bail so we don't double-toggle.
+    if (wrapper.closest('.heatsync-emote-stack')) return;
 
     e.preventDefault();
     e.stopPropagation();
@@ -4823,10 +4859,13 @@ function updateEmoteState(hash, emoteName, state) {
   const PROFILE_CACHE_MAX = 50
 
   // Username selectors for click interception (capture phase)
+  // Modern Twitch wraps display name span inside button.inline.font-bold —
+  // clicks land on the button, so closest() needs to match the button itself.
   const usernameSelectors = [
     '.chat-author__display-name',
     '[data-a-target="chat-message-username"]',
     '.chat-line__username',
+    'button.inline.font-bold',
     '.hs-username-colored',
     '.hs-mention-colored',
     '[data-hs-username]',
@@ -5859,13 +5898,16 @@ function updateEmoteState(hash, emoteName, state) {
 
       const target = e.target.closest(usernameSelectors)
       if (target) {
-        const username = target.dataset?.hsUsername ||
-                         target.dataset?.username ||
-                         target.textContent?.replace(/^@/, '').trim()
+        const inner = target.querySelector?.('.chat-author__display-name, [data-a-target="chat-message-username"]')
+        const src = inner || target
+        const raw = src.dataset?.hsUsername ||
+                    src.dataset?.username ||
+                    src.textContent?.replace(/^@/, '').trim()
+        const username = raw?.replace(/[:\s]+$/, '').trim()
         if (!username) return
         e.stopPropagation()
         e.preventDefault()
-        showCard(target, e)
+        showCard(src, e)
         return
       }
 

@@ -12870,7 +12870,7 @@ function renderDiscoverTab() {
       if (!username) continue;
       const row = document.createElement('a');
       row.className = 'hs-discover-profile-row';
-      row.href = `https://heatsync.org/@${encodeURIComponent(username)}`;
+      row.href = `https://heatsync.org/user/${encodeURIComponent(username)}`;
       row.target = '_blank';
       row.rel = 'noopener noreferrer';
 

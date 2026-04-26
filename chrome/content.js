@@ -4775,86 +4775,63 @@ function updateEmoteState(hash, emoteName, state) {
       effectiveState = 'global';
     }
 
+    // Skip work if state already matches — eliminates redundant attr mutations
+    // for popular emotes (a 46-instance block was generating 161 attr mutations,
+    // half of them no-ops because the broadcast handler reapplies the same state).
+    const targetWrapperClass =
+      effectiveState === 'blocked' ? 'emote-overlay-blocked' :
+      effectiveState === 'added'   ? 'emote-overlay-owned'   :
+      effectiveState === 'global'  ? 'emote-overlay-global'  :
+                                     'emote-overlay-unadded';
+    if (wrapper && wrapper.classList.contains(targetWrapperClass)) return;
+
     // Remove all state classes
     img.classList.remove('emote-blocked', 'emote-in-set');
 
-    // Update based on new state (overlay classes)
     if (wrapper) {
       wrapper.classList.remove('emote-overlay-blocked', 'emote-overlay-owned', 'emote-overlay-unadded', 'emote-overlay-global');
-      // Clear locked dimensions from previous blocked state
       wrapper.style.removeProperty('--hs-emote-width');
       wrapper.style.removeProperty('--hs-emote-height');
     }
 
-    const restoreImgSize = () => {
-      const sw = img.dataset.hsPrevW, sh = img.dataset.hsPrevH
-      const swPrio = img.dataset.hsPrevWPrio || ''
-      const shPrio = img.dataset.hsPrevHPrio || ''
-      if (sw !== undefined && sh !== undefined) {
-        if (sw === '') img.style.removeProperty('width')
-        else img.style.setProperty('width', sw, swPrio)
-        if (sh === '') img.style.removeProperty('height')
-        else img.style.setProperty('height', sh, shPrio)
-        delete img.dataset.hsPrevW
-        delete img.dataset.hsPrevH
-        delete img.dataset.hsPrevWPrio
-        delete img.dataset.hsPrevHPrio
-      }
-    }
-
+    // CSS handles opacity via .emote-overlay-blocked > img — no inline write needed.
+    // Earlier versions read offsetWidth/offsetHeight per element to "lock" dims,
+    // forcing N synchronous layouts for popular emotes (visible jank). The lock
+    // was for outline accuracy on blocked emotes, but opacity:0 hides the outline
+    // too, so it served no visual purpose. Removed.
     switch(effectiveState) {
       case 'blocked':
         if (wrapper) {
           wrapper.classList.add('emote-overlay-blocked');
-          // Lock wrapper dimensions so expanded stack layout doesn't shift
+          // Stack wrappers: lock --hs-emote-width/height so expanded stack
+          // layout doesn't collapse around the now-invisible blocked emote.
+          // Only one layout read here, only for stacked wrappers.
           if (wrapper.closest('.heatsync-emote-stack')) {
-            const w = wrapper.offsetWidth;
-            const h = wrapper.offsetHeight;
+            const w = wrapper.offsetWidth, h = wrapper.offsetHeight;
             if (w && h) {
               wrapper.style.setProperty('--hs-emote-width', w + 'px');
               wrapper.style.setProperty('--hs-emote-height', h + 'px');
             }
           }
         }
-        // Lock to CURRENT rendered size (not naturalWidth — which can be 4x for high-DPI
-        // assets and would jump chat layout). Stash any existing inline so unblock restores.
-        if (img.dataset.hsPrevW === undefined) {
-          img.dataset.hsPrevW = img.style.width || ''
-          img.dataset.hsPrevH = img.style.height || ''
-          img.dataset.hsPrevWPrio = img.style.getPropertyPriority('width') || ''
-          img.dataset.hsPrevHPrio = img.style.getPropertyPriority('height') || ''
-        }
-        {
-          const rw = img.offsetWidth, rh = img.offsetHeight
-          if (rw && rh) {
-            img.style.setProperty('width', rw + 'px', 'important')
-            img.style.setProperty('height', rh + 'px', 'important')
-          }
-        }
-        img.style.opacity = '0';
         img.classList.add('emote-blocked');
         break;
 
       case 'added':
         if (wrapper) wrapper.classList.add('emote-overlay-owned');
-        restoreImgSize();
-        img.style.opacity = '';
+        if (img.style.opacity) img.style.removeProperty('opacity');
         img.classList.add('emote-in-set');
-        log(' Applied emote-overlay-owned to:', emoteName);
         break;
 
       case 'global':
         if (wrapper) wrapper.classList.add('emote-overlay-global');
-        restoreImgSize();
-        img.style.opacity = '';
-        log(' Applied emote-overlay-global to:', emoteName);
+        if (img.style.opacity) img.style.removeProperty('opacity');
         break;
 
       case 'neutral':
       default:
         if (wrapper) wrapper.classList.add('emote-overlay-unadded');
-        restoreImgSize();
-        img.style.opacity = '';
+        if (img.style.opacity) img.style.removeProperty('opacity');
         break;
     }
   });
@@ -6817,71 +6794,51 @@ function unmuteUser(username) {
   });
 }
 
-// Hide blocked emote everywhere
+// Hide blocked emote everywhere — idempotent (skips wrappers already blocked).
+// Opacity is handled by CSS via .emote-overlay-blocked > img — no inline writes.
 function hideBlockedEmote(hash) {
-  log(' hideBlockedEmote called for hash:', hash?.substring(0, 8));
   const elements = document.querySelectorAll(`[data-emote-hash="${hash}"]`);
-  log(' Found', elements.length, 'elements to hide');
-
   elements.forEach(wrapper => {
+    if (wrapper.classList.contains('emote-overlay-blocked')) return;
     wrapper.classList.remove('emote-overlay-owned', 'emote-overlay-unadded', 'emote-overlay-global');
     wrapper.classList.add('emote-overlay-blocked');
     const img = wrapper.querySelector('.heatsync-emote');
     if (img) {
-      img.style.opacity = '0';
       img.classList.add('emote-blocked');
       img.classList.remove('emote-in-set');
-      log(' Hid emote:', img.dataset.emoteName);
     }
   });
 }
 
-// Show unblocked emote everywhere
+// Show unblocked emote everywhere — idempotent (skips wrappers already in target state)
 function showUnblockedEmote(hash) {
-  log(' showUnblockedEmote called for hash:', hash?.substring(0, 8));
   const elements = document.querySelectorAll(`[data-emote-hash="${hash}"]`);
-  log(' Found', elements.length, 'elements to show');
-
   elements.forEach(wrapper => {
     const img = wrapper.querySelector('.heatsync-emote');
     const emoteName = wrapper.dataset.emoteName;
     const emoteUrl = wrapper.dataset.emoteUrl || img?.src || '';
 
-    // Check if third-party CDN emote (7TV, BTTV, FFZ, Twitch native)
     const isThirdPartyCdn = emoteUrl.includes('cdn.7tv.app') ||
                             emoteUrl.includes('cdn.betterttv.net') ||
                             emoteUrl.includes('cdn.frankerfacez.com') ||
                             emoteUrl.includes('static-cdn.jtvnw.net');
 
-    // Check if in your set or global
     const inInventory = inventoryHashSet.has(hash) || inventoryNameSet.has(emoteName);
     const isGlobalEmote = globalNameSet.has(emoteName);
 
-    wrapper.classList.remove('emote-overlay-blocked', 'emote-overlay-owned', 'emote-overlay-unadded', 'emote-overlay-global');
+    const targetClass = inInventory ? 'emote-overlay-owned'
+                      : (isThirdPartyCdn || isGlobalEmote) ? 'emote-overlay-global'
+                      : 'emote-overlay-unadded';
+    if (wrapper.classList.contains(targetClass)) return;
 
-    if (inInventory) {
-      wrapper.classList.add('emote-overlay-owned');
-    } else if (isThirdPartyCdn || isGlobalEmote) {
-      // Third-party emotes (7TV, BTTV, FFZ, Twitch) always get gray - can't add to inventory
-      wrapper.classList.add('emote-overlay-global');
-    } else {
-      wrapper.classList.add('emote-overlay-unadded');
-    }
+    wrapper.classList.remove('emote-overlay-blocked', 'emote-overlay-owned', 'emote-overlay-unadded', 'emote-overlay-global');
+    wrapper.classList.add(targetClass);
 
     if (img) {
-      img.style.opacity = '';
+      if (img.style.opacity) img.style.removeProperty('opacity');
       img.classList.remove('emote-blocked');
-
-      if (inInventory) {
-        img.classList.add('emote-in-set');
-        log(' Showed emote (in your set):', emoteName);
-      } else if (isThirdPartyCdn || isGlobalEmote) {
-        img.classList.remove('emote-in-set');
-        log(' Showed emote (global/third-party):', emoteName);
-      } else {
-        img.classList.remove('emote-in-set');
-        log(' Showed emote (unadded):', emoteName);
-      }
+      if (inInventory) img.classList.add('emote-in-set');
+      else img.classList.remove('emote-in-set');
     }
   });
 }

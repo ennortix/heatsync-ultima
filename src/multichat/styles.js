@@ -3613,17 +3613,17 @@ function injectStyles() {
       color: #808080;
       font-size: 12px;
     }
-    /* btop-style discover: dense single-line rows */
+    /* btop-style discover: dense single-line rows, readable sizes */
     .hs-discover-section { padding: 0; }
     .hs-discover-section + .hs-discover-section { margin-top: 1px; }
     .hs-discover-heading {
-      font-size: 9px;
+      font-size: 11px;
       color: #ff8700;
       font-weight: 700;
       text-transform: uppercase;
       letter-spacing: 0.5px;
       margin: 0;
-      padding: 2px 6px;
+      padding: 3px 8px;
       background: rgba(255,135,0,0.06);
       border-bottom: 1px solid rgba(255,135,0,0.18);
       line-height: 1.3;
@@ -3632,8 +3632,8 @@ function injectStyles() {
       align-items: center;
     }
     .hs-discover-meta {
-      color: #707070;
-      font-size: 9px;
+      color: #808080;
+      font-size: 11px;
       font-weight: 500;
       text-transform: none;
       letter-spacing: 0;
@@ -3651,17 +3651,17 @@ function injectStyles() {
     .hs-discover-chips {
       display: flex;
       flex-wrap: wrap;
-      gap: 2px;
-      padding: 2px 6px;
+      gap: 3px;
+      padding: 3px 8px;
       margin: 0;
     }
     .hs-discover-chip {
       display: inline-block;
-      padding: 0 6px;
+      padding: 1px 7px;
       background: rgba(255,135,0,0.12);
       border: 1px solid rgba(255,135,0,0.4);
       color: #ff8700;
-      font-size: 10px;
+      font-size: 12px;
       text-decoration: none;
       cursor: pointer;
       border-radius: 0;
@@ -3672,37 +3672,37 @@ function injectStyles() {
     .hs-discover-profile-row {
       display: flex;
       align-items: center;
-      gap: 5px;
-      padding: 1px 6px;
+      gap: 6px;
+      padding: 2px 8px;
       text-decoration: none;
       cursor: pointer;
       line-height: 1.3;
-      font-size: 11px;
+      font-size: 13px;
       border-left: 2px solid transparent;
     }
     .hs-discover-profile-row:hover { background: rgba(255,135,0,0.07); }
     .hs-discover-profile-row.hs-discover-row-live { border-left-color: #ff3030; }
     .hs-discover-rank {
-      color: #555;
-      font-size: 9px;
+      color: #666;
+      font-size: 11px;
       font-variant-numeric: tabular-nums;
-      width: 14px;
+      width: 18px;
       text-align: right;
       flex-shrink: 0;
       font-family: ui-monospace, SFMono-Regular, monospace;
     }
-    .hs-discover-row-live .hs-discover-rank { color: #999; }
+    .hs-discover-row-live .hs-discover-rank { color: #aaa; }
     .hs-discover-live-dot {
-      width: 6px; height: 6px;
+      width: 7px; height: 7px;
       border-radius: 50%;
       background: #ff3030;
-      box-shadow: 0 0 4px #ff3030;
+      box-shadow: 0 0 5px #ff3030;
       animation: hs-pulse-live 1.6s ease-in-out infinite;
       flex-shrink: 0;
     }
-    .hs-discover-live-spacer { width: 6px; flex-shrink: 0; }
+    .hs-discover-live-spacer { width: 7px; flex-shrink: 0; }
     .hs-discover-avatar {
-      width: 14px; height: 14px;
+      width: 18px; height: 18px;
       flex-shrink: 0;
       border-radius: 50%;
       object-fit: cover;
@@ -3710,27 +3710,27 @@ function injectStyles() {
     }
     .hs-discover-avatar-empty { display: inline-block; }
     .hs-discover-profile-name {
-      font-size: 11px;
+      font-size: 13px;
       font-weight: 600;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
-      max-width: 110px;
+      max-width: 130px;
       flex-shrink: 1;
     }
     .hs-discover-platforms {
       display: inline-flex;
-      gap: 1px;
+      gap: 2px;
       flex-shrink: 0;
     }
     .hs-discover-platforms .hs-plat {
       font-family: ui-monospace, SFMono-Regular, monospace;
-      font-size: 9px;
+      font-size: 11px;
       font-weight: 700;
-      padding: 0 2px;
-      line-height: 1;
+      padding: 0 3px;
+      line-height: 1.2;
       text-decoration: none;
-      opacity: 0.55;
+      opacity: 0.6;
       transition: opacity 0.1s;
     }
     .hs-discover-platforms .hs-plat:hover { opacity: 1; }
@@ -3740,10 +3740,10 @@ function injectStyles() {
     .hs-discover-platforms .hs-plat-h { color: #ff8700; }
     .hs-discover-bar {
       flex: 1;
-      min-width: 24px;
+      min-width: 28px;
       max-width: 90px;
-      height: 4px;
-      background: rgba(255,255,255,0.05);
+      height: 5px;
+      background: rgba(255,255,255,0.06);
       overflow: hidden;
       border-radius: 1px;
     }
@@ -3758,27 +3758,27 @@ function injectStyles() {
     .hs-discover-heat {
       display: inline-flex;
       align-items: center;
-      gap: 2px;
-      font-size: 10px;
+      gap: 3px;
+      font-size: 12px;
       color: #ff8700;
       font-variant-numeric: tabular-nums;
       flex-shrink: 0;
       font-family: ui-monospace, SFMono-Regular, monospace;
     }
     .hs-discover-heat .hs-flame {
-      width: 9px; height: 9px;
+      width: 11px; height: 11px;
       fill: #ff8700;
       flex-shrink: 0;
     }
     .hs-discover-activity {
-      font-size: 9px;
-      color: #707070;
+      font-size: 11px;
+      color: #808080;
       font-variant-numeric: tabular-nums;
       font-family: ui-monospace, SFMono-Regular, monospace;
       flex-shrink: 0;
     }
     .hs-discover-viewers {
-      font-size: 9px;
+      font-size: 11px;
       color: #ff5050;
       font-variant-numeric: tabular-nums;
       font-family: ui-monospace, SFMono-Regular, monospace;
@@ -3790,16 +3790,16 @@ function injectStyles() {
       display: flex;
       flex-wrap: wrap;
       align-items: center;
-      gap: 4px;
-      padding: 3px 6px;
+      gap: 5px;
+      padding: 5px 8px;
       background: rgba(0,0,0,0.25);
       border-bottom: 1px solid rgba(255,255,255,0.05);
-      font-size: 9px;
+      font-size: 11px;
       font-family: ui-monospace, SFMono-Regular, monospace;
     }
     .hs-discover-chips-label {
-      color: #555;
-      font-size: 9px;
+      color: #666;
+      font-size: 11px;
       text-transform: uppercase;
       letter-spacing: 0.5px;
       font-weight: 700;
@@ -3807,17 +3807,17 @@ function injectStyles() {
     }
     .hs-discover-chips-divider {
       width: 1px;
-      height: 11px;
-      background: rgba(255,255,255,0.08);
+      height: 14px;
+      background: rgba(255,255,255,0.1);
       margin: 0 3px;
     }
     .hs-discover-chip-btn {
-      padding: 1px 6px;
+      padding: 2px 8px;
       background: transparent;
-      border: 1px solid rgba(255,255,255,0.1);
-      color: #888;
+      border: 1px solid rgba(255,255,255,0.12);
+      color: #aaa;
       cursor: pointer;
-      font-size: 9px;
+      font-size: 11px;
       font-family: ui-monospace, SFMono-Regular, monospace;
       font-weight: 600;
       border-radius: 0;
@@ -3870,12 +3870,12 @@ function injectStyles() {
     .hs-discover-post-row {
       display: flex;
       align-items: center;
-      gap: 4px;
-      padding: 1px 6px;
+      gap: 5px;
+      padding: 2px 8px;
       text-decoration: none;
       cursor: pointer;
       line-height: 1.3;
-      font-size: 11px;
+      font-size: 13px;
       border-left: 2px solid transparent;
     }
     .hs-discover-post-row:hover {
@@ -3883,11 +3883,11 @@ function injectStyles() {
       border-left-color: rgba(255,135,0,0.3);
     }
     .hs-discover-post-time {
-      color: #555;
-      font-size: 9px;
+      color: #666;
+      font-size: 11px;
       font-variant-numeric: tabular-nums;
       font-family: ui-monospace, SFMono-Regular, monospace;
-      width: 26px;
+      width: 30px;
       flex-shrink: 0;
       text-align: right;
     }
@@ -3895,11 +3895,11 @@ function injectStyles() {
       flex-shrink: 0;
     }
     .hs-discover-post-user {
-      font-size: 11px;
+      font-size: 13px;
       font-weight: 600;
       white-space: nowrap;
       flex-shrink: 0;
-      max-width: 80px;
+      max-width: 100px;
       overflow: hidden;
       text-overflow: ellipsis;
     }
@@ -3907,7 +3907,7 @@ function injectStyles() {
       flex: 1;
       min-width: 0;
       color: #bbb;
-      font-size: 11px;
+      font-size: 12px;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
@@ -3917,8 +3917,8 @@ function injectStyles() {
       flex-shrink: 0;
     }
     .hs-discover-post-replies {
-      font-size: 9px;
-      color: #707070;
+      font-size: 11px;
+      color: #808080;
       font-variant-numeric: tabular-nums;
       font-family: ui-monospace, SFMono-Regular, monospace;
       flex-shrink: 0;
@@ -3926,10 +3926,10 @@ function injectStyles() {
 
     /* Tag chips with optional inline count */
     .hs-discover-chip-count {
-      margin-left: 4px;
-      color: rgba(255,135,0,0.55);
+      margin-left: 5px;
+      color: rgba(255,135,0,0.6);
       font-variant-numeric: tabular-nums;
-      font-size: 9px;
+      font-size: 11px;
     }
     .hs-discover-chip:hover .hs-discover-chip-count { color: #000; }
 

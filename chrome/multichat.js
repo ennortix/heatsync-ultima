@@ -18221,13 +18221,7 @@ const STORAGE_KEY = 'heatsync_multichat';
     const searchBar = document.getElementById('hs-mc-search-bar')
     if (searchBar) searchBar.classList.toggle('visible', id === 'mentions')
 
-    // Show/hide discover refresh bar
-    const discoverBar = document.getElementById('hs-discover-refresh-bar')
-    if (discoverBar) discoverBar.style.display = id === 'discover' ? '' : 'none'
-
-    // Show/hide pinned refresh bar
-    const pinnedBar = document.getElementById('hs-pinned-refresh-bar')
-    if (pinnedBar) pinnedBar.style.display = id === 'pinned' ? '' : 'none'
+    // Discover/pinned refresh bars removed — auto-poll handles freshness
 
     // Clear activity badge when switching to activity tab
     if (id === 'activity' && unreadNotifCount > 0) {

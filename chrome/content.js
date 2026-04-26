@@ -228,6 +228,12 @@ cleanup.addEventListener(window, 'message', async (event) => {
 const style = document.createElement('style');
 style.id = 'heatsync-emote-styles';
 style.textContent = `
+  /* CSS containment localizes layout/paint changes to a single message —
+     when a badge or paint is applied async, only that message reflows. */
+  .chat-line__message {
+    contain: layout style;
+  }
+
   /* Backfilled messages — slightly dimmed to distinguish from live */
   .heatsync-backfill {
     opacity: 0.85 !important;
@@ -2775,6 +2781,7 @@ async function backfillChatHistory() {
       const username = tags['display-name'] || m[2]
       const text = m[4]
       const color = tags.color || '#ffffff'
+      const userId = tags['user-id'] || ''
 
       // Dedup: skip if message ID already in DOM
       if (msgId && existingIds.has(msgId)) continue
@@ -2788,6 +2795,11 @@ async function backfillChatHistory() {
       div.className = 'chat-line__message heatsync-backfill'
       div.setAttribute('data-heatsync-backfill', 'true')
       if (msgId) div.setAttribute('data-msg-id', msgId)
+      // Stamp twitch user-id from IRC tag so cosmetics (7tv badge/paint, bttv,
+      // ffz, chatterino) work on backfilled messages too — robotty's tags
+      // include this; without it the cosmetic pipeline silently no-ops.
+      if (/^\d+$/.test(userId)) div.setAttribute('data-user-id', userId)
+      if (username) div.setAttribute('data-a-user', username.toLowerCase())
 
       const nameSpan = document.createElement('span')
       nameSpan.className = 'chat-author__display-name'
@@ -2812,8 +2824,22 @@ async function backfillChatHistory() {
     }
 
     if (inserted > 0) {
-      // Insert at top of chat container
+      // Preserve scroll position: inserting 500 messages at the top would push
+      // the user's view up by ~500 message-heights. Capture scrollTop relative
+      // to scrollHeight, insert, then restore so the visible content stays put.
+      const scroller = chatContainer.closest('[class*="chat-scrollable-area__message-container"]')?.parentElement
+                    || chatContainer.parentElement
+      const wasAtBottom = scroller && (scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 50)
+      const prevScrollHeight = scroller?.scrollHeight || 0
       chatContainer.insertBefore(fragment, chatContainer.firstChild)
+      if (scroller) {
+        if (wasAtBottom) {
+          scroller.scrollTop = scroller.scrollHeight
+        } else {
+          // Maintain visual stability: anchor by adding the height delta
+          scroller.scrollTop += scroller.scrollHeight - prevScrollHeight
+        }
+      }
       log(` 📜 Backfilled ${inserted} messages`)
       // Process emotes in backfilled messages
       processExistingMessages()
@@ -3013,7 +3039,9 @@ function applyHeatBorderToElement(messageElement, heat) {
   const color = HEAT_GRADIENT[tier]
   const borderWidth = tier >= 8 ? 6 : tier >= 5 ? 5 : tier >= 3 ? 4 : 3
   const s = messageElement.style
-  s.setProperty('border-left', `${borderWidth}px solid ${color}`)
+  // box-shadow inset doesn't reflow the chat (border-left did) — kills flicker
+  // when heat data arrives after messages render.
+  s.setProperty('box-shadow', `inset ${borderWidth}px 0 0 0 ${color}`)
   if (tier >= 5) {
     const glowAlpha = Math.min(0.3 + (tier - 5) * 0.1, 0.7)
     s.setProperty('filter', `drop-shadow(0 0 ${10 + (tier - 5) * 3}px rgba(${parseInt(color.slice(1,3),16)}, ${parseInt(color.slice(3,5),16)}, ${parseInt(color.slice(5,7),16)}, ${glowAlpha}))`)

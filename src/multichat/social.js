@@ -116,13 +116,15 @@ let activeThread = null // { id, op, replies[] } — when set, feed shows thread
 let replyState = null; // { msgId, user, channel } when replying to a message
 let hsAuthToken = null; // Heatsync auth state (loaded from storage)
 let hsCurrentUsername = null; // Heatsync username (loaded from storage user_info)
+let hsCurrentUserId = null; // Heatsync numeric user id (for reaction matching)
 
 // Load + watch heatsync username for own-post detection (edit/delete UI)
 async function loadHsUsername() {
   try {
     const data = await api.storage.local.get('user_info')
     hsCurrentUsername = data?.user_info?.username?.toLowerCase() || null
-  } catch (e) { hsCurrentUsername = null }
+    hsCurrentUserId = data?.user_info?.id ? String(data.user_info.id) : null
+  } catch (e) { hsCurrentUsername = null; hsCurrentUserId = null }
 }
 function isOwnFeedPost(m) {
   return !!(hsCurrentUsername && m?.username && m.username.toLowerCase() === hsCurrentUsername)
@@ -747,11 +749,18 @@ function renderFeed() {
 async function checkFeedBookmarks(ids) {
   if (!ids.length || !hsAuthToken) return
   try {
-    const resp = await apiFetch('/api/bookmarks/check', { method: 'POST', auth: true, body: { messageIds: ids } })
+    const resp = await apiFetch('/api/bookmarks/check', { method: 'POST', auth: true, body: { message_ids: ids } })
     if (!resp.ok) return
-    const list = resp.data?.bookmarked || resp.bookmarked || []
+    // Server returns { bookmarked: { id1: true/false, id2: ... } } — an object map.
+    const map = resp.data?.bookmarked || resp.bookmarked || {}
     feedBookmarked.clear()
-    for (const id of list) feedBookmarked.add(id)
+    if (Array.isArray(map)) {
+      for (const id of map) feedBookmarked.add(id)
+    } else {
+      for (const [id, isBookmarked] of Object.entries(map)) {
+        if (isBookmarked) feedBookmarked.add(id)
+      }
+    }
     for (const id of ids) {
       const btn = document.querySelector(`.hs-feed-bm-btn[data-id="${CSS.escape(id)}"]`)
       if (btn) _applyBookmarkState(btn, feedBookmarked.has(id))
@@ -831,7 +840,12 @@ async function toggleBookmark(msgId, btn) {
 async function loadReactions(msgId, engageEl) {
   const resp = await apiFetch(`/api/messages/${encodeURIComponent(msgId)}/reactions`, { auth: true })
   if (!resp.ok) return
-  const reactions = resp.data?.reactions || resp.reactions || []
+  const raw = resp.data?.reactions || resp.reactions || []
+  // Server returns user_ids array; derive user_reacted client-side so chip "active" state works
+  const reactions = raw.map(r => ({
+    ...r,
+    user_reacted: !!(r.user_reacted ?? (hsCurrentUserId && Array.isArray(r.user_ids) && r.user_ids.map(String).includes(hsCurrentUserId)))
+  }))
   feedReactionsCache.set(msgId, reactions)
   _capFeedEngage()
   _renderReactionsIntoRow(engageEl, msgId, reactions)

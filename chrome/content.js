@@ -5633,15 +5633,20 @@ function updateEmoteState(hash, emoteName, state) {
         if (followBtn.disabled) return
         followBtn.disabled = true
         try {
-          if (following) {
-            await HS.apiFetch(`/api/follow/${encodeURIComponent(profileId)}`, { method: 'DELETE', auth: true })
-            following = false
-          } else {
-            await HS.apiFetch(`/api/follow/${encodeURIComponent(profileId)}`, { method: 'POST', auth: true })
-            following = true
+          // Server endpoint is one-shot (POST inserts; DELETE removes).
+          // POST when already following returns 400 "Already following" — treat
+          // as confirmation that we are following (idempotent UX).
+          // Same for DELETE when not following.
+          const targetFollowing = !following
+          const method = targetFollowing ? 'POST' : 'DELETE'
+          const resp = await HS.apiFetch(`/api/follow/${encodeURIComponent(profileId)}`, { method, auth: true })
+          const errMsg = (resp?.error || '').toLowerCase()
+          const idempotentOK = errMsg.includes('already following') || errMsg.includes('not following')
+          if (resp?.ok || idempotentOK) {
+            following = targetFollowing
+            followBtn.textContent = following ? 'unfollow' : 'follow'
+            followBtn.classList.toggle('hs-pc-following', following)
           }
-          followBtn.textContent = following ? 'unfollow' : 'follow'
-          followBtn.classList.toggle('hs-pc-following', following)
         } catch (_e) {
           // silent — leave button state unchanged
         } finally {

@@ -1810,17 +1810,6 @@ function renderDiscoverProfileRow(profile, username, rank, maxHeat) {
   heatEl.appendChild(heatVal);
   row.appendChild(heatEl);
 
-  const op = profile.opCount ?? profile.stats?.op_count ?? 0;
-  const re = profile.reCount ?? profile.stats?.re_count ?? 0;
-  const mop = profile.mopCount ?? profile.stats?.mop_count ?? 0;
-  if (op || re || mop) {
-    const act = document.createElement('span');
-    act.className = 'hs-discover-activity';
-    act.title = `${op} posts · ${re} replies · ${mop} mops`;
-    act.textContent = `${op}·${re}·${mop}`;
-    row.appendChild(act);
-  }
-
   if (isLive) {
     const v = (profile.twitch_viewer_count || 0) + (profile.kick_viewer_count || 0);
     if (v > 0) {
@@ -1875,7 +1864,7 @@ function renderDiscoverChipsBar() {
   bar.appendChild(makeChip('all', 'all', discoverPlatformFilter, v => { discoverPlatformFilter = v; }));
   bar.appendChild(makeChip('t', 't', discoverPlatformFilter, v => { discoverPlatformFilter = v; }, 'hs-chip-plat-t'));
   bar.appendChild(makeChip('k', 'k', discoverPlatformFilter, v => { discoverPlatformFilter = v; }, 'hs-chip-plat-k'));
-  bar.appendChild(makeChip('y', 'y', discoverPlatformFilter, v => { discoverPlatformFilter = v; }, 'hs-chip-plat-y'));
+  bar.appendChild(makeChip('yt', 'yt', discoverPlatformFilter, v => { discoverPlatformFilter = v; }, 'hs-chip-plat-yt'));
   return bar;
 }
 
@@ -1883,7 +1872,7 @@ function profileMatchesPlatformFilter(p) {
   if (discoverPlatformFilter === 'all') return true;
   if (discoverPlatformFilter === 't') return !!p.twitch_username;
   if (discoverPlatformFilter === 'k') return !!p.kick_username;
-  if (discoverPlatformFilter === 'y') return !!(p.youtube_username || p.youtube_channel_id);
+  if (discoverPlatformFilter === 'yt') return !!(p.youtube_username || p.youtube_channel_id);
   return true;
 }
 
@@ -1891,7 +1880,7 @@ function postMatchesPlatformFilter(m) {
   if (discoverPlatformFilter === 'all') return true;
   if (discoverPlatformFilter === 't') return m.platform === 'twitch';
   if (discoverPlatformFilter === 'k') return m.platform === 'kick';
-  if (discoverPlatformFilter === 'y') return m.platform === 'youtube';
+  if (discoverPlatformFilter === 'yt') return m.platform === 'youtube';
   return true;
 }
 
@@ -1926,7 +1915,7 @@ function renderDiscoverPostRow(m) {
 
   if (m.platform) {
     const plat = document.createElement('span');
-    const code = m.platform === 'twitch' ? 't' : m.platform === 'kick' ? 'k' : m.platform === 'youtube' ? 'y' : 'h';
+    const code = m.platform === 'twitch' ? 't' : m.platform === 'kick' ? 'k' : m.platform === 'youtube' ? 'yt' : 'h';
     plat.className = `hs-plat hs-plat-${code} hs-discover-post-plat`;
     plat.textContent = code;
     meta.appendChild(plat);
@@ -2042,18 +2031,6 @@ function renderDiscoverTab() {
     ...filteredProfiles.map(p => p.stats?.total_heat ?? p.heat ?? 0),
     1
   );
-
-  // Status strip — at-a-glance counts
-  const status = document.createElement('div');
-  status.className = 'hs-discover-status';
-  const statusBits = [
-    `${discoverProfiles.length} profiles`,
-    `${liveProfiles.length} live`,
-    `${discoverPosts.length} hot posts`,
-  ];
-  if (discoverPlatformFilter !== 'all') statusBits.push(`filter: ${discoverPlatformFilter}`);
-  status.textContent = statusBits.join(' · ');
-  root.appendChild(status);
 
   // Filter chips
   root.appendChild(renderDiscoverChipsBar());

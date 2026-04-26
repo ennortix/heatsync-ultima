@@ -3658,14 +3658,6 @@ function injectStyles() {
       margin: -8px;
       padding: 6px;
     }
-    .hs-discover-status {
-      font-size: 11px;
-      color: #888;
-      padding: 2px 4px 0;
-      font-family: ui-monospace, SFMono-Regular, monospace;
-      font-variant-numeric: tabular-nums;
-      letter-spacing: 0.3px;
-    }
     .hs-discover-row1 {
       display: grid;
       grid-template-columns: 1fr;
@@ -3796,7 +3788,7 @@ function injectStyles() {
     .hs-discover-avatar {
       width: 18px; height: 18px;
       flex-shrink: 0;
-      border-radius: 50%;
+      border-radius: 0;
       object-fit: cover;
       background: #1a1a1a;
     }
@@ -3829,12 +3821,12 @@ function injectStyles() {
     .hs-discover-platforms .hs-plat-live { opacity: 1; text-shadow: 0 0 4px currentColor; }
     .hs-discover-platforms .hs-plat-t { color: #9146ff; }
     .hs-discover-platforms .hs-plat-k { color: #53fc18; }
-    .hs-discover-platforms .hs-plat-y { color: #ff0000; }
+    .hs-discover-platforms .hs-plat-yt { color: #ff0000; }
     .hs-discover-platforms .hs-plat-h { color: #ff8700; }
     /* Post platform letters use same colors */
     .hs-discover-post-plat.hs-plat-t { color: #9146ff; }
     .hs-discover-post-plat.hs-plat-k { color: #53fc18; }
-    .hs-discover-post-plat.hs-plat-y { color: #ff0000; }
+    .hs-discover-post-plat.hs-plat-yt { color: #ff0000; }
     .hs-discover-post-plat.hs-plat-h { color: #ff8700; }
     .hs-discover-bar {
       flex: 1;
@@ -3866,13 +3858,6 @@ function injectStyles() {
     .hs-discover-heat .hs-flame {
       width: 11px; height: 11px;
       fill: #ff8700;
-      flex-shrink: 0;
-    }
-    .hs-discover-activity {
-      font-size: 11px;
-      color: #808080;
-      font-variant-numeric: tabular-nums;
-      font-family: ui-monospace, SFMono-Regular, monospace;
       flex-shrink: 0;
     }
     .hs-discover-viewers {
@@ -3941,7 +3926,7 @@ function injectStyles() {
       border-color: #53fc18;
       color: #000;
     }
-    .hs-discover-chip-btn.hs-chip-plat-y.hs-active {
+    .hs-discover-chip-btn.hs-chip-plat-yt.hs-active {
       background: #ff0000;
       border-color: #ff0000;
       color: #fff;

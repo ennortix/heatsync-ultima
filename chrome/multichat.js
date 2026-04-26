@@ -4691,14 +4691,6 @@ function injectStyles() {
       margin: -8px;
       padding: 6px;
     }
-    .hs-discover-status {
-      font-size: 11px;
-      color: #888;
-      padding: 2px 4px 0;
-      font-family: ui-monospace, SFMono-Regular, monospace;
-      font-variant-numeric: tabular-nums;
-      letter-spacing: 0.3px;
-    }
     .hs-discover-row1 {
       display: grid;
       grid-template-columns: 1fr;
@@ -4829,7 +4821,7 @@ function injectStyles() {
     .hs-discover-avatar {
       width: 18px; height: 18px;
       flex-shrink: 0;
-      border-radius: 50%;
+      border-radius: 0;
       object-fit: cover;
       background: #1a1a1a;
     }
@@ -4862,12 +4854,12 @@ function injectStyles() {
     .hs-discover-platforms .hs-plat-live { opacity: 1; text-shadow: 0 0 4px currentColor; }
     .hs-discover-platforms .hs-plat-t { color: #9146ff; }
     .hs-discover-platforms .hs-plat-k { color: #53fc18; }
-    .hs-discover-platforms .hs-plat-y { color: #ff0000; }
+    .hs-discover-platforms .hs-plat-yt { color: #ff0000; }
     .hs-discover-platforms .hs-plat-h { color: #ff8700; }
     /* Post platform letters use same colors */
     .hs-discover-post-plat.hs-plat-t { color: #9146ff; }
     .hs-discover-post-plat.hs-plat-k { color: #53fc18; }
-    .hs-discover-post-plat.hs-plat-y { color: #ff0000; }
+    .hs-discover-post-plat.hs-plat-yt { color: #ff0000; }
     .hs-discover-post-plat.hs-plat-h { color: #ff8700; }
     .hs-discover-bar {
       flex: 1;
@@ -4899,13 +4891,6 @@ function injectStyles() {
     .hs-discover-heat .hs-flame {
       width: 11px; height: 11px;
       fill: #ff8700;
-      flex-shrink: 0;
-    }
-    .hs-discover-activity {
-      font-size: 11px;
-      color: #808080;
-      font-variant-numeric: tabular-nums;
-      font-family: ui-monospace, SFMono-Regular, monospace;
       flex-shrink: 0;
     }
     .hs-discover-viewers {
@@ -4974,7 +4959,7 @@ function injectStyles() {
       border-color: #53fc18;
       color: #000;
     }
-    .hs-discover-chip-btn.hs-chip-plat-y.hs-active {
+    .hs-discover-chip-btn.hs-chip-plat-yt.hs-active {
       background: #ff0000;
       border-color: #ff0000;
       color: #fff;
@@ -13347,17 +13332,6 @@ function renderDiscoverProfileRow(profile, username, rank, maxHeat) {
   heatEl.appendChild(heatVal);
   row.appendChild(heatEl);
 
-  const op = profile.opCount ?? profile.stats?.op_count ?? 0;
-  const re = profile.reCount ?? profile.stats?.re_count ?? 0;
-  const mop = profile.mopCount ?? profile.stats?.mop_count ?? 0;
-  if (op || re || mop) {
-    const act = document.createElement('span');
-    act.className = 'hs-discover-activity';
-    act.title = `${op} posts · ${re} replies · ${mop} mops`;
-    act.textContent = `${op}·${re}·${mop}`;
-    row.appendChild(act);
-  }
-
   if (isLive) {
     const v = (profile.twitch_viewer_count || 0) + (profile.kick_viewer_count || 0);
     if (v > 0) {
@@ -13412,7 +13386,7 @@ function renderDiscoverChipsBar() {
   bar.appendChild(makeChip('all', 'all', discoverPlatformFilter, v => { discoverPlatformFilter = v; }));
   bar.appendChild(makeChip('t', 't', discoverPlatformFilter, v => { discoverPlatformFilter = v; }, 'hs-chip-plat-t'));
   bar.appendChild(makeChip('k', 'k', discoverPlatformFilter, v => { discoverPlatformFilter = v; }, 'hs-chip-plat-k'));
-  bar.appendChild(makeChip('y', 'y', discoverPlatformFilter, v => { discoverPlatformFilter = v; }, 'hs-chip-plat-y'));
+  bar.appendChild(makeChip('yt', 'yt', discoverPlatformFilter, v => { discoverPlatformFilter = v; }, 'hs-chip-plat-yt'));
   return bar;
 }
 
@@ -13420,7 +13394,7 @@ function profileMatchesPlatformFilter(p) {
   if (discoverPlatformFilter === 'all') return true;
   if (discoverPlatformFilter === 't') return !!p.twitch_username;
   if (discoverPlatformFilter === 'k') return !!p.kick_username;
-  if (discoverPlatformFilter === 'y') return !!(p.youtube_username || p.youtube_channel_id);
+  if (discoverPlatformFilter === 'yt') return !!(p.youtube_username || p.youtube_channel_id);
   return true;
 }
 
@@ -13428,7 +13402,7 @@ function postMatchesPlatformFilter(m) {
   if (discoverPlatformFilter === 'all') return true;
   if (discoverPlatformFilter === 't') return m.platform === 'twitch';
   if (discoverPlatformFilter === 'k') return m.platform === 'kick';
-  if (discoverPlatformFilter === 'y') return m.platform === 'youtube';
+  if (discoverPlatformFilter === 'yt') return m.platform === 'youtube';
   return true;
 }
 
@@ -13463,7 +13437,7 @@ function renderDiscoverPostRow(m) {
 
   if (m.platform) {
     const plat = document.createElement('span');
-    const code = m.platform === 'twitch' ? 't' : m.platform === 'kick' ? 'k' : m.platform === 'youtube' ? 'y' : 'h';
+    const code = m.platform === 'twitch' ? 't' : m.platform === 'kick' ? 'k' : m.platform === 'youtube' ? 'yt' : 'h';
     plat.className = `hs-plat hs-plat-${code} hs-discover-post-plat`;
     plat.textContent = code;
     meta.appendChild(plat);
@@ -13579,18 +13553,6 @@ function renderDiscoverTab() {
     ...filteredProfiles.map(p => p.stats?.total_heat ?? p.heat ?? 0),
     1
   );
-
-  // Status strip — at-a-glance counts
-  const status = document.createElement('div');
-  status.className = 'hs-discover-status';
-  const statusBits = [
-    `${discoverProfiles.length} profiles`,
-    `${liveProfiles.length} live`,
-    `${discoverPosts.length} hot posts`,
-  ];
-  if (discoverPlatformFilter !== 'all') statusBits.push(`filter: ${discoverPlatformFilter}`);
-  status.textContent = statusBits.join(' · ');
-  root.appendChild(status);
 
   // Filter chips
   root.appendChild(renderDiscoverChipsBar());

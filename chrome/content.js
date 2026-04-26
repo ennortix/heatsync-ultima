@@ -859,6 +859,28 @@ style.textContent = `
     color: #000 !important;
     border-color: #fff !important;
   }
+  .hs-pc-follow-btn {
+    border-color: #404040 !important;
+    color: #808080 !important;
+  }
+  .hs-pc-follow-btn:hover:not(:disabled) {
+    background: #ff8700 !important;
+    color: #000 !important;
+    border-color: #ff8700 !important;
+  }
+  .hs-pc-follow-btn.hs-pc-following {
+    border-color: #ff8700 !important;
+    color: #ff8700 !important;
+  }
+  .hs-pc-follow-btn.hs-pc-following:hover:not(:disabled) {
+    background: #ff8700 !important;
+    color: #000 !important;
+    border-color: #ff8700 !important;
+  }
+  .hs-pc-follow-btn:disabled {
+    opacity: 0.5 !important;
+    cursor: default !important;
+  }
 
   /* Message history */
   .hs-pc-history {
@@ -5553,6 +5575,37 @@ function updateEmoteState(hash, emoteName, state) {
     viewLink.className = 'hs-pc-btn'
     viewLink.textContent = 'view profile'
     footer.appendChild(viewLink)
+
+    // Follow/unfollow on HeatSync — skip own card and cards with no profile id
+    const currentUser = getCurrentUsername()
+    const profileId = profile && profile.id
+    const isSelf = currentUser && username && currentUser.toLowerCase() === username.toLowerCase()
+    if (profileId && !isSelf) {
+      let following = !!(profile.relationship && profile.relationship.isFollowing)
+      const followBtn = document.createElement('button')
+      followBtn.className = 'hs-pc-btn hs-pc-follow-btn' + (following ? ' hs-pc-following' : '')
+      followBtn.textContent = following ? 'unfollow' : 'follow'
+      followBtn.addEventListener('click', async () => {
+        if (followBtn.disabled) return
+        followBtn.disabled = true
+        try {
+          if (following) {
+            await HS.apiFetch(`/api/follow/${encodeURIComponent(profileId)}`, { method: 'DELETE', auth: true })
+            following = false
+          } else {
+            await HS.apiFetch(`/api/follow/${encodeURIComponent(profileId)}`, { method: 'POST', auth: true })
+            following = true
+          }
+          followBtn.textContent = following ? 'unfollow' : 'follow'
+          followBtn.classList.toggle('hs-pc-following', following)
+        } catch (_e) {
+          // silent — leave button state unchanged
+        } finally {
+          followBtn.disabled = false
+        }
+      })
+      footer.appendChild(followBtn)
+    }
 
     if (platform === 'twitch') {
       const popout = document.createElement('a')

@@ -1723,7 +1723,7 @@ function renderDiscoverTab() {
       nameSpan.textContent = profile.displayName || profile.display_name || username;
       row.appendChild(nameSpan);
 
-      const heat = profile.heat_count ?? profile.heat ?? profile.score ?? profile.totalHeat ?? null;
+      const heat = profile.stats?.total_heat ?? profile.heat_count ?? profile.heat ?? profile.score ?? profile.totalHeat ?? null;
       if (heat != null) {
         const heatSpan = document.createElement('span');
         heatSpan.className = 'hs-discover-heat';

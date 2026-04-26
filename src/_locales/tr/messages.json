@@ -1,2560 +1,1510 @@
 {
-  "manifest_name": [
-    [
-      "message",
-      "heatsync"
-    ]
-  ],
-  "manifest_description": [
-    [
-      "message",
-      "Twitch, Kick ve YouTube sohbeti için özel emote'lar. Sınırsız slot, tab tamamlama, gerçek zamanlı senkronizasyon."
-    ]
-  ],
-  "common_loading": [
-    [
-      "message",
-      "yükleniyor..."
-    ]
-  ],
-  "common_extension_updated": [
-    [
-      "message",
-      "Eklenti güncellendi — lütfen sayfayı yenileyin"
-    ]
-  ],
-  "common_no_matches": [
-    [
-      "message",
-      "eşleşme yok"
-    ]
-  ],
-  "common_retry": [
-    [
-      "message",
-      "tekrar dene"
-    ]
-  ],
-  "common_cancel": [
-    [
-      "message",
-      "iptal"
-    ]
-  ],
-  "common_save": [
-    [
-      "message",
-      "kaydet"
-    ]
-  ],
-  "common_add": [
-    [
-      "message",
-      "ekle"
-    ]
-  ],
-  "common_edit": [
-    [
-      "message",
-      "düzenle"
-    ]
-  ],
-  "common_remove": [
-    [
-      "message",
-      "kaldır"
-    ]
-  ],
-  "common_done": [
-    [
-      "message",
-      "tamam"
-    ]
-  ],
-  "common_ended": [
-    [
-      "message",
-      "sona erdi"
-    ]
-  ],
-  "common_vote": [
-    [
-      "message",
-      "oy ver"
-    ]
-  ],
-  "common_set": [
-    [
-      "message",
-      "ayarla"
-    ]
-  ],
-  "common_default": [
-    [
-      "message",
-      "varsayılan"
-    ]
-  ],
-  "common_mention": [
-    [
-      "message",
-      "bahsetme"
-    ]
-  ],
-  "common_user_not_found": [
-    [
-      "message",
-      "kullanıcı bulunamadı"
-    ]
-  ],
-  "popup_title": [
-    [
-      "message",
-      "heatsync"
-    ]
-  ],
-  "popup_status_checking": [
-    [
-      "message",
-      "kontrol ediliyor..."
-    ]
-  ],
-  "popup_status_connected": [
-    [
-      "message",
-      "bağlandı"
-    ]
-  ],
-  "popup_status_api_error": [
-    [
-      "message",
-      "api hatası"
-    ]
-  ],
-  "popup_status_offline": [
-    [
-      "message",
-      "çevrimdışı"
-    ]
-  ],
-  "popup_user_stats": [
-    [
-      "message",
-      "$EMOTES$ emote · $GLOBALS$ global"
-    ],
-    [
-      "placeholders",
+  "manifest_name": {
+    "message": "heatsync"
+  },
+  "manifest_description": {
+    "message": "Twitch, Kick ve YouTube sohbeti için özel emote'lar. Sınırsız slot, tab tamamlama, gerçek zamanlı senkronizasyon."
+  },
+  "common_loading": {
+    "message": "yükleniyor..."
+  },
+  "common_extension_updated": {
+    "message": "Eklenti güncellendi — lütfen sayfayı yenileyin"
+  },
+  "common_no_matches": {
+    "message": "eşleşme yok"
+  },
+  "common_retry": {
+    "message": "tekrar dene"
+  },
+  "common_cancel": {
+    "message": "iptal"
+  },
+  "common_save": {
+    "message": "kaydet"
+  },
+  "common_add": {
+    "message": "ekle"
+  },
+  "common_edit": {
+    "message": "düzenle"
+  },
+  "common_remove": {
+    "message": "kaldır"
+  },
+  "common_done": {
+    "message": "tamam"
+  },
+  "common_ended": {
+    "message": "sona erdi"
+  },
+  "common_vote": {
+    "message": "oy ver"
+  },
+  "common_set": {
+    "message": "ayarla"
+  },
+  "common_default": {
+    "message": "varsayılan"
+  },
+  "common_mention": {
+    "message": "bahsetme"
+  },
+  "common_user_not_found": {
+    "message": "kullanıcı bulunamadı"
+  },
+  "popup_title": {
+    "message": "heatsync"
+  },
+  "popup_status_checking": {
+    "message": "kontrol ediliyor..."
+  },
+  "popup_status_connected": {
+    "message": "bağlandı"
+  },
+  "popup_status_api_error": {
+    "message": "api hatası"
+  },
+  "popup_status_offline": {
+    "message": "çevrimdışı"
+  },
+  "popup_user_stats": {
+    "message": "$EMOTES$ emote · $GLOBALS$ global",
+    "placeholders": [
       [
+        "emotes",
         [
-          "emotes",
           [
-            [
-              "content",
-              "$1"
-            ]
+            "content",
+            "$1"
           ]
-        ],
+        ]
+      ],
+      [
+        "globals",
         [
-          "globals",
           [
-            [
-              "content",
-              "$2"
-            ]
+            "content",
+            "$2"
           ]
         ]
       ]
     ]
-  ],
-  "popup_user_stats_heat": [
-    [
-      "message",
-      "$EMOTES$ emote · $GLOBALS$ global · $HEAT$ heat"
-    ],
-    [
-      "placeholders",
+  },
+  "popup_user_stats_heat": {
+    "message": "$EMOTES$ emote · $GLOBALS$ global · $HEAT$ heat",
+    "placeholders": [
       [
+        "emotes",
         [
-          "emotes",
           [
-            [
-              "content",
-              "$1"
-            ]
+            "content",
+            "$1"
           ]
-        ],
+        ]
+      ],
+      [
+        "globals",
         [
-          "globals",
           [
-            [
-              "content",
-              "$2"
-            ]
+            "content",
+            "$2"
           ]
-        ],
+        ]
+      ],
+      [
+        "heat",
         [
-          "heat",
           [
-            [
-              "content",
-              "$3"
-            ]
+            "content",
+            "$3"
           ]
         ]
       ]
     ]
-  ],
-  "popup_btn_emotes": [
-    [
-      "message",
-      "emote'lar"
-    ]
-  ],
-  "popup_btn_refresh": [
-    [
-      "message",
-      "yenile"
-    ]
-  ],
-  "popup_btn_site": [
-    [
-      "message",
-      "site"
-    ]
-  ],
-  "popup_btn_done": [
-    [
-      "message",
-      "tamam"
-    ]
-  ],
-  "popup_login_prompt": [
-    [
-      "message",
-      "emote'ları senkronlamak için giriş yap"
-    ]
-  ],
-  "popup_channel_placeholder": [
-    [
-      "message",
-      "kanal"
-    ]
-  ],
-  "popup_btn_popout": [
-    [
-      "message",
-      "popout"
-    ]
-  ],
-  "popup_hint": [
-    [
-      "message",
-      "emote ayarları sohbetteki picker panelinde"
-    ]
-  ],
-  "welcome_title": [
-    [
-      "message",
-      "heatsync'e hoş geldin"
-    ]
-  ],
-  "welcome_tagline": [
-    [
-      "message",
-      "emote'ların, sohbet ettiğin her yerde"
-    ]
-  ],
-  "welcome_step1_title": [
-    [
-      "message",
-      "heatsync.org'da giriş yap"
-    ]
-  ],
-  "welcome_step1_desc": [
-    [
-      "message",
-      "hesap oluşturmak için Twitch veya Kick ile giriş yap"
-    ]
-  ],
-  "welcome_step2_title": [
-    [
-      "message",
-      "emote'larını yükle"
-    ]
-  ],
-  "welcome_step2_desc": [
-    [
-      "message",
-      "istediğin görselleri ekle — slot sınırı yok, tüm formatlar destekleniyor"
-    ]
-  ],
-  "welcome_step3_title": [
-    [
-      "message",
-      "sohbette kullan"
-    ]
-  ],
-  "welcome_step3_desc": [
-    [
-      "message",
-      "emote'larına erişmek için Twitch/Kick sohbetindeki heatsync butonuna tıkla"
-    ]
-  ],
-  "welcome_cta": [
-    [
-      "message",
-      "başla"
-    ]
-  ],
-  "welcome_privacy": [
-    [
-      "message",
-      "gizlilik"
-    ]
-  ],
-  "welcome_source": [
-    [
-      "message",
-      "kaynak kod"
-    ]
-  ],
-  "btn_auth_login": [
-    [
-      "message",
-      "giriş yap"
-    ]
-  ],
-  "btn_auth_save_emotes": [
-    [
-      "message",
-      "emote'ları setine kaydetmek için"
-    ]
-  ],
-  "btn_tab_channel": [
-    [
-      "message",
-      "kanal"
-    ]
-  ],
-  "btn_tab_global": [
-    [
-      "message",
-      "global"
-    ]
-  ],
-  "btn_tab_mine": [
-    [
-      "message",
-      "benimkiler"
-    ]
-  ],
-  "btn_tab_emoji": [
-    [
-      "message",
-      "emoji"
-    ]
-  ],
-  "btn_search_placeholder": [
-    [
-      "message",
-      "emote ara..."
-    ]
-  ],
-  "btn_rotate_title": [
-    [
-      "message",
-      "tab çubuğu konumunu döndür"
-    ]
-  ],
-  "btn_settings_title": [
-    [
-      "message",
-      "ayarlar"
-    ]
-  ],
-  "btn_no_emotes": [
-    [
-      "message",
-      "emote yok"
-    ]
-  ],
-  "btn_login_save_emotes": [
-    [
-      "message",
-      "emote kaydetmek için heatsync.org'da giriş yap"
-    ]
-  ],
-  "btn_cached": [
-    [
-      "message",
-      "önbellekte"
-    ]
-  ],
-  "btn_loading_emotes": [
-    [
-      "message",
-      "emote'lar yükleniyor"
-    ]
-  ],
-  "btn_no_third_party": [
-    [
-      "message",
-      "üçüncü taraf emote bulunamadı"
-    ]
-  ],
-  "btn_no_emotes_import": [
-    [
-      "message",
-      "içe aktarılacak emote yok"
-    ]
-  ],
-  "btn_import_count": [
-    [
-      "message",
-      "$COUNT$ emote içe aktar"
-    ],
-    [
-      "placeholders",
+  },
+  "popup_btn_emotes": {
+    "message": "emote'lar"
+  },
+  "popup_btn_refresh": {
+    "message": "yenile"
+  },
+  "popup_btn_site": {
+    "message": "site"
+  },
+  "popup_btn_done": {
+    "message": "tamam"
+  },
+  "popup_login_prompt": {
+    "message": "emote'ları senkronlamak için giriş yap"
+  },
+  "popup_channel_placeholder": {
+    "message": "kanal"
+  },
+  "popup_btn_popout": {
+    "message": "popout"
+  },
+  "popup_hint": {
+    "message": "emote ayarları sohbetteki picker panelinde"
+  },
+  "welcome_title": {
+    "message": "heatsync'e hoş geldin"
+  },
+  "welcome_tagline": {
+    "message": "emote'ların, sohbet ettiğin her yerde"
+  },
+  "welcome_step1_title": {
+    "message": "heatsync.org'da giriş yap"
+  },
+  "welcome_step1_desc": {
+    "message": "hesap oluşturmak için Twitch veya Kick ile giriş yap"
+  },
+  "welcome_step2_title": {
+    "message": "emote'larını yükle"
+  },
+  "welcome_step2_desc": {
+    "message": "istediğin görselleri ekle — slot sınırı yok, tüm formatlar destekleniyor"
+  },
+  "welcome_step3_title": {
+    "message": "sohbette kullan"
+  },
+  "welcome_step3_desc": {
+    "message": "emote'larına erişmek için Twitch/Kick sohbetindeki heatsync butonuna tıkla"
+  },
+  "welcome_cta": {
+    "message": "başla"
+  },
+  "welcome_privacy": {
+    "message": "gizlilik"
+  },
+  "welcome_source": {
+    "message": "kaynak kod"
+  },
+  "btn_auth_login": {
+    "message": "giriş yap"
+  },
+  "btn_auth_save_emotes": {
+    "message": "emote'ları setine kaydetmek için"
+  },
+  "btn_tab_channel": {
+    "message": "kanal"
+  },
+  "btn_tab_global": {
+    "message": "global"
+  },
+  "btn_tab_mine": {
+    "message": "benimkiler"
+  },
+  "btn_tab_emoji": {
+    "message": "emoji"
+  },
+  "btn_search_placeholder": {
+    "message": "emote ara..."
+  },
+  "btn_rotate_title": {
+    "message": "tab çubuğu konumunu döndür"
+  },
+  "btn_settings_title": {
+    "message": "ayarlar"
+  },
+  "btn_no_emotes": {
+    "message": "emote yok"
+  },
+  "btn_login_save_emotes": {
+    "message": "emote kaydetmek için heatsync.org'da giriş yap"
+  },
+  "btn_cached": {
+    "message": "önbellekte"
+  },
+  "btn_loading_emotes": {
+    "message": "emote'lar yükleniyor"
+  },
+  "btn_no_third_party": {
+    "message": "üçüncü taraf emote bulunamadı"
+  },
+  "btn_no_emotes_import": {
+    "message": "içe aktarılacak emote yok"
+  },
+  "btn_import_count": {
+    "message": "$COUNT$ emote içe aktar",
+    "placeholders": [
       [
+        "count",
         [
-          "count",
           [
-            [
-              "content",
-              "$1"
-            ]
+            "content",
+            "$1"
           ]
         ]
       ]
     ]
-  ],
-  "btn_failed_load": [
-    [
-      "message",
-      "emote'lar yüklenemedi"
-    ]
-  ],
-  "btn_retry_loading": [
-    [
-      "message",
-      "tekrar yükle"
-    ]
-  ],
-  "btn_ctx_block": [
-    [
-      "message",
-      "emote'u engelle"
-    ]
-  ],
-  "btn_ctx_unblock": [
-    [
-      "message",
-      "emote engelini kaldır"
-    ]
-  ],
-  "btn_ctx_remove_inventory": [
-    [
-      "message",
-      "envanterden kaldır"
-    ]
-  ],
-  "btn_ctx_add_inventory": [
-    [
-      "message",
-      "envantere ekle"
-    ]
-  ],
-  "btn_ctx_copy_name": [
-    [
-      "message",
-      "emote adını kopyala"
-    ]
-  ],
-  "btn_ctx_copy_url": [
-    [
-      "message",
-      "emote url'sini kopyala"
-    ]
-  ],
-  "btn_toast_unblocked": [
-    [
-      "message",
-      "engel kaldırıldı"
-    ]
-  ],
-  "btn_toast_blocked": [
-    [
-      "message",
-      "engellendi"
-    ]
-  ],
-  "btn_toast_removed": [
-    [
-      "message",
-      "kaldırıldı"
-    ]
-  ],
-  "btn_toast_added": [
-    [
-      "message",
-      "eklendi"
-    ]
-  ],
-  "btn_toast_copied": [
-    [
-      "message",
-      "kopyalandı!"
-    ]
-  ],
-  "btn_settings_tab_completion": [
-    [
-      "message",
-      "tab tamamlama"
-    ]
-  ],
-  "btn_settings_chat_ui": [
-    [
-      "message",
-      "sohbet arayüzü"
-    ]
-  ],
-  "btn_settings_input": [
-    [
-      "message",
-      "girdi"
-    ]
-  ],
-  "btn_settings_wysiwyg": [
-    [
-      "message",
-      "wysiwyg emote'lar"
-    ]
-  ],
-  "btn_settings_space_after": [
-    [
-      "message",
-      "emote'tan sonra boşluk"
-    ]
-  ],
-  "btn_settings_placeholder_mode": [
-    [
-      "message",
-      "yer tutucu modu"
-    ]
-  ],
-  "btn_settings_placeholder_desc": [
-    [
-      "message",
-      "renkli kutular göster"
-    ]
-  ],
-  "btn_settings_hide_header": [
-    [
-      "message",
-      "başlığı gizle"
-    ]
-  ],
-  "btn_settings_always_popout": [
-    [
-      "message",
-      "(popout'ta her zaman açık)"
-    ]
-  ],
-  "btn_settings_compact_input": [
-    [
-      "message",
-      "kompakt girdi"
-    ]
-  ],
-  "btn_settings_highlight_mentions": [
-    [
-      "message",
-      "bahsetmeleri vurgula"
-    ]
-  ],
-  "btn_settings_platform_badges": [
-    [
-      "message",
-      "platform rozetleri"
-    ]
-  ],
-  "btn_settings_platform_badges_desc": [
-    [
-      "message",
-      "mesajlarda [T] [K] [YT]"
-    ]
-  ],
-  "btn_settings_cosmetics": [
-    [
-      "message",
-      "kozmetik"
-    ]
-  ],
-  "btn_settings_cosmetics_desc": [
-    [
-      "message",
-      "7TV/BTTV/FFZ paint'ler + rozetler"
-    ]
-  ],
-  "btn_settings_vi_mode": [
-    [
-      "message",
-      "vi modu"
-    ]
-  ],
-  "btn_settings_vi_mode_desc": [
-    [
-      "message",
-      "sohbet girdisi için vim kısayolları"
-    ]
-  ],
-  "btn_size_1x": [
-    [
-      "message",
-      "1x"
-    ]
-  ],
-  "btn_size_2x": [
-    [
-      "message",
-      "2x"
-    ]
-  ],
-  "btn_size_4x": [
-    [
-      "message",
-      "4x"
-    ]
-  ],
-  "btn_expand": [
-    [
-      "message",
-      "genişlet"
-    ]
-  ],
-  "btn_collapse": [
-    [
-      "message",
-      "daralt"
-    ]
-  ],
-  "btn_block_all": [
-    [
-      "message",
-      "hepsini engelle"
-    ]
-  ],
-  "btn_show_all": [
-    [
-      "message",
-      "hepsini göster"
-    ]
-  ],
-  "btn_click_expand": [
-    [
-      "message",
-      "genişletmek için tıkla"
-    ]
-  ],
-  "content_toast_failed_add": [
-    [
-      "message",
-      "$NAME$ eklenemedi: $ERROR$"
-    ],
-    [
-      "placeholders",
+  },
+  "btn_failed_load": {
+    "message": "emote'lar yüklenemedi"
+  },
+  "btn_retry_loading": {
+    "message": "tekrar yükle"
+  },
+  "btn_ctx_block": {
+    "message": "emote'u engelle"
+  },
+  "btn_ctx_unblock": {
+    "message": "emote engelini kaldır"
+  },
+  "btn_ctx_remove_inventory": {
+    "message": "envanterden kaldır"
+  },
+  "btn_ctx_add_inventory": {
+    "message": "envantere ekle"
+  },
+  "btn_ctx_copy_name": {
+    "message": "emote adını kopyala"
+  },
+  "btn_ctx_copy_url": {
+    "message": "emote url'sini kopyala"
+  },
+  "btn_toast_unblocked": {
+    "message": "engel kaldırıldı"
+  },
+  "btn_toast_blocked": {
+    "message": "engellendi"
+  },
+  "btn_toast_removed": {
+    "message": "kaldırıldı"
+  },
+  "btn_toast_added": {
+    "message": "eklendi"
+  },
+  "btn_toast_copied": {
+    "message": "kopyalandı!"
+  },
+  "btn_settings_tab_completion": {
+    "message": "tab tamamlama"
+  },
+  "btn_settings_chat_ui": {
+    "message": "sohbet arayüzü"
+  },
+  "btn_settings_input": {
+    "message": "girdi"
+  },
+  "btn_settings_wysiwyg": {
+    "message": "wysiwyg emote'lar"
+  },
+  "btn_settings_space_after": {
+    "message": "emote'tan sonra boşluk"
+  },
+  "btn_settings_placeholder_mode": {
+    "message": "yer tutucu modu"
+  },
+  "btn_settings_placeholder_desc": {
+    "message": "renkli kutular göster"
+  },
+  "btn_settings_hide_header": {
+    "message": "başlığı gizle"
+  },
+  "btn_settings_always_popout": {
+    "message": "(popout'ta her zaman açık)"
+  },
+  "btn_settings_compact_input": {
+    "message": "kompakt girdi"
+  },
+  "btn_settings_highlight_mentions": {
+    "message": "bahsetmeleri vurgula"
+  },
+  "btn_settings_platform_badges": {
+    "message": "platform rozetleri"
+  },
+  "btn_settings_platform_badges_desc": {
+    "message": "mesajlarda [T] [K] [YT]"
+  },
+  "btn_settings_cosmetics": {
+    "message": "kozmetik"
+  },
+  "btn_settings_cosmetics_desc": {
+    "message": "7TV/BTTV/FFZ paint'ler + rozetler"
+  },
+  "btn_settings_vi_mode": {
+    "message": "vi modu"
+  },
+  "btn_settings_vi_mode_desc": {
+    "message": "sohbet girdisi için vim kısayolları"
+  },
+  "btn_size_1x": {
+    "message": "1x"
+  },
+  "btn_size_2x": {
+    "message": "2x"
+  },
+  "btn_size_4x": {
+    "message": "4x"
+  },
+  "btn_expand": {
+    "message": "genişlet"
+  },
+  "btn_collapse": {
+    "message": "daralt"
+  },
+  "btn_block_all": {
+    "message": "hepsini engelle"
+  },
+  "btn_show_all": {
+    "message": "hepsini göster"
+  },
+  "btn_click_expand": {
+    "message": "genişletmek için tıkla"
+  },
+  "content_toast_failed_add": {
+    "message": "$NAME$ eklenemedi: $ERROR$",
+    "placeholders": [
       [
+        "name",
         [
-          "name",
           [
-            [
-              "content",
-              "$1"
-            ]
+            "content",
+            "$1"
           ]
-        ],
+        ]
+      ],
+      [
+        "error",
         [
-          "error",
           [
-            [
-              "content",
-              "$2"
-            ]
+            "content",
+            "$2"
           ]
         ]
       ]
     ]
-  ],
-  "content_toast_failed_remove": [
-    [
-      "message",
-      "$NAME$ kaldırılamadı: $ERROR$"
-    ],
-    [
-      "placeholders",
+  },
+  "content_toast_failed_remove": {
+    "message": "$NAME$ kaldırılamadı: $ERROR$",
+    "placeholders": [
       [
+        "name",
         [
-          "name",
           [
-            [
-              "content",
-              "$1"
-            ]
+            "content",
+            "$1"
           ]
-        ],
+        ]
+      ],
+      [
+        "error",
         [
-          "error",
           [
-            [
-              "content",
-              "$2"
-            ]
+            "content",
+            "$2"
           ]
         ]
       ]
     ]
-  ],
-  "content_toast_unblocked": [
-    [
-      "message",
-      "$NAME$ engeli kaldırıldı"
-    ],
-    [
-      "placeholders",
+  },
+  "content_toast_unblocked": {
+    "message": "$NAME$ engeli kaldırıldı",
+    "placeholders": [
       [
+        "name",
         [
-          "name",
           [
-            [
-              "content",
-              "$1"
-            ]
+            "content",
+            "$1"
           ]
         ]
       ]
     ]
-  ],
-  "content_toast_failed_unblock": [
-    [
-      "message",
-      "Engel kaldırılamadı: $ERROR$"
-    ],
-    [
-      "placeholders",
+  },
+  "content_toast_failed_unblock": {
+    "message": "Engel kaldırılamadı: $ERROR$",
+    "placeholders": [
       [
+        "error",
         [
-          "error",
           [
-            [
-              "content",
-              "$1"
-            ]
+            "content",
+            "$1"
           ]
         ]
       ]
     ]
-  ],
-  "content_toast_removed": [
-    [
-      "message",
-      "$NAME$ setinden kaldırıldı"
-    ],
-    [
-      "placeholders",
+  },
+  "content_toast_removed": {
+    "message": "$NAME$ setinden kaldırıldı",
+    "placeholders": [
       [
+        "name",
         [
-          "name",
           [
-            [
-              "content",
-              "$1"
-            ]
+            "content",
+            "$1"
           ]
         ]
       ]
     ]
-  ],
-  "content_toast_failed_block": [
-    [
-      "message",
-      "Engellenemedi: $ERROR$"
-    ],
-    [
-      "placeholders",
+  },
+  "content_toast_failed_block": {
+    "message": "Engellenemedi: $ERROR$",
+    "placeholders": [
       [
+        "error",
         [
-          "error",
           [
-            [
-              "content",
-              "$1"
-            ]
+            "content",
+            "$1"
           ]
         ]
       ]
     ]
-  ],
-  "content_toast_blocked": [
-    [
-      "message",
-      "$NAME$ engellendi"
-    ],
-    [
-      "placeholders",
+  },
+  "content_toast_blocked": {
+    "message": "$NAME$ engellendi",
+    "placeholders": [
       [
+        "name",
         [
-          "name",
           [
-            [
-              "content",
-              "$1"
-            ]
+            "content",
+            "$1"
           ]
         ]
       ]
     ]
-  ],
-  "content_toast_unmuted": [
-    [
-      "message",
-      "$NAME$ sessizliği kaldırıldı"
-    ],
-    [
-      "placeholders",
+  },
+  "content_toast_unmuted": {
+    "message": "$NAME$ sessizliği kaldırıldı",
+    "placeholders": [
       [
+        "name",
         [
-          "name",
           [
-            [
-              "content",
-              "$1"
-            ]
+            "content",
+            "$1"
           ]
         ]
       ]
     ]
-  ],
-  "content_toast_muted_24h": [
-    [
-      "message",
-      "$NAME$ 24 saat sessize alındı"
-    ],
-    [
-      "placeholders",
+  },
+  "content_toast_muted_24h": {
+    "message": "$NAME$ 24 saat sessize alındı",
+    "placeholders": [
       [
+        "name",
         [
-          "name",
           [
-            [
-              "content",
-              "$1"
-            ]
+            "content",
+            "$1"
           ]
         ]
       ]
     ]
-  ],
-  "content_card_follows_you": [
-    [
-      "message",
-      "seni takip ediyor"
-    ]
-  ],
-  "content_card_subs_to_you": [
-    [
-      "message",
-      "sana sub"
-    ]
-  ],
-  "content_card_you_follow": [
-    [
-      "message",
-      "takip ediyorsun"
-    ]
-  ],
-  "content_card_you_sub": [
-    [
-      "message",
-      "sub'sun"
-    ]
-  ],
-  "content_card_you_sub_tier": [
-    [
-      "message",
-      "T$TIER$ sub'sun"
-    ],
-    [
-      "placeholders",
+  },
+  "content_card_follows_you": {
+    "message": "seni takip ediyor"
+  },
+  "content_card_subs_to_you": {
+    "message": "sana sub"
+  },
+  "content_card_you_follow": {
+    "message": "takip ediyorsun"
+  },
+  "content_card_you_sub": {
+    "message": "sub'sun"
+  },
+  "content_card_you_sub_tier": {
+    "message": "T$TIER$ sub'sun",
+    "placeholders": [
       [
+        "tier",
         [
-          "tier",
           [
-            [
-              "content",
-              "$1"
-            ]
+            "content",
+            "$1"
           ]
         ]
       ]
     ]
-  ],
-  "content_card_subbed": [
-    [
-      "message",
-      "$CHANNEL$ kanalına sub $TENURE$"
-    ],
-    [
-      "placeholders",
+  },
+  "content_card_subbed": {
+    "message": "$CHANNEL$ kanalına sub $TENURE$",
+    "placeholders": [
       [
+        "channel",
         [
-          "channel",
           [
-            [
-              "content",
-              "$1"
-            ]
+            "content",
+            "$1"
           ]
-        ],
+        ]
+      ],
+      [
+        "tenure",
         [
-          "tenure",
           [
-            [
-              "content",
-              "$2"
-            ]
+            "content",
+            "$2"
           ]
         ]
       ]
     ]
-  ],
-  "content_card_following": [
-    [
-      "message",
-      "$CHANNEL$ takip ediliyor $AGE$"
-    ],
-    [
-      "placeholders",
+  },
+  "content_card_following": {
+    "message": "$CHANNEL$ takip ediliyor $AGE$",
+    "placeholders": [
       [
+        "channel",
         [
-          "channel",
           [
-            [
-              "content",
-              "$1"
-            ]
+            "content",
+            "$1"
           ]
-        ],
+        ]
+      ],
+      [
+        "age",
         [
-          "age",
           [
-            [
-              "content",
-              "$2"
-            ]
+            "content",
+            "$2"
           ]
         ]
       ]
     ]
-  ],
-  "content_card_not_following": [
-    [
-      "message",
-      "$CHANNEL$ takip edilmiyor"
-    ],
-    [
-      "placeholders",
+  },
+  "content_card_not_following": {
+    "message": "$CHANNEL$ takip edilmiyor",
+    "placeholders": [
       [
+        "channel",
         [
-          "channel",
           [
-            [
-              "content",
-              "$1"
-            ]
+            "content",
+            "$1"
           ]
         ]
       ]
     ]
-  ],
-  "content_card_followed_by": [
-    [
-      "message",
-      "$CHANNEL$ tarafından takip ediliyor"
-    ],
-    [
-      "placeholders",
+  },
+  "content_card_followed_by": {
+    "message": "$CHANNEL$ tarafından takip ediliyor",
+    "placeholders": [
       [
+        "channel",
         [
-          "channel",
           [
-            [
-              "content",
-              "$1"
-            ]
+            "content",
+            "$1"
           ]
         ]
       ]
     ]
-  ],
-  "content_card_following_count": [
-    [
-      "message",
-      "$COUNT$ takip edilen"
-    ],
-    [
-      "placeholders",
+  },
+  "content_card_following_count": {
+    "message": "$COUNT$ takip edilen",
+    "placeholders": [
       [
+        "count",
         [
-          "count",
           [
-            [
-              "content",
-              "$1"
-            ]
+            "content",
+            "$1"
           ]
         ]
       ]
     ]
-  ],
-  "content_card_followers": [
-    [
-      "message",
-      "$COUNT$ takipçi"
-    ],
-    [
-      "placeholders",
+  },
+  "content_card_followers": {
+    "message": "$COUNT$ takipçi",
+    "placeholders": [
       [
+        "count",
         [
-          "count",
           [
-            [
-              "content",
-              "$1"
-            ]
+            "content",
+            "$1"
           ]
         ]
       ]
     ]
-  ],
-  "content_card_partner": [
-    [
-      "message",
-      "partner"
-    ]
-  ],
-  "content_card_affiliate": [
-    [
-      "message",
-      "affiliate"
-    ]
-  ],
-  "content_card_live": [
-    [
-      "message",
-      "CANLI $VIEWERS$"
-    ],
-    [
-      "placeholders",
+  },
+  "content_card_partner": {
+    "message": "partner"
+  },
+  "content_card_affiliate": {
+    "message": "affiliate"
+  },
+  "content_card_live": {
+    "message": "CANLI $VIEWERS$",
+    "placeholders": [
       [
+        "viewers",
         [
-          "viewers",
           [
-            [
-              "content",
-              "$1"
-            ]
+            "content",
+            "$1"
           ]
         ]
       ]
     ]
-  ],
-  "content_card_twitch_verified": [
-    [
-      "message",
-      "Twitch Verified"
-    ]
-  ],
-  "content_card_kick_verified": [
-    [
-      "message",
-      "Kick Verified"
-    ]
-  ],
-  "content_view_on_heatsync": [
-    [
-      "message",
-      "heatsync'te görüntüle"
-    ]
-  ],
-  "content_in_your_set": [
-    [
-      "message",
-      "setinde mevcut"
-    ]
-  ],
-  "content_click_to_add": [
-    [
-      "message",
-      "eklemek için tıkla"
-    ]
-  ],
-  "content_blocked_click_unblock": [
-    [
-      "message",
-      "engellendi (kaldırmak için tıkla)"
-    ]
-  ],
-  "mc_tab_feed": [
-    [
-      "message",
-      "feed"
-    ]
-  ],
-  "mc_tab_whispers": [
-    [
-      "message",
-      "fısıltılar"
-    ]
-  ],
-  "mc_tab_mentions": [
-    [
-      "message",
-      "bahsetmeler"
-    ]
-  ],
-  "mc_tab_activity": [
-    [
-      "message",
-      "aktivite"
-    ]
-  ],
-  "mc_tab_live": [
-    [
-      "message",
-      "canlı"
-    ]
-  ],
+  },
+  "content_card_twitch_verified": {
+    "message": "Twitch Verified"
+  },
+  "content_card_kick_verified": {
+    "message": "Kick Verified"
+  },
+  "content_view_on_heatsync": {
+    "message": "heatsync'te görüntüle"
+  },
+  "content_in_your_set": {
+    "message": "setinde mevcut"
+  },
+  "content_click_to_add": {
+    "message": "eklemek için tıkla"
+  },
+  "content_blocked_click_unblock": {
+    "message": "engellendi (kaldırmak için tıkla)"
+  },
+  "mc_tab_feed": {
+    "message": "feed"
+  },
+  "mc_tab_whispers": {
+    "message": "fısıltılar"
+  },
+  "mc_tab_mentions": {
+    "message": "bahsetmeler"
+  },
+  "mc_tab_activity": {
+    "message": "aktivite"
+  },
+  "mc_tab_live": {
+    "message": "canlı"
+  },
   "mc_tab_discover": {
     "message": "discover"
   },
   "mc_tab_pinned": {
     "message": "pinned"
   },
-  "mc_tab_live_channel": [
-    [
-      "message",
-      "canlı · $CHANNEL$"
-    ],
-    [
-      "placeholders",
+  "mc_tab_live_channel": {
+    "message": "canlı · $CHANNEL$",
+    "placeholders": [
       [
+        "channel",
         [
-          "channel",
           [
-            [
-              "content",
-              "$1"
-            ]
+            "content",
+            "$1"
           ]
         ]
       ]
     ]
-  ],
-  "mc_btn_rotate_tabs": [
-    [
-      "message",
-      "sekmeleri döndür (T)"
-    ]
-  ],
-  "mc_btn_smaller_text": [
-    [
-      "message",
-      "daha küçük metin"
-    ]
-  ],
-  "mc_btn_larger_text": [
-    [
-      "message",
-      "daha büyük metin"
-    ]
-  ],
-  "mc_btn_settings": [
-    [
-      "message",
-      "ayarlar"
-    ]
-  ],
-  "mc_new_messages": [
-    [
-      "message",
-      "$COUNT$ yeni"
-    ],
-    [
-      "placeholders",
+  },
+  "mc_btn_rotate_tabs": {
+    "message": "sekmeleri döndür (T)"
+  },
+  "mc_btn_smaller_text": {
+    "message": "daha küçük metin"
+  },
+  "mc_btn_larger_text": {
+    "message": "daha büyük metin"
+  },
+  "mc_btn_settings": {
+    "message": "ayarlar"
+  },
+  "mc_new_messages": {
+    "message": "$COUNT$ yeni",
+    "placeholders": [
       [
+        "count",
         [
-          "count",
           [
-            [
-              "content",
-              "$1"
-            ]
+            "content",
+            "$1"
           ]
         ]
       ]
     ]
-  ],
-  "mc_resume": [
-    [
-      "message",
-      "devam et"
-    ]
-  ],
-  "mc_no_messages": [
-    [
-      "message",
-      "henüz mesaj yok"
-    ]
-  ],
-  "mc_no_activity": [
-    [
-      "message",
-      "henüz aktivite yok"
-    ]
-  ],
-  "mc_add_channel": [
-    [
-      "message",
-      "kanal ekle"
-    ]
-  ],
-  "mc_enter_platform": [
-    [
-      "message",
-      "en az bir platform gir"
-    ]
-  ],
-  "mc_username_placeholder": [
-    [
-      "message",
-      "kullanıcı adı"
-    ]
-  ],
-  "mc_username_url_placeholder": [
-    [
-      "message",
-      "kullanıcı adı veya url"
-    ]
-  ],
-  "mc_reserved_name": [
-    [
-      "message",
-      "rezerve isim"
-    ]
-  ],
-  "mc_channel_exists": [
-    [
-      "message",
-      "kanal zaten mevcut"
-    ]
-  ],
-  "mc_twitch_exists": [
-    [
-      "message",
-      "Twitch kanalı zaten eklendi"
-    ]
-  ],
-  "mc_kick_exists": [
-    [
-      "message",
-      "Kick kanalı zaten eklendi"
-    ]
-  ],
-  "mc_edit_channel": [
-    [
-      "message",
-      "$CHANNEL$ düzenle"
-    ],
-    [
-      "placeholders",
+  },
+  "mc_resume": {
+    "message": "devam et"
+  },
+  "mc_no_messages": {
+    "message": "henüz mesaj yok"
+  },
+  "mc_no_activity": {
+    "message": "henüz aktivite yok"
+  },
+  "mc_add_channel": {
+    "message": "kanal ekle"
+  },
+  "mc_enter_platform": {
+    "message": "en az bir platform gir"
+  },
+  "mc_username_placeholder": {
+    "message": "kullanıcı adı"
+  },
+  "mc_username_url_placeholder": {
+    "message": "kullanıcı adı veya url"
+  },
+  "mc_reserved_name": {
+    "message": "rezerve isim"
+  },
+  "mc_channel_exists": {
+    "message": "kanal zaten mevcut"
+  },
+  "mc_twitch_exists": {
+    "message": "Twitch kanalı zaten eklendi"
+  },
+  "mc_kick_exists": {
+    "message": "Kick kanalı zaten eklendi"
+  },
+  "mc_edit_channel": {
+    "message": "$CHANNEL$ düzenle",
+    "placeholders": [
       [
+        "channel",
         [
-          "channel",
           [
-            [
-              "content",
-              "$1"
-            ]
+            "content",
+            "$1"
           ]
         ]
       ]
     ]
-  ],
-  "mc_no_channel_detected": [
-    [
-      "message",
-      "kanal tespit edilemedi"
-    ]
-  ],
-  "mc_settings_display": [
-    [
-      "message",
-      "görünüm"
-    ]
-  ],
-  "mc_settings_emote_size": [
-    [
-      "message",
-      "emote boyutu"
-    ]
-  ],
-  "mc_settings_input_preview": [
-    [
-      "message",
-      "girdi önizleme"
-    ]
-  ],
-  "mc_settings_clickable_links": [
-    [
-      "message",
-      "tıklanabilir linkler"
-    ]
-  ],
-  "mc_settings_vi_mode": [
-    [
-      "message",
-      "vi modu"
-    ]
-  ],
-  "mc_settings_zebra": [
-    [
-      "message",
-      "zebra çizgileri"
-    ]
-  ],
-  "mc_settings_auto_hide": [
-    [
-      "message",
-      "girdiyi otomatik gizle"
-    ]
-  ],
-  "mc_settings_timestamps": [
-    [
-      "message",
-      "zaman damgaları"
-    ]
-  ],
-  "mc_settings_avatars": [
-    [
-      "message",
-      "avatarlar"
-    ]
-  ],
-  "mc_settings_emote_size_desc": [
-    [
-      "message",
-      "Sohbetteki emote'lar için çözünürlük çarpanı. 1x net ve kompakt, 2x çoğu ekran için ideal nokta, 4x emote sanatının her pikselini görmek isteyenler için."
-    ]
-  ],
-  "mc_settings_input_preview_desc": [
-    [
-      "message",
-      "Yazarken emote'ları girdi kutusunda düz metin yerine doğrudan görsel olarak gösterir. Ne görüyorsan onu gönderirsin."
-    ]
-  ],
-  "mc_settings_clickable_links_desc": [
-    [
-      "message",
-      "Sohbet mesajlarındaki URL'leri tıklanabilir bağlantılara dönüştürür. Kopyala-yapıştır yapmayı tercih ediyorsan veya internetteki yabancılara güvenmiyorsan devre dışı bırak."
-    ]
-  ],
-  "mc_settings_vi_mode_desc": [
-    [
-      "message",
-      "Sohbet navigasyonu için Vim tarzı kısayollar. j/k kaydırmak için, g/G üst/alt için, / arama için. Farenin casuallar için olduğunu düşünenler için."
-    ]
-  ],
-  "mc_settings_zebra_desc": [
-    [
-      "message",
-      "Sohbet mesajlarında dönüşümlü satır gölgelendirmesi. Özellikle hızlı sohbette uzun mesajları takip etmeyi kolaylaştırır."
-    ]
-  ],
-  "mc_settings_auto_hide_desc": [
-    [
-      "message",
-      "Mesaj yazmadığında girdi çubuğunu gizler. Geri getirmek için tıkla veya yazmaya başla. Sohbet görüntüleme alanını maksimize eder."
-    ]
-  ],
-  "mc_settings_timestamps_desc": [
-    [
-      "message",
-      "Her mesajın gönderilme saatini kullanıcı adının hemen yanında gösterir. AFK iken neler olduğunu takip etmek için kullanışlıdır."
-    ]
-  ],
-  "mc_settings_avatars_desc": [
-    [
-      "message",
-      "Sohbette kullanıcı adlarının yanında profil resimlerini gösterir. Düzenli izleyicileri görsel olarak tanımayı kolaylaştırır, biraz dikey alan harcar."
-    ]
-  ],
-  "mc_settings_inline_notifs": [
-    [
-      "message",
-      "satır içi bildirimler"
-    ]
-  ],
-  "mc_settings_notif_op": [
-    [
-      "message",
-      "[OP] orijinal gönderiler"
-    ]
-  ],
-  "mc_settings_notif_op_reply": [
-    [
-      "message",
-      "[OP] OP kendi thread'inde yanıtlıyor"
-    ]
-  ],
-  "mc_settings_notif_re": [
-    [
-      "message",
-      "[RE] yanıtlar"
-    ]
-  ],
-  "mc_settings_notif_dm": [
-    [
-      "message",
-      "[DM] fısıltılar & DM'ler"
-    ]
-  ],
-  "mc_settings_notif_op_desc": [
-    [
-      "message",
-      "Birisi feed'de yeni bir orijinal gönderi oluşturduğunda aktif sohbet sekmesinde bildirim."
-    ]
-  ],
-  "mc_settings_notif_op_reply_desc": [
-    [
-      "message",
-      "Orijinal poster kendi thread'inde yanıtladığında bildirim."
-    ]
-  ],
-  "mc_settings_notif_re_desc": [
-    [
-      "message",
-      "Feed'deki herhangi bir thread'e her yanıt gönderildiğinde bildirim."
-    ]
-  ],
-  "mc_settings_notif_dm_desc": [
-    [
-      "message",
-      "Fısıltı veya DM aldığında bildirim."
-    ]
-  ],
-  "mc_settings_twitch_events": [
-    [
-      "message",
-      "Twitch etkinlikleri"
-    ]
-  ],
-  "mc_settings_raids": [
-    [
-      "message",
-      "raid'ler"
-    ]
-  ],
-  "mc_settings_hype_trains": [
-    [
-      "message",
-      "hype train'ler"
-    ]
-  ],
-  "mc_settings_gift_subs": [
-    [
-      "message",
-      "hediye sub'lar"
-    ]
-  ],
-  "mc_settings_redeems": [
-    [
-      "message",
-      "kanal puanı kullanımları"
-    ]
-  ],
-  "mc_settings_prediction_banner": [
-    [
-      "message",
-      "tahmin banner'ı"
-    ]
-  ],
-  "mc_settings_poll_banner": [
-    [
-      "message",
-      "anket banner'ı"
-    ]
-  ],
-  "mc_settings_pinned_messages": [
-    [
-      "message",
-      "sabitlenmiş mesajlar"
-    ]
-  ],
-  "mc_settings_features": [
-    [
-      "message",
-      "özellikler"
-    ]
-  ],
-  "mc_settings_auto_claim": [
-    [
-      "message",
-      "kanal puanlarını otomatik al"
-    ]
-  ],
-  "mc_settings_auto_claim_desc": [
-    [
-      "message",
-      "Twitch'te bonus kanal puanları sandığı göründüğünde otomatik tıklar. Bedava puan, sıfır çaba."
-    ]
-  ],
-  "mc_settings_muted_users": [
-    [
-      "message",
-      "sessize alınan kullanıcılar"
-    ]
-  ],
-  "mc_settings_no_muted": [
-    [
-      "message",
-      "sessize alınan kullanıcı yok"
-    ]
-  ],
-  "mc_settings_unmute": [
-    [
-      "message",
-      "sesi aç"
-    ]
-  ],
-  "mc_pred_no_active": [
-    [
-      "message",
-      "aktif tahmin yok"
-    ]
-  ],
-  "mc_pred_new": [
-    [
-      "message",
-      "+ yeni tahmin"
-    ]
-  ],
-  "mc_pred_title_placeholder": [
-    [
-      "message",
-      "tahmin başlığı"
-    ]
-  ],
-  "mc_pred_option1": [
-    [
-      "message",
-      "seçenek 1 (mavi)"
-    ]
-  ],
-  "mc_pred_option2": [
-    [
-      "message",
-      "seçenek 2 (pembe)"
-    ]
-  ],
-  "mc_pred_duration": [
-    [
-      "message",
-      "süre:"
-    ]
-  ],
-  "mc_pred_create": [
-    [
-      "message",
-      "tahmin oluştur"
-    ]
-  ],
-  "mc_pred_refunded": [
-    [
-      "message",
-      "iade edildi"
-    ]
-  ],
-  "mc_pred_locked": [
-    [
-      "message",
-      "kilitlendi"
-    ]
-  ],
-  "mc_pred_winner": [
-    [
-      "message",
-      "kazanan"
-    ]
-  ],
-  "mc_pred_won": [
-    [
-      "message",
-      " kazandı"
-    ]
-  ],
-  "mc_pred_lost": [
-    [
-      "message",
-      " kaybetti"
-    ]
-  ],
-  "mc_pred_lock_betting": [
-    [
-      "message",
-      "bahisleri kilitle"
-    ]
-  ],
-  "mc_pred_cancel_refund": [
-    [
-      "message",
-      "iptal et (iade)"
-    ]
-  ],
-  "mc_pred_pick_winner": [
-    [
-      "message",
-      "kazananı seç"
-    ]
-  ],
-  "mc_pred_pick_winner_your_bet": [
-    [
-      "message",
-      "kazananı seç (senin bahsin)"
-    ]
-  ],
-  "mc_pred_failed_load": [
-    [
-      "message",
-      "tahminler yüklenemedi"
-    ]
-  ],
-  "mc_pred_bet_own": [
-    [
-      "message",
-      "kendi tahminine bahis yapılamaz"
-    ]
-  ],
-  "mc_pred_try_again": [
-    [
-      "message",
-      "tekrar dene"
-    ]
-  ],
-  "mc_pred_ended": [
-    [
-      "message",
-      "tahmin sona erdi"
-    ]
-  ],
-  "mc_pred_betting_locked": [
-    [
-      "message",
-      "bahisler kilitlendi"
-    ]
-  ],
-  "mc_pred_not_enough": [
-    [
-      "message",
-      "yeterli puan yok"
-    ]
-  ],
-  "mc_pred_already_bet": [
-    [
-      "message",
-      "zaten bahis yaptın"
-    ]
-  ],
-  "mc_pred_no_permission": [
-    [
-      "message",
-      "izin yok"
-    ]
-  ],
-  "mc_pred_failed": [
-    [
-      "message",
-      "başarısız"
-    ]
-  ],
-  "mc_pred_no_event": [
-    [
-      "message",
-      "etkinlik yok"
-    ]
-  ],
-  "mc_pred_no_outcome": [
-    [
-      "message",
-      "sonuç yok"
-    ]
-  ],
-  "mc_pred_closing": [
-    [
-      "message",
-      "kapatılıyor..."
-    ]
-  ],
-  "mc_pred_you_bet": [
-    [
-      "message",
-      "$OUTCOME$ üzerine $POINTS$ bahis yaptın — gerçek kazananı seç"
-    ],
-    [
-      "placeholders",
+  },
+  "mc_no_channel_detected": {
+    "message": "kanal tespit edilemedi"
+  },
+  "mc_settings_display": {
+    "message": "görünüm"
+  },
+  "mc_settings_emote_size": {
+    "message": "emote boyutu"
+  },
+  "mc_settings_input_preview": {
+    "message": "girdi önizleme"
+  },
+  "mc_settings_clickable_links": {
+    "message": "tıklanabilir linkler"
+  },
+  "mc_settings_vi_mode": {
+    "message": "vi modu"
+  },
+  "mc_settings_zebra": {
+    "message": "zebra çizgileri"
+  },
+  "mc_settings_auto_hide": {
+    "message": "girdiyi otomatik gizle"
+  },
+  "mc_settings_timestamps": {
+    "message": "zaman damgaları"
+  },
+  "mc_settings_avatars": {
+    "message": "avatarlar"
+  },
+  "mc_settings_emote_size_desc": {
+    "message": "Sohbetteki emote'lar için çözünürlük çarpanı. 1x net ve kompakt, 2x çoğu ekran için ideal nokta, 4x emote sanatının her pikselini görmek isteyenler için."
+  },
+  "mc_settings_input_preview_desc": {
+    "message": "Yazarken emote'ları girdi kutusunda düz metin yerine doğrudan görsel olarak gösterir. Ne görüyorsan onu gönderirsin."
+  },
+  "mc_settings_clickable_links_desc": {
+    "message": "Sohbet mesajlarındaki URL'leri tıklanabilir bağlantılara dönüştürür. Kopyala-yapıştır yapmayı tercih ediyorsan veya internetteki yabancılara güvenmiyorsan devre dışı bırak."
+  },
+  "mc_settings_vi_mode_desc": {
+    "message": "Sohbet navigasyonu için Vim tarzı kısayollar. j/k kaydırmak için, g/G üst/alt için, / arama için. Farenin casuallar için olduğunu düşünenler için."
+  },
+  "mc_settings_zebra_desc": {
+    "message": "Sohbet mesajlarında dönüşümlü satır gölgelendirmesi. Özellikle hızlı sohbette uzun mesajları takip etmeyi kolaylaştırır."
+  },
+  "mc_settings_auto_hide_desc": {
+    "message": "Mesaj yazmadığında girdi çubuğunu gizler. Geri getirmek için tıkla veya yazmaya başla. Sohbet görüntüleme alanını maksimize eder."
+  },
+  "mc_settings_timestamps_desc": {
+    "message": "Her mesajın gönderilme saatini kullanıcı adının hemen yanında gösterir. AFK iken neler olduğunu takip etmek için kullanışlıdır."
+  },
+  "mc_settings_avatars_desc": {
+    "message": "Sohbette kullanıcı adlarının yanında profil resimlerini gösterir. Düzenli izleyicileri görsel olarak tanımayı kolaylaştırır, biraz dikey alan harcar."
+  },
+  "mc_settings_inline_notifs": {
+    "message": "satır içi bildirimler"
+  },
+  "mc_settings_notif_op": {
+    "message": "[OP] orijinal gönderiler"
+  },
+  "mc_settings_notif_op_reply": {
+    "message": "[OP] OP kendi thread'inde yanıtlıyor"
+  },
+  "mc_settings_notif_re": {
+    "message": "[RE] yanıtlar"
+  },
+  "mc_settings_notif_dm": {
+    "message": "[DM] fısıltılar & DM'ler"
+  },
+  "mc_settings_notif_op_desc": {
+    "message": "Birisi feed'de yeni bir orijinal gönderi oluşturduğunda aktif sohbet sekmesinde bildirim."
+  },
+  "mc_settings_notif_op_reply_desc": {
+    "message": "Orijinal poster kendi thread'inde yanıtladığında bildirim."
+  },
+  "mc_settings_notif_re_desc": {
+    "message": "Feed'deki herhangi bir thread'e her yanıt gönderildiğinde bildirim."
+  },
+  "mc_settings_notif_dm_desc": {
+    "message": "Fısıltı veya DM aldığında bildirim."
+  },
+  "mc_settings_twitch_events": {
+    "message": "Twitch etkinlikleri"
+  },
+  "mc_settings_raids": {
+    "message": "raid'ler"
+  },
+  "mc_settings_hype_trains": {
+    "message": "hype train'ler"
+  },
+  "mc_settings_gift_subs": {
+    "message": "hediye sub'lar"
+  },
+  "mc_settings_redeems": {
+    "message": "kanal puanı kullanımları"
+  },
+  "mc_settings_prediction_banner": {
+    "message": "tahmin banner'ı"
+  },
+  "mc_settings_poll_banner": {
+    "message": "anket banner'ı"
+  },
+  "mc_settings_pinned_messages": {
+    "message": "sabitlenmiş mesajlar"
+  },
+  "mc_settings_features": {
+    "message": "özellikler"
+  },
+  "mc_settings_auto_claim": {
+    "message": "kanal puanlarını otomatik al"
+  },
+  "mc_settings_auto_claim_desc": {
+    "message": "Twitch'te bonus kanal puanları sandığı göründüğünde otomatik tıklar. Bedava puan, sıfır çaba."
+  },
+  "mc_settings_muted_users": {
+    "message": "sessize alınan kullanıcılar"
+  },
+  "mc_settings_no_muted": {
+    "message": "sessize alınan kullanıcı yok"
+  },
+  "mc_settings_unmute": {
+    "message": "sesi aç"
+  },
+  "mc_pred_no_active": {
+    "message": "aktif tahmin yok"
+  },
+  "mc_pred_new": {
+    "message": "+ yeni tahmin"
+  },
+  "mc_pred_title_placeholder": {
+    "message": "tahmin başlığı"
+  },
+  "mc_pred_option1": {
+    "message": "seçenek 1 (mavi)"
+  },
+  "mc_pred_option2": {
+    "message": "seçenek 2 (pembe)"
+  },
+  "mc_pred_duration": {
+    "message": "süre:"
+  },
+  "mc_pred_create": {
+    "message": "tahmin oluştur"
+  },
+  "mc_pred_refunded": {
+    "message": "iade edildi"
+  },
+  "mc_pred_locked": {
+    "message": "kilitlendi"
+  },
+  "mc_pred_winner": {
+    "message": "kazanan"
+  },
+  "mc_pred_won": {
+    "message": " kazandı"
+  },
+  "mc_pred_lost": {
+    "message": " kaybetti"
+  },
+  "mc_pred_lock_betting": {
+    "message": "bahisleri kilitle"
+  },
+  "mc_pred_cancel_refund": {
+    "message": "iptal et (iade)"
+  },
+  "mc_pred_pick_winner": {
+    "message": "kazananı seç"
+  },
+  "mc_pred_pick_winner_your_bet": {
+    "message": "kazananı seç (senin bahsin)"
+  },
+  "mc_pred_failed_load": {
+    "message": "tahminler yüklenemedi"
+  },
+  "mc_pred_bet_own": {
+    "message": "kendi tahminine bahis yapılamaz"
+  },
+  "mc_pred_try_again": {
+    "message": "tekrar dene"
+  },
+  "mc_pred_ended": {
+    "message": "tahmin sona erdi"
+  },
+  "mc_pred_betting_locked": {
+    "message": "bahisler kilitlendi"
+  },
+  "mc_pred_not_enough": {
+    "message": "yeterli puan yok"
+  },
+  "mc_pred_already_bet": {
+    "message": "zaten bahis yaptın"
+  },
+  "mc_pred_no_permission": {
+    "message": "izin yok"
+  },
+  "mc_pred_failed": {
+    "message": "başarısız"
+  },
+  "mc_pred_no_event": {
+    "message": "etkinlik yok"
+  },
+  "mc_pred_no_outcome": {
+    "message": "sonuç yok"
+  },
+  "mc_pred_closing": {
+    "message": "kapatılıyor..."
+  },
+  "mc_pred_you_bet": {
+    "message": "$OUTCOME$ üzerine $POINTS$ bahis yaptın — gerçek kazananı seç",
+    "placeholders": [
       [
+        "points",
         [
-          "points",
           [
-            [
-              "content",
-              "$1"
-            ]
+            "content",
+            "$1"
           ]
-        ],
+        ]
+      ],
+      [
+        "outcome",
         [
-          "outcome",
           [
-            [
-              "content",
-              "$2"
-            ]
+            "content",
+            "$2"
           ]
         ]
       ]
     ]
-  ],
-  "mc_poll_new": [
-    [
-      "message",
-      "+ yeni anket"
-    ]
-  ],
-  "mc_poll_question": [
-    [
-      "message",
-      "anket sorusu"
-    ]
-  ],
-  "mc_poll_choice": [
-    [
-      "message",
-      "seçenek $NUM$"
-    ],
-    [
-      "placeholders",
+  },
+  "mc_poll_new": {
+    "message": "+ yeni anket"
+  },
+  "mc_poll_question": {
+    "message": "anket sorusu"
+  },
+  "mc_poll_choice": {
+    "message": "seçenek $NUM$",
+    "placeholders": [
       [
+        "num",
         [
-          "num",
           [
-            [
-              "content",
-              "$1"
-            ]
+            "content",
+            "$1"
           ]
         ]
       ]
     ]
-  ],
-  "mc_poll_choice_optional": [
-    [
-      "message",
-      "seçenek $NUM$ (isteğe bağlı)"
-    ],
-    [
-      "placeholders",
+  },
+  "mc_poll_choice_optional": {
+    "message": "seçenek $NUM$ (isteğe bağlı)",
+    "placeholders": [
       [
+        "num",
         [
-          "num",
           [
-            [
-              "content",
-              "$1"
-            ]
+            "content",
+            "$1"
           ]
         ]
       ]
     ]
-  ],
-  "mc_poll_create": [
-    [
-      "message",
-      "anket oluştur"
-    ]
-  ],
-  "mc_poll_end": [
-    [
-      "message",
-      "anketi bitir"
-    ]
-  ],
-  "mc_poll_votes": [
-    [
-      "message",
-      "$COUNT$ oy"
-    ],
-    [
-      "placeholders",
+  },
+  "mc_poll_create": {
+    "message": "anket oluştur"
+  },
+  "mc_poll_end": {
+    "message": "anketi bitir"
+  },
+  "mc_poll_votes": {
+    "message": "$COUNT$ oy",
+    "placeholders": [
       [
+        "count",
         [
-          "count",
           [
-            [
-              "content",
-              "$1"
-            ]
+            "content",
+            "$1"
           ]
         ]
       ]
     ]
-  ],
-  "mc_poll_vote_single": [
-    [
-      "message",
-      "$COUNT$ oy"
-    ],
-    [
-      "placeholders",
+  },
+  "mc_poll_vote_single": {
+    "message": "$COUNT$ oy",
+    "placeholders": [
       [
+        "count",
         [
-          "count",
           [
-            [
-              "content",
-              "$1"
-            ]
+            "content",
+            "$1"
           ]
         ]
       ]
     ]
-  ],
-  "mc_poll_already_active": [
-    [
-      "message",
-      "anket zaten aktif"
-    ]
-  ],
-  "mc_poll_not_logged_in": [
-    [
-      "message",
-      "giriş yapılmadı"
-    ]
-  ],
-  "mc_reward_rewards": [
-    [
-      "message",
-      "ödüller"
-    ]
-  ],
-  "mc_reward_none": [
-    [
-      "message",
-      "kullanılabilir ödül yok"
-    ]
-  ],
-  "mc_reward_paused": [
-    [
-      "message",
-      "duraklatıldı"
-    ]
-  ],
-  "mc_reward_out_of_stock": [
-    [
-      "message",
-      "stok bitti"
-    ]
-  ],
-  "mc_reward_cooldown_min": [
-    [
-      "message",
-      "$MIN$d bekleme"
-    ],
-    [
-      "placeholders",
+  },
+  "mc_poll_already_active": {
+    "message": "anket zaten aktif"
+  },
+  "mc_poll_not_logged_in": {
+    "message": "giriş yapılmadı"
+  },
+  "mc_reward_rewards": {
+    "message": "ödüller"
+  },
+  "mc_reward_none": {
+    "message": "kullanılabilir ödül yok"
+  },
+  "mc_reward_paused": {
+    "message": "duraklatıldı"
+  },
+  "mc_reward_out_of_stock": {
+    "message": "stok bitti"
+  },
+  "mc_reward_cooldown_min": {
+    "message": "$MIN$d bekleme",
+    "placeholders": [
       [
+        "min",
         [
-          "min",
           [
-            [
-              "content",
-              "$1"
-            ]
+            "content",
+            "$1"
           ]
         ]
       ]
     ]
-  ],
-  "mc_reward_cooldown_sec": [
-    [
-      "message",
-      "$SEC$sn bekleme"
-    ],
-    [
-      "placeholders",
+  },
+  "mc_reward_cooldown_sec": {
+    "message": "$SEC$sn bekleme",
+    "placeholders": [
       [
+        "sec",
         [
-          "sec",
           [
-            [
-              "content",
-              "$1"
-            ]
+            "content",
+            "$1"
           ]
         ]
       ]
     ]
-  ],
-  "mc_reward_enter_text": [
-    [
-      "message",
-      "metin gir..."
-    ]
-  ],
-  "mc_reward_redeem": [
-    [
-      "message",
-      "kullan"
-    ]
-  ],
-  "mc_chat_username_color": [
-    [
-      "message",
-      "kullanıcı adı rengi"
-    ]
-  ],
-  "mc_chat_hex_placeholder": [
-    [
-      "message",
-      "#hex"
-    ]
-  ],
-  "mc_chat_modes": [
-    [
-      "message",
-      "sohbet modları"
-    ]
-  ],
-  "mc_chat_emote_only": [
-    [
-      "message",
-      "sadece emote"
-    ]
-  ],
-  "mc_chat_follower": [
-    [
-      "message",
-      "takipçi"
-    ]
-  ],
-  "mc_chat_slow": [
-    [
-      "message",
-      "yavaş"
-    ]
-  ],
-  "mc_chat_sub_only": [
-    [
-      "message",
-      "sadece sub"
-    ]
-  ],
-  "mc_chat_unique": [
-    [
-      "message",
-      "tekil"
-    ]
-  ],
-  "mc_chat_hype_train": [
-    [
-      "message",
-      "hype train"
-    ]
-  ],
-  "mc_chat_hype_level": [
-    [
-      "message",
-      "svye $LEVEL$"
-    ],
-    [
-      "placeholders",
+  },
+  "mc_reward_enter_text": {
+    "message": "metin gir..."
+  },
+  "mc_reward_redeem": {
+    "message": "kullan"
+  },
+  "mc_chat_username_color": {
+    "message": "kullanıcı adı rengi"
+  },
+  "mc_chat_hex_placeholder": {
+    "message": "#hex"
+  },
+  "mc_chat_modes": {
+    "message": "sohbet modları"
+  },
+  "mc_chat_emote_only": {
+    "message": "sadece emote"
+  },
+  "mc_chat_follower": {
+    "message": "takipçi"
+  },
+  "mc_chat_slow": {
+    "message": "yavaş"
+  },
+  "mc_chat_sub_only": {
+    "message": "sadece sub"
+  },
+  "mc_chat_unique": {
+    "message": "tekil"
+  },
+  "mc_chat_hype_train": {
+    "message": "hype train"
+  },
+  "mc_chat_hype_level": {
+    "message": "svye $LEVEL$",
+    "placeholders": [
       [
+        "level",
         [
-          "level",
           [
-            [
-              "content",
-              "$1"
-            ]
+            "content",
+            "$1"
           ]
         ]
       ]
     ]
-  ],
-  "mc_input_send_message": [
-    [
-      "message",
-      "mesaj gönder..."
-    ]
-  ],
-  "mc_input_post_heatsync": [
-    [
-      "message",
-      "heatsync'e post at..."
-    ]
-  ],
-  "mc_input_send_channel": [
-    [
-      "message",
-      "#$CHANNEL$ kanalına gönder"
-    ],
-    [
-      "placeholders",
+  },
+  "mc_input_send_message": {
+    "message": "mesaj gönder..."
+  },
+  "mc_input_post_heatsync": {
+    "message": "heatsync'e post at..."
+  },
+  "mc_input_send_channel": {
+    "message": "#$CHANNEL$ kanalına gönder",
+    "placeholders": [
       [
+        "channel",
         [
-          "channel",
           [
-            [
-              "content",
-              "$1"
-            ]
+            "content",
+            "$1"
           ]
         ]
       ]
     ]
-  ],
-  "mc_input_replying_to": [
-    [
-      "message",
-      "@$USER$ kullanıcısına yanıt veriliyor"
-    ],
-    [
-      "placeholders",
+  },
+  "mc_input_replying_to": {
+    "message": "@$USER$ kullanıcısına yanıt veriliyor",
+    "placeholders": [
       [
+        "user",
         [
-          "user",
           [
-            [
-              "content",
-              "$1"
-            ]
+            "content",
+            "$1"
           ]
         ]
       ]
     ]
-  ],
-  "mc_input_cancel_reply": [
-    [
-      "message",
-      "yanıtı iptal et"
-    ]
-  ],
-  "mc_input_not_logged_in": [
-    [
-      "message",
-      "giriş yapılmadı"
-    ]
-  ],
-  "mc_input_login_kick": [
-    [
-      "message",
-      "önce kick.com'da giriş yap"
-    ]
-  ],
-  "mc_input_open_kick": [
-    [
-      "message",
-      "bir sekmede kick.com aç"
-    ]
-  ],
-  "mc_input_kick_not_found": [
-    [
-      "message",
-      "Kick kanalı bulunamadı"
-    ]
-  ],
-  "mc_input_send_failed": [
-    [
-      "message",
-      "gönderilemedi"
-    ]
-  ],
-  "mc_input_no_username": [
-    [
-      "message",
-      "kullanıcı adı tespit edilemedi"
-    ]
-  ],
-  "mc_input_auth_failed": [
-    [
-      "message",
-      "kimlik doğrulama başarısız — Twitch'e yeniden giriş yap"
-    ]
-  ],
-  "mc_input_connection_failed": [
-    [
-      "message",
-      "bağlantı başarısız — tekrar dene"
-    ]
-  ],
-  "mc_input_send_failed_retry": [
-    [
-      "message",
-      "gönderilemedi — tekrar dene"
-    ]
-  ],
-  "mc_social_back": [
-    [
-      "message",
-      "<- geri"
-    ]
-  ],
-  "mc_social_no_posts": [
-    [
-      "message",
-      "henüz gönderi yok"
-    ]
-  ],
-  "mc_social_loading_feed": [
-    [
-      "message",
-      "takip feed'i yükleniyor..."
-    ]
-  ],
-  "mc_social_scroll_more": [
-    [
-      "message",
-      "daha fazlası için kaydır..."
-    ]
-  ],
-  "mc_social_no_replies": [
-    [
-      "message",
-      "henüz yanıt yok"
-    ]
-  ],
-  "mc_social_login_first": [
-    [
-      "message",
-      "önce heatsync.org'da giriş yap"
-    ]
-  ],
-  "mc_social_login_activity": [
-    [
-      "message",
-      "aktiviteyi görmek için heatsync.org'da giriş yap"
-    ]
-  ],
-  "mc_social_failed_feed_auth": [
-    [
-      "message",
-      "feed yüklenemedi — heatsync.org'da giriş yap"
-    ]
-  ],
-  "mc_social_failed_feed": [
-    [
-      "message",
-      "feed yüklenemedi"
-    ]
-  ],
-  "mc_social_log_in_first": [
-    [
-      "message",
-      "önce giriş yap"
-    ]
-  ],
-  "mc_social_slow_down": [
-    [
-      "message",
-      "yavaşla"
-    ]
-  ],
-  "mc_social_duplicate": [
-    [
-      "message",
-      "tekrar eden mesaj"
-    ]
-  ],
-  "mc_social_failed_post": [
-    [
-      "message",
-      "gönderi başarısız"
-    ]
-  ],
-  "mc_tip_emoji": [
-    [
-      "message",
-      "emoji"
-    ]
-  ],
-  "mc_tip_subbed": [
-    [
-      "message",
-      "$CHANNEL$ kanalına sub $TENURE$"
-    ],
-    [
-      "placeholders",
+  },
+  "mc_input_cancel_reply": {
+    "message": "yanıtı iptal et"
+  },
+  "mc_input_not_logged_in": {
+    "message": "giriş yapılmadı"
+  },
+  "mc_input_login_kick": {
+    "message": "önce kick.com'da giriş yap"
+  },
+  "mc_input_open_kick": {
+    "message": "bir sekmede kick.com aç"
+  },
+  "mc_input_kick_not_found": {
+    "message": "Kick kanalı bulunamadı"
+  },
+  "mc_input_send_failed": {
+    "message": "gönderilemedi"
+  },
+  "mc_input_no_username": {
+    "message": "kullanıcı adı tespit edilemedi"
+  },
+  "mc_input_auth_failed": {
+    "message": "kimlik doğrulama başarısız — Twitch'e yeniden giriş yap"
+  },
+  "mc_input_connection_failed": {
+    "message": "bağlantı başarısız — tekrar dene"
+  },
+  "mc_input_send_failed_retry": {
+    "message": "gönderilemedi — tekrar dene"
+  },
+  "mc_social_back": {
+    "message": "<- geri"
+  },
+  "mc_social_no_posts": {
+    "message": "henüz gönderi yok"
+  },
+  "mc_social_loading_feed": {
+    "message": "takip feed'i yükleniyor..."
+  },
+  "mc_social_scroll_more": {
+    "message": "daha fazlası için kaydır..."
+  },
+  "mc_social_no_replies": {
+    "message": "henüz yanıt yok"
+  },
+  "mc_social_login_first": {
+    "message": "önce heatsync.org'da giriş yap"
+  },
+  "mc_social_login_activity": {
+    "message": "aktiviteyi görmek için heatsync.org'da giriş yap"
+  },
+  "mc_social_failed_feed_auth": {
+    "message": "feed yüklenemedi — heatsync.org'da giriş yap"
+  },
+  "mc_social_failed_feed": {
+    "message": "feed yüklenemedi"
+  },
+  "mc_social_log_in_first": {
+    "message": "önce giriş yap"
+  },
+  "mc_social_slow_down": {
+    "message": "yavaşla"
+  },
+  "mc_social_duplicate": {
+    "message": "tekrar eden mesaj"
+  },
+  "mc_social_failed_post": {
+    "message": "gönderi başarısız"
+  },
+  "mc_tip_emoji": {
+    "message": "emoji"
+  },
+  "mc_tip_subbed": {
+    "message": "$CHANNEL$ kanalına sub $TENURE$",
+    "placeholders": [
       [
+        "channel",
         [
-          "channel",
           [
-            [
-              "content",
-              "$1"
-            ]
+            "content",
+            "$1"
           ]
-        ],
+        ]
+      ],
+      [
+        "tenure",
         [
-          "tenure",
           [
-            [
-              "content",
-              "$2"
-            ]
+            "content",
+            "$2"
           ]
         ]
       ]
     ]
-  ],
-  "mc_tip_following": [
-    [
-      "message",
-      "$CHANNEL$ takip ediliyor $AGE$"
-    ],
-    [
-      "placeholders",
+  },
+  "mc_tip_following": {
+    "message": "$CHANNEL$ takip ediliyor $AGE$",
+    "placeholders": [
       [
+        "channel",
         [
-          "channel",
           [
-            [
-              "content",
-              "$1"
-            ]
+            "content",
+            "$1"
           ]
-        ],
+        ]
+      ],
+      [
+        "age",
         [
-          "age",
           [
-            [
-              "content",
-              "$2"
-            ]
+            "content",
+            "$2"
           ]
         ]
       ]
     ]
-  ],
-  "mc_tip_not_following": [
-    [
-      "message",
-      "$CHANNEL$ takip edilmiyor"
-    ],
-    [
-      "placeholders",
+  },
+  "mc_tip_not_following": {
+    "message": "$CHANNEL$ takip edilmiyor",
+    "placeholders": [
       [
+        "channel",
         [
-          "channel",
           [
-            [
-              "content",
-              "$1"
-            ]
+            "content",
+            "$1"
           ]
         ]
       ]
     ]
-  ],
-  "mc_tip_followed_by": [
-    [
-      "message",
-      "$CHANNEL$ tarafından takip ediliyor"
-    ],
-    [
-      "placeholders",
+  },
+  "mc_tip_followed_by": {
+    "message": "$CHANNEL$ tarafından takip ediliyor",
+    "placeholders": [
       [
+        "channel",
         [
-          "channel",
           [
-            [
-              "content",
-              "$1"
-            ]
+            "content",
+            "$1"
           ]
         ]
       ]
     ]
-  ],
-  "mc_tip_followers": [
-    [
-      "message",
-      "$COUNT$ takipçi"
-    ],
-    [
-      "placeholders",
+  },
+  "mc_tip_followers": {
+    "message": "$COUNT$ takipçi",
+    "placeholders": [
       [
+        "count",
         [
-          "count",
           [
-            [
-              "content",
-              "$1"
-            ]
+            "content",
+            "$1"
           ]
         ]
       ]
     ]
-  ],
-  "mc_whisper_hint": [
-    [
-      "message",
-      "/w user msg · /dm user msg · /r msg"
-    ]
-  ],
-  "mc_whisper_login": [
-    [
-      "message",
-      "fısıltı göndermek için heatsync.org'da giriş yap"
-    ]
-  ],
-  "mc_whisper_user_not_found": [
-    [
-      "message",
-      "\"$USER$\" Twitch kullanıcısı bulunamadı"
-    ],
-    [
-      "placeholders",
+  },
+  "mc_whisper_hint": {
+    "message": "/w user msg · /dm user msg · /r msg"
+  },
+  "mc_whisper_login": {
+    "message": "fısıltı göndermek için heatsync.org'da giriş yap"
+  },
+  "mc_whisper_user_not_found": {
+    "message": "\"$USER$\" Twitch kullanıcısı bulunamadı",
+    "placeholders": [
       [
+        "user",
         [
-          "user",
           [
-            [
-              "content",
-              "$1"
-            ]
+            "content",
+            "$1"
           ]
         ]
       ]
     ]
-  ],
-  "mc_whisper_resolve_failed": [
-    [
-      "message",
-      "Twitch kullanıcısı çözümlenemedi"
-    ]
-  ],
-  "mc_whisper_hs_not_found": [
-    [
-      "message",
-      "\"$USER$\" heatsync kullanıcısı bulunamadı"
-    ],
-    [
-      "placeholders",
+  },
+  "mc_whisper_resolve_failed": {
+    "message": "Twitch kullanıcısı çözümlenemedi"
+  },
+  "mc_whisper_hs_not_found": {
+    "message": "\"$USER$\" heatsync kullanıcısı bulunamadı",
+    "placeholders": [
       [
+        "user",
         [
-          "user",
           [
-            [
-              "content",
-              "$1"
-            ]
+            "content",
+            "$1"
           ]
         ]
       ]
     ]
-  ],
-  "mc_irc_chat_cleared": [
-    [
-      "message",
-      "Sohbet temizlendi"
-    ]
-  ],
-  "mc_irc_msg_deleted": [
-    [
-      "message",
-      "$USER$ kullanıcısının mesajı silindi"
-    ],
-    [
-      "placeholders",
+  },
+  "mc_irc_chat_cleared": {
+    "message": "Sohbet temizlendi"
+  },
+  "mc_irc_msg_deleted": {
+    "message": "$USER$ kullanıcısının mesajı silindi",
+    "placeholders": [
       [
+        "user",
         [
-          "user",
           [
-            [
-              "content",
-              "$1"
-            ]
+            "content",
+            "$1"
           ]
         ]
       ]
     ]
-  ],
-  "mc_irc_gift_subs": [
-    [
-      "message",
-      "$USER$, $CHANNEL$ kanalına $AMOUNT$ sub hediye etti"
-    ],
-    [
-      "placeholders",
+  },
+  "mc_irc_gift_subs": {
+    "message": "$USER$, $CHANNEL$ kanalına $AMOUNT$ sub hediye etti",
+    "placeholders": [
       [
+        "user",
         [
-          "user",
           [
-            [
-              "content",
-              "$1"
-            ]
+            "content",
+            "$1"
           ]
-        ],
+        ]
+      ],
+      [
+        "amount",
         [
-          "amount",
           [
-            [
-              "content",
-              "$2"
-            ]
+            "content",
+            "$2"
           ]
-        ],
+        ]
+      ],
+      [
+        "channel",
         [
-          "channel",
           [
-            [
-              "content",
-              "$3"
-            ]
+            "content",
+            "$3"
           ]
         ]
       ]
     ]
-  ],
-  "mc_yt_connected": [
-    [
-      "message",
-      "YouTube bağlandı: $CHANNEL$ — mesajlar bekleniyor..."
-    ],
-    [
-      "placeholders",
+  },
+  "mc_yt_connected": {
+    "message": "YouTube bağlandı: $CHANNEL$ — mesajlar bekleniyor...",
+    "placeholders": [
       [
+        "channel",
         [
-          "channel",
           [
-            [
-              "content",
-              "$1"
-            ]
+            "content",
+            "$1"
           ]
         ]
       ]
     ]
-  ],
-  "mc_yt_ended": [
-    [
-      "message",
-      "YouTube yayını sona erdi"
-    ]
-  ],
-  "mc_yt_error": [
-    [
-      "message",
-      "YouTube bağlantı hatası"
-    ]
-  ],
-  "mc_emote_search_placeholder": [
-    [
-      "message",
-      "emote ara..."
-    ]
-  ],
-  "mc_emote_no_loaded": [
-    [
-      "message",
-      "emote yüklenmedi"
-    ]
-  ],
-  "mc_emote_in_set": [
-    [
-      "message",
-      "setinde mevcut"
-    ]
-  ],
-  "mc_emote_click_add": [
-    [
-      "message",
-      "eklemek için tıkla"
-    ]
-  ],
-  "mc_emote_blocked": [
-    [
-      "message",
-      "engellendi (kaldırmak için tıkla)"
-    ]
-  ],
-  "content_toast_unknown_error": [
-    [
-      "message",
-      "Bilinmeyen hata"
-    ]
-  ],
-  "content_toast_loading_emotes": [
-    [
-      "message",
-      "emote'lar yükleniyor..."
-    ]
-  ],
-  "content_toast_fetching_emotes": [
-    [
-      "message",
-      "emote'lar alınıyor..."
-    ]
-  ],
-  "content_card_action_ban": [
-    [
-      "message",
-      "banla"
-    ]
-  ],
-  "content_card_action_unban": [
-    [
-      "message",
-      "ban kaldır"
-    ]
-  ],
-  "content_card_action_block": [
-    [
-      "message",
-      "engelle"
-    ]
-  ],
-  "btn_close": [
-    [
-      "message",
-      "Kapat"
-    ]
-  ],
-  "btn_error_channel": [
-    [
-      "message",
-      "kanal emote'ları yüklenemedi"
-    ]
-  ],
-  "btn_error_global": [
-    [
-      "message",
-      "global emote'lar yüklenemedi"
-    ]
-  ],
-  "btn_error_inventory": [
-    [
-      "message",
-      "emote'ların yüklenemedi"
-    ]
-  ]
+  },
+  "mc_yt_ended": {
+    "message": "YouTube yayını sona erdi"
+  },
+  "mc_yt_error": {
+    "message": "YouTube bağlantı hatası"
+  },
+  "mc_emote_search_placeholder": {
+    "message": "emote ara..."
+  },
+  "mc_emote_no_loaded": {
+    "message": "emote yüklenmedi"
+  },
+  "mc_emote_in_set": {
+    "message": "setinde mevcut"
+  },
+  "mc_emote_click_add": {
+    "message": "eklemek için tıkla"
+  },
+  "mc_emote_blocked": {
+    "message": "engellendi (kaldırmak için tıkla)"
+  },
+  "content_toast_unknown_error": {
+    "message": "Bilinmeyen hata"
+  },
+  "content_toast_loading_emotes": {
+    "message": "emote'lar yükleniyor..."
+  },
+  "content_toast_fetching_emotes": {
+    "message": "emote'lar alınıyor..."
+  },
+  "content_card_action_ban": {
+    "message": "banla"
+  },
+  "content_card_action_unban": {
+    "message": "ban kaldır"
+  },
+  "content_card_action_block": {
+    "message": "engelle"
+  },
+  "btn_close": {
+    "message": "Kapat"
+  },
+  "btn_error_channel": {
+    "message": "kanal emote'ları yüklenemedi"
+  },
+  "btn_error_global": {
+    "message": "global emote'lar yüklenemedi"
+  },
+  "btn_error_inventory": {
+    "message": "emote'ların yüklenemedi"
+  }
 }

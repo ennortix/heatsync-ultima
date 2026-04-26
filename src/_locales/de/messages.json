@@ -1,2560 +1,1510 @@
 {
-  "manifest_name": [
-    [
-      "message",
-      "heatsync"
-    ]
-  ],
-  "manifest_description": [
-    [
-      "message",
-      "Eigene Emotes für Twitch, Kick und YouTube-Chat. Unbegrenzte Slots, Tab-Vervollständigung, Echtzeit-Sync."
-    ]
-  ],
-  "common_loading": [
-    [
-      "message",
-      "lädt..."
-    ]
-  ],
-  "common_extension_updated": [
-    [
-      "message",
-      "Erweiterung aktualisiert — bitte Seite neu laden"
-    ]
-  ],
-  "common_no_matches": [
-    [
-      "message",
-      "keine Treffer"
-    ]
-  ],
-  "common_retry": [
-    [
-      "message",
-      "erneut versuchen"
-    ]
-  ],
-  "common_cancel": [
-    [
-      "message",
-      "abbrechen"
-    ]
-  ],
-  "common_save": [
-    [
-      "message",
-      "speichern"
-    ]
-  ],
-  "common_add": [
-    [
-      "message",
-      "hinzufügen"
-    ]
-  ],
-  "common_edit": [
-    [
-      "message",
-      "bearbeiten"
-    ]
-  ],
-  "common_remove": [
-    [
-      "message",
-      "entfernen"
-    ]
-  ],
-  "common_done": [
-    [
-      "message",
-      "fertig"
-    ]
-  ],
-  "common_ended": [
-    [
-      "message",
-      "beendet"
-    ]
-  ],
-  "common_vote": [
-    [
-      "message",
-      "abstimmen"
-    ]
-  ],
-  "common_set": [
-    [
-      "message",
-      "setzen"
-    ]
-  ],
-  "common_default": [
-    [
-      "message",
-      "standard"
-    ]
-  ],
-  "common_mention": [
-    [
-      "message",
-      "erwähnung"
-    ]
-  ],
-  "common_user_not_found": [
-    [
-      "message",
-      "nutzer nicht gefunden"
-    ]
-  ],
-  "popup_title": [
-    [
-      "message",
-      "heatsync"
-    ]
-  ],
-  "popup_status_checking": [
-    [
-      "message",
-      "wird geprüft..."
-    ]
-  ],
-  "popup_status_connected": [
-    [
-      "message",
-      "verbunden"
-    ]
-  ],
-  "popup_status_api_error": [
-    [
-      "message",
-      "api-fehler"
-    ]
-  ],
-  "popup_status_offline": [
-    [
-      "message",
-      "offline"
-    ]
-  ],
-  "popup_user_stats": [
-    [
-      "message",
-      "$EMOTES$ Emotes · $GLOBALS$ global"
-    ],
-    [
-      "placeholders",
+  "manifest_name": {
+    "message": "heatsync"
+  },
+  "manifest_description": {
+    "message": "Eigene Emotes für Twitch, Kick und YouTube-Chat. Unbegrenzte Slots, Tab-Vervollständigung, Echtzeit-Sync."
+  },
+  "common_loading": {
+    "message": "lädt..."
+  },
+  "common_extension_updated": {
+    "message": "Erweiterung aktualisiert — bitte Seite neu laden"
+  },
+  "common_no_matches": {
+    "message": "keine Treffer"
+  },
+  "common_retry": {
+    "message": "erneut versuchen"
+  },
+  "common_cancel": {
+    "message": "abbrechen"
+  },
+  "common_save": {
+    "message": "speichern"
+  },
+  "common_add": {
+    "message": "hinzufügen"
+  },
+  "common_edit": {
+    "message": "bearbeiten"
+  },
+  "common_remove": {
+    "message": "entfernen"
+  },
+  "common_done": {
+    "message": "fertig"
+  },
+  "common_ended": {
+    "message": "beendet"
+  },
+  "common_vote": {
+    "message": "abstimmen"
+  },
+  "common_set": {
+    "message": "setzen"
+  },
+  "common_default": {
+    "message": "standard"
+  },
+  "common_mention": {
+    "message": "erwähnung"
+  },
+  "common_user_not_found": {
+    "message": "nutzer nicht gefunden"
+  },
+  "popup_title": {
+    "message": "heatsync"
+  },
+  "popup_status_checking": {
+    "message": "wird geprüft..."
+  },
+  "popup_status_connected": {
+    "message": "verbunden"
+  },
+  "popup_status_api_error": {
+    "message": "api-fehler"
+  },
+  "popup_status_offline": {
+    "message": "offline"
+  },
+  "popup_user_stats": {
+    "message": "$EMOTES$ Emotes · $GLOBALS$ global",
+    "placeholders": [
       [
+        "emotes",
         [
-          "emotes",
           [
-            [
-              "content",
-              "$1"
-            ]
+            "content",
+            "$1"
           ]
-        ],
+        ]
+      ],
+      [
+        "globals",
         [
-          "globals",
           [
-            [
-              "content",
-              "$2"
-            ]
+            "content",
+            "$2"
           ]
         ]
       ]
     ]
-  ],
-  "popup_user_stats_heat": [
-    [
-      "message",
-      "$EMOTES$ Emotes · $GLOBALS$ global · $HEAT$ heat"
-    ],
-    [
-      "placeholders",
+  },
+  "popup_user_stats_heat": {
+    "message": "$EMOTES$ Emotes · $GLOBALS$ global · $HEAT$ heat",
+    "placeholders": [
       [
+        "emotes",
         [
-          "emotes",
           [
-            [
-              "content",
-              "$1"
-            ]
+            "content",
+            "$1"
           ]
-        ],
+        ]
+      ],
+      [
+        "globals",
         [
-          "globals",
           [
-            [
-              "content",
-              "$2"
-            ]
+            "content",
+            "$2"
           ]
-        ],
+        ]
+      ],
+      [
+        "heat",
         [
-          "heat",
           [
-            [
-              "content",
-              "$3"
-            ]
+            "content",
+            "$3"
           ]
         ]
       ]
     ]
-  ],
-  "popup_btn_emotes": [
-    [
-      "message",
-      "emotes"
-    ]
-  ],
-  "popup_btn_refresh": [
-    [
-      "message",
-      "aktualisieren"
-    ]
-  ],
-  "popup_btn_site": [
-    [
-      "message",
-      "website"
-    ]
-  ],
-  "popup_btn_done": [
-    [
-      "message",
-      "fertig"
-    ]
-  ],
-  "popup_login_prompt": [
-    [
-      "message",
-      "einloggen um Emotes zu synchronisieren"
-    ]
-  ],
-  "popup_channel_placeholder": [
-    [
-      "message",
-      "channel"
-    ]
-  ],
-  "popup_btn_popout": [
-    [
-      "message",
-      "ausklappen"
-    ]
-  ],
-  "popup_hint": [
-    [
-      "message",
-      "Emote-Einstellungen im Picker-Panel im Chat"
-    ]
-  ],
-  "welcome_title": [
-    [
-      "message",
-      "willkommen bei heatsync"
-    ]
-  ],
-  "welcome_tagline": [
-    [
-      "message",
-      "deine Emotes, überall im Chat"
-    ]
-  ],
-  "welcome_step1_title": [
-    [
-      "message",
-      "einloggen auf heatsync.org"
-    ]
-  ],
-  "welcome_step1_desc": [
-    [
-      "message",
-      "mit Twitch oder Kick anmelden um ein Konto zu erstellen"
-    ]
-  ],
-  "welcome_step2_title": [
-    [
-      "message",
-      "Emotes hochladen"
-    ]
-  ],
-  "welcome_step2_desc": [
-    [
-      "message",
-      "beliebige Bilder hinzufügen — keine Slot-Limits, alle Formate unterstützt"
-    ]
-  ],
-  "welcome_step3_title": [
-    [
-      "message",
-      "im Chat verwenden"
-    ]
-  ],
-  "welcome_step3_desc": [
-    [
-      "message",
-      "heatsync-Button im Twitch/Kick-Chat klicken um auf deine Emotes zuzugreifen"
-    ]
-  ],
-  "welcome_cta": [
-    [
-      "message",
-      "loslegen"
-    ]
-  ],
-  "welcome_privacy": [
-    [
-      "message",
-      "datenschutz"
-    ]
-  ],
-  "welcome_source": [
-    [
-      "message",
-      "quellcode"
-    ]
-  ],
-  "btn_auth_login": [
-    [
-      "message",
-      "einloggen"
-    ]
-  ],
-  "btn_auth_save_emotes": [
-    [
-      "message",
-      "um Emotes in deinem Set zu speichern"
-    ]
-  ],
-  "btn_tab_channel": [
-    [
-      "message",
-      "channel"
-    ]
-  ],
-  "btn_tab_global": [
-    [
-      "message",
-      "global"
-    ]
-  ],
-  "btn_tab_mine": [
-    [
-      "message",
-      "meine"
-    ]
-  ],
-  "btn_tab_emoji": [
-    [
-      "message",
-      "emoji"
-    ]
-  ],
-  "btn_search_placeholder": [
-    [
-      "message",
-      "Emotes suchen..."
-    ]
-  ],
-  "btn_rotate_title": [
-    [
-      "message",
-      "Tab-Leisten-Position rotieren"
-    ]
-  ],
-  "btn_settings_title": [
-    [
-      "message",
-      "einstellungen"
-    ]
-  ],
-  "btn_no_emotes": [
-    [
-      "message",
-      "keine Emotes"
-    ]
-  ],
-  "btn_login_save_emotes": [
-    [
-      "message",
-      "auf heatsync.org einloggen um Emotes zu speichern"
-    ]
-  ],
-  "btn_cached": [
-    [
-      "message",
-      "gecacht"
-    ]
-  ],
-  "btn_loading_emotes": [
-    [
-      "message",
-      "Emotes werden geladen"
-    ]
-  ],
-  "btn_no_third_party": [
-    [
-      "message",
-      "keine Drittanbieter-Emotes gefunden"
-    ]
-  ],
-  "btn_no_emotes_import": [
-    [
-      "message",
-      "keine Emotes zum Importieren"
-    ]
-  ],
-  "btn_import_count": [
-    [
-      "message",
-      "$COUNT$ Emotes importieren"
-    ],
-    [
-      "placeholders",
+  },
+  "popup_btn_emotes": {
+    "message": "emotes"
+  },
+  "popup_btn_refresh": {
+    "message": "aktualisieren"
+  },
+  "popup_btn_site": {
+    "message": "website"
+  },
+  "popup_btn_done": {
+    "message": "fertig"
+  },
+  "popup_login_prompt": {
+    "message": "einloggen um Emotes zu synchronisieren"
+  },
+  "popup_channel_placeholder": {
+    "message": "channel"
+  },
+  "popup_btn_popout": {
+    "message": "ausklappen"
+  },
+  "popup_hint": {
+    "message": "Emote-Einstellungen im Picker-Panel im Chat"
+  },
+  "welcome_title": {
+    "message": "willkommen bei heatsync"
+  },
+  "welcome_tagline": {
+    "message": "deine Emotes, überall im Chat"
+  },
+  "welcome_step1_title": {
+    "message": "einloggen auf heatsync.org"
+  },
+  "welcome_step1_desc": {
+    "message": "mit Twitch oder Kick anmelden um ein Konto zu erstellen"
+  },
+  "welcome_step2_title": {
+    "message": "Emotes hochladen"
+  },
+  "welcome_step2_desc": {
+    "message": "beliebige Bilder hinzufügen — keine Slot-Limits, alle Formate unterstützt"
+  },
+  "welcome_step3_title": {
+    "message": "im Chat verwenden"
+  },
+  "welcome_step3_desc": {
+    "message": "heatsync-Button im Twitch/Kick-Chat klicken um auf deine Emotes zuzugreifen"
+  },
+  "welcome_cta": {
+    "message": "loslegen"
+  },
+  "welcome_privacy": {
+    "message": "datenschutz"
+  },
+  "welcome_source": {
+    "message": "quellcode"
+  },
+  "btn_auth_login": {
+    "message": "einloggen"
+  },
+  "btn_auth_save_emotes": {
+    "message": "um Emotes in deinem Set zu speichern"
+  },
+  "btn_tab_channel": {
+    "message": "channel"
+  },
+  "btn_tab_global": {
+    "message": "global"
+  },
+  "btn_tab_mine": {
+    "message": "meine"
+  },
+  "btn_tab_emoji": {
+    "message": "emoji"
+  },
+  "btn_search_placeholder": {
+    "message": "Emotes suchen..."
+  },
+  "btn_rotate_title": {
+    "message": "Tab-Leisten-Position rotieren"
+  },
+  "btn_settings_title": {
+    "message": "einstellungen"
+  },
+  "btn_no_emotes": {
+    "message": "keine Emotes"
+  },
+  "btn_login_save_emotes": {
+    "message": "auf heatsync.org einloggen um Emotes zu speichern"
+  },
+  "btn_cached": {
+    "message": "gecacht"
+  },
+  "btn_loading_emotes": {
+    "message": "Emotes werden geladen"
+  },
+  "btn_no_third_party": {
+    "message": "keine Drittanbieter-Emotes gefunden"
+  },
+  "btn_no_emotes_import": {
+    "message": "keine Emotes zum Importieren"
+  },
+  "btn_import_count": {
+    "message": "$COUNT$ Emotes importieren",
+    "placeholders": [
       [
+        "count",
         [
-          "count",
           [
-            [
-              "content",
-              "$1"
-            ]
+            "content",
+            "$1"
           ]
         ]
       ]
     ]
-  ],
-  "btn_failed_load": [
-    [
-      "message",
-      "Emotes konnten nicht geladen werden"
-    ]
-  ],
-  "btn_retry_loading": [
-    [
-      "message",
-      "erneut laden"
-    ]
-  ],
-  "btn_ctx_block": [
-    [
-      "message",
-      "Emote blockieren"
-    ]
-  ],
-  "btn_ctx_unblock": [
-    [
-      "message",
-      "Emote entsperren"
-    ]
-  ],
-  "btn_ctx_remove_inventory": [
-    [
-      "message",
-      "aus Inventar entfernen"
-    ]
-  ],
-  "btn_ctx_add_inventory": [
-    [
-      "message",
-      "zu Inventar hinzufügen"
-    ]
-  ],
-  "btn_ctx_copy_name": [
-    [
-      "message",
-      "Emote-Name kopieren"
-    ]
-  ],
-  "btn_ctx_copy_url": [
-    [
-      "message",
-      "Emote-URL kopieren"
-    ]
-  ],
-  "btn_toast_unblocked": [
-    [
-      "message",
-      "entsperrt"
-    ]
-  ],
-  "btn_toast_blocked": [
-    [
-      "message",
-      "blockiert"
-    ]
-  ],
-  "btn_toast_removed": [
-    [
-      "message",
-      "entfernt"
-    ]
-  ],
-  "btn_toast_added": [
-    [
-      "message",
-      "hinzugefügt"
-    ]
-  ],
-  "btn_toast_copied": [
-    [
-      "message",
-      "kopiert!"
-    ]
-  ],
-  "btn_settings_tab_completion": [
-    [
-      "message",
-      "tab-vervollständigung"
-    ]
-  ],
-  "btn_settings_chat_ui": [
-    [
-      "message",
-      "chat-ui"
-    ]
-  ],
-  "btn_settings_input": [
-    [
-      "message",
-      "eingabe"
-    ]
-  ],
-  "btn_settings_wysiwyg": [
-    [
-      "message",
-      "wysiwyg-Emotes"
-    ]
-  ],
-  "btn_settings_space_after": [
-    [
-      "message",
-      "Leerzeichen nach Emote"
-    ]
-  ],
-  "btn_settings_placeholder_mode": [
-    [
-      "message",
-      "platzhalter-modus"
-    ]
-  ],
-  "btn_settings_placeholder_desc": [
-    [
-      "message",
-      "farbige Boxen anzeigen"
-    ]
-  ],
-  "btn_settings_hide_header": [
-    [
-      "message",
-      "header ausblenden"
-    ]
-  ],
-  "btn_settings_always_popout": [
-    [
-      "message",
-      "(immer aktiv im Popout)"
-    ]
-  ],
-  "btn_settings_compact_input": [
-    [
-      "message",
-      "kompakte Eingabe"
-    ]
-  ],
-  "btn_settings_highlight_mentions": [
-    [
-      "message",
-      "Erwähnungen hervorheben"
-    ]
-  ],
-  "btn_settings_platform_badges": [
-    [
-      "message",
-      "Plattform-Badges"
-    ]
-  ],
-  "btn_settings_platform_badges_desc": [
-    [
-      "message",
-      "[T] [K] [YT] auf Nachrichten"
-    ]
-  ],
-  "btn_settings_cosmetics": [
-    [
-      "message",
-      "kosmetik"
-    ]
-  ],
-  "btn_settings_cosmetics_desc": [
-    [
-      "message",
-      "7TV/BTTV/FFZ Paints + Badges"
-    ]
-  ],
-  "btn_settings_vi_mode": [
-    [
-      "message",
-      "vi-modus"
-    ]
-  ],
-  "btn_settings_vi_mode_desc": [
-    [
-      "message",
-      "vim-Tastenkürzel für die Chat-Eingabe"
-    ]
-  ],
-  "btn_size_1x": [
-    [
-      "message",
-      "1x"
-    ]
-  ],
-  "btn_size_2x": [
-    [
-      "message",
-      "2x"
-    ]
-  ],
-  "btn_size_4x": [
-    [
-      "message",
-      "4x"
-    ]
-  ],
-  "btn_expand": [
-    [
-      "message",
-      "erweitern"
-    ]
-  ],
-  "btn_collapse": [
-    [
-      "message",
-      "einklappen"
-    ]
-  ],
-  "btn_block_all": [
-    [
-      "message",
-      "alle blockieren"
-    ]
-  ],
-  "btn_show_all": [
-    [
-      "message",
-      "alle anzeigen"
-    ]
-  ],
-  "btn_click_expand": [
-    [
-      "message",
-      "klicken zum Erweitern"
-    ]
-  ],
-  "content_toast_failed_add": [
-    [
-      "message",
-      "Hinzufügen von $NAME$ fehlgeschlagen: $ERROR$"
-    ],
-    [
-      "placeholders",
+  },
+  "btn_failed_load": {
+    "message": "Emotes konnten nicht geladen werden"
+  },
+  "btn_retry_loading": {
+    "message": "erneut laden"
+  },
+  "btn_ctx_block": {
+    "message": "Emote blockieren"
+  },
+  "btn_ctx_unblock": {
+    "message": "Emote entsperren"
+  },
+  "btn_ctx_remove_inventory": {
+    "message": "aus Inventar entfernen"
+  },
+  "btn_ctx_add_inventory": {
+    "message": "zu Inventar hinzufügen"
+  },
+  "btn_ctx_copy_name": {
+    "message": "Emote-Name kopieren"
+  },
+  "btn_ctx_copy_url": {
+    "message": "Emote-URL kopieren"
+  },
+  "btn_toast_unblocked": {
+    "message": "entsperrt"
+  },
+  "btn_toast_blocked": {
+    "message": "blockiert"
+  },
+  "btn_toast_removed": {
+    "message": "entfernt"
+  },
+  "btn_toast_added": {
+    "message": "hinzugefügt"
+  },
+  "btn_toast_copied": {
+    "message": "kopiert!"
+  },
+  "btn_settings_tab_completion": {
+    "message": "tab-vervollständigung"
+  },
+  "btn_settings_chat_ui": {
+    "message": "chat-ui"
+  },
+  "btn_settings_input": {
+    "message": "eingabe"
+  },
+  "btn_settings_wysiwyg": {
+    "message": "wysiwyg-Emotes"
+  },
+  "btn_settings_space_after": {
+    "message": "Leerzeichen nach Emote"
+  },
+  "btn_settings_placeholder_mode": {
+    "message": "platzhalter-modus"
+  },
+  "btn_settings_placeholder_desc": {
+    "message": "farbige Boxen anzeigen"
+  },
+  "btn_settings_hide_header": {
+    "message": "header ausblenden"
+  },
+  "btn_settings_always_popout": {
+    "message": "(immer aktiv im Popout)"
+  },
+  "btn_settings_compact_input": {
+    "message": "kompakte Eingabe"
+  },
+  "btn_settings_highlight_mentions": {
+    "message": "Erwähnungen hervorheben"
+  },
+  "btn_settings_platform_badges": {
+    "message": "Plattform-Badges"
+  },
+  "btn_settings_platform_badges_desc": {
+    "message": "[T] [K] [YT] auf Nachrichten"
+  },
+  "btn_settings_cosmetics": {
+    "message": "kosmetik"
+  },
+  "btn_settings_cosmetics_desc": {
+    "message": "7TV/BTTV/FFZ Paints + Badges"
+  },
+  "btn_settings_vi_mode": {
+    "message": "vi-modus"
+  },
+  "btn_settings_vi_mode_desc": {
+    "message": "vim-Tastenkürzel für die Chat-Eingabe"
+  },
+  "btn_size_1x": {
+    "message": "1x"
+  },
+  "btn_size_2x": {
+    "message": "2x"
+  },
+  "btn_size_4x": {
+    "message": "4x"
+  },
+  "btn_expand": {
+    "message": "erweitern"
+  },
+  "btn_collapse": {
+    "message": "einklappen"
+  },
+  "btn_block_all": {
+    "message": "alle blockieren"
+  },
+  "btn_show_all": {
+    "message": "alle anzeigen"
+  },
+  "btn_click_expand": {
+    "message": "klicken zum Erweitern"
+  },
+  "content_toast_failed_add": {
+    "message": "Hinzufügen von $NAME$ fehlgeschlagen: $ERROR$",
+    "placeholders": [
       [
+        "name",
         [
-          "name",
           [
-            [
-              "content",
-              "$1"
-            ]
+            "content",
+            "$1"
           ]
-        ],
+        ]
+      ],
+      [
+        "error",
         [
-          "error",
           [
-            [
-              "content",
-              "$2"
-            ]
+            "content",
+            "$2"
           ]
         ]
       ]
     ]
-  ],
-  "content_toast_failed_remove": [
-    [
-      "message",
-      "Entfernen von $NAME$ fehlgeschlagen: $ERROR$"
-    ],
-    [
-      "placeholders",
+  },
+  "content_toast_failed_remove": {
+    "message": "Entfernen von $NAME$ fehlgeschlagen: $ERROR$",
+    "placeholders": [
       [
+        "name",
         [
-          "name",
           [
-            [
-              "content",
-              "$1"
-            ]
+            "content",
+            "$1"
           ]
-        ],
+        ]
+      ],
+      [
+        "error",
         [
-          "error",
           [
-            [
-              "content",
-              "$2"
-            ]
+            "content",
+            "$2"
           ]
         ]
       ]
     ]
-  ],
-  "content_toast_unblocked": [
-    [
-      "message",
-      "$NAME$ entsperrt"
-    ],
-    [
-      "placeholders",
+  },
+  "content_toast_unblocked": {
+    "message": "$NAME$ entsperrt",
+    "placeholders": [
       [
+        "name",
         [
-          "name",
           [
-            [
-              "content",
-              "$1"
-            ]
+            "content",
+            "$1"
           ]
         ]
       ]
     ]
-  ],
-  "content_toast_failed_unblock": [
-    [
-      "message",
-      "Entsperren fehlgeschlagen: $ERROR$"
-    ],
-    [
-      "placeholders",
+  },
+  "content_toast_failed_unblock": {
+    "message": "Entsperren fehlgeschlagen: $ERROR$",
+    "placeholders": [
       [
+        "error",
         [
-          "error",
           [
-            [
-              "content",
-              "$1"
-            ]
+            "content",
+            "$1"
           ]
         ]
       ]
     ]
-  ],
-  "content_toast_removed": [
-    [
-      "message",
-      "$NAME$ aus deinem Set entfernt"
-    ],
-    [
-      "placeholders",
+  },
+  "content_toast_removed": {
+    "message": "$NAME$ aus deinem Set entfernt",
+    "placeholders": [
       [
+        "name",
         [
-          "name",
           [
-            [
-              "content",
-              "$1"
-            ]
+            "content",
+            "$1"
           ]
         ]
       ]
     ]
-  ],
-  "content_toast_failed_block": [
-    [
-      "message",
-      "Blockieren fehlgeschlagen: $ERROR$"
-    ],
-    [
-      "placeholders",
+  },
+  "content_toast_failed_block": {
+    "message": "Blockieren fehlgeschlagen: $ERROR$",
+    "placeholders": [
       [
+        "error",
         [
-          "error",
           [
-            [
-              "content",
-              "$1"
-            ]
+            "content",
+            "$1"
           ]
         ]
       ]
     ]
-  ],
-  "content_toast_blocked": [
-    [
-      "message",
-      "$NAME$ blockiert"
-    ],
-    [
-      "placeholders",
+  },
+  "content_toast_blocked": {
+    "message": "$NAME$ blockiert",
+    "placeholders": [
       [
+        "name",
         [
-          "name",
           [
-            [
-              "content",
-              "$1"
-            ]
+            "content",
+            "$1"
           ]
         ]
       ]
     ]
-  ],
-  "content_toast_unmuted": [
-    [
-      "message",
-      "$NAME$ stummschaltung aufgehoben"
-    ],
-    [
-      "placeholders",
+  },
+  "content_toast_unmuted": {
+    "message": "$NAME$ stummschaltung aufgehoben",
+    "placeholders": [
       [
+        "name",
         [
-          "name",
           [
-            [
-              "content",
-              "$1"
-            ]
+            "content",
+            "$1"
           ]
         ]
       ]
     ]
-  ],
-  "content_toast_muted_24h": [
-    [
-      "message",
-      "$NAME$ für 24h stummgeschaltet"
-    ],
-    [
-      "placeholders",
+  },
+  "content_toast_muted_24h": {
+    "message": "$NAME$ für 24h stummgeschaltet",
+    "placeholders": [
       [
+        "name",
         [
-          "name",
           [
-            [
-              "content",
-              "$1"
-            ]
+            "content",
+            "$1"
           ]
         ]
       ]
     ]
-  ],
-  "content_card_follows_you": [
-    [
-      "message",
-      "folgt dir"
-    ]
-  ],
-  "content_card_subs_to_you": [
-    [
-      "message",
-      "ist bei dir sub"
-    ]
-  ],
-  "content_card_you_follow": [
-    [
-      "message",
-      "du folgst"
-    ]
-  ],
-  "content_card_you_sub": [
-    [
-      "message",
-      "du bist sub"
-    ]
-  ],
-  "content_card_you_sub_tier": [
-    [
-      "message",
-      "du bist sub T$TIER$"
-    ],
-    [
-      "placeholders",
+  },
+  "content_card_follows_you": {
+    "message": "folgt dir"
+  },
+  "content_card_subs_to_you": {
+    "message": "ist bei dir sub"
+  },
+  "content_card_you_follow": {
+    "message": "du folgst"
+  },
+  "content_card_you_sub": {
+    "message": "du bist sub"
+  },
+  "content_card_you_sub_tier": {
+    "message": "du bist sub T$TIER$",
+    "placeholders": [
       [
+        "tier",
         [
-          "tier",
           [
-            [
-              "content",
-              "$1"
-            ]
+            "content",
+            "$1"
           ]
         ]
       ]
     ]
-  ],
-  "content_card_subbed": [
-    [
-      "message",
-      "sub bei $CHANNEL$ $TENURE$"
-    ],
-    [
-      "placeholders",
+  },
+  "content_card_subbed": {
+    "message": "sub bei $CHANNEL$ $TENURE$",
+    "placeholders": [
       [
+        "channel",
         [
-          "channel",
           [
-            [
-              "content",
-              "$1"
-            ]
+            "content",
+            "$1"
           ]
-        ],
+        ]
+      ],
+      [
+        "tenure",
         [
-          "tenure",
           [
-            [
-              "content",
-              "$2"
-            ]
+            "content",
+            "$2"
           ]
         ]
       ]
     ]
-  ],
-  "content_card_following": [
-    [
-      "message",
-      "folgt $CHANNEL$ $AGE$"
-    ],
-    [
-      "placeholders",
+  },
+  "content_card_following": {
+    "message": "folgt $CHANNEL$ $AGE$",
+    "placeholders": [
       [
+        "channel",
         [
-          "channel",
           [
-            [
-              "content",
-              "$1"
-            ]
+            "content",
+            "$1"
           ]
-        ],
+        ]
+      ],
+      [
+        "age",
         [
-          "age",
           [
-            [
-              "content",
-              "$2"
-            ]
+            "content",
+            "$2"
           ]
         ]
       ]
     ]
-  ],
-  "content_card_not_following": [
-    [
-      "message",
-      "folgt $CHANNEL$ nicht"
-    ],
-    [
-      "placeholders",
+  },
+  "content_card_not_following": {
+    "message": "folgt $CHANNEL$ nicht",
+    "placeholders": [
       [
+        "channel",
         [
-          "channel",
           [
-            [
-              "content",
-              "$1"
-            ]
+            "content",
+            "$1"
           ]
         ]
       ]
     ]
-  ],
-  "content_card_followed_by": [
-    [
-      "message",
-      "gefolgt von $CHANNEL$"
-    ],
-    [
-      "placeholders",
+  },
+  "content_card_followed_by": {
+    "message": "gefolgt von $CHANNEL$",
+    "placeholders": [
       [
+        "channel",
         [
-          "channel",
           [
-            [
-              "content",
-              "$1"
-            ]
+            "content",
+            "$1"
           ]
         ]
       ]
     ]
-  ],
-  "content_card_following_count": [
-    [
-      "message",
-      "folgt $COUNT$"
-    ],
-    [
-      "placeholders",
+  },
+  "content_card_following_count": {
+    "message": "folgt $COUNT$",
+    "placeholders": [
       [
+        "count",
         [
-          "count",
           [
-            [
-              "content",
-              "$1"
-            ]
+            "content",
+            "$1"
           ]
         ]
       ]
     ]
-  ],
-  "content_card_followers": [
-    [
-      "message",
-      "$COUNT$ Follower"
-    ],
-    [
-      "placeholders",
+  },
+  "content_card_followers": {
+    "message": "$COUNT$ Follower",
+    "placeholders": [
       [
+        "count",
         [
-          "count",
           [
-            [
-              "content",
-              "$1"
-            ]
+            "content",
+            "$1"
           ]
         ]
       ]
     ]
-  ],
-  "content_card_partner": [
-    [
-      "message",
-      "partner"
-    ]
-  ],
-  "content_card_affiliate": [
-    [
-      "message",
-      "affiliate"
-    ]
-  ],
-  "content_card_live": [
-    [
-      "message",
-      "LIVE $VIEWERS$"
-    ],
-    [
-      "placeholders",
+  },
+  "content_card_partner": {
+    "message": "partner"
+  },
+  "content_card_affiliate": {
+    "message": "affiliate"
+  },
+  "content_card_live": {
+    "message": "LIVE $VIEWERS$",
+    "placeholders": [
       [
+        "viewers",
         [
-          "viewers",
           [
-            [
-              "content",
-              "$1"
-            ]
+            "content",
+            "$1"
           ]
         ]
       ]
     ]
-  ],
-  "content_card_twitch_verified": [
-    [
-      "message",
-      "Twitch Verified"
-    ]
-  ],
-  "content_card_kick_verified": [
-    [
-      "message",
-      "Kick Verified"
-    ]
-  ],
-  "content_view_on_heatsync": [
-    [
-      "message",
-      "auf heatsync ansehen"
-    ]
-  ],
-  "content_in_your_set": [
-    [
-      "message",
-      "in deinem Set"
-    ]
-  ],
-  "content_click_to_add": [
-    [
-      "message",
-      "klicken zum Hinzufügen"
-    ]
-  ],
-  "content_blocked_click_unblock": [
-    [
-      "message",
-      "blockiert (klicken zum Entsperren)"
-    ]
-  ],
-  "mc_tab_feed": [
-    [
-      "message",
-      "feed"
-    ]
-  ],
-  "mc_tab_whispers": [
-    [
-      "message",
-      "flüstern"
-    ]
-  ],
-  "mc_tab_mentions": [
-    [
-      "message",
-      "erwähnungen"
-    ]
-  ],
-  "mc_tab_activity": [
-    [
-      "message",
-      "aktivität"
-    ]
-  ],
-  "mc_tab_live": [
-    [
-      "message",
-      "live"
-    ]
-  ],
+  },
+  "content_card_twitch_verified": {
+    "message": "Twitch Verified"
+  },
+  "content_card_kick_verified": {
+    "message": "Kick Verified"
+  },
+  "content_view_on_heatsync": {
+    "message": "auf heatsync ansehen"
+  },
+  "content_in_your_set": {
+    "message": "in deinem Set"
+  },
+  "content_click_to_add": {
+    "message": "klicken zum Hinzufügen"
+  },
+  "content_blocked_click_unblock": {
+    "message": "blockiert (klicken zum Entsperren)"
+  },
+  "mc_tab_feed": {
+    "message": "feed"
+  },
+  "mc_tab_whispers": {
+    "message": "flüstern"
+  },
+  "mc_tab_mentions": {
+    "message": "erwähnungen"
+  },
+  "mc_tab_activity": {
+    "message": "aktivität"
+  },
+  "mc_tab_live": {
+    "message": "live"
+  },
   "mc_tab_discover": {
     "message": "discover"
   },
   "mc_tab_pinned": {
     "message": "pinned"
   },
-  "mc_tab_live_channel": [
-    [
-      "message",
-      "live · $CHANNEL$"
-    ],
-    [
-      "placeholders",
+  "mc_tab_live_channel": {
+    "message": "live · $CHANNEL$",
+    "placeholders": [
       [
+        "channel",
         [
-          "channel",
           [
-            [
-              "content",
-              "$1"
-            ]
+            "content",
+            "$1"
           ]
         ]
       ]
     ]
-  ],
-  "mc_btn_rotate_tabs": [
-    [
-      "message",
-      "Tabs rotieren (T)"
-    ]
-  ],
-  "mc_btn_smaller_text": [
-    [
-      "message",
-      "kleinerer Text"
-    ]
-  ],
-  "mc_btn_larger_text": [
-    [
-      "message",
-      "größerer Text"
-    ]
-  ],
-  "mc_btn_settings": [
-    [
-      "message",
-      "einstellungen"
-    ]
-  ],
-  "mc_new_messages": [
-    [
-      "message",
-      "$COUNT$ neu"
-    ],
-    [
-      "placeholders",
+  },
+  "mc_btn_rotate_tabs": {
+    "message": "Tabs rotieren (T)"
+  },
+  "mc_btn_smaller_text": {
+    "message": "kleinerer Text"
+  },
+  "mc_btn_larger_text": {
+    "message": "größerer Text"
+  },
+  "mc_btn_settings": {
+    "message": "einstellungen"
+  },
+  "mc_new_messages": {
+    "message": "$COUNT$ neu",
+    "placeholders": [
       [
+        "count",
         [
-          "count",
           [
-            [
-              "content",
-              "$1"
-            ]
+            "content",
+            "$1"
           ]
         ]
       ]
     ]
-  ],
-  "mc_resume": [
-    [
-      "message",
-      "fortsetzen"
-    ]
-  ],
-  "mc_no_messages": [
-    [
-      "message",
-      "noch keine Nachrichten"
-    ]
-  ],
-  "mc_no_activity": [
-    [
-      "message",
-      "noch keine Aktivität"
-    ]
-  ],
-  "mc_add_channel": [
-    [
-      "message",
-      "channel hinzufügen"
-    ]
-  ],
-  "mc_enter_platform": [
-    [
-      "message",
-      "mindestens eine Plattform eingeben"
-    ]
-  ],
-  "mc_username_placeholder": [
-    [
-      "message",
-      "benutzername"
-    ]
-  ],
-  "mc_username_url_placeholder": [
-    [
-      "message",
-      "benutzername oder url"
-    ]
-  ],
-  "mc_reserved_name": [
-    [
-      "message",
-      "reservierter name"
-    ]
-  ],
-  "mc_channel_exists": [
-    [
-      "message",
-      "channel existiert bereits"
-    ]
-  ],
-  "mc_twitch_exists": [
-    [
-      "message",
-      "Twitch-Channel bereits hinzugefügt"
-    ]
-  ],
-  "mc_kick_exists": [
-    [
-      "message",
-      "Kick-Channel bereits hinzugefügt"
-    ]
-  ],
-  "mc_edit_channel": [
-    [
-      "message",
-      "$CHANNEL$ bearbeiten"
-    ],
-    [
-      "placeholders",
+  },
+  "mc_resume": {
+    "message": "fortsetzen"
+  },
+  "mc_no_messages": {
+    "message": "noch keine Nachrichten"
+  },
+  "mc_no_activity": {
+    "message": "noch keine Aktivität"
+  },
+  "mc_add_channel": {
+    "message": "channel hinzufügen"
+  },
+  "mc_enter_platform": {
+    "message": "mindestens eine Plattform eingeben"
+  },
+  "mc_username_placeholder": {
+    "message": "benutzername"
+  },
+  "mc_username_url_placeholder": {
+    "message": "benutzername oder url"
+  },
+  "mc_reserved_name": {
+    "message": "reservierter name"
+  },
+  "mc_channel_exists": {
+    "message": "channel existiert bereits"
+  },
+  "mc_twitch_exists": {
+    "message": "Twitch-Channel bereits hinzugefügt"
+  },
+  "mc_kick_exists": {
+    "message": "Kick-Channel bereits hinzugefügt"
+  },
+  "mc_edit_channel": {
+    "message": "$CHANNEL$ bearbeiten",
+    "placeholders": [
       [
+        "channel",
         [
-          "channel",
           [
-            [
-              "content",
-              "$1"
-            ]
+            "content",
+            "$1"
           ]
         ]
       ]
     ]
-  ],
-  "mc_no_channel_detected": [
-    [
-      "message",
-      "kein channel erkannt"
-    ]
-  ],
-  "mc_settings_display": [
-    [
-      "message",
-      "anzeige"
-    ]
-  ],
-  "mc_settings_emote_size": [
-    [
-      "message",
-      "Emote-Größe"
-    ]
-  ],
-  "mc_settings_input_preview": [
-    [
-      "message",
-      "eingabe-vorschau"
-    ]
-  ],
-  "mc_settings_clickable_links": [
-    [
-      "message",
-      "klickbare links"
-    ]
-  ],
-  "mc_settings_vi_mode": [
-    [
-      "message",
-      "vi-modus"
-    ]
-  ],
-  "mc_settings_zebra": [
-    [
-      "message",
-      "zebra-streifen"
-    ]
-  ],
-  "mc_settings_auto_hide": [
-    [
-      "message",
-      "eingabe automatisch ausblenden"
-    ]
-  ],
-  "mc_settings_timestamps": [
-    [
-      "message",
-      "zeitstempel"
-    ]
-  ],
-  "mc_settings_avatars": [
-    [
-      "message",
-      "avatare"
-    ]
-  ],
-  "mc_settings_emote_size_desc": [
-    [
-      "message",
-      "Auflösungsmultiplikator für Emotes im Chat. 1x ist knackig und kompakt, 2x ist der Sweet Spot für die meisten Displays, 4x ist für alle, die jeden Pixel der Emote-Kunst sehen wollen."
-    ]
-  ],
-  "mc_settings_input_preview_desc": [
-    [
-      "message",
-      "Zeigt Emotes direkt als Bilder im Eingabefeld während des Tippens, statt als einfache Textnamen. Was du siehst, wird gesendet."
-    ]
-  ],
-  "mc_settings_clickable_links_desc": [
-    [
-      "message",
-      "Macht URLs in Chat-Nachrichten zu klickbaren Hyperlinks. Deaktivieren, wenn du lieber kopierst oder Fremden im Internet nicht traust."
-    ]
-  ],
-  "mc_settings_vi_mode_desc": [
-    [
-      "message",
-      "Vim-ähnliche Tastenkürzel für die Chat-Navigation. j/k zum Scrollen, g/G für oben/unten, / zum Suchen. Für alle, die denken, Mäuse sind für Casuals."
-    ]
-  ],
-  "mc_settings_zebra_desc": [
-    [
-      "message",
-      "Abwechselnde Zeilenschattierung bei Chat-Nachrichten. Erleichtert das Lesen langer Nachrichten, besonders bei schnellem Chat."
-    ]
-  ],
-  "mc_settings_auto_hide_desc": [
-    [
-      "message",
-      "Blendet die Eingabeleiste aus, wenn du keine Nachricht verfasst. Klicken oder tippen, um sie wieder einzublenden. Maximiert den Chat-Anzeigebereich."
-    ]
-  ],
-  "mc_settings_timestamps_desc": [
-    [
-      "message",
-      "Zeigt den Sendezeitpunkt jeder Nachricht direkt neben dem Benutzernamen. Praktisch, um nachzuvollziehen, was während einer AFK-Phase passiert ist."
-    ]
-  ],
-  "mc_settings_avatars_desc": [
-    [
-      "message",
-      "Zeigt Profilbilder neben Benutzernamen im Chat. Erleichtert die visuelle Erkennung von Stammgästen, kostet etwas vertikalen Platz."
-    ]
-  ],
-  "mc_settings_inline_notifs": [
-    [
-      "message",
-      "inline-benachrichtigungen"
-    ]
-  ],
-  "mc_settings_notif_op": [
-    [
-      "message",
-      "[OP] originalbeiträge"
-    ]
-  ],
-  "mc_settings_notif_op_reply": [
-    [
-      "message",
-      "[OP] OP antwortet im eigenen Thread"
-    ]
-  ],
-  "mc_settings_notif_re": [
-    [
-      "message",
-      "[RE] antworten"
-    ]
-  ],
-  "mc_settings_notif_dm": [
-    [
-      "message",
-      "[DM] flüstern & DMs"
-    ]
-  ],
-  "mc_settings_notif_op_desc": [
-    [
-      "message",
-      "Benachrichtigung im aktiven Chat-Tab, wenn jemand einen neuen Originalbeitrag im Feed erstellt."
-    ]
-  ],
-  "mc_settings_notif_op_reply_desc": [
-    [
-      "message",
-      "Benachrichtigung, wenn der ursprüngliche Autor im eigenen Thread antwortet."
-    ]
-  ],
-  "mc_settings_notif_re_desc": [
-    [
-      "message",
-      "Benachrichtigung für jede Antwort in einem beliebigen Thread im Feed."
-    ]
-  ],
-  "mc_settings_notif_dm_desc": [
-    [
-      "message",
-      "Benachrichtigung, wenn du eine Flüsternachricht oder DM erhältst."
-    ]
-  ],
-  "mc_settings_twitch_events": [
-    [
-      "message",
-      "Twitch-Events"
-    ]
-  ],
-  "mc_settings_raids": [
-    [
-      "message",
-      "raids"
-    ]
-  ],
-  "mc_settings_hype_trains": [
-    [
-      "message",
-      "hype trains"
-    ]
-  ],
-  "mc_settings_gift_subs": [
-    [
-      "message",
-      "gift subs"
-    ]
-  ],
-  "mc_settings_redeems": [
-    [
-      "message",
-      "channel point redeems"
-    ]
-  ],
-  "mc_settings_prediction_banner": [
-    [
-      "message",
-      "prediction-banner"
-    ]
-  ],
-  "mc_settings_poll_banner": [
-    [
-      "message",
-      "umfrage-banner"
-    ]
-  ],
-  "mc_settings_pinned_messages": [
-    [
-      "message",
-      "angeheftete Nachrichten"
-    ]
-  ],
-  "mc_settings_features": [
-    [
-      "message",
-      "funktionen"
-    ]
-  ],
-  "mc_settings_auto_claim": [
-    [
-      "message",
-      "channel points automatisch einlösen"
-    ]
-  ],
-  "mc_settings_auto_claim_desc": [
-    [
-      "message",
-      "Klickt automatisch auf die Bonus-Channel-Points-Truhe auf Twitch, wenn sie erscheint. Gratis Punkte, null Aufwand."
-    ]
-  ],
-  "mc_settings_muted_users": [
-    [
-      "message",
-      "stummgeschaltete nutzer"
-    ]
-  ],
-  "mc_settings_no_muted": [
-    [
-      "message",
-      "keine stummgeschalteten nutzer"
-    ]
-  ],
-  "mc_settings_unmute": [
-    [
-      "message",
-      "stummschaltung aufheben"
-    ]
-  ],
-  "mc_pred_no_active": [
-    [
-      "message",
-      "keine aktive Prediction"
-    ]
-  ],
-  "mc_pred_new": [
-    [
-      "message",
-      "+ neue Prediction"
-    ]
-  ],
-  "mc_pred_title_placeholder": [
-    [
-      "message",
-      "Prediction-Titel"
-    ]
-  ],
-  "mc_pred_option1": [
-    [
-      "message",
-      "option 1 (blau)"
-    ]
-  ],
-  "mc_pred_option2": [
-    [
-      "message",
-      "option 2 (pink)"
-    ]
-  ],
-  "mc_pred_duration": [
-    [
-      "message",
-      "dauer:"
-    ]
-  ],
-  "mc_pred_create": [
-    [
-      "message",
-      "Prediction erstellen"
-    ]
-  ],
-  "mc_pred_refunded": [
-    [
-      "message",
-      "erstattet"
-    ]
-  ],
-  "mc_pred_locked": [
-    [
-      "message",
-      "gesperrt"
-    ]
-  ],
-  "mc_pred_winner": [
-    [
-      "message",
-      "gewinner"
-    ]
-  ],
-  "mc_pred_won": [
-    [
-      "message",
-      " gewonnen"
-    ]
-  ],
-  "mc_pred_lost": [
-    [
-      "message",
-      " verloren"
-    ]
-  ],
-  "mc_pred_lock_betting": [
-    [
-      "message",
-      "Wetten sperren"
-    ]
-  ],
-  "mc_pred_cancel_refund": [
-    [
-      "message",
-      "abbrechen (erstatten)"
-    ]
-  ],
-  "mc_pred_pick_winner": [
-    [
-      "message",
-      "Gewinner wählen"
-    ]
-  ],
-  "mc_pred_pick_winner_your_bet": [
-    [
-      "message",
-      "Gewinner wählen (dein Einsatz)"
-    ]
-  ],
-  "mc_pred_failed_load": [
-    [
-      "message",
-      "Predictions konnten nicht geladen werden"
-    ]
-  ],
-  "mc_pred_bet_own": [
-    [
-      "message",
-      "kann nicht auf eigene wetten"
-    ]
-  ],
-  "mc_pred_try_again": [
-    [
-      "message",
-      "erneut versuchen"
-    ]
-  ],
-  "mc_pred_ended": [
-    [
-      "message",
-      "Prediction beendet"
-    ]
-  ],
-  "mc_pred_betting_locked": [
-    [
-      "message",
-      "Wetten gesperrt"
-    ]
-  ],
-  "mc_pred_not_enough": [
-    [
-      "message",
-      "nicht genug Punkte"
-    ]
-  ],
-  "mc_pred_already_bet": [
-    [
-      "message",
-      "bereits gewettet"
-    ]
-  ],
-  "mc_pred_no_permission": [
-    [
-      "message",
-      "keine Berechtigung"
-    ]
-  ],
-  "mc_pred_failed": [
-    [
-      "message",
-      "fehlgeschlagen"
-    ]
-  ],
-  "mc_pred_no_event": [
-    [
-      "message",
-      "kein Event"
-    ]
-  ],
-  "mc_pred_no_outcome": [
-    [
-      "message",
-      "kein Ergebnis"
-    ]
-  ],
-  "mc_pred_closing": [
-    [
-      "message",
-      "wird geschlossen..."
-    ]
-  ],
-  "mc_pred_you_bet": [
-    [
-      "message",
-      "du hast $POINTS$ auf $OUTCOME$ gewettet — wähle den echten Gewinner"
-    ],
-    [
-      "placeholders",
+  },
+  "mc_no_channel_detected": {
+    "message": "kein channel erkannt"
+  },
+  "mc_settings_display": {
+    "message": "anzeige"
+  },
+  "mc_settings_emote_size": {
+    "message": "Emote-Größe"
+  },
+  "mc_settings_input_preview": {
+    "message": "eingabe-vorschau"
+  },
+  "mc_settings_clickable_links": {
+    "message": "klickbare links"
+  },
+  "mc_settings_vi_mode": {
+    "message": "vi-modus"
+  },
+  "mc_settings_zebra": {
+    "message": "zebra-streifen"
+  },
+  "mc_settings_auto_hide": {
+    "message": "eingabe automatisch ausblenden"
+  },
+  "mc_settings_timestamps": {
+    "message": "zeitstempel"
+  },
+  "mc_settings_avatars": {
+    "message": "avatare"
+  },
+  "mc_settings_emote_size_desc": {
+    "message": "Auflösungsmultiplikator für Emotes im Chat. 1x ist knackig und kompakt, 2x ist der Sweet Spot für die meisten Displays, 4x ist für alle, die jeden Pixel der Emote-Kunst sehen wollen."
+  },
+  "mc_settings_input_preview_desc": {
+    "message": "Zeigt Emotes direkt als Bilder im Eingabefeld während des Tippens, statt als einfache Textnamen. Was du siehst, wird gesendet."
+  },
+  "mc_settings_clickable_links_desc": {
+    "message": "Macht URLs in Chat-Nachrichten zu klickbaren Hyperlinks. Deaktivieren, wenn du lieber kopierst oder Fremden im Internet nicht traust."
+  },
+  "mc_settings_vi_mode_desc": {
+    "message": "Vim-ähnliche Tastenkürzel für die Chat-Navigation. j/k zum Scrollen, g/G für oben/unten, / zum Suchen. Für alle, die denken, Mäuse sind für Casuals."
+  },
+  "mc_settings_zebra_desc": {
+    "message": "Abwechselnde Zeilenschattierung bei Chat-Nachrichten. Erleichtert das Lesen langer Nachrichten, besonders bei schnellem Chat."
+  },
+  "mc_settings_auto_hide_desc": {
+    "message": "Blendet die Eingabeleiste aus, wenn du keine Nachricht verfasst. Klicken oder tippen, um sie wieder einzublenden. Maximiert den Chat-Anzeigebereich."
+  },
+  "mc_settings_timestamps_desc": {
+    "message": "Zeigt den Sendezeitpunkt jeder Nachricht direkt neben dem Benutzernamen. Praktisch, um nachzuvollziehen, was während einer AFK-Phase passiert ist."
+  },
+  "mc_settings_avatars_desc": {
+    "message": "Zeigt Profilbilder neben Benutzernamen im Chat. Erleichtert die visuelle Erkennung von Stammgästen, kostet etwas vertikalen Platz."
+  },
+  "mc_settings_inline_notifs": {
+    "message": "inline-benachrichtigungen"
+  },
+  "mc_settings_notif_op": {
+    "message": "[OP] originalbeiträge"
+  },
+  "mc_settings_notif_op_reply": {
+    "message": "[OP] OP antwortet im eigenen Thread"
+  },
+  "mc_settings_notif_re": {
+    "message": "[RE] antworten"
+  },
+  "mc_settings_notif_dm": {
+    "message": "[DM] flüstern & DMs"
+  },
+  "mc_settings_notif_op_desc": {
+    "message": "Benachrichtigung im aktiven Chat-Tab, wenn jemand einen neuen Originalbeitrag im Feed erstellt."
+  },
+  "mc_settings_notif_op_reply_desc": {
+    "message": "Benachrichtigung, wenn der ursprüngliche Autor im eigenen Thread antwortet."
+  },
+  "mc_settings_notif_re_desc": {
+    "message": "Benachrichtigung für jede Antwort in einem beliebigen Thread im Feed."
+  },
+  "mc_settings_notif_dm_desc": {
+    "message": "Benachrichtigung, wenn du eine Flüsternachricht oder DM erhältst."
+  },
+  "mc_settings_twitch_events": {
+    "message": "Twitch-Events"
+  },
+  "mc_settings_raids": {
+    "message": "raids"
+  },
+  "mc_settings_hype_trains": {
+    "message": "hype trains"
+  },
+  "mc_settings_gift_subs": {
+    "message": "gift subs"
+  },
+  "mc_settings_redeems": {
+    "message": "channel point redeems"
+  },
+  "mc_settings_prediction_banner": {
+    "message": "prediction-banner"
+  },
+  "mc_settings_poll_banner": {
+    "message": "umfrage-banner"
+  },
+  "mc_settings_pinned_messages": {
+    "message": "angeheftete Nachrichten"
+  },
+  "mc_settings_features": {
+    "message": "funktionen"
+  },
+  "mc_settings_auto_claim": {
+    "message": "channel points automatisch einlösen"
+  },
+  "mc_settings_auto_claim_desc": {
+    "message": "Klickt automatisch auf die Bonus-Channel-Points-Truhe auf Twitch, wenn sie erscheint. Gratis Punkte, null Aufwand."
+  },
+  "mc_settings_muted_users": {
+    "message": "stummgeschaltete nutzer"
+  },
+  "mc_settings_no_muted": {
+    "message": "keine stummgeschalteten nutzer"
+  },
+  "mc_settings_unmute": {
+    "message": "stummschaltung aufheben"
+  },
+  "mc_pred_no_active": {
+    "message": "keine aktive Prediction"
+  },
+  "mc_pred_new": {
+    "message": "+ neue Prediction"
+  },
+  "mc_pred_title_placeholder": {
+    "message": "Prediction-Titel"
+  },
+  "mc_pred_option1": {
+    "message": "option 1 (blau)"
+  },
+  "mc_pred_option2": {
+    "message": "option 2 (pink)"
+  },
+  "mc_pred_duration": {
+    "message": "dauer:"
+  },
+  "mc_pred_create": {
+    "message": "Prediction erstellen"
+  },
+  "mc_pred_refunded": {
+    "message": "erstattet"
+  },
+  "mc_pred_locked": {
+    "message": "gesperrt"
+  },
+  "mc_pred_winner": {
+    "message": "gewinner"
+  },
+  "mc_pred_won": {
+    "message": " gewonnen"
+  },
+  "mc_pred_lost": {
+    "message": " verloren"
+  },
+  "mc_pred_lock_betting": {
+    "message": "Wetten sperren"
+  },
+  "mc_pred_cancel_refund": {
+    "message": "abbrechen (erstatten)"
+  },
+  "mc_pred_pick_winner": {
+    "message": "Gewinner wählen"
+  },
+  "mc_pred_pick_winner_your_bet": {
+    "message": "Gewinner wählen (dein Einsatz)"
+  },
+  "mc_pred_failed_load": {
+    "message": "Predictions konnten nicht geladen werden"
+  },
+  "mc_pred_bet_own": {
+    "message": "kann nicht auf eigene wetten"
+  },
+  "mc_pred_try_again": {
+    "message": "erneut versuchen"
+  },
+  "mc_pred_ended": {
+    "message": "Prediction beendet"
+  },
+  "mc_pred_betting_locked": {
+    "message": "Wetten gesperrt"
+  },
+  "mc_pred_not_enough": {
+    "message": "nicht genug Punkte"
+  },
+  "mc_pred_already_bet": {
+    "message": "bereits gewettet"
+  },
+  "mc_pred_no_permission": {
+    "message": "keine Berechtigung"
+  },
+  "mc_pred_failed": {
+    "message": "fehlgeschlagen"
+  },
+  "mc_pred_no_event": {
+    "message": "kein Event"
+  },
+  "mc_pred_no_outcome": {
+    "message": "kein Ergebnis"
+  },
+  "mc_pred_closing": {
+    "message": "wird geschlossen..."
+  },
+  "mc_pred_you_bet": {
+    "message": "du hast $POINTS$ auf $OUTCOME$ gewettet — wähle den echten Gewinner",
+    "placeholders": [
       [
+        "points",
         [
-          "points",
           [
-            [
-              "content",
-              "$1"
-            ]
+            "content",
+            "$1"
           ]
-        ],
+        ]
+      ],
+      [
+        "outcome",
         [
-          "outcome",
           [
-            [
-              "content",
-              "$2"
-            ]
+            "content",
+            "$2"
           ]
         ]
       ]
     ]
-  ],
-  "mc_poll_new": [
-    [
-      "message",
-      "+ neue Umfrage"
-    ]
-  ],
-  "mc_poll_question": [
-    [
-      "message",
-      "Umfragefrage"
-    ]
-  ],
-  "mc_poll_choice": [
-    [
-      "message",
-      "option $NUM$"
-    ],
-    [
-      "placeholders",
+  },
+  "mc_poll_new": {
+    "message": "+ neue Umfrage"
+  },
+  "mc_poll_question": {
+    "message": "Umfragefrage"
+  },
+  "mc_poll_choice": {
+    "message": "option $NUM$",
+    "placeholders": [
       [
+        "num",
         [
-          "num",
           [
-            [
-              "content",
-              "$1"
-            ]
+            "content",
+            "$1"
           ]
         ]
       ]
     ]
-  ],
-  "mc_poll_choice_optional": [
-    [
-      "message",
-      "option $NUM$ (optional)"
-    ],
-    [
-      "placeholders",
+  },
+  "mc_poll_choice_optional": {
+    "message": "option $NUM$ (optional)",
+    "placeholders": [
       [
+        "num",
         [
-          "num",
           [
-            [
-              "content",
-              "$1"
-            ]
+            "content",
+            "$1"
           ]
         ]
       ]
     ]
-  ],
-  "mc_poll_create": [
-    [
-      "message",
-      "Umfrage erstellen"
-    ]
-  ],
-  "mc_poll_end": [
-    [
-      "message",
-      "Umfrage beenden"
-    ]
-  ],
-  "mc_poll_votes": [
-    [
-      "message",
-      "$COUNT$ Stimmen"
-    ],
-    [
-      "placeholders",
+  },
+  "mc_poll_create": {
+    "message": "Umfrage erstellen"
+  },
+  "mc_poll_end": {
+    "message": "Umfrage beenden"
+  },
+  "mc_poll_votes": {
+    "message": "$COUNT$ Stimmen",
+    "placeholders": [
       [
+        "count",
         [
-          "count",
           [
-            [
-              "content",
-              "$1"
-            ]
+            "content",
+            "$1"
           ]
         ]
       ]
     ]
-  ],
-  "mc_poll_vote_single": [
-    [
-      "message",
-      "$COUNT$ Stimme"
-    ],
-    [
-      "placeholders",
+  },
+  "mc_poll_vote_single": {
+    "message": "$COUNT$ Stimme",
+    "placeholders": [
       [
+        "count",
         [
-          "count",
           [
-            [
-              "content",
-              "$1"
-            ]
+            "content",
+            "$1"
           ]
         ]
       ]
     ]
-  ],
-  "mc_poll_already_active": [
-    [
-      "message",
-      "Umfrage bereits aktiv"
-    ]
-  ],
-  "mc_poll_not_logged_in": [
-    [
-      "message",
-      "nicht eingeloggt"
-    ]
-  ],
-  "mc_reward_rewards": [
-    [
-      "message",
-      "belohnungen"
-    ]
-  ],
-  "mc_reward_none": [
-    [
-      "message",
-      "keine Belohnungen verfügbar"
-    ]
-  ],
-  "mc_reward_paused": [
-    [
-      "message",
-      "pausiert"
-    ]
-  ],
-  "mc_reward_out_of_stock": [
-    [
-      "message",
-      "ausverkauft"
-    ]
-  ],
-  "mc_reward_cooldown_min": [
-    [
-      "message",
-      "$MIN$m cooldown"
-    ],
-    [
-      "placeholders",
+  },
+  "mc_poll_already_active": {
+    "message": "Umfrage bereits aktiv"
+  },
+  "mc_poll_not_logged_in": {
+    "message": "nicht eingeloggt"
+  },
+  "mc_reward_rewards": {
+    "message": "belohnungen"
+  },
+  "mc_reward_none": {
+    "message": "keine Belohnungen verfügbar"
+  },
+  "mc_reward_paused": {
+    "message": "pausiert"
+  },
+  "mc_reward_out_of_stock": {
+    "message": "ausverkauft"
+  },
+  "mc_reward_cooldown_min": {
+    "message": "$MIN$m cooldown",
+    "placeholders": [
       [
+        "min",
         [
-          "min",
           [
-            [
-              "content",
-              "$1"
-            ]
+            "content",
+            "$1"
           ]
         ]
       ]
     ]
-  ],
-  "mc_reward_cooldown_sec": [
-    [
-      "message",
-      "$SEC$s cooldown"
-    ],
-    [
-      "placeholders",
+  },
+  "mc_reward_cooldown_sec": {
+    "message": "$SEC$s cooldown",
+    "placeholders": [
       [
+        "sec",
         [
-          "sec",
           [
-            [
-              "content",
-              "$1"
-            ]
+            "content",
+            "$1"
           ]
         ]
       ]
     ]
-  ],
-  "mc_reward_enter_text": [
-    [
-      "message",
-      "Text eingeben..."
-    ]
-  ],
-  "mc_reward_redeem": [
-    [
-      "message",
-      "einlösen"
-    ]
-  ],
-  "mc_chat_username_color": [
-    [
-      "message",
-      "benutzernamen-farbe"
-    ]
-  ],
-  "mc_chat_hex_placeholder": [
-    [
-      "message",
-      "#hex"
-    ]
-  ],
-  "mc_chat_modes": [
-    [
-      "message",
-      "chat-modi"
-    ]
-  ],
-  "mc_chat_emote_only": [
-    [
-      "message",
-      "nur Emotes"
-    ]
-  ],
-  "mc_chat_follower": [
-    [
-      "message",
-      "follower"
-    ]
-  ],
-  "mc_chat_slow": [
-    [
-      "message",
-      "langsam"
-    ]
-  ],
-  "mc_chat_sub_only": [
-    [
-      "message",
-      "nur subs"
-    ]
-  ],
-  "mc_chat_unique": [
-    [
-      "message",
-      "einzigartig"
-    ]
-  ],
-  "mc_chat_hype_train": [
-    [
-      "message",
-      "hype train"
-    ]
-  ],
-  "mc_chat_hype_level": [
-    [
-      "message",
-      "lvl $LEVEL$"
-    ],
-    [
-      "placeholders",
+  },
+  "mc_reward_enter_text": {
+    "message": "Text eingeben..."
+  },
+  "mc_reward_redeem": {
+    "message": "einlösen"
+  },
+  "mc_chat_username_color": {
+    "message": "benutzernamen-farbe"
+  },
+  "mc_chat_hex_placeholder": {
+    "message": "#hex"
+  },
+  "mc_chat_modes": {
+    "message": "chat-modi"
+  },
+  "mc_chat_emote_only": {
+    "message": "nur Emotes"
+  },
+  "mc_chat_follower": {
+    "message": "follower"
+  },
+  "mc_chat_slow": {
+    "message": "langsam"
+  },
+  "mc_chat_sub_only": {
+    "message": "nur subs"
+  },
+  "mc_chat_unique": {
+    "message": "einzigartig"
+  },
+  "mc_chat_hype_train": {
+    "message": "hype train"
+  },
+  "mc_chat_hype_level": {
+    "message": "lvl $LEVEL$",
+    "placeholders": [
       [
+        "level",
         [
-          "level",
           [
-            [
-              "content",
-              "$1"
-            ]
+            "content",
+            "$1"
           ]
         ]
       ]
     ]
-  ],
-  "mc_input_send_message": [
-    [
-      "message",
-      "Nachricht senden..."
-    ]
-  ],
-  "mc_input_post_heatsync": [
-    [
-      "message",
-      "auf heatsync posten..."
-    ]
-  ],
-  "mc_input_send_channel": [
-    [
-      "message",
-      "an #$CHANNEL$ senden"
-    ],
-    [
-      "placeholders",
+  },
+  "mc_input_send_message": {
+    "message": "Nachricht senden..."
+  },
+  "mc_input_post_heatsync": {
+    "message": "auf heatsync posten..."
+  },
+  "mc_input_send_channel": {
+    "message": "an #$CHANNEL$ senden",
+    "placeholders": [
       [
+        "channel",
         [
-          "channel",
           [
-            [
-              "content",
-              "$1"
-            ]
+            "content",
+            "$1"
           ]
         ]
       ]
     ]
-  ],
-  "mc_input_replying_to": [
-    [
-      "message",
-      "Antwort an @$USER$"
-    ],
-    [
-      "placeholders",
+  },
+  "mc_input_replying_to": {
+    "message": "Antwort an @$USER$",
+    "placeholders": [
       [
+        "user",
         [
-          "user",
           [
-            [
-              "content",
-              "$1"
-            ]
+            "content",
+            "$1"
           ]
         ]
       ]
     ]
-  ],
-  "mc_input_cancel_reply": [
-    [
-      "message",
-      "Antwort abbrechen"
-    ]
-  ],
-  "mc_input_not_logged_in": [
-    [
-      "message",
-      "nicht eingeloggt"
-    ]
-  ],
-  "mc_input_login_kick": [
-    [
-      "message",
-      "zuerst bei kick.com einloggen"
-    ]
-  ],
-  "mc_input_open_kick": [
-    [
-      "message",
-      "kick.com in einem Tab öffnen"
-    ]
-  ],
-  "mc_input_kick_not_found": [
-    [
-      "message",
-      "Kick-Channel nicht gefunden"
-    ]
-  ],
-  "mc_input_send_failed": [
-    [
-      "message",
-      "senden fehlgeschlagen"
-    ]
-  ],
-  "mc_input_no_username": [
-    [
-      "message",
-      "kein Benutzername erkannt"
-    ]
-  ],
-  "mc_input_auth_failed": [
-    [
-      "message",
-      "auth fehlgeschlagen — erneut bei Twitch einloggen"
-    ]
-  ],
-  "mc_input_connection_failed": [
-    [
-      "message",
-      "verbindung fehlgeschlagen — erneut versuchen"
-    ]
-  ],
-  "mc_input_send_failed_retry": [
-    [
-      "message",
-      "senden fehlgeschlagen — erneut versuchen"
-    ]
-  ],
-  "mc_social_back": [
-    [
-      "message",
-      "<- zurück"
-    ]
-  ],
-  "mc_social_no_posts": [
-    [
-      "message",
-      "noch keine Beiträge"
-    ]
-  ],
-  "mc_social_loading_feed": [
-    [
-      "message",
-      "following-feed wird geladen..."
-    ]
-  ],
-  "mc_social_scroll_more": [
-    [
-      "message",
-      "scrollen für mehr..."
-    ]
-  ],
-  "mc_social_no_replies": [
-    [
-      "message",
-      "noch keine Antworten"
-    ]
-  ],
-  "mc_social_login_first": [
-    [
-      "message",
-      "zuerst auf heatsync.org einloggen"
-    ]
-  ],
-  "mc_social_login_activity": [
-    [
-      "message",
-      "auf heatsync.org einloggen um Aktivität zu sehen"
-    ]
-  ],
-  "mc_social_failed_feed_auth": [
-    [
-      "message",
-      "feed konnte nicht geladen werden — auf heatsync.org einloggen"
-    ]
-  ],
-  "mc_social_failed_feed": [
-    [
-      "message",
-      "feed konnte nicht geladen werden"
-    ]
-  ],
-  "mc_social_log_in_first": [
-    [
-      "message",
-      "zuerst einloggen"
-    ]
-  ],
-  "mc_social_slow_down": [
-    [
-      "message",
-      "langsamer"
-    ]
-  ],
-  "mc_social_duplicate": [
-    [
-      "message",
-      "doppelte Nachricht"
-    ]
-  ],
-  "mc_social_failed_post": [
-    [
-      "message",
-      "posten fehlgeschlagen"
-    ]
-  ],
-  "mc_tip_emoji": [
-    [
-      "message",
-      "emoji"
-    ]
-  ],
-  "mc_tip_subbed": [
-    [
-      "message",
-      "sub bei $CHANNEL$ $TENURE$"
-    ],
-    [
-      "placeholders",
+  },
+  "mc_input_cancel_reply": {
+    "message": "Antwort abbrechen"
+  },
+  "mc_input_not_logged_in": {
+    "message": "nicht eingeloggt"
+  },
+  "mc_input_login_kick": {
+    "message": "zuerst bei kick.com einloggen"
+  },
+  "mc_input_open_kick": {
+    "message": "kick.com in einem Tab öffnen"
+  },
+  "mc_input_kick_not_found": {
+    "message": "Kick-Channel nicht gefunden"
+  },
+  "mc_input_send_failed": {
+    "message": "senden fehlgeschlagen"
+  },
+  "mc_input_no_username": {
+    "message": "kein Benutzername erkannt"
+  },
+  "mc_input_auth_failed": {
+    "message": "auth fehlgeschlagen — erneut bei Twitch einloggen"
+  },
+  "mc_input_connection_failed": {
+    "message": "verbindung fehlgeschlagen — erneut versuchen"
+  },
+  "mc_input_send_failed_retry": {
+    "message": "senden fehlgeschlagen — erneut versuchen"
+  },
+  "mc_social_back": {
+    "message": "<- zurück"
+  },
+  "mc_social_no_posts": {
+    "message": "noch keine Beiträge"
+  },
+  "mc_social_loading_feed": {
+    "message": "following-feed wird geladen..."
+  },
+  "mc_social_scroll_more": {
+    "message": "scrollen für mehr..."
+  },
+  "mc_social_no_replies": {
+    "message": "noch keine Antworten"
+  },
+  "mc_social_login_first": {
+    "message": "zuerst auf heatsync.org einloggen"
+  },
+  "mc_social_login_activity": {
+    "message": "auf heatsync.org einloggen um Aktivität zu sehen"
+  },
+  "mc_social_failed_feed_auth": {
+    "message": "feed konnte nicht geladen werden — auf heatsync.org einloggen"
+  },
+  "mc_social_failed_feed": {
+    "message": "feed konnte nicht geladen werden"
+  },
+  "mc_social_log_in_first": {
+    "message": "zuerst einloggen"
+  },
+  "mc_social_slow_down": {
+    "message": "langsamer"
+  },
+  "mc_social_duplicate": {
+    "message": "doppelte Nachricht"
+  },
+  "mc_social_failed_post": {
+    "message": "posten fehlgeschlagen"
+  },
+  "mc_tip_emoji": {
+    "message": "emoji"
+  },
+  "mc_tip_subbed": {
+    "message": "sub bei $CHANNEL$ $TENURE$",
+    "placeholders": [
       [
+        "channel",
         [
-          "channel",
           [
-            [
-              "content",
-              "$1"
-            ]
+            "content",
+            "$1"
           ]
-        ],
+        ]
+      ],
+      [
+        "tenure",
         [
-          "tenure",
           [
-            [
-              "content",
-              "$2"
-            ]
+            "content",
+            "$2"
           ]
         ]
       ]
     ]
-  ],
-  "mc_tip_following": [
-    [
-      "message",
-      "folgt $CHANNEL$ $AGE$"
-    ],
-    [
-      "placeholders",
+  },
+  "mc_tip_following": {
+    "message": "folgt $CHANNEL$ $AGE$",
+    "placeholders": [
       [
+        "channel",
         [
-          "channel",
           [
-            [
-              "content",
-              "$1"
-            ]
+            "content",
+            "$1"
           ]
-        ],
+        ]
+      ],
+      [
+        "age",
         [
-          "age",
           [
-            [
-              "content",
-              "$2"
-            ]
+            "content",
+            "$2"
           ]
         ]
       ]
     ]
-  ],
-  "mc_tip_not_following": [
-    [
-      "message",
-      "folgt $CHANNEL$ nicht"
-    ],
-    [
-      "placeholders",
+  },
+  "mc_tip_not_following": {
+    "message": "folgt $CHANNEL$ nicht",
+    "placeholders": [
       [
+        "channel",
         [
-          "channel",
           [
-            [
-              "content",
-              "$1"
-            ]
+            "content",
+            "$1"
           ]
         ]
       ]
     ]
-  ],
-  "mc_tip_followed_by": [
-    [
-      "message",
-      "gefolgt von $CHANNEL$"
-    ],
-    [
-      "placeholders",
+  },
+  "mc_tip_followed_by": {
+    "message": "gefolgt von $CHANNEL$",
+    "placeholders": [
       [
+        "channel",
         [
-          "channel",
           [
-            [
-              "content",
-              "$1"
-            ]
+            "content",
+            "$1"
           ]
         ]
       ]
     ]
-  ],
-  "mc_tip_followers": [
-    [
-      "message",
-      "$COUNT$ Follower"
-    ],
-    [
-      "placeholders",
+  },
+  "mc_tip_followers": {
+    "message": "$COUNT$ Follower",
+    "placeholders": [
       [
+        "count",
         [
-          "count",
           [
-            [
-              "content",
-              "$1"
-            ]
+            "content",
+            "$1"
           ]
         ]
       ]
     ]
-  ],
-  "mc_whisper_hint": [
-    [
-      "message",
-      "/w user msg · /dm user msg · /r msg"
-    ]
-  ],
-  "mc_whisper_login": [
-    [
-      "message",
-      "auf heatsync.org einloggen um Flüsternachrichten zu senden"
-    ]
-  ],
-  "mc_whisper_user_not_found": [
-    [
-      "message",
-      "Twitch-Nutzer \"$USER$\" nicht gefunden"
-    ],
-    [
-      "placeholders",
+  },
+  "mc_whisper_hint": {
+    "message": "/w user msg · /dm user msg · /r msg"
+  },
+  "mc_whisper_login": {
+    "message": "auf heatsync.org einloggen um Flüsternachrichten zu senden"
+  },
+  "mc_whisper_user_not_found": {
+    "message": "Twitch-Nutzer \"$USER$\" nicht gefunden",
+    "placeholders": [
       [
+        "user",
         [
-          "user",
           [
-            [
-              "content",
-              "$1"
-            ]
+            "content",
+            "$1"
           ]
         ]
       ]
     ]
-  ],
-  "mc_whisper_resolve_failed": [
-    [
-      "message",
-      "Twitch-Nutzer konnte nicht aufgelöst werden"
-    ]
-  ],
-  "mc_whisper_hs_not_found": [
-    [
-      "message",
-      "heatsync-Nutzer \"$USER$\" nicht gefunden"
-    ],
-    [
-      "placeholders",
+  },
+  "mc_whisper_resolve_failed": {
+    "message": "Twitch-Nutzer konnte nicht aufgelöst werden"
+  },
+  "mc_whisper_hs_not_found": {
+    "message": "heatsync-Nutzer \"$USER$\" nicht gefunden",
+    "placeholders": [
       [
+        "user",
         [
-          "user",
           [
-            [
-              "content",
-              "$1"
-            ]
+            "content",
+            "$1"
           ]
         ]
       ]
     ]
-  ],
-  "mc_irc_chat_cleared": [
-    [
-      "message",
-      "Chat wurde geleert"
-    ]
-  ],
-  "mc_irc_msg_deleted": [
-    [
-      "message",
-      "Nachricht von $USER$ gelöscht"
-    ],
-    [
-      "placeholders",
+  },
+  "mc_irc_chat_cleared": {
+    "message": "Chat wurde geleert"
+  },
+  "mc_irc_msg_deleted": {
+    "message": "Nachricht von $USER$ gelöscht",
+    "placeholders": [
       [
+        "user",
         [
-          "user",
           [
-            [
-              "content",
-              "$1"
-            ]
+            "content",
+            "$1"
           ]
         ]
       ]
     ]
-  ],
-  "mc_irc_gift_subs": [
-    [
-      "message",
-      "$USER$ hat $AMOUNT$ Subs an $CHANNEL$ verschenkt"
-    ],
-    [
-      "placeholders",
+  },
+  "mc_irc_gift_subs": {
+    "message": "$USER$ hat $AMOUNT$ Subs an $CHANNEL$ verschenkt",
+    "placeholders": [
       [
+        "user",
         [
-          "user",
           [
-            [
-              "content",
-              "$1"
-            ]
+            "content",
+            "$1"
           ]
-        ],
+        ]
+      ],
+      [
+        "amount",
         [
-          "amount",
           [
-            [
-              "content",
-              "$2"
-            ]
+            "content",
+            "$2"
           ]
-        ],
+        ]
+      ],
+      [
+        "channel",
         [
-          "channel",
           [
-            [
-              "content",
-              "$3"
-            ]
+            "content",
+            "$3"
           ]
         ]
       ]
     ]
-  ],
-  "mc_yt_connected": [
-    [
-      "message",
-      "YouTube verbunden: $CHANNEL$ — warte auf Nachrichten..."
-    ],
-    [
-      "placeholders",
+  },
+  "mc_yt_connected": {
+    "message": "YouTube verbunden: $CHANNEL$ — warte auf Nachrichten...",
+    "placeholders": [
       [
+        "channel",
         [
-          "channel",
           [
-            [
-              "content",
-              "$1"
-            ]
+            "content",
+            "$1"
           ]
         ]
       ]
     ]
-  ],
-  "mc_yt_ended": [
-    [
-      "message",
-      "YouTube-Stream beendet"
-    ]
-  ],
-  "mc_yt_error": [
-    [
-      "message",
-      "YouTube-Verbindungsfehler"
-    ]
-  ],
-  "mc_emote_search_placeholder": [
-    [
-      "message",
-      "Emotes suchen..."
-    ]
-  ],
-  "mc_emote_no_loaded": [
-    [
-      "message",
-      "keine Emotes geladen"
-    ]
-  ],
-  "mc_emote_in_set": [
-    [
-      "message",
-      "in deinem Set"
-    ]
-  ],
-  "mc_emote_click_add": [
-    [
-      "message",
-      "klicken zum Hinzufügen"
-    ]
-  ],
-  "mc_emote_blocked": [
-    [
-      "message",
-      "blockiert (klicken zum Entsperren)"
-    ]
-  ],
-  "content_toast_unknown_error": [
-    [
-      "message",
-      "Unbekannter Fehler"
-    ]
-  ],
-  "content_toast_loading_emotes": [
-    [
-      "message",
-      "Emotes werden geladen..."
-    ]
-  ],
-  "content_toast_fetching_emotes": [
-    [
-      "message",
-      "Emotes werden abgerufen..."
-    ]
-  ],
-  "content_card_action_ban": [
-    [
-      "message",
-      "bannen"
-    ]
-  ],
-  "content_card_action_unban": [
-    [
-      "message",
-      "entbannen"
-    ]
-  ],
-  "content_card_action_block": [
-    [
-      "message",
-      "blockieren"
-    ]
-  ],
-  "btn_close": [
-    [
-      "message",
-      "Schließen"
-    ]
-  ],
-  "btn_error_channel": [
-    [
-      "message",
-      "Channel-Emotes konnten nicht geladen werden"
-    ]
-  ],
-  "btn_error_global": [
-    [
-      "message",
-      "Globale Emotes konnten nicht geladen werden"
-    ]
-  ],
-  "btn_error_inventory": [
-    [
-      "message",
-      "Deine Emotes konnten nicht geladen werden"
-    ]
-  ]
+  },
+  "mc_yt_ended": {
+    "message": "YouTube-Stream beendet"
+  },
+  "mc_yt_error": {
+    "message": "YouTube-Verbindungsfehler"
+  },
+  "mc_emote_search_placeholder": {
+    "message": "Emotes suchen..."
+  },
+  "mc_emote_no_loaded": {
+    "message": "keine Emotes geladen"
+  },
+  "mc_emote_in_set": {
+    "message": "in deinem Set"
+  },
+  "mc_emote_click_add": {
+    "message": "klicken zum Hinzufügen"
+  },
+  "mc_emote_blocked": {
+    "message": "blockiert (klicken zum Entsperren)"
+  },
+  "content_toast_unknown_error": {
+    "message": "Unbekannter Fehler"
+  },
+  "content_toast_loading_emotes": {
+    "message": "Emotes werden geladen..."
+  },
+  "content_toast_fetching_emotes": {
+    "message": "Emotes werden abgerufen..."
+  },
+  "content_card_action_ban": {
+    "message": "bannen"
+  },
+  "content_card_action_unban": {
+    "message": "entbannen"
+  },
+  "content_card_action_block": {
+    "message": "blockieren"
+  },
+  "btn_close": {
+    "message": "Schließen"
+  },
+  "btn_error_channel": {
+    "message": "Channel-Emotes konnten nicht geladen werden"
+  },
+  "btn_error_global": {
+    "message": "Globale Emotes konnten nicht geladen werden"
+  },
+  "btn_error_inventory": {
+    "message": "Deine Emotes konnten nicht geladen werden"
+  }
 }

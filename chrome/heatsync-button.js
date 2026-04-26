@@ -2445,8 +2445,8 @@
 
         const previewImg = document.createElement('img')
         previewImg.referrerPolicy = 'no-referrer'
-        const previewUrl = getResolutionUrl(getAnimatedUrl(e.url), '4x')
-        previewImg.src = previewUrl
+        const previewUrl = safeUrl(getResolutionUrl(getAnimatedUrl(e.url), '4x'))
+        if (previewUrl) previewImg.src = previewUrl
         previewImg.alt = e.name
 
         const nameLabel = document.createElement('div')
@@ -3838,13 +3838,8 @@
     }
 
     if (platform === 'youtube') {
-      // YouTube: contenteditable div inside live chat iframe
-      const currentText = chatInput.textContent || ''
-      const needsSpace = currentText.length > 0 && !currentText.endsWith(' ')
-      const textToInsert = (needsSpace ? ' ' : '') + emoteName + ' '
-
-      chatInput.focus()
-      document.execCommand('insertText', false, textToInsert)
+      // YouTube: delegate to youtube-content.js via message (execCommand deprecated)
+      chrome.runtime.sendMessage({ type: 'youtube_insert_emote', emoteName })
     } else if (platform === 'kick') {
       // Kick: contenteditable div.editor-input
       const currentText = chatInput.textContent || '';
@@ -3978,7 +3973,8 @@
 
     // Kick fallback — anchor near the chat input area
     if (!anchor && window.location.hostname.includes('kick.com')) {
-      anchor = document.querySelector('.chat-footer') ||
+      anchor = document.querySelector('[class*="chatroom-footer"]') ||
+               document.querySelector('.chat-footer') ||
                document.querySelector('[class*="chat-input"]')?.parentElement ||
                document.querySelector('#message-input')?.parentElement;
       insertAfter = false; // append inside the container on Kick

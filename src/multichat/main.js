@@ -153,8 +153,9 @@
       .then(url => {
         avatarFetching.delete(key)
         _activeAvatarFetches--
-        if (!url || !url.startsWith('https://')) return
-        avatarCache.set(key, url.trim())
+        const safe = safeUrl((url || '').trim())
+        if (!safe) return
+        avatarCache.set(key, safe)
         if (avatarCache.size > 500) {
           avatarCache.delete(avatarCache.keys().next().value)
         }

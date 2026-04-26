@@ -163,7 +163,6 @@ const CONFIG = {
     KICK_CHAT_CONTAINER: '#chatroom-messages',
     KICK_CHAT_CONTAINER_INNER: '#chatroom-messages .no-scrollbar',
     KICK_CHAT_ROOM: '#channel-chatroom',
-    KICK_CHAT_INPUT: '[data-testid="chat-input"]',
     KICK_CHAT_MESSAGES: '[data-index]',
     KICK_IDENTITY: '.chat-identity-name',
 

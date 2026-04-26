@@ -457,6 +457,22 @@ function listenForSocialEvents() {
         systemMsg: msg.systemMsg || undefined,
       }
 
+      // Same pipeline as Twitch/Kick handlers: automod → mention → stats
+      if (ytMsg.user?.toLowerCase() !== currentUsername?.toLowerCase() && shouldAutomod(ytMsg.text)) return
+      const isMent = isMention(ytMsg)
+      bumpStreamStats(ytMsg.channel, ytMsg, isMent)
+      if (isMent) {
+        mentionsBuffer.push(ytMsg)
+        if (mentionsBuffer.length > MAX_BUFFER + 50) mentionsBuffer.splice(0, mentionsBuffer.length - MAX_BUFFER)
+        notifyMention(ytMsg)
+        if (currentTab === 'mentions') {
+          mentionsSeenCount = mentionsBuffer.length
+          if (!appendMessage(ytMsg, 'mentions')) renderMessages('mentions')
+        } else {
+          updateTabIndicator('mentions')
+        }
+      }
+
       if (targetChannelId && targetChannelId !== 'global') {
         // Auto-YouTube for live tab
         if (targetChannelId === '__live_yt_auto__') {

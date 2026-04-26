@@ -101,14 +101,16 @@
     global: null,
     mine: null,
     sets: null,
-    history: null
+    history: null,
+    discover: null
   };
   let isLoading = {
     channel: false,
     global: false,
     mine: false,
     sets: false,
-    history: false
+    history: false,
+    discover: false
   };
   let isOffline = false;
   let usingCachedData = {
@@ -116,7 +118,8 @@
     global: false,
     mine: false,
     sets: false,
-    history: false
+    history: false,
+    discover: false
   };
 
   // Removed emotes history — lazy-loaded on first 'history' tab open
@@ -127,6 +130,11 @@
   // Loaded lazy on first 'sets' tab open via api_fetch through background.
   let savedSetsCache = []
   let setsLoaded = false
+
+  // Discover/trending — lazy-loaded on first 'discover' tab open
+  let discoverEmotesCache = []
+  let discoverLoaded = false
+  let discoverShareUrl = null
 
   // IndexedDB cache for emote metadata
   const DB_NAME = 'heatsync-emote-cache';
@@ -1379,6 +1387,105 @@
         margin: 4px 0;
       }
 
+      /* Context menu inline input (rename/move) */
+      .hs-emote-ctx-input {
+        display: block;
+        width: calc(100% - 16px);
+        margin: 4px 8px;
+        padding: 5px 8px;
+        background: #1a1a1a;
+        border: 1px solid #808080;
+        border-radius: 2px;
+        color: #fff;
+        font-size: 12px;
+        outline: none;
+      }
+      .hs-emote-ctx-input:focus { border-color: #ff8700; }
+      .hs-emote-ctx-confirm {
+        display: block;
+        width: calc(100% - 16px);
+        margin: 2px 8px 6px;
+        padding: 4px 8px;
+        background: #ff8700;
+        border: none;
+        border-radius: 2px;
+        color: #000;
+        font-size: 12px;
+        font-weight: 600;
+        cursor: pointer;
+        text-align: center;
+      }
+      .hs-emote-ctx-confirm:hover { background: #fff; }
+
+      /* Import-channel button above channel emote grid */
+      .hs-import-channel-bar {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 6px 8px;
+        border-bottom: 1px solid rgba(255,255,255,0.08);
+        flex-shrink: 0;
+      }
+      .hs-import-channel-btn {
+        flex: 1;
+        padding: 5px 10px;
+        background: none;
+        border: 1px solid #ff8700;
+        color: #ff8700;
+        font-size: 11px;
+        font-weight: 600;
+        cursor: pointer;
+        text-align: center;
+        border-radius: 0;
+      }
+      .hs-import-channel-btn:hover { background: #ff8700; color: #000; }
+      .hs-import-channel-btn:disabled { opacity: 0.4; cursor: wait; }
+
+      /* Discover tab list */
+      .hs-discover-list {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        padding: 8px;
+      }
+      .hs-discover-item {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 6px 8px;
+        background: rgba(255,255,255,0.04);
+        border: 1px solid #333;
+      }
+      .hs-discover-item:hover { background: rgba(255,255,255,0.08); }
+      .hs-discover-thumb {
+        width: 32px;
+        height: 32px;
+        object-fit: contain;
+        flex-shrink: 0;
+      }
+      .hs-discover-name {
+        flex: 1;
+        font-size: 12px;
+        color: #fff;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .hs-discover-add-btn {
+        background: none;
+        border: 1px solid #ff8700;
+        color: #ff8700;
+        font-size: 11px;
+        font-weight: 600;
+        padding: 3px 8px;
+        cursor: pointer;
+        flex-shrink: 0;
+        border-radius: 0;
+      }
+      .hs-discover-add-btn:hover { background: #ff8700; color: #000; }
+      .hs-discover-add-btn.added { border-color: #00cc66; color: #00cc66; background: none; cursor: default; }
+      .hs-discover-add-btn:disabled { opacity: 0.4; cursor: wait; }
+
     `;
     document.head.appendChild(style);
   }
@@ -1804,6 +1911,9 @@
           <button class="heatsync-tab" data-tab="emoji">
             ${t('btn_tab_emoji')}<span class="heatsync-tab-count" id="count-emoji">...</span>
           </button>
+          <button class="heatsync-tab" data-tab="discover">
+            discover<span class="heatsync-tab-count" id="count-discover">...</span>
+          </button>
         </div>
         <div class="heatsync-emote-grid" id="heatsync-emote-grid">
           <div class="heatsync-empty">${t('common_loading')}</div>
@@ -1997,6 +2107,10 @@
         historyLoaded = false
         loadErrors.history = null
         await loadHistory();
+      } else if (tab === 'discover') {
+        discoverLoaded = false
+        loadErrors.discover = null
+        await loadDiscover();
       }
       renderEmoteGrid();
     }, { signal: btnSignal });
@@ -2134,6 +2248,13 @@
       return
     }
 
+    if (currentTab === 'discover') {
+      _virtualPickerEmotes = []
+      _virtualRecentCount = 0
+      renderDiscoverList(grid, isLoggedIn)
+      return
+    }
+
     let emotes = [];
     if (currentTab === 'channel') {
       emotes = channelEmotesCache;
@@ -2194,6 +2315,58 @@
     }));
 
     while (grid.firstChild) grid.removeChild(grid.firstChild)
+
+    // Import-channel bar (channel tab only, logged-in users)
+    if (currentTab === 'channel' && isLoggedIn && currentChannel) {
+      const bar = document.createElement('div')
+      bar.className = 'hs-import-channel-bar'
+      const importBtn = document.createElement('button')
+      importBtn.className = 'hs-import-channel-btn'
+      importBtn.textContent = 'import all channel emotes'
+      importBtn.addEventListener('click', async () => {
+        importBtn.disabled = true
+        importBtn.textContent = 'importing…'
+        try {
+          const platform = window.heatsyncPlatform?.detectPlatform() || 'twitch'
+          const resp = await chrome.runtime.sendMessage({
+            type: 'api_fetch',
+            path: '/api/user/emotes/import-channel',
+            method: 'POST',
+            auth: true,
+            body: { channel: currentChannel, platform }
+          })
+          if (resp && resp.ok !== false) {
+            const n = resp.data?.imported ?? resp.imported ?? resp.data?.count ?? '?'
+            importBtn.textContent = `imported ${n}`
+            importBtn.style.borderColor = '#00cc66'
+            importBtn.style.color = '#00cc66'
+            await loadInventoryEmotes()
+          } else {
+            importBtn.textContent = resp?.error || 'failed'
+            importBtn.style.borderColor = '#ff4444'
+            importBtn.style.color = '#ff4444'
+            setTimeout(() => {
+              importBtn.textContent = 'import all channel emotes'
+              importBtn.style.borderColor = ''
+              importBtn.style.color = ''
+              importBtn.disabled = false
+            }, 2000)
+          }
+        } catch (err) {
+          importBtn.textContent = 'failed'
+          importBtn.style.borderColor = '#ff4444'
+          importBtn.style.color = '#ff4444'
+          setTimeout(() => {
+            importBtn.textContent = 'import all channel emotes'
+            importBtn.style.borderColor = ''
+            importBtn.style.color = ''
+            importBtn.disabled = false
+          }, 2000)
+        }
+      })
+      bar.appendChild(importBtn)
+      grid.appendChild(bar)
+    }
 
     // --- Virtual scroll helpers ---
     const GAP = 4
@@ -2821,6 +2994,137 @@
     }
   }
 
+  // ===== Discover / Trending =====
+  function renderDiscoverList(grid, isLoggedIn) {
+    while (grid.firstChild) grid.removeChild(grid.firstChild)
+
+    if (!discoverLoaded && !isLoading.discover) {
+      isLoading.discover = true
+      const loadingEl = document.createElement('div')
+      loadingEl.className = 'heatsync-empty'
+      loadingEl.textContent = t('common_loading')
+      grid.appendChild(loadingEl)
+      loadDiscover().finally(() => {
+        isLoading.discover = false
+        if (currentTab === 'discover') renderEmoteGrid()
+      })
+      return
+    }
+
+    if (loadErrors.discover) {
+      const err = document.createElement('div')
+      err.className = 'heatsync-empty'
+      err.textContent = loadErrors.discover
+      grid.appendChild(err)
+      return
+    }
+
+    if (!discoverEmotesCache.length) {
+      const empty = document.createElement('div')
+      empty.className = 'heatsync-empty'
+      empty.textContent = 'no trending emotes found'
+      grid.appendChild(empty)
+      return
+    }
+
+    const list = document.createElement('div')
+    list.className = 'hs-discover-list'
+
+    for (const e of discoverEmotesCache) {
+      const item = document.createElement('div')
+      item.className = 'hs-discover-item'
+
+      const imgUrl = safeUrl(e.url || e.animated_url || '')
+      if (imgUrl) {
+        const img = document.createElement('img')
+        img.className = 'hs-discover-thumb'
+        img.src = imgUrl
+        img.alt = escapeHtml(e.name)
+        img.loading = 'lazy'
+        img.referrerPolicy = 'no-referrer'
+        item.appendChild(img)
+      }
+
+      const nameEl = document.createElement('div')
+      nameEl.className = 'hs-discover-name'
+      nameEl.textContent = e.name || ''
+      item.appendChild(nameEl)
+
+      const addBtn = document.createElement('button')
+      addBtn.className = 'hs-discover-add-btn'
+      addBtn.type = 'button'
+      const alreadyIn = isInInventory(e)
+      if (alreadyIn) {
+        addBtn.textContent = 'added'
+        addBtn.classList.add('added')
+        addBtn.disabled = true
+      } else {
+        addBtn.textContent = '+ add'
+        addBtn.addEventListener('click', async () => {
+          if (!cachedAuthToken) {
+            showPickerToast('log in to add emotes')
+            return
+          }
+          addBtn.disabled = true
+          addBtn.textContent = '…'
+          try {
+            await addEmoteToInventorySilent(e)
+            addBtn.textContent = 'added'
+            addBtn.classList.add('added')
+          } catch (_) {
+            addBtn.textContent = 'failed'
+            addBtn.style.borderColor = '#ff4444'
+            addBtn.style.color = '#ff4444'
+            setTimeout(() => {
+              addBtn.textContent = '+ add'
+              addBtn.style.borderColor = ''
+              addBtn.style.color = ''
+              addBtn.disabled = false
+            }, 1500)
+          }
+        })
+      }
+      item.appendChild(addBtn)
+      list.appendChild(item)
+    }
+
+    grid.appendChild(list)
+  }
+
+  async function loadDiscover() {
+    try {
+      // Try /api/emotes/hot first, fall back to /api/emotes/trending
+      let resp = await chrome.runtime.sendMessage({
+        type: 'api_fetch',
+        path: '/api/emotes/hot',
+        method: 'GET',
+        auth: false
+      })
+      if (!resp || resp.ok === false) {
+        resp = await chrome.runtime.sendMessage({
+          type: 'api_fetch',
+          path: '/api/emotes/trending',
+          method: 'GET',
+          auth: false
+        })
+      }
+      if (!resp || resp.ok === false) {
+        loadErrors.discover = resp?.error || 'failed to load trending emotes'
+        discoverEmotesCache = []
+        return
+      }
+      const data = resp.data || resp
+      discoverEmotesCache = Array.isArray(data?.emotes) ? data.emotes : (Array.isArray(data) ? data : [])
+      discoverLoaded = true
+      loadErrors.discover = null
+      const countEl = document.getElementById('count-discover')
+      if (countEl) countEl.textContent = String(discoverEmotesCache.length)
+    } catch (err) {
+      loadErrors.discover = 'failed to load trending emotes'
+      discoverEmotesCache = []
+    }
+  }
+
   // Silent add to inventory (no UI feedback, used for click-to-use)
   async function addEmoteToInventorySilent(emote) {
     try {
@@ -3015,6 +3319,155 @@
         showPickerToast(t('btn_toast_added'));
       });
       menu.appendChild(addBtn);
+    }
+
+    // Rename / move / share set — mine tab + logged-in only
+    if (tab === 'mine' && cachedAuthToken) {
+      const sep0 = document.createElement('div');
+      sep0.className = 'hs-emote-ctx-sep';
+      menu.appendChild(sep0);
+
+      // Rename
+      const renameBtn = document.createElement('button');
+      renameBtn.className = 'hs-emote-ctx-item';
+      renameBtn.textContent = 'rename';
+      renameBtn.addEventListener('click', () => {
+        // Swap button row with inline input
+        renameBtn.style.display = 'none';
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.className = 'hs-emote-ctx-input';
+        input.value = emote.name;
+        input.setAttribute('autocomplete', 'off');
+        const confirmBtn = document.createElement('button');
+        confirmBtn.className = 'hs-emote-ctx-confirm';
+        confirmBtn.textContent = 'save';
+        menu.insertBefore(input, renameBtn.nextSibling);
+        menu.insertBefore(confirmBtn, input.nextSibling);
+        input.focus();
+        input.select();
+        confirmBtn.addEventListener('click', async () => {
+          const newName = input.value.trim();
+          if (!newName || newName === emote.name) { dismissContextMenu(); return; }
+          const slot = inventoryEmotesCache.findIndex(e => e.name === emote.name || e.hash === hash);
+          if (slot < 0) { dismissContextMenu(); return; }
+          dismissContextMenu();
+          try {
+            const resp = await chrome.runtime.sendMessage({
+              type: 'api_fetch',
+              path: `/api/user/emotes/${slot}/rename`,
+              method: 'PUT',
+              auth: true,
+              body: { newName }
+            });
+            if (resp && resp.ok !== false) {
+              showPickerToast(`renamed to ${newName}`);
+              await loadInventoryEmotes();
+              renderEmoteGrid();
+            } else {
+              showPickerToast(resp?.error || 'rename failed');
+            }
+          } catch (_) { showPickerToast('rename failed'); }
+        });
+        input.addEventListener('keydown', (ev) => {
+          if (ev.key === 'Enter') confirmBtn.click();
+          if (ev.key === 'Escape') dismissContextMenu();
+          ev.stopPropagation();
+        });
+      });
+      menu.appendChild(renameBtn);
+
+      // Move to slot
+      const moveBtn = document.createElement('button');
+      moveBtn.className = 'hs-emote-ctx-item';
+      moveBtn.textContent = 'move to slot…';
+      moveBtn.addEventListener('click', () => {
+        moveBtn.style.display = 'none';
+        const input = document.createElement('input');
+        input.type = 'number';
+        input.min = '0';
+        input.className = 'hs-emote-ctx-input';
+        input.placeholder = 'slot number';
+        const confirmBtn = document.createElement('button');
+        confirmBtn.className = 'hs-emote-ctx-confirm';
+        confirmBtn.textContent = 'move';
+        menu.insertBefore(input, moveBtn.nextSibling);
+        menu.insertBefore(confirmBtn, input.nextSibling);
+        input.focus();
+        const fromSlot = inventoryEmotesCache.findIndex(e => e.name === emote.name || e.hash === hash);
+        confirmBtn.addEventListener('click', async () => {
+          const toSlot = parseInt(input.value, 10);
+          if (isNaN(toSlot) || fromSlot < 0) { dismissContextMenu(); return; }
+          dismissContextMenu();
+          try {
+            const resp = await chrome.runtime.sendMessage({
+              type: 'api_fetch',
+              path: `/api/user/emotes/${fromSlot}/move`,
+              method: 'PUT',
+              auth: true,
+              body: { toSlot }
+            });
+            if (resp && resp.ok !== false) {
+              showPickerToast(`moved to slot ${toSlot}`);
+              await loadInventoryEmotes();
+              renderEmoteGrid();
+            } else {
+              showPickerToast(resp?.error || 'move failed');
+            }
+          } catch (_) { showPickerToast('move failed'); }
+        });
+        input.addEventListener('keydown', (ev) => {
+          if (ev.key === 'Enter') confirmBtn.click();
+          if (ev.key === 'Escape') dismissContextMenu();
+          ev.stopPropagation();
+        });
+      });
+      menu.appendChild(moveBtn);
+
+      // Share set / unshare
+      const shareBtn = document.createElement('button');
+      shareBtn.className = 'hs-emote-ctx-item';
+      shareBtn.textContent = discoverShareUrl ? 'unshare set' : 'share set';
+      shareBtn.addEventListener('click', async () => {
+        dismissContextMenu();
+        if (discoverShareUrl) {
+          // Unshare
+          try {
+            await chrome.runtime.sendMessage({
+              type: 'api_fetch',
+              path: '/api/user/emotes/share',
+              method: 'DELETE',
+              auth: true
+            });
+            discoverShareUrl = null;
+            showPickerToast('set unshared');
+          } catch (_) { showPickerToast('unshare failed'); }
+        } else {
+          // Share
+          try {
+            const resp = await chrome.runtime.sendMessage({
+              type: 'api_fetch',
+              path: '/api/user/emotes/share',
+              method: 'POST',
+              auth: true,
+              body: {}
+            });
+            if (resp && resp.ok !== false) {
+              const shortId = resp.data?.shortId || resp.shortId;
+              if (shortId) {
+                discoverShareUrl = `https://heatsync.org/s/${shortId}`;
+                navigator.clipboard.writeText(discoverShareUrl).catch(() => {});
+                showPickerToast(`share link copied: ${discoverShareUrl}`);
+              } else {
+                showPickerToast('share failed');
+              }
+            } else {
+              showPickerToast(resp?.error || 'share failed');
+            }
+          } catch (_) { showPickerToast('share failed'); }
+        }
+      });
+      menu.appendChild(shareBtn);
     }
 
     // Separator

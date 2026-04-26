@@ -5315,11 +5315,15 @@ function updateEmoteState(hash, emoteName, state) {
   }
 
   // Find the chat container to host the takeover panel.
-  // Twitch: covers chat-room__content (messages list + input). Kick: #chatroom.
+  // Prefer multichat container when mounted (always visible when active);
+  // otherwise fall back to native chat shell. Selectors intentionally broad
+  // because Twitch hashes class names (chat-shell--abc123).
   function findChatPanelTarget() {
+    const mcContainer = document.getElementById('hs-mc-container')
+    if (mcContainer) return mcContainer
     const host = window.location.hostname
     if (host.includes('twitch.tv')) {
-      return document.querySelector('section.chat-shell, .chat-shell, .chat-room__content, [data-test-selector="chat-shell"]')
+      return document.querySelector('[class*="chat-shell"], section.chat-shell, .chat-shell, .chat-room__content, [data-test-selector="chat-shell"], [data-test-selector="chat-room-component"]')
     }
     if (host.includes('kick.com')) {
       return document.querySelector('#chatroom') || document.querySelector('#channel-chatroom')

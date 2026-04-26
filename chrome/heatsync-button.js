@@ -94,21 +94,23 @@
   }
 
   // Error and loading state tracking
+  // Keys MUST match currentTab values ('channel', 'global', 'mine') so renderEmoteGrid()
+  // can read state via loadErrors[currentTab].
   let loadErrors = {
     channel: null,
     global: null,
-    inventory: null
+    mine: null
   };
   let isLoading = {
     channel: false,
     global: false,
-    inventory: false
+    mine: false
   };
   let isOffline = false;
   let usingCachedData = {
     channel: false,
     global: false,
-    inventory: false
+    mine: false
   };
 
   // IndexedDB cache for emote metadata
@@ -2527,7 +2529,7 @@
 
     isLoading.channel = true;
     isLoading.global = true;
-    isLoading.inventory = true;
+    isLoading.mine = true;
 
     try {
       const [pickerResp, invResp] = await Promise.all([
@@ -2543,7 +2545,7 @@
       usingCachedData.global  = false;
       loadErrors.channel  = null;
       loadErrors.global   = null;
-      loadErrors.inventory = null;
+      loadErrors.mine = null;
       rebuildInventoryIndex();
       updateTabCounts();
 
@@ -2556,33 +2558,35 @@
       if (!staleChannel) { channelEmotesCache = []; loadErrors.channel = 'failed to load channel emotes'; }
       if (!staleGlobal)  { globalEmotesCache  = []; loadErrors.global  = 'failed to load global emotes'; }
       inventoryEmotesCache = [];
+      loadErrors.mine = 'failed to load your emotes';
       rebuildInventoryIndex();
       updateTabCounts();
+      renderEmoteGrid();
     } finally {
       isLoading.channel   = false;
       isLoading.global    = false;
-      isLoading.inventory = false;
+      isLoading.mine = false;
     }
   }
 
   // Load user's inventory emotes — delegates to background cache via get_picker_emotes
   // (kept as separate function so retry handlers and addEmoteToInventorySilent can call it)
   async function loadInventoryEmotes() {
-    isLoading.inventory = true;
-    loadErrors.inventory = null;
+    isLoading.mine = true;
+    loadErrors.mine = null;
     try {
       const resp = await chrome.runtime.sendMessage({ type: 'get_inventory' });
       inventoryEmotesCache = resp?.emotes || [];
       rebuildInventoryIndex()
-      loadErrors.inventory = null;
+      loadErrors.mine = null;
       updateTabCounts();
     } catch (err) {
       inventoryEmotesCache = [];
       rebuildInventoryIndex()
-      loadErrors.inventory = 'failed to load your emotes';
+      loadErrors.mine = 'failed to load your emotes';
       updateTabCounts();
     } finally {
-      isLoading.inventory = false;
+      isLoading.mine = false;
     }
   }
 

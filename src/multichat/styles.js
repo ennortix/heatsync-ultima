@@ -429,7 +429,7 @@ function injectStyles() {
       display: none !important;
     }
     /* Hide native chat header/room content — our elements are in #hs-mc-container (sibling) */
-    .hs-native-hidden [class*="chat-room__content"] > * {
+    .hs-native-hidden [class*="chat-room__content"] > *:not(.hs-pc-panel):not(.hs-profile-card) {
       display: none !important;
     }
     /* Collapse the native chat container itself so #hs-mc-container gets flex space */
@@ -463,8 +463,8 @@ function injectStyles() {
       min-width: 0 !important;
       background: #000 !important;
     }
-    .chat-shell.hs-native-hidden > *:not(#hs-mc-container),
-    [class*="chat-shell"].hs-native-hidden > *:not(#hs-mc-container) {
+    .chat-shell.hs-native-hidden > *:not(#hs-mc-container):not(.hs-pc-panel):not(.hs-profile-card),
+    [class*="chat-shell"].hs-native-hidden > *:not(#hs-mc-container):not(.hs-pc-panel):not(.hs-profile-card) {
       display: none !important;
     }
     /* Ensure stream-chat ancestor also stays sized */

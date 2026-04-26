@@ -1154,10 +1154,24 @@ function showBadgeTooltip(badgeImg) {
   const srcEl = tooltip.querySelector('.hs-badge-tooltip-source')
   if (srcEl) srcEl.textContent = sourceLabel
 
-  const rect = badgeImg.getBoundingClientRect()
-  tooltip.style.left = Math.max(50, Math.min(window.innerWidth - 50, rect.left + rect.width / 2)) + 'px'
-  tooltip.style.top = (rect.top - 8) + 'px'
   tooltip.classList.add('active')
+  // Measure after activating so we can clamp by actual tooltip dimensions
+  const rect = badgeImg.getBoundingClientRect()
+  const ttRect = tooltip.getBoundingClientRect()
+  const ttW = ttRect.width || 100
+  const ttH = ttRect.height || 100
+  const pad = 8
+  const centerX = rect.left + rect.width / 2
+  const clampedX = Math.max(ttW / 2 + pad, Math.min(window.innerWidth - ttW / 2 - pad, centerX))
+  // Above badge by default. If no room, flip below.
+  if (rect.top >= ttH + pad) {
+    tooltip.style.top = (rect.top - pad) + 'px'
+    tooltip.style.transform = 'translate(-50%, -100%)'
+  } else {
+    tooltip.style.top = (rect.bottom + pad) + 'px'
+    tooltip.style.transform = 'translate(-50%, 0)'
+  }
+  tooltip.style.left = clampedX + 'px'
 }
 
 function hideBadgeTooltip() {

@@ -189,6 +189,7 @@ browser.cookies.onChanged.addListener((changeInfo) => {
 
     if (changeInfo.removed) {
       log(' Auth cookie removed — logging out')
+      unsubscribeFromPush(authToken).catch(err => log(' unsubscribeFromPush failed:', err?.message))
       authToken = null
       emoteInventory = []
       blockedEmotes = new Set()
@@ -205,6 +206,7 @@ browser.cookies.onChanged.addListener((changeInfo) => {
       fetchFollowedUsers().catch(err => log(' fetchFollowedUsers failed:', err?.message))
       fetchUserInfo().catch(err => log(' fetchUserInfo failed:', err?.message))
       connectWebSocket().catch(err => log(' connectWebSocket failed:', err?.message))
+      subscribeToPush(c.value).catch(err => log(' subscribeToPush failed:', err?.message))
       broadcastToTabs({ type: 'auth_changed', loggedIn: true })
     }
   } catch (err) {
@@ -3814,6 +3816,126 @@ async function recordCrash(source, message, stack, url) {
     await browser.storage.local.set({ [CRASH_LOG_KEY]: log })
   } catch (e) { /* swallow — telemetry must never crash the SW */ }
 }
+
+// ============================================
+// WEB PUSH SUBSCRIPTION
+// ============================================
+// MV3: service workers support PushManager via self.registration.pushManager.
+// Firefox MV2 background pages also support PushManager (FF 109+).
+// Notification.permission check is skipped — extensions have implicit grant
+// via the 'notifications' manifest permission.
+
+function urlB64ToUint8Array(base64String) {
+  const padding = '='.repeat((4 - base64String.length % 4) % 4)
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/')
+  const rawData = atob(base64)
+  const out = new Uint8Array(rawData.length)
+  for (let i = 0; i < rawData.length; i++) out[i] = rawData.charCodeAt(i)
+  return out
+}
+
+async function subscribeToPush(token) {
+  try {
+    if (!self.registration?.pushManager) {
+      log(' PushManager not available — skipping push subscription')
+      return
+    }
+    const existing = await self.registration.pushManager.getSubscription()
+    if (existing) {
+      log(' Push already subscribed:', existing.endpoint.slice(0, 40) + '...')
+      return
+    }
+    const keyRes = await fetchWithTimeout(`${API_URL}/api/push/vapid-key`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    })
+    if (!keyRes.ok) {
+      log(' VAPID key fetch failed:', keyRes.status)
+      return
+    }
+    const keyData = await keyRes.json()
+    const vapidKey = keyData.key
+    if (!vapidKey) {
+      log(' VAPID key missing in response')
+      return
+    }
+    const sub = await self.registration.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: urlB64ToUint8Array(vapidKey)
+    })
+    const subJson = sub.toJSON()
+    const subRes = await fetchWithTimeout(`${API_URL}/api/push/subscribe`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify({
+        endpoint: subJson.endpoint,
+        keys: { p256dh: subJson.keys.p256dh, auth: subJson.keys.auth }
+      })
+    })
+    if (!subRes.ok) {
+      log(' Push subscribe POST failed:', subRes.status)
+      return
+    }
+    log(' Push subscription registered')
+  } catch (err) {
+    log(' subscribeToPush error:', err?.message)
+  }
+}
+
+async function unsubscribeFromPush(token) {
+  try {
+    if (!self.registration?.pushManager) return
+    const sub = await self.registration.pushManager.getSubscription()
+    if (!sub) return
+    const endpoint = sub.endpoint
+    await sub.unsubscribe()
+    if (token) {
+      await fetchWithTimeout(`${API_URL}/api/push/unsubscribe`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ endpoint })
+      }).catch(err => log(' push unsubscribe POST failed:', err?.message))
+    }
+    log(' Push subscription removed')
+  } catch (err) {
+    log(' unsubscribeFromPush error:', err?.message)
+  }
+}
+
+// Receive a push message and show a notification
+self.addEventListener('push', (ev) => {
+  let title = 'HeatSync'
+  let body = ''
+  let icon = '/icon-48.png'
+  let data = {}
+  try {
+    if (ev.data) {
+      const payload = ev.data.json()
+      title = payload.title || title
+      body = payload.body || body
+      icon = payload.icon || icon
+      data = payload.data || {}
+    }
+  } catch (e) {
+    body = ev.data?.text() || ''
+  }
+  ev.waitUntil(
+    self.registration.showNotification(title, { body, icon, data })
+  )
+})
+
+self.addEventListener('notificationclick', (ev) => {
+  ev.notification.close()
+  const url = ev.notification.data?.url
+  if (url) {
+    ev.waitUntil(clients.openWindow(url))
+  }
+})
 
 self.addEventListener('error', (ev) => {
   recordCrash('bg', ev.message, ev.error?.stack, ev.filename)

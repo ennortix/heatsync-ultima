@@ -2533,6 +2533,89 @@ function injectStyles() {
       color: #000;
     }
 
+    /* New DM compose */
+    #hs-mc-new-dm-wrap {
+      border-bottom: 1px solid #333;
+      padding: 4px 6px;
+      flex-shrink: 0;
+    }
+    .hs-mc-new-dm-btnrow {
+      display: flex;
+      align-items: center;
+    }
+    .hs-mc-new-dm-plus {
+      padding: 2px 8px;
+      background: #ff8700;
+      color: #000;
+      border: none;
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 600;
+    }
+    .hs-mc-new-dm-plus:hover {
+      background: #ffaa33;
+    }
+    .hs-mc-new-dm-form {
+      flex-direction: column;
+      gap: 4px;
+      margin-top: 4px;
+    }
+    .hs-mc-new-dm-input {
+      width: 100%;
+      padding: 5px 8px;
+      background: #1a1a1a;
+      color: #fff;
+      border: 1px solid #444;
+      font-size: 12px;
+      font-family: inherit;
+      outline: none;
+      box-sizing: border-box;
+      resize: vertical;
+    }
+    .hs-mc-new-dm-input:focus {
+      border-color: #ff8700;
+    }
+    .hs-mc-new-dm-textarea {
+      min-height: 42px;
+    }
+    .hs-mc-new-dm-actions {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .hs-mc-new-dm-sendbtn {
+      padding: 3px 12px;
+      background: #ff8700;
+      color: #000;
+      border: none;
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 600;
+    }
+    .hs-mc-new-dm-sendbtn:hover:not(:disabled) {
+      background: #ffaa33;
+    }
+    .hs-mc-new-dm-sendbtn:disabled {
+      opacity: 0.5;
+      cursor: default;
+    }
+    .hs-mc-new-dm-cancelbtn {
+      padding: 3px 8px;
+      background: #333;
+      color: #aaa;
+      border: none;
+      cursor: pointer;
+      font-size: 12px;
+    }
+    .hs-mc-new-dm-cancelbtn:hover {
+      background: #555;
+      color: #fff;
+    }
+    .hs-mc-new-dm-err {
+      font-size: 11px;
+      color: #ff4444;
+    }
+
     /* Heatsync button */
     #hs-mc-emote-btn {
       padding: 4px;
@@ -12688,6 +12771,7 @@ let whisperTotalUnread = 0
 let whisperLastViewedTime = 0
 let whisperDmsLoaded = false
 let selfWhisperColor = null // current user's Twitch color
+let _newDmFormOpen = false
 
 // Resolve own color from IRC buffers, chat DOM, or Twitch cookie color
 function resolveSelfColor() {
@@ -12946,6 +13030,101 @@ async function sendWhisperMessage(key, text) {
   }
 }
 
+function renderNewDmHeader(msgsEl) {
+  if (document.getElementById('hs-mc-new-dm-wrap')) return
+
+  const wrap = document.createElement('div')
+  wrap.id = 'hs-mc-new-dm-wrap'
+
+  const btnRow = document.createElement('div')
+  btnRow.className = 'hs-mc-new-dm-btnrow'
+  const plusBtn = document.createElement('button')
+  plusBtn.className = 'hs-mc-new-dm-plus'
+  plusBtn.textContent = '+ new DM'
+  btnRow.appendChild(plusBtn)
+  wrap.appendChild(btnRow)
+
+  const form = document.createElement('div')
+  form.id = 'hs-mc-new-dm-form'
+  form.className = 'hs-mc-new-dm-form'
+  form.style.display = _newDmFormOpen ? 'flex' : 'none'
+
+  const userInput = document.createElement('input')
+  userInput.id = 'hs-mc-new-dm-user'
+  userInput.className = 'hs-mc-new-dm-input'
+  userInput.type = 'text'
+  userInput.placeholder = 'username'
+  userInput.setAttribute('autocomplete', 'off')
+  userInput.maxLength = 100
+
+  const msgInput = document.createElement('textarea')
+  msgInput.id = 'hs-mc-new-dm-msg'
+  msgInput.className = 'hs-mc-new-dm-input hs-mc-new-dm-textarea'
+  msgInput.placeholder = 'message'
+  msgInput.maxLength = 2000
+  msgInput.rows = 2
+
+  const actions = document.createElement('div')
+  actions.className = 'hs-mc-new-dm-actions'
+  const sendBtn = document.createElement('button')
+  sendBtn.className = 'hs-mc-new-dm-sendbtn'
+  sendBtn.textContent = 'send'
+  const cancelBtn = document.createElement('button')
+  cancelBtn.className = 'hs-mc-new-dm-cancelbtn'
+  cancelBtn.textContent = 'cancel'
+  const errEl = document.createElement('span')
+  errEl.className = 'hs-mc-new-dm-err'
+  actions.appendChild(sendBtn)
+  actions.appendChild(cancelBtn)
+  actions.appendChild(errEl)
+
+  form.appendChild(userInput)
+  form.appendChild(msgInput)
+  form.appendChild(actions)
+  wrap.appendChild(form)
+  msgsEl.prepend(wrap)
+
+  plusBtn.addEventListener('click', () => {
+    _newDmFormOpen = !_newDmFormOpen
+    form.style.display = _newDmFormOpen ? 'flex' : 'none'
+    if (_newDmFormOpen) userInput.focus()
+  })
+
+  cancelBtn.addEventListener('click', () => {
+    _newDmFormOpen = false
+    form.style.display = 'none'
+    userInput.value = ''
+    msgInput.value = ''
+    errEl.textContent = ''
+  })
+
+  sendBtn.addEventListener('click', async () => {
+    const recipientUsername = userInput.value.trim()
+    const content = msgInput.value.trim()
+    errEl.textContent = ''
+    if (!recipientUsername) { errEl.textContent = 'enter a username'; return }
+    if (!content) { errEl.textContent = 'enter a message'; return }
+    sendBtn.disabled = true
+    sendBtn.textContent = '...'
+    try {
+      const resp = await apiFetch('/api/dm', { method: 'POST', body: { recipientUsername, content } })
+      if (resp && resp.ok) {
+        log('new DM sent to', recipientUsername)
+        _newDmFormOpen = false
+        form.style.display = 'none'
+        userInput.value = ''
+        msgInput.value = ''
+      } else {
+        errEl.textContent = escapeHtml(resp?.error || 'send failed')
+      }
+    } catch (e) {
+      errEl.textContent = escapeHtml(e.message || 'send failed')
+    }
+    sendBtn.disabled = false
+    sendBtn.textContent = 'send'
+  })
+}
+
 function renderWhispersTab() {
   const msgsEl = document.getElementById('hs-mc-messages')
   if (!msgsEl) return
@@ -13000,13 +13179,24 @@ function renderWhispersTab() {
   updateWhisperBadge()
   whisperSaveDebounced()
 
+  // Preserve the + new DM header across re-renders
+  const existingDmWrap = document.getElementById('hs-mc-new-dm-wrap')
+  if (existingDmWrap) existingDmWrap.remove()
+  renderNewDmHeader(msgsEl)
+
   if (whisperTimeline.length === 0) {
-    // All dynamic values below are string literals — safe innerHTML
-    msgsEl.innerHTML = `<div class="hs-mc-empty">${t('mc_whisper_hint')}</div>`
+    const emptyDiv = document.createElement('div')
+    emptyDiv.className = 'hs-mc-empty'
+    emptyDiv.textContent = t('mc_whisper_hint')
+    msgsEl.appendChild(emptyDiv)
     return
   }
 
-  msgsEl.textContent = ''
+  // Remove old message nodes (but keep the header wrap already prepended above)
+  const children = Array.from(msgsEl.childNodes)
+  for (const child of children) {
+    if (child.id !== 'hs-mc-new-dm-wrap') child.remove()
+  }
   const frag = document.createDocumentFragment()
   const toRender = whisperTimeline.slice(-150)
   let zebraCount = 0

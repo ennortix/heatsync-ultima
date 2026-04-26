@@ -7772,11 +7772,8 @@ async function sendKickMessage(kickSlug, text) {
     while (channelMap.size > 500) channelMap.delete(channelMap.keys().next().value)
   }
   function formatSubTenure(months) {
-    if (months >= 12) {
-      const y = Math.floor(months / 12)
-      const m = months % 12
-      return m > 0 ? `${y}y ${m}mo` : `${y}y`
-    }
+    // Concise: drop months when years resolve. Matches content.js + formatAge.
+    if (months >= 12) return `${Math.floor(months / 12)}y`
     return `${months}mo`
   }
 
@@ -7901,22 +7898,27 @@ async function sendKickMessage(kickSlug, text) {
       const since = rel.profileFollowsViewerOnTwitchSince || rel.profileFollowsViewerOnKickSince || rel.followsYouSince;
       relBadges.push(`<span class="hs-pc-rel-badge mutual">follows you${since ? ' · ' + getCompactRelTime(since).replace(' ago', '') : ''}</span>`);
     }
-    // They → you (sub)
+    // They → you (sub) — with tier
     const subsYou = rel.profileSubbedToViewerOnTwitch || rel.profileSubbedToViewerOnKick || rel.subscribesToYou;
     if (subsYou) {
       const since = rel.profileTwitchSubSince || rel.profileKickSubSince || rel.subscribesToYouSince;
-      relBadges.push(`<span class="hs-pc-rel-badge supporter">subs to you${since ? ' · ' + getCompactRelTime(since).replace(' ago', '') : ''}</span>`);
+      const rawTier = rel.profileTwitchSubTier || rel.profileKickSubTier || rel.subscribesToYouTier;
+      const tierNum = typeof rawTier === 'string' ? Math.round(Number(rawTier) / 1000) : rawTier;
+      const tierStr = tierNum && tierNum > 1 ? ' T' + tierNum : '';
+      relBadges.push(`<span class="hs-pc-rel-badge supporter">subs to you${tierStr}${since ? ' · ' + getCompactRelTime(since).replace(' ago', '') : ''}</span>`);
     }
     // You → them (follow)
-    const youFollow = rel.isFollowing || rel.followsOnTwitch || rel.followsOnKick;
+    const youFollow = rel.isFollowing || rel.followsOnTwitch || rel.followsOnKick || rel.youFollow;
     if (youFollow) {
-      const since = rel.followsOnTwitchSince || rel.followsOnKickSince || rel.followedAt;
+      const since = rel.youFollowSince || rel.followsOnTwitchSince || rel.followsOnKickSince || rel.followedAt;
       relBadges.push(`<span class="hs-pc-rel-badge following">following${since ? ' · ' + getCompactRelTime(since).replace(' ago', '') : ''}</span>`);
     }
-    // You → them (sub)
+    // You → them (sub) — normalize tier
     const youSub = rel.isSubscribed || rel.subscribedOnTwitch || rel.subscribedOnKick;
     if (youSub) {
-      const tier = rel.twitchSubTier || rel.kickSubTier || rel.subTier || 1;
+      const rawTier = rel.twitchSubTier || rel.kickSubTier || rel.subTier;
+      const tierNum = typeof rawTier === 'string' ? Math.round(Number(rawTier) / 1000) : rawTier;
+      const tier = tierNum || 1;
       const since = rel.twitchSubSince || rel.kickSubSince || rel.subscribedAt;
       relBadges.push(`<span class="hs-pc-rel-badge subbed">you sub${tier > 1 ? ' T' + tier : ''}${since ? ' · ' + getCompactRelTime(since).replace(' ago', '') : ''}</span>`);
     }

@@ -1,8 +1,12 @@
 /**
- * Kick emoji autocomplete — :shortcode: auto-convert + dropdown
+ * Kick emoji + heatsync emote autocomplete
  *
  * Lightweight hook for Kick's contenteditable div.editor-input.
  * emoji-data.js must be loaded before this script.
+ *
+ * Two modes:
+ *   emoji   — triggered by :prefix (existing behaviour)
+ *   emote   — triggered by bare word >= 2 chars (heatsync/BTTV/FFZ/7TV)
  */
 ;(function() {
   'use strict'
@@ -19,6 +23,12 @@
   window.__heatsyncKickAcLifecycle = lifecycle
   const sig = lifecycle.signal
   window.addEventListener('pagehide', () => lifecycle.abort())
+  sig.addEventListener('abort', () => {
+    clearTimeout(emoteDebounceTimer)
+    if (dropdown) { try { dropdown.remove() } catch (_) {} dropdown = null }
+    if (emoteDropdown) { try { emoteDropdown.remove() } catch (_) {} emoteDropdown = null }
+    hsEmoteList = []
+  })
 
   // Build emoji map from emoji-data.js
   const EMOJI_MAP = {}
@@ -35,23 +45,92 @@
     return
   }
 
+  // ---- heatsync emote cache ----
+  // Flat array of { name, url } — refreshed on channel detect or on demand
+  let hsEmoteList = []
+  let hsEmotesLastFetch = 0
+  const HS_EMOTE_TTL = 60000 // 1 min
+
+  function getCurrentChannel() {
+    // kick.com/channelname or kick.com/channelname/...
+    const m = location.pathname.match(/^\/([^/?#]+)/)
+    return m ? m[1].toLowerCase() : null
+  }
+
+  function buildEmoteList(data) {
+    const blocked = new Set(data.blocked || [])
+    const seen = new Set()
+    const list = []
+    const sources = [
+      ...(data.inventoryEmotes || []),
+      ...(data.channelEmotes || []),
+      ...(data.globalEmotes || []),
+    ]
+    for (const e of sources) {
+      if (!e || !e.name) continue
+      if (blocked.has(e.hash)) continue
+      if (seen.has(e.name)) continue
+      seen.add(e.name)
+      list.push({ name: e.name, url: e.url || e.cdnUrl || '' })
+    }
+    return list
+  }
+
+  function refreshEmotes(channel) {
+    const now = Date.now()
+    if (now - hsEmotesLastFetch < HS_EMOTE_TTL) return
+    hsEmotesLastFetch = now
+    try {
+      chrome.runtime.sendMessage(
+        { type: 'get_picker_emotes', channel: channel || getCurrentChannel(), platform: 'kick' },
+        (data) => {
+          if (chrome.runtime.lastError || !data) return
+          hsEmoteList = buildEmoteList(data)
+          log('emote list refreshed:', hsEmoteList.length)
+        }
+      )
+    } catch (_) {}
+  }
+
+  function searchEmotes(query) {
+    if (!query || query.length < 2) return []
+    const q = query.toLowerCase()
+    const exact = [], prefix = [], contains = []
+    for (const e of hsEmoteList) {
+      const n = e.name.toLowerCase()
+      if (n === q) { exact.push(e); continue }
+      if (n.startsWith(q)) { prefix.push(e); continue }
+      if (n.includes(q)) contains.push(e)
+    }
+    return [...exact, ...prefix, ...contains].slice(0, MAX_RESULTS)
+  }
+
+  // ---- shared state ----
   const DROPDOWN_ID = 'hs-kick-emoji-dropdown'
+  const EMOTE_DROPDOWN_ID = 'hs-kick-emote-dropdown'
   const MAX_RESULTS = 8
   let dropdown = null
+  let emoteDropdown = null
   let selectedIdx = 0
   let matches = []
+  // 'emoji' | 'emote' | null
+  let activeMode = null
   let activeInput = null
+
+  // debounce timer for emote input
+  let emoteDebounceTimer = null
 
   function injectStyles() {
     if (document.getElementById('heatsync-kick-ac-styles')) return
     const style = document.createElement('style')
     style.id = 'heatsync-kick-ac-styles'
     style.textContent = `
-      #${DROPDOWN_ID} {
+      #${DROPDOWN_ID},
+      #${EMOTE_DROPDOWN_ID} {
         position: fixed;
         z-index: 99999;
-        background: #000;
-        border: 1px solid #000;
+        background: #1a1a1a;
+        border: 1px solid #333;
         border-radius: 6px;
         padding: 4px 0;
         max-height: 280px;
@@ -61,7 +140,8 @@
         box-shadow: 0 4px 12px rgba(0,0,0,0.5);
         display: none;
       }
-      #${DROPDOWN_ID} .hs-ac-item {
+      #${DROPDOWN_ID} .hs-ac-item,
+      #${EMOTE_DROPDOWN_ID} .hs-ac-item {
         display: flex;
         align-items: center;
         gap: 8px;
@@ -70,7 +150,9 @@
         color: #fff;
       }
       #${DROPDOWN_ID} .hs-ac-item.selected,
-      #${DROPDOWN_ID} .hs-ac-item:hover {
+      #${DROPDOWN_ID} .hs-ac-item:hover,
+      #${EMOTE_DROPDOWN_ID} .hs-ac-item.selected,
+      #${EMOTE_DROPDOWN_ID} .hs-ac-item:hover {
         background: #ff870033;
         color: #fff;
       }
@@ -79,8 +161,27 @@
         width: 24px;
         text-align: center;
       }
-      #${DROPDOWN_ID} .hs-ac-name {
-        color: #808080;
+      #${DROPDOWN_ID} .hs-ac-name,
+      #${EMOTE_DROPDOWN_ID} .hs-ac-name {
+        color: #ccc;
+        flex: 1;
+      }
+      #${EMOTE_DROPDOWN_ID} .hs-ac-item.selected .hs-ac-name,
+      #${EMOTE_DROPDOWN_ID} .hs-ac-item:hover .hs-ac-name {
+        color: #ff8700;
+      }
+      #${EMOTE_DROPDOWN_ID} .hs-ac-img {
+        width: 28px;
+        height: 28px;
+        object-fit: contain;
+        flex-shrink: 0;
+      }
+      #${EMOTE_DROPDOWN_ID} .hs-ac-placeholder {
+        width: 28px;
+        height: 28px;
+        background: #333;
+        border-radius: 3px;
+        flex-shrink: 0;
       }
     `
     document.head.appendChild(style)
@@ -94,10 +195,38 @@
     return dropdown
   }
 
+  function createEmoteDropdown() {
+    if (emoteDropdown) return emoteDropdown
+    emoteDropdown = document.createElement('div')
+    emoteDropdown.id = EMOTE_DROPDOWN_ID
+    document.body.appendChild(emoteDropdown)
+    return emoteDropdown
+  }
+
   function hideDropdown() {
     if (dropdown) dropdown.style.display = 'none'
+    if (activeMode === 'emoji') {
+      matches = []
+      selectedIdx = 0
+      activeMode = null
+    }
+  }
+
+  function hideEmoteDropdown() {
+    if (emoteDropdown) emoteDropdown.style.display = 'none'
+    if (activeMode === 'emote') {
+      matches = []
+      selectedIdx = 0
+      activeMode = null
+    }
+  }
+
+  function hideAll() {
+    if (dropdown) dropdown.style.display = 'none'
+    if (emoteDropdown) emoteDropdown.style.display = 'none'
     matches = []
     selectedIdx = 0
+    activeMode = null
   }
 
   function renderDropdownItems(container, results) {
@@ -127,29 +256,83 @@
     })
   }
 
+  function renderEmoteItems(container, results) {
+    container.textContent = ''
+    results.forEach((r, i) => {
+      const item = document.createElement('div')
+      item.className = 'hs-ac-item' + (i === 0 ? ' selected' : '')
+      item.dataset.idx = i
+
+      if (r.url) {
+        const img = document.createElement('img')
+        img.className = 'hs-ac-img'
+        img.src = r.url
+        img.alt = r.name
+        img.loading = 'lazy'
+        item.appendChild(img)
+      } else {
+        const ph = document.createElement('span')
+        ph.className = 'hs-ac-placeholder'
+        item.appendChild(ph)
+      }
+
+      const nameSpan = document.createElement('span')
+      nameSpan.className = 'hs-ac-name'
+      // escapeHtml equivalent — textContent is safe
+      nameSpan.textContent = r.name
+
+      item.appendChild(nameSpan)
+
+      item.addEventListener('mousedown', (e) => {
+        e.preventDefault()
+        insertEmote(activeInput, results[i])
+      })
+
+      container.appendChild(item)
+    })
+  }
+
+  function positionAboveInput(el, input) {
+    const rect = input.getBoundingClientRect()
+    el.style.left = rect.left + 'px'
+    el.style.bottom = (window.innerHeight - rect.top + 4) + 'px'
+    el.style.top = 'auto'
+    el.style.minWidth = Math.min(rect.width, 280) + 'px'
+  }
+
   function showDropdown(input, results) {
     if (!results.length) { hideDropdown(); return }
+    if (emoteDropdown) emoteDropdown.style.display = 'none'
     createDropdown()
     matches = results
     selectedIdx = 0
+    activeMode = 'emoji'
 
     renderDropdownItems(dropdown, results)
-
-    // Position above input
-    const rect = input.getBoundingClientRect()
-    dropdown.style.left = rect.left + 'px'
-    dropdown.style.bottom = (window.innerHeight - rect.top + 4) + 'px'
-    dropdown.style.top = 'auto'
+    positionAboveInput(dropdown, input)
     dropdown.style.display = 'block'
-    dropdown.style.minWidth = Math.min(rect.width, 250) + 'px'
+  }
+
+  function showEmoteDropdown(input, results) {
+    if (!results.length) { hideEmoteDropdown(); return }
+    if (dropdown) dropdown.style.display = 'none'
+    createEmoteDropdown()
+    matches = results
+    selectedIdx = 0
+    activeMode = 'emote'
+
+    renderEmoteItems(emoteDropdown, results)
+    positionAboveInput(emoteDropdown, input)
+    emoteDropdown.style.display = 'block'
   }
 
   function updateSelection() {
-    if (!dropdown) return
-    dropdown.querySelectorAll('.hs-ac-item').forEach((el, i) => {
+    const container = activeMode === 'emote' ? emoteDropdown : dropdown
+    if (!container) return
+    container.querySelectorAll('.hs-ac-item').forEach((el, i) => {
       el.classList.toggle('selected', i === selectedIdx)
     })
-    const sel = dropdown.querySelector('.selected')
+    const sel = container.querySelector('.selected')
     if (sel) sel.scrollIntoView({ block: 'nearest' })
   }
 
@@ -183,6 +366,27 @@
     document.execCommand('insertText', false, match.emoji + ' ')
     hideDropdown()
     log('inserted', match.name, match.emoji)
+  }
+
+  // Replace bare word prefix and insert heatsync emote name
+  function insertEmote(input, match) {
+    const text = getTextBeforeCursor(input)
+    // Match the current word (non-space, non-colon sequence) at end of text
+    const wordMatch = text.match(/(\S+)$/)
+    if (!wordMatch) { hideEmoteDropdown(); return }
+
+    const deleteCount = wordMatch[0].length
+    input.focus()
+    const sel = window.getSelection()
+    if (!sel.rangeCount) return
+
+    for (let i = 0; i < deleteCount; i++) {
+      sel.modify('extend', 'backward', 'character')
+    }
+    // textContent-safe: emote names are alphanumeric + limited punctuation
+    document.execCommand('insertText', false, match.name + ' ')
+    hideEmoteDropdown()
+    log('inserted emote', match.name)
   }
 
   // Search emoji by prefix
@@ -220,29 +424,56 @@
           }
           document.execCommand('insertText', false, emoji + ' ')
           log('auto-converted :' + closingMatch[1] + ': →', emoji)
-          hideDropdown()
+          hideAll()
           return
         }
       }
     }
 
-    // Check for :prefix (no closing colon) — show dropdown
+    // Check for :prefix (no closing colon) — show emoji dropdown
+    // Colon-triggered completions stay in emoji mode; heatsync does NOT intercept these
     const colonMatch = text.match(/:([a-z0-9_+-]{1,})$/)
     if (colonMatch) {
       const results = searchEmoji(colonMatch[1])
       showDropdown(input, results)
+      if (emoteDropdown) emoteDropdown.style.display = 'none'
+      return
+    }
+
+    hideDropdown()
+
+    // Bare-word emote completion — debounced 60ms
+    // Only trigger if word >= 2 chars and not preceded by colon
+    clearTimeout(emoteDebounceTimer)
+    const wordMatch = text.match(/(?:^|[ \t])([^\s:]{2,})$/)
+    if (wordMatch) {
+      const query = wordMatch[1]
+      emoteDebounceTimer = setTimeout(() => {
+        if (sig.aborted) return
+        refreshEmotes(getCurrentChannel())
+        const results = searchEmotes(query)
+        if (activeInput) showEmoteDropdown(activeInput, results)
+      }, 60)
     } else {
-      hideDropdown()
+      hideEmoteDropdown()
     }
   }
 
   function handleKeydown(e) {
-    if (!dropdown || dropdown.style.display === 'none' || !matches.length) return
+    const anyOpen = (
+      (dropdown && dropdown.style.display !== 'none' && activeMode === 'emoji') ||
+      (emoteDropdown && emoteDropdown.style.display !== 'none' && activeMode === 'emote')
+    )
+    if (!anyOpen || !matches.length) return
 
     if (e.key === 'Tab' || e.key === 'Enter') {
       e.preventDefault()
       e.stopPropagation()
-      insertEmoji(activeInput, matches[selectedIdx])
+      if (activeMode === 'emote') {
+        insertEmote(activeInput, matches[selectedIdx])
+      } else {
+        insertEmoji(activeInput, matches[selectedIdx])
+      }
       return
     }
 
@@ -262,7 +493,7 @@
 
     if (e.key === 'Escape') {
       e.preventDefault()
-      hideDropdown()
+      hideAll()
     }
   }
 
@@ -276,8 +507,11 @@
     input.addEventListener('input', handleInput, { signal: sig })
     input.addEventListener('keydown', handleKeydown, { capture: true, signal: sig })
     input.addEventListener('blur', () => {
-      setTimeout(() => hideDropdown(), 150)
+      setTimeout(() => hideAll(), 150)
     }, { signal: sig })
+
+    // Trigger initial emote fetch for the current channel
+    refreshEmotes(getCurrentChannel())
 
     log('hooked Kick chat input')
     return true

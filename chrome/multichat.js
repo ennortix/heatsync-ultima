@@ -4646,19 +4646,40 @@ function injectStyles() {
       color: #808080;
       font-size: 12px;
     }
-    /* btop-style density: 1-line rows, no section gaps, tight chips */
+    /* btop-style discover: dense single-line rows */
     .hs-discover-section { padding: 0; }
     .hs-discover-section + .hs-discover-section { margin-top: 1px; }
     .hs-discover-heading {
-      font-size: 10px;
+      font-size: 9px;
       color: #ff8700;
-      font-weight: 600;
-      text-transform: lowercase;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
       margin: 0;
-      padding: 1px 6px;
+      padding: 2px 6px;
       background: rgba(255,135,0,0.06);
       border-bottom: 1px solid rgba(255,135,0,0.18);
-      line-height: 1.4;
+      line-height: 1.3;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .hs-discover-meta {
+      color: #707070;
+      font-size: 9px;
+      font-weight: 500;
+      text-transform: none;
+      letter-spacing: 0;
+      font-variant-numeric: tabular-nums;
+    }
+    .hs-discover-live-count {
+      color: #ff3030;
+      font-weight: 700;
+      animation: hs-pulse-live 1.6s ease-in-out infinite;
+    }
+    @keyframes hs-pulse-live {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.55; }
     }
     .hs-discover-chips {
       display: flex;
@@ -4688,21 +4709,114 @@ function injectStyles() {
       padding: 1px 6px;
       text-decoration: none;
       cursor: pointer;
-      line-height: 1.4;
+      line-height: 1.3;
+      font-size: 11px;
+      border-left: 2px solid transparent;
     }
     .hs-discover-profile-row:hover { background: rgba(255,135,0,0.07); }
-    .hs-discover-profile-row:hover .hs-discover-profile-name { color: #ff8700; }
-    .hs-discover-avatar { width: 16px; height: 16px; flex-shrink: 0; }
+    .hs-discover-profile-row.hs-discover-row-live { border-left-color: #ff3030; }
+    .hs-discover-rank {
+      color: #555;
+      font-size: 9px;
+      font-variant-numeric: tabular-nums;
+      width: 14px;
+      text-align: right;
+      flex-shrink: 0;
+      font-family: ui-monospace, SFMono-Regular, monospace;
+    }
+    .hs-discover-row-live .hs-discover-rank { color: #999; }
+    .hs-discover-live-dot {
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      background: #ff3030;
+      box-shadow: 0 0 4px #ff3030;
+      animation: hs-pulse-live 1.6s ease-in-out infinite;
+      flex-shrink: 0;
+    }
+    .hs-discover-live-spacer { width: 6px; flex-shrink: 0; }
+    .hs-discover-avatar {
+      width: 14px; height: 14px;
+      flex-shrink: 0;
+      border-radius: 50%;
+      object-fit: cover;
+      background: #1a1a1a;
+    }
+    .hs-discover-avatar-empty { display: inline-block; }
     .hs-discover-profile-name {
-      color: #fff;
       font-size: 11px;
       font-weight: 600;
-      flex: 1;
+      white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
-      white-space: nowrap;
+      max-width: 110px;
+      flex-shrink: 1;
     }
-    .hs-discover-heat { font-size: 10px; color: #808080; flex-shrink: 0; }
+    .hs-discover-platforms {
+      display: inline-flex;
+      gap: 1px;
+      flex-shrink: 0;
+    }
+    .hs-discover-platforms .hs-plat {
+      font-family: ui-monospace, SFMono-Regular, monospace;
+      font-size: 9px;
+      font-weight: 700;
+      padding: 0 2px;
+      line-height: 1;
+      text-decoration: none;
+      opacity: 0.55;
+      transition: opacity 0.1s;
+    }
+    .hs-discover-platforms .hs-plat:hover { opacity: 1; }
+    .hs-discover-platforms .hs-plat-live { opacity: 1; text-shadow: 0 0 4px currentColor; }
+    .hs-discover-platforms .hs-plat-t { color: #9146ff; }
+    .hs-discover-platforms .hs-plat-k { color: #53fc18; }
+    .hs-discover-platforms .hs-plat-h { color: #ff8700; }
+    .hs-discover-bar {
+      flex: 1;
+      min-width: 24px;
+      max-width: 90px;
+      height: 4px;
+      background: rgba(255,255,255,0.05);
+      overflow: hidden;
+      border-radius: 1px;
+    }
+    .hs-discover-bar > i {
+      display: block;
+      height: 100%;
+      background: linear-gradient(90deg, #ff8700, #ffaa33);
+    }
+    .hs-discover-row-live .hs-discover-bar > i {
+      background: linear-gradient(90deg, #ff3030, #ff8700);
+    }
+    .hs-discover-heat {
+      display: inline-flex;
+      align-items: center;
+      gap: 2px;
+      font-size: 10px;
+      color: #ff8700;
+      font-variant-numeric: tabular-nums;
+      flex-shrink: 0;
+      font-family: ui-monospace, SFMono-Regular, monospace;
+    }
+    .hs-discover-heat .hs-flame {
+      width: 9px; height: 9px;
+      fill: #ff8700;
+      flex-shrink: 0;
+    }
+    .hs-discover-activity {
+      font-size: 9px;
+      color: #707070;
+      font-variant-numeric: tabular-nums;
+      font-family: ui-monospace, SFMono-Regular, monospace;
+      flex-shrink: 0;
+    }
+    .hs-discover-viewers {
+      font-size: 9px;
+      color: #ff5050;
+      font-variant-numeric: tabular-nums;
+      font-family: ui-monospace, SFMono-Regular, monospace;
+      flex-shrink: 0;
+    }
     .hs-pinned-row {
       display: block;
       padding: 2px 8px;
@@ -12811,6 +12925,141 @@ async function fetchDiscover() {
   }
 }
 
+// Compact number: 12345 -> "12.3k", 1200000 -> "1.2m"
+function formatDiscoverCount(n) {
+  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1).replace(/\.0$/, '') + 'm';
+  if (n >= 1_000) return (n / 1_000).toFixed(1).replace(/\.0$/, '') + 'k';
+  return String(n);
+}
+
+// Heat flame icon — built via DOM API for site-parity badge (no "heat" word)
+function makeFlameIcon() {
+  const NS = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(NS, 'svg');
+  svg.setAttribute('viewBox', '0 0 16 16');
+  svg.setAttribute('aria-hidden', 'true');
+  svg.setAttribute('class', 'hs-flame');
+  const path = document.createElementNS(NS, 'path');
+  path.setAttribute('d', 'M8 1c1.5 3 4.5 4 4.5 8a4.5 4.5 0 1 1-9 0c0-2 .8-3 1.6-3.7C5 7 5 6 5 5c1.2.5 1.5 1.2 1.5 1.5C7 5 7.2 3 8 1z');
+  svg.appendChild(path);
+  return svg;
+}
+
+function renderDiscoverProfileRow(profile, username, rank, maxHeat) {
+  const row = document.createElement('a');
+  row.className = 'hs-discover-profile-row';
+  row.href = `https://heatsync.org/user/${encodeURIComponent(username)}`;
+  row.target = '_blank';
+  row.rel = 'noopener noreferrer';
+
+  const isLive = !!(profile.twitch_is_live || profile.kick_is_live);
+  if (isLive) row.classList.add('hs-discover-row-live');
+
+  const rankEl = document.createElement('span');
+  rankEl.className = 'hs-discover-rank';
+  rankEl.textContent = String(rank).padStart(2, '0');
+  row.appendChild(rankEl);
+
+  const dot = document.createElement('span');
+  dot.className = isLive ? 'hs-discover-live-dot' : 'hs-discover-live-spacer';
+  if (isLive) {
+    const v = (profile.twitch_viewer_count || 0) + (profile.kick_viewer_count || 0);
+    dot.title = v > 0 ? `live · ${v.toLocaleString()} viewer${v === 1 ? '' : 's'}` : 'live';
+  }
+  row.appendChild(dot);
+
+  const avatarUrl = safeUrl(profile.avatarUrl || profile.avatar_url || profile.twitch_profile_pic || profile.kick_profile_pic || '');
+  if (avatarUrl) {
+    const img = document.createElement('img');
+    img.className = 'hs-discover-avatar';
+    img.src = avatarUrl;
+    img.alt = '';
+    img.loading = 'lazy';
+    img.onerror = function() { this.style.visibility = 'hidden'; };
+    row.appendChild(img);
+  } else {
+    const ph = document.createElement('span');
+    ph.className = 'hs-discover-avatar hs-discover-avatar-empty';
+    row.appendChild(ph);
+  }
+
+  const nameEl = document.createElement('span');
+  nameEl.className = 'hs-discover-profile-name';
+  nameEl.style.color = sanitizeColor(profile.userColor || profile.user_color || '#fff');
+  nameEl.textContent = profile.displayName || profile.display_name || username;
+  row.appendChild(nameEl);
+
+  const plats = document.createElement('span');
+  plats.className = 'hs-discover-platforms';
+  if (profile.twitch_username) {
+    const t = document.createElement('a');
+    t.className = 'hs-plat hs-plat-t';
+    t.textContent = 't';
+    t.href = `https://www.twitch.tv/${encodeURIComponent(profile.twitch_username)}`;
+    t.target = '_blank';
+    t.rel = 'noopener noreferrer';
+    t.title = `twitch · @${profile.twitch_username}${profile.twitch_is_live ? ' · live' : ''}`;
+    if (profile.twitch_is_live) t.classList.add('hs-plat-live');
+    t.addEventListener('click', e => e.stopPropagation());
+    plats.appendChild(t);
+  }
+  if (profile.kick_username) {
+    const k = document.createElement('a');
+    k.className = 'hs-plat hs-plat-k';
+    k.textContent = 'k';
+    k.href = `https://kick.com/${encodeURIComponent(profile.kick_username)}`;
+    k.target = '_blank';
+    k.rel = 'noopener noreferrer';
+    k.title = `kick · @${profile.kick_username}${profile.kick_is_live ? ' · live' : ''}`;
+    if (profile.kick_is_live) k.classList.add('hs-plat-live');
+    k.addEventListener('click', e => e.stopPropagation());
+    plats.appendChild(k);
+  }
+  if (plats.childNodes.length) row.appendChild(plats);
+
+  const heat = Number(profile.stats?.total_heat ?? profile.heat ?? 0);
+  const bar = document.createElement('span');
+  bar.className = 'hs-discover-bar';
+  const fill = document.createElement('i');
+  const pct = maxHeat > 0 ? Math.max(2, Math.round((heat / maxHeat) * 100)) : 2;
+  fill.style.width = pct + '%';
+  bar.appendChild(fill);
+  row.appendChild(bar);
+
+  const heatEl = document.createElement('span');
+  heatEl.className = 'hs-discover-heat';
+  heatEl.title = `${heat.toLocaleString()} heat`;
+  heatEl.appendChild(makeFlameIcon());
+  const heatVal = document.createElement('span');
+  heatVal.textContent = formatDiscoverCount(heat);
+  heatEl.appendChild(heatVal);
+  row.appendChild(heatEl);
+
+  const op = profile.opCount ?? profile.stats?.op_count ?? 0;
+  const re = profile.reCount ?? profile.stats?.re_count ?? 0;
+  const mop = profile.mopCount ?? profile.stats?.mop_count ?? 0;
+  if (op || re || mop) {
+    const act = document.createElement('span');
+    act.className = 'hs-discover-activity';
+    act.title = `${op} posts · ${re} replies · ${mop} mops`;
+    act.textContent = `${op}·${re}·${mop}`;
+    row.appendChild(act);
+  }
+
+  if (isLive) {
+    const v = (profile.twitch_viewer_count || 0) + (profile.kick_viewer_count || 0);
+    if (v > 0) {
+      const vEl = document.createElement('span');
+      vEl.className = 'hs-discover-viewers';
+      vEl.textContent = formatDiscoverCount(v);
+      vEl.title = `${v.toLocaleString()} viewers`;
+      row.appendChild(vEl);
+    }
+  }
+
+  return row;
+}
+
 function renderDiscoverTab() {
   const msgsEl = document.getElementById('hs-mc-messages');
   if (!msgsEl) return;
@@ -12856,51 +13105,50 @@ function renderDiscoverTab() {
     frag.appendChild(section);
   }
 
-  // Profiles section
+  // Profiles section — btop-style dense rows, live first
   if (discoverProfiles.length > 0) {
     const section = document.createElement('div');
     section.className = 'hs-discover-section';
+
+    const sorted = [...discoverProfiles].sort((a, b) => {
+      const aLive = !!(a.twitch_is_live || a.kick_is_live);
+      const bLive = !!(b.twitch_is_live || b.kick_is_live);
+      if (aLive !== bLive) return bLive ? 1 : -1;
+      if (aLive) {
+        const av = (a.twitch_viewer_count || 0) + (a.kick_viewer_count || 0);
+        const bv = (b.twitch_viewer_count || 0) + (b.kick_viewer_count || 0);
+        if (av !== bv) return bv - av;
+      }
+      const ah = a.stats?.total_heat ?? a.heat ?? 0;
+      const bh = b.stats?.total_heat ?? b.heat ?? 0;
+      return bh - ah;
+    });
+    const liveCount = sorted.filter(p => p.twitch_is_live || p.kick_is_live).length;
+    const maxHeat = Math.max(...sorted.map(p => p.stats?.total_heat ?? p.heat ?? 0), 1);
+
     const heading = document.createElement('div');
     heading.className = 'hs-discover-heading';
-    heading.textContent = 'trending profiles';
+    heading.appendChild(document.createTextNode('trending '));
+    const meta = document.createElement('span');
+    meta.className = 'hs-discover-meta';
+    if (liveCount > 0) {
+      const lc = document.createElement('span');
+      lc.className = 'hs-discover-live-count';
+      lc.textContent = `● ${liveCount} live`;
+      meta.appendChild(lc);
+      meta.appendChild(document.createTextNode(` · ${sorted.length}`));
+    } else {
+      meta.textContent = String(sorted.length);
+    }
+    heading.appendChild(meta);
     section.appendChild(heading);
 
-    for (const profile of discoverProfiles) {
+    let rank = 1;
+    for (const profile of sorted) {
       const username = profile.username || profile.name || '';
       if (!username) continue;
-      const row = document.createElement('a');
-      row.className = 'hs-discover-profile-row';
-      row.href = `https://heatsync.org/user/${encodeURIComponent(username)}`;
-      row.target = '_blank';
-      row.rel = 'noopener noreferrer';
-
-      const heat = profile.stats?.total_heat ?? profile.heat_count ?? profile.heat ?? profile.score ?? profile.totalHeat ?? null;
-      if (heat != null) {
-        const heatSpan = document.createElement('span');
-        heatSpan.className = 'hs-discover-heat';
-        heatSpan.textContent = `${Number(heat).toLocaleString()} heat`;
-        row.appendChild(heatSpan);
-      }
-
-      // Server returns camelCase (avatarUrl, displayName, twitch_profile_pic) — try them all
-      const avatarUrl = safeUrl(profile.avatarUrl || profile.avatar_url || profile.avatar || profile.profile_image_url || profile.twitch_profile_pic || '');
-      if (avatarUrl) {
-        const img = document.createElement('img');
-        img.className = 'hs-feed-avatar hs-discover-avatar';
-        img.src = avatarUrl;
-        img.alt = '';
-        img.loading = 'lazy';
-        img.onerror = function() { this.style.display = 'none'; };
-        row.appendChild(img);
-      }
-
-      const nameSpan = document.createElement('span');
-      nameSpan.className = 'hs-discover-profile-name';
-      // Prefer display name when available
-      nameSpan.textContent = profile.displayName || profile.display_name || username;
-      row.appendChild(nameSpan);
-
-      section.appendChild(row);
+      const row = renderDiscoverProfileRow(profile, username, rank++, maxHeat);
+      if (row) section.appendChild(row);
     }
     frag.appendChild(section);
   }

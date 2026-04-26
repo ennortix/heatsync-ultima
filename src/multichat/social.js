@@ -1689,6 +1689,141 @@ async function fetchDiscover() {
   }
 }
 
+// Compact number: 12345 -> "12.3k", 1200000 -> "1.2m"
+function formatDiscoverCount(n) {
+  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1).replace(/\.0$/, '') + 'm';
+  if (n >= 1_000) return (n / 1_000).toFixed(1).replace(/\.0$/, '') + 'k';
+  return String(n);
+}
+
+// Heat flame icon — built via DOM API for site-parity badge (no "heat" word)
+function makeFlameIcon() {
+  const NS = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(NS, 'svg');
+  svg.setAttribute('viewBox', '0 0 16 16');
+  svg.setAttribute('aria-hidden', 'true');
+  svg.setAttribute('class', 'hs-flame');
+  const path = document.createElementNS(NS, 'path');
+  path.setAttribute('d', 'M8 1c1.5 3 4.5 4 4.5 8a4.5 4.5 0 1 1-9 0c0-2 .8-3 1.6-3.7C5 7 5 6 5 5c1.2.5 1.5 1.2 1.5 1.5C7 5 7.2 3 8 1z');
+  svg.appendChild(path);
+  return svg;
+}
+
+function renderDiscoverProfileRow(profile, username, rank, maxHeat) {
+  const row = document.createElement('a');
+  row.className = 'hs-discover-profile-row';
+  row.href = `https://heatsync.org/user/${encodeURIComponent(username)}`;
+  row.target = '_blank';
+  row.rel = 'noopener noreferrer';
+
+  const isLive = !!(profile.twitch_is_live || profile.kick_is_live);
+  if (isLive) row.classList.add('hs-discover-row-live');
+
+  const rankEl = document.createElement('span');
+  rankEl.className = 'hs-discover-rank';
+  rankEl.textContent = String(rank).padStart(2, '0');
+  row.appendChild(rankEl);
+
+  const dot = document.createElement('span');
+  dot.className = isLive ? 'hs-discover-live-dot' : 'hs-discover-live-spacer';
+  if (isLive) {
+    const v = (profile.twitch_viewer_count || 0) + (profile.kick_viewer_count || 0);
+    dot.title = v > 0 ? `live · ${v.toLocaleString()} viewer${v === 1 ? '' : 's'}` : 'live';
+  }
+  row.appendChild(dot);
+
+  const avatarUrl = safeUrl(profile.avatarUrl || profile.avatar_url || profile.twitch_profile_pic || profile.kick_profile_pic || '');
+  if (avatarUrl) {
+    const img = document.createElement('img');
+    img.className = 'hs-discover-avatar';
+    img.src = avatarUrl;
+    img.alt = '';
+    img.loading = 'lazy';
+    img.onerror = function() { this.style.visibility = 'hidden'; };
+    row.appendChild(img);
+  } else {
+    const ph = document.createElement('span');
+    ph.className = 'hs-discover-avatar hs-discover-avatar-empty';
+    row.appendChild(ph);
+  }
+
+  const nameEl = document.createElement('span');
+  nameEl.className = 'hs-discover-profile-name';
+  nameEl.style.color = sanitizeColor(profile.userColor || profile.user_color || '#fff');
+  nameEl.textContent = profile.displayName || profile.display_name || username;
+  row.appendChild(nameEl);
+
+  const plats = document.createElement('span');
+  plats.className = 'hs-discover-platforms';
+  if (profile.twitch_username) {
+    const t = document.createElement('a');
+    t.className = 'hs-plat hs-plat-t';
+    t.textContent = 't';
+    t.href = `https://www.twitch.tv/${encodeURIComponent(profile.twitch_username)}`;
+    t.target = '_blank';
+    t.rel = 'noopener noreferrer';
+    t.title = `twitch · @${profile.twitch_username}${profile.twitch_is_live ? ' · live' : ''}`;
+    if (profile.twitch_is_live) t.classList.add('hs-plat-live');
+    t.addEventListener('click', e => e.stopPropagation());
+    plats.appendChild(t);
+  }
+  if (profile.kick_username) {
+    const k = document.createElement('a');
+    k.className = 'hs-plat hs-plat-k';
+    k.textContent = 'k';
+    k.href = `https://kick.com/${encodeURIComponent(profile.kick_username)}`;
+    k.target = '_blank';
+    k.rel = 'noopener noreferrer';
+    k.title = `kick · @${profile.kick_username}${profile.kick_is_live ? ' · live' : ''}`;
+    if (profile.kick_is_live) k.classList.add('hs-plat-live');
+    k.addEventListener('click', e => e.stopPropagation());
+    plats.appendChild(k);
+  }
+  if (plats.childNodes.length) row.appendChild(plats);
+
+  const heat = Number(profile.stats?.total_heat ?? profile.heat ?? 0);
+  const bar = document.createElement('span');
+  bar.className = 'hs-discover-bar';
+  const fill = document.createElement('i');
+  const pct = maxHeat > 0 ? Math.max(2, Math.round((heat / maxHeat) * 100)) : 2;
+  fill.style.width = pct + '%';
+  bar.appendChild(fill);
+  row.appendChild(bar);
+
+  const heatEl = document.createElement('span');
+  heatEl.className = 'hs-discover-heat';
+  heatEl.title = `${heat.toLocaleString()} heat`;
+  heatEl.appendChild(makeFlameIcon());
+  const heatVal = document.createElement('span');
+  heatVal.textContent = formatDiscoverCount(heat);
+  heatEl.appendChild(heatVal);
+  row.appendChild(heatEl);
+
+  const op = profile.opCount ?? profile.stats?.op_count ?? 0;
+  const re = profile.reCount ?? profile.stats?.re_count ?? 0;
+  const mop = profile.mopCount ?? profile.stats?.mop_count ?? 0;
+  if (op || re || mop) {
+    const act = document.createElement('span');
+    act.className = 'hs-discover-activity';
+    act.title = `${op} posts · ${re} replies · ${mop} mops`;
+    act.textContent = `${op}·${re}·${mop}`;
+    row.appendChild(act);
+  }
+
+  if (isLive) {
+    const v = (profile.twitch_viewer_count || 0) + (profile.kick_viewer_count || 0);
+    if (v > 0) {
+      const vEl = document.createElement('span');
+      vEl.className = 'hs-discover-viewers';
+      vEl.textContent = formatDiscoverCount(v);
+      vEl.title = `${v.toLocaleString()} viewers`;
+      row.appendChild(vEl);
+    }
+  }
+
+  return row;
+}
+
 function renderDiscoverTab() {
   const msgsEl = document.getElementById('hs-mc-messages');
   if (!msgsEl) return;
@@ -1734,51 +1869,50 @@ function renderDiscoverTab() {
     frag.appendChild(section);
   }
 
-  // Profiles section
+  // Profiles section — btop-style dense rows, live first
   if (discoverProfiles.length > 0) {
     const section = document.createElement('div');
     section.className = 'hs-discover-section';
+
+    const sorted = [...discoverProfiles].sort((a, b) => {
+      const aLive = !!(a.twitch_is_live || a.kick_is_live);
+      const bLive = !!(b.twitch_is_live || b.kick_is_live);
+      if (aLive !== bLive) return bLive ? 1 : -1;
+      if (aLive) {
+        const av = (a.twitch_viewer_count || 0) + (a.kick_viewer_count || 0);
+        const bv = (b.twitch_viewer_count || 0) + (b.kick_viewer_count || 0);
+        if (av !== bv) return bv - av;
+      }
+      const ah = a.stats?.total_heat ?? a.heat ?? 0;
+      const bh = b.stats?.total_heat ?? b.heat ?? 0;
+      return bh - ah;
+    });
+    const liveCount = sorted.filter(p => p.twitch_is_live || p.kick_is_live).length;
+    const maxHeat = Math.max(...sorted.map(p => p.stats?.total_heat ?? p.heat ?? 0), 1);
+
     const heading = document.createElement('div');
     heading.className = 'hs-discover-heading';
-    heading.textContent = 'trending profiles';
+    heading.appendChild(document.createTextNode('trending '));
+    const meta = document.createElement('span');
+    meta.className = 'hs-discover-meta';
+    if (liveCount > 0) {
+      const lc = document.createElement('span');
+      lc.className = 'hs-discover-live-count';
+      lc.textContent = `● ${liveCount} live`;
+      meta.appendChild(lc);
+      meta.appendChild(document.createTextNode(` · ${sorted.length}`));
+    } else {
+      meta.textContent = String(sorted.length);
+    }
+    heading.appendChild(meta);
     section.appendChild(heading);
 
-    for (const profile of discoverProfiles) {
+    let rank = 1;
+    for (const profile of sorted) {
       const username = profile.username || profile.name || '';
       if (!username) continue;
-      const row = document.createElement('a');
-      row.className = 'hs-discover-profile-row';
-      row.href = `https://heatsync.org/user/${encodeURIComponent(username)}`;
-      row.target = '_blank';
-      row.rel = 'noopener noreferrer';
-
-      const heat = profile.stats?.total_heat ?? profile.heat_count ?? profile.heat ?? profile.score ?? profile.totalHeat ?? null;
-      if (heat != null) {
-        const heatSpan = document.createElement('span');
-        heatSpan.className = 'hs-discover-heat';
-        heatSpan.textContent = `${Number(heat).toLocaleString()} heat`;
-        row.appendChild(heatSpan);
-      }
-
-      // Server returns camelCase (avatarUrl, displayName, twitch_profile_pic) — try them all
-      const avatarUrl = safeUrl(profile.avatarUrl || profile.avatar_url || profile.avatar || profile.profile_image_url || profile.twitch_profile_pic || '');
-      if (avatarUrl) {
-        const img = document.createElement('img');
-        img.className = 'hs-feed-avatar hs-discover-avatar';
-        img.src = avatarUrl;
-        img.alt = '';
-        img.loading = 'lazy';
-        img.onerror = function() { this.style.display = 'none'; };
-        row.appendChild(img);
-      }
-
-      const nameSpan = document.createElement('span');
-      nameSpan.className = 'hs-discover-profile-name';
-      // Prefer display name when available
-      nameSpan.textContent = profile.displayName || profile.display_name || username;
-      row.appendChild(nameSpan);
-
-      section.appendChild(row);
+      const row = renderDiscoverProfileRow(profile, username, rank++, maxHeat);
+      if (row) section.appendChild(row);
     }
     frag.appendChild(section);
   }

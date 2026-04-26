@@ -1598,8 +1598,12 @@ async function fetchDiscover() {
       apiFetch('/api/profiles/trending'),
     ]);
 
-    discoverTags = tagsResp.ok ? (tagsResp.data || tagsResp.tags || []) : [];
-    discoverProfiles = profilesResp.ok ? (profilesResp.data || profilesResp.profiles || []) : [];
+    // Server shape: { tags: [...] } and { profiles: [...] }.
+    // api_fetch proxy wraps as { ok: true, data: {...} }, so unwrap one more level.
+    const tagsData = tagsResp.ok ? (tagsResp.data || tagsResp) : {};
+    const profilesData = profilesResp.ok ? (profilesResp.data || profilesResp) : {};
+    discoverTags = Array.isArray(tagsData) ? tagsData : (tagsData.tags || []);
+    discoverProfiles = Array.isArray(profilesData) ? profilesData : (profilesData.profiles || []);
     discoverLoaded = true;
   } catch (e) {
     discoverTags = [];
@@ -1687,7 +1691,8 @@ function renderDiscoverTab() {
       row.target = '_blank';
       row.rel = 'noopener noreferrer';
 
-      const avatarUrl = safeUrl(profile.avatar_url || profile.avatar || '');
+      // Server returns camelCase (avatarUrl, displayName, twitch_profile_pic) — try them all
+      const avatarUrl = safeUrl(profile.avatarUrl || profile.avatar_url || profile.avatar || profile.profile_image_url || profile.twitch_profile_pic || '');
       if (avatarUrl) {
         const img = document.createElement('img');
         img.className = 'hs-feed-avatar hs-discover-avatar';
@@ -1700,10 +1705,11 @@ function renderDiscoverTab() {
 
       const nameSpan = document.createElement('span');
       nameSpan.className = 'hs-discover-profile-name';
-      nameSpan.textContent = escapeHtml(username);
+      // Prefer display name when available
+      nameSpan.textContent = profile.displayName || profile.display_name || username;
       row.appendChild(nameSpan);
 
-      const heat = profile.heat_count ?? profile.heat ?? profile.score ?? null;
+      const heat = profile.heat_count ?? profile.heat ?? profile.score ?? profile.totalHeat ?? null;
       if (heat != null) {
         const heatSpan = document.createElement('span');
         heatSpan.className = 'hs-discover-heat';

@@ -369,10 +369,10 @@ function renderNewDmHeader(msgsEl) {
         userInput.value = ''
         msgInput.value = ''
       } else {
-        errEl.textContent = escapeHtml(resp?.error || 'send failed')
+        errEl.textContent = resp?.error || 'send failed'
       }
     } catch (e) {
-      errEl.textContent = escapeHtml(e.message || 'send failed')
+      errEl.textContent = e.message || 'send failed'
     }
     sendBtn.disabled = false
     sendBtn.textContent = 'send'
@@ -433,10 +433,15 @@ function renderWhispersTab() {
   updateWhisperBadge()
   whisperSaveDebounced()
 
-  // Preserve the + new DM header across re-renders
+  // Preserve the + new DM header (and any in-progress form input) across re-renders
   const existingDmWrap = document.getElementById('hs-mc-new-dm-wrap')
-  if (existingDmWrap) existingDmWrap.remove()
-  renderNewDmHeader(msgsEl)
+  if (existingDmWrap) {
+    if (existingDmWrap.parentNode !== msgsEl || msgsEl.firstChild !== existingDmWrap) {
+      msgsEl.insertBefore(existingDmWrap, msgsEl.firstChild)
+    }
+  } else {
+    renderNewDmHeader(msgsEl)
+  }
 
   if (whisperTimeline.length === 0) {
     const emptyDiv = document.createElement('div')

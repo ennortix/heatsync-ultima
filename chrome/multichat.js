@@ -4442,7 +4442,7 @@ function injectStyles() {
     .hs-mc-tab .hs-badge {
       background: #ff6b35;
       color: #fff;
-      border-radius: 50%;
+      border-radius: 2px;
       font-size: 10px;
       min-width: 14px;
       height: 14px;
@@ -4677,29 +4677,10 @@ function injectStyles() {
     .hs-mc-search-empty {
       padding: 16px;
       text-align: center;
-      color: #555;
+      color: #808080;
       font-size: 12px;
     }
     /* btop-style density: 1-line rows, no section gaps, tight chips */
-    .hs-discover-refresh-bar {
-      display: flex;
-      justify-content: flex-end;
-      padding: 2px 6px;
-      background: transparent;
-      flex-shrink: 0;
-    }
-    .hs-discover-refresh-btn {
-      background: transparent;
-      border: 1px solid #ff8700;
-      color: #ff8700;
-      font-size: 10px;
-      font-family: inherit;
-      padding: 0 6px;
-      cursor: pointer;
-      border-radius: 0;
-      line-height: 1.4;
-    }
-    .hs-discover-refresh-btn:hover { background: #ff8700; color: #000; }
     .hs-discover-section { padding: 0; }
     .hs-discover-section + .hs-discover-section { margin-top: 1px; }
     .hs-discover-heading {
@@ -4733,7 +4714,7 @@ function injectStyles() {
       line-height: 1.5;
       white-space: nowrap;
     }
-    .hs-discover-chip:hover { background: #ff8700; color: #000; }
+    .hs-discover-chip:hover { background: #fff; color: #000; }
     .hs-discover-profile-row {
       display: flex;
       align-items: center;
@@ -4773,7 +4754,7 @@ function injectStyles() {
     }
     .hs-pinned-channel { font-size: 10px; color: #ff8700; font-weight: 600; }
     .hs-pinned-user { font-size: 10px; color: #bbb; }
-    .hs-pinned-time { font-size: 10px; color: #555; margin-left: auto; }
+    .hs-pinned-time { font-size: 10px; color: #808080; margin-left: auto; }
     .hs-pinned-body {
       font-size: 11px;
       color: #ddd;
@@ -7913,14 +7894,14 @@ async function sendKickMessage(kickSlug, text) {
       const tierStr = tierNum && tierNum > 1 ? ' T' + tierNum : '';
       relBadges.push(`<span class="hs-pc-rel-badge supporter">subs to you${tierStr}${since ? ' · ' + getCompactRelTime(since).replace(' ago', '') : ''}</span>`);
     }
-    // You → them (follow)
-    const youFollow = rel.isFollowing || rel.followsOnTwitch || rel.followsOnKick || rel.youFollow;
+    // You → them (follow) — ?? respects explicit false from canonical youFollow
+    const youFollow = rel.youFollow ?? rel.isFollowing ?? rel.followsOnTwitch ?? rel.followsOnKick;
     if (youFollow) {
       const since = rel.youFollowSince || rel.followsOnTwitchSince || rel.followsOnKickSince || rel.followedAt;
       relBadges.push(`<span class="hs-pc-rel-badge following">following${since ? ' · ' + getCompactRelTime(since).replace(' ago', '') : ''}</span>`);
     }
     // You → them (sub) — normalize tier
-    const youSub = rel.isSubscribed || rel.subscribedOnTwitch || rel.subscribedOnKick;
+    const youSub = rel.youSub ?? rel.isSubscribed ?? rel.subscribedOnTwitch ?? rel.subscribedOnKick;
     if (youSub) {
       const rawTier = rel.twitchSubTier || rel.kickSubTier || rel.subTier;
       const tierNum = typeof rawTier === 'string' ? Math.round(Number(rawTier) / 1000) : rawTier;
@@ -11459,6 +11440,7 @@ async function loadHsAuth() {
       if (area !== 'local') return;
       if (changes.user_info) {
         hsCurrentUsername = changes.user_info.newValue?.username?.toLowerCase() || null
+        hsCurrentUserId = changes.user_info.newValue?.id ? String(changes.user_info.newValue.id) : null
       }
       if (changes.auth_token_encrypted || changes.auth_token) {
         const wasAuthed = hsAuthToken;
@@ -12182,7 +12164,7 @@ function buildEngagementBar(m) {
   // Heat/like button — flame SVG
   const heatBtn = document.createElement('button')
   heatBtn.className = 'hs-feed-heat-btn' + (liked ? ' active' : '')
-  heatBtn.title = liked ? 'unlike' : 'heat'
+  heatBtn.title = liked ? 'already heated' : 'heat'
   heatBtn.dataset.id = m.base36_id
   heatBtn.appendChild(_makeSvg('M12 2C9 7 5 9 5 14a7 7 0 0014 0c0-5-4-7-7-12z', liked))
   const heatCount2 = document.createElement('span')
@@ -12879,7 +12861,7 @@ function renderDiscoverTab() {
       chip.href = `https://heatsync.org/tags/${encodeURIComponent(name)}`;
       chip.target = '_blank';
       chip.rel = 'noopener noreferrer';
-      chip.textContent = escapeHtml(name);
+      chip.textContent = name;
       chips.appendChild(chip);
     }
     section.appendChild(chips);
@@ -13446,10 +13428,10 @@ function renderNewDmHeader(msgsEl) {
         userInput.value = ''
         msgInput.value = ''
       } else {
-        errEl.textContent = escapeHtml(resp?.error || 'send failed')
+        errEl.textContent = resp?.error || 'send failed'
       }
     } catch (e) {
-      errEl.textContent = escapeHtml(e.message || 'send failed')
+      errEl.textContent = e.message || 'send failed'
     }
     sendBtn.disabled = false
     sendBtn.textContent = 'send'
@@ -13510,10 +13492,15 @@ function renderWhispersTab() {
   updateWhisperBadge()
   whisperSaveDebounced()
 
-  // Preserve the + new DM header across re-renders
+  // Preserve the + new DM header (and any in-progress form input) across re-renders
   const existingDmWrap = document.getElementById('hs-mc-new-dm-wrap')
-  if (existingDmWrap) existingDmWrap.remove()
-  renderNewDmHeader(msgsEl)
+  if (existingDmWrap) {
+    if (existingDmWrap.parentNode !== msgsEl || msgsEl.firstChild !== existingDmWrap) {
+      msgsEl.insertBefore(existingDmWrap, msgsEl.firstChild)
+    }
+  } else {
+    renderNewDmHeader(msgsEl)
+  }
 
   if (whisperTimeline.length === 0) {
     const emptyDiv = document.createElement('div')

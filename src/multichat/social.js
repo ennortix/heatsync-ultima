@@ -290,6 +290,7 @@ async function loadHsAuth() {
       if (area !== 'local') return;
       if (changes.user_info) {
         hsCurrentUsername = changes.user_info.newValue?.username?.toLowerCase() || null
+        hsCurrentUserId = changes.user_info.newValue?.id ? String(changes.user_info.newValue.id) : null
       }
       if (changes.auth_token_encrypted || changes.auth_token) {
         const wasAuthed = hsAuthToken;
@@ -1013,7 +1014,7 @@ function buildEngagementBar(m) {
   // Heat/like button — flame SVG
   const heatBtn = document.createElement('button')
   heatBtn.className = 'hs-feed-heat-btn' + (liked ? ' active' : '')
-  heatBtn.title = liked ? 'unlike' : 'heat'
+  heatBtn.title = liked ? 'already heated' : 'heat'
   heatBtn.dataset.id = m.base36_id
   heatBtn.appendChild(_makeSvg('M12 2C9 7 5 9 5 14a7 7 0 0014 0c0-5-4-7-7-12z', liked))
   const heatCount2 = document.createElement('span')
@@ -1710,7 +1711,7 @@ function renderDiscoverTab() {
       chip.href = `https://heatsync.org/tags/${encodeURIComponent(name)}`;
       chip.target = '_blank';
       chip.rel = 'noopener noreferrer';
-      chip.textContent = escapeHtml(name);
+      chip.textContent = name;
       chips.appendChild(chip);
     }
     section.appendChild(chips);

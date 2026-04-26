@@ -511,14 +511,14 @@
       const tierStr = tierNum && tierNum > 1 ? ' T' + tierNum : '';
       relBadges.push(`<span class="hs-pc-rel-badge supporter">subs to you${tierStr}${since ? ' · ' + getCompactRelTime(since).replace(' ago', '') : ''}</span>`);
     }
-    // You → them (follow)
-    const youFollow = rel.isFollowing || rel.followsOnTwitch || rel.followsOnKick || rel.youFollow;
+    // You → them (follow) — ?? respects explicit false from canonical youFollow
+    const youFollow = rel.youFollow ?? rel.isFollowing ?? rel.followsOnTwitch ?? rel.followsOnKick;
     if (youFollow) {
       const since = rel.youFollowSince || rel.followsOnTwitchSince || rel.followsOnKickSince || rel.followedAt;
       relBadges.push(`<span class="hs-pc-rel-badge following">following${since ? ' · ' + getCompactRelTime(since).replace(' ago', '') : ''}</span>`);
     }
     // You → them (sub) — normalize tier
-    const youSub = rel.isSubscribed || rel.subscribedOnTwitch || rel.subscribedOnKick;
+    const youSub = rel.youSub ?? rel.isSubscribed ?? rel.subscribedOnTwitch ?? rel.subscribedOnKick;
     if (youSub) {
       const rawTier = rel.twitchSubTier || rel.kickSubTier || rel.subTier;
       const tierNum = typeof rawTier === 'string' ? Math.round(Number(rawTier) / 1000) : rawTier;

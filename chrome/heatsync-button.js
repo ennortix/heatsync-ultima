@@ -2973,6 +2973,7 @@
       if (countEl) countEl.textContent = String(removedEmotesCache.length)
       // Refresh inventory so the emote shows up in mine tab
       loadInventoryEmotes()
+      fetchHistoryStatus()
     } else {
       btn.classList.remove('restoring')
       btn.classList.add('failed')
@@ -3179,6 +3180,7 @@
 
       // Refresh inventory
       await loadInventoryEmotes();
+      fetchHistoryStatus();
     } catch (err) {
     }
   }
@@ -3347,6 +3349,7 @@
             updateTabCounts();
             renderEmoteGrid();
           }
+          fetchHistoryStatus();
         } catch (err) {
           if (err.message?.includes('Extension context invalidated')) {
             const toast = document.createElement('div');
@@ -3417,6 +3420,7 @@
               showPickerToast(`renamed to ${newName}`);
               await loadInventoryEmotes();
               renderEmoteGrid();
+              fetchHistoryStatus();
             } else {
               showPickerToast(resp?.error || 'rename failed');
             }
@@ -3465,6 +3469,7 @@
               showPickerToast(`moved to slot ${toSlot}`);
               await loadInventoryEmotes();
               renderEmoteGrid();
+              fetchHistoryStatus();
             } else {
               showPickerToast(resp?.error || 'move failed');
             }

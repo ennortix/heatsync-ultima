@@ -3458,7 +3458,7 @@ function injectStyles() {
     .hs-mc-tab .hs-badge {
       background: #ff6b35;
       color: #fff;
-      border-radius: 50%;
+      border-radius: 2px;
       font-size: 10px;
       min-width: 14px;
       height: 14px;
@@ -3693,29 +3693,10 @@ function injectStyles() {
     .hs-mc-search-empty {
       padding: 16px;
       text-align: center;
-      color: #555;
+      color: #808080;
       font-size: 12px;
     }
     /* btop-style density: 1-line rows, no section gaps, tight chips */
-    .hs-discover-refresh-bar {
-      display: flex;
-      justify-content: flex-end;
-      padding: 2px 6px;
-      background: transparent;
-      flex-shrink: 0;
-    }
-    .hs-discover-refresh-btn {
-      background: transparent;
-      border: 1px solid #ff8700;
-      color: #ff8700;
-      font-size: 10px;
-      font-family: inherit;
-      padding: 0 6px;
-      cursor: pointer;
-      border-radius: 0;
-      line-height: 1.4;
-    }
-    .hs-discover-refresh-btn:hover { background: #ff8700; color: #000; }
     .hs-discover-section { padding: 0; }
     .hs-discover-section + .hs-discover-section { margin-top: 1px; }
     .hs-discover-heading {
@@ -3749,7 +3730,7 @@ function injectStyles() {
       line-height: 1.5;
       white-space: nowrap;
     }
-    .hs-discover-chip:hover { background: #ff8700; color: #000; }
+    .hs-discover-chip:hover { background: #fff; color: #000; }
     .hs-discover-profile-row {
       display: flex;
       align-items: center;
@@ -3789,7 +3770,7 @@ function injectStyles() {
     }
     .hs-pinned-channel { font-size: 10px; color: #ff8700; font-weight: 600; }
     .hs-pinned-user { font-size: 10px; color: #bbb; }
-    .hs-pinned-time { font-size: 10px; color: #555; margin-left: auto; }
+    .hs-pinned-time { font-size: 10px; color: #808080; margin-left: auto; }
     .hs-pinned-body {
       font-size: 11px;
       color: #ddd;

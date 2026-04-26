@@ -457,7 +457,7 @@
             await chrome.storage.local.set({ user_info: stored.user_info });
           }
         } else {
-          const errMsg = (bioResp && bioResp.error) || (flairResp && flairResp.error) || 'save failed';
+          const errMsg = (bioResp && bioResp.error) || 'save failed';
           status.style.color = '#ff4444';
           status.textContent = String(errMsg).slice(0, 60);
         }

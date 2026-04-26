@@ -1266,7 +1266,7 @@ style.textContent = `
     height: 16px !important;
     background: rgba(255,255,255,0.12) !important;
     color: #fff !important;
-    border-radius: 50% !important;
+    border-radius: 0 !important;
     font-size: 12px !important;
     cursor: pointer !important;
     margin-right: 4px !important;
@@ -1292,7 +1292,7 @@ style.textContent = `
     height: 16px !important;
     background: #7f0000 !important;
     color: #fff !important;
-    border-radius: 50% !important;
+    border-radius: 0 !important;
     font-size: 10px !important;
     cursor: pointer !important;
     margin-left: 4px !important;
@@ -3403,16 +3403,18 @@ function setupUsernameColoringObserver() {
           );
           const names = [];
 
+          // Server stores blocks by hash only — skip emotes without a hash to
+          // avoid corrupting state with name-keyed entries that won't sync.
           if (allBlocked) {
             emoteWrappers.forEach(wrapper => {
               const hash = wrapper.dataset.emoteHash;
               const name = wrapper.dataset.emoteName;
-              if (hash || name) {
-                blockedEmotes.delete(hash || name);
-                updateEmoteState(hash, name, globalNameSet.has(name) ? 'global' : 'neutral');
-                safeSendMessage({ type: 'unblock_emote', hash });
-                names.push(name);
-              }
+              if (!hash) return; // can't unblock server-side without a hash
+              blockedEmotes.delete(hash);
+              const restoredState = inventoryHashSet.has(hash) ? 'added' : (globalNameSet.has(name) ? 'global' : 'neutral');
+              updateEmoteState(hash, name, restoredState);
+              safeSendMessage({ type: 'unblock_emote', hash });
+              if (name) names.push(name);
             });
             blockAllBtn.textContent = '⊘';
             blockAllBtn.title = t('btn_block_all');
@@ -3421,12 +3423,11 @@ function setupUsernameColoringObserver() {
             emoteWrappers.forEach(wrapper => {
               const hash = wrapper.dataset.emoteHash;
               const name = wrapper.dataset.emoteName;
-              if (hash || name) {
-                blockedEmotes.add(hash || name);
-                updateEmoteState(hash, name, 'blocked');
-                safeSendMessage({ type: 'block_emote', hash });
-                names.push(name);
-              }
+              if (!hash) return; // server can't block without a hash
+              blockedEmotes.add(hash);
+              updateEmoteState(hash, name, 'blocked');
+              safeSendMessage({ type: 'block_emote', hash });
+              if (name) names.push(name);
             });
             blockAllBtn.textContent = '◉';
             blockAllBtn.title = t('btn_show_all');
@@ -3946,6 +3947,7 @@ function stackAdjacentOverlayEmotes(messageElement, allEmotes) {
         baseWrapper.className = 'heatsync-emote-wrapper emote-overlay-global';
         const img = baseElement.tagName === 'IMG' ? baseElement : baseElement.querySelector('img');
         baseWrapper.dataset.emoteName = img?.alt || 'native';
+        baseWrapper.dataset.emoteHash = img?.dataset?.emoteHash || '';
         // Use outermost emote container to escape overflow:hidden from Twitch button structure
         const outerContainer = baseElement.closest('.chat-line__message--emote-button')
           || baseElement.closest('[class*="emote-button"]')
@@ -4485,7 +4487,8 @@ function setupEmoteClickHandlers() {
         const result = await safeSendMessage({ type: 'unblock_emote', hash });
         if (result?.success) {
           blockedEmotes.delete(hash);
-          updateEmoteState(hash, emoteName, 'neutral');
+          const restoredState = inventoryHashSet.has(hash) ? 'added' : (globalNameSet.has(emoteName) ? 'global' : 'neutral');
+          updateEmoteState(hash, emoteName, restoredState);
           log(' ✅ Unblocked:', emoteName);
           showToast(t('content_toast_unblocked', [emoteName]), 'success');
         } else {
@@ -4552,7 +4555,8 @@ function setupEmoteClickHandlers() {
         const result = await safeSendMessage({ type: 'unblock_emote', hash });
         if (result?.success) {
           blockedEmotes.delete(hash);
-          updateEmoteState(hash, emoteName, isGlobalEmote ? 'global' : 'neutral');
+          const restoredState = inventoryHashSet.has(hash) ? 'added' : (isGlobalEmote ? 'global' : 'neutral');
+          updateEmoteState(hash, emoteName, restoredState);
           log(' ✅ Unblocked:', emoteName);
         } else {
           showToast(t('content_toast_failed_unblock', [String(result?.error || 'Unknown error')]), 'error');
@@ -5926,10 +5930,10 @@ function updateEmoteState(hash, emoteName, state) {
 
         // Populate history async
         fetchUserMessages(username, channelLogin, 200).then(messages => {
-          if (!cardEl) return
+          if (!cardEl || !histList.isConnected) return
           populateHistory(histList, histCount, messages, channelLogin)
         }).catch(() => {
-          if (!cardEl) return
+          if (!cardEl || !histList.isConnected) return
           populateHistory(histList, histCount, [], channelLogin)
         })
       } else {

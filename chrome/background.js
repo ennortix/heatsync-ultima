@@ -1893,6 +1893,9 @@ async function poll7TVEmoteSet() {
 
 // Block emote via HTTP - returns success/failure
 async function blockEmote(hash) {
+  // Server stores blocks by hash only — silently 404s for empty/null hashes.
+  // Reject early to prevent corrupting blockedEmotes Set with undefined entries.
+  if (!hash || typeof hash !== 'string') return { success: false, error: 'no hash' };
   try {
     const authToken = await getAuthCookie();
     if (!authToken) {
@@ -1945,6 +1948,8 @@ async function blockEmote(hash) {
 
 // Unblock emote via HTTP - returns success/failure
 async function unblockEmote(hash) {
+  // Same hash-validity guard as blockEmote — silent 404 corrupts state otherwise.
+  if (!hash || typeof hash !== 'string') return { success: false, error: 'no hash' };
   try {
     const authToken = await getAuthCookie();
     if (!authToken) {
@@ -2409,6 +2414,7 @@ function handleWSMessage(msg) {
     case 'emote:blocked':
       if (msg.hash && !blockedEmotes.has(msg.hash)) {
         blockedEmotes.add(msg.hash)
+        browser.storage.local.set({ blocked_emotes: Array.from(blockedEmotes) }).catch(() => {})
         const blockedEmote = emoteInventory.find(e => e.hash === msg.hash)
         if (blockedEmote) {
           emoteInventory = emoteInventory.filter(e => e.hash !== msg.hash)
@@ -2422,6 +2428,9 @@ function handleWSMessage(msg) {
     case 'emote:unblocked':
       if (msg.hash && blockedEmotes.has(msg.hash)) {
         blockedEmotes.delete(msg.hash)
+        browser.storage.local.set({ blocked_emotes: Array.from(blockedEmotes) }).catch(() => {})
+        // Refresh inventory in case the unblocked emote should be restored
+        scheduleInventoryRefresh()
         broadcastToTabs({ type: 'blocked_update', blocked: [...blockedEmotes, ...localBlockedEmotes] })
         broadcastToTabs({ type: 'emote_unblocked', hash: msg.hash })
       }
@@ -3743,6 +3752,19 @@ async function initialize() {
         }
       }
       if (restored > 0) log(' ✓ Warm cache:', restored, 'user cosmetics from storage')
+    }
+    // Warm-cache 3rd-party badge maps so badges render immediately on cold start
+    if (stored.bttv_badge_map && typeof stored.bttv_badge_map === 'object') {
+      bttvBadgeMap = new Map(Object.entries(stored.bttv_badge_map))
+      log(' ✓ Warm cache:', bttvBadgeMap.size, 'BTTV badge entries from storage')
+    }
+    if (stored.ffz_badge_map && typeof stored.ffz_badge_map === 'object') {
+      ffzBadgeMap = new Map(Object.entries(stored.ffz_badge_map))
+      log(' ✓ Warm cache:', ffzBadgeMap.size, 'FFZ badge entries from storage')
+    }
+    if (stored.chatterino_badge_map && typeof stored.chatterino_badge_map === 'object') {
+      chatterinoBadgeMap = new Map(Object.entries(stored.chatterino_badge_map))
+      log(' ✓ Warm cache:', chatterinoBadgeMap.size, 'Chatterino badge entries from storage')
     }
   } catch (err) {
     log(' Storage restore failed:', err.message);

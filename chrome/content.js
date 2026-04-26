@@ -5116,8 +5116,11 @@ function updateEmoteState(hash, emoteName, state) {
     row1.appendChild(nameSpan)
 
     if (role) {
+      // Sanitize: only allow alphanumeric chars in className to prevent
+      // injection of arbitrary CSS classes from server-controlled role string
+      const safeRoleClass = String(role).replace(/[^a-zA-Z0-9_-]/g, '')
       const roleSpan = document.createElement('span')
-      roleSpan.className = `hs-pc-role ${role}`
+      roleSpan.className = `hs-pc-role ${safeRoleClass}`
       roleSpan.textContent = role
       row1.appendChild(roleSpan)
     }

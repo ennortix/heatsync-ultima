@@ -1,11 +1,15 @@
 // Kick chat sending — routes through background.js → kick.com tab content script
 
 const kickChannelIdCache = new Map()
+const KICK_CHANNEL_ID_CACHE_MAX = 200
 
 async function resolveKickChannelId(slug) {
   if (kickChannelIdCache.has(slug)) return kickChannelIdCache.get(slug)
   const resp = await safeSendMessage({ type: 'kick_resolve_channel', slug })
   if (resp?.channelId) {
+    if (kickChannelIdCache.size >= KICK_CHANNEL_ID_CACHE_MAX) {
+      kickChannelIdCache.delete(kickChannelIdCache.keys().next().value)
+    }
     kickChannelIdCache.set(slug, resp.channelId)
     return resp.channelId
   }

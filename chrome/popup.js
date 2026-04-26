@@ -171,7 +171,7 @@
   // Live Following ────────────────────────────────────────────────────────────
 
   function formatViewers(n) {
-    if (!n) return '';
+    if (n == null || n === '') return '';
     const num = parseInt(n) || 0;
     if (num >= 1000) return (num / 1000).toFixed(1) + 'k';
     return String(num);
@@ -469,7 +469,10 @@
   // Bookmarks ─────────────────────────────────────────────────────────────────
 
   function relTime(ts) {
-    const diff = Math.floor((Date.now() - new Date(ts).getTime()) / 1000);
+    const time = new Date(ts).getTime();
+    if (!isFinite(time)) return '';
+    const diff = Math.floor((Date.now() - time) / 1000);
+    if (diff < 0) return 'just now';
     if (diff < 60) return diff + 's ago';
     if (diff < 3600) return Math.floor(diff / 60) + 'm ago';
     if (diff < 86400) return Math.floor(diff / 3600) + 'h ago';

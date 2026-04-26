@@ -48,6 +48,7 @@ const COPY_FILES = [
   'shared-utils.js',
   'emoji-data.js',
   'welcome.html',
+  'welcome.js',
   'injected-message.css',
   'vi-mode.js',
   'kick-autocomplete-hook.js',

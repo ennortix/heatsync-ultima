@@ -531,8 +531,23 @@
 
     input.focus()
     input.textContent = ''
-    document.execCommand('insertText', false, msg.text)
-    input.dispatchEvent(new Event('input', { bubbles: true }))
+
+    // Set caret at end, then insert text via Selection/Range (execCommand is deprecated)
+    const range = document.createRange()
+    range.selectNodeContents(input)
+    range.collapse(false)
+    const sel = window.getSelection()
+    sel.removeAllRanges()
+    sel.addRange(range)
+
+    const textNode = document.createTextNode(msg.text)
+    range.insertNode(textNode)
+    range.setStartAfter(textNode)
+    range.setEndAfter(textNode)
+    sel.removeAllRanges()
+    sel.addRange(range)
+
+    input.dispatchEvent(new InputEvent('input', { bubbles: true, data: msg.text, inputType: 'insertText' }))
 
     // Click send button after a brief delay for YouTube to process
     setTimeout(() => {

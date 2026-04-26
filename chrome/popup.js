@@ -1,188 +1,736 @@
 // Heatsync Popup - Minimal status view
+// innerHTML usage: all dynamic content passed through escapeHtml() or safeUrl()
 (function() {
-  'use strict'
+  'use strict';
 
-  const API_URL = 'https://heatsync.org'
+  const API_URL = 'https://heatsync.org';
 
   function t(key, subs) {
-    try { return chrome.i18n.getMessage(key, subs) || key } catch { return key }
+    try { return chrome.i18n.getMessage(key, subs) || key; } catch { return key; }
   }
 
   function hydrateI18n(root = document) {
     for (const el of root.querySelectorAll('[data-i18n]'))
-      el.textContent = t(el.dataset.i18n) || el.textContent
+      el.textContent = t(el.dataset.i18n) || el.textContent;
     for (const el of root.querySelectorAll('[data-i18n-placeholder]'))
-      el.placeholder = t(el.dataset.i18nPlaceholder) || el.placeholder
+      el.placeholder = t(el.dataset.i18nPlaceholder) || el.placeholder;
     for (const el of root.querySelectorAll('[data-i18n-title]'))
-      el.title = t(el.dataset.i18nTitle) || el.title
+      el.title = t(el.dataset.i18nTitle) || el.title;
   }
 
   function escapeHtml(str) {
-    if (str == null) return ''
+    if (str == null) return '';
     return String(str)
       .replace(/&/g, '&amp;')
       .replace(/</g, '&lt;')
       .replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#x27;')
+      .replace(/'/g, '&#x27;');
   }
 
+  function safeUrl(url) {
+    if (!url) return '';
+    try {
+      const u = new URL(url);
+      if (u.protocol !== 'https:' && u.protocol !== 'http:') return '';
+      return u.href;
+    } catch { return ''; }
+  }
+
+  function debounce(fn, ms) {
+    let timer;
+    return function(...args) {
+      clearTimeout(timer);
+      timer = setTimeout(() => fn.apply(this, args), ms);
+    };
+  }
+
+  // Proxy all API calls through background.js to bypass CORS
+  function apiFetch(path, opts) {
+    if (!opts) opts = {};
+    return new Promise(function(resolve, reject) {
+      chrome.runtime.sendMessage({
+        type: 'api_fetch',
+        path: path,
+        method: opts.method || 'GET',
+        auth: true,
+        body: opts.body || undefined,
+      }, function(resp) {
+        if (chrome.runtime.lastError) { reject(new Error(chrome.runtime.lastError.message)); return; }
+        resolve(resp);
+      });
+    });
+  }
+
+  // Search ────────────────────────────────────────────────────────────────────
+
+  function initSearch() {
+    const input = document.getElementById('search-input');
+    const dropdown = document.getElementById('search-dropdown');
+    if (!input || !dropdown) return;
+
+    function closeDropdown() {
+      dropdown.textContent = '';
+      dropdown.classList.remove('open');
+    }
+
+    function renderItem(r) {
+      const a = document.createElement('a');
+      a.className = 'search-item';
+      a.href = safeUrl(r.url) || '#';
+      a.target = '_blank';
+      a.rel = 'noopener noreferrer';
+      const imgSrc = safeUrl(r.img || '');
+      if (imgSrc) {
+        const img = document.createElement('img');
+        img.className = 'search-item-img';
+        img.src = imgSrc;
+        img.alt = '';
+        img.loading = 'lazy';
+        a.appendChild(img);
+      } else {
+        const d = document.createElement('div');
+        d.className = 'search-item-img';
+        a.appendChild(d);
+      }
+      const label = document.createElement('span');
+      label.className = 'search-item-label';
+      label.textContent = r.label || '';
+      a.appendChild(label);
+      const tag = document.createElement('span');
+      tag.className = 'search-item-tag';
+      tag.textContent = r.type || '';
+      a.appendChild(tag);
+      return a;
+    }
+
+    async function doSearch(q) {
+      if (!q || q.length < 2) { closeDropdown(); return; }
+      dropdown.textContent = '';
+      const loading = document.createElement('div');
+      loading.className = 'search-empty';
+      loading.textContent = 'searching...';
+      dropdown.appendChild(loading);
+      dropdown.classList.add('open');
+      try {
+        const resp = await apiFetch('/api/search?q=' + encodeURIComponent(q) + '&limit=8');
+        const results = [];
+        if (resp && resp.data) {
+          const d = resp.data;
+          const addUser = function(u) {
+            results.push({ type: 'user', label: u.display_name || u.username || '', sub: u.username || '', img: u.profile_image_url || u.avatar_url || '', url: 'https://heatsync.org/@' + encodeURIComponent(u.username || '') });
+          };
+          if (Array.isArray(d.users)) d.users.slice(0, 4).forEach(addUser);
+          if (Array.isArray(d.profiles)) d.profiles.slice(0, 4).forEach(addUser);
+          if (Array.isArray(d.emotes)) {
+            d.emotes.slice(0, 4).forEach(function(e) {
+              results.push({ type: 'emote', label: e.name || '', sub: '', img: e.url || '', url: 'https://heatsync.org/emotes/' + encodeURIComponent(e.name || '') });
+            });
+          }
+          if (Array.isArray(d.results)) {
+            d.results.slice(0, 6).forEach(function(r) {
+              results.push({ type: r.type || 'result', label: r.display_name || r.name || r.username || '', sub: r.username || '', img: r.profile_image_url || r.avatar_url || '', url: 'https://heatsync.org/' + (r.username ? '@' + r.username : '') });
+            });
+          }
+        }
+        dropdown.textContent = '';
+        if (!results.length) {
+          const empty = document.createElement('div');
+          empty.className = 'search-empty';
+          empty.textContent = 'no results';
+          dropdown.appendChild(empty);
+          return;
+        }
+        results.forEach(function(r) { dropdown.appendChild(renderItem(r)); });
+      } catch {
+        dropdown.textContent = '';
+        const err = document.createElement('div');
+        err.className = 'search-empty';
+        err.textContent = 'error';
+        dropdown.appendChild(err);
+      }
+    }
+
+    const debouncedSearch = debounce(doSearch, 300);
+
+    input.addEventListener('input', function() { debouncedSearch(input.value.trim()); });
+    input.addEventListener('keydown', function(e) { if (e.key === 'Escape') { closeDropdown(); input.value = ''; } });
+    document.addEventListener('click', function(e) {
+      if (!input.contains(e.target) && !dropdown.contains(e.target)) closeDropdown();
+    });
+  }
+
+  // Live Following ────────────────────────────────────────────────────────────
+
+  function formatViewers(n) {
+    if (!n) return '';
+    const num = parseInt(n) || 0;
+    if (num >= 1000) return (num / 1000).toFixed(1) + 'k';
+    return String(num);
+  }
+
+  async function loadLive(container) {
+    container.textContent = '';
+    const loading = document.createElement('div');
+    loading.className = 'live-empty';
+    loading.textContent = 'loading...';
+    container.appendChild(loading);
+    try {
+      const resp = await apiFetch('/api/live/following');
+      const streams = (resp && (resp.streams || (resp.data && resp.data.streams))) || [];
+      container.textContent = '';
+      if (!streams.length) {
+        const empty = document.createElement('div');
+        empty.className = 'live-empty';
+        empty.textContent = 'no followed channels live';
+        container.appendChild(empty);
+        return;
+      }
+      streams.slice(0, 3).forEach(function(s) {
+        const platform = s.platform || 'twitch';
+        const username = s.username || '';
+        const url = safeUrl(platform === 'kick'
+          ? 'https://kick.com/' + encodeURIComponent(username)
+          : 'https://www.twitch.tv/' + encodeURIComponent(username));
+        const a = document.createElement('a');
+        a.className = 'live-row';
+        a.href = url || '#';
+        a.target = '_blank';
+        a.rel = 'noopener noreferrer';
+
+        const dot = document.createElement('span');
+        dot.className = 'live-dot';
+        a.appendChild(dot);
+
+        const imgSrc = safeUrl(s.profileImageUrl || s.profile_image_url || '');
+        if (imgSrc) {
+          const img = document.createElement('img');
+          img.className = 'live-avatar';
+          img.src = imgSrc;
+          img.alt = '';
+          img.loading = 'lazy';
+          a.appendChild(img);
+        } else {
+          const d = document.createElement('div');
+          d.className = 'live-avatar';
+          a.appendChild(d);
+        }
+
+        const nameEl = document.createElement('span');
+        nameEl.className = 'live-name';
+        nameEl.textContent = s.heatsyncDisplayName || s.displayName || username;
+        a.appendChild(nameEl);
+
+        const viewers = formatViewers(s.viewerCount || s.viewer_count);
+        if (viewers) {
+          const vEl = document.createElement('span');
+          vEl.className = 'live-viewers';
+          vEl.textContent = viewers;
+          a.appendChild(vEl);
+        }
+        container.appendChild(a);
+      });
+    } catch {
+      container.textContent = '';
+      const err = document.createElement('div');
+      err.className = 'live-empty';
+      err.textContent = 'failed to load';
+      container.appendChild(err);
+    }
+  }
+
+  // Leaderboards ──────────────────────────────────────────────────────────────
+
+  async function loadLeaderboard(container, period) {
+    container.textContent = '';
+    const loading = document.createElement('div');
+    loading.className = 'lb-empty';
+    loading.textContent = 'loading...';
+    container.appendChild(loading);
+    const path = period === 'alltime' ? '/api/leaderboards/heat/alltime' : '/api/leaderboards/heat/today';
+    try {
+      const resp = await apiFetch(path);
+      const leaders = (resp && (resp.leaders || (resp.data && resp.data.leaders))) || [];
+      container.textContent = '';
+      if (!leaders.length) {
+        const empty = document.createElement('div');
+        empty.className = 'lb-empty';
+        empty.textContent = 'no data yet';
+        container.appendChild(empty);
+        return;
+      }
+      leaders.slice(0, 5).forEach(function(e, i) {
+        const heat = parseInt(e.total_heat || e.heat || 0);
+        const heatStr = heat >= 1000 ? (heat / 1000).toFixed(1) + 'k°' : heat + '°';
+        const url = safeUrl('https://heatsync.org/@' + encodeURIComponent(e.username || ''));
+        const a = document.createElement('a');
+        a.className = 'lb-row';
+        a.href = url || '#';
+        a.target = '_blank';
+        a.rel = 'noopener noreferrer';
+
+        const rankEl = document.createElement('span');
+        rankEl.className = 'lb-rank';
+        rankEl.textContent = String(i + 1);
+        a.appendChild(rankEl);
+
+        const imgSrc = safeUrl(e.profile_image_url || e.avatar_url || '');
+        if (imgSrc) {
+          const img = document.createElement('img');
+          img.className = 'lb-avatar';
+          img.src = imgSrc;
+          img.alt = '';
+          img.loading = 'lazy';
+          a.appendChild(img);
+        } else {
+          const d = document.createElement('div');
+          d.className = 'lb-avatar';
+          a.appendChild(d);
+        }
+
+        const nameEl = document.createElement('span');
+        nameEl.className = 'lb-name';
+        nameEl.textContent = e.display_name || e.username || '';
+        a.appendChild(nameEl);
+
+        const heatEl = document.createElement('span');
+        heatEl.className = 'lb-heat';
+        heatEl.textContent = heatStr;
+        a.appendChild(heatEl);
+
+        container.appendChild(a);
+      });
+    } catch {
+      container.textContent = '';
+      const err = document.createElement('div');
+      err.className = 'lb-empty';
+      err.textContent = 'failed to load';
+      container.appendChild(err);
+    }
+  }
+
+  function buildLbSection() {
+    const wrap = document.createElement('div');
+    wrap.className = 'lb-section';
+
+    const titleRow = document.createElement('div');
+    titleRow.className = 'section-title';
+    titleRow.textContent = 'leaderboards';
+    wrap.appendChild(titleRow);
+
+    const tabs = document.createElement('div');
+    tabs.className = 'lb-tabs';
+    const tabToday = document.createElement('button');
+    tabToday.className = 'lb-tab active';
+    tabToday.textContent = 'today';
+    const tabAlltime = document.createElement('button');
+    tabAlltime.className = 'lb-tab';
+    tabAlltime.textContent = 'all time';
+    tabs.appendChild(tabToday);
+    tabs.appendChild(tabAlltime);
+    wrap.appendChild(tabs);
+
+    const list = document.createElement('div');
+    list.id = 'lb-list';
+    wrap.appendChild(list);
+
+    tabToday.addEventListener('click', function() {
+      tabToday.classList.add('active');
+      tabAlltime.classList.remove('active');
+      loadLeaderboard(list, 'today');
+    });
+    tabAlltime.addEventListener('click', function() {
+      tabAlltime.classList.add('active');
+      tabToday.classList.remove('active');
+      loadLeaderboard(list, 'alltime');
+    });
+
+    loadLeaderboard(list, 'today');
+    return wrap;
+  }
+
+  // Profile Edit ──────────────────────────────────────────────────────────────
+
+  function buildProfileEditForm(user) {
+    const form = document.createElement('div');
+    form.className = 'profile-edit-form';
+    form.id = 'profile-edit-form';
+
+    const currentBio = user.bio || '';
+    const currentColor = user.color || '#ffffff';
+
+    const bioEl = document.createElement('textarea');
+    bioEl.id = 'pe-bio';
+    bioEl.maxLength = 200;
+    bioEl.placeholder = 'bio (200 chars)';
+    bioEl.value = currentBio;
+    form.appendChild(bioEl);
+
+    const charRow = document.createElement('div');
+    charRow.className = 'char-count';
+    const countSpan = document.createElement('span');
+    countSpan.id = 'pe-bio-count';
+    countSpan.textContent = String(currentBio.length);
+    charRow.appendChild(countSpan);
+    charRow.appendChild(document.createTextNode('/200'));
+    form.appendChild(charRow);
+
+    const editRow = document.createElement('div');
+    editRow.className = 'profile-edit-row';
+
+    const colorLabel = document.createElement('span');
+    colorLabel.className = 'color-label';
+    colorLabel.textContent = 'color';
+    editRow.appendChild(colorLabel);
+
+    const colorInput = document.createElement('input');
+    colorInput.type = 'color';
+    colorInput.className = 'color-input';
+    colorInput.id = 'pe-color';
+    colorInput.value = currentColor;
+    editRow.appendChild(colorInput);
+
+    const colorHex = document.createElement('input');
+    colorHex.type = 'text';
+    colorHex.className = 'color-hex-input';
+    colorHex.id = 'pe-color-hex';
+    colorHex.value = currentColor;
+    colorHex.placeholder = '#ffffff';
+    colorHex.maxLength = 7;
+    editRow.appendChild(colorHex);
+
+    const saveBtn = document.createElement('button');
+    saveBtn.className = 'profile-save-btn';
+    saveBtn.id = 'pe-save';
+    saveBtn.textContent = 'save';
+    editRow.appendChild(saveBtn);
+
+    form.appendChild(editRow);
+
+    const status = document.createElement('div');
+    status.className = 'profile-edit-status';
+    status.id = 'pe-status';
+    form.appendChild(status);
+
+    bioEl.addEventListener('input', function() {
+      countSpan.textContent = String(bioEl.value.length);
+    });
+    colorInput.addEventListener('input', function() { colorHex.value = colorInput.value; });
+    colorHex.addEventListener('input', function() {
+      const v = colorHex.value.trim();
+      if (/^#[0-9a-fA-F]{6}$/.test(v)) colorInput.value = v;
+    });
+
+    saveBtn.addEventListener('click', async function() {
+      const bio = bioEl.value.trim();
+      const color = colorInput.value;
+      saveBtn.disabled = true;
+      status.style.color = '#a0a0a0';
+      status.textContent = 'saving...';
+      try {
+        const results = await Promise.all([
+          apiFetch('/api/user/bio', { method: 'PUT', body: { bio: bio } }),
+          apiFetch('/api/user/flair', { method: 'PUT', body: { color: color } }),
+        ]);
+        const bioResp = results[0];
+        const flairResp = results[1];
+        const bioOk = bioResp && (bioResp.ok !== false);
+        const flairOk = flairResp && (flairResp.ok !== false);
+        if (bioOk && flairOk) {
+          status.style.color = '#00cc66';
+          status.textContent = 'saved';
+          const stored = await chrome.storage.local.get(['user_info']);
+          if (stored.user_info) {
+            stored.user_info.bio = bio;
+            stored.user_info.color = color;
+            await chrome.storage.local.set({ user_info: stored.user_info });
+          }
+        } else {
+          const errMsg = (bioResp && bioResp.error) || (flairResp && flairResp.error) || 'save failed';
+          status.style.color = '#ff4444';
+          status.textContent = String(errMsg).slice(0, 60);
+        }
+      } catch {
+        status.style.color = '#ff4444';
+        status.textContent = 'error';
+      }
+      saveBtn.disabled = false;
+    });
+
+    return form;
+  }
+
+  // Main init ─────────────────────────────────────────────────────────────────
+
   async function init() {
-    const content = document.getElementById('content')
-    const dot = document.getElementById('status-dot')
+    const content = document.getElementById('content');
+    const dot = document.getElementById('status-dot');
 
     // Load stored data
     const stored = await chrome.storage.local.get([
       'auth_token', 'auth_token_encrypted', 'user_info', 'emote_inventory', 'global_emotes', 'blocked_emotes'
-    ])
+    ]);
 
     // Check API connectivity
     try {
-      const controller = new AbortController()
-      setTimeout(() => controller.abort(), 3000)
-      const resp = await fetch(`${API_URL}/api/health`, { signal: controller.signal })
+      const controller = new AbortController();
+      setTimeout(() => controller.abort(), 3000);
+      const resp = await fetch(API_URL + '/api/health', { signal: controller.signal });
       if (resp.ok) {
-        dot.className = 'status-dot green'
-        dot.title = t('popup_status_connected')
+        dot.className = 'status-dot green';
+        dot.title = t('popup_status_connected');
       } else {
-        dot.className = 'status-dot red'
-        dot.title = t('popup_status_api_error')
+        dot.className = 'status-dot red';
+        dot.title = t('popup_status_api_error');
       }
     } catch {
-      dot.className = 'status-dot red'
-      dot.title = t('popup_status_offline')
+      dot.className = 'status-dot red';
+      dot.title = t('popup_status_offline');
     }
 
-    const token = stored.auth_token || stored.auth_token_encrypted
-    const user = stored.user_info
+    const token = stored.auth_token || stored.auth_token_encrypted;
+    const user = stored.user_info;
 
     if (token && user) {
       // Logged in
-      const rawAvatar = user.avatar_url || user.profile_image_url || ''
-      const avatar = rawAvatar.startsWith('https://') ? rawAvatar : ''
-      const name = user.display_name || user.username || 'user'
-      const emoteCount = (stored.emote_inventory || []).length
-      const globalCount = (stored.global_emotes || []).length
-      const heat = user.heat || 0
+      const rawAvatar = user.avatar_url || user.profile_image_url || '';
+      const avatar = safeUrl(rawAvatar);
+      const name = user.display_name || user.username || 'user';
+      const emoteCount = (stored.emote_inventory || []).length;
+      const globalCount = (stored.global_emotes || []).length;
+      const heat = user.heat || 0;
 
-      content.innerHTML = `
-        <div class="user-section">
-          <div class="user-row">
-            ${avatar ? `<img src="${escapeHtml(avatar)}" class="user-avatar" alt="">` : '<div class="user-avatar"></div>'}
-            <div>
-              <div class="user-name">${escapeHtml(name)}</div>
-              <div class="user-stats">${heat ? t('popup_user_stats_heat', [String(emoteCount), String(globalCount), String(heat)]) : t('popup_user_stats', [String(emoteCount), String(globalCount)])}</div>
-            </div>
-          </div>
-        </div>
-        <div class="actions">
-          <a href="https://heatsync.org/emotes" target="_blank" rel="noopener noreferrer" class="action-btn">${t('popup_btn_emotes')}</a>
-          <button class="action-btn" id="refresh-btn">${t('popup_btn_refresh')}</button>
-          <a href="https://heatsync.org" target="_blank" rel="noopener noreferrer" class="action-btn">${t('popup_btn_site')}</a>
-          <button class="action-btn" id="logout-btn" style="color:#a0a0a0">${t('popup_btn_logout') || 'logout'}</button>
-        </div>
-      `
+      // ── user row ──
+      const userSection = document.createElement('div');
+      userSection.className = 'user-section';
 
-      document.getElementById('refresh-btn')?.addEventListener('click', async (e) => {
-        e.target.textContent = '...'
-        e.target.disabled = true
-        await chrome.runtime.sendMessage({ type: 'refresh_all' })
-        e.target.textContent = t('popup_btn_done')
-        setTimeout(() => { e.target.textContent = t('popup_btn_refresh'); e.target.disabled = false }, 1000)
-      })
+      const userRow = document.createElement('div');
+      userRow.className = 'user-row';
 
-      document.getElementById('logout-btn')?.addEventListener('click', async () => {
-        await chrome.storage.local.remove(['auth_token', 'auth_token_encrypted', 'user_info', 'emote_inventory', 'blocked_emotes'])
-        await chrome.runtime.sendMessage({ type: 'clear_auth' })
-        init().catch(() => {})
-      })
+      if (avatar) {
+        const img = document.createElement('img');
+        img.src = avatar;
+        img.className = 'user-avatar';
+        img.alt = '';
+        userRow.appendChild(img);
+      } else {
+        const d = document.createElement('div');
+        d.className = 'user-avatar';
+        userRow.appendChild(d);
+      }
+
+      const userInfo = document.createElement('div');
+      const nameEl = document.createElement('div');
+      nameEl.className = 'user-name';
+      nameEl.textContent = name;
+      const statsEl = document.createElement('div');
+      statsEl.className = 'user-stats';
+      statsEl.textContent = heat
+        ? t('popup_user_stats_heat', [String(emoteCount), String(globalCount), String(heat)])
+        : t('popup_user_stats', [String(emoteCount), String(globalCount)]);
+      userInfo.appendChild(nameEl);
+      userInfo.appendChild(statsEl);
+      userRow.appendChild(userInfo);
+
+      const editBtn = document.createElement('button');
+      editBtn.className = 'edit-profile-btn';
+      editBtn.id = 'edit-profile-btn';
+      editBtn.title = 'edit profile';
+      editBtn.textContent = 'edit';
+      userRow.appendChild(editBtn);
+
+      const editForm = buildProfileEditForm(user);
+
+      userSection.appendChild(userRow);
+      userSection.appendChild(editForm);
+
+      editBtn.addEventListener('click', function() {
+        editForm.classList.toggle('open');
+      });
+
+      // ── actions ──
+      const actionsDiv = document.createElement('div');
+      actionsDiv.className = 'actions';
+
+      const emoteLink = document.createElement('a');
+      emoteLink.href = 'https://heatsync.org/emotes';
+      emoteLink.target = '_blank';
+      emoteLink.rel = 'noopener noreferrer';
+      emoteLink.className = 'action-btn';
+      emoteLink.textContent = t('popup_btn_emotes');
+      actionsDiv.appendChild(emoteLink);
+
+      const refreshBtn = document.createElement('button');
+      refreshBtn.className = 'action-btn';
+      refreshBtn.id = 'refresh-btn';
+      refreshBtn.textContent = t('popup_btn_refresh');
+      actionsDiv.appendChild(refreshBtn);
+
+      const siteLink = document.createElement('a');
+      siteLink.href = 'https://heatsync.org';
+      siteLink.target = '_blank';
+      siteLink.rel = 'noopener noreferrer';
+      siteLink.className = 'action-btn';
+      siteLink.textContent = t('popup_btn_site');
+      actionsDiv.appendChild(siteLink);
+
+      const logoutBtn = document.createElement('button');
+      logoutBtn.className = 'action-btn';
+      logoutBtn.id = 'logout-btn';
+      logoutBtn.style.color = '#a0a0a0';
+      logoutBtn.textContent = t('popup_btn_logout') || 'logout';
+      actionsDiv.appendChild(logoutBtn);
+
+      refreshBtn.addEventListener('click', async function(e) {
+        e.target.textContent = '...';
+        e.target.disabled = true;
+        await chrome.runtime.sendMessage({ type: 'refresh_all' });
+        e.target.textContent = t('popup_btn_done');
+        setTimeout(function() { e.target.textContent = t('popup_btn_refresh'); e.target.disabled = false; }, 1000);
+      });
+
+      logoutBtn.addEventListener('click', async function() {
+        await chrome.storage.local.remove(['auth_token', 'auth_token_encrypted', 'user_info', 'emote_inventory', 'blocked_emotes']);
+        await chrome.runtime.sendMessage({ type: 'clear_auth' });
+        init().catch(function() {});
+      });
+
+      // ── live following ──
+      const liveSep = document.createElement('hr');
+      liveSep.className = 'sep';
+
+      const liveTitleRow = document.createElement('div');
+      liveTitleRow.className = 'section-title';
+      liveTitleRow.textContent = 'live following';
+
+      const liveRefreshBtn = document.createElement('button');
+      liveRefreshBtn.className = 'refresh-icon';
+      liveRefreshBtn.title = 'refresh';
+      liveRefreshBtn.textContent = '↻';
+      liveTitleRow.appendChild(liveRefreshBtn);
+
+      const liveSection = document.createElement('div');
+      liveSection.className = 'live-section';
+
+      const liveList = document.createElement('div');
+      liveList.id = 'live-list';
+
+      liveSection.appendChild(liveTitleRow);
+      liveSection.appendChild(liveList);
+
+      liveRefreshBtn.addEventListener('click', function() { loadLive(liveList); });
+
+      // ── leaderboards ──
+      const lbSep = document.createElement('hr');
+      lbSep.className = 'sep';
+      const lbSection = buildLbSection();
+
+      const trailSep = document.createElement('hr');
+      trailSep.className = 'sep';
+
+      content.textContent = '';
+      content.appendChild(userSection);
+      content.appendChild(actionsDiv);
+      content.appendChild(liveSep);
+      content.appendChild(liveSection);
+      content.appendChild(lbSep);
+      content.appendChild(lbSection);
+      content.appendChild(trailSep);
+
+      loadLive(liveList);
+
     } else {
       // Not logged in
-      content.innerHTML = `
-        <div class="login-section">
-          ${t('popup_login_prompt')}
-          <br>
-          <a href="https://heatsync.org" target="_blank" rel="noopener noreferrer" class="login-btn">heatsync.org</a>
-        </div>
-      `
+      content.textContent = '';
+      const loginSection = document.createElement('div');
+      loginSection.className = 'login-section';
+      loginSection.textContent = t('popup_login_prompt');
+      loginSection.appendChild(document.createElement('br'));
+      const loginLink = document.createElement('a');
+      loginLink.href = 'https://heatsync.org';
+      loginLink.target = '_blank';
+      loginLink.rel = 'noopener noreferrer';
+      loginLink.className = 'login-btn';
+      loginLink.textContent = 'heatsync.org';
+      loginSection.appendChild(loginLink);
+      content.appendChild(loginSection);
     }
   }
 
   function initPopout() {
-    const input = document.getElementById('popout-input')
-    const btn = document.getElementById('popout-btn')
+    const input = document.getElementById('popout-input');
+    const btn = document.getElementById('popout-btn');
 
     // auto-fill from active tab if on twitch or kick
-    let detectedPlatform = 'twitch'
-    chrome.tabs.query({ active: true, currentWindow: true }).then(([tab]) => {
-      if (!tab?.url) return
+    let detectedPlatform = 'twitch';
+    chrome.tabs.query({ active: true, currentWindow: true }).then(function(tabs) {
+      const tab = tabs[0];
+      if (!tab || !tab.url) return;
       try {
-        const url = new URL(tab.url)
+        const url = new URL(tab.url);
         if (url.hostname.includes('twitch.tv')) {
-          detectedPlatform = 'twitch'
-          const m = url.pathname.match(/^\/(?:popout\/|embed\/)?([a-zA-Z0-9_]+)/)
+          detectedPlatform = 'twitch';
+          const m = url.pathname.match(/^\/(?:popout\/|embed\/)?([a-zA-Z0-9_]+)/);
           if (m && !['directory', 'settings', 'videos', 'moderator', 'subscriptions'].includes(m[1].toLowerCase())) {
-            input.value = m[1].toLowerCase()
+            input.value = m[1].toLowerCase();
           }
         } else if (url.hostname.includes('kick.com')) {
-          detectedPlatform = 'kick'
-          const m = url.pathname.match(/^\/([a-zA-Z0-9_]+)/)
+          detectedPlatform = 'kick';
+          const m = url.pathname.match(/^\/([a-zA-Z0-9_]+)/);
           if (m && !['categories', 'following', 'settings', 'search'].includes(m[1].toLowerCase())) {
-            input.value = m[1].toLowerCase()
+            input.value = m[1].toLowerCase();
           }
         } else if (url.hostname.includes('youtube.com')) {
-          detectedPlatform = 'youtube'
-          // Extract @handle from /@channel/live
-          const handleMatch = url.pathname.match(/^\/@([^/]+)/)
+          detectedPlatform = 'youtube';
+          const handleMatch = url.pathname.match(/^\/@([^/]+)/);
           if (handleMatch) {
-            input.value = handleMatch[1].toLowerCase()
+            input.value = handleMatch[1].toLowerCase();
           } else {
-            // Extract video ID from /watch?v= or /live/
-            const vParam = url.searchParams.get('v')
-            const liveMatch = url.pathname.match(/^\/live\/([^/?]+)/)
-            if (vParam) input.value = vParam
-            else if (liveMatch) input.value = liveMatch[1]
+            const vParam = url.searchParams.get('v');
+            const liveMatch = url.pathname.match(/^\/live\/([^/?]+)/);
+            if (vParam) input.value = vParam;
+            else if (liveMatch) input.value = liveMatch[1];
           }
         }
       } catch {}
-    })
+    });
 
     function openPopout() {
-      const channel = input.value.trim().toLowerCase().replace(/[^a-z0-9_-]/g, '')
-      if (!channel) { input.focus(); return }
+      const channel = input.value.trim().toLowerCase().replace(/[^a-z0-9_-]/g, '');
+      if (!channel) { input.focus(); return; }
       const url = detectedPlatform === 'youtube'
-        ? `https://www.youtube.com/live_chat?v=${channel}&is_popout=1`
+        ? 'https://www.youtube.com/live_chat?v=' + channel + '&is_popout=1'
         : detectedPlatform === 'kick'
-        ? `https://kick.com/${channel}`
-        : `https://www.twitch.tv/popout/${channel}/chat`
-      chrome.tabs.create({ url })
+        ? 'https://kick.com/' + channel
+        : 'https://www.twitch.tv/popout/' + channel + '/chat';
+      chrome.tabs.create({ url: url });
     }
 
-    btn.addEventListener('click', openPopout)
-    input.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') openPopout()
-    })
+    btn.addEventListener('click', openPopout);
+    input.addEventListener('keydown', function(e) {
+      if (e.key === 'Enter') openPopout();
+    });
   }
 
-  document.addEventListener('DOMContentLoaded', () => {
-    hydrateI18n()
-    init().catch(e => console.error('popup init failed:', e))
-    initPopout()
+  document.addEventListener('DOMContentLoaded', function() {
+    hydrateI18n();
+    initSearch();
+    init().catch(function(e) { console.error('popup init failed:', e); });
+    initPopout();
 
     // Re-run init when auth token lands in storage (user logged in while popup was open)
-    if (window._hsPopupStorageListener) chrome.storage.onChanged.removeListener(window._hsPopupStorageListener)
-    window._hsPopupStorageListener = (changes, area) => {
-      if (area !== 'local') return
-      const authKeys = ['auth_token', 'auth_token_encrypted', 'user_info']
-      const relevant = authKeys.some(k => k in changes)
-      if (!relevant) return
-      // Only re-init when transitioning to/from logged-in state
-      const wasAuthed = authKeys.slice(0, 2).some(k => changes[k]?.oldValue)
-      const nowAuthed = authKeys.slice(0, 2).some(k => changes[k]?.newValue)
+    if (window._hsPopupStorageListener) chrome.storage.onChanged.removeListener(window._hsPopupStorageListener);
+    window._hsPopupStorageListener = function(changes, area) {
+      if (area !== 'local') return;
+      const authKeys = ['auth_token', 'auth_token_encrypted', 'user_info'];
+      const relevant = authKeys.some(function(k) { return k in changes; });
+      if (!relevant) return;
+      const wasAuthed = authKeys.slice(0, 2).some(function(k) { return changes[k] && changes[k].oldValue; });
+      const nowAuthed = authKeys.slice(0, 2).some(function(k) { return changes[k] && changes[k].newValue; });
       if (wasAuthed !== nowAuthed || (nowAuthed && 'user_info' in changes)) {
-        init().catch(e => console.error('popup re-init failed:', e))
+        init().catch(function(e) { console.error('popup re-init failed:', e); });
       }
-    }
-    chrome.storage.onChanged.addListener(window._hsPopupStorageListener)
-  })
-})()
+    };
+    chrome.storage.onChanged.addListener(window._hsPopupStorageListener);
+  });
+})();

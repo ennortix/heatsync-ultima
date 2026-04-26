@@ -659,6 +659,286 @@
     return wrap;
   }
 
+  // Live Now ──────────────────────────────────────────────────────────────────
+
+  async function loadLiveNowTop(container) {
+    container.textContent = '';
+    const loading = document.createElement('div');
+    loading.className = 'live-empty';
+    loading.textContent = 'loading...';
+    container.appendChild(loading);
+    try {
+      const resp = await apiFetch('/api/live/top');
+      const streams = (resp && (resp.streams || resp.channels || (resp.data && (resp.data.streams || resp.data.channels)))) || [];
+      container.textContent = '';
+      if (!streams.length) {
+        const empty = document.createElement('div');
+        empty.className = 'live-empty';
+        empty.textContent = 'no live channels';
+        container.appendChild(empty);
+        return;
+      }
+      streams.slice(0, 5).forEach(function(s) {
+        const platform = s.platform || 'twitch';
+        const username = s.username || s.login || '';
+        const url = safeUrl(platform === 'kick'
+          ? 'https://kick.com/' + encodeURIComponent(username)
+          : 'https://www.twitch.tv/' + encodeURIComponent(username));
+        const a = document.createElement('a');
+        a.className = 'live-row';
+        a.href = url || '#';
+        a.target = '_blank';
+        a.rel = 'noopener noreferrer';
+
+        const dot = document.createElement('span');
+        dot.className = 'live-dot';
+        a.appendChild(dot);
+
+        const imgSrc = safeUrl(s.profileImageUrl || s.profile_image_url || '');
+        if (imgSrc) {
+          const img = document.createElement('img');
+          img.className = 'live-avatar';
+          img.src = imgSrc;
+          img.alt = '';
+          img.loading = 'lazy';
+          a.appendChild(img);
+        } else {
+          const d = document.createElement('div');
+          d.className = 'live-avatar';
+          a.appendChild(d);
+        }
+
+        const nameEl = document.createElement('span');
+        nameEl.className = 'live-name';
+        nameEl.textContent = s.displayName || s.display_name || username;
+        a.appendChild(nameEl);
+
+        const viewers = formatViewers(s.viewerCount || s.viewer_count);
+        if (viewers) {
+          const vEl = document.createElement('span');
+          vEl.className = 'live-viewers';
+          vEl.textContent = viewers;
+          a.appendChild(vEl);
+        }
+        container.appendChild(a);
+      });
+    } catch {
+      container.textContent = '';
+      const err = document.createElement('div');
+      err.className = 'live-empty';
+      err.textContent = 'failed to load';
+      container.appendChild(err);
+    }
+  }
+
+  async function loadLiveNowCategories(container, onSelect) {
+    container.textContent = '';
+    const loading = document.createElement('div');
+    loading.className = 'live-empty';
+    loading.textContent = 'loading...';
+    container.appendChild(loading);
+    try {
+      const resp = await apiFetch('/api/live/categories');
+      const cats = (resp && (resp.categories || (resp.data && resp.data.categories))) || [];
+      container.textContent = '';
+      if (!cats.length) {
+        const empty = document.createElement('div');
+        empty.className = 'live-empty';
+        empty.textContent = 'no categories';
+        container.appendChild(empty);
+        return;
+      }
+      cats.slice(0, 8).forEach(function(c) {
+        const name = c.name || c.game_name || c.category || '';
+        const row = document.createElement('div');
+        row.className = 'livenow-cat-row';
+        row.title = escapeHtml(name);
+
+        const thumbSrc = safeUrl(c.box_art_url || c.thumbnail || c.image || '');
+        if (thumbSrc) {
+          const img = document.createElement('img');
+          img.className = 'livenow-cat-thumb';
+          img.src = thumbSrc;
+          img.alt = '';
+          img.loading = 'lazy';
+          row.appendChild(img);
+        } else {
+          const d = document.createElement('div');
+          d.className = 'livenow-cat-thumb';
+          row.appendChild(d);
+        }
+
+        const nameEl = document.createElement('span');
+        nameEl.className = 'livenow-cat-name';
+        nameEl.textContent = name;
+        row.appendChild(nameEl);
+
+        const cnt = c.channels || c.stream_count || c.count;
+        if (cnt != null) {
+          const cntEl = document.createElement('span');
+          cntEl.className = 'livenow-cat-count';
+          cntEl.textContent = formatViewers(cnt);
+          row.appendChild(cntEl);
+        }
+
+        row.addEventListener('click', function() { onSelect(name); });
+        container.appendChild(row);
+      });
+    } catch {
+      container.textContent = '';
+      const err = document.createElement('div');
+      err.className = 'live-empty';
+      err.textContent = 'failed to load';
+      container.appendChild(err);
+    }
+  }
+
+  async function loadLiveNowCategory(container, categoryName, onBack) {
+    container.textContent = '';
+
+    const backBtn = document.createElement('button');
+    backBtn.className = 'livenow-back';
+    backBtn.textContent = '← ' + escapeHtml(categoryName);
+    backBtn.addEventListener('click', onBack);
+    container.appendChild(backBtn);
+
+    const list = document.createElement('div');
+    container.appendChild(list);
+
+    const loading = document.createElement('div');
+    loading.className = 'live-empty';
+    loading.textContent = 'loading...';
+    list.appendChild(loading);
+
+    try {
+      const resp = await apiFetch('/api/live/category/' + encodeURIComponent(categoryName));
+      const streams = (resp && (resp.streams || resp.channels || (resp.data && (resp.data.streams || resp.data.channels)))) || [];
+      list.textContent = '';
+      if (!streams.length) {
+        const empty = document.createElement('div');
+        empty.className = 'live-empty';
+        empty.textContent = 'no live channels';
+        list.appendChild(empty);
+        return;
+      }
+      streams.slice(0, 5).forEach(function(s) {
+        const platform = s.platform || 'twitch';
+        const username = s.username || s.login || '';
+        const url = safeUrl(platform === 'kick'
+          ? 'https://kick.com/' + encodeURIComponent(username)
+          : 'https://www.twitch.tv/' + encodeURIComponent(username));
+        const a = document.createElement('a');
+        a.className = 'live-row';
+        a.href = url || '#';
+        a.target = '_blank';
+        a.rel = 'noopener noreferrer';
+
+        const dot = document.createElement('span');
+        dot.className = 'live-dot';
+        a.appendChild(dot);
+
+        const imgSrc = safeUrl(s.profileImageUrl || s.profile_image_url || '');
+        if (imgSrc) {
+          const img = document.createElement('img');
+          img.className = 'live-avatar';
+          img.src = imgSrc;
+          img.alt = '';
+          img.loading = 'lazy';
+          a.appendChild(img);
+        } else {
+          const d = document.createElement('div');
+          d.className = 'live-avatar';
+          a.appendChild(d);
+        }
+
+        const nameEl = document.createElement('span');
+        nameEl.className = 'live-name';
+        nameEl.textContent = s.displayName || s.display_name || username;
+        a.appendChild(nameEl);
+
+        const viewers = formatViewers(s.viewerCount || s.viewer_count);
+        if (viewers) {
+          const vEl = document.createElement('span');
+          vEl.className = 'live-viewers';
+          vEl.textContent = viewers;
+          a.appendChild(vEl);
+        }
+        list.appendChild(a);
+      });
+    } catch {
+      list.textContent = '';
+      const err = document.createElement('div');
+      err.className = 'live-empty';
+      err.textContent = 'failed to load';
+      list.appendChild(err);
+    }
+  }
+
+  function buildLiveNowSection() {
+    const wrap = document.createElement('div');
+    wrap.className = 'livenow-section';
+
+    // title row: "live now" + refresh + "categories" toggle
+    const titleRow = document.createElement('div');
+    titleRow.className = 'section-title';
+
+    const titleText = document.createTextNode('live now');
+    titleRow.appendChild(titleText);
+
+    const catToggle = document.createElement('button');
+    catToggle.className = 'livenow-toggle';
+    catToggle.textContent = 'categories';
+    catToggle.title = 'browse by category';
+    titleRow.appendChild(catToggle);
+
+    const refreshBtn = document.createElement('button');
+    refreshBtn.className = 'refresh-icon';
+    refreshBtn.title = 'refresh';
+    refreshBtn.textContent = '↻';
+    titleRow.appendChild(refreshBtn);
+
+    wrap.appendChild(titleRow);
+
+    const list = document.createElement('div');
+    list.id = 'livenow-list';
+    wrap.appendChild(list);
+
+    // state: 'top' | 'categories' | 'category'
+    let view = 'top';
+
+    function showTop() {
+      view = 'top';
+      catToggle.classList.remove('active');
+      loadLiveNowTop(list);
+    }
+
+    function showCategories() {
+      view = 'categories';
+      catToggle.classList.add('active');
+      loadLiveNowCategories(list, function(catName) {
+        view = 'category';
+        loadLiveNowCategory(list, catName, function() { showCategories(); });
+      });
+    }
+
+    catToggle.addEventListener('click', function() {
+      if (view === 'top') showCategories();
+      else showTop();
+    });
+
+    refreshBtn.addEventListener('click', function() {
+      if (view === 'top') loadLiveNowTop(list);
+      else if (view === 'categories') loadLiveNowCategories(list, function(catName) {
+        view = 'category';
+        loadLiveNowCategory(list, catName, function() { showCategories(); });
+      });
+      else showTop();
+    });
+
+    loadLiveNowTop(list);
+    return wrap;
+  }
+
   // Main init ─────────────────────────────────────────────────────────────────
 
   async function init() {
@@ -819,6 +1099,11 @@
 
       liveRefreshBtn.addEventListener('click', function() { loadLive(liveList); });
 
+      // ── live now ──
+      const liveNowSep = document.createElement('hr');
+      liveNowSep.className = 'sep';
+      const liveNowSection = buildLiveNowSection();
+
       // ── leaderboards ──
       const lbSep = document.createElement('hr');
       lbSep.className = 'sep';
@@ -842,6 +1127,8 @@
       content.appendChild(actionsDiv);
       content.appendChild(liveSep);
       content.appendChild(liveSection);
+      content.appendChild(liveNowSep);
+      content.appendChild(liveNowSection);
       content.appendChild(lbSep);
       content.appendChild(lbSection);
       content.appendChild(bmSep);

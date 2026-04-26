@@ -198,6 +198,52 @@ function error(...args) {
   console.error('[heatsync]', ...args)
 }
 
+// ============================================
+// RATE LIMITING
+// ============================================
+
+/**
+ * Throttle — fires at most once per `ms`, trailing call guaranteed.
+ * @param {Function} fn
+ * @param {number} [ms=16]
+ * @returns {Function}
+ */
+function throttle(fn, ms = 16) {
+  let last = 0
+  let timer = null
+  let lastArgs = null
+  return function(...args) {
+    const now = Date.now()
+    const remaining = ms - (now - last)
+    lastArgs = args
+    if (remaining <= 0) {
+      last = now
+      timer = null
+      fn.apply(this, args)
+    } else if (!timer) {
+      timer = setTimeout(() => {
+        last = Date.now()
+        timer = null
+        fn.apply(this, lastArgs)
+      }, remaining)
+    }
+  }
+}
+
+/**
+ * Debounce — delays `fn` until `ms` ms after last call.
+ * @param {Function} fn
+ * @param {number} [ms=100]
+ * @returns {Function}
+ */
+function debounce(fn, ms = 100) {
+  let timer = null
+  return function(...args) {
+    clearTimeout(timer)
+    timer = setTimeout(() => fn.apply(this, args), ms)
+  }
+}
+
 // Export
 const utils = {
   // XSS
@@ -215,6 +261,10 @@ const utils = {
 
   // Color
   boostReadability,
+
+  // Rate limiting
+  throttle,
+  debounce,
 
   // Logging
   log,
@@ -237,6 +287,8 @@ export {
   getFiber,
   findComponent,
   boostReadability,
+  throttle,
+  debounce,
   log,
   warn,
   error

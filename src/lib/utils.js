@@ -23,6 +23,24 @@ function escapeHtml(str) {
 }
 
 /**
+ * Validate URL — only http/https protocols allowed.
+ * Returns the URL string if safe, empty string otherwise.
+ * Use before assigning user/third-party data to img.src or a.href.
+ * @param {string} url
+ * @returns {string}
+ */
+function safeUrl(url) {
+  if (typeof url !== 'string' || !url) return ''
+  const trimmed = url.trim()
+  if (!/^https?:\/\//i.test(trimmed)) return ''
+  try {
+    const u = new URL(trimmed)
+    if (u.protocol !== 'http:' && u.protocol !== 'https:') return ''
+    return trimmed
+  } catch { return '' }
+}
+
+/**
  * Create element with safe text content (no innerHTML)
  * @param {string} tag
  * @param {string} text
@@ -184,6 +202,7 @@ function error(...args) {
 const utils = {
   // XSS
   escapeHtml,
+  safeUrl,
   createElement,
 
   // DOM
@@ -211,6 +230,7 @@ if (typeof window !== 'undefined') {
 
 export {
   escapeHtml,
+  safeUrl,
   createElement,
   $,
   $$,

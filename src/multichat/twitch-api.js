@@ -2822,8 +2822,11 @@ function renderThirdPartyBadges(userId) {
     const file = files.find(f => f.name?.endsWith('.webp')) || files.find(f => f.name?.endsWith('.avif')) || files[0]
     if (file) {
       const base = cosmetic.badge.host?.url || ''
-      const url = (base.endsWith('/') ? base : base + '/') + file.name
-      html += `<img class="hs-mc-badge-img" src="${escapeHtml(url)}" alt="7TV" title="${escapeHtml(cosmetic.badge.tooltip || '7TV')}" style="width:18px;height:18px;">`
+      const rawUrl = (base.endsWith('/') ? base : base + '/') + file.name
+      const url = safeUrl(rawUrl)
+      if (url) {
+        html += `<img class="hs-mc-badge-img" src="${escapeHtml(url)}" alt="7TV" title="${escapeHtml(cosmetic.badge.tooltip || '7TV')}" style="width:18px;height:18px;">`
+      }
     }
   }
   return html

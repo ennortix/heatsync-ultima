@@ -228,15 +228,18 @@
           const file = files.find(f => f.name?.endsWith('.webp')) || files.find(f => f.name?.endsWith('.avif')) || files[0]
           if (file) {
             const base = cosmetic.badge.host?.url || ''
-            const url = (base.endsWith('/') ? base : base + '/') + file.name
-            const img = document.createElement('img')
-            img.className = 'hs-mc-badge-img hs-mc-7tv-badge'
-            img.src = url
-            img.alt = '7TV'
-            img.title = cosmetic.badge.tooltip || '7TV'
-            img.style.cssText = 'width:18px;height:18px;'
-            // Insert before the username link
-            if (userLink) userLink.parentNode.insertBefore(img, userLink)
+            const rawUrl = (base.endsWith('/') ? base : base + '/') + file.name
+            const url = safeUrl(rawUrl)
+            if (url) {
+              const img = document.createElement('img')
+              img.className = 'hs-mc-badge-img hs-mc-7tv-badge'
+              img.src = url
+              img.alt = '7TV'
+              img.title = cosmetic.badge.tooltip || '7TV'
+              img.style.cssText = 'width:18px;height:18px;'
+              // Insert before the username link
+              if (userLink) userLink.parentNode.insertBefore(img, userLink)
+            }
           }
         }
       }

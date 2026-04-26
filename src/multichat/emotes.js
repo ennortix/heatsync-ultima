@@ -906,12 +906,12 @@
       if (kickEmoteMatch) {
         const [, emoteId, emoteName] = kickEmoteMatch
         const kickUrl = `https://files.kick.com/emotes/${emoteId}/fullsize`
-        const safeUrl = escapeHtml(kickUrl)
+        const safeKickUrl = escapeHtml(kickUrl)
         const safeName = escapeHtml(emoteName)
         // Cross-reference caches to find real provider (7tv/bttv/ffz), fall back to kick
         const cached = emoteCache.get(emoteName) || (channel && channelEmoteCaches[channel]?.get(emoteName))
         const provider = cached?.source || 'kick'
-        const imgHtml = `<span class="hs-mc-emote-wrapper hs-state-channel" data-emote-name="${safeName}" data-emote-url="${safeUrl}" data-state="channel" data-source="${escapeHtml(provider)}"><img src="${safeUrl}" alt="${safeName}" title="${safeName} (${escapeHtml(provider)} via kick)" class="hs-mc-emote hs-emote-channel" data-emote-name="${safeName}" data-state="channel" data-source="${escapeHtml(provider)}"></span>`
+        const imgHtml = `<span class="hs-mc-emote-wrapper hs-state-channel" data-emote-name="${safeName}" data-emote-url="${safeKickUrl}" data-state="channel" data-source="${escapeHtml(provider)}"><img src="${safeKickUrl}" alt="${safeName}" title="${safeName} (${escapeHtml(provider)} via kick)" class="hs-mc-emote hs-emote-channel" data-emote-name="${safeName}" data-state="channel" data-source="${escapeHtml(provider)}"></span>`
         if (pendingStack) {
           result.push(renderEmoteStack(pendingStack))
         }

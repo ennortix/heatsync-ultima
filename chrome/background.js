@@ -887,9 +887,10 @@ async function fetch7TVChannelEmotes(channelName, channelId = null, platform = '
 
       log(' 7TV: Fetching with identifier:', identifier, '(channelId:', channelId, ')');
 
-      // Try Twitch ID lookup first
+      // Try Twitch ID lookup first — large channels (kripp, xqc) can be slow,
+      // give 7TV 15s before timing out.
       const sevenTvUrl = `https://7tv.io/v3/users/twitch/${identifier}`;
-      response = await fetchWithTimeout(sevenTvUrl);
+      response = await fetchWithTimeout(sevenTvUrl, {}, 15000);
       if (DEBUG) broadcastToTabs({ type: 'debug_log', msg: `7TV fetch ${channelName}: ${sevenTvUrl} → ${response.status}` })
 
       if (!response.ok) {
@@ -898,7 +899,7 @@ async function fetch7TVChannelEmotes(channelName, channelId = null, platform = '
         log(' 7TV: Twitch ID lookup failed (' + firstStatus + '), trying username fallback...');
 
         // Fallback to username-based lookup
-        response = await fetchWithTimeout(`https://7tv.io/v3/users/${channelName}`);
+        response = await fetchWithTimeout(`https://7tv.io/v3/users/${channelName}`, {}, 15000);
         if (response.status === 404) {
           response.body?.cancel()
           // Both Twitch ID and username 404 = user genuinely has no 7TV account
@@ -945,7 +946,14 @@ async function fetch7TVChannelEmotes(channelName, channelId = null, platform = '
     }
     return { emotes, setId: emoteSet.id }
   } catch (error) {
-    console.error('[hs-bg] 7TV FETCH ERROR for', channelName, ':', error?.message || error);
+    // Aborts (timeouts) are expected for slow channels; demote to log so the
+    // console isn't spammed with red errors during normal operation.
+    const isAbort = error?.name === 'AbortError' || /aborted/i.test(error?.message || '')
+    if (isAbort) {
+      log(' 7TV: timeout for', channelName, '(will retry on next fetch)')
+    } else {
+      console.error('[hs-bg] 7TV FETCH ERROR for', channelName, ':', error?.message || error);
+    }
     if (DEBUG) broadcastToTabs({ type: 'debug_log', msg: `7TV ERROR ${channelName}: ${error?.message || error}` })
     return null // transient: network/timeout
   }
@@ -1534,6 +1542,15 @@ function ensure7TVConnection() {
         send7TVSubscribe(setId);
       }
       seventvPendingSubs.clear();
+      // Re-subscribe all known user cosmetic subs on (re)connect
+      seventvUserSubs.clear()
+      for (const userId of pendingUserSubs) {
+        send7TVUserSubscribe(userId)
+      }
+      pendingUserSubs.clear()
+      for (const userId of seventvToTwitchId.keys()) {
+        send7TVUserSubscribe(userId)
+      }
     };
 
     seventvWebSocket.onmessage = (event) => {
@@ -1547,6 +1564,12 @@ function ensure7TVConnection() {
           log(' 7TV EventAPI: Received event:', eventData.type);
           if (eventData.type === 'emote_set.update') {
             handle7TVEmoteSetUpdate(eventData.body);
+          } else if (eventData.type === 'user.update' || eventData.type === 'user.create' ||
+                     eventData.type === 'cosmetic.create' || eventData.type === 'entitlement.create' ||
+                     eventData.type === 'entitlement.delete') {
+            // User's cosmetics changed (badge/paint granted/revoked).
+            // Bust the cache for that user so next lookup refetches fresh.
+            handle7TVUserUpdate(eventData.body);
           }
         } else if (message.op === 1) {
           log(' 7TV EventAPI: Hello received, session:', message.d.session_id);
@@ -1570,6 +1593,7 @@ function ensure7TVConnection() {
       log(' 7TV EventAPI: Connection closed');
       seventvWebSocket = null;
       seventvSubscribedSets.clear();
+      seventvUserSubs.clear();
       if (seventvZombieTimer) { untrackInterval(seventvZombieTimer); seventvZombieTimer = null }
 
       if (seventvReconnectAttempts < SEVENTV_MAX_RECONNECT_ATTEMPTS && seventvEmoteSetIds.size > 0) {
@@ -1611,6 +1635,57 @@ function send7TVSubscribe(setId) {
   }));
   seventvSubscribedSets.add(setId);
   log(' 7TV EventAPI: Subscribed to', setId.slice(0, 12));
+}
+
+// Track per-user 7TV subscriptions so we get real-time badge/paint changes
+// for users we care about (logged-in user, currently-watched broadcaster, etc).
+const seventvUserSubs = new Set() // 7TV user IDs subscribed for cosmetics
+const pendingUserSubs = new Set() // queued while WS is opening
+
+function send7TVUserSubscribe(seventvUserId) {
+  if (!seventvWebSocket || seventvWebSocket.readyState !== WebSocket.OPEN) {
+    pendingUserSubs.add(seventvUserId)
+    return
+  }
+  if (seventvUserSubs.has(seventvUserId)) return
+  seventvWebSocket.send(JSON.stringify({
+    op: 35,
+    d: { type: 'user.*', condition: { object_id: seventvUserId } }
+  }))
+  seventvUserSubs.add(seventvUserId)
+  log(' 7TV EventAPI: Subscribed to user', seventvUserId.slice(0, 12))
+}
+
+// Map: twitchId → 7tvUserId. Populated when a content script registers a twitch ID
+// and we resolve it via the 7TV API. Used to bust cache on user.update events.
+const twitchToSeventvId = new Map()
+const seventvToTwitchId = new Map()
+
+async function ensureSelfCosmeticSub(twitchId) {
+  if (!twitchId || twitchToSeventvId.has(twitchId)) return
+  try {
+    const resp = await fetchWithTimeout(`https://7tv.io/v3/users/twitch/${twitchId}`)
+    if (!resp.ok) { resp.body?.cancel?.(); return }
+    const data = await resp.json()
+    const seventvId = data?.user?.id
+    if (!seventvId) return
+    twitchToSeventvId.set(String(twitchId), seventvId)
+    seventvToTwitchId.set(seventvId, String(twitchId))
+    ensure7TVConnection()
+    send7TVUserSubscribe(seventvId)
+  } catch {}
+}
+
+function handle7TVUserUpdate(body) {
+  const seventvId = body?.id || body?.object?.id || body?.user?.id || body?.user_id
+  if (!seventvId) return
+  const twitchId = seventvToTwitchId.get(seventvId)
+  if (!twitchId) return
+  // Bust cosmetics cache so next get_user_cosmetics refetches fresh data
+  userCosmeticsCache.delete(twitchId)
+  log(' 7TV: User cosmetic update for twitchId', twitchId, '— cache busted')
+  // Tell tabs to drop their local cosmetic cache for this user and reapply
+  broadcastToTabs({ type: 'cosmetics_invalidated', twitchId })
 }
 
 function subscribe7TVEmoteSet(setId) {
@@ -3579,6 +3654,14 @@ async function handleMessage(message, sender, sendResponse) {
       }
     })()
     return true
+  } else if (message.type === 'register_self_twitch_id') {
+    // Content script discovered the user's own twitch ID. Subscribe to 7TV
+    // EventAPI so badge/paint changes push in real-time (no polling needed).
+    if (message.twitchId && /^\d+$/.test(String(message.twitchId))) {
+      ensureSelfCosmeticSub(String(message.twitchId))
+    }
+    sendResponse({ ok: true })
+    return false
   } else if (message.type === 'get_user_cosmetics') {
     const ids = (message.twitchIds || []).slice(0, 10)
     ;(async () => {

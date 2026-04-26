@@ -2338,6 +2338,21 @@ function _onMessageMain(message) {
       // Handled by multichat.js as a persistent stream-event
       break;
 
+    case 'cosmetics_invalidated':
+      // 7TV EventAPI pushed a user.update — drop our local cache for that
+      // twitch ID, clear applied-flags on their messages, and re-fetch.
+      if (message.twitchId) {
+        cosmeticsCache.delete(message.twitchId)
+        document.querySelectorAll(`[data-hs-cosmetic-applied-for="${CSS.escape(message.twitchId)}"]`).forEach(el => {
+          el.querySelectorAll('.hs-cosmetic-badge').forEach(b => b.remove())
+          delete el.dataset.hsCosmeticDone
+          delete el.dataset.hs7tvBadgeDone
+          delete el.dataset.hsCosmeticAppliedFor
+        })
+        queueCosmeticsLookup(message.twitchId)
+      }
+      break;
+
     case 'channel_emote_removed':
       // Handled by multichat.js as a persistent stream-event
       break;
@@ -2893,6 +2908,7 @@ let cosmeticsEnabled = true // toggle for BTTV/FFZ/7TV cosmetics
 let dimTimeoutsEnabled = true // dim timed-out/banned messages instead of hiding
 const originalMessageBodies = new Map() // msg-id → innerHTML (for restoring on timeout)
 const cosmeticsCache = new Map()
+let _selfTwitchIdRegistered = false
 const COSMETICS_TTL = 30 * 60 * 1000
 // Re-fetch null-cosmetic users every 5min so newly-added 7TV badges/paints
 // don't get masked for the full 30min TTL.
@@ -3724,6 +3740,15 @@ function processMessage(messageElement) {
         messageElement.dataset.hsCosmeticUserId = userId
         applyCosmeticsToMessage(messageElement, userId, usernameElement)
         queueCosmeticsLookup(userId)
+        // Discover self twitch ID once per session and register with the
+        // background so 7TV EventAPI can push real-time cosmetic updates.
+        if (!_selfTwitchIdRegistered) {
+          const me = getCurrentUsername()
+          if (me && username && me.toLowerCase() === username.toLowerCase()) {
+            _selfTwitchIdRegistered = true
+            safeSendMessage({ type: 'register_self_twitch_id', twitchId: userId })
+          }
+        }
       }
     }
   }

@@ -800,29 +800,11 @@
         margin-right: 8px;
       }
 
-      .heatsync-size-toggle:hover,
-      .heatsync-refresh-btn:hover {
+      .heatsync-size-toggle:hover {
         background: #fff;
         border-color: #fff;
         color: #000;
       }
-
-      .heatsync-refresh-btn {
-        background: none;
-        border: 1px solid #808080;
-        border-radius: 0;
-        color: #808080;
-        font-size: 11px;
-        padding: 2px 6px;
-        cursor: pointer;
-        margin-right: 8px;
-      }
-
-      .heatsync-refresh-btn.loading {
-        opacity: 0.5;
-        pointer-events: none;
-      }
-
 
       .heatsync-empty {
         padding: 40px 20px;

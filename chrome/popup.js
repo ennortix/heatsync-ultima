@@ -562,13 +562,6 @@
     const titleRow = document.createElement('div');
     titleRow.className = 'section-title';
     titleRow.textContent = 'bookmarks';
-
-    const refreshBtn = document.createElement('button');
-    refreshBtn.className = 'refresh-icon';
-    refreshBtn.title = 'refresh';
-    refreshBtn.textContent = '↻';
-    titleRow.appendChild(refreshBtn);
-
     wrap.appendChild(titleRow);
 
     const list = document.createElement('div');
@@ -577,7 +570,6 @@
     list._reload = function() { loadBookmarks(list); };
     wrap.appendChild(list);
 
-    refreshBtn.addEventListener('click', function() { loadBookmarks(list); });
     loadBookmarks(list);
     return wrap;
   }
@@ -659,20 +651,14 @@
     const titleRow = document.createElement('div');
     titleRow.className = 'section-title';
     titleRow.textContent = 'referrals';
-
-    const refreshBtn = document.createElement('button');
-    refreshBtn.className = 'refresh-icon';
-    refreshBtn.title = 'refresh';
-    refreshBtn.textContent = '↻';
-    titleRow.appendChild(refreshBtn);
-
     wrap.appendChild(titleRow);
 
     const list = document.createElement('div');
     list.id = 'ref-list';
+    list.dataset.auto = 'referrals';
+    list._reload = function() { loadReferrals(list); };
     wrap.appendChild(list);
 
-    refreshBtn.addEventListener('click', function() { loadReferrals(list); });
     loadReferrals(list);
     return wrap;
   }
@@ -910,12 +896,6 @@
     catToggle.title = 'browse by category';
     titleRow.appendChild(catToggle);
 
-    const refreshBtn = document.createElement('button');
-    refreshBtn.className = 'refresh-icon';
-    refreshBtn.title = 'refresh';
-    refreshBtn.textContent = '↻';
-    titleRow.appendChild(refreshBtn);
-
     wrap.appendChild(titleRow);
 
     const list = document.createElement('div');
@@ -947,15 +927,6 @@
 
     catToggle.addEventListener('click', function() {
       if (view === 'top') showCategories();
-      else showTop();
-    });
-
-    refreshBtn.addEventListener('click', function() {
-      if (view === 'top') loadLiveNowTop(list);
-      else if (view === 'categories') loadLiveNowCategories(list, function(catName) {
-        view = 'category';
-        loadLiveNowCategory(list, catName, function() { showCategories(); });
-      });
       else showTop();
     });
 
@@ -1063,12 +1034,6 @@
       emoteLink.textContent = t('popup_btn_emotes');
       actionsDiv.appendChild(emoteLink);
 
-      const refreshBtn = document.createElement('button');
-      refreshBtn.className = 'action-btn';
-      refreshBtn.id = 'refresh-btn';
-      refreshBtn.textContent = t('popup_btn_refresh');
-      actionsDiv.appendChild(refreshBtn);
-
       const siteLink = document.createElement('a');
       siteLink.href = 'https://heatsync.org';
       siteLink.target = '_blank';
@@ -1084,14 +1049,6 @@
       logoutBtn.textContent = t('popup_btn_logout') || 'logout';
       actionsDiv.appendChild(logoutBtn);
 
-      refreshBtn.addEventListener('click', async function(e) {
-        e.target.textContent = '...';
-        e.target.disabled = true;
-        await chrome.runtime.sendMessage({ type: 'refresh_all' });
-        e.target.textContent = t('popup_btn_done');
-        setTimeout(function() { e.target.textContent = t('popup_btn_refresh'); e.target.disabled = false; }, 1000);
-      });
-
       logoutBtn.addEventListener('click', async function() {
         await chrome.storage.local.remove(['auth_token', 'auth_token_encrypted', 'user_info', 'emote_inventory', 'blocked_emotes']);
         await chrome.runtime.sendMessage({ type: 'clear_auth' });
@@ -1106,12 +1063,6 @@
       liveTitleRow.className = 'section-title';
       liveTitleRow.textContent = 'live following';
 
-      const liveRefreshBtn = document.createElement('button');
-      liveRefreshBtn.className = 'refresh-icon';
-      liveRefreshBtn.title = 'refresh';
-      liveRefreshBtn.textContent = '↻';
-      liveTitleRow.appendChild(liveRefreshBtn);
-
       const liveSection = document.createElement('div');
       liveSection.className = 'live-section';
 
@@ -1122,8 +1073,6 @@
 
       liveSection.appendChild(liveTitleRow);
       liveSection.appendChild(liveList);
-
-      liveRefreshBtn.addEventListener('click', function() { loadLive(liveList); });
 
       // ── live now ──
       const liveNowSep = document.createElement('hr');
@@ -1251,9 +1200,9 @@
     input.addEventListener('input', function() { ytIsHandle = false; });
   }
 
-  // Auto-refresh: poll the dynamic sections while popup is open (refresh
-  // button is last resort). All intervals stop on unload (popup closes).
-  let _liveTimer = null, _lbTimer = null, _bmTimer = null, _liveNowTimer = null;
+  // Auto-refresh: poll the dynamic sections while popup is open. All
+  // intervals stop on unload (popup closes). No manual refresh buttons.
+  let _liveTimer = null, _lbTimer = null, _bmTimer = null, _liveNowTimer = null, _refTimer = null;
   function startAutoRefresh() {
     // Live following: 15s — viewer counts move fast
     if (!_liveTimer) _liveTimer = setInterval(function() {
@@ -1275,12 +1224,18 @@
       const el = document.querySelector('[data-auto="bookmarks"]');
       if (el && typeof el._reload === 'function') el._reload();
     }, 60000);
+    // Referrals: 60s — usage counts can update from the dashboard side
+    if (!_refTimer) _refTimer = setInterval(function() {
+      const el = document.querySelector('[data-auto="referrals"]');
+      if (el && typeof el._reload === 'function') el._reload();
+    }, 60000);
   }
   window.addEventListener('unload', function() {
     if (_liveTimer) clearInterval(_liveTimer);
     if (_lbTimer) clearInterval(_lbTimer);
     if (_bmTimer) clearInterval(_bmTimer);
     if (_liveNowTimer) clearInterval(_liveNowTimer);
+    if (_refTimer) clearInterval(_refTimer);
   });
 
   document.addEventListener('DOMContentLoaded', function() {

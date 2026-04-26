@@ -3630,9 +3630,9 @@ function injectStyles() {
     #hs-mc-search-input {
       flex: 1;
       padding: 5px 10px;
-      background: #111;
-      color: #e0e0e0;
-      border: 1px solid #444;
+      background: #fff;
+      color: #000;
+      border: 1px solid #808080;
       border-radius: 0;
       font-size: 12px;
       font-family: inherit;
@@ -3642,7 +3642,7 @@ function injectStyles() {
       border-color: #ff8700;
     }
     #hs-mc-search-input::placeholder {
-      color: #555;
+      color: #808080;
     }
     #hs-mc-search-spinner {
       display: none;

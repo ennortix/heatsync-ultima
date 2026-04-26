@@ -4614,9 +4614,9 @@ function injectStyles() {
     #hs-mc-search-input {
       flex: 1;
       padding: 5px 10px;
-      background: #111;
-      color: #e0e0e0;
-      border: 1px solid #444;
+      background: #fff;
+      color: #000;
+      border: 1px solid #808080;
       border-radius: 0;
       font-size: 12px;
       font-family: inherit;
@@ -4626,7 +4626,7 @@ function injectStyles() {
       border-color: #ff8700;
     }
     #hs-mc-search-input::placeholder {
-      color: #555;
+      color: #808080;
     }
     #hs-mc-search-spinner {
       display: none;
@@ -12791,7 +12791,7 @@ function startDiscoverPolling() {
       cleanup.clearInterval(discoverPollTimer);
       discoverPollTimer = null;
     }
-  }, 60000);
+  }, 20000);
 }
 let discoverTags = [];
 let discoverProfiles = [];
@@ -12845,25 +12845,8 @@ function renderDiscoverTab() {
   const msgsEl = document.getElementById('hs-mc-messages');
   if (!msgsEl) return;
 
-  // Auto-refresh while viewing this tab — refresh button is last resort.
+  // Auto-refresh while viewing — no manual refresh button (confusing).
   startDiscoverPolling();
-
-  // Insert tiny refresh icon as last-resort manual trigger
-  if (!document.getElementById('hs-discover-refresh-bar')) {
-    const bar = document.createElement('div');
-    bar.id = 'hs-discover-refresh-bar';
-    bar.className = 'hs-discover-refresh-bar';
-    const btn = document.createElement('button');
-    btn.className = 'hs-discover-refresh-btn';
-    btn.textContent = '↻';
-    btn.title = 'refresh now (auto every 60s)';
-    btn.addEventListener('click', () => {
-      discoverLoaded = false;
-      fetchDiscover();
-    });
-    bar.appendChild(btn);
-    msgsEl.parentNode?.insertBefore(bar, msgsEl);
-  }
 
   if (!discoverLoaded && !discoverLoading) {
     fetchDiscover();
@@ -12976,7 +12959,7 @@ function startPinnedPolling() {
       cleanup.clearInterval(pinnedPollTimer);
       pinnedPollTimer = null;
     }
-  }, 60000);
+  }, 20000);
 }
 let pinnedMessages = [];
 
@@ -13014,28 +12997,8 @@ function renderPinnedTab() {
   const msgsEl = document.getElementById('hs-mc-messages');
   if (!msgsEl) return;
 
-  // Auto-refresh while viewing this tab
+  // Auto-refresh while viewing — no manual refresh button.
   startPinnedPolling();
-
-  // Insert tiny refresh icon as last-resort manual trigger
-  if (!document.getElementById('hs-pinned-refresh-bar')) {
-    const bar = document.createElement('div');
-    bar.id = 'hs-pinned-refresh-bar';
-    bar.className = 'hs-discover-refresh-bar';
-    const btn = document.createElement('button');
-    btn.className = 'hs-discover-refresh-btn';
-    btn.textContent = '↻';
-    btn.title = 'refresh now (auto every 60s)';
-    btn.addEventListener('click', () => {
-      pinnedLoaded = false;
-      fetchPinned();
-    });
-    bar.appendChild(btn);
-    msgsEl.parentNode?.insertBefore(bar, msgsEl);
-  }
-
-  const bar = document.getElementById('hs-pinned-refresh-bar');
-  if (bar) bar.style.display = currentTab === 'pinned' ? '' : 'none';
 
   if (!pinnedLoaded && !pinnedLoading) {
     fetchPinned();

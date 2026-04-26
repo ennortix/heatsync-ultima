@@ -1622,7 +1622,7 @@ function startDiscoverPolling() {
       cleanup.clearInterval(discoverPollTimer);
       discoverPollTimer = null;
     }
-  }, 60000);
+  }, 20000);
 }
 let discoverTags = [];
 let discoverProfiles = [];
@@ -1676,25 +1676,8 @@ function renderDiscoverTab() {
   const msgsEl = document.getElementById('hs-mc-messages');
   if (!msgsEl) return;
 
-  // Auto-refresh while viewing this tab — refresh button is last resort.
+  // Auto-refresh while viewing — no manual refresh button (confusing).
   startDiscoverPolling();
-
-  // Insert tiny refresh icon as last-resort manual trigger
-  if (!document.getElementById('hs-discover-refresh-bar')) {
-    const bar = document.createElement('div');
-    bar.id = 'hs-discover-refresh-bar';
-    bar.className = 'hs-discover-refresh-bar';
-    const btn = document.createElement('button');
-    btn.className = 'hs-discover-refresh-btn';
-    btn.textContent = '↻';
-    btn.title = 'refresh now (auto every 60s)';
-    btn.addEventListener('click', () => {
-      discoverLoaded = false;
-      fetchDiscover();
-    });
-    bar.appendChild(btn);
-    msgsEl.parentNode?.insertBefore(bar, msgsEl);
-  }
 
   if (!discoverLoaded && !discoverLoading) {
     fetchDiscover();
@@ -1807,7 +1790,7 @@ function startPinnedPolling() {
       cleanup.clearInterval(pinnedPollTimer);
       pinnedPollTimer = null;
     }
-  }, 60000);
+  }, 20000);
 }
 let pinnedMessages = [];
 
@@ -1845,28 +1828,8 @@ function renderPinnedTab() {
   const msgsEl = document.getElementById('hs-mc-messages');
   if (!msgsEl) return;
 
-  // Auto-refresh while viewing this tab
+  // Auto-refresh while viewing — no manual refresh button.
   startPinnedPolling();
-
-  // Insert tiny refresh icon as last-resort manual trigger
-  if (!document.getElementById('hs-pinned-refresh-bar')) {
-    const bar = document.createElement('div');
-    bar.id = 'hs-pinned-refresh-bar';
-    bar.className = 'hs-discover-refresh-bar';
-    const btn = document.createElement('button');
-    btn.className = 'hs-discover-refresh-btn';
-    btn.textContent = '↻';
-    btn.title = 'refresh now (auto every 60s)';
-    btn.addEventListener('click', () => {
-      pinnedLoaded = false;
-      fetchPinned();
-    });
-    bar.appendChild(btn);
-    msgsEl.parentNode?.insertBefore(bar, msgsEl);
-  }
-
-  const bar = document.getElementById('hs-pinned-refresh-bar');
-  if (bar) bar.style.display = currentTab === 'pinned' ? '' : 'none';
 
   if (!pinnedLoaded && !pinnedLoading) {
     fetchPinned();

@@ -136,6 +136,199 @@
     }
   }
 
+  // ─── 7TV Cosmetics (via heatsync profile linkage) ────────────────────────────
+
+  const YT_COSMETICS_TTL = 30 * 60 * 1000  // 30 minutes
+  const YT_COSMETICS_MAX = 500
+  const YT_COSMETICS_PENDING_MAX = 8
+
+  // username → { paint, badge, fetchedAt } | null (null = no profile/no cosmetics)
+  const ytCosmeticsCache = new Map()
+  const ytCosmeticsPending = new Set()
+  let ytCosmeticsBatchTimer = null
+
+  function get7TVBadgeUrl(badge) {
+    if (!badge?.host) return ''
+    const files = badge.host.files || []
+    const file = files.find(f => f.name?.endsWith('.webp')) ||
+                 files.find(f => f.name?.endsWith('.avif')) || files[0]
+    if (!file) return ''
+    const base = badge.host.url || ''
+    const fullBase = base.startsWith('//') ? 'https:' + base : base
+    return (fullBase.endsWith('/') ? fullBase : fullBase + '/') + file.name
+  }
+
+  function applyPaintToElement(el, paint) {
+    if (!paint) return
+    const fn = (paint.function || '').toLowerCase()
+    if (fn === 'url' && paint.image_url) {
+      if (!/^https:\/\//.test(paint.image_url)) return
+      const safeCssUrl = paint.image_url.replace(/[()'"\\]/g, encodeURIComponent)
+      el.style.backgroundImage = `url(${safeCssUrl})`
+      el.style.backgroundSize = 'cover'
+    } else if ((fn === 'linear-gradient' || fn === 'radial-gradient') && paint.stops?.length) {
+      const stops = paint.stops.map(s => {
+        const r = (s.color >>> 24) & 0xff
+        const g = (s.color >>> 16) & 0xff
+        const b = (s.color >>> 8) & 0xff
+        const a = (s.color & 0xff) / 255
+        return `rgba(${r},${g},${b},${a.toFixed(2)}) ${Math.round(s.at * 100)}%`
+      }).join(', ')
+      const safeAngle = Number.isFinite(Number(paint.angle)) ? Number(paint.angle) : 0
+      const safeShape = /^(circle|ellipse)$/.test(paint.shape) ? paint.shape : 'circle'
+      if (fn === 'linear-gradient') {
+        el.style.backgroundImage = `linear-gradient(${safeAngle}deg, ${stops})`
+      } else {
+        el.style.backgroundImage = `radial-gradient(${safeShape}, ${stops})`
+      }
+    } else if (paint.color) {
+      const r = (paint.color >>> 24) & 0xff
+      const g = (paint.color >>> 16) & 0xff
+      const b = (paint.color >>> 8) & 0xff
+      const a = (paint.color & 0xff) / 255
+      el.style.color = `rgba(${r},${g},${b},${a.toFixed(2)})`
+      return
+    } else {
+      return
+    }
+    el.style.webkitBackgroundClip = 'text'
+    el.style.webkitTextFillColor = 'transparent'
+    el.style.backgroundClip = 'text'
+    if (paint.shadows?.length) {
+      el.style.filter = paint.shadows.map(s => {
+        const r = (s.color >>> 24) & 0xff
+        const g = (s.color >>> 16) & 0xff
+        const b = (s.color >>> 8) & 0xff
+        const a = (s.color & 0xff) / 255
+        return `drop-shadow(${Number(s.x_offset) || 0}px ${Number(s.y_offset) || 0}px ${Number(s.radius) || 0}px rgba(${r},${g},${b},${a.toFixed(2)}))`
+      }).join(' ')
+    }
+    el.dataset.hsPaintApplied = '1'
+  }
+
+  function applyYtCosmeticsToMessage(node, username) {
+    const cosmetic = ytCosmeticsCache.get(username)
+    if (!cosmetic) return
+
+    const nameEl = node.querySelector('#author-name')
+    if (!nameEl) return
+
+    // Badge — insert before author name element
+    if (cosmetic.badge && !node.dataset.hs7tvYtBadgeDone) {
+      const url = get7TVBadgeUrl(cosmetic.badge)
+      if (url && /^https:\/\//.test(url)) {
+        const img = document.createElement('img')
+        img.className = 'hs-7tv-badge hs-yt-cosmetic-badge'
+        img.src = url
+        const title = cosmetic.badge.tooltip || cosmetic.badge.name || '7TV'
+        img.title = title
+        img.alt = title
+        nameEl.parentNode.insertBefore(img, nameEl)
+        node.dataset.hs7tvYtBadgeDone = '1'
+      }
+    }
+
+    // Paint — gradient/color on author name text
+    if (cosmetic.paint && !nameEl.dataset.hsPaintApplied) {
+      applyPaintToElement(nameEl, cosmetic.paint)
+    }
+  }
+
+  function queueYtCosmeticsLookup(username) {
+    if (!username) return
+    const cached = ytCosmeticsCache.get(username)
+    if (cached !== undefined && Date.now() - (cached?.fetchedAt ?? 0) < YT_COSMETICS_TTL) return
+    if (ytCosmeticsPending.has(username)) return
+    ytCosmeticsPending.add(username)
+    if (ytCosmeticsPending.size >= YT_COSMETICS_PENDING_MAX) {
+      if (ytCosmeticsBatchTimer) { clearTimeout(ytCosmeticsBatchTimer); ytCosmeticsBatchTimer = null }
+      flushYtCosmeticsBatch()
+      return
+    }
+    if (!ytCosmeticsBatchTimer) {
+      ytCosmeticsBatchTimer = setTimeout(() => {
+        ytCosmeticsBatchTimer = null
+        flushYtCosmeticsBatch()
+      }, 600)
+    }
+  }
+
+  async function flushYtCosmeticsBatch() {
+    if (ytCosmeticsPending.size === 0) return
+    const batch = [...ytCosmeticsPending].slice(0, YT_COSMETICS_PENDING_MAX)
+    batch.forEach(u => ytCosmeticsPending.delete(u))
+
+    const now = Date.now()
+
+    await Promise.all(batch.map(async (username) => {
+      try {
+        // Step 1: resolve heatsync profile → twitch_id
+        const profileResp = await safeSendMessage({
+          type: 'api_fetch',
+          path: `/api/profile/${encodeURIComponent(username)}`,
+          method: 'GET'
+        })
+        const twitchId = profileResp?.data?.twitch_id || profileResp?.twitch_id || null
+        if (!twitchId) {
+          // Cache null so we don't refetch for 30min
+          evictYtCache()
+          ytCosmeticsCache.set(username, { paint: null, badge: null, fetchedAt: now })
+          return
+        }
+
+        // Step 2: fetch 7TV cosmetics via existing background handler
+        const cosmeticResp = await safeSendMessage({
+          type: 'get_user_cosmetics',
+          twitchIds: [twitchId]
+        })
+        const cosmetic = cosmeticResp?.cosmetics?.[twitchId] || null
+        evictYtCache()
+        ytCosmeticsCache.set(username, {
+          paint: cosmetic?.paint || null,
+          badge: cosmetic?.badge || null,
+          fetchedAt: now
+        })
+      } catch (e) {
+        log('yt cosmetics fetch failed for', username, e?.message)
+        evictYtCache()
+        ytCosmeticsCache.set(username, { paint: null, badge: null, fetchedAt: now })
+      }
+    }))
+
+    // Apply to any already-rendered messages waiting on cosmetics
+    applyPendingYtCosmetics(batch)
+
+    // Drain remainder if any
+    if (ytCosmeticsPending.size > 0 && !ytCosmeticsBatchTimer) {
+      ytCosmeticsBatchTimer = setTimeout(() => {
+        ytCosmeticsBatchTimer = null
+        flushYtCosmeticsBatch()
+      }, 2000)
+    }
+  }
+
+  function evictYtCache() {
+    if (ytCosmeticsCache.size >= YT_COSMETICS_MAX) {
+      ytCosmeticsCache.delete(ytCosmeticsCache.keys().next().value)
+    }
+  }
+
+  function applyPendingYtCosmetics(usernames) {
+    const container = document.querySelector('yt-live-chat-item-list-renderer #items')
+    if (!container) return
+    const userSet = new Set(usernames)
+    container.querySelectorAll('[data-hs-yt-user]').forEach(node => {
+      if (node.dataset.hs7tvYtDone === '1') return
+      const username = node.dataset.hsYtUser
+      if (userSet.has(username)) {
+        applyYtCosmeticsToMessage(node, username)
+        if (ytCosmeticsCache.get(username)?.paint || ytCosmeticsCache.get(username)?.badge) {
+          node.dataset.hs7tvYtDone = '1'
+        }
+      }
+    })
+  }
+
   // ─── CSS Injection ────────────────────────────────────────────────────────────
 
   function injectStyles() {
@@ -148,6 +341,14 @@
         vertical-align: middle;
         margin: -2px 1px;
         display: inline;
+      }
+      .hs-yt-cosmetic-badge {
+        height: 18px;
+        width: auto;
+        vertical-align: middle;
+        margin-right: 3px;
+        display: inline-block;
+        cursor: default;
       }
       .hs-yt-autocomplete {
         position: absolute;
@@ -320,6 +521,19 @@
     const messageEl = node.querySelector('#message')
     if (messageEl && emoteMap.size > 0) {
       replaceEmotesInElement(messageEl)
+    }
+
+    // 7TV cosmetics via heatsync profile linkage
+    if (msg.user) {
+      node.dataset.hsYtUser = msg.user
+      const cached = ytCosmeticsCache.get(msg.user)
+      if (cached !== undefined) {
+        // Already resolved — apply immediately if there's something to show
+        if (cached.paint || cached.badge) applyYtCosmeticsToMessage(node, msg.user)
+      } else {
+        // Queue a profile lookup (deduped, batched)
+        queueYtCosmeticsLookup(msg.user)
+      }
     }
 
     const payload = {

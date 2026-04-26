@@ -19,6 +19,12 @@
     try { window.__heatsyncKickAcLifecycle.abort() } catch (_) {}
   }
 
+  // Hoisted: abort handler may fire during init (bfcache pagehide race)
+  let dropdown = null
+  let emoteDropdown = null
+  let hsEmoteList = []
+  let emoteDebounceTimer = null
+
   const lifecycle = new AbortController()
   window.__heatsyncKickAcLifecycle = lifecycle
   const sig = lifecycle.signal
@@ -47,7 +53,7 @@
 
   // ---- heatsync emote cache ----
   // Flat array of { name, url } — refreshed on channel detect or on demand
-  let hsEmoteList = []
+  // hsEmoteList hoisted above (abort handler references it)
   let hsEmotesLastFetch = 0
   const HS_EMOTE_TTL = 60000 // 1 min
 
@@ -109,16 +115,12 @@
   const DROPDOWN_ID = 'hs-kick-emoji-dropdown'
   const EMOTE_DROPDOWN_ID = 'hs-kick-emote-dropdown'
   const MAX_RESULTS = 8
-  let dropdown = null
-  let emoteDropdown = null
+  // dropdown, emoteDropdown, emoteDebounceTimer hoisted above
   let selectedIdx = 0
   let matches = []
   // 'emoji' | 'emote' | null
   let activeMode = null
   let activeInput = null
-
-  // debounce timer for emote input
-  let emoteDebounceTimer = null
 
   function injectStyles() {
     if (document.getElementById('heatsync-kick-ac-styles')) return

@@ -566,6 +566,7 @@
         <button class="hs-mc-tab" data-tab="whispers">${t('mc_tab_whispers')}</button>
         <button class="hs-mc-tab" data-tab="mentions">${t('mc_tab_mentions')}</button>
         <button class="hs-mc-tab" data-tab="activity">${t('mc_tab_activity')}</button>
+        <button class="hs-mc-tab" data-tab="discover">${t('mc_tab_discover')}</button>
         <button class="hs-mc-tab" data-tab="live">${t('mc_tab_live')}</button>
         <button class="hs-mc-tab" data-tab="add">+</button>
       </div>
@@ -646,7 +647,7 @@
       }
 
       // Channel tabs get edit/remove context menu
-      const reserved = ['feed', 'mentions', 'activity', 'whispers', 'add', 'rotate', 'settings'];
+      const reserved = ['feed', 'mentions', 'activity', 'whispers', 'discover', 'add', 'rotate', 'settings'];
       if (reserved.includes(tabId)) return;
       e.preventDefault();
 
@@ -855,7 +856,7 @@
       const newBtn = document.getElementById('hs-mc-new-msgs');
       if (!msgsEl || !newBtn) return;
 
-      const isStaticTab = () => currentTab === 'feed' || currentTab === 'settings';
+      const isStaticTab = () => currentTab === 'feed' || currentTab === 'settings' || currentTab === 'discover';
 
       // scroll event only used for scrollbar drag detection (not wheel — wheel has its own handler)
       msgsEl.addEventListener('scrollend', () => {
@@ -2033,7 +2034,7 @@
     if (!tabBarElement) return;
 
     // Clear existing channel tabs (keep built-in tabs)
-    const existingChannelTabs = tabBarElement.querySelectorAll('.hs-mc-tab[data-tab]:not([data-tab="live"]):not([data-tab="feed"]):not([data-tab="mentions"]):not([data-tab="activity"]):not([data-tab="whispers"]):not([data-tab="add"]):not([data-tab="rotate"]):not([data-tab="settings"])');
+    const existingChannelTabs = tabBarElement.querySelectorAll('.hs-mc-tab[data-tab]:not([data-tab="live"]):not([data-tab="feed"]):not([data-tab="mentions"]):not([data-tab="activity"]):not([data-tab="whispers"]):not([data-tab="discover"]):not([data-tab="add"]):not([data-tab="rotate"]):not([data-tab="settings"])');
     existingChannelTabs.forEach(t => t.remove());
 
     // Add channel tabs before the + button in the scroll section
@@ -2439,6 +2440,10 @@
     const searchBar = document.getElementById('hs-mc-search-bar')
     if (searchBar) searchBar.classList.toggle('visible', id === 'mentions')
 
+    // Show/hide discover refresh bar
+    const discoverBar = document.getElementById('hs-discover-refresh-bar')
+    if (discoverBar) discoverBar.style.display = id === 'discover' ? '' : 'none'
+
     // Clear activity badge when switching to activity tab
     if (id === 'activity' && unreadNotifCount > 0) {
       unreadNotifCount = 0;
@@ -2510,7 +2515,7 @@
     // Hide input bar on add-channel form, or when auto-hide is on
     if (inputBarElement) {
       const pickerOpen = document.getElementById('hs-mc-emote-picker')?.classList.contains('visible');
-      if (id === 'add' || id === 'settings') {
+      if (id === 'add' || id === 'settings' || id === 'discover') {
         inputBarElement.classList.add('hs-hidden');
         inputBarVisible = false;
       } else if (autoHideInput && !pickerOpen) {
@@ -3198,6 +3203,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     if (id === 'feed') { renderFeed(); return; }
     if (id === 'activity') { renderActivity(); return; }
     if (id === 'whispers') { renderWhispersTab(); return; }
+    if (id === 'discover') { renderDiscoverTab(); return; }
     if (id === 'settings') { renderSettingsTab(); return; }
 
     // If search is active on mentions tab, don't clobber search results
@@ -3456,7 +3462,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       }
 
       const id = twitchVal || kickVal || ('yt-' + Date.now())
-      const reserved = ['live', 'feed', 'mentions', 'whispers', 'add', 'rotate', 'settings']
+      const reserved = ['live', 'feed', 'mentions', 'whispers', 'discover', 'add', 'rotate', 'settings']
       if (reserved.includes(id)) {
         showErr(t('mc_reserved_name'))
         return
@@ -4249,7 +4255,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
   }
 
   let _savedActiveTab = null;
-  const BUILTIN_TABS = ['live', 'feed', 'mentions', 'add'];
+  const BUILTIN_TABS = ['live', 'feed', 'mentions', 'discover', 'add'];
   async function loadActiveTab() {
     try {
       const stored = await chrome.storage.sync.get(['ui_settings']);

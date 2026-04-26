@@ -1,1174 +1,2557 @@
 {
-  "manifest_name": {
-    "message": "heatsync"
-  },
-  "manifest_description": {
-    "message": "Twitch, Kick, YouTube 채팅용 커스텀 이모트. 슬롯 무제한, 탭 완성, 실시간 동기화."
-  },
-  "common_loading": {
-    "message": "로딩 중..."
-  },
-  "common_extension_updated": {
-    "message": "확장 프로그램 업데이트됨 — 페이지를 새로고침하세요"
-  },
-  "common_no_matches": {
-    "message": "검색 결과 없음"
-  },
-  "common_retry": {
-    "message": "재시도"
-  },
-  "common_cancel": {
-    "message": "취소"
-  },
-  "common_save": {
-    "message": "저장"
-  },
-  "common_add": {
-    "message": "추가"
-  },
-  "common_edit": {
-    "message": "수정"
-  },
-  "common_remove": {
-    "message": "제거"
-  },
-  "common_done": {
-    "message": "완료"
-  },
-  "common_ended": {
-    "message": "종료됨"
-  },
-  "common_vote": {
-    "message": "투표"
-  },
-  "common_set": {
-    "message": "설정"
-  },
-  "common_default": {
-    "message": "기본값"
-  },
-  "common_mention": {
-    "message": "멘션"
-  },
-  "common_user_not_found": {
-    "message": "사용자를 찾을 수 없음"
-  },
-  "popup_title": {
-    "message": "heatsync"
-  },
-  "popup_status_checking": {
-    "message": "확인 중..."
-  },
-  "popup_status_connected": {
-    "message": "연결됨"
-  },
-  "popup_status_api_error": {
-    "message": "api 오류"
-  },
-  "popup_status_offline": {
-    "message": "오프라인"
-  },
-  "popup_user_stats": {
-    "message": "$EMOTES$ 이모트 · $GLOBALS$ 글로벌",
-    "placeholders": {
-      "emotes": {
-        "content": "$1"
-      },
-      "globals": {
-        "content": "$2"
-      }
-    }
-  },
-  "popup_user_stats_heat": {
-    "message": "$EMOTES$ 이모트 · $GLOBALS$ 글로벌 · $HEAT$ heat",
-    "placeholders": {
-      "emotes": {
-        "content": "$1"
-      },
-      "globals": {
-        "content": "$2"
-      },
-      "heat": {
-        "content": "$3"
-      }
-    }
-  },
-  "popup_btn_emotes": {
-    "message": "이모트"
-  },
-  "popup_btn_refresh": {
-    "message": "새로고침"
-  },
-  "popup_btn_site": {
-    "message": "사이트"
-  },
-  "popup_btn_done": {
-    "message": "완료"
-  },
-  "popup_login_prompt": {
-    "message": "로그인하여 이모트 동기화"
-  },
-  "popup_channel_placeholder": {
-    "message": "채널"
-  },
-  "popup_btn_popout": {
-    "message": "팝아웃"
-  },
-  "popup_hint": {
-    "message": "채팅의 피커 패널에서 이모트 설정"
-  },
-  "welcome_title": {
-    "message": "heatsync에 오신 걸 환영합니다"
-  },
-  "welcome_tagline": {
-    "message": "내 이모트, 어디서든 채팅에서"
-  },
-  "welcome_step1_title": {
-    "message": "heatsync.org에서 로그인"
-  },
-  "welcome_step1_desc": {
-    "message": "twitch 또는 kick으로 로그인하여 계정 생성"
-  },
-  "welcome_step2_title": {
-    "message": "이모트 업로드"
-  },
-  "welcome_step2_desc": {
-    "message": "이미지를 추가하세요 — 슬롯 제한 없음, 모든 형식 지원"
-  },
-  "welcome_step3_title": {
-    "message": "채팅에서 사용"
-  },
-  "welcome_step3_desc": {
-    "message": "twitch/kick 채팅에서 heatsync 버튼을 클릭하여 이모트 사용"
-  },
-  "welcome_cta": {
-    "message": "시작하기"
-  },
-  "welcome_privacy": {
-    "message": "개인정보처리방침"
-  },
-  "welcome_source": {
-    "message": "소스"
-  },
-  "btn_auth_login": {
-    "message": "로그인"
-  },
-  "btn_auth_save_emotes": {
-    "message": "이모트를 세트에 저장하려면"
-  },
-  "btn_tab_channel": {
-    "message": "채널"
-  },
-  "btn_tab_global": {
-    "message": "글로벌"
-  },
-  "btn_tab_mine": {
-    "message": "내 것"
-  },
-  "btn_tab_emoji": {
-    "message": "이모지"
-  },
-  "btn_search_placeholder": {
-    "message": "이모트 검색..."
-  },
-  "btn_rotate_title": {
-    "message": "탭 바 위치 전환"
-  },
-  "btn_settings_title": {
-    "message": "설정"
-  },
-  "btn_no_emotes": {
-    "message": "이모트 없음"
-  },
-  "btn_login_save_emotes": {
-    "message": "이모트 저장하려면 heatsync.org에서 로그인"
-  },
-  "btn_cached": {
-    "message": "캐시됨"
-  },
-  "btn_loading_emotes": {
-    "message": "이모트 로딩 중"
-  },
-  "btn_no_third_party": {
-    "message": "서드파티 이모트 없음"
-  },
-  "btn_no_emotes_import": {
-    "message": "가져올 이모트 없음"
-  },
-  "btn_import_count": {
-    "message": "$COUNT$개 이모트 가져오기",
-    "placeholders": {
-      "count": {
-        "content": "$1"
-      }
-    }
-  },
-  "btn_failed_load": {
-    "message": "이모트 로드 실패"
-  },
-  "btn_retry_loading": {
-    "message": "다시 로드"
-  },
-  "btn_ctx_block": {
-    "message": "이모트 차단"
-  },
-  "btn_ctx_unblock": {
-    "message": "이모트 차단 해제"
-  },
-  "btn_ctx_remove_inventory": {
-    "message": "인벤토리에서 제거"
-  },
-  "btn_ctx_add_inventory": {
-    "message": "인벤토리에 추가"
-  },
-  "btn_ctx_copy_name": {
-    "message": "이모트 이름 복사"
-  },
-  "btn_ctx_copy_url": {
-    "message": "이모트 url 복사"
-  },
-  "btn_toast_unblocked": {
-    "message": "차단 해제됨"
-  },
-  "btn_toast_blocked": {
-    "message": "차단됨"
-  },
-  "btn_toast_removed": {
-    "message": "제거됨"
-  },
-  "btn_toast_added": {
-    "message": "추가됨"
-  },
-  "btn_toast_copied": {
-    "message": "복사됨!"
-  },
-  "btn_settings_tab_completion": {
-    "message": "탭 완성"
-  },
-  "btn_settings_chat_ui": {
-    "message": "채팅 ui"
-  },
-  "btn_settings_input": {
-    "message": "입력"
-  },
-  "btn_settings_wysiwyg": {
-    "message": "wysiwyg 이모트"
-  },
-  "btn_settings_space_after": {
-    "message": "이모트 뒤 공백"
-  },
-  "btn_settings_placeholder_mode": {
-    "message": "플레이스홀더 모드"
-  },
-  "btn_settings_placeholder_desc": {
-    "message": "색상 박스 표시"
-  },
-  "btn_settings_hide_header": {
-    "message": "헤더 숨기기"
-  },
-  "btn_settings_always_popout": {
-    "message": "(팝아웃에서 항상 켜짐)"
-  },
-  "btn_settings_compact_input": {
-    "message": "컴팩트 입력"
-  },
-  "btn_settings_highlight_mentions": {
-    "message": "멘션 강조"
-  },
-  "btn_settings_platform_badges": {
-    "message": "플랫폼 뱃지"
-  },
-  "btn_settings_platform_badges_desc": {
-    "message": "메시지에 [T] [K] [YT] 표시"
-  },
-  "btn_settings_cosmetics": {
-    "message": "코스메틱"
-  },
-  "btn_settings_cosmetics_desc": {
-    "message": "7TV/BTTV/FFZ 페인트 + 뱃지"
-  },
-  "btn_settings_vi_mode": {
-    "message": "vi 모드"
-  },
-  "btn_settings_vi_mode_desc": {
-    "message": "채팅 입력용 vim 키바인딩"
-  },
-  "btn_size_1x": {
-    "message": "1x"
-  },
-  "btn_size_2x": {
-    "message": "2x"
-  },
-  "btn_size_4x": {
-    "message": "4x"
-  },
-  "btn_expand": {
-    "message": "펼치기"
-  },
-  "btn_collapse": {
-    "message": "접기"
-  },
-  "btn_block_all": {
-    "message": "모두 차단"
-  },
-  "btn_show_all": {
-    "message": "모두 보기"
-  },
-  "btn_click_expand": {
-    "message": "클릭하여 펼치기"
-  },
-  "content_toast_failed_add": {
-    "message": "$NAME$ 추가 실패: $ERROR$",
-    "placeholders": {
-      "name": {
-        "content": "$1"
-      },
-      "error": {
-        "content": "$2"
-      }
-    }
-  },
-  "content_toast_failed_remove": {
-    "message": "$NAME$ 제거 실패: $ERROR$",
-    "placeholders": {
-      "name": {
-        "content": "$1"
-      },
-      "error": {
-        "content": "$2"
-      }
-    }
-  },
-  "content_toast_unblocked": {
-    "message": "$NAME$ 차단 해제됨",
-    "placeholders": {
-      "name": {
-        "content": "$1"
-      }
-    }
-  },
-  "content_toast_failed_unblock": {
-    "message": "차단 해제 실패: $ERROR$",
-    "placeholders": {
-      "error": {
-        "content": "$1"
-      }
-    }
-  },
-  "content_toast_removed": {
-    "message": "세트에서 $NAME$ 제거됨",
-    "placeholders": {
-      "name": {
-        "content": "$1"
-      }
-    }
-  },
-  "content_toast_failed_block": {
-    "message": "차단 실패: $ERROR$",
-    "placeholders": {
-      "error": {
-        "content": "$1"
-      }
-    }
-  },
-  "content_toast_blocked": {
-    "message": "$NAME$ 차단됨",
-    "placeholders": {
-      "name": {
-        "content": "$1"
-      }
-    }
-  },
-  "content_toast_unmuted": {
-    "message": "$NAME$ 음소거 해제됨",
-    "placeholders": {
-      "name": {
-        "content": "$1"
-      }
-    }
-  },
-  "content_toast_muted_24h": {
-    "message": "$NAME$ 24시간 음소거",
-    "placeholders": {
-      "name": {
-        "content": "$1"
-      }
-    }
-  },
-  "content_card_follows_you": {
-    "message": "나를 팔로우"
-  },
-  "content_card_subs_to_you": {
-    "message": "나를 구독"
-  },
-  "content_card_you_follow": {
-    "message": "내가 팔로우"
-  },
-  "content_card_you_sub": {
-    "message": "내가 구독"
-  },
-  "content_card_you_sub_tier": {
-    "message": "T$TIER$ 구독 중",
-    "placeholders": {
-      "tier": {
-        "content": "$1"
-      }
-    }
-  },
-  "content_card_subbed": {
-    "message": "$CHANNEL$ $TENURE$ 구독 중",
-    "placeholders": {
-      "channel": {
-        "content": "$1"
-      },
-      "tenure": {
-        "content": "$2"
-      }
-    }
-  },
-  "content_card_following": {
-    "message": "$CHANNEL$ $AGE$ 팔로우 중",
-    "placeholders": {
-      "channel": {
-        "content": "$1"
-      },
-      "age": {
-        "content": "$2"
-      }
-    }
-  },
-  "content_card_not_following": {
-    "message": "$CHANNEL$ 팔로우 안 함",
-    "placeholders": {
-      "channel": {
-        "content": "$1"
-      }
-    }
-  },
-  "content_card_followed_by": {
-    "message": "$CHANNEL$이 팔로우",
-    "placeholders": {
-      "channel": {
-        "content": "$1"
-      }
-    }
-  },
-  "content_card_following_count": {
-    "message": "$COUNT$ 팔로우 중",
-    "placeholders": {
-      "count": {
-        "content": "$1"
-      }
-    }
-  },
-  "content_card_followers": {
-    "message": "팔로워 $COUNT$명",
-    "placeholders": {
-      "count": {
-        "content": "$1"
-      }
-    }
-  },
-  "content_card_partner": {
-    "message": "파트너"
-  },
-  "content_card_affiliate": {
-    "message": "어필리에이트"
-  },
-  "content_card_live": {
-    "message": "LIVE $VIEWERS$",
-    "placeholders": {
-      "viewers": {
-        "content": "$1"
-      }
-    }
-  },
-  "content_card_twitch_verified": {
-    "message": "Twitch 인증"
-  },
-  "content_card_kick_verified": {
-    "message": "Kick 인증"
-  },
-  "content_view_on_heatsync": {
-    "message": "heatsync에서 보기"
-  },
-  "content_in_your_set": {
-    "message": "내 세트에 있음"
-  },
-  "content_click_to_add": {
-    "message": "클릭하여 추가"
-  },
-  "content_blocked_click_unblock": {
-    "message": "차단됨 (클릭하여 해제)"
-  },
-  "mc_tab_feed": {
-    "message": "피드"
-  },
-  "mc_tab_whispers": {
-    "message": "귓속말"
-  },
-  "mc_tab_mentions": {
-    "message": "멘션"
-  },
-  "mc_tab_activity": {
-    "message": "활동"
-  },
-  "mc_tab_live": {
-    "message": "라이브"
-  },
-  "mc_tab_live_channel": {
-    "message": "라이브 · $CHANNEL$",
-    "placeholders": {
-      "channel": {
-        "content": "$1"
-      }
-    }
-  },
-  "mc_btn_rotate_tabs": {
-    "message": "탭 전환 (T)"
-  },
-  "mc_btn_smaller_text": {
-    "message": "텍스트 작게"
-  },
-  "mc_btn_larger_text": {
-    "message": "텍스트 크게"
-  },
-  "mc_btn_settings": {
-    "message": "설정"
-  },
-  "mc_new_messages": {
-    "message": "$COUNT$개 새 메시지",
-    "placeholders": {
-      "count": {
-        "content": "$1"
-      }
-    }
-  },
-  "mc_resume": {
-    "message": "다시 보기"
-  },
-  "mc_no_messages": {
-    "message": "아직 메시지 없음"
-  },
-  "mc_no_activity": {
-    "message": "아직 활동 없음"
-  },
-  "mc_add_channel": {
-    "message": "채널 추가"
-  },
-  "mc_enter_platform": {
-    "message": "플랫폼을 하나 이상 입력"
-  },
-  "mc_username_placeholder": {
-    "message": "사용자명"
-  },
-  "mc_username_url_placeholder": {
-    "message": "사용자명 또는 url"
-  },
-  "mc_reserved_name": {
-    "message": "예약된 이름"
-  },
-  "mc_channel_exists": {
-    "message": "이미 존재하는 채널"
-  },
-  "mc_twitch_exists": {
-    "message": "twitch 채널 이미 추가됨"
-  },
-  "mc_kick_exists": {
-    "message": "kick 채널 이미 추가됨"
-  },
-  "mc_edit_channel": {
-    "message": "$CHANNEL$ 수정",
-    "placeholders": {
-      "channel": {
-        "content": "$1"
-      }
-    }
-  },
-  "mc_no_channel_detected": {
-    "message": "채널 감지 안 됨"
-  },
-  "mc_settings_display": {
-    "message": "화면"
-  },
-  "mc_settings_emote_size": {
-    "message": "이모트 크기"
-  },
-  "mc_settings_input_preview": {
-    "message": "입력 미리보기"
-  },
-  "mc_settings_clickable_links": {
-    "message": "클릭 가능한 링크"
-  },
-  "mc_settings_vi_mode": {
-    "message": "vi 모드"
-  },
-  "mc_settings_zebra": {
-    "message": "줄무늬 배경"
-  },
-  "mc_settings_auto_hide": {
-    "message": "입력창 자동 숨기기"
-  },
-  "mc_settings_timestamps": {
-    "message": "타임스탬프"
-  },
-  "mc_settings_avatars": {
-    "message": "아바타"
-  },
-  "mc_settings_emote_size_desc": {
-    "message": "채팅 이모트의 해상도 배율. 1x는 선명하고 작게, 2x는 대부분 화면에 적합, 4x는 이모트 아트를 픽셀 단위로 보고 싶을 때."
-  },
-  "mc_settings_input_preview_desc": {
-    "message": "입력창에서 이모트를 텍스트가 아닌 이미지로 직접 표시. 보이는 대로 전송됩니다."
-  },
-  "mc_settings_clickable_links_desc": {
-    "message": "채팅 메시지의 URL을 클릭 가능한 링크로 변환. 복붙을 선호하거나 낯선 사람을 믿지 않는다면 비활성화."
-  },
-  "mc_settings_vi_mode_desc": {
-    "message": "채팅 탐색에 vim 스타일 키바인딩. j/k로 스크롤, g/G로 상단/하단, /로 검색. 마우스는 캐주얼용이라 생각하는 분들을 위해."
-  },
-  "mc_settings_zebra_desc": {
-    "message": "채팅 메시지에 교대 줄 음영 적용. 창이 넓을 때나 채팅이 빠를 때 긴 메시지 읽기 편함."
-  },
-  "mc_settings_auto_hide_desc": {
-    "message": "메시지를 작성하지 않을 때 입력창 숨기기. 클릭하거나 타이핑 시작하면 다시 나타남. 채팅 화면 공간 최대화."
-  },
-  "mc_settings_timestamps_desc": {
-    "message": "각 메시지 발송 시간을 사용자명 옆에 표시. AFK 중 놓친 내용 확인에 유용."
-  },
-  "mc_settings_avatars_desc": {
-    "message": "채팅 사용자명 옆에 프로필 사진 표시. 단골 시청자를 한눈에 알아보기 쉽지만 세로 공간을 약간 사용."
-  },
-  "mc_settings_inline_notifs": {
-    "message": "인라인 알림"
-  },
-  "mc_settings_notif_op": {
-    "message": "[OP] 오리지널 포스트"
-  },
-  "mc_settings_notif_op_reply": {
-    "message": "[OP] 자신의 스레드에 OP 답글"
-  },
-  "mc_settings_notif_re": {
-    "message": "[RE] 답글"
-  },
-  "mc_settings_notif_dm": {
-    "message": "[DM] 귓속말 & DM"
-  },
-  "mc_settings_notif_op_desc": {
-    "message": "누군가 피드에 새 오리지널 포스트를 작성하면 활성 채팅 탭에 알림."
-  },
-  "mc_settings_notif_op_reply_desc": {
-    "message": "원작자가 자신의 스레드에 답글을 달 때 알림."
-  },
-  "mc_settings_notif_re_desc": {
-    "message": "피드의 모든 스레드에 답글이 달릴 때마다 알림."
-  },
-  "mc_settings_notif_dm_desc": {
-    "message": "귓속말 또는 DM을 받을 때 알림."
-  },
-  "mc_settings_twitch_events": {
-    "message": "twitch 이벤트"
-  },
-  "mc_settings_raids": {
-    "message": "레이드"
-  },
-  "mc_settings_hype_trains": {
-    "message": "하입 트레인"
-  },
-  "mc_settings_gift_subs": {
-    "message": "선물 구독"
-  },
-  "mc_settings_redeems": {
-    "message": "채널 포인트 리딤"
-  },
-  "mc_settings_prediction_banner": {
-    "message": "예측 배너"
-  },
-  "mc_settings_poll_banner": {
-    "message": "투표 배너"
-  },
-  "mc_settings_pinned_messages": {
-    "message": "고정된 메시지"
-  },
-  "mc_settings_features": {
-    "message": "기능"
-  },
-  "mc_settings_auto_claim": {
-    "message": "채널 포인트 자동 수령"
-  },
-  "mc_settings_auto_claim_desc": {
-    "message": "Twitch에서 보너스 채널 포인트 상자가 나타나면 자동으로 클릭. 공짜 포인트, 노력 제로."
-  },
-  "mc_settings_muted_users": {
-    "message": "음소거된 사용자"
-  },
-  "mc_settings_no_muted": {
-    "message": "음소거된 사용자 없음"
-  },
-  "mc_settings_unmute": {
-    "message": "음소거 해제"
-  },
-  "mc_pred_no_active": {
-    "message": "활성 예측 없음"
-  },
-  "mc_pred_new": {
-    "message": "+ 새 예측"
-  },
-  "mc_pred_title_placeholder": {
-    "message": "예측 제목"
-  },
-  "mc_pred_option1": {
-    "message": "옵션 1 (파란색)"
-  },
-  "mc_pred_option2": {
-    "message": "옵션 2 (분홍색)"
-  },
-  "mc_pred_duration": {
-    "message": "기간:"
-  },
-  "mc_pred_create": {
-    "message": "예측 만들기"
-  },
-  "mc_pred_refunded": {
-    "message": "환불됨"
-  },
-  "mc_pred_locked": {
-    "message": "잠김"
-  },
-  "mc_pred_winner": {
-    "message": "승리"
-  },
-  "mc_pred_won": {
-    "message": " 승리"
-  },
-  "mc_pred_lost": {
-    "message": " 패배"
-  },
-  "mc_pred_lock_betting": {
-    "message": "배팅 잠금"
-  },
-  "mc_pred_cancel_refund": {
-    "message": "취소 (환불)"
-  },
-  "mc_pred_pick_winner": {
-    "message": "승자 선택"
-  },
-  "mc_pred_pick_winner_your_bet": {
-    "message": "승자 선택 (내 배팅)"
-  },
-  "mc_pred_failed_load": {
-    "message": "예측을 불러올 수 없음"
-  },
-  "mc_pred_bet_own": {
-    "message": "자신의 방송에 배팅 불가"
-  },
-  "mc_pred_try_again": {
-    "message": "다시 시도"
-  },
-  "mc_pred_ended": {
-    "message": "예측 종료됨"
-  },
-  "mc_pred_betting_locked": {
-    "message": "배팅 잠김"
-  },
-  "mc_pred_not_enough": {
-    "message": "포인트 부족"
-  },
-  "mc_pred_already_bet": {
-    "message": "이미 배팅함"
-  },
-  "mc_pred_no_permission": {
-    "message": "권한 없음"
-  },
-  "mc_pred_failed": {
-    "message": "실패"
-  },
-  "mc_pred_no_event": {
-    "message": "이벤트 없음"
-  },
-  "mc_pred_no_outcome": {
-    "message": "결과 없음"
-  },
-  "mc_pred_closing": {
-    "message": "종료 중..."
-  },
-  "mc_pred_you_bet": {
-    "message": "$OUTCOME$에 $POINTS$ 포인트 배팅 — 실제 승자를 선택하세요",
-    "placeholders": {
-      "points": {
-        "content": "$1"
-      },
-      "outcome": {
-        "content": "$2"
-      }
-    }
-  },
-  "mc_poll_new": {
-    "message": "+ 새 투표"
-  },
-  "mc_poll_question": {
-    "message": "투표 질문"
-  },
-  "mc_poll_choice": {
-    "message": "선택지 $NUM$",
-    "placeholders": {
-      "num": {
-        "content": "$1"
-      }
-    }
-  },
-  "mc_poll_choice_optional": {
-    "message": "선택지 $NUM$ (선택사항)",
-    "placeholders": {
-      "num": {
-        "content": "$1"
-      }
-    }
-  },
-  "mc_poll_create": {
-    "message": "투표 만들기"
-  },
-  "mc_poll_end": {
-    "message": "투표 종료"
-  },
-  "mc_poll_votes": {
-    "message": "$COUNT$표",
-    "placeholders": {
-      "count": {
-        "content": "$1"
-      }
-    }
-  },
-  "mc_poll_vote_single": {
-    "message": "$COUNT$표",
-    "placeholders": {
-      "count": {
-        "content": "$1"
-      }
-    }
-  },
-  "mc_poll_already_active": {
-    "message": "이미 진행 중인 투표 있음"
-  },
-  "mc_poll_not_logged_in": {
-    "message": "로그인하지 않음"
-  },
-  "mc_reward_rewards": {
-    "message": "리워드"
-  },
-  "mc_reward_none": {
-    "message": "사용 가능한 리워드 없음"
-  },
-  "mc_reward_paused": {
-    "message": "일시정지됨"
-  },
-  "mc_reward_out_of_stock": {
-    "message": "품절"
-  },
-  "mc_reward_cooldown_min": {
-    "message": "$MIN$분 쿨다운",
-    "placeholders": {
-      "min": {
-        "content": "$1"
-      }
-    }
-  },
-  "mc_reward_cooldown_sec": {
-    "message": "$SEC$초 쿨다운",
-    "placeholders": {
-      "sec": {
-        "content": "$1"
-      }
-    }
-  },
-  "mc_reward_enter_text": {
-    "message": "텍스트 입력..."
-  },
-  "mc_reward_redeem": {
-    "message": "리딤"
-  },
-  "mc_chat_username_color": {
-    "message": "사용자명 색상"
-  },
-  "mc_chat_hex_placeholder": {
-    "message": "#hex"
-  },
-  "mc_chat_modes": {
-    "message": "채팅 모드"
-  },
-  "mc_chat_emote_only": {
-    "message": "이모트 전용"
-  },
-  "mc_chat_follower": {
-    "message": "팔로워"
-  },
-  "mc_chat_slow": {
-    "message": "슬로우"
-  },
-  "mc_chat_sub_only": {
-    "message": "구독자 전용"
-  },
-  "mc_chat_unique": {
-    "message": "유니크"
-  },
-  "mc_chat_hype_train": {
-    "message": "하입 트레인"
-  },
-  "mc_chat_hype_level": {
-    "message": "레벨 $LEVEL$",
-    "placeholders": {
-      "level": {
-        "content": "$1"
-      }
-    }
-  },
-  "mc_input_send_message": {
-    "message": "메시지 보내기..."
-  },
-  "mc_input_post_heatsync": {
-    "message": "heatsync에 포스트..."
-  },
-  "mc_input_send_channel": {
-    "message": "#$CHANNEL$에 전송",
-    "placeholders": {
-      "channel": {
-        "content": "$1"
-      }
-    }
-  },
-  "mc_input_replying_to": {
-    "message": "@$USER$에게 답글",
-    "placeholders": {
-      "user": {
-        "content": "$1"
-      }
-    }
-  },
-  "mc_input_cancel_reply": {
-    "message": "답글 취소"
-  },
-  "mc_input_not_logged_in": {
-    "message": "로그인하지 않음"
-  },
-  "mc_input_login_kick": {
-    "message": "먼저 kick.com에 로그인"
-  },
-  "mc_input_open_kick": {
-    "message": "kick.com을 탭에서 열기"
-  },
-  "mc_input_kick_not_found": {
-    "message": "kick 채널을 찾을 수 없음"
-  },
-  "mc_input_send_failed": {
-    "message": "전송 실패"
-  },
-  "mc_input_no_username": {
-    "message": "사용자명 감지 안 됨"
-  },
-  "mc_input_auth_failed": {
-    "message": "인증 실패 — twitch에 다시 로그인"
-  },
-  "mc_input_connection_failed": {
-    "message": "연결 실패 — 다시 시도"
-  },
-  "mc_input_send_failed_retry": {
-    "message": "전송 실패 — 다시 시도"
-  },
-  "mc_social_back": {
-    "message": "<- 뒤로"
-  },
-  "mc_social_no_posts": {
-    "message": "아직 포스트 없음"
-  },
-  "mc_social_loading_feed": {
-    "message": "팔로잉 피드 로딩 중..."
-  },
-  "mc_social_scroll_more": {
-    "message": "스크롤하여 더 보기..."
-  },
-  "mc_social_no_replies": {
-    "message": "아직 답글 없음"
-  },
-  "mc_social_login_first": {
-    "message": "먼저 heatsync.org에 로그인"
-  },
-  "mc_social_login_activity": {
-    "message": "활동을 보려면 heatsync.org에 로그인"
-  },
-  "mc_social_failed_feed_auth": {
-    "message": "피드 로드 실패 — heatsync.org에 로그인"
-  },
-  "mc_social_failed_feed": {
-    "message": "피드 로드 실패"
-  },
-  "mc_social_log_in_first": {
-    "message": "먼저 로그인"
-  },
-  "mc_social_slow_down": {
-    "message": "천천히"
-  },
-  "mc_social_duplicate": {
-    "message": "중복 메시지"
-  },
-  "mc_social_failed_post": {
-    "message": "포스트 실패"
-  },
-  "mc_tip_emoji": {
-    "message": "이모지"
-  },
-  "mc_tip_subbed": {
-    "message": "$CHANNEL$ $TENURE$ 구독 중",
-    "placeholders": {
-      "channel": {
-        "content": "$1"
-      },
-      "tenure": {
-        "content": "$2"
-      }
-    }
-  },
-  "mc_tip_following": {
-    "message": "$CHANNEL$ $AGE$ 팔로우 중",
-    "placeholders": {
-      "channel": {
-        "content": "$1"
-      },
-      "age": {
-        "content": "$2"
-      }
-    }
-  },
-  "mc_tip_not_following": {
-    "message": "$CHANNEL$ 팔로우 안 함",
-    "placeholders": {
-      "channel": {
-        "content": "$1"
-      }
-    }
-  },
-  "mc_tip_followed_by": {
-    "message": "$CHANNEL$이 팔로우",
-    "placeholders": {
-      "channel": {
-        "content": "$1"
-      }
-    }
-  },
-  "mc_tip_followers": {
-    "message": "팔로워 $COUNT$명",
-    "placeholders": {
-      "count": {
-        "content": "$1"
-      }
-    }
-  },
-  "mc_whisper_hint": {
-    "message": "/w 유저 메시지 · /dm 유저 메시지 · /r 메시지"
-  },
-  "mc_whisper_login": {
-    "message": "귓속말을 보내려면 heatsync.org에 로그인"
-  },
-  "mc_whisper_user_not_found": {
-    "message": "twitch 사용자 \"$USER$\"를 찾을 수 없음",
-    "placeholders": {
-      "user": {
-        "content": "$1"
-      }
-    }
-  },
-  "mc_whisper_resolve_failed": {
-    "message": "twitch 사용자 조회 실패"
-  },
-  "mc_whisper_hs_not_found": {
-    "message": "heatsync 사용자 \"$USER$\"를 찾을 수 없음",
-    "placeholders": {
-      "user": {
-        "content": "$1"
-      }
-    }
-  },
-  "mc_irc_chat_cleared": {
-    "message": "채팅이 삭제됨"
-  },
-  "mc_irc_msg_deleted": {
-    "message": "$USER$의 메시지 삭제됨",
-    "placeholders": {
-      "user": {
-        "content": "$1"
-      }
-    }
-  },
-  "mc_irc_gift_subs": {
-    "message": "$USER$이 $CHANNEL$에 구독 $AMOUNT$개 선물",
-    "placeholders": {
-      "user": {
-        "content": "$1"
-      },
-      "amount": {
-        "content": "$2"
-      },
-      "channel": {
-        "content": "$3"
-      }
-    }
-  },
-  "mc_yt_connected": {
-    "message": "YouTube 연결됨: $CHANNEL$ — 메시지 대기 중...",
-    "placeholders": {
-      "channel": {
-        "content": "$1"
-      }
-    }
-  },
-  "mc_yt_ended": {
-    "message": "YouTube 스트림 종료됨"
-  },
-  "mc_yt_error": {
-    "message": "YouTube 연결 오류"
-  },
-  "mc_emote_search_placeholder": {
-    "message": "이모트 검색..."
-  },
-  "mc_emote_no_loaded": {
-    "message": "로드된 이모트 없음"
-  },
-  "mc_emote_in_set": {
-    "message": "내 세트에 있음"
-  },
-  "mc_emote_click_add": {
-    "message": "클릭하여 추가"
-  },
-  "mc_emote_blocked": {
-    "message": "차단됨 (클릭하여 해제)"
-  },
-  "content_toast_unknown_error": {
-    "message": "알 수 없는 오류"
-  },
-  "content_toast_loading_emotes": {
-    "message": "이모트 로딩 중..."
-  },
-  "content_toast_fetching_emotes": {
-    "message": "이모트 가져오는 중..."
-  },
-  "content_card_action_ban": {
-    "message": "차단"
-  },
-  "content_card_action_unban": {
-    "message": "차단 해제"
-  },
-  "content_card_action_block": {
-    "message": "블록"
-  },
-  "btn_close": {
-    "message": "닫기"
-  },
-  "btn_error_channel": {
-    "message": "채널 이모트 로드 실패"
-  },
-  "btn_error_global": {
-    "message": "글로벌 이모트 로드 실패"
-  },
-  "btn_error_inventory": {
-    "message": "내 이모트 로드 실패"
-  }
+  "manifest_name": [
+    [
+      "message",
+      "heatsync"
+    ]
+  ],
+  "manifest_description": [
+    [
+      "message",
+      "Twitch, Kick, YouTube 채팅용 커스텀 이모트. 슬롯 무제한, 탭 완성, 실시간 동기화."
+    ]
+  ],
+  "common_loading": [
+    [
+      "message",
+      "로딩 중..."
+    ]
+  ],
+  "common_extension_updated": [
+    [
+      "message",
+      "확장 프로그램 업데이트됨 — 페이지를 새로고침하세요"
+    ]
+  ],
+  "common_no_matches": [
+    [
+      "message",
+      "검색 결과 없음"
+    ]
+  ],
+  "common_retry": [
+    [
+      "message",
+      "재시도"
+    ]
+  ],
+  "common_cancel": [
+    [
+      "message",
+      "취소"
+    ]
+  ],
+  "common_save": [
+    [
+      "message",
+      "저장"
+    ]
+  ],
+  "common_add": [
+    [
+      "message",
+      "추가"
+    ]
+  ],
+  "common_edit": [
+    [
+      "message",
+      "수정"
+    ]
+  ],
+  "common_remove": [
+    [
+      "message",
+      "제거"
+    ]
+  ],
+  "common_done": [
+    [
+      "message",
+      "완료"
+    ]
+  ],
+  "common_ended": [
+    [
+      "message",
+      "종료됨"
+    ]
+  ],
+  "common_vote": [
+    [
+      "message",
+      "투표"
+    ]
+  ],
+  "common_set": [
+    [
+      "message",
+      "설정"
+    ]
+  ],
+  "common_default": [
+    [
+      "message",
+      "기본값"
+    ]
+  ],
+  "common_mention": [
+    [
+      "message",
+      "멘션"
+    ]
+  ],
+  "common_user_not_found": [
+    [
+      "message",
+      "사용자를 찾을 수 없음"
+    ]
+  ],
+  "popup_title": [
+    [
+      "message",
+      "heatsync"
+    ]
+  ],
+  "popup_status_checking": [
+    [
+      "message",
+      "확인 중..."
+    ]
+  ],
+  "popup_status_connected": [
+    [
+      "message",
+      "연결됨"
+    ]
+  ],
+  "popup_status_api_error": [
+    [
+      "message",
+      "api 오류"
+    ]
+  ],
+  "popup_status_offline": [
+    [
+      "message",
+      "오프라인"
+    ]
+  ],
+  "popup_user_stats": [
+    [
+      "message",
+      "$EMOTES$ 이모트 · $GLOBALS$ 글로벌"
+    ],
+    [
+      "placeholders",
+      [
+        [
+          "emotes",
+          [
+            [
+              "content",
+              "$1"
+            ]
+          ]
+        ],
+        [
+          "globals",
+          [
+            [
+              "content",
+              "$2"
+            ]
+          ]
+        ]
+      ]
+    ]
+  ],
+  "popup_user_stats_heat": [
+    [
+      "message",
+      "$EMOTES$ 이모트 · $GLOBALS$ 글로벌 · $HEAT$ heat"
+    ],
+    [
+      "placeholders",
+      [
+        [
+          "emotes",
+          [
+            [
+              "content",
+              "$1"
+            ]
+          ]
+        ],
+        [
+          "globals",
+          [
+            [
+              "content",
+              "$2"
+            ]
+          ]
+        ],
+        [
+          "heat",
+          [
+            [
+              "content",
+              "$3"
+            ]
+          ]
+        ]
+      ]
+    ]
+  ],
+  "popup_btn_emotes": [
+    [
+      "message",
+      "이모트"
+    ]
+  ],
+  "popup_btn_refresh": [
+    [
+      "message",
+      "새로고침"
+    ]
+  ],
+  "popup_btn_site": [
+    [
+      "message",
+      "사이트"
+    ]
+  ],
+  "popup_btn_done": [
+    [
+      "message",
+      "완료"
+    ]
+  ],
+  "popup_login_prompt": [
+    [
+      "message",
+      "로그인하여 이모트 동기화"
+    ]
+  ],
+  "popup_channel_placeholder": [
+    [
+      "message",
+      "채널"
+    ]
+  ],
+  "popup_btn_popout": [
+    [
+      "message",
+      "팝아웃"
+    ]
+  ],
+  "popup_hint": [
+    [
+      "message",
+      "채팅의 피커 패널에서 이모트 설정"
+    ]
+  ],
+  "welcome_title": [
+    [
+      "message",
+      "heatsync에 오신 걸 환영합니다"
+    ]
+  ],
+  "welcome_tagline": [
+    [
+      "message",
+      "내 이모트, 어디서든 채팅에서"
+    ]
+  ],
+  "welcome_step1_title": [
+    [
+      "message",
+      "heatsync.org에서 로그인"
+    ]
+  ],
+  "welcome_step1_desc": [
+    [
+      "message",
+      "twitch 또는 kick으로 로그인하여 계정 생성"
+    ]
+  ],
+  "welcome_step2_title": [
+    [
+      "message",
+      "이모트 업로드"
+    ]
+  ],
+  "welcome_step2_desc": [
+    [
+      "message",
+      "이미지를 추가하세요 — 슬롯 제한 없음, 모든 형식 지원"
+    ]
+  ],
+  "welcome_step3_title": [
+    [
+      "message",
+      "채팅에서 사용"
+    ]
+  ],
+  "welcome_step3_desc": [
+    [
+      "message",
+      "twitch/kick 채팅에서 heatsync 버튼을 클릭하여 이모트 사용"
+    ]
+  ],
+  "welcome_cta": [
+    [
+      "message",
+      "시작하기"
+    ]
+  ],
+  "welcome_privacy": [
+    [
+      "message",
+      "개인정보처리방침"
+    ]
+  ],
+  "welcome_source": [
+    [
+      "message",
+      "소스"
+    ]
+  ],
+  "btn_auth_login": [
+    [
+      "message",
+      "로그인"
+    ]
+  ],
+  "btn_auth_save_emotes": [
+    [
+      "message",
+      "이모트를 세트에 저장하려면"
+    ]
+  ],
+  "btn_tab_channel": [
+    [
+      "message",
+      "채널"
+    ]
+  ],
+  "btn_tab_global": [
+    [
+      "message",
+      "글로벌"
+    ]
+  ],
+  "btn_tab_mine": [
+    [
+      "message",
+      "내 것"
+    ]
+  ],
+  "btn_tab_emoji": [
+    [
+      "message",
+      "이모지"
+    ]
+  ],
+  "btn_search_placeholder": [
+    [
+      "message",
+      "이모트 검색..."
+    ]
+  ],
+  "btn_rotate_title": [
+    [
+      "message",
+      "탭 바 위치 전환"
+    ]
+  ],
+  "btn_settings_title": [
+    [
+      "message",
+      "설정"
+    ]
+  ],
+  "btn_no_emotes": [
+    [
+      "message",
+      "이모트 없음"
+    ]
+  ],
+  "btn_login_save_emotes": [
+    [
+      "message",
+      "이모트 저장하려면 heatsync.org에서 로그인"
+    ]
+  ],
+  "btn_cached": [
+    [
+      "message",
+      "캐시됨"
+    ]
+  ],
+  "btn_loading_emotes": [
+    [
+      "message",
+      "이모트 로딩 중"
+    ]
+  ],
+  "btn_no_third_party": [
+    [
+      "message",
+      "서드파티 이모트 없음"
+    ]
+  ],
+  "btn_no_emotes_import": [
+    [
+      "message",
+      "가져올 이모트 없음"
+    ]
+  ],
+  "btn_import_count": [
+    [
+      "message",
+      "$COUNT$개 이모트 가져오기"
+    ],
+    [
+      "placeholders",
+      [
+        [
+          "count",
+          [
+            [
+              "content",
+              "$1"
+            ]
+          ]
+        ]
+      ]
+    ]
+  ],
+  "btn_failed_load": [
+    [
+      "message",
+      "이모트 로드 실패"
+    ]
+  ],
+  "btn_retry_loading": [
+    [
+      "message",
+      "다시 로드"
+    ]
+  ],
+  "btn_ctx_block": [
+    [
+      "message",
+      "이모트 차단"
+    ]
+  ],
+  "btn_ctx_unblock": [
+    [
+      "message",
+      "이모트 차단 해제"
+    ]
+  ],
+  "btn_ctx_remove_inventory": [
+    [
+      "message",
+      "인벤토리에서 제거"
+    ]
+  ],
+  "btn_ctx_add_inventory": [
+    [
+      "message",
+      "인벤토리에 추가"
+    ]
+  ],
+  "btn_ctx_copy_name": [
+    [
+      "message",
+      "이모트 이름 복사"
+    ]
+  ],
+  "btn_ctx_copy_url": [
+    [
+      "message",
+      "이모트 url 복사"
+    ]
+  ],
+  "btn_toast_unblocked": [
+    [
+      "message",
+      "차단 해제됨"
+    ]
+  ],
+  "btn_toast_blocked": [
+    [
+      "message",
+      "차단됨"
+    ]
+  ],
+  "btn_toast_removed": [
+    [
+      "message",
+      "제거됨"
+    ]
+  ],
+  "btn_toast_added": [
+    [
+      "message",
+      "추가됨"
+    ]
+  ],
+  "btn_toast_copied": [
+    [
+      "message",
+      "복사됨!"
+    ]
+  ],
+  "btn_settings_tab_completion": [
+    [
+      "message",
+      "탭 완성"
+    ]
+  ],
+  "btn_settings_chat_ui": [
+    [
+      "message",
+      "채팅 ui"
+    ]
+  ],
+  "btn_settings_input": [
+    [
+      "message",
+      "입력"
+    ]
+  ],
+  "btn_settings_wysiwyg": [
+    [
+      "message",
+      "wysiwyg 이모트"
+    ]
+  ],
+  "btn_settings_space_after": [
+    [
+      "message",
+      "이모트 뒤 공백"
+    ]
+  ],
+  "btn_settings_placeholder_mode": [
+    [
+      "message",
+      "플레이스홀더 모드"
+    ]
+  ],
+  "btn_settings_placeholder_desc": [
+    [
+      "message",
+      "색상 박스 표시"
+    ]
+  ],
+  "btn_settings_hide_header": [
+    [
+      "message",
+      "헤더 숨기기"
+    ]
+  ],
+  "btn_settings_always_popout": [
+    [
+      "message",
+      "(팝아웃에서 항상 켜짐)"
+    ]
+  ],
+  "btn_settings_compact_input": [
+    [
+      "message",
+      "컴팩트 입력"
+    ]
+  ],
+  "btn_settings_highlight_mentions": [
+    [
+      "message",
+      "멘션 강조"
+    ]
+  ],
+  "btn_settings_platform_badges": [
+    [
+      "message",
+      "플랫폼 뱃지"
+    ]
+  ],
+  "btn_settings_platform_badges_desc": [
+    [
+      "message",
+      "메시지에 [T] [K] [YT] 표시"
+    ]
+  ],
+  "btn_settings_cosmetics": [
+    [
+      "message",
+      "코스메틱"
+    ]
+  ],
+  "btn_settings_cosmetics_desc": [
+    [
+      "message",
+      "7TV/BTTV/FFZ 페인트 + 뱃지"
+    ]
+  ],
+  "btn_settings_vi_mode": [
+    [
+      "message",
+      "vi 모드"
+    ]
+  ],
+  "btn_settings_vi_mode_desc": [
+    [
+      "message",
+      "채팅 입력용 vim 키바인딩"
+    ]
+  ],
+  "btn_size_1x": [
+    [
+      "message",
+      "1x"
+    ]
+  ],
+  "btn_size_2x": [
+    [
+      "message",
+      "2x"
+    ]
+  ],
+  "btn_size_4x": [
+    [
+      "message",
+      "4x"
+    ]
+  ],
+  "btn_expand": [
+    [
+      "message",
+      "펼치기"
+    ]
+  ],
+  "btn_collapse": [
+    [
+      "message",
+      "접기"
+    ]
+  ],
+  "btn_block_all": [
+    [
+      "message",
+      "모두 차단"
+    ]
+  ],
+  "btn_show_all": [
+    [
+      "message",
+      "모두 보기"
+    ]
+  ],
+  "btn_click_expand": [
+    [
+      "message",
+      "클릭하여 펼치기"
+    ]
+  ],
+  "content_toast_failed_add": [
+    [
+      "message",
+      "$NAME$ 추가 실패: $ERROR$"
+    ],
+    [
+      "placeholders",
+      [
+        [
+          "name",
+          [
+            [
+              "content",
+              "$1"
+            ]
+          ]
+        ],
+        [
+          "error",
+          [
+            [
+              "content",
+              "$2"
+            ]
+          ]
+        ]
+      ]
+    ]
+  ],
+  "content_toast_failed_remove": [
+    [
+      "message",
+      "$NAME$ 제거 실패: $ERROR$"
+    ],
+    [
+      "placeholders",
+      [
+        [
+          "name",
+          [
+            [
+              "content",
+              "$1"
+            ]
+          ]
+        ],
+        [
+          "error",
+          [
+            [
+              "content",
+              "$2"
+            ]
+          ]
+        ]
+      ]
+    ]
+  ],
+  "content_toast_unblocked": [
+    [
+      "message",
+      "$NAME$ 차단 해제됨"
+    ],
+    [
+      "placeholders",
+      [
+        [
+          "name",
+          [
+            [
+              "content",
+              "$1"
+            ]
+          ]
+        ]
+      ]
+    ]
+  ],
+  "content_toast_failed_unblock": [
+    [
+      "message",
+      "차단 해제 실패: $ERROR$"
+    ],
+    [
+      "placeholders",
+      [
+        [
+          "error",
+          [
+            [
+              "content",
+              "$1"
+            ]
+          ]
+        ]
+      ]
+    ]
+  ],
+  "content_toast_removed": [
+    [
+      "message",
+      "세트에서 $NAME$ 제거됨"
+    ],
+    [
+      "placeholders",
+      [
+        [
+          "name",
+          [
+            [
+              "content",
+              "$1"
+            ]
+          ]
+        ]
+      ]
+    ]
+  ],
+  "content_toast_failed_block": [
+    [
+      "message",
+      "차단 실패: $ERROR$"
+    ],
+    [
+      "placeholders",
+      [
+        [
+          "error",
+          [
+            [
+              "content",
+              "$1"
+            ]
+          ]
+        ]
+      ]
+    ]
+  ],
+  "content_toast_blocked": [
+    [
+      "message",
+      "$NAME$ 차단됨"
+    ],
+    [
+      "placeholders",
+      [
+        [
+          "name",
+          [
+            [
+              "content",
+              "$1"
+            ]
+          ]
+        ]
+      ]
+    ]
+  ],
+  "content_toast_unmuted": [
+    [
+      "message",
+      "$NAME$ 음소거 해제됨"
+    ],
+    [
+      "placeholders",
+      [
+        [
+          "name",
+          [
+            [
+              "content",
+              "$1"
+            ]
+          ]
+        ]
+      ]
+    ]
+  ],
+  "content_toast_muted_24h": [
+    [
+      "message",
+      "$NAME$ 24시간 음소거"
+    ],
+    [
+      "placeholders",
+      [
+        [
+          "name",
+          [
+            [
+              "content",
+              "$1"
+            ]
+          ]
+        ]
+      ]
+    ]
+  ],
+  "content_card_follows_you": [
+    [
+      "message",
+      "나를 팔로우"
+    ]
+  ],
+  "content_card_subs_to_you": [
+    [
+      "message",
+      "나를 구독"
+    ]
+  ],
+  "content_card_you_follow": [
+    [
+      "message",
+      "내가 팔로우"
+    ]
+  ],
+  "content_card_you_sub": [
+    [
+      "message",
+      "내가 구독"
+    ]
+  ],
+  "content_card_you_sub_tier": [
+    [
+      "message",
+      "T$TIER$ 구독 중"
+    ],
+    [
+      "placeholders",
+      [
+        [
+          "tier",
+          [
+            [
+              "content",
+              "$1"
+            ]
+          ]
+        ]
+      ]
+    ]
+  ],
+  "content_card_subbed": [
+    [
+      "message",
+      "$CHANNEL$ $TENURE$ 구독 중"
+    ],
+    [
+      "placeholders",
+      [
+        [
+          "channel",
+          [
+            [
+              "content",
+              "$1"
+            ]
+          ]
+        ],
+        [
+          "tenure",
+          [
+            [
+              "content",
+              "$2"
+            ]
+          ]
+        ]
+      ]
+    ]
+  ],
+  "content_card_following": [
+    [
+      "message",
+      "$CHANNEL$ $AGE$ 팔로우 중"
+    ],
+    [
+      "placeholders",
+      [
+        [
+          "channel",
+          [
+            [
+              "content",
+              "$1"
+            ]
+          ]
+        ],
+        [
+          "age",
+          [
+            [
+              "content",
+              "$2"
+            ]
+          ]
+        ]
+      ]
+    ]
+  ],
+  "content_card_not_following": [
+    [
+      "message",
+      "$CHANNEL$ 팔로우 안 함"
+    ],
+    [
+      "placeholders",
+      [
+        [
+          "channel",
+          [
+            [
+              "content",
+              "$1"
+            ]
+          ]
+        ]
+      ]
+    ]
+  ],
+  "content_card_followed_by": [
+    [
+      "message",
+      "$CHANNEL$이 팔로우"
+    ],
+    [
+      "placeholders",
+      [
+        [
+          "channel",
+          [
+            [
+              "content",
+              "$1"
+            ]
+          ]
+        ]
+      ]
+    ]
+  ],
+  "content_card_following_count": [
+    [
+      "message",
+      "$COUNT$ 팔로우 중"
+    ],
+    [
+      "placeholders",
+      [
+        [
+          "count",
+          [
+            [
+              "content",
+              "$1"
+            ]
+          ]
+        ]
+      ]
+    ]
+  ],
+  "content_card_followers": [
+    [
+      "message",
+      "팔로워 $COUNT$명"
+    ],
+    [
+      "placeholders",
+      [
+        [
+          "count",
+          [
+            [
+              "content",
+              "$1"
+            ]
+          ]
+        ]
+      ]
+    ]
+  ],
+  "content_card_partner": [
+    [
+      "message",
+      "파트너"
+    ]
+  ],
+  "content_card_affiliate": [
+    [
+      "message",
+      "어필리에이트"
+    ]
+  ],
+  "content_card_live": [
+    [
+      "message",
+      "LIVE $VIEWERS$"
+    ],
+    [
+      "placeholders",
+      [
+        [
+          "viewers",
+          [
+            [
+              "content",
+              "$1"
+            ]
+          ]
+        ]
+      ]
+    ]
+  ],
+  "content_card_twitch_verified": [
+    [
+      "message",
+      "Twitch 인증"
+    ]
+  ],
+  "content_card_kick_verified": [
+    [
+      "message",
+      "Kick 인증"
+    ]
+  ],
+  "content_view_on_heatsync": [
+    [
+      "message",
+      "heatsync에서 보기"
+    ]
+  ],
+  "content_in_your_set": [
+    [
+      "message",
+      "내 세트에 있음"
+    ]
+  ],
+  "content_click_to_add": [
+    [
+      "message",
+      "클릭하여 추가"
+    ]
+  ],
+  "content_blocked_click_unblock": [
+    [
+      "message",
+      "차단됨 (클릭하여 해제)"
+    ]
+  ],
+  "mc_tab_feed": [
+    [
+      "message",
+      "피드"
+    ]
+  ],
+  "mc_tab_whispers": [
+    [
+      "message",
+      "귓속말"
+    ]
+  ],
+  "mc_tab_mentions": [
+    [
+      "message",
+      "멘션"
+    ]
+  ],
+  "mc_tab_activity": [
+    [
+      "message",
+      "활동"
+    ]
+  ],
+  "mc_tab_live": [
+    [
+      "message",
+      "라이브"
+    ]
+  ],
+  "mc_tab_discover": {
+    "message": "discover"
+  },
+  "mc_tab_live_channel": [
+    [
+      "message",
+      "라이브 · $CHANNEL$"
+    ],
+    [
+      "placeholders",
+      [
+        [
+          "channel",
+          [
+            [
+              "content",
+              "$1"
+            ]
+          ]
+        ]
+      ]
+    ]
+  ],
+  "mc_btn_rotate_tabs": [
+    [
+      "message",
+      "탭 전환 (T)"
+    ]
+  ],
+  "mc_btn_smaller_text": [
+    [
+      "message",
+      "텍스트 작게"
+    ]
+  ],
+  "mc_btn_larger_text": [
+    [
+      "message",
+      "텍스트 크게"
+    ]
+  ],
+  "mc_btn_settings": [
+    [
+      "message",
+      "설정"
+    ]
+  ],
+  "mc_new_messages": [
+    [
+      "message",
+      "$COUNT$개 새 메시지"
+    ],
+    [
+      "placeholders",
+      [
+        [
+          "count",
+          [
+            [
+              "content",
+              "$1"
+            ]
+          ]
+        ]
+      ]
+    ]
+  ],
+  "mc_resume": [
+    [
+      "message",
+      "다시 보기"
+    ]
+  ],
+  "mc_no_messages": [
+    [
+      "message",
+      "아직 메시지 없음"
+    ]
+  ],
+  "mc_no_activity": [
+    [
+      "message",
+      "아직 활동 없음"
+    ]
+  ],
+  "mc_add_channel": [
+    [
+      "message",
+      "채널 추가"
+    ]
+  ],
+  "mc_enter_platform": [
+    [
+      "message",
+      "플랫폼을 하나 이상 입력"
+    ]
+  ],
+  "mc_username_placeholder": [
+    [
+      "message",
+      "사용자명"
+    ]
+  ],
+  "mc_username_url_placeholder": [
+    [
+      "message",
+      "사용자명 또는 url"
+    ]
+  ],
+  "mc_reserved_name": [
+    [
+      "message",
+      "예약된 이름"
+    ]
+  ],
+  "mc_channel_exists": [
+    [
+      "message",
+      "이미 존재하는 채널"
+    ]
+  ],
+  "mc_twitch_exists": [
+    [
+      "message",
+      "twitch 채널 이미 추가됨"
+    ]
+  ],
+  "mc_kick_exists": [
+    [
+      "message",
+      "kick 채널 이미 추가됨"
+    ]
+  ],
+  "mc_edit_channel": [
+    [
+      "message",
+      "$CHANNEL$ 수정"
+    ],
+    [
+      "placeholders",
+      [
+        [
+          "channel",
+          [
+            [
+              "content",
+              "$1"
+            ]
+          ]
+        ]
+      ]
+    ]
+  ],
+  "mc_no_channel_detected": [
+    [
+      "message",
+      "채널 감지 안 됨"
+    ]
+  ],
+  "mc_settings_display": [
+    [
+      "message",
+      "화면"
+    ]
+  ],
+  "mc_settings_emote_size": [
+    [
+      "message",
+      "이모트 크기"
+    ]
+  ],
+  "mc_settings_input_preview": [
+    [
+      "message",
+      "입력 미리보기"
+    ]
+  ],
+  "mc_settings_clickable_links": [
+    [
+      "message",
+      "클릭 가능한 링크"
+    ]
+  ],
+  "mc_settings_vi_mode": [
+    [
+      "message",
+      "vi 모드"
+    ]
+  ],
+  "mc_settings_zebra": [
+    [
+      "message",
+      "줄무늬 배경"
+    ]
+  ],
+  "mc_settings_auto_hide": [
+    [
+      "message",
+      "입력창 자동 숨기기"
+    ]
+  ],
+  "mc_settings_timestamps": [
+    [
+      "message",
+      "타임스탬프"
+    ]
+  ],
+  "mc_settings_avatars": [
+    [
+      "message",
+      "아바타"
+    ]
+  ],
+  "mc_settings_emote_size_desc": [
+    [
+      "message",
+      "채팅 이모트의 해상도 배율. 1x는 선명하고 작게, 2x는 대부분 화면에 적합, 4x는 이모트 아트를 픽셀 단위로 보고 싶을 때."
+    ]
+  ],
+  "mc_settings_input_preview_desc": [
+    [
+      "message",
+      "입력창에서 이모트를 텍스트가 아닌 이미지로 직접 표시. 보이는 대로 전송됩니다."
+    ]
+  ],
+  "mc_settings_clickable_links_desc": [
+    [
+      "message",
+      "채팅 메시지의 URL을 클릭 가능한 링크로 변환. 복붙을 선호하거나 낯선 사람을 믿지 않는다면 비활성화."
+    ]
+  ],
+  "mc_settings_vi_mode_desc": [
+    [
+      "message",
+      "채팅 탐색에 vim 스타일 키바인딩. j/k로 스크롤, g/G로 상단/하단, /로 검색. 마우스는 캐주얼용이라 생각하는 분들을 위해."
+    ]
+  ],
+  "mc_settings_zebra_desc": [
+    [
+      "message",
+      "채팅 메시지에 교대 줄 음영 적용. 창이 넓을 때나 채팅이 빠를 때 긴 메시지 읽기 편함."
+    ]
+  ],
+  "mc_settings_auto_hide_desc": [
+    [
+      "message",
+      "메시지를 작성하지 않을 때 입력창 숨기기. 클릭하거나 타이핑 시작하면 다시 나타남. 채팅 화면 공간 최대화."
+    ]
+  ],
+  "mc_settings_timestamps_desc": [
+    [
+      "message",
+      "각 메시지 발송 시간을 사용자명 옆에 표시. AFK 중 놓친 내용 확인에 유용."
+    ]
+  ],
+  "mc_settings_avatars_desc": [
+    [
+      "message",
+      "채팅 사용자명 옆에 프로필 사진 표시. 단골 시청자를 한눈에 알아보기 쉽지만 세로 공간을 약간 사용."
+    ]
+  ],
+  "mc_settings_inline_notifs": [
+    [
+      "message",
+      "인라인 알림"
+    ]
+  ],
+  "mc_settings_notif_op": [
+    [
+      "message",
+      "[OP] 오리지널 포스트"
+    ]
+  ],
+  "mc_settings_notif_op_reply": [
+    [
+      "message",
+      "[OP] 자신의 스레드에 OP 답글"
+    ]
+  ],
+  "mc_settings_notif_re": [
+    [
+      "message",
+      "[RE] 답글"
+    ]
+  ],
+  "mc_settings_notif_dm": [
+    [
+      "message",
+      "[DM] 귓속말 & DM"
+    ]
+  ],
+  "mc_settings_notif_op_desc": [
+    [
+      "message",
+      "누군가 피드에 새 오리지널 포스트를 작성하면 활성 채팅 탭에 알림."
+    ]
+  ],
+  "mc_settings_notif_op_reply_desc": [
+    [
+      "message",
+      "원작자가 자신의 스레드에 답글을 달 때 알림."
+    ]
+  ],
+  "mc_settings_notif_re_desc": [
+    [
+      "message",
+      "피드의 모든 스레드에 답글이 달릴 때마다 알림."
+    ]
+  ],
+  "mc_settings_notif_dm_desc": [
+    [
+      "message",
+      "귓속말 또는 DM을 받을 때 알림."
+    ]
+  ],
+  "mc_settings_twitch_events": [
+    [
+      "message",
+      "twitch 이벤트"
+    ]
+  ],
+  "mc_settings_raids": [
+    [
+      "message",
+      "레이드"
+    ]
+  ],
+  "mc_settings_hype_trains": [
+    [
+      "message",
+      "하입 트레인"
+    ]
+  ],
+  "mc_settings_gift_subs": [
+    [
+      "message",
+      "선물 구독"
+    ]
+  ],
+  "mc_settings_redeems": [
+    [
+      "message",
+      "채널 포인트 리딤"
+    ]
+  ],
+  "mc_settings_prediction_banner": [
+    [
+      "message",
+      "예측 배너"
+    ]
+  ],
+  "mc_settings_poll_banner": [
+    [
+      "message",
+      "투표 배너"
+    ]
+  ],
+  "mc_settings_pinned_messages": [
+    [
+      "message",
+      "고정된 메시지"
+    ]
+  ],
+  "mc_settings_features": [
+    [
+      "message",
+      "기능"
+    ]
+  ],
+  "mc_settings_auto_claim": [
+    [
+      "message",
+      "채널 포인트 자동 수령"
+    ]
+  ],
+  "mc_settings_auto_claim_desc": [
+    [
+      "message",
+      "Twitch에서 보너스 채널 포인트 상자가 나타나면 자동으로 클릭. 공짜 포인트, 노력 제로."
+    ]
+  ],
+  "mc_settings_muted_users": [
+    [
+      "message",
+      "음소거된 사용자"
+    ]
+  ],
+  "mc_settings_no_muted": [
+    [
+      "message",
+      "음소거된 사용자 없음"
+    ]
+  ],
+  "mc_settings_unmute": [
+    [
+      "message",
+      "음소거 해제"
+    ]
+  ],
+  "mc_pred_no_active": [
+    [
+      "message",
+      "활성 예측 없음"
+    ]
+  ],
+  "mc_pred_new": [
+    [
+      "message",
+      "+ 새 예측"
+    ]
+  ],
+  "mc_pred_title_placeholder": [
+    [
+      "message",
+      "예측 제목"
+    ]
+  ],
+  "mc_pred_option1": [
+    [
+      "message",
+      "옵션 1 (파란색)"
+    ]
+  ],
+  "mc_pred_option2": [
+    [
+      "message",
+      "옵션 2 (분홍색)"
+    ]
+  ],
+  "mc_pred_duration": [
+    [
+      "message",
+      "기간:"
+    ]
+  ],
+  "mc_pred_create": [
+    [
+      "message",
+      "예측 만들기"
+    ]
+  ],
+  "mc_pred_refunded": [
+    [
+      "message",
+      "환불됨"
+    ]
+  ],
+  "mc_pred_locked": [
+    [
+      "message",
+      "잠김"
+    ]
+  ],
+  "mc_pred_winner": [
+    [
+      "message",
+      "승리"
+    ]
+  ],
+  "mc_pred_won": [
+    [
+      "message",
+      " 승리"
+    ]
+  ],
+  "mc_pred_lost": [
+    [
+      "message",
+      " 패배"
+    ]
+  ],
+  "mc_pred_lock_betting": [
+    [
+      "message",
+      "배팅 잠금"
+    ]
+  ],
+  "mc_pred_cancel_refund": [
+    [
+      "message",
+      "취소 (환불)"
+    ]
+  ],
+  "mc_pred_pick_winner": [
+    [
+      "message",
+      "승자 선택"
+    ]
+  ],
+  "mc_pred_pick_winner_your_bet": [
+    [
+      "message",
+      "승자 선택 (내 배팅)"
+    ]
+  ],
+  "mc_pred_failed_load": [
+    [
+      "message",
+      "예측을 불러올 수 없음"
+    ]
+  ],
+  "mc_pred_bet_own": [
+    [
+      "message",
+      "자신의 방송에 배팅 불가"
+    ]
+  ],
+  "mc_pred_try_again": [
+    [
+      "message",
+      "다시 시도"
+    ]
+  ],
+  "mc_pred_ended": [
+    [
+      "message",
+      "예측 종료됨"
+    ]
+  ],
+  "mc_pred_betting_locked": [
+    [
+      "message",
+      "배팅 잠김"
+    ]
+  ],
+  "mc_pred_not_enough": [
+    [
+      "message",
+      "포인트 부족"
+    ]
+  ],
+  "mc_pred_already_bet": [
+    [
+      "message",
+      "이미 배팅함"
+    ]
+  ],
+  "mc_pred_no_permission": [
+    [
+      "message",
+      "권한 없음"
+    ]
+  ],
+  "mc_pred_failed": [
+    [
+      "message",
+      "실패"
+    ]
+  ],
+  "mc_pred_no_event": [
+    [
+      "message",
+      "이벤트 없음"
+    ]
+  ],
+  "mc_pred_no_outcome": [
+    [
+      "message",
+      "결과 없음"
+    ]
+  ],
+  "mc_pred_closing": [
+    [
+      "message",
+      "종료 중..."
+    ]
+  ],
+  "mc_pred_you_bet": [
+    [
+      "message",
+      "$OUTCOME$에 $POINTS$ 포인트 배팅 — 실제 승자를 선택하세요"
+    ],
+    [
+      "placeholders",
+      [
+        [
+          "points",
+          [
+            [
+              "content",
+              "$1"
+            ]
+          ]
+        ],
+        [
+          "outcome",
+          [
+            [
+              "content",
+              "$2"
+            ]
+          ]
+        ]
+      ]
+    ]
+  ],
+  "mc_poll_new": [
+    [
+      "message",
+      "+ 새 투표"
+    ]
+  ],
+  "mc_poll_question": [
+    [
+      "message",
+      "투표 질문"
+    ]
+  ],
+  "mc_poll_choice": [
+    [
+      "message",
+      "선택지 $NUM$"
+    ],
+    [
+      "placeholders",
+      [
+        [
+          "num",
+          [
+            [
+              "content",
+              "$1"
+            ]
+          ]
+        ]
+      ]
+    ]
+  ],
+  "mc_poll_choice_optional": [
+    [
+      "message",
+      "선택지 $NUM$ (선택사항)"
+    ],
+    [
+      "placeholders",
+      [
+        [
+          "num",
+          [
+            [
+              "content",
+              "$1"
+            ]
+          ]
+        ]
+      ]
+    ]
+  ],
+  "mc_poll_create": [
+    [
+      "message",
+      "투표 만들기"
+    ]
+  ],
+  "mc_poll_end": [
+    [
+      "message",
+      "투표 종료"
+    ]
+  ],
+  "mc_poll_votes": [
+    [
+      "message",
+      "$COUNT$표"
+    ],
+    [
+      "placeholders",
+      [
+        [
+          "count",
+          [
+            [
+              "content",
+              "$1"
+            ]
+          ]
+        ]
+      ]
+    ]
+  ],
+  "mc_poll_vote_single": [
+    [
+      "message",
+      "$COUNT$표"
+    ],
+    [
+      "placeholders",
+      [
+        [
+          "count",
+          [
+            [
+              "content",
+              "$1"
+            ]
+          ]
+        ]
+      ]
+    ]
+  ],
+  "mc_poll_already_active": [
+    [
+      "message",
+      "이미 진행 중인 투표 있음"
+    ]
+  ],
+  "mc_poll_not_logged_in": [
+    [
+      "message",
+      "로그인하지 않음"
+    ]
+  ],
+  "mc_reward_rewards": [
+    [
+      "message",
+      "리워드"
+    ]
+  ],
+  "mc_reward_none": [
+    [
+      "message",
+      "사용 가능한 리워드 없음"
+    ]
+  ],
+  "mc_reward_paused": [
+    [
+      "message",
+      "일시정지됨"
+    ]
+  ],
+  "mc_reward_out_of_stock": [
+    [
+      "message",
+      "품절"
+    ]
+  ],
+  "mc_reward_cooldown_min": [
+    [
+      "message",
+      "$MIN$분 쿨다운"
+    ],
+    [
+      "placeholders",
+      [
+        [
+          "min",
+          [
+            [
+              "content",
+              "$1"
+            ]
+          ]
+        ]
+      ]
+    ]
+  ],
+  "mc_reward_cooldown_sec": [
+    [
+      "message",
+      "$SEC$초 쿨다운"
+    ],
+    [
+      "placeholders",
+      [
+        [
+          "sec",
+          [
+            [
+              "content",
+              "$1"
+            ]
+          ]
+        ]
+      ]
+    ]
+  ],
+  "mc_reward_enter_text": [
+    [
+      "message",
+      "텍스트 입력..."
+    ]
+  ],
+  "mc_reward_redeem": [
+    [
+      "message",
+      "리딤"
+    ]
+  ],
+  "mc_chat_username_color": [
+    [
+      "message",
+      "사용자명 색상"
+    ]
+  ],
+  "mc_chat_hex_placeholder": [
+    [
+      "message",
+      "#hex"
+    ]
+  ],
+  "mc_chat_modes": [
+    [
+      "message",
+      "채팅 모드"
+    ]
+  ],
+  "mc_chat_emote_only": [
+    [
+      "message",
+      "이모트 전용"
+    ]
+  ],
+  "mc_chat_follower": [
+    [
+      "message",
+      "팔로워"
+    ]
+  ],
+  "mc_chat_slow": [
+    [
+      "message",
+      "슬로우"
+    ]
+  ],
+  "mc_chat_sub_only": [
+    [
+      "message",
+      "구독자 전용"
+    ]
+  ],
+  "mc_chat_unique": [
+    [
+      "message",
+      "유니크"
+    ]
+  ],
+  "mc_chat_hype_train": [
+    [
+      "message",
+      "하입 트레인"
+    ]
+  ],
+  "mc_chat_hype_level": [
+    [
+      "message",
+      "레벨 $LEVEL$"
+    ],
+    [
+      "placeholders",
+      [
+        [
+          "level",
+          [
+            [
+              "content",
+              "$1"
+            ]
+          ]
+        ]
+      ]
+    ]
+  ],
+  "mc_input_send_message": [
+    [
+      "message",
+      "메시지 보내기..."
+    ]
+  ],
+  "mc_input_post_heatsync": [
+    [
+      "message",
+      "heatsync에 포스트..."
+    ]
+  ],
+  "mc_input_send_channel": [
+    [
+      "message",
+      "#$CHANNEL$에 전송"
+    ],
+    [
+      "placeholders",
+      [
+        [
+          "channel",
+          [
+            [
+              "content",
+              "$1"
+            ]
+          ]
+        ]
+      ]
+    ]
+  ],
+  "mc_input_replying_to": [
+    [
+      "message",
+      "@$USER$에게 답글"
+    ],
+    [
+      "placeholders",
+      [
+        [
+          "user",
+          [
+            [
+              "content",
+              "$1"
+            ]
+          ]
+        ]
+      ]
+    ]
+  ],
+  "mc_input_cancel_reply": [
+    [
+      "message",
+      "답글 취소"
+    ]
+  ],
+  "mc_input_not_logged_in": [
+    [
+      "message",
+      "로그인하지 않음"
+    ]
+  ],
+  "mc_input_login_kick": [
+    [
+      "message",
+      "먼저 kick.com에 로그인"
+    ]
+  ],
+  "mc_input_open_kick": [
+    [
+      "message",
+      "kick.com을 탭에서 열기"
+    ]
+  ],
+  "mc_input_kick_not_found": [
+    [
+      "message",
+      "kick 채널을 찾을 수 없음"
+    ]
+  ],
+  "mc_input_send_failed": [
+    [
+      "message",
+      "전송 실패"
+    ]
+  ],
+  "mc_input_no_username": [
+    [
+      "message",
+      "사용자명 감지 안 됨"
+    ]
+  ],
+  "mc_input_auth_failed": [
+    [
+      "message",
+      "인증 실패 — twitch에 다시 로그인"
+    ]
+  ],
+  "mc_input_connection_failed": [
+    [
+      "message",
+      "연결 실패 — 다시 시도"
+    ]
+  ],
+  "mc_input_send_failed_retry": [
+    [
+      "message",
+      "전송 실패 — 다시 시도"
+    ]
+  ],
+  "mc_social_back": [
+    [
+      "message",
+      "<- 뒤로"
+    ]
+  ],
+  "mc_social_no_posts": [
+    [
+      "message",
+      "아직 포스트 없음"
+    ]
+  ],
+  "mc_social_loading_feed": [
+    [
+      "message",
+      "팔로잉 피드 로딩 중..."
+    ]
+  ],
+  "mc_social_scroll_more": [
+    [
+      "message",
+      "스크롤하여 더 보기..."
+    ]
+  ],
+  "mc_social_no_replies": [
+    [
+      "message",
+      "아직 답글 없음"
+    ]
+  ],
+  "mc_social_login_first": [
+    [
+      "message",
+      "먼저 heatsync.org에 로그인"
+    ]
+  ],
+  "mc_social_login_activity": [
+    [
+      "message",
+      "활동을 보려면 heatsync.org에 로그인"
+    ]
+  ],
+  "mc_social_failed_feed_auth": [
+    [
+      "message",
+      "피드 로드 실패 — heatsync.org에 로그인"
+    ]
+  ],
+  "mc_social_failed_feed": [
+    [
+      "message",
+      "피드 로드 실패"
+    ]
+  ],
+  "mc_social_log_in_first": [
+    [
+      "message",
+      "먼저 로그인"
+    ]
+  ],
+  "mc_social_slow_down": [
+    [
+      "message",
+      "천천히"
+    ]
+  ],
+  "mc_social_duplicate": [
+    [
+      "message",
+      "중복 메시지"
+    ]
+  ],
+  "mc_social_failed_post": [
+    [
+      "message",
+      "포스트 실패"
+    ]
+  ],
+  "mc_tip_emoji": [
+    [
+      "message",
+      "이모지"
+    ]
+  ],
+  "mc_tip_subbed": [
+    [
+      "message",
+      "$CHANNEL$ $TENURE$ 구독 중"
+    ],
+    [
+      "placeholders",
+      [
+        [
+          "channel",
+          [
+            [
+              "content",
+              "$1"
+            ]
+          ]
+        ],
+        [
+          "tenure",
+          [
+            [
+              "content",
+              "$2"
+            ]
+          ]
+        ]
+      ]
+    ]
+  ],
+  "mc_tip_following": [
+    [
+      "message",
+      "$CHANNEL$ $AGE$ 팔로우 중"
+    ],
+    [
+      "placeholders",
+      [
+        [
+          "channel",
+          [
+            [
+              "content",
+              "$1"
+            ]
+          ]
+        ],
+        [
+          "age",
+          [
+            [
+              "content",
+              "$2"
+            ]
+          ]
+        ]
+      ]
+    ]
+  ],
+  "mc_tip_not_following": [
+    [
+      "message",
+      "$CHANNEL$ 팔로우 안 함"
+    ],
+    [
+      "placeholders",
+      [
+        [
+          "channel",
+          [
+            [
+              "content",
+              "$1"
+            ]
+          ]
+        ]
+      ]
+    ]
+  ],
+  "mc_tip_followed_by": [
+    [
+      "message",
+      "$CHANNEL$이 팔로우"
+    ],
+    [
+      "placeholders",
+      [
+        [
+          "channel",
+          [
+            [
+              "content",
+              "$1"
+            ]
+          ]
+        ]
+      ]
+    ]
+  ],
+  "mc_tip_followers": [
+    [
+      "message",
+      "팔로워 $COUNT$명"
+    ],
+    [
+      "placeholders",
+      [
+        [
+          "count",
+          [
+            [
+              "content",
+              "$1"
+            ]
+          ]
+        ]
+      ]
+    ]
+  ],
+  "mc_whisper_hint": [
+    [
+      "message",
+      "/w 유저 메시지 · /dm 유저 메시지 · /r 메시지"
+    ]
+  ],
+  "mc_whisper_login": [
+    [
+      "message",
+      "귓속말을 보내려면 heatsync.org에 로그인"
+    ]
+  ],
+  "mc_whisper_user_not_found": [
+    [
+      "message",
+      "twitch 사용자 \"$USER$\"를 찾을 수 없음"
+    ],
+    [
+      "placeholders",
+      [
+        [
+          "user",
+          [
+            [
+              "content",
+              "$1"
+            ]
+          ]
+        ]
+      ]
+    ]
+  ],
+  "mc_whisper_resolve_failed": [
+    [
+      "message",
+      "twitch 사용자 조회 실패"
+    ]
+  ],
+  "mc_whisper_hs_not_found": [
+    [
+      "message",
+      "heatsync 사용자 \"$USER$\"를 찾을 수 없음"
+    ],
+    [
+      "placeholders",
+      [
+        [
+          "user",
+          [
+            [
+              "content",
+              "$1"
+            ]
+          ]
+        ]
+      ]
+    ]
+  ],
+  "mc_irc_chat_cleared": [
+    [
+      "message",
+      "채팅이 삭제됨"
+    ]
+  ],
+  "mc_irc_msg_deleted": [
+    [
+      "message",
+      "$USER$의 메시지 삭제됨"
+    ],
+    [
+      "placeholders",
+      [
+        [
+          "user",
+          [
+            [
+              "content",
+              "$1"
+            ]
+          ]
+        ]
+      ]
+    ]
+  ],
+  "mc_irc_gift_subs": [
+    [
+      "message",
+      "$USER$이 $CHANNEL$에 구독 $AMOUNT$개 선물"
+    ],
+    [
+      "placeholders",
+      [
+        [
+          "user",
+          [
+            [
+              "content",
+              "$1"
+            ]
+          ]
+        ],
+        [
+          "amount",
+          [
+            [
+              "content",
+              "$2"
+            ]
+          ]
+        ],
+        [
+          "channel",
+          [
+            [
+              "content",
+              "$3"
+            ]
+          ]
+        ]
+      ]
+    ]
+  ],
+  "mc_yt_connected": [
+    [
+      "message",
+      "YouTube 연결됨: $CHANNEL$ — 메시지 대기 중..."
+    ],
+    [
+      "placeholders",
+      [
+        [
+          "channel",
+          [
+            [
+              "content",
+              "$1"
+            ]
+          ]
+        ]
+      ]
+    ]
+  ],
+  "mc_yt_ended": [
+    [
+      "message",
+      "YouTube 스트림 종료됨"
+    ]
+  ],
+  "mc_yt_error": [
+    [
+      "message",
+      "YouTube 연결 오류"
+    ]
+  ],
+  "mc_emote_search_placeholder": [
+    [
+      "message",
+      "이모트 검색..."
+    ]
+  ],
+  "mc_emote_no_loaded": [
+    [
+      "message",
+      "로드된 이모트 없음"
+    ]
+  ],
+  "mc_emote_in_set": [
+    [
+      "message",
+      "내 세트에 있음"
+    ]
+  ],
+  "mc_emote_click_add": [
+    [
+      "message",
+      "클릭하여 추가"
+    ]
+  ],
+  "mc_emote_blocked": [
+    [
+      "message",
+      "차단됨 (클릭하여 해제)"
+    ]
+  ],
+  "content_toast_unknown_error": [
+    [
+      "message",
+      "알 수 없는 오류"
+    ]
+  ],
+  "content_toast_loading_emotes": [
+    [
+      "message",
+      "이모트 로딩 중..."
+    ]
+  ],
+  "content_toast_fetching_emotes": [
+    [
+      "message",
+      "이모트 가져오는 중..."
+    ]
+  ],
+  "content_card_action_ban": [
+    [
+      "message",
+      "차단"
+    ]
+  ],
+  "content_card_action_unban": [
+    [
+      "message",
+      "차단 해제"
+    ]
+  ],
+  "content_card_action_block": [
+    [
+      "message",
+      "블록"
+    ]
+  ],
+  "btn_close": [
+    [
+      "message",
+      "닫기"
+    ]
+  ],
+  "btn_error_channel": [
+    [
+      "message",
+      "채널 이모트 로드 실패"
+    ]
+  ],
+  "btn_error_global": [
+    [
+      "message",
+      "글로벌 이모트 로드 실패"
+    ]
+  ],
+  "btn_error_inventory": [
+    [
+      "message",
+      "내 이모트 로드 실패"
+    ]
+  ]
 }

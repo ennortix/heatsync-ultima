@@ -1,1083 +1,2557 @@
 {
-  "manifest_name": {
-    "message": "heatsync"
-  },
-  "manifest_description": {
-    "message": "Twitch、Kick 和 YouTube 聊天自定义表情。无限槽位，Tab 补全，实时同步。"
-  },
-
-  "common_loading": {
-    "message": "加载中..."
-  },
-  "common_extension_updated": {
-    "message": "扩展已更新 — 请刷新页面"
-  },
-  "common_no_matches": {
-    "message": "无匹配结果"
-  },
-  "common_retry": {
-    "message": "重试"
-  },
-  "common_cancel": {
-    "message": "取消"
-  },
-  "common_save": {
-    "message": "保存"
-  },
-  "common_add": {
-    "message": "添加"
-  },
-  "common_edit": {
-    "message": "编辑"
-  },
-  "common_remove": {
-    "message": "移除"
-  },
-  "common_done": {
-    "message": "完成"
-  },
-  "common_ended": {
-    "message": "已结束"
-  },
-  "common_vote": {
-    "message": "投票"
-  },
-  "common_set": {
-    "message": "设置"
-  },
-  "common_default": {
-    "message": "默认"
-  },
-  "common_mention": {
-    "message": "提及"
-  },
-  "common_user_not_found": {
-    "message": "找不到用户"
-  },
-
-  "popup_title": {
-    "message": "heatsync"
-  },
-  "popup_status_checking": {
-    "message": "检查中..."
-  },
-  "popup_status_connected": {
-    "message": "已连接"
-  },
-  "popup_status_api_error": {
-    "message": "api 错误"
-  },
-  "popup_status_offline": {
-    "message": "离线"
-  },
-  "popup_user_stats": {
-    "message": "$EMOTES$ 个表情 · $GLOBALS$ 个全局",
-    "placeholders": {
-      "emotes": { "content": "$1" },
-      "globals": { "content": "$2" }
-    }
-  },
-  "popup_user_stats_heat": {
-    "message": "$EMOTES$ 个表情 · $GLOBALS$ 个全局 · $HEAT$ heat",
-    "placeholders": {
-      "emotes": { "content": "$1" },
-      "globals": { "content": "$2" },
-      "heat": { "content": "$3" }
-    }
-  },
-  "popup_btn_emotes": {
-    "message": "表情"
-  },
-  "popup_btn_refresh": {
-    "message": "刷新"
-  },
-  "popup_btn_site": {
-    "message": "网站"
-  },
-  "popup_btn_done": {
-    "message": "完成"
-  },
-  "popup_login_prompt": {
-    "message": "登录以同步表情"
-  },
-  "popup_channel_placeholder": {
-    "message": "频道"
-  },
-  "popup_btn_popout": {
-    "message": "弹出"
-  },
-  "popup_hint": {
-    "message": "在聊天的选择器面板中设置表情"
-  },
-
-  "welcome_title": {
-    "message": "欢迎使用 heatsync"
-  },
-  "welcome_tagline": {
-    "message": "你的表情，随处聊天"
-  },
-  "welcome_step1_title": {
-    "message": "在 heatsync.org 登录"
-  },
-  "welcome_step1_desc": {
-    "message": "用 twitch 或 kick 登录以创建账号"
-  },
-  "welcome_step2_title": {
-    "message": "上传你的表情"
-  },
-  "welcome_step2_desc": {
-    "message": "添加任意图片 — 无槽位限制，支持所有格式"
-  },
-  "welcome_step3_title": {
-    "message": "在聊天中使用"
-  },
-  "welcome_step3_desc": {
-    "message": "点击 twitch/kick 聊天中的 heatsync 按钮来使用你的表情"
-  },
-  "welcome_cta": {
-    "message": "开始使用"
-  },
-  "welcome_privacy": {
-    "message": "隐私政策"
-  },
-  "welcome_source": {
-    "message": "源码"
-  },
-
-  "btn_auth_login": {
-    "message": "登录"
-  },
-  "btn_auth_save_emotes": {
-    "message": "将表情保存到你的套装"
-  },
-  "btn_tab_channel": {
-    "message": "频道"
-  },
-  "btn_tab_global": {
-    "message": "全局"
-  },
-  "btn_tab_mine": {
-    "message": "我的"
-  },
-  "btn_tab_emoji": {
-    "message": "表情符号"
-  },
-  "btn_search_placeholder": {
-    "message": "搜索表情..."
-  },
-  "btn_rotate_title": {
-    "message": "切换标签栏位置"
-  },
-  "btn_settings_title": {
-    "message": "设置"
-  },
-  "btn_no_emotes": {
-    "message": "无表情"
-  },
-  "btn_login_save_emotes": {
-    "message": "在 heatsync.org 登录以保存表情"
-  },
-  "btn_cached": {
-    "message": "已缓存"
-  },
-  "btn_loading_emotes": {
-    "message": "加载表情中"
-  },
-  "btn_no_third_party": {
-    "message": "未找到第三方表情"
-  },
-  "btn_no_emotes_import": {
-    "message": "没有可导入的表情"
-  },
-  "btn_import_count": {
-    "message": "导入 $COUNT$ 个表情",
-    "placeholders": {
-      "count": { "content": "$1" }
-    }
-  },
-  "btn_failed_load": {
-    "message": "表情加载失败"
-  },
-  "btn_retry_loading": {
-    "message": "重新加载"
-  },
-  "btn_ctx_block": {
-    "message": "屏蔽表情"
-  },
-  "btn_ctx_unblock": {
-    "message": "取消屏蔽表情"
-  },
-  "btn_ctx_remove_inventory": {
-    "message": "从库存中移除"
-  },
-  "btn_ctx_add_inventory": {
-    "message": "添加到库存"
-  },
-  "btn_ctx_copy_name": {
-    "message": "复制表情名称"
-  },
-  "btn_ctx_copy_url": {
-    "message": "复制表情 url"
-  },
-  "btn_toast_unblocked": {
-    "message": "已取消屏蔽"
-  },
-  "btn_toast_blocked": {
-    "message": "已屏蔽"
-  },
-  "btn_toast_removed": {
-    "message": "已移除"
-  },
-  "btn_toast_added": {
-    "message": "已添加"
-  },
-  "btn_toast_copied": {
-    "message": "已复制!"
-  },
-  "btn_settings_tab_completion": {
-    "message": "Tab 补全"
-  },
-  "btn_settings_chat_ui": {
-    "message": "聊天界面"
-  },
-  "btn_settings_input": {
-    "message": "输入"
-  },
-  "btn_settings_wysiwyg": {
-    "message": "wysiwyg 表情"
-  },
-  "btn_settings_space_after": {
-    "message": "表情后加空格"
-  },
-  "btn_settings_placeholder_mode": {
-    "message": "占位符模式"
-  },
-  "btn_settings_placeholder_desc": {
-    "message": "显示彩色方块"
-  },
-  "btn_settings_hide_header": {
-    "message": "隐藏标题栏"
-  },
-  "btn_settings_always_popout": {
-    "message": "(弹出模式下始终开启)"
-  },
-  "btn_settings_compact_input": {
-    "message": "紧凑输入"
-  },
-  "btn_settings_highlight_mentions": {
-    "message": "高亮提及"
-  },
-  "btn_settings_platform_badges": {
-    "message": "平台徽章"
-  },
-  "btn_settings_platform_badges_desc": {
-    "message": "消息上显示 [T] [K] [YT]"
-  },
-  "btn_settings_cosmetics": {
-    "message": "外观装饰"
-  },
-  "btn_settings_cosmetics_desc": {
-    "message": "7TV/BTTV/FFZ 涂装 + 徽章"
-  },
-  "btn_settings_vi_mode": {
-    "message": "vi 模式"
-  },
-  "btn_settings_vi_mode_desc": {
-    "message": "聊天输入的 vim 键位绑定"
-  },
-  "btn_size_1x": {
-    "message": "1x"
-  },
-  "btn_size_2x": {
-    "message": "2x"
-  },
-  "btn_size_4x": {
-    "message": "4x"
-  },
-  "btn_expand": {
-    "message": "展开"
-  },
-  "btn_collapse": {
-    "message": "折叠"
-  },
-  "btn_block_all": {
-    "message": "全部屏蔽"
-  },
-  "btn_show_all": {
-    "message": "显示全部"
-  },
-  "btn_click_expand": {
-    "message": "点击展开"
-  },
-
-  "content_toast_failed_add": {
-    "message": "添加 $NAME$ 失败: $ERROR$",
-    "placeholders": {
-      "name": { "content": "$1" },
-      "error": { "content": "$2" }
-    }
-  },
-  "content_toast_failed_remove": {
-    "message": "移除 $NAME$ 失败: $ERROR$",
-    "placeholders": {
-      "name": { "content": "$1" },
-      "error": { "content": "$2" }
-    }
-  },
-  "content_toast_unblocked": {
-    "message": "已取消屏蔽 $NAME$",
-    "placeholders": {
-      "name": { "content": "$1" }
-    }
-  },
-  "content_toast_failed_unblock": {
-    "message": "取消屏蔽失败: $ERROR$",
-    "placeholders": {
-      "error": { "content": "$1" }
-    }
-  },
-  "content_toast_removed": {
-    "message": "已从套装中移除 $NAME$",
-    "placeholders": {
-      "name": { "content": "$1" }
-    }
-  },
-  "content_toast_failed_block": {
-    "message": "屏蔽失败: $ERROR$",
-    "placeholders": {
-      "error": { "content": "$1" }
-    }
-  },
-  "content_toast_blocked": {
-    "message": "已屏蔽 $NAME$",
-    "placeholders": {
-      "name": { "content": "$1" }
-    }
-  },
-  "content_toast_unmuted": {
-    "message": "已取消静音 $NAME$",
-    "placeholders": {
-      "name": { "content": "$1" }
-    }
-  },
-  "content_toast_muted_24h": {
-    "message": "已静音 $NAME$ 24小时",
-    "placeholders": {
-      "name": { "content": "$1" }
-    }
-  },
-  "content_card_follows_you": {
-    "message": "关注了你"
-  },
-  "content_card_subs_to_you": {
-    "message": "订阅了你"
-  },
-  "content_card_you_follow": {
-    "message": "你关注了"
-  },
-  "content_card_you_sub": {
-    "message": "你订阅了"
-  },
-  "content_card_you_sub_tier": {
-    "message": "T$TIER$ 订阅中",
-    "placeholders": {
-      "tier": { "content": "$1" }
-    }
-  },
-  "content_card_subbed": {
-    "message": "订阅 $CHANNEL$ $TENURE$",
-    "placeholders": {
-      "channel": { "content": "$1" },
-      "tenure": { "content": "$2" }
-    }
-  },
-  "content_card_following": {
-    "message": "关注 $CHANNEL$ $AGE$",
-    "placeholders": {
-      "channel": { "content": "$1" },
-      "age": { "content": "$2" }
-    }
-  },
-  "content_card_not_following": {
-    "message": "未关注 $CHANNEL$",
-    "placeholders": {
-      "channel": { "content": "$1" }
-    }
-  },
-  "content_card_followed_by": {
-    "message": "被 $CHANNEL$ 关注",
-    "placeholders": {
-      "channel": { "content": "$1" }
-    }
-  },
-  "content_card_following_count": {
-    "message": "关注 $COUNT$ 人",
-    "placeholders": {
-      "count": { "content": "$1" }
-    }
-  },
-  "content_card_followers": {
-    "message": "$COUNT$ 个粉丝",
-    "placeholders": {
-      "count": { "content": "$1" }
-    }
-  },
-  "content_card_partner": {
-    "message": "合作伙伴"
-  },
-  "content_card_affiliate": {
-    "message": "联盟主播"
-  },
-  "content_card_live": {
-    "message": "直播中 $VIEWERS$",
-    "placeholders": {
-      "viewers": { "content": "$1" }
-    }
-  },
-  "content_card_twitch_verified": {
-    "message": "Twitch 认证"
-  },
-  "content_card_kick_verified": {
-    "message": "Kick 认证"
-  },
-  "content_view_on_heatsync": {
-    "message": "在 heatsync 查看"
-  },
-  "content_in_your_set": {
-    "message": "已在套装中"
-  },
-  "content_click_to_add": {
-    "message": "点击添加"
-  },
-  "content_blocked_click_unblock": {
-    "message": "已屏蔽 (点击解除)"
-  },
-
-  "mc_tab_feed": {
-    "message": "动态"
-  },
-  "mc_tab_whispers": {
-    "message": "悄悄话"
-  },
-  "mc_tab_mentions": {
-    "message": "提及"
-  },
-  "mc_tab_activity": {
-    "message": "活动"
-  },
-  "mc_tab_live": {
-    "message": "直播"
-  },
-  "mc_tab_live_channel": {
-    "message": "直播 · $CHANNEL$",
-    "placeholders": {
-      "channel": { "content": "$1" }
-    }
-  },
-  "mc_btn_rotate_tabs": {
-    "message": "切换标签位置 (T)"
-  },
-  "mc_btn_smaller_text": {
-    "message": "缩小文字"
-  },
-  "mc_btn_larger_text": {
-    "message": "放大文字"
-  },
-  "mc_btn_settings": {
-    "message": "设置"
-  },
-  "mc_new_messages": {
-    "message": "$COUNT$ 条新消息",
-    "placeholders": {
-      "count": { "content": "$1" }
-    }
-  },
-  "mc_resume": {
-    "message": "继续"
-  },
-  "mc_no_messages": {
-    "message": "暂无消息"
-  },
-  "mc_no_activity": {
-    "message": "暂无动态"
-  },
-  "mc_add_channel": {
-    "message": "添加频道"
-  },
-  "mc_enter_platform": {
-    "message": "至少输入一个平台"
-  },
-  "mc_username_placeholder": {
-    "message": "用户名"
-  },
-  "mc_username_url_placeholder": {
-    "message": "用户名或 url"
-  },
-  "mc_reserved_name": {
-    "message": "保留名称"
-  },
-  "mc_channel_exists": {
-    "message": "频道已存在"
-  },
-  "mc_twitch_exists": {
-    "message": "twitch 频道已添加"
-  },
-  "mc_kick_exists": {
-    "message": "kick 频道已添加"
-  },
-  "mc_edit_channel": {
-    "message": "编辑 $CHANNEL$",
-    "placeholders": {
-      "channel": { "content": "$1" }
-    }
-  },
-  "mc_no_channel_detected": {
-    "message": "未检测到频道"
-  },
-
-  "mc_settings_display": {
-    "message": "显示"
-  },
-  "mc_settings_emote_size": {
-    "message": "表情大小"
-  },
-  "mc_settings_input_preview": {
-    "message": "输入预览"
-  },
-  "mc_settings_clickable_links": {
-    "message": "可点击链接"
-  },
-  "mc_settings_vi_mode": {
-    "message": "vi 模式"
-  },
-  "mc_settings_zebra": {
-    "message": "斑马纹背景"
-  },
-  "mc_settings_auto_hide": {
-    "message": "自动隐藏输入框"
-  },
-  "mc_settings_timestamps": {
-    "message": "时间戳"
-  },
-  "mc_settings_avatars": {
-    "message": "头像"
-  },
-  "mc_settings_emote_size_desc": {
-    "message": "聊天表情的分辨率倍率。1x 清晰紧凑，2x 适合大多数屏幕，4x 适合想逐像素欣赏表情的你。"
-  },
-  "mc_settings_input_preview_desc": {
-    "message": "输入时直接在输入框中将表情显示为图片而非文字名称。所见即所发。"
-  },
-  "mc_settings_clickable_links_desc": {
-    "message": "将聊天消息中的 URL 转换为可点击链接。如果你喜欢复制粘贴或不信任陌生人，可以关闭此功能。"
-  },
-  "mc_settings_vi_mode_desc": {
-    "message": "聊天导航的 vim 风格键位绑定。j/k 滚动，g/G 到顶/底，/ 搜索。适合觉得鼠标是休闲玩意的人。"
-  },
-  "mc_settings_zebra_desc": {
-    "message": "聊天消息交替行阴影。在窗口宽或聊天速度快时更容易追踪长消息。"
-  },
-  "mc_settings_auto_hide_desc": {
-    "message": "不在编写消息时隐藏输入栏。点击或开始输入时重新显示。最大化聊天显示空间。"
-  },
-  "mc_settings_timestamps_desc": {
-    "message": "在用户名旁显示每条消息的发送时间。适合用来补看 AFK 期间发生的事。"
-  },
-  "mc_settings_avatars_desc": {
-    "message": "在聊天用户名旁显示头像。更容易一眼认出常客，但会占用少量垂直空间。"
-  },
-  "mc_settings_inline_notifs": {
-    "message": "内联通知"
-  },
-  "mc_settings_notif_op": {
-    "message": "[OP] 原创帖子"
-  },
-  "mc_settings_notif_op_reply": {
-    "message": "[OP] OP 在自己的帖子中回复"
-  },
-  "mc_settings_notif_re": {
-    "message": "[RE] 回复"
-  },
-  "mc_settings_notif_dm": {
-    "message": "[DM] 悄悄话 & DM"
-  },
-  "mc_settings_notif_op_desc": {
-    "message": "当有人在动态中发布新原创帖子时，在当前聊天标签中通知。"
-  },
-  "mc_settings_notif_op_reply_desc": {
-    "message": "原帖作者在自己的帖子中回复时通知。"
-  },
-  "mc_settings_notif_re_desc": {
-    "message": "动态中任何帖子有新回复时通知。"
-  },
-  "mc_settings_notif_dm_desc": {
-    "message": "收到悄悄话或 DM 时通知。"
-  },
-  "mc_settings_twitch_events": {
-    "message": "twitch 事件"
-  },
-  "mc_settings_raids": {
-    "message": "突袭"
-  },
-  "mc_settings_hype_trains": {
-    "message": "炒作列车"
-  },
-  "mc_settings_gift_subs": {
-    "message": "赠送订阅"
-  },
-  "mc_settings_redeems": {
-    "message": "频道积分兑换"
-  },
-  "mc_settings_prediction_banner": {
-    "message": "预测横幅"
-  },
-  "mc_settings_poll_banner": {
-    "message": "投票横幅"
-  },
-  "mc_settings_pinned_messages": {
-    "message": "置顶消息"
-  },
-  "mc_settings_features": {
-    "message": "功能"
-  },
-  "mc_settings_auto_claim": {
-    "message": "自动领取频道积分"
-  },
-  "mc_settings_auto_claim_desc": {
-    "message": "Twitch 出现奖励频道积分宝箱时自动点击。免费积分，零操作。"
-  },
-  "mc_settings_muted_users": {
-    "message": "已静音用户"
-  },
-  "mc_settings_no_muted": {
-    "message": "没有已静音的用户"
-  },
-  "mc_settings_unmute": {
-    "message": "取消静音"
-  },
-
-  "mc_pred_no_active": {
-    "message": "没有活跃的预测"
-  },
-  "mc_pred_new": {
-    "message": "+ 新建预测"
-  },
-  "mc_pred_title_placeholder": {
-    "message": "预测标题"
-  },
-  "mc_pred_option1": {
-    "message": "选项 1 (蓝色)"
-  },
-  "mc_pred_option2": {
-    "message": "选项 2 (粉色)"
-  },
-  "mc_pred_duration": {
-    "message": "时长:"
-  },
-  "mc_pred_create": {
-    "message": "创建预测"
-  },
-  "mc_pred_refunded": {
-    "message": "已退款"
-  },
-  "mc_pred_locked": {
-    "message": "已锁定"
-  },
-  "mc_pred_winner": {
-    "message": "获胜者"
-  },
-  "mc_pred_won": {
-    "message": " 赢了"
-  },
-  "mc_pred_lost": {
-    "message": " 输了"
-  },
-  "mc_pred_lock_betting": {
-    "message": "锁定下注"
-  },
-  "mc_pred_cancel_refund": {
-    "message": "取消 (退款)"
-  },
-  "mc_pred_pick_winner": {
-    "message": "选择获胜者"
-  },
-  "mc_pred_pick_winner_your_bet": {
-    "message": "选择获胜者 (你的下注)"
-  },
-  "mc_pred_failed_load": {
-    "message": "无法加载预测"
-  },
-  "mc_pred_bet_own": {
-    "message": "不能在自己的直播中下注"
-  },
-  "mc_pred_try_again": {
-    "message": "再试一次"
-  },
-  "mc_pred_ended": {
-    "message": "预测已结束"
-  },
-  "mc_pred_betting_locked": {
-    "message": "下注已锁定"
-  },
-  "mc_pred_not_enough": {
-    "message": "积分不足"
-  },
-  "mc_pred_already_bet": {
-    "message": "已下注"
-  },
-  "mc_pred_no_permission": {
-    "message": "无权限"
-  },
-  "mc_pred_failed": {
-    "message": "失败"
-  },
-  "mc_pred_no_event": {
-    "message": "没有事件"
-  },
-  "mc_pred_no_outcome": {
-    "message": "没有结果"
-  },
-  "mc_pred_closing": {
-    "message": "关闭中..."
-  },
-  "mc_pred_you_bet": {
-    "message": "你在 $OUTCOME$ 下注了 $POINTS$ — 请选择实际获胜者",
-    "placeholders": {
-      "points": { "content": "$1" },
-      "outcome": { "content": "$2" }
-    }
-  },
-
-  "mc_poll_new": {
-    "message": "+ 新建投票"
-  },
-  "mc_poll_question": {
-    "message": "投票问题"
-  },
-  "mc_poll_choice": {
-    "message": "选项 $NUM$",
-    "placeholders": {
-      "num": { "content": "$1" }
-    }
-  },
-  "mc_poll_choice_optional": {
-    "message": "选项 $NUM$ (可选)",
-    "placeholders": {
-      "num": { "content": "$1" }
-    }
-  },
-  "mc_poll_create": {
-    "message": "创建投票"
-  },
-  "mc_poll_end": {
-    "message": "结束投票"
-  },
-  "mc_poll_votes": {
-    "message": "$COUNT$ 票",
-    "placeholders": {
-      "count": { "content": "$1" }
-    }
-  },
-  "mc_poll_vote_single": {
-    "message": "$COUNT$ 票",
-    "placeholders": {
-      "count": { "content": "$1" }
-    }
-  },
-  "mc_poll_already_active": {
-    "message": "已有进行中的投票"
-  },
-  "mc_poll_not_logged_in": {
-    "message": "未登录"
-  },
-
-  "mc_reward_rewards": {
-    "message": "奖励"
-  },
-  "mc_reward_none": {
-    "message": "没有可用奖励"
-  },
-  "mc_reward_paused": {
-    "message": "已暂停"
-  },
-  "mc_reward_out_of_stock": {
-    "message": "已售罄"
-  },
-  "mc_reward_cooldown_min": {
-    "message": "$MIN$ 分钟冷却",
-    "placeholders": {
-      "min": { "content": "$1" }
-    }
-  },
-  "mc_reward_cooldown_sec": {
-    "message": "$SEC$ 秒冷却",
-    "placeholders": {
-      "sec": { "content": "$1" }
-    }
-  },
-  "mc_reward_enter_text": {
-    "message": "输入文字..."
-  },
-  "mc_reward_redeem": {
-    "message": "兑换"
-  },
-
-  "mc_chat_username_color": {
-    "message": "用户名颜色"
-  },
-  "mc_chat_hex_placeholder": {
-    "message": "#hex"
-  },
-  "mc_chat_modes": {
-    "message": "聊天模式"
-  },
-  "mc_chat_emote_only": {
-    "message": "仅表情"
-  },
-  "mc_chat_follower": {
-    "message": "粉丝"
-  },
-  "mc_chat_slow": {
-    "message": "慢速"
-  },
-  "mc_chat_sub_only": {
-    "message": "仅订阅者"
-  },
-  "mc_chat_unique": {
-    "message": "唯一"
-  },
-  "mc_chat_hype_train": {
-    "message": "炒作列车"
-  },
-  "mc_chat_hype_level": {
-    "message": "等级 $LEVEL$",
-    "placeholders": {
-      "level": { "content": "$1" }
-    }
-  },
-
-  "mc_input_send_message": {
-    "message": "发送消息..."
-  },
-  "mc_input_post_heatsync": {
-    "message": "发布到 heatsync..."
-  },
-  "mc_input_send_channel": {
-    "message": "发送到 #$CHANNEL$",
-    "placeholders": {
-      "channel": { "content": "$1" }
-    }
-  },
-  "mc_input_replying_to": {
-    "message": "回复 @$USER$",
-    "placeholders": {
-      "user": { "content": "$1" }
-    }
-  },
-  "mc_input_cancel_reply": {
-    "message": "取消回复"
-  },
-  "mc_input_not_logged_in": {
-    "message": "未登录"
-  },
-  "mc_input_login_kick": {
-    "message": "请先在 kick.com 登录"
-  },
-  "mc_input_open_kick": {
-    "message": "在标签页中打开 kick.com"
-  },
-  "mc_input_kick_not_found": {
-    "message": "找不到 kick 频道"
-  },
-  "mc_input_send_failed": {
-    "message": "发送失败"
-  },
-  "mc_input_no_username": {
-    "message": "未检测到用户名"
-  },
-  "mc_input_auth_failed": {
-    "message": "认证失败 — 请重新登录 twitch"
-  },
-  "mc_input_connection_failed": {
-    "message": "连接失败 — 请重试"
-  },
-  "mc_input_send_failed_retry": {
-    "message": "发送失败 — 请重试"
-  },
-
-  "mc_social_back": {
-    "message": "<- 返回"
-  },
-  "mc_social_no_posts": {
-    "message": "暂无帖子"
-  },
-  "mc_social_loading_feed": {
-    "message": "加载关注动态中..."
-  },
-  "mc_social_scroll_more": {
-    "message": "滚动查看更多..."
-  },
-  "mc_social_no_replies": {
-    "message": "暂无回复"
-  },
-  "mc_social_login_first": {
-    "message": "请先在 heatsync.org 登录"
-  },
-  "mc_social_login_activity": {
-    "message": "登录 heatsync.org 以查看动态"
-  },
-  "mc_social_failed_feed_auth": {
-    "message": "加载动态失败 — 请在 heatsync.org 登录"
-  },
-  "mc_social_failed_feed": {
-    "message": "加载动态失败"
-  },
-  "mc_social_log_in_first": {
-    "message": "请先登录"
-  },
-  "mc_social_slow_down": {
-    "message": "慢一点"
-  },
-  "mc_social_duplicate": {
-    "message": "重复消息"
-  },
-  "mc_social_failed_post": {
-    "message": "发布失败"
-  },
-
-  "mc_tip_emoji": {
-    "message": "表情符号"
-  },
-  "mc_tip_subbed": {
-    "message": "订阅 $CHANNEL$ $TENURE$",
-    "placeholders": {
-      "channel": { "content": "$1" },
-      "tenure": { "content": "$2" }
-    }
-  },
-  "mc_tip_following": {
-    "message": "关注 $CHANNEL$ $AGE$",
-    "placeholders": {
-      "channel": { "content": "$1" },
-      "age": { "content": "$2" }
-    }
-  },
-  "mc_tip_not_following": {
-    "message": "未关注 $CHANNEL$",
-    "placeholders": {
-      "channel": { "content": "$1" }
-    }
-  },
-  "mc_tip_followed_by": {
-    "message": "被 $CHANNEL$ 关注",
-    "placeholders": {
-      "channel": { "content": "$1" }
-    }
-  },
-  "mc_tip_followers": {
-    "message": "$COUNT$ 个粉丝",
-    "placeholders": {
-      "count": { "content": "$1" }
-    }
-  },
-
-  "mc_whisper_hint": {
-    "message": "/w 用户 消息 · /dm 用户 消息 · /r 消息"
-  },
-  "mc_whisper_login": {
-    "message": "登录 heatsync.org 以发送悄悄话"
-  },
-  "mc_whisper_user_not_found": {
-    "message": "找不到 twitch 用户 \"$USER$\"",
-    "placeholders": {
-      "user": { "content": "$1" }
-    }
-  },
-  "mc_whisper_resolve_failed": {
-    "message": "解析 twitch 用户失败"
-  },
-  "mc_whisper_hs_not_found": {
-    "message": "找不到 heatsync 用户 \"$USER$\"",
-    "placeholders": {
-      "user": { "content": "$1" }
-    }
-  },
-
-  "mc_irc_chat_cleared": {
-    "message": "聊天已被清空"
-  },
-  "mc_irc_msg_deleted": {
-    "message": "$USER$ 的消息已被删除",
-    "placeholders": {
-      "user": { "content": "$1" }
-    }
-  },
-  "mc_irc_gift_subs": {
-    "message": "$USER$ 向 $CHANNEL$ 赠送了 $AMOUNT$ 个订阅",
-    "placeholders": {
-      "user": { "content": "$1" },
-      "amount": { "content": "$2" },
-      "channel": { "content": "$3" }
-    }
-  },
-
-  "mc_yt_connected": {
-    "message": "YouTube 已连接: $CHANNEL$ — 等待消息...",
-    "placeholders": {
-      "channel": { "content": "$1" }
-    }
-  },
-  "mc_yt_ended": {
-    "message": "YouTube 直播已结束"
-  },
-  "mc_yt_error": {
-    "message": "YouTube 连接错误"
-  },
-
-  "mc_emote_search_placeholder": {
-    "message": "搜索表情..."
-  },
-  "mc_emote_no_loaded": {
-    "message": "没有已加载的表情"
-  },
-  "mc_emote_in_set": {
-    "message": "已在套装中"
-  },
-  "mc_emote_click_add": {
-    "message": "点击添加"
-  },
-  "mc_emote_blocked": {
-    "message": "已屏蔽 (点击解除)"
-  },
-
-  "content_toast_unknown_error": {
-    "message": "未知错误"
-  },
-  "content_toast_loading_emotes": {
-    "message": "加载表情中..."
-  },
-  "content_toast_fetching_emotes": {
-    "message": "获取表情中..."
-  },
-  "content_card_action_ban": {
-    "message": "封禁"
-  },
-  "content_card_action_unban": {
-    "message": "解除封禁"
-  },
-  "content_card_action_block": {
-    "message": "屏蔽"
-  },
-  "btn_close": {
-    "message": "关闭"
-  },
-  "btn_error_channel": {
-    "message": "加载频道表情失败"
-  },
-  "btn_error_global": {
-    "message": "加载全局表情失败"
-  },
-  "btn_error_inventory": {
-    "message": "加载你的表情失败"
-  }
+  "manifest_name": [
+    [
+      "message",
+      "heatsync"
+    ]
+  ],
+  "manifest_description": [
+    [
+      "message",
+      "Twitch、Kick 和 YouTube 聊天自定义表情。无限槽位，Tab 补全，实时同步。"
+    ]
+  ],
+  "common_loading": [
+    [
+      "message",
+      "加载中..."
+    ]
+  ],
+  "common_extension_updated": [
+    [
+      "message",
+      "扩展已更新 — 请刷新页面"
+    ]
+  ],
+  "common_no_matches": [
+    [
+      "message",
+      "无匹配结果"
+    ]
+  ],
+  "common_retry": [
+    [
+      "message",
+      "重试"
+    ]
+  ],
+  "common_cancel": [
+    [
+      "message",
+      "取消"
+    ]
+  ],
+  "common_save": [
+    [
+      "message",
+      "保存"
+    ]
+  ],
+  "common_add": [
+    [
+      "message",
+      "添加"
+    ]
+  ],
+  "common_edit": [
+    [
+      "message",
+      "编辑"
+    ]
+  ],
+  "common_remove": [
+    [
+      "message",
+      "移除"
+    ]
+  ],
+  "common_done": [
+    [
+      "message",
+      "完成"
+    ]
+  ],
+  "common_ended": [
+    [
+      "message",
+      "已结束"
+    ]
+  ],
+  "common_vote": [
+    [
+      "message",
+      "投票"
+    ]
+  ],
+  "common_set": [
+    [
+      "message",
+      "设置"
+    ]
+  ],
+  "common_default": [
+    [
+      "message",
+      "默认"
+    ]
+  ],
+  "common_mention": [
+    [
+      "message",
+      "提及"
+    ]
+  ],
+  "common_user_not_found": [
+    [
+      "message",
+      "找不到用户"
+    ]
+  ],
+  "popup_title": [
+    [
+      "message",
+      "heatsync"
+    ]
+  ],
+  "popup_status_checking": [
+    [
+      "message",
+      "检查中..."
+    ]
+  ],
+  "popup_status_connected": [
+    [
+      "message",
+      "已连接"
+    ]
+  ],
+  "popup_status_api_error": [
+    [
+      "message",
+      "api 错误"
+    ]
+  ],
+  "popup_status_offline": [
+    [
+      "message",
+      "离线"
+    ]
+  ],
+  "popup_user_stats": [
+    [
+      "message",
+      "$EMOTES$ 个表情 · $GLOBALS$ 个全局"
+    ],
+    [
+      "placeholders",
+      [
+        [
+          "emotes",
+          [
+            [
+              "content",
+              "$1"
+            ]
+          ]
+        ],
+        [
+          "globals",
+          [
+            [
+              "content",
+              "$2"
+            ]
+          ]
+        ]
+      ]
+    ]
+  ],
+  "popup_user_stats_heat": [
+    [
+      "message",
+      "$EMOTES$ 个表情 · $GLOBALS$ 个全局 · $HEAT$ heat"
+    ],
+    [
+      "placeholders",
+      [
+        [
+          "emotes",
+          [
+            [
+              "content",
+              "$1"
+            ]
+          ]
+        ],
+        [
+          "globals",
+          [
+            [
+              "content",
+              "$2"
+            ]
+          ]
+        ],
+        [
+          "heat",
+          [
+            [
+              "content",
+              "$3"
+            ]
+          ]
+        ]
+      ]
+    ]
+  ],
+  "popup_btn_emotes": [
+    [
+      "message",
+      "表情"
+    ]
+  ],
+  "popup_btn_refresh": [
+    [
+      "message",
+      "刷新"
+    ]
+  ],
+  "popup_btn_site": [
+    [
+      "message",
+      "网站"
+    ]
+  ],
+  "popup_btn_done": [
+    [
+      "message",
+      "完成"
+    ]
+  ],
+  "popup_login_prompt": [
+    [
+      "message",
+      "登录以同步表情"
+    ]
+  ],
+  "popup_channel_placeholder": [
+    [
+      "message",
+      "频道"
+    ]
+  ],
+  "popup_btn_popout": [
+    [
+      "message",
+      "弹出"
+    ]
+  ],
+  "popup_hint": [
+    [
+      "message",
+      "在聊天的选择器面板中设置表情"
+    ]
+  ],
+  "welcome_title": [
+    [
+      "message",
+      "欢迎使用 heatsync"
+    ]
+  ],
+  "welcome_tagline": [
+    [
+      "message",
+      "你的表情，随处聊天"
+    ]
+  ],
+  "welcome_step1_title": [
+    [
+      "message",
+      "在 heatsync.org 登录"
+    ]
+  ],
+  "welcome_step1_desc": [
+    [
+      "message",
+      "用 twitch 或 kick 登录以创建账号"
+    ]
+  ],
+  "welcome_step2_title": [
+    [
+      "message",
+      "上传你的表情"
+    ]
+  ],
+  "welcome_step2_desc": [
+    [
+      "message",
+      "添加任意图片 — 无槽位限制，支持所有格式"
+    ]
+  ],
+  "welcome_step3_title": [
+    [
+      "message",
+      "在聊天中使用"
+    ]
+  ],
+  "welcome_step3_desc": [
+    [
+      "message",
+      "点击 twitch/kick 聊天中的 heatsync 按钮来使用你的表情"
+    ]
+  ],
+  "welcome_cta": [
+    [
+      "message",
+      "开始使用"
+    ]
+  ],
+  "welcome_privacy": [
+    [
+      "message",
+      "隐私政策"
+    ]
+  ],
+  "welcome_source": [
+    [
+      "message",
+      "源码"
+    ]
+  ],
+  "btn_auth_login": [
+    [
+      "message",
+      "登录"
+    ]
+  ],
+  "btn_auth_save_emotes": [
+    [
+      "message",
+      "将表情保存到你的套装"
+    ]
+  ],
+  "btn_tab_channel": [
+    [
+      "message",
+      "频道"
+    ]
+  ],
+  "btn_tab_global": [
+    [
+      "message",
+      "全局"
+    ]
+  ],
+  "btn_tab_mine": [
+    [
+      "message",
+      "我的"
+    ]
+  ],
+  "btn_tab_emoji": [
+    [
+      "message",
+      "表情符号"
+    ]
+  ],
+  "btn_search_placeholder": [
+    [
+      "message",
+      "搜索表情..."
+    ]
+  ],
+  "btn_rotate_title": [
+    [
+      "message",
+      "切换标签栏位置"
+    ]
+  ],
+  "btn_settings_title": [
+    [
+      "message",
+      "设置"
+    ]
+  ],
+  "btn_no_emotes": [
+    [
+      "message",
+      "无表情"
+    ]
+  ],
+  "btn_login_save_emotes": [
+    [
+      "message",
+      "在 heatsync.org 登录以保存表情"
+    ]
+  ],
+  "btn_cached": [
+    [
+      "message",
+      "已缓存"
+    ]
+  ],
+  "btn_loading_emotes": [
+    [
+      "message",
+      "加载表情中"
+    ]
+  ],
+  "btn_no_third_party": [
+    [
+      "message",
+      "未找到第三方表情"
+    ]
+  ],
+  "btn_no_emotes_import": [
+    [
+      "message",
+      "没有可导入的表情"
+    ]
+  ],
+  "btn_import_count": [
+    [
+      "message",
+      "导入 $COUNT$ 个表情"
+    ],
+    [
+      "placeholders",
+      [
+        [
+          "count",
+          [
+            [
+              "content",
+              "$1"
+            ]
+          ]
+        ]
+      ]
+    ]
+  ],
+  "btn_failed_load": [
+    [
+      "message",
+      "表情加载失败"
+    ]
+  ],
+  "btn_retry_loading": [
+    [
+      "message",
+      "重新加载"
+    ]
+  ],
+  "btn_ctx_block": [
+    [
+      "message",
+      "屏蔽表情"
+    ]
+  ],
+  "btn_ctx_unblock": [
+    [
+      "message",
+      "取消屏蔽表情"
+    ]
+  ],
+  "btn_ctx_remove_inventory": [
+    [
+      "message",
+      "从库存中移除"
+    ]
+  ],
+  "btn_ctx_add_inventory": [
+    [
+      "message",
+      "添加到库存"
+    ]
+  ],
+  "btn_ctx_copy_name": [
+    [
+      "message",
+      "复制表情名称"
+    ]
+  ],
+  "btn_ctx_copy_url": [
+    [
+      "message",
+      "复制表情 url"
+    ]
+  ],
+  "btn_toast_unblocked": [
+    [
+      "message",
+      "已取消屏蔽"
+    ]
+  ],
+  "btn_toast_blocked": [
+    [
+      "message",
+      "已屏蔽"
+    ]
+  ],
+  "btn_toast_removed": [
+    [
+      "message",
+      "已移除"
+    ]
+  ],
+  "btn_toast_added": [
+    [
+      "message",
+      "已添加"
+    ]
+  ],
+  "btn_toast_copied": [
+    [
+      "message",
+      "已复制!"
+    ]
+  ],
+  "btn_settings_tab_completion": [
+    [
+      "message",
+      "Tab 补全"
+    ]
+  ],
+  "btn_settings_chat_ui": [
+    [
+      "message",
+      "聊天界面"
+    ]
+  ],
+  "btn_settings_input": [
+    [
+      "message",
+      "输入"
+    ]
+  ],
+  "btn_settings_wysiwyg": [
+    [
+      "message",
+      "wysiwyg 表情"
+    ]
+  ],
+  "btn_settings_space_after": [
+    [
+      "message",
+      "表情后加空格"
+    ]
+  ],
+  "btn_settings_placeholder_mode": [
+    [
+      "message",
+      "占位符模式"
+    ]
+  ],
+  "btn_settings_placeholder_desc": [
+    [
+      "message",
+      "显示彩色方块"
+    ]
+  ],
+  "btn_settings_hide_header": [
+    [
+      "message",
+      "隐藏标题栏"
+    ]
+  ],
+  "btn_settings_always_popout": [
+    [
+      "message",
+      "(弹出模式下始终开启)"
+    ]
+  ],
+  "btn_settings_compact_input": [
+    [
+      "message",
+      "紧凑输入"
+    ]
+  ],
+  "btn_settings_highlight_mentions": [
+    [
+      "message",
+      "高亮提及"
+    ]
+  ],
+  "btn_settings_platform_badges": [
+    [
+      "message",
+      "平台徽章"
+    ]
+  ],
+  "btn_settings_platform_badges_desc": [
+    [
+      "message",
+      "消息上显示 [T] [K] [YT]"
+    ]
+  ],
+  "btn_settings_cosmetics": [
+    [
+      "message",
+      "外观装饰"
+    ]
+  ],
+  "btn_settings_cosmetics_desc": [
+    [
+      "message",
+      "7TV/BTTV/FFZ 涂装 + 徽章"
+    ]
+  ],
+  "btn_settings_vi_mode": [
+    [
+      "message",
+      "vi 模式"
+    ]
+  ],
+  "btn_settings_vi_mode_desc": [
+    [
+      "message",
+      "聊天输入的 vim 键位绑定"
+    ]
+  ],
+  "btn_size_1x": [
+    [
+      "message",
+      "1x"
+    ]
+  ],
+  "btn_size_2x": [
+    [
+      "message",
+      "2x"
+    ]
+  ],
+  "btn_size_4x": [
+    [
+      "message",
+      "4x"
+    ]
+  ],
+  "btn_expand": [
+    [
+      "message",
+      "展开"
+    ]
+  ],
+  "btn_collapse": [
+    [
+      "message",
+      "折叠"
+    ]
+  ],
+  "btn_block_all": [
+    [
+      "message",
+      "全部屏蔽"
+    ]
+  ],
+  "btn_show_all": [
+    [
+      "message",
+      "显示全部"
+    ]
+  ],
+  "btn_click_expand": [
+    [
+      "message",
+      "点击展开"
+    ]
+  ],
+  "content_toast_failed_add": [
+    [
+      "message",
+      "添加 $NAME$ 失败: $ERROR$"
+    ],
+    [
+      "placeholders",
+      [
+        [
+          "name",
+          [
+            [
+              "content",
+              "$1"
+            ]
+          ]
+        ],
+        [
+          "error",
+          [
+            [
+              "content",
+              "$2"
+            ]
+          ]
+        ]
+      ]
+    ]
+  ],
+  "content_toast_failed_remove": [
+    [
+      "message",
+      "移除 $NAME$ 失败: $ERROR$"
+    ],
+    [
+      "placeholders",
+      [
+        [
+          "name",
+          [
+            [
+              "content",
+              "$1"
+            ]
+          ]
+        ],
+        [
+          "error",
+          [
+            [
+              "content",
+              "$2"
+            ]
+          ]
+        ]
+      ]
+    ]
+  ],
+  "content_toast_unblocked": [
+    [
+      "message",
+      "已取消屏蔽 $NAME$"
+    ],
+    [
+      "placeholders",
+      [
+        [
+          "name",
+          [
+            [
+              "content",
+              "$1"
+            ]
+          ]
+        ]
+      ]
+    ]
+  ],
+  "content_toast_failed_unblock": [
+    [
+      "message",
+      "取消屏蔽失败: $ERROR$"
+    ],
+    [
+      "placeholders",
+      [
+        [
+          "error",
+          [
+            [
+              "content",
+              "$1"
+            ]
+          ]
+        ]
+      ]
+    ]
+  ],
+  "content_toast_removed": [
+    [
+      "message",
+      "已从套装中移除 $NAME$"
+    ],
+    [
+      "placeholders",
+      [
+        [
+          "name",
+          [
+            [
+              "content",
+              "$1"
+            ]
+          ]
+        ]
+      ]
+    ]
+  ],
+  "content_toast_failed_block": [
+    [
+      "message",
+      "屏蔽失败: $ERROR$"
+    ],
+    [
+      "placeholders",
+      [
+        [
+          "error",
+          [
+            [
+              "content",
+              "$1"
+            ]
+          ]
+        ]
+      ]
+    ]
+  ],
+  "content_toast_blocked": [
+    [
+      "message",
+      "已屏蔽 $NAME$"
+    ],
+    [
+      "placeholders",
+      [
+        [
+          "name",
+          [
+            [
+              "content",
+              "$1"
+            ]
+          ]
+        ]
+      ]
+    ]
+  ],
+  "content_toast_unmuted": [
+    [
+      "message",
+      "已取消静音 $NAME$"
+    ],
+    [
+      "placeholders",
+      [
+        [
+          "name",
+          [
+            [
+              "content",
+              "$1"
+            ]
+          ]
+        ]
+      ]
+    ]
+  ],
+  "content_toast_muted_24h": [
+    [
+      "message",
+      "已静音 $NAME$ 24小时"
+    ],
+    [
+      "placeholders",
+      [
+        [
+          "name",
+          [
+            [
+              "content",
+              "$1"
+            ]
+          ]
+        ]
+      ]
+    ]
+  ],
+  "content_card_follows_you": [
+    [
+      "message",
+      "关注了你"
+    ]
+  ],
+  "content_card_subs_to_you": [
+    [
+      "message",
+      "订阅了你"
+    ]
+  ],
+  "content_card_you_follow": [
+    [
+      "message",
+      "你关注了"
+    ]
+  ],
+  "content_card_you_sub": [
+    [
+      "message",
+      "你订阅了"
+    ]
+  ],
+  "content_card_you_sub_tier": [
+    [
+      "message",
+      "T$TIER$ 订阅中"
+    ],
+    [
+      "placeholders",
+      [
+        [
+          "tier",
+          [
+            [
+              "content",
+              "$1"
+            ]
+          ]
+        ]
+      ]
+    ]
+  ],
+  "content_card_subbed": [
+    [
+      "message",
+      "订阅 $CHANNEL$ $TENURE$"
+    ],
+    [
+      "placeholders",
+      [
+        [
+          "channel",
+          [
+            [
+              "content",
+              "$1"
+            ]
+          ]
+        ],
+        [
+          "tenure",
+          [
+            [
+              "content",
+              "$2"
+            ]
+          ]
+        ]
+      ]
+    ]
+  ],
+  "content_card_following": [
+    [
+      "message",
+      "关注 $CHANNEL$ $AGE$"
+    ],
+    [
+      "placeholders",
+      [
+        [
+          "channel",
+          [
+            [
+              "content",
+              "$1"
+            ]
+          ]
+        ],
+        [
+          "age",
+          [
+            [
+              "content",
+              "$2"
+            ]
+          ]
+        ]
+      ]
+    ]
+  ],
+  "content_card_not_following": [
+    [
+      "message",
+      "未关注 $CHANNEL$"
+    ],
+    [
+      "placeholders",
+      [
+        [
+          "channel",
+          [
+            [
+              "content",
+              "$1"
+            ]
+          ]
+        ]
+      ]
+    ]
+  ],
+  "content_card_followed_by": [
+    [
+      "message",
+      "被 $CHANNEL$ 关注"
+    ],
+    [
+      "placeholders",
+      [
+        [
+          "channel",
+          [
+            [
+              "content",
+              "$1"
+            ]
+          ]
+        ]
+      ]
+    ]
+  ],
+  "content_card_following_count": [
+    [
+      "message",
+      "关注 $COUNT$ 人"
+    ],
+    [
+      "placeholders",
+      [
+        [
+          "count",
+          [
+            [
+              "content",
+              "$1"
+            ]
+          ]
+        ]
+      ]
+    ]
+  ],
+  "content_card_followers": [
+    [
+      "message",
+      "$COUNT$ 个粉丝"
+    ],
+    [
+      "placeholders",
+      [
+        [
+          "count",
+          [
+            [
+              "content",
+              "$1"
+            ]
+          ]
+        ]
+      ]
+    ]
+  ],
+  "content_card_partner": [
+    [
+      "message",
+      "合作伙伴"
+    ]
+  ],
+  "content_card_affiliate": [
+    [
+      "message",
+      "联盟主播"
+    ]
+  ],
+  "content_card_live": [
+    [
+      "message",
+      "直播中 $VIEWERS$"
+    ],
+    [
+      "placeholders",
+      [
+        [
+          "viewers",
+          [
+            [
+              "content",
+              "$1"
+            ]
+          ]
+        ]
+      ]
+    ]
+  ],
+  "content_card_twitch_verified": [
+    [
+      "message",
+      "Twitch 认证"
+    ]
+  ],
+  "content_card_kick_verified": [
+    [
+      "message",
+      "Kick 认证"
+    ]
+  ],
+  "content_view_on_heatsync": [
+    [
+      "message",
+      "在 heatsync 查看"
+    ]
+  ],
+  "content_in_your_set": [
+    [
+      "message",
+      "已在套装中"
+    ]
+  ],
+  "content_click_to_add": [
+    [
+      "message",
+      "点击添加"
+    ]
+  ],
+  "content_blocked_click_unblock": [
+    [
+      "message",
+      "已屏蔽 (点击解除)"
+    ]
+  ],
+  "mc_tab_feed": [
+    [
+      "message",
+      "动态"
+    ]
+  ],
+  "mc_tab_whispers": [
+    [
+      "message",
+      "悄悄话"
+    ]
+  ],
+  "mc_tab_mentions": [
+    [
+      "message",
+      "提及"
+    ]
+  ],
+  "mc_tab_activity": [
+    [
+      "message",
+      "活动"
+    ]
+  ],
+  "mc_tab_live": [
+    [
+      "message",
+      "直播"
+    ]
+  ],
+  "mc_tab_discover": {
+    "message": "discover"
+  },
+  "mc_tab_live_channel": [
+    [
+      "message",
+      "直播 · $CHANNEL$"
+    ],
+    [
+      "placeholders",
+      [
+        [
+          "channel",
+          [
+            [
+              "content",
+              "$1"
+            ]
+          ]
+        ]
+      ]
+    ]
+  ],
+  "mc_btn_rotate_tabs": [
+    [
+      "message",
+      "切换标签位置 (T)"
+    ]
+  ],
+  "mc_btn_smaller_text": [
+    [
+      "message",
+      "缩小文字"
+    ]
+  ],
+  "mc_btn_larger_text": [
+    [
+      "message",
+      "放大文字"
+    ]
+  ],
+  "mc_btn_settings": [
+    [
+      "message",
+      "设置"
+    ]
+  ],
+  "mc_new_messages": [
+    [
+      "message",
+      "$COUNT$ 条新消息"
+    ],
+    [
+      "placeholders",
+      [
+        [
+          "count",
+          [
+            [
+              "content",
+              "$1"
+            ]
+          ]
+        ]
+      ]
+    ]
+  ],
+  "mc_resume": [
+    [
+      "message",
+      "继续"
+    ]
+  ],
+  "mc_no_messages": [
+    [
+      "message",
+      "暂无消息"
+    ]
+  ],
+  "mc_no_activity": [
+    [
+      "message",
+      "暂无动态"
+    ]
+  ],
+  "mc_add_channel": [
+    [
+      "message",
+      "添加频道"
+    ]
+  ],
+  "mc_enter_platform": [
+    [
+      "message",
+      "至少输入一个平台"
+    ]
+  ],
+  "mc_username_placeholder": [
+    [
+      "message",
+      "用户名"
+    ]
+  ],
+  "mc_username_url_placeholder": [
+    [
+      "message",
+      "用户名或 url"
+    ]
+  ],
+  "mc_reserved_name": [
+    [
+      "message",
+      "保留名称"
+    ]
+  ],
+  "mc_channel_exists": [
+    [
+      "message",
+      "频道已存在"
+    ]
+  ],
+  "mc_twitch_exists": [
+    [
+      "message",
+      "twitch 频道已添加"
+    ]
+  ],
+  "mc_kick_exists": [
+    [
+      "message",
+      "kick 频道已添加"
+    ]
+  ],
+  "mc_edit_channel": [
+    [
+      "message",
+      "编辑 $CHANNEL$"
+    ],
+    [
+      "placeholders",
+      [
+        [
+          "channel",
+          [
+            [
+              "content",
+              "$1"
+            ]
+          ]
+        ]
+      ]
+    ]
+  ],
+  "mc_no_channel_detected": [
+    [
+      "message",
+      "未检测到频道"
+    ]
+  ],
+  "mc_settings_display": [
+    [
+      "message",
+      "显示"
+    ]
+  ],
+  "mc_settings_emote_size": [
+    [
+      "message",
+      "表情大小"
+    ]
+  ],
+  "mc_settings_input_preview": [
+    [
+      "message",
+      "输入预览"
+    ]
+  ],
+  "mc_settings_clickable_links": [
+    [
+      "message",
+      "可点击链接"
+    ]
+  ],
+  "mc_settings_vi_mode": [
+    [
+      "message",
+      "vi 模式"
+    ]
+  ],
+  "mc_settings_zebra": [
+    [
+      "message",
+      "斑马纹背景"
+    ]
+  ],
+  "mc_settings_auto_hide": [
+    [
+      "message",
+      "自动隐藏输入框"
+    ]
+  ],
+  "mc_settings_timestamps": [
+    [
+      "message",
+      "时间戳"
+    ]
+  ],
+  "mc_settings_avatars": [
+    [
+      "message",
+      "头像"
+    ]
+  ],
+  "mc_settings_emote_size_desc": [
+    [
+      "message",
+      "聊天表情的分辨率倍率。1x 清晰紧凑，2x 适合大多数屏幕，4x 适合想逐像素欣赏表情的你。"
+    ]
+  ],
+  "mc_settings_input_preview_desc": [
+    [
+      "message",
+      "输入时直接在输入框中将表情显示为图片而非文字名称。所见即所发。"
+    ]
+  ],
+  "mc_settings_clickable_links_desc": [
+    [
+      "message",
+      "将聊天消息中的 URL 转换为可点击链接。如果你喜欢复制粘贴或不信任陌生人，可以关闭此功能。"
+    ]
+  ],
+  "mc_settings_vi_mode_desc": [
+    [
+      "message",
+      "聊天导航的 vim 风格键位绑定。j/k 滚动，g/G 到顶/底，/ 搜索。适合觉得鼠标是休闲玩意的人。"
+    ]
+  ],
+  "mc_settings_zebra_desc": [
+    [
+      "message",
+      "聊天消息交替行阴影。在窗口宽或聊天速度快时更容易追踪长消息。"
+    ]
+  ],
+  "mc_settings_auto_hide_desc": [
+    [
+      "message",
+      "不在编写消息时隐藏输入栏。点击或开始输入时重新显示。最大化聊天显示空间。"
+    ]
+  ],
+  "mc_settings_timestamps_desc": [
+    [
+      "message",
+      "在用户名旁显示每条消息的发送时间。适合用来补看 AFK 期间发生的事。"
+    ]
+  ],
+  "mc_settings_avatars_desc": [
+    [
+      "message",
+      "在聊天用户名旁显示头像。更容易一眼认出常客，但会占用少量垂直空间。"
+    ]
+  ],
+  "mc_settings_inline_notifs": [
+    [
+      "message",
+      "内联通知"
+    ]
+  ],
+  "mc_settings_notif_op": [
+    [
+      "message",
+      "[OP] 原创帖子"
+    ]
+  ],
+  "mc_settings_notif_op_reply": [
+    [
+      "message",
+      "[OP] OP 在自己的帖子中回复"
+    ]
+  ],
+  "mc_settings_notif_re": [
+    [
+      "message",
+      "[RE] 回复"
+    ]
+  ],
+  "mc_settings_notif_dm": [
+    [
+      "message",
+      "[DM] 悄悄话 & DM"
+    ]
+  ],
+  "mc_settings_notif_op_desc": [
+    [
+      "message",
+      "当有人在动态中发布新原创帖子时，在当前聊天标签中通知。"
+    ]
+  ],
+  "mc_settings_notif_op_reply_desc": [
+    [
+      "message",
+      "原帖作者在自己的帖子中回复时通知。"
+    ]
+  ],
+  "mc_settings_notif_re_desc": [
+    [
+      "message",
+      "动态中任何帖子有新回复时通知。"
+    ]
+  ],
+  "mc_settings_notif_dm_desc": [
+    [
+      "message",
+      "收到悄悄话或 DM 时通知。"
+    ]
+  ],
+  "mc_settings_twitch_events": [
+    [
+      "message",
+      "twitch 事件"
+    ]
+  ],
+  "mc_settings_raids": [
+    [
+      "message",
+      "突袭"
+    ]
+  ],
+  "mc_settings_hype_trains": [
+    [
+      "message",
+      "炒作列车"
+    ]
+  ],
+  "mc_settings_gift_subs": [
+    [
+      "message",
+      "赠送订阅"
+    ]
+  ],
+  "mc_settings_redeems": [
+    [
+      "message",
+      "频道积分兑换"
+    ]
+  ],
+  "mc_settings_prediction_banner": [
+    [
+      "message",
+      "预测横幅"
+    ]
+  ],
+  "mc_settings_poll_banner": [
+    [
+      "message",
+      "投票横幅"
+    ]
+  ],
+  "mc_settings_pinned_messages": [
+    [
+      "message",
+      "置顶消息"
+    ]
+  ],
+  "mc_settings_features": [
+    [
+      "message",
+      "功能"
+    ]
+  ],
+  "mc_settings_auto_claim": [
+    [
+      "message",
+      "自动领取频道积分"
+    ]
+  ],
+  "mc_settings_auto_claim_desc": [
+    [
+      "message",
+      "Twitch 出现奖励频道积分宝箱时自动点击。免费积分，零操作。"
+    ]
+  ],
+  "mc_settings_muted_users": [
+    [
+      "message",
+      "已静音用户"
+    ]
+  ],
+  "mc_settings_no_muted": [
+    [
+      "message",
+      "没有已静音的用户"
+    ]
+  ],
+  "mc_settings_unmute": [
+    [
+      "message",
+      "取消静音"
+    ]
+  ],
+  "mc_pred_no_active": [
+    [
+      "message",
+      "没有活跃的预测"
+    ]
+  ],
+  "mc_pred_new": [
+    [
+      "message",
+      "+ 新建预测"
+    ]
+  ],
+  "mc_pred_title_placeholder": [
+    [
+      "message",
+      "预测标题"
+    ]
+  ],
+  "mc_pred_option1": [
+    [
+      "message",
+      "选项 1 (蓝色)"
+    ]
+  ],
+  "mc_pred_option2": [
+    [
+      "message",
+      "选项 2 (粉色)"
+    ]
+  ],
+  "mc_pred_duration": [
+    [
+      "message",
+      "时长:"
+    ]
+  ],
+  "mc_pred_create": [
+    [
+      "message",
+      "创建预测"
+    ]
+  ],
+  "mc_pred_refunded": [
+    [
+      "message",
+      "已退款"
+    ]
+  ],
+  "mc_pred_locked": [
+    [
+      "message",
+      "已锁定"
+    ]
+  ],
+  "mc_pred_winner": [
+    [
+      "message",
+      "获胜者"
+    ]
+  ],
+  "mc_pred_won": [
+    [
+      "message",
+      " 赢了"
+    ]
+  ],
+  "mc_pred_lost": [
+    [
+      "message",
+      " 输了"
+    ]
+  ],
+  "mc_pred_lock_betting": [
+    [
+      "message",
+      "锁定下注"
+    ]
+  ],
+  "mc_pred_cancel_refund": [
+    [
+      "message",
+      "取消 (退款)"
+    ]
+  ],
+  "mc_pred_pick_winner": [
+    [
+      "message",
+      "选择获胜者"
+    ]
+  ],
+  "mc_pred_pick_winner_your_bet": [
+    [
+      "message",
+      "选择获胜者 (你的下注)"
+    ]
+  ],
+  "mc_pred_failed_load": [
+    [
+      "message",
+      "无法加载预测"
+    ]
+  ],
+  "mc_pred_bet_own": [
+    [
+      "message",
+      "不能在自己的直播中下注"
+    ]
+  ],
+  "mc_pred_try_again": [
+    [
+      "message",
+      "再试一次"
+    ]
+  ],
+  "mc_pred_ended": [
+    [
+      "message",
+      "预测已结束"
+    ]
+  ],
+  "mc_pred_betting_locked": [
+    [
+      "message",
+      "下注已锁定"
+    ]
+  ],
+  "mc_pred_not_enough": [
+    [
+      "message",
+      "积分不足"
+    ]
+  ],
+  "mc_pred_already_bet": [
+    [
+      "message",
+      "已下注"
+    ]
+  ],
+  "mc_pred_no_permission": [
+    [
+      "message",
+      "无权限"
+    ]
+  ],
+  "mc_pred_failed": [
+    [
+      "message",
+      "失败"
+    ]
+  ],
+  "mc_pred_no_event": [
+    [
+      "message",
+      "没有事件"
+    ]
+  ],
+  "mc_pred_no_outcome": [
+    [
+      "message",
+      "没有结果"
+    ]
+  ],
+  "mc_pred_closing": [
+    [
+      "message",
+      "关闭中..."
+    ]
+  ],
+  "mc_pred_you_bet": [
+    [
+      "message",
+      "你在 $OUTCOME$ 下注了 $POINTS$ — 请选择实际获胜者"
+    ],
+    [
+      "placeholders",
+      [
+        [
+          "points",
+          [
+            [
+              "content",
+              "$1"
+            ]
+          ]
+        ],
+        [
+          "outcome",
+          [
+            [
+              "content",
+              "$2"
+            ]
+          ]
+        ]
+      ]
+    ]
+  ],
+  "mc_poll_new": [
+    [
+      "message",
+      "+ 新建投票"
+    ]
+  ],
+  "mc_poll_question": [
+    [
+      "message",
+      "投票问题"
+    ]
+  ],
+  "mc_poll_choice": [
+    [
+      "message",
+      "选项 $NUM$"
+    ],
+    [
+      "placeholders",
+      [
+        [
+          "num",
+          [
+            [
+              "content",
+              "$1"
+            ]
+          ]
+        ]
+      ]
+    ]
+  ],
+  "mc_poll_choice_optional": [
+    [
+      "message",
+      "选项 $NUM$ (可选)"
+    ],
+    [
+      "placeholders",
+      [
+        [
+          "num",
+          [
+            [
+              "content",
+              "$1"
+            ]
+          ]
+        ]
+      ]
+    ]
+  ],
+  "mc_poll_create": [
+    [
+      "message",
+      "创建投票"
+    ]
+  ],
+  "mc_poll_end": [
+    [
+      "message",
+      "结束投票"
+    ]
+  ],
+  "mc_poll_votes": [
+    [
+      "message",
+      "$COUNT$ 票"
+    ],
+    [
+      "placeholders",
+      [
+        [
+          "count",
+          [
+            [
+              "content",
+              "$1"
+            ]
+          ]
+        ]
+      ]
+    ]
+  ],
+  "mc_poll_vote_single": [
+    [
+      "message",
+      "$COUNT$ 票"
+    ],
+    [
+      "placeholders",
+      [
+        [
+          "count",
+          [
+            [
+              "content",
+              "$1"
+            ]
+          ]
+        ]
+      ]
+    ]
+  ],
+  "mc_poll_already_active": [
+    [
+      "message",
+      "已有进行中的投票"
+    ]
+  ],
+  "mc_poll_not_logged_in": [
+    [
+      "message",
+      "未登录"
+    ]
+  ],
+  "mc_reward_rewards": [
+    [
+      "message",
+      "奖励"
+    ]
+  ],
+  "mc_reward_none": [
+    [
+      "message",
+      "没有可用奖励"
+    ]
+  ],
+  "mc_reward_paused": [
+    [
+      "message",
+      "已暂停"
+    ]
+  ],
+  "mc_reward_out_of_stock": [
+    [
+      "message",
+      "已售罄"
+    ]
+  ],
+  "mc_reward_cooldown_min": [
+    [
+      "message",
+      "$MIN$ 分钟冷却"
+    ],
+    [
+      "placeholders",
+      [
+        [
+          "min",
+          [
+            [
+              "content",
+              "$1"
+            ]
+          ]
+        ]
+      ]
+    ]
+  ],
+  "mc_reward_cooldown_sec": [
+    [
+      "message",
+      "$SEC$ 秒冷却"
+    ],
+    [
+      "placeholders",
+      [
+        [
+          "sec",
+          [
+            [
+              "content",
+              "$1"
+            ]
+          ]
+        ]
+      ]
+    ]
+  ],
+  "mc_reward_enter_text": [
+    [
+      "message",
+      "输入文字..."
+    ]
+  ],
+  "mc_reward_redeem": [
+    [
+      "message",
+      "兑换"
+    ]
+  ],
+  "mc_chat_username_color": [
+    [
+      "message",
+      "用户名颜色"
+    ]
+  ],
+  "mc_chat_hex_placeholder": [
+    [
+      "message",
+      "#hex"
+    ]
+  ],
+  "mc_chat_modes": [
+    [
+      "message",
+      "聊天模式"
+    ]
+  ],
+  "mc_chat_emote_only": [
+    [
+      "message",
+      "仅表情"
+    ]
+  ],
+  "mc_chat_follower": [
+    [
+      "message",
+      "粉丝"
+    ]
+  ],
+  "mc_chat_slow": [
+    [
+      "message",
+      "慢速"
+    ]
+  ],
+  "mc_chat_sub_only": [
+    [
+      "message",
+      "仅订阅者"
+    ]
+  ],
+  "mc_chat_unique": [
+    [
+      "message",
+      "唯一"
+    ]
+  ],
+  "mc_chat_hype_train": [
+    [
+      "message",
+      "炒作列车"
+    ]
+  ],
+  "mc_chat_hype_level": [
+    [
+      "message",
+      "等级 $LEVEL$"
+    ],
+    [
+      "placeholders",
+      [
+        [
+          "level",
+          [
+            [
+              "content",
+              "$1"
+            ]
+          ]
+        ]
+      ]
+    ]
+  ],
+  "mc_input_send_message": [
+    [
+      "message",
+      "发送消息..."
+    ]
+  ],
+  "mc_input_post_heatsync": [
+    [
+      "message",
+      "发布到 heatsync..."
+    ]
+  ],
+  "mc_input_send_channel": [
+    [
+      "message",
+      "发送到 #$CHANNEL$"
+    ],
+    [
+      "placeholders",
+      [
+        [
+          "channel",
+          [
+            [
+              "content",
+              "$1"
+            ]
+          ]
+        ]
+      ]
+    ]
+  ],
+  "mc_input_replying_to": [
+    [
+      "message",
+      "回复 @$USER$"
+    ],
+    [
+      "placeholders",
+      [
+        [
+          "user",
+          [
+            [
+              "content",
+              "$1"
+            ]
+          ]
+        ]
+      ]
+    ]
+  ],
+  "mc_input_cancel_reply": [
+    [
+      "message",
+      "取消回复"
+    ]
+  ],
+  "mc_input_not_logged_in": [
+    [
+      "message",
+      "未登录"
+    ]
+  ],
+  "mc_input_login_kick": [
+    [
+      "message",
+      "请先在 kick.com 登录"
+    ]
+  ],
+  "mc_input_open_kick": [
+    [
+      "message",
+      "在标签页中打开 kick.com"
+    ]
+  ],
+  "mc_input_kick_not_found": [
+    [
+      "message",
+      "找不到 kick 频道"
+    ]
+  ],
+  "mc_input_send_failed": [
+    [
+      "message",
+      "发送失败"
+    ]
+  ],
+  "mc_input_no_username": [
+    [
+      "message",
+      "未检测到用户名"
+    ]
+  ],
+  "mc_input_auth_failed": [
+    [
+      "message",
+      "认证失败 — 请重新登录 twitch"
+    ]
+  ],
+  "mc_input_connection_failed": [
+    [
+      "message",
+      "连接失败 — 请重试"
+    ]
+  ],
+  "mc_input_send_failed_retry": [
+    [
+      "message",
+      "发送失败 — 请重试"
+    ]
+  ],
+  "mc_social_back": [
+    [
+      "message",
+      "<- 返回"
+    ]
+  ],
+  "mc_social_no_posts": [
+    [
+      "message",
+      "暂无帖子"
+    ]
+  ],
+  "mc_social_loading_feed": [
+    [
+      "message",
+      "加载关注动态中..."
+    ]
+  ],
+  "mc_social_scroll_more": [
+    [
+      "message",
+      "滚动查看更多..."
+    ]
+  ],
+  "mc_social_no_replies": [
+    [
+      "message",
+      "暂无回复"
+    ]
+  ],
+  "mc_social_login_first": [
+    [
+      "message",
+      "请先在 heatsync.org 登录"
+    ]
+  ],
+  "mc_social_login_activity": [
+    [
+      "message",
+      "登录 heatsync.org 以查看动态"
+    ]
+  ],
+  "mc_social_failed_feed_auth": [
+    [
+      "message",
+      "加载动态失败 — 请在 heatsync.org 登录"
+    ]
+  ],
+  "mc_social_failed_feed": [
+    [
+      "message",
+      "加载动态失败"
+    ]
+  ],
+  "mc_social_log_in_first": [
+    [
+      "message",
+      "请先登录"
+    ]
+  ],
+  "mc_social_slow_down": [
+    [
+      "message",
+      "慢一点"
+    ]
+  ],
+  "mc_social_duplicate": [
+    [
+      "message",
+      "重复消息"
+    ]
+  ],
+  "mc_social_failed_post": [
+    [
+      "message",
+      "发布失败"
+    ]
+  ],
+  "mc_tip_emoji": [
+    [
+      "message",
+      "表情符号"
+    ]
+  ],
+  "mc_tip_subbed": [
+    [
+      "message",
+      "订阅 $CHANNEL$ $TENURE$"
+    ],
+    [
+      "placeholders",
+      [
+        [
+          "channel",
+          [
+            [
+              "content",
+              "$1"
+            ]
+          ]
+        ],
+        [
+          "tenure",
+          [
+            [
+              "content",
+              "$2"
+            ]
+          ]
+        ]
+      ]
+    ]
+  ],
+  "mc_tip_following": [
+    [
+      "message",
+      "关注 $CHANNEL$ $AGE$"
+    ],
+    [
+      "placeholders",
+      [
+        [
+          "channel",
+          [
+            [
+              "content",
+              "$1"
+            ]
+          ]
+        ],
+        [
+          "age",
+          [
+            [
+              "content",
+              "$2"
+            ]
+          ]
+        ]
+      ]
+    ]
+  ],
+  "mc_tip_not_following": [
+    [
+      "message",
+      "未关注 $CHANNEL$"
+    ],
+    [
+      "placeholders",
+      [
+        [
+          "channel",
+          [
+            [
+              "content",
+              "$1"
+            ]
+          ]
+        ]
+      ]
+    ]
+  ],
+  "mc_tip_followed_by": [
+    [
+      "message",
+      "被 $CHANNEL$ 关注"
+    ],
+    [
+      "placeholders",
+      [
+        [
+          "channel",
+          [
+            [
+              "content",
+              "$1"
+            ]
+          ]
+        ]
+      ]
+    ]
+  ],
+  "mc_tip_followers": [
+    [
+      "message",
+      "$COUNT$ 个粉丝"
+    ],
+    [
+      "placeholders",
+      [
+        [
+          "count",
+          [
+            [
+              "content",
+              "$1"
+            ]
+          ]
+        ]
+      ]
+    ]
+  ],
+  "mc_whisper_hint": [
+    [
+      "message",
+      "/w 用户 消息 · /dm 用户 消息 · /r 消息"
+    ]
+  ],
+  "mc_whisper_login": [
+    [
+      "message",
+      "登录 heatsync.org 以发送悄悄话"
+    ]
+  ],
+  "mc_whisper_user_not_found": [
+    [
+      "message",
+      "找不到 twitch 用户 \"$USER$\""
+    ],
+    [
+      "placeholders",
+      [
+        [
+          "user",
+          [
+            [
+              "content",
+              "$1"
+            ]
+          ]
+        ]
+      ]
+    ]
+  ],
+  "mc_whisper_resolve_failed": [
+    [
+      "message",
+      "解析 twitch 用户失败"
+    ]
+  ],
+  "mc_whisper_hs_not_found": [
+    [
+      "message",
+      "找不到 heatsync 用户 \"$USER$\""
+    ],
+    [
+      "placeholders",
+      [
+        [
+          "user",
+          [
+            [
+              "content",
+              "$1"
+            ]
+          ]
+        ]
+      ]
+    ]
+  ],
+  "mc_irc_chat_cleared": [
+    [
+      "message",
+      "聊天已被清空"
+    ]
+  ],
+  "mc_irc_msg_deleted": [
+    [
+      "message",
+      "$USER$ 的消息已被删除"
+    ],
+    [
+      "placeholders",
+      [
+        [
+          "user",
+          [
+            [
+              "content",
+              "$1"
+            ]
+          ]
+        ]
+      ]
+    ]
+  ],
+  "mc_irc_gift_subs": [
+    [
+      "message",
+      "$USER$ 向 $CHANNEL$ 赠送了 $AMOUNT$ 个订阅"
+    ],
+    [
+      "placeholders",
+      [
+        [
+          "user",
+          [
+            [
+              "content",
+              "$1"
+            ]
+          ]
+        ],
+        [
+          "amount",
+          [
+            [
+              "content",
+              "$2"
+            ]
+          ]
+        ],
+        [
+          "channel",
+          [
+            [
+              "content",
+              "$3"
+            ]
+          ]
+        ]
+      ]
+    ]
+  ],
+  "mc_yt_connected": [
+    [
+      "message",
+      "YouTube 已连接: $CHANNEL$ — 等待消息..."
+    ],
+    [
+      "placeholders",
+      [
+        [
+          "channel",
+          [
+            [
+              "content",
+              "$1"
+            ]
+          ]
+        ]
+      ]
+    ]
+  ],
+  "mc_yt_ended": [
+    [
+      "message",
+      "YouTube 直播已结束"
+    ]
+  ],
+  "mc_yt_error": [
+    [
+      "message",
+      "YouTube 连接错误"
+    ]
+  ],
+  "mc_emote_search_placeholder": [
+    [
+      "message",
+      "搜索表情..."
+    ]
+  ],
+  "mc_emote_no_loaded": [
+    [
+      "message",
+      "没有已加载的表情"
+    ]
+  ],
+  "mc_emote_in_set": [
+    [
+      "message",
+      "已在套装中"
+    ]
+  ],
+  "mc_emote_click_add": [
+    [
+      "message",
+      "点击添加"
+    ]
+  ],
+  "mc_emote_blocked": [
+    [
+      "message",
+      "已屏蔽 (点击解除)"
+    ]
+  ],
+  "content_toast_unknown_error": [
+    [
+      "message",
+      "未知错误"
+    ]
+  ],
+  "content_toast_loading_emotes": [
+    [
+      "message",
+      "加载表情中..."
+    ]
+  ],
+  "content_toast_fetching_emotes": [
+    [
+      "message",
+      "获取表情中..."
+    ]
+  ],
+  "content_card_action_ban": [
+    [
+      "message",
+      "封禁"
+    ]
+  ],
+  "content_card_action_unban": [
+    [
+      "message",
+      "解除封禁"
+    ]
+  ],
+  "content_card_action_block": [
+    [
+      "message",
+      "屏蔽"
+    ]
+  ],
+  "btn_close": [
+    [
+      "message",
+      "关闭"
+    ]
+  ],
+  "btn_error_channel": [
+    [
+      "message",
+      "加载频道表情失败"
+    ]
+  ],
+  "btn_error_global": [
+    [
+      "message",
+      "加载全局表情失败"
+    ]
+  ],
+  "btn_error_inventory": [
+    [
+      "message",
+      "加载你的表情失败"
+    ]
+  ]
 }

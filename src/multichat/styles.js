@@ -3609,6 +3609,92 @@ function injectStyles() {
       color: #555;
       font-size: 12px;
     }
+    .hs-discover-refresh-bar {
+      display: flex;
+      justify-content: flex-end;
+      padding: 4px 8px;
+      background: transparent;
+      flex-shrink: 0;
+    }
+    .hs-discover-refresh-btn {
+      background: transparent;
+      border: 1px solid #ff8700;
+      color: #ff8700;
+      font-size: 11px;
+      font-family: inherit;
+      padding: 2px 8px;
+      cursor: pointer;
+      border-radius: 0;
+      line-height: 1.4;
+    }
+    .hs-discover-refresh-btn:hover {
+      background: #ff8700;
+      color: #000;
+    }
+    .hs-discover-section {
+      padding: 8px 10px 4px;
+    }
+    .hs-discover-heading {
+      font-size: 11px;
+      color: #ff8700;
+      font-weight: 600;
+      text-transform: lowercase;
+      margin-bottom: 6px;
+      letter-spacing: 0.03em;
+    }
+    .hs-discover-chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+      margin-bottom: 4px;
+    }
+    .hs-discover-chip {
+      display: inline-block;
+      padding: 2px 8px;
+      background: rgba(255,135,0,0.12);
+      border: 1px solid rgba(255,135,0,0.4);
+      color: #ff8700;
+      font-size: 11px;
+      text-decoration: none;
+      cursor: pointer;
+      border-radius: 0;
+      line-height: 1.6;
+      white-space: nowrap;
+    }
+    .hs-discover-chip:hover {
+      background: #ff8700;
+      color: #000;
+    }
+    .hs-discover-profile-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 0;
+      text-decoration: none;
+      cursor: pointer;
+    }
+    .hs-discover-profile-row:hover .hs-discover-profile-name {
+      color: #ff8700;
+    }
+    .hs-discover-avatar {
+      width: 20px;
+      height: 20px;
+      flex-shrink: 0;
+    }
+    .hs-discover-profile-name {
+      color: #fff;
+      font-size: 12px;
+      font-weight: 600;
+      flex: 1;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .hs-discover-heat {
+      font-size: 11px;
+      color: #808080;
+      flex-shrink: 0;
+    }
   `;
   document.head.appendChild(style);
 }

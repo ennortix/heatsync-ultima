@@ -1452,3 +1452,161 @@ function buildNotifDiv(m) {
   return div;
 }
 
+// ============================================
+// DISCOVER TAB (trending tags + profiles)
+// ============================================
+
+let discoverLoaded = false;
+let discoverLoading = false;
+let discoverTags = [];
+let discoverProfiles = [];
+
+function _discoverSetLoading(msgsEl) {
+  msgsEl.textContent = '';
+  const el = document.createElement('div');
+  el.className = 'hs-mc-empty';
+  el.textContent = 'loading...';
+  msgsEl.appendChild(el);
+}
+
+async function fetchDiscover() {
+  if (discoverLoading) return;
+  discoverLoading = true;
+
+  const msgsEl = document.getElementById('hs-mc-messages');
+  if (msgsEl && currentTab === 'discover') _discoverSetLoading(msgsEl);
+
+  try {
+    const [tagsResp, profilesResp] = await Promise.all([
+      apiFetch('/api/discover/trending-tags'),
+      apiFetch('/api/profiles/trending'),
+    ]);
+
+    discoverTags = tagsResp.ok ? (tagsResp.data || tagsResp.tags || []) : [];
+    discoverProfiles = profilesResp.ok ? (profilesResp.data || profilesResp.profiles || []) : [];
+    discoverLoaded = true;
+  } catch (e) {
+    discoverTags = [];
+    discoverProfiles = [];
+    discoverLoaded = true;
+  } finally {
+    discoverLoading = false;
+    if (currentTab === 'discover') renderDiscoverTab();
+  }
+}
+
+function renderDiscoverTab() {
+  const msgsEl = document.getElementById('hs-mc-messages');
+  if (!msgsEl) return;
+
+  // Insert refresh bar above message area once
+  if (!document.getElementById('hs-discover-refresh-bar')) {
+    const bar = document.createElement('div');
+    bar.id = 'hs-discover-refresh-bar';
+    bar.className = 'hs-discover-refresh-bar';
+    const btn = document.createElement('button');
+    btn.className = 'hs-discover-refresh-btn';
+    btn.textContent = 'refresh';
+    btn.addEventListener('click', () => {
+      discoverLoaded = false;
+      fetchDiscover();
+    });
+    bar.appendChild(btn);
+    msgsEl.parentNode?.insertBefore(bar, msgsEl);
+  }
+
+  if (!discoverLoaded && !discoverLoading) {
+    fetchDiscover();
+    return;
+  }
+  if (discoverLoading) {
+    _discoverSetLoading(msgsEl);
+    return;
+  }
+
+  msgsEl.textContent = '';
+  const frag = document.createDocumentFragment();
+
+  // Tags section
+  if (discoverTags.length > 0) {
+    const section = document.createElement('div');
+    section.className = 'hs-discover-section';
+    const heading = document.createElement('div');
+    heading.className = 'hs-discover-heading';
+    heading.textContent = 'trending tags';
+    section.appendChild(heading);
+
+    const chips = document.createElement('div');
+    chips.className = 'hs-discover-chips';
+    for (const tag of discoverTags) {
+      const name = typeof tag === 'string' ? tag : (tag.name || tag.tag || '');
+      if (!name) continue;
+      const chip = document.createElement('a');
+      chip.className = 'hs-discover-chip';
+      chip.href = `https://heatsync.org/tags/${encodeURIComponent(name)}`;
+      chip.target = '_blank';
+      chip.rel = 'noopener noreferrer';
+      chip.textContent = escapeHtml(name);
+      chips.appendChild(chip);
+    }
+    section.appendChild(chips);
+    frag.appendChild(section);
+  }
+
+  // Profiles section
+  if (discoverProfiles.length > 0) {
+    const section = document.createElement('div');
+    section.className = 'hs-discover-section';
+    const heading = document.createElement('div');
+    heading.className = 'hs-discover-heading';
+    heading.textContent = 'trending profiles';
+    section.appendChild(heading);
+
+    for (const profile of discoverProfiles) {
+      const username = profile.username || profile.name || '';
+      if (!username) continue;
+      const row = document.createElement('a');
+      row.className = 'hs-discover-profile-row';
+      row.href = `https://heatsync.org/@${encodeURIComponent(username)}`;
+      row.target = '_blank';
+      row.rel = 'noopener noreferrer';
+
+      const avatarUrl = safeUrl(profile.avatar_url || profile.avatar || '');
+      if (avatarUrl) {
+        const img = document.createElement('img');
+        img.className = 'hs-feed-avatar hs-discover-avatar';
+        img.src = avatarUrl;
+        img.alt = '';
+        img.loading = 'lazy';
+        img.onerror = function() { this.style.display = 'none'; };
+        row.appendChild(img);
+      }
+
+      const nameSpan = document.createElement('span');
+      nameSpan.className = 'hs-discover-profile-name';
+      nameSpan.textContent = escapeHtml(username);
+      row.appendChild(nameSpan);
+
+      const heat = profile.heat_count ?? profile.heat ?? profile.score ?? null;
+      if (heat != null) {
+        const heatSpan = document.createElement('span');
+        heatSpan.className = 'hs-discover-heat';
+        heatSpan.textContent = `${Number(heat).toLocaleString()} heat`;
+        row.appendChild(heatSpan);
+      }
+
+      section.appendChild(row);
+    }
+    frag.appendChild(section);
+  }
+
+  if (discoverTags.length === 0 && discoverProfiles.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'hs-mc-empty';
+    empty.textContent = 'nothing to show';
+    frag.appendChild(empty);
+  }
+
+  msgsEl.appendChild(frag);
+}
+

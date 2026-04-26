@@ -1,1174 +1,2557 @@
 {
-  "manifest_name": {
-    "message": "heatsync"
-  },
-  "manifest_description": {
-    "message": "Twitch、Kick、YouTubeチャット用カスタムエモート。スロット無制限、タブ補完、リアルタイム同期。"
-  },
-  "common_loading": {
-    "message": "読み込み中..."
-  },
-  "common_extension_updated": {
-    "message": "拡張機能が更新されました — ページを更新してください"
-  },
-  "common_no_matches": {
-    "message": "一致なし"
-  },
-  "common_retry": {
-    "message": "再試行"
-  },
-  "common_cancel": {
-    "message": "キャンセル"
-  },
-  "common_save": {
-    "message": "保存"
-  },
-  "common_add": {
-    "message": "追加"
-  },
-  "common_edit": {
-    "message": "編集"
-  },
-  "common_remove": {
-    "message": "削除"
-  },
-  "common_done": {
-    "message": "完了"
-  },
-  "common_ended": {
-    "message": "終了"
-  },
-  "common_vote": {
-    "message": "投票"
-  },
-  "common_set": {
-    "message": "設定"
-  },
-  "common_default": {
-    "message": "デフォルト"
-  },
-  "common_mention": {
-    "message": "メンション"
-  },
-  "common_user_not_found": {
-    "message": "ユーザーが見つかりません"
-  },
-  "popup_title": {
-    "message": "heatsync"
-  },
-  "popup_status_checking": {
-    "message": "確認中..."
-  },
-  "popup_status_connected": {
-    "message": "接続済み"
-  },
-  "popup_status_api_error": {
-    "message": "apiエラー"
-  },
-  "popup_status_offline": {
-    "message": "オフライン"
-  },
-  "popup_user_stats": {
-    "message": "$EMOTES$ エモート · $GLOBALS$ グローバル",
-    "placeholders": {
-      "emotes": {
-        "content": "$1"
-      },
-      "globals": {
-        "content": "$2"
-      }
-    }
-  },
-  "popup_user_stats_heat": {
-    "message": "$EMOTES$ エモート · $GLOBALS$ グローバル · $HEAT$ heat",
-    "placeholders": {
-      "emotes": {
-        "content": "$1"
-      },
-      "globals": {
-        "content": "$2"
-      },
-      "heat": {
-        "content": "$3"
-      }
-    }
-  },
-  "popup_btn_emotes": {
-    "message": "エモート"
-  },
-  "popup_btn_refresh": {
-    "message": "更新"
-  },
-  "popup_btn_site": {
-    "message": "サイト"
-  },
-  "popup_btn_done": {
-    "message": "完了"
-  },
-  "popup_login_prompt": {
-    "message": "ログインしてエモートを同期"
-  },
-  "popup_channel_placeholder": {
-    "message": "チャンネル"
-  },
-  "popup_btn_popout": {
-    "message": "ポップアウト"
-  },
-  "popup_hint": {
-    "message": "チャットのピッカーパネルでエモート設定"
-  },
-  "welcome_title": {
-    "message": "heatsyncへようこそ"
-  },
-  "welcome_tagline": {
-    "message": "あなたのエモート、どこのチャットでも"
-  },
-  "welcome_step1_title": {
-    "message": "heatsync.orgでログイン"
-  },
-  "welcome_step1_desc": {
-    "message": "twitchまたはkickでサインインしてアカウント作成"
-  },
-  "welcome_step2_title": {
-    "message": "エモートをアップロード"
-  },
-  "welcome_step2_desc": {
-    "message": "画像を追加 — スロット制限なし、全フォーマット対応"
-  },
-  "welcome_step3_title": {
-    "message": "チャットで使う"
-  },
-  "welcome_step3_desc": {
-    "message": "twitch/kickチャットのheatsyncボタンをクリックしてエモートを使用"
-  },
-  "welcome_cta": {
-    "message": "はじめる"
-  },
-  "welcome_privacy": {
-    "message": "プライバシー"
-  },
-  "welcome_source": {
-    "message": "ソース"
-  },
-  "btn_auth_login": {
-    "message": "ログイン"
-  },
-  "btn_auth_save_emotes": {
-    "message": "エモートをセットに保存するには"
-  },
-  "btn_tab_channel": {
-    "message": "チャンネル"
-  },
-  "btn_tab_global": {
-    "message": "グローバル"
-  },
-  "btn_tab_mine": {
-    "message": "マイ"
-  },
-  "btn_tab_emoji": {
-    "message": "絵文字"
-  },
-  "btn_search_placeholder": {
-    "message": "エモートを検索..."
-  },
-  "btn_rotate_title": {
-    "message": "タブバーの位置を切り替え"
-  },
-  "btn_settings_title": {
-    "message": "設定"
-  },
-  "btn_no_emotes": {
-    "message": "エモートなし"
-  },
-  "btn_login_save_emotes": {
-    "message": "heatsync.orgにログインしてエモートを保存"
-  },
-  "btn_cached": {
-    "message": "キャッシュ済み"
-  },
-  "btn_loading_emotes": {
-    "message": "エモート読み込み中"
-  },
-  "btn_no_third_party": {
-    "message": "サードパーティエモートなし"
-  },
-  "btn_no_emotes_import": {
-    "message": "インポートするエモートなし"
-  },
-  "btn_import_count": {
-    "message": "$COUNT$個のエモートをインポート",
-    "placeholders": {
-      "count": {
-        "content": "$1"
-      }
-    }
-  },
-  "btn_failed_load": {
-    "message": "エモートの読み込みに失敗"
-  },
-  "btn_retry_loading": {
-    "message": "再読み込み"
-  },
-  "btn_ctx_block": {
-    "message": "エモートをブロック"
-  },
-  "btn_ctx_unblock": {
-    "message": "エモートのブロックを解除"
-  },
-  "btn_ctx_remove_inventory": {
-    "message": "インベントリから削除"
-  },
-  "btn_ctx_add_inventory": {
-    "message": "インベントリに追加"
-  },
-  "btn_ctx_copy_name": {
-    "message": "エモート名をコピー"
-  },
-  "btn_ctx_copy_url": {
-    "message": "エモートurlをコピー"
-  },
-  "btn_toast_unblocked": {
-    "message": "ブロック解除済み"
-  },
-  "btn_toast_blocked": {
-    "message": "ブロック済み"
-  },
-  "btn_toast_removed": {
-    "message": "削除済み"
-  },
-  "btn_toast_added": {
-    "message": "追加済み"
-  },
-  "btn_toast_copied": {
-    "message": "コピーしました!"
-  },
-  "btn_settings_tab_completion": {
-    "message": "タブ補完"
-  },
-  "btn_settings_chat_ui": {
-    "message": "チャットui"
-  },
-  "btn_settings_input": {
-    "message": "入力"
-  },
-  "btn_settings_wysiwyg": {
-    "message": "wysiwygエモート"
-  },
-  "btn_settings_space_after": {
-    "message": "エモート後のスペース"
-  },
-  "btn_settings_placeholder_mode": {
-    "message": "プレースホルダーモード"
-  },
-  "btn_settings_placeholder_desc": {
-    "message": "カラーボックスを表示"
-  },
-  "btn_settings_hide_header": {
-    "message": "ヘッダーを非表示"
-  },
-  "btn_settings_always_popout": {
-    "message": "(ポップアウトでは常にオン)"
-  },
-  "btn_settings_compact_input": {
-    "message": "コンパクト入力"
-  },
-  "btn_settings_highlight_mentions": {
-    "message": "メンションをハイライト"
-  },
-  "btn_settings_platform_badges": {
-    "message": "プラットフォームバッジ"
-  },
-  "btn_settings_platform_badges_desc": {
-    "message": "メッセージに [T] [K] [YT] を表示"
-  },
-  "btn_settings_cosmetics": {
-    "message": "コスメティック"
-  },
-  "btn_settings_cosmetics_desc": {
-    "message": "7TV/BTTV/FFZ ペイント + バッジ"
-  },
-  "btn_settings_vi_mode": {
-    "message": "viモード"
-  },
-  "btn_settings_vi_mode_desc": {
-    "message": "チャット入力用vimキーバインド"
-  },
-  "btn_size_1x": {
-    "message": "1x"
-  },
-  "btn_size_2x": {
-    "message": "2x"
-  },
-  "btn_size_4x": {
-    "message": "4x"
-  },
-  "btn_expand": {
-    "message": "展開"
-  },
-  "btn_collapse": {
-    "message": "折りたたむ"
-  },
-  "btn_block_all": {
-    "message": "すべてブロック"
-  },
-  "btn_show_all": {
-    "message": "すべて表示"
-  },
-  "btn_click_expand": {
-    "message": "クリックして展開"
-  },
-  "content_toast_failed_add": {
-    "message": "$NAME$の追加に失敗: $ERROR$",
-    "placeholders": {
-      "name": {
-        "content": "$1"
-      },
-      "error": {
-        "content": "$2"
-      }
-    }
-  },
-  "content_toast_failed_remove": {
-    "message": "$NAME$の削除に失敗: $ERROR$",
-    "placeholders": {
-      "name": {
-        "content": "$1"
-      },
-      "error": {
-        "content": "$2"
-      }
-    }
-  },
-  "content_toast_unblocked": {
-    "message": "$NAME$のブロックを解除",
-    "placeholders": {
-      "name": {
-        "content": "$1"
-      }
-    }
-  },
-  "content_toast_failed_unblock": {
-    "message": "ブロック解除に失敗: $ERROR$",
-    "placeholders": {
-      "error": {
-        "content": "$1"
-      }
-    }
-  },
-  "content_toast_removed": {
-    "message": "セットから$NAME$を削除",
-    "placeholders": {
-      "name": {
-        "content": "$1"
-      }
-    }
-  },
-  "content_toast_failed_block": {
-    "message": "ブロックに失敗: $ERROR$",
-    "placeholders": {
-      "error": {
-        "content": "$1"
-      }
-    }
-  },
-  "content_toast_blocked": {
-    "message": "$NAME$をブロック",
-    "placeholders": {
-      "name": {
-        "content": "$1"
-      }
-    }
-  },
-  "content_toast_unmuted": {
-    "message": "$NAME$のミュートを解除",
-    "placeholders": {
-      "name": {
-        "content": "$1"
-      }
-    }
-  },
-  "content_toast_muted_24h": {
-    "message": "$NAME$を24時間ミュート",
-    "placeholders": {
-      "name": {
-        "content": "$1"
-      }
-    }
-  },
-  "content_card_follows_you": {
-    "message": "あなたをフォロー"
-  },
-  "content_card_subs_to_you": {
-    "message": "あなたをサブ"
-  },
-  "content_card_you_follow": {
-    "message": "フォロー中"
-  },
-  "content_card_you_sub": {
-    "message": "サブ中"
-  },
-  "content_card_you_sub_tier": {
-    "message": "T$TIER$サブ中",
-    "placeholders": {
-      "tier": {
-        "content": "$1"
-      }
-    }
-  },
-  "content_card_subbed": {
-    "message": "$CHANNEL$を$TENURE$サブ中",
-    "placeholders": {
-      "channel": {
-        "content": "$1"
-      },
-      "tenure": {
-        "content": "$2"
-      }
-    }
-  },
-  "content_card_following": {
-    "message": "$CHANNEL$を$AGE$フォロー中",
-    "placeholders": {
-      "channel": {
-        "content": "$1"
-      },
-      "age": {
-        "content": "$2"
-      }
-    }
-  },
-  "content_card_not_following": {
-    "message": "$CHANNEL$をフォローしていない",
-    "placeholders": {
-      "channel": {
-        "content": "$1"
-      }
-    }
-  },
-  "content_card_followed_by": {
-    "message": "$CHANNEL$にフォローされている",
-    "placeholders": {
-      "channel": {
-        "content": "$1"
-      }
-    }
-  },
-  "content_card_following_count": {
-    "message": "$COUNT$フォロー中",
-    "placeholders": {
-      "count": {
-        "content": "$1"
-      }
-    }
-  },
-  "content_card_followers": {
-    "message": "フォロワー$COUNT$人",
-    "placeholders": {
-      "count": {
-        "content": "$1"
-      }
-    }
-  },
-  "content_card_partner": {
-    "message": "パートナー"
-  },
-  "content_card_affiliate": {
-    "message": "アフィリエイト"
-  },
-  "content_card_live": {
-    "message": "LIVE $VIEWERS$",
-    "placeholders": {
-      "viewers": {
-        "content": "$1"
-      }
-    }
-  },
-  "content_card_twitch_verified": {
-    "message": "Twitch認証済み"
-  },
-  "content_card_kick_verified": {
-    "message": "Kick認証済み"
-  },
-  "content_view_on_heatsync": {
-    "message": "heatsyncで見る"
-  },
-  "content_in_your_set": {
-    "message": "セットに追加済み"
-  },
-  "content_click_to_add": {
-    "message": "クリックして追加"
-  },
-  "content_blocked_click_unblock": {
-    "message": "ブロック済み (クリックで解除)"
-  },
-  "mc_tab_feed": {
-    "message": "フィード"
-  },
-  "mc_tab_whispers": {
-    "message": "ウィスパー"
-  },
-  "mc_tab_mentions": {
-    "message": "メンション"
-  },
-  "mc_tab_activity": {
-    "message": "アクティビティ"
-  },
-  "mc_tab_live": {
-    "message": "ライブ"
-  },
-  "mc_tab_live_channel": {
-    "message": "ライブ · $CHANNEL$",
-    "placeholders": {
-      "channel": {
-        "content": "$1"
-      }
-    }
-  },
-  "mc_btn_rotate_tabs": {
-    "message": "タブ切り替え (T)"
-  },
-  "mc_btn_smaller_text": {
-    "message": "テキストを小さく"
-  },
-  "mc_btn_larger_text": {
-    "message": "テキストを大きく"
-  },
-  "mc_btn_settings": {
-    "message": "設定"
-  },
-  "mc_new_messages": {
-    "message": "$COUNT$件の新着",
-    "placeholders": {
-      "count": {
-        "content": "$1"
-      }
-    }
-  },
-  "mc_resume": {
-    "message": "再開"
-  },
-  "mc_no_messages": {
-    "message": "まだメッセージなし"
-  },
-  "mc_no_activity": {
-    "message": "まだアクティビティなし"
-  },
-  "mc_add_channel": {
-    "message": "チャンネル追加"
-  },
-  "mc_enter_platform": {
-    "message": "少なくとも1つのプラットフォームを入力"
-  },
-  "mc_username_placeholder": {
-    "message": "ユーザー名"
-  },
-  "mc_username_url_placeholder": {
-    "message": "ユーザー名またはurl"
-  },
-  "mc_reserved_name": {
-    "message": "予約済みの名前"
-  },
-  "mc_channel_exists": {
-    "message": "チャンネルは既に存在します"
-  },
-  "mc_twitch_exists": {
-    "message": "twitchチャンネルは既に追加済み"
-  },
-  "mc_kick_exists": {
-    "message": "kickチャンネルは既に追加済み"
-  },
-  "mc_edit_channel": {
-    "message": "$CHANNEL$を編集",
-    "placeholders": {
-      "channel": {
-        "content": "$1"
-      }
-    }
-  },
-  "mc_no_channel_detected": {
-    "message": "チャンネルが検出されません"
-  },
-  "mc_settings_display": {
-    "message": "表示"
-  },
-  "mc_settings_emote_size": {
-    "message": "エモートサイズ"
-  },
-  "mc_settings_input_preview": {
-    "message": "入力プレビュー"
-  },
-  "mc_settings_clickable_links": {
-    "message": "クリック可能なリンク"
-  },
-  "mc_settings_vi_mode": {
-    "message": "viモード"
-  },
-  "mc_settings_zebra": {
-    "message": "交互シェーディング"
-  },
-  "mc_settings_auto_hide": {
-    "message": "入力欄を自動非表示"
-  },
-  "mc_settings_timestamps": {
-    "message": "タイムスタンプ"
-  },
-  "mc_settings_avatars": {
-    "message": "アバター"
-  },
-  "mc_settings_emote_size_desc": {
-    "message": "チャットのエモート解像度倍率。1xはシャープでコンパクト、2xはほとんどの画面に最適、4xはエモートアートをピクセル単位で見たいとき。"
-  },
-  "mc_settings_input_preview_desc": {
-    "message": "入力中にエモートをテキスト名ではなく画像として入力欄に直接表示。見た目通りに送信されます。"
-  },
-  "mc_settings_clickable_links_desc": {
-    "message": "チャットメッセージのURLをクリック可能なリンクに変換。コピペ派や見知らぬ人を信用しない場合は無効化。"
-  },
-  "mc_settings_vi_mode_desc": {
-    "message": "チャット操作にvimスタイルキーバインド。j/kでスクロール、g/Gで上端/下端、/で検索。マウスはカジュアル用と思っている人向け。"
-  },
-  "mc_settings_zebra_desc": {
-    "message": "チャットメッセージに交互の行シェーディング。ウィンドウが広いときや高速チャットでも長いメッセージを追いやすい。"
-  },
-  "mc_settings_auto_hide_desc": {
-    "message": "メッセージを作成していないときに入力バーを非表示。クリックまたは入力開始で再表示。チャット表示スペースを最大化。"
-  },
-  "mc_settings_timestamps_desc": {
-    "message": "各メッセージの送信時刻をユーザー名の横に表示。AFK中の出来事を確認するのに便利。"
-  },
-  "mc_settings_avatars_desc": {
-    "message": "チャットのユーザー名横にプロフィール画像を表示。常連を一目で識別しやすくなりますが、縦方向のスペースをやや使用。"
-  },
-  "mc_settings_inline_notifs": {
-    "message": "インライン通知"
-  },
-  "mc_settings_notif_op": {
-    "message": "[OP] オリジナルポスト"
-  },
-  "mc_settings_notif_op_reply": {
-    "message": "[OP] 自分のスレッドへのOP返信"
-  },
-  "mc_settings_notif_re": {
-    "message": "[RE] 返信"
-  },
-  "mc_settings_notif_dm": {
-    "message": "[DM] ウィスパー & DM"
-  },
-  "mc_settings_notif_op_desc": {
-    "message": "誰かがフィードに新しいオリジナルポストを投稿したとき、アクティブなチャットタブに通知。"
-  },
-  "mc_settings_notif_op_reply_desc": {
-    "message": "オリジナル投稿者が自分のスレッドに返信したときに通知。"
-  },
-  "mc_settings_notif_re_desc": {
-    "message": "フィード上のあらゆるスレッドに返信があるたびに通知。"
-  },
-  "mc_settings_notif_dm_desc": {
-    "message": "ウィスパーまたはDMを受け取ったときに通知。"
-  },
-  "mc_settings_twitch_events": {
-    "message": "twitchイベント"
-  },
-  "mc_settings_raids": {
-    "message": "レイド"
-  },
-  "mc_settings_hype_trains": {
-    "message": "ハイプトレイン"
-  },
-  "mc_settings_gift_subs": {
-    "message": "ギフトサブ"
-  },
-  "mc_settings_redeems": {
-    "message": "チャンネルポイント交換"
-  },
-  "mc_settings_prediction_banner": {
-    "message": "予測バナー"
-  },
-  "mc_settings_poll_banner": {
-    "message": "投票バナー"
-  },
-  "mc_settings_pinned_messages": {
-    "message": "ピン留めメッセージ"
-  },
-  "mc_settings_features": {
-    "message": "機能"
-  },
-  "mc_settings_auto_claim": {
-    "message": "チャンネルポイントを自動取得"
-  },
-  "mc_settings_auto_claim_desc": {
-    "message": "Twitchにボーナスチャンネルポイントの宝箱が表示されたら自動でクリック。無料ポイント、ゼロ手間。"
-  },
-  "mc_settings_muted_users": {
-    "message": "ミュートユーザー"
-  },
-  "mc_settings_no_muted": {
-    "message": "ミュートユーザーなし"
-  },
-  "mc_settings_unmute": {
-    "message": "ミュート解除"
-  },
-  "mc_pred_no_active": {
-    "message": "アクティブな予測なし"
-  },
-  "mc_pred_new": {
-    "message": "+ 新しい予測"
-  },
-  "mc_pred_title_placeholder": {
-    "message": "予測タイトル"
-  },
-  "mc_pred_option1": {
-    "message": "オプション1 (青)"
-  },
-  "mc_pred_option2": {
-    "message": "オプション2 (ピンク)"
-  },
-  "mc_pred_duration": {
-    "message": "期間:"
-  },
-  "mc_pred_create": {
-    "message": "予測を作成"
-  },
-  "mc_pred_refunded": {
-    "message": "返金済み"
-  },
-  "mc_pred_locked": {
-    "message": "ロック済み"
-  },
-  "mc_pred_winner": {
-    "message": "勝者"
-  },
-  "mc_pred_won": {
-    "message": " 勝利"
-  },
-  "mc_pred_lost": {
-    "message": " 敗北"
-  },
-  "mc_pred_lock_betting": {
-    "message": "ベットをロック"
-  },
-  "mc_pred_cancel_refund": {
-    "message": "キャンセル (返金)"
-  },
-  "mc_pred_pick_winner": {
-    "message": "勝者を選択"
-  },
-  "mc_pred_pick_winner_your_bet": {
-    "message": "勝者を選択 (あなたのベット)"
-  },
-  "mc_pred_failed_load": {
-    "message": "予測を読み込めませんでした"
-  },
-  "mc_pred_bet_own": {
-    "message": "自分の配信にはベット不可"
-  },
-  "mc_pred_try_again": {
-    "message": "再試行"
-  },
-  "mc_pred_ended": {
-    "message": "予測終了"
-  },
-  "mc_pred_betting_locked": {
-    "message": "ベットロック済み"
-  },
-  "mc_pred_not_enough": {
-    "message": "ポイント不足"
-  },
-  "mc_pred_already_bet": {
-    "message": "ベット済み"
-  },
-  "mc_pred_no_permission": {
-    "message": "権限なし"
-  },
-  "mc_pred_failed": {
-    "message": "失敗"
-  },
-  "mc_pred_no_event": {
-    "message": "イベントなし"
-  },
-  "mc_pred_no_outcome": {
-    "message": "結果なし"
-  },
-  "mc_pred_closing": {
-    "message": "終了中..."
-  },
-  "mc_pred_you_bet": {
-    "message": "$OUTCOME$に$POINTS$ポイントベット — 実際の勝者を選んでください",
-    "placeholders": {
-      "points": {
-        "content": "$1"
-      },
-      "outcome": {
-        "content": "$2"
-      }
-    }
-  },
-  "mc_poll_new": {
-    "message": "+ 新しい投票"
-  },
-  "mc_poll_question": {
-    "message": "投票の質問"
-  },
-  "mc_poll_choice": {
-    "message": "選択肢$NUM$",
-    "placeholders": {
-      "num": {
-        "content": "$1"
-      }
-    }
-  },
-  "mc_poll_choice_optional": {
-    "message": "選択肢$NUM$ (任意)",
-    "placeholders": {
-      "num": {
-        "content": "$1"
-      }
-    }
-  },
-  "mc_poll_create": {
-    "message": "投票を作成"
-  },
-  "mc_poll_end": {
-    "message": "投票を終了"
-  },
-  "mc_poll_votes": {
-    "message": "$COUNT$票",
-    "placeholders": {
-      "count": {
-        "content": "$1"
-      }
-    }
-  },
-  "mc_poll_vote_single": {
-    "message": "$COUNT$票",
-    "placeholders": {
-      "count": {
-        "content": "$1"
-      }
-    }
-  },
-  "mc_poll_already_active": {
-    "message": "投票は既に進行中"
-  },
-  "mc_poll_not_logged_in": {
-    "message": "ログインしていません"
-  },
-  "mc_reward_rewards": {
-    "message": "リワード"
-  },
-  "mc_reward_none": {
-    "message": "利用可能なリワードなし"
-  },
-  "mc_reward_paused": {
-    "message": "一時停止中"
-  },
-  "mc_reward_out_of_stock": {
-    "message": "在庫切れ"
-  },
-  "mc_reward_cooldown_min": {
-    "message": "$MIN$分クールダウン",
-    "placeholders": {
-      "min": {
-        "content": "$1"
-      }
-    }
-  },
-  "mc_reward_cooldown_sec": {
-    "message": "$SEC$秒クールダウン",
-    "placeholders": {
-      "sec": {
-        "content": "$1"
-      }
-    }
-  },
-  "mc_reward_enter_text": {
-    "message": "テキストを入力..."
-  },
-  "mc_reward_redeem": {
-    "message": "交換"
-  },
-  "mc_chat_username_color": {
-    "message": "ユーザー名の色"
-  },
-  "mc_chat_hex_placeholder": {
-    "message": "#hex"
-  },
-  "mc_chat_modes": {
-    "message": "チャットモード"
-  },
-  "mc_chat_emote_only": {
-    "message": "エモートのみ"
-  },
-  "mc_chat_follower": {
-    "message": "フォロワー"
-  },
-  "mc_chat_slow": {
-    "message": "スロー"
-  },
-  "mc_chat_sub_only": {
-    "message": "サブのみ"
-  },
-  "mc_chat_unique": {
-    "message": "ユニーク"
-  },
-  "mc_chat_hype_train": {
-    "message": "ハイプトレイン"
-  },
-  "mc_chat_hype_level": {
-    "message": "レベル$LEVEL$",
-    "placeholders": {
-      "level": {
-        "content": "$1"
-      }
-    }
-  },
-  "mc_input_send_message": {
-    "message": "メッセージを送信..."
-  },
-  "mc_input_post_heatsync": {
-    "message": "heatsyncに投稿..."
-  },
-  "mc_input_send_channel": {
-    "message": "#$CHANNEL$に送信",
-    "placeholders": {
-      "channel": {
-        "content": "$1"
-      }
-    }
-  },
-  "mc_input_replying_to": {
-    "message": "@$USER$に返信",
-    "placeholders": {
-      "user": {
-        "content": "$1"
-      }
-    }
-  },
-  "mc_input_cancel_reply": {
-    "message": "返信をキャンセル"
-  },
-  "mc_input_not_logged_in": {
-    "message": "ログインしていません"
-  },
-  "mc_input_login_kick": {
-    "message": "先にkick.comにログイン"
-  },
-  "mc_input_open_kick": {
-    "message": "タブでkick.comを開く"
-  },
-  "mc_input_kick_not_found": {
-    "message": "kickチャンネルが見つかりません"
-  },
-  "mc_input_send_failed": {
-    "message": "送信失敗"
-  },
-  "mc_input_no_username": {
-    "message": "ユーザー名が検出されません"
-  },
-  "mc_input_auth_failed": {
-    "message": "認証失敗 — twitchに再ログイン"
-  },
-  "mc_input_connection_failed": {
-    "message": "接続失敗 — 再試行してください"
-  },
-  "mc_input_send_failed_retry": {
-    "message": "送信失敗 — 再試行してください"
-  },
-  "mc_social_back": {
-    "message": "<- 戻る"
-  },
-  "mc_social_no_posts": {
-    "message": "まだ投稿なし"
-  },
-  "mc_social_loading_feed": {
-    "message": "フォロー中フィード読み込み中..."
-  },
-  "mc_social_scroll_more": {
-    "message": "スクロールしてさらに表示..."
-  },
-  "mc_social_no_replies": {
-    "message": "まだ返信なし"
-  },
-  "mc_social_login_first": {
-    "message": "先にheatsync.orgにログイン"
-  },
-  "mc_social_login_activity": {
-    "message": "アクティビティを見るにはheatsync.orgにログイン"
-  },
-  "mc_social_failed_feed_auth": {
-    "message": "フィード読み込み失敗 — heatsync.orgにログイン"
-  },
-  "mc_social_failed_feed": {
-    "message": "フィード読み込み失敗"
-  },
-  "mc_social_log_in_first": {
-    "message": "先にログイン"
-  },
-  "mc_social_slow_down": {
-    "message": "ゆっくりしてください"
-  },
-  "mc_social_duplicate": {
-    "message": "重複メッセージ"
-  },
-  "mc_social_failed_post": {
-    "message": "投稿失敗"
-  },
-  "mc_tip_emoji": {
-    "message": "絵文字"
-  },
-  "mc_tip_subbed": {
-    "message": "$CHANNEL$を$TENURE$サブ中",
-    "placeholders": {
-      "channel": {
-        "content": "$1"
-      },
-      "tenure": {
-        "content": "$2"
-      }
-    }
-  },
-  "mc_tip_following": {
-    "message": "$CHANNEL$を$AGE$フォロー中",
-    "placeholders": {
-      "channel": {
-        "content": "$1"
-      },
-      "age": {
-        "content": "$2"
-      }
-    }
-  },
-  "mc_tip_not_following": {
-    "message": "$CHANNEL$をフォローしていない",
-    "placeholders": {
-      "channel": {
-        "content": "$1"
-      }
-    }
-  },
-  "mc_tip_followed_by": {
-    "message": "$CHANNEL$にフォローされている",
-    "placeholders": {
-      "channel": {
-        "content": "$1"
-      }
-    }
-  },
-  "mc_tip_followers": {
-    "message": "フォロワー$COUNT$人",
-    "placeholders": {
-      "count": {
-        "content": "$1"
-      }
-    }
-  },
-  "mc_whisper_hint": {
-    "message": "/w ユーザー メッセージ · /dm ユーザー メッセージ · /r メッセージ"
-  },
-  "mc_whisper_login": {
-    "message": "ウィスパーを送るにはheatsync.orgにログイン"
-  },
-  "mc_whisper_user_not_found": {
-    "message": "twitchユーザー\"$USER$\"が見つかりません",
-    "placeholders": {
-      "user": {
-        "content": "$1"
-      }
-    }
-  },
-  "mc_whisper_resolve_failed": {
-    "message": "twitchユーザーの解決に失敗"
-  },
-  "mc_whisper_hs_not_found": {
-    "message": "heatyncユーザー\"$USER$\"が見つかりません",
-    "placeholders": {
-      "user": {
-        "content": "$1"
-      }
-    }
-  },
-  "mc_irc_chat_cleared": {
-    "message": "チャットがクリアされました"
-  },
-  "mc_irc_msg_deleted": {
-    "message": "$USER$のメッセージが削除されました",
-    "placeholders": {
-      "user": {
-        "content": "$1"
-      }
-    }
-  },
-  "mc_irc_gift_subs": {
-    "message": "$USER$が$CHANNEL$に$AMOUNT$サブをギフト",
-    "placeholders": {
-      "user": {
-        "content": "$1"
-      },
-      "amount": {
-        "content": "$2"
-      },
-      "channel": {
-        "content": "$3"
-      }
-    }
-  },
-  "mc_yt_connected": {
-    "message": "YouTube接続済み: $CHANNEL$ — メッセージ待機中...",
-    "placeholders": {
-      "channel": {
-        "content": "$1"
-      }
-    }
-  },
-  "mc_yt_ended": {
-    "message": "YouTubeストリーム終了"
-  },
-  "mc_yt_error": {
-    "message": "YouTube接続エラー"
-  },
-  "mc_emote_search_placeholder": {
-    "message": "エモートを検索..."
-  },
-  "mc_emote_no_loaded": {
-    "message": "エモートが読み込まれていません"
-  },
-  "mc_emote_in_set": {
-    "message": "セットに追加済み"
-  },
-  "mc_emote_click_add": {
-    "message": "クリックして追加"
-  },
-  "mc_emote_blocked": {
-    "message": "ブロック済み (クリックで解除)"
-  },
-  "content_toast_unknown_error": {
-    "message": "不明なエラー"
-  },
-  "content_toast_loading_emotes": {
-    "message": "emoteを読み込み中..."
-  },
-  "content_toast_fetching_emotes": {
-    "message": "emoteを取得中..."
-  },
-  "content_card_action_ban": {
-    "message": "BAN"
-  },
-  "content_card_action_unban": {
-    "message": "BAN解除"
-  },
-  "content_card_action_block": {
-    "message": "ブロック"
-  },
-  "btn_close": {
-    "message": "閉じる"
-  },
-  "btn_error_channel": {
-    "message": "チャンネルemoteの読み込みに失敗"
-  },
-  "btn_error_global": {
-    "message": "グローバルemoteの読み込みに失敗"
-  },
-  "btn_error_inventory": {
-    "message": "emoteの読み込みに失敗"
-  }
+  "manifest_name": [
+    [
+      "message",
+      "heatsync"
+    ]
+  ],
+  "manifest_description": [
+    [
+      "message",
+      "Twitch、Kick、YouTubeチャット用カスタムエモート。スロット無制限、タブ補完、リアルタイム同期。"
+    ]
+  ],
+  "common_loading": [
+    [
+      "message",
+      "読み込み中..."
+    ]
+  ],
+  "common_extension_updated": [
+    [
+      "message",
+      "拡張機能が更新されました — ページを更新してください"
+    ]
+  ],
+  "common_no_matches": [
+    [
+      "message",
+      "一致なし"
+    ]
+  ],
+  "common_retry": [
+    [
+      "message",
+      "再試行"
+    ]
+  ],
+  "common_cancel": [
+    [
+      "message",
+      "キャンセル"
+    ]
+  ],
+  "common_save": [
+    [
+      "message",
+      "保存"
+    ]
+  ],
+  "common_add": [
+    [
+      "message",
+      "追加"
+    ]
+  ],
+  "common_edit": [
+    [
+      "message",
+      "編集"
+    ]
+  ],
+  "common_remove": [
+    [
+      "message",
+      "削除"
+    ]
+  ],
+  "common_done": [
+    [
+      "message",
+      "完了"
+    ]
+  ],
+  "common_ended": [
+    [
+      "message",
+      "終了"
+    ]
+  ],
+  "common_vote": [
+    [
+      "message",
+      "投票"
+    ]
+  ],
+  "common_set": [
+    [
+      "message",
+      "設定"
+    ]
+  ],
+  "common_default": [
+    [
+      "message",
+      "デフォルト"
+    ]
+  ],
+  "common_mention": [
+    [
+      "message",
+      "メンション"
+    ]
+  ],
+  "common_user_not_found": [
+    [
+      "message",
+      "ユーザーが見つかりません"
+    ]
+  ],
+  "popup_title": [
+    [
+      "message",
+      "heatsync"
+    ]
+  ],
+  "popup_status_checking": [
+    [
+      "message",
+      "確認中..."
+    ]
+  ],
+  "popup_status_connected": [
+    [
+      "message",
+      "接続済み"
+    ]
+  ],
+  "popup_status_api_error": [
+    [
+      "message",
+      "apiエラー"
+    ]
+  ],
+  "popup_status_offline": [
+    [
+      "message",
+      "オフライン"
+    ]
+  ],
+  "popup_user_stats": [
+    [
+      "message",
+      "$EMOTES$ エモート · $GLOBALS$ グローバル"
+    ],
+    [
+      "placeholders",
+      [
+        [
+          "emotes",
+          [
+            [
+              "content",
+              "$1"
+            ]
+          ]
+        ],
+        [
+          "globals",
+          [
+            [
+              "content",
+              "$2"
+            ]
+          ]
+        ]
+      ]
+    ]
+  ],
+  "popup_user_stats_heat": [
+    [
+      "message",
+      "$EMOTES$ エモート · $GLOBALS$ グローバル · $HEAT$ heat"
+    ],
+    [
+      "placeholders",
+      [
+        [
+          "emotes",
+          [
+            [
+              "content",
+              "$1"
+            ]
+          ]
+        ],
+        [
+          "globals",
+          [
+            [
+              "content",
+              "$2"
+            ]
+          ]
+        ],
+        [
+          "heat",
+          [
+            [
+              "content",
+              "$3"
+            ]
+          ]
+        ]
+      ]
+    ]
+  ],
+  "popup_btn_emotes": [
+    [
+      "message",
+      "エモート"
+    ]
+  ],
+  "popup_btn_refresh": [
+    [
+      "message",
+      "更新"
+    ]
+  ],
+  "popup_btn_site": [
+    [
+      "message",
+      "サイト"
+    ]
+  ],
+  "popup_btn_done": [
+    [
+      "message",
+      "完了"
+    ]
+  ],
+  "popup_login_prompt": [
+    [
+      "message",
+      "ログインしてエモートを同期"
+    ]
+  ],
+  "popup_channel_placeholder": [
+    [
+      "message",
+      "チャンネル"
+    ]
+  ],
+  "popup_btn_popout": [
+    [
+      "message",
+      "ポップアウト"
+    ]
+  ],
+  "popup_hint": [
+    [
+      "message",
+      "チャットのピッカーパネルでエモート設定"
+    ]
+  ],
+  "welcome_title": [
+    [
+      "message",
+      "heatsyncへようこそ"
+    ]
+  ],
+  "welcome_tagline": [
+    [
+      "message",
+      "あなたのエモート、どこのチャットでも"
+    ]
+  ],
+  "welcome_step1_title": [
+    [
+      "message",
+      "heatsync.orgでログイン"
+    ]
+  ],
+  "welcome_step1_desc": [
+    [
+      "message",
+      "twitchまたはkickでサインインしてアカウント作成"
+    ]
+  ],
+  "welcome_step2_title": [
+    [
+      "message",
+      "エモートをアップロード"
+    ]
+  ],
+  "welcome_step2_desc": [
+    [
+      "message",
+      "画像を追加 — スロット制限なし、全フォーマット対応"
+    ]
+  ],
+  "welcome_step3_title": [
+    [
+      "message",
+      "チャットで使う"
+    ]
+  ],
+  "welcome_step3_desc": [
+    [
+      "message",
+      "twitch/kickチャットのheatsyncボタンをクリックしてエモートを使用"
+    ]
+  ],
+  "welcome_cta": [
+    [
+      "message",
+      "はじめる"
+    ]
+  ],
+  "welcome_privacy": [
+    [
+      "message",
+      "プライバシー"
+    ]
+  ],
+  "welcome_source": [
+    [
+      "message",
+      "ソース"
+    ]
+  ],
+  "btn_auth_login": [
+    [
+      "message",
+      "ログイン"
+    ]
+  ],
+  "btn_auth_save_emotes": [
+    [
+      "message",
+      "エモートをセットに保存するには"
+    ]
+  ],
+  "btn_tab_channel": [
+    [
+      "message",
+      "チャンネル"
+    ]
+  ],
+  "btn_tab_global": [
+    [
+      "message",
+      "グローバル"
+    ]
+  ],
+  "btn_tab_mine": [
+    [
+      "message",
+      "マイ"
+    ]
+  ],
+  "btn_tab_emoji": [
+    [
+      "message",
+      "絵文字"
+    ]
+  ],
+  "btn_search_placeholder": [
+    [
+      "message",
+      "エモートを検索..."
+    ]
+  ],
+  "btn_rotate_title": [
+    [
+      "message",
+      "タブバーの位置を切り替え"
+    ]
+  ],
+  "btn_settings_title": [
+    [
+      "message",
+      "設定"
+    ]
+  ],
+  "btn_no_emotes": [
+    [
+      "message",
+      "エモートなし"
+    ]
+  ],
+  "btn_login_save_emotes": [
+    [
+      "message",
+      "heatsync.orgにログインしてエモートを保存"
+    ]
+  ],
+  "btn_cached": [
+    [
+      "message",
+      "キャッシュ済み"
+    ]
+  ],
+  "btn_loading_emotes": [
+    [
+      "message",
+      "エモート読み込み中"
+    ]
+  ],
+  "btn_no_third_party": [
+    [
+      "message",
+      "サードパーティエモートなし"
+    ]
+  ],
+  "btn_no_emotes_import": [
+    [
+      "message",
+      "インポートするエモートなし"
+    ]
+  ],
+  "btn_import_count": [
+    [
+      "message",
+      "$COUNT$個のエモートをインポート"
+    ],
+    [
+      "placeholders",
+      [
+        [
+          "count",
+          [
+            [
+              "content",
+              "$1"
+            ]
+          ]
+        ]
+      ]
+    ]
+  ],
+  "btn_failed_load": [
+    [
+      "message",
+      "エモートの読み込みに失敗"
+    ]
+  ],
+  "btn_retry_loading": [
+    [
+      "message",
+      "再読み込み"
+    ]
+  ],
+  "btn_ctx_block": [
+    [
+      "message",
+      "エモートをブロック"
+    ]
+  ],
+  "btn_ctx_unblock": [
+    [
+      "message",
+      "エモートのブロックを解除"
+    ]
+  ],
+  "btn_ctx_remove_inventory": [
+    [
+      "message",
+      "インベントリから削除"
+    ]
+  ],
+  "btn_ctx_add_inventory": [
+    [
+      "message",
+      "インベントリに追加"
+    ]
+  ],
+  "btn_ctx_copy_name": [
+    [
+      "message",
+      "エモート名をコピー"
+    ]
+  ],
+  "btn_ctx_copy_url": [
+    [
+      "message",
+      "エモートurlをコピー"
+    ]
+  ],
+  "btn_toast_unblocked": [
+    [
+      "message",
+      "ブロック解除済み"
+    ]
+  ],
+  "btn_toast_blocked": [
+    [
+      "message",
+      "ブロック済み"
+    ]
+  ],
+  "btn_toast_removed": [
+    [
+      "message",
+      "削除済み"
+    ]
+  ],
+  "btn_toast_added": [
+    [
+      "message",
+      "追加済み"
+    ]
+  ],
+  "btn_toast_copied": [
+    [
+      "message",
+      "コピーしました!"
+    ]
+  ],
+  "btn_settings_tab_completion": [
+    [
+      "message",
+      "タブ補完"
+    ]
+  ],
+  "btn_settings_chat_ui": [
+    [
+      "message",
+      "チャットui"
+    ]
+  ],
+  "btn_settings_input": [
+    [
+      "message",
+      "入力"
+    ]
+  ],
+  "btn_settings_wysiwyg": [
+    [
+      "message",
+      "wysiwygエモート"
+    ]
+  ],
+  "btn_settings_space_after": [
+    [
+      "message",
+      "エモート後のスペース"
+    ]
+  ],
+  "btn_settings_placeholder_mode": [
+    [
+      "message",
+      "プレースホルダーモード"
+    ]
+  ],
+  "btn_settings_placeholder_desc": [
+    [
+      "message",
+      "カラーボックスを表示"
+    ]
+  ],
+  "btn_settings_hide_header": [
+    [
+      "message",
+      "ヘッダーを非表示"
+    ]
+  ],
+  "btn_settings_always_popout": [
+    [
+      "message",
+      "(ポップアウトでは常にオン)"
+    ]
+  ],
+  "btn_settings_compact_input": [
+    [
+      "message",
+      "コンパクト入力"
+    ]
+  ],
+  "btn_settings_highlight_mentions": [
+    [
+      "message",
+      "メンションをハイライト"
+    ]
+  ],
+  "btn_settings_platform_badges": [
+    [
+      "message",
+      "プラットフォームバッジ"
+    ]
+  ],
+  "btn_settings_platform_badges_desc": [
+    [
+      "message",
+      "メッセージに [T] [K] [YT] を表示"
+    ]
+  ],
+  "btn_settings_cosmetics": [
+    [
+      "message",
+      "コスメティック"
+    ]
+  ],
+  "btn_settings_cosmetics_desc": [
+    [
+      "message",
+      "7TV/BTTV/FFZ ペイント + バッジ"
+    ]
+  ],
+  "btn_settings_vi_mode": [
+    [
+      "message",
+      "viモード"
+    ]
+  ],
+  "btn_settings_vi_mode_desc": [
+    [
+      "message",
+      "チャット入力用vimキーバインド"
+    ]
+  ],
+  "btn_size_1x": [
+    [
+      "message",
+      "1x"
+    ]
+  ],
+  "btn_size_2x": [
+    [
+      "message",
+      "2x"
+    ]
+  ],
+  "btn_size_4x": [
+    [
+      "message",
+      "4x"
+    ]
+  ],
+  "btn_expand": [
+    [
+      "message",
+      "展開"
+    ]
+  ],
+  "btn_collapse": [
+    [
+      "message",
+      "折りたたむ"
+    ]
+  ],
+  "btn_block_all": [
+    [
+      "message",
+      "すべてブロック"
+    ]
+  ],
+  "btn_show_all": [
+    [
+      "message",
+      "すべて表示"
+    ]
+  ],
+  "btn_click_expand": [
+    [
+      "message",
+      "クリックして展開"
+    ]
+  ],
+  "content_toast_failed_add": [
+    [
+      "message",
+      "$NAME$の追加に失敗: $ERROR$"
+    ],
+    [
+      "placeholders",
+      [
+        [
+          "name",
+          [
+            [
+              "content",
+              "$1"
+            ]
+          ]
+        ],
+        [
+          "error",
+          [
+            [
+              "content",
+              "$2"
+            ]
+          ]
+        ]
+      ]
+    ]
+  ],
+  "content_toast_failed_remove": [
+    [
+      "message",
+      "$NAME$の削除に失敗: $ERROR$"
+    ],
+    [
+      "placeholders",
+      [
+        [
+          "name",
+          [
+            [
+              "content",
+              "$1"
+            ]
+          ]
+        ],
+        [
+          "error",
+          [
+            [
+              "content",
+              "$2"
+            ]
+          ]
+        ]
+      ]
+    ]
+  ],
+  "content_toast_unblocked": [
+    [
+      "message",
+      "$NAME$のブロックを解除"
+    ],
+    [
+      "placeholders",
+      [
+        [
+          "name",
+          [
+            [
+              "content",
+              "$1"
+            ]
+          ]
+        ]
+      ]
+    ]
+  ],
+  "content_toast_failed_unblock": [
+    [
+      "message",
+      "ブロック解除に失敗: $ERROR$"
+    ],
+    [
+      "placeholders",
+      [
+        [
+          "error",
+          [
+            [
+              "content",
+              "$1"
+            ]
+          ]
+        ]
+      ]
+    ]
+  ],
+  "content_toast_removed": [
+    [
+      "message",
+      "セットから$NAME$を削除"
+    ],
+    [
+      "placeholders",
+      [
+        [
+          "name",
+          [
+            [
+              "content",
+              "$1"
+            ]
+          ]
+        ]
+      ]
+    ]
+  ],
+  "content_toast_failed_block": [
+    [
+      "message",
+      "ブロックに失敗: $ERROR$"
+    ],
+    [
+      "placeholders",
+      [
+        [
+          "error",
+          [
+            [
+              "content",
+              "$1"
+            ]
+          ]
+        ]
+      ]
+    ]
+  ],
+  "content_toast_blocked": [
+    [
+      "message",
+      "$NAME$をブロック"
+    ],
+    [
+      "placeholders",
+      [
+        [
+          "name",
+          [
+            [
+              "content",
+              "$1"
+            ]
+          ]
+        ]
+      ]
+    ]
+  ],
+  "content_toast_unmuted": [
+    [
+      "message",
+      "$NAME$のミュートを解除"
+    ],
+    [
+      "placeholders",
+      [
+        [
+          "name",
+          [
+            [
+              "content",
+              "$1"
+            ]
+          ]
+        ]
+      ]
+    ]
+  ],
+  "content_toast_muted_24h": [
+    [
+      "message",
+      "$NAME$を24時間ミュート"
+    ],
+    [
+      "placeholders",
+      [
+        [
+          "name",
+          [
+            [
+              "content",
+              "$1"
+            ]
+          ]
+        ]
+      ]
+    ]
+  ],
+  "content_card_follows_you": [
+    [
+      "message",
+      "あなたをフォロー"
+    ]
+  ],
+  "content_card_subs_to_you": [
+    [
+      "message",
+      "あなたをサブ"
+    ]
+  ],
+  "content_card_you_follow": [
+    [
+      "message",
+      "フォロー中"
+    ]
+  ],
+  "content_card_you_sub": [
+    [
+      "message",
+      "サブ中"
+    ]
+  ],
+  "content_card_you_sub_tier": [
+    [
+      "message",
+      "T$TIER$サブ中"
+    ],
+    [
+      "placeholders",
+      [
+        [
+          "tier",
+          [
+            [
+              "content",
+              "$1"
+            ]
+          ]
+        ]
+      ]
+    ]
+  ],
+  "content_card_subbed": [
+    [
+      "message",
+      "$CHANNEL$を$TENURE$サブ中"
+    ],
+    [
+      "placeholders",
+      [
+        [
+          "channel",
+          [
+            [
+              "content",
+              "$1"
+            ]
+          ]
+        ],
+        [
+          "tenure",
+          [
+            [
+              "content",
+              "$2"
+            ]
+          ]
+        ]
+      ]
+    ]
+  ],
+  "content_card_following": [
+    [
+      "message",
+      "$CHANNEL$を$AGE$フォロー中"
+    ],
+    [
+      "placeholders",
+      [
+        [
+          "channel",
+          [
+            [
+              "content",
+              "$1"
+            ]
+          ]
+        ],
+        [
+          "age",
+          [
+            [
+              "content",
+              "$2"
+            ]
+          ]
+        ]
+      ]
+    ]
+  ],
+  "content_card_not_following": [
+    [
+      "message",
+      "$CHANNEL$をフォローしていない"
+    ],
+    [
+      "placeholders",
+      [
+        [
+          "channel",
+          [
+            [
+              "content",
+              "$1"
+            ]
+          ]
+        ]
+      ]
+    ]
+  ],
+  "content_card_followed_by": [
+    [
+      "message",
+      "$CHANNEL$にフォローされている"
+    ],
+    [
+      "placeholders",
+      [
+        [
+          "channel",
+          [
+            [
+              "content",
+              "$1"
+            ]
+          ]
+        ]
+      ]
+    ]
+  ],
+  "content_card_following_count": [
+    [
+      "message",
+      "$COUNT$フォロー中"
+    ],
+    [
+      "placeholders",
+      [
+        [
+          "count",
+          [
+            [
+              "content",
+              "$1"
+            ]
+          ]
+        ]
+      ]
+    ]
+  ],
+  "content_card_followers": [
+    [
+      "message",
+      "フォロワー$COUNT$人"
+    ],
+    [
+      "placeholders",
+      [
+        [
+          "count",
+          [
+            [
+              "content",
+              "$1"
+            ]
+          ]
+        ]
+      ]
+    ]
+  ],
+  "content_card_partner": [
+    [
+      "message",
+      "パートナー"
+    ]
+  ],
+  "content_card_affiliate": [
+    [
+      "message",
+      "アフィリエイト"
+    ]
+  ],
+  "content_card_live": [
+    [
+      "message",
+      "LIVE $VIEWERS$"
+    ],
+    [
+      "placeholders",
+      [
+        [
+          "viewers",
+          [
+            [
+              "content",
+              "$1"
+            ]
+          ]
+        ]
+      ]
+    ]
+  ],
+  "content_card_twitch_verified": [
+    [
+      "message",
+      "Twitch認証済み"
+    ]
+  ],
+  "content_card_kick_verified": [
+    [
+      "message",
+      "Kick認証済み"
+    ]
+  ],
+  "content_view_on_heatsync": [
+    [
+      "message",
+      "heatsyncで見る"
+    ]
+  ],
+  "content_in_your_set": [
+    [
+      "message",
+      "セットに追加済み"
+    ]
+  ],
+  "content_click_to_add": [
+    [
+      "message",
+      "クリックして追加"
+    ]
+  ],
+  "content_blocked_click_unblock": [
+    [
+      "message",
+      "ブロック済み (クリックで解除)"
+    ]
+  ],
+  "mc_tab_feed": [
+    [
+      "message",
+      "フィード"
+    ]
+  ],
+  "mc_tab_whispers": [
+    [
+      "message",
+      "ウィスパー"
+    ]
+  ],
+  "mc_tab_mentions": [
+    [
+      "message",
+      "メンション"
+    ]
+  ],
+  "mc_tab_activity": [
+    [
+      "message",
+      "アクティビティ"
+    ]
+  ],
+  "mc_tab_live": [
+    [
+      "message",
+      "ライブ"
+    ]
+  ],
+  "mc_tab_discover": {
+    "message": "discover"
+  },
+  "mc_tab_live_channel": [
+    [
+      "message",
+      "ライブ · $CHANNEL$"
+    ],
+    [
+      "placeholders",
+      [
+        [
+          "channel",
+          [
+            [
+              "content",
+              "$1"
+            ]
+          ]
+        ]
+      ]
+    ]
+  ],
+  "mc_btn_rotate_tabs": [
+    [
+      "message",
+      "タブ切り替え (T)"
+    ]
+  ],
+  "mc_btn_smaller_text": [
+    [
+      "message",
+      "テキストを小さく"
+    ]
+  ],
+  "mc_btn_larger_text": [
+    [
+      "message",
+      "テキストを大きく"
+    ]
+  ],
+  "mc_btn_settings": [
+    [
+      "message",
+      "設定"
+    ]
+  ],
+  "mc_new_messages": [
+    [
+      "message",
+      "$COUNT$件の新着"
+    ],
+    [
+      "placeholders",
+      [
+        [
+          "count",
+          [
+            [
+              "content",
+              "$1"
+            ]
+          ]
+        ]
+      ]
+    ]
+  ],
+  "mc_resume": [
+    [
+      "message",
+      "再開"
+    ]
+  ],
+  "mc_no_messages": [
+    [
+      "message",
+      "まだメッセージなし"
+    ]
+  ],
+  "mc_no_activity": [
+    [
+      "message",
+      "まだアクティビティなし"
+    ]
+  ],
+  "mc_add_channel": [
+    [
+      "message",
+      "チャンネル追加"
+    ]
+  ],
+  "mc_enter_platform": [
+    [
+      "message",
+      "少なくとも1つのプラットフォームを入力"
+    ]
+  ],
+  "mc_username_placeholder": [
+    [
+      "message",
+      "ユーザー名"
+    ]
+  ],
+  "mc_username_url_placeholder": [
+    [
+      "message",
+      "ユーザー名またはurl"
+    ]
+  ],
+  "mc_reserved_name": [
+    [
+      "message",
+      "予約済みの名前"
+    ]
+  ],
+  "mc_channel_exists": [
+    [
+      "message",
+      "チャンネルは既に存在します"
+    ]
+  ],
+  "mc_twitch_exists": [
+    [
+      "message",
+      "twitchチャンネルは既に追加済み"
+    ]
+  ],
+  "mc_kick_exists": [
+    [
+      "message",
+      "kickチャンネルは既に追加済み"
+    ]
+  ],
+  "mc_edit_channel": [
+    [
+      "message",
+      "$CHANNEL$を編集"
+    ],
+    [
+      "placeholders",
+      [
+        [
+          "channel",
+          [
+            [
+              "content",
+              "$1"
+            ]
+          ]
+        ]
+      ]
+    ]
+  ],
+  "mc_no_channel_detected": [
+    [
+      "message",
+      "チャンネルが検出されません"
+    ]
+  ],
+  "mc_settings_display": [
+    [
+      "message",
+      "表示"
+    ]
+  ],
+  "mc_settings_emote_size": [
+    [
+      "message",
+      "エモートサイズ"
+    ]
+  ],
+  "mc_settings_input_preview": [
+    [
+      "message",
+      "入力プレビュー"
+    ]
+  ],
+  "mc_settings_clickable_links": [
+    [
+      "message",
+      "クリック可能なリンク"
+    ]
+  ],
+  "mc_settings_vi_mode": [
+    [
+      "message",
+      "viモード"
+    ]
+  ],
+  "mc_settings_zebra": [
+    [
+      "message",
+      "交互シェーディング"
+    ]
+  ],
+  "mc_settings_auto_hide": [
+    [
+      "message",
+      "入力欄を自動非表示"
+    ]
+  ],
+  "mc_settings_timestamps": [
+    [
+      "message",
+      "タイムスタンプ"
+    ]
+  ],
+  "mc_settings_avatars": [
+    [
+      "message",
+      "アバター"
+    ]
+  ],
+  "mc_settings_emote_size_desc": [
+    [
+      "message",
+      "チャットのエモート解像度倍率。1xはシャープでコンパクト、2xはほとんどの画面に最適、4xはエモートアートをピクセル単位で見たいとき。"
+    ]
+  ],
+  "mc_settings_input_preview_desc": [
+    [
+      "message",
+      "入力中にエモートをテキスト名ではなく画像として入力欄に直接表示。見た目通りに送信されます。"
+    ]
+  ],
+  "mc_settings_clickable_links_desc": [
+    [
+      "message",
+      "チャットメッセージのURLをクリック可能なリンクに変換。コピペ派や見知らぬ人を信用しない場合は無効化。"
+    ]
+  ],
+  "mc_settings_vi_mode_desc": [
+    [
+      "message",
+      "チャット操作にvimスタイルキーバインド。j/kでスクロール、g/Gで上端/下端、/で検索。マウスはカジュアル用と思っている人向け。"
+    ]
+  ],
+  "mc_settings_zebra_desc": [
+    [
+      "message",
+      "チャットメッセージに交互の行シェーディング。ウィンドウが広いときや高速チャットでも長いメッセージを追いやすい。"
+    ]
+  ],
+  "mc_settings_auto_hide_desc": [
+    [
+      "message",
+      "メッセージを作成していないときに入力バーを非表示。クリックまたは入力開始で再表示。チャット表示スペースを最大化。"
+    ]
+  ],
+  "mc_settings_timestamps_desc": [
+    [
+      "message",
+      "各メッセージの送信時刻をユーザー名の横に表示。AFK中の出来事を確認するのに便利。"
+    ]
+  ],
+  "mc_settings_avatars_desc": [
+    [
+      "message",
+      "チャットのユーザー名横にプロフィール画像を表示。常連を一目で識別しやすくなりますが、縦方向のスペースをやや使用。"
+    ]
+  ],
+  "mc_settings_inline_notifs": [
+    [
+      "message",
+      "インライン通知"
+    ]
+  ],
+  "mc_settings_notif_op": [
+    [
+      "message",
+      "[OP] オリジナルポスト"
+    ]
+  ],
+  "mc_settings_notif_op_reply": [
+    [
+      "message",
+      "[OP] 自分のスレッドへのOP返信"
+    ]
+  ],
+  "mc_settings_notif_re": [
+    [
+      "message",
+      "[RE] 返信"
+    ]
+  ],
+  "mc_settings_notif_dm": [
+    [
+      "message",
+      "[DM] ウィスパー & DM"
+    ]
+  ],
+  "mc_settings_notif_op_desc": [
+    [
+      "message",
+      "誰かがフィードに新しいオリジナルポストを投稿したとき、アクティブなチャットタブに通知。"
+    ]
+  ],
+  "mc_settings_notif_op_reply_desc": [
+    [
+      "message",
+      "オリジナル投稿者が自分のスレッドに返信したときに通知。"
+    ]
+  ],
+  "mc_settings_notif_re_desc": [
+    [
+      "message",
+      "フィード上のあらゆるスレッドに返信があるたびに通知。"
+    ]
+  ],
+  "mc_settings_notif_dm_desc": [
+    [
+      "message",
+      "ウィスパーまたはDMを受け取ったときに通知。"
+    ]
+  ],
+  "mc_settings_twitch_events": [
+    [
+      "message",
+      "twitchイベント"
+    ]
+  ],
+  "mc_settings_raids": [
+    [
+      "message",
+      "レイド"
+    ]
+  ],
+  "mc_settings_hype_trains": [
+    [
+      "message",
+      "ハイプトレイン"
+    ]
+  ],
+  "mc_settings_gift_subs": [
+    [
+      "message",
+      "ギフトサブ"
+    ]
+  ],
+  "mc_settings_redeems": [
+    [
+      "message",
+      "チャンネルポイント交換"
+    ]
+  ],
+  "mc_settings_prediction_banner": [
+    [
+      "message",
+      "予測バナー"
+    ]
+  ],
+  "mc_settings_poll_banner": [
+    [
+      "message",
+      "投票バナー"
+    ]
+  ],
+  "mc_settings_pinned_messages": [
+    [
+      "message",
+      "ピン留めメッセージ"
+    ]
+  ],
+  "mc_settings_features": [
+    [
+      "message",
+      "機能"
+    ]
+  ],
+  "mc_settings_auto_claim": [
+    [
+      "message",
+      "チャンネルポイントを自動取得"
+    ]
+  ],
+  "mc_settings_auto_claim_desc": [
+    [
+      "message",
+      "Twitchにボーナスチャンネルポイントの宝箱が表示されたら自動でクリック。無料ポイント、ゼロ手間。"
+    ]
+  ],
+  "mc_settings_muted_users": [
+    [
+      "message",
+      "ミュートユーザー"
+    ]
+  ],
+  "mc_settings_no_muted": [
+    [
+      "message",
+      "ミュートユーザーなし"
+    ]
+  ],
+  "mc_settings_unmute": [
+    [
+      "message",
+      "ミュート解除"
+    ]
+  ],
+  "mc_pred_no_active": [
+    [
+      "message",
+      "アクティブな予測なし"
+    ]
+  ],
+  "mc_pred_new": [
+    [
+      "message",
+      "+ 新しい予測"
+    ]
+  ],
+  "mc_pred_title_placeholder": [
+    [
+      "message",
+      "予測タイトル"
+    ]
+  ],
+  "mc_pred_option1": [
+    [
+      "message",
+      "オプション1 (青)"
+    ]
+  ],
+  "mc_pred_option2": [
+    [
+      "message",
+      "オプション2 (ピンク)"
+    ]
+  ],
+  "mc_pred_duration": [
+    [
+      "message",
+      "期間:"
+    ]
+  ],
+  "mc_pred_create": [
+    [
+      "message",
+      "予測を作成"
+    ]
+  ],
+  "mc_pred_refunded": [
+    [
+      "message",
+      "返金済み"
+    ]
+  ],
+  "mc_pred_locked": [
+    [
+      "message",
+      "ロック済み"
+    ]
+  ],
+  "mc_pred_winner": [
+    [
+      "message",
+      "勝者"
+    ]
+  ],
+  "mc_pred_won": [
+    [
+      "message",
+      " 勝利"
+    ]
+  ],
+  "mc_pred_lost": [
+    [
+      "message",
+      " 敗北"
+    ]
+  ],
+  "mc_pred_lock_betting": [
+    [
+      "message",
+      "ベットをロック"
+    ]
+  ],
+  "mc_pred_cancel_refund": [
+    [
+      "message",
+      "キャンセル (返金)"
+    ]
+  ],
+  "mc_pred_pick_winner": [
+    [
+      "message",
+      "勝者を選択"
+    ]
+  ],
+  "mc_pred_pick_winner_your_bet": [
+    [
+      "message",
+      "勝者を選択 (あなたのベット)"
+    ]
+  ],
+  "mc_pred_failed_load": [
+    [
+      "message",
+      "予測を読み込めませんでした"
+    ]
+  ],
+  "mc_pred_bet_own": [
+    [
+      "message",
+      "自分の配信にはベット不可"
+    ]
+  ],
+  "mc_pred_try_again": [
+    [
+      "message",
+      "再試行"
+    ]
+  ],
+  "mc_pred_ended": [
+    [
+      "message",
+      "予測終了"
+    ]
+  ],
+  "mc_pred_betting_locked": [
+    [
+      "message",
+      "ベットロック済み"
+    ]
+  ],
+  "mc_pred_not_enough": [
+    [
+      "message",
+      "ポイント不足"
+    ]
+  ],
+  "mc_pred_already_bet": [
+    [
+      "message",
+      "ベット済み"
+    ]
+  ],
+  "mc_pred_no_permission": [
+    [
+      "message",
+      "権限なし"
+    ]
+  ],
+  "mc_pred_failed": [
+    [
+      "message",
+      "失敗"
+    ]
+  ],
+  "mc_pred_no_event": [
+    [
+      "message",
+      "イベントなし"
+    ]
+  ],
+  "mc_pred_no_outcome": [
+    [
+      "message",
+      "結果なし"
+    ]
+  ],
+  "mc_pred_closing": [
+    [
+      "message",
+      "終了中..."
+    ]
+  ],
+  "mc_pred_you_bet": [
+    [
+      "message",
+      "$OUTCOME$に$POINTS$ポイントベット — 実際の勝者を選んでください"
+    ],
+    [
+      "placeholders",
+      [
+        [
+          "points",
+          [
+            [
+              "content",
+              "$1"
+            ]
+          ]
+        ],
+        [
+          "outcome",
+          [
+            [
+              "content",
+              "$2"
+            ]
+          ]
+        ]
+      ]
+    ]
+  ],
+  "mc_poll_new": [
+    [
+      "message",
+      "+ 新しい投票"
+    ]
+  ],
+  "mc_poll_question": [
+    [
+      "message",
+      "投票の質問"
+    ]
+  ],
+  "mc_poll_choice": [
+    [
+      "message",
+      "選択肢$NUM$"
+    ],
+    [
+      "placeholders",
+      [
+        [
+          "num",
+          [
+            [
+              "content",
+              "$1"
+            ]
+          ]
+        ]
+      ]
+    ]
+  ],
+  "mc_poll_choice_optional": [
+    [
+      "message",
+      "選択肢$NUM$ (任意)"
+    ],
+    [
+      "placeholders",
+      [
+        [
+          "num",
+          [
+            [
+              "content",
+              "$1"
+            ]
+          ]
+        ]
+      ]
+    ]
+  ],
+  "mc_poll_create": [
+    [
+      "message",
+      "投票を作成"
+    ]
+  ],
+  "mc_poll_end": [
+    [
+      "message",
+      "投票を終了"
+    ]
+  ],
+  "mc_poll_votes": [
+    [
+      "message",
+      "$COUNT$票"
+    ],
+    [
+      "placeholders",
+      [
+        [
+          "count",
+          [
+            [
+              "content",
+              "$1"
+            ]
+          ]
+        ]
+      ]
+    ]
+  ],
+  "mc_poll_vote_single": [
+    [
+      "message",
+      "$COUNT$票"
+    ],
+    [
+      "placeholders",
+      [
+        [
+          "count",
+          [
+            [
+              "content",
+              "$1"
+            ]
+          ]
+        ]
+      ]
+    ]
+  ],
+  "mc_poll_already_active": [
+    [
+      "message",
+      "投票は既に進行中"
+    ]
+  ],
+  "mc_poll_not_logged_in": [
+    [
+      "message",
+      "ログインしていません"
+    ]
+  ],
+  "mc_reward_rewards": [
+    [
+      "message",
+      "リワード"
+    ]
+  ],
+  "mc_reward_none": [
+    [
+      "message",
+      "利用可能なリワードなし"
+    ]
+  ],
+  "mc_reward_paused": [
+    [
+      "message",
+      "一時停止中"
+    ]
+  ],
+  "mc_reward_out_of_stock": [
+    [
+      "message",
+      "在庫切れ"
+    ]
+  ],
+  "mc_reward_cooldown_min": [
+    [
+      "message",
+      "$MIN$分クールダウン"
+    ],
+    [
+      "placeholders",
+      [
+        [
+          "min",
+          [
+            [
+              "content",
+              "$1"
+            ]
+          ]
+        ]
+      ]
+    ]
+  ],
+  "mc_reward_cooldown_sec": [
+    [
+      "message",
+      "$SEC$秒クールダウン"
+    ],
+    [
+      "placeholders",
+      [
+        [
+          "sec",
+          [
+            [
+              "content",
+              "$1"
+            ]
+          ]
+        ]
+      ]
+    ]
+  ],
+  "mc_reward_enter_text": [
+    [
+      "message",
+      "テキストを入力..."
+    ]
+  ],
+  "mc_reward_redeem": [
+    [
+      "message",
+      "交換"
+    ]
+  ],
+  "mc_chat_username_color": [
+    [
+      "message",
+      "ユーザー名の色"
+    ]
+  ],
+  "mc_chat_hex_placeholder": [
+    [
+      "message",
+      "#hex"
+    ]
+  ],
+  "mc_chat_modes": [
+    [
+      "message",
+      "チャットモード"
+    ]
+  ],
+  "mc_chat_emote_only": [
+    [
+      "message",
+      "エモートのみ"
+    ]
+  ],
+  "mc_chat_follower": [
+    [
+      "message",
+      "フォロワー"
+    ]
+  ],
+  "mc_chat_slow": [
+    [
+      "message",
+      "スロー"
+    ]
+  ],
+  "mc_chat_sub_only": [
+    [
+      "message",
+      "サブのみ"
+    ]
+  ],
+  "mc_chat_unique": [
+    [
+      "message",
+      "ユニーク"
+    ]
+  ],
+  "mc_chat_hype_train": [
+    [
+      "message",
+      "ハイプトレイン"
+    ]
+  ],
+  "mc_chat_hype_level": [
+    [
+      "message",
+      "レベル$LEVEL$"
+    ],
+    [
+      "placeholders",
+      [
+        [
+          "level",
+          [
+            [
+              "content",
+              "$1"
+            ]
+          ]
+        ]
+      ]
+    ]
+  ],
+  "mc_input_send_message": [
+    [
+      "message",
+      "メッセージを送信..."
+    ]
+  ],
+  "mc_input_post_heatsync": [
+    [
+      "message",
+      "heatsyncに投稿..."
+    ]
+  ],
+  "mc_input_send_channel": [
+    [
+      "message",
+      "#$CHANNEL$に送信"
+    ],
+    [
+      "placeholders",
+      [
+        [
+          "channel",
+          [
+            [
+              "content",
+              "$1"
+            ]
+          ]
+        ]
+      ]
+    ]
+  ],
+  "mc_input_replying_to": [
+    [
+      "message",
+      "@$USER$に返信"
+    ],
+    [
+      "placeholders",
+      [
+        [
+          "user",
+          [
+            [
+              "content",
+              "$1"
+            ]
+          ]
+        ]
+      ]
+    ]
+  ],
+  "mc_input_cancel_reply": [
+    [
+      "message",
+      "返信をキャンセル"
+    ]
+  ],
+  "mc_input_not_logged_in": [
+    [
+      "message",
+      "ログインしていません"
+    ]
+  ],
+  "mc_input_login_kick": [
+    [
+      "message",
+      "先にkick.comにログイン"
+    ]
+  ],
+  "mc_input_open_kick": [
+    [
+      "message",
+      "タブでkick.comを開く"
+    ]
+  ],
+  "mc_input_kick_not_found": [
+    [
+      "message",
+      "kickチャンネルが見つかりません"
+    ]
+  ],
+  "mc_input_send_failed": [
+    [
+      "message",
+      "送信失敗"
+    ]
+  ],
+  "mc_input_no_username": [
+    [
+      "message",
+      "ユーザー名が検出されません"
+    ]
+  ],
+  "mc_input_auth_failed": [
+    [
+      "message",
+      "認証失敗 — twitchに再ログイン"
+    ]
+  ],
+  "mc_input_connection_failed": [
+    [
+      "message",
+      "接続失敗 — 再試行してください"
+    ]
+  ],
+  "mc_input_send_failed_retry": [
+    [
+      "message",
+      "送信失敗 — 再試行してください"
+    ]
+  ],
+  "mc_social_back": [
+    [
+      "message",
+      "<- 戻る"
+    ]
+  ],
+  "mc_social_no_posts": [
+    [
+      "message",
+      "まだ投稿なし"
+    ]
+  ],
+  "mc_social_loading_feed": [
+    [
+      "message",
+      "フォロー中フィード読み込み中..."
+    ]
+  ],
+  "mc_social_scroll_more": [
+    [
+      "message",
+      "スクロールしてさらに表示..."
+    ]
+  ],
+  "mc_social_no_replies": [
+    [
+      "message",
+      "まだ返信なし"
+    ]
+  ],
+  "mc_social_login_first": [
+    [
+      "message",
+      "先にheatsync.orgにログイン"
+    ]
+  ],
+  "mc_social_login_activity": [
+    [
+      "message",
+      "アクティビティを見るにはheatsync.orgにログイン"
+    ]
+  ],
+  "mc_social_failed_feed_auth": [
+    [
+      "message",
+      "フィード読み込み失敗 — heatsync.orgにログイン"
+    ]
+  ],
+  "mc_social_failed_feed": [
+    [
+      "message",
+      "フィード読み込み失敗"
+    ]
+  ],
+  "mc_social_log_in_first": [
+    [
+      "message",
+      "先にログイン"
+    ]
+  ],
+  "mc_social_slow_down": [
+    [
+      "message",
+      "ゆっくりしてください"
+    ]
+  ],
+  "mc_social_duplicate": [
+    [
+      "message",
+      "重複メッセージ"
+    ]
+  ],
+  "mc_social_failed_post": [
+    [
+      "message",
+      "投稿失敗"
+    ]
+  ],
+  "mc_tip_emoji": [
+    [
+      "message",
+      "絵文字"
+    ]
+  ],
+  "mc_tip_subbed": [
+    [
+      "message",
+      "$CHANNEL$を$TENURE$サブ中"
+    ],
+    [
+      "placeholders",
+      [
+        [
+          "channel",
+          [
+            [
+              "content",
+              "$1"
+            ]
+          ]
+        ],
+        [
+          "tenure",
+          [
+            [
+              "content",
+              "$2"
+            ]
+          ]
+        ]
+      ]
+    ]
+  ],
+  "mc_tip_following": [
+    [
+      "message",
+      "$CHANNEL$を$AGE$フォロー中"
+    ],
+    [
+      "placeholders",
+      [
+        [
+          "channel",
+          [
+            [
+              "content",
+              "$1"
+            ]
+          ]
+        ],
+        [
+          "age",
+          [
+            [
+              "content",
+              "$2"
+            ]
+          ]
+        ]
+      ]
+    ]
+  ],
+  "mc_tip_not_following": [
+    [
+      "message",
+      "$CHANNEL$をフォローしていない"
+    ],
+    [
+      "placeholders",
+      [
+        [
+          "channel",
+          [
+            [
+              "content",
+              "$1"
+            ]
+          ]
+        ]
+      ]
+    ]
+  ],
+  "mc_tip_followed_by": [
+    [
+      "message",
+      "$CHANNEL$にフォローされている"
+    ],
+    [
+      "placeholders",
+      [
+        [
+          "channel",
+          [
+            [
+              "content",
+              "$1"
+            ]
+          ]
+        ]
+      ]
+    ]
+  ],
+  "mc_tip_followers": [
+    [
+      "message",
+      "フォロワー$COUNT$人"
+    ],
+    [
+      "placeholders",
+      [
+        [
+          "count",
+          [
+            [
+              "content",
+              "$1"
+            ]
+          ]
+        ]
+      ]
+    ]
+  ],
+  "mc_whisper_hint": [
+    [
+      "message",
+      "/w ユーザー メッセージ · /dm ユーザー メッセージ · /r メッセージ"
+    ]
+  ],
+  "mc_whisper_login": [
+    [
+      "message",
+      "ウィスパーを送るにはheatsync.orgにログイン"
+    ]
+  ],
+  "mc_whisper_user_not_found": [
+    [
+      "message",
+      "twitchユーザー\"$USER$\"が見つかりません"
+    ],
+    [
+      "placeholders",
+      [
+        [
+          "user",
+          [
+            [
+              "content",
+              "$1"
+            ]
+          ]
+        ]
+      ]
+    ]
+  ],
+  "mc_whisper_resolve_failed": [
+    [
+      "message",
+      "twitchユーザーの解決に失敗"
+    ]
+  ],
+  "mc_whisper_hs_not_found": [
+    [
+      "message",
+      "heatyncユーザー\"$USER$\"が見つかりません"
+    ],
+    [
+      "placeholders",
+      [
+        [
+          "user",
+          [
+            [
+              "content",
+              "$1"
+            ]
+          ]
+        ]
+      ]
+    ]
+  ],
+  "mc_irc_chat_cleared": [
+    [
+      "message",
+      "チャットがクリアされました"
+    ]
+  ],
+  "mc_irc_msg_deleted": [
+    [
+      "message",
+      "$USER$のメッセージが削除されました"
+    ],
+    [
+      "placeholders",
+      [
+        [
+          "user",
+          [
+            [
+              "content",
+              "$1"
+            ]
+          ]
+        ]
+      ]
+    ]
+  ],
+  "mc_irc_gift_subs": [
+    [
+      "message",
+      "$USER$が$CHANNEL$に$AMOUNT$サブをギフト"
+    ],
+    [
+      "placeholders",
+      [
+        [
+          "user",
+          [
+            [
+              "content",
+              "$1"
+            ]
+          ]
+        ],
+        [
+          "amount",
+          [
+            [
+              "content",
+              "$2"
+            ]
+          ]
+        ],
+        [
+          "channel",
+          [
+            [
+              "content",
+              "$3"
+            ]
+          ]
+        ]
+      ]
+    ]
+  ],
+  "mc_yt_connected": [
+    [
+      "message",
+      "YouTube接続済み: $CHANNEL$ — メッセージ待機中..."
+    ],
+    [
+      "placeholders",
+      [
+        [
+          "channel",
+          [
+            [
+              "content",
+              "$1"
+            ]
+          ]
+        ]
+      ]
+    ]
+  ],
+  "mc_yt_ended": [
+    [
+      "message",
+      "YouTubeストリーム終了"
+    ]
+  ],
+  "mc_yt_error": [
+    [
+      "message",
+      "YouTube接続エラー"
+    ]
+  ],
+  "mc_emote_search_placeholder": [
+    [
+      "message",
+      "エモートを検索..."
+    ]
+  ],
+  "mc_emote_no_loaded": [
+    [
+      "message",
+      "エモートが読み込まれていません"
+    ]
+  ],
+  "mc_emote_in_set": [
+    [
+      "message",
+      "セットに追加済み"
+    ]
+  ],
+  "mc_emote_click_add": [
+    [
+      "message",
+      "クリックして追加"
+    ]
+  ],
+  "mc_emote_blocked": [
+    [
+      "message",
+      "ブロック済み (クリックで解除)"
+    ]
+  ],
+  "content_toast_unknown_error": [
+    [
+      "message",
+      "不明なエラー"
+    ]
+  ],
+  "content_toast_loading_emotes": [
+    [
+      "message",
+      "emoteを読み込み中..."
+    ]
+  ],
+  "content_toast_fetching_emotes": [
+    [
+      "message",
+      "emoteを取得中..."
+    ]
+  ],
+  "content_card_action_ban": [
+    [
+      "message",
+      "BAN"
+    ]
+  ],
+  "content_card_action_unban": [
+    [
+      "message",
+      "BAN解除"
+    ]
+  ],
+  "content_card_action_block": [
+    [
+      "message",
+      "ブロック"
+    ]
+  ],
+  "btn_close": [
+    [
+      "message",
+      "閉じる"
+    ]
+  ],
+  "btn_error_channel": [
+    [
+      "message",
+      "チャンネルemoteの読み込みに失敗"
+    ]
+  ],
+  "btn_error_global": [
+    [
+      "message",
+      "グローバルemoteの読み込みに失敗"
+    ]
+  ],
+  "btn_error_inventory": [
+    [
+      "message",
+      "emoteの読み込みに失敗"
+    ]
+  ]
 }

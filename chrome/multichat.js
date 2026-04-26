@@ -4593,6 +4593,92 @@ function injectStyles() {
       color: #555;
       font-size: 12px;
     }
+    .hs-discover-refresh-bar {
+      display: flex;
+      justify-content: flex-end;
+      padding: 4px 8px;
+      background: transparent;
+      flex-shrink: 0;
+    }
+    .hs-discover-refresh-btn {
+      background: transparent;
+      border: 1px solid #ff8700;
+      color: #ff8700;
+      font-size: 11px;
+      font-family: inherit;
+      padding: 2px 8px;
+      cursor: pointer;
+      border-radius: 0;
+      line-height: 1.4;
+    }
+    .hs-discover-refresh-btn:hover {
+      background: #ff8700;
+      color: #000;
+    }
+    .hs-discover-section {
+      padding: 8px 10px 4px;
+    }
+    .hs-discover-heading {
+      font-size: 11px;
+      color: #ff8700;
+      font-weight: 600;
+      text-transform: lowercase;
+      margin-bottom: 6px;
+      letter-spacing: 0.03em;
+    }
+    .hs-discover-chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+      margin-bottom: 4px;
+    }
+    .hs-discover-chip {
+      display: inline-block;
+      padding: 2px 8px;
+      background: rgba(255,135,0,0.12);
+      border: 1px solid rgba(255,135,0,0.4);
+      color: #ff8700;
+      font-size: 11px;
+      text-decoration: none;
+      cursor: pointer;
+      border-radius: 0;
+      line-height: 1.6;
+      white-space: nowrap;
+    }
+    .hs-discover-chip:hover {
+      background: #ff8700;
+      color: #000;
+    }
+    .hs-discover-profile-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 0;
+      text-decoration: none;
+      cursor: pointer;
+    }
+    .hs-discover-profile-row:hover .hs-discover-profile-name {
+      color: #ff8700;
+    }
+    .hs-discover-avatar {
+      width: 20px;
+      height: 20px;
+      flex-shrink: 0;
+    }
+    .hs-discover-profile-name {
+      color: #fff;
+      font-size: 12px;
+      font-weight: 600;
+      flex: 1;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .hs-discover-heat {
+      font-size: 11px;
+      color: #808080;
+      flex-shrink: 0;
+    }
   `;
   document.head.appendChild(style);
 }
@@ -12425,6 +12511,164 @@ function buildNotifDiv(m) {
   return div;
 }
 
+// ============================================
+// DISCOVER TAB (trending tags + profiles)
+// ============================================
+
+let discoverLoaded = false;
+let discoverLoading = false;
+let discoverTags = [];
+let discoverProfiles = [];
+
+function _discoverSetLoading(msgsEl) {
+  msgsEl.textContent = '';
+  const el = document.createElement('div');
+  el.className = 'hs-mc-empty';
+  el.textContent = 'loading...';
+  msgsEl.appendChild(el);
+}
+
+async function fetchDiscover() {
+  if (discoverLoading) return;
+  discoverLoading = true;
+
+  const msgsEl = document.getElementById('hs-mc-messages');
+  if (msgsEl && currentTab === 'discover') _discoverSetLoading(msgsEl);
+
+  try {
+    const [tagsResp, profilesResp] = await Promise.all([
+      apiFetch('/api/discover/trending-tags'),
+      apiFetch('/api/profiles/trending'),
+    ]);
+
+    discoverTags = tagsResp.ok ? (tagsResp.data || tagsResp.tags || []) : [];
+    discoverProfiles = profilesResp.ok ? (profilesResp.data || profilesResp.profiles || []) : [];
+    discoverLoaded = true;
+  } catch (e) {
+    discoverTags = [];
+    discoverProfiles = [];
+    discoverLoaded = true;
+  } finally {
+    discoverLoading = false;
+    if (currentTab === 'discover') renderDiscoverTab();
+  }
+}
+
+function renderDiscoverTab() {
+  const msgsEl = document.getElementById('hs-mc-messages');
+  if (!msgsEl) return;
+
+  // Insert refresh bar above message area once
+  if (!document.getElementById('hs-discover-refresh-bar')) {
+    const bar = document.createElement('div');
+    bar.id = 'hs-discover-refresh-bar';
+    bar.className = 'hs-discover-refresh-bar';
+    const btn = document.createElement('button');
+    btn.className = 'hs-discover-refresh-btn';
+    btn.textContent = 'refresh';
+    btn.addEventListener('click', () => {
+      discoverLoaded = false;
+      fetchDiscover();
+    });
+    bar.appendChild(btn);
+    msgsEl.parentNode?.insertBefore(bar, msgsEl);
+  }
+
+  if (!discoverLoaded && !discoverLoading) {
+    fetchDiscover();
+    return;
+  }
+  if (discoverLoading) {
+    _discoverSetLoading(msgsEl);
+    return;
+  }
+
+  msgsEl.textContent = '';
+  const frag = document.createDocumentFragment();
+
+  // Tags section
+  if (discoverTags.length > 0) {
+    const section = document.createElement('div');
+    section.className = 'hs-discover-section';
+    const heading = document.createElement('div');
+    heading.className = 'hs-discover-heading';
+    heading.textContent = 'trending tags';
+    section.appendChild(heading);
+
+    const chips = document.createElement('div');
+    chips.className = 'hs-discover-chips';
+    for (const tag of discoverTags) {
+      const name = typeof tag === 'string' ? tag : (tag.name || tag.tag || '');
+      if (!name) continue;
+      const chip = document.createElement('a');
+      chip.className = 'hs-discover-chip';
+      chip.href = `https://heatsync.org/tags/${encodeURIComponent(name)}`;
+      chip.target = '_blank';
+      chip.rel = 'noopener noreferrer';
+      chip.textContent = escapeHtml(name);
+      chips.appendChild(chip);
+    }
+    section.appendChild(chips);
+    frag.appendChild(section);
+  }
+
+  // Profiles section
+  if (discoverProfiles.length > 0) {
+    const section = document.createElement('div');
+    section.className = 'hs-discover-section';
+    const heading = document.createElement('div');
+    heading.className = 'hs-discover-heading';
+    heading.textContent = 'trending profiles';
+    section.appendChild(heading);
+
+    for (const profile of discoverProfiles) {
+      const username = profile.username || profile.name || '';
+      if (!username) continue;
+      const row = document.createElement('a');
+      row.className = 'hs-discover-profile-row';
+      row.href = `https://heatsync.org/@${encodeURIComponent(username)}`;
+      row.target = '_blank';
+      row.rel = 'noopener noreferrer';
+
+      const avatarUrl = safeUrl(profile.avatar_url || profile.avatar || '');
+      if (avatarUrl) {
+        const img = document.createElement('img');
+        img.className = 'hs-feed-avatar hs-discover-avatar';
+        img.src = avatarUrl;
+        img.alt = '';
+        img.loading = 'lazy';
+        img.onerror = function() { this.style.display = 'none'; };
+        row.appendChild(img);
+      }
+
+      const nameSpan = document.createElement('span');
+      nameSpan.className = 'hs-discover-profile-name';
+      nameSpan.textContent = escapeHtml(username);
+      row.appendChild(nameSpan);
+
+      const heat = profile.heat_count ?? profile.heat ?? profile.score ?? null;
+      if (heat != null) {
+        const heatSpan = document.createElement('span');
+        heatSpan.className = 'hs-discover-heat';
+        heatSpan.textContent = `${Number(heat).toLocaleString()} heat`;
+        row.appendChild(heatSpan);
+      }
+
+      section.appendChild(row);
+    }
+    frag.appendChild(section);
+  }
+
+  if (discoverTags.length === 0 && discoverProfiles.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'hs-mc-empty';
+    empty.textContent = 'nothing to show';
+    frag.appendChild(empty);
+  }
+
+  msgsEl.appendChild(frag);
+}
+
 
 
 // --- multichat/whispers.js ---
@@ -15581,6 +15825,7 @@ const STORAGE_KEY = 'heatsync_multichat';
         <button class="hs-mc-tab" data-tab="whispers">${t('mc_tab_whispers')}</button>
         <button class="hs-mc-tab" data-tab="mentions">${t('mc_tab_mentions')}</button>
         <button class="hs-mc-tab" data-tab="activity">${t('mc_tab_activity')}</button>
+        <button class="hs-mc-tab" data-tab="discover">${t('mc_tab_discover')}</button>
         <button class="hs-mc-tab" data-tab="live">${t('mc_tab_live')}</button>
         <button class="hs-mc-tab" data-tab="add">+</button>
       </div>
@@ -15661,7 +15906,7 @@ const STORAGE_KEY = 'heatsync_multichat';
       }
 
       // Channel tabs get edit/remove context menu
-      const reserved = ['feed', 'mentions', 'activity', 'whispers', 'add', 'rotate', 'settings'];
+      const reserved = ['feed', 'mentions', 'activity', 'whispers', 'discover', 'add', 'rotate', 'settings'];
       if (reserved.includes(tabId)) return;
       e.preventDefault();
 
@@ -15870,7 +16115,7 @@ const STORAGE_KEY = 'heatsync_multichat';
       const newBtn = document.getElementById('hs-mc-new-msgs');
       if (!msgsEl || !newBtn) return;
 
-      const isStaticTab = () => currentTab === 'feed' || currentTab === 'settings';
+      const isStaticTab = () => currentTab === 'feed' || currentTab === 'settings' || currentTab === 'discover';
 
       // scroll event only used for scrollbar drag detection (not wheel — wheel has its own handler)
       msgsEl.addEventListener('scrollend', () => {
@@ -17048,7 +17293,7 @@ const STORAGE_KEY = 'heatsync_multichat';
     if (!tabBarElement) return;
 
     // Clear existing channel tabs (keep built-in tabs)
-    const existingChannelTabs = tabBarElement.querySelectorAll('.hs-mc-tab[data-tab]:not([data-tab="live"]):not([data-tab="feed"]):not([data-tab="mentions"]):not([data-tab="activity"]):not([data-tab="whispers"]):not([data-tab="add"]):not([data-tab="rotate"]):not([data-tab="settings"])');
+    const existingChannelTabs = tabBarElement.querySelectorAll('.hs-mc-tab[data-tab]:not([data-tab="live"]):not([data-tab="feed"]):not([data-tab="mentions"]):not([data-tab="activity"]):not([data-tab="whispers"]):not([data-tab="discover"]):not([data-tab="add"]):not([data-tab="rotate"]):not([data-tab="settings"])');
     existingChannelTabs.forEach(t => t.remove());
 
     // Add channel tabs before the + button in the scroll section
@@ -17454,6 +17699,10 @@ const STORAGE_KEY = 'heatsync_multichat';
     const searchBar = document.getElementById('hs-mc-search-bar')
     if (searchBar) searchBar.classList.toggle('visible', id === 'mentions')
 
+    // Show/hide discover refresh bar
+    const discoverBar = document.getElementById('hs-discover-refresh-bar')
+    if (discoverBar) discoverBar.style.display = id === 'discover' ? '' : 'none'
+
     // Clear activity badge when switching to activity tab
     if (id === 'activity' && unreadNotifCount > 0) {
       unreadNotifCount = 0;
@@ -17525,7 +17774,7 @@ const STORAGE_KEY = 'heatsync_multichat';
     // Hide input bar on add-channel form, or when auto-hide is on
     if (inputBarElement) {
       const pickerOpen = document.getElementById('hs-mc-emote-picker')?.classList.contains('visible');
-      if (id === 'add' || id === 'settings') {
+      if (id === 'add' || id === 'settings' || id === 'discover') {
         inputBarElement.classList.add('hs-hidden');
         inputBarVisible = false;
       } else if (autoHideInput && !pickerOpen) {
@@ -18213,6 +18462,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     if (id === 'feed') { renderFeed(); return; }
     if (id === 'activity') { renderActivity(); return; }
     if (id === 'whispers') { renderWhispersTab(); return; }
+    if (id === 'discover') { renderDiscoverTab(); return; }
     if (id === 'settings') { renderSettingsTab(); return; }
 
     // If search is active on mentions tab, don't clobber search results
@@ -18471,7 +18721,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       }
 
       const id = twitchVal || kickVal || ('yt-' + Date.now())
-      const reserved = ['live', 'feed', 'mentions', 'whispers', 'add', 'rotate', 'settings']
+      const reserved = ['live', 'feed', 'mentions', 'whispers', 'discover', 'add', 'rotate', 'settings']
       if (reserved.includes(id)) {
         showErr(t('mc_reserved_name'))
         return
@@ -19264,7 +19514,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
   }
 
   let _savedActiveTab = null;
-  const BUILTIN_TABS = ['live', 'feed', 'mentions', 'add'];
+  const BUILTIN_TABS = ['live', 'feed', 'mentions', 'discover', 'add'];
   async function loadActiveTab() {
     try {
       const stored = await chrome.storage.sync.get(['ui_settings']);

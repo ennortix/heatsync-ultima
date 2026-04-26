@@ -2822,7 +2822,10 @@ function renderThirdPartyBadges(userId) {
     const file = files.find(f => f.name?.endsWith('.webp')) || files.find(f => f.name?.endsWith('.avif')) || files[0]
     if (file) {
       const base = cosmetic.badge.host?.url || ''
-      const rawUrl = (base.endsWith('/') ? base : base + '/') + file.name
+      // 7TV returns protocol-relative URLs (//cdn.7tv.app/...) — promote to https
+      // before validation so safeUrl doesn't drop them.
+      const absBase = base.startsWith('//') ? 'https:' + base : base
+      const rawUrl = (absBase.endsWith('/') ? absBase : absBase + '/') + file.name
       const url = safeUrl(rawUrl)
       if (url) {
         html += `<img class="hs-mc-badge-img" src="${escapeHtml(url)}" alt="7TV" title="${escapeHtml(cosmetic.badge.tooltip || '7TV')}" style="width:18px;height:18px;">`

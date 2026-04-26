@@ -460,6 +460,205 @@
     return form;
   }
 
+  // Bookmarks ─────────────────────────────────────────────────────────────────
+
+  function relTime(ts) {
+    const diff = Math.floor((Date.now() - new Date(ts).getTime()) / 1000);
+    if (diff < 60) return diff + 's ago';
+    if (diff < 3600) return Math.floor(diff / 60) + 'm ago';
+    if (diff < 86400) return Math.floor(diff / 3600) + 'h ago';
+    return Math.floor(diff / 86400) + 'd ago';
+  }
+
+  function toBase36(id) {
+    const n = typeof id === 'number' ? id : parseInt(id, 10);
+    if (!isFinite(n) || n < 0) return String(id || '');
+    return n.toString(36);
+  }
+
+  async function loadBookmarks(container) {
+    container.textContent = '';
+    const loading = document.createElement('div');
+    loading.className = 'bm-empty';
+    loading.textContent = 'loading...';
+    container.appendChild(loading);
+    try {
+      const resp = await apiFetch('/api/bookmarks');
+      const bookmarks = (resp && (resp.bookmarks || (resp.data && resp.data.bookmarks))) || [];
+      container.textContent = '';
+      if (!bookmarks.length) {
+        const empty = document.createElement('div');
+        empty.className = 'bm-empty';
+        empty.textContent = 'no bookmarks yet';
+        container.appendChild(empty);
+        return;
+      }
+      bookmarks.slice(0, 5).forEach(function(b) {
+        const id = b.messageId || b.id || b.message_id || '';
+        const b36 = toBase36(id);
+        const url = safeUrl('https://heatsync.org/m/' + encodeURIComponent(b36));
+        const a = document.createElement('a');
+        a.className = 'bm-row';
+        a.href = url || '#';
+        a.target = '_blank';
+        a.rel = 'noopener noreferrer';
+
+        const tsEl = document.createElement('span');
+        tsEl.className = 'bm-ts';
+        tsEl.textContent = b.ts || b.createdAt || b.created_at ? relTime(b.ts || b.createdAt || b.created_at) : '';
+        a.appendChild(tsEl);
+
+        const chEl = document.createElement('span');
+        chEl.className = 'bm-channel';
+        chEl.textContent = escapeHtml(b.channel || '');
+        a.appendChild(chEl);
+
+        const content = String(b.content || b.message || b.text || '');
+        const snippet = content.length > 60 ? content.slice(0, 60) + '…' : content;
+        const msgEl = document.createElement('span');
+        msgEl.className = 'bm-content';
+        msgEl.textContent = snippet;
+        a.appendChild(msgEl);
+
+        container.appendChild(a);
+      });
+
+      const viewAll = document.createElement('a');
+      viewAll.className = 'bm-viewall';
+      viewAll.href = 'https://heatsync.org/bookmarks';
+      viewAll.target = '_blank';
+      viewAll.rel = 'noopener noreferrer';
+      viewAll.textContent = 'view all';
+      container.appendChild(viewAll);
+    } catch {
+      container.textContent = '';
+      const err = document.createElement('div');
+      err.className = 'bm-empty';
+      err.textContent = 'failed to load';
+      container.appendChild(err);
+    }
+  }
+
+  function buildBookmarksSection() {
+    const wrap = document.createElement('div');
+    wrap.className = 'bm-section';
+
+    const titleRow = document.createElement('div');
+    titleRow.className = 'section-title';
+    titleRow.textContent = 'bookmarks';
+
+    const refreshBtn = document.createElement('button');
+    refreshBtn.className = 'refresh-icon';
+    refreshBtn.title = 'refresh';
+    refreshBtn.textContent = '↻';
+    titleRow.appendChild(refreshBtn);
+
+    wrap.appendChild(titleRow);
+
+    const list = document.createElement('div');
+    list.id = 'bm-list';
+    wrap.appendChild(list);
+
+    refreshBtn.addEventListener('click', function() { loadBookmarks(list); });
+    loadBookmarks(list);
+    return wrap;
+  }
+
+  // Referrals ─────────────────────────────────────────────────────────────────
+
+  async function loadReferrals(container) {
+    container.textContent = '';
+    const loading = document.createElement('div');
+    loading.className = 'ref-empty';
+    loading.textContent = 'loading...';
+    container.appendChild(loading);
+    try {
+      const resp = await apiFetch('/api/referral/codes');
+      const codes = (resp && (resp.codes || (resp.data && resp.data.codes))) || [];
+      container.textContent = '';
+      if (!codes.length) {
+        const empty = document.createElement('div');
+        empty.className = 'ref-empty';
+        const txt = document.createTextNode('no codes — claim one at ');
+        empty.appendChild(txt);
+        const link = document.createElement('a');
+        link.href = 'https://heatsync.org/referrals';
+        link.target = '_blank';
+        link.rel = 'noopener noreferrer';
+        link.textContent = 'heatsync.org/referrals';
+        empty.appendChild(link);
+        container.appendChild(empty);
+        return;
+      }
+      codes.slice(0, 2).forEach(function(c) {
+        const code = String(c.code || '');
+        const uses = parseInt(c.uses || 0);
+        const maxUses = c.max_uses != null ? parseInt(c.max_uses) : null;
+        const usesStr = maxUses != null ? uses + '/' + maxUses : String(uses);
+
+        const row = document.createElement('div');
+        row.className = 'ref-row';
+
+        const codeEl = document.createElement('span');
+        codeEl.className = 'ref-code';
+        codeEl.textContent = escapeHtml(code);
+        row.appendChild(codeEl);
+
+        const usesEl = document.createElement('span');
+        usesEl.className = 'ref-uses';
+        usesEl.textContent = usesStr + ' uses';
+        row.appendChild(usesEl);
+
+        const copyBtn = document.createElement('button');
+        copyBtn.className = 'ref-copy';
+        copyBtn.textContent = 'copy';
+        copyBtn.addEventListener('click', function() {
+          navigator.clipboard.writeText(code).then(function() {
+            copyBtn.textContent = 'copied';
+            setTimeout(function() { copyBtn.textContent = 'copy'; }, 1500);
+          }).catch(function() {
+            copyBtn.textContent = 'error';
+            setTimeout(function() { copyBtn.textContent = 'copy'; }, 1500);
+          });
+        });
+        row.appendChild(copyBtn);
+
+        container.appendChild(row);
+      });
+    } catch {
+      container.textContent = '';
+      const err = document.createElement('div');
+      err.className = 'ref-empty';
+      err.textContent = 'failed to load';
+      container.appendChild(err);
+    }
+  }
+
+  function buildReferralsSection() {
+    const wrap = document.createElement('div');
+    wrap.className = 'ref-section';
+
+    const titleRow = document.createElement('div');
+    titleRow.className = 'section-title';
+    titleRow.textContent = 'referrals';
+
+    const refreshBtn = document.createElement('button');
+    refreshBtn.className = 'refresh-icon';
+    refreshBtn.title = 'refresh';
+    refreshBtn.textContent = '↻';
+    titleRow.appendChild(refreshBtn);
+
+    wrap.appendChild(titleRow);
+
+    const list = document.createElement('div');
+    list.id = 'ref-list';
+    wrap.appendChild(list);
+
+    refreshBtn.addEventListener('click', function() { loadReferrals(list); });
+    loadReferrals(list);
+    return wrap;
+  }
+
   // Main init ─────────────────────────────────────────────────────────────────
 
   async function init() {
@@ -625,6 +824,16 @@
       lbSep.className = 'sep';
       const lbSection = buildLbSection();
 
+      // ── bookmarks ──
+      const bmSep = document.createElement('hr');
+      bmSep.className = 'sep';
+      const bmSection = buildBookmarksSection();
+
+      // ── referrals ──
+      const refSep = document.createElement('hr');
+      refSep.className = 'sep';
+      const refSection = buildReferralsSection();
+
       const trailSep = document.createElement('hr');
       trailSep.className = 'sep';
 
@@ -635,6 +844,10 @@
       content.appendChild(liveSection);
       content.appendChild(lbSep);
       content.appendChild(lbSection);
+      content.appendChild(bmSep);
+      content.appendChild(bmSection);
+      content.appendChild(refSep);
+      content.appendChild(refSection);
       content.appendChild(trailSep);
 
       loadLive(liveList);

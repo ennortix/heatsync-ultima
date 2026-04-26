@@ -12183,7 +12183,10 @@ function buildEngagementBar(m) {
   const bar = document.createElement('div')
   bar.className = 'hs-feed-engage'
 
-  const liked = feedLiked.has(m.base36_id) || !!m.user_liked
+  // Server returns user_heat (the heat the current user has given this msg);
+  // any value > 0 means they've liked. user_liked may also be set by older
+  // server versions.
+  const liked = feedLiked.has(m.base36_id) || !!m.user_liked || (m.user_heat || 0) > 0
   const heatCount = m.heat || 0
 
   // Heat/like button — flame SVG
@@ -12228,7 +12231,7 @@ function buildEngagementBar(m) {
 function attachEngagementHandlers(div, m) {
   const bar = div.querySelector('.hs-feed-engage')
   if (!bar) return
-  if (m.user_liked) feedLiked.add(m.base36_id)
+  if (m.user_liked || (m.user_heat || 0) > 0) feedLiked.add(m.base36_id)
 
   const heatBtn = bar.querySelector('.hs-feed-heat-btn')
   if (heatBtn) heatBtn.addEventListener('click', (e) => { e.stopPropagation(); toggleHeat(m.base36_id, heatBtn, m) })

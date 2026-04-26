@@ -2876,12 +2876,16 @@
       const item = document.createElement('div')
       item.className = 'heatsync-history-item'
 
-      const imgUrl = safeUrl(e.url || '')
+      // Server returns custom_name (snake_case) and url which may be relative
+      const displayName = e.custom_name || e.name || '(unnamed)'
+      const rawUrl = e.url || ''
+      const absUrl = rawUrl.startsWith('/') ? `https://heatsync.org${rawUrl}` : rawUrl
+      const imgUrl = safeUrl(absUrl)
       if (imgUrl) {
         const img = document.createElement('img')
         img.className = 'heatsync-history-thumb'
         img.src = imgUrl
-        img.alt = escapeHtml(e.name)
+        img.alt = displayName
         img.loading = 'lazy'
         img.referrerPolicy = 'no-referrer'
         item.appendChild(img)
@@ -2892,7 +2896,7 @@
 
       const name = document.createElement('div')
       name.className = 'heatsync-history-name'
-      name.textContent = e.name || '(unnamed)'
+      name.textContent = displayName
       info.appendChild(name)
 
       const meta = document.createElement('div')
@@ -2908,7 +2912,7 @@
       restoreBtn.type = 'button'
       restoreBtn.textContent = 'restore'
       restoreBtn.dataset.emoteId = String(e.id)
-      restoreBtn.dataset.emoteName = e.name || ''
+      restoreBtn.dataset.emoteName = displayName
       item.appendChild(restoreBtn)
 
       list.appendChild(item)

@@ -4762,6 +4762,45 @@ function injectStyles() {
       color: #808080;
       flex-shrink: 0;
     }
+    .hs-pinned-row {
+      display: block;
+      padding: 6px 10px;
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+      text-decoration: none;
+      cursor: pointer;
+    }
+    .hs-pinned-row:hover {
+      background: rgba(255,135,0,0.07);
+    }
+    .hs-pinned-meta {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 2px;
+    }
+    .hs-pinned-channel {
+      font-size: 11px;
+      color: #ff8700;
+      font-weight: 600;
+    }
+    .hs-pinned-user {
+      font-size: 11px;
+      color: #bbb;
+    }
+    .hs-pinned-time {
+      font-size: 10px;
+      color: #555;
+      margin-left: auto;
+    }
+    .hs-pinned-body {
+      font-size: 12px;
+      color: #ddd;
+      word-break: break-word;
+      white-space: pre-wrap;
+    }
+    .hs-pinned-row:hover .hs-pinned-body {
+      color: #fff;
+    }
   `;
   document.head.appendChild(style);
 }
@@ -11223,6 +11262,15 @@ let feedHasMore = true;
 let feedLastFetch = 0; // Timestamp of last feed fetch
 const FEED_STALE_MS = 120000; // 2 minutes
 
+// Virtual scroll state for feed
+let _feedVirtualScrollHandler = null  // current scroll listener ref
+let _feedVirtualResizeObserver = null // ResizeObserver on msgsEl
+let _feedVirtualItemHeight = 56       // estimated item height (px), recalibrated after first render
+let _feedVirtualScrollRaf = 0         // rAF handle for scroll debounce
+let _feedVirtualLastStart = -1        // last rendered window start
+let _feedVirtualLastEnd = -1          // last rendered window end
+const FEED_VIRTUAL_OVERSCAN = 5       // extra items above/below visible window
+
 // Engagement state — optimistic local cache
 const feedLiked = new Set()     // base36_ids the user has liked
 const feedBookmarked = new Set() // base36_ids the user has bookmarked
@@ -11693,6 +11741,63 @@ async function fetchFeed(append = false) {
   checkFeedBookmarks(ids)
 }
 
+// Tear down virtual scroll state (called before re-setup or when leaving feed)
+function _feedVirtualTeardown(msgsEl) {
+  if (_feedVirtualScrollHandler && msgsEl) {
+    msgsEl.removeEventListener('scroll', _feedVirtualScrollHandler)
+  }
+  _feedVirtualScrollHandler = null
+  if (_feedVirtualResizeObserver) {
+    cleanup.untrackObserver(_feedVirtualResizeObserver)
+    _feedVirtualResizeObserver = null
+  }
+  if (_feedVirtualScrollRaf) {
+    cancelAnimationFrame(_feedVirtualScrollRaf)
+    _feedVirtualScrollRaf = 0
+  }
+  _feedVirtualLastStart = -1
+  _feedVirtualLastEnd = -1
+}
+
+// Render only the visible slice of feedMessages into the virtual container.
+// virtualContainer is absolutely positioned inside msgsEl; spacer sets scrollHeight.
+function _feedVirtualRenderWindow(msgsEl, virtualContainer, items) {
+  const scrollTop = msgsEl.scrollTop
+  const viewHeight = msgsEl.clientHeight
+  const h = _feedVirtualItemHeight
+
+  const startIdx = Math.max(0, Math.floor(scrollTop / h) - FEED_VIRTUAL_OVERSCAN)
+  const endIdx = Math.min(items.length, Math.ceil((scrollTop + viewHeight) / h) + FEED_VIRTUAL_OVERSCAN)
+
+  // Skip identical window to avoid DOM thrashing
+  if (startIdx === _feedVirtualLastStart && endIdx === _feedVirtualLastEnd) return
+  _feedVirtualLastStart = startIdx
+  _feedVirtualLastEnd = endIdx
+
+  // Clear and rebuild visible window
+  while (virtualContainer.firstChild) virtualContainer.removeChild(virtualContainer.firstChild)
+
+  const frag = document.createDocumentFragment()
+  let zebraCount = startIdx
+  for (let i = startIdx; i < endIdx; i++) {
+    const m = items[i]
+    const div = buildFeedMessageDiv(m)
+    if (zebraEnabled && ++zebraCount % 2 === 0) div.classList.add('hs-mc-zebra')
+    div.style.position = 'absolute'
+    div.style.top = `${i * h}px`
+    div.style.left = '0'
+    div.style.right = '0'
+    frag.appendChild(div)
+  }
+  virtualContainer.appendChild(frag)
+
+  // Recalibrate item height from first rendered item (once per render cycle)
+  if (startIdx === 0 && virtualContainer.firstElementChild) {
+    const measured = virtualContainer.firstElementChild.getBoundingClientRect().height
+    if (measured > 10) _feedVirtualItemHeight = measured
+  }
+}
+
 function renderFeed() {
   const msgsEl = document.getElementById('hs-mc-messages');
   if (!msgsEl) return;
@@ -11701,8 +11806,9 @@ function renderFeed() {
   const feedTabBtn = tabBarElement?.querySelector('[data-tab="feed"]');
   if (feedTabBtn) feedTabBtn.textContent = activeThread ? t('mc_social_back') : t('mc_tab_feed');
 
-  // Thread view — show OP + replies
+  // Thread view — show OP + replies, tear down virtual scroll
   if (activeThread) {
+    _feedVirtualTeardown(msgsEl)
     renderThreadView(msgsEl);
     return;
   }
@@ -11710,6 +11816,7 @@ function renderFeed() {
   // Feed list view
   const isStale = feedLoaded && (Date.now() - feedLastFetch > FEED_STALE_MS);
   if ((!feedLoaded || isStale) && !feedLoading) {
+    _feedVirtualTeardown(msgsEl)
     msgsEl.textContent = '';
     const loading = document.createElement('div');
     loading.className = 'hs-mc-empty';
@@ -11720,6 +11827,7 @@ function renderFeed() {
   }
 
   if (feedMessages.length === 0) {
+    _feedVirtualTeardown(msgsEl)
     msgsEl.textContent = '';
     const empty = document.createElement('div');
     empty.className = 'hs-mc-empty';
@@ -11728,45 +11836,83 @@ function renderFeed() {
     return;
   }
 
-  isProgrammaticScroll = true;
-  msgsEl.textContent = '';
-  const frag = document.createDocumentFragment();
-  const feedToRender = feedMessages.slice(-150);
-  let zebraCount = 0;
-  for (const m of feedToRender) {
-    const msgDiv = buildFeedMessageDiv(m);
-    if (zebraEnabled && ++zebraCount % 2 === 0) msgDiv.classList.add('hs-mc-zebra');
-    frag.appendChild(msgDiv);
-  }
+  // --- Virtual scroll setup ---
+  _feedVirtualTeardown(msgsEl)
+
+  const items = feedMessages  // reference — no slice cap
+
+  const totalHeight = items.length * _feedVirtualItemHeight
+  isProgrammaticScroll = true
+  msgsEl.textContent = ''
+  msgsEl.style.position = 'relative'  // needed for absolute children
+
+  // Spacer sets the full scrollable height
+  const spacer = document.createElement('div')
+  spacer.className = 'hs-feed-virtual-spacer'
+  spacer.style.cssText = `position:absolute;top:0;left:0;right:0;height:${totalHeight}px;pointer-events:none;`
+  msgsEl.appendChild(spacer)
+
+  // Virtual container holds only visible DOM nodes
+  const virtualContainer = document.createElement('div')
+  virtualContainer.className = 'hs-feed-virtual-container'
+  virtualContainer.style.cssText = 'position:absolute;top:0;left:0;right:0;'
+  msgsEl.appendChild(virtualContainer)
+
+  // Infinite scroll loader at bottom
   if (feedHasMore) {
-    const loader = document.createElement('div');
-    loader.className = 'hs-mc-empty hs-feed-loader';
-    loader.textContent = t('mc_social_scroll_more');
-    frag.appendChild(loader);
+    const loader = document.createElement('div')
+    loader.className = 'hs-mc-empty hs-feed-loader'
+    loader.style.cssText = `position:absolute;top:${totalHeight}px;left:0;right:0;`
+    loader.textContent = t('mc_social_scroll_more')
+    msgsEl.appendChild(loader)
   }
-  msgsEl.appendChild(frag);
 
-  isProgrammaticScroll = true;
-  msgsEl.scrollTop = 0;
-  requestAnimationFrame(() => { isProgrammaticScroll = false; });
+  msgsEl.scrollTop = 0
+  requestAnimationFrame(() => { isProgrammaticScroll = false; })
 
-  // Setup infinite scroll
-  if (!msgsEl._hsFeedScroll) {
-    msgsEl._hsFeedScroll = true;
-    let feedScrollTimer = null
-    msgsEl.addEventListener('scroll', () => {
-      if (mcSignal?.aborted) return;
-      if (currentTab !== 'feed' || feedLoading || !feedHasMore) return;
-      if (feedScrollTimer) return // Throttle: one check per 200ms
-      feedScrollTimer = cleanup.setTimeout(() => {
-        feedScrollTimer = null
-        const { scrollTop, scrollHeight, clientHeight } = msgsEl;
-        if (scrollHeight - scrollTop - clientHeight < 100) {
-          fetchFeed(true);
+  // Initial window render
+  _feedVirtualRenderWindow(msgsEl, virtualContainer, items)
+
+  // Recalibrate spacer after measuring real item height
+  requestAnimationFrame(() => {
+    const newTotal = items.length * _feedVirtualItemHeight
+    spacer.style.height = `${newTotal}px`
+    if (feedHasMore) {
+      const loader = msgsEl.querySelector('.hs-feed-loader')
+      if (loader) loader.style.top = `${newTotal}px`
+    }
+  })
+
+  // Scroll handler: rAF-throttled window recompute + infinite scroll trigger
+  let _feedInfiniteTimer = null
+  _feedVirtualScrollHandler = () => {
+    if (mcSignal?.aborted) return
+    if (_feedVirtualScrollRaf) return
+    _feedVirtualScrollRaf = requestAnimationFrame(() => {
+      _feedVirtualScrollRaf = 0
+      _feedVirtualRenderWindow(msgsEl, virtualContainer, items)
+
+      // Infinite scroll: near bottom
+      if (currentTab === 'feed' && !feedLoading && feedHasMore) {
+        if (!_feedInfiniteTimer) {
+          _feedInfiniteTimer = cleanup.setTimeout(() => {
+            _feedInfiniteTimer = null
+            const { scrollTop, scrollHeight, clientHeight } = msgsEl
+            if (scrollHeight - scrollTop - clientHeight < 100) fetchFeed(true)
+          }, 200)
         }
-      }, 200)
-    }, { signal: mcSignal, passive: true });
+      }
+    })
   }
+  msgsEl.addEventListener('scroll', _feedVirtualScrollHandler, { signal: mcSignal, passive: true })
+
+  // ResizeObserver: recompute window on container resize
+  _feedVirtualResizeObserver = cleanup.trackObserver(new ResizeObserver(() => {
+    _feedVirtualLastStart = -1
+    _feedVirtualLastEnd = -1
+    _feedVirtualRenderWindow(msgsEl, virtualContainer, items)
+  }))
+  _feedVirtualResizeObserver.observe(msgsEl)
 }
 
 // ---- ENGAGEMENT: heat, bookmark, reactions ----
@@ -12752,6 +12898,134 @@ function renderDiscoverTab() {
   msgsEl.appendChild(frag);
 }
 
+// Pinned messages tab
+let pinnedLoaded = false;
+let pinnedLoading = false;
+let pinnedMessages = [];
+
+function _pinnedSetLoading(msgsEl) {
+  msgsEl.textContent = '';
+  const el = document.createElement('div');
+  el.className = 'hs-mc-empty';
+  el.textContent = 'loading...';
+  msgsEl.appendChild(el);
+}
+
+async function fetchPinned() {
+  if (pinnedLoading) return;
+  pinnedLoading = true;
+
+  const msgsEl = document.getElementById('hs-mc-messages');
+  if (msgsEl && currentTab === 'pinned') _pinnedSetLoading(msgsEl);
+
+  try {
+    const resp = await apiFetch('/api/messages/pinned');
+    pinnedMessages = resp.ok ? (resp.messages || resp.data || []) : [];
+    pinnedLoaded = true;
+  } catch (e) {
+    pinnedMessages = [];
+    pinnedLoaded = true;
+  } finally {
+    pinnedLoading = false;
+    if (currentTab === 'pinned') renderPinnedTab();
+  }
+}
+
+function renderPinnedTab() {
+  const msgsEl = document.getElementById('hs-mc-messages');
+  if (!msgsEl) return;
+
+  // Insert refresh bar above message area once
+  if (!document.getElementById('hs-pinned-refresh-bar')) {
+    const bar = document.createElement('div');
+    bar.id = 'hs-pinned-refresh-bar';
+    bar.className = 'hs-discover-refresh-bar';
+    const btn = document.createElement('button');
+    btn.className = 'hs-discover-refresh-btn';
+    btn.textContent = 'refresh';
+    btn.addEventListener('click', () => {
+      pinnedLoaded = false;
+      fetchPinned();
+    });
+    bar.appendChild(btn);
+    msgsEl.parentNode?.insertBefore(bar, msgsEl);
+  }
+
+  const bar = document.getElementById('hs-pinned-refresh-bar');
+  if (bar) bar.style.display = currentTab === 'pinned' ? '' : 'none';
+
+  if (!pinnedLoaded && !pinnedLoading) {
+    fetchPinned();
+    return;
+  }
+  if (pinnedLoading) {
+    _pinnedSetLoading(msgsEl);
+    return;
+  }
+
+  msgsEl.textContent = '';
+  const frag = document.createDocumentFragment();
+
+  if (pinnedMessages.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'hs-mc-empty';
+    empty.textContent = 'no pinned messages';
+    frag.appendChild(empty);
+    msgsEl.appendChild(frag);
+    return;
+  }
+
+  for (const m of pinnedMessages) {
+    const id = m.base36_id || m.id || '';
+    const channel = escapeHtml(m.channel || '');
+    const user = escapeHtml(m.user || m.username || m.display_name || '');
+    const content = escapeHtml(m.content || m.text || '');
+    const ts = m.ts || m.created_at || m.timestamp || '';
+    const timeStr = ts ? escapeHtml(new Date(ts).toLocaleString()) : '';
+
+    const row = document.createElement('a');
+    row.className = 'hs-pinned-row';
+    if (id) {
+      const url = safeUrl(`https://heatsync.org/m/${encodeURIComponent(id)}`);
+      if (url) {
+        row.href = url;
+        row.target = '_blank';
+        row.rel = 'noopener noreferrer';
+      }
+    }
+
+    const meta = document.createElement('div');
+    meta.className = 'hs-pinned-meta';
+    if (channel) {
+      const channelSpan = document.createElement('span');
+      channelSpan.className = 'hs-pinned-channel';
+      channelSpan.textContent = channel;
+      meta.appendChild(channelSpan);
+    }
+    if (user) {
+      const userSpan = document.createElement('span');
+      userSpan.className = 'hs-pinned-user';
+      userSpan.textContent = user;
+      meta.appendChild(userSpan);
+    }
+    if (timeStr) {
+      const timeSpan = document.createElement('span');
+      timeSpan.className = 'hs-pinned-time';
+      timeSpan.textContent = timeStr;
+      meta.appendChild(timeSpan);
+    }
+    row.appendChild(meta);
+
+    const body = document.createElement('div');
+    body.className = 'hs-pinned-body';
+    body.textContent = content;
+    row.appendChild(body);
+
+    frag.appendChild(row);
+  }
+
+  msgsEl.appendChild(frag);
+}
 
 
 // --- multichat/whispers.js ---
@@ -16016,6 +16290,7 @@ const STORAGE_KEY = 'heatsync_multichat';
         <button class="hs-mc-tab" data-tab="mentions">${t('mc_tab_mentions')}</button>
         <button class="hs-mc-tab" data-tab="activity">${t('mc_tab_activity')}</button>
         <button class="hs-mc-tab" data-tab="discover">${t('mc_tab_discover')}</button>
+        <button class="hs-mc-tab" data-tab="pinned">${t('mc_tab_pinned')}</button>
         <button class="hs-mc-tab" data-tab="live">${t('mc_tab_live')}</button>
         <button class="hs-mc-tab" data-tab="add">+</button>
       </div>
@@ -16096,7 +16371,7 @@ const STORAGE_KEY = 'heatsync_multichat';
       }
 
       // Channel tabs get edit/remove context menu
-      const reserved = ['feed', 'mentions', 'activity', 'whispers', 'discover', 'add', 'rotate', 'settings'];
+      const reserved = ['feed', 'mentions', 'activity', 'whispers', 'discover', 'pinned', 'add', 'rotate', 'settings'];
       if (reserved.includes(tabId)) return;
       e.preventDefault();
 
@@ -16305,7 +16580,7 @@ const STORAGE_KEY = 'heatsync_multichat';
       const newBtn = document.getElementById('hs-mc-new-msgs');
       if (!msgsEl || !newBtn) return;
 
-      const isStaticTab = () => currentTab === 'feed' || currentTab === 'settings' || currentTab === 'discover';
+      const isStaticTab = () => currentTab === 'feed' || currentTab === 'settings' || currentTab === 'discover' || currentTab === 'pinned';
 
       // scroll event only used for scrollbar drag detection (not wheel — wheel has its own handler)
       msgsEl.addEventListener('scrollend', () => {
@@ -17483,7 +17758,7 @@ const STORAGE_KEY = 'heatsync_multichat';
     if (!tabBarElement) return;
 
     // Clear existing channel tabs (keep built-in tabs)
-    const existingChannelTabs = tabBarElement.querySelectorAll('.hs-mc-tab[data-tab]:not([data-tab="live"]):not([data-tab="feed"]):not([data-tab="mentions"]):not([data-tab="activity"]):not([data-tab="whispers"]):not([data-tab="discover"]):not([data-tab="add"]):not([data-tab="rotate"]):not([data-tab="settings"])');
+    const existingChannelTabs = tabBarElement.querySelectorAll('.hs-mc-tab[data-tab]:not([data-tab="live"]):not([data-tab="feed"]):not([data-tab="mentions"]):not([data-tab="activity"]):not([data-tab="whispers"]):not([data-tab="discover"]):not([data-tab="pinned"]):not([data-tab="add"]):not([data-tab="rotate"]):not([data-tab="settings"])');
     existingChannelTabs.forEach(t => t.remove());
 
     // Add channel tabs before the + button in the scroll section
@@ -17893,6 +18168,10 @@ const STORAGE_KEY = 'heatsync_multichat';
     const discoverBar = document.getElementById('hs-discover-refresh-bar')
     if (discoverBar) discoverBar.style.display = id === 'discover' ? '' : 'none'
 
+    // Show/hide pinned refresh bar
+    const pinnedBar = document.getElementById('hs-pinned-refresh-bar')
+    if (pinnedBar) pinnedBar.style.display = id === 'pinned' ? '' : 'none'
+
     // Clear activity badge when switching to activity tab
     if (id === 'activity' && unreadNotifCount > 0) {
       unreadNotifCount = 0;
@@ -17964,7 +18243,7 @@ const STORAGE_KEY = 'heatsync_multichat';
     // Hide input bar on add-channel form, or when auto-hide is on
     if (inputBarElement) {
       const pickerOpen = document.getElementById('hs-mc-emote-picker')?.classList.contains('visible');
-      if (id === 'add' || id === 'settings' || id === 'discover') {
+      if (id === 'add' || id === 'settings' || id === 'discover' || id === 'pinned') {
         inputBarElement.classList.add('hs-hidden');
         inputBarVisible = false;
       } else if (autoHideInput && !pickerOpen) {
@@ -18653,6 +18932,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     if (id === 'activity') { renderActivity(); return; }
     if (id === 'whispers') { renderWhispersTab(); return; }
     if (id === 'discover') { renderDiscoverTab(); return; }
+    if (id === 'pinned') { renderPinnedTab(); return; }
     if (id === 'settings') { renderSettingsTab(); return; }
 
     // If search is active on mentions tab, don't clobber search results
@@ -18911,7 +19191,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       }
 
       const id = twitchVal || kickVal || ('yt-' + Date.now())
-      const reserved = ['live', 'feed', 'mentions', 'whispers', 'discover', 'add', 'rotate', 'settings']
+      const reserved = ['live', 'feed', 'mentions', 'whispers', 'discover', 'pinned', 'add', 'rotate', 'settings']
       if (reserved.includes(id)) {
         showErr(t('mc_reserved_name'))
         return
@@ -19704,7 +19984,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
   }
 
   let _savedActiveTab = null;
-  const BUILTIN_TABS = ['live', 'feed', 'mentions', 'discover', 'add'];
+  const BUILTIN_TABS = ['live', 'feed', 'mentions', 'discover', 'pinned', 'add'];
   async function loadActiveTab() {
     try {
       const stored = await chrome.storage.sync.get(['ui_settings']);

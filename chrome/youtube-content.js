@@ -264,6 +264,7 @@
   }
   signal.addEventListener('abort', () => {
     if (ytCosmeticsBatchTimer) { clearTimeout(ytCosmeticsBatchTimer); ytCosmeticsBatchTimer = null }
+    if (_setupAutocompleteRetryTimer) { clearTimeout(_setupAutocompleteRetryTimer); _setupAutocompleteRetryTimer = null }
   }, { once: true })
 
   async function flushYtCosmeticsBatch() {
@@ -604,19 +605,24 @@
   let acSelectedIndex = -1
   let acVisible = false
 
+  let _setupAutocompleteRetryTimer = null
   function setupAutocomplete() {
     if (signal.aborted) return
     const inputRenderer = document.querySelector('yt-live-chat-text-input-field-renderer')
     if (!inputRenderer) {
-      setTimeout(setupAutocomplete, 1000)
+      if (_setupAutocompleteRetryTimer) clearTimeout(_setupAutocompleteRetryTimer)
+      _setupAutocompleteRetryTimer = setTimeout(setupAutocomplete, 1000)
       return
     }
 
     const input = inputRenderer.querySelector('div#input[contenteditable]')
     if (!input) {
-      setTimeout(setupAutocomplete, 1000)
+      if (_setupAutocompleteRetryTimer) clearTimeout(_setupAutocompleteRetryTimer)
+      _setupAutocompleteRetryTimer = setTimeout(setupAutocomplete, 1000)
       return
     }
+    // Found — clear any pending retry
+    if (_setupAutocompleteRetryTimer) { clearTimeout(_setupAutocompleteRetryTimer); _setupAutocompleteRetryTimer = null }
 
     // Create autocomplete dropdown
     autocompleteEl = document.createElement('div')

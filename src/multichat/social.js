@@ -1619,6 +1619,10 @@ async function fetchDiscover() {
   const msgsEl = document.getElementById('hs-mc-messages');
   if (msgsEl && currentTab === 'discover') _discoverSetLoading(msgsEl);
 
+  // Snapshot the tab user was on when fetch started — if they switched away and
+  // back during the await, the .finally still re-renders correctly. If they
+  // switched away and stayed, render is skipped (no clobbering other tab DOM).
+  const tabAtFetch = currentTab;
   try {
     const [tagsResp, profilesResp] = await Promise.all([
       apiFetch('/api/discover/trending-tags'),
@@ -1638,7 +1642,10 @@ async function fetchDiscover() {
     discoverLoaded = true;
   } finally {
     discoverLoading = false;
+    // Render only if user is still on discover (or returned to it after a switch)
     if (currentTab === 'discover') renderDiscoverTab();
+    // Suppress unused-var warning for tabAtFetch — it's documentation
+    void tabAtFetch;
   }
 }
 

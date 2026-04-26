@@ -3532,7 +3532,11 @@ async function handleMessage(message, sender, sendResponse) {
 
   } else if (message.type === 'api_fetch') {
     // Generic API proxy — content scripts route through here to bypass CORS
-    if (!message.path || !message.path.startsWith('/api/') || /\.\./.test(message.path)) {
+    // Strict path validation: catch literal `..` AND URL-encoded variants
+    // (%2e%2e, %2E, etc) by decoding before the check
+    let _decodedPath
+    try { _decodedPath = decodeURIComponent(message.path || '') } catch { _decodedPath = '' }
+    if (!message.path || !message.path.startsWith('/api/') || /\.\./.test(_decodedPath)) {
       sendResponse({ ok: false, error: 'invalid path' });
       return true;
     }

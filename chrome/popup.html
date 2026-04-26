@@ -41,12 +41,12 @@
       background: rgba(255,255,255,0.06);
     }
     .user-name { font-weight: 600; font-size: 14px; }
-    .user-stats { color: #808080; font-size: 12px; }
+    .user-stats { color: #a0a0a0; font-size: 12px; }
 
     .login-section {
       padding: 14px 16px;
       text-align: center;
-      color: #808080;
+      color: #a0a0a0;
     }
     .login-btn {
       display: inline-block;
@@ -71,7 +71,7 @@
       background: rgba(255,255,255,0.06);
       border: none;
       border-radius: 0;
-      color: #808080;
+      color: #a0a0a0;
       font-size: 12px;
       cursor: pointer;
       text-align: center;
@@ -91,13 +91,13 @@
       font-family: inherit;
       outline: none;
     }
-    .popout-input::placeholder { color: #808080; }
+    .popout-input::placeholder { color: #b0b0b0; }
     .popout-btn { flex-shrink: 0; }
 
     .hint {
       padding: 10px 16px;
       text-align: center;
-      color: #808080;
+      color: #a0a0a0;
       font-size: 11px;
       border-top: 1px solid rgba(255,255,255,0.12);
     }
@@ -107,7 +107,7 @@
   <div class="header">
     <img src="icon-48.png" alt="">
     <span class="header-title" data-i18n="popup_title">heatsync</span>
-    <span class="status-dot yellow" id="status-dot" data-i18n-title="popup_status_checking" title="checking..."></span>
+    <span class="status-dot yellow" id="status-dot" role="status" aria-live="polite" aria-label="status: checking" data-i18n-title="popup_status_checking" title="checking..."></span>
   </div>
 
   <div id="content"></div>

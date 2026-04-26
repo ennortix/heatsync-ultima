@@ -461,6 +461,24 @@ function escapeHtml(str) {
 }
 
 /**
+ * Validate URL — only http/https protocols allowed.
+ * Returns the URL string if safe, empty string otherwise.
+ * Use before assigning user/third-party data to img.src or a.href.
+ * @param {string} url
+ * @returns {string}
+ */
+function safeUrl(url) {
+  if (typeof url !== 'string' || !url) return ''
+  const trimmed = url.trim()
+  if (!/^https?:\/\//i.test(trimmed)) return ''
+  try {
+    const u = new URL(trimmed)
+    if (u.protocol !== 'http:' && u.protocol !== 'https:') return ''
+    return trimmed
+  } catch { return '' }
+}
+
+/**
  * Create element with safe text content (no innerHTML)
  * @param {string} tag
  * @param {string} text
@@ -622,6 +640,7 @@ function error(...args) {
 const utils = {
   // XSS
   escapeHtml,
+  safeUrl,
   createElement,
 
   // DOM
@@ -880,7 +899,7 @@ const api = {
  */
 function t(key, substitutions) {
   try {
-    return chrome.i18n.getMessage(key, substitutions) || key
+    return rawApi?.i18n?.getMessage(key, substitutions) || key
   } catch { return key }
 }
 
@@ -1394,7 +1413,7 @@ function injectStyles() {
       display: none !important;
     }
     /* Hide native chat header/room content — our elements are in #hs-mc-container (sibling) */
-    .hs-native-hidden [class*="chat-room__content"] > * {
+    .hs-native-hidden [class*="chat-room__content"] > *:not(.hs-pc-panel):not(.hs-profile-card) {
       display: none !important;
     }
     /* Collapse the native chat container itself so #hs-mc-container gets flex space */
@@ -1428,8 +1447,8 @@ function injectStyles() {
       min-width: 0 !important;
       background: #000 !important;
     }
-    .chat-shell.hs-native-hidden > *:not(#hs-mc-container),
-    [class*="chat-shell"].hs-native-hidden > *:not(#hs-mc-container) {
+    .chat-shell.hs-native-hidden > *:not(#hs-mc-container):not(.hs-pc-panel):not(.hs-profile-card),
+    [class*="chat-shell"].hs-native-hidden > *:not(#hs-mc-container):not(.hs-pc-panel):not(.hs-profile-card) {
       display: none !important;
     }
     /* Ensure stream-chat ancestor also stays sized */
@@ -6825,12 +6844,12 @@ async function sendKickMessage(kickSlug, text) {
       if (kickEmoteMatch) {
         const [, emoteId, emoteName] = kickEmoteMatch
         const kickUrl = `https://files.kick.com/emotes/${emoteId}/fullsize`
-        const safeUrl = escapeHtml(kickUrl)
+        const safeKickUrl = escapeHtml(kickUrl)
         const safeName = escapeHtml(emoteName)
         // Cross-reference caches to find real provider (7tv/bttv/ffz), fall back to kick
         const cached = emoteCache.get(emoteName) || (channel && channelEmoteCaches[channel]?.get(emoteName))
         const provider = cached?.source || 'kick'
-        const imgHtml = `<span class="hs-mc-emote-wrapper hs-state-channel" data-emote-name="${safeName}" data-emote-url="${safeUrl}" data-state="channel" data-source="${escapeHtml(provider)}"><img src="${safeUrl}" alt="${safeName}" title="${safeName} (${escapeHtml(provider)} via kick)" class="hs-mc-emote hs-emote-channel" data-emote-name="${safeName}" data-state="channel" data-source="${escapeHtml(provider)}"></span>`
+        const imgHtml = `<span class="hs-mc-emote-wrapper hs-state-channel" data-emote-name="${safeName}" data-emote-url="${safeKickUrl}" data-state="channel" data-source="${escapeHtml(provider)}"><img src="${safeKickUrl}" alt="${safeName}" title="${safeName} (${escapeHtml(provider)} via kick)" class="hs-mc-emote hs-emote-channel" data-emote-name="${safeName}" data-state="channel" data-source="${escapeHtml(provider)}"></span>`
         if (pendingStack) {
           result.push(renderEmoteStack(pendingStack))
         }
@@ -10677,8 +10696,11 @@ function renderThirdPartyBadges(userId) {
     const file = files.find(f => f.name?.endsWith('.webp')) || files.find(f => f.name?.endsWith('.avif')) || files[0]
     if (file) {
       const base = cosmetic.badge.host?.url || ''
-      const url = (base.endsWith('/') ? base : base + '/') + file.name
-      html += `<img class="hs-mc-badge-img" src="${escapeHtml(url)}" alt="7TV" title="${escapeHtml(cosmetic.badge.tooltip || '7TV')}" style="width:18px;height:18px;">`
+      const rawUrl = (base.endsWith('/') ? base : base + '/') + file.name
+      const url = safeUrl(rawUrl)
+      if (url) {
+        html += `<img class="hs-mc-badge-img" src="${escapeHtml(url)}" alt="7TV" title="${escapeHtml(cosmetic.badge.tooltip || '7TV')}" style="width:18px;height:18px;">`
+      }
     }
   }
   return html
@@ -14713,15 +14735,18 @@ const STORAGE_KEY = 'heatsync_multichat';
           const file = files.find(f => f.name?.endsWith('.webp')) || files.find(f => f.name?.endsWith('.avif')) || files[0]
           if (file) {
             const base = cosmetic.badge.host?.url || ''
-            const url = (base.endsWith('/') ? base : base + '/') + file.name
-            const img = document.createElement('img')
-            img.className = 'hs-mc-badge-img hs-mc-7tv-badge'
-            img.src = url
-            img.alt = '7TV'
-            img.title = cosmetic.badge.tooltip || '7TV'
-            img.style.cssText = 'width:18px;height:18px;'
-            // Insert before the username link
-            if (userLink) userLink.parentNode.insertBefore(img, userLink)
+            const rawUrl = (base.endsWith('/') ? base : base + '/') + file.name
+            const url = safeUrl(rawUrl)
+            if (url) {
+              const img = document.createElement('img')
+              img.className = 'hs-mc-badge-img hs-mc-7tv-badge'
+              img.src = url
+              img.alt = '7TV'
+              img.title = cosmetic.badge.tooltip || '7TV'
+              img.style.cssText = 'width:18px;height:18px;'
+              // Insert before the username link
+              if (userLink) userLink.parentNode.insertBefore(img, userLink)
+            }
           }
         }
       }

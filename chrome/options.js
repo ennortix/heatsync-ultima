@@ -37,7 +37,9 @@
   function render() {
     for (const toggle of document.querySelectorAll('.toggle[data-setting]')) {
       const key = toggle.dataset.setting
-      toggle.classList.toggle('active', !!settings[key])
+      const on = !!settings[key]
+      toggle.classList.toggle('active', on)
+      toggle.setAttribute('aria-checked', on ? 'true' : 'false')
     }
     // Crash log section visibility tracks the toggle
     const crashRow = document.getElementById('crash-log-row')
@@ -71,6 +73,7 @@
     const key = toggle.dataset.setting
     settings[key] = !settings[key]
     toggle.classList.toggle('active', settings[key])
+    toggle.setAttribute('aria-checked', settings[key] ? 'true' : 'false')
     save()
   })
 

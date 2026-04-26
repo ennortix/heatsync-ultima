@@ -79,7 +79,7 @@
           <a href="https://heatsync.org/emotes" target="_blank" rel="noopener noreferrer" class="action-btn">${t('popup_btn_emotes')}</a>
           <button class="action-btn" id="refresh-btn">${t('popup_btn_refresh')}</button>
           <a href="https://heatsync.org" target="_blank" rel="noopener noreferrer" class="action-btn">${t('popup_btn_site')}</a>
-          <button class="action-btn" id="logout-btn" style="color:#808080">${t('popup_btn_logout') || 'logout'}</button>
+          <button class="action-btn" id="logout-btn" style="color:#a0a0a0">${t('popup_btn_logout') || 'logout'}</button>
         </div>
       `
 

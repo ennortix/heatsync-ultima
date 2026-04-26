@@ -28,7 +28,7 @@
     }
     .section-title {
       font-size: 12px;
-      color: #808080;
+      color: #a0a0a0;
       text-transform: lowercase;
       margin-bottom: 8px;
       padding-bottom: 4px;
@@ -46,7 +46,7 @@
     }
     .setting-desc {
       font-size: 11px;
-      color: #808080;
+      color: #a0a0a0;
       margin-top: 2px;
     }
 
@@ -54,11 +54,17 @@
       width: 36px;
       height: 20px;
       background: #333;
+      border: none;
       border-radius: 10px;
       cursor: pointer;
       position: relative;
       flex-shrink: 0;
+      padding: 0;
       transition: background 0.15s;
+    }
+    .toggle:focus-visible {
+      outline: 2px solid #ff8700;
+      outline-offset: 2px;
     }
     .toggle.active {
       background: #ff8700;
@@ -81,7 +87,7 @@
     .footer {
       margin-top: 24px;
       text-align: center;
-      color: #808080;
+      color: #a0a0a0;
       font-size: 11px;
     }
     .footer a { color: #ff8700; text-decoration: none; }
@@ -91,92 +97,92 @@
 <body>
   <div class="header">
     <img src="icon-48.png" alt="">
-    <span class="header-title">heatsync settings</span>
+    <h1 class="header-title">heatsync settings</h1>
   </div>
 
   <div class="section">
-    <div class="section-title">tab completion</div>
+    <h2 class="section-title">tab completion</h2>
     <div class="setting-row">
       <div>
-        <div class="setting-label">wysiwyg emotes</div>
+        <div class="setting-label" id="lbl-emoteWysiwyg">wysiwyg emotes</div>
         <div class="setting-desc">show emote images in chat input while typing</div>
       </div>
-      <div class="toggle" data-setting="emoteWysiwyg"></div>
+      <button type="button" class="toggle" data-setting="emoteWysiwyg" role="switch" aria-checked="false" aria-labelledby="lbl-emoteWysiwyg"></button>
     </div>
     <div class="setting-row">
       <div>
-        <div class="setting-label">space after emote</div>
+        <div class="setting-label" id="lbl-emoteSpaceAfter">space after emote</div>
         <div class="setting-desc">auto-insert space after tab completion</div>
       </div>
-      <div class="toggle" data-setting="emoteSpaceAfter"></div>
+      <button type="button" class="toggle" data-setting="emoteSpaceAfter" role="switch" aria-checked="false" aria-labelledby="lbl-emoteSpaceAfter"></button>
     </div>
     <div class="setting-row">
       <div>
-        <div class="setting-label">placeholder mode</div>
+        <div class="setting-label" id="lbl-emotePlaceholderMode">placeholder mode</div>
         <div class="setting-desc">show colored boxes instead of emote images</div>
       </div>
-      <div class="toggle" data-setting="emotePlaceholderMode"></div>
+      <button type="button" class="toggle" data-setting="emotePlaceholderMode" role="switch" aria-checked="false" aria-labelledby="lbl-emotePlaceholderMode"></button>
     </div>
   </div>
 
   <div class="section">
-    <div class="section-title">chat ui</div>
+    <h2 class="section-title">chat ui</h2>
     <div class="setting-row">
       <div>
-        <div class="setting-label">hide header</div>
+        <div class="setting-label" id="lbl-hideChatHeader">hide header</div>
         <div class="setting-desc">hide chat room header bar</div>
       </div>
-      <div class="toggle" data-setting="hideChatHeader"></div>
+      <button type="button" class="toggle" data-setting="hideChatHeader" role="switch" aria-checked="false" aria-labelledby="lbl-hideChatHeader"></button>
     </div>
     <div class="setting-row">
       <div>
-        <div class="setting-label">compact input</div>
+        <div class="setting-label" id="lbl-compactChatInput">compact input</div>
         <div class="setting-desc">minimize chat input buttons</div>
       </div>
-      <div class="toggle" data-setting="compactChatInput"></div>
+      <button type="button" class="toggle" data-setting="compactChatInput" role="switch" aria-checked="false" aria-labelledby="lbl-compactChatInput"></button>
     </div>
     <div class="setting-row">
       <div>
-        <div class="setting-label">highlight mentions</div>
+        <div class="setting-label" id="lbl-highlightMentions">highlight mentions</div>
         <div class="setting-desc">red background on chat lines mentioning you</div>
       </div>
-      <div class="toggle" data-setting="highlightMentions"></div>
+      <button type="button" class="toggle" data-setting="highlightMentions" role="switch" aria-checked="false" aria-labelledby="lbl-highlightMentions"></button>
     </div>
     <div class="setting-row">
       <div>
-        <div class="setting-label">platform badges</div>
+        <div class="setting-label" id="lbl-showPlatformBadges">platform badges</div>
         <div class="setting-desc">[T] [K] [YT] labels on messages</div>
       </div>
-      <div class="toggle" data-setting="showPlatformBadges"></div>
+      <button type="button" class="toggle" data-setting="showPlatformBadges" role="switch" aria-checked="false" aria-labelledby="lbl-showPlatformBadges"></button>
     </div>
     <div class="setting-row">
       <div>
-        <div class="setting-label">cosmetics</div>
+        <div class="setting-label" id="lbl-showCosmetics">cosmetics</div>
         <div class="setting-desc">7TV/BTTV/FFZ paints and badges</div>
       </div>
-      <div class="toggle" data-setting="showCosmetics"></div>
+      <button type="button" class="toggle" data-setting="showCosmetics" role="switch" aria-checked="false" aria-labelledby="lbl-showCosmetics"></button>
     </div>
     <div class="setting-row">
       <div>
-        <div class="setting-label">hide stream title</div>
+        <div class="setting-label" id="lbl-hideStreamTitle">hide stream title</div>
         <div class="setting-desc">hide the stream title above chat</div>
       </div>
-      <div class="toggle" data-setting="hideStreamTitle"></div>
+      <button type="button" class="toggle" data-setting="hideStreamTitle" role="switch" aria-checked="false" aria-labelledby="lbl-hideStreamTitle"></button>
     </div>
     <div class="setting-row">
       <div>
-        <div class="setting-label">hide viewer count</div>
+        <div class="setting-label" id="lbl-hideViewerCount">hide viewer count</div>
         <div class="setting-desc">hide viewer count display</div>
       </div>
-      <div class="toggle" data-setting="hideViewerCount"></div>
+      <button type="button" class="toggle" data-setting="hideViewerCount" role="switch" aria-checked="false" aria-labelledby="lbl-hideViewerCount"></button>
     </div>
   </div>
 
   <div class="section">
-    <div class="section-title">font</div>
+    <h2 class="section-title">font</h2>
     <div class="setting-row">
       <div>
-        <div class="setting-label">font family</div>
+        <label class="setting-label" for="ext-font-family">font family</label>
         <div class="setting-desc">used for heatsync multichat overlay</div>
       </div>
       <select id="ext-font-family" style="background:#000;color:#fff;border:1px solid #808080;padding:4px 8px;font-size:12px;">
@@ -188,13 +194,13 @@
     </div>
     <div class="setting-row" id="ext-custom-font-row" style="display:none">
       <div>
-        <div class="setting-label">custom font name</div>
+        <label class="setting-label" for="ext-custom-font">custom font name</label>
       </div>
       <input type="text" id="ext-custom-font" placeholder="font name" style="background:#000;color:#fff;border:1px solid #808080;padding:4px 8px;font-size:12px;width:140px;">
     </div>
     <div class="setting-row">
       <div>
-        <div class="setting-label">font size</div>
+        <label class="setting-label" for="ext-font-size">font size</label>
       </div>
       <select id="ext-font-size" style="background:#000;color:#fff;border:1px solid #808080;padding:4px 8px;font-size:12px;">
         <option value="11">11px</option>
@@ -207,49 +213,49 @@
   </div>
 
   <div class="section">
-    <div class="section-title">input</div>
+    <h2 class="section-title">input</h2>
     <div class="setting-row">
       <div>
-        <div class="setting-label">vi mode</div>
+        <div class="setting-label" id="lbl-viMode">vi mode</div>
         <div class="setting-desc">vim keybindings for chat input</div>
       </div>
-      <div class="toggle" data-setting="viMode"></div>
+      <button type="button" class="toggle" data-setting="viMode" role="switch" aria-checked="false" aria-labelledby="lbl-viMode"></button>
     </div>
   </div>
 
   <div class="section">
-    <div class="section-title">automod</div>
+    <h2 class="section-title">automod</h2>
     <div class="setting-row">
       <div>
-        <div class="setting-label">hide all-caps spam</div>
+        <div class="setting-label" id="lbl-automodAllCaps">hide all-caps spam</div>
         <div class="setting-desc">hide messages over 10 chars that are mostly uppercase</div>
       </div>
-      <div class="toggle" data-setting="automodAllCaps"></div>
+      <button type="button" class="toggle" data-setting="automodAllCaps" role="switch" aria-checked="false" aria-labelledby="lbl-automodAllCaps"></button>
     </div>
     <div class="setting-row" style="flex-direction:column;align-items:stretch;gap:6px">
       <div>
-        <div class="setting-label">filter regex</div>
+        <label class="setting-label" for="automod-regex">filter regex</label>
         <div class="setting-desc">one pattern per line, case-insensitive — matching messages get hidden</div>
       </div>
-      <textarea id="automod-regex" placeholder="bit\.ly\\nfree\\s+v[\\-]?bucks" style="background:#000;color:#fff;border:1px solid #808080;padding:6px 8px;font-family:monospace;font-size:11px;width:100%;min-height:60px;resize:vertical"></textarea>
+      <textarea id="automod-regex" placeholder="bit\.ly\nfree\s+v[\-]?bucks" style="background:#000;color:#fff;border:1px solid #808080;padding:6px 8px;font-family:monospace;font-size:11px;width:100%;min-height:60px;resize:vertical"></textarea>
     </div>
   </div>
 
   <div class="section">
-    <div class="section-title">advanced</div>
+    <h2 class="section-title">advanced</h2>
     <div class="setting-row">
       <div>
-        <div class="setting-label">debug logging</div>
+        <div class="setting-label" id="lbl-debugLogging">debug logging</div>
         <div class="setting-desc">verbose console output, reload tab after toggle</div>
       </div>
-      <div class="toggle" data-setting="debugLogging"></div>
+      <button type="button" class="toggle" data-setting="debugLogging" role="switch" aria-checked="false" aria-labelledby="lbl-debugLogging"></button>
     </div>
     <div class="setting-row">
       <div>
-        <div class="setting-label">crash telemetry</div>
+        <div class="setting-label" id="lbl-crashTelemetry">crash telemetry</div>
         <div class="setting-desc">capture errors locally for diagnosis (never auto-uploaded)</div>
       </div>
-      <div class="toggle" data-setting="crashTelemetry"></div>
+      <button type="button" class="toggle" data-setting="crashTelemetry" role="switch" aria-checked="false" aria-labelledby="lbl-crashTelemetry"></button>
     </div>
     <div class="setting-row" id="crash-log-row" style="display:none;flex-direction:column;align-items:stretch;gap:8px">
       <div style="display:flex;justify-content:space-between;align-items:center">

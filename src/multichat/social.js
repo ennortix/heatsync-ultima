@@ -81,6 +81,15 @@ let feedHasMore = true;
 let feedLastFetch = 0; // Timestamp of last feed fetch
 const FEED_STALE_MS = 120000; // 2 minutes
 
+// Virtual scroll state for feed
+let _feedVirtualScrollHandler = null  // current scroll listener ref
+let _feedVirtualResizeObserver = null // ResizeObserver on msgsEl
+let _feedVirtualItemHeight = 56       // estimated item height (px), recalibrated after first render
+let _feedVirtualScrollRaf = 0         // rAF handle for scroll debounce
+let _feedVirtualLastStart = -1        // last rendered window start
+let _feedVirtualLastEnd = -1          // last rendered window end
+const FEED_VIRTUAL_OVERSCAN = 5       // extra items above/below visible window
+
 // Engagement state — optimistic local cache
 const feedLiked = new Set()     // base36_ids the user has liked
 const feedBookmarked = new Set() // base36_ids the user has bookmarked
@@ -551,6 +560,63 @@ async function fetchFeed(append = false) {
   checkFeedBookmarks(ids)
 }
 
+// Tear down virtual scroll state (called before re-setup or when leaving feed)
+function _feedVirtualTeardown(msgsEl) {
+  if (_feedVirtualScrollHandler && msgsEl) {
+    msgsEl.removeEventListener('scroll', _feedVirtualScrollHandler)
+  }
+  _feedVirtualScrollHandler = null
+  if (_feedVirtualResizeObserver) {
+    cleanup.untrackObserver(_feedVirtualResizeObserver)
+    _feedVirtualResizeObserver = null
+  }
+  if (_feedVirtualScrollRaf) {
+    cancelAnimationFrame(_feedVirtualScrollRaf)
+    _feedVirtualScrollRaf = 0
+  }
+  _feedVirtualLastStart = -1
+  _feedVirtualLastEnd = -1
+}
+
+// Render only the visible slice of feedMessages into the virtual container.
+// virtualContainer is absolutely positioned inside msgsEl; spacer sets scrollHeight.
+function _feedVirtualRenderWindow(msgsEl, virtualContainer, items) {
+  const scrollTop = msgsEl.scrollTop
+  const viewHeight = msgsEl.clientHeight
+  const h = _feedVirtualItemHeight
+
+  const startIdx = Math.max(0, Math.floor(scrollTop / h) - FEED_VIRTUAL_OVERSCAN)
+  const endIdx = Math.min(items.length, Math.ceil((scrollTop + viewHeight) / h) + FEED_VIRTUAL_OVERSCAN)
+
+  // Skip identical window to avoid DOM thrashing
+  if (startIdx === _feedVirtualLastStart && endIdx === _feedVirtualLastEnd) return
+  _feedVirtualLastStart = startIdx
+  _feedVirtualLastEnd = endIdx
+
+  // Clear and rebuild visible window
+  while (virtualContainer.firstChild) virtualContainer.removeChild(virtualContainer.firstChild)
+
+  const frag = document.createDocumentFragment()
+  let zebraCount = startIdx
+  for (let i = startIdx; i < endIdx; i++) {
+    const m = items[i]
+    const div = buildFeedMessageDiv(m)
+    if (zebraEnabled && ++zebraCount % 2 === 0) div.classList.add('hs-mc-zebra')
+    div.style.position = 'absolute'
+    div.style.top = `${i * h}px`
+    div.style.left = '0'
+    div.style.right = '0'
+    frag.appendChild(div)
+  }
+  virtualContainer.appendChild(frag)
+
+  // Recalibrate item height from first rendered item (once per render cycle)
+  if (startIdx === 0 && virtualContainer.firstElementChild) {
+    const measured = virtualContainer.firstElementChild.getBoundingClientRect().height
+    if (measured > 10) _feedVirtualItemHeight = measured
+  }
+}
+
 function renderFeed() {
   const msgsEl = document.getElementById('hs-mc-messages');
   if (!msgsEl) return;
@@ -559,8 +625,9 @@ function renderFeed() {
   const feedTabBtn = tabBarElement?.querySelector('[data-tab="feed"]');
   if (feedTabBtn) feedTabBtn.textContent = activeThread ? t('mc_social_back') : t('mc_tab_feed');
 
-  // Thread view — show OP + replies
+  // Thread view — show OP + replies, tear down virtual scroll
   if (activeThread) {
+    _feedVirtualTeardown(msgsEl)
     renderThreadView(msgsEl);
     return;
   }
@@ -568,6 +635,7 @@ function renderFeed() {
   // Feed list view
   const isStale = feedLoaded && (Date.now() - feedLastFetch > FEED_STALE_MS);
   if ((!feedLoaded || isStale) && !feedLoading) {
+    _feedVirtualTeardown(msgsEl)
     msgsEl.textContent = '';
     const loading = document.createElement('div');
     loading.className = 'hs-mc-empty';
@@ -578,6 +646,7 @@ function renderFeed() {
   }
 
   if (feedMessages.length === 0) {
+    _feedVirtualTeardown(msgsEl)
     msgsEl.textContent = '';
     const empty = document.createElement('div');
     empty.className = 'hs-mc-empty';
@@ -586,45 +655,83 @@ function renderFeed() {
     return;
   }
 
-  isProgrammaticScroll = true;
-  msgsEl.textContent = '';
-  const frag = document.createDocumentFragment();
-  const feedToRender = feedMessages.slice(-150);
-  let zebraCount = 0;
-  for (const m of feedToRender) {
-    const msgDiv = buildFeedMessageDiv(m);
-    if (zebraEnabled && ++zebraCount % 2 === 0) msgDiv.classList.add('hs-mc-zebra');
-    frag.appendChild(msgDiv);
-  }
+  // --- Virtual scroll setup ---
+  _feedVirtualTeardown(msgsEl)
+
+  const items = feedMessages  // reference — no slice cap
+
+  const totalHeight = items.length * _feedVirtualItemHeight
+  isProgrammaticScroll = true
+  msgsEl.textContent = ''
+  msgsEl.style.position = 'relative'  // needed for absolute children
+
+  // Spacer sets the full scrollable height
+  const spacer = document.createElement('div')
+  spacer.className = 'hs-feed-virtual-spacer'
+  spacer.style.cssText = `position:absolute;top:0;left:0;right:0;height:${totalHeight}px;pointer-events:none;`
+  msgsEl.appendChild(spacer)
+
+  // Virtual container holds only visible DOM nodes
+  const virtualContainer = document.createElement('div')
+  virtualContainer.className = 'hs-feed-virtual-container'
+  virtualContainer.style.cssText = 'position:absolute;top:0;left:0;right:0;'
+  msgsEl.appendChild(virtualContainer)
+
+  // Infinite scroll loader at bottom
   if (feedHasMore) {
-    const loader = document.createElement('div');
-    loader.className = 'hs-mc-empty hs-feed-loader';
-    loader.textContent = t('mc_social_scroll_more');
-    frag.appendChild(loader);
+    const loader = document.createElement('div')
+    loader.className = 'hs-mc-empty hs-feed-loader'
+    loader.style.cssText = `position:absolute;top:${totalHeight}px;left:0;right:0;`
+    loader.textContent = t('mc_social_scroll_more')
+    msgsEl.appendChild(loader)
   }
-  msgsEl.appendChild(frag);
 
-  isProgrammaticScroll = true;
-  msgsEl.scrollTop = 0;
-  requestAnimationFrame(() => { isProgrammaticScroll = false; });
+  msgsEl.scrollTop = 0
+  requestAnimationFrame(() => { isProgrammaticScroll = false; })
 
-  // Setup infinite scroll
-  if (!msgsEl._hsFeedScroll) {
-    msgsEl._hsFeedScroll = true;
-    let feedScrollTimer = null
-    msgsEl.addEventListener('scroll', () => {
-      if (mcSignal?.aborted) return;
-      if (currentTab !== 'feed' || feedLoading || !feedHasMore) return;
-      if (feedScrollTimer) return // Throttle: one check per 200ms
-      feedScrollTimer = cleanup.setTimeout(() => {
-        feedScrollTimer = null
-        const { scrollTop, scrollHeight, clientHeight } = msgsEl;
-        if (scrollHeight - scrollTop - clientHeight < 100) {
-          fetchFeed(true);
+  // Initial window render
+  _feedVirtualRenderWindow(msgsEl, virtualContainer, items)
+
+  // Recalibrate spacer after measuring real item height
+  requestAnimationFrame(() => {
+    const newTotal = items.length * _feedVirtualItemHeight
+    spacer.style.height = `${newTotal}px`
+    if (feedHasMore) {
+      const loader = msgsEl.querySelector('.hs-feed-loader')
+      if (loader) loader.style.top = `${newTotal}px`
+    }
+  })
+
+  // Scroll handler: rAF-throttled window recompute + infinite scroll trigger
+  let _feedInfiniteTimer = null
+  _feedVirtualScrollHandler = () => {
+    if (mcSignal?.aborted) return
+    if (_feedVirtualScrollRaf) return
+    _feedVirtualScrollRaf = requestAnimationFrame(() => {
+      _feedVirtualScrollRaf = 0
+      _feedVirtualRenderWindow(msgsEl, virtualContainer, items)
+
+      // Infinite scroll: near bottom
+      if (currentTab === 'feed' && !feedLoading && feedHasMore) {
+        if (!_feedInfiniteTimer) {
+          _feedInfiniteTimer = cleanup.setTimeout(() => {
+            _feedInfiniteTimer = null
+            const { scrollTop, scrollHeight, clientHeight } = msgsEl
+            if (scrollHeight - scrollTop - clientHeight < 100) fetchFeed(true)
+          }, 200)
         }
-      }, 200)
-    }, { signal: mcSignal, passive: true });
+      }
+    })
   }
+  msgsEl.addEventListener('scroll', _feedVirtualScrollHandler, { signal: mcSignal, passive: true })
+
+  // ResizeObserver: recompute window on container resize
+  _feedVirtualResizeObserver = cleanup.trackObserver(new ResizeObserver(() => {
+    _feedVirtualLastStart = -1
+    _feedVirtualLastEnd = -1
+    _feedVirtualRenderWindow(msgsEl, virtualContainer, items)
+  }))
+  _feedVirtualResizeObserver.observe(msgsEl)
 }
 
 // ---- ENGAGEMENT: heat, bookmark, reactions ----

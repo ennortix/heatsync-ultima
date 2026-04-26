@@ -1583,13 +1583,13 @@ document.addEventListener('mouseout', (e) => {
 }, { capture: true, signal });
 
 // Fallback: mousemove killswitch — if mouse isn't over an emote img, nuke the overlay
-document.addEventListener('mousemove', (e) => {
+document.addEventListener('mousemove', throttle((e) => {
   if (!activeOverlay) return;
   if (!isEmoteImage(e.target)) {
     activeOverlay.remove();
     activeOverlay = null;
   }
-}, { signal });
+}, 16), { signal });
 
 // Emote preloading removed — browser caches images natively after first render.
 // Firefox ORB blocks moz-extension:// origin preloads anyway.
@@ -4985,13 +4985,13 @@ function updateEmoteState(hash, emoteName, state) {
   }, 'emote-hover-mouseout', true);
 
   // BULLETPROOF: mousemove kills preview if not on an emote — no lingering, no delay
-  cleanup.addEventListener(document, 'mousemove', (e) => {
+  cleanup.addEventListener(document, 'mousemove', throttle((e) => {
     if (!currentWrapper) return
     const target = e.target
     if (!target || !target.closest) return
     if (target.closest('.heatsync-emote-wrapper') || target.closest('.heatsync-emote-preview')) return
     hidePreview()
-  }, 'emote-hover-mousemove-kill')
+  }, 16), 'emote-hover-mousemove-kill')
 
   log(' ✅ Emote hover preview setup');
 })();
@@ -6269,8 +6269,9 @@ function applyPaintToElement(el, paint) {
   if (!paint) return
   const fn = (paint.function || '').toLowerCase()
   if (fn === 'url' && paint.image_url) {
-    if (!/^https:\/\//.test(paint.image_url)) return
-    const safeCssUrl = paint.image_url.replace(/[()'"\\]/g, encodeURIComponent)
+    const safe = safeUrl(paint.image_url)
+    if (!safe) return
+    const safeCssUrl = safe.replace(/[()'"\\]/g, encodeURIComponent)
     el.style.backgroundImage = `url(${safeCssUrl})`
     el.style.backgroundSize = 'cover'
   } else if ((fn === 'linear-gradient' || fn === 'radial-gradient') && paint.stops?.length) {
@@ -6374,7 +6375,7 @@ function applyCosmeticsToMessage(el, userId, preQueriedNameEl) {
       img.src = b.url
       img.title = b.title
       img.alt = b.title
-      if (b.color) img.style.backgroundColor = b.color
+      if (b.color && COLOR_RE.test(b.color)) img.style.backgroundColor = b.color
       nameEl.parentNode.insertBefore(img, nameEl)
     }
     el.dataset.hsFfzDone = '1'
@@ -6634,7 +6635,7 @@ function applyKickCosmeticsToMessage(el, kickSlug) {
         img.src = b.url
         img.title = b.title
         img.alt = b.title
-        if (b.color) img.style.backgroundColor = b.color
+        if (b.color && COLOR_RE.test(b.color)) img.style.backgroundColor = b.color
         nameEl.parentNode.insertBefore(img, nameEl)
       }
       el.dataset.hsFfzDone = '1'
@@ -6859,7 +6860,11 @@ function createEmoteRegex(emoteName) {
   const re = hasWordChars
     ? new RegExp(`\\b${escaped}\\b`, 'g')
     : new RegExp(`(?<=^|\\s)${escaped}(?=\\s|$)`, 'g')
-  if (_emoteRegexCache.size > 5000) _emoteRegexCache.clear()
+  if (_emoteRegexCache.size > 5000) {
+    const toDelete = Math.floor(_emoteRegexCache.size * 0.1)
+    const it = _emoteRegexCache.keys()
+    for (let i = 0; i < toDelete; i++) _emoteRegexCache.delete(it.next().value)
+  }
   _emoteRegexCache.set(emoteName, re)
   return re
 }
@@ -7191,9 +7196,9 @@ async function detectAndJoinChannel() {
           }).catch(() => {});
         }
       };
-      window.addEventListener('message', lateHandler);
+      cleanup.addEventListener(window, 'message', lateHandler);
       // Auto-cleanup after 30s to avoid lingering listeners
-      setTimeout(() => window.removeEventListener('message', lateHandler), 30000);
+      cleanup.setTimeout(() => window.removeEventListener('message', lateHandler), 30000);
     }
   }
 }

@@ -705,6 +705,216 @@ style.textContent = `
     padding: 4px !important;
   }
 
+  /* ============================================ */
+  /* USER CARD — FULL TAKEOVER PANEL              */
+  /* ============================================ */
+  .hs-pc-panel {
+    position: absolute !important;
+    inset: 0 !important;
+    z-index: 9999 !important;
+    background: #000 !important;
+    color: #fff !important;
+    font-family: Inter, -apple-system, sans-serif !important;
+    font-size: 12px !important;
+    display: flex !important;
+    flex-direction: column !important;
+    overflow: hidden !important;
+    cursor: default !important;
+  }
+  .hs-pc-panel * { box-sizing: border-box !important; }
+  .hs-pc-panel a, .hs-pc-panel button { cursor: pointer !important; }
+
+  .hs-pc-panel-header {
+    flex: 0 0 auto !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 8px !important;
+    padding: 8px 10px !important;
+    border-bottom: 1px solid #808080 !important;
+    background: #000 !important;
+  }
+  .hs-pc-panel-header .hs-pc-panel-close {
+    background: none !important;
+    border: 1px solid #808080 !important;
+    color: #fff !important;
+    width: 24px !important;
+    height: 24px !important;
+    line-height: 1 !important;
+    font-size: 16px !important;
+    padding: 0 !important;
+    cursor: pointer !important;
+  }
+  .hs-pc-panel-header .hs-pc-panel-close:hover {
+    background: #ff8700 !important;
+    border-color: #ff8700 !important;
+    color: #000 !important;
+  }
+  .hs-pc-panel-header .hs-pc-panel-title {
+    font-size: 13px !important;
+    font-weight: 700 !important;
+    color: #808080 !important;
+    text-transform: uppercase !important;
+    letter-spacing: 1px !important;
+  }
+  .hs-pc-panel-header .hs-pc-panel-name {
+    font-size: 14px !important;
+    font-weight: 700 !important;
+    color: #fff !important;
+    margin-left: auto !important;
+  }
+
+  .hs-pc-panel-body {
+    flex: 1 1 auto !important;
+    overflow: auto !important;
+    padding: 0 !important;
+    display: flex !important;
+    flex-direction: column !important;
+  }
+
+  /* Identity row inside panel */
+  .hs-pc-panel-identity {
+    display: flex !important;
+    gap: 12px !important;
+    padding: 12px !important;
+    border-bottom: 1px solid #808080 !important;
+    background: #000 !important;
+  }
+  .hs-pc-panel-identity .hs-pc-avatar {
+    width: 64px !important;
+    height: 64px !important;
+    min-width: 64px !important;
+    min-height: 64px !important;
+    border: 1px solid #808080 !important;
+  }
+  .hs-pc-panel-identity .hs-pc-info {
+    flex: 1 !important;
+    gap: 4px !important;
+  }
+
+  /* Section blocks */
+  .hs-pc-section {
+    border-bottom: 1px solid #808080 !important;
+    padding: 8px 12px !important;
+  }
+  .hs-pc-section-title {
+    font-size: 10px !important;
+    font-weight: 700 !important;
+    color: #808080 !important;
+    text-transform: uppercase !important;
+    letter-spacing: 1px !important;
+    margin-bottom: 6px !important;
+  }
+  .hs-pc-section-title .hs-pc-count {
+    color: #fff !important;
+    margin-left: 4px !important;
+  }
+
+  /* Mod tools grid */
+  .hs-pc-mod-grid {
+    display: flex !important;
+    flex-wrap: wrap !important;
+    gap: 4px !important;
+  }
+  .hs-pc-mod-grid .hs-pc-mod-group {
+    display: flex !important;
+    align-items: center !important;
+    gap: 2px !important;
+    margin-right: 8px !important;
+  }
+  .hs-pc-mod-grid .hs-pc-mod-group-label {
+    font-size: 10px !important;
+    color: #808080 !important;
+    margin-right: 4px !important;
+  }
+  .hs-pc-btn {
+    background: #000 !important;
+    color: #fff !important;
+    border: 1px solid #808080 !important;
+    padding: 4px 10px !important;
+    font: inherit !important;
+    font-size: 11px !important;
+    font-weight: 600 !important;
+    cursor: pointer !important;
+    border-radius: 0 !important;
+    text-transform: lowercase !important;
+    transition: none !important;
+  }
+  .hs-pc-btn:hover {
+    background: #ff8700 !important;
+    color: #000 !important;
+    border-color: #ff8700 !important;
+  }
+  .hs-pc-btn.danger:hover {
+    background: #fff !important;
+    color: #000 !important;
+    border-color: #fff !important;
+  }
+  .hs-pc-btn.subtle {
+    border-color: #404040 !important;
+    color: #808080 !important;
+  }
+  .hs-pc-btn.subtle:hover {
+    background: #fff !important;
+    color: #000 !important;
+    border-color: #fff !important;
+  }
+
+  /* Message history */
+  .hs-pc-history {
+    flex: 1 1 auto !important;
+    overflow: auto !important;
+    padding: 4px 12px 12px !important;
+    font-family: 'Courier New', Courier, monospace !important;
+    font-size: 11px !important;
+    line-height: 1.4 !important;
+  }
+  .hs-pc-history .hs-pc-history-empty {
+    color: #808080 !important;
+    font-style: italic !important;
+    padding: 12px 0 !important;
+  }
+  .hs-pc-history .hs-pc-history-msg {
+    display: flex !important;
+    gap: 6px !important;
+    padding: 2px 0 !important;
+    border-bottom: 1px solid rgba(128,128,128,0.2) !important;
+    word-break: break-word !important;
+  }
+  .hs-pc-history .hs-pc-history-time {
+    color: #808080 !important;
+    flex-shrink: 0 !important;
+    font-size: 10px !important;
+    font-variant-numeric: tabular-nums !important;
+  }
+  .hs-pc-history .hs-pc-history-text {
+    color: #fff !important;
+    flex: 1 !important;
+  }
+  .hs-pc-history .hs-pc-history-msg.system .hs-pc-history-text {
+    color: #ff8700 !important;
+    font-style: italic !important;
+  }
+
+  /* Footer */
+  .hs-pc-panel-footer {
+    flex: 0 0 auto !important;
+    display: flex !important;
+    gap: 6px !important;
+    padding: 8px 12px !important;
+    border-top: 1px solid #808080 !important;
+    background: #000 !important;
+    flex-wrap: wrap !important;
+  }
+
+  /* Override identity styling inside panel for readability */
+  .hs-pc-panel-identity .hs-pc-name { font-size: 18px !important; }
+  .hs-pc-panel-identity .hs-pc-bio {
+    color: #808080 !important;
+    font-style: italic !important;
+    margin-top: 4px !important;
+    font-size: 11px !important;
+  }
+
   /* NUCLEAR: Kill ALL native Twitch tooltips on heatsync emotes */
   .heatsync-emote-wrapper,
   .heatsync-emote-wrapper * {
@@ -5068,6 +5278,267 @@ function updateEmoteState(hash, emoteName, state) {
     card.style.top = y + 'px'
   }
 
+  // Find the chat container to host the takeover panel.
+  // Twitch: covers chat-room__content (messages list + input). Kick: #chatroom.
+  function findChatPanelTarget() {
+    const host = window.location.hostname
+    if (host.includes('twitch.tv')) {
+      return document.querySelector('section.chat-shell, .chat-shell, .chat-room__content, [data-test-selector="chat-shell"]')
+    }
+    if (host.includes('kick.com')) {
+      return document.querySelector('#chatroom') || document.querySelector('#channel-chatroom')
+    }
+    return null
+  }
+
+  // Detect if current user has mod abilities in this channel.
+  // Heuristic: presence of mod/broadcaster icons in the chat input area or message hover actions.
+  function isCurrentUserMod() {
+    return !!(
+      document.querySelector('[data-a-target="chat-input-buttons-container"] [aria-label*="oderator" i]') ||
+      document.querySelector('[data-test-selector="moderator-actions-trigger"]') ||
+      document.querySelector('button[aria-label*="oderator" i][aria-label*="ools" i]') ||
+      document.querySelector('.moderation-icon, .chat-line__moderator-actions')
+    )
+  }
+
+  // Pull recent messages by user from multichat IRC buffer + DOM scan.
+  async function fetchUserMessages(username, channel, limit = 100) {
+    const lower = username.toLowerCase()
+    const out = []
+    const seenIds = new Set()
+    // 1. multichat IRC buffer (persisted by irc.js — most complete history)
+    if (channel && chrome?.storage?.local) {
+      try {
+        const data = await chrome.storage.local.get(`hs_irc_${channel.toLowerCase()}`)
+        const stored = data[`hs_irc_${channel.toLowerCase()}`]
+        if (stored?.msgs) {
+          for (const m of stored.msgs) {
+            if (!m.user || m.user.toLowerCase() !== lower) continue
+            if (m.id) {
+              if (seenIds.has(m.id)) continue
+              seenIds.add(m.id)
+            }
+            out.push({ time: m.time || 0, text: m.text || '', system: m.type === 'notice' || m.type === 'usernotice' })
+          }
+        }
+      } catch {}
+    }
+    // 2. Currently-rendered chat DOM (catches messages newer than the persist debounce)
+    try {
+      const container = findChatContainer()
+      if (container) {
+        const lines = container.querySelectorAll('.chat-line__message, [data-a-target="chat-line-message"]')
+        for (const line of lines) {
+          const userEl = line.querySelector('.chat-author__display-name, [data-a-target="chat-message-username"]')
+          if (!userEl) continue
+          if ((userEl.textContent || '').trim().toLowerCase() !== lower) continue
+          const textEl = line.querySelector('[data-a-target="chat-message-text"], .text-fragment')
+          const ts = line.querySelector('.chat-line__timestamp')
+          // Parse timestamp like "12:34" — best-effort
+          let time = 0
+          if (ts?.textContent) {
+            const m = ts.textContent.match(/(\d{1,2}):(\d{2})/)
+            if (m) {
+              const d = new Date()
+              d.setHours(parseInt(m[1]), parseInt(m[2]), 0, 0)
+              time = d.getTime()
+            }
+          }
+          out.push({ time, text: (textEl?.textContent || line.textContent || '').trim(), system: false })
+        }
+      }
+    } catch {}
+    // Sort newest-last (chronological), dedup by (time, text)
+    out.sort((a, b) => a.time - b.time)
+    const dedup = []
+    let prev = null
+    for (const m of out) {
+      const key = `${m.time}|${m.text}`
+      if (prev === key) continue
+      prev = key
+      dedup.push(m)
+    }
+    return dedup.slice(-limit)
+  }
+
+  function formatChatTime(ms) {
+    if (!ms) return ''
+    const d = new Date(ms)
+    const today = new Date()
+    const sameDay = d.toDateString() === today.toDateString()
+    const hh = String(d.getHours()).padStart(2, '0')
+    const mm = String(d.getMinutes()).padStart(2, '0')
+    if (sameDay) return `${hh}:${mm}`
+    const mo = String(d.getMonth() + 1).padStart(2, '0')
+    const da = String(d.getDate()).padStart(2, '0')
+    return `${mo}/${da} ${hh}:${mm}`
+  }
+
+  // Build the expanded mod-actions section
+  function buildModSection(username, channelLogin, isMod) {
+    const section = document.createElement('div')
+    section.className = 'hs-pc-section'
+
+    const title = document.createElement('div')
+    title.className = 'hs-pc-section-title'
+    title.textContent = isMod ? 'mod tools' : 'mod tools (no permission)'
+    section.appendChild(title)
+
+    const grid = document.createElement('div')
+    grid.className = 'hs-pc-mod-grid'
+
+    // Timeout group
+    const toGroup = document.createElement('div')
+    toGroup.className = 'hs-pc-mod-group'
+    const toLabel = document.createElement('span')
+    toLabel.className = 'hs-pc-mod-group-label'
+    toLabel.textContent = 'timeout'
+    toGroup.appendChild(toLabel)
+    const durations = [
+      ['1m', 60], ['5m', 300], ['10m', 600], ['30m', 1800],
+      ['1h', 3600], ['6h', 21600], ['24h', 86400]
+    ]
+    for (const [label, secs] of durations) {
+      const b = document.createElement('button')
+      b.className = 'hs-pc-btn'
+      b.textContent = label
+      b.dataset.action = 'timeout'
+      b.dataset.user = username
+      b.dataset.duration = String(secs)
+      toGroup.appendChild(b)
+    }
+    grid.appendChild(toGroup)
+
+    // Hard actions
+    const hardActions = [
+      { action: 'ban', label: 'ban', danger: true },
+      { action: 'unban', label: 'unban' },
+      { action: 'mod', label: 'mod' },
+      { action: 'unmod', label: 'unmod' },
+      { action: 'vip', label: 'vip' },
+      { action: 'unvip', label: 'unvip' }
+    ]
+    for (const { action, label, danger } of hardActions) {
+      const b = document.createElement('button')
+      b.className = 'hs-pc-btn' + (danger ? ' danger' : '')
+      b.textContent = label
+      b.dataset.action = action
+      b.dataset.user = username
+      grid.appendChild(b)
+    }
+
+    section.appendChild(grid)
+    return section
+  }
+
+  // Build message history shell (filled async)
+  function buildHistorySection(username) {
+    const section = document.createElement('div')
+    section.className = 'hs-pc-section hs-pc-history-section'
+    section.style.cssText = 'flex: 1 1 auto !important; display: flex !important; flex-direction: column !important; padding-bottom: 0 !important;'
+
+    const title = document.createElement('div')
+    title.className = 'hs-pc-section-title'
+    const titleText = document.createElement('span')
+    titleText.textContent = 'message history'
+    title.appendChild(titleText)
+    const count = document.createElement('span')
+    count.className = 'hs-pc-count'
+    count.textContent = '…'
+    title.appendChild(count)
+    section.appendChild(title)
+
+    const list = document.createElement('div')
+    list.className = 'hs-pc-history'
+    const empty = document.createElement('div')
+    empty.className = 'hs-pc-history-empty'
+    empty.textContent = 'loading…'
+    list.appendChild(empty)
+    section.appendChild(list)
+
+    return { section, list, count }
+  }
+
+  function populateHistory(list, count, messages, channelLogin) {
+    list.textContent = ''
+    if (!messages.length) {
+      const e = document.createElement('div')
+      e.className = 'hs-pc-history-empty'
+      e.textContent = channelLogin
+        ? `no messages from this user in ${channelLogin}`
+        : 'no message history'
+      list.appendChild(e)
+      count.textContent = '0'
+      return
+    }
+    count.textContent = String(messages.length)
+    for (const m of messages) {
+      const row = document.createElement('div')
+      row.className = 'hs-pc-history-msg' + (m.system ? ' system' : '')
+      const time = document.createElement('span')
+      time.className = 'hs-pc-history-time'
+      time.textContent = formatChatTime(m.time)
+      const text = document.createElement('span')
+      text.className = 'hs-pc-history-text'
+      text.textContent = m.text
+      row.appendChild(time)
+      row.appendChild(text)
+      list.appendChild(row)
+    }
+    // Auto-scroll to bottom (newest)
+    list.scrollTop = list.scrollHeight
+  }
+
+  // Build panel footer (block / view profile / open twitch popout / copy)
+  function buildPanelFooter(username, profile) {
+    const footer = document.createElement('div')
+    footer.className = 'hs-pc-panel-footer'
+    const platform = getPlatform()
+
+    const viewLink = document.createElement('a')
+    viewLink.href = `https://heatsync.org/${platform}/${encodeURIComponent(username)}/posts`
+    viewLink.target = '_blank'
+    viewLink.rel = 'noopener'
+    viewLink.className = 'hs-pc-btn'
+    viewLink.textContent = 'view profile'
+    footer.appendChild(viewLink)
+
+    if (platform === 'twitch') {
+      const popout = document.createElement('a')
+      popout.href = `https://www.twitch.tv/popout/${encodeURIComponent(username)}/chat`
+      popout.target = '_blank'
+      popout.rel = 'noopener'
+      popout.className = 'hs-pc-btn subtle'
+      popout.textContent = 'twitch profile'
+      popout.href = `https://www.twitch.tv/${encodeURIComponent(username)}`
+      footer.appendChild(popout)
+    }
+
+    const copyBtn = document.createElement('button')
+    copyBtn.className = 'hs-pc-btn subtle'
+    copyBtn.textContent = 'copy name'
+    copyBtn.dataset.action = 'copy'
+    copyBtn.dataset.user = username
+    footer.appendChild(copyBtn)
+
+    const mentionBtn = document.createElement('button')
+    mentionBtn.className = 'hs-pc-btn subtle'
+    mentionBtn.textContent = 'mention'
+    mentionBtn.dataset.action = 'mention'
+    mentionBtn.dataset.user = username
+    footer.appendChild(mentionBtn)
+
+    const blockBtn = document.createElement('button')
+    blockBtn.className = 'hs-pc-btn danger'
+    blockBtn.textContent = 'block'
+    blockBtn.dataset.action = 'block'
+    blockBtn.dataset.user = username
+    footer.appendChild(blockBtn)
+
+    return footer
+  }
+
   let cardDragAC = null
   function closeCard() {
     if (cardPollInterval) { cleanup.clearInterval(cardPollInterval); cardPollInterval = null }
@@ -5095,25 +5566,52 @@ function updateEmoteState(hash, emoteName, state) {
   }
 
   // Handle action button clicks
-  function handleAction(action, username) {
+  function handleAction(action, username, opts = {}) {
     switch (action) {
-      case 'timeout':
-        injectChatCommand(`/timeout ${username} 600`)
+      case 'timeout': {
+        const secs = opts.duration || 600
+        injectChatCommand(`/timeout ${username} ${secs}`)
         break
+      }
       case 'ban':
         injectChatCommand(`/ban ${username}`)
         break
       case 'unban':
         injectChatCommand(`/unban ${username}`)
         break
+      case 'mod':
+        injectChatCommand(`/mod ${username}`)
+        break
+      case 'unmod':
+        injectChatCommand(`/unmod ${username}`)
+        break
+      case 'vip':
+        injectChatCommand(`/vip ${username}`)
+        break
+      case 'unvip':
+        injectChatCommand(`/unvip ${username}`)
+        break
       case 'block':
         safeSendMessage({ type: 'block_user', username: username.toLowerCase() }).catch(() => {})
         closeCard()
         break
+      case 'copy':
+        try { navigator.clipboard.writeText(username) } catch {}
+        break
+      case 'mention': {
+        const input = document.querySelector('[data-a-target="chat-input"]')
+        if (input) {
+          input.focus()
+          document.execCommand('insertText', false, `@${username} `)
+        }
+        closeCard()
+        break
+      }
     }
   }
 
-  // Show card on username click
+  // Show full-takeover panel on username click. Falls back to floating popup
+  // if no chat-panel target is found (e.g., on heatsync.org pages).
   async function showCard(target, e) {
     try {
       const username = target.dataset?.hsUsername ||
@@ -5121,12 +5619,22 @@ function updateEmoteState(hash, emoteName, state) {
                        target.textContent?.replace(/^@/, '').trim()
       if (!username) return
 
-      if (!cardEl) {
-        cardEl = document.createElement('div')
-        cardEl.className = 'hs-profile-card'
-        document.body.appendChild(cardEl)
+      const panelTarget = findChatPanelTarget()
+      const usePanelMode = !!panelTarget
 
-        // Drag support — AbortController cleans up if card closes mid-drag
+      // Tear down any existing card before rebuilding
+      if (cardEl) closeCard()
+
+      cardEl = document.createElement('div')
+      cardEl.className = usePanelMode ? 'hs-pc-panel' : 'hs-profile-card'
+      if (usePanelMode) {
+        // Ensure host is positioned so absolute inset:0 fills it
+        const cs = getComputedStyle(panelTarget)
+        if (cs.position === 'static') panelTarget.style.position = 'relative'
+        panelTarget.appendChild(cardEl)
+      } else {
+        document.body.appendChild(cardEl)
+        // Drag support for popup mode only
         let dragX, dragY
         cardEl.addEventListener('mousedown', (ev) => {
           if (ev.target.closest('a, button')) return
@@ -5144,38 +5652,80 @@ function updateEmoteState(hash, emoteName, state) {
               cardEl.style.top = (me.clientY - dragY) + 'px'
             })
           }
-          const onUp = () => {
-            if (cardDragAC) { cardDragAC.abort(); cardDragAC = null }
-          }
+          const onUp = () => { if (cardDragAC) { cardDragAC.abort(); cardDragAC = null } }
           document.addEventListener('mousemove', onMove, { signal: cardDragAC.signal })
           document.addEventListener('mouseup', onUp, { signal: cardDragAC.signal })
         })
-
-        // Close card when mouse leaves it (unless moving to a username)
-        cardEl.addEventListener('mouseleave', (ev) => {
-          const related = ev.relatedTarget
-          if (related && related.closest(usernameSelectors)) return
-          closeCard()
-        })
       }
 
-      // Show loading
+      const channelLogin = getChannelLogin()
+      const platform = getPlatform()
+      const isMod = isCurrentUserMod()
+
+      // Show loading state
       cardEl.textContent = ''
       const loadingDiv = document.createElement('div')
       loadingDiv.className = 'hs-pc-loading'
       loadingDiv.textContent = t('common_loading')
       cardEl.appendChild(loadingDiv)
-      cardEl.style.display = 'flex'
-      positionCard(cardEl, e)
+      if (!usePanelMode) {
+        cardEl.style.display = 'flex'
+        positionCard(cardEl, e)
+      }
 
       const profile = await fetchProfile(username)
       cardEl.textContent = ''
-      cardEl.appendChild(buildCardDOM(profile, username))
-      positionCard(cardEl, e)
 
-      // Fetch followage + live follow counts async and append to card
-      const channelLogin = getChannelLogin()
-      const platform = getPlatform()
+      if (usePanelMode) {
+        // Header
+        const header = document.createElement('div')
+        header.className = 'hs-pc-panel-header'
+        const closeBtn = document.createElement('button')
+        closeBtn.className = 'hs-pc-panel-close'
+        closeBtn.textContent = '×'
+        closeBtn.title = 'close (Esc)'
+        closeBtn.addEventListener('click', closeCard)
+        header.appendChild(closeBtn)
+        const hTitle = document.createElement('span')
+        hTitle.className = 'hs-pc-panel-title'
+        hTitle.textContent = 'user card'
+        header.appendChild(hTitle)
+        const hName = document.createElement('span')
+        hName.className = 'hs-pc-panel-name'
+        hName.textContent = profile?.display_name || username
+        header.appendChild(hName)
+        cardEl.appendChild(header)
+
+        // Identity (avatar + existing card body)
+        const identity = document.createElement('div')
+        identity.className = 'hs-pc-panel-identity'
+        identity.appendChild(buildCardDOM(profile, username))
+        // Remove the old close button rendered inside buildCardDOM (panel has its own)
+        identity.querySelectorAll('.hs-pc-close, .hs-pc-actions').forEach(el => el.remove())
+        cardEl.appendChild(identity)
+
+        // Mod actions
+        cardEl.appendChild(buildModSection(username, channelLogin, isMod))
+
+        // Message history (filled async)
+        const { section: histSection, list: histList, count: histCount } = buildHistorySection(username)
+        cardEl.appendChild(histSection)
+
+        // Footer
+        cardEl.appendChild(buildPanelFooter(username, profile))
+
+        // Populate history async
+        fetchUserMessages(username, channelLogin, 200).then(messages => {
+          if (!cardEl) return
+          populateHistory(histList, histCount, messages, channelLogin)
+        }).catch(() => {
+          if (!cardEl) return
+          populateHistory(histList, histCount, [], channelLogin)
+        })
+      } else {
+        cardEl.appendChild(buildCardDOM(profile, username))
+        positionCard(cardEl, e)
+      }
 
       // Twitch: live GQL followage data
       if (channelLogin && platform === 'twitch') {
@@ -5286,69 +5836,41 @@ function updateEmoteState(hash, emoteName, state) {
     }
   }
 
-  // Hover/click listeners (signal-bound — cleaned up on abort)
-
-  // Hover handler — instant show on mouseenter for HS-colored usernames
-  document.addEventListener('mouseover', (e) => {
-      const target = e.target.closest(usernameSelectors)
-      if (!target) return
-      const isHsMention = target.classList.contains('hs-username-colored') || target.classList.contains('hs-mention-colored')
-      if (isHsMention) {
-        showCard(target, e)
-      }
-    }, { signal })
-
-    // Mouseleave — close card when mouse leaves both the trigger and the card
-    document.addEventListener('mouseout', (e) => {
-      if (!cardEl) return
-      const related = e.relatedTarget
-      // Stay open if mouse moved into the card itself or another username
-      if (related && (related.closest('.hs-profile-card') || related.closest(usernameSelectors))) return
-      closeCard()
-    }, { signal })
-
-    // Keep card open while hovering it, close when leaving
-    // (applied per-card in showCard via cardEl mouseleave)
-
+  // Click listener (signal-bound — cleaned up on abort).
+  // Click any chat username → open full-takeover user card panel.
     // Click handler — capture phase to intercept before Twitch
-    // Alt+click = HS card on native (non-colored) usernames
     document.addEventListener('click', (e) => {
-      // Anything inside the card — stop propagation so Twitch doesn't steal it
-      if (cardEl && e.target.closest('.hs-profile-card')) {
+      // Anything inside the card — handle action buttons and stop bubbling
+      if (cardEl && e.target.closest('.hs-profile-card, .hs-pc-panel')) {
         e.stopPropagation()
         e.preventDefault()
-        if (e.target.closest('.hs-pc-close')) {
+        if (e.target.closest('.hs-pc-close, .hs-pc-panel-close')) {
           closeCard()
-        } else {
-          const actionBtn = e.target.closest('.hs-pc-action')
-          if (actionBtn) handleAction(actionBtn.dataset.action, actionBtn.dataset.user)
+          return
+        }
+        const actionBtn = e.target.closest('.hs-pc-action, .hs-pc-btn')
+        if (actionBtn && actionBtn.dataset.action && actionBtn.dataset.user) {
+          const opts = {}
+          if (actionBtn.dataset.duration) opts.duration = parseInt(actionBtn.dataset.duration, 10)
+          handleAction(actionBtn.dataset.action, actionBtn.dataset.user, opts)
         }
         return
       }
 
       const target = e.target.closest(usernameSelectors)
       if (target) {
-        const isHsMention = target.classList.contains('hs-username-colored') || target.classList.contains('hs-mention-colored')
-        if (isHsMention) {
-          // Already handled by hover — click is a no-op for colored mentions
-          e.stopPropagation()
-          e.preventDefault()
-          return
-        }
-        if (e.altKey) {
-          e.stopPropagation()
-          e.preventDefault()
-          showCard(target, e)
-        } else if (cardEl) {
-          closeCard()
-        }
+        const username = target.dataset?.hsUsername ||
+                         target.dataset?.username ||
+                         target.textContent?.replace(/^@/, '').trim()
+        if (!username) return
+        e.stopPropagation()
+        e.preventDefault()
+        showCard(target, e)
         return
       }
 
-      // Close on click outside
-      if (cardEl) {
-        closeCard()
-      }
+      // Click outside card (and not on a username) → close
+      if (cardEl) closeCard()
     }, { capture: true, signal }) // capture phase, tied to lifecycle
 
     document.addEventListener('keydown', (e) => {

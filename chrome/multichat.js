@@ -11781,6 +11781,9 @@ function _feedVirtualTeardown(msgsEl) {
   }
   _feedVirtualLastStart = -1
   _feedVirtualLastEnd = -1
+  // Reset item height — calibration from the previous session may not match
+  // the new content (e.g. switching feed tab after thread expand changes heights)
+  _feedVirtualItemHeight = 56
 }
 
 // Render only the visible slice of feedMessages into the virtual container.
@@ -12052,7 +12055,10 @@ function _makeReactChip(r, msgId, engageEl) {
   chip.title = r.emote_name || ''
   chip.dataset.emoteId = String(r.emote_id)
   const img = document.createElement('img')
-  img.src = r.emote_url || ''
+  // Validate URL before assigning to img.src
+  const rawUrl = r.emote_url || ''
+  const validUrl = /^https:\/\//.test(rawUrl) ? rawUrl : ''
+  img.src = validUrl
   img.alt = r.emote_name || ''
   img.className = 'hs-feed-react-img'
   const cnt = document.createElement('span')

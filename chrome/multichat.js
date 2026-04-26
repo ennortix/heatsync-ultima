@@ -11275,6 +11275,13 @@ const FEED_VIRTUAL_OVERSCAN = 5       // extra items above/below visible window
 const feedLiked = new Set()     // base36_ids the user has liked
 const feedBookmarked = new Set() // base36_ids the user has bookmarked
 const feedReactionsCache = new Map() // base36_id → [{ emote_id, emote_url, emote_name, count, user_reacted }]
+// Cap to prevent long-session unbounded growth; evict oldest insert when full.
+const FEED_ENGAGE_CAP = 2000
+function _capFeedEngage() {
+  while (feedLiked.size > FEED_ENGAGE_CAP) feedLiked.delete(feedLiked.values().next().value)
+  while (feedBookmarked.size > FEED_ENGAGE_CAP) feedBookmarked.delete(feedBookmarked.values().next().value)
+  while (feedReactionsCache.size > FEED_ENGAGE_CAP) feedReactionsCache.delete(feedReactionsCache.keys().next().value)
+}
 let notifications = { mentions: 0, op_replies: 0, re_replies: 0, total: 0 };
 let notifMessages = []; // Actual notification messages for display
 let notifLoaded = false;
@@ -11973,17 +11980,18 @@ function _applyHeatState(btn, active, count) {
 
 async function toggleHeat(msgId, btn, m) {
   if (!hsAuthToken) { showToast(t('mc_social_log_in_first')); return }
-  const wasLiked = feedLiked.has(msgId)
-  const newLiked = !wasLiked
-  const delta = newLiked ? 1 : -1
-  if (newLiked) feedLiked.add(msgId); else feedLiked.delete(msgId)
-  m.heat = (m.heat || 0) + delta
-  _applyHeatState(btn, newLiked, m.heat)
+  // Server-side /api/messages/:id/like is one-way (no unlike route exists).
+  // Once a user has liked, no-op silently rather than misleading them with
+  // a toggle UI that the backend won't honor.
+  if (feedLiked.has(msgId)) return
+  feedLiked.add(msgId)
+  m.heat = (m.heat || 0) + 1
+  _applyHeatState(btn, true, m.heat)
   const resp = await apiFetch(`/api/messages/${encodeURIComponent(msgId)}/like`, { method: 'POST', auth: true })
   if (!resp.ok) {
-    if (newLiked) feedLiked.delete(msgId); else feedLiked.add(msgId)
-    m.heat = (m.heat || 0) - delta
-    _applyHeatState(btn, wasLiked, m.heat)
+    feedLiked.delete(msgId)
+    m.heat = (m.heat || 0) - 1
+    _applyHeatState(btn, false, m.heat)
   }
 }
 
@@ -12006,6 +12014,7 @@ async function loadReactions(msgId, engageEl) {
   if (!resp.ok) return
   const reactions = resp.data?.reactions || resp.reactions || []
   feedReactionsCache.set(msgId, reactions)
+  _capFeedEngage()
   _renderReactionsIntoRow(engageEl, msgId, reactions)
 }
 

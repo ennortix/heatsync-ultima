@@ -90,6 +90,10 @@
       handleSendRelay(msg)
       sendResponse({ ok: true })
       return true
+    } else if (msg.type === 'youtube_insert_emote') {
+      handleInsertEmote(msg.emoteName)
+      sendResponse({ ok: true })
+      return true
     }
   }
   chrome.runtime.onMessage.addListener(ytInventoryListener)
@@ -380,6 +384,22 @@
         height: 24px;
         width: auto;
       }
+      .hs-yt-toast {
+        position: fixed;
+        bottom: 80px;
+        left: 50%;
+        transform: translateX(-50%);
+        background: rgba(30,30,30,0.92);
+        color: #eee;
+        font-size: 12px;
+        padding: 5px 10px;
+        border-radius: 4px;
+        pointer-events: none;
+        z-index: 99999;
+        opacity: 1;
+        transition: opacity 0.3s;
+      }
+      .hs-yt-toast.fade { opacity: 0; }
     `
     document.head.appendChild(style)
   }
@@ -735,6 +755,79 @@
     sel.addRange(range)
 
     input.dispatchEvent(new Event('input', { bubbles: true }))
+  }
+
+  // ─── Toast ────────────────────────────────────────────────────────────────────
+
+  function showYtToast(text) {
+    const el = document.createElement('div')
+    el.className = 'hs-yt-toast'
+    el.textContent = text
+    document.body.appendChild(el)
+    const timer = setTimeout(() => {
+      el.classList.add('fade')
+      const rmTimer = setTimeout(() => el.remove(), 350)
+      signal.addEventListener('abort', () => { clearTimeout(rmTimer); el.remove() }, { once: true })
+    }, 1800)
+    signal.addEventListener('abort', () => { clearTimeout(timer); el.remove() }, { once: true })
+  }
+
+  // ─── Right-click block on YT emotes ───────────────────────────────────────────
+
+  document.addEventListener('contextmenu', (e) => {
+    const img = e.target
+    if (!img || img.nodeName !== 'IMG' || !img.classList.contains('heatsync-emote-yt')) return
+    e.preventDefault()
+    e.stopImmediatePropagation()
+    const emoteName = img.alt || img.title || ''
+    if (!emoteName) return
+    const emote = emoteMap.get(emoteName)
+    if (!emote?.hash) return
+    blockedEmotes.add(emote.hash)
+    img.style.opacity = '0.3'
+    safeSendMessage({ type: 'block_emote', emoteHash: emote.hash, emoteName: emote.name }).then(result => {
+      if (result?.success === false) {
+        blockedEmotes.delete(emote.hash)
+        img.style.opacity = ''
+        showYtToast('Block failed')
+      } else {
+        showYtToast('Blocked: ' + escapeHtml(emote.name))
+      }
+    })
+  }, { capture: true, signal })
+
+  // ─── Insert emote from picker ─────────────────────────────────────────────────
+
+  function handleInsertEmote(emoteName) {
+    if (!emoteName) return
+    const input = document.querySelector('yt-live-chat-text-input-field-renderer div#input[contenteditable]')
+    if (!input) return
+    input.focus()
+
+    const sel = window.getSelection()
+    if (!sel) return
+
+    // Use existing caret if inside input, else place at end
+    let range
+    if (sel.rangeCount && input.contains(sel.getRangeAt(0).startContainer)) {
+      range = sel.getRangeAt(0)
+    } else {
+      range = document.createRange()
+      range.selectNodeContents(input)
+      range.collapse(false)
+      sel.removeAllRanges()
+      sel.addRange(range)
+    }
+
+    const textNode = document.createTextNode(emoteName + ' ')
+    range.deleteContents()
+    range.insertNode(textNode)
+    range.setStartAfter(textNode)
+    range.setEndAfter(textNode)
+    sel.removeAllRanges()
+    sel.addRange(range)
+
+    input.dispatchEvent(new InputEvent('input', { bubbles: true, data: emoteName + ' ', inputType: 'insertText' }))
   }
 
   // ─── Send Relay ───────────────────────────────────────────────────────────────

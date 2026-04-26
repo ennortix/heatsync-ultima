@@ -3221,22 +3221,40 @@
   }
 
   function showPickerToast(msg) {
+    // Prefer dropping the toast into multichat's message stream when it's open,
+    // but always show SOMETHING so users get feedback for context-menu actions
+    // even when multichat is closed.
     const msgsEl = document.getElementById('hs-mc-messages');
-    if (!msgsEl) return;
-    const div = document.createElement('div');
-    div.className = 'hs-mc-msg hs-mc-system';
-    div.textContent = msg;
-    msgsEl.appendChild(div);
-    // Trim oldest
-    const excess = msgsEl.children.length - 150
-    if (excess > 0) {
-      const range = document.createRange()
-      range.setStartBefore(msgsEl.firstChild)
-      range.setEndBefore(msgsEl.children[excess])
-      range.deleteContents()
+    if (msgsEl) {
+      const div = document.createElement('div');
+      div.className = 'hs-mc-msg hs-mc-system';
+      div.textContent = msg;
+      msgsEl.appendChild(div);
+      const excess = msgsEl.children.length - 150
+      if (excess > 0) {
+        const range = document.createRange()
+        range.setStartBefore(msgsEl.firstChild)
+        range.setEndBefore(msgsEl.children[excess])
+        range.deleteContents()
+      }
+      requestAnimationFrame(() => { msgsEl.scrollTop = msgsEl.scrollHeight })
+      return;
     }
-    // Auto-scroll if not scrolled up
-    requestAnimationFrame(() => { msgsEl.scrollTop = msgsEl.scrollHeight })
+    // Fallback: floating toast in the picker panel itself
+    const panel = document.querySelector('#heatsync-emote-grid')?.closest('div');
+    const host = panel || document.body;
+    if (!host) return;
+    let toast = host.querySelector('.heatsync-floating-toast');
+    if (!toast) {
+      toast = document.createElement('div');
+      toast.className = 'heatsync-floating-toast';
+      toast.style.cssText = 'position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#000;color:#fff;border:1px solid #ff8700;padding:8px 14px;font-size:12px;z-index:99999;pointer-events:none;opacity:0;transition:opacity 0.15s';
+      document.body.appendChild(toast);
+    }
+    toast.textContent = msg;
+    toast.style.opacity = '1';
+    clearTimeout(toast._hideTimer);
+    toast._hideTimer = setTimeout(() => { toast.style.opacity = '0' }, 2200);
   }
 
   function showContextMenu(evt, emote, tab) {

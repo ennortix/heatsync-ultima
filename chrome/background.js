@@ -1016,7 +1016,10 @@ function flushCosmeticsToStorage() {
     .filter(([, v]) => Date.now() - v.fetchedAt < USER_COSMETICS_TTL)
     .slice(-COSMETICS_STORAGE_MAX)
   browser.storage.local.set({
-    user_cosmetics_cache: entries.map(([k, v]) => [k, { paint: v.paint, badge: v.badge, fetchedAt: v.fetchedAt }])
+    // Persist twitchId so Kick→Twitch ID linkage survives SW restart;
+    // otherwise BTTV/FFZ badge lookup falls back to no-op until the 30min
+    // TTL forces a refetch from 7TV.
+    user_cosmetics_cache: entries.map(([k, v]) => [k, { paint: v.paint, badge: v.badge, twitchId: v.twitchId, fetchedAt: v.fetchedAt }])
   }).catch(() => {})
 }
 

@@ -720,6 +720,9 @@
   // Dim timed-out/banned messages instead of hiding (default on)
   let dimTimeouts = true;
 
+  // Boost username color brightness for readability on black bg (default on)
+  let readableNamesEnabled = true;
+
   // Input bar auto-hide — hidden when empty, shown on first keystroke
   let autoHideInput = false;
   let inputBarVisible = true;
@@ -1593,6 +1596,20 @@
     chrome.storage.local.set({ hs_dim_timeouts: dimTimeouts });
   }
 
+  async function loadReadableNamesSetting() {
+    try {
+      const stored = await chrome.storage.local.get(['hs_readable_names']);
+      if (stored.hs_readable_names !== undefined) {
+        readableNamesEnabled = stored.hs_readable_names;
+      }
+    } catch {}
+  }
+
+  function toggleReadableNames() {
+    readableNamesEnabled = !readableNamesEnabled;
+    chrome.storage.local.set({ hs_readable_names: readableNamesEnabled });
+  }
+
   function toggleAutoClaim() {
     autoClaimPoints = !autoClaimPoints;
     chrome.storage.local.set({ hs_auto_claim_points: autoClaimPoints });
@@ -1728,6 +1745,10 @@
             <button class="hs-mc-toggle-pill ${dimTimeouts ? 'active' : ''}" data-setting="dimtimeouts"><span class="hs-mc-toggle-knob"></span></button>
             <span class="hs-mc-setting-label" data-tip="${t('mc_settings_dim_timeouts_desc')}">${t('mc_settings_dim_timeouts')}</span>
           </div>
+          <div class="hs-mc-setting-row">
+            <button class="hs-mc-toggle-pill ${readableNamesEnabled ? 'active' : ''}" data-setting="readablenames"><span class="hs-mc-toggle-knob"></span></button>
+            <span class="hs-mc-setting-label" data-tip="brighten dim username colors so they're readable on the black bg">readable names</span>
+          </div>
         </div>
         <div class="hs-mc-settings-group">
           <div class="hs-mc-settings-group-title">${t('mc_settings_muted_users')}</div>
@@ -1784,6 +1805,7 @@
           avatars: () => { toggleAvatars(); },
           autoclaim: () => { toggleAutoClaim(); },
           dimtimeouts: () => { toggleDimTimeouts(); },
+          readablenames: () => { toggleReadableNames(); },
           smartcompletion: () => { toggleSmartCompletion(); },
           firstchatter: () => { toggleFirstChatterGlow(); },
         };
@@ -3222,7 +3244,8 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
   }
 
   function sanitizeColor(color) {
-    return COLOR_RE.test(color) ? color : '#ffffff';
+    if (!COLOR_RE.test(color)) return '#ffffff'
+    return readableNamesEnabled ? boostReadability(color) : color
   }
 
 
@@ -4617,6 +4640,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     await loadAvatarsSetting();
     await loadAutoClaimSetting();
     await loadDimTimeoutsSetting();
+    await loadReadableNamesSetting();
     await loadSmartCompletionSetting();
     await loadFirstChatterGlowSetting();
     await loadKeywordHighlightsSetting();

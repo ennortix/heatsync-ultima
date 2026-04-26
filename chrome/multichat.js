@@ -548,6 +548,56 @@ const DEBUG = typeof window !== 'undefined' &&
 /**
  * Debug log (only when HEATSYNC_DEBUG is true)
  */
+// ============================================
+// READABLE NAME COLOR (luminance boost)
+// ============================================
+
+/**
+ * Boost the lightness of a hex color so it's readable on a dark/black bg.
+ * Preserves hue and saturation; only raises L (HSL) when below threshold.
+ * Returns the input unchanged if already readable, malformed, or non-hex.
+ * @param {string} hex - "#rgb" or "#rrggbb"
+ * @param {number} [minL=0.5] - minimum lightness (0..1)
+ * @returns {string}
+ */
+function boostReadability(hex, minL = 0.5) {
+  if (typeof hex !== 'string') return hex
+  let m = hex.match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i)
+  if (!m) return hex
+  let h6 = m[1]
+  if (h6.length === 3) h6 = h6[0]+h6[0]+h6[1]+h6[1]+h6[2]+h6[2]
+  const r = parseInt(h6.slice(0,2), 16) / 255
+  const g = parseInt(h6.slice(2,4), 16) / 255
+  const b = parseInt(h6.slice(4,6), 16) / 255
+  const max = Math.max(r,g,b), min = Math.min(r,g,b)
+  let h, s, l = (max+min)/2
+  if (max === min) { h = 0; s = 0 }
+  else {
+    const d = max - min
+    s = l > 0.5 ? d / (2-max-min) : d / (max+min)
+    switch (max) {
+      case r: h = (g-b)/d + (g<b ? 6 : 0); break
+      case g: h = (b-r)/d + 2; break
+      default: h = (r-g)/d + 4
+    }
+    h /= 6
+  }
+  if (l >= minL) return hex
+  l = minL
+  const hue2rgb = (p, q, t) => {
+    if (t < 0) t += 1
+    if (t > 1) t -= 1
+    if (t < 1/6) return p + (q-p)*6*t
+    if (t < 1/2) return q
+    if (t < 2/3) return p + (q-p)*(2/3-t)*6
+    return p
+  }
+  const q = l < 0.5 ? l*(1+s) : l+s-l*s
+  const p = 2*l - q
+  const toByte = (x) => Math.round(hue2rgb(p,q,x)*255).toString(16).padStart(2,'0')
+  return '#' + toByte(h+1/3) + toByte(h) + toByte(h-1/3)
+}
+
 function log(...args) {
   if (DEBUG) {
     console.log('[heatsync]', ...args)
@@ -581,6 +631,9 @@ const utils = {
   // React
   getFiber,
   findComponent,
+
+  // Color
+  boostReadability,
 
   // Logging
   log,
@@ -15159,6 +15212,9 @@ const STORAGE_KEY = 'heatsync_multichat';
   // Dim timed-out/banned messages instead of hiding (default on)
   let dimTimeouts = true;
 
+  // Boost username color brightness for readability on black bg (default on)
+  let readableNamesEnabled = true;
+
   // Input bar auto-hide — hidden when empty, shown on first keystroke
   let autoHideInput = false;
   let inputBarVisible = true;
@@ -16032,6 +16088,20 @@ const STORAGE_KEY = 'heatsync_multichat';
     chrome.storage.local.set({ hs_dim_timeouts: dimTimeouts });
   }
 
+  async function loadReadableNamesSetting() {
+    try {
+      const stored = await chrome.storage.local.get(['hs_readable_names']);
+      if (stored.hs_readable_names !== undefined) {
+        readableNamesEnabled = stored.hs_readable_names;
+      }
+    } catch {}
+  }
+
+  function toggleReadableNames() {
+    readableNamesEnabled = !readableNamesEnabled;
+    chrome.storage.local.set({ hs_readable_names: readableNamesEnabled });
+  }
+
   function toggleAutoClaim() {
     autoClaimPoints = !autoClaimPoints;
     chrome.storage.local.set({ hs_auto_claim_points: autoClaimPoints });
@@ -16167,6 +16237,10 @@ const STORAGE_KEY = 'heatsync_multichat';
             <button class="hs-mc-toggle-pill ${dimTimeouts ? 'active' : ''}" data-setting="dimtimeouts"><span class="hs-mc-toggle-knob"></span></button>
             <span class="hs-mc-setting-label" data-tip="${t('mc_settings_dim_timeouts_desc')}">${t('mc_settings_dim_timeouts')}</span>
           </div>
+          <div class="hs-mc-setting-row">
+            <button class="hs-mc-toggle-pill ${readableNamesEnabled ? 'active' : ''}" data-setting="readablenames"><span class="hs-mc-toggle-knob"></span></button>
+            <span class="hs-mc-setting-label" data-tip="brighten dim username colors so they're readable on the black bg">readable names</span>
+          </div>
         </div>
         <div class="hs-mc-settings-group">
           <div class="hs-mc-settings-group-title">${t('mc_settings_muted_users')}</div>
@@ -16223,6 +16297,7 @@ const STORAGE_KEY = 'heatsync_multichat';
           avatars: () => { toggleAvatars(); },
           autoclaim: () => { toggleAutoClaim(); },
           dimtimeouts: () => { toggleDimTimeouts(); },
+          readablenames: () => { toggleReadableNames(); },
           smartcompletion: () => { toggleSmartCompletion(); },
           firstchatter: () => { toggleFirstChatterGlow(); },
         };
@@ -17661,7 +17736,8 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
   }
 
   function sanitizeColor(color) {
-    return COLOR_RE.test(color) ? color : '#ffffff';
+    if (!COLOR_RE.test(color)) return '#ffffff'
+    return readableNamesEnabled ? boostReadability(color) : color
   }
 
 
@@ -19056,6 +19132,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     await loadAvatarsSetting();
     await loadAutoClaimSetting();
     await loadDimTimeoutsSetting();
+    await loadReadableNamesSetting();
     await loadSmartCompletionSetting();
     await loadFirstChatterGlowSetting();
     await loadKeywordHighlightsSetting();

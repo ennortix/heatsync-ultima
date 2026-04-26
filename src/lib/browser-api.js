@@ -228,7 +228,7 @@ const api = {
  */
 function t(key, substitutions) {
   try {
-    return chrome.i18n.getMessage(key, substitutions) || key
+    return rawApi?.i18n?.getMessage(key, substitutions) || key
   } catch { return key }
 }
 

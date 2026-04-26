@@ -114,13 +114,13 @@ function saveTabChannels() {
 }
 
 // Clean up tab tracking on close
-chrome.tabs.onRemoved.addListener((tabId) => {
+browser.tabs.onRemoved.addListener((tabId) => {
   tabChannels.delete(tabId)
   saveTabChannels()
   _cachedTabs = null // Invalidate tab cache
 })
 
-chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
+browser.tabs.onUpdated.addListener((tabId, changeInfo) => {
   _cachedTabs = null // Invalidate tab cache on navigation/load
   if (tabChannels.has(tabId) && changeInfo.url && !/twitch\.tv|kick\.com|youtube\.com/.test(changeInfo.url)) {
     tabChannels.delete(tabId)
@@ -2640,6 +2640,9 @@ function handleWSMessage(msg) {
       const fStreamNow = Date.now()
       if (wsStreamEventDedup.has(fStreamKey) && fStreamNow - wsStreamEventDedup.get(fStreamKey) < 60000) break
       wsStreamEventDedup.set(fStreamKey, fStreamNow)
+      if (wsStreamEventDedup.size > 100) {
+        for (const [k, t] of wsStreamEventDedup) { if (fStreamNow - t > 60000) wsStreamEventDedup.delete(k) }
+      }
 
       // Append to cached history so content scripts get it on refresh
       if (!cachedFollowHistory) cachedFollowHistory = []

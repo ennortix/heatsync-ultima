@@ -362,6 +362,7 @@
   let acVisible = false
 
   function setupAutocomplete() {
+    if (signal.aborted) return
     const inputRenderer = document.querySelector('yt-live-chat-text-input-field-renderer')
     if (!inputRenderer) {
       setTimeout(setupAutocomplete, 1000)

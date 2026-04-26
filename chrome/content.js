@@ -765,7 +765,8 @@ style.textContent = `
 
   .hs-pc-panel-body {
     flex: 1 1 auto !important;
-    overflow: auto !important;
+    min-height: 0 !important;
+    overflow: hidden !important;
     padding: 0 !important;
     display: flex !important;
     flex-direction: column !important;
@@ -809,17 +810,17 @@ style.textContent = `
     margin-left: 4px !important;
   }
 
-  /* Mod tools grid */
+  /* Mod tools grid — groups stack vertically (timeout row, then hard actions row) */
   .hs-pc-mod-grid {
     display: flex !important;
-    flex-wrap: wrap !important;
-    gap: 4px !important;
+    flex-direction: column !important;
+    gap: 6px !important;
   }
   .hs-pc-mod-grid .hs-pc-mod-group {
     display: flex !important;
+    flex-wrap: wrap !important;
     align-items: center !important;
-    gap: 2px !important;
-    margin-right: 8px !important;
+    gap: 4px !important;
   }
   .hs-pc-mod-grid .hs-pc-mod-group-label {
     font-size: 10px !important;
@@ -840,9 +841,9 @@ style.textContent = `
     transition: none !important;
   }
   .hs-pc-btn:hover {
-    background: #ff8700 !important;
+    background: #fff !important;
     color: #000 !important;
-    border-color: #ff8700 !important;
+    border-color: #fff !important;
   }
   .hs-pc-btn.danger:hover {
     background: #fff !important;
@@ -862,7 +863,9 @@ style.textContent = `
   /* Message history */
   .hs-pc-history {
     flex: 1 1 auto !important;
-    overflow: auto !important;
+    min-height: 0 !important;
+    overflow-y: auto !important;
+    overscroll-behavior: contain !important;
     padding: 4px 12px 12px !important;
     font-family: 'Courier New', Courier, monospace !important;
     font-size: 11px !important;
@@ -1188,7 +1191,9 @@ style.textContent = `
     opacity: 1 !important;
   }
 
-  /* Expanded state - spread emotes horizontally */
+  /* Expanded state - spread emotes horizontally as an absolute popout
+     so the wider expanded width doesn't push subsequent text to a new line.
+     Anchored to the static position of the collapsed stack via auto left/top. */
   .heatsync-emote-stack.expanded {
     display: inline-flex !important;
     flex-direction: row !important;
@@ -1198,6 +1203,8 @@ style.textContent = `
     background: #000000 !important;
     border-radius: 4px !important;
     padding: 4px 8px !important;
+    position: absolute !important;
+    z-index: 100 !important;
   }
 
   /* When expanded, overlays become relative (side-by-side) */
@@ -5037,7 +5044,10 @@ function updateEmoteState(hash, emoteName, state) {
     const hsFollowers = stats.followers || 0
     const followers = hsFollowers || twitchFollowers
     const platform = getPlatform()
-    const role = profile.role || (profile.is_admin ? 'admin' : null)
+    // Filter out 'user' and 'broadcaster' — those are not display-worthy global roles.
+    // Match website behavior in client/renderers/profile-renderer.js.
+    const rawRole = profile.role || (profile.is_admin ? 'admin' : null)
+    const role = rawRole && rawRole !== 'user' && rawRole !== 'broadcaster' ? rawRole : null
     const broadcasterType = profile.twitch_broadcaster_type
 
     // Account age
@@ -5450,7 +5460,9 @@ function updateEmoteState(hash, emoteName, state) {
     }
     grid.appendChild(toGroup)
 
-    // Hard actions
+    // Hard actions — own group so they wrap to a new row under timeout buttons
+    const hardGroup = document.createElement('div')
+    hardGroup.className = 'hs-pc-mod-group'
     const hardActions = [
       { action: 'ban', label: 'ban', danger: true },
       { action: 'unban', label: 'unban' },
@@ -5465,8 +5477,9 @@ function updateEmoteState(hash, emoteName, state) {
       b.textContent = label
       b.dataset.action = action
       b.dataset.user = username
-      grid.appendChild(b)
+      hardGroup.appendChild(b)
     }
+    grid.appendChild(hardGroup)
 
     section.appendChild(grid)
     return section
@@ -5767,65 +5780,22 @@ function updateEmoteState(hash, emoteName, state) {
         positionCard(cardEl, e)
       }
 
-      // Twitch: live GQL followage data
-      if (channelLogin && platform === 'twitch') {
-        lookupFollowage(username, channelLogin).then(result => {
-          if (!result || !cardEl || cardEl.style.display === 'none') return
-          const headerLine = cardEl.querySelector('.hs-pc-header-line')
-          if (!headerLine) return
-          // Followage badge
-          const existing = headerLine.querySelector('.hs-pc-followage')
-          if (existing) existing.remove()
-          const badge = document.createElement('span')
-          if (result.followedAt) {
-            badge.className = 'hs-pc-followage'
-            badge.textContent = t('content_card_following', [channelLogin, formatAge(result.followedAt)])
-          } else if (result.followedAt === null) {
-            badge.className = 'hs-pc-followage hs-pc-nofollow'
-            badge.textContent = t('content_card_not_following', [channelLogin])
-          }
-          if (badge.textContent) headerLine.appendChild(badge)
-          // "followed by {channel}" badge
-          if (result.channelFollowedAt) {
-            const cfBadge = document.createElement('span')
-            cfBadge.className = 'hs-pc-channel-follows'
-            cfBadge.textContent = t('content_card_followed_by', [channelLogin])
-            headerLine.appendChild(cfBadge)
-          }
-          // Update following count with live GQL data
-          const statsLine = cardEl.querySelector('.hs-pc-stats-line')
-          if (statsLine && result.followingCount != null) {
-            let followingEl = statsLine.querySelector('.hs-pc-following-count')
-            if (!followingEl) {
-              followingEl = document.createElement('span')
-              followingEl.className = 'hs-pc-following-count'
-              statsLine.appendChild(followingEl)
-            }
-            followingEl.textContent = t('content_card_following_count', [String(formatNum(result.followingCount))])
-          }
-          // Update followers with live data
-          if (statsLine && result.followerCount != null) {
-            const followersEl = statsLine.querySelector('.hs-pc-followers')
-            if (followersEl) {
-              followersEl.textContent = t('content_card_followers', [String(formatNum(result.followerCount))])
-            }
-          }
-        })
-      }
-
-      // Kick: use HeatSync profile relationship data (already fetched)
-      if (channelLogin && platform === 'kick' && profile) {
+      // Initial render from heatsync profile.relationship (server-authoritative).
+      // GQL on Twitch enhances with precise followedAt time, but never downgrades —
+      // Twitch hides follow data for non-self queries, so a null GQL response
+      // doesn't mean "not following".
+      if (channelLogin && profile?.relationship && (platform === 'twitch' || platform === 'kick')) {
         const headerLine = cardEl.querySelector('.hs-pc-header-line')
         if (headerLine) {
-          const rel = profile.relationship || {}
+          const rel = profile.relationship
           if (rel.youFollow) {
             const badge = document.createElement('span')
             badge.className = 'hs-pc-followage'
             badge.textContent = rel.youFollowSince
               ? t('content_card_following', [channelLogin, formatAge(rel.youFollowSince)])
-              : t('content_card_follows_channel', [channelLogin]) || `follows ${esc(channelLogin)}`
+              : (t('content_card_follows_channel', [channelLogin]) || `follows ${channelLogin}`)
             headerLine.appendChild(badge)
-          } else {
+          } else if (rel.youFollow === false) {
             const badge = document.createElement('span')
             badge.className = 'hs-pc-followage hs-pc-nofollow'
             badge.textContent = t('content_card_not_following', [channelLogin])
@@ -5838,6 +5808,45 @@ function updateEmoteState(hash, emoteName, state) {
             headerLine.appendChild(cfBadge)
           }
         }
+      }
+
+      // Twitch: enhance with live GQL — only upgrade, never downgrade.
+      if (channelLogin && platform === 'twitch') {
+        lookupFollowage(username, channelLogin).then(result => {
+          if (!result || !cardEl || cardEl.style.display === 'none') return
+          const headerLine = cardEl.querySelector('.hs-pc-header-line')
+          if (!headerLine) return
+          if (result.followedAt) {
+            const existing = headerLine.querySelector('.hs-pc-followage')
+            if (existing) existing.remove()
+            const badge = document.createElement('span')
+            badge.className = 'hs-pc-followage'
+            badge.textContent = t('content_card_following', [channelLogin, formatAge(result.followedAt)])
+            headerLine.appendChild(badge)
+          }
+          if (result.channelFollowedAt && !headerLine.querySelector('.hs-pc-channel-follows')) {
+            const cfBadge = document.createElement('span')
+            cfBadge.className = 'hs-pc-channel-follows'
+            cfBadge.textContent = t('content_card_followed_by', [channelLogin])
+            headerLine.appendChild(cfBadge)
+          }
+          const statsLine = cardEl.querySelector('.hs-pc-stats-line')
+          if (statsLine && result.followingCount != null) {
+            let followingEl = statsLine.querySelector('.hs-pc-following-count')
+            if (!followingEl) {
+              followingEl = document.createElement('span')
+              followingEl.className = 'hs-pc-following-count'
+              statsLine.appendChild(followingEl)
+            }
+            followingEl.textContent = t('content_card_following_count', [String(formatNum(result.followingCount))])
+          }
+          if (statsLine && result.followerCount != null) {
+            const followersEl = statsLine.querySelector('.hs-pc-followers')
+            if (followersEl) {
+              followersEl.textContent = t('content_card_followers', [String(formatNum(result.followerCount))])
+            }
+          }
+        })
       }
 
       // Live-poll viewer count every 10s while card is visible (lightweight endpoint)

@@ -31,9 +31,9 @@
     "https://events.7tv.io/*",
     "https://cdn.betterttv.net/*",
     "https://cdn.7tv.app/*",
-    "https://recent-messages.robotty.de/*",
+    "https://recent-messages.robotty.de/api/v2/recent-messages/*",
     "https://decapi.me/*",
-    "https://api.chatterino.com/*"
+    "https://api.chatterino.com/badges"
   ],
 
   "content_security_policy": {
@@ -133,7 +133,7 @@
 
   "web_accessible_resources": [
     {
-      "resources": ["autocomplete-hook.js", "icon-16.png", "icon-48.png", "icon-48-black.png", "COGGERS-1x.webp"],
+      "resources": ["icon-16.png", "icon-48.png", "icon-48-black.png", "COGGERS-1x.webp"],
       "matches": ["https://*.twitch.tv/*", "https://kick.com/*", "https://*.kick.com/*", "https://www.youtube.com/*", "https://heatsync.org/*", "https://www.heatsync.org/*"]
     }
   ]

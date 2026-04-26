@@ -2044,15 +2044,11 @@ async function placePredictionBet(eventId, outcomeId, points, transactionId) {
     }
 
     let data = await tryBet()
-    console.log('[hs-pred] bet attempt 1:', JSON.stringify(data?.data?.makePrediction?.error || data?.errors?.[0] || 'ok'))
     if (isTosError(data)) {
-      // Accept terms, wait for propagation, retry up to 3 times with backoff
-      const accepted = await acceptPredictionTerms()
-      console.log('[hs-pred] acceptTerms result:', accepted)
+      await acceptPredictionTerms()
       for (let attempt = 0; attempt < 3; attempt++) {
         await new Promise(r => setTimeout(r, 500 * (attempt + 1)))
         data = await tryBet()
-        console.log('[hs-pred] retry', attempt + 1, ':', JSON.stringify(data?.data?.makePrediction?.error || data?.errors?.[0] || 'ok'))
         if (!isTosError(data)) break
       }
     }

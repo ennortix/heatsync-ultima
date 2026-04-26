@@ -3304,7 +3304,7 @@ function setupUsernameColoringObserver() {
 
     // Guard: MutationObserver catches ANY external removal of 'expanded' class
     // (Twitch React re-renders, other extensions, etc.) and re-asserts it
-    const stackGuardObserver = new MutationObserver((mutations) => {
+    const stackGuardObserver = cleanup.trackObserver(new MutationObserver((mutations) => {
       for (const m of mutations) {
         if (m.type !== 'attributes' || m.attributeName !== 'class') continue;
         const stack = m.target;
@@ -3314,8 +3314,9 @@ function setupUsernameColoringObserver() {
           stack.classList.add('expanded');
         }
       }
-    });
-    stackGuardObserver.observe(document.body, {
+    }));
+    const stackGuardRoot = findChatContainer() || document.body;
+    stackGuardObserver.observe(stackGuardRoot, {
       attributes: true,
       attributeFilter: ['class'],
       subtree: true,
@@ -3448,49 +3449,46 @@ function setupUsernameColoringObserver() {
     }, { capture: true, signal });
 
     // Right-click on stack — ALL right-click handling for stacks lives here (capture phase)
-    // stopImmediatePropagation prevents Twitch React + our bubble handlers from firing
+    // stopImmediatePropagation prevents Twitch React + our bubble handlers from firing.
+    // Every right-click blocks the wrapper under the cursor; auto-expand collapsed stacks
+    // so the user sees what was blocked and can act on siblings without a second click.
     document.addEventListener('contextmenu', (e) => {
       const stack = e.target.closest('.heatsync-emote-stack');
       if (!stack) return;
       e.preventDefault();
       e.stopImmediatePropagation();
       if (!stack.classList.contains('expanded')) {
-        // Collapsed → expand + lock
         stack.dataset.hsLocked = '1';
         stack.classList.add('expanded');
-      } else {
-        // Expanded — handle emote block/unblock directly (bubble handler won't fire)
-        const wrapper = e.target.closest('.heatsync-emote-wrapper');
-        if (wrapper) {
-          const hash = wrapper.dataset.emoteHash;
-          const emoteName = wrapper.dataset.emoteName;
-          if (hash) {
-            const isBlocked = blockedEmotes.has(hash);
-            const isGlobalEmote = wrapper.classList.contains('emote-overlay-global') || globalNameSet.has(emoteName);
-            if (isBlocked) {
-              safeSendMessage({ type: 'unblock_emote', hash }).then(result => {
-                if (result?.success) {
-                  blockedEmotes.delete(hash);
-                  updateEmoteState(hash, emoteName, isGlobalEmote ? 'global' : 'neutral');
-                }
-                stack.classList.add('expanded');
-              });
-            } else {
-              blockedEmotes.add(hash);
-              updateEmoteState(hash, emoteName, 'blocked');
-              safeSendMessage({ type: 'block_emote', hash }).then(result => {
-                if (!result?.success) {
-                  blockedEmotes.delete(hash);
-                  updateEmoteState(hash, emoteName, 'neutral');
-                  showToast(t('content_toast_failed_block', [String(result?.error || 'Unknown error')]), 'error');
-                } else {
-                  showToast(t('content_toast_blocked', [emoteName]), 'info');
-                }
-                stack.classList.add('expanded');
-              });
-            }
+      }
+      const wrapper = e.target.closest('.heatsync-emote-wrapper');
+      if (!wrapper) return;
+      const hash = wrapper.dataset.emoteHash;
+      const emoteName = wrapper.dataset.emoteName;
+      if (!hash) return;
+      const isBlocked = blockedEmotes.has(hash);
+      const isGlobalEmote = wrapper.classList.contains('emote-overlay-global') || globalNameSet.has(emoteName);
+      if (isBlocked) {
+        safeSendMessage({ type: 'unblock_emote', hash }).then(result => {
+          if (result?.success) {
+            blockedEmotes.delete(hash);
+            updateEmoteState(hash, emoteName, isGlobalEmote ? 'global' : 'neutral');
           }
-        }
+          stack.classList.add('expanded');
+        });
+      } else {
+        blockedEmotes.add(hash);
+        updateEmoteState(hash, emoteName, 'blocked');
+        safeSendMessage({ type: 'block_emote', hash }).then(result => {
+          if (!result?.success) {
+            blockedEmotes.delete(hash);
+            updateEmoteState(hash, emoteName, 'neutral');
+            showToast(t('content_toast_failed_block', [String(result?.error || 'Unknown error')]), 'error');
+          } else {
+            showToast(t('content_toast_blocked', [emoteName]), 'info');
+          }
+          stack.classList.add('expanded');
+        });
       }
     }, { capture: true, signal });
 
@@ -3607,11 +3605,10 @@ function processMessage(messageElement) {
   // Cache message body for timeout restoration (before emote processing modifies it)
   if (dimTimeoutsEnabled) {
     const msgId = messageElement.dataset.msgId || messageElement.getAttribute('data-msg-id')
-    if (msgId) {
+    if (msgId && !originalMessageBodies.has(msgId)) {
       const body = messageElement.querySelector('[data-a-target="chat-line-message-body"]')
-      if (body && !originalMessageBodies.has(msgId)) {
+      if (body) {
         originalMessageBodies.set(msgId, { html: body.innerHTML, ts: Date.now() })
-        // Cap cache size
         if (originalMessageBodies.size > 300) {
           originalMessageBodies.delete(originalMessageBodies.keys().next().value)
         }
@@ -6048,7 +6045,7 @@ function applyPaintToElement(el, paint) {
       const g = (s.color >>> 16) & 0xff
       const b = (s.color >>> 8) & 0xff
       const a = (s.color & 0xff) / 255
-      return `drop-shadow(${s.x_offset || 0}px ${s.y_offset || 0}px ${s.radius || 0}px rgba(${r},${g},${b},${a.toFixed(2)}))`
+      return `drop-shadow(${Number(s.x_offset) || 0}px ${Number(s.y_offset) || 0}px ${Number(s.radius) || 0}px rgba(${r},${g},${b},${a.toFixed(2)}))`
     }).join(' ')
   }
   el.dataset.hsPaintApplied = '1'

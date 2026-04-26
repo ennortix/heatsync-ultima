@@ -28,11 +28,11 @@
     "https://events.7tv.io/*",
     "https://cdn.betterttv.net/*",
     "https://cdn.7tv.app/*",
-    "https://recent-messages.robotty.de/*",
+    "https://recent-messages.robotty.de/api/v2/recent-messages/*",
     "https://api.twitch.tv/*",
     "https://decapi.me/*",
     "https://www.youtube.com/*",
-    "https://api.chatterino.com/*"
+    "https://api.chatterino.com/badges"
   ],
 
   "content_security_policy": "script-src 'self'; object-src 'none'",
@@ -129,7 +129,6 @@
   },
 
   "web_accessible_resources": [
-    "autocomplete-hook.js",
     "icon-16.png",
     "icon-48.png",
     "icon-48-black.png",

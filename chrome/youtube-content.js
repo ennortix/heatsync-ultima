@@ -74,7 +74,7 @@
   }
 
   // Listen for inventory updates from background
-  chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+  const ytInventoryListener = (msg, _sender, sendResponse) => {
     if (msg.type === 'inventory_update' && msg.emotes) {
       rebuildEmoteMap(msg.emotes, Array.from(emoteMap.values()))
     } else if (msg.type === 'global_emotes_update' && msg.emotes) {
@@ -91,7 +91,11 @@
       sendResponse({ ok: true })
       return true
     }
-  })
+  }
+  chrome.runtime.onMessage.addListener(ytInventoryListener)
+  window.addEventListener('pagehide', () => {
+    try { chrome.runtime.onMessage.removeListener(ytInventoryListener) } catch {}
+  }, { once: true })
 
   // ─── Emote Replacement ────────────────────────────────────────────────────────
 

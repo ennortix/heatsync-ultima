@@ -6387,7 +6387,6 @@ async function sendKickMessage(kickSlug, text) {
       || emoteHashes.get(emoteName)
       || lookupEmote(emoteName)?.hash
       || emoteName;
-    document.body.dataset.hsDebugRemove = `removing: ${emoteName} hash=${emoteHash?.substring(0, 12)}`;
     try {
       const response = await new Promise((resolve, reject) => {
         chrome.runtime.sendMessage({
@@ -6399,11 +6398,9 @@ async function sendKickMessage(kickSlug, text) {
           else resolve(resp);
         });
       });
-      document.body.dataset.hsDebugRemove = `response: ${JSON.stringify(response)}`;
       if (response?.success) handleRemoveSuccess(emoteName, targetEl);
       else showToast(response?.error || `failed to remove: ${emoteName}`);
     } catch (e) {
-      document.body.dataset.hsDebugRemove = `error: ${e.message}`;
       showToast(`error removing: ${emoteName}`);
     }
   }
@@ -6945,9 +6942,9 @@ async function sendKickMessage(kickSlug, text) {
           const hasProtocol = /^https?:\/\//i.test(word);
           const fullUrl = hasProtocol ? word : `https://${word}`;
           if (/^https?:\/\//i.test(fullUrl)) {
-            result.push(`<a href="${fullUrl}" target="_blank" rel="noopener noreferrer" class="hs-mc-link">${word}</a>`);
+            result.push(`<a href="${escapeHtml(fullUrl)}" target="_blank" rel="noopener noreferrer" class="hs-mc-link">${escapeHtml(word)}</a>`);
           } else {
-            result.push(word);
+            result.push(escapeHtml(word));
           }
         } else {
           result.push(word);
@@ -9902,15 +9899,11 @@ async function placePredictionBet(eventId, outcomeId, points, transactionId) {
     }
 
     let data = await tryBet()
-    console.log('[hs-pred] bet attempt 1:', JSON.stringify(data?.data?.makePrediction?.error || data?.errors?.[0] || 'ok'))
     if (isTosError(data)) {
-      // Accept terms, wait for propagation, retry up to 3 times with backoff
-      const accepted = await acceptPredictionTerms()
-      console.log('[hs-pred] acceptTerms result:', accepted)
+      await acceptPredictionTerms()
       for (let attempt = 0; attempt < 3; attempt++) {
         await new Promise(r => setTimeout(r, 500 * (attempt + 1)))
         data = await tryBet()
-        console.log('[hs-pred] retry', attempt + 1, ':', JSON.stringify(data?.data?.makePrediction?.error || data?.errors?.[0] || 'ok'))
         if (!isTosError(data)) break
       }
     }
@@ -14751,7 +14744,7 @@ const STORAGE_KEY = 'heatsync_multichat';
           const g = (s.color >>> 16) & 0xff
           const b = (s.color >>> 8) & 0xff
           const a = (s.color & 0xff) / 255
-          return `drop-shadow(${s.x_offset || 0}px ${s.y_offset || 0}px ${s.radius || 0}px rgba(${r},${g},${b},${a.toFixed(2)}))`
+          return `drop-shadow(${Number(s.x_offset) || 0}px ${Number(s.y_offset) || 0}px ${Number(s.radius) || 0}px rgba(${r},${g},${b},${a.toFixed(2)}))`
         }).join(' ')
       }
       return style
@@ -14776,7 +14769,7 @@ const STORAGE_KEY = 'heatsync_multichat';
           const g = (s.color >>> 16) & 0xff
           const b = (s.color >>> 8) & 0xff
           const a = (s.color & 0xff) / 255
-          return `drop-shadow(${s.x_offset || 0}px ${s.y_offset || 0}px ${s.radius || 0}px rgba(${r},${g},${b},${a.toFixed(2)}))`
+          return `drop-shadow(${Number(s.x_offset) || 0}px ${Number(s.y_offset) || 0}px ${Number(s.radius) || 0}px rgba(${r},${g},${b},${a.toFixed(2)}))`
         }).join(' ')
       }
       return style

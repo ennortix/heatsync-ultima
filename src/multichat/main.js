@@ -259,7 +259,7 @@
           const g = (s.color >>> 16) & 0xff
           const b = (s.color >>> 8) & 0xff
           const a = (s.color & 0xff) / 255
-          return `drop-shadow(${s.x_offset || 0}px ${s.y_offset || 0}px ${s.radius || 0}px rgba(${r},${g},${b},${a.toFixed(2)}))`
+          return `drop-shadow(${Number(s.x_offset) || 0}px ${Number(s.y_offset) || 0}px ${Number(s.radius) || 0}px rgba(${r},${g},${b},${a.toFixed(2)}))`
         }).join(' ')
       }
       return style
@@ -284,7 +284,7 @@
           const g = (s.color >>> 16) & 0xff
           const b = (s.color >>> 8) & 0xff
           const a = (s.color & 0xff) / 255
-          return `drop-shadow(${s.x_offset || 0}px ${s.y_offset || 0}px ${s.radius || 0}px rgba(${r},${g},${b},${a.toFixed(2)}))`
+          return `drop-shadow(${Number(s.x_offset) || 0}px ${Number(s.y_offset) || 0}px ${Number(s.radius) || 0}px rgba(${r},${g},${b},${a.toFixed(2)}))`
         }).join(' ')
       }
       return style

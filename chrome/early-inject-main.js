@@ -519,25 +519,7 @@
             }
           }
 
-          // Fallback: raw query with integrity (works for some mutations)
-          if (e.data.rawQuery) {
-            log('apollo-mutate[' + searchTerm + ']: fallback to raw query')
-            const hdrs = buildGqlHeaders()
-            const resp = await origFetch('https://gql.twitch.tv/gql', {
-              method: 'POST', headers: hdrs,
-              body: JSON.stringify({ query: e.data.rawQuery, variables })
-            })
-            const data = await resp.json()
-            if (data?.errors?.length) {
-              respond({ error: data.errors[0].message })
-            } else if (resultField && data?.data?.[resultField]?.error) {
-              respond({ error: data.data[resultField].error.code })
-            } else {
-              respond({ ok: true, data: data?.data })
-            }
-          } else {
-            respond({ error: 'apollo client or webpack module not found' })
-          }
+          respond({ error: 'apollo client or webpack module not found' })
         } catch (err) {
           log('apollo-mutate: exception=' + err.message)
           respond({ error: err.message })
@@ -832,6 +814,7 @@
   function hsRemoveListeners() {
     window.removeEventListener('message', hsMessageHandler)
     window.removeEventListener('message', hsUrlMapHandler)
+    window.removeEventListener('message', hsUidNavHandler)
     window.removeEventListener('popstate', notifyNav)
   }
   window.__heatsyncEarlyInject.removeListeners = hsRemoveListeners
@@ -911,10 +894,11 @@
   }
 
   // Listen for SPA navigation from our own history hooks
-  window.addEventListener('message', (e) => {
+  const hsUidNavHandler = (e) => {
     if (e.source !== window || e.origin !== location.origin) return
     if (e.data?.type === 'heatsync-nav') resetUidObserver()
-  })
+  }
+  window.addEventListener('message', hsUidNavHandler)
 
   window.addEventListener('pagehide', () => {
     if (uidPollId !== null) {

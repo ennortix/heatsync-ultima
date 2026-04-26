@@ -468,7 +468,6 @@
       || emoteHashes.get(emoteName)
       || lookupEmote(emoteName)?.hash
       || emoteName;
-    document.body.dataset.hsDebugRemove = `removing: ${emoteName} hash=${emoteHash?.substring(0, 12)}`;
     try {
       const response = await new Promise((resolve, reject) => {
         chrome.runtime.sendMessage({
@@ -480,11 +479,9 @@
           else resolve(resp);
         });
       });
-      document.body.dataset.hsDebugRemove = `response: ${JSON.stringify(response)}`;
       if (response?.success) handleRemoveSuccess(emoteName, targetEl);
       else showToast(response?.error || `failed to remove: ${emoteName}`);
     } catch (e) {
-      document.body.dataset.hsDebugRemove = `error: ${e.message}`;
       showToast(`error removing: ${emoteName}`);
     }
   }
@@ -1026,9 +1023,9 @@
           const hasProtocol = /^https?:\/\//i.test(word);
           const fullUrl = hasProtocol ? word : `https://${word}`;
           if (/^https?:\/\//i.test(fullUrl)) {
-            result.push(`<a href="${fullUrl}" target="_blank" rel="noopener noreferrer" class="hs-mc-link">${word}</a>`);
+            result.push(`<a href="${escapeHtml(fullUrl)}" target="_blank" rel="noopener noreferrer" class="hs-mc-link">${escapeHtml(word)}</a>`);
           } else {
-            result.push(word);
+            result.push(escapeHtml(word));
           }
         } else {
           result.push(word);

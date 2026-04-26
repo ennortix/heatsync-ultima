@@ -3007,7 +3007,7 @@ async function removeFromInventory(emoteHash, emoteName) {
 browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
   const senderUrl = sender?.tab?.url || sender?.url || ''
   const isFromPopup = !sender?.tab // popup/background have no tab
-  const isValidSender = isFromPopup || /^https:\/\/(www\.)?(twitch\.tv|kick\.com|heatsync\.org|youtube\.com)/.test(senderUrl)
+  const isValidSender = isFromPopup || /^https:\/\/([a-z0-9-]+\.)*(twitch\.tv|kick\.com|heatsync\.org|youtube\.com)(\/|$)/.test(senderUrl)
 
   // Validate ALL content script senders, not just sensitive types
   if (!isValidSender) {
@@ -3721,7 +3721,7 @@ async function initialize() {
     const session = await sessionP
     if (session?.tab_channels) {
       // Validate restored tab IDs still exist
-      const allTabs = await browser.tabs.query({})
+      const allTabs = await browser.tabs.query({ url: ['*://*.twitch.tv/*', '*://*.kick.com/*', '*://*.youtube.com/*'] })
       const validIds = new Set(allTabs.map(t => t.id))
       for (const [tabId, entry] of Object.entries(session.tab_channels)) {
         const id = Number(tabId)

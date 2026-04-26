@@ -492,6 +492,18 @@
         color: #000;
       }
 
+      .heatsync-settings-cog:disabled {
+        opacity: 0.4;
+        cursor: not-allowed;
+        pointer-events: none;
+      }
+
+      .heatsync-settings-cog.hs-flash-err {
+        border-color: #e53935;
+        color: #e53935;
+        background: none;
+      }
+
       .heatsync-size-buttons {
         display: flex;
         gap: 4px;
@@ -1717,6 +1729,12 @@
             <button class="heatsync-size-btn active" data-size="4x">${t('btn_size_4x')}</button>
           </div>
           <div style="display:flex;gap:4px;align-items:center;">
+            <button class="heatsync-settings-cog" id="heatsync-undo-btn" title="Undo" disabled>
+              <svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M12.5 8c-2.65 0-5.05.99-6.9 2.6L2 7v9h9l-3.62-3.62c1.39-1.16 3.16-1.88 5.12-1.88 3.54 0 6.55 2.31 7.6 5.5l2.37-.78C21.08 11.03 17.15 8 12.5 8z"/></svg>
+            </button>
+            <button class="heatsync-settings-cog" id="heatsync-redo-btn" title="Redo" disabled>
+              <svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M18.4 10.6C16.55 8.99 14.15 8 11.5 8c-4.65 0-8.58 3.03-9.96 7.22L3.9 16c1.05-3.19 4.05-5.5 7.6-5.5 1.95 0 3.73.72 5.12 1.88L13 16h9V7l-3.6 3.6z"/></svg>
+            </button>
             <button class="heatsync-settings-cog" id="heatsync-rotate-btn" title="${t('btn_rotate_title')}">
               <svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M7.11 8.53L5.7 7.11C4.8 8.27 4.24 9.61 4.07 11h2.02c.14-.87.49-1.72 1.02-2.47zM6.09 13H4.07c.17 1.39.72 2.73 1.62 3.89l1.41-1.42c-.52-.75-.88-1.6-1.01-2.47zM7.1 18.32c1.16.9 2.51 1.44 3.9 1.61V17.9c-.87-.15-1.71-.49-2.46-1.03L7.1 18.32zM13 4.07V1l-4 4 4 4V6.09c2.84.48 5 2.94 5 5.91s-2.16 5.43-5 5.91v2.02c3.95-.49 7-3.85 7-7.93s-3.05-7.44-7-7.93z"/></svg>
             </button>
@@ -1777,6 +1795,64 @@
         renderSettings();
       }
     });
+
+    // Undo/redo buttons
+    const undoBtn = panel.querySelector('#heatsync-undo-btn')
+    const redoBtn = panel.querySelector('#heatsync-redo-btn')
+
+    async function fetchHistoryStatus() {
+      try {
+        const resp = await chrome.runtime.sendMessage({
+          type: 'api_fetch',
+          path: '/api/user/emotes/history-status',
+          method: 'GET',
+          auth: true
+        })
+        if (!resp || resp.ok === false) return
+        const data = resp.data || resp
+        undoBtn.disabled = !data.canUndo
+        redoBtn.disabled = !data.canRedo
+      } catch (_) {}
+    }
+
+    function flashErr(btn) {
+      btn.classList.add('hs-flash-err')
+      setTimeout(() => btn.classList.remove('hs-flash-err'), 800)
+    }
+
+    async function doUndoRedo(path, btn) {
+      const wasUndoDisabled = undoBtn.disabled
+      const wasRedoDisabled = redoBtn.disabled
+      undoBtn.disabled = true
+      redoBtn.disabled = true
+      try {
+        const resp = await chrome.runtime.sendMessage({
+          type: 'api_fetch',
+          path,
+          method: 'POST',
+          auth: true
+        })
+        if (!resp || resp.ok === false) {
+          flashErr(btn)
+          undoBtn.disabled = wasUndoDisabled
+          redoBtn.disabled = wasRedoDisabled
+          return
+        }
+        await loadInventoryEmotes()
+        await fetchHistoryStatus()
+        renderEmoteGrid()
+      } catch (_) {
+        flashErr(btn)
+        undoBtn.disabled = wasUndoDisabled
+        redoBtn.disabled = wasRedoDisabled
+      }
+    }
+
+    undoBtn.addEventListener('click', () => doUndoRedo('/api/user/emotes/undo', undoBtn))
+    redoBtn.addEventListener('click', () => doUndoRedo('/api/user/emotes/redo', redoBtn))
+
+    // Fetch initial history state
+    fetchHistoryStatus()
 
     // Rotate tab position button
     const rotateBtn = panel.querySelector('#heatsync-rotate-btn');

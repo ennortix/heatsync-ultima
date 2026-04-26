@@ -2320,6 +2320,18 @@
         container.style.cssText = `position:relative;display:flex;flex-direction:column;height:${frameHeight}px;overflow:hidden;`
       }
       parent.appendChild(container)
+      // If YouTube has its chat sidebar collapsed (#chat-container is 0-wide),
+      // our panel inherits that and looks blank. Click "Show chat" to expand.
+      // Also watch for the user toggling it off later and re-expand.
+      const ensureYtChatExpanded = () => {
+        if (parent.offsetWidth > 0) return
+        const showBtn = document.querySelector('button[aria-label="Show chat"]')
+        if (showBtn) showBtn.click()
+      }
+      ensureYtChatExpanded()
+      const ytWidthObs = new MutationObserver(ensureYtChatExpanded)
+      ytWidthObs.observe(parent, { attributes: true, attributeFilter: ['style', 'class'] })
+      cleanup.addObserver?.(ytWidthObs)
     } else if (isKick) {
       parent = chatRoom.parentElement
       chatRoom.after(container)
@@ -4205,10 +4217,16 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       item.style.cssText = `padding:6px 12px;cursor:pointer;color:${baseColor};white-space:nowrap;`;
       item.addEventListener('mouseenter', () => { item.style.background = '#fff'; item.style.color = '#000'; });
       item.addEventListener('mouseleave', () => { item.style.background = 'none'; item.style.color = baseColor; });
-      item.addEventListener('click', () => {
+      item.addEventListener('click', async () => {
         menu.remove();
-        // In popout mode, navigate to the channel's popout URL
-        if (document.body.classList.contains('hs-popout')) {
+        // In popout mode, navigate to the channel's popout URL — but only if the channel differs.
+        // Persist activeTab='live' synchronously first so the new page lands on the live tab,
+        // not whatever tab was active before (e.g. discover).
+        if (document.body.classList.contains('hs-popout') && ch.name !== urlCh) {
+          try {
+            const s = await chrome.storage.sync.get(['ui_settings'])
+            await chrome.storage.sync.set({ ui_settings: { ...s.ui_settings, activeTab: 'live', liveChannel: ch.name } })
+          } catch {}
           if (ch.platform === 'twitch' || hostPlatform === 'twitch') {
             location.href = `/popout/${ch.name}/chat?popout=`;
           } else if (ch.platform === 'kick' || hostPlatform === 'kick') {

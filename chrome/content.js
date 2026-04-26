@@ -2148,14 +2148,21 @@ function _onMessageMain(message) {
       // Skip reprocessing if inventory hasn't actually changed (prevents stack rebuild on 60s poll)
       const oldHashes = new Set(emoteInventory.map(e => e.hash));
       const newHashes = new Set(newInv.map(e => e.hash));
-      const inventoryChanged = oldHashes.size !== newHashes.size ||
-        [...newHashes].some(h => !oldHashes.has(h));
+      const removedHashes = [...oldHashes].filter(h => !newHashes.has(h));
+      const addedHashes = [...newHashes].filter(h => !oldHashes.has(h));
+      const inventoryChanged = removedHashes.length > 0 || addedHashes.length > 0;
+      // When the only delta is removal of emotes we already know are blocked,
+      // skip the full reprocess — updateEmoteState/hideBlockedEmote already
+      // swapped the wrapper visuals. Avoids a chat-wide DOM rebuild flicker
+      // every time the user blocks an emote that was in their inventory.
+      const blockOnlyRemoval = addedHashes.length === 0 && removedHashes.length > 0 &&
+        removedHashes.every(h => blockedEmotes.has(h));
 
       emoteInventory = newInv;
       allEmotesDirty = true
       _tabEmoteMapDirty = true
       rebuildEmoteMapIfDirty()
-      log(' Inventory updated:', emoteInventory.length, 'emotes', inventoryChanged ? '(CHANGED)' : '(unchanged)');
+      log(' Inventory updated:', emoteInventory.length, 'emotes', inventoryChanged ? (blockOnlyRemoval ? '(BLOCK-ONLY REMOVAL — skipping reprocess)' : '(CHANGED)') : '(unchanged)');
 
       // If on own channel, sync channel emotes with inventory (remove stale ones)
       // Channel emotes for owner = their personal inventory, so keep them in sync
@@ -2168,9 +2175,29 @@ function _onMessageMain(message) {
         }
       }
 
-      // Only bump generation + reprocess if inventory actually changed
-      // Prevents 60s poll and block-triggered refreshes from destroying expanded stacks
-      if (inventoryChanged) {
+      // Surgical add updates: when emotes are added back (e.g. unblock restored
+      // them to inventory), wrappers already in the DOM just need their overlay
+      // class flipped to "owned". Skip reprocess if every added hash already
+      // has wrappers — saves a chat-wide rebuild.
+      let surgicalAddOnly = false;
+      if (inventoryChanged && !blockOnlyRemoval && removedHashes.length === 0 && addedHashes.length > 0) {
+        const updates = [];
+        let allHaveWrappers = true;
+        for (const h of addedHashes) {
+          const els = document.querySelectorAll(`[data-emote-hash="${h}"]`);
+          if (els.length === 0) { allHaveWrappers = false; break; }
+          els.forEach(el => {
+            const name = el.dataset.emoteName || (el.querySelector('.heatsync-emote')?.dataset?.emoteName);
+            if (name) updates.push([h, name]);
+          });
+        }
+        if (allHaveWrappers && updates.length > 0) {
+          for (const [h, n] of updates) updateEmoteState(h, n, 'added');
+          surgicalAddOnly = true;
+        }
+      }
+
+      if (inventoryChanged && !blockOnlyRemoval && !surgicalAddOnly) {
         emoteGeneration++
         debouncedProcessExistingMessages();
       }
@@ -3464,10 +3491,11 @@ function setupUsernameColoringObserver() {
     // Must stop propagation before it reaches any React handler.
     for (const evt of ['mousedown', 'pointerdown']) {
       document.addEventListener(evt, (e) => {
-        const stack = e.target.closest('.heatsync-emote-stack');
-        if (!stack) return;
-        // Only block right-click (button=2) and middle-click (button=1) from propagating
-        // Left-click (button=0) is handled by our click handler below
+        // Block right/middle-click on ANY emote wrapper (stack or standalone) from
+        // reaching Twitch React. Otherwise React handles the mousedown, re-renders
+        // the chat message, and wipes our wrapper mid-block — visible flicker.
+        const target = e.target.closest('.heatsync-emote-stack, .heatsync-emote-wrapper');
+        if (!target) return;
         if (e.button === 2 || e.button === 1) {
           e.stopPropagation();
         }
@@ -3605,11 +3633,17 @@ function setupUsernameColoringObserver() {
       if (!hash) return;
       const isBlocked = blockedEmotes.has(hash);
       const isGlobalEmote = wrapper.classList.contains('emote-overlay-global') || globalNameSet.has(emoteName);
+      const inInv = inventoryHashSet.has(hash) || inventoryNameSet.has(emoteName);
       if (isBlocked) {
+        // Optimistic unblock — UI updates instantly; rollback on server failure
+        const restoredState = inInv ? 'added' : (isGlobalEmote ? 'global' : 'neutral');
+        blockedEmotes.delete(hash);
+        updateEmoteState(hash, emoteName, restoredState);
         safeSendMessage({ type: 'unblock_emote', hash }).then(result => {
-          if (result?.success) {
-            blockedEmotes.delete(hash);
-            updateEmoteState(hash, emoteName, isGlobalEmote ? 'global' : 'neutral');
+          if (!result?.success) {
+            blockedEmotes.add(hash);
+            updateEmoteState(hash, emoteName, 'blocked');
+            showToast(t('content_toast_failed_unblock', [String(result?.error || 'Unknown error')]), 'error');
           }
           stack.classList.add('expanded');
         });
@@ -3619,7 +3653,7 @@ function setupUsernameColoringObserver() {
         safeSendMessage({ type: 'block_emote', hash }).then(result => {
           if (!result?.success) {
             blockedEmotes.delete(hash);
-            updateEmoteState(hash, emoteName, 'neutral');
+            updateEmoteState(hash, emoteName, inInv ? 'added' : (isGlobalEmote ? 'global' : 'neutral'));
             showToast(t('content_toast_failed_block', [String(result?.error || 'Unknown error')]), 'error');
           } else {
             showToast(t('content_toast_blocked', [emoteName]), 'info');
@@ -4642,18 +4676,26 @@ function setupEmoteClickHandlers() {
     }
 
     if (isBlocked) {
-      // BLOCKED → NEUTRAL (unblock)
+      // BLOCKED → restored state — optimistic so the UI doesn't lag the server roundtrip
       pendingOperations.add(operationKey);
+      const restoredState = inventoryHashSet.has(hash) ? 'added' : (isGlobalEmote ? 'global' : 'neutral');
+      blockedEmotes.delete(hash);
+      updateEmoteState(hash, emoteName, restoredState);
       try {
         const result = await safeSendMessage({ type: 'unblock_emote', hash });
         if (result?.success) {
-          blockedEmotes.delete(hash);
-          const restoredState = inventoryHashSet.has(hash) ? 'added' : (isGlobalEmote ? 'global' : 'neutral');
-          updateEmoteState(hash, emoteName, restoredState);
           log(' ✅ Unblocked:', emoteName);
         } else {
+          // Rollback
+          blockedEmotes.add(hash);
+          updateEmoteState(hash, emoteName, 'blocked');
           showToast(t('content_toast_failed_unblock', [String(result?.error || 'Unknown error')]), 'error');
         }
+      } catch (err) {
+        if (!extensionContextValid) return;
+        blockedEmotes.add(hash);
+        updateEmoteState(hash, emoteName, 'blocked');
+        showToast(t('content_toast_failed_unblock', [String(err.message)]), 'error');
       } finally {
         pendingOperations.delete(operationKey);
         // Re-assert expanded — bulletproof against any async class removal

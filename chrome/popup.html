@@ -291,6 +291,50 @@
     .popout-input::placeholder { color: #b0b0b0; }
     .popout-btn { flex-shrink: 0; }
 
+    /* bookmarks */
+    .bm-section { padding: 0 0 6px; }
+    .bm-row {
+      display: flex;
+      align-items: baseline;
+      gap: 6px;
+      padding: 5px 16px;
+      cursor: pointer;
+      color: #ddd;
+      text-decoration: none;
+    }
+    .bm-row:hover { background: rgba(255,135,0,0.08); }
+    .bm-ts { font-size: 10px; color: #606060; flex-shrink: 0; }
+    .bm-channel { font-size: 10px; color: #ff8700; flex-shrink: 0; }
+    .bm-content { font-size: 12px; flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .bm-empty { padding: 6px 16px; font-size: 12px; color: #606060; }
+    .bm-viewall { display: block; padding: 4px 16px; font-size: 11px; color: #606060; text-decoration: none; }
+    .bm-viewall:hover { color: #ff8700; }
+
+    /* referrals */
+    .ref-section { padding: 0 0 6px; }
+    .ref-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 5px 16px;
+    }
+    .ref-code { font-size: 12px; color: #ddd; font-family: monospace; flex: 1; }
+    .ref-uses { font-size: 11px; color: #606060; flex-shrink: 0; }
+    .ref-copy {
+      font-size: 11px;
+      color: #a0a0a0;
+      background: rgba(255,255,255,0.06);
+      border: none;
+      cursor: pointer;
+      padding: 3px 8px;
+      font-family: inherit;
+      flex-shrink: 0;
+    }
+    .ref-copy:hover { color: #ff8700; }
+    .ref-empty { padding: 6px 16px; font-size: 12px; color: #606060; }
+    .ref-empty a { color: #ff8700; text-decoration: none; }
+    .ref-empty a:hover { text-decoration: underline; }
+
     .hint {
       padding: 10px 16px;
       text-align: center;

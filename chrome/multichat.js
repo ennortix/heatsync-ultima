@@ -11089,7 +11089,10 @@ function renderThirdPartyBadges(userId) {
       const rawUrl = (absBase.endsWith('/') ? absBase : absBase + '/') + file.name
       const url = safeUrl(rawUrl)
       if (url) {
-        html += `<img class="hs-mc-badge-img" src="${escapeHtml(url)}" alt="7TV" title="${escapeHtml(cosmetic.badge.tooltip || '7TV')}" style="width:18px;height:18px;">`
+        // Class includes hs-mc-7tv-badge so updateCosmeticsInPlace's dedup
+        // selector finds it and doesn't insert a duplicate when the async
+        // cosmetic fetch resolves after the inline render.
+        html += `<img class="hs-mc-badge-img hs-mc-7tv-badge" src="${escapeHtml(url)}" alt="7TV" title="${escapeHtml(cosmetic.badge.tooltip || '7TV')}" style="width:18px;height:18px;">`
       }
     }
   }

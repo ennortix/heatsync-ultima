@@ -7829,7 +7829,29 @@ window.addEventListener('message', (event) => {
       window.postMessage({ type: 'heatsync-clear-history-result', result: r }, location.origin)
     })
   }
+  // Self twitch ID resolved by early-inject MAIN world via currentUser GQL —
+  // critical for popout chat where twilight.user localStorage is null and
+  // every other detection path fails.
+  if (event.data?.type === 'heatsync-self-twitch-id' && event.data.twitchId && /^\d+$/.test(String(event.data.twitchId))) {
+    if (!_selfTwitchIdRegistered) {
+      _selfTwitchIdRegistered = true
+      if (event.data.login && !cachedUsername) cachedUsername = String(event.data.login).toLowerCase()
+      safeSendMessage({ type: 'register_self_twitch_id', twitchId: String(event.data.twitchId) })
+    }
+  }
 }, { signal })
+
+// Read self twitch ID from documentElement dataset if MAIN world already
+// stamped it before this listener attached (race on fast loads).
+try {
+  const stampedSelfId = document.documentElement.dataset.hsSelfTwitchId
+  const stampedSelfLogin = document.documentElement.dataset.hsSelfTwitchLogin
+  if (stampedSelfId && /^\d+$/.test(stampedSelfId) && !_selfTwitchIdRegistered) {
+    _selfTwitchIdRegistered = true
+    if (stampedSelfLogin && !cachedUsername) cachedUsername = stampedSelfLogin.toLowerCase()
+    safeSendMessage({ type: 'register_self_twitch_id', twitchId: stampedSelfId })
+  }
+} catch {}
 
 // Fallback: polling in case MAIN world script didn't load (e.g. Firefox edge cases)
 cleanup.setInterval(() => handleNavigation(), 5000, 'url-watcher-fallback');

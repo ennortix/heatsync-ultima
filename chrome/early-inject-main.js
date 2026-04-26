@@ -176,8 +176,37 @@
     integrity: null,  // Client-Integrity token
     clientId: null,   // Client-Id
     authToken: null,  // OAuth token
+    userId: null,     // Logged-in user's twitch ID (resolved via currentUser GQL)
+    userLogin: null,  // Logged-in user's login
     cache: {},        // operationName → { data, ts }
     pendingRequests: new Map() // queued requests waiting for hashes
+  }
+
+  // One-time self-identification: as soon as we have an auth token, fetch
+  // currentUser via GQL and stamp the result on documentElement so content.js
+  // (isolated world) can read it. Critical for popout chat where
+  // localStorage.twilight.user is null and getCurrentUsername fails.
+  let _selfFetchInFlight = false
+  function ensureSelfIdentified() {
+    if (gql.userId || _selfFetchInFlight || !gql.authToken) return
+    _selfFetchInFlight = true
+    const cid = gql.clientId || 'kimne78kx3ncx6brgo4mv6wki5h1ko'
+    origFetch('https://gql.twitch.tv/gql', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Client-Id': cid, Authorization: 'OAuth ' + gql.authToken },
+      body: JSON.stringify({ query: '{ currentUser { id login displayName } }' })
+    }).then(r => r.ok ? r.json() : null).then(d => {
+      _selfFetchInFlight = false
+      const cu = d?.data?.currentUser
+      if (!cu?.id) return
+      gql.userId = String(cu.id)
+      gql.userLogin = cu.login
+      try {
+        document.documentElement.dataset.hsSelfTwitchId = String(cu.id)
+        document.documentElement.dataset.hsSelfTwitchLogin = String(cu.login || '').toLowerCase()
+        window.postMessage({ type: 'heatsync-self-twitch-id', twitchId: String(cu.id), login: String(cu.login || '').toLowerCase() }, location.origin)
+      } catch {}
+    }).catch(() => { _selfFetchInFlight = false })
   }
 
   const GQL_OPS_TO_CACHE = [
@@ -206,7 +235,11 @@
           const cid = get('Client-Id') || get('Client-ID')
           if (cid) gql.clientId = cid
           const auth = get('Authorization')
-          if (auth && auth.startsWith('OAuth ')) gql.authToken = auth.slice(6)
+          if (auth && auth.startsWith('OAuth ')) {
+            gql.authToken = auth.slice(6)
+            // Trigger one-time self-identification once auth is available.
+            ensureSelfIdentified()
+          }
         }
       } catch(e) {}
 

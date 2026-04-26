@@ -92,6 +92,19 @@
     }
     .footer a { color: #ff8700; text-decoration: none; }
     .footer a:hover { color: #fff; }
+
+    .toggle:disabled {
+      opacity: 0.35;
+      cursor: not-allowed;
+    }
+    #server-settings-status {
+      font-size: 11px;
+      color: #a0a0a0;
+      margin-top: 6px;
+      min-height: 14px;
+    }
+    #server-settings-status.ok { color: #4caf50; }
+    #server-settings-status.err { color: #f44336; }
   </style>
 </head>
 <body>
@@ -267,6 +280,88 @@
       </div>
       <pre id="crash-log" style="background:#0a0a0a;color:#c0c0c0;border:1px solid #333;padding:8px;font-size:10px;max-height:200px;overflow:auto;white-space:pre-wrap;word-break:break-all;margin:0"></pre>
     </div>
+  </div>
+
+  <div class="section" id="server-settings-section">
+    <h2 class="section-title">content filters (synced)</h2>
+    <div class="setting-row">
+      <div>
+        <div class="setting-label" id="lbl-allow_nsfw_text">nsfw text</div>
+        <div class="setting-desc">show sexually explicit text in chat</div>
+      </div>
+      <button type="button" class="toggle" data-server-setting="allow_nsfw_text" role="switch" aria-checked="false" aria-labelledby="lbl-allow_nsfw_text" disabled></button>
+    </div>
+    <div class="setting-row">
+      <div>
+        <div class="setting-label" id="lbl-allow_nsfw_images">nsfw images</div>
+        <div class="setting-desc">show adult image emotes</div>
+      </div>
+      <button type="button" class="toggle" data-server-setting="allow_nsfw_images" role="switch" aria-checked="false" aria-labelledby="lbl-allow_nsfw_images" disabled></button>
+    </div>
+    <div class="setting-row">
+      <div>
+        <div class="setting-label" id="lbl-allow_nsfw_videos">nsfw videos</div>
+        <div class="setting-desc">show adult video clips</div>
+      </div>
+      <button type="button" class="toggle" data-server-setting="allow_nsfw_videos" role="switch" aria-checked="false" aria-labelledby="lbl-allow_nsfw_videos" disabled></button>
+    </div>
+    <div class="setting-row">
+      <div>
+        <div class="setting-label" id="lbl-allow_nsfw_emotes">nsfw emotes</div>
+        <div class="setting-desc">render emotes flagged as nsfw</div>
+      </div>
+      <button type="button" class="toggle" data-server-setting="allow_nsfw_emotes" role="switch" aria-checked="false" aria-labelledby="lbl-allow_nsfw_emotes" disabled></button>
+    </div>
+    <div class="setting-row">
+      <div>
+        <div class="setting-label" id="lbl-allow_nsfw_usernames">nsfw usernames</div>
+        <div class="setting-desc">show usernames flagged as inappropriate</div>
+      </div>
+      <button type="button" class="toggle" data-server-setting="allow_nsfw_usernames" role="switch" aria-checked="false" aria-labelledby="lbl-allow_nsfw_usernames" disabled></button>
+    </div>
+    <div class="setting-row">
+      <div>
+        <div class="setting-label" id="lbl-allow_violent_content">violent content</div>
+        <div class="setting-desc">show messages containing violent content</div>
+      </div>
+      <button type="button" class="toggle" data-server-setting="allow_violent_content" role="switch" aria-checked="false" aria-labelledby="lbl-allow_violent_content" disabled></button>
+    </div>
+    <div class="setting-row">
+      <div>
+        <div class="setting-label" id="lbl-allow_hate_speech">hate speech</div>
+        <div class="setting-desc">show messages flagged for hate speech</div>
+      </div>
+      <button type="button" class="toggle" data-server-setting="allow_hate_speech" role="switch" aria-checked="false" aria-labelledby="lbl-allow_hate_speech" disabled></button>
+    </div>
+    <div class="setting-row">
+      <div>
+        <div class="setting-label" id="lbl-allow_weapons">weapons</div>
+        <div class="setting-desc">show content referencing weapons</div>
+      </div>
+      <button type="button" class="toggle" data-server-setting="allow_weapons" role="switch" aria-checked="false" aria-labelledby="lbl-allow_weapons" disabled></button>
+    </div>
+    <div class="setting-row">
+      <div>
+        <div class="setting-label" id="lbl-allow_drugs">drugs</div>
+        <div class="setting-desc">show content referencing drugs</div>
+      </div>
+      <button type="button" class="toggle" data-server-setting="allow_drugs" role="switch" aria-checked="false" aria-labelledby="lbl-allow_drugs" disabled></button>
+    </div>
+    <div class="setting-row">
+      <div>
+        <div class="setting-label" id="lbl-show_spam">show spam</div>
+        <div class="setting-desc">show messages detected as spam</div>
+      </div>
+      <button type="button" class="toggle" data-server-setting="show_spam" role="switch" aria-checked="false" aria-labelledby="lbl-show_spam" disabled></button>
+    </div>
+    <div class="setting-row">
+      <div>
+        <div class="setting-label" id="lbl-show_hidden_messages">hidden messages</div>
+        <div class="setting-desc">show server-hidden messages</div>
+      </div>
+      <button type="button" class="toggle" data-server-setting="show_hidden_messages" role="switch" aria-checked="false" aria-labelledby="lbl-show_hidden_messages" disabled></button>
+    </div>
+    <div id="server-settings-status"></div>
   </div>
 
   <div class="footer">

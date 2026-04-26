@@ -3195,6 +3195,133 @@ function injectStyles() {
       font-size: 12px;
     }
 
+    /* ---- ENGAGEMENT BAR ---- */
+    .hs-feed-engage {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      margin-top: 2px;
+      padding-left: 2px;
+    }
+    .hs-feed-heat-btn,
+    .hs-feed-bm-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 2px;
+      background: none;
+      border: none;
+      padding: 1px 3px;
+      cursor: pointer;
+      color: #808080;
+      font-size: 11px;
+      font-family: inherit;
+      line-height: 1;
+    }
+    .hs-feed-heat-btn:hover .hs-fe-icon path,
+    .hs-feed-bm-btn:hover .hs-fe-icon path {
+      stroke: #ff8700;
+    }
+    .hs-feed-heat-btn.active .hs-fe-count {
+      color: #ff8700;
+    }
+    .hs-fe-count {
+      font-size: 10px;
+      color: #808080;
+      min-width: 0;
+    }
+    .hs-fe-icon {
+      display: block;
+      flex-shrink: 0;
+    }
+    .hs-feed-react-row {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 2px;
+    }
+    .hs-feed-react-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 2px;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid #444;
+      padding: 1px 3px;
+      cursor: pointer;
+      font-size: 10px;
+      color: #808080;
+      font-family: inherit;
+      line-height: 1;
+    }
+    .hs-feed-react-chip.active {
+      border-color: #ff8700;
+      color: #ff8700;
+    }
+    .hs-feed-react-chip:hover {
+      border-color: #808080;
+    }
+    .hs-feed-react-img {
+      width: 14px;
+      height: 14px;
+      vertical-align: middle;
+    }
+    .hs-feed-react-add {
+      background: none;
+      border: 1px solid #444;
+      color: #808080;
+      padding: 1px 4px;
+      cursor: pointer;
+      font-size: 11px;
+      font-family: inherit;
+      line-height: 1;
+    }
+    .hs-feed-react-add:hover {
+      border-color: #ff8700;
+      color: #ff8700;
+    }
+    .hs-mc-react-picker {
+      position: fixed;
+      z-index: 99999;
+      background: #111;
+      border: 1px solid #808080;
+      padding: 6px;
+      width: 200px;
+      max-height: 220px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .hs-mc-react-search {
+      width: 100%;
+      box-sizing: border-box;
+      background: #000;
+      border: 1px solid #808080;
+      color: #fff;
+      padding: 3px 5px;
+      font-family: inherit;
+      font-size: 11px;
+    }
+    .hs-mc-react-grid {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 2px;
+      overflow-y: auto;
+      max-height: 160px;
+    }
+    .hs-mc-react-emote {
+      background: none;
+      border: 1px solid transparent;
+      padding: 2px;
+      cursor: pointer;
+    }
+    .hs-mc-react-emote:hover {
+      border-color: #ff8700;
+    }
+    .hs-mc-react-emote img {
+      width: 28px;
+      height: 28px;
+      display: block;
+    }
+
     /* ---- TEXT FORMATTING ---- */
     .hs-spoiler {
       background: #808080;

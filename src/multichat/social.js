@@ -80,6 +80,11 @@ let feedPage = 1;
 let feedHasMore = true;
 let feedLastFetch = 0; // Timestamp of last feed fetch
 const FEED_STALE_MS = 120000; // 2 minutes
+
+// Engagement state — optimistic local cache
+const feedLiked = new Set()     // base36_ids the user has liked
+const feedBookmarked = new Set() // base36_ids the user has bookmarked
+const feedReactionsCache = new Map() // base36_id → [{ emote_id, emote_url, emote_name, count, user_reacted }]
 let notifications = { mentions: 0, op_replies: 0, re_replies: 0, total: 0 };
 let notifMessages = []; // Actual notification messages for display
 let notifLoaded = false;
@@ -541,6 +546,9 @@ async function fetchFeed(append = false) {
   feedLoaded = true;
   feedLastFetch = Date.now();
   if (currentTab === 'feed') renderFeed();
+  // Async: check bookmark state for loaded messages (non-blocking)
+  const ids = msgs.map(msg => msg.base36_id).filter(Boolean)
+  checkFeedBookmarks(ids)
 }
 
 function renderFeed() {
@@ -617,6 +625,291 @@ function renderFeed() {
       }, 200)
     }, { signal: mcSignal, passive: true });
   }
+}
+
+// ---- ENGAGEMENT: heat, bookmark, reactions ----
+
+// Batch-check bookmark status for a list of ids after feed loads
+async function checkFeedBookmarks(ids) {
+  if (!ids.length || !hsAuthToken) return
+  try {
+    const resp = await apiFetch('/api/bookmarks/check', { method: 'POST', auth: true, body: { messageIds: ids } })
+    if (!resp.ok) return
+    const list = resp.data?.bookmarked || resp.bookmarked || []
+    feedBookmarked.clear()
+    for (const id of list) feedBookmarked.add(id)
+    for (const id of ids) {
+      const btn = document.querySelector(`.hs-feed-bm-btn[data-id="${CSS.escape(id)}"]`)
+      if (btn) _applyBookmarkState(btn, feedBookmarked.has(id))
+    }
+  } catch (e) { /* silent */ }
+}
+
+function _makeSvg(pathD, filled, size) {
+  const ns = 'http://www.w3.org/2000/svg'
+  const svg = document.createElementNS(ns, 'svg')
+  svg.setAttribute('viewBox', '0 0 24 24')
+  svg.setAttribute('width', String(size || 13))
+  svg.setAttribute('height', String(size || 13))
+  svg.setAttribute('class', 'hs-fe-icon')
+  const path = document.createElementNS(ns, 'path')
+  path.setAttribute('d', pathD)
+  path.setAttribute('fill', filled ? '#ff8700' : 'none')
+  path.setAttribute('stroke', filled ? '#ff8700' : '#808080')
+  path.setAttribute('stroke-width', '2')
+  path.setAttribute('stroke-linejoin', 'round')
+  svg.appendChild(path)
+  return svg
+}
+
+function _applyBookmarkState(btn, active) {
+  btn.classList.toggle('active', active)
+  btn.title = active ? 'remove bookmark' : 'bookmark'
+  const path = btn.querySelector('path')
+  if (path) {
+    path.setAttribute('fill', active ? '#ff8700' : 'none')
+    path.setAttribute('stroke', active ? '#ff8700' : '#808080')
+  }
+}
+
+function _applyHeatState(btn, active, count) {
+  btn.classList.toggle('active', active)
+  const path = btn.querySelector('path')
+  if (path) {
+    path.setAttribute('fill', active ? '#ff8700' : 'none')
+    path.setAttribute('stroke', active ? '#ff8700' : '#808080')
+  }
+  const countEl = btn.querySelector('.hs-fe-count')
+  if (countEl) countEl.textContent = count > 0 ? String(count) : ''
+}
+
+async function toggleHeat(msgId, btn, m) {
+  if (!hsAuthToken) { showToast(t('mc_social_log_in_first')); return }
+  const wasLiked = feedLiked.has(msgId)
+  const newLiked = !wasLiked
+  const delta = newLiked ? 1 : -1
+  if (newLiked) feedLiked.add(msgId); else feedLiked.delete(msgId)
+  m.heat = (m.heat || 0) + delta
+  _applyHeatState(btn, newLiked, m.heat)
+  const resp = await apiFetch(`/api/messages/${encodeURIComponent(msgId)}/like`, { method: 'POST', auth: true })
+  if (!resp.ok) {
+    if (newLiked) feedLiked.delete(msgId); else feedLiked.add(msgId)
+    m.heat = (m.heat || 0) - delta
+    _applyHeatState(btn, wasLiked, m.heat)
+  }
+}
+
+async function toggleBookmark(msgId, btn) {
+  if (!hsAuthToken) { showToast(t('mc_social_log_in_first')); return }
+  const wasBookmarked = feedBookmarked.has(msgId)
+  const newState = !wasBookmarked
+  if (newState) feedBookmarked.add(msgId); else feedBookmarked.delete(msgId)
+  _applyBookmarkState(btn, newState)
+  const method = newState ? 'POST' : 'DELETE'
+  const resp = await apiFetch(`/api/bookmarks/${encodeURIComponent(msgId)}`, { method, auth: true })
+  if (!resp.ok) {
+    if (newState) feedBookmarked.delete(msgId); else feedBookmarked.add(msgId)
+    _applyBookmarkState(btn, wasBookmarked)
+  }
+}
+
+async function loadReactions(msgId, engageEl) {
+  const resp = await apiFetch(`/api/messages/${encodeURIComponent(msgId)}/reactions`, { auth: true })
+  if (!resp.ok) return
+  const reactions = resp.data?.reactions || resp.reactions || []
+  feedReactionsCache.set(msgId, reactions)
+  _renderReactionsIntoRow(engageEl, msgId, reactions)
+}
+
+function _makeReactChip(r, msgId, engageEl) {
+  const chip = document.createElement('button')
+  chip.className = 'hs-feed-react-chip' + (r.user_reacted ? ' active' : '')
+  chip.title = r.emote_name || ''
+  chip.dataset.emoteId = String(r.emote_id)
+  const img = document.createElement('img')
+  img.src = r.emote_url || ''
+  img.alt = r.emote_name || ''
+  img.className = 'hs-feed-react-img'
+  const cnt = document.createElement('span')
+  cnt.className = 'hs-fe-count'
+  cnt.textContent = String(r.count)
+  chip.appendChild(img)
+  chip.appendChild(cnt)
+  chip.addEventListener('click', (e) => {
+    e.stopPropagation()
+    const row = chip.closest('.hs-feed-react-row')
+    handleReactionChip(msgId, r, chip, row, engageEl)
+  })
+  return chip
+}
+
+function _renderReactionsIntoRow(engageEl, msgId, reactions) {
+  let row = engageEl.querySelector('.hs-feed-react-row')
+  if (!row) return
+  // Remove old chips (keep the "+" add button at end)
+  const addBtn = row.querySelector('.hs-feed-react-add')
+  row.textContent = ''
+  for (const r of reactions) row.appendChild(_makeReactChip(r, msgId, engageEl))
+  if (addBtn) row.appendChild(addBtn)
+}
+
+async function handleReactionChip(msgId, reaction, chip, row, engageEl) {
+  if (!hsAuthToken) { showToast(t('mc_social_log_in_first')); return }
+  const wasReacted = reaction.user_reacted
+  reaction.user_reacted = !wasReacted
+  reaction.count = (reaction.count || 1) + (wasReacted ? -1 : 1)
+  chip.classList.toggle('active', reaction.user_reacted)
+  const countEl = chip.querySelector('.hs-fe-count')
+  if (countEl) countEl.textContent = String(reaction.count)
+  if (reaction.count <= 0) chip.remove()
+  const method = wasReacted ? 'DELETE' : 'POST'
+  const path = wasReacted
+    ? `/api/messages/${encodeURIComponent(msgId)}/react/${encodeURIComponent(reaction.emote_id)}`
+    : `/api/messages/${encodeURIComponent(msgId)}/react`
+  const body = wasReacted ? undefined : { emote_id: reaction.emote_id }
+  const resp = await apiFetch(path, { method, auth: true, body })
+  if (!resp.ok) {
+    reaction.user_reacted = wasReacted
+    reaction.count = (reaction.count || 1) + (wasReacted ? 1 : -1)
+    _renderReactionsIntoRow(engageEl, msgId, feedReactionsCache.get(msgId) || [])
+  }
+}
+
+function openReactionPicker(e, msgId, engageEl) {
+  if (!hsAuthToken) { showToast(t('mc_social_log_in_first')); return }
+  document.getElementById('hs-mc-react-picker')?.remove()
+  const emotes = []
+  if (typeof emoteCache !== 'undefined') {
+    for (const [name, data] of emoteCache) {
+      if (data.url && data.source === 'heatsync') emotes.push({ name, url: data.url, id: data.id || name })
+    }
+  }
+  if (!emotes.length) { showToast('no emotes available'); return }
+
+  const picker = document.createElement('div')
+  picker.id = 'hs-mc-react-picker'
+  picker.className = 'hs-mc-react-picker'
+
+  const searchEl = document.createElement('input')
+  searchEl.type = 'text'
+  searchEl.className = 'hs-mc-react-search'
+  searchEl.placeholder = 'search emotes'
+  const grid = document.createElement('div')
+  grid.className = 'hs-mc-react-grid'
+  picker.appendChild(searchEl)
+  picker.appendChild(grid)
+
+  function fillGrid(filter) {
+    grid.textContent = ''
+    const q = filter.toLowerCase()
+    const shown = q ? emotes.filter(em => em.name.toLowerCase().includes(q)).slice(0, 40) : emotes.slice(0, 40)
+    for (const em of shown) {
+      const btn = document.createElement('button')
+      btn.className = 'hs-mc-react-emote'
+      btn.title = em.name
+      const img = document.createElement('img')
+      img.src = em.url
+      img.alt = em.name
+      img.loading = 'lazy'
+      btn.appendChild(img)
+      btn.addEventListener('click', async (ev) => {
+        ev.stopPropagation()
+        picker.remove()
+        if (!hsAuthToken) return
+        const cached = feedReactionsCache.get(msgId) || []
+        const existing = cached.find(r => String(r.emote_id) === String(em.id))
+        if (existing) {
+          const chip = engageEl.querySelector(`.hs-feed-react-chip[data-emote-id="${CSS.escape(String(em.id))}"]`)
+          const row = engageEl.querySelector('.hs-feed-react-row')
+          if (chip && row) handleReactionChip(msgId, existing, chip, row, engageEl)
+          return
+        }
+        const resp = await apiFetch(`/api/messages/${encodeURIComponent(msgId)}/react`, {
+          method: 'POST', auth: true, body: { emote_id: em.id }
+        })
+        if (resp.ok) await loadReactions(msgId, engageEl)
+      })
+      grid.appendChild(btn)
+    }
+  }
+  fillGrid('')
+  searchEl.addEventListener('input', () => fillGrid(searchEl.value))
+
+  document.body.appendChild(picker)
+  const rect = e.target.getBoundingClientRect()
+  const pw = picker.offsetWidth || 200
+  const ph = picker.offsetHeight || 220
+  picker.style.left = Math.min(rect.left, window.innerWidth - pw - 4) + 'px'
+  picker.style.top = Math.max(rect.top - ph - 4, 4) + 'px'
+
+  setTimeout(() => {
+    const dismiss = (ev) => {
+      if (!picker.contains(ev.target)) { picker.remove(); document.removeEventListener('click', dismiss) }
+    }
+    document.addEventListener('click', dismiss, { signal: mcSignal })
+  }, 0)
+  searchEl.focus()
+}
+
+function buildEngagementBar(m) {
+  const bar = document.createElement('div')
+  bar.className = 'hs-feed-engage'
+
+  const liked = feedLiked.has(m.base36_id) || !!m.user_liked
+  const heatCount = m.heat || 0
+
+  // Heat/like button — flame SVG
+  const heatBtn = document.createElement('button')
+  heatBtn.className = 'hs-feed-heat-btn' + (liked ? ' active' : '')
+  heatBtn.title = liked ? 'unlike' : 'heat'
+  heatBtn.dataset.id = m.base36_id
+  heatBtn.appendChild(_makeSvg('M12 2C9 7 5 9 5 14a7 7 0 0014 0c0-5-4-7-7-12z', liked))
+  const heatCount2 = document.createElement('span')
+  heatCount2.className = 'hs-fe-count'
+  heatCount2.textContent = heatCount > 0 ? String(heatCount) : ''
+  heatBtn.appendChild(heatCount2)
+
+  // Bookmark button — ribbon SVG
+  const bookmarked = feedBookmarked.has(m.base36_id)
+  const bmBtn = document.createElement('button')
+  bmBtn.className = 'hs-feed-bm-btn' + (bookmarked ? ' active' : '')
+  bmBtn.title = bookmarked ? 'remove bookmark' : 'bookmark'
+  bmBtn.dataset.id = m.base36_id
+  bmBtn.appendChild(_makeSvg('M5 2h14a1 1 0 011 1v18l-8-5-8 5V3a1 1 0 011-1z', bookmarked))
+
+  bar.appendChild(heatBtn)
+  bar.appendChild(bmBtn)
+
+  // Reactions row
+  const reactRow = document.createElement('div')
+  reactRow.className = 'hs-feed-react-row'
+  const cached = feedReactionsCache.get(m.base36_id)
+  if (cached?.length) {
+    for (const r of cached) reactRow.appendChild(_makeReactChip(r, m.base36_id, bar))
+  }
+  const addReactBtn = document.createElement('button')
+  addReactBtn.className = 'hs-feed-react-add'
+  addReactBtn.title = 'react'
+  addReactBtn.textContent = '+'
+  reactRow.appendChild(addReactBtn)
+  bar.appendChild(reactRow)
+
+  return bar
+}
+
+function attachEngagementHandlers(div, m) {
+  const bar = div.querySelector('.hs-feed-engage')
+  if (!bar) return
+  if (m.user_liked) feedLiked.add(m.base36_id)
+
+  const heatBtn = bar.querySelector('.hs-feed-heat-btn')
+  if (heatBtn) heatBtn.addEventListener('click', (e) => { e.stopPropagation(); toggleHeat(m.base36_id, heatBtn, m) })
+
+  const bmBtn = bar.querySelector('.hs-feed-bm-btn')
+  if (bmBtn) bmBtn.addEventListener('click', (e) => { e.stopPropagation(); toggleBookmark(m.base36_id, bmBtn) })
+
+  const addReactBtn = bar.querySelector('.hs-feed-react-add')
+  if (addReactBtn) addReactBtn.addEventListener('click', (e) => { e.stopPropagation(); openReactionPicker(e, m.base36_id, bar) })
 }
 
 function buildFeedMessageDiv(m, opUsername) {
@@ -759,6 +1052,11 @@ function buildFeedMessageDiv(m, opUsername) {
       }
     });
   }
+
+  // Engagement bar: heat, bookmark, reactions
+  const engageBar = buildEngagementBar(m);
+  div.appendChild(engageBar);
+  attachEngagementHandlers(div, m);
 
   return div;
 }

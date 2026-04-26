@@ -3101,21 +3101,15 @@
 
   async function loadDiscover() {
     try {
-      // Try /api/emotes/hot first, fall back to /api/emotes/trending
+      // /api/emotes/hot is the canonical trending endpoint.
+      // /api/emotes/trending does NOT exist (returns 404). The analytics
+      // variant lives at /api/analytics/emotes/trending with a different shape.
       let resp = await chrome.runtime.sendMessage({
         type: 'api_fetch',
         path: '/api/emotes/hot',
         method: 'GET',
         auth: false
       })
-      if (!resp || resp.ok === false) {
-        resp = await chrome.runtime.sendMessage({
-          type: 'api_fetch',
-          path: '/api/emotes/trending',
-          method: 'GET',
-          auth: false
-        })
-      }
       if (!resp || resp.ok === false) {
         loadErrors.discover = resp?.error || 'failed to load trending emotes'
         discoverEmotesCache = []

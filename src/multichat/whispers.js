@@ -350,7 +350,18 @@ function renderNewDmHeader(msgsEl) {
     sendBtn.disabled = true
     sendBtn.textContent = '...'
     try {
-      const resp = await apiFetch('/api/dm', { method: 'POST', body: { recipientUsername, content } })
+      // Server's POST /api/dm expects { toUserId: number, content }, not username.
+      // Resolve the username to a user id via the profile endpoint first.
+      const profResp = await apiFetch(`/api/profile/${encodeURIComponent(recipientUsername)}`, { method: 'GET' })
+      const prof = profResp?.data?.profile || profResp?.profile || profResp?.data || profResp
+      const toUserId = prof?.id
+      if (!toUserId) {
+        errEl.textContent = 'user not found'
+        sendBtn.disabled = false
+        sendBtn.textContent = 'send'
+        return
+      }
+      const resp = await apiFetch('/api/dm', { method: 'POST', body: { toUserId, content } })
       if (resp && resp.ok) {
         log('new DM sent to', recipientUsername)
         _newDmFormOpen = false

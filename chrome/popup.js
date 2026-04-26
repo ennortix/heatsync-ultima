@@ -115,23 +115,31 @@
       try {
         const resp = await apiFetch('/api/search?q=' + encodeURIComponent(q) + '&limit=8');
         const results = [];
-        if (resp && resp.data) {
-          const d = resp.data;
-          const addUser = function(u) {
-            results.push({ type: 'user', label: u.display_name || u.username || '', sub: u.username || '', img: u.profile_image_url || u.avatar_url || '', url: 'https://heatsync.org/@' + encodeURIComponent(u.username || '') });
-          };
-          if (Array.isArray(d.users)) d.users.slice(0, 4).forEach(addUser);
-          if (Array.isArray(d.profiles)) d.profiles.slice(0, 4).forEach(addUser);
-          if (Array.isArray(d.emotes)) {
-            d.emotes.slice(0, 4).forEach(function(e) {
-              results.push({ type: 'emote', label: e.name || '', sub: '', img: e.url || '', url: 'https://heatsync.org/emotes/' + encodeURIComponent(e.name || '') });
-            });
-          }
-          if (Array.isArray(d.results)) {
-            d.results.slice(0, 6).forEach(function(r) {
-              results.push({ type: r.type || 'result', label: r.display_name || r.name || r.username || '', sub: r.username || '', img: r.profile_image_url || r.avatar_url || '', url: 'https://heatsync.org/' + (r.username ? '@' + r.username : '') });
-            });
-          }
+        // Server always returns { results: [...] } regardless of mode.
+        // Each result has type, username, display_name, profile_image_url, etc.
+        const arr = resp?.data?.results || resp?.results || [];
+        if (Array.isArray(arr)) {
+          arr.slice(0, 8).forEach(function(r) {
+            const username = r.username || '';
+            const isEmote = r.type === 'emote' || r.emote_url || r.emote_name;
+            if (isEmote) {
+              results.push({
+                type: 'emote',
+                label: r.name || r.emote_name || '',
+                sub: '',
+                img: r.url || r.emote_url || '',
+                url: 'https://heatsync.org/emotes/' + encodeURIComponent(r.name || r.emote_name || '')
+              });
+            } else if (username) {
+              results.push({
+                type: 'user',
+                label: r.display_name || username,
+                sub: username,
+                img: r.profile_image_url || r.avatar_url || '',
+                url: 'https://heatsync.org/@' + encodeURIComponent(username)
+              });
+            }
+          });
         }
         dropdown.textContent = '';
         if (!results.length) {
@@ -428,14 +436,12 @@
       status.style.color = '#a0a0a0';
       status.textContent = 'saving...';
       try {
-        const results = await Promise.all([
-          apiFetch('/api/user/bio', { method: 'PUT', body: { bio: bio } }),
-          apiFetch('/api/user/flair', { method: 'PUT', body: { color: color } }),
-        ]);
-        const bioResp = results[0];
-        const flairResp = results[1];
+        // Note: PUT /api/user/flair on this server expects badge metadata,
+        // not just a color. Color-only flair edits are not supported here yet.
+        // Save bio only; flair editing is hidden from this UI for now.
+        const bioResp = await apiFetch('/api/user/bio', { method: 'PUT', body: { bio: bio } });
         const bioOk = bioResp && (bioResp.ok !== false);
-        const flairOk = flairResp && (flairResp.ok !== false);
+        const flairOk = true;
         if (bioOk && flairOk) {
           status.style.color = '#00cc66';
           status.textContent = 'saved';

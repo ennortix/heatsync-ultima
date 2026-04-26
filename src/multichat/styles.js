@@ -3888,12 +3888,6 @@ function injectStyles() {
       font-weight: 700;
       margin-right: -2px;
     }
-    .hs-discover-chips-divider {
-      width: 1px;
-      height: 14px;
-      background: rgba(255,255,255,0.1);
-      margin: 0 3px;
-    }
     .hs-discover-chip-btn {
       padding: 2px 8px;
       background: transparent;

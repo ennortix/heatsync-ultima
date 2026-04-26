@@ -1644,8 +1644,7 @@ function startDiscoverPolling() {
 let discoverTags = [];
 let discoverProfiles = [];
 let discoverPosts = [];
-let discoverSort = 'heat';            // 'heat' | 'active'
-let discoverPlatformFilter = 'all';   // 'all' | 't' | 'k'
+let discoverPlatformFilter = 'all';   // 'all' | 't' | 'k' | 'yt'
 
 function _discoverSetLoading(msgsEl) {
   msgsEl.textContent = '';
@@ -1850,16 +1849,6 @@ function renderDiscoverChipsBar() {
     return l;
   }
 
-  function makeDivider() {
-    const d = document.createElement('span');
-    d.className = 'hs-discover-chips-divider';
-    return d;
-  }
-
-  bar.appendChild(makeLabel('sort'));
-  bar.appendChild(makeChip('heat', 'heat', discoverSort, v => { discoverSort = v; }));
-  bar.appendChild(makeChip('active', 'active', discoverSort, v => { discoverSort = v; }));
-  bar.appendChild(makeDivider());
   bar.appendChild(makeLabel('platform'));
   bar.appendChild(makeChip('all', 'all', discoverPlatformFilter, v => { discoverPlatformFilter = v; }));
   bar.appendChild(makeChip('t', 't', discoverPlatformFilter, v => { discoverPlatformFilter = v; }, 'hs-chip-plat-t'));
@@ -1884,16 +1873,8 @@ function postMatchesPlatformFilter(m) {
   return true;
 }
 
-function getProfileSortFn() {
-  if (discoverSort === 'active') {
-    return (a, b) => {
-      const aA = (a.opCount || 0) + (a.reCount || 0) + (a.mopCount || 0);
-      const bA = (b.opCount || 0) + (b.reCount || 0) + (b.mopCount || 0);
-      if (aA !== bA) return bA - aA;
-      return (b.stats?.total_heat || 0) - (a.stats?.total_heat || 0);
-    };
-  }
-  return (a, b) => (b.stats?.total_heat || 0) - (a.stats?.total_heat || 0);
+function sortProfilesByHeat(a, b) {
+  return (b.stats?.total_heat || 0) - (a.stats?.total_heat || 0);
 }
 
 function renderDiscoverPostRow(m) {
@@ -2026,7 +2007,7 @@ function renderDiscoverTab() {
     });
   const restProfiles = filteredProfiles
     .filter(p => !p.twitch_is_live && !p.kick_is_live)
-    .sort(getProfileSortFn());
+    .sort(sortProfilesByHeat);
   const maxHeat = Math.max(
     ...filteredProfiles.map(p => p.stats?.total_heat ?? p.heat ?? 0),
     1
@@ -2129,12 +2110,9 @@ function renderDiscoverTab() {
 
   // LEADERBOARD — non-live profiles, multi-column when wide
   {
-    const sortLabel = discoverSort === 'active'
-      ? 'by post volume (posts + replies + threads)'
-      : 'by total heat received';
     const { section, body } = makeDiscoverSection(
       'leaderboard',
-      `non-live profiles, ${sortLabel}`,
+      'top non-live profiles by heat',
       `${restProfiles.length}`,
       'hs-discover-section-trending'
     );

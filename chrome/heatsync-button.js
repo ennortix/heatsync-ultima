@@ -2085,6 +2085,12 @@
       tab.addEventListener('click', () => {
         currentTab = tab.dataset.tab;
         focusedEmoteIndex = -1;
+        // Clear search input when switching to tabs that don't use searchQuery
+        // (sets/history/discover have their own search). Avoids stale filter UI.
+        if (['sets', 'history', 'discover'].includes(currentTab)) {
+          const si = panel.querySelector('#heatsync-search');
+          if (si && si.value) { si.value = ''; searchQuery = ''; }
+        }
         panel.querySelectorAll('.heatsync-tab').forEach(t => t.classList.remove('active'));
         tab.classList.add('active');
         settingsBtn.classList.remove('active');
@@ -2360,6 +2366,14 @@
             importBtn.style.borderColor = '#00cc66'
             importBtn.style.color = '#00cc66'
             await loadInventoryEmotes()
+            fetchHistoryStatus()
+            // Re-enable so the user can import again (e.g. after broadcaster adds emotes)
+            setTimeout(() => {
+              importBtn.textContent = 'import all channel emotes'
+              importBtn.style.borderColor = ''
+              importBtn.style.color = ''
+              importBtn.disabled = false
+            }, 2000)
           } else {
             importBtn.textContent = resp?.error || 'failed'
             importBtn.style.borderColor = '#ff4444'
@@ -2543,7 +2557,7 @@
         if (e.isEmoji) {
           insertEmoteIntoChat(`:${e.name}:`)
         } else if (!isGlobal && !inInventory && isLoggedIn && currentTab !== 'mine') {
-          addEmoteToInventorySilent(e).then(() => insertEmoteIntoChat(e.name))
+          addEmoteToInventorySilent(e).then(() => insertEmoteIntoChat(e.name)).catch(() => insertEmoteIntoChat(e.name))
         } else {
           insertEmoteIntoChat(e.name)
         }
@@ -3164,7 +3178,7 @@
       const rawUrl = emote.url || emote.pickerUrl || '';
       const url = rawUrl.startsWith('/') ? `https://heatsync.org${rawUrl}` : rawUrl;
 
-      await HS.apiFetch('/api/user/emotes/import', {
+      const resp = await HS.apiFetch('/api/user/emotes/import', {
         method: 'POST',
         auth: true,
         body: {
@@ -3178,10 +3192,17 @@
         }
       });
 
+      // Surface server-side failures so callers can show 'failed' UI instead of
+      // misleading 'added'. apiFetch returns the raw JSON; ok:false means error.
+      if (resp && resp.ok === false) {
+        throw new Error(resp.error || 'import failed');
+      }
+
       // Refresh inventory
       await loadInventoryEmotes();
       fetchHistoryStatus();
     } catch (err) {
+      throw err;
     }
   }
 

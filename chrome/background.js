@@ -151,6 +151,9 @@ const userCosmeticsCache = new Map() // twitchUserId → { paint, badge, fetched
 let badgesFetchedAt = 0 // persisted to storage in fetchBulkBadges, restored in initialize()
 const BADGES_TTL = 24 * 60 * 60 * 1000
 const USER_COSMETICS_TTL = 30 * 60 * 1000
+// Shorter TTL for negative results (no paint+badge) so newly-added cosmetics
+// pick up within 5 min instead of being masked for 30.
+const COSMETICS_NEGATIVE_TTL = 5 * 60 * 1000
 const USER_COSMETICS_MAX = 500
 let followedUsers = []; // Users the current user follows
 let currentUsername = null; // Logged-in user's username
@@ -3583,7 +3586,11 @@ async function handleMessage(message, sender, sendResponse) {
       const toFetch = []
       for (const id of ids) {
         const cached = userCosmeticsCache.get(id)
-        if (cached && Date.now() - cached.fetchedAt < USER_COSMETICS_TTL) {
+        // Negative cache (no paint AND no badge) gets a shorter TTL so newly-added
+        // 7TV badges/paints show up within 5 min instead of waiting 30 min.
+        const isNegative = cached && !cached.paint && !cached.badge
+        const ttl = isNegative ? COSMETICS_NEGATIVE_TTL : USER_COSMETICS_TTL
+        if (cached && Date.now() - cached.fetchedAt < ttl) {
           result[id] = { paint: cached.paint, badge: cached.badge }
         } else {
           toFetch.push(id)
@@ -3610,7 +3617,9 @@ async function handleMessage(message, sender, sendResponse) {
       await Promise.all(usernames.map(async (username) => {
         const cacheKey = `kick:${username}`
         const cached = userCosmeticsCache.get(cacheKey)
-        if (cached && Date.now() - cached.fetchedAt < USER_COSMETICS_TTL) {
+        const isNegative = cached && !cached.paint && !cached.badge
+        const ttl = isNegative ? COSMETICS_NEGATIVE_TTL : USER_COSMETICS_TTL
+        if (cached && Date.now() - cached.fetchedAt < ttl) {
           result[username] = { paint: cached.paint, badge: cached.badge, twitchId: cached.twitchId || null }
           return
         }

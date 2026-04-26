@@ -830,8 +830,13 @@
       let fiber = msg[key]
       let depth = 0
       while (fiber && depth < 20) {
-        const uid = fiber.memoizedProps?.message?.user?.userID
-        if (uid) { msg.setAttribute('data-user-id', uid); break }
+        const props = fiber.memoizedProps
+        const uid = props?.message?.user?.userID
+                 || props?.message?.user?.id
+                 || props?.message?.userID
+                 || props?.user?.userID
+                 || props?.user?.id
+        if (uid) { msg.setAttribute('data-user-id', String(uid)); break }
         fiber = fiber.return
         depth++
       }

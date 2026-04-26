@@ -2894,6 +2894,9 @@ let dimTimeoutsEnabled = true // dim timed-out/banned messages instead of hiding
 const originalMessageBodies = new Map() // msg-id → innerHTML (for restoring on timeout)
 const cosmeticsCache = new Map()
 const COSMETICS_TTL = 30 * 60 * 1000
+// Re-fetch null-cosmetic users every 5min so newly-added 7TV badges/paints
+// don't get masked for the full 30min TTL.
+const COSMETICS_NEGATIVE_TTL = 5 * 60 * 1000
 const COSMETICS_MAX = 500
 const cosmeticsPending = new Set()
 const COSMETICS_PENDING_MAX = 500
@@ -6311,7 +6314,9 @@ function applyCosmeticsToMessage(el, userId, preQueriedNameEl) {
 function queueCosmeticsLookup(userId) {
   if (isKick || !userId) return
   const cached = cosmeticsCache.get(userId)
-  if (cached && Date.now() - cached.fetchedAt < COSMETICS_TTL) return
+  const isNegative = cached && !cached.paint && !cached.badge
+  const ttl = isNegative ? COSMETICS_NEGATIVE_TTL : COSMETICS_TTL
+  if (cached && Date.now() - cached.fetchedAt < ttl) return
   cosmeticsPending.add(userId)
   if (cosmeticsPending.size >= COSMETICS_PENDING_MAX) {
     if (cosmeticsBatchTimer) {
@@ -6523,7 +6528,9 @@ function applyKickCosmeticsToMessage(el, kickSlug) {
 function queueKickCosmeticsLookup(kickSlug) {
   if (!isKick || !kickSlug) return
   const cached = kickCosmeticsCache.get(kickSlug)
-  if (cached && Date.now() - cached.fetchedAt < COSMETICS_TTL) return
+  const isNegative = cached && !cached.paint && !cached.badge
+  const ttl = isNegative ? COSMETICS_NEGATIVE_TTL : COSMETICS_TTL
+  if (cached && Date.now() - cached.fetchedAt < ttl) return
   kickCosmeticsPending.add(kickSlug)
   if (kickCosmeticsPending.size >= COSMETICS_PENDING_MAX) {
     if (kickCosmeticsBatchTimer) {

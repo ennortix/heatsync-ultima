@@ -226,7 +226,7 @@
 
         const nameEl = document.createElement('span');
         nameEl.className = 'live-name';
-        nameEl.textContent = s.heatsyncDisplayName || s.displayName || username;
+        nameEl.textContent = s.heatsyncDisplayName || s.displayName || s.display_name || username;
         a.appendChild(nameEl);
 
         const viewers = formatViewers(s.viewerCount || s.viewer_count);
@@ -1189,6 +1189,9 @@
 
     // auto-fill from active tab if on twitch or kick
     let detectedPlatform = 'twitch';
+    // For YouTube, track if the input is a handle (needs /@handle/live redirect)
+    // vs a video ID (uses /live_chat?v=). Handles can't be popped out directly.
+    let ytIsHandle = false;
     chrome.tabs.query({ active: true, currentWindow: true }).then(function(tabs) {
       const tab = tabs[0];
       if (!tab || !tab.url) return;
@@ -1211,6 +1214,7 @@
           const handleMatch = url.pathname.match(/^\/@([^/]+)/);
           if (handleMatch) {
             input.value = handleMatch[1].toLowerCase();
+            ytIsHandle = true;
           } else {
             const vParam = url.searchParams.get('v');
             const liveMatch = url.pathname.match(/^\/live\/([^/?]+)/);
@@ -1224,11 +1228,18 @@
     function openPopout() {
       const channel = input.value.trim().toLowerCase().replace(/[^a-z0-9_-]/g, '');
       if (!channel) { input.focus(); return; }
-      const url = detectedPlatform === 'youtube'
-        ? 'https://www.youtube.com/live_chat?v=' + channel + '&is_popout=1'
-        : detectedPlatform === 'kick'
-        ? 'https://kick.com/' + channel
-        : 'https://www.twitch.tv/popout/' + channel + '/chat';
+      let url;
+      if (detectedPlatform === 'youtube') {
+        // YouTube popout requires a video ID (?v=...). For handles, redirect to
+        // the channel's live URL — YT auto-redirects to the live video if streaming.
+        url = ytIsHandle
+          ? 'https://www.youtube.com/@' + channel + '/live'
+          : 'https://www.youtube.com/live_chat?v=' + channel + '&is_popout=1';
+      } else if (detectedPlatform === 'kick') {
+        url = 'https://kick.com/' + channel;
+      } else {
+        url = 'https://www.twitch.tv/popout/' + channel + '/chat';
+      }
       chrome.tabs.create({ url: url });
     }
 
@@ -1236,6 +1247,8 @@
     input.addEventListener('keydown', function(e) {
       if (e.key === 'Enter') openPopout();
     });
+    // If user manually edits the YouTube input, assume they typed a video ID.
+    input.addEventListener('input', function() { ytIsHandle = false; });
   }
 
   // Auto-refresh: poll the dynamic sections while popup is open (refresh

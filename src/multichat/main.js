@@ -215,8 +215,10 @@
       }
       const divs = container.querySelectorAll(`.hs-mc-msg[data-uid="${uid}"]`)
       for (const div of divs) {
-        // Update paint on username link
-        const userLink = div.querySelector('.hs-mc-user')
+        // Update paint on the SENDER's username link — exclude the reply
+        // target (.hs-mc-reply-user) which also has .hs-mc-user but is a
+        // different person and would get the wrong paint/badge.
+        const userLink = div.querySelector('.hs-mc-user:not(.hs-mc-reply-user)')
         if (userLink) {
           if (paintStyle) {
             userLink.setAttribute('style', paintStyle)
@@ -3132,7 +3134,8 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     trimChildren(msgsEl, 500);
 
     // Apply mute to just this message — strip content for muted users
-    const username = div.querySelector('.hs-mc-user')?.textContent?.trim()?.toLowerCase();
+    // (use sender's link, not the reply-target link)
+    const username = div.querySelector('.hs-mc-user:not(.hs-mc-reply-user)')?.textContent?.trim()?.toLowerCase();
     if (username && mutedUsers.has(username)) {
       stripMcMutedMessage(div);
     }

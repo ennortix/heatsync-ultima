@@ -3369,8 +3369,11 @@
         confirmBtn.addEventListener('click', async () => {
           const newName = input.value.trim();
           if (!newName || newName === emote.name) { dismissContextMenu(); return; }
-          const slot = inventoryEmotesCache.findIndex(e => e.name === emote.name || e.hash === hash);
-          if (slot < 0) { dismissContextMenu(); return; }
+          // Use the emote's actual slot_number (mapped to .slot in background) —
+          // findIndex returns array position which may not equal slot when there
+          // are gaps from deleted emotes.
+          const slot = emote.slot ?? inventoryEmotesCache.find(e => e.hash === hash)?.slot;
+          if (slot == null) { dismissContextMenu(); return; }
           dismissContextMenu();
           try {
             const resp = await chrome.runtime.sendMessage({
@@ -3414,10 +3417,11 @@
         menu.insertBefore(input, moveBtn.nextSibling);
         menu.insertBefore(confirmBtn, input.nextSibling);
         input.focus();
-        const fromSlot = inventoryEmotesCache.findIndex(e => e.name === emote.name || e.hash === hash);
+        // Use emote.slot (server slot_number); array index can drift from slot.
+        const fromSlot = emote.slot ?? inventoryEmotesCache.find(e => e.hash === hash)?.slot;
         confirmBtn.addEventListener('click', async () => {
           const toSlot = parseInt(input.value, 10);
-          if (isNaN(toSlot) || fromSlot < 0) { dismissContextMenu(); return; }
+          if (isNaN(toSlot) || fromSlot == null) { dismissContextMenu(); return; }
           dismissContextMenu();
           try {
             const resp = await chrome.runtime.sendMessage({

@@ -1875,6 +1875,7 @@ function renderDiscoverChipsBar() {
   bar.appendChild(makeChip('all', 'all', discoverPlatformFilter, v => { discoverPlatformFilter = v; }));
   bar.appendChild(makeChip('t', 't', discoverPlatformFilter, v => { discoverPlatformFilter = v; }, 'hs-chip-plat-t'));
   bar.appendChild(makeChip('k', 'k', discoverPlatformFilter, v => { discoverPlatformFilter = v; }, 'hs-chip-plat-k'));
+  bar.appendChild(makeChip('y', 'y', discoverPlatformFilter, v => { discoverPlatformFilter = v; }, 'hs-chip-plat-y'));
   return bar;
 }
 
@@ -1882,6 +1883,7 @@ function profileMatchesPlatformFilter(p) {
   if (discoverPlatformFilter === 'all') return true;
   if (discoverPlatformFilter === 't') return !!p.twitch_username;
   if (discoverPlatformFilter === 'k') return !!p.kick_username;
+  if (discoverPlatformFilter === 'y') return !!(p.youtube_username || p.youtube_channel_id);
   return true;
 }
 
@@ -1889,6 +1891,7 @@ function postMatchesPlatformFilter(m) {
   if (discoverPlatformFilter === 'all') return true;
   if (discoverPlatformFilter === 't') return m.platform === 'twitch';
   if (discoverPlatformFilter === 'k') return m.platform === 'kick';
+  if (discoverPlatformFilter === 'y') return m.platform === 'youtube';
   return true;
 }
 
@@ -1911,31 +1914,33 @@ function renderDiscoverPostRow(m) {
   row.target = '_blank';
   row.rel = 'noopener noreferrer';
 
+  // Meta line: time · plat · user · spacer · heat · replies
+  const meta = document.createElement('div');
+  meta.className = 'hs-discover-post-meta';
+
   const time = document.createElement('span');
   time.className = 'hs-discover-post-time';
   time.textContent = formatRelativeTime(m.created_at);
   time.title = new Date(m.created_at).toLocaleString();
-  row.appendChild(time);
+  meta.appendChild(time);
 
   if (m.platform) {
     const plat = document.createElement('span');
     const code = m.platform === 'twitch' ? 't' : m.platform === 'kick' ? 'k' : m.platform === 'youtube' ? 'y' : 'h';
     plat.className = `hs-plat hs-plat-${code} hs-discover-post-plat`;
     plat.textContent = code;
-    row.appendChild(plat);
+    meta.appendChild(plat);
   }
 
   const user = document.createElement('span');
   user.className = 'hs-discover-post-user';
   user.style.color = sanitizeColor(m.user_color || '#fff');
   user.textContent = m.username;
-  row.appendChild(user);
+  meta.appendChild(user);
 
-  const txt = document.createElement('span');
-  txt.className = 'hs-discover-post-text';
-  const snippet = String(m.content || '').replace(/\s+/g, ' ').trim();
-  txt.textContent = snippet;
-  row.appendChild(txt);
+  const spacer = document.createElement('span');
+  spacer.className = 'hs-discover-post-spacer';
+  meta.appendChild(spacer);
 
   const heatEl = document.createElement('span');
   heatEl.className = 'hs-discover-heat hs-discover-post-heat';
@@ -1944,15 +1949,24 @@ function renderDiscoverPostRow(m) {
   const heatVal = document.createElement('span');
   heatVal.textContent = formatDiscoverCount(m.heat || 0);
   heatEl.appendChild(heatVal);
-  row.appendChild(heatEl);
+  meta.appendChild(heatEl);
 
   if ((m.reply_count || 0) > 0) {
     const rep = document.createElement('span');
     rep.className = 'hs-discover-post-replies';
     rep.title = `${m.reply_count} repl${m.reply_count === 1 ? 'y' : 'ies'}`;
     rep.textContent = `${m.reply_count}r`;
-    row.appendChild(rep);
+    meta.appendChild(rep);
   }
+
+  row.appendChild(meta);
+
+  // Content line: post body, full width, max 2 lines via line-clamp
+  const txt = document.createElement('div');
+  txt.className = 'hs-discover-post-text';
+  const snippet = String(m.content || '').replace(/\s+/g, ' ').trim();
+  txt.textContent = snippet || '(no text)';
+  row.appendChild(txt);
 
   return row;
 }
@@ -2052,7 +2066,7 @@ function renderDiscoverTab() {
   {
     const { section, body } = makeDiscoverSection(
       'live now',
-      'broadcasting on twitch / kick',
+      'streaming right now — click t/k to watch',
       liveProfiles.length > 0 ? `${liveProfiles.length}` : '0',
       'hs-discover-section-live'
     );
@@ -2077,7 +2091,7 @@ function renderDiscoverTab() {
   {
     const { section, body } = makeDiscoverSection(
       'hot posts',
-      'top heat in the social feed',
+      'top recent posts by heat — click to read',
       filteredPosts.length > 0 ? `${filteredPosts.length}` : '0',
       'hs-discover-section-posts'
     );
@@ -2097,38 +2111,11 @@ function renderDiscoverTab() {
 
   root.appendChild(topRow);
 
-  // LEADERBOARD — non-live profiles, multi-column when wide
-  {
-    const sortLabel = discoverSort === 'active' ? 'sorted by activity' : 'sorted by heat';
-    const { section, body } = makeDiscoverSection(
-      'leaderboard',
-      `top profiles, ${sortLabel}`,
-      `${restProfiles.length}`,
-      'hs-discover-section-trending'
-    );
-    body.classList.add('hs-discover-leaderboard-body');
-    if (restProfiles.length === 0) {
-      const empty = document.createElement('div');
-      empty.className = 'hs-discover-section-empty';
-      empty.textContent = 'no profiles match this filter';
-      body.appendChild(empty);
-    } else {
-      let rank = 1;
-      for (const profile of restProfiles) {
-        const username = profile.username || profile.name || '';
-        if (!username) continue;
-        const row = renderDiscoverProfileRow(profile, username, rank++, maxHeat);
-        if (row) body.appendChild(row);
-      }
-    }
-    root.appendChild(section);
-  }
-
-  // TAGS — always render
+  // TAGS — always render, above the long leaderboard
   {
     const { section, body } = makeDiscoverSection(
       'tags',
-      'trending across heatsync',
+      'trending tags across heatsync',
       `${discoverTags.length}`,
       'hs-discover-section-tags'
     );
@@ -2159,6 +2146,35 @@ function renderDiscoverTab() {
         chips.appendChild(chip);
       }
       body.appendChild(chips);
+    }
+    root.appendChild(section);
+  }
+
+  // LEADERBOARD — non-live profiles, multi-column when wide
+  {
+    const sortLabel = discoverSort === 'active'
+      ? 'by post volume (posts + replies + threads)'
+      : 'by total heat received';
+    const { section, body } = makeDiscoverSection(
+      'leaderboard',
+      `non-live profiles, ${sortLabel}`,
+      `${restProfiles.length}`,
+      'hs-discover-section-trending'
+    );
+    body.classList.add('hs-discover-leaderboard-body');
+    if (restProfiles.length === 0) {
+      const empty = document.createElement('div');
+      empty.className = 'hs-discover-section-empty';
+      empty.textContent = 'no profiles match this filter';
+      body.appendChild(empty);
+    } else {
+      let rank = 1;
+      for (const profile of restProfiles) {
+        const username = profile.username || profile.name || '';
+        if (!username) continue;
+        const row = renderDiscoverProfileRow(profile, username, rank++, maxHeat);
+        if (row) body.appendChild(row);
+      }
     }
     root.appendChild(section);
   }

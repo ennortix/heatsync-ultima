@@ -4862,7 +4862,13 @@ function injectStyles() {
     .hs-discover-platforms .hs-plat-live { opacity: 1; text-shadow: 0 0 4px currentColor; }
     .hs-discover-platforms .hs-plat-t { color: #9146ff; }
     .hs-discover-platforms .hs-plat-k { color: #53fc18; }
+    .hs-discover-platforms .hs-plat-y { color: #ff0000; }
     .hs-discover-platforms .hs-plat-h { color: #ff8700; }
+    /* Post platform letters use same colors */
+    .hs-discover-post-plat.hs-plat-t { color: #9146ff; }
+    .hs-discover-post-plat.hs-plat-k { color: #53fc18; }
+    .hs-discover-post-plat.hs-plat-y { color: #ff0000; }
+    .hs-discover-post-plat.hs-plat-h { color: #ff8700; }
     .hs-discover-bar {
       flex: 1;
       min-width: 28px;
@@ -4968,6 +4974,11 @@ function injectStyles() {
       border-color: #53fc18;
       color: #000;
     }
+    .hs-discover-chip-btn.hs-chip-plat-y.hs-active {
+      background: #ff0000;
+      border-color: #ff0000;
+      color: #fff;
+    }
 
     /* Section colour variants — distinct accent borders + headers per widget */
     .hs-discover-section-live {
@@ -5032,51 +5043,59 @@ function injectStyles() {
       }
     }
 
-    /* Post rows */
+    /* Post rows — 2-line: meta line + content snippet */
     .hs-discover-post-row {
       display: flex;
-      align-items: center;
-      gap: 5px;
-      padding: 2px 8px;
+      flex-direction: column;
+      gap: 2px;
+      padding: 5px 8px;
       text-decoration: none;
       cursor: pointer;
-      line-height: 1.3;
-      font-size: 13px;
+      line-height: 1.35;
       border-left: 2px solid transparent;
+      border-bottom: 1px solid rgba(255,255,255,0.04);
     }
+    .hs-discover-post-row:last-child { border-bottom: none; }
     .hs-discover-post-row:hover {
       background: rgba(255,135,0,0.07);
-      border-left-color: rgba(255,135,0,0.3);
+      border-left-color: rgba(255,135,0,0.4);
     }
+    .hs-discover-post-meta {
+      display: flex;
+      align-items: baseline;
+      gap: 5px;
+      font-size: 11px;
+    }
+    .hs-discover-post-spacer { flex: 1; }
     .hs-discover-post-time {
       color: #666;
       font-size: 11px;
       font-variant-numeric: tabular-nums;
       font-family: ui-monospace, SFMono-Regular, monospace;
-      width: 30px;
       flex-shrink: 0;
-      text-align: right;
     }
     .hs-discover-post-plat {
       flex-shrink: 0;
     }
     .hs-discover-post-user {
-      font-size: 13px;
+      font-size: 12px;
       font-weight: 600;
       white-space: nowrap;
-      flex-shrink: 0;
-      max-width: 100px;
+      flex-shrink: 1;
+      max-width: 140px;
       overflow: hidden;
       text-overflow: ellipsis;
     }
     .hs-discover-post-text {
-      flex: 1;
-      min-width: 0;
-      color: #bbb;
+      color: #c8c8c8;
       font-size: 12px;
-      white-space: nowrap;
+      line-height: 1.4;
       overflow: hidden;
-      text-overflow: ellipsis;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      word-wrap: break-word;
+      word-break: break-word;
     }
     .hs-discover-post-row:hover .hs-discover-post-text { color: #fff; }
     .hs-discover-post-heat {
@@ -13393,6 +13412,7 @@ function renderDiscoverChipsBar() {
   bar.appendChild(makeChip('all', 'all', discoverPlatformFilter, v => { discoverPlatformFilter = v; }));
   bar.appendChild(makeChip('t', 't', discoverPlatformFilter, v => { discoverPlatformFilter = v; }, 'hs-chip-plat-t'));
   bar.appendChild(makeChip('k', 'k', discoverPlatformFilter, v => { discoverPlatformFilter = v; }, 'hs-chip-plat-k'));
+  bar.appendChild(makeChip('y', 'y', discoverPlatformFilter, v => { discoverPlatformFilter = v; }, 'hs-chip-plat-y'));
   return bar;
 }
 
@@ -13400,6 +13420,7 @@ function profileMatchesPlatformFilter(p) {
   if (discoverPlatformFilter === 'all') return true;
   if (discoverPlatformFilter === 't') return !!p.twitch_username;
   if (discoverPlatformFilter === 'k') return !!p.kick_username;
+  if (discoverPlatformFilter === 'y') return !!(p.youtube_username || p.youtube_channel_id);
   return true;
 }
 
@@ -13407,6 +13428,7 @@ function postMatchesPlatformFilter(m) {
   if (discoverPlatformFilter === 'all') return true;
   if (discoverPlatformFilter === 't') return m.platform === 'twitch';
   if (discoverPlatformFilter === 'k') return m.platform === 'kick';
+  if (discoverPlatformFilter === 'y') return m.platform === 'youtube';
   return true;
 }
 
@@ -13429,31 +13451,33 @@ function renderDiscoverPostRow(m) {
   row.target = '_blank';
   row.rel = 'noopener noreferrer';
 
+  // Meta line: time · plat · user · spacer · heat · replies
+  const meta = document.createElement('div');
+  meta.className = 'hs-discover-post-meta';
+
   const time = document.createElement('span');
   time.className = 'hs-discover-post-time';
   time.textContent = formatRelativeTime(m.created_at);
   time.title = new Date(m.created_at).toLocaleString();
-  row.appendChild(time);
+  meta.appendChild(time);
 
   if (m.platform) {
     const plat = document.createElement('span');
     const code = m.platform === 'twitch' ? 't' : m.platform === 'kick' ? 'k' : m.platform === 'youtube' ? 'y' : 'h';
     plat.className = `hs-plat hs-plat-${code} hs-discover-post-plat`;
     plat.textContent = code;
-    row.appendChild(plat);
+    meta.appendChild(plat);
   }
 
   const user = document.createElement('span');
   user.className = 'hs-discover-post-user';
   user.style.color = sanitizeColor(m.user_color || '#fff');
   user.textContent = m.username;
-  row.appendChild(user);
+  meta.appendChild(user);
 
-  const txt = document.createElement('span');
-  txt.className = 'hs-discover-post-text';
-  const snippet = String(m.content || '').replace(/\s+/g, ' ').trim();
-  txt.textContent = snippet;
-  row.appendChild(txt);
+  const spacer = document.createElement('span');
+  spacer.className = 'hs-discover-post-spacer';
+  meta.appendChild(spacer);
 
   const heatEl = document.createElement('span');
   heatEl.className = 'hs-discover-heat hs-discover-post-heat';
@@ -13462,15 +13486,24 @@ function renderDiscoverPostRow(m) {
   const heatVal = document.createElement('span');
   heatVal.textContent = formatDiscoverCount(m.heat || 0);
   heatEl.appendChild(heatVal);
-  row.appendChild(heatEl);
+  meta.appendChild(heatEl);
 
   if ((m.reply_count || 0) > 0) {
     const rep = document.createElement('span');
     rep.className = 'hs-discover-post-replies';
     rep.title = `${m.reply_count} repl${m.reply_count === 1 ? 'y' : 'ies'}`;
     rep.textContent = `${m.reply_count}r`;
-    row.appendChild(rep);
+    meta.appendChild(rep);
   }
+
+  row.appendChild(meta);
+
+  // Content line: post body, full width, max 2 lines via line-clamp
+  const txt = document.createElement('div');
+  txt.className = 'hs-discover-post-text';
+  const snippet = String(m.content || '').replace(/\s+/g, ' ').trim();
+  txt.textContent = snippet || '(no text)';
+  row.appendChild(txt);
 
   return row;
 }
@@ -13570,7 +13603,7 @@ function renderDiscoverTab() {
   {
     const { section, body } = makeDiscoverSection(
       'live now',
-      'broadcasting on twitch / kick',
+      'streaming right now — click t/k to watch',
       liveProfiles.length > 0 ? `${liveProfiles.length}` : '0',
       'hs-discover-section-live'
     );
@@ -13595,7 +13628,7 @@ function renderDiscoverTab() {
   {
     const { section, body } = makeDiscoverSection(
       'hot posts',
-      'top heat in the social feed',
+      'top recent posts by heat — click to read',
       filteredPosts.length > 0 ? `${filteredPosts.length}` : '0',
       'hs-discover-section-posts'
     );
@@ -13615,38 +13648,11 @@ function renderDiscoverTab() {
 
   root.appendChild(topRow);
 
-  // LEADERBOARD — non-live profiles, multi-column when wide
-  {
-    const sortLabel = discoverSort === 'active' ? 'sorted by activity' : 'sorted by heat';
-    const { section, body } = makeDiscoverSection(
-      'leaderboard',
-      `top profiles, ${sortLabel}`,
-      `${restProfiles.length}`,
-      'hs-discover-section-trending'
-    );
-    body.classList.add('hs-discover-leaderboard-body');
-    if (restProfiles.length === 0) {
-      const empty = document.createElement('div');
-      empty.className = 'hs-discover-section-empty';
-      empty.textContent = 'no profiles match this filter';
-      body.appendChild(empty);
-    } else {
-      let rank = 1;
-      for (const profile of restProfiles) {
-        const username = profile.username || profile.name || '';
-        if (!username) continue;
-        const row = renderDiscoverProfileRow(profile, username, rank++, maxHeat);
-        if (row) body.appendChild(row);
-      }
-    }
-    root.appendChild(section);
-  }
-
-  // TAGS — always render
+  // TAGS — always render, above the long leaderboard
   {
     const { section, body } = makeDiscoverSection(
       'tags',
-      'trending across heatsync',
+      'trending tags across heatsync',
       `${discoverTags.length}`,
       'hs-discover-section-tags'
     );
@@ -13677,6 +13683,35 @@ function renderDiscoverTab() {
         chips.appendChild(chip);
       }
       body.appendChild(chips);
+    }
+    root.appendChild(section);
+  }
+
+  // LEADERBOARD — non-live profiles, multi-column when wide
+  {
+    const sortLabel = discoverSort === 'active'
+      ? 'by post volume (posts + replies + threads)'
+      : 'by total heat received';
+    const { section, body } = makeDiscoverSection(
+      'leaderboard',
+      `non-live profiles, ${sortLabel}`,
+      `${restProfiles.length}`,
+      'hs-discover-section-trending'
+    );
+    body.classList.add('hs-discover-leaderboard-body');
+    if (restProfiles.length === 0) {
+      const empty = document.createElement('div');
+      empty.className = 'hs-discover-section-empty';
+      empty.textContent = 'no profiles match this filter';
+      body.appendChild(empty);
+    } else {
+      let rank = 1;
+      for (const profile of restProfiles) {
+        const username = profile.username || profile.name || '';
+        if (!username) continue;
+        const row = renderDiscoverProfileRow(profile, username, rank++, maxHeat);
+        if (row) body.appendChild(row);
+      }
     }
     root.appendChild(section);
   }

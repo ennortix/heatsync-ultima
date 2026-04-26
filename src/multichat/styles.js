@@ -1576,12 +1576,13 @@ function injectStyles() {
       background: #fff;
     }
 
-    /* Per-tab platform filter toggles (T/K/YT) in inputbar */
+    /* Per-tab platform filter toggles (T/K/YT) — sits above util-row in tab bar */
     #hs-mc-platfilter {
-      display: flex;
-      gap: 2px;
-      align-items: center;
-      flex-shrink: 0;
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 4px;
+      width: 100%;
+      box-sizing: border-box;
     }
     #hs-mc-platfilter:empty { display: none; }
     .hs-mc-pf-btn {
@@ -1590,13 +1591,12 @@ function injectStyles() {
       color: #fff;
       font-size: 10px;
       font-weight: 700;
-      padding: 0 5px;
-      height: 22px;
-      min-width: 22px;
+      padding: 2px 0;
       cursor: pointer;
       font-family: inherit;
       line-height: 1;
       box-sizing: border-box;
+      min-width: 0;
     }
     .hs-mc-pf-btn.hs-mc-pf-twitch { border-color: #9146ff; background: #9146ff; color: #fff; }
     .hs-mc-pf-btn.hs-mc-pf-kick { border-color: #53fc18; background: #53fc18; color: #000; }
@@ -3829,7 +3829,13 @@ function injectStyles() {
     .hs-discover-platforms .hs-plat-live { opacity: 1; text-shadow: 0 0 4px currentColor; }
     .hs-discover-platforms .hs-plat-t { color: #9146ff; }
     .hs-discover-platforms .hs-plat-k { color: #53fc18; }
+    .hs-discover-platforms .hs-plat-y { color: #ff0000; }
     .hs-discover-platforms .hs-plat-h { color: #ff8700; }
+    /* Post platform letters use same colors */
+    .hs-discover-post-plat.hs-plat-t { color: #9146ff; }
+    .hs-discover-post-plat.hs-plat-k { color: #53fc18; }
+    .hs-discover-post-plat.hs-plat-y { color: #ff0000; }
+    .hs-discover-post-plat.hs-plat-h { color: #ff8700; }
     .hs-discover-bar {
       flex: 1;
       min-width: 28px;
@@ -3935,6 +3941,11 @@ function injectStyles() {
       border-color: #53fc18;
       color: #000;
     }
+    .hs-discover-chip-btn.hs-chip-plat-y.hs-active {
+      background: #ff0000;
+      border-color: #ff0000;
+      color: #fff;
+    }
 
     /* Section colour variants — distinct accent borders + headers per widget */
     .hs-discover-section-live {
@@ -3999,51 +4010,59 @@ function injectStyles() {
       }
     }
 
-    /* Post rows */
+    /* Post rows — 2-line: meta line + content snippet */
     .hs-discover-post-row {
       display: flex;
-      align-items: center;
-      gap: 5px;
-      padding: 2px 8px;
+      flex-direction: column;
+      gap: 2px;
+      padding: 5px 8px;
       text-decoration: none;
       cursor: pointer;
-      line-height: 1.3;
-      font-size: 13px;
+      line-height: 1.35;
       border-left: 2px solid transparent;
+      border-bottom: 1px solid rgba(255,255,255,0.04);
     }
+    .hs-discover-post-row:last-child { border-bottom: none; }
     .hs-discover-post-row:hover {
       background: rgba(255,135,0,0.07);
-      border-left-color: rgba(255,135,0,0.3);
+      border-left-color: rgba(255,135,0,0.4);
     }
+    .hs-discover-post-meta {
+      display: flex;
+      align-items: baseline;
+      gap: 5px;
+      font-size: 11px;
+    }
+    .hs-discover-post-spacer { flex: 1; }
     .hs-discover-post-time {
       color: #666;
       font-size: 11px;
       font-variant-numeric: tabular-nums;
       font-family: ui-monospace, SFMono-Regular, monospace;
-      width: 30px;
       flex-shrink: 0;
-      text-align: right;
     }
     .hs-discover-post-plat {
       flex-shrink: 0;
     }
     .hs-discover-post-user {
-      font-size: 13px;
+      font-size: 12px;
       font-weight: 600;
       white-space: nowrap;
-      flex-shrink: 0;
-      max-width: 100px;
+      flex-shrink: 1;
+      max-width: 140px;
       overflow: hidden;
       text-overflow: ellipsis;
     }
     .hs-discover-post-text {
-      flex: 1;
-      min-width: 0;
-      color: #bbb;
+      color: #c8c8c8;
       font-size: 12px;
-      white-space: nowrap;
+      line-height: 1.4;
       overflow: hidden;
-      text-overflow: ellipsis;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      word-wrap: break-word;
+      word-break: break-word;
     }
     .hs-discover-post-row:hover .hs-discover-post-text { color: #fff; }
     .hs-discover-post-heat {

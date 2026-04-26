@@ -6956,6 +6956,57 @@ function watchForNewMessages() {
   observedContainer = chatContainer;
   messageObserver.observe(chatContainer, { childList: true, subtree: true });
   log(' 👁️ Watching for new messages in chat container');
+
+  // Separate attribute observer: data-user-id is stamped by early-inject MAIN
+  // world AFTER content.js processMessage already ran (cross-world MO ordering),
+  // so cosmetics get skipped. Watch for the attribute to land, then apply.
+  const userIdObserver = cleanup.trackObserver(new MutationObserver((mutations) => {
+    if (!cosmeticsEnabled || isKick) return
+    for (const m of mutations) {
+      if (m.type !== 'attributes' || m.attributeName !== 'data-user-id') continue
+      const el = m.target
+      if (!el || !el.classList?.contains('chat-line__message')) continue
+      const userId = el.getAttribute('data-user-id')
+      if (!userId) continue
+      if (el.dataset.hsCosmeticUserId === userId) continue
+      el.dataset.hsCosmeticUserId = userId
+      const usernameEl = el.querySelector('.chat-author__display-name, [data-a-target="chat-message-username"]')
+      applyCosmeticsToMessage(el, userId, usernameEl)
+      queueCosmeticsLookup(userId)
+      // Self detection on first stamp from a username matching the current user
+      if (!_selfTwitchIdRegistered) {
+        const me = getCurrentUsername()
+        const username = usernameEl?.textContent?.trim().toLowerCase()
+        if (me && username && me === username) {
+          _selfTwitchIdRegistered = true
+          safeSendMessage({ type: 'register_self_twitch_id', twitchId: userId })
+        }
+      }
+    }
+  }), 'user-id-observer')
+  userIdObserver.observe(chatContainer, {
+    attributes: true,
+    attributeFilter: ['data-user-id'],
+    subtree: true
+  })
+  // Sweep existing messages where data-user-id was already stamped before our
+  // observer attached (page load with backfill / live messages already there).
+  chatContainer.querySelectorAll('.chat-line__message[data-user-id]:not([data-hs-cosmetic-user-id])').forEach(el => {
+    const userId = el.getAttribute('data-user-id')
+    if (!userId) return
+    el.dataset.hsCosmeticUserId = userId
+    const usernameEl = el.querySelector('.chat-author__display-name, [data-a-target="chat-message-username"]')
+    applyCosmeticsToMessage(el, userId, usernameEl)
+    queueCosmeticsLookup(userId)
+    if (!_selfTwitchIdRegistered) {
+      const me = getCurrentUsername()
+      const username = usernameEl?.textContent?.trim().toLowerCase()
+      if (me && username && me === username) {
+        _selfTwitchIdRegistered = true
+        safeSendMessage({ type: 'register_self_twitch_id', twitchId: userId })
+      }
+    }
+  })
 }
 
 // Extract Twitch channel ID from page (needed for 7TV API)

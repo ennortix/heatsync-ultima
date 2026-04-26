@@ -474,6 +474,7 @@ style.textContent = `
   .hs-pc-role.staff { background: #ff8800 !important; color: #000 !important; border: 1px solid #000 !important; }
   .hs-pc-role.partner { background: #000 !important; color: #fff !important; border: 1px solid #fff !important; }
   .hs-pc-role.affiliate { background: #404040 !important; color: #fff !important; border: 1px solid #fff !important; }
+  .hs-pc-role.sub-status { background: #9146ff !important; color: #fff !important; border: 1px solid #6b30d4 !important; }
 
   .hs-pc-age {
     padding: 2px 3px !important;
@@ -5130,6 +5131,30 @@ function updateEmoteState(hash, emoteName, state) {
       aSpan.className = 'hs-pc-role affiliate'
       aSpan.textContent = t('content_card_affiliate')
       row1.appendChild(aSpan)
+    }
+    // Sub-status badge: lazy-fetch after card renders (Twitch only, not own card)
+    if (platform === 'twitch' && profile.twitch_id) {
+      const subStatusSpan = document.createElement('span')
+      subStatusSpan.className = 'hs-pc-role sub-status'
+      subStatusSpan.style.display = 'none'
+      row1.appendChild(subStatusSpan)
+      const targetTwitchId = String(profile.twitch_id)
+      queueMicrotask(async () => {
+        try {
+          const currentUser = getCurrentUsername()
+          if (!currentUser || currentUser.toLowerCase() === username.toLowerCase()) return
+          const result = await HS.apiFetch('/api/twitch/check-sub', {
+            method: 'POST',
+            auth: true,
+            body: { broadcaster_id: targetTwitchId },
+          })
+          if (result && result.subscribed) {
+            const tier = result.tier ? Math.round(Number(result.tier) / 1000) : 1
+            subStatusSpan.textContent = tier > 1 ? `subbed T${tier}` : 'subbed'
+            subStatusSpan.style.display = ''
+          }
+        } catch (_e) { /* silent */ }
+      })
     }
     if (profile.twitch_verified) {
       const vSpan = document.createElement('span')

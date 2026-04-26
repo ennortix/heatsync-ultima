@@ -6416,6 +6416,8 @@ function applyKickCosmeticsToMessage(el, kickSlug) {
   if (prevSlug && prevSlug !== kickSlug) {
     el.querySelectorAll('.hs-cosmetic-badge').forEach(b => b.remove())
     delete el.dataset.hsCosmeticDone
+    delete el.dataset.hsBttvDone
+    delete el.dataset.hsFfzDone
     const nameEl = el.querySelector('button.inline.font-bold')
     if (nameEl) {
       delete nameEl.dataset.hsPaintApplied
@@ -6444,6 +6446,33 @@ function applyKickCosmeticsToMessage(el, kickSlug) {
       img.title = cosmetic.badge.tooltip || cosmetic.badge.name || '7TV'
       img.alt = '7TV'
       nameEl.parentNode.insertBefore(img, nameEl)
+    }
+  }
+
+  // BTTV + FFZ badges (Kick users with a linked Twitch account)
+  const twitchId = cosmetic.twitchId
+  if (twitchId) {
+    if (!el.dataset.hsBttvDone && bttvBadgeMap.has(twitchId)) {
+      const b = bttvBadgeMap.get(twitchId)
+      const img = document.createElement('img')
+      img.className = 'hs-bttv-badge hs-cosmetic-badge'
+      img.src = b.url
+      img.title = b.description
+      img.alt = b.description
+      nameEl.parentNode.insertBefore(img, nameEl)
+      el.dataset.hsBttvDone = '1'
+    }
+    if (!el.dataset.hsFfzDone && ffzBadgeMap.has(twitchId)) {
+      for (const b of ffzBadgeMap.get(twitchId)) {
+        const img = document.createElement('img')
+        img.className = 'hs-ffz-badge hs-cosmetic-badge'
+        img.src = b.url
+        img.title = b.title
+        img.alt = b.title
+        if (b.color) img.style.backgroundColor = b.color
+        nameEl.parentNode.insertBefore(img, nameEl)
+      }
+      el.dataset.hsFfzDone = '1'
     }
   }
 

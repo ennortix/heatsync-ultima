@@ -2609,6 +2609,96 @@ function injectStyles() {
       background: #fff;
     }
 
+    /* === Full-panel btop-style profile card === */
+    .hs-pcard {
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      padding: 14px 10px 8px 10px;
+      color: #ddd;
+      background: #000;
+      font-size: 12px;
+      line-height: 1.5;
+      box-sizing: border-box;
+    }
+    .hs-pcard-section {
+      border: 1px solid #555;
+      margin-bottom: 10px;
+      padding: 10px 10px 8px 10px;
+      position: relative;
+      box-sizing: border-box;
+    }
+    .hs-pcard-section-title {
+      position: absolute;
+      top: -8px;
+      left: 8px;
+      background: #000;
+      padding: 0 6px;
+      font-size: 10px;
+      color: #aaa;
+      text-transform: uppercase;
+      font-weight: 700;
+      letter-spacing: 1px;
+    }
+    .hs-pcard-id { border-color: #ff8700; }
+    .hs-pcard-id .hs-pcard-section-title { color: #ff8700; }
+    .hs-pcard-stream { border-color: #f00; }
+    .hs-pcard-stream .hs-pcard-section-title { color: #f00; }
+    .hs-pcard-recent { border-color: #888; }
+    .hs-pcard-actions { border-color: #444; }
+
+    .hs-pcard-id-row { display: flex; gap: 12px; align-items: flex-start; }
+    .hs-pcard-avatar {
+      width: 56px; height: 56px; border-radius: 4px; object-fit: cover;
+      border: 1px solid #444; flex-shrink: 0;
+    }
+    .hs-pcard-id-text { flex: 1; min-width: 0; }
+    .hs-pcard-name { font-size: 18px; font-weight: 700; color: #fff; margin-bottom: 4px; }
+    .hs-pcard-livedot { color: #f00; animation: hs-pcard-pulse 1.5s infinite; }
+    @keyframes hs-pcard-pulse { 50% { opacity: 0.35; } }
+    .hs-pcard-pills { display: flex; flex-wrap: wrap; gap: 6px; font-size: 11px; }
+    .hs-pcard-pill {
+      padding: 2px 6px; border: 1px solid; text-decoration: none;
+      font-weight: 600; display: inline-flex; align-items: center; gap: 3px;
+    }
+    .hs-pcard-pill:hover { filter: brightness(1.3); }
+    .hs-pcard-pill-twitch { color: #9146ff; border-color: #9146ff; }
+    .hs-pcard-pill-kick { color: #53fc18; border-color: #53fc18; }
+    .hs-pcard-pill-youtube { color: #ff0000; border-color: #ff0000; }
+    .hs-pcard-pill-heatsync { color: #ff8700; border-color: #ff8700; }
+    .hs-pcard-pill-live { color: #f00; }
+    .hs-pcard-bio {
+      margin-top: 8px; padding: 4px 0; color: #aaa;
+      font-style: italic; font-size: 11px; border-top: 1px dashed #333;
+      white-space: pre-wrap; word-break: break-word;
+    }
+    .hs-pcard-rel { color: #ff8700; font-weight: 600; margin-top: 4px; }
+    .hs-pcard-link { color: #ff8700; text-decoration: none; font-weight: 700; }
+    .hs-pcard-link:hover { text-decoration: underline; }
+    .hs-pcard-msg {
+      display: flex; gap: 6px; padding: 1px 0;
+      font-size: 11px; align-items: baseline;
+    }
+    .hs-pcard-msg-ts { color: #666; flex-shrink: 0; font-size: 10px; }
+    .hs-pcard-msg-plat {
+      flex-shrink: 0; font-size: 9px; padding: 0 3px; border: 1px solid;
+      font-weight: 700; line-height: 1.4;
+    }
+    .hs-pcard-msg-text {
+      color: #ddd; word-break: break-word; overflow-wrap: anywhere;
+    }
+    .hs-pcard-action-grid {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+      gap: 4px;
+    }
+    .hs-pcard-action {
+      background: #0a0a0a; color: #ddd; border: 1px solid #444;
+      padding: 6px 8px; cursor: pointer; font-family: inherit; font-size: 11px;
+      text-align: left; box-sizing: border-box;
+    }
+    .hs-pcard-action:hover:not(:disabled) { background: #fff; color: #000; }
+    .hs-pcard-action:hover:not(:disabled) .hs-pcard-kbd { color: #000; }
+    .hs-pcard-action:disabled { opacity: 0.4; cursor: not-allowed; }
+    .hs-pcard-kbd { color: #ff8700; font-weight: 700; }
+
     /* Per-tab platform filter toggles (T/K/YT) — sits above util-row in tab bar */
     #hs-mc-platfilter {
       display: grid;
@@ -4878,20 +4968,14 @@ function injectStyles() {
     .hs-discover-row-live .hs-discover-bar > i {
       background: linear-gradient(90deg, #ff3030, #ff8700);
     }
+    /* Heat number — color/glow comes from inline style via discoverHeatStyle (canonical tiers) */
     .hs-discover-heat {
-      display: inline-flex;
-      align-items: center;
-      gap: 3px;
+      display: inline-block;
       font-size: 12px;
-      color: #ff8700;
       font-variant-numeric: tabular-nums;
       flex-shrink: 0;
       font-family: ui-monospace, SFMono-Regular, monospace;
-    }
-    .hs-discover-heat .hs-flame {
-      width: 11px; height: 11px;
-      fill: #ff8700;
-      flex-shrink: 0;
+      line-height: 1;
     }
     .hs-discover-viewers {
       font-size: 11px;
@@ -12174,6 +12258,7 @@ function _feedVirtualRenderWindow(msgsEl, virtualContainer, items) {
 }
 
 function renderFeed() {
+  if (typeof activeProfileCard !== 'undefined' && activeProfileCard) return;
   const msgsEl = document.getElementById('hs-mc-messages');
   if (!msgsEl) return;
 
@@ -13222,17 +13307,41 @@ function formatDiscoverCount(n) {
   return String(n);
 }
 
-// Heat flame icon — built via DOM API for site-parity badge (no "heat" word)
-function makeFlameIcon() {
-  const NS = 'http://www.w3.org/2000/svg';
-  const svg = document.createElementNS(NS, 'svg');
-  svg.setAttribute('viewBox', '0 0 16 16');
-  svg.setAttribute('aria-hidden', 'true');
-  svg.setAttribute('class', 'hs-flame');
-  const path = document.createElementNS(NS, 'path');
-  path.setAttribute('d', 'M8 1c1.5 3 4.5 4 4.5 8a4.5 4.5 0 1 1-9 0c0-2 .8-3 1.6-3.7C5 7 5 6 5 5c1.2.5 1.5 1.2 1.5 1.5C7 5 7.2 3 8 1z');
-  svg.appendChild(path);
-  return svg;
+// Compact heat tier styling — matches site canonical color tiers from getHeatNumberStyle,
+// but with fixed (small) size so discover rows stay dense.
+// Tiers: 0 → #444, 1-10 → #888, 10-30 → #888, 30-50 → #cc6600, 50-100 → #ff8700,
+//        100-500 → #ffaa33, 500+ → #fff with breathe animation
+function discoverHeatStyle(heat) {
+  let color = '#444', textShadow = '', animation = '';
+  if (heat > 500) {
+    color = '#fff';
+    textShadow = '0 0 4px rgba(255,255,255,1),0 0 10px rgba(255,200,100,0.9),0 0 18px rgba(255,135,0,0.6)';
+    animation = 'hs-heat-breathe 2s ease-in-out infinite';
+  } else if (heat > 100) {
+    color = '#ffaa33';
+    textShadow = '0 0 4px rgba(255,170,50,0.85),0 0 10px rgba(255,135,0,0.4)';
+  } else if (heat > 50) {
+    color = '#ff8700';
+    textShadow = '0 0 3px rgba(255,135,0,0.55)';
+  } else if (heat > 30) {
+    color = '#cc6600';
+  } else if (heat > 10) {
+    color = '#888';
+  }
+  let style = `color:${color};font-weight:900;font-variant-numeric:tabular-nums;`;
+  if (textShadow) style += `text-shadow:${textShadow};`;
+  if (animation) style += `animation:${animation};`;
+  return style;
+}
+
+// Apply canonical row-level heat effects (border, bg tint, breathe class)
+function applyDiscoverHeatRowEffects(row, heat) {
+  const hd = getHeatDisplay(heat);
+  if (!hd) return;
+  row.style.borderLeftColor = hd.border;
+  row.style.borderLeftWidth = hd.borderWidth + 'px';
+  if (hd.bg) row.style.background = hd.bg;
+  if (hd.breathe) row.classList.add('hs-feed-heat-breathe');
 }
 
 function renderDiscoverProfileRow(profile, username, rank, maxHeat) {
@@ -13316,14 +13425,17 @@ function renderDiscoverProfileRow(profile, username, rank, maxHeat) {
   bar.appendChild(fill);
   row.appendChild(bar);
 
+  // Canonical heat number — matches website / feed posts (formatHeat + ° suffix, tiered glow)
   const heatEl = document.createElement('span');
   heatEl.className = 'hs-discover-heat';
   heatEl.title = `${heat.toLocaleString()} heat`;
-  heatEl.appendChild(makeFlameIcon());
-  const heatVal = document.createElement('span');
-  heatVal.textContent = formatDiscoverCount(heat);
-  heatEl.appendChild(heatVal);
+  heatEl.setAttribute('style', discoverHeatStyle(heat));
+  const suffix = heat >= 10 ? '°' : '';
+  heatEl.textContent = formatHeat(heat) + suffix;
   row.appendChild(heatEl);
+
+  // Apply row-level heat tier effects ONLY when not live (live row has red border)
+  if (!isLive) applyDiscoverHeatRowEffects(row, heat);
 
   if (isLive) {
     const v = (profile.twitch_viewer_count || 0) + (profile.kick_viewer_count || 0);
@@ -13428,13 +13540,13 @@ function renderDiscoverPostRow(m) {
   spacer.className = 'hs-discover-post-spacer';
   meta.appendChild(spacer);
 
+  const heat = Number(m.heat || 0);
   const heatEl = document.createElement('span');
   heatEl.className = 'hs-discover-heat hs-discover-post-heat';
-  heatEl.title = `${(m.heat || 0).toLocaleString()} heat`;
-  heatEl.appendChild(makeFlameIcon());
-  const heatVal = document.createElement('span');
-  heatVal.textContent = formatDiscoverCount(m.heat || 0);
-  heatEl.appendChild(heatVal);
+  heatEl.title = `${heat.toLocaleString()} heat`;
+  heatEl.setAttribute('style', discoverHeatStyle(heat));
+  const suffix = heat >= 10 ? '°' : '';
+  heatEl.textContent = formatHeat(heat) + suffix;
   meta.appendChild(heatEl);
 
   if ((m.reply_count || 0) > 0) {
@@ -13453,6 +13565,9 @@ function renderDiscoverPostRow(m) {
   const snippet = String(m.content || '').replace(/\s+/g, ' ').trim();
   txt.textContent = snippet || '(no text)';
   row.appendChild(txt);
+
+  // Canonical row-level heat tier effects (border tier, bg, breathe at 500+)
+  applyDiscoverHeatRowEffects(row, heat);
 
   return row;
 }
@@ -16381,6 +16496,441 @@ function setupMediaDropHandlers() {
   }, { signal: mcSignal })
 }
 
+
+// --- multichat/profile-card.js ---
+// Full-panel btop-style profile card
+// Triggered by clicking any username anywhere in the extension.
+// Replaces #hs-mc-messages content. ESC, tab switch, or close button restores chat.
+
+let activeProfileCard = null  // { username, platform, data, ts }
+
+function isProfileCardOpen() {
+  return !!activeProfileCard
+}
+
+async function openProfileCard(username, platform) {
+  if (!username) return
+  username = String(username).toLowerCase()
+
+  // Hide input bar — typing makes no sense in card view
+  const inputBar = document.getElementById('hs-mc-inputbar')
+  if (inputBar) inputBar.classList.add('hs-hidden')
+
+  activeProfileCard = { username, platform: platform || null, data: null, ts: Date.now() }
+  renderProfileCardView()
+
+  // Try cache first (shared with tooltip via _profileCache)
+  const cacheKey = `${platform || 'unknown'}:${username}`
+  const ttl = (typeof PROFILE_CACHE_TTL !== 'undefined') ? PROFILE_CACHE_TTL : 300000
+  if (typeof _profileCache !== 'undefined') {
+    const cached = _profileCache.get(cacheKey)
+    if (cached && Date.now() - cached.ts < ttl) {
+      activeProfileCard.data = cached.profile
+      renderProfileCardView()
+      return
+    }
+  }
+
+  try {
+    const platParam = platform ? `?platform=${encodeURIComponent(platform)}` : ''
+    const resp = await apiFetch(`/api/profile/${encodeURIComponent(username)}${platParam}`)
+    if (!activeProfileCard || activeProfileCard.username !== username) return
+    if (resp?.ok && resp.data?.profile) {
+      activeProfileCard.data = resp.data.profile
+      if (typeof _profileCache !== 'undefined') {
+        _profileCache.set(cacheKey, { profile: resp.data.profile, ts: Date.now() })
+      }
+    } else {
+      activeProfileCard.data = { error: true, username }
+    }
+    renderProfileCardView()
+  } catch {
+    if (!activeProfileCard) return
+    activeProfileCard.data = { error: true, username }
+    renderProfileCardView()
+  }
+}
+
+function closeProfileCard() {
+  if (!activeProfileCard) return
+  activeProfileCard = null
+  // renderMessages will redo input visibility logic via switchTab? No, switchTab not called here.
+  // Restore input bar visibility based on currentTab
+  const inputBar = document.getElementById('hs-mc-inputbar')
+  if (inputBar) {
+    const hideOnTabs = ['add', 'settings', 'discover', 'pinned']
+    if (!hideOnTabs.includes(currentTab)) inputBar.classList.remove('hs-hidden')
+  }
+  renderMessages(currentTab)
+}
+
+function getRecentMessagesFromUser(username) {
+  const lower = username.toLowerCase()
+  const out = []
+  try {
+    if (typeof irc !== 'undefined' && irc?.channels) {
+      for (const [, buf] of irc.channels) {
+        for (const m of buf.getAll()) {
+          if (m.user?.toLowerCase() === lower && m.text) out.push(m)
+        }
+      }
+    }
+    if (typeof kickChat !== 'undefined' && kickChat?.channels) {
+      for (const [, buf] of kickChat.channels) {
+        for (const m of buf.getAll()) {
+          if (m.user?.toLowerCase() === lower && m.text) out.push(m)
+        }
+      }
+    }
+    if (typeof channelYtMessages !== 'undefined' && channelYtMessages) {
+      for (const [, buf] of channelYtMessages) {
+        for (const m of buf) {
+          if (m.user?.toLowerCase() === lower && m.text) out.push(m)
+        }
+      }
+    }
+  } catch {}
+  return out.sort((a, b) => (b.time || 0) - (a.time || 0)).slice(0, 12)
+}
+
+function pcFmt(n) {
+  n = Number(n) || 0
+  if (n >= 1_000_000) return (n / 1_000_000).toFixed(1).replace(/\.0$/, '') + 'm'
+  if (n >= 1_000) return (n / 1_000).toFixed(1).replace(/\.0$/, '') + 'k'
+  return String(n)
+}
+
+function pcMakeSection(title) {
+  const sec = document.createElement('div')
+  sec.className = 'hs-pcard-section'
+  const t = document.createElement('div')
+  t.className = 'hs-pcard-section-title'
+  t.textContent = title
+  sec.appendChild(t)
+  return sec
+}
+
+function pcMakePill(plat, name, isLive) {
+  const pill = document.createElement('a')
+  pill.className = 'hs-pcard-pill hs-pcard-pill-' + plat
+  pill.target = '_blank'
+  pill.rel = 'noopener noreferrer'
+  if (plat === 'twitch') pill.href = 'https://twitch.tv/' + encodeURIComponent(name)
+  else if (plat === 'kick') pill.href = 'https://kick.com/' + encodeURIComponent(name)
+  else if (plat === 'youtube') pill.href = 'https://youtube.com/@' + encodeURIComponent(name)
+  else if (plat === 'heatsync') pill.href = 'https://heatsync.org/user/' + encodeURIComponent(name)
+  const label = plat === 'twitch' ? 't' : plat === 'kick' ? 'k' : plat === 'youtube' ? 'y' : 'h'
+  pill.textContent = `${label}:${name}`
+  if (isLive) {
+    const dot = document.createElement('span')
+    dot.className = 'hs-pcard-pill-live'
+    dot.textContent = '●'
+    pill.prepend(dot)
+  }
+  // Don't intercept these clicks — they should follow the link in a new tab
+  pill.dataset.pcardPill = '1'
+  return pill
+}
+
+function renderProfileCardView() {
+  const msgsEl = document.getElementById('hs-mc-messages')
+  if (!msgsEl || !activeProfileCard) return
+  msgsEl.textContent = ''
+
+  const { username, data } = activeProfileCard
+  const card = document.createElement('div')
+  card.className = 'hs-pcard'
+
+  // === Identity section ===
+  const idSec = pcMakeSection(data?.display_name || username)
+  idSec.classList.add('hs-pcard-id')
+
+  const idRow = document.createElement('div')
+  idRow.className = 'hs-pcard-id-row'
+
+  const avatar = document.createElement('img')
+  avatar.className = 'hs-pcard-avatar'
+  avatar.src = data?.twitch_profile_pic || data?.kick_profile_pic || data?.profile_image_url || 'https://heatsync.org/anon.webp'
+  avatar.alt = ''
+  avatar.referrerPolicy = 'no-referrer'
+  idRow.appendChild(avatar)
+
+  const idText = document.createElement('div')
+  idText.className = 'hs-pcard-id-text'
+
+  const nameLine = document.createElement('div')
+  nameLine.className = 'hs-pcard-name'
+  const isLive = !!(data?.twitch_is_live || data?.kick_is_live)
+  if (isLive) {
+    const dot = document.createElement('span')
+    dot.className = 'hs-pcard-livedot'
+    dot.textContent = '●'
+    nameLine.appendChild(dot)
+  }
+  nameLine.appendChild(document.createTextNode(' ' + (data?.display_name || username)))
+  idText.appendChild(nameLine)
+
+  // Platform pills
+  const pills = document.createElement('div')
+  pills.className = 'hs-pcard-pills'
+  if (data?.twitch_username) pills.appendChild(pcMakePill('twitch', data.twitch_username, data.twitch_is_live))
+  if (data?.kick_username) pills.appendChild(pcMakePill('kick', data.kick_username, data.kick_is_live))
+  if (data?.youtube_username || data?.youtube_channel_id) {
+    pills.appendChild(pcMakePill('youtube', data.youtube_username || username))
+  }
+  pills.appendChild(pcMakePill('heatsync', username))
+  idText.appendChild(pills)
+
+  if (data?.bio) {
+    const bio = document.createElement('div')
+    bio.className = 'hs-pcard-bio'
+    bio.textContent = data.bio
+    idText.appendChild(bio)
+  }
+
+  idRow.appendChild(idText)
+  idSec.appendChild(idRow)
+  card.appendChild(idSec)
+
+  // === Stats section ===
+  const statsSec = pcMakeSection('stats')
+  if (!data) {
+    statsSec.appendChild(document.createTextNode('loading…'))
+  } else if (data.error) {
+    statsSec.appendChild(document.createTextNode('not registered on heatsync'))
+  } else {
+    const stats = data.stats || {}
+    const heat = stats.total_heat || 0
+    const posts = (stats.op_count || 0) + (stats.mop_count || 0) + (stats.re_count || 0)
+    const followers = Math.max(stats.followers || 0, data.twitch_followers || 0, data.kick_followers || 0)
+
+    const rel = data.relationship || {}
+    const youFollow = rel.youFollow ?? rel.isFollowing ?? rel.followsOnTwitch ?? rel.followsOnKick
+    const followsYou = rel.profileFollowsViewerOnTwitch || rel.profileFollowsViewerOnKick || rel.followsYou
+    const youSub = rel.youSub ?? rel.isSubscribed ?? rel.subscribedOnTwitch ?? rel.subscribedOnKick
+    const subsYou = rel.profileSubbedToViewerOnTwitch || rel.profileSubbedToViewerOnKick || rel.subscribesToYou
+
+    const parts = []
+    if (heat) parts.push(`${pcFmt(heat)}° heat`)
+    if (posts) parts.push(`${pcFmt(posts)} posts`)
+    if (followers) parts.push(`${pcFmt(followers)} followers`)
+
+    const relParts = []
+    if (youFollow && followsYou) relParts.push('mutual')
+    else if (youFollow) relParts.push('you follow')
+    else if (followsYou) relParts.push('follows you')
+    if (youSub) relParts.push('you sub')
+    if (subsYou) relParts.push('subs to you')
+
+    if (parts.length) {
+      const line = document.createElement('div')
+      line.textContent = parts.join(' · ')
+      statsSec.appendChild(line)
+    }
+    if (relParts.length) {
+      const rline = document.createElement('div')
+      rline.className = 'hs-pcard-rel'
+      rline.textContent = relParts.join(' · ')
+      statsSec.appendChild(rline)
+    }
+    if (!parts.length && !relParts.length) {
+      statsSec.appendChild(document.createTextNode('no stats yet'))
+    }
+  }
+  card.appendChild(statsSec)
+
+  // === Stream section (only when live) ===
+  if (data && (data.twitch_is_live || data.kick_is_live)) {
+    const onTwitch = !!data.twitch_is_live
+    const platName = onTwitch ? data.twitch_username : data.kick_username
+    const vc = onTwitch ? (data.twitch_viewer_count || 0) : (data.kick_viewer_count || 0)
+    const url = onTwitch ? `https://twitch.tv/${platName}` : `https://kick.com/${platName}`
+
+    const ssec = pcMakeSection(onTwitch ? 'twitch · live' : 'kick · live')
+    ssec.classList.add('hs-pcard-stream')
+    const line = document.createElement('div')
+    if (vc) line.appendChild(document.createTextNode(`${pcFmt(vc)} viewers — `))
+    const link = document.createElement('a')
+    link.href = url
+    link.target = '_blank'
+    link.rel = 'noopener noreferrer'
+    link.textContent = 'watch stream →'
+    link.className = 'hs-pcard-link'
+    link.dataset.pcardPill = '1'
+    line.appendChild(link)
+    ssec.appendChild(line)
+    card.appendChild(ssec)
+  }
+
+  // === Recent messages section ===
+  const recent = getRecentMessagesFromUser(username)
+  if (recent.length > 0) {
+    const rsec = pcMakeSection(`recent · ${recent.length} msg${recent.length === 1 ? '' : 's'}`)
+    rsec.classList.add('hs-pcard-recent')
+    for (const m of recent) {
+      const row = document.createElement('div')
+      row.className = 'hs-pcard-msg'
+      const ts = m.time ? new Date(m.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''
+      const tsEl = document.createElement('span')
+      tsEl.className = 'hs-pcard-msg-ts'
+      tsEl.textContent = ts
+      const platEl = document.createElement('span')
+      const plat = m.platform || 'twitch'
+      platEl.className = 'hs-pcard-msg-plat hs-pcard-pill-' + plat
+      platEl.textContent = plat === 'kick' ? 'k' : plat === 'youtube' ? 'y' : 't'
+      const textEl = document.createElement('span')
+      textEl.className = 'hs-pcard-msg-text'
+      textEl.textContent = m.text.length > 240 ? m.text.slice(0, 240) + '…' : m.text
+      row.appendChild(tsEl)
+      row.appendChild(platEl)
+      row.appendChild(textEl)
+      rsec.appendChild(row)
+    }
+    card.appendChild(rsec)
+  }
+
+  // === Actions section ===
+  const asec = pcMakeSection('actions')
+  asec.classList.add('hs-pcard-actions')
+  const grid = document.createElement('div')
+  grid.className = 'hs-pcard-action-grid'
+
+  const isMuted = mutedUsers.has(username)
+  const inChannels = config.channels.some(c => {
+    const id = (typeof c === 'string' ? c : c.id)?.toLowerCase()
+    const tw = (typeof c === 'string' ? c : c.twitch)?.toLowerCase()
+    const ki = typeof c === 'string' ? null : c.kick?.toLowerCase()
+    return id === username || tw === username || ki === username
+  })
+
+  const actions = [
+    { key: 't', label: 'twitch', fn: () => pcOpenExt('https://twitch.tv/' + (data?.twitch_username || username)) },
+    { key: 'k', label: 'kick', fn: () => pcOpenExt('https://kick.com/' + (data?.kick_username || username)) },
+    { key: 'y', label: 'youtube', fn: () => pcOpenExt('https://youtube.com/@' + (data?.youtube_username || username)) },
+    { key: 'h', label: 'heatsync', fn: () => pcOpenExt('https://heatsync.org/user/' + username) },
+    { key: 'w', label: 'whisper', fn: () => pcDoWhisper(username) },
+    { key: 'm', label: isMuted ? 'unmute' : 'mute', fn: () => pcToggleMute(username) },
+    { key: '+', label: inChannels ? 'in channels' : 'add channel', fn: () => pcAddAsChannel(username), disabled: inChannels },
+    { key: 'esc', label: 'close', fn: closeProfileCard },
+  ]
+
+  for (const a of actions) {
+    const btn = document.createElement('button')
+    btn.className = 'hs-pcard-action'
+    if (a.disabled) btn.disabled = true
+    btn.dataset.pcKey = a.key
+    const kbd = document.createElement('span')
+    kbd.className = 'hs-pcard-kbd'
+    kbd.textContent = `[${a.key}]`
+    const lab = document.createElement('span')
+    lab.className = 'hs-pcard-actlabel'
+    lab.textContent = ' ' + a.label
+    btn.appendChild(kbd)
+    btn.appendChild(lab)
+    btn.addEventListener('click', a.fn)
+    grid.appendChild(btn)
+  }
+  asec.appendChild(grid)
+  card.appendChild(asec)
+
+  msgsEl.appendChild(card)
+}
+
+function pcOpenExt(url) {
+  window.open(url, '_blank', 'noopener,noreferrer')
+}
+
+function pcToggleMute(username) {
+  username = username.toLowerCase()
+  if (mutedUsers.has(username)) {
+    mutedUsers.delete(username)
+    safeSendMessage({ type: 'unmute_user', username })
+  } else {
+    mutedUsers.add(username)
+    safeSendMessage({ type: 'mute_user', username, expiresAt: Date.now() + 86400000 })
+  }
+  chrome.storage.local.set({ heatsync_mc_muted: [...mutedUsers] })
+  renderProfileCardView()
+}
+
+function pcDoWhisper(username) {
+  closeProfileCard()
+  switchTab('whispers')
+  // Pre-fill input with /w <username> for quick start
+  setTimeout(() => {
+    const input = document.getElementById('hs-mc-input')
+    if (input) {
+      const cmd = `/w ${username} `
+      if (input.tagName === 'INPUT') {
+        input.value = cmd
+        input.focus()
+        input.setSelectionRange(cmd.length, cmd.length)
+      } else {
+        input.textContent = cmd
+        input.focus()
+      }
+    }
+  }, 50)
+}
+
+function setupProfileCardHandlers() {
+  if (window._hsProfileCardSetup) return
+  window._hsProfileCardSetup = true
+
+  // Username click → open card. Allow ctrl/meta/shift/middle to fall through to <a>.
+  cleanup.addEventListener(document, 'click', (e) => {
+    if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return
+    const userEl = e.target.closest('.hs-mc-user')
+    if (!userEl) return
+    // Skip platform pills inside the card itself — they should follow their hrefs
+    if (e.target.closest('[data-pcard-pill]')) return
+    // Skip reply target links — those navigate within the message context
+    if (userEl.classList.contains('hs-mc-reply-user')) return
+    e.preventDefault()
+    e.stopPropagation()
+    const username = (userEl.dataset.username || userEl.textContent.replace(/^@/, '')).trim()
+    const platform = userEl.dataset.platform || null
+    openProfileCard(username, platform)
+  }, 'mc-pcard-user-click')
+
+  // ESC closes the card; single-letter hotkeys trigger actions while open
+  cleanup.addEventListener(document, 'keydown', (e) => {
+    if (!activeProfileCard) return
+    // Ignore keys while typing in inputs/textareas
+    const t = e.target
+    const inEditable = t?.tagName === 'INPUT' || t?.tagName === 'TEXTAREA' || t?.isContentEditable
+    if (inEditable) {
+      if (e.key === 'Escape') { e.preventDefault(); closeProfileCard() }
+      return
+    }
+    if (e.key === 'Escape') { e.preventDefault(); closeProfileCard(); return }
+    const key = e.key.toLowerCase()
+    const map = { t: 't', k: 'k', y: 'y', h: 'h', w: 'w', m: 'm', '+': '+', '=': '+' }
+    const target = map[key]
+    if (!target) return
+    const btn = document.querySelector(`.hs-pcard-action[data-pc-key="${target}"]`)
+    if (btn && !btn.disabled) {
+      e.preventDefault()
+      btn.click()
+    }
+  }, 'mc-pcard-keys')
+}
+
+function pcAddAsChannel(username) {
+  if (!config?.channels) return
+  const exists = config.channels.some(c => {
+    const id = (typeof c === 'string' ? c : c.id)?.toLowerCase()
+    return id === username.toLowerCase()
+  })
+  if (!exists) {
+    config.channels.push({ id: username.toLowerCase(), twitch: username.toLowerCase(), kick: '', youtube: '' })
+    saveConfig()
+    if (typeof updateTabBar === 'function') updateTabBar()
+  }
+  closeProfileCard()
+  switchTab(username.toLowerCase())
+}
+
 // === END MULTICHAT MODULES ===
 
 
@@ -18879,6 +19429,8 @@ const STORAGE_KEY = 'heatsync_multichat';
   function switchTab(id) {
     log('switchTab called:', id);
     editingChannel = false;
+    // Tab switch closes profile card without re-rendering (we'll render the tab below)
+    if (typeof activeProfileCard !== 'undefined' && activeProfileCard) activeProfileCard = null;
 
     // Clicking feed tab while in thread view → go back to feed, don't switch tabs
     if (id === 'feed' && currentTab === 'feed' && activeThread) {
@@ -19560,6 +20112,8 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
 
   function appendMessage(msg, tabId) {
     if (editingChannel) return false;
+    // Skip live append while profile card is open — buffer keeps the msg, restored on close
+    if (typeof activeProfileCard !== 'undefined' && activeProfileCard) return true;
     if (isScrolledUp || currentTab !== tabId) return false;
 
     // Platform filter: skip messages for muted platforms (single-platform tab path)
@@ -19671,6 +20225,11 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
 
   function renderMessages(id) {
     if (editingChannel) return;
+    // Profile card overrides normal tab content while open
+    if (typeof activeProfileCard !== 'undefined' && activeProfileCard) {
+      renderProfileCardView();
+      return;
+    }
     // Social tabs have their own renderers
     if (id === 'feed') { renderFeed(); return; }
     if (id === 'activity') { renderActivity(); return; }
@@ -21290,6 +21849,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     setupEmoteTooltipHandlers();
     setupUserTooltipHandlers();
     setupLinkTooltipHandlers();
+    setupProfileCardHandlers();
     listenForSettingsChanges();
 
     // Request initial BTTV/FFZ badge maps from background

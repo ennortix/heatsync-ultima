@@ -658,6 +658,7 @@ function _feedVirtualRenderWindow(msgsEl, virtualContainer, items) {
 }
 
 function renderFeed() {
+  if (typeof activeProfileCard !== 'undefined' && activeProfileCard) return;
   const msgsEl = document.getElementById('hs-mc-messages');
   if (!msgsEl) return;
 
@@ -1509,6 +1510,7 @@ async function fetchNotifications() {
 }
 
 function renderActivity() {
+  if (typeof activeProfileCard !== 'undefined' && activeProfileCard) return;
   const msgsEl = document.getElementById('hs-mc-messages');
   if (!msgsEl) return;
 
@@ -1706,17 +1708,41 @@ function formatDiscoverCount(n) {
   return String(n);
 }
 
-// Heat flame icon — built via DOM API for site-parity badge (no "heat" word)
-function makeFlameIcon() {
-  const NS = 'http://www.w3.org/2000/svg';
-  const svg = document.createElementNS(NS, 'svg');
-  svg.setAttribute('viewBox', '0 0 16 16');
-  svg.setAttribute('aria-hidden', 'true');
-  svg.setAttribute('class', 'hs-flame');
-  const path = document.createElementNS(NS, 'path');
-  path.setAttribute('d', 'M8 1c1.5 3 4.5 4 4.5 8a4.5 4.5 0 1 1-9 0c0-2 .8-3 1.6-3.7C5 7 5 6 5 5c1.2.5 1.5 1.2 1.5 1.5C7 5 7.2 3 8 1z');
-  svg.appendChild(path);
-  return svg;
+// Compact heat tier styling — matches site canonical color tiers from getHeatNumberStyle,
+// but with fixed (small) size so discover rows stay dense.
+// Tiers: 0 → #444, 1-10 → #888, 10-30 → #888, 30-50 → #cc6600, 50-100 → #ff8700,
+//        100-500 → #ffaa33, 500+ → #fff with breathe animation
+function discoverHeatStyle(heat) {
+  let color = '#444', textShadow = '', animation = '';
+  if (heat > 500) {
+    color = '#fff';
+    textShadow = '0 0 4px rgba(255,255,255,1),0 0 10px rgba(255,200,100,0.9),0 0 18px rgba(255,135,0,0.6)';
+    animation = 'hs-heat-breathe 2s ease-in-out infinite';
+  } else if (heat > 100) {
+    color = '#ffaa33';
+    textShadow = '0 0 4px rgba(255,170,50,0.85),0 0 10px rgba(255,135,0,0.4)';
+  } else if (heat > 50) {
+    color = '#ff8700';
+    textShadow = '0 0 3px rgba(255,135,0,0.55)';
+  } else if (heat > 30) {
+    color = '#cc6600';
+  } else if (heat > 10) {
+    color = '#888';
+  }
+  let style = `color:${color};font-weight:900;font-variant-numeric:tabular-nums;`;
+  if (textShadow) style += `text-shadow:${textShadow};`;
+  if (animation) style += `animation:${animation};`;
+  return style;
+}
+
+// Apply canonical row-level heat effects (border, bg tint, breathe class)
+function applyDiscoverHeatRowEffects(row, heat) {
+  const hd = getHeatDisplay(heat);
+  if (!hd) return;
+  row.style.borderLeftColor = hd.border;
+  row.style.borderLeftWidth = hd.borderWidth + 'px';
+  if (hd.bg) row.style.background = hd.bg;
+  if (hd.breathe) row.classList.add('hs-feed-heat-breathe');
 }
 
 function renderDiscoverProfileRow(profile, username, rank, maxHeat) {
@@ -1800,14 +1826,17 @@ function renderDiscoverProfileRow(profile, username, rank, maxHeat) {
   bar.appendChild(fill);
   row.appendChild(bar);
 
+  // Canonical heat number — matches website / feed posts (formatHeat + ° suffix, tiered glow)
   const heatEl = document.createElement('span');
   heatEl.className = 'hs-discover-heat';
   heatEl.title = `${heat.toLocaleString()} heat`;
-  heatEl.appendChild(makeFlameIcon());
-  const heatVal = document.createElement('span');
-  heatVal.textContent = formatDiscoverCount(heat);
-  heatEl.appendChild(heatVal);
+  heatEl.setAttribute('style', discoverHeatStyle(heat));
+  const suffix = heat >= 10 ? '°' : '';
+  heatEl.textContent = formatHeat(heat) + suffix;
   row.appendChild(heatEl);
+
+  // Apply row-level heat tier effects ONLY when not live (live row has red border)
+  if (!isLive) applyDiscoverHeatRowEffects(row, heat);
 
   if (isLive) {
     const v = (profile.twitch_viewer_count || 0) + (profile.kick_viewer_count || 0);
@@ -1912,13 +1941,13 @@ function renderDiscoverPostRow(m) {
   spacer.className = 'hs-discover-post-spacer';
   meta.appendChild(spacer);
 
+  const heat = Number(m.heat || 0);
   const heatEl = document.createElement('span');
   heatEl.className = 'hs-discover-heat hs-discover-post-heat';
-  heatEl.title = `${(m.heat || 0).toLocaleString()} heat`;
-  heatEl.appendChild(makeFlameIcon());
-  const heatVal = document.createElement('span');
-  heatVal.textContent = formatDiscoverCount(m.heat || 0);
-  heatEl.appendChild(heatVal);
+  heatEl.title = `${heat.toLocaleString()} heat`;
+  heatEl.setAttribute('style', discoverHeatStyle(heat));
+  const suffix = heat >= 10 ? '°' : '';
+  heatEl.textContent = formatHeat(heat) + suffix;
   meta.appendChild(heatEl);
 
   if ((m.reply_count || 0) > 0) {
@@ -1937,6 +1966,9 @@ function renderDiscoverPostRow(m) {
   const snippet = String(m.content || '').replace(/\s+/g, ' ').trim();
   txt.textContent = snippet || '(no text)';
   row.appendChild(txt);
+
+  // Canonical row-level heat tier effects (border tier, bg, breathe at 500+)
+  applyDiscoverHeatRowEffects(row, heat);
 
   return row;
 }
@@ -1974,6 +2006,7 @@ function makeDiscoverSection(titleText, subtitleText, metaText, extraClass) {
 }
 
 function renderDiscoverTab() {
+  if (typeof activeProfileCard !== 'undefined' && activeProfileCard) return;
   const msgsEl = document.getElementById('hs-mc-messages');
   if (!msgsEl) return;
 

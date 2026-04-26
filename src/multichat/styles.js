@@ -1576,6 +1576,96 @@ function injectStyles() {
       background: #fff;
     }
 
+    /* === Full-panel btop-style profile card === */
+    .hs-pcard {
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      padding: 14px 10px 8px 10px;
+      color: #ddd;
+      background: #000;
+      font-size: 12px;
+      line-height: 1.5;
+      box-sizing: border-box;
+    }
+    .hs-pcard-section {
+      border: 1px solid #555;
+      margin-bottom: 10px;
+      padding: 10px 10px 8px 10px;
+      position: relative;
+      box-sizing: border-box;
+    }
+    .hs-pcard-section-title {
+      position: absolute;
+      top: -8px;
+      left: 8px;
+      background: #000;
+      padding: 0 6px;
+      font-size: 10px;
+      color: #aaa;
+      text-transform: uppercase;
+      font-weight: 700;
+      letter-spacing: 1px;
+    }
+    .hs-pcard-id { border-color: #ff8700; }
+    .hs-pcard-id .hs-pcard-section-title { color: #ff8700; }
+    .hs-pcard-stream { border-color: #f00; }
+    .hs-pcard-stream .hs-pcard-section-title { color: #f00; }
+    .hs-pcard-recent { border-color: #888; }
+    .hs-pcard-actions { border-color: #444; }
+
+    .hs-pcard-id-row { display: flex; gap: 12px; align-items: flex-start; }
+    .hs-pcard-avatar {
+      width: 56px; height: 56px; border-radius: 4px; object-fit: cover;
+      border: 1px solid #444; flex-shrink: 0;
+    }
+    .hs-pcard-id-text { flex: 1; min-width: 0; }
+    .hs-pcard-name { font-size: 18px; font-weight: 700; color: #fff; margin-bottom: 4px; }
+    .hs-pcard-livedot { color: #f00; animation: hs-pcard-pulse 1.5s infinite; }
+    @keyframes hs-pcard-pulse { 50% { opacity: 0.35; } }
+    .hs-pcard-pills { display: flex; flex-wrap: wrap; gap: 6px; font-size: 11px; }
+    .hs-pcard-pill {
+      padding: 2px 6px; border: 1px solid; text-decoration: none;
+      font-weight: 600; display: inline-flex; align-items: center; gap: 3px;
+    }
+    .hs-pcard-pill:hover { filter: brightness(1.3); }
+    .hs-pcard-pill-twitch { color: #9146ff; border-color: #9146ff; }
+    .hs-pcard-pill-kick { color: #53fc18; border-color: #53fc18; }
+    .hs-pcard-pill-youtube { color: #ff0000; border-color: #ff0000; }
+    .hs-pcard-pill-heatsync { color: #ff8700; border-color: #ff8700; }
+    .hs-pcard-pill-live { color: #f00; }
+    .hs-pcard-bio {
+      margin-top: 8px; padding: 4px 0; color: #aaa;
+      font-style: italic; font-size: 11px; border-top: 1px dashed #333;
+      white-space: pre-wrap; word-break: break-word;
+    }
+    .hs-pcard-rel { color: #ff8700; font-weight: 600; margin-top: 4px; }
+    .hs-pcard-link { color: #ff8700; text-decoration: none; font-weight: 700; }
+    .hs-pcard-link:hover { text-decoration: underline; }
+    .hs-pcard-msg {
+      display: flex; gap: 6px; padding: 1px 0;
+      font-size: 11px; align-items: baseline;
+    }
+    .hs-pcard-msg-ts { color: #666; flex-shrink: 0; font-size: 10px; }
+    .hs-pcard-msg-plat {
+      flex-shrink: 0; font-size: 9px; padding: 0 3px; border: 1px solid;
+      font-weight: 700; line-height: 1.4;
+    }
+    .hs-pcard-msg-text {
+      color: #ddd; word-break: break-word; overflow-wrap: anywhere;
+    }
+    .hs-pcard-action-grid {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+      gap: 4px;
+    }
+    .hs-pcard-action {
+      background: #0a0a0a; color: #ddd; border: 1px solid #444;
+      padding: 6px 8px; cursor: pointer; font-family: inherit; font-size: 11px;
+      text-align: left; box-sizing: border-box;
+    }
+    .hs-pcard-action:hover:not(:disabled) { background: #fff; color: #000; }
+    .hs-pcard-action:hover:not(:disabled) .hs-pcard-kbd { color: #000; }
+    .hs-pcard-action:disabled { opacity: 0.4; cursor: not-allowed; }
+    .hs-pcard-kbd { color: #ff8700; font-weight: 700; }
+
     /* Per-tab platform filter toggles (T/K/YT) — sits above util-row in tab bar */
     #hs-mc-platfilter {
       display: grid;
@@ -3845,20 +3935,14 @@ function injectStyles() {
     .hs-discover-row-live .hs-discover-bar > i {
       background: linear-gradient(90deg, #ff3030, #ff8700);
     }
+    /* Heat number — color/glow comes from inline style via discoverHeatStyle (canonical tiers) */
     .hs-discover-heat {
-      display: inline-flex;
-      align-items: center;
-      gap: 3px;
+      display: inline-block;
       font-size: 12px;
-      color: #ff8700;
       font-variant-numeric: tabular-nums;
       flex-shrink: 0;
       font-family: ui-monospace, SFMono-Regular, monospace;
-    }
-    .hs-discover-heat .hs-flame {
-      width: 11px; height: 11px;
-      fill: #ff8700;
-      flex-shrink: 0;
+      line-height: 1;
     }
     .hs-discover-viewers {
       font-size: 11px;

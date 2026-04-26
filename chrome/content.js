@@ -2706,10 +2706,45 @@ function restoreMsgCache(channel, chatContainer) {
       log(` 💾 Restored ${inserted} cached messages`)
       // Seed the in-memory buffer with cached data
       msgCacheBuffer = data.messages
+      // Cosmetics back-fill: cached entries from older builds didn't store
+      // the twitch id. Look up uid by username from any live (uid-bearing)
+      // message in the chat and stamp it on cached messages so 7TV/BTTV/
+      // FFZ/Chatterino badges + 7TV paint apply to history too.
+      backfillCachedMessageUids(chatContainer)
     }
     return inserted
   } catch (e) {
     log(' Cache restore error:', e)
+    return 0
+  }
+}
+
+function backfillCachedMessageUids(chatContainer) {
+  try {
+    const usernameToUid = new Map()
+    chatContainer.querySelectorAll('.chat-line__message[data-user-id]').forEach(el => {
+      const uid = el.getAttribute('data-user-id')
+      const username = el.dataset.aUser || el.querySelector('.chat-author__display-name')?.textContent?.trim().toLowerCase()
+      if (uid && username) usernameToUid.set(username, uid)
+    })
+    if (usernameToUid.size === 0) return 0
+    let stamped = 0
+    chatContainer.querySelectorAll('.chat-line__message:not([data-user-id])').forEach(el => {
+      const username = el.dataset.aUser || el.querySelector('.chat-author__display-name')?.textContent?.trim().toLowerCase()
+      if (!username) return
+      const uid = usernameToUid.get(username)
+      if (!uid) return
+      el.setAttribute('data-user-id', uid)
+      el.dataset.hsCosmeticUserId = uid
+      const usernameEl = el.querySelector('.chat-author__display-name, [data-a-target="chat-message-username"]')
+      applyCosmeticsToMessage(el, uid, usernameEl)
+      queueCosmeticsLookup(uid)
+      stamped++
+    })
+    if (stamped > 0) log(` 🎨 Back-filled uid on ${stamped} cached messages from username map`)
+    return stamped
+  } catch (e) {
+    log(' backfillCachedMessageUids error:', e?.message)
     return 0
   }
 }
@@ -2849,6 +2884,9 @@ async function backfillChatHistory() {
       log(` 📜 Backfilled ${inserted} messages`)
       // Process emotes in backfilled messages
       processExistingMessages()
+      // Re-run cosmetic uid back-fill: robotty backfill adds new usernames
+      // (with uids) that may match older cached messages still missing uid.
+      backfillCachedMessageUids(chatContainer)
     }
 
     // Capture all native Twitch messages into cache (ones that were already in DOM)

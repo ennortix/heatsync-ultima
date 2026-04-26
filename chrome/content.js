@@ -5937,35 +5937,12 @@ function updateEmoteState(hash, emoteName, state) {
         positionCard(cardEl, e)
       }
 
-      // Initial render from heatsync profile.relationship (server-authoritative).
-      // GQL on Twitch enhances with precise followedAt time, but never downgrades —
-      // Twitch hides follow data for non-self queries, so a null GQL response
-      // doesn't mean "not following".
-      if (channelLogin && profile?.relationship && (platform === 'twitch' || platform === 'kick')) {
-        const headerLine = cardEl.querySelector('.hs-pc-header-line')
-        if (headerLine) {
-          const rel = profile.relationship
-          if (rel.youFollow) {
-            const badge = document.createElement('span')
-            badge.className = 'hs-pc-followage'
-            badge.textContent = rel.youFollowSince
-              ? t('content_card_following', [channelLogin, formatAge(rel.youFollowSince)])
-              : (t('content_card_follows_channel', [channelLogin]) || `follows ${channelLogin}`)
-            headerLine.appendChild(badge)
-          } else if (rel.youFollow === false) {
-            const badge = document.createElement('span')
-            badge.className = 'hs-pc-followage hs-pc-nofollow'
-            badge.textContent = t('content_card_not_following', [channelLogin])
-            headerLine.appendChild(badge)
-          }
-          if (rel.followsYou) {
-            const cfBadge = document.createElement('span')
-            cfBadge.className = 'hs-pc-channel-follows'
-            cfBadge.textContent = t('content_card_followed_by', [channelLogin])
-            headerLine.appendChild(cfBadge)
-          }
-        }
-      }
+      // Channel-relationship dimension is distinct from viewer-relationship.
+      // - profile ↔ viewer    : rendered by buildCardDOM (you follow / follows you / etc)
+      // - profile ↔ channel   : rendered HERE via Twitch GQL (does profile follow channel
+      //                          shown in chat → "following nl_kripp 4y", and does channel
+      //                          follow profile → "followed by nl_kripp")
+      // Don't use rel.youFollow here — that's viewer-relationship and would mislabel.
 
       // Twitch: enhance with live GQL — only upgrade, never downgrade.
       if (channelLogin && platform === 'twitch') {
@@ -5987,7 +5964,8 @@ function updateEmoteState(hash, emoteName, state) {
           if (result.channelFollowedAt && !headerLine.querySelector('.hs-pc-channel-follows')) {
             const cfBadge = document.createElement('span')
             cfBadge.className = 'hs-pc-channel-follows'
-            cfBadge.textContent = t('content_card_followed_by', [channelLogin])
+            const age = formatAge(result.channelFollowedAt)
+            cfBadge.textContent = t('content_card_followed_by', [channelLogin]) + (age ? ` ${age}` : '')
             headerLine.appendChild(cfBadge)
           }
           const statsLine = cardEl.querySelector('.hs-pc-stats-line')

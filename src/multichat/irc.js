@@ -98,15 +98,20 @@ function parseIrcLine(raw, channel) {
     // (also used by clearchatToNotice=true from recent-messages API)
     const notice = raw.match(/NOTICE #([^ ]+) :(.+)$/)
     if (notice) {
+      const ch = channel || notice[1].toLowerCase()
+      const time = parseInt(tags['tmi-sent-ts']) || parseInt(tags['rm-received-ts']) || Date.now()
+      // Deterministic ID when server doesn't provide one — same notice from live IRC
+      // and robotty history dedupes correctly (both share tmi-sent-ts).
+      const detId = `notice-${ch}-${time}-${notice[2].slice(0, 64)}`
       return {
         type: 'notice',
         user: 'system',
         text: notice[2],
         color: '#808080',
         badges: '',
-        channel: channel || notice[1].toLowerCase(),
-        time: parseInt(tags['tmi-sent-ts']) || parseInt(tags['rm-received-ts']) || Date.now(),
-        id: tags.id || `notice-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        channel: ch,
+        time,
+        id: tags.id || detId,
         systemMsg: notice[2]
       }
     }
@@ -120,15 +125,19 @@ function parseIrcLine(raw, channel) {
       const text = target
         ? (duration ? `${target} timed out for ${duration}s` : `${target} was permanently banned`)
         : t('mc_irc_chat_cleared')
+      const ch = channel || clearchat[1].toLowerCase()
+      const time = parseInt(tags['tmi-sent-ts']) || parseInt(tags['rm-received-ts']) || Date.now()
+      // Deterministic ID — dedupes live CLEARCHAT vs robotty NOTICE replay of same event.
+      const detId = `clearchat-${ch}-${target}-${duration || 'perma'}-${time}`
       return {
         type: 'notice',
         user: 'system',
         text,
         color: '#808080',
         badges: '',
-        channel: channel || clearchat[1].toLowerCase(),
-        time: parseInt(tags['tmi-sent-ts']) || parseInt(tags['rm-received-ts']) || Date.now(),
-        id: tags.id || `clearchat-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        channel: ch,
+        time,
+        id: tags.id || detId,
         systemMsg: text
       }
     }

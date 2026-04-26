@@ -2793,7 +2793,8 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
       const url = typeof emote.url === 'string' ? emote.url.trim() : ''
       const alt = typeof emote.alt === 'string' ? emote.alt : ''
       if (!alt || !url || !(url.startsWith('http') || url.startsWith('//'))) continue
-      if (alt.includes('<') || alt.includes('&lt;')) continue
+      // Don't skip names with `<` — escapeHtml() handles them correctly and emotes
+      // like `<3`, `<3` need to render. (Alt is set via escaped attribute below.)
       const escaped = escapeHtml(alt)
       if (replacements.has(escaped)) continue
       const imgHtml = `<img src="${escapeHtml(url)}" alt="${escaped}" class="hs-mc-emote" style="height:1.2em;vertical-align:middle;" />`

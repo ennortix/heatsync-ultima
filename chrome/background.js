@@ -3578,7 +3578,7 @@ async function handleMessage(message, sender, sendResponse) {
         const cacheKey = `kick:${username}`
         const cached = userCosmeticsCache.get(cacheKey)
         if (cached && Date.now() - cached.fetchedAt < USER_COSMETICS_TTL) {
-          result[username] = { paint: cached.paint, badge: cached.badge }
+          result[username] = { paint: cached.paint, badge: cached.badge, twitchId: cached.twitchId || null }
           return
         }
         try {
@@ -3587,8 +3587,11 @@ async function handleMessage(message, sender, sendResponse) {
           const data = await resp.json()
           const ids7tv = extract7TVCosmeticIds(data)
           const cosmetic = await resolve7TVCosmeticIds(ids7tv)
-          setUserCosmetic(cacheKey, cosmetic)
-          result[username] = cosmetic
+          const twitchConn = data?.user?.connections?.find(c => c.platform === 'TWITCH')
+          const twitchId = twitchConn?.id || null
+          const full = cosmetic ? { ...cosmetic, twitchId } : { paint: null, badge: null, twitchId }
+          setUserCosmetic(cacheKey, full)
+          result[username] = full
         } catch (e) { setUserCosmetic(cacheKey, null); result[username] = null }
       }))
       sendResponse({ cosmetics: result })

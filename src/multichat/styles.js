@@ -3778,6 +3778,45 @@ function injectStyles() {
       color: #808080;
       flex-shrink: 0;
     }
+    .hs-pinned-row {
+      display: block;
+      padding: 6px 10px;
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+      text-decoration: none;
+      cursor: pointer;
+    }
+    .hs-pinned-row:hover {
+      background: rgba(255,135,0,0.07);
+    }
+    .hs-pinned-meta {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 2px;
+    }
+    .hs-pinned-channel {
+      font-size: 11px;
+      color: #ff8700;
+      font-weight: 600;
+    }
+    .hs-pinned-user {
+      font-size: 11px;
+      color: #bbb;
+    }
+    .hs-pinned-time {
+      font-size: 10px;
+      color: #555;
+      margin-left: auto;
+    }
+    .hs-pinned-body {
+      font-size: 12px;
+      color: #ddd;
+      word-break: break-word;
+      white-space: pre-wrap;
+    }
+    .hs-pinned-row:hover .hs-pinned-body {
+      color: #fff;
+    }
   `;
   document.head.appendChild(style);
 }

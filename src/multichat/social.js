@@ -1717,3 +1717,131 @@ function renderDiscoverTab() {
   msgsEl.appendChild(frag);
 }
 
+// Pinned messages tab
+let pinnedLoaded = false;
+let pinnedLoading = false;
+let pinnedMessages = [];
+
+function _pinnedSetLoading(msgsEl) {
+  msgsEl.textContent = '';
+  const el = document.createElement('div');
+  el.className = 'hs-mc-empty';
+  el.textContent = 'loading...';
+  msgsEl.appendChild(el);
+}
+
+async function fetchPinned() {
+  if (pinnedLoading) return;
+  pinnedLoading = true;
+
+  const msgsEl = document.getElementById('hs-mc-messages');
+  if (msgsEl && currentTab === 'pinned') _pinnedSetLoading(msgsEl);
+
+  try {
+    const resp = await apiFetch('/api/messages/pinned');
+    pinnedMessages = resp.ok ? (resp.messages || resp.data || []) : [];
+    pinnedLoaded = true;
+  } catch (e) {
+    pinnedMessages = [];
+    pinnedLoaded = true;
+  } finally {
+    pinnedLoading = false;
+    if (currentTab === 'pinned') renderPinnedTab();
+  }
+}
+
+function renderPinnedTab() {
+  const msgsEl = document.getElementById('hs-mc-messages');
+  if (!msgsEl) return;
+
+  // Insert refresh bar above message area once
+  if (!document.getElementById('hs-pinned-refresh-bar')) {
+    const bar = document.createElement('div');
+    bar.id = 'hs-pinned-refresh-bar';
+    bar.className = 'hs-discover-refresh-bar';
+    const btn = document.createElement('button');
+    btn.className = 'hs-discover-refresh-btn';
+    btn.textContent = 'refresh';
+    btn.addEventListener('click', () => {
+      pinnedLoaded = false;
+      fetchPinned();
+    });
+    bar.appendChild(btn);
+    msgsEl.parentNode?.insertBefore(bar, msgsEl);
+  }
+
+  const bar = document.getElementById('hs-pinned-refresh-bar');
+  if (bar) bar.style.display = currentTab === 'pinned' ? '' : 'none';
+
+  if (!pinnedLoaded && !pinnedLoading) {
+    fetchPinned();
+    return;
+  }
+  if (pinnedLoading) {
+    _pinnedSetLoading(msgsEl);
+    return;
+  }
+
+  msgsEl.textContent = '';
+  const frag = document.createDocumentFragment();
+
+  if (pinnedMessages.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'hs-mc-empty';
+    empty.textContent = 'no pinned messages';
+    frag.appendChild(empty);
+    msgsEl.appendChild(frag);
+    return;
+  }
+
+  for (const m of pinnedMessages) {
+    const id = m.base36_id || m.id || '';
+    const channel = escapeHtml(m.channel || '');
+    const user = escapeHtml(m.user || m.username || m.display_name || '');
+    const content = escapeHtml(m.content || m.text || '');
+    const ts = m.ts || m.created_at || m.timestamp || '';
+    const timeStr = ts ? escapeHtml(new Date(ts).toLocaleString()) : '';
+
+    const row = document.createElement('a');
+    row.className = 'hs-pinned-row';
+    if (id) {
+      const url = safeUrl(`https://heatsync.org/m/${encodeURIComponent(id)}`);
+      if (url) {
+        row.href = url;
+        row.target = '_blank';
+        row.rel = 'noopener noreferrer';
+      }
+    }
+
+    const meta = document.createElement('div');
+    meta.className = 'hs-pinned-meta';
+    if (channel) {
+      const channelSpan = document.createElement('span');
+      channelSpan.className = 'hs-pinned-channel';
+      channelSpan.textContent = channel;
+      meta.appendChild(channelSpan);
+    }
+    if (user) {
+      const userSpan = document.createElement('span');
+      userSpan.className = 'hs-pinned-user';
+      userSpan.textContent = user;
+      meta.appendChild(userSpan);
+    }
+    if (timeStr) {
+      const timeSpan = document.createElement('span');
+      timeSpan.className = 'hs-pinned-time';
+      timeSpan.textContent = timeStr;
+      meta.appendChild(timeSpan);
+    }
+    row.appendChild(meta);
+
+    const body = document.createElement('div');
+    body.className = 'hs-pinned-body';
+    body.textContent = content;
+    row.appendChild(body);
+
+    frag.appendChild(row);
+  }
+
+  msgsEl.appendChild(frag);
+}

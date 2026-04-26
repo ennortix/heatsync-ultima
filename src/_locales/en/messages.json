@@ -483,6 +483,9 @@
   "mc_tab_discover": {
     "message": "discover"
   },
+  "mc_tab_pinned": {
+    "message": "pinned"
+  },
   "mc_tab_live_channel": {
     "message": "live · $CHANNEL$",
     "placeholders": {

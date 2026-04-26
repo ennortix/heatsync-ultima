@@ -1752,6 +1752,14 @@ function renderDiscoverTab() {
       row.target = '_blank';
       row.rel = 'noopener noreferrer';
 
+      const heat = profile.stats?.total_heat ?? profile.heat_count ?? profile.heat ?? profile.score ?? profile.totalHeat ?? null;
+      if (heat != null) {
+        const heatSpan = document.createElement('span');
+        heatSpan.className = 'hs-discover-heat';
+        heatSpan.textContent = `${Number(heat).toLocaleString()} heat`;
+        row.appendChild(heatSpan);
+      }
+
       // Server returns camelCase (avatarUrl, displayName, twitch_profile_pic) — try them all
       const avatarUrl = safeUrl(profile.avatarUrl || profile.avatar_url || profile.avatar || profile.profile_image_url || profile.twitch_profile_pic || '');
       if (avatarUrl) {
@@ -1769,14 +1777,6 @@ function renderDiscoverTab() {
       // Prefer display name when available
       nameSpan.textContent = profile.displayName || profile.display_name || username;
       row.appendChild(nameSpan);
-
-      const heat = profile.stats?.total_heat ?? profile.heat_count ?? profile.heat ?? profile.score ?? profile.totalHeat ?? null;
-      if (heat != null) {
-        const heatSpan = document.createElement('span');
-        heatSpan.className = 'hs-discover-heat';
-        heatSpan.textContent = `${Number(heat).toLocaleString()} heat`;
-        row.appendChild(heatSpan);
-      }
 
       section.appendChild(row);
     }

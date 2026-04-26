@@ -299,12 +299,23 @@ async function loadHsAuth() {
         );
         if (wasAuthed !== hsAuthToken) {
           log('Auth state changed:', hsAuthToken ? 'logged in' : 'logged out');
-          // Reset feed/notif data on auth change
+          // Reset feed/notif/discover/pinned data on auth change so the next
+          // tab open re-fetches with new auth.
           feedLoaded = false;
           feedMessages = [];
           notifLoaded = false;
           notifMessages = [];
           unreadNotifCount = 0;
+          discoverLoaded = false;
+          discoverLoading = false;
+          discoverTags = [];
+          discoverProfiles = [];
+          pinnedLoaded = false;
+          pinnedLoading = false;
+          pinnedMessages = [];
+          feedLiked.clear();
+          feedBookmarked.clear();
+          feedReactionsCache.clear();
           updateNotifBadge();
           if (currentTab === 'feed') {
             renderMessages(currentTab);
@@ -809,16 +820,15 @@ function _applyHeatState(btn, active, count) {
 async function toggleHeat(msgId, btn, m) {
   if (!hsAuthToken) { showToast(t('mc_social_log_in_first')); return }
   // Server-side /api/messages/:id/like is one-way (no unlike route exists).
-  // Once a user has liked, no-op silently rather than misleading them with
-  // a toggle UI that the backend won't honor.
   if (feedLiked.has(msgId)) return
+  const prevHeat = m.heat || 0
   feedLiked.add(msgId)
-  m.heat = (m.heat || 0) + 1
+  m.heat = prevHeat + 1
   _applyHeatState(btn, true, m.heat)
   const resp = await apiFetch(`/api/messages/${encodeURIComponent(msgId)}/like`, { method: 'POST', auth: true })
   if (!resp.ok) {
     feedLiked.delete(msgId)
-    m.heat = (m.heat || 0) - 1
+    m.heat = prevHeat
     _applyHeatState(btn, false, m.heat)
   }
 }
@@ -833,7 +843,7 @@ async function toggleBookmark(msgId, btn) {
   const resp = await apiFetch(`/api/bookmarks/${encodeURIComponent(msgId)}`, { method, auth: true })
   if (!resp.ok) {
     if (newState) feedBookmarked.delete(msgId); else feedBookmarked.add(msgId)
-    _applyBookmarkState(btn, wasBookmarked)
+    if (btn.isConnected) _applyBookmarkState(btn, wasBookmarked)
   }
 }
 
@@ -885,9 +895,12 @@ function _renderReactionsIntoRow(engageEl, msgId, reactions) {
 
 async function handleReactionChip(msgId, reaction, chip, row, engageEl) {
   if (!hsAuthToken) { showToast(t('mc_social_log_in_first')); return }
-  const wasReacted = reaction.user_reacted
+  // Snapshot pre-mutation values so rollback can restore exactly, no off-by-one drift
+  const prevReacted = reaction.user_reacted
+  const prevCount = reaction.count
+  const wasReacted = prevReacted
   reaction.user_reacted = !wasReacted
-  reaction.count = (reaction.count || 1) + (wasReacted ? -1 : 1)
+  reaction.count = Math.max(0, (prevCount || 0) + (wasReacted ? -1 : 1))
   chip.classList.toggle('active', reaction.user_reacted)
   const countEl = chip.querySelector('.hs-fe-count')
   if (countEl) countEl.textContent = String(reaction.count)
@@ -899,8 +912,8 @@ async function handleReactionChip(msgId, reaction, chip, row, engageEl) {
   const body = wasReacted ? undefined : { emote_id: reaction.emote_id }
   const resp = await apiFetch(path, { method, auth: true, body })
   if (!resp.ok) {
-    reaction.user_reacted = wasReacted
-    reaction.count = (reaction.count || 1) + (wasReacted ? 1 : -1)
+    reaction.user_reacted = prevReacted
+    reaction.count = prevCount
     _renderReactionsIntoRow(engageEl, msgId, feedReactionsCache.get(msgId) || [])
   }
 }

@@ -9,12 +9,21 @@ const log = DEBUG ? console.log.bind(console, '[heatsync]') : () => {};
 
 log('🔥 BACKGROUND SCRIPT LOADING...');
 
-// Keepalive alarm — prevent Chrome from killing the service worker
-// Chrome minimum alarm period is 0.5 minutes (30s), which resets the inactivity timer
-browser.alarms?.create('keepalive', { periodInMinutes: 0.5 });
-browser.alarms?.create('refresh-global-emotes', { periodInMinutes: 1440 });
-browser.alarms?.create('refresh-emote-inventory', { periodInMinutes: 1 });
-browser.alarms?.create('prune-expired-mutes', { periodInMinutes: 1 });
+// Keepalive alarm — prevent Chrome from killing the service worker.
+// Chrome minimum alarm period is 0.5 minutes (30s), which resets the inactivity timer.
+// IMPORTANT: alarms.create() resets the period each call, so calling it on every SW
+// wake makes long-period alarms (refresh-global-emotes 1440min) effectively never fire.
+// Only create if not already registered.
+async function ensureAlarm(name, opts) {
+  try {
+    const existing = await browser.alarms?.get?.(name)
+    if (!existing) browser.alarms?.create?.(name, opts)
+  } catch { browser.alarms?.create?.(name, opts) }
+}
+ensureAlarm('keepalive', { periodInMinutes: 0.5 });
+ensureAlarm('refresh-global-emotes', { periodInMinutes: 1440 });
+ensureAlarm('refresh-emote-inventory', { periodInMinutes: 1 });
+ensureAlarm('prune-expired-mutes', { periodInMinutes: 1 });
 browser.alarms?.onAlarm?.addListener((alarm) => {
   if (alarm.name === 'keepalive') {
     // Just existing is enough to keep the worker alive
@@ -187,7 +196,11 @@ browser.cookies.onChanged.addListener((changeInfo) => {
     const c = changeInfo.cookie
     if (c.name !== 'auth' || !c.domain.includes('heatsync.org')) return
 
-    if (changeInfo.removed) {
+    // changeInfo.removed fires both for actual deletion AND for overwrite
+    // (when the server sets a new auth cookie that replaces the old one).
+    // Only treat as logout for true deletion — overwrite is followed by a
+    // 'set' event that re-establishes auth.
+    if (changeInfo.removed && changeInfo.cause !== 'overwrite') {
       log(' Auth cookie removed — logging out')
       unsubscribeFromPush(authToken).catch(err => log(' unsubscribeFromPush failed:', err?.message))
       authToken = null

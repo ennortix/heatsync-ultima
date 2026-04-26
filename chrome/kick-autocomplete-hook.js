@@ -263,7 +263,7 @@
       item.className = 'hs-ac-item' + (i === 0 ? ' selected' : '')
       item.dataset.idx = i
 
-      if (r.url) {
+      if (r.url && /^https:\/\//.test(r.url)) {
         const img = document.createElement('img')
         img.className = 'hs-ac-img'
         img.src = r.url
@@ -371,9 +371,12 @@
   // Replace bare word prefix and insert heatsync emote name
   function insertEmote(input, match) {
     const text = getTextBeforeCursor(input)
-    // Match the current word (non-space, non-colon sequence) at end of text
+    // Match the current word (non-space sequence) at end of text
     const wordMatch = text.match(/(\S+)$/)
     if (!wordMatch) { hideEmoteDropdown(); return }
+    // Don't fire on emoji-shortcode words — that path is owned by the emoji
+    // autocomplete handler. Prevents corrupting partial :foo: sequences.
+    if (wordMatch[0].startsWith(':')) { hideEmoteDropdown(); return }
 
     const deleteCount = wordMatch[0].length
     input.focus()

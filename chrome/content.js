@@ -5237,9 +5237,11 @@ function updateEmoteState(hash, emoteName, state) {
       subSpan.textContent = t('content_card_subs_to_you') + formatRelTime(since)
       row1.appendChild(subSpan)
     }
-    const youFollow = rel.isFollowing || rel.followsOnTwitch || rel.followsOnKick
+    // Server returns youFollow on /api/profile responses; older mock data and
+    // some platform-specific shapes use isFollowing / followsOnTwitch. Accept any.
+    const youFollow = rel.youFollow ?? rel.isFollowing ?? rel.followsOnTwitch ?? rel.followsOnKick
     if (youFollow) {
-      const since = rel.followsOnTwitchSince || rel.followsOnKickSince || rel.followedAt
+      const since = rel.youFollowSince || rel.followsOnTwitchSince || rel.followsOnKickSince || rel.followedAt
       const fgSpan = document.createElement('span')
       fgSpan.className = 'hs-pc-following'
       fgSpan.textContent = t('content_card_you_follow') + formatRelTime(since)
@@ -5956,8 +5958,11 @@ function updateEmoteState(hash, emoteName, state) {
 
       // Twitch: enhance with live GQL — only upgrade, never downgrade.
       if (channelLogin && platform === 'twitch') {
+        // Capture the cardEl ref so a fast card-close + reopen for a different
+        // user can't write user A's followage into user B's card.
+        const cardElForFollowage = cardEl
         lookupFollowage(username, channelLogin).then(result => {
-          if (!result || !cardEl || cardEl.style.display === 'none') return
+          if (!result || !cardEl || cardEl !== cardElForFollowage || cardEl.style.display === 'none') return
           const headerLine = cardEl.querySelector('.hs-pc-header-line')
           if (!headerLine) return
           if (result.followedAt) {

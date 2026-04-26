@@ -2485,7 +2485,9 @@
         img.referrerPolicy = 'no-referrer'
         img.loading = 'eager'
         img.decoding = 'async'
-        img.src = e.pickerUrl
+        // Validate URL before assigning to img.src — defense-in-depth against
+        // poisoned cache or background message
+        img.src = safeUrl(e.pickerUrl) || ''
         img.alt = e.name
         img.title = e.name
         wrap.appendChild(img)

@@ -211,6 +211,10 @@
   }
 
   function applyYtCosmeticsToMessage(node, username) {
+    // Guard: this is called after async cosmetics fetch (~1-2s); the message
+    // node may have been recycled by YouTube's chat virtualizer or the page
+    // may have torn down. Avoid mutating detached DOM.
+    if (!node || !node.isConnected) return
     const cosmetic = ytCosmeticsCache.get(username)
     if (!cosmetic) return
 
@@ -250,12 +254,17 @@
       return
     }
     if (!ytCosmeticsBatchTimer) {
+      if (signal.aborted) return
       ytCosmeticsBatchTimer = setTimeout(() => {
         ytCosmeticsBatchTimer = null
+        if (signal.aborted) return
         flushYtCosmeticsBatch()
       }, 600)
     }
   }
+  signal.addEventListener('abort', () => {
+    if (ytCosmeticsBatchTimer) { clearTimeout(ytCosmeticsBatchTimer); ytCosmeticsBatchTimer = null }
+  }, { once: true })
 
   async function flushYtCosmeticsBatch() {
     if (ytCosmeticsPending.size === 0) return

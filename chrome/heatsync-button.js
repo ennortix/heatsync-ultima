@@ -835,51 +835,58 @@
       .heatsync-sets-list {
         display: flex;
         flex-direction: column;
-        gap: 4px;
-        padding: 8px;
+        gap: 0;
+        padding: 0;
       }
       .heatsync-set-item {
         display: flex;
         align-items: center;
         justify-content: space-between;
-        gap: 8px;
-        padding: 8px 10px;
-        background: rgba(255,255,255,0.04);
-        border: 1px solid #333;
+        gap: 6px;
+        padding: 2px 8px;
+        background: transparent;
+        border: none;
+        border-bottom: 1px solid rgba(255,255,255,0.04);
+        line-height: 1.3;
       }
       .heatsync-set-item:hover {
-        background: rgba(255,255,255,0.08);
+        background: rgba(255,135,0,0.07);
       }
       .heatsync-set-info {
         display: flex;
-        flex-direction: column;
-        gap: 2px;
+        flex-direction: row;
+        gap: 6px;
+        align-items: baseline;
         min-width: 0;
         flex: 1;
       }
       .heatsync-set-name {
-        font-size: 13px;
+        font-size: 11px;
         font-weight: 600;
         color: #fff;
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
+        flex-shrink: 1;
       }
       .heatsync-set-meta {
-        font-size: 11px;
-        color: #a0a0a0;
+        font-size: 10px;
+        color: #808080;
+        flex-shrink: 0;
+        white-space: nowrap;
       }
       .heatsync-set-apply-btn {
-        background: #000;
-        color: #fff;
-        border: 1px solid #808080;
-        padding: 4px 10px;
+        background: transparent;
+        color: #ff8700;
+        border: 1px solid #ff8700;
+        padding: 0 6px;
         font: inherit;
-        font-size: 11px;
+        font-size: 10px;
         font-weight: 600;
         cursor: pointer;
         text-transform: lowercase;
         flex-shrink: 0;
+        line-height: 1.4;
       }
       .heatsync-set-apply-btn:hover {
         background: #fff;
@@ -910,57 +917,64 @@
       .heatsync-history-list {
         display: flex;
         flex-direction: column;
-        gap: 4px;
-        padding: 8px;
+        gap: 0;
+        padding: 0;
       }
       .heatsync-history-item {
         display: flex;
         align-items: center;
-        gap: 8px;
-        padding: 8px 10px;
-        background: rgba(255,255,255,0.04);
-        border: 1px solid #333;
+        gap: 6px;
+        padding: 1px 8px;
+        background: transparent;
+        border: none;
+        border-bottom: 1px solid rgba(255,255,255,0.04);
+        line-height: 1.3;
       }
       .heatsync-history-item:hover {
-        background: rgba(255,255,255,0.08);
+        background: rgba(255,135,0,0.07);
       }
       .heatsync-history-thumb {
-        width: 28px;
-        height: 28px;
+        width: 18px;
+        height: 18px;
         object-fit: contain;
         flex-shrink: 0;
         image-rendering: pixelated;
       }
       .heatsync-history-info {
         display: flex;
-        flex-direction: column;
-        gap: 2px;
+        flex-direction: row;
+        gap: 6px;
+        align-items: baseline;
         min-width: 0;
         flex: 1;
       }
       .heatsync-history-name {
-        font-size: 13px;
+        font-size: 11px;
         font-weight: 600;
         color: #fff;
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
+        flex-shrink: 1;
       }
       .heatsync-history-meta {
-        font-size: 11px;
-        color: #a0a0a0;
+        font-size: 10px;
+        color: #808080;
+        flex-shrink: 0;
+        white-space: nowrap;
       }
       .heatsync-restore-btn {
-        background: #000;
-        color: #fff;
-        border: 1px solid #808080;
-        padding: 4px 10px;
+        background: transparent;
+        color: #ff8700;
+        border: 1px solid #ff8700;
+        padding: 0 6px;
         font: inherit;
-        font-size: 11px;
+        font-size: 10px;
         font-weight: 600;
         cursor: pointer;
         text-transform: lowercase;
         flex-shrink: 0;
+        line-height: 1.4;
       }
       .heatsync-restore-btn:hover {
         background: #fff;
@@ -1445,27 +1459,29 @@
       .hs-discover-list {
         display: flex;
         flex-direction: column;
-        gap: 4px;
-        padding: 8px;
+        gap: 0;
+        padding: 0;
       }
       .hs-discover-item {
         display: flex;
         align-items: center;
-        gap: 8px;
-        padding: 6px 8px;
-        background: rgba(255,255,255,0.04);
-        border: 1px solid #333;
+        gap: 6px;
+        padding: 1px 8px;
+        background: transparent;
+        border: none;
+        border-bottom: 1px solid rgba(255,255,255,0.04);
+        line-height: 1.3;
       }
-      .hs-discover-item:hover { background: rgba(255,255,255,0.08); }
+      .hs-discover-item:hover { background: rgba(255,135,0,0.07); }
       .hs-discover-thumb {
-        width: 32px;
-        height: 32px;
+        width: 18px;
+        height: 18px;
         object-fit: contain;
         flex-shrink: 0;
       }
       .hs-discover-name {
         flex: 1;
-        font-size: 12px;
+        font-size: 11px;
         color: #fff;
         overflow: hidden;
         text-overflow: ellipsis;
@@ -1475,12 +1491,13 @@
         background: none;
         border: 1px solid #ff8700;
         color: #ff8700;
-        font-size: 11px;
+        font-size: 10px;
         font-weight: 600;
-        padding: 3px 8px;
+        padding: 0 6px;
         cursor: pointer;
         flex-shrink: 0;
         border-radius: 0;
+        line-height: 1.4;
       }
       .hs-discover-add-btn:hover { background: #ff8700; color: #000; }
       .hs-discover-add-btn.added { border-color: #00cc66; color: #00cc66; background: none; cursor: default; }

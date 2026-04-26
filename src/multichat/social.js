@@ -1610,6 +1610,20 @@ function buildNotifDiv(m) {
 
 let discoverLoaded = false;
 let discoverLoading = false;
+let discoverPollTimer = null;
+function startDiscoverPolling() {
+  if (discoverPollTimer) return;
+  // Auto-refresh while user is viewing the discover tab
+  discoverPollTimer = cleanup.setInterval(() => {
+    if (currentTab === 'discover' && !discoverLoading) {
+      discoverLoaded = false;
+      fetchDiscover();
+    } else if (currentTab !== 'discover') {
+      cleanup.clearInterval(discoverPollTimer);
+      discoverPollTimer = null;
+    }
+  }, 60000);
+}
 let discoverTags = [];
 let discoverProfiles = [];
 
@@ -1662,14 +1676,18 @@ function renderDiscoverTab() {
   const msgsEl = document.getElementById('hs-mc-messages');
   if (!msgsEl) return;
 
-  // Insert refresh bar above message area once
+  // Auto-refresh while viewing this tab — refresh button is last resort.
+  startDiscoverPolling();
+
+  // Insert tiny refresh icon as last-resort manual trigger
   if (!document.getElementById('hs-discover-refresh-bar')) {
     const bar = document.createElement('div');
     bar.id = 'hs-discover-refresh-bar';
     bar.className = 'hs-discover-refresh-bar';
     const btn = document.createElement('button');
     btn.className = 'hs-discover-refresh-btn';
-    btn.textContent = 'refresh';
+    btn.textContent = '↻';
+    btn.title = 'refresh now (auto every 60s)';
     btn.addEventListener('click', () => {
       discoverLoaded = false;
       fetchDiscover();
@@ -1778,6 +1796,19 @@ function renderDiscoverTab() {
 // Pinned messages tab
 let pinnedLoaded = false;
 let pinnedLoading = false;
+let pinnedPollTimer = null;
+function startPinnedPolling() {
+  if (pinnedPollTimer) return;
+  pinnedPollTimer = cleanup.setInterval(() => {
+    if (currentTab === 'pinned' && !pinnedLoading) {
+      pinnedLoaded = false;
+      fetchPinned();
+    } else if (currentTab !== 'pinned') {
+      cleanup.clearInterval(pinnedPollTimer);
+      pinnedPollTimer = null;
+    }
+  }, 60000);
+}
 let pinnedMessages = [];
 
 function _pinnedSetLoading(msgsEl) {
@@ -1814,14 +1845,18 @@ function renderPinnedTab() {
   const msgsEl = document.getElementById('hs-mc-messages');
   if (!msgsEl) return;
 
-  // Insert refresh bar above message area once
+  // Auto-refresh while viewing this tab
+  startPinnedPolling();
+
+  // Insert tiny refresh icon as last-resort manual trigger
   if (!document.getElementById('hs-pinned-refresh-bar')) {
     const bar = document.createElement('div');
     bar.id = 'hs-pinned-refresh-bar';
     bar.className = 'hs-discover-refresh-bar';
     const btn = document.createElement('button');
     btn.className = 'hs-discover-refresh-btn';
-    btn.textContent = 'refresh';
+    btn.textContent = '↻';
+    btn.title = 'refresh now (auto every 60s)';
     btn.addEventListener('click', () => {
       pinnedLoaded = false;
       fetchPinned();

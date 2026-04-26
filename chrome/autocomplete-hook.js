@@ -544,13 +544,25 @@
     const emotes = [];
     for (const set of inst.props.emotes) {
       if (!set?.emotes || set.id === 'HeatSyncEmotes') continue;
+      // Set ID 0 = Twitch global; numeric set IDs with an owner = sub/follower/bits
+      const ownerLogin = set.owner?.login || set.owner?.displayName || ''
+      const ownerDisplay = set.owner?.displayName || set.owner?.login || ''
+      const isGlobal = set.id === '0' || !ownerLogin
+      // Twitch sub badge tier classification: regular sub = 1000/2000/3000, follower/bits/prime vary
+      const tier = set.tier || ''
       for (const e of set.emotes) {
         if (!e.token) continue;
-        emotes.push({
+        const emote = {
           name: e.token,
           hash: e.id,
           url: `https://static-cdn.jtvnw.net/emoticons/v2/${e.id}/default/dark/1.0`
-        });
+        }
+        if (!isGlobal) {
+          emote.owner = ownerLogin
+          emote.ownerDisplay = ownerDisplay
+          if (tier) emote.tier = tier
+        }
+        emotes.push(emote)
       }
     }
 

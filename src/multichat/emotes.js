@@ -95,7 +95,8 @@
   }
 
   function emoteImgHtml([name, emote]) {
-    return `<img src="${escapeHtml(emote.url)}" alt="${escapeHtml(name)}" title="${escapeHtml(name)} (${escapeHtml(emote.source)})" class="hs-mc-picker-emote hs-emote-${escapeHtml(emote.source)}" data-name="${escapeHtml(name)}" data-source="${escapeHtml(emote.source)}" loading="lazy">`
+    const state = emote.state || 'global'
+    return `<img src="${escapeHtml(emote.url)}" alt="${escapeHtml(name)}" title="${escapeHtml(name)} (${escapeHtml(emote.source)})" class="hs-mc-picker-emote hs-emote-${escapeHtml(emote.source)}" data-name="${escapeHtml(name)}" data-source="${escapeHtml(emote.source)}" data-state="${escapeHtml(state)}" loading="lazy">`
   }
 
   /** Append remaining emotes in rAF chunks so the picker opens instantly */
@@ -783,7 +784,8 @@
         emotes.forEach(e => {
           if (e.name && e.url) {
             const source = e.source || detectEmoteSource(e.url, '7tv');
-            const state = getEmoteState(e.name, source);
+            // Channel cache → state 'channel' (unless user owns it in their heatsync inventory)
+            const state = inventoryEmotes.has(e.name) ? 'owned' : 'channel';
             chCache.set(e.name, { url: e.url, source, state, zeroWidth: !!e.zeroWidth });
             if (e.hash) registerHash(e.name, e.hash);
           }
@@ -800,10 +802,22 @@
       }
       log('Channel emote caches:', Object.entries(channelEmoteCaches).map(([c, m]) => `${c}: ${m.size}`).join(', '));
 
-      // Native Twitch emotes (sub emotes) — available in ALL channels
+      // Native Twitch emotes — sub emotes carry e.owner (broadcaster login),
+      // true Twitch globals do not. Distinguish so tooltips show "(broadcaster) sub" vs "global (Twitch)".
       (stored.native_twitch_emotes || []).forEach(e => {
         if (e.name && e.url && !emoteCache.has(e.name)) {
-          emoteCache.set(e.name, { url: e.url, source: 'twitch', state: 'global' });
+          const isSub = !!e.owner
+          const entry = {
+            url: e.url,
+            source: 'twitch',
+            state: isSub ? 'sub' : 'global'
+          }
+          if (isSub) {
+            entry.owner = e.owner
+            entry.ownerDisplay = e.ownerDisplay || e.owner
+            if (e.tier) entry.tier = e.tier
+          }
+          emoteCache.set(e.name, entry);
           while (emoteCache.size > 2000) { emoteCache.delete(emoteCache.keys().next().value) }
           if (e.hash) registerHash(e.name, e.hash);
         }
@@ -934,7 +948,8 @@
         const imgSrc = escapeHtml(getChatResUrl(emote.url)); // Upgrade to 2x/4x based on emote size setting
         const safeHash = emote.hash ? escapeHtml(emote.hash) : '';
         const displayName = escapeHtml(word)
-        const imgHtml = `<span class="hs-mc-emote-wrapper hs-state-${state}" data-emote-name="${displayName}" data-emote-url="${imgSrc}" data-state="${state}" data-source="${source}"${safeHash ? ` data-emote-hash="${safeHash}"` : ''}><img src="${imgSrc}" alt="${displayName}" title="${displayName}" class="hs-mc-emote hs-emote-${state}" data-emote-name="${displayName}" data-state="${state}" data-source="${source}"></span>`;
+        const ownerAttr = emote.ownerDisplay ? ` data-owner="${escapeHtml(emote.ownerDisplay)}"` : ''
+        const imgHtml = `<span class="hs-mc-emote-wrapper hs-state-${state}" data-emote-name="${displayName}" data-emote-url="${imgSrc}" data-state="${state}" data-source="${source}"${ownerAttr}${safeHash ? ` data-emote-hash="${safeHash}"` : ''}><img src="${imgSrc}" alt="${displayName}" title="${displayName}" class="hs-mc-emote hs-emote-${state}" data-emote-name="${displayName}" data-state="${state}" data-source="${source}"${ownerAttr}></span>`;
 
         if (isOverlayEmote) {
           // Overlay emote - stack on previous base (discard whitespace between)

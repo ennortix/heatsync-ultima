@@ -2490,19 +2490,21 @@
       div.className = `hs-mc-stream-event ${m.eventClass || ''}`
       const tsVal = timestampsEnabled && m.time ? formatTimeFromTs(m.time) : ''
       const tsSpan = tsVal ? `<span class="hs-mc-ts" data-ts="${m.time}">${tsVal}</span>` : ''
-      const ch = m.channel || ''
+      // For redeems, the actor is the redeemer (m.actor). For other events the channel is the actor.
+      const ch = m.actor || m.channel || ''
+      const chLc = ch.toLowerCase()
       // Look up color: event data → color map → profile cache → IRC buffers → async fetch
       let userColor = m.color || ''
-      if (!userColor) userColor = streamColorMap.get(ch) || ''
+      if (!userColor) userColor = streamColorMap.get(chLc) || ''
       if (!userColor) {
-        const cached = _profileCache.get(ch)
+        const cached = _profileCache.get(chLc)
         if (cached?.profile?.twitch_color) userColor = cached.profile.twitch_color
       }
-      if (!userColor && ch && irc?.channels) {
+      if (!userColor && chLc && irc?.channels) {
         for (const [, buf] of irc.channels) {
           const msgs = buf.getAll()
           for (let i = msgs.length - 1; i >= 0; i--) {
-            if (msgs[i].user?.toLowerCase() === ch) {
+            if (msgs[i].user?.toLowerCase() === chLc) {
               userColor = msgs[i].color || ''
               break
             }
@@ -2518,8 +2520,8 @@
       const actionHtml = textAfterChannel.replace(/(switched to |now playing |went live \u2014 )(.+)$/, '$1<span class="hs-evt-game">$2</span>')
       div.innerHTML = `${tsSpan}${userLink} ${actionHtml}`
       // Async fetch color if not cached
-      if (!userColor && ch) {
-        apiFetch(`/api/profile/${encodeURIComponent(ch)}`).then(resp => {
+      if (!userColor && chLc) {
+        apiFetch(`/api/profile/${encodeURIComponent(chLc)}`).then(resp => {
           if (resp?.ok && resp.data?.profile) {
             const profile = resp.data.profile
             const color = profile.twitch_color
@@ -2527,7 +2529,7 @@
               const el = div.querySelector('.hs-evt-user')
               if (el) el.style.color = sanitizeColor(color)
             }
-            _profileCache.set(ch, { profile, ts: Date.now() })
+            _profileCache.set(chLc, { profile, ts: Date.now() })
           }
         })
       }
@@ -2609,10 +2611,41 @@
     const isSuperChat = m.platform === 'youtube' && (m.msgType === 'superchat' || m.msgType === 'supersticker')
     const isMembership = m.platform === 'youtube' && m.msgType === 'membership'
     const isKicksEvent = m.kicksEvent === true
+    // Map noticeType / msgId to a semantic CSS modifier so each event class
+    // (unban, ban, mod-add, mode-change, sub, raid, etc.) can have its own color/icon
+    const noticeKind = (() => {
+      if (m.type !== 'notice' && m.type !== 'usernotice') return ''
+      const id = m.noticeType || m.msgId || ''
+      if (!id) return ''
+      // group related msg-ids into a single semantic class
+      if (id === 'unban_success') return 'hs-mc-notice-unban'
+      if (id === 'untimeout_success') return 'hs-mc-notice-untimeout'
+      if (id === 'ban_success') return 'hs-mc-notice-ban'
+      if (id === 'timeout_success') return 'hs-mc-notice-timeout'
+      if (id === 'mod_success') return 'hs-mc-notice-mod-add'
+      if (id === 'vip_success') return 'hs-mc-notice-vip-add'
+      if (id === 'unmod_success') return 'hs-mc-notice-mod-remove'
+      if (id === 'unvip_success') return 'hs-mc-notice-vip-remove'
+      if (id === 'delete_message_success') return 'hs-mc-notice-delete'
+      if (id === 'mode_change' || id === 'slow_on' || id === 'slow_off' ||
+          id === 'subs_on' || id === 'subs_off' || id === 'emote_only_on' || id === 'emote_only_off' ||
+          id === 'followers_on' || id === 'followers_on_zero' || id === 'followers_off' ||
+          id === 'r9k_on' || id === 'r9k_off') return 'hs-mc-notice-mode'
+      if (id === 'sub' || id === 'resub') return 'hs-mc-notice-sub'
+      if (id === 'subgift' || id === 'anonsubgift' || id === 'submysterygift' ||
+          id === 'giftpaidupgrade' || id === 'anongiftpaidupgrade') return 'hs-mc-notice-gift'
+      if (id === 'raid' || id === 'unraid') return 'hs-mc-notice-raid'
+      if (id === 'announcement') return 'hs-mc-notice-announce'
+      if (id === 'bitsbadgetier') return 'hs-mc-notice-bits'
+      if (id === 'viewermilestone') return 'hs-mc-notice-milestone'
+      if (id === 'msg_banned' || id === 'msg_timedout' || id === 'no_permission' ||
+          id.startsWith('bad_') || id.startsWith('usage_')) return 'hs-mc-notice-error'
+      return ''
+    })()
     const cls = tabId === 'mentions' ? 'hs-mc-msg mention' :
 isKicksEvent ? 'hs-mc-msg hs-mc-system hs-mc-kicks' :
 isMembership ? 'hs-mc-msg hs-mc-system' :
-m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
+m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${noticeKind}`.trim() :
                 m.isHighlighted ? 'hs-mc-msg hs-mc-highlighted' :
                 m.redeemed ? 'hs-mc-msg hs-mc-redeemed' :
                 isSuperChat ? 'hs-mc-msg hs-mc-superchat' :
@@ -2717,6 +2750,15 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
       if (markChatterSeen(m.channel, m.user)) {
         div.classList.add('hs-first-msg')
       }
+    }
+    // Twitch first-msg flag — brand new user to the channel (not just this session)
+    if (m.isFirstMsg) {
+      div.classList.add('hs-mc-first-msg')
+    }
+    // Cleared by mod (timeout/ban/delete) — Twitch-native dim + strikethrough on offending content
+    if (m.cleared) {
+      div.classList.add('hs-mc-msg-cleared')
+      if (m.clearedReason) div.title = m.clearedReason
     }
     // Keyword highlight — message text matches a user-defined term
     if (keywordHighlightsRegex && m.text && keywordHighlightsRegex.test(m.text)) {
@@ -4696,6 +4738,24 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
 
     // Handle incoming IRC messages
     irc.on('message', (msg) => {
+      // CLEARCHAT/CLEARMSG → live-dim already-rendered DOM rows from the offender.
+      // Buffer entries were already flagged with `cleared=true` inside the IRC client,
+      // so future re-renders pick it up via the renderer; this just patches the visible DOM.
+      if (msg.type === 'notice' && (msg.noticeType === 'ban_success' || msg.noticeType === 'timeout_success') && msg.targetUser) {
+        const targetLc = msg.targetUser.toLowerCase()
+        const rows = msgsEl?.querySelectorAll(`.hs-mc-msg[data-msg-user]`) || []
+        for (const row of rows) {
+          if ((row.dataset.msgUser || '').toLowerCase() === targetLc) {
+            row.classList.add('hs-mc-msg-cleared')
+            row.title = msg.banDuration ? `timed out (${msg.banDuration}s)` : 'banned'
+          }
+        }
+      }
+      if (msg.type === 'notice' && msg.noticeType === 'delete_message_success' && msg.targetMsgId) {
+        const safe = (CSS.escape ? CSS.escape(msg.targetMsgId) : msg.targetMsgId.replace(/"/g, '\\"'))
+        const row = msgsEl?.querySelector(`.hs-mc-msg[data-msg-id="${safe}"]`)
+        if (row) { row.classList.add('hs-mc-msg-cleared'); row.title = 'deleted' }
+      }
       // Track sub tenure from IRC badge-info
       if (msg.subMonths && msg.channel) {
         trackSubTenure(msg.channel, msg.user, msg.subMonths)
@@ -4816,7 +4876,7 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
           try { renderStreamSummary(channel) } catch (e) {}
         } else if (msg.eventType === 'stream:redeem') {
           if (!hermesToggles?.redeem) return;
-          text = `[${channel}] \u25C6 ${escapeHtml(msg.user)} redeemed "${escapeHtml(msg.title)}"`;
+          text = `\u25C6 redeemed "${escapeHtml(msg.title)}"`;
           if (msg.cost) text += ` (${msg.cost})`;
           eventClass = 'event-redeem';
         } else if (msg.eventType === 'stream:raid') {
@@ -4849,7 +4909,8 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
 
         log('[Stream]', channel, text);
         notifyStreamEvent(channel, msg.eventType, msg.game);
-        const evt = { type: 'stream-event', eventClass, text, channel, time: Date.now() };
+        const actor = msg.eventType === 'stream:redeem' ? msg.user : null;
+        const evt = { type: 'stream-event', eventClass, text, channel, actor, time: Date.now() };
 
         // Push into the live channel buffer (dedup by text to prevent doubles on reload)
         const liveChannel = getLiveChannel();
@@ -4952,7 +5013,7 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
       } else if (eventType === 'redeem') {
         toggleKey = 'redeem'
         eventClass = 'event-redeem'
-        text = `[${escapeHtml(channel)}] \u25C6 ${escapeHtml(data.user)} redeemed "${escapeHtml(data.title)}"`
+        text = `\u25C6 redeemed "${escapeHtml(data.title)}"`
         if (data.rewardId) {
           redeemTitleMap.set(data.rewardId, { title: data.title, cost: data.cost })
           if (redeemTitleMap.size > 200) redeemTitleMap.delete(redeemTitleMap.keys().next().value)
@@ -4967,7 +5028,8 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
 
       if (!hermesToggles[toggleKey]) return
 
-      const evt = { type: 'stream-event', eventClass, text, channel, time: Date.now() }
+      const actor = eventType === 'redeem' ? data.user : null
+      const evt = { type: 'stream-event', eventClass, text, channel, actor, time: Date.now() }
 
       // Push into relevant buffers — only the channel the event belongs to
       const liveChannel = getLiveChannel()

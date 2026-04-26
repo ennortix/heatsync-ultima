@@ -80,6 +80,15 @@ function parseIrcLine(raw, channel) {
     const usernotice = raw.match(/USERNOTICE #([^ ]+)(?: :(.+))?$/)
     if (usernotice) {
       const displayName = tags['display-name'] || 'system'
+      const subPlan = tags['msg-param-sub-plan'] || ''
+      const tier = subPlan === '2000' ? '2' : subPlan === '3000' ? '3' : (subPlan === 'Prime' ? 'prime' : (subPlan ? '1' : ''))
+      const months = parseInt(tags['msg-param-cumulative-months']) || parseInt(tags['msg-param-months']) || 0
+      const giftCount = parseInt(tags['msg-param-mass-gift-count']) || 0
+      const recipient = tags['msg-param-recipient-display-name'] ? decodeURIComponent(tags['msg-param-recipient-display-name'].replace(/\\s/g, ' ')) : ''
+      const raidViewers = parseInt(tags['msg-param-viewerCount']) || 0
+      const raidFrom = tags['msg-param-displayName'] ? decodeURIComponent(tags['msg-param-displayName'].replace(/\\s/g, ' ')) : ''
+      const announceColor = tags['msg-param-color'] || ''
+      const bitsTier = parseInt(tags['msg-param-threshold']) || 0
       return {
         user: displayName,
         text: usernotice[2] || '',
@@ -90,6 +99,14 @@ function parseIrcLine(raw, channel) {
         time: parseInt(tags['tmi-sent-ts']) || parseInt(tags['rm-received-ts']) || Date.now(),
         type: 'usernotice',
         msgId: tags['msg-id'] || '',
+        subTier: tier,
+        subMonths: months,
+        giftCount,
+        recipient,
+        raidViewers,
+        raidFrom,
+        announceColor,
+        bitsTier,
         id: tags.id || ''
       }
     }
@@ -100,11 +117,13 @@ function parseIrcLine(raw, channel) {
     if (notice) {
       const ch = channel || notice[1].toLowerCase()
       const time = parseInt(tags['tmi-sent-ts']) || parseInt(tags['rm-received-ts']) || Date.now()
+      const noticeType = tags['msg-id'] || ''
       // Deterministic ID when server doesn't provide one — same notice from live IRC
       // and robotty history dedupes correctly (both share tmi-sent-ts).
       const detId = `notice-${ch}-${time}-${notice[2].slice(0, 64)}`
       return {
         type: 'notice',
+        noticeType,
         user: 'system',
         text: notice[2],
         color: '#808080',
@@ -113,6 +132,23 @@ function parseIrcLine(raw, channel) {
         time,
         id: tags.id || detId,
         systemMsg: notice[2]
+      }
+    }
+
+    // ROOMSTATE: @tags :tmi.twitch.tv ROOMSTATE #channel
+    // (slow/subs-only/emote-only/followers-only/r9k mode toggles + initial state on JOIN)
+    const roomstate = raw.match(/ROOMSTATE #([^ ]+)/)
+    if (roomstate) {
+      const ch = channel || roomstate[1].toLowerCase()
+      return {
+        type: 'roomstate',
+        channel: ch,
+        time: Date.now(),
+        slow: tags['slow'] != null ? parseInt(tags['slow']) : null,
+        subsOnly: tags['subs-only'] != null ? tags['subs-only'] === '1' : null,
+        emoteOnly: tags['emote-only'] != null ? tags['emote-only'] === '1' : null,
+        followersOnly: tags['followers-only'] != null ? parseInt(tags['followers-only']) : null,
+        r9k: tags['r9k'] != null ? tags['r9k'] === '1' : null
       }
     }
 
@@ -131,6 +167,7 @@ function parseIrcLine(raw, channel) {
       const detId = `clearchat-${ch}-${target}-${duration || 'perma'}-${time}`
       return {
         type: 'notice',
+        noticeType: duration ? 'timeout_success' : 'ban_success',
         user: 'system',
         text,
         color: '#808080',
@@ -138,7 +175,10 @@ function parseIrcLine(raw, channel) {
         channel: ch,
         time,
         id: tags.id || detId,
-        systemMsg: text
+        systemMsg: text,
+        targetUser: target,
+        targetUserId: tags['target-user-id'] || '',
+        banDuration: duration ? parseInt(duration) : 0
       }
     }
 
@@ -149,6 +189,7 @@ function parseIrcLine(raw, channel) {
       const targetMsgId = tags['target-msg-id']
       return {
         type: 'notice',
+        noticeType: 'delete_message_success',
         user: 'system',
         text: t('mc_irc_msg_deleted', [tags.login || 'unknown']),
         color: '#808080',
@@ -156,7 +197,9 @@ function parseIrcLine(raw, channel) {
         channel: channel || clearmsg[1].toLowerCase(),
         time: parseInt(tags['tmi-sent-ts']) || parseInt(tags['rm-received-ts']) || Date.now(),
         id: targetMsgId || `clearmsg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-        systemMsg: t('mc_irc_msg_deleted', [tags.login || 'unknown'])
+        systemMsg: t('mc_irc_msg_deleted', [tags.login || 'unknown']),
+        targetUser: tags.login || '',
+        targetMsgId: targetMsgId || ''
       }
     }
 
@@ -397,10 +440,89 @@ class IRC {
           }
         }
         fetchChannelBadges(ch);
+        // CLEARCHAT (ban/timeout) — flag the target's recent messages as cleared
+        // so they render dimmed/struck-through (Twitch native behavior).
+        if (msg.noticeType === 'ban_success' || msg.noticeType === 'timeout_success') {
+          const targetLc = (msg.targetUser || '').toLowerCase()
+          if (targetLc && this.channels.has(ch)) {
+            const buffer = this.channels.get(ch)
+            const all = buffer.getAll()
+            for (const m of all) {
+              if (m.user && m.user.toLowerCase() === targetLc && !m.cleared) {
+                m.cleared = true
+                m.clearedReason = msg.banDuration ? `timed out (${msg.banDuration}s)` : 'banned'
+              }
+            }
+          }
+        }
+        // CLEARMSG — flag the single targeted message
+        if (msg.noticeType === 'delete_message_success' && msg.targetMsgId) {
+          const id = msg.targetMsgId
+          if (this.channels.has(ch)) {
+            const buffer = this.channels.get(ch)
+            const all = buffer.getAll()
+            for (const m of all) {
+              if (m.id === id) { m.cleared = true; m.clearedReason = 'deleted'; break }
+            }
+          }
+        }
         if (this.channels.has(ch)) {
           this.channels.get(ch).push(msg);
           this.persistBuffer(ch);
           this.emit('message', msg);
+        }
+      } else if (msg && msg.type === 'roomstate') {
+        // Diff against last-seen state to only emit on actual changes (skip the
+        // initial JOIN dump which carries the full state).
+        const ch = msg.channel
+        if (!this._roomstates) this._roomstates = new Map()
+        const prev = this._roomstates.get(ch) || {}
+        const changes = []
+        // null = field not present in this packet (only changed fields are sent)
+        if (msg.slow != null && msg.slow !== prev.slow) {
+          changes.push(msg.slow > 0 ? `slow mode on (${msg.slow}s)` : 'slow mode off')
+        }
+        if (msg.subsOnly != null && msg.subsOnly !== prev.subsOnly) {
+          changes.push(msg.subsOnly ? 'sub-only mode on' : 'sub-only mode off')
+        }
+        if (msg.emoteOnly != null && msg.emoteOnly !== prev.emoteOnly) {
+          changes.push(msg.emoteOnly ? 'emote-only mode on' : 'emote-only mode off')
+        }
+        if (msg.followersOnly != null && msg.followersOnly !== prev.followersOnly) {
+          if (msg.followersOnly === -1) changes.push('follower-only mode off')
+          else if (msg.followersOnly === 0) changes.push('follower-only mode on')
+          else changes.push(`follower-only mode on (${msg.followersOnly}m)`)
+        }
+        if (msg.r9k != null && msg.r9k !== prev.r9k) {
+          changes.push(msg.r9k ? 'unique-chat mode on' : 'unique-chat mode off')
+        }
+        // Update cached state with whatever fields were present
+        const newState = { ...prev }
+        for (const k of ['slow', 'subsOnly', 'emoteOnly', 'followersOnly', 'r9k']) {
+          if (msg[k] != null) newState[k] = msg[k]
+        }
+        this._roomstates.set(ch, newState)
+        // Only emit if there were diffs AND we already had a baseline (skip first JOIN dump)
+        if (changes.length && Object.keys(prev).length) {
+          for (const text of changes) {
+            const evt = {
+              type: 'notice',
+              noticeType: 'mode_change',
+              user: 'system',
+              text,
+              color: '#808080',
+              badges: '',
+              channel: ch,
+              time: Date.now(),
+              id: `mode-${ch}-${Date.now()}-${text.slice(0, 16)}`,
+              systemMsg: text
+            }
+            if (this.channels.has(ch)) {
+              this.channels.get(ch).push(evt)
+              this.persistBuffer(ch)
+              this.emit('message', evt)
+            }
+          }
         }
       }
     }
@@ -436,7 +558,17 @@ class IRC {
           badges: m.badges, channel: m.channel, time: m.time, id: m.id,
           isAction: m.isAction || undefined, replyTo: m.replyTo || undefined,
           subMonths: m.subMonths || undefined, twitchEmotes: m.twitchEmotes || undefined,
-          type: m.type || undefined, eventClass: m.eventClass || undefined
+          type: m.type || undefined, eventClass: m.eventClass || undefined,
+          noticeType: m.noticeType || undefined, msgId: m.msgId || undefined,
+          subTier: m.subTier || undefined, giftCount: m.giftCount || undefined,
+          recipient: m.recipient || undefined, raidViewers: m.raidViewers || undefined,
+          raidFrom: m.raidFrom || undefined, systemMsg: m.systemMsg || undefined,
+          isFirstMsg: m.isFirstMsg || undefined, isHighlighted: m.isHighlighted || undefined,
+          redeemed: m.redeemed || undefined, rewardId: m.rewardId || undefined,
+          actor: m.actor || undefined,
+          cleared: m.cleared || undefined, clearedReason: m.clearedReason || undefined,
+          targetUser: m.targetUser || undefined, targetMsgId: m.targetMsgId || undefined,
+          banDuration: m.banDuration || undefined
         }))
         const p = chrome.storage.local.set({ [`hs_irc_${ch}`]: { msgs, ts: Date.now() } })
         if (p && typeof p.catch === 'function') p.catch(() => {})

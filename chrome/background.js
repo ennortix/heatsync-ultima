@@ -3639,9 +3639,15 @@ async function handleMessage(message, sender, sendResponse) {
       sendResponse({ ok: false, error: 'invalid path' });
       return true;
     }
-    (async () => {
+    const ALLOWED_METHODS = new Set(['GET','POST','PUT','PATCH','DELETE'])
+    const reqMethod = String(message.method || 'GET').toUpperCase()
+    if (!ALLOWED_METHODS.has(reqMethod)) {
+      sendResponse({ ok: false, error: 'invalid method' })
+      return true
+    }
+    ;(async () => {
       try {
-        const opts = { method: message.method || 'GET', headers: {} }
+        const opts = { method: reqMethod, headers: {} }
         if (message.auth) {
           const token = authToken || await getAuthCookie()
           if (token) opts.headers['Authorization'] = `Bearer ${token}`

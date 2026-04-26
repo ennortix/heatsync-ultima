@@ -4357,6 +4357,14 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
         mcFfzBadgeMap = new Map(Object.entries(msg.ffzBadges || {}))
         renderMessages(currentTab)
       }
+      // 7TV EventAPI pushed user.update / entitlement.* — drop our local
+      // cosmetic cache and re-queue lookup so badges/paint show up fresh.
+      if (msg.type === 'cosmetics_invalidated' && msg.twitchId) {
+        mcUserCosmetics.delete(String(msg.twitchId))
+        // Re-queue lookup; updateCosmeticsInPlace fires on response and adds
+        // the badge to all existing messages with this uid.
+        queueMcCosmeticsLookup(String(msg.twitchId))
+      }
       // Listen for emote updates from background
       if (msg.type === 'global_emotes_update' || msg.type === 'channel_emotes_update') {
         log('received', msg.type, msg.channelOwner || '');

@@ -672,6 +672,17 @@ style.textContent = `
     white-space: nowrap !important;
   }
 
+  .hs-pc-streak {
+    background: #000 !important;
+    color: #ff8700 !important;
+    border: 1px solid #ff8700 !important;
+    padding: 2px 6px !important;
+    border-radius: 0 !important;
+    font-size: 11px !important;
+    font-weight: 700 !important;
+    white-space: nowrap !important;
+  }
+
   .hs-pc-actions {
     margin-top: 4px !important;
     gap: 6px !important;
@@ -5246,7 +5257,8 @@ function updateEmoteState(hash, emoteName, state) {
     }
 
     // ROW 2: Stats
-    const hasStats = heat > 0 || op > 0 || re > 0 || followers > 0
+    const streak = profile.streak || profile.daily_streak || stats.streak || 0
+    const hasStats = heat > 0 || op > 0 || re > 0 || followers > 0 || streak > 0
     if (hasStats) {
       const row2 = document.createElement('div')
       row2.className = 'hs-pc-stats-line'
@@ -5285,6 +5297,12 @@ function updateEmoteState(hash, emoteName, state) {
         fSpan.className = 'hs-pc-followers'
         fSpan.textContent = t('content_card_followers', [String(formatNum(followers))])
         row2.appendChild(fSpan)
+      }
+      if (streak > 0) {
+        const strkSpan = document.createElement('span')
+        strkSpan.className = 'hs-pc-streak'
+        strkSpan.textContent = `🔥${streak} day streak`
+        row2.appendChild(strkSpan)
       }
       info.appendChild(row2)
     }
@@ -5616,6 +5634,43 @@ function updateEmoteState(hash, emoteName, state) {
       popout.textContent = 'twitch profile'
       popout.href = `https://www.twitch.tv/${encodeURIComponent(username)}`
       footer.appendChild(popout)
+    }
+
+    if (platform === 'twitch' && profile && profile.twitch_is_live) {
+      const clipBtn = document.createElement('button')
+      clipBtn.className = 'hs-pc-btn subtle'
+      clipBtn.textContent = 'clip'
+      let clipEditUrl = null
+      clipBtn.addEventListener('click', async () => {
+        if (clipEditUrl) {
+          window.open(safeUrl(clipEditUrl), '_blank', 'noopener')
+          return
+        }
+        if (clipBtn.disabled) return
+        clipBtn.disabled = true
+        clipBtn.textContent = 'clipping…'
+        const channelLogin = getChannelLogin()
+        try {
+          const result = await HS.apiFetch('/api/twitch/clip', {
+            method: 'POST',
+            auth: true,
+            body: { channel: channelLogin || escapeHtml(username) },
+          })
+          clipEditUrl = result && result.editUrl ? result.editUrl : null
+          clipBtn.textContent = '✓ clip created'
+          clipBtn.disabled = false
+        } catch (_e) {
+          clipBtn.textContent = 'clip'
+          clipBtn.disabled = false
+          clipBtn.style.borderColor = '#ff4040'
+          clipBtn.style.color = '#ff4040'
+          cleanup.setTimeout(() => {
+            clipBtn.style.borderColor = ''
+            clipBtn.style.color = ''
+          }, 1500)
+        }
+      })
+      footer.appendChild(clipBtn)
     }
 
     const copyBtn = document.createElement('button')

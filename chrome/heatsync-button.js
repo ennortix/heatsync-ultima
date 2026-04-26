@@ -94,24 +94,32 @@
   }
 
   // Error and loading state tracking
-  // Keys MUST match currentTab values ('channel', 'global', 'mine') so renderEmoteGrid()
+  // Keys MUST match currentTab values ('channel', 'global', 'mine', 'sets') so renderEmoteGrid()
   // can read state via loadErrors[currentTab].
   let loadErrors = {
     channel: null,
     global: null,
-    mine: null
+    mine: null,
+    sets: null
   };
   let isLoading = {
     channel: false,
     global: false,
-    mine: false
+    mine: false,
+    sets: false
   };
   let isOffline = false;
   let usingCachedData = {
     channel: false,
     global: false,
-    mine: false
+    mine: false,
+    sets: false
   };
+
+  // Saved emote sets — list of { id, name, emote_count, starred, source_type, source_username }
+  // Loaded lazy on first 'sets' tab open via api_fetch through background.
+  let savedSetsCache = []
+  let setsLoaded = false
 
   // IndexedDB cache for emote metadata
   const DB_NAME = 'heatsync-emote-cache';
@@ -792,8 +800,83 @@
       .heatsync-empty {
         padding: 40px 20px;
         text-align: center;
-        color: #808080;
+        color: #a0a0a0;
         font-size: 13px;
+      }
+
+      /* Saved emote sets list */
+      .heatsync-sets-list {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        padding: 8px;
+      }
+      .heatsync-set-item {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        padding: 8px 10px;
+        background: rgba(255,255,255,0.04);
+        border: 1px solid #333;
+      }
+      .heatsync-set-item:hover {
+        background: rgba(255,255,255,0.08);
+      }
+      .heatsync-set-info {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        min-width: 0;
+        flex: 1;
+      }
+      .heatsync-set-name {
+        font-size: 13px;
+        font-weight: 600;
+        color: #fff;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .heatsync-set-meta {
+        font-size: 11px;
+        color: #a0a0a0;
+      }
+      .heatsync-set-apply-btn {
+        background: #000;
+        color: #fff;
+        border: 1px solid #808080;
+        padding: 4px 10px;
+        font: inherit;
+        font-size: 11px;
+        font-weight: 600;
+        cursor: pointer;
+        text-transform: lowercase;
+        flex-shrink: 0;
+      }
+      .heatsync-set-apply-btn:hover {
+        background: #fff;
+        color: #000;
+        border-color: #fff;
+      }
+      .heatsync-set-apply-btn.confirming {
+        background: #ff8700;
+        color: #000;
+        border-color: #ff8700;
+      }
+      .heatsync-set-apply-btn.applying {
+        opacity: 0.6;
+        cursor: wait;
+      }
+      .heatsync-set-apply-btn.applied {
+        background: #00cc66;
+        color: #000;
+        border-color: #00cc66;
+      }
+      .heatsync-set-apply-btn.failed {
+        background: #ff4444;
+        color: #fff;
+        border-color: #ff4444;
       }
 
       .heatsync-loading {
@@ -1612,6 +1695,9 @@
           <button class="heatsync-tab" data-tab="mine">
             ${t('btn_tab_mine')}<span class="heatsync-tab-count" id="count-mine">...</span>
           </button>
+          <button class="heatsync-tab" data-tab="sets">
+            ${t('btn_tab_sets') || 'sets'}<span class="heatsync-tab-count" id="count-sets">...</span>
+          </button>
           <button class="heatsync-tab" data-tab="emoji">
             ${t('btn_tab_emoji')}<span class="heatsync-tab-count" id="count-emoji">...</span>
           </button>
@@ -1736,6 +1822,10 @@
         await loadGlobalEmotes();
       } else if (tab === 'mine' || tab === 'inventory') {
         await loadInventoryEmotes();
+      } else if (tab === 'sets') {
+        setsLoaded = false
+        loadErrors.sets = null
+        await loadSets();
       }
       renderEmoteGrid();
     }, { signal: btnSignal });
@@ -1857,6 +1947,13 @@
       _virtualRecentCount = 0
       grid.innerHTML = `<div class="heatsync-empty">${t('common_loading')}</div>`;
       return;
+    }
+
+    if (currentTab === 'sets') {
+      _virtualPickerEmotes = []
+      _virtualRecentCount = 0
+      renderSetsList(grid, isLoggedIn)
+      return
     }
 
     let emotes = [];
@@ -2195,6 +2292,176 @@
       })
     }
     grid.addEventListener('scroll', _virtualScrollHandler, { passive: true });
+  }
+
+  // ===== Saved Sets =====
+  // Render the user's saved emote sets as a list with apply buttons.
+  // Uses safe DOM construction (no innerHTML with user content).
+  function renderSetsList(grid, isLoggedIn) {
+    while (grid.firstChild) grid.removeChild(grid.firstChild)
+
+    if (!isLoggedIn) {
+      const msg = document.createElement('div')
+      msg.className = 'heatsync-login-msg'
+      msg.textContent = t('btn_login_save_emotes')
+      grid.appendChild(msg)
+      return
+    }
+
+    if (!setsLoaded && !isLoading.sets) {
+      isLoading.sets = true
+      const loadingEl = document.createElement('div')
+      loadingEl.className = 'heatsync-empty'
+      loadingEl.textContent = t('common_loading')
+      grid.appendChild(loadingEl)
+      loadSets().finally(() => {
+        isLoading.sets = false
+        if (currentTab === 'sets') renderEmoteGrid()
+      })
+      return
+    }
+
+    if (loadErrors.sets) {
+      const err = document.createElement('div')
+      err.className = 'heatsync-empty'
+      err.textContent = loadErrors.sets
+      grid.appendChild(err)
+      return
+    }
+
+    if (!savedSetsCache.length) {
+      const empty = document.createElement('div')
+      empty.className = 'heatsync-empty'
+      empty.textContent = 'no saved sets — create one on heatsync.org'
+      grid.appendChild(empty)
+      return
+    }
+
+    // Delegate click once on the grid for the apply-button confirm flow
+    if (!grid.dataset.hsSetsDelegated) {
+      grid.dataset.hsSetsDelegated = '1'
+      grid.addEventListener('click', handleSetApplyClick)
+    }
+
+    const list = document.createElement('div')
+    list.className = 'heatsync-sets-list'
+    for (const s of savedSetsCache) {
+      const item = document.createElement('div')
+      item.className = 'heatsync-set-item'
+
+      const info = document.createElement('div')
+      info.className = 'heatsync-set-info'
+      const name = document.createElement('div')
+      name.className = 'heatsync-set-name'
+      name.textContent = (s.starred ? '★ ' : '') + (s.name || '(unnamed)')
+      info.appendChild(name)
+
+      const meta = document.createElement('div')
+      meta.className = 'heatsync-set-meta'
+      const count = s.emote_count || 0
+      let metaText = `${count} ${count === 1 ? 'emote' : 'emotes'}`
+      if (s.source_username) metaText += ` · from ${s.source_username}`
+      meta.textContent = metaText
+      info.appendChild(meta)
+
+      item.appendChild(info)
+
+      const applyBtn = document.createElement('button')
+      applyBtn.className = 'heatsync-set-apply-btn'
+      applyBtn.type = 'button'
+      applyBtn.textContent = 'apply'
+      applyBtn.dataset.setId = String(s.id)
+      applyBtn.dataset.setName = s.name || '(unnamed)'
+      applyBtn.dataset.setCount = String(count)
+      item.appendChild(applyBtn)
+
+      list.appendChild(item)
+    }
+    grid.appendChild(list)
+  }
+
+  async function handleSetApplyClick(e) {
+    const btn = e.target.closest('.heatsync-set-apply-btn')
+    if (!btn) return
+    e.stopPropagation()
+    if (btn.disabled) return
+
+    if (!btn.classList.contains('confirming')) {
+      btn.classList.add('confirming')
+      btn.textContent = `replace ${btn.dataset.setCount} emotes?`
+      const timer = setTimeout(() => {
+        btn.classList.remove('confirming')
+        btn.textContent = 'apply'
+      }, 4000)
+      btn.dataset.confirmTimer = String(timer)
+      return
+    }
+
+    clearTimeout(parseInt(btn.dataset.confirmTimer || '0'))
+    btn.classList.remove('confirming')
+    btn.classList.add('applying')
+    btn.disabled = true
+    btn.textContent = 'applying…'
+    const ok = await applySet(btn.dataset.setId)
+    if (ok) {
+      btn.classList.remove('applying')
+      btn.classList.add('applied')
+      btn.textContent = 'applied'
+    } else {
+      btn.classList.remove('applying')
+      btn.classList.add('failed')
+      btn.textContent = 'failed'
+      setTimeout(() => {
+        btn.classList.remove('failed')
+        btn.disabled = false
+        btn.textContent = 'apply'
+      }, 2000)
+    }
+  }
+
+  async function loadSets() {
+    try {
+      const resp = await chrome.runtime.sendMessage({
+        type: 'api_fetch',
+        path: '/api/user/sets',
+        method: 'GET',
+        auth: true
+      })
+      if (!resp || resp.ok === false) {
+        loadErrors.sets = resp?.error || 'failed to load sets'
+        savedSetsCache = []
+        return
+      }
+      const data = resp.data || resp
+      savedSetsCache = Array.isArray(data?.sets) ? data.sets : []
+      setsLoaded = true
+      loadErrors.sets = null
+      const countEl = document.getElementById('count-sets')
+      if (countEl) countEl.textContent = String(savedSetsCache.length)
+    } catch (err) {
+      loadErrors.sets = 'failed to load sets'
+      savedSetsCache = []
+    }
+  }
+
+  async function applySet(setId) {
+    try {
+      const resp = await chrome.runtime.sendMessage({
+        type: 'api_fetch',
+        path: `/api/user/sets/${encodeURIComponent(setId)}/apply`,
+        method: 'POST',
+        auth: true
+      })
+      if (!resp || resp.ok === false) return false
+      // Refresh inventory + sets list (counts may have changed)
+      await Promise.all([loadInventoryEmotes(), loadSets()])
+      // Re-render to refresh starred/count display
+      renderEmoteGrid()
+      return true
+    } catch (err) {
+      log(' applySet error:', err?.message)
+      return false
+    }
   }
 
   // Silent add to inventory (no UI feedback, used for click-to-use)

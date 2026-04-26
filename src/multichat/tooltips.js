@@ -93,7 +93,7 @@
     return emoteTooltip;
   }
 
-  function showEmoteTooltip(e, emoteName, emoteUrl, state, source, hoveredImg) {
+  function showEmoteTooltip(e, emoteName, emoteUrl, state, source, hoveredImg, owner) {
     const tooltip = ensureEmoteTooltip();
     const img = tooltip.querySelector('img');
     const nameEl = tooltip.querySelector('.tooltip-name');
@@ -124,7 +124,7 @@
     } else if (state === 'blocked') {
       label = t('mc_emote_blocked');
     } else {
-      // Global or channel - show source
+      // Global / channel / sub - show source with appropriate scope
       const sourceLabels = {
         '7tv': '7TV',
         'bttv': 'BTTV',
@@ -134,11 +134,17 @@
         'heatsync': 'Heatsync'
       };
       const sourceName = sourceLabels[source] || source || 'unknown';
-      const scope = state === 'channel' ? 'channel' : 'global';
-      label = `${scope} (${sourceName})`;
+      if (state === 'sub') {
+        // Twitch sub emote — show broadcaster as scope so it's specific
+        label = owner ? `${owner} sub (${sourceName})` : `sub (${sourceName})`;
+      } else if (state === 'channel') {
+        label = `channel (${sourceName})`;
+      } else {
+        label = `global (${sourceName})`;
+      }
     }
     stateEl.textContent = label;
-    const srcClass = (state === 'global' || state === 'channel') && source ? ' src-' + source.toLowerCase().replace(/[^a-z0-9]/g, '') : ''
+    const srcClass = (state === 'global' || state === 'channel' || state === 'sub') && source ? ' src-' + source.toLowerCase().replace(/[^a-z0-9]/g, '') : ''
     stateEl.className = 'tooltip-source ' + (state || 'global') + srcClass;
 
     // Position: anchor above the emote element
@@ -240,10 +246,25 @@
       const emoteUrl = wrapper?.dataset.emoteUrl || img?.src;
       const state = wrapper?.dataset.state || img?.dataset.state || 'global';
       const source = wrapper?.dataset.source || img?.dataset.source || detectEmoteSource(emoteUrl);
+      const owner = wrapper?.dataset.owner || img?.dataset.owner || '';
 
-      showEmoteTooltip(e, emoteName, emoteUrl, state, source, img);
+      showEmoteTooltip(e, emoteName, emoteUrl, state, source, img, owner);
 
-      // Cross-highlight: add highlight to all wrappers with same emote name
+      // Cross-highlight: add highlight to all wrappers with same emote name.
+      // For wrappers in collapsed stacks, derive color from the stack's worst
+      // state (blocked > unadded > normal) so the same nest always shows the
+      // same hover color regardless of which emote inside you happen to land on.
+      const stack = wrapper?.closest?.('.hs-mc-emote-stack:not(.expanded)')
+      let effectiveState = state
+      if (stack) {
+        if (stack.querySelector('.hs-mc-emote-wrapper.hs-state-blocked')) effectiveState = 'blocked'
+        else if (stack.querySelector('.hs-mc-emote-wrapper.hs-state-unadded')) effectiveState = 'unadded'
+        else effectiveState = 'normal'
+      }
+      const sourceColor = effectiveState === 'blocked' ? '#ff0000'
+        : effectiveState === 'unadded' ? '#ff8700'
+        : '#00ff00'
+      document.body.style.setProperty('--hs-highlight-color', sourceColor)
       queryEmoteWrappers(emoteName).forEach(w => {
         w.classList.add('hs-emote-highlight');
       });

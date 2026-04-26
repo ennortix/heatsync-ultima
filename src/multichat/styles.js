@@ -655,6 +655,66 @@ function injectStyles() {
       font-style: italic;
       display: block;
     }
+    /* Event color palette — each notice class gets a distinct ANSI hue so the
+       chat can be read at a glance. Using saturated 16-color anchors plus
+       Twitch/HS conventions (purple = sub, orange = HS brand/raid). */
+    /* Punishment lifecycle (red↔green) */
+    .hs-mc-msg.hs-mc-notice-ban       { border-left-color: #ff0000 !important; background: rgba(255, 0, 0, 0.12) !important; }
+    .hs-mc-msg.hs-mc-notice-ban       .hs-mc-system-text { color: #ff4040; font-weight: 600; }
+    .hs-mc-msg.hs-mc-notice-timeout   { border-left-color: #ff8080 !important; background: rgba(255, 128, 128, 0.10) !important; }
+    .hs-mc-msg.hs-mc-notice-timeout   .hs-mc-system-text { color: #ff8080; }
+    .hs-mc-msg.hs-mc-notice-unban     { border-left-color: #00ff00 !important; background: rgba(0, 255, 0, 0.12) !important; }
+    .hs-mc-msg.hs-mc-notice-unban     .hs-mc-system-text { color: #00ff00; font-weight: 600; }
+    .hs-mc-msg.hs-mc-notice-untimeout { border-left-color: #008000 !important; background: rgba(0, 128, 0, 0.10) !important; }
+    .hs-mc-msg.hs-mc-notice-untimeout .hs-mc-system-text { color: #00cc44; }
+    /* Role grants (blue mod / pink VIP) */
+    .hs-mc-msg.hs-mc-notice-mod-add     { border-left-color: #4080ff !important; background: rgba(64, 128, 255, 0.12) !important; }
+    .hs-mc-msg.hs-mc-notice-mod-add     .hs-mc-system-text { color: #4080ff; font-weight: 600; }
+    .hs-mc-msg.hs-mc-notice-mod-remove  { border-left-color: #c0c0c0 !important; background: rgba(192, 192, 192, 0.06) !important; }
+    .hs-mc-msg.hs-mc-notice-mod-remove  .hs-mc-system-text { color: #c0c0c0; }
+    .hs-mc-msg.hs-mc-notice-vip-add     { border-left-color: #ff00ff !important; background: rgba(255, 0, 255, 0.12) !important; }
+    .hs-mc-msg.hs-mc-notice-vip-add     .hs-mc-system-text { color: #ff44ff; font-weight: 600; }
+    .hs-mc-msg.hs-mc-notice-vip-remove  { border-left-color: #c0c0c0 !important; background: rgba(192, 192, 192, 0.06) !important; }
+    .hs-mc-msg.hs-mc-notice-vip-remove  .hs-mc-system-text { color: #c0c0c0; }
+    /* Single message delete = dark red (less severe than ban) */
+    .hs-mc-msg.hs-mc-notice-delete    { border-left-color: #800000 !important; background: rgba(128, 0, 0, 0.10) !important; }
+    .hs-mc-msg.hs-mc-notice-delete    .hs-mc-system-text { color: #ff8080; }
+    /* Room mode change = aqua */
+    .hs-mc-msg.hs-mc-notice-mode      { border-left-color: #00ffff !important; background: rgba(0, 255, 255, 0.10) !important; }
+    .hs-mc-msg.hs-mc-notice-mode      .hs-mc-system-text { color: #00ffff; font-weight: 600; }
+    /* Sub events (Twitch convention = purple, gifts = brighter magenta variant) */
+    .hs-mc-msg.hs-mc-notice-sub       { border-left-color: #9146ff !important; background: rgba(145, 70, 255, 0.12) !important; }
+    .hs-mc-msg.hs-mc-notice-sub       .hs-mc-system-text { color: #b87aff; font-weight: 600; }
+    .hs-mc-msg.hs-mc-notice-gift      { border-left-color: #cc44ff !important; background: rgba(204, 68, 255, 0.16) !important; }
+    .hs-mc-msg.hs-mc-notice-gift      .hs-mc-system-text { color: #cc44ff; font-weight: 600; }
+    /* Raid = HS brand orange */
+    .hs-mc-msg.hs-mc-notice-raid      { border-left-color: #ff8700 !important; background: rgba(255, 135, 0, 0.18) !important; }
+    .hs-mc-msg.hs-mc-notice-raid      .hs-mc-system-text { color: #ff8700; font-weight: 700; }
+    /* Announcement = pure yellow (broadcaster speaking) */
+    .hs-mc-msg.hs-mc-notice-announce  { border-left-color: #ffff00 !important; background: rgba(255, 255, 0, 0.10) !important; }
+    .hs-mc-msg.hs-mc-notice-announce  .hs-mc-system-text { color: #ffff00; font-weight: 600; }
+    /* Bits = gold/amber (distinct from raid orange and announce yellow) */
+    .hs-mc-msg.hs-mc-notice-bits      { border-left-color: #ffaa00 !important; background: rgba(255, 170, 0, 0.10) !important; }
+    .hs-mc-msg.hs-mc-notice-bits      .hs-mc-system-text { color: #ffd700; font-weight: 600; }
+    /* Watch-streak milestone = teal (different from cyan mode change) */
+    .hs-mc-msg.hs-mc-notice-milestone { border-left-color: #008080 !important; background: rgba(0, 128, 128, 0.12) !important; }
+    .hs-mc-msg.hs-mc-notice-milestone .hs-mc-system-text { color: #00cccc; font-weight: 600; }
+    /* Errors / rejections = dim maroon */
+    .hs-mc-msg.hs-mc-notice-error     { border-left-color: #800000 !important; background: rgba(128, 0, 0, 0.06) !important; }
+    .hs-mc-msg.hs-mc-notice-error     .hs-mc-system-text { color: #ff8080; }
+    /* First-time chatter (Twitch first-msg=1) = HS brand orange */
+    .hs-mc-msg.hs-mc-first-msg { border-left: 3px solid #ff8700; padding-left: 8px; background: rgba(255, 135, 0, 0.08); }
+    .hs-mc-first-tag { display: inline-block; font-size: 10px; font-weight: 700; color: #000; background: #ff8700; padding: 0 4px; border-radius: 2px; margin-right: 4px; vertical-align: middle; }
+    /* Cleared (timed out / banned / msg deleted) — Twitch-native dim + strikethrough.
+       Username and badges stay visible so the reader can see who got hit; the body
+       text and emotes get faded with a strikethrough. */
+    .hs-mc-msg.hs-mc-msg-cleared { opacity: 0.45; }
+    .hs-mc-msg.hs-mc-msg-cleared .hs-mc-emote,
+    .hs-mc-msg.hs-mc-msg-cleared .hs-mc-emote-wrapper > img,
+    .hs-mc-msg.hs-mc-msg-cleared .hs-mc-emote-stack img { filter: grayscale(1) brightness(0.7); }
+    /* Strikethrough only the message body, not the user/badges/timestamp */
+    .hs-mc-msg.hs-mc-msg-cleared > *:not(.hs-mc-ts):not(.hs-mc-user):not(.hs-mc-badge-img):not(.hs-mc-badge):not(.hs-mc-channel):not(.hs-mc-platform-badge):not(.hs-mc-reply-btn):not(.hs-mc-reply-ctx) { text-decoration: line-through; }
+    .hs-mc-msg.hs-mc-msg-cleared:hover { opacity: 0.85; }
     .hs-mc-msg.hs-mc-redeemed {
       background: rgba(145, 71, 255, 0.15);
       border-left: 3px solid #9147ff;
@@ -1019,13 +1079,19 @@ function injectStyles() {
 
     /* 7TV ZERO-WIDTH OVERLAY EMOTE STACKING */
     .hs-mc-emote-stack {
-      display: inline-block;
+      display: inline-flex;
+      align-items: center;
       position: relative;
       vertical-align: middle;
+      /* Lock height so collapsed↔expanded toggle doesn't shift line height
+         (expanded adds 2px vertical padding via pseudo-element). */
+      height: 36px;
+      box-sizing: border-box;
     }
     .hs-mc-emote-stack-emotes {
       display: inline-grid;
       place-items: center;
+      position: relative;
     }
     .hs-mc-emote-stack-emotes > .hs-mc-emote-wrapper,
     .hs-mc-emote-stack-emotes > .hs-mc-emoji {
@@ -1060,13 +1126,21 @@ function injectStyles() {
       align-items: center;
       gap: 4px;
     }
+    /* Expanded inner: gray bg via pseudo-element bleeding outward so the box
+       layout doesn't grow vs collapsed (no line-height shift, no off-center). */
     .hs-mc-emote-stack.expanded .hs-mc-emote-stack-emotes {
-      background: #808080;
       border-radius: 0;
-      padding: 2px 6px;
       display: inline-flex;
       gap: 4px;
       align-items: center;
+    }
+    .hs-mc-emote-stack.expanded .hs-mc-emote-stack-emotes::after {
+      content: '';
+      position: absolute;
+      inset: -2px -6px;
+      background: #808080;
+      z-index: -1;
+      pointer-events: none;
     }
     .hs-mc-emote-stack.expanded > .hs-mc-emote-stack-emotes > .hs-mc-emote-wrapper {
       grid-area: auto;
@@ -1107,9 +1181,11 @@ function injectStyles() {
       z-index: 1;
       pointer-events: none;
     }
-    /* Hover: show solid color rect, hide image */
+    /* Hover: show solid color rect, hide image. Color from --hs-highlight-color
+       (set by hover source) so cross-highlighted instances all match. */
     .hs-mc-emote-wrapper.hs-emote-highlight::before {
       opacity: 1;
+      background: var(--hs-highlight-color, #00ff00) !important;
     }
     .hs-mc-emote-wrapper.hs-emote-highlight > img {
       visibility: hidden;
@@ -1137,6 +1213,33 @@ function injectStyles() {
     .hs-mc-emote-wrapper.hs-state-blocked.hs-emote-highlight::before {
       background: #ff0000;
       border: none;
+    }
+
+    /* Collapsed stack: unified hover ::before on the stack itself.
+       Per-wrapper hover (cross-highlight) is suppressed — stack-level ::before
+       paints one solid rectangle. Persistent blocked-dash per emote is kept
+       as-is so users can see which specific emotes in the nest are blocked. */
+    /* When the stack is hovered, hide ALL per-wrapper ::before indicators
+       (incl. persistent blocked-dash on emotes that aren't the cross-highlight
+       target) so only the unified stack rect shows. */
+    .hs-mc-emote-stack:not(.expanded):has(.hs-mc-emote-wrapper.hs-emote-highlight) .hs-mc-emote-wrapper::before {
+      display: none !important;
+    }
+    .hs-mc-emote-stack:not(.expanded)::before {
+      content: '';
+      position: absolute;
+      inset: 4px;
+      opacity: 0;
+      pointer-events: none;
+      z-index: 3;
+    }
+    .hs-mc-emote-stack:not(.expanded):has(.hs-mc-emote-wrapper.hs-emote-highlight)::before {
+      opacity: 1;
+      background: var(--hs-highlight-color, #00ff00);
+      border: none;
+    }
+    .hs-mc-emote-stack:not(.expanded):has(.hs-mc-emote-wrapper.hs-emote-highlight) > .hs-mc-emote-stack-emotes > .hs-mc-emote-wrapper > img {
+      visibility: hidden;
     }
 
     /* Flash animations */
@@ -1235,6 +1338,7 @@ function injectStyles() {
     #hs-emote-tooltip .tooltip-source.unadded { background: #ff8700; color: #000; }
     #hs-emote-tooltip .tooltip-source.global { background: #00ff00; color: #000; }
     #hs-emote-tooltip .tooltip-source.channel { background: #00ff00; color: #000; }
+    #hs-emote-tooltip .tooltip-source.sub { background: #9146ff; color: #fff; }
     #hs-emote-tooltip .tooltip-source.blocked { background: #ff0000; color: #fff; }
     /* Per-provider source label colors (override .global/.channel) */
     #hs-emote-tooltip .tooltip-source.src-7tv { background: #29d8f6; color: #000; }

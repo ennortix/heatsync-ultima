@@ -1567,6 +1567,66 @@ function injectStyles() {
       font-style: italic;
       display: block;
     }
+    /* Event color palette — each notice class gets a distinct ANSI hue so the
+       chat can be read at a glance. Using saturated 16-color anchors plus
+       Twitch/HS conventions (purple = sub, orange = HS brand/raid). */
+    /* Punishment lifecycle (red↔green) */
+    .hs-mc-msg.hs-mc-notice-ban       { border-left-color: #ff0000 !important; background: rgba(255, 0, 0, 0.12) !important; }
+    .hs-mc-msg.hs-mc-notice-ban       .hs-mc-system-text { color: #ff4040; font-weight: 600; }
+    .hs-mc-msg.hs-mc-notice-timeout   { border-left-color: #ff8080 !important; background: rgba(255, 128, 128, 0.10) !important; }
+    .hs-mc-msg.hs-mc-notice-timeout   .hs-mc-system-text { color: #ff8080; }
+    .hs-mc-msg.hs-mc-notice-unban     { border-left-color: #00ff00 !important; background: rgba(0, 255, 0, 0.12) !important; }
+    .hs-mc-msg.hs-mc-notice-unban     .hs-mc-system-text { color: #00ff00; font-weight: 600; }
+    .hs-mc-msg.hs-mc-notice-untimeout { border-left-color: #008000 !important; background: rgba(0, 128, 0, 0.10) !important; }
+    .hs-mc-msg.hs-mc-notice-untimeout .hs-mc-system-text { color: #00cc44; }
+    /* Role grants (blue mod / pink VIP) */
+    .hs-mc-msg.hs-mc-notice-mod-add     { border-left-color: #4080ff !important; background: rgba(64, 128, 255, 0.12) !important; }
+    .hs-mc-msg.hs-mc-notice-mod-add     .hs-mc-system-text { color: #4080ff; font-weight: 600; }
+    .hs-mc-msg.hs-mc-notice-mod-remove  { border-left-color: #c0c0c0 !important; background: rgba(192, 192, 192, 0.06) !important; }
+    .hs-mc-msg.hs-mc-notice-mod-remove  .hs-mc-system-text { color: #c0c0c0; }
+    .hs-mc-msg.hs-mc-notice-vip-add     { border-left-color: #ff00ff !important; background: rgba(255, 0, 255, 0.12) !important; }
+    .hs-mc-msg.hs-mc-notice-vip-add     .hs-mc-system-text { color: #ff44ff; font-weight: 600; }
+    .hs-mc-msg.hs-mc-notice-vip-remove  { border-left-color: #c0c0c0 !important; background: rgba(192, 192, 192, 0.06) !important; }
+    .hs-mc-msg.hs-mc-notice-vip-remove  .hs-mc-system-text { color: #c0c0c0; }
+    /* Single message delete = dark red (less severe than ban) */
+    .hs-mc-msg.hs-mc-notice-delete    { border-left-color: #800000 !important; background: rgba(128, 0, 0, 0.10) !important; }
+    .hs-mc-msg.hs-mc-notice-delete    .hs-mc-system-text { color: #ff8080; }
+    /* Room mode change = aqua */
+    .hs-mc-msg.hs-mc-notice-mode      { border-left-color: #00ffff !important; background: rgba(0, 255, 255, 0.10) !important; }
+    .hs-mc-msg.hs-mc-notice-mode      .hs-mc-system-text { color: #00ffff; font-weight: 600; }
+    /* Sub events (Twitch convention = purple, gifts = brighter magenta variant) */
+    .hs-mc-msg.hs-mc-notice-sub       { border-left-color: #9146ff !important; background: rgba(145, 70, 255, 0.12) !important; }
+    .hs-mc-msg.hs-mc-notice-sub       .hs-mc-system-text { color: #b87aff; font-weight: 600; }
+    .hs-mc-msg.hs-mc-notice-gift      { border-left-color: #cc44ff !important; background: rgba(204, 68, 255, 0.16) !important; }
+    .hs-mc-msg.hs-mc-notice-gift      .hs-mc-system-text { color: #cc44ff; font-weight: 600; }
+    /* Raid = HS brand orange */
+    .hs-mc-msg.hs-mc-notice-raid      { border-left-color: #ff8700 !important; background: rgba(255, 135, 0, 0.18) !important; }
+    .hs-mc-msg.hs-mc-notice-raid      .hs-mc-system-text { color: #ff8700; font-weight: 700; }
+    /* Announcement = pure yellow (broadcaster speaking) */
+    .hs-mc-msg.hs-mc-notice-announce  { border-left-color: #ffff00 !important; background: rgba(255, 255, 0, 0.10) !important; }
+    .hs-mc-msg.hs-mc-notice-announce  .hs-mc-system-text { color: #ffff00; font-weight: 600; }
+    /* Bits = gold/amber (distinct from raid orange and announce yellow) */
+    .hs-mc-msg.hs-mc-notice-bits      { border-left-color: #ffaa00 !important; background: rgba(255, 170, 0, 0.10) !important; }
+    .hs-mc-msg.hs-mc-notice-bits      .hs-mc-system-text { color: #ffd700; font-weight: 600; }
+    /* Watch-streak milestone = teal (different from cyan mode change) */
+    .hs-mc-msg.hs-mc-notice-milestone { border-left-color: #008080 !important; background: rgba(0, 128, 128, 0.12) !important; }
+    .hs-mc-msg.hs-mc-notice-milestone .hs-mc-system-text { color: #00cccc; font-weight: 600; }
+    /* Errors / rejections = dim maroon */
+    .hs-mc-msg.hs-mc-notice-error     { border-left-color: #800000 !important; background: rgba(128, 0, 0, 0.06) !important; }
+    .hs-mc-msg.hs-mc-notice-error     .hs-mc-system-text { color: #ff8080; }
+    /* First-time chatter (Twitch first-msg=1) = HS brand orange */
+    .hs-mc-msg.hs-mc-first-msg { border-left: 3px solid #ff8700; padding-left: 8px; background: rgba(255, 135, 0, 0.08); }
+    .hs-mc-first-tag { display: inline-block; font-size: 10px; font-weight: 700; color: #000; background: #ff8700; padding: 0 4px; border-radius: 2px; margin-right: 4px; vertical-align: middle; }
+    /* Cleared (timed out / banned / msg deleted) — Twitch-native dim + strikethrough.
+       Username and badges stay visible so the reader can see who got hit; the body
+       text and emotes get faded with a strikethrough. */
+    .hs-mc-msg.hs-mc-msg-cleared { opacity: 0.45; }
+    .hs-mc-msg.hs-mc-msg-cleared .hs-mc-emote,
+    .hs-mc-msg.hs-mc-msg-cleared .hs-mc-emote-wrapper > img,
+    .hs-mc-msg.hs-mc-msg-cleared .hs-mc-emote-stack img { filter: grayscale(1) brightness(0.7); }
+    /* Strikethrough only the message body, not the user/badges/timestamp */
+    .hs-mc-msg.hs-mc-msg-cleared > *:not(.hs-mc-ts):not(.hs-mc-user):not(.hs-mc-badge-img):not(.hs-mc-badge):not(.hs-mc-channel):not(.hs-mc-platform-badge):not(.hs-mc-reply-btn):not(.hs-mc-reply-ctx) { text-decoration: line-through; }
+    .hs-mc-msg.hs-mc-msg-cleared:hover { opacity: 0.85; }
     .hs-mc-msg.hs-mc-redeemed {
       background: rgba(145, 71, 255, 0.15);
       border-left: 3px solid #9147ff;
@@ -1931,13 +1991,19 @@ function injectStyles() {
 
     /* 7TV ZERO-WIDTH OVERLAY EMOTE STACKING */
     .hs-mc-emote-stack {
-      display: inline-block;
+      display: inline-flex;
+      align-items: center;
       position: relative;
       vertical-align: middle;
+      /* Lock height so collapsed↔expanded toggle doesn't shift line height
+         (expanded adds 2px vertical padding via pseudo-element). */
+      height: 36px;
+      box-sizing: border-box;
     }
     .hs-mc-emote-stack-emotes {
       display: inline-grid;
       place-items: center;
+      position: relative;
     }
     .hs-mc-emote-stack-emotes > .hs-mc-emote-wrapper,
     .hs-mc-emote-stack-emotes > .hs-mc-emoji {
@@ -1972,13 +2038,21 @@ function injectStyles() {
       align-items: center;
       gap: 4px;
     }
+    /* Expanded inner: gray bg via pseudo-element bleeding outward so the box
+       layout doesn't grow vs collapsed (no line-height shift, no off-center). */
     .hs-mc-emote-stack.expanded .hs-mc-emote-stack-emotes {
-      background: #808080;
       border-radius: 0;
-      padding: 2px 6px;
       display: inline-flex;
       gap: 4px;
       align-items: center;
+    }
+    .hs-mc-emote-stack.expanded .hs-mc-emote-stack-emotes::after {
+      content: '';
+      position: absolute;
+      inset: -2px -6px;
+      background: #808080;
+      z-index: -1;
+      pointer-events: none;
     }
     .hs-mc-emote-stack.expanded > .hs-mc-emote-stack-emotes > .hs-mc-emote-wrapper {
       grid-area: auto;
@@ -2019,9 +2093,11 @@ function injectStyles() {
       z-index: 1;
       pointer-events: none;
     }
-    /* Hover: show solid color rect, hide image */
+    /* Hover: show solid color rect, hide image. Color from --hs-highlight-color
+       (set by hover source) so cross-highlighted instances all match. */
     .hs-mc-emote-wrapper.hs-emote-highlight::before {
       opacity: 1;
+      background: var(--hs-highlight-color, #00ff00) !important;
     }
     .hs-mc-emote-wrapper.hs-emote-highlight > img {
       visibility: hidden;
@@ -2049,6 +2125,33 @@ function injectStyles() {
     .hs-mc-emote-wrapper.hs-state-blocked.hs-emote-highlight::before {
       background: #ff0000;
       border: none;
+    }
+
+    /* Collapsed stack: unified hover ::before on the stack itself.
+       Per-wrapper hover (cross-highlight) is suppressed — stack-level ::before
+       paints one solid rectangle. Persistent blocked-dash per emote is kept
+       as-is so users can see which specific emotes in the nest are blocked. */
+    /* When the stack is hovered, hide ALL per-wrapper ::before indicators
+       (incl. persistent blocked-dash on emotes that aren't the cross-highlight
+       target) so only the unified stack rect shows. */
+    .hs-mc-emote-stack:not(.expanded):has(.hs-mc-emote-wrapper.hs-emote-highlight) .hs-mc-emote-wrapper::before {
+      display: none !important;
+    }
+    .hs-mc-emote-stack:not(.expanded)::before {
+      content: '';
+      position: absolute;
+      inset: 4px;
+      opacity: 0;
+      pointer-events: none;
+      z-index: 3;
+    }
+    .hs-mc-emote-stack:not(.expanded):has(.hs-mc-emote-wrapper.hs-emote-highlight)::before {
+      opacity: 1;
+      background: var(--hs-highlight-color, #00ff00);
+      border: none;
+    }
+    .hs-mc-emote-stack:not(.expanded):has(.hs-mc-emote-wrapper.hs-emote-highlight) > .hs-mc-emote-stack-emotes > .hs-mc-emote-wrapper > img {
+      visibility: hidden;
     }
 
     /* Flash animations */
@@ -2147,6 +2250,7 @@ function injectStyles() {
     #hs-emote-tooltip .tooltip-source.unadded { background: #ff8700; color: #000; }
     #hs-emote-tooltip .tooltip-source.global { background: #00ff00; color: #000; }
     #hs-emote-tooltip .tooltip-source.channel { background: #00ff00; color: #000; }
+    #hs-emote-tooltip .tooltip-source.sub { background: #9146ff; color: #fff; }
     #hs-emote-tooltip .tooltip-source.blocked { background: #ff0000; color: #fff; }
     /* Per-provider source label colors (override .global/.channel) */
     #hs-emote-tooltip .tooltip-source.src-7tv { background: #29d8f6; color: #000; }
@@ -4563,6 +4667,15 @@ function parseIrcLine(raw, channel) {
     const usernotice = raw.match(/USERNOTICE #([^ ]+)(?: :(.+))?$/)
     if (usernotice) {
       const displayName = tags['display-name'] || 'system'
+      const subPlan = tags['msg-param-sub-plan'] || ''
+      const tier = subPlan === '2000' ? '2' : subPlan === '3000' ? '3' : (subPlan === 'Prime' ? 'prime' : (subPlan ? '1' : ''))
+      const months = parseInt(tags['msg-param-cumulative-months']) || parseInt(tags['msg-param-months']) || 0
+      const giftCount = parseInt(tags['msg-param-mass-gift-count']) || 0
+      const recipient = tags['msg-param-recipient-display-name'] ? decodeURIComponent(tags['msg-param-recipient-display-name'].replace(/\\s/g, ' ')) : ''
+      const raidViewers = parseInt(tags['msg-param-viewerCount']) || 0
+      const raidFrom = tags['msg-param-displayName'] ? decodeURIComponent(tags['msg-param-displayName'].replace(/\\s/g, ' ')) : ''
+      const announceColor = tags['msg-param-color'] || ''
+      const bitsTier = parseInt(tags['msg-param-threshold']) || 0
       return {
         user: displayName,
         text: usernotice[2] || '',
@@ -4573,6 +4686,14 @@ function parseIrcLine(raw, channel) {
         time: parseInt(tags['tmi-sent-ts']) || parseInt(tags['rm-received-ts']) || Date.now(),
         type: 'usernotice',
         msgId: tags['msg-id'] || '',
+        subTier: tier,
+        subMonths: months,
+        giftCount,
+        recipient,
+        raidViewers,
+        raidFrom,
+        announceColor,
+        bitsTier,
         id: tags.id || ''
       }
     }
@@ -4583,11 +4704,13 @@ function parseIrcLine(raw, channel) {
     if (notice) {
       const ch = channel || notice[1].toLowerCase()
       const time = parseInt(tags['tmi-sent-ts']) || parseInt(tags['rm-received-ts']) || Date.now()
+      const noticeType = tags['msg-id'] || ''
       // Deterministic ID when server doesn't provide one — same notice from live IRC
       // and robotty history dedupes correctly (both share tmi-sent-ts).
       const detId = `notice-${ch}-${time}-${notice[2].slice(0, 64)}`
       return {
         type: 'notice',
+        noticeType,
         user: 'system',
         text: notice[2],
         color: '#808080',
@@ -4596,6 +4719,23 @@ function parseIrcLine(raw, channel) {
         time,
         id: tags.id || detId,
         systemMsg: notice[2]
+      }
+    }
+
+    // ROOMSTATE: @tags :tmi.twitch.tv ROOMSTATE #channel
+    // (slow/subs-only/emote-only/followers-only/r9k mode toggles + initial state on JOIN)
+    const roomstate = raw.match(/ROOMSTATE #([^ ]+)/)
+    if (roomstate) {
+      const ch = channel || roomstate[1].toLowerCase()
+      return {
+        type: 'roomstate',
+        channel: ch,
+        time: Date.now(),
+        slow: tags['slow'] != null ? parseInt(tags['slow']) : null,
+        subsOnly: tags['subs-only'] != null ? tags['subs-only'] === '1' : null,
+        emoteOnly: tags['emote-only'] != null ? tags['emote-only'] === '1' : null,
+        followersOnly: tags['followers-only'] != null ? parseInt(tags['followers-only']) : null,
+        r9k: tags['r9k'] != null ? tags['r9k'] === '1' : null
       }
     }
 
@@ -4614,6 +4754,7 @@ function parseIrcLine(raw, channel) {
       const detId = `clearchat-${ch}-${target}-${duration || 'perma'}-${time}`
       return {
         type: 'notice',
+        noticeType: duration ? 'timeout_success' : 'ban_success',
         user: 'system',
         text,
         color: '#808080',
@@ -4621,7 +4762,10 @@ function parseIrcLine(raw, channel) {
         channel: ch,
         time,
         id: tags.id || detId,
-        systemMsg: text
+        systemMsg: text,
+        targetUser: target,
+        targetUserId: tags['target-user-id'] || '',
+        banDuration: duration ? parseInt(duration) : 0
       }
     }
 
@@ -4632,6 +4776,7 @@ function parseIrcLine(raw, channel) {
       const targetMsgId = tags['target-msg-id']
       return {
         type: 'notice',
+        noticeType: 'delete_message_success',
         user: 'system',
         text: t('mc_irc_msg_deleted', [tags.login || 'unknown']),
         color: '#808080',
@@ -4639,7 +4784,9 @@ function parseIrcLine(raw, channel) {
         channel: channel || clearmsg[1].toLowerCase(),
         time: parseInt(tags['tmi-sent-ts']) || parseInt(tags['rm-received-ts']) || Date.now(),
         id: targetMsgId || `clearmsg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-        systemMsg: t('mc_irc_msg_deleted', [tags.login || 'unknown'])
+        systemMsg: t('mc_irc_msg_deleted', [tags.login || 'unknown']),
+        targetUser: tags.login || '',
+        targetMsgId: targetMsgId || ''
       }
     }
 
@@ -4880,10 +5027,89 @@ class IRC {
           }
         }
         fetchChannelBadges(ch);
+        // CLEARCHAT (ban/timeout) — flag the target's recent messages as cleared
+        // so they render dimmed/struck-through (Twitch native behavior).
+        if (msg.noticeType === 'ban_success' || msg.noticeType === 'timeout_success') {
+          const targetLc = (msg.targetUser || '').toLowerCase()
+          if (targetLc && this.channels.has(ch)) {
+            const buffer = this.channels.get(ch)
+            const all = buffer.getAll()
+            for (const m of all) {
+              if (m.user && m.user.toLowerCase() === targetLc && !m.cleared) {
+                m.cleared = true
+                m.clearedReason = msg.banDuration ? `timed out (${msg.banDuration}s)` : 'banned'
+              }
+            }
+          }
+        }
+        // CLEARMSG — flag the single targeted message
+        if (msg.noticeType === 'delete_message_success' && msg.targetMsgId) {
+          const id = msg.targetMsgId
+          if (this.channels.has(ch)) {
+            const buffer = this.channels.get(ch)
+            const all = buffer.getAll()
+            for (const m of all) {
+              if (m.id === id) { m.cleared = true; m.clearedReason = 'deleted'; break }
+            }
+          }
+        }
         if (this.channels.has(ch)) {
           this.channels.get(ch).push(msg);
           this.persistBuffer(ch);
           this.emit('message', msg);
+        }
+      } else if (msg && msg.type === 'roomstate') {
+        // Diff against last-seen state to only emit on actual changes (skip the
+        // initial JOIN dump which carries the full state).
+        const ch = msg.channel
+        if (!this._roomstates) this._roomstates = new Map()
+        const prev = this._roomstates.get(ch) || {}
+        const changes = []
+        // null = field not present in this packet (only changed fields are sent)
+        if (msg.slow != null && msg.slow !== prev.slow) {
+          changes.push(msg.slow > 0 ? `slow mode on (${msg.slow}s)` : 'slow mode off')
+        }
+        if (msg.subsOnly != null && msg.subsOnly !== prev.subsOnly) {
+          changes.push(msg.subsOnly ? 'sub-only mode on' : 'sub-only mode off')
+        }
+        if (msg.emoteOnly != null && msg.emoteOnly !== prev.emoteOnly) {
+          changes.push(msg.emoteOnly ? 'emote-only mode on' : 'emote-only mode off')
+        }
+        if (msg.followersOnly != null && msg.followersOnly !== prev.followersOnly) {
+          if (msg.followersOnly === -1) changes.push('follower-only mode off')
+          else if (msg.followersOnly === 0) changes.push('follower-only mode on')
+          else changes.push(`follower-only mode on (${msg.followersOnly}m)`)
+        }
+        if (msg.r9k != null && msg.r9k !== prev.r9k) {
+          changes.push(msg.r9k ? 'unique-chat mode on' : 'unique-chat mode off')
+        }
+        // Update cached state with whatever fields were present
+        const newState = { ...prev }
+        for (const k of ['slow', 'subsOnly', 'emoteOnly', 'followersOnly', 'r9k']) {
+          if (msg[k] != null) newState[k] = msg[k]
+        }
+        this._roomstates.set(ch, newState)
+        // Only emit if there were diffs AND we already had a baseline (skip first JOIN dump)
+        if (changes.length && Object.keys(prev).length) {
+          for (const text of changes) {
+            const evt = {
+              type: 'notice',
+              noticeType: 'mode_change',
+              user: 'system',
+              text,
+              color: '#808080',
+              badges: '',
+              channel: ch,
+              time: Date.now(),
+              id: `mode-${ch}-${Date.now()}-${text.slice(0, 16)}`,
+              systemMsg: text
+            }
+            if (this.channels.has(ch)) {
+              this.channels.get(ch).push(evt)
+              this.persistBuffer(ch)
+              this.emit('message', evt)
+            }
+          }
         }
       }
     }
@@ -4919,7 +5145,17 @@ class IRC {
           badges: m.badges, channel: m.channel, time: m.time, id: m.id,
           isAction: m.isAction || undefined, replyTo: m.replyTo || undefined,
           subMonths: m.subMonths || undefined, twitchEmotes: m.twitchEmotes || undefined,
-          type: m.type || undefined, eventClass: m.eventClass || undefined
+          type: m.type || undefined, eventClass: m.eventClass || undefined,
+          noticeType: m.noticeType || undefined, msgId: m.msgId || undefined,
+          subTier: m.subTier || undefined, giftCount: m.giftCount || undefined,
+          recipient: m.recipient || undefined, raidViewers: m.raidViewers || undefined,
+          raidFrom: m.raidFrom || undefined, systemMsg: m.systemMsg || undefined,
+          isFirstMsg: m.isFirstMsg || undefined, isHighlighted: m.isHighlighted || undefined,
+          redeemed: m.redeemed || undefined, rewardId: m.rewardId || undefined,
+          actor: m.actor || undefined,
+          cleared: m.cleared || undefined, clearedReason: m.clearedReason || undefined,
+          targetUser: m.targetUser || undefined, targetMsgId: m.targetMsgId || undefined,
+          banDuration: m.banDuration || undefined
         }))
         const p = chrome.storage.local.set({ [`hs_irc_${ch}`]: { msgs, ts: Date.now() } })
         if (p && typeof p.catch === 'function') p.catch(() => {})
@@ -5725,7 +5961,8 @@ async function sendKickMessage(kickSlug, text) {
   }
 
   function emoteImgHtml([name, emote]) {
-    return `<img src="${escapeHtml(emote.url)}" alt="${escapeHtml(name)}" title="${escapeHtml(name)} (${escapeHtml(emote.source)})" class="hs-mc-picker-emote hs-emote-${escapeHtml(emote.source)}" data-name="${escapeHtml(name)}" data-source="${escapeHtml(emote.source)}" loading="lazy">`
+    const state = emote.state || 'global'
+    return `<img src="${escapeHtml(emote.url)}" alt="${escapeHtml(name)}" title="${escapeHtml(name)} (${escapeHtml(emote.source)})" class="hs-mc-picker-emote hs-emote-${escapeHtml(emote.source)}" data-name="${escapeHtml(name)}" data-source="${escapeHtml(emote.source)}" data-state="${escapeHtml(state)}" loading="lazy">`
   }
 
   /** Append remaining emotes in rAF chunks so the picker opens instantly */
@@ -6413,7 +6650,8 @@ async function sendKickMessage(kickSlug, text) {
         emotes.forEach(e => {
           if (e.name && e.url) {
             const source = e.source || detectEmoteSource(e.url, '7tv');
-            const state = getEmoteState(e.name, source);
+            // Channel cache → state 'channel' (unless user owns it in their heatsync inventory)
+            const state = inventoryEmotes.has(e.name) ? 'owned' : 'channel';
             chCache.set(e.name, { url: e.url, source, state, zeroWidth: !!e.zeroWidth });
             if (e.hash) registerHash(e.name, e.hash);
           }
@@ -6430,10 +6668,22 @@ async function sendKickMessage(kickSlug, text) {
       }
       log('Channel emote caches:', Object.entries(channelEmoteCaches).map(([c, m]) => `${c}: ${m.size}`).join(', '));
 
-      // Native Twitch emotes (sub emotes) — available in ALL channels
+      // Native Twitch emotes — sub emotes carry e.owner (broadcaster login),
+      // true Twitch globals do not. Distinguish so tooltips show "(broadcaster) sub" vs "global (Twitch)".
       (stored.native_twitch_emotes || []).forEach(e => {
         if (e.name && e.url && !emoteCache.has(e.name)) {
-          emoteCache.set(e.name, { url: e.url, source: 'twitch', state: 'global' });
+          const isSub = !!e.owner
+          const entry = {
+            url: e.url,
+            source: 'twitch',
+            state: isSub ? 'sub' : 'global'
+          }
+          if (isSub) {
+            entry.owner = e.owner
+            entry.ownerDisplay = e.ownerDisplay || e.owner
+            if (e.tier) entry.tier = e.tier
+          }
+          emoteCache.set(e.name, entry);
           while (emoteCache.size > 2000) { emoteCache.delete(emoteCache.keys().next().value) }
           if (e.hash) registerHash(e.name, e.hash);
         }
@@ -6564,7 +6814,8 @@ async function sendKickMessage(kickSlug, text) {
         const imgSrc = escapeHtml(getChatResUrl(emote.url)); // Upgrade to 2x/4x based on emote size setting
         const safeHash = emote.hash ? escapeHtml(emote.hash) : '';
         const displayName = escapeHtml(word)
-        const imgHtml = `<span class="hs-mc-emote-wrapper hs-state-${state}" data-emote-name="${displayName}" data-emote-url="${imgSrc}" data-state="${state}" data-source="${source}"${safeHash ? ` data-emote-hash="${safeHash}"` : ''}><img src="${imgSrc}" alt="${displayName}" title="${displayName}" class="hs-mc-emote hs-emote-${state}" data-emote-name="${displayName}" data-state="${state}" data-source="${source}"></span>`;
+        const ownerAttr = emote.ownerDisplay ? ` data-owner="${escapeHtml(emote.ownerDisplay)}"` : ''
+        const imgHtml = `<span class="hs-mc-emote-wrapper hs-state-${state}" data-emote-name="${displayName}" data-emote-url="${imgSrc}" data-state="${state}" data-source="${source}"${ownerAttr}${safeHash ? ` data-emote-hash="${safeHash}"` : ''}><img src="${imgSrc}" alt="${displayName}" title="${displayName}" class="hs-mc-emote hs-emote-${state}" data-emote-name="${displayName}" data-state="${state}" data-source="${source}"${ownerAttr}></span>`;
 
         if (isOverlayEmote) {
           // Overlay emote - stack on previous base (discard whitespace between)
@@ -6771,7 +7022,7 @@ async function sendKickMessage(kickSlug, text) {
     return emoteTooltip;
   }
 
-  function showEmoteTooltip(e, emoteName, emoteUrl, state, source, hoveredImg) {
+  function showEmoteTooltip(e, emoteName, emoteUrl, state, source, hoveredImg, owner) {
     const tooltip = ensureEmoteTooltip();
     const img = tooltip.querySelector('img');
     const nameEl = tooltip.querySelector('.tooltip-name');
@@ -6802,7 +7053,7 @@ async function sendKickMessage(kickSlug, text) {
     } else if (state === 'blocked') {
       label = t('mc_emote_blocked');
     } else {
-      // Global or channel - show source
+      // Global / channel / sub - show source with appropriate scope
       const sourceLabels = {
         '7tv': '7TV',
         'bttv': 'BTTV',
@@ -6812,11 +7063,17 @@ async function sendKickMessage(kickSlug, text) {
         'heatsync': 'Heatsync'
       };
       const sourceName = sourceLabels[source] || source || 'unknown';
-      const scope = state === 'channel' ? 'channel' : 'global';
-      label = `${scope} (${sourceName})`;
+      if (state === 'sub') {
+        // Twitch sub emote — show broadcaster as scope so it's specific
+        label = owner ? `${owner} sub (${sourceName})` : `sub (${sourceName})`;
+      } else if (state === 'channel') {
+        label = `channel (${sourceName})`;
+      } else {
+        label = `global (${sourceName})`;
+      }
     }
     stateEl.textContent = label;
-    const srcClass = (state === 'global' || state === 'channel') && source ? ' src-' + source.toLowerCase().replace(/[^a-z0-9]/g, '') : ''
+    const srcClass = (state === 'global' || state === 'channel' || state === 'sub') && source ? ' src-' + source.toLowerCase().replace(/[^a-z0-9]/g, '') : ''
     stateEl.className = 'tooltip-source ' + (state || 'global') + srcClass;
 
     // Position: anchor above the emote element
@@ -6918,10 +7175,25 @@ async function sendKickMessage(kickSlug, text) {
       const emoteUrl = wrapper?.dataset.emoteUrl || img?.src;
       const state = wrapper?.dataset.state || img?.dataset.state || 'global';
       const source = wrapper?.dataset.source || img?.dataset.source || detectEmoteSource(emoteUrl);
+      const owner = wrapper?.dataset.owner || img?.dataset.owner || '';
 
-      showEmoteTooltip(e, emoteName, emoteUrl, state, source, img);
+      showEmoteTooltip(e, emoteName, emoteUrl, state, source, img, owner);
 
-      // Cross-highlight: add highlight to all wrappers with same emote name
+      // Cross-highlight: add highlight to all wrappers with same emote name.
+      // For wrappers in collapsed stacks, derive color from the stack's worst
+      // state (blocked > unadded > normal) so the same nest always shows the
+      // same hover color regardless of which emote inside you happen to land on.
+      const stack = wrapper?.closest?.('.hs-mc-emote-stack:not(.expanded)')
+      let effectiveState = state
+      if (stack) {
+        if (stack.querySelector('.hs-mc-emote-wrapper.hs-state-blocked')) effectiveState = 'blocked'
+        else if (stack.querySelector('.hs-mc-emote-wrapper.hs-state-unadded')) effectiveState = 'unadded'
+        else effectiveState = 'normal'
+      }
+      const sourceColor = effectiveState === 'blocked' ? '#ff0000'
+        : effectiveState === 'unadded' ? '#ff8700'
+        : '#00ff00'
+      document.body.style.setProperty('--hs-highlight-color', sourceColor)
       queryEmoteWrappers(emoteName).forEach(w => {
         w.classList.add('hs-emote-highlight');
       });
@@ -16657,19 +16929,21 @@ const STORAGE_KEY = 'heatsync_multichat';
       div.className = `hs-mc-stream-event ${m.eventClass || ''}`
       const tsVal = timestampsEnabled && m.time ? formatTimeFromTs(m.time) : ''
       const tsSpan = tsVal ? `<span class="hs-mc-ts" data-ts="${m.time}">${tsVal}</span>` : ''
-      const ch = m.channel || ''
+      // For redeems, the actor is the redeemer (m.actor). For other events the channel is the actor.
+      const ch = m.actor || m.channel || ''
+      const chLc = ch.toLowerCase()
       // Look up color: event data → color map → profile cache → IRC buffers → async fetch
       let userColor = m.color || ''
-      if (!userColor) userColor = streamColorMap.get(ch) || ''
+      if (!userColor) userColor = streamColorMap.get(chLc) || ''
       if (!userColor) {
-        const cached = _profileCache.get(ch)
+        const cached = _profileCache.get(chLc)
         if (cached?.profile?.twitch_color) userColor = cached.profile.twitch_color
       }
-      if (!userColor && ch && irc?.channels) {
+      if (!userColor && chLc && irc?.channels) {
         for (const [, buf] of irc.channels) {
           const msgs = buf.getAll()
           for (let i = msgs.length - 1; i >= 0; i--) {
-            if (msgs[i].user?.toLowerCase() === ch) {
+            if (msgs[i].user?.toLowerCase() === chLc) {
               userColor = msgs[i].color || ''
               break
             }
@@ -16685,8 +16959,8 @@ const STORAGE_KEY = 'heatsync_multichat';
       const actionHtml = textAfterChannel.replace(/(switched to |now playing |went live \u2014 )(.+)$/, '$1<span class="hs-evt-game">$2</span>')
       div.innerHTML = `${tsSpan}${userLink} ${actionHtml}`
       // Async fetch color if not cached
-      if (!userColor && ch) {
-        apiFetch(`/api/profile/${encodeURIComponent(ch)}`).then(resp => {
+      if (!userColor && chLc) {
+        apiFetch(`/api/profile/${encodeURIComponent(chLc)}`).then(resp => {
           if (resp?.ok && resp.data?.profile) {
             const profile = resp.data.profile
             const color = profile.twitch_color
@@ -16694,7 +16968,7 @@ const STORAGE_KEY = 'heatsync_multichat';
               const el = div.querySelector('.hs-evt-user')
               if (el) el.style.color = sanitizeColor(color)
             }
-            _profileCache.set(ch, { profile, ts: Date.now() })
+            _profileCache.set(chLc, { profile, ts: Date.now() })
           }
         })
       }
@@ -16776,10 +17050,41 @@ const STORAGE_KEY = 'heatsync_multichat';
     const isSuperChat = m.platform === 'youtube' && (m.msgType === 'superchat' || m.msgType === 'supersticker')
     const isMembership = m.platform === 'youtube' && m.msgType === 'membership'
     const isKicksEvent = m.kicksEvent === true
+    // Map noticeType / msgId to a semantic CSS modifier so each event class
+    // (unban, ban, mod-add, mode-change, sub, raid, etc.) can have its own color/icon
+    const noticeKind = (() => {
+      if (m.type !== 'notice' && m.type !== 'usernotice') return ''
+      const id = m.noticeType || m.msgId || ''
+      if (!id) return ''
+      // group related msg-ids into a single semantic class
+      if (id === 'unban_success') return 'hs-mc-notice-unban'
+      if (id === 'untimeout_success') return 'hs-mc-notice-untimeout'
+      if (id === 'ban_success') return 'hs-mc-notice-ban'
+      if (id === 'timeout_success') return 'hs-mc-notice-timeout'
+      if (id === 'mod_success') return 'hs-mc-notice-mod-add'
+      if (id === 'vip_success') return 'hs-mc-notice-vip-add'
+      if (id === 'unmod_success') return 'hs-mc-notice-mod-remove'
+      if (id === 'unvip_success') return 'hs-mc-notice-vip-remove'
+      if (id === 'delete_message_success') return 'hs-mc-notice-delete'
+      if (id === 'mode_change' || id === 'slow_on' || id === 'slow_off' ||
+          id === 'subs_on' || id === 'subs_off' || id === 'emote_only_on' || id === 'emote_only_off' ||
+          id === 'followers_on' || id === 'followers_on_zero' || id === 'followers_off' ||
+          id === 'r9k_on' || id === 'r9k_off') return 'hs-mc-notice-mode'
+      if (id === 'sub' || id === 'resub') return 'hs-mc-notice-sub'
+      if (id === 'subgift' || id === 'anonsubgift' || id === 'submysterygift' ||
+          id === 'giftpaidupgrade' || id === 'anongiftpaidupgrade') return 'hs-mc-notice-gift'
+      if (id === 'raid' || id === 'unraid') return 'hs-mc-notice-raid'
+      if (id === 'announcement') return 'hs-mc-notice-announce'
+      if (id === 'bitsbadgetier') return 'hs-mc-notice-bits'
+      if (id === 'viewermilestone') return 'hs-mc-notice-milestone'
+      if (id === 'msg_banned' || id === 'msg_timedout' || id === 'no_permission' ||
+          id.startsWith('bad_') || id.startsWith('usage_')) return 'hs-mc-notice-error'
+      return ''
+    })()
     const cls = tabId === 'mentions' ? 'hs-mc-msg mention' :
 isKicksEvent ? 'hs-mc-msg hs-mc-system hs-mc-kicks' :
 isMembership ? 'hs-mc-msg hs-mc-system' :
-m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
+m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${noticeKind}`.trim() :
                 m.isHighlighted ? 'hs-mc-msg hs-mc-highlighted' :
                 m.redeemed ? 'hs-mc-msg hs-mc-redeemed' :
                 isSuperChat ? 'hs-mc-msg hs-mc-superchat' :
@@ -16884,6 +17189,15 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
       if (markChatterSeen(m.channel, m.user)) {
         div.classList.add('hs-first-msg')
       }
+    }
+    // Twitch first-msg flag — brand new user to the channel (not just this session)
+    if (m.isFirstMsg) {
+      div.classList.add('hs-mc-first-msg')
+    }
+    // Cleared by mod (timeout/ban/delete) — Twitch-native dim + strikethrough on offending content
+    if (m.cleared) {
+      div.classList.add('hs-mc-msg-cleared')
+      if (m.clearedReason) div.title = m.clearedReason
     }
     // Keyword highlight — message text matches a user-defined term
     if (keywordHighlightsRegex && m.text && keywordHighlightsRegex.test(m.text)) {
@@ -18863,6 +19177,24 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
 
     // Handle incoming IRC messages
     irc.on('message', (msg) => {
+      // CLEARCHAT/CLEARMSG → live-dim already-rendered DOM rows from the offender.
+      // Buffer entries were already flagged with `cleared=true` inside the IRC client,
+      // so future re-renders pick it up via the renderer; this just patches the visible DOM.
+      if (msg.type === 'notice' && (msg.noticeType === 'ban_success' || msg.noticeType === 'timeout_success') && msg.targetUser) {
+        const targetLc = msg.targetUser.toLowerCase()
+        const rows = msgsEl?.querySelectorAll(`.hs-mc-msg[data-msg-user]`) || []
+        for (const row of rows) {
+          if ((row.dataset.msgUser || '').toLowerCase() === targetLc) {
+            row.classList.add('hs-mc-msg-cleared')
+            row.title = msg.banDuration ? `timed out (${msg.banDuration}s)` : 'banned'
+          }
+        }
+      }
+      if (msg.type === 'notice' && msg.noticeType === 'delete_message_success' && msg.targetMsgId) {
+        const safe = (CSS.escape ? CSS.escape(msg.targetMsgId) : msg.targetMsgId.replace(/"/g, '\\"'))
+        const row = msgsEl?.querySelector(`.hs-mc-msg[data-msg-id="${safe}"]`)
+        if (row) { row.classList.add('hs-mc-msg-cleared'); row.title = 'deleted' }
+      }
       // Track sub tenure from IRC badge-info
       if (msg.subMonths && msg.channel) {
         trackSubTenure(msg.channel, msg.user, msg.subMonths)
@@ -18983,7 +19315,7 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
           try { renderStreamSummary(channel) } catch (e) {}
         } else if (msg.eventType === 'stream:redeem') {
           if (!hermesToggles?.redeem) return;
-          text = `[${channel}] \u25C6 ${escapeHtml(msg.user)} redeemed "${escapeHtml(msg.title)}"`;
+          text = `\u25C6 redeemed "${escapeHtml(msg.title)}"`;
           if (msg.cost) text += ` (${msg.cost})`;
           eventClass = 'event-redeem';
         } else if (msg.eventType === 'stream:raid') {
@@ -19016,7 +19348,8 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
 
         log('[Stream]', channel, text);
         notifyStreamEvent(channel, msg.eventType, msg.game);
-        const evt = { type: 'stream-event', eventClass, text, channel, time: Date.now() };
+        const actor = msg.eventType === 'stream:redeem' ? msg.user : null;
+        const evt = { type: 'stream-event', eventClass, text, channel, actor, time: Date.now() };
 
         // Push into the live channel buffer (dedup by text to prevent doubles on reload)
         const liveChannel = getLiveChannel();
@@ -19119,7 +19452,7 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
       } else if (eventType === 'redeem') {
         toggleKey = 'redeem'
         eventClass = 'event-redeem'
-        text = `[${escapeHtml(channel)}] \u25C6 ${escapeHtml(data.user)} redeemed "${escapeHtml(data.title)}"`
+        text = `\u25C6 redeemed "${escapeHtml(data.title)}"`
         if (data.rewardId) {
           redeemTitleMap.set(data.rewardId, { title: data.title, cost: data.cost })
           if (redeemTitleMap.size > 200) redeemTitleMap.delete(redeemTitleMap.keys().next().value)
@@ -19134,7 +19467,8 @@ m.type === 'usernotice' || m.type === 'notice' ? 'hs-mc-msg hs-mc-system' :
 
       if (!hermesToggles[toggleKey]) return
 
-      const evt = { type: 'stream-event', eventClass, text, channel, time: Date.now() }
+      const actor = eventType === 'redeem' ? data.user : null
+      const evt = { type: 'stream-event', eventClass, text, channel, actor, time: Date.now() }
 
       // Push into relevant buffers — only the channel the event belongs to
       const liveChannel = getLiveChannel()

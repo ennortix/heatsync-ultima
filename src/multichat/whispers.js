@@ -14,7 +14,6 @@ let whisperTotalUnread = 0
 let whisperLastViewedTime = 0
 let whisperDmsLoaded = false
 let selfWhisperColor = null // current user's Twitch color
-let _newDmFormOpen = false
 
 // Resolve own color from IRC buffers, chat DOM, or Twitch cookie color
 function resolveSelfColor() {
@@ -273,112 +272,6 @@ async function sendWhisperMessage(key, text) {
   }
 }
 
-function renderNewDmHeader(msgsEl) {
-  if (document.getElementById('hs-mc-new-dm-wrap')) return
-
-  const wrap = document.createElement('div')
-  wrap.id = 'hs-mc-new-dm-wrap'
-
-  const btnRow = document.createElement('div')
-  btnRow.className = 'hs-mc-new-dm-btnrow'
-  const plusBtn = document.createElement('button')
-  plusBtn.className = 'hs-mc-new-dm-plus'
-  plusBtn.textContent = '+ new DM'
-  btnRow.appendChild(plusBtn)
-  wrap.appendChild(btnRow)
-
-  const form = document.createElement('div')
-  form.id = 'hs-mc-new-dm-form'
-  form.className = 'hs-mc-new-dm-form'
-  form.style.display = _newDmFormOpen ? 'flex' : 'none'
-
-  const userInput = document.createElement('input')
-  userInput.id = 'hs-mc-new-dm-user'
-  userInput.className = 'hs-mc-new-dm-input'
-  userInput.type = 'text'
-  userInput.placeholder = 'username'
-  userInput.setAttribute('autocomplete', 'off')
-  userInput.maxLength = 100
-
-  const msgInput = document.createElement('textarea')
-  msgInput.id = 'hs-mc-new-dm-msg'
-  msgInput.className = 'hs-mc-new-dm-input hs-mc-new-dm-textarea'
-  msgInput.placeholder = 'message'
-  msgInput.maxLength = 2000
-  msgInput.rows = 2
-
-  const actions = document.createElement('div')
-  actions.className = 'hs-mc-new-dm-actions'
-  const sendBtn = document.createElement('button')
-  sendBtn.className = 'hs-mc-new-dm-sendbtn'
-  sendBtn.textContent = 'send'
-  const cancelBtn = document.createElement('button')
-  cancelBtn.className = 'hs-mc-new-dm-cancelbtn'
-  cancelBtn.textContent = 'cancel'
-  const errEl = document.createElement('span')
-  errEl.className = 'hs-mc-new-dm-err'
-  actions.appendChild(sendBtn)
-  actions.appendChild(cancelBtn)
-  actions.appendChild(errEl)
-
-  form.appendChild(userInput)
-  form.appendChild(msgInput)
-  form.appendChild(actions)
-  wrap.appendChild(form)
-  msgsEl.prepend(wrap)
-
-  plusBtn.addEventListener('click', () => {
-    _newDmFormOpen = !_newDmFormOpen
-    form.style.display = _newDmFormOpen ? 'flex' : 'none'
-    if (_newDmFormOpen) userInput.focus()
-  })
-
-  cancelBtn.addEventListener('click', () => {
-    _newDmFormOpen = false
-    form.style.display = 'none'
-    userInput.value = ''
-    msgInput.value = ''
-    errEl.textContent = ''
-  })
-
-  sendBtn.addEventListener('click', async () => {
-    const recipientUsername = userInput.value.trim()
-    const content = msgInput.value.trim()
-    errEl.textContent = ''
-    if (!recipientUsername) { errEl.textContent = 'enter a username'; return }
-    if (!content) { errEl.textContent = 'enter a message'; return }
-    sendBtn.disabled = true
-    sendBtn.textContent = '...'
-    try {
-      // Server's POST /api/dm expects { toUserId: number, content }, not username.
-      // Resolve the username to a user id via the profile endpoint first.
-      const profResp = await apiFetch(`/api/profile/${encodeURIComponent(recipientUsername)}`, { method: 'GET' })
-      const prof = profResp?.data?.profile || profResp?.profile || profResp?.data || profResp
-      const toUserId = prof?.id
-      if (!toUserId) {
-        errEl.textContent = 'user not found'
-        sendBtn.disabled = false
-        sendBtn.textContent = 'send'
-        return
-      }
-      const resp = await apiFetch('/api/dm', { method: 'POST', body: { toUserId, content } })
-      if (resp && resp.ok) {
-        log('new DM sent to', recipientUsername)
-        _newDmFormOpen = false
-        form.style.display = 'none'
-        userInput.value = ''
-        msgInput.value = ''
-      } else {
-        errEl.textContent = resp?.error || 'send failed'
-      }
-    } catch (e) {
-      errEl.textContent = e.message || 'send failed'
-    }
-    sendBtn.disabled = false
-    sendBtn.textContent = 'send'
-  })
-}
-
 function renderWhispersTab() {
   const msgsEl = document.getElementById('hs-mc-messages')
   if (!msgsEl) return
@@ -433,17 +326,8 @@ function renderWhispersTab() {
   updateWhisperBadge()
   whisperSaveDebounced()
 
-  // Preserve the + new DM header (and any in-progress form input) across re-renders
-  const existingDmWrap = document.getElementById('hs-mc-new-dm-wrap')
-  if (existingDmWrap) {
-    if (existingDmWrap.parentNode !== msgsEl || msgsEl.firstChild !== existingDmWrap) {
-      msgsEl.insertBefore(existingDmWrap, msgsEl.firstChild)
-    }
-  } else {
-    renderNewDmHeader(msgsEl)
-  }
-
   if (whisperTimeline.length === 0) {
+    msgsEl.replaceChildren()
     const emptyDiv = document.createElement('div')
     emptyDiv.className = 'hs-mc-empty'
     emptyDiv.textContent = t('mc_whisper_hint')
@@ -451,11 +335,7 @@ function renderWhispersTab() {
     return
   }
 
-  // Remove old message nodes (but keep the header wrap already prepended above)
-  const children = Array.from(msgsEl.childNodes)
-  for (const child of children) {
-    if (child.id !== 'hs-mc-new-dm-wrap') child.remove()
-  }
+  msgsEl.replaceChildren()
   const frag = document.createDocumentFragment()
   const toRender = whisperTimeline.slice(-150)
   let zebraCount = 0

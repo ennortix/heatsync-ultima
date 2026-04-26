@@ -4907,9 +4907,9 @@ function updateEmoteState(hash, emoteName, state) {
     if (!dateStr) return null
     const ms = Date.now() - new Date(dateStr).getTime()
     const years = Math.floor(ms / (365.25 * 86400000))
-    const months = Math.floor((ms % (365.25 * 86400000)) / (30.44 * 86400000))
-    if (years > 0) return `${years}y ${months}m`
-    if (months > 0) return `${months}m`
+    if (years > 0) return `${years}y`
+    const months = Math.floor(ms / (30.44 * 86400000))
+    if (months > 0) return `${months}mo`
     const days = Math.floor(ms / 86400000)
     return `${days}d`
   }
@@ -5438,13 +5438,9 @@ function updateEmoteState(hash, emoteName, state) {
     const grid = document.createElement('div')
     grid.className = 'hs-pc-mod-grid'
 
-    // Timeout group
+    // Timeout group — durations only, label is implied by the action
     const toGroup = document.createElement('div')
     toGroup.className = 'hs-pc-mod-group'
-    const toLabel = document.createElement('span')
-    toLabel.className = 'hs-pc-mod-group-label'
-    toLabel.textContent = 'timeout'
-    toGroup.appendChild(toLabel)
     const durations = [
       ['1m', 60], ['5m', 300], ['10m', 600], ['30m', 1800],
       ['1h', 3600], ['6h', 21600], ['24h', 86400]
@@ -5489,7 +5485,7 @@ function updateEmoteState(hash, emoteName, state) {
   function buildHistorySection(username) {
     const section = document.createElement('div')
     section.className = 'hs-pc-section hs-pc-history-section'
-    section.style.cssText = 'flex: 1 1 auto !important; display: flex !important; flex-direction: column !important; padding-bottom: 0 !important;'
+    section.style.cssText = 'flex: 1 1 auto !important; min-height: 0 !important; display: flex !important; flex-direction: column !important; padding-bottom: 0 !important;'
 
     const title = document.createElement('div')
     title.className = 'hs-pc-section-title'
@@ -5539,8 +5535,9 @@ function updateEmoteState(hash, emoteName, state) {
       row.appendChild(text)
       list.appendChild(row)
     }
-    // Auto-scroll to bottom (newest)
-    list.scrollTop = list.scrollHeight
+    // Auto-scroll to bottom (newest). Defer so the layout pass settles first —
+    // setting scrollTop before layout means scrollHeight is wrong.
+    requestAnimationFrame(() => { list.scrollTop = list.scrollHeight })
   }
 
   // Build panel footer (block / view profile / open twitch popout / copy)

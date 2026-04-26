@@ -758,9 +758,10 @@
         const name = c.name || c.game_name || c.category || '';
         const row = document.createElement('div');
         row.className = 'livenow-cat-row';
-        row.title = escapeHtml(name);
+        // .title is a DOM string property — escapeHtml would inject literal entities
+        row.title = name;
 
-        const thumbSrc = safeUrl(c.box_art_url || c.thumbnail || c.image || '');
+        const thumbSrc = safeUrl(c.imageUrl || c.image_url || c.box_art_url || c.thumbnail || c.image || '');
         if (thumbSrc) {
           const img = document.createElement('img');
           img.className = 'livenow-cat-thumb';
@@ -779,7 +780,7 @@
         nameEl.textContent = name;
         row.appendChild(nameEl);
 
-        const cnt = c.channels || c.stream_count || c.count;
+        const cnt = c.streams ?? c.channels ?? c.stream_count ?? c.count;
         if (cnt != null) {
           const cntEl = document.createElement('span');
           cntEl.className = 'livenow-cat-count';

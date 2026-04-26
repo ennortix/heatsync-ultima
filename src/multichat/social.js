@@ -1754,7 +1754,9 @@ async function fetchPinned() {
 
   try {
     const resp = await apiFetch('/api/messages/pinned');
-    pinnedMessages = resp.ok ? (resp.messages || resp.data || []) : [];
+    // Server returns { messages: [...] }; api_fetch proxy wraps as { ok, data: { messages } }
+    const data = resp.ok ? (resp.data || resp) : {};
+    pinnedMessages = Array.isArray(data) ? data : (data.messages || []);
     pinnedLoaded = true;
   } catch (e) {
     pinnedMessages = [];

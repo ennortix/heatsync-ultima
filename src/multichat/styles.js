@@ -3399,6 +3399,89 @@ function injectStyles() {
       background: #000;
     }
     /* Collapsed chat rules moved to injectStyles() so they're always active */
+
+    /* Mentions search bar */
+    #hs-mc-search-bar {
+      display: none;
+      flex-shrink: 0;
+      padding: 4px 6px;
+      border-bottom: 1px solid #333;
+      background: #000;
+    }
+    #hs-mc-search-bar.visible {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    #hs-mc-search-input {
+      flex: 1;
+      padding: 5px 10px;
+      background: #111;
+      color: #e0e0e0;
+      border: 1px solid #444;
+      border-radius: 0;
+      font-size: 12px;
+      font-family: inherit;
+      outline: none;
+    }
+    #hs-mc-search-input:focus {
+      border-color: #ff8700;
+    }
+    #hs-mc-search-input::placeholder {
+      color: #555;
+    }
+    #hs-mc-search-spinner {
+      display: none;
+      width: 14px;
+      height: 14px;
+      border: 2px solid #333;
+      border-top-color: #ff8700;
+      border-radius: 50%;
+      animation: hs-spin 0.6s linear infinite;
+      flex-shrink: 0;
+    }
+    #hs-mc-search-spinner.visible {
+      display: block;
+    }
+    @keyframes hs-spin {
+      to { transform: rotate(360deg); }
+    }
+    .hs-mc-search-result {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      padding: 5px 8px;
+      border-bottom: 1px solid #1a1a1a;
+      cursor: pointer;
+      font-size: 12px;
+    }
+    .hs-mc-search-result:hover {
+      background: #111;
+    }
+    .hs-mc-search-result:last-child {
+      border-bottom: none;
+    }
+    .hs-mc-search-meta {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      color: #666;
+      font-size: 11px;
+    }
+    .hs-mc-search-user {
+      font-weight: bold;
+      color: #ff8700;
+    }
+    .hs-mc-search-content {
+      color: #ccc;
+      word-break: break-word;
+    }
+    .hs-mc-search-empty {
+      padding: 16px;
+      text-align: center;
+      color: #555;
+      font-size: 12px;
+    }
   `;
   document.head.appendChild(style);
 }

@@ -829,8 +829,13 @@
   function createOverlay() {
     const overlay = document.createElement('div');
     overlay.id = 'hs-mc-overlay';
-    // Static hardcoded layout — no user input, safe innerHTML
+    // Static hardcoded layout — only static strings, no user input, safe innerHTML
+    const searchPlaceholder = 'search messages…'
     overlay.innerHTML = `
+      <div id="hs-mc-search-bar">
+        <input id="hs-mc-search-input" type="text" placeholder="${searchPlaceholder}" autocomplete="off" spellcheck="false" />
+        <div id="hs-mc-search-spinner"></div>
+      </div>
       <div id="hs-mc-messages">
         <div class="hs-mc-empty">${t('mc_no_messages')}</div>
       </div>
@@ -963,7 +968,102 @@
       }, { passive: true, signal: mcSignal })
     }, 100);
 
+    // Search bar wiring — debounce 250ms then call /api/search
+    const searchInput = overlay.querySelector('#hs-mc-search-input')
+    const searchSpinner = overlay.querySelector('#hs-mc-search-spinner')
+    let _searchTimer = null
+    let _searchActive = false
+
+    if (searchInput && searchSpinner) {
+      searchInput.addEventListener('input', () => {
+        if (_searchTimer) { cleanup.clearTimeout(_searchTimer); _searchTimer = null }
+        const q = searchInput.value.trim()
+        if (!q) {
+          _searchActive = false
+          searchSpinner.classList.remove('visible')
+          if (currentTab === 'mentions') renderMessages('mentions')
+          return
+        }
+        _searchActive = true
+        searchSpinner.classList.add('visible')
+        _searchTimer = cleanup.setTimeout(async () => {
+          _searchTimer = null
+          if (!_searchActive) return
+          const msgsEl = document.getElementById('hs-mc-messages')
+          if (!msgsEl || currentTab !== 'mentions') return
+          try {
+            const resp = await apiFetch(`/api/search?q=${encodeURIComponent(q)}&mode=messages&limit=50`)
+            if (!_searchActive || currentTab !== 'mentions') return
+            searchSpinner.classList.remove('visible')
+            const results = resp?.data?.results || resp?.results || []
+            renderSearchResults(msgsEl, results, q)
+          } catch (e) {
+            searchSpinner.classList.remove('visible')
+          }
+        }, 250)
+      })
+
+      // Clear search state when input is cleared via keyboard
+      searchInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+          searchInput.value = ''
+          _searchActive = false
+          searchSpinner.classList.remove('visible')
+          if (_searchTimer) { cleanup.clearTimeout(_searchTimer); _searchTimer = null }
+          if (currentTab === 'mentions') renderMessages('mentions')
+        }
+      })
+    }
+
     return overlay;
+  }
+
+  function renderSearchResults(msgsEl, results, query) {
+    msgsEl.textContent = ''
+    if (!results.length) {
+      const empty = document.createElement('div')
+      empty.className = 'hs-mc-search-empty'
+      empty.textContent = 'no results'
+      msgsEl.appendChild(empty)
+      return
+    }
+    const frag = document.createDocumentFragment()
+    for (const r of results) {
+      const div = document.createElement('div')
+      div.className = 'hs-mc-search-result'
+
+      const ts = r.created_at ? new Date(r.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''
+      const user = escapeHtml(r.display_name || r.username || '')
+      const content = escapeHtml(r.content || '')
+      const msgId = r.base36_id || ''
+      const permalink = msgId ? `https://heatsync.org/m/${msgId}` : null
+
+      const meta = document.createElement('div')
+      meta.className = 'hs-mc-search-meta'
+      if (ts) {
+        const tsSpan = document.createElement('span')
+        tsSpan.textContent = ts
+        meta.appendChild(tsSpan)
+      }
+      const userSpan = document.createElement('span')
+      userSpan.className = 'hs-mc-search-user'
+      userSpan.innerHTML = user
+      meta.appendChild(userSpan)
+
+      const body = document.createElement('div')
+      body.className = 'hs-mc-search-content'
+      body.innerHTML = content
+
+      div.appendChild(meta)
+      div.appendChild(body)
+
+      if (permalink) {
+        div.addEventListener('click', () => window.open(permalink, '_blank', 'noopener'))
+      }
+
+      frag.appendChild(div)
+    }
+    msgsEl.appendChild(frag)
   }
 
   /**
@@ -2335,6 +2435,10 @@
       updateTabBadges();
     }
 
+    // Show/hide search bar on mentions tab
+    const searchBar = document.getElementById('hs-mc-search-bar')
+    if (searchBar) searchBar.classList.toggle('visible', id === 'mentions')
+
     // Clear activity badge when switching to activity tab
     if (id === 'activity' && unreadNotifCount > 0) {
       unreadNotifCount = 0;
@@ -3095,6 +3199,12 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     if (id === 'activity') { renderActivity(); return; }
     if (id === 'whispers') { renderWhispersTab(); return; }
     if (id === 'settings') { renderSettingsTab(); return; }
+
+    // If search is active on mentions tab, don't clobber search results
+    if (id === 'mentions') {
+      const searchInput = document.getElementById('hs-mc-search-input')
+      if (searchInput && searchInput.value.trim()) return
+    }
 
     const msgsEl = document.getElementById('hs-mc-messages');
     if (!msgsEl) return;

@@ -1551,6 +1551,12 @@ function injectStyles() {
       position: relative;
       z-index: 2;
     }
+    /* Reply context text needs to be readable on the olive thread-highlight bg */
+    .hs-mc-msg.hs-mc-thread-highlight .hs-mc-reply-ctx,
+    .hs-mc-msg.hs-mc-thread-highlight .hs-mc-reply-user {
+      color: #fff !important;
+      border-left-color: #fff !important;
+    }
     .hs-mc-feed-inline, .hs-mc-stream-event {
       content-visibility: auto;
       contain-intrinsic-size: auto 32px;

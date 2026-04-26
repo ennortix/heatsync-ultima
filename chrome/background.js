@@ -1934,6 +1934,8 @@ async function blockEmote(hash) {
       log(' Removed blocked emote from local inventory:', removedEmote.name);
     }
 
+    // Persist updated blocked set so a page refresh doesn't restore stale state
+    browser.storage.local.set({ blocked_emotes: Array.from(blockedEmotes) }).catch(() => {})
     broadcastToTabs({ type: 'emote_blocked', hash });
     return { success: true };
   } catch (error) {
@@ -1977,6 +1979,8 @@ async function unblockEmote(hash) {
       return { success: false, error: error.error || `HTTP ${response.status}` };
     }
 
+    // Persist updated blocked set so a page refresh doesn't restore stale state
+    browser.storage.local.set({ blocked_emotes: Array.from(blockedEmotes) }).catch(() => {})
     broadcastToTabs({ type: 'emote_unblocked', hash });
     return { success: true };
   } catch (error) {

@@ -503,23 +503,25 @@
         return;
       }
       bookmarks.slice(0, 5).forEach(function(b) {
-        const id = b.messageId || b.id || b.message_id || '';
-        const b36 = toBase36(id);
-        const url = safeUrl('https://heatsync.org/m/' + encodeURIComponent(b36));
+        // Server fields: base36_id, content, bookmarked_at, message_created_at,
+        // author_username, author_platform, heat, etc.
+        const base36 = b.base36_id || b.messageId || b.message_id || b.id || '';
+        const url = safeUrl('https://heatsync.org/m/' + encodeURIComponent(base36));
         const a = document.createElement('a');
         a.className = 'bm-row';
         a.href = url || '#';
         a.target = '_blank';
         a.rel = 'noopener noreferrer';
 
+        const ts = b.bookmarked_at || b.message_created_at || b.ts || b.createdAt || b.created_at || null;
         const tsEl = document.createElement('span');
         tsEl.className = 'bm-ts';
-        tsEl.textContent = b.ts || b.createdAt || b.created_at ? relTime(b.ts || b.createdAt || b.created_at) : '';
+        tsEl.textContent = ts ? relTime(ts) : '';
         a.appendChild(tsEl);
 
         const chEl = document.createElement('span');
         chEl.className = 'bm-channel';
-        chEl.textContent = b.channel || '';
+        chEl.textContent = b.author_username || b.channel || '';
         a.appendChild(chEl);
 
         const content = String(b.content || b.message || b.text || '');

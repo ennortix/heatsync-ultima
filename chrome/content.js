@@ -2571,7 +2571,10 @@ function serializeMessage(el) {
   if (!text) return null
   const nameEl = el.querySelector('.chat-author__display-name, button.inline.font-bold')
   const color = nameEl?.style?.color || '#ffffff'
-  return { id, user, text, color, ts: Date.now() }
+  // Twitch user-id (for cosmetic re-application on restore — without this,
+  // restored cached messages get no 7TV badge / paint / BTTV / FFZ / Chatterino)
+  const uid = el.getAttribute('data-user-id') || ''
+  return { id, user, text, color, uid, ts: Date.now() }
 }
 
 // Capture a message into the cache buffer (called from MutationObserver)
@@ -2672,6 +2675,9 @@ function restoreMsgCache(channel, chatContainer) {
       div.className = 'chat-line__message heatsync-cached' + (msg.timedOut ? ' hs-timed-out' : '')
       div.setAttribute('data-heatsync-cached', 'true')
       if (msg.id) div.setAttribute('data-msg-id', msg.id)
+      // Restore twitch user id so cosmetics pipeline picks up these messages
+      if (msg.uid && /^\d+$/.test(msg.uid)) div.setAttribute('data-user-id', msg.uid)
+      if (msg.user) div.setAttribute('data-a-user', msg.user.toLowerCase())
 
       const nameSpan = document.createElement('span')
       nameSpan.className = 'chat-author__display-name'
@@ -6978,21 +6984,41 @@ function watchForNewMessages() {
   })
   // Sweep existing messages where data-user-id was already stamped before our
   // observer attached (page load with backfill / live messages already there).
-  chatContainer.querySelectorAll('.chat-line__message[data-user-id]:not([data-hs-cosmetic-user-id])').forEach(el => {
-    const userId = el.getAttribute('data-user-id')
-    if (!userId) return
-    el.dataset.hsCosmeticUserId = userId
+  // Also build a username→uid map from live (uid-bearing) messages, then
+  // back-fill data-user-id onto cached/backfilled messages by username so
+  // their cosmetics work too (cached entries from older builds didn't store
+  // the twitch id, and robotty backfill may not have it for every user).
+  const usernameToUid = new Map()
+  chatContainer.querySelectorAll('.chat-line__message[data-user-id]').forEach(el => {
+    const uid = el.getAttribute('data-user-id')
+    const username = el.dataset.aUser || el.querySelector('.chat-author__display-name')?.textContent?.trim().toLowerCase()
+    if (uid && username) usernameToUid.set(username, uid)
+    if (el.dataset.hsCosmeticUserId === uid) return
+    el.dataset.hsCosmeticUserId = uid
     const usernameEl = el.querySelector('.chat-author__display-name, [data-a-target="chat-message-username"]')
-    applyCosmeticsToMessage(el, userId, usernameEl)
-    queueCosmeticsLookup(userId)
+    applyCosmeticsToMessage(el, uid, usernameEl)
+    queueCosmeticsLookup(uid)
     if (!_selfTwitchIdRegistered) {
       const me = getCurrentUsername()
-      const username = usernameEl?.textContent?.trim().toLowerCase()
       if (me && username && me === username) {
         _selfTwitchIdRegistered = true
-        safeSendMessage({ type: 'register_self_twitch_id', twitchId: userId })
+        safeSendMessage({ type: 'register_self_twitch_id', twitchId: uid })
       }
     }
+  })
+  // Back-fill: cached/backfilled messages without data-user-id but whose
+  // username was seen on a live (stamped) message. Look up uid, stamp it,
+  // apply cosmetics.
+  chatContainer.querySelectorAll('.chat-line__message:not([data-user-id])').forEach(el => {
+    const username = el.dataset.aUser || el.querySelector('.chat-author__display-name')?.textContent?.trim().toLowerCase()
+    if (!username) return
+    const uid = usernameToUid.get(username)
+    if (!uid) return
+    el.setAttribute('data-user-id', uid)
+    el.dataset.hsCosmeticUserId = uid
+    const usernameEl = el.querySelector('.chat-author__display-name, [data-a-target="chat-message-username"]')
+    applyCosmeticsToMessage(el, uid, usernameEl)
+    queueCosmeticsLookup(uid)
   })
 }
 

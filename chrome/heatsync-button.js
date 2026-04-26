@@ -3973,7 +3973,9 @@
 
     // Kick fallback — anchor near the chat input area
     if (!anchor && window.location.hostname.includes('kick.com')) {
-      anchor = document.querySelector('[class*="chatroom-footer"]') ||
+      anchor = document.querySelector('.editor-input')?.parentElement ||
+               document.querySelector('[class*="editor-input"]')?.parentElement ||
+               document.querySelector('[class*="chatroom-footer"]') ||
                document.querySelector('.chat-footer') ||
                document.querySelector('[class*="chat-input"]')?.parentElement ||
                document.querySelector('#message-input')?.parentElement;

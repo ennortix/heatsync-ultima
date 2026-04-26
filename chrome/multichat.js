@@ -13110,6 +13110,7 @@ async function fetchNotifications() {
 }
 
 function renderActivity() {
+  if (typeof activeProfileCard !== 'undefined' && activeProfileCard) return;
   const msgsEl = document.getElementById('hs-mc-messages');
   if (!msgsEl) return;
 
@@ -13605,6 +13606,7 @@ function makeDiscoverSection(titleText, subtitleText, metaText, extraClass) {
 }
 
 function renderDiscoverTab() {
+  if (typeof activeProfileCard !== 'undefined' && activeProfileCard) return;
   const msgsEl = document.getElementById('hs-mc-messages');
   if (!msgsEl) return;
 
@@ -13817,6 +13819,7 @@ async function fetchPinned() {
 }
 
 function renderPinnedTab() {
+  if (typeof activeProfileCard !== 'undefined' && activeProfileCard) return;
   const msgsEl = document.getElementById('hs-mc-messages');
   if (!msgsEl) return;
 
@@ -14173,6 +14176,7 @@ async function sendWhisperMessage(key, text) {
 }
 
 function renderWhispersTab() {
+  if (typeof activeProfileCard !== 'undefined' && activeProfileCard) return
   const msgsEl = document.getElementById('hs-mc-messages')
   if (!msgsEl) return
   resolveSelfColor()

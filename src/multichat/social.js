@@ -2219,6 +2219,7 @@ async function fetchPinned() {
 }
 
 function renderPinnedTab() {
+  if (typeof activeProfileCard !== 'undefined' && activeProfileCard) return;
   const msgsEl = document.getElementById('hs-mc-messages');
   if (!msgsEl) return;
 

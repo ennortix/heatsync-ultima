@@ -2506,6 +2506,8 @@
   function switchTab(id) {
     log('switchTab called:', id);
     editingChannel = false;
+    // Tab switch closes profile card without re-rendering (we'll render the tab below)
+    if (typeof activeProfileCard !== 'undefined' && activeProfileCard) activeProfileCard = null;
 
     // Clicking feed tab while in thread view → go back to feed, don't switch tabs
     if (id === 'feed' && currentTab === 'feed' && activeThread) {
@@ -3187,6 +3189,8 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
 
   function appendMessage(msg, tabId) {
     if (editingChannel) return false;
+    // Skip live append while profile card is open — buffer keeps the msg, restored on close
+    if (typeof activeProfileCard !== 'undefined' && activeProfileCard) return true;
     if (isScrolledUp || currentTab !== tabId) return false;
 
     // Platform filter: skip messages for muted platforms (single-platform tab path)
@@ -3298,6 +3302,11 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
 
   function renderMessages(id) {
     if (editingChannel) return;
+    // Profile card overrides normal tab content while open
+    if (typeof activeProfileCard !== 'undefined' && activeProfileCard) {
+      renderProfileCardView();
+      return;
+    }
     // Social tabs have their own renderers
     if (id === 'feed') { renderFeed(); return; }
     if (id === 'activity') { renderActivity(); return; }
@@ -4917,6 +4926,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     setupEmoteTooltipHandlers();
     setupUserTooltipHandlers();
     setupLinkTooltipHandlers();
+    setupProfileCardHandlers();
     listenForSettingsChanges();
 
     // Request initial BTTV/FFZ badge maps from background

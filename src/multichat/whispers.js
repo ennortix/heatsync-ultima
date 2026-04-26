@@ -273,6 +273,7 @@ async function sendWhisperMessage(key, text) {
 }
 
 function renderWhispersTab() {
+  if (typeof activeProfileCard !== 'undefined' && activeProfileCard) return
   const msgsEl = document.getElementById('hs-mc-messages')
   if (!msgsEl) return
   resolveSelfColor()

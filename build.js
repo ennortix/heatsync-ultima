@@ -103,6 +103,7 @@ const MULTICHAT_MODULES = [
   'social.js',
   'whispers.js',
   'input.js',
+  'profile-card.js',
 ]
 
 function readMultichatModules() {

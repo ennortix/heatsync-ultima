@@ -620,7 +620,7 @@
     }
 
     log('yt msg:', msgType, msg.user, msg.text)
-    chrome.runtime.sendMessage(payload).catch(() => {})
+    safeSendMessage(payload)
   }
 
   // ─── Autocomplete ─────────────────────────────────────────────────────────────

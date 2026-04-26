@@ -4493,32 +4493,18 @@ function generateEmoteElement(emote, isOverlay, modifierClass) {
     img.alt = emote.name;
     img.decoding = 'async';
     img.style.cssText = `display: block !important; width: auto !important; height: ${isOverlay ? 'auto' : 'var(--hs-emote-height, 28px)'} !important; max-width: none !important; max-height: none !important; ${blocked ? 'opacity: 0;' : ''} cursor: pointer;`;
-    // Force overlay images to render at native 1x dimensions once loaded
-    if (isOverlay && !blocked) {
+    // Overlay images need explicit natural dims so Twitch CSS can't constrain them.
+    // Fire even when blocked so a later unblock has correct dims (img is opacity:0
+    // while blocked, so this is layout-only — no visual flash).
+    // Non-overlay blocked emotes deliberately stay at the cssText height (28px) —
+    // locking to naturalWidth would push chat rows to 4x for high-DPI assets.
+    if (isOverlay) {
       img.onload = function() {
         const nw = this.naturalWidth, nh = this.naturalHeight
         this.style.setProperty('width', nw + 'px', 'important')
         this.style.setProperty('height', nh + 'px', 'important')
         this.style.setProperty('min-width', nw + 'px', 'important')
         this.style.setProperty('min-height', nh + 'px', 'important')
-        if (HEATSYNC_DEBUG) {
-          // Debug: walk up DOM and log what might constrain us
-          let el = this, chain = []
-          for (let i = 0; i < 8 && el; i++) {
-            const cs = getComputedStyle(el)
-            chain.push(`${el.tagName}.${el.className.split(' ')[0] || ''}: ${el.clientWidth}x${el.clientHeight} ow=${cs.overflow} mw=${cs.maxWidth} mh=${cs.maxHeight}`)
-            el = el.parentElement
-          }
-          log(' 📐 Overlay', emote.name, `natural=${nw}x${nh} rendered=${this.clientWidth}x${this.clientHeight}`)
-          log(' 📐 DOM chain:', chain.join(' → '))
-        }
-      }
-    }
-    // For blocked emotes, lock dimensions on load so outline matches exactly
-    if (blocked) {
-      img.onload = function() {
-        this.style.width = this.naturalWidth + 'px'
-        this.style.height = this.naturalHeight + 'px'
       }
     }
     img.className = cssClasses.join(' ');
@@ -4758,6 +4744,22 @@ function updateEmoteState(hash, emoteName, state) {
       wrapper.style.removeProperty('--hs-emote-height');
     }
 
+    const restoreImgSize = () => {
+      const sw = img.dataset.hsPrevW, sh = img.dataset.hsPrevH
+      const swPrio = img.dataset.hsPrevWPrio || ''
+      const shPrio = img.dataset.hsPrevHPrio || ''
+      if (sw !== undefined && sh !== undefined) {
+        if (sw === '') img.style.removeProperty('width')
+        else img.style.setProperty('width', sw, swPrio)
+        if (sh === '') img.style.removeProperty('height')
+        else img.style.setProperty('height', sh, shPrio)
+        delete img.dataset.hsPrevW
+        delete img.dataset.hsPrevH
+        delete img.dataset.hsPrevWPrio
+        delete img.dataset.hsPrevHPrio
+      }
+    }
+
     switch(effectiveState) {
       case 'blocked':
         if (wrapper) {
@@ -4772,10 +4774,20 @@ function updateEmoteState(hash, emoteName, state) {
             }
           }
         }
-        // Lock dimensions so outline matches the emote exactly (even wide ones like 96x32)
-        if (img.naturalWidth) {
-          img.style.width = img.naturalWidth + 'px'
-          img.style.height = img.naturalHeight + 'px'
+        // Lock to CURRENT rendered size (not naturalWidth — which can be 4x for high-DPI
+        // assets and would jump chat layout). Stash any existing inline so unblock restores.
+        if (img.dataset.hsPrevW === undefined) {
+          img.dataset.hsPrevW = img.style.width || ''
+          img.dataset.hsPrevH = img.style.height || ''
+          img.dataset.hsPrevWPrio = img.style.getPropertyPriority('width') || ''
+          img.dataset.hsPrevHPrio = img.style.getPropertyPriority('height') || ''
+        }
+        {
+          const rw = img.offsetWidth, rh = img.offsetHeight
+          if (rw && rh) {
+            img.style.setProperty('width', rw + 'px', 'important')
+            img.style.setProperty('height', rh + 'px', 'important')
+          }
         }
         img.style.opacity = '0';
         img.classList.add('emote-blocked');
@@ -4783,6 +4795,7 @@ function updateEmoteState(hash, emoteName, state) {
 
       case 'added':
         if (wrapper) wrapper.classList.add('emote-overlay-owned');
+        restoreImgSize();
         img.style.opacity = '';
         img.classList.add('emote-in-set');
         log(' Applied emote-overlay-owned to:', emoteName);
@@ -4790,6 +4803,7 @@ function updateEmoteState(hash, emoteName, state) {
 
       case 'global':
         if (wrapper) wrapper.classList.add('emote-overlay-global');
+        restoreImgSize();
         img.style.opacity = '';
         log(' Applied emote-overlay-global to:', emoteName);
         break;
@@ -4797,6 +4811,7 @@ function updateEmoteState(hash, emoteName, state) {
       case 'neutral':
       default:
         if (wrapper) wrapper.classList.add('emote-overlay-unadded');
+        restoreImgSize();
         img.style.opacity = '';
         break;
     }

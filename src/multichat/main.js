@@ -66,6 +66,9 @@
   // Muted users (right-click to hide) — loaded async from chrome.storage.local
   let mutedUsers = new Set();
 
+  // Per-tab platform filters: { [tabId]: { twitch, kick, youtube } }, defaults all true
+  let platformFilters = {};
+
 
   // Channel point redeem title cache: rewardId → { title, cost }
   const redeemTitleMap = new Map();
@@ -577,6 +580,7 @@
         <button class="hs-mc-tab" data-tab="live">${t('mc_tab_live')}</button>
         <button class="hs-mc-tab" data-tab="add">+</button>
       </div>
+      <div id="hs-mc-platfilter"></div>
       <div class="hs-mc-util-row">
         <button class="hs-mc-tab hs-mc-util-btn hs-mc-rotate" data-tab="rotate" title="${t('mc_btn_rotate_tabs')}">T</button>
         <button class="hs-mc-tab hs-mc-util-btn hs-mc-font-btn" data-font-dir="-1" title="${t('mc_btn_smaller_text')}">A-</button>
@@ -1578,6 +1582,74 @@
     renderMessages(currentTab);
   }
 
+  // Platform filters — per-tab toggle to mute Twitch/Kick/YT messages
+  async function loadPlatformFilters() {
+    try {
+      const stored = await chrome.storage.sync.get(['ui_settings']);
+      if (stored.ui_settings?.platformFilters) platformFilters = stored.ui_settings.platformFilters;
+    } catch {}
+  }
+
+  function getPlatformFilter(tabId) {
+    const f = platformFilters[tabId] || {};
+    return { twitch: f.twitch !== false, kick: f.kick !== false, youtube: f.youtube !== false };
+  }
+
+  function togglePlatformFilter(tabId, plat) {
+    const f = getPlatformFilter(tabId);
+    f[plat] = !f[plat];
+    platformFilters[tabId] = f;
+    saveUiSetting('platformFilters', platformFilters);
+  }
+
+  function isPlatformFilterTab(tabId) {
+    return tabId === 'live' || config.channels.some(c => (typeof c === 'string' ? c : c.id) === tabId);
+  }
+
+  function renderPlatformFilterButtons() {
+    const group = document.getElementById('hs-mc-platfilter');
+    if (!group) return;
+    while (group.firstChild) group.removeChild(group.firstChild);
+    const tab = currentTab;
+    if (!isPlatformFilterTab(tab)) return; // empty container hides via :empty CSS
+
+    // Determine which platforms apply to this tab
+    let hasTwitch = true, hasKick = true, hasYt = true;
+    if (tab !== 'live') {
+      const ch = config.channels.find(c => (typeof c === 'string' ? c : c.id) === tab);
+      if (ch && typeof ch !== 'string') {
+        hasTwitch = !!ch.twitch;
+        hasKick = !!ch.kick;
+        hasYt = !!ch.youtube;
+      }
+    }
+
+    const filt = getPlatformFilter(tab);
+    const meta = [
+      { key: 'twitch', label: 'T', show: hasTwitch },
+      { key: 'kick', label: 'K', show: hasKick },
+      { key: 'youtube', label: 'YT', show: hasYt }
+    ];
+
+    for (const p of meta) {
+      if (!p.show) continue;
+      const btn = document.createElement('button');
+      btn.className = 'hs-mc-pf-btn hs-mc-pf-' + p.key;
+      btn.dataset.platform = p.key;
+      btn.classList.toggle('off', !filt[p.key]);
+      btn.textContent = p.label;
+      btn.title = (filt[p.key] ? 'Hide ' : 'Show ') + p.key + ' messages';
+      btn.addEventListener('click', () => {
+        togglePlatformFilter(currentTab, p.key);
+        const on = getPlatformFilter(currentTab)[p.key];
+        btn.classList.toggle('off', !on);
+        btn.title = (on ? 'Hide ' : 'Show ') + p.key + ' messages';
+        renderMessages(currentTab);
+      });
+      group.appendChild(btn);
+    }
+  }
+
 
   // Auto-hide input setting
   async function loadAutoHideSetting() {
@@ -2471,6 +2543,9 @@
       } catch (e) { /* context invalidated */ }
     }
 
+    // Refresh platform filter buttons for the new tab
+    renderPlatformFilterButtons();
+
     // Update tab bar active state
     if (tabBarElement) {
       const liveCh = getLiveChannel()?.toLowerCase()
@@ -3102,6 +3177,12 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     if (editingChannel) return false;
     if (isScrolledUp || currentTab !== tabId) return false;
 
+    // Platform filter: skip messages for muted platforms (single-platform tab path)
+    if (msg.platform && isPlatformFilterTab(tabId)) {
+      const k = msg.platform === 'youtube' ? 'youtube' : msg.platform;
+      if (getPlatformFilter(tabId)[k] === false) return true;
+    }
+
     // Multi-platform tabs: skip appendMessage (trimChildren is platform-blind
     // and lets the fastest source push others out). Debounce to renderMessages
     // which has fair per-platform capping.
@@ -3267,7 +3348,12 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
         const linkedYt = config.channels.find(ch => typeof ch !== 'string' && (ch.twitch === curCh || ch.kick === curCh) && ch.youtube);
         if (linkedYt) ytMsgs = channelYtMessages.get(linkedYt.id) || [];
       }
-      msgs = fairMerge([ircMsgs, kickMsgs, ytMsgs])
+      const filt = getPlatformFilter('live')
+      msgs = fairMerge([
+        filt.twitch ? ircMsgs : [],
+        filt.kick ? kickMsgs : [],
+        filt.youtube ? ytMsgs : []
+      ])
     } else {
       // Channel tab — merge IRC + Kick + per-channel YouTube messages
       const ch = config.channels.find(c => (typeof c === 'string' ? c : c.id) === id);
@@ -3288,7 +3374,12 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
           ytMsgs = autoYt
         }
       }
-      msgs = fairMerge([ircMsgs, kickMsgs, ytMsgs])
+      const filt = getPlatformFilter(id)
+      msgs = fairMerge([
+        filt.twitch ? ircMsgs : [],
+        filt.kick ? kickMsgs : [],
+        filt.youtube ? ytMsgs : []
+      ])
     }
 
     // Merge follow stream events into every tab (went live, switched game, went offline)
@@ -4045,26 +4136,42 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     const urlCh = getCurrentChannel()?.toLowerCase();
     const watching = await getWatchingChannels();
 
-    // Check which watching channels are actually live
-    const watchNames = watching.map(w => w.name);
-    if (urlCh && !watchNames.includes(urlCh)) watchNames.push(urlCh);
-    let liveSet = liveChannelSet;
-    if (watchNames.length > 0) {
+    // Split watching by platform — API supports `channels` (twitch) + `kick_channels`
+    const twitchNames = [];
+    const kickNames = [];
+    for (const w of watching) {
+      if (w.platform === 'kick') kickNames.push(w.name);
+      else if (w.platform === 'twitch') twitchNames.push(w.name);
+    }
+    if (urlCh && hostPlatform === 'twitch' && !twitchNames.includes(urlCh)) twitchNames.push(urlCh);
+    if (urlCh && hostPlatform === 'kick' && !kickNames.includes(urlCh)) kickNames.push(urlCh);
+
+    let twitchLive = liveChannelSet;
+    let kickLive = new Set();
+    if (twitchNames.length > 0 || kickNames.length > 0) {
       try {
-        const resp = await chrome.runtime.sendMessage({ type: 'fetch_live_status', channels: watchNames });
-        if (resp?.live) liveSet = new Set(resp.live.map(c => c.toLowerCase()));
+        const resp = await chrome.runtime.sendMessage({ type: 'fetch_live_status', channels: twitchNames, kickChannels: kickNames });
+        if (resp?.live) twitchLive = new Set(resp.live.map(c => c.toLowerCase()));
+        if (resp?.kickLive) kickLive = new Set(resp.kickLive.map(c => c.toLowerCase()));
       } catch (e) { /* use cached liveChannelSet */ }
     }
 
-    // Only show channels that are actually live
-    const channels = [];
-    const seen = new Set();
+    // Only show channels that are actually live; dedupe same name across platforms (twitch > kick > youtube)
+    const priority = { twitch: 3, kick: 2, youtube: 1 };
+    const byName = new Map();
     for (const w of watching) {
       const ch = w.name.toLowerCase();
-      if (seen.has(ch) || !liveSet.has(ch)) continue;
-      seen.add(ch);
-      channels.push({ name: ch, platform: w.platform, isCurrent: ch === urlCh });
+      let isLive = false;
+      if (w.platform === 'twitch') isLive = twitchLive.has(ch);
+      else if (w.platform === 'kick') isLive = kickLive.has(ch);
+      else if (w.platform === 'youtube') isLive = true;
+      if (!isLive) continue;
+      const existing = byName.get(ch);
+      if (!existing || priority[w.platform] > priority[existing.platform]) {
+        byName.set(ch, { name: ch, platform: w.platform, isCurrent: ch === urlCh });
+      }
     }
+    const channels = Array.from(byName.values());
 
     if (channels.length <= 1) {
       // 0 or 1 live channel — just switch to live normally
@@ -4094,9 +4201,10 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       item.appendChild(dot);
       item.appendChild(document.createTextNode(ch.name));
 
-      item.style.cssText = `padding:6px 12px;cursor:pointer;color:${isActive ? '#ff8700' : '#fff'};white-space:nowrap;`;
-      item.addEventListener('mouseenter', () => item.style.background = 'rgba(255,255,255,0.06)');
-      item.addEventListener('mouseleave', () => item.style.background = 'none');
+      const baseColor = isActive ? '#ff8700' : '#fff';
+      item.style.cssText = `padding:6px 12px;cursor:pointer;color:${baseColor};white-space:nowrap;`;
+      item.addEventListener('mouseenter', () => { item.style.background = '#fff'; item.style.color = '#000'; });
+      item.addEventListener('mouseleave', () => { item.style.background = 'none'; item.style.color = baseColor; });
       item.addEventListener('click', () => {
         menu.remove();
         // In popout mode, navigate to the channel's popout URL
@@ -4769,6 +4877,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     await loadAutomodSettings();
     await loadPlatformBadgesSetting();
     await loadZebraSetting();
+    await loadPlatformFilters();
     await loadAutoHideSetting();
     await loadTimestampsSetting();
     await loadAvatarsSetting();

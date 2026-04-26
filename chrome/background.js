@@ -3235,11 +3235,14 @@ async function handleMessage(message, sender, sendResponse) {
             if (match) match = [null, match[2]] // normalize to [_, channel]
             else match = url.pathname.match(/^\/([a-zA-Z0-9_-]+)/)
           } else if (url.hostname.includes('youtube.com')) {
-            // YouTube watch pages — extract video ID as channel identifier
+            // Only count tabs that are actually on a live stream URL — not plain channel pages
             const v = url.searchParams.get('v')
-            // Also try to extract @handle from /@channel paths
-            const handleMatch = url.pathname.match(/^\/@([^/]+)/)
-            const channelName = handleMatch ? handleMatch[1] : v
+            const liveHandleMatch = url.pathname.match(/^\/@([^/]+)\/live/)
+            const liveIdMatch = url.pathname.match(/^\/live\/([^/?]+)/)
+            let channelName = null
+            if (liveHandleMatch) channelName = liveHandleMatch[1]
+            else if (liveIdMatch) channelName = liveIdMatch[1]
+            else if (v && url.pathname === '/watch') channelName = v
             if (channelName && !seen.has('yt:' + channelName)) {
               seen.add('yt:' + channelName)
               channels.push({ name: channelName, platform: 'youtube' })
@@ -3262,9 +3265,13 @@ async function handleMessage(message, sender, sendResponse) {
 
   // Proxy fetch for live status (avoids CORS in content script)
   if (message.type === 'fetch_live_status') {
-    const channels = message.channels
-    if (!channels?.length) { sendResponse(null); return true }
-    fetch(`https://heatsync.org/api/platform/live-status?channels=${encodeURIComponent(channels.join(','))}`, { signal: AbortSignal.timeout(6000) })
+    const channels = message.channels || []
+    const kickChannels = message.kickChannels || []
+    if (!channels.length && !kickChannels.length) { sendResponse(null); return true }
+    const params = []
+    if (channels.length) params.push(`channels=${encodeURIComponent(channels.join(','))}`)
+    if (kickChannels.length) params.push(`kick_channels=${encodeURIComponent(kickChannels.join(','))}`)
+    fetch(`https://heatsync.org/api/platform/live-status?${params.join('&')}`, { signal: AbortSignal.timeout(6000) })
       .then(r => r.ok ? r.json() : null)
       .then(data => sendResponse(data))
       .catch(() => sendResponse(null))

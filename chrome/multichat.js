@@ -2609,12 +2609,13 @@ function injectStyles() {
       background: #fff;
     }
 
-    /* Per-tab platform filter toggles (T/K/YT) in inputbar */
+    /* Per-tab platform filter toggles (T/K/YT) — sits above util-row in tab bar */
     #hs-mc-platfilter {
-      display: flex;
-      gap: 2px;
-      align-items: center;
-      flex-shrink: 0;
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 4px;
+      width: 100%;
+      box-sizing: border-box;
     }
     #hs-mc-platfilter:empty { display: none; }
     .hs-mc-pf-btn {
@@ -2623,13 +2624,12 @@ function injectStyles() {
       color: #fff;
       font-size: 10px;
       font-weight: 700;
-      padding: 0 5px;
-      height: 22px;
-      min-width: 22px;
+      padding: 2px 0;
       cursor: pointer;
       font-family: inherit;
       line-height: 1;
       box-sizing: border-box;
+      min-width: 0;
     }
     .hs-mc-pf-btn.hs-mc-pf-twitch { border-color: #9146ff; background: #9146ff; color: #fff; }
     .hs-mc-pf-btn.hs-mc-pf-kick { border-color: #53fc18; background: #53fc18; color: #000; }
@@ -13645,7 +13645,7 @@ function renderDiscoverTab() {
   // TAGS — always render
   {
     const { section, body } = makeDiscoverSection(
-      'hashtags',
+      'tags',
       'trending across heatsync',
       `${discoverTags.length}`,
       'hs-discover-section-tags'
@@ -14339,15 +14339,9 @@ function createInputBar() {
     <button id="hs-mc-emote-btn"><img src="${iconUrl}" data-src="${iconUrl}" data-src-black="${iconBlackUrl}" alt="hs"></button>
   `;
 
-  // Prepend platform filter group container (populated by renderPlatformFilterButtons)
-  const platfilter = document.createElement('div');
-  platfilter.id = 'hs-mc-platfilter';
-  bar.insertBefore(platfilter, bar.firstChild);
-
   // Initialize input after DOM insertion
   setTimeout(() => {
     initInput();
-    renderPlatformFilterButtons();
     const btn = bar.querySelector('#hs-mc-emote-btn');
     const img = btn?.querySelector('img');
     if (btn && img) {
@@ -16990,6 +16984,7 @@ const STORAGE_KEY = 'heatsync_multichat';
         <button class="hs-mc-tab" data-tab="live">${t('mc_tab_live')}</button>
         <button class="hs-mc-tab" data-tab="add">+</button>
       </div>
+      <div id="hs-mc-platfilter"></div>
       <div class="hs-mc-util-row">
         <button class="hs-mc-tab hs-mc-util-btn hs-mc-rotate" data-tab="rotate" title="${t('mc_btn_rotate_tabs')}">T</button>
         <button class="hs-mc-tab hs-mc-util-btn hs-mc-font-btn" data-font-dir="-1" title="${t('mc_btn_smaller_text')}">A-</button>
@@ -18018,12 +18013,9 @@ const STORAGE_KEY = 'heatsync_multichat';
   function renderPlatformFilterButtons() {
     const group = document.getElementById('hs-mc-platfilter');
     if (!group) return;
+    while (group.firstChild) group.removeChild(group.firstChild);
     const tab = currentTab;
-    if (!isPlatformFilterTab(tab)) {
-      group.style.display = 'none';
-      return;
-    }
-    group.style.display = '';
+    if (!isPlatformFilterTab(tab)) return; // empty container hides via :empty CSS
 
     // Determine which platforms apply to this tab
     let hasTwitch = true, hasKick = true, hasYt = true;
@@ -18043,7 +18035,6 @@ const STORAGE_KEY = 'heatsync_multichat';
       { key: 'youtube', label: 'YT', show: hasYt }
     ];
 
-    while (group.firstChild) group.removeChild(group.firstChild);
     for (const p of meta) {
       if (!p.show) continue;
       const btn = document.createElement('button');

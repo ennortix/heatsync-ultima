@@ -2127,7 +2127,7 @@ function renderDiscoverTab() {
   // TAGS — always render
   {
     const { section, body } = makeDiscoverSection(
-      'hashtags',
+      'tags',
       'trending across heatsync',
       `${discoverTags.length}`,
       'hs-discover-section-tags'

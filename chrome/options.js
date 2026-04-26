@@ -142,5 +142,95 @@
     }
   })
 
+  // --- server content filters ---
+
+  let serverSettings = null
+
+  function setServerStatus(msg, cls) {
+    const el = document.getElementById('server-settings-status')
+    if (!el) return
+    el.textContent = msg
+    el.className = cls || ''
+  }
+
+  function renderServerToggles(data) {
+    for (const btn of document.querySelectorAll('.toggle[data-server-setting]')) {
+      const key = btn.dataset.serverSetting
+      const on = !!data[key]
+      btn.classList.toggle('active', on)
+      btn.setAttribute('aria-checked', on ? 'true' : 'false')
+      btn.disabled = false
+    }
+  }
+
+  async function loadServerSettings() {
+    try {
+      const resp = await chrome.runtime.sendMessage({
+        type: 'api_fetch',
+        path: '/api/user/settings',
+        method: 'GET',
+        auth: true
+      })
+      if (!resp || !resp.ok) {
+        const status = resp?.status
+        if (status === 401 || status === 403) {
+          setServerStatus('not logged in — sign in at heatsync.org to sync', '')
+        } else {
+          setServerStatus('failed to load: ' + (resp?.error || 'unknown'), 'err')
+        }
+        return
+      }
+      serverSettings = resp.data?.settings || resp.settings || null
+      if (!serverSettings) {
+        setServerStatus('no settings data returned', 'err')
+        return
+      }
+      renderServerToggles(serverSettings)
+      setServerStatus('', '')
+    } catch (e) {
+      setServerStatus('not logged in — sign in at heatsync.org to sync', '')
+    }
+  }
+
+  document.addEventListener('click', async (e) => {
+    const btn = e.target.closest('.toggle[data-server-setting]')
+    if (!btn || btn.disabled) return
+    const key = btn.dataset.serverSetting
+    if (!serverSettings) return
+    const next = !serverSettings[key]
+    serverSettings[key] = next
+    btn.classList.toggle('active', next)
+    btn.setAttribute('aria-checked', next ? 'true' : 'false')
+    btn.disabled = true
+    setServerStatus('saving…', '')
+    try {
+      const resp = await chrome.runtime.sendMessage({
+        type: 'api_fetch',
+        path: '/api/user/settings',
+        method: 'PATCH',
+        auth: true,
+        body: { [key]: next }
+      })
+      if (!resp || !resp.ok) {
+        // revert
+        serverSettings[key] = !next
+        btn.classList.toggle('active', !next)
+        btn.setAttribute('aria-checked', (!next) ? 'true' : 'false')
+        setServerStatus('save failed: ' + (resp?.error || 'unknown'), 'err')
+      } else {
+        setServerStatus('saved', 'ok')
+        setTimeout(() => setServerStatus('', ''), 1500)
+      }
+    } catch (err) {
+      serverSettings[key] = !next
+      btn.classList.toggle('active', !next)
+      btn.setAttribute('aria-checked', (!next) ? 'true' : 'false')
+      setServerStatus('save failed: ' + err.message, 'err')
+    } finally {
+      btn.disabled = false
+    }
+  })
+
   load()
+  loadServerSettings()
 })()

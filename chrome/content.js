@@ -3062,6 +3062,13 @@ function getCurrentUsername() {
     if (twitchUserJson) {
       const parsed = JSON.parse(twitchUserJson);
       username = parsed?.displayName || parsed?.login;
+      // Self twitch ID — register with background NOW (no need to wait for
+      // a chat message) so 7TV cosmetics fetch + EventAPI sub start ASAP.
+      const selfTwitchId = parsed?.id;
+      if (selfTwitchId && /^\d+$/.test(String(selfTwitchId)) && !_selfTwitchIdRegistered) {
+        _selfTwitchIdRegistered = true;
+        safeSendMessage({ type: 'register_self_twitch_id', twitchId: String(selfTwitchId) });
+      }
       if (username && username.length > 0 && username.length < 30) {
         log(' ✅ Found username from localStorage JSON:', username);
         cachedUsername = username.toLowerCase();

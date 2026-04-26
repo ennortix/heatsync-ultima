@@ -1662,7 +1662,15 @@ const twitchToSeventvId = new Map()
 const seventvToTwitchId = new Map()
 
 async function ensureSelfCosmeticSub(twitchId) {
-  if (!twitchId || twitchToSeventvId.has(twitchId)) return
+  if (!twitchId) return
+  // First time we see this twitch ID this session — force a fresh cosmetic
+  // fetch (busts any stale negative cache from before they got their badge).
+  if (!twitchToSeventvId.has(twitchId)) {
+    userCosmeticsCache.delete(String(twitchId))
+    broadcastToTabs({ type: 'cosmetics_invalidated', twitchId: String(twitchId) })
+  } else {
+    return // already subscribed
+  }
   try {
     const resp = await fetchWithTimeout(`https://7tv.io/v3/users/twitch/${twitchId}`)
     if (!resp.ok) { resp.body?.cancel?.(); return }
@@ -3838,7 +3846,13 @@ async function initialize() {
       const now = Date.now()
       let restored = 0
       for (const [key, val] of stored.user_cosmetics_cache) {
-        if (val?.fetchedAt && now - val.fetchedAt < USER_COSMETICS_TTL) {
+        if (!val?.fetchedAt) continue
+        // Negative entries (no paint AND no badge) get the shorter TTL on
+        // restore too — otherwise a stale null badge cache would suppress a
+        // newly-granted 7TV badge for up to 30 min after extension reload.
+        const isNegative = !val.paint && !val.badge
+        const ttl = isNegative ? COSMETICS_NEGATIVE_TTL : USER_COSMETICS_TTL
+        if (now - val.fetchedAt < ttl) {
           userCosmeticsCache.set(key, val)
           restored++
         }

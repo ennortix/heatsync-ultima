@@ -91,7 +91,7 @@
     },
     {
       "matches": ["https://www.youtube.com/live_chat*"],
-      "js": ["emoji-data.js", "shared-utils.js"],
+      "js": ["emoji-data.js", "shared-utils.js", "platform-detector.js"],
       "run_at": "document_end",
       "all_frames": true
     },

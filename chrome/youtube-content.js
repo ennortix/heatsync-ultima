@@ -103,6 +103,13 @@
 
   // ─── Emote Replacement ────────────────────────────────────────────────────────
 
+  function isZeroWidth(emote) {
+    if (!emote) return false
+    if (emote.zeroWidth === true) return true
+    if (typeof emote.flags === 'number' && (emote.flags & 257)) return true
+    return false
+  }
+
   function replaceEmotesInElement(messageEl) {
     if (!messageEl || emoteMap.size === 0) return
 
@@ -122,6 +129,8 @@
       if (!hasEmote) continue
 
       const frag = document.createDocumentFragment()
+      let currentStack = null   // active <span class="heatsync-emote-stack"> or null
+
       for (const word of words) {
         const emote = emoteMap.get(word)
         if (emote) {
@@ -131,8 +140,20 @@
           img.title = emote.name
           img.className = 'heatsync-emote-yt'
           img.loading = 'lazy'
-          frag.appendChild(img)
+
+          if (isZeroWidth(emote) && currentStack) {
+            // Stack onto the previous non-zero-width emote
+            currentStack.appendChild(img)
+          } else {
+            // Non-zero-width emote: start a new potential stack anchor
+            currentStack = document.createElement('span')
+            currentStack.className = 'heatsync-emote-stack'
+            currentStack.appendChild(img)
+            frag.appendChild(currentStack)
+          }
         } else {
+          // Any non-emote token breaks the stacking chain
+          currentStack = null
           frag.appendChild(document.createTextNode(word))
         }
       }
@@ -507,7 +528,9 @@
     'YT-LIVE-CHAT-TEXT-MESSAGE-RENDERER',
     'YT-LIVE-CHAT-PAID-MESSAGE-RENDERER',
     'YT-LIVE-CHAT-PAID-STICKER-RENDERER',
-    'YT-LIVE-CHAT-MEMBERSHIP-ITEM-RENDERER'
+    'YT-LIVE-CHAT-MEMBERSHIP-ITEM-RENDERER',
+    'YT-LIVE-CHAT-SPONSORSHIPS-GIFT-PURCHASE-ANNOUNCEMENT-RENDERER',
+    'YT-LIVE-CHAT-SPONSORSHIPS-GIFT-REDEMPTION-ANNOUNCEMENT-RENDERER'
   ])
 
   function getMsgType(tagName) {
@@ -515,6 +538,8 @@
       case 'YT-LIVE-CHAT-PAID-MESSAGE-RENDERER': return 'superchat'
       case 'YT-LIVE-CHAT-PAID-STICKER-RENDERER': return 'supersticker'
       case 'YT-LIVE-CHAT-MEMBERSHIP-ITEM-RENDERER': return 'membership'
+      case 'YT-LIVE-CHAT-SPONSORSHIPS-GIFT-PURCHASE-ANNOUNCEMENT-RENDERER': return 'giftpurchase'
+      case 'YT-LIVE-CHAT-SPONSORSHIPS-GIFT-REDEMPTION-ANNOUNCEMENT-RENDERER': return 'giftredemption'
       default: return 'text'
     }
   }

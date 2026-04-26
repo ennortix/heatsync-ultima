@@ -3152,9 +3152,9 @@ function injectStyles() {
 
     /* ---- FEED MESSAGE CARDS ---- */
     .hs-feed-msg {
-      padding: 2px 6px;
+      padding: 1px 6px;
       line-height: 1.4;
-      font-size: 13px;
+      font-size: 12px;
       word-wrap: break-word;
       word-break: break-word;
     }

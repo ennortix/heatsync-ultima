@@ -84,7 +84,7 @@ const FEED_STALE_MS = 120000; // 2 minutes
 // Virtual scroll state for feed
 let _feedVirtualScrollHandler = null  // current scroll listener ref
 let _feedVirtualResizeObserver = null // ResizeObserver on msgsEl
-let _feedVirtualItemHeight = 56       // estimated item height (px), recalibrated after first render
+let _feedVirtualItemHeight = 32       // estimated item height (px), recalibrated after first render — tighter than before
 let _feedVirtualScrollRaf = 0         // rAF handle for scroll debounce
 let _feedVirtualLastStart = -1        // last rendered window start
 let _feedVirtualLastEnd = -1          // last rendered window end
@@ -598,7 +598,7 @@ function _feedVirtualTeardown(msgsEl) {
   _feedVirtualLastEnd = -1
   // Reset item height — calibration from the previous session may not match
   // the new content (e.g. switching feed tab after thread expand changes heights)
-  _feedVirtualItemHeight = 56
+  _feedVirtualItemHeight = 32
 }
 
 // Render only the visible slice of feedMessages into the virtual container.

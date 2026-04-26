@@ -3042,7 +3042,10 @@
       const item = document.createElement('div')
       item.className = 'hs-discover-item'
 
-      const imgUrl = safeUrl(e.url || e.animated_url || '')
+      // Server can return relative paths like '/uploads/abc.webp' — absolutize
+      const rawUrl = e.url || e.animated_url || ''
+      const absUrl = rawUrl.startsWith('/') ? `https://heatsync.org${rawUrl}` : rawUrl
+      const imgUrl = safeUrl(absUrl)
       if (imgUrl) {
         const img = document.createElement('img')
         img.className = 'hs-discover-thumb'
@@ -3132,6 +3135,10 @@
     try {
       const token = await getAuthToken();
       if (!token) return;
+      // Absolutize relative urls like '/uploads/...' that the server returns
+      // for own-hosted emotes — import endpoint expects fully-qualified URLs.
+      const rawUrl = emote.url || emote.pickerUrl || '';
+      const url = rawUrl.startsWith('/') ? `https://heatsync.org${rawUrl}` : rawUrl;
 
       await HS.apiFetch('/api/user/emotes/import', {
         method: 'POST',
@@ -3139,7 +3146,7 @@
         body: {
           emotes: [{
             name: emote.name,
-            url: emote.url || emote.pickerUrl,
+            url,
             provider: emote.provider || 'imported',
             id: emote.id || emote.hash || ''
           }],

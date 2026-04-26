@@ -2860,12 +2860,9 @@ const knownChatters = new class extends Map {
 const subTenureMap = new Map() // usernameLC -> months
 
 function formatSubTenure(months) {
-  if (months >= 12) {
-    const y = Math.floor(months / 12)
-    const m = months % 12
-    return m > 0 ? `${y}y ${m}M` : `${y}y`
-  }
-  return `${months}M`
+  // Concise: drop months when year-resolution is sufficient.
+  if (months >= 12) return `${Math.floor(months / 12)}y`
+  return `${months}mo`
 }
 
 // ============================================
@@ -5219,50 +5216,64 @@ function updateEmoteState(hash, emoteName, state) {
       row1.appendChild(liveSpan)
     }
 
-    // Relationship badges — covers all four angles across Twitch and Kick
+    // Relationship badges — full suite, every angle and reverse angle.
+    // Server's relationship object covers heatsync (isFollowing/isSubscribed),
+    // Twitch (followsOnTwitch, subscribedOnTwitch, profileFollowsViewerOnTwitch,
+    // profileSubbedToViewerOnTwitch), and Kick (followsOnKick).
     const rel = profile.relationship || {}
+
+    // ─ they → you direction
     const followsYou = rel.profileFollowsViewerOnTwitch || rel.profileFollowsViewerOnKick || rel.followsYou
+    const followsYouSince = rel.profileFollowsViewerOnTwitchSince || rel.profileFollowsViewerOnKickSince || rel.followsYouSince
+    const subsYou = rel.profileSubbedToViewerOnTwitch || rel.profileSubbedToViewerOnKick || rel.subscribesToYou
+    const subsYouSince = rel.profileTwitchSubSince || rel.profileKickSubSince || rel.subscribesToYouSince
+    const subsYouTier = rel.profileTwitchSubTier || rel.profileKickSubTier || rel.subscribesToYouTier
+
+    // ─ you → them direction
+    const youFollow = rel.youFollow ?? rel.isFollowing ?? rel.followsOnTwitch ?? rel.followsOnKick
+    const youFollowSince = rel.youFollowSince || rel.followsOnTwitchSince || rel.followsOnKickSince || rel.followedAt
+    const youSub = rel.subscribedOnTwitch || rel.subscribedOnKick || rel.isSubscribed
+    const youSubSince = rel.subscribedAt || rel.twitchSubSince || rel.kickSubSince
+    const youSubTier = rel.twitchSubTier || rel.kickSubTier || rel.subTier
+
+    // 1. THEY follow YOU
     if (followsYou) {
-      const since = rel.profileFollowsViewerOnTwitchSince || rel.profileFollowsViewerOnKickSince || rel.followsYouSince
       const fySpan = document.createElement('span')
       fySpan.className = 'hs-pc-follows-you'
-      fySpan.textContent = t('content_card_follows_you') + formatRelTime(since)
+      fySpan.textContent = t('content_card_follows_you') + formatRelTime(followsYouSince)
       row1.appendChild(fySpan)
     }
-    const subsYou = rel.profileSubbedToViewerOnTwitch || rel.profileSubbedToViewerOnKick || rel.subscribesToYou
+    // 2. THEY sub YOU (with tier)
     if (subsYou) {
-      const since = rel.profileTwitchSubSince || rel.profileKickSubSince || rel.subscribesToYouSince
       const subSpan = document.createElement('span')
       subSpan.className = 'hs-pc-subs-you'
-      subSpan.textContent = t('content_card_subs_to_you') + formatRelTime(since)
+      const tierStr = subsYouTier && subsYouTier > 1 ? ` T${Math.round(Number(subsYouTier) / 1000) || subsYouTier}` : ''
+      subSpan.textContent = t('content_card_subs_to_you') + tierStr + formatRelTime(subsYouSince)
       row1.appendChild(subSpan)
     }
-    // Server returns youFollow on /api/profile responses; older mock data and
-    // some platform-specific shapes use isFollowing / followsOnTwitch. Accept any.
-    const youFollow = rel.youFollow ?? rel.isFollowing ?? rel.followsOnTwitch ?? rel.followsOnKick
+    // 3. YOU follow THEM
     if (youFollow) {
-      const since = rel.youFollowSince || rel.followsOnTwitchSince || rel.followsOnKickSince || rel.followedAt
       const fgSpan = document.createElement('span')
       fgSpan.className = 'hs-pc-following'
-      fgSpan.textContent = t('content_card_you_follow') + formatRelTime(since)
+      fgSpan.textContent = t('content_card_you_follow') + formatRelTime(youFollowSince)
       row1.appendChild(fgSpan)
     }
-    const youSub = rel.subscribedOnTwitch || rel.subscribedOnKick || rel.isSubscribed
+    // 4. YOU sub THEM (with tier)
     if (youSub) {
-      const since = rel.subscribedAt || rel.twitchSubSince || rel.kickSubSince
-      const tier = rel.twitchSubTier || rel.kickSubTier || rel.subTier
       const subSpan = document.createElement('span')
       subSpan.className = 'hs-pc-subbed'
-      subSpan.textContent = (tier && tier > 1 ? t('content_card_you_sub_tier', [String(tier)]) : t('content_card_you_sub')) + formatRelTime(since)
+      const tier = youSubTier && youSubTier > 1 ? Math.round(Number(youSubTier) / 1000) || youSubTier : null
+      subSpan.textContent = (tier ? t('content_card_you_sub_tier', [String(tier)]) : t('content_card_you_sub')) + formatRelTime(youSubSince)
       row1.appendChild(subSpan)
     }
-    // Mutual indicators when both directions present
+    // 5. Mutual follow indicator (both directions)
     if (followsYou && youFollow) {
       const mSpan = document.createElement('span')
       mSpan.className = 'hs-pc-mutual-follow'
       mSpan.textContent = 'mutual'
       row1.appendChild(mSpan)
     }
+    // 6. Mutual sub indicator (both directions)
     if (subsYou && youSub) {
       const mSpan = document.createElement('span')
       mSpan.className = 'hs-pc-mutual-sub'

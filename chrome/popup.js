@@ -340,20 +340,25 @@
 
     const list = document.createElement('div');
     list.id = 'lb-list';
+    list.dataset.auto = 'leaderboard';
+    let currentPeriod = 'today';
+    list._reload = function() { loadLeaderboard(list, currentPeriod); };
     wrap.appendChild(list);
 
     tabToday.addEventListener('click', function() {
       tabToday.classList.add('active');
       tabAlltime.classList.remove('active');
-      loadLeaderboard(list, 'today');
+      currentPeriod = 'today';
+      loadLeaderboard(list, currentPeriod);
     });
     tabAlltime.addEventListener('click', function() {
       tabAlltime.classList.add('active');
       tabToday.classList.remove('active');
-      loadLeaderboard(list, 'alltime');
+      currentPeriod = 'alltime';
+      loadLeaderboard(list, currentPeriod);
     });
 
-    loadLeaderboard(list, 'today');
+    loadLeaderboard(list, currentPeriod);
     return wrap;
   }
 
@@ -568,6 +573,8 @@
 
     const list = document.createElement('div');
     list.id = 'bm-list';
+    list.dataset.auto = 'bookmarks';
+    list._reload = function() { loadBookmarks(list); };
     wrap.appendChild(list);
 
     refreshBtn.addEventListener('click', function() { loadBookmarks(list); });
@@ -913,10 +920,15 @@
 
     const list = document.createElement('div');
     list.id = 'livenow-list';
+    list.dataset.auto = 'live-now';
     wrap.appendChild(list);
 
     // state: 'top' | 'categories' | 'category'
     let view = 'top';
+    list._reload = function() {
+      if (view === 'top') loadLiveNowTop(list);
+      // categories/category mode: don't auto-refresh — user is browsing
+    };
 
     function showTop() {
       view = 'top';
@@ -1105,6 +1117,8 @@
 
       const liveList = document.createElement('div');
       liveList.id = 'live-list';
+      liveList.dataset.auto = 'live-following';
+      liveList._reload = function() { loadLive(liveList); };
 
       liveSection.appendChild(liveTitleRow);
       liveSection.appendChild(liveList);
@@ -1224,11 +1238,44 @@
     });
   }
 
+  // Auto-refresh: poll the dynamic sections while popup is open (refresh
+  // button is last resort). All intervals stop on unload (popup closes).
+  let _liveTimer = null, _lbTimer = null, _bmTimer = null, _liveNowTimer = null;
+  function startAutoRefresh() {
+    // Live following: 15s — viewer counts move fast
+    if (!_liveTimer) _liveTimer = setInterval(function() {
+      const el = document.querySelector('[data-auto="live-following"]');
+      if (el && typeof el._reload === 'function') el._reload();
+    }, 15000);
+    // Live now top: 15s
+    if (!_liveNowTimer) _liveNowTimer = setInterval(function() {
+      const el = document.querySelector('[data-auto="live-now"]');
+      if (el && typeof el._reload === 'function') el._reload();
+    }, 15000);
+    // Leaderboards: 60s
+    if (!_lbTimer) _lbTimer = setInterval(function() {
+      const el = document.querySelector('[data-auto="leaderboard"]');
+      if (el && typeof el._reload === 'function') el._reload();
+    }, 60000);
+    // Bookmarks: 60s
+    if (!_bmTimer) _bmTimer = setInterval(function() {
+      const el = document.querySelector('[data-auto="bookmarks"]');
+      if (el && typeof el._reload === 'function') el._reload();
+    }, 60000);
+  }
+  window.addEventListener('unload', function() {
+    if (_liveTimer) clearInterval(_liveTimer);
+    if (_lbTimer) clearInterval(_lbTimer);
+    if (_bmTimer) clearInterval(_bmTimer);
+    if (_liveNowTimer) clearInterval(_liveNowTimer);
+  });
+
   document.addEventListener('DOMContentLoaded', function() {
     hydrateI18n();
     initSearch();
     init().catch(function(e) { console.error('popup init failed:', e); });
     initPopout();
+    startAutoRefresh();
 
     // Re-run init when auth token lands in storage (user logged in while popup was open)
     if (window._hsPopupStorageListener) chrome.storage.onChanged.removeListener(window._hsPopupStorageListener);

@@ -5148,6 +5148,8 @@ function updateEmoteState(hash, emoteName, state) {
             auth: true,
             body: { broadcaster_id: targetTwitchId },
           })
+          // Card may have been closed during the fetch — bail before mutating a detached node
+          if (!subStatusSpan.isConnected) return
           if (result && result.subscribed) {
             const tier = result.tier ? Math.round(Number(result.tier) / 1000) : 1
             subStatusSpan.textContent = tier > 1 ? `subbed T${tier}` : 'subbed'
@@ -5632,24 +5634,23 @@ function updateEmoteState(hash, emoteName, state) {
       followBtn.addEventListener('click', async () => {
         if (followBtn.disabled) return
         followBtn.disabled = true
+        // HS.apiFetch throws on non-2xx — server returns 400 with
+        // "Already following this user" or "Not following" when state is
+        // already at the target. Treat those as idempotent success.
+        const targetFollowing = !following
+        const method = targetFollowing ? 'POST' : 'DELETE'
         try {
-          // Server endpoint is one-shot (POST inserts; DELETE removes).
-          // POST when already following returns 400 "Already following" — treat
-          // as confirmation that we are following (idempotent UX).
-          // Same for DELETE when not following.
-          const targetFollowing = !following
-          const method = targetFollowing ? 'POST' : 'DELETE'
-          const resp = await HS.apiFetch(`/api/follow/${encodeURIComponent(profileId)}`, { method, auth: true })
-          const errMsg = (resp?.error || '').toLowerCase()
-          const idempotentOK = errMsg.includes('already following') || errMsg.includes('not following')
-          if (resp?.ok || idempotentOK) {
+          await HS.apiFetch(`/api/follow/${encodeURIComponent(profileId)}`, { method, auth: true })
+          following = targetFollowing
+        } catch (e) {
+          const msg = (e?.message || '').toLowerCase()
+          if (msg.includes('already following') || msg.includes('not following')) {
             following = targetFollowing
-            followBtn.textContent = following ? 'unfollow' : 'follow'
-            followBtn.classList.toggle('hs-pc-following', following)
           }
-        } catch (_e) {
-          // silent — leave button state unchanged
-        } finally {
+        }
+        if (followBtn.isConnected) {
+          followBtn.textContent = following ? 'unfollow' : 'follow'
+          followBtn.classList.toggle('hs-pc-following', following)
           followBtn.disabled = false
         }
       })
@@ -5685,9 +5686,11 @@ function updateEmoteState(hash, emoteName, state) {
           const result = await HS.apiFetch('/api/twitch/clip', {
             method: 'POST',
             auth: true,
-            body: { channel: channelLogin || escapeHtml(username) },
+            body: { channel: channelLogin || username },
           })
-          clipEditUrl = result && result.editUrl ? result.editUrl : null
+          // Server returns snake_case (edit_url, clip_id, clip_url). Try both for safety.
+          clipEditUrl = result?.edit_url || result?.editUrl || result?.clip_url || null
+          if (!clipBtn.isConnected) return
           clipBtn.textContent = '✓ clip created'
           clipBtn.disabled = false
         } catch (_e) {

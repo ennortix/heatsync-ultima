@@ -3784,6 +3784,155 @@ function injectStyles() {
       font-family: ui-monospace, SFMono-Regular, monospace;
       flex-shrink: 0;
     }
+
+    /* Filter chips bar */
+    .hs-discover-chips-bar {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 4px;
+      padding: 3px 6px;
+      background: rgba(0,0,0,0.25);
+      border-bottom: 1px solid rgba(255,255,255,0.05);
+      font-size: 9px;
+      font-family: ui-monospace, SFMono-Regular, monospace;
+    }
+    .hs-discover-chips-label {
+      color: #555;
+      font-size: 9px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      font-weight: 700;
+      margin-right: -2px;
+    }
+    .hs-discover-chips-divider {
+      width: 1px;
+      height: 11px;
+      background: rgba(255,255,255,0.08);
+      margin: 0 3px;
+    }
+    .hs-discover-chip-btn {
+      padding: 1px 6px;
+      background: transparent;
+      border: 1px solid rgba(255,255,255,0.1);
+      color: #888;
+      cursor: pointer;
+      font-size: 9px;
+      font-family: ui-monospace, SFMono-Regular, monospace;
+      font-weight: 600;
+      border-radius: 0;
+      line-height: 1.4;
+      transition: color 0.1s, border-color 0.1s, background 0.1s;
+    }
+    .hs-discover-chip-btn:hover {
+      color: #fff;
+      border-color: #ff8700;
+    }
+    .hs-discover-chip-btn.hs-active {
+      background: #ff8700;
+      border-color: #ff8700;
+      color: #000;
+    }
+    .hs-discover-chip-btn.hs-chip-plat-t.hs-active {
+      background: #9146ff;
+      border-color: #9146ff;
+      color: #fff;
+    }
+    .hs-discover-chip-btn.hs-chip-plat-k.hs-active {
+      background: #53fc18;
+      border-color: #53fc18;
+      color: #000;
+    }
+
+    /* Section colour variants */
+    .hs-discover-section-live > .hs-discover-heading {
+      background: rgba(255,48,48,0.10);
+      border-bottom-color: rgba(255,48,48,0.35);
+      color: #ff5050;
+    }
+    .hs-discover-section-live > .hs-discover-heading::before {
+      content: '';
+      display: inline-block;
+      width: 5px;
+      height: 5px;
+      border-radius: 50%;
+      background: #ff3030;
+      box-shadow: 0 0 4px #ff3030;
+      margin-right: 4px;
+      vertical-align: middle;
+      animation: hs-pulse-live 1.6s ease-in-out infinite;
+    }
+    .hs-discover-section-posts > .hs-discover-heading {
+      background: rgba(255,135,0,0.06);
+    }
+
+    /* Post rows */
+    .hs-discover-post-row {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      padding: 1px 6px;
+      text-decoration: none;
+      cursor: pointer;
+      line-height: 1.3;
+      font-size: 11px;
+      border-left: 2px solid transparent;
+    }
+    .hs-discover-post-row:hover {
+      background: rgba(255,135,0,0.07);
+      border-left-color: rgba(255,135,0,0.3);
+    }
+    .hs-discover-post-time {
+      color: #555;
+      font-size: 9px;
+      font-variant-numeric: tabular-nums;
+      font-family: ui-monospace, SFMono-Regular, monospace;
+      width: 26px;
+      flex-shrink: 0;
+      text-align: right;
+    }
+    .hs-discover-post-plat {
+      flex-shrink: 0;
+    }
+    .hs-discover-post-user {
+      font-size: 11px;
+      font-weight: 600;
+      white-space: nowrap;
+      flex-shrink: 0;
+      max-width: 80px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .hs-discover-post-text {
+      flex: 1;
+      min-width: 0;
+      color: #bbb;
+      font-size: 11px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .hs-discover-post-row:hover .hs-discover-post-text { color: #fff; }
+    .hs-discover-post-heat {
+      flex-shrink: 0;
+    }
+    .hs-discover-post-replies {
+      font-size: 9px;
+      color: #707070;
+      font-variant-numeric: tabular-nums;
+      font-family: ui-monospace, SFMono-Regular, monospace;
+      flex-shrink: 0;
+    }
+
+    /* Tag chips with optional inline count */
+    .hs-discover-chip-count {
+      margin-left: 4px;
+      color: rgba(255,135,0,0.55);
+      font-variant-numeric: tabular-nums;
+      font-size: 9px;
+    }
+    .hs-discover-chip:hover .hs-discover-chip-count { color: #000; }
+
     .hs-pinned-row {
       display: block;
       padding: 2px 8px;

@@ -4817,6 +4817,155 @@ function injectStyles() {
       font-family: ui-monospace, SFMono-Regular, monospace;
       flex-shrink: 0;
     }
+
+    /* Filter chips bar */
+    .hs-discover-chips-bar {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 4px;
+      padding: 3px 6px;
+      background: rgba(0,0,0,0.25);
+      border-bottom: 1px solid rgba(255,255,255,0.05);
+      font-size: 9px;
+      font-family: ui-monospace, SFMono-Regular, monospace;
+    }
+    .hs-discover-chips-label {
+      color: #555;
+      font-size: 9px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      font-weight: 700;
+      margin-right: -2px;
+    }
+    .hs-discover-chips-divider {
+      width: 1px;
+      height: 11px;
+      background: rgba(255,255,255,0.08);
+      margin: 0 3px;
+    }
+    .hs-discover-chip-btn {
+      padding: 1px 6px;
+      background: transparent;
+      border: 1px solid rgba(255,255,255,0.1);
+      color: #888;
+      cursor: pointer;
+      font-size: 9px;
+      font-family: ui-monospace, SFMono-Regular, monospace;
+      font-weight: 600;
+      border-radius: 0;
+      line-height: 1.4;
+      transition: color 0.1s, border-color 0.1s, background 0.1s;
+    }
+    .hs-discover-chip-btn:hover {
+      color: #fff;
+      border-color: #ff8700;
+    }
+    .hs-discover-chip-btn.hs-active {
+      background: #ff8700;
+      border-color: #ff8700;
+      color: #000;
+    }
+    .hs-discover-chip-btn.hs-chip-plat-t.hs-active {
+      background: #9146ff;
+      border-color: #9146ff;
+      color: #fff;
+    }
+    .hs-discover-chip-btn.hs-chip-plat-k.hs-active {
+      background: #53fc18;
+      border-color: #53fc18;
+      color: #000;
+    }
+
+    /* Section colour variants */
+    .hs-discover-section-live > .hs-discover-heading {
+      background: rgba(255,48,48,0.10);
+      border-bottom-color: rgba(255,48,48,0.35);
+      color: #ff5050;
+    }
+    .hs-discover-section-live > .hs-discover-heading::before {
+      content: '';
+      display: inline-block;
+      width: 5px;
+      height: 5px;
+      border-radius: 50%;
+      background: #ff3030;
+      box-shadow: 0 0 4px #ff3030;
+      margin-right: 4px;
+      vertical-align: middle;
+      animation: hs-pulse-live 1.6s ease-in-out infinite;
+    }
+    .hs-discover-section-posts > .hs-discover-heading {
+      background: rgba(255,135,0,0.06);
+    }
+
+    /* Post rows */
+    .hs-discover-post-row {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      padding: 1px 6px;
+      text-decoration: none;
+      cursor: pointer;
+      line-height: 1.3;
+      font-size: 11px;
+      border-left: 2px solid transparent;
+    }
+    .hs-discover-post-row:hover {
+      background: rgba(255,135,0,0.07);
+      border-left-color: rgba(255,135,0,0.3);
+    }
+    .hs-discover-post-time {
+      color: #555;
+      font-size: 9px;
+      font-variant-numeric: tabular-nums;
+      font-family: ui-monospace, SFMono-Regular, monospace;
+      width: 26px;
+      flex-shrink: 0;
+      text-align: right;
+    }
+    .hs-discover-post-plat {
+      flex-shrink: 0;
+    }
+    .hs-discover-post-user {
+      font-size: 11px;
+      font-weight: 600;
+      white-space: nowrap;
+      flex-shrink: 0;
+      max-width: 80px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .hs-discover-post-text {
+      flex: 1;
+      min-width: 0;
+      color: #bbb;
+      font-size: 11px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .hs-discover-post-row:hover .hs-discover-post-text { color: #fff; }
+    .hs-discover-post-heat {
+      flex-shrink: 0;
+    }
+    .hs-discover-post-replies {
+      font-size: 9px;
+      color: #707070;
+      font-variant-numeric: tabular-nums;
+      font-family: ui-monospace, SFMono-Regular, monospace;
+      flex-shrink: 0;
+    }
+
+    /* Tag chips with optional inline count */
+    .hs-discover-chip-count {
+      margin-left: 4px;
+      color: rgba(255,135,0,0.55);
+      font-variant-numeric: tabular-nums;
+      font-size: 9px;
+    }
+    .hs-discover-chip:hover .hs-discover-chip-count { color: #000; }
+
     .hs-pinned-row {
       display: block;
       padding: 2px 8px;
@@ -12879,6 +13028,9 @@ function startDiscoverPolling() {
 }
 let discoverTags = [];
 let discoverProfiles = [];
+let discoverPosts = [];
+let discoverSort = 'heat';            // 'heat' | 'active'
+let discoverPlatformFilter = 'all';   // 'all' | 't' | 'k'
 
 function _discoverSetLoading(msgsEl) {
   msgsEl.textContent = '';
@@ -12900,9 +13052,10 @@ async function fetchDiscover() {
   // switched away and stayed, render is skipped (no clobbering other tab DOM).
   const tabAtFetch = currentTab;
   try {
-    const [tagsResp, profilesResp] = await Promise.all([
+    const [tagsResp, profilesResp, postsResp] = await Promise.all([
       apiFetch('/api/discover/trending-tags'),
       apiFetch('/api/profiles/trending'),
+      apiFetch('/api/messages?sort=time&limit=40').catch(() => null),
     ]);
 
     // Server shape: { tags: [...] } and { profiles: [...] }.
@@ -12911,16 +13064,23 @@ async function fetchDiscover() {
     const profilesData = profilesResp.ok ? (profilesResp.data || profilesResp) : {};
     discoverTags = Array.isArray(tagsData) ? tagsData : (tagsData.tags || []);
     discoverProfiles = Array.isArray(profilesData) ? profilesData : (profilesData.profiles || []);
+
+    // Posts: pull recent feed, client-sort by heat, take top by heat>0
+    const rawPosts = postsResp?.ok ? (postsResp.data?.messages || []) : [];
+    discoverPosts = rawPosts
+      .filter(m => m && m.username && m.username !== 'Anonymous' && (m.heat || 0) > 0)
+      .sort((a, b) => (b.heat || 0) - (a.heat || 0))
+      .slice(0, 8);
+
     discoverLoaded = true;
   } catch (e) {
     discoverTags = [];
     discoverProfiles = [];
+    discoverPosts = [];
     discoverLoaded = true;
   } finally {
     discoverLoading = false;
-    // Render only if user is still on discover (or returned to it after a switch)
     if (currentTab === 'discover') renderDiscoverTab();
-    // Suppress unused-var warning for tabAtFetch — it's documentation
     void tabAtFetch;
   }
 }
@@ -13060,11 +13220,148 @@ function renderDiscoverProfileRow(profile, username, rank, maxHeat) {
   return row;
 }
 
+// Filter chips bar: sort + platform toggles, click rerenders
+function renderDiscoverChipsBar() {
+  const bar = document.createElement('div');
+  bar.className = 'hs-discover-chips-bar';
+
+  function makeChip(label, value, currentValue, setter, extraClass) {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'hs-discover-chip-btn' + (extraClass ? ' ' + extraClass : '');
+    if (value === currentValue) btn.classList.add('hs-active');
+    btn.textContent = label;
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      setter(value);
+      renderDiscoverTab();
+    });
+    return btn;
+  }
+
+  function makeLabel(text) {
+    const l = document.createElement('span');
+    l.className = 'hs-discover-chips-label';
+    l.textContent = text;
+    return l;
+  }
+
+  function makeDivider() {
+    const d = document.createElement('span');
+    d.className = 'hs-discover-chips-divider';
+    return d;
+  }
+
+  bar.appendChild(makeLabel('sort'));
+  bar.appendChild(makeChip('heat', 'heat', discoverSort, v => { discoverSort = v; }));
+  bar.appendChild(makeChip('active', 'active', discoverSort, v => { discoverSort = v; }));
+  bar.appendChild(makeDivider());
+  bar.appendChild(makeLabel('platform'));
+  bar.appendChild(makeChip('all', 'all', discoverPlatformFilter, v => { discoverPlatformFilter = v; }));
+  bar.appendChild(makeChip('t', 't', discoverPlatformFilter, v => { discoverPlatformFilter = v; }, 'hs-chip-plat-t'));
+  bar.appendChild(makeChip('k', 'k', discoverPlatformFilter, v => { discoverPlatformFilter = v; }, 'hs-chip-plat-k'));
+  return bar;
+}
+
+function profileMatchesPlatformFilter(p) {
+  if (discoverPlatformFilter === 'all') return true;
+  if (discoverPlatformFilter === 't') return !!p.twitch_username;
+  if (discoverPlatformFilter === 'k') return !!p.kick_username;
+  return true;
+}
+
+function postMatchesPlatformFilter(m) {
+  if (discoverPlatformFilter === 'all') return true;
+  if (discoverPlatformFilter === 't') return m.platform === 'twitch';
+  if (discoverPlatformFilter === 'k') return m.platform === 'kick';
+  return true;
+}
+
+function getProfileSortFn() {
+  if (discoverSort === 'active') {
+    return (a, b) => {
+      const aA = (a.opCount || 0) + (a.reCount || 0) + (a.mopCount || 0);
+      const bA = (b.opCount || 0) + (b.reCount || 0) + (b.mopCount || 0);
+      if (aA !== bA) return bA - aA;
+      return (b.stats?.total_heat || 0) - (a.stats?.total_heat || 0);
+    };
+  }
+  return (a, b) => (b.stats?.total_heat || 0) - (a.stats?.total_heat || 0);
+}
+
+function renderDiscoverPostRow(m) {
+  const row = document.createElement('a');
+  row.className = 'hs-discover-post-row';
+  row.href = `https://heatsync.org/m/${encodeURIComponent(m.base36_id)}`;
+  row.target = '_blank';
+  row.rel = 'noopener noreferrer';
+
+  const time = document.createElement('span');
+  time.className = 'hs-discover-post-time';
+  time.textContent = formatRelativeTime(m.created_at);
+  time.title = new Date(m.created_at).toLocaleString();
+  row.appendChild(time);
+
+  if (m.platform) {
+    const plat = document.createElement('span');
+    const code = m.platform === 'twitch' ? 't' : m.platform === 'kick' ? 'k' : m.platform === 'youtube' ? 'y' : 'h';
+    plat.className = `hs-plat hs-plat-${code} hs-discover-post-plat`;
+    plat.textContent = code;
+    row.appendChild(plat);
+  }
+
+  const user = document.createElement('span');
+  user.className = 'hs-discover-post-user';
+  user.style.color = sanitizeColor(m.user_color || '#fff');
+  user.textContent = m.username;
+  row.appendChild(user);
+
+  const txt = document.createElement('span');
+  txt.className = 'hs-discover-post-text';
+  const snippet = String(m.content || '').replace(/\s+/g, ' ').trim();
+  txt.textContent = snippet;
+  row.appendChild(txt);
+
+  const heatEl = document.createElement('span');
+  heatEl.className = 'hs-discover-heat hs-discover-post-heat';
+  heatEl.title = `${(m.heat || 0).toLocaleString()} heat`;
+  heatEl.appendChild(makeFlameIcon());
+  const heatVal = document.createElement('span');
+  heatVal.textContent = formatDiscoverCount(m.heat || 0);
+  heatEl.appendChild(heatVal);
+  row.appendChild(heatEl);
+
+  if ((m.reply_count || 0) > 0) {
+    const rep = document.createElement('span');
+    rep.className = 'hs-discover-post-replies';
+    rep.title = `${m.reply_count} repl${m.reply_count === 1 ? 'y' : 'ies'}`;
+    rep.textContent = `${m.reply_count}r`;
+    row.appendChild(rep);
+  }
+
+  return row;
+}
+
+function makeDiscoverSection(titleText, metaText, extraClass) {
+  const section = document.createElement('div');
+  section.className = 'hs-discover-section' + (extraClass ? ' ' + extraClass : '');
+  const heading = document.createElement('div');
+  heading.className = 'hs-discover-heading';
+  heading.appendChild(document.createTextNode(titleText));
+  if (metaText) {
+    const meta = document.createElement('span');
+    meta.className = 'hs-discover-meta';
+    meta.textContent = metaText;
+    heading.appendChild(meta);
+  }
+  section.appendChild(heading);
+  return section;
+}
+
 function renderDiscoverTab() {
   const msgsEl = document.getElementById('hs-mc-messages');
   if (!msgsEl) return;
 
-  // Auto-refresh while viewing — no manual refresh button (confusing).
   startDiscoverPolling();
 
   if (!discoverLoaded && !discoverLoading) {
@@ -13079,15 +13376,80 @@ function renderDiscoverTab() {
   msgsEl.textContent = '';
   const frag = document.createDocumentFragment();
 
-  // Tags section
-  if (discoverTags.length > 0) {
-    const section = document.createElement('div');
-    section.className = 'hs-discover-section';
-    const heading = document.createElement('div');
-    heading.className = 'hs-discover-heading';
-    heading.textContent = 'trending tags';
-    section.appendChild(heading);
+  // Filter chips — always render so user can flip filters even before data
+  frag.appendChild(renderDiscoverChipsBar());
 
+  const filteredProfiles = discoverProfiles.filter(profileMatchesPlatformFilter);
+  const filteredPosts = discoverPosts.filter(postMatchesPlatformFilter);
+
+  const liveProfiles = filteredProfiles
+    .filter(p => p.twitch_is_live || p.kick_is_live)
+    .sort((a, b) => {
+      const av = (a.twitch_viewer_count || 0) + (a.kick_viewer_count || 0);
+      const bv = (b.twitch_viewer_count || 0) + (b.kick_viewer_count || 0);
+      if (av !== bv) return bv - av;
+      return (b.stats?.total_heat || 0) - (a.stats?.total_heat || 0);
+    });
+  const restProfiles = filteredProfiles
+    .filter(p => !p.twitch_is_live && !p.kick_is_live)
+    .sort(getProfileSortFn());
+  const maxHeat = Math.max(
+    ...filteredProfiles.map(p => p.stats?.total_heat ?? p.heat ?? 0),
+    1
+  );
+
+  // ● LIVE NOW
+  if (liveProfiles.length > 0) {
+    const section = makeDiscoverSection(
+      '● live now',
+      `${liveProfiles.length} stream${liveProfiles.length === 1 ? '' : 's'}`,
+      'hs-discover-section-live'
+    );
+    let rank = 1;
+    for (const profile of liveProfiles) {
+      const username = profile.username || profile.name || '';
+      if (!username) continue;
+      const row = renderDiscoverProfileRow(profile, username, rank++, maxHeat);
+      if (row) section.appendChild(row);
+    }
+    frag.appendChild(section);
+  }
+
+  // 🔥 HOT POSTS
+  if (filteredPosts.length > 0) {
+    const section = makeDiscoverSection(
+      'hot posts',
+      `${filteredPosts.length}`,
+      'hs-discover-section-posts'
+    );
+    for (const m of filteredPosts) {
+      const row = renderDiscoverPostRow(m);
+      if (row) section.appendChild(row);
+    }
+    frag.appendChild(section);
+  }
+
+  // TRENDING profiles (non-live)
+  if (restProfiles.length > 0) {
+    const sortLabel = discoverSort === 'active' ? 'by activity' : 'by heat';
+    const section = makeDiscoverSection(
+      'trending',
+      `${restProfiles.length} · ${sortLabel}`,
+      'hs-discover-section-trending'
+    );
+    let rank = 1;
+    for (const profile of restProfiles) {
+      const username = profile.username || profile.name || '';
+      if (!username) continue;
+      const row = renderDiscoverProfileRow(profile, username, rank++, maxHeat);
+      if (row) section.appendChild(row);
+    }
+    frag.appendChild(section);
+  }
+
+  // TAGS
+  if (discoverTags.length > 0) {
+    const section = makeDiscoverSection('tags', `${discoverTags.length}`, 'hs-discover-section-tags');
     const chips = document.createElement('div');
     chips.className = 'hs-discover-chips';
     for (const tag of discoverTags) {
@@ -13099,64 +13461,28 @@ function renderDiscoverTab() {
       chip.target = '_blank';
       chip.rel = 'noopener noreferrer';
       chip.textContent = name;
+      const count = typeof tag === 'object' ? (tag.count || tag.usage || 0) : 0;
+      if (count > 0) {
+        const c = document.createElement('span');
+        c.className = 'hs-discover-chip-count';
+        c.textContent = formatDiscoverCount(count);
+        chip.appendChild(c);
+      }
       chips.appendChild(chip);
     }
     section.appendChild(chips);
     frag.appendChild(section);
   }
 
-  // Profiles section — btop-style dense rows, live first
-  if (discoverProfiles.length > 0) {
-    const section = document.createElement('div');
-    section.className = 'hs-discover-section';
-
-    const sorted = [...discoverProfiles].sort((a, b) => {
-      const aLive = !!(a.twitch_is_live || a.kick_is_live);
-      const bLive = !!(b.twitch_is_live || b.kick_is_live);
-      if (aLive !== bLive) return bLive ? 1 : -1;
-      if (aLive) {
-        const av = (a.twitch_viewer_count || 0) + (a.kick_viewer_count || 0);
-        const bv = (b.twitch_viewer_count || 0) + (b.kick_viewer_count || 0);
-        if (av !== bv) return bv - av;
-      }
-      const ah = a.stats?.total_heat ?? a.heat ?? 0;
-      const bh = b.stats?.total_heat ?? b.heat ?? 0;
-      return bh - ah;
-    });
-    const liveCount = sorted.filter(p => p.twitch_is_live || p.kick_is_live).length;
-    const maxHeat = Math.max(...sorted.map(p => p.stats?.total_heat ?? p.heat ?? 0), 1);
-
-    const heading = document.createElement('div');
-    heading.className = 'hs-discover-heading';
-    heading.appendChild(document.createTextNode('trending '));
-    const meta = document.createElement('span');
-    meta.className = 'hs-discover-meta';
-    if (liveCount > 0) {
-      const lc = document.createElement('span');
-      lc.className = 'hs-discover-live-count';
-      lc.textContent = `● ${liveCount} live`;
-      meta.appendChild(lc);
-      meta.appendChild(document.createTextNode(` · ${sorted.length}`));
-    } else {
-      meta.textContent = String(sorted.length);
-    }
-    heading.appendChild(meta);
-    section.appendChild(heading);
-
-    let rank = 1;
-    for (const profile of sorted) {
-      const username = profile.username || profile.name || '';
-      if (!username) continue;
-      const row = renderDiscoverProfileRow(profile, username, rank++, maxHeat);
-      if (row) section.appendChild(row);
-    }
-    frag.appendChild(section);
-  }
-
-  if (discoverTags.length === 0 && discoverProfiles.length === 0) {
+  if (
+    liveProfiles.length === 0 &&
+    restProfiles.length === 0 &&
+    filteredPosts.length === 0 &&
+    discoverTags.length === 0
+  ) {
     const empty = document.createElement('div');
     empty.className = 'hs-mc-empty';
-    empty.textContent = 'nothing to show';
+    empty.textContent = discoverPlatformFilter !== 'all' ? `nothing for ${discoverPlatformFilter}` : 'nothing to show';
     frag.appendChild(empty);
   }
 
@@ -19928,26 +20254,42 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     const urlCh = getCurrentChannel()?.toLowerCase();
     const watching = await getWatchingChannels();
 
-    // Check which watching channels are actually live
-    const watchNames = watching.map(w => w.name);
-    if (urlCh && !watchNames.includes(urlCh)) watchNames.push(urlCh);
-    let liveSet = liveChannelSet;
-    if (watchNames.length > 0) {
+    // Split watching by platform — API supports `channels` (twitch) + `kick_channels`
+    const twitchNames = [];
+    const kickNames = [];
+    for (const w of watching) {
+      if (w.platform === 'kick') kickNames.push(w.name);
+      else if (w.platform === 'twitch') twitchNames.push(w.name);
+    }
+    if (urlCh && hostPlatform === 'twitch' && !twitchNames.includes(urlCh)) twitchNames.push(urlCh);
+    if (urlCh && hostPlatform === 'kick' && !kickNames.includes(urlCh)) kickNames.push(urlCh);
+
+    let twitchLive = liveChannelSet;
+    let kickLive = new Set();
+    if (twitchNames.length > 0 || kickNames.length > 0) {
       try {
-        const resp = await chrome.runtime.sendMessage({ type: 'fetch_live_status', channels: watchNames });
-        if (resp?.live) liveSet = new Set(resp.live.map(c => c.toLowerCase()));
+        const resp = await chrome.runtime.sendMessage({ type: 'fetch_live_status', channels: twitchNames, kickChannels: kickNames });
+        if (resp?.live) twitchLive = new Set(resp.live.map(c => c.toLowerCase()));
+        if (resp?.kickLive) kickLive = new Set(resp.kickLive.map(c => c.toLowerCase()));
       } catch (e) { /* use cached liveChannelSet */ }
     }
 
-    // Only show channels that are actually live
-    const channels = [];
-    const seen = new Set();
+    // Only show channels that are actually live; dedupe same name across platforms (twitch > kick > youtube)
+    const priority = { twitch: 3, kick: 2, youtube: 1 };
+    const byName = new Map();
     for (const w of watching) {
       const ch = w.name.toLowerCase();
-      if (seen.has(ch) || !liveSet.has(ch)) continue;
-      seen.add(ch);
-      channels.push({ name: ch, platform: w.platform, isCurrent: ch === urlCh });
+      let isLive = false;
+      if (w.platform === 'twitch') isLive = twitchLive.has(ch);
+      else if (w.platform === 'kick') isLive = kickLive.has(ch);
+      else if (w.platform === 'youtube') isLive = true;
+      if (!isLive) continue;
+      const existing = byName.get(ch);
+      if (!existing || priority[w.platform] > priority[existing.platform]) {
+        byName.set(ch, { name: ch, platform: w.platform, isCurrent: ch === urlCh });
+      }
     }
+    const channels = Array.from(byName.values());
 
     if (channels.length <= 1) {
       // 0 or 1 live channel — just switch to live normally

@@ -52,6 +52,11 @@
       "world": "MAIN"
     },
     {
+      "matches": ["https://*.twitch.tv/*", "https://kick.com/*", "https://*.kick.com/*", "https://www.youtube.com/*"],
+      "js": ["pcard-early.js"],
+      "run_at": "document_start"
+    },
+    {
       "matches": ["https://*.twitch.tv/*"],
       "js": ["emoji-data.js", "autocomplete-hook.js"],
       "run_at": "document_end",

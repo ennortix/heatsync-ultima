@@ -52,6 +52,7 @@ const COPY_FILES = [
   'injected-message.css',
   'vi-mode.js',
   'kick-autocomplete-hook.js',
+  'pcard-early.js',
 ]
 
 // Assets (images, etc)

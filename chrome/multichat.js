@@ -14757,16 +14757,17 @@ async function eswConnect(token, urlOverride) {
 }
 
 async function startEventSubWhispers() {
-  const token = getTwitchAuthToken()
+  // Async fetch reaches twitch cookies even on Kick/YouTube tabs (via background.js)
+  const { token } = await getTwitchAuthTokenAsync()
   if (!token) { log('EventSub: no Twitch token, skipping whispers'); return }
   await eswConnect(token)
 }
 
-function reconnectEventSubIfDead() {
+async function reconnectEventSubIfDead() {
   if (eswState.destroyed) return
   if (eswState.ws?.readyState === WebSocket.OPEN) return
   if (eswState.connecting) return
-  const token = getTwitchAuthToken()
+  const { token } = await getTwitchAuthTokenAsync()
   if (!token) return
   log('EventSub: reconnecting (visibility/wake)')
   eswConnect(token)

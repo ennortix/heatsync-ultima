@@ -441,11 +441,24 @@
     }
   }
 
+  let _userTooltipTarget = null;
+  let _userTooltipResizeObs = null;
+
   function ensureUserTooltip() {
     if (!userTooltip || !document.contains(userTooltip)) {
       userTooltip = document.createElement('div');
       userTooltip.id = 'hs-user-tooltip';
       document.body.appendChild(userTooltip);
+      // Keep tooltip away from the hovered username even as content fills in async
+      // (followage badge, sub tenure badge, lazy-loaded data — all change height)
+      if (typeof ResizeObserver !== 'undefined') {
+        _userTooltipResizeObs = new ResizeObserver(() => {
+          if (_userTooltipTarget && userTooltip.classList.contains('visible') && document.contains(_userTooltipTarget)) {
+            positionTooltipAtElement(userTooltip, _userTooltipTarget);
+          }
+        });
+        _userTooltipResizeObs.observe(userTooltip);
+      }
     }
     return userTooltip;
   }
@@ -632,6 +645,7 @@
   async function showUserTooltip(targetEl, username, color, platform) {
     const tooltip = ensureUserTooltip();
     const gen = ++_profileGen;
+    _userTooltipTarget = targetEl;
 
     // Get channel from the message element for sub tenure lookup
     const msgChannel = targetEl.closest?.('.hs-mc-msg')?.dataset?.msgChannel
@@ -803,6 +817,7 @@
 
   function hideUserTooltip() {
     _profileGen++;
+    _userTooltipTarget = null;
     if (userTooltip) {
       userTooltip.classList.remove('visible');
     }

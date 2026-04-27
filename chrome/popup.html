@@ -203,8 +203,9 @@
       gap: 6px;
       line-height: 1.4;
     }
-    /* live following */
+    /* live following — scroll if many live to avoid popup overflow */
     .live-section { padding: 0; }
+    #live-list { max-height: 220px; overflow-y: auto; }
     .live-row {
       display: flex;
       align-items: center;

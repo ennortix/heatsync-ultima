@@ -731,74 +731,109 @@ async function saveLiveStatusState() {
   } catch {}
 }
 
+// Cached snapshot of currently-live followed streams (for badge tooltip + popup
+// + future "next channel" suggestion). Refreshed on every poll cycle.
+let _liveFollowedSnapshot = [] // [{username, platform, viewers, displayName, profileImageUrl, key, profile}]
+
 async function pollFollowedLive() {
   if (_livePollInflight) return
   _livePollInflight = true
   try {
-    if (!followedUsers || followedUsers.length === 0) {
+    const authToken = await getAuthCookie()
+    if (!authToken) {
       _liveFollowedCount = 0
+      _liveFollowedSnapshot = []
       recomputeBadge()
+      updateLiveBadgeTooltip()
       return
     }
-    const authToken = await getAuthCookie()
-    if (!authToken) return
 
     if (!_liveStatusInitialized) await loadLiveStatusState()
     const wasFirstPoll = !_liveStatusInitialized
-    let liveCount = 0
-    const transitions = [] // { name, profile }
+
+    // ONE call to /api/live/following replaces the per-user /api/profile loop.
+    // Server returns one row per (user, platform) live combination so a creator
+    // streaming on twitch+kick simultaneously appears twice — that's correct,
+    // we want both rows for accurate platform-aware notifications.
+    let streams = []
+    try {
+      const resp = await fetchWithTimeout(
+        `${API_URL}/api/live/following`,
+        { headers: { 'Authorization': `Bearer ${authToken}` } },
+        LIVE_FETCH_TIMEOUT_MS
+      )
+      if (resp.ok) {
+        const body = await resp.json()
+        streams = body?.streams || body?.data?.streams || []
+      } else {
+        resp.body?.cancel()
+      }
+    } catch (e) {
+      console.warn('[heatsync] /api/live/following failed:', e?.message)
+      return
+    }
+
+    const transitions = [] // { username, platform, stream }
     const seen = new Set()
+    const snapshot = []
 
-    for (let i = 0; i < followedUsers.length; i += LIVE_FETCH_CONCURRENCY) {
-      const batch = followedUsers.slice(i, i + LIVE_FETCH_CONCURRENCY)
-      const results = await Promise.all(batch.map(async (raw) => {
-        const name = String(raw || '').toLowerCase()
-        if (!name) return { name: '', profile: null }
-        try {
-          const resp = await fetchWithTimeout(
-            `${API_URL}/api/profile/${encodeURIComponent(name)}`,
-            { headers: { 'Authorization': `Bearer ${authToken}` } },
-            LIVE_FETCH_TIMEOUT_MS
-          )
-          if (!resp.ok) { resp.body?.cancel(); return { name, profile: null } }
-          const body = await resp.json()
-          return { name, profile: body?.profile || null }
-        } catch { return { name, profile: null } }
-      }))
+    for (const s of streams) {
+      const username = String(s?.username || '').toLowerCase()
+      const platform = String(s?.platform || '').toLowerCase()
+      if (!username || !platform) continue
+      const key = `${platform}:${username}`
+      seen.add(key)
+      const wasLive = !!_liveStatusState.lastSeenLive?.[key]
+      _liveStatusState.lastSeenLive[key] = true
 
-      for (const { name, profile } of results) {
-        if (!name) continue
-        seen.add(name)
-        if (!profile) continue
-        const isLive = !!(profile.twitch_is_live || profile.kick_is_live)
-        const wasLive = !!_liveStatusState.lastSeenLive?.[name]
-        _liveStatusState.lastSeenLive[name] = isLive
-        if (isLive) liveCount++
+      const viewers = Number(s.viewerCount || s.viewer_count || 0) || 0
+      snapshot.push({
+        username,
+        platform,
+        viewers,
+        displayName: s.heatsyncDisplayName || s.displayName || s.display_name || username,
+        profileImageUrl: s.profileImageUrl || s.profile_image_url || '',
+        key,
+        stream: s,
+      })
 
-        // Notify only on real off→on transitions during steady-state runtime.
-        // First poll after install / wipe just records baseline silently.
-        if (!wasFirstPoll && isLive && !wasLive) {
-          const lastNotif = _liveStatusState.lastNotifiedAt?.[name] || 0
-          if (Date.now() - lastNotif > LIVE_NOTIFY_THROTTLE_MS) {
-            transitions.push({ name, profile })
-            _liveStatusState.lastNotifiedAt[name] = Date.now()
-          }
+      // Off→on transition: fire notification (skipping cold-start)
+      if (!wasFirstPoll && !wasLive) {
+        const lastNotif = _liveStatusState.lastNotifiedAt?.[key] || 0
+        if (Date.now() - lastNotif > LIVE_NOTIFY_THROTTLE_MS) {
+          transitions.push({ username, platform, stream: s })
+          _liveStatusState.lastNotifiedAt[key] = Date.now()
         }
       }
     }
 
-    // Prune state for users no longer in the follow list
+    // Anything in lastSeenLive but not in current snapshot: stream ended.
+    // Mark not-live in state but don't fire anything (not a transition we notify on).
     for (const k of Object.keys(_liveStatusState.lastSeenLive)) {
-      if (!seen.has(k)) delete _liveStatusState.lastSeenLive[k]
+      if (!seen.has(k)) {
+        _liveStatusState.lastSeenLive[k] = false
+      }
     }
+    // Prune lastNotifiedAt entries older than throttle window so memory doesn't grow
+    const cutoff = Date.now() - LIVE_NOTIFY_THROTTLE_MS
     for (const k of Object.keys(_liveStatusState.lastNotifiedAt)) {
-      if (!seen.has(k)) delete _liveStatusState.lastNotifiedAt[k]
+      if ((_liveStatusState.lastNotifiedAt[k] || 0) < cutoff) {
+        delete _liveStatusState.lastNotifiedAt[k]
+      }
     }
 
     await saveLiveStatusState()
-    _liveFollowedCount = liveCount
+
+    // Dedupe live count by username (a creator on twitch+kick = 1 person live)
+    const uniqueLiveUsers = new Set(snapshot.map(s => s.username))
+    _liveFollowedCount = uniqueLiveUsers.size
+    _liveFollowedSnapshot = snapshot.sort((a, b) => b.viewers - a.viewers)
+
     recomputeBadge()
-    for (const t of transitions) fireLiveNotification(t.name, t.profile)
+    updateLiveBadgeTooltip()
+    broadcastToTabs({ type: 'live_followed_updated', snapshot: _liveFollowedSnapshot })
+
+    for (const t of transitions) fireLiveNotificationFromStream(t.stream, t.username, t.platform)
   } catch (e) {
     console.warn('[heatsync] pollFollowedLive failed:', e?.message || e)
   } finally {
@@ -806,22 +841,41 @@ async function pollFollowedLive() {
   }
 }
 
-function fireLiveNotification(name, profile) {
-  if (!browser.notifications?.create) return
-  const platforms = []
-  if (profile.twitch_is_live) platforms.push({ p: 'twitch', name: profile.twitch_username || name, viewers: profile.twitch_viewer_count || 0 })
-  if (profile.kick_is_live) platforms.push({ p: 'kick', name: profile.kick_username || name, viewers: profile.kick_viewer_count || 0 })
-  if (platforms.length === 0) return
-  // Click goes to the platform with more viewers
-  platforms.sort((a, b) => b.viewers - a.viewers)
-  const top = platforms[0]
-  const url = top.p === 'twitch' ? `https://www.twitch.tv/${top.name}` : `https://kick.com/${top.name}`
+// Set browser action title (icon hover tooltip) — top live followed names.
+function updateLiveBadgeTooltip() {
+  if (!badgeApi) return
+  const live = _liveFollowedSnapshot || []
+  if (live.length === 0) {
+    badgeApi.setTitle?.({ title: 'heatsync' })?.catch?.(() => {})
+    return
+  }
+  const top = live.slice(0, 5).map(s => s.displayName || s.username).join(', ')
+  const more = live.length > 5 ? ` +${live.length - 5} more` : ''
+  const title = `heatsync · ${live.length} live: ${top}${more}`
+  try { badgeApi.setTitle({ title }) } catch {}
+}
 
-  const platLabel = platforms.length > 1
-    ? platforms.map(x => x.p).join(' + ')
-    : top.p
-  const viewerStr = top.viewers > 0 ? ` · ${top.viewers.toLocaleString()} viewers` : ''
-  const id = `hs-live-${name}-${Date.now()}`
+function fireLiveNotificationFromStream(stream, username, platform) {
+  if (!browser.notifications?.create) return
+  const display = stream.heatsyncDisplayName || stream.displayName || stream.display_name || username
+  const viewers = Number(stream.viewerCount || stream.viewer_count || 0) || 0
+  const platName = platform === 'twitch' ? 'Twitch' : platform === 'kick' ? 'Kick' : platform === 'youtube' ? 'YouTube' : platform
+  const slug = (platform === 'twitch'
+    ? (stream.twitch_username || username)
+    : platform === 'kick'
+      ? (stream.kick_username || username)
+      : (stream.youtube_username || stream.youtube_channel_id || username))
+  const url = platform === 'twitch'
+    ? `https://www.twitch.tv/${slug}`
+    : platform === 'kick'
+      ? `https://kick.com/${slug}`
+      : platform === 'youtube'
+        ? `https://www.youtube.com/${slug?.startsWith('UC') ? 'channel/' + slug : '@' + slug}`
+        : null
+  if (!url) return
+
+  const viewerStr = viewers > 0 ? ` · ${viewers.toLocaleString()} viewers` : ''
+  const id = `hs-live-${platform}-${username}-${Date.now()}`
   _liveNotificationUrls.set(id, url)
   if (_liveNotificationUrls.size > 50) {
     const oldest = _liveNotificationUrls.keys().next().value
@@ -831,8 +885,8 @@ function fireLiveNotification(name, profile) {
     browser.notifications.create(id, {
       type: 'basic',
       iconUrl: 'icon-128.png',
-      title: `${profile.display_name || name} is live`,
-      message: `${platLabel}${viewerStr}`,
+      title: `${display} is live`,
+      message: `${platName}${viewerStr}`,
       contextMessage: 'heatsync',
       priority: 1,
     })
@@ -3661,6 +3715,23 @@ async function handleMessage(message, sender, sendResponse) {
     sendResponse({
       users: followedUsers
     });
+    return true;
+  } else if (message.type === 'get_live_followed') {
+    // Cached snapshot from background poll — popup/content can read instantly
+    sendResponse({
+      snapshot: _liveFollowedSnapshot,
+      count: _liveFollowedCount,
+    });
+    return true;
+  } else if (message.type === 'refresh_live_followed') {
+    // Force a fresh poll (e.g., user manually pulls to refresh)
+    if (typeof pollFollowedLive === 'function') {
+      pollFollowedLive().then(() => {
+        sendResponse({ snapshot: _liveFollowedSnapshot, count: _liveFollowedCount })
+      }).catch(() => sendResponse({ snapshot: [], count: 0 }))
+    } else {
+      sendResponse({ snapshot: [], count: 0 })
+    }
     return true;
   } else if (message.type === 'join_channel') {
     // Content script detected channel change — wait for init so cached channel emotes are available

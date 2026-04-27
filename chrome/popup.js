@@ -177,24 +177,16 @@
     return String(num);
   }
 
-  async function loadLive(container) {
+  function _renderLiveStreams(container, streams) {
     container.textContent = '';
-    const loading = document.createElement('div');
-    loading.className = 'live-empty';
-    loading.textContent = 'loading...';
-    container.appendChild(loading);
-    try {
-      const resp = await apiFetch('/api/live/following');
-      const streams = (resp && (resp.streams || (resp.data && resp.data.streams))) || [];
-      container.textContent = '';
-      if (!streams.length) {
-        const empty = document.createElement('div');
-        empty.className = 'live-empty';
-        empty.textContent = 'no followed channels live';
-        container.appendChild(empty);
-        return;
-      }
-      streams.slice(0, 3).forEach(function(s) {
+    if (!streams.length) {
+      const empty = document.createElement('div');
+      empty.className = 'live-empty';
+      empty.textContent = 'no followed channels live';
+      container.appendChild(empty);
+      return;
+    }
+    streams.forEach(function(s) {
         const platform = s.platform || 'twitch';
         const username = s.username || '';
         const url = safeUrl(platform === 'kick'
@@ -238,12 +230,41 @@
         }
         container.appendChild(a);
       });
-    } catch {
+  }
+
+  async function loadLive(container) {
+    // Try background's cached snapshot first — instant paint, no spinner.
+    let painted = false;
+    try {
+      const cached = await chrome.runtime.sendMessage({ type: 'get_live_followed' });
+      if (cached && Array.isArray(cached.snapshot)) {
+        _renderLiveStreams(container, cached.snapshot);
+        painted = true;
+      }
+    } catch {}
+
+    if (!painted) {
       container.textContent = '';
-      const err = document.createElement('div');
-      err.className = 'live-empty';
-      err.textContent = 'failed to load';
-      container.appendChild(err);
+      const loading = document.createElement('div');
+      loading.className = 'live-empty';
+      loading.textContent = 'loading...';
+      container.appendChild(loading);
+    }
+
+    // Re-fetch from server to ensure freshness (background polls every 60s,
+    // popup may open mid-cycle). Update silently if data changed.
+    try {
+      const resp = await apiFetch('/api/live/following');
+      const streams = (resp && (resp.streams || (resp.data && resp.data.streams))) || [];
+      _renderLiveStreams(container, streams);
+    } catch {
+      if (!painted) {
+        container.textContent = '';
+        const err = document.createElement('div');
+        err.className = 'live-empty';
+        err.textContent = 'failed to load';
+        container.appendChild(err);
+      }
     }
   }
 

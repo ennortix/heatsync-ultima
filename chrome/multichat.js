@@ -12331,10 +12331,16 @@ function listenForSocialEvents() {
               }
             }
           } else if (msg.status === 'ended' || msg.status === 'error') {
-            upsertNotice(
-              msg.status === 'ended' ? 'youtube stream ended' : (msg.error || 'youtube connection error'),
-              '#ff4444'
-            )
+            // "too many requests" is a transient ws-handler rate limit (5/min/socket).
+            // Showing it confuses users — they didn't do anything wrong, and the next
+            // resubscribe attempt will succeed. Drop it silently.
+            const isRateLimited = msg.status === 'error' && /too many requests/i.test(msg.error || '')
+            if (!isRateLimited) {
+              upsertNotice(
+                msg.status === 'ended' ? 'youtube stream ended' : (msg.error || 'youtube connection error'),
+                '#ff4444'
+              )
+            }
           }
         }
       }
@@ -14509,6 +14515,261 @@ function renderWhispersTab() {
 
   msgsEl.appendChild(frag)
   msgsEl.scrollTop = msgsEl.scrollHeight
+}
+
+
+// --- multichat/eventsub-whispers.js ---
+// EventSub WebSocket — Twitch whisper reception.
+// IRC WHISPER delivery is deprecated/silently dropped since Feb 2023;
+// the only documented path is EventSub user.whisper.message.
+
+const ESW_URL = 'wss://eventsub.wss.twitch.tv/ws'
+const ESW_HELIX_SUBS = 'https://api.twitch.tv/helix/eventsub/subscriptions'
+const ESW_HELIX_USERS = 'https://api.twitch.tv/helix/users'
+const ESW_CLIENT_ID = 'kimne78kx3ncx6brgo4mv6wki5h1ko'
+
+const eswState = {
+  ws: null,
+  sessionId: null,
+  selfUserId: null,
+  destroyed: false,
+  connecting: false,
+  subscribed: false,
+  reconnectTimer: null,
+  reconnectDelay: 1000,
+  keepaliveTimer: null,
+  keepaliveTimeoutMs: 30000,
+  lastMessageTime: 0,
+  seenIds: new Set(),
+  seenIdOrder: [],
+}
+const ESW_SEEN_MAX = 200
+
+function eswMarkSeen(id) {
+  if (!id) return false
+  if (eswState.seenIds.has(id)) return true
+  eswState.seenIds.add(id)
+  eswState.seenIdOrder.push(id)
+  if (eswState.seenIdOrder.length > ESW_SEEN_MAX) {
+    const old = eswState.seenIdOrder.shift()
+    eswState.seenIds.delete(old)
+  }
+  return false
+}
+
+async function eswFetchSelfUserId(token) {
+  if (eswState.selfUserId) return eswState.selfUserId
+  try {
+    const resp = await fetch(ESW_HELIX_USERS, {
+      headers: { 'Client-Id': ESW_CLIENT_ID, 'Authorization': 'Bearer ' + token },
+      signal: AbortSignal.timeout(8000),
+    })
+    if (!resp.ok) { log('EventSub: /helix/users failed', resp.status); return null }
+    const data = await resp.json()
+    const id = data?.data?.[0]?.id
+    if (id) eswState.selfUserId = id
+    return id || null
+  } catch (e) {
+    log('EventSub: self id fetch failed:', e.message)
+    return null
+  }
+}
+
+async function eswSubscribeWhispers(token) {
+  if (!eswState.sessionId || !eswState.selfUserId) return false
+  try {
+    const resp = await fetch(ESW_HELIX_SUBS, {
+      method: 'POST',
+      headers: {
+        'Client-Id': ESW_CLIENT_ID,
+        'Authorization': 'Bearer ' + token,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        type: 'user.whisper.message',
+        version: '1',
+        condition: { user_id: eswState.selfUserId },
+        transport: { method: 'websocket', session_id: eswState.sessionId },
+      }),
+      signal: AbortSignal.timeout(8000),
+    })
+    if (resp.status === 202) {
+      eswState.subscribed = true
+      log('EventSub: subscribed user.whisper.message')
+      return true
+    }
+    const txt = await resp.text().catch(() => '')
+    log('EventSub: subscribe failed', resp.status, txt.slice(0, 200))
+    if (resp.status === 401 || resp.status === 403) {
+      // Token lacks user:read:whispers — give up (don't reconnect-loop)
+      eswState.destroyed = true
+      eswCleanup(true)
+    }
+    return false
+  } catch (e) {
+    log('EventSub: subscribe error', e.message)
+    return false
+  }
+}
+
+function eswCleanup(destroy = false) {
+  if (destroy) eswState.destroyed = true
+  if (eswState.keepaliveTimer) { cleanup.clearInterval(eswState.keepaliveTimer); eswState.keepaliveTimer = null }
+  if (eswState.reconnectTimer) { cleanup.clearTimeout(eswState.reconnectTimer); eswState.reconnectTimer = null }
+  if (eswState.ws) {
+    eswState.ws.onclose = null; eswState.ws.onerror = null; eswState.ws.onmessage = null
+    try { eswState.ws.close() } catch {}
+  }
+  eswState.ws = null
+  eswState.sessionId = null
+  eswState.subscribed = false
+  eswState.connecting = false
+}
+
+function eswScheduleReconnect(token) {
+  if (eswState.destroyed) return
+  if (eswState.reconnectTimer) return
+  const delay = eswState.reconnectDelay
+  eswState.reconnectDelay = Math.min(delay * 2, 30000)
+  log(`EventSub reconnect in ${delay}ms`)
+  eswState.reconnectTimer = cleanup.setTimeout(() => {
+    eswState.reconnectTimer = null
+    if (eswState.destroyed) return
+    if (eswState.ws?.readyState === WebSocket.OPEN) return
+    eswConnect(token)
+  }, delay)
+}
+
+// Pull a known color for a userId from anywhere we've seen them (whisper history, IRC buffers).
+function eswResolveUserColor(userId) {
+  if (typeof whisperUsers !== 'undefined') {
+    for (const [, u] of whisperUsers) {
+      if (u?.userId === userId && u?.color) return u.color
+    }
+  }
+  return null
+}
+
+function eswHandleNotification(msg) {
+  if (msg.metadata?.subscription_type !== 'user.whisper.message') return
+  const event = msg.payload?.event
+  if (!event) return
+
+  const msgId = msg.metadata?.message_id
+  if (eswMarkSeen(msgId)) return
+
+  const text = event.whisper?.text || ''
+  if (!text) return
+
+  // Shape matches handleIncomingWhisper (whispers.js:128)
+  handleIncomingWhisper({
+    user: event.from_user_name || event.from_user_login || 'unknown',
+    userId: event.from_user_id,
+    text,
+    color: eswResolveUserColor(event.from_user_id) || '#fff',
+    time: msg.metadata?.message_timestamp
+      ? new Date(msg.metadata.message_timestamp).getTime()
+      : Date.now(),
+    id: event.whisper_id || msgId || '',
+  })
+}
+
+function eswHandleMessage(token) {
+  return (event) => {
+    eswState.lastMessageTime = Date.now()
+    let msg
+    try { msg = JSON.parse(event.data) } catch { return }
+    const type = msg.metadata?.message_type
+    if (!type) return
+
+    if (type === 'session_welcome') {
+      eswState.sessionId = msg.payload?.session?.id
+      const kt = msg.payload?.session?.keepalive_timeout_seconds
+      if (typeof kt === 'number') eswState.keepaliveTimeoutMs = (kt + 5) * 1000
+      log('EventSub session welcome:', eswState.sessionId)
+      // Reconnect-flow welcome carries existing subs over — only subscribe on first connect
+      if (!eswState.subscribed) eswSubscribeWhispers(token)
+      if (eswState.keepaliveTimer) cleanup.clearInterval(eswState.keepaliveTimer)
+      eswState.keepaliveTimer = cleanup.setInterval(() => {
+        if (Date.now() - eswState.lastMessageTime > eswState.keepaliveTimeoutMs) {
+          log('EventSub: keepalive timeout — reconnecting')
+          eswCleanup()
+          eswScheduleReconnect(token)
+        }
+      }, 5000)
+      eswState.reconnectDelay = 1000
+      return
+    }
+    if (type === 'session_keepalive') return
+    if (type === 'notification') { eswHandleNotification(msg); return }
+    if (type === 'session_reconnect') {
+      const newUrl = msg.payload?.session?.reconnect_url
+      if (newUrl) {
+        log('EventSub: server requested reconnect')
+        eswConnect(token, newUrl)
+      }
+      return
+    }
+    if (type === 'revocation') {
+      log('EventSub: subscription revoked', msg.payload?.subscription?.status)
+      eswState.subscribed = false
+      eswCleanup()
+      eswScheduleReconnect(token)
+      return
+    }
+  }
+}
+
+async function eswConnect(token, urlOverride) {
+  if (eswState.connecting) return false
+  if (!token) return false
+  if (!eswState.selfUserId) {
+    const id = await eswFetchSelfUserId(token)
+    if (!id) { log('EventSub: no self user id, abort'); return false }
+  }
+  eswState.connecting = true
+  eswState.destroyed = false
+
+  // Reconnect-URL flow: keep old socket open until new one welcomes
+  const oldWs = urlOverride ? eswState.ws : null
+  if (!urlOverride) eswCleanup()
+
+  try {
+    const ws = new WebSocket(urlOverride || ESW_URL)
+    eswState.ws = ws
+    ws.onopen = () => { eswState.lastMessageTime = Date.now() }
+    ws.onmessage = eswHandleMessage(token)
+    ws.onclose = () => {
+      log('EventSub: socket closed')
+      if (eswState.destroyed) return
+      eswScheduleReconnect(token)
+    }
+    ws.onerror = () => {}
+    if (oldWs) cleanup.setTimeout(() => { try { oldWs.close() } catch {} }, 5000)
+    eswState.connecting = false
+    return true
+  } catch (e) {
+    log('EventSub: connect failed', e.message)
+    eswState.connecting = false
+    eswScheduleReconnect(token)
+    return false
+  }
+}
+
+async function startEventSubWhispers() {
+  const token = getTwitchAuthToken()
+  if (!token) { log('EventSub: no Twitch token, skipping whispers'); return }
+  await eswConnect(token)
+}
+
+function reconnectEventSubIfDead() {
+  if (eswState.destroyed) return
+  if (eswState.ws?.readyState === WebSocket.OPEN) return
+  if (eswState.connecting) return
+  const token = getTwitchAuthToken()
+  if (!token) return
+  log('EventSub: reconnecting (visibility/wake)')
+  eswConnect(token)
 }
 
 
@@ -20840,18 +21101,19 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       `${_renderEpoch}:${m.id || m.base36_id || `${m.user || ''}:${m.time || ''}:${(m.text || '').slice(0, 32)}`}`
     const desiredKeys = toRender.map(msgKey)
 
-    // Detach non-message children (e.g. yt-status `.hs-mc-empty` notices appended
-    // by social.js) before reconciling — they aren't part of `toRender` and would
-    // otherwise be treated as stale tail and removed on every render, only to be
-    // re-added by the next youtube_status event. That round-trip was the visible
-    // flicker the user actually saw.
+    // Detach yt-status notices (appended by social.js) before reconciling so the
+    // diff doesn't treat them as "stale tail" and the next youtube_status event
+    // doesn't re-add a fresh copy — that round-trip was the visible flicker.
+    // Other non-message children (stale "no messages yet" placeholders, etc.)
+    // are dropped: once `toRender` has content, those are leftover state.
     const detachedExtras = []
     for (let i = msgsEl.children.length - 1; i >= 0; i--) {
       const c = msgsEl.children[i]
-      if (!c.dataset?.msgKey) {
+      if (c.dataset?.msgKey) continue
+      if (c.dataset?.hsYtStatus) {
         detachedExtras.unshift(c)
-        c.remove()
       }
+      c.remove()
     }
 
     let prefixLen = 0
@@ -22460,18 +22722,20 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     irc = new IRC();
     irc.connect();
 
-    // Connect auth IRC eagerly for whisper reception
-    // Whispers arrive via IRC WHISPER command on authenticated connections
-    // (twitch.tv/commands cap). Without this, auth IRC only connects on first send.
+    // Connect auth IRC eagerly so first send is instant (whispers no longer arrive over IRC)
     if (hostPlatform === 'twitch') {
       const token = getTwitchAuthToken()
       const nick = currentUsername || getCurrentUsername()
       if (token && nick) {
         connectAuthIrc(token, nick).then(ok => {
-          if (ok === true) log('Auth IRC ready (whispers enabled)')
+          if (ok === true) log('Auth IRC ready')
         })
       }
     }
+
+    // Twitch deprecated WHISPER over IRC in Feb 2023 — receive via EventSub instead.
+    // Works on any host (the ESW socket is independent of the chat IRC).
+    startEventSubWhispers()
 
     // Initialize Kick chat (runs on both platforms — cross-platform relay)
     kickChat = new KickChat();
@@ -23104,6 +23368,12 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
         log('Tab visible, Kick chat dead — reconnecting');
         kickChat.connect();
       }
+    }, { signal: mcSignal });
+
+    // 4. Reconnect EventSub whispers on tab focus
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState !== 'visible') return;
+      reconnectEventSubIfDead();
     }, { signal: mcSignal });
 
     if (hostPlatform === 'yt') {

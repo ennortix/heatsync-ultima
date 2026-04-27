@@ -103,6 +103,7 @@ const MULTICHAT_MODULES = [
   'twitch-api.js',
   'social.js',
   'whispers.js',
+  'eventsub-whispers.js',
   'input.js',
   'profile-card.js',
 ]

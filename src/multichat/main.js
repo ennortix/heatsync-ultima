@@ -3460,18 +3460,19 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       `${_renderEpoch}:${m.id || m.base36_id || `${m.user || ''}:${m.time || ''}:${(m.text || '').slice(0, 32)}`}`
     const desiredKeys = toRender.map(msgKey)
 
-    // Detach non-message children (e.g. yt-status `.hs-mc-empty` notices appended
-    // by social.js) before reconciling — they aren't part of `toRender` and would
-    // otherwise be treated as stale tail and removed on every render, only to be
-    // re-added by the next youtube_status event. That round-trip was the visible
-    // flicker the user actually saw.
+    // Detach yt-status notices (appended by social.js) before reconciling so the
+    // diff doesn't treat them as "stale tail" and the next youtube_status event
+    // doesn't re-add a fresh copy — that round-trip was the visible flicker.
+    // Other non-message children (stale "no messages yet" placeholders, etc.)
+    // are dropped: once `toRender` has content, those are leftover state.
     const detachedExtras = []
     for (let i = msgsEl.children.length - 1; i >= 0; i--) {
       const c = msgsEl.children[i]
-      if (!c.dataset?.msgKey) {
+      if (c.dataset?.msgKey) continue
+      if (c.dataset?.hsYtStatus) {
         detachedExtras.unshift(c)
-        c.remove()
       }
+      c.remove()
     }
 
     let prefixLen = 0
@@ -5080,18 +5081,20 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     irc = new IRC();
     irc.connect();
 
-    // Connect auth IRC eagerly for whisper reception
-    // Whispers arrive via IRC WHISPER command on authenticated connections
-    // (twitch.tv/commands cap). Without this, auth IRC only connects on first send.
+    // Connect auth IRC eagerly so first send is instant (whispers no longer arrive over IRC)
     if (hostPlatform === 'twitch') {
       const token = getTwitchAuthToken()
       const nick = currentUsername || getCurrentUsername()
       if (token && nick) {
         connectAuthIrc(token, nick).then(ok => {
-          if (ok === true) log('Auth IRC ready (whispers enabled)')
+          if (ok === true) log('Auth IRC ready')
         })
       }
     }
+
+    // Twitch deprecated WHISPER over IRC in Feb 2023 — receive via EventSub instead.
+    // Works on any host (the ESW socket is independent of the chat IRC).
+    startEventSubWhispers()
 
     // Initialize Kick chat (runs on both platforms — cross-platform relay)
     kickChat = new KickChat();
@@ -5724,6 +5727,12 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
         log('Tab visible, Kick chat dead — reconnecting');
         kickChat.connect();
       }
+    }, { signal: mcSignal });
+
+    // 4. Reconnect EventSub whispers on tab focus
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState !== 'visible') return;
+      reconnectEventSubIfDead();
     }, { signal: mcSignal });
 
     if (hostPlatform === 'yt') {

@@ -2112,6 +2112,40 @@ function renderDiscoverTab() {
       empty.className = 'hs-discover-section-empty';
       empty.textContent = 'no streams live right now';
       body.appendChild(empty);
+      // Contextual nudge — if the user follows few/no people on heatsync, the
+      // section will always look empty. Surface twitch import right at the
+      // point of pain. safeSendMessage→get_followed_users to gate the prompt.
+      try {
+        chrome.runtime.sendMessage({ type: 'get_followed_users' }).then(resp => {
+          if ((resp?.users?.length || 0) >= 5) return;
+          if (!body.isConnected) return;
+          const nudge = document.createElement('div');
+          nudge.className = 'hs-discover-section-empty hs-discover-import-nudge';
+          const a = document.createElement('a');
+          a.href = '#';
+          a.textContent = '↳ import your follows from twitch';
+          a.style.color = '#ff8700';
+          a.style.textDecoration = 'none';
+          a.addEventListener('click', async (e) => {
+            e.preventDefault();
+            a.textContent = 'syncing…';
+            try {
+              const r = await apiFetch('/api/sync-twitch-follows', { method: 'POST', auth: true });
+              if (r?.ok && r?.data?.success) {
+                a.textContent = `synced ${r.data.synced} ✓`;
+                try { chrome.runtime.sendMessage({ type: 'refresh_followed_users' }); } catch {}
+                setTimeout(() => renderDiscoverTab(), 1500);
+              } else {
+                a.textContent = (r?.error || r?.data?.error || 'failed').slice(0, 30);
+              }
+            } catch (err) {
+              a.textContent = 'failed';
+            }
+          });
+          nudge.appendChild(a);
+          body.appendChild(nudge);
+        }).catch(() => {});
+      } catch {}
     } else {
       let rank = 1;
       for (const profile of liveProfiles) {

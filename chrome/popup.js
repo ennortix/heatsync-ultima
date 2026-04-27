@@ -185,17 +185,32 @@
     return null;
   }
 
-  function _openPopoutWindow(url) {
+  async function _openPopoutWindow(url) {
     if (!url) return;
-    // chrome.windows.create with type:'popup' gives a real chat-popout window
-    // (no tab bar, fixed size). Fallback to tab if windows API isn't there.
-    if (chrome.windows && chrome.windows.create) {
-      chrome.windows.create({ url, type: 'popup', width: 380, height: 600, focused: true }).catch?.(() => {
-        chrome.tabs.create({ url });
-      });
-    } else {
-      chrome.tabs.create({ url });
+    // chrome.windows.create({ type:'popup' }) gives a real chat-popout window
+    // (no tab bar, fixed size). Use async/await so a synchronous throw OR async
+    // rejection both fall through to the safer tab fallback — previously the
+    // .catch chain silently dropped errors and left the user with a regular
+    // fullscreen tab, which felt like "chat took over my screen".
+    if (chrome.windows?.create) {
+      try {
+        await chrome.windows.create({
+          url,
+          type: 'popup',
+          width: 400,
+          height: 600,
+          focused: true,
+          // Some browsers ignore width/height without left/top — anchor near
+          // the cursor's current screen position when available.
+          left: Math.max(0, (screen.availWidth || 1280) - 420),
+          top: 80,
+        });
+        return;
+      } catch (e) {
+        console.warn('[heatsync] popout window create failed, falling back to tab:', e);
+      }
     }
+    chrome.tabs.create({ url });
   }
 
   function _renderLiveStreams(container, streams) {
@@ -205,6 +220,39 @@
       empty.className = 'live-empty';
       empty.textContent = 'no followed channels live';
       container.appendChild(empty);
+      // Contextual nudge — when the empty state is empty BECAUSE the user has
+      // few/no heatsync follows, surface twitch import right where they hit the
+      // wall. Async fetch of follow count so we don't show this for power users
+      // who just happen to have nobody live this minute.
+      chrome.runtime.sendMessage({ type: 'get_followed_users' }).then(resp => {
+        if ((resp?.users?.length || 0) >= 5) return;
+        const cta = document.createElement('div');
+        cta.className = 'live-empty live-import-nudge';
+        const link = document.createElement('a');
+        link.href = '#';
+        link.className = 'live-import-link';
+        link.textContent = '↳ import from twitch';
+        link.title = 'sync your Twitch follows into heatsync';
+        link.addEventListener('click', async function(e) {
+          e.preventDefault();
+          link.textContent = 'syncing...';
+          try {
+            const r = await apiFetch('/api/sync-twitch-follows', { method: 'POST', auth: true });
+            if (r?.success) {
+              link.textContent = `synced ${r.synced} ✓`;
+              try { await chrome.runtime.sendMessage({ type: 'refresh_followed_users' }); } catch {}
+              // Re-render after a tick so new follows show up
+              setTimeout(() => { if (container?._reload) container._reload(); }, 800);
+            } else {
+              link.textContent = (r?.error || 'failed').slice(0, 30);
+            }
+          } catch (err) {
+            link.textContent = 'failed';
+          }
+        });
+        cta.appendChild(link);
+        container.appendChild(cta);
+      }).catch(() => {});
       return;
     }
     streams.forEach(function(s) {
@@ -1270,11 +1318,11 @@
           ? 'https://www.youtube.com/@' + channel + '/live'
           : 'https://www.youtube.com/live_chat?v=' + channel + '&is_popout=1';
       } else if (detectedPlatform === 'kick') {
-        url = 'https://kick.com/' + channel;
+        url = 'https://kick.com/popout/' + channel + '/chat';
       } else {
         url = 'https://www.twitch.tv/popout/' + channel + '/chat';
       }
-      chrome.tabs.create({ url: url });
+      _openPopoutWindow(url);
     }
 
     btn.addEventListener('click', openPopout);

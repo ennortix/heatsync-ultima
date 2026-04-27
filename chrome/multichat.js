@@ -13898,6 +13898,40 @@ function renderDiscoverTab() {
       empty.className = 'hs-discover-section-empty';
       empty.textContent = 'no streams live right now';
       body.appendChild(empty);
+      // Contextual nudge — if the user follows few/no people on heatsync, the
+      // section will always look empty. Surface twitch import right at the
+      // point of pain. safeSendMessage→get_followed_users to gate the prompt.
+      try {
+        chrome.runtime.sendMessage({ type: 'get_followed_users' }).then(resp => {
+          if ((resp?.users?.length || 0) >= 5) return;
+          if (!body.isConnected) return;
+          const nudge = document.createElement('div');
+          nudge.className = 'hs-discover-section-empty hs-discover-import-nudge';
+          const a = document.createElement('a');
+          a.href = '#';
+          a.textContent = '↳ import your follows from twitch';
+          a.style.color = '#ff8700';
+          a.style.textDecoration = 'none';
+          a.addEventListener('click', async (e) => {
+            e.preventDefault();
+            a.textContent = 'syncing…';
+            try {
+              const r = await apiFetch('/api/sync-twitch-follows', { method: 'POST', auth: true });
+              if (r?.ok && r?.data?.success) {
+                a.textContent = `synced ${r.data.synced} ✓`;
+                try { chrome.runtime.sendMessage({ type: 'refresh_followed_users' }); } catch {}
+                setTimeout(() => renderDiscoverTab(), 1500);
+              } else {
+                a.textContent = (r?.error || r?.data?.error || 'failed').slice(0, 30);
+              }
+            } catch (err) {
+              a.textContent = 'failed';
+            }
+          });
+          nudge.appendChild(a);
+          body.appendChild(nudge);
+        }).catch(() => {});
+      } catch {}
     } else {
       let rank = 1;
       for (const profile of liveProfiles) {
@@ -14135,9 +14169,31 @@ function renderPinnedTab() {
 // --- multichat/whispers.js ---
 // Whispers — unified chronological timeline of all whispers + DMs
 
-const whisperTimeline = [] // { user, text, color, time, self, platform, key }
+const whisperTimeline = [] // { user, text, color, time, self, platform, key, status?, id? }
 const whisperUsers = new Map() // key → { platform, userId, displayName, color }
 const WHISPER_USERS_MAX = 200
+const WHISPER_TIMELINE_MAX_READ = 500 // hard cap on READ messages; unread are NEVER evicted
+
+// Trim oldest READ messages once read-count exceeds cap. Unread (incoming msgs
+// with time > whisperLastViewedTime) survive forever — that's the whole point.
+// Self-sent messages count as read (we wrote them).
+function trimWhisperTimeline() {
+  let readCount = 0
+  for (const m of whisperTimeline) {
+    if (m.self || m.time <= whisperLastViewedTime) readCount++
+  }
+  let toRemove = readCount - WHISPER_TIMELINE_MAX_READ
+  if (toRemove <= 0) return
+  for (let i = 0; i < whisperTimeline.length && toRemove > 0; ) {
+    const m = whisperTimeline[i]
+    if (m.self || m.time <= whisperLastViewedTime) {
+      whisperTimeline.splice(i, 1)
+      toRemove--
+    } else {
+      i++
+    }
+  }
+}
 function whisperUsersSet(key, value) {
   whisperUsers.set(key, value)
   if (whisperUsers.size > WHISPER_USERS_MAX) {
@@ -14184,9 +14240,10 @@ function saveWhispers() {
   const users = {}
   for (const [key, u] of whisperUsers) users[key] = u
   try {
+    trimWhisperTimeline()
     chrome.storage.local.set({
       hs_whispers_v2: {
-        timeline: whisperTimeline.slice(-200),
+        timeline: whisperTimeline.slice(),
         users,
         lastKey: lastWhisperKey,
         lastViewed: whisperLastViewedTime
@@ -14242,7 +14299,7 @@ function loadWhispers() {
           }
         }
         whisperTimeline.sort((a, b) => a.time - b.time)
-        if (whisperTimeline.length > 500) whisperTimeline.splice(0, whisperTimeline.length - 500)
+        trimWhisperTimeline()
         // Clean up v1
         try { chrome.storage.local.remove('hs_whispers') } catch {}
         whisperSaveDebounced()
@@ -14282,7 +14339,7 @@ function handleIncomingWhisper(msg) {
     key,
     id: msg.id || ''
   })
-  if (whisperTimeline.length > 500) whisperTimeline.splice(0, whisperTimeline.length - 500)
+  trimWhisperTimeline()
   lastWhisperKey = key
 
   if (currentTab === 'whispers') {
@@ -14304,6 +14361,7 @@ function handleIncomingWhisper(msg) {
 }
 
 function handleIncomingDm(data) {
+  if (data.id && whisperTimeline.some(m => m.id === data.id)) return
   const key = `hs:${data.from_user_id}`
   whisperUsersSet(key, {
     platform: 'heatsync',
@@ -14320,9 +14378,10 @@ function handleIncomingDm(data) {
     time,
     self: false,
     platform: 'heatsync',
-    key
+    key,
+    id: data.id || ''
   })
-  if (whisperTimeline.length > 500) whisperTimeline.splice(0, whisperTimeline.length - 500)
+  trimWhisperTimeline()
   lastWhisperKey = key
 
   if (currentTab === 'whispers') {
@@ -14367,44 +14426,60 @@ async function sendWhisperMessage(key, text) {
   const userInfo = whisperUsers.get(key)
   if (!userInfo) { showToast('unknown user — whisper someone first'); return }
 
-  // Optimistic: show message immediately
-  whisperTimeline.push({
+  // Optimistic: show message with pending status. Reference kept so we can
+  // flip status to 'sent' or 'failed' once the network resolves.
+  const sendId = `out_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+  const msg = {
     user: 'you',
     text,
     color: '#808080',
     time: Date.now(),
     self: true,
     platform: userInfo.platform,
-    key
-  })
-  if (whisperTimeline.length > 500) whisperTimeline.splice(0, whisperTimeline.length - 500)
+    key,
+    status: 'pending',
+    sendId
+  }
+  whisperTimeline.push(msg)
+  trimWhisperTimeline()
   lastWhisperKey = key
 
   if (currentTab === 'whispers') renderWhispersTab()
   whisperSaveDebounced()
 
-  if (key.startsWith('twitch:')) {
-    try {
+  let ok = false
+  let errMsg = ''
+  try {
+    if (key.startsWith('twitch:')) {
       const resp = await sendTwitchWhisper(userInfo.userId, text)
-      if (!resp.ok) {
-        log('Whisper send failed:', resp.error)
-        showToast('whisper failed: ' + resp.error)
-      }
-    } catch (e) {
-      log('Whisper send failed:', e.message)
-      showToast('whisper failed: ' + e.message)
+      ok = !!resp.ok
+      errMsg = resp.error || ''
+    } else if (key.startsWith('hs:')) {
+      const toUserId = key.slice(3)
+      const resp = await apiFetch('/api/dm', { method: 'POST', body: { toUserId, content: text } })
+      ok = !!resp.ok
+      errMsg = resp.error || (ok ? '' : 'unknown error')
     }
-  } else if (key.startsWith('hs:')) {
-    const toUserId = key.slice(3)
-    const resp = await apiFetch('/api/dm', {
-      method: 'POST',
-      body: { toUserId, content: text }
-    })
-    if (!resp.ok) {
-      log('DM send failed:', resp.error)
-      showToast('dm failed: ' + (resp.error || 'unknown error'))
-    }
+  } catch (e) {
+    ok = false
+    errMsg = e.message
   }
+
+  // Mutate the original push (still referenced by sendId) so re-renders pick up state.
+  msg.status = ok ? 'sent' : 'failed'
+  if (!ok) msg.error = errMsg
+  if (currentTab === 'whispers') renderWhispersTab()
+  whisperSaveDebounced()
+}
+
+async function retryWhisperSend(sendId) {
+  const idx = whisperTimeline.findIndex(m => m.sendId === sendId)
+  if (idx < 0) return
+  const old = whisperTimeline[idx]
+  if (old.status !== 'failed') return
+  // Remove the failed entry — sendWhisperMessage will push a fresh pending one.
+  whisperTimeline.splice(idx, 1)
+  await sendWhisperMessage(old.key, old.text)
 }
 
 function renderWhispersTab() {
@@ -14447,7 +14522,7 @@ function renderWhispersTab() {
           }
           if (added) {
             whisperTimeline.sort((a, b) => a.time - b.time)
-            if (whisperTimeline.length > 500) whisperTimeline.splice(0, whisperTimeline.length - 500)
+            trimWhisperTimeline()
             if (currentTab === 'whispers') renderWhispersTab()
             whisperSaveDebounced()
           }
@@ -14478,7 +14553,11 @@ function renderWhispersTab() {
 
   for (const m of toRender) {
     const div = document.createElement('div')
-    div.className = m.self ? 'hs-mc-msg hs-whisper-self' : 'hs-mc-msg'
+    let cls = m.self ? 'hs-mc-msg hs-whisper-self' : 'hs-mc-msg'
+    if (m.status === 'pending') cls += ' hs-whisper-pending'
+    else if (m.status === 'failed') cls += ' hs-whisper-failed'
+    div.className = cls
+    if (m.sendId) div.dataset.sendId = m.sendId
     if (zebraEnabled && ++zebraCount % 2 === 0) div.classList.add('hs-mc-zebra')
 
     const ts = formatTimeFromTs(m.time)
@@ -19854,9 +19933,13 @@ const STORAGE_KEY = 'heatsync_multichat';
     style.textContent = `
       /* Fix inner column transform — must be 'none', not translateX(0),
          because any transform value creates a containing block that breaks
-         position:fixed on descendant elements (tab bar goes off-screen) */
+         position:fixed on descendant elements (tab bar goes off-screen).
+         Kill the transition too — without it Twitch's 500ms transform
+         transition keeps interpolating to translateX(-340px) on every
+         class flip, leaving the panel partially off-screen. */
       .channel-root__right-column--expanded {
         transform: none !important;
+        transition: none !important;
       }
       /* Fix collapse/expand arrow — Twitch applies translateX(-340px) to
          slide it with the chat panel animation, but our layout changes make

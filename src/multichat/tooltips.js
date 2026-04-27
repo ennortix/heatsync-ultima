@@ -484,12 +484,10 @@
     const followers = Math.max(stats.followers || 0, p.twitch_followers || 0, p.kick_followers || 0);
 
     const statBadges = [];
-    // Canonical heat: formatHeat + ° suffix (≥10) + tier color/glow/breathe via heatSpanHtml.
-    // Outer .hs-pc-stat keeps the badge border tinted by the tier border color.
-    const hd = getHeatDisplay(heat)
-    const heatBorder = hd ? hd.border : '#808080'
-    const breatheCls = hd?.breathe ? ' hs-feed-heat-breathe' : ''
-    statBadges.push(`<span class="hs-pc-stat heat${breatheCls}" style="border-color:${heatBorder}">${heatSpanHtml(heat)}</span>`);
+    // Heat renders as the canonical bare glowing number (matches feed / discover / profile card)
+    // — no badge wrapper, no hardcoded bg/border. Other stats below stay as pill badges.
+    const heatHtml = heatSpanHtml(heat);
+    if (heatHtml) statBadges.push(heatHtml);
     if (op > 0) statBadges.push(`<span class="hs-pc-stat op"><span class="hs-pc-num">${formatCompact(op)}</span> [OP]</span>`);
     if (mop > 0) statBadges.push(`<span class="hs-pc-stat mop"><span class="hs-pc-num">${formatCompact(mop)}</span> <span style="color:#ff00ff">[OP]</span></span>`);
     if (re > 0) statBadges.push(`<span class="hs-pc-stat re"><span class="hs-pc-num">${formatCompact(re)}</span> [RE]</span>`);

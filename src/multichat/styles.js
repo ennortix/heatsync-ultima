@@ -943,16 +943,6 @@ function injectStyles() {
       white-space: nowrap;
       letter-spacing: 0.3px;
     }
-    #hs-user-tooltip .hs-pc-stat.heat {
-      background: #000;
-      border: 1px solid #ff8700;
-      padding: 2px 8px;
-      font-size: 12px;
-    }
-    #hs-user-tooltip .hs-pc-stat.heat .hs-pc-num {
-      font-weight: 900;
-      font-size: 13px;
-    }
     #hs-user-tooltip .hs-pc-stat.op {
       color: #ff0000;
       font-weight: 700;

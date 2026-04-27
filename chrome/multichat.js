@@ -5211,25 +5211,23 @@ function injectStyles() {
     .hs-pinned-row:hover .hs-pinned-body { color: #fff; }
 
     /* ============================================
-       UNIVERSAL HOVER — every button in the heatsync extension turns
-       white bg + black text on hover for max contrast against the
-       dark theme. !important wins over per-component hover rules.
+       UNIVERSAL HOVER — every interactive element inside the extension
+       inverts to white-bg/black-text on hover and keyboard focus.
+       Single rule, no per-class allowlist, descendants inherit.
+       Same primitive as heatsync.org, scoped to .hs-mc-container so the
+       host site's own buttons aren't touched.
        ============================================ */
-    .hs-mc-container button:hover:not(:disabled):not([aria-disabled="true"]),
-    .hs-mc-container [role="button"]:hover:not([aria-disabled="true"]),
-    .hs-mc-container .hs-mc-tab:hover,
-    .hs-mc-container .hs-btn:hover,
-    .hs-mc-container .hs-mc-tab-utils > div:hover,
-    .hs-mc-container .hs-mc-tab-utils > button:hover {
+    .hs-mc-container :where(button, [role="button"], [role="tab"], [role="menuitem"], [role="option"], [onclick]):not(:disabled):not([aria-disabled="true"]):hover,
+    .hs-mc-container :where(button, [role="button"], [role="tab"], [role="menuitem"], [role="option"], [onclick]):not(:disabled):not([aria-disabled="true"]):focus-visible {
       background: #fff !important;
       color: #000 !important;
     }
-    .hs-mc-container button:hover:not(:disabled):not([aria-disabled="true"]) svg,
-    .hs-mc-container [role="button"]:hover:not([aria-disabled="true"]) svg,
-    .hs-mc-container .hs-mc-tab:hover svg,
-    .hs-mc-container .hs-btn:hover svg {
-      fill: #000 !important;
+    .hs-mc-container :where(button, [role="button"], [role="tab"], [role="menuitem"], [role="option"], [onclick]):not(:disabled):not([aria-disabled="true"]):hover *,
+    .hs-mc-container :where(button, [role="button"], [role="tab"], [role="menuitem"], [role="option"], [onclick]):not(:disabled):not([aria-disabled="true"]):focus-visible * {
       color: #000 !important;
+      fill: #000 !important;
+      stroke: #000 !important;
+      border-color: #000 !important;
     }
   `;
   document.head.appendChild(style);
@@ -20842,6 +20840,20 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       `${_renderEpoch}:${m.id || m.base36_id || `${m.user || ''}:${m.time || ''}:${(m.text || '').slice(0, 32)}`}`
     const desiredKeys = toRender.map(msgKey)
 
+    // Detach non-message children (e.g. yt-status `.hs-mc-empty` notices appended
+    // by social.js) before reconciling — they aren't part of `toRender` and would
+    // otherwise be treated as stale tail and removed on every render, only to be
+    // re-added by the next youtube_status event. That round-trip was the visible
+    // flicker the user actually saw.
+    const detachedExtras = []
+    for (let i = msgsEl.children.length - 1; i >= 0; i--) {
+      const c = msgsEl.children[i]
+      if (!c.dataset?.msgKey) {
+        detachedExtras.unshift(c)
+        c.remove()
+      }
+    }
+
     let prefixLen = 0
     while (
       prefixLen < msgsEl.children.length &&
@@ -20851,8 +20863,9 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       prefixLen++
     }
 
-    // DOM already matches desired exactly — no DOM mutation, just sync side-state.
+    // DOM already matches desired exactly — re-attach extras and sync side-state.
     if (prefixLen === msgsEl.children.length && prefixLen === desiredKeys.length) {
+      for (const ex of detachedExtras) msgsEl.appendChild(ex)
       applyMcMutes();
       requestAnimationFrame(() => { isProgrammaticScroll = false; });
       if (!isScrolledUp) scrollMsgsToBottom(msgsEl);
@@ -20897,6 +20910,10 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       frag.appendChild(div);
     }
     msgsEl.appendChild(frag);
+
+    // Re-attach the detached extras at the bottom so notices (yt-status etc.)
+    // stay below the message list across renders without being churned.
+    for (const ex of detachedExtras) msgsEl.appendChild(ex)
 
     for (const [mid, idx] of expandedStacks) {
       const msg = msgsEl.querySelector(`.hs-mc-msg[data-msg-id="${CSS.escape(mid)}"]`)

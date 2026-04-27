@@ -4178,25 +4178,23 @@ function injectStyles() {
     .hs-pinned-row:hover .hs-pinned-body { color: #fff; }
 
     /* ============================================
-       UNIVERSAL HOVER — every button in the heatsync extension turns
-       white bg + black text on hover for max contrast against the
-       dark theme. !important wins over per-component hover rules.
+       UNIVERSAL HOVER — every interactive element inside the extension
+       inverts to white-bg/black-text on hover and keyboard focus.
+       Single rule, no per-class allowlist, descendants inherit.
+       Same primitive as heatsync.org, scoped to .hs-mc-container so the
+       host site's own buttons aren't touched.
        ============================================ */
-    .hs-mc-container button:hover:not(:disabled):not([aria-disabled="true"]),
-    .hs-mc-container [role="button"]:hover:not([aria-disabled="true"]),
-    .hs-mc-container .hs-mc-tab:hover,
-    .hs-mc-container .hs-btn:hover,
-    .hs-mc-container .hs-mc-tab-utils > div:hover,
-    .hs-mc-container .hs-mc-tab-utils > button:hover {
+    .hs-mc-container :where(button, [role="button"], [role="tab"], [role="menuitem"], [role="option"], [onclick]):not(:disabled):not([aria-disabled="true"]):hover,
+    .hs-mc-container :where(button, [role="button"], [role="tab"], [role="menuitem"], [role="option"], [onclick]):not(:disabled):not([aria-disabled="true"]):focus-visible {
       background: #fff !important;
       color: #000 !important;
     }
-    .hs-mc-container button:hover:not(:disabled):not([aria-disabled="true"]) svg,
-    .hs-mc-container [role="button"]:hover:not([aria-disabled="true"]) svg,
-    .hs-mc-container .hs-mc-tab:hover svg,
-    .hs-mc-container .hs-btn:hover svg {
-      fill: #000 !important;
+    .hs-mc-container :where(button, [role="button"], [role="tab"], [role="menuitem"], [role="option"], [onclick]):not(:disabled):not([aria-disabled="true"]):hover *,
+    .hs-mc-container :where(button, [role="button"], [role="tab"], [role="menuitem"], [role="option"], [onclick]):not(:disabled):not([aria-disabled="true"]):focus-visible * {
       color: #000 !important;
+      fill: #000 !important;
+      stroke: #000 !important;
+      border-color: #000 !important;
     }
   `;
   document.head.appendChild(style);

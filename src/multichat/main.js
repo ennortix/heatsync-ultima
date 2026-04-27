@@ -4363,6 +4363,8 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
 
   async function saveConfig() {
     _channelLookup = null
+    // Notify any open UI (profile card, etc.) that channel list may have changed
+    try { document.dispatchEvent(new CustomEvent('hs-channels-changed')) } catch {}
     try {
       _skipNextConfigSync = true
       await chrome.storage.local.set({ [STORAGE_KEY]: config });
@@ -4746,13 +4748,12 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
         }
       }
 
-      // Blocked emotes
+      // Blocked emotes — diff-apply only the hash changes. The previous code
+      // reloaded the whole set from storage and re-rendered every message,
+      // which caused chat-wide flicker on every block/unblock and could revert
+      // optimistic toggles if storage lagged the user action.
       if (changes.blocked_emotes) {
-        loadBlockedEmotes().then(() => {
-          if (!isScrolledUp) {
-            renderMessages(currentTab);
-          }
-        });
+        applyBlockedHashDelta(changes.blocked_emotes.newValue || []);
       }
     }
     chrome.storage.onChanged.addListener(_mcStorageListener)

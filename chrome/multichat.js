@@ -16980,6 +16980,12 @@ function setupProfileCardHandlers() {
     if (username) openProfileCard(username, platform || null)
   }, { signal: mcSignal })
 
+  // Channel list changed (right-click remove, add via pill, server sync, etc.) —
+  // re-render the open card so the [+] action reflects the new in-channels state.
+  cleanup.addEventListener(document, 'hs-channels-changed', () => {
+    if (activeProfileCard) renderProfileCardView()
+  }, { signal: mcSignal })
+
   // Username click → open card. Capture phase so we beat Twitch/Kick native user-card handlers.
   // Allow ctrl/meta/shift/middle/alt to fall through to the <a target="_blank"> default nav.
   cleanup.addEventListener(document, 'click', (e) => {
@@ -21453,6 +21459,8 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
 
   async function saveConfig() {
     _channelLookup = null
+    // Notify any open UI (profile card, etc.) that channel list may have changed
+    try { document.dispatchEvent(new CustomEvent('hs-channels-changed')) } catch {}
     try {
       _skipNextConfigSync = true
       await chrome.storage.local.set({ [STORAGE_KEY]: config });

@@ -383,9 +383,63 @@
 
   // User hover tooltip (profile preview)
   let userTooltip = null;
-  const _profileCache = new Map(); // username -> { profile, ts }
+  const _profileCache = new Map(); // platform:username -> { profile, ts }
   const PROFILE_CACHE_TTL = 60000; // 60s
   let _profileGen = 0; // generation counter to prevent stale renders
+
+  // Centralized cross-platform identity resolver. ALL identity lookups should go
+  // through this. Wraps _profileCache + /api/profile, returns a unified shape.
+  // Used by: pcAddAsChannel, renderAddChannelForm autofill, auto-multichat banner,
+  // any future awareness feature.
+  function shapeIdentity(profile) {
+    if (!profile) return { ok: false };
+    const identity = {
+      heatsync: profile.username || null,
+      twitch: profile.twitch_username || null,
+      kick: profile.kick_username || null,
+      youtube: profile.youtube_username || profile.youtube_channel_id || null,
+    };
+    const linked = [identity.twitch, identity.kick, identity.youtube].filter(Boolean);
+    const liveOn = [];
+    if (profile.twitch_is_live) liveOn.push('twitch');
+    if (profile.kick_is_live) liveOn.push('kick');
+    return {
+      ok: true,
+      profile,
+      identity,
+      linkedCount: linked.length,
+      isLinked: linked.length >= 2,
+      liveOn,
+    };
+  }
+
+  async function resolveIdentity(name, opts = {}) {
+    if (!name) return { ok: false, error: 'no name' };
+    const platform = opts.platform || null;
+    const cacheKey = `${platform || 'unknown'}:${String(name).toLowerCase()}`;
+    if (!opts.bust) {
+      const cached = _profileCache.get(cacheKey);
+      if (cached && Date.now() - cached.ts < PROFILE_CACHE_TTL) {
+        return shapeIdentity(cached.profile);
+      }
+    }
+    try {
+      const platParam = platform ? `?platform=${encodeURIComponent(platform)}` : '';
+      const resp = await apiFetch(`/api/profile/${encodeURIComponent(name)}${platParam}`);
+      if (!resp?.ok || !resp.data?.profile) {
+        return { ok: false, error: resp?.error || 'not found', notFound: true };
+      }
+      const profile = resp.data.profile;
+      _profileCache.set(cacheKey, { profile, ts: Date.now() });
+      if (_profileCache.size > 100) {
+        const oldest = [..._profileCache.entries()].sort((a, b) => a[1].ts - b[1].ts).slice(0, 50);
+        for (const [k] of oldest) _profileCache.delete(k);
+      }
+      return shapeIdentity(profile);
+    } catch (e) {
+      return { ok: false, error: e.message || 'fetch failed' };
+    }
+  }
 
   function ensureUserTooltip() {
     if (!userTooltip || !document.contains(userTooltip)) {
@@ -690,24 +744,61 @@
   }
 
   function positionTooltipAtElement(tooltip, targetEl) {
-    // Anchor to element like website hover cards — centered above
     const elRect = targetEl.getBoundingClientRect();
     const tipRect = tooltip.getBoundingClientRect();
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    const gap = 6;       // visible separation so the hovered username is never touched
+    const margin = 5;    // viewport edge margin
 
-    // Position directly above if room, otherwise below (no gap, like website)
-    let y;
-    if (elRect.top - tipRect.height > 0) {
-      y = elRect.top - tipRect.height;
+    const spaceTop = elRect.top - margin;
+    const spaceBottom = vh - elRect.bottom - margin;
+    const spaceLeft = elRect.left - margin;
+    const spaceRight = vw - elRect.right - margin;
+    const needV = tipRect.height + gap;
+    const needH = tipRect.width + gap;
+
+    let x, y, side;
+    if (spaceTop >= needV) {
+      side = 'top';
+      y = elRect.top - tipRect.height - gap;
+      x = elRect.left + elRect.width / 2 - tipRect.width / 2;
+    } else if (spaceBottom >= needV) {
+      side = 'bottom';
+      y = elRect.bottom + gap;
+      x = elRect.left + elRect.width / 2 - tipRect.width / 2;
+    } else if (spaceRight >= needH) {
+      side = 'right';
+      x = elRect.right + gap;
+      y = elRect.top + elRect.height / 2 - tipRect.height / 2;
+    } else if (spaceLeft >= needH) {
+      side = 'left';
+      x = elRect.left - tipRect.width - gap;
+      y = elRect.top + elRect.height / 2 - tipRect.height / 2;
     } else {
-      y = elRect.bottom;
+      // No side has full room — pick the largest and clamp; still nudge off the element
+      const maxV = Math.max(spaceTop, spaceBottom);
+      const maxH = Math.max(spaceLeft, spaceRight);
+      if (maxV >= maxH) {
+        side = spaceTop >= spaceBottom ? 'top' : 'bottom';
+        y = side === 'top' ? margin : elRect.bottom + gap;
+        x = elRect.left + elRect.width / 2 - tipRect.width / 2;
+      } else {
+        side = spaceRight >= spaceLeft ? 'right' : 'left';
+        x = side === 'right' ? elRect.right + gap : Math.max(margin, elRect.left - tipRect.width - gap);
+        y = elRect.top + elRect.height / 2 - tipRect.height / 2;
+      }
     }
 
-    // Center horizontally over element, clamp to viewport
-    let x = elRect.left + (elRect.width / 2) - (tipRect.width / 2);
-    x = Math.min(x, window.innerWidth - tipRect.width - 10);
+    // Clamp to viewport — but on the "long" axis only, so we don't push the tip back over the element
+    if (side === 'top' || side === 'bottom') {
+      x = Math.max(margin, Math.min(x, vw - tipRect.width - margin));
+    } else {
+      y = Math.max(margin, Math.min(y, vh - tipRect.height - margin));
+    }
 
-    tooltip.style.left = Math.max(5, x) + 'px';
-    tooltip.style.top = Math.max(5, y) + 'px';
+    tooltip.style.left = Math.round(x) + 'px';
+    tooltip.style.top = Math.round(y) + 'px';
   }
 
   function hideUserTooltip() {

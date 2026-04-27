@@ -3634,6 +3634,67 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
         if (e.key === 'Enter') doAdd()
         if (e.key === 'Escape') switchTab('live')
       })
+      // Track user edits per-field so autofill never overwrites typed input
+      inp.addEventListener('input', () => { inp.dataset.userEdited = '1' })
+    })
+
+    // Heatsync linkage status indicator (between rows and error)
+    const linkStatus = document.createElement('div')
+    linkStatus.style.cssText = 'font-size:11px;color:#808080;min-height:14px;font-family:ui-monospace,monospace;'
+    wrapper.insertBefore(linkStatus, errEl)
+
+    // Debounced autofill — when user types in any field, look up that name on
+    // heatsync and prefill the OTHER fields if they haven't been edited.
+    let _autofillGen = 0
+    let _autofillTimer = null
+    const _autofillCancelable = (handler) => {
+      if (_autofillTimer) clearTimeout(_autofillTimer)
+      _autofillTimer = setTimeout(handler, 500)
+    }
+
+    async function autofillFromName(name, sourcePlatform) {
+      if (!name) { linkStatus.textContent = ''; return }
+      const gen = ++_autofillGen
+      linkStatus.textContent = 'checking heatsync…'
+      linkStatus.style.color = '#808080'
+      const res = (typeof resolveIdentity === 'function')
+        ? await resolveIdentity(name, { platform: sourcePlatform })
+        : { ok: false }
+      if (gen !== _autofillGen) return
+      if (!res?.ok) {
+        linkStatus.textContent = res?.notFound ? 'no heatsync profile — fill manually' : 'couldn\'t reach heatsync'
+        linkStatus.style.color = '#666'
+        return
+      }
+      const id = res.identity
+      const platforms = []
+      // Fill ONLY empty + non-user-edited fields
+      const fillIfBlank = (input, value, label) => {
+        if (!value) return
+        if (input.dataset.userEdited === '1' && input.value.trim()) return
+        if (input.value.trim()) return
+        input.value = value
+        platforms.push(label)
+      }
+      fillIfBlank(twitch.input, id.twitch, 't')
+      fillIfBlank(kick.input, id.kick, 'k')
+      fillIfBlank(yt.input, id.youtube, 'yt')
+      const linkedLabels = []
+      if (id.twitch) linkedLabels.push('t')
+      if (id.kick) linkedLabels.push('k')
+      if (id.youtube) linkedLabels.push('yt')
+      const liveLabels = res.liveOn?.length ? ` · live on ${res.liveOn.map(p => p === 'twitch' ? 't' : p === 'kick' ? 'k' : p).join(',')}` : ''
+      linkStatus.style.color = '#53fc18'
+      linkStatus.textContent = `✓ matched ${id.heatsync || name} on heatsync — linked: ${linkedLabels.join(',') || 'none'}${liveLabels}${platforms.length ? ` · autofilled: ${platforms.join(',')}` : ''}`
+    }
+
+    twitch.input.addEventListener('input', () => {
+      const v = twitch.input.value.trim().replace(/^@/, '')
+      if (v.length >= 2) _autofillCancelable(() => autofillFromName(v, 'twitch'))
+    })
+    kick.input.addEventListener('input', () => {
+      const v = kick.input.value.trim().replace(/^@/, '')
+      if (v.length >= 2) _autofillCancelable(() => autofillFromName(v, 'kick'))
     })
 
     // Auto-focus twitch input

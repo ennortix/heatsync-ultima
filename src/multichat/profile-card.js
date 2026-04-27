@@ -507,17 +507,50 @@ function pcDoDm(username) {
   }, 50)
 }
 
-function pcAddAsChannel(username) {
+async function pcAddAsChannel(username) {
   if (!config?.channels) return
+  const id = username.toLowerCase()
   const exists = config.channels.some(c => {
-    const id = (typeof c === 'string' ? c : c.id)?.toLowerCase()
-    return id === username.toLowerCase()
+    const cid = (typeof c === 'string' ? c : c.id)?.toLowerCase()
+    return cid === id
   })
-  if (!exists) {
-    config.channels.push({ id: username.toLowerCase(), twitch: username.toLowerCase(), kick: '', youtube: '' })
-    saveConfig()
-    if (typeof updateTabBar === 'function') updateTabBar()
+  if (exists) {
+    closeProfileCard()
+    switchTab(id)
+    return
+  }
+
+  // Use cached profile on the active card if present (avoids round-trip).
+  // Otherwise resolve via /api/profile so we populate ALL linked platforms.
+  let res = null
+  if (activeProfileCard?.data && !activeProfileCard.data.error) {
+    res = shapeIdentity(activeProfileCard.data)
+  } else if (typeof resolveIdentity === 'function') {
+    res = await resolveIdentity(username)
+  }
+
+  // Fallback when no heatsync profile: assume the typed name is twitch (consistent
+  // with prior behaviour when adding e.g. a Twitch-only channel from chat).
+  const id2 = res?.identity?.heatsync?.toLowerCase() || id
+  const channel = {
+    id: id2,
+    twitch: (res?.identity?.twitch || username).toLowerCase(),
+    kick: (res?.identity?.kick || '').toLowerCase(),
+    youtube: res?.identity?.youtube || '',
+  }
+
+  config.channels.push(channel)
+  saveConfig()
+  if (typeof updateTabBar === 'function') updateTabBar()
+  if (channel.twitch) {
+    irc?.join(channel.twitch)
+    try { chrome.runtime.sendMessage({ type: 'join_channel', platform: 'twitch', channel: channel.twitch }) } catch {}
+  }
+  if (channel.kick) kickChat?.join(channel.kick)
+  if (channel.youtube) {
+    youtubeLinks.set(channel.id, { url: channel.youtube, videoId: '', channelName: '' })
+    try { chrome.runtime.sendMessage({ type: 'youtube_ws_subscribe', url: channel.youtube, channelId: channel.id }) } catch {}
   }
   closeProfileCard()
-  switchTab(username.toLowerCase())
+  switchTab(channel.id)
 }

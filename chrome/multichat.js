@@ -8266,9 +8266,63 @@ async function sendKickMessage(kickSlug, text) {
 
   // User hover tooltip (profile preview)
   let userTooltip = null;
-  const _profileCache = new Map(); // username -> { profile, ts }
+  const _profileCache = new Map(); // platform:username -> { profile, ts }
   const PROFILE_CACHE_TTL = 60000; // 60s
   let _profileGen = 0; // generation counter to prevent stale renders
+
+  // Centralized cross-platform identity resolver. ALL identity lookups should go
+  // through this. Wraps _profileCache + /api/profile, returns a unified shape.
+  // Used by: pcAddAsChannel, renderAddChannelForm autofill, auto-multichat banner,
+  // any future awareness feature.
+  function shapeIdentity(profile) {
+    if (!profile) return { ok: false };
+    const identity = {
+      heatsync: profile.username || null,
+      twitch: profile.twitch_username || null,
+      kick: profile.kick_username || null,
+      youtube: profile.youtube_username || profile.youtube_channel_id || null,
+    };
+    const linked = [identity.twitch, identity.kick, identity.youtube].filter(Boolean);
+    const liveOn = [];
+    if (profile.twitch_is_live) liveOn.push('twitch');
+    if (profile.kick_is_live) liveOn.push('kick');
+    return {
+      ok: true,
+      profile,
+      identity,
+      linkedCount: linked.length,
+      isLinked: linked.length >= 2,
+      liveOn,
+    };
+  }
+
+  async function resolveIdentity(name, opts = {}) {
+    if (!name) return { ok: false, error: 'no name' };
+    const platform = opts.platform || null;
+    const cacheKey = `${platform || 'unknown'}:${String(name).toLowerCase()}`;
+    if (!opts.bust) {
+      const cached = _profileCache.get(cacheKey);
+      if (cached && Date.now() - cached.ts < PROFILE_CACHE_TTL) {
+        return shapeIdentity(cached.profile);
+      }
+    }
+    try {
+      const platParam = platform ? `?platform=${encodeURIComponent(platform)}` : '';
+      const resp = await apiFetch(`/api/profile/${encodeURIComponent(name)}${platParam}`);
+      if (!resp?.ok || !resp.data?.profile) {
+        return { ok: false, error: resp?.error || 'not found', notFound: true };
+      }
+      const profile = resp.data.profile;
+      _profileCache.set(cacheKey, { profile, ts: Date.now() });
+      if (_profileCache.size > 100) {
+        const oldest = [..._profileCache.entries()].sort((a, b) => a[1].ts - b[1].ts).slice(0, 50);
+        for (const [k] of oldest) _profileCache.delete(k);
+      }
+      return shapeIdentity(profile);
+    } catch (e) {
+      return { ok: false, error: e.message || 'fetch failed' };
+    }
+  }
 
   function ensureUserTooltip() {
     if (!userTooltip || !document.contains(userTooltip)) {
@@ -8573,24 +8627,61 @@ async function sendKickMessage(kickSlug, text) {
   }
 
   function positionTooltipAtElement(tooltip, targetEl) {
-    // Anchor to element like website hover cards — centered above
     const elRect = targetEl.getBoundingClientRect();
     const tipRect = tooltip.getBoundingClientRect();
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    const gap = 6;       // visible separation so the hovered username is never touched
+    const margin = 5;    // viewport edge margin
 
-    // Position directly above if room, otherwise below (no gap, like website)
-    let y;
-    if (elRect.top - tipRect.height > 0) {
-      y = elRect.top - tipRect.height;
+    const spaceTop = elRect.top - margin;
+    const spaceBottom = vh - elRect.bottom - margin;
+    const spaceLeft = elRect.left - margin;
+    const spaceRight = vw - elRect.right - margin;
+    const needV = tipRect.height + gap;
+    const needH = tipRect.width + gap;
+
+    let x, y, side;
+    if (spaceTop >= needV) {
+      side = 'top';
+      y = elRect.top - tipRect.height - gap;
+      x = elRect.left + elRect.width / 2 - tipRect.width / 2;
+    } else if (spaceBottom >= needV) {
+      side = 'bottom';
+      y = elRect.bottom + gap;
+      x = elRect.left + elRect.width / 2 - tipRect.width / 2;
+    } else if (spaceRight >= needH) {
+      side = 'right';
+      x = elRect.right + gap;
+      y = elRect.top + elRect.height / 2 - tipRect.height / 2;
+    } else if (spaceLeft >= needH) {
+      side = 'left';
+      x = elRect.left - tipRect.width - gap;
+      y = elRect.top + elRect.height / 2 - tipRect.height / 2;
     } else {
-      y = elRect.bottom;
+      // No side has full room — pick the largest and clamp; still nudge off the element
+      const maxV = Math.max(spaceTop, spaceBottom);
+      const maxH = Math.max(spaceLeft, spaceRight);
+      if (maxV >= maxH) {
+        side = spaceTop >= spaceBottom ? 'top' : 'bottom';
+        y = side === 'top' ? margin : elRect.bottom + gap;
+        x = elRect.left + elRect.width / 2 - tipRect.width / 2;
+      } else {
+        side = spaceRight >= spaceLeft ? 'right' : 'left';
+        x = side === 'right' ? elRect.right + gap : Math.max(margin, elRect.left - tipRect.width - gap);
+        y = elRect.top + elRect.height / 2 - tipRect.height / 2;
+      }
     }
 
-    // Center horizontally over element, clamp to viewport
-    let x = elRect.left + (elRect.width / 2) - (tipRect.width / 2);
-    x = Math.min(x, window.innerWidth - tipRect.width - 10);
+    // Clamp to viewport — but on the "long" axis only, so we don't push the tip back over the element
+    if (side === 'top' || side === 'bottom') {
+      x = Math.max(margin, Math.min(x, vw - tipRect.width - margin));
+    } else {
+      y = Math.max(margin, Math.min(y, vh - tipRect.height - margin));
+    }
 
-    tooltip.style.left = Math.max(5, x) + 'px';
-    tooltip.style.top = Math.max(5, y) + 'px';
+    tooltip.style.left = Math.round(x) + 'px';
+    tooltip.style.top = Math.round(y) + 'px';
   }
 
   function hideUserTooltip() {
@@ -17089,19 +17180,52 @@ function pcDoDm(username) {
   }, 50)
 }
 
-function pcAddAsChannel(username) {
+async function pcAddAsChannel(username) {
   if (!config?.channels) return
+  const id = username.toLowerCase()
   const exists = config.channels.some(c => {
-    const id = (typeof c === 'string' ? c : c.id)?.toLowerCase()
-    return id === username.toLowerCase()
+    const cid = (typeof c === 'string' ? c : c.id)?.toLowerCase()
+    return cid === id
   })
-  if (!exists) {
-    config.channels.push({ id: username.toLowerCase(), twitch: username.toLowerCase(), kick: '', youtube: '' })
-    saveConfig()
-    if (typeof updateTabBar === 'function') updateTabBar()
+  if (exists) {
+    closeProfileCard()
+    switchTab(id)
+    return
+  }
+
+  // Use cached profile on the active card if present (avoids round-trip).
+  // Otherwise resolve via /api/profile so we populate ALL linked platforms.
+  let res = null
+  if (activeProfileCard?.data && !activeProfileCard.data.error) {
+    res = shapeIdentity(activeProfileCard.data)
+  } else if (typeof resolveIdentity === 'function') {
+    res = await resolveIdentity(username)
+  }
+
+  // Fallback when no heatsync profile: assume the typed name is twitch (consistent
+  // with prior behaviour when adding e.g. a Twitch-only channel from chat).
+  const id2 = res?.identity?.heatsync?.toLowerCase() || id
+  const channel = {
+    id: id2,
+    twitch: (res?.identity?.twitch || username).toLowerCase(),
+    kick: (res?.identity?.kick || '').toLowerCase(),
+    youtube: res?.identity?.youtube || '',
+  }
+
+  config.channels.push(channel)
+  saveConfig()
+  if (typeof updateTabBar === 'function') updateTabBar()
+  if (channel.twitch) {
+    irc?.join(channel.twitch)
+    try { chrome.runtime.sendMessage({ type: 'join_channel', platform: 'twitch', channel: channel.twitch }) } catch {}
+  }
+  if (channel.kick) kickChat?.join(channel.kick)
+  if (channel.youtube) {
+    youtubeLinks.set(channel.id, { url: channel.youtube, videoId: '', channelName: '' })
+    try { chrome.runtime.sendMessage({ type: 'youtube_ws_subscribe', url: channel.youtube, channelId: channel.id }) } catch {}
   }
   closeProfileCard()
-  switchTab(username.toLowerCase())
+  switchTab(channel.id)
 }
 
 // === END MULTICHAT MODULES ===
@@ -20730,6 +20854,67 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
         if (e.key === 'Enter') doAdd()
         if (e.key === 'Escape') switchTab('live')
       })
+      // Track user edits per-field so autofill never overwrites typed input
+      inp.addEventListener('input', () => { inp.dataset.userEdited = '1' })
+    })
+
+    // Heatsync linkage status indicator (between rows and error)
+    const linkStatus = document.createElement('div')
+    linkStatus.style.cssText = 'font-size:11px;color:#808080;min-height:14px;font-family:ui-monospace,monospace;'
+    wrapper.insertBefore(linkStatus, errEl)
+
+    // Debounced autofill — when user types in any field, look up that name on
+    // heatsync and prefill the OTHER fields if they haven't been edited.
+    let _autofillGen = 0
+    let _autofillTimer = null
+    const _autofillCancelable = (handler) => {
+      if (_autofillTimer) clearTimeout(_autofillTimer)
+      _autofillTimer = setTimeout(handler, 500)
+    }
+
+    async function autofillFromName(name, sourcePlatform) {
+      if (!name) { linkStatus.textContent = ''; return }
+      const gen = ++_autofillGen
+      linkStatus.textContent = 'checking heatsync…'
+      linkStatus.style.color = '#808080'
+      const res = (typeof resolveIdentity === 'function')
+        ? await resolveIdentity(name, { platform: sourcePlatform })
+        : { ok: false }
+      if (gen !== _autofillGen) return
+      if (!res?.ok) {
+        linkStatus.textContent = res?.notFound ? 'no heatsync profile — fill manually' : 'couldn\'t reach heatsync'
+        linkStatus.style.color = '#666'
+        return
+      }
+      const id = res.identity
+      const platforms = []
+      // Fill ONLY empty + non-user-edited fields
+      const fillIfBlank = (input, value, label) => {
+        if (!value) return
+        if (input.dataset.userEdited === '1' && input.value.trim()) return
+        if (input.value.trim()) return
+        input.value = value
+        platforms.push(label)
+      }
+      fillIfBlank(twitch.input, id.twitch, 't')
+      fillIfBlank(kick.input, id.kick, 'k')
+      fillIfBlank(yt.input, id.youtube, 'yt')
+      const linkedLabels = []
+      if (id.twitch) linkedLabels.push('t')
+      if (id.kick) linkedLabels.push('k')
+      if (id.youtube) linkedLabels.push('yt')
+      const liveLabels = res.liveOn?.length ? ` · live on ${res.liveOn.map(p => p === 'twitch' ? 't' : p === 'kick' ? 'k' : p).join(',')}` : ''
+      linkStatus.style.color = '#53fc18'
+      linkStatus.textContent = `✓ matched ${id.heatsync || name} on heatsync — linked: ${linkedLabels.join(',') || 'none'}${liveLabels}${platforms.length ? ` · autofilled: ${platforms.join(',')}` : ''}`
+    }
+
+    twitch.input.addEventListener('input', () => {
+      const v = twitch.input.value.trim().replace(/^@/, '')
+      if (v.length >= 2) _autofillCancelable(() => autofillFromName(v, 'twitch'))
+    })
+    kick.input.addEventListener('input', () => {
+      const v = kick.input.value.trim().replace(/^@/, '')
+      if (v.length >= 2) _autofillCancelable(() => autofillFromName(v, 'kick'))
     })
 
     // Auto-focus twitch input

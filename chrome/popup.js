@@ -1100,6 +1100,33 @@
       siteLink.textContent = t('popup_btn_site');
       actionsDiv.appendChild(siteLink);
 
+      const importBtn = document.createElement('button');
+      importBtn.className = 'action-btn';
+      importBtn.textContent = 'import twitch';
+      importBtn.title = 'sync your Twitch follows into heatsync';
+      actionsDiv.appendChild(importBtn);
+
+      importBtn.addEventListener('click', async function() {
+        importBtn.disabled = true;
+        const original = importBtn.textContent;
+        importBtn.textContent = 'syncing...';
+        try {
+          const resp = await apiFetch('/api/sync-twitch-follows', { method: 'POST', auth: true });
+          if (resp?.success) {
+            importBtn.textContent = `synced ${resp.synced}`;
+            // Tell background to refresh followedUsers + run live poll
+            try { await chrome.runtime.sendMessage({ type: 'refresh_followed_users' }); } catch {}
+            setTimeout(function() { importBtn.textContent = original; importBtn.disabled = false; }, 2500);
+          } else {
+            importBtn.textContent = (resp?.error || 'failed').slice(0, 20);
+            setTimeout(function() { importBtn.textContent = original; importBtn.disabled = false; }, 3500);
+          }
+        } catch (e) {
+          importBtn.textContent = 'failed';
+          setTimeout(function() { importBtn.textContent = original; importBtn.disabled = false; }, 3500);
+        }
+      });
+
       const logoutBtn = document.createElement('button');
       logoutBtn.className = 'action-btn';
       logoutBtn.id = 'logout-btn';

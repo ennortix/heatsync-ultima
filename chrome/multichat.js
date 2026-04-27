@@ -17047,7 +17047,8 @@ function renderProfileCardView() {
     return id === username || tw === username || ki === username
   })
 
-  const youFollow = !!(data?.relationship?.youFollow)
+  const youFollow = !!(data?.relationship?.youFollow ?? data?.relationship?.isFollowing)
+  const youBlock = !!(data?.relationship?.youBlock ?? data?.relationship?.isBlocked)
   const profileId = data?.id || data?.userId || null
 
   const actions = [
@@ -17060,6 +17061,7 @@ function renderProfileCardView() {
     { key: 'd', label: 'dm', fn: () => pcDoDm(username) },
     { key: '@', label: 'mention', fn: () => pcMention(data?.display_name || username) },
     { key: 'm', label: isMuted ? 'unmute' : 'mute', fn: () => pcToggleMute(username) },
+    { key: 'b', label: youBlock ? 'unblock' : 'block', fn: () => pcToggleBlock(profileId, username, youBlock), disabled: !profileId },
     { key: '+', label: inChannels ? 'in channels' : 'add channel', fn: () => pcAddAsChannel(username), disabled: inChannels },
     { key: 'esc', label: 'close', fn: closeProfileCard },
   ]
@@ -17143,6 +17145,60 @@ async function pcToggleFollow(profileId, username, currentlyFollowing) {
       renderProfileCardView()
     }
     if (typeof showToast === 'function') showToast('follow failed: ' + (e?.message || 'unknown'))
+  }
+}
+
+// Heatsync block/unblock — POST/DELETE /api/user/block/{userId}. Server's
+// idempotent error responses ('User already blocked' / no record) are treated
+// as success. After block, profile auto-unfollows server-side, so we mirror
+// that in the relationship object.
+async function pcToggleBlock(profileId, username, currentlyBlocked) {
+  if (!profileId) {
+    if (typeof showToast === 'function') showToast('not registered on heatsync')
+    return
+  }
+  const targetBlocked = !currentlyBlocked
+  // Optimistic UI
+  if (activeProfileCard?.data) {
+    const rel = { ...(activeProfileCard.data.relationship || {}) }
+    rel.youBlock = targetBlocked
+    rel.isBlocked = targetBlocked
+    if (targetBlocked) {
+      // Server auto-unfollows on block — mirror locally
+      rel.youFollow = false
+      rel.isFollowing = false
+    }
+    activeProfileCard.data.relationship = rel
+    renderProfileCardView()
+  }
+  try {
+    const path = `/api/user/block/${encodeURIComponent(profileId)}`
+    const resp = targetBlocked
+      ? await apiFetch(path, { method: 'POST', auth: true, body: {} })
+      : await apiFetch(path + '?sync_twitch=0', { method: 'DELETE', auth: true })
+    if (!resp?.ok) {
+      const msg = String(resp?.error || '').toLowerCase()
+      if (!msg.includes('already blocked') && !msg.includes('not blocked')) {
+        // Real failure — revert optimistic state
+        if (activeProfileCard?.data?.relationship) {
+          activeProfileCard.data.relationship.youBlock = currentlyBlocked
+          activeProfileCard.data.relationship.isBlocked = currentlyBlocked
+          renderProfileCardView()
+        }
+        if (typeof showToast === 'function') showToast('block failed: ' + (resp?.error || 'unknown'))
+        return
+      }
+    }
+    if (typeof showToast === 'function') showToast(targetBlocked ? `blocked ${username}` : `unblocked ${username}`)
+    // Block side-effects unfollow on server — re-fetch followedUsers in background
+    safeSendMessage({ type: 'refresh_followed_users' })
+  } catch (e) {
+    if (activeProfileCard?.data?.relationship) {
+      activeProfileCard.data.relationship.youBlock = currentlyBlocked
+      activeProfileCard.data.relationship.isBlocked = currentlyBlocked
+      renderProfileCardView()
+    }
+    if (typeof showToast === 'function') showToast('block failed: ' + (e?.message || 'unknown'))
   }
 }
 

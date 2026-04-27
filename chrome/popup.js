@@ -177,6 +177,27 @@
     return String(num);
   }
 
+  function _popoutChatUrl(platform, channel) {
+    if (!channel) return null;
+    if (platform === 'twitch') return 'https://www.twitch.tv/popout/' + channel + '/chat';
+    if (platform === 'kick') return 'https://kick.com/popout/' + channel + '/chat';
+    if (platform === 'youtube') return 'https://www.youtube.com/@' + channel + '/live';
+    return null;
+  }
+
+  function _openPopoutWindow(url) {
+    if (!url) return;
+    // chrome.windows.create with type:'popup' gives a real chat-popout window
+    // (no tab bar, fixed size). Fallback to tab if windows API isn't there.
+    if (chrome.windows && chrome.windows.create) {
+      chrome.windows.create({ url, type: 'popup', width: 380, height: 600, focused: true }).catch?.(() => {
+        chrome.tabs.create({ url });
+      });
+    } else {
+      chrome.tabs.create({ url });
+    }
+  }
+
   function _renderLiveStreams(container, streams) {
     container.textContent = '';
     if (!streams.length) {
@@ -191,7 +212,9 @@
         const username = s.username || '';
         const url = safeUrl(platform === 'kick'
           ? 'https://kick.com/' + encodeURIComponent(username)
-          : 'https://www.twitch.tv/' + encodeURIComponent(username));
+          : platform === 'youtube'
+            ? 'https://www.youtube.com/@' + encodeURIComponent(username) + '/live'
+            : 'https://www.twitch.tv/' + encodeURIComponent(username));
         const a = document.createElement('a');
         a.className = 'live-row';
         a.href = url || '#';
@@ -228,6 +251,20 @@
           vEl.textContent = viewers;
           a.appendChild(vEl);
         }
+
+        // Popout-chat button — opens chat-only window for this streamer without
+        // taking the user away from their current tab.
+        const popBtn = document.createElement('button');
+        popBtn.className = 'live-popout-btn';
+        popBtn.title = 'popout chat';
+        popBtn.textContent = '⊡';
+        popBtn.addEventListener('click', function(e) {
+          e.preventDefault();
+          e.stopPropagation();
+          _openPopoutWindow(_popoutChatUrl(platform, username));
+        });
+        a.appendChild(popBtn);
+
         container.appendChild(a);
       });
   }

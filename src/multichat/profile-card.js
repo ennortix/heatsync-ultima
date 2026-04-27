@@ -321,6 +321,8 @@ function renderProfileCardView() {
     { key: 'y', label: 'youtube', fn: () => pcOpenExt('https://youtube.com/@' + (data?.youtube_username || username)) },
     { key: 'h', label: 'heatsync', fn: () => pcOpenExt('https://heatsync.org/user/' + username) },
     { key: 'w', label: 'whisper', fn: () => pcDoWhisper(username) },
+    { key: 'd', label: 'dm', fn: () => pcDoDm(username) },
+    { key: '@', label: 'mention', fn: () => pcMention(data?.display_name || username) },
     { key: 'm', label: isMuted ? 'unmute' : 'mute', fn: () => pcToggleMute(username) },
     { key: '+', label: inChannels ? 'in channels' : 'add channel', fn: () => pcAddAsChannel(username), disabled: inChannels },
     { key: 'esc', label: 'close', fn: closeProfileCard },
@@ -389,6 +391,13 @@ function setupProfileCardHandlers() {
   if (window._hsProfileCardSetup) return
   window._hsProfileCardSetup = true
 
+  // Primary path — pcard-early.js (document_start) intercepts the click before
+  // Twitch/Kick can react and dispatches this event.
+  cleanup.addEventListener(document, 'hs-pcard-open', (e) => {
+    const { username, platform } = e.detail || {}
+    if (username) openProfileCard(username, platform || null)
+  }, { signal: mcSignal })
+
   // Username click → open card. Capture phase so we beat Twitch/Kick native user-card handlers.
   // Allow ctrl/meta/shift/middle/alt to fall through to the <a target="_blank"> default nav.
   cleanup.addEventListener(document, 'click', (e) => {
@@ -428,7 +437,7 @@ function setupProfileCardHandlers() {
     }
     if (e.key === 'Escape') { e.preventDefault(); closeProfileCard(); return }
     const key = e.key.toLowerCase()
-    const map = { t: 't', k: 'k', y: 'y', h: 'h', w: 'w', m: 'm', '+': '+', '=': '+' }
+    const map = { t: 't', k: 'k', y: 'y', h: 'h', w: 'w', m: 'm', '+': '+', '=': '+', '@': '@', '2': '@', c: 'c' }
     const target = map[key]
     if (!target) return
     const btn = document.querySelector(`.hs-pcard-action[data-pc-key="${target}"]`)
@@ -437,6 +446,59 @@ function setupProfileCardHandlers() {
       btn.click()
     }
   }, 'mc-pcard-keys')
+}
+
+function pcMention(name) {
+  closeProfileCard()
+  // If on a non-chat tab, switch to live first
+  const isChatTab = currentTab === 'live' || (typeof config !== 'undefined' && config.channels?.some(c => (typeof c === 'string' ? c : c.id) === currentTab))
+  if (!isChatTab) switchTab('live')
+  setTimeout(() => {
+    const inputBar = document.getElementById('hs-mc-inputbar')
+    if (inputBar) inputBar.classList.remove('hs-hidden')
+    const input = document.getElementById('hs-mc-input')
+    if (!input) return
+    const tag = '@' + name + ' '
+    if (input.tagName === 'INPUT') {
+      const cur = input.value || ''
+      const sep = cur && !cur.endsWith(' ') ? ' ' : ''
+      input.value = cur + sep + tag
+      input.focus()
+      input.setSelectionRange(input.value.length, input.value.length)
+    } else {
+      const cur = input.textContent || ''
+      const sep = cur && !cur.endsWith(' ') ? ' ' : ''
+      input.textContent = cur + sep + tag
+      input.focus()
+      // Place caret at end
+      const range = document.createRange()
+      range.selectNodeContents(input)
+      range.collapse(false)
+      const sel = window.getSelection()
+      sel.removeAllRanges()
+      sel.addRange(range)
+    }
+  }, 60)
+}
+
+function pcDoDm(username) {
+  closeProfileCard()
+  switchTab('whispers')
+  // Pre-fill input with /dm <username> for quick start (heatsync DM, not Twitch whisper)
+  setTimeout(() => {
+    const input = document.getElementById('hs-mc-input')
+    if (input) {
+      const cmd = `/dm ${username} `
+      if (input.tagName === 'INPUT') {
+        input.value = cmd
+        input.focus()
+        input.setSelectionRange(cmd.length, cmd.length)
+      } else {
+        input.textContent = cmd
+        input.focus()
+      }
+    }
+  }, 50)
 }
 
 function pcAddAsChannel(username) {

@@ -7091,6 +7091,65 @@ async function sendKickMessage(kickSlug, text) {
     }
   }
 
+  // Diff-apply blocked changes from storage WITHOUT re-rendering the whole tab.
+  // The full-rerender path in the storage onChanged listener was the source of
+  // the right-click flicker (only at scroll-bottom, since renderMessages was
+  // gated on !isScrolledUp) and could revert a fresh optimistic toggle if
+  // storage hadn't caught up yet. This applies only the actual hash deltas.
+  function applyBlockedHashDelta(newHashesArr) {
+    const newSet = new Set(newHashesArr || []);
+    const toBlock = [];
+    for (const h of newSet) if (!blockedEmoteHashes.has(h)) toBlock.push(h);
+    const toUnblock = [];
+    for (const h of blockedEmoteHashes) if (!newSet.has(h)) toUnblock.push(h);
+    if (toBlock.length === 0 && toUnblock.length === 0) return;
+
+    for (const hash of toBlock) {
+      const name = hashToName.get(hash);
+      blockedEmoteHashes.add(hash);
+      if (!name) continue;
+      blockedEmoteNames.add(name);
+      queryEmoteWrappers(name).forEach(w => {
+        if (w.classList.contains('hs-state-blocked')) return;
+        w.classList.remove('hs-state-global', 'hs-state-channel', 'hs-state-owned', 'hs-state-unadded', 'hs-emote-highlight');
+        w.classList.add('hs-state-blocked');
+        w.dataset.state = 'blocked';
+        const img = w.querySelector('img');
+        if (img) {
+          img.classList.remove('hs-emote-global', 'hs-emote-channel', 'hs-emote-owned', 'hs-emote-unadded');
+          img.classList.add('hs-emote-blocked');
+          img.dataset.state = 'blocked';
+        }
+      });
+    }
+
+    for (const hash of toUnblock) {
+      const name = hashToName.get(hash);
+      blockedEmoteHashes.delete(hash);
+      if (!name) continue;
+      blockedEmoteNames.delete(name);
+      const emote = lookupEmote(name);
+      const realUrl = emote?.url || '';
+      const newState = emote ? getEmoteState(name, emote.source) : 'global';
+      queryEmoteWrappers(name).forEach(w => {
+        if (w.classList.contains(`hs-state-${newState}`)) return;
+        w.classList.remove('hs-state-global', 'hs-state-channel', 'hs-state-owned', 'hs-state-blocked', 'hs-state-unadded', 'hs-emote-highlight');
+        w.classList.add(`hs-state-${newState}`);
+        w.dataset.state = newState;
+        w.style.outline = '';
+        const img = w.querySelector('img');
+        if (img && realUrl) {
+          img.src = realUrl;
+          img.style.width = '';
+          img.style.height = '';
+          img.classList.remove('hs-emote-global', 'hs-emote-channel', 'hs-emote-owned', 'hs-emote-blocked', 'hs-emote-unadded');
+          img.classList.add(`hs-emote-${newState}`);
+          img.dataset.state = newState;
+        }
+      });
+    }
+  }
+
   // Flash all wrappers for a given emote name
   function flashAllEmotes(emoteName, flashClass) {
     const wrappers = queryEmoteWrappers(emoteName)
@@ -16844,6 +16903,8 @@ function renderProfileCardView() {
     { key: 'y', label: 'youtube', fn: () => pcOpenExt('https://youtube.com/@' + (data?.youtube_username || username)) },
     { key: 'h', label: 'heatsync', fn: () => pcOpenExt('https://heatsync.org/user/' + username) },
     { key: 'w', label: 'whisper', fn: () => pcDoWhisper(username) },
+    { key: 'd', label: 'dm', fn: () => pcDoDm(username) },
+    { key: '@', label: 'mention', fn: () => pcMention(data?.display_name || username) },
     { key: 'm', label: isMuted ? 'unmute' : 'mute', fn: () => pcToggleMute(username) },
     { key: '+', label: inChannels ? 'in channels' : 'add channel', fn: () => pcAddAsChannel(username), disabled: inChannels },
     { key: 'esc', label: 'close', fn: closeProfileCard },
@@ -16912,6 +16973,13 @@ function setupProfileCardHandlers() {
   if (window._hsProfileCardSetup) return
   window._hsProfileCardSetup = true
 
+  // Primary path — pcard-early.js (document_start) intercepts the click before
+  // Twitch/Kick can react and dispatches this event.
+  cleanup.addEventListener(document, 'hs-pcard-open', (e) => {
+    const { username, platform } = e.detail || {}
+    if (username) openProfileCard(username, platform || null)
+  }, { signal: mcSignal })
+
   // Username click → open card. Capture phase so we beat Twitch/Kick native user-card handlers.
   // Allow ctrl/meta/shift/middle/alt to fall through to the <a target="_blank"> default nav.
   cleanup.addEventListener(document, 'click', (e) => {
@@ -16951,7 +17019,7 @@ function setupProfileCardHandlers() {
     }
     if (e.key === 'Escape') { e.preventDefault(); closeProfileCard(); return }
     const key = e.key.toLowerCase()
-    const map = { t: 't', k: 'k', y: 'y', h: 'h', w: 'w', m: 'm', '+': '+', '=': '+' }
+    const map = { t: 't', k: 'k', y: 'y', h: 'h', w: 'w', m: 'm', '+': '+', '=': '+', '@': '@', '2': '@', c: 'c' }
     const target = map[key]
     if (!target) return
     const btn = document.querySelector(`.hs-pcard-action[data-pc-key="${target}"]`)
@@ -16960,6 +17028,59 @@ function setupProfileCardHandlers() {
       btn.click()
     }
   }, 'mc-pcard-keys')
+}
+
+function pcMention(name) {
+  closeProfileCard()
+  // If on a non-chat tab, switch to live first
+  const isChatTab = currentTab === 'live' || (typeof config !== 'undefined' && config.channels?.some(c => (typeof c === 'string' ? c : c.id) === currentTab))
+  if (!isChatTab) switchTab('live')
+  setTimeout(() => {
+    const inputBar = document.getElementById('hs-mc-inputbar')
+    if (inputBar) inputBar.classList.remove('hs-hidden')
+    const input = document.getElementById('hs-mc-input')
+    if (!input) return
+    const tag = '@' + name + ' '
+    if (input.tagName === 'INPUT') {
+      const cur = input.value || ''
+      const sep = cur && !cur.endsWith(' ') ? ' ' : ''
+      input.value = cur + sep + tag
+      input.focus()
+      input.setSelectionRange(input.value.length, input.value.length)
+    } else {
+      const cur = input.textContent || ''
+      const sep = cur && !cur.endsWith(' ') ? ' ' : ''
+      input.textContent = cur + sep + tag
+      input.focus()
+      // Place caret at end
+      const range = document.createRange()
+      range.selectNodeContents(input)
+      range.collapse(false)
+      const sel = window.getSelection()
+      sel.removeAllRanges()
+      sel.addRange(range)
+    }
+  }, 60)
+}
+
+function pcDoDm(username) {
+  closeProfileCard()
+  switchTab('whispers')
+  // Pre-fill input with /dm <username> for quick start (heatsync DM, not Twitch whisper)
+  setTimeout(() => {
+    const input = document.getElementById('hs-mc-input')
+    if (input) {
+      const cmd = `/dm ${username} `
+      if (input.tagName === 'INPUT') {
+        input.value = cmd
+        input.focus()
+        input.setSelectionRange(cmd.length, cmd.length)
+      } else {
+        input.textContent = cmd
+        input.focus()
+      }
+    }
+  }, 50)
 }
 
 function pcAddAsChannel(username) {
@@ -21715,13 +21836,12 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
         }
       }
 
-      // Blocked emotes
+      // Blocked emotes — diff-apply only the hash changes. The previous code
+      // reloaded the whole set from storage and re-rendered every message,
+      // which caused chat-wide flicker on every block/unblock and could revert
+      // optimistic toggles if storage lagged the user action.
       if (changes.blocked_emotes) {
-        loadBlockedEmotes().then(() => {
-          if (!isScrolledUp) {
-            renderMessages(currentTab);
-          }
-        });
+        applyBlockedHashDelta(changes.blocked_emotes.newValue || []);
       }
     }
     chrome.storage.onChanged.addListener(_mcStorageListener)

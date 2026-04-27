@@ -24,6 +24,7 @@ ensureAlarm('keepalive', { periodInMinutes: 0.5 });
 ensureAlarm('refresh-global-emotes', { periodInMinutes: 1440 });
 ensureAlarm('refresh-emote-inventory', { periodInMinutes: 1 });
 ensureAlarm('prune-expired-mutes', { periodInMinutes: 1 });
+ensureAlarm('live-poll', { periodInMinutes: 1 });
 browser.alarms?.onAlarm?.addListener((alarm) => {
   if (alarm.name === 'keepalive') {
     // Just existing is enough to keep the worker alive
@@ -36,6 +37,10 @@ browser.alarms?.onAlarm?.addListener((alarm) => {
   } else if (alarm.name === 'prune-expired-mutes') {
     if (typeof pruneExpiredMutes === 'function') {
       try { pruneExpiredMutes() } catch (e) {}
+    }
+  } else if (alarm.name === 'live-poll') {
+    if (typeof pollFollowedLive === 'function') {
+      try { pollFollowedLive().catch(() => {}) } catch {}
     }
   }
 });
@@ -678,10 +683,173 @@ async function fetchFollowedUsers() {
     followedUsers = (data.following || []).map(f => f.username);
     log(' Followed users loaded:', followedUsers.length);
     broadcastToTabs({ type: 'followed_users_updated', users: followedUsers });
+    // Refresh live status immediately so the badge populates without waiting
+    // for the next 1-min alarm tick.
+    if (typeof pollFollowedLive === 'function') pollFollowedLive().catch(() => {})
   } catch (error) {
     console.error('[heatsync] fetchFollowedUsers failed:', error.message || error)
     followedUsers = [];
   }
+}
+
+// =============================================================================
+// LIVE-FOLLOWED CREATOR TRACKING — cross-platform live status awareness.
+// Polls every minute, fires desktop notifications on off→on transitions, drives
+// the extension badge count. Works for Twitch + Kick simultaneously (and YouTube
+// once profiles track yt_is_live). No competitor offers cross-platform live
+// notifications — Twitch app is Twitch only, Kick app is Kick only.
+// =============================================================================
+const LIVE_STATE_KEY = 'hs_live_status_state'
+const LIVE_NOTIFY_THROTTLE_MS = 30 * 60 * 1000 // 30 min between notifications for same creator
+const LIVE_FETCH_TIMEOUT_MS = 8000
+const LIVE_FETCH_CONCURRENCY = 5
+let _liveFollowedCount = 0
+let _liveStatusInitialized = false
+let _liveStatusState = { lastSeenLive: {}, lastNotifiedAt: {} }
+const _liveNotificationUrls = new Map() // notification id → url for click handler
+let _livePollInflight = false
+
+async function loadLiveStatusState() {
+  try {
+    const data = await browser.storage.local.get(LIVE_STATE_KEY)
+    if (data?.[LIVE_STATE_KEY]) {
+      _liveStatusState = {
+        lastSeenLive: data[LIVE_STATE_KEY].lastSeenLive || {},
+        lastNotifiedAt: data[LIVE_STATE_KEY].lastNotifiedAt || {},
+      }
+      _liveStatusInitialized = !!data[LIVE_STATE_KEY].initialized
+    }
+  } catch {}
+}
+
+async function saveLiveStatusState() {
+  _liveStatusInitialized = true
+  try {
+    await browser.storage.local.set({
+      [LIVE_STATE_KEY]: { ..._liveStatusState, initialized: true }
+    })
+  } catch {}
+}
+
+async function pollFollowedLive() {
+  if (_livePollInflight) return
+  _livePollInflight = true
+  try {
+    if (!followedUsers || followedUsers.length === 0) {
+      _liveFollowedCount = 0
+      recomputeBadge()
+      return
+    }
+    const authToken = await getAuthCookie()
+    if (!authToken) return
+
+    if (!_liveStatusInitialized) await loadLiveStatusState()
+    const wasFirstPoll = !_liveStatusInitialized
+    let liveCount = 0
+    const transitions = [] // { name, profile }
+    const seen = new Set()
+
+    for (let i = 0; i < followedUsers.length; i += LIVE_FETCH_CONCURRENCY) {
+      const batch = followedUsers.slice(i, i + LIVE_FETCH_CONCURRENCY)
+      const results = await Promise.all(batch.map(async (raw) => {
+        const name = String(raw || '').toLowerCase()
+        if (!name) return { name: '', profile: null }
+        try {
+          const resp = await fetchWithTimeout(
+            `${API_URL}/api/profile/${encodeURIComponent(name)}`,
+            { headers: { 'Authorization': `Bearer ${authToken}` } },
+            LIVE_FETCH_TIMEOUT_MS
+          )
+          if (!resp.ok) { resp.body?.cancel(); return { name, profile: null } }
+          const body = await resp.json()
+          return { name, profile: body?.profile || null }
+        } catch { return { name, profile: null } }
+      }))
+
+      for (const { name, profile } of results) {
+        if (!name) continue
+        seen.add(name)
+        if (!profile) continue
+        const isLive = !!(profile.twitch_is_live || profile.kick_is_live)
+        const wasLive = !!_liveStatusState.lastSeenLive?.[name]
+        _liveStatusState.lastSeenLive[name] = isLive
+        if (isLive) liveCount++
+
+        // Notify only on real off→on transitions during steady-state runtime.
+        // First poll after install / wipe just records baseline silently.
+        if (!wasFirstPoll && isLive && !wasLive) {
+          const lastNotif = _liveStatusState.lastNotifiedAt?.[name] || 0
+          if (Date.now() - lastNotif > LIVE_NOTIFY_THROTTLE_MS) {
+            transitions.push({ name, profile })
+            _liveStatusState.lastNotifiedAt[name] = Date.now()
+          }
+        }
+      }
+    }
+
+    // Prune state for users no longer in the follow list
+    for (const k of Object.keys(_liveStatusState.lastSeenLive)) {
+      if (!seen.has(k)) delete _liveStatusState.lastSeenLive[k]
+    }
+    for (const k of Object.keys(_liveStatusState.lastNotifiedAt)) {
+      if (!seen.has(k)) delete _liveStatusState.lastNotifiedAt[k]
+    }
+
+    await saveLiveStatusState()
+    _liveFollowedCount = liveCount
+    recomputeBadge()
+    for (const t of transitions) fireLiveNotification(t.name, t.profile)
+  } catch (e) {
+    console.warn('[heatsync] pollFollowedLive failed:', e?.message || e)
+  } finally {
+    _livePollInflight = false
+  }
+}
+
+function fireLiveNotification(name, profile) {
+  if (!browser.notifications?.create) return
+  const platforms = []
+  if (profile.twitch_is_live) platforms.push({ p: 'twitch', name: profile.twitch_username || name, viewers: profile.twitch_viewer_count || 0 })
+  if (profile.kick_is_live) platforms.push({ p: 'kick', name: profile.kick_username || name, viewers: profile.kick_viewer_count || 0 })
+  if (platforms.length === 0) return
+  // Click goes to the platform with more viewers
+  platforms.sort((a, b) => b.viewers - a.viewers)
+  const top = platforms[0]
+  const url = top.p === 'twitch' ? `https://www.twitch.tv/${top.name}` : `https://kick.com/${top.name}`
+
+  const platLabel = platforms.length > 1
+    ? platforms.map(x => x.p).join(' + ')
+    : top.p
+  const viewerStr = top.viewers > 0 ? ` · ${top.viewers.toLocaleString()} viewers` : ''
+  const id = `hs-live-${name}-${Date.now()}`
+  _liveNotificationUrls.set(id, url)
+  if (_liveNotificationUrls.size > 50) {
+    const oldest = _liveNotificationUrls.keys().next().value
+    _liveNotificationUrls.delete(oldest)
+  }
+  try {
+    browser.notifications.create(id, {
+      type: 'basic',
+      iconUrl: 'icon-128.png',
+      title: `${profile.display_name || name} is live`,
+      message: `${platLabel}${viewerStr}`,
+      contextMessage: 'heatsync',
+      priority: 1,
+    })
+  } catch (e) {
+    console.warn('[heatsync] fireLiveNotification failed:', e?.message)
+  }
+}
+
+if (browser.notifications?.onClicked) {
+  browser.notifications.onClicked.addListener((id) => {
+    const url = _liveNotificationUrls.get(id)
+    if (url) {
+      browser.tabs.create({ url }).catch(() => {})
+      _liveNotificationUrls.delete(id)
+      try { browser.notifications.clear(id) } catch {}
+    }
+  })
 }
 
 // Fetch user profile info for popup display
@@ -2107,17 +2275,26 @@ async function unblockEmote(hash) {
   }
 }
 
-// Extension badge for unread notifications
-// Firefox MV2 uses browserAction, Chrome MV3 uses action
+// Extension badge — combined source: live followed creators (red, priority) +
+// unread heatsync notifications (orange, fallback). Whichever is non-zero wins,
+// live wins when both. One number on the icon, colour disambiguates the source.
+// Firefox MV2 uses browserAction, Chrome MV3 uses action.
 const badgeApi = browser.action || browser.browserAction
-function updateExtensionBadge() {
+function recomputeBadge() {
   if (!badgeApi) return
-  const text = unreadNotifCount > 0 ? String(unreadNotifCount) : ''
-  badgeApi.setBadgeText({ text }).catch(() => {})
-  if (unreadNotifCount > 0) {
+  const live = _liveFollowedCount || 0
+  const notifs = unreadNotifCount || 0
+  if (live > 0) {
+    badgeApi.setBadgeText({ text: String(live) }).catch(() => {})
+    badgeApi.setBadgeBackgroundColor({ color: '#ff3030' }).catch(() => {})
+  } else if (notifs > 0) {
+    badgeApi.setBadgeText({ text: String(notifs) }).catch(() => {})
     badgeApi.setBadgeBackgroundColor({ color: '#ff6b35' }).catch(() => {})
+  } else {
+    badgeApi.setBadgeText({ text: '' }).catch(() => {})
   }
 }
+function updateExtensionBadge() { recomputeBadge() }
 
 // Persist muted users to storage as { username, expiresAt } objects
 function persistMutedUsers() {

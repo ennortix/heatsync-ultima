@@ -1229,6 +1229,21 @@ function injectStyles() {
     .hs-whisper-retry:hover {
       color: #ff8700;
     }
+    .hs-whisper-relogin {
+      display: inline-block;
+      padding: 1px 6px;
+      margin-left: 4px;
+      background: #ff8700;
+      color: #fff !important;
+      border-radius: 3px;
+      font-weight: 700;
+      text-decoration: none;
+      cursor: pointer;
+    }
+    .hs-whisper-relogin:hover {
+      background: #fff;
+      color: #000 !important;
+    }
     /* Inline stream event notifications */
     .hs-mc-stream-event {
       padding: 2px 4px;
@@ -12105,6 +12120,11 @@ async function loadHsAuth() {
         );
         if (wasAuthed !== hsAuthToken) {
           log('Auth state changed:', hsAuthToken ? 'logged in' : 'logged out');
+          // On login, replay any whispers that failed with auth errors so the
+          // user doesn't have to manually retry each one.
+          if (!wasAuthed && hsAuthToken && typeof retryAuthFailedWhispers === 'function') {
+            retryAuthFailedWhispers();
+          }
           // Reset feed/notif/discover/pinned data on auth change so the next
           // tab open re-fetches with new auth.
           feedLoaded = false;
@@ -12189,7 +12209,22 @@ function listenForSocialEvents() {
       }
     }
     if (msg.type === 'dm_new' && msg.data) {
-      handleIncomingDm(msg.data)
+      // Server-pushed Twitch whispers must route through handleIncomingWhisper
+      // so the dedup key (whisper_id) matches the EventSub path. Using
+      // handleIncomingDm here would produce a second timeline entry because
+      // its dedup checks data.id (hs db row) != eventsub entry's id (whisper_id).
+      if (msg.data.platform === 'twitch') {
+        handleIncomingWhisper({
+          user: msg.data.from_display_name || msg.data.from_twitch_login || 'unknown',
+          userId: msg.data.from_twitch_id,
+          text: msg.data.content,
+          color: msg.data.from_color || '#fff',
+          time: msg.data.created_at ? new Date(msg.data.created_at).getTime() : Date.now(),
+          id: msg.data.external_message_id || msg.data.id || '',
+        })
+      } else {
+        handleIncomingDm(msg.data)
+      }
     }
     if (msg.type === 'message-edited' && msg.data) {
       const d = msg.data.message_id ? msg.data : msg.data.data
@@ -14444,9 +14479,12 @@ async function sendTwitchWhisper(toUserId, message) {
       body: { toUserId, message }
     })
     if (resp?.ok) return { ok: true }
+    // 401 covers all auth failures from the proxy — missing JWT, JWT without
+    // twitch_id, missing user:manage:whispers scope, or Helix rejecting phone-
+    // unverified senders. All paths recover via re-running Twitch OAuth.
     if (resp?.status === 401) {
       showToast(t('mc_whisper_login'))
-      return { ok: false, error: 'not authenticated' }
+      return { ok: false, error: resp.error || 'not authenticated', errorKind: 'auth' }
     }
     showToast('whisper failed: ' + (resp?.error || 'unknown'))
     return { ok: false, error: resp?.error || 'unknown' }
@@ -14483,16 +14521,19 @@ async function sendWhisperMessage(key, text) {
 
   let ok = false
   let errMsg = ''
+  let errorKind = ''
   try {
     if (key.startsWith('twitch:')) {
       const resp = await sendTwitchWhisper(userInfo.userId, text)
       ok = !!resp.ok
       errMsg = resp.error || ''
+      errorKind = resp.errorKind || ''
     } else if (key.startsWith('hs:')) {
       const toUserId = key.slice(3)
       const resp = await apiFetch('/api/dm', { method: 'POST', body: { toUserId, content: text } })
       ok = !!resp.ok
       errMsg = resp.error || (ok ? '' : 'unknown error')
+      if (!ok && resp?.status === 401) errorKind = 'auth'
     }
   } catch (e) {
     ok = false
@@ -14501,9 +14542,24 @@ async function sendWhisperMessage(key, text) {
 
   // Mutate the original push (still referenced by sendId) so re-renders pick up state.
   msg.status = ok ? 'sent' : 'failed'
-  if (!ok) msg.error = errMsg
+  if (!ok) {
+    msg.error = errMsg
+    if (errorKind) msg.errorKind = errorKind
+  }
   if (currentTab === 'whispers') renderWhispersTab()
   whisperSaveDebounced()
+}
+
+// Auto-retry queued auth-failed whispers when auth comes back online.
+// Bound to storage.onChanged on first call; safe to call repeatedly.
+function retryAuthFailedWhispers() {
+  const failed = whisperTimeline.filter(m => m.status === 'failed' && m.errorKind === 'auth' && m.sendId)
+  if (!failed.length) return
+  log(`[whispers] auth restored — retrying ${failed.length} queued send(s)`)
+  // Stagger retries so we don't burst the helix endpoint.
+  failed.forEach((m, i) => {
+    cleanup.setTimeout(() => retryWhisperSend(m.sendId), i * 250)
+  })
 }
 
 async function retryWhisperSend(sendId) {
@@ -14627,7 +14683,11 @@ function renderWhispersTab() {
     } else if (m.status === 'failed') {
       const errSafe = escapeHtml(m.error || 'failed')
       const idSafe = escapeHtml(m.sendId || '')
-      statusHtml = ` <span class="hs-whisper-status hs-whisper-retry" title="click to retry" data-retry="${idSafe}">⚠ ${errSafe} — retry</span>`
+      if (m.errorKind === 'auth') {
+        statusHtml = ` <a href="https://heatsync.org/auth/twitch" target="_blank" rel="noopener noreferrer" class="hs-whisper-status hs-whisper-relogin" title="${errSafe} — click to log in on heatsync">⚠ log in on heatsync to send</a>`
+      } else {
+        statusHtml = ` <span class="hs-whisper-status hs-whisper-retry" title="click to retry" data-retry="${idSafe}">⚠ ${errSafe} — retry</span>`
+      }
     }
 
     // All dynamic values pass through escapeHtml/sanitizeColor — safe innerHTML (all values escaped above)

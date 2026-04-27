@@ -327,6 +327,65 @@
     }
   }
 
+  // Diff-apply blocked changes from storage WITHOUT re-rendering the whole tab.
+  // The full-rerender path in the storage onChanged listener was the source of
+  // the right-click flicker (only at scroll-bottom, since renderMessages was
+  // gated on !isScrolledUp) and could revert a fresh optimistic toggle if
+  // storage hadn't caught up yet. This applies only the actual hash deltas.
+  function applyBlockedHashDelta(newHashesArr) {
+    const newSet = new Set(newHashesArr || []);
+    const toBlock = [];
+    for (const h of newSet) if (!blockedEmoteHashes.has(h)) toBlock.push(h);
+    const toUnblock = [];
+    for (const h of blockedEmoteHashes) if (!newSet.has(h)) toUnblock.push(h);
+    if (toBlock.length === 0 && toUnblock.length === 0) return;
+
+    for (const hash of toBlock) {
+      const name = hashToName.get(hash);
+      blockedEmoteHashes.add(hash);
+      if (!name) continue;
+      blockedEmoteNames.add(name);
+      queryEmoteWrappers(name).forEach(w => {
+        if (w.classList.contains('hs-state-blocked')) return;
+        w.classList.remove('hs-state-global', 'hs-state-channel', 'hs-state-owned', 'hs-state-unadded', 'hs-emote-highlight');
+        w.classList.add('hs-state-blocked');
+        w.dataset.state = 'blocked';
+        const img = w.querySelector('img');
+        if (img) {
+          img.classList.remove('hs-emote-global', 'hs-emote-channel', 'hs-emote-owned', 'hs-emote-unadded');
+          img.classList.add('hs-emote-blocked');
+          img.dataset.state = 'blocked';
+        }
+      });
+    }
+
+    for (const hash of toUnblock) {
+      const name = hashToName.get(hash);
+      blockedEmoteHashes.delete(hash);
+      if (!name) continue;
+      blockedEmoteNames.delete(name);
+      const emote = lookupEmote(name);
+      const realUrl = emote?.url || '';
+      const newState = emote ? getEmoteState(name, emote.source) : 'global';
+      queryEmoteWrappers(name).forEach(w => {
+        if (w.classList.contains(`hs-state-${newState}`)) return;
+        w.classList.remove('hs-state-global', 'hs-state-channel', 'hs-state-owned', 'hs-state-blocked', 'hs-state-unadded', 'hs-emote-highlight');
+        w.classList.add(`hs-state-${newState}`);
+        w.dataset.state = newState;
+        w.style.outline = '';
+        const img = w.querySelector('img');
+        if (img && realUrl) {
+          img.src = realUrl;
+          img.style.width = '';
+          img.style.height = '';
+          img.classList.remove('hs-emote-global', 'hs-emote-channel', 'hs-emote-owned', 'hs-emote-blocked', 'hs-emote-unadded');
+          img.classList.add(`hs-emote-${newState}`);
+          img.dataset.state = newState;
+        }
+      });
+    }
+  }
+
   // Flash all wrappers for a given emote name
   function flashAllEmotes(emoteName, flashClass) {
     const wrappers = queryEmoteWrappers(emoteName)

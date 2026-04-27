@@ -1828,6 +1828,30 @@ function getPageChannel() {
 let _mentionRegex = null; // Cached mention regex (rebuilt on username change)
 let _mentionUser = null; // Username the regex was built for
 let blockedEmotes = new Set();
+// Tracks user-initiated block/unblock per hash so a late `emote_blocked` /
+// `emote_unblocked` broadcast (from server WS echo of the previous action)
+// can't reverse a fresh local toggle. Symptom this fixes: scrolled-to-bottom
+// chat keeps re-blocking emotes the user just unblocked because each new
+// message runs processMessage with a stale blockedEmotes set.
+const recentBlockToggle = new Map(); // hash -> { state: 'blocked'|'unblocked', at: ms }
+const BLOCK_TOGGLE_GRACE_MS = 5000;
+function markLocalBlockToggle(hash, state) {
+  if (!hash) return;
+  recentBlockToggle.set(hash, { state, at: Date.now() });
+  if (recentBlockToggle.size > 200) {
+    const cutoff = Date.now() - BLOCK_TOGGLE_GRACE_MS;
+    for (const [h, e] of recentBlockToggle) if (e.at < cutoff) recentBlockToggle.delete(h);
+  }
+}
+function recentBlockToggleState(hash) {
+  const e = recentBlockToggle.get(hash);
+  if (!e) return null;
+  if (Date.now() - e.at > BLOCK_TOGGLE_GRACE_MS) {
+    recentBlockToggle.delete(hash);
+    return null;
+  }
+  return e.state;
+}
 let mutedUsers = new Set();
 let blockedUsers = new Set();
 let followedByCurrentUser = new Set();
@@ -2312,17 +2336,17 @@ function _onMessageMain(message) {
     }
 
     case 'emote_blocked':
-      log(' 🚫 Blocking emote, hash:', message.hash?.substring(0, 8));
+      // Drop the broadcast if the user just locally unblocked this hash —
+      // it's a stale echo from a prior block, not a fresh action.
+      if (recentBlockToggleState(message.hash) === 'unblocked') break;
       blockedEmotes.add(message.hash);
-      log(' Blocked emotes Set now has:', blockedEmotes.size, 'items');
       hideBlockedEmote(message.hash);
       window.postMessage({ type: 'heatsync-blocked-sync', hashes: Array.from(blockedEmotes) }, location.origin);
       break;
 
     case 'emote_unblocked':
-      log(' ✅ Unblocking emote, hash:', message.hash?.substring(0, 8));
+      if (recentBlockToggleState(message.hash) === 'blocked') break;
       blockedEmotes.delete(message.hash);
-      log(' Blocked emotes Set now has:', blockedEmotes.size, 'items');
       showUnblockedEmote(message.hash);
       window.postMessage({ type: 'heatsync-blocked-sync', hashes: Array.from(blockedEmotes) }, location.origin);
       break;
@@ -3537,6 +3561,7 @@ function setupUsernameColoringObserver() {
               const name = wrapper.dataset.emoteName;
               if (!hash) return; // can't unblock server-side without a hash
               blockedEmotes.delete(hash);
+              markLocalBlockToggle(hash, 'unblocked');
               const restoredState = inventoryHashSet.has(hash) ? 'added' : (globalNameSet.has(name) ? 'global' : 'neutral');
               updateEmoteState(hash, name, restoredState);
               safeSendMessage({ type: 'unblock_emote', hash });
@@ -3551,6 +3576,7 @@ function setupUsernameColoringObserver() {
               const name = wrapper.dataset.emoteName;
               if (!hash) return; // server can't block without a hash
               blockedEmotes.add(hash);
+              markLocalBlockToggle(hash, 'blocked');
               updateEmoteState(hash, name, 'blocked');
               safeSendMessage({ type: 'block_emote', hash });
               if (name) names.push(name);
@@ -3590,6 +3616,7 @@ function setupUsernameColoringObserver() {
               safeSendMessage({ type: 'unblock_emote', hash }).then(result => {
                 if (result?.success) {
                   blockedEmotes.delete(hash);
+                  markLocalBlockToggle(hash, 'unblocked');
                   updateEmoteState(hash, emoteName, 'neutral');
                   showToast(t('content_toast_unblocked', [emoteName]), 'success');
                 }
@@ -3638,10 +3665,12 @@ function setupUsernameColoringObserver() {
         // Optimistic unblock — UI updates instantly; rollback on server failure
         const restoredState = inInv ? 'added' : (isGlobalEmote ? 'global' : 'neutral');
         blockedEmotes.delete(hash);
+        markLocalBlockToggle(hash, 'unblocked');
         updateEmoteState(hash, emoteName, restoredState);
         safeSendMessage({ type: 'unblock_emote', hash }).then(result => {
           if (!result?.success) {
             blockedEmotes.add(hash);
+            markLocalBlockToggle(hash, 'blocked');
             updateEmoteState(hash, emoteName, 'blocked');
             showToast(t('content_toast_failed_unblock', [String(result?.error || 'Unknown error')]), 'error');
           }
@@ -3649,10 +3678,12 @@ function setupUsernameColoringObserver() {
         });
       } else {
         blockedEmotes.add(hash);
+        markLocalBlockToggle(hash, 'blocked');
         updateEmoteState(hash, emoteName, 'blocked');
         safeSendMessage({ type: 'block_emote', hash }).then(result => {
           if (!result?.success) {
             blockedEmotes.delete(hash);
+            markLocalBlockToggle(hash, 'unblocked');
             updateEmoteState(hash, emoteName, inInv ? 'added' : (isGlobalEmote ? 'global' : 'neutral'));
             showToast(t('content_toast_failed_block', [String(result?.error || 'Unknown error')]), 'error');
           } else {
@@ -4614,6 +4645,7 @@ function setupEmoteClickHandlers() {
         const result = await safeSendMessage({ type: 'unblock_emote', hash });
         if (result?.success) {
           blockedEmotes.delete(hash);
+          markLocalBlockToggle(hash, 'unblocked');
           const restoredState = inventoryHashSet.has(hash) ? 'added' : (globalNameSet.has(emoteName) ? 'global' : 'neutral');
           updateEmoteState(hash, emoteName, restoredState);
           log(' ✅ Unblocked:', emoteName);
@@ -4680,6 +4712,7 @@ function setupEmoteClickHandlers() {
       pendingOperations.add(operationKey);
       const restoredState = inventoryHashSet.has(hash) ? 'added' : (isGlobalEmote ? 'global' : 'neutral');
       blockedEmotes.delete(hash);
+      markLocalBlockToggle(hash, 'unblocked');
       updateEmoteState(hash, emoteName, restoredState);
       try {
         const result = await safeSendMessage({ type: 'unblock_emote', hash });
@@ -4688,12 +4721,14 @@ function setupEmoteClickHandlers() {
         } else {
           // Rollback
           blockedEmotes.add(hash);
+          markLocalBlockToggle(hash, 'blocked');
           updateEmoteState(hash, emoteName, 'blocked');
           showToast(t('content_toast_failed_unblock', [String(result?.error || 'Unknown error')]), 'error');
         }
       } catch (err) {
         if (!extensionContextValid) return;
         blockedEmotes.add(hash);
+        markLocalBlockToggle(hash, 'blocked');
         updateEmoteState(hash, emoteName, 'blocked');
         showToast(t('content_toast_failed_unblock', [String(err.message)]), 'error');
       } finally {
@@ -4710,6 +4745,7 @@ function setupEmoteClickHandlers() {
 
       // Optimistically block
       blockedEmotes.add(hash);
+      markLocalBlockToggle(hash, 'blocked');
       updateEmoteState(hash, emoteName, 'blocked');
 
       try {
@@ -4720,6 +4756,7 @@ function setupEmoteClickHandlers() {
         } else {
           // Rollback on failure
           blockedEmotes.delete(hash);
+          markLocalBlockToggle(hash, 'unblocked');
           updateEmoteState(hash, emoteName, 'neutral');
           showToast(t('content_toast_failed_block', [String(result?.error || 'Unknown error')]), 'error');
         }
@@ -4727,6 +4764,7 @@ function setupEmoteClickHandlers() {
         if (!extensionContextValid) return; // Don't rollback/show error if context invalidated
         // Rollback on error
         blockedEmotes.delete(hash);
+        markLocalBlockToggle(hash, 'unblocked');
         updateEmoteState(hash, emoteName, 'neutral');
         showToast(t('content_toast_failed_block', [String(err.message)]), 'error');
       } finally {

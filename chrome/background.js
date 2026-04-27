@@ -159,6 +159,30 @@ let followedUsers = []; // Users the current user follows
 let currentUsername = null; // Logged-in user's username
 let socket = null;
 let lastBroadcastWasEmpty = false // Track to prevent spamming 0-emote broadcasts
+// Tracks the last user-initiated block/unblock per hash so late-arriving WS
+// echoes can't reverse a recent toggle. Server broadcasts our own actions back
+// to us; if HTTP completes faster than the WS echo, the WS handler sees stale
+// state and "re-blocks" what we just unblocked (or vice versa). 5s window is
+// enough for any realistic broadcast delay.
+const recentBlockToggle = new Map(); // hash -> { state: 'blocked'|'unblocked', at: ms }
+const BLOCK_TOGGLE_GRACE_MS = 5000;
+function markBlockToggle(hash, state) {
+  if (!hash) return;
+  recentBlockToggle.set(hash, { state, at: Date.now() });
+  if (recentBlockToggle.size > 200) {
+    const cutoff = Date.now() - BLOCK_TOGGLE_GRACE_MS;
+    for (const [h, e] of recentBlockToggle) if (e.at < cutoff) recentBlockToggle.delete(h);
+  }
+}
+function recentBlockToggleState(hash) {
+  const e = recentBlockToggle.get(hash);
+  if (!e) return null;
+  if (Date.now() - e.at > BLOCK_TOGGLE_GRACE_MS) {
+    recentBlockToggle.delete(hash);
+    return null;
+  }
+  return e.state;
+}
 let lastInventoryFetch = 0 // Timestamp of last successful inventory fetch
 let inventoryRefreshTimer = null // Debounce WS-triggered inventory refreshes
 let inventoryFetchPromise = null // In-flight guard for fetchEmoteInventory
@@ -1987,6 +2011,7 @@ async function blockEmote(hash) {
     if (!authToken) {
       // Not logged in - use local storage
       localBlockedEmotes.add(hash);
+      markBlockToggle(hash, 'blocked');
       await saveLocalBlockedEmotes();
 
       const allBlocked = new Set([...blockedEmotes, ...localBlockedEmotes]);
@@ -1999,6 +2024,7 @@ async function blockEmote(hash) {
     // Prevents race where WS emote:blocked arrives before HTTP response
     // and triggers inventory_update → emoteGeneration++ → stack rebuild
     blockedEmotes.add(hash);
+    markBlockToggle(hash, 'blocked');
 
     const response = await fetchWithTimeout(`${API_URL}/api/user/emotes/block`, {
       method: 'POST',
@@ -2041,6 +2067,7 @@ async function unblockEmote(hash) {
     if (!authToken) {
       // Not logged in - use local storage
       localBlockedEmotes.delete(hash);
+      markBlockToggle(hash, 'unblocked');
       await saveLocalBlockedEmotes();
 
       // Broadcast update
@@ -2055,6 +2082,7 @@ async function unblockEmote(hash) {
     // Optimistically remove from blockedEmotes BEFORE HTTP request
     // Prevents race where WS emote:unblocked arrives before HTTP response
     blockedEmotes.delete(hash);
+    markBlockToggle(hash, 'unblocked');
 
     const response = await fetchWithTimeout(`${API_URL}/api/user/emotes/blocked/${hash}`, {
       method: 'DELETE',
@@ -2498,6 +2526,8 @@ function handleWSMessage(msg) {
       break
 
     case 'emote:blocked':
+      // Skip if user just unblocked locally — late WS echo would otherwise re-add.
+      if (recentBlockToggleState(msg.hash) === 'unblocked') break;
       if (msg.hash && !blockedEmotes.has(msg.hash)) {
         blockedEmotes.add(msg.hash)
         browser.storage.local.set({ blocked_emotes: Array.from(blockedEmotes) }).catch(() => {})
@@ -2512,6 +2542,8 @@ function handleWSMessage(msg) {
       break
 
     case 'emote:unblocked':
+      // Skip if user just blocked locally — late WS echo would otherwise re-remove.
+      if (recentBlockToggleState(msg.hash) === 'blocked') break;
       if (msg.hash && blockedEmotes.has(msg.hash)) {
         blockedEmotes.delete(msg.hash)
         browser.storage.local.set({ blocked_emotes: Array.from(blockedEmotes) }).catch(() => {})

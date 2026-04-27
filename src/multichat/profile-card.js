@@ -315,11 +315,15 @@ function renderProfileCardView() {
     return id === username || tw === username || ki === username
   })
 
+  const youFollow = !!(data?.relationship?.youFollow)
+  const profileId = data?.id || data?.userId || null
+
   const actions = [
     { key: 't', label: 'twitch', fn: () => pcOpenExt('https://twitch.tv/' + (data?.twitch_username || username)) },
     { key: 'k', label: 'kick', fn: () => pcOpenExt('https://kick.com/' + (data?.kick_username || username)) },
     { key: 'y', label: 'youtube', fn: () => pcOpenExt('https://youtube.com/@' + (data?.youtube_username || username)) },
     { key: 'h', label: 'heatsync', fn: () => pcOpenExt('https://heatsync.org/user/' + username) },
+    { key: 'f', label: youFollow ? 'unfollow' : 'follow', fn: () => pcToggleFollow(profileId, username, youFollow), disabled: !profileId },
     { key: 'w', label: 'whisper', fn: () => pcDoWhisper(username) },
     { key: 'd', label: 'dm', fn: () => pcDoDm(username) },
     { key: '@', label: 'mention', fn: () => pcMention(data?.display_name || username) },
@@ -365,6 +369,49 @@ function pcToggleMute(username) {
   }
   chrome.storage.local.set({ heatsync_mc_muted: [...mutedUsers] })
   renderProfileCardView()
+}
+
+// Heatsync follow/unfollow — POST/DELETE /api/follow/{userId}. Server returns
+// 400 'Already following' / 'Not following' for no-op state which we treat as
+// idempotent success. After success, ping background to refresh followedUsers
+// so the new follow shows up in live notifications + badge immediately.
+async function pcToggleFollow(profileId, username, currentlyFollowing) {
+  if (!profileId) {
+    if (typeof showToast === 'function') showToast('not registered on heatsync')
+    return
+  }
+  const targetFollowing = !currentlyFollowing
+  const method = targetFollowing ? 'POST' : 'DELETE'
+  // Optimistic UI
+  if (activeProfileCard?.data) {
+    activeProfileCard.data.relationship = { ...(activeProfileCard.data.relationship || {}), youFollow: targetFollowing }
+    renderProfileCardView()
+  }
+  try {
+    const resp = await apiFetch(`/api/follow/${encodeURIComponent(profileId)}`, { method, auth: true })
+    if (!resp?.ok) {
+      const msg = String(resp?.error || '').toLowerCase()
+      if (!msg.includes('already following') && !msg.includes('not following')) {
+        // Real failure — revert optimistic state
+        if (activeProfileCard?.data?.relationship) {
+          activeProfileCard.data.relationship.youFollow = currentlyFollowing
+          renderProfileCardView()
+        }
+        if (typeof showToast === 'function') showToast('follow failed: ' + (resp?.error || 'unknown'))
+        return
+      }
+    }
+    if (typeof showToast === 'function') showToast(targetFollowing ? `following ${username}` : `unfollowed ${username}`)
+    // Tell background to refetch followedUsers — pollFollowedLive runs after,
+    // so live notifications + badge include the new follow within ~60s.
+    safeSendMessage({ type: 'refresh_followed_users' })
+  } catch (e) {
+    if (activeProfileCard?.data?.relationship) {
+      activeProfileCard.data.relationship.youFollow = currentlyFollowing
+      renderProfileCardView()
+    }
+    if (typeof showToast === 'function') showToast('follow failed: ' + (e?.message || 'unknown'))
+  }
 }
 
 function pcDoWhisper(username) {

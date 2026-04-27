@@ -3723,6 +3723,13 @@ async function handleMessage(message, sender, sendResponse) {
       count: _liveFollowedCount,
     });
     return true;
+  } else if (message.type === 'refresh_followed_users') {
+    // Triggered after a follow/unfollow action elsewhere — re-fetches the
+    // canonical list from server and re-runs live poll so badge/notifications
+    // reflect the change immediately.
+    fetchFollowedUsers().catch(() => {})
+    sendResponse({ ok: true })
+    return true;
   } else if (message.type === 'refresh_live_followed') {
     // Force a fresh poll (e.g., user manually pulls to refresh)
     if (typeof pollFollowedLive === 'function') {

@@ -2710,6 +2710,10 @@ function injectStyles() {
       line-height: 1;
       box-sizing: border-box;
       min-width: 0;
+      text-align: center;
+      display: flex;
+      align-items: center;
+      justify-content: center;
     }
     .hs-mc-pf-btn.hs-mc-pf-twitch { border-color: #9146ff; background: #9146ff; color: #fff; }
     .hs-mc-pf-btn.hs-mc-pf-kick { border-color: #53fc18; background: #53fc18; color: #000; }
@@ -20456,6 +20460,9 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
 
     const div = buildMessageDiv(msg, tabId);
     if (!div) return false;
+    // Tag with the same msgKey renderMessages uses, so a later tab switch into a
+    // multi-platform view can prefix-match this DOM and avoid a one-shot rebuild.
+    div.dataset.msgKey = `${_renderEpoch}:${msg.id || msg.base36_id || `${msg.user || ''}:${msg.time || ''}:${(msg.text || '').slice(0, 32)}`}`
     if (zebraEnabled && msg.type !== 'stream-event' && msg.type !== 'feed-post' && msg.type !== 'inline-dm') {
       if (!msgsEl._zebraCount) msgsEl._zebraCount = 0;
       msgsEl._zebraCount++;
@@ -20478,6 +20485,12 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     return true;
   }
 
+  // Render epoch — bumps when external state invalidates already-rendered DOM
+  // (emote data, settings that change visual output). Embedded in msgKey so the
+  // diff-aware render in renderMessages forces a full rebuild after a bump
+  // instead of treating identical content as already-rendered.
+  let _renderEpoch = 0;
+
   // Full rebuild — used for tab switches, scroll resume, and initial load
   // Invalidate cached rendered HTML on all messages (when emote data changes)
   function clearRenderedHtmlCache() {
@@ -20486,6 +20499,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     if (kickChat?.channels) for (const [, buf] of kickChat.channels) clearBuf(buf.getAll());
     clearBuf(mentionsBuffer);
     for (const msgs of channelYtMessages.values()) clearBuf(msgs);
+    _renderEpoch++;
   }
 
   // Merge multiple platform sources into ~150 messages with proportional
@@ -20677,21 +20691,62 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     const toRender = msgs.slice(-500)
     isProgrammaticScroll = true;
 
-    const expandedStacks = []
-    for (const stack of msgsEl.querySelectorAll('.hs-mc-emote-stack.expanded')) {
-      const msg = stack.closest('.hs-mc-msg[data-msg-id]')
-      if (!msg) continue
-      const allStacks = [...msg.querySelectorAll('.hs-mc-emote-stack')]
-      const idx = allStacks.indexOf(stack)
-      if (idx >= 0) expandedStacks.push([msg.dataset.msgId, idx])
+    // Diff-aware render: keep DOM that already matches a prefix of `toRender` and
+    // only build/append the truly-new tail. Multi-platform tabs hit this function
+    // every rAF on busy streams (see appendMessage:isMultiPlatformTab branch) —
+    // wipe-and-rebuild every frame is what made the whole chat panel flicker.
+    const msgKey = (m) =>
+      `${_renderEpoch}:${m.id || m.base36_id || `${m.user || ''}:${m.time || ''}:${(m.text || '').slice(0, 32)}`}`
+    const desiredKeys = toRender.map(msgKey)
+
+    let prefixLen = 0
+    while (
+      prefixLen < msgsEl.children.length &&
+      prefixLen < desiredKeys.length &&
+      (msgsEl.children[prefixLen].dataset.msgKey || '') === desiredKeys[prefixLen]
+    ) {
+      prefixLen++
     }
 
-    msgsEl.textContent = '';
+    // DOM already matches desired exactly — no DOM mutation, just sync side-state.
+    if (prefixLen === msgsEl.children.length && prefixLen === desiredKeys.length) {
+      applyMcMutes();
+      requestAnimationFrame(() => { isProgrammaticScroll = false; });
+      if (!isScrolledUp) scrollMsgsToBottom(msgsEl);
+      return
+    }
+
+    // Capture expanded emote stacks ONLY in the tail we're about to remove —
+    // the surviving prefix keeps its expansion state automatically.
+    const expandedStacks = []
+    for (let i = prefixLen; i < msgsEl.children.length; i++) {
+      const msg = msgsEl.children[i]
+      const mid = msg.dataset && msg.dataset.msgId
+      if (!mid) continue
+      const allStacks = [...msg.querySelectorAll('.hs-mc-emote-stack')]
+      for (let s = 0; s < allStacks.length; s++) {
+        if (allStacks[s].classList.contains('expanded')) expandedStacks.push([mid, s])
+      }
+    }
+
+    // Drop the stale tail
+    while (msgsEl.children.length > prefixLen) {
+      msgsEl.lastElementChild.remove()
+    }
+
+    // Recompute zebra count from surviving prefix so striping stays consistent
     msgsEl._zebraCount = 0;
+    for (let i = 0; i < prefixLen; i++) {
+      if (msgsEl.children[i].classList.contains('hs-mc-zebra')) msgsEl._zebraCount = i + 1
+    }
+
+    // Build & append only the new tail
     const frag = document.createDocumentFragment();
-    for (const m of toRender) {
+    for (let i = prefixLen; i < toRender.length; i++) {
+      const m = toRender[i]
       const div = buildMessageDiv(m, id);
       if (!div) continue;
+      div.dataset.msgKey = desiredKeys[i]
       if (zebraEnabled && m.type !== 'stream-event' && m.type !== 'feed-post') {
         msgsEl._zebraCount++;
         if (msgsEl._zebraCount % 2 === 0) div.classList.add('hs-mc-zebra');
@@ -20700,8 +20755,8 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     }
     msgsEl.appendChild(frag);
 
-    for (const [msgId, idx] of expandedStacks) {
-      const msg = msgsEl.querySelector(`.hs-mc-msg[data-msg-id="${CSS.escape(msgId)}"]`)
+    for (const [mid, idx] of expandedStacks) {
+      const msg = msgsEl.querySelector(`.hs-mc-msg[data-msg-id="${CSS.escape(mid)}"]`)
       if (!msg) continue
       const stacks = msg.querySelectorAll('.hs-mc-emote-stack')
       if (stacks[idx]) stacks[idx].classList.add('expanded')
@@ -22335,6 +22390,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       // so future re-renders pick it up via the renderer; this just patches the visible DOM.
       if (msg.type === 'notice' && (msg.noticeType === 'ban_success' || msg.noticeType === 'timeout_success') && msg.targetUser) {
         const targetLc = msg.targetUser.toLowerCase()
+        const msgsEl = document.getElementById('hs-mc-messages')
         const rows = msgsEl?.querySelectorAll(`.hs-mc-msg[data-msg-user]`) || []
         for (const row of rows) {
           if ((row.dataset.msgUser || '').toLowerCase() === targetLc) {
@@ -22345,6 +22401,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       }
       if (msg.type === 'notice' && msg.noticeType === 'delete_message_success' && msg.targetMsgId) {
         const safe = (CSS.escape ? CSS.escape(msg.targetMsgId) : msg.targetMsgId.replace(/"/g, '\\"'))
+        const msgsEl = document.getElementById('hs-mc-messages')
         const row = msgsEl?.querySelector(`.hs-mc-msg[data-msg-id="${safe}"]`)
         if (row) { row.classList.add('hs-mc-msg-cleared'); row.title = 'deleted' }
       }

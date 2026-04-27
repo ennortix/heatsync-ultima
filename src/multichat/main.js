@@ -3223,7 +3223,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     if (!div) return false;
     // Tag with the same msgKey renderMessages uses, so a later tab switch into a
     // multi-platform view can prefix-match this DOM and avoid a one-shot rebuild.
-    div.dataset.msgKey = msg.id || msg.base36_id || `${msg.user || ''}:${msg.time || ''}:${(msg.text || '').slice(0, 32)}`
+    div.dataset.msgKey = `${_renderEpoch}:${msg.id || msg.base36_id || `${msg.user || ''}:${msg.time || ''}:${(msg.text || '').slice(0, 32)}`}`
     if (zebraEnabled && msg.type !== 'stream-event' && msg.type !== 'feed-post' && msg.type !== 'inline-dm') {
       if (!msgsEl._zebraCount) msgsEl._zebraCount = 0;
       msgsEl._zebraCount++;
@@ -3246,6 +3246,12 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     return true;
   }
 
+  // Render epoch — bumps when external state invalidates already-rendered DOM
+  // (emote data, settings that change visual output). Embedded in msgKey so the
+  // diff-aware render in renderMessages forces a full rebuild after a bump
+  // instead of treating identical content as already-rendered.
+  let _renderEpoch = 0;
+
   // Full rebuild — used for tab switches, scroll resume, and initial load
   // Invalidate cached rendered HTML on all messages (when emote data changes)
   function clearRenderedHtmlCache() {
@@ -3254,6 +3260,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     if (kickChat?.channels) for (const [, buf] of kickChat.channels) clearBuf(buf.getAll());
     clearBuf(mentionsBuffer);
     for (const msgs of channelYtMessages.values()) clearBuf(msgs);
+    _renderEpoch++;
   }
 
   // Merge multiple platform sources into ~150 messages with proportional
@@ -3450,7 +3457,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     // every rAF on busy streams (see appendMessage:isMultiPlatformTab branch) —
     // wipe-and-rebuild every frame is what made the whole chat panel flicker.
     const msgKey = (m) =>
-      m.id || m.base36_id || `${m.user || ''}:${m.time || ''}:${(m.text || '').slice(0, 32)}`
+      `${_renderEpoch}:${m.id || m.base36_id || `${m.user || ''}:${m.time || ''}:${(m.text || '').slice(0, 32)}`}`
     const desiredKeys = toRender.map(msgKey)
 
     let prefixLen = 0
@@ -5144,6 +5151,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       // so future re-renders pick it up via the renderer; this just patches the visible DOM.
       if (msg.type === 'notice' && (msg.noticeType === 'ban_success' || msg.noticeType === 'timeout_success') && msg.targetUser) {
         const targetLc = msg.targetUser.toLowerCase()
+        const msgsEl = document.getElementById('hs-mc-messages')
         const rows = msgsEl?.querySelectorAll(`.hs-mc-msg[data-msg-user]`) || []
         for (const row of rows) {
           if ((row.dataset.msgUser || '').toLowerCase() === targetLc) {
@@ -5154,6 +5162,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       }
       if (msg.type === 'notice' && msg.noticeType === 'delete_message_success' && msg.targetMsgId) {
         const safe = (CSS.escape ? CSS.escape(msg.targetMsgId) : msg.targetMsgId.replace(/"/g, '\\"'))
+        const msgsEl = document.getElementById('hs-mc-messages')
         const row = msgsEl?.querySelector(`.hs-mc-msg[data-msg-id="${safe}"]`)
         if (row) { row.classList.add('hs-mc-msg-cleared'); row.title = 'deleted' }
       }

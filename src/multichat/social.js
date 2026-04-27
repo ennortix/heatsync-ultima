@@ -545,10 +545,16 @@ function listenForSocialEvents() {
               }
             }
           } else if (msg.status === 'ended' || msg.status === 'error') {
-            upsertNotice(
-              msg.status === 'ended' ? 'youtube stream ended' : (msg.error || 'youtube connection error'),
-              '#ff4444'
-            )
+            // "too many requests" is a transient ws-handler rate limit (5/min/socket).
+            // Showing it confuses users — they didn't do anything wrong, and the next
+            // resubscribe attempt will succeed. Drop it silently.
+            const isRateLimited = msg.status === 'error' && /too many requests/i.test(msg.error || '')
+            if (!isRateLimited) {
+              upsertNotice(
+                msg.status === 'ended' ? 'youtube stream ended' : (msg.error || 'youtube connection error'),
+                '#ff4444'
+              )
+            }
           }
         }
       }

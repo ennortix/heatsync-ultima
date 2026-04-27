@@ -4304,6 +4304,13 @@ function injectStyles() {
     .hs-feed-tag-re {
       color: #00ffff;
     }
+    /* Canonical heat number — used everywhere via heatSpanHtml/heatSpanEl. Tier color/glow is set inline. */
+    .hs-heat-num {
+      font-variant-numeric: tabular-nums;
+      font-family: ui-monospace, SFMono-Regular, monospace;
+      font-weight: 900;
+      line-height: 1;
+    }
     .hs-feed-heat-breathe {
       animation: hs-feed-heat-breathe 2.5s ease-in-out infinite;
     }
@@ -8311,10 +8318,12 @@ async function sendKickMessage(kickSlug, text) {
     const followers = Math.max(stats.followers || 0, p.twitch_followers || 0, p.kick_followers || 0);
 
     const statBadges = [];
+    // Canonical heat: formatHeat + ° suffix (≥10) + tier color/glow/breathe via heatSpanHtml.
+    // Outer .hs-pc-stat keeps the badge border tinted by the tier border color.
     const hd = getHeatDisplay(heat)
-    const heatColor = hd ? hd.color : '#808080'
-    const heatGlow = hd?.glow ? ';text-shadow:0 0 6px rgba(255,135,0,0.8)' : ''
-    statBadges.push(`<span class="hs-pc-stat heat" style="color:${heatColor};border-color:${heatColor};font-weight:700${heatGlow}"><span class="hs-pc-num">${formatCompact(heat)}</span>°</span>`);
+    const heatBorder = hd ? hd.border : '#808080'
+    const breatheCls = hd?.breathe ? ' hs-feed-heat-breathe' : ''
+    statBadges.push(`<span class="hs-pc-stat heat${breatheCls}" style="border-color:${heatBorder}">${heatSpanHtml(heat)}</span>`);
     if (op > 0) statBadges.push(`<span class="hs-pc-stat op"><span class="hs-pc-num">${formatCompact(op)}</span> [OP]</span>`);
     if (mop > 0) statBadges.push(`<span class="hs-pc-stat mop"><span class="hs-pc-num">${formatCompact(mop)}</span> <span style="color:#ff00ff">[OP]</span></span>`);
     if (re > 0) statBadges.push(`<span class="hs-pc-stat re"><span class="hs-pc-num">${formatCompact(re)}</span> [RE]</span>`);
@@ -12636,7 +12645,7 @@ function buildEngagementBar(m) {
   heatBtn.appendChild(_makeSvg('M12 2C9 7 5 9 5 14a7 7 0 0014 0c0-5-4-7-7-12z', liked))
   const heatCount2 = document.createElement('span')
   heatCount2.className = 'hs-fe-count'
-  heatCount2.textContent = heatCount > 0 ? String(heatCount) : ''
+  heatCount2.textContent = heatCount > 0 ? formatHeat(heatCount) : ''
   heatBtn.appendChild(heatCount2)
 
   // Bookmark button — ribbon SVG
@@ -13343,6 +13352,28 @@ function applyDiscoverHeatRowEffects(row, heat) {
   row.style.borderLeftWidth = hd.borderWidth + 'px';
   if (hd.bg) row.style.background = hd.bg;
   if (hd.breathe) row.classList.add('hs-feed-heat-breathe');
+}
+
+// Canonical heat number — formatHeat + ° suffix at ≥ 10 + tier color/glow/breathe inline style.
+// HTML-string variant for innerHTML callers (heat numeric + internally-built style is safe).
+function heatSpanHtml(heat) {
+  const h = Number(heat) || 0;
+  if (h <= 0) return '';
+  const style = discoverHeatStyle(h);
+  const suffix = h >= 10 ? '°' : '';
+  return `<span class="hs-heat-num" style="${style}">${formatHeat(h)}${suffix}</span>`;
+}
+
+// Same, returned as a DOM node for createElement callers.
+function heatSpanEl(heat) {
+  const h = Number(heat) || 0;
+  if (h <= 0) return null;
+  const span = document.createElement('span');
+  span.className = 'hs-heat-num';
+  span.setAttribute('style', discoverHeatStyle(h));
+  const suffix = h >= 10 ? '°' : '';
+  span.textContent = formatHeat(h) + suffix;
+  return span;
 }
 
 function renderDiscoverProfileRow(profile, username, rank, maxHeat) {
@@ -16714,11 +16745,6 @@ function renderProfileCardView() {
     const youSub = rel.youSub ?? rel.isSubscribed ?? rel.subscribedOnTwitch ?? rel.subscribedOnKick
     const subsYou = rel.profileSubbedToViewerOnTwitch || rel.profileSubbedToViewerOnKick || rel.subscribesToYou
 
-    const parts = []
-    if (heat) parts.push(`${pcFmt(heat)}° heat`)
-    if (posts) parts.push(`${pcFmt(posts)} posts`)
-    if (followers) parts.push(`${pcFmt(followers)} followers`)
-
     const relParts = []
     if (youFollow && followsYou) relParts.push('mutual')
     else if (youFollow) relParts.push('you follow')
@@ -16726,9 +16752,26 @@ function renderProfileCardView() {
     if (youSub) relParts.push('you sub')
     if (subsYou) relParts.push('subs to you')
 
-    if (parts.length) {
+    // Stats line: heat uses canonical tier styling (formatHeat + ° + glow), others plain
+    const heatNode = heat ? heatSpanEl(heat) : null
+    const hasStats = heatNode || posts || followers
+    if (hasStats) {
       const line = document.createElement('div')
-      line.textContent = parts.join(' · ')
+      let needsSep = false
+      if (heatNode) {
+        line.appendChild(heatNode)
+        line.appendChild(document.createTextNode(' heat'))
+        needsSep = true
+      }
+      if (posts) {
+        if (needsSep) line.appendChild(document.createTextNode(' · '))
+        line.appendChild(document.createTextNode(`${pcFmt(posts)} posts`))
+        needsSep = true
+      }
+      if (followers) {
+        if (needsSep) line.appendChild(document.createTextNode(' · '))
+        line.appendChild(document.createTextNode(`${pcFmt(followers)} followers`))
+      }
       statsSec.appendChild(line)
     }
     if (relParts.length) {
@@ -16737,7 +16780,7 @@ function renderProfileCardView() {
       rline.textContent = relParts.join(' · ')
       statsSec.appendChild(rline)
     }
-    if (!parts.length && !relParts.length) {
+    if (!hasStats && !relParts.length) {
       statsSec.appendChild(document.createTextNode('no stats yet'))
     }
   }
@@ -16881,21 +16924,32 @@ function setupProfileCardHandlers() {
   if (window._hsProfileCardSetup) return
   window._hsProfileCardSetup = true
 
-  // Username click → open card. Allow ctrl/meta/shift/middle to fall through to <a>.
+  // Username click → open card. Capture phase so we beat Twitch/Kick native user-card handlers.
+  // Allow ctrl/meta/shift/middle/alt to fall through to the <a target="_blank"> default nav.
   cleanup.addEventListener(document, 'click', (e) => {
     if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return
     const userEl = e.target.closest('.hs-mc-user')
     if (!userEl) return
-    // Skip platform pills inside the card itself — they should follow their hrefs
     if (e.target.closest('[data-pcard-pill]')) return
-    // Skip reply target links — those navigate within the message context
     if (userEl.classList.contains('hs-mc-reply-user')) return
     e.preventDefault()
     e.stopPropagation()
+    e.stopImmediatePropagation()
     const username = (userEl.dataset.username || userEl.textContent.replace(/^@/, '')).trim()
     const platform = userEl.dataset.platform || null
     openProfileCard(username, platform)
-  }, 'mc-pcard-user-click')
+  }, { capture: true, signal: mcSignal })
+
+  // Twitch attaches mousedown handlers too — block those at capture so the native card never opens
+  cleanup.addEventListener(document, 'mousedown', (e) => {
+    if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return
+    const userEl = e.target.closest('.hs-mc-user')
+    if (!userEl) return
+    if (e.target.closest('[data-pcard-pill]')) return
+    if (userEl.classList.contains('hs-mc-reply-user')) return
+    e.stopPropagation()
+    e.stopImmediatePropagation()
+  }, { capture: true, signal: mcSignal })
 
   // ESC closes the card; single-letter hotkeys trigger actions while open
   cleanup.addEventListener(document, 'keydown', (e) => {
@@ -19711,8 +19765,8 @@ const STORAGE_KEY = 'heatsync_multichat';
       const threadLink = `<a href="https://heatsync.org/post/${encodeURIComponent(m.base36_id)}" target="_blank" class="hs-feed-thread-link">&gt;&gt;${escapeHtml(shortId)}</a>`
       const userLink = `<a href="https://heatsync.org/user/${encodeURIComponent(m.feedUser)}" target="_blank" class="hs-mc-user" data-username="${escapeHtml((m.feedUser || 'anon').toLowerCase())}" style="color:${sanitizeColor(m.color || '#fff')}">${escapeHtml(m.feedUser || 'anon')}</a>`
       const content = renderFeedContent(m.text, m.emote_refs)
-      const hd = getHeatDisplay(m.heat)
-      const heatHtml = hd ? ` <span style="font-weight:700;color:${hd.color}${hd.glow ? ';text-shadow:0 0 6px rgba(255,135,0,0.8)' : ''}">${escapeHtml(String(m.heat))}</span>` : ''
+      // Canonical heat: formatHeat + ° suffix (≥10) + tier color/glow/breathe via heatSpanHtml
+      const heatHtml = (m.heat || 0) > 0 ? ' ' + heatSpanHtml(m.heat) : ''
       // All values sanitized — safe innerHTML (heat is numeric, emoji/color are hardcoded)
       div.innerHTML = `${tsSpan}${threadLink}${typeTag}${userLink}${heatHtml}: <span class="hs-feed-body">${content}</span>`
       div.addEventListener('click', (e) => {

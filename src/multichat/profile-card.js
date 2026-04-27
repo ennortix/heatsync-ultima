@@ -210,11 +210,6 @@ function renderProfileCardView() {
     const youSub = rel.youSub ?? rel.isSubscribed ?? rel.subscribedOnTwitch ?? rel.subscribedOnKick
     const subsYou = rel.profileSubbedToViewerOnTwitch || rel.profileSubbedToViewerOnKick || rel.subscribesToYou
 
-    const parts = []
-    if (heat) parts.push(`${pcFmt(heat)}° heat`)
-    if (posts) parts.push(`${pcFmt(posts)} posts`)
-    if (followers) parts.push(`${pcFmt(followers)} followers`)
-
     const relParts = []
     if (youFollow && followsYou) relParts.push('mutual')
     else if (youFollow) relParts.push('you follow')
@@ -222,9 +217,26 @@ function renderProfileCardView() {
     if (youSub) relParts.push('you sub')
     if (subsYou) relParts.push('subs to you')
 
-    if (parts.length) {
+    // Stats line: heat uses canonical tier styling (formatHeat + ° + glow), others plain
+    const heatNode = heat ? heatSpanEl(heat) : null
+    const hasStats = heatNode || posts || followers
+    if (hasStats) {
       const line = document.createElement('div')
-      line.textContent = parts.join(' · ')
+      let needsSep = false
+      if (heatNode) {
+        line.appendChild(heatNode)
+        line.appendChild(document.createTextNode(' heat'))
+        needsSep = true
+      }
+      if (posts) {
+        if (needsSep) line.appendChild(document.createTextNode(' · '))
+        line.appendChild(document.createTextNode(`${pcFmt(posts)} posts`))
+        needsSep = true
+      }
+      if (followers) {
+        if (needsSep) line.appendChild(document.createTextNode(' · '))
+        line.appendChild(document.createTextNode(`${pcFmt(followers)} followers`))
+      }
       statsSec.appendChild(line)
     }
     if (relParts.length) {
@@ -233,7 +245,7 @@ function renderProfileCardView() {
       rline.textContent = relParts.join(' · ')
       statsSec.appendChild(rline)
     }
-    if (!parts.length && !relParts.length) {
+    if (!hasStats && !relParts.length) {
       statsSec.appendChild(document.createTextNode('no stats yet'))
     }
   }
@@ -377,21 +389,32 @@ function setupProfileCardHandlers() {
   if (window._hsProfileCardSetup) return
   window._hsProfileCardSetup = true
 
-  // Username click → open card. Allow ctrl/meta/shift/middle to fall through to <a>.
+  // Username click → open card. Capture phase so we beat Twitch/Kick native user-card handlers.
+  // Allow ctrl/meta/shift/middle/alt to fall through to the <a target="_blank"> default nav.
   cleanup.addEventListener(document, 'click', (e) => {
     if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return
     const userEl = e.target.closest('.hs-mc-user')
     if (!userEl) return
-    // Skip platform pills inside the card itself — they should follow their hrefs
     if (e.target.closest('[data-pcard-pill]')) return
-    // Skip reply target links — those navigate within the message context
     if (userEl.classList.contains('hs-mc-reply-user')) return
     e.preventDefault()
     e.stopPropagation()
+    e.stopImmediatePropagation()
     const username = (userEl.dataset.username || userEl.textContent.replace(/^@/, '')).trim()
     const platform = userEl.dataset.platform || null
     openProfileCard(username, platform)
-  }, 'mc-pcard-user-click')
+  }, { capture: true, signal: mcSignal })
+
+  // Twitch attaches mousedown handlers too — block those at capture so the native card never opens
+  cleanup.addEventListener(document, 'mousedown', (e) => {
+    if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return
+    const userEl = e.target.closest('.hs-mc-user')
+    if (!userEl) return
+    if (e.target.closest('[data-pcard-pill]')) return
+    if (userEl.classList.contains('hs-mc-reply-user')) return
+    e.stopPropagation()
+    e.stopImmediatePropagation()
+  }, { capture: true, signal: mcSignal })
 
   // ESC closes the card; single-letter hotkeys trigger actions while open
   cleanup.addEventListener(document, 'keydown', (e) => {

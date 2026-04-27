@@ -1036,7 +1036,7 @@ function buildEngagementBar(m) {
   heatBtn.appendChild(_makeSvg('M12 2C9 7 5 9 5 14a7 7 0 0014 0c0-5-4-7-7-12z', liked))
   const heatCount2 = document.createElement('span')
   heatCount2.className = 'hs-fe-count'
-  heatCount2.textContent = heatCount > 0 ? String(heatCount) : ''
+  heatCount2.textContent = heatCount > 0 ? formatHeat(heatCount) : ''
   heatBtn.appendChild(heatCount2)
 
   // Bookmark button — ribbon SVG
@@ -1743,6 +1743,28 @@ function applyDiscoverHeatRowEffects(row, heat) {
   row.style.borderLeftWidth = hd.borderWidth + 'px';
   if (hd.bg) row.style.background = hd.bg;
   if (hd.breathe) row.classList.add('hs-feed-heat-breathe');
+}
+
+// Canonical heat number — formatHeat + ° suffix at ≥ 10 + tier color/glow/breathe inline style.
+// HTML-string variant for innerHTML callers (heat numeric + internally-built style is safe).
+function heatSpanHtml(heat) {
+  const h = Number(heat) || 0;
+  if (h <= 0) return '';
+  const style = discoverHeatStyle(h);
+  const suffix = h >= 10 ? '°' : '';
+  return `<span class="hs-heat-num" style="${style}">${formatHeat(h)}${suffix}</span>`;
+}
+
+// Same, returned as a DOM node for createElement callers.
+function heatSpanEl(heat) {
+  const h = Number(heat) || 0;
+  if (h <= 0) return null;
+  const span = document.createElement('span');
+  span.className = 'hs-heat-num';
+  span.setAttribute('style', discoverHeatStyle(h));
+  const suffix = h >= 10 ? '°' : '';
+  span.textContent = formatHeat(h) + suffix;
+  return span;
 }
 
 function renderDiscoverProfileRow(profile, username, rank, maxHeat) {

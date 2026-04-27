@@ -484,10 +484,12 @@
     const followers = Math.max(stats.followers || 0, p.twitch_followers || 0, p.kick_followers || 0);
 
     const statBadges = [];
+    // Canonical heat: formatHeat + ° suffix (≥10) + tier color/glow/breathe via heatSpanHtml.
+    // Outer .hs-pc-stat keeps the badge border tinted by the tier border color.
     const hd = getHeatDisplay(heat)
-    const heatColor = hd ? hd.color : '#808080'
-    const heatGlow = hd?.glow ? ';text-shadow:0 0 6px rgba(255,135,0,0.8)' : ''
-    statBadges.push(`<span class="hs-pc-stat heat" style="color:${heatColor};border-color:${heatColor};font-weight:700${heatGlow}"><span class="hs-pc-num">${formatCompact(heat)}</span>°</span>`);
+    const heatBorder = hd ? hd.border : '#808080'
+    const breatheCls = hd?.breathe ? ' hs-feed-heat-breathe' : ''
+    statBadges.push(`<span class="hs-pc-stat heat${breatheCls}" style="border-color:${heatBorder}">${heatSpanHtml(heat)}</span>`);
     if (op > 0) statBadges.push(`<span class="hs-pc-stat op"><span class="hs-pc-num">${formatCompact(op)}</span> [OP]</span>`);
     if (mop > 0) statBadges.push(`<span class="hs-pc-stat mop"><span class="hs-pc-num">${formatCompact(mop)}</span> <span style="color:#ff00ff">[OP]</span></span>`);
     if (re > 0) statBadges.push(`<span class="hs-pc-stat re"><span class="hs-pc-num">${formatCompact(re)}</span> [RE]</span>`);

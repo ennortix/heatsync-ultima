@@ -3271,6 +3271,13 @@ function injectStyles() {
     .hs-feed-tag-re {
       color: #00ffff;
     }
+    /* Canonical heat number — used everywhere via heatSpanHtml/heatSpanEl. Tier color/glow is set inline. */
+    .hs-heat-num {
+      font-variant-numeric: tabular-nums;
+      font-family: ui-monospace, SFMono-Regular, monospace;
+      font-weight: 900;
+      line-height: 1;
+    }
     .hs-feed-heat-breathe {
       animation: hs-feed-heat-breathe 2.5s ease-in-out infinite;
     }

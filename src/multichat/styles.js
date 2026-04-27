@@ -4176,6 +4176,28 @@ function injectStyles() {
       text-overflow: ellipsis;
     }
     .hs-pinned-row:hover .hs-pinned-body { color: #fff; }
+
+    /* ============================================
+       UNIVERSAL HOVER — every button in the heatsync extension turns
+       white bg + black text on hover for max contrast against the
+       dark theme. !important wins over per-component hover rules.
+       ============================================ */
+    .hs-mc-container button:hover:not(:disabled):not([aria-disabled="true"]),
+    .hs-mc-container [role="button"]:hover:not([aria-disabled="true"]),
+    .hs-mc-container .hs-mc-tab:hover,
+    .hs-mc-container .hs-btn:hover,
+    .hs-mc-container .hs-mc-tab-utils > div:hover,
+    .hs-mc-container .hs-mc-tab-utils > button:hover {
+      background: #fff !important;
+      color: #000 !important;
+    }
+    .hs-mc-container button:hover:not(:disabled):not([aria-disabled="true"]) svg,
+    .hs-mc-container [role="button"]:hover:not([aria-disabled="true"]) svg,
+    .hs-mc-container .hs-mc-tab:hover svg,
+    .hs-mc-container .hs-btn:hover svg {
+      fill: #000 !important;
+      color: #000 !important;
+    }
   `;
   document.head.appendChild(style);
 }

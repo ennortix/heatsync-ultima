@@ -515,22 +515,40 @@ function listenForSocialEvents() {
           youtubeLinks.set(targetChannelId, link)
           log('YouTube connected for channel', targetChannelId, ':', link.channelName)
         }
-        // Show status in channel tab if viewing it
+        // Show status in channel tab if viewing it. Dedup on a stable marker so
+        // repeated youtube_status events (every WS reconnect, every retry) don't
+        // append a fresh notice each time — that's what made the panel flicker:
+        // notice appears, real messages push it out via trimChildren cap, next
+        // event re-appends, cycle repeats.
         if (currentTab === targetChannelId) {
           const msgsEl = document.getElementById('hs-mc-messages')
-          if (msgsEl && msg.status === 'connected' && !(channelYtMessages.get(targetChannelId)?.length)) {
+          const upsertNotice = (text, color) => {
+            if (!msgsEl) return
+            // Remove any existing yt-status notice — there should be at most one,
+            // showing the latest state.
+            for (const el of msgsEl.querySelectorAll('.hs-mc-empty[data-hs-yt-status]')) el.remove()
             const el = document.createElement('div')
             el.className = 'hs-mc-empty'
-            el.textContent = 'youtube connected: ' + (link.channelName || msg.videoId) + ' — waiting for messages...'
+            el.dataset.hsYtStatus = '1'
+            el.textContent = text
+            if (color) el.style.color = color
             msgsEl.appendChild(el)
             trimChildren(msgsEl, 150)
-          } else if (msgsEl && (msg.status === 'ended' || msg.status === 'error')) {
-            const el = document.createElement('div')
-            el.className = 'hs-mc-empty'
-            el.textContent = msg.status === 'ended' ? 'youtube stream ended' : (msg.error || 'youtube connection error')
-            el.style.color = '#ff4444'
-            msgsEl.appendChild(el)
-            trimChildren(msgsEl, 150)
+          }
+          if (msg.status === 'connected') {
+            // Drop any stale ended/error notice now that we're live; only show the
+            // "waiting" placeholder if there really are no messages yet.
+            if (msgsEl) {
+              for (const el of msgsEl.querySelectorAll('.hs-mc-empty[data-hs-yt-status]')) el.remove()
+              if (!(channelYtMessages.get(targetChannelId)?.length)) {
+                upsertNotice('youtube connected: ' + (link.channelName || msg.videoId) + ' — waiting for messages...')
+              }
+            }
+          } else if (msg.status === 'ended' || msg.status === 'error') {
+            upsertNotice(
+              msg.status === 'ended' ? 'youtube stream ended' : (msg.error || 'youtube connection error'),
+              '#ff4444'
+            )
           }
         }
       }

@@ -300,6 +300,11 @@ async function loadHsAuth() {
         );
         if (wasAuthed !== hsAuthToken) {
           log('Auth state changed:', hsAuthToken ? 'logged in' : 'logged out');
+          // On login, replay any whispers that failed with auth errors so the
+          // user doesn't have to manually retry each one.
+          if (!wasAuthed && hsAuthToken && typeof retryAuthFailedWhispers === 'function') {
+            retryAuthFailedWhispers();
+          }
           // Reset feed/notif/discover/pinned data on auth change so the next
           // tab open re-fetches with new auth.
           feedLoaded = false;
@@ -550,16 +555,23 @@ function listenForSocialEvents() {
               }
             }
           } else if (msg.status === 'ended' || msg.status === 'error') {
-            // "too many requests" is a transient ws-handler rate limit (5/min/socket).
-            // Showing it confuses users — they didn't do anything wrong, and the next
-            // resubscribe attempt will succeed. Drop it silently.
-            const isRateLimited = msg.status === 'error' && /too many requests/i.test(msg.error || '')
-            if (!isRateLimited) {
-              // Always prefix with "youtube:" — without it, "stream is not currently
-              // live (or chat is disabled)" looks like it's about whatever stream the
-              // user is watching, not the YouTube subscription that actually failed.
+            // Drop noise: rate-limit (transient ws-handler 5/min/socket) and
+            // "stream not currently live / chat disabled" — the latter is the
+            // expected state when the user added a YT URL but the streamer
+            // isn't on YT right now, so showing it on every refresh is just
+            // clutter at the bottom of chat.
+            const errText = msg.error || ''
+            const isNoise = msg.status === 'error' && (
+              /too many requests/i.test(errText) ||
+              /not currently live/i.test(errText) ||
+              /chat is disabled/i.test(errText)
+            )
+            if (!isNoise) {
+              // Always prefix with "youtube:" — without it, error text looks
+              // like it's about whatever stream the user is watching, not
+              // the YouTube subscription that actually failed.
               upsertNotice(
-                msg.status === 'ended' ? 'youtube: stream ended' : `youtube: ${msg.error || 'connection error'}`,
+                msg.status === 'ended' ? 'youtube: stream ended' : `youtube: ${errText || 'connection error'}`,
                 '#ff4444'
               )
             }

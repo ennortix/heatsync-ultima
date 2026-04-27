@@ -3312,7 +3312,22 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       }
     }
 
-    return result.filter(Boolean).slice(-limit)
+    const merged = result.filter(Boolean).slice(-limit)
+
+    // Tail-sort: the proportional stepping anchors each source at fixed end
+    // positions (e.g. with 2 sources of 250 each, the last Kick msg always
+    // lands at slot 499 and the last Twitch at 498), so new live messages
+    // appear *above* a stuck older message instead of at the bottom. Sort
+    // the most recent ~50 by time so newest always lands last regardless
+    // of platform, while keeping fairMerge's interleave for the older bulk
+    // (which handles non-overlapping time ranges).
+    const tailSize = Math.min(50, merged.length)
+    if (tailSize > 1) {
+      const tail = merged.slice(-tailSize)
+      tail.sort((a, b) => (a.time || 0) - (b.time || 0))
+      for (let i = 0; i < tailSize; i++) merged[merged.length - tailSize + i] = tail[i]
+    }
+    return merged
   }
 
   function renderMessages(id) {
@@ -4652,12 +4667,16 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       // Listen for emote updates from background
       if (msg.type === 'global_emotes_update' || msg.type === 'channel_emotes_update') {
         log('received', msg.type, msg.channelOwner || '');
-        // Invalidate per-message rendered HTML cache so history re-processes
-        // with the freshly arrived emote data (otherwise raw text sticks)
-        clearRenderedHtmlCache();
+        // Defer cache invalidation + epoch bump until after loadEmotes resolves.
+        // Bumping immediately caused 2-3 visible rebuilds on refresh because the
+        // runtime msg + storage event paths both fire and any intermediate
+        // renderMessages (rAF-debounced from new chat msgs) wipes the DOM.
         cleanup.clearTimeout(emoteReloadTimer);
         emoteReloadTimer = cleanup.setTimeout(() => {
-          loadEmotes().then(() => renderMessages(currentTab));
+          loadEmotes().then(() => {
+            clearRenderedHtmlCache();
+            renderMessages(currentTab);
+          });
         }, 300);
       }
       // Inventory changes: update membership + ensure emotes are in cache for tab completion
@@ -4811,13 +4830,14 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       // Emote updates - reload when storage changes (debounced to avoid spam)
       if (changes.global_emotes || changes.channel_emotes_map || changes.emote_inventory || changes.native_twitch_emotes) {
         log('storage changed:', changes.channel_emotes_map ? 'channel_emotes_map' : '', changes.global_emotes ? 'global_emotes' : '', changes.emote_inventory ? 'emote_inventory' : '', changes.native_twitch_emotes ? 'native_twitch_emotes' : '');
-        // New emote data = invalidate render cache so messages re-process with new emotes
-        if (changes.global_emotes || changes.channel_emotes_map || changes.native_twitch_emotes) {
-          clearRenderedHtmlCache();
-        }
+        // Same deferral as the runtime msg path — bump epoch + invalidate
+        // cache only once after loadEmotes resolves, otherwise back-to-back
+        // bumps from multiple emote sources cause visible flicker on refresh.
+        const needsBump = !!(changes.global_emotes || changes.channel_emotes_map || changes.native_twitch_emotes)
         cleanup.clearTimeout(emoteReloadTimer);
         emoteReloadTimer = cleanup.setTimeout(() => {
           loadEmotes().then(() => {
+            if (needsBump) clearRenderedHtmlCache();
             if (!isScrolledUp) renderMessages(currentTab);
           });
         }, 300);

@@ -1209,6 +1209,26 @@ function injectStyles() {
     .hs-whisper-self {
       opacity: 0.7;
     }
+    .hs-whisper-pending {
+      opacity: 0.45;
+    }
+    .hs-whisper-pending .hs-whisper-status {
+      color: #ffaf00;
+    }
+    .hs-whisper-failed {
+      background: rgba(255, 0, 0, 0.10);
+    }
+    .hs-whisper-failed .hs-whisper-status {
+      color: #ff5555;
+      font-weight: 700;
+    }
+    .hs-whisper-retry {
+      cursor: pointer;
+      text-decoration: underline;
+    }
+    .hs-whisper-retry:hover {
+      color: #ff8700;
+    }
     /* Inline stream event notifications */
     .hs-mc-stream-event {
       padding: 2px 4px;
@@ -1753,7 +1773,6 @@ function injectStyles() {
     .hs-mc-msg.hs-mc-msg-cleared .hs-mc-emote-stack img { filter: grayscale(1) brightness(0.7); }
     /* Strikethrough only the message body, not the user/badges/timestamp */
     .hs-mc-msg.hs-mc-msg-cleared > *:not(.hs-mc-ts):not(.hs-mc-user):not(.hs-mc-badge-img):not(.hs-mc-badge):not(.hs-mc-channel):not(.hs-mc-platform-badge):not(.hs-mc-reply-btn):not(.hs-mc-reply-ctx) { text-decoration: line-through; }
-    .hs-mc-msg.hs-mc-msg-cleared:hover { opacity: 0.85; }
     .hs-mc-msg.hs-mc-redeemed {
       background: rgba(145, 71, 255, 0.15);
       border-left: 3px solid #9147ff;
@@ -12316,6 +12335,11 @@ function listenForSocialEvents() {
             const el = document.createElement('div')
             el.className = 'hs-mc-empty'
             el.dataset.hsYtStatus = '1'
+            // Tag with the tab id this notice belongs to so renderMessages can
+            // drop it on tab switch (otherwise the YT-offline notice from one
+            // channel follows the user to other tabs and looks like a bug:
+            // "stream is live, why does it say not live?").
+            el.dataset.hsYtStatusTab = String(targetChannelId)
             el.textContent = text
             if (color) el.style.color = color
             msgsEl.appendChild(el)
@@ -12331,13 +12355,23 @@ function listenForSocialEvents() {
               }
             }
           } else if (msg.status === 'ended' || msg.status === 'error') {
-            // "too many requests" is a transient ws-handler rate limit (5/min/socket).
-            // Showing it confuses users — they didn't do anything wrong, and the next
-            // resubscribe attempt will succeed. Drop it silently.
-            const isRateLimited = msg.status === 'error' && /too many requests/i.test(msg.error || '')
-            if (!isRateLimited) {
+            // Drop noise: rate-limit (transient ws-handler 5/min/socket) and
+            // "stream not currently live / chat disabled" — the latter is the
+            // expected state when the user added a YT URL but the streamer
+            // isn't on YT right now, so showing it on every refresh is just
+            // clutter at the bottom of chat.
+            const errText = msg.error || ''
+            const isNoise = msg.status === 'error' && (
+              /too many requests/i.test(errText) ||
+              /not currently live/i.test(errText) ||
+              /chat is disabled/i.test(errText)
+            )
+            if (!isNoise) {
+              // Always prefix with "youtube:" — without it, error text looks
+              // like it's about whatever stream the user is watching, not
+              // the YouTube subscription that actually failed.
               upsertNotice(
-                msg.status === 'ended' ? 'youtube stream ended' : (msg.error || 'youtube connection error'),
+                msg.status === 'ended' ? 'youtube: stream ended' : `youtube: ${errText || 'connection error'}`,
                 '#ff4444'
               )
             }
@@ -14587,13 +14621,31 @@ function renderWhispersTab() {
     const senderLink = m.self ? userLink(me, myColor, me) : userLink(them, theirColor, theirUsername)
     const recipientLink = m.self ? userLink(them, theirColor, theirUsername) : userLink(me, myColor, me)
 
+    let statusHtml = ''
+    if (m.status === 'pending') {
+      statusHtml = ` <span class="hs-whisper-status" title="sending">…</span>`
+    } else if (m.status === 'failed') {
+      const errSafe = escapeHtml(m.error || 'failed')
+      const idSafe = escapeHtml(m.sendId || '')
+      statusHtml = ` <span class="hs-whisper-status hs-whisper-retry" title="click to retry" data-retry="${idSafe}">⚠ ${errSafe} — retry</span>`
+    }
+
     // All dynamic values pass through escapeHtml/sanitizeColor — safe innerHTML (all values escaped above)
-    div.innerHTML = `${tsHtml}<span style="color:${platColor};font-size:10px;font-weight:700">[${platTag}]</span> ${senderLink} <span style="color:#808080">-&gt;</span> ${recipientLink}: ${processEmotes(escapeHtml(m.text), null)}`
+    div.innerHTML = `${tsHtml}<span style="color:${platColor};font-size:10px;font-weight:700">[${platTag}]</span> ${senderLink} <span style="color:#808080">-&gt;</span> ${recipientLink}: ${processEmotes(escapeHtml(m.text), null)}${statusHtml}`
     frag.appendChild(div)
   }
 
   msgsEl.appendChild(frag)
   msgsEl.scrollTop = msgsEl.scrollHeight
+
+  msgsEl.querySelectorAll('.hs-whisper-retry').forEach(el => {
+    el.addEventListener('click', (e) => {
+      e.preventDefault()
+      e.stopPropagation()
+      const id = el.getAttribute('data-retry')
+      if (id) retryWhisperSend(id)
+    })
+  })
 }
 
 
@@ -15428,8 +15480,10 @@ function initInput() {
       const username = userEl?.textContent?.trim()?.toLowerCase();
       if (!username) return;
 
+      let wasUnmute = false;
       if (mutedUsers.has(username)) {
         mutedUsers.delete(username);
+        wasUnmute = true;
         showToast(`unmuted ${username}`);
         // Sync: tell background to unmute (broadcasts to all tabs — server mute expires naturally)
         safeSendMessage({ type: 'unmute_user', username });
@@ -15442,6 +15496,9 @@ function initInput() {
       }
       // Also persist locally for offline/fallback
       chrome.storage.local.set({ heatsync_mc_muted: [...mutedUsers] });
+      // Strip destroys DOM irreversibly — drop those rows so renderMessages
+      // rebuilds them from the buffer's _renderedHtml cache.
+      if (wasUnmute) restoreMcUnmutedDom(username);
       renderMessages(currentTab);
     }, { signal: mcSignal });
   }
@@ -15456,6 +15513,16 @@ function applyMcMutes() {
       msg.classList.remove('hs-mc-muted');
     }
   });
+}
+function restoreMcUnmutedDom(username) {
+  // stripMcMutedMessage destroys content irreversibly. Remove those rows so the
+  // next renderMessages() call rebuilds them from the buffer's _renderedHtml cache.
+  const target = username?.toLowerCase()
+  document.querySelectorAll('.hs-mc-msg.hs-mc-muted').forEach(msg => {
+    const userEl = msg.querySelector('.hs-mc-user:not(.hs-mc-reply-user)')
+    const u = userEl?.textContent?.trim()?.toLowerCase()
+    if (!target || u === target) msg.remove()
+  })
 }
 function stripMcMutedMessage(msg) {
   msg.classList.add('hs-mc-muted');
@@ -19737,7 +19804,8 @@ const STORAGE_KEY = 'heatsync_multichat';
           mutedUsers.delete(username);
           // Sync to background (broadcasts to all tabs + server)
           safeSendMessage({ type: 'unmute_user', username });
-          applyMcMutes();
+          restoreMcUnmutedDom(username);
+          renderMessages(currentTab);
           renderSettingsTab();
         }
         return;
@@ -21032,7 +21100,22 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       }
     }
 
-    return result.filter(Boolean).slice(-limit)
+    const merged = result.filter(Boolean).slice(-limit)
+
+    // Tail-sort: the proportional stepping anchors each source at fixed end
+    // positions (e.g. with 2 sources of 250 each, the last Kick msg always
+    // lands at slot 499 and the last Twitch at 498), so new live messages
+    // appear *above* a stuck older message instead of at the bottom. Sort
+    // the most recent ~50 by time so newest always lands last regardless
+    // of platform, while keeping fairMerge's interleave for the older bulk
+    // (which handles non-overlapping time ranges).
+    const tailSize = Math.min(50, merged.length)
+    if (tailSize > 1) {
+      const tail = merged.slice(-tailSize)
+      tail.sort((a, b) => (a.time || 0) - (b.time || 0))
+      for (let i = 0; i < tailSize; i++) merged[merged.length - tailSize + i] = tail[i]
+    }
+    return merged
   }
 
   function renderMessages(id) {
@@ -21188,13 +21271,16 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     // Detach yt-status notices (appended by social.js) before reconciling so the
     // diff doesn't treat them as "stale tail" and the next youtube_status event
     // doesn't re-add a fresh copy — that round-trip was the visible flicker.
-    // Other non-message children (stale "no messages yet" placeholders, etc.)
-    // are dropped: once `toRender` has content, those are leftover state.
+    // Notices tagged for a different tab are dropped (don't follow user across
+    // tabs — otherwise switching from a YT-offline channel to a live one keeps
+    // the misleading "stream is not currently live" line). Other non-message
+    // children (stale "no messages yet" placeholders, etc.) are dropped: once
+    // `toRender` has content, those are leftover state.
     const detachedExtras = []
     for (let i = msgsEl.children.length - 1; i >= 0; i--) {
       const c = msgsEl.children[i]
       if (c.dataset?.msgKey) continue
-      if (c.dataset?.hsYtStatus) {
+      if (c.dataset?.hsYtStatus && c.dataset?.hsYtStatusTab === String(id)) {
         detachedExtras.unshift(c)
       }
       c.remove()
@@ -22369,12 +22455,16 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       // Listen for emote updates from background
       if (msg.type === 'global_emotes_update' || msg.type === 'channel_emotes_update') {
         log('received', msg.type, msg.channelOwner || '');
-        // Invalidate per-message rendered HTML cache so history re-processes
-        // with the freshly arrived emote data (otherwise raw text sticks)
-        clearRenderedHtmlCache();
+        // Defer cache invalidation + epoch bump until after loadEmotes resolves.
+        // Bumping immediately caused 2-3 visible rebuilds on refresh because the
+        // runtime msg + storage event paths both fire and any intermediate
+        // renderMessages (rAF-debounced from new chat msgs) wipes the DOM.
         cleanup.clearTimeout(emoteReloadTimer);
         emoteReloadTimer = cleanup.setTimeout(() => {
-          loadEmotes().then(() => renderMessages(currentTab));
+          loadEmotes().then(() => {
+            clearRenderedHtmlCache();
+            renderMessages(currentTab);
+          });
         }, 300);
       }
       // Inventory changes: update membership + ensure emotes are in cache for tab completion
@@ -22415,7 +22505,8 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
         const u = msg.username?.toLowerCase()
         if (u && mutedUsers.has(u)) {
           mutedUsers.delete(u)
-          applyMcMutes()
+          restoreMcUnmutedDom(u)
+          renderMessages(currentTab)
         }
       }
 
@@ -22527,13 +22618,14 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       // Emote updates - reload when storage changes (debounced to avoid spam)
       if (changes.global_emotes || changes.channel_emotes_map || changes.emote_inventory || changes.native_twitch_emotes) {
         log('storage changed:', changes.channel_emotes_map ? 'channel_emotes_map' : '', changes.global_emotes ? 'global_emotes' : '', changes.emote_inventory ? 'emote_inventory' : '', changes.native_twitch_emotes ? 'native_twitch_emotes' : '');
-        // New emote data = invalidate render cache so messages re-process with new emotes
-        if (changes.global_emotes || changes.channel_emotes_map || changes.native_twitch_emotes) {
-          clearRenderedHtmlCache();
-        }
+        // Same deferral as the runtime msg path — bump epoch + invalidate
+        // cache only once after loadEmotes resolves, otherwise back-to-back
+        // bumps from multiple emote sources cause visible flicker on refresh.
+        const needsBump = !!(changes.global_emotes || changes.channel_emotes_map || changes.native_twitch_emotes)
         cleanup.clearTimeout(emoteReloadTimer);
         emoteReloadTimer = cleanup.setTimeout(() => {
           loadEmotes().then(() => {
+            if (needsBump) clearRenderedHtmlCache();
             if (!isScrolledUp) renderMessages(currentTab);
           });
         }, 300);

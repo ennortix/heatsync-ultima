@@ -1,8 +1,30 @@
 // Whispers — unified chronological timeline of all whispers + DMs
 
-const whisperTimeline = [] // { user, text, color, time, self, platform, key }
+const whisperTimeline = [] // { user, text, color, time, self, platform, key, status?, id? }
 const whisperUsers = new Map() // key → { platform, userId, displayName, color }
 const WHISPER_USERS_MAX = 200
+const WHISPER_TIMELINE_MAX_READ = 500 // hard cap on READ messages; unread are NEVER evicted
+
+// Trim oldest READ messages once read-count exceeds cap. Unread (incoming msgs
+// with time > whisperLastViewedTime) survive forever — that's the whole point.
+// Self-sent messages count as read (we wrote them).
+function trimWhisperTimeline() {
+  let readCount = 0
+  for (const m of whisperTimeline) {
+    if (m.self || m.time <= whisperLastViewedTime) readCount++
+  }
+  let toRemove = readCount - WHISPER_TIMELINE_MAX_READ
+  if (toRemove <= 0) return
+  for (let i = 0; i < whisperTimeline.length && toRemove > 0; ) {
+    const m = whisperTimeline[i]
+    if (m.self || m.time <= whisperLastViewedTime) {
+      whisperTimeline.splice(i, 1)
+      toRemove--
+    } else {
+      i++
+    }
+  }
+}
 function whisperUsersSet(key, value) {
   whisperUsers.set(key, value)
   if (whisperUsers.size > WHISPER_USERS_MAX) {
@@ -49,9 +71,10 @@ function saveWhispers() {
   const users = {}
   for (const [key, u] of whisperUsers) users[key] = u
   try {
+    trimWhisperTimeline()
     chrome.storage.local.set({
       hs_whispers_v2: {
-        timeline: whisperTimeline.slice(-200),
+        timeline: whisperTimeline.slice(),
         users,
         lastKey: lastWhisperKey,
         lastViewed: whisperLastViewedTime
@@ -107,7 +130,7 @@ function loadWhispers() {
           }
         }
         whisperTimeline.sort((a, b) => a.time - b.time)
-        if (whisperTimeline.length > 500) whisperTimeline.splice(0, whisperTimeline.length - 500)
+        trimWhisperTimeline()
         // Clean up v1
         try { chrome.storage.local.remove('hs_whispers') } catch {}
         whisperSaveDebounced()
@@ -147,7 +170,7 @@ function handleIncomingWhisper(msg) {
     key,
     id: msg.id || ''
   })
-  if (whisperTimeline.length > 500) whisperTimeline.splice(0, whisperTimeline.length - 500)
+  trimWhisperTimeline()
   lastWhisperKey = key
 
   if (currentTab === 'whispers') {
@@ -169,6 +192,7 @@ function handleIncomingWhisper(msg) {
 }
 
 function handleIncomingDm(data) {
+  if (data.id && whisperTimeline.some(m => m.id === data.id)) return
   const key = `hs:${data.from_user_id}`
   whisperUsersSet(key, {
     platform: 'heatsync',
@@ -185,9 +209,10 @@ function handleIncomingDm(data) {
     time,
     self: false,
     platform: 'heatsync',
-    key
+    key,
+    id: data.id || ''
   })
-  if (whisperTimeline.length > 500) whisperTimeline.splice(0, whisperTimeline.length - 500)
+  trimWhisperTimeline()
   lastWhisperKey = key
 
   if (currentTab === 'whispers') {
@@ -216,9 +241,12 @@ async function sendTwitchWhisper(toUserId, message) {
       body: { toUserId, message }
     })
     if (resp?.ok) return { ok: true }
+    // 401 covers all auth failures from the proxy — missing JWT, JWT without
+    // twitch_id, missing user:manage:whispers scope, or Helix rejecting phone-
+    // unverified senders. All paths recover via re-running Twitch OAuth.
     if (resp?.status === 401) {
       showToast(t('mc_whisper_login'))
-      return { ok: false, error: 'not authenticated' }
+      return { ok: false, error: resp.error || 'not authenticated', errorKind: 'auth' }
     }
     showToast('whisper failed: ' + (resp?.error || 'unknown'))
     return { ok: false, error: resp?.error || 'unknown' }
@@ -232,44 +260,78 @@ async function sendWhisperMessage(key, text) {
   const userInfo = whisperUsers.get(key)
   if (!userInfo) { showToast('unknown user — whisper someone first'); return }
 
-  // Optimistic: show message immediately
-  whisperTimeline.push({
+  // Optimistic: show message with pending status. Reference kept so we can
+  // flip status to 'sent' or 'failed' once the network resolves.
+  const sendId = `out_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+  const msg = {
     user: 'you',
     text,
     color: '#808080',
     time: Date.now(),
     self: true,
     platform: userInfo.platform,
-    key
-  })
-  if (whisperTimeline.length > 500) whisperTimeline.splice(0, whisperTimeline.length - 500)
+    key,
+    status: 'pending',
+    sendId
+  }
+  whisperTimeline.push(msg)
+  trimWhisperTimeline()
   lastWhisperKey = key
 
   if (currentTab === 'whispers') renderWhispersTab()
   whisperSaveDebounced()
 
-  if (key.startsWith('twitch:')) {
-    try {
+  let ok = false
+  let errMsg = ''
+  let errorKind = ''
+  try {
+    if (key.startsWith('twitch:')) {
       const resp = await sendTwitchWhisper(userInfo.userId, text)
-      if (!resp.ok) {
-        log('Whisper send failed:', resp.error)
-        showToast('whisper failed: ' + resp.error)
-      }
-    } catch (e) {
-      log('Whisper send failed:', e.message)
-      showToast('whisper failed: ' + e.message)
+      ok = !!resp.ok
+      errMsg = resp.error || ''
+      errorKind = resp.errorKind || ''
+    } else if (key.startsWith('hs:')) {
+      const toUserId = key.slice(3)
+      const resp = await apiFetch('/api/dm', { method: 'POST', body: { toUserId, content: text } })
+      ok = !!resp.ok
+      errMsg = resp.error || (ok ? '' : 'unknown error')
+      if (!ok && resp?.status === 401) errorKind = 'auth'
     }
-  } else if (key.startsWith('hs:')) {
-    const toUserId = key.slice(3)
-    const resp = await apiFetch('/api/dm', {
-      method: 'POST',
-      body: { toUserId, content: text }
-    })
-    if (!resp.ok) {
-      log('DM send failed:', resp.error)
-      showToast('dm failed: ' + (resp.error || 'unknown error'))
-    }
+  } catch (e) {
+    ok = false
+    errMsg = e.message
   }
+
+  // Mutate the original push (still referenced by sendId) so re-renders pick up state.
+  msg.status = ok ? 'sent' : 'failed'
+  if (!ok) {
+    msg.error = errMsg
+    if (errorKind) msg.errorKind = errorKind
+  }
+  if (currentTab === 'whispers') renderWhispersTab()
+  whisperSaveDebounced()
+}
+
+// Auto-retry queued auth-failed whispers when auth comes back online.
+// Bound to storage.onChanged on first call; safe to call repeatedly.
+function retryAuthFailedWhispers() {
+  const failed = whisperTimeline.filter(m => m.status === 'failed' && m.errorKind === 'auth' && m.sendId)
+  if (!failed.length) return
+  log(`[whispers] auth restored — retrying ${failed.length} queued send(s)`)
+  // Stagger retries so we don't burst the helix endpoint.
+  failed.forEach((m, i) => {
+    cleanup.setTimeout(() => retryWhisperSend(m.sendId), i * 250)
+  })
+}
+
+async function retryWhisperSend(sendId) {
+  const idx = whisperTimeline.findIndex(m => m.sendId === sendId)
+  if (idx < 0) return
+  const old = whisperTimeline[idx]
+  if (old.status !== 'failed') return
+  // Remove the failed entry — sendWhisperMessage will push a fresh pending one.
+  whisperTimeline.splice(idx, 1)
+  await sendWhisperMessage(old.key, old.text)
 }
 
 function renderWhispersTab() {
@@ -312,7 +374,7 @@ function renderWhispersTab() {
           }
           if (added) {
             whisperTimeline.sort((a, b) => a.time - b.time)
-            if (whisperTimeline.length > 500) whisperTimeline.splice(0, whisperTimeline.length - 500)
+            trimWhisperTimeline()
             if (currentTab === 'whispers') renderWhispersTab()
             whisperSaveDebounced()
           }
@@ -343,7 +405,11 @@ function renderWhispersTab() {
 
   for (const m of toRender) {
     const div = document.createElement('div')
-    div.className = m.self ? 'hs-mc-msg hs-whisper-self' : 'hs-mc-msg'
+    let cls = m.self ? 'hs-mc-msg hs-whisper-self' : 'hs-mc-msg'
+    if (m.status === 'pending') cls += ' hs-whisper-pending'
+    else if (m.status === 'failed') cls += ' hs-whisper-failed'
+    div.className = cls
+    if (m.sendId) div.dataset.sendId = m.sendId
     if (zebraEnabled && ++zebraCount % 2 === 0) div.classList.add('hs-mc-zebra')
 
     const ts = formatTimeFromTs(m.time)
@@ -373,11 +439,33 @@ function renderWhispersTab() {
     const senderLink = m.self ? userLink(me, myColor, me) : userLink(them, theirColor, theirUsername)
     const recipientLink = m.self ? userLink(them, theirColor, theirUsername) : userLink(me, myColor, me)
 
+    let statusHtml = ''
+    if (m.status === 'pending') {
+      statusHtml = ` <span class="hs-whisper-status" title="sending">…</span>`
+    } else if (m.status === 'failed') {
+      const errSafe = escapeHtml(m.error || 'failed')
+      const idSafe = escapeHtml(m.sendId || '')
+      if (m.errorKind === 'auth') {
+        statusHtml = ` <a href="https://heatsync.org/auth/twitch" target="_blank" rel="noopener noreferrer" class="hs-whisper-status hs-whisper-relogin" title="${errSafe} — click to log in with twitch">⚠ log in with twitch to send</a>`
+      } else {
+        statusHtml = ` <span class="hs-whisper-status hs-whisper-retry" title="click to retry" data-retry="${idSafe}">⚠ ${errSafe} — retry</span>`
+      }
+    }
+
     // All dynamic values pass through escapeHtml/sanitizeColor — safe innerHTML (all values escaped above)
-    div.innerHTML = `${tsHtml}<span style="color:${platColor};font-size:10px;font-weight:700">[${platTag}]</span> ${senderLink} <span style="color:#808080">-&gt;</span> ${recipientLink}: ${processEmotes(escapeHtml(m.text), null)}`
+    div.innerHTML = `${tsHtml}<span style="color:${platColor};font-size:10px;font-weight:700">[${platTag}]</span> ${senderLink} <span style="color:#808080">-&gt;</span> ${recipientLink}: ${processEmotes(escapeHtml(m.text), null)}${statusHtml}`
     frag.appendChild(div)
   }
 
   msgsEl.appendChild(frag)
   msgsEl.scrollTop = msgsEl.scrollHeight
+
+  msgsEl.querySelectorAll('.hs-whisper-retry').forEach(el => {
+    el.addEventListener('click', (e) => {
+      e.preventDefault()
+      e.stopPropagation()
+      const id = el.getAttribute('data-retry')
+      if (id) retryWhisperSend(id)
+    })
+  })
 }

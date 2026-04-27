@@ -176,6 +176,26 @@ function injectStyles() {
     .hs-whisper-self {
       opacity: 0.7;
     }
+    .hs-whisper-pending {
+      opacity: 0.45;
+    }
+    .hs-whisper-pending .hs-whisper-status {
+      color: #ffaf00;
+    }
+    .hs-whisper-failed {
+      background: rgba(255, 0, 0, 0.10);
+    }
+    .hs-whisper-failed .hs-whisper-status {
+      color: #ff5555;
+      font-weight: 700;
+    }
+    .hs-whisper-retry {
+      cursor: pointer;
+      text-decoration: underline;
+    }
+    .hs-whisper-retry:hover {
+      color: #ff8700;
+    }
     /* Inline stream event notifications */
     .hs-mc-stream-event {
       padding: 2px 4px;
@@ -720,7 +740,6 @@ function injectStyles() {
     .hs-mc-msg.hs-mc-msg-cleared .hs-mc-emote-stack img { filter: grayscale(1) brightness(0.7); }
     /* Strikethrough only the message body, not the user/badges/timestamp */
     .hs-mc-msg.hs-mc-msg-cleared > *:not(.hs-mc-ts):not(.hs-mc-user):not(.hs-mc-badge-img):not(.hs-mc-badge):not(.hs-mc-channel):not(.hs-mc-platform-badge):not(.hs-mc-reply-btn):not(.hs-mc-reply-ctx) { text-decoration: line-through; }
-    .hs-mc-msg.hs-mc-msg-cleared:hover { opacity: 0.85; }
     .hs-mc-msg.hs-mc-redeemed {
       background: rgba(145, 71, 255, 0.15);
       border-left: 3px solid #9147ff;

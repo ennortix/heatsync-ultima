@@ -572,8 +572,10 @@ function initInput() {
       const username = userEl?.textContent?.trim()?.toLowerCase();
       if (!username) return;
 
+      let wasUnmute = false;
       if (mutedUsers.has(username)) {
         mutedUsers.delete(username);
+        wasUnmute = true;
         showToast(`unmuted ${username}`);
         // Sync: tell background to unmute (broadcasts to all tabs — server mute expires naturally)
         safeSendMessage({ type: 'unmute_user', username });
@@ -586,6 +588,9 @@ function initInput() {
       }
       // Also persist locally for offline/fallback
       chrome.storage.local.set({ heatsync_mc_muted: [...mutedUsers] });
+      // Strip destroys DOM irreversibly — drop those rows so renderMessages
+      // rebuilds them from the buffer's _renderedHtml cache.
+      if (wasUnmute) restoreMcUnmutedDom(username);
       renderMessages(currentTab);
     }, { signal: mcSignal });
   }
@@ -600,6 +605,16 @@ function applyMcMutes() {
       msg.classList.remove('hs-mc-muted');
     }
   });
+}
+function restoreMcUnmutedDom(username) {
+  // stripMcMutedMessage destroys content irreversibly. Remove those rows so the
+  // next renderMessages() call rebuilds them from the buffer's _renderedHtml cache.
+  const target = username?.toLowerCase()
+  document.querySelectorAll('.hs-mc-msg.hs-mc-muted').forEach(msg => {
+    const userEl = msg.querySelector('.hs-mc-user:not(.hs-mc-reply-user)')
+    const u = userEl?.textContent?.trim()?.toLowerCase()
+    if (!target || u === target) msg.remove()
+  })
 }
 function stripMcMutedMessage(msg) {
   msg.classList.add('hs-mc-muted');

@@ -1677,6 +1677,10 @@ function injectStyles() {
       line-height: 1;
       box-sizing: border-box;
       min-width: 0;
+      text-align: center;
+      display: flex;
+      align-items: center;
+      justify-content: center;
     }
     .hs-mc-pf-btn.hs-mc-pf-twitch { border-color: #9146ff; background: #9146ff; color: #fff; }
     .hs-mc-pf-btn.hs-mc-pf-kick { border-color: #53fc18; background: #53fc18; color: #000; }

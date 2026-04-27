@@ -196,6 +196,21 @@ function injectStyles() {
     .hs-whisper-retry:hover {
       color: #ff8700;
     }
+    .hs-whisper-relogin {
+      display: inline-block;
+      padding: 1px 6px;
+      margin-left: 4px;
+      background: #ff8700;
+      color: #fff !important;
+      border-radius: 3px;
+      font-weight: 700;
+      text-decoration: none;
+      cursor: pointer;
+    }
+    .hs-whisper-relogin:hover {
+      background: #fff;
+      color: #000 !important;
+    }
     /* Inline stream event notifications */
     .hs-mc-stream-event {
       padding: 2px 4px;
@@ -3494,27 +3509,6 @@ function injectStyles() {
       border-radius: 2px;
       font-family: monospace;
       font-size: 12px;
-    }
-
-    /* ---- NOTIFICATIONS ---- */
-    .hs-notif {
-      padding: 10px 12px;
-      border-bottom: 1px solid #808080;
-      cursor: pointer;
-      transition: none;
-    }
-    .hs-notif:hover {
-      background: #fff;
-    }
-    .hs-notif:hover,
-    .hs-notif:hover *:not(.hs-spoiler:not(.revealed)) {
-      color: #000 !important;
-    }
-    .hs-notif-header {
-      padding: 8px 12px;
-      font-size: 12px;
-      color: #ff6b35;
-      border-bottom: 1px solid #808080;
     }
 
     /* ---- TAB BADGE ---- */

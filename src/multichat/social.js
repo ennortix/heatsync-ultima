@@ -101,11 +101,8 @@ function _capFeedEngage() {
   while (feedBookmarked.size > FEED_ENGAGE_CAP) feedBookmarked.delete(feedBookmarked.values().next().value)
   while (feedReactionsCache.size > FEED_ENGAGE_CAP) feedReactionsCache.delete(feedReactionsCache.keys().next().value)
 }
-let notifications = { mentions: 0, op_replies: 0, re_replies: 0, total: 0 };
-let notifMessages = []; // Actual notification messages for display
-let notifLoaded = false;
-let unreadNotifCount = 0;
-const activityEvents = []; // Stream events for activity tab
+// Stream events injected inline into per-channel buffers (no dedicated tab)
+const activityEvents = [];
 const ACTIVITY_EVENTS_MAX = 500;
 function pushActivityEvent(evt) {
   if (activityEvents.some(m => m.text === evt.text)) return
@@ -305,13 +302,10 @@ async function loadHsAuth() {
           if (!wasAuthed && hsAuthToken && typeof retryAuthFailedWhispers === 'function') {
             retryAuthFailedWhispers();
           }
-          // Reset feed/notif/discover/pinned data on auth change so the next
+          // Reset feed/discover/pinned data on auth change so the next
           // tab open re-fetches with new auth.
           feedLoaded = false;
           feedMessages = [];
-          notifLoaded = false;
-          notifMessages = [];
-          unreadNotifCount = 0;
           discoverLoaded = false;
           discoverLoading = false;
           discoverTags = [];
@@ -322,7 +316,6 @@ async function loadHsAuth() {
           feedLiked.clear();
           feedBookmarked.clear();
           feedReactionsCache.clear();
-          updateNotifBadge();
           if (currentTab === 'feed') {
             renderMessages(currentTab);
           }
@@ -602,23 +595,7 @@ function listenForSocialEvents() {
         Object.assign(activeThread.op, msg.data);
       }
     }
-    if (msg.type === 'notification:new') {
-      unreadNotifCount++;
-      updateNotifBadge();
-    }
   });
-}
-
-// Update notif tab badge (reuse existing element to avoid DOM churn)
-function updateNotifBadge() {
-  if (!tabBarElement) return
-  const tab = tabBarElement.querySelector('[data-tab="activity"]')
-  if (!tab) return
-  // Remove any legacy badge element
-  const badge = tab.querySelector('.hs-badge')
-  if (badge) badge.remove()
-  // Just use color indicator — no counter
-  tab.classList.toggle('has-new', unreadNotifCount > 0)
 }
 
 // ---- FEED ----
@@ -1543,144 +1520,6 @@ async function postFeedMessage(text, { topLevel = false } = {}) {
   }
 }
 
-// ---- NOTIFICATIONS ----
-
-async function fetchNotifications() {
-  try {
-    const resp = await apiFetch('/api/notifications');
-    if (resp.ok) {
-      notifications = resp.data || { mentions: 0, op_replies: 0, re_replies: 0, total: 0 };
-      unreadNotifCount = notifications.total || 0;
-      updateNotifBadge();
-    } else if (resp.status === 401) {
-      notifLoaded = true;
-      return; // Not logged in
-    }
-    // Fetch actual notification messages (mentions, op replies, re replies)
-    const msgResp = await apiFetch('/api/messages?filter_type=mentions&limit=20');
-    if (msgResp.ok) {
-      notifMessages = msgResp.data?.messages || [];
-      if (notifMessages.length > 500) notifMessages = notifMessages.slice(-500);
-    }
-  } catch (e) {
-    log('Notification fetch error:', e);
-  }
-  notifLoaded = true;
-}
-
-function renderActivity() {
-  if (typeof activeProfileCard !== 'undefined' && activeProfileCard) return;
-  const msgsEl = document.getElementById('hs-mc-messages');
-  if (!msgsEl) return;
-
-  // Hide resume button on initial render (shown only when new content arrives while scrolled)
-  if (!isScrolledUp) {
-    const newBtn = document.getElementById('hs-mc-new-msgs');
-    if (newBtn) newBtn.style.display = 'none';
-  }
-
-  if (!hsAuthToken && activityEvents.length === 0) {
-    msgsEl.innerHTML = `<div class="hs-mc-empty">${t('mc_social_login_activity')}</div>`;
-    return;
-  }
-
-  if (hsAuthToken && !notifLoaded) {
-    msgsEl.innerHTML = '<div class="hs-mc-empty">loading...</div>';
-    fetchNotifications().then(() => {
-      if (currentTab === 'activity') renderActivity();
-    });
-    return;
-  }
-
-  // Mark notifs as read when viewing
-  if (unreadNotifCount > 0) {
-    apiFetch('/api/notifications/mark-read', { method: 'POST', body: { type: 'all' } });
-    unreadNotifCount = 0;
-    updateNotifBadge();
-    try { chrome.runtime.sendMessage({ type: 'notifs_viewed' }); } catch (e) {}
-  }
-
-  // Merge notifMessages + activityEvents, sort descending by time
-  const normalized = [
-    ...notifMessages.map(m => ({ ...m, _time: new Date(m.created_at).getTime(), _src: 'notif' })),
-    ...activityEvents.map(m => ({ ...m, _time: m.time, _src: 'event' }))
-  ];
-  normalized.sort((a, b) => b._time - a._time);
-  const merged = normalized.slice(0, 150);
-
-  if (merged.length === 0) {
-    msgsEl.innerHTML = `<div class="hs-mc-empty">${t('mc_no_activity')}</div>`;
-    return;
-  }
-
-  msgsEl.textContent = '';
-  const frag = document.createDocumentFragment();
-
-  // Summary header (notifs only)
-  if (notifications.total > 0) {
-    const header = document.createElement('div');
-    header.className = 'hs-notif-header';
-    const parts = [];
-    if (notifications.mentions > 0) parts.push(`${notifications.mentions} mention${notifications.mentions > 1 ? 's' : ''}`);
-    if (notifications.op_replies > 0) parts.push(`${notifications.op_replies} OP repl${notifications.op_replies > 1 ? 'ies' : 'y'}`);
-    if (notifications.re_replies > 0) parts.push(`${notifications.re_replies} RE repl${notifications.re_replies > 1 ? 'ies' : 'y'}`);
-    header.textContent = parts.join(', ');
-    frag.appendChild(header);
-  }
-
-  for (const m of merged) {
-    if (m._src === 'event') {
-      const div = document.createElement('div');
-      div.className = `hs-mc-stream-event ${m.eventClass || ''}`;
-      const ts = formatRelativeMs(Date.now() - m.time);
-      const tsSpan = window._hsTimestampsEnabled !== false ? `<span class="hs-feed-time">${escapeHtml(ts)}</span>` : '';
-      // Show channel name in magenta for activity context
-      // Strip [channel] prefix from follow events (we add our own #channel)
-      let evtText = m.text
-      if (m.channel) evtText = evtText.replace(new RegExp(`^\\[${m.channel}\\]\\s*`), '')
-      const chanColor = _profileCache.get(m.channel?.toLowerCase())?.profile?.twitch_color || '#fff';
-      const chanLabel = m.channel ? `<a href="https://heatsync.org/twitch/${encodeURIComponent(m.channel)}" target="_blank" class="hs-feed-user hs-mc-user" data-username="${escapeHtml(m.channel.toLowerCase())}" style="color:${sanitizeColor(chanColor)};font-weight:bold">${escapeHtml(m.channel)}</a> ` : '';
-      let evtHtml = escapeHtml(evtText)
-      evtHtml = evtHtml.replace(/(switched to |went live \u2014 )(.+)$/, (_, prefix, game) => {
-        return `${prefix}<span style="color:#fff">${game}</span>`
-      })
-      div.innerHTML = `${tsSpan}${chanLabel}${evtHtml}`;
-      frag.appendChild(div);
-    } else {
-      frag.appendChild(buildNotifDiv(m));
-    }
-  }
-  msgsEl.appendChild(frag);
-}
-
-function buildNotifDiv(m) {
-  const div = document.createElement('div');
-  div.className = 'hs-notif';
-  const time = formatRelativeTime(m.created_at);
-  // Safe: renderFeedContent escapes via escapeHtml first, then adds safe formatting tags
-  // Fallback to processEmotes (local cache) when emote_refs is absent
-  const rawContent = m.content || m.text || '';
-  const hasEmoteRefs = m.emote_refs && typeof m.emote_refs === 'object' && Object.keys(m.emote_refs).length > 0;
-  const content = hasEmoteRefs
-    ? renderFeedContent(rawContent, m.emote_refs)
-    : processEmotes(escapeHtml(rawContent), null);
-
-  // Safe: username through escapeHtml+encodeURIComponent, time through escapeHtml, content through renderFeedContent (which escapes via escapeHtml then adds safe formatting)
-  const tsHtml = window._hsTimestampsEnabled !== false ? `<span class="hs-feed-time">${escapeHtml(time)}</span>` : '';
-  div.innerHTML = `${tsHtml}<a href="https://heatsync.org/user/${encodeURIComponent(m.username)}" target="_blank" class="hs-feed-user hs-mc-user" data-username="${escapeHtml((m.username || 'anon').toLowerCase())}" style="color:${sanitizeColor(m.user_color || '#fff')}">${escapeHtml(m.username || 'anon')}</a>: <span class="hs-feed-body">${content}</span>`;
-
-  // Click to switch to feed and show this thread (but not if clicking interactive content)
-  div.addEventListener('click', (e) => {
-    const spoiler = e.target.closest('.hs-spoiler')
-    if (spoiler) { spoiler.classList.toggle('revealed'); return }
-    if (e.target.closest('a, .hs-mc-emote, .hs-mc-link')) return
-    const threadId = m.reply_to || m.base36_id;
-    switchTab('feed');
-    openThread(threadId);
-  });
-
-  return div;
-}
 
 // ============================================
 // DISCOVER TAB (trending tags + profiles)

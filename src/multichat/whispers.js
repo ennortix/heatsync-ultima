@@ -446,7 +446,7 @@ function renderWhispersTab() {
       const errSafe = escapeHtml(m.error || 'failed')
       const idSafe = escapeHtml(m.sendId || '')
       if (m.errorKind === 'auth') {
-        statusHtml = ` <a href="https://heatsync.org/auth/twitch" target="_blank" rel="noopener noreferrer" class="hs-whisper-status hs-whisper-relogin" title="${errSafe} — click to log in with twitch">⚠ log in with twitch to send</a>`
+        statusHtml = ` <a href="https://heatsync.org/auth/twitch" target="_blank" rel="noopener noreferrer" class="hs-whisper-status hs-whisper-relogin" title="${errSafe} — click to log in on heatsync">⚠ log in on heatsync to send</a>`
       } else {
         statusHtml = ` <span class="hs-whisper-status hs-whisper-retry" title="click to retry" data-retry="${idSafe}">⚠ ${errSafe} — retry</span>`
       }

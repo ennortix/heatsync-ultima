@@ -574,7 +574,6 @@
         <button class="hs-mc-tab active" data-tab="feed">${t('mc_tab_feed')}</button>
         <button class="hs-mc-tab" data-tab="whispers">${t('mc_tab_whispers')}</button>
         <button class="hs-mc-tab" data-tab="mentions">${t('mc_tab_mentions')}</button>
-        <button class="hs-mc-tab" data-tab="activity">${t('mc_tab_activity')}</button>
         <button class="hs-mc-tab" data-tab="discover">${t('mc_tab_discover')}</button>
         <button class="hs-mc-tab" data-tab="pinned">${t('mc_tab_pinned')}</button>
         <button class="hs-mc-tab" data-tab="live">${t('mc_tab_live')}</button>
@@ -658,7 +657,7 @@
       }
 
       // Channel tabs get edit/remove context menu
-      const reserved = ['feed', 'mentions', 'activity', 'whispers', 'discover', 'pinned', 'add', 'rotate', 'settings'];
+      const reserved = ['feed', 'mentions', 'whispers', 'discover', 'pinned', 'add', 'rotate', 'settings'];
       if (reserved.includes(tabId)) return;
       e.preventDefault();
 
@@ -2114,7 +2113,7 @@
     if (!tabBarElement) return;
 
     // Clear existing channel tabs (keep built-in tabs)
-    const existingChannelTabs = tabBarElement.querySelectorAll('.hs-mc-tab[data-tab]:not([data-tab="live"]):not([data-tab="feed"]):not([data-tab="mentions"]):not([data-tab="activity"]):not([data-tab="whispers"]):not([data-tab="discover"]):not([data-tab="pinned"]):not([data-tab="add"]):not([data-tab="rotate"]):not([data-tab="settings"])');
+    const existingChannelTabs = tabBarElement.querySelectorAll('.hs-mc-tab[data-tab]:not([data-tab="live"]):not([data-tab="feed"]):not([data-tab="mentions"]):not([data-tab="whispers"]):not([data-tab="discover"]):not([data-tab="pinned"]):not([data-tab="add"]):not([data-tab="rotate"]):not([data-tab="settings"])');
     existingChannelTabs.forEach(t => t.remove());
 
     // Add channel tabs before the + button in the scroll section
@@ -2539,12 +2538,6 @@
     if (searchBar) searchBar.classList.toggle('visible', id === 'mentions')
 
     // Discover/pinned refresh bars removed — auto-poll handles freshness
-
-    // Clear activity badge when switching to activity tab
-    if (id === 'activity' && unreadNotifCount > 0) {
-      unreadNotifCount = 0;
-      updateNotifBadge();
-    }
 
     // Clear whisper unread when switching to whispers tab
     if (id === 'whispers') {
@@ -3339,7 +3332,6 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     }
     // Social tabs have their own renderers
     if (id === 'feed') { renderFeed(); return; }
-    if (id === 'activity') { renderActivity(); return; }
     if (id === 'whispers') { renderWhispersTab(); return; }
     if (id === 'discover') { renderDiscoverTab(); return; }
     if (id === 'pinned') { renderPinnedTab(); return; }
@@ -5962,8 +5954,6 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     feedPage = 1;
     feedHasMore = true;
     feedLastFetch = 0;
-    notifLoaded = false;
-    notifMessages = [];
     activeThread = null;
     _autoYtVideoId = null;
     // Reset feed scroll listener flag (new DOM element)

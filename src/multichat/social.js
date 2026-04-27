@@ -530,6 +530,11 @@ function listenForSocialEvents() {
             const el = document.createElement('div')
             el.className = 'hs-mc-empty'
             el.dataset.hsYtStatus = '1'
+            // Tag with the tab id this notice belongs to so renderMessages can
+            // drop it on tab switch (otherwise the YT-offline notice from one
+            // channel follows the user to other tabs and looks like a bug:
+            // "stream is live, why does it say not live?").
+            el.dataset.hsYtStatusTab = String(targetChannelId)
             el.textContent = text
             if (color) el.style.color = color
             msgsEl.appendChild(el)
@@ -550,8 +555,11 @@ function listenForSocialEvents() {
             // resubscribe attempt will succeed. Drop it silently.
             const isRateLimited = msg.status === 'error' && /too many requests/i.test(msg.error || '')
             if (!isRateLimited) {
+              // Always prefix with "youtube:" — without it, "stream is not currently
+              // live (or chat is disabled)" looks like it's about whatever stream the
+              // user is watching, not the YouTube subscription that actually failed.
               upsertNotice(
-                msg.status === 'ended' ? 'youtube stream ended' : (msg.error || 'youtube connection error'),
+                msg.status === 'ended' ? 'youtube: stream ended' : `youtube: ${msg.error || 'connection error'}`,
                 '#ff4444'
               )
             }

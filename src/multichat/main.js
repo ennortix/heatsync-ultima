@@ -2016,7 +2016,8 @@
           mutedUsers.delete(username);
           // Sync to background (broadcasts to all tabs + server)
           safeSendMessage({ type: 'unmute_user', username });
-          applyMcMutes();
+          restoreMcUnmutedDom(username);
+          renderMessages(currentTab);
           renderSettingsTab();
         }
         return;
@@ -2212,9 +2213,13 @@
     style.textContent = `
       /* Fix inner column transform — must be 'none', not translateX(0),
          because any transform value creates a containing block that breaks
-         position:fixed on descendant elements (tab bar goes off-screen) */
+         position:fixed on descendant elements (tab bar goes off-screen).
+         Kill the transition too — without it Twitch's 500ms transform
+         transition keeps interpolating to translateX(-340px) on every
+         class flip, leaving the panel partially off-screen. */
       .channel-root__right-column--expanded {
         transform: none !important;
+        transition: none !important;
       }
       /* Fix collapse/expand arrow — Twitch applies translateX(-340px) to
          slide it with the chat panel animation, but our layout changes make
@@ -3463,13 +3468,16 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     // Detach yt-status notices (appended by social.js) before reconciling so the
     // diff doesn't treat them as "stale tail" and the next youtube_status event
     // doesn't re-add a fresh copy — that round-trip was the visible flicker.
-    // Other non-message children (stale "no messages yet" placeholders, etc.)
-    // are dropped: once `toRender` has content, those are leftover state.
+    // Notices tagged for a different tab are dropped (don't follow user across
+    // tabs — otherwise switching from a YT-offline channel to a live one keeps
+    // the misleading "stream is not currently live" line). Other non-message
+    // children (stale "no messages yet" placeholders, etc.) are dropped: once
+    // `toRender` has content, those are leftover state.
     const detachedExtras = []
     for (let i = msgsEl.children.length - 1; i >= 0; i--) {
       const c = msgsEl.children[i]
       if (c.dataset?.msgKey) continue
-      if (c.dataset?.hsYtStatus) {
+      if (c.dataset?.hsYtStatus && c.dataset?.hsYtStatusTab === String(id)) {
         detachedExtras.unshift(c)
       }
       c.remove()
@@ -4690,7 +4698,8 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
         const u = msg.username?.toLowerCase()
         if (u && mutedUsers.has(u)) {
           mutedUsers.delete(u)
-          applyMcMutes()
+          restoreMcUnmutedDom(u)
+          renderMessages(currentTab)
         }
       }
 

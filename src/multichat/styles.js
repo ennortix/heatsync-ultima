@@ -128,15 +128,16 @@ function injectStyles() {
     .hs-mc-util-btn {
       font-weight: 700 !important;
     }
-    /* Util row — orange for ui parity with heatsync.org */
+    /* Util row — gray frame for ui parity with heatsync.org chat-tile.
+       Hover → white bg / black text per global hover rule. */
     .hs-mc-util-row .hs-mc-tab {
-      color: #ff8700 !important;
-      border-color: #ff8700 !important;
+      color: #808080 !important;
+      border-color: #808080 !important;
     }
     .hs-mc-util-row .hs-mc-tab:hover {
-      background: #ff8700 !important;
+      background: #fff !important;
       color: #000 !important;
-      border-color: #ff8700 !important;
+      border-color: #fff !important;
     }
     /* Whisper conversation list */
     .hs-whisper-conv {

@@ -1467,6 +1467,13 @@
   function positionChatResizeHandle() {
     const handle = ensureChatResizeHandle();
     ;['top','bottom','left','right','width','height'].forEach(p => handle.style.removeProperty(p));
+    // YouTube: only show the handle on watch pages (where ytd-watch-flexy
+    // and the chat panel exist). Home/search/channel pages have no chat
+    // to resize — the orange bar would just float over empty space.
+    if (hostPlatform === 'yt' && !document.querySelector('ytd-watch-flexy')) {
+      handle.style.display = 'none';
+      return;
+    }
     // For YT, chat-right is now position:fixed so the unified handle
     // owns ALL four positions. For Twitch/Kick, chat-right uses the
     // existing per-platform handles (which have ghost-preview perf
@@ -5452,8 +5459,17 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       log('[c-button] sanitizing invalid chatPosition:', chatPosition, '→ right');
       chatPosition = 'right';
     }
+    // YouTube: only apply layout overrides on watch pages. Home, search,
+    // channel pages don't have ytd-watch-flexy / #primary / #player so
+    // our rules just left the page broken (blank top, floating handle).
+    const isYtNonWatch = hostPlatform === 'yt' && !document.querySelector('ytd-watch-flexy');
     document.body.classList.remove('hs-chat-top', 'hs-chat-right', 'hs-chat-bottom', 'hs-chat-left');
-    document.body.classList.add(`hs-chat-${chatPosition}`);
+    document.body.classList.toggle('hs-platform-yt', hostPlatform === 'yt' && !isYtNonWatch);
+    document.body.classList.toggle('hs-platform-twitch', hostPlatform !== 'yt' && !isKick);
+    document.body.classList.toggle('hs-platform-kick', !!isKick);
+    if (!isYtNonWatch) {
+      document.body.classList.add(`hs-chat-${chatPosition}`);
+    }
     document.body.classList.toggle('hs-mode-theatre', theatreMode);
     document.body.classList.toggle('hs-mode-normal', !theatreMode);
     // Push the chatWidth css var down so the per-position CSS can build offsets

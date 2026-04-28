@@ -5489,15 +5489,10 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
           GEOM_PROPS.forEach(p => container.style.removeProperty(p));
           container.style.removeProperty('background');
           container.style.removeProperty('overflow');
-          // Re-establish platform-natural geometry that we just blew away
-          if (hostPlatform === 'yt') {
-            // Fill viewport vertically — with #below clutter hidden the
-            // chat panel should extend to the full viewport height. The
-            // cached _hsYtChatFrameHeight (~500-600px from the original
-            // live-chat-frame) was leaving a gap below.
-            container.style.cssText = `height:100vh;overflow:hidden;`;
-            try { applyYouTubeChatWidth() } catch (_) {}
-          } else if (isKick) {
+          // YT chat-right is now position:fixed via CSS rule — don't set
+          // any inline geometry, let the stylesheet own it (works on
+          // initial load without waiting for a C-cycle).
+          if (isKick) {
             try { applyKickChatWidth() } catch (_) {}
           }
         }
@@ -5563,12 +5558,12 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       ];
       const ytSizedEls = ytSelectors.map(s => document.querySelector(s)).filter(Boolean);
       const PLAYER_GEOM = ['width', 'height', 'max-width', 'max-height', 'min-height'];
-      if (chatPosition === 'top' || chatPosition === 'bottom' || chatPosition === 'left') {
+      if (chatPosition === 'top' || chatPosition === 'bottom' || chatPosition === 'left' || chatPosition === 'right') {
         // Compute aspect-preserved player size for the freed area.
         // top/bottom: chat eats height, player fills the rest (full width).
-        // left:      chat eats width, player fills the rest (full height).
+        // left/right: chat eats width, player fills the rest (full height).
         let availH, availW;
-        if (chatPosition === 'left') {
+        if (chatPosition === 'left' || chatPosition === 'right') {
           availW = Math.max(200, innerWidth - chatWidth);
           availH = innerHeight;
         } else {

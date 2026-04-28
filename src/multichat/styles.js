@@ -4497,7 +4497,11 @@ function injectStyles() {
        JS sets --hs-chat-w / --hs-chat-h CSS vars from settings.
        ============================================ */
 
-    /* --- chat container: fixed-position at chosen edge --- */
+    /* --- chat container: fixed-position at chosen edge.
+       chat-right also uses position:fixed (instead of YT's natural flex
+       layout) so small-viewport responsive breakpoints don't push chat
+       below the player. Chat is always at the viewport edge. --- */
+    body.hs-platform-yt.hs-chat-right #hs-mc-container,
     body.hs-chat-left #hs-mc-container,
     body.hs-chat-top #hs-mc-container,
     body.hs-chat-bottom #hs-mc-container {
@@ -4506,6 +4510,14 @@ function injectStyles() {
       background: #000 !important;
       box-sizing: border-box !important;
       margin: 0 !important;
+    }
+    body.hs-platform-yt.hs-chat-right #hs-mc-container {
+      top: 0 !important;
+      bottom: 0 !important;
+      right: 0 !important;
+      left: auto !important;
+      width: var(--hs-chat-w, 340px) !important;
+      height: 100vh !important;
     }
     body.hs-chat-left #hs-mc-container {
       top: 0 !important;
@@ -4612,7 +4624,8 @@ function injectStyles() {
     /* --- YOUTUBE: collapse #secondary; pad #primary --- */
     body.hs-platform-yt.hs-chat-left #secondary,
     body.hs-platform-yt.hs-chat-top #secondary,
-    body.hs-platform-yt.hs-chat-bottom #secondary {
+    body.hs-platform-yt.hs-chat-bottom #secondary,
+    body.hs-platform-yt.hs-chat-right #secondary {
       width: 0 !important;
       min-width: 0 !important;
       max-width: 0 !important;
@@ -4643,14 +4656,15 @@ function injectStyles() {
     body.hs-platform-yt.hs-chat-right #secondary-inner > *:not(#chat-container) {
       display: none !important;
     }
-    /* Default 'right' position — kill YT's gutters so the player sits flush
-       against the orange resize handle. The 16px gap was YT subtracting
-       --ytd-watch-flexy-side-menu-margin (22px = 16+6) from the primary
-       width when sizing the player. Override:
-         non-player-width = chat width only (no gutters)
-         side-menu-margin = 0 */
+    /* Default 'right' position — chat fixed at viewport right, primary
+       fills the rest. Kills YT's responsive small-window stacking
+       behavior since chat is no longer in the flex layout. */
     body.hs-platform-yt.hs-chat-right #primary {
-      margin-right: 0 !important;
+      margin-left: 0 !important;
+      margin-right: var(--hs-chat-w, 340px) !important;
+      width: calc(100vw - var(--hs-chat-w, 340px)) !important;
+      max-width: calc(100vw - var(--hs-chat-w, 340px)) !important;
+      flex: 0 0 auto !important;
     }
     body.hs-platform-yt.hs-chat-right ytd-watch-flexy {
       --ytd-watch-flexy-side-menu-margin: 0 !important;

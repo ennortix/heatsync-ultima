@@ -4604,6 +4604,7 @@ function injectStyles() {
     }
     .hs-feed-embed-twitter {
       aspect-ratio: auto;
+      height: 380px;
       max-width: 480px;
       background: transparent;
     }
@@ -12227,13 +12228,13 @@ function tenorEmbed(gifId) {
 
 function twitterEmbed(tweetId, url) {
   const id = sanitizeEmbedId(tweetId)
-  const safe = safeUrl(url)
   if (!id) return ''
-  // Twitter widgets.js loads async; if blocked, fall back to link.
+  // platform.twitter.com/embed/Tweet.html renders the tweet in an iframe with no
+  // widgets.js needed (script tags injected via innerHTML never execute, so the
+  // blockquote+script approach the website uses is broken in extension context).
   return `<div class="hs-feed-embed-container hs-feed-embed-twitter">
-    <blockquote class="twitter-tweet" data-theme="dark" data-dnt="true">
-      <a href="${attr(safe || url)}">${attr(safe || url)}</a>
-    </blockquote>
+    <iframe src="https://platform.twitter.com/embed/Tweet.html?id=${id}&theme=dark&dnt=true"
+      allow="autoplay; clipboard-write" allowfullscreen loading="lazy"></iframe>
   </div>`
 }
 
@@ -12392,7 +12393,7 @@ function parseFeedEmbed(url) {
     const safe = safeUrl(cleanUrl)
     if (!safe) return ''
     return `<div class="hs-feed-media-direct">
-      <img src="${attr(safe)}" alt="" loading="lazy"
+      <img src="${attr(safe)}" alt=""
         onerror="this.outerHTML='<div class=\\'hs-feed-media-deleted\\'>image unavailable</div>'">
     </div>`
   }
@@ -12457,7 +12458,7 @@ function buildFeedMediaHtml(m) {
       if (med.type === 'video') {
         return `<video controls muted preload="metadata" src="${attr(url)}" class="hs-feed-media-item"></video>`
       }
-      return `<img src="${attr(url)}" alt="" loading="lazy" class="hs-feed-media-item">`
+      return `<img src="${attr(url)}" alt="" class="hs-feed-media-item">`
     }).filter(Boolean).join('')
     if (items) return `<div class="hs-feed-media hs-feed-media-multi">${items}</div>`
   }
@@ -12482,7 +12483,7 @@ function buildFeedMediaHtml(m) {
     }
 
     if (isImage) {
-      return `<div class="hs-feed-media"><img src="${attr(safe)}" alt="" loading="lazy" class="hs-feed-media-img"></div>`
+      return `<div class="hs-feed-media"><img src="${attr(safe)}" alt="" class="hs-feed-media-img"></div>`
     }
 
     return ''

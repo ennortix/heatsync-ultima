@@ -5562,15 +5562,24 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       ];
       const ytSizedEls = ytSelectors.map(s => document.querySelector(s)).filter(Boolean);
       const PLAYER_GEOM = ['width', 'height', 'max-width', 'max-height', 'min-height'];
-      if (chatPosition === 'top' || chatPosition === 'bottom') {
-        // No nav/padding subtraction — our CSS zeros #page-manager margin-top
-        // and #primary padding-top so the player can fill the whole non-chat
-        // viewport area without leaving a gap.
-        const availH = Math.max(200, innerHeight - chatHeight);
+      if (chatPosition === 'top' || chatPosition === 'bottom' || chatPosition === 'left') {
+        // Compute aspect-preserved player size for the freed area.
+        // top/bottom: chat eats height, player fills the rest (full width).
+        // left:      chat eats width, player fills the rest (full height).
+        let availH, availW;
+        if (chatPosition === 'left') {
+          availW = Math.max(200, innerWidth - chatWidth);
+          availH = innerHeight;
+        } else {
+          availH = Math.max(200, innerHeight - chatHeight);
+          availW = innerWidth - 32;
+        }
         const aspectW = availH * 16 / 9;
-        const maxW = innerWidth - 32;
-        const finalW = Math.min(aspectW, maxW);
-        const finalH = (finalW < aspectW) ? finalW * 9 / 16 : availH;
+        const aspectH = availW * 9 / 16;
+        // Pick the dimension that hits its limit first (16:9 fits inside both)
+        let finalW, finalH;
+        if (aspectW <= availW) { finalW = aspectW; finalH = availH; }
+        else                   { finalW = availW; finalH = aspectH; }
         const wPx = Math.round(finalW) + 'px';
         const hPx = Math.round(finalH) + 'px';
         for (const el of ytSizedEls) {
@@ -5581,8 +5590,6 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
           el.style.setProperty('max-height', hPx, 'important');
           el.style.setProperty('min-height', '0', 'important');
         }
-        // YT's resize observer fires async — re-apply after rAF to win against
-        // any post-callback size restoration.
         requestAnimationFrame(() => {
           for (const el of ytSizedEls) {
             if (!el.dataset._hsCYtSized) continue;

@@ -5677,6 +5677,15 @@ function injectStyles() {
     body.hs-platform-yt.hs-chat-bottom #primary {
       margin-bottom: var(--hs-chat-h, 35vh) !important;
     }
+    /* Constrain YT player container so it shrinks to leave room for the
+       horizontal chat strip — without this, the player keeps its natural
+       16:9 height and overlaps the bottom strip. */
+    body.hs-platform-yt.hs-chat-top #player-container,
+    body.hs-platform-yt.hs-chat-top #player-container-outer,
+    body.hs-platform-yt.hs-chat-bottom #player-container,
+    body.hs-platform-yt.hs-chat-bottom #player-container-outer {
+      max-height: calc(100vh - var(--hs-chat-h, 35vh) - 60px) !important;
+    }
     /* YouTube theatre: ytd-watch-flexy[theater] makes the player full-row.
        The #full-bleed-container is what owns the player. Inset it. */
     body.hs-platform-yt.hs-mode-theatre.hs-chat-left ytd-watch-flexy[theater] #full-bleed-container,

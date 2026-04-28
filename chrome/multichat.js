@@ -12407,6 +12407,10 @@ function renderThirdPartyBadges(userId) {
       html += `<img class="hs-mc-badge-img" src="${escapeHtml(b.url)}" alt="${escapeHtml(b.title)}" title="${escapeHtml(b.title)}" style="width:18px;height:18px;${safeColor ? 'background:' + safeColor + ';border-radius:2px;' : ''}">`
     }
   }
+  const chat = mcChatterinoBadgeMap.get(userId)
+  if (chat) {
+    html += `<img class="hs-mc-badge-img" src="${escapeHtml(chat.url)}" alt="Chatterino" title="${escapeHtml(chat.tooltip || 'Chatterino')}" style="width:18px;height:18px;">`
+  }
   const cosmetic = mcUserCosmetics.get(userId)
   if (cosmetic?.badge) {
     const files = cosmetic.badge.host?.files || []
@@ -19188,9 +19192,10 @@ const STORAGE_KEY = 'heatsync_multichat';
 
   // YouTube global state (per-channel only now — global removed)
 
-  // Third-party cosmetics state (BTTV/FFZ badges, 7TV paints+badges)
+  // Third-party cosmetics state (BTTV/FFZ/Chatterino badges, 7TV paints+badges)
   let mcBttvBadgeMap = new Map()
   let mcFfzBadgeMap = new Map()
+  let mcChatterinoBadgeMap = new Map()
   const mcUserCosmetics = new Map()
   const MC_COSMETICS_MAX = 500
   function setMcCosmetic(uid, c) {
@@ -20803,6 +20808,11 @@ const STORAGE_KEY = 'heatsync_multichat';
     const handle = document.createElement('div')
     handle.id = 'hs-yt-resize-handle'
     handle.style.touchAction = 'none'
+    // YT now uses the unified #hs-c-resize-handle for ALL chat positions
+    // (because chat-right is position:fixed, not in YT's flex tree). Hide
+    // this platform handle on creation so we don't render two orange bars.
+    handle.dataset._hsCHidden = '1'
+    handle.style.setProperty('display', 'none', 'important')
     secondary.style.position = 'relative'
     secondary.insertBefore(handle, secondary.firstChild)
 
@@ -24817,6 +24827,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       if (msg.type === 'cosmetics_update') {
         mcBttvBadgeMap = new Map(Object.entries(msg.bttvBadges || {}))
         mcFfzBadgeMap = new Map(Object.entries(msg.ffzBadges || {}))
+        mcChatterinoBadgeMap = new Map(Object.entries(msg.chatterinoBadges || {}))
         renderMessages(currentTab)
       }
       // 7TV EventAPI pushed user.update / entitlement.* — drop our local
@@ -25274,10 +25285,11 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     setupProfileCardHandlers();
     listenForSettingsChanges();
 
-    // Request initial BTTV/FFZ badge maps from background
+    // Request initial BTTV/FFZ/Chatterino badge maps from background
     safeSendMessage({ type: 'get_bulk_badges' }).then(resp => {
       if (resp?.bttvBadges) mcBttvBadgeMap = new Map(Object.entries(resp.bttvBadges))
       if (resp?.ffzBadges) mcFfzBadgeMap = new Map(Object.entries(resp.ffzBadges))
+      if (resp?.chatterinoBadges) mcChatterinoBadgeMap = new Map(Object.entries(resp.chatterinoBadges))
     }).catch(() => {})
 
     // Load heatsync auth state

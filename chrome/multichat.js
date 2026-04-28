@@ -5684,13 +5684,27 @@ function injectStyles() {
     body.hs-platform-yt.hs-chat-bottom #secondary-inner > *:not(#chat-container) {
       display: none !important;
     }
-    /* Default 'right' position — kill YT's 16px column gutter so the player
-       sits flush against the orange resize handle. */
+    /* Default 'right' position — kill YT's gutters so the player sits flush
+       against the orange resize handle. The 16px gap was YT subtracting
+       --ytd-watch-flexy-side-menu-margin (22px = 16+6) from the primary
+       width when sizing the player. Override:
+         non-player-width = chat width only (no gutters)
+         side-menu-margin = 0 */
     body.hs-platform-yt.hs-chat-right #primary {
       margin-right: 0 !important;
     }
     body.hs-platform-yt.hs-chat-right ytd-watch-flexy {
       --ytd-watch-flexy-side-menu-margin: 0 !important;
+      --ytd-watch-flexy-non-player-width: var(--hs-chat-w, 340px) !important;
+    }
+    /* Force the player containers to fill #primary's inner width so the
+       16px-empty-on-right gap inside primary disappears. */
+    body.hs-platform-yt.hs-chat-right #player-container,
+    body.hs-platform-yt.hs-chat-right #player-container-outer,
+    body.hs-platform-yt.hs-chat-right #player-container-inner,
+    body.hs-platform-yt.hs-chat-right ytd-player,
+    body.hs-platform-yt.hs-chat-right #player {
+      width: 100% !important;
     }
     body.hs-platform-yt.hs-chat-left #primary {
       margin-left: var(--hs-chat-w, 340px) !important;
@@ -24421,15 +24435,17 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     log('Chat position:', chatPosition, 'theatre:', theatreMode);
     // Reflow the multichat layout so input/overlay/picker re-anchor.
     try { _updateMcLayout?.() } catch (_) {}
-    // YT computes player size in JS and caches it; nudge it to re-read
-    // CSS vars (margin, non-player-height) by dispatching a resize event.
-    // Needed for ALL positions on YT including 'right' — without the nudge
-    // the 16px column gutter persists for ~10s until YT's own resize
-    // observer fires.
+    // YT computes player size in JS asynchronously and caches it; nudge it
+    // to re-read CSS vars (margin, non-player-{width,height}) by dispatching
+    // resize events at multiple timing points. The player init is async and
+    // can complete after our applyChatPosition runs on initial load — without
+    // multiple nudges, YT's own resize observer doesn't fire until ~10s.
     if (hostPlatform === 'yt') {
-      try { window.dispatchEvent(new Event('resize')) } catch (_) {}
-      // Belt-and-braces: also fire after a tick once layout has settled.
-      setTimeout(() => { try { window.dispatchEvent(new Event('resize')) } catch (_) {} }, 100);
+      const fire = () => { try { window.dispatchEvent(new Event('resize')) } catch (_) {} };
+      fire();
+      setTimeout(fire, 100);
+      setTimeout(fire, 500);
+      setTimeout(fire, 1500);
     }
   }
 

@@ -4640,13 +4640,27 @@ function injectStyles() {
     body.hs-platform-yt.hs-chat-bottom #secondary-inner > *:not(#chat-container) {
       display: none !important;
     }
-    /* Default 'right' position — kill YT's 16px column gutter so the player
-       sits flush against the orange resize handle. */
+    /* Default 'right' position — kill YT's gutters so the player sits flush
+       against the orange resize handle. The 16px gap was YT subtracting
+       --ytd-watch-flexy-side-menu-margin (22px = 16+6) from the primary
+       width when sizing the player. Override:
+         non-player-width = chat width only (no gutters)
+         side-menu-margin = 0 */
     body.hs-platform-yt.hs-chat-right #primary {
       margin-right: 0 !important;
     }
     body.hs-platform-yt.hs-chat-right ytd-watch-flexy {
       --ytd-watch-flexy-side-menu-margin: 0 !important;
+      --ytd-watch-flexy-non-player-width: var(--hs-chat-w, 340px) !important;
+    }
+    /* Force the player containers to fill #primary's inner width so the
+       16px-empty-on-right gap inside primary disappears. */
+    body.hs-platform-yt.hs-chat-right #player-container,
+    body.hs-platform-yt.hs-chat-right #player-container-outer,
+    body.hs-platform-yt.hs-chat-right #player-container-inner,
+    body.hs-platform-yt.hs-chat-right ytd-player,
+    body.hs-platform-yt.hs-chat-right #player {
+      width: 100% !important;
     }
     body.hs-platform-yt.hs-chat-left #primary {
       margin-left: var(--hs-chat-w, 340px) !important;

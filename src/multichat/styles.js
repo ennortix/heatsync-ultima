@@ -4698,13 +4698,29 @@ function injectStyles() {
       margin-bottom: var(--hs-chat-h, 35vh) !important;
       padding-top: 0 !important;
     }
-    /* Kill the masthead reservation when chat covers the top — chat is
-       drawn over where the masthead used to be, so #page-manager's
-       margin-top: 56px is wasted gap. */
+    /* Kill the masthead reservation — chat clutter is hidden, no need to
+       reserve top-bar space below it. Applies to ALL chat positions on YT
+       so the player floats flush in every layout. */
     body.hs-platform-yt.hs-chat-top #page-manager,
     body.hs-platform-yt.hs-chat-bottom #page-manager,
-    body.hs-platform-yt.hs-chat-left #page-manager {
+    body.hs-platform-yt.hs-chat-left #page-manager,
+    body.hs-platform-yt.hs-chat-right #page-manager {
       margin-top: 0 !important;
+    }
+    /* chat-right: same vertical-center treatment as chat-left so the
+       player floats centered in the freed area (since #below clutter
+       below the player is gone, primary collapses to player height). */
+    body.hs-platform-yt.hs-chat-right #primary,
+    body.hs-platform-yt.hs-chat-right #primary-inner {
+      height: 100vh !important;
+      max-height: 100vh !important;
+      overflow: hidden !important;
+    }
+    body.hs-platform-yt.hs-chat-right #primary-inner {
+      display: flex !important;
+      flex-direction: column !important;
+      align-items: center !important;
+      justify-content: center !important;
     }
     /* Tell YT how much vertical space is NOT available for the player so
        its own layout JS shrinks the player to fit. YT computes player
@@ -4730,7 +4746,8 @@ function injectStyles() {
        the surrounding content is gone. */
     body.hs-platform-yt.hs-chat-top #below,
     body.hs-platform-yt.hs-chat-bottom #below,
-    body.hs-platform-yt.hs-chat-left #below {
+    body.hs-platform-yt.hs-chat-left #below,
+    body.hs-platform-yt.hs-chat-right #below {
       display: none !important;
     }
     /* Top/bottom: player is sized inline to fill availH, just need

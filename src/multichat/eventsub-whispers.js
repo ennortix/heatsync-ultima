@@ -95,8 +95,10 @@ function eswCleanup(destroy = false) {
   if (destroy) eswState.destroyed = true
   if (eswState.keepaliveTimer) { cleanup.clearInterval(eswState.keepaliveTimer); eswState.keepaliveTimer = null }
   if (eswState.reconnectTimer) { cleanup.clearTimeout(eswState.reconnectTimer); eswState.reconnectTimer = null }
+  if (eswState.oldWsCloseTimer) { cleanup.clearTimeout(eswState.oldWsCloseTimer); eswState.oldWsCloseTimer = null }
+  if (eswState.oldWs) { try { eswState.oldWs.close() } catch {} eswState.oldWs = null }
   if (eswState.ws) {
-    eswState.ws.onclose = null; eswState.ws.onerror = null; eswState.ws.onmessage = null
+    eswState.ws.onopen = null; eswState.ws.onclose = null; eswState.ws.onerror = null; eswState.ws.onmessage = null
     try { eswState.ws.close() } catch {}
   }
   eswState.ws = null
@@ -209,9 +211,14 @@ async function eswConnect(token, urlOverride) {
   eswState.connecting = true
   eswState.destroyed = false
 
-  // Reconnect-URL flow: keep old socket open until new one welcomes
+  // Reconnect-URL flow: keep old socket open until new one welcomes,
+  // but stop the old keepalive timer so it can't fire against the stale lastMessageTime.
   const oldWs = urlOverride ? eswState.ws : null
-  if (!urlOverride) eswCleanup()
+  if (urlOverride) {
+    if (eswState.keepaliveTimer) { cleanup.clearInterval(eswState.keepaliveTimer); eswState.keepaliveTimer = null }
+  } else {
+    eswCleanup()
+  }
 
   try {
     const ws = new WebSocket(urlOverride || ESW_URL)
@@ -224,7 +231,14 @@ async function eswConnect(token, urlOverride) {
       eswScheduleReconnect(token)
     }
     ws.onerror = () => {}
-    if (oldWs) cleanup.setTimeout(() => { try { oldWs.close() } catch {} }, 5000)
+    if (oldWs) {
+      eswState.oldWs = oldWs
+      eswState.oldWsCloseTimer = cleanup.setTimeout(() => {
+        eswState.oldWsCloseTimer = null
+        if (eswState.oldWs === oldWs) eswState.oldWs = null
+        try { oldWs.onmessage = null; oldWs.onclose = null; oldWs.onerror = null; oldWs.close() } catch {}
+      }, 5000)
+    }
     eswState.connecting = false
     return true
   } catch (e) {

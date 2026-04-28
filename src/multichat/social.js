@@ -119,8 +119,15 @@ let hsCurrentUserId = null; // Heatsync numeric user id (for reaction matching)
 async function loadHsUsername() {
   try {
     const data = await api.storage.local.get('user_info')
-    hsCurrentUsername = data?.user_info?.username?.toLowerCase() || null
-    hsCurrentUserId = data?.user_info?.id ? String(data.user_info.id) : null
+    const ui = data?.user_info
+    hsCurrentUsername = ui?.username?.toLowerCase() || null
+    hsCurrentUserId = ui?.id ? String(ui.id) : null
+    // Cross-platform mention aliases: any name across Twitch/Kick/YT counts as
+    // a mention of the user, even if the chat is on a different platform.
+    mentionAliases = new Set()
+    if (ui?.kick_username) mentionAliases.add(ui.kick_username.toLowerCase())
+    if (ui?.youtube_username) mentionAliases.add(ui.youtube_username.toLowerCase())
+    if (ui?.twitch_username) mentionAliases.add(ui.twitch_username.toLowerCase())
   } catch (e) { hsCurrentUsername = null; hsCurrentUserId = null }
 }
 function isOwnFeedPost(m) {
@@ -286,8 +293,13 @@ async function loadHsAuth() {
     api.storage.onChanged.addListener((changes, area) => {
       if (area !== 'local') return;
       if (changes.user_info) {
-        hsCurrentUsername = changes.user_info.newValue?.username?.toLowerCase() || null
-        hsCurrentUserId = changes.user_info.newValue?.id ? String(changes.user_info.newValue.id) : null
+        const ui = changes.user_info.newValue
+        hsCurrentUsername = ui?.username?.toLowerCase() || null
+        hsCurrentUserId = ui?.id ? String(ui.id) : null
+        mentionAliases = new Set()
+        if (ui?.kick_username) mentionAliases.add(ui.kick_username.toLowerCase())
+        if (ui?.youtube_username) mentionAliases.add(ui.youtube_username.toLowerCase())
+        if (ui?.twitch_username) mentionAliases.add(ui.twitch_username.toLowerCase())
       }
       if (changes.auth_token_encrypted || changes.auth_token) {
         const wasAuthed = hsAuthToken;

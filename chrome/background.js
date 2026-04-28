@@ -935,6 +935,10 @@ async function fetchUserInfo() {
     const userInfo = {
       display_name: user.display_name || user.twitch_username || user.kick_username || '',
       username: user.username || user.twitch_username || '',
+      twitch_username: user.twitch_username || '',
+      kick_username: user.kick_username || '',
+      youtube_username: user.youtube_username || '',
+      youtube_channel_id: user.youtube_channel_id || '',
       avatar_url: user.twitch_profile_pic || user.kick_profile_pic || user.profile_image_url || '',
       heat: user.heat || 0,
       color: user.color || ''
@@ -1763,6 +1767,17 @@ function ensure7TVConnection() {
   clearTimeout(seventvReconnectTimer);
   seventvReconnectTimer = null;
   seventvSubscribedSets.clear();
+  // Drop any stale handler refs from a prior socket before creating a new one
+  if (seventvWebSocket) {
+    try {
+      seventvWebSocket.onopen = null
+      seventvWebSocket.onmessage = null
+      seventvWebSocket.onerror = null
+      seventvWebSocket.onclose = null
+    } catch {}
+    seventvWebSocket = null
+  }
+  if (seventvZombieTimer) { untrackInterval(seventvZombieTimer); seventvZombieTimer = null }
 
   log(' 7TV EventAPI: Connecting...');
 
@@ -1835,8 +1850,12 @@ function ensure7TVConnection() {
       log(' 7TV EventAPI: WebSocket error (will reconnect)');
     };
 
-    seventvWebSocket.onclose = () => {
+    seventvWebSocket.onclose = (closeEvent) => {
       log(' 7TV EventAPI: Connection closed');
+      const closing = closeEvent?.target;
+      if (closing) {
+        try { closing.onopen = null; closing.onmessage = null; closing.onerror = null; closing.onclose = null } catch {}
+      }
       seventvWebSocket = null;
       seventvSubscribedSets.clear();
       seventvUserSubs.clear();
@@ -2390,15 +2409,35 @@ async function getMatchingTabs() {
   return _cachedTabs
 }
 
+// Coalesce per-key persistence so high-frequency broadcasts don't write storage 1-2x/sec.
+// Latest payload wins; flush after a short idle window.
+const _broadcastStorageQueue = new Map() // key -> latest value
+let _broadcastStorageTimer = null
+const BROADCAST_STORAGE_DEBOUNCE = 5000
+function _scheduleBroadcastStorageFlush() {
+  if (_broadcastStorageTimer) return
+  _broadcastStorageTimer = setTimeout(() => {
+    _broadcastStorageTimer = null
+    if (!_broadcastStorageQueue.size) return
+    const payload = {}
+    for (const [k, v] of _broadcastStorageQueue) payload[k] = v
+    _broadcastStorageQueue.clear()
+    browser.storage.local.set(payload).catch(() => {})
+  }, BROADCAST_STORAGE_DEBOUNCE)
+}
+
 // Broadcast updates to all content scripts AND update storage
 async function broadcastToTabs(message) {
-  // Fire-and-forget storage writes so tab messaging isn't blocked
+  // Coalesce storage writes — burst broadcasts collapse to one set() per 5s window
   if (message.type === 'inventory_update') {
-    browser.storage.local.set({ emote_inventory: message.emotes }).catch(() => {})
+    _broadcastStorageQueue.set('emote_inventory', message.emotes)
+    _scheduleBroadcastStorageFlush()
   } else if (message.type === 'global_emotes_update') {
-    browser.storage.local.set({ global_emotes: message.emotes }).catch(() => {})
+    _broadcastStorageQueue.set('global_emotes', message.emotes)
+    _scheduleBroadcastStorageFlush()
   } else if (message.type === 'blocked_update') {
-    browser.storage.local.set({ blocked_emotes: message.blocked }).catch(() => {})
+    _broadcastStorageQueue.set('blocked_emotes', message.blocked)
+    _scheduleBroadcastStorageFlush()
   }
 
   // Broadcast to streaming tabs only (filtered query instead of all-tabs scan)
@@ -2519,6 +2558,18 @@ async function connectWebSocket() {
       const wsEndpoint = `${WS_URL.replace('https://', 'wss://').replace('http://', 'ws://')}/ws`;
       log(' 🔌 Connecting to WebSocket:', wsEndpoint, 'with auth:', !!authToken);
 
+      // Defensive: detach handlers from any prior closed/closing socket before reassigning
+      if (socket) {
+        try {
+          socket.onopen = null
+          socket.onmessage = null
+          socket.onerror = null
+          socket.onclose = null
+          if (socket.readyState !== WebSocket.CLOSED) socket.close()
+        } catch {}
+        socket = null
+      }
+
       try {
         socket = new WebSocket(wsEndpoint);
       } catch (err) {
@@ -2628,6 +2679,11 @@ async function connectWebSocket() {
           heartbeatInterval = null;
         }
         log(' ⚠️ WebSocket disconnected:', event.code, event.reason);
+        // Detach handlers from the closing socket so its closure releases
+        const closing = event?.target;
+        if (closing) {
+          try { closing.onopen = null; closing.onmessage = null; closing.onerror = null; closing.onclose = null } catch {}
+        }
         wsState = WS_STATE.DISCONNECTED;
         isAuthenticated = false;
         connectionPromise = null;
@@ -3940,18 +3996,37 @@ async function handleMessage(message, sender, sendResponse) {
       return true
     }
     ;(async () => {
-      try {
+      const doFetch = async (token) => {
         const opts = { method: reqMethod, headers: {} }
-        if (message.auth) {
-          const token = authToken || await getAuthCookie()
-          if (token) opts.headers['Authorization'] = `Bearer ${token}`
-        }
+        if (message.auth && token) opts.headers['Authorization'] = `Bearer ${token}`
         if (message.body) {
           opts.headers['Content-Type'] = 'application/json'
           opts.body = JSON.stringify(message.body)
         }
         const resp = await fetchWithTimeout(`${API_URL}${message.path}`, opts)
         const data = await resp.json().catch(() => null)
+        return { resp, data }
+      }
+      try {
+        let token = message.auth ? (authToken || await getAuthCookie()) : null
+        let { resp, data } = await doFetch(token)
+        // Self-heal: on 401 with auth, the in-memory/encrypted token may be
+        // stale (e.g. JWT issued before user linked Twitch). Re-read directly
+        // from the heatsync auth cookie (which the website refreshes on every
+        // login), refresh storage, and retry once.
+        if (message.auth && resp.status === 401) {
+          try {
+            const cookie = await browser.cookies.get({ url: 'https://heatsync.org', name: 'auth' })
+            if (cookie?.value && cookie.value !== token) {
+              log(' [api_fetch] 401 — refreshing token from cookie and retrying')
+              authToken = cookie.value
+              await storeToken(cookie.value)
+              ;({ resp, data } = await doFetch(cookie.value))
+            }
+          } catch (err) {
+            log(' [api_fetch] cookie refresh failed:', err?.message)
+          }
+        }
         if (!resp.ok) {
           sendResponse({ ok: false, status: resp.status, error: data?.error || `${resp.status}` })
           return

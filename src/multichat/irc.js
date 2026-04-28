@@ -61,6 +61,8 @@ function parseIrcLine(raw, channel) {
         if (Object.keys(twitchEmotes).length > 0) msg.twitchEmotes = twitchEmotes
       }
       if (isAction) msg.isAction = true
+      const bits = parseInt(tags.bits) || 0
+      if (bits > 0) msg.bits = bits
       if (tags['custom-reward-id']) {
         msg.redeemed = true
         msg.rewardId = tags['custom-reward-id']
@@ -290,7 +292,13 @@ class IRC {
     this._stopHeartbeat();
     clearTimeout(this._reconnectTimer);
     if (this.ws) {
-      try { this.ws.onclose = null; this.ws.close(); } catch {}
+      try {
+        this.ws.onopen = null;
+        this.ws.onmessage = null;
+        this.ws.onerror = null;
+        this.ws.onclose = null;
+        this.ws.close();
+      } catch {}
       this.ws = null;
     }
     this.partial = '';
@@ -337,8 +345,13 @@ class IRC {
     for (const id of Object.values(this._persistTimers)) cleanup.clearTimeout(id);
     this._persistTimers = {};
     if (this.ws) {
-      this.ws.onclose = null;
-      try { this.ws.close(); } catch {}
+      try {
+        this.ws.onopen = null;
+        this.ws.onmessage = null;
+        this.ws.onerror = null;
+        this.ws.onclose = null;
+        this.ws.close();
+      } catch {}
       this.ws = null;
     }
   }

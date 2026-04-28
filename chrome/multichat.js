@@ -1153,6 +1153,16 @@ function injectStyles() {
     .hs-mc-util-btn {
       font-weight: 700 !important;
     }
+    /* Util row — orange for ui parity with heatsync.org */
+    .hs-mc-util-row .hs-mc-tab {
+      color: #ff8700 !important;
+      border-color: #ff8700 !important;
+    }
+    .hs-mc-util-row .hs-mc-tab:hover {
+      background: #ff8700 !important;
+      color: #000 !important;
+      border-color: #ff8700 !important;
+    }
     /* Whisper conversation list */
     .hs-whisper-conv {
       padding: 6px 8px;
@@ -1244,6 +1254,59 @@ function injectStyles() {
       background: #fff;
       color: #000 !important;
     }
+    .hs-mc-bits-badge {
+      display: inline-block;
+      padding: 0 4px;
+      margin-right: 3px;
+      background: #9146ff;
+      color: #fff;
+      font-size: 10px;
+      font-weight: 700;
+      vertical-align: middle;
+    }
+    #hs-mc-multistream-banner {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 8px;
+      background: #1a1a1a;
+      border-bottom: 1px solid #ff8700;
+      font-size: 12px;
+      color: #fff;
+    }
+    #hs-mc-multistream-banner[hidden] {
+      display: none;
+    }
+    .hs-mc-multi-text {
+      flex: 1;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .hs-mc-multi-link {
+      background: #ff8700;
+      color: #fff;
+      border: 0;
+      padding: 2px 8px;
+      font-weight: 700;
+      font-size: 11px;
+      cursor: pointer;
+    }
+    .hs-mc-multi-link:hover {
+      background: #fff;
+      color: #000;
+    }
+    .hs-mc-multi-dismiss {
+      background: transparent;
+      color: #888;
+      border: 0;
+      padding: 0 4px;
+      font-size: 16px;
+      cursor: pointer;
+    }
+    .hs-mc-multi-dismiss:hover {
+      color: #fff;
+    }
     /* Inline stream event notifications */
     .hs-mc-stream-event {
       padding: 2px 4px;
@@ -1317,7 +1380,8 @@ function injectStyles() {
       display: flex;
     }
 
-    /* Resize drag bar on left edge of chat column */
+    /* Resize drag bar — convention: solid #ff8700, ≥6px, no labels.
+       Always visible so user knows the edge is grab-able. */
     #hs-mc-resize-handle {
       position: absolute;
       top: 0;
@@ -1326,11 +1390,14 @@ function injectStyles() {
       height: 100%;
       cursor: ew-resize;
       z-index: 2000;
-      background: transparent;
+      background: #ff8700;
+      opacity: 0.7;
+      transition: opacity 0.12s, background 0.12s;
     }
     #hs-mc-resize-handle:hover,
     #hs-mc-resize-handle:active {
-      background: #ff8700;
+      background: #ffaa33;
+      opacity: 1;
     }
 
     /* YouTube resize handle — left edge of #secondary sidebar */
@@ -1342,11 +1409,14 @@ function injectStyles() {
       height: 100%;
       cursor: ew-resize;
       z-index: 2000;
-      background: transparent;
+      background: #ff8700;
+      opacity: 0.7;
+      transition: opacity 0.12s, background 0.12s;
     }
     #hs-yt-resize-handle:hover,
     #hs-yt-resize-handle:active {
-      background: #ff8700;
+      background: #ffaa33;
+      opacity: 1;
     }
 
     #hs-mc-messages {
@@ -1732,11 +1802,13 @@ function injectStyles() {
     /* Event color palette — each notice class gets a distinct ANSI hue so the
        chat can be read at a glance. Using saturated 16-color anchors plus
        Twitch/HS conventions (purple = sub, orange = HS brand/raid). */
-    /* Punishment lifecycle (red↔green) */
+    /* Red is reserved for @-mentions. Ban keeps red (severe/permanent). Timeout =
+       green (#008000) — visible mod-action marker so timeouts read at a glance
+       (matches the heatsync site). Recovery (untimeout) keeps the same green. */
     .hs-mc-msg.hs-mc-notice-ban       { border-left-color: #ff0000 !important; background: rgba(255, 0, 0, 0.12) !important; }
     .hs-mc-msg.hs-mc-notice-ban       .hs-mc-system-text { color: #ff4040; font-weight: 600; }
-    .hs-mc-msg.hs-mc-notice-timeout   { border-left-color: #ff8080 !important; background: rgba(255, 128, 128, 0.10) !important; }
-    .hs-mc-msg.hs-mc-notice-timeout   .hs-mc-system-text { color: #ff8080; }
+    .hs-mc-msg.hs-mc-notice-timeout   { border-left-color: #008000 !important; background: rgba(0, 128, 0, 0.10) !important; }
+    .hs-mc-msg.hs-mc-notice-timeout   .hs-mc-system-text { color: #00cc44; }
     .hs-mc-msg.hs-mc-notice-unban     { border-left-color: #00ff00 !important; background: rgba(0, 255, 0, 0.12) !important; }
     .hs-mc-msg.hs-mc-notice-unban     .hs-mc-system-text { color: #00ff00; font-weight: 600; }
     .hs-mc-msg.hs-mc-notice-untimeout { border-left-color: #008000 !important; background: rgba(0, 128, 0, 0.10) !important; }
@@ -4671,8 +4743,7 @@ function injectStyles() {
       border-right: 1px solid #fff;
     }
 
-    /* Kick resize handle — left edge of fixed chat panel
-       8px hit zone, 2px visible bar on hover */
+    /* Kick resize handle — convention: solid #ff8700, always visible. */
     #hs-kick-resize-handle {
       position: absolute;
       top: 0;
@@ -4681,12 +4752,15 @@ function injectStyles() {
       height: 100%;
       cursor: col-resize;
       z-index: 10000;
-      background: transparent;
+      background: #ff8700;
+      opacity: 0.7;
+      transition: opacity 0.12s, background 0.12s;
       pointer-events: auto;
     }
     #hs-kick-resize-handle:hover,
     body:has(#hs-resize-overlay) #hs-kick-resize-handle {
-      background: #ff8700;
+      background: #ffaa33;
+      opacity: 1;
     }
 
     /* Boost Kick's popover/tooltip z-index above our panels */
@@ -5397,18 +5471,39 @@ function escapeRegex(s) {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
-let _mentionRe = null
-let _mentionReUser = null
-function isMention(msg) {
-  if (!currentUsername) return false
-  if (msg.user && msg.user.toLowerCase() === currentUsername) return false
-  const text = msg.text.toLowerCase()
-  if (text.includes('@' + currentUsername)) return true
-  if (_mentionReUser !== currentUsername) {
-    _mentionRe = new RegExp(`\\b${escapeRegex(currentUsername)}\\b`, 'i')
-    _mentionReUser = currentUsername
+// Aliases — kick + youtube usernames in addition to currentUsername (twitch).
+// Populated by loadHsUsername() in social.js from user_info.kick_username etc.
+let mentionAliases = new Set()
+let _mentionReList = null
+let _mentionReKey = ''
+
+function getMentionTargets() {
+  const out = []
+  if (currentUsername) out.push(currentUsername)
+  for (const a of mentionAliases) {
+    if (a && a !== currentUsername) out.push(a)
   }
-  return _mentionRe.test(text)
+  return out
+}
+
+function isMention(msg) {
+  const targets = getMentionTargets()
+  if (!targets.length) return false
+  const sender = msg.user?.toLowerCase()
+  if (sender && targets.includes(sender)) return false
+  const text = msg.text.toLowerCase()
+  for (const t of targets) {
+    if (text.includes('@' + t)) return true
+  }
+  const key = targets.join('|')
+  if (_mentionReKey !== key) {
+    _mentionReList = targets.map(t => new RegExp(`\\b${escapeRegex(t)}\\b`, 'i'))
+    _mentionReKey = key
+  }
+  for (const re of _mentionReList) {
+    if (re.test(text)) return true
+  }
+  return false
 }
 
 // Browser notifications (gated by hs_notifications setting)
@@ -5473,28 +5568,37 @@ function notifyStreamEvent(channel, eventType, game) {
  * Scan existing chat messages in DOM for mentions (on load)
  */
 function scanExistingMentions() {
-  if (!currentUsername) {
+  const targets = getMentionTargets()
+  if (!targets.length) {
     log('Cannot scan mentions - no username');
     return;
   }
 
   // Twitch + Kick message selectors
   const messages = document.querySelectorAll('[data-a-target="chat-line-message"], #chatroom-messages [data-index]');
-  log('Scanning', messages.length, 'existing messages for mentions of', currentUsername);
+  log('Scanning', messages.length, 'existing messages for mentions of', targets.join(','));
 
   let found = 0;
-  const escaped = escapeRegex(currentUsername)
-  const mentionRe = new RegExp(`\\b${escaped}\\b`, 'i')
+  const mentionRes = targets.map(t => new RegExp(`\\b${escapeRegex(t)}\\b`, 'i'))
   messages.forEach(msgEl => {
     // Only check message text, not the full element (which includes sender name)
     const messageEl = msgEl.querySelector('[data-a-target="chat-message-text"], span.font-normal');
     const text = messageEl?.textContent || '';
     const textLower = text.toLowerCase();
-    if (textLower.includes('@' + currentUsername) || mentionRe.test(textLower)) {
+    let matched = false
+    for (const t of targets) {
+      if (textLower.includes('@' + t)) { matched = true; break }
+    }
+    if (!matched) {
+      for (const re of mentionRes) {
+        if (re.test(textLower)) { matched = true; break }
+      }
+    }
+    if (matched) {
       const usernameEl = msgEl.querySelector('[data-a-target="chat-message-username"], button.inline.font-bold');
       const username = usernameEl?.textContent || 'unknown';
       // Skip own messages
-      if (username.toLowerCase() === currentUsername) return;
+      if (targets.includes(username.toLowerCase())) return;
 
       mentionsBuffer.push({
         user: username,
@@ -5579,6 +5683,8 @@ function parseIrcLine(raw, channel) {
         if (Object.keys(twitchEmotes).length > 0) msg.twitchEmotes = twitchEmotes
       }
       if (isAction) msg.isAction = true
+      const bits = parseInt(tags.bits) || 0
+      if (bits > 0) msg.bits = bits
       if (tags['custom-reward-id']) {
         msg.redeemed = true
         msg.rewardId = tags['custom-reward-id']
@@ -5808,7 +5914,13 @@ class IRC {
     this._stopHeartbeat();
     clearTimeout(this._reconnectTimer);
     if (this.ws) {
-      try { this.ws.onclose = null; this.ws.close(); } catch {}
+      try {
+        this.ws.onopen = null;
+        this.ws.onmessage = null;
+        this.ws.onerror = null;
+        this.ws.onclose = null;
+        this.ws.close();
+      } catch {}
       this.ws = null;
     }
     this.partial = '';
@@ -5855,8 +5967,13 @@ class IRC {
     for (const id of Object.values(this._persistTimers)) cleanup.clearTimeout(id);
     this._persistTimers = {};
     if (this.ws) {
-      this.ws.onclose = null;
-      try { this.ws.close(); } catch {}
+      try {
+        this.ws.onopen = null;
+        this.ws.onmessage = null;
+        this.ws.onerror = null;
+        this.ws.onclose = null;
+        this.ws.close();
+      } catch {}
       this.ws = null;
     }
   }
@@ -6542,6 +6659,7 @@ function cleanupAuthIrc(destroy = false) {
   if (authState.reconnectTimer) { cleanup.clearTimeout(authState.reconnectTimer); authState.reconnectTimer = null; }
   const prevJoined = [...authState.joined];
   if (authState.ws) {
+    authState.ws.onopen = null;
     authState.ws.onclose = null;
     authState.ws.onerror = null;
     authState.ws.onmessage = null;
@@ -6662,6 +6780,11 @@ async function connectAuthIrc(token, nick) {
       ws.onerror = () => { clearTimeout(timeout); reject(new Error('ws_error')); };
       ws.onclose = () => { clearTimeout(timeout); reject(new Error('ws_closed')); };
     });
+    // Release handshake closures (timeout/resolve/reject) before reassigning
+    ws.onopen = null;
+    ws.onmessage = null;
+    ws.onerror = null;
+    ws.onclose = null;
     ws.onmessage = handleAuthIrcMessage;
     ws.onclose = () => {
       log('Auth IRC disconnected');
@@ -8377,6 +8500,7 @@ async function sendKickMessage(kickSlug, text) {
             positionTooltipAtElement(userTooltip, _userTooltipTarget);
           }
         });
+        cleanup.trackObserver(_userTooltipResizeObs);
         _userTooltipResizeObs.observe(userTooltip);
       }
     }
@@ -11918,8 +12042,15 @@ let hsCurrentUserId = null; // Heatsync numeric user id (for reaction matching)
 async function loadHsUsername() {
   try {
     const data = await api.storage.local.get('user_info')
-    hsCurrentUsername = data?.user_info?.username?.toLowerCase() || null
-    hsCurrentUserId = data?.user_info?.id ? String(data.user_info.id) : null
+    const ui = data?.user_info
+    hsCurrentUsername = ui?.username?.toLowerCase() || null
+    hsCurrentUserId = ui?.id ? String(ui.id) : null
+    // Cross-platform mention aliases: any name across Twitch/Kick/YT counts as
+    // a mention of the user, even if the chat is on a different platform.
+    mentionAliases = new Set()
+    if (ui?.kick_username) mentionAliases.add(ui.kick_username.toLowerCase())
+    if (ui?.youtube_username) mentionAliases.add(ui.youtube_username.toLowerCase())
+    if (ui?.twitch_username) mentionAliases.add(ui.twitch_username.toLowerCase())
   } catch (e) { hsCurrentUsername = null; hsCurrentUserId = null }
 }
 function isOwnFeedPost(m) {
@@ -12085,8 +12216,13 @@ async function loadHsAuth() {
     api.storage.onChanged.addListener((changes, area) => {
       if (area !== 'local') return;
       if (changes.user_info) {
-        hsCurrentUsername = changes.user_info.newValue?.username?.toLowerCase() || null
-        hsCurrentUserId = changes.user_info.newValue?.id ? String(changes.user_info.newValue.id) : null
+        const ui = changes.user_info.newValue
+        hsCurrentUsername = ui?.username?.toLowerCase() || null
+        hsCurrentUserId = ui?.id ? String(ui.id) : null
+        mentionAliases = new Set()
+        if (ui?.kick_username) mentionAliases.add(ui.kick_username.toLowerCase())
+        if (ui?.youtube_username) mentionAliases.add(ui.youtube_username.toLowerCase())
+        if (ui?.twitch_username) mentionAliases.add(ui.twitch_username.toLowerCase())
       }
       if (changes.auth_token_encrypted || changes.auth_token) {
         const wasAuthed = hsAuthToken;
@@ -14060,6 +14196,24 @@ const whisperTimeline = [] // { user, text, color, time, self, platform, key, st
 const whisperUsers = new Map() // key → { platform, userId, displayName, color }
 const WHISPER_USERS_MAX = 200
 const WHISPER_TIMELINE_MAX_READ = 500 // hard cap on READ messages; unread are NEVER evicted
+// O(1) dedup. Composite key = id when present, else user|time|text-prefix so IRC↔EventSub
+// dual delivery still collapses even when one side lacks an ID.
+const _whisperSeen = new Set()
+const _WHISPER_SEEN_MAX = 2000
+function _whisperDedupKey(platform, id, user, time, text) {
+  if (id) return `${platform}:${id}`
+  return `${platform}|${(user || '').toLowerCase()}|${time || 0}|${(text || '').slice(0, 64)}`
+}
+function _whisperMarkSeen(key) {
+  if (_whisperSeen.has(key)) return true
+  _whisperSeen.add(key)
+  if (_whisperSeen.size > _WHISPER_SEEN_MAX) {
+    // Drop the oldest insertion (Set preserves insertion order)
+    const it = _whisperSeen.values().next()
+    if (!it.done) _whisperSeen.delete(it.value)
+  }
+  return false
+}
 
 // Trim oldest READ messages once read-count exceeds cap. Unread (incoming msgs
 // with time > whisperLastViewedTime) survive forever — that's the whole point.
@@ -14205,8 +14359,8 @@ function updateWhisperBadge() {
 }
 
 function handleIncomingWhisper(msg) {
-  // Dedup by message ID
-  if (msg.id && whisperTimeline.some(m => m.id === msg.id)) return
+  // O(1) dedup that also collapses dual IRC↔EventSub delivery when ID is missing
+  if (_whisperMarkSeen(_whisperDedupKey('twitch', msg.id, msg.user, msg.time, msg.text))) return
 
   const key = `twitch:${msg.user.toLowerCase()}`
   whisperUsersSet(key, {
@@ -14248,7 +14402,8 @@ function handleIncomingWhisper(msg) {
 }
 
 function handleIncomingDm(data) {
-  if (data.id && whisperTimeline.some(m => m.id === data.id)) return
+  const time = data.created_at ? new Date(data.created_at).getTime() : Date.now()
+  if (_whisperMarkSeen(_whisperDedupKey('heatsync', data.id, data.from_display_name, time, data.content))) return
   const key = `hs:${data.from_user_id}`
   whisperUsersSet(key, {
     platform: 'heatsync',
@@ -14257,7 +14412,6 @@ function handleIncomingDm(data) {
     color: data.from_color || '#ff8700'
   })
 
-  const time = data.created_at ? new Date(data.created_at).getTime() : Date.now()
   whisperTimeline.push({
     user: data.from_display_name,
     text: data.content,
@@ -14502,7 +14656,7 @@ function renderWhispersTab() {
       const errSafe = escapeHtml(m.error || 'failed')
       const idSafe = escapeHtml(m.sendId || '')
       if (m.errorKind === 'auth') {
-        statusHtml = ` <a href="https://heatsync.org/auth/twitch" target="_blank" rel="noopener noreferrer" class="hs-whisper-status hs-whisper-relogin" title="${errSafe} — click to log in on heatsync">⚠ log in on heatsync to send</a>`
+        statusHtml = ` <a href="https://heatsync.org/api/auth/login?return_to=%2Fhome%2Fhot" target="_blank" rel="noopener noreferrer" class="hs-whisper-status hs-whisper-relogin" title="${errSafe} — click to log in on heatsync">⚠ log in on heatsync to send</a>`
       } else {
         statusHtml = ` <span class="hs-whisper-status hs-whisper-retry" title="click to retry" data-retry="${idSafe}">⚠ ${errSafe} — retry</span>`
       }
@@ -14625,8 +14779,10 @@ function eswCleanup(destroy = false) {
   if (destroy) eswState.destroyed = true
   if (eswState.keepaliveTimer) { cleanup.clearInterval(eswState.keepaliveTimer); eswState.keepaliveTimer = null }
   if (eswState.reconnectTimer) { cleanup.clearTimeout(eswState.reconnectTimer); eswState.reconnectTimer = null }
+  if (eswState.oldWsCloseTimer) { cleanup.clearTimeout(eswState.oldWsCloseTimer); eswState.oldWsCloseTimer = null }
+  if (eswState.oldWs) { try { eswState.oldWs.close() } catch {} eswState.oldWs = null }
   if (eswState.ws) {
-    eswState.ws.onclose = null; eswState.ws.onerror = null; eswState.ws.onmessage = null
+    eswState.ws.onopen = null; eswState.ws.onclose = null; eswState.ws.onerror = null; eswState.ws.onmessage = null
     try { eswState.ws.close() } catch {}
   }
   eswState.ws = null
@@ -14739,9 +14895,14 @@ async function eswConnect(token, urlOverride) {
   eswState.connecting = true
   eswState.destroyed = false
 
-  // Reconnect-URL flow: keep old socket open until new one welcomes
+  // Reconnect-URL flow: keep old socket open until new one welcomes,
+  // but stop the old keepalive timer so it can't fire against the stale lastMessageTime.
   const oldWs = urlOverride ? eswState.ws : null
-  if (!urlOverride) eswCleanup()
+  if (urlOverride) {
+    if (eswState.keepaliveTimer) { cleanup.clearInterval(eswState.keepaliveTimer); eswState.keepaliveTimer = null }
+  } else {
+    eswCleanup()
+  }
 
   try {
     const ws = new WebSocket(urlOverride || ESW_URL)
@@ -14754,7 +14915,14 @@ async function eswConnect(token, urlOverride) {
       eswScheduleReconnect(token)
     }
     ws.onerror = () => {}
-    if (oldWs) cleanup.setTimeout(() => { try { oldWs.close() } catch {} }, 5000)
+    if (oldWs) {
+      eswState.oldWs = oldWs
+      eswState.oldWsCloseTimer = cleanup.setTimeout(() => {
+        eswState.oldWsCloseTimer = null
+        if (eswState.oldWs === oldWs) eswState.oldWs = null
+        try { oldWs.onmessage = null; oldWs.onclose = null; oldWs.onerror = null; oldWs.close() } catch {}
+      }, 5000)
+    }
     eswState.connecting = false
     return true
   } catch (e) {
@@ -18318,7 +18486,7 @@ const STORAGE_KEY = 'heatsync_multichat';
         menu.style.left = Math.min(e.clientX, window.innerWidth - mw - 4) + 'px';
         menu.style.top = Math.min(e.clientY, window.innerHeight - mh - 4) + 'px';
         const dismiss = (ev) => { if (!menu.contains(ev.target)) { menu.remove(); document.removeEventListener('click', dismiss); } };
-        setTimeout(() => document.addEventListener('click', dismiss, { signal: mcSignal }), 0);
+        cleanup.setTimeout(() => document.addEventListener('click', dismiss, { signal: mcSignal }), 0);
         return;
       }
 
@@ -18355,7 +18523,7 @@ const STORAGE_KEY = 'heatsync_multichat';
       menu.style.top = Math.min(e.clientY, window.innerHeight - mh - 4) + 'px';
 
       const dismiss = (ev) => { if (!menu.contains(ev.target)) { menu.remove(); document.removeEventListener('click', dismiss); } };
-      setTimeout(() => document.addEventListener('click', dismiss, { signal: mcSignal }), 0);
+      cleanup.setTimeout(() => document.addEventListener('click', dismiss, { signal: mcSignal }), 0);
     });
 
     return container;
@@ -18513,6 +18681,7 @@ const STORAGE_KEY = 'heatsync_multichat';
         <input id="hs-mc-search-input" type="text" placeholder="${searchPlaceholder}" autocomplete="off" spellcheck="false" />
         <div id="hs-mc-search-spinner"></div>
       </div>
+      <div id="hs-mc-multistream-banner" hidden></div>
       <div id="hs-mc-messages">
         <div class="hs-mc-empty">${t('mc_no_messages')}</div>
       </div>
@@ -18573,8 +18742,8 @@ const STORAGE_KEY = 'heatsync_multichat';
           }
         }
         // Debounced scroll position check (covers both static and chat tabs)
-        if (_wheelCheckTimer) clearTimeout(_wheelCheckTimer)
-        _wheelCheckTimer = setTimeout(() => {
+        if (_wheelCheckTimer) cleanup.clearTimeout(_wheelCheckTimer)
+        _wheelCheckTimer = cleanup.setTimeout(() => {
           _wheelCheckTimer = null
           if (isStaticTab()) {
             isScrolledUp = msgsEl.scrollTop > 50
@@ -18855,9 +19024,14 @@ const STORAGE_KEY = 'heatsync_multichat';
     }
   }
 
+  let _saveChatWidthTimer = null;
   function saveChatWidth() {
-    chrome.storage.local.set({ hs_chat_width: chatWidth });
-    log('Saved chat width:', chatWidth);
+    if (_saveChatWidthTimer) cleanup.clearTimeout(_saveChatWidthTimer);
+    _saveChatWidthTimer = cleanup.setTimeout(() => {
+      _saveChatWidthTimer = null;
+      chrome.storage.local.set({ hs_chat_width: chatWidth });
+      log('Saved chat width:', chatWidth);
+    }, 250);
   }
 
   async function loadChatWidth() {
@@ -19055,8 +19229,13 @@ const STORAGE_KEY = 'heatsync_multichat';
     }
   }
 
+  let _saveEmoteSizeTimer = null;
   function saveEmoteSize() {
-    chrome.storage.local.set({ hs_emote_size: emoteSize });
+    if (_saveEmoteSizeTimer) cleanup.clearTimeout(_saveEmoteSizeTimer);
+    _saveEmoteSizeTimer = cleanup.setTimeout(() => {
+      _saveEmoteSizeTimer = null;
+      chrome.storage.local.set({ hs_emote_size: emoteSize });
+    }, 250);
   }
 
   async function loadEmoteSize() {
@@ -20000,8 +20179,8 @@ const STORAGE_KEY = 'heatsync_multichat';
       }
       ensureYtChatExpanded()
       const ytWidthObs = new MutationObserver(ensureYtChatExpanded)
+      cleanup.trackObserver(ytWidthObs)
       ytWidthObs.observe(parent, { attributes: true, attributeFilter: ['style', 'class'] })
-      cleanup.addObserver?.(ytWidthObs)
     } else if (isKick) {
       parent = chatRoom.parentElement
       chatRoom.after(container)
@@ -20501,7 +20680,7 @@ const STORAGE_KEY = 'heatsync_multichat';
 
     const showChannel = tabId === 'mentions';
     const isSuperChat = m.platform === 'youtube' && (m.msgType === 'superchat' || m.msgType === 'supersticker')
-    const isMembership = m.platform === 'youtube' && m.msgType === 'membership'
+    const isMembership = m.platform === 'youtube' && (m.msgType === 'membership' || m.msgType === 'giftpurchase' || m.msgType === 'giftredemption')
     const isKicksEvent = m.kicksEvent === true
     // Map noticeType / msgId to a semantic CSS modifier so each event class
     // (unban, ban, mod-add, mode-change, sub, raid, etc.) can have its own color/icon
@@ -20569,6 +20748,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     const platformBadge = (platformBadgesEnabled || plat !== hostPlatform) ? `<span class="hs-mc-platform-badge hs-mc-pb-${plat}" style="font-size:10px;margin-right:3px;font-weight:700;vertical-align:middle;color:${platColors[plat]}">${platLabel}</span>` : ''
     const safeScColor = sanitizeColor(m.scColor || '#ffd600')
     const scBadge = isSuperChat && m.amount ? `<span class="hs-mc-sc-badge" style="background:${safeScColor};color:#000;padding:0 4px;border-radius:0;font-size:10px;font-weight:700;margin-right:3px;">${escapeHtml(m.amount)}</span>` : ''
+    const bitsBadge = m.bits ? `<span class="hs-mc-bits-badge" title="${m.bits} bits">${m.bits} bits</span>` : ''
     const paintStyle = m.userId ? getMcPaintStyle(m.userId) : ''
     const userBaseUrl = plat === 'kick' ? 'https://kick.com' : plat === 'yt' ? 'https://youtube.com/@' : 'https://twitch.tv'
     const userLink = `<a href="${userBaseUrl}/${encodeURIComponent(m.user)}" target="_blank" class="hs-mc-user" data-username="${escapeHtml(m.user.toLowerCase())}" data-platform="${plat}" style="${paintStyle || 'color:' + sanitizeColor(m.color || '#fff')}">${escapeHtml(m.user)}</a>`;
@@ -20678,8 +20858,8 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       : m.type === 'notice'
       ? `${tsHtml}${processedText}`
       : m.isAction
-      ? `${tsHtml}${systemLine}${platformBadge}${scBadge}${badges}${avatarHtml}${userLink}${channelSpan} <span style="color:${sanitizeColor(m.color || '#fff')};font-style:italic">${processedText}</span>${stickerHtml}`
-      : `${tsHtml}${systemLine}${platformBadge}${scBadge}${badges}${avatarHtml}${userLink}${channelSpan}: ${processedText}${stickerHtml}`
+      ? `${tsHtml}${systemLine}${platformBadge}${scBadge}${bitsBadge}${badges}${avatarHtml}${userLink}${channelSpan} <span style="color:${sanitizeColor(m.color || '#fff')};font-style:italic">${processedText}</span>${stickerHtml}`
+      : `${tsHtml}${systemLine}${platformBadge}${scBadge}${bitsBadge}${badges}${avatarHtml}${userLink}${channelSpan}: ${processedText}${stickerHtml}`
     div.innerHTML = `${replyBar}${msgBody}`;
     // Correct emote states based on current inventory + blocked (cached HTML may have stale states)
     for (const w of div.querySelectorAll('.hs-mc-emote-wrapper[data-source="heatsync"]')) {
@@ -20802,7 +20982,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       if (isScrolledUp) return;
       isProgrammaticScroll = true;
       msgsEl.scrollTop = msgsEl.scrollHeight + 10000;
-      requestAnimationFrame(() => { isProgrammaticScroll = false; });
+      cleanup.raf(() => { isProgrammaticScroll = false; });
     };
 
     const newBtn = document.getElementById('hs-mc-new-msgs');
@@ -20810,9 +20990,9 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     if (newBtn) newBtn.style.display = 'none';
 
     scrollToBottom();
-    requestAnimationFrame(() => {
+    cleanup.raf(() => {
       scrollToBottom();
-      setTimeout(scrollToBottom, 50);
+      cleanup.setTimeout(scrollToBottom, 50);
     });
 
     msgsEl.querySelectorAll('.hs-mc-emote').forEach(img => {
@@ -20868,7 +21048,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     // which has fair per-platform capping.
     if (isMultiPlatformTab(tabId)) {
       if (!_multiPlatformRenderTimer) {
-        _multiPlatformRenderTimer = requestAnimationFrame(() => {
+        _multiPlatformRenderTimer = cleanup.raf(() => {
           _multiPlatformRenderTimer = null
           renderMessages(currentTab)
         })
@@ -20989,6 +21169,107 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     return merged
   }
 
+  // ─── Multistream auto-detect banner ─────────────────────────────────────
+  // Tier 1: rely on heatsync server's resolveIdentity. If a streamer is live
+  // on >=2 platforms and the user hasn't already linked them in config.channels,
+  // surface a one-click "link channels" suggestion. Right-click dismisses
+  // permanently for that channel pair.
+  let _multistreamDismissed = null
+  let _multistreamLastChecked = ''
+  let _multistreamLastResult = '' // 'shown' | 'hidden' — sticky per channel/key
+  async function loadMultistreamDismissed() {
+    if (_multistreamDismissed) return _multistreamDismissed
+    try {
+      const data = await chrome.storage.local.get('hs_multistream_dismissed')
+      _multistreamDismissed = new Set(data.hs_multistream_dismissed || [])
+    } catch { _multistreamDismissed = new Set() }
+    return _multistreamDismissed
+  }
+  function persistMultistreamDismissed() {
+    try {
+      chrome.storage.local.set({ hs_multistream_dismissed: [..._multistreamDismissed] })
+    } catch {}
+  }
+  function hideMultistreamBanner() {
+    const el = document.getElementById('hs-mc-multistream-banner')
+    if (el) { el.hidden = true; el.replaceChildren() }
+  }
+  async function maybeShowMultistreamBanner(channelName, platform) {
+    const el = document.getElementById('hs-mc-multistream-banner')
+    if (!el) return
+    if (!channelName) { hideMultistreamBanner(); return }
+    const key = `${platform || 'auto'}:${channelName.toLowerCase()}`
+    // Avoid redundant API calls when the user re-enters the same channel tab
+    // — track last result per key so a 'hidden' decision sticks until channel changes.
+    if (_multistreamLastChecked === key) {
+      if (_multistreamLastResult === 'shown' && !el.hidden) return
+      if (_multistreamLastResult === 'hidden') return
+    }
+    _multistreamLastChecked = key
+    const dismissed = await loadMultistreamDismissed()
+    if (dismissed.has(key)) { _multistreamLastResult = 'hidden'; hideMultistreamBanner(); return }
+    if (typeof resolveIdentity !== 'function') { _multistreamLastResult = 'hidden'; hideMultistreamBanner(); return }
+    const res = await resolveIdentity(channelName, platform ? { platform } : {})
+    if (!res?.ok || !res.identity) { _multistreamLastResult = 'hidden'; hideMultistreamBanner(); return }
+    const id = res.identity
+    const liveOn = res.liveOn || []
+    if (liveOn.length < 2) { _multistreamLastResult = 'hidden'; hideMultistreamBanner(); return }
+    // Already linked in config? Skip.
+    const lower = channelName.toLowerCase()
+    const alreadyLinked = config.channels.some(ch => {
+      if (typeof ch === 'string') return false
+      const t = ch.twitch?.toLowerCase()
+      const k = ch.kick?.toLowerCase()
+      const matchesThis = (t === lower || k === lower ||
+        (id.twitch && t === id.twitch.toLowerCase()) ||
+        (id.kick && k === id.kick.toLowerCase()))
+      if (!matchesThis) return false
+      // Linked = at least 2 of {twitch,kick,youtube} populated
+      let count = 0
+      if (ch.twitch) count++
+      if (ch.kick) count++
+      if (ch.youtube) count++
+      return count >= 2
+    })
+    if (alreadyLinked) { _multistreamLastResult = 'hidden'; hideMultistreamBanner(); return }
+    // Build banner
+    const platLabel = (p) => p === 'twitch' ? 'Twitch' : p === 'kick' ? 'Kick' : p === 'youtube' ? 'YouTube' : p
+    const otherPlatforms = liveOn.filter(p => p !== platform)
+    const display = res.profile?.display_name || channelName
+    _multistreamLastResult = 'shown'
+    el.replaceChildren()
+    el.hidden = false
+    const text = document.createElement('span')
+    text.className = 'hs-mc-multi-text'
+    text.textContent = `${display} is also live on ${otherPlatforms.map(platLabel).join(' + ')}`
+    const linkBtn = document.createElement('button')
+    linkBtn.className = 'hs-mc-multi-link'
+    linkBtn.textContent = 'link channels'
+    linkBtn.addEventListener('click', (e) => {
+      e.preventDefault()
+      const entry = { id: `linked_${Date.now()}` }
+      if (id.twitch) entry.twitch = id.twitch
+      if (id.kick) entry.kick = id.kick
+      if (id.youtube) entry.youtube = id.youtube
+      config.channels.push(entry)
+      saveConfig()
+      try { updateTabBar() } catch {}
+      hideMultistreamBanner()
+    })
+    const dismissBtn = document.createElement('button')
+    dismissBtn.className = 'hs-mc-multi-dismiss'
+    dismissBtn.textContent = '×'
+    dismissBtn.title = 'dismiss (right-click also works)'
+    const dismissNow = () => {
+      _multistreamDismissed.add(key)
+      persistMultistreamDismissed()
+      hideMultistreamBanner()
+    }
+    dismissBtn.addEventListener('click', dismissNow)
+    el.addEventListener('contextmenu', (e) => { e.preventDefault(); dismissNow() }, { once: true })
+    el.append(text, linkBtn, dismissBtn)
+  }
+
   function renderMessages(id) {
     if (editingChannel) return;
     // Profile card overrides normal tab content while open
@@ -20996,12 +21277,24 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       renderProfileCardView();
       return;
     }
-    // Social tabs have their own renderers
-    if (id === 'feed') { renderFeed(); return; }
-    if (id === 'whispers') { renderWhispersTab(); return; }
-    if (id === 'discover') { renderDiscoverTab(); return; }
-    if (id === 'pinned') { renderPinnedTab(); return; }
-    if (id === 'settings') { renderSettingsTab(); return; }
+    // Social tabs have their own renderers — banner doesn't apply there
+    if (id === 'feed') { hideMultistreamBanner(); renderFeed(); return; }
+    if (id === 'whispers') { hideMultistreamBanner(); renderWhispersTab(); return; }
+    if (id === 'discover') { hideMultistreamBanner(); renderDiscoverTab(); return; }
+    if (id === 'pinned') { hideMultistreamBanner(); renderPinnedTab(); return; }
+    if (id === 'settings') { hideMultistreamBanner(); renderSettingsTab(); return; }
+    if (id === 'mentions') { hideMultistreamBanner(); }
+    // Banner: streamer-tab only (live or per-channel)
+    if (id === 'live') {
+      const liveCh = getLiveChannel()
+      maybeShowMultistreamBanner(liveCh, hostPlatform)
+    } else if (id && id !== 'add' && !['mentions','feed','whispers','discover','pinned','settings'].includes(id)) {
+      // Per-channel tab — id may be a username or a linked-tab id; resolve from config
+      const ch = config.channels.find(c => typeof c !== 'string' && c.id === id)
+      const channelName = (ch && (ch.twitch || ch.kick)) || id
+      const platHint = ch?.twitch ? 'twitch' : ch?.kick ? 'kick' : null
+      maybeShowMultistreamBanner(channelName, platHint)
+    }
 
     // If search is active on mentions tab, don't clobber search results
     if (id === 'mentions') {
@@ -21028,6 +21321,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     if (id === 'mentions') {
       msgs = mentionsBuffer;
     } else if (id === 'add') {
+      hideMultistreamBanner();
       renderAddChannelForm(msgsEl);
       return;
     } else if (id === 'live') {
@@ -21169,7 +21463,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     if (prefixLen === msgsEl.children.length && prefixLen === desiredKeys.length) {
       for (const ex of detachedExtras) msgsEl.appendChild(ex)
       applyMcMutes();
-      requestAnimationFrame(() => { isProgrammaticScroll = false; });
+      cleanup.raf(() => { isProgrammaticScroll = false; });
       if (!isScrolledUp) scrollMsgsToBottom(msgsEl);
       return
     }
@@ -21226,7 +21520,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
 
     applyMcMutes();
 
-    requestAnimationFrame(() => { isProgrammaticScroll = false; });
+    cleanup.raf(() => { isProgrammaticScroll = false; });
 
     if (!isScrolledUp) {
       scrollMsgsToBottom(msgsEl);
@@ -21400,8 +21694,8 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     let _autofillGen = 0
     let _autofillTimer = null
     const _autofillCancelable = (handler) => {
-      if (_autofillTimer) clearTimeout(_autofillTimer)
-      _autofillTimer = setTimeout(handler, 500)
+      if (_autofillTimer) cleanup.clearTimeout(_autofillTimer)
+      _autofillTimer = cleanup.setTimeout(handler, 500)
     }
 
     async function autofillFromName(name, sourcePlatform) {
@@ -21450,7 +21744,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     })
 
     // Auto-focus twitch input
-    requestAnimationFrame(() => twitch.input.focus())
+    cleanup.raf(() => twitch.input.focus())
   }
 
   function removeChannel(tabId) {
@@ -21479,6 +21773,12 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       }).catch(() => {});
       youtubeLinks.delete(tabId);
       channelYtMessages.delete(tabId);
+    }
+
+    // Drop per-tab platform filter state so it can't leak across channel adds/removes
+    if (platformFilters && platformFilters[tabId]) {
+      delete platformFilters[tabId];
+      saveUiSetting('platformFilters', platformFilters);
     }
 
     updateTabBar();
@@ -21788,7 +22088,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
         if (e.key === 'Escape') switchTab(tabId);
       });
     });
-    requestAnimationFrame(() => twitch.input.focus());
+    cleanup.raf(() => twitch.input.focus());
   }
 
   function updateTabIndicator(tabId) {
@@ -22081,7 +22381,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
         document.removeEventListener('click', dismiss, true);
       }
     };
-    setTimeout(() => document.addEventListener('click', dismiss, { capture: true, signal: mcSignal }), 0);
+    cleanup.setTimeout(() => document.addEventListener('click', dismiss, { capture: true, signal: mcSignal }), 0);
   }
 
   function getCurrentUsername() {

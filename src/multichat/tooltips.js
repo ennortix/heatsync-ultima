@@ -457,6 +457,7 @@
             positionTooltipAtElement(userTooltip, _userTooltipTarget);
           }
         });
+        cleanup.trackObserver(_userTooltipResizeObs);
         _userTooltipResizeObs.observe(userTooltip);
       }
     }

@@ -33,6 +33,8 @@
   let blockedEmotes = new Set()
   let inventoryLoaded = false
 
+  let channelEmotesByOwner = {} // { ownerName: emote[] } — populated from background broadcasts
+
   function rebuildEmoteMap(inventory, globals) {
     const map = new Map()
     // Globals first (lower priority)
@@ -41,7 +43,14 @@
         if (e?.name && !blockedEmotes.has(e.hash || e.name)) map.set(e.name, e)
       }
     }
-    // Inventory overrides globals
+    // Channel emotes (BTTV/FFZ/7TV/Twitch sub) — between globals and inventory
+    for (const ownerEmotes of Object.values(channelEmotesByOwner)) {
+      if (!Array.isArray(ownerEmotes)) continue
+      for (const e of ownerEmotes) {
+        if (e?.name && !blockedEmotes.has(e.hash || e.name)) map.set(e.name, e)
+      }
+    }
+    // Inventory overrides everything
     if (inventory) {
       for (const e of inventory) {
         if (e?.name && !blockedEmotes.has(e.hash || e.name)) map.set(e.name, e)
@@ -54,8 +63,11 @@
   async function loadEmoteInventory() {
     try {
       // Fast path: storage
-      const stored = await chrome.storage.local.get(['emote_inventory', 'global_emotes', 'blocked_emotes'])
+      const stored = await chrome.storage.local.get(['emote_inventory', 'global_emotes', 'blocked_emotes', 'channel_emotes_map'])
       if (stored.blocked_emotes) blockedEmotes = new Set(stored.blocked_emotes)
+      if (stored.channel_emotes_map && typeof stored.channel_emotes_map === 'object') {
+        channelEmotesByOwner = stored.channel_emotes_map
+      }
       if (stored.emote_inventory || stored.global_emotes) {
         rebuildEmoteMap(stored.emote_inventory || [], stored.global_emotes || [])
         inventoryLoaded = true
@@ -81,8 +93,19 @@
       chrome.storage.local.get(['emote_inventory']).then(stored => {
         rebuildEmoteMap(stored.emote_inventory || [], msg.emotes)
       })
-    } else if (msg.type === 'blocked_emotes_update' && msg.blockedEmotes) {
-      blockedEmotes = new Set(msg.blockedEmotes)
+    } else if (msg.type === 'blocked_update' && Array.isArray(msg.blocked)) {
+      blockedEmotes = new Set(msg.blocked)
+      chrome.storage.local.get(['emote_inventory', 'global_emotes']).then(stored => {
+        rebuildEmoteMap(stored.emote_inventory || [], stored.global_emotes || [])
+      })
+    } else if (msg.type === 'channel_emotes_update' && Array.isArray(msg.emotes) && msg.channelOwner) {
+      channelEmotesByOwner[msg.channelOwner] = msg.emotes
+      // Cap to most-recent 20 owners — long sessions with many channel switches
+      // would otherwise grow this object forever.
+      const keys = Object.keys(channelEmotesByOwner)
+      if (keys.length > 20) {
+        for (let i = 0; i < keys.length - 20; i++) delete channelEmotesByOwner[keys[i]]
+      }
       chrome.storage.local.get(['emote_inventory', 'global_emotes']).then(stored => {
         rebuildEmoteMap(stored.emote_inventory || [], stored.global_emotes || [])
       })
@@ -276,7 +299,7 @@
     }
     if (!ytCosmeticsBatchTimer) {
       if (signal.aborted) return
-      ytCosmeticsBatchTimer = setTimeout(() => {
+      ytCosmeticsBatchTimer = cleanup.setTimeout(() => {
         ytCosmeticsBatchTimer = null
         if (signal.aborted) return
         flushYtCosmeticsBatch()
@@ -284,8 +307,11 @@
     }
   }
   signal.addEventListener('abort', () => {
-    if (ytCosmeticsBatchTimer) { clearTimeout(ytCosmeticsBatchTimer); ytCosmeticsBatchTimer = null }
-    if (_setupAutocompleteRetryTimer) { clearTimeout(_setupAutocompleteRetryTimer); _setupAutocompleteRetryTimer = null }
+    if (ytCosmeticsBatchTimer) { cleanup.clearTimeout(ytCosmeticsBatchTimer); ytCosmeticsBatchTimer = null }
+    if (_setupAutocompleteRetryTimer) { cleanup.clearTimeout(_setupAutocompleteRetryTimer); _setupAutocompleteRetryTimer = null }
+    // Clear cosmetics caches so cross-video bleed can't happen on next mount
+    ytCosmeticsCache.clear()
+    ytCosmeticsPending.clear()
   }, { once: true })
 
   async function flushYtCosmeticsBatch() {
@@ -335,8 +361,10 @@
 
     // Drain remainder if any
     if (ytCosmeticsPending.size > 0 && !ytCosmeticsBatchTimer) {
-      ytCosmeticsBatchTimer = setTimeout(() => {
+      if (signal.aborted) return
+      ytCosmeticsBatchTimer = cleanup.setTimeout(() => {
         ytCosmeticsBatchTimer = null
+        if (signal.aborted) return
         flushYtCosmeticsBatch()
       }, 2000)
     }
@@ -441,11 +469,12 @@
     return new Promise((resolve, reject) => {
       let elapsed = 0
       const check = () => {
+        if (signal.aborted) return reject(new Error('aborted'))
         const el = document.querySelector('yt-live-chat-item-list-renderer #items')
         if (el) return resolve(el)
         if (elapsed >= 15000) return reject(new Error('YouTube chat container not found'))
         elapsed += 500
-        setTimeout(check, 500)
+        cleanup.setTimeout(check, 500)
       }
       check()
     })
@@ -491,7 +520,15 @@
 
   function extractMessage(el) {
     const authorEl = el.querySelector('#author-name')
-    const messageEl = el.querySelector('#message') || el.querySelector('#header-subtext') || el.querySelector('#header-primary-text')
+    // Fall through selectors and prefer the first one with non-whitespace
+    // content — gift renderers often have an empty #message but populated
+    // #header-primary-text, so static-priority lookup misses them.
+    let messageEl = null
+    for (const sel of ['#message', '#header-subtext', '#header-primary-text', '#primary-text']) {
+      const e = el.querySelector(sel)
+      if (e && e.textContent && e.textContent.trim()) { messageEl = e; break }
+    }
+    if (!messageEl) messageEl = el.querySelector('#message') || el.querySelector('#header-subtext') || el.querySelector('#header-primary-text')
     if (!authorEl || !messageEl) return null
 
     const user = authorEl.textContent.trim()
@@ -530,7 +567,8 @@
     'YT-LIVE-CHAT-PAID-STICKER-RENDERER',
     'YT-LIVE-CHAT-MEMBERSHIP-ITEM-RENDERER',
     'YT-LIVE-CHAT-SPONSORSHIPS-GIFT-PURCHASE-ANNOUNCEMENT-RENDERER',
-    'YT-LIVE-CHAT-SPONSORSHIPS-GIFT-REDEMPTION-ANNOUNCEMENT-RENDERER'
+    'YT-LIVE-CHAT-SPONSORSHIPS-GIFT-REDEMPTION-ANNOUNCEMENT-RENDERER',
+    'YT-LIVE-CHAT-SPONSORSHIPS-HEADER-RENDERER'
   ])
 
   function getMsgType(tagName) {
@@ -540,6 +578,7 @@
       case 'YT-LIVE-CHAT-MEMBERSHIP-ITEM-RENDERER': return 'membership'
       case 'YT-LIVE-CHAT-SPONSORSHIPS-GIFT-PURCHASE-ANNOUNCEMENT-RENDERER': return 'giftpurchase'
       case 'YT-LIVE-CHAT-SPONSORSHIPS-GIFT-REDEMPTION-ANNOUNCEMENT-RENDERER': return 'giftredemption'
+      case 'YT-LIVE-CHAT-SPONSORSHIPS-HEADER-RENDERER': return 'giftheader'
       default: return 'text'
     }
   }
@@ -614,8 +653,11 @@
       const st = extractStickerData(node)
       payload.amount = st.amount
       payload.sticker = st.sticker
-    } else if (msgType === 'membership') {
-      const headerEl = node.querySelector('#header-subtext, #header-primary-text')
+    } else if (msgType === 'membership' || msgType === 'giftpurchase' || msgType === 'giftredemption' || msgType === 'giftheader') {
+      // Pull the system text from whichever header slot YouTube populated for
+      // this renderer variant — gift announcements tend to use #header-primary-text,
+      // memberships use #header-subtext, but selectors overlap so we accept any.
+      const headerEl = node.querySelector('#header-subtext, #header-primary-text, #primary-text')
       if (headerEl) payload.systemMsg = headerEl.textContent.trim()
     }
 
@@ -635,19 +677,21 @@
     if (signal.aborted) return
     const inputRenderer = document.querySelector('yt-live-chat-text-input-field-renderer')
     if (!inputRenderer) {
-      if (_setupAutocompleteRetryTimer) clearTimeout(_setupAutocompleteRetryTimer)
-      _setupAutocompleteRetryTimer = setTimeout(setupAutocomplete, 1000)
+      if (_setupAutocompleteRetryTimer) cleanup.clearTimeout(_setupAutocompleteRetryTimer)
+      if (signal.aborted) return
+      _setupAutocompleteRetryTimer = cleanup.setTimeout(setupAutocomplete, 1000)
       return
     }
 
     const input = inputRenderer.querySelector('div#input[contenteditable]')
     if (!input) {
-      if (_setupAutocompleteRetryTimer) clearTimeout(_setupAutocompleteRetryTimer)
-      _setupAutocompleteRetryTimer = setTimeout(setupAutocomplete, 1000)
+      if (_setupAutocompleteRetryTimer) cleanup.clearTimeout(_setupAutocompleteRetryTimer)
+      if (signal.aborted) return
+      _setupAutocompleteRetryTimer = cleanup.setTimeout(setupAutocomplete, 1000)
       return
     }
     // Found — clear any pending retry
-    if (_setupAutocompleteRetryTimer) { clearTimeout(_setupAutocompleteRetryTimer); _setupAutocompleteRetryTimer = null }
+    if (_setupAutocompleteRetryTimer) { cleanup.clearTimeout(_setupAutocompleteRetryTimer); _setupAutocompleteRetryTimer = null }
 
     // Create autocomplete dropdown
     autocompleteEl = document.createElement('div')
@@ -920,26 +964,26 @@
 
       // Process existing messages
       for (const child of container.children) {
-        requestAnimationFrame(() => processNode(child))
+        cleanup.raf(() => processNode(child))
       }
 
       // Watch for new messages
       const observer = new MutationObserver((mutations) => {
         for (const mut of mutations) {
           for (const node of mut.addedNodes) {
-            requestAnimationFrame(() => processNode(node))
+            cleanup.raf(() => processNode(node))
           }
         }
       })
 
+      cleanup.trackObserver(observer)
       observer.observe(container, { childList: true })
-      signal.addEventListener('abort', () => observer.disconnect())
       window.addEventListener('pagehide', () => ac.abort(), { signal })
 
       log('observer active, videoId:', videoId)
 
       // Setup autocomplete after a short delay (input may not be ready yet)
-      setTimeout(setupAutocomplete, 500)
+      if (!signal.aborted) cleanup.setTimeout(setupAutocomplete, 500)
 
     } catch (err) {
       log('init failed:', err.message)

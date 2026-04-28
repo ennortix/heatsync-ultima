@@ -4162,11 +4162,12 @@ function stackAdjacentOverlayEmotes(messageElement, allEmotes) {
 
       log('[hs-overlay] Stack HTML:', stackContainer.outerHTML.substring(0, 500));
 
-      // Force overlay re-center when images load (fixes centering on first render)
+      // Force overlay re-center when images load (fixes centering on first render).
+      // {once:true} + signal lets the closure release once it fires or on lifecycle abort.
       const imgs = stackContainer.querySelectorAll('img');
       imgs.forEach(img => {
         if (!img.complete) {
-          img.onload = () => {
+          img.addEventListener('load', () => {
             if (!stackContainer.isConnected) return
             requestAnimationFrame(() => {
               if (!stackContainer.isConnected) return
@@ -4175,7 +4176,7 @@ function stackAdjacentOverlayEmotes(messageElement, allEmotes) {
                 overlay.style.transform = ''
               });
             });
-          };
+          }, { once: true, signal });
         }
       });
     }
@@ -4482,11 +4483,12 @@ function replaceEmotesWithStacking(element, allEmotes) {
     blockAllBtn.title = t('btn_block_all');
     stackContainer.appendChild(blockAllBtn);
 
-    // Force overlay re-center when images load (fixes centering on first render)
+    // Force overlay re-center when images load (fixes centering on first render).
+    // {once:true} + signal lets the closure release once it fires or on lifecycle abort.
     const imgs = stackContainer.querySelectorAll('img');
     imgs.forEach(img => {
       if (!img.complete) {
-        img.onload = () => {
+        img.addEventListener('load', () => {
           if (!stackContainer.isConnected) return
           requestAnimationFrame(() => {
             if (!stackContainer.isConnected) return
@@ -4495,7 +4497,7 @@ function replaceEmotesWithStacking(element, allEmotes) {
               overlay.style.transform = ''
             });
           });
-        };
+        }, { once: true, signal });
       }
     });
 
@@ -4997,21 +4999,21 @@ function updateEmoteState(hash, emoteName, state) {
       previewEl.style.transform = 'none';
     }
     if (previewImg) {
-      previewImg.onload = () => {
+      previewImg.addEventListener('load', () => {
         if (!previewEl.isConnected) return
         repositionPreview()
-      }
+      }, { once: true, signal })
       // Try hi-res upgrade — swap in silently if it loads
       const e0 = emotesToShow[0];
       if (e0.hiRes && e0.hiRes !== e0.src) {
         const probe = new Image();
-        probe.onload = () => {
+        probe.addEventListener('load', () => {
           if (!previewEl.isConnected) return
           previewEl.querySelectorAll('img').forEach((img, i) => {
             const hi = emotesToShow[i]?.hiRes;
             if (hi) { img.src = hi; repositionPreview(); }
           });
-        };
+        }, { once: true, signal });
         probe.src = e0.hiRes;
       }
     }
@@ -7166,19 +7168,18 @@ function waitForTwitchChannelId(slug, timeoutMs) {
   return new Promise(resolve => {
     const sync = getTwitchChannelId();
     if (sync) return resolve(sync);
+    // AbortController guarantees handler is removed even if a slow response arrives post-timeout
+    const ac = new AbortController();
     const handler = (e) => {
       if (e.source !== window || e.origin !== location.origin) return;
       if (e.data?.type === 'heatsync-page-channel-id' && e.data.login === slug && e.data.channelId) {
-        cleanup();
+        ac.abort();
+        clearTimeout(timer);
         resolve(e.data.channelId);
       }
     };
-    const timer = setTimeout(() => { cleanup(); resolve(null); }, timeoutMs);
-    function cleanup() {
-      window.removeEventListener('message', handler);
-      clearTimeout(timer);
-    }
-    window.addEventListener('message', handler);
+    const timer = setTimeout(() => { ac.abort(); resolve(null); }, timeoutMs);
+    window.addEventListener('message', handler, { signal: ac.signal });
   });
 }
 

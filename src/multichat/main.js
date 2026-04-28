@@ -652,7 +652,7 @@
         menu.style.left = Math.min(e.clientX, window.innerWidth - mw - 4) + 'px';
         menu.style.top = Math.min(e.clientY, window.innerHeight - mh - 4) + 'px';
         const dismiss = (ev) => { if (!menu.contains(ev.target)) { menu.remove(); document.removeEventListener('click', dismiss); } };
-        setTimeout(() => document.addEventListener('click', dismiss, { signal: mcSignal }), 0);
+        cleanup.setTimeout(() => document.addEventListener('click', dismiss, { signal: mcSignal }), 0);
         return;
       }
 
@@ -689,7 +689,7 @@
       menu.style.top = Math.min(e.clientY, window.innerHeight - mh - 4) + 'px';
 
       const dismiss = (ev) => { if (!menu.contains(ev.target)) { menu.remove(); document.removeEventListener('click', dismiss); } };
-      setTimeout(() => document.addEventListener('click', dismiss, { signal: mcSignal }), 0);
+      cleanup.setTimeout(() => document.addEventListener('click', dismiss, { signal: mcSignal }), 0);
     });
 
     return container;
@@ -847,6 +847,7 @@
         <input id="hs-mc-search-input" type="text" placeholder="${searchPlaceholder}" autocomplete="off" spellcheck="false" />
         <div id="hs-mc-search-spinner"></div>
       </div>
+      <div id="hs-mc-multistream-banner" hidden></div>
       <div id="hs-mc-messages">
         <div class="hs-mc-empty">${t('mc_no_messages')}</div>
       </div>
@@ -907,8 +908,8 @@
           }
         }
         // Debounced scroll position check (covers both static and chat tabs)
-        if (_wheelCheckTimer) clearTimeout(_wheelCheckTimer)
-        _wheelCheckTimer = setTimeout(() => {
+        if (_wheelCheckTimer) cleanup.clearTimeout(_wheelCheckTimer)
+        _wheelCheckTimer = cleanup.setTimeout(() => {
           _wheelCheckTimer = null
           if (isStaticTab()) {
             isScrolledUp = msgsEl.scrollTop > 50
@@ -1189,9 +1190,14 @@
     }
   }
 
+  let _saveChatWidthTimer = null;
   function saveChatWidth() {
-    chrome.storage.local.set({ hs_chat_width: chatWidth });
-    log('Saved chat width:', chatWidth);
+    if (_saveChatWidthTimer) cleanup.clearTimeout(_saveChatWidthTimer);
+    _saveChatWidthTimer = cleanup.setTimeout(() => {
+      _saveChatWidthTimer = null;
+      chrome.storage.local.set({ hs_chat_width: chatWidth });
+      log('Saved chat width:', chatWidth);
+    }, 250);
   }
 
   async function loadChatWidth() {
@@ -1389,8 +1395,13 @@
     }
   }
 
+  let _saveEmoteSizeTimer = null;
   function saveEmoteSize() {
-    chrome.storage.local.set({ hs_emote_size: emoteSize });
+    if (_saveEmoteSizeTimer) cleanup.clearTimeout(_saveEmoteSizeTimer);
+    _saveEmoteSizeTimer = cleanup.setTimeout(() => {
+      _saveEmoteSizeTimer = null;
+      chrome.storage.local.set({ hs_emote_size: emoteSize });
+    }, 250);
   }
 
   async function loadEmoteSize() {
@@ -2334,8 +2345,8 @@
       }
       ensureYtChatExpanded()
       const ytWidthObs = new MutationObserver(ensureYtChatExpanded)
+      cleanup.trackObserver(ytWidthObs)
       ytWidthObs.observe(parent, { attributes: true, attributeFilter: ['style', 'class'] })
-      cleanup.addObserver?.(ytWidthObs)
     } else if (isKick) {
       parent = chatRoom.parentElement
       chatRoom.after(container)
@@ -2835,7 +2846,7 @@
 
     const showChannel = tabId === 'mentions';
     const isSuperChat = m.platform === 'youtube' && (m.msgType === 'superchat' || m.msgType === 'supersticker')
-    const isMembership = m.platform === 'youtube' && m.msgType === 'membership'
+    const isMembership = m.platform === 'youtube' && (m.msgType === 'membership' || m.msgType === 'giftpurchase' || m.msgType === 'giftredemption')
     const isKicksEvent = m.kicksEvent === true
     // Map noticeType / msgId to a semantic CSS modifier so each event class
     // (unban, ban, mod-add, mode-change, sub, raid, etc.) can have its own color/icon
@@ -2903,6 +2914,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     const platformBadge = (platformBadgesEnabled || plat !== hostPlatform) ? `<span class="hs-mc-platform-badge hs-mc-pb-${plat}" style="font-size:10px;margin-right:3px;font-weight:700;vertical-align:middle;color:${platColors[plat]}">${platLabel}</span>` : ''
     const safeScColor = sanitizeColor(m.scColor || '#ffd600')
     const scBadge = isSuperChat && m.amount ? `<span class="hs-mc-sc-badge" style="background:${safeScColor};color:#000;padding:0 4px;border-radius:0;font-size:10px;font-weight:700;margin-right:3px;">${escapeHtml(m.amount)}</span>` : ''
+    const bitsBadge = m.bits ? `<span class="hs-mc-bits-badge" title="${m.bits} bits">${m.bits} bits</span>` : ''
     const paintStyle = m.userId ? getMcPaintStyle(m.userId) : ''
     const userBaseUrl = plat === 'kick' ? 'https://kick.com' : plat === 'yt' ? 'https://youtube.com/@' : 'https://twitch.tv'
     const userLink = `<a href="${userBaseUrl}/${encodeURIComponent(m.user)}" target="_blank" class="hs-mc-user" data-username="${escapeHtml(m.user.toLowerCase())}" data-platform="${plat}" style="${paintStyle || 'color:' + sanitizeColor(m.color || '#fff')}">${escapeHtml(m.user)}</a>`;
@@ -3012,8 +3024,8 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       : m.type === 'notice'
       ? `${tsHtml}${processedText}`
       : m.isAction
-      ? `${tsHtml}${systemLine}${platformBadge}${scBadge}${badges}${avatarHtml}${userLink}${channelSpan} <span style="color:${sanitizeColor(m.color || '#fff')};font-style:italic">${processedText}</span>${stickerHtml}`
-      : `${tsHtml}${systemLine}${platformBadge}${scBadge}${badges}${avatarHtml}${userLink}${channelSpan}: ${processedText}${stickerHtml}`
+      ? `${tsHtml}${systemLine}${platformBadge}${scBadge}${bitsBadge}${badges}${avatarHtml}${userLink}${channelSpan} <span style="color:${sanitizeColor(m.color || '#fff')};font-style:italic">${processedText}</span>${stickerHtml}`
+      : `${tsHtml}${systemLine}${platformBadge}${scBadge}${bitsBadge}${badges}${avatarHtml}${userLink}${channelSpan}: ${processedText}${stickerHtml}`
     div.innerHTML = `${replyBar}${msgBody}`;
     // Correct emote states based on current inventory + blocked (cached HTML may have stale states)
     for (const w of div.querySelectorAll('.hs-mc-emote-wrapper[data-source="heatsync"]')) {
@@ -3136,7 +3148,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       if (isScrolledUp) return;
       isProgrammaticScroll = true;
       msgsEl.scrollTop = msgsEl.scrollHeight + 10000;
-      requestAnimationFrame(() => { isProgrammaticScroll = false; });
+      cleanup.raf(() => { isProgrammaticScroll = false; });
     };
 
     const newBtn = document.getElementById('hs-mc-new-msgs');
@@ -3144,9 +3156,9 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     if (newBtn) newBtn.style.display = 'none';
 
     scrollToBottom();
-    requestAnimationFrame(() => {
+    cleanup.raf(() => {
       scrollToBottom();
-      setTimeout(scrollToBottom, 50);
+      cleanup.setTimeout(scrollToBottom, 50);
     });
 
     msgsEl.querySelectorAll('.hs-mc-emote').forEach(img => {
@@ -3202,7 +3214,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     // which has fair per-platform capping.
     if (isMultiPlatformTab(tabId)) {
       if (!_multiPlatformRenderTimer) {
-        _multiPlatformRenderTimer = requestAnimationFrame(() => {
+        _multiPlatformRenderTimer = cleanup.raf(() => {
           _multiPlatformRenderTimer = null
           renderMessages(currentTab)
         })
@@ -3323,6 +3335,107 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     return merged
   }
 
+  // ─── Multistream auto-detect banner ─────────────────────────────────────
+  // Tier 1: rely on heatsync server's resolveIdentity. If a streamer is live
+  // on >=2 platforms and the user hasn't already linked them in config.channels,
+  // surface a one-click "link channels" suggestion. Right-click dismisses
+  // permanently for that channel pair.
+  let _multistreamDismissed = null
+  let _multistreamLastChecked = ''
+  let _multistreamLastResult = '' // 'shown' | 'hidden' — sticky per channel/key
+  async function loadMultistreamDismissed() {
+    if (_multistreamDismissed) return _multistreamDismissed
+    try {
+      const data = await chrome.storage.local.get('hs_multistream_dismissed')
+      _multistreamDismissed = new Set(data.hs_multistream_dismissed || [])
+    } catch { _multistreamDismissed = new Set() }
+    return _multistreamDismissed
+  }
+  function persistMultistreamDismissed() {
+    try {
+      chrome.storage.local.set({ hs_multistream_dismissed: [..._multistreamDismissed] })
+    } catch {}
+  }
+  function hideMultistreamBanner() {
+    const el = document.getElementById('hs-mc-multistream-banner')
+    if (el) { el.hidden = true; el.replaceChildren() }
+  }
+  async function maybeShowMultistreamBanner(channelName, platform) {
+    const el = document.getElementById('hs-mc-multistream-banner')
+    if (!el) return
+    if (!channelName) { hideMultistreamBanner(); return }
+    const key = `${platform || 'auto'}:${channelName.toLowerCase()}`
+    // Avoid redundant API calls when the user re-enters the same channel tab
+    // — track last result per key so a 'hidden' decision sticks until channel changes.
+    if (_multistreamLastChecked === key) {
+      if (_multistreamLastResult === 'shown' && !el.hidden) return
+      if (_multistreamLastResult === 'hidden') return
+    }
+    _multistreamLastChecked = key
+    const dismissed = await loadMultistreamDismissed()
+    if (dismissed.has(key)) { _multistreamLastResult = 'hidden'; hideMultistreamBanner(); return }
+    if (typeof resolveIdentity !== 'function') { _multistreamLastResult = 'hidden'; hideMultistreamBanner(); return }
+    const res = await resolveIdentity(channelName, platform ? { platform } : {})
+    if (!res?.ok || !res.identity) { _multistreamLastResult = 'hidden'; hideMultistreamBanner(); return }
+    const id = res.identity
+    const liveOn = res.liveOn || []
+    if (liveOn.length < 2) { _multistreamLastResult = 'hidden'; hideMultistreamBanner(); return }
+    // Already linked in config? Skip.
+    const lower = channelName.toLowerCase()
+    const alreadyLinked = config.channels.some(ch => {
+      if (typeof ch === 'string') return false
+      const t = ch.twitch?.toLowerCase()
+      const k = ch.kick?.toLowerCase()
+      const matchesThis = (t === lower || k === lower ||
+        (id.twitch && t === id.twitch.toLowerCase()) ||
+        (id.kick && k === id.kick.toLowerCase()))
+      if (!matchesThis) return false
+      // Linked = at least 2 of {twitch,kick,youtube} populated
+      let count = 0
+      if (ch.twitch) count++
+      if (ch.kick) count++
+      if (ch.youtube) count++
+      return count >= 2
+    })
+    if (alreadyLinked) { _multistreamLastResult = 'hidden'; hideMultistreamBanner(); return }
+    // Build banner
+    const platLabel = (p) => p === 'twitch' ? 'Twitch' : p === 'kick' ? 'Kick' : p === 'youtube' ? 'YouTube' : p
+    const otherPlatforms = liveOn.filter(p => p !== platform)
+    const display = res.profile?.display_name || channelName
+    _multistreamLastResult = 'shown'
+    el.replaceChildren()
+    el.hidden = false
+    const text = document.createElement('span')
+    text.className = 'hs-mc-multi-text'
+    text.textContent = `${display} is also live on ${otherPlatforms.map(platLabel).join(' + ')}`
+    const linkBtn = document.createElement('button')
+    linkBtn.className = 'hs-mc-multi-link'
+    linkBtn.textContent = 'link channels'
+    linkBtn.addEventListener('click', (e) => {
+      e.preventDefault()
+      const entry = { id: `linked_${Date.now()}` }
+      if (id.twitch) entry.twitch = id.twitch
+      if (id.kick) entry.kick = id.kick
+      if (id.youtube) entry.youtube = id.youtube
+      config.channels.push(entry)
+      saveConfig()
+      try { updateTabBar() } catch {}
+      hideMultistreamBanner()
+    })
+    const dismissBtn = document.createElement('button')
+    dismissBtn.className = 'hs-mc-multi-dismiss'
+    dismissBtn.textContent = '×'
+    dismissBtn.title = 'dismiss (right-click also works)'
+    const dismissNow = () => {
+      _multistreamDismissed.add(key)
+      persistMultistreamDismissed()
+      hideMultistreamBanner()
+    }
+    dismissBtn.addEventListener('click', dismissNow)
+    el.addEventListener('contextmenu', (e) => { e.preventDefault(); dismissNow() }, { once: true })
+    el.append(text, linkBtn, dismissBtn)
+  }
+
   function renderMessages(id) {
     if (editingChannel) return;
     // Profile card overrides normal tab content while open
@@ -3330,12 +3443,24 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       renderProfileCardView();
       return;
     }
-    // Social tabs have their own renderers
-    if (id === 'feed') { renderFeed(); return; }
-    if (id === 'whispers') { renderWhispersTab(); return; }
-    if (id === 'discover') { renderDiscoverTab(); return; }
-    if (id === 'pinned') { renderPinnedTab(); return; }
-    if (id === 'settings') { renderSettingsTab(); return; }
+    // Social tabs have their own renderers — banner doesn't apply there
+    if (id === 'feed') { hideMultistreamBanner(); renderFeed(); return; }
+    if (id === 'whispers') { hideMultistreamBanner(); renderWhispersTab(); return; }
+    if (id === 'discover') { hideMultistreamBanner(); renderDiscoverTab(); return; }
+    if (id === 'pinned') { hideMultistreamBanner(); renderPinnedTab(); return; }
+    if (id === 'settings') { hideMultistreamBanner(); renderSettingsTab(); return; }
+    if (id === 'mentions') { hideMultistreamBanner(); }
+    // Banner: streamer-tab only (live or per-channel)
+    if (id === 'live') {
+      const liveCh = getLiveChannel()
+      maybeShowMultistreamBanner(liveCh, hostPlatform)
+    } else if (id && id !== 'add' && !['mentions','feed','whispers','discover','pinned','settings'].includes(id)) {
+      // Per-channel tab — id may be a username or a linked-tab id; resolve from config
+      const ch = config.channels.find(c => typeof c !== 'string' && c.id === id)
+      const channelName = (ch && (ch.twitch || ch.kick)) || id
+      const platHint = ch?.twitch ? 'twitch' : ch?.kick ? 'kick' : null
+      maybeShowMultistreamBanner(channelName, platHint)
+    }
 
     // If search is active on mentions tab, don't clobber search results
     if (id === 'mentions') {
@@ -3362,6 +3487,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     if (id === 'mentions') {
       msgs = mentionsBuffer;
     } else if (id === 'add') {
+      hideMultistreamBanner();
       renderAddChannelForm(msgsEl);
       return;
     } else if (id === 'live') {
@@ -3503,7 +3629,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     if (prefixLen === msgsEl.children.length && prefixLen === desiredKeys.length) {
       for (const ex of detachedExtras) msgsEl.appendChild(ex)
       applyMcMutes();
-      requestAnimationFrame(() => { isProgrammaticScroll = false; });
+      cleanup.raf(() => { isProgrammaticScroll = false; });
       if (!isScrolledUp) scrollMsgsToBottom(msgsEl);
       return
     }
@@ -3560,7 +3686,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
 
     applyMcMutes();
 
-    requestAnimationFrame(() => { isProgrammaticScroll = false; });
+    cleanup.raf(() => { isProgrammaticScroll = false; });
 
     if (!isScrolledUp) {
       scrollMsgsToBottom(msgsEl);
@@ -3734,8 +3860,8 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     let _autofillGen = 0
     let _autofillTimer = null
     const _autofillCancelable = (handler) => {
-      if (_autofillTimer) clearTimeout(_autofillTimer)
-      _autofillTimer = setTimeout(handler, 500)
+      if (_autofillTimer) cleanup.clearTimeout(_autofillTimer)
+      _autofillTimer = cleanup.setTimeout(handler, 500)
     }
 
     async function autofillFromName(name, sourcePlatform) {
@@ -3784,7 +3910,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     })
 
     // Auto-focus twitch input
-    requestAnimationFrame(() => twitch.input.focus())
+    cleanup.raf(() => twitch.input.focus())
   }
 
   function removeChannel(tabId) {
@@ -3813,6 +3939,12 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       }).catch(() => {});
       youtubeLinks.delete(tabId);
       channelYtMessages.delete(tabId);
+    }
+
+    // Drop per-tab platform filter state so it can't leak across channel adds/removes
+    if (platformFilters && platformFilters[tabId]) {
+      delete platformFilters[tabId];
+      saveUiSetting('platformFilters', platformFilters);
     }
 
     updateTabBar();
@@ -4122,7 +4254,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
         if (e.key === 'Escape') switchTab(tabId);
       });
     });
-    requestAnimationFrame(() => twitch.input.focus());
+    cleanup.raf(() => twitch.input.focus());
   }
 
   function updateTabIndicator(tabId) {
@@ -4415,7 +4547,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
         document.removeEventListener('click', dismiss, true);
       }
     };
-    setTimeout(() => document.addEventListener('click', dismiss, { capture: true, signal: mcSignal }), 0);
+    cleanup.setTimeout(() => document.addEventListener('click', dismiss, { capture: true, signal: mcSignal }), 0);
   }
 
   function getCurrentUsername() {

@@ -28,6 +28,7 @@ function cleanupAuthIrc(destroy = false) {
   if (authState.reconnectTimer) { cleanup.clearTimeout(authState.reconnectTimer); authState.reconnectTimer = null; }
   const prevJoined = [...authState.joined];
   if (authState.ws) {
+    authState.ws.onopen = null;
     authState.ws.onclose = null;
     authState.ws.onerror = null;
     authState.ws.onmessage = null;
@@ -148,6 +149,11 @@ async function connectAuthIrc(token, nick) {
       ws.onerror = () => { clearTimeout(timeout); reject(new Error('ws_error')); };
       ws.onclose = () => { clearTimeout(timeout); reject(new Error('ws_closed')); };
     });
+    // Release handshake closures (timeout/resolve/reject) before reassigning
+    ws.onopen = null;
+    ws.onmessage = null;
+    ws.onerror = null;
+    ws.onclose = null;
     ws.onmessage = handleAuthIrcMessage;
     ws.onclose = () => {
       log('Auth IRC disconnected');

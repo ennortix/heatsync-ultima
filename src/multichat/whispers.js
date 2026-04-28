@@ -4,6 +4,24 @@ const whisperTimeline = [] // { user, text, color, time, self, platform, key, st
 const whisperUsers = new Map() // key → { platform, userId, displayName, color }
 const WHISPER_USERS_MAX = 200
 const WHISPER_TIMELINE_MAX_READ = 500 // hard cap on READ messages; unread are NEVER evicted
+// O(1) dedup. Composite key = id when present, else user|time|text-prefix so IRC↔EventSub
+// dual delivery still collapses even when one side lacks an ID.
+const _whisperSeen = new Set()
+const _WHISPER_SEEN_MAX = 2000
+function _whisperDedupKey(platform, id, user, time, text) {
+  if (id) return `${platform}:${id}`
+  return `${platform}|${(user || '').toLowerCase()}|${time || 0}|${(text || '').slice(0, 64)}`
+}
+function _whisperMarkSeen(key) {
+  if (_whisperSeen.has(key)) return true
+  _whisperSeen.add(key)
+  if (_whisperSeen.size > _WHISPER_SEEN_MAX) {
+    // Drop the oldest insertion (Set preserves insertion order)
+    const it = _whisperSeen.values().next()
+    if (!it.done) _whisperSeen.delete(it.value)
+  }
+  return false
+}
 
 // Trim oldest READ messages once read-count exceeds cap. Unread (incoming msgs
 // with time > whisperLastViewedTime) survive forever — that's the whole point.
@@ -149,8 +167,8 @@ function updateWhisperBadge() {
 }
 
 function handleIncomingWhisper(msg) {
-  // Dedup by message ID
-  if (msg.id && whisperTimeline.some(m => m.id === msg.id)) return
+  // O(1) dedup that also collapses dual IRC↔EventSub delivery when ID is missing
+  if (_whisperMarkSeen(_whisperDedupKey('twitch', msg.id, msg.user, msg.time, msg.text))) return
 
   const key = `twitch:${msg.user.toLowerCase()}`
   whisperUsersSet(key, {
@@ -192,7 +210,8 @@ function handleIncomingWhisper(msg) {
 }
 
 function handleIncomingDm(data) {
-  if (data.id && whisperTimeline.some(m => m.id === data.id)) return
+  const time = data.created_at ? new Date(data.created_at).getTime() : Date.now()
+  if (_whisperMarkSeen(_whisperDedupKey('heatsync', data.id, data.from_display_name, time, data.content))) return
   const key = `hs:${data.from_user_id}`
   whisperUsersSet(key, {
     platform: 'heatsync',
@@ -201,7 +220,6 @@ function handleIncomingDm(data) {
     color: data.from_color || '#ff8700'
   })
 
-  const time = data.created_at ? new Date(data.created_at).getTime() : Date.now()
   whisperTimeline.push({
     user: data.from_display_name,
     text: data.content,
@@ -446,7 +464,7 @@ function renderWhispersTab() {
       const errSafe = escapeHtml(m.error || 'failed')
       const idSafe = escapeHtml(m.sendId || '')
       if (m.errorKind === 'auth') {
-        statusHtml = ` <a href="https://heatsync.org/auth/twitch" target="_blank" rel="noopener noreferrer" class="hs-whisper-status hs-whisper-relogin" title="${errSafe} — click to log in on heatsync">⚠ log in on heatsync to send</a>`
+        statusHtml = ` <a href="https://heatsync.org/api/auth/login?return_to=%2Fhome%2Fhot" target="_blank" rel="noopener noreferrer" class="hs-whisper-status hs-whisper-relogin" title="${errSafe} — click to log in on heatsync">⚠ log in on heatsync to send</a>`
       } else {
         statusHtml = ` <span class="hs-whisper-status hs-whisper-retry" title="click to retry" data-retry="${idSafe}">⚠ ${errSafe} — retry</span>`
       }

@@ -120,6 +120,16 @@ function injectStyles() {
     .hs-mc-util-btn {
       font-weight: 700 !important;
     }
+    /* Util row — orange for ui parity with heatsync.org */
+    .hs-mc-util-row .hs-mc-tab {
+      color: #ff8700 !important;
+      border-color: #ff8700 !important;
+    }
+    .hs-mc-util-row .hs-mc-tab:hover {
+      background: #ff8700 !important;
+      color: #000 !important;
+      border-color: #ff8700 !important;
+    }
     /* Whisper conversation list */
     .hs-whisper-conv {
       padding: 6px 8px;
@@ -211,6 +221,59 @@ function injectStyles() {
       background: #fff;
       color: #000 !important;
     }
+    .hs-mc-bits-badge {
+      display: inline-block;
+      padding: 0 4px;
+      margin-right: 3px;
+      background: #9146ff;
+      color: #fff;
+      font-size: 10px;
+      font-weight: 700;
+      vertical-align: middle;
+    }
+    #hs-mc-multistream-banner {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 8px;
+      background: #1a1a1a;
+      border-bottom: 1px solid #ff8700;
+      font-size: 12px;
+      color: #fff;
+    }
+    #hs-mc-multistream-banner[hidden] {
+      display: none;
+    }
+    .hs-mc-multi-text {
+      flex: 1;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .hs-mc-multi-link {
+      background: #ff8700;
+      color: #fff;
+      border: 0;
+      padding: 2px 8px;
+      font-weight: 700;
+      font-size: 11px;
+      cursor: pointer;
+    }
+    .hs-mc-multi-link:hover {
+      background: #fff;
+      color: #000;
+    }
+    .hs-mc-multi-dismiss {
+      background: transparent;
+      color: #888;
+      border: 0;
+      padding: 0 4px;
+      font-size: 16px;
+      cursor: pointer;
+    }
+    .hs-mc-multi-dismiss:hover {
+      color: #fff;
+    }
     /* Inline stream event notifications */
     .hs-mc-stream-event {
       padding: 2px 4px;
@@ -284,7 +347,8 @@ function injectStyles() {
       display: flex;
     }
 
-    /* Resize drag bar on left edge of chat column */
+    /* Resize drag bar — convention: solid #ff8700, ≥6px, no labels.
+       Always visible so user knows the edge is grab-able. */
     #hs-mc-resize-handle {
       position: absolute;
       top: 0;
@@ -293,11 +357,14 @@ function injectStyles() {
       height: 100%;
       cursor: ew-resize;
       z-index: 2000;
-      background: transparent;
+      background: #ff8700;
+      opacity: 0.7;
+      transition: opacity 0.12s, background 0.12s;
     }
     #hs-mc-resize-handle:hover,
     #hs-mc-resize-handle:active {
-      background: #ff8700;
+      background: #ffaa33;
+      opacity: 1;
     }
 
     /* YouTube resize handle — left edge of #secondary sidebar */
@@ -309,11 +376,14 @@ function injectStyles() {
       height: 100%;
       cursor: ew-resize;
       z-index: 2000;
-      background: transparent;
+      background: #ff8700;
+      opacity: 0.7;
+      transition: opacity 0.12s, background 0.12s;
     }
     #hs-yt-resize-handle:hover,
     #hs-yt-resize-handle:active {
-      background: #ff8700;
+      background: #ffaa33;
+      opacity: 1;
     }
 
     #hs-mc-messages {
@@ -699,11 +769,13 @@ function injectStyles() {
     /* Event color palette — each notice class gets a distinct ANSI hue so the
        chat can be read at a glance. Using saturated 16-color anchors plus
        Twitch/HS conventions (purple = sub, orange = HS brand/raid). */
-    /* Punishment lifecycle (red↔green) */
+    /* Red is reserved for @-mentions. Ban keeps red (severe/permanent). Timeout =
+       green (#008000) — visible mod-action marker so timeouts read at a glance
+       (matches the heatsync site). Recovery (untimeout) keeps the same green. */
     .hs-mc-msg.hs-mc-notice-ban       { border-left-color: #ff0000 !important; background: rgba(255, 0, 0, 0.12) !important; }
     .hs-mc-msg.hs-mc-notice-ban       .hs-mc-system-text { color: #ff4040; font-weight: 600; }
-    .hs-mc-msg.hs-mc-notice-timeout   { border-left-color: #ff8080 !important; background: rgba(255, 128, 128, 0.10) !important; }
-    .hs-mc-msg.hs-mc-notice-timeout   .hs-mc-system-text { color: #ff8080; }
+    .hs-mc-msg.hs-mc-notice-timeout   { border-left-color: #008000 !important; background: rgba(0, 128, 0, 0.10) !important; }
+    .hs-mc-msg.hs-mc-notice-timeout   .hs-mc-system-text { color: #00cc44; }
     .hs-mc-msg.hs-mc-notice-unban     { border-left-color: #00ff00 !important; background: rgba(0, 255, 0, 0.12) !important; }
     .hs-mc-msg.hs-mc-notice-unban     .hs-mc-system-text { color: #00ff00; font-weight: 600; }
     .hs-mc-msg.hs-mc-notice-untimeout { border-left-color: #008000 !important; background: rgba(0, 128, 0, 0.10) !important; }
@@ -3638,8 +3710,7 @@ function injectStyles() {
       border-right: 1px solid #fff;
     }
 
-    /* Kick resize handle — left edge of fixed chat panel
-       8px hit zone, 2px visible bar on hover */
+    /* Kick resize handle — convention: solid #ff8700, always visible. */
     #hs-kick-resize-handle {
       position: absolute;
       top: 0;
@@ -3648,12 +3719,15 @@ function injectStyles() {
       height: 100%;
       cursor: col-resize;
       z-index: 10000;
-      background: transparent;
+      background: #ff8700;
+      opacity: 0.7;
+      transition: opacity 0.12s, background 0.12s;
       pointer-events: auto;
     }
     #hs-kick-resize-handle:hover,
     body:has(#hs-resize-overlay) #hs-kick-resize-handle {
-      background: #ff8700;
+      background: #ffaa33;
+      opacity: 1;
     }
 
     /* Boost Kick's popover/tooltip z-index above our panels */

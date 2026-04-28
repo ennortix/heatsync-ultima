@@ -489,17 +489,15 @@ function injectStyles() {
       display: none;
       align-items: center;
       gap: 4px;
-      background: rgba(255, 255, 0, 0.95);
+      background: #ff0;
       color: #000;
       border: none;
       border-radius: 0;
-      padding: 10px 18px;
-      font-size: 14px;
-      font-weight: 700;
+      padding: 4px 12px;
+      font-size: 13px;
+      font-weight: 600;
       cursor: pointer;
       z-index: 1005;
-      box-shadow: 0 2px 12px rgba(0,0,0,0.6);
-      backdrop-filter: blur(4px);
       transition: none;
     }
     #hs-mc-new-msgs:hover {
@@ -507,7 +505,7 @@ function injectStyles() {
       color: #000;
     }
     .hs-arrow-down {
-      font-size: 18px;
+      font-size: 13px;
       line-height: 0;
       position: relative;
       top: -1px;

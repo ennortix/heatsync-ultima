@@ -1533,17 +1533,15 @@ function injectStyles() {
       display: none;
       align-items: center;
       gap: 4px;
-      background: rgba(255, 255, 0, 0.95);
+      background: #ff0;
       color: #000;
       border: none;
       border-radius: 0;
-      padding: 10px 18px;
-      font-size: 14px;
-      font-weight: 700;
+      padding: 4px 12px;
+      font-size: 13px;
+      font-weight: 600;
       cursor: pointer;
       z-index: 1005;
-      box-shadow: 0 2px 12px rgba(0,0,0,0.6);
-      backdrop-filter: blur(4px);
       transition: none;
     }
     #hs-mc-new-msgs:hover {
@@ -1551,7 +1549,7 @@ function injectStyles() {
       color: #000;
     }
     .hs-arrow-down {
-      font-size: 18px;
+      font-size: 13px;
       line-height: 0;
       position: relative;
       top: -1px;
@@ -19409,8 +19407,8 @@ const STORAGE_KEY = 'heatsync_multichat';
       <div id="hs-mc-platfilter"></div>
       <div class="hs-mc-util-row">
         <button class="hs-mc-tab hs-mc-util-btn hs-mc-rotate" data-tab="rotate" title="${t('mc_btn_rotate_tabs')}">T</button>
-        <button class="hs-mc-tab hs-mc-util-btn hs-mc-font-btn" data-font-dir="-1" title="${t('mc_btn_smaller_text')}">A-</button>
-        <button class="hs-mc-tab hs-mc-util-btn hs-mc-font-btn" data-font-dir="1" title="${t('mc_btn_larger_text')}">A+</button>
+        <button class="hs-mc-tab hs-mc-util-btn hs-mc-font-btn" data-font-dir="-1" title="${t('mc_btn_smaller_text')}">F-</button>
+        <button class="hs-mc-tab hs-mc-util-btn hs-mc-font-btn" data-font-dir="1" title="${t('mc_btn_larger_text')}">F+</button>
         <button class="hs-mc-tab hs-mc-util-btn" data-tab="settings" title="${t('mc_btn_settings')}">\u2699</button>
       </div>
     `;

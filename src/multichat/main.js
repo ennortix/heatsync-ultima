@@ -1466,15 +1466,22 @@
   function positionChatResizeHandle() {
     const handle = ensureChatResizeHandle();
     ;['top','bottom','left','right','width','height'].forEach(p => handle.style.removeProperty(p));
-    if (chatPosition === 'right' || !chatPosition) {
-      // Default layout — let the existing per-platform handle (Twitch/Kick/YT)
-      // own the right-edge drag. Their ghost-preview perf optimisations
-      // for Twitch's React tree are worth keeping. Unified handle hides.
+    // For YT, chat-right is now position:fixed so the unified handle
+    // owns ALL four positions. For Twitch/Kick, chat-right uses the
+    // existing per-platform handles (which have ghost-preview perf
+    // optimisations worth keeping).
+    if ((chatPosition === 'right' || !chatPosition) && hostPlatform !== 'yt') {
       handle.style.display = 'none';
       return;
     }
     handle.style.display = 'block';
-    if (chatPosition === 'left') {
+    if (chatPosition === 'right') {
+      handle.style.top = '0';
+      handle.style.bottom = '0';
+      handle.style.right = (chatWidth - 3) + 'px';
+      handle.style.width = '6px';
+      handle.style.cursor = 'col-resize';
+    } else if (chatPosition === 'left') {
       handle.style.top = '0';
       handle.style.bottom = '0';
       handle.style.left = (chatWidth - 3) + 'px';
@@ -5449,7 +5456,9 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     applyPlatformPositionOverrides();
     // Bulletproof orange resize handle — covers all 4 chat positions.
     positionChatResizeHandle();
-    hidePlatformResizeHandles(chatPosition !== 'right');
+    // Hide platform handles when chat is non-right OR when on YT (where
+    // unified handle now owns chat-right too since YT uses position:fixed).
+    hidePlatformResizeHandles(chatPosition !== 'right' || hostPlatform === 'yt');
     log('Chat position:', chatPosition, 'theatre:', theatreMode);
     // Reflow the multichat layout so input/overlay/picker re-anchor.
     try { _updateMcLayout?.() } catch (_) {}

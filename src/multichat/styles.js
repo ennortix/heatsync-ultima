@@ -4656,16 +4656,21 @@ function injectStyles() {
     body.hs-platform-yt.hs-chat-right #secondary-inner > *:not(#chat-container) {
       display: none !important;
     }
-    /* Default 'right' position — chat fixed at viewport right, primary
-       fills the rest of #columns. flex:1 1 auto lets primary expand to
-       fill the flex container; margin-right reserves chat-width inside
-       primary's box so content doesn't overlap chat. */
+    /* Default 'right' position — give up on YT's flex layout entirely
+       and pin primary-inner to viewport-left with explicit width. Sibling
+       battles with #secondary flex were giving primary negative x. */
     body.hs-platform-yt.hs-chat-right #primary {
-      margin-left: 0 !important;
-      margin-right: var(--hs-chat-w, 340px) !important;
-      flex: 1 1 auto !important;
-      width: auto !important;
-      max-width: none !important;
+      margin: 0 !important;
+      flex: 0 0 0 !important;
+      width: 0 !important;
+      overflow: visible !important;
+    }
+    body.hs-platform-yt.hs-chat-right #primary-inner {
+      position: fixed !important;
+      top: 0 !important;
+      left: 0 !important;
+      width: calc(100vw - var(--hs-chat-w, 340px)) !important;
+      height: 100vh !important;
     }
     body.hs-platform-yt.hs-chat-right ytd-watch-flexy {
       --ytd-watch-flexy-side-menu-margin: 0 !important;
@@ -4693,12 +4698,17 @@ function injectStyles() {
       --ytd-watch-flexy-non-player-width: var(--hs-chat-w, 340px) !important;
     }
     body.hs-platform-yt.hs-chat-left #primary {
-      margin-left: var(--hs-chat-w, 340px) !important;
-      margin-right: 0 !important;
-      padding-top: 0 !important;
-      flex: 1 1 auto !important;
-      width: auto !important;
-      max-width: none !important;
+      margin: 0 !important;
+      flex: 0 0 0 !important;
+      width: 0 !important;
+      overflow: visible !important;
+    }
+    body.hs-platform-yt.hs-chat-left #primary-inner {
+      position: fixed !important;
+      top: 0 !important;
+      left: var(--hs-chat-w, 340px) !important;
+      width: calc(100vw - var(--hs-chat-w, 340px)) !important;
+      height: 100vh !important;
     }
     /* Kill the secondary's residual 16px (its own padding/margin still
        takes layout space even with width:0). */

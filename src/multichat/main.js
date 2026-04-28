@@ -6016,31 +6016,38 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
           pp.style.removeProperty('max-height');
           pp.style.removeProperty('height');
           pp.style.removeProperty('width');
+        } else if (chatPosition === 'left') {
+          // chat-left: only shift the player horizontally. Don't touch
+          // top/bottom/right/width/height — Twitch's natural 16:9 sizing
+          // already gives the right height (and leaves room for the
+          // channel-info bar below the player). Forcing bottom:0 here
+          // would stretch the player to full viewport height and overlap
+          // the follow/sub/gift buttons. Width/height CSS rule below is
+          // also gated to chat-top/bottom only.
+          // Note: w above is a CSS string ("Npx"); for arithmetic use
+          // the raw chatWidth number.
+          // Containing block (.root-scrollable__wrapper) starts AFTER
+          // Twitch's 50px collapsed side-nav, which our HS panel covers,
+          // so subtract TWITCH_SIDE_NAV_WIDTH to avoid double-counting.
+          const leftInsetPx = Math.max(0, chatWidth - TWITCH_SIDE_NAV_WIDTH) + 'px';
+          pp.style.setProperty('left', leftInsetPx, 'important');
+          pp.style.setProperty('inset-inline-start', leftInsetPx, 'important');
         } else {
-          // For all non-right positions the player should fill the freed
-          // space. Width/height are handled by the .hs-chat-* CSS rules
-          // (width:auto !important / height:auto !important). We can't do
-          // it here via inline setProperty('important') because Twitch's
-          // React effect later does `el.style.height = 'X'` which wipes
-          // the inline priority — only a stylesheet rule survives that.
+          // chat-top / chat-bottom: full overhaul. Width/height are
+          // handled by the .hs-chat-* CSS rules (width:auto !important /
+          // height:auto !important). We can't do it here via inline
+          // setProperty('important') because Twitch's React effect later
+          // does `el.style.height = 'X'` which wipes the inline priority
+          // — only a stylesheet rule survives that.
           pp.style.removeProperty('width');
           pp.style.removeProperty('height');
           pp.style.removeProperty('max-height');
-          // .persistent-player's containing block (.root-scrollable__wrapper)
-          // starts AFTER Twitch's collapsed left side-nav (50px). Our HS
-          // panel is fixed at viewport-x=0 and covers the side-nav, so for
-          // chat-left we need left = chatWidth − side-nav, otherwise the
-          // 50px gets double-counted and a gap appears between the HS panel
-          // and the video. (Same logic mirrored on Kick with sidebar var.)
-          // Note: w/h above are CSS strings ("Npx"); for arithmetic use the
-          // raw chatWidth/chatHeight numbers, then re-suffix.
-          const leftInsetPx = chatPosition === 'left' ? Math.max(0, chatWidth - TWITCH_SIDE_NAV_WIDTH) + 'px' : '0';
           pp.style.setProperty('top', chatPosition === 'top' ? h : '0', 'important');
           pp.style.setProperty('bottom', chatPosition === 'bottom' ? h : '0', 'important');
-          pp.style.setProperty('left', leftInsetPx, 'important');
-          pp.style.setProperty('right', chatPosition === 'right' ? w : '0', 'important');
-          pp.style.setProperty('inset-inline-start', leftInsetPx, 'important');
-          pp.style.setProperty('inset-inline-end', chatPosition === 'right' ? w : '0', 'important');
+          pp.style.setProperty('left', '0', 'important');
+          pp.style.setProperty('right', '0', 'important');
+          pp.style.setProperty('inset-inline-start', '0', 'important');
+          pp.style.setProperty('inset-inline-end', '0', 'important');
         }
       }
     }

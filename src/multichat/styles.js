@@ -4624,7 +4624,6 @@ function injectStyles() {
        el.style.height = X write (that strips priority). A stylesheet rule
        with !important sits in a separate cascade origin and beats those
        non-important inline writes. */
-    body.hs-platform-twitch.hs-chat-left .persistent-player,
     body.hs-platform-twitch.hs-chat-top .persistent-player,
     body.hs-platform-twitch.hs-chat-bottom .persistent-player {
       width: auto !important;
@@ -4652,18 +4651,15 @@ function injectStyles() {
        is overlaying the video. Force the wrapper to fill the player's
        actual height; the inner <video> uses object-fit so it letterboxes
        to whatever aspect we end up at. */
-    body.hs-platform-twitch.hs-chat-left .persistent-player .tw-aspect,
     body.hs-platform-twitch.hs-chat-top .persistent-player .tw-aspect,
     body.hs-platform-twitch.hs-chat-bottom .persistent-player .tw-aspect {
       height: 100% !important;
     }
-    body.hs-platform-twitch.hs-chat-left .persistent-player .tw-aspect > div:first-child,
     body.hs-platform-twitch.hs-chat-top .persistent-player .tw-aspect > div:first-child,
     body.hs-platform-twitch.hs-chat-bottom .persistent-player .tw-aspect > div:first-child {
       padding-bottom: 0 !important;
       height: 100% !important;
     }
-    body.hs-platform-twitch.hs-chat-left .persistent-player video,
     body.hs-platform-twitch.hs-chat-top .persistent-player video,
     body.hs-platform-twitch.hs-chat-bottom .persistent-player video {
       object-fit: contain !important;

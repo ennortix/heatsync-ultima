@@ -4653,14 +4653,26 @@ function injectStyles() {
       --ytd-watch-flexy-side-menu-margin: 0 !important;
       --ytd-watch-flexy-non-player-width: var(--hs-chat-w, 340px) !important;
     }
-    /* Force the player containers to fill #primary's inner width so the
-       16px-empty-on-right gap inside primary disappears. */
+    /* Force the player containers to fill #primary's inner width — kills
+       the YT-side-menu-margin gap (right) AND the YT-non-player-width gap
+       (left). For top/bottom the JS-driven inline width owns sizing. */
     body.hs-platform-yt.hs-chat-right #player-container,
     body.hs-platform-yt.hs-chat-right #player-container-outer,
     body.hs-platform-yt.hs-chat-right #player-container-inner,
     body.hs-platform-yt.hs-chat-right ytd-player,
-    body.hs-platform-yt.hs-chat-right #player {
+    body.hs-platform-yt.hs-chat-right #player,
+    body.hs-platform-yt.hs-chat-left #player-container,
+    body.hs-platform-yt.hs-chat-left #player-container-outer,
+    body.hs-platform-yt.hs-chat-left #player-container-inner,
+    body.hs-platform-yt.hs-chat-left ytd-player,
+    body.hs-platform-yt.hs-chat-left #player {
       width: 100% !important;
+    }
+    /* chat-left: same gutter-kill as chat-right so YT computes the player
+       width as primary's full width (708px) instead of vw - 450 (= 598). */
+    body.hs-platform-yt.hs-chat-left ytd-watch-flexy {
+      --ytd-watch-flexy-side-menu-margin: 0 !important;
+      --ytd-watch-flexy-non-player-width: var(--hs-chat-w, 340px) !important;
     }
     body.hs-platform-yt.hs-chat-left #primary {
       margin-left: var(--hs-chat-w, 340px) !important;

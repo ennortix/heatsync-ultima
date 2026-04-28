@@ -741,6 +741,8 @@ const isChrome = typeof chrome !== 'undefined' && !isFirefox
 // Get the raw API object
 const rawApi = isFirefox ? browser : (typeof chrome !== 'undefined' ? chrome : null)
 
+let _ctxInvalidatedLogged = false
+
 /**
  * Promisify Chrome callback-based APIs
  * Firefox's browser.* APIs are already Promise-based
@@ -846,9 +848,12 @@ const runtime = {
       }
       return promisify(rawApi.runtime.sendMessage.bind(rawApi.runtime))(message)
     } catch (err) {
-      // Extension context invalidated (common during updates)
+      // Extension context invalidated (common during updates) — log once per session
       if (err.message?.includes('Extension context invalidated')) {
-        console.warn('[heatsync] Extension context invalidated')
+        if (!_ctxInvalidatedLogged) {
+          _ctxInvalidatedLogged = true
+          console.warn('[heatsync] Extension context invalidated')
+        }
         return null
       }
       throw err

@@ -20739,9 +20739,12 @@ const STORAGE_KEY = 'heatsync_multichat';
     secondary.style.setProperty('min-width', chatWidth + 'px', 'important')
     secondary.style.setProperty('max-width', chatWidth + 'px', 'important')
     secondary.style.setProperty('flex', 'none', 'important')
-    // Also resize the hs-mc-container to fill
+    // Note: NOT setting width on #hs-mc-container — chat-right now uses
+    // position:fixed via CSS (body.hs-platform-yt.hs-chat-right #hs-mc-container)
+    // so the container's width is owned by var(--hs-chat-w). Setting inline
+    // width here would beat that CSS and stretch chat across full viewport.
     const container = document.getElementById('hs-mc-container')
-    if (container) container.style.setProperty('width', '100%', 'important')
+    if (container) container.style.removeProperty('width')
   }
 
   // Re-apply layout whenever YT toggles theater/fullscreen so we release or

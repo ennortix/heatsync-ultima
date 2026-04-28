@@ -5451,9 +5451,14 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     // Reflow the multichat layout so input/overlay/picker re-anchor.
     try { _updateMcLayout?.() } catch (_) {}
     // YT computes player size in JS and caches it; nudge it to re-read
-    // --ytd-watch-flexy-non-player-height by dispatching a resize event.
-    if (hostPlatform === 'yt' && (chatPosition === 'top' || chatPosition === 'bottom')) {
+    // CSS vars (margin, non-player-height) by dispatching a resize event.
+    // Needed for ALL positions on YT including 'right' — without the nudge
+    // the 16px column gutter persists for ~10s until YT's own resize
+    // observer fires.
+    if (hostPlatform === 'yt') {
       try { window.dispatchEvent(new Event('resize')) } catch (_) {}
+      // Belt-and-braces: also fire after a tick once layout has settled.
+      setTimeout(() => { try { window.dispatchEvent(new Event('resize')) } catch (_) {} }, 100);
     }
   }
 

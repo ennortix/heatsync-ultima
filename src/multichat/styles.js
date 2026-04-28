@@ -4477,25 +4477,36 @@ function injectStyles() {
 
     /* ============================================
        C BUTTON — chat panel position around the player.
-       Default 'right' = no override (existing layout). For left/top/bottom we
-       fixed-position #hs-mc-container (and on Kick #channel-chatroom which
-       is already fixed) so it docks to the chosen viewport edge.
-       Vertical-monitor users: top/bottom give them horizontal strips that
-       use the 9:16 viewport space sensibly.
+       Default 'right' = no override (existing native layout).
+       For left/top/bottom: fixed-position #hs-mc-container at the chosen
+       viewport edge, collapse the native chat sidebar's layout claim so
+       the player can fill the freed space, and push the platform's content
+       root with element-level padding (NOT body — body padding breaks
+       sticky nav / fullscreen / scroll on every platform).
+
+       Single source of truth: body classes drive everything.
+         hs-platform-{twitch,kick,yt}
+         hs-mode-{normal,theatre}
+         hs-chat-{right,left,top,bottom}
+       JS sets --hs-chat-w / --hs-chat-h CSS vars from settings.
        ============================================ */
+
+    /* --- chat container: fixed-position at chosen edge --- */
     body.hs-chat-left #hs-mc-container,
     body.hs-chat-top #hs-mc-container,
     body.hs-chat-bottom #hs-mc-container {
       position: fixed !important;
       z-index: 9999 !important;
+      background: #000 !important;
       box-sizing: border-box !important;
+      margin: 0 !important;
     }
     body.hs-chat-left #hs-mc-container {
       top: 0 !important;
       bottom: 0 !important;
       left: 0 !important;
       right: auto !important;
-      width: var(--hs-kick-chat-width, var(--chat-width, 340px)) !important;
+      width: var(--hs-chat-w, 340px) !important;
       height: 100vh !important;
     }
     body.hs-chat-top #hs-mc-container {
@@ -4504,7 +4515,7 @@ function injectStyles() {
       left: 0 !important;
       right: 0 !important;
       width: 100vw !important;
-      height: 35vh !important;
+      height: var(--hs-chat-h, 35vh) !important;
     }
     body.hs-chat-bottom #hs-mc-container {
       top: auto !important;
@@ -4512,41 +4523,124 @@ function injectStyles() {
       left: 0 !important;
       right: 0 !important;
       width: 100vw !important;
-      height: 35vh !important;
+      height: var(--hs-chat-h, 35vh) !important;
     }
 
-    /* Kick: #channel-chatroom is the fixed-positioned shell. Mirror the
-       same anchors so the native panel rides along (its content is hidden
-       by hs-native-hidden but the shell still owns layout). */
-    body.hs-chat-left #channel-chatroom {
-      left: 0 !important;
-      right: auto !important;
+    /* --- TWITCH: collapse .right-column to give the player back its space.
+       width:0 + overflow:visible (not display:none) so #hs-mc-container
+       inside chat-shell stays render-tree visible while the parent's
+       layout box claims zero width. --- */
+    body.hs-platform-twitch.hs-chat-left .right-column,
+    body.hs-platform-twitch.hs-chat-top .right-column,
+    body.hs-platform-twitch.hs-chat-bottom .right-column {
+      width: 0 !important;
+      min-width: 0 !important;
+      max-width: 0 !important;
+      flex: 0 0 0 !important;
+      overflow: visible !important;
     }
-    body.hs-chat-top #channel-chatroom {
-      position: fixed !important;
-      top: 0 !important;
-      bottom: auto !important;
-      left: 0 !important;
-      right: 0 !important;
-      width: 100vw !important;
-      height: 35vh !important;
+    body.hs-platform-twitch.hs-chat-left .chat-shell,
+    body.hs-platform-twitch.hs-chat-top .chat-shell,
+    body.hs-platform-twitch.hs-chat-bottom .chat-shell,
+    body.hs-platform-twitch.hs-chat-left [class*="chat-shell"],
+    body.hs-platform-twitch.hs-chat-top [class*="chat-shell"],
+    body.hs-platform-twitch.hs-chat-bottom [class*="chat-shell"] {
+      overflow: visible !important;
     }
-    body.hs-chat-bottom #channel-chatroom {
-      position: fixed !important;
-      top: auto !important;
-      bottom: 0 !important;
-      left: 0 !important;
-      right: 0 !important;
-      width: 100vw !important;
-      height: 35vh !important;
+    body.hs-platform-twitch.hs-chat-left .channel-root {
+      padding-left: var(--hs-chat-w, 340px) !important;
+    }
+    body.hs-platform-twitch.hs-chat-top .channel-root {
+      padding-top: var(--hs-chat-h, 35vh) !important;
+    }
+    body.hs-platform-twitch.hs-chat-bottom .channel-root {
+      padding-bottom: var(--hs-chat-h, 35vh) !important;
+    }
+    /* Twitch theatre: persistent-player fills viewport via position:fixed —
+       padding on .channel-root won't reach it. Inset the player itself. */
+    body.hs-platform-twitch.hs-mode-theatre.hs-chat-left .persistent-player,
+    body.hs-platform-twitch.hs-mode-theatre.hs-chat-left .video-player--theatre {
+      left: var(--hs-chat-w, 340px) !important;
+    }
+    body.hs-platform-twitch.hs-mode-theatre.hs-chat-top .persistent-player,
+    body.hs-platform-twitch.hs-mode-theatre.hs-chat-top .video-player--theatre {
+      top: var(--hs-chat-h, 35vh) !important;
+    }
+    body.hs-platform-twitch.hs-mode-theatre.hs-chat-bottom .persistent-player,
+    body.hs-platform-twitch.hs-mode-theatre.hs-chat-bottom .video-player--theatre {
+      bottom: var(--hs-chat-h, 35vh) !important;
     }
 
-    /* Push the player out of the way so chat doesn't overlay the video.
-       Using body padding is broad but works across Twitch/Kick/YT layouts
-       without needing site-specific selector chasing. */
-    body.hs-chat-left { padding-left: var(--hs-kick-chat-width, var(--chat-width, 340px)) !important; }
-    body.hs-chat-top { padding-top: 35vh !important; }
-    body.hs-chat-bottom { padding-bottom: 35vh !important; }
+    /* --- KICK: #channel-chatroom IS the native chat shell (sibling of
+       our #hs-mc-container). When chat moves, hide the shell entirely
+       so it gives up its 320px sidebar width back to <main>. --- */
+    body.hs-platform-kick.hs-chat-left #channel-chatroom,
+    body.hs-platform-kick.hs-chat-top #channel-chatroom,
+    body.hs-platform-kick.hs-chat-bottom #channel-chatroom {
+      display: none !important;
+    }
+    body.hs-platform-kick.hs-chat-left main {
+      padding-left: var(--hs-chat-w, 340px) !important;
+    }
+    body.hs-platform-kick.hs-chat-top main {
+      padding-top: var(--hs-chat-h, 35vh) !important;
+    }
+    body.hs-platform-kick.hs-chat-bottom main {
+      padding-bottom: var(--hs-chat-h, 35vh) !important;
+    }
+    /* Kick theatre: main has data-theatre="true"; player fills viewport.
+       Inset main directly so the chat strip doesn't overlay the video. */
+    body.hs-platform-kick.hs-mode-theatre.hs-chat-top main {
+      margin-top: var(--hs-chat-h, 35vh) !important;
+      padding-top: 0 !important;
+    }
+    body.hs-platform-kick.hs-mode-theatre.hs-chat-bottom main {
+      margin-bottom: var(--hs-chat-h, 35vh) !important;
+      padding-bottom: 0 !important;
+    }
+    body.hs-platform-kick.hs-mode-theatre.hs-chat-left main {
+      margin-left: var(--hs-chat-w, 340px) !important;
+      padding-left: 0 !important;
+    }
+
+    /* --- YOUTUBE: collapse #secondary; pad #primary --- */
+    body.hs-platform-yt.hs-chat-left #secondary,
+    body.hs-platform-yt.hs-chat-top #secondary,
+    body.hs-platform-yt.hs-chat-bottom #secondary {
+      width: 0 !important;
+      min-width: 0 !important;
+      max-width: 0 !important;
+      flex: 0 0 0 !important;
+      overflow: visible !important;
+    }
+    body.hs-platform-yt.hs-chat-left #chat-container,
+    body.hs-platform-yt.hs-chat-top #chat-container,
+    body.hs-platform-yt.hs-chat-bottom #chat-container {
+      overflow: visible !important;
+    }
+    body.hs-platform-yt.hs-chat-left #primary {
+      margin-left: var(--hs-chat-w, 340px) !important;
+    }
+    body.hs-platform-yt.hs-chat-top #primary {
+      margin-top: var(--hs-chat-h, 35vh) !important;
+    }
+    body.hs-platform-yt.hs-chat-bottom #primary {
+      margin-bottom: var(--hs-chat-h, 35vh) !important;
+    }
+    /* YouTube theatre: ytd-watch-flexy[theater] makes the player full-row.
+       The #full-bleed-container is what owns the player. Inset it. */
+    body.hs-platform-yt.hs-mode-theatre.hs-chat-left ytd-watch-flexy[theater] #full-bleed-container,
+    body.hs-platform-yt.hs-mode-theatre.hs-chat-left ytd-watch-flexy[theater] #player-full-bleed-container {
+      padding-left: var(--hs-chat-w, 340px) !important;
+    }
+    body.hs-platform-yt.hs-mode-theatre.hs-chat-top ytd-watch-flexy[theater] #full-bleed-container,
+    body.hs-platform-yt.hs-mode-theatre.hs-chat-top ytd-watch-flexy[theater] #player-full-bleed-container {
+      padding-top: var(--hs-chat-h, 35vh) !important;
+    }
+    body.hs-platform-yt.hs-mode-theatre.hs-chat-bottom ytd-watch-flexy[theater] #full-bleed-container,
+    body.hs-platform-yt.hs-mode-theatre.hs-chat-bottom ytd-watch-flexy[theater] #player-full-bleed-container {
+      padding-bottom: var(--hs-chat-h, 35vh) !important;
+    }
   `;
   document.head.appendChild(style);
 }

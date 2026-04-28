@@ -5161,8 +5161,16 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
   // right (default) → bottom → left → top → right
   // Vertical-monitor parity: top/bottom horizontal strips matter when the
   // viewport is taller than wide.
+  //
+  // Single source of truth: 3 body classes are the ONLY layout signal.
+  //   hs-platform-{twitch,kick,yt}  (set once at init)
+  //   hs-mode-{normal,theatre}      (set by theatre observer)
+  //   hs-chat-{right,left,top,bottom} (set by C button)
+  // CSS in styles.js fully derives layout from these three dimensions.
   // ============================================
   let chatPosition = 'right'; // 'right', 'bottom', 'left', 'top'
+  let theatreMode = false;
+  let _theatreObserver = null;
 
   async function loadChatPosition() {
     try {
@@ -5170,16 +5178,72 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       if (stored.ui_settings?.chatPosition !== undefined) {
         chatPosition = stored.ui_settings.chatPosition;
       }
+      // Stamp the platform class once — never changes per-page
+      const platformClass = `hs-platform-${hostPlatform === 'yt' ? 'yt' : (isKick ? 'kick' : 'twitch')}`;
+      document.body.classList.add(platformClass);
+      detectTheatreMode();
+      setupTheatreObserver();
       applyChatPosition();
     } catch (e) {
       log('Error loading chat position:', e);
     }
   }
 
+  // Detect platform-native theatre/cinema/expanded-player mode.
+  // Twitch:  .right-column--theatre OR .video-player--theatre
+  // Kick:    main[data-theatre="true"]
+  // YouTube: ytd-watch-flexy[theater]
+  function detectTheatreMode() {
+    let next = false;
+    if (hostPlatform === 'yt') {
+      next = !!document.querySelector('ytd-watch-flexy[theater], ytd-watch-flexy[fullscreen]');
+    } else if (isKick) {
+      const m = document.querySelector('main[data-theatre-mode-container]');
+      next = m?.dataset.theatre === 'true' || !!document.querySelector('main[data-theatre="true"]');
+    } else {
+      next = !!document.querySelector('.right-column--theatre, .video-player--theatre');
+    }
+    if (next !== theatreMode) {
+      theatreMode = next;
+      applyChatPosition();
+    }
+    return next;
+  }
+
+  function setupTheatreObserver() {
+    if (_theatreObserver) { try { _theatreObserver.disconnect() } catch (_) {} _theatreObserver = null }
+    const targets = [];
+    if (hostPlatform === 'yt') {
+      const flexy = document.querySelector('ytd-watch-flexy');
+      if (flexy) targets.push(flexy);
+    } else if (isKick) {
+      const main = document.querySelector('main');
+      if (main) targets.push(main);
+    } else {
+      // Twitch: theatre class lands on .right-column AND inside the player.
+      // Watch the body — most-specific reliable observation point covers SPA navs.
+      targets.push(document.body);
+    }
+    if (targets.length === 0) return;
+    _theatreObserver = new MutationObserver(() => detectTheatreMode());
+    for (const t of targets) {
+      _theatreObserver.observe(t, { attributes: true, attributeFilter: ['class', 'data-theatre', 'theater', 'fullscreen'], subtree: true });
+    }
+    cleanup.trackObserver(_theatreObserver);
+  }
+
   function applyChatPosition() {
     document.body.classList.remove('hs-chat-top', 'hs-chat-right', 'hs-chat-bottom', 'hs-chat-left');
     document.body.classList.add(`hs-chat-${chatPosition}`);
-    log('Chat position:', chatPosition);
+    document.body.classList.toggle('hs-mode-theatre', theatreMode);
+    document.body.classList.toggle('hs-mode-normal', !theatreMode);
+    // Push the chatWidth css var down so the per-position CSS can build offsets
+    // off it (rather than chasing platform-specific selectors twice).
+    document.documentElement.style.setProperty('--hs-chat-w', chatWidth + 'px');
+    document.documentElement.style.setProperty('--hs-chat-h', '35vh');
+    log('Chat position:', chatPosition, 'theatre:', theatreMode);
+    // Reflow the multichat layout so input/overlay/picker re-anchor.
+    try { _updateMcLayout?.() } catch (_) {}
   }
 
   function rotateChatPosition() {

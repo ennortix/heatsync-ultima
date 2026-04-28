@@ -1623,6 +1623,24 @@
   }
 
   /**
+   * Detect Kick's left sidebar at the current viewport width. Kick drops the
+   * sidebar from the DOM at narrow widths (~< ~1000px). The padding-left we
+   * apply to <main> needs to subtract the sidebar's effective width so the
+   * video starts where our fixed panel ends — without leaving a gap when the
+   * sidebar is present, and without overlapping the video when it isn't.
+   */
+  function getKickSidebarWidth() {
+    const el = document.querySelector('[class*="sidebar-collapsed-width"]')
+    if (!el) return 0
+    const w = el.offsetWidth
+    return w > 0 ? w : 0
+  }
+
+  function syncKickSidebarVar() {
+    document.documentElement.style.setProperty('--hs-kick-sidebar-w', getKickSidebarWidth() + 'px')
+  }
+
+  /**
    * Apply chat width to Kick's fixed #channel-chatroom panel
    */
   function applyKickChatWidth() {
@@ -1631,6 +1649,7 @@
     chatWidth = Math.min(MAX_CHAT_WIDTH, Math.max(MIN_CHAT_WIDTH, chatWidth))
     document.documentElement.style.setProperty('--hs-kick-chat-width', chatWidth + 'px')
     document.documentElement.style.setProperty('--chat-width', chatWidth + 'px')
+    syncKickSidebarVar()
     // C button took chat off the right edge — chatroom is hidden via CSS,
     // skip restoring its width (would un-hide it visually as the shell still
     // claims layout when display is intercepted by the cascade).
@@ -5885,6 +5904,9 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
         }
       }
     } else if (isKick) {
+      // Keep --hs-kick-sidebar-w in sync — Kick drops the sidebar from the
+      // DOM at narrow widths, and main's padding-left depends on this value.
+      syncKickSidebarVar()
       // Kick's player chain uses Tailwind `aspect-video w-full` which locks
       // height = width × 9/16 — it ignores the freed area when chat eats
       // top/bottom. Force aspect-preserved width + height inline on the
@@ -5907,16 +5929,12 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       if (chatPosition === 'top' || chatPosition === 'bottom' || chatPosition === 'left' || chatPosition === 'right') {
         const navEl = document.querySelector('nav, [class*="navbar"]')
         const navH = navEl ? Math.round(navEl.getBoundingClientRect().height) : 60
-        // Kick has a fixed left sidebar (~56px collapsed) that sits inside the
-        // page flex layout. Our chat panel is position:fixed and overlays it,
-        // but main's flex parent still reserves the sidebar's width — so the
-        // freed video area is innerWidth - chatWidth - sidebar, not just
-        // innerWidth - chatWidth. Without this, the player gets sized 56px
-        // too wide on chat-left and Kick's overflow:hidden on main clips the
-        // right edge of the video.
-        const sidebarVar = getComputedStyle(document.documentElement)
-          .getPropertyValue('--sidebar-collapsed-width').trim()
-        const sidebarW = parseInt(sidebarVar) || 56
+        // Kick reserves space for its left sidebar (~56px) inside main's flex
+        // parent — when the sidebar is present, the freed video area is
+        // innerWidth - chatWidth - sidebar. Use the live measurement (not a
+        // CSS var) because Kick drops the sidebar from the DOM at narrow
+        // viewports, where subtracting 56 would shrink the player needlessly.
+        const sidebarW = getKickSidebarWidth()
         let availH, availW
         if (chatPosition === 'left' || chatPosition === 'right') {
           availW = Math.max(200, innerWidth - chatWidth - sidebarW)
@@ -6008,11 +6026,18 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
           pp.style.removeProperty('width');
           pp.style.removeProperty('height');
           pp.style.removeProperty('max-height');
+          // .persistent-player's containing block (.root-scrollable__wrapper)
+          // starts AFTER Twitch's collapsed left side-nav (50px). Our HS
+          // panel is fixed at viewport-x=0 and covers the side-nav, so for
+          // chat-left we need left = chatWidth − side-nav, otherwise the
+          // 50px gets double-counted and a gap appears between the HS panel
+          // and the video. (Same logic mirrored on Kick with sidebar var.)
+          const leftInset = chatPosition === 'left' ? Math.max(0, w - TWITCH_SIDE_NAV_WIDTH) : 0;
           pp.style.setProperty('top', chatPosition === 'top' ? h : '0', 'important');
           pp.style.setProperty('bottom', chatPosition === 'bottom' ? h : '0', 'important');
-          pp.style.setProperty('left', chatPosition === 'left' ? w : '0', 'important');
+          pp.style.setProperty('left', leftInset + 'px', 'important');
           pp.style.setProperty('right', chatPosition === 'right' ? w : '0', 'important');
-          pp.style.setProperty('inset-inline-start', chatPosition === 'left' ? w : '0', 'important');
+          pp.style.setProperty('inset-inline-start', leftInset + 'px', 'important');
           pp.style.setProperty('inset-inline-end', chatPosition === 'right' ? w : '0', 'important');
         }
       }

@@ -4756,6 +4756,24 @@ function injectStyles() {
     body.hs-platform-yt.hs-chat-right #hs-mc-container {
       height: 100vh !important;
     }
+
+    /* Inputbar layout — emote-picker button stays fixed-size on the right,
+       input box shrinks to fit. overflow:hidden on the bar so the emote
+       button can never escape and overlap the tabbar's util buttons. */
+    #hs-mc-inputbar {
+      display: flex !important;
+      align-items: center !important;
+      overflow: hidden !important;
+      box-sizing: border-box !important;
+    }
+    #hs-mc-input {
+      flex: 1 1 0 !important;
+      min-width: 0 !important;
+    }
+    #hs-mc-emote-btn,
+    #hs-mc-inputbar > button:not(#hs-mc-input) {
+      flex: 0 0 auto !important;
+    }
     body.hs-platform-yt.hs-chat-right #primary-inner {
       display: flex !important;
       flex-direction: column !important;

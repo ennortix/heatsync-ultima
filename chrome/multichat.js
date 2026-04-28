@@ -24536,10 +24536,11 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
           container.style.removeProperty('overflow');
           // Re-establish platform-natural geometry that we just blew away
           if (hostPlatform === 'yt') {
-            // Restore the height set at mount time — without this the
-            // container collapses to 0 after a C-rotation cycle.
-            const ytH = window._hsYtChatFrameHeight || 500;
-            container.style.cssText = `height:${ytH}px;overflow:hidden;`;
+            // Fill viewport vertically — with #below clutter hidden the
+            // chat panel should extend to the full viewport height. The
+            // cached _hsYtChatFrameHeight (~500-600px from the original
+            // live-chat-frame) was leaving a gap below.
+            container.style.cssText = `height:100vh;overflow:hidden;`;
             try { applyYouTubeChatWidth() } catch (_) {}
           } else if (isKick) {
             try { applyKickChatWidth() } catch (_) {}

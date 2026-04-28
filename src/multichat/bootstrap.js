@@ -44,6 +44,12 @@ const cleanup = {
     target.addEventListener(event, handler, { signal: mcSignal })
   },
   trackObserver(obs) { _timers.observers.push(obs); return obs },
+  untrackObserver(obs) {
+    if (!obs) return
+    try { obs.disconnect() } catch (e) {}
+    const i = _timers.observers.indexOf(obs)
+    if (i !== -1) _timers.observers.splice(i, 1)
+  },
   raf(fn) {
     let id
     id = requestAnimationFrame(() => { _pendingRafs.delete(id); fn() })

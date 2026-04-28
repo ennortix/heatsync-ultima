@@ -516,7 +516,7 @@
     "message": "engellendi (kaldırmak için tıkla)"
   },
   "mc_tab_feed": {
-    "message": "feed"
+    "message": "ana sayfa"
   },
   "mc_tab_whispers": {
     "message": "fısıltılar"
@@ -534,7 +534,7 @@
     "message": "discover"
   },
   "mc_tab_pinned": {
-    "message": "pinned"
+    "message": "kayıtlı"
   },
   "mc_tab_live_channel": {
     "message": "canlı · $CHANNEL$",

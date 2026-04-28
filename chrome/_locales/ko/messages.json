@@ -516,7 +516,7 @@
     "message": "차단됨 (클릭하여 해제)"
   },
   "mc_tab_feed": {
-    "message": "피드"
+    "message": "홈"
   },
   "mc_tab_whispers": {
     "message": "귓속말"
@@ -534,7 +534,7 @@
     "message": "discover"
   },
   "mc_tab_pinned": {
-    "message": "pinned"
+    "message": "저장됨"
   },
   "mc_tab_live_channel": {
     "message": "라이브 · $CHANNEL$",

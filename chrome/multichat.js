@@ -1020,6 +1020,12 @@ const cleanup = {
     target.addEventListener(event, handler, { signal: mcSignal })
   },
   trackObserver(obs) { _timers.observers.push(obs); return obs },
+  untrackObserver(obs) {
+    if (!obs) return
+    try { obs.disconnect() } catch (e) {}
+    const i = _timers.observers.indexOf(obs)
+    if (i !== -1) _timers.observers.splice(i, 1)
+  },
   raf(fn) {
     let id
     id = requestAnimationFrame(() => { _pendingRafs.delete(id); fn() })
@@ -1678,6 +1684,17 @@ function injectStyles() {
       vertical-align: middle;
       margin-right: 3px;
       object-fit: cover;
+    }
+    span.hs-mc-avatar.hs-mc-avatar-fallback {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      color: #fff;
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      line-height: 1;
+      user-select: none;
     }
     .hs-mc-msg {
       padding: 2px 4px;
@@ -8163,6 +8180,7 @@ async function sendKickMessage(kickSlug, text) {
       : src.includes('7tv') ? '7TV'
       : src.includes('jtvnw.net') ? 'Twitch'
       : src.includes('kick') ? 'Kick'
+      : (src.includes('googleusercontent') || src.includes('ggpht')) ? 'YouTube'
       : ''
     const sourceEl = tooltip.querySelector('.tooltip-source')
     sourceEl.textContent = sourceLabel
@@ -12511,8 +12529,42 @@ function listenForSocialEvents() {
           } else {
             updateTabIndicator(targetChannelId)
           }
+          // YT-only channel tabs: light up the live dot when traffic flows in.
+          // updateLiveStatus() only checks Twitch helix, so without this
+          // signal the dot stays dark even on a busy YT-only channel.
+          try {
+            const tabEl = document.querySelector(`#hs-mc-tabbar .hs-mc-tab[data-tab="${CSS.escape(targetChannelId)}"]`)
+            if (tabEl && tabEl.dataset.live !== 'true') tabEl.dataset.live = 'true'
+          } catch {}
         }
       }
+    }
+    if (msg.type === 'youtube_msg_deleted') {
+      // Mark all rendered messages from this user (for the matching channel)
+      // as cleared so they get the dim+strikethrough treatment that Twitch/Kick
+      // moderator deletions already get.
+      const u = (msg.user || '').toLowerCase()
+      if (!u) return
+      const msgsEl = document.getElementById('hs-mc-messages')
+      if (msgsEl) {
+        msgsEl.querySelectorAll('.hs-mc-msg[data-platform="yt"], .hs-mc-msg[data-platform="youtube"]').forEach(div => {
+          const a = div.querySelector('.hs-mc-user')
+          if (a && a.dataset.username === u) div.classList.add('hs-mc-msg-cleared')
+        })
+      }
+      // Also flag in buffers so re-renders preserve the dim state
+      const flagBuf = (buf) => {
+        if (!Array.isArray(buf)) return
+        for (let i = buf.length - 1; i >= 0; i--) {
+          const m = buf[i]
+          if (m.platform === 'youtube' && m.user?.toLowerCase() === u) {
+            m.cleared = true
+            m._renderedHtml = null  // force re-render with cleared class next time
+          }
+        }
+      }
+      channelYtMessages.forEach(buf => flagBuf(buf))
+      flagBuf(mentionsBuffer)
     }
     if (msg.type === 'youtube_status') {
       const targetChannelId = msg.channelId
@@ -12529,6 +12581,24 @@ function listenForSocialEvents() {
           link.channelName = msg.channelName || ''
           youtubeLinks.set(targetChannelId, link)
           log('YouTube connected for channel', targetChannelId, ':', link.channelName)
+        }
+        // Reflect status onto the channel tab button so YT-only channels get a
+        // live dot and a human-readable label (otherwise YT-only tabs sit dark
+        // forever and show the auto-generated yt-<timestamp> id).
+        if (targetChannelId !== '__live_yt_auto__') {
+          const tabEl = document.querySelector(`#hs-mc-tabbar .hs-mc-tab[data-tab="${CSS.escape(targetChannelId)}"]`)
+          if (tabEl) {
+            if (msg.status === 'connected') {
+              tabEl.dataset.live = 'true'
+              const ch = config.channels.find(c => typeof c !== 'string' && c.id === targetChannelId)
+              const isYtOnly = ch && !ch.twitch && !ch.kick && ch.youtube
+              if (isYtOnly && link.channelName && tabEl.textContent !== link.channelName) {
+                tabEl.textContent = link.channelName
+              }
+            } else if (msg.status === 'ended' || msg.status === 'error') {
+              tabEl.dataset.live = 'false'
+            }
+          }
         }
         // Show status in channel tab if viewing it. Dedup on a stable marker so
         // repeated youtube_status events (every WS reconnect, every retry) don't
@@ -13071,7 +13141,7 @@ function buildEngagementBar(m) {
   heatBtn.className = 'hs-feed-heat-btn' + (liked ? ' active' : '')
   heatBtn.title = liked ? 'already heated' : 'heat'
   heatBtn.dataset.id = m.base36_id
-  heatBtn.appendChild(_makeSvg('M12 2C9 7 5 9 5 14a7 7 0 0014 0c0-5-4-7-7-12z', liked))
+  heatBtn.appendChild(_makeSvg('M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z', liked))
   const heatCount2 = document.createElement('span')
   heatCount2.className = 'hs-fe-count'
   heatCount2.textContent = heatCount > 0 ? formatHeat(heatCount) : ''
@@ -17133,7 +17203,7 @@ async function sendMessage() {
   updateCharCount()
   hideInputBar()
 
-  // --- Kick send path (single or dual) ---
+  // --- Kick send path (single, dual, or triple including YT) ---
   if (sendToKick) {
     const slug = kickSlug || targetChannel
     const kickPromise = sendKickMessage(slug, text)
@@ -17141,6 +17211,16 @@ async function sendMessage() {
       ? getTwitchAuthTokenAsync().then(({ token: tok, username: twitchNick }) =>
           sendIrcMessage(twitchName, text, tok, replyParentId, twitchNick))
       : Promise.resolve(null)
+
+    // Best-effort YouTube — fire alongside Kick/Twitch so a triple-link
+    // channel (twitch+kick+youtube) actually mirrors to all three.
+    if (sendToYoutube) {
+      sendYoutubeMessage(text).then(result => {
+        if (result !== true && result !== 'no_youtube_tab') {
+          showToast('youtube send failed')
+        }
+      })
+    }
 
     Promise.all([kickPromise, twitchPromise]).then(([kickResult, twitchResult]) => {
       const kickOk = kickResult === true
@@ -17578,7 +17658,7 @@ function renderProfileCardView() {
 
   const nameLine = document.createElement('div')
   nameLine.className = 'hs-pcard-name'
-  const isLive = !!(data?.twitch_is_live || data?.kick_is_live)
+  const isLive = !!(data?.twitch_is_live || data?.kick_is_live || data?.youtube_is_live)
   if (isLive) {
     const dot = document.createElement('span')
     dot.className = 'hs-pcard-livedot'
@@ -17594,7 +17674,7 @@ function renderProfileCardView() {
   if (data?.twitch_username) pills.appendChild(pcMakePill('twitch', data.twitch_username, data.twitch_is_live))
   if (data?.kick_username) pills.appendChild(pcMakePill('kick', data.kick_username, data.kick_is_live))
   if (data?.youtube_username || data?.youtube_channel_id) {
-    pills.appendChild(pcMakePill('youtube', data.youtube_username || username))
+    pills.appendChild(pcMakePill('youtube', data.youtube_username || username, !!data.youtube_is_live))
   }
   pills.appendChild(pcMakePill('heatsync', username))
   idText.appendChild(pills)
@@ -17709,13 +17789,28 @@ function renderProfileCardView() {
   card.appendChild(statsSec)
 
   // === Stream section (only when live) ===
-  if (data && (data.twitch_is_live || data.kick_is_live)) {
-    const onTwitch = !!data.twitch_is_live
-    const platName = onTwitch ? data.twitch_username : data.kick_username
-    const vc = onTwitch ? (data.twitch_viewer_count || 0) : (data.kick_viewer_count || 0)
-    const url = onTwitch ? `https://twitch.tv/${platName}` : `https://kick.com/${platName}`
+  if (data && (data.twitch_is_live || data.kick_is_live || data.youtube_is_live)) {
+    let plat, platName, vc, url
+    if (data.twitch_is_live) {
+      plat = 'twitch'
+      platName = data.twitch_username
+      vc = data.twitch_viewer_count || 0
+      url = `https://twitch.tv/${platName}`
+    } else if (data.kick_is_live) {
+      plat = 'kick'
+      platName = data.kick_username
+      vc = data.kick_viewer_count || 0
+      url = `https://kick.com/${platName}`
+    } else {
+      plat = 'youtube'
+      platName = data.youtube_username || data.youtube_channel_id
+      vc = data.youtube_viewer_count || 0
+      url = data.youtube_username ? `https://youtube.com/@${data.youtube_username}/live`
+        : data.youtube_channel_id ? `https://youtube.com/channel/${data.youtube_channel_id}/live`
+        : 'https://youtube.com'
+    }
 
-    const ssec = pcMakeSection(onTwitch ? 'twitch · live' : 'kick · live')
+    const ssec = pcMakeSection(plat + ' · live')
     ssec.classList.add('hs-pcard-stream')
     const line = document.createElement('div')
     if (vc) line.appendChild(document.createTextNode(`${pcFmt(vc)} viewers — `))
@@ -18943,6 +19038,23 @@ const STORAGE_KEY = 'heatsync_multichat';
   const DEFAULT_CHAT_WIDTH = 340;
   const MIN_CHAT_WIDTH = 300;
   const MAX_CHAT_WIDTH = 800;
+  // YouTube enforces a 640px min-width on #primary; if secondary takes more
+  // than (container - 640), the row overflows and the player gets clipped on
+  // the left. We add a small fudge for column-gap / scrollbar.
+  const YT_MIN_PRIMARY_WIDTH = 660;
+
+  // Compute the largest chat width that won't squash YouTube's video column.
+  // Bases on the watch-flexy container width (the actual flex-row that holds
+  // primary + secondary) when available, falling back to viewport. Keeps a
+  // YT_MIN_PRIMARY_WIDTH gutter for the player.
+  function getYtMaxChatWidth() {
+    if (hostPlatform !== 'yt') return MAX_CHAT_WIDTH
+    const flexy = document.querySelector('ytd-watch-flexy')
+    const flexyW = flexy?.getBoundingClientRect?.().width || 0
+    const vw = window.innerWidth || document.documentElement.clientWidth || 1280
+    const available = flexyW > 0 ? Math.min(flexyW, vw) : vw
+    return Math.max(MIN_CHAT_WIDTH, Math.min(MAX_CHAT_WIDTH, available - YT_MIN_PRIMARY_WIDTH))
+  }
 
   function createOverlay() {
     const overlay = document.createElement('div');
@@ -19187,14 +19299,22 @@ const STORAGE_KEY = 'heatsync_multichat';
 
   /**
    * Setup resize handle for dragging chat width
+   *
+   * Buttery-smooth strategy: during drag we DO NOT change rightCol's width.
+   * Twitch packs ~2500 Layout-sc-* React components inside right-column, and
+   * every width change triggers React reconciliation across all of them — that
+   * was the lag. Instead, we render a fixed-positioned ghost div as a live
+   * boundary preview. The ghost moves at compositor speed (no layout, no
+   * reconciles, no mutations). On release we commit the real width once,
+   * giving the player and Twitch's React tree exactly one reflow.
    */
   function setupResizeHandle() {
-    // Create handle on the left edge of the right column
     const rightCol = document.querySelector('.right-column.right-column--beside')
     if (!rightCol || document.getElementById('hs-mc-resize-handle')) return
 
     const handle = document.createElement('div')
     handle.id = 'hs-mc-resize-handle'
+    handle.style.touchAction = 'none'
     rightCol.insertBefore(handle, rightCol.firstChild)
 
     let isResizing = false
@@ -19202,29 +19322,43 @@ const STORAGE_KEY = 'heatsync_multichat';
     let startWidth = 0
     let rafId = 0
     let pendingWidth = 0
+    let lastGhostWidth = 0
+    let activePointerId = -1
     let overlay = null
-    let dragStyle = null
+    let ghost = null
     const isVertical = () => tabPosition === 'left' || tabPosition === 'right'
 
     function applyResize() {
       rafId = 0
+      if (pendingWidth === lastGhostWidth) return
+      lastGhostWidth = pendingWidth
       chatWidth = pendingWidth
-      const w = chatWidth + (isVertical() ? 90 : 0)
-      rightCol.style.setProperty('width', w + 'px', 'important')
-      rightCol.style.setProperty('min-width', w + 'px', 'important')
+      // Compositor-only update — no layout, no React reconcile
+      if (ghost) ghost.style.width = (pendingWidth + (isVertical() ? 90 : 0)) + 'px'
     }
 
-    handle.addEventListener('mousedown', (e) => {
+    handle.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0) return
       isResizing = true
+      activePointerId = e.pointerId
+      try { handle.setPointerCapture(e.pointerId) } catch (_) {}
       startX = e.clientX
       startWidth = chatWidth
+      const rect = rightCol.getBoundingClientRect()
+      const w0 = Math.round(rect.width)
+      pendingWidth = chatWidth
+      lastGhostWidth = w0
+
       document.body.style.cursor = 'ew-resize'
       document.body.style.userSelect = 'none'
-      // Kill ALL transitions — Twitch has transition:all on every Layout component
-      dragStyle = document.createElement('style')
-      dragStyle.id = 'hs-drag-perf'
-      dragStyle.textContent = '* { transition: none !important; }'
-      document.head.appendChild(dragStyle)
+
+      // Live boundary preview — fixed-positioned, pointer-events:none, will-change:width
+      // for the compositor. Visual: subtle orange tint with a 3px left edge.
+      ghost = document.createElement('div')
+      ghost.id = 'hs-resize-ghost'
+      ghost.style.cssText = `position:fixed;top:${rect.top}px;right:0;height:${rect.height}px;width:${w0}px;background:rgba(255,135,0,0.06);border-left:3px solid #ff8700;pointer-events:none;z-index:99998;will-change:width;`
+      document.body.appendChild(ghost)
+
       overlay = document.createElement('div')
       overlay.id = 'hs-resize-overlay'
       overlay.style.cssText = 'position:fixed;inset:0;z-index:99999;cursor:ew-resize'
@@ -19232,27 +19366,30 @@ const STORAGE_KEY = 'heatsync_multichat';
       e.preventDefault()
     })
 
-    cleanup.addEventListener(document, 'mousemove', (e) => {
-      if (!isResizing) return
+    handle.addEventListener('pointermove', (e) => {
+      if (!isResizing || e.pointerId !== activePointerId) return
       const delta = startX - e.clientX
       pendingWidth = Math.min(MAX_CHAT_WIDTH, Math.max(MIN_CHAT_WIDTH, startWidth + delta))
       if (!rafId) rafId = requestAnimationFrame(applyResize)
     })
 
-    cleanup.addEventListener(document, 'mouseup', () => {
-      if (!isResizing) return
+    function endDrag(e) {
+      if (!isResizing || (e && e.pointerId !== activePointerId)) return
       isResizing = false
+      activePointerId = -1
       if (rafId) { cancelAnimationFrame(rafId); rafId = 0 }
       chatWidth = pendingWidth || chatWidth
+      if (ghost) { ghost.remove(); ghost = null }
+      // Single real width commit — player reflows exactly once here
       applyChatWidth(rightCol)
       document.body.style.cursor = ''
       document.body.style.userSelect = ''
       if (overlay) { overlay.remove(); overlay = null }
-      if (dragStyle) { dragStyle.remove(); dragStyle = null }
       saveChatWidth()
-    })
+    }
+    handle.addEventListener('pointerup', endDrag)
+    handle.addEventListener('pointercancel', endDrag)
 
-    // Load saved width
     loadChatWidth()
   }
 
@@ -19343,6 +19480,7 @@ const STORAGE_KEY = 'heatsync_multichat';
 
     const handle = document.createElement('div')
     handle.id = 'hs-kick-resize-handle'
+    handle.style.touchAction = 'none'
     mcContainer.insertBefore(handle, mcContainer.firstChild)
 
     let isResizing = false
@@ -19350,30 +19488,38 @@ const STORAGE_KEY = 'heatsync_multichat';
     let startWidth = 0
     let rafId = 0
     let pendingWidth = 0
+    let lastGhostWidth = 0
+    let activePointerId = -1
     let overlay = null
+    let ghost = null
 
     function applyResize() {
       rafId = 0
+      if (pendingWidth === lastGhostWidth) return
+      lastGhostWidth = pendingWidth
       chatWidth = pendingWidth
-      chatroom.style.setProperty('width', chatWidth + 'px', 'important')
-      document.documentElement.style.setProperty('--hs-kick-chat-width', chatWidth + 'px')
-      document.documentElement.style.setProperty('--chat-width', chatWidth + 'px')
+      if (ghost) ghost.style.width = pendingWidth + 'px'
     }
 
-    const chatroomParent = chatroom.parentElement
-    const kickMain = document.querySelector('main')
-
-    handle.addEventListener('mousedown', (e) => {
+    handle.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0) return
       isResizing = true
+      activePointerId = e.pointerId
+      try { handle.setPointerCapture(e.pointerId) } catch (_) {}
       startX = e.clientX
       startWidth = chatWidth
+      const rect = (chatroom.classList.contains('hs-native-hidden') ? mcContainer : chatroom).getBoundingClientRect()
+      const w0 = Math.round(rect.width)
+      pendingWidth = chatWidth
+      lastGhostWidth = w0
       document.body.style.cursor = 'col-resize'
       document.body.style.userSelect = 'none'
-      // Kill transitions during drag
-      chatroom.style.setProperty('transition', 'none', 'important')
-      if (chatroomParent) chatroomParent.style.setProperty('transition', 'none', 'important')
-      if (kickMain) kickMain.style.setProperty('transition', 'none', 'important')
-      // Transparent overlay catches mouse over iframes/video
+
+      ghost = document.createElement('div')
+      ghost.id = 'hs-resize-ghost'
+      ghost.style.cssText = `position:fixed;top:${rect.top}px;right:0;height:${rect.height}px;width:${w0}px;background:rgba(255,135,0,0.06);border-left:3px solid #ff8700;pointer-events:none;z-index:99998;will-change:width;`
+      document.body.appendChild(ghost)
+
       overlay = document.createElement('div')
       overlay.id = 'hs-resize-overlay'
       overlay.style.cssText = 'position:fixed;inset:0;z-index:99999;cursor:col-resize'
@@ -19381,28 +19527,28 @@ const STORAGE_KEY = 'heatsync_multichat';
       e.preventDefault()
     })
 
-    cleanup.addEventListener(document, 'mousemove', (e) => {
-      if (!isResizing) return
+    handle.addEventListener('pointermove', (e) => {
+      if (!isResizing || e.pointerId !== activePointerId) return
       const delta = startX - e.clientX
       pendingWidth = Math.min(MAX_CHAT_WIDTH, Math.max(MIN_CHAT_WIDTH, startWidth + delta))
       if (!rafId) rafId = requestAnimationFrame(applyResize)
     })
 
-    cleanup.addEventListener(document, 'mouseup', () => {
-      if (!isResizing) return
+    function endDrag(e) {
+      if (!isResizing || (e && e.pointerId !== activePointerId)) return
       isResizing = false
+      activePointerId = -1
       if (rafId) { cancelAnimationFrame(rafId); rafId = 0 }
       chatWidth = pendingWidth || chatWidth
+      if (ghost) { ghost.remove(); ghost = null }
       applyKickChatWidth()
       document.body.style.cursor = ''
       document.body.style.userSelect = ''
       if (overlay) { overlay.remove(); overlay = null }
-      // Restore transitions
-      chatroom.style.removeProperty('transition')
-      if (chatroomParent) chatroomParent.style.removeProperty('transition')
-      if (kickMain) kickMain.style.removeProperty('transition')
       saveChatWidth()
-    })
+    }
+    handle.addEventListener('pointerup', endDrag)
+    handle.addEventListener('pointercancel', endDrag)
 
     loadChatWidth().then(() => { applyKickChatWidth() })
   }
@@ -19413,7 +19559,8 @@ const STORAGE_KEY = 'heatsync_multichat';
   function applyYouTubeChatWidth() {
     const secondary = document.querySelector('#secondary, ytd-watch-flexy #secondary')
     if (!secondary) return
-    chatWidth = Math.min(MAX_CHAT_WIDTH, Math.max(MIN_CHAT_WIDTH, chatWidth))
+    const ytMax = getYtMaxChatWidth()
+    chatWidth = Math.min(ytMax, Math.max(MIN_CHAT_WIDTH, chatWidth))
     secondary.style.setProperty('width', chatWidth + 'px', 'important')
     secondary.style.setProperty('min-width', chatWidth + 'px', 'important')
     secondary.style.setProperty('max-width', chatWidth + 'px', 'important')
@@ -19421,6 +19568,22 @@ const STORAGE_KEY = 'heatsync_multichat';
     // Also resize the hs-mc-container to fill
     const container = document.getElementById('hs-mc-container')
     if (container) container.style.setProperty('width', '100%', 'important')
+  }
+
+  // Re-clamp chat width when viewport shrinks (window resize / devtools open).
+  // Without this, a chat width persisted at a wider viewport pushes the video
+  // off-screen on a smaller window and the resize handle's max can't catch up.
+  let _ytViewportClampTimer = null
+  function watchYtViewportClamp() {
+    if (hostPlatform !== 'yt') return
+    const onResize = () => {
+      if (_ytViewportClampTimer) cleanup.clearTimeout(_ytViewportClampTimer)
+      _ytViewportClampTimer = cleanup.setTimeout(() => {
+        _ytViewportClampTimer = null
+        applyYouTubeChatWidth()
+      }, 80)
+    }
+    window.addEventListener('resize', onResize, { signal: mcSignal })
   }
 
   /**
@@ -19433,6 +19596,7 @@ const STORAGE_KEY = 'heatsync_multichat';
 
     const handle = document.createElement('div')
     handle.id = 'hs-yt-resize-handle'
+    handle.style.touchAction = 'none'
     secondary.style.position = 'relative'
     secondary.insertBefore(handle, secondary.firstChild)
 
@@ -19441,28 +19605,38 @@ const STORAGE_KEY = 'heatsync_multichat';
     let startWidth = 0
     let rafId = 0
     let pendingWidth = 0
+    let lastGhostWidth = 0
+    let activePointerId = -1
     let overlay = null
-    let dragStyle = null
+    let ghost = null
 
     function applyResize() {
       rafId = 0
+      if (pendingWidth === lastGhostWidth) return
+      lastGhostWidth = pendingWidth
       chatWidth = pendingWidth
-      secondary.style.setProperty('width', chatWidth + 'px', 'important')
-      secondary.style.setProperty('min-width', chatWidth + 'px', 'important')
-      secondary.style.setProperty('max-width', chatWidth + 'px', 'important')
-      secondary.style.setProperty('flex', 'none', 'important')
+      if (ghost) ghost.style.width = pendingWidth + 'px'
     }
 
-    handle.addEventListener('mousedown', (e) => {
+    handle.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0) return
       isResizing = true
+      activePointerId = e.pointerId
+      try { handle.setPointerCapture(e.pointerId) } catch (_) {}
       startX = e.clientX
       startWidth = chatWidth
+      const rect = secondary.getBoundingClientRect()
+      const w0 = Math.round(rect.width)
+      pendingWidth = chatWidth
+      lastGhostWidth = w0
       document.body.style.cursor = 'ew-resize'
       document.body.style.userSelect = 'none'
-      dragStyle = document.createElement('style')
-      dragStyle.id = 'hs-drag-perf'
-      dragStyle.textContent = '* { transition: none !important; }'
-      document.head.appendChild(dragStyle)
+
+      ghost = document.createElement('div')
+      ghost.id = 'hs-resize-ghost'
+      ghost.style.cssText = `position:fixed;top:${rect.top}px;right:0;height:${rect.height}px;width:${w0}px;background:rgba(255,135,0,0.06);border-left:3px solid #ff8700;pointer-events:none;z-index:99998;will-change:width;`
+      document.body.appendChild(ghost)
+
       overlay = document.createElement('div')
       overlay.id = 'hs-resize-overlay'
       overlay.style.cssText = 'position:fixed;inset:0;z-index:99999;cursor:ew-resize'
@@ -19470,27 +19644,34 @@ const STORAGE_KEY = 'heatsync_multichat';
       e.preventDefault()
     })
 
-    cleanup.addEventListener(document, 'mousemove', (e) => {
-      if (!isResizing) return
+    handle.addEventListener('pointermove', (e) => {
+      if (!isResizing || e.pointerId !== activePointerId) return
       const delta = startX - e.clientX
-      pendingWidth = Math.min(MAX_CHAT_WIDTH, Math.max(MIN_CHAT_WIDTH, startWidth + delta))
+      // Use the viewport-aware cap so a small window can't be dragged past the
+      // point where the video column gets crushed.
+      const ytMax = getYtMaxChatWidth()
+      pendingWidth = Math.min(ytMax, Math.max(MIN_CHAT_WIDTH, startWidth + delta))
       if (!rafId) rafId = requestAnimationFrame(applyResize)
     })
 
-    cleanup.addEventListener(document, 'mouseup', () => {
-      if (!isResizing) return
+    function endDrag(e) {
+      if (!isResizing || (e && e.pointerId !== activePointerId)) return
       isResizing = false
+      activePointerId = -1
       if (rafId) { cancelAnimationFrame(rafId); rafId = 0 }
       chatWidth = pendingWidth || chatWidth
+      if (ghost) { ghost.remove(); ghost = null }
       applyYouTubeChatWidth()
       document.body.style.cursor = ''
       document.body.style.userSelect = ''
       if (overlay) { overlay.remove(); overlay = null }
-      if (dragStyle) { dragStyle.remove(); dragStyle = null }
       saveChatWidth()
-    })
+    }
+    handle.addEventListener('pointerup', endDrag)
+    handle.addEventListener('pointercancel', endDrag)
 
     loadChatWidth().then(() => { applyYouTubeChatWidth() })
+    watchYtViewportClamp()
   }
 
   // Emote size functions
@@ -21039,6 +21220,13 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
         // Only fetch from decapi for Twitch users (Kick/YouTube don't have decapi endpoints)
         avatarHtml = `<img class="hs-mc-avatar" data-user="${escapeHtml(userKey)}" src="" alt="" style="display:none" loading="lazy" decoding="async">`
         fetchAvatar(userKey)
+      } else {
+        // Kick/YouTube without a cached avatar — render a neutral initials
+        // placeholder so the avatar column doesn't have an empty gap.
+        const initial = (m.user || '?').charAt(0).toUpperCase()
+        const palette = ['#5d3ad6','#1a8cff','#ff6b35','#10b981','#e11d48','#7c3aed','#f59e0b']
+        const hue = palette[(userKey.charCodeAt(0) + (userKey.charCodeAt(1) || 0)) % palette.length]
+        avatarHtml = `<span class="hs-mc-avatar hs-mc-avatar-fallback" style="background:${hue}">${escapeHtml(initial)}</span>`
       }
     }
 
@@ -21146,7 +21334,9 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
         w.dataset.state = newState;
       }
     }
-    // Reply button for threading (Twitch/Kick — needs valid msg id)
+    // Reply button for threading (Twitch/Kick — YT has no native thread id,
+    // so we'd render an @-mention reply, but the YT message renderer reuses
+    // videoId as id which collides across messages; suppress on YT for now).
     if (m.id && m.platform !== 'youtube') {
       div.dataset.msgId = m.id
       div.dataset.msgUser = m.user
@@ -21564,8 +21754,15 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     } else if (id && id !== 'add' && !['mentions','feed','whispers','discover','pinned','settings'].includes(id)) {
       // Per-channel tab — id may be a username or a linked-tab id; resolve from config
       const ch = config.channels.find(c => typeof c !== 'string' && c.id === id)
-      const channelName = (ch && (ch.twitch || ch.kick)) || id
-      const platHint = ch?.twitch ? 'twitch' : ch?.kick ? 'kick' : null
+      // YT-only channels: extract handle from the youtube URL so the banner can
+      // resolve identity ("foo is also live on Twitch + Kick") for them too.
+      let ytHandle = null
+      if (ch?.youtube && !ch.twitch && !ch.kick) {
+        const m = ch.youtube.match(/@([^/?]+)/)
+        if (m) ytHandle = m[1]
+      }
+      const channelName = (ch && (ch.twitch || ch.kick)) || ytHandle || id
+      const platHint = ch?.twitch ? 'twitch' : ch?.kick ? 'kick' : ytHandle ? 'youtube' : null
       maybeShowMultistreamBanner(channelName, platHint)
     }
 
@@ -22536,6 +22733,71 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     }
   }
 
+  /**
+   * Resolve a live candidate ({name, platform}) to a real channel tab.
+   * Auto-adds twitch/kick channels to config.channels so 'live' is a launcher,
+   * never the sticky tab. YouTube falls back to liveChannel override (no URL to add).
+   */
+  async function resolveLiveCandidateToTab({ name, platform }) {
+    const lower = name.toLowerCase();
+
+    // YouTube: keep liveChannel override — we don't have a URL to persist as a tab.
+    if (platform === 'youtube') {
+      liveChannel = lower;
+      try { updateLiveTabLabel(); } catch {}
+      switchTab('live');
+      return;
+    }
+
+    // Find existing channel tab matching this twitch/kick name.
+    let entry = config.channels.find(c => {
+      if (typeof c === 'string') return c.toLowerCase() === lower;
+      return (c.twitch?.toLowerCase() === lower) || (c.kick?.toLowerCase() === lower);
+    });
+
+    if (!entry) {
+      const reserved = ['live', 'feed', 'mentions', 'whispers', 'discover', 'pinned', 'add', 'rotate', 'settings'];
+      let id = lower;
+      if (reserved.includes(id) || config.channels.some(c => (typeof c === 'string' ? c : c.id) === id)) {
+        id = `ch_${Date.now()}`;
+      }
+      entry = { id, twitch: '', kick: '', youtube: '' };
+      if (platform === 'twitch') entry.twitch = lower;
+      else if (platform === 'kick') entry.kick = lower;
+
+      // Try to link the other platform's account so the tab pulls both feeds.
+      try {
+        const lookupUrl = platform === 'twitch'
+          ? `https://heatsync.org/api/lookup/twitch/${lower}`
+          : `https://heatsync.org/api/lookup/kick/${lower}`;
+        const res = await fetch(lookupUrl, { signal: AbortSignal.timeout(3000) });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.twitchUsername && !entry.twitch) entry.twitch = data.twitchUsername.toLowerCase();
+          if (data.kickUsername && !entry.kick) entry.kick = data.kickUsername.toLowerCase();
+        }
+      } catch (e) { /* keep single-platform entry */ }
+
+      config.channels.push(entry);
+      try { saveConfig(); } catch {}
+
+      if (entry.twitch) {
+        try { irc?.join?.(entry.twitch); } catch {}
+        try { chrome.runtime.sendMessage({ type: 'join_channel', platform: 'twitch', channel: entry.twitch }); } catch {}
+      }
+      if (entry.kick) {
+        try { kickChat?.join?.(entry.kick); } catch {}
+      }
+
+      try { updateTabBar(); } catch {}
+    }
+
+    const tabId = typeof entry === 'string' ? entry : entry.id;
+    // Reset liveChannel override — live is no longer the sticky tab.
+    liveChannel = null;
+    switchTab(tabId);
+  }
+
   /** Show picker for choosing which live channel to view */
   async function showLiveChannelPicker(anchorEl) {
     document.getElementById('hs-mc-live-picker')?.remove();
@@ -22581,10 +22843,19 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     const channels = Array.from(byName.values());
 
     if (channels.length <= 1) {
-      // 0 or 1 live channel — just switch to live normally
+      // Popout: navigate to channel's popout URL when picking a different channel.
       if (channels.length === 1 && document.body.classList.contains('hs-popout') && channels[0].name !== urlCh) {
         if (hostPlatform === 'twitch') location.href = `/popout/${channels[0].name}/chat?popout=`;
         else if (hostPlatform === 'kick') location.href = `/${channels[0].name}`;
+        return;
+      }
+      if (channels.length === 1) {
+        await resolveLiveCandidateToTab(channels[0]);
+        return;
+      }
+      // 0 candidates — fall back to urlCh (auto-add) so something opens; else just sit on live.
+      if (urlCh && (hostPlatform === 'twitch' || hostPlatform === 'kick')) {
+        await resolveLiveCandidateToTab({ name: urlCh, platform: hostPlatform });
         return;
       }
       switchTab('live');
@@ -22614,9 +22885,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       item.addEventListener('mouseleave', () => { item.style.background = 'none'; item.style.color = baseColor; });
       item.addEventListener('click', async () => {
         menu.remove();
-        // In popout mode, navigate to the channel's popout URL — but only if the channel differs.
-        // Persist activeTab='live' synchronously first so the new page lands on the live tab,
-        // not whatever tab was active before (e.g. discover).
+        // Popout mode keeps URL navigation — each popout window is locked to one channel.
         if (document.body.classList.contains('hs-popout') && ch.name !== urlCh) {
           try {
             const s = await chrome.storage.sync.get(['ui_settings'])
@@ -22629,9 +22898,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
           }
           return;
         }
-        liveChannel = ch.name;
-        updateLiveTabLabel();
-        switchTab('live');
+        await resolveLiveCandidateToTab(ch);
       });
       menu.appendChild(item);
     }

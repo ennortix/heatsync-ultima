@@ -516,7 +516,7 @@
     "message": "ブロック済み (クリックで解除)"
   },
   "mc_tab_feed": {
-    "message": "フィード"
+    "message": "ホーム"
   },
   "mc_tab_whispers": {
     "message": "ウィスパー"
@@ -534,7 +534,7 @@
     "message": "discover"
   },
   "mc_tab_pinned": {
-    "message": "pinned"
+    "message": "保存済み"
   },
   "mc_tab_live_channel": {
     "message": "ライブ · $CHANNEL$",

@@ -646,6 +646,17 @@ function injectStyles() {
       margin-right: 3px;
       object-fit: cover;
     }
+    span.hs-mc-avatar.hs-mc-avatar-fallback {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      color: #fff;
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      line-height: 1;
+      user-select: none;
+    }
     .hs-mc-msg {
       padding: 2px 4px;
       border-radius: 0;

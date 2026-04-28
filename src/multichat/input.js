@@ -2112,7 +2112,7 @@ async function sendMessage() {
   updateCharCount()
   hideInputBar()
 
-  // --- Kick send path (single or dual) ---
+  // --- Kick send path (single, dual, or triple including YT) ---
   if (sendToKick) {
     const slug = kickSlug || targetChannel
     const kickPromise = sendKickMessage(slug, text)
@@ -2120,6 +2120,16 @@ async function sendMessage() {
       ? getTwitchAuthTokenAsync().then(({ token: tok, username: twitchNick }) =>
           sendIrcMessage(twitchName, text, tok, replyParentId, twitchNick))
       : Promise.resolve(null)
+
+    // Best-effort YouTube — fire alongside Kick/Twitch so a triple-link
+    // channel (twitch+kick+youtube) actually mirrors to all three.
+    if (sendToYoutube) {
+      sendYoutubeMessage(text).then(result => {
+        if (result !== true && result !== 'no_youtube_tab') {
+          showToast('youtube send failed')
+        }
+      })
+    }
 
     Promise.all([kickPromise, twitchPromise]).then(([kickResult, twitchResult]) => {
       const kickOk = kickResult === true

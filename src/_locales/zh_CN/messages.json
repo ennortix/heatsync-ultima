@@ -516,7 +516,7 @@
     "message": "已屏蔽 (点击解除)"
   },
   "mc_tab_feed": {
-    "message": "动态"
+    "message": "首页"
   },
   "mc_tab_whispers": {
     "message": "悄悄话"
@@ -534,7 +534,7 @@
     "message": "discover"
   },
   "mc_tab_pinned": {
-    "message": "pinned"
+    "message": "已保存"
   },
   "mc_tab_live_channel": {
     "message": "直播 · $CHANNEL$",

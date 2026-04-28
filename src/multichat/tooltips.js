@@ -60,6 +60,7 @@
       : src.includes('7tv') ? '7TV'
       : src.includes('jtvnw.net') ? 'Twitch'
       : src.includes('kick') ? 'Kick'
+      : (src.includes('googleusercontent') || src.includes('ggpht')) ? 'YouTube'
       : ''
     const sourceEl = tooltip.querySelector('.tooltip-source')
     sourceEl.textContent = sourceLabel

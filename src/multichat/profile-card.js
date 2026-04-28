@@ -188,7 +188,7 @@ function renderProfileCardView() {
 
   const nameLine = document.createElement('div')
   nameLine.className = 'hs-pcard-name'
-  const isLive = !!(data?.twitch_is_live || data?.kick_is_live)
+  const isLive = !!(data?.twitch_is_live || data?.kick_is_live || data?.youtube_is_live)
   if (isLive) {
     const dot = document.createElement('span')
     dot.className = 'hs-pcard-livedot'
@@ -204,7 +204,7 @@ function renderProfileCardView() {
   if (data?.twitch_username) pills.appendChild(pcMakePill('twitch', data.twitch_username, data.twitch_is_live))
   if (data?.kick_username) pills.appendChild(pcMakePill('kick', data.kick_username, data.kick_is_live))
   if (data?.youtube_username || data?.youtube_channel_id) {
-    pills.appendChild(pcMakePill('youtube', data.youtube_username || username))
+    pills.appendChild(pcMakePill('youtube', data.youtube_username || username, !!data.youtube_is_live))
   }
   pills.appendChild(pcMakePill('heatsync', username))
   idText.appendChild(pills)
@@ -319,13 +319,28 @@ function renderProfileCardView() {
   card.appendChild(statsSec)
 
   // === Stream section (only when live) ===
-  if (data && (data.twitch_is_live || data.kick_is_live)) {
-    const onTwitch = !!data.twitch_is_live
-    const platName = onTwitch ? data.twitch_username : data.kick_username
-    const vc = onTwitch ? (data.twitch_viewer_count || 0) : (data.kick_viewer_count || 0)
-    const url = onTwitch ? `https://twitch.tv/${platName}` : `https://kick.com/${platName}`
+  if (data && (data.twitch_is_live || data.kick_is_live || data.youtube_is_live)) {
+    let plat, platName, vc, url
+    if (data.twitch_is_live) {
+      plat = 'twitch'
+      platName = data.twitch_username
+      vc = data.twitch_viewer_count || 0
+      url = `https://twitch.tv/${platName}`
+    } else if (data.kick_is_live) {
+      plat = 'kick'
+      platName = data.kick_username
+      vc = data.kick_viewer_count || 0
+      url = `https://kick.com/${platName}`
+    } else {
+      plat = 'youtube'
+      platName = data.youtube_username || data.youtube_channel_id
+      vc = data.youtube_viewer_count || 0
+      url = data.youtube_username ? `https://youtube.com/@${data.youtube_username}/live`
+        : data.youtube_channel_id ? `https://youtube.com/channel/${data.youtube_channel_id}/live`
+        : 'https://youtube.com'
+    }
 
-    const ssec = pcMakeSection(onTwitch ? 'twitch · live' : 'kick · live')
+    const ssec = pcMakeSection(plat + ' · live')
     ssec.classList.add('hs-pcard-stream')
     const line = document.createElement('div')
     if (vc) line.appendChild(document.createTextNode(`${pcFmt(vc)} viewers — `))

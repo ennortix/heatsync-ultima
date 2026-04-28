@@ -516,7 +516,7 @@
     "message": "bloqueado (clic para desbloquear)"
   },
   "mc_tab_feed": {
-    "message": "feed"
+    "message": "inicio"
   },
   "mc_tab_whispers": {
     "message": "susurros"
@@ -534,7 +534,7 @@
     "message": "discover"
   },
   "mc_tab_pinned": {
-    "message": "pinned"
+    "message": "guardados"
   },
   "mc_tab_live_channel": {
     "message": "en directo · $CHANNEL$",

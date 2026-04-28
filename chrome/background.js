@@ -2937,10 +2937,13 @@ function handleWSMessage(msg) {
       }
       break
 
-    case 'youtube:status':
+    case 'youtube:status': {
+      // Resolve channelId BEFORE potentially deleting the videoId mapping —
+      // otherwise an `ended` event broadcasts with channelId='global' and the
+      // multichat panel can't update the right channel tab.
+      const resolvedChannelId = msg.channelId || ytVideoToChannel.get(msg.videoId) || 'global'
       if (msg.status === 'connected') {
         activeYoutubeVideoId = msg.videoId
-        // Map videoId → channelId from server-echoed channelId
         if (msg.channelId && msg.videoId) setYtVideoChannel(msg.videoId, msg.channelId)
       } else if (msg.status === 'ended' || msg.status === 'error') {
         if (activeYoutubeVideoId === msg.videoId) activeYoutubeVideoId = null
@@ -2949,13 +2952,14 @@ function handleWSMessage(msg) {
       broadcastToTabs({
         type: 'youtube_status',
         videoId: msg.videoId,
-        channelId: msg.channelId || ytVideoToChannel.get(msg.videoId) || 'global',
+        channelId: resolvedChannelId,
         status: msg.status,
         channelName: msg.channelName || '',
         title: msg.title || '',
         error: msg.error || '',
       })
       break
+    }
 
     case 'dm:new':
       broadcastToTabs({
@@ -3518,6 +3522,20 @@ async function handleMessage(message, sender, sendResponse) {
     return true
   }
 
+  // YouTube moderator deletion — relay to all extension tabs so they can dim
+  if (message.type === 'youtube_msg_deleted') {
+    const channelId = ytVideoToChannel.get(message.videoId) || 'global'
+    broadcastToTabs({
+      type: 'youtube_msg_deleted',
+      videoId: message.videoId,
+      channelId,
+      user: message.user,
+      reason: message.reason || ''
+    })
+    sendResponse({ ok: true })
+    return true
+  }
+
   // Link preview — proxy through heatsync.org server (avoids CORS)
   if (message.type === 'fetch_link_preview') {
     const url = message.url
@@ -3606,13 +3624,10 @@ async function handleMessage(message, sender, sendResponse) {
       // Extract videoId from URL for routing (always, even if socket is down)
       const vidMatch = url.match(/[?&]v=([^&]+)/) || url.match(/\/live\/([^?&\/]+)/) || url.match(/youtu\.be\/([^?&]+)/)
       if (vidMatch) setYtVideoChannel(vidMatch[1], channelId)
-      // Send subscribe if socket is open
-      if (isSocketOpen()) {
-        log('[hs-bg] sending youtube:subscribe to WS:', { url, channelId })
-        wsSend({ type: 'youtube:subscribe', url, channelId })
-      } else {
-        log('[hs-bg] socket NOT open, queuing youtube:subscribe')
-      }
+      // wsSend handles both immediate send and queue-on-reconnect; previous
+      // gating let subscribes silently drop when the socket was closing.
+      log('[hs-bg] youtube:subscribe (open?', isSocketOpen(), '):', { url, channelId })
+      wsSend({ type: 'youtube:subscribe', url, channelId })
       // Always persist for reconnect (even if socket is currently down)
       if (channelId === 'global') {
         browser.storage.local.set({ youtube_url: url })
@@ -3963,11 +3978,25 @@ async function handleMessage(message, sender, sendResponse) {
       try {
         const { text } = message
         if (!text) { sendResponse({ ok: false, error: 'missing params' }); return }
-        // Find a YouTube tab — sendMessage reaches all frames including the live_chat iframe
-        const tabs = await browser.tabs.query({ url: '*://www.youtube.com/*' })
-        if (!tabs || tabs.length === 0) { sendResponse({ ok: false, error: 'no_youtube_tab' }); return }
-        // Relay to first YouTube tab (youtube-content.js in the iframe handles it)
-        const result = await browser.tabs.sendMessage(tabs[0].id, {
+        // Prefer the sender's own tab — multichat usually lives on the same
+        // YouTube tab whose iframe owns the live_chat. Falls back to the
+        // active YouTube tab in the focused window, then any YouTube tab.
+        const senderTabId = sender?.tab?.id
+        let targetTabId = null
+        if (senderTabId) {
+          const t = await browser.tabs.get(senderTabId).catch(() => null)
+          if (t && /youtube\.com/.test(t.url || '')) targetTabId = senderTabId
+        }
+        if (!targetTabId) {
+          const active = await browser.tabs.query({ active: true, currentWindow: true, url: '*://www.youtube.com/*' }).catch(() => [])
+          if (active && active.length > 0) targetTabId = active[0].id
+        }
+        if (!targetTabId) {
+          const tabs = await browser.tabs.query({ url: '*://www.youtube.com/*' })
+          if (!tabs || tabs.length === 0) { sendResponse({ ok: false, error: 'no_youtube_tab' }); return }
+          targetTabId = tabs[0].id
+        }
+        const result = await browser.tabs.sendMessage(targetTabId, {
           type: 'youtube_send_relay',
           text
         })

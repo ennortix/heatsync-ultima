@@ -466,7 +466,7 @@
   },
 
   "mc_tab_feed": {
-    "message": "feed"
+    "message": "home"
   },
   "mc_tab_whispers": {
     "message": "whispers"
@@ -484,7 +484,7 @@
     "message": "discover"
   },
   "mc_tab_pinned": {
-    "message": "pinned"
+    "message": "saved"
   },
   "mc_tab_live_channel": {
     "message": "live · $CHANNEL$",

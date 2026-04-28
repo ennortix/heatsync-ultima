@@ -571,6 +571,23 @@
     'YT-LIVE-CHAT-SPONSORSHIPS-HEADER-RENDERER'
   ])
 
+  // Track recent message authors so we can announce moderator deletions
+  // upstream — YouTube clears the renderer's text and stamps `is-deleted`
+  // (or replaces it with yt-live-chat-deleted-message-renderer); both lose
+  // the user, so we cache it on the node before the wipe.
+  function broadcastDeletion(node, reason) {
+    const user = node?.dataset?.hsYtUser
+    if (!user) return
+    if (node.dataset.hsYtDeletedSent) return
+    node.dataset.hsYtDeletedSent = '1'
+    safeSendMessage({
+      type: 'youtube_msg_deleted',
+      videoId,
+      user,
+      reason: reason || ''
+    })
+  }
+
   function getMsgType(tagName) {
     switch (tagName) {
       case 'YT-LIVE-CHAT-PAID-MESSAGE-RENDERER': return 'superchat'
@@ -978,6 +995,32 @@
 
       cleanup.trackObserver(observer)
       observer.observe(container, { childList: true })
+
+      // Detect moderator deletions: YT either swaps in a deleted-message-renderer
+      // or stamps `is-deleted` / clears #message text on the original renderer.
+      const deletionObserver = new MutationObserver((mutations) => {
+        for (const mut of mutations) {
+          // Renderer replaced with deleted variant
+          for (const node of mut.addedNodes) {
+            if (node.nodeType !== Node.ELEMENT_NODE) continue
+            if (node.tagName === 'YT-LIVE-CHAT-DELETED-MESSAGE-RENDERER') {
+              broadcastDeletion(node, 'deleted')
+            }
+          }
+          // Existing renderer mutated
+          if (mut.type === 'attributes' && mut.attributeName === 'is-deleted') {
+            broadcastDeletion(mut.target, mut.target.getAttribute('is-deleted') || 'deleted')
+          }
+        }
+      })
+      cleanup.trackObserver(deletionObserver)
+      deletionObserver.observe(container, {
+        childList: true,
+        subtree: true,
+        attributes: true,
+        attributeFilter: ['is-deleted']
+      })
+
       window.addEventListener('pagehide', () => ac.abort(), { signal })
 
       log('observer active, videoId:', videoId)

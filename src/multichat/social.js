@@ -521,8 +521,42 @@ function listenForSocialEvents() {
           } else {
             updateTabIndicator(targetChannelId)
           }
+          // YT-only channel tabs: light up the live dot when traffic flows in.
+          // updateLiveStatus() only checks Twitch helix, so without this
+          // signal the dot stays dark even on a busy YT-only channel.
+          try {
+            const tabEl = document.querySelector(`#hs-mc-tabbar .hs-mc-tab[data-tab="${CSS.escape(targetChannelId)}"]`)
+            if (tabEl && tabEl.dataset.live !== 'true') tabEl.dataset.live = 'true'
+          } catch {}
         }
       }
+    }
+    if (msg.type === 'youtube_msg_deleted') {
+      // Mark all rendered messages from this user (for the matching channel)
+      // as cleared so they get the dim+strikethrough treatment that Twitch/Kick
+      // moderator deletions already get.
+      const u = (msg.user || '').toLowerCase()
+      if (!u) return
+      const msgsEl = document.getElementById('hs-mc-messages')
+      if (msgsEl) {
+        msgsEl.querySelectorAll('.hs-mc-msg[data-platform="yt"], .hs-mc-msg[data-platform="youtube"]').forEach(div => {
+          const a = div.querySelector('.hs-mc-user')
+          if (a && a.dataset.username === u) div.classList.add('hs-mc-msg-cleared')
+        })
+      }
+      // Also flag in buffers so re-renders preserve the dim state
+      const flagBuf = (buf) => {
+        if (!Array.isArray(buf)) return
+        for (let i = buf.length - 1; i >= 0; i--) {
+          const m = buf[i]
+          if (m.platform === 'youtube' && m.user?.toLowerCase() === u) {
+            m.cleared = true
+            m._renderedHtml = null  // force re-render with cleared class next time
+          }
+        }
+      }
+      channelYtMessages.forEach(buf => flagBuf(buf))
+      flagBuf(mentionsBuffer)
     }
     if (msg.type === 'youtube_status') {
       const targetChannelId = msg.channelId
@@ -539,6 +573,24 @@ function listenForSocialEvents() {
           link.channelName = msg.channelName || ''
           youtubeLinks.set(targetChannelId, link)
           log('YouTube connected for channel', targetChannelId, ':', link.channelName)
+        }
+        // Reflect status onto the channel tab button so YT-only channels get a
+        // live dot and a human-readable label (otherwise YT-only tabs sit dark
+        // forever and show the auto-generated yt-<timestamp> id).
+        if (targetChannelId !== '__live_yt_auto__') {
+          const tabEl = document.querySelector(`#hs-mc-tabbar .hs-mc-tab[data-tab="${CSS.escape(targetChannelId)}"]`)
+          if (tabEl) {
+            if (msg.status === 'connected') {
+              tabEl.dataset.live = 'true'
+              const ch = config.channels.find(c => typeof c !== 'string' && c.id === targetChannelId)
+              const isYtOnly = ch && !ch.twitch && !ch.kick && ch.youtube
+              if (isYtOnly && link.channelName && tabEl.textContent !== link.channelName) {
+                tabEl.textContent = link.channelName
+              }
+            } else if (msg.status === 'ended' || msg.status === 'error') {
+              tabEl.dataset.live = 'false'
+            }
+          }
         }
         // Show status in channel tab if viewing it. Dedup on a stable marker so
         // repeated youtube_status events (every WS reconnect, every retry) don't
@@ -1081,7 +1133,7 @@ function buildEngagementBar(m) {
   heatBtn.className = 'hs-feed-heat-btn' + (liked ? ' active' : '')
   heatBtn.title = liked ? 'already heated' : 'heat'
   heatBtn.dataset.id = m.base36_id
-  heatBtn.appendChild(_makeSvg('M12 2C9 7 5 9 5 14a7 7 0 0014 0c0-5-4-7-7-12z', liked))
+  heatBtn.appendChild(_makeSvg('M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z', liked))
   const heatCount2 = document.createElement('span')
   heatCount2.className = 'hs-fe-count'
   heatCount2.textContent = heatCount > 0 ? formatHeat(heatCount) : ''

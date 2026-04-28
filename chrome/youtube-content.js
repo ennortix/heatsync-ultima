@@ -92,12 +92,12 @@
     } else if (msg.type === 'global_emotes_update' && msg.emotes) {
       chrome.storage.local.get(['emote_inventory']).then(stored => {
         rebuildEmoteMap(stored.emote_inventory || [], msg.emotes)
-      })
+      }).catch(e => log('storage read failed (global_emotes_update):', e?.message))
     } else if (msg.type === 'blocked_update' && Array.isArray(msg.blocked)) {
       blockedEmotes = new Set(msg.blocked)
       chrome.storage.local.get(['emote_inventory', 'global_emotes']).then(stored => {
         rebuildEmoteMap(stored.emote_inventory || [], stored.global_emotes || [])
-      })
+      }).catch(e => log('storage read failed (blocked_update):', e?.message))
     } else if (msg.type === 'channel_emotes_update' && Array.isArray(msg.emotes) && msg.channelOwner) {
       channelEmotesByOwner[msg.channelOwner] = msg.emotes
       // Cap to most-recent 20 owners — long sessions with many channel switches
@@ -108,7 +108,7 @@
       }
       chrome.storage.local.get(['emote_inventory', 'global_emotes']).then(stored => {
         rebuildEmoteMap(stored.emote_inventory || [], stored.global_emotes || [])
-      })
+      }).catch(e => log('storage read failed (channel_emotes_update):', e?.message))
     } else if (msg.type === 'youtube_send_relay') {
       handleSendRelay(msg)
       sendResponse({ ok: true })

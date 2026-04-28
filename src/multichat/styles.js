@@ -1979,31 +1979,6 @@ function injectStyles() {
       height: 2px;
       background: #ff6b35;
     }
-    .hs-mc-tab {
-      flex: 1;
-      padding: 12px;
-      background: transparent;
-      color: #808080;
-      border: none;
-      cursor: pointer;
-      font-size: 15px;
-      font-weight: 500;
-      transition: none;
-      text-align: center;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-    }
-    .hs-mc-tab:hover {
-      background: #fff;
-      color: #000;
-    }
-    .hs-mc-tab.active {
-      color: #fff;
-      background: #9147ff;
-      border-bottom: 2px solid #9147ff;
-      margin-bottom: -1px;
-    }
     .hs-mc-tab-content {
       flex: 1 1 0 !important;
       min-height: 0 !important;

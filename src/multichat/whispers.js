@@ -396,8 +396,11 @@ function renderWhispersTab() {
             if (currentTab === 'whispers') renderWhispersTab()
             whisperSaveDebounced()
           }
-        })
+        }).catch(e => log('[whispers] dm history fetch failed:', e?.message || e))
       }
+    }).catch(e => {
+      whisperDmsLoaded = false
+      log('[whispers] dm list fetch failed:', e?.message || e)
     })
   }
 

@@ -195,7 +195,10 @@
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Client-Id': cid, Authorization: 'OAuth ' + gql.authToken },
       body: JSON.stringify({ query: '{ currentUser { id login displayName } }' })
-    }).then(r => r.ok ? r.json() : null).then(d => {
+    }).then(r => {
+      if (!r.ok) { console.warn('[heatsync-gql] self-auth http', r.status); return null }
+      return r.json()
+    }).then(d => {
       _selfFetchInFlight = false
       const cu = d?.data?.currentUser
       if (!cu?.id) return
@@ -206,7 +209,10 @@
         document.documentElement.dataset.hsSelfTwitchLogin = String(cu.login || '').toLowerCase()
         window.postMessage({ type: 'heatsync-self-twitch-id', twitchId: String(cu.id), login: String(cu.login || '').toLowerCase() }, location.origin)
       } catch {}
-    }).catch(() => { _selfFetchInFlight = false })
+    }).catch(e => {
+      _selfFetchInFlight = false
+      console.warn('[heatsync-gql] self-auth failed:', e?.message || e)
+    })
   }
 
   const GQL_OPS_TO_CACHE = [

@@ -12245,7 +12245,7 @@ function imgurEmbed(imgurId) {
   return `<div class="hs-feed-embed-container hs-feed-embed-imgur" style="aspect-ratio:auto;max-width:480px">
     <a href="https://imgur.com/${id}" target="_blank" rel="noopener">
       <img src="https://i.imgur.com/${id}.jpg" alt="imgur"
-        loading="lazy" style="max-width:100%;height:auto;display:block"
+        style="max-width:100%;height:auto;display:block"
         onerror="this.style.display='none'">
     </a>
   </div>`

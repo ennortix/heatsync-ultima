@@ -1598,6 +1598,41 @@ function injectStyles() {
     .hs-mc-emoji-row:hover .hs-mc-emoji-name {
       color: #fff;
     }
+    #hs-mc-slash-dropdown {
+      display: none;
+      position: absolute;
+      bottom: 100%;
+      left: 8px;
+      right: 8px;
+      background: #000;
+      border: 1px solid #808080;
+      z-index: 1004;
+      max-height: 280px;
+      overflow-y: auto;
+      margin-bottom: 2px;
+    }
+    .hs-mc-slash-row {
+      display: flex;
+      align-items: baseline;
+      gap: 6px;
+      padding: 5px 10px;
+      cursor: pointer;
+      font-size: 12px;
+      color: #fff;
+    }
+    .hs-mc-slash-row:hover,
+    .hs-mc-slash-row.selected {
+      background: #808080;
+    }
+    .hs-mc-slash-name { color: #ff8700; font-weight: 700; }
+    .hs-mc-slash-args { color: #aaa; flex-shrink: 0; }
+    .hs-mc-slash-desc { color: #808080; font-size: 11px; margin-left: auto; }
+    .hs-mc-slash-row:hover .hs-mc-slash-args,
+    .hs-mc-slash-row.selected .hs-mc-slash-args,
+    .hs-mc-slash-row:hover .hs-mc-slash-desc,
+    .hs-mc-slash-row.selected .hs-mc-slash-desc { color: #fff; }
+    .hs-mc-slash-row:hover .hs-mc-slash-name,
+    .hs-mc-slash-row.selected .hs-mc-slash-name { color: #fff; }
     /* Toggle button */
     .hs-mc-toggle-btn {
       padding: 4px 10px;

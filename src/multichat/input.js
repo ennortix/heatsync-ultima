@@ -73,6 +73,36 @@ let emojiAcState = {
   colonPos: -1,    // position of the triggering ':'
 }
 let _emojiAcDebounce = null
+
+// Slash command autocomplete dropdown — shows command list when input begins
+// with /<word>. Heatsync-owned + common pass-through Twitch/Kick mod commands.
+const SLASH_COMMANDS = [
+  { cmd: 'op',         args: '<text>',        desc: 'post to home feed' },
+  { cmd: 'w',          args: '<user> <msg>',  desc: 'twitch whisper' },
+  { cmd: 'dm',         args: '<user> <msg>',  desc: 'heatsync DM' },
+  { cmd: 'r',          args: '<msg>',         desc: 'reply to last whisper' },
+  { cmd: 'mute',       args: '<user>',        desc: 'local mute 24h' },
+  { cmd: 'unmute',     args: '<user>',        desc: 'local unmute' },
+  { cmd: 'shrug',      args: '[text]',        desc: 'append ¯\\_(ツ)_/¯' },
+  { cmd: 'tableflip',  args: '[text]',        desc: 'append (╯°□°)╯︵ ┻━┻' },
+  { cmd: 'unflip',     args: '[text]',        desc: 'append ┬─┬ノ( ゜-゜ノ)' },
+  { cmd: 'lclear',     args: '',              desc: 'clear current tab locally' },
+  { cmd: 'help',       args: '',              desc: 'list commands' },
+  { cmd: 'me',         args: '<action>',      desc: 'twitch/kick action message' },
+  { cmd: 'ban',        args: '<user>',        desc: 'twitch/kick ban (mod)' },
+  { cmd: 'timeout',    args: '<user> [secs]', desc: 'twitch/kick timeout (mod)' },
+  { cmd: 'unban',      args: '<user>',        desc: 'twitch/kick unban (mod)' },
+  { cmd: 'untimeout',  args: '<user>',        desc: 'twitch/kick untimeout (mod)' },
+  { cmd: 'color',      args: '<hex|name>',    desc: 'twitch chat color' },
+  { cmd: 'mod',        args: '<user>',        desc: 'promote mod (broadcaster)' },
+  { cmd: 'vip',        args: '<user>',        desc: 'add vip (broadcaster)' },
+  { cmd: 'raid',       args: '<channel>',     desc: 'twitch raid (broadcaster)' },
+  { cmd: 'slow',       args: '[secs]',        desc: 'slow mode (mod)' },
+  { cmd: 'clear',      args: '',              desc: 'clear chat (mod)' },
+  { cmd: 'followers',  args: '[mins]',        desc: 'followers-only (mod)' },
+  { cmd: 'emoteonly',  args: '',              desc: 'emote-only mode (mod)' },
+]
+let slashAcState = { active: false, matches: [], index: 0 }
 function rebuildInput() {
   const bar = document.getElementById('hs-mc-inputbar');
   if (!bar) return;
@@ -229,6 +259,7 @@ function initInput() {
   input.addEventListener('blur', () => {
     setTimeout(hideAutocomplete, 150)
     setTimeout(hideEmojiDropdown, 150)
+    setTimeout(hideSlashDropdown, 150)
     // Hide input bar after blur if empty (delay to allow click-to-emote-picker)
     // Skip if window lost focus — prevents hiding when switching apps
     setTimeout(() => { if (document.hasFocus()) hideInputBar() }, 200)
@@ -670,6 +701,33 @@ function handleInputKeydown(e) {
   // Stop propagation so platform shortcuts (Kick theater "t", etc.) don't fire
   e.stopPropagation()
 
+  // Slash dropdown navigation — intercept before emoji/tab/enter
+  if (slashAcState.active) {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault()
+      slashAcState.index = (slashAcState.index + 1) % slashAcState.matches.length
+      showSlashDropdown(slashAcState.matches, slashAcState.index)
+      return
+    }
+    if (e.key === 'ArrowUp') {
+      e.preventDefault()
+      slashAcState.index = (slashAcState.index - 1 + slashAcState.matches.length) % slashAcState.matches.length
+      showSlashDropdown(slashAcState.matches, slashAcState.index)
+      return
+    }
+    if (e.key === 'Tab' || e.key === 'Enter') {
+      e.preventDefault()
+      const sel = slashAcState.matches[slashAcState.index]
+      if (sel) insertSlashCommand(sel)
+      return
+    }
+    if (e.key === 'Escape') {
+      e.preventDefault()
+      hideSlashDropdown()
+      return
+    }
+  }
+
   // Emoji dropdown navigation — intercept before other handlers
   if (emojiAcState.active) {
     if (e.key === 'ArrowDown') {
@@ -838,6 +896,9 @@ function handleInputKeydown(e) {
 function handleInputChange(e) {
   // Save pending message (persists across tab switches)
   pendingMessage = getInputText();
+
+  // Slash command autocomplete — synchronous, only matches "/word" at start
+  checkSlashAutocomplete()
 
   // Debounced emoji dropdown autocomplete
   if (_emojiAcDebounce) cleanup.clearTimeout(_emojiAcDebounce)
@@ -1703,10 +1764,88 @@ function convertEmojiShortcodes(text) {
 
 function clearInput(input) {
   hideEmojiDropdown()
+  hideSlashDropdown()
   if (wysiwygEnabled) input.textContent = ''
   else input.value = ''
   pendingMessage = ''
   updateCharCount()
+}
+
+function checkSlashAutocomplete() {
+  const text = (typeof getInputText === 'function' ? getInputText() : '') || ''
+  const m = text.match(/^\/([a-z?]*)$/i)
+  if (!m) { hideSlashDropdown(); return }
+  const q = m[1].toLowerCase()
+  const matches = SLASH_COMMANDS.filter(c => c.cmd.startsWith(q)).slice(0, 8)
+  if (matches.length === 0) { hideSlashDropdown(); return }
+  if (!slashAcState.active || slashAcState.index >= matches.length) slashAcState.index = 0
+  slashAcState.active = true
+  slashAcState.matches = matches
+  showSlashDropdown(matches, slashAcState.index)
+}
+
+function showSlashDropdown(matches, idx) {
+  let dd = document.getElementById('hs-mc-slash-dropdown')
+  if (!dd) {
+    dd = document.createElement('div')
+    dd.id = 'hs-mc-slash-dropdown'
+    document.getElementById('hs-mc-inputbar')?.appendChild(dd)
+  }
+  dd.textContent = ''
+  matches.forEach((c, i) => {
+    const row = document.createElement('div')
+    row.className = 'hs-mc-slash-row' + (i === idx ? ' selected' : '')
+    row.dataset.index = i
+    const name = document.createElement('span')
+    name.className = 'hs-mc-slash-name'
+    name.textContent = '/' + c.cmd
+    const args = document.createElement('span')
+    args.className = 'hs-mc-slash-args'
+    args.textContent = c.args ? ' ' + c.args : ''
+    const desc = document.createElement('span')
+    desc.className = 'hs-mc-slash-desc'
+    desc.textContent = c.desc
+    row.appendChild(name)
+    row.appendChild(args)
+    row.appendChild(desc)
+    row.addEventListener('mousedown', (e) => {
+      e.preventDefault()
+      insertSlashCommand(c)
+    })
+    dd.appendChild(row)
+  })
+  dd.style.display = 'block'
+}
+
+function hideSlashDropdown() {
+  slashAcState.active = false
+  slashAcState.matches = []
+  slashAcState.index = 0
+  const dd = document.getElementById('hs-mc-slash-dropdown')
+  if (dd) dd.style.display = 'none'
+}
+
+function insertSlashCommand(c) {
+  const input = document.getElementById('hs-mc-input')
+  if (!input) return
+  const inserted = '/' + c.cmd + (c.args ? ' ' : '')
+  if (wysiwygEnabled) {
+    input.textContent = inserted
+    const range = document.createRange()
+    range.selectNodeContents(input)
+    range.collapse(false)
+    const sel = window.getSelection()
+    if (sel) { sel.removeAllRanges(); sel.addRange(range) }
+  } else {
+    input.value = inserted
+    if (typeof input.setSelectionRange === 'function') {
+      input.setSelectionRange(inserted.length, inserted.length)
+    }
+  }
+  hideSlashDropdown()
+  pendingMessage = inserted
+  if (typeof updateCharCount === 'function') updateCharCount()
+  input.focus()
 }
 
 // Slash commands we own. Anything not in here falls through to the platform
@@ -1823,7 +1962,7 @@ async function handleSlashCommand(text, input) {
 }
 
 const SLASH_HELP_LINES = [
-  '/op <text>           — post to feed',
+  '/op <text>           — post to home',
   '/w <user> <msg>      — twitch whisper',
   '/dm <user> <msg>     — heatsync DM',
   '/r <msg>             — reply to last whisper',

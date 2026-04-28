@@ -24436,6 +24436,37 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
           sec.style.setProperty('flex', '0 0 0', 'important');
         }
       }
+      // chat-top/bottom: force aspect-preserved player size inline. CSS var
+      // overrides aren't enough — YT caches sized values in JS and only
+      // re-reads them on actual viewport resize, so we set explicit pixels.
+      const ytSizedEls = [
+        document.querySelector('#player-container-outer'),
+        document.querySelector('#player-container'),
+        document.getElementById('movie_player')
+      ].filter(Boolean);
+      const PLAYER_GEOM = ['width', 'height', 'max-width', 'max-height'];
+      if (chatPosition === 'top' || chatPosition === 'bottom') {
+        const NAV_H = 56, PRIMARY_PAD = 12;
+        const availH = Math.max(200, innerHeight - chatHeight - NAV_H - PRIMARY_PAD);
+        const aspectW = availH * 16 / 9;
+        const maxW = innerWidth - 32;
+        const finalW = Math.min(aspectW, maxW);
+        const finalH = (finalW < aspectW) ? finalW * 9 / 16 : availH;
+        for (const el of ytSizedEls) {
+          el.dataset._hsCYtSized = '1';
+          el.style.setProperty('width', Math.round(finalW) + 'px', 'important');
+          el.style.setProperty('height', Math.round(finalH) + 'px', 'important');
+          el.style.setProperty('max-width', Math.round(finalW) + 'px', 'important');
+          el.style.setProperty('max-height', Math.round(finalH) + 'px', 'important');
+        }
+      } else {
+        for (const el of ytSizedEls) {
+          if (el.dataset._hsCYtSized === '1') {
+            delete el.dataset._hsCYtSized;
+            PLAYER_GEOM.forEach(p => el.style.removeProperty(p));
+          }
+        }
+      }
     } else if (isKick) {
       // Kick's #channel-chatroom is hidden via display:none CSS when chat
       // is non-right; nothing inline to override here. main padding is

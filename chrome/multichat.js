@@ -5695,6 +5695,29 @@ function injectStyles() {
     body.hs-platform-yt.hs-chat-bottom #player-container-outer {
       max-height: calc(100vh - var(--hs-chat-h, 35vh) - 60px) !important;
     }
+    /* Hide YT's #below stack (suggested thumbnails / video info / comments)
+       when chat takes the screen — chat is the focus, the noise goes away.
+       Center the player horizontally so it doesn't hug the left edge once
+       the surrounding content is gone. */
+    body.hs-platform-yt.hs-chat-top #below,
+    body.hs-platform-yt.hs-chat-bottom #below,
+    body.hs-platform-yt.hs-chat-left #below {
+      display: none !important;
+    }
+    body.hs-platform-yt.hs-chat-top #primary-inner,
+    body.hs-platform-yt.hs-chat-bottom #primary-inner,
+    body.hs-platform-yt.hs-chat-left #primary-inner {
+      display: flex !important;
+      flex-direction: column !important;
+      align-items: center !important;
+      justify-content: flex-start !important;
+    }
+    body.hs-platform-yt.hs-chat-top #player,
+    body.hs-platform-yt.hs-chat-bottom #player,
+    body.hs-platform-yt.hs-chat-left #player {
+      margin-left: auto !important;
+      margin-right: auto !important;
+    }
     /* YouTube theatre: ytd-watch-flexy[theater] makes the player full-row.
        The #full-bleed-container is what owns the player. Inset it. */
     body.hs-platform-yt.hs-mode-theatre.hs-chat-left ytd-watch-flexy[theater] #full-bleed-container,

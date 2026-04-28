@@ -5738,6 +5738,12 @@ function injectStyles() {
     body.hs-platform-kick.hs-chat-bottom main {
       padding-bottom: var(--hs-chat-h, 35vh) !important;
     }
+    /* Kick wraps the player in a fixed-width div (w-xvw) inside <main>'s
+       flex-col. With chat hidden it leaves blank space on the right; center
+       the wrapper horizontally. */
+    body.hs-platform-kick.hs-chat-bottom main > div:has(#injected-channel-player) {
+      align-self: center !important;
+    }
     /* Kick theatre: main has data-theatre="true"; player fills viewport.
        Inset main directly so the chat strip doesn't overlay the video. */
     body.hs-platform-kick.hs-mode-theatre.hs-chat-top main {
@@ -5972,6 +5978,14 @@ function injectStyles() {
     body.hs-platform-yt.hs-chat-left #player {
       margin-left: auto !important;
       margin-right: auto !important;
+    }
+    /* Live streams render via #full-bleed-container > #player-container
+       (position:absolute, left:0). Centering #primary-inner doesn't reach
+       this path, so explicitly center the player-container inside its
+       full-bleed parent when chat is at the bottom. */
+    body.hs-platform-yt.hs-chat-bottom #player-container {
+      left: 50% !important;
+      transform: translateX(-50%) !important;
     }
     /* YouTube theatre: ytd-watch-flexy[theater] makes the player full-row.
        The #full-bleed-container is what owns the player. Inset it. */

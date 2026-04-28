@@ -1183,6 +1183,11 @@ function injectStyles() {
       color: #000 !important;
       border-color: #fff !important;
     }
+    /* Settings ⚙ wraps to row 2; span full width so it doesn't sit as a
+       lonely 1/4-cell square. */
+    .hs-mc-util-row .hs-mc-tab[data-tab="settings"] {
+      grid-column: 1 / -1;
+    }
     /* Whisper conversation list */
     .hs-whisper-conv {
       padding: 6px 8px;
@@ -20178,6 +20183,7 @@ const STORAGE_KEY = 'heatsync_multichat';
     handle.addEventListener('pointercancel', endDrag)
 
     loadChatWidth()
+    loadChatHeight()
   }
 
   function applyChatWidth(cachedRightCol) {
@@ -20237,6 +20243,147 @@ const STORAGE_KEY = 'heatsync_multichat';
       chrome.storage.local.set({ hs_chat_width: chatWidth });
       log('Saved chat width:', chatWidth);
     }, 250);
+  }
+
+  // ============================================
+  // CHAT HEIGHT — for top/bottom chatPosition. Persisted in chrome.storage
+  // alongside chatWidth so the C button's drag handle survives reloads.
+  // ============================================
+  const MIN_CHAT_HEIGHT = 120;
+  function getMaxChatHeight() { return Math.round(window.innerHeight * 0.7); }
+  let chatHeight = Math.round(window.innerHeight * 0.35);
+  let _saveChatHeightTimer = null;
+  function saveChatHeight() {
+    if (_saveChatHeightTimer) cleanup.clearTimeout(_saveChatHeightTimer);
+    _saveChatHeightTimer = cleanup.setTimeout(() => {
+      _saveChatHeightTimer = null;
+      chrome.storage.local.set({ hs_chat_height: chatHeight });
+      log('Saved chat height:', chatHeight);
+    }, 250);
+  }
+  async function loadChatHeight() {
+    try {
+      const data = await chrome.storage.local.get(['hs_chat_height']);
+      if (data.hs_chat_height) chatHeight = data.hs_chat_height;
+    } catch (_) {}
+  }
+
+  // ============================================
+  // UNIFIED CHAT RESIZE HANDLE — bulletproof across all 4 chatPosition
+  // values × all 3 platforms × theatre mode. Single #hs-c-resize-handle on
+  // body, position:fixed, repositioned by positionChatResizeHandle() which
+  // is called from applyChatPosition. Drags chatWidth (left/right) or
+  // chatHeight (top/bottom). Hides itself when chatPosition='right' and
+  // delegates to existing per-platform handles for the default layout.
+  // Orange #ff8700, 6px thick, no text — matches user's resize-handle rule.
+  // ============================================
+  let _isResizingC = false;
+  function ensureChatResizeHandle() {
+    let handle = document.getElementById('hs-c-resize-handle');
+    if (handle) return handle;
+    handle = document.createElement('div');
+    handle.id = 'hs-c-resize-handle';
+    Object.assign(handle.style, {
+      position: 'fixed',
+      background: '#ff8700',
+      opacity: '0.55',
+      zIndex: '100000',
+      userSelect: 'none',
+      touchAction: 'none',
+      display: 'none',
+      transition: 'opacity 0.12s'
+    });
+    document.body.appendChild(handle);
+    handle.addEventListener('mouseenter', () => { handle.style.opacity = '1'; });
+    handle.addEventListener('mouseleave', () => { if (!_isResizingC) handle.style.opacity = '0.55'; });
+
+    let startX = 0, startY = 0, startW = 0, startH = 0, axis = 'x', activePid = -1;
+    handle.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0) return;
+      _isResizingC = true;
+      activePid = e.pointerId;
+      try { handle.setPointerCapture(e.pointerId) } catch (_) {}
+      startX = e.clientX; startY = e.clientY;
+      startW = chatWidth; startH = chatHeight;
+      axis = (chatPosition === 'left' || chatPosition === 'right') ? 'x' : 'y';
+      document.body.style.cursor = axis === 'x' ? 'col-resize' : 'row-resize';
+      document.body.style.userSelect = 'none';
+      handle.style.opacity = '1';
+      e.preventDefault();
+    });
+    handle.addEventListener('pointermove', (e) => {
+      if (!_isResizingC || e.pointerId !== activePid) return;
+      if (chatPosition === 'right') {
+        chatWidth = Math.max(MIN_CHAT_WIDTH, Math.min(MAX_CHAT_WIDTH, startW + (startX - e.clientX)));
+      } else if (chatPosition === 'left') {
+        chatWidth = Math.max(MIN_CHAT_WIDTH, Math.min(MAX_CHAT_WIDTH, startW + (e.clientX - startX)));
+      } else if (chatPosition === 'top') {
+        chatHeight = Math.max(MIN_CHAT_HEIGHT, Math.min(getMaxChatHeight(), startH + (e.clientY - startY)));
+      } else if (chatPosition === 'bottom') {
+        chatHeight = Math.max(MIN_CHAT_HEIGHT, Math.min(getMaxChatHeight(), startH + (startY - e.clientY)));
+      }
+      applyChatPosition();
+    });
+    const endDrag = (e) => {
+      if (!_isResizingC || (e && e.pointerId !== activePid)) return;
+      _isResizingC = false;
+      activePid = -1;
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+      handle.style.opacity = '0.55';
+      saveChatWidth();
+      saveChatHeight();
+    };
+    handle.addEventListener('pointerup', endDrag);
+    handle.addEventListener('pointercancel', endDrag);
+    return handle;
+  }
+  function positionChatResizeHandle() {
+    const handle = ensureChatResizeHandle();
+    ;['top','bottom','left','right','width','height'].forEach(p => handle.style.removeProperty(p));
+    if (chatPosition === 'right' || !chatPosition) {
+      // Default layout — let the existing per-platform handle (Twitch/Kick/YT)
+      // own the right-edge drag. Their ghost-preview perf optimisations
+      // for Twitch's React tree are worth keeping. Unified handle hides.
+      handle.style.display = 'none';
+      return;
+    }
+    handle.style.display = 'block';
+    if (chatPosition === 'left') {
+      handle.style.top = '0';
+      handle.style.bottom = '0';
+      handle.style.left = (chatWidth - 3) + 'px';
+      handle.style.width = '6px';
+      handle.style.cursor = 'col-resize';
+    } else if (chatPosition === 'top') {
+      handle.style.top = (chatHeight - 3) + 'px';
+      handle.style.left = '0';
+      handle.style.right = '0';
+      handle.style.height = '6px';
+      handle.style.cursor = 'row-resize';
+    } else if (chatPosition === 'bottom') {
+      handle.style.bottom = (chatHeight - 3) + 'px';
+      handle.style.left = '0';
+      handle.style.right = '0';
+      handle.style.height = '6px';
+      handle.style.cursor = 'row-resize';
+    }
+  }
+  function hidePlatformResizeHandles(hide) {
+    // hide=true: set display:none + mark as hidden-by-us. hide=false: only
+    // restore display if we previously hid it (platforms like YT manage
+    // their own display:none for theatre mode — don't clobber that).
+    for (const id of ['hs-mc-resize-handle','hs-kick-resize-handle','hs-yt-resize-handle']) {
+      const el = document.getElementById(id);
+      if (!el) continue;
+      if (hide) {
+        el.dataset._hsCHidden = '1';
+        el.style.setProperty('display', 'none', 'important');
+      } else if (el.dataset._hsCHidden === '1') {
+        delete el.dataset._hsCHidden;
+        el.style.removeProperty('display');
+      }
+    }
   }
 
   async function loadChatWidth() {
@@ -20350,6 +20497,7 @@ const STORAGE_KEY = 'heatsync_multichat';
     handle.addEventListener('pointercancel', endDrag)
 
     loadChatWidth().then(() => { applyKickChatWidth() })
+    loadChatHeight()
   }
 
   /**
@@ -20512,6 +20660,7 @@ const STORAGE_KEY = 'heatsync_multichat';
     handle.addEventListener('pointercancel', endDrag)
 
     loadChatWidth().then(() => { applyYouTubeChatWidth() })
+    loadChatHeight()
     watchYtViewportClamp()
     watchYtLayoutAttrs()
   }
@@ -24154,10 +24303,13 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     // Push the chatWidth css var down so the per-position CSS can build offsets
     // off it (rather than chasing platform-specific selectors twice).
     document.documentElement.style.setProperty('--hs-chat-w', chatWidth + 'px');
-    document.documentElement.style.setProperty('--hs-chat-h', '35vh');
+    document.documentElement.style.setProperty('--hs-chat-h', chatHeight + 'px');
     // Apply inline-style overrides on platform-native elements that set
     // width/height with inline !important (CSS alone can't beat that).
     applyPlatformPositionOverrides();
+    // Bulletproof orange resize handle — covers all 4 chat positions.
+    positionChatResizeHandle();
+    hidePlatformResizeHandles(chatPosition !== 'right');
     log('Chat position:', chatPosition, 'theatre:', theatreMode);
     // Reflow the multichat layout so input/overlay/picker re-anchor.
     try { _updateMcLayout?.() } catch (_) {}
@@ -24172,7 +24324,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
   function applyPlatformPositionOverrides() {
     const isRight = chatPosition === 'right';
     const w = `${chatWidth}px`;
-    const h = '35vh';
+    const h = `${chatHeight}px`;
 
     // The chat container itself: inline styles beat any platform-bundled CSS
     // (Twitch's chat-shell rules, Kick's existing hs-tabs-* rules etc.).

@@ -3565,6 +3565,7 @@ function injectStyles() {
     }
     .hs-feed-embed-twitter {
       aspect-ratio: auto;
+      height: 380px;
       max-width: 480px;
       background: transparent;
     }

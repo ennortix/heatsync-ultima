@@ -5634,7 +5634,11 @@ function injectStyles() {
       overflow: visible !important;
     }
     body.hs-platform-twitch.hs-chat-left .channel-root {
-      padding-left: var(--hs-chat-w, 340px) !important;
+      /* .channel-root sits at viewport-x = side-nav (50px), so padding-left
+         must subtract that width to land content flush with the HS panel's
+         right edge instead of leaving a 50px gap. Same pattern as the
+         persistent-player left-inset adjustment. */
+      padding-left: calc(var(--hs-chat-w, 340px) - 50px) !important;
     }
     body.hs-platform-twitch.hs-chat-top .channel-root {
       padding-top: var(--hs-chat-h, 35vh) !important;

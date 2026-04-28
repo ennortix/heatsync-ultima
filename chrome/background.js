@@ -106,6 +106,10 @@ function getStorableChannelEmotes() {
 const CHANNEL_EMOTES_TTL = 30 * 60 * 1000 // 30 minutes
 const CHANNEL_EMOTES_EMPTY_TTL = 5 * 60 * 1000 // 5 minutes for zero-result channels
 const tabChannels = new Map() // tabId → { channel, channelOwner }
+// Channels joined via ws_send from content scripts (e.g. multichat extras).
+// tabChannels only tracks the primary tab channel — multichat adds many more.
+// On WS reconnect (incl. server restart) these must be re-joined or messages drop silently.
+const joinedExtraChannels = new Set() // "platform/channel" keys
 
 // Get the most recently set channel owner from any tab
 function getActiveChannelOwner() {
@@ -125,6 +129,10 @@ function getTabChannel(tabId) {
 function saveTabChannels() {
   const data = Object.fromEntries(tabChannels)
   browser.storage.session?.set({ tab_channels: data }).catch(() => {})
+}
+
+function saveJoinedExtraChannels() {
+  browser.storage.session?.set({ joined_extra_channels: [...joinedExtraChannels] }).catch(() => {})
 }
 
 // Clean up tab tracking on close
@@ -2648,6 +2656,15 @@ async function connectWebSocket() {
             rejoinedChannels.add(entry.channel)
           }
         }
+        // Replay multichat-added channels (kick chats added via ws_send)
+        for (const key of joinedExtraChannels) {
+          if (rejoinedChannels.has(key)) continue
+          const [platform, channel] = key.split('/')
+          if (!platform || !channel) continue
+          log(' 📺 Rejoining extra channel:', { platform, channel })
+          wsSendDirect({ type: 'channel:join', platform, channel })
+          rejoinedChannels.add(key)
+        }
 
         // Authenticate if we have a token
         if (authToken) {
@@ -3724,6 +3741,18 @@ async function handleMessage(message, sender, sendResponse) {
   if (message.type === 'ws_send') {
     const allowedWsTypes = ['channel:join', 'channel:leave', 'emote:used', 'youtube:subscribe', 'youtube:unsubscribe', 'multichat:sync', 'user:mute']
     if (message.data && allowedWsTypes.includes(message.data.type)) {
+      // Track multichat-added channel joins so we can replay on WS reconnect
+      // (server restarts, network blips, SW resume — any of these orphan the join).
+      if (message.data.type === 'channel:join' && message.data.platform && message.data.channel) {
+        const key = `${message.data.platform}/${message.data.channel.toLowerCase()}`
+        if (!joinedExtraChannels.has(key)) {
+          joinedExtraChannels.add(key)
+          saveJoinedExtraChannels()
+        }
+      } else if (message.data.type === 'channel:leave' && message.data.platform && message.data.channel) {
+        const key = `${message.data.platform}/${message.data.channel.toLowerCase()}`
+        if (joinedExtraChannels.delete(key)) saveJoinedExtraChannels()
+      }
       wsSend(message.data)
     }
     sendResponse({ ok: true })
@@ -4221,7 +4250,7 @@ async function initialize() {
     'local_blocked_emotes', 'youtube_channel_urls', 'badges_fetched_at',
     'bttv_badge_map', 'ffz_badge_map', 'chatterino_badge_map', 'user_cosmetics_cache'
   ]).catch(err => { log(' Storage restore failed:', err.message); return {} })
-  const sessionP = (browser.storage.session?.get('tab_channels') ?? Promise.resolve(null))
+  const sessionP = (browser.storage.session?.get(['tab_channels', 'joined_extra_channels']) ?? Promise.resolve(null))
     .catch(e => { console.warn('session storage restore failed:', e); return null })
 
   // Kick off WebSocket connect AS SOON AS auth resolves — don't wait for storage to finish.
@@ -4339,6 +4368,10 @@ async function initialize() {
         if (validIds.has(id)) tabChannels.set(id, entry)
       }
       log(' ✓ Restored', tabChannels.size, 'tab channels from session storage')
+    }
+    if (Array.isArray(session?.joined_extra_channels)) {
+      for (const key of session.joined_extra_channels) joinedExtraChannels.add(key)
+      log(' ✓ Restored', joinedExtraChannels.size, 'extra channel joins from session storage')
     }
   } catch (e) {
     console.warn('session storage restore failed:', e)

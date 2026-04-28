@@ -139,6 +139,11 @@ function injectStyles() {
       color: #000 !important;
       border-color: #fff !important;
     }
+    /* Settings ⚙ wraps to row 2; span full width so it doesn't sit as a
+       lonely 1/4-cell square. */
+    .hs-mc-util-row .hs-mc-tab[data-tab="settings"] {
+      grid-column: 1 / -1;
+    }
     /* Whisper conversation list */
     .hs-whisper-conv {
       padding: 6px 8px;

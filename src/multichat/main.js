@@ -1293,6 +1293,14 @@
   function applyChatWidth(cachedRightCol) {
     const rightCol = cachedRightCol || document.querySelector('.right-column')
     if (!rightCol) return
+    // C button took chat off the right edge — don't restore native width here
+    // or the right-column reclaims its 340px and the player snaps back.
+    if (chatPosition && chatPosition !== 'right') {
+      rightCol.style.setProperty('width', '0', 'important')
+      rightCol.style.setProperty('min-width', '0', 'important')
+      rightCol.style.setProperty('max-width', '0', 'important')
+      return
+    }
     const collapsed = rightCol.classList.contains('right-column--collapsed')
 
     if (collapsed) {
@@ -1361,9 +1369,13 @@
     const chatroom = document.getElementById('channel-chatroom')
     if (!chatroom) return
     chatWidth = Math.min(MAX_CHAT_WIDTH, Math.max(MIN_CHAT_WIDTH, chatWidth))
-    chatroom.style.setProperty('width', chatWidth + 'px', 'important')
     document.documentElement.style.setProperty('--hs-kick-chat-width', chatWidth + 'px')
     document.documentElement.style.setProperty('--chat-width', chatWidth + 'px')
+    // C button took chat off the right edge — chatroom is hidden via CSS,
+    // skip restoring its width (would un-hide it visually as the shell still
+    // claims layout when display is intercepted by the cascade).
+    if (chatPosition && chatPosition !== 'right') return
+    chatroom.style.setProperty('width', chatWidth + 'px', 'important')
   }
 
   /**
@@ -1456,6 +1468,18 @@
   function applyYouTubeChatWidth() {
     const secondary = document.querySelector('#secondary, ytd-watch-flexy #secondary')
     if (!secondary) return
+    // C button took chat off the right edge — collapse #secondary to 0 so
+    // the freed width goes back to the player; don't run the native width
+    // sizer which would re-claim the sidebar.
+    if (chatPosition && chatPosition !== 'right') {
+      secondary.style.setProperty('width', '0', 'important')
+      secondary.style.setProperty('min-width', '0', 'important')
+      secondary.style.setProperty('max-width', '0', 'important')
+      secondary.style.setProperty('flex', '0 0 0', 'important')
+      const handle = document.getElementById('hs-yt-resize-handle')
+      if (handle) handle.style.display = 'none'
+      return
+    }
     // Theater (cinema) and fullscreen mode rearrange the watch layout so that
     // #secondary sits BELOW the player at full row width. Our fixed-px width
     // would fight that reflow, so just clear our overrides and let YT's CSS
@@ -5241,9 +5265,148 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     // off it (rather than chasing platform-specific selectors twice).
     document.documentElement.style.setProperty('--hs-chat-w', chatWidth + 'px');
     document.documentElement.style.setProperty('--hs-chat-h', '35vh');
+    // Apply inline-style overrides on platform-native elements that set
+    // width/height with inline !important (CSS alone can't beat that).
+    applyPlatformPositionOverrides();
     log('Chat position:', chatPosition, 'theatre:', theatreMode);
     // Reflow the multichat layout so input/overlay/picker re-anchor.
     try { _updateMcLayout?.() } catch (_) {}
+  }
+
+  // Inline-style overrides keyed off chatPosition. These run AFTER class
+  // toggling. They exist because Twitch/Kick/YT set inline width/height/
+  // padding with !important that beats CSS rules — only inline can fight
+  // inline. When chatPosition flips back to 'right' we restore the native
+  // values (Twitch's chat-width JS will re-apply them on next tick).
+  let _overrideObserver = null;
+  function applyPlatformPositionOverrides() {
+    const isRight = chatPosition === 'right';
+    const w = `${chatWidth}px`;
+    const h = '35vh';
+
+    // The chat container itself: inline styles beat any platform-bundled CSS
+    // (Twitch's chat-shell rules, Kick's existing hs-tabs-* rules etc.).
+    // We only touch geometry when overriding; the platform's mount code
+    // (getOrCreateHsContainer for YT) may set its own inline height/etc that
+    // we must not blow away when chatPosition === 'right'.
+    const container = document.getElementById('hs-mc-container');
+    const GEOM_PROPS = ['top','bottom','left','right','width','min-width','max-width','height','position','z-index'];
+    if (container) {
+      if (isRight) {
+        if (container.dataset._hsChatOverride === '1') {
+          delete container.dataset._hsChatOverride;
+          GEOM_PROPS.forEach(p => container.style.removeProperty(p));
+          container.style.removeProperty('background');
+          // Re-establish platform-natural geometry that we just blew away
+          if (hostPlatform === 'yt') {
+            try { applyYouTubeChatWidth() } catch (_) {}
+          } else if (isKick) {
+            try { applyKickChatWidth() } catch (_) {}
+          }
+        }
+      } else {
+        container.dataset._hsChatOverride = '1';
+        GEOM_PROPS.forEach(p => container.style.removeProperty(p));
+        container.style.setProperty('position', 'fixed', 'important');
+        container.style.setProperty('z-index', '9999', 'important');
+        container.style.setProperty('background', '#000', 'important');
+        if (chatPosition === 'left') {
+          container.style.setProperty('top', '0', 'important');
+          container.style.setProperty('bottom', '0', 'important');
+          container.style.setProperty('left', '0', 'important');
+          container.style.setProperty('right', 'auto', 'important');
+          container.style.setProperty('width', w, 'important');
+          container.style.setProperty('height', '100vh', 'important');
+        } else if (chatPosition === 'top') {
+          container.style.setProperty('top', '0', 'important');
+          container.style.setProperty('bottom', 'auto', 'important');
+          container.style.setProperty('left', '0', 'important');
+          container.style.setProperty('right', '0', 'important');
+          container.style.setProperty('width', '100vw', 'important');
+          container.style.setProperty('height', h, 'important');
+        } else if (chatPosition === 'bottom') {
+          container.style.setProperty('top', 'auto', 'important');
+          container.style.setProperty('bottom', '0', 'important');
+          container.style.setProperty('left', '0', 'important');
+          container.style.setProperty('right', '0', 'important');
+          container.style.setProperty('width', '100vw', 'important');
+          container.style.setProperty('height', h, 'important');
+        }
+      }
+    }
+
+    if (hostPlatform === 'yt') {
+      const sec = document.querySelector('#secondary');
+      if (sec) {
+        if (isRight) {
+          sec.style.removeProperty('width');
+          sec.style.removeProperty('min-width');
+          sec.style.removeProperty('max-width');
+          sec.style.removeProperty('flex');
+          // applyYouTubeChatWidth will reset width on next reflow
+        } else {
+          sec.style.setProperty('width', '0', 'important');
+          sec.style.setProperty('min-width', '0', 'important');
+          sec.style.setProperty('max-width', '0', 'important');
+          sec.style.setProperty('flex', '0 0 0', 'important');
+        }
+      }
+    } else if (isKick) {
+      // Kick's #channel-chatroom is hidden via display:none CSS when chat
+      // is non-right; nothing inline to override here. main padding is
+      // handled by CSS.
+    } else {
+      // Twitch
+      const rc = document.querySelector('.right-column');
+      if (rc) {
+        if (isRight) {
+          // Restore: clear our overrides; Twitch's own width logic will
+          // re-assert on next layout pass.
+          rc.style.removeProperty('width');
+          rc.style.removeProperty('min-width');
+          rc.style.removeProperty('max-width');
+          rc.style.removeProperty('flex-shrink');
+        } else {
+          rc.style.setProperty('width', '0', 'important');
+          rc.style.setProperty('min-width', '0', 'important');
+          rc.style.setProperty('max-width', '0', 'important');
+        }
+      }
+      // .persistent-player has inline height:100%/max-height:100vh that
+      // ignores any CSS bottom: inset. Override the player's geometry
+      // directly so the chat strip doesn't sit on top of the video.
+      const pp = document.querySelector('.persistent-player');
+      if (pp) {
+        if (isRight) {
+          pp.style.removeProperty('top');
+          pp.style.removeProperty('bottom');
+          pp.style.removeProperty('left');
+          pp.style.removeProperty('right');
+          pp.style.removeProperty('max-height');
+          pp.style.removeProperty('height');
+          pp.style.removeProperty('width');
+          // Twitch will re-apply its calc(100% - 34rem) on next tick
+        } else {
+          // For all non-right positions the player should fill the freed
+          // space. Use top/bottom/left/right anchors and let the browser
+          // compute width/height (clear those so anchors govern).
+          pp.style.removeProperty('width');
+          pp.style.removeProperty('height');
+          pp.style.removeProperty('max-height');
+          pp.style.setProperty('top', chatPosition === 'top' ? h : '0', 'important');
+          pp.style.setProperty('bottom', chatPosition === 'bottom' ? h : '0', 'important');
+          pp.style.setProperty('left', chatPosition === 'left' ? w : '0', 'important');
+          pp.style.setProperty('right', chatPosition === 'right' ? w : '0', 'important');
+          pp.style.setProperty('inset-inline-start', chatPosition === 'left' ? w : '0', 'important');
+          pp.style.setProperty('inset-inline-end', chatPosition === 'right' ? w : '0', 'important');
+        }
+      }
+    }
+
+    // If the platform re-asserts its inline width/height (e.g. Twitch's
+    // own chat-width JS on resize), we re-apply on the same hooks the
+    // platform uses: window.resize + chat-width persistence. No observer
+    // here — observers on style attrs loop on our own writes.
   }
 
   function rotateChatPosition() {

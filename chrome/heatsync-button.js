@@ -1940,6 +1940,7 @@
             <button class="heatsync-settings-cog" id="heatsync-rotate-btn" title="${t('btn_rotate_title')}">
               <svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M7.11 8.53L5.7 7.11C4.8 8.27 4.24 9.61 4.07 11h2.02c.14-.87.49-1.72 1.02-2.47zM6.09 13H4.07c.17 1.39.72 2.73 1.62 3.89l1.41-1.42c-.52-.75-.88-1.6-1.01-2.47zM7.1 18.32c1.16.9 2.51 1.44 3.9 1.61V17.9c-.87-.15-1.71-.49-2.46-1.03L7.1 18.32zM13 4.07V1l-4 4 4 4V6.09c2.84.48 5 2.94 5 5.91s-2.16 5.43-5 5.91v2.02c3.95-.49 7-3.85 7-7.93s-3.05-7.44-7-7.93z"/></svg>
             </button>
+            <button class="heatsync-settings-cog" id="heatsync-rotate-chat-btn" title="rotate chat panel (C)" style="font-weight:700;font-size:13px;font-family:monospace;">C</button>
             <button class="heatsync-settings-cog" id="heatsync-settings-btn" title="${t('btn_settings_title')}">
               <svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M19.14 12.94c.04-.31.06-.63.06-.94 0-.31-.02-.63-.06-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.04.31-.06.63-.06.94s.02.63.06.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg>
             </button>
@@ -2056,10 +2057,17 @@
     // Fetch initial history state
     fetchHistoryStatus()
 
-    // Rotate tab position button
+    // Rotate tab position button (T) — fallback path that works even when
+    // the chat-tabbar is not reachable (extreme drag, weird layout state).
     const rotateBtn = panel.querySelector('#heatsync-rotate-btn');
     rotateBtn.addEventListener('click', () => {
       window.postMessage({ type: 'heatsync-rotate-tabs' }, location.origin);
+    });
+
+    // Rotate chat panel position button (C) — same fallback purpose.
+    const rotateChatBtn = panel.querySelector('#heatsync-rotate-chat-btn');
+    rotateChatBtn?.addEventListener('click', () => {
+      window.postMessage({ type: 'heatsync-rotate-chat' }, location.origin);
     });
 
     // Tab handlers

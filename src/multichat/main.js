@@ -5421,6 +5421,13 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
   }
 
   function applyChatPosition() {
+    // Sanitize — only ever 4 valid positions. If chatPosition somehow
+    // drifted (stale storage from old build, manual edit), force to 'right'.
+    const VALID_POSITIONS = ['right', 'bottom', 'left', 'top'];
+    if (!VALID_POSITIONS.includes(chatPosition)) {
+      log('[c-button] sanitizing invalid chatPosition:', chatPosition, '→ right');
+      chatPosition = 'right';
+    }
     document.body.classList.remove('hs-chat-top', 'hs-chat-right', 'hs-chat-bottom', 'hs-chat-left');
     document.body.classList.add(`hs-chat-${chatPosition}`);
     document.body.classList.toggle('hs-mode-theatre', theatreMode);
@@ -5635,10 +5642,14 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
   }
 
   function rotateChatPosition() {
+    // Strict 4-state cycle: right → bottom → left → top → right.
+    // No 'hidden' state — chat panel always visible so the C button stays
+    // clickable. If chatPosition is invalid, normalize first then advance.
     const positions = ['right', 'bottom', 'left', 'top'];
-    const idx = positions.indexOf(chatPosition);
+    let idx = positions.indexOf(chatPosition);
+    if (idx === -1) idx = 0; // invalid state → start from 'right' before advancing
     const prev = chatPosition;
-    chatPosition = positions[(idx === -1 ? 0 : (idx + 1) % positions.length)];
+    chatPosition = positions[(idx + 1) % positions.length];
     log('rotate-chat:', prev, '→', chatPosition);
     applyChatPosition();
     saveUiSetting('chatPosition', chatPosition);
@@ -7051,6 +7062,15 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
   window.addEventListener('message', (event) => {
     if (event.origin !== location.origin) return
     if (event.data?.type === 'heatsync-nav') handleMcNav()
+    // Fallback rotate paths — heatsync-button.js settings panel posts these
+    // so the user always has a way to rotate even if the chat tabbar is
+    // somehow not clickable (e.g. extreme drag, weird layout state).
+    if (event.data?.type === 'heatsync-rotate-tabs') {
+      try { rotateTabPosition() } catch (e) { log('rotate-tabs message handler:', e) }
+    }
+    if (event.data?.type === 'heatsync-rotate-chat') {
+      try { rotateChatPosition() } catch (e) { log('rotate-chat message handler:', e) }
+    }
   }, { signal: mcSignal })
 
   // YouTube SPA navigation

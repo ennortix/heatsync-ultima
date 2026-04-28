@@ -20306,7 +20306,12 @@ const STORAGE_KEY = 'heatsync_multichat';
     handle.addEventListener('mouseenter', () => { handle.style.opacity = '1'; });
     handle.addEventListener('mouseleave', () => { if (!_isResizingC) handle.style.opacity = '0.55'; });
 
+    // Ghost-preview drag: pointermove only re-positions the orange handle
+    // (compositor-only, no layout). Real chatWidth/Height + applyChatPosition
+    // commit fires once on pointerup. This kills the YT video lag where every
+    // drag-frame triggered a video re-decode at the new resolution.
     let startX = 0, startY = 0, startW = 0, startH = 0, axis = 'x', activePid = -1;
+    let pendingW = 0, pendingH = 0, overlay = null;
     handle.addEventListener('pointerdown', (e) => {
       if (e.button !== 0) return;
       _isResizingC = true;
@@ -20314,24 +20319,34 @@ const STORAGE_KEY = 'heatsync_multichat';
       try { handle.setPointerCapture(e.pointerId) } catch (_) {}
       startX = e.clientX; startY = e.clientY;
       startW = chatWidth; startH = chatHeight;
+      pendingW = chatWidth; pendingH = chatHeight;
       axis = (chatPosition === 'left' || chatPosition === 'right') ? 'x' : 'y';
       document.body.style.cursor = axis === 'x' ? 'col-resize' : 'row-resize';
       document.body.style.userSelect = 'none';
       handle.style.opacity = '1';
+      // Full-viewport overlay: captures pointer events even when crossing
+      // iframes (YT player iframe steals events otherwise).
+      overlay = document.createElement('div');
+      overlay.id = 'hs-c-resize-overlay';
+      overlay.style.cssText = `position:fixed;inset:0;z-index:99998;cursor:${axis === 'x' ? 'col-resize' : 'row-resize'};`;
+      document.body.appendChild(overlay);
       e.preventDefault();
     });
     handle.addEventListener('pointermove', (e) => {
       if (!_isResizingC || e.pointerId !== activePid) return;
       if (chatPosition === 'right') {
-        chatWidth = Math.max(MIN_CHAT_WIDTH, Math.min(MAX_CHAT_WIDTH, startW + (startX - e.clientX)));
+        pendingW = Math.max(MIN_CHAT_WIDTH, Math.min(MAX_CHAT_WIDTH, startW + (startX - e.clientX)));
+        handle.style.right = pendingW + 'px';
       } else if (chatPosition === 'left') {
-        chatWidth = Math.max(MIN_CHAT_WIDTH, Math.min(MAX_CHAT_WIDTH, startW + (e.clientX - startX)));
+        pendingW = Math.max(MIN_CHAT_WIDTH, Math.min(MAX_CHAT_WIDTH, startW + (e.clientX - startX)));
+        handle.style.left = (pendingW - 3) + 'px';
       } else if (chatPosition === 'top') {
-        chatHeight = Math.max(MIN_CHAT_HEIGHT, Math.min(getMaxChatHeight(), startH + (e.clientY - startY)));
+        pendingH = Math.max(MIN_CHAT_HEIGHT, Math.min(getMaxChatHeight(), startH + (e.clientY - startY)));
+        handle.style.top = (pendingH - 3) + 'px';
       } else if (chatPosition === 'bottom') {
-        chatHeight = Math.max(MIN_CHAT_HEIGHT, Math.min(getMaxChatHeight(), startH + (startY - e.clientY)));
+        pendingH = Math.max(MIN_CHAT_HEIGHT, Math.min(getMaxChatHeight(), startH + (startY - e.clientY)));
+        handle.style.bottom = (pendingH - 3) + 'px';
       }
-      applyChatPosition();
     });
     const endDrag = (e) => {
       if (!_isResizingC || (e && e.pointerId !== activePid)) return;
@@ -20340,6 +20355,11 @@ const STORAGE_KEY = 'heatsync_multichat';
       document.body.style.cursor = '';
       document.body.style.userSelect = '';
       handle.style.opacity = '0.55';
+      if (overlay) { overlay.remove(); overlay = null; }
+      // Single commit — chat panel + player + tabbar all reflow exactly once.
+      if (axis === 'x') chatWidth = pendingW;
+      else chatHeight = pendingH;
+      applyChatPosition();
       saveChatWidth();
       saveChatHeight();
     };

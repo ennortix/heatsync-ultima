@@ -5759,7 +5759,15 @@ function injectStyles() {
       display: flex !important;
       flex-direction: column !important;
       align-items: center !important;
-      justify-content: flex-start !important;
+      justify-content: center !important;
+      min-height: 100vh !important;
+    }
+    /* For chat-left specifically, primary-inner needs to vertically fill
+       the viewport so 'justify-content: center' has space to center
+       against. The player is the only visible child (#below is hidden). */
+    body.hs-platform-yt.hs-chat-left #primary,
+    body.hs-platform-yt.hs-chat-left #primary-inner {
+      height: 100vh !important;
     }
     body.hs-platform-yt.hs-chat-top #player,
     body.hs-platform-yt.hs-chat-bottom #player,

@@ -4632,12 +4632,15 @@ function injectStyles() {
     body.hs-platform-yt.hs-chat-left #related,
     body.hs-platform-yt.hs-chat-top #related,
     body.hs-platform-yt.hs-chat-bottom #related,
+    body.hs-platform-yt.hs-chat-right #related,
     body.hs-platform-yt.hs-chat-left ytd-watch-next-secondary-results-renderer,
     body.hs-platform-yt.hs-chat-top ytd-watch-next-secondary-results-renderer,
     body.hs-platform-yt.hs-chat-bottom ytd-watch-next-secondary-results-renderer,
+    body.hs-platform-yt.hs-chat-right ytd-watch-next-secondary-results-renderer,
     body.hs-platform-yt.hs-chat-left #secondary-inner > *:not(#chat-container),
     body.hs-platform-yt.hs-chat-top #secondary-inner > *:not(#chat-container),
-    body.hs-platform-yt.hs-chat-bottom #secondary-inner > *:not(#chat-container) {
+    body.hs-platform-yt.hs-chat-bottom #secondary-inner > *:not(#chat-container),
+    body.hs-platform-yt.hs-chat-right #secondary-inner > *:not(#chat-container) {
       display: none !important;
     }
     /* Default 'right' position — kill YT's gutters so the player sits flush

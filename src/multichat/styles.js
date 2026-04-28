@@ -4474,6 +4474,79 @@ function injectStyles() {
       stroke: #000 !important;
       border-color: #000 !important;
     }
+
+    /* ============================================
+       C BUTTON — chat panel position around the player.
+       Default 'right' = no override (existing layout). For left/top/bottom we
+       fixed-position #hs-mc-container (and on Kick #channel-chatroom which
+       is already fixed) so it docks to the chosen viewport edge.
+       Vertical-monitor users: top/bottom give them horizontal strips that
+       use the 9:16 viewport space sensibly.
+       ============================================ */
+    body.hs-chat-left #hs-mc-container,
+    body.hs-chat-top #hs-mc-container,
+    body.hs-chat-bottom #hs-mc-container {
+      position: fixed !important;
+      z-index: 9999 !important;
+      box-sizing: border-box !important;
+    }
+    body.hs-chat-left #hs-mc-container {
+      top: 0 !important;
+      bottom: 0 !important;
+      left: 0 !important;
+      right: auto !important;
+      width: var(--hs-kick-chat-width, var(--chat-width, 340px)) !important;
+      height: 100vh !important;
+    }
+    body.hs-chat-top #hs-mc-container {
+      top: 0 !important;
+      bottom: auto !important;
+      left: 0 !important;
+      right: 0 !important;
+      width: 100vw !important;
+      height: 35vh !important;
+    }
+    body.hs-chat-bottom #hs-mc-container {
+      top: auto !important;
+      bottom: 0 !important;
+      left: 0 !important;
+      right: 0 !important;
+      width: 100vw !important;
+      height: 35vh !important;
+    }
+
+    /* Kick: #channel-chatroom is the fixed-positioned shell. Mirror the
+       same anchors so the native panel rides along (its content is hidden
+       by hs-native-hidden but the shell still owns layout). */
+    body.hs-chat-left #channel-chatroom {
+      left: 0 !important;
+      right: auto !important;
+    }
+    body.hs-chat-top #channel-chatroom {
+      position: fixed !important;
+      top: 0 !important;
+      bottom: auto !important;
+      left: 0 !important;
+      right: 0 !important;
+      width: 100vw !important;
+      height: 35vh !important;
+    }
+    body.hs-chat-bottom #channel-chatroom {
+      position: fixed !important;
+      top: auto !important;
+      bottom: 0 !important;
+      left: 0 !important;
+      right: 0 !important;
+      width: 100vw !important;
+      height: 35vh !important;
+    }
+
+    /* Push the player out of the way so chat doesn't overlay the video.
+       Using body padding is broad but works across Twitch/Kick/YT layouts
+       without needing site-specific selector chasing. */
+    body.hs-chat-left { padding-left: var(--hs-kick-chat-width, var(--chat-width, 340px)) !important; }
+    body.hs-chat-top { padding-top: 35vh !important; }
+    body.hs-chat-bottom { padding-bottom: 35vh !important; }
   `;
   document.head.appendChild(style);
 }

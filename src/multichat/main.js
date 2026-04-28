@@ -677,6 +677,7 @@
       </div>
       <div id="hs-mc-platfilter"></div>
       <div class="hs-mc-util-row">
+        <button class="hs-mc-tab hs-mc-util-btn hs-mc-rotate-chat" data-tab="rotate-chat" title="${t('mc_btn_rotate_chat')}">C</button>
         <button class="hs-mc-tab hs-mc-util-btn hs-mc-rotate" data-tab="rotate" title="${t('mc_btn_rotate_tabs')}">T</button>
         <button class="hs-mc-tab hs-mc-util-btn hs-mc-font-btn" data-font-dir="-1" title="${t('mc_btn_smaller_text')}">F-</button>
         <button class="hs-mc-tab hs-mc-util-btn hs-mc-font-btn" data-font-dir="1" title="${t('mc_btn_larger_text')}">F+</button>
@@ -695,6 +696,8 @@
         switchTab('add');
       } else if (tabId === 'rotate') {
         rotateTabPosition();
+      } else if (tabId === 'rotate-chat') {
+        rotateChatPosition();
       } else if (tabId === 'live') {
         showLiveChannelPicker(tab);
       } else {
@@ -2337,7 +2340,7 @@
     if (!tabBarElement) return;
 
     // Clear existing channel tabs (keep built-in tabs)
-    const existingChannelTabs = tabBarElement.querySelectorAll('.hs-mc-tab[data-tab]:not([data-tab="live"]):not([data-tab="feed"]):not([data-tab="mentions"]):not([data-tab="whispers"]):not([data-tab="discover"]):not([data-tab="pinned"]):not([data-tab="add"]):not([data-tab="rotate"]):not([data-tab="settings"])');
+    const existingChannelTabs = tabBarElement.querySelectorAll('.hs-mc-tab[data-tab]:not([data-tab="live"]):not([data-tab="feed"]):not([data-tab="mentions"]):not([data-tab="whispers"]):not([data-tab="discover"]):not([data-tab="pinned"]):not([data-tab="add"]):not([data-tab="rotate"]):not([data-tab="rotate-chat"]):not([data-tab="settings"])');
     existingChannelTabs.forEach(t => t.remove());
 
     // Add channel tabs before the + button in the scroll section
@@ -4744,79 +4747,99 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     const lower = name.toLowerCase();
     const reserved = ['live', 'feed', 'mentions', 'whispers', 'discover', 'pinned', 'add', 'rotate', 'settings'];
 
-    if (platform === 'youtube') {
-      const ytUrl = youtubeUrl || `https://www.youtube.com/@${name}/live`;
-      const ytLower = ytUrl.toLowerCase();
-
-      // Find an existing channel tab whose youtube URL matches this candidate.
-      let entry = config.channels.find(c => {
-        if (typeof c === 'string') return false;
-        if (!c.youtube) return false;
-        const cy = c.youtube.toLowerCase();
-        if (cy === ytLower) return true;
-        const handleMatch = cy.match(/\/@([^/?]+)/);
-        return handleMatch?.[1] === lower;
-      });
-
-      if (!entry) {
-        let id = lower;
-        if (reserved.includes(id) || config.channels.some(c => (typeof c === 'string' ? c : c.id) === id)) {
-          id = `yt_${Date.now()}`;
-        }
-        entry = { id, twitch: '', kick: '', youtube: ytUrl };
-        config.channels.push(entry);
-        try { saveConfig(); } catch {}
-        try { youtubeLinks.set(entry.id, { url: ytUrl, videoId: '', channelName: '' }); } catch {}
-        try { chrome.runtime.sendMessage({ type: 'youtube_ws_subscribe', url: ytUrl, channelId: entry.id }); } catch {}
-        try { updateTabBar(); } catch {}
-      }
-
-      const tabId = typeof entry === 'string' ? entry : entry.id;
-      liveChannel = null;
-      switchTab(tabId);
-      return;
+    // Resolve all 3 platform identities up-front via /api/profile so the resulting
+    // tab pulls Twitch + Kick + YouTube together — not just the platform we
+    // anchored on. resolveIdentity is the same path pcAddAsChannel uses.
+    let identity = null, profile = null
+    if (typeof resolveIdentity === 'function') {
+      try {
+        const res = await resolveIdentity(name, platform ? { platform } : {})
+        if (res?.ok && res.identity) { identity = res.identity; profile = res.profile }
+      } catch {}
     }
 
-    // Find existing channel tab matching this twitch/kick name.
+    // Build canonical YouTube URL: prefer @handle, fall back to channel id.
+    const buildYtUrl = () => {
+      const handle = profile?.youtube_username
+      const chanId = profile?.youtube_channel_id
+      if (handle) return `https://www.youtube.com/@${String(handle).replace(/^@/, '')}/live`
+      if (chanId) return `https://www.youtube.com/channel/${chanId}/live`
+      // Fallback: identity.youtube may be either; UC-prefixed 24-char strings are channel ids.
+      const yt = identity?.youtube
+      if (!yt) return ''
+      if (/^UC[\w-]{20,}$/.test(yt)) return `https://www.youtube.com/channel/${yt}/live`
+      return `https://www.youtube.com/@${String(yt).replace(/^@/, '')}/live`
+    }
+
+    // Optimistic fallback: when heatsync has no linkage (shadow profile / unknown
+     // streamer), assume the same username on every platform. Most streamers
+     // use one handle everywhere; the user can edit the tab if the guess is wrong.
+    const twitchName = (identity?.twitch || lower).toLowerCase()
+    const kickName = (identity?.kick || lower).toLowerCase()
+    const ytUrl = platform === 'youtube'
+      ? (youtubeUrl || buildYtUrl() || `https://www.youtube.com/@${name}/live`)
+      : (buildYtUrl() || `https://www.youtube.com/@${lower}/live`)
+    const ytLower = ytUrl.toLowerCase()
+
+    // Find existing channel tab matching any resolved platform.
     let entry = config.channels.find(c => {
-      if (typeof c === 'string') return c.toLowerCase() === lower;
-      return (c.twitch?.toLowerCase() === lower) || (c.kick?.toLowerCase() === lower);
-    });
+      if (typeof c === 'string') return c.toLowerCase() === lower
+      const tw = c.twitch?.toLowerCase()
+      const ki = c.kick?.toLowerCase()
+      const yt = c.youtube?.toLowerCase()
+      if (twitchName && tw === twitchName) return true
+      if (kickName && ki === kickName) return true
+      if (ytUrl && yt === ytLower) return true
+      if (yt) {
+        const handleMatch = yt.match(/\/@([^/?]+)/)
+        if (handleMatch?.[1] === lower) return true
+      }
+      return false
+    })
 
     if (!entry) {
-      let id = lower;
+      let id = (identity?.heatsync || twitchName || kickName || lower).toLowerCase()
       if (reserved.includes(id) || config.channels.some(c => (typeof c === 'string' ? c : c.id) === id)) {
-        id = `ch_${Date.now()}`;
+        id = platform === 'youtube' ? `yt_${Date.now()}` : `ch_${Date.now()}`
       }
-      entry = { id, twitch: '', kick: '', youtube: '' };
-      if (platform === 'twitch') entry.twitch = lower;
-      else if (platform === 'kick') entry.kick = lower;
-
-      // Try to link the other platform's account so the tab pulls both feeds.
-      try {
-        const lookupUrl = platform === 'twitch'
-          ? `https://heatsync.org/api/lookup/twitch/${lower}`
-          : `https://heatsync.org/api/lookup/kick/${lower}`;
-        const res = await fetch(lookupUrl, { signal: AbortSignal.timeout(3000) });
-        if (res.ok) {
-          const data = await res.json();
-          if (data.twitchUsername && !entry.twitch) entry.twitch = data.twitchUsername.toLowerCase();
-          if (data.kickUsername && !entry.kick) entry.kick = data.kickUsername.toLowerCase();
-        }
-      } catch (e) { /* keep single-platform entry */ }
-
-      config.channels.push(entry);
-      try { saveConfig(); } catch {}
+      entry = { id, twitch: twitchName, kick: kickName, youtube: ytUrl }
+      config.channels.push(entry)
+      try { saveConfig() } catch {}
 
       if (entry.twitch) {
-        try { irc?.join?.(entry.twitch); } catch {}
-        try { chrome.runtime.sendMessage({ type: 'join_channel', platform: 'twitch', channel: entry.twitch }); } catch {}
+        try { irc?.join?.(entry.twitch) } catch {}
+        try { chrome.runtime.sendMessage({ type: 'join_channel', platform: 'twitch', channel: entry.twitch }) } catch {}
       }
       if (entry.kick) {
-        try { kickChat?.join?.(entry.kick); } catch {}
+        try { kickChat?.join?.(entry.kick) } catch {}
+      }
+      if (entry.youtube) {
+        try { youtubeLinks.set(entry.id, { url: entry.youtube, videoId: '', channelName: '' }) } catch {}
+        try { chrome.runtime.sendMessage({ type: 'youtube_ws_subscribe', url: entry.youtube, channelId: entry.id }) } catch {}
       }
 
-      try { updateTabBar(); } catch {}
+      try { updateTabBar() } catch {}
+    } else if (typeof entry !== 'string') {
+      // Backfill any platforms missing on the existing entry (don't overwrite).
+      let mutated = false
+      if (!entry.twitch && twitchName) {
+        entry.twitch = twitchName; mutated = true
+        try { irc?.join?.(twitchName) } catch {}
+        try { chrome.runtime.sendMessage({ type: 'join_channel', platform: 'twitch', channel: twitchName }) } catch {}
+      }
+      if (!entry.kick && kickName) {
+        entry.kick = kickName; mutated = true
+        try { kickChat?.join?.(kickName) } catch {}
+      }
+      if (!entry.youtube && ytUrl) {
+        entry.youtube = ytUrl; mutated = true
+        try { youtubeLinks.set(entry.id, { url: ytUrl, videoId: '', channelName: '' }) } catch {}
+        try { chrome.runtime.sendMessage({ type: 'youtube_ws_subscribe', url: ytUrl, channelId: entry.id }) } catch {}
+      }
+      if (mutated) {
+        try { saveConfig() } catch {}
+        try { updateTabBar() } catch {}
+      }
     }
 
     const tabId = typeof entry === 'string' ? entry : entry.id;
@@ -5132,6 +5155,43 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     saveUiSetting('tabPosition', tabPosition)
   }
 
+  // ============================================
+  // CHAT POSITION SETTING (C button)
+  // Cycles which side of the player the chat panel docks to.
+  // right (default) → bottom → left → top → right
+  // Vertical-monitor parity: top/bottom horizontal strips matter when the
+  // viewport is taller than wide.
+  // ============================================
+  let chatPosition = 'right'; // 'right', 'bottom', 'left', 'top'
+
+  async function loadChatPosition() {
+    try {
+      const stored = await chrome.storage.sync.get(['ui_settings']);
+      if (stored.ui_settings?.chatPosition !== undefined) {
+        chatPosition = stored.ui_settings.chatPosition;
+      }
+      applyChatPosition();
+    } catch (e) {
+      log('Error loading chat position:', e);
+    }
+  }
+
+  function applyChatPosition() {
+    document.body.classList.remove('hs-chat-top', 'hs-chat-right', 'hs-chat-bottom', 'hs-chat-left');
+    document.body.classList.add(`hs-chat-${chatPosition}`);
+    log('Chat position:', chatPosition);
+  }
+
+  function rotateChatPosition() {
+    const positions = ['right', 'bottom', 'left', 'top'];
+    const idx = positions.indexOf(chatPosition);
+    const prev = chatPosition;
+    chatPosition = positions[(idx === -1 ? 0 : (idx + 1) % positions.length)];
+    log('rotate-chat:', prev, '→', chatPosition);
+    applyChatPosition();
+    saveUiSetting('chatPosition', chatPosition);
+  }
+
   // Render a small banner inside the multichat panel when an upstream API is unreachable.
   // Auto-removes when state flips back to 'up'. Only renders when our panel is mounted.
   function showApiStatusBanner(source, state) {
@@ -5167,6 +5227,10 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
         if (msg.settings.tabPosition !== undefined && msg.settings.tabPosition !== tabPosition) {
           tabPosition = msg.settings.tabPosition;
           applyTabsPosition();
+        }
+        if (msg.settings.chatPosition !== undefined && msg.settings.chatPosition !== chatPosition) {
+          chatPosition = msg.settings.chatPosition;
+          applyChatPosition();
         }
       }
       if (msg.type === 'debug_log' && MC_DEBUG) console.log('[hs-bg]', msg.msg)
@@ -5268,6 +5332,10 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
           tabPosition = ns.tabPosition
           applyTabsPosition()
           needsRender = true
+        }
+        if (ns.chatPosition !== undefined && ns.chatPosition !== chatPosition) {
+          chatPosition = ns.chatPosition
+          applyChatPosition()
         }
         if (ns.showPlatformBadges !== undefined && ns.showPlatformBadges !== platformBadgesEnabled) {
           platformBadgesEnabled = ns.showPlatformBadges
@@ -5593,6 +5661,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     await migrateSettingsToSync();
     await loadActiveTab();
     await loadTabsPosition();
+    await loadChatPosition();
     await loadLivePlatformMap();
     await loadEmoteSize();
     await loadWysiwygSetting();

@@ -17784,8 +17784,8 @@ function renderProfileCardView() {
     { key: 'f', label: youFollow ? 'unfollow' : 'follow', fn: () => pcToggleFollow(profileId, username, youFollow), disabled: !profileId },
     { key: 'w', label: 'whisper', fn: () => pcDoWhisper(username) },
     { key: 'd', label: 'dm', fn: () => pcDoDm(username) },
-    { key: '@', label: 'mention', fn: () => pcMention(data?.display_name || username) },
-    { key: 'm', label: isMuted ? 'unmute' : 'mute', fn: () => pcToggleMute(username) },
+    { key: 'm', label: 'mention', fn: () => pcMention(data?.display_name || username) },
+    { key: 'x', label: isMuted ? 'unmute' : 'mute', fn: () => pcToggleMute(username) },
     { key: 'b', label: youBlock ? 'unblock' : 'block', fn: () => pcToggleBlock(profileId, username, youBlock), disabled: !profileId },
     { key: '+', label: inChannels ? 'in channels' : 'add channel', fn: () => pcAddAsChannel(username), disabled: inChannels },
     { key: 'esc', label: 'close', fn: closeProfileCard },
@@ -18003,7 +18003,7 @@ function setupProfileCardHandlers() {
     }
     if (e.key === 'Escape') { e.preventDefault(); closeProfileCard(); return }
     const key = e.key.toLowerCase()
-    const map = { t: 't', k: 'k', y: 'y', h: 'h', w: 'w', m: 'm', '+': '+', '=': '+', '@': '@', '2': '@', c: 'c' }
+    const map = { t: 't', k: 'k', y: 'y', h: 'h', w: 'w', m: 'm', x: 'x', '+': '+', '=': '+', c: 'c' }
     const target = map[key]
     if (!target) return
     const btn = document.querySelector(`.hs-pcard-action[data-pc-key="${target}"]`)

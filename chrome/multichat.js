@@ -1082,6 +1082,10 @@ function injectStyles() {
       display: inline-flex;
       align-items: center;
       justify-content: center;
+      /* Auto-size to label content; cap so a long YT @handle can't blow out
+         the row — the tab bar wraps to a second line as needed. !important
+         beats the legacy .hs-mc-tab flex:1 rule lower in this file. */
+      flex: 0 0 auto !important;
       max-width: 140px;
       overflow: hidden;
       text-overflow: ellipsis;
@@ -4546,6 +4550,110 @@ function injectStyles() {
       font-size: 12px;
     }
 
+    /* ---- MEDIA / EMBEDS ---- */
+    .hs-feed-media {
+      margin: 4px 0 2px;
+      max-width: 100%;
+    }
+    .hs-feed-media img,
+    .hs-feed-media video,
+    .hs-feed-media-direct img,
+    .hs-feed-media-direct video {
+      max-width: 100%;
+      max-height: 320px;
+      display: block;
+      border-radius: 3px;
+      cursor: pointer;
+      background: #000;
+    }
+    .hs-feed-media-multi {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+      gap: 3px;
+    }
+    .hs-feed-media-multi .hs-feed-media-item {
+      max-height: 180px;
+      width: 100%;
+      object-fit: cover;
+      border-radius: 3px;
+      background: #000;
+    }
+    .hs-feed-embed-container {
+      position: relative;
+      width: 100%;
+      max-width: 480px;
+      aspect-ratio: 16 / 9;
+      background: #000;
+      border-radius: 3px;
+      overflow: hidden;
+    }
+    .hs-feed-embed-container iframe {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      border: 0;
+    }
+    .hs-feed-embed-spotify {
+      aspect-ratio: auto;
+      height: 152px;
+    }
+    .hs-feed-embed-soundcloud {
+      aspect-ratio: auto;
+      height: 166px;
+    }
+    .hs-feed-embed-twitter {
+      aspect-ratio: auto;
+      max-width: 480px;
+      background: transparent;
+    }
+    .hs-feed-embed-imgur {
+      aspect-ratio: auto;
+      max-width: 480px;
+      background: transparent;
+    }
+    .hs-feed-embed-tiktok {
+      aspect-ratio: 9 / 16;
+      max-width: 320px;
+    }
+    .hs-feed-link-card {
+      margin: 4px 0 2px;
+      padding: 4px 6px;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid #333;
+      border-radius: 3px;
+      max-width: 480px;
+    }
+    .hs-feed-link-card-link {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      color: #ff8700;
+      text-decoration: none;
+      font-size: 11px;
+    }
+    .hs-feed-link-card-link:hover {
+      text-decoration: underline;
+    }
+    .hs-feed-link-card-icon {
+      color: #888;
+      font-size: 10px;
+      flex-shrink: 0;
+    }
+    .hs-feed-link-card-url {
+      color: #aaa;
+      word-break: break-all;
+    }
+    .hs-feed-media-deleted {
+      padding: 6px 8px;
+      background: #1a1a1a;
+      border: 1px solid #444;
+      color: #888;
+      font-size: 11px;
+      border-radius: 3px;
+      max-width: 480px;
+    }
+
     /* ---- ENGAGEMENT BAR ---- */
     .hs-feed-engage {
       display: flex;
@@ -5377,6 +5485,15 @@ function injectStyles() {
       text-overflow: ellipsis;
     }
     .hs-pinned-row:hover .hs-pinned-body { color: #fff; }
+
+    /* ---- YOUTUBE NATIVE CHAT HIDING ----
+       Inline display:none on the iframe gets blown away when YT recreates
+       <ytd-live-chat-frame> during ad transitions. CSS rule keyed off our
+       container survives the swap. */
+    body:has(#hs-mc-container) ytd-live-chat-frame#chat,
+    body:has(#hs-mc-container) ytd-live-chat-frame {
+      display: none !important;
+    }
 
     /* ============================================
        UNIVERSAL HOVER — every interactive element inside the extension
@@ -12009,6 +12126,378 @@ async function lookupFollowage(username, channelLogin) {
 }
 
 
+// --- multichat/feed-embed.js ---
+// Feed media + embed rendering for the extension home tab.
+// Mirrors heatsync client/embed/embed-parser.js + renderers/media-renderer.js
+// All embeds always-enabled (extension has no per-platform toggles yet).
+// Uses plain iframes (no facade) — feed virtual-scrolls so visible iframe count stays low.
+
+function sanitizeEmbedId(id) {
+  if (!id || typeof id !== 'string') return ''
+  return id.replace(/[^a-zA-Z0-9_-]/g, '')
+}
+
+function attr(s) {
+  return escapeHtml(s)
+}
+
+function ytEmbed(videoId) {
+  const id = sanitizeEmbedId(videoId)
+  if (!id) return ''
+  return `<div class="hs-feed-embed-container hs-feed-embed-youtube">
+    <iframe src="https://www.youtube-nocookie.com/embed/${id}"
+      allow="accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+      allowfullscreen loading="lazy"
+      referrerpolicy="strict-origin-when-cross-origin"></iframe>
+  </div>`
+}
+
+function twitchClipEmbed(clipId) {
+  const id = sanitizeEmbedId(clipId)
+  if (!id) return ''
+  const parent = location.hostname || 'localhost'
+  return `<div class="hs-feed-embed-container hs-feed-embed-twitch">
+    <iframe src="https://clips.twitch.tv/embed?clip=${id}&parent=${encodeURIComponent(parent)}"
+      allowfullscreen loading="lazy"></iframe>
+  </div>`
+}
+
+function kickClipEmbed(clipId) {
+  const id = sanitizeEmbedId(clipId)
+  if (!id) return ''
+  return `<div class="hs-feed-embed-container hs-feed-embed-kick">
+    <iframe src="https://player.kick.com/clips/${id}"
+      allowfullscreen scrolling="no" loading="lazy"
+      allow="accelerometer; encrypted-media; gyroscope; picture-in-picture"></iframe>
+  </div>`
+}
+
+function streamableEmbed(videoId) {
+  const id = sanitizeEmbedId(videoId)
+  if (!id) return ''
+  return `<div class="hs-feed-embed-container hs-feed-embed-streamable">
+    <iframe src="https://streamable.com/e/${id}" allowfullscreen loading="lazy"></iframe>
+  </div>`
+}
+
+function vimeoEmbed(videoId) {
+  const id = sanitizeEmbedId(videoId)
+  if (!id) return ''
+  return `<div class="hs-feed-embed-container hs-feed-embed-vimeo">
+    <iframe src="https://player.vimeo.com/video/${id}"
+      allow="autoplay; fullscreen; picture-in-picture" allowfullscreen loading="lazy"></iframe>
+  </div>`
+}
+
+function spotifyEmbed(kind, id) {
+  const safeKind = (kind || '').replace(/[^a-z]/g, '')
+  const safeId = sanitizeEmbedId(id)
+  if (!safeKind || !safeId) return ''
+  return `<div class="hs-feed-embed-container hs-feed-embed-spotify">
+    <iframe src="https://open.spotify.com/embed/${safeKind}/${safeId}"
+      width="100%" height="152" allow="encrypted-media" loading="lazy"></iframe>
+  </div>`
+}
+
+function soundcloudEmbed(url) {
+  const safe = safeUrl(url)
+  if (!safe || !/^https?:\/\/(www\.|m\.)?soundcloud\.com\//i.test(safe)) return ''
+  return `<div class="hs-feed-embed-container hs-feed-embed-soundcloud">
+    <iframe scrolling="no"
+      src="https://w.soundcloud.com/player/?url=${encodeURIComponent(safe)}&color=%23ff5500&auto_play=false&hide_related=true&show_comments=false&show_user=true&show_reposts=false&show_teaser=false&visual=true"
+      loading="lazy"></iframe>
+  </div>`
+}
+
+function giphyEmbed(gifId) {
+  const id = sanitizeEmbedId(gifId)
+  if (!id) return ''
+  return `<div class="hs-feed-embed-container hs-feed-embed-giphy">
+    <iframe src="https://giphy.com/embed/${id}" allowfullscreen loading="lazy"></iframe>
+  </div>`
+}
+
+function tenorEmbed(gifId) {
+  const id = sanitizeEmbedId(gifId)
+  if (!id) return ''
+  return `<div class="hs-feed-embed-container hs-feed-embed-tenor">
+    <iframe src="https://tenor.com/embed/${id}" allowfullscreen loading="lazy"></iframe>
+  </div>`
+}
+
+function twitterEmbed(tweetId, url) {
+  const id = sanitizeEmbedId(tweetId)
+  const safe = safeUrl(url)
+  if (!id) return ''
+  // Twitter widgets.js loads async; if blocked, fall back to link.
+  return `<div class="hs-feed-embed-container hs-feed-embed-twitter">
+    <blockquote class="twitter-tweet" data-theme="dark" data-dnt="true">
+      <a href="${attr(safe || url)}">${attr(safe || url)}</a>
+    </blockquote>
+  </div>`
+}
+
+function imgurEmbed(imgurId) {
+  const id = sanitizeEmbedId(imgurId)
+  if (!id) return ''
+  // Imgur embed needs script — fall back to direct image link approach
+  return `<div class="hs-feed-embed-container hs-feed-embed-imgur" style="aspect-ratio:auto;max-width:480px">
+    <a href="https://imgur.com/${id}" target="_blank" rel="noopener">
+      <img src="https://i.imgur.com/${id}.jpg" alt="imgur"
+        loading="lazy" style="max-width:100%;height:auto;display:block"
+        onerror="this.style.display='none'">
+    </a>
+  </div>`
+}
+
+function tiktokEmbed(videoId, url) {
+  const id = sanitizeEmbedId(videoId)
+  if (!id) return ''
+  return `<div class="hs-feed-embed-container hs-feed-embed-tiktok">
+    <iframe src="https://www.tiktok.com/embed/v2/${id}"
+      allowfullscreen scrolling="no" loading="lazy"></iframe>
+  </div>`
+}
+
+function redditEmbed(url) {
+  const safe = safeUrl(url)
+  if (!safe) return ''
+  // Reddit blocks iframe embedding from arbitrary parents — show as link card.
+  return `<div class="hs-feed-link-card">
+    <a href="${attr(safe)}" target="_blank" rel="noopener" class="hs-feed-link-card-link">
+      <span class="hs-feed-link-card-icon">[reddit]</span>
+      <span class="hs-feed-link-card-url">${attr(safe.length > 60 ? safe.slice(0, 60) + '...' : safe)}</span>
+    </a>
+  </div>`
+}
+
+function instagramEmbed(url) {
+  const safe = safeUrl(url)
+  if (!safe) return ''
+  return `<div class="hs-feed-link-card">
+    <a href="${attr(safe)}" target="_blank" rel="noopener" class="hs-feed-link-card-link">
+      <span class="hs-feed-link-card-icon">[ig]</span>
+      <span class="hs-feed-link-card-url">${attr(safe.length > 60 ? safe.slice(0, 60) + '...' : safe)}</span>
+    </a>
+  </div>`
+}
+
+function vimeoUrlEmbed(url) {
+  const m = url.match(/vimeo\.com\/(\d+)/)
+  if (!m) return ''
+  return vimeoEmbed(m[1])
+}
+
+// Convert a single URL → embed HTML, or '' if not embeddable
+function parseFeedEmbed(url) {
+  if (!url || typeof url !== 'string') return ''
+  const cleanUrl = url.replace(/[.,;!?]+$/, '')
+
+  // YouTube
+  if (cleanUrl.includes('youtube.com/watch?v=') || cleanUrl.includes('youtu.be/')) {
+    let videoId
+    if (cleanUrl.includes('youtube.com/watch?v=')) {
+      videoId = cleanUrl.split('v=')[1].split('&')[0]
+    } else {
+      videoId = cleanUrl.split('youtu.be/')[1].split('?')[0]
+    }
+    return ytEmbed(videoId)
+  }
+
+  // Twitch clips (clips.twitch.tv/...)
+  if (cleanUrl.includes('clips.twitch.tv/')) {
+    const clipId = cleanUrl.split('clips.twitch.tv/')[1].split(/[?#]/)[0]
+    return twitchClipEmbed(clipId)
+  }
+
+  // Twitch clips alt format (twitch.tv/user/clip/id)
+  if (cleanUrl.includes('twitch.tv/') && cleanUrl.includes('/clip/')) {
+    const clipId = cleanUrl.split('/clip/')[1].split(/[?#]/)[0]
+    return twitchClipEmbed(clipId)
+  }
+
+  // Kick clips
+  if (cleanUrl.includes('kick.com/') && cleanUrl.includes('/clips/')) {
+    const m = cleanUrl.match(/clips\/([a-zA-Z0-9_-]+)/)
+    if (m) return kickClipEmbed(m[1])
+  }
+
+  // Streamable
+  if (cleanUrl.includes('streamable.com/')) {
+    const videoId = cleanUrl.split('streamable.com/')[1].split(/[?#]/)[0]
+    if (videoId && !videoId.startsWith('test')) return streamableEmbed(videoId)
+  }
+
+  // Vimeo
+  if (cleanUrl.includes('vimeo.com/')) {
+    const m = cleanUrl.match(/vimeo\.com\/(\d+)/)
+    if (m) return vimeoEmbed(m[1])
+  }
+
+  // Spotify
+  if (cleanUrl.includes('open.spotify.com/')) {
+    const parts = cleanUrl.split('spotify.com/')[1].split('/')
+    const kind = parts[0]
+    const id = parts[1]?.split('?')[0]
+    if (kind && id) return spotifyEmbed(kind, id)
+  }
+
+  // SoundCloud
+  if (cleanUrl.includes('soundcloud.com/')) {
+    return soundcloudEmbed(cleanUrl)
+  }
+
+  // Twitter/X
+  if (cleanUrl.includes('twitter.com/') || cleanUrl.includes('x.com/')) {
+    const m = cleanUrl.match(/status\/(\d+)/)
+    if (m) return twitterEmbed(m[1], cleanUrl)
+  }
+
+  // Giphy (gif page)
+  if (cleanUrl.includes('giphy.com/gifs/')) {
+    const m = cleanUrl.match(/gifs\/(?:.*-)?([a-zA-Z0-9]+)$/)
+    if (m) return giphyEmbed(m[1])
+  }
+
+  // Tenor
+  if (cleanUrl.includes('tenor.com/view/')) {
+    const m = cleanUrl.match(/view\/.*-(\d+)$/)
+    if (m) return tenorEmbed(m[1])
+  }
+
+  // TikTok
+  if (cleanUrl.includes('tiktok.com/') && cleanUrl.includes('/video/')) {
+    const m = cleanUrl.match(/video\/(\d+)/)
+    if (m) return tiktokEmbed(m[1], cleanUrl)
+  }
+
+  // Imgur
+  if (cleanUrl.includes('imgur.com/')) {
+    const m = cleanUrl.match(/imgur\.com\/(?:a\/|gallery\/)?([a-zA-Z0-9]+)/)
+    if (m) return imgurEmbed(m[1])
+  }
+
+  // Reddit
+  if (cleanUrl.includes('reddit.com/r/')) {
+    return redditEmbed(cleanUrl)
+  }
+
+  // Instagram
+  if (cleanUrl.includes('instagram.com/p/') || cleanUrl.includes('instagram.com/reel/')) {
+    return instagramEmbed(cleanUrl)
+  }
+
+  // Direct media files
+  if (/\.(jpg|jpeg|png|gif|webp)(\?.*)?$/i.test(cleanUrl)) {
+    const safe = safeUrl(cleanUrl)
+    if (!safe) return ''
+    return `<div class="hs-feed-media-direct">
+      <img src="${attr(safe)}" alt="" loading="lazy"
+        onerror="this.outerHTML='<div class=\\'hs-feed-media-deleted\\'>image unavailable</div>'">
+    </div>`
+  }
+  if (/\.(mp4|webm|mov)(\?.*)?$/i.test(cleanUrl)) {
+    const safe = safeUrl(cleanUrl)
+    if (!safe) return ''
+    return `<div class="hs-feed-media-direct">
+      <video controls muted preload="metadata" src="${attr(safe)}"></video>
+    </div>`
+  }
+
+  return ''
+}
+
+// Extract first embeddable URL from message content (OP only, mirrors website)
+function extractFeedEmbed(content) {
+  if (!content || typeof content !== 'string') return ''
+  // Same priority order as website _extractEmbed
+  const priorityPatterns = [
+    /https?:\/\/(?:www\.)?streamable\.com\/\w+/,
+    /https?:\/\/(?:www\.)?youtu(?:\.be\/|be\.com\/watch\?v=)[\w-]+/,
+    /https?:\/\/clips\.twitch\.tv\/[\w-]+/,
+    /https?:\/\/(?:www\.)?twitch\.tv\/[\w_]+\/clip\/[\w-]+/,
+    /https?:\/\/kick\.com\/[\w_-]+\/clips\/[\w-]+/,
+    /https?:\/\/open\.spotify\.com\/(?:track|album|playlist)\/\w+/,
+    /https?:\/\/(?:www\.)?vimeo\.com\/\d+/,
+    /https?:\/\/(?:www\.)?giphy\.com\/gifs\/[\w-]+/,
+    /https?:\/\/(?:www\.)?tenor\.com\/view\/[\w-]+-\d+/,
+    /https?:\/\/(?:www\.)?tiktok\.com\/[@\w.]+\/video\/\d+/,
+    /https?:\/\/(?:www\.)?imgur\.com\/(?:a\/|gallery\/)?[a-zA-Z0-9]+/,
+    /https?:\/\/(?:twitter|x)\.com\/[\w_]+\/status\/\d+/,
+    /https?:\/\/(?:www\.)?reddit\.com\/r\/\w+\/[\w/]+/,
+    /https?:\/\/(?:www\.|m\.)?soundcloud\.com\/[\w-]+\/[\w-]+/,
+    /https?:\/\/(?:www\.)?instagram\.com\/(?:p|reel)\/[\w-]+/,
+    /https?:\/\/[^\s]+\.(?:jpg|jpeg|png|gif|webp|mp4|webm|mov)(?:\?[^\s]*)?/i,
+  ]
+
+  for (const p of priorityPatterns) {
+    const m = content.match(p)
+    if (m) {
+      const html = parseFeedEmbed(m[0])
+      if (html) return html
+    }
+  }
+  return ''
+}
+
+// Main entry: build full media HTML for a feed message.
+// Handles direct uploads (image/video), multi-image (media[]), and content-extracted embeds.
+function buildFeedMediaHtml(m) {
+  if (!m) return ''
+  const isReply = !!m.reply_to
+  const mediaUrl = m.media_url
+  const mediaType = m.media_type
+  const mediaArr = Array.isArray(m.media) ? m.media : []
+
+  // Multi-item media (uploads)
+  if (mediaArr.length > 1) {
+    const items = mediaArr.map(med => {
+      const url = safeUrl(med.url)
+      if (!url) return ''
+      if (med.type === 'video') {
+        return `<video controls muted preload="metadata" src="${attr(url)}" class="hs-feed-media-item"></video>`
+      }
+      return `<img src="${attr(url)}" alt="" loading="lazy" class="hs-feed-media-item">`
+    }).filter(Boolean).join('')
+    if (items) return `<div class="hs-feed-media hs-feed-media-multi">${items}</div>`
+  }
+
+  // Single direct upload
+  if (mediaUrl) {
+    const safe = safeUrl(mediaUrl)
+    if (!safe) return ''
+
+    const isVideo = mediaType === 'video' || (mediaType || '').startsWith('video/')
+    const isEmbedType = mediaType === 'embed' ||
+      /^https?:\/\/(?:www\.)?(?:youtube\.com|youtu\.be|twitch\.tv|clips\.twitch\.tv|streamable\.com|vimeo\.com|twitter\.com|x\.com|kick\.com|tiktok\.com|open\.spotify\.com|soundcloud\.com|giphy\.com|tenor\.com|imgur\.com|reddit\.com|instagram\.com)/i.test(safe)
+    const isImage = mediaType === 'image' || /\.(jpg|jpeg|png|gif|webp)(\?.*)?$/i.test(safe)
+
+    if (isEmbedType) {
+      const embedHtml = parseFeedEmbed(safe)
+      if (embedHtml) return `<div class="hs-feed-media">${embedHtml}</div>`
+    }
+
+    if (isVideo) {
+      return `<div class="hs-feed-media"><video controls muted preload="metadata" src="${attr(safe)}"></video></div>`
+    }
+
+    if (isImage) {
+      return `<div class="hs-feed-media"><img src="${attr(safe)}" alt="" loading="lazy" class="hs-feed-media-img"></div>`
+    }
+
+    return ''
+  }
+
+  // No direct media — for OPs, scan content for embeddable URL
+  if (!isReply && m.content) {
+    const embedHtml = extractFeedEmbed(m.content)
+    if (embedHtml) return `<div class="hs-feed-media">${embedHtml}</div>`
+  }
+
+  return ''
+}
+
+
 // --- multichat/social.js ---
 // Social - feed, notifications, activity, heatsync API
 let _autoYtVideoId = null  // videoId for this tab's __live_yt_auto__ subscription (cross-tab filter)
@@ -13268,7 +13757,9 @@ function buildFeedMessageDiv(m, opUsername) {
     ? `${anonAvatar}<span class="hs-feed-user" style="color:#808080">Anonymous</span>`
     : `${userAvatar}<a href="https://heatsync.org/user/${encodeURIComponent(m.username)}" target="_blank" class="hs-feed-user hs-mc-user" data-username="${escapeHtml((m.username || 'anon').toLowerCase())}" style="color:${sanitizeColor(m.user_color || '#fff')}">${escapeHtml(m.username || 'anon')}</a>`;
 
-  div.innerHTML = `${timeHtml}${threadLink}${typeTag}${platBadge}${userHtml}${statsHtml}: <span class="hs-feed-body">${content}</span>`;
+  // Media/embeds (img, video, iframe) — values inside are pre-sanitized via escapeHtml/safeUrl/sanitizeEmbedId
+  const mediaHtml = buildFeedMediaHtml(m);
+  div.innerHTML = `${timeHtml}${threadLink}${typeTag}${platBadge}${userHtml}${statsHtml}: <span class="hs-feed-body">${content}</span>${mediaHtml}`;
 
   // Click >>id to expand/collapse thread inline — never leaves the stream
   // If this post is a reply, open the parent thread and highlight this post
@@ -17666,7 +18157,17 @@ function renderProfileCardView() {
 
   const avatar = document.createElement('img')
   avatar.className = 'hs-pcard-avatar'
-  avatar.src = data?.twitch_profile_pic || data?.kick_profile_pic || data?.profile_image_url || 'https://heatsync.org/anon.webp'
+  // For YT users with no heatsync profile, the heatsync API has no avatar,
+  // so fall back to the avatar pulled off any recent YT message they sent.
+  let ytAvatar = null
+  if (!data?.twitch_profile_pic && !data?.kick_profile_pic && !data?.profile_image_url) {
+    try {
+      const recent = getRecentMessagesFromUser(username)
+      const withAv = recent.find(m => m.avatar)
+      if (withAv) ytAvatar = withAv.avatar
+    } catch {}
+  }
+  avatar.src = data?.twitch_profile_pic || data?.kick_profile_pic || data?.profile_image_url || ytAvatar || 'https://heatsync.org/anon.webp'
   avatar.alt = ''
   avatar.referrerPolicy = 'no-referrer'
   idRow.appendChild(avatar)
@@ -17693,6 +18194,10 @@ function renderProfileCardView() {
   if (data?.kick_username) pills.appendChild(pcMakePill('kick', data.kick_username, data.kick_is_live))
   if (data?.youtube_username || data?.youtube_channel_id) {
     pills.appendChild(pcMakePill('youtube', data.youtube_username || username, !!data.youtube_is_live))
+  } else if (activeProfileCard.platform === 'yt' || activeProfileCard.platform === 'youtube') {
+    // YT-only chatter with no heatsync account — surface a YT pill anyway so
+    // the user has a working link from the card to the YouTube channel.
+    pills.appendChild(pcMakePill('youtube', username))
   }
   pills.appendChild(pcMakePill('heatsync', username))
   idText.appendChild(pills)
@@ -18392,6 +18897,101 @@ const STORAGE_KEY = 'heatsync_multichat';
         }
       })
       .catch(() => { avatarFetching.delete(key); _activeAvatarFetches-- })
+  }
+
+  // YT-name → twitch_id resolver. YouTube chat doesn't expose channel IDs in
+  // the DOM, so we look the user up on heatsync to get a twitchId, then feed
+  // that into the existing 7TV cosmetics pipeline. The map caches both hits
+  // (twitch_id) and misses (null) — LRU-evicted at YT_NAME_CACHE_MAX so a
+  // long stream session can't grow it without bound.
+  const ytNameToTwitchId = new Map()      // ytUserKey → twitchId | null
+  const ytNameLookupPending = new Set()
+  let ytNameLookupTimer = null
+  const YT_NAME_BATCH = 8
+  const YT_NAME_CACHE_MAX = 1000
+
+  function evictYtNameCache() {
+    if (ytNameToTwitchId.size >= YT_NAME_CACHE_MAX) {
+      ytNameToTwitchId.delete(ytNameToTwitchId.keys().next().value)
+    }
+  }
+
+  function ytNameKey(user) { return (user || '').toLowerCase().replace(/^@/, '') }
+
+  function queueYtNameToTwitchId(user) {
+    const key = ytNameKey(user)
+    if (!key) return
+    if (ytNameToTwitchId.has(key)) return
+    if (ytNameLookupPending.has(key)) return
+    ytNameLookupPending.add(key)
+    if (ytNameLookupPending.size >= YT_NAME_BATCH) {
+      if (ytNameLookupTimer) { cleanup.clearTimeout(ytNameLookupTimer); ytNameLookupTimer = null }
+      flushYtNameLookups()
+      return
+    }
+    if (!ytNameLookupTimer) {
+      ytNameLookupTimer = cleanup.setTimeout(() => {
+        ytNameLookupTimer = null
+        flushYtNameLookups()
+      }, 800)
+    }
+  }
+
+  async function flushYtNameLookups() {
+    if (!ytNameLookupPending.size) return
+    const batch = [...ytNameLookupPending].slice(0, YT_NAME_BATCH)
+    batch.forEach(k => ytNameLookupPending.delete(k))
+    await Promise.all(batch.map(async (key) => {
+      try {
+        const resp = await safeSendMessage({
+          type: 'api_fetch',
+          path: '/api/profile/' + encodeURIComponent(key),
+          method: 'GET'
+        })
+        const tid = resp?.data?.twitch_id || resp?.twitch_id || null
+        evictYtNameCache()
+        ytNameToTwitchId.set(key, tid ? String(tid) : null)
+        if (tid) {
+          const tidStr = String(tid)
+          // Backfill: stamp data-uid on all currently-rendered YT msgs by this
+          // user so updateCosmeticsInPlace can find them once cosmetics resolve.
+          const container = document.getElementById('hs-mc-messages')
+          if (container) {
+            const sel = `.hs-mc-msg .hs-mc-user[data-platform="yt"][data-username="${CSS.escape('@' + key)}"], .hs-mc-msg .hs-mc-user[data-platform="yt"][data-username="${CSS.escape(key)}"]`
+            for (const userEl of container.querySelectorAll(sel)) {
+              const div = userEl.closest('.hs-mc-msg')
+              if (div && !div.dataset.uid) div.dataset.uid = tidStr
+            }
+          }
+          // Patch buffered messages so the next render picks up the userId and
+          // walks the cosmetics-aware path (otherwise the cached _renderedHtml
+          // keeps the paint-less version forever).
+          const patchBuf = (buf) => {
+            if (!Array.isArray(buf) && !(buf && typeof buf[Symbol.iterator] === 'function')) return
+            for (const m of buf) {
+              if (m && m.platform === 'youtube' && m.user) {
+                const mk = m.user.toLowerCase().replace(/^@/, '')
+                if (mk === key) { m.userId = tidStr; m._renderedHtml = null }
+              }
+            }
+          }
+          if (typeof channelYtMessages !== 'undefined') channelYtMessages.forEach(patchBuf)
+          if (typeof mentionsBuffer !== 'undefined') patchBuf(mentionsBuffer)
+          // Now feed through the existing cosmetics pipeline; it will resolve
+          // 7TV paint/badge and call updateCosmeticsInPlace which paints by uid.
+          if (!mcUserCosmetics.has(tidStr)) queueMcCosmeticsLookup(tidStr)
+        }
+      } catch {
+        evictYtNameCache()
+        ytNameToTwitchId.set(key, null)
+      }
+    }))
+    if (ytNameLookupPending.size > 0 && !ytNameLookupTimer) {
+      ytNameLookupTimer = cleanup.setTimeout(() => {
+        ytNameLookupTimer = null
+        flushYtNameLookups()
+      }, 1500)
+    }
   }
 
   // 7TV cosmetics queue — batch lookups to avoid per-message requests
@@ -19578,6 +20178,25 @@ const STORAGE_KEY = 'heatsync_multichat';
   function applyYouTubeChatWidth() {
     const secondary = document.querySelector('#secondary, ytd-watch-flexy #secondary')
     if (!secondary) return
+    // Theater (cinema) and fullscreen mode rearrange the watch layout so that
+    // #secondary sits BELOW the player at full row width. Our fixed-px width
+    // would fight that reflow, so just clear our overrides and let YT's CSS
+    // run unmodified. Also hide the left-edge resize handle since the panel
+    // no longer has a left edge to drag against.
+    const flexy = document.querySelector('ytd-watch-flexy')
+    const isTheater = !!flexy?.hasAttribute('theater') || !!flexy?.hasAttribute('fullscreen')
+    const handle = document.getElementById('hs-yt-resize-handle')
+    if (isTheater) {
+      secondary.style.removeProperty('width')
+      secondary.style.removeProperty('min-width')
+      secondary.style.removeProperty('max-width')
+      secondary.style.removeProperty('flex')
+      const container = document.getElementById('hs-mc-container')
+      if (container) container.style.removeProperty('width')
+      if (handle) handle.style.display = 'none'
+      return
+    }
+    if (handle) handle.style.display = ''
     const ytMax = getYtMaxChatWidth()
     chatWidth = Math.min(ytMax, Math.max(MIN_CHAT_WIDTH, chatWidth))
     secondary.style.setProperty('width', chatWidth + 'px', 'important')
@@ -19587,6 +20206,17 @@ const STORAGE_KEY = 'heatsync_multichat';
     // Also resize the hs-mc-container to fill
     const container = document.getElementById('hs-mc-container')
     if (container) container.style.setProperty('width', '100%', 'important')
+  }
+
+  // Re-apply layout whenever YT toggles theater/fullscreen so we release or
+  // restore our width overrides at the right moment.
+  function watchYtLayoutAttrs() {
+    if (hostPlatform !== 'yt') return
+    const flexy = document.querySelector('ytd-watch-flexy')
+    if (!flexy) return
+    const obs = new MutationObserver(() => applyYouTubeChatWidth())
+    obs.observe(flexy, { attributes: true, attributeFilter: ['theater', 'fullscreen', 'is-two-columns_'] })
+    cleanup.trackObserver(obs)
   }
 
   // Re-clamp chat width when viewport shrinks (window resize / devtools open).
@@ -19691,6 +20321,7 @@ const STORAGE_KEY = 'heatsync_multichat';
 
     loadChatWidth().then(() => { applyYouTubeChatWidth() })
     watchYtViewportClamp()
+    watchYtLayoutAttrs()
   }
 
   // Emote size functions
@@ -21258,6 +21889,16 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       }).join('')
     } else {
       badges = renderBadges(m.badges, m.channel)
+    }
+    // YT messages don't carry a Twitch ID — resolve via heatsync profile
+    // lookup keyed by the YT @handle. If cached, hoist into m.userId so the
+    // existing badge + cosmetics pipeline applies; if not, queue a lookup
+    // and updateCosmeticsInPlace will repaint after backfill.
+    if (!m.userId && m.platform === 'youtube' && m.user) {
+      const ytKey = (m.user || '').toLowerCase().replace(/^@/, '')
+      const cached = ytNameToTwitchId.get(ytKey)
+      if (cached) m.userId = cached
+      else if (cached === undefined) queueYtNameToTwitchId(m.user)
     }
     if (m.userId) {
       badges += renderThirdPartyBadges(m.userId)

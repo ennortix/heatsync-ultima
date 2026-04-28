@@ -178,7 +178,17 @@ function renderProfileCardView() {
 
   const avatar = document.createElement('img')
   avatar.className = 'hs-pcard-avatar'
-  avatar.src = data?.twitch_profile_pic || data?.kick_profile_pic || data?.profile_image_url || 'https://heatsync.org/anon.webp'
+  // For YT users with no heatsync profile, the heatsync API has no avatar,
+  // so fall back to the avatar pulled off any recent YT message they sent.
+  let ytAvatar = null
+  if (!data?.twitch_profile_pic && !data?.kick_profile_pic && !data?.profile_image_url) {
+    try {
+      const recent = getRecentMessagesFromUser(username)
+      const withAv = recent.find(m => m.avatar)
+      if (withAv) ytAvatar = withAv.avatar
+    } catch {}
+  }
+  avatar.src = data?.twitch_profile_pic || data?.kick_profile_pic || data?.profile_image_url || ytAvatar || 'https://heatsync.org/anon.webp'
   avatar.alt = ''
   avatar.referrerPolicy = 'no-referrer'
   idRow.appendChild(avatar)
@@ -205,6 +215,10 @@ function renderProfileCardView() {
   if (data?.kick_username) pills.appendChild(pcMakePill('kick', data.kick_username, data.kick_is_live))
   if (data?.youtube_username || data?.youtube_channel_id) {
     pills.appendChild(pcMakePill('youtube', data.youtube_username || username, !!data.youtube_is_live))
+  } else if (activeProfileCard.platform === 'yt' || activeProfileCard.platform === 'youtube') {
+    // YT-only chatter with no heatsync account — surface a YT pill anyway so
+    // the user has a working link from the card to the YouTube channel.
+    pills.appendChild(pcMakePill('youtube', username))
   }
   pills.appendChild(pcMakePill('heatsync', username))
   idText.appendChild(pills)

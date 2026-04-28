@@ -43,6 +43,10 @@ function injectStyles() {
       display: inline-flex;
       align-items: center;
       justify-content: center;
+      /* Auto-size to label content; cap so a long YT @handle can't blow out
+         the row — the tab bar wraps to a second line as needed. !important
+         beats the legacy .hs-mc-tab flex:1 rule lower in this file. */
+      flex: 0 0 auto !important;
       max-width: 140px;
       overflow: hidden;
       text-overflow: ellipsis;
@@ -3507,6 +3511,110 @@ function injectStyles() {
       font-size: 12px;
     }
 
+    /* ---- MEDIA / EMBEDS ---- */
+    .hs-feed-media {
+      margin: 4px 0 2px;
+      max-width: 100%;
+    }
+    .hs-feed-media img,
+    .hs-feed-media video,
+    .hs-feed-media-direct img,
+    .hs-feed-media-direct video {
+      max-width: 100%;
+      max-height: 320px;
+      display: block;
+      border-radius: 3px;
+      cursor: pointer;
+      background: #000;
+    }
+    .hs-feed-media-multi {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+      gap: 3px;
+    }
+    .hs-feed-media-multi .hs-feed-media-item {
+      max-height: 180px;
+      width: 100%;
+      object-fit: cover;
+      border-radius: 3px;
+      background: #000;
+    }
+    .hs-feed-embed-container {
+      position: relative;
+      width: 100%;
+      max-width: 480px;
+      aspect-ratio: 16 / 9;
+      background: #000;
+      border-radius: 3px;
+      overflow: hidden;
+    }
+    .hs-feed-embed-container iframe {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      border: 0;
+    }
+    .hs-feed-embed-spotify {
+      aspect-ratio: auto;
+      height: 152px;
+    }
+    .hs-feed-embed-soundcloud {
+      aspect-ratio: auto;
+      height: 166px;
+    }
+    .hs-feed-embed-twitter {
+      aspect-ratio: auto;
+      max-width: 480px;
+      background: transparent;
+    }
+    .hs-feed-embed-imgur {
+      aspect-ratio: auto;
+      max-width: 480px;
+      background: transparent;
+    }
+    .hs-feed-embed-tiktok {
+      aspect-ratio: 9 / 16;
+      max-width: 320px;
+    }
+    .hs-feed-link-card {
+      margin: 4px 0 2px;
+      padding: 4px 6px;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid #333;
+      border-radius: 3px;
+      max-width: 480px;
+    }
+    .hs-feed-link-card-link {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      color: #ff8700;
+      text-decoration: none;
+      font-size: 11px;
+    }
+    .hs-feed-link-card-link:hover {
+      text-decoration: underline;
+    }
+    .hs-feed-link-card-icon {
+      color: #888;
+      font-size: 10px;
+      flex-shrink: 0;
+    }
+    .hs-feed-link-card-url {
+      color: #aaa;
+      word-break: break-all;
+    }
+    .hs-feed-media-deleted {
+      padding: 6px 8px;
+      background: #1a1a1a;
+      border: 1px solid #444;
+      color: #888;
+      font-size: 11px;
+      border-radius: 3px;
+      max-width: 480px;
+    }
+
     /* ---- ENGAGEMENT BAR ---- */
     .hs-feed-engage {
       display: flex;
@@ -4338,6 +4446,15 @@ function injectStyles() {
       text-overflow: ellipsis;
     }
     .hs-pinned-row:hover .hs-pinned-body { color: #fff; }
+
+    /* ---- YOUTUBE NATIVE CHAT HIDING ----
+       Inline display:none on the iframe gets blown away when YT recreates
+       <ytd-live-chat-frame> during ad transitions. CSS rule keyed off our
+       container survives the swap. */
+    body:has(#hs-mc-container) ytd-live-chat-frame#chat,
+    body:has(#hs-mc-container) ytd-live-chat-frame {
+      display: none !important;
+    }
 
     /* ============================================
        UNIVERSAL HOVER — every interactive element inside the extension

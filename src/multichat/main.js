@@ -174,6 +174,101 @@
       .catch(() => { avatarFetching.delete(key); _activeAvatarFetches-- })
   }
 
+  // YT-name → twitch_id resolver. YouTube chat doesn't expose channel IDs in
+  // the DOM, so we look the user up on heatsync to get a twitchId, then feed
+  // that into the existing 7TV cosmetics pipeline. The map caches both hits
+  // (twitch_id) and misses (null) — LRU-evicted at YT_NAME_CACHE_MAX so a
+  // long stream session can't grow it without bound.
+  const ytNameToTwitchId = new Map()      // ytUserKey → twitchId | null
+  const ytNameLookupPending = new Set()
+  let ytNameLookupTimer = null
+  const YT_NAME_BATCH = 8
+  const YT_NAME_CACHE_MAX = 1000
+
+  function evictYtNameCache() {
+    if (ytNameToTwitchId.size >= YT_NAME_CACHE_MAX) {
+      ytNameToTwitchId.delete(ytNameToTwitchId.keys().next().value)
+    }
+  }
+
+  function ytNameKey(user) { return (user || '').toLowerCase().replace(/^@/, '') }
+
+  function queueYtNameToTwitchId(user) {
+    const key = ytNameKey(user)
+    if (!key) return
+    if (ytNameToTwitchId.has(key)) return
+    if (ytNameLookupPending.has(key)) return
+    ytNameLookupPending.add(key)
+    if (ytNameLookupPending.size >= YT_NAME_BATCH) {
+      if (ytNameLookupTimer) { cleanup.clearTimeout(ytNameLookupTimer); ytNameLookupTimer = null }
+      flushYtNameLookups()
+      return
+    }
+    if (!ytNameLookupTimer) {
+      ytNameLookupTimer = cleanup.setTimeout(() => {
+        ytNameLookupTimer = null
+        flushYtNameLookups()
+      }, 800)
+    }
+  }
+
+  async function flushYtNameLookups() {
+    if (!ytNameLookupPending.size) return
+    const batch = [...ytNameLookupPending].slice(0, YT_NAME_BATCH)
+    batch.forEach(k => ytNameLookupPending.delete(k))
+    await Promise.all(batch.map(async (key) => {
+      try {
+        const resp = await safeSendMessage({
+          type: 'api_fetch',
+          path: '/api/profile/' + encodeURIComponent(key),
+          method: 'GET'
+        })
+        const tid = resp?.data?.twitch_id || resp?.twitch_id || null
+        evictYtNameCache()
+        ytNameToTwitchId.set(key, tid ? String(tid) : null)
+        if (tid) {
+          const tidStr = String(tid)
+          // Backfill: stamp data-uid on all currently-rendered YT msgs by this
+          // user so updateCosmeticsInPlace can find them once cosmetics resolve.
+          const container = document.getElementById('hs-mc-messages')
+          if (container) {
+            const sel = `.hs-mc-msg .hs-mc-user[data-platform="yt"][data-username="${CSS.escape('@' + key)}"], .hs-mc-msg .hs-mc-user[data-platform="yt"][data-username="${CSS.escape(key)}"]`
+            for (const userEl of container.querySelectorAll(sel)) {
+              const div = userEl.closest('.hs-mc-msg')
+              if (div && !div.dataset.uid) div.dataset.uid = tidStr
+            }
+          }
+          // Patch buffered messages so the next render picks up the userId and
+          // walks the cosmetics-aware path (otherwise the cached _renderedHtml
+          // keeps the paint-less version forever).
+          const patchBuf = (buf) => {
+            if (!Array.isArray(buf) && !(buf && typeof buf[Symbol.iterator] === 'function')) return
+            for (const m of buf) {
+              if (m && m.platform === 'youtube' && m.user) {
+                const mk = m.user.toLowerCase().replace(/^@/, '')
+                if (mk === key) { m.userId = tidStr; m._renderedHtml = null }
+              }
+            }
+          }
+          if (typeof channelYtMessages !== 'undefined') channelYtMessages.forEach(patchBuf)
+          if (typeof mentionsBuffer !== 'undefined') patchBuf(mentionsBuffer)
+          // Now feed through the existing cosmetics pipeline; it will resolve
+          // 7TV paint/badge and call updateCosmeticsInPlace which paints by uid.
+          if (!mcUserCosmetics.has(tidStr)) queueMcCosmeticsLookup(tidStr)
+        }
+      } catch {
+        evictYtNameCache()
+        ytNameToTwitchId.set(key, null)
+      }
+    }))
+    if (ytNameLookupPending.size > 0 && !ytNameLookupTimer) {
+      ytNameLookupTimer = cleanup.setTimeout(() => {
+        ytNameLookupTimer = null
+        flushYtNameLookups()
+      }, 1500)
+    }
+  }
+
   // 7TV cosmetics queue — batch lookups to avoid per-message requests
   function queueMcCosmeticsLookup(userId) {
     if (!userId || mcUserCosmetics.has(userId)) return
@@ -1358,6 +1453,25 @@
   function applyYouTubeChatWidth() {
     const secondary = document.querySelector('#secondary, ytd-watch-flexy #secondary')
     if (!secondary) return
+    // Theater (cinema) and fullscreen mode rearrange the watch layout so that
+    // #secondary sits BELOW the player at full row width. Our fixed-px width
+    // would fight that reflow, so just clear our overrides and let YT's CSS
+    // run unmodified. Also hide the left-edge resize handle since the panel
+    // no longer has a left edge to drag against.
+    const flexy = document.querySelector('ytd-watch-flexy')
+    const isTheater = !!flexy?.hasAttribute('theater') || !!flexy?.hasAttribute('fullscreen')
+    const handle = document.getElementById('hs-yt-resize-handle')
+    if (isTheater) {
+      secondary.style.removeProperty('width')
+      secondary.style.removeProperty('min-width')
+      secondary.style.removeProperty('max-width')
+      secondary.style.removeProperty('flex')
+      const container = document.getElementById('hs-mc-container')
+      if (container) container.style.removeProperty('width')
+      if (handle) handle.style.display = 'none'
+      return
+    }
+    if (handle) handle.style.display = ''
     const ytMax = getYtMaxChatWidth()
     chatWidth = Math.min(ytMax, Math.max(MIN_CHAT_WIDTH, chatWidth))
     secondary.style.setProperty('width', chatWidth + 'px', 'important')
@@ -1367,6 +1481,17 @@
     // Also resize the hs-mc-container to fill
     const container = document.getElementById('hs-mc-container')
     if (container) container.style.setProperty('width', '100%', 'important')
+  }
+
+  // Re-apply layout whenever YT toggles theater/fullscreen so we release or
+  // restore our width overrides at the right moment.
+  function watchYtLayoutAttrs() {
+    if (hostPlatform !== 'yt') return
+    const flexy = document.querySelector('ytd-watch-flexy')
+    if (!flexy) return
+    const obs = new MutationObserver(() => applyYouTubeChatWidth())
+    obs.observe(flexy, { attributes: true, attributeFilter: ['theater', 'fullscreen', 'is-two-columns_'] })
+    cleanup.trackObserver(obs)
   }
 
   // Re-clamp chat width when viewport shrinks (window resize / devtools open).
@@ -1471,6 +1596,7 @@
 
     loadChatWidth().then(() => { applyYouTubeChatWidth() })
     watchYtViewportClamp()
+    watchYtLayoutAttrs()
   }
 
   // Emote size functions
@@ -3038,6 +3164,16 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       }).join('')
     } else {
       badges = renderBadges(m.badges, m.channel)
+    }
+    // YT messages don't carry a Twitch ID — resolve via heatsync profile
+    // lookup keyed by the YT @handle. If cached, hoist into m.userId so the
+    // existing badge + cosmetics pipeline applies; if not, queue a lookup
+    // and updateCosmeticsInPlace will repaint after backfill.
+    if (!m.userId && m.platform === 'youtube' && m.user) {
+      const ytKey = (m.user || '').toLowerCase().replace(/^@/, '')
+      const cached = ytNameToTwitchId.get(ytKey)
+      if (cached) m.userId = cached
+      else if (cached === undefined) queueYtNameToTwitchId(m.user)
     }
     if (m.userId) {
       badges += renderThirdPartyBadges(m.userId)

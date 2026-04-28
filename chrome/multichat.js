@@ -5676,6 +5676,17 @@ function injectStyles() {
       max-width: none !important;
       max-height: none !important;
     }
+    /* For chat-left, Twitch's React writes el.style.left = X based on its
+       own internal width tracking — that wipes any inline !important we
+       set in applyChatPosition. CSS rule with !important survives those
+       inline writes. The 50px subtraction is for Twitch's collapsed
+       left side-nav (TWITCH_SIDE_NAV_WIDTH); .persistent-player's
+       containing block starts after the nav, so left: chatWidth would
+       double-count the nav and leave a gap between HS panel and video. */
+    body.hs-platform-twitch.hs-chat-left .persistent-player {
+      left: calc(var(--hs-chat-w, 340px) - 50px) !important;
+      inset-inline-start: calc(var(--hs-chat-w, 340px) - 50px) !important;
+    }
     /* The 16:9 aspect-ratio wrapper inside .persistent-player uses the
        padding-bottom hack: child .ScAspectSpacer sets padding-bottom to
        56.25% of width (e.g. 561px for a 998px-wide player). When chat is
@@ -25234,12 +25245,14 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
           // chat-left we need left = chatWidth − side-nav, otherwise the
           // 50px gets double-counted and a gap appears between the HS panel
           // and the video. (Same logic mirrored on Kick with sidebar var.)
-          const leftInset = chatPosition === 'left' ? Math.max(0, w - TWITCH_SIDE_NAV_WIDTH) : 0;
+          // Note: w/h above are CSS strings ("Npx"); for arithmetic use the
+          // raw chatWidth/chatHeight numbers, then re-suffix.
+          const leftInsetPx = chatPosition === 'left' ? Math.max(0, chatWidth - TWITCH_SIDE_NAV_WIDTH) + 'px' : '0';
           pp.style.setProperty('top', chatPosition === 'top' ? h : '0', 'important');
           pp.style.setProperty('bottom', chatPosition === 'bottom' ? h : '0', 'important');
-          pp.style.setProperty('left', leftInset + 'px', 'important');
+          pp.style.setProperty('left', leftInsetPx, 'important');
           pp.style.setProperty('right', chatPosition === 'right' ? w : '0', 'important');
-          pp.style.setProperty('inset-inline-start', leftInset + 'px', 'important');
+          pp.style.setProperty('inset-inline-start', leftInsetPx, 'important');
           pp.style.setProperty('inset-inline-end', chatPosition === 'right' ? w : '0', 'important');
         }
       }

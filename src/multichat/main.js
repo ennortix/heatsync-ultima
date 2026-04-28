@@ -6032,12 +6032,14 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
           // chat-left we need left = chatWidth − side-nav, otherwise the
           // 50px gets double-counted and a gap appears between the HS panel
           // and the video. (Same logic mirrored on Kick with sidebar var.)
-          const leftInset = chatPosition === 'left' ? Math.max(0, w - TWITCH_SIDE_NAV_WIDTH) : 0;
+          // Note: w/h above are CSS strings ("Npx"); for arithmetic use the
+          // raw chatWidth/chatHeight numbers, then re-suffix.
+          const leftInsetPx = chatPosition === 'left' ? Math.max(0, chatWidth - TWITCH_SIDE_NAV_WIDTH) + 'px' : '0';
           pp.style.setProperty('top', chatPosition === 'top' ? h : '0', 'important');
           pp.style.setProperty('bottom', chatPosition === 'bottom' ? h : '0', 'important');
-          pp.style.setProperty('left', leftInset + 'px', 'important');
+          pp.style.setProperty('left', leftInsetPx, 'important');
           pp.style.setProperty('right', chatPosition === 'right' ? w : '0', 'important');
-          pp.style.setProperty('inset-inline-start', leftInset + 'px', 'important');
+          pp.style.setProperty('inset-inline-start', leftInsetPx, 'important');
           pp.style.setProperty('inset-inline-end', chatPosition === 'right' ? w : '0', 'important');
         }
       }

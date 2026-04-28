@@ -4632,6 +4632,17 @@ function injectStyles() {
       max-width: none !important;
       max-height: none !important;
     }
+    /* For chat-left, Twitch's React writes el.style.left = X based on its
+       own internal width tracking — that wipes any inline !important we
+       set in applyChatPosition. CSS rule with !important survives those
+       inline writes. The 50px subtraction is for Twitch's collapsed
+       left side-nav (TWITCH_SIDE_NAV_WIDTH); .persistent-player's
+       containing block starts after the nav, so left: chatWidth would
+       double-count the nav and leave a gap between HS panel and video. */
+    body.hs-platform-twitch.hs-chat-left .persistent-player {
+      left: calc(var(--hs-chat-w, 340px) - 50px) !important;
+      inset-inline-start: calc(var(--hs-chat-w, 340px) - 50px) !important;
+    }
     /* The 16:9 aspect-ratio wrapper inside .persistent-player uses the
        padding-bottom hack: child .ScAspectSpacer sets padding-bottom to
        56.25% of width (e.g. 561px for a 998px-wide player). When chat is
@@ -4667,12 +4678,15 @@ function injectStyles() {
       display: none !important;
     }
     body.hs-platform-kick.hs-chat-left main {
-      /* main itself starts after Kick's collapsed left sidebar (56px), but
-         our HS panel is fixed at viewport-x=0 and covers that sidebar.
-         Padding-left needs to be (chat width - sidebar width) so the video
-         starts exactly where the HS panel ends instead of leaving a 56px
-         gap to the left of the player. */
-      padding-left: calc(var(--hs-chat-w, 340px) - var(--sidebar-collapsed-width, 56px)) !important;
+      /* main itself starts after Kick's collapsed left sidebar (when present),
+         but our HS panel is fixed at viewport-x=0 and covers that sidebar.
+         Padding-left needs to be (chat width - effective-sidebar) so the
+         video starts exactly where the HS panel ends. JS sets
+         --hs-kick-sidebar-w to 56px when the sidebar is in the DOM and 0px
+         when Kick collapses it at narrow viewports — without that, the panel
+         overlaps the video by 56px on narrow widths where Kick has already
+         dropped the sidebar. */
+      padding-left: calc(var(--hs-chat-w, 340px) - var(--hs-kick-sidebar-w, 0px)) !important;
     }
     body.hs-platform-kick.hs-chat-top main {
       padding-top: var(--hs-chat-h, 35vh) !important;

@@ -540,8 +540,14 @@
     const age = getAccountAge(oldest);
     const ageHtml = age ? `<span class="hs-pc-age">${age}</span>` : '';
 
-    // Bio
-    const bio = p.bio ? `<div class="hs-pc-bio">${escapeHtml(p.bio)}</div>` : '';
+    // Bio with @mention/#tag autolinks
+    const bioHtml = p.bio ? String(p.bio).split(/(@[A-Za-z0-9_]{3,25}|#[A-Za-z0-9]{1,30})/g).map(s => {
+      if (!s) return '';
+      if (s[0] === '@' && s.length >= 4) return `<span class="hs-mc-user hs-pc-bio-mention" data-username="${escapeHtml(s.slice(1))}">@${escapeHtml(s.slice(1))}</span>`;
+      if (s[0] === '#' && s.length >= 2) return `<a class="hs-pc-bio-tag" href="https://heatsync.org/tags/${encodeURIComponent(s.slice(1).toLowerCase())}" target="_blank" rel="noopener noreferrer">#${escapeHtml(s.slice(1))}</a>`;
+      return escapeHtml(s);
+    }).join('') : '';
+    const bio = bioHtml ? `<div class="hs-pc-bio">${bioHtml}</div>` : '';
 
     // Stats
     const stats = p.stats || {};

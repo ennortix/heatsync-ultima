@@ -31,7 +31,22 @@
         settings.showCosmetics = true
       }
     }
+    await loadStorageKeyToggles()
     render()
+  }
+
+  // Load toggles whose state lives in chrome.storage.local under their own key
+  // (e.g. hs_notifications, used by background.js for desktop notif gating)
+  async function loadStorageKeyToggles() {
+    const keys = [...document.querySelectorAll('.toggle[data-storage-key]')].map(t => t.dataset.storageKey)
+    if (!keys.length) return
+    const stored = await chrome.storage.local.get(keys)
+    for (const toggle of document.querySelectorAll('.toggle[data-storage-key]')) {
+      const k = toggle.dataset.storageKey
+      const on = !!stored[k]
+      toggle.classList.toggle('active', on)
+      toggle.setAttribute('aria-checked', on ? 'true' : 'false')
+    }
   }
 
   function render() {
@@ -75,6 +90,20 @@
     toggle.classList.toggle('active', settings[key])
     toggle.setAttribute('aria-checked', settings[key] ? 'true' : 'false')
     save()
+  })
+
+  // chrome.storage.local toggles (e.g. hs_notifications)
+  document.addEventListener('click', (e) => {
+    const toggle = e.target.closest('.toggle[data-storage-key]')
+    if (!toggle) return
+    const key = toggle.dataset.storageKey
+    const next = !toggle.classList.contains('active')
+    toggle.classList.toggle('active', next)
+    toggle.setAttribute('aria-checked', next ? 'true' : 'false')
+    chrome.storage.local.set({ [key]: next })
+    if (next && key === 'hs_notifications' && typeof Notification !== 'undefined' && Notification.permission === 'default') {
+      Notification.requestPermission().catch(() => {})
+    }
   })
 
   // Font selector handlers

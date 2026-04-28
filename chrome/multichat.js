@@ -2060,6 +2060,10 @@ function injectStyles() {
       margin: 2px 0;
       word-break: break-word;
     }
+    #hs-user-tooltip .hs-pc-bio-mention { color: #ff8700; cursor: pointer; }
+    #hs-user-tooltip .hs-pc-bio-mention:hover { text-decoration: underline; }
+    #hs-user-tooltip .hs-pc-bio-tag { color: #fff; text-decoration: none; }
+    #hs-user-tooltip .hs-pc-bio-tag:hover { text-decoration: underline; }
     #hs-user-tooltip .hs-pc-stats {
       display: flex;
       align-items: center;
@@ -2766,6 +2770,27 @@ function injectStyles() {
       font-style: italic; font-size: 11px; border-top: 1px dashed #333;
       white-space: pre-wrap; word-break: break-word;
     }
+    .hs-pcard-bio-mention { color: #ff8700; cursor: pointer; font-style: normal; }
+    .hs-pcard-bio-mention:hover { text-decoration: underline; }
+    .hs-pcard-bio-tag { color: #fff; text-decoration: none; font-style: normal; }
+    .hs-pcard-bio-tag:hover { text-decoration: underline; }
+    .hs-pcard-meta {
+      display: flex; flex-wrap: wrap; gap: 6px; align-items: center;
+      margin-top: 4px; font-size: 10px; line-height: 1.4;
+    }
+    .hs-pcard-age { color: #808080; }
+    .hs-pcard-role {
+      padding: 0 4px; font-size: 9px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .hs-pcard-role.partner { background: #ffaa00; color: #000; }
+    .hs-pcard-role.affiliate { background: #808080; color: #fff; }
+    .hs-pcard-verified {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 12px; height: 12px; font-size: 9px; font-weight: 700;
+    }
+    .hs-pcard-verified.twitch { background: #9146ff; color: #fff; }
+    .hs-pcard-verified.kick { background: #53fc18; color: #000; }
     .hs-pcard-rel { color: #ff8700; font-weight: 600; margin-top: 4px; }
     .hs-pcard-link { color: #ff8700; text-decoration: none; font-weight: 700; }
     .hs-pcard-link:hover { text-decoration: underline; }
@@ -8583,8 +8608,14 @@ async function sendKickMessage(kickSlug, text) {
     const age = getAccountAge(oldest);
     const ageHtml = age ? `<span class="hs-pc-age">${age}</span>` : '';
 
-    // Bio
-    const bio = p.bio ? `<div class="hs-pc-bio">${escapeHtml(p.bio)}</div>` : '';
+    // Bio with @mention/#tag autolinks
+    const bioHtml = p.bio ? String(p.bio).split(/(@[A-Za-z0-9_]{3,25}|#[A-Za-z0-9]{1,30})/g).map(s => {
+      if (!s) return '';
+      if (s[0] === '@' && s.length >= 4) return `<span class="hs-mc-user hs-pc-bio-mention" data-username="${escapeHtml(s.slice(1))}">@${escapeHtml(s.slice(1))}</span>`;
+      if (s[0] === '#' && s.length >= 2) return `<a class="hs-pc-bio-tag" href="https://heatsync.org/tags/${encodeURIComponent(s.slice(1).toLowerCase())}" target="_blank" rel="noopener noreferrer">#${escapeHtml(s.slice(1))}</a>`;
+      return escapeHtml(s);
+    }).join('') : '';
+    const bio = bioHtml ? `<div class="hs-pc-bio">${bioHtml}</div>` : '';
 
     // Stats
     const stats = p.stats || {};
@@ -16777,7 +16808,7 @@ async function handleSlashCommand(text, input) {
 }
 
 const SLASH_HELP_LINES = [
-  '/op <text>           — post to feed',
+  '/op <text>           — post to home',
   '/w <user> <msg>      — twitch whisper',
   '/dm <user> <msg>     — heatsync DM',
   '/r <msg>             — reply to last whisper',
@@ -17284,6 +17315,34 @@ function pcFmt(n) {
   return String(n)
 }
 
+// Tokenize bio text and append @mention/#tag/text nodes safely (no innerHTML).
+// @mentions reuse `.hs-mc-user` so the existing capture-phase click handler
+// opens the profile card. #tags link to heatsync.org/tags/<name> in a new tab.
+function pcAppendBioWithAutolinks(parent, text) {
+  const parts = String(text || '').split(/(@[A-Za-z0-9_]{3,25}|#[A-Za-z0-9]{1,30})/g)
+  for (const p of parts) {
+    if (!p) continue
+    if (p[0] === '@' && p.length >= 4) {
+      const name = p.slice(1)
+      const span = document.createElement('span')
+      span.className = 'hs-mc-user hs-pcard-bio-mention'
+      span.dataset.username = name
+      span.textContent = '@' + name
+      parent.appendChild(span)
+    } else if (p[0] === '#' && p.length >= 2) {
+      const a = document.createElement('a')
+      a.className = 'hs-pcard-bio-tag'
+      a.href = 'https://heatsync.org/tags/' + encodeURIComponent(p.slice(1).toLowerCase())
+      a.target = '_blank'
+      a.rel = 'noopener noreferrer'
+      a.textContent = '#' + p.slice(1)
+      parent.appendChild(a)
+    } else {
+      parent.appendChild(document.createTextNode(p))
+    }
+  }
+}
+
 function pcMakeSection(title) {
   const sec = document.createElement('div')
   sec.className = 'hs-pcard-section'
@@ -17368,8 +17427,45 @@ function renderProfileCardView() {
   if (data?.bio) {
     const bio = document.createElement('div')
     bio.className = 'hs-pcard-bio'
-    bio.textContent = data.bio
+    pcAppendBioWithAutolinks(bio, data.bio)
     idText.appendChild(bio)
+  }
+
+  // Account age + verification + broadcaster type
+  if (data) {
+    const meta = document.createElement('div')
+    meta.className = 'hs-pcard-meta'
+    const dates = [data.twitch_created_at, data.kick_created_at].filter(Boolean)
+    const oldest = dates.length ? dates.reduce((a, b) => new Date(b) < new Date(a) ? b : a) : null
+    const age = (typeof getAccountAge === 'function') ? getAccountAge(oldest) : null
+    if (age) {
+      const ageEl = document.createElement('span')
+      ageEl.className = 'hs-pcard-age'
+      ageEl.textContent = age + ' old'
+      meta.appendChild(ageEl)
+    }
+    const bt = data.twitch_broadcaster_type
+    if (bt === 'partner' || bt === 'affiliate') {
+      const r = document.createElement('span')
+      r.className = 'hs-pcard-role ' + bt
+      r.textContent = bt
+      meta.appendChild(r)
+    }
+    if (data.twitch_verified) {
+      const v = document.createElement('span')
+      v.className = 'hs-pcard-verified twitch'
+      v.title = 'Twitch Verified'
+      v.textContent = '✓'
+      meta.appendChild(v)
+    }
+    if (data.kick_verified) {
+      const v = document.createElement('span')
+      v.className = 'hs-pcard-verified kick'
+      v.title = 'Kick Verified'
+      v.textContent = '✓'
+      meta.appendChild(v)
+    }
+    if (meta.children.length) idText.appendChild(meta)
   }
 
   idRow.appendChild(idText)

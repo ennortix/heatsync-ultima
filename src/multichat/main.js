@@ -3016,34 +3016,21 @@
     // On YouTube: insert after the live chat frame in #chat-container or #secondary
     let parent
     if (hostPlatform === 'yt') {
-      parent = chatRoom
-      // Hide native YouTube chat iframe, replace with multichat
-      const ytChatFrame = parent.querySelector('ytd-live-chat-frame#chat')
+      // Hide native YouTube chat iframe wherever it is in the tree.
+      const ytChatFrame = document.querySelector('ytd-live-chat-frame#chat')
       if (ytChatFrame) {
         const frameHeight = ytChatFrame.offsetHeight || 500
         ytChatFrame.style.display = 'none'
-        // Only set height inline — let CSS rules govern display/position/flex-direction
-        // so .hs-tabs-left/right can flip flex-direction to row when needed.
         container.style.cssText = `height:${frameHeight}px;overflow:hidden;`
-        // Cache the height so we can restore it after a C-rotation cycle —
-        // applyPlatformPositionOverrides removes inline height when we move
-        // back to chatPosition='right' and the container would otherwise
-        // collapse to 0.
         window._hsYtChatFrameHeight = frameHeight
       }
+      // Append to <body> instead of nesting inside #chat-container. On
+      // narrow / single-column viewports YT collapses the right sidebar and
+      // moves #chat-container into #below, which YT (and our own CSS at
+      // body.hs-platform-yt #below) sets to display:none — taking our
+      // position:fixed panel down with it. Body is the only stable parent.
+      parent = document.body
       parent.appendChild(container)
-      // If YouTube has its chat sidebar collapsed (#chat-container is 0-wide),
-      // our panel inherits that and looks blank. Click "Show chat" to expand.
-      // Also watch for the user toggling it off later and re-expand.
-      const ensureYtChatExpanded = () => {
-        if (parent.offsetWidth > 0) return
-        const showBtn = document.querySelector('button[aria-label="Show chat"]')
-        if (showBtn) showBtn.click()
-      }
-      ensureYtChatExpanded()
-      const ytWidthObs = new MutationObserver(ensureYtChatExpanded)
-      cleanup.trackObserver(ytWidthObs)
-      ytWidthObs.observe(parent, { attributes: true, attributeFilter: ['style', 'class'] })
     } else if (isKick) {
       parent = chatRoom.parentElement
       chatRoom.after(container)

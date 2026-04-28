@@ -24436,15 +24436,21 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
           sec.style.setProperty('flex', '0 0 0', 'important');
         }
       }
-      // chat-top/bottom: force aspect-preserved player size inline. CSS var
-      // overrides aren't enough — YT caches sized values in JS and only
-      // re-reads them on actual viewport resize, so we set explicit pixels.
-      const ytSizedEls = [
-        document.querySelector('#player-container-outer'),
-        document.querySelector('#player-container'),
-        document.getElementById('movie_player')
-      ].filter(Boolean);
-      const PLAYER_GEOM = ['width', 'height', 'max-width', 'max-height'];
+      // chat-top/bottom: force aspect-preserved player size inline on EVERY
+      // element in the player container chain. YT sizes the player from
+      // multiple layers (player-container-outer/inner, ytd-player, player,
+      // movie_player); missing any one means YT's cached size leaks through
+      // and the player overflows the viewport.
+      const ytSelectors = [
+        '#player-container-outer',
+        '#player-container-inner',
+        '#player-container',
+        '#player',
+        'ytd-player#ytd-player',
+        '#movie_player'
+      ];
+      const ytSizedEls = ytSelectors.map(s => document.querySelector(s)).filter(Boolean);
+      const PLAYER_GEOM = ['width', 'height', 'max-width', 'max-height', 'min-height'];
       if (chatPosition === 'top' || chatPosition === 'bottom') {
         const NAV_H = 56, PRIMARY_PAD = 12;
         const availH = Math.max(200, innerHeight - chatHeight - NAV_H - PRIMARY_PAD);
@@ -24452,13 +24458,27 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
         const maxW = innerWidth - 32;
         const finalW = Math.min(aspectW, maxW);
         const finalH = (finalW < aspectW) ? finalW * 9 / 16 : availH;
+        const wPx = Math.round(finalW) + 'px';
+        const hPx = Math.round(finalH) + 'px';
         for (const el of ytSizedEls) {
           el.dataset._hsCYtSized = '1';
-          el.style.setProperty('width', Math.round(finalW) + 'px', 'important');
-          el.style.setProperty('height', Math.round(finalH) + 'px', 'important');
-          el.style.setProperty('max-width', Math.round(finalW) + 'px', 'important');
-          el.style.setProperty('max-height', Math.round(finalH) + 'px', 'important');
+          el.style.setProperty('width', wPx, 'important');
+          el.style.setProperty('height', hPx, 'important');
+          el.style.setProperty('max-width', wPx, 'important');
+          el.style.setProperty('max-height', hPx, 'important');
+          el.style.setProperty('min-height', '0', 'important');
         }
+        // YT's resize observer fires async — re-apply after rAF to win against
+        // any post-callback size restoration.
+        requestAnimationFrame(() => {
+          for (const el of ytSizedEls) {
+            if (!el.dataset._hsCYtSized) continue;
+            el.style.setProperty('width', wPx, 'important');
+            el.style.setProperty('height', hPx, 'important');
+            el.style.setProperty('max-width', wPx, 'important');
+            el.style.setProperty('max-height', hPx, 'important');
+          }
+        });
       } else {
         for (const el of ytSizedEls) {
           if (el.dataset._hsCYtSized === '1') {

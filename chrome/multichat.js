@@ -5684,6 +5684,14 @@ function injectStyles() {
     body.hs-platform-yt.hs-chat-bottom #secondary-inner > *:not(#chat-container) {
       display: none !important;
     }
+    /* Default 'right' position — kill YT's 16px column gutter so the player
+       sits flush against the orange resize handle. */
+    body.hs-platform-yt.hs-chat-right #primary {
+      margin-right: 0 !important;
+    }
+    body.hs-platform-yt.hs-chat-right ytd-watch-flexy {
+      --ytd-watch-flexy-side-menu-margin: 0 !important;
+    }
     body.hs-platform-yt.hs-chat-left #primary {
       margin-left: var(--hs-chat-w, 340px) !important;
       padding-top: 0 !important;

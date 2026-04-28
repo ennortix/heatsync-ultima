@@ -5661,21 +5661,36 @@ function injectStyles() {
       min-width: 0 !important;
       max-width: 0 !important;
       flex: 0 0 0 !important;
-      overflow: visible !important;
+      overflow: hidden !important;
     }
+    /* hs-mc-container is position:fixed so it escapes any clipping —
+       overflow:hidden on the parent chain is safe and CRITICAL because
+       #secondary's children (thumbnails, lockups) render at x>=1017 and
+       leak into the viewport when overflow is visible. */
     body.hs-platform-yt.hs-chat-left #chat-container,
     body.hs-platform-yt.hs-chat-top #chat-container,
     body.hs-platform-yt.hs-chat-bottom #chat-container {
-      overflow: visible !important;
+      overflow: hidden !important;
     }
     body.hs-platform-yt.hs-chat-left #primary {
       margin-left: var(--hs-chat-w, 340px) !important;
+      padding-top: 0 !important;
     }
     body.hs-platform-yt.hs-chat-top #primary {
       margin-top: var(--hs-chat-h, 35vh) !important;
+      padding-top: 0 !important;
     }
     body.hs-platform-yt.hs-chat-bottom #primary {
       margin-bottom: var(--hs-chat-h, 35vh) !important;
+      padding-top: 0 !important;
+    }
+    /* Kill the masthead reservation when chat covers the top — chat is
+       drawn over where the masthead used to be, so #page-manager's
+       margin-top: 56px is wasted gap. */
+    body.hs-platform-yt.hs-chat-top #page-manager,
+    body.hs-platform-yt.hs-chat-bottom #page-manager,
+    body.hs-platform-yt.hs-chat-left #page-manager {
+      margin-top: 0 !important;
     }
     /* Tell YT how much vertical space is NOT available for the player so
        its own layout JS shrinks the player to fit. YT computes player

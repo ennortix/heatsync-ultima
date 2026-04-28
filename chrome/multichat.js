@@ -5648,7 +5648,8 @@ function injectStyles() {
        with !important sits in a separate cascade origin and beats those
        non-important inline writes. */
     body.hs-platform-twitch.hs-chat-top .persistent-player,
-    body.hs-platform-twitch.hs-chat-bottom .persistent-player {
+    body.hs-platform-twitch.hs-chat-bottom .persistent-player,
+    body.hs-platform-twitch.hs-chat-left .persistent-player {
       width: auto !important;
       height: auto !important;
       max-width: none !important;

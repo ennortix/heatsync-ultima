@@ -2758,6 +2758,11 @@
         // Only set height inline — let CSS rules govern display/position/flex-direction
         // so .hs-tabs-left/right can flip flex-direction to row when needed.
         container.style.cssText = `height:${frameHeight}px;overflow:hidden;`
+        // Cache the height so we can restore it after a C-rotation cycle —
+        // applyPlatformPositionOverrides removes inline height when we move
+        // back to chatPosition='right' and the container would otherwise
+        // collapse to 0.
+        window._hsYtChatFrameHeight = frameHeight
       }
       parent.appendChild(container)
       // If YouTube has its chat sidebar collapsed (#chat-container is 0-wide),
@@ -5476,8 +5481,13 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
           delete container.dataset._hsChatOverride;
           GEOM_PROPS.forEach(p => container.style.removeProperty(p));
           container.style.removeProperty('background');
+          container.style.removeProperty('overflow');
           // Re-establish platform-natural geometry that we just blew away
           if (hostPlatform === 'yt') {
+            // Restore the height set at mount time — without this the
+            // container collapses to 0 after a C-rotation cycle.
+            const ytH = window._hsYtChatFrameHeight || 500;
+            container.style.cssText = `height:${ytH}px;overflow:hidden;`;
             try { applyYouTubeChatWidth() } catch (_) {}
           } else if (isKick) {
             try { applyKickChatWidth() } catch (_) {}

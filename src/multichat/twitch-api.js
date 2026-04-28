@@ -2816,6 +2816,10 @@ function renderThirdPartyBadges(userId) {
       html += `<img class="hs-mc-badge-img" src="${escapeHtml(b.url)}" alt="${escapeHtml(b.title)}" title="${escapeHtml(b.title)}" style="width:18px;height:18px;${safeColor ? 'background:' + safeColor + ';border-radius:2px;' : ''}">`
     }
   }
+  const chat = mcChatterinoBadgeMap.get(userId)
+  if (chat) {
+    html += `<img class="hs-mc-badge-img" src="${escapeHtml(chat.url)}" alt="Chatterino" title="${escapeHtml(chat.tooltip || 'Chatterino')}" style="width:18px;height:18px;">`
+  }
   const cosmetic = mcUserCosmetics.get(userId)
   if (cosmetic?.badge) {
     const files = cosmetic.badge.host?.files || []

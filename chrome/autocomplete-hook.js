@@ -1840,6 +1840,14 @@
                                document.querySelector('.chat-input') ||
                                document.querySelector('[class*="chat-input"]')
 
+    // Don't install yet if chat input isn't mounted — falling back to
+    // document.body subtree+childList here would fire on every chat-line
+    // mutation (~10-50/sec on Twitch). Retry shortly.
+    if (!chatInputContainer) {
+      cleanup.setTimeout(installImageObserver, 500, 'autocomplete-image-retry')
+      return
+    }
+
     imageObserver = cleanup.trackObserver(new MutationObserver(mutations => {
       for (const mut of mutations) {
         // Skip mutations outside chat input area and autocomplete dropdowns
@@ -1903,13 +1911,10 @@
       }
     }), 'autocomplete-image-observer');
 
-    // Narrow observer to chat container when available; attribute watching is
-    // only useful inside the input/autocomplete area so limit it accordingly.
-    const observeRoot = chatInputContainer || document.body;
-    imageObserver.observe(observeRoot, {
+    imageObserver.observe(chatInputContainer, {
       childList: true,
       subtree: true,
-      attributes: !!chatInputContainer, // only when scoped — too expensive on body
+      attributes: true,
       attributeFilter: ['src', 'srcset', 'style']
     });
 

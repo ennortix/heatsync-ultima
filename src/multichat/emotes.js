@@ -49,21 +49,16 @@
   /**
    * Group emotes by state+source into ordered sections
    */
-  const SECTION_ORDER = [
-    'channel-7tv', 'channel-bttv', 'channel-ffz', 'channel-twitch',
-    '7tv', 'bttv', 'ffz', 'twitch', 'heatsync'
-  ]
+  const SECTION_ORDER = ['7tv', 'bttv', 'ffz', 'twitch', 'kick', 'heatsync']
   const SECTION_LABELS = {
-    'channel-7tv': 'channel 7tv', 'channel-bttv': 'channel bttv',
-    'channel-ffz': 'channel ffz', 'channel-twitch': 'channel twitch',
-    '7tv': '7tv global', 'bttv': 'bttv global', 'ffz': 'ffz global',
-    'twitch': 'twitch global', 'heatsync': 'heatsync'
+    '7tv': '7TV', bttv: 'BTTV', ffz: 'FFZ',
+    twitch: 'Twitch', kick: 'Kick', heatsync: 'Heatsync'
   }
 
   function groupEmotes(allEmotes) {
     const groups = {}
     for (const [name, emote] of allEmotes) {
-      const key = emote.state === 'channel' ? `channel-${emote.source}` : emote.source
+      const key = emote.source
       if (!groups[key]) groups[key] = []
       groups[key].push([name, emote])
     }
@@ -384,6 +379,14 @@
         }
       });
     }
+
+    // Cached _renderedHtml on buffered messages bakes in `hs-state-blocked` from
+    // the moment the message was first processed. Without invalidation, any later
+    // re-render (clicking "new messages", tab switch, scroll resume) replays the
+    // stale state for non-heatsync emotes — the post-render correction loop only
+    // touches data-source="heatsync" wrappers. Bump the epoch so the diff-aware
+    // render rebuilds DOM with current block state.
+    if (typeof clearRenderedHtmlCache === 'function') clearRenderedHtmlCache();
   }
 
   // Flash all wrappers for a given emote name
@@ -630,6 +633,7 @@
     refreshEmoteTooltip(emoteName, 'blocked');
     showToast(`blocked: ${emoteName}`);
     flashAllEmotes(emoteName, 'hs-flash-block');
+    if (typeof clearRenderedHtmlCache === 'function') clearRenderedHtmlCache();
   }
 
   function unblockEmote(emoteName) {
@@ -667,6 +671,7 @@
     refreshEmoteTooltip(emoteName, newState);
     showToast(`unblocked: ${emoteName}`);
     flashAllEmotes(emoteName, 'hs-flash-unblock');
+    if (typeof clearRenderedHtmlCache === 'function') clearRenderedHtmlCache();
   }
 
   // Add emote to inventory (click-to-add for unadded emotes)

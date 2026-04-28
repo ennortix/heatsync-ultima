@@ -137,11 +137,9 @@
       const sourceName = sourceLabels[source] || source || 'unknown';
       if (state === 'sub') {
         // Twitch sub emote — show broadcaster as scope so it's specific
-        label = owner ? `${owner} sub (${sourceName})` : `sub (${sourceName})`;
-      } else if (state === 'channel') {
-        label = `channel (${sourceName})`;
+        label = owner ? `${owner} sub (${sourceName})` : sourceName;
       } else {
-        label = `global (${sourceName})`;
+        label = sourceName;
       }
     }
     stateEl.textContent = label;

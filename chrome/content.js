@@ -2553,13 +2553,9 @@ function processExistingMessages() {
 
   const gen = emoteGeneration;
 
-  // Twitch messages (regular + system notices like subs, raids, gifts)
-  let messages = chatContainer.querySelectorAll('.chat-line__message, .user-notice-line');
-
-  // Kick messages (if Twitch selector didn't work)
-  if (messages.length === 0) {
-    messages = chatContainer.querySelectorAll('[data-index]');
-  }
+  // Single combined query — Twitch (chat-line + user-notice) + Kick ([data-index]).
+  // Two separate querySelectorAll calls on chat root cost ~2 full subtree scans.
+  const messages = chatContainer.querySelectorAll('.chat-line__message, .user-notice-line, [data-index]');
 
   log(' 📨 Found', messages.length, 'messages to process');
 
@@ -2579,22 +2575,39 @@ function processExistingMessages() {
   const unprocessed = messageArray.filter(msg => msg.dataset.heatsyncGeneration != gen);
   if (unprocessed.length === 0) return
 
-  // Process last ~50 messages first (bottom of chat = visible in scrolling container)
-  // This avoids expensive offsetTop/offsetHeight layout reads for visibility detection
+  // Process visible tail first (bottom = on-screen). Chunk the rest in rAF
+  // batches so a 200-message backfill doesn't freeze the main thread.
   const VISIBLE_ESTIMATE = 50
   const tail = unprocessed.slice(-VISIBLE_ESTIMATE)
   const head = unprocessed.length > VISIBLE_ESTIMATE ? unprocessed.slice(0, -VISIBLE_ESTIMATE) : []
 
-  tail.forEach(msg => processMessage(msg))
-
-  if (head.length > 0) {
-    cleanup.setTimeout(() => {
-      head.forEach(msg => processMessage(msg))
-      log(` ⏱️ Processed ${unprocessed.length} messages (${tail.length} tail, ${head.length} deferred) in ${(performance.now() - startTime).toFixed(0)}ms`)
-    }, 50)
-  } else {
-    log(` ⏱️ Processed ${tail.length} messages in ${(performance.now() - startTime).toFixed(0)}ms`)
+  // Chunk the tail too — 50 sync processMessage calls can be ~150-250ms.
+  const CHUNK = 10
+  let i = 0
+  function processTailChunk() {
+    const end = Math.min(i + CHUNK, tail.length)
+    for (; i < end; i++) processMessage(tail[i])
+    if (i < tail.length) {
+      requestAnimationFrame(processTailChunk)
+    } else if (head.length > 0) {
+      // Defer head to idle time
+      let h = 0
+      function processHeadChunk(deadline) {
+        while (h < head.length && (!deadline || deadline.timeRemaining() > 1)) {
+          processMessage(head[h++])
+        }
+        if (h < head.length) {
+          (window.requestIdleCallback || requestAnimationFrame)(processHeadChunk)
+        } else {
+          log(` ⏱️ Processed ${unprocessed.length} messages (${tail.length} tail, ${head.length} deferred) in ${(performance.now() - startTime).toFixed(0)}ms`)
+        }
+      }
+      (window.requestIdleCallback || requestAnimationFrame)(processHeadChunk)
+    } else {
+      log(` ⏱️ Processed ${tail.length} messages in ${(performance.now() - startTime).toFixed(0)}ms`)
+    }
   }
+  processTailChunk()
 }
 
 // ============================================================

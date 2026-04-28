@@ -5663,14 +5663,26 @@ function injectStyles() {
       flex: 0 0 0 !important;
       overflow: hidden !important;
     }
-    /* hs-mc-container is position:fixed so it escapes any clipping —
-       overflow:hidden on the parent chain is safe and CRITICAL because
-       #secondary's children (thumbnails, lockups) render at x>=1017 and
-       leak into the viewport when overflow is visible. */
     body.hs-platform-yt.hs-chat-left #chat-container,
     body.hs-platform-yt.hs-chat-top #chat-container,
     body.hs-platform-yt.hs-chat-bottom #chat-container {
       overflow: hidden !important;
+    }
+    /* Nuke the entire suggested-videos sidebar tree. overflow:hidden on
+       #secondary doesn't clip because YT renders these via children that
+       escape the secondary box (they're rendered at x>=1017 absolutely).
+       display:none kills them outright. We keep #chat-container alive
+       because hs-mc-container is mounted inside it. */
+    body.hs-platform-yt.hs-chat-left #related,
+    body.hs-platform-yt.hs-chat-top #related,
+    body.hs-platform-yt.hs-chat-bottom #related,
+    body.hs-platform-yt.hs-chat-left ytd-watch-next-secondary-results-renderer,
+    body.hs-platform-yt.hs-chat-top ytd-watch-next-secondary-results-renderer,
+    body.hs-platform-yt.hs-chat-bottom ytd-watch-next-secondary-results-renderer,
+    body.hs-platform-yt.hs-chat-left #secondary-inner > *:not(#chat-container),
+    body.hs-platform-yt.hs-chat-top #secondary-inner > *:not(#chat-container),
+    body.hs-platform-yt.hs-chat-bottom #secondary-inner > *:not(#chat-container) {
+      display: none !important;
     }
     body.hs-platform-yt.hs-chat-left #primary {
       margin-left: var(--hs-chat-w, 340px) !important;

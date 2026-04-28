@@ -678,8 +678,8 @@
       <div id="hs-mc-platfilter"></div>
       <div class="hs-mc-util-row">
         <button class="hs-mc-tab hs-mc-util-btn hs-mc-rotate" data-tab="rotate" title="${t('mc_btn_rotate_tabs')}">T</button>
-        <button class="hs-mc-tab hs-mc-util-btn hs-mc-font-btn" data-font-dir="-1" title="${t('mc_btn_smaller_text')}">A-</button>
-        <button class="hs-mc-tab hs-mc-util-btn hs-mc-font-btn" data-font-dir="1" title="${t('mc_btn_larger_text')}">A+</button>
+        <button class="hs-mc-tab hs-mc-util-btn hs-mc-font-btn" data-font-dir="-1" title="${t('mc_btn_smaller_text')}">F-</button>
+        <button class="hs-mc-tab hs-mc-util-btn hs-mc-font-btn" data-font-dir="1" title="${t('mc_btn_larger_text')}">F+</button>
         <button class="hs-mc-tab hs-mc-util-btn" data-tab="settings" title="${t('mc_btn_settings')}">\u2699</button>
       </div>
     `;

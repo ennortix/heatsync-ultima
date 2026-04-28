@@ -638,6 +638,14 @@ function listenForSocialEvents() {
               for (const el of msgsEl.querySelectorAll('.hs-mc-empty[data-hs-yt-status]')) el.remove()
               if (!(channelYtMessages.get(targetChannelId)?.length)) {
                 upsertNotice('youtube connected: ' + (link.channelName || msg.videoId) + ' — waiting for messages...')
+                // Auto-clear the "waiting" placeholder after a few seconds — on
+                // quiet streams no message ever arrives to push it out, and the
+                // user has already seen the connection confirmation.
+                cleanup.setTimeout(() => {
+                  const m = document.getElementById('hs-mc-messages')
+                  if (!m) return
+                  for (const el of m.querySelectorAll('.hs-mc-empty[data-hs-yt-status]')) el.remove()
+                }, 5000)
               }
             }
           } else if (msg.status === 'ended' || msg.status === 'error') {

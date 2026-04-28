@@ -696,6 +696,11 @@
 
       const tabId = tab.dataset.tab;
       log('Tab clicked:', tabId);
+      // Acknowledge unread indicators on click — guarantees clearing even on
+      // paths that don't run switchTab (live picker), and survives any new
+      // mention that lands in the same frame between click and render.
+      tab.classList.remove('has-mentions', 'has-new', 'has-stream-event');
+      if (tabId === 'mentions') mentionsSeenCount = mentionsBuffer.length;
       if (tabId === 'add') {
         switchTab('add');
       } else if (tabId === 'rotate') {
@@ -966,12 +971,20 @@
 
   // Twitch: max chat width that keeps .channel-root__main >= TWITCH_MIN_MAIN_WIDTH.
   // Vertical tab strip eats +90 from the right-column total, so subtract it
-  // from the chat budget too.
+  // from the chat budget too. The 600 min only matters for chat-right —
+  // there the right-column is part of Twitch's flex layout, and pushing
+  // .channel-root__main below 600 trips Twitch's narrow-layout breakpoint
+  // and teleports the persistent-player off-screen. For chat-left our panel
+  // is a fixed-position overlay; it doesn't shrink channel-root, so the
+  // breakpoint doesn't fire — applying 600 there just collapses the resize
+  // range to a few px on narrow viewports. Use a much smaller player floor
+  // (300) to keep a usable video area without crippling drag.
   function getTwitchMaxChatWidth() {
     if (hostPlatform !== 'twitch') return MAX_CHAT_WIDTH
     const vw = window.innerWidth || document.documentElement.clientWidth || 1280
     const tabStrip = (tabPosition === 'left' || tabPosition === 'right') ? 90 : 0
-    const max = vw - TWITCH_SIDE_NAV_WIDTH - TWITCH_MIN_MAIN_WIDTH - tabStrip
+    const floor = (chatPosition && chatPosition !== 'right') ? 300 : TWITCH_MIN_MAIN_WIDTH
+    const max = vw - TWITCH_SIDE_NAV_WIDTH - floor - tabStrip
     return Math.max(MIN_CHAT_WIDTH, Math.min(MAX_CHAT_WIDTH, max))
   }
 
@@ -5894,13 +5907,23 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       if (chatPosition === 'top' || chatPosition === 'bottom' || chatPosition === 'left' || chatPosition === 'right') {
         const navEl = document.querySelector('nav, [class*="navbar"]')
         const navH = navEl ? Math.round(navEl.getBoundingClientRect().height) : 60
+        // Kick has a fixed left sidebar (~56px collapsed) that sits inside the
+        // page flex layout. Our chat panel is position:fixed and overlays it,
+        // but main's flex parent still reserves the sidebar's width — so the
+        // freed video area is innerWidth - chatWidth - sidebar, not just
+        // innerWidth - chatWidth. Without this, the player gets sized 56px
+        // too wide on chat-left and Kick's overflow:hidden on main clips the
+        // right edge of the video.
+        const sidebarVar = getComputedStyle(document.documentElement)
+          .getPropertyValue('--sidebar-collapsed-width').trim()
+        const sidebarW = parseInt(sidebarVar) || 56
         let availH, availW
         if (chatPosition === 'left' || chatPosition === 'right') {
-          availW = Math.max(200, innerWidth - chatWidth)
+          availW = Math.max(200, innerWidth - chatWidth - sidebarW)
           availH = Math.max(200, innerHeight - navH)
         } else {
           availH = Math.max(200, innerHeight - chatHeight - navH)
-          availW = innerWidth
+          availW = Math.max(200, innerWidth - sidebarW)
         }
         const aspectW = availH * 16 / 9
         const aspectH = availW * 9 / 16
@@ -5977,8 +6000,11 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
           pp.style.removeProperty('width');
         } else {
           // For all non-right positions the player should fill the freed
-          // space. Use top/bottom/left/right anchors and let the browser
-          // compute width/height (clear those so anchors govern).
+          // space. Width/height are handled by the .hs-chat-* CSS rules
+          // (width:auto !important / height:auto !important). We can't do
+          // it here via inline setProperty('important') because Twitch's
+          // React effect later does `el.style.height = 'X'` which wipes
+          // the inline priority — only a stylesheet rule survives that.
           pp.style.removeProperty('width');
           pp.style.removeProperty('height');
           pp.style.removeProperty('max-height');

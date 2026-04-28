@@ -1387,6 +1387,25 @@ function injectStyles() {
     .hs-mc-tab.active[data-live="true"]::after {
       background: #cc0000;
     }
+    /* YT body scrollbar (~15px) overlays viewport right edge. Reserve a gutter
+       on the container's right so the tab strip — and its right-aligned dot —
+       sit inboard of the scrollbar instead of under it. */
+    body.hs-platform-yt.hs-tabs-right.hs-chat-right #hs-mc-tabbar,
+    body.hs-platform-yt.hs-tabs-right.hs-chat-top #hs-mc-tabbar,
+    body.hs-platform-yt.hs-tabs-right.hs-chat-bottom #hs-mc-tabbar {
+      right: 15px !important;
+    }
+    body.hs-platform-yt.hs-tabs-right.hs-chat-right #hs-mc-overlay,
+    body.hs-platform-yt.hs-tabs-right.hs-chat-top #hs-mc-overlay,
+    body.hs-platform-yt.hs-tabs-right.hs-chat-bottom #hs-mc-overlay,
+    body.hs-platform-yt.hs-tabs-right.hs-chat-right #hs-mc-inputbar,
+    body.hs-platform-yt.hs-tabs-right.hs-chat-top #hs-mc-inputbar,
+    body.hs-platform-yt.hs-tabs-right.hs-chat-bottom #hs-mc-inputbar,
+    body.hs-platform-yt.hs-tabs-right.hs-chat-right #hs-mc-emote-picker,
+    body.hs-platform-yt.hs-tabs-right.hs-chat-top #hs-mc-emote-picker,
+    body.hs-platform-yt.hs-tabs-right.hs-chat-bottom #hs-mc-emote-picker {
+      right: 105px !important;
+    }
 
     /* Overlay - fills chat container (below tab bar, above input bar) */
     #hs-mc-overlay {
@@ -4857,8 +4876,13 @@ function injectStyles() {
       background: #000 !important;
       transition: none !important;
     }
-    /* Shrink Kick's main content to make room for HeatSync panel */
-    body:has(.hs-native-hidden#channel-chatroom) main {
+    /* Shrink Kick's main content to make room for HeatSync panel.
+       Gate to chat-right (or default — no hs-chat-* class). For
+       hs-chat-left/top/bottom, the position-specific padding rules
+       elsewhere in this file handle the offset; applying margin-right
+       here too would carve 340px off the wrong side and shrink main
+       (e.g., chat-left → empty right gutter, video clipped). */
+    body:has(.hs-native-hidden#channel-chatroom):not(.hs-chat-left):not(.hs-chat-top):not(.hs-chat-bottom) main {
       margin-right: var(--hs-kick-chat-width, 340px) !important;
       transition: none !important;
     }
@@ -5633,6 +5657,51 @@ function injectStyles() {
       bottom: var(--hs-chat-h, 35vh) !important;
     }
 
+    /* Twitch sizes .persistent-player by writing explicit pixel width/height
+       inline via React. With position:absolute and our inline insets set
+       !important, an explicit width/height over-constrains the layout —
+       the spec drops the opposing inset, so chat-bottom's bottom: H becomes
+       a no-op and chat just overlays the player instead of pushing it.
+       Worst during mid-roll ads, when Twitch re-locks the player's pixel
+       size for the ad video and drag-end resize stops moving it.
+       Inline setProperty(...,important) gets wiped by Twitch's later
+       el.style.height = X write (that strips priority). A stylesheet rule
+       with !important sits in a separate cascade origin and beats those
+       non-important inline writes. */
+    body.hs-platform-twitch.hs-chat-left .persistent-player,
+    body.hs-platform-twitch.hs-chat-top .persistent-player,
+    body.hs-platform-twitch.hs-chat-bottom .persistent-player {
+      width: auto !important;
+      height: auto !important;
+      max-width: none !important;
+      max-height: none !important;
+    }
+    /* The 16:9 aspect-ratio wrapper inside .persistent-player uses the
+       padding-bottom hack: child .ScAspectSpacer sets padding-bottom to
+       56.25% of width (e.g. 561px for a 998px-wide player). When chat is
+       on top/bottom and the player is shorter than 16:9-of-its-width, the
+       aspect wrapper is taller than the player, so .persistent-player's
+       overflow:hidden clips the video bottom — making it look like chat
+       is overlaying the video. Force the wrapper to fill the player's
+       actual height; the inner <video> uses object-fit so it letterboxes
+       to whatever aspect we end up at. */
+    body.hs-platform-twitch.hs-chat-left .persistent-player .tw-aspect,
+    body.hs-platform-twitch.hs-chat-top .persistent-player .tw-aspect,
+    body.hs-platform-twitch.hs-chat-bottom .persistent-player .tw-aspect {
+      height: 100% !important;
+    }
+    body.hs-platform-twitch.hs-chat-left .persistent-player .tw-aspect > div:first-child,
+    body.hs-platform-twitch.hs-chat-top .persistent-player .tw-aspect > div:first-child,
+    body.hs-platform-twitch.hs-chat-bottom .persistent-player .tw-aspect > div:first-child {
+      padding-bottom: 0 !important;
+      height: 100% !important;
+    }
+    body.hs-platform-twitch.hs-chat-left .persistent-player video,
+    body.hs-platform-twitch.hs-chat-top .persistent-player video,
+    body.hs-platform-twitch.hs-chat-bottom .persistent-player video {
+      object-fit: contain !important;
+    }
+
     /* --- KICK: #channel-chatroom IS the native chat shell (sibling of
        our #hs-mc-container). When chat moves, hide the shell entirely
        so it gives up its 320px sidebar width back to <main>. --- */
@@ -5642,7 +5711,12 @@ function injectStyles() {
       display: none !important;
     }
     body.hs-platform-kick.hs-chat-left main {
-      padding-left: var(--hs-chat-w, 340px) !important;
+      /* main itself starts after Kick's collapsed left sidebar (56px), but
+         our HS panel is fixed at viewport-x=0 and covers that sidebar.
+         Padding-left needs to be (chat width - sidebar width) so the video
+         starts exactly where the HS panel ends instead of leaving a 56px
+         gap to the left of the player. */
+      padding-left: calc(var(--hs-chat-w, 340px) - var(--sidebar-collapsed-width, 56px)) !important;
     }
     body.hs-platform-kick.hs-chat-top main {
       padding-top: var(--hs-chat-h, 35vh) !important;
@@ -13531,6 +13605,14 @@ function listenForSocialEvents() {
               for (const el of msgsEl.querySelectorAll('.hs-mc-empty[data-hs-yt-status]')) el.remove()
               if (!(channelYtMessages.get(targetChannelId)?.length)) {
                 upsertNotice('youtube connected: ' + (link.channelName || msg.videoId) + ' — waiting for messages...')
+                // Auto-clear the "waiting" placeholder after a few seconds — on
+                // quiet streams no message ever arrives to push it out, and the
+                // user has already seen the connection confirmation.
+                cleanup.setTimeout(() => {
+                  const m = document.getElementById('hs-mc-messages')
+                  if (!m) return
+                  for (const el of m.querySelectorAll('.hs-mc-empty[data-hs-yt-status]')) el.remove()
+                }, 5000)
               }
             }
           } else if (msg.status === 'ended' || msg.status === 'error') {
@@ -19813,6 +19895,11 @@ const STORAGE_KEY = 'heatsync_multichat';
 
       const tabId = tab.dataset.tab;
       log('Tab clicked:', tabId);
+      // Acknowledge unread indicators on click — guarantees clearing even on
+      // paths that don't run switchTab (live picker), and survives any new
+      // mention that lands in the same frame between click and render.
+      tab.classList.remove('has-mentions', 'has-new', 'has-stream-event');
+      if (tabId === 'mentions') mentionsSeenCount = mentionsBuffer.length;
       if (tabId === 'add') {
         switchTab('add');
       } else if (tabId === 'rotate') {
@@ -20083,12 +20170,20 @@ const STORAGE_KEY = 'heatsync_multichat';
 
   // Twitch: max chat width that keeps .channel-root__main >= TWITCH_MIN_MAIN_WIDTH.
   // Vertical tab strip eats +90 from the right-column total, so subtract it
-  // from the chat budget too.
+  // from the chat budget too. The 600 min only matters for chat-right —
+  // there the right-column is part of Twitch's flex layout, and pushing
+  // .channel-root__main below 600 trips Twitch's narrow-layout breakpoint
+  // and teleports the persistent-player off-screen. For chat-left our panel
+  // is a fixed-position overlay; it doesn't shrink channel-root, so the
+  // breakpoint doesn't fire — applying 600 there just collapses the resize
+  // range to a few px on narrow viewports. Use a much smaller player floor
+  // (300) to keep a usable video area without crippling drag.
   function getTwitchMaxChatWidth() {
     if (hostPlatform !== 'twitch') return MAX_CHAT_WIDTH
     const vw = window.innerWidth || document.documentElement.clientWidth || 1280
     const tabStrip = (tabPosition === 'left' || tabPosition === 'right') ? 90 : 0
-    const max = vw - TWITCH_SIDE_NAV_WIDTH - TWITCH_MIN_MAIN_WIDTH - tabStrip
+    const floor = (chatPosition && chatPosition !== 'right') ? 300 : TWITCH_MIN_MAIN_WIDTH
+    const max = vw - TWITCH_SIDE_NAV_WIDTH - floor - tabStrip
     return Math.max(MIN_CHAT_WIDTH, Math.min(MAX_CHAT_WIDTH, max))
   }
 
@@ -25011,13 +25106,23 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       if (chatPosition === 'top' || chatPosition === 'bottom' || chatPosition === 'left' || chatPosition === 'right') {
         const navEl = document.querySelector('nav, [class*="navbar"]')
         const navH = navEl ? Math.round(navEl.getBoundingClientRect().height) : 60
+        // Kick has a fixed left sidebar (~56px collapsed) that sits inside the
+        // page flex layout. Our chat panel is position:fixed and overlays it,
+        // but main's flex parent still reserves the sidebar's width — so the
+        // freed video area is innerWidth - chatWidth - sidebar, not just
+        // innerWidth - chatWidth. Without this, the player gets sized 56px
+        // too wide on chat-left and Kick's overflow:hidden on main clips the
+        // right edge of the video.
+        const sidebarVar = getComputedStyle(document.documentElement)
+          .getPropertyValue('--sidebar-collapsed-width').trim()
+        const sidebarW = parseInt(sidebarVar) || 56
         let availH, availW
         if (chatPosition === 'left' || chatPosition === 'right') {
-          availW = Math.max(200, innerWidth - chatWidth)
+          availW = Math.max(200, innerWidth - chatWidth - sidebarW)
           availH = Math.max(200, innerHeight - navH)
         } else {
           availH = Math.max(200, innerHeight - chatHeight - navH)
-          availW = innerWidth
+          availW = Math.max(200, innerWidth - sidebarW)
         }
         const aspectW = availH * 16 / 9
         const aspectH = availW * 9 / 16
@@ -25094,8 +25199,11 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
           pp.style.removeProperty('width');
         } else {
           // For all non-right positions the player should fill the freed
-          // space. Use top/bottom/left/right anchors and let the browser
-          // compute width/height (clear those so anchors govern).
+          // space. Width/height are handled by the .hs-chat-* CSS rules
+          // (width:auto !important / height:auto !important). We can't do
+          // it here via inline setProperty('important') because Twitch's
+          // React effect later does `el.style.height = 'X'` which wipes
+          // the inline priority — only a stylesheet rule survives that.
           pp.style.removeProperty('width');
           pp.style.removeProperty('height');
           pp.style.removeProperty('max-height');

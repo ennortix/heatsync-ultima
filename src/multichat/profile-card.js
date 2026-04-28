@@ -220,7 +220,9 @@ function renderProfileCardView() {
   if (data) {
     const meta = document.createElement('div')
     meta.className = 'hs-pcard-meta'
-    const dates = [data.twitch_created_at, data.kick_created_at].filter(Boolean)
+    const dates = [data.twitch_created_at, data.kick_created_at]
+      .filter(Boolean)
+      .filter(d => !isNaN(new Date(d).getTime()))
     const oldest = dates.length ? dates.reduce((a, b) => new Date(b) < new Date(a) ? b : a) : null
     const age = (typeof getAccountAge === 'function') ? getAccountAge(oldest) : null
     if (age) {

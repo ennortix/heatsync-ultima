@@ -19038,9 +19038,9 @@ const STORAGE_KEY = 'heatsync_multichat';
   const DEFAULT_CHAT_WIDTH = 340;
   const MIN_CHAT_WIDTH = 300;
   const MAX_CHAT_WIDTH = 800;
-  // YouTube enforces a 640px min-width on #primary; if secondary takes more
-  // than (container - 640), the row overflows and the player gets clipped on
-  // the left. We add a small fudge for column-gap / scrollbar.
+  // YouTube enforces #primary { min-width: 640px } — never let chat encroach
+  // on the video player. The +20px fudge covers column-gap and scrollbar
+  // gutter so we don't trip a 1px viewport overflow at the boundary.
   const YT_MIN_PRIMARY_WIDTH = 660;
 
   // Compute the largest chat width that won't squash YouTube's video column.
@@ -22734,18 +22734,43 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
   }
 
   /**
-   * Resolve a live candidate ({name, platform}) to a real channel tab.
-   * Auto-adds twitch/kick channels to config.channels so 'live' is a launcher,
-   * never the sticky tab. YouTube falls back to liveChannel override (no URL to add).
+   * Resolve a live candidate ({name, platform, youtubeUrl?}) to a real channel tab.
+   * Auto-adds the channel to config.channels so 'live' is a launcher, never the sticky tab.
    */
-  async function resolveLiveCandidateToTab({ name, platform }) {
+  async function resolveLiveCandidateToTab({ name, platform, youtubeUrl }) {
     const lower = name.toLowerCase();
+    const reserved = ['live', 'feed', 'mentions', 'whispers', 'discover', 'pinned', 'add', 'rotate', 'settings'];
 
-    // YouTube: keep liveChannel override — we don't have a URL to persist as a tab.
     if (platform === 'youtube') {
-      liveChannel = lower;
-      try { updateLiveTabLabel(); } catch {}
-      switchTab('live');
+      const ytUrl = youtubeUrl || `https://www.youtube.com/@${name}/live`;
+      const ytLower = ytUrl.toLowerCase();
+
+      // Find an existing channel tab whose youtube URL matches this candidate.
+      let entry = config.channels.find(c => {
+        if (typeof c === 'string') return false;
+        if (!c.youtube) return false;
+        const cy = c.youtube.toLowerCase();
+        if (cy === ytLower) return true;
+        const handleMatch = cy.match(/\/@([^/?]+)/);
+        return handleMatch?.[1] === lower;
+      });
+
+      if (!entry) {
+        let id = lower;
+        if (reserved.includes(id) || config.channels.some(c => (typeof c === 'string' ? c : c.id) === id)) {
+          id = `yt_${Date.now()}`;
+        }
+        entry = { id, twitch: '', kick: '', youtube: ytUrl };
+        config.channels.push(entry);
+        try { saveConfig(); } catch {}
+        try { youtubeLinks.set(entry.id, { url: ytUrl, videoId: '', channelName: '' }); } catch {}
+        try { chrome.runtime.sendMessage({ type: 'youtube_ws_subscribe', url: ytUrl, channelId: entry.id }); } catch {}
+        try { updateTabBar(); } catch {}
+      }
+
+      const tabId = typeof entry === 'string' ? entry : entry.id;
+      liveChannel = null;
+      switchTab(tabId);
       return;
     }
 
@@ -22756,7 +22781,6 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     });
 
     if (!entry) {
-      const reserved = ['live', 'feed', 'mentions', 'whispers', 'discover', 'pinned', 'add', 'rotate', 'settings'];
       let id = lower;
       if (reserved.includes(id) || config.channels.some(c => (typeof c === 'string' ? c : c.id) === id)) {
         id = `ch_${Date.now()}`;
@@ -22837,14 +22861,14 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       if (!isLive) continue;
       const existing = byName.get(ch);
       if (!existing || priority[w.platform] > priority[existing.platform]) {
-        byName.set(ch, { name: ch, platform: w.platform, isCurrent: ch === urlCh });
+        byName.set(ch, { name: w.name, platform: w.platform, youtubeUrl: w.youtubeUrl, isCurrent: ch === urlCh });
       }
     }
     const channels = Array.from(byName.values());
 
     if (channels.length <= 1) {
       // Popout: navigate to channel's popout URL when picking a different channel.
-      if (channels.length === 1 && document.body.classList.contains('hs-popout') && channels[0].name !== urlCh) {
+      if (channels.length === 1 && document.body.classList.contains('hs-popout') && channels[0].name.toLowerCase() !== urlCh) {
         if (hostPlatform === 'twitch') location.href = `/popout/${channels[0].name}/chat?popout=`;
         else if (hostPlatform === 'kick') location.href = `/${channels[0].name}`;
         return;
@@ -22871,7 +22895,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
 
     for (const ch of channels) {
       const item = document.createElement('div');
-      const isActive = ch.name === curLive;
+      const isActive = ch.name.toLowerCase() === curLive;
 
       // Red dot — all channels in picker are confirmed live
       const dot = document.createElement('span');
@@ -22886,7 +22910,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       item.addEventListener('click', async () => {
         menu.remove();
         // Popout mode keeps URL navigation — each popout window is locked to one channel.
-        if (document.body.classList.contains('hs-popout') && ch.name !== urlCh) {
+        if (document.body.classList.contains('hs-popout') && ch.name.toLowerCase() !== urlCh) {
           try {
             const s = await chrome.storage.sync.get(['ui_settings'])
             await chrome.storage.sync.set({ ui_settings: { ...s.ui_settings, activeTab: 'live', liveChannel: ch.name } })

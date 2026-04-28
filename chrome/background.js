@@ -208,6 +208,25 @@ let cachedFollowColors = null; // Cache follow:colors for late-loading content s
 let activeYoutubeVideoId = null; // Currently subscribed YouTube videoId (for WS reconnect)
 const ytVideoToChannel = new Map(); // videoId → channelId (for per-channel YouTube routing)
 const youtubeChannelUrls = {} // channelId → url (in-memory source of truth, persisted to storage)
+const ytChannelHandleCache = new Map() // videoId → channel handle (oEmbed lookup, session-scoped)
+async function getYtChannelHandle(videoId) {
+  if (!videoId) return null
+  if (ytChannelHandleCache.has(videoId)) return ytChannelHandleCache.get(videoId)
+  try {
+    const oembedUrl = `https://www.youtube.com/oembed?url=${encodeURIComponent('https://www.youtube.com/watch?v=' + videoId)}&format=json`
+    const r = await fetch(oembedUrl, { signal: AbortSignal.timeout(4000) })
+    if (!r.ok) return null
+    const data = await r.json()
+    let handle = null
+    if (data.author_url) {
+      const m = data.author_url.match(/\/@([^/?]+)/)
+      if (m) handle = m[1]
+    }
+    if (!handle && data.author_name) handle = data.author_name.replace(/\s+/g, '')
+    if (handle) ytChannelHandleCache.set(videoId, handle)
+    return handle
+  } catch (e) { return null }
+}
 const MAX_YT_VIDEO_ENTRIES = 100; // LRU cap — evict oldest when full
 function setYtVideoChannel(videoId, channelId) {
   ytVideoToChannel.delete(videoId) // Re-insert for LRU ordering
@@ -3558,9 +3577,10 @@ async function handleMessage(message, sender, sendResponse) {
   // Query all open Twitch/Kick tabs to find channels the user is watching
   if (message.type === 'get_watching_channels') {
     const skip = new Set(['directory', 'settings', 'videos', 'moderator', 'subscriptions', 'downloads', 'search', 'categories', 'following'])
-    browser.tabs.query({ url: ['*://*.twitch.tv/*', '*://kick.com/*', '*://*.kick.com/*', '*://*.youtube.com/*'] }).then(tabs => {
+    browser.tabs.query({ url: ['*://*.twitch.tv/*', '*://kick.com/*', '*://*.kick.com/*', '*://*.youtube.com/*'] }).then(async tabs => {
       const channels = []
       const seen = new Set()
+      const ytPending = [] // {idx, videoId} — needs oEmbed lookup to resolve handle
       for (const tab of tabs) {
         try {
           const url = new URL(tab.url)
@@ -3572,17 +3592,24 @@ async function handleMessage(message, sender, sendResponse) {
             if (match) match = [null, match[2]] // normalize to [_, channel]
             else match = url.pathname.match(/^\/([a-zA-Z0-9_-]+)/)
           } else if (url.hostname.includes('youtube.com')) {
-            // Only count tabs that are actually on a live stream URL — not plain channel pages
+            // Only count tabs on a live stream URL — handle, /live/<id>, or /watch?v=<id>.
             const v = url.searchParams.get('v')
             const liveHandleMatch = url.pathname.match(/^\/@([^/]+)\/live/)
             const liveIdMatch = url.pathname.match(/^\/live\/([^/?]+)/)
-            let channelName = null
-            if (liveHandleMatch) channelName = liveHandleMatch[1]
-            else if (liveIdMatch) channelName = liveIdMatch[1]
-            else if (v && url.pathname === '/watch') channelName = v
-            if (channelName && !seen.has('yt:' + channelName)) {
-              seen.add('yt:' + channelName)
-              channels.push({ name: channelName, platform: 'youtube' })
+            if (liveHandleMatch) {
+              const handle = liveHandleMatch[1]
+              const key = 'yt:' + handle.toLowerCase()
+              if (!seen.has(key)) {
+                seen.add(key)
+                channels.push({ name: handle, platform: 'youtube', youtubeUrl: `https://www.youtube.com/@${handle}/live` })
+              }
+            } else if (liveIdMatch || (v && url.pathname === '/watch')) {
+              const videoId = liveIdMatch ? liveIdMatch[1] : v
+              const ytUrl = liveIdMatch ? `https://www.youtube.com/live/${videoId}` : `https://www.youtube.com/watch?v=${videoId}`
+              const idx = channels.length
+              // Placeholder — name will be resolved to channel handle via oEmbed below.
+              channels.push({ name: videoId, platform: 'youtube', youtubeUrl: ytUrl, _videoId: videoId })
+              ytPending.push({ idx, videoId })
             }
             continue
           }
@@ -3595,6 +3622,26 @@ async function handleMessage(message, sender, sendResponse) {
           }
         } catch (e) {}
       }
+
+      // Resolve YT handles via oEmbed — public, no auth, CORS-friendly.
+      if (ytPending.length) {
+        await Promise.all(ytPending.map(async p => {
+          const handle = await getYtChannelHandle(p.videoId)
+          if (!handle) return
+          const key = 'yt:' + handle.toLowerCase()
+          if (seen.has(key)) {
+            channels[p.idx] = null // duplicate — prefer the existing entry
+          } else {
+            seen.add(key)
+            channels[p.idx].name = handle
+            delete channels[p.idx]._videoId
+          }
+        }))
+        for (let i = channels.length - 1; i >= 0; i--) {
+          if (channels[i] === null) channels.splice(i, 1)
+        }
+      }
+
       sendResponse({ channels })
     }).catch(() => sendResponse({ channels: [] }))
     return true

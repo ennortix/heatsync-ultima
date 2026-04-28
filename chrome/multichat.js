@@ -5720,7 +5720,19 @@ function injectStyles() {
     }
     body.hs-platform-yt.hs-chat-left #primary {
       margin-left: var(--hs-chat-w, 340px) !important;
+      margin-right: 0 !important;
       padding-top: 0 !important;
+      width: calc(100vw - var(--hs-chat-w, 340px)) !important;
+      max-width: calc(100vw - var(--hs-chat-w, 340px)) !important;
+      flex: 0 0 auto !important;
+    }
+    /* Kill the secondary's residual 16px (its own padding/margin still
+       takes layout space even with width:0). */
+    body.hs-platform-yt.hs-chat-left #secondary,
+    body.hs-platform-yt.hs-chat-top #secondary,
+    body.hs-platform-yt.hs-chat-bottom #secondary {
+      padding: 0 !important;
+      margin: 0 !important;
     }
     body.hs-platform-yt.hs-chat-top #primary {
       margin-top: var(--hs-chat-h, 35vh) !important;

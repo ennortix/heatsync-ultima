@@ -4719,6 +4719,18 @@ function injectStyles() {
       max-height: 100vh !important;
       overflow: hidden !important;
     }
+    /* Chat panel fills viewport height when on right — overrides the
+       mount-time inline height cached from the original live-chat-frame
+       (~500-600px). #secondary-inner and #chat-container also need to
+       extend so our container can fill them. */
+    body.hs-platform-yt.hs-chat-right #secondary-inner,
+    body.hs-platform-yt.hs-chat-right #chat-container {
+      height: 100vh !important;
+      max-height: 100vh !important;
+    }
+    body.hs-platform-yt.hs-chat-right #hs-mc-container {
+      height: 100vh !important;
+    }
     body.hs-platform-yt.hs-chat-right #primary-inner {
       display: flex !important;
       flex-direction: column !important;

@@ -4709,21 +4709,29 @@ function injectStyles() {
     body.hs-platform-yt.hs-chat-left #below {
       display: none !important;
     }
+    /* Top/bottom: player is sized inline to fill availH, just need
+       horizontal centering. Don't add min-height — primary has margin-top
+       for chat-top, so 100vh would push content off the bottom. */
     body.hs-platform-yt.hs-chat-top #primary-inner,
-    body.hs-platform-yt.hs-chat-bottom #primary-inner,
+    body.hs-platform-yt.hs-chat-bottom #primary-inner {
+      display: flex !important;
+      flex-direction: column !important;
+      align-items: center !important;
+      justify-content: flex-start !important;
+    }
+    /* Left: chat fills viewport on left, player needs vertical centering
+       in the freed right area. Constrain primary-inner to viewport height. */
+    body.hs-platform-yt.hs-chat-left #primary,
+    body.hs-platform-yt.hs-chat-left #primary-inner {
+      height: 100vh !important;
+      max-height: 100vh !important;
+      overflow: hidden !important;
+    }
     body.hs-platform-yt.hs-chat-left #primary-inner {
       display: flex !important;
       flex-direction: column !important;
       align-items: center !important;
       justify-content: center !important;
-      min-height: 100vh !important;
-    }
-    /* For chat-left specifically, primary-inner needs to vertically fill
-       the viewport so 'justify-content: center' has space to center
-       against. The player is the only visible child (#below is hidden). */
-    body.hs-platform-yt.hs-chat-left #primary,
-    body.hs-platform-yt.hs-chat-left #primary-inner {
-      height: 100vh !important;
     }
     body.hs-platform-yt.hs-chat-top #player,
     body.hs-platform-yt.hs-chat-bottom #player,

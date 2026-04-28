@@ -22,6 +22,7 @@ function injectStyles() {
       order: -1;
       z-index: 10;
       align-items: center;
+      box-sizing: border-box;
     }
 
     /* Chatterino-style composable tab states: idle → has-new → active */
@@ -42,6 +43,9 @@ function injectStyles() {
       display: inline-flex;
       align-items: center;
       justify-content: center;
+      max-width: 140px;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
     /* Idle hover — subtle brighten */
     .hs-mc-tab:not(.active):not(.has-new):hover {
@@ -3274,17 +3278,16 @@ function injectStyles() {
       bottom: 31px !important;
     }
 
-    /* LEFT SIDE TABS LAYOUT - flex child, no fixed positioning */
+    /* LEFT SIDE TABS LAYOUT - absolute position at left edge (matches right) */
     .hs-tabs-left #hs-mc-tabbar {
-      position: relative !important;
-      left: auto !important;
+      position: absolute !important;
+      left: 0 !important;
       right: auto !important;
-      top: auto !important;
-      bottom: auto !important;
+      top: 0 !important;
+      bottom: 0 !important;
       width: 90px;
       flex-direction: column;
       flex-shrink: 0;
-      order: -1;
       padding: 4px;
       gap: 2px;
       border-bottom: none;
@@ -3292,6 +3295,7 @@ function injectStyles() {
       border-radius: 0;
       background: #000;
       overflow-y: auto;
+      z-index: 1001;
     }
     .hs-tabs-left .hs-mc-tab {
       padding: 4px 6px;

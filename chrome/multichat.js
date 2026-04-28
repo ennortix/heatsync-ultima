@@ -1061,6 +1061,7 @@ function injectStyles() {
       order: -1;
       z-index: 10;
       align-items: center;
+      box-sizing: border-box;
     }
 
     /* Chatterino-style composable tab states: idle → has-new → active */
@@ -1081,6 +1082,9 @@ function injectStyles() {
       display: inline-flex;
       align-items: center;
       justify-content: center;
+      max-width: 140px;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
     /* Idle hover — subtle brighten */
     .hs-mc-tab:not(.active):not(.has-new):hover {
@@ -4313,17 +4317,16 @@ function injectStyles() {
       bottom: 31px !important;
     }
 
-    /* LEFT SIDE TABS LAYOUT - flex child, no fixed positioning */
+    /* LEFT SIDE TABS LAYOUT - absolute position at left edge (matches right) */
     .hs-tabs-left #hs-mc-tabbar {
-      position: relative !important;
-      left: auto !important;
+      position: absolute !important;
+      left: 0 !important;
       right: auto !important;
-      top: auto !important;
-      bottom: auto !important;
+      top: 0 !important;
+      bottom: 0 !important;
       width: 90px;
       flex-direction: column;
       flex-shrink: 0;
-      order: -1;
       padding: 4px;
       gap: 2px;
       border-bottom: none;
@@ -4331,6 +4334,7 @@ function injectStyles() {
       border-radius: 0;
       background: #000;
       overflow-y: auto;
+      z-index: 1001;
     }
     .hs-tabs-left .hs-mc-tab {
       padding: 4px 6px;
@@ -12473,11 +12477,22 @@ function listenForSocialEvents() {
       // Dedup against message buffer (survives WS reconnects unlike 5s hash)
       if (targetChannelId && isYtDuplicate(msg.user, msg.text, targetChannelId)) return
 
+      // Resolve a Twitch-channel name for emote lookup. YT-relayed messages
+      // belong to a streamer who likely also has Twitch/Kick channel emotes
+      // (BTTV/FFZ/7TV) configured under their Twitch handle. Without this
+      // hint, processEmotes only sees globals + the user's heatsync inventory,
+      // missing per-channel emotes for the linked streamer.
+      let ytChannelHint = null
+      if (targetChannelId && targetChannelId !== '__live_yt_auto__') {
+        const linkedCh = config.channels.find(c => typeof c !== 'string' && c.id === targetChannelId)
+        if (linkedCh) ytChannelHint = linkedCh.twitch || linkedCh.kick || null
+      }
+
       const ytMsg = {
         user: msg.user,
         text: msg.text,
         color: msg.color || '#ff0000',
-        channel: 'youtube',
+        channel: ytChannelHint || 'youtube',
         time: msg.time,
         platform: 'youtube',
         emotes: msg.emotes || [],
@@ -12605,7 +12620,10 @@ function listenForSocialEvents() {
         // append a fresh notice each time — that's what made the panel flicker:
         // notice appears, real messages push it out via trimChildren cap, next
         // event re-appends, cycle repeats.
-        if (currentTab === targetChannelId) {
+        // Show the connect/end notice on the right tab — both per-channel
+        // tabs AND the live tab (when this is the auto subscription).
+        const isAutoForLive = targetChannelId === '__live_yt_auto__' && currentTab === 'live'
+        if (currentTab === targetChannelId || isAutoForLive) {
           const msgsEl = document.getElementById('hs-mc-messages')
           const upsertNotice = (text, color) => {
             if (!msgsEl) return
@@ -18263,6 +18281,7 @@ const STORAGE_KEY = 'heatsync_multichat';
   let pendingMessage = '';     // Persists across tab switches
   let tabPosition = 'top'; // 'top', 'right', 'bottom', 'left'
   let resizeObserver = null; // Tracks overlay top sync observer
+  let _updateMcLayout = () => {} // Set by ensureUIElements; callable from rotateTabPosition
   let _mcStorageListener = null;
 
   // Muted users (right-click to hide) — loaded async from chrome.storage.local
@@ -20423,14 +20442,25 @@ const STORAGE_KEY = 'heatsync_multichat';
       tab.className = 'hs-mc-tab';
       const id = typeof ch === 'string' ? ch : ch.id;
       tab.dataset.tab = id;
-      // Show best human-readable name: twitch > kick > youtube channel > id
+      // Show best human-readable name. Order:
+      //   1. ch.twitch / ch.kick if present
+      //   2. resolved channelName from youtubeLinks (set by youtube_status)
+      //   3. @handle parsed from the youtube URL
+      //   4. ch.id when it looks like a real handle (i.e. user-named, not a
+      //      generated `linked_<ts>` / `yt-<ts>` id)
+      //   5. URL fallback (last resort — would have shown "watch?v=…" before)
       let label = id
       if (typeof ch !== 'string') {
         if (ch.twitch) label = ch.twitch
         else if (ch.kick) label = ch.kick
         else if (ch.youtube) {
-          const m = ch.youtube.match(/@([^/]+)/)
-          label = m ? m[1] : ch.youtube.replace(/^https?:\/\/(www\.)?youtube\.com\//, '').replace(/\/.*$/, '')
+          const linked = youtubeLinks.get(ch.id)
+          const m = ch.youtube.match(/@([^/?]+)/)
+          const looksAuto = !ch.id || /^(linked|yt|kick|twitch)[-_]\d+$/.test(ch.id)
+          if (linked?.channelName) label = linked.channelName
+          else if (m) label = m[1]
+          else if (!looksAuto) label = ch.id
+          else label = ch.youtube.replace(/^https?:\/\/(www\.)?youtube\.com\//, '').replace(/\/.*$/, '')
         }
       }
       tab.textContent = label;
@@ -20438,6 +20468,14 @@ const STORAGE_KEY = 'heatsync_multichat';
       if (liveChannelSet.size > 0) {
         const twitch = typeof ch === 'string' ? ch : ch.twitch || ch.id
         tab.dataset.live = String(liveChannelSet.has(twitch.toLowerCase()))
+      }
+      // YT-only tabs aren't in liveChannelSet (which is Twitch-only), so
+      // re-derive live state from the resolved YouTube subscription. This
+      // also wins the race when the youtube_status connected event arrived
+      // before the tabbar was rendered.
+      if (typeof ch !== 'string' && ch.youtube && !ch.twitch && !ch.kick) {
+        const ytLink = youtubeLinks.get(ch.id)
+        if (ytLink?.videoId) tab.dataset.live = 'true'
       }
       if (addBtn) addBtn.before(tab);
       else scrollSection.appendChild(tab);
@@ -20620,7 +20658,9 @@ const STORAGE_KEY = 'heatsync_multichat';
       if (ytChatFrame) {
         const frameHeight = ytChatFrame.offsetHeight || 500
         ytChatFrame.style.display = 'none'
-        container.style.cssText = `position:relative;display:flex;flex-direction:column;height:${frameHeight}px;overflow:hidden;`
+        // Only set height inline — let CSS rules govern display/position/flex-direction
+        // so .hs-tabs-left/right can flip flex-direction to row when needed.
+        container.style.cssText = `height:${frameHeight}px;overflow:hidden;`
       }
       parent.appendChild(container)
       // If YouTube has its chat sidebar collapsed (#chat-container is 0-wide),
@@ -20749,29 +20789,56 @@ const STORAGE_KEY = 'heatsync_multichat';
       }
     }
 
-    // Sync overlay top with tabbar height (handles wrapped tabs)
-    // Skip for vertical tabs — CSS handles positioning
-    if (tabBarElement && overlayElement && !resizeObserver) {
-      resizeObserver = new ResizeObserver(() => {
-        if (!tabBarElement || !overlayElement) return
-        if (tabPosition !== 'top') {
-          // Only top tabs need dynamic top offset — all others use CSS positioning
-          overlayElement.style.removeProperty('top')
-          overlayElement.style.removeProperty('bottom')
-          return;
-        }
-        const h = tabBarElement.getBoundingClientRect().height;
-        if (h > 0) overlayElement.style.top = h + 'px';
-      });
-      resizeObserver.observe(tabBarElement);
-      cleanup.trackObserver(resizeObserver);
-      if (tabPosition !== 'top') {
-        overlayElement.style.removeProperty('top')
-        overlayElement.style.removeProperty('bottom')
-      } else {
-        const h = tabBarElement.getBoundingClientRect().height;
-        if (h > 0) overlayElement.style.top = h + 'px';
+    // Adjust overlay/inputbar/tabbar geometry based on actual tabbar+inputbar
+    // dimensions — handles multi-row tabbar wrapping AND vertical tab columns.
+    // Single source of truth so CSS hardcodes don't drift from real layout.
+    _updateMcLayout = () => {
+      if (!tabBarElement || !overlayElement) return
+      const tabRect = tabBarElement.getBoundingClientRect()
+      const tw = tabRect.width
+      const th = tabRect.height
+      const ih = inputBarElement ? inputBarElement.getBoundingClientRect().height : 0
+
+      // Reset before re-applying to avoid stale rules between transitions
+      for (const el of [overlayElement, inputBarElement, tabBarElement]) {
+        if (!el) continue
+        el.style.removeProperty('top')
+        el.style.removeProperty('bottom')
+        el.style.removeProperty('left')
+        el.style.removeProperty('right')
       }
+
+      if (tabPosition === 'top') {
+        if (th > 0) overlayElement.style.top = th + 'px'
+        overlayElement.style.bottom = ih + 'px'
+      } else if (tabPosition === 'bottom') {
+        overlayElement.style.top = '0px'
+        overlayElement.style.bottom = (th + ih) + 'px'
+        // Park tabbar directly above inputbar
+        if (tabBarElement) tabBarElement.style.bottom = ih + 'px'
+      } else if (tabPosition === 'right') {
+        overlayElement.style.top = '0px'
+        overlayElement.style.bottom = ih + 'px'
+        if (tw > 0) {
+          overlayElement.style.right = tw + 'px'
+          if (inputBarElement) inputBarElement.style.right = tw + 'px'
+        }
+      } else if (tabPosition === 'left') {
+        overlayElement.style.top = '0px'
+        overlayElement.style.bottom = ih + 'px'
+        if (tw > 0) {
+          overlayElement.style.left = tw + 'px'
+          if (inputBarElement) inputBarElement.style.left = tw + 'px'
+        }
+      }
+    }
+
+    if (tabBarElement && overlayElement && !resizeObserver) {
+      resizeObserver = new ResizeObserver(_updateMcLayout)
+      resizeObserver.observe(tabBarElement)
+      if (inputBarElement) resizeObserver.observe(inputBarElement)
+      cleanup.trackObserver(resizeObserver)
+      _updateMcLayout()
     }
 
     // Auto-show overlay if not already visible
@@ -21204,8 +21271,19 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     const scBadge = isSuperChat && m.amount ? `<span class="hs-mc-sc-badge" style="background:${safeScColor};color:#000;padding:0 4px;border-radius:0;font-size:10px;font-weight:700;margin-right:3px;">${escapeHtml(m.amount)}</span>` : ''
     const bitsBadge = m.bits ? `<span class="hs-mc-bits-badge" title="${m.bits} bits">${m.bits} bits</span>` : ''
     const paintStyle = m.userId ? getMcPaintStyle(m.userId) : ''
-    const userBaseUrl = plat === 'kick' ? 'https://kick.com' : plat === 'yt' ? 'https://youtube.com/@' : 'https://twitch.tv'
-    const userLink = `<a href="${userBaseUrl}/${encodeURIComponent(m.user)}" target="_blank" class="hs-mc-user" data-username="${escapeHtml(m.user.toLowerCase())}" data-platform="${plat}" style="${paintStyle || 'color:' + sanitizeColor(m.color || '#fff')}">${escapeHtml(m.user)}</a>`;
+    // Build the channel link for the username. YouTube usernames arrive
+    // prefixed with "@" so we strip it before concatenating to avoid
+    // youtube.com/@/%40handle-style double-encoding.
+    let userHref
+    if (plat === 'kick') {
+      userHref = `https://kick.com/${encodeURIComponent(m.user)}`
+    } else if (plat === 'yt') {
+      const ytHandle = (m.user || '').replace(/^@/, '')
+      userHref = `https://youtube.com/@${encodeURIComponent(ytHandle)}`
+    } else {
+      userHref = `https://twitch.tv/${encodeURIComponent(m.user)}`
+    }
+    const userLink = `<a href="${userHref}" target="_blank" class="hs-mc-user" data-username="${escapeHtml(m.user.toLowerCase())}" data-platform="${plat}" style="${paintStyle || 'color:' + sanitizeColor(m.color || '#fff')}">${escapeHtml(m.user)}</a>`;
     let avatarHtml = ''
     if (avatarsEnabled) {
       const userKey = m.user.toLowerCase()
@@ -22632,13 +22710,22 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
         const id = typeof ch === 'string' ? ch : ch.id;
         const twitch = typeof ch === 'string' ? ch : ch.twitch || ch.id;
         const tab = tabBarElement?.querySelector(`[data-tab="${id}"]`);
-        if (tab) tab.dataset.live = String(liveSet.has(twitch.toLowerCase()));
+        // Twitch helix is the source of truth for Twitch channels. For
+        // YT-only channels there's no twitch handle to query, so we leave
+        // the dot alone — youtube_status / message-flow handlers own it.
+        const isYtOnly = typeof ch !== 'string' && !ch.twitch && !ch.kick && ch.youtube
+        if (tab && !isYtOnly) tab.dataset.live = String(liveSet.has(twitch.toLowerCase()));
       });
 
-      // Update live tab's own red dot based on selected channel
-      const liveTab = tabBarElement?.querySelector('[data-tab="live"]');
-      const curLive = getLiveChannel()?.toLowerCase();
-      if (liveTab) liveTab.dataset.live = String(curLive && liveSet.has(curLive));
+      // Update live tab's own red dot based on selected channel. On a YT
+      // host page the "selected channel" is a videoId (e.g. jfKfPfyJRdk),
+      // which is never in the Twitch live-set, so we'd always stamp 'false'
+      // and clobber the chatframe-based detection. Defer to detectOfflineState.
+      if (hostPlatform !== 'yt') {
+        const liveTab = tabBarElement?.querySelector('[data-tab="live"]');
+        const curLive = getLiveChannel()?.toLowerCase();
+        if (liveTab) liveTab.dataset.live = String(curLive && liveSet.has(curLive));
+      }
 
       // If override channel went offline, fall back to URL channel or first live
       if (liveChannel && !liveSet.has(liveChannel)) {
@@ -23104,11 +23191,8 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     document.body.classList.remove('hs-tabs-top', 'hs-tabs-right', 'hs-tabs-bottom', 'hs-tabs-left');
     document.body.classList.add(`hs-tabs-${tabPosition}`);
 
-    // Clear stale inline positioning from ResizeObserver — CSS handles non-top layouts
-    if (overlayElement) {
-      overlayElement.style.removeProperty('top')
-      overlayElement.style.removeProperty('bottom')
-    }
+    // Re-run dynamic layout — clears stale inline rules + applies fresh ones for new position.
+    try { _updateMcLayout() } catch (_) {}
 
     // Re-apply column width (accounts for vertical tab offset)
     applyChatWidth()
@@ -23459,11 +23543,26 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
         if (isLive) kickLiveFound = true
       }
       checkKickLive()
-      // Fast poll until video found, then slow poll
       const fastPoll = cleanup.setInterval(() => {
         checkKickLive()
         if (kickLiveFound) { cleanup.clearInterval(fastPoll); cleanup.setInterval(checkKickLive, 10000) }
       }, 1000)
+      return
+    }
+    // On YouTube, the live_chat iframe only loads on live streams; presence
+    // there is the most reliable "is live" signal we can get without polling
+    // the InnerTube API.
+    if (hostPlatform === 'yt') {
+      function checkYtLive() {
+        const cf = document.getElementById('chatframe')
+        const hasChatFrame = !!cf && (() => { try { return !!cf.contentDocument } catch { return false } })()
+        const isLive = hasChatFrame || !!_autoYtVideoId
+        const liveTab = tabBarElement?.querySelector('[data-tab="live"]')
+        if (liveTab) liveTab.dataset.live = String(isLive)
+        document.body.classList.toggle('hs-offline', !isLive)
+      }
+      checkYtLive()
+      cleanup.setInterval(checkYtLive, 4000)
       return
     }
     // Popout chat has no video — don't mark as offline
@@ -24447,11 +24546,25 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     spaReinitializing = true;
     _layoutWatcherStarted = false;
 
-    // Unsubscribe auto-YouTube from previous channel
+    // Unsubscribe auto-YouTube from previous channel AND every per-channel
+    // YT subscription so init() can cleanly re-subscribe each. Otherwise the
+    // server sees duplicate youtube:subscribe events on every SPA navigation
+    // and may re-deliver buffered messages.
     chrome.runtime.sendMessage({
       type: 'youtube_ws_unsubscribe', channelId: '__live_yt_auto__'
     }).catch(() => {})
     channelYtMessages.delete('__live_yt_auto__')
+    for (const ch of config.channels) {
+      if (typeof ch === 'string' || !ch.youtube) continue
+      const link = youtubeLinks.get(ch.id)
+      chrome.runtime.sendMessage({
+        type: 'youtube_ws_unsubscribe',
+        channelId: ch.id,
+        url: ch.youtube,
+        videoId: link?.videoId || ''
+      }).catch(() => {})
+      youtubeLinks.delete(ch.id)
+    }
 
     // Close old read-only IRC to prevent zombie WebSocket reconnect loops
     // NOTE: auth IRC (for sending) is NOT killed here — it survives SPA navigation

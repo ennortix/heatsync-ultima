@@ -465,11 +465,22 @@ function listenForSocialEvents() {
       // Dedup against message buffer (survives WS reconnects unlike 5s hash)
       if (targetChannelId && isYtDuplicate(msg.user, msg.text, targetChannelId)) return
 
+      // Resolve a Twitch-channel name for emote lookup. YT-relayed messages
+      // belong to a streamer who likely also has Twitch/Kick channel emotes
+      // (BTTV/FFZ/7TV) configured under their Twitch handle. Without this
+      // hint, processEmotes only sees globals + the user's heatsync inventory,
+      // missing per-channel emotes for the linked streamer.
+      let ytChannelHint = null
+      if (targetChannelId && targetChannelId !== '__live_yt_auto__') {
+        const linkedCh = config.channels.find(c => typeof c !== 'string' && c.id === targetChannelId)
+        if (linkedCh) ytChannelHint = linkedCh.twitch || linkedCh.kick || null
+      }
+
       const ytMsg = {
         user: msg.user,
         text: msg.text,
         color: msg.color || '#ff0000',
-        channel: 'youtube',
+        channel: ytChannelHint || 'youtube',
         time: msg.time,
         platform: 'youtube',
         emotes: msg.emotes || [],
@@ -597,7 +608,10 @@ function listenForSocialEvents() {
         // append a fresh notice each time — that's what made the panel flicker:
         // notice appears, real messages push it out via trimChildren cap, next
         // event re-appends, cycle repeats.
-        if (currentTab === targetChannelId) {
+        // Show the connect/end notice on the right tab — both per-channel
+        // tabs AND the live tab (when this is the auto subscription).
+        const isAutoForLive = targetChannelId === '__live_yt_auto__' && currentTab === 'live'
+        if (currentTab === targetChannelId || isAutoForLive) {
           const msgsEl = document.getElementById('hs-mc-messages')
           const upsertNotice = (text, color) => {
             if (!msgsEl) return

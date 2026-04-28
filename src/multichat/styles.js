@@ -4657,14 +4657,15 @@ function injectStyles() {
       display: none !important;
     }
     /* Default 'right' position — chat fixed at viewport right, primary
-       fills the rest. Kills YT's responsive small-window stacking
-       behavior since chat is no longer in the flex layout. */
+       fills the rest of #columns. flex:1 1 auto lets primary expand to
+       fill the flex container; margin-right reserves chat-width inside
+       primary's box so content doesn't overlap chat. */
     body.hs-platform-yt.hs-chat-right #primary {
       margin-left: 0 !important;
       margin-right: var(--hs-chat-w, 340px) !important;
-      width: calc(100vw - var(--hs-chat-w, 340px)) !important;
-      max-width: calc(100vw - var(--hs-chat-w, 340px)) !important;
-      flex: 0 0 auto !important;
+      flex: 1 1 auto !important;
+      width: auto !important;
+      max-width: none !important;
     }
     body.hs-platform-yt.hs-chat-right ytd-watch-flexy {
       --ytd-watch-flexy-side-menu-margin: 0 !important;
@@ -4695,9 +4696,9 @@ function injectStyles() {
       margin-left: var(--hs-chat-w, 340px) !important;
       margin-right: 0 !important;
       padding-top: 0 !important;
-      width: calc(100vw - var(--hs-chat-w, 340px)) !important;
-      max-width: calc(100vw - var(--hs-chat-w, 340px)) !important;
-      flex: 0 0 auto !important;
+      flex: 1 1 auto !important;
+      width: auto !important;
+      max-width: none !important;
     }
     /* Kill the secondary's residual 16px (its own padding/margin still
        takes layout space even with width:0). */

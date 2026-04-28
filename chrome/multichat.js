@@ -24502,8 +24502,10 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       const ytSizedEls = ytSelectors.map(s => document.querySelector(s)).filter(Boolean);
       const PLAYER_GEOM = ['width', 'height', 'max-width', 'max-height', 'min-height'];
       if (chatPosition === 'top' || chatPosition === 'bottom') {
-        const NAV_H = 56, PRIMARY_PAD = 12;
-        const availH = Math.max(200, innerHeight - chatHeight - NAV_H - PRIMARY_PAD);
+        // No nav/padding subtraction — our CSS zeros #page-manager margin-top
+        // and #primary padding-top so the player can fill the whole non-chat
+        // viewport area without leaving a gap.
+        const availH = Math.max(200, innerHeight - chatHeight);
         const aspectW = availH * 16 / 9;
         const maxW = innerWidth - 32;
         const finalW = Math.min(aspectW, maxW);

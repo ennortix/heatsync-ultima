@@ -216,6 +216,12 @@ let cachedFollowColors = null; // Cache follow:colors for late-loading content s
 let activeYoutubeVideoId = null; // Currently subscribed YouTube videoId (for WS reconnect)
 const ytVideoToChannel = new Map(); // videoId → channelId (for per-channel YouTube routing)
 const youtubeChannelUrls = {} // channelId → url (in-memory source of truth, persisted to storage)
+// Pending subscriptions whose URL doesn't carry a videoId (e.g. https://youtube.com/@user/live).
+// We can't pre-populate ytVideoToChannel for these, so we track them here. When the WS server
+// echoes back a youtube:status connected event without a channelId field, we attribute the
+// videoId to the most-recent pending entry — without this fallback the status broadcasts as
+// channelId='global' and every chat message that follows gets dropped by the receiving tab.
+const pendingYtSubscribes = []  // [{ channelId, url, ts }] LIFO, capped, ts for staleness
 const ytChannelHandleCache = new Map() // videoId → channel handle (oEmbed lookup, session-scoped)
 async function getYtChannelHandle(videoId) {
   if (!videoId) return null
@@ -502,19 +508,11 @@ async function getAuthCookie() {
     return authToken
   }
 
-  // Try reading from encrypted storage (persists across restarts)
-  try {
-    const stored = await retrieveToken()
-    if (stored) {
-      log(' Read auth token from encrypted storage')
-      authToken = stored
-      return stored
-    }
-  } catch (err) {
-    console.error('[HS] retrieveToken error:', err)
-  }
-
-  // Read httpOnly auth cookie directly via cookies API
+  // Read fresh cookie FIRST. Encrypted storage was preferred before, but a
+  // stale stored token (from a logout/re-login on heatsync.org while the SW
+  // was suspended) would silently reauth with the dead value, the server
+  // would reply authentication_failed, and authFailedBlock would pin us in
+  // a no-reconnect state. The browser's cookie store is the source of truth.
   try {
     const cookie = await browser.cookies.get({ url: 'https://heatsync.org', name: 'auth' })
     if (cookie?.value) {
@@ -525,6 +523,19 @@ async function getAuthCookie() {
     }
   } catch (err) {
     log(' cookies.get failed:', err.message)
+  }
+
+  // Fallback: encrypted storage (cookie may be unavailable — third-party
+  // contexts, restricted profiles).
+  try {
+    const stored = await retrieveToken()
+    if (stored) {
+      log(' Read auth token from encrypted storage')
+      authToken = stored
+      return stored
+    }
+  } catch (err) {
+    console.error('[HS] retrieveToken error:', err)
   }
 
   log(' No auth token available')
@@ -2317,8 +2328,13 @@ async function blockEmote(hash) {
       log(' Removed blocked emote from local inventory:', removedEmote.name);
     }
 
-    // Persist updated blocked set so a page refresh doesn't restore stale state
-    browser.storage.local.set({ blocked_emotes: Array.from(blockedEmotes) }).catch(() => {})
+    // Persist updated blocked set so a page refresh doesn't restore stale state.
+    // Overwrite any stale `blocked_update` snapshot in the debounce queue too —
+    // otherwise a queued flush from a prior broadcast can clobber this fresh
+    // direct write 5s later, re-blocking what the user just unblocked.
+    const blockedArr = Array.from(blockedEmotes)
+    _broadcastStorageQueue.set('blocked_emotes', blockedArr)
+    browser.storage.local.set({ blocked_emotes: blockedArr }).catch(() => {})
     broadcastToTabs({ type: 'emote_blocked', hash });
     return { success: true };
   } catch (error) {
@@ -2366,8 +2382,12 @@ async function unblockEmote(hash) {
       return { success: false, error: error.error || `HTTP ${response.status}` };
     }
 
-    // Persist updated blocked set so a page refresh doesn't restore stale state
-    browser.storage.local.set({ blocked_emotes: Array.from(blockedEmotes) }).catch(() => {})
+    // Persist updated blocked set so a page refresh doesn't restore stale state.
+    // Same rationale as blockEmote: keep the debounced queue snapshot in sync
+    // so a 5s-later flush can't re-add the hash the user just unblocked.
+    const blockedArr = Array.from(blockedEmotes)
+    _broadcastStorageQueue.set('blocked_emotes', blockedArr)
+    browser.storage.local.set({ blocked_emotes: blockedArr }).catch(() => {})
     broadcastToTabs({ type: 'emote_unblocked', hash });
     return { success: true };
   } catch (error) {
@@ -2802,7 +2822,14 @@ function handleWSMessage(msg) {
       isAuthenticated = false;
       authToken = null;
       authFailedBlock = true;
+      // Drop the stored token so the next reconnect (after a fresh login)
+      // doesn't keep replaying the dead one and looping us back to here.
+      browser.storage.local.remove(['auth_token_encrypted', 'auth_token']).catch(() => {})
       if (socket) { socket.close(); }
+      // Tell content scripts so the multichat panel can prompt the user to
+      // log in — without this signal YT chat (which depends on the server
+      // scraping for us) silently produces zero messages.
+      broadcastToTabs({ type: 'auth_changed', loggedIn: false, reason: 'authentication_failed' })
       break;
 
     case 'emote:broadcast':
@@ -2880,12 +2907,14 @@ function handleWSMessage(msg) {
     case 'multichat:config':
       // Cross-device sync: server sent updated multichat config
       if (Array.isArray(msg.channels)) {
-        // Validate channel objects — reject malformed data to prevent CRLF injection in IRC
+        // Validate channel objects — reject malformed data to prevent CRLF injection in IRC.
+        // twitch is sent to IRC so it must be username-shaped. kick allows hyphens.
+        // youtube is a full https URL we resolve later; reject anything else.
         const validChannels = msg.channels.filter(ch => {
           if (!ch || typeof ch !== 'object') return false
-          for (const key of ['twitch', 'kick', 'youtube']) {
-            if (ch[key] && (typeof ch[key] !== 'string' || !/^[a-zA-Z0-9_]{1,25}$/.test(ch[key]))) return false
-          }
+          if (ch.twitch && (typeof ch.twitch !== 'string' || !/^[a-zA-Z0-9_]{1,25}$/.test(ch.twitch))) return false
+          if (ch.kick && (typeof ch.kick !== 'string' || !/^[a-zA-Z0-9_-]{1,25}$/.test(ch.kick))) return false
+          if (ch.youtube && (typeof ch.youtube !== 'string' || !/^https:\/\/(www\.)?youtube\.com\//i.test(ch.youtube) || /[\r\n]/.test(ch.youtube))) return false
           return true
         })
         log(' 📋 Multichat config sync received:', validChannels.length, 'channels')
@@ -2944,20 +2973,51 @@ function handleWSMessage(msg) {
 
     case 'youtube:chat':
       // Relay YouTube chat messages to all Twitch/Kick tabs
-      if (msg.messages && Array.isArray(msg.messages)) {
-        // Use server-echoed channelId, fall back to local map
-        const channelId = msg.channelId || ytVideoToChannel.get(msg.videoId) || 'global'
+      if (msg.messages && Array.isArray(msg.messages) && msg.messages.length > 0) {
+        // Use server-echoed channelId, fall back to local map.
+        // Same pending-subscribe fallback as youtube:status — covers the case
+        // where the first chat batch races ahead of the status event.
+        let channelId = msg.channelId || ytVideoToChannel.get(msg.videoId)
+        if (!channelId && msg.videoId && pendingYtSubscribes.length) {
+          const pend = pendingYtSubscribes.pop()
+          channelId = pend.channelId
+          setYtVideoChannel(msg.videoId, channelId)
+        }
+        if (!channelId) channelId = 'global'
         // Update local map if server provided channelId
         if (msg.channelId && msg.videoId) setYtVideoChannel(msg.videoId, msg.channelId)
-        for (const ytMsg of msg.messages) {
-          broadcastToTabs({
+
+        // Drip-feed: server polls YT every few seconds and sends the whole
+        // window of messages in one frame. Broadcasting them all in a single
+        // tick reads as wall-of-text spam and bunches them ahead of any
+        // concurrent Twitch/Kick traffic. Stagger by relative timestamp (or
+        // fixed stride if timestamps are missing/insane) so the DOM appends
+        // intermingle with live cross-platform messages at natural cadence.
+        // Use Date.now() at dispatch time for the displayed `time` so each
+        // YT msg shows up "as it lands" rather than retroactively dated.
+        const sorted = msg.messages.slice().sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0))
+        const baseT = sorted[0].timestamp || 0
+        const lastT = sorted[sorted.length - 1].timestamp || 0
+        const span = Math.max(0, lastT - baseT)
+        const DRIP_CAP_MS = 4000           // total drip window — bounded so backlog doesn't stall
+        const FIXED_STRIDE_MS = 200        // fallback when timestamps missing/equal
+        const useNaturalSpacing = baseT > 0 && span > 0 && span < 15000
+        const scale = useNaturalSpacing ? Math.min(1, DRIP_CAP_MS / span) : 0
+
+        for (let i = 0; i < sorted.length; i++) {
+          const ytMsg = sorted[i]
+          let delay = useNaturalSpacing
+            ? Math.round(((ytMsg.timestamp || baseT) - baseT) * scale)
+            : i * FIXED_STRIDE_MS
+          if (delay > DRIP_CAP_MS) delay = DRIP_CAP_MS
+          const dispatch = () => broadcastToTabs({
             type: 'youtube_chat_message',
             videoId: msg.videoId,
             channelId,
             user: ytMsg.user,
             text: ytMsg.text,
             color: ytMsg.color || '#ff0000',
-            time: ytMsg.timestamp || Date.now(),
+            time: Date.now(),
             platform: 'youtube',
             emotes: ytMsg.emotes || [],
             msgType: ytMsg.type, // 'text', 'superchat', 'supersticker'
@@ -2969,6 +3029,8 @@ function handleWSMessage(msg) {
             systemMsg: ytMsg.systemMsg || undefined,
             source: 'server', // distinguish from content script messages
           })
+          if (delay <= 0) dispatch()
+          else setTimeout(dispatch, delay)
         }
       }
       break
@@ -2977,10 +3039,19 @@ function handleWSMessage(msg) {
       // Resolve channelId BEFORE potentially deleting the videoId mapping —
       // otherwise an `ended` event broadcasts with channelId='global' and the
       // multichat panel can't update the right channel tab.
-      const resolvedChannelId = msg.channelId || ytVideoToChannel.get(msg.videoId) || 'global'
+      // Fallback: server may not echo channelId for @user/live subscribes,
+      // so attribute via pending-subscribe LIFO when status carries a fresh
+      // videoId we haven't seen yet.
+      let resolvedChannelId = msg.channelId || ytVideoToChannel.get(msg.videoId)
+      if (!resolvedChannelId && msg.status === 'connected' && msg.videoId && pendingYtSubscribes.length) {
+        const pend = pendingYtSubscribes.pop()
+        resolvedChannelId = pend.channelId
+        setYtVideoChannel(msg.videoId, resolvedChannelId)
+      }
+      if (!resolvedChannelId) resolvedChannelId = 'global'
       if (msg.status === 'connected') {
         activeYoutubeVideoId = msg.videoId
-        if (msg.channelId && msg.videoId) setYtVideoChannel(msg.videoId, msg.channelId)
+        if (msg.videoId) setYtVideoChannel(msg.videoId, resolvedChannelId)
       } else if (msg.status === 'ended' || msg.status === 'error') {
         if (activeYoutubeVideoId === msg.videoId) activeYoutubeVideoId = null
         ytVideoToChannel.delete(msg.videoId)
@@ -3546,12 +3617,20 @@ async function handleMessage(message, sender, sendResponse) {
     return true
   }
 
-  // YouTube chat relay — forward to Twitch/Kick tabs only (not back to YouTube)
+  // YouTube chat relay — forward to Twitch/Kick tabs only.
+  // youtube-content.js scrapes the YT live_chat iframe and sends `channelId: videoId`.
+  // Remap to the real extension channelId so the receiving tab can route — otherwise
+  // messages bucket under a videoId key that no tab is listening on.
   if (message.type === 'youtube_chat_message' && !message.source) {
-    // Only relay content-script-sourced messages (no source field)
+    const vId = message.videoId
+    const mapped = ytVideoToChannel.get(vId)
+      || (vId && vId === activeYoutubeVideoId ? '__live_yt_auto__' : null)
+    const relay = mapped && mapped !== message.channelId
+      ? { ...message, channelId: mapped }
+      : message
     browser.tabs.query({ url: ['*://*.twitch.tv/*', '*://*.kick.com/*'] }).then(tabs => {
       for (const tab of tabs) {
-        browser.tabs.sendMessage(tab.id, message).catch(() => {})
+        browser.tabs.sendMessage(tab.id, relay).catch(() => {})
       }
     }).catch(() => {})
     sendResponse({ ok: true })
@@ -3679,6 +3758,14 @@ async function handleMessage(message, sender, sendResponse) {
     return true // async sendResponse
   }
 
+  // Auth state probe — multichat content script asks for current state on init
+  // so it can show the login banner immediately on a tab opened after the
+  // auth_changed broadcast already fired.
+  if (message.type === 'get_auth_state') {
+    sendResponse({ loggedIn: !!authToken && !authFailedBlock })
+    return true
+  }
+
   // YouTube subscribe via WS server — from multichat content script
   if (message.type === 'youtube_ws_subscribe') {
     const url = message.url
@@ -3688,6 +3775,11 @@ async function handleMessage(message, sender, sendResponse) {
       // Extract videoId from URL for routing (always, even if socket is down)
       const vidMatch = url.match(/[?&]v=([^&]+)/) || url.match(/\/live\/([^?&\/]+)/) || url.match(/youtu\.be\/([^?&]+)/)
       if (vidMatch) setYtVideoChannel(vidMatch[1], channelId)
+      else {
+        // No videoId in URL — server resolves it. Track for status-fallback attribution.
+        pendingYtSubscribes.push({ channelId, url, ts: Date.now() })
+        if (pendingYtSubscribes.length > 20) pendingYtSubscribes.shift()
+      }
       // wsSend handles both immediate send and queue-on-reconnect; previous
       // gating let subscribes silently drop when the socket was closing.
       log('[hs-bg] youtube:subscribe (open?', isSocketOpen(), '):', { url, channelId })
@@ -4254,7 +4346,12 @@ async function initialize() {
     .catch(e => { console.warn('session storage restore failed:', e); return null })
 
   // Kick off WebSocket connect AS SOON AS auth resolves — don't wait for storage to finish.
-  tokenP.then(() => connectWebSocket()).catch(() => {})
+  // If no auth token, surface that to content scripts so the multichat panel can prompt
+  // the user. cookies.onChanged will broadcast loggedIn:true once they sign in.
+  tokenP.then(t => {
+    if (!t) broadcastToTabs({ type: 'auth_changed', loggedIn: false, reason: 'no_token' })
+    return connectWebSocket()
+  }).catch(() => {})
 
   // Batch-load all cached state from storage in ONE read
   try {

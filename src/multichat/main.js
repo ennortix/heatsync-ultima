@@ -1669,7 +1669,10 @@
       if (handle) handle.style.display = 'none'
       return
     }
-    if (handle) handle.style.display = ''
+    // Note: NOT setting handle.style.display — the unified resize handle
+    // (#hs-c-resize-handle) owns ALL chat positions on YT, so the platform
+    // handle stays hidden by hidePlatformResizeHandles. Clearing display
+    // here would un-hide it and render two orange bars.
     const ytMax = getYtMaxChatWidth()
     chatWidth = Math.min(ytMax, Math.max(MIN_CHAT_WIDTH, chatWidth))
     secondary.style.setProperty('width', chatWidth + 'px', 'important')

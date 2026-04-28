@@ -5438,6 +5438,11 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     log('Chat position:', chatPosition, 'theatre:', theatreMode);
     // Reflow the multichat layout so input/overlay/picker re-anchor.
     try { _updateMcLayout?.() } catch (_) {}
+    // YT computes player size in JS and caches it; nudge it to re-read
+    // --ytd-watch-flexy-non-player-height by dispatching a resize event.
+    if (hostPlatform === 'yt' && (chatPosition === 'top' || chatPosition === 'bottom')) {
+      try { window.dispatchEvent(new Event('resize')) } catch (_) {}
+    }
   }
 
   // Inline-style overrides keyed off chatPosition. These run AFTER class

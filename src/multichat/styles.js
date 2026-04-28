@@ -4633,9 +4633,18 @@ function injectStyles() {
     body.hs-platform-yt.hs-chat-bottom #primary {
       margin-bottom: var(--hs-chat-h, 35vh) !important;
     }
-    /* Constrain YT player container so it shrinks to leave room for the
-       horizontal chat strip — without this, the player keeps its natural
-       16:9 height and overlaps the bottom strip. */
+    /* Tell YT how much vertical space is NOT available for the player so
+       its own layout JS shrinks the player to fit. YT computes player
+       height = viewport - --ytd-watch-flexy-non-player-height. Bumping
+       that var by chat-strip height makes YT shrink the player itself,
+       which keeps the 16:9 aspect ratio (no distortion, no clipping). */
+    body.hs-platform-yt.hs-chat-top ytd-watch-flexy,
+    body.hs-platform-yt.hs-chat-bottom ytd-watch-flexy {
+      --ytd-watch-flexy-non-player-height: calc(56px + 12px + 92px + var(--hs-chat-h, 35vh)) !important;
+      --ytd-watch-flexy-min-player-height: 200px !important;
+    }
+    /* Belt-and-braces: cap player container too, in case YT's JS doesn't
+       re-read the var on every chat-height change. */
     body.hs-platform-yt.hs-chat-top #player-container,
     body.hs-platform-yt.hs-chat-top #player-container-outer,
     body.hs-platform-yt.hs-chat-bottom #player-container,

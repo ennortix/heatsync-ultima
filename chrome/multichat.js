@@ -20625,42 +20625,94 @@ const STORAGE_KEY = 'heatsync_multichat';
         }
       }
 
+      // BULLETPROOF AUTO-SCROLL RULE:
+      // isScrolledUp is set TRUE only by explicit user input — wheel-up,
+      // touchmove going up, PageUp/Home/ArrowUp keys, mousedown on scrollbar
+      // thumb. NEVER by passive scroll events from DOM mutation, render
+      // churn, image-load layout shift, or programmatic scrollMsgsToBottom.
+      // Resume (FALSE) only when scroll events confirm we're back at bottom
+      // AFTER a user-driven scroll, OR via the new-msgs button click, OR
+      // explicit programmatic resume on tab switch.
       let _scrollFrame = null
+      let _userInputScroll = false  // set by wheel/touch/key, cleared after scroll settles
       mcSignal.addEventListener('abort', () => {
         if (_scrollFrame) { cancelAnimationFrame(_scrollFrame); _scrollFrame = null }
       })
-      const updateFromScrollPosition = () => {
-        if (isStaticTab()) {
-          isScrolledUp = msgsEl.scrollTop > ATBOTTOM_PX
-          if (!isScrolledUp) { newBtn.style.display = 'none'; newMessageCount = 0 }
-          return
-        }
-        const atBottom = (msgsEl.scrollHeight - msgsEl.scrollTop - msgsEl.clientHeight) <= ATBOTTOM_PX
-        setPaused(!atBottom)
+
+      const checkAtBottom = () => {
+        if (isStaticTab()) return msgsEl.scrollTop <= ATBOTTOM_PX
+        return (msgsEl.scrollHeight - msgsEl.scrollTop - msgsEl.clientHeight) <= ATBOTTOM_PX
       }
 
-      // Plain scroll event covers ALL scroll mechanisms (wheel, drag, keyboard, touch).
-      // rAF-debounced so high-frequency scroll events don't thrash state.
-      msgsEl.addEventListener('scroll', () => {
+      // Scroll/scrollend handler: ONLY resumes (sets isScrolledUp=false when
+      // user-driven scroll lands at bottom). Never pauses — passive scroll
+      // events caused by DOM mutation during boot would otherwise flip
+      // isScrolledUp=true mid-build, then yellow "N new" accumulates without
+      // ever auto-scrolling.
+      const onScrollMaybeResume = () => {
         if (isProgrammaticScroll) return
+        if (!_userInputScroll) return
+        if (!isScrolledUp) return
+        if (checkAtBottom()) {
+          isScrolledUp = false
+          newMessageCount = 0
+          newBtn.style.display = 'none'
+        }
+      }
+
+      msgsEl.addEventListener('scroll', () => {
         if (_scrollFrame) return
         _scrollFrame = requestAnimationFrame(() => {
           _scrollFrame = null
-          updateFromScrollPosition()
+          onScrollMaybeResume()
         })
       }, { passive: true, signal: mcSignal })
 
       msgsEl.addEventListener('scrollend', () => {
-        if (isProgrammaticScroll) return
         if (_scrollFrame) { cancelAnimationFrame(_scrollFrame); _scrollFrame = null }
-        updateFromScrollPosition()
+        onScrollMaybeResume()
+        // touch-end / wheel-coast finished — clear input flag so subsequent
+        // passive scroll events don't accidentally count as user-driven.
+        _userInputScroll = false
       }, { signal: mcSignal })
 
-      // Wheel-up: pause INSTANTLY (before any scroll event fires) so even a single
-      // notch tick locks the chat. Wheel-down resume is handled by scroll/scrollend.
+      // Wheel-up: pause INSTANTLY (before any scroll event fires).
       msgsEl.addEventListener('wheel', (e) => {
         if (isStaticTab()) return
+        _userInputScroll = true
         if (e.deltaY < 0) setPaused(true)
+      }, { passive: true, signal: mcSignal })
+
+      // Touch: track touchmove direction. Drag DOWN (page scrolls UP visually
+      // — finger moves down means content moves down, we see earlier msgs)
+      // pauses chat. mark _userInputScroll on any touch interaction.
+      let _touchStartY = 0
+      msgsEl.addEventListener('touchstart', (e) => {
+        _touchStartY = e.touches[0]?.clientY || 0
+        _userInputScroll = true
+      }, { passive: true, signal: mcSignal })
+      msgsEl.addEventListener('touchmove', (e) => {
+        if (isStaticTab()) return
+        const y = e.touches[0]?.clientY || 0
+        if (y > _touchStartY + 4) setPaused(true)
+        _touchStartY = y
+      }, { passive: true, signal: mcSignal })
+
+      // Keys that scroll up — pause.
+      msgsEl.addEventListener('keydown', (e) => {
+        if (isStaticTab()) return
+        if (e.key === 'PageUp' || e.key === 'Home' || e.key === 'ArrowUp') {
+          _userInputScroll = true
+          setPaused(true)
+        } else if (e.key === 'PageDown' || e.key === 'End' || e.key === 'ArrowDown' || e.key === ' ') {
+          _userInputScroll = true
+        }
+      }, { signal: mcSignal })
+
+      // Mousedown on scrollbar thumb (target === msgsEl, click outside content)
+      // — flag user input so subsequent scroll counts as user-driven.
+      msgsEl.addEventListener('mousedown', (e) => {
+        if (e.target === msgsEl) _userInputScroll = true
       }, { passive: true, signal: mcSignal })
 
       newBtn.addEventListener('click', () => {

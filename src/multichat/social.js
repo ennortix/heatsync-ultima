@@ -712,16 +712,17 @@ function listenForSocialEvents() {
               for (const el of msgsEl.querySelectorAll('.hs-mc-empty[data-hs-yt-status]')) el.remove()
             }
           } else if (msg.status === 'ended' || msg.status === 'error') {
-            // Drop noise: rate-limit (transient ws-handler 5/min/socket) and
-            // "stream not currently live / chat disabled" — the latter is the
-            // expected state when the user added a YT URL but the streamer
-            // isn't on YT right now, so showing it on every refresh is just
-            // clutter at the bottom of chat.
+            // Drop noise: rate-limit, "not currently live / chat disabled",
+            // AND "could not resolve youtube url" (the expected outcome when
+            // a tab's YT URL is auto-guessed from the twitch handle but the
+            // streamer doesn't have a matching YT — actionable to nobody).
             const errText = msg.error || ''
             const isNoise = msg.status === 'error' && (
               /too many requests/i.test(errText) ||
               /not currently live/i.test(errText) ||
-              /chat is disabled/i.test(errText)
+              /chat is disabled/i.test(errText) ||
+              /could not resolve youtube url/i.test(errText) ||
+              /invalid url/i.test(errText)
             )
             if (!isNoise) {
               // Always prefix with "youtube:" — without it, error text looks

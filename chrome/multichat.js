@@ -13559,9 +13559,15 @@ function ingestReplayYtMsg(targetChannelId, ytMsg) {
   })
 }
 
-// Buffer-push + visible render for ONE paced YT message. Called either
-// directly (no pace needed) or by the pace drainer.
+// Buffer-push + visible render for ONE paced (live) YT message. Critical:
+// overwrite ytMsg.time = Date.now() AT THE MOMENT OF EMIT (not at WS arrival).
+// Without this, every msg in a 5-sec poll batch shares the same arrival ms
+// and the full chronological sort lumps them adjacent, then the next twitch
+// msg slots in below — visible as a YT clump in the bottom of chat.
+// With per-emit Date.now(), each YT msg's time naturally interleaves with
+// the live twitch ms-arrivals that happen between pacer drains.
 function commitPacedYtMsg(targetChannelId, ytMsg) {
+  ytMsg.time = Date.now()
   if (!channelYtMessages.has(targetChannelId)) channelYtMessages.set(targetChannelId, [])
   const buf = channelYtMessages.get(targetChannelId)
   buf.push(ytMsg)
@@ -13594,8 +13600,13 @@ function drainYtPaceQueue(targetChannelId) {
   const q = _ytPaceQueue.get(targetChannelId)
   if (!q || !q.length) return
   const ytMsg = q.shift()
+  // Snapshot original YT timestamp BEFORE commit overwrites it. Used as
+  // the msgTime delta basis for the next drain so paceDelayFor sees the
+  // real chat cadence between consecutive msgs, not the rewritten
+  // commit-time Date.now()s.
+  const realPostMs = ytMsg.time
   commitPacedYtMsg(targetChannelId, ytMsg)
-  _ytPaceLastEmit.set(targetChannelId, { time: Date.now(), msgTime: ytMsg.time })
+  _ytPaceLastEmit.set(targetChannelId, { time: Date.now(), msgTime: realPostMs })
   if (q.length > 0) {
     const due = paceDelayFor(targetChannelId, q[0])
     const handle = setTimeout(() => drainYtPaceQueue(targetChannelId), due)
@@ -13617,8 +13628,9 @@ function enqueueYtForPacing(targetChannelId, ytMsg) {
   const queued = _ytPaceQueue.get(targetChannelId)
   // Idle channel + cooldown elapsed → emit immediately.
   if ((!queued || queued.length === 0) && idleSince >= YT_PACE_MAX_MS) {
+    const realPostMs = ytMsg.time
     commitPacedYtMsg(targetChannelId, ytMsg)
-    _ytPaceLastEmit.set(targetChannelId, { time: now, msgTime: ytMsg.time })
+    _ytPaceLastEmit.set(targetChannelId, { time: now, msgTime: realPostMs })
     return
   }
   // Queue the msg.

@@ -3003,15 +3003,12 @@ function handleWSMessage(msg) {
         // Update local map if server provided channelId
         if (msg.channelId && msg.videoId) setYtVideoChannel(msg.videoId, msg.channelId)
 
-        // Sort by real YouTube timestamps so the content script can place
-        // each msg via fairMerge.
-        // - REPLAY (backfill): use real ytMsg.timestamp so msgs from 30 min
-        //   ago slot between the twitch/kick history at 30 min ago. Without
-        //   this, all backfill clumps at the bottom because Date.now() puts
-        //   them all "now".
-        // - LIVE: use Date.now() so msgs land at the bottom (sticky chat
-        //   semantic). Real YT timestamp is 1-3s old → would mid-insert
-        //   above latest twitch — looks like msgs "appearing in the middle".
+        // Use real ytMsg.timestamp for both replay and live. Mellen's
+        // god-tier rule: every msg lands at its true chronological position
+        // via fairMerge's full sort. live YT msgs may appear slightly above
+        // the most-recent twitch msg if YT's timestamp is older — that's
+        // chronologically correct, not a bug. Backfill ensures hard-refresh
+        // accuracy: msgs from 30 min ago slot into the chat at 30 min ago.
         const sorted = msg.messages.slice().sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0))
         const isReplay = !!msg.replay
         const buildPayload = (ytMsg) => ({
@@ -3021,7 +3018,7 @@ function handleWSMessage(msg) {
           user: ytMsg.user,
           text: ytMsg.text,
           color: ytMsg.color || '#ff0000',
-          time: isReplay ? (ytMsg.timestamp || Date.now()) : Date.now(),
+          time: ytMsg.timestamp || Date.now(),
           platform: 'youtube',
           emotes: ytMsg.emotes || [],
           msgType: ytMsg.type,
@@ -3034,18 +3031,10 @@ function handleWSMessage(msg) {
           source: 'server',
           replay: isReplay,
         })
-
-        if (isReplay) {
-          // Backfill — bulk-dispatch immediately. fairMerge places each msg
-          // at its real chronological position; no flash because they're
-          // not all at the bottom.
-          for (const ytMsg of sorted) broadcastToTabs(buildPayload(ytMsg))
-        } else {
-          // Live poll — content-script paces per-channel via the same min
-          // 60ms / max 400ms cadence used in social.js enqueueYtForPacing.
-          // Dispatch bulk; the pacer handles visual cadence.
-          for (const ytMsg of sorted) broadcastToTabs(buildPayload(ytMsg))
-        }
+        // Bulk dispatch. content-script's social.js routes:
+        //   replay → ingestReplayYtMsg (bulk-buffer + 1 microtask render)
+        //   live   → enqueueYtForPacing (per-channel 60-400ms cadence)
+        for (const ytMsg of sorted) broadcastToTabs(buildPayload(ytMsg))
       }
       break
 

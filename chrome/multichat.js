@@ -19809,11 +19809,20 @@ const STORAGE_KEY = 'heatsync_multichat';
   }
 
   // After a sender's personal set arrives, invalidate cached _renderedHtml on
-  // their buffered messages, then trigger a re-render of the active tab so
-  // already-visible rows pick up the new resolution.
+  // their buffered messages, then debounced-trigger a re-render of the active
+  // tab so already-visible rows pick up the new resolution.
+  // Debounce: fires once 600ms after the LAST sender resolves. During cold
+  // boot ~50+ senders resolve in tight bursts — one renderMessages per batch
+  // caused visible flicker, scroll-handler races (yellow "new msgs" button
+  // showing on fresh load), and stale-state flashes. One coalesced re-render
+  // at the tail of the boot burst replaces all of that.
+  let _upgradeRenderTimer = null
+  const _pendingUpgradeKeys = new Set()
   function upgradeMessagesForSenders(senderKeys) {
     if (!senderKeys?.length) return
-    const keySet = new Set(senderKeys)
+    for (const k of senderKeys) _pendingUpgradeKeys.add(k)
+
+    const keySet = _pendingUpgradeKeys
     const matches = (m) => {
       if (!m) return false
       const k = resolveSenderEmoteKey(m)
@@ -19825,26 +19834,34 @@ const STORAGE_KEY = 'heatsync_multichat';
         if (matches(m)) m._renderedHtml = null
       }
     }
-    // Twitch IRC: walk all joined channels' buffers
+    // Invalidate cached HTML immediately — the next render (debounced or
+    // user-triggered by tab switch / new message) picks up the new emotes.
     if (typeof irc !== 'undefined' && irc?.channels) {
-      for (const ch of irc.channels.keys()) {
-        patchBuf(irc.getMessages(ch))
-      }
+      for (const ch of irc.channels.keys()) patchBuf(irc.getMessages(ch))
     }
-    // Kick IRC: same
     if (typeof kickChat !== 'undefined' && kickChat?.channels) {
-      for (const ch of kickChat.channels.keys()) {
-        patchBuf(kickChat.getMessages(ch))
-      }
+      for (const ch of kickChat.channels.keys()) patchBuf(kickChat.getMessages(ch))
     }
-    // YT messages: per-channel Maps
     if (typeof channelYtMessages !== 'undefined') channelYtMessages.forEach(patchBuf)
-    // Mentions buffer
     if (typeof mentionsBuffer !== 'undefined') patchBuf(mentionsBuffer)
-    // Trigger re-render of currently-visible tab so DOM picks up the new resolution.
-    if (typeof renderMessages === 'function' && typeof currentTab !== 'undefined') {
-      try { renderMessages(currentTab) } catch {}
-    }
+
+    // Debounced re-render of active tab. Reset timer on every new batch so
+    // the eventual render sees the FINAL invalidation set, not a partial mid-
+    // boot snapshot. 600ms is long enough to coalesce a typical boot burst
+    // (~300ms across multiple safeSendMessage round-trips) but short enough
+    // that emote upgrades feel near-instant once chat settles.
+    if (_upgradeRenderTimer) cleanup.clearTimeout(_upgradeRenderTimer)
+    _upgradeRenderTimer = cleanup.setTimeout(() => {
+      _upgradeRenderTimer = null
+      _pendingUpgradeKeys.clear()
+      // Skip re-render entirely if user has scrolled up — they're reading
+      // older messages and don't want their viewport snapping. The emotes
+      // upgrade lazily on next scroll-to-bottom or tab switch.
+      if (isScrolledUp) return
+      if (typeof renderMessages === 'function' && typeof currentTab !== 'undefined') {
+        try { renderMessages(currentTab) } catch {}
+      }
+    }, 600)
   }
 
   // Update cosmetics (badges + paint) in-place without full re-render

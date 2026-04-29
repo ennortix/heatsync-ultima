@@ -92,7 +92,7 @@
     {
       "matches": ["https://*.twitch.tv/*", "https://kick.com/*", "https://*.kick.com/*", "https://www.youtube.com/*"],
       "js": ["emoji-data.js", "shared-utils.js", "multichat.js"],
-      "run_at": "document_idle"
+      "run_at": "document_end"
     },
     {
       "matches": ["https://www.youtube.com/live_chat*"],

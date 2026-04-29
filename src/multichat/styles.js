@@ -134,6 +134,36 @@ function injectStyles() {
       color: #808080 !important;
       border-color: #808080 !important;
     }
+    /* Util-toggle button — same gray frame as util-row buttons */
+    .hs-mc-util-toggle {
+      color: #808080 !important;
+      border-color: #808080 !important;
+      font-weight: 700 !important;
+    }
+    .hs-mc-util-toggle:hover {
+      background: #fff !important;
+      color: #000 !important;
+      border-color: #fff !important;
+    }
+    /* + and H wrapper — invisible in horizontal mode, side-by-side flex row when vertical */
+    .hs-mc-add-row {
+      display: contents;
+    }
+    .hs-tabs-right .hs-mc-add-row,
+    .hs-tabs-left .hs-mc-add-row {
+      display: flex;
+      gap: 2px;
+      width: 100%;
+    }
+    .hs-tabs-right .hs-mc-add-row .hs-mc-tab,
+    .hs-tabs-left .hs-mc-add-row .hs-mc-tab {
+      flex: 1;
+      width: auto;
+    }
+    /* Collapsed state — hide util row for single-line tabs */
+    #hs-mc-tabbar.hs-util-collapsed .hs-mc-util-row {
+      display: none !important;
+    }
     .hs-mc-util-row .hs-mc-tab:hover {
       background: #fff !important;
       color: #000 !important;

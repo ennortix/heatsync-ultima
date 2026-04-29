@@ -1178,6 +1178,36 @@ function injectStyles() {
       color: #808080 !important;
       border-color: #808080 !important;
     }
+    /* Util-toggle button — same gray frame as util-row buttons */
+    .hs-mc-util-toggle {
+      color: #808080 !important;
+      border-color: #808080 !important;
+      font-weight: 700 !important;
+    }
+    .hs-mc-util-toggle:hover {
+      background: #fff !important;
+      color: #000 !important;
+      border-color: #fff !important;
+    }
+    /* + and H wrapper — invisible in horizontal mode, side-by-side flex row when vertical */
+    .hs-mc-add-row {
+      display: contents;
+    }
+    .hs-tabs-right .hs-mc-add-row,
+    .hs-tabs-left .hs-mc-add-row {
+      display: flex;
+      gap: 2px;
+      width: 100%;
+    }
+    .hs-tabs-right .hs-mc-add-row .hs-mc-tab,
+    .hs-tabs-left .hs-mc-add-row .hs-mc-tab {
+      flex: 1;
+      width: auto;
+    }
+    /* Collapsed state — hide util row for single-line tabs */
+    #hs-mc-tabbar.hs-util-collapsed .hs-mc-util-row {
+      display: none !important;
+    }
     .hs-mc-util-row .hs-mc-tab:hover {
       background: #fff !important;
       color: #000 !important;
@@ -19912,6 +19942,7 @@ const STORAGE_KEY = 'heatsync_multichat';
     // Static hardcoded tab buttons — no user input, safe innerHTML
     // Two sections: scrollable channel tabs + fixed utility buttons (always visible)
     // Static hardcoded buttons — all in one wrapping flow, no user input
+    if (utilCollapsed) container.classList.add('hs-util-collapsed');
     container.innerHTML = `
       <div class="hs-mc-tabs-scroll">
         <button class="hs-mc-tab active" data-tab="feed">${t('mc_tab_feed')}</button>
@@ -19920,7 +19951,10 @@ const STORAGE_KEY = 'heatsync_multichat';
         <button class="hs-mc-tab" data-tab="discover">${t('mc_tab_discover')}</button>
         <button class="hs-mc-tab" data-tab="pinned">${t('mc_tab_pinned')}</button>
         <button class="hs-mc-tab" data-tab="live">${t('mc_tab_live')}</button>
-        <button class="hs-mc-tab" data-tab="add">+</button>
+        <div class="hs-mc-add-row">
+          <button class="hs-mc-tab" data-tab="add">+</button>
+          <button class="hs-mc-tab hs-mc-util-toggle" data-tab="util-toggle" title="${t('mc_btn_util_toggle')}">H</button>
+        </div>
       </div>
       <div id="hs-mc-platfilter"></div>
       <div class="hs-mc-util-row">
@@ -19950,6 +19984,8 @@ const STORAGE_KEY = 'heatsync_multichat';
         rotateTabPosition();
       } else if (tabId === 'rotate-chat') {
         rotateChatPosition();
+      } else if (tabId === 'util-toggle') {
+        toggleUtilCollapsed();
       } else if (tabId === 'live') {
         showLiveChannelPicker(tab);
       } else {
@@ -20070,6 +20106,9 @@ const STORAGE_KEY = 'heatsync_multichat';
 
   // Zebra striping — alternate row backgrounds (default on)
   let zebraEnabled = true;
+
+  // Util row collapsed — hides C/T/F-/F+/⚙ for clean single-line tabs
+  let utilCollapsed = false;
 
   // Timestamps on messages (default off)
   let timestampsEnabled = false;
@@ -21507,6 +21546,24 @@ const STORAGE_KEY = 'heatsync_multichat';
     renderMessages(currentTab);
   }
 
+  async function loadUtilCollapsedSetting() {
+    try {
+      const stored = await chrome.storage.sync.get(['ui_settings']);
+      if (stored.ui_settings?.utilCollapsed !== undefined) {
+        utilCollapsed = !!stored.ui_settings.utilCollapsed;
+      }
+      const bar = document.getElementById('hs-mc-tabbar');
+      if (bar) bar.classList.toggle('hs-util-collapsed', utilCollapsed);
+    } catch {}
+  }
+
+  function toggleUtilCollapsed() {
+    utilCollapsed = !utilCollapsed;
+    saveUiSetting('utilCollapsed', utilCollapsed);
+    const bar = document.getElementById('hs-mc-tabbar');
+    if (bar) bar.classList.toggle('hs-util-collapsed', utilCollapsed);
+  }
+
   // Platform filters — per-tab toggle to mute Twitch/Kick/YT messages
   async function loadPlatformFilters() {
     try {
@@ -22039,12 +22096,12 @@ const STORAGE_KEY = 'heatsync_multichat';
     if (!tabBarElement) return;
 
     // Clear existing channel tabs (keep built-in tabs)
-    const existingChannelTabs = tabBarElement.querySelectorAll('.hs-mc-tab[data-tab]:not([data-tab="live"]):not([data-tab="feed"]):not([data-tab="mentions"]):not([data-tab="whispers"]):not([data-tab="discover"]):not([data-tab="pinned"]):not([data-tab="add"]):not([data-tab="rotate"]):not([data-tab="rotate-chat"]):not([data-tab="settings"])');
+    const existingChannelTabs = tabBarElement.querySelectorAll('.hs-mc-tab[data-tab]:not([data-tab="live"]):not([data-tab="feed"]):not([data-tab="mentions"]):not([data-tab="whispers"]):not([data-tab="discover"]):not([data-tab="pinned"]):not([data-tab="add"]):not([data-tab="rotate"]):not([data-tab="rotate-chat"]):not([data-tab="settings"]):not([data-tab="util-toggle"])');
     existingChannelTabs.forEach(t => t.remove());
 
     // Add channel tabs before the + button in the scroll section
     const scrollSection = tabBarElement.querySelector('.hs-mc-tabs-scroll') || tabBarElement;
-    const addBtn = scrollSection.querySelector('[data-tab="add"]');
+    const addBtn = scrollSection.querySelector('.hs-mc-add-row') || scrollSection.querySelector('[data-tab="add"]');
     config.channels.forEach(ch => {
       const tab = document.createElement('button');
       tab.className = 'hs-mc-tab';
@@ -25238,8 +25295,14 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
         // viewports, where subtracting 56 would shrink the player needlessly.
         const sidebarW = getKickSidebarWidth()
         let availH, availW
-        if (chatPosition === 'left' || chatPosition === 'right') {
+        if (chatPosition === 'right') {
           availW = Math.max(200, innerWidth - chatWidth - sidebarW)
+          availH = Math.max(200, innerHeight - navH)
+        } else if (chatPosition === 'left') {
+          // chat panel is fixed at left:0 width:chatW — it covers the sidebar.
+          // Subtracting sidebar again leaves a useless gap on the right edge
+          // of the video.
+          availW = Math.max(200, innerWidth - chatWidth)
           availH = Math.max(200, innerHeight - navH)
         } else {
           availH = Math.max(200, innerHeight - chatHeight - navH)
@@ -25892,6 +25955,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       loadAutomodSettings(),
       loadPlatformBadgesSetting(),
       loadZebraSetting(),
+      loadUtilCollapsedSetting(),
       loadPlatformFilters(),
       loadAutoHideSetting(),
       loadTimestampsSetting(),
@@ -26602,43 +26666,48 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       reconnectEventSubIfDead();
     }, { signal: mcSignal });
 
+    // MutationObserver-based mount waiter: fires the moment `find()` returns
+    // truthy, then disconnects. Beats the old 500ms polling (avg ~250ms
+    // perceived load lag) — content scripts run at document_idle, and the
+    // chat container often mounts within 50-150ms of that. 15s safety
+    // fallback timer in case the observer never fires (SPA bug, slow page).
+    const waitForMount = (find, label) => {
+      if (mcSignal?.aborted) return;
+      const inject = () => {
+        if (mcSignal?.aborted) return;
+        ensureUIElements();
+        switchTab(_savedActiveTab || 'live');
+        startLayoutWatcher();
+      };
+      if (find()) { inject(); return; }
+      let done = false;
+      const obs = new MutationObserver(() => {
+        if (done || !find()) return;
+        done = true;
+        obs.disconnect();
+        inject();
+      });
+      obs.observe(document.documentElement, { childList: true, subtree: true });
+      cleanup.trackObserver(obs);
+      cleanup.setTimeout(() => {
+        if (done) return;
+        done = true;
+        obs.disconnect();
+        if (!find()) log('Failed to find', label, 'after 15s');
+        else inject();
+      }, 15000);
+    };
     if (hostPlatform === 'yt') {
-      // YouTube: wait for chat container, then inject directly
-      let ytAttempts = 0;
-      const tryInjectYt = () => {
-        if (mcSignal?.aborted) return;
-        ytAttempts++;
-        const chatContainer = document.getElementById('chat-container') ||
-                              document.querySelector('ytd-live-chat-frame#chat')?.parentElement;
-        if (chatContainer) {
-          ensureUIElements();
-          switchTab(_savedActiveTab || 'live');
-          startLayoutWatcher();
-        } else if (ytAttempts < 30) {
-          cleanup.setTimeout(tryInjectYt, 500);
-        } else {
-          log('Failed to find YouTube chat container after 30 attempts');
-        }
-      };
-      tryInjectYt();
+      waitForMount(
+        () => document.getElementById('chat-container') ||
+              document.querySelector('ytd-live-chat-frame#chat')?.parentElement,
+        'YouTube chat container'
+      );
     } else if (isKick) {
-      // Kick: no React hook needed, just inject directly
-      let kickAttempts = 0;
-      const tryInjectKick = () => {
-        if (mcSignal?.aborted) return;
-        kickAttempts++;
-        const chatroom = document.getElementById('channel-chatroom') || document.querySelector('[id*="chatroom"]');
-        if (chatroom) {
-          ensureUIElements();
-          switchTab(_savedActiveTab || 'live');
-          startLayoutWatcher();
-        } else if (kickAttempts < 30) {
-          cleanup.setTimeout(tryInjectKick, 500);
-        } else {
-          log('Failed to find Kick chatroom after 30 attempts');
-        }
-      };
-      tryInjectKick();
+      waitForMount(
+        () => document.getElementById('channel-chatroom') || document.querySelector('[id*="chatroom"]'),
+        'Kick chatroom'
+      );
     } else {
       // Twitch: try to hook into React, fall back to MutationObserver
       tryHookReact();

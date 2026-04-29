@@ -3278,6 +3278,16 @@ function injectStyles() {
       overflow-x: hidden;
       flex: 1;
       min-height: 0;
+      /* min-width: 0 + max-width: 100% + box-sizing: border-box keep this
+         column constrained to the tabbar's 82px content area. without these,
+         a long tab name (e.g. "asmongold247") forces flex's stretch to
+         max(parent, min-content) which overflows the tabbar by ~15px,
+         pushing live-dot ::after past the viewport edge on twitch's
+         right-pinned column. */
+      min-width: 0;
+      max-width: 100%;
+      width: 100%;
+      box-sizing: border-box;
       scrollbar-width: none;
     }
     .hs-tabs-right .hs-mc-tabs-scroll::-webkit-scrollbar { display: none; }

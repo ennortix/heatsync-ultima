@@ -4565,11 +4565,12 @@ function injectStyles() {
       overflow: visible !important;
     }
     body.hs-platform-twitch.hs-chat-left .channel-root {
-      /* .channel-root sits at viewport-x = side-nav (50px), so padding-left
-         must subtract that width to land content flush with the HS panel's
-         right edge instead of leaving a 50px gap. Same pattern as the
-         persistent-player left-inset adjustment. */
-      padding-left: calc(var(--hs-chat-w, 340px) - 50px) !important;
+      /* .channel-root sits at viewport-x = side-nav (50px collapsed, ~240px
+         expanded on wide viewports — Twitch flips it at ~1200px). Subtract
+         the live nav width so content lands flush with the HS panel's right
+         edge instead of leaving a gap. JS keeps --hs-twitch-sidenav-w in
+         sync via ResizeObserver on .side-nav. */
+      padding-left: calc(var(--hs-chat-w, 340px) - var(--hs-twitch-sidenav-w, 50px)) !important;
     }
     body.hs-platform-twitch.hs-chat-top .channel-root {
       padding-top: var(--hs-chat-h, 35vh) !important;
@@ -4614,13 +4615,20 @@ function injectStyles() {
     /* For chat-left, Twitch's React writes el.style.left = X based on its
        own internal width tracking — that wipes any inline !important we
        set in applyChatPosition. CSS rule with !important survives those
-       inline writes. The 50px subtraction is for Twitch's collapsed
-       left side-nav (TWITCH_SIDE_NAV_WIDTH); .persistent-player's
-       containing block starts after the nav, so left: chatWidth would
-       double-count the nav and leave a gap between HS panel and video. */
+       inline writes. Subtract the live side-nav width (50 collapsed,
+       ~240 expanded); .persistent-player's containing block starts after
+       the nav, so left: chatWidth would double-count it and leave a gap
+       between HS panel and video. JS pushes --hs-twitch-sidenav-w via
+       a ResizeObserver on .side-nav. */
     body.hs-platform-twitch.hs-chat-left .persistent-player {
-      left: calc(var(--hs-chat-w, 340px) - 50px) !important;
-      inset-inline-start: calc(var(--hs-chat-w, 340px) - 50px) !important;
+      left: calc(var(--hs-chat-w, 340px) - var(--hs-twitch-sidenav-w, 50px)) !important;
+      inset-inline-start: calc(var(--hs-chat-w, 340px) - var(--hs-twitch-sidenav-w, 50px)) !important;
+      /* width:auto !important (above) needs both insets to size; Twitch only
+         sets right:0 inline on some states, so the player collapses to 0
+         when its React effect skips the write. Assert right:0 so the
+         player always fills the area between HS panel and viewport edge. */
+      right: 0 !important;
+      inset-inline-end: 0 !important;
     }
     /* The 16:9 aspect-ratio wrapper inside .persistent-player uses the
        padding-bottom hack: child .ScAspectSpacer sets padding-bottom to

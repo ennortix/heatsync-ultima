@@ -400,6 +400,11 @@ class IRC {
     const delay = Math.min(2000 * Math.pow(2, this._reconnectAttempts), 30000);
     this._reconnectAttempts++;
     log('Reconnecting in', delay, 'ms (attempt', this._reconnectAttempts, ')');
+    // Surface persistent failure to DevTools — silent infinite retry leaves
+    // users wondering why chat is dead.
+    if (this._reconnectAttempts === 3) {
+      console.warn('[heatsync-irc] connection failing — 3 retries, will keep trying with backoff');
+    }
     this._reconnectTimer = cleanup.setTimeout(() => {
       if (!this._destroyed) this.connect();
     }, delay);

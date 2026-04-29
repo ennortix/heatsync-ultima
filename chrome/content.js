@@ -1827,6 +1827,7 @@ function getPageChannel() {
 }
 let _mentionRegex = null; // Cached mention regex (rebuilt on username change)
 let _mentionUser = null; // Username the regex was built for
+const HS_WS_SPLIT = /(\s+)/; // Hoisted: avoids per-message regex allocation in hot paths
 let blockedEmotes = new Set();
 // Tracks user-initiated block/unblock per hash so a late `emote_blocked` /
 // `emote_unblocked` broadcast (from server WS echo of the previous action)
@@ -3435,7 +3436,7 @@ function colorUsernameMentions(messageElement, preQueriedFragments) {
     if (!text) continue;
 
     // Split text into words while preserving structure
-    const words = text.split(/(\s+)/); // Keep whitespace
+    const words = text.split(HS_WS_SPLIT); // Keep whitespace
     const newNodes = [];
     let hasMatch = false;
 
@@ -4301,7 +4302,7 @@ const HS_MODIFIER_CLASSES = {
 // Using DOM nodes instead of innerHTML to avoid React conflicts
 function replaceEmotesWithStacking(element, allEmotes) {
   const text = element.textContent
-  const words = text.split(/(\s+)/)
+  const words = text.split(HS_WS_SPLIT)
 
   // Process words to find emotes and group overlays
   // Key insight: whitespace between emotes should be absorbed into stack

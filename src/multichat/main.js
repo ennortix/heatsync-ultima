@@ -984,7 +984,8 @@
     const vw = window.innerWidth || document.documentElement.clientWidth || 1280
     const tabStrip = (tabPosition === 'left' || tabPosition === 'right') ? 90 : 0
     const floor = (chatPosition && chatPosition !== 'right') ? 300 : TWITCH_MIN_MAIN_WIDTH
-    const max = vw - TWITCH_SIDE_NAV_WIDTH - floor - tabStrip
+    const navW = (typeof _twitchSideNavW === 'number' && _twitchSideNavW > 0) ? _twitchSideNavW : TWITCH_SIDE_NAV_WIDTH
+    const max = vw - navW - floor - tabStrip
     return Math.max(MIN_CHAT_WIDTH, Math.min(MAX_CHAT_WIDTH, max))
   }
 
@@ -5620,6 +5621,48 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
   let chatPosition = 'right'; // 'right', 'bottom', 'left', 'top'
   let theatreMode = false;
   let _theatreObserver = null;
+  let _twitchSideNavObs = null;
+  let _twitchSideNavWinHooked = false;
+  let _twitchSideNavW = TWITCH_SIDE_NAV_WIDTH;
+
+  // Twitch's left side-nav is 50px when collapsed, ~240px when expanded.
+  // It auto-expands on wide viewports (>~1200px), and the user can also
+  // toggle it. chat-left layout subtracts this width from chatWidth to land
+  // the player flush with the HS panel — so the live value must be tracked,
+  // not assumed. Pushes --hs-twitch-sidenav-w for the CSS rules to consume,
+  // and re-runs applyPlatformPositionOverrides so JS-side arithmetic
+  // (persistent-player inset, channel-root padding) updates too.
+  function updateTwitchSideNavWidth() {
+    if (hostPlatform !== 'twitch') return;
+    const nav = document.querySelector('.side-nav');
+    const w = nav?.getBoundingClientRect?.().width;
+    const next = (w && w > 0) ? Math.round(w) : TWITCH_SIDE_NAV_WIDTH;
+    if (next === _twitchSideNavW) return;
+    _twitchSideNavW = next;
+    document.documentElement.style.setProperty('--hs-twitch-sidenav-w', next + 'px');
+    if (chatPosition === 'left') {
+      try { applyPlatformPositionOverrides() } catch (_) {}
+    }
+  }
+
+  function setupTwitchSideNavObserver() {
+    if (hostPlatform !== 'twitch') return;
+    document.documentElement.style.setProperty('--hs-twitch-sidenav-w', _twitchSideNavW + 'px');
+    if (_twitchSideNavObs) { try { _twitchSideNavObs.disconnect() } catch (_) {} _twitchSideNavObs = null; }
+    const nav = document.querySelector('.side-nav');
+    if (nav && typeof ResizeObserver !== 'undefined') {
+      _twitchSideNavObs = new ResizeObserver(() => updateTwitchSideNavWidth());
+      _twitchSideNavObs.observe(nav);
+      cleanup.trackObserver(_twitchSideNavObs);
+    }
+    if (!_twitchSideNavWinHooked) {
+      _twitchSideNavWinHooked = true;
+      const onResize = () => updateTwitchSideNavWidth();
+      window.addEventListener('resize', onResize, { passive: true });
+      cleanup.trackListener(window, 'resize', onResize);
+    }
+    updateTwitchSideNavWidth();
+  }
 
   async function loadChatPosition() {
     try {
@@ -5639,6 +5682,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       document.body.classList.add(platformClass);
       detectTheatreMode();
       setupTheatreObserver();
+      setupTwitchSideNavObserver();
       applyChatPosition();
     } catch (e) {
       log('Error loading chat position:', e);
@@ -5726,6 +5770,9 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     // off it (rather than chasing platform-specific selectors twice).
     document.documentElement.style.setProperty('--hs-chat-w', chatWidth + 'px');
     document.documentElement.style.setProperty('--hs-chat-h', chatHeight + 'px');
+    // Refresh Twitch side-nav width — it can flip 50↔240 across a chat
+    // toggle (user F11s, viewport crosses Twitch's expand breakpoint, etc).
+    if (hostPlatform === 'twitch') updateTwitchSideNavWidth();
     // Apply inline-style overrides on platform-native elements that set
     // width/height with inline !important (CSS alone can't beat that).
     applyPlatformPositionOverrides();
@@ -6014,9 +6061,10 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
           // Note: w above is a CSS string ("Npx"); for arithmetic use
           // the raw chatWidth number.
           // Containing block (.root-scrollable__wrapper) starts AFTER
-          // Twitch's 50px collapsed side-nav, which our HS panel covers,
-          // so subtract TWITCH_SIDE_NAV_WIDTH to avoid double-counting.
-          const leftInsetPx = Math.max(0, chatWidth - TWITCH_SIDE_NAV_WIDTH) + 'px';
+          // Twitch's side-nav (50px collapsed, ~240px expanded on wide
+          // viewports), which our HS panel covers, so subtract the live
+          // nav width to avoid double-counting.
+          const leftInsetPx = Math.max(0, chatWidth - _twitchSideNavW) + 'px';
           pp.style.setProperty('left', leftInsetPx, 'important');
           pp.style.setProperty('inset-inline-start', leftInsetPx, 'important');
         } else {

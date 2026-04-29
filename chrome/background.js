@@ -2647,6 +2647,10 @@ async function connectWebSocket() {
         }
         reconnectAttempts = 0;
         wsState = WS_STATE.CONNECTED;
+        // Reset zombie-detection timestamp; otherwise a stale lastWsDataReceived
+        // from before the disconnect makes the first heartbeat (90s later) trip
+        // the 2min idle threshold and immediately kill the fresh socket.
+        lastWsDataReceived = Date.now();
 
         // Start heartbeat to keep connection alive (server has 2min idle timeout)
         if (heartbeatInterval) untrackInterval(heartbeatInterval)

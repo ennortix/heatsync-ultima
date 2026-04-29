@@ -192,9 +192,14 @@
     // rejection both fall through to the safer tab fallback — previously the
     // .catch chain silently dropped errors and left the user with a regular
     // fullscreen tab, which felt like "chat took over my screen".
-    if (chrome.windows?.create) {
+    // Firefox MV2's `chrome.*` is callback-style — `await` would resolve to
+    // undefined and the catch can't fire. `browser.*` is promise-native on
+    // Firefox; Chrome MV3's `chrome.windows.create` returns a promise too, so
+    // this works for both.
+    const winApi = (typeof browser !== 'undefined' ? browser : chrome).windows;
+    if (winApi?.create) {
       try {
-        await chrome.windows.create({
+        await winApi.create({
           url,
           type: 'popup',
           width: 400,

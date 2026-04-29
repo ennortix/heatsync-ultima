@@ -13167,15 +13167,17 @@ function buildFeedMediaHtml(m) {
 let _autoYtVideoId = null  // videoId for this tab's __live_yt_auto__ subscription (cross-tab filter)
 
 // YT POLL SMOOTHING: server polls YouTube every ~5s and dispatches the whole
-// batch back-to-back over WS. Without smoothing, 10 messages land in one rAF
-// frame and the chat flashes them all at once. We drip them per-channel at
-// YT_PACE_MS so they trickle in like a real live chat. Mentions/automod/
-// stats run BEFORE pacing so notifications stay realtime.
-const YT_PACE_MS = 120  // visible cadence floor; ~natural human reading pace
-const YT_PACE_BURST_MAX = 1500  // give up smoothing if a single msg sits >1.5s
-const _ytPaceQueue = new Map()  // channelId → ytMsg[]
+// batch back-to-back over WS. Without smoothing, 10 msgs land in one rAF
+// frame and the chat flashes them all at once. We drip them per-channel using
+// the REAL inter-message timestamp deltas (msg.time from YouTube), so two
+// msgs posted 1.8s apart show up 1.8s apart visually — natural human pacing.
+// Floor and cap keep things perceptible without dragging.
+const YT_PACE_MIN_MS = 60      // floor — never emit faster than this
+const YT_PACE_MAX_MS = 400     // cap — never delay a single msg longer than this
+const YT_PACE_BURST_MAX = 1500 // total projected backlog cap; overflow flushes synchronously
+const _ytPaceQueue = new Map()  // channelId → ytMsg[] (in real-time order)
 const _ytPaceTimer = new Map()  // channelId → timer handle
-const _ytPaceLastEmit = new Map()  // channelId → timestamp of last emit
+const _ytPaceLastEmit = new Map()  // channelId → { time: ms, msgTime: real msg.time }
 
 // Heat tier display — big scaling numbers + color glow + row effects, no emoji
 // Matches website colors.js: #444 → #888 → #cc6600 → #ff8700 → #ffaa33 → #fff
@@ -13528,52 +13530,66 @@ function commitPacedYtMsg(targetChannelId, ytMsg) {
   }
 }
 
-// Drain ONE message from the pace queue, schedule next.
+// Compute the visual delay until the next paced msg should emit. Uses the
+// real-time delta between THIS msg and the PREVIOUS emitted msg, so two
+// msgs posted 1.8s apart on YouTube show up 1.8s apart in the panel.
+// Clamped to [MIN, MAX] so a 30s gap doesn't stall the panel and a same-
+// millisecond burst still drips perceptibly.
+function paceDelayFor(channelId, nextMsg) {
+  const last = _ytPaceLastEmit.get(channelId)
+  if (!last || !last.msgTime || !nextMsg?.time) return YT_PACE_MIN_MS
+  const realDelta = nextMsg.time - last.msgTime
+  if (realDelta <= 0) return YT_PACE_MIN_MS
+  return Math.max(YT_PACE_MIN_MS, Math.min(YT_PACE_MAX_MS, realDelta))
+}
+
+// Drain ONE message from the pace queue, schedule next based on the real
+// timestamp delta to the message after that.
 function drainYtPaceQueue(targetChannelId) {
   _ytPaceTimer.delete(targetChannelId)
   const q = _ytPaceQueue.get(targetChannelId)
   if (!q || !q.length) return
   const ytMsg = q.shift()
   commitPacedYtMsg(targetChannelId, ytMsg)
-  _ytPaceLastEmit.set(targetChannelId, Date.now())
+  _ytPaceLastEmit.set(targetChannelId, { time: Date.now(), msgTime: ytMsg.time })
   if (q.length > 0) {
-    const handle = setTimeout(() => drainYtPaceQueue(targetChannelId), YT_PACE_MS)
+    const due = paceDelayFor(targetChannelId, q[0])
+    const handle = setTimeout(() => drainYtPaceQueue(targetChannelId), due)
     _ytPaceTimer.set(targetChannelId, handle)
   } else {
     _ytPaceQueue.delete(targetChannelId)
   }
 }
 
-// Queue a YT message for paced delivery. If queue empty AND last emit was >
-// YT_PACE_MS ago, emit immediately (no artificial delay on isolated msgs).
-// Otherwise queue and let the drainer handle it. If queue is huge (>15
-// pending), commit the overflow synchronously — burst longer than
-// YT_PACE_BURST_MAX would lag intolerably.
+// Queue a YT message for paced delivery. Idle channel (queue empty AND
+// >MAX_MS since last emit) → commit immediately, no artificial delay on the
+// first msg of a quiet stream. Bursts get the real-delta pacing.
+// Catastrophic backlogs (>YT_PACE_BURST_MAX projected at MIN cadence) flush
+// overflow synchronously so msgs never feel stale.
 function enqueueYtForPacing(targetChannelId, ytMsg) {
   const now = Date.now()
-  const lastEmit = _ytPaceLastEmit.get(targetChannelId) || 0
+  const last = _ytPaceLastEmit.get(targetChannelId)
+  const idleSince = last ? (now - last.time) : Infinity
   const queued = _ytPaceQueue.get(targetChannelId)
-  // Idle channel + cooldown elapsed → emit immediately, no pacing.
-  if ((!queued || queued.length === 0) && (now - lastEmit) >= YT_PACE_MS) {
+  // Idle channel + cooldown elapsed → emit immediately.
+  if ((!queued || queued.length === 0) && idleSince >= YT_PACE_MAX_MS) {
     commitPacedYtMsg(targetChannelId, ytMsg)
-    _ytPaceLastEmit.set(targetChannelId, now)
+    _ytPaceLastEmit.set(targetChannelId, { time: now, msgTime: ytMsg.time })
     return
   }
   // Queue the msg.
   if (!queued) _ytPaceQueue.set(targetChannelId, [])
   const q = _ytPaceQueue.get(targetChannelId)
   q.push(ytMsg)
-  // Drain overflow synchronously if backlog would push the next msg past
-  // the burst-max threshold. Keeps catastrophic batches from feeling stale.
-  const projectedDelay = q.length * YT_PACE_MS
-  if (projectedDelay > YT_PACE_BURST_MAX) {
-    while (q.length > Math.ceil(YT_PACE_BURST_MAX / YT_PACE_MS)) {
-      commitPacedYtMsg(targetChannelId, q.shift())
-    }
+  // Synchronously flush overflow if min-cadence projection exceeds burst-max.
+  const minProjected = q.length * YT_PACE_MIN_MS
+  if (minProjected > YT_PACE_BURST_MAX) {
+    const keep = Math.ceil(YT_PACE_BURST_MAX / YT_PACE_MIN_MS)
+    while (q.length > keep) commitPacedYtMsg(targetChannelId, q.shift())
   }
   // Schedule drainer if not already scheduled.
   if (!_ytPaceTimer.has(targetChannelId)) {
-    const due = Math.max(YT_PACE_MS - (now - lastEmit), 0)
+    const due = Math.max(paceDelayFor(targetChannelId, q[0]) - idleSince, 0)
     const handle = setTimeout(() => drainYtPaceQueue(targetChannelId), due)
     _ytPaceTimer.set(targetChannelId, handle)
   }

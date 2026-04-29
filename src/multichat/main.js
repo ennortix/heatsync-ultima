@@ -1299,8 +1299,11 @@
           renderMessages(currentTab);
           msgsEl.scrollTop = 0;
         } else {
-          // Chat tabs: re-render to catch up on skipped messages
+          // Chat tabs: re-render then teleport to bottom. The new render
+          // diff only auto-pins if user was AT bottom; here the user was
+          // scrolled UP and clicked to come back, so force the scroll.
           renderMessages(currentTab);
+          scrollMsgsToBottom(msgsEl);
         }
       }, { signal: mcSignal });
 

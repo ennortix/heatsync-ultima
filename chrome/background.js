@@ -3003,14 +3003,17 @@ function handleWSMessage(msg) {
         // Update local map if server provided channelId
         if (msg.channelId && msg.videoId) setYtVideoChannel(msg.videoId, msg.channelId)
 
-        // Sort by REAL YouTube timestamps so the content script can place
-        // each msg at its true chronological position via fairMerge — both
-        // backfill (replay:true, ~hour-spanning) and live polls (~few sec).
-        // The displayed `time` is the actual yt timestamp, never Date.now() —
-        // critical for hard-refresh accuracy: backfill msgs from 30 min ago
-        // must land between the twitch/kick history at 30 min ago, not at
-        // the bottom of chat.
+        // Sort by real YouTube timestamps so the content script can place
+        // each msg via fairMerge.
+        // - REPLAY (backfill): use real ytMsg.timestamp so msgs from 30 min
+        //   ago slot between the twitch/kick history at 30 min ago. Without
+        //   this, all backfill clumps at the bottom because Date.now() puts
+        //   them all "now".
+        // - LIVE: use Date.now() so msgs land at the bottom (sticky chat
+        //   semantic). Real YT timestamp is 1-3s old → would mid-insert
+        //   above latest twitch — looks like msgs "appearing in the middle".
         const sorted = msg.messages.slice().sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0))
+        const isReplay = !!msg.replay
         const buildPayload = (ytMsg) => ({
           type: 'youtube_chat_message',
           videoId: msg.videoId,
@@ -3018,10 +3021,10 @@ function handleWSMessage(msg) {
           user: ytMsg.user,
           text: ytMsg.text,
           color: ytMsg.color || '#ff0000',
-          time: ytMsg.timestamp || Date.now(),
+          time: isReplay ? (ytMsg.timestamp || Date.now()) : Date.now(),
           platform: 'youtube',
           emotes: ytMsg.emotes || [],
-          msgType: ytMsg.type, // 'text', 'superchat', 'supersticker'
+          msgType: ytMsg.type,
           amount: ytMsg.amount || '',
           scColor: ytMsg.scColor || '',
           sticker: ytMsg.sticker || null,
@@ -3029,20 +3032,18 @@ function handleWSMessage(msg) {
           badges: ytMsg.badges || undefined,
           systemMsg: ytMsg.systemMsg || undefined,
           source: 'server',
-          replay: !!msg.replay,
+          replay: isReplay,
         })
 
-        if (msg.replay) {
-          // Backfill — bulk-dispatch immediately. fairMerge in the content
-          // script places each msg at its real chronological position;
-          // there's no "all at once" flash because each msg lands at a
-          // different timestamp, scattered across the existing twitch/kick
-          // history. Drip-feed would just delay the correct render.
+        if (isReplay) {
+          // Backfill — bulk-dispatch immediately. fairMerge places each msg
+          // at its real chronological position; no flash because they're
+          // not all at the bottom.
           for (const ytMsg of sorted) broadcastToTabs(buildPayload(ytMsg))
         } else {
-          // Live poll — content-script paces these per-channel via real
-          // timestamp deltas. Dispatch bulk; let the per-channel pacer
-          // handle visual cadence.
+          // Live poll — content-script paces per-channel via the same min
+          // 60ms / max 400ms cadence used in social.js enqueueYtForPacing.
+          // Dispatch bulk; the pacer handles visual cadence.
           for (const ytMsg of sorted) broadcastToTabs(buildPayload(ytMsg))
         }
       }

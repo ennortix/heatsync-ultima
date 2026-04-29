@@ -23848,19 +23848,14 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
 
     const merged = result.filter(Boolean).slice(-limit)
 
-    // Tail-sort: the proportional stepping anchors each source at fixed end
-    // positions (e.g. with 2 sources of 250 each, the last Kick msg always
-    // lands at slot 499 and the last Twitch at 498), so new live messages
-    // appear *above* a stuck older message instead of at the bottom. Sort
-    // the most recent ~50 by time so newest always lands last regardless
-    // of platform, while keeping fairMerge's interleave for the older bulk
-    // (which handles non-overlapping time ranges).
-    const tailSize = Math.min(50, merged.length)
-    if (tailSize > 1) {
-      const tail = merged.slice(-tailSize)
-      tail.sort((a, b) => (a.time || 0) - (b.time || 0))
-      for (let i = 0; i < tailSize; i++) merged[merged.length - tailSize + i] = tail[i]
-    }
+    // FULL chronological sort by time. Per-source slicing above already caps
+    // each platform's contribution (perSource = 500/N), so a high-volume
+    // twitch chat can't wash out kick/yt in the merged result. Sorting the
+    // full merged list by msg.time gives "perfectly timestamp scattered"
+    // accuracy — stream events (game change, went live, etc.), YT backfill,
+    // and IRC msgs all interleave at their real times. Stable Array.sort
+    // preserves relative order within identical-time clusters.
+    merged.sort((a, b) => (a.time || 0) - (b.time || 0))
     return merged
   }
 
@@ -24087,28 +24082,18 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       ])
     }
 
-    // Merge follow stream events into every tab (went live, switched game, went offline)
-    // Channel-specific events (redeems, raids, hype trains) stay in their own channel buffer
-    // NOTE: append-only — do NOT re-sort, as msgs may be proportionally interleaved
+    // Merge follow stream events into every tab (went live, switched game,
+    // went offline). fairMerge's full sort below puts everything at its
+    // correct chronological position regardless of insertion order, so we
+    // just append missing events here and let the sort handle placement.
     if (activityEvents.length > 0 && msgs.length > 0) {
       const existingTexts = new Set(msgs.filter(m => m.type === 'stream-event').map(m => m.text))
       const missing = activityEvents.filter(e =>
         e.eventClass?.includes('event-follow') && !existingTexts.has(e.text)
       )
       if (missing.length > 0) {
-        // Insert stream events at their approximate chronological position
-        // without re-sorting the entire array
-        for (const evt of missing) {
-          let inserted = false
-          for (let i = msgs.length - 1; i >= 0; i--) {
-            if (msgs[i].time && msgs[i].time <= evt.time) {
-              msgs.splice(i + 1, 0, evt)
-              inserted = true
-              break
-            }
-          }
-          if (!inserted) msgs.unshift(evt)
-        }
+        msgs.push(...missing)
+        msgs.sort((a, b) => (a.time || 0) - (b.time || 0))
       }
     }
 

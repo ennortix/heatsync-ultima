@@ -110,7 +110,10 @@
   function prebuildPickerIdle() {
     if (_pickerPrebuildScheduled) return;
     _pickerPrebuildScheduled = true;
-    const idle = window.requestIdleCallback || ((cb) => setTimeout(cb, 250));
+    // Firefox requires requestIdleCallback to be called with `this === window`;
+    // a bare reference loses the binding and throws "called on an object that
+    // does not implement interface Window". Bind explicitly, fall back to setTimeout.
+    const idle = window.requestIdleCallback ? window.requestIdleCallback.bind(window) : ((cb) => setTimeout(cb, 250));
     idle(() => {
       _pickerPrebuildScheduled = false;
       if (typeof mcSignal !== 'undefined' && mcSignal.aborted) return;
@@ -166,8 +169,10 @@
     // Merge channel emotes first (keeps 'channel' state), then globals.
     // All names/urls are pre-sanitized via escapeHtml in render helpers.
     const allEmotes = new Map();
+    // Picker priority: viewer's personal inventory FIRST so 'owned' state shows on top
+    for (const [k, v] of viewerPersonalEmotes) allEmotes.set(k, v);
     const chCache = channelEmoteCaches[currentTab] || channelEmoteCaches[getCurrentChannel()];
-    if (chCache) for (const [k, v] of chCache) allEmotes.set(k, v);
+    if (chCache) for (const [k, v] of chCache) if (!allEmotes.has(k)) allEmotes.set(k, v);
     for (const [k, v] of emoteCache) if (!allEmotes.has(k)) allEmotes.set(k, v);
     const sections = groupEmotes(allEmotes);
     picker.innerHTML = `
@@ -202,8 +207,9 @@
         if (!grid) return;
 
         const searchEmotes = new Map();
+        for (const [k, v] of viewerPersonalEmotes) searchEmotes.set(k, v);
         const searchChCache = channelEmoteCaches[currentTab] || channelEmoteCaches[getCurrentChannel()];
-        if (searchChCache) for (const [k, v] of searchChCache) searchEmotes.set(k, v);
+        if (searchChCache) for (const [k, v] of searchChCache) if (!searchEmotes.has(k)) searchEmotes.set(k, v);
         for (const [k, v] of emoteCache) if (!searchEmotes.has(k)) searchEmotes.set(k, v);
         const filtered = new Map();
         for (const [name, emote] of searchEmotes) {
@@ -572,6 +578,7 @@
   function handleRemoveSuccess(emoteName, targetEl) {
     inventoryEmotes.delete(emoteName);
     inventoryHashes.delete(emoteName);
+    viewerPersonalEmotes.delete(emoteName);
     const cachedEmote = lookupEmote(emoteName);
     if (cachedEmote) {
       const isThirdParty = ['7tv', 'bttv', 'ffz', 'twitch', 'kick'].includes(cachedEmote.source);
@@ -626,6 +633,7 @@
     // Blocking and owning are mutually exclusive
     inventoryEmotes.delete(emoteName);
     inventoryHashes.delete(emoteName);
+    viewerPersonalEmotes.delete(emoteName);
 
     // Update local name-based tracking
     blockedEmoteNames.add(emoteName);
@@ -720,13 +728,11 @@
         const serverHash = response.hash || emoteHash;
         inventoryEmotes.add(emoteName);
         inventoryHashes.set(emoteName, serverHash);
+        viewerPersonalEmotes.set(emoteName, { url: emoteUrl, source: emoteSource || 'heatsync', state: 'owned', hash: serverHash });
         if (emoteCache.has(emoteName)) {
           const cached = emoteCache.get(emoteName);
           cached.state = 'owned';
           if (!cached.hash) cached.hash = serverHash;
-        } else {
-          emoteCache.set(emoteName, { url: emoteUrl, source: emoteSource || 'heatsync', state: 'owned', hash: serverHash });
-          while (emoteCache.size > 2000) { emoteCache.delete(emoteCache.keys().next().value) }
         }
         // Update hash lookup maps (bounded to emoteCache size)
         emoteHashes.set(emoteName, serverHash);
@@ -775,13 +781,85 @@
   // Emote cache (loaded from storage)
   // Format: Map<name, {url, source, state}>
   // States: 'owned' (in inventory), 'global' (third-party), 'unadded' (heatsync, not owned)
-  let emoteCache = new Map(); // Global + inventory emotes (no channel emotes!)
+  let emoteCache = new Map(); // Globals only — heatsync globals + 7TV globals + native Twitch (NO viewer inventory, NO channel)
   let channelEmoteCaches = {}; // Per-channel emotes: { channelName: Map<name, emoteData> }
   let inventoryEmotes = new Set(); // Names of emotes in user's inventory
+  // Viewer's personal set — separated from emoteCache so it does NOT bleed into
+  // OTHER users' rendered messages. Used as senderEmotes only when sender == viewer.
+  let viewerPersonalEmotes = new Map(); // Map<name, emoteData>
+  // Per-sender fetched 7TV/BTTV personal sets — write-once-per-(key, name), persistent across sessions.
+  // Map<"platform:platform_user_id", Map<name, emoteData>>. Empty inner Map = sender has no personal set (cached miss).
+  // Platform prefixes: "twitch:", "kick:", "yt:" (yt uses resolved twitch_id when available).
+  // Loaded fully at boot from chrome.storage.local["sender_emote_sets"] BEFORE first render → survives hard refresh.
+  const senderEmoteSets = new Map();
+  const SENDER_EMOTE_LRU_MAX = 5000;
+  let _senderEmotePersistTimer = null;
+  let _senderEmoteDirty = false;
 
-  // Look up emote from global cache + current channel cache
+  function _scheduleSenderEmotePersist() {
+    if (_senderEmotePersistTimer || !_senderEmoteDirty) return;
+    _senderEmotePersistTimer = setTimeout(() => {
+      _senderEmotePersistTimer = null;
+      if (!_senderEmoteDirty) return;
+      _senderEmoteDirty = false;
+      const out = {};
+      for (const [k, m] of senderEmoteSets) {
+        out[k] = Object.fromEntries(m);
+      }
+      try { chrome.storage.local.set({ sender_emote_sets: out }) } catch {}
+    }, 500);
+  }
+
+  // Write-once-per-(senderKey, name) merge — NEVER overwrites existing entries.
+  // This is the perma guarantee: once we've stored URL X for ("twitch:123", "67"),
+  // a later fetch returning a different URL for the same name is IGNORED.
+  function mergeSenderEmotes(senderKey, nameToEmote) {
+    if (!senderKey) return false;
+    let inner = senderEmoteSets.get(senderKey);
+    if (!inner) {
+      inner = new Map();
+      senderEmoteSets.set(senderKey, inner);
+      // LRU evict oldest senders if over cap (preserves all names per kept sender)
+      if (senderEmoteSets.size > SENDER_EMOTE_LRU_MAX) {
+        senderEmoteSets.delete(senderEmoteSets.keys().next().value);
+      }
+    } else {
+      // Re-insert to bump LRU recency
+      senderEmoteSets.delete(senderKey);
+      senderEmoteSets.set(senderKey, inner);
+    }
+    let added = false;
+    if (nameToEmote) {
+      for (const [name, data] of Object.entries(nameToEmote)) {
+        if (!inner.has(name)) { inner.set(name, data); added = true; }
+      }
+    }
+    if (added) { _senderEmoteDirty = true; _scheduleSenderEmotePersist(); }
+    return added;
+  }
+
+  function getSenderEmotes(senderKey) {
+    return senderKey ? senderEmoteSets.get(senderKey) : undefined;
+  }
+
+  async function loadSenderEmoteSets() {
+    try {
+      const stored = await chrome.storage.local.get(['sender_emote_sets']);
+      const obj = stored.sender_emote_sets || {};
+      senderEmoteSets.clear();
+      for (const [k, names] of Object.entries(obj)) {
+        if (!names || typeof names !== 'object') continue;
+        senderEmoteSets.set(k, new Map(Object.entries(names)));
+      }
+      log('Loaded sender_emote_sets:', senderEmoteSets.size, 'senders');
+    } catch (e) {
+      log('Error loading sender_emote_sets:', e);
+    }
+  }
+
+  // Look up emote — viewer-perspective fallback chain (used by picker, hover preview, etc.)
   function lookupEmote(name) {
-    return emoteCache.get(name) || channelEmoteCaches[currentTab]?.get(name) || channelEmoteCaches[getLiveChannel()]?.get(name) || channelEmoteCaches[getCurrentChannel()]?.get(name);
+    return viewerPersonalEmotes.get(name) || emoteCache.get(name) || channelEmoteCaches[currentTab]?.get(name) || channelEmoteCaches[getLiveChannel()]?.get(name) || channelEmoteCaches[getCurrentChannel()]?.get(name);
   }
   let inventoryHashes = new Map(); // name → hash for remove_from_inventory
   let emoteHashes = new Map(); // name → hash for ALL emotes (block/unblock API)
@@ -814,6 +892,7 @@
       emoteCache.clear();
       channelEmoteCaches = {};
       inventoryEmotes.clear();
+      viewerPersonalEmotes.clear();
       inventoryHashes.clear();
       emoteHashes.clear();
       hashToName.clear();
@@ -848,12 +927,15 @@
         }
       });
 
-      // Add inventory emotes (definitely owned)
+      // Add inventory emotes (definitely owned) → viewerPersonalEmotes ONLY.
+      // Keeping these out of emoteCache (the global fallback) is what prevents
+      // viewer's personal '67' from bleeding into other users' messages.
+      // Render path passes viewerPersonalEmotes as senderEmotes for own outgoing,
+      // and lookupEmote() composes both for picker/hover/UI use cases.
       (stored.emote_inventory || []).forEach(e => {
         if (e.name && e.url) {
           const source = e.source || 'heatsync';
-          emoteCache.set(e.name, { url: e.url, source, state: 'owned', zeroWidth: !!e.zeroWidth });
-          while (emoteCache.size > 2000) { emoteCache.delete(emoteCache.keys().next().value) }
+          viewerPersonalEmotes.set(e.name, { url: e.url, source, state: 'owned', zeroWidth: !!e.zeroWidth });
         }
       });
 
@@ -966,12 +1048,15 @@
   // Periodically scan for new emotes
   cleanup.setInterval(scanDomForEmotes, 10000, 'emote-scan');
 
-  // Process text and replace emote codes with images
-  // Supports 7TV zero-width (overlay) emotes that stack on base emotes
-  // extraCache: optional Map<name, emoteData> for per-message Twitch native
-  // emotes (so they participate in the overlay stack pipeline)
-  function processEmotes(text, channel, extraCache) {
-    if (emoteCache.size === 0 && !channelEmoteCaches[channel] && !extraCache?.size) return text;
+  // Process text and replace emote codes with images.
+  // Supports 7TV zero-width (overlay) emotes that stack on base emotes.
+  // Resolution priority (perma sender model): senderEmotes > channel > extraCache (native twitch IRC) > emoteCache (globals)
+  // - extraCache: optional Map<name, emoteData> for per-message Twitch IRC tag emotes
+  // - senderEmotes: optional Map<name, emoteData> — sender's personal set frozen at first sight.
+  //   For viewer's own outgoing messages, caller passes viewerPersonalEmotes here.
+  //   For others' messages, caller passes their fetched 7TV/BTTV personal set (or empty Map if not yet known).
+  function processEmotes(text, channel, extraCache, senderEmotes) {
+    if (emoteCache.size === 0 && !channelEmoteCaches[channel] && !extraCache?.size && !senderEmotes?.size) return text;
 
     // Split adjacent Kick emotes and text touching emotes (e.g. "word[emote:id:name]")
     // Also split unicode emoji from adjacent non-emoji chars so `🌆<3` becomes
@@ -1018,16 +1103,17 @@
       }
 
       // Try name0 overlay convention: "fire0" -> look up "fire" as overlay
+      // Priority: senderEmotes > channel > extraCache (twitch IRC native) > emoteCache (globals)
       let emote = null
       let isOverlayEmote = false
       const endsWithZero = word.endsWith('0') && word.length > 1
       if (endsWithZero) {
         const baseName = word.slice(0, -1)
-        emote = emoteCache.get(baseName) || (channel && channelEmoteCaches[channel]?.get(baseName)) || extraCache?.get(baseName)
+        emote = senderEmotes?.get(baseName) || (channel && channelEmoteCaches[channel]?.get(baseName)) || extraCache?.get(baseName) || emoteCache.get(baseName)
         if (emote) isOverlayEmote = true
       }
       if (!emote) {
-        emote = emoteCache.get(word) || (channel && channelEmoteCaches[channel]?.get(word)) || extraCache?.get(word)
+        emote = senderEmotes?.get(word) || (channel && channelEmoteCaches[channel]?.get(word)) || extraCache?.get(word) || emoteCache.get(word)
         // Honor zero-width flag, OR fall back to the "name0" naming convention
         // when an uploader didn't set the flag despite naming the emote for overlay use.
         if (emote) isOverlayEmote = !!emote.zeroWidth || endsWithZero

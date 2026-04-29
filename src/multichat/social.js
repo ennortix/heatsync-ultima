@@ -1,6 +1,17 @@
 // Social - feed, notifications, activity, heatsync API
 let _autoYtVideoId = null  // videoId for this tab's __live_yt_auto__ subscription (cross-tab filter)
 
+// YT POLL SMOOTHING: server polls YouTube every ~5s and dispatches the whole
+// batch back-to-back over WS. Without smoothing, 10 messages land in one rAF
+// frame and the chat flashes them all at once. We drip them per-channel at
+// YT_PACE_MS so they trickle in like a real live chat. Mentions/automod/
+// stats run BEFORE pacing so notifications stay realtime.
+const YT_PACE_MS = 120  // visible cadence floor; ~natural human reading pace
+const YT_PACE_BURST_MAX = 1500  // give up smoothing if a single msg sits >1.5s
+const _ytPaceQueue = new Map()  // channelId → ytMsg[]
+const _ytPaceTimer = new Map()  // channelId → timer handle
+const _ytPaceLastEmit = new Map()  // channelId → timestamp of last emit
+
 // Heat tier display — big scaling numbers + color glow + row effects, no emoji
 // Matches website colors.js: #444 → #888 → #cc6600 → #ff8700 → #ffaa33 → #fff
 function formatHeat(heat) {
@@ -337,6 +348,72 @@ async function loadHsAuth() {
   }
 }
 
+// Buffer-push + visible render for ONE paced YT message. Called either
+// directly (no pace needed) or by the pace drainer.
+function commitPacedYtMsg(targetChannelId, ytMsg) {
+  if (!channelYtMessages.has(targetChannelId)) channelYtMessages.set(targetChannelId, [])
+  const buf = channelYtMessages.get(targetChannelId)
+  buf.push(ytMsg)
+  if (buf.length > MAX_BUFFER + 50) buf.splice(0, buf.length - MAX_BUFFER)
+  const tabId = targetChannelId === '__live_yt_auto__' ? 'live' : targetChannelId
+  if (currentTab === tabId) {
+    if (!appendMessage(ytMsg, tabId)) renderMessages(tabId)
+  } else {
+    updateTabIndicator(tabId)
+  }
+}
+
+// Drain ONE message from the pace queue, schedule next.
+function drainYtPaceQueue(targetChannelId) {
+  _ytPaceTimer.delete(targetChannelId)
+  const q = _ytPaceQueue.get(targetChannelId)
+  if (!q || !q.length) return
+  const ytMsg = q.shift()
+  commitPacedYtMsg(targetChannelId, ytMsg)
+  _ytPaceLastEmit.set(targetChannelId, Date.now())
+  if (q.length > 0) {
+    const handle = setTimeout(() => drainYtPaceQueue(targetChannelId), YT_PACE_MS)
+    _ytPaceTimer.set(targetChannelId, handle)
+  } else {
+    _ytPaceQueue.delete(targetChannelId)
+  }
+}
+
+// Queue a YT message for paced delivery. If queue empty AND last emit was >
+// YT_PACE_MS ago, emit immediately (no artificial delay on isolated msgs).
+// Otherwise queue and let the drainer handle it. If queue is huge (>15
+// pending), commit the overflow synchronously — burst longer than
+// YT_PACE_BURST_MAX would lag intolerably.
+function enqueueYtForPacing(targetChannelId, ytMsg) {
+  const now = Date.now()
+  const lastEmit = _ytPaceLastEmit.get(targetChannelId) || 0
+  const queued = _ytPaceQueue.get(targetChannelId)
+  // Idle channel + cooldown elapsed → emit immediately, no pacing.
+  if ((!queued || queued.length === 0) && (now - lastEmit) >= YT_PACE_MS) {
+    commitPacedYtMsg(targetChannelId, ytMsg)
+    _ytPaceLastEmit.set(targetChannelId, now)
+    return
+  }
+  // Queue the msg.
+  if (!queued) _ytPaceQueue.set(targetChannelId, [])
+  const q = _ytPaceQueue.get(targetChannelId)
+  q.push(ytMsg)
+  // Drain overflow synchronously if backlog would push the next msg past
+  // the burst-max threshold. Keeps catastrophic batches from feeling stale.
+  const projectedDelay = q.length * YT_PACE_MS
+  if (projectedDelay > YT_PACE_BURST_MAX) {
+    while (q.length > Math.ceil(YT_PACE_BURST_MAX / YT_PACE_MS)) {
+      commitPacedYtMsg(targetChannelId, q.shift())
+    }
+  }
+  // Schedule drainer if not already scheduled.
+  if (!_ytPaceTimer.has(targetChannelId)) {
+    const due = Math.max(YT_PACE_MS - (now - lastEmit), 0)
+    const handle = setTimeout(() => drainYtPaceQueue(targetChannelId), due)
+    _ytPaceTimer.set(targetChannelId, handle)
+  }
+}
+
 // Listen for social events from background (new messages, notifications)
 function listenForSocialEvents() {
   // Guard: only register once (survives SPA reinit via chrome listener persistence)
@@ -510,36 +587,14 @@ function listenForSocialEvents() {
       }
 
       if (targetChannelId && targetChannelId !== 'global') {
-        // Auto-YouTube for live tab
-        if (targetChannelId === '__live_yt_auto__') {
-          if (!channelYtMessages.has(targetChannelId)) channelYtMessages.set(targetChannelId, [])
-          const buf = channelYtMessages.get(targetChannelId)
-          buf.push(ytMsg)
-          if (buf.length > MAX_BUFFER + 50) buf.splice(0, buf.length - MAX_BUFFER)
-          if (currentTab === 'live') {
-            appendMessage(ytMsg, 'live') || renderMessages('live')
-          } else {
-            updateTabIndicator('live')
-          }
-        } else {
-          // Per-channel YouTube → route to that channel tab
-          if (!channelYtMessages.has(targetChannelId)) channelYtMessages.set(targetChannelId, [])
-          const buf = channelYtMessages.get(targetChannelId)
-          buf.push(ytMsg)
-          if (buf.length > MAX_BUFFER + 50) buf.splice(0, buf.length - MAX_BUFFER)
-          if (currentTab === targetChannelId) {
-            appendMessage(ytMsg, targetChannelId) || renderMessages(currentTab)
-          } else {
-            updateTabIndicator(targetChannelId)
-          }
-          // YT-only channel tabs: light up the live dot when traffic flows in.
-          // updateLiveStatus() only checks Twitch helix, so without this
-          // signal the dot stays dark even on a busy YT-only channel.
+        // Mark the YT tab live BEFORE pacing — instant visual signal.
+        if (targetChannelId !== '__live_yt_auto__') {
           try {
             const tabEl = document.querySelector(`#hs-mc-tabbar .hs-mc-tab[data-tab="${CSS.escape(targetChannelId)}"]`)
             if (tabEl && tabEl.dataset.live !== 'true') tabEl.dataset.live = 'true'
           } catch {}
         }
+        enqueueYtForPacing(targetChannelId, ytMsg)
       }
     }
     if (msg.type === 'youtube_msg_deleted') {

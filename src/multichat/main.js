@@ -315,6 +315,113 @@
     }
   }
 
+  // ═══ Sender-perma emote queue ═══
+  // Lazy-fetch each unseen sender's 7TV/BTTV personal set ONCE, cache write-once-per-(sender, name) forever.
+  // Survives hard refresh because emotes.js loadSenderEmoteSets() runs at boot before render.
+  const senderEmotePending = new Set()
+  let senderEmoteTimer = null
+  const SENDER_EMOTE_BATCH = 15
+
+  function resolveSenderEmoteKey(m) {
+    if (!m) return null
+    if (m.platform === 'kick') {
+      const id = m.userId || (m.user && m.user.toLowerCase())
+      return id ? `kick:${id}` : null
+    }
+    if (m.platform === 'youtube') {
+      // For YT, prefer resolved twitch_id (lets us reuse the twitch 7tv set) but
+      // fall back to YT user key when twitch resolution hasn't completed yet.
+      if (m.userId) return `twitch:${m.userId}`
+      const ytKey = (m.user || '').toLowerCase().replace(/^@/, '')
+      return ytKey ? `yt:${ytKey}` : null
+    }
+    // Default: twitch
+    return m.userId ? `twitch:${m.userId}` : null
+  }
+
+  function queueSenderEmoteFetch(senderKey, m) {
+    if (!senderKey) return
+    if (senderEmotePending.has(senderKey)) return
+    if (typeof senderEmoteSets !== 'undefined' && senderEmoteSets.has(senderKey)) return
+    senderEmotePending.add(senderKey)
+    if (senderEmotePending.size >= SENDER_EMOTE_BATCH) {
+      if (senderEmoteTimer) { cleanup.clearTimeout(senderEmoteTimer); senderEmoteTimer = null }
+      flushSenderEmoteBatch()
+      return
+    }
+    if (!senderEmoteTimer) {
+      senderEmoteTimer = cleanup.setTimeout(() => {
+        senderEmoteTimer = null
+        flushSenderEmoteBatch()
+      }, 250)
+    }
+  }
+
+  function flushSenderEmoteBatch() {
+    if (!senderEmotePending.size) return
+    const batch = [...senderEmotePending].slice(0, SENDER_EMOTE_BATCH)
+    batch.forEach(k => senderEmotePending.delete(k))
+    safeSendMessage({ type: 'get_sender_emotes', senderKeys: batch }).then(resp => {
+      const emotes = resp?.emotes || {}
+      const changedKeys = []
+      // Seed sentinel for EVERY batch key. Keys missing from resp.emotes
+      // (sender has no personal set, backend doesn't recognize them) get an
+      // empty Map — without this, every render re-queues them and we loop
+      // render→fetch→re-render forever on busy chats with 50+ unique senders.
+      for (const key of batch) {
+        const added = mergeSenderEmotes(key, emotes[key] || {})
+        if (added) changedKeys.push(key)
+      }
+      if (changedKeys.length) upgradeMessagesForSenders(changedKeys)
+    }).catch(() => {
+      // Network/IPC failure — still seed empty sentinel for each key so the
+      // next render doesn't re-queue them and trigger the same loop.
+      for (const key of batch) mergeSenderEmotes(key, {})
+    })
+    if (senderEmotePending.size > 0) {
+      senderEmoteTimer = cleanup.setTimeout(() => { senderEmoteTimer = null; flushSenderEmoteBatch() }, 500)
+    }
+  }
+
+  // After a sender's personal set arrives, invalidate cached _renderedHtml on
+  // their buffered messages, then trigger a re-render of the active tab so
+  // already-visible rows pick up the new resolution.
+  function upgradeMessagesForSenders(senderKeys) {
+    if (!senderKeys?.length) return
+    const keySet = new Set(senderKeys)
+    const matches = (m) => {
+      if (!m) return false
+      const k = resolveSenderEmoteKey(m)
+      return k && keySet.has(k)
+    }
+    const patchBuf = (buf) => {
+      if (!buf || typeof buf[Symbol.iterator] !== 'function') return
+      for (const m of buf) {
+        if (matches(m)) m._renderedHtml = null
+      }
+    }
+    // Twitch IRC: walk all joined channels' buffers
+    if (typeof irc !== 'undefined' && irc?.channels) {
+      for (const ch of irc.channels.keys()) {
+        patchBuf(irc.getMessages(ch))
+      }
+    }
+    // Kick IRC: same
+    if (typeof kickChat !== 'undefined' && kickChat?.channels) {
+      for (const ch of kickChat.channels.keys()) {
+        patchBuf(kickChat.getMessages(ch))
+      }
+    }
+    // YT messages: per-channel Maps
+    if (typeof channelYtMessages !== 'undefined') channelYtMessages.forEach(patchBuf)
+    // Mentions buffer
+    if (typeof mentionsBuffer !== 'undefined') patchBuf(mentionsBuffer)
+    // Trigger re-render of currently-visible tab so DOM picks up the new resolution.
+    if (typeof renderMessages === 'function' && typeof currentTab !== 'undefined') {
+      try { renderMessages(currentTab) } catch {}
+    }
+  }
+
   // Update cosmetics (badges + paint) in-place without full re-render
   function updateCosmeticsInPlace(userIds) {
     const container = document.getElementById('hs-mc-messages')
@@ -3748,7 +3855,19 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
           twitchExtra.set(name, { url, source: 'twitch', state: 'global', zeroWidth: false })
         }
       }
-      processedText = processEmotes(escapeHtml(m.text), m.channel, twitchExtra)
+      // Sender-perma emote resolution: pick the right per-sender map.
+      // - Viewer's own outgoing → viewerPersonalEmotes (their heatsync inventory wins)
+      // - Other senders → senderEmoteSets["plat:uid"] (lazy-fetched 7TV/BTTV personal set, perma cached)
+      let senderEmotes = null
+      const senderKey = resolveSenderEmoteKey(m)
+      const isOwn = m.user && currentUsername && m.user.toLowerCase() === currentUsername.toLowerCase()
+      if (isOwn) {
+        senderEmotes = viewerPersonalEmotes
+      } else if (senderKey) {
+        senderEmotes = getSenderEmotes(senderKey)
+        if (!senderEmotes) queueSenderEmoteFetch(senderKey, m)
+      }
+      processedText = processEmotes(escapeHtml(m.text), m.channel, twitchExtra, senderEmotes)
       if (m.emotes && m.emotes.length > 0) {
         processedText = processYtEmotes(processedText, m.emotes, true)
       }
@@ -6715,6 +6834,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       loadOfflineEventsSetting(),
       loadBlockedEmotes(),
       loadEmotes(),
+      loadSenderEmoteSets(),
     ]);
     // Init done — drop the cache so subsequent reads see fresh data.
     invalidateUiSettingsCache()

@@ -19,7 +19,7 @@ function compileAutomod(rawSettings) {
 
 async function loadAutomodSettings() {
   try {
-    const stored = await chrome.storage.sync.get(['ui_settings'])
+    const stored = await cachedUiSettings()
     compileAutomod(stored.ui_settings || {})
   } catch {}
 }

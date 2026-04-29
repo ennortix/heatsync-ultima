@@ -6002,7 +6002,7 @@ function compileAutomod(rawSettings) {
 
 async function loadAutomodSettings() {
   try {
-    const stored = await chrome.storage.sync.get(['ui_settings'])
+    const stored = await cachedUiSettings()
     compileAutomod(stored.ui_settings || {})
   } catch {}
 }
@@ -19641,21 +19641,36 @@ const STORAGE_KEY = 'heatsync_multichat';
   // Stream event user colors — login → color (populated from server on connect)
   const streamColorMap = new Map();
 
-  // One-time migration: copy ui_settings from storage.local to storage.sync
+  // One-time migration: copy ui_settings from storage.local to storage.sync.
+  // Reuses the in-flight cachedUiSettings() to avoid a second sync IPC.
   async function migrateSettingsToSync() {
     try {
       const [syncData, localData] = await Promise.all([
-        chrome.storage.sync.get(['ui_settings']),
+        cachedUiSettings(),
         chrome.storage.local.get(['ui_settings']),
       ])
       if (!syncData.ui_settings && localData.ui_settings) {
         await chrome.storage.sync.set({ ui_settings: localData.ui_settings })
+        invalidateUiSettingsCache()
         log('Migrated ui_settings from local to sync')
       }
     } catch (e) {
       log('Settings migration error:', e)
     }
   }
+
+  // Init-time storage cache — load* functions all read the SAME `ui_settings`
+  // key. Without this, init() fires 17+ separate sync IPCs to chrome.storage.
+  // One `cachedUiSettings()` call boots a single in-flight Promise that every
+  // loader awaits. Cleared at end of init so post-load changes go to disk.
+  let _uiSettingsCachePromise = null
+  function cachedUiSettings() {
+    if (!_uiSettingsCachePromise) {
+      _uiSettingsCachePromise = chrome.storage.sync.get(['ui_settings'])
+    }
+    return _uiSettingsCachePromise
+  }
+  function invalidateUiSettingsCache() { _uiSettingsCachePromise = null }
 
   // Batched ui_settings writer — coalesces multiple saves into one read-modify-write
   let _pendingSettings = null
@@ -19669,6 +19684,7 @@ const STORAGE_KEY = 'heatsync_multichat';
       const pending = _pendingSettings
       _pendingSettings = null
       _settingsSaveTimer = null
+      invalidateUiSettingsCache()
       chrome.storage.sync.get(['ui_settings']).then(s => {
         chrome.storage.sync.set({ ui_settings: { ...s.ui_settings, ...pending } })
       })
@@ -21343,7 +21359,7 @@ const STORAGE_KEY = 'heatsync_multichat';
   // Inline notification settings
   async function loadInlineNotifSettings() {
     try {
-      const stored = await chrome.storage.sync.get(['ui_settings'])
+      const stored = await cachedUiSettings();
       const saved = stored.ui_settings?.inlineNotifs
       if (saved) {
         for (const k of Object.keys(INLINE_NOTIF_TYPES)) {
@@ -21359,7 +21375,7 @@ const STORAGE_KEY = 'heatsync_multichat';
 
   async function loadHermesSettings() {
     try {
-      const stored = await chrome.storage.sync.get(['ui_settings'])
+      const stored = await cachedUiSettings();
       const saved = stored.ui_settings?.hermesEvents
       if (saved) {
         for (const k of Object.keys(HERMES_EVENT_TYPES)) {
@@ -21409,7 +21425,7 @@ const STORAGE_KEY = 'heatsync_multichat';
   // WYSIWYG setting
   async function loadWysiwygSetting() {
     try {
-      const stored = await chrome.storage.sync.get(['ui_settings']);
+      const stored = await cachedUiSettings();
       if (stored.ui_settings?.wysiwygEnabled !== undefined) {
         wysiwygEnabled = stored.ui_settings.wysiwygEnabled;
       }
@@ -21425,7 +21441,7 @@ const STORAGE_KEY = 'heatsync_multichat';
   // Clickable links setting
   async function loadLinksSetting() {
     try {
-      const stored = await chrome.storage.sync.get(['ui_settings']);
+      const stored = await cachedUiSettings();
       if (stored.ui_settings?.linksEnabled !== undefined) {
         linksEnabled = stored.ui_settings.linksEnabled;
       }
@@ -21441,7 +21457,7 @@ const STORAGE_KEY = 'heatsync_multichat';
   // Vi mode setting
   async function loadViModeSetting() {
     try {
-      const stored = await chrome.storage.sync.get(['ui_settings']);
+      const stored = await cachedUiSettings();
       if (stored.ui_settings?.viMode !== undefined) {
         viModeEnabled = stored.ui_settings.viMode;
       }
@@ -21465,7 +21481,7 @@ const STORAGE_KEY = 'heatsync_multichat';
   // Platform badges setting
   async function loadPlatformBadgesSetting() {
     try {
-      const stored = await chrome.storage.sync.get(['ui_settings']);
+      const stored = await cachedUiSettings();
       if (stored.ui_settings?.showPlatformBadges !== undefined) {
         platformBadgesEnabled = stored.ui_settings.showPlatformBadges;
       }
@@ -21478,7 +21494,7 @@ const STORAGE_KEY = 'heatsync_multichat';
   // Zebra striping setting
   async function loadZebraSetting() {
     try {
-      const stored = await chrome.storage.sync.get(['ui_settings']);
+      const stored = await cachedUiSettings();
       if (stored.ui_settings?.zebra !== undefined) {
         zebraEnabled = stored.ui_settings.zebra;
       }
@@ -21499,7 +21515,7 @@ const STORAGE_KEY = 'heatsync_multichat';
   // Platform filters — per-tab toggle to mute Twitch/Kick/YT messages
   async function loadPlatformFilters() {
     try {
-      const stored = await chrome.storage.sync.get(['ui_settings']);
+      const stored = await cachedUiSettings();
       if (stored.ui_settings?.platformFilters) platformFilters = stored.ui_settings.platformFilters;
     } catch {}
   }
@@ -21568,7 +21584,7 @@ const STORAGE_KEY = 'heatsync_multichat';
   // Auto-hide input setting
   async function loadAutoHideSetting() {
     try {
-      const stored = await chrome.storage.sync.get(['ui_settings']);
+      const stored = await cachedUiSettings();
       if (stored.ui_settings?.autoHideEmpty !== undefined) {
         autoHideInput = stored.ui_settings.autoHideEmpty;
       }
@@ -21605,7 +21621,7 @@ const STORAGE_KEY = 'heatsync_multichat';
   // Timestamps setting
   async function loadTimestampsSetting() {
     try {
-      const stored = await chrome.storage.sync.get(['ui_settings']);
+      const stored = await cachedUiSettings();
       if (stored.ui_settings?.timestamps !== undefined) {
         timestampsEnabled = stored.ui_settings.timestamps;
       }
@@ -21627,7 +21643,7 @@ const STORAGE_KEY = 'heatsync_multichat';
   // Offline events setting
   async function loadOfflineEventsSetting() {
     try {
-      const stored = await chrome.storage.sync.get(['ui_settings']);
+      const stored = await cachedUiSettings();
       if (stored.ui_settings?.showOfflineEvents !== undefined) {
         // migrate: old default was true, new default is false — clear stale stored value
         if (stored.ui_settings.showOfflineEvents === true && !stored.ui_settings._offlineDefaultMigrated) {
@@ -21653,7 +21669,7 @@ const STORAGE_KEY = 'heatsync_multichat';
   // Avatars setting
   async function loadAvatarsSetting() {
     try {
-      const stored = await chrome.storage.sync.get(['ui_settings']);
+      const stored = await cachedUiSettings();
       if (stored.ui_settings?.avatars !== undefined) {
         avatarsEnabled = stored.ui_settings.avatars;
       }
@@ -21714,7 +21730,7 @@ const STORAGE_KEY = 'heatsync_multichat';
 
   async function loadSmartCompletionSetting() {
     try {
-      const stored = await chrome.storage.sync.get(['ui_settings']);
+      const stored = await cachedUiSettings();
       if (stored.ui_settings?.smartCompletion !== undefined) smartCompletion = !!stored.ui_settings.smartCompletion;
     } catch {}
   }
@@ -21725,7 +21741,7 @@ const STORAGE_KEY = 'heatsync_multichat';
 
   async function loadFirstChatterGlowSetting() {
     try {
-      const stored = await chrome.storage.sync.get(['ui_settings']);
+      const stored = await cachedUiSettings();
       if (stored.ui_settings?.firstChatterGlow !== undefined) firstChatterGlow = !!stored.ui_settings.firstChatterGlow;
     } catch {}
   }
@@ -21737,7 +21753,7 @@ const STORAGE_KEY = 'heatsync_multichat';
 
   async function loadKeywordHighlightsSetting() {
     try {
-      const stored = await chrome.storage.sync.get(['ui_settings']);
+      const stored = await cachedUiSettings();
       if (typeof stored.ui_settings?.keywordHighlights === 'string') keywordHighlights = stored.ui_settings.keywordHighlights;
     } catch {}
     rebuildKeywordRegex();
@@ -24779,7 +24795,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
 
   async function loadTabsPosition() {
     try {
-      const stored = await chrome.storage.sync.get(['ui_settings']);
+      const stored = await cachedUiSettings();
       // Migration: tabsOnRight → tabPosition
       if (stored.ui_settings?.tabsOnRight !== undefined && stored.ui_settings?.tabPosition === undefined) {
         tabPosition = stored.ui_settings.tabsOnRight ? 'right' : 'top';
@@ -24800,7 +24816,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
   const BUILTIN_TABS = ['live', 'feed', 'mentions', 'discover', 'pinned', 'add'];
   async function loadActiveTab() {
     try {
-      const stored = await chrome.storage.sync.get(['ui_settings']);
+      const stored = await cachedUiSettings();
       const saved = stored.ui_settings?.activeTab || 'live';
       // Validate: must be a built-in tab or a configured channel (never restore 'add')
       const channelIds = config.channels.map(c => typeof c === 'string' ? c : c.id);
@@ -24909,7 +24925,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
 
   async function loadChatPosition() {
     try {
-      const stored = await chrome.storage.sync.get(['ui_settings']);
+      const stored = await cachedUiSettings();
       if (stored.ui_settings?.chatPosition !== undefined) {
         chatPosition = stored.ui_settings.chatPosition;
       }
@@ -25835,45 +25851,48 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     if (mcInitialized) return;
     mcInitialized = true;
 
+    // ── PHASE 0: synchronous prep (no awaits) ─────────────────────────────
+    // Inject CSS NOW so the panel paints with correct styles the moment it
+    // mounts. injectStyles has zero settings deps — moving it before any
+    // await shaves ~10-15ms off the cold visual path.
+    injectStyles();
+    detectOfflineState();
+    if (isPopout) document.body.classList.add('hs-popout');
+    currentUsername = getCurrentUsername();
+
+    // ── PHASE 1: warm caches in parallel ──────────────────────────────────
+    // Prime ui_settings cache so the 18+ load* functions all pull from one
+    // in-flight Promise. Also fan out independent storage.local reads.
+    const _uiPrime = cachedUiSettings()
+    const _localPrime = chrome.storage.local.get([STORAGE_KEY, 'user_info', 'muted_users'])
     await loadConfig();
     if (!config.enabled) return;
-
     log('Initializing...');
 
-    // Add popout class to body for CSS targeting
-    if (isPopout) {
-      document.body.classList.add('hs-popout');
-    }
-
-    currentUsername = getCurrentUsername();
-    // Fallback: get username from HeatSync user_info in storage
-    if (!currentUsername) {
-      try {
-        const ui = await chrome.storage.local.get('user_info')
-        if (ui.user_info?.username) currentUsername = ui.user_info.username.toLowerCase()
-      } catch {}
-    }
-    log('Username:', currentUsername);
-
-    // Load muted users from background muted_users key (with expiry check)
+    // ── PHASE 2: hydrate username + muted users from prefetched local ─────
     try {
-      const stored = await chrome.storage.local.get(['muted_users']);
-      if (stored.muted_users && Array.isArray(stored.muted_users)) {
+      const local = await _localPrime
+      if (!currentUsername && local.user_info?.username) {
+        currentUsername = local.user_info.username.toLowerCase()
+      }
+      if (Array.isArray(local.muted_users)) {
         const now = Date.now()
-        for (const entry of stored.muted_users) {
+        for (const entry of local.muted_users) {
           const u = (typeof entry === 'string' ? entry : entry.username)?.toLowerCase()
           const exp = typeof entry === 'string' ? null : entry.expiresAt
           if (u && (!exp || exp > now)) mutedUsers.add(u)
         }
       }
-    } catch (e) {
-      log('Error loading muted users:', e);
-    }
+    } catch {}
+    log('Username:', currentUsername);
 
-    injectStyles();
-    detectOfflineState();
-    await migrateSettingsToSync();
+    // ── PHASE 3: settings hydration + emote load (all in parallel) ────────
+    // migrateSettingsToSync, all 23 load* funcs, blocked-emotes, and emotes
+    // all share the cached ui_settings or hit independent local keys; they
+    // can run concurrently. Previously this was 3 sequential await steps.
     await Promise.all([
+      _uiPrime,  // already in flight; just await here to ensure it landed
+      migrateSettingsToSync(),
       loadActiveTab(),
       loadTabsPosition(),
       loadChatPosition(),
@@ -25898,9 +25917,11 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       loadFirstChatterGlowSetting(),
       loadKeywordHighlightsSetting(),
       loadOfflineEventsSetting(),
+      loadBlockedEmotes(),
+      loadEmotes(),
     ]);
-    await loadBlockedEmotes();
-    await loadEmotes();
+    // Init done — drop the cache so subsequent reads see fresh data.
+    invalidateUiSettingsCache()
 
     // Request background to re-send channel emotes (may have been fetched before we loaded)
     try {
@@ -26646,50 +26667,53 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
   }
 
   /**
-   * Attempt to hook React components, with fallback
+   * Attempt to hook React components, with fallback.
+   * Fires the moment the chat-room appears via MutationObserver — the old
+   * 500ms poll meant up to 500ms of perceived lag after Twitch's React
+   * actually mounted. Now: usually <1 frame.
    */
   function tryHookReact() {
-    let attempts = 0;
-    const maxAttempts = 30;
-
+    let done = false;
     const tryHook = () => {
-      if (mcSignal?.aborted) return;
-      attempts++;
-
-      // First, try to find and patch the chat room component
+      if (done || mcSignal?.aborted) return false;
       const chatRoom = findChatRoomComponent();
       if (chatRoom) {
+        done = true;
         log('Found chat room component');
         patchChatRoomRender(chatRoom);
         ensureUIElements();
         switchTab(_savedActiveTab || 'live');
         startLayoutWatcher();
-        return;
+        return true;
       }
-
-      // Fallback: just inject elements directly (support popout chat)
       const chatContainer = document.querySelector('[class*="chat-room__content"]') ||
                            document.querySelector('[data-a-target="chat-room-component"]') ||
                            document.querySelector('.chat-shell') ||
                            document.querySelector('[class*="stream-chat"]') ||
                            document.querySelector('.chat-room');
-
       if (chatContainer) {
+        done = true;
         log('Using fallback DOM injection');
         ensureUIElements();
         switchTab(_savedActiveTab || 'live');
         startLayoutWatcher();
-        return;
+        return true;
       }
-
-      if (attempts < maxAttempts) {
-        cleanup.setTimeout(tryHook, 500);
-      } else {
-        log('Failed to find chat components after', maxAttempts, 'attempts');
-      }
+      return false;
     };
 
-    tryHook();
+    if (tryHook()) return;
+    const obs = new MutationObserver(() => { if (tryHook()) obs.disconnect() });
+    obs.observe(document.documentElement, { childList: true, subtree: true });
+    cleanup.trackObserver(obs);
+    // Safety net: a slow tab might mount after observer-window misses; bail
+    // after 15s to free the observer.
+    cleanup.setTimeout(() => {
+      if (done) return;
+      done = true;
+      obs.disconnect();
+      log('Failed to find chat components after 15s');
+    }, 15000);
   }
 
   /**
@@ -26700,45 +26724,40 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
   function startLayoutWatcher() {
     if (_layoutWatcherStarted) return
     _layoutWatcherStarted = true
-    // Periodic safety-net — MutationObserver below is primary; this catches
-    // edge cases where the observer's parent is itself removed during SPA tear-down.
-    cleanup.setInterval(() => {
-      if (spaReinitializing) return;
-      if (!document.getElementById('hs-mc-container')) {
-        log('Container missing, re-injecting...');
-        tabBarElement = null;
-        overlayElement = null;
-        inputBarElement = null;
-        resizeObserver = null;
-        ensureUIElements();
-        updateTabBar();
-        renderMessages(currentTab);
-      }
-    }, 5000, 'layout-check');
 
-    // MutationObserver — only watch for container removal
-    cleanup.trackObserver(new MutationObserver((mutations) => {
+    const reinject = () => {
       if (spaReinitializing) return;
-      for (const mutation of mutations) {
-        for (const node of mutation.removedNodes) {
-          if (node.id === 'hs-mc-container' && !document.contains(node)) {
-            log('Container removed, re-injecting...');
-            tabBarElement = null;
-            overlayElement = null;
-            inputBarElement = null;
-            resizeObserver = null;
-            cleanup.setTimeout(() => {
-              ensureUIElements();
-              updateTabBar();
-              renderMessages(currentTab);
-            }, 100, 'container-reinject');
-            return;
-          }
-        }
-      }
+      if (document.getElementById('hs-mc-container')) return;
+      log('Container missing, re-injecting...');
+      tabBarElement = null;
+      overlayElement = null;
+      inputBarElement = null;
+      resizeObserver = null;
+      ensureUIElements();
+      updateTabBar();
+      renderMessages(currentTab);
+    }
+
+    // Faster safety-net (was 5000ms — caused a 2-5s panel-gone window on Kick
+    // after the fast mount started landing during React's first reconciliation
+    // pass).
+    cleanup.setInterval(() => reinject(), 500, 'layout-check');
+
+    // Wide-scope MutationObserver: watches documentElement subtree so
+    // ANY removal of #hs-mc-container is caught — including when our
+    // container's React-owned parent is itself replaced (which would
+    // detach a parent-scoped observer and leave us blind).
+    let _checkScheduled = false
+    cleanup.trackObserver(new MutationObserver(() => {
+      if (spaReinitializing || _checkScheduled) return;
+      if (document.getElementById('hs-mc-container')) return;
+      _checkScheduled = true
+      // Coalesce per-frame: many React mutations fire in one tick; we only
+      // need to react once.
+      cleanup.raf(() => { _checkScheduled = false; reinject() })
     }), 'layout-observer').observe(
-      document.getElementById('hs-mc-container')?.parentElement || document.body,
-      { childList: true }
+      document.documentElement,
+      { childList: true, subtree: true }
     )
   }
 

@@ -13797,21 +13797,13 @@ function listenForSocialEvents() {
             trimChildren(msgsEl, 150)
           }
           if (msg.status === 'connected') {
-            // Drop any stale ended/error notice now that we're live; only show the
-            // "waiting" placeholder if there really are no messages yet.
+            // Drop any stale ended/error notice now that we're live. No
+            // "waiting for messages" placeholder — the live-dot on the tab
+            // (data-live="true") already signals YT is connected, and the
+            // placeholder lingers awkwardly on slow chats. End/error notices
+            // below stay because they're actionable.
             if (msgsEl) {
               for (const el of msgsEl.querySelectorAll('.hs-mc-empty[data-hs-yt-status]')) el.remove()
-              if (!(channelYtMessages.get(targetChannelId)?.length)) {
-                upsertNotice('youtube connected: ' + (link.channelName || msg.videoId) + ' — waiting for messages...')
-                // Auto-clear the "waiting" placeholder after a few seconds — on
-                // quiet streams no message ever arrives to push it out, and the
-                // user has already seen the connection confirmation.
-                cleanup.setTimeout(() => {
-                  const m = document.getElementById('hs-mc-messages')
-                  if (!m) return
-                  for (const el of m.querySelectorAll('.hs-mc-empty[data-hs-yt-status]')) el.remove()
-                }, 5000)
-              }
             }
           } else if (msg.status === 'ended' || msg.status === 'error') {
             // Drop noise: rate-limit (transient ws-handler 5/min/socket) and

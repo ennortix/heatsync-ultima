@@ -5966,8 +5966,11 @@ function injectStyles() {
     /* Live streams render via #full-bleed-container > #player-container
        (position:absolute, left:0). Centering #primary-inner doesn't reach
        this path, so explicitly center the player-container inside its
-       full-bleed parent when chat is at the bottom. */
-    body.hs-platform-yt.hs-chat-bottom #player-container {
+       full-bleed parent when chat is at the bottom.
+       Skip theatre/fullscreen/miniplayer — YT animates transform on
+       #player-container during those transitions, and our !important
+       transform overrides their animation, causing visual offset/flicker. */
+    body.hs-platform-yt.hs-chat-bottom:not(.hs-mode-theatre) ytd-watch-flexy:not([theater]):not([fullscreen]):not([is-miniplayer]) #player-container {
       left: 50% !important;
       transform: translateX(-50%) !important;
     }
@@ -19257,16 +19260,31 @@ const STORAGE_KEY = 'heatsync_multichat';
     return _channelLookup
   }
 
-  // Safe runtime.sendMessage wrapper (context invalidation guard, Firefox-compatible)
+  // Safe runtime.sendMessage wrapper (context invalidation guard, Firefox-compatible).
+  // Retries once on cold SW wake — MV3 service workers sleep after ~30s idle and the
+  // first message after sleep can fail with "Could not establish connection" before
+  // the SW finishes waking. Without this retry, the first user action after idle
+  // (channel switch, send message, mute) silently no-ops.
   function safeSendMessage(message) {
+    return _trySendMessageOnce(message, 0)
+  }
+  async function _trySendMessageOnce(message, attempt) {
     try {
-      return api.runtime.sendMessage(message).catch(e => {
-        log('sendMessage failed:', e.message)
-        return { ok: false, error: e.message }
-      })
+      return await api.runtime.sendMessage(message)
     } catch (e) {
-      log('sendMessage failed:', e.message)
-      return Promise.resolve({ ok: false, error: 'context invalidated' })
+      const err = e?.message || ''
+      // Context invalidated = extension reloaded. The 30s health-ping at
+      // ~line 7289 will trigger location.reload() on next tick; just bail.
+      if (err.includes('Extension context invalidated')) {
+        return { ok: false, error: 'context invalidated' }
+      }
+      // Cold-wake retry: SW was asleep, port not yet attached on first try.
+      if (attempt === 0 && (err.includes('Could not establish connection') || err.includes('Receiving end does not exist'))) {
+        await new Promise(r => setTimeout(r, 80))
+        return _trySendMessageOnce(message, 1)
+      }
+      log('sendMessage failed:', err)
+      return { ok: false, error: err }
     }
   }
 
@@ -20291,20 +20309,20 @@ const STORAGE_KEY = 'heatsync_multichat';
           _scrollFrame = null
           updateFromScrollPosition()
         })
-      }, { passive: true })
+      }, { passive: true, signal: mcSignal })
 
       msgsEl.addEventListener('scrollend', () => {
         if (isProgrammaticScroll) return
         if (_scrollFrame) { cancelAnimationFrame(_scrollFrame); _scrollFrame = null }
         updateFromScrollPosition()
-      })
+      }, { signal: mcSignal })
 
       // Wheel-up: pause INSTANTLY (before any scroll event fires) so even a single
       // notch tick locks the chat. Wheel-down resume is handled by scroll/scrollend.
       msgsEl.addEventListener('wheel', (e) => {
         if (isStaticTab()) return
         if (e.deltaY < 0) setPaused(true)
-      }, { passive: true })
+      }, { passive: true, signal: mcSignal })
 
       newBtn.addEventListener('click', () => {
         isScrolledUp = false;
@@ -20318,7 +20336,7 @@ const STORAGE_KEY = 'heatsync_multichat';
           // Chat tabs: re-render to catch up on skipped messages
           renderMessages(currentTab);
         }
-      });
+      }, { signal: mcSignal });
 
       // Hover-thread highlight — yellow border on related reply chain (mirrors website)
       let _threadHover = null
@@ -22244,6 +22262,7 @@ const STORAGE_KEY = 'heatsync_multichat';
     if (hostPlatform === 'yt') {
       // Hide native YouTube chat iframe wherever it is in the tree.
       const ytChatFrame = document.querySelector('ytd-live-chat-frame#chat')
+      const prevDisplay = ytChatFrame?.style.display ?? ''
       if (ytChatFrame) {
         const frameHeight = ytChatFrame.offsetHeight || 500
         ytChatFrame.style.display = 'none'
@@ -22257,6 +22276,18 @@ const STORAGE_KEY = 'heatsync_multichat';
       // position:fixed panel down with it. Body is the only stable parent.
       parent = document.body
       parent.appendChild(container)
+      // Teardown: restore native iframe display and remove our body-appended
+      // container so disabling/reloading the extension doesn't leave the YT
+      // chat permanently hidden. mcSignal aborts on pagehide and on full
+      // lifecycle teardown.
+      mcSignal.addEventListener('abort', () => {
+        if (ytChatFrame && ytChatFrame.isConnected) {
+          ytChatFrame.style.display = prevDisplay
+        }
+        if (container && container.parentElement === document.body) {
+          container.remove()
+        }
+      }, { once: true })
     } else if (isKick) {
       parent = chatRoom.parentElement
       chatRoom.after(container)
@@ -24882,9 +24913,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     }
     if (!_twitchSideNavWinHooked) {
       _twitchSideNavWinHooked = true;
-      const onResize = () => updateTwitchSideNavWidth();
-      window.addEventListener('resize', onResize, { passive: true });
-      cleanup.trackListener(window, 'resize', onResize);
+      window.addEventListener('resize', () => updateTwitchSideNavWidth(), { passive: true, signal: mcSignal });
     }
     updateTwitchSideNavWidth();
   }
@@ -24950,7 +24979,21 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       targets.push(document.body);
     }
     if (targets.length === 0) return;
-    _theatreObserver = new MutationObserver(() => detectTheatreMode());
+    // Body-subtree observation fires on every React class flip (chat-line
+    // animations, hover toggles, ad layer churn) — ~100+ callbacks/sec.
+    // Cheap pre-filter: skip mutations whose target class doesn't contain
+    // a theatre token. Saves the querySelector inside detectTheatreMode().
+    _theatreObserver = new MutationObserver((muts) => {
+      for (const m of muts) {
+        if (m.attributeName !== 'class') { detectTheatreMode(); return }
+        const c = m.target && m.target.className
+        const s = typeof c === 'string' ? c : (c && c.baseVal) || ''
+        if (s.indexOf('theat') !== -1 || s.indexOf('fullscreen') !== -1) {
+          detectTheatreMode()
+          return
+        }
+      }
+    });
     for (const t of targets) {
       _theatreObserver.observe(t, { attributes: true, attributeFilter: ['class', 'data-theatre', 'theater', 'fullscreen'], subtree: true });
     }

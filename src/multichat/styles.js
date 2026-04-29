@@ -4922,8 +4922,11 @@ function injectStyles() {
     /* Live streams render via #full-bleed-container > #player-container
        (position:absolute, left:0). Centering #primary-inner doesn't reach
        this path, so explicitly center the player-container inside its
-       full-bleed parent when chat is at the bottom. */
-    body.hs-platform-yt.hs-chat-bottom #player-container {
+       full-bleed parent when chat is at the bottom.
+       Skip theatre/fullscreen/miniplayer — YT animates transform on
+       #player-container during those transitions, and our !important
+       transform overrides their animation, causing visual offset/flicker. */
+    body.hs-platform-yt.hs-chat-bottom:not(.hs-mode-theatre) ytd-watch-flexy:not([theater]):not([fullscreen]):not([is-miniplayer]) #player-container {
       left: 50% !important;
       transform: translateX(-50%) !important;
     }

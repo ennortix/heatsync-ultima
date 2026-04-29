@@ -1054,24 +1054,36 @@ function injectStyles() {
   const style = document.createElement('style');
   style.id = 'hs-mc-styles';
   style.textContent = `
-    /* Tab bar - positioned at top of chat via render injection */
+    /* Tab bar - positioned at top of chat via render injection.
+       gap:0 + flex-wrap → channel tabs (flex:1 1 auto) tile dense and grow
+       to fill the last wrap row. Util/pf buttons stay flex:0 0 auto so they
+       remain compact. align-items:stretch so all tab heights match in a row
+       (no half-pixel rendering on alternating heights). */
     #hs-mc-tabbar {
       display: flex;
       flex-wrap: wrap;
-      gap: 4px;
+      gap: 0;
       padding: 4px 6px;
       background: #000;
       border-bottom: 1px solid #808080;
       flex-shrink: 0;
       order: -1;
       z-index: 10;
-      align-items: center;
+      align-items: stretch;
+      align-content: flex-start;
       box-sizing: border-box;
     }
 
-    /* Chatterino-style composable tab states: idle → has-new → active */
+    /* Chatterino-style composable tab states: idle → has-new → active.
+       Channel tabs default to fluid (flex:1 1 auto) — adjacent tabs share
+       row width so wrap-rows have no useless trailing gap. min-width keeps
+       the channel label readable, max-width caps absurd growth. Util / pf
+       buttons override below to flex:0 0 (fixed 18×18). margin pulls
+       adjacent tabs into a shared 1px border (visual grid). padding-right
+       reserves space for the live dot so it never overlaps text. */
     .hs-mc-tab {
-      padding: 2px 8px !important;
+      padding: 2px 14px 2px 8px !important;
+      margin: 0 -1px -1px 0 !important;
       background: #000 !important;
       color: #808080 !important;
       border: 1px solid #808080 !important;
@@ -1087,11 +1099,9 @@ function injectStyles() {
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      /* Auto-size to label content; cap so a long YT @handle can't blow out
-         the row — the tab bar wraps to a second line as needed. !important
-         beats the legacy .hs-mc-tab flex:1 rule lower in this file. */
-      flex: 0 0 auto !important;
-      max-width: 140px;
+      flex: 1 1 0 !important;
+      min-width: 70px;
+      max-width: 200px;
       overflow: hidden;
       text-overflow: ellipsis;
     }
@@ -1156,11 +1166,48 @@ function injectStyles() {
     .hs-mc-util-row {
       display: contents;
     }
-    /* Util buttons — same frame as tabs, slightly emphasized weight. */
+    /* Vertical mode: util-row becomes a real wrapping row of squares pinned
+       to the bottom of the column, just below the platfilter — no vertical
+       stacking, takes only the height it needs. */
+    .hs-tabs-left .hs-mc-util-row,
+    .hs-tabs-right .hs-mc-util-row {
+      display: flex !important;
+      flex-direction: row !important;
+      flex-wrap: wrap !important;
+      gap: 1px !important;
+      width: 100% !important;
+      box-sizing: border-box !important;
+      justify-content: center !important;
+      flex: 0 0 auto !important;
+    }
+    /* Util buttons (C, T, F-, F+, ⚙) AND platfilter buttons (T, K, YT) — btop-style
+       packed squares: smallest possible, no padding, tight border. Same size in
+       all layouts (horizontal + vertical). */
+    .hs-mc-util-btn,
+    .hs-mc-pf-btn {
+      width: 18px !important;
+      height: 18px !important;
+      min-width: 18px !important;
+      min-height: 18px !important;
+      max-width: 18px !important;
+      max-height: 18px !important;
+      padding: 0 !important;
+      margin: 0 !important;
+      flex: 0 0 18px !important;
+      box-sizing: border-box !important;
+      font-size: 9px !important;
+      line-height: 1 !important;
+      letter-spacing: -0.5px !important;
+      display: inline-flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      border-width: 1px !important;
+    }
     .hs-mc-util-btn {
       color: #808080 !important;
-      border-color: #808080 !important;
+      border: 1px solid #808080 !important;
       font-weight: 700 !important;
+      background: transparent !important;
     }
     .hs-mc-util-btn:hover {
       background: #fff !important;
@@ -1348,20 +1395,23 @@ function injectStyles() {
     .hs-mc-dm-inline {
       border-left-color: #ffff00;
     }
-    /* Live dot — red indicator, composes with any state */
+    /* Live dot — red indicator, composes with any state. Inset 3px from edge
+       so it never lands on or past the border during bold-active layout
+       shifts. No box-shadow so overflow:hidden ancestors can't clip it. */
     .hs-mc-tab {
       position: relative !important;
     }
     .hs-mc-tab[data-live="true"]::after {
       content: '';
       position: absolute;
-      top: 2px;
-      right: 2px;
+      top: 3px;
+      right: 3px;
       width: 6px;
       height: 6px;
       background: #f00;
       border-radius: 50%;
       pointer-events: none;
+      z-index: 1;
     }
     .hs-mc-tab.active[data-live="true"]::after {
       background: #cc0000;
@@ -2894,13 +2944,17 @@ function injectStyles() {
       display: contents;
     }
     #hs-mc-platfilter:empty { display: none; }
+    /* Vertical mode: platfilter buttons sit in a wrapping row of squares —
+       same 28x28 frame as the rest of the util group. */
     .hs-tabs-right #hs-mc-platfilter,
     .hs-tabs-left #hs-mc-platfilter {
-      display: grid;
-      grid-template-columns: 1fr 1fr 1fr;
-      gap: 4px;
+      display: flex;
+      flex-direction: row;
+      flex-wrap: wrap;
+      gap: 1px;
       width: 100%;
       box-sizing: border-box;
+      justify-content: center;
     }
     .hs-mc-pf-btn {
       background: transparent;
@@ -4242,16 +4296,22 @@ function injectStyles() {
       border-radius: 0;
       background: #000;
       overflow-y: auto;
+      overflow-x: visible;
+      scrollbar-width: none;
       z-index: 1001;
     }
-    .hs-tabs-right .hs-mc-tab {
-      padding: 4px 6px;
-      font-size: 11px;
-      min-width: auto;
-      width: 100%;
-      text-align: center;
-      box-sizing: border-box;
-      flex: 0 0 auto;
+    .hs-tabs-right #hs-mc-tabbar::-webkit-scrollbar { display: none; }
+    .hs-tabs-right .hs-mc-tab,
+    .hs-tabs-left .hs-mc-tab {
+      padding: 4px 14px 4px 6px !important;
+      font-size: 11px !important;
+      min-width: 0 !important;
+      max-width: none !important;
+      width: 100% !important;
+      text-align: center !important;
+      box-sizing: border-box !important;
+      flex: 0 0 auto !important;
+      margin: 0 0 -1px 0 !important;
     }
     .hs-tabs-right .hs-mc-tabs-scroll {
       display: flex;
@@ -4262,7 +4322,9 @@ function injectStyles() {
       overflow-x: hidden;
       flex: 1;
       min-height: 0;
+      scrollbar-width: none;
     }
+    .hs-tabs-right .hs-mc-tabs-scroll::-webkit-scrollbar { display: none; }
     .hs-tabs-right #hs-mc-overlay {
       top: 0;
       left: 0;
@@ -4329,8 +4391,11 @@ function injectStyles() {
       border-radius: 0;
       background: #000;
       overflow-y: auto;
+      overflow-x: visible;
+      scrollbar-width: none;
       z-index: 1001;
     }
+    .hs-tabs-left #hs-mc-tabbar::-webkit-scrollbar { display: none; }
     .hs-tabs-left .hs-mc-tab {
       padding: 4px 6px;
       font-size: 11px;
@@ -4349,7 +4414,9 @@ function injectStyles() {
       overflow-x: hidden;
       flex: 1;
       min-height: 0;
+      scrollbar-width: none;
     }
+    .hs-tabs-left .hs-mc-tabs-scroll::-webkit-scrollbar { display: none; }
     .hs-tabs-left .hs-mc-rotate {
       margin-left: 0;
       margin-top: auto;
@@ -7702,7 +7769,10 @@ async function sendKickMessage(kickSlug, text) {
   function prebuildPickerIdle() {
     if (_pickerPrebuildScheduled) return;
     _pickerPrebuildScheduled = true;
-    const idle = window.requestIdleCallback || ((cb) => setTimeout(cb, 250));
+    // Firefox requires requestIdleCallback to be called with `this === window`;
+    // a bare reference loses the binding and throws "called on an object that
+    // does not implement interface Window". Bind explicitly, fall back to setTimeout.
+    const idle = window.requestIdleCallback ? window.requestIdleCallback.bind(window) : ((cb) => setTimeout(cb, 250));
     idle(() => {
       _pickerPrebuildScheduled = false;
       if (typeof mcSignal !== 'undefined' && mcSignal.aborted) return;
@@ -7758,8 +7828,10 @@ async function sendKickMessage(kickSlug, text) {
     // Merge channel emotes first (keeps 'channel' state), then globals.
     // All names/urls are pre-sanitized via escapeHtml in render helpers.
     const allEmotes = new Map();
+    // Picker priority: viewer's personal inventory FIRST so 'owned' state shows on top
+    for (const [k, v] of viewerPersonalEmotes) allEmotes.set(k, v);
     const chCache = channelEmoteCaches[currentTab] || channelEmoteCaches[getCurrentChannel()];
-    if (chCache) for (const [k, v] of chCache) allEmotes.set(k, v);
+    if (chCache) for (const [k, v] of chCache) if (!allEmotes.has(k)) allEmotes.set(k, v);
     for (const [k, v] of emoteCache) if (!allEmotes.has(k)) allEmotes.set(k, v);
     const sections = groupEmotes(allEmotes);
     picker.innerHTML = `
@@ -7794,8 +7866,9 @@ async function sendKickMessage(kickSlug, text) {
         if (!grid) return;
 
         const searchEmotes = new Map();
+        for (const [k, v] of viewerPersonalEmotes) searchEmotes.set(k, v);
         const searchChCache = channelEmoteCaches[currentTab] || channelEmoteCaches[getCurrentChannel()];
-        if (searchChCache) for (const [k, v] of searchChCache) searchEmotes.set(k, v);
+        if (searchChCache) for (const [k, v] of searchChCache) if (!searchEmotes.has(k)) searchEmotes.set(k, v);
         for (const [k, v] of emoteCache) if (!searchEmotes.has(k)) searchEmotes.set(k, v);
         const filtered = new Map();
         for (const [name, emote] of searchEmotes) {
@@ -8164,6 +8237,7 @@ async function sendKickMessage(kickSlug, text) {
   function handleRemoveSuccess(emoteName, targetEl) {
     inventoryEmotes.delete(emoteName);
     inventoryHashes.delete(emoteName);
+    viewerPersonalEmotes.delete(emoteName);
     const cachedEmote = lookupEmote(emoteName);
     if (cachedEmote) {
       const isThirdParty = ['7tv', 'bttv', 'ffz', 'twitch', 'kick'].includes(cachedEmote.source);
@@ -8218,6 +8292,7 @@ async function sendKickMessage(kickSlug, text) {
     // Blocking and owning are mutually exclusive
     inventoryEmotes.delete(emoteName);
     inventoryHashes.delete(emoteName);
+    viewerPersonalEmotes.delete(emoteName);
 
     // Update local name-based tracking
     blockedEmoteNames.add(emoteName);
@@ -8312,13 +8387,11 @@ async function sendKickMessage(kickSlug, text) {
         const serverHash = response.hash || emoteHash;
         inventoryEmotes.add(emoteName);
         inventoryHashes.set(emoteName, serverHash);
+        viewerPersonalEmotes.set(emoteName, { url: emoteUrl, source: emoteSource || 'heatsync', state: 'owned', hash: serverHash });
         if (emoteCache.has(emoteName)) {
           const cached = emoteCache.get(emoteName);
           cached.state = 'owned';
           if (!cached.hash) cached.hash = serverHash;
-        } else {
-          emoteCache.set(emoteName, { url: emoteUrl, source: emoteSource || 'heatsync', state: 'owned', hash: serverHash });
-          while (emoteCache.size > 2000) { emoteCache.delete(emoteCache.keys().next().value) }
         }
         // Update hash lookup maps (bounded to emoteCache size)
         emoteHashes.set(emoteName, serverHash);
@@ -8367,13 +8440,85 @@ async function sendKickMessage(kickSlug, text) {
   // Emote cache (loaded from storage)
   // Format: Map<name, {url, source, state}>
   // States: 'owned' (in inventory), 'global' (third-party), 'unadded' (heatsync, not owned)
-  let emoteCache = new Map(); // Global + inventory emotes (no channel emotes!)
+  let emoteCache = new Map(); // Globals only — heatsync globals + 7TV globals + native Twitch (NO viewer inventory, NO channel)
   let channelEmoteCaches = {}; // Per-channel emotes: { channelName: Map<name, emoteData> }
   let inventoryEmotes = new Set(); // Names of emotes in user's inventory
+  // Viewer's personal set — separated from emoteCache so it does NOT bleed into
+  // OTHER users' rendered messages. Used as senderEmotes only when sender == viewer.
+  let viewerPersonalEmotes = new Map(); // Map<name, emoteData>
+  // Per-sender fetched 7TV/BTTV personal sets — write-once-per-(key, name), persistent across sessions.
+  // Map<"platform:platform_user_id", Map<name, emoteData>>. Empty inner Map = sender has no personal set (cached miss).
+  // Platform prefixes: "twitch:", "kick:", "yt:" (yt uses resolved twitch_id when available).
+  // Loaded fully at boot from chrome.storage.local["sender_emote_sets"] BEFORE first render → survives hard refresh.
+  const senderEmoteSets = new Map();
+  const SENDER_EMOTE_LRU_MAX = 5000;
+  let _senderEmotePersistTimer = null;
+  let _senderEmoteDirty = false;
 
-  // Look up emote from global cache + current channel cache
+  function _scheduleSenderEmotePersist() {
+    if (_senderEmotePersistTimer || !_senderEmoteDirty) return;
+    _senderEmotePersistTimer = setTimeout(() => {
+      _senderEmotePersistTimer = null;
+      if (!_senderEmoteDirty) return;
+      _senderEmoteDirty = false;
+      const out = {};
+      for (const [k, m] of senderEmoteSets) {
+        out[k] = Object.fromEntries(m);
+      }
+      try { chrome.storage.local.set({ sender_emote_sets: out }) } catch {}
+    }, 500);
+  }
+
+  // Write-once-per-(senderKey, name) merge — NEVER overwrites existing entries.
+  // This is the perma guarantee: once we've stored URL X for ("twitch:123", "67"),
+  // a later fetch returning a different URL for the same name is IGNORED.
+  function mergeSenderEmotes(senderKey, nameToEmote) {
+    if (!senderKey) return false;
+    let inner = senderEmoteSets.get(senderKey);
+    if (!inner) {
+      inner = new Map();
+      senderEmoteSets.set(senderKey, inner);
+      // LRU evict oldest senders if over cap (preserves all names per kept sender)
+      if (senderEmoteSets.size > SENDER_EMOTE_LRU_MAX) {
+        senderEmoteSets.delete(senderEmoteSets.keys().next().value);
+      }
+    } else {
+      // Re-insert to bump LRU recency
+      senderEmoteSets.delete(senderKey);
+      senderEmoteSets.set(senderKey, inner);
+    }
+    let added = false;
+    if (nameToEmote) {
+      for (const [name, data] of Object.entries(nameToEmote)) {
+        if (!inner.has(name)) { inner.set(name, data); added = true; }
+      }
+    }
+    if (added) { _senderEmoteDirty = true; _scheduleSenderEmotePersist(); }
+    return added;
+  }
+
+  function getSenderEmotes(senderKey) {
+    return senderKey ? senderEmoteSets.get(senderKey) : undefined;
+  }
+
+  async function loadSenderEmoteSets() {
+    try {
+      const stored = await chrome.storage.local.get(['sender_emote_sets']);
+      const obj = stored.sender_emote_sets || {};
+      senderEmoteSets.clear();
+      for (const [k, names] of Object.entries(obj)) {
+        if (!names || typeof names !== 'object') continue;
+        senderEmoteSets.set(k, new Map(Object.entries(names)));
+      }
+      log('Loaded sender_emote_sets:', senderEmoteSets.size, 'senders');
+    } catch (e) {
+      log('Error loading sender_emote_sets:', e);
+    }
+  }
+
+  // Look up emote — viewer-perspective fallback chain (used by picker, hover preview, etc.)
   function lookupEmote(name) {
-    return emoteCache.get(name) || channelEmoteCaches[currentTab]?.get(name) || channelEmoteCaches[getLiveChannel()]?.get(name) || channelEmoteCaches[getCurrentChannel()]?.get(name);
+    return viewerPersonalEmotes.get(name) || emoteCache.get(name) || channelEmoteCaches[currentTab]?.get(name) || channelEmoteCaches[getLiveChannel()]?.get(name) || channelEmoteCaches[getCurrentChannel()]?.get(name);
   }
   let inventoryHashes = new Map(); // name → hash for remove_from_inventory
   let emoteHashes = new Map(); // name → hash for ALL emotes (block/unblock API)
@@ -8406,6 +8551,7 @@ async function sendKickMessage(kickSlug, text) {
       emoteCache.clear();
       channelEmoteCaches = {};
       inventoryEmotes.clear();
+      viewerPersonalEmotes.clear();
       inventoryHashes.clear();
       emoteHashes.clear();
       hashToName.clear();
@@ -8440,12 +8586,15 @@ async function sendKickMessage(kickSlug, text) {
         }
       });
 
-      // Add inventory emotes (definitely owned)
+      // Add inventory emotes (definitely owned) → viewerPersonalEmotes ONLY.
+      // Keeping these out of emoteCache (the global fallback) is what prevents
+      // viewer's personal '67' from bleeding into other users' messages.
+      // Render path passes viewerPersonalEmotes as senderEmotes for own outgoing,
+      // and lookupEmote() composes both for picker/hover/UI use cases.
       (stored.emote_inventory || []).forEach(e => {
         if (e.name && e.url) {
           const source = e.source || 'heatsync';
-          emoteCache.set(e.name, { url: e.url, source, state: 'owned', zeroWidth: !!e.zeroWidth });
-          while (emoteCache.size > 2000) { emoteCache.delete(emoteCache.keys().next().value) }
+          viewerPersonalEmotes.set(e.name, { url: e.url, source, state: 'owned', zeroWidth: !!e.zeroWidth });
         }
       });
 
@@ -8558,12 +8707,15 @@ async function sendKickMessage(kickSlug, text) {
   // Periodically scan for new emotes
   cleanup.setInterval(scanDomForEmotes, 10000, 'emote-scan');
 
-  // Process text and replace emote codes with images
-  // Supports 7TV zero-width (overlay) emotes that stack on base emotes
-  // extraCache: optional Map<name, emoteData> for per-message Twitch native
-  // emotes (so they participate in the overlay stack pipeline)
-  function processEmotes(text, channel, extraCache) {
-    if (emoteCache.size === 0 && !channelEmoteCaches[channel] && !extraCache?.size) return text;
+  // Process text and replace emote codes with images.
+  // Supports 7TV zero-width (overlay) emotes that stack on base emotes.
+  // Resolution priority (perma sender model): senderEmotes > channel > extraCache (native twitch IRC) > emoteCache (globals)
+  // - extraCache: optional Map<name, emoteData> for per-message Twitch IRC tag emotes
+  // - senderEmotes: optional Map<name, emoteData> — sender's personal set frozen at first sight.
+  //   For viewer's own outgoing messages, caller passes viewerPersonalEmotes here.
+  //   For others' messages, caller passes their fetched 7TV/BTTV personal set (or empty Map if not yet known).
+  function processEmotes(text, channel, extraCache, senderEmotes) {
+    if (emoteCache.size === 0 && !channelEmoteCaches[channel] && !extraCache?.size && !senderEmotes?.size) return text;
 
     // Split adjacent Kick emotes and text touching emotes (e.g. "word[emote:id:name]")
     // Also split unicode emoji from adjacent non-emoji chars so `🌆<3` becomes
@@ -8610,16 +8762,17 @@ async function sendKickMessage(kickSlug, text) {
       }
 
       // Try name0 overlay convention: "fire0" -> look up "fire" as overlay
+      // Priority: senderEmotes > channel > extraCache (twitch IRC native) > emoteCache (globals)
       let emote = null
       let isOverlayEmote = false
       const endsWithZero = word.endsWith('0') && word.length > 1
       if (endsWithZero) {
         const baseName = word.slice(0, -1)
-        emote = emoteCache.get(baseName) || (channel && channelEmoteCaches[channel]?.get(baseName)) || extraCache?.get(baseName)
+        emote = senderEmotes?.get(baseName) || (channel && channelEmoteCaches[channel]?.get(baseName)) || extraCache?.get(baseName) || emoteCache.get(baseName)
         if (emote) isOverlayEmote = true
       }
       if (!emote) {
-        emote = emoteCache.get(word) || (channel && channelEmoteCaches[channel]?.get(word)) || extraCache?.get(word)
+        emote = senderEmotes?.get(word) || (channel && channelEmoteCaches[channel]?.get(word)) || extraCache?.get(word) || emoteCache.get(word)
         // Honor zero-width flag, OR fall back to the "name0" naming convention
         // when an uploader didn't set the flag despite naming the emote for overlay use.
         if (emote) isOverlayEmote = !!emote.zeroWidth || endsWithZero
@@ -19587,6 +19740,113 @@ const STORAGE_KEY = 'heatsync_multichat';
     }
   }
 
+  // ═══ Sender-perma emote queue ═══
+  // Lazy-fetch each unseen sender's 7TV/BTTV personal set ONCE, cache write-once-per-(sender, name) forever.
+  // Survives hard refresh because emotes.js loadSenderEmoteSets() runs at boot before render.
+  const senderEmotePending = new Set()
+  let senderEmoteTimer = null
+  const SENDER_EMOTE_BATCH = 15
+
+  function resolveSenderEmoteKey(m) {
+    if (!m) return null
+    if (m.platform === 'kick') {
+      const id = m.userId || (m.user && m.user.toLowerCase())
+      return id ? `kick:${id}` : null
+    }
+    if (m.platform === 'youtube') {
+      // For YT, prefer resolved twitch_id (lets us reuse the twitch 7tv set) but
+      // fall back to YT user key when twitch resolution hasn't completed yet.
+      if (m.userId) return `twitch:${m.userId}`
+      const ytKey = (m.user || '').toLowerCase().replace(/^@/, '')
+      return ytKey ? `yt:${ytKey}` : null
+    }
+    // Default: twitch
+    return m.userId ? `twitch:${m.userId}` : null
+  }
+
+  function queueSenderEmoteFetch(senderKey, m) {
+    if (!senderKey) return
+    if (senderEmotePending.has(senderKey)) return
+    if (typeof senderEmoteSets !== 'undefined' && senderEmoteSets.has(senderKey)) return
+    senderEmotePending.add(senderKey)
+    if (senderEmotePending.size >= SENDER_EMOTE_BATCH) {
+      if (senderEmoteTimer) { cleanup.clearTimeout(senderEmoteTimer); senderEmoteTimer = null }
+      flushSenderEmoteBatch()
+      return
+    }
+    if (!senderEmoteTimer) {
+      senderEmoteTimer = cleanup.setTimeout(() => {
+        senderEmoteTimer = null
+        flushSenderEmoteBatch()
+      }, 250)
+    }
+  }
+
+  function flushSenderEmoteBatch() {
+    if (!senderEmotePending.size) return
+    const batch = [...senderEmotePending].slice(0, SENDER_EMOTE_BATCH)
+    batch.forEach(k => senderEmotePending.delete(k))
+    safeSendMessage({ type: 'get_sender_emotes', senderKeys: batch }).then(resp => {
+      const emotes = resp?.emotes || {}
+      const changedKeys = []
+      // Seed sentinel for EVERY batch key. Keys missing from resp.emotes
+      // (sender has no personal set, backend doesn't recognize them) get an
+      // empty Map — without this, every render re-queues them and we loop
+      // render→fetch→re-render forever on busy chats with 50+ unique senders.
+      for (const key of batch) {
+        const added = mergeSenderEmotes(key, emotes[key] || {})
+        if (added) changedKeys.push(key)
+      }
+      if (changedKeys.length) upgradeMessagesForSenders(changedKeys)
+    }).catch(() => {
+      // Network/IPC failure — still seed empty sentinel for each key so the
+      // next render doesn't re-queue them and trigger the same loop.
+      for (const key of batch) mergeSenderEmotes(key, {})
+    })
+    if (senderEmotePending.size > 0) {
+      senderEmoteTimer = cleanup.setTimeout(() => { senderEmoteTimer = null; flushSenderEmoteBatch() }, 500)
+    }
+  }
+
+  // After a sender's personal set arrives, invalidate cached _renderedHtml on
+  // their buffered messages, then trigger a re-render of the active tab so
+  // already-visible rows pick up the new resolution.
+  function upgradeMessagesForSenders(senderKeys) {
+    if (!senderKeys?.length) return
+    const keySet = new Set(senderKeys)
+    const matches = (m) => {
+      if (!m) return false
+      const k = resolveSenderEmoteKey(m)
+      return k && keySet.has(k)
+    }
+    const patchBuf = (buf) => {
+      if (!buf || typeof buf[Symbol.iterator] !== 'function') return
+      for (const m of buf) {
+        if (matches(m)) m._renderedHtml = null
+      }
+    }
+    // Twitch IRC: walk all joined channels' buffers
+    if (typeof irc !== 'undefined' && irc?.channels) {
+      for (const ch of irc.channels.keys()) {
+        patchBuf(irc.getMessages(ch))
+      }
+    }
+    // Kick IRC: same
+    if (typeof kickChat !== 'undefined' && kickChat?.channels) {
+      for (const ch of kickChat.channels.keys()) {
+        patchBuf(kickChat.getMessages(ch))
+      }
+    }
+    // YT messages: per-channel Maps
+    if (typeof channelYtMessages !== 'undefined') channelYtMessages.forEach(patchBuf)
+    // Mentions buffer
+    if (typeof mentionsBuffer !== 'undefined') patchBuf(mentionsBuffer)
+    // Trigger re-render of currently-visible tab so DOM picks up the new resolution.
+    if (typeof renderMessages === 'function' && typeof currentTab !== 'undefined') {
+      try { renderMessages(currentTab) } catch {}
+    }
+  }
+
   // Update cosmetics (badges + paint) in-place without full re-render
   function updateCosmeticsInPlace(userIds) {
     const container = document.getElementById('hs-mc-messages')
@@ -23020,7 +23280,19 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
           twitchExtra.set(name, { url, source: 'twitch', state: 'global', zeroWidth: false })
         }
       }
-      processedText = processEmotes(escapeHtml(m.text), m.channel, twitchExtra)
+      // Sender-perma emote resolution: pick the right per-sender map.
+      // - Viewer's own outgoing → viewerPersonalEmotes (their heatsync inventory wins)
+      // - Other senders → senderEmoteSets["plat:uid"] (lazy-fetched 7TV/BTTV personal set, perma cached)
+      let senderEmotes = null
+      const senderKey = resolveSenderEmoteKey(m)
+      const isOwn = m.user && currentUsername && m.user.toLowerCase() === currentUsername.toLowerCase()
+      if (isOwn) {
+        senderEmotes = viewerPersonalEmotes
+      } else if (senderKey) {
+        senderEmotes = getSenderEmotes(senderKey)
+        if (!senderEmotes) queueSenderEmoteFetch(senderKey, m)
+      }
+      processedText = processEmotes(escapeHtml(m.text), m.channel, twitchExtra, senderEmotes)
       if (m.emotes && m.emotes.length > 0) {
         processedText = processYtEmotes(processedText, m.emotes, true)
       }
@@ -25987,6 +26259,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       loadOfflineEventsSetting(),
       loadBlockedEmotes(),
       loadEmotes(),
+      loadSenderEmoteSets(),
     ]);
     // Init done — drop the cache so subsequent reads see fresh data.
     invalidateUiSettingsCache()

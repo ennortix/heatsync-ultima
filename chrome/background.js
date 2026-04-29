@@ -4341,6 +4341,81 @@ async function handleMessage(message, sender, sendResponse) {
       sendResponse({ cosmetics: result })
     })()
     return true
+  } else if (message.type === 'get_sender_emotes') {
+    // Per-sender 7TV + BTTV personal-set fetch. Used by content script to lazy-resolve
+    // each unseen sender's emotes once and cache write-once-per-(sender, name) forever.
+    // Input:  senderKeys: ["twitch:12345", "kick:somebody", "yt:abcd", ...]
+    // Output: { emotes: { "twitch:12345": { "67": {url, source, zeroWidth, hash}, ... }, ... } }
+    // Empty inner object = sender has no personal set (caller still caches the miss to avoid refetch).
+    const senderKeys = (message.senderKeys || []).slice(0, 30)
+    ;(async () => {
+      const result = {}
+      // Cache hits inside this background instance (cross-tab dedupe). 6h TTL.
+      // Per-name perma is enforced on the content side via mergeSenderEmotes.
+      if (!globalThis.__senderEmoteCache) globalThis.__senderEmoteCache = new Map()
+      const cache = globalThis.__senderEmoteCache
+      const SENDER_EMOTE_CACHE_TTL = 21600000 // 6h
+      await Promise.all(senderKeys.map(async (key) => {
+        const hit = cache.get(key)
+        if (hit && Date.now() - hit.ts < SENDER_EMOTE_CACHE_TTL) {
+          result[key] = hit.emotes
+          return
+        }
+        const colon = key.indexOf(':')
+        if (colon < 0) { result[key] = {}; return }
+        const platform = key.slice(0, colon)
+        const id = key.slice(colon + 1)
+        if (!id) { result[key] = {}; return }
+        const collected = {}
+        // 7TV — twitch + kick supported by /users/{platform}/{id}; "yt" key falls
+        // back to twitch-id which arrives once ytNameToTwitchId resolves.
+        const sevenTvPath = platform === 'kick' ? `kick/${encodeURIComponent(id)}` : `twitch/${encodeURIComponent(id)}`
+        const fetches = [
+          fetchWithTimeout(`https://7tv.io/v3/users/${sevenTvPath}`).then(r => r.ok ? r.json() : null).catch(() => null)
+        ]
+        // BTTV — only twitch-id endpoint. Skip for kick/yt.
+        if (platform === 'twitch' && /^\d+$/.test(id)) {
+          fetches.push(
+            fetchWithTimeout(`https://api.betterttv.net/3/cached/users/twitch/${id}`).then(r => r.ok ? r.json() : null).catch(() => null)
+          )
+        }
+        const [stv, bttv] = await Promise.all(fetches)
+        // 7TV personal emote_set
+        const stvEmotes = stv?.emote_set?.emotes || []
+        for (const e of stvEmotes) {
+          if (!e?.name || !e?.id) continue
+          const flags = (e.flags || 0) | (e.data?.flags || 0)
+          collected[e.name] = {
+            url: `https://cdn.7tv.app/emote/${e.id}/1x.webp`,
+            source: '7tv',
+            state: 'global',
+            zeroWidth: !!(flags & 257),
+            hash: e.id
+          }
+        }
+        // BTTV personal — channelEmotes + sharedEmotes
+        if (bttv) {
+          const all = [...(bttv.channelEmotes || []), ...(bttv.sharedEmotes || [])]
+          for (const e of all) {
+            if (!e?.code || !e?.id) continue
+            if (collected[e.code]) continue // 7TV wins on collision
+            collected[e.code] = {
+              url: `https://cdn.betterttv.net/emote/${e.id}/1x.webp`,
+              source: 'bttv',
+              state: 'global',
+              zeroWidth: false,
+              hash: e.id
+            }
+          }
+        }
+        cache.set(key, { emotes: collected, ts: Date.now() })
+        // LRU evict: keep most-recent 5000
+        if (cache.size > 5000) cache.delete(cache.keys().next().value)
+        result[key] = collected
+      }))
+      sendResponse({ emotes: result })
+    })()
+    return true
   } else if (message.type === 'get_bulk_badges') {
     const bttvObj = {}
     for (const [k, v] of bttvBadgeMap) bttvObj[k] = v

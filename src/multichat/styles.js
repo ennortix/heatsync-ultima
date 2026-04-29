@@ -10,24 +10,36 @@ function injectStyles() {
   const style = document.createElement('style');
   style.id = 'hs-mc-styles';
   style.textContent = `
-    /* Tab bar - positioned at top of chat via render injection */
+    /* Tab bar - positioned at top of chat via render injection.
+       gap:0 + flex-wrap → channel tabs (flex:1 1 auto) tile dense and grow
+       to fill the last wrap row. Util/pf buttons stay flex:0 0 auto so they
+       remain compact. align-items:stretch so all tab heights match in a row
+       (no half-pixel rendering on alternating heights). */
     #hs-mc-tabbar {
       display: flex;
       flex-wrap: wrap;
-      gap: 4px;
+      gap: 0;
       padding: 4px 6px;
       background: #000;
       border-bottom: 1px solid #808080;
       flex-shrink: 0;
       order: -1;
       z-index: 10;
-      align-items: center;
+      align-items: stretch;
+      align-content: flex-start;
       box-sizing: border-box;
     }
 
-    /* Chatterino-style composable tab states: idle → has-new → active */
+    /* Chatterino-style composable tab states: idle → has-new → active.
+       Channel tabs default to fluid (flex:1 1 auto) — adjacent tabs share
+       row width so wrap-rows have no useless trailing gap. min-width keeps
+       the channel label readable, max-width caps absurd growth. Util / pf
+       buttons override below to flex:0 0 (fixed 18×18). margin pulls
+       adjacent tabs into a shared 1px border (visual grid). padding-right
+       reserves space for the live dot so it never overlaps text. */
     .hs-mc-tab {
-      padding: 2px 8px !important;
+      padding: 2px 14px 2px 8px !important;
+      margin: 0 -1px -1px 0 !important;
       background: #000 !important;
       color: #808080 !important;
       border: 1px solid #808080 !important;
@@ -43,11 +55,9 @@ function injectStyles() {
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      /* Auto-size to label content; cap so a long YT @handle can't blow out
-         the row — the tab bar wraps to a second line as needed. !important
-         beats the legacy .hs-mc-tab flex:1 rule lower in this file. */
-      flex: 0 0 auto !important;
-      max-width: 140px;
+      flex: 1 1 0 !important;
+      min-width: 70px;
+      max-width: 200px;
       overflow: hidden;
       text-overflow: ellipsis;
     }
@@ -112,11 +122,48 @@ function injectStyles() {
     .hs-mc-util-row {
       display: contents;
     }
-    /* Util buttons — same frame as tabs, slightly emphasized weight. */
+    /* Vertical mode: util-row becomes a real wrapping row of squares pinned
+       to the bottom of the column, just below the platfilter — no vertical
+       stacking, takes only the height it needs. */
+    .hs-tabs-left .hs-mc-util-row,
+    .hs-tabs-right .hs-mc-util-row {
+      display: flex !important;
+      flex-direction: row !important;
+      flex-wrap: wrap !important;
+      gap: 1px !important;
+      width: 100% !important;
+      box-sizing: border-box !important;
+      justify-content: center !important;
+      flex: 0 0 auto !important;
+    }
+    /* Util buttons (C, T, F-, F+, ⚙) AND platfilter buttons (T, K, YT) — btop-style
+       packed squares: smallest possible, no padding, tight border. Same size in
+       all layouts (horizontal + vertical). */
+    .hs-mc-util-btn,
+    .hs-mc-pf-btn {
+      width: 18px !important;
+      height: 18px !important;
+      min-width: 18px !important;
+      min-height: 18px !important;
+      max-width: 18px !important;
+      max-height: 18px !important;
+      padding: 0 !important;
+      margin: 0 !important;
+      flex: 0 0 18px !important;
+      box-sizing: border-box !important;
+      font-size: 9px !important;
+      line-height: 1 !important;
+      letter-spacing: -0.5px !important;
+      display: inline-flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      border-width: 1px !important;
+    }
     .hs-mc-util-btn {
       color: #808080 !important;
-      border-color: #808080 !important;
+      border: 1px solid #808080 !important;
       font-weight: 700 !important;
+      background: transparent !important;
     }
     .hs-mc-util-btn:hover {
       background: #fff !important;
@@ -304,20 +351,23 @@ function injectStyles() {
     .hs-mc-dm-inline {
       border-left-color: #ffff00;
     }
-    /* Live dot — red indicator, composes with any state */
+    /* Live dot — red indicator, composes with any state. Inset 3px from edge
+       so it never lands on or past the border during bold-active layout
+       shifts. No box-shadow so overflow:hidden ancestors can't clip it. */
     .hs-mc-tab {
       position: relative !important;
     }
     .hs-mc-tab[data-live="true"]::after {
       content: '';
       position: absolute;
-      top: 2px;
-      right: 2px;
+      top: 3px;
+      right: 3px;
       width: 6px;
       height: 6px;
       background: #f00;
       border-radius: 50%;
       pointer-events: none;
+      z-index: 1;
     }
     .hs-mc-tab.active[data-live="true"]::after {
       background: #cc0000;
@@ -1850,13 +1900,17 @@ function injectStyles() {
       display: contents;
     }
     #hs-mc-platfilter:empty { display: none; }
+    /* Vertical mode: platfilter buttons sit in a wrapping row of squares —
+       same 28x28 frame as the rest of the util group. */
     .hs-tabs-right #hs-mc-platfilter,
     .hs-tabs-left #hs-mc-platfilter {
-      display: grid;
-      grid-template-columns: 1fr 1fr 1fr;
-      gap: 4px;
+      display: flex;
+      flex-direction: row;
+      flex-wrap: wrap;
+      gap: 1px;
       width: 100%;
       box-sizing: border-box;
+      justify-content: center;
     }
     .hs-mc-pf-btn {
       background: transparent;
@@ -3198,8 +3252,11 @@ function injectStyles() {
       border-radius: 0;
       background: #000;
       overflow-y: auto;
+      overflow-x: visible;
+      scrollbar-width: none;
       z-index: 1001;
     }
+    .hs-tabs-right #hs-mc-tabbar::-webkit-scrollbar { display: none; }
     .hs-tabs-right .hs-mc-tab {
       padding: 4px 6px;
       font-size: 11px;
@@ -3218,7 +3275,9 @@ function injectStyles() {
       overflow-x: hidden;
       flex: 1;
       min-height: 0;
+      scrollbar-width: none;
     }
+    .hs-tabs-right .hs-mc-tabs-scroll::-webkit-scrollbar { display: none; }
     .hs-tabs-right #hs-mc-overlay {
       top: 0;
       left: 0;
@@ -3285,8 +3344,11 @@ function injectStyles() {
       border-radius: 0;
       background: #000;
       overflow-y: auto;
+      overflow-x: visible;
+      scrollbar-width: none;
       z-index: 1001;
     }
+    .hs-tabs-left #hs-mc-tabbar::-webkit-scrollbar { display: none; }
     .hs-tabs-left .hs-mc-tab {
       padding: 4px 6px;
       font-size: 11px;
@@ -3305,7 +3367,9 @@ function injectStyles() {
       overflow-x: hidden;
       flex: 1;
       min-height: 0;
+      scrollbar-width: none;
     }
+    .hs-tabs-left .hs-mc-tabs-scroll::-webkit-scrollbar { display: none; }
     .hs-tabs-left .hs-mc-rotate {
       margin-left: 0;
       margin-top: auto;

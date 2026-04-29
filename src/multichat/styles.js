@@ -3257,14 +3257,17 @@ function injectStyles() {
       z-index: 1001;
     }
     .hs-tabs-right #hs-mc-tabbar::-webkit-scrollbar { display: none; }
-    .hs-tabs-right .hs-mc-tab {
-      padding: 4px 6px;
-      font-size: 11px;
-      min-width: auto;
-      width: 100%;
-      text-align: center;
-      box-sizing: border-box;
-      flex: 0 0 auto;
+    .hs-tabs-right .hs-mc-tab,
+    .hs-tabs-left .hs-mc-tab {
+      padding: 4px 14px 4px 6px !important;
+      font-size: 11px !important;
+      min-width: 0 !important;
+      max-width: none !important;
+      width: 100% !important;
+      text-align: center !important;
+      box-sizing: border-box !important;
+      flex: 0 0 auto !important;
+      margin: 0 0 -1px 0 !important;
     }
     .hs-tabs-right .hs-mc-tabs-scroll {
       display: flex;

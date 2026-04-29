@@ -1561,7 +1561,25 @@ async function postFeedMessage(text, { topLevel = false } = {}) {
     return;
   }
 
+  // Extract pasted/uploaded media URL from content. The chat-tile flow
+  // inserts /uploads/<file> as text into the input; the home-feed renderer
+  // expects media_url as a separate field. Pull the first match out so it
+  // renders as inline media on heatsync.org.
+  let mediaUrl = null;
+  let mediaType = null;
+  const mediaMatch = text.match(/(?:https?:\/\/[^\s]*)?\/uploads\/([\w.-]+\.(jpg|jpeg|png|gif|webp|avif|mp4|webm|mov))(?:\?[^\s]*)?/i);
+  if (mediaMatch) {
+    mediaUrl = mediaMatch[0].startsWith('/') ? mediaMatch[0] : new URL(mediaMatch[0]).pathname;
+    const ext = mediaMatch[2].toLowerCase();
+    mediaType = /^(mp4|webm|mov)$/.test(ext) ? 'video' : 'image';
+    text = text.replace(mediaMatch[0], '').replace(/\s+/g, ' ').trim();
+  }
+
   const body = { content: text };
+  if (mediaUrl) {
+    body.media_url = mediaUrl;
+    body.media_type = mediaType;
+  }
   // In thread view, global input posts as a reply to the active thread
   if (activeThread) {
     body.reply_to = activeThread.id;

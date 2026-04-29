@@ -2053,8 +2053,15 @@ async function sendMessage() {
     if (typeof result === 'string') text = result
   }
 
-  // Non-chat tabs — plain text not allowed, use slash commands
-  if (currentTab === 'whispers' || currentTab === 'feed' || currentTab === 'mentions') {
+  // Feed tab: plain text + media paste posts directly to home feed.
+  // Slash commands are still respected (e.g. /op explicit, /w whisper).
+  if (currentTab === 'feed') {
+    await postFeedMessage(text, { topLevel: true })
+    return
+  }
+
+  // Whispers/mentions: still require slash commands
+  if (currentTab === 'whispers' || currentTab === 'mentions') {
     flashInputError(input)
     return
   }

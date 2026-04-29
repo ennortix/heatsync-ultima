@@ -23775,10 +23775,13 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     // Tag with the same msgKey renderMessages uses, so a later tab switch into a
     // multi-platform view can prefix-match this DOM and avoid a one-shot rebuild.
     div.dataset.msgKey = `${_renderEpoch}:${msg.id || msg.base36_id || `${msg.user || ''}:${msg.time || ''}:${(msg.text || '').slice(0, 32)}`}`
+    // Stable hash-based zebra (matches renderMessages' zebraOf): per-msg
+    // deterministic so flicker-free across rebuilds.
     if (zebraEnabled && msg.type !== 'stream-event' && msg.type !== 'feed-post' && msg.type !== 'inline-dm') {
-      if (!msgsEl._zebraCount) msgsEl._zebraCount = 0;
-      msgsEl._zebraCount++;
-      if (msgsEl._zebraCount % 2 === 0) div.classList.add('hs-mc-zebra');
+      const s = msg.id || msg.base36_id || `${msg.user || ''}:${msg.time || ''}`
+      let h = 0
+      for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0
+      if ((h & 1) === 0) div.classList.add('hs-mc-zebra')
     }
     msgsEl.appendChild(div);
 
@@ -24123,106 +24126,113 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     const toRender = msgs.slice(-500)
     isProgrammaticScroll = true;
 
-    // Diff-aware render: keep DOM that already matches a prefix of `toRender` and
-    // only build/append the truly-new tail. Multi-platform tabs hit this function
-    // every rAF on busy streams (see appendMessage:isMultiPlatformTab branch) —
-    // wipe-and-rebuild every frame is what made the whole chat panel flicker.
+    // GOD-TIER STABLE-ORDER RENDER:
+    // mellen's bulletproof rules: (1) once a msg is in DOM, it never changes
+    // position; (2) order is correct BEFORE showing; (3) zebra never flickers.
+    //
+    // strategy: insert-only diff.
+    //   - PASS A: remove DOM children whose msgKey is no longer in `toRender`
+    //     (msg trimmed off the buffer cap or filter-toggled out).
+    //   - PASS B: walk `toRender` in order. for each msg, if DOM[domIdx] has
+    //     the same msgKey, advance both. otherwise the desired msg is new —
+    //     insertBefore DOM[domIdx] (or append if at end).
+    //
+    // existing DOM nodes stay put. new msgs slot in at chronologically
+    // correct positions (because `toRender` is already chrono-sorted by
+    // fairMerge below). no shuffling. no rebuild-from-prefix flash.
     const msgKey = (m) =>
       `${_renderEpoch}:${m.id || m.base36_id || `${m.user || ''}:${m.time || ''}:${(m.text || '').slice(0, 32)}`}`
     const desiredKeys = toRender.map(msgKey)
+    const desiredSet = new Set(desiredKeys)
 
-    // Detach yt-status notices (appended by social.js) before reconciling so the
-    // diff doesn't treat them as "stale tail" and the next youtube_status event
-    // doesn't re-add a fresh copy — that round-trip was the visible flicker.
-    // Notices tagged for a different tab are dropped (don't follow user across
-    // tabs — otherwise switching from a YT-offline channel to a live one keeps
-    // the misleading "stream is not currently live" line). Other non-message
-    // children (stale "no messages yet" placeholders, etc.) are dropped: once
-    // `toRender` has content, those are leftover state.
+    // Hash-based stable zebra: each msg's stripe is determined ONCE by its id
+    // and never recomputed. inserts in the middle no longer flip every msg's
+    // zebra state on each render (mellen's "stripes alternating quickly while
+    // scrolled up" complaint). pattern won't strictly alternate but it'll be
+    // stable across renders.
+    const zebraOf = (m) => {
+      if (!zebraEnabled) return false
+      if (m.type === 'stream-event' || m.type === 'feed-post' || m.type === 'inline-dm') return false
+      const s = m.id || m.base36_id || `${m.user || ''}:${m.time || ''}`
+      let h = 0
+      for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0
+      return (h & 1) === 0
+    }
+
+    // PASS 0: capture expanded emote stacks (mostly relevant for full rebuilds
+    // when _renderEpoch increments — stacks would otherwise reset to collapsed).
+    const expandedStacks = []
+    for (const msgDiv of msgsEl.children) {
+      const mid = msgDiv.dataset?.msgId
+      if (!mid) continue
+      const stacks = msgDiv.querySelectorAll('.hs-mc-emote-stack')
+      for (let s = 0; s < stacks.length; s++) {
+        if (stacks[s].classList.contains('expanded')) expandedStacks.push([mid, s])
+      }
+    }
+
+    // PASS A: drop DOM children no longer wanted (yt-status notices for THIS
+    // tab survive at bottom; for other tabs they get dropped). Track yt-status
+    // notices to re-pin at end.
     const detachedExtras = []
-    for (let i = msgsEl.children.length - 1; i >= 0; i--) {
+    let i = 0
+    while (i < msgsEl.children.length) {
       const c = msgsEl.children[i]
-      if (c.dataset?.msgKey) continue
+      const k = c.dataset?.msgKey
+      if (k && desiredSet.has(k)) { i++; continue }
+      // Not a wanted msg — yt-status for this tab gets re-pinned, others removed.
       if (c.dataset?.hsYtStatus && c.dataset?.hsYtStatusTab === String(id)) {
-        detachedExtras.unshift(c)
+        detachedExtras.push(c)
       }
       c.remove()
     }
 
-    let prefixLen = 0
-    while (
-      prefixLen < msgsEl.children.length &&
-      prefixLen < desiredKeys.length &&
-      (msgsEl.children[prefixLen].dataset.msgKey || '') === desiredKeys[prefixLen]
-    ) {
-      prefixLen++
-    }
+    // Snapshot "was at bottom?" BEFORE inserts so we know whether to re-pin.
+    const wasAtBottom = (msgsEl.scrollHeight - msgsEl.scrollTop - msgsEl.clientHeight) <= 4
+    const insertedAtTail = []  // track tail-end inserts for scroll-pin decision
 
-    // DOM already matches desired exactly — re-attach extras and sync side-state.
-    if (prefixLen === msgsEl.children.length && prefixLen === desiredKeys.length) {
-      for (const ex of detachedExtras) msgsEl.appendChild(ex)
-      applyMcMutes();
-      cleanup.raf(() => { isProgrammaticScroll = false; });
-      if (!isScrolledUp) scrollMsgsToBottom(msgsEl);
-      return
-    }
-
-    // Capture expanded emote stacks ONLY in the tail we're about to remove —
-    // the surviving prefix keeps its expansion state automatically.
-    const expandedStacks = []
-    for (let i = prefixLen; i < msgsEl.children.length; i++) {
-      const msg = msgsEl.children[i]
-      const mid = msg.dataset && msg.dataset.msgId
-      if (!mid) continue
-      const allStacks = [...msg.querySelectorAll('.hs-mc-emote-stack')]
-      for (let s = 0; s < allStacks.length; s++) {
-        if (allStacks[s].classList.contains('expanded')) expandedStacks.push([mid, s])
+    // PASS B: walk desired list, insert missing msgs at correct positions.
+    let domIdx = 0
+    for (let j = 0; j < toRender.length; j++) {
+      const key = desiredKeys[j]
+      const cur = msgsEl.children[domIdx]
+      if (cur && cur.dataset.msgKey === key) {
+        domIdx++
+        continue
       }
+      // Build new msg div at correct position.
+      const m = toRender[j]
+      const div = buildMessageDiv(m, id)
+      if (!div) continue
+      div.dataset.msgKey = key
+      if (zebraOf(m)) div.classList.add('hs-mc-zebra')
+      msgsEl.insertBefore(div, cur || null)
+      domIdx++
+      // Tail insert = index reached the end of pre-existing DOM.
+      if (!cur) insertedAtTail.push(div)
     }
 
-    // Drop the stale tail
-    while (msgsEl.children.length > prefixLen) {
-      msgsEl.lastElementChild.remove()
-    }
-
-    // Recompute zebra count from surviving prefix so striping stays consistent
-    msgsEl._zebraCount = 0;
-    for (let i = 0; i < prefixLen; i++) {
-      if (msgsEl.children[i].classList.contains('hs-mc-zebra')) msgsEl._zebraCount = i + 1
-    }
-
-    // Build & append only the new tail
-    const frag = document.createDocumentFragment();
-    for (let i = prefixLen; i < toRender.length; i++) {
-      const m = toRender[i]
-      const div = buildMessageDiv(m, id);
-      if (!div) continue;
-      div.dataset.msgKey = desiredKeys[i]
-      if (zebraEnabled && m.type !== 'stream-event' && m.type !== 'feed-post') {
-        msgsEl._zebraCount++;
-        if (msgsEl._zebraCount % 2 === 0) div.classList.add('hs-mc-zebra');
-      }
-      frag.appendChild(div);
-    }
-    msgsEl.appendChild(frag);
-
-    // Re-attach the detached extras at the bottom so notices (yt-status etc.)
-    // stay below the message list across renders without being churned.
+    // Re-pin yt-status notices to the very end.
     for (const ex of detachedExtras) msgsEl.appendChild(ex)
 
+    // Re-apply expanded stacks (only relevant when full rebuild fired).
     for (const [mid, idx] of expandedStacks) {
-      const msg = msgsEl.querySelector(`.hs-mc-msg[data-msg-id="${CSS.escape(mid)}"]`)
-      if (!msg) continue
-      const stacks = msg.querySelectorAll('.hs-mc-emote-stack')
+      const m = msgsEl.querySelector(`.hs-mc-msg[data-msg-id="${CSS.escape(mid)}"]`)
+      if (!m) continue
+      const stacks = m.querySelectorAll('.hs-mc-emote-stack')
       if (stacks[idx]) stacks[idx].classList.add('expanded')
     }
 
-    applyMcMutes();
+    applyMcMutes()
 
-    cleanup.raf(() => { isProgrammaticScroll = false; });
-
-    if (!isScrolledUp) {
-      scrollMsgsToBottom(msgsEl);
+    // Scroll behavior: if user was at bottom AND not in scrolled-up state,
+    // re-pin to bottom — covers both tail appends (new live msg) and mid-
+    // list inserts (backfill above existing live msgs would otherwise leave
+    // user 100px+ above the latest twitch msg). mellen's rule: scrollbar
+    // locked at bottom unless user explicitly scrolls up.
+    cleanup.raf(() => { isProgrammaticScroll = false })
+    if (wasAtBottom && !isScrolledUp) {
+      scrollMsgsToBottom(msgsEl)
     }
   }
 

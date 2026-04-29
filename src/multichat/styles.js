@@ -2054,6 +2054,8 @@ function injectStyles() {
     .hs-mc-picker-emote {
       width: auto !important;
       height: auto !important;
+      min-width: 28px !important;
+      min-height: 28px !important;
       max-width: 96px !important;
       max-height: 32px !important;
       object-fit: contain !important;

@@ -3098,6 +3098,8 @@ function injectStyles() {
     .hs-mc-picker-emote {
       width: auto !important;
       height: auto !important;
+      min-width: 28px !important;
+      min-height: 28px !important;
       max-width: 96px !important;
       max-height: 32px !important;
       object-fit: contain !important;
@@ -7659,24 +7661,14 @@ async function sendKickMessage(kickSlug, text) {
 
   function renderEmoteSections(sections, emptyMsg = t('mc_emote_no_loaded')) {
     if (!sections.length) return `<div class="hs-mc-picker-empty">${escapeHtml(emptyMsg)}</div>`
-    // Only render section headers + first CHUNK_SIZE emotes per section for instant open
-    // Rest gets appended via chunkedRenderRemaining()
-    return sections.map(s => {
-      const initial = s.emotes.slice(0, EMOTE_CHUNK_SIZE)
-      return `
+    // Render every emote up-front in one synchronous pass — no chunked rAF
+    // appends, no visible pop-in. Picker fades in over ~80ms via CSS to mask
+    // the parse cost. With native loading="lazy", off-screen imgs cost nothing.
+    return sections.map(s => `
       <div class="hs-mc-picker-section" data-section-key="${escapeHtml(s.key)}">
         <div class="hs-mc-picker-section-header">${escapeHtml(s.label)} <span class="hs-mc-picker-section-count">${s.emotes.length}</span></div>
-        <div class="hs-mc-picker-section-grid">${initial.map(emoteImgHtml).join('')}</div>
-      </div>`
-    }).join('')
-  }
-
-  const EMOTE_CHUNK_SIZE = 80
-  let _chunkedRafId = null
-  if (typeof mcSignal !== 'undefined') {
-    mcSignal.addEventListener('abort', () => {
-      if (_chunkedRafId) { cancelAnimationFrame(_chunkedRafId); _chunkedRafId = null }
-    })
+        <div class="hs-mc-picker-section-grid">${s.emotes.map(emoteImgHtml).join('')}</div>
+      </div>`).join('')
   }
 
   function emoteImgHtml([name, emote]) {
@@ -7684,60 +7676,87 @@ async function sendKickMessage(kickSlug, text) {
     return `<img src="${escapeHtml(emote.url)}" alt="${escapeHtml(name)}" title="${escapeHtml(name)} (${escapeHtml(emote.source)})" class="hs-mc-picker-emote hs-emote-${escapeHtml(emote.source)}" data-name="${escapeHtml(name)}" data-source="${escapeHtml(emote.source)}" data-state="${escapeHtml(state)}" loading="lazy">`
   }
 
-  /** Append remaining emotes in rAF chunks so the picker opens instantly */
-  function chunkedRenderRemaining(sections, container) {
-    if (_chunkedRafId) cancelAnimationFrame(_chunkedRafId)
-    // Build queue of {gridEl, emotes} for sections with remaining emotes
-    const queue = []
-    for (const s of sections) {
-      if (s.emotes.length <= EMOTE_CHUNK_SIZE) continue
-      const gridEl = container.querySelector(`[data-section-key="${CSS.escape(s.key)}"] .hs-mc-picker-section-grid`)
-      if (!gridEl) continue
-      queue.push({ gridEl, emotes: s.emotes.slice(EMOTE_CHUNK_SIZE), offset: 0 })
-    }
-    function renderNext() {
-      const item = queue[0]
-      if (!item) return
-      const chunk = item.emotes.slice(item.offset, item.offset + EMOTE_CHUNK_SIZE)
-      if (!chunk.length) { queue.shift(); renderNext(); return }
-      // Use DocumentFragment for minimal reflows
-      const frag = document.createDocumentFragment()
-      for (const entry of chunk) {
-        const tmp = document.createElement('template')
-        tmp.innerHTML = emoteImgHtml(entry)
-        frag.appendChild(tmp.content)
-      }
-      item.gridEl.appendChild(frag)
-      item.offset += EMOTE_CHUNK_SIZE
-      if (item.offset >= item.emotes.length) queue.shift()
-      if (queue.length) _chunkedRafId = requestAnimationFrame(renderNext)
-    }
-    _chunkedRafId = requestAnimationFrame(renderNext)
-  }
-
   /**
-   * Create emote picker popup
+   * Emote picker — DOM is built once and cached; subsequent opens just toggle
+   * `.visible` (no innerHTML reparse). Idle prebuild after loadEmotes() makes
+   * even the very first click open instantly. Cache invalidates on channel
+   * switch, emote-size change, or any emote-cache reload via markPickerDirty().
    */
   let pickerTab = 'emotes'; // 'emotes' or 'twitch'
-  let _pickerCloseHandler = null; // Tracked to prevent duplicate close handlers
+  let _pickerCloseHandler = null;
+  let _pickerBuiltKey = null;
+  let _pickerPrebuildScheduled = false;
+
+  function pickerCacheKey() {
+    // pickerTab is intentionally NOT in the key — switching the active tab
+    // (emotes ↔ twitch) just toggles display, no rebuild needed.
+    const ch = currentTab || getCurrentChannel() || '_';
+    const chSize = channelEmoteCaches[ch]?.size || channelEmoteCaches[getCurrentChannel()]?.size || 0;
+    return `${ch}|${emoteSize}|${emoteCache.size}|${chSize}`;
+  }
+
+  function markPickerDirty() {
+    _pickerBuiltKey = null;
+  }
+
+  function prebuildPickerIdle() {
+    if (_pickerPrebuildScheduled) return;
+    _pickerPrebuildScheduled = true;
+    const idle = window.requestIdleCallback || ((cb) => setTimeout(cb, 250));
+    idle(() => {
+      _pickerPrebuildScheduled = false;
+      if (typeof mcSignal !== 'undefined' && mcSignal.aborted) return;
+      const picker = document.getElementById('hs-mc-emote-picker');
+      if (!picker) return;
+      if (pickerCacheKey() !== _pickerBuiltKey) showEmotePicker('__prebuild');
+    }, { timeout: 1500 });
+  }
+
+  function syncPickerTabDisplay(picker) {
+    const emTab = picker.querySelector('#hs-mc-tab-emotes');
+    const twTab = picker.querySelector('#hs-mc-tab-twitch');
+    if (emTab) emTab.style.display = pickerTab === 'emotes' ? 'flex' : 'none';
+    if (twTab) twTab.style.display = pickerTab === 'twitch' ? 'flex' : 'none';
+    picker.querySelectorAll('.hs-mc-picker-tab').forEach(b => {
+      b.classList.toggle('active', b.dataset.tab === pickerTab);
+    });
+  }
 
   function showEmotePicker(tab = null) {
     const picker = document.getElementById('hs-mc-emote-picker');
     if (!picker) return;
 
-    // If tab specified, switch to it; otherwise toggle
-    if (tab) {
+    // Sentinel: prebuild path — populate DOM but do NOT toggle visible.
+    const isPrebuild = tab === '__prebuild';
+    if (isPrebuild) {
+      // Skip if already built for the current state
+      if (pickerCacheKey() === _pickerBuiltKey) return;
+      // Fall through to build path; visible class is left untouched at end.
+    } else if (tab) {
       pickerTab = tab;
     } else if (picker.classList.contains('visible')) {
       picker.classList.remove('visible');
       adjustOverlayForPicker(false);
       hideInputBar();
-      if (_chunkedRafId) { cancelAnimationFrame(_chunkedRafId); _chunkedRafId = null; }
       return;
     }
 
-    // Build tabbed UI — merge channel emotes first (so they keep 'channel' state), then globals
-    // Note: all emote names/urls are pre-sanitized via escapeHtml in render helpers
+    // Cache hit → no rebuild, just sync which tab content is shown.
+    if (!isPrebuild && pickerCacheKey() === _pickerBuiltKey && picker.firstChild) {
+      syncPickerTabDisplay(picker);
+      picker.classList.add('visible');
+      const bar = document.getElementById('hs-mc-inputbar');
+      const barHeight = (bar && inputBarVisible) ? bar.offsetHeight : 0;
+      picker.style.bottom = barHeight + 'px';
+      adjustOverlayForPicker(true);
+      if (pickerTab === 'twitch') renderTwitchTab();
+      attachPickerCloseHandler(picker);
+      return;
+    }
+
+    // Cache miss → build full DOM synchronously (no chunks, no popping).
+    // Merge channel emotes first (keeps 'channel' state), then globals.
+    // All names/urls are pre-sanitized via escapeHtml in render helpers.
     const allEmotes = new Map();
     const chCache = channelEmoteCaches[currentTab] || channelEmoteCaches[getCurrentChannel()];
     if (chCache) for (const [k, v] of chCache) allEmotes.set(k, v);
@@ -7764,10 +7783,6 @@ async function sendKickMessage(kickSlug, text) {
       </div>
     `;
 
-    // Chunked render remaining emotes after initial paint
-    const grid = document.getElementById('hs-mc-emote-grid');
-    if (grid) chunkedRenderRemaining(sections, grid);
-
     // Search functionality (debounced)
     let _searchTimer = null;
     const searchInput = document.getElementById('hs-mc-emote-search');
@@ -7788,7 +7803,7 @@ async function sendKickMessage(kickSlug, text) {
         }
         const filteredSections = groupEmotes(filtered);
         grid.innerHTML = renderEmoteSections(filteredSections, t('common_no_matches'));
-        chunkedRenderRemaining(filteredSections, grid);
+        markPickerDirty();
       }, 150);
     });
 
@@ -7845,6 +7860,11 @@ async function sendKickMessage(kickSlug, text) {
       });
     }
 
+    _pickerBuiltKey = pickerCacheKey();
+
+    // Prebuild path stops here — DOM is ready, picker stays hidden.
+    if (isPrebuild) return;
+
     picker.classList.add('visible');
     // Position picker flush above input bar (or at bottom if hidden)
     const bar = document.getElementById('hs-mc-inputbar');
@@ -7854,7 +7874,10 @@ async function sendKickMessage(kickSlug, text) {
 
     if (pickerTab === 'twitch') renderTwitchTab();
 
-    // Close when clicking outside (remove any previous handler first)
+    attachPickerCloseHandler(picker);
+  }
+
+  function attachPickerCloseHandler(picker) {
     if (_pickerCloseHandler) document.removeEventListener('click', _pickerCloseHandler);
     cleanup.setTimeout(() => {
       _pickerCloseHandler = (e) => {
@@ -8484,6 +8507,11 @@ async function sendKickMessage(kickSlug, text) {
 
     // Also scan DOM for third-party emotes (BTTV, FFZ, 7TV)
     scanDomForEmotes();
+
+    // Picker DOM is now stale — schedule an idle prebuild so the very first
+    // click after page load opens the picker instantly (no parse on click).
+    markPickerDirty();
+    prebuildPickerIdle();
   }
 
   // Scan DOM for emotes rendered in chat — route to the current channel's cache, not global
@@ -8520,6 +8548,10 @@ async function sendKickMessage(kickSlug, text) {
 
     if (found > 0) {
       log('Scanned', found, 'emotes from DOM ->', ch, ', total:', cache.size);
+      // Channel cache grew → picker is stale; queue an idle rebuild so the
+      // next open already reflects the new emotes.
+      markPickerDirty();
+      prebuildPickerIdle();
     }
   }
 
@@ -21337,6 +21369,9 @@ const STORAGE_KEY = 'heatsync_multichat';
       emoteSize = size;
       saveEmoteSize();
       applyEmoteSize();
+      // URLs encode size — picker DOM is now stale.
+      markPickerDirty();
+      prebuildPickerIdle();
     }
   }
 
@@ -22537,6 +22572,11 @@ const STORAGE_KEY = 'heatsync_multichat';
       if (feedTabBtn) feedTabBtn.textContent = t('mc_tab_feed');
     }
     currentTab = id;
+
+    // Channel/tab switch flips which channel-emote cache the picker reads —
+    // mark cache dirty + queue idle prebuild for the new context.
+    markPickerDirty();
+    prebuildPickerIdle();
 
     // Mark mentions as seen when switching to that tab
     if (id === 'mentions') {
@@ -25544,6 +25584,9 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
           }
         }
         log('inventory_update:', inventoryEmotes.size, 'emotes');
+        // Inventory just changed emoteCache contents — picker is stale.
+        markPickerDirty();
+        prebuildPickerIdle();
       }
 
       // Cross-platform mute sync (from background.js — other tabs, server WS, or expiry)

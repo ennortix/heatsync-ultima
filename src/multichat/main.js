@@ -2097,6 +2097,9 @@
       emoteSize = size;
       saveEmoteSize();
       applyEmoteSize();
+      // URLs encode size — picker DOM is now stale.
+      markPickerDirty();
+      prebuildPickerIdle();
     }
   }
 
@@ -3297,6 +3300,11 @@
       if (feedTabBtn) feedTabBtn.textContent = t('mc_tab_feed');
     }
     currentTab = id;
+
+    // Channel/tab switch flips which channel-emote cache the picker reads —
+    // mark cache dirty + queue idle prebuild for the new context.
+    markPickerDirty();
+    prebuildPickerIdle();
 
     // Mark mentions as seen when switching to that tab
     if (id === 'mentions') {
@@ -6304,6 +6312,9 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
           }
         }
         log('inventory_update:', inventoryEmotes.size, 'emotes');
+        // Inventory just changed emoteCache contents — picker is stale.
+        markPickerDirty();
+        prebuildPickerIdle();
       }
 
       // Cross-platform mute sync (from background.js — other tabs, server WS, or expiry)

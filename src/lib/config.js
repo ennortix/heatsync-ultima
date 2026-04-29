@@ -137,6 +137,8 @@ const CONFIG = {
   // ─── DOM selectors ──────────────────────────────────────────────────────────
 
   SELECTORS: {
+    // ─── Single-string selectors (stable, used direct in querySelector) ──────
+
     // Twitch chat containers
     TWITCH_CHAT_CONTAINER: '.chat-scrollable-area__message-container',
     TWITCH_CHAT_FALLBACK: '.chat-list--default',
@@ -144,7 +146,7 @@ const CONFIG = {
     TWITCH_CHAT_ROOM: '[data-test-selector="chat-room-component"]',
     TWITCH_CHAT_ROOM_CONTENT: '[class*="chat-room__content"]',
 
-    // Twitch message parts
+    // Twitch message parts (kept for back-compat — prefer the *_CHAIN arrays below)
     TWITCH_USERNAME: '.chat-author__display-name',
     TWITCH_USERNAME_ALT: '[data-a-target="chat-message-username"]',
     TWITCH_MSG_TEXT: '[data-a-target="chat-message-text"]',
@@ -180,6 +182,111 @@ const CONFIG = {
     YT_SEND_BUTTON: '#send-button button, yt-button-shape button',
     YT_INPUT_RENDERER: 'yt-live-chat-text-input-field-renderer',
     YT_EMOJI_BUTTON: '#emoji-suggestions-button, #picker-buttons yt-live-chat-icon-toggle-button-renderer',
+
+    // ─── Fallback chains (use with safeQuery/safeQueryAll) ────────────────────
+    //
+    // Order: most-stable primary first, then secondary, then last-resort.
+    // safeQuery() warns when a non-primary fallback matches, so a Twitch CSS
+    // rotation that breaks the primary surfaces in DevTools instead of
+    // silently degrading. Stable = data-attribute set by the platform's
+    // React layer (rotates rarely). Brittle = obfuscated CSS class.
+
+    // Twitch — username on a chat message line
+    TWITCH_USER_CHAIN: [
+      '[data-a-target="chat-message-username"]',
+      '.chat-author__display-name',
+      'button.inline.font-bold',
+    ],
+    // Twitch — message text (chat-line body)
+    TWITCH_MSG_TEXT_CHAIN: [
+      '[data-a-target="chat-message-text"]',
+      '.text-fragment',
+      'span.font-normal',
+    ],
+    // Twitch — @mention fragments inside a message
+    TWITCH_MENTION_CHAIN: [
+      '[data-a-target="chat-message-mention"]',
+      '.mention-fragment',
+    ],
+    // Twitch — chat input (single textbox at the bottom of chat)
+    TWITCH_INPUT_CHAIN: [
+      '[data-a-target="chat-input"]',
+      '.chat-wysiwyg-input__editor',
+      '.chat-input',
+    ],
+    // Twitch — chat-line wrapper (one entry per message)
+    TWITCH_LINE_CHAIN: [
+      '.chat-line__message',
+      '[data-a-target="chat-line-message"]',
+    ],
+    // Twitch — chat shell (parent container of input + message list)
+    TWITCH_SHELL_CHAIN: [
+      '[data-test-selector="chat-shell"]',
+      '[data-test-selector="chat-room-component"]',
+      'section.chat-shell',
+      '[class*="chat-shell"]',
+      '.chat-shell',
+      '.chat-room__content',
+    ],
+    // Twitch — moderator action trigger
+    TWITCH_MOD_TRIGGER_CHAIN: [
+      '[data-test-selector="moderator-actions-trigger"]',
+      '.chat-line__moderator-actions',
+      '.moderation-icon',
+    ],
+    // Twitch — tooltip overlay (used when dismissing native tooltips)
+    TWITCH_TOOLTIP_CHAIN: [
+      '[role="tooltip"]',
+      '.tw-tooltip',
+      '.ReactModal__Overlay',
+    ],
+    // Twitch — chat badges in a message
+    TWITCH_BADGES_CHAIN: [
+      '[data-a-target="chat-badge"] img',
+      '.chat-badge img',
+    ],
+
+    // Kick — username on a chat message line
+    KICK_USER_CHAIN: [
+      '.chat-identity-name',
+      '[class*="chat-identity"] span',
+    ],
+    // Kick — chat input
+    KICK_INPUT_CHAIN: [
+      '[data-testid="chat-input"]',
+      'div.editor-input',
+    ],
+    // Kick — chat room container
+    KICK_ROOM_CHAIN: [
+      '#channel-chatroom',
+      '#chatroom',
+    ],
+    // Kick — chat messages container (scrollable area)
+    KICK_MSGS_CONTAINER_CHAIN: [
+      '#chatroom-messages .no-scrollbar',
+      '#chatroom-messages',
+    ],
+
+    // YouTube — chat input wrapper
+    YT_INPUT_RENDERER_CHAIN: [
+      'yt-live-chat-text-input-field-renderer',
+    ],
+    // YouTube — input action buttons container
+    YT_INPUT_BUTTONS_CHAIN: [
+      'yt-live-chat-text-input-field-renderer #buttons',
+    ],
+    // YouTube — author badge wrapper inside a message
+    YT_BADGE_CHAIN: [
+      'yt-live-chat-author-badge-renderer',
+    ],
+
+    // ─── Multi-match strings (intentional cross-platform unions) ──────────────
+    // Use directly in querySelectorAll; comma matches any. Don't migrate these
+    // to chains — they're meant to find Twitch AND Kick lines simultaneously.
+
+    CHAT_LINES_ANY: '.chat-line__message, [data-index]',
+    CHAT_LINES_USER_NOTICE: '.chat-line__message, .user-notice-line, [data-index]',
+    CHAT_LINES_FRESH: '.chat-line__message:not([data-hs-heat-applied]), [data-index]:not([data-hs-heat-applied])',
   },
 
   // ─── CSS classes injected by HeatSync ───────────────────────────────────────

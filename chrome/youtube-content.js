@@ -506,7 +506,7 @@
 
     const badgeContainer = el.querySelector('#author-badges')
     if (badgeContainer) {
-      for (const br of badgeContainer.querySelectorAll('yt-live-chat-author-badge-renderer')) {
+      for (const br of safeQueryAll(badgeContainer, CONFIG.SELECTORS.YT_BADGE_CHAIN, 'yt_badge')) {
         const img = br.querySelector('img')
         if (img?.src) {
           const tooltip = br.getAttribute('aria-label') || br.getAttribute('shared-tooltip-text') ||

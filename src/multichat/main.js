@@ -684,7 +684,6 @@
     // Static hardcoded tab buttons — no user input, safe innerHTML
     // Two sections: scrollable channel tabs + fixed utility buttons (always visible)
     // Static hardcoded buttons — all in one wrapping flow, no user input
-    if (utilCollapsed) container.classList.add('hs-util-collapsed');
     container.innerHTML = `
       <div class="hs-mc-tabs-scroll">
         <button class="hs-mc-tab active" data-tab="feed">${t('mc_tab_feed')}</button>
@@ -693,10 +692,7 @@
         <button class="hs-mc-tab" data-tab="discover">${t('mc_tab_discover')}</button>
         <button class="hs-mc-tab" data-tab="pinned">${t('mc_tab_pinned')}</button>
         <button class="hs-mc-tab" data-tab="live">${t('mc_tab_live')}</button>
-        <div class="hs-mc-add-row">
-          <button class="hs-mc-tab" data-tab="add">+</button>
-          <button class="hs-mc-tab hs-mc-util-toggle" data-tab="util-toggle" title="${t('mc_btn_util_toggle')}">H</button>
-        </div>
+        <button class="hs-mc-tab" data-tab="add">+</button>
       </div>
       <div id="hs-mc-platfilter"></div>
       <div class="hs-mc-util-row">
@@ -726,8 +722,6 @@
         rotateTabPosition();
       } else if (tabId === 'rotate-chat') {
         rotateChatPosition();
-      } else if (tabId === 'util-toggle') {
-        toggleUtilCollapsed();
       } else if (tabId === 'live') {
         showLiveChannelPicker(tab);
       } else {
@@ -850,7 +844,6 @@
   let zebraEnabled = true;
 
   // Util row collapsed — hides C/T/F-/F+/⚙ for clean single-line tabs
-  let utilCollapsed = false;
 
   // Timestamps on messages (default off)
   let timestampsEnabled = false;
@@ -2288,24 +2281,6 @@
     renderMessages(currentTab);
   }
 
-  async function loadUtilCollapsedSetting() {
-    try {
-      const stored = await chrome.storage.sync.get(['ui_settings']);
-      if (stored.ui_settings?.utilCollapsed !== undefined) {
-        utilCollapsed = !!stored.ui_settings.utilCollapsed;
-      }
-      const bar = document.getElementById('hs-mc-tabbar');
-      if (bar) bar.classList.toggle('hs-util-collapsed', utilCollapsed);
-    } catch {}
-  }
-
-  function toggleUtilCollapsed() {
-    utilCollapsed = !utilCollapsed;
-    saveUiSetting('utilCollapsed', utilCollapsed);
-    const bar = document.getElementById('hs-mc-tabbar');
-    if (bar) bar.classList.toggle('hs-util-collapsed', utilCollapsed);
-  }
-
   // Platform filters — per-tab toggle to mute Twitch/Kick/YT messages
   async function loadPlatformFilters() {
     try {
@@ -2838,12 +2813,12 @@
     if (!tabBarElement) return;
 
     // Clear existing channel tabs (keep built-in tabs)
-    const existingChannelTabs = tabBarElement.querySelectorAll('.hs-mc-tab[data-tab]:not([data-tab="live"]):not([data-tab="feed"]):not([data-tab="mentions"]):not([data-tab="whispers"]):not([data-tab="discover"]):not([data-tab="pinned"]):not([data-tab="add"]):not([data-tab="rotate"]):not([data-tab="rotate-chat"]):not([data-tab="settings"]):not([data-tab="util-toggle"])');
+    const existingChannelTabs = tabBarElement.querySelectorAll('.hs-mc-tab[data-tab]:not([data-tab="live"]):not([data-tab="feed"]):not([data-tab="mentions"]):not([data-tab="whispers"]):not([data-tab="discover"]):not([data-tab="pinned"]):not([data-tab="add"]):not([data-tab="rotate"]):not([data-tab="rotate-chat"]):not([data-tab="settings"])');
     existingChannelTabs.forEach(t => t.remove());
 
     // Add channel tabs before the + button in the scroll section
     const scrollSection = tabBarElement.querySelector('.hs-mc-tabs-scroll') || tabBarElement;
-    const addBtn = scrollSection.querySelector('.hs-mc-add-row') || scrollSection.querySelector('[data-tab="add"]');
+    const addBtn = scrollSection.querySelector('[data-tab="add"]');
     config.channels.forEach(ch => {
       const tab = document.createElement('button');
       tab.className = 'hs-mc-tab';
@@ -6697,7 +6672,6 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       loadAutomodSettings(),
       loadPlatformBadgesSetting(),
       loadZebraSetting(),
-      loadUtilCollapsedSetting(),
       loadPlatformFilters(),
       loadAutoHideSetting(),
       loadTimestampsSetting(),

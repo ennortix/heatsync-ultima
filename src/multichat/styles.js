@@ -103,76 +103,25 @@ function injectStyles() {
     .hs-mc-tab.has-stream-event.active {
       color: #000 !important;
     }
-    /* Utility button row (T, A, A, ⚙) */
-    /* Wrapping section for channel tabs */
-    .hs-mc-tabs-scroll {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 4px;
-      width: 100%;
-      align-items: center;
-    }
-    /* Util row — always a single row of 4, fits container width */
+    /* Tab + util wrappers collapse via display:contents in horizontal mode so
+       all buttons (channel tabs, +, T/K/YT filters, C/T/F-/F+/⚙) become flat
+       children of #hs-mc-tabbar and share its single flex-wrap. Vertical mode
+       (.hs-tabs-left/right) overrides .hs-mc-tabs-scroll to a scrollable
+       column further down. */
+    .hs-mc-tabs-scroll,
     .hs-mc-util-row {
-      display: grid;
-      grid-template-columns: 1fr 1fr 1fr 1fr;
-      gap: 4px;
-      width: 100%;
-      box-sizing: border-box;
-    }
-    .hs-mc-util-row .hs-mc-tab {
-      min-width: 0 !important;
-      padding: 2px 0 !important;
-    }
-    /* Util buttons — same size as tabs, flow inline and wrap naturally */
-    .hs-mc-util-btn {
-      font-weight: 700 !important;
-    }
-    /* Util row — gray frame for ui parity with heatsync.org chat-tile.
-       Hover → white bg / black text per global hover rule. */
-    .hs-mc-util-row .hs-mc-tab {
-      color: #808080 !important;
-      border-color: #808080 !important;
-    }
-    /* Util-toggle button — same gray frame as util-row buttons */
-    .hs-mc-util-toggle {
-      color: #808080 !important;
-      border-color: #808080 !important;
-      font-weight: 700 !important;
-    }
-    .hs-mc-util-toggle:hover {
-      background: #fff !important;
-      color: #000 !important;
-      border-color: #fff !important;
-    }
-    /* + and H wrapper — invisible in horizontal mode, side-by-side flex row when vertical */
-    .hs-mc-add-row {
       display: contents;
     }
-    .hs-tabs-right .hs-mc-add-row,
-    .hs-tabs-left .hs-mc-add-row {
-      display: flex;
-      gap: 2px;
-      width: 100%;
+    /* Util buttons — same frame as tabs, slightly emphasized weight. */
+    .hs-mc-util-btn {
+      color: #808080 !important;
+      border-color: #808080 !important;
+      font-weight: 700 !important;
     }
-    .hs-tabs-right .hs-mc-add-row .hs-mc-tab,
-    .hs-tabs-left .hs-mc-add-row .hs-mc-tab {
-      flex: 1;
-      width: auto;
-    }
-    /* Collapsed state — hide util row for single-line tabs */
-    #hs-mc-tabbar.hs-util-collapsed .hs-mc-util-row {
-      display: none !important;
-    }
-    .hs-mc-util-row .hs-mc-tab:hover {
+    .hs-mc-util-btn:hover {
       background: #fff !important;
       color: #000 !important;
       border-color: #fff !important;
-    }
-    /* Settings ⚙ wraps to row 2; span full width so it doesn't sit as a
-       lonely 1/4-cell square. */
-    .hs-mc-util-row .hs-mc-tab[data-tab="settings"] {
-      grid-column: 1 / -1;
     }
     /* Whisper conversation list */
     .hs-whisper-conv {
@@ -1894,15 +1843,21 @@ function injectStyles() {
     .hs-pcard-action:disabled { opacity: 0.4; cursor: not-allowed; }
     .hs-pcard-kbd { color: #ff8700; font-weight: 700; }
 
-    /* Per-tab platform filter toggles (T/K/YT) — sits above util-row in tab bar */
+    /* Per-tab platform filter toggles (T/K/YT). Horizontal mode: collapse the
+       container so buttons flow inline with channel tabs and util buttons.
+       Vertical mode (left/right): a 3-up grid spanning the column width. */
     #hs-mc-platfilter {
+      display: contents;
+    }
+    #hs-mc-platfilter:empty { display: none; }
+    .hs-tabs-right #hs-mc-platfilter,
+    .hs-tabs-left #hs-mc-platfilter {
       display: grid;
       grid-template-columns: 1fr 1fr 1fr;
       gap: 4px;
       width: 100%;
       box-sizing: border-box;
     }
-    #hs-mc-platfilter:empty { display: none; }
     .hs-mc-pf-btn {
       background: transparent;
       border: 1px solid;
@@ -3253,6 +3208,7 @@ function injectStyles() {
       flex: 0 0 auto;
     }
     .hs-tabs-right .hs-mc-tabs-scroll {
+      display: flex;
       flex-direction: column;
       flex-wrap: nowrap;
       align-items: stretch;
@@ -3339,6 +3295,7 @@ function injectStyles() {
       flex: 0 0 auto;
     }
     .hs-tabs-left .hs-mc-tabs-scroll {
+      display: flex;
       flex-direction: column;
       flex-wrap: nowrap;
       align-items: stretch;

@@ -1679,6 +1679,7 @@ function helixRequest(url, method, body) {
     const ac = new AbortController()
     const signal = mcSignal ? AbortSignal.any([mcSignal, ac.signal]) : ac.signal
     const handler = (e) => {
+      if (e.source !== window || e.origin !== location.origin) return
       if (e.data?.type === 'heatsync-helix-response' && e.data.id === id) {
         ac.abort()
         clearTimeout(timer)
@@ -1703,6 +1704,7 @@ function gqlProxy(operation, variables, opts) {
     const ac = new AbortController()
     const signal = mcSignal ? AbortSignal.any([mcSignal, ac.signal]) : ac.signal
     const handler = (e) => {
+      if (e.source !== window || e.origin !== location.origin) return
       if (e.data?.type === 'heatsync-gql-response' && e.data.id === id) {
         ac.abort()
         clearTimeout(timer)
@@ -1729,6 +1731,7 @@ function gqlGetCache(operations) {
     const ac = new AbortController()
     const signal = mcSignal ? AbortSignal.any([mcSignal, ac.signal]) : ac.signal
     const handler = (e) => {
+      if (e.source !== window || e.origin !== location.origin) return
       if (e.data?.type === 'heatsync-gql-cache-response' && e.data.id === id) {
         ac.abort()
         clearTimeout(timer)
@@ -1954,6 +1957,7 @@ function apolloMutate({ searchTerm, variables, resultField, rawQuery }) {
     const ac = new AbortController()
     const signal = mcSignal ? AbortSignal.any([mcSignal, ac.signal]) : ac.signal
     const handler = (e) => {
+      if (e.source !== window || e.origin !== location.origin) return
       if (e.data?.type === 'heatsync-apollo-mutate-response' && e.data.id === id) {
         ac.abort()
         clearTimeout(timer)

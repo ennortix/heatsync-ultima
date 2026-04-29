@@ -237,7 +237,13 @@ async function getYtChannelHandle(videoId) {
       if (m) handle = m[1]
     }
     if (!handle && data.author_name) handle = data.author_name.replace(/\s+/g, '')
-    if (handle) ytChannelHandleCache.set(videoId, handle)
+    if (handle) {
+      ytChannelHandleCache.set(videoId, handle)
+      // LRU cap — long sessions watching many YT channels would otherwise grow unbounded.
+      if (ytChannelHandleCache.size > 100) {
+        ytChannelHandleCache.delete(ytChannelHandleCache.keys().next().value)
+      }
+    }
     return handle
   } catch (e) { return null }
 }
@@ -2982,8 +2988,14 @@ function handleWSMessage(msg) {
         // Same pending-subscribe fallback as youtube:status — covers the case
         // where the first chat batch races ahead of the status event.
         let channelId = msg.channelId || ytVideoToChannel.get(msg.videoId)
-        if (!channelId && msg.videoId && pendingYtSubscribes.length) {
-          const pend = pendingYtSubscribes.pop()
+        // Pending-subscribe attribution is ambiguous when multiple subscribes are
+        // in flight (server may resolve them in any order). Only attribute when
+        // exactly one is pending — otherwise fall through to 'global' and let
+        // the eventual youtube:status event correct the mapping. This trades a
+        // brief routing miss for the much worse cross-channel chat leak that
+        // happens when LIFO pop guesses wrong.
+        if (!channelId && msg.videoId && pendingYtSubscribes.length === 1) {
+          const pend = pendingYtSubscribes.shift()
           channelId = pend.channelId
           setYtVideoChannel(msg.videoId, channelId)
         }
@@ -3047,8 +3059,9 @@ function handleWSMessage(msg) {
       // so attribute via pending-subscribe LIFO when status carries a fresh
       // videoId we haven't seen yet.
       let resolvedChannelId = msg.channelId || ytVideoToChannel.get(msg.videoId)
-      if (!resolvedChannelId && msg.status === 'connected' && msg.videoId && pendingYtSubscribes.length) {
-        const pend = pendingYtSubscribes.pop()
+      // Same ambiguity as youtube:chat — only fall back when exactly one pending.
+      if (!resolvedChannelId && msg.status === 'connected' && msg.videoId && pendingYtSubscribes.length === 1) {
+        const pend = pendingYtSubscribes.shift()
         resolvedChannelId = pend.channelId
         setYtVideoChannel(msg.videoId, resolvedChannelId)
       }
@@ -3435,8 +3448,26 @@ async function addToInventory(emoteName, emoteHash, emoteUrl) {
   }
 }
 
+// Coalesce concurrent removes for the same emote — without this, two tabs
+// firing the same delete pick different slots from a mid-mutation inventory
+// snapshot and the wrong emote gets deleted server-side.
+const _removeInFlight = new Map() // hash → Promise
+
 // Remove emote from your set - returns success/failure
 async function removeFromInventory(emoteHash, emoteName) {
+  const flightKey = emoteHash || emoteName
+  if (flightKey && _removeInFlight.has(flightKey)) {
+    return _removeInFlight.get(flightKey)
+  }
+  const p = _removeFromInventoryImpl(emoteHash, emoteName)
+  if (flightKey) {
+    _removeInFlight.set(flightKey, p)
+    p.finally(() => _removeInFlight.delete(flightKey))
+  }
+  return p
+}
+
+async function _removeFromInventoryImpl(emoteHash, emoteName) {
   try {
     const authToken = await getAuthCookie();
     if (!authToken) {
@@ -3907,6 +3938,7 @@ async function handleMessage(message, sender, sendResponse) {
     const duration = expiresAt ? expiresAt - Date.now() : null;
     if (duration && duration > 0) wsSend({ type: 'user:mute', username: message.username, duration });
     log(' Muted user:', message.username, expiresAt ? `(expires ${new Date(expiresAt).toISOString()})` : '(permanent)');
+    sendResponse({ ok: true });
   } else if (message.type === 'unmute_user') {
     mutedUsers.delete(message.username);
     persistMutedUsers();
@@ -3914,6 +3946,7 @@ async function handleMessage(message, sender, sendResponse) {
     // Sync to server for cross-device unmuting
     wsSend({ type: 'user:unmute', username: message.username });
     log(' Unmuted user:', message.username);
+    sendResponse({ ok: true });
   } else if (message.type === 'get_muted_users') {
     sendResponse({ users: Array.from(mutedUsers.keys()) });
   } else if (message.type === 'block_user') {
@@ -3921,11 +3954,13 @@ async function handleMessage(message, sender, sendResponse) {
     browser.storage.local.set({ blocked_users: Array.from(blockedUsers) });
     broadcastToTabs({ type: 'user_blocked', username: message.username });
     log(' Blocked user:', message.username);
+    sendResponse({ ok: true });
   } else if (message.type === 'unblock_user') {
     blockedUsers.delete(message.username);
     browser.storage.local.set({ blocked_users: Array.from(blockedUsers) });
     broadcastToTabs({ type: 'user_unblocked', username: message.username });
     log(' Unblocked user:', message.username);
+    sendResponse({ ok: true });
   } else if (message.type === 'get_blocked_users') {
     sendResponse({ users: Array.from(blockedUsers) });
   } else if (message.type === 'get_twitch_auth_token') {

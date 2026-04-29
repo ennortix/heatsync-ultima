@@ -6681,7 +6681,9 @@ class IRC {
       try { this.ws.close(); } catch {}
       this.ws = null;
     }
-    this._reconnectAttempts = 0;
+    // Don't reset attempts here — visibilitychange while the network is
+    // still flapping would defeat backoff and slam the server every 2 s.
+    // Only the onopen handler resets to 0.
     if (!this._destroyed) this.connect();
   }
 
@@ -11392,6 +11394,7 @@ function helixRequest(url, method, body) {
     const ac = new AbortController()
     const signal = mcSignal ? AbortSignal.any([mcSignal, ac.signal]) : ac.signal
     const handler = (e) => {
+      if (e.source !== window || e.origin !== location.origin) return
       if (e.data?.type === 'heatsync-helix-response' && e.data.id === id) {
         ac.abort()
         clearTimeout(timer)
@@ -11416,6 +11419,7 @@ function gqlProxy(operation, variables, opts) {
     const ac = new AbortController()
     const signal = mcSignal ? AbortSignal.any([mcSignal, ac.signal]) : ac.signal
     const handler = (e) => {
+      if (e.source !== window || e.origin !== location.origin) return
       if (e.data?.type === 'heatsync-gql-response' && e.data.id === id) {
         ac.abort()
         clearTimeout(timer)
@@ -11442,6 +11446,7 @@ function gqlGetCache(operations) {
     const ac = new AbortController()
     const signal = mcSignal ? AbortSignal.any([mcSignal, ac.signal]) : ac.signal
     const handler = (e) => {
+      if (e.source !== window || e.origin !== location.origin) return
       if (e.data?.type === 'heatsync-gql-cache-response' && e.data.id === id) {
         ac.abort()
         clearTimeout(timer)
@@ -11667,6 +11672,7 @@ function apolloMutate({ searchTerm, variables, resultField, rawQuery }) {
     const ac = new AbortController()
     const signal = mcSignal ? AbortSignal.any([mcSignal, ac.signal]) : ac.signal
     const handler = (e) => {
+      if (e.source !== window || e.origin !== location.origin) return
       if (e.data?.type === 'heatsync-apollo-mutate-response' && e.data.id === id) {
         ac.abort()
         clearTimeout(timer)

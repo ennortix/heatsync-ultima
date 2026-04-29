@@ -5195,6 +5195,7 @@ function updateEmoteState(hash, emoteName, state) {
     return new Promise((resolve) => {
       const id = Math.random().toString(36).slice(2)
       const handler = (e) => {
+        if (e.source !== window || e.origin !== location.origin) return
         if (e.data?.type === 'heatsync-gql-response' && e.data.id === id) {
           window.removeEventListener('message', handler)
           clearTimeout(timer)

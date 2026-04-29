@@ -390,7 +390,9 @@ class IRC {
       try { this.ws.close(); } catch {}
       this.ws = null;
     }
-    this._reconnectAttempts = 0;
+    // Don't reset attempts here — visibilitychange while the network is
+    // still flapping would defeat backoff and slam the server every 2 s.
+    // Only the onopen handler resets to 0.
     if (!this._destroyed) this.connect();
   }
 

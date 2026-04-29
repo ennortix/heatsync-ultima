@@ -3003,50 +3003,47 @@ function handleWSMessage(msg) {
         // Update local map if server provided channelId
         if (msg.channelId && msg.videoId) setYtVideoChannel(msg.videoId, msg.channelId)
 
-        // Drip-feed: server polls YT every few seconds and sends the whole
-        // window of messages in one frame. Broadcasting them all in a single
-        // tick reads as wall-of-text spam and bunches them ahead of any
-        // concurrent Twitch/Kick traffic. Stagger by relative timestamp (or
-        // fixed stride if timestamps are missing/insane) so the DOM appends
-        // intermingle with live cross-platform messages at natural cadence.
-        // Use Date.now() at dispatch time for the displayed `time` so each
-        // YT msg shows up "as it lands" rather than retroactively dated.
+        // Sort by REAL YouTube timestamps so the content script can place
+        // each msg at its true chronological position via fairMerge — both
+        // backfill (replay:true, ~hour-spanning) and live polls (~few sec).
+        // The displayed `time` is the actual yt timestamp, never Date.now() —
+        // critical for hard-refresh accuracy: backfill msgs from 30 min ago
+        // must land between the twitch/kick history at 30 min ago, not at
+        // the bottom of chat.
         const sorted = msg.messages.slice().sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0))
-        const baseT = sorted[0].timestamp || 0
-        const lastT = sorted[sorted.length - 1].timestamp || 0
-        const span = Math.max(0, lastT - baseT)
-        const DRIP_CAP_MS = 4000           // total drip window — bounded so backlog doesn't stall
-        const FIXED_STRIDE_MS = 200        // fallback when timestamps missing/equal
-        const useNaturalSpacing = baseT > 0 && span > 0 && span < 15000
-        const scale = useNaturalSpacing ? Math.min(1, DRIP_CAP_MS / span) : 0
+        const buildPayload = (ytMsg) => ({
+          type: 'youtube_chat_message',
+          videoId: msg.videoId,
+          channelId,
+          user: ytMsg.user,
+          text: ytMsg.text,
+          color: ytMsg.color || '#ff0000',
+          time: ytMsg.timestamp || Date.now(),
+          platform: 'youtube',
+          emotes: ytMsg.emotes || [],
+          msgType: ytMsg.type, // 'text', 'superchat', 'supersticker'
+          amount: ytMsg.amount || '',
+          scColor: ytMsg.scColor || '',
+          sticker: ytMsg.sticker || null,
+          avatar: ytMsg.avatar || undefined,
+          badges: ytMsg.badges || undefined,
+          systemMsg: ytMsg.systemMsg || undefined,
+          source: 'server',
+          replay: !!msg.replay,
+        })
 
-        for (let i = 0; i < sorted.length; i++) {
-          const ytMsg = sorted[i]
-          let delay = useNaturalSpacing
-            ? Math.round(((ytMsg.timestamp || baseT) - baseT) * scale)
-            : i * FIXED_STRIDE_MS
-          if (delay > DRIP_CAP_MS) delay = DRIP_CAP_MS
-          const dispatch = () => broadcastToTabs({
-            type: 'youtube_chat_message',
-            videoId: msg.videoId,
-            channelId,
-            user: ytMsg.user,
-            text: ytMsg.text,
-            color: ytMsg.color || '#ff0000',
-            time: Date.now(),
-            platform: 'youtube',
-            emotes: ytMsg.emotes || [],
-            msgType: ytMsg.type, // 'text', 'superchat', 'supersticker'
-            amount: ytMsg.amount || '',
-            scColor: ytMsg.scColor || '',
-            sticker: ytMsg.sticker || null,
-            avatar: ytMsg.avatar || undefined,
-            badges: ytMsg.badges || undefined,
-            systemMsg: ytMsg.systemMsg || undefined,
-            source: 'server', // distinguish from content script messages
-          })
-          if (delay <= 0) dispatch()
-          else setTimeout(dispatch, delay)
+        if (msg.replay) {
+          // Backfill — bulk-dispatch immediately. fairMerge in the content
+          // script places each msg at its real chronological position;
+          // there's no "all at once" flash because each msg lands at a
+          // different timestamp, scattered across the existing twitch/kick
+          // history. Drip-feed would just delay the correct render.
+          for (const ytMsg of sorted) broadcastToTabs(buildPayload(ytMsg))
+        } else {
+          // Live poll — content-script paces these per-channel via real
+          // timestamp deltas. Dispatch bulk; let the per-channel pacer
+          // handle visual cadence.
+          for (const ytMsg of sorted) broadcastToTabs(buildPayload(ytMsg))
         }
       }
       break

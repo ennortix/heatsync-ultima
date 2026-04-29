@@ -350,6 +350,40 @@ async function loadHsAuth() {
   }
 }
 
+// Replay (backfill) handler — push to buffer, coalesce render across the
+// burst with a microtask debounce. fairMerge sorts by msg.time so each
+// replay msg lands at its real chronological position; we just need ONE
+// final render after the burst settles. Tab indicator only updates if user
+// isn't viewing this tab.
+const _replayRenderPending = new Set()  // tabIds awaiting coalesced render
+function ingestReplayYtMsg(targetChannelId, ytMsg) {
+  if (!channelYtMessages.has(targetChannelId)) channelYtMessages.set(targetChannelId, [])
+  const buf = channelYtMessages.get(targetChannelId)
+  // Dedup against existing buffer (refresh resends backfill we may already
+  // have). Same key as isYtDuplicate — user+text+time-bucketed.
+  const dupKey = `${ytMsg.user}|${(ytMsg.text || '').slice(0, 50)}|${Math.floor((ytMsg.time || 0) / 1000)}`
+  if (buf.some(m => `${m.user}|${(m.text || '').slice(0, 50)}|${Math.floor((m.time || 0) / 1000)}` === dupKey)) return
+  buf.push(ytMsg)
+  if (buf.length > MAX_BUFFER + 50) {
+    // Sort by time before truncating so we keep the most recent across
+    // backfill + live, not just newest-arrived.
+    buf.sort((a, b) => (a.time || 0) - (b.time || 0))
+    buf.splice(0, buf.length - MAX_BUFFER)
+  }
+  const tabId = targetChannelId === '__live_yt_auto__' ? 'live' : targetChannelId
+  if (currentTab !== tabId) {
+    updateTabIndicator(tabId)
+    return
+  }
+  // Coalesce many replay msgs into a single renderMessages call per tab.
+  if (_replayRenderPending.has(tabId)) return
+  _replayRenderPending.add(tabId)
+  queueMicrotask(() => {
+    _replayRenderPending.delete(tabId)
+    if (currentTab === tabId) renderMessages(tabId)
+  })
+}
+
 // Buffer-push + visible render for ONE paced YT message. Called either
 // directly (no pace needed) or by the pace drainer.
 function commitPacedYtMsg(targetChannelId, ytMsg) {
@@ -610,7 +644,17 @@ function listenForSocialEvents() {
             if (tabEl && tabEl.dataset.live !== 'true') tabEl.dataset.live = 'true'
           } catch {}
         }
-        enqueueYtForPacing(targetChannelId, ytMsg)
+        // Backfill replay: bypass per-channel pacing entirely. Each msg has
+        // its real YT timestamp, so fairMerge places it at the correct
+        // chronological position scattered through the existing twitch/kick
+        // history — no "all at once" flash because they're not appearing
+        // at the bottom; they slot in at their real-time positions. Pacing
+        // here would just delay the correct render.
+        if (msg.replay) {
+          ingestReplayYtMsg(targetChannelId, ytMsg)
+        } else {
+          enqueueYtForPacing(targetChannelId, ytMsg)
+        }
       }
     }
     if (msg.type === 'youtube_msg_deleted') {

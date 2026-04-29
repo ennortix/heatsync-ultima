@@ -77,8 +77,11 @@
       if (blocked.has(e.hash)) continue
       if (seen.has(e.name)) continue
       seen.add(e.name)
-      list.push({ name: e.name, url: e.url || e.cdnUrl || '' })
+      // Cache lowercase once at build time — searchEmotes runs per keystroke,
+      // so per-call toLowerCase on 50k emotes is what we're avoiding here.
+      list.push({ name: e.name, url: e.url || e.cdnUrl || '', lower: e.name.toLowerCase() })
     }
+    list.sort((a, b) => a.lower < b.lower ? -1 : a.lower > b.lower ? 1 : 0)
     return list
   }
 
@@ -98,17 +101,47 @@
     } catch (_) {}
   }
 
+  // Binary-search prefix lookup over hsEmoteList (sorted by .lower).
+  // Falls back to linear substring scan only if cap not met after prefix pass.
   function searchEmotes(query) {
     if (!query || query.length < 2) return []
     const q = query.toLowerCase()
-    const exact = [], prefix = [], contains = []
-    for (const e of hsEmoteList) {
-      const n = e.name.toLowerCase()
-      if (n === q) { exact.push(e); continue }
-      if (n.startsWith(q)) { prefix.push(e); continue }
-      if (n.includes(q)) contains.push(e)
+    const len = hsEmoteList.length
+    if (!len) return []
+
+    let lo = 0, hi = len
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1
+      if (hsEmoteList[mid].lower < q) lo = mid + 1
+      else hi = mid
     }
-    return [...exact, ...prefix, ...contains].slice(0, MAX_RESULTS)
+
+    const exact = [], prefix = [], contains = []
+    const seen = new Set()
+    for (let i = lo; i < len; i++) {
+      const e = hsEmoteList[i]
+      if (!e.lower.startsWith(q)) break
+      if (seen.has(e.name)) continue
+      seen.add(e.name)
+      if (e.lower === q) exact.push(e)
+      else prefix.push(e)
+      if (exact.length + prefix.length >= MAX_RESULTS) break
+    }
+
+    if (exact.length + prefix.length < MAX_RESULTS) {
+      const remaining = MAX_RESULTS - exact.length - prefix.length
+      for (let i = 0; i < len; i++) {
+        const e = hsEmoteList[i]
+        if (seen.has(e.name)) continue
+        if (e.lower.startsWith(q)) continue
+        if (e.lower.indexOf(q) === -1) continue
+        seen.add(e.name)
+        contains.push(e)
+        if (contains.length >= remaining) break
+      }
+    }
+
+    return [...exact, ...prefix, ...contains]
   }
 
   // ---- shared state ----

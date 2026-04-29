@@ -79,71 +79,6 @@ function $$(selector, parent = document) {
 }
 
 // ============================================
-// FALLBACK-AWARE SELECTOR HELPERS
-// ============================================
-//
-// Twitch/Kick rotate obfuscated CSS classes on every release. Hardcoded class
-// selectors silently break — no error, just empty querySelector results.
-// safeQuery* takes an array of selectors (primary first, then fallbacks);
-// when a non-primary selector matches, we warn once per session so it shows
-// up in DevTools. That's the early-warning that the primary selector died.
-//
-// Strings are passed through as-is (preserves comma-multi-match semantics
-// like '.chat-line__message, [data-index]' for cross-platform unions).
-
-const _selWarned = new Set() // dedupe noisy warns: one log per (label, idx)
-
-function _selWarn(label, idx, sel) {
-  const key = (label || '?') + '|' + idx
-  if (_selWarned.has(key)) return
-  _selWarned.add(key)
-  console.warn('[heatsync-selectors] fallback #' + idx + ' fired for "' + (label || '?') + '" → ' + sel + ' (primary may be broken — platform deploy?)')
-}
-
-/**
- * Find the first element matching any selector in the fallback chain.
- * @param {Element|Document} parent
- * @param {string|string[]} selectors - Single selector or fallback array (primary first)
- * @param {string} [label] - Identifier for warn messages
- * @returns {Element|null}
- */
-function safeQuery(parent, selectors, label) {
-  if (!parent) return null
-  if (typeof selectors === 'string') return parent.querySelector(selectors)
-  if (!Array.isArray(selectors)) return null
-  for (let i = 0; i < selectors.length; i++) {
-    const el = parent.querySelector(selectors[i])
-    if (el) {
-      if (i > 0) _selWarn(label, i, selectors[i])
-      return el
-    }
-  }
-  return null
-}
-
-/**
- * Find all elements matching the first selector in the chain that hits.
- * Returns the NodeList from the first selector with results, or empty NodeList.
- * @param {Element|Document} parent
- * @param {string|string[]} selectors
- * @param {string} [label]
- * @returns {NodeListOf<Element>}
- */
-function safeQueryAll(parent, selectors, label) {
-  if (!parent) return parent?.querySelectorAll?.('hs-empty-marker') || []
-  if (typeof selectors === 'string') return parent.querySelectorAll(selectors)
-  if (!Array.isArray(selectors)) return []
-  for (let i = 0; i < selectors.length; i++) {
-    const els = parent.querySelectorAll(selectors[i])
-    if (els.length) {
-      if (i > 0) _selWarn(label, i, selectors[i])
-      return els
-    }
-  }
-  return parent.querySelectorAll('hs-empty-marker') // empty NodeList (consistent .forEach/.length API)
-}
-
-// ============================================
 // REACT FIBER HELPERS (FFZ-style)
 // ============================================
 
@@ -319,8 +254,6 @@ const utils = {
   // DOM
   $,
   $$,
-  safeQuery,
-  safeQueryAll,
 
   // React
   getFiber,
@@ -351,8 +284,6 @@ export {
   createElement,
   $,
   $$,
-  safeQuery,
-  safeQueryAll,
   getFiber,
   findComponent,
   boostReadability,

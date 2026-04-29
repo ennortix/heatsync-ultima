@@ -1836,7 +1836,7 @@
   function installImageObserver() {
     if (imageObserver) return;
 
-    const chatInputContainer = safeQuery(document, CONFIG.SELECTORS.TWITCH_INPUT_CHAIN, 'twitch_input')?.closest('.chat-input') ||
+    const chatInputContainer = document.querySelector('[data-a-target="chat-input"]')?.closest('.chat-input') ||
                                document.querySelector('.chat-input') ||
                                document.querySelector('[class*="chat-input"]')
 
@@ -2213,7 +2213,8 @@
   // Get the chat input DOM element
   function getInputElement() {
     return document.querySelector('[data-slate-editor="true"]') ||
-           safeQuery(document, CONFIG.SELECTORS.TWITCH_INPUT_CHAIN, 'twitch_input');
+           document.querySelector('.chat-wysiwyg-input__editor') ||
+           document.querySelector('[data-a-target="chat-input"]');
   }
 
   // Hook Slate normalizer to prevent emote conversion when WYSIWYG is off

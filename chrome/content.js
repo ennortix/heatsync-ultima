@@ -2532,7 +2532,7 @@ function debouncedProcessExistingMessages() {
 
 // Collect chatters from a message without full processing (for two-pass approach)
 function collectChatterFromMessage(messageElement) {
-  const usernameElement = safeQuery(messageElement, CONFIG.SELECTORS.TWITCH_USER_CHAIN, 'twitch_user');
+  const usernameElement = messageElement.querySelector('.chat-author__display-name, [data-a-target="chat-message-username"], button.inline.font-bold');
   if (!usernameElement) return;
 
   const username = usernameElement.textContent?.trim().toLowerCase();
@@ -2631,10 +2631,10 @@ function serializeMessage(el) {
   const id = el.getAttribute('data-msg-id') || ''
   const user = getUsername(el)
   if (!user) return null
-  const textEl = safeQuery(el, CONFIG.SELECTORS.TWITCH_MSG_TEXT_CHAIN, 'twitch_msg_text')
+  const textEl = el.querySelector('[data-a-target="chat-message-text"], .text-fragment, span.font-normal')
   const text = textEl?.textContent?.trim() || ''
   if (!text) return null
-  const nameEl = safeQuery(el, CONFIG.SELECTORS.TWITCH_USER_CHAIN, 'twitch_user')
+  const nameEl = el.querySelector('.chat-author__display-name, button.inline.font-bold')
   const color = nameEl?.style?.color || '#ffffff'
   // Twitch user-id (for cosmetic re-application on restore — without this,
   // restored cached messages get no 7TV badge / paint / BTTV / FFZ / Chatterino)
@@ -2722,8 +2722,8 @@ function restoreMsgCache(channel, chatContainer) {
     const existingTexts = new Set()
     chatContainer.querySelectorAll('[data-msg-id]').forEach(el => existingIds.add(el.dataset.msgId))
     chatContainer.querySelectorAll('.chat-line__message').forEach(el => {
-      const user = safeQuery(el, CONFIG.SELECTORS.TWITCH_USER_CHAIN, 'twitch_user')?.textContent?.trim()
-      const text = safeQuery(el, CONFIG.SELECTORS.TWITCH_MSG_TEXT_CHAIN, 'twitch_msg_text')?.textContent?.trim()
+      const user = el.querySelector('.chat-author__display-name')?.textContent?.trim()
+      const text = el.querySelector('[data-a-target="chat-message-text"]')?.textContent?.trim()
       if (user && text) existingTexts.add(`${user.toLowerCase()}:${text.substring(0, 80)}`)
     })
 
@@ -2789,19 +2789,19 @@ function backfillCachedMessageUids(chatContainer) {
     const usernameToUid = new Map()
     chatContainer.querySelectorAll('.chat-line__message[data-user-id]').forEach(el => {
       const uid = el.getAttribute('data-user-id')
-      const username = el.dataset.aUser || safeQuery(el, CONFIG.SELECTORS.TWITCH_USER_CHAIN, 'twitch_user')?.textContent?.trim().toLowerCase()
+      const username = el.dataset.aUser || el.querySelector('.chat-author__display-name')?.textContent?.trim().toLowerCase()
       if (uid && username) usernameToUid.set(username, uid)
     })
     if (usernameToUid.size === 0) return 0
     let stamped = 0
     chatContainer.querySelectorAll('.chat-line__message:not([data-user-id])').forEach(el => {
-      const username = el.dataset.aUser || safeQuery(el, CONFIG.SELECTORS.TWITCH_USER_CHAIN, 'twitch_user')?.textContent?.trim().toLowerCase()
+      const username = el.dataset.aUser || el.querySelector('.chat-author__display-name')?.textContent?.trim().toLowerCase()
       if (!username) return
       const uid = usernameToUid.get(username)
       if (!uid) return
       el.setAttribute('data-user-id', uid)
       el.dataset.hsCosmeticUserId = uid
-      const usernameEl = safeQuery(el, CONFIG.SELECTORS.TWITCH_USER_CHAIN, 'twitch_user')
+      const usernameEl = el.querySelector('.chat-author__display-name, [data-a-target="chat-message-username"]')
       applyCosmeticsToMessage(el, uid, usernameEl)
       queueCosmeticsLookup(uid)
       stamped++
@@ -2868,8 +2868,8 @@ async function backfillChatHistory() {
     })
     // Fallback dedup: collect username+text combos from visible messages
     chatContainer.querySelectorAll('.chat-line__message').forEach(el => {
-      const user = safeQuery(el, CONFIG.SELECTORS.TWITCH_USER_CHAIN, 'twitch_user')?.textContent?.trim()
-      const text = safeQuery(el, CONFIG.SELECTORS.TWITCH_MSG_TEXT_CHAIN, 'twitch_msg_text')?.textContent?.trim()
+      const user = el.querySelector('.chat-author__display-name')?.textContent?.trim()
+      const text = el.querySelector('[data-a-target="chat-message-text"]')?.textContent?.trim()
       if (user && text) existingTexts.add(`${user.toLowerCase()}:${text.substring(0, 80)}`)
     })
 
@@ -3261,7 +3261,7 @@ function getCurrentUsername() {
   }
 
   // Method 5: Chat input data attribute
-  const chatInput = safeQuery(document, CONFIG.SELECTORS.TWITCH_INPUT_CHAIN, 'twitch_input');
+  const chatInput = document.querySelector('[data-a-target="chat-input"]');
   if (chatInput) {
     username = chatInput.getAttribute('data-a-user');
     if (username && username.length > 0 && username.length < 30) {
@@ -3317,7 +3317,7 @@ function getCurrentUsername() {
       }
     }
     // Method K3: Kick chat input identity — look for "Send a message" placeholder owner
-    const kickChatIdentity = safeQuery(document, CONFIG.SELECTORS.KICK_USER_CHAIN, 'kick_user')
+    const kickChatIdentity = document.querySelector('.chat-identity-name, [class*="chat-identity"] span')
     if (kickChatIdentity?.textContent?.trim()) {
       const name = kickChatIdentity.textContent.trim()
       if (name.length > 0 && name.length < 30 && /^[a-zA-Z0-9_]+$/.test(name)) {
@@ -3360,7 +3360,7 @@ function highlightUserMentions(messageElement, authorElement, preQueriedTextElem
   }
 
   // CRITICAL: Skip messages sent BY the current user (don't highlight your own messages)
-  const _authorEl = authorElement || safeQuery(messageElement, CONFIG.SELECTORS.TWITCH_USER_CHAIN, 'twitch_user');
+  const _authorEl = authorElement || messageElement.querySelector('.chat-author__display-name, [data-a-target="chat-message-username"], button.inline.font-bold');
   const messageAuthor = _authorEl?.textContent?.toLowerCase()?.trim();
   if (messageAuthor === currentUser) {
     return; // Don't highlight your own messages
@@ -3369,7 +3369,7 @@ function highlightUserMentions(messageElement, authorElement, preQueriedTextElem
   let shouldHighlight = false;
 
   // Check explicit @mention elements (Twitch has .mention-fragment, Kick uses inline text)
-  const mentions = safeQueryAll(messageElement, CONFIG.SELECTORS.TWITCH_MENTION_CHAIN, 'twitch_mention');
+  const mentions = messageElement.querySelectorAll('.mention-fragment, [data-a-target="chat-message-mention"]');
 
   // Check each mention to see if it matches current user
   for (const mention of mentions) {
@@ -3382,7 +3382,7 @@ function highlightUserMentions(messageElement, authorElement, preQueriedTextElem
 
   // Also check if username appears as standalone word in message BODY (not author)
   if (!shouldHighlight) {
-    const textFragments = preQueriedTextElements || safeQueryAll(messageElement, CONFIG.SELECTORS.TWITCH_MSG_TEXT_CHAIN, 'twitch_msg_text');
+    const textFragments = preQueriedTextElements || messageElement.querySelectorAll('.text-fragment, [data-a-target="chat-message-text"], span.font-normal');
     for (const frag of textFragments) {
       const fragText = frag.textContent.toLowerCase();
       if (_mentionRegex && _mentionRegex.test(fragText)) {
@@ -3425,7 +3425,7 @@ function highlightUserMentions(messageElement, authorElement, preQueriedTextElem
 // Uses inline span injection - called repeatedly by MutationObserver
 function colorUsernameMentions(messageElement, preQueriedFragments) {
   // Use pre-queried fragments when available (avoids redundant DOM query from processMessage)
-  const textFragments = preQueriedFragments || safeQueryAll(messageElement, CONFIG.SELECTORS.TWITCH_MSG_TEXT_CHAIN, 'twitch_msg_text');
+  const textFragments = preQueriedFragments || messageElement.querySelectorAll('.text-fragment, [data-a-target="chat-message-text"], span.font-normal');
 
   for (const fragment of textFragments) {
     // Skip if already has our colored spans (check for our marker class)
@@ -3474,7 +3474,7 @@ function colorUsernameMentions(messageElement, preQueriedFragments) {
 
   // Also color @mention elements (Twitch's explicit mentions)
   // Always make mentions hoverable for profile cards, even if user hasn't chatted yet
-  const mentions = safeQueryAll(messageElement, CONFIG.SELECTORS.TWITCH_MENTION_CHAIN, 'twitch_mention');
+  const mentions = messageElement.querySelectorAll('.mention-fragment, [data-a-target="chat-message-mention"]');
   for (const mention of mentions) {
     if (mention.classList.contains('hs-mention-colored')) continue;
     const username = mention.textContent.replace('@', '').trim().toLowerCase();
@@ -3739,7 +3739,7 @@ function setupUsernameColoringObserver() {
           // When React replaces a username span, the paint styles are lost
           const msgParent = node.closest?.('.chat-line__message, [data-index]')
           if (msgParent?.dataset.hsCosmeticDone === '1') {
-            const nameEl = safeQuery(msgParent, CONFIG.SELECTORS.TWITCH_USER_CHAIN, 'twitch_user')
+            const nameEl = msgParent.querySelector('.chat-author__display-name, [data-a-target="chat-message-username"]')
             if (nameEl && !nameEl.dataset.hsPaintApplied) {
               cosmeticRefresh.push(msgParent)
             }
@@ -3836,7 +3836,7 @@ function processMessage(messageElement) {
   if (textElements.length === 0) return
 
   // Query author element once — passed to highlightUserMentions/colorUsernameMentions to avoid re-querying
-  const usernameElement = safeQuery(messageElement, CONFIG.SELECTORS.TWITCH_USER_CHAIN, 'twitch_user')
+  const usernameElement = messageElement.querySelector('.chat-author__display-name, [data-a-target="chat-message-username"], button.inline.font-bold')
   const username = usernameElement ? usernameElement.textContent.trim() : ''
 
   // Add to known chatters (for username coloring) - extract their Twitch color
@@ -5662,10 +5662,10 @@ function updateEmoteState(hash, emoteName, state) {
       if (container) {
         const lines = container.querySelectorAll('.chat-line__message, [data-a-target="chat-line-message"]')
         for (const line of lines) {
-          const userEl = safeQuery(line, CONFIG.SELECTORS.TWITCH_USER_CHAIN, 'twitch_user')
+          const userEl = line.querySelector('.chat-author__display-name, [data-a-target="chat-message-username"]')
           if (!userEl) continue
           if ((userEl.textContent || '').trim().toLowerCase() !== lower) continue
-          const textEl = safeQuery(line, CONFIG.SELECTORS.TWITCH_MSG_TEXT_CHAIN, 'twitch_msg_text')
+          const textEl = line.querySelector('[data-a-target="chat-message-text"], .text-fragment')
           const ts = line.querySelector('.chat-line__timestamp')
           // Parse timestamp like "12:34" — best-effort
           let time = 0
@@ -5959,7 +5959,7 @@ function updateEmoteState(hash, emoteName, state) {
   // Inject chat command into Twitch input
   function injectChatCommand(command) {
     if (!extensionContextValid) return
-    const chatInput = safeQuery(document, CONFIG.SELECTORS.TWITCH_INPUT_CHAIN, 'twitch_input')
+    const chatInput = document.querySelector('[data-a-target="chat-input"]')
     if (!chatInput) return
 
     chatInput.focus()
@@ -6006,7 +6006,7 @@ function updateEmoteState(hash, emoteName, state) {
         try { navigator.clipboard.writeText(username) } catch {}
         break
       case 'mention': {
-        const input = safeQuery(document, CONFIG.SELECTORS.TWITCH_INPUT_CHAIN, 'twitch_input')
+        const input = document.querySelector('[data-a-target="chat-input"]')
         if (input) {
           input.focus()
           document.execCommand('insertText', false, `@${username} `)
@@ -6245,7 +6245,7 @@ function updateEmoteState(hash, emoteName, state) {
 
       const target = e.target.closest(usernameSelectors)
       if (target) {
-        const inner = safeQuery(target, CONFIG.SELECTORS.TWITCH_USER_CHAIN, 'twitch_user')
+        const inner = target.querySelector?.('.chat-author__display-name, [data-a-target="chat-message-username"]')
         const src = inner || target
         const raw = src.dataset?.hsUsername ||
                     src.dataset?.username ||
@@ -6428,7 +6428,7 @@ function applyCosmeticsToMessage(el, userId, preQueriedNameEl) {
     delete el.dataset.hsFfzDone
     delete el.dataset.hsChatterinoDone
     delete el.dataset.hs7tvBadgeDone
-    const oldNameEl = preQueriedNameEl || safeQuery(el, CONFIG.SELECTORS.TWITCH_USER_CHAIN, 'twitch_user')
+    const oldNameEl = preQueriedNameEl || el.querySelector('.chat-author__display-name, [data-a-target="chat-message-username"]')
     if (oldNameEl) {
       delete oldNameEl.dataset.hsPaintApplied
       oldNameEl.style.removeProperty('background-image')
@@ -6440,7 +6440,7 @@ function applyCosmeticsToMessage(el, userId, preQueriedNameEl) {
     }
   }
   el.dataset.hsCosmeticAppliedFor = userId
-  const nameEl = preQueriedNameEl || safeQuery(el, CONFIG.SELECTORS.TWITCH_USER_CHAIN, 'twitch_user')
+  const nameEl = preQueriedNameEl || el.querySelector('.chat-author__display-name, [data-a-target="chat-message-username"]')
   if (!nameEl) return
 
   // BTTV badge — dataset flag avoids querySelector
@@ -6588,7 +6588,7 @@ function applyHeatsyncColorsToExisting() {
   const container = findChatContainer()
   if (!container) return
   container.querySelectorAll('.chat-line__message, [data-index]').forEach(el => {
-    const nameEl = safeQuery(el, CONFIG.SELECTORS.TWITCH_USER_CHAIN, 'twitch_user')
+    const nameEl = el.querySelector('.chat-author__display-name, [data-a-target="chat-message-username"]')
     if (!nameEl) return
     const username = nameEl.textContent?.trim().toLowerCase()
     if (!username) return
@@ -6672,7 +6672,7 @@ function applyKickCosmeticsToMessage(el, kickSlug) {
     delete el.dataset.hsCosmeticDone
     delete el.dataset.hsBttvDone
     delete el.dataset.hsFfzDone
-    const nameEl = safeQuery(el, CONFIG.SELECTORS.TWITCH_USER_CHAIN, 'twitch_user')
+    const nameEl = el.querySelector('button.inline.font-bold')
     if (nameEl) {
       delete nameEl.dataset.hsPaintApplied
       nameEl.style.removeProperty('background-image')
@@ -6684,7 +6684,7 @@ function applyKickCosmeticsToMessage(el, kickSlug) {
     }
   }
   el.dataset.hsCosmeticAppliedFor = kickSlug
-  const nameEl = safeQuery(el, CONFIG.SELECTORS.TWITCH_USER_CHAIN, 'twitch_user')
+  const nameEl = el.querySelector('button.inline.font-bold')
   if (!nameEl) return
 
   const cosmetic = kickCosmeticsCache.get(kickSlug)
@@ -7074,7 +7074,7 @@ function watchForNewMessages() {
       if (!userId) continue
       if (el.dataset.hsCosmeticUserId === userId) continue
       el.dataset.hsCosmeticUserId = userId
-      const usernameEl = safeQuery(el, CONFIG.SELECTORS.TWITCH_USER_CHAIN, 'twitch_user')
+      const usernameEl = el.querySelector('.chat-author__display-name, [data-a-target="chat-message-username"]')
       applyCosmeticsToMessage(el, userId, usernameEl)
       queueCosmeticsLookup(userId)
       // Self detection on first stamp from a username matching the current user
@@ -7102,11 +7102,11 @@ function watchForNewMessages() {
   const usernameToUid = new Map()
   chatContainer.querySelectorAll('.chat-line__message[data-user-id]').forEach(el => {
     const uid = el.getAttribute('data-user-id')
-    const username = el.dataset.aUser || safeQuery(el, CONFIG.SELECTORS.TWITCH_USER_CHAIN, 'twitch_user')?.textContent?.trim().toLowerCase()
+    const username = el.dataset.aUser || el.querySelector('.chat-author__display-name')?.textContent?.trim().toLowerCase()
     if (uid && username) usernameToUid.set(username, uid)
     if (el.dataset.hsCosmeticUserId === uid) return
     el.dataset.hsCosmeticUserId = uid
-    const usernameEl = safeQuery(el, CONFIG.SELECTORS.TWITCH_USER_CHAIN, 'twitch_user')
+    const usernameEl = el.querySelector('.chat-author__display-name, [data-a-target="chat-message-username"]')
     applyCosmeticsToMessage(el, uid, usernameEl)
     queueCosmeticsLookup(uid)
     if (!_selfTwitchIdRegistered) {
@@ -7121,13 +7121,13 @@ function watchForNewMessages() {
   // username was seen on a live (stamped) message. Look up uid, stamp it,
   // apply cosmetics.
   chatContainer.querySelectorAll('.chat-line__message:not([data-user-id])').forEach(el => {
-    const username = el.dataset.aUser || safeQuery(el, CONFIG.SELECTORS.TWITCH_USER_CHAIN, 'twitch_user')?.textContent?.trim().toLowerCase()
+    const username = el.dataset.aUser || el.querySelector('.chat-author__display-name')?.textContent?.trim().toLowerCase()
     if (!username) return
     const uid = usernameToUid.get(username)
     if (!uid) return
     el.setAttribute('data-user-id', uid)
     el.dataset.hsCosmeticUserId = uid
-    const usernameEl = safeQuery(el, CONFIG.SELECTORS.TWITCH_USER_CHAIN, 'twitch_user')
+    const usernameEl = el.querySelector('.chat-author__display-name, [data-a-target="chat-message-username"]')
     applyCosmeticsToMessage(el, uid, usernameEl)
     queueCosmeticsLookup(uid)
   })
@@ -7766,7 +7766,7 @@ function interceptMessageSending() {
     return;
   }
 
-  const chatInput = safeQuery(document, CONFIG.SELECTORS.TWITCH_INPUT_CHAIN, 'twitch_input') || // Twitch
+  const chatInput = document.querySelector('[data-a-target="chat-input"]') || // Twitch
                     document.querySelector('div.editor-input') || // Kick
                     document.querySelector('textarea');
 

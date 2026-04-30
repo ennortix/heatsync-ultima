@@ -4609,6 +4609,42 @@ function injectStyles() {
       height: var(--hs-chat-h, 35vh) !important;
     }
 
+    /* --- YT narrow viewport rescue ---
+       At narrow viewports YT collapses ytd-watch-flexy into a single-column
+       layout: #primary spans the full viewport, #secondary stacks below.
+       Forcing inline width on the player wrappers shrinks the visible
+       player but it stays centered inside the still-full-width #primary,
+       so its right edge slides under our chat overlay.
+       Reserve the chat's space at the YT-app level via padding so the entire
+       watch flexy container clamps to viewport - chatWidth. The chat panel
+       (position:fixed) sits in the freed strip — no overlap, no centering. */
+    body.hs-platform-yt.hs-chat-right ytd-app {
+      padding-right: var(--hs-chat-w, 340px) !important;
+      box-sizing: border-box !important;
+    }
+    body.hs-platform-yt.hs-chat-left ytd-app {
+      padding-left: var(--hs-chat-w, 340px) !important;
+      box-sizing: border-box !important;
+    }
+    body.hs-platform-yt.hs-chat-top ytd-app {
+      padding-top: var(--hs-chat-h, 35vh) !important;
+      box-sizing: border-box !important;
+    }
+    body.hs-platform-yt.hs-chat-bottom ytd-app {
+      padding-bottom: var(--hs-chat-h, 35vh) !important;
+      box-sizing: border-box !important;
+    }
+    /* YT's masthead is position:fixed and viewport-anchored — explicitly
+       shrink it so the search bar / icons don't slide under the chat. */
+    body.hs-platform-yt.hs-chat-right #masthead-container,
+    body.hs-platform-yt.hs-chat-right ytd-masthead {
+      right: var(--hs-chat-w, 340px) !important;
+    }
+    body.hs-platform-yt.hs-chat-left #masthead-container,
+    body.hs-platform-yt.hs-chat-left ytd-masthead {
+      left: var(--hs-chat-w, 340px) !important;
+    }
+
     /* --- TWITCH: collapse .right-column to give the player back its space.
        width:0 + overflow:visible (not display:none) so #hs-mc-container
        inside chat-shell stays render-tree visible while the parent's

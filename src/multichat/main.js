@@ -1687,6 +1687,11 @@
     let liveRaf = 0;
     handle.addEventListener('pointerdown', (e) => {
       if (e.button !== 0) return;
+      // Stop YT's player-level pointer handlers from also catching this
+      // event. At narrow viewports the player extends under the chat
+      // overlay (single-column layout) and YT's pointermove/down listeners
+      // can intercept events even though our handle has higher z-index.
+      e.stopImmediatePropagation();
       _isResizingC = true;
       activePid = e.pointerId;
       try { handle.setPointerCapture(e.pointerId) } catch (_) {}
@@ -1714,18 +1719,17 @@
         : (hostPlatform === 'twitch' ? Math.min(MAX_CHAT_WIDTH, getTwitchMaxChatWidth()) : MAX_CHAT_WIDTH);
       if (chatPosition === 'right') {
         pendingW = Math.max(MIN_CHAT_WIDTH, Math.min(maxW, startW + (startX - e.clientX)));
-        // -3 matches positionChatResizeHandle's init position so the bar
-        // doesn't snap 3px under the cursor on the very first pointermove.
-        handle.style.right = (pendingW - 3) + 'px';
+        // -5 matches positionChatResizeHandle's 10px-wide centered offset.
+        handle.style.right = (pendingW - 5) + 'px';
       } else if (chatPosition === 'left') {
         pendingW = Math.max(MIN_CHAT_WIDTH, Math.min(maxW, startW + (e.clientX - startX)));
-        handle.style.left = (pendingW - 3) + 'px';
+        handle.style.left = (pendingW - 5) + 'px';
       } else if (chatPosition === 'top') {
         pendingH = Math.max(MIN_CHAT_HEIGHT, Math.min(getMaxChatHeight(), startH + (e.clientY - startY)));
-        handle.style.top = (pendingH - 3) + 'px';
+        handle.style.top = (pendingH - 5) + 'px';
       } else if (chatPosition === 'bottom') {
         pendingH = Math.max(MIN_CHAT_HEIGHT, Math.min(getMaxChatHeight(), startH + (startY - e.clientY)));
-        handle.style.bottom = (pendingH - 3) + 'px';
+        handle.style.bottom = (pendingH - 5) + 'px';
       }
       // Live commit — minimal work per frame so YT player buttons stay
       // clickable. rAF-throttled. We only touch:
@@ -1814,29 +1818,31 @@
       return;
     }
     handle.style.display = 'block';
+    // 10px wide (was 6) for a fatter hit-target at narrow viewports where
+    // YT's player-overlay listeners can otherwise win the click.
     if (chatPosition === 'right') {
       handle.style.top = '0';
       handle.style.bottom = '0';
-      handle.style.right = (chatWidth - 3) + 'px';
-      handle.style.width = '6px';
+      handle.style.right = (chatWidth - 5) + 'px';
+      handle.style.width = '10px';
       handle.style.cursor = 'col-resize';
     } else if (chatPosition === 'left') {
       handle.style.top = '0';
       handle.style.bottom = '0';
-      handle.style.left = (chatWidth - 3) + 'px';
-      handle.style.width = '6px';
+      handle.style.left = (chatWidth - 5) + 'px';
+      handle.style.width = '10px';
       handle.style.cursor = 'col-resize';
     } else if (chatPosition === 'top') {
-      handle.style.top = (chatHeight - 3) + 'px';
+      handle.style.top = (chatHeight - 5) + 'px';
       handle.style.left = '0';
       handle.style.right = '0';
-      handle.style.height = '6px';
+      handle.style.height = '10px';
       handle.style.cursor = 'row-resize';
     } else if (chatPosition === 'bottom') {
-      handle.style.bottom = (chatHeight - 3) + 'px';
+      handle.style.bottom = (chatHeight - 5) + 'px';
       handle.style.left = '0';
       handle.style.right = '0';
-      handle.style.height = '6px';
+      handle.style.height = '10px';
       handle.style.cursor = 'row-resize';
     }
   }

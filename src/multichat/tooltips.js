@@ -558,8 +558,6 @@
     const followers = Math.max(stats.followers || 0, p.twitch_followers || 0, p.kick_followers || 0);
 
     const statBadges = [];
-    // Heat renders as the canonical bare glowing number (matches feed / discover / profile card)
-    // — no badge wrapper, no hardcoded bg/border. Other stats below stay as pill badges.
     const heatHtml = heatSpanHtml(heat);
     if (heatHtml) statBadges.push(heatHtml);
     if (op > 0) statBadges.push(`<span class="hs-pc-stat op"><span class="hs-pc-num">${formatCompact(op)}</span> [OP]</span>`);
@@ -613,7 +611,7 @@
       <div class="hs-pc-info">
         <div class="hs-pc-header">${platforms} ${role} ${ageHtml}</div>
         ${bio}
-        ${statBadges.length ? `<div class="hs-pc-stats">${statBadges.join('')}</div>` : ''}
+        ${statBadges.length ? `<div class="hs-pc-stats">${statBadges.join('<span class="hs-pc-sep"> · </span>')}</div>` : ''}
         ${relBadges.length ? `<div class="hs-pc-rel">${relBadges.join(' ')}</div>` : ''}
       </div>`;
   }

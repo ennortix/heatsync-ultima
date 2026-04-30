@@ -1583,7 +1583,7 @@ function triggerTwitchFeature(action) {
       if (resp.ok && resp.data?.data?.[0]) {
         const editUrl = resp.data.data[0].edit_url
         const clipId = resp.data.data[0].id
-        showToast('clip created! ' + clipId, 'success')
+        showToast('clip created ' + clipId, 'success')
         // Copy clip URL to clipboard
         try { await navigator.clipboard.writeText(editUrl || `https://clips.twitch.tv/${clipId}`) } catch {}
       } else {

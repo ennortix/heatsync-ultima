@@ -20695,7 +20695,11 @@ const STORAGE_KEY = 'heatsync_multichat';
   // Chat width state
   let chatWidth = 340; // Default width
   const DEFAULT_CHAT_WIDTH = 340;
-  const MIN_CHAT_WIDTH = 300;
+  // 10px floor matches the resize-bar width — chat can shrink to just the
+  // handle so the player nearly fills the viewport, but the handle is
+  // always grabbable to drag it back. No artificial "minimum usable size"
+  // — user explicitly wants pixel-level freedom.
+  const MIN_CHAT_WIDTH = 10;
   const MAX_CHAT_WIDTH = 800;
   // YouTube enforces #primary { min-width: 640px } — never let chat encroach
   // on the video player. The +20px fudge covers column-gap and scrollbar
@@ -21213,8 +21217,8 @@ const STORAGE_KEY = 'heatsync_multichat';
   // CHAT HEIGHT — for top/bottom chatPosition. Persisted in chrome.storage
   // alongside chatWidth so the C button's drag handle survives reloads.
   // ============================================
-  const MIN_CHAT_HEIGHT = 120;
-  function getMaxChatHeight() { return Math.max(MIN_CHAT_HEIGHT, Math.round(window.innerHeight * 0.7)); }
+  const MIN_CHAT_HEIGHT = 10;
+  function getMaxChatHeight() { return Math.max(MIN_CHAT_HEIGHT, window.innerHeight - 10); }
   // Clamp to MIN so a tiny window at module-load doesn't trap the user with
   // a default below the legal range.
   let chatHeight = Math.max(MIN_CHAT_HEIGHT, Math.round(window.innerHeight * 0.35));
@@ -21308,11 +21312,12 @@ const STORAGE_KEY = 'heatsync_multichat';
     });
     handle.addEventListener('pointermove', (e) => {
       if (!_isResizingC || e.pointerId !== activePid) return;
-      // Use the same per-platform max as the platform handles so the unified
-      // bar can't drag past where a YT video column would get crushed.
-      const maxW = hostPlatform === 'yt'
-        ? Math.min(MAX_CHAT_WIDTH, getYtMaxChatWidth())
-        : (hostPlatform === 'twitch' ? Math.min(MAX_CHAT_WIDTH, getTwitchMaxChatWidth()) : MAX_CHAT_WIDTH);
+      // Full pixel-freedom drag — bounded only by viewport-10 so the
+      // handle stays grabbable on either extreme. No "min player width"
+      // gate, no platform-specific cap. User can shrink chat to handle
+      // width or expand it until the player is a sliver — both directions
+      // are reversible by dragging the bar back.
+      const maxW = Math.max(MIN_CHAT_WIDTH, window.innerWidth - 10);
       if (chatPosition === 'right') {
         pendingW = Math.max(MIN_CHAT_WIDTH, Math.min(maxW, startW + (startX - e.clientX)));
         // -10 matches positionChatResizeHandle: bar inner edge flush at
@@ -21645,7 +21650,8 @@ const STORAGE_KEY = 'heatsync_multichat';
     // (#hs-c-resize-handle) owns ALL chat positions on YT, so the platform
     // handle stays hidden by hidePlatformResizeHandles. Clearing display
     // here would un-hide it and render two orange bars.
-    const ytMax = getYtMaxChatWidth()
+    // Full freedom — only clamp to viewport so the chat can't escape it.
+    const ytMax = Math.max(MIN_CHAT_WIDTH, window.innerWidth - 10)
     chatWidth = Math.min(ytMax, Math.max(MIN_CHAT_WIDTH, chatWidth))
     secondary.style.setProperty('width', chatWidth + 'px', 'important')
     secondary.style.setProperty('min-width', chatWidth + 'px', 'important')

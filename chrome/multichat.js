@@ -2147,51 +2147,24 @@ function injectStyles() {
     #hs-user-tooltip .hs-pc-bio-tag { color: #fff; text-decoration: none; }
     #hs-user-tooltip .hs-pc-bio-tag:hover { text-decoration: underline; }
     #hs-user-tooltip .hs-pc-stats {
-      display: flex;
-      align-items: center;
-      gap: 4px;
-      flex-wrap: wrap;
-      font-size: 10px;
+      font-size: 11px;
       color: #fff;
-      line-height: 1.2;
+      line-height: 1.3;
     }
     #hs-user-tooltip .hs-pc-stat {
-      display: inline-flex;
-      align-items: center;
-      gap: 4px;
-      padding: 2px 6px;
-      font-size: 11px;
       font-weight: 500;
-      border: 1px solid #fff;
-      background: transparent;
       color: #fff;
       white-space: nowrap;
-      letter-spacing: 0.3px;
     }
-    #hs-user-tooltip .hs-pc-stat.op {
-      color: #ff0000;
-      font-weight: 700;
-      border-color: #ff0000;
+    #hs-user-tooltip .hs-pc-sep {
+      color: #808080;
     }
-    #hs-user-tooltip .hs-pc-stat.op .hs-pc-num {
-      color: #fff;
-    }
-    #hs-user-tooltip .hs-pc-stat.mop {
-      color: #ff00ff;
-      font-weight: 700;
-      border-color: #ff00ff;
-    }
-    #hs-user-tooltip .hs-pc-stat.mop .hs-pc-num {
-      color: #fff;
-    }
-    #hs-user-tooltip .hs-pc-stat.re {
-      color: #00ffff;
-      font-weight: 700;
-      border-color: #00ffff;
-    }
-    #hs-user-tooltip .hs-pc-stat.re .hs-pc-num {
-      color: #fff;
-    }
+    #hs-user-tooltip .hs-pc-stat.op { color: #ff0000; font-weight: 700; }
+    #hs-user-tooltip .hs-pc-stat.op .hs-pc-num { color: #fff; }
+    #hs-user-tooltip .hs-pc-stat.mop { color: #ff00ff; font-weight: 700; }
+    #hs-user-tooltip .hs-pc-stat.mop .hs-pc-num { color: #fff; }
+    #hs-user-tooltip .hs-pc-stat.re { color: #00ffff; font-weight: 700; }
+    #hs-user-tooltip .hs-pc-stat.re .hs-pc-num { color: #fff; }
     #hs-user-tooltip .hs-pc-rel {
       display: flex;
       align-items: center;
@@ -7781,16 +7754,72 @@ async function sendKickMessage(kickSlug, text) {
       .map(k => ({ key: k, label: SECTION_LABELS[k] || k, emotes: groups[k] }))
   }
 
+  // Chunked lazy render: with 2k+ emotes, building all <img> up-front blocks
+  // the main thread for hundreds of ms. Split each section into chunks of
+  // CHUNK_SIZE; render placeholder divs with estimated min-heights so the
+  // scrollbar is correct, then populate each chunk via IntersectionObserver
+  // as it nears the viewport. All emote name/url/source strings remain
+  // escapeHtml'd inside emoteImgHtml() at populate time.
+  const CHUNK_SIZE = 96
+  const _chunkStore = new Map()
+  let _chunkObserver = null
+
+  function clearChunkStore() {
+    _chunkStore.clear()
+    if (_chunkObserver) { _chunkObserver.disconnect(); _chunkObserver = null }
+  }
+
+  function ensureChunkObserver(scrollRoot) {
+    if (_chunkObserver) return _chunkObserver
+    _chunkObserver = new IntersectionObserver((entries) => {
+      for (const e of entries) {
+        if (!e.isIntersecting) continue
+        const el = e.target
+        const key = el.dataset.chunkKey
+        const data = _chunkStore.get(key)
+        if (!data) { _chunkObserver.unobserve(el); continue }
+        el.innerHTML = data.map(emoteImgHtml).join('')
+        el.style.minHeight = ''
+        el.classList.add('hs-mc-chunk-ready')
+        _chunkStore.delete(key)
+        _chunkObserver.unobserve(el)
+      }
+    }, { root: scrollRoot, rootMargin: '300px 0px', threshold: 0 })
+    return _chunkObserver
+  }
+
+  function attachChunkObserver(scope) {
+    const scrollRoot = scope.querySelector('.hs-mc-picker-scroll') || scope
+    const obs = ensureChunkObserver(scrollRoot)
+    scope.querySelectorAll('.hs-mc-picker-chunk:not(.hs-mc-chunk-ready)').forEach(el => obs.observe(el))
+  }
+
+  function estimateChunkHeight(count) {
+    const perRow = 7
+    const rowHeight = 36
+    return Math.ceil(count / perRow) * rowHeight
+  }
+
   function renderEmoteSections(sections, emptyMsg = t('mc_emote_no_loaded')) {
+    clearChunkStore()
     if (!sections.length) return `<div class="hs-mc-picker-empty">${escapeHtml(emptyMsg)}</div>`
-    // Render every emote up-front in one synchronous pass — no chunked rAF
-    // appends, no visible pop-in. Picker fades in over ~80ms via CSS to mask
-    // the parse cost. With native loading="lazy", off-screen imgs cost nothing.
-    return sections.map(s => `
+    return sections.map((s, si) => {
+      const chunks = []
+      for (let i = 0; i < s.emotes.length; i += CHUNK_SIZE) {
+        chunks.push(s.emotes.slice(i, i + CHUNK_SIZE))
+      }
+      const chunksHtml = chunks.map((c, ci) => {
+        const key = si + '-' + ci
+        _chunkStore.set(key, c)
+        const h = estimateChunkHeight(c.length)
+        return '<div class="hs-mc-picker-section-grid hs-mc-picker-chunk" data-chunk-key="' + key + '" style="min-height:' + h + 'px"></div>'
+      }).join('')
+      return `
       <div class="hs-mc-picker-section" data-section-key="${escapeHtml(s.key)}">
         <div class="hs-mc-picker-section-header">${escapeHtml(s.label)} <span class="hs-mc-picker-section-count">${s.emotes.length}</span></div>
-        <div class="hs-mc-picker-section-grid">${s.emotes.map(emoteImgHtml).join('')}</div>
-      </div>`).join('')
+        ${chunksHtml}
+      </div>`
+    }).join('')
   }
 
   function emoteImgHtml([name, emote]) {
@@ -7931,6 +7960,7 @@ async function sendKickMessage(kickSlug, text) {
         }
         const filteredSections = groupEmotes(filtered);
         grid.innerHTML = renderEmoteSections(filteredSections, t('common_no_matches'));
+        attachChunkObserver(grid);
         markPickerDirty();
       }, 150);
     });
@@ -7987,6 +8017,8 @@ async function sendKickMessage(kickSlug, text) {
         adjustOverlayForPicker(false);
       });
     }
+
+    attachChunkObserver(picker);
 
     _pickerBuiltKey = pickerCacheKey();
 
@@ -9512,8 +9544,6 @@ async function sendKickMessage(kickSlug, text) {
     const followers = Math.max(stats.followers || 0, p.twitch_followers || 0, p.kick_followers || 0);
 
     const statBadges = [];
-    // Heat renders as the canonical bare glowing number (matches feed / discover / profile card)
-    // — no badge wrapper, no hardcoded bg/border. Other stats below stay as pill badges.
     const heatHtml = heatSpanHtml(heat);
     if (heatHtml) statBadges.push(heatHtml);
     if (op > 0) statBadges.push(`<span class="hs-pc-stat op"><span class="hs-pc-num">${formatCompact(op)}</span> [OP]</span>`);
@@ -9567,7 +9597,7 @@ async function sendKickMessage(kickSlug, text) {
       <div class="hs-pc-info">
         <div class="hs-pc-header">${platforms} ${role} ${ageHtml}</div>
         ${bio}
-        ${statBadges.length ? `<div class="hs-pc-stats">${statBadges.join('')}</div>` : ''}
+        ${statBadges.length ? `<div class="hs-pc-stats">${statBadges.join('<span class="hs-pc-sep"> · </span>')}</div>` : ''}
         ${relBadges.length ? `<div class="hs-pc-rel">${relBadges.join(' ')}</div>` : ''}
       </div>`;
   }
@@ -14889,7 +14919,7 @@ function renderThreadView(msgsEl) {
 
 async function postFeedMessage(text, { topLevel = false } = {}) {
   const input = document.getElementById('hs-mc-input');
-  if (!input) return;
+  if (!input) return false;
 
   if (!hsAuthToken) {
     if (wysiwygEnabled) {
@@ -14898,7 +14928,7 @@ async function postFeedMessage(text, { topLevel = false } = {}) {
       input.placeholder = t('mc_social_login_first');
     }
     setTimeout(() => updateInputPlaceholder(), 2000);
-    return;
+    return false;
   }
 
   // Extract pasted/uploaded media URL from content. The chat-tile flow
@@ -14954,6 +14984,7 @@ async function postFeedMessage(text, { topLevel = false } = {}) {
       }
     }
     if (currentTab === 'feed') renderFeed()
+    return true
   } else {
     input.style.borderColor = '#f44';
     const errMsg = resp.status === 401 ? t('mc_social_log_in_first')
@@ -14963,6 +14994,7 @@ async function postFeedMessage(text, { topLevel = false } = {}) {
     showToast(errMsg);
     setTimeout(() => { input.style.borderColor = ''; }, 1500);
     log('Post failed:', resp.status || resp.error);
+    return false
   }
 }
 
@@ -18344,7 +18376,10 @@ async function handleSlashCommand(text, input) {
 
   if (cmd === 'op') {
     if (!rest.trim()) { showToast('usage: /op <text>'); return true }
-    await postFeedMessage(rest.trim(), { topLevel: true })
+    if (!hsAuthToken) { showToast('log in at heatsync.org first to /op'); return true }
+    const ok = await postFeedMessage(rest.trim(), { topLevel: true })
+    showToast(ok ? 'posted to feed' : 'post failed')
+    clearInput(input)
     return true
   }
 
@@ -20584,6 +20619,10 @@ const STORAGE_KEY = 'heatsync_multichat';
 
   // Util row collapsed — hides C/T/F-/F+/⚙ for clean single-line tabs
 
+  // User-hidable tabs — persisted in ui_settings.hiddenTabs (auto-syncs cross-device)
+  const HIDABLE_TABS = ['feed', 'whispers', 'mentions', 'discover', 'pinned'];
+  let hiddenTabs = new Set();
+
   // Timestamps on messages (default off)
   let timestampsEnabled = false;
   window._hsTimestampsEnabled = false;
@@ -22239,6 +22278,31 @@ const STORAGE_KEY = 'heatsync_multichat';
   }
 
   // Timestamps setting
+  async function loadHiddenTabsSetting() {
+    try {
+      const stored = await cachedUiSettings();
+      const arr = stored.ui_settings?.hiddenTabs;
+      if (Array.isArray(arr)) hiddenTabs = new Set(arr.filter(id => HIDABLE_TABS.includes(id)));
+    } catch {}
+  }
+
+  function applyHiddenTabs() {
+    if (!tabBarElement) return;
+    for (const id of HIDABLE_TABS) {
+      const btn = tabBarElement.querySelector(`.hs-mc-tab[data-tab="${id}"]`);
+      if (btn) btn.style.display = hiddenTabs.has(id) ? 'none' : '';
+    }
+    if (hiddenTabs.has(currentTab)) switchTab('live');
+  }
+
+  function toggleHiddenTab(id) {
+    if (!HIDABLE_TABS.includes(id)) return;
+    if (hiddenTabs.has(id)) hiddenTabs.delete(id);
+    else hiddenTabs.add(id);
+    saveUiSetting('hiddenTabs', [...hiddenTabs]);
+    applyHiddenTabs();
+  }
+
   async function loadTimestampsSetting() {
     try {
       const stored = await cachedUiSettings();
@@ -22469,6 +22533,14 @@ const STORAGE_KEY = 'heatsync_multichat';
           </div>
         </div>
         <div class="hs-mc-settings-group">
+          <div class="hs-mc-settings-group-title">tabs</div>
+          ${HIDABLE_TABS.map(id => `
+          <div class="hs-mc-setting-row">
+            <button class="hs-mc-toggle-pill ${!hiddenTabs.has(id) ? 'active' : ''}" data-setting="hidetab_${id}"><span class="hs-mc-toggle-knob"></span></button>
+            <span class="hs-mc-setting-label">${t('mc_tab_' + id)}</span>
+          </div>`).join('')}
+        </div>
+        <div class="hs-mc-settings-group">
           <div class="hs-mc-settings-group-title">${t('mc_settings_muted_users')}</div>
           ${mutedUsers.size === 0
             ? `<div class="hs-mc-setting-row" style="color:#808080;font-size:11px">${t('mc_settings_no_muted')}</div>`
@@ -22499,6 +22571,15 @@ const STORAGE_KEY = 'heatsync_multichat';
           if (INLINE_NOTIF_TYPES[notifKey] !== undefined) {
             inlineNotifs[notifKey] = !inlineNotifs[notifKey]
             saveInlineNotifSettings()
+            toggle.classList.toggle('active')
+          }
+          return
+        }
+        // Tab visibility toggles (hidetab_feed, hidetab_pinned, etc.) — pill ON = tab visible
+        if (setting.startsWith('hidetab_')) {
+          const tabId = setting.slice(8)
+          if (HIDABLE_TABS.includes(tabId)) {
+            toggleHiddenTab(tabId)
             toggle.classList.toggle('active')
           }
           return
@@ -22573,6 +22654,8 @@ const STORAGE_KEY = 'heatsync_multichat';
         firstChatterGlow = true;
         keywordHighlights = '';
         rebuildKeywordRegex();
+        hiddenTabs = new Set();
+        applyHiddenTabs();
         for (const [k, v] of Object.entries(INLINE_NOTIF_TYPES)) inlineNotifs[k] = v.defaultOn;
         for (const [k, v] of Object.entries(HERMES_EVENT_TYPES)) hermesToggles[k] = v.defaultOn;
         const settings = {
@@ -22580,6 +22663,7 @@ const STORAGE_KEY = 'heatsync_multichat';
           zebra: true, autoHideEmpty: false, timestamps: false,
           avatars: false, showPlatformBadges: true, showOfflineEvents: false,
           firstChatterGlow: true, keywordHighlights: '',
+          hiddenTabs: [],
           inlineNotifs: { ...inlineNotifs }, hermesEvents: { ...hermesToggles },
         };
         try {
@@ -22701,6 +22785,8 @@ const STORAGE_KEY = 'heatsync_multichat';
     tabBarElement.querySelectorAll('.hs-mc-tab').forEach(t => {
       t.classList.toggle('active', t.dataset.tab === currentTab);
     });
+
+    applyHiddenTabs();
   }
 
 
@@ -26236,6 +26322,14 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
         if (ns.showOfflineEvents !== undefined && ns.showOfflineEvents !== showOfflineEvents) {
           showOfflineEvents = ns.showOfflineEvents
         }
+        if (Array.isArray(ns.hiddenTabs)) {
+          const incoming = new Set(ns.hiddenTabs.filter(id => HIDABLE_TABS.includes(id)));
+          const same = incoming.size === hiddenTabs.size && [...incoming].every(id => hiddenTabs.has(id));
+          if (!same) {
+            hiddenTabs = incoming;
+            applyHiddenTabs();
+          }
+        }
         if (ns.firstChatterGlow !== undefined && ns.firstChatterGlow !== firstChatterGlow) {
           firstChatterGlow = !!ns.firstChatterGlow
           needsRender = true
@@ -26526,6 +26620,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       loadAutoHideSetting(),
       loadTimestampsSetting(),
       loadAvatarsSetting(),
+      loadHiddenTabsSetting(),
       loadAutoClaimSetting(),
       loadDimTimeoutsSetting(),
       loadReadableNamesSetting(),

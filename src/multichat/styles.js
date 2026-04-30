@@ -3123,6 +3123,23 @@ function injectStyles() {
       outline: none;
       border-color: #ff8700;
     }
+    .hs-mc-locale-select {
+      background: #000;
+      color: #fff;
+      border: 1px solid #808080;
+      font-family: 'Liberation Mono', monospace;
+      font-size: 12px;
+      padding: 3px 6px;
+      cursor: pointer;
+      flex-shrink: 0;
+      max-width: 60%;
+    }
+    .hs-mc-locale-select:hover, .hs-mc-locale-select:focus {
+      background: #fff;
+      color: #000;
+      outline: none;
+      border-color: #fff;
+    }
     .hs-mc-setting-row .hs-mc-toggle-pill,
     .hs-mc-setting-row .hs-mc-size-btns {
       flex-shrink: 0;

@@ -294,6 +294,52 @@ async function initI18n() {
 }
 
 function getI18nLocale() { return _i18nOverrideLocale }
+
+const I18N_LOCALE_NAMES = {
+  '': 'Auto (browser language)',
+  ar: 'العربية',
+  bg: 'Български',
+  cs: 'Čeština',
+  da: 'Dansk',
+  de: 'Deutsch',
+  el: 'Ελληνικά',
+  en: 'English',
+  es: 'Español',
+  fi: 'Suomi',
+  fr: 'Français',
+  he: 'עברית',
+  hi: 'हिन्दी',
+  hu: 'Magyar',
+  id: 'Bahasa Indonesia',
+  it: 'Italiano',
+  ja: '日本語',
+  ko: '한국어',
+  ms: 'Bahasa Melayu',
+  nl: 'Nederlands',
+  no: 'Norsk',
+  pl: 'Polski',
+  pt_BR: 'Português (Brasil)',
+  pt_PT: 'Português (Portugal)',
+  ro: 'Română',
+  ru: 'Русский',
+  sk: 'Slovenčina',
+  sv: 'Svenska',
+  th: 'ไทย',
+  tl: 'Filipino',
+  tr: 'Türkçe',
+  uk: 'Українська',
+  vi: 'Tiếng Việt',
+  zh_CN: '简体中文',
+  zh_TW: '繁體中文'
+}
+
+async function setI18nLocale(loc) {
+  await storage.local.set({ [I18N_STORAGE_KEY]: loc || '' })
+  _i18nOverride = null
+  _i18nOverrideLocale = ''
+  _i18nInitPromise = null
+  await initI18n()
+}
 function bidiDir() {
   if (_i18nOverrideLocale) {
     const rtl = ['ar', 'he', 'fa', 'ur']
@@ -319,5 +365,5 @@ if (typeof window !== 'undefined') {
   window.heatsyncApi = api
 }
 
-export { api, storage, runtime, tabs, platform, isContextValid, t, hydrateI18n, initI18n, getI18nLocale, bidiDir }
+export { api, storage, runtime, tabs, platform, isContextValid, t, hydrateI18n, initI18n, getI18nLocale, setI18nLocale, bidiDir, I18N_LOCALE_NAMES }
 export default api

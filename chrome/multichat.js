@@ -1014,6 +1014,52 @@ async function initI18n() {
 }
 
 function getI18nLocale() { return _i18nOverrideLocale }
+
+const I18N_LOCALE_NAMES = {
+  '': 'Auto (browser language)',
+  ar: 'العربية',
+  bg: 'Български',
+  cs: 'Čeština',
+  da: 'Dansk',
+  de: 'Deutsch',
+  el: 'Ελληνικά',
+  en: 'English',
+  es: 'Español',
+  fi: 'Suomi',
+  fr: 'Français',
+  he: 'עברית',
+  hi: 'हिन्दी',
+  hu: 'Magyar',
+  id: 'Bahasa Indonesia',
+  it: 'Italiano',
+  ja: '日本語',
+  ko: '한국어',
+  ms: 'Bahasa Melayu',
+  nl: 'Nederlands',
+  no: 'Norsk',
+  pl: 'Polski',
+  pt_BR: 'Português (Brasil)',
+  pt_PT: 'Português (Portugal)',
+  ro: 'Română',
+  ru: 'Русский',
+  sk: 'Slovenčina',
+  sv: 'Svenska',
+  th: 'ไทย',
+  tl: 'Filipino',
+  tr: 'Türkçe',
+  uk: 'Українська',
+  vi: 'Tiếng Việt',
+  zh_CN: '简体中文',
+  zh_TW: '繁體中文'
+}
+
+async function setI18nLocale(loc) {
+  await storage.local.set({ [I18N_STORAGE_KEY]: loc || '' })
+  _i18nOverride = null
+  _i18nOverrideLocale = ''
+  _i18nInitPromise = null
+  await initI18n()
+}
 function bidiDir() {
   if (_i18nOverrideLocale) {
     const rtl = ['ar', 'he', 'fa', 'ur']
@@ -4234,6 +4280,23 @@ function injectStyles() {
     .hs-mc-setting-textarea:focus {
       outline: none;
       border-color: #ff8700;
+    }
+    .hs-mc-locale-select {
+      background: #000;
+      color: #fff;
+      border: 1px solid #808080;
+      font-family: 'Liberation Mono', monospace;
+      font-size: 12px;
+      padding: 3px 6px;
+      cursor: pointer;
+      flex-shrink: 0;
+      max-width: 60%;
+    }
+    .hs-mc-locale-select:hover, .hs-mc-locale-select:focus {
+      background: #fff;
+      color: #000;
+      outline: none;
+      border-color: #fff;
     }
     .hs-mc-setting-row .hs-mc-toggle-pill,
     .hs-mc-setting-row .hs-mc-size-btns {
@@ -22546,6 +22609,15 @@ const STORAGE_KEY = 'heatsync_multichat';
           </div>`).join('')}
         </div>
         <div class="hs-mc-settings-group">
+          <div class="hs-mc-settings-group-title">language</div>
+          <div class="hs-mc-setting-row hs-mc-setting-row-split">
+            <span class="hs-mc-setting-label">interface language</span>
+            <select class="hs-mc-locale-select" data-setting="locale">
+              ${Object.entries(I18N_LOCALE_NAMES).map(([code, name]) => `<option value="${escapeHtml(code)}" ${code === getI18nLocale() ? 'selected' : ''}>${escapeHtml(name)}</option>`).join('')}
+            </select>
+          </div>
+        </div>
+        <div class="hs-mc-settings-group">
           <div class="hs-mc-settings-group-title">${t('mc_settings_muted_users')}</div>
           ${mutedUsers.size === 0
             ? `<div class="hs-mc-setting-row" style="color:#808080;font-size:11px">${t('mc_settings_no_muted')}</div>`
@@ -22694,6 +22766,19 @@ const STORAGE_KEY = 'heatsync_multichat';
           saveKeywordHighlightsSetting();
           renderMessages(currentTab);
         }, 400);
+      });
+    }
+
+    // Locale picker — saves and reloads page so all rendered ui picks up new locale
+    if (!msgsEl._hsSettingsChange) {
+      msgsEl._hsSettingsChange = true;
+      msgsEl.addEventListener('change', async (e) => {
+        const sel = e.target.closest('select[data-setting="locale"]');
+        if (!sel) return;
+        try {
+          await setI18nLocale(sel.value);
+        } catch {}
+        try { location.reload(); } catch {}
       });
     }
 
@@ -23950,13 +24035,12 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     // Tag with the same msgKey renderMessages uses, so a later tab switch into a
     // multi-platform view can prefix-match this DOM and avoid a one-shot rebuild.
     div.dataset.msgKey = `${_renderEpoch}:${msg.id || msg.base36_id || `${msg.user || ''}:${msg.time || ''}:${(msg.text || '').slice(0, 32)}`}`
-    // Stable hash-based zebra (matches renderMessages' zebraOf): per-msg
-    // deterministic so flicker-free across rebuilds.
+    // Strict alternation: append flips from last sibling's zebra. Append-only path
+    // always alternates cleanly. Bigger-tier than hash (which only ~50% alternates).
     if (zebraEnabled && msg.type !== 'stream-event' && msg.type !== 'feed-post' && msg.type !== 'inline-dm') {
-      const s = msg.id || msg.base36_id || `${msg.user || ''}:${msg.time || ''}`
-      let h = 0
-      for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0
-      if ((h & 1) === 0) div.classList.add('hs-mc-zebra')
+      const prev = msgsEl.lastElementChild
+      const prevZ = prev?.classList.contains('hs-mc-zebra') === true
+      if (!prevZ) div.classList.add('hs-mc-zebra')
     }
     msgsEl.appendChild(div);
 
@@ -24320,18 +24404,15 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     const desiredKeys = toRender.map(msgKey)
     const desiredSet = new Set(desiredKeys)
 
-    // Hash-based stable zebra: each msg's stripe is determined ONCE by its id
-    // and never recomputed. inserts in the middle no longer flip every msg's
-    // zebra state on each render (mellen's "stripes alternating quickly while
-    // scrolled up" complaint). pattern won't strictly alternate but it'll be
-    // stable across renders.
-    const zebraOf = (m) => {
+    // Neighbor-based zebra: each new insert flips from its DOM-prev sibling. Existing
+    // DOM nodes keep their assigned class (no flicker), and the insert-only diff above
+    // means tail appends always alternate cleanly. Mid-inserts may briefly double up at
+    // the boundary but won't ripple to other msgs.
+    const zebraOfInsert = (m, prevDiv) => {
       if (!zebraEnabled) return false
       if (m.type === 'stream-event' || m.type === 'feed-post' || m.type === 'inline-dm') return false
-      const s = m.id || m.base36_id || `${m.user || ''}:${m.time || ''}`
-      let h = 0
-      for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0
-      return (h & 1) === 0
+      if (!prevDiv) return false
+      return !prevDiv.classList.contains('hs-mc-zebra')
     }
 
     // PASS 0: capture expanded emote stacks (mostly relevant for full rebuilds
@@ -24380,7 +24461,8 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       const div = buildMessageDiv(m, id)
       if (!div) continue
       div.dataset.msgKey = key
-      if (zebraOf(m)) div.classList.add('hs-mc-zebra')
+      const prevDiv = cur ? cur.previousElementSibling : msgsEl.lastElementChild
+      if (zebraOfInsert(m, prevDiv)) div.classList.add('hs-mc-zebra')
       msgsEl.insertBefore(div, cur || null)
       domIdx++
       // Tail insert = index reached the end of pre-existing DOM.

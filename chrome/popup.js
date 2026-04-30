@@ -39,14 +39,6 @@
     } catch { return ''; }
   }
 
-  function debounce(fn, ms) {
-    let timer;
-    return function(...args) {
-      clearTimeout(timer);
-      timer = setTimeout(() => fn.apply(this, args), ms);
-    };
-  }
-
   // Proxy all API calls through background.js to bypass CORS
   function apiFetch(path, opts) {
     if (!opts) opts = {};
@@ -65,110 +57,6 @@
   }
 
   // Search ────────────────────────────────────────────────────────────────────
-
-  function initSearch() {
-    const input = document.getElementById('search-input');
-    const dropdown = document.getElementById('search-dropdown');
-    if (!input || !dropdown) return;
-
-    function closeDropdown() {
-      dropdown.textContent = '';
-      dropdown.classList.remove('open');
-    }
-
-    function renderItem(r) {
-      const a = document.createElement('a');
-      a.className = 'search-item';
-      a.href = safeUrl(r.url) || '#';
-      a.target = '_blank';
-      a.rel = 'noopener noreferrer';
-      const imgSrc = safeUrl(r.img || '');
-      if (imgSrc) {
-        const img = document.createElement('img');
-        img.className = 'search-item-img';
-        img.src = imgSrc;
-        img.alt = '';
-        img.loading = 'lazy';
-        a.appendChild(img);
-      } else {
-        const d = document.createElement('div');
-        d.className = 'search-item-img';
-        a.appendChild(d);
-      }
-      const label = document.createElement('span');
-      label.className = 'search-item-label';
-      label.textContent = r.label || '';
-      a.appendChild(label);
-      const tag = document.createElement('span');
-      tag.className = 'search-item-tag';
-      tag.textContent = r.type || '';
-      a.appendChild(tag);
-      return a;
-    }
-
-    async function doSearch(q) {
-      if (!q || q.length < 2) { closeDropdown(); return; }
-      dropdown.textContent = '';
-      const loading = document.createElement('div');
-      loading.className = 'search-empty';
-      loading.textContent = 'searching...';
-      dropdown.appendChild(loading);
-      dropdown.classList.add('open');
-      try {
-        const resp = await apiFetch('/api/search?q=' + encodeURIComponent(q) + '&limit=8');
-        const results = [];
-        // Server always returns { results: [...] } regardless of mode.
-        // Each result has type, username, display_name, profile_image_url, etc.
-        const arr = resp?.data?.results || resp?.results || [];
-        if (Array.isArray(arr)) {
-          arr.slice(0, 8).forEach(function(r) {
-            const username = r.username || '';
-            const isEmote = r.type === 'emote' || r.emote_url || r.emote_name;
-            if (isEmote) {
-              results.push({
-                type: 'emote',
-                label: r.name || r.emote_name || '',
-                sub: '',
-                img: r.url || r.emote_url || '',
-                url: 'https://heatsync.org/emotes/' + encodeURIComponent(r.name || r.emote_name || '')
-              });
-            } else if (username) {
-              results.push({
-                type: 'user',
-                label: r.display_name || username,
-                sub: username,
-                img: r.profile_image_url || r.avatar_url || '',
-                url: 'https://heatsync.org/@' + encodeURIComponent(username)
-              });
-            }
-          });
-        }
-        dropdown.textContent = '';
-        if (!results.length) {
-          const empty = document.createElement('div');
-          empty.className = 'search-empty';
-          empty.textContent = 'no results';
-          dropdown.appendChild(empty);
-          return;
-        }
-        results.forEach(function(r) { dropdown.appendChild(renderItem(r)); });
-      } catch {
-        dropdown.textContent = '';
-        const err = document.createElement('div');
-        err.className = 'search-empty';
-        err.textContent = 'error';
-        dropdown.appendChild(err);
-      }
-    }
-
-    const debouncedSearch = debounce(doSearch, 300);
-
-    input.addEventListener('input', function() { debouncedSearch(input.value.trim()); });
-    input.addEventListener('keydown', function(e) { if (e.key === 'Escape') { closeDropdown(); input.value = ''; } });
-    document.addEventListener('click', function(e) {
-      if (!input.contains(e.target) && !dropdown.contains(e.target)) closeDropdown();
-    });
-  }
 
   // Live Following ────────────────────────────────────────────────────────────
 
@@ -1382,7 +1270,6 @@
     if (window.hsI18n) await window.hsI18n.init();
     document.documentElement.dir = (window.hsI18n ? window.hsI18n.bidiDir() : t('@@bidi_dir'));
     hydrateI18n();
-    initSearch();
     init().catch(function(e) { console.error('popup init failed:', e); });
     initPopout();
     startAutoRefresh();

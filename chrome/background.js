@@ -3787,6 +3787,18 @@ async function handleMessage(message, sender, sendResponse) {
   // so it can show the login banner immediately on a tab opened after the
   // auth_changed broadcast already fired.
   if (message.type === 'get_auth_state') {
+    // Lazy-fetch the auth cookie if memory cache is empty.
+    // cookies.onChanged only fires on cookie mutations — if the user logged in
+    // before the extension started watching, the listener never ran and
+    // chrome.storage.local stays empty until any feature calls getAuthCookie().
+    // Multichat content scripts ask for auth state at startup; honor that by
+    // proactively reading the cookie here and storing the token.
+    if (!authToken && !authFailedBlock) {
+      getAuthCookie().then(t => {
+        sendResponse({ loggedIn: !!t && !authFailedBlock })
+      }).catch(() => sendResponse({ loggedIn: false }))
+      return true
+    }
     sendResponse({ loggedIn: !!authToken && !authFailedBlock })
     return true
   }

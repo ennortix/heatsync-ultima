@@ -1,9 +1,13 @@
 // Tooltips - toast, emote tooltip, user profile card, link preview
 // Note: all innerHTML usage passes content through escapeHtml() first (see src/lib/utils.js)
 
-  function showToast(msg) {
+  function showToast(msg, type) {
     const existing = document.getElementById('hs-mc-toast');
     if (existing) existing.remove();
+
+    const border = type === 'success' ? '#00d000'
+      : type === 'error'   ? '#ff4040'
+      : '#fff';
 
     const toast = document.createElement('div');
     toast.id = 'hs-mc-toast';
@@ -13,8 +17,8 @@
       bottom: 70px;
       right: 20px;
       background: #000;
-      color: #fff;
-      border: 1px solid #fff;
+      color: ${border};
+      border: 1px solid ${border};
       padding: 6px 14px;
       border-radius: 0;
       font: bold 12px monospace;

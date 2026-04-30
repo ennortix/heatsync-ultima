@@ -8987,9 +8987,13 @@ async function sendKickMessage(kickSlug, text) {
 // Tooltips - toast, emote tooltip, user profile card, link preview
 // Note: all innerHTML usage passes content through escapeHtml() first (see src/lib/utils.js)
 
-  function showToast(msg) {
+  function showToast(msg, type) {
     const existing = document.getElementById('hs-mc-toast');
     if (existing) existing.remove();
+
+    const border = type === 'success' ? '#00d000'
+      : type === 'error'   ? '#ff4040'
+      : '#fff';
 
     const toast = document.createElement('div');
     toast.id = 'hs-mc-toast';
@@ -8999,8 +9003,8 @@ async function sendKickMessage(kickSlug, text) {
       bottom: 70px;
       right: 20px;
       background: #000;
-      color: #fff;
-      border: 1px solid #fff;
+      color: ${border};
+      border: 1px solid ${border};
       padding: 6px 14px;
       border-radius: 0;
       font: bold 12px monospace;
@@ -18376,9 +18380,9 @@ async function handleSlashCommand(text, input) {
 
   if (cmd === 'op') {
     if (!rest.trim()) { showToast('usage: /op <text>'); return true }
-    if (!hsAuthToken) { showToast('log in at heatsync.org first to /op'); return true }
+    if (!hsAuthToken) { showToast('log in at heatsync.org first to /op', 'error'); return true }
     const ok = await postFeedMessage(rest.trim(), { topLevel: true })
-    showToast(ok ? 'posted to feed' : 'post failed')
+    showToast(ok ? 'posted to feed' : 'post failed', ok ? 'success' : 'error')
     clearInput(input)
     return true
   }

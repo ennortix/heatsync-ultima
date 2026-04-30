@@ -1876,9 +1876,9 @@ async function handleSlashCommand(text, input) {
 
   if (cmd === 'op') {
     if (!rest.trim()) { showToast('usage: /op <text>'); return true }
-    if (!hsAuthToken) { showToast('log in at heatsync.org first to /op'); return true }
+    if (!hsAuthToken) { showToast('log in at heatsync.org first to /op', 'error'); return true }
     const ok = await postFeedMessage(rest.trim(), { topLevel: true })
-    showToast(ok ? 'posted to feed' : 'post failed')
+    showToast(ok ? 'posted to feed' : 'post failed', ok ? 'success' : 'error')
     clearInput(input)
     return true
   }

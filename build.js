@@ -54,6 +54,7 @@ const COPY_FILES = [
   'kick-autocomplete-hook.js',
   'pcard-early.js',
   'youtube-adskip.js',
+  'i18n-override.js',
 ]
 
 // Assets (images, etc)

@@ -949,13 +949,81 @@ const api = {
 }
 
 /**
- * i18n helper — thin wrapper around chrome.i18n.getMessage
+ * i18n helper — wraps chrome.i18n.getMessage with optional manual locale override.
+ * Override is read from storage key 'hs_ui_locale'; matching locale's messages.json
+ * is fetched from the extension's _locales/ at boot. Until the fetch resolves,
+ * t() falls back to the browser's default locale via chrome.i18n.
  */
-function t(key, substitutions) {
-  try {
-    return rawApi?.i18n?.getMessage(key, substitutions) || key
-  } catch { return key }
+const I18N_STORAGE_KEY = 'hs_ui_locale'
+let _i18nOverride = null
+let _i18nOverrideLocale = ''
+let _i18nInitPromise = null
+
+function _i18nApplyPlaceholders(messageObj, substitutions) {
+  if (!messageObj) return ''
+  let message = String(messageObj.message ?? messageObj)
+  const placeholders = messageObj.placeholders || {}
+  const phLookup = {}
+  for (const [name, def] of Object.entries(placeholders)) {
+    phLookup[name.toLowerCase()] = (def && def.content) || ''
+  }
+  let subsArr = []
+  if (substitutions != null) {
+    subsArr = Array.isArray(substitutions) ? substitutions : [substitutions]
+  }
+  const ESC = ''
+  message = message.split('$$').join(ESC)
+  message = message.replace(/\$([A-Za-z0-9_@]+)\$/g, (match, name) => {
+    const content = phLookup[name.toLowerCase()]
+    if (content === undefined) return match
+    return content.replace(/\$(\d+)/g, (_, n) => subsArr[parseInt(n, 10) - 1] ?? '')
+  })
+  message = message.replace(/\$(\d+)/g, (_, n) => subsArr[parseInt(n, 10) - 1] ?? '')
+  message = message.split(ESC).join('$')
+  return message
 }
+
+function t(key, substitutions) {
+  if (!key) return ''
+  if (key.startsWith('@@')) {
+    try { return rawApi?.i18n?.getMessage(key, substitutions) || key } catch { return key }
+  }
+  if (_i18nOverride && _i18nOverride[key]) {
+    const out = _i18nApplyPlaceholders(_i18nOverride[key], substitutions)
+    if (out) return out
+  }
+  try { return rawApi?.i18n?.getMessage(key, substitutions) || key } catch { return key }
+}
+
+async function initI18n() {
+  if (_i18nInitPromise) return _i18nInitPromise
+  _i18nInitPromise = (async () => {
+    try {
+      const data = await storage.local.get(I18N_STORAGE_KEY)
+      const loc = data?.[I18N_STORAGE_KEY]
+      if (!loc) return
+      const url = rawApi?.runtime?.getURL?.(`_locales/${loc}/messages.json`)
+      if (!url) return
+      const res = await fetch(url)
+      if (!res.ok) return
+      _i18nOverride = await res.json()
+      _i18nOverrideLocale = loc
+    } catch {}
+  })()
+  return _i18nInitPromise
+}
+
+function getI18nLocale() { return _i18nOverrideLocale }
+function bidiDir() {
+  if (_i18nOverrideLocale) {
+    const rtl = ['ar', 'he', 'fa', 'ur']
+    return rtl.includes(_i18nOverrideLocale.toLowerCase().split('_')[0]) ? 'rtl' : 'ltr'
+  }
+  try { return rawApi?.i18n?.getMessage('@@bidi_dir') || 'ltr' } catch { return 'ltr' }
+}
+
+// Kick off override load eagerly so content scripts pick it up before panel renders
+try { initI18n() } catch {}
 
 function hydrateI18n(root = document) {
   for (const el of root.querySelectorAll('[data-i18n]'))
@@ -19579,9 +19647,12 @@ const STORAGE_KEY = 'heatsync_multichat';
   document.documentElement.dataset.hsMcLoaded = '1';
 
   // bidi direction for the user's locale (ltr/rtl) — applied to injected UI roots
-  // host page (twitch/kick) keeps its own dir; we only flip our overlay
-  let HS_DIR = 'ltr'
-  try { HS_DIR = (chrome?.i18n?.getMessage?.('@@bidi_dir')) || 'ltr' } catch {}
+  // host page (twitch/kick) keeps its own dir; we only flip our overlay.
+  // Resolved fresh on each panel mount so a manual locale override (set in options)
+  // is reflected without a full page reload chain.
+  function HS_DIR() {
+    try { return (typeof bidiDir === 'function' ? bidiDir() : (chrome?.i18n?.getMessage?.('@@bidi_dir'))) || 'ltr' } catch { return 'ltr' }
+  }
 
   const COLOR_RE = /^#[0-9a-fA-F]{3,6}$/
 
@@ -20387,7 +20458,7 @@ const STORAGE_KEY = 'heatsync_multichat';
   function createTabBar() {
     const container = document.createElement('div');
     container.id = 'hs-mc-tabbar';
-    container.dir = HS_DIR;
+    container.dir = HS_DIR();
     // Static hardcoded tab buttons — no user input, safe innerHTML
     // Two sections: scrollable channel tabs + fixed utility buttons (always visible)
     // Static hardcoded buttons — all in one wrapping flow, no user input
@@ -20721,7 +20792,7 @@ const STORAGE_KEY = 'heatsync_multichat';
   function createOverlay() {
     const overlay = document.createElement('div');
     overlay.id = 'hs-mc-overlay';
-    overlay.dir = HS_DIR;
+    overlay.dir = HS_DIR();
     // Static hardcoded layout — only static strings, no user input, safe innerHTML
     const searchPlaceholder = 'search messages…'
     overlay.innerHTML = `

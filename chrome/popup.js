@@ -6,10 +6,12 @@
   const API_URL = 'https://heatsync.org';
 
   function t(key, subs) {
+    if (window.hsI18n) return window.hsI18n.t(key, subs);
     try { return chrome.i18n.getMessage(key, subs) || key; } catch { return key; }
   }
 
   function hydrateI18n(root = document) {
+    if (window.hsI18n) { window.hsI18n.hydrate(root); return; }
     for (const el of root.querySelectorAll('[data-i18n]'))
       el.textContent = t(el.dataset.i18n) || el.textContent;
     for (const el of root.querySelectorAll('[data-i18n-placeholder]'))
@@ -1376,8 +1378,9 @@
     if (_refTimer) clearInterval(_refTimer);
   });
 
-  document.addEventListener('DOMContentLoaded', function() {
-    document.documentElement.dir = t('@@bidi_dir');
+  document.addEventListener('DOMContentLoaded', async function() {
+    if (window.hsI18n) await window.hsI18n.init();
+    document.documentElement.dir = (window.hsI18n ? window.hsI18n.bidiDir() : t('@@bidi_dir'));
     hydrateI18n();
     initSearch();
     init().catch(function(e) { console.error('popup init failed:', e); });

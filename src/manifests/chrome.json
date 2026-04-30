@@ -149,6 +149,10 @@
     {
       "resources": ["icon-16.png", "icon-48.png", "icon-48-black.png", "COGGERS-1x.webp"],
       "matches": ["https://*.twitch.tv/*", "https://kick.com/*", "https://*.kick.com/*", "https://www.youtube.com/*", "https://heatsync.org/*", "https://www.heatsync.org/*"]
+    },
+    {
+      "resources": ["_locales/*/messages.json"],
+      "matches": ["https://*.twitch.tv/*", "https://kick.com/*", "https://*.kick.com/*", "https://www.youtube.com/*"]
     }
   ]
 }

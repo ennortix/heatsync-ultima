@@ -146,7 +146,8 @@
     "icon-16.png",
     "icon-48.png",
     "icon-48-black.png",
-    "COGGERS-1x.webp"
+    "COGGERS-1x.webp",
+    "_locales/*/messages.json"
   ],
 
   "browser_specific_settings": {

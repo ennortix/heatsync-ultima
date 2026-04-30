@@ -2,7 +2,13 @@
 (function() {
   'use strict'
 
+  // Apply RTL/LTR early — re-applied after locale override resolves
   try { document.documentElement.dir = chrome.i18n.getMessage('@@bidi_dir') || 'ltr' } catch {}
+  if (window.hsI18n) {
+    window.hsI18n.init().then(() => {
+      try { document.documentElement.dir = window.hsI18n.bidiDir() } catch {}
+    })
+  }
 
   const DEFAULTS = {
     emoteWysiwyg: true,
@@ -264,4 +270,37 @@
 
   load()
   loadServerSettings()
+
+  // Locale picker — populates dropdown, applies override on change
+  ;(async () => {
+    const sel = document.getElementById('locale-picker')
+    const note = document.getElementById('locale-note')
+    if (!sel || !window.hsI18n) return
+    await window.hsI18n.init()
+    const current = window.hsI18n.getLocale()
+    for (const code of window.hsI18n.listLocales()) {
+      const opt = document.createElement('option')
+      opt.value = code
+      opt.textContent = window.hsI18n.localeName(code)
+      if (code === current) opt.selected = true
+      sel.appendChild(opt)
+    }
+    sel.addEventListener('change', async () => {
+      await window.hsI18n.setLocale(sel.value)
+      if (note) {
+        note.classList.add('show')
+        setTimeout(() => note.classList.remove('show'), 6000)
+      }
+      // reload twitch/kick/youtube tabs so the multichat overlay picks up new locale
+      try {
+        chrome.tabs.query({ url: ['https://*.twitch.tv/*', 'https://kick.com/*', 'https://*.kick.com/*', 'https://www.youtube.com/*'] }, (tabs) => {
+          for (const t of tabs || []) {
+            try { chrome.tabs.reload(t.id) } catch {}
+          }
+        })
+      } catch {}
+      // reload this options page itself so labels reflect the new locale
+      setTimeout(() => location.reload(), 300)
+    })
+  })()
 })()

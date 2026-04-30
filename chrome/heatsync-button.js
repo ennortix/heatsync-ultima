@@ -39,9 +39,10 @@
   const PANEL_ID = 'heatsync-panel';
   const API_URL = 'https://heatsync.org';
 
-  // bidi direction for the user's locale — applied to injected picker UI
-  let HS_BTN_DIR = 'ltr'
-  try { HS_BTN_DIR = (chrome?.i18n?.getMessage?.('@@bidi_dir')) || 'ltr' } catch {}
+  // bidi direction for the user's locale — resolved per-mount so manual locale override applies
+  function HS_BTN_DIR() {
+    try { return (typeof bidiDir === 'function' ? bidiDir() : (chrome?.i18n?.getMessage?.('@@bidi_dir'))) || 'ltr' } catch { return 'ltr' }
+  }
 
   let buttonInjected = false;
   let panelOpen = false;
@@ -1860,7 +1861,7 @@
     panel = document.createElement('div');
     panel.id = PANEL_ID;
     panel.className = 'heatsync-panel';
-    panel.dir = HS_BTN_DIR;
+    panel.dir = HS_BTN_DIR();
 
     // Smart positioning: flip to bottom if button is too high
     const btnRect = btn.getBoundingClientRect();

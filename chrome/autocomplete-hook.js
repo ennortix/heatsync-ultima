@@ -243,7 +243,8 @@
 
   // Listen for settings changes from the panel (postMessage crosses content/page boundary)
   window.addEventListener('message', (e) => {
-    if (e.origin !== location.origin) return;
+    if (e.origin !== location.origin) return
+    if (e.source !== window) return
     if (e.data?.type === 'heatsync-settings-changed' && e.data.settings) {
       // Clone to avoid any cross-origin wrapper issues
       cachedSettings = JSON.parse(JSON.stringify(e.data.settings));

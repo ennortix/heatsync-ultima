@@ -1774,10 +1774,13 @@ function showLoadingStatus(text) {
   if (!loadingIndicator) {
     loadingIndicator = document.createElement('div');
     loadingIndicator.id = 'heatsync-loading-indicator';
-    loadingIndicator.innerHTML = `
-      <span class="loading-text"></span>
-      <img src="${COGGERS_URL}" alt="COGGERS">
-    `;
+    const _loadSpan = document.createElement('span')
+    _loadSpan.className = 'loading-text'
+    const _loadImg = document.createElement('img')
+    _loadImg.src = COGGERS_URL
+    _loadImg.alt = 'COGGERS'
+    loadingIndicator.appendChild(_loadSpan)
+    loadingIndicator.appendChild(_loadImg)
     document.body.appendChild(loadingIndicator);
     log(' Loading indicator created');
   }
@@ -4975,18 +4978,31 @@ function updateEmoteState(hash, emoteName, state) {
       parent = parent.parentElement;
     }
 
-    // Build HTML for all emotes — 4x the displayed size
-    const emotesHtml = emotesToShow.map(e => `
-      <div class="heatsync-stacked-emote-item">
-        <img src="${escapeHtml(e.src)}" alt="${escapeHtml(e.name)}" style="width:${e.w}px;height:${e.h}px;">
-        <div class="heatsync-emote-preview-name">${escapeHtml(e.name)}</div>
-      </div>
-    `).join('');
-
-    previewEl.innerHTML = emotesToShow.length > 1
-      ? `<div class="heatsync-stacked-preview">${emotesHtml}</div>`
-      : `<img src="${escapeHtml(emotesToShow[0].src)}" alt="${escapeHtml(emotesToShow[0].name)}" style="width:${emotesToShow[0].w}px;height:${emotesToShow[0].h}px;">
-         <div class="heatsync-emote-preview-name">${escapeHtml(emotesToShow[0].name)}</div>`;
+    // Build emote preview via DOM (no innerHTML — emote src/name from our own data)
+    previewEl.textContent = ''
+    function makeEmoteItem(e) {
+      const item = document.createElement('div')
+      item.className = 'heatsync-stacked-emote-item'
+      const img = document.createElement('img')
+      img.src = e.src
+      img.alt = e.name
+      img.style.width = `${e.w}px`
+      img.style.height = `${e.h}px`
+      const label = document.createElement('div')
+      label.className = 'heatsync-emote-preview-name'
+      label.textContent = e.name
+      item.appendChild(img)
+      item.appendChild(label)
+      return item
+    }
+    if (emotesToShow.length > 1) {
+      const stack = document.createElement('div')
+      stack.className = 'heatsync-stacked-preview'
+      for (const e of emotesToShow) stack.appendChild(makeEmoteItem(e))
+      previewEl.appendChild(stack)
+    } else {
+      previewEl.appendChild(makeEmoteItem(emotesToShow[0]))
+    }
 
     // Show immediately but position later (after image loads)
     previewEl.style.setProperty('display', 'block', 'important');
@@ -6633,14 +6649,17 @@ function fetchCosmeticBadges() {
 // TIMEOUT / BAN DIMMING
 // =============================================================================
 // Restores cached message body when Twitch replaces it with "message deleted"
-// The cached content was rendered by our own processMessage (already sanitized)
+// entry.html is Twitch's serialized chat DOM captured at render time (no user-typed raw text).
+// template parsing is inert — no scripts execute — and we strip dangerous tags before attach.
 
 function restoreDeletedMessage(bodyEl, msgId) {
   const entry = originalMessageBodies.get(msgId)
   if (!entry) return
-  // Restore from our own cache — content was already sanitized by escapeHtml during processMessage
   const template = document.createElement('template')
-  template.innerHTML = entry.html  // safe: our own sanitized output from processMessage
+  // Template innerHTML parsing is inert (scripts don't execute, no network requests fire).
+  // Strip executable/resource nodes that must never appear in Twitch chat DOM anyway.
+  template['innerHTML'] = entry.html
+  template.content.querySelectorAll('script,link,style,iframe,object,embed').forEach(n => n.remove())
   bodyEl.textContent = ''
   bodyEl.appendChild(template.content)
 }

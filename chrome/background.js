@@ -3578,10 +3578,13 @@ async function _removeFromInventoryImpl(emoteHash, emoteName) {
 // Handle messages from content scripts
 browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
   const senderUrl = sender?.tab?.url || sender?.url || ''
-  const isFromPopup = !sender?.tab // popup/background have no tab
-  const isValidSender = isFromPopup || /^https:\/\/([a-z0-9-]+\.)*(twitch\.tv|kick\.com|heatsync\.org|youtube\.com)(\/|$)/.test(senderUrl)
+  const isFromPopup = !sender?.tab // popup/options pages have no tab
+  // Reject messages from other extensions — must originate from this extension's
+  // content scripts (sender.id matches) or our own popup/options (no tab).
+  const isOwnExtension = !sender?.id || sender.id === browser.runtime.id
+  const isValidOrigin = isFromPopup || /^https:\/\/([a-z0-9-]+\.)*(twitch\.tv|kick\.com|heatsync\.org|youtube\.com)(\/|$)/.test(senderUrl)
+  const isValidSender = isOwnExtension && isValidOrigin
 
-  // Validate ALL content script senders, not just sensitive types
   if (!isValidSender) {
     sendResponse({ ok: false, error: 'unauthorized sender' })
     return true

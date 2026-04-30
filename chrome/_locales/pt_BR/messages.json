@@ -69,7 +69,7 @@
     "message": "offline"
   },
   "popup_user_stats": {
-    "message": "$EMOTES$ emotes · $GLOBALS$ global",
+    "message": "$EMOTES$ emotes · $GLOBALS$ globais",
     "placeholders": {
       "emotes": {
         "content": "$1"
@@ -80,7 +80,7 @@
     }
   },
   "popup_user_stats_heat": {
-    "message": "$EMOTES$ emotes · $GLOBALS$ global · $HEAT$ heat",
+    "message": "$EMOTES$ emotes · $GLOBALS$ globais · $HEAT$ heat",
     "placeholders": {
       "emotes": {
         "content": "$1"
@@ -109,7 +109,7 @@
     "message": "logout"
   },
   "btn_recent": {
-    "message": "recent"
+    "message": "recentes"
   },
   "popup_login_prompt": {
     "message": "faça login para sincronizar emotes"
@@ -127,7 +127,7 @@
     "message": "bem-vindo ao heatsync"
   },
   "welcome_tagline": {
-    "message": "seus emotes, em todo lugar que você chata"
+    "message": "seus emotes, em todo lugar que você conversa"
   },
   "welcome_step1_title": {
     "message": "faça login em heatsync.org"
@@ -166,7 +166,7 @@
     "message": "canal"
   },
   "btn_tab_global": {
-    "message": "global"
+    "message": "globais"
   },
   "btn_tab_mine": {
     "message": "meus"
@@ -291,7 +291,7 @@
     "message": "cosméticos"
   },
   "btn_settings_cosmetics_desc": {
-    "message": "7TV/BTTV/FFZ paints + badges"
+    "message": "paints + badges 7TV/BTTV/FFZ"
   },
   "btn_settings_vi_mode": {
     "message": "modo vi"
@@ -444,7 +444,7 @@
     }
   },
   "content_card_follows_channel": {
-    "message": "follows $CHANNEL$",
+    "message": "segue $CHANNEL$",
     "placeholders": {
       "channel": {
         "content": "$1"
@@ -531,7 +531,7 @@
     "message": "ao vivo"
   },
   "mc_tab_discover": {
-    "message": "discover"
+    "message": "descobrir"
   },
   "mc_tab_pinned": {
     "message": "salvos"
@@ -546,6 +546,9 @@
   },
   "mc_btn_rotate_tabs": {
     "message": "girar abas (T)"
+  },
+  "mc_btn_rotate_chat": {
+    "message": "girar painel do chat (C)"
   },
   "mc_btn_smaller_text": {
     "message": "texto menor"
@@ -693,70 +696,70 @@
     "message": "raids"
   },
   "mc_settings_raids_desc": {
-    "message": "Inline banner when a streamer raids in or out, with viewer count and source channel. Lets you ride along to the next stream."
+    "message": "Banner inline quando um streamer faz raid de entrada ou saída, com contagem de espectadores e canal de origem. Permite acompanhar até a próxima stream."
   },
   "mc_settings_hype_trains": {
     "message": "hype trains"
   },
   "mc_settings_hype_trains_desc": {
-    "message": "Live progress banner for hype trains, showing level and contribution timer. Off by default since they fire constantly on big channels."
+    "message": "Banner de progresso ao vivo para hype trains, mostrando nível e contador de contribuição. Desligado por padrão porque dispara sem parar em canais grandes."
   },
   "mc_settings_gift_subs": {
     "message": "inscrições presenteadas"
   },
   "mc_settings_gift_subs_desc": {
-    "message": "Banner for community gift sub bombs and individual gifts, with gifter, recipient, and tier."
+    "message": "Banner para presentes de inscrição em massa para a comunidade e presentes individuais, com presenteador, destinatário e tier."
   },
   "mc_settings_redeems": {
     "message": "resgates de pontos do canal"
   },
   "mc_settings_redeems_desc": {
-    "message": "Inline notice for channel point redemptions like 'highlight my message' so you can see what people are spending points on."
+    "message": "Aviso inline para resgates de pontos do canal como 'destacar minha mensagem' para você ver no que o pessoal está gastando os pontos."
   },
   "mc_settings_prediction_banner": {
     "message": "banner de previsão"
   },
   "mc_settings_prediction_banner_desc": {
-    "message": "Live channel point prediction banner with current odds and time remaining to lock in a vote."
+    "message": "Banner ao vivo de previsão de pontos do canal com odds atuais e tempo restante para confirmar o voto."
   },
   "mc_settings_poll_banner": {
     "message": "banner de enquete"
   },
   "mc_settings_poll_banner_desc": {
-    "message": "Active poll banner with vote tallies and time remaining. Vote directly from the overlay."
+    "message": "Banner de enquete ativa com contagem de votos e tempo restante. Vote direto pela sobreposição."
   },
   "mc_settings_pinned_messages": {
     "message": "mensagens fixadas"
   },
   "mc_settings_pinned_messages_desc": {
-    "message": "Sticky banner for moderator-pinned chat messages so you don't miss the rules or the schedule."
+    "message": "Banner fixo para mensagens fixadas por moderadores para você não perder as regras ou a programação."
   },
   "mc_settings_dim_timeouts": {
-    "message": "dim timed-out messages"
+    "message": "esmaecer mensagens com timeout"
   },
   "mc_settings_dim_timeouts_desc": {
-    "message": "Show timed-out and banned messages at 50% opacity instead of hiding them, FFZ/BTTV style. Lets you see what got nuked without leaving chat."
+    "message": "Mostra mensagens com timeout e banidas a 50% de opacidade em vez de esconder, estilo FFZ/BTTV. Permite ver o que foi nukado sem sair do chat."
   },
   "mc_settings_smart_completion": {
-    "message": "smart tab completion"
+    "message": "completar com tab inteligente"
   },
   "mc_settings_smart_completion_desc": {
-    "message": "Recent chatters and emotes in this channel surface first when tab-completing. Faster than alphabetical when chat is moving."
+    "message": "Quem chatou recente e emotes deste canal aparecem primeiro ao completar com tab. Mais rápido que ordem alfabética quando o chat está bombando."
   },
   "mc_settings_first_chatter": {
-    "message": "first-message glow"
+    "message": "brilho na primeira mensagem"
   },
   "mc_settings_first_chatter_desc": {
-    "message": "Orange edge marker on the first message a user sends in each channel this session. Makes new arrivals easy to spot in fast chat."
+    "message": "Marca laranja na borda da primeira mensagem que um usuário envia em cada canal nesta sessão. Facilita identificar recém-chegados em chats rápidos."
   },
   "mc_settings_keyword_highlights": {
-    "message": "keyword highlights"
+    "message": "destacar por palavra-chave"
   },
   "mc_settings_keyword_highlights_desc": {
-    "message": "Messages containing any of these words get an orange tint, like a personal mention. Newline-separated, case-insensitive, whole-word matches."
+    "message": "Mensagens com qualquer uma dessas palavras ganham um tom laranja, como uma menção pessoal. Separadas por linha, sem distinguir maiúsculas, palavras inteiras."
   },
   "mc_settings_keyword_highlights_placeholder": {
-    "message": "one keyword per line"
+    "message": "uma palavra-chave por linha"
   },
   "mc_settings_features": {
     "message": "recursos"

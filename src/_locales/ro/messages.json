@@ -1,0 +1,1245 @@
+{
+  "manifest_name": {
+    "message": "heatsync"
+  },
+  "manifest_description": {
+    "message": "Emotes personalizate pentru chat pe Twitch, Kick și YouTube. Sloturi nelimitate, completare cu tab, sincronizare în timp real."
+  },
+  "common_loading": {
+    "message": "se încarcă..."
+  },
+  "common_extension_updated": {
+    "message": "Extensia a fost actualizată — reîncarcă pagina"
+  },
+  "common_no_matches": {
+    "message": "fără rezultate"
+  },
+  "common_retry": {
+    "message": "reîncearcă"
+  },
+  "common_cancel": {
+    "message": "anulează"
+  },
+  "common_save": {
+    "message": "salvează"
+  },
+  "common_add": {
+    "message": "adaugă"
+  },
+  "common_edit": {
+    "message": "editează"
+  },
+  "common_remove": {
+    "message": "elimină"
+  },
+  "common_done": {
+    "message": "gata"
+  },
+  "common_ended": {
+    "message": "încheiat"
+  },
+  "common_vote": {
+    "message": "votează"
+  },
+  "common_set": {
+    "message": "setează"
+  },
+  "common_default": {
+    "message": "implicit"
+  },
+  "common_mention": {
+    "message": "mențiune"
+  },
+  "common_user_not_found": {
+    "message": "utilizator negăsit"
+  },
+  "popup_title": {
+    "message": "heatsync"
+  },
+  "popup_status_checking": {
+    "message": "se verifică..."
+  },
+  "popup_status_connected": {
+    "message": "conectat"
+  },
+  "popup_status_api_error": {
+    "message": "eroare api"
+  },
+  "popup_status_offline": {
+    "message": "offline"
+  },
+  "popup_user_stats": {
+    "message": "$EMOTES$ emotes · $GLOBALS$ globale",
+    "placeholders": {
+      "emotes": {
+        "content": "$1"
+      },
+      "globals": {
+        "content": "$2"
+      }
+    }
+  },
+  "popup_user_stats_heat": {
+    "message": "$EMOTES$ emotes · $GLOBALS$ globale · $HEAT$ heat",
+    "placeholders": {
+      "emotes": {
+        "content": "$1"
+      },
+      "globals": {
+        "content": "$2"
+      },
+      "heat": {
+        "content": "$3"
+      }
+    }
+  },
+  "popup_btn_emotes": {
+    "message": "emotes"
+  },
+  "popup_btn_refresh": {
+    "message": "reîmprospătează"
+  },
+  "popup_btn_site": {
+    "message": "site"
+  },
+  "popup_btn_done": {
+    "message": "gata"
+  },
+  "popup_btn_logout": {
+    "message": "deconectare"
+  },
+  "btn_recent": {
+    "message": "recente"
+  },
+  "popup_login_prompt": {
+    "message": "autentifică-te pentru sincronizarea emotes"
+  },
+  "popup_channel_placeholder": {
+    "message": "canal"
+  },
+  "popup_btn_popout": {
+    "message": "fereastră separată"
+  },
+  "popup_hint": {
+    "message": "setări emote în panoul picker din chat"
+  },
+  "welcome_title": {
+    "message": "bun venit la heatsync"
+  },
+  "welcome_tagline": {
+    "message": "emote-urile tale, oriunde discuți"
+  },
+  "welcome_step1_title": {
+    "message": "autentifică-te pe heatsync.org"
+  },
+  "welcome_step1_desc": {
+    "message": "intră cu Twitch sau Kick pentru a-ți crea contul"
+  },
+  "welcome_step2_title": {
+    "message": "încarcă-ți emote-urile"
+  },
+  "welcome_step2_desc": {
+    "message": "adaugă orice imagine — fără limite de slot, toate formatele acceptate"
+  },
+  "welcome_step3_title": {
+    "message": "folosește-le în chat"
+  },
+  "welcome_step3_desc": {
+    "message": "apasă butonul heatsync din chat-ul Twitch/Kick pentru a-ți accesa emote-urile"
+  },
+  "welcome_cta": {
+    "message": "începe"
+  },
+  "welcome_privacy": {
+    "message": "confidențialitate"
+  },
+  "welcome_source": {
+    "message": "cod sursă"
+  },
+  "btn_auth_login": {
+    "message": "autentifică-te"
+  },
+  "btn_auth_save_emotes": {
+    "message": "pentru a salva emotes în setul tău"
+  },
+  "btn_tab_channel": {
+    "message": "canal"
+  },
+  "btn_tab_global": {
+    "message": "globale"
+  },
+  "btn_tab_mine": {
+    "message": "ale mele"
+  },
+  "btn_tab_emoji": {
+    "message": "emoji"
+  },
+  "btn_search_placeholder": {
+    "message": "caută emotes..."
+  },
+  "btn_rotate_title": {
+    "message": "rotește poziția barei de tab"
+  },
+  "btn_settings_title": {
+    "message": "setări"
+  },
+  "btn_no_emotes": {
+    "message": "fără emotes"
+  },
+  "btn_login_save_emotes": {
+    "message": "autentifică-te pe heatsync.org pentru a salva emotes"
+  },
+  "btn_cached": {
+    "message": "cache"
+  },
+  "btn_loading_emotes": {
+    "message": "se încarcă emotes"
+  },
+  "btn_no_third_party": {
+    "message": "nu s-au găsit emotes terțe"
+  },
+  "btn_no_emotes_import": {
+    "message": "nu sunt emotes de importat"
+  },
+  "btn_import_count": {
+    "message": "importă $COUNT$ emotes",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "btn_failed_load": {
+    "message": "încărcare emotes eșuată"
+  },
+  "btn_retry_loading": {
+    "message": "reîncarcă"
+  },
+  "btn_ctx_block": {
+    "message": "blochează emote"
+  },
+  "btn_ctx_unblock": {
+    "message": "deblochează emote"
+  },
+  "btn_ctx_remove_inventory": {
+    "message": "elimină din inventar"
+  },
+  "btn_ctx_add_inventory": {
+    "message": "adaugă în inventar"
+  },
+  "btn_ctx_copy_name": {
+    "message": "copiază numele emote"
+  },
+  "btn_ctx_copy_url": {
+    "message": "copiază url emote"
+  },
+  "btn_toast_unblocked": {
+    "message": "deblocat"
+  },
+  "btn_toast_blocked": {
+    "message": "blocat"
+  },
+  "btn_toast_removed": {
+    "message": "eliminat"
+  },
+  "btn_toast_added": {
+    "message": "adăugat"
+  },
+  "btn_toast_copied": {
+    "message": "copiat!"
+  },
+  "btn_settings_tab_completion": {
+    "message": "completare cu tab"
+  },
+  "btn_settings_chat_ui": {
+    "message": "interfață chat"
+  },
+  "btn_settings_input": {
+    "message": "input"
+  },
+  "btn_settings_wysiwyg": {
+    "message": "emotes wysiwyg"
+  },
+  "btn_settings_space_after": {
+    "message": "spațiu după emote"
+  },
+  "btn_settings_placeholder_mode": {
+    "message": "mod placeholder"
+  },
+  "btn_settings_placeholder_desc": {
+    "message": "afișează casete colorate"
+  },
+  "btn_settings_hide_header": {
+    "message": "ascunde header"
+  },
+  "btn_settings_always_popout": {
+    "message": "(întotdeauna activ în fereastra separată)"
+  },
+  "btn_settings_compact_input": {
+    "message": "input compact"
+  },
+  "btn_settings_highlight_mentions": {
+    "message": "evidențiază mențiunile"
+  },
+  "btn_settings_platform_badges": {
+    "message": "badge-uri platformă"
+  },
+  "btn_settings_platform_badges_desc": {
+    "message": "[T] [K] [YT] pe mesaje"
+  },
+  "btn_settings_cosmetics": {
+    "message": "cosmetice"
+  },
+  "btn_settings_cosmetics_desc": {
+    "message": "paint + badge-uri 7TV/BTTV/FFZ"
+  },
+  "btn_settings_vi_mode": {
+    "message": "mod vi"
+  },
+  "btn_settings_vi_mode_desc": {
+    "message": "scurtături vim pentru input chat"
+  },
+  "btn_size_1x": {
+    "message": "1x"
+  },
+  "btn_size_2x": {
+    "message": "2x"
+  },
+  "btn_size_4x": {
+    "message": "4x"
+  },
+  "btn_expand": {
+    "message": "extinde"
+  },
+  "btn_collapse": {
+    "message": "restrânge"
+  },
+  "btn_block_all": {
+    "message": "blochează toate"
+  },
+  "btn_show_all": {
+    "message": "afișează toate"
+  },
+  "btn_click_expand": {
+    "message": "apasă pentru a extinde"
+  },
+  "content_toast_failed_add": {
+    "message": "Adăugare $NAME$ eșuată: $ERROR$",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      },
+      "error": {
+        "content": "$2"
+      }
+    }
+  },
+  "content_toast_failed_remove": {
+    "message": "Eliminare $NAME$ eșuată: $ERROR$",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      },
+      "error": {
+        "content": "$2"
+      }
+    }
+  },
+  "content_toast_unblocked": {
+    "message": "$NAME$ deblocat",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
+  },
+  "content_toast_failed_unblock": {
+    "message": "Deblocare eșuată: $ERROR$",
+    "placeholders": {
+      "error": {
+        "content": "$1"
+      }
+    }
+  },
+  "content_toast_removed": {
+    "message": "$NAME$ eliminat din setul tău",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
+  },
+  "content_toast_failed_block": {
+    "message": "Blocare eșuată: $ERROR$",
+    "placeholders": {
+      "error": {
+        "content": "$1"
+      }
+    }
+  },
+  "content_toast_blocked": {
+    "message": "$NAME$ blocat",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
+  },
+  "content_toast_unmuted": {
+    "message": "$NAME$ readus la sunet",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
+  },
+  "content_toast_muted_24h": {
+    "message": "$NAME$ silențiat 24h",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
+  },
+  "content_card_follows_you": {
+    "message": "te urmărește"
+  },
+  "content_card_subs_to_you": {
+    "message": "subed la tine"
+  },
+  "content_card_you_follow": {
+    "message": "îl urmărești"
+  },
+  "content_card_you_sub": {
+    "message": "ești subed"
+  },
+  "content_card_you_sub_tier": {
+    "message": "subed T$TIER$",
+    "placeholders": {
+      "tier": {
+        "content": "$1"
+      }
+    }
+  },
+  "content_card_subbed": {
+    "message": "subed la $CHANNEL$ $TENURE$",
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      },
+      "tenure": {
+        "content": "$2"
+      }
+    }
+  },
+  "content_card_following": {
+    "message": "urmărește $CHANNEL$ $AGE$",
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      },
+      "age": {
+        "content": "$2"
+      }
+    }
+  },
+  "content_card_follows_channel": {
+    "message": "urmărește $CHANNEL$",
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      }
+    }
+  },
+  "content_card_not_following": {
+    "message": "nu urmărește $CHANNEL$",
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      }
+    }
+  },
+  "content_card_followed_by": {
+    "message": "urmărit de $CHANNEL$",
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      }
+    }
+  },
+  "content_card_following_count": {
+    "message": "urmărește $COUNT$",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "content_card_followers": {
+    "message": "$COUNT$ urmăritori",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "content_card_partner": {
+    "message": "partener"
+  },
+  "content_card_affiliate": {
+    "message": "affiliate"
+  },
+  "content_card_live": {
+    "message": "LIVE $VIEWERS$",
+    "placeholders": {
+      "viewers": {
+        "content": "$1"
+      }
+    }
+  },
+  "content_card_twitch_verified": {
+    "message": "Twitch verificat"
+  },
+  "content_card_kick_verified": {
+    "message": "Kick verificat"
+  },
+  "content_view_on_heatsync": {
+    "message": "vezi pe heatsync"
+  },
+  "content_in_your_set": {
+    "message": "în setul tău"
+  },
+  "content_click_to_add": {
+    "message": "apasă pentru a adăuga"
+  },
+  "content_blocked_click_unblock": {
+    "message": "blocat (apasă pentru a debloca)"
+  },
+  "mc_tab_feed": {
+    "message": "acasă"
+  },
+  "mc_tab_whispers": {
+    "message": "whispers"
+  },
+  "mc_tab_mentions": {
+    "message": "mențiuni"
+  },
+  "mc_tab_activity": {
+    "message": "activitate"
+  },
+  "mc_tab_live": {
+    "message": "live"
+  },
+  "mc_tab_discover": {
+    "message": "descoperă"
+  },
+  "mc_tab_pinned": {
+    "message": "salvate"
+  },
+  "mc_tab_live_channel": {
+    "message": "live · $CHANNEL$",
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_btn_rotate_tabs": {
+    "message": "rotește tab-urile (T)"
+  },
+  "mc_btn_rotate_chat": {
+    "message": "rotește panoul chat (C)"
+  },
+  "mc_btn_smaller_text": {
+    "message": "text mai mic"
+  },
+  "mc_btn_larger_text": {
+    "message": "text mai mare"
+  },
+  "mc_btn_settings": {
+    "message": "setări"
+  },
+  "mc_new_messages": {
+    "message": "$COUNT$ noi",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_resume": {
+    "message": "reia"
+  },
+  "mc_no_messages": {
+    "message": "încă fără mesaje"
+  },
+  "mc_no_activity": {
+    "message": "încă fără activitate"
+  },
+  "mc_add_channel": {
+    "message": "adaugă canal"
+  },
+  "mc_enter_platform": {
+    "message": "introdu cel puțin o platformă"
+  },
+  "mc_username_placeholder": {
+    "message": "utilizator"
+  },
+  "mc_username_url_placeholder": {
+    "message": "utilizator sau url"
+  },
+  "mc_reserved_name": {
+    "message": "nume rezervat"
+  },
+  "mc_channel_exists": {
+    "message": "canal deja existent"
+  },
+  "mc_twitch_exists": {
+    "message": "canal Twitch deja adăugat"
+  },
+  "mc_kick_exists": {
+    "message": "canal Kick deja adăugat"
+  },
+  "mc_edit_channel": {
+    "message": "editează $CHANNEL$",
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_no_channel_detected": {
+    "message": "niciun canal detectat"
+  },
+  "mc_settings_display": {
+    "message": "afișare"
+  },
+  "mc_settings_emote_size": {
+    "message": "dimensiune emote"
+  },
+  "mc_settings_input_preview": {
+    "message": "previzualizare input"
+  },
+  "mc_settings_clickable_links": {
+    "message": "link-uri clicabile"
+  },
+  "mc_settings_vi_mode": {
+    "message": "mod vi"
+  },
+  "mc_settings_zebra": {
+    "message": "dungi zebră"
+  },
+  "mc_settings_auto_hide": {
+    "message": "ascunde input automat"
+  },
+  "mc_settings_timestamps": {
+    "message": "marcaje de timp"
+  },
+  "mc_settings_avatars": {
+    "message": "avataruri"
+  },
+  "mc_settings_emote_size_desc": {
+    "message": "Multiplicator de rezoluție pentru emote-urile din chat. 1x este clar și compact, 2x este sweet spot pentru majoritatea ecranelor, 4x pentru cei care vor să vadă fiecare pixel."
+  },
+  "mc_settings_input_preview_desc": {
+    "message": "Afișează emote-urile ca imagini direct în câmpul input în timp ce scrii, în loc de nume text. Ce vezi e ce trimiți."
+  },
+  "mc_settings_clickable_links_desc": {
+    "message": "Transformă URL-urile din mesaje în link-uri clicabile. Dezactivează dacă preferi copy-paste sau nu ai încredere în străini de pe internet."
+  },
+  "mc_settings_vi_mode_desc": {
+    "message": "Scurtături stil Vim pentru navigarea în chat. j/k scroll, g/G sus/jos, / căutare. Pentru cei care cred că mouse-ul e pentru casuali."
+  },
+  "mc_settings_zebra_desc": {
+    "message": "Umbrire alternantă a rândurilor în chat. Ușurează urmărirea mesajelor lungi, mai ales în chat-uri rapide."
+  },
+  "mc_settings_auto_hide_desc": {
+    "message": "Ascunde bara de input când nu compui un mesaj. Apasă sau începe să scrii pentru a o aduce înapoi. Maximizează spațiul de vizualizare a chat-ului."
+  },
+  "mc_settings_timestamps_desc": {
+    "message": "Afișează ora trimiterii fiecărui mesaj lângă numele utilizatorului. Util pentru a recupera ce s-a întâmplat cât ai fost AFK."
+  },
+  "mc_settings_avatars_desc": {
+    "message": "Afișează poze de profil lângă nume în chat. Ușurează identificarea vizuală a habitueilor, costă puțin spațiu vertical."
+  },
+  "mc_settings_inline_notifs": {
+    "message": "notificări inline"
+  },
+  "mc_settings_notif_op": {
+    "message": "[OP] postări originale"
+  },
+  "mc_settings_notif_op_reply": {
+    "message": "[OP] OP răspunde în propriul thread"
+  },
+  "mc_settings_notif_re": {
+    "message": "[RE] răspunsuri"
+  },
+  "mc_settings_notif_dm": {
+    "message": "[DM] whispers și DM"
+  },
+  "mc_settings_notif_op_desc": {
+    "message": "Notificare în tabul activ de chat când cineva creează o postare nouă în feed."
+  },
+  "mc_settings_notif_op_reply_desc": {
+    "message": "Notificare când autorul postării originale răspunde în propriul thread."
+  },
+  "mc_settings_notif_re_desc": {
+    "message": "Notificare pentru fiecare răspuns într-un thread din feed."
+  },
+  "mc_settings_notif_dm_desc": {
+    "message": "Notificare când primești un whisper sau DM."
+  },
+  "mc_settings_twitch_events": {
+    "message": "evenimente Twitch"
+  },
+  "mc_settings_raids": {
+    "message": "raids"
+  },
+  "mc_settings_raids_desc": {
+    "message": "Banner inline când un streamer face raid intrând sau ieșind, cu numărul de spectatori și canalul sursă. Te lasă să mergi la următorul stream."
+  },
+  "mc_settings_hype_trains": {
+    "message": "hype trains"
+  },
+  "mc_settings_hype_trains_desc": {
+    "message": "Banner live de progres pentru hype trains, cu nivel și timer de contribuție. Dezactivat implicit pentru că se declanșează constant pe canale mari."
+  },
+  "mc_settings_gift_subs": {
+    "message": "sub-uri cadou"
+  },
+  "mc_settings_gift_subs_desc": {
+    "message": "Banner pentru gift sub bombs ale comunității și cadouri individuale, cu donator, primitor și tier."
+  },
+  "mc_settings_redeems": {
+    "message": "redeem-uri channel points"
+  },
+  "mc_settings_redeems_desc": {
+    "message": "Notificare inline pentru redeem-uri channel points precum 'highlight my message' ca să vezi pe ce cheltuie oamenii puncte."
+  },
+  "mc_settings_prediction_banner": {
+    "message": "predicții"
+  },
+  "mc_settings_prediction_banner_desc": {
+    "message": "Banner live de predicție channel points cu cote curente și timp rămas pentru blocarea votului."
+  },
+  "mc_settings_poll_banner": {
+    "message": "sondaje"
+  },
+  "mc_settings_poll_banner_desc": {
+    "message": "Banner sondaj activ cu numărătoarea voturilor și timpul rămas. Votează direct din overlay."
+  },
+  "mc_settings_pinned_messages": {
+    "message": "mesaje fixate"
+  },
+  "mc_settings_pinned_messages_desc": {
+    "message": "Banner sticky pentru mesajele de chat fixate de moderatori ca să nu pierzi reguli sau program."
+  },
+  "mc_settings_dim_timeouts": {
+    "message": "atenuează mesajele cu timeout"
+  },
+  "mc_settings_dim_timeouts_desc": {
+    "message": "Afișează mesajele cu timeout și banate la 50% opacitate în loc să le ascundă, stil FFZ/BTTV. Vezi ce a fost șters fără să părăsești chat-ul."
+  },
+  "mc_settings_smart_completion": {
+    "message": "completare tab inteligentă"
+  },
+  "mc_settings_smart_completion_desc": {
+    "message": "Chatterii recenți și emote-urile acestui canal apar primii la completarea cu tab. Mai rapid decât alfabetic când chat-ul curge."
+  },
+  "mc_settings_first_chatter": {
+    "message": "strălucire primul mesaj"
+  },
+  "mc_settings_first_chatter_desc": {
+    "message": "Marcaj portocaliu la marginea primului mesaj pe care îl trimite un utilizator pe fiecare canal în această sesiune. Face nou-veniții vizibili în chat rapid."
+  },
+  "mc_settings_keyword_highlights": {
+    "message": "evidențiere cuvinte cheie"
+  },
+  "mc_settings_keyword_highlights_desc": {
+    "message": "Mesajele care conțin oricare dintre aceste cuvinte primesc o tentă portocalie, ca o mențiune personală. Câte unul pe linie, insensibil la majuscule, cuvinte întregi."
+  },
+  "mc_settings_keyword_highlights_placeholder": {
+    "message": "un cuvânt cheie pe linie"
+  },
+  "mc_settings_features": {
+    "message": "funcționalități"
+  },
+  "mc_settings_auto_claim": {
+    "message": "auto-claim channel points"
+  },
+  "mc_settings_auto_claim_desc": {
+    "message": "Apasă automat cufărul bonus de channel points pe Twitch când apare. Puncte gratuite, zero efort."
+  },
+  "mc_settings_muted_users": {
+    "message": "utilizatori silențiați"
+  },
+  "mc_settings_no_muted": {
+    "message": "niciun utilizator silențiat"
+  },
+  "mc_settings_unmute": {
+    "message": "scoate din silențios"
+  },
+  "mc_pred_no_active": {
+    "message": "nicio predicție activă"
+  },
+  "mc_pred_new": {
+    "message": "+ predicție nouă"
+  },
+  "mc_pred_title_placeholder": {
+    "message": "titlul predicției"
+  },
+  "mc_pred_option1": {
+    "message": "opțiunea 1 (albastru)"
+  },
+  "mc_pred_option2": {
+    "message": "opțiunea 2 (roz)"
+  },
+  "mc_pred_duration": {
+    "message": "durată:"
+  },
+  "mc_pred_create": {
+    "message": "creează predicție"
+  },
+  "mc_pred_refunded": {
+    "message": "rambursat"
+  },
+  "mc_pred_locked": {
+    "message": "blocat"
+  },
+  "mc_pred_winner": {
+    "message": "câștigător"
+  },
+  "mc_pred_won": {
+    "message": " câștigat"
+  },
+  "mc_pred_lost": {
+    "message": " pierdut"
+  },
+  "mc_pred_lock_betting": {
+    "message": "blochează pariurile"
+  },
+  "mc_pred_cancel_refund": {
+    "message": "anulează (rambursează)"
+  },
+  "mc_pred_pick_winner": {
+    "message": "alege câștigătorul"
+  },
+  "mc_pred_pick_winner_your_bet": {
+    "message": "alege câștigătorul (pariul tău)"
+  },
+  "mc_pred_failed_load": {
+    "message": "nu s-au putut încărca predicțiile"
+  },
+  "mc_pred_bet_own": {
+    "message": "nu poți paria pe a ta"
+  },
+  "mc_pred_try_again": {
+    "message": "încearcă din nou"
+  },
+  "mc_pred_ended": {
+    "message": "predicție încheiată"
+  },
+  "mc_pred_betting_locked": {
+    "message": "pariuri blocate"
+  },
+  "mc_pred_not_enough": {
+    "message": "puncte insuficiente"
+  },
+  "mc_pred_already_bet": {
+    "message": "ai pariat deja"
+  },
+  "mc_pred_no_permission": {
+    "message": "fără permisiune"
+  },
+  "mc_pred_failed": {
+    "message": "eșec"
+  },
+  "mc_pred_no_event": {
+    "message": "fără eveniment"
+  },
+  "mc_pred_no_outcome": {
+    "message": "fără rezultat"
+  },
+  "mc_pred_closing": {
+    "message": "se închide..."
+  },
+  "mc_pred_you_bet": {
+    "message": "ai pariat $POINTS$ pe $OUTCOME$ — alege câștigătorul real",
+    "placeholders": {
+      "points": {
+        "content": "$1"
+      },
+      "outcome": {
+        "content": "$2"
+      }
+    }
+  },
+  "mc_poll_new": {
+    "message": "+ sondaj nou"
+  },
+  "mc_poll_question": {
+    "message": "întrebare sondaj"
+  },
+  "mc_poll_choice": {
+    "message": "opțiune $NUM$",
+    "placeholders": {
+      "num": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_poll_choice_optional": {
+    "message": "opțiune $NUM$ (opțional)",
+    "placeholders": {
+      "num": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_poll_create": {
+    "message": "creează sondaj"
+  },
+  "mc_poll_end": {
+    "message": "încheie sondaj"
+  },
+  "mc_poll_votes": {
+    "message": "$COUNT$ voturi",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_poll_vote_single": {
+    "message": "$COUNT$ vot",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_poll_already_active": {
+    "message": "sondaj deja activ"
+  },
+  "mc_poll_not_logged_in": {
+    "message": "nu ești autentificat"
+  },
+  "mc_reward_rewards": {
+    "message": "recompense"
+  },
+  "mc_reward_none": {
+    "message": "nicio recompensă disponibilă"
+  },
+  "mc_reward_paused": {
+    "message": "în pauză"
+  },
+  "mc_reward_out_of_stock": {
+    "message": "epuizat"
+  },
+  "mc_reward_cooldown_min": {
+    "message": "cooldown $MIN$m",
+    "placeholders": {
+      "min": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_reward_cooldown_sec": {
+    "message": "cooldown $SEC$s",
+    "placeholders": {
+      "sec": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_reward_enter_text": {
+    "message": "introduce text..."
+  },
+  "mc_reward_redeem": {
+    "message": "redeem"
+  },
+  "mc_chat_username_color": {
+    "message": "culoare nume utilizator"
+  },
+  "mc_chat_hex_placeholder": {
+    "message": "#hex"
+  },
+  "mc_chat_modes": {
+    "message": "moduri chat"
+  },
+  "mc_chat_emote_only": {
+    "message": "doar emotes"
+  },
+  "mc_chat_follower": {
+    "message": "follower"
+  },
+  "mc_chat_slow": {
+    "message": "lent"
+  },
+  "mc_chat_sub_only": {
+    "message": "doar subs"
+  },
+  "mc_chat_unique": {
+    "message": "unic"
+  },
+  "mc_chat_hype_train": {
+    "message": "hype train"
+  },
+  "mc_chat_hype_level": {
+    "message": "lvl $LEVEL$",
+    "placeholders": {
+      "level": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_input_send_message": {
+    "message": "trimite un mesaj..."
+  },
+  "mc_input_post_heatsync": {
+    "message": "postează pe heatsync..."
+  },
+  "mc_input_send_channel": {
+    "message": "trimite la #$CHANNEL$",
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_input_replying_to": {
+    "message": "Răspunzi @$USER$",
+    "placeholders": {
+      "user": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_input_cancel_reply": {
+    "message": "Anulează răspunsul"
+  },
+  "mc_input_not_logged_in": {
+    "message": "nu ești autentificat"
+  },
+  "mc_input_login_kick": {
+    "message": "autentifică-te mai întâi pe kick.com"
+  },
+  "mc_input_open_kick": {
+    "message": "deschide kick.com într-un tab"
+  },
+  "mc_input_kick_not_found": {
+    "message": "canal Kick negăsit"
+  },
+  "mc_input_send_failed": {
+    "message": "trimitere eșuată"
+  },
+  "mc_input_no_username": {
+    "message": "niciun nume detectat"
+  },
+  "mc_input_auth_failed": {
+    "message": "autentificare eșuată — autentifică-te din nou pe Twitch"
+  },
+  "mc_input_connection_failed": {
+    "message": "conexiune eșuată — încearcă din nou"
+  },
+  "mc_input_send_failed_retry": {
+    "message": "trimitere eșuată — încearcă din nou"
+  },
+  "mc_social_back": {
+    "message": "<- înapoi"
+  },
+  "mc_social_no_posts": {
+    "message": "încă fără postări"
+  },
+  "mc_social_loading_feed": {
+    "message": "se încarcă feed-ul de la cei urmăriți..."
+  },
+  "mc_social_scroll_more": {
+    "message": "scroll pentru mai multe..."
+  },
+  "mc_social_no_replies": {
+    "message": "încă fără răspunsuri"
+  },
+  "mc_social_login_first": {
+    "message": "autentifică-te mai întâi pe heatsync.org"
+  },
+  "mc_social_login_activity": {
+    "message": "autentifică-te pe heatsync.org pentru a vedea activitatea"
+  },
+  "mc_social_failed_feed_auth": {
+    "message": "încărcare feed eșuată — autentifică-te pe heatsync.org"
+  },
+  "mc_social_failed_feed": {
+    "message": "încărcare feed eșuată"
+  },
+  "mc_social_log_in_first": {
+    "message": "autentifică-te mai întâi"
+  },
+  "mc_social_slow_down": {
+    "message": "încet"
+  },
+  "mc_social_duplicate": {
+    "message": "mesaj duplicat"
+  },
+  "mc_social_failed_post": {
+    "message": "postare eșuată"
+  },
+  "mc_tip_emoji": {
+    "message": "emoji"
+  },
+  "mc_tip_subbed": {
+    "message": "subed la $CHANNEL$ $TENURE$",
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      },
+      "tenure": {
+        "content": "$2"
+      }
+    }
+  },
+  "mc_tip_following": {
+    "message": "urmărește $CHANNEL$ $AGE$",
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      },
+      "age": {
+        "content": "$2"
+      }
+    }
+  },
+  "mc_tip_not_following": {
+    "message": "nu urmărește $CHANNEL$",
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_tip_followed_by": {
+    "message": "urmărit de $CHANNEL$",
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_tip_followers": {
+    "message": "$COUNT$ urmăritori",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_whisper_hint": {
+    "message": "/w utilizator mesaj · /dm utilizator mesaj · /r mesaj"
+  },
+  "mc_whisper_login": {
+    "message": "autentifică-te pe heatsync.org pentru a trimite whispers"
+  },
+  "mc_whisper_user_not_found": {
+    "message": "utilizator Twitch \"$USER$\" negăsit",
+    "placeholders": {
+      "user": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_whisper_resolve_failed": {
+    "message": "căutare utilizator Twitch eșuată"
+  },
+  "mc_whisper_hs_not_found": {
+    "message": "utilizator heatsync \"$USER$\" negăsit",
+    "placeholders": {
+      "user": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_irc_chat_cleared": {
+    "message": "Chat-ul a fost curățat"
+  },
+  "mc_irc_msg_deleted": {
+    "message": "Mesaj de la $USER$ șters",
+    "placeholders": {
+      "user": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_irc_gift_subs": {
+    "message": "$USER$ a oferit $AMOUNT$ subs către $CHANNEL$",
+    "placeholders": {
+      "user": {
+        "content": "$1"
+      },
+      "amount": {
+        "content": "$2"
+      },
+      "channel": {
+        "content": "$3"
+      }
+    }
+  },
+  "mc_yt_connected": {
+    "message": "youtube conectat: $CHANNEL$ — în așteptarea mesajelor...",
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_yt_ended": {
+    "message": "stream youtube încheiat"
+  },
+  "mc_yt_error": {
+    "message": "eroare conexiune youtube"
+  },
+  "mc_emote_search_placeholder": {
+    "message": "caută emotes..."
+  },
+  "mc_emote_no_loaded": {
+    "message": "nicio emote încărcată"
+  },
+  "mc_emote_in_set": {
+    "message": "în setul tău"
+  },
+  "mc_emote_click_add": {
+    "message": "apasă pentru a adăuga"
+  },
+  "mc_emote_blocked": {
+    "message": "blocat (apasă pentru a debloca)"
+  },
+  "content_toast_unknown_error": {
+    "message": "Eroare necunoscută"
+  },
+  "content_toast_loading_emotes": {
+    "message": "se încarcă emotes..."
+  },
+  "content_toast_fetching_emotes": {
+    "message": "se preiau emotes..."
+  },
+  "content_card_action_ban": {
+    "message": "ban"
+  },
+  "content_card_action_unban": {
+    "message": "unban"
+  },
+  "content_card_action_block": {
+    "message": "blochează"
+  },
+  "btn_close": {
+    "message": "Închide"
+  },
+  "btn_error_channel": {
+    "message": "încărcare emotes canal eșuată"
+  },
+  "btn_error_global": {
+    "message": "încărcare emotes globale eșuată"
+  },
+  "btn_error_inventory": {
+    "message": "încărcare emotes proprii eșuată"
+  }
+}

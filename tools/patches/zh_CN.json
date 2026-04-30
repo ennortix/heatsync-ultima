@@ -1,0 +1,23 @@
+{
+  "mc_btn_rotate_chat": "旋转聊天面板 (C)",
+  "popup_btn_logout": "登出",
+  "btn_recent": "最近",
+  "content_card_follows_channel": "关注 $CHANNEL$",
+  "mc_tab_discover": "发现",
+  "mc_settings_raids_desc": "主播发起或接收 raid 时的内嵌横幅，显示观众数和来源频道。让你跟着走到下一场直播。",
+  "mc_settings_hype_trains_desc": "Hype Train 实时进度横幅，显示等级和贡献倒计时。默认关闭，因为大频道经常触发。",
+  "mc_settings_gift_subs_desc": "社区批量赠订和单个赠订的横幅，显示赠送者、接收者和等级。",
+  "mc_settings_redeems_desc": "频道积分兑换的内嵌通知，比如「高亮我的消息」，让你看到大家把积分花在哪。",
+  "mc_settings_prediction_banner_desc": "频道积分预测实时横幅，显示当前赔率和锁定投票的剩余时间。",
+  "mc_settings_poll_banner_desc": "活跃投票横幅，显示票数和剩余时间。直接从覆盖层投票。",
+  "mc_settings_pinned_messages_desc": "主播或管理员置顶消息的常驻横幅，让你不会错过规则或日程。",
+  "mc_settings_dim_timeouts": "淡化超时消息",
+  "mc_settings_dim_timeouts_desc": "用 FFZ/BTTV 风格以 50% 不透明度显示被超时和封禁的消息，而不是直接隐藏。让你不离开聊天就能看到被删的消息。",
+  "mc_settings_smart_completion": "智能 Tab 补全",
+  "mc_settings_smart_completion_desc": "Tab 补全时，这个频道里最近聊天的人和表情会优先显示。聊天刷屏时比按字母排序更快。",
+  "mc_settings_first_chatter": "首条消息高亮",
+  "mc_settings_first_chatter_desc": "本次会话中用户在每个频道发送的第一条消息边缘加橙色标记。让快速聊天中的新来者一眼可见。",
+  "mc_settings_keyword_highlights": "关键词高亮",
+  "mc_settings_keyword_highlights_desc": "包含其中任何一个词的消息会变成橙色，像个人提及一样。每行一个，不区分大小写，整词匹配。",
+  "mc_settings_keyword_highlights_placeholder": "每行一个关键词"
+}

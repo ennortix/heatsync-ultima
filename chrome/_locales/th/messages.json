@@ -1,0 +1,1245 @@
+{
+  "manifest_name": {
+    "message": "heatsync"
+  },
+  "manifest_description": {
+    "message": "อีโมตคัสตอมสำหรับแชท Twitch, Kick และ YouTube ช่องว่างไม่จำกัด เติมคำด้วย Tab ซิงค์เรียลไทม์"
+  },
+  "common_loading": {
+    "message": "กำลังโหลด..."
+  },
+  "common_extension_updated": {
+    "message": "อัปเดตส่วนขยายแล้ว — โปรดรีเฟรชหน้า"
+  },
+  "common_no_matches": {
+    "message": "ไม่พบผลลัพธ์"
+  },
+  "common_retry": {
+    "message": "ลองใหม่"
+  },
+  "common_cancel": {
+    "message": "ยกเลิก"
+  },
+  "common_save": {
+    "message": "บันทึก"
+  },
+  "common_add": {
+    "message": "เพิ่ม"
+  },
+  "common_edit": {
+    "message": "แก้ไข"
+  },
+  "common_remove": {
+    "message": "นำออก"
+  },
+  "common_done": {
+    "message": "เสร็จ"
+  },
+  "common_ended": {
+    "message": "สิ้นสุด"
+  },
+  "common_vote": {
+    "message": "โหวต"
+  },
+  "common_set": {
+    "message": "ตั้ง"
+  },
+  "common_default": {
+    "message": "ค่าเริ่มต้น"
+  },
+  "common_mention": {
+    "message": "การกล่าวถึง"
+  },
+  "common_user_not_found": {
+    "message": "ไม่พบผู้ใช้"
+  },
+  "popup_title": {
+    "message": "heatsync"
+  },
+  "popup_status_checking": {
+    "message": "กำลังตรวจสอบ..."
+  },
+  "popup_status_connected": {
+    "message": "เชื่อมต่อแล้ว"
+  },
+  "popup_status_api_error": {
+    "message": "api ผิดพลาด"
+  },
+  "popup_status_offline": {
+    "message": "ออฟไลน์"
+  },
+  "popup_user_stats": {
+    "message": "$EMOTES$ อีโมต · $GLOBALS$ ทั่วไป",
+    "placeholders": {
+      "emotes": {
+        "content": "$1"
+      },
+      "globals": {
+        "content": "$2"
+      }
+    }
+  },
+  "popup_user_stats_heat": {
+    "message": "$EMOTES$ อีโมต · $GLOBALS$ ทั่วไป · $HEAT$ heat",
+    "placeholders": {
+      "emotes": {
+        "content": "$1"
+      },
+      "globals": {
+        "content": "$2"
+      },
+      "heat": {
+        "content": "$3"
+      }
+    }
+  },
+  "popup_btn_emotes": {
+    "message": "อีโมต"
+  },
+  "popup_btn_refresh": {
+    "message": "รีเฟรช"
+  },
+  "popup_btn_site": {
+    "message": "เว็บไซต์"
+  },
+  "popup_btn_done": {
+    "message": "เสร็จ"
+  },
+  "popup_btn_logout": {
+    "message": "ออกจากระบบ"
+  },
+  "btn_recent": {
+    "message": "ล่าสุด"
+  },
+  "popup_login_prompt": {
+    "message": "เข้าสู่ระบบเพื่อซิงค์อีโมต"
+  },
+  "popup_channel_placeholder": {
+    "message": "ช่อง"
+  },
+  "popup_btn_popout": {
+    "message": "หน้าต่างแยก"
+  },
+  "popup_hint": {
+    "message": "ตั้งค่าอีโมตในแผงพิกเกอร์ในแชท"
+  },
+  "welcome_title": {
+    "message": "ยินดีต้อนรับสู่ heatsync"
+  },
+  "welcome_tagline": {
+    "message": "อีโมตของคุณ ทุกที่ที่คุณแชท"
+  },
+  "welcome_step1_title": {
+    "message": "เข้าสู่ระบบที่ heatsync.org"
+  },
+  "welcome_step1_desc": {
+    "message": "ลงชื่อเข้าใช้ด้วย Twitch หรือ Kick เพื่อสร้างบัญชี"
+  },
+  "welcome_step2_title": {
+    "message": "อัปโหลดอีโมตของคุณ"
+  },
+  "welcome_step2_desc": {
+    "message": "เพิ่มภาพใดก็ได้ — ไม่มีขีดจำกัดช่อง รองรับทุกฟอร์แมต"
+  },
+  "welcome_step3_title": {
+    "message": "ใช้ในแชท"
+  },
+  "welcome_step3_desc": {
+    "message": "คลิกปุ่ม heatsync ในแชท Twitch/Kick เพื่อเข้าถึงอีโมตของคุณ"
+  },
+  "welcome_cta": {
+    "message": "เริ่มต้น"
+  },
+  "welcome_privacy": {
+    "message": "ความเป็นส่วนตัว"
+  },
+  "welcome_source": {
+    "message": "ซอร์สโค้ด"
+  },
+  "btn_auth_login": {
+    "message": "เข้าสู่ระบบ"
+  },
+  "btn_auth_save_emotes": {
+    "message": "เพื่อบันทึกอีโมตในเซ็ตของคุณ"
+  },
+  "btn_tab_channel": {
+    "message": "ช่อง"
+  },
+  "btn_tab_global": {
+    "message": "ทั่วไป"
+  },
+  "btn_tab_mine": {
+    "message": "ของฉัน"
+  },
+  "btn_tab_emoji": {
+    "message": "emoji"
+  },
+  "btn_search_placeholder": {
+    "message": "ค้นหาอีโมต..."
+  },
+  "btn_rotate_title": {
+    "message": "หมุนตำแหน่งแถบแท็บ"
+  },
+  "btn_settings_title": {
+    "message": "ตั้งค่า"
+  },
+  "btn_no_emotes": {
+    "message": "ไม่มีอีโมต"
+  },
+  "btn_login_save_emotes": {
+    "message": "เข้าสู่ระบบที่ heatsync.org เพื่อบันทึกอีโมต"
+  },
+  "btn_cached": {
+    "message": "แคช"
+  },
+  "btn_loading_emotes": {
+    "message": "กำลังโหลดอีโมต"
+  },
+  "btn_no_third_party": {
+    "message": "ไม่พบอีโมตจากภายนอก"
+  },
+  "btn_no_emotes_import": {
+    "message": "ไม่มีอีโมตให้นำเข้า"
+  },
+  "btn_import_count": {
+    "message": "นำเข้า $COUNT$ อีโมต",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "btn_failed_load": {
+    "message": "โหลดอีโมตล้มเหลว"
+  },
+  "btn_retry_loading": {
+    "message": "ลองโหลดใหม่"
+  },
+  "btn_ctx_block": {
+    "message": "บล็อกอีโมต"
+  },
+  "btn_ctx_unblock": {
+    "message": "ปลดบล็อกอีโมต"
+  },
+  "btn_ctx_remove_inventory": {
+    "message": "นำออกจากคลัง"
+  },
+  "btn_ctx_add_inventory": {
+    "message": "เพิ่มไปยังคลัง"
+  },
+  "btn_ctx_copy_name": {
+    "message": "คัดลอกชื่ออีโมต"
+  },
+  "btn_ctx_copy_url": {
+    "message": "คัดลอก url อีโมต"
+  },
+  "btn_toast_unblocked": {
+    "message": "ปลดบล็อกแล้ว"
+  },
+  "btn_toast_blocked": {
+    "message": "บล็อกแล้ว"
+  },
+  "btn_toast_removed": {
+    "message": "นำออกแล้ว"
+  },
+  "btn_toast_added": {
+    "message": "เพิ่มแล้ว"
+  },
+  "btn_toast_copied": {
+    "message": "คัดลอกแล้ว!"
+  },
+  "btn_settings_tab_completion": {
+    "message": "เติมคำด้วย Tab"
+  },
+  "btn_settings_chat_ui": {
+    "message": "อินเตอร์เฟซแชท"
+  },
+  "btn_settings_input": {
+    "message": "การพิมพ์"
+  },
+  "btn_settings_wysiwyg": {
+    "message": "อีโมต wysiwyg"
+  },
+  "btn_settings_space_after": {
+    "message": "เว้นวรรคหลังอีโมต"
+  },
+  "btn_settings_placeholder_mode": {
+    "message": "โหมด placeholder"
+  },
+  "btn_settings_placeholder_desc": {
+    "message": "แสดงกล่องสี"
+  },
+  "btn_settings_hide_header": {
+    "message": "ซ่อนหัวข้อ"
+  },
+  "btn_settings_always_popout": {
+    "message": "(เปิดเสมอในหน้าต่างแยก)"
+  },
+  "btn_settings_compact_input": {
+    "message": "ช่องพิมพ์กระชับ"
+  },
+  "btn_settings_highlight_mentions": {
+    "message": "ไฮไลต์การกล่าวถึง"
+  },
+  "btn_settings_platform_badges": {
+    "message": "แบดจ์แพลตฟอร์ม"
+  },
+  "btn_settings_platform_badges_desc": {
+    "message": "[T] [K] [YT] บนข้อความ"
+  },
+  "btn_settings_cosmetics": {
+    "message": "เครื่องประดับ"
+  },
+  "btn_settings_cosmetics_desc": {
+    "message": "paint + แบดจ์ 7TV/BTTV/FFZ"
+  },
+  "btn_settings_vi_mode": {
+    "message": "โหมด vi"
+  },
+  "btn_settings_vi_mode_desc": {
+    "message": "คีย์ลัดสไตล์ vim สำหรับช่องพิมพ์แชท"
+  },
+  "btn_size_1x": {
+    "message": "1x"
+  },
+  "btn_size_2x": {
+    "message": "2x"
+  },
+  "btn_size_4x": {
+    "message": "4x"
+  },
+  "btn_expand": {
+    "message": "ขยาย"
+  },
+  "btn_collapse": {
+    "message": "ย่อ"
+  },
+  "btn_block_all": {
+    "message": "บล็อกทั้งหมด"
+  },
+  "btn_show_all": {
+    "message": "แสดงทั้งหมด"
+  },
+  "btn_click_expand": {
+    "message": "คลิกเพื่อขยาย"
+  },
+  "content_toast_failed_add": {
+    "message": "เพิ่ม $NAME$ ไม่สำเร็จ: $ERROR$",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      },
+      "error": {
+        "content": "$2"
+      }
+    }
+  },
+  "content_toast_failed_remove": {
+    "message": "นำออก $NAME$ ไม่สำเร็จ: $ERROR$",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      },
+      "error": {
+        "content": "$2"
+      }
+    }
+  },
+  "content_toast_unblocked": {
+    "message": "ปลดบล็อก $NAME$",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
+  },
+  "content_toast_failed_unblock": {
+    "message": "ปลดบล็อกไม่สำเร็จ: $ERROR$",
+    "placeholders": {
+      "error": {
+        "content": "$1"
+      }
+    }
+  },
+  "content_toast_removed": {
+    "message": "นำ $NAME$ ออกจากเซ็ตแล้ว",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
+  },
+  "content_toast_failed_block": {
+    "message": "บล็อกไม่สำเร็จ: $ERROR$",
+    "placeholders": {
+      "error": {
+        "content": "$1"
+      }
+    }
+  },
+  "content_toast_blocked": {
+    "message": "บล็อก $NAME$",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
+  },
+  "content_toast_unmuted": {
+    "message": "ยกเลิกปิดเสียง $NAME$",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
+  },
+  "content_toast_muted_24h": {
+    "message": "ปิดเสียง $NAME$ 24 ชม.",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
+  },
+  "content_card_follows_you": {
+    "message": "ติดตามคุณ"
+  },
+  "content_card_subs_to_you": {
+    "message": "ซับคุณ"
+  },
+  "content_card_you_follow": {
+    "message": "คุณติดตาม"
+  },
+  "content_card_you_sub": {
+    "message": "คุณซับ"
+  },
+  "content_card_you_sub_tier": {
+    "message": "ซับ T$TIER$",
+    "placeholders": {
+      "tier": {
+        "content": "$1"
+      }
+    }
+  },
+  "content_card_subbed": {
+    "message": "ซับ $CHANNEL$ $TENURE$",
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      },
+      "tenure": {
+        "content": "$2"
+      }
+    }
+  },
+  "content_card_following": {
+    "message": "ติดตาม $CHANNEL$ $AGE$",
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      },
+      "age": {
+        "content": "$2"
+      }
+    }
+  },
+  "content_card_follows_channel": {
+    "message": "ติดตาม $CHANNEL$",
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      }
+    }
+  },
+  "content_card_not_following": {
+    "message": "ไม่ได้ติดตาม $CHANNEL$",
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      }
+    }
+  },
+  "content_card_followed_by": {
+    "message": "ติดตามโดย $CHANNEL$",
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      }
+    }
+  },
+  "content_card_following_count": {
+    "message": "ติดตาม $COUNT$",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "content_card_followers": {
+    "message": "$COUNT$ ผู้ติดตาม",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "content_card_partner": {
+    "message": "พาร์ตเนอร์"
+  },
+  "content_card_affiliate": {
+    "message": "affiliate"
+  },
+  "content_card_live": {
+    "message": "ไลฟ์ $VIEWERS$",
+    "placeholders": {
+      "viewers": {
+        "content": "$1"
+      }
+    }
+  },
+  "content_card_twitch_verified": {
+    "message": "ยืนยัน Twitch"
+  },
+  "content_card_kick_verified": {
+    "message": "ยืนยัน Kick"
+  },
+  "content_view_on_heatsync": {
+    "message": "ดูบน heatsync"
+  },
+  "content_in_your_set": {
+    "message": "ในเซ็ตของคุณ"
+  },
+  "content_click_to_add": {
+    "message": "คลิกเพื่อเพิ่ม"
+  },
+  "content_blocked_click_unblock": {
+    "message": "ถูกบล็อก (คลิกเพื่อปลดบล็อก)"
+  },
+  "mc_tab_feed": {
+    "message": "หน้าหลัก"
+  },
+  "mc_tab_whispers": {
+    "message": "วิสเปอร์"
+  },
+  "mc_tab_mentions": {
+    "message": "การกล่าวถึง"
+  },
+  "mc_tab_activity": {
+    "message": "กิจกรรม"
+  },
+  "mc_tab_live": {
+    "message": "ไลฟ์"
+  },
+  "mc_tab_discover": {
+    "message": "สำรวจ"
+  },
+  "mc_tab_pinned": {
+    "message": "บันทึก"
+  },
+  "mc_tab_live_channel": {
+    "message": "ไลฟ์ · $CHANNEL$",
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_btn_rotate_tabs": {
+    "message": "หมุนแท็บ (T)"
+  },
+  "mc_btn_rotate_chat": {
+    "message": "หมุนแผงแชท (C)"
+  },
+  "mc_btn_smaller_text": {
+    "message": "ตัวอักษรเล็กลง"
+  },
+  "mc_btn_larger_text": {
+    "message": "ตัวอักษรใหญ่ขึ้น"
+  },
+  "mc_btn_settings": {
+    "message": "ตั้งค่า"
+  },
+  "mc_new_messages": {
+    "message": "$COUNT$ ใหม่",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_resume": {
+    "message": "ต่อ"
+  },
+  "mc_no_messages": {
+    "message": "ยังไม่มีข้อความ"
+  },
+  "mc_no_activity": {
+    "message": "ยังไม่มีกิจกรรม"
+  },
+  "mc_add_channel": {
+    "message": "เพิ่มช่อง"
+  },
+  "mc_enter_platform": {
+    "message": "ใส่อย่างน้อยหนึ่งแพลตฟอร์ม"
+  },
+  "mc_username_placeholder": {
+    "message": "ผู้ใช้"
+  },
+  "mc_username_url_placeholder": {
+    "message": "ผู้ใช้หรือ url"
+  },
+  "mc_reserved_name": {
+    "message": "ชื่อสงวน"
+  },
+  "mc_channel_exists": {
+    "message": "ช่องนี้มีอยู่แล้ว"
+  },
+  "mc_twitch_exists": {
+    "message": "ช่อง Twitch ถูกเพิ่มแล้ว"
+  },
+  "mc_kick_exists": {
+    "message": "ช่อง Kick ถูกเพิ่มแล้ว"
+  },
+  "mc_edit_channel": {
+    "message": "แก้ไข $CHANNEL$",
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_no_channel_detected": {
+    "message": "ไม่พบช่อง"
+  },
+  "mc_settings_display": {
+    "message": "การแสดงผล"
+  },
+  "mc_settings_emote_size": {
+    "message": "ขนาดอีโมต"
+  },
+  "mc_settings_input_preview": {
+    "message": "พรีวิวการพิมพ์"
+  },
+  "mc_settings_clickable_links": {
+    "message": "ลิงก์คลิกได้"
+  },
+  "mc_settings_vi_mode": {
+    "message": "โหมด vi"
+  },
+  "mc_settings_zebra": {
+    "message": "ลายม้าลาย"
+  },
+  "mc_settings_auto_hide": {
+    "message": "ซ่อนช่องพิมพ์อัตโนมัติ"
+  },
+  "mc_settings_timestamps": {
+    "message": "เวลา"
+  },
+  "mc_settings_avatars": {
+    "message": "รูปโปรไฟล์"
+  },
+  "mc_settings_emote_size_desc": {
+    "message": "ตัวคูณความละเอียดของอีโมตในแชท 1x ชัดและกะทัดรัด 2x จุดที่ดีสำหรับจอส่วนใหญ่ 4x สำหรับคนที่อยากเห็นทุกพิกเซล"
+  },
+  "mc_settings_input_preview_desc": {
+    "message": "แสดงอีโมตเป็นรูปภาพในกล่องพิมพ์ขณะพิมพ์ แทนชื่อข้อความ เห็นยังไงส่งยังงั้น"
+  },
+  "mc_settings_clickable_links_desc": {
+    "message": "เปลี่ยน URL ในข้อความแชทเป็นลิงก์คลิกได้ ปิดถ้าคุณชอบคัดลอกวางหรือไม่ไว้ใจคนแปลกหน้าในเน็ต"
+  },
+  "mc_settings_vi_mode_desc": {
+    "message": "คีย์ลัดสไตล์ Vim สำหรับนำทางในแชท j/k เลื่อน g/G บน/ล่าง / ค้นหา สำหรับคนที่คิดว่าเมาส์เป็นของคนเล่นแบบ casual"
+  },
+  "mc_settings_zebra_desc": {
+    "message": "เงาแถวสลับบนข้อความแชท ช่วยติดตามข้อความยาวๆ โดยเฉพาะแชทเร็ว"
+  },
+  "mc_settings_auto_hide_desc": {
+    "message": "ซ่อนแถบพิมพ์เมื่อคุณไม่ได้ใช้งาน คลิกหรือพิมพ์เพื่อให้กลับมา ขยายพื้นที่ดูแชทให้สูงสุด"
+  },
+  "mc_settings_timestamps_desc": {
+    "message": "แสดงเวลาส่งของแต่ละข้อความข้างชื่อผู้ใช้ ดีสำหรับตามเรื่องที่เกิดขึ้นตอน AFK"
+  },
+  "mc_settings_avatars_desc": {
+    "message": "แสดงรูปโปรไฟล์ข้างชื่อผู้ใช้ในแชท ช่วยจำแฟนประจำได้ง่ายขึ้น แลกกับเนื้อที่ในแนวตั้งเล็กน้อย"
+  },
+  "mc_settings_inline_notifs": {
+    "message": "แจ้งเตือนแบบอินไลน์"
+  },
+  "mc_settings_notif_op": {
+    "message": "[OP] โพสต์ต้นฉบับ"
+  },
+  "mc_settings_notif_op_reply": {
+    "message": "[OP] OP ตอบในเธรดของตัวเอง"
+  },
+  "mc_settings_notif_re": {
+    "message": "[RE] การตอบกลับ"
+  },
+  "mc_settings_notif_dm": {
+    "message": "[DM] วิสเปอร์และ DM"
+  },
+  "mc_settings_notif_op_desc": {
+    "message": "แจ้งเตือนในแท็บแชทที่ใช้งานอยู่เมื่อมีคนสร้างโพสต์ใหม่ในฟีด"
+  },
+  "mc_settings_notif_op_reply_desc": {
+    "message": "แจ้งเตือนเมื่อเจ้าของโพสต์ตอบในเธรดของตัวเอง"
+  },
+  "mc_settings_notif_re_desc": {
+    "message": "แจ้งเตือนทุกการตอบกลับในเธรดฟีดใดๆ"
+  },
+  "mc_settings_notif_dm_desc": {
+    "message": "แจ้งเตือนเมื่อคุณได้รับวิสเปอร์หรือ DM"
+  },
+  "mc_settings_twitch_events": {
+    "message": "กิจกรรม Twitch"
+  },
+  "mc_settings_raids": {
+    "message": "เรด"
+  },
+  "mc_settings_raids_desc": {
+    "message": "แบนเนอร์อินไลน์เมื่อสตรีมเมอร์เรดเข้าหรือออก พร้อมจำนวนคนดูและช่องต้นทาง ทำให้คุณตามไปสตรีมต่อได้"
+  },
+  "mc_settings_hype_trains": {
+    "message": "hype train"
+  },
+  "mc_settings_hype_trains_desc": {
+    "message": "แบนเนอร์ความคืบหน้าสดของ hype train แสดงระดับและตัวจับเวลาการบริจาค ปิดเป็นค่าเริ่มต้นเพราะเด้งบ่อยในช่องใหญ่"
+  },
+  "mc_settings_gift_subs": {
+    "message": "ของขวัญซับ"
+  },
+  "mc_settings_gift_subs_desc": {
+    "message": "แบนเนอร์สำหรับ gift sub bomb ของชุมชนและของขวัญรายเดี่ยว พร้อมผู้ให้ ผู้รับ และเทียร์"
+  },
+  "mc_settings_redeems": {
+    "message": "แลกพอยต์ช่อง"
+  },
+  "mc_settings_redeems_desc": {
+    "message": "ข้อความอินไลน์สำหรับการแลกพอยต์ช่องเช่น 'ไฮไลต์ข้อความของฉัน' เพื่อให้คุณเห็นว่าคนเอาพอยต์ไปใช้กับอะไร"
+  },
+  "mc_settings_prediction_banner": {
+    "message": "พรีดิกชัน"
+  },
+  "mc_settings_prediction_banner_desc": {
+    "message": "แบนเนอร์พรีดิกชันพอยต์ช่องสด พร้อมอัตราต่อรองปัจจุบันและเวลาที่เหลือเพื่อยืนยันโหวต"
+  },
+  "mc_settings_poll_banner": {
+    "message": "โพล"
+  },
+  "mc_settings_poll_banner_desc": {
+    "message": "แบนเนอร์โพลที่ใช้งานอยู่ พร้อมยอดโหวตและเวลาที่เหลือ โหวตได้โดยตรงจากโอเวอร์เลย์"
+  },
+  "mc_settings_pinned_messages": {
+    "message": "ข้อความปักหมุด"
+  },
+  "mc_settings_pinned_messages_desc": {
+    "message": "แบนเนอร์ติดสำหรับข้อความที่ถูกแอดมินปักหมุด เพื่อไม่พลาดกฎหรือตารางเวลา"
+  },
+  "mc_settings_dim_timeouts": {
+    "message": "หรี่ข้อความที่ถูก timeout"
+  },
+  "mc_settings_dim_timeouts_desc": {
+    "message": "แสดงข้อความที่ถูก timeout และแบนที่ความทึบ 50% แทนการซ่อน สไตล์ FFZ/BTTV ทำให้คุณเห็นข้อความที่โดนลบโดยไม่ออกจากแชท"
+  },
+  "mc_settings_smart_completion": {
+    "message": "เติมคำแบบ Tab อัจฉริยะ"
+  },
+  "mc_settings_smart_completion_desc": {
+    "message": "ผู้พูดและอีโมตล่าสุดของช่องนี้ขึ้นก่อนเมื่อกด Tab เร็วกว่าตามตัวอักษรเมื่อแชทไหล"
+  },
+  "mc_settings_first_chatter": {
+    "message": "เรืองแสงข้อความแรก"
+  },
+  "mc_settings_first_chatter_desc": {
+    "message": "เครื่องหมายส้มที่ขอบของข้อความแรกที่ผู้ใช้ส่งในแต่ละช่องในเซสชันนี้ ทำให้สังเกตคนใหม่ในแชทเร็วได้ง่าย"
+  },
+  "mc_settings_keyword_highlights": {
+    "message": "ไฮไลต์คำสำคัญ"
+  },
+  "mc_settings_keyword_highlights_desc": {
+    "message": "ข้อความที่มีคำเหล่านี้จะมีโทนส้ม เหมือนการกล่าวถึงส่วนตัว แยกบรรทัด ไม่สนตัวพิมพ์ใหญ่/เล็ก คำเต็ม"
+  },
+  "mc_settings_keyword_highlights_placeholder": {
+    "message": "หนึ่งคำต่อบรรทัด"
+  },
+  "mc_settings_features": {
+    "message": "ฟีเจอร์"
+  },
+  "mc_settings_auto_claim": {
+    "message": "เก็บพอยต์ช่องอัตโนมัติ"
+  },
+  "mc_settings_auto_claim_desc": {
+    "message": "คลิกหีบพอยต์ช่องโบนัสบน Twitch โดยอัตโนมัติเมื่อปรากฏ พอยต์ฟรี ไม่ต้องทำอะไร"
+  },
+  "mc_settings_muted_users": {
+    "message": "ผู้ใช้ที่ปิดเสียง"
+  },
+  "mc_settings_no_muted": {
+    "message": "ไม่มีผู้ใช้ที่ปิดเสียง"
+  },
+  "mc_settings_unmute": {
+    "message": "ยกเลิกปิดเสียง"
+  },
+  "mc_pred_no_active": {
+    "message": "ไม่มีพรีดิกชันที่กำลังทำงาน"
+  },
+  "mc_pred_new": {
+    "message": "+ พรีดิกชันใหม่"
+  },
+  "mc_pred_title_placeholder": {
+    "message": "ชื่อพรีดิกชัน"
+  },
+  "mc_pred_option1": {
+    "message": "ตัวเลือก 1 (น้ำเงิน)"
+  },
+  "mc_pred_option2": {
+    "message": "ตัวเลือก 2 (ชมพู)"
+  },
+  "mc_pred_duration": {
+    "message": "ระยะเวลา:"
+  },
+  "mc_pred_create": {
+    "message": "สร้างพรีดิกชัน"
+  },
+  "mc_pred_refunded": {
+    "message": "คืนเงินแล้ว"
+  },
+  "mc_pred_locked": {
+    "message": "ล็อก"
+  },
+  "mc_pred_winner": {
+    "message": "ผู้ชนะ"
+  },
+  "mc_pred_won": {
+    "message": " ชนะ"
+  },
+  "mc_pred_lost": {
+    "message": " แพ้"
+  },
+  "mc_pred_lock_betting": {
+    "message": "ล็อกการเดิมพัน"
+  },
+  "mc_pred_cancel_refund": {
+    "message": "ยกเลิก (คืนเงิน)"
+  },
+  "mc_pred_pick_winner": {
+    "message": "เลือกผู้ชนะ"
+  },
+  "mc_pred_pick_winner_your_bet": {
+    "message": "เลือกผู้ชนะ (เดิมพันของคุณ)"
+  },
+  "mc_pred_failed_load": {
+    "message": "โหลดพรีดิกชันไม่ได้"
+  },
+  "mc_pred_bet_own": {
+    "message": "เดิมพันของตัวเองไม่ได้"
+  },
+  "mc_pred_try_again": {
+    "message": "ลองอีกครั้ง"
+  },
+  "mc_pred_ended": {
+    "message": "พรีดิกชันสิ้นสุด"
+  },
+  "mc_pred_betting_locked": {
+    "message": "การเดิมพันถูกล็อก"
+  },
+  "mc_pred_not_enough": {
+    "message": "พอยต์ไม่พอ"
+  },
+  "mc_pred_already_bet": {
+    "message": "เดิมพันแล้ว"
+  },
+  "mc_pred_no_permission": {
+    "message": "ไม่มีสิทธิ์"
+  },
+  "mc_pred_failed": {
+    "message": "ล้มเหลว"
+  },
+  "mc_pred_no_event": {
+    "message": "ไม่มีอีเวนต์"
+  },
+  "mc_pred_no_outcome": {
+    "message": "ไม่มีผลลัพธ์"
+  },
+  "mc_pred_closing": {
+    "message": "กำลังปิด..."
+  },
+  "mc_pred_you_bet": {
+    "message": "คุณเดิมพัน $POINTS$ บน $OUTCOME$ — เลือกผู้ชนะที่แท้จริง",
+    "placeholders": {
+      "points": {
+        "content": "$1"
+      },
+      "outcome": {
+        "content": "$2"
+      }
+    }
+  },
+  "mc_poll_new": {
+    "message": "+ โพลใหม่"
+  },
+  "mc_poll_question": {
+    "message": "คำถามโพล"
+  },
+  "mc_poll_choice": {
+    "message": "ตัวเลือก $NUM$",
+    "placeholders": {
+      "num": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_poll_choice_optional": {
+    "message": "ตัวเลือก $NUM$ (ไม่บังคับ)",
+    "placeholders": {
+      "num": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_poll_create": {
+    "message": "สร้างโพล"
+  },
+  "mc_poll_end": {
+    "message": "จบโพล"
+  },
+  "mc_poll_votes": {
+    "message": "$COUNT$ โหวต",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_poll_vote_single": {
+    "message": "$COUNT$ โหวต",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_poll_already_active": {
+    "message": "โพลกำลังทำงานอยู่"
+  },
+  "mc_poll_not_logged_in": {
+    "message": "ยังไม่ได้เข้าสู่ระบบ"
+  },
+  "mc_reward_rewards": {
+    "message": "รางวัล"
+  },
+  "mc_reward_none": {
+    "message": "ไม่มีรางวัลให้แลก"
+  },
+  "mc_reward_paused": {
+    "message": "หยุดชั่วคราว"
+  },
+  "mc_reward_out_of_stock": {
+    "message": "หมด"
+  },
+  "mc_reward_cooldown_min": {
+    "message": "คูลดาวน์ $MIN$ น.",
+    "placeholders": {
+      "min": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_reward_cooldown_sec": {
+    "message": "คูลดาวน์ $SEC$ ว.",
+    "placeholders": {
+      "sec": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_reward_enter_text": {
+    "message": "ใส่ข้อความ..."
+  },
+  "mc_reward_redeem": {
+    "message": "แลก"
+  },
+  "mc_chat_username_color": {
+    "message": "สีชื่อผู้ใช้"
+  },
+  "mc_chat_hex_placeholder": {
+    "message": "#hex"
+  },
+  "mc_chat_modes": {
+    "message": "โหมดแชท"
+  },
+  "mc_chat_emote_only": {
+    "message": "อีโมตเท่านั้น"
+  },
+  "mc_chat_follower": {
+    "message": "ผู้ติดตาม"
+  },
+  "mc_chat_slow": {
+    "message": "ช้า"
+  },
+  "mc_chat_sub_only": {
+    "message": "ซับเท่านั้น"
+  },
+  "mc_chat_unique": {
+    "message": "ไม่ซ้ำ"
+  },
+  "mc_chat_hype_train": {
+    "message": "hype train"
+  },
+  "mc_chat_hype_level": {
+    "message": "lv $LEVEL$",
+    "placeholders": {
+      "level": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_input_send_message": {
+    "message": "ส่งข้อความ..."
+  },
+  "mc_input_post_heatsync": {
+    "message": "โพสต์ไป heatsync..."
+  },
+  "mc_input_send_channel": {
+    "message": "ส่งไป #$CHANNEL$",
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_input_replying_to": {
+    "message": "ตอบ @$USER$",
+    "placeholders": {
+      "user": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_input_cancel_reply": {
+    "message": "ยกเลิกการตอบ"
+  },
+  "mc_input_not_logged_in": {
+    "message": "ยังไม่ได้เข้าสู่ระบบ"
+  },
+  "mc_input_login_kick": {
+    "message": "เข้าสู่ระบบ kick.com ก่อน"
+  },
+  "mc_input_open_kick": {
+    "message": "เปิด kick.com ในแท็บ"
+  },
+  "mc_input_kick_not_found": {
+    "message": "ไม่พบช่อง Kick"
+  },
+  "mc_input_send_failed": {
+    "message": "ส่งไม่สำเร็จ"
+  },
+  "mc_input_no_username": {
+    "message": "ตรวจไม่พบชื่อผู้ใช้"
+  },
+  "mc_input_auth_failed": {
+    "message": "ยืนยันตัวตนล้มเหลว — เข้าสู่ระบบ Twitch ใหม่"
+  },
+  "mc_input_connection_failed": {
+    "message": "เชื่อมต่อล้มเหลว — ลองอีกครั้ง"
+  },
+  "mc_input_send_failed_retry": {
+    "message": "ส่งไม่สำเร็จ — ลองอีกครั้ง"
+  },
+  "mc_social_back": {
+    "message": "<- กลับ"
+  },
+  "mc_social_no_posts": {
+    "message": "ยังไม่มีโพสต์"
+  },
+  "mc_social_loading_feed": {
+    "message": "กำลังโหลดฟีดของคนที่ตาม..."
+  },
+  "mc_social_scroll_more": {
+    "message": "เลื่อนเพื่อดูเพิ่ม..."
+  },
+  "mc_social_no_replies": {
+    "message": "ยังไม่มีการตอบ"
+  },
+  "mc_social_login_first": {
+    "message": "เข้าสู่ระบบ heatsync.org ก่อน"
+  },
+  "mc_social_login_activity": {
+    "message": "เข้าสู่ระบบ heatsync.org เพื่อดูกิจกรรม"
+  },
+  "mc_social_failed_feed_auth": {
+    "message": "โหลดฟีดล้มเหลว — เข้าสู่ระบบ heatsync.org"
+  },
+  "mc_social_failed_feed": {
+    "message": "โหลดฟีดล้มเหลว"
+  },
+  "mc_social_log_in_first": {
+    "message": "เข้าสู่ระบบก่อน"
+  },
+  "mc_social_slow_down": {
+    "message": "ช้าๆ หน่อย"
+  },
+  "mc_social_duplicate": {
+    "message": "ข้อความซ้ำ"
+  },
+  "mc_social_failed_post": {
+    "message": "โพสต์ล้มเหลว"
+  },
+  "mc_tip_emoji": {
+    "message": "emoji"
+  },
+  "mc_tip_subbed": {
+    "message": "ซับ $CHANNEL$ $TENURE$",
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      },
+      "tenure": {
+        "content": "$2"
+      }
+    }
+  },
+  "mc_tip_following": {
+    "message": "ติดตาม $CHANNEL$ $AGE$",
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      },
+      "age": {
+        "content": "$2"
+      }
+    }
+  },
+  "mc_tip_not_following": {
+    "message": "ไม่ได้ติดตาม $CHANNEL$",
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_tip_followed_by": {
+    "message": "ติดตามโดย $CHANNEL$",
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_tip_followers": {
+    "message": "$COUNT$ ผู้ติดตาม",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_whisper_hint": {
+    "message": "/w ผู้ใช้ ข้อความ · /dm ผู้ใช้ ข้อความ · /r ข้อความ"
+  },
+  "mc_whisper_login": {
+    "message": "เข้าสู่ระบบ heatsync.org เพื่อส่งวิสเปอร์"
+  },
+  "mc_whisper_user_not_found": {
+    "message": "ไม่พบผู้ใช้ Twitch \"$USER$\"",
+    "placeholders": {
+      "user": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_whisper_resolve_failed": {
+    "message": "ค้นหาผู้ใช้ Twitch ไม่สำเร็จ"
+  },
+  "mc_whisper_hs_not_found": {
+    "message": "ไม่พบผู้ใช้ heatsync \"$USER$\"",
+    "placeholders": {
+      "user": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_irc_chat_cleared": {
+    "message": "แชทถูกล้าง"
+  },
+  "mc_irc_msg_deleted": {
+    "message": "ข้อความจาก $USER$ ถูกลบ",
+    "placeholders": {
+      "user": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_irc_gift_subs": {
+    "message": "$USER$ ให้ $AMOUNT$ ซับแก่ $CHANNEL$",
+    "placeholders": {
+      "user": {
+        "content": "$1"
+      },
+      "amount": {
+        "content": "$2"
+      },
+      "channel": {
+        "content": "$3"
+      }
+    }
+  },
+  "mc_yt_connected": {
+    "message": "youtube เชื่อมต่อแล้ว: $CHANNEL$ — รอข้อความ...",
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_yt_ended": {
+    "message": "สตรีม youtube จบแล้ว"
+  },
+  "mc_yt_error": {
+    "message": "ข้อผิดพลาดการเชื่อมต่อ youtube"
+  },
+  "mc_emote_search_placeholder": {
+    "message": "ค้นหาอีโมต..."
+  },
+  "mc_emote_no_loaded": {
+    "message": "ยังไม่มีอีโมตที่โหลด"
+  },
+  "mc_emote_in_set": {
+    "message": "ในเซ็ตของคุณ"
+  },
+  "mc_emote_click_add": {
+    "message": "คลิกเพื่อเพิ่ม"
+  },
+  "mc_emote_blocked": {
+    "message": "ถูกบล็อก (คลิกเพื่อปลดบล็อก)"
+  },
+  "content_toast_unknown_error": {
+    "message": "ข้อผิดพลาดที่ไม่ทราบ"
+  },
+  "content_toast_loading_emotes": {
+    "message": "กำลังโหลดอีโมต..."
+  },
+  "content_toast_fetching_emotes": {
+    "message": "กำลังดึงอีโมต..."
+  },
+  "content_card_action_ban": {
+    "message": "แบน"
+  },
+  "content_card_action_unban": {
+    "message": "ปลดแบน"
+  },
+  "content_card_action_block": {
+    "message": "บล็อก"
+  },
+  "btn_close": {
+    "message": "ปิด"
+  },
+  "btn_error_channel": {
+    "message": "โหลดอีโมตช่องล้มเหลว"
+  },
+  "btn_error_global": {
+    "message": "โหลดอีโมตทั่วไปล้มเหลว"
+  },
+  "btn_error_inventory": {
+    "message": "โหลดอีโมตของคุณล้มเหลว"
+  }
+}

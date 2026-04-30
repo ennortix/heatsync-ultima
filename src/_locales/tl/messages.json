@@ -1,0 +1,1245 @@
+{
+  "manifest_name": {
+    "message": "heatsync"
+  },
+  "manifest_description": {
+    "message": "Custom emotes para sa Twitch, Kick at YouTube chat. Walang limit na slots, tab completion, real-time sync."
+  },
+  "common_loading": {
+    "message": "naglo-load..."
+  },
+  "common_extension_updated": {
+    "message": "Na-update ang extension — i-refresh ang page"
+  },
+  "common_no_matches": {
+    "message": "walang nakitang resulta"
+  },
+  "common_retry": {
+    "message": "subukan ulit"
+  },
+  "common_cancel": {
+    "message": "kanselahin"
+  },
+  "common_save": {
+    "message": "i-save"
+  },
+  "common_add": {
+    "message": "idagdag"
+  },
+  "common_edit": {
+    "message": "i-edit"
+  },
+  "common_remove": {
+    "message": "alisin"
+  },
+  "common_done": {
+    "message": "tapos na"
+  },
+  "common_ended": {
+    "message": "natapos"
+  },
+  "common_vote": {
+    "message": "bumoto"
+  },
+  "common_set": {
+    "message": "itakda"
+  },
+  "common_default": {
+    "message": "default"
+  },
+  "common_mention": {
+    "message": "mention"
+  },
+  "common_user_not_found": {
+    "message": "user hindi nahanap"
+  },
+  "popup_title": {
+    "message": "heatsync"
+  },
+  "popup_status_checking": {
+    "message": "kinakapa..."
+  },
+  "popup_status_connected": {
+    "message": "konektado"
+  },
+  "popup_status_api_error": {
+    "message": "api error"
+  },
+  "popup_status_offline": {
+    "message": "offline"
+  },
+  "popup_user_stats": {
+    "message": "$EMOTES$ emotes · $GLOBALS$ global",
+    "placeholders": {
+      "emotes": {
+        "content": "$1"
+      },
+      "globals": {
+        "content": "$2"
+      }
+    }
+  },
+  "popup_user_stats_heat": {
+    "message": "$EMOTES$ emotes · $GLOBALS$ global · $HEAT$ heat",
+    "placeholders": {
+      "emotes": {
+        "content": "$1"
+      },
+      "globals": {
+        "content": "$2"
+      },
+      "heat": {
+        "content": "$3"
+      }
+    }
+  },
+  "popup_btn_emotes": {
+    "message": "emotes"
+  },
+  "popup_btn_refresh": {
+    "message": "i-refresh"
+  },
+  "popup_btn_site": {
+    "message": "site"
+  },
+  "popup_btn_done": {
+    "message": "tapos na"
+  },
+  "popup_btn_logout": {
+    "message": "mag-logout"
+  },
+  "btn_recent": {
+    "message": "kamakailan"
+  },
+  "popup_login_prompt": {
+    "message": "mag-login para mag-sync ng emotes"
+  },
+  "popup_channel_placeholder": {
+    "message": "channel"
+  },
+  "popup_btn_popout": {
+    "message": "hiwalay na window"
+  },
+  "popup_hint": {
+    "message": "settings ng emotes nasa picker panel ng chat"
+  },
+  "welcome_title": {
+    "message": "welcome sa heatsync"
+  },
+  "welcome_tagline": {
+    "message": "ang emotes mo, kahit saan ka mag-chat"
+  },
+  "welcome_step1_title": {
+    "message": "mag-login sa heatsync.org"
+  },
+  "welcome_step1_desc": {
+    "message": "mag-sign in gamit ang Twitch o Kick para gumawa ng account"
+  },
+  "welcome_step2_title": {
+    "message": "mag-upload ng emotes"
+  },
+  "welcome_step2_desc": {
+    "message": "magdagdag ng anumang larawan — walang slot limits, lahat ng format suportado"
+  },
+  "welcome_step3_title": {
+    "message": "gamitin sa chat"
+  },
+  "welcome_step3_desc": {
+    "message": "i-click ang heatsync button sa Twitch/Kick chat para makita ang iyong emotes"
+  },
+  "welcome_cta": {
+    "message": "magsimula"
+  },
+  "welcome_privacy": {
+    "message": "privacy"
+  },
+  "welcome_source": {
+    "message": "source code"
+  },
+  "btn_auth_login": {
+    "message": "mag-login"
+  },
+  "btn_auth_save_emotes": {
+    "message": "para ma-save ang emotes sa set mo"
+  },
+  "btn_tab_channel": {
+    "message": "channel"
+  },
+  "btn_tab_global": {
+    "message": "global"
+  },
+  "btn_tab_mine": {
+    "message": "akin"
+  },
+  "btn_tab_emoji": {
+    "message": "emoji"
+  },
+  "btn_search_placeholder": {
+    "message": "maghanap ng emotes..."
+  },
+  "btn_rotate_title": {
+    "message": "iikot ang posisyon ng tab bar"
+  },
+  "btn_settings_title": {
+    "message": "settings"
+  },
+  "btn_no_emotes": {
+    "message": "walang emotes"
+  },
+  "btn_login_save_emotes": {
+    "message": "mag-login sa heatsync.org para mag-save ng emotes"
+  },
+  "btn_cached": {
+    "message": "cached"
+  },
+  "btn_loading_emotes": {
+    "message": "naglo-load ng emotes"
+  },
+  "btn_no_third_party": {
+    "message": "walang nakitang third-party na emotes"
+  },
+  "btn_no_emotes_import": {
+    "message": "walang emotes na pwedeng i-import"
+  },
+  "btn_import_count": {
+    "message": "i-import ang $COUNT$ na emotes",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "btn_failed_load": {
+    "message": "hindi na-load ang emotes"
+  },
+  "btn_retry_loading": {
+    "message": "subukan ulit"
+  },
+  "btn_ctx_block": {
+    "message": "i-block ang emote"
+  },
+  "btn_ctx_unblock": {
+    "message": "i-unblock ang emote"
+  },
+  "btn_ctx_remove_inventory": {
+    "message": "alisin sa inventory"
+  },
+  "btn_ctx_add_inventory": {
+    "message": "idagdag sa inventory"
+  },
+  "btn_ctx_copy_name": {
+    "message": "kopyahin ang pangalan ng emote"
+  },
+  "btn_ctx_copy_url": {
+    "message": "kopyahin ang url ng emote"
+  },
+  "btn_toast_unblocked": {
+    "message": "naka-unblock"
+  },
+  "btn_toast_blocked": {
+    "message": "naka-block"
+  },
+  "btn_toast_removed": {
+    "message": "naalis"
+  },
+  "btn_toast_added": {
+    "message": "naidagdag"
+  },
+  "btn_toast_copied": {
+    "message": "kinopya!"
+  },
+  "btn_settings_tab_completion": {
+    "message": "tab completion"
+  },
+  "btn_settings_chat_ui": {
+    "message": "chat interface"
+  },
+  "btn_settings_input": {
+    "message": "input"
+  },
+  "btn_settings_wysiwyg": {
+    "message": "wysiwyg emotes"
+  },
+  "btn_settings_space_after": {
+    "message": "space pagkatapos ng emote"
+  },
+  "btn_settings_placeholder_mode": {
+    "message": "placeholder mode"
+  },
+  "btn_settings_placeholder_desc": {
+    "message": "ipakita ang colored boxes"
+  },
+  "btn_settings_hide_header": {
+    "message": "itago ang header"
+  },
+  "btn_settings_always_popout": {
+    "message": "(palaging on sa hiwalay na window)"
+  },
+  "btn_settings_compact_input": {
+    "message": "compact input"
+  },
+  "btn_settings_highlight_mentions": {
+    "message": "i-highlight ang mentions"
+  },
+  "btn_settings_platform_badges": {
+    "message": "platform badges"
+  },
+  "btn_settings_platform_badges_desc": {
+    "message": "[T] [K] [YT] sa mga messages"
+  },
+  "btn_settings_cosmetics": {
+    "message": "cosmetics"
+  },
+  "btn_settings_cosmetics_desc": {
+    "message": "paint + badges 7TV/BTTV/FFZ"
+  },
+  "btn_settings_vi_mode": {
+    "message": "vi mode"
+  },
+  "btn_settings_vi_mode_desc": {
+    "message": "vim shortcuts para sa chat input"
+  },
+  "btn_size_1x": {
+    "message": "1x"
+  },
+  "btn_size_2x": {
+    "message": "2x"
+  },
+  "btn_size_4x": {
+    "message": "4x"
+  },
+  "btn_expand": {
+    "message": "palawakin"
+  },
+  "btn_collapse": {
+    "message": "ipikit"
+  },
+  "btn_block_all": {
+    "message": "i-block lahat"
+  },
+  "btn_show_all": {
+    "message": "ipakita lahat"
+  },
+  "btn_click_expand": {
+    "message": "i-click para palawakin"
+  },
+  "content_toast_failed_add": {
+    "message": "Hindi naidagdag ang $NAME$: $ERROR$",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      },
+      "error": {
+        "content": "$2"
+      }
+    }
+  },
+  "content_toast_failed_remove": {
+    "message": "Hindi naalis ang $NAME$: $ERROR$",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      },
+      "error": {
+        "content": "$2"
+      }
+    }
+  },
+  "content_toast_unblocked": {
+    "message": "Na-unblock ang $NAME$",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
+  },
+  "content_toast_failed_unblock": {
+    "message": "Hindi na-unblock: $ERROR$",
+    "placeholders": {
+      "error": {
+        "content": "$1"
+      }
+    }
+  },
+  "content_toast_removed": {
+    "message": "Naalis ang $NAME$ sa set mo",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
+  },
+  "content_toast_failed_block": {
+    "message": "Hindi na-block: $ERROR$",
+    "placeholders": {
+      "error": {
+        "content": "$1"
+      }
+    }
+  },
+  "content_toast_blocked": {
+    "message": "Na-block ang $NAME$",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
+  },
+  "content_toast_unmuted": {
+    "message": "Na-unmute ang $NAME$",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
+  },
+  "content_toast_muted_24h": {
+    "message": "Na-mute ang $NAME$ ng 24 oras",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
+  },
+  "content_card_follows_you": {
+    "message": "follower mo"
+  },
+  "content_card_subs_to_you": {
+    "message": "subscriber mo"
+  },
+  "content_card_you_follow": {
+    "message": "follower mo"
+  },
+  "content_card_you_sub": {
+    "message": "subscriber ka"
+  },
+  "content_card_you_sub_tier": {
+    "message": "sub T$TIER$",
+    "placeholders": {
+      "tier": {
+        "content": "$1"
+      }
+    }
+  },
+  "content_card_subbed": {
+    "message": "sub sa $CHANNEL$ $TENURE$",
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      },
+      "tenure": {
+        "content": "$2"
+      }
+    }
+  },
+  "content_card_following": {
+    "message": "fina-follow ang $CHANNEL$ $AGE$",
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      },
+      "age": {
+        "content": "$2"
+      }
+    }
+  },
+  "content_card_follows_channel": {
+    "message": "fina-follow ang $CHANNEL$",
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      }
+    }
+  },
+  "content_card_not_following": {
+    "message": "hindi fina-follow ang $CHANNEL$",
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      }
+    }
+  },
+  "content_card_followed_by": {
+    "message": "fina-follow ng $CHANNEL$",
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      }
+    }
+  },
+  "content_card_following_count": {
+    "message": "fina-follow ang $COUNT$",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "content_card_followers": {
+    "message": "$COUNT$ followers",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "content_card_partner": {
+    "message": "partner"
+  },
+  "content_card_affiliate": {
+    "message": "affiliate"
+  },
+  "content_card_live": {
+    "message": "LIVE $VIEWERS$",
+    "placeholders": {
+      "viewers": {
+        "content": "$1"
+      }
+    }
+  },
+  "content_card_twitch_verified": {
+    "message": "Twitch verified"
+  },
+  "content_card_kick_verified": {
+    "message": "Kick verified"
+  },
+  "content_view_on_heatsync": {
+    "message": "tingnan sa heatsync"
+  },
+  "content_in_your_set": {
+    "message": "nasa set mo"
+  },
+  "content_click_to_add": {
+    "message": "i-click para idagdag"
+  },
+  "content_blocked_click_unblock": {
+    "message": "naka-block (i-click para i-unblock)"
+  },
+  "mc_tab_feed": {
+    "message": "home"
+  },
+  "mc_tab_whispers": {
+    "message": "whispers"
+  },
+  "mc_tab_mentions": {
+    "message": "mentions"
+  },
+  "mc_tab_activity": {
+    "message": "aktibidad"
+  },
+  "mc_tab_live": {
+    "message": "live"
+  },
+  "mc_tab_discover": {
+    "message": "tuklasin"
+  },
+  "mc_tab_pinned": {
+    "message": "naka-save"
+  },
+  "mc_tab_live_channel": {
+    "message": "live · $CHANNEL$",
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_btn_rotate_tabs": {
+    "message": "iikot ang tabs (T)"
+  },
+  "mc_btn_rotate_chat": {
+    "message": "iikot ang chat panel (C)"
+  },
+  "mc_btn_smaller_text": {
+    "message": "mas maliit na text"
+  },
+  "mc_btn_larger_text": {
+    "message": "mas malaki na text"
+  },
+  "mc_btn_settings": {
+    "message": "settings"
+  },
+  "mc_new_messages": {
+    "message": "$COUNT$ bago",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_resume": {
+    "message": "ituloy"
+  },
+  "mc_no_messages": {
+    "message": "wala pang messages"
+  },
+  "mc_no_activity": {
+    "message": "wala pang aktibidad"
+  },
+  "mc_add_channel": {
+    "message": "magdagdag ng channel"
+  },
+  "mc_enter_platform": {
+    "message": "maglagay ng kahit isang platform"
+  },
+  "mc_username_placeholder": {
+    "message": "username"
+  },
+  "mc_username_url_placeholder": {
+    "message": "username o url"
+  },
+  "mc_reserved_name": {
+    "message": "naka-reserve na pangalan"
+  },
+  "mc_channel_exists": {
+    "message": "may channel na"
+  },
+  "mc_twitch_exists": {
+    "message": "naidagdag na ang Twitch channel"
+  },
+  "mc_kick_exists": {
+    "message": "naidagdag na ang Kick channel"
+  },
+  "mc_edit_channel": {
+    "message": "i-edit ang $CHANNEL$",
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_no_channel_detected": {
+    "message": "walang nakitang channel"
+  },
+  "mc_settings_display": {
+    "message": "display"
+  },
+  "mc_settings_emote_size": {
+    "message": "laki ng emote"
+  },
+  "mc_settings_input_preview": {
+    "message": "input preview"
+  },
+  "mc_settings_clickable_links": {
+    "message": "clickable na links"
+  },
+  "mc_settings_vi_mode": {
+    "message": "vi mode"
+  },
+  "mc_settings_zebra": {
+    "message": "zebra stripes"
+  },
+  "mc_settings_auto_hide": {
+    "message": "auto-hide ng input"
+  },
+  "mc_settings_timestamps": {
+    "message": "timestamps"
+  },
+  "mc_settings_avatars": {
+    "message": "avatars"
+  },
+  "mc_settings_emote_size_desc": {
+    "message": "Multiplier ng resolution para sa emotes sa chat. 1x malinaw at compact, 2x sweet spot para sa karamihan ng monitor, 4x para sa gusto makita kada pixel."
+  },
+  "mc_settings_input_preview_desc": {
+    "message": "Pinapakita ang emotes bilang larawan diretso sa input box habang nagta-type ka, sa halip na text names. Ang nakikita mo ang ipinapadala mo."
+  },
+  "mc_settings_clickable_links_desc": {
+    "message": "Ginagawang clickable ang URLs sa chat messages. I-off kung mas gusto mo ang copy-paste o hindi mo pinagkakatiwalaan ang mga estranghero sa internet."
+  },
+  "mc_settings_vi_mode_desc": {
+    "message": "Vim-style shortcuts para sa chat navigation. j/k scroll, g/G top/bottom, / hanapin. Para sa nagiisip na ang mouse ay para sa casuals."
+  },
+  "mc_settings_zebra_desc": {
+    "message": "Salit-salit na shading sa chat messages. Mas madaling sundan ang mahabang messages, lalo na sa mabilis na chat."
+  },
+  "mc_settings_auto_hide_desc": {
+    "message": "Itinatago ang input bar kapag hindi ka nag-aakto. I-click o magsimula mag-type para ibalik. Pina-maximize ang chat viewing space."
+  },
+  "mc_settings_timestamps_desc": {
+    "message": "Ipinapakita ang oras ng pagpapadala bawat message sa tabi ng username. Mainam para malaman kung anong nangyari habang AFK ka."
+  },
+  "mc_settings_avatars_desc": {
+    "message": "Ipinapakita ang profile pictures sa tabi ng username sa chat. Mas madaling makilala ang regulars, kapalit ng kaunting vertical space."
+  },
+  "mc_settings_inline_notifs": {
+    "message": "inline notifications"
+  },
+  "mc_settings_notif_op": {
+    "message": "[OP] orihinal posts"
+  },
+  "mc_settings_notif_op_reply": {
+    "message": "[OP] OP nagre-reply sa sariling thread"
+  },
+  "mc_settings_notif_re": {
+    "message": "[RE] mga reply"
+  },
+  "mc_settings_notif_dm": {
+    "message": "[DM] whispers at DMs"
+  },
+  "mc_settings_notif_op_desc": {
+    "message": "Notification sa active chat tab kapag may gumawa ng bagong post sa feed."
+  },
+  "mc_settings_notif_op_reply_desc": {
+    "message": "Notification kapag ang orihinal poster ay nagre-reply sa sariling thread."
+  },
+  "mc_settings_notif_re_desc": {
+    "message": "Notification para sa bawat reply sa kahit anong thread sa feed."
+  },
+  "mc_settings_notif_dm_desc": {
+    "message": "Notification kapag may natanggap kang whisper o DM."
+  },
+  "mc_settings_twitch_events": {
+    "message": "Twitch events"
+  },
+  "mc_settings_raids": {
+    "message": "raids"
+  },
+  "mc_settings_raids_desc": {
+    "message": "Inline banner kapag may streamer na nag-raid papasok o palabas, kasama ang viewer count at pinanggalingang channel. Pwede kang sumakay sa next stream."
+  },
+  "mc_settings_hype_trains": {
+    "message": "hype trains"
+  },
+  "mc_settings_hype_trains_desc": {
+    "message": "Live progress banner para sa hype trains, ipinapakita ang level at contribution timer. Default off kasi palaging nag-fi-fire sa malalaking channel."
+  },
+  "mc_settings_gift_subs": {
+    "message": "gift subs"
+  },
+  "mc_settings_gift_subs_desc": {
+    "message": "Banner para sa community gift sub bombs at individual gifts, kasama ang gifter, recipient at tier."
+  },
+  "mc_settings_redeems": {
+    "message": "channel point redeems"
+  },
+  "mc_settings_redeems_desc": {
+    "message": "Inline notice para sa channel point redemptions tulad ng 'highlight my message' para makita mo kung saan ginagamit ng mga tao ang puntos."
+  },
+  "mc_settings_prediction_banner": {
+    "message": "predictions"
+  },
+  "mc_settings_prediction_banner_desc": {
+    "message": "Live banner ng channel point prediction na may current odds at oras na natitira para mag-lock-in ng vote."
+  },
+  "mc_settings_poll_banner": {
+    "message": "polls"
+  },
+  "mc_settings_poll_banner_desc": {
+    "message": "Active poll banner na may vote tallies at oras na natitira. Mag-vote diretso mula sa overlay."
+  },
+  "mc_settings_pinned_messages": {
+    "message": "pinned messages"
+  },
+  "mc_settings_pinned_messages_desc": {
+    "message": "Sticky banner para sa moderator-pinned chat messages para hindi mo ma-miss ang rules o schedule."
+  },
+  "mc_settings_dim_timeouts": {
+    "message": "i-dim ang timed-out messages"
+  },
+  "mc_settings_dim_timeouts_desc": {
+    "message": "Ipakita ang timed-out at banned messages sa 50% opacity sa halip na itago, FFZ/BTTV style. Makikita mo kung anong na-nuke nang hindi umalis sa chat."
+  },
+  "mc_settings_smart_completion": {
+    "message": "smart tab completion"
+  },
+  "mc_settings_smart_completion_desc": {
+    "message": "Recent chatters at emotes sa channel na ito ay lumalabas muna sa tab-completing. Mas mabilis kaysa sa alphabetical kapag mabilis ang chat."
+  },
+  "mc_settings_first_chatter": {
+    "message": "first-message glow"
+  },
+  "mc_settings_first_chatter_desc": {
+    "message": "Orange edge marker sa first message ng user sa bawat channel sa session na ito. Madali makita ang mga bago dating sa mabilis na chat."
+  },
+  "mc_settings_keyword_highlights": {
+    "message": "keyword highlights"
+  },
+  "mc_settings_keyword_highlights_desc": {
+    "message": "Mga messages na may kahit anong salita rito ay nagiging orange, parang personal mention. Hiwa-hiwalay ng linya, hindi case-sensitive, whole-word matches."
+  },
+  "mc_settings_keyword_highlights_placeholder": {
+    "message": "isang keyword bawat linya"
+  },
+  "mc_settings_features": {
+    "message": "features"
+  },
+  "mc_settings_auto_claim": {
+    "message": "auto-claim ng channel points"
+  },
+  "mc_settings_auto_claim_desc": {
+    "message": "Automatic na ki-click ang bonus channel points chest sa Twitch kapag lumitaw. Libreng puntos, walang effort."
+  },
+  "mc_settings_muted_users": {
+    "message": "naka-mute na users"
+  },
+  "mc_settings_no_muted": {
+    "message": "walang naka-mute na users"
+  },
+  "mc_settings_unmute": {
+    "message": "i-unmute"
+  },
+  "mc_pred_no_active": {
+    "message": "walang aktibong prediction"
+  },
+  "mc_pred_new": {
+    "message": "+ bagong prediction"
+  },
+  "mc_pred_title_placeholder": {
+    "message": "title ng prediction"
+  },
+  "mc_pred_option1": {
+    "message": "opsyon 1 (asul)"
+  },
+  "mc_pred_option2": {
+    "message": "opsyon 2 (rosas)"
+  },
+  "mc_pred_duration": {
+    "message": "tagal:"
+  },
+  "mc_pred_create": {
+    "message": "gumawa ng prediction"
+  },
+  "mc_pred_refunded": {
+    "message": "naibalik"
+  },
+  "mc_pred_locked": {
+    "message": "naka-lock"
+  },
+  "mc_pred_winner": {
+    "message": "panalo"
+  },
+  "mc_pred_won": {
+    "message": " nanalo"
+  },
+  "mc_pred_lost": {
+    "message": " natalo"
+  },
+  "mc_pred_lock_betting": {
+    "message": "i-lock ang betting"
+  },
+  "mc_pred_cancel_refund": {
+    "message": "kanselahin (refund)"
+  },
+  "mc_pred_pick_winner": {
+    "message": "piliin ang panalo"
+  },
+  "mc_pred_pick_winner_your_bet": {
+    "message": "piliin ang panalo (taya mo)"
+  },
+  "mc_pred_failed_load": {
+    "message": "hindi na-load ang predictions"
+  },
+  "mc_pred_bet_own": {
+    "message": "hindi pwede magtaya sa sarili"
+  },
+  "mc_pred_try_again": {
+    "message": "subukan ulit"
+  },
+  "mc_pred_ended": {
+    "message": "natapos ang prediction"
+  },
+  "mc_pred_betting_locked": {
+    "message": "naka-lock ang betting"
+  },
+  "mc_pred_not_enough": {
+    "message": "kulang ang puntos"
+  },
+  "mc_pred_already_bet": {
+    "message": "nagtaya na"
+  },
+  "mc_pred_no_permission": {
+    "message": "walang permission"
+  },
+  "mc_pred_failed": {
+    "message": "hindi nagtagumpay"
+  },
+  "mc_pred_no_event": {
+    "message": "walang event"
+  },
+  "mc_pred_no_outcome": {
+    "message": "walang resulta"
+  },
+  "mc_pred_closing": {
+    "message": "isinasara..."
+  },
+  "mc_pred_you_bet": {
+    "message": "tinaya mo ang $POINTS$ sa $OUTCOME$ — piliin ang aktwal na panalo",
+    "placeholders": {
+      "points": {
+        "content": "$1"
+      },
+      "outcome": {
+        "content": "$2"
+      }
+    }
+  },
+  "mc_poll_new": {
+    "message": "+ bagong poll"
+  },
+  "mc_poll_question": {
+    "message": "tanong sa poll"
+  },
+  "mc_poll_choice": {
+    "message": "pagpipilian $NUM$",
+    "placeholders": {
+      "num": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_poll_choice_optional": {
+    "message": "pagpipilian $NUM$ (optional)",
+    "placeholders": {
+      "num": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_poll_create": {
+    "message": "gumawa ng poll"
+  },
+  "mc_poll_end": {
+    "message": "tapusin ang poll"
+  },
+  "mc_poll_votes": {
+    "message": "$COUNT$ boto",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_poll_vote_single": {
+    "message": "$COUNT$ boto",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_poll_already_active": {
+    "message": "may aktibong poll na"
+  },
+  "mc_poll_not_logged_in": {
+    "message": "hindi naka-login"
+  },
+  "mc_reward_rewards": {
+    "message": "mga reward"
+  },
+  "mc_reward_none": {
+    "message": "walang available na rewards"
+  },
+  "mc_reward_paused": {
+    "message": "naka-pause"
+  },
+  "mc_reward_out_of_stock": {
+    "message": "naubos"
+  },
+  "mc_reward_cooldown_min": {
+    "message": "$MIN$m cooldown",
+    "placeholders": {
+      "min": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_reward_cooldown_sec": {
+    "message": "$SEC$s cooldown",
+    "placeholders": {
+      "sec": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_reward_enter_text": {
+    "message": "magpasok ng text..."
+  },
+  "mc_reward_redeem": {
+    "message": "i-redeem"
+  },
+  "mc_chat_username_color": {
+    "message": "kulay ng username"
+  },
+  "mc_chat_hex_placeholder": {
+    "message": "#hex"
+  },
+  "mc_chat_modes": {
+    "message": "chat modes"
+  },
+  "mc_chat_emote_only": {
+    "message": "emotes lang"
+  },
+  "mc_chat_follower": {
+    "message": "follower"
+  },
+  "mc_chat_slow": {
+    "message": "mabagal"
+  },
+  "mc_chat_sub_only": {
+    "message": "subs lang"
+  },
+  "mc_chat_unique": {
+    "message": "unique"
+  },
+  "mc_chat_hype_train": {
+    "message": "hype train"
+  },
+  "mc_chat_hype_level": {
+    "message": "lvl $LEVEL$",
+    "placeholders": {
+      "level": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_input_send_message": {
+    "message": "magpadala ng message..."
+  },
+  "mc_input_post_heatsync": {
+    "message": "i-post sa heatsync..."
+  },
+  "mc_input_send_channel": {
+    "message": "ipadala sa #$CHANNEL$",
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_input_replying_to": {
+    "message": "Sumasagot kay @$USER$",
+    "placeholders": {
+      "user": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_input_cancel_reply": {
+    "message": "Kanselahin ang reply"
+  },
+  "mc_input_not_logged_in": {
+    "message": "hindi naka-login"
+  },
+  "mc_input_login_kick": {
+    "message": "mag-login muna sa kick.com"
+  },
+  "mc_input_open_kick": {
+    "message": "buksan ang kick.com sa tab"
+  },
+  "mc_input_kick_not_found": {
+    "message": "Kick channel hindi nahanap"
+  },
+  "mc_input_send_failed": {
+    "message": "hindi naipadala"
+  },
+  "mc_input_no_username": {
+    "message": "walang nakitang username"
+  },
+  "mc_input_auth_failed": {
+    "message": "hindi nag-authenticate — mag-login ulit sa Twitch"
+  },
+  "mc_input_connection_failed": {
+    "message": "hindi nag-connect — subukan ulit"
+  },
+  "mc_input_send_failed_retry": {
+    "message": "hindi naipadala — subukan ulit"
+  },
+  "mc_social_back": {
+    "message": "<- bumalik"
+  },
+  "mc_social_no_posts": {
+    "message": "wala pang posts"
+  },
+  "mc_social_loading_feed": {
+    "message": "naglo-load ng feed ng fina-follow..."
+  },
+  "mc_social_scroll_more": {
+    "message": "i-scroll para sa iba pa..."
+  },
+  "mc_social_no_replies": {
+    "message": "wala pang replies"
+  },
+  "mc_social_login_first": {
+    "message": "mag-login muna sa heatsync.org"
+  },
+  "mc_social_login_activity": {
+    "message": "mag-login sa heatsync.org para makita ang aktibidad"
+  },
+  "mc_social_failed_feed_auth": {
+    "message": "hindi na-load ang feed — mag-login sa heatsync.org"
+  },
+  "mc_social_failed_feed": {
+    "message": "hindi na-load ang feed"
+  },
+  "mc_social_log_in_first": {
+    "message": "mag-login muna"
+  },
+  "mc_social_slow_down": {
+    "message": "dahan-dahan"
+  },
+  "mc_social_duplicate": {
+    "message": "duplicate na message"
+  },
+  "mc_social_failed_post": {
+    "message": "hindi na-post"
+  },
+  "mc_tip_emoji": {
+    "message": "emoji"
+  },
+  "mc_tip_subbed": {
+    "message": "sub sa $CHANNEL$ $TENURE$",
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      },
+      "tenure": {
+        "content": "$2"
+      }
+    }
+  },
+  "mc_tip_following": {
+    "message": "fina-follow ang $CHANNEL$ $AGE$",
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      },
+      "age": {
+        "content": "$2"
+      }
+    }
+  },
+  "mc_tip_not_following": {
+    "message": "hindi fina-follow ang $CHANNEL$",
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_tip_followed_by": {
+    "message": "fina-follow ng $CHANNEL$",
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_tip_followers": {
+    "message": "$COUNT$ followers",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_whisper_hint": {
+    "message": "/w user mensahe · /dm user mensahe · /r mensahe"
+  },
+  "mc_whisper_login": {
+    "message": "mag-login sa heatsync.org para magpadala ng whispers"
+  },
+  "mc_whisper_user_not_found": {
+    "message": "Twitch user na \"$USER$\" hindi nahanap",
+    "placeholders": {
+      "user": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_whisper_resolve_failed": {
+    "message": "hindi nahanap ang Twitch user"
+  },
+  "mc_whisper_hs_not_found": {
+    "message": "heatsync user na \"$USER$\" hindi nahanap",
+    "placeholders": {
+      "user": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_irc_chat_cleared": {
+    "message": "Na-clear ang chat"
+  },
+  "mc_irc_msg_deleted": {
+    "message": "Na-delete ang message ni $USER$",
+    "placeholders": {
+      "user": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_irc_gift_subs": {
+    "message": "$USER$ ay nag-gift ng $AMOUNT$ subs sa $CHANNEL$",
+    "placeholders": {
+      "user": {
+        "content": "$1"
+      },
+      "amount": {
+        "content": "$2"
+      },
+      "channel": {
+        "content": "$3"
+      }
+    }
+  },
+  "mc_yt_connected": {
+    "message": "youtube konektado: $CHANNEL$ — naghihintay ng messages...",
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_yt_ended": {
+    "message": "natapos ang youtube stream"
+  },
+  "mc_yt_error": {
+    "message": "may error sa youtube connection"
+  },
+  "mc_emote_search_placeholder": {
+    "message": "maghanap ng emotes..."
+  },
+  "mc_emote_no_loaded": {
+    "message": "walang naka-load na emotes"
+  },
+  "mc_emote_in_set": {
+    "message": "nasa set mo"
+  },
+  "mc_emote_click_add": {
+    "message": "i-click para idagdag"
+  },
+  "mc_emote_blocked": {
+    "message": "naka-block (i-click para i-unblock)"
+  },
+  "content_toast_unknown_error": {
+    "message": "Hindi alam na error"
+  },
+  "content_toast_loading_emotes": {
+    "message": "naglo-load ng emotes..."
+  },
+  "content_toast_fetching_emotes": {
+    "message": "kinukuha ang emotes..."
+  },
+  "content_card_action_ban": {
+    "message": "ban"
+  },
+  "content_card_action_unban": {
+    "message": "unban"
+  },
+  "content_card_action_block": {
+    "message": "i-block"
+  },
+  "btn_close": {
+    "message": "Isara"
+  },
+  "btn_error_channel": {
+    "message": "hindi na-load ang channel emotes"
+  },
+  "btn_error_global": {
+    "message": "hindi na-load ang global emotes"
+  },
+  "btn_error_inventory": {
+    "message": "hindi na-load ang emotes mo"
+  }
+}

@@ -731,6 +731,10 @@ function injectStyles() {
       color: #ffffff;
       content-visibility: auto;
       contain-intrinsic-size: auto 28px;
+      unicode-bidi: plaintext;
+    }
+    .hs-feed-msg, .hs-mc-search-content, .hs-mc-post-body {
+      unicode-bidi: plaintext;
     }
     .hs-mc-msg.hs-mc-zebra, .hs-feed-msg.hs-mc-zebra {
       background: rgba(255,255,255,0.04);

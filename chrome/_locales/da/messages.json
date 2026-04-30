@@ -1,0 +1,1245 @@
+{
+  "manifest_name": {
+    "message": "heatsync"
+  },
+  "manifest_description": {
+    "message": "Brugerdefinerede emotes til Twitch-, Kick- og YouTube-chat. Ubegrænsede slots, tab-fuldførelse, realtidssynkronisering."
+  },
+  "common_loading": {
+    "message": "indlæser..."
+  },
+  "common_extension_updated": {
+    "message": "Udvidelse opdateret — genindlæs siden"
+  },
+  "common_no_matches": {
+    "message": "ingen resultater"
+  },
+  "common_retry": {
+    "message": "prøv igen"
+  },
+  "common_cancel": {
+    "message": "annuller"
+  },
+  "common_save": {
+    "message": "gem"
+  },
+  "common_add": {
+    "message": "tilføj"
+  },
+  "common_edit": {
+    "message": "rediger"
+  },
+  "common_remove": {
+    "message": "fjern"
+  },
+  "common_done": {
+    "message": "færdig"
+  },
+  "common_ended": {
+    "message": "afsluttet"
+  },
+  "common_vote": {
+    "message": "stem"
+  },
+  "common_set": {
+    "message": "indstil"
+  },
+  "common_default": {
+    "message": "standard"
+  },
+  "common_mention": {
+    "message": "omtale"
+  },
+  "common_user_not_found": {
+    "message": "bruger ikke fundet"
+  },
+  "popup_title": {
+    "message": "heatsync"
+  },
+  "popup_status_checking": {
+    "message": "tjekker..."
+  },
+  "popup_status_connected": {
+    "message": "forbundet"
+  },
+  "popup_status_api_error": {
+    "message": "api-fejl"
+  },
+  "popup_status_offline": {
+    "message": "offline"
+  },
+  "popup_user_stats": {
+    "message": "$EMOTES$ emotes · $GLOBALS$ globale",
+    "placeholders": {
+      "emotes": {
+        "content": "$1"
+      },
+      "globals": {
+        "content": "$2"
+      }
+    }
+  },
+  "popup_user_stats_heat": {
+    "message": "$EMOTES$ emotes · $GLOBALS$ globale · $HEAT$ heat",
+    "placeholders": {
+      "emotes": {
+        "content": "$1"
+      },
+      "globals": {
+        "content": "$2"
+      },
+      "heat": {
+        "content": "$3"
+      }
+    }
+  },
+  "popup_btn_emotes": {
+    "message": "emotes"
+  },
+  "popup_btn_refresh": {
+    "message": "opdater"
+  },
+  "popup_btn_site": {
+    "message": "side"
+  },
+  "popup_btn_done": {
+    "message": "færdig"
+  },
+  "popup_btn_logout": {
+    "message": "log ud"
+  },
+  "btn_recent": {
+    "message": "seneste"
+  },
+  "popup_login_prompt": {
+    "message": "log ind for at synke emotes"
+  },
+  "popup_channel_placeholder": {
+    "message": "kanal"
+  },
+  "popup_btn_popout": {
+    "message": "separat vindue"
+  },
+  "popup_hint": {
+    "message": "emote-indstillinger i picker-panelet i chatten"
+  },
+  "welcome_title": {
+    "message": "velkommen til heatsync"
+  },
+  "welcome_tagline": {
+    "message": "dine emotes, alle steder du chatter"
+  },
+  "welcome_step1_title": {
+    "message": "log ind på heatsync.org"
+  },
+  "welcome_step1_desc": {
+    "message": "log ind med Twitch eller Kick for at oprette konto"
+  },
+  "welcome_step2_title": {
+    "message": "upload dine emotes"
+  },
+  "welcome_step2_desc": {
+    "message": "tilføj vilkårlige billeder — ingen slot-grænser, alle formater understøttes"
+  },
+  "welcome_step3_title": {
+    "message": "brug dem i chat"
+  },
+  "welcome_step3_desc": {
+    "message": "klik på heatsync-knappen i Twitch/Kick-chatten for at få adgang til dine emotes"
+  },
+  "welcome_cta": {
+    "message": "kom i gang"
+  },
+  "welcome_privacy": {
+    "message": "privatliv"
+  },
+  "welcome_source": {
+    "message": "kildekode"
+  },
+  "btn_auth_login": {
+    "message": "log ind"
+  },
+  "btn_auth_save_emotes": {
+    "message": "for at gemme emotes i dit set"
+  },
+  "btn_tab_channel": {
+    "message": "kanal"
+  },
+  "btn_tab_global": {
+    "message": "globale"
+  },
+  "btn_tab_mine": {
+    "message": "mine"
+  },
+  "btn_tab_emoji": {
+    "message": "emoji"
+  },
+  "btn_search_placeholder": {
+    "message": "søg emotes..."
+  },
+  "btn_rotate_title": {
+    "message": "rotér fanebjælkens position"
+  },
+  "btn_settings_title": {
+    "message": "indstillinger"
+  },
+  "btn_no_emotes": {
+    "message": "ingen emotes"
+  },
+  "btn_login_save_emotes": {
+    "message": "log ind på heatsync.org for at gemme emotes"
+  },
+  "btn_cached": {
+    "message": "cache"
+  },
+  "btn_loading_emotes": {
+    "message": "indlæser emotes"
+  },
+  "btn_no_third_party": {
+    "message": "ingen tredjeparts-emotes fundet"
+  },
+  "btn_no_emotes_import": {
+    "message": "ingen emotes at importere"
+  },
+  "btn_import_count": {
+    "message": "importér $COUNT$ emotes",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "btn_failed_load": {
+    "message": "kunne ikke indlæse emotes"
+  },
+  "btn_retry_loading": {
+    "message": "prøv at indlæse igen"
+  },
+  "btn_ctx_block": {
+    "message": "bloker emote"
+  },
+  "btn_ctx_unblock": {
+    "message": "fjern blokering af emote"
+  },
+  "btn_ctx_remove_inventory": {
+    "message": "fjern fra inventar"
+  },
+  "btn_ctx_add_inventory": {
+    "message": "tilføj til inventar"
+  },
+  "btn_ctx_copy_name": {
+    "message": "kopiér emote-navn"
+  },
+  "btn_ctx_copy_url": {
+    "message": "kopiér emote-url"
+  },
+  "btn_toast_unblocked": {
+    "message": "blokering fjernet"
+  },
+  "btn_toast_blocked": {
+    "message": "blokeret"
+  },
+  "btn_toast_removed": {
+    "message": "fjernet"
+  },
+  "btn_toast_added": {
+    "message": "tilføjet"
+  },
+  "btn_toast_copied": {
+    "message": "kopieret!"
+  },
+  "btn_settings_tab_completion": {
+    "message": "tab-fuldførelse"
+  },
+  "btn_settings_chat_ui": {
+    "message": "chat-grænseflade"
+  },
+  "btn_settings_input": {
+    "message": "indtastning"
+  },
+  "btn_settings_wysiwyg": {
+    "message": "wysiwyg-emotes"
+  },
+  "btn_settings_space_after": {
+    "message": "mellemrum efter emote"
+  },
+  "btn_settings_placeholder_mode": {
+    "message": "placeholder-tilstand"
+  },
+  "btn_settings_placeholder_desc": {
+    "message": "vis farvede felter"
+  },
+  "btn_settings_hide_header": {
+    "message": "skjul header"
+  },
+  "btn_settings_always_popout": {
+    "message": "(altid tændt i separat vindue)"
+  },
+  "btn_settings_compact_input": {
+    "message": "kompakt indtastning"
+  },
+  "btn_settings_highlight_mentions": {
+    "message": "fremhæv omtaler"
+  },
+  "btn_settings_platform_badges": {
+    "message": "platform-badges"
+  },
+  "btn_settings_platform_badges_desc": {
+    "message": "[T] [K] [YT] på beskeder"
+  },
+  "btn_settings_cosmetics": {
+    "message": "kosmetik"
+  },
+  "btn_settings_cosmetics_desc": {
+    "message": "paint + badges fra 7TV/BTTV/FFZ"
+  },
+  "btn_settings_vi_mode": {
+    "message": "vi-tilstand"
+  },
+  "btn_settings_vi_mode_desc": {
+    "message": "vim-genveje til chat-indtastning"
+  },
+  "btn_size_1x": {
+    "message": "1x"
+  },
+  "btn_size_2x": {
+    "message": "2x"
+  },
+  "btn_size_4x": {
+    "message": "4x"
+  },
+  "btn_expand": {
+    "message": "udvid"
+  },
+  "btn_collapse": {
+    "message": "klap sammen"
+  },
+  "btn_block_all": {
+    "message": "bloker alle"
+  },
+  "btn_show_all": {
+    "message": "vis alle"
+  },
+  "btn_click_expand": {
+    "message": "klik for at udvide"
+  },
+  "content_toast_failed_add": {
+    "message": "Kunne ikke tilføje $NAME$: $ERROR$",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      },
+      "error": {
+        "content": "$2"
+      }
+    }
+  },
+  "content_toast_failed_remove": {
+    "message": "Kunne ikke fjerne $NAME$: $ERROR$",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      },
+      "error": {
+        "content": "$2"
+      }
+    }
+  },
+  "content_toast_unblocked": {
+    "message": "$NAME$ blokering fjernet",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
+  },
+  "content_toast_failed_unblock": {
+    "message": "Kunne ikke fjerne blokering: $ERROR$",
+    "placeholders": {
+      "error": {
+        "content": "$1"
+      }
+    }
+  },
+  "content_toast_removed": {
+    "message": "$NAME$ fjernet fra dit set",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
+  },
+  "content_toast_failed_block": {
+    "message": "Kunne ikke blokere: $ERROR$",
+    "placeholders": {
+      "error": {
+        "content": "$1"
+      }
+    }
+  },
+  "content_toast_blocked": {
+    "message": "$NAME$ blokeret",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
+  },
+  "content_toast_unmuted": {
+    "message": "$NAME$ ikke længere muted",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
+  },
+  "content_toast_muted_24h": {
+    "message": "$NAME$ muted i 24t",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
+  },
+  "content_card_follows_you": {
+    "message": "følger dig"
+  },
+  "content_card_subs_to_you": {
+    "message": "subber dig"
+  },
+  "content_card_you_follow": {
+    "message": "du følger"
+  },
+  "content_card_you_sub": {
+    "message": "du subber"
+  },
+  "content_card_you_sub_tier": {
+    "message": "sub T$TIER$",
+    "placeholders": {
+      "tier": {
+        "content": "$1"
+      }
+    }
+  },
+  "content_card_subbed": {
+    "message": "sub hos $CHANNEL$ $TENURE$",
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      },
+      "tenure": {
+        "content": "$2"
+      }
+    }
+  },
+  "content_card_following": {
+    "message": "følger $CHANNEL$ $AGE$",
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      },
+      "age": {
+        "content": "$2"
+      }
+    }
+  },
+  "content_card_follows_channel": {
+    "message": "følger $CHANNEL$",
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      }
+    }
+  },
+  "content_card_not_following": {
+    "message": "følger ikke $CHANNEL$",
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      }
+    }
+  },
+  "content_card_followed_by": {
+    "message": "fulgt af $CHANNEL$",
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      }
+    }
+  },
+  "content_card_following_count": {
+    "message": "følger $COUNT$",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "content_card_followers": {
+    "message": "$COUNT$ følgere",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "content_card_partner": {
+    "message": "partner"
+  },
+  "content_card_affiliate": {
+    "message": "affiliate"
+  },
+  "content_card_live": {
+    "message": "LIVE $VIEWERS$",
+    "placeholders": {
+      "viewers": {
+        "content": "$1"
+      }
+    }
+  },
+  "content_card_twitch_verified": {
+    "message": "Twitch verificeret"
+  },
+  "content_card_kick_verified": {
+    "message": "Kick verificeret"
+  },
+  "content_view_on_heatsync": {
+    "message": "vis på heatsync"
+  },
+  "content_in_your_set": {
+    "message": "i dit set"
+  },
+  "content_click_to_add": {
+    "message": "klik for at tilføje"
+  },
+  "content_blocked_click_unblock": {
+    "message": "blokeret (klik for at fjerne blokering)"
+  },
+  "mc_tab_feed": {
+    "message": "hjem"
+  },
+  "mc_tab_whispers": {
+    "message": "whispers"
+  },
+  "mc_tab_mentions": {
+    "message": "omtaler"
+  },
+  "mc_tab_activity": {
+    "message": "aktivitet"
+  },
+  "mc_tab_live": {
+    "message": "live"
+  },
+  "mc_tab_discover": {
+    "message": "opdag"
+  },
+  "mc_tab_pinned": {
+    "message": "gemt"
+  },
+  "mc_tab_live_channel": {
+    "message": "live · $CHANNEL$",
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_btn_rotate_tabs": {
+    "message": "rotér faner (T)"
+  },
+  "mc_btn_rotate_chat": {
+    "message": "rotér chat-panel (C)"
+  },
+  "mc_btn_smaller_text": {
+    "message": "mindre tekst"
+  },
+  "mc_btn_larger_text": {
+    "message": "større tekst"
+  },
+  "mc_btn_settings": {
+    "message": "indstillinger"
+  },
+  "mc_new_messages": {
+    "message": "$COUNT$ nye",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_resume": {
+    "message": "genoptag"
+  },
+  "mc_no_messages": {
+    "message": "ingen beskeder endnu"
+  },
+  "mc_no_activity": {
+    "message": "ingen aktivitet endnu"
+  },
+  "mc_add_channel": {
+    "message": "tilføj kanal"
+  },
+  "mc_enter_platform": {
+    "message": "indtast mindst én platform"
+  },
+  "mc_username_placeholder": {
+    "message": "brugernavn"
+  },
+  "mc_username_url_placeholder": {
+    "message": "brugernavn eller url"
+  },
+  "mc_reserved_name": {
+    "message": "reserveret navn"
+  },
+  "mc_channel_exists": {
+    "message": "kanal findes allerede"
+  },
+  "mc_twitch_exists": {
+    "message": "Twitch-kanal allerede tilføjet"
+  },
+  "mc_kick_exists": {
+    "message": "Kick-kanal allerede tilføjet"
+  },
+  "mc_edit_channel": {
+    "message": "redigér $CHANNEL$",
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_no_channel_detected": {
+    "message": "ingen kanal fundet"
+  },
+  "mc_settings_display": {
+    "message": "visning"
+  },
+  "mc_settings_emote_size": {
+    "message": "emote-størrelse"
+  },
+  "mc_settings_input_preview": {
+    "message": "indtastningsforhåndsvisning"
+  },
+  "mc_settings_clickable_links": {
+    "message": "klikbare links"
+  },
+  "mc_settings_vi_mode": {
+    "message": "vi-tilstand"
+  },
+  "mc_settings_zebra": {
+    "message": "zebra-striber"
+  },
+  "mc_settings_auto_hide": {
+    "message": "skjul indtastning automatisk"
+  },
+  "mc_settings_timestamps": {
+    "message": "tidsstempler"
+  },
+  "mc_settings_avatars": {
+    "message": "avatarer"
+  },
+  "mc_settings_emote_size_desc": {
+    "message": "Opløsningsmultiplikator for emotes i chat. 1x er skarp og kompakt, 2x er sweet spot for de fleste skærme, 4x er for dem der vil se hver pixel."
+  },
+  "mc_settings_input_preview_desc": {
+    "message": "Viser emotes som billeder direkte i indtastningsfeltet mens du skriver, i stedet for tekstnavne. Det du ser er det du sender."
+  },
+  "mc_settings_clickable_links_desc": {
+    "message": "Gør URL'er i chatbeskeder klikbare. Slå fra hvis du foretrækker copy-paste eller ikke stoler på fremmede på internettet."
+  },
+  "mc_settings_vi_mode_desc": {
+    "message": "Vim-stil tastebindinger til chat-navigation. j/k scroll, g/G top/bund, / søg. For dem der synes musen er for casuals."
+  },
+  "mc_settings_zebra_desc": {
+    "message": "Skiftende rækkeskygge på chatbeskeder. Gør det lettere at følge lange beskeder, især under hurtig chat."
+  },
+  "mc_settings_auto_hide_desc": {
+    "message": "Skjuler indtastningsbjælken når du ikke skriver. Klik eller begynd at skrive for at få den tilbage. Maksimerer chat-visningsplads."
+  },
+  "mc_settings_timestamps_desc": {
+    "message": "Viser sendetid for hver besked ved siden af brugernavnet. Nyttigt for at indhente hvad der skete mens du var AFK."
+  },
+  "mc_settings_avatars_desc": {
+    "message": "Viser profilbilleder ved siden af brugernavne i chatten. Hjælper med at genkende stamgæster, koster lidt vertikal plads."
+  },
+  "mc_settings_inline_notifs": {
+    "message": "inline-notifikationer"
+  },
+  "mc_settings_notif_op": {
+    "message": "[OP] originale opslag"
+  },
+  "mc_settings_notif_op_reply": {
+    "message": "[OP] OP svarer i egen tråd"
+  },
+  "mc_settings_notif_re": {
+    "message": "[RE] svar"
+  },
+  "mc_settings_notif_dm": {
+    "message": "[DM] whispers og DM"
+  },
+  "mc_settings_notif_op_desc": {
+    "message": "Notifikation i din aktive chat-fane når nogen skaber et nyt opslag i feedet."
+  },
+  "mc_settings_notif_op_reply_desc": {
+    "message": "Notifikation når den oprindelige opslagsforfatter svarer i egen tråd."
+  },
+  "mc_settings_notif_re_desc": {
+    "message": "Notifikation for hvert svar i en feed-tråd."
+  },
+  "mc_settings_notif_dm_desc": {
+    "message": "Notifikation når du modtager en whisper eller DM."
+  },
+  "mc_settings_twitch_events": {
+    "message": "Twitch-events"
+  },
+  "mc_settings_raids": {
+    "message": "raids"
+  },
+  "mc_settings_raids_desc": {
+    "message": "Inline-banner når en streamer raider ind eller ud, med seerantal og kildekanal. Lader dig følge med til næste stream."
+  },
+  "mc_settings_hype_trains": {
+    "message": "hype trains"
+  },
+  "mc_settings_hype_trains_desc": {
+    "message": "Live progress-banner for hype trains, med niveau og bidragstimer. Slukket som standard fordi de udløses konstant på store kanaler."
+  },
+  "mc_settings_gift_subs": {
+    "message": "gift subs"
+  },
+  "mc_settings_gift_subs_desc": {
+    "message": "Banner for community gift sub bombs og enkelte gifts, med giver, modtager og tier."
+  },
+  "mc_settings_redeems": {
+    "message": "channel point indløsninger"
+  },
+  "mc_settings_redeems_desc": {
+    "message": "Inline-besked for channel point indløsninger som 'highlight my message' så du ser hvad folk bruger deres point på."
+  },
+  "mc_settings_prediction_banner": {
+    "message": "predictions"
+  },
+  "mc_settings_prediction_banner_desc": {
+    "message": "Live-banner for channel point predictions med aktuelle odds og tid tilbage til at låse stemmen."
+  },
+  "mc_settings_poll_banner": {
+    "message": "polls"
+  },
+  "mc_settings_poll_banner_desc": {
+    "message": "Banner for aktiv poll med stemmetal og tid tilbage. Stem direkte fra overlay."
+  },
+  "mc_settings_pinned_messages": {
+    "message": "fastgjorte beskeder"
+  },
+  "mc_settings_pinned_messages_desc": {
+    "message": "Sticky banner for moderator-fastgjorte chatbeskeder så du ikke misser regler eller tidsplan."
+  },
+  "mc_settings_dim_timeouts": {
+    "message": "dæmp timeoutede beskeder"
+  },
+  "mc_settings_dim_timeouts_desc": {
+    "message": "Vis timeoutede og bannede beskeder med 50% opacitet i stedet for at skjule dem, FFZ/BTTV-stil. Lader dig se hvad der blev nuked uden at forlade chatten."
+  },
+  "mc_settings_smart_completion": {
+    "message": "smart tab-fuldførelse"
+  },
+  "mc_settings_smart_completion_desc": {
+    "message": "Seneste chattere og emotes fra denne kanal vises først ved tab-fuldførelse. Hurtigere end alfabetisk når chatten kører."
+  },
+  "mc_settings_first_chatter": {
+    "message": "første-besked-glow"
+  },
+  "mc_settings_first_chatter_desc": {
+    "message": "Orange kantmarkør på første besked en bruger sender i hver kanal denne session. Gør nybegyndere synlige i hurtig chat."
+  },
+  "mc_settings_keyword_highlights": {
+    "message": "nøgleords-highlights"
+  },
+  "mc_settings_keyword_highlights_desc": {
+    "message": "Beskeder med nogle af disse ord får en orange tone, som personlig omtale. Et per linje, ufølsomt for store/små bogstaver, hele ord."
+  },
+  "mc_settings_keyword_highlights_placeholder": {
+    "message": "ét nøgleord per linje"
+  },
+  "mc_settings_features": {
+    "message": "funktioner"
+  },
+  "mc_settings_auto_claim": {
+    "message": "auto-claim channel points"
+  },
+  "mc_settings_auto_claim_desc": {
+    "message": "Klikker automatisk på bonus channel points-kisten på Twitch når den dukker op. Gratis point, nul indsats."
+  },
+  "mc_settings_muted_users": {
+    "message": "mutede brugere"
+  },
+  "mc_settings_no_muted": {
+    "message": "ingen mutede brugere"
+  },
+  "mc_settings_unmute": {
+    "message": "fjern mute"
+  },
+  "mc_pred_no_active": {
+    "message": "ingen aktiv prediction"
+  },
+  "mc_pred_new": {
+    "message": "+ ny prediction"
+  },
+  "mc_pred_title_placeholder": {
+    "message": "prediction-titel"
+  },
+  "mc_pred_option1": {
+    "message": "valg 1 (blå)"
+  },
+  "mc_pred_option2": {
+    "message": "valg 2 (lyserød)"
+  },
+  "mc_pred_duration": {
+    "message": "varighed:"
+  },
+  "mc_pred_create": {
+    "message": "opret prediction"
+  },
+  "mc_pred_refunded": {
+    "message": "refunderet"
+  },
+  "mc_pred_locked": {
+    "message": "låst"
+  },
+  "mc_pred_winner": {
+    "message": "vinder"
+  },
+  "mc_pred_won": {
+    "message": " vandt"
+  },
+  "mc_pred_lost": {
+    "message": " tabte"
+  },
+  "mc_pred_lock_betting": {
+    "message": "lås satsninger"
+  },
+  "mc_pred_cancel_refund": {
+    "message": "annuller (refundér)"
+  },
+  "mc_pred_pick_winner": {
+    "message": "vælg vinder"
+  },
+  "mc_pred_pick_winner_your_bet": {
+    "message": "vælg vinder (din satsning)"
+  },
+  "mc_pred_failed_load": {
+    "message": "kunne ikke indlæse predictions"
+  },
+  "mc_pred_bet_own": {
+    "message": "kan ikke satse på egen"
+  },
+  "mc_pred_try_again": {
+    "message": "prøv igen"
+  },
+  "mc_pred_ended": {
+    "message": "prediction afsluttet"
+  },
+  "mc_pred_betting_locked": {
+    "message": "satsninger låst"
+  },
+  "mc_pred_not_enough": {
+    "message": "ikke nok point"
+  },
+  "mc_pred_already_bet": {
+    "message": "allerede satset"
+  },
+  "mc_pred_no_permission": {
+    "message": "ingen tilladelse"
+  },
+  "mc_pred_failed": {
+    "message": "fejlede"
+  },
+  "mc_pred_no_event": {
+    "message": "intet event"
+  },
+  "mc_pred_no_outcome": {
+    "message": "intet udfald"
+  },
+  "mc_pred_closing": {
+    "message": "lukker..."
+  },
+  "mc_pred_you_bet": {
+    "message": "du satsede $POINTS$ på $OUTCOME$ — vælg den faktiske vinder",
+    "placeholders": {
+      "points": {
+        "content": "$1"
+      },
+      "outcome": {
+        "content": "$2"
+      }
+    }
+  },
+  "mc_poll_new": {
+    "message": "+ ny poll"
+  },
+  "mc_poll_question": {
+    "message": "poll-spørgsmål"
+  },
+  "mc_poll_choice": {
+    "message": "valg $NUM$",
+    "placeholders": {
+      "num": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_poll_choice_optional": {
+    "message": "valg $NUM$ (valgfrit)",
+    "placeholders": {
+      "num": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_poll_create": {
+    "message": "opret poll"
+  },
+  "mc_poll_end": {
+    "message": "afslut poll"
+  },
+  "mc_poll_votes": {
+    "message": "$COUNT$ stemmer",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_poll_vote_single": {
+    "message": "$COUNT$ stemme",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_poll_already_active": {
+    "message": "poll allerede aktiv"
+  },
+  "mc_poll_not_logged_in": {
+    "message": "ikke logget ind"
+  },
+  "mc_reward_rewards": {
+    "message": "belønninger"
+  },
+  "mc_reward_none": {
+    "message": "ingen tilgængelige belønninger"
+  },
+  "mc_reward_paused": {
+    "message": "pauset"
+  },
+  "mc_reward_out_of_stock": {
+    "message": "udsolgt"
+  },
+  "mc_reward_cooldown_min": {
+    "message": "$MIN$m cooldown",
+    "placeholders": {
+      "min": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_reward_cooldown_sec": {
+    "message": "$SEC$s cooldown",
+    "placeholders": {
+      "sec": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_reward_enter_text": {
+    "message": "indtast tekst..."
+  },
+  "mc_reward_redeem": {
+    "message": "indløs"
+  },
+  "mc_chat_username_color": {
+    "message": "brugernavnsfarve"
+  },
+  "mc_chat_hex_placeholder": {
+    "message": "#hex"
+  },
+  "mc_chat_modes": {
+    "message": "chat-tilstande"
+  },
+  "mc_chat_emote_only": {
+    "message": "kun emotes"
+  },
+  "mc_chat_follower": {
+    "message": "følger"
+  },
+  "mc_chat_slow": {
+    "message": "langsom"
+  },
+  "mc_chat_sub_only": {
+    "message": "kun subs"
+  },
+  "mc_chat_unique": {
+    "message": "unik"
+  },
+  "mc_chat_hype_train": {
+    "message": "hype train"
+  },
+  "mc_chat_hype_level": {
+    "message": "lvl $LEVEL$",
+    "placeholders": {
+      "level": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_input_send_message": {
+    "message": "send en besked..."
+  },
+  "mc_input_post_heatsync": {
+    "message": "post på heatsync..."
+  },
+  "mc_input_send_channel": {
+    "message": "send til #$CHANNEL$",
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_input_replying_to": {
+    "message": "Svarer @$USER$",
+    "placeholders": {
+      "user": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_input_cancel_reply": {
+    "message": "Annuller svar"
+  },
+  "mc_input_not_logged_in": {
+    "message": "ikke logget ind"
+  },
+  "mc_input_login_kick": {
+    "message": "log først ind på kick.com"
+  },
+  "mc_input_open_kick": {
+    "message": "åbn kick.com i en fane"
+  },
+  "mc_input_kick_not_found": {
+    "message": "Kick-kanal ikke fundet"
+  },
+  "mc_input_send_failed": {
+    "message": "afsendelse mislykkedes"
+  },
+  "mc_input_no_username": {
+    "message": "intet brugernavn fundet"
+  },
+  "mc_input_auth_failed": {
+    "message": "godkendelse mislykkedes — log ind igen på Twitch"
+  },
+  "mc_input_connection_failed": {
+    "message": "forbindelse mislykkedes — prøv igen"
+  },
+  "mc_input_send_failed_retry": {
+    "message": "afsendelse mislykkedes — prøv igen"
+  },
+  "mc_social_back": {
+    "message": "<- tilbage"
+  },
+  "mc_social_no_posts": {
+    "message": "ingen opslag endnu"
+  },
+  "mc_social_loading_feed": {
+    "message": "indlæser feed for fulgte..."
+  },
+  "mc_social_scroll_more": {
+    "message": "scroll for mere..."
+  },
+  "mc_social_no_replies": {
+    "message": "ingen svar endnu"
+  },
+  "mc_social_login_first": {
+    "message": "log først ind på heatsync.org"
+  },
+  "mc_social_login_activity": {
+    "message": "log ind på heatsync.org for at se aktivitet"
+  },
+  "mc_social_failed_feed_auth": {
+    "message": "kunne ikke indlæse feed — log ind på heatsync.org"
+  },
+  "mc_social_failed_feed": {
+    "message": "kunne ikke indlæse feed"
+  },
+  "mc_social_log_in_first": {
+    "message": "log først ind"
+  },
+  "mc_social_slow_down": {
+    "message": "rolig"
+  },
+  "mc_social_duplicate": {
+    "message": "duplikat-besked"
+  },
+  "mc_social_failed_post": {
+    "message": "kunne ikke poste"
+  },
+  "mc_tip_emoji": {
+    "message": "emoji"
+  },
+  "mc_tip_subbed": {
+    "message": "sub hos $CHANNEL$ $TENURE$",
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      },
+      "tenure": {
+        "content": "$2"
+      }
+    }
+  },
+  "mc_tip_following": {
+    "message": "følger $CHANNEL$ $AGE$",
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      },
+      "age": {
+        "content": "$2"
+      }
+    }
+  },
+  "mc_tip_not_following": {
+    "message": "følger ikke $CHANNEL$",
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_tip_followed_by": {
+    "message": "fulgt af $CHANNEL$",
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_tip_followers": {
+    "message": "$COUNT$ følgere",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_whisper_hint": {
+    "message": "/w bruger besked · /dm bruger besked · /r besked"
+  },
+  "mc_whisper_login": {
+    "message": "log ind på heatsync.org for at sende whispers"
+  },
+  "mc_whisper_user_not_found": {
+    "message": "Twitch-bruger \"$USER$\" ikke fundet",
+    "placeholders": {
+      "user": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_whisper_resolve_failed": {
+    "message": "kunne ikke finde Twitch-bruger"
+  },
+  "mc_whisper_hs_not_found": {
+    "message": "heatsync-bruger \"$USER$\" ikke fundet",
+    "placeholders": {
+      "user": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_irc_chat_cleared": {
+    "message": "Chat ryddet"
+  },
+  "mc_irc_msg_deleted": {
+    "message": "Besked fra $USER$ slettet",
+    "placeholders": {
+      "user": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_irc_gift_subs": {
+    "message": "$USER$ gav $AMOUNT$ subs til $CHANNEL$",
+    "placeholders": {
+      "user": {
+        "content": "$1"
+      },
+      "amount": {
+        "content": "$2"
+      },
+      "channel": {
+        "content": "$3"
+      }
+    }
+  },
+  "mc_yt_connected": {
+    "message": "youtube forbundet: $CHANNEL$ — venter på beskeder...",
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_yt_ended": {
+    "message": "youtube-stream afsluttet"
+  },
+  "mc_yt_error": {
+    "message": "youtube forbindelsesfejl"
+  },
+  "mc_emote_search_placeholder": {
+    "message": "søg emotes..."
+  },
+  "mc_emote_no_loaded": {
+    "message": "ingen indlæste emotes"
+  },
+  "mc_emote_in_set": {
+    "message": "i dit set"
+  },
+  "mc_emote_click_add": {
+    "message": "klik for at tilføje"
+  },
+  "mc_emote_blocked": {
+    "message": "blokeret (klik for at fjerne blokering)"
+  },
+  "content_toast_unknown_error": {
+    "message": "Ukendt fejl"
+  },
+  "content_toast_loading_emotes": {
+    "message": "indlæser emotes..."
+  },
+  "content_toast_fetching_emotes": {
+    "message": "henter emotes..."
+  },
+  "content_card_action_ban": {
+    "message": "ban"
+  },
+  "content_card_action_unban": {
+    "message": "unban"
+  },
+  "content_card_action_block": {
+    "message": "bloker"
+  },
+  "btn_close": {
+    "message": "Luk"
+  },
+  "btn_error_channel": {
+    "message": "kunne ikke indlæse kanal-emotes"
+  },
+  "btn_error_global": {
+    "message": "kunne ikke indlæse globale emotes"
+  },
+  "btn_error_inventory": {
+    "message": "kunne ikke indlæse dine emotes"
+  }
+}

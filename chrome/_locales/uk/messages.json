@@ -1,0 +1,1245 @@
+{
+  "manifest_name": {
+    "message": "heatsync"
+  },
+  "manifest_description": {
+    "message": "Кастомні emotes для чатів Twitch, Kick та YouTube. Безмежні слоти, автодоповнення Tab, синхронізація в реальному часі."
+  },
+  "common_loading": {
+    "message": "завантаження..."
+  },
+  "common_extension_updated": {
+    "message": "Розширення оновлено — оновіть сторінку"
+  },
+  "common_no_matches": {
+    "message": "немає результатів"
+  },
+  "common_retry": {
+    "message": "повторити"
+  },
+  "common_cancel": {
+    "message": "скасувати"
+  },
+  "common_save": {
+    "message": "зберегти"
+  },
+  "common_add": {
+    "message": "додати"
+  },
+  "common_edit": {
+    "message": "редагувати"
+  },
+  "common_remove": {
+    "message": "видалити"
+  },
+  "common_done": {
+    "message": "готово"
+  },
+  "common_ended": {
+    "message": "завершено"
+  },
+  "common_vote": {
+    "message": "голосувати"
+  },
+  "common_set": {
+    "message": "встановити"
+  },
+  "common_default": {
+    "message": "за замовчуванням"
+  },
+  "common_mention": {
+    "message": "згадка"
+  },
+  "common_user_not_found": {
+    "message": "користувача не знайдено"
+  },
+  "popup_title": {
+    "message": "heatsync"
+  },
+  "popup_status_checking": {
+    "message": "перевірка..."
+  },
+  "popup_status_connected": {
+    "message": "підключено"
+  },
+  "popup_status_api_error": {
+    "message": "помилка api"
+  },
+  "popup_status_offline": {
+    "message": "офлайн"
+  },
+  "popup_user_stats": {
+    "message": "$EMOTES$ emotes · $GLOBALS$ глобальних",
+    "placeholders": {
+      "emotes": {
+        "content": "$1"
+      },
+      "globals": {
+        "content": "$2"
+      }
+    }
+  },
+  "popup_user_stats_heat": {
+    "message": "$EMOTES$ emotes · $GLOBALS$ глобальних · $HEAT$ heat",
+    "placeholders": {
+      "emotes": {
+        "content": "$1"
+      },
+      "globals": {
+        "content": "$2"
+      },
+      "heat": {
+        "content": "$3"
+      }
+    }
+  },
+  "popup_btn_emotes": {
+    "message": "emotes"
+  },
+  "popup_btn_refresh": {
+    "message": "оновити"
+  },
+  "popup_btn_site": {
+    "message": "сайт"
+  },
+  "popup_btn_done": {
+    "message": "готово"
+  },
+  "popup_btn_logout": {
+    "message": "вийти"
+  },
+  "btn_recent": {
+    "message": "нещодавні"
+  },
+  "popup_login_prompt": {
+    "message": "увійди для синхронізації emotes"
+  },
+  "popup_channel_placeholder": {
+    "message": "канал"
+  },
+  "popup_btn_popout": {
+    "message": "окреме вікно"
+  },
+  "popup_hint": {
+    "message": "налаштування emotes у panel picker чату"
+  },
+  "welcome_title": {
+    "message": "ласкаво просимо в heatsync"
+  },
+  "welcome_tagline": {
+    "message": "твої emotes скрізь, де ти спілкуєшся"
+  },
+  "welcome_step1_title": {
+    "message": "увійди на heatsync.org"
+  },
+  "welcome_step1_desc": {
+    "message": "увійди через Twitch або Kick для створення акаунту"
+  },
+  "welcome_step2_title": {
+    "message": "завантаж свої emotes"
+  },
+  "welcome_step2_desc": {
+    "message": "додай будь-які зображення — без обмеження слотів, усі формати"
+  },
+  "welcome_step3_title": {
+    "message": "використовуй у чаті"
+  },
+  "welcome_step3_desc": {
+    "message": "натисни кнопку heatsync у чаті Twitch/Kick для доступу до своїх emotes"
+  },
+  "welcome_cta": {
+    "message": "почати"
+  },
+  "welcome_privacy": {
+    "message": "приватність"
+  },
+  "welcome_source": {
+    "message": "вихідний код"
+  },
+  "btn_auth_login": {
+    "message": "увійти"
+  },
+  "btn_auth_save_emotes": {
+    "message": "щоб зберегти emotes у сет"
+  },
+  "btn_tab_channel": {
+    "message": "канал"
+  },
+  "btn_tab_global": {
+    "message": "глобальні"
+  },
+  "btn_tab_mine": {
+    "message": "мої"
+  },
+  "btn_tab_emoji": {
+    "message": "emoji"
+  },
+  "btn_search_placeholder": {
+    "message": "пошук emotes..."
+  },
+  "btn_rotate_title": {
+    "message": "повернути позицію смуги вкладок"
+  },
+  "btn_settings_title": {
+    "message": "налаштування"
+  },
+  "btn_no_emotes": {
+    "message": "немає emotes"
+  },
+  "btn_login_save_emotes": {
+    "message": "увійди на heatsync.org для збереження emotes"
+  },
+  "btn_cached": {
+    "message": "з кешу"
+  },
+  "btn_loading_emotes": {
+    "message": "завантаження emotes"
+  },
+  "btn_no_third_party": {
+    "message": "сторонніх emotes не знайдено"
+  },
+  "btn_no_emotes_import": {
+    "message": "немає emotes для імпорту"
+  },
+  "btn_import_count": {
+    "message": "імпортувати $COUNT$ emotes",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "btn_failed_load": {
+    "message": "не вдалося завантажити emotes"
+  },
+  "btn_retry_loading": {
+    "message": "повторити завантаження"
+  },
+  "btn_ctx_block": {
+    "message": "заблокувати emote"
+  },
+  "btn_ctx_unblock": {
+    "message": "розблокувати emote"
+  },
+  "btn_ctx_remove_inventory": {
+    "message": "видалити з інвентарю"
+  },
+  "btn_ctx_add_inventory": {
+    "message": "додати в інвентар"
+  },
+  "btn_ctx_copy_name": {
+    "message": "копіювати ім'я emote"
+  },
+  "btn_ctx_copy_url": {
+    "message": "копіювати url emote"
+  },
+  "btn_toast_unblocked": {
+    "message": "розблоковано"
+  },
+  "btn_toast_blocked": {
+    "message": "заблоковано"
+  },
+  "btn_toast_removed": {
+    "message": "видалено"
+  },
+  "btn_toast_added": {
+    "message": "додано"
+  },
+  "btn_toast_copied": {
+    "message": "скопійовано!"
+  },
+  "btn_settings_tab_completion": {
+    "message": "автодоповнення Tab"
+  },
+  "btn_settings_chat_ui": {
+    "message": "інтерфейс чату"
+  },
+  "btn_settings_input": {
+    "message": "введення"
+  },
+  "btn_settings_wysiwyg": {
+    "message": "wysiwyg-emotes"
+  },
+  "btn_settings_space_after": {
+    "message": "пробіл після emote"
+  },
+  "btn_settings_placeholder_mode": {
+    "message": "режим placeholder"
+  },
+  "btn_settings_placeholder_desc": {
+    "message": "показувати кольорові коробки"
+  },
+  "btn_settings_hide_header": {
+    "message": "сховати заголовок"
+  },
+  "btn_settings_always_popout": {
+    "message": "(завжди ввімкнено в окремому вікні)"
+  },
+  "btn_settings_compact_input": {
+    "message": "компактне введення"
+  },
+  "btn_settings_highlight_mentions": {
+    "message": "виділяти згадки"
+  },
+  "btn_settings_platform_badges": {
+    "message": "значки платформ"
+  },
+  "btn_settings_platform_badges_desc": {
+    "message": "[T] [K] [YT] на повідомленнях"
+  },
+  "btn_settings_cosmetics": {
+    "message": "косметика"
+  },
+  "btn_settings_cosmetics_desc": {
+    "message": "paint + значки 7TV/BTTV/FFZ"
+  },
+  "btn_settings_vi_mode": {
+    "message": "vi режим"
+  },
+  "btn_settings_vi_mode_desc": {
+    "message": "vim комбінації для введення в чат"
+  },
+  "btn_size_1x": {
+    "message": "1x"
+  },
+  "btn_size_2x": {
+    "message": "2x"
+  },
+  "btn_size_4x": {
+    "message": "4x"
+  },
+  "btn_expand": {
+    "message": "розгорнути"
+  },
+  "btn_collapse": {
+    "message": "згорнути"
+  },
+  "btn_block_all": {
+    "message": "заблокувати все"
+  },
+  "btn_show_all": {
+    "message": "показати все"
+  },
+  "btn_click_expand": {
+    "message": "натисни, щоб розгорнути"
+  },
+  "content_toast_failed_add": {
+    "message": "Не вдалося додати $NAME$: $ERROR$",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      },
+      "error": {
+        "content": "$2"
+      }
+    }
+  },
+  "content_toast_failed_remove": {
+    "message": "Не вдалося видалити $NAME$: $ERROR$",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      },
+      "error": {
+        "content": "$2"
+      }
+    }
+  },
+  "content_toast_unblocked": {
+    "message": "Розблоковано $NAME$",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
+  },
+  "content_toast_failed_unblock": {
+    "message": "Не вдалося розблокувати: $ERROR$",
+    "placeholders": {
+      "error": {
+        "content": "$1"
+      }
+    }
+  },
+  "content_toast_removed": {
+    "message": "Видалено $NAME$ з твого сету",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
+  },
+  "content_toast_failed_block": {
+    "message": "Не вдалося заблокувати: $ERROR$",
+    "placeholders": {
+      "error": {
+        "content": "$1"
+      }
+    }
+  },
+  "content_toast_blocked": {
+    "message": "Заблоковано $NAME$",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
+  },
+  "content_toast_unmuted": {
+    "message": "$NAME$ розмьючено",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
+  },
+  "content_toast_muted_24h": {
+    "message": "$NAME$ замьючено на 24г",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
+  },
+  "content_card_follows_you": {
+    "message": "стежить за тобою"
+  },
+  "content_card_subs_to_you": {
+    "message": "субить тебе"
+  },
+  "content_card_you_follow": {
+    "message": "ти стежиш"
+  },
+  "content_card_you_sub": {
+    "message": "ти субиш"
+  },
+  "content_card_you_sub_tier": {
+    "message": "суб T$TIER$",
+    "placeholders": {
+      "tier": {
+        "content": "$1"
+      }
+    }
+  },
+  "content_card_subbed": {
+    "message": "суб на $CHANNEL$ $TENURE$",
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      },
+      "tenure": {
+        "content": "$2"
+      }
+    }
+  },
+  "content_card_following": {
+    "message": "стежить за $CHANNEL$ $AGE$",
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      },
+      "age": {
+        "content": "$2"
+      }
+    }
+  },
+  "content_card_follows_channel": {
+    "message": "стежить за $CHANNEL$",
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      }
+    }
+  },
+  "content_card_not_following": {
+    "message": "не стежить за $CHANNEL$",
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      }
+    }
+  },
+  "content_card_followed_by": {
+    "message": "стежиться $CHANNEL$",
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      }
+    }
+  },
+  "content_card_following_count": {
+    "message": "стежить за $COUNT$",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "content_card_followers": {
+    "message": "$COUNT$ підписників",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "content_card_partner": {
+    "message": "партнер"
+  },
+  "content_card_affiliate": {
+    "message": "партнерка"
+  },
+  "content_card_live": {
+    "message": "У ЕФІРІ $VIEWERS$",
+    "placeholders": {
+      "viewers": {
+        "content": "$1"
+      }
+    }
+  },
+  "content_card_twitch_verified": {
+    "message": "Twitch верифіковано"
+  },
+  "content_card_kick_verified": {
+    "message": "Kick верифіковано"
+  },
+  "content_view_on_heatsync": {
+    "message": "переглянути на heatsync"
+  },
+  "content_in_your_set": {
+    "message": "у твоєму сеті"
+  },
+  "content_click_to_add": {
+    "message": "натисни, щоб додати"
+  },
+  "content_blocked_click_unblock": {
+    "message": "заблоковано (натисни, щоб розблокувати)"
+  },
+  "mc_tab_feed": {
+    "message": "головна"
+  },
+  "mc_tab_whispers": {
+    "message": "шепіт"
+  },
+  "mc_tab_mentions": {
+    "message": "згадки"
+  },
+  "mc_tab_activity": {
+    "message": "активність"
+  },
+  "mc_tab_live": {
+    "message": "ефір"
+  },
+  "mc_tab_discover": {
+    "message": "огляд"
+  },
+  "mc_tab_pinned": {
+    "message": "збережене"
+  },
+  "mc_tab_live_channel": {
+    "message": "ефір · $CHANNEL$",
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_btn_rotate_tabs": {
+    "message": "повернути вкладки (T)"
+  },
+  "mc_btn_rotate_chat": {
+    "message": "повернути панель чату (C)"
+  },
+  "mc_btn_smaller_text": {
+    "message": "менший текст"
+  },
+  "mc_btn_larger_text": {
+    "message": "більший текст"
+  },
+  "mc_btn_settings": {
+    "message": "налаштування"
+  },
+  "mc_new_messages": {
+    "message": "$COUNT$ нових",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_resume": {
+    "message": "продовжити"
+  },
+  "mc_no_messages": {
+    "message": "ще немає повідомлень"
+  },
+  "mc_no_activity": {
+    "message": "ще немає активності"
+  },
+  "mc_add_channel": {
+    "message": "додати канал"
+  },
+  "mc_enter_platform": {
+    "message": "введи хоча б одну платформу"
+  },
+  "mc_username_placeholder": {
+    "message": "користувач"
+  },
+  "mc_username_url_placeholder": {
+    "message": "користувач або url"
+  },
+  "mc_reserved_name": {
+    "message": "зарезервована назва"
+  },
+  "mc_channel_exists": {
+    "message": "канал уже додано"
+  },
+  "mc_twitch_exists": {
+    "message": "Twitch канал уже додано"
+  },
+  "mc_kick_exists": {
+    "message": "Kick канал уже додано"
+  },
+  "mc_edit_channel": {
+    "message": "редагувати $CHANNEL$",
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_no_channel_detected": {
+    "message": "канал не виявлено"
+  },
+  "mc_settings_display": {
+    "message": "відображення"
+  },
+  "mc_settings_emote_size": {
+    "message": "розмір emote"
+  },
+  "mc_settings_input_preview": {
+    "message": "перегляд введення"
+  },
+  "mc_settings_clickable_links": {
+    "message": "клікабельні посилання"
+  },
+  "mc_settings_vi_mode": {
+    "message": "vi режим"
+  },
+  "mc_settings_zebra": {
+    "message": "зебра-смуги"
+  },
+  "mc_settings_auto_hide": {
+    "message": "автоприховування введення"
+  },
+  "mc_settings_timestamps": {
+    "message": "позначки часу"
+  },
+  "mc_settings_avatars": {
+    "message": "аватари"
+  },
+  "mc_settings_emote_size_desc": {
+    "message": "Множник роздільності для emotes у чаті. 1x — чітко й компактно, 2x — оптимально для більшості моніторів, 4x — для тих, хто хоче бачити кожен піксель."
+  },
+  "mc_settings_input_preview_desc": {
+    "message": "Показує emotes як зображення прямо в полі введення, поки набираєш, замість текстових імен. Що бачиш — те й надсилаєш."
+  },
+  "mc_settings_clickable_links_desc": {
+    "message": "Перетворює URL у повідомленнях на клікабельні посилання. Вимкни, якщо віддаєш перевагу копі-пасту або не довіряєш незнайомцям в інтернеті."
+  },
+  "mc_settings_vi_mode_desc": {
+    "message": "Vim-стиль клавіш для навігації у чаті. j/k прокрутка, g/G верх/низ, / пошук. Для тих, хто вважає, що миша — для casuals."
+  },
+  "mc_settings_zebra_desc": {
+    "message": "Чергуюче затінення рядків у чаті. Полегшує стеження за довгими повідомленнями, особливо у швидкому чаті."
+  },
+  "mc_settings_auto_hide_desc": {
+    "message": "Ховає панель введення, коли ти не пишеш. Натисни або почни писати, щоб повернути її. Максимізує область перегляду чату."
+  },
+  "mc_settings_timestamps_desc": {
+    "message": "Показує час відправлення кожного повідомлення поряд з ім'ям. Корисно, щоб дізнатися, що відбулося, поки ти був AFK."
+  },
+  "mc_settings_avatars_desc": {
+    "message": "Показує фото профілю поряд з іменами у чаті. Полегшує візуальне розпізнавання постійних, коштує трохи вертикального простору."
+  },
+  "mc_settings_inline_notifs": {
+    "message": "вбудовані сповіщення"
+  },
+  "mc_settings_notif_op": {
+    "message": "[OP] оригінальні пости"
+  },
+  "mc_settings_notif_op_reply": {
+    "message": "[OP] OP відповідає у власній темі"
+  },
+  "mc_settings_notif_re": {
+    "message": "[RE] відповіді"
+  },
+  "mc_settings_notif_dm": {
+    "message": "[DM] шепіт і DM"
+  },
+  "mc_settings_notif_op_desc": {
+    "message": "Сповіщення в активній вкладці чату, коли хтось створює новий пост у feed."
+  },
+  "mc_settings_notif_op_reply_desc": {
+    "message": "Сповіщення, коли автор оригіналу відповідає у власній темі."
+  },
+  "mc_settings_notif_re_desc": {
+    "message": "Сповіщення для кожної відповіді в будь-якій темі feed."
+  },
+  "mc_settings_notif_dm_desc": {
+    "message": "Сповіщення, коли отримуєш шепіт або DM."
+  },
+  "mc_settings_twitch_events": {
+    "message": "події Twitch"
+  },
+  "mc_settings_raids": {
+    "message": "рейди"
+  },
+  "mc_settings_raids_desc": {
+    "message": "Inline-банер при вхідному або вихідному рейді, з кількістю глядачів і каналом-джерелом. Дозволяє переїхати на наступну трансляцію."
+  },
+  "mc_settings_hype_trains": {
+    "message": "hype trains"
+  },
+  "mc_settings_hype_trains_desc": {
+    "message": "Live-банер прогресу hype train з рівнем і таймером внеску. За замовчуванням вимкнено, бо на великих каналах спрацьовує постійно."
+  },
+  "mc_settings_gift_subs": {
+    "message": "подаровані subs"
+  },
+  "mc_settings_gift_subs_desc": {
+    "message": "Банер для масових подарованих subs та індивідуальних подарунків, з дарувальником, отримувачем і tier."
+  },
+  "mc_settings_redeems": {
+    "message": "обміни channel points"
+  },
+  "mc_settings_redeems_desc": {
+    "message": "Inline-сповіщення про обмін channel points на 'highlight my message', щоб ти бачив, на що люди витрачають поінти."
+  },
+  "mc_settings_prediction_banner": {
+    "message": "передбачення"
+  },
+  "mc_settings_prediction_banner_desc": {
+    "message": "Live-банер передбачення channel points з поточними коефіцієнтами і часом до закриття."
+  },
+  "mc_settings_poll_banner": {
+    "message": "опитування"
+  },
+  "mc_settings_poll_banner_desc": {
+    "message": "Банер активного опитування з кількістю голосів і часом, що залишився. Голосуй прямо з overlay."
+  },
+  "mc_settings_pinned_messages": {
+    "message": "закріплені повідомлення"
+  },
+  "mc_settings_pinned_messages_desc": {
+    "message": "Sticky-банер для повідомлень, закріплених модераторами, щоб не пропустити правила або розклад."
+  },
+  "mc_settings_dim_timeouts": {
+    "message": "затемнити таймаут-повідомлення"
+  },
+  "mc_settings_dim_timeouts_desc": {
+    "message": "Показує повідомлення з таймаутом і бан з 50% прозорістю замість приховування, у стилі FFZ/BTTV. Дозволяє бачити, що видалили, не виходячи з чату."
+  },
+  "mc_settings_smart_completion": {
+    "message": "розумне автодоповнення Tab"
+  },
+  "mc_settings_smart_completion_desc": {
+    "message": "Останні чатери та emotes цього каналу з'являються першими при автодоповненні. Швидше за алфавітне, коли чат летить."
+  },
+  "mc_settings_first_chatter": {
+    "message": "сяйво першого повідомлення"
+  },
+  "mc_settings_first_chatter_desc": {
+    "message": "Помаранчева мітка на краю першого повідомлення, яке користувач надсилає в кожному каналі за сесію. Допомагає помітити нових у швидкому чаті."
+  },
+  "mc_settings_keyword_highlights": {
+    "message": "виділення ключових слів"
+  },
+  "mc_settings_keyword_highlights_desc": {
+    "message": "Повідомлення з будь-яким із цих слів отримують помаранчевий відтінок, як особиста згадка. По одному в рядку, регістр не важливий, цілі слова."
+  },
+  "mc_settings_keyword_highlights_placeholder": {
+    "message": "одне слово в рядку"
+  },
+  "mc_settings_features": {
+    "message": "функції"
+  },
+  "mc_settings_auto_claim": {
+    "message": "авто-збір channel points"
+  },
+  "mc_settings_auto_claim_desc": {
+    "message": "Автоматично натискає на скриньку бонусних channel points у Twitch, коли вона з'являється. Безкоштовні поінти, нульові зусилля."
+  },
+  "mc_settings_muted_users": {
+    "message": "замьючені користувачі"
+  },
+  "mc_settings_no_muted": {
+    "message": "немає замьючених користувачів"
+  },
+  "mc_settings_unmute": {
+    "message": "розмьютити"
+  },
+  "mc_pred_no_active": {
+    "message": "немає активного передбачення"
+  },
+  "mc_pred_new": {
+    "message": "+ нове передбачення"
+  },
+  "mc_pred_title_placeholder": {
+    "message": "заголовок передбачення"
+  },
+  "mc_pred_option1": {
+    "message": "варіант 1 (синій)"
+  },
+  "mc_pred_option2": {
+    "message": "варіант 2 (рожевий)"
+  },
+  "mc_pred_duration": {
+    "message": "тривалість:"
+  },
+  "mc_pred_create": {
+    "message": "створити передбачення"
+  },
+  "mc_pred_refunded": {
+    "message": "повернено"
+  },
+  "mc_pred_locked": {
+    "message": "заблоковано"
+  },
+  "mc_pred_winner": {
+    "message": "переможець"
+  },
+  "mc_pred_won": {
+    "message": " переміг"
+  },
+  "mc_pred_lost": {
+    "message": " програв"
+  },
+  "mc_pred_lock_betting": {
+    "message": "закрити ставки"
+  },
+  "mc_pred_cancel_refund": {
+    "message": "скасувати (повернути)"
+  },
+  "mc_pred_pick_winner": {
+    "message": "обрати переможця"
+  },
+  "mc_pred_pick_winner_your_bet": {
+    "message": "обрати переможця (твоя ставка)"
+  },
+  "mc_pred_failed_load": {
+    "message": "не вдалося завантажити передбачення"
+  },
+  "mc_pred_bet_own": {
+    "message": "не можна ставити на своє"
+  },
+  "mc_pred_try_again": {
+    "message": "спробуй ще"
+  },
+  "mc_pred_ended": {
+    "message": "передбачення завершилось"
+  },
+  "mc_pred_betting_locked": {
+    "message": "ставки закриті"
+  },
+  "mc_pred_not_enough": {
+    "message": "недостатньо поінтів"
+  },
+  "mc_pred_already_bet": {
+    "message": "вже зробив ставку"
+  },
+  "mc_pred_no_permission": {
+    "message": "немає дозволу"
+  },
+  "mc_pred_failed": {
+    "message": "збій"
+  },
+  "mc_pred_no_event": {
+    "message": "немає події"
+  },
+  "mc_pred_no_outcome": {
+    "message": "немає результату"
+  },
+  "mc_pred_closing": {
+    "message": "закриваю..."
+  },
+  "mc_pred_you_bet": {
+    "message": "ти поставив $POINTS$ на $OUTCOME$ — обери справжнього переможця",
+    "placeholders": {
+      "points": {
+        "content": "$1"
+      },
+      "outcome": {
+        "content": "$2"
+      }
+    }
+  },
+  "mc_poll_new": {
+    "message": "+ нове опитування"
+  },
+  "mc_poll_question": {
+    "message": "питання опитування"
+  },
+  "mc_poll_choice": {
+    "message": "варіант $NUM$",
+    "placeholders": {
+      "num": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_poll_choice_optional": {
+    "message": "варіант $NUM$ (необов'язково)",
+    "placeholders": {
+      "num": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_poll_create": {
+    "message": "створити опитування"
+  },
+  "mc_poll_end": {
+    "message": "завершити опитування"
+  },
+  "mc_poll_votes": {
+    "message": "$COUNT$ голосів",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_poll_vote_single": {
+    "message": "$COUNT$ голос",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_poll_already_active": {
+    "message": "опитування вже активне"
+  },
+  "mc_poll_not_logged_in": {
+    "message": "не виконано вхід"
+  },
+  "mc_reward_rewards": {
+    "message": "нагороди"
+  },
+  "mc_reward_none": {
+    "message": "немає доступних нагород"
+  },
+  "mc_reward_paused": {
+    "message": "призупинено"
+  },
+  "mc_reward_out_of_stock": {
+    "message": "закінчилось"
+  },
+  "mc_reward_cooldown_min": {
+    "message": "cooldown $MIN$хв",
+    "placeholders": {
+      "min": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_reward_cooldown_sec": {
+    "message": "cooldown $SEC$с",
+    "placeholders": {
+      "sec": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_reward_enter_text": {
+    "message": "введи текст..."
+  },
+  "mc_reward_redeem": {
+    "message": "обміняти"
+  },
+  "mc_chat_username_color": {
+    "message": "колір імені"
+  },
+  "mc_chat_hex_placeholder": {
+    "message": "#hex"
+  },
+  "mc_chat_modes": {
+    "message": "режими чату"
+  },
+  "mc_chat_emote_only": {
+    "message": "лише emotes"
+  },
+  "mc_chat_follower": {
+    "message": "тільки фоловери"
+  },
+  "mc_chat_slow": {
+    "message": "повільний"
+  },
+  "mc_chat_sub_only": {
+    "message": "лише subs"
+  },
+  "mc_chat_unique": {
+    "message": "унікальний"
+  },
+  "mc_chat_hype_train": {
+    "message": "hype train"
+  },
+  "mc_chat_hype_level": {
+    "message": "рів $LEVEL$",
+    "placeholders": {
+      "level": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_input_send_message": {
+    "message": "надіслати повідомлення..."
+  },
+  "mc_input_post_heatsync": {
+    "message": "опублікуй у heatsync..."
+  },
+  "mc_input_send_channel": {
+    "message": "надіслати на #$CHANNEL$",
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_input_replying_to": {
+    "message": "Відповідь @$USER$",
+    "placeholders": {
+      "user": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_input_cancel_reply": {
+    "message": "Скасувати відповідь"
+  },
+  "mc_input_not_logged_in": {
+    "message": "не виконано вхід"
+  },
+  "mc_input_login_kick": {
+    "message": "спочатку увійди на kick.com"
+  },
+  "mc_input_open_kick": {
+    "message": "відкрий kick.com у вкладці"
+  },
+  "mc_input_kick_not_found": {
+    "message": "Kick канал не знайдено"
+  },
+  "mc_input_send_failed": {
+    "message": "не вдалося надіслати"
+  },
+  "mc_input_no_username": {
+    "message": "ім'я не виявлено"
+  },
+  "mc_input_auth_failed": {
+    "message": "помилка авторизації — увійди в Twitch заново"
+  },
+  "mc_input_connection_failed": {
+    "message": "збій підключення — спробуй ще"
+  },
+  "mc_input_send_failed_retry": {
+    "message": "не вдалося надіслати — спробуй ще"
+  },
+  "mc_social_back": {
+    "message": "<- назад"
+  },
+  "mc_social_no_posts": {
+    "message": "ще немає постів"
+  },
+  "mc_social_loading_feed": {
+    "message": "завантаження feed підписок..."
+  },
+  "mc_social_scroll_more": {
+    "message": "прокрути для більшого..."
+  },
+  "mc_social_no_replies": {
+    "message": "ще немає відповідей"
+  },
+  "mc_social_login_first": {
+    "message": "спочатку увійди на heatsync.org"
+  },
+  "mc_social_login_activity": {
+    "message": "увійди на heatsync.org, щоб бачити активність"
+  },
+  "mc_social_failed_feed_auth": {
+    "message": "не вдалося завантажити feed — увійди на heatsync.org"
+  },
+  "mc_social_failed_feed": {
+    "message": "не вдалося завантажити feed"
+  },
+  "mc_social_log_in_first": {
+    "message": "спочатку увійди"
+  },
+  "mc_social_slow_down": {
+    "message": "повільніше"
+  },
+  "mc_social_duplicate": {
+    "message": "дубль повідомлення"
+  },
+  "mc_social_failed_post": {
+    "message": "не вдалося опублікувати"
+  },
+  "mc_tip_emoji": {
+    "message": "emoji"
+  },
+  "mc_tip_subbed": {
+    "message": "суб на $CHANNEL$ $TENURE$",
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      },
+      "tenure": {
+        "content": "$2"
+      }
+    }
+  },
+  "mc_tip_following": {
+    "message": "стежить за $CHANNEL$ $AGE$",
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      },
+      "age": {
+        "content": "$2"
+      }
+    }
+  },
+  "mc_tip_not_following": {
+    "message": "не стежить за $CHANNEL$",
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_tip_followed_by": {
+    "message": "стежиться $CHANNEL$",
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_tip_followers": {
+    "message": "$COUNT$ підписників",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_whisper_hint": {
+    "message": "/w користувач повідомлення · /dm користувач повідомлення · /r повідомлення"
+  },
+  "mc_whisper_login": {
+    "message": "увійди на heatsync.org для надсилання шепоту"
+  },
+  "mc_whisper_user_not_found": {
+    "message": "Twitch користувач \"$USER$\" не знайдений",
+    "placeholders": {
+      "user": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_whisper_resolve_failed": {
+    "message": "не вдалося знайти Twitch користувача"
+  },
+  "mc_whisper_hs_not_found": {
+    "message": "heatsync користувач \"$USER$\" не знайдений",
+    "placeholders": {
+      "user": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_irc_chat_cleared": {
+    "message": "Чат очищено"
+  },
+  "mc_irc_msg_deleted": {
+    "message": "Повідомлення від $USER$ видалено",
+    "placeholders": {
+      "user": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_irc_gift_subs": {
+    "message": "$USER$ подарував $AMOUNT$ subs каналу $CHANNEL$",
+    "placeholders": {
+      "user": {
+        "content": "$1"
+      },
+      "amount": {
+        "content": "$2"
+      },
+      "channel": {
+        "content": "$3"
+      }
+    }
+  },
+  "mc_yt_connected": {
+    "message": "youtube підключено: $CHANNEL$ — чекаю повідомлення...",
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_yt_ended": {
+    "message": "youtube трансляція завершена"
+  },
+  "mc_yt_error": {
+    "message": "помилка підключення youtube"
+  },
+  "mc_emote_search_placeholder": {
+    "message": "пошук emotes..."
+  },
+  "mc_emote_no_loaded": {
+    "message": "emotes не завантажено"
+  },
+  "mc_emote_in_set": {
+    "message": "у твоєму сеті"
+  },
+  "mc_emote_click_add": {
+    "message": "натисни для додавання"
+  },
+  "mc_emote_blocked": {
+    "message": "заблоковано (натисни для розблокування)"
+  },
+  "content_toast_unknown_error": {
+    "message": "Невідома помилка"
+  },
+  "content_toast_loading_emotes": {
+    "message": "завантаження emotes..."
+  },
+  "content_toast_fetching_emotes": {
+    "message": "отримання emotes..."
+  },
+  "content_card_action_ban": {
+    "message": "ban"
+  },
+  "content_card_action_unban": {
+    "message": "unban"
+  },
+  "content_card_action_block": {
+    "message": "блокувати"
+  },
+  "btn_close": {
+    "message": "Закрити"
+  },
+  "btn_error_channel": {
+    "message": "не вдалося завантажити emotes каналу"
+  },
+  "btn_error_global": {
+    "message": "не вдалося завантажити глобальні emotes"
+  },
+  "btn_error_inventory": {
+    "message": "не вдалося завантажити твої emotes"
+  }
+}

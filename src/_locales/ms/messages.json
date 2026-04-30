@@ -1,0 +1,1245 @@
+{
+  "manifest_name": {
+    "message": "heatsync"
+  },
+  "manifest_description": {
+    "message": "Emote tersuai untuk chat Twitch, Kick dan YouTube. Slot tanpa had, autolengkap dengan tab, penyegerakan masa nyata."
+  },
+  "common_loading": {
+    "message": "memuat..."
+  },
+  "common_extension_updated": {
+    "message": "Sambungan dikemas kini — muat semula halaman"
+  },
+  "common_no_matches": {
+    "message": "tiada padanan"
+  },
+  "common_retry": {
+    "message": "cuba lagi"
+  },
+  "common_cancel": {
+    "message": "batal"
+  },
+  "common_save": {
+    "message": "simpan"
+  },
+  "common_add": {
+    "message": "tambah"
+  },
+  "common_edit": {
+    "message": "sunting"
+  },
+  "common_remove": {
+    "message": "buang"
+  },
+  "common_done": {
+    "message": "siap"
+  },
+  "common_ended": {
+    "message": "tamat"
+  },
+  "common_vote": {
+    "message": "undi"
+  },
+  "common_set": {
+    "message": "tetapkan"
+  },
+  "common_default": {
+    "message": "lalai"
+  },
+  "common_mention": {
+    "message": "sebutan"
+  },
+  "common_user_not_found": {
+    "message": "pengguna tidak dijumpai"
+  },
+  "popup_title": {
+    "message": "heatsync"
+  },
+  "popup_status_checking": {
+    "message": "menyemak..."
+  },
+  "popup_status_connected": {
+    "message": "tersambung"
+  },
+  "popup_status_api_error": {
+    "message": "ralat api"
+  },
+  "popup_status_offline": {
+    "message": "luar talian"
+  },
+  "popup_user_stats": {
+    "message": "$EMOTES$ emote · $GLOBALS$ global",
+    "placeholders": {
+      "emotes": {
+        "content": "$1"
+      },
+      "globals": {
+        "content": "$2"
+      }
+    }
+  },
+  "popup_user_stats_heat": {
+    "message": "$EMOTES$ emote · $GLOBALS$ global · $HEAT$ heat",
+    "placeholders": {
+      "emotes": {
+        "content": "$1"
+      },
+      "globals": {
+        "content": "$2"
+      },
+      "heat": {
+        "content": "$3"
+      }
+    }
+  },
+  "popup_btn_emotes": {
+    "message": "emote"
+  },
+  "popup_btn_refresh": {
+    "message": "muat semula"
+  },
+  "popup_btn_site": {
+    "message": "laman"
+  },
+  "popup_btn_done": {
+    "message": "siap"
+  },
+  "popup_btn_logout": {
+    "message": "log keluar"
+  },
+  "btn_recent": {
+    "message": "terkini"
+  },
+  "popup_login_prompt": {
+    "message": "log masuk untuk segerak emote"
+  },
+  "popup_channel_placeholder": {
+    "message": "saluran"
+  },
+  "popup_btn_popout": {
+    "message": "tetingkap berasingan"
+  },
+  "popup_hint": {
+    "message": "tetapan emote dalam panel picker chat"
+  },
+  "welcome_title": {
+    "message": "selamat datang ke heatsync"
+  },
+  "welcome_tagline": {
+    "message": "emote anda, di mana sahaja anda chat"
+  },
+  "welcome_step1_title": {
+    "message": "log masuk di heatsync.org"
+  },
+  "welcome_step1_desc": {
+    "message": "log masuk dengan Twitch atau Kick untuk buat akaun"
+  },
+  "welcome_step2_title": {
+    "message": "muat naik emote anda"
+  },
+  "welcome_step2_desc": {
+    "message": "tambah apa-apa imej — tiada had slot, semua format disokong"
+  },
+  "welcome_step3_title": {
+    "message": "guna dalam chat"
+  },
+  "welcome_step3_desc": {
+    "message": "klik butang heatsync di chat Twitch/Kick untuk akses emote anda"
+  },
+  "welcome_cta": {
+    "message": "mula"
+  },
+  "welcome_privacy": {
+    "message": "privasi"
+  },
+  "welcome_source": {
+    "message": "kod sumber"
+  },
+  "btn_auth_login": {
+    "message": "log masuk"
+  },
+  "btn_auth_save_emotes": {
+    "message": "untuk simpan emote dalam set"
+  },
+  "btn_tab_channel": {
+    "message": "saluran"
+  },
+  "btn_tab_global": {
+    "message": "global"
+  },
+  "btn_tab_mine": {
+    "message": "saya"
+  },
+  "btn_tab_emoji": {
+    "message": "emoji"
+  },
+  "btn_search_placeholder": {
+    "message": "cari emote..."
+  },
+  "btn_rotate_title": {
+    "message": "putar kedudukan bar tab"
+  },
+  "btn_settings_title": {
+    "message": "tetapan"
+  },
+  "btn_no_emotes": {
+    "message": "tiada emote"
+  },
+  "btn_login_save_emotes": {
+    "message": "log masuk di heatsync.org untuk simpan emote"
+  },
+  "btn_cached": {
+    "message": "cache"
+  },
+  "btn_loading_emotes": {
+    "message": "memuat emote"
+  },
+  "btn_no_third_party": {
+    "message": "tiada emote pihak ketiga dijumpai"
+  },
+  "btn_no_emotes_import": {
+    "message": "tiada emote untuk diimport"
+  },
+  "btn_import_count": {
+    "message": "import $COUNT$ emote",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "btn_failed_load": {
+    "message": "gagal memuat emote"
+  },
+  "btn_retry_loading": {
+    "message": "cuba muat lagi"
+  },
+  "btn_ctx_block": {
+    "message": "sekat emote"
+  },
+  "btn_ctx_unblock": {
+    "message": "buka sekatan emote"
+  },
+  "btn_ctx_remove_inventory": {
+    "message": "buang dari inventori"
+  },
+  "btn_ctx_add_inventory": {
+    "message": "tambah ke inventori"
+  },
+  "btn_ctx_copy_name": {
+    "message": "salin nama emote"
+  },
+  "btn_ctx_copy_url": {
+    "message": "salin url emote"
+  },
+  "btn_toast_unblocked": {
+    "message": "sekatan dibuka"
+  },
+  "btn_toast_blocked": {
+    "message": "disekat"
+  },
+  "btn_toast_removed": {
+    "message": "dibuang"
+  },
+  "btn_toast_added": {
+    "message": "ditambah"
+  },
+  "btn_toast_copied": {
+    "message": "disalin!"
+  },
+  "btn_settings_tab_completion": {
+    "message": "autolengkap tab"
+  },
+  "btn_settings_chat_ui": {
+    "message": "antara muka chat"
+  },
+  "btn_settings_input": {
+    "message": "input"
+  },
+  "btn_settings_wysiwyg": {
+    "message": "emote wysiwyg"
+  },
+  "btn_settings_space_after": {
+    "message": "ruang selepas emote"
+  },
+  "btn_settings_placeholder_mode": {
+    "message": "mod placeholder"
+  },
+  "btn_settings_placeholder_desc": {
+    "message": "tunjuk kotak warna"
+  },
+  "btn_settings_hide_header": {
+    "message": "sembunyi pengepala"
+  },
+  "btn_settings_always_popout": {
+    "message": "(sentiasa hidup di tetingkap berasingan)"
+  },
+  "btn_settings_compact_input": {
+    "message": "input padat"
+  },
+  "btn_settings_highlight_mentions": {
+    "message": "serlah sebutan"
+  },
+  "btn_settings_platform_badges": {
+    "message": "lencana platform"
+  },
+  "btn_settings_platform_badges_desc": {
+    "message": "[T] [K] [YT] pada mesej"
+  },
+  "btn_settings_cosmetics": {
+    "message": "kosmetik"
+  },
+  "btn_settings_cosmetics_desc": {
+    "message": "paint + lencana 7TV/BTTV/FFZ"
+  },
+  "btn_settings_vi_mode": {
+    "message": "mod vi"
+  },
+  "btn_settings_vi_mode_desc": {
+    "message": "pintasan vim untuk input chat"
+  },
+  "btn_size_1x": {
+    "message": "1x"
+  },
+  "btn_size_2x": {
+    "message": "2x"
+  },
+  "btn_size_4x": {
+    "message": "4x"
+  },
+  "btn_expand": {
+    "message": "kembang"
+  },
+  "btn_collapse": {
+    "message": "runtuh"
+  },
+  "btn_block_all": {
+    "message": "sekat semua"
+  },
+  "btn_show_all": {
+    "message": "tunjuk semua"
+  },
+  "btn_click_expand": {
+    "message": "klik untuk kembang"
+  },
+  "content_toast_failed_add": {
+    "message": "Gagal tambah $NAME$: $ERROR$",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      },
+      "error": {
+        "content": "$2"
+      }
+    }
+  },
+  "content_toast_failed_remove": {
+    "message": "Gagal buang $NAME$: $ERROR$",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      },
+      "error": {
+        "content": "$2"
+      }
+    }
+  },
+  "content_toast_unblocked": {
+    "message": "$NAME$ sekatan dibuka",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
+  },
+  "content_toast_failed_unblock": {
+    "message": "Gagal buka sekatan: $ERROR$",
+    "placeholders": {
+      "error": {
+        "content": "$1"
+      }
+    }
+  },
+  "content_toast_removed": {
+    "message": "$NAME$ dibuang dari set anda",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
+  },
+  "content_toast_failed_block": {
+    "message": "Gagal sekat: $ERROR$",
+    "placeholders": {
+      "error": {
+        "content": "$1"
+      }
+    }
+  },
+  "content_toast_blocked": {
+    "message": "$NAME$ disekat",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
+  },
+  "content_toast_unmuted": {
+    "message": "$NAME$ tidak lagi disenyapkan",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
+  },
+  "content_toast_muted_24h": {
+    "message": "$NAME$ disenyapkan 24 jam",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
+  },
+  "content_card_follows_you": {
+    "message": "ikut anda"
+  },
+  "content_card_subs_to_you": {
+    "message": "sub anda"
+  },
+  "content_card_you_follow": {
+    "message": "anda ikut"
+  },
+  "content_card_you_sub": {
+    "message": "anda sub"
+  },
+  "content_card_you_sub_tier": {
+    "message": "sub T$TIER$",
+    "placeholders": {
+      "tier": {
+        "content": "$1"
+      }
+    }
+  },
+  "content_card_subbed": {
+    "message": "sub $CHANNEL$ $TENURE$",
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      },
+      "tenure": {
+        "content": "$2"
+      }
+    }
+  },
+  "content_card_following": {
+    "message": "ikut $CHANNEL$ $AGE$",
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      },
+      "age": {
+        "content": "$2"
+      }
+    }
+  },
+  "content_card_follows_channel": {
+    "message": "ikut $CHANNEL$",
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      }
+    }
+  },
+  "content_card_not_following": {
+    "message": "tidak ikut $CHANNEL$",
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      }
+    }
+  },
+  "content_card_followed_by": {
+    "message": "diikuti oleh $CHANNEL$",
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      }
+    }
+  },
+  "content_card_following_count": {
+    "message": "ikut $COUNT$",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "content_card_followers": {
+    "message": "$COUNT$ pengikut",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "content_card_partner": {
+    "message": "rakan kongsi"
+  },
+  "content_card_affiliate": {
+    "message": "affiliate"
+  },
+  "content_card_live": {
+    "message": "LIVE $VIEWERS$",
+    "placeholders": {
+      "viewers": {
+        "content": "$1"
+      }
+    }
+  },
+  "content_card_twitch_verified": {
+    "message": "Twitch disahkan"
+  },
+  "content_card_kick_verified": {
+    "message": "Kick disahkan"
+  },
+  "content_view_on_heatsync": {
+    "message": "lihat di heatsync"
+  },
+  "content_in_your_set": {
+    "message": "dalam set anda"
+  },
+  "content_click_to_add": {
+    "message": "klik untuk tambah"
+  },
+  "content_blocked_click_unblock": {
+    "message": "disekat (klik untuk buka)"
+  },
+  "mc_tab_feed": {
+    "message": "utama"
+  },
+  "mc_tab_whispers": {
+    "message": "whispers"
+  },
+  "mc_tab_mentions": {
+    "message": "sebutan"
+  },
+  "mc_tab_activity": {
+    "message": "aktiviti"
+  },
+  "mc_tab_live": {
+    "message": "live"
+  },
+  "mc_tab_discover": {
+    "message": "terokai"
+  },
+  "mc_tab_pinned": {
+    "message": "disimpan"
+  },
+  "mc_tab_live_channel": {
+    "message": "live · $CHANNEL$",
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_btn_rotate_tabs": {
+    "message": "putar tab (T)"
+  },
+  "mc_btn_rotate_chat": {
+    "message": "putar panel chat (C)"
+  },
+  "mc_btn_smaller_text": {
+    "message": "teks lebih kecil"
+  },
+  "mc_btn_larger_text": {
+    "message": "teks lebih besar"
+  },
+  "mc_btn_settings": {
+    "message": "tetapan"
+  },
+  "mc_new_messages": {
+    "message": "$COUNT$ baru",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_resume": {
+    "message": "sambung"
+  },
+  "mc_no_messages": {
+    "message": "belum ada mesej"
+  },
+  "mc_no_activity": {
+    "message": "belum ada aktiviti"
+  },
+  "mc_add_channel": {
+    "message": "tambah saluran"
+  },
+  "mc_enter_platform": {
+    "message": "masukkan sekurang-kurangnya satu platform"
+  },
+  "mc_username_placeholder": {
+    "message": "nama pengguna"
+  },
+  "mc_username_url_placeholder": {
+    "message": "nama pengguna atau url"
+  },
+  "mc_reserved_name": {
+    "message": "nama dikhaskan"
+  },
+  "mc_channel_exists": {
+    "message": "saluran sudah wujud"
+  },
+  "mc_twitch_exists": {
+    "message": "saluran Twitch sudah ditambah"
+  },
+  "mc_kick_exists": {
+    "message": "saluran Kick sudah ditambah"
+  },
+  "mc_edit_channel": {
+    "message": "sunting $CHANNEL$",
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_no_channel_detected": {
+    "message": "tiada saluran dikesan"
+  },
+  "mc_settings_display": {
+    "message": "paparan"
+  },
+  "mc_settings_emote_size": {
+    "message": "saiz emote"
+  },
+  "mc_settings_input_preview": {
+    "message": "pratonton input"
+  },
+  "mc_settings_clickable_links": {
+    "message": "pautan boleh klik"
+  },
+  "mc_settings_vi_mode": {
+    "message": "mod vi"
+  },
+  "mc_settings_zebra": {
+    "message": "jalur zebra"
+  },
+  "mc_settings_auto_hide": {
+    "message": "auto-sembunyi input"
+  },
+  "mc_settings_timestamps": {
+    "message": "cap masa"
+  },
+  "mc_settings_avatars": {
+    "message": "avatar"
+  },
+  "mc_settings_emote_size_desc": {
+    "message": "Pendarab resolusi untuk emote dalam chat. 1x tajam dan padat, 2x tempat manis untuk kebanyakan paparan, 4x untuk yang mahu lihat setiap piksel."
+  },
+  "mc_settings_input_preview_desc": {
+    "message": "Tunjuk emote sebagai imej terus dalam kotak input semasa anda menaip, bukan nama teks. Apa yang anda lihat itulah yang anda hantar."
+  },
+  "mc_settings_clickable_links_desc": {
+    "message": "Tukar URL dalam mesej chat menjadi pautan boleh klik. Matikan jika anda lebih suka copy-paste atau tidak percaya orang asing di internet."
+  },
+  "mc_settings_vi_mode_desc": {
+    "message": "Pintasan gaya Vim untuk navigasi chat. j/k tatal, g/G atas/bawah, / cari. Untuk yang fikir tetikus untuk casual."
+  },
+  "mc_settings_zebra_desc": {
+    "message": "Bayangan baris berselang-seli pada mesej chat. Memudahkan menjejaki mesej panjang, terutama dalam chat pantas."
+  },
+  "mc_settings_auto_hide_desc": {
+    "message": "Sembunyikan bar input apabila anda tidak menaip. Klik atau mula menaip untuk pulangkan. Maksimumkan ruang paparan chat."
+  },
+  "mc_settings_timestamps_desc": {
+    "message": "Tunjuk masa hantar setiap mesej di sebelah nama pengguna. Berguna untuk menyusul apa yang berlaku semasa AFK."
+  },
+  "mc_settings_avatars_desc": {
+    "message": "Tunjuk gambar profil di sebelah nama pengguna. Memudahkan kenal pasti regular secara visual, tukar sedikit ruang menegak."
+  },
+  "mc_settings_inline_notifs": {
+    "message": "notifikasi inline"
+  },
+  "mc_settings_notif_op": {
+    "message": "[OP] siaran asal"
+  },
+  "mc_settings_notif_op_reply": {
+    "message": "[OP] OP balas dalam thread sendiri"
+  },
+  "mc_settings_notif_re": {
+    "message": "[RE] balasan"
+  },
+  "mc_settings_notif_dm": {
+    "message": "[DM] whispers dan DM"
+  },
+  "mc_settings_notif_op_desc": {
+    "message": "Notifikasi dalam tab chat aktif apabila seseorang membuat siaran baru di feed."
+  },
+  "mc_settings_notif_op_reply_desc": {
+    "message": "Notifikasi apabila penyiar asal membalas dalam thread sendiri."
+  },
+  "mc_settings_notif_re_desc": {
+    "message": "Notifikasi untuk setiap balasan dalam mana-mana thread feed."
+  },
+  "mc_settings_notif_dm_desc": {
+    "message": "Notifikasi apabila anda menerima whisper atau DM."
+  },
+  "mc_settings_twitch_events": {
+    "message": "acara Twitch"
+  },
+  "mc_settings_raids": {
+    "message": "raids"
+  },
+  "mc_settings_raids_desc": {
+    "message": "Banner inline apabila streamer raid masuk atau keluar, dengan jumlah penonton dan saluran sumber. Membolehkan anda mengikut ke stream seterusnya."
+  },
+  "mc_settings_hype_trains": {
+    "message": "hype train"
+  },
+  "mc_settings_hype_trains_desc": {
+    "message": "Banner kemajuan langsung untuk hype train, dengan tahap dan pemasa sumbangan. Mati lalai kerana sentiasa dicetus pada saluran besar."
+  },
+  "mc_settings_gift_subs": {
+    "message": "sub hadiah"
+  },
+  "mc_settings_gift_subs_desc": {
+    "message": "Banner untuk gift sub bom komuniti dan hadiah individu, dengan pemberi, penerima dan tier."
+  },
+  "mc_settings_redeems": {
+    "message": "tukar channel point"
+  },
+  "mc_settings_redeems_desc": {
+    "message": "Notifikasi inline untuk tukar channel point seperti 'highlight my message' supaya anda lihat pada apa orang habiskan poin."
+  },
+  "mc_settings_prediction_banner": {
+    "message": "ramalan"
+  },
+  "mc_settings_prediction_banner_desc": {
+    "message": "Banner langsung ramalan channel point dengan odds semasa dan masa berbaki untuk kunci undian."
+  },
+  "mc_settings_poll_banner": {
+    "message": "tinjauan"
+  },
+  "mc_settings_poll_banner_desc": {
+    "message": "Banner tinjauan aktif dengan kiraan undi dan masa berbaki. Undi terus dari overlay."
+  },
+  "mc_settings_pinned_messages": {
+    "message": "mesej disematkan"
+  },
+  "mc_settings_pinned_messages_desc": {
+    "message": "Banner sticky untuk mesej chat yang disematkan moderator supaya anda tidak terlepas peraturan atau jadual."
+  },
+  "mc_settings_dim_timeouts": {
+    "message": "malapkan mesej timeout"
+  },
+  "mc_settings_dim_timeouts_desc": {
+    "message": "Tunjuk mesej timeout dan ban pada 50% kelegapan bukan menyembunyikan, gaya FFZ/BTTV. Membolehkan anda lihat apa yang dipadam tanpa keluar dari chat."
+  },
+  "mc_settings_smart_completion": {
+    "message": "autolengkap tab pintar"
+  },
+  "mc_settings_smart_completion_desc": {
+    "message": "Penyumbang chat terkini dan emote saluran ini muncul dahulu pada autolengkap tab. Lebih pantas daripada abjad apabila chat berjalan."
+  },
+  "mc_settings_first_chatter": {
+    "message": "cahaya mesej pertama"
+  },
+  "mc_settings_first_chatter_desc": {
+    "message": "Penanda jingga di tepi mesej pertama yang pengguna hantar di setiap saluran sesi ini. Mudahkan kenal pasti pendatang baru dalam chat pantas."
+  },
+  "mc_settings_keyword_highlights": {
+    "message": "serlah kata kunci"
+  },
+  "mc_settings_keyword_highlights_desc": {
+    "message": "Mesej yang mengandungi mana-mana kata ini dapat warna jingga, seperti sebutan peribadi. Satu sebaris, tidak kira huruf besar/kecil, perkataan penuh."
+  },
+  "mc_settings_keyword_highlights_placeholder": {
+    "message": "satu kata kunci sebaris"
+  },
+  "mc_settings_features": {
+    "message": "ciri"
+  },
+  "mc_settings_auto_claim": {
+    "message": "auto-tuntut channel point"
+  },
+  "mc_settings_auto_claim_desc": {
+    "message": "Klik secara automatik peti channel point bonus di Twitch apabila muncul. Poin percuma, sifar usaha."
+  },
+  "mc_settings_muted_users": {
+    "message": "pengguna disenyapkan"
+  },
+  "mc_settings_no_muted": {
+    "message": "tiada pengguna disenyapkan"
+  },
+  "mc_settings_unmute": {
+    "message": "buka senyap"
+  },
+  "mc_pred_no_active": {
+    "message": "tiada ramalan aktif"
+  },
+  "mc_pred_new": {
+    "message": "+ ramalan baru"
+  },
+  "mc_pred_title_placeholder": {
+    "message": "tajuk ramalan"
+  },
+  "mc_pred_option1": {
+    "message": "pilihan 1 (biru)"
+  },
+  "mc_pred_option2": {
+    "message": "pilihan 2 (merah jambu)"
+  },
+  "mc_pred_duration": {
+    "message": "tempoh:"
+  },
+  "mc_pred_create": {
+    "message": "cipta ramalan"
+  },
+  "mc_pred_refunded": {
+    "message": "dipulangkan"
+  },
+  "mc_pred_locked": {
+    "message": "dikunci"
+  },
+  "mc_pred_winner": {
+    "message": "pemenang"
+  },
+  "mc_pred_won": {
+    "message": " menang"
+  },
+  "mc_pred_lost": {
+    "message": " kalah"
+  },
+  "mc_pred_lock_betting": {
+    "message": "kunci pertaruhan"
+  },
+  "mc_pred_cancel_refund": {
+    "message": "batal (pulangkan)"
+  },
+  "mc_pred_pick_winner": {
+    "message": "pilih pemenang"
+  },
+  "mc_pred_pick_winner_your_bet": {
+    "message": "pilih pemenang (taruhan anda)"
+  },
+  "mc_pred_failed_load": {
+    "message": "gagal muat ramalan"
+  },
+  "mc_pred_bet_own": {
+    "message": "tidak boleh bertaruh sendiri"
+  },
+  "mc_pred_try_again": {
+    "message": "cuba lagi"
+  },
+  "mc_pred_ended": {
+    "message": "ramalan tamat"
+  },
+  "mc_pred_betting_locked": {
+    "message": "pertaruhan dikunci"
+  },
+  "mc_pred_not_enough": {
+    "message": "poin tidak cukup"
+  },
+  "mc_pred_already_bet": {
+    "message": "sudah bertaruh"
+  },
+  "mc_pred_no_permission": {
+    "message": "tiada kebenaran"
+  },
+  "mc_pred_failed": {
+    "message": "gagal"
+  },
+  "mc_pred_no_event": {
+    "message": "tiada acara"
+  },
+  "mc_pred_no_outcome": {
+    "message": "tiada keputusan"
+  },
+  "mc_pred_closing": {
+    "message": "menutup..."
+  },
+  "mc_pred_you_bet": {
+    "message": "anda bertaruh $POINTS$ pada $OUTCOME$ — pilih pemenang sebenar",
+    "placeholders": {
+      "points": {
+        "content": "$1"
+      },
+      "outcome": {
+        "content": "$2"
+      }
+    }
+  },
+  "mc_poll_new": {
+    "message": "+ tinjauan baru"
+  },
+  "mc_poll_question": {
+    "message": "soalan tinjauan"
+  },
+  "mc_poll_choice": {
+    "message": "pilihan $NUM$",
+    "placeholders": {
+      "num": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_poll_choice_optional": {
+    "message": "pilihan $NUM$ (pilihan)",
+    "placeholders": {
+      "num": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_poll_create": {
+    "message": "cipta tinjauan"
+  },
+  "mc_poll_end": {
+    "message": "tamatkan tinjauan"
+  },
+  "mc_poll_votes": {
+    "message": "$COUNT$ undi",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_poll_vote_single": {
+    "message": "$COUNT$ undi",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_poll_already_active": {
+    "message": "tinjauan sudah aktif"
+  },
+  "mc_poll_not_logged_in": {
+    "message": "belum log masuk"
+  },
+  "mc_reward_rewards": {
+    "message": "ganjaran"
+  },
+  "mc_reward_none": {
+    "message": "tiada ganjaran tersedia"
+  },
+  "mc_reward_paused": {
+    "message": "dihentikan sebentar"
+  },
+  "mc_reward_out_of_stock": {
+    "message": "habis"
+  },
+  "mc_reward_cooldown_min": {
+    "message": "cooldown $MIN$m",
+    "placeholders": {
+      "min": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_reward_cooldown_sec": {
+    "message": "cooldown $SEC$s",
+    "placeholders": {
+      "sec": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_reward_enter_text": {
+    "message": "masukkan teks..."
+  },
+  "mc_reward_redeem": {
+    "message": "tebus"
+  },
+  "mc_chat_username_color": {
+    "message": "warna nama pengguna"
+  },
+  "mc_chat_hex_placeholder": {
+    "message": "#hex"
+  },
+  "mc_chat_modes": {
+    "message": "mod chat"
+  },
+  "mc_chat_emote_only": {
+    "message": "emote sahaja"
+  },
+  "mc_chat_follower": {
+    "message": "pengikut"
+  },
+  "mc_chat_slow": {
+    "message": "perlahan"
+  },
+  "mc_chat_sub_only": {
+    "message": "sub sahaja"
+  },
+  "mc_chat_unique": {
+    "message": "unik"
+  },
+  "mc_chat_hype_train": {
+    "message": "hype train"
+  },
+  "mc_chat_hype_level": {
+    "message": "lvl $LEVEL$",
+    "placeholders": {
+      "level": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_input_send_message": {
+    "message": "hantar mesej..."
+  },
+  "mc_input_post_heatsync": {
+    "message": "siar di heatsync..."
+  },
+  "mc_input_send_channel": {
+    "message": "hantar ke #$CHANNEL$",
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_input_replying_to": {
+    "message": "Membalas @$USER$",
+    "placeholders": {
+      "user": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_input_cancel_reply": {
+    "message": "Batalkan balasan"
+  },
+  "mc_input_not_logged_in": {
+    "message": "belum log masuk"
+  },
+  "mc_input_login_kick": {
+    "message": "log masuk dahulu di kick.com"
+  },
+  "mc_input_open_kick": {
+    "message": "buka kick.com dalam tab"
+  },
+  "mc_input_kick_not_found": {
+    "message": "saluran Kick tidak dijumpai"
+  },
+  "mc_input_send_failed": {
+    "message": "gagal hantar"
+  },
+  "mc_input_no_username": {
+    "message": "tiada nama pengguna dikesan"
+  },
+  "mc_input_auth_failed": {
+    "message": "pengesahan gagal — log masuk semula ke Twitch"
+  },
+  "mc_input_connection_failed": {
+    "message": "sambungan gagal — cuba lagi"
+  },
+  "mc_input_send_failed_retry": {
+    "message": "gagal hantar — cuba lagi"
+  },
+  "mc_social_back": {
+    "message": "<- kembali"
+  },
+  "mc_social_no_posts": {
+    "message": "belum ada siaran"
+  },
+  "mc_social_loading_feed": {
+    "message": "memuat feed yang diikuti..."
+  },
+  "mc_social_scroll_more": {
+    "message": "tatal untuk lebih..."
+  },
+  "mc_social_no_replies": {
+    "message": "belum ada balasan"
+  },
+  "mc_social_login_first": {
+    "message": "log masuk dahulu di heatsync.org"
+  },
+  "mc_social_login_activity": {
+    "message": "log masuk di heatsync.org untuk lihat aktiviti"
+  },
+  "mc_social_failed_feed_auth": {
+    "message": "gagal muat feed — log masuk di heatsync.org"
+  },
+  "mc_social_failed_feed": {
+    "message": "gagal muat feed"
+  },
+  "mc_social_log_in_first": {
+    "message": "log masuk dahulu"
+  },
+  "mc_social_slow_down": {
+    "message": "perlahan"
+  },
+  "mc_social_duplicate": {
+    "message": "mesej pendua"
+  },
+  "mc_social_failed_post": {
+    "message": "gagal siar"
+  },
+  "mc_tip_emoji": {
+    "message": "emoji"
+  },
+  "mc_tip_subbed": {
+    "message": "sub $CHANNEL$ $TENURE$",
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      },
+      "tenure": {
+        "content": "$2"
+      }
+    }
+  },
+  "mc_tip_following": {
+    "message": "ikut $CHANNEL$ $AGE$",
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      },
+      "age": {
+        "content": "$2"
+      }
+    }
+  },
+  "mc_tip_not_following": {
+    "message": "tidak ikut $CHANNEL$",
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_tip_followed_by": {
+    "message": "diikuti oleh $CHANNEL$",
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_tip_followers": {
+    "message": "$COUNT$ pengikut",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_whisper_hint": {
+    "message": "/w pengguna mesej · /dm pengguna mesej · /r mesej"
+  },
+  "mc_whisper_login": {
+    "message": "log masuk di heatsync.org untuk hantar whispers"
+  },
+  "mc_whisper_user_not_found": {
+    "message": "pengguna Twitch \"$USER$\" tidak dijumpai",
+    "placeholders": {
+      "user": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_whisper_resolve_failed": {
+    "message": "gagal cari pengguna Twitch"
+  },
+  "mc_whisper_hs_not_found": {
+    "message": "pengguna heatsync \"$USER$\" tidak dijumpai",
+    "placeholders": {
+      "user": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_irc_chat_cleared": {
+    "message": "Chat dikosongkan"
+  },
+  "mc_irc_msg_deleted": {
+    "message": "Mesej dari $USER$ dipadam",
+    "placeholders": {
+      "user": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_irc_gift_subs": {
+    "message": "$USER$ menghadiahkan $AMOUNT$ sub kepada $CHANNEL$",
+    "placeholders": {
+      "user": {
+        "content": "$1"
+      },
+      "amount": {
+        "content": "$2"
+      },
+      "channel": {
+        "content": "$3"
+      }
+    }
+  },
+  "mc_yt_connected": {
+    "message": "youtube tersambung: $CHANNEL$ — menunggu mesej...",
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_yt_ended": {
+    "message": "siaran youtube tamat"
+  },
+  "mc_yt_error": {
+    "message": "ralat sambungan youtube"
+  },
+  "mc_emote_search_placeholder": {
+    "message": "cari emote..."
+  },
+  "mc_emote_no_loaded": {
+    "message": "tiada emote dimuat"
+  },
+  "mc_emote_in_set": {
+    "message": "dalam set anda"
+  },
+  "mc_emote_click_add": {
+    "message": "klik untuk tambah"
+  },
+  "mc_emote_blocked": {
+    "message": "disekat (klik untuk buka)"
+  },
+  "content_toast_unknown_error": {
+    "message": "Ralat tidak diketahui"
+  },
+  "content_toast_loading_emotes": {
+    "message": "memuat emote..."
+  },
+  "content_toast_fetching_emotes": {
+    "message": "mengambil emote..."
+  },
+  "content_card_action_ban": {
+    "message": "ban"
+  },
+  "content_card_action_unban": {
+    "message": "buka ban"
+  },
+  "content_card_action_block": {
+    "message": "sekat"
+  },
+  "btn_close": {
+    "message": "Tutup"
+  },
+  "btn_error_channel": {
+    "message": "gagal muat emote saluran"
+  },
+  "btn_error_global": {
+    "message": "gagal muat emote global"
+  },
+  "btn_error_inventory": {
+    "message": "gagal muat emote anda"
+  }
+}

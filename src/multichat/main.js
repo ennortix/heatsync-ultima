@@ -17,6 +17,11 @@
   // DEBUG: temporary marker to verify script injection on YouTube
   document.documentElement.dataset.hsMcLoaded = '1';
 
+  // bidi direction for the user's locale (ltr/rtl) — applied to injected UI roots
+  // host page (twitch/kick) keeps its own dir; we only flip our overlay
+  let HS_DIR = 'ltr'
+  try { HS_DIR = (chrome?.i18n?.getMessage?.('@@bidi_dir')) || 'ltr' } catch {}
+
   const COLOR_RE = /^#[0-9a-fA-F]{3,6}$/
 
   // Reverse-lookup Map for config.channels — rebuilt on config changes
@@ -821,6 +826,7 @@
   function createTabBar() {
     const container = document.createElement('div');
     container.id = 'hs-mc-tabbar';
+    container.dir = HS_DIR;
     // Static hardcoded tab buttons — no user input, safe innerHTML
     // Two sections: scrollable channel tabs + fixed utility buttons (always visible)
     // Static hardcoded buttons — all in one wrapping flow, no user input
@@ -1154,6 +1160,7 @@
   function createOverlay() {
     const overlay = document.createElement('div');
     overlay.id = 'hs-mc-overlay';
+    overlay.dir = HS_DIR;
     // Static hardcoded layout — only static strings, no user input, safe innerHTML
     const searchPlaceholder = 'search messages…'
     overlay.innerHTML = `

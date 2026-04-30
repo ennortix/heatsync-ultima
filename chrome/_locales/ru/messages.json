@@ -1,0 +1,1245 @@
+{
+  "manifest_name": {
+    "message": "heatsync"
+  },
+  "manifest_description": {
+    "message": "Кастомные эмоуты для чата Twitch, Kick и YouTube. Безлимитные слоты, автодополнение по Tab, синхронизация в реальном времени."
+  },
+  "common_loading": {
+    "message": "загрузка..."
+  },
+  "common_extension_updated": {
+    "message": "Расширение обновлено — обновите страницу"
+  },
+  "common_no_matches": {
+    "message": "ничего не найдено"
+  },
+  "common_retry": {
+    "message": "повторить"
+  },
+  "common_cancel": {
+    "message": "отмена"
+  },
+  "common_save": {
+    "message": "сохранить"
+  },
+  "common_add": {
+    "message": "добавить"
+  },
+  "common_edit": {
+    "message": "редактировать"
+  },
+  "common_remove": {
+    "message": "удалить"
+  },
+  "common_done": {
+    "message": "готово"
+  },
+  "common_ended": {
+    "message": "завершено"
+  },
+  "common_vote": {
+    "message": "голосовать"
+  },
+  "common_set": {
+    "message": "задать"
+  },
+  "common_default": {
+    "message": "по умолчанию"
+  },
+  "common_mention": {
+    "message": "упоминание"
+  },
+  "common_user_not_found": {
+    "message": "пользователь не найден"
+  },
+  "popup_title": {
+    "message": "heatsync"
+  },
+  "popup_status_checking": {
+    "message": "проверка..."
+  },
+  "popup_status_connected": {
+    "message": "подключено"
+  },
+  "popup_status_api_error": {
+    "message": "ошибка api"
+  },
+  "popup_status_offline": {
+    "message": "офлайн"
+  },
+  "popup_user_stats": {
+    "message": "$EMOTES$ эмоутов · $GLOBALS$ глобальных",
+    "placeholders": {
+      "emotes": {
+        "content": "$1"
+      },
+      "globals": {
+        "content": "$2"
+      }
+    }
+  },
+  "popup_user_stats_heat": {
+    "message": "$EMOTES$ эмоутов · $GLOBALS$ глобальных · $HEAT$ heat",
+    "placeholders": {
+      "emotes": {
+        "content": "$1"
+      },
+      "globals": {
+        "content": "$2"
+      },
+      "heat": {
+        "content": "$3"
+      }
+    }
+  },
+  "popup_btn_emotes": {
+    "message": "эмоуты"
+  },
+  "popup_btn_refresh": {
+    "message": "обновить"
+  },
+  "popup_btn_site": {
+    "message": "сайт"
+  },
+  "popup_btn_done": {
+    "message": "готово"
+  },
+  "popup_btn_logout": {
+    "message": "выйти"
+  },
+  "btn_recent": {
+    "message": "недавние"
+  },
+  "popup_login_prompt": {
+    "message": "войдите чтобы синхронизировать эмоуты"
+  },
+  "popup_channel_placeholder": {
+    "message": "канал"
+  },
+  "popup_btn_popout": {
+    "message": "отдельное окно"
+  },
+  "popup_hint": {
+    "message": "настройки эмоутов в панели пикера в чате"
+  },
+  "welcome_title": {
+    "message": "добро пожаловать в heatsync"
+  },
+  "welcome_tagline": {
+    "message": "ваши эмоуты везде, где вы общаетесь"
+  },
+  "welcome_step1_title": {
+    "message": "войдите на heatsync.org"
+  },
+  "welcome_step1_desc": {
+    "message": "войдите через Twitch или Kick, чтобы создать аккаунт"
+  },
+  "welcome_step2_title": {
+    "message": "загрузите свои эмоуты"
+  },
+  "welcome_step2_desc": {
+    "message": "добавьте любые изображения — без ограничения слотов, все форматы поддерживаются"
+  },
+  "welcome_step3_title": {
+    "message": "используйте их в чате"
+  },
+  "welcome_step3_desc": {
+    "message": "нажмите кнопку heatsync в чате Twitch/Kick, чтобы получить доступ к своим эмоутам"
+  },
+  "welcome_cta": {
+    "message": "начать"
+  },
+  "welcome_privacy": {
+    "message": "конфиденциальность"
+  },
+  "welcome_source": {
+    "message": "исходный код"
+  },
+  "btn_auth_login": {
+    "message": "войти"
+  },
+  "btn_auth_save_emotes": {
+    "message": "чтобы сохранить эмоуты в свой набор"
+  },
+  "btn_tab_channel": {
+    "message": "канал"
+  },
+  "btn_tab_global": {
+    "message": "глобальные"
+  },
+  "btn_tab_mine": {
+    "message": "мои"
+  },
+  "btn_tab_emoji": {
+    "message": "emoji"
+  },
+  "btn_search_placeholder": {
+    "message": "поиск эмоутов..."
+  },
+  "btn_rotate_title": {
+    "message": "повернуть позицию панели вкладок"
+  },
+  "btn_settings_title": {
+    "message": "настройки"
+  },
+  "btn_no_emotes": {
+    "message": "нет эмоутов"
+  },
+  "btn_login_save_emotes": {
+    "message": "войдите на heatsync.org, чтобы сохранять эмоуты"
+  },
+  "btn_cached": {
+    "message": "из кэша"
+  },
+  "btn_loading_emotes": {
+    "message": "загрузка эмоутов"
+  },
+  "btn_no_third_party": {
+    "message": "сторонние эмоуты не найдены"
+  },
+  "btn_no_emotes_import": {
+    "message": "нет эмоутов для импорта"
+  },
+  "btn_import_count": {
+    "message": "импортировать $COUNT$ эмоутов",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "btn_failed_load": {
+    "message": "не удалось загрузить эмоуты"
+  },
+  "btn_retry_loading": {
+    "message": "повторить загрузку"
+  },
+  "btn_ctx_block": {
+    "message": "заблокировать эмоут"
+  },
+  "btn_ctx_unblock": {
+    "message": "разблокировать эмоут"
+  },
+  "btn_ctx_remove_inventory": {
+    "message": "убрать из инвентаря"
+  },
+  "btn_ctx_add_inventory": {
+    "message": "добавить в инвентарь"
+  },
+  "btn_ctx_copy_name": {
+    "message": "копировать имя эмоута"
+  },
+  "btn_ctx_copy_url": {
+    "message": "копировать url эмоута"
+  },
+  "btn_toast_unblocked": {
+    "message": "разблокирован"
+  },
+  "btn_toast_blocked": {
+    "message": "заблокирован"
+  },
+  "btn_toast_removed": {
+    "message": "удалён"
+  },
+  "btn_toast_added": {
+    "message": "добавлен"
+  },
+  "btn_toast_copied": {
+    "message": "скопировано!"
+  },
+  "btn_settings_tab_completion": {
+    "message": "автодополнение по Tab"
+  },
+  "btn_settings_chat_ui": {
+    "message": "интерфейс чата"
+  },
+  "btn_settings_input": {
+    "message": "ввод"
+  },
+  "btn_settings_wysiwyg": {
+    "message": "wysiwyg-эмоуты"
+  },
+  "btn_settings_space_after": {
+    "message": "пробел после эмоута"
+  },
+  "btn_settings_placeholder_mode": {
+    "message": "режим заглушек"
+  },
+  "btn_settings_placeholder_desc": {
+    "message": "показывать цветные блоки"
+  },
+  "btn_settings_hide_header": {
+    "message": "скрыть заголовок"
+  },
+  "btn_settings_always_popout": {
+    "message": "(всегда вкл. в отдельном окне)"
+  },
+  "btn_settings_compact_input": {
+    "message": "компактный ввод"
+  },
+  "btn_settings_highlight_mentions": {
+    "message": "подсвечивать упоминания"
+  },
+  "btn_settings_platform_badges": {
+    "message": "значки платформ"
+  },
+  "btn_settings_platform_badges_desc": {
+    "message": "[T] [K] [YT] на сообщениях"
+  },
+  "btn_settings_cosmetics": {
+    "message": "косметика"
+  },
+  "btn_settings_cosmetics_desc": {
+    "message": "paints + значки 7TV/BTTV/FFZ"
+  },
+  "btn_settings_vi_mode": {
+    "message": "режим vi"
+  },
+  "btn_settings_vi_mode_desc": {
+    "message": "vim-биндинги для ввода в чат"
+  },
+  "btn_size_1x": {
+    "message": "1x"
+  },
+  "btn_size_2x": {
+    "message": "2x"
+  },
+  "btn_size_4x": {
+    "message": "4x"
+  },
+  "btn_expand": {
+    "message": "развернуть"
+  },
+  "btn_collapse": {
+    "message": "свернуть"
+  },
+  "btn_block_all": {
+    "message": "заблокировать все"
+  },
+  "btn_show_all": {
+    "message": "показать все"
+  },
+  "btn_click_expand": {
+    "message": "нажмите чтобы развернуть"
+  },
+  "content_toast_failed_add": {
+    "message": "Не удалось добавить $NAME$: $ERROR$",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      },
+      "error": {
+        "content": "$2"
+      }
+    }
+  },
+  "content_toast_failed_remove": {
+    "message": "Не удалось удалить $NAME$: $ERROR$",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      },
+      "error": {
+        "content": "$2"
+      }
+    }
+  },
+  "content_toast_unblocked": {
+    "message": "Разблокирован $NAME$",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
+  },
+  "content_toast_failed_unblock": {
+    "message": "Не удалось разблокировать: $ERROR$",
+    "placeholders": {
+      "error": {
+        "content": "$1"
+      }
+    }
+  },
+  "content_toast_removed": {
+    "message": "Удалён $NAME$ из вашего набора",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
+  },
+  "content_toast_failed_block": {
+    "message": "Не удалось заблокировать: $ERROR$",
+    "placeholders": {
+      "error": {
+        "content": "$1"
+      }
+    }
+  },
+  "content_toast_blocked": {
+    "message": "Заблокирован $NAME$",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
+  },
+  "content_toast_unmuted": {
+    "message": "размучен $NAME$",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
+  },
+  "content_toast_muted_24h": {
+    "message": "$NAME$ замучен на 24ч",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
+  },
+  "content_card_follows_you": {
+    "message": "подписан на вас"
+  },
+  "content_card_subs_to_you": {
+    "message": "саб у вас"
+  },
+  "content_card_you_follow": {
+    "message": "вы подписаны"
+  },
+  "content_card_you_sub": {
+    "message": "вы саб"
+  },
+  "content_card_you_sub_tier": {
+    "message": "вы саб T$TIER$",
+    "placeholders": {
+      "tier": {
+        "content": "$1"
+      }
+    }
+  },
+  "content_card_subbed": {
+    "message": "саб $CHANNEL$ $TENURE$",
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      },
+      "tenure": {
+        "content": "$2"
+      }
+    }
+  },
+  "content_card_following": {
+    "message": "подписан на $CHANNEL$ $AGE$",
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      },
+      "age": {
+        "content": "$2"
+      }
+    }
+  },
+  "content_card_follows_channel": {
+    "message": "подписан на $CHANNEL$",
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      }
+    }
+  },
+  "content_card_not_following": {
+    "message": "не подписан на $CHANNEL$",
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      }
+    }
+  },
+  "content_card_followed_by": {
+    "message": "подписан $CHANNEL$",
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      }
+    }
+  },
+  "content_card_following_count": {
+    "message": "подписок $COUNT$",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "content_card_followers": {
+    "message": "$COUNT$ подписчиков",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "content_card_partner": {
+    "message": "партнёр"
+  },
+  "content_card_affiliate": {
+    "message": "партнёрка"
+  },
+  "content_card_live": {
+    "message": "В ЭФИРЕ $VIEWERS$",
+    "placeholders": {
+      "viewers": {
+        "content": "$1"
+      }
+    }
+  },
+  "content_card_twitch_verified": {
+    "message": "Twitch верифицирован"
+  },
+  "content_card_kick_verified": {
+    "message": "Kick верифицирован"
+  },
+  "content_view_on_heatsync": {
+    "message": "посмотреть на heatsync"
+  },
+  "content_in_your_set": {
+    "message": "в вашем наборе"
+  },
+  "content_click_to_add": {
+    "message": "нажмите чтобы добавить"
+  },
+  "content_blocked_click_unblock": {
+    "message": "заблокирован (нажмите чтобы разблокировать)"
+  },
+  "mc_tab_feed": {
+    "message": "главная"
+  },
+  "mc_tab_whispers": {
+    "message": "шёпоты"
+  },
+  "mc_tab_mentions": {
+    "message": "упоминания"
+  },
+  "mc_tab_activity": {
+    "message": "активность"
+  },
+  "mc_tab_live": {
+    "message": "эфир"
+  },
+  "mc_tab_discover": {
+    "message": "обзор"
+  },
+  "mc_tab_pinned": {
+    "message": "сохранённые"
+  },
+  "mc_tab_live_channel": {
+    "message": "эфир · $CHANNEL$",
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_btn_rotate_tabs": {
+    "message": "повернуть вкладки (T)"
+  },
+  "mc_btn_rotate_chat": {
+    "message": "повернуть панель чата (C)"
+  },
+  "mc_btn_smaller_text": {
+    "message": "уменьшить текст"
+  },
+  "mc_btn_larger_text": {
+    "message": "увеличить текст"
+  },
+  "mc_btn_settings": {
+    "message": "настройки"
+  },
+  "mc_new_messages": {
+    "message": "$COUNT$ новых",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_resume": {
+    "message": "продолжить"
+  },
+  "mc_no_messages": {
+    "message": "пока нет сообщений"
+  },
+  "mc_no_activity": {
+    "message": "пока нет активности"
+  },
+  "mc_add_channel": {
+    "message": "добавить канал"
+  },
+  "mc_enter_platform": {
+    "message": "введите хотя бы одну платформу"
+  },
+  "mc_username_placeholder": {
+    "message": "ник"
+  },
+  "mc_username_url_placeholder": {
+    "message": "ник или url"
+  },
+  "mc_reserved_name": {
+    "message": "зарезервированное имя"
+  },
+  "mc_channel_exists": {
+    "message": "канал уже добавлен"
+  },
+  "mc_twitch_exists": {
+    "message": "канал Twitch уже добавлен"
+  },
+  "mc_kick_exists": {
+    "message": "канал Kick уже добавлен"
+  },
+  "mc_edit_channel": {
+    "message": "редактировать $CHANNEL$",
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_no_channel_detected": {
+    "message": "канал не обнаружен"
+  },
+  "mc_settings_display": {
+    "message": "отображение"
+  },
+  "mc_settings_emote_size": {
+    "message": "размер эмоутов"
+  },
+  "mc_settings_input_preview": {
+    "message": "предпросмотр ввода"
+  },
+  "mc_settings_clickable_links": {
+    "message": "кликабельные ссылки"
+  },
+  "mc_settings_vi_mode": {
+    "message": "режим vi"
+  },
+  "mc_settings_zebra": {
+    "message": "чередование строк"
+  },
+  "mc_settings_auto_hide": {
+    "message": "авто-скрытие ввода"
+  },
+  "mc_settings_timestamps": {
+    "message": "временные метки"
+  },
+  "mc_settings_avatars": {
+    "message": "аватары"
+  },
+  "mc_settings_emote_size_desc": {
+    "message": "Множитель разрешения для эмоутов в чате. 1x — чёткий и компактный, 2x — оптимально для большинства экранов, 4x — для тех, кто хочет видеть каждый пиксель."
+  },
+  "mc_settings_input_preview_desc": {
+    "message": "Показывает эмоуты как картинки прямо в поле ввода во время набора, вместо текстовых имён. Что видите, то и отправите."
+  },
+  "mc_settings_clickable_links_desc": {
+    "message": "Превращает URL в сообщениях в кликабельные ссылки. Отключите, если предпочитаете копировать-вставлять или не доверяете незнакомцам в интернете."
+  },
+  "mc_settings_vi_mode_desc": {
+    "message": "Vim-биндинги для навигации по чату. j/k — прокрутка, g/G — верх/низ, / — поиск. Для тех, кто считает, что мышь — для казуалов."
+  },
+  "mc_settings_zebra_desc": {
+    "message": "Чередующаяся подсветка строк в чате. Помогает следить за длинными сообщениями, особенно при быстром чате."
+  },
+  "mc_settings_auto_hide_desc": {
+    "message": "Скрывает поле ввода, когда вы не пишете сообщение. Кликните или начните печатать, чтобы вернуть. Максимизирует область просмотра чата."
+  },
+  "mc_settings_timestamps_desc": {
+    "message": "Показывает время отправки каждого сообщения рядом с ником. Удобно, чтобы понять, что произошло пока вы были AFK."
+  },
+  "mc_settings_avatars_desc": {
+    "message": "Показывает аватары рядом с никами в чате. Помогает визуально узнавать постоянных зрителей, занимает немного вертикального места."
+  },
+  "mc_settings_inline_notifs": {
+    "message": "встроенные уведомления"
+  },
+  "mc_settings_notif_op": {
+    "message": "[OP] оригинальные посты"
+  },
+  "mc_settings_notif_op_reply": {
+    "message": "[OP] OP отвечает в своём треде"
+  },
+  "mc_settings_notif_re": {
+    "message": "[RE] ответы"
+  },
+  "mc_settings_notif_dm": {
+    "message": "[DM] шёпоты и DM"
+  },
+  "mc_settings_notif_op_desc": {
+    "message": "Уведомление в активной вкладке чата, когда кто-то создаёт новый пост в ленте."
+  },
+  "mc_settings_notif_op_reply_desc": {
+    "message": "Уведомление, когда автор оригинального поста отвечает в своём треде."
+  },
+  "mc_settings_notif_re_desc": {
+    "message": "Уведомление о каждом ответе в любом треде ленты."
+  },
+  "mc_settings_notif_dm_desc": {
+    "message": "Уведомление, когда вам приходит шёпот или DM."
+  },
+  "mc_settings_twitch_events": {
+    "message": "события Twitch"
+  },
+  "mc_settings_raids": {
+    "message": "рейды"
+  },
+  "mc_settings_raids_desc": {
+    "message": "Встроенный баннер при входящем или исходящем рейде, с количеством зрителей и каналом-источником. Позволяет переехать на следующую трансляцию."
+  },
+  "mc_settings_hype_trains": {
+    "message": "hype trains"
+  },
+  "mc_settings_hype_trains_desc": {
+    "message": "Живой баннер прогресса hype train с уровнем и таймером вклада. По умолчанию выключен — на больших каналах срабатывает постоянно."
+  },
+  "mc_settings_gift_subs": {
+    "message": "подаренные сабы"
+  },
+  "mc_settings_gift_subs_desc": {
+    "message": "Баннер для массовых раздач сабов и индивидуальных подарков с указанием дарителя, получателя и тира."
+  },
+  "mc_settings_redeems": {
+    "message": "обмены каналпоинтов"
+  },
+  "mc_settings_redeems_desc": {
+    "message": "Встроенное уведомление об обменах каналпоинтов, например «подсветить моё сообщение» — чтобы видеть, на что зрители тратят поинты."
+  },
+  "mc_settings_prediction_banner": {
+    "message": "предсказания"
+  },
+  "mc_settings_prediction_banner_desc": {
+    "message": "Живой баннер предсказания каналпоинтов с текущими шансами и временем до закрытия ставок."
+  },
+  "mc_settings_poll_banner": {
+    "message": "опросы"
+  },
+  "mc_settings_poll_banner_desc": {
+    "message": "Баннер активного опроса со счётом голосов и оставшимся временем. Голосуйте прямо из оверлея."
+  },
+  "mc_settings_pinned_messages": {
+    "message": "закреплённые сообщения"
+  },
+  "mc_settings_pinned_messages_desc": {
+    "message": "Закреплённый баннер для модераторских сообщений, чтобы не пропустить правила или расписание."
+  },
+  "mc_settings_dim_timeouts": {
+    "message": "затемнять сообщения с таймаутом"
+  },
+  "mc_settings_dim_timeouts_desc": {
+    "message": "Показывать заблокированные и забаненные сообщения с прозрачностью 50% вместо скрытия, в стиле FFZ/BTTV. Видно, что снесли, без выхода из чата."
+  },
+  "mc_settings_smart_completion": {
+    "message": "умное автодополнение по Tab"
+  },
+  "mc_settings_smart_completion_desc": {
+    "message": "Недавно писавшие чаттеры и эмоуты этого канала появляются первыми при автодополнении по Tab. Быстрее алфавитного, когда чат бежит."
+  },
+  "mc_settings_first_chatter": {
+    "message": "подсветка первого сообщения"
+  },
+  "mc_settings_first_chatter_desc": {
+    "message": "Оранжевая метка на краю первого сообщения, которое пользователь шлёт в каждом канале за сессию. Облегчает заметить новеньких в быстром чате."
+  },
+  "mc_settings_keyword_highlights": {
+    "message": "подсветка ключевых слов"
+  },
+  "mc_settings_keyword_highlights_desc": {
+    "message": "Сообщения с любым из этих слов получают оранжевый оттенок, как личное упоминание. По одному слову на строку, регистр неважен, целые слова."
+  },
+  "mc_settings_keyword_highlights_placeholder": {
+    "message": "одно слово на строку"
+  },
+  "mc_settings_features": {
+    "message": "функции"
+  },
+  "mc_settings_auto_claim": {
+    "message": "авто-сбор каналпоинтов"
+  },
+  "mc_settings_auto_claim_desc": {
+    "message": "Автоматически кликает по бонусному сундуку каналпоинтов на Twitch, когда он появляется. Бесплатные поинты, без усилий."
+  },
+  "mc_settings_muted_users": {
+    "message": "замученные пользователи"
+  },
+  "mc_settings_no_muted": {
+    "message": "нет замученных пользователей"
+  },
+  "mc_settings_unmute": {
+    "message": "размутить"
+  },
+  "mc_pred_no_active": {
+    "message": "нет активных предсказаний"
+  },
+  "mc_pred_new": {
+    "message": "+ новое предсказание"
+  },
+  "mc_pred_title_placeholder": {
+    "message": "название предсказания"
+  },
+  "mc_pred_option1": {
+    "message": "вариант 1 (синий)"
+  },
+  "mc_pred_option2": {
+    "message": "вариант 2 (розовый)"
+  },
+  "mc_pred_duration": {
+    "message": "длительность:"
+  },
+  "mc_pred_create": {
+    "message": "создать предсказание"
+  },
+  "mc_pred_refunded": {
+    "message": "возвращено"
+  },
+  "mc_pred_locked": {
+    "message": "заблокировано"
+  },
+  "mc_pred_winner": {
+    "message": "победитель"
+  },
+  "mc_pred_won": {
+    "message": " выиграл"
+  },
+  "mc_pred_lost": {
+    "message": " проиграл"
+  },
+  "mc_pred_lock_betting": {
+    "message": "закрыть ставки"
+  },
+  "mc_pred_cancel_refund": {
+    "message": "отменить (возврат)"
+  },
+  "mc_pred_pick_winner": {
+    "message": "выбрать победителя"
+  },
+  "mc_pred_pick_winner_your_bet": {
+    "message": "выбрать победителя (ваша ставка)"
+  },
+  "mc_pred_failed_load": {
+    "message": "не удалось загрузить предсказания"
+  },
+  "mc_pred_bet_own": {
+    "message": "нельзя ставить на своё"
+  },
+  "mc_pred_try_again": {
+    "message": "попробовать снова"
+  },
+  "mc_pred_ended": {
+    "message": "предсказание завершено"
+  },
+  "mc_pred_betting_locked": {
+    "message": "ставки закрыты"
+  },
+  "mc_pred_not_enough": {
+    "message": "недостаточно поинтов"
+  },
+  "mc_pred_already_bet": {
+    "message": "уже поставлено"
+  },
+  "mc_pred_no_permission": {
+    "message": "нет прав"
+  },
+  "mc_pred_failed": {
+    "message": "сбой"
+  },
+  "mc_pred_no_event": {
+    "message": "нет события"
+  },
+  "mc_pred_no_outcome": {
+    "message": "нет исхода"
+  },
+  "mc_pred_closing": {
+    "message": "закрытие..."
+  },
+  "mc_pred_you_bet": {
+    "message": "вы поставили $POINTS$ на $OUTCOME$ — выберите реального победителя",
+    "placeholders": {
+      "points": {
+        "content": "$1"
+      },
+      "outcome": {
+        "content": "$2"
+      }
+    }
+  },
+  "mc_poll_new": {
+    "message": "+ новый опрос"
+  },
+  "mc_poll_question": {
+    "message": "вопрос опроса"
+  },
+  "mc_poll_choice": {
+    "message": "вариант $NUM$",
+    "placeholders": {
+      "num": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_poll_choice_optional": {
+    "message": "вариант $NUM$ (необязательно)",
+    "placeholders": {
+      "num": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_poll_create": {
+    "message": "создать опрос"
+  },
+  "mc_poll_end": {
+    "message": "завершить опрос"
+  },
+  "mc_poll_votes": {
+    "message": "$COUNT$ голосов",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_poll_vote_single": {
+    "message": "$COUNT$ голос",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_poll_already_active": {
+    "message": "опрос уже активен"
+  },
+  "mc_poll_not_logged_in": {
+    "message": "не выполнен вход"
+  },
+  "mc_reward_rewards": {
+    "message": "награды"
+  },
+  "mc_reward_none": {
+    "message": "нет доступных наград"
+  },
+  "mc_reward_paused": {
+    "message": "приостановлено"
+  },
+  "mc_reward_out_of_stock": {
+    "message": "закончились"
+  },
+  "mc_reward_cooldown_min": {
+    "message": "кулдаун $MIN$ мин",
+    "placeholders": {
+      "min": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_reward_cooldown_sec": {
+    "message": "кулдаун $SEC$ сек",
+    "placeholders": {
+      "sec": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_reward_enter_text": {
+    "message": "введите текст..."
+  },
+  "mc_reward_redeem": {
+    "message": "обменять"
+  },
+  "mc_chat_username_color": {
+    "message": "цвет ника"
+  },
+  "mc_chat_hex_placeholder": {
+    "message": "#hex"
+  },
+  "mc_chat_modes": {
+    "message": "режимы чата"
+  },
+  "mc_chat_emote_only": {
+    "message": "только эмоуты"
+  },
+  "mc_chat_follower": {
+    "message": "только фоловеры"
+  },
+  "mc_chat_slow": {
+    "message": "медленный"
+  },
+  "mc_chat_sub_only": {
+    "message": "только сабы"
+  },
+  "mc_chat_unique": {
+    "message": "уникальный"
+  },
+  "mc_chat_hype_train": {
+    "message": "hype train"
+  },
+  "mc_chat_hype_level": {
+    "message": "ур $LEVEL$",
+    "placeholders": {
+      "level": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_input_send_message": {
+    "message": "отправить сообщение..."
+  },
+  "mc_input_post_heatsync": {
+    "message": "постнуть в heatsync..."
+  },
+  "mc_input_send_channel": {
+    "message": "отправить в #$CHANNEL$",
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_input_replying_to": {
+    "message": "Ответ @$USER$",
+    "placeholders": {
+      "user": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_input_cancel_reply": {
+    "message": "Отменить ответ"
+  },
+  "mc_input_not_logged_in": {
+    "message": "не выполнен вход"
+  },
+  "mc_input_login_kick": {
+    "message": "сначала войдите на kick.com"
+  },
+  "mc_input_open_kick": {
+    "message": "откройте kick.com во вкладке"
+  },
+  "mc_input_kick_not_found": {
+    "message": "канал Kick не найден"
+  },
+  "mc_input_send_failed": {
+    "message": "не удалось отправить"
+  },
+  "mc_input_no_username": {
+    "message": "ник не определён"
+  },
+  "mc_input_auth_failed": {
+    "message": "ошибка авторизации — войдите в Twitch заново"
+  },
+  "mc_input_connection_failed": {
+    "message": "сбой подключения — попробуйте снова"
+  },
+  "mc_input_send_failed_retry": {
+    "message": "не удалось отправить — попробуйте снова"
+  },
+  "mc_social_back": {
+    "message": "<- назад"
+  },
+  "mc_social_no_posts": {
+    "message": "пока нет постов"
+  },
+  "mc_social_loading_feed": {
+    "message": "загрузка ленты подписок..."
+  },
+  "mc_social_scroll_more": {
+    "message": "прокрутите для большего..."
+  },
+  "mc_social_no_replies": {
+    "message": "пока нет ответов"
+  },
+  "mc_social_login_first": {
+    "message": "сначала войдите на heatsync.org"
+  },
+  "mc_social_login_activity": {
+    "message": "войдите на heatsync.org, чтобы видеть активность"
+  },
+  "mc_social_failed_feed_auth": {
+    "message": "не удалось загрузить ленту — войдите на heatsync.org"
+  },
+  "mc_social_failed_feed": {
+    "message": "не удалось загрузить ленту"
+  },
+  "mc_social_log_in_first": {
+    "message": "сначала войдите"
+  },
+  "mc_social_slow_down": {
+    "message": "помедленнее"
+  },
+  "mc_social_duplicate": {
+    "message": "дубликат сообщения"
+  },
+  "mc_social_failed_post": {
+    "message": "не удалось запостить"
+  },
+  "mc_tip_emoji": {
+    "message": "emoji"
+  },
+  "mc_tip_subbed": {
+    "message": "саб $CHANNEL$ $TENURE$",
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      },
+      "tenure": {
+        "content": "$2"
+      }
+    }
+  },
+  "mc_tip_following": {
+    "message": "подписан на $CHANNEL$ $AGE$",
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      },
+      "age": {
+        "content": "$2"
+      }
+    }
+  },
+  "mc_tip_not_following": {
+    "message": "не подписан на $CHANNEL$",
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_tip_followed_by": {
+    "message": "подписан $CHANNEL$",
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_tip_followers": {
+    "message": "$COUNT$ подписчиков",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_whisper_hint": {
+    "message": "/w ник сообщение · /dm ник сообщение · /r сообщение"
+  },
+  "mc_whisper_login": {
+    "message": "войдите на heatsync.org, чтобы отправлять шёпоты"
+  },
+  "mc_whisper_user_not_found": {
+    "message": "пользователь Twitch \"$USER$\" не найден",
+    "placeholders": {
+      "user": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_whisper_resolve_failed": {
+    "message": "не удалось найти пользователя Twitch"
+  },
+  "mc_whisper_hs_not_found": {
+    "message": "пользователь heatsync \"$USER$\" не найден",
+    "placeholders": {
+      "user": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_irc_chat_cleared": {
+    "message": "Чат очищен"
+  },
+  "mc_irc_msg_deleted": {
+    "message": "Сообщение от $USER$ удалено",
+    "placeholders": {
+      "user": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_irc_gift_subs": {
+    "message": "$USER$ подарил $AMOUNT$ сабов каналу $CHANNEL$",
+    "placeholders": {
+      "user": {
+        "content": "$1"
+      },
+      "amount": {
+        "content": "$2"
+      },
+      "channel": {
+        "content": "$3"
+      }
+    }
+  },
+  "mc_yt_connected": {
+    "message": "youtube подключён: $CHANNEL$ — ожидание сообщений...",
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_yt_ended": {
+    "message": "youtube-трансляция завершена"
+  },
+  "mc_yt_error": {
+    "message": "ошибка подключения к youtube"
+  },
+  "mc_emote_search_placeholder": {
+    "message": "поиск эмоутов..."
+  },
+  "mc_emote_no_loaded": {
+    "message": "эмоуты не загружены"
+  },
+  "mc_emote_in_set": {
+    "message": "в вашем наборе"
+  },
+  "mc_emote_click_add": {
+    "message": "нажмите чтобы добавить"
+  },
+  "mc_emote_blocked": {
+    "message": "заблокирован (нажмите чтобы разблокировать)"
+  },
+  "content_toast_unknown_error": {
+    "message": "Неизвестная ошибка"
+  },
+  "content_toast_loading_emotes": {
+    "message": "загрузка эмоутов..."
+  },
+  "content_toast_fetching_emotes": {
+    "message": "получение эмоутов..."
+  },
+  "content_card_action_ban": {
+    "message": "забанить"
+  },
+  "content_card_action_unban": {
+    "message": "разбанить"
+  },
+  "content_card_action_block": {
+    "message": "заблокировать"
+  },
+  "btn_close": {
+    "message": "Закрыть"
+  },
+  "btn_error_channel": {
+    "message": "не удалось загрузить эмоуты канала"
+  },
+  "btn_error_global": {
+    "message": "не удалось загрузить глобальные эмоуты"
+  },
+  "btn_error_inventory": {
+    "message": "не удалось загрузить ваши эмоуты"
+  }
+}

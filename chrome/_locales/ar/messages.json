@@ -1,0 +1,1245 @@
+{
+  "manifest_name": {
+    "message": "heatsync"
+  },
+  "manifest_description": {
+    "message": "إيموتس مخصصة لدردشة Twitch وKick وYouTube. خانات غير محدودة، إكمال تلقائي بـ Tab، مزامنة فورية."
+  },
+  "common_loading": {
+    "message": "جارٍ التحميل..."
+  },
+  "common_extension_updated": {
+    "message": "تم تحديث الإضافة — حدّث الصفحة"
+  },
+  "common_no_matches": {
+    "message": "لا توجد نتائج"
+  },
+  "common_retry": {
+    "message": "إعادة المحاولة"
+  },
+  "common_cancel": {
+    "message": "إلغاء"
+  },
+  "common_save": {
+    "message": "حفظ"
+  },
+  "common_add": {
+    "message": "إضافة"
+  },
+  "common_edit": {
+    "message": "تعديل"
+  },
+  "common_remove": {
+    "message": "إزالة"
+  },
+  "common_done": {
+    "message": "تم"
+  },
+  "common_ended": {
+    "message": "انتهى"
+  },
+  "common_vote": {
+    "message": "صوّت"
+  },
+  "common_set": {
+    "message": "تعيين"
+  },
+  "common_default": {
+    "message": "افتراضي"
+  },
+  "common_mention": {
+    "message": "إشارة"
+  },
+  "common_user_not_found": {
+    "message": "المستخدم غير موجود"
+  },
+  "popup_title": {
+    "message": "heatsync"
+  },
+  "popup_status_checking": {
+    "message": "جارٍ التحقق..."
+  },
+  "popup_status_connected": {
+    "message": "متصل"
+  },
+  "popup_status_api_error": {
+    "message": "خطأ في api"
+  },
+  "popup_status_offline": {
+    "message": "غير متصل"
+  },
+  "popup_user_stats": {
+    "message": "$EMOTES$ إيموتس · $GLOBALS$ عام",
+    "placeholders": {
+      "emotes": {
+        "content": "$1"
+      },
+      "globals": {
+        "content": "$2"
+      }
+    }
+  },
+  "popup_user_stats_heat": {
+    "message": "$EMOTES$ إيموتس · $GLOBALS$ عام · $HEAT$ heat",
+    "placeholders": {
+      "emotes": {
+        "content": "$1"
+      },
+      "globals": {
+        "content": "$2"
+      },
+      "heat": {
+        "content": "$3"
+      }
+    }
+  },
+  "popup_btn_emotes": {
+    "message": "إيموتس"
+  },
+  "popup_btn_refresh": {
+    "message": "تحديث"
+  },
+  "popup_btn_site": {
+    "message": "الموقع"
+  },
+  "popup_btn_done": {
+    "message": "تم"
+  },
+  "popup_btn_logout": {
+    "message": "تسجيل خروج"
+  },
+  "btn_recent": {
+    "message": "الأخيرة"
+  },
+  "popup_login_prompt": {
+    "message": "سجّل دخول لمزامنة الإيموتس"
+  },
+  "popup_channel_placeholder": {
+    "message": "القناة"
+  },
+  "popup_btn_popout": {
+    "message": "نافذة منفصلة"
+  },
+  "popup_hint": {
+    "message": "إعدادات الإيموتس في لوحة المنتقي بالدردشة"
+  },
+  "welcome_title": {
+    "message": "مرحبًا بك في heatsync"
+  },
+  "welcome_tagline": {
+    "message": "إيموتسك في كل مكان تتحدّث فيه"
+  },
+  "welcome_step1_title": {
+    "message": "سجّل دخول على heatsync.org"
+  },
+  "welcome_step1_desc": {
+    "message": "سجّل عبر Twitch أو Kick لإنشاء حسابك"
+  },
+  "welcome_step2_title": {
+    "message": "ارفع إيموتسك"
+  },
+  "welcome_step2_desc": {
+    "message": "أضف أي صور — لا حدود على الخانات، جميع الصيغ مدعومة"
+  },
+  "welcome_step3_title": {
+    "message": "استخدمها في الدردشة"
+  },
+  "welcome_step3_desc": {
+    "message": "اضغط زر heatsync في دردشة Twitch/Kick لفتح إيموتسك"
+  },
+  "welcome_cta": {
+    "message": "ابدأ"
+  },
+  "welcome_privacy": {
+    "message": "الخصوصية"
+  },
+  "welcome_source": {
+    "message": "المصدر"
+  },
+  "btn_auth_login": {
+    "message": "تسجيل دخول"
+  },
+  "btn_auth_save_emotes": {
+    "message": "لحفظ الإيموتس في مجموعتك"
+  },
+  "btn_tab_channel": {
+    "message": "قناة"
+  },
+  "btn_tab_global": {
+    "message": "عام"
+  },
+  "btn_tab_mine": {
+    "message": "خاصتي"
+  },
+  "btn_tab_emoji": {
+    "message": "إيموجي"
+  },
+  "btn_search_placeholder": {
+    "message": "ابحث عن إيموتس..."
+  },
+  "btn_rotate_title": {
+    "message": "تدوير موضع شريط التبويبات"
+  },
+  "btn_settings_title": {
+    "message": "الإعدادات"
+  },
+  "btn_no_emotes": {
+    "message": "لا إيموتس"
+  },
+  "btn_login_save_emotes": {
+    "message": "سجّل دخول على heatsync.org لحفظ الإيموتس"
+  },
+  "btn_cached": {
+    "message": "مخزّن مؤقتًا"
+  },
+  "btn_loading_emotes": {
+    "message": "تحميل الإيموتس"
+  },
+  "btn_no_third_party": {
+    "message": "لم يُعثر على إيموتس خارجية"
+  },
+  "btn_no_emotes_import": {
+    "message": "لا إيموتس للاستيراد"
+  },
+  "btn_import_count": {
+    "message": "استيراد $COUNT$ إيموتس",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "btn_failed_load": {
+    "message": "فشل تحميل الإيموتس"
+  },
+  "btn_retry_loading": {
+    "message": "إعادة المحاولة"
+  },
+  "btn_ctx_block": {
+    "message": "حظر الإيموت"
+  },
+  "btn_ctx_unblock": {
+    "message": "إلغاء حظر الإيموت"
+  },
+  "btn_ctx_remove_inventory": {
+    "message": "إزالة من المخزون"
+  },
+  "btn_ctx_add_inventory": {
+    "message": "إضافة إلى المخزون"
+  },
+  "btn_ctx_copy_name": {
+    "message": "نسخ اسم الإيموت"
+  },
+  "btn_ctx_copy_url": {
+    "message": "نسخ رابط الإيموت"
+  },
+  "btn_toast_unblocked": {
+    "message": "تم إلغاء الحظر"
+  },
+  "btn_toast_blocked": {
+    "message": "تم الحظر"
+  },
+  "btn_toast_removed": {
+    "message": "تمت الإزالة"
+  },
+  "btn_toast_added": {
+    "message": "تمت الإضافة"
+  },
+  "btn_toast_copied": {
+    "message": "تم النسخ!"
+  },
+  "btn_settings_tab_completion": {
+    "message": "إكمال بـ Tab"
+  },
+  "btn_settings_chat_ui": {
+    "message": "واجهة الدردشة"
+  },
+  "btn_settings_input": {
+    "message": "الإدخال"
+  },
+  "btn_settings_wysiwyg": {
+    "message": "إيموتس wysiwyg"
+  },
+  "btn_settings_space_after": {
+    "message": "مسافة بعد الإيموت"
+  },
+  "btn_settings_placeholder_mode": {
+    "message": "وضع العناصر النائبة"
+  },
+  "btn_settings_placeholder_desc": {
+    "message": "إظهار مربعات ملوّنة"
+  },
+  "btn_settings_hide_header": {
+    "message": "إخفاء الرأس"
+  },
+  "btn_settings_always_popout": {
+    "message": "(دائمًا في النافذة المنفصلة)"
+  },
+  "btn_settings_compact_input": {
+    "message": "إدخال مدمج"
+  },
+  "btn_settings_highlight_mentions": {
+    "message": "تمييز الإشارات"
+  },
+  "btn_settings_platform_badges": {
+    "message": "شارات المنصة"
+  },
+  "btn_settings_platform_badges_desc": {
+    "message": "[T] [K] [YT] على الرسائل"
+  },
+  "btn_settings_cosmetics": {
+    "message": "تجميل"
+  },
+  "btn_settings_cosmetics_desc": {
+    "message": "paints + شارات 7TV/BTTV/FFZ"
+  },
+  "btn_settings_vi_mode": {
+    "message": "وضع vi"
+  },
+  "btn_settings_vi_mode_desc": {
+    "message": "اختصارات vim لإدخال الدردشة"
+  },
+  "btn_size_1x": {
+    "message": "1x"
+  },
+  "btn_size_2x": {
+    "message": "2x"
+  },
+  "btn_size_4x": {
+    "message": "4x"
+  },
+  "btn_expand": {
+    "message": "توسيع"
+  },
+  "btn_collapse": {
+    "message": "طي"
+  },
+  "btn_block_all": {
+    "message": "حظر الكل"
+  },
+  "btn_show_all": {
+    "message": "إظهار الكل"
+  },
+  "btn_click_expand": {
+    "message": "اضغط للتوسيع"
+  },
+  "content_toast_failed_add": {
+    "message": "فشل إضافة $NAME$: $ERROR$",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      },
+      "error": {
+        "content": "$2"
+      }
+    }
+  },
+  "content_toast_failed_remove": {
+    "message": "فشل إزالة $NAME$: $ERROR$",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      },
+      "error": {
+        "content": "$2"
+      }
+    }
+  },
+  "content_toast_unblocked": {
+    "message": "تم إلغاء حظر $NAME$",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
+  },
+  "content_toast_failed_unblock": {
+    "message": "فشل إلغاء الحظر: $ERROR$",
+    "placeholders": {
+      "error": {
+        "content": "$1"
+      }
+    }
+  },
+  "content_toast_removed": {
+    "message": "تمت إزالة $NAME$ من مجموعتك",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
+  },
+  "content_toast_failed_block": {
+    "message": "فشل الحظر: $ERROR$",
+    "placeholders": {
+      "error": {
+        "content": "$1"
+      }
+    }
+  },
+  "content_toast_blocked": {
+    "message": "تم حظر $NAME$",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
+  },
+  "content_toast_unmuted": {
+    "message": "تم إلغاء كتم $NAME$",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
+  },
+  "content_toast_muted_24h": {
+    "message": "تم كتم $NAME$ لمدة 24 ساعة",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
+  },
+  "content_card_follows_you": {
+    "message": "يتابعك"
+  },
+  "content_card_subs_to_you": {
+    "message": "مشترك معك"
+  },
+  "content_card_you_follow": {
+    "message": "تتابع"
+  },
+  "content_card_you_sub": {
+    "message": "أنت مشترك"
+  },
+  "content_card_you_sub_tier": {
+    "message": "مشترك T$TIER$",
+    "placeholders": {
+      "tier": {
+        "content": "$1"
+      }
+    }
+  },
+  "content_card_subbed": {
+    "message": "اشتراك بـ $CHANNEL$ $TENURE$",
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      },
+      "tenure": {
+        "content": "$2"
+      }
+    }
+  },
+  "content_card_following": {
+    "message": "يتابع $CHANNEL$ $AGE$",
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      },
+      "age": {
+        "content": "$2"
+      }
+    }
+  },
+  "content_card_follows_channel": {
+    "message": "يتابع $CHANNEL$",
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      }
+    }
+  },
+  "content_card_not_following": {
+    "message": "لا يتابع $CHANNEL$",
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      }
+    }
+  },
+  "content_card_followed_by": {
+    "message": "يتابعه $CHANNEL$",
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      }
+    }
+  },
+  "content_card_following_count": {
+    "message": "يتابع $COUNT$",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "content_card_followers": {
+    "message": "$COUNT$ متابع",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "content_card_partner": {
+    "message": "شريك"
+  },
+  "content_card_affiliate": {
+    "message": "أفلييت"
+  },
+  "content_card_live": {
+    "message": "مباشر $VIEWERS$",
+    "placeholders": {
+      "viewers": {
+        "content": "$1"
+      }
+    }
+  },
+  "content_card_twitch_verified": {
+    "message": "موثّق على Twitch"
+  },
+  "content_card_kick_verified": {
+    "message": "موثّق على Kick"
+  },
+  "content_view_on_heatsync": {
+    "message": "عرض على heatsync"
+  },
+  "content_in_your_set": {
+    "message": "في مجموعتك"
+  },
+  "content_click_to_add": {
+    "message": "اضغط للإضافة"
+  },
+  "content_blocked_click_unblock": {
+    "message": "محظور (اضغط لإلغاء الحظر)"
+  },
+  "mc_tab_feed": {
+    "message": "الرئيسية"
+  },
+  "mc_tab_whispers": {
+    "message": "همسات"
+  },
+  "mc_tab_mentions": {
+    "message": "إشارات"
+  },
+  "mc_tab_activity": {
+    "message": "النشاط"
+  },
+  "mc_tab_live": {
+    "message": "مباشر"
+  },
+  "mc_tab_discover": {
+    "message": "استكشف"
+  },
+  "mc_tab_pinned": {
+    "message": "محفوظ"
+  },
+  "mc_tab_live_channel": {
+    "message": "مباشر · $CHANNEL$",
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_btn_rotate_tabs": {
+    "message": "تدوير التبويبات (T)"
+  },
+  "mc_btn_rotate_chat": {
+    "message": "تدوير لوحة الدردشة (C)"
+  },
+  "mc_btn_smaller_text": {
+    "message": "نص أصغر"
+  },
+  "mc_btn_larger_text": {
+    "message": "نص أكبر"
+  },
+  "mc_btn_settings": {
+    "message": "الإعدادات"
+  },
+  "mc_new_messages": {
+    "message": "$COUNT$ جديدة",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_resume": {
+    "message": "استئناف"
+  },
+  "mc_no_messages": {
+    "message": "لا رسائل بعد"
+  },
+  "mc_no_activity": {
+    "message": "لا نشاط بعد"
+  },
+  "mc_add_channel": {
+    "message": "إضافة قناة"
+  },
+  "mc_enter_platform": {
+    "message": "أدخل منصة واحدة على الأقل"
+  },
+  "mc_username_placeholder": {
+    "message": "اسم المستخدم"
+  },
+  "mc_username_url_placeholder": {
+    "message": "اسم المستخدم أو الرابط"
+  },
+  "mc_reserved_name": {
+    "message": "اسم محجوز"
+  },
+  "mc_channel_exists": {
+    "message": "القناة موجودة بالفعل"
+  },
+  "mc_twitch_exists": {
+    "message": "قناة Twitch مضافة بالفعل"
+  },
+  "mc_kick_exists": {
+    "message": "قناة Kick مضافة بالفعل"
+  },
+  "mc_edit_channel": {
+    "message": "تعديل $CHANNEL$",
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_no_channel_detected": {
+    "message": "لم تُكتشف قناة"
+  },
+  "mc_settings_display": {
+    "message": "العرض"
+  },
+  "mc_settings_emote_size": {
+    "message": "حجم الإيموت"
+  },
+  "mc_settings_input_preview": {
+    "message": "معاينة الإدخال"
+  },
+  "mc_settings_clickable_links": {
+    "message": "روابط قابلة للنقر"
+  },
+  "mc_settings_vi_mode": {
+    "message": "وضع vi"
+  },
+  "mc_settings_zebra": {
+    "message": "تظليل متبادل"
+  },
+  "mc_settings_auto_hide": {
+    "message": "إخفاء الإدخال تلقائيًا"
+  },
+  "mc_settings_timestamps": {
+    "message": "الطوابع الزمنية"
+  },
+  "mc_settings_avatars": {
+    "message": "الصور الرمزية"
+  },
+  "mc_settings_emote_size_desc": {
+    "message": "مضاعف دقة الإيموتس في الدردشة. 1x واضح ومدمج، 2x النقطة المثالية لمعظم الشاشات، 4x لمن يريد رؤية كل بيكسل من فن الإيموت."
+  },
+  "mc_settings_input_preview_desc": {
+    "message": "يعرض الإيموتس كصور مباشرة في صندوق الإدخال أثناء الكتابة بدلًا من أسماء نصية. ما تراه هو ما ترسله."
+  },
+  "mc_settings_clickable_links_desc": {
+    "message": "يحوّل الروابط في رسائل الدردشة إلى روابط قابلة للنقر. عطّله إن كنت تفضّل النسخ واللصق أو لا تثق بالغرباء على الإنترنت."
+  },
+  "mc_settings_vi_mode_desc": {
+    "message": "اختصارات Vim للتنقّل في الدردشة. j/k للتمرير، g/G للأعلى/الأسفل، / للبحث. لمن يعتقد أن الفأرة للهواة."
+  },
+  "mc_settings_zebra_desc": {
+    "message": "تظليل متبادل للأسطر في الدردشة. يسهّل تتبّع الرسائل الطويلة، خاصة في الدردشات السريعة."
+  },
+  "mc_settings_auto_hide_desc": {
+    "message": "يخفي شريط الإدخال حين لا تكتب رسالة. اضغط أو ابدأ الكتابة لإعادته. يضاعف مساحة عرض الدردشة."
+  },
+  "mc_settings_timestamps_desc": {
+    "message": "يعرض وقت إرسال كل رسالة بجانب اسم المستخدم. مفيد لمتابعة ما حدث أثناء غيابك."
+  },
+  "mc_settings_avatars_desc": {
+    "message": "يعرض صور الملف الشخصي بجانب أسماء المستخدمين. يسهّل التعرّف بصريًا على الدائمين، يكلّف بعض المساحة العمودية."
+  },
+  "mc_settings_inline_notifs": {
+    "message": "إشعارات داخل النص"
+  },
+  "mc_settings_notif_op": {
+    "message": "[OP] منشورات أصلية"
+  },
+  "mc_settings_notif_op_reply": {
+    "message": "[OP] OP يردّ في موضوعه"
+  },
+  "mc_settings_notif_re": {
+    "message": "[RE] ردود"
+  },
+  "mc_settings_notif_dm": {
+    "message": "[DM] همسات ورسائل خاصة"
+  },
+  "mc_settings_notif_op_desc": {
+    "message": "إشعار في تبويب الدردشة النشط حين ينشر شخص ما منشورًا جديدًا في الفيد."
+  },
+  "mc_settings_notif_op_reply_desc": {
+    "message": "إشعار حين يردّ صاحب المنشور الأصلي في موضوعه."
+  },
+  "mc_settings_notif_re_desc": {
+    "message": "إشعار لكل ردّ في أي موضوع بالفيد."
+  },
+  "mc_settings_notif_dm_desc": {
+    "message": "إشعار حين تستقبل همسة أو رسالة خاصة."
+  },
+  "mc_settings_twitch_events": {
+    "message": "أحداث Twitch"
+  },
+  "mc_settings_raids": {
+    "message": "غارات"
+  },
+  "mc_settings_raids_desc": {
+    "message": "بانر داخل الدردشة عند غارة دخول أو خروج، مع عدد المشاهدين والقناة المصدر. يتيح لك مرافقة الرحلة إلى البث التالي."
+  },
+  "mc_settings_hype_trains": {
+    "message": "hype trains"
+  },
+  "mc_settings_hype_trains_desc": {
+    "message": "بانر تقدّم مباشر للـ hype train، يعرض المستوى ومؤقّت المساهمة. مغلق افتراضيًا لأنه يُفعّل باستمرار في القنوات الكبيرة."
+  },
+  "mc_settings_gift_subs": {
+    "message": "اشتراكات مهداة"
+  },
+  "mc_settings_gift_subs_desc": {
+    "message": "بانر لقذائف الاشتراكات المهداة للمجتمع والهدايا الفردية، مع اسم المُهدي والمستلم والتير."
+  },
+  "mc_settings_redeems": {
+    "message": "استبدالات نقاط القناة"
+  },
+  "mc_settings_redeems_desc": {
+    "message": "تنبيه داخل الدردشة لاستبدالات نقاط القناة مثل 'إبراز رسالتي' لترى على ماذا ينفق الناس النقاط."
+  },
+  "mc_settings_prediction_banner": {
+    "message": "التوقعات"
+  },
+  "mc_settings_prediction_banner_desc": {
+    "message": "بانر مباشر لتوقعات نقاط القناة مع الاحتمالات الحالية والوقت المتبقي لتأكيد التصويت."
+  },
+  "mc_settings_poll_banner": {
+    "message": "الاستطلاعات"
+  },
+  "mc_settings_poll_banner_desc": {
+    "message": "بانر استطلاع نشط مع عدد الأصوات والوقت المتبقي. صوّت مباشرة من الـ overlay."
+  },
+  "mc_settings_pinned_messages": {
+    "message": "الرسائل المثبّتة"
+  },
+  "mc_settings_pinned_messages_desc": {
+    "message": "بانر ثابت لرسائل الدردشة المثبّتة من قبل المشرفين كي لا تفوّت القواعد أو الجدول."
+  },
+  "mc_settings_dim_timeouts": {
+    "message": "تعتيم رسائل الـ timeout"
+  },
+  "mc_settings_dim_timeouts_desc": {
+    "message": "يعرض الرسائل المعطّلة والمحظورة بشفافية 50% بدل إخفائها، بأسلوب FFZ/BTTV. يتيح لك رؤية ما حُذف دون مغادرة الدردشة."
+  },
+  "mc_settings_smart_completion": {
+    "message": "إكمال Tab ذكي"
+  },
+  "mc_settings_smart_completion_desc": {
+    "message": "آخر من تحدّث وإيموتس هذه القناة تظهر أولًا عند الإكمال بـ Tab. أسرع من الترتيب الأبجدي حين تجري الدردشة."
+  },
+  "mc_settings_first_chatter": {
+    "message": "توهّج أول رسالة"
+  },
+  "mc_settings_first_chatter_desc": {
+    "message": "علامة برتقالية على حافة أول رسالة يرسلها مستخدم في كل قناة في هذه الجلسة. يجعل القادمين الجدد بارزين في الدردشات السريعة."
+  },
+  "mc_settings_keyword_highlights": {
+    "message": "تمييز الكلمات المفتاحية"
+  },
+  "mc_settings_keyword_highlights_desc": {
+    "message": "الرسائل التي تحتوي أيًا من هذه الكلمات تأخذ صبغة برتقالية، كإشارة شخصية. كلمة لكل سطر، يتجاهل حالة الأحرف، تطابق كلمة كاملة."
+  },
+  "mc_settings_keyword_highlights_placeholder": {
+    "message": "كلمة مفتاحية لكل سطر"
+  },
+  "mc_settings_features": {
+    "message": "ميزات"
+  },
+  "mc_settings_auto_claim": {
+    "message": "جمع تلقائي لنقاط القناة"
+  },
+  "mc_settings_auto_claim_desc": {
+    "message": "ينقر تلقائيًا على صندوق نقاط القناة الإضافية على Twitch حين يظهر. نقاط مجانية، صفر جهد."
+  },
+  "mc_settings_muted_users": {
+    "message": "مستخدمون مكتومون"
+  },
+  "mc_settings_no_muted": {
+    "message": "لا مستخدمين مكتومين"
+  },
+  "mc_settings_unmute": {
+    "message": "إلغاء الكتم"
+  },
+  "mc_pred_no_active": {
+    "message": "لا توقعات نشطة"
+  },
+  "mc_pred_new": {
+    "message": "+ توقع جديد"
+  },
+  "mc_pred_title_placeholder": {
+    "message": "عنوان التوقع"
+  },
+  "mc_pred_option1": {
+    "message": "خيار 1 (أزرق)"
+  },
+  "mc_pred_option2": {
+    "message": "خيار 2 (وردي)"
+  },
+  "mc_pred_duration": {
+    "message": "المدة:"
+  },
+  "mc_pred_create": {
+    "message": "إنشاء توقع"
+  },
+  "mc_pred_refunded": {
+    "message": "مُسترد"
+  },
+  "mc_pred_locked": {
+    "message": "مقفل"
+  },
+  "mc_pred_winner": {
+    "message": "الفائز"
+  },
+  "mc_pred_won": {
+    "message": " فاز"
+  },
+  "mc_pred_lost": {
+    "message": " خسر"
+  },
+  "mc_pred_lock_betting": {
+    "message": "إغلاق الرهان"
+  },
+  "mc_pred_cancel_refund": {
+    "message": "إلغاء (استرداد)"
+  },
+  "mc_pred_pick_winner": {
+    "message": "اختر الفائز"
+  },
+  "mc_pred_pick_winner_your_bet": {
+    "message": "اختر الفائز (رهانك)"
+  },
+  "mc_pred_failed_load": {
+    "message": "تعذّر تحميل التوقعات"
+  },
+  "mc_pred_bet_own": {
+    "message": "لا يمكنك المراهنة على توقعك"
+  },
+  "mc_pred_try_again": {
+    "message": "حاول مجددًا"
+  },
+  "mc_pred_ended": {
+    "message": "انتهى التوقع"
+  },
+  "mc_pred_betting_locked": {
+    "message": "الرهان مغلق"
+  },
+  "mc_pred_not_enough": {
+    "message": "نقاط غير كافية"
+  },
+  "mc_pred_already_bet": {
+    "message": "راهنت بالفعل"
+  },
+  "mc_pred_no_permission": {
+    "message": "لا صلاحية"
+  },
+  "mc_pred_failed": {
+    "message": "فشل"
+  },
+  "mc_pred_no_event": {
+    "message": "لا حدث"
+  },
+  "mc_pred_no_outcome": {
+    "message": "لا نتيجة"
+  },
+  "mc_pred_closing": {
+    "message": "جاري الإغلاق..."
+  },
+  "mc_pred_you_bet": {
+    "message": "راهنت بـ $POINTS$ على $OUTCOME$ — اختر الفائز الفعلي",
+    "placeholders": {
+      "points": {
+        "content": "$1"
+      },
+      "outcome": {
+        "content": "$2"
+      }
+    }
+  },
+  "mc_poll_new": {
+    "message": "+ استطلاع جديد"
+  },
+  "mc_poll_question": {
+    "message": "سؤال الاستطلاع"
+  },
+  "mc_poll_choice": {
+    "message": "خيار $NUM$",
+    "placeholders": {
+      "num": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_poll_choice_optional": {
+    "message": "خيار $NUM$ (اختياري)",
+    "placeholders": {
+      "num": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_poll_create": {
+    "message": "إنشاء استطلاع"
+  },
+  "mc_poll_end": {
+    "message": "إنهاء الاستطلاع"
+  },
+  "mc_poll_votes": {
+    "message": "$COUNT$ صوت",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_poll_vote_single": {
+    "message": "$COUNT$ صوت",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_poll_already_active": {
+    "message": "استطلاع نشط بالفعل"
+  },
+  "mc_poll_not_logged_in": {
+    "message": "غير مسجّل"
+  },
+  "mc_reward_rewards": {
+    "message": "المكافآت"
+  },
+  "mc_reward_none": {
+    "message": "لا مكافآت متاحة"
+  },
+  "mc_reward_paused": {
+    "message": "معلّق"
+  },
+  "mc_reward_out_of_stock": {
+    "message": "نفدت"
+  },
+  "mc_reward_cooldown_min": {
+    "message": "تهدئة $MIN$ د",
+    "placeholders": {
+      "min": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_reward_cooldown_sec": {
+    "message": "تهدئة $SEC$ ث",
+    "placeholders": {
+      "sec": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_reward_enter_text": {
+    "message": "أدخل نصًا..."
+  },
+  "mc_reward_redeem": {
+    "message": "استبدل"
+  },
+  "mc_chat_username_color": {
+    "message": "لون اسم المستخدم"
+  },
+  "mc_chat_hex_placeholder": {
+    "message": "#hex"
+  },
+  "mc_chat_modes": {
+    "message": "أوضاع الدردشة"
+  },
+  "mc_chat_emote_only": {
+    "message": "إيموتس فقط"
+  },
+  "mc_chat_follower": {
+    "message": "متابع"
+  },
+  "mc_chat_slow": {
+    "message": "بطيء"
+  },
+  "mc_chat_sub_only": {
+    "message": "مشتركون فقط"
+  },
+  "mc_chat_unique": {
+    "message": "فريد"
+  },
+  "mc_chat_hype_train": {
+    "message": "hype train"
+  },
+  "mc_chat_hype_level": {
+    "message": "مس $LEVEL$",
+    "placeholders": {
+      "level": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_input_send_message": {
+    "message": "أرسل رسالة..."
+  },
+  "mc_input_post_heatsync": {
+    "message": "انشر على heatsync..."
+  },
+  "mc_input_send_channel": {
+    "message": "أرسل إلى #$CHANNEL$",
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_input_replying_to": {
+    "message": "ردّ على @$USER$",
+    "placeholders": {
+      "user": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_input_cancel_reply": {
+    "message": "إلغاء الردّ"
+  },
+  "mc_input_not_logged_in": {
+    "message": "غير مسجّل"
+  },
+  "mc_input_login_kick": {
+    "message": "سجّل دخول على kick.com أولًا"
+  },
+  "mc_input_open_kick": {
+    "message": "افتح kick.com في تبويب"
+  },
+  "mc_input_kick_not_found": {
+    "message": "قناة Kick غير موجودة"
+  },
+  "mc_input_send_failed": {
+    "message": "فشل الإرسال"
+  },
+  "mc_input_no_username": {
+    "message": "لم يُكتشف اسم مستخدم"
+  },
+  "mc_input_auth_failed": {
+    "message": "فشل التوثيق — أعد تسجيل الدخول إلى Twitch"
+  },
+  "mc_input_connection_failed": {
+    "message": "فشل الاتصال — حاول مجددًا"
+  },
+  "mc_input_send_failed_retry": {
+    "message": "فشل الإرسال — حاول مجددًا"
+  },
+  "mc_social_back": {
+    "message": "<- رجوع"
+  },
+  "mc_social_no_posts": {
+    "message": "لا منشورات بعد"
+  },
+  "mc_social_loading_feed": {
+    "message": "جارٍ تحميل فيد المتابعين..."
+  },
+  "mc_social_scroll_more": {
+    "message": "مرّر للمزيد..."
+  },
+  "mc_social_no_replies": {
+    "message": "لا ردود بعد"
+  },
+  "mc_social_login_first": {
+    "message": "سجّل دخول على heatsync.org أولًا"
+  },
+  "mc_social_login_activity": {
+    "message": "سجّل دخول على heatsync.org لرؤية النشاط"
+  },
+  "mc_social_failed_feed_auth": {
+    "message": "فشل تحميل الفيد — سجّل دخول على heatsync.org"
+  },
+  "mc_social_failed_feed": {
+    "message": "فشل تحميل الفيد"
+  },
+  "mc_social_log_in_first": {
+    "message": "سجّل دخول أولًا"
+  },
+  "mc_social_slow_down": {
+    "message": "أبطئ"
+  },
+  "mc_social_duplicate": {
+    "message": "رسالة مكرّرة"
+  },
+  "mc_social_failed_post": {
+    "message": "فشل النشر"
+  },
+  "mc_tip_emoji": {
+    "message": "إيموجي"
+  },
+  "mc_tip_subbed": {
+    "message": "اشتراك بـ $CHANNEL$ $TENURE$",
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      },
+      "tenure": {
+        "content": "$2"
+      }
+    }
+  },
+  "mc_tip_following": {
+    "message": "يتابع $CHANNEL$ $AGE$",
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      },
+      "age": {
+        "content": "$2"
+      }
+    }
+  },
+  "mc_tip_not_following": {
+    "message": "لا يتابع $CHANNEL$",
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_tip_followed_by": {
+    "message": "يتابعه $CHANNEL$",
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_tip_followers": {
+    "message": "$COUNT$ متابع",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_whisper_hint": {
+    "message": "/w مستخدم رسالة · /dm مستخدم رسالة · /r رسالة"
+  },
+  "mc_whisper_login": {
+    "message": "سجّل دخول على heatsync.org لإرسال الهمسات"
+  },
+  "mc_whisper_user_not_found": {
+    "message": "مستخدم Twitch \"$USER$\" غير موجود",
+    "placeholders": {
+      "user": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_whisper_resolve_failed": {
+    "message": "تعذّر إيجاد مستخدم Twitch"
+  },
+  "mc_whisper_hs_not_found": {
+    "message": "مستخدم heatsync \"$USER$\" غير موجود",
+    "placeholders": {
+      "user": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_irc_chat_cleared": {
+    "message": "تم مسح الدردشة"
+  },
+  "mc_irc_msg_deleted": {
+    "message": "حُذفت رسالة من $USER$",
+    "placeholders": {
+      "user": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_irc_gift_subs": {
+    "message": "$USER$ أهدى $AMOUNT$ اشتراكات لـ $CHANNEL$",
+    "placeholders": {
+      "user": {
+        "content": "$1"
+      },
+      "amount": {
+        "content": "$2"
+      },
+      "channel": {
+        "content": "$3"
+      }
+    }
+  },
+  "mc_yt_connected": {
+    "message": "youtube متصل: $CHANNEL$ — في انتظار الرسائل...",
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_yt_ended": {
+    "message": "انتهى بث youtube"
+  },
+  "mc_yt_error": {
+    "message": "خطأ اتصال youtube"
+  },
+  "mc_emote_search_placeholder": {
+    "message": "ابحث عن إيموتس..."
+  },
+  "mc_emote_no_loaded": {
+    "message": "لا إيموتس محمّلة"
+  },
+  "mc_emote_in_set": {
+    "message": "في مجموعتك"
+  },
+  "mc_emote_click_add": {
+    "message": "اضغط للإضافة"
+  },
+  "mc_emote_blocked": {
+    "message": "محظور (اضغط لإلغاء الحظر)"
+  },
+  "content_toast_unknown_error": {
+    "message": "خطأ غير معروف"
+  },
+  "content_toast_loading_emotes": {
+    "message": "جارٍ تحميل الإيموتس..."
+  },
+  "content_toast_fetching_emotes": {
+    "message": "جارٍ جلب الإيموتس..."
+  },
+  "content_card_action_ban": {
+    "message": "حظر"
+  },
+  "content_card_action_unban": {
+    "message": "إلغاء الحظر"
+  },
+  "content_card_action_block": {
+    "message": "حجب"
+  },
+  "btn_close": {
+    "message": "إغلاق"
+  },
+  "btn_error_channel": {
+    "message": "فشل تحميل إيموتس القناة"
+  },
+  "btn_error_global": {
+    "message": "فشل تحميل الإيموتس العامة"
+  },
+  "btn_error_inventory": {
+    "message": "فشل تحميل إيموتسك"
+  }
+}

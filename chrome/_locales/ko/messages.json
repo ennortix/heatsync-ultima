@@ -106,10 +106,10 @@
     "message": "완료"
   },
   "popup_btn_logout": {
-    "message": "logout"
+    "message": "로그아웃"
   },
   "btn_recent": {
-    "message": "recent"
+    "message": "최근"
   },
   "popup_login_prompt": {
     "message": "로그인하여 이모트 동기화"
@@ -444,7 +444,7 @@
     }
   },
   "content_card_follows_channel": {
-    "message": "follows $CHANNEL$",
+    "message": "$CHANNEL$ 팔로우 중",
     "placeholders": {
       "channel": {
         "content": "$1"
@@ -490,7 +490,7 @@
     "message": "어필리에이트"
   },
   "content_card_live": {
-    "message": "LIVE $VIEWERS$",
+    "message": "라이브 $VIEWERS$",
     "placeholders": {
       "viewers": {
         "content": "$1"
@@ -531,7 +531,7 @@
     "message": "라이브"
   },
   "mc_tab_discover": {
-    "message": "discover"
+    "message": "발견"
   },
   "mc_tab_pinned": {
     "message": "저장됨"
@@ -546,6 +546,9 @@
   },
   "mc_btn_rotate_tabs": {
     "message": "탭 전환 (T)"
+  },
+  "mc_btn_rotate_chat": {
+    "message": "채팅 패널 회전 (C)"
   },
   "mc_btn_smaller_text": {
     "message": "텍스트 작게"
@@ -693,70 +696,70 @@
     "message": "레이드"
   },
   "mc_settings_raids_desc": {
-    "message": "Inline banner when a streamer raids in or out, with viewer count and source channel. Lets you ride along to the next stream."
+    "message": "스트리머가 레이드를 시작하거나 받을 때, 시청자 수와 원본 채널을 보여주는 인라인 배너. 다음 스트림까지 함께 이동할 수 있습니다."
   },
   "mc_settings_hype_trains": {
     "message": "하입 트레인"
   },
   "mc_settings_hype_trains_desc": {
-    "message": "Live progress banner for hype trains, showing level and contribution timer. Off by default since they fire constantly on big channels."
+    "message": "하이프 트레인의 라이브 진행 배너. 레벨과 기여 타이머를 표시. 대형 채널에서는 자주 발생하므로 기본값은 꺼짐."
   },
   "mc_settings_gift_subs": {
     "message": "선물 구독"
   },
   "mc_settings_gift_subs_desc": {
-    "message": "Banner for community gift sub bombs and individual gifts, with gifter, recipient, and tier."
+    "message": "커뮤니티 기프트 섭 폭격과 개별 선물에 대한 배너. 선물한 사람, 받는 사람, 등급을 표시."
   },
   "mc_settings_redeems": {
     "message": "채널 포인트 리딤"
   },
   "mc_settings_redeems_desc": {
-    "message": "Inline notice for channel point redemptions like 'highlight my message' so you can see what people are spending points on."
+    "message": "'내 메시지 강조' 같은 채널 포인트 보상 사용에 대한 인라인 알림. 시청자가 어디에 포인트를 쓰는지 볼 수 있습니다."
   },
   "mc_settings_prediction_banner": {
     "message": "예측 배너"
   },
   "mc_settings_prediction_banner_desc": {
-    "message": "Live channel point prediction banner with current odds and time remaining to lock in a vote."
+    "message": "현재 배당률과 투표 마감 시간을 표시하는 채널 포인트 예측 라이브 배너."
   },
   "mc_settings_poll_banner": {
     "message": "투표 배너"
   },
   "mc_settings_poll_banner_desc": {
-    "message": "Active poll banner with vote tallies and time remaining. Vote directly from the overlay."
+    "message": "투표 수와 남은 시간을 표시하는 활성 투표 배너. 오버레이에서 직접 투표할 수 있습니다."
   },
   "mc_settings_pinned_messages": {
     "message": "고정된 메시지"
   },
   "mc_settings_pinned_messages_desc": {
-    "message": "Sticky banner for moderator-pinned chat messages so you don't miss the rules or the schedule."
+    "message": "모더레이터가 고정한 채팅 메시지의 상단 고정 배너. 규칙이나 일정을 놓치지 않도록."
   },
   "mc_settings_dim_timeouts": {
-    "message": "dim timed-out messages"
+    "message": "타임아웃 메시지 흐리게"
   },
   "mc_settings_dim_timeouts_desc": {
-    "message": "Show timed-out and banned messages at 50% opacity instead of hiding them, FFZ/BTTV style. Lets you see what got nuked without leaving chat."
+    "message": "타임아웃되거나 차단된 메시지를 숨기지 않고 FFZ/BTTV 스타일로 50% 불투명도로 표시. 채팅을 떠나지 않고도 무엇이 삭제됐는지 볼 수 있습니다."
   },
   "mc_settings_smart_completion": {
-    "message": "smart tab completion"
+    "message": "스마트 Tab 자동완성"
   },
   "mc_settings_smart_completion_desc": {
-    "message": "Recent chatters and emotes in this channel surface first when tab-completing. Faster than alphabetical when chat is moving."
+    "message": "Tab 자동완성 시, 이 채널에서 최근 채팅한 사용자와 이모트가 먼저 표시됩니다. 채팅이 빠를 때 알파벳순보다 빠릅니다."
   },
   "mc_settings_first_chatter": {
-    "message": "first-message glow"
+    "message": "첫 메시지 글로우"
   },
   "mc_settings_first_chatter_desc": {
-    "message": "Orange edge marker on the first message a user sends in each channel this session. Makes new arrivals easy to spot in fast chat."
+    "message": "이번 세션에서 각 채널에 사용자가 처음 보낸 메시지에 오렌지색 가장자리 표시. 빠른 채팅에서 새로 온 사람을 쉽게 알아볼 수 있습니다."
   },
   "mc_settings_keyword_highlights": {
-    "message": "keyword highlights"
+    "message": "키워드 강조"
   },
   "mc_settings_keyword_highlights_desc": {
-    "message": "Messages containing any of these words get an orange tint, like a personal mention. Newline-separated, case-insensitive, whole-word matches."
+    "message": "여기 지정한 단어를 포함하는 메시지는 오렌지색으로 표시되며 개인 멘션처럼 취급됩니다. 줄바꿈으로 구분, 대소문자 무시, 단어 단위 일치."
   },
   "mc_settings_keyword_highlights_placeholder": {
-    "message": "one keyword per line"
+    "message": "한 줄에 키워드 하나"
   },
   "mc_settings_features": {
     "message": "기능"

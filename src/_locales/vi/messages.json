@@ -1,0 +1,1245 @@
+{
+  "manifest_name": {
+    "message": "heatsync"
+  },
+  "manifest_description": {
+    "message": "Emote tùy chỉnh cho chat Twitch, Kick và YouTube. Slot không giới hạn, gõ tab để hoàn thành, đồng bộ thời gian thực."
+  },
+  "common_loading": {
+    "message": "đang tải..."
+  },
+  "common_extension_updated": {
+    "message": "Tiện ích đã cập nhật — tải lại trang"
+  },
+  "common_no_matches": {
+    "message": "không có kết quả"
+  },
+  "common_retry": {
+    "message": "thử lại"
+  },
+  "common_cancel": {
+    "message": "huỷ"
+  },
+  "common_save": {
+    "message": "lưu"
+  },
+  "common_add": {
+    "message": "thêm"
+  },
+  "common_edit": {
+    "message": "sửa"
+  },
+  "common_remove": {
+    "message": "gỡ"
+  },
+  "common_done": {
+    "message": "xong"
+  },
+  "common_ended": {
+    "message": "đã kết thúc"
+  },
+  "common_vote": {
+    "message": "bỏ phiếu"
+  },
+  "common_set": {
+    "message": "đặt"
+  },
+  "common_default": {
+    "message": "mặc định"
+  },
+  "common_mention": {
+    "message": "nhắc đến"
+  },
+  "common_user_not_found": {
+    "message": "không tìm thấy người dùng"
+  },
+  "popup_title": {
+    "message": "heatsync"
+  },
+  "popup_status_checking": {
+    "message": "đang kiểm tra..."
+  },
+  "popup_status_connected": {
+    "message": "đã kết nối"
+  },
+  "popup_status_api_error": {
+    "message": "lỗi api"
+  },
+  "popup_status_offline": {
+    "message": "ngoại tuyến"
+  },
+  "popup_user_stats": {
+    "message": "$EMOTES$ emote · $GLOBALS$ toàn cầu",
+    "placeholders": {
+      "emotes": {
+        "content": "$1"
+      },
+      "globals": {
+        "content": "$2"
+      }
+    }
+  },
+  "popup_user_stats_heat": {
+    "message": "$EMOTES$ emote · $GLOBALS$ toàn cầu · $HEAT$ heat",
+    "placeholders": {
+      "emotes": {
+        "content": "$1"
+      },
+      "globals": {
+        "content": "$2"
+      },
+      "heat": {
+        "content": "$3"
+      }
+    }
+  },
+  "popup_btn_emotes": {
+    "message": "emotes"
+  },
+  "popup_btn_refresh": {
+    "message": "làm mới"
+  },
+  "popup_btn_site": {
+    "message": "trang"
+  },
+  "popup_btn_done": {
+    "message": "xong"
+  },
+  "popup_btn_logout": {
+    "message": "đăng xuất"
+  },
+  "btn_recent": {
+    "message": "gần đây"
+  },
+  "popup_login_prompt": {
+    "message": "đăng nhập để đồng bộ emote"
+  },
+  "popup_channel_placeholder": {
+    "message": "kênh"
+  },
+  "popup_btn_popout": {
+    "message": "cửa sổ riêng"
+  },
+  "popup_hint": {
+    "message": "cài đặt emote ở picker trong chat"
+  },
+  "welcome_title": {
+    "message": "chào mừng đến với heatsync"
+  },
+  "welcome_tagline": {
+    "message": "emote của bạn, ở mọi nơi bạn chat"
+  },
+  "welcome_step1_title": {
+    "message": "đăng nhập tại heatsync.org"
+  },
+  "welcome_step1_desc": {
+    "message": "đăng nhập bằng Twitch hoặc Kick để tạo tài khoản"
+  },
+  "welcome_step2_title": {
+    "message": "tải emote lên"
+  },
+  "welcome_step2_desc": {
+    "message": "thêm bất kỳ ảnh nào — không giới hạn slot, hỗ trợ mọi định dạng"
+  },
+  "welcome_step3_title": {
+    "message": "dùng trong chat"
+  },
+  "welcome_step3_desc": {
+    "message": "bấm nút heatsync trong chat Twitch/Kick để mở emote của bạn"
+  },
+  "welcome_cta": {
+    "message": "bắt đầu"
+  },
+  "welcome_privacy": {
+    "message": "quyền riêng tư"
+  },
+  "welcome_source": {
+    "message": "mã nguồn"
+  },
+  "btn_auth_login": {
+    "message": "đăng nhập"
+  },
+  "btn_auth_save_emotes": {
+    "message": "để lưu emote vào set"
+  },
+  "btn_tab_channel": {
+    "message": "kênh"
+  },
+  "btn_tab_global": {
+    "message": "toàn cầu"
+  },
+  "btn_tab_mine": {
+    "message": "của tôi"
+  },
+  "btn_tab_emoji": {
+    "message": "emoji"
+  },
+  "btn_search_placeholder": {
+    "message": "tìm emote..."
+  },
+  "btn_rotate_title": {
+    "message": "xoay vị trí thanh tab"
+  },
+  "btn_settings_title": {
+    "message": "cài đặt"
+  },
+  "btn_no_emotes": {
+    "message": "không có emote"
+  },
+  "btn_login_save_emotes": {
+    "message": "đăng nhập tại heatsync.org để lưu emote"
+  },
+  "btn_cached": {
+    "message": "đã lưu cache"
+  },
+  "btn_loading_emotes": {
+    "message": "đang tải emote"
+  },
+  "btn_no_third_party": {
+    "message": "không tìm thấy emote bên thứ ba"
+  },
+  "btn_no_emotes_import": {
+    "message": "không có emote để nhập"
+  },
+  "btn_import_count": {
+    "message": "nhập $COUNT$ emote",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "btn_failed_load": {
+    "message": "không tải được emote"
+  },
+  "btn_retry_loading": {
+    "message": "thử tải lại"
+  },
+  "btn_ctx_block": {
+    "message": "chặn emote"
+  },
+  "btn_ctx_unblock": {
+    "message": "bỏ chặn emote"
+  },
+  "btn_ctx_remove_inventory": {
+    "message": "gỡ khỏi kho"
+  },
+  "btn_ctx_add_inventory": {
+    "message": "thêm vào kho"
+  },
+  "btn_ctx_copy_name": {
+    "message": "sao chép tên emote"
+  },
+  "btn_ctx_copy_url": {
+    "message": "sao chép url emote"
+  },
+  "btn_toast_unblocked": {
+    "message": "đã bỏ chặn"
+  },
+  "btn_toast_blocked": {
+    "message": "đã chặn"
+  },
+  "btn_toast_removed": {
+    "message": "đã gỡ"
+  },
+  "btn_toast_added": {
+    "message": "đã thêm"
+  },
+  "btn_toast_copied": {
+    "message": "đã sao chép!"
+  },
+  "btn_settings_tab_completion": {
+    "message": "hoàn thành bằng tab"
+  },
+  "btn_settings_chat_ui": {
+    "message": "giao diện chat"
+  },
+  "btn_settings_input": {
+    "message": "nhập"
+  },
+  "btn_settings_wysiwyg": {
+    "message": "emote wysiwyg"
+  },
+  "btn_settings_space_after": {
+    "message": "khoảng trắng sau emote"
+  },
+  "btn_settings_placeholder_mode": {
+    "message": "chế độ placeholder"
+  },
+  "btn_settings_placeholder_desc": {
+    "message": "hiển thị ô màu"
+  },
+  "btn_settings_hide_header": {
+    "message": "ẩn header"
+  },
+  "btn_settings_always_popout": {
+    "message": "(luôn bật ở cửa sổ riêng)"
+  },
+  "btn_settings_compact_input": {
+    "message": "ô nhập nhỏ gọn"
+  },
+  "btn_settings_highlight_mentions": {
+    "message": "làm nổi tin nhắc"
+  },
+  "btn_settings_platform_badges": {
+    "message": "huy hiệu nền tảng"
+  },
+  "btn_settings_platform_badges_desc": {
+    "message": "[T] [K] [YT] trên tin nhắn"
+  },
+  "btn_settings_cosmetics": {
+    "message": "trang trí"
+  },
+  "btn_settings_cosmetics_desc": {
+    "message": "paint + huy hiệu 7TV/BTTV/FFZ"
+  },
+  "btn_settings_vi_mode": {
+    "message": "chế độ vi"
+  },
+  "btn_settings_vi_mode_desc": {
+    "message": "phím tắt vim cho ô chat"
+  },
+  "btn_size_1x": {
+    "message": "1x"
+  },
+  "btn_size_2x": {
+    "message": "2x"
+  },
+  "btn_size_4x": {
+    "message": "4x"
+  },
+  "btn_expand": {
+    "message": "mở rộng"
+  },
+  "btn_collapse": {
+    "message": "thu gọn"
+  },
+  "btn_block_all": {
+    "message": "chặn tất cả"
+  },
+  "btn_show_all": {
+    "message": "hiện tất cả"
+  },
+  "btn_click_expand": {
+    "message": "bấm để mở rộng"
+  },
+  "content_toast_failed_add": {
+    "message": "Không thêm được $NAME$: $ERROR$",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      },
+      "error": {
+        "content": "$2"
+      }
+    }
+  },
+  "content_toast_failed_remove": {
+    "message": "Không gỡ được $NAME$: $ERROR$",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      },
+      "error": {
+        "content": "$2"
+      }
+    }
+  },
+  "content_toast_unblocked": {
+    "message": "Đã bỏ chặn $NAME$",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
+  },
+  "content_toast_failed_unblock": {
+    "message": "Không bỏ chặn được: $ERROR$",
+    "placeholders": {
+      "error": {
+        "content": "$1"
+      }
+    }
+  },
+  "content_toast_removed": {
+    "message": "Đã gỡ $NAME$ khỏi set",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
+  },
+  "content_toast_failed_block": {
+    "message": "Không chặn được: $ERROR$",
+    "placeholders": {
+      "error": {
+        "content": "$1"
+      }
+    }
+  },
+  "content_toast_blocked": {
+    "message": "Đã chặn $NAME$",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
+  },
+  "content_toast_unmuted": {
+    "message": "đã bỏ ẩn $NAME$",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
+  },
+  "content_toast_muted_24h": {
+    "message": "đã ẩn $NAME$ trong 24h",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
+  },
+  "content_card_follows_you": {
+    "message": "đang theo dõi bạn"
+  },
+  "content_card_subs_to_you": {
+    "message": "sub bạn"
+  },
+  "content_card_you_follow": {
+    "message": "bạn đang theo dõi"
+  },
+  "content_card_you_sub": {
+    "message": "bạn đã sub"
+  },
+  "content_card_you_sub_tier": {
+    "message": "sub T$TIER$",
+    "placeholders": {
+      "tier": {
+        "content": "$1"
+      }
+    }
+  },
+  "content_card_subbed": {
+    "message": "sub $CHANNEL$ $TENURE$",
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      },
+      "tenure": {
+        "content": "$2"
+      }
+    }
+  },
+  "content_card_following": {
+    "message": "theo dõi $CHANNEL$ $AGE$",
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      },
+      "age": {
+        "content": "$2"
+      }
+    }
+  },
+  "content_card_follows_channel": {
+    "message": "theo dõi $CHANNEL$",
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      }
+    }
+  },
+  "content_card_not_following": {
+    "message": "không theo dõi $CHANNEL$",
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      }
+    }
+  },
+  "content_card_followed_by": {
+    "message": "được theo dõi bởi $CHANNEL$",
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      }
+    }
+  },
+  "content_card_following_count": {
+    "message": "đang theo dõi $COUNT$",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "content_card_followers": {
+    "message": "$COUNT$ người theo dõi",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "content_card_partner": {
+    "message": "đối tác"
+  },
+  "content_card_affiliate": {
+    "message": "affiliate"
+  },
+  "content_card_live": {
+    "message": "TRỰC TIẾP $VIEWERS$",
+    "placeholders": {
+      "viewers": {
+        "content": "$1"
+      }
+    }
+  },
+  "content_card_twitch_verified": {
+    "message": "Twitch xác minh"
+  },
+  "content_card_kick_verified": {
+    "message": "Kick xác minh"
+  },
+  "content_view_on_heatsync": {
+    "message": "xem trên heatsync"
+  },
+  "content_in_your_set": {
+    "message": "trong set của bạn"
+  },
+  "content_click_to_add": {
+    "message": "bấm để thêm"
+  },
+  "content_blocked_click_unblock": {
+    "message": "đã chặn (bấm để bỏ chặn)"
+  },
+  "mc_tab_feed": {
+    "message": "trang chủ"
+  },
+  "mc_tab_whispers": {
+    "message": "whispers"
+  },
+  "mc_tab_mentions": {
+    "message": "nhắc đến"
+  },
+  "mc_tab_activity": {
+    "message": "hoạt động"
+  },
+  "mc_tab_live": {
+    "message": "trực tiếp"
+  },
+  "mc_tab_discover": {
+    "message": "khám phá"
+  },
+  "mc_tab_pinned": {
+    "message": "đã lưu"
+  },
+  "mc_tab_live_channel": {
+    "message": "trực tiếp · $CHANNEL$",
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_btn_rotate_tabs": {
+    "message": "xoay tab (T)"
+  },
+  "mc_btn_rotate_chat": {
+    "message": "xoay panel chat (C)"
+  },
+  "mc_btn_smaller_text": {
+    "message": "chữ nhỏ hơn"
+  },
+  "mc_btn_larger_text": {
+    "message": "chữ lớn hơn"
+  },
+  "mc_btn_settings": {
+    "message": "cài đặt"
+  },
+  "mc_new_messages": {
+    "message": "$COUNT$ mới",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_resume": {
+    "message": "tiếp tục"
+  },
+  "mc_no_messages": {
+    "message": "chưa có tin nhắn"
+  },
+  "mc_no_activity": {
+    "message": "chưa có hoạt động"
+  },
+  "mc_add_channel": {
+    "message": "thêm kênh"
+  },
+  "mc_enter_platform": {
+    "message": "nhập ít nhất một nền tảng"
+  },
+  "mc_username_placeholder": {
+    "message": "tên người dùng"
+  },
+  "mc_username_url_placeholder": {
+    "message": "tên người dùng hoặc url"
+  },
+  "mc_reserved_name": {
+    "message": "tên dành riêng"
+  },
+  "mc_channel_exists": {
+    "message": "kênh đã tồn tại"
+  },
+  "mc_twitch_exists": {
+    "message": "kênh Twitch đã được thêm"
+  },
+  "mc_kick_exists": {
+    "message": "kênh Kick đã được thêm"
+  },
+  "mc_edit_channel": {
+    "message": "sửa $CHANNEL$",
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_no_channel_detected": {
+    "message": "không phát hiện kênh"
+  },
+  "mc_settings_display": {
+    "message": "hiển thị"
+  },
+  "mc_settings_emote_size": {
+    "message": "kích thước emote"
+  },
+  "mc_settings_input_preview": {
+    "message": "xem trước nhập"
+  },
+  "mc_settings_clickable_links": {
+    "message": "liên kết bấm được"
+  },
+  "mc_settings_vi_mode": {
+    "message": "chế độ vi"
+  },
+  "mc_settings_zebra": {
+    "message": "vạch ngựa vằn"
+  },
+  "mc_settings_auto_hide": {
+    "message": "tự ẩn ô nhập"
+  },
+  "mc_settings_timestamps": {
+    "message": "dấu thời gian"
+  },
+  "mc_settings_avatars": {
+    "message": "ảnh đại diện"
+  },
+  "mc_settings_emote_size_desc": {
+    "message": "Hệ số độ phân giải cho emote trong chat. 1x sắc nét và gọn, 2x là điểm ngọt cho hầu hết màn hình, 4x cho ai muốn thấy từng pixel."
+  },
+  "mc_settings_input_preview_desc": {
+    "message": "Hiện emote dưới dạng ảnh trực tiếp trong ô nhập khi bạn gõ, thay vì tên dạng văn bản. Thấy gì gửi nấy."
+  },
+  "mc_settings_clickable_links_desc": {
+    "message": "Biến URL trong tin nhắn thành liên kết bấm được. Tắt nếu bạn thích copy-paste hoặc không tin người lạ trên mạng."
+  },
+  "mc_settings_vi_mode_desc": {
+    "message": "Phím tắt kiểu Vim cho điều hướng chat. j/k cuộn, g/G đầu/cuối, / tìm. Cho ai nghĩ chuột là dành cho casual."
+  },
+  "mc_settings_zebra_desc": {
+    "message": "Tô bóng xen kẽ trên tin nhắn chat. Giúp theo dõi tin nhắn dài, nhất là khi chat nhanh."
+  },
+  "mc_settings_auto_hide_desc": {
+    "message": "Ẩn thanh nhập khi bạn không soạn tin. Bấm hoặc bắt đầu gõ để hiện lại. Tối đa hoá vùng xem chat."
+  },
+  "mc_settings_timestamps_desc": {
+    "message": "Hiện giờ gửi của mỗi tin nhắn cạnh tên người dùng. Hữu ích để biết chuyện gì xảy ra khi bạn AFK."
+  },
+  "mc_settings_avatars_desc": {
+    "message": "Hiện ảnh đại diện cạnh tên người dùng. Giúp nhận ra khách quen, tốn chút không gian dọc."
+  },
+  "mc_settings_inline_notifs": {
+    "message": "thông báo nội tuyến"
+  },
+  "mc_settings_notif_op": {
+    "message": "[OP] bài gốc"
+  },
+  "mc_settings_notif_op_reply": {
+    "message": "[OP] OP trả lời trong thread của mình"
+  },
+  "mc_settings_notif_re": {
+    "message": "[RE] phản hồi"
+  },
+  "mc_settings_notif_dm": {
+    "message": "[DM] whispers và DM"
+  },
+  "mc_settings_notif_op_desc": {
+    "message": "Thông báo trong tab chat đang mở khi có người tạo bài gốc trong feed."
+  },
+  "mc_settings_notif_op_reply_desc": {
+    "message": "Thông báo khi tác giả bài gốc trả lời trong thread của mình."
+  },
+  "mc_settings_notif_re_desc": {
+    "message": "Thông báo cho mỗi phản hồi trong bất kỳ thread feed."
+  },
+  "mc_settings_notif_dm_desc": {
+    "message": "Thông báo khi bạn nhận whisper hoặc DM."
+  },
+  "mc_settings_twitch_events": {
+    "message": "sự kiện Twitch"
+  },
+  "mc_settings_raids": {
+    "message": "raid"
+  },
+  "mc_settings_raids_desc": {
+    "message": "Banner inline khi streamer raid vào hoặc ra, kèm số người xem và kênh nguồn. Cho phép bạn theo qua stream tiếp theo."
+  },
+  "mc_settings_hype_trains": {
+    "message": "hype train"
+  },
+  "mc_settings_hype_trains_desc": {
+    "message": "Banner tiến trình trực tiếp cho hype train, hiện cấp và bộ đếm đóng góp. Mặc định tắt vì kích hoạt liên tục trên kênh lớn."
+  },
+  "mc_settings_gift_subs": {
+    "message": "sub được tặng"
+  },
+  "mc_settings_gift_subs_desc": {
+    "message": "Banner cho gift sub bom cộng đồng và tặng đơn lẻ, kèm người tặng, người nhận và tier."
+  },
+  "mc_settings_redeems": {
+    "message": "đổi điểm kênh"
+  },
+  "mc_settings_redeems_desc": {
+    "message": "Thông báo nội tuyến cho việc đổi điểm kênh như 'làm nổi tin của tôi' để bạn thấy mọi người dùng điểm vào đâu."
+  },
+  "mc_settings_prediction_banner": {
+    "message": "dự đoán"
+  },
+  "mc_settings_prediction_banner_desc": {
+    "message": "Banner dự đoán điểm kênh trực tiếp với tỷ lệ hiện tại và thời gian còn lại để chốt phiếu."
+  },
+  "mc_settings_poll_banner": {
+    "message": "khảo sát"
+  },
+  "mc_settings_poll_banner_desc": {
+    "message": "Banner khảo sát đang hoạt động với số phiếu và thời gian còn lại. Bỏ phiếu trực tiếp từ overlay."
+  },
+  "mc_settings_pinned_messages": {
+    "message": "tin nhắn ghim"
+  },
+  "mc_settings_pinned_messages_desc": {
+    "message": "Banner cố định cho tin nhắn được mod ghim để bạn không bỏ lỡ luật hay lịch."
+  },
+  "mc_settings_dim_timeouts": {
+    "message": "làm mờ tin nhắn timeout"
+  },
+  "mc_settings_dim_timeouts_desc": {
+    "message": "Hiện tin nhắn bị timeout và ban với độ mờ 50% thay vì ẩn, kiểu FFZ/BTTV. Bạn thấy được tin nào bị xoá mà không cần rời chat."
+  },
+  "mc_settings_smart_completion": {
+    "message": "tab thông minh"
+  },
+  "mc_settings_smart_completion_desc": {
+    "message": "Người chat gần đây và emote của kênh này hiện trước khi gõ tab. Nhanh hơn alphabet khi chat trôi."
+  },
+  "mc_settings_first_chatter": {
+    "message": "phát sáng tin đầu"
+  },
+  "mc_settings_first_chatter_desc": {
+    "message": "Đánh dấu cam ở viền của tin nhắn đầu tiên người dùng gửi mỗi kênh trong phiên này. Giúp người mới nổi bật trong chat nhanh."
+  },
+  "mc_settings_keyword_highlights": {
+    "message": "làm nổi từ khoá"
+  },
+  "mc_settings_keyword_highlights_desc": {
+    "message": "Tin nhắn chứa bất kỳ từ nào trong này sẽ có tông cam, như nhắc cá nhân. Mỗi dòng một từ, không phân biệt hoa thường, khớp cả từ."
+  },
+  "mc_settings_keyword_highlights_placeholder": {
+    "message": "một từ khoá mỗi dòng"
+  },
+  "mc_settings_features": {
+    "message": "tính năng"
+  },
+  "mc_settings_auto_claim": {
+    "message": "tự nhận điểm kênh"
+  },
+  "mc_settings_auto_claim_desc": {
+    "message": "Tự bấm rương điểm kênh thưởng trên Twitch khi xuất hiện. Điểm miễn phí, không tốn công."
+  },
+  "mc_settings_muted_users": {
+    "message": "người bị ẩn"
+  },
+  "mc_settings_no_muted": {
+    "message": "không có người bị ẩn"
+  },
+  "mc_settings_unmute": {
+    "message": "bỏ ẩn"
+  },
+  "mc_pred_no_active": {
+    "message": "không có dự đoán nào đang hoạt động"
+  },
+  "mc_pred_new": {
+    "message": "+ dự đoán mới"
+  },
+  "mc_pred_title_placeholder": {
+    "message": "tiêu đề dự đoán"
+  },
+  "mc_pred_option1": {
+    "message": "tuỳ chọn 1 (xanh)"
+  },
+  "mc_pred_option2": {
+    "message": "tuỳ chọn 2 (hồng)"
+  },
+  "mc_pred_duration": {
+    "message": "thời lượng:"
+  },
+  "mc_pred_create": {
+    "message": "tạo dự đoán"
+  },
+  "mc_pred_refunded": {
+    "message": "đã hoàn"
+  },
+  "mc_pred_locked": {
+    "message": "đã khoá"
+  },
+  "mc_pred_winner": {
+    "message": "người thắng"
+  },
+  "mc_pred_won": {
+    "message": " thắng"
+  },
+  "mc_pred_lost": {
+    "message": " thua"
+  },
+  "mc_pred_lock_betting": {
+    "message": "khoá đặt cược"
+  },
+  "mc_pred_cancel_refund": {
+    "message": "huỷ (hoàn lại)"
+  },
+  "mc_pred_pick_winner": {
+    "message": "chọn người thắng"
+  },
+  "mc_pred_pick_winner_your_bet": {
+    "message": "chọn người thắng (cược của bạn)"
+  },
+  "mc_pred_failed_load": {
+    "message": "không tải được dự đoán"
+  },
+  "mc_pred_bet_own": {
+    "message": "không cược dự đoán của mình"
+  },
+  "mc_pred_try_again": {
+    "message": "thử lại"
+  },
+  "mc_pred_ended": {
+    "message": "dự đoán kết thúc"
+  },
+  "mc_pred_betting_locked": {
+    "message": "đặt cược đã khoá"
+  },
+  "mc_pred_not_enough": {
+    "message": "không đủ điểm"
+  },
+  "mc_pred_already_bet": {
+    "message": "đã đặt cược"
+  },
+  "mc_pred_no_permission": {
+    "message": "không có quyền"
+  },
+  "mc_pred_failed": {
+    "message": "thất bại"
+  },
+  "mc_pred_no_event": {
+    "message": "không có sự kiện"
+  },
+  "mc_pred_no_outcome": {
+    "message": "không có kết quả"
+  },
+  "mc_pred_closing": {
+    "message": "đang đóng..."
+  },
+  "mc_pred_you_bet": {
+    "message": "bạn cược $POINTS$ vào $OUTCOME$ — chọn người thắng thực sự",
+    "placeholders": {
+      "points": {
+        "content": "$1"
+      },
+      "outcome": {
+        "content": "$2"
+      }
+    }
+  },
+  "mc_poll_new": {
+    "message": "+ khảo sát mới"
+  },
+  "mc_poll_question": {
+    "message": "câu hỏi khảo sát"
+  },
+  "mc_poll_choice": {
+    "message": "lựa chọn $NUM$",
+    "placeholders": {
+      "num": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_poll_choice_optional": {
+    "message": "lựa chọn $NUM$ (tuỳ chọn)",
+    "placeholders": {
+      "num": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_poll_create": {
+    "message": "tạo khảo sát"
+  },
+  "mc_poll_end": {
+    "message": "kết thúc khảo sát"
+  },
+  "mc_poll_votes": {
+    "message": "$COUNT$ phiếu",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_poll_vote_single": {
+    "message": "$COUNT$ phiếu",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_poll_already_active": {
+    "message": "khảo sát đang chạy"
+  },
+  "mc_poll_not_logged_in": {
+    "message": "chưa đăng nhập"
+  },
+  "mc_reward_rewards": {
+    "message": "phần thưởng"
+  },
+  "mc_reward_none": {
+    "message": "không có phần thưởng"
+  },
+  "mc_reward_paused": {
+    "message": "đã tạm dừng"
+  },
+  "mc_reward_out_of_stock": {
+    "message": "hết"
+  },
+  "mc_reward_cooldown_min": {
+    "message": "cooldown $MIN$p",
+    "placeholders": {
+      "min": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_reward_cooldown_sec": {
+    "message": "cooldown $SEC$g",
+    "placeholders": {
+      "sec": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_reward_enter_text": {
+    "message": "nhập văn bản..."
+  },
+  "mc_reward_redeem": {
+    "message": "đổi"
+  },
+  "mc_chat_username_color": {
+    "message": "màu tên người dùng"
+  },
+  "mc_chat_hex_placeholder": {
+    "message": "#hex"
+  },
+  "mc_chat_modes": {
+    "message": "chế độ chat"
+  },
+  "mc_chat_emote_only": {
+    "message": "chỉ emote"
+  },
+  "mc_chat_follower": {
+    "message": "follower"
+  },
+  "mc_chat_slow": {
+    "message": "chậm"
+  },
+  "mc_chat_sub_only": {
+    "message": "chỉ sub"
+  },
+  "mc_chat_unique": {
+    "message": "duy nhất"
+  },
+  "mc_chat_hype_train": {
+    "message": "hype train"
+  },
+  "mc_chat_hype_level": {
+    "message": "lv $LEVEL$",
+    "placeholders": {
+      "level": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_input_send_message": {
+    "message": "gửi tin nhắn..."
+  },
+  "mc_input_post_heatsync": {
+    "message": "đăng lên heatsync..."
+  },
+  "mc_input_send_channel": {
+    "message": "gửi tới #$CHANNEL$",
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_input_replying_to": {
+    "message": "Trả lời @$USER$",
+    "placeholders": {
+      "user": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_input_cancel_reply": {
+    "message": "Huỷ trả lời"
+  },
+  "mc_input_not_logged_in": {
+    "message": "chưa đăng nhập"
+  },
+  "mc_input_login_kick": {
+    "message": "đăng nhập kick.com trước"
+  },
+  "mc_input_open_kick": {
+    "message": "mở kick.com trong tab"
+  },
+  "mc_input_kick_not_found": {
+    "message": "không thấy kênh Kick"
+  },
+  "mc_input_send_failed": {
+    "message": "gửi thất bại"
+  },
+  "mc_input_no_username": {
+    "message": "không phát hiện tên người dùng"
+  },
+  "mc_input_auth_failed": {
+    "message": "xác thực thất bại — đăng nhập lại Twitch"
+  },
+  "mc_input_connection_failed": {
+    "message": "kết nối thất bại — thử lại"
+  },
+  "mc_input_send_failed_retry": {
+    "message": "gửi thất bại — thử lại"
+  },
+  "mc_social_back": {
+    "message": "<- quay lại"
+  },
+  "mc_social_no_posts": {
+    "message": "chưa có bài đăng"
+  },
+  "mc_social_loading_feed": {
+    "message": "đang tải feed người theo dõi..."
+  },
+  "mc_social_scroll_more": {
+    "message": "cuộn để xem thêm..."
+  },
+  "mc_social_no_replies": {
+    "message": "chưa có phản hồi"
+  },
+  "mc_social_login_first": {
+    "message": "đăng nhập heatsync.org trước"
+  },
+  "mc_social_login_activity": {
+    "message": "đăng nhập heatsync.org để xem hoạt động"
+  },
+  "mc_social_failed_feed_auth": {
+    "message": "không tải được feed — đăng nhập heatsync.org"
+  },
+  "mc_social_failed_feed": {
+    "message": "không tải được feed"
+  },
+  "mc_social_log_in_first": {
+    "message": "đăng nhập trước"
+  },
+  "mc_social_slow_down": {
+    "message": "từ từ thôi"
+  },
+  "mc_social_duplicate": {
+    "message": "tin nhắn trùng"
+  },
+  "mc_social_failed_post": {
+    "message": "không đăng được"
+  },
+  "mc_tip_emoji": {
+    "message": "emoji"
+  },
+  "mc_tip_subbed": {
+    "message": "sub $CHANNEL$ $TENURE$",
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      },
+      "tenure": {
+        "content": "$2"
+      }
+    }
+  },
+  "mc_tip_following": {
+    "message": "theo dõi $CHANNEL$ $AGE$",
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      },
+      "age": {
+        "content": "$2"
+      }
+    }
+  },
+  "mc_tip_not_following": {
+    "message": "không theo dõi $CHANNEL$",
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_tip_followed_by": {
+    "message": "được theo dõi bởi $CHANNEL$",
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_tip_followers": {
+    "message": "$COUNT$ người theo dõi",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_whisper_hint": {
+    "message": "/w người tin · /dm người tin · /r tin"
+  },
+  "mc_whisper_login": {
+    "message": "đăng nhập heatsync.org để gửi whispers"
+  },
+  "mc_whisper_user_not_found": {
+    "message": "không tìm thấy người dùng Twitch \"$USER$\"",
+    "placeholders": {
+      "user": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_whisper_resolve_failed": {
+    "message": "không tìm được người dùng Twitch"
+  },
+  "mc_whisper_hs_not_found": {
+    "message": "không tìm thấy người dùng heatsync \"$USER$\"",
+    "placeholders": {
+      "user": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_irc_chat_cleared": {
+    "message": "Chat đã được xoá"
+  },
+  "mc_irc_msg_deleted": {
+    "message": "Tin nhắn của $USER$ đã bị xoá",
+    "placeholders": {
+      "user": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_irc_gift_subs": {
+    "message": "$USER$ đã tặng $AMOUNT$ sub cho $CHANNEL$",
+    "placeholders": {
+      "user": {
+        "content": "$1"
+      },
+      "amount": {
+        "content": "$2"
+      },
+      "channel": {
+        "content": "$3"
+      }
+    }
+  },
+  "mc_yt_connected": {
+    "message": "youtube đã kết nối: $CHANNEL$ — đang chờ tin nhắn...",
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_yt_ended": {
+    "message": "stream youtube đã kết thúc"
+  },
+  "mc_yt_error": {
+    "message": "lỗi kết nối youtube"
+  },
+  "mc_emote_search_placeholder": {
+    "message": "tìm emote..."
+  },
+  "mc_emote_no_loaded": {
+    "message": "chưa tải emote"
+  },
+  "mc_emote_in_set": {
+    "message": "trong set của bạn"
+  },
+  "mc_emote_click_add": {
+    "message": "bấm để thêm"
+  },
+  "mc_emote_blocked": {
+    "message": "đã chặn (bấm để bỏ chặn)"
+  },
+  "content_toast_unknown_error": {
+    "message": "Lỗi không xác định"
+  },
+  "content_toast_loading_emotes": {
+    "message": "đang tải emote..."
+  },
+  "content_toast_fetching_emotes": {
+    "message": "đang lấy emote..."
+  },
+  "content_card_action_ban": {
+    "message": "ban"
+  },
+  "content_card_action_unban": {
+    "message": "bỏ ban"
+  },
+  "content_card_action_block": {
+    "message": "chặn"
+  },
+  "btn_close": {
+    "message": "Đóng"
+  },
+  "btn_error_channel": {
+    "message": "không tải được emote kênh"
+  },
+  "btn_error_global": {
+    "message": "không tải được emote toàn cầu"
+  },
+  "btn_error_inventory": {
+    "message": "không tải được emote của bạn"
+  }
+}

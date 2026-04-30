@@ -1,0 +1,1245 @@
+{
+  "manifest_name": {
+    "message": "heatsync"
+  },
+  "manifest_description": {
+    "message": "Twitch, Kick और YouTube चैट के लिए कस्टम इमोट। असीमित स्लॉट, टैब कम्पलीशन, रियल-टाइम सिंक।"
+  },
+  "common_loading": {
+    "message": "लोड हो रहा है..."
+  },
+  "common_extension_updated": {
+    "message": "एक्सटेंशन अपडेट हो गया — पेज रिफ्रेश करें"
+  },
+  "common_no_matches": {
+    "message": "कोई मेल नहीं"
+  },
+  "common_retry": {
+    "message": "पुनः प्रयास"
+  },
+  "common_cancel": {
+    "message": "रद्द करें"
+  },
+  "common_save": {
+    "message": "सहेजें"
+  },
+  "common_add": {
+    "message": "जोड़ें"
+  },
+  "common_edit": {
+    "message": "संपादित करें"
+  },
+  "common_remove": {
+    "message": "हटाएं"
+  },
+  "common_done": {
+    "message": "हो गया"
+  },
+  "common_ended": {
+    "message": "समाप्त"
+  },
+  "common_vote": {
+    "message": "वोट करें"
+  },
+  "common_set": {
+    "message": "सेट करें"
+  },
+  "common_default": {
+    "message": "डिफ़ॉल्ट"
+  },
+  "common_mention": {
+    "message": "मेन्शन"
+  },
+  "common_user_not_found": {
+    "message": "उपयोगकर्ता नहीं मिला"
+  },
+  "popup_title": {
+    "message": "heatsync"
+  },
+  "popup_status_checking": {
+    "message": "जांच रहे हैं..."
+  },
+  "popup_status_connected": {
+    "message": "जुड़ा हुआ"
+  },
+  "popup_status_api_error": {
+    "message": "api त्रुटि"
+  },
+  "popup_status_offline": {
+    "message": "ऑफ़लाइन"
+  },
+  "popup_user_stats": {
+    "message": "$EMOTES$ इमोट · $GLOBALS$ ग्लोबल",
+    "placeholders": {
+      "emotes": {
+        "content": "$1"
+      },
+      "globals": {
+        "content": "$2"
+      }
+    }
+  },
+  "popup_user_stats_heat": {
+    "message": "$EMOTES$ इमोट · $GLOBALS$ ग्लोबल · $HEAT$ heat",
+    "placeholders": {
+      "emotes": {
+        "content": "$1"
+      },
+      "globals": {
+        "content": "$2"
+      },
+      "heat": {
+        "content": "$3"
+      }
+    }
+  },
+  "popup_btn_emotes": {
+    "message": "इमोट"
+  },
+  "popup_btn_refresh": {
+    "message": "रिफ्रेश"
+  },
+  "popup_btn_site": {
+    "message": "साइट"
+  },
+  "popup_btn_done": {
+    "message": "हो गया"
+  },
+  "popup_btn_logout": {
+    "message": "लॉगआउट"
+  },
+  "btn_recent": {
+    "message": "हाल के"
+  },
+  "popup_login_prompt": {
+    "message": "इमोट सिंक करने के लिए लॉगिन करें"
+  },
+  "popup_channel_placeholder": {
+    "message": "चैनल"
+  },
+  "popup_btn_popout": {
+    "message": "अलग विंडो"
+  },
+  "popup_hint": {
+    "message": "इमोट सेटिंग्स चैट के picker पैनल में"
+  },
+  "welcome_title": {
+    "message": "heatsync में आपका स्वागत है"
+  },
+  "welcome_tagline": {
+    "message": "आपके इमोट, हर जगह जहाँ आप चैट करते हैं"
+  },
+  "welcome_step1_title": {
+    "message": "heatsync.org पर लॉगिन करें"
+  },
+  "welcome_step1_desc": {
+    "message": "अकाउंट बनाने के लिए Twitch या Kick से लॉगिन करें"
+  },
+  "welcome_step2_title": {
+    "message": "अपने इमोट अपलोड करें"
+  },
+  "welcome_step2_desc": {
+    "message": "कोई भी छवि जोड़ें — कोई स्लॉट सीमा नहीं, सभी फॉर्मेट समर्थित"
+  },
+  "welcome_step3_title": {
+    "message": "उन्हें चैट में उपयोग करें"
+  },
+  "welcome_step3_desc": {
+    "message": "अपने इमोट तक पहुंचने के लिए Twitch/Kick चैट में heatsync बटन पर क्लिक करें"
+  },
+  "welcome_cta": {
+    "message": "शुरू करें"
+  },
+  "welcome_privacy": {
+    "message": "गोपनीयता"
+  },
+  "welcome_source": {
+    "message": "सोर्स कोड"
+  },
+  "btn_auth_login": {
+    "message": "लॉगिन"
+  },
+  "btn_auth_save_emotes": {
+    "message": "अपने सेट में इमोट सहेजने के लिए"
+  },
+  "btn_tab_channel": {
+    "message": "चैनल"
+  },
+  "btn_tab_global": {
+    "message": "ग्लोबल"
+  },
+  "btn_tab_mine": {
+    "message": "मेरे"
+  },
+  "btn_tab_emoji": {
+    "message": "इमोजी"
+  },
+  "btn_search_placeholder": {
+    "message": "इमोट खोजें..."
+  },
+  "btn_rotate_title": {
+    "message": "टैब बार की स्थिति घुमाएं"
+  },
+  "btn_settings_title": {
+    "message": "सेटिंग्स"
+  },
+  "btn_no_emotes": {
+    "message": "कोई इमोट नहीं"
+  },
+  "btn_login_save_emotes": {
+    "message": "इमोट सहेजने के लिए heatsync.org पर लॉगिन करें"
+  },
+  "btn_cached": {
+    "message": "कैश से"
+  },
+  "btn_loading_emotes": {
+    "message": "इमोट लोड हो रहे हैं"
+  },
+  "btn_no_third_party": {
+    "message": "तृतीय-पक्ष इमोट नहीं मिले"
+  },
+  "btn_no_emotes_import": {
+    "message": "आयात करने के लिए कोई इमोट नहीं"
+  },
+  "btn_import_count": {
+    "message": "$COUNT$ इमोट आयात करें",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "btn_failed_load": {
+    "message": "इमोट लोड नहीं हो सके"
+  },
+  "btn_retry_loading": {
+    "message": "फिर लोड करें"
+  },
+  "btn_ctx_block": {
+    "message": "इमोट ब्लॉक करें"
+  },
+  "btn_ctx_unblock": {
+    "message": "इमोट अनब्लॉक करें"
+  },
+  "btn_ctx_remove_inventory": {
+    "message": "इन्वेंटरी से हटाएं"
+  },
+  "btn_ctx_add_inventory": {
+    "message": "इन्वेंटरी में जोड़ें"
+  },
+  "btn_ctx_copy_name": {
+    "message": "इमोट नाम कॉपी करें"
+  },
+  "btn_ctx_copy_url": {
+    "message": "इमोट url कॉपी करें"
+  },
+  "btn_toast_unblocked": {
+    "message": "अनब्लॉक किया गया"
+  },
+  "btn_toast_blocked": {
+    "message": "ब्लॉक किया गया"
+  },
+  "btn_toast_removed": {
+    "message": "हटाया गया"
+  },
+  "btn_toast_added": {
+    "message": "जोड़ा गया"
+  },
+  "btn_toast_copied": {
+    "message": "कॉपी किया!"
+  },
+  "btn_settings_tab_completion": {
+    "message": "टैब कम्पलीशन"
+  },
+  "btn_settings_chat_ui": {
+    "message": "चैट इंटरफ़ेस"
+  },
+  "btn_settings_input": {
+    "message": "इनपुट"
+  },
+  "btn_settings_wysiwyg": {
+    "message": "wysiwyg इमोट"
+  },
+  "btn_settings_space_after": {
+    "message": "इमोट के बाद स्पेस"
+  },
+  "btn_settings_placeholder_mode": {
+    "message": "placeholder मोड"
+  },
+  "btn_settings_placeholder_desc": {
+    "message": "रंगीन बक्से दिखाएं"
+  },
+  "btn_settings_hide_header": {
+    "message": "हेडर छिपाएं"
+  },
+  "btn_settings_always_popout": {
+    "message": "(अलग विंडो में हमेशा चालू)"
+  },
+  "btn_settings_compact_input": {
+    "message": "कॉम्पैक्ट इनपुट"
+  },
+  "btn_settings_highlight_mentions": {
+    "message": "मेन्शन हाइलाइट करें"
+  },
+  "btn_settings_platform_badges": {
+    "message": "प्लेटफ़ॉर्म बैज"
+  },
+  "btn_settings_platform_badges_desc": {
+    "message": "मेसेज पर [T] [K] [YT]"
+  },
+  "btn_settings_cosmetics": {
+    "message": "कॉस्मेटिक्स"
+  },
+  "btn_settings_cosmetics_desc": {
+    "message": "paint + बैज 7TV/BTTV/FFZ"
+  },
+  "btn_settings_vi_mode": {
+    "message": "vi मोड"
+  },
+  "btn_settings_vi_mode_desc": {
+    "message": "चैट इनपुट के लिए vim शॉर्टकट"
+  },
+  "btn_size_1x": {
+    "message": "1x"
+  },
+  "btn_size_2x": {
+    "message": "2x"
+  },
+  "btn_size_4x": {
+    "message": "4x"
+  },
+  "btn_expand": {
+    "message": "विस्तार करें"
+  },
+  "btn_collapse": {
+    "message": "समेटें"
+  },
+  "btn_block_all": {
+    "message": "सभी ब्लॉक करें"
+  },
+  "btn_show_all": {
+    "message": "सभी दिखाएं"
+  },
+  "btn_click_expand": {
+    "message": "विस्तार के लिए क्लिक करें"
+  },
+  "content_toast_failed_add": {
+    "message": "$NAME$ जोड़ने में विफल: $ERROR$",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      },
+      "error": {
+        "content": "$2"
+      }
+    }
+  },
+  "content_toast_failed_remove": {
+    "message": "$NAME$ हटाने में विफल: $ERROR$",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      },
+      "error": {
+        "content": "$2"
+      }
+    }
+  },
+  "content_toast_unblocked": {
+    "message": "$NAME$ अनब्लॉक",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
+  },
+  "content_toast_failed_unblock": {
+    "message": "अनब्लॉक करने में विफल: $ERROR$",
+    "placeholders": {
+      "error": {
+        "content": "$1"
+      }
+    }
+  },
+  "content_toast_removed": {
+    "message": "$NAME$ आपके सेट से हटाया",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
+  },
+  "content_toast_failed_block": {
+    "message": "ब्लॉक करने में विफल: $ERROR$",
+    "placeholders": {
+      "error": {
+        "content": "$1"
+      }
+    }
+  },
+  "content_toast_blocked": {
+    "message": "$NAME$ ब्लॉक",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
+  },
+  "content_toast_unmuted": {
+    "message": "$NAME$ अनम्यूट",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
+  },
+  "content_toast_muted_24h": {
+    "message": "$NAME$ 24 घंटे के लिए म्यूट",
+    "placeholders": {
+      "name": {
+        "content": "$1"
+      }
+    }
+  },
+  "content_card_follows_you": {
+    "message": "आपको फ़ॉलो करता है"
+  },
+  "content_card_subs_to_you": {
+    "message": "आपको सब करता है"
+  },
+  "content_card_you_follow": {
+    "message": "आप फ़ॉलो करते हैं"
+  },
+  "content_card_you_sub": {
+    "message": "आप सब हैं"
+  },
+  "content_card_you_sub_tier": {
+    "message": "सब T$TIER$",
+    "placeholders": {
+      "tier": {
+        "content": "$1"
+      }
+    }
+  },
+  "content_card_subbed": {
+    "message": "$CHANNEL$ पर सब $TENURE$",
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      },
+      "tenure": {
+        "content": "$2"
+      }
+    }
+  },
+  "content_card_following": {
+    "message": "$CHANNEL$ को $AGE$ से फ़ॉलो",
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      },
+      "age": {
+        "content": "$2"
+      }
+    }
+  },
+  "content_card_follows_channel": {
+    "message": "$CHANNEL$ फ़ॉलो",
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      }
+    }
+  },
+  "content_card_not_following": {
+    "message": "$CHANNEL$ फ़ॉलो नहीं",
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      }
+    }
+  },
+  "content_card_followed_by": {
+    "message": "$CHANNEL$ द्वारा फ़ॉलो",
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      }
+    }
+  },
+  "content_card_following_count": {
+    "message": "$COUNT$ को फ़ॉलो",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "content_card_followers": {
+    "message": "$COUNT$ फ़ॉलोअर",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "content_card_partner": {
+    "message": "पार्टनर"
+  },
+  "content_card_affiliate": {
+    "message": "affiliate"
+  },
+  "content_card_live": {
+    "message": "लाइव $VIEWERS$",
+    "placeholders": {
+      "viewers": {
+        "content": "$1"
+      }
+    }
+  },
+  "content_card_twitch_verified": {
+    "message": "Twitch सत्यापित"
+  },
+  "content_card_kick_verified": {
+    "message": "Kick सत्यापित"
+  },
+  "content_view_on_heatsync": {
+    "message": "heatsync पर देखें"
+  },
+  "content_in_your_set": {
+    "message": "आपके सेट में"
+  },
+  "content_click_to_add": {
+    "message": "जोड़ने के लिए क्लिक करें"
+  },
+  "content_blocked_click_unblock": {
+    "message": "ब्लॉक (अनब्लॉक के लिए क्लिक)"
+  },
+  "mc_tab_feed": {
+    "message": "होम"
+  },
+  "mc_tab_whispers": {
+    "message": "whispers"
+  },
+  "mc_tab_mentions": {
+    "message": "मेन्शन"
+  },
+  "mc_tab_activity": {
+    "message": "गतिविधि"
+  },
+  "mc_tab_live": {
+    "message": "लाइव"
+  },
+  "mc_tab_discover": {
+    "message": "खोजें"
+  },
+  "mc_tab_pinned": {
+    "message": "सहेजे"
+  },
+  "mc_tab_live_channel": {
+    "message": "लाइव · $CHANNEL$",
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_btn_rotate_tabs": {
+    "message": "टैब घुमाएं (T)"
+  },
+  "mc_btn_rotate_chat": {
+    "message": "चैट पैनल घुमाएं (C)"
+  },
+  "mc_btn_smaller_text": {
+    "message": "छोटा टेक्स्ट"
+  },
+  "mc_btn_larger_text": {
+    "message": "बड़ा टेक्स्ट"
+  },
+  "mc_btn_settings": {
+    "message": "सेटिंग्स"
+  },
+  "mc_new_messages": {
+    "message": "$COUNT$ नए",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_resume": {
+    "message": "जारी रखें"
+  },
+  "mc_no_messages": {
+    "message": "अभी कोई संदेश नहीं"
+  },
+  "mc_no_activity": {
+    "message": "अभी कोई गतिविधि नहीं"
+  },
+  "mc_add_channel": {
+    "message": "चैनल जोड़ें"
+  },
+  "mc_enter_platform": {
+    "message": "कम से कम एक प्लेटफ़ॉर्म दर्ज करें"
+  },
+  "mc_username_placeholder": {
+    "message": "उपयोगकर्ता"
+  },
+  "mc_username_url_placeholder": {
+    "message": "उपयोगकर्ता या url"
+  },
+  "mc_reserved_name": {
+    "message": "आरक्षित नाम"
+  },
+  "mc_channel_exists": {
+    "message": "चैनल पहले से मौजूद"
+  },
+  "mc_twitch_exists": {
+    "message": "Twitch चैनल पहले से जोड़ा गया"
+  },
+  "mc_kick_exists": {
+    "message": "Kick चैनल पहले से जोड़ा गया"
+  },
+  "mc_edit_channel": {
+    "message": "$CHANNEL$ संपादित करें",
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_no_channel_detected": {
+    "message": "कोई चैनल नहीं मिला"
+  },
+  "mc_settings_display": {
+    "message": "प्रदर्शन"
+  },
+  "mc_settings_emote_size": {
+    "message": "इमोट साइज़"
+  },
+  "mc_settings_input_preview": {
+    "message": "इनपुट पूर्वावलोकन"
+  },
+  "mc_settings_clickable_links": {
+    "message": "क्लिक करने योग्य लिंक"
+  },
+  "mc_settings_vi_mode": {
+    "message": "vi मोड"
+  },
+  "mc_settings_zebra": {
+    "message": "ज़ेब्रा धारियां"
+  },
+  "mc_settings_auto_hide": {
+    "message": "इनपुट को स्वतः छिपाएं"
+  },
+  "mc_settings_timestamps": {
+    "message": "टाइमस्टैम्प"
+  },
+  "mc_settings_avatars": {
+    "message": "अवतार"
+  },
+  "mc_settings_emote_size_desc": {
+    "message": "चैट में इमोट का रिज़ॉल्यूशन गुणक। 1x तेज़ और कॉम्पैक्ट, 2x अधिकांश डिस्प्ले के लिए सबसे अच्छा, 4x उनके लिए जो हर पिक्सेल देखना चाहते हैं।"
+  },
+  "mc_settings_input_preview_desc": {
+    "message": "टाइप करते समय इनपुट बॉक्स में टेक्स्ट नाम के बजाय इमोट को सीधे छवि के रूप में दिखाता है। जो आप देखते हैं वही भेजते हैं।"
+  },
+  "mc_settings_clickable_links_desc": {
+    "message": "चैट संदेशों में URL को क्लिक करने योग्य लिंक में बदलता है। बंद करें यदि आप कॉपी-पेस्ट पसंद करते हैं या इंटरनेट पर अजनबियों पर भरोसा नहीं करते।"
+  },
+  "mc_settings_vi_mode_desc": {
+    "message": "चैट नेविगेशन के लिए Vim शैली के शॉर्टकट। j/k स्क्रॉल, g/G ऊपर/नीचे, / खोज। उन लोगों के लिए जो माउस को कैज़ुअल समझते हैं।"
+  },
+  "mc_settings_zebra_desc": {
+    "message": "चैट संदेशों पर वैकल्पिक पंक्ति छाया। लंबे संदेशों को ट्रैक करना आसान बनाता है, खासकर तेज़ चैट में।"
+  },
+  "mc_settings_auto_hide_desc": {
+    "message": "जब आप संदेश नहीं लिख रहे हैं तो इनपुट बार छिप जाता है। वापस लाने के लिए क्लिक करें या टाइप करना शुरू करें। चैट देखने की जगह को अधिकतम करता है।"
+  },
+  "mc_settings_timestamps_desc": {
+    "message": "उपयोगकर्ता नाम के बगल में हर संदेश के भेजे जाने का समय दिखाता है। AFK रहते समय क्या हुआ यह जानने में उपयोगी।"
+  },
+  "mc_settings_avatars_desc": {
+    "message": "चैट में उपयोगकर्ता नामों के बगल में प्रोफ़ाइल चित्र दिखाता है। नियमित दर्शकों को आसानी से पहचानने में मदद करता है, थोड़ी ऊर्ध्वाधर जगह लेता है।"
+  },
+  "mc_settings_inline_notifs": {
+    "message": "इनलाइन सूचनाएं"
+  },
+  "mc_settings_notif_op": {
+    "message": "[OP] मूल पोस्ट"
+  },
+  "mc_settings_notif_op_reply": {
+    "message": "[OP] OP अपने थ्रेड में जवाब देता है"
+  },
+  "mc_settings_notif_re": {
+    "message": "[RE] उत्तर"
+  },
+  "mc_settings_notif_dm": {
+    "message": "[DM] whispers और DM"
+  },
+  "mc_settings_notif_op_desc": {
+    "message": "जब कोई फीड में नया मूल पोस्ट बनाता है तो आपके सक्रिय चैट टैब में सूचना।"
+  },
+  "mc_settings_notif_op_reply_desc": {
+    "message": "जब मूल पोस्टर अपने थ्रेड में उत्तर देता है तो सूचना।"
+  },
+  "mc_settings_notif_re_desc": {
+    "message": "किसी भी फीड थ्रेड में हर उत्तर के लिए सूचना।"
+  },
+  "mc_settings_notif_dm_desc": {
+    "message": "जब आपको whisper या DM मिले तो सूचना।"
+  },
+  "mc_settings_twitch_events": {
+    "message": "Twitch इवेंट"
+  },
+  "mc_settings_raids": {
+    "message": "raids"
+  },
+  "mc_settings_raids_desc": {
+    "message": "जब कोई स्ट्रीमर raid अंदर या बाहर करता है तो दर्शक संख्या और स्रोत चैनल के साथ इनलाइन बैनर। आपको अगली स्ट्रीम तक साथ ले जाने देता है।"
+  },
+  "mc_settings_hype_trains": {
+    "message": "hype trains"
+  },
+  "mc_settings_hype_trains_desc": {
+    "message": "hype trains के लिए लाइव प्रगति बैनर, स्तर और योगदान टाइमर के साथ। बड़े चैनलों पर लगातार चलते रहने के कारण डिफ़ॉल्ट रूप से बंद।"
+  },
+  "mc_settings_gift_subs": {
+    "message": "गिफ्ट सब"
+  },
+  "mc_settings_gift_subs_desc": {
+    "message": "समुदाय गिफ्ट सब बम और व्यक्तिगत गिफ्ट के लिए बैनर, गिफ्टर, प्राप्तकर्ता और टियर के साथ।"
+  },
+  "mc_settings_redeems": {
+    "message": "चैनल पॉइंट रिडीम"
+  },
+  "mc_settings_redeems_desc": {
+    "message": "'highlight my message' जैसे चैनल पॉइंट रिडम्पशन के लिए इनलाइन सूचना ताकि आप देख सकें कि लोग पॉइंट कहाँ खर्च कर रहे हैं।"
+  },
+  "mc_settings_prediction_banner": {
+    "message": "भविष्यवाणियाँ"
+  },
+  "mc_settings_prediction_banner_desc": {
+    "message": "वर्तमान odds और वोट लॉक करने के लिए शेष समय के साथ चैनल पॉइंट भविष्यवाणी का लाइव बैनर।"
+  },
+  "mc_settings_poll_banner": {
+    "message": "पोल"
+  },
+  "mc_settings_poll_banner_desc": {
+    "message": "वोट गिनती और शेष समय के साथ सक्रिय पोल बैनर। ओवरले से सीधे वोट करें।"
+  },
+  "mc_settings_pinned_messages": {
+    "message": "पिन किए गए संदेश"
+  },
+  "mc_settings_pinned_messages_desc": {
+    "message": "मॉडरेटर द्वारा पिन किए गए चैट संदेशों के लिए स्टिकी बैनर ताकि आप नियम या समय-सारणी न चूकें।"
+  },
+  "mc_settings_dim_timeouts": {
+    "message": "टाइमआउट संदेशों को धुंधला करें"
+  },
+  "mc_settings_dim_timeouts_desc": {
+    "message": "टाइमआउट और बैन किए गए संदेशों को छिपाने के बजाय 50% पारदर्शिता के साथ दिखाएं, FFZ/BTTV शैली। आपको चैट छोड़े बिना देखने देता है कि क्या हटाया गया।"
+  },
+  "mc_settings_smart_completion": {
+    "message": "स्मार्ट टैब कम्पलीशन"
+  },
+  "mc_settings_smart_completion_desc": {
+    "message": "टैब कम्पलीशन में इस चैनल के हाल के चैटर और इमोट पहले दिखाई देते हैं। चैट चलते समय वर्णानुक्रम से तेज़।"
+  },
+  "mc_settings_first_chatter": {
+    "message": "पहले संदेश की चमक"
+  },
+  "mc_settings_first_chatter_desc": {
+    "message": "इस सत्र में हर चैनल में उपयोगकर्ता द्वारा भेजे गए पहले संदेश पर नारंगी किनारा मार्कर। तेज़ चैट में नवागंतुकों को देखना आसान।"
+  },
+  "mc_settings_keyword_highlights": {
+    "message": "कीवर्ड हाइलाइट"
+  },
+  "mc_settings_keyword_highlights_desc": {
+    "message": "इन शब्दों में से किसी को भी रखने वाले संदेशों को व्यक्तिगत मेन्शन की तरह नारंगी रंग मिलता है। प्रति पंक्ति एक, केस-असंवेदनशील, पूरे शब्द।"
+  },
+  "mc_settings_keyword_highlights_placeholder": {
+    "message": "प्रति पंक्ति एक कीवर्ड"
+  },
+  "mc_settings_features": {
+    "message": "सुविधाएं"
+  },
+  "mc_settings_auto_claim": {
+    "message": "चैनल पॉइंट ऑटो-क्लेम"
+  },
+  "mc_settings_auto_claim_desc": {
+    "message": "Twitch पर बोनस चैनल पॉइंट चेस्ट दिखाई देने पर स्वचालित रूप से क्लिक करता है। मुफ़्त पॉइंट, शून्य प्रयास।"
+  },
+  "mc_settings_muted_users": {
+    "message": "म्यूट किए गए उपयोगकर्ता"
+  },
+  "mc_settings_no_muted": {
+    "message": "कोई म्यूट किया गया उपयोगकर्ता नहीं"
+  },
+  "mc_settings_unmute": {
+    "message": "अनम्यूट"
+  },
+  "mc_pred_no_active": {
+    "message": "कोई सक्रिय भविष्यवाणी नहीं"
+  },
+  "mc_pred_new": {
+    "message": "+ नई भविष्यवाणी"
+  },
+  "mc_pred_title_placeholder": {
+    "message": "भविष्यवाणी का शीर्षक"
+  },
+  "mc_pred_option1": {
+    "message": "विकल्प 1 (नीला)"
+  },
+  "mc_pred_option2": {
+    "message": "विकल्प 2 (गुलाबी)"
+  },
+  "mc_pred_duration": {
+    "message": "अवधि:"
+  },
+  "mc_pred_create": {
+    "message": "भविष्यवाणी बनाएं"
+  },
+  "mc_pred_refunded": {
+    "message": "वापस किया गया"
+  },
+  "mc_pred_locked": {
+    "message": "लॉक"
+  },
+  "mc_pred_winner": {
+    "message": "विजेता"
+  },
+  "mc_pred_won": {
+    "message": " जीता"
+  },
+  "mc_pred_lost": {
+    "message": " हारा"
+  },
+  "mc_pred_lock_betting": {
+    "message": "बेटिंग लॉक करें"
+  },
+  "mc_pred_cancel_refund": {
+    "message": "रद्द करें (रिफंड)"
+  },
+  "mc_pred_pick_winner": {
+    "message": "विजेता चुनें"
+  },
+  "mc_pred_pick_winner_your_bet": {
+    "message": "विजेता चुनें (आपकी बेट)"
+  },
+  "mc_pred_failed_load": {
+    "message": "भविष्यवाणियाँ लोड नहीं हो सकीं"
+  },
+  "mc_pred_bet_own": {
+    "message": "खुद पर बेट नहीं लगा सकते"
+  },
+  "mc_pred_try_again": {
+    "message": "पुनः प्रयास"
+  },
+  "mc_pred_ended": {
+    "message": "भविष्यवाणी समाप्त"
+  },
+  "mc_pred_betting_locked": {
+    "message": "बेटिंग लॉक"
+  },
+  "mc_pred_not_enough": {
+    "message": "पर्याप्त पॉइंट नहीं"
+  },
+  "mc_pred_already_bet": {
+    "message": "पहले से बेट लगी"
+  },
+  "mc_pred_no_permission": {
+    "message": "अनुमति नहीं"
+  },
+  "mc_pred_failed": {
+    "message": "विफल"
+  },
+  "mc_pred_no_event": {
+    "message": "कोई इवेंट नहीं"
+  },
+  "mc_pred_no_outcome": {
+    "message": "कोई परिणाम नहीं"
+  },
+  "mc_pred_closing": {
+    "message": "बंद हो रहा है..."
+  },
+  "mc_pred_you_bet": {
+    "message": "आपने $POINTS$ $OUTCOME$ पर लगाए — असली विजेता चुनें",
+    "placeholders": {
+      "points": {
+        "content": "$1"
+      },
+      "outcome": {
+        "content": "$2"
+      }
+    }
+  },
+  "mc_poll_new": {
+    "message": "+ नया पोल"
+  },
+  "mc_poll_question": {
+    "message": "पोल प्रश्न"
+  },
+  "mc_poll_choice": {
+    "message": "विकल्प $NUM$",
+    "placeholders": {
+      "num": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_poll_choice_optional": {
+    "message": "विकल्प $NUM$ (वैकल्पिक)",
+    "placeholders": {
+      "num": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_poll_create": {
+    "message": "पोल बनाएं"
+  },
+  "mc_poll_end": {
+    "message": "पोल समाप्त करें"
+  },
+  "mc_poll_votes": {
+    "message": "$COUNT$ वोट",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_poll_vote_single": {
+    "message": "$COUNT$ वोट",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_poll_already_active": {
+    "message": "पोल पहले से सक्रिय"
+  },
+  "mc_poll_not_logged_in": {
+    "message": "लॉग इन नहीं"
+  },
+  "mc_reward_rewards": {
+    "message": "इनाम"
+  },
+  "mc_reward_none": {
+    "message": "कोई इनाम उपलब्ध नहीं"
+  },
+  "mc_reward_paused": {
+    "message": "रोका गया"
+  },
+  "mc_reward_out_of_stock": {
+    "message": "समाप्त"
+  },
+  "mc_reward_cooldown_min": {
+    "message": "cooldown $MIN$मि",
+    "placeholders": {
+      "min": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_reward_cooldown_sec": {
+    "message": "cooldown $SEC$से",
+    "placeholders": {
+      "sec": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_reward_enter_text": {
+    "message": "टेक्स्ट दर्ज करें..."
+  },
+  "mc_reward_redeem": {
+    "message": "रिडीम करें"
+  },
+  "mc_chat_username_color": {
+    "message": "उपयोगकर्ता नाम का रंग"
+  },
+  "mc_chat_hex_placeholder": {
+    "message": "#hex"
+  },
+  "mc_chat_modes": {
+    "message": "चैट मोड"
+  },
+  "mc_chat_emote_only": {
+    "message": "केवल इमोट"
+  },
+  "mc_chat_follower": {
+    "message": "फ़ॉलोअर"
+  },
+  "mc_chat_slow": {
+    "message": "धीमा"
+  },
+  "mc_chat_sub_only": {
+    "message": "केवल सब"
+  },
+  "mc_chat_unique": {
+    "message": "अद्वितीय"
+  },
+  "mc_chat_hype_train": {
+    "message": "hype train"
+  },
+  "mc_chat_hype_level": {
+    "message": "lvl $LEVEL$",
+    "placeholders": {
+      "level": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_input_send_message": {
+    "message": "संदेश भेजें..."
+  },
+  "mc_input_post_heatsync": {
+    "message": "heatsync पर पोस्ट करें..."
+  },
+  "mc_input_send_channel": {
+    "message": "#$CHANNEL$ को भेजें",
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_input_replying_to": {
+    "message": "@$USER$ को उत्तर",
+    "placeholders": {
+      "user": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_input_cancel_reply": {
+    "message": "उत्तर रद्द करें"
+  },
+  "mc_input_not_logged_in": {
+    "message": "लॉग इन नहीं"
+  },
+  "mc_input_login_kick": {
+    "message": "पहले kick.com पर लॉगिन करें"
+  },
+  "mc_input_open_kick": {
+    "message": "kick.com को टैब में खोलें"
+  },
+  "mc_input_kick_not_found": {
+    "message": "Kick चैनल नहीं मिला"
+  },
+  "mc_input_send_failed": {
+    "message": "भेजना विफल"
+  },
+  "mc_input_no_username": {
+    "message": "कोई उपयोगकर्ता नाम नहीं मिला"
+  },
+  "mc_input_auth_failed": {
+    "message": "प्रमाणीकरण विफल — Twitch पर पुनः लॉगिन करें"
+  },
+  "mc_input_connection_failed": {
+    "message": "कनेक्शन विफल — पुनः प्रयास करें"
+  },
+  "mc_input_send_failed_retry": {
+    "message": "भेजना विफल — पुनः प्रयास करें"
+  },
+  "mc_social_back": {
+    "message": "<- वापस"
+  },
+  "mc_social_no_posts": {
+    "message": "अभी तक कोई पोस्ट नहीं"
+  },
+  "mc_social_loading_feed": {
+    "message": "फ़ॉलो किए गए फ़ीड को लोड कर रहा है..."
+  },
+  "mc_social_scroll_more": {
+    "message": "अधिक के लिए स्क्रॉल करें..."
+  },
+  "mc_social_no_replies": {
+    "message": "अभी तक कोई उत्तर नहीं"
+  },
+  "mc_social_login_first": {
+    "message": "पहले heatsync.org पर लॉगिन करें"
+  },
+  "mc_social_login_activity": {
+    "message": "गतिविधि देखने के लिए heatsync.org पर लॉगिन करें"
+  },
+  "mc_social_failed_feed_auth": {
+    "message": "फ़ीड लोड विफल — heatsync.org पर लॉगिन करें"
+  },
+  "mc_social_failed_feed": {
+    "message": "फ़ीड लोड विफल"
+  },
+  "mc_social_log_in_first": {
+    "message": "पहले लॉगिन करें"
+  },
+  "mc_social_slow_down": {
+    "message": "धीमे"
+  },
+  "mc_social_duplicate": {
+    "message": "डुप्लीकेट संदेश"
+  },
+  "mc_social_failed_post": {
+    "message": "पोस्ट करना विफल"
+  },
+  "mc_tip_emoji": {
+    "message": "इमोजी"
+  },
+  "mc_tip_subbed": {
+    "message": "$CHANNEL$ पर सब $TENURE$",
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      },
+      "tenure": {
+        "content": "$2"
+      }
+    }
+  },
+  "mc_tip_following": {
+    "message": "$CHANNEL$ को फ़ॉलो $AGE$",
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      },
+      "age": {
+        "content": "$2"
+      }
+    }
+  },
+  "mc_tip_not_following": {
+    "message": "$CHANNEL$ फ़ॉलो नहीं",
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_tip_followed_by": {
+    "message": "$CHANNEL$ द्वारा फ़ॉलो",
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_tip_followers": {
+    "message": "$COUNT$ फ़ॉलोअर",
+    "placeholders": {
+      "count": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_whisper_hint": {
+    "message": "/w उपयोगकर्ता संदेश · /dm उपयोगकर्ता संदेश · /r संदेश"
+  },
+  "mc_whisper_login": {
+    "message": "whispers भेजने के लिए heatsync.org पर लॉगिन करें"
+  },
+  "mc_whisper_user_not_found": {
+    "message": "Twitch उपयोगकर्ता \"$USER$\" नहीं मिला",
+    "placeholders": {
+      "user": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_whisper_resolve_failed": {
+    "message": "Twitch उपयोगकर्ता खोजना विफल"
+  },
+  "mc_whisper_hs_not_found": {
+    "message": "heatsync उपयोगकर्ता \"$USER$\" नहीं मिला",
+    "placeholders": {
+      "user": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_irc_chat_cleared": {
+    "message": "चैट साफ़ कर दी गई"
+  },
+  "mc_irc_msg_deleted": {
+    "message": "$USER$ का संदेश हटाया गया",
+    "placeholders": {
+      "user": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_irc_gift_subs": {
+    "message": "$USER$ ने $CHANNEL$ को $AMOUNT$ सब उपहार दिए",
+    "placeholders": {
+      "user": {
+        "content": "$1"
+      },
+      "amount": {
+        "content": "$2"
+      },
+      "channel": {
+        "content": "$3"
+      }
+    }
+  },
+  "mc_yt_connected": {
+    "message": "youtube जुड़ा: $CHANNEL$ — संदेशों की प्रतीक्षा...",
+    "placeholders": {
+      "channel": {
+        "content": "$1"
+      }
+    }
+  },
+  "mc_yt_ended": {
+    "message": "youtube स्ट्रीम समाप्त"
+  },
+  "mc_yt_error": {
+    "message": "youtube कनेक्शन त्रुटि"
+  },
+  "mc_emote_search_placeholder": {
+    "message": "इमोट खोजें..."
+  },
+  "mc_emote_no_loaded": {
+    "message": "कोई इमोट लोड नहीं"
+  },
+  "mc_emote_in_set": {
+    "message": "आपके सेट में"
+  },
+  "mc_emote_click_add": {
+    "message": "जोड़ने के लिए क्लिक"
+  },
+  "mc_emote_blocked": {
+    "message": "ब्लॉक (अनब्लॉक के लिए क्लिक)"
+  },
+  "content_toast_unknown_error": {
+    "message": "अज्ञात त्रुटि"
+  },
+  "content_toast_loading_emotes": {
+    "message": "इमोट लोड हो रहे हैं..."
+  },
+  "content_toast_fetching_emotes": {
+    "message": "इमोट प्राप्त कर रहे हैं..."
+  },
+  "content_card_action_ban": {
+    "message": "ban"
+  },
+  "content_card_action_unban": {
+    "message": "unban"
+  },
+  "content_card_action_block": {
+    "message": "ब्लॉक"
+  },
+  "btn_close": {
+    "message": "बंद करें"
+  },
+  "btn_error_channel": {
+    "message": "चैनल इमोट लोड विफल"
+  },
+  "btn_error_global": {
+    "message": "ग्लोबल इमोट लोड विफल"
+  },
+  "btn_error_inventory": {
+    "message": "आपके इमोट लोड विफल"
+  }
+}

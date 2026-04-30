@@ -1377,6 +1377,7 @@
   });
 
   document.addEventListener('DOMContentLoaded', function() {
+    document.documentElement.dir = t('@@bidi_dir');
     hydrateI18n();
     initSearch();
     init().catch(function(e) { console.error('popup init failed:', e); });

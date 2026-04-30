@@ -2,6 +2,8 @@
 (function() {
   'use strict'
 
+  try { document.documentElement.dir = chrome.i18n.getMessage('@@bidi_dir') || 'ltr' } catch {}
+
   const DEFAULTS = {
     emoteWysiwyg: true,
     emoteSpaceAfter: true,

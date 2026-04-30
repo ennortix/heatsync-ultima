@@ -21279,18 +21279,39 @@ const STORAGE_KEY = 'heatsync_multichat';
         pendingH = Math.max(MIN_CHAT_HEIGHT, Math.min(getMaxChatHeight(), startH + (startY - e.clientY)));
         handle.style.bottom = (pendingH - 3) + 'px';
       }
-      // Live commit — chat panel + player + tabbar reflow on every frame.
-      // rAF-throttled so layout work happens at most once per paint regardless
-      // of pointermove rate (browsers fire 120-1000Hz on high-refresh mice).
+      // Live commit — minimal work per frame so YT player buttons stay
+      // clickable. rAF-throttled. We only touch:
+      //   1. CSS vars (--hs-chat-w / --hs-chat-h) — chat container CSS reads these
+      //   2. #secondary inline width on YT — YT's flex auto-resizes the player
+      //   3. Kick chat width (same idea — flex handles player)
+      //   4. Handle position
+      // We deliberately do NOT call applyChatPosition here — that path writes
+      // inline width/height to #movie_player + 5 other player elements every
+      // frame, which (a) thrashes YT's internal layout and (b) appeared to
+      // block pointer events on player controls. Final settle on pointerup
+      // does the full applyChatPosition + resize-event dispatch.
       if (!liveRaf) {
         liveRaf = requestAnimationFrame(() => {
           liveRaf = 0;
           if (axis === 'x') chatWidth = pendingW;
           else chatHeight = pendingH;
-          _suppressYtResizeDispatch = true;
-          try { applyChatPosition() } finally { _suppressYtResizeDispatch = false }
+          document.documentElement.style.setProperty('--hs-chat-w', chatWidth + 'px');
+          document.documentElement.style.setProperty('--hs-chat-h', chatHeight + 'px');
           if (hostPlatform === 'yt') {
             try { applyYouTubeChatWidth() } catch (_) {}
+            // For non-right positions on YT, the player needs explicit inline
+            // sizing (no flex parent). Do it once per frame — chat-right path
+            // skips this entirely so YT's controls stay live.
+            if (chatPosition !== 'right') {
+              try { applyPlatformPositionOverrides() } catch (_) {}
+            }
+          } else if (isKick) {
+            try { applyKickChatWidth() } catch (_) {}
+            if (chatPosition !== 'right') {
+              try { applyPlatformPositionOverrides() } catch (_) {}
+            }
+          } else if (hostPlatform === 'twitch' && chatPosition !== 'right') {
+            try { applyPlatformPositionOverrides() } catch (_) {}
           }
         });
       }

@@ -1669,7 +1669,7 @@ function renderThreadView(msgsEl) {
 
 async function postFeedMessage(text, { topLevel = false } = {}) {
   const input = document.getElementById('hs-mc-input');
-  if (!input) return;
+  if (!input) return false;
 
   if (!hsAuthToken) {
     if (wysiwygEnabled) {
@@ -1678,7 +1678,7 @@ async function postFeedMessage(text, { topLevel = false } = {}) {
       input.placeholder = t('mc_social_login_first');
     }
     setTimeout(() => updateInputPlaceholder(), 2000);
-    return;
+    return false;
   }
 
   // Extract pasted/uploaded media URL from content. The chat-tile flow
@@ -1734,6 +1734,7 @@ async function postFeedMessage(text, { topLevel = false } = {}) {
       }
     }
     if (currentTab === 'feed') renderFeed()
+    return true
   } else {
     input.style.borderColor = '#f44';
     const errMsg = resp.status === 401 ? t('mc_social_log_in_first')
@@ -1743,6 +1744,7 @@ async function postFeedMessage(text, { topLevel = false } = {}) {
     showToast(errMsg);
     setTimeout(() => { input.style.borderColor = ''; }, 1500);
     log('Post failed:', resp.status || resp.error);
+    return false
   }
 }
 

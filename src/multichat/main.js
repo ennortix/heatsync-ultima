@@ -1719,17 +1719,18 @@
         : (hostPlatform === 'twitch' ? Math.min(MAX_CHAT_WIDTH, getTwitchMaxChatWidth()) : MAX_CHAT_WIDTH);
       if (chatPosition === 'right') {
         pendingW = Math.max(MIN_CHAT_WIDTH, Math.min(maxW, startW + (startX - e.clientX)));
-        // -5 matches positionChatResizeHandle's 10px-wide centered offset.
-        handle.style.right = (pendingW - 5) + 'px';
+        // -10 matches positionChatResizeHandle: bar inner edge flush at
+        // chat container's left edge so player + bar are touching.
+        handle.style.right = (pendingW - 10) + 'px';
       } else if (chatPosition === 'left') {
         pendingW = Math.max(MIN_CHAT_WIDTH, Math.min(maxW, startW + (e.clientX - startX)));
-        handle.style.left = (pendingW - 5) + 'px';
+        handle.style.left = (pendingW - 10) + 'px';
       } else if (chatPosition === 'top') {
         pendingH = Math.max(MIN_CHAT_HEIGHT, Math.min(getMaxChatHeight(), startH + (e.clientY - startY)));
-        handle.style.top = (pendingH - 5) + 'px';
+        handle.style.top = (pendingH - 10) + 'px';
       } else if (chatPosition === 'bottom') {
         pendingH = Math.max(MIN_CHAT_HEIGHT, Math.min(getMaxChatHeight(), startH + (startY - e.clientY)));
-        handle.style.bottom = (pendingH - 5) + 'px';
+        handle.style.bottom = (pendingH - 10) + 'px';
       }
       // Live commit — minimal work per frame so YT player buttons stay
       // clickable. rAF-throttled. We only touch:
@@ -1818,28 +1819,30 @@
       return;
     }
     handle.style.display = 'block';
-    // 10px wide (was 6) for a fatter hit-target at narrow viewports where
-    // YT's player-overlay listeners can otherwise win the click.
+    // 10px wide handle, aligned so its INNER edge (toward player) sits at
+    // the chat container's edge. Player ends flush against the bar — no
+    // gap, no straddle. The handle visually consumes the leftmost 10px
+    // of the chat container's footprint.
     if (chatPosition === 'right') {
       handle.style.top = '0';
       handle.style.bottom = '0';
-      handle.style.right = (chatWidth - 5) + 'px';
+      handle.style.right = (chatWidth - 10) + 'px';
       handle.style.width = '10px';
       handle.style.cursor = 'col-resize';
     } else if (chatPosition === 'left') {
       handle.style.top = '0';
       handle.style.bottom = '0';
-      handle.style.left = (chatWidth - 5) + 'px';
+      handle.style.left = (chatWidth - 10) + 'px';
       handle.style.width = '10px';
       handle.style.cursor = 'col-resize';
     } else if (chatPosition === 'top') {
-      handle.style.top = (chatHeight - 5) + 'px';
+      handle.style.top = (chatHeight - 10) + 'px';
       handle.style.left = '0';
       handle.style.right = '0';
       handle.style.height = '10px';
       handle.style.cursor = 'row-resize';
     } else if (chatPosition === 'bottom') {
-      handle.style.bottom = (chatHeight - 5) + 'px';
+      handle.style.bottom = (chatHeight - 10) + 'px';
       handle.style.left = '0';
       handle.style.right = '0';
       handle.style.height = '10px';

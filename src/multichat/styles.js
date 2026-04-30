@@ -4612,30 +4612,35 @@ function injectStyles() {
     /* --- YT narrow viewport rescue ---
        At narrow viewports YT collapses ytd-watch-flexy into a single-column
        layout: #primary spans the full viewport, #secondary stacks below.
-       Forcing inline width on the player wrappers shrinks the visible
-       player but it stays centered inside the still-full-width #primary,
-       so its right edge slides under our chat overlay.
-       Reserve the chat's space at the YT-app level via padding so the entire
-       watch flexy container clamps to viewport - chatWidth. The chat panel
-       (position:fixed) sits in the freed strip — no overlap, no centering. */
-    body.hs-platform-yt.hs-chat-right ytd-app {
-      padding-right: var(--hs-chat-w, 340px) !important;
-      box-sizing: border-box !important;
+       Constraining the player's wrapper width isn't enough — the player
+       sits centered inside the still-full-width #primary, so its right
+       edge slides under our chat overlay.
+       Cap #primary itself with max-width so YT's responsive flex respects
+       the chat strip in BOTH single-column and two-column modes. The
+       wrapper inline-sizing in applyPlatformPositionOverrides is a
+       complementary belt-and-suspenders. */
+    body.hs-platform-yt.hs-chat-right #primary,
+    body.hs-platform-yt.hs-chat-right ytd-watch-flexy #primary {
+      max-width: calc(100vw - var(--hs-chat-w, 340px)) !important;
+      width: calc(100vw - var(--hs-chat-w, 340px)) !important;
     }
-    body.hs-platform-yt.hs-chat-left ytd-app {
-      padding-left: var(--hs-chat-w, 340px) !important;
-      box-sizing: border-box !important;
+    body.hs-platform-yt.hs-chat-left #primary,
+    body.hs-platform-yt.hs-chat-left ytd-watch-flexy #primary {
+      max-width: calc(100vw - var(--hs-chat-w, 340px)) !important;
+      width: calc(100vw - var(--hs-chat-w, 340px)) !important;
+      margin-left: var(--hs-chat-w, 340px) !important;
     }
-    body.hs-platform-yt.hs-chat-top ytd-app {
-      padding-top: var(--hs-chat-h, 35vh) !important;
-      box-sizing: border-box !important;
+    body.hs-platform-yt.hs-chat-top #primary,
+    body.hs-platform-yt.hs-chat-top ytd-watch-flexy #primary {
+      margin-top: var(--hs-chat-h, 35vh) !important;
+      max-height: calc(100vh - var(--hs-chat-h, 35vh)) !important;
     }
-    body.hs-platform-yt.hs-chat-bottom ytd-app {
-      padding-bottom: var(--hs-chat-h, 35vh) !important;
-      box-sizing: border-box !important;
+    body.hs-platform-yt.hs-chat-bottom #primary,
+    body.hs-platform-yt.hs-chat-bottom ytd-watch-flexy #primary {
+      max-height: calc(100vh - var(--hs-chat-h, 35vh)) !important;
     }
-    /* YT's masthead is position:fixed and viewport-anchored — explicitly
-       shrink it so the search bar / icons don't slide under the chat. */
+    /* YT's masthead is position:fixed and viewport-anchored — shrink it
+       so the search bar / icons don't slide under the chat overlay. */
     body.hs-platform-yt.hs-chat-right #masthead-container,
     body.hs-platform-yt.hs-chat-right ytd-masthead {
       right: var(--hs-chat-w, 340px) !important;

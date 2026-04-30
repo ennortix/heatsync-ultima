@@ -5656,30 +5656,35 @@ function injectStyles() {
     /* --- YT narrow viewport rescue ---
        At narrow viewports YT collapses ytd-watch-flexy into a single-column
        layout: #primary spans the full viewport, #secondary stacks below.
-       Forcing inline width on the player wrappers shrinks the visible
-       player but it stays centered inside the still-full-width #primary,
-       so its right edge slides under our chat overlay.
-       Reserve the chat's space at the YT-app level via padding so the entire
-       watch flexy container clamps to viewport - chatWidth. The chat panel
-       (position:fixed) sits in the freed strip — no overlap, no centering. */
-    body.hs-platform-yt.hs-chat-right ytd-app {
-      padding-right: var(--hs-chat-w, 340px) !important;
-      box-sizing: border-box !important;
+       Constraining the player's wrapper width isn't enough — the player
+       sits centered inside the still-full-width #primary, so its right
+       edge slides under our chat overlay.
+       Cap #primary itself with max-width so YT's responsive flex respects
+       the chat strip in BOTH single-column and two-column modes. The
+       wrapper inline-sizing in applyPlatformPositionOverrides is a
+       complementary belt-and-suspenders. */
+    body.hs-platform-yt.hs-chat-right #primary,
+    body.hs-platform-yt.hs-chat-right ytd-watch-flexy #primary {
+      max-width: calc(100vw - var(--hs-chat-w, 340px)) !important;
+      width: calc(100vw - var(--hs-chat-w, 340px)) !important;
     }
-    body.hs-platform-yt.hs-chat-left ytd-app {
-      padding-left: var(--hs-chat-w, 340px) !important;
-      box-sizing: border-box !important;
+    body.hs-platform-yt.hs-chat-left #primary,
+    body.hs-platform-yt.hs-chat-left ytd-watch-flexy #primary {
+      max-width: calc(100vw - var(--hs-chat-w, 340px)) !important;
+      width: calc(100vw - var(--hs-chat-w, 340px)) !important;
+      margin-left: var(--hs-chat-w, 340px) !important;
     }
-    body.hs-platform-yt.hs-chat-top ytd-app {
-      padding-top: var(--hs-chat-h, 35vh) !important;
-      box-sizing: border-box !important;
+    body.hs-platform-yt.hs-chat-top #primary,
+    body.hs-platform-yt.hs-chat-top ytd-watch-flexy #primary {
+      margin-top: var(--hs-chat-h, 35vh) !important;
+      max-height: calc(100vh - var(--hs-chat-h, 35vh)) !important;
     }
-    body.hs-platform-yt.hs-chat-bottom ytd-app {
-      padding-bottom: var(--hs-chat-h, 35vh) !important;
-      box-sizing: border-box !important;
+    body.hs-platform-yt.hs-chat-bottom #primary,
+    body.hs-platform-yt.hs-chat-bottom ytd-watch-flexy #primary {
+      max-height: calc(100vh - var(--hs-chat-h, 35vh)) !important;
     }
-    /* YT's masthead is position:fixed and viewport-anchored — explicitly
-       shrink it so the search bar / icons don't slide under the chat. */
+    /* YT's masthead is position:fixed and viewport-anchored — shrink it
+       so the search bar / icons don't slide under the chat overlay. */
     body.hs-platform-yt.hs-chat-right #masthead-container,
     body.hs-platform-yt.hs-chat-right ytd-masthead {
       right: var(--hs-chat-w, 340px) !important;
@@ -21310,17 +21315,18 @@ const STORAGE_KEY = 'heatsync_multichat';
         : (hostPlatform === 'twitch' ? Math.min(MAX_CHAT_WIDTH, getTwitchMaxChatWidth()) : MAX_CHAT_WIDTH);
       if (chatPosition === 'right') {
         pendingW = Math.max(MIN_CHAT_WIDTH, Math.min(maxW, startW + (startX - e.clientX)));
-        // -5 matches positionChatResizeHandle's 10px-wide centered offset.
-        handle.style.right = (pendingW - 5) + 'px';
+        // -10 matches positionChatResizeHandle: bar inner edge flush at
+        // chat container's left edge so player + bar are touching.
+        handle.style.right = (pendingW - 10) + 'px';
       } else if (chatPosition === 'left') {
         pendingW = Math.max(MIN_CHAT_WIDTH, Math.min(maxW, startW + (e.clientX - startX)));
-        handle.style.left = (pendingW - 5) + 'px';
+        handle.style.left = (pendingW - 10) + 'px';
       } else if (chatPosition === 'top') {
         pendingH = Math.max(MIN_CHAT_HEIGHT, Math.min(getMaxChatHeight(), startH + (e.clientY - startY)));
-        handle.style.top = (pendingH - 5) + 'px';
+        handle.style.top = (pendingH - 10) + 'px';
       } else if (chatPosition === 'bottom') {
         pendingH = Math.max(MIN_CHAT_HEIGHT, Math.min(getMaxChatHeight(), startH + (startY - e.clientY)));
-        handle.style.bottom = (pendingH - 5) + 'px';
+        handle.style.bottom = (pendingH - 10) + 'px';
       }
       // Live commit — minimal work per frame so YT player buttons stay
       // clickable. rAF-throttled. We only touch:
@@ -21409,28 +21415,30 @@ const STORAGE_KEY = 'heatsync_multichat';
       return;
     }
     handle.style.display = 'block';
-    // 10px wide (was 6) for a fatter hit-target at narrow viewports where
-    // YT's player-overlay listeners can otherwise win the click.
+    // 10px wide handle, aligned so its INNER edge (toward player) sits at
+    // the chat container's edge. Player ends flush against the bar — no
+    // gap, no straddle. The handle visually consumes the leftmost 10px
+    // of the chat container's footprint.
     if (chatPosition === 'right') {
       handle.style.top = '0';
       handle.style.bottom = '0';
-      handle.style.right = (chatWidth - 5) + 'px';
+      handle.style.right = (chatWidth - 10) + 'px';
       handle.style.width = '10px';
       handle.style.cursor = 'col-resize';
     } else if (chatPosition === 'left') {
       handle.style.top = '0';
       handle.style.bottom = '0';
-      handle.style.left = (chatWidth - 5) + 'px';
+      handle.style.left = (chatWidth - 10) + 'px';
       handle.style.width = '10px';
       handle.style.cursor = 'col-resize';
     } else if (chatPosition === 'top') {
-      handle.style.top = (chatHeight - 5) + 'px';
+      handle.style.top = (chatHeight - 10) + 'px';
       handle.style.left = '0';
       handle.style.right = '0';
       handle.style.height = '10px';
       handle.style.cursor = 'row-resize';
     } else if (chatPosition === 'bottom') {
-      handle.style.bottom = (chatHeight - 5) + 'px';
+      handle.style.bottom = (chatHeight - 10) + 'px';
       handle.style.left = '0';
       handle.style.right = '0';
       handle.style.height = '10px';

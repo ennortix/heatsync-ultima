@@ -21219,12 +21219,15 @@ const STORAGE_KEY = 'heatsync_multichat';
       position: 'fixed',
       background: '#ff8700',
       opacity: '0.55',
-      zIndex: '100000',
       userSelect: 'none',
       touchAction: 'none',
       display: 'none',
+      pointerEvents: 'auto',
       transition: 'opacity 0.12s'
     });
+    // Use !important on z-index so YT can't compete with its own
+    // own modal stacking contexts (chrome bottom bar, settings menu).
+    handle.style.setProperty('z-index', '2147483647', 'important');
     document.body.appendChild(handle);
     handle.addEventListener('mouseenter', () => { handle.style.opacity = '1'; });
     handle.addEventListener('mouseleave', () => { if (!_isResizingC) handle.style.opacity = '0.55'; });
@@ -21299,12 +21302,10 @@ const STORAGE_KEY = 'heatsync_multichat';
           document.documentElement.style.setProperty('--hs-chat-h', chatHeight + 'px');
           if (hostPlatform === 'yt') {
             try { applyYouTubeChatWidth() } catch (_) {}
-            // For non-right positions on YT, the player needs explicit inline
-            // sizing (no flex parent). Do it once per frame — chat-right path
-            // skips this entirely so YT's controls stay live.
-            if (chatPosition !== 'right') {
-              try { applyPlatformPositionOverrides() } catch (_) {}
-            }
+            // Re-size player wrappers (NOT #movie_player itself) so the
+            // player tracks chat resize live without desyncing YT's
+            // control hit-targets.
+            try { applyPlatformPositionOverrides() } catch (_) {}
           } else if (isKick) {
             try { applyKickChatWidth() } catch (_) {}
             if (chatPosition !== 'right') {
@@ -25725,33 +25726,28 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
           sec.style.setProperty('flex', '0 0 0', 'important');
         }
       }
-      // chat-top/bottom: force aspect-preserved player size inline on EVERY
-      // element in the player container chain. YT sizes the player from
-      // multiple layers (player-container-outer/inner, ytd-player, player,
-      // movie_player); missing any one means YT's cached size leaks through
-      // and the player overflows the viewport.
+      // Force aspect-preserved player size inline on the player WRAPPER chain.
+      // We deliberately omit #movie_player itself — YT's controls (volume,
+      // play, settings) compute hit-targets from #movie_player's intrinsic
+      // dimensions, and forcing a size on it desyncs the click hitboxes from
+      // the visible buttons. Sizing the wrappers only constrains the player
+      // visually (movie_player fills its parent via CSS) without disturbing
+      // YT's controls geometry.
       const ytSelectors = [
         '#player-container-outer',
         '#player-container-inner',
         '#player-container',
         '#player',
         'ytd-player#ytd-player',
-        '#movie_player'
       ];
       const ytSizedEls = ytSelectors.map(s => document.querySelector(s)).filter(Boolean);
       const PLAYER_GEOM = ['width', 'height', 'max-width', 'max-height', 'min-height'];
-      // chat-right uses YT's native flex layout — #secondary width drives
-      // #primary/player sizing automatically. Forcing inline width/height
-      // on #movie_player here was overriding YT's own controls geometry,
-      // which made volume / play / settings buttons unclickable. Only
-      // the non-right positions need explicit inline player sizing
-      // (their flex parent is collapsed via #secondary width:0).
-      if (chatPosition === 'top' || chatPosition === 'bottom' || chatPosition === 'left') {
+      if (chatPosition === 'top' || chatPosition === 'bottom' || chatPosition === 'left' || chatPosition === 'right') {
         // Compute aspect-preserved player size for the freed area.
         // top/bottom: chat eats height, player fills the rest (full width).
-        // left: chat eats width, player fills the rest (full height).
+        // left/right: chat eats width, player fills the rest (full height).
         let availH, availW;
-        if (chatPosition === 'left') {
+        if (chatPosition === 'left' || chatPosition === 'right') {
           availW = Math.max(200, innerWidth - chatWidth);
           availH = innerHeight;
         } else {

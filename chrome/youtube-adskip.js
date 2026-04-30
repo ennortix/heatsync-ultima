@@ -54,26 +54,17 @@
     const video = player.querySelector('video')
     if (!video) return false
     const dur = Number(video.duration)
-    if (Number.isFinite(dur) && dur > 0) {
-      try {
-        video.currentTime = Math.max(0, dur - 0.05)
-        video.playbackRate = 16
-        if (!video.muted) { video.dataset._hsAdMuted = '1'; video.muted = true }
-        log('ff to', dur)
-        return true
-      } catch (_) {}
-    } else {
-      try { video.playbackRate = 16 } catch (_) {}
-    }
+    if (!Number.isFinite(dur) || dur <= 0) return false
+    // Single-frame jump to ad end. No playbackRate manipulation — that
+    // makes the ad audibly + visibly play in a stutter-burst before
+    // ending, which the user described as "fast forwards weirdly".
+    // Setting currentTime past duration triggers ad-ended cleanly.
+    try {
+      video.currentTime = dur
+      log('skip to end', dur)
+      return true
+    } catch (_) {}
     return false
-  }
-
-  function unmuteIfWeMuted(player) {
-    const video = player.querySelector('video')
-    if (video && video.dataset._hsAdMuted === '1') {
-      try { video.muted = false; video.playbackRate = 1 } catch (_) {}
-      delete video.dataset._hsAdMuted
-    }
   }
 
   function tickAdSkip() {
@@ -84,7 +75,6 @@
     if (clickAll(player, SKIP_SELECTORS)) return
     clickAll(player, CLOSE_SELECTORS)
     if (adShowing) fastForwardAd(player)
-    else unmuteIfWeMuted(player)
   }
 
   function watchPlayer() {

@@ -3176,6 +3176,10 @@ function injectStyles() {
       background: #ff6b35 !important;
       color: #fff !important;
     }
+    .hs-mc-size-btn.active:hover {
+      background: #fff !important;
+      color: #000 !important;
+    }
     .hs-mc-toggle-pill {
       width: 16px;
       height: 16px;

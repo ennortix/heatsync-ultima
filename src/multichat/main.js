@@ -1006,9 +1006,6 @@
   let autoHideInput = false;
   let inputBarVisible = true;
 
-  // Smart tab-completion ranking — recent chatters surface first (default on)
-  let smartCompletion = true;
-
   // First-time chatter highlight — orange edge on first message from a user this session (default on)
   let firstChatterGlow = true;
   // channelLower → Set<usernameLower> seen this session
@@ -2752,17 +2749,6 @@
     chrome.storage.local.set({ hs_auto_claim_points: autoClaimPoints });
   }
 
-  async function loadSmartCompletionSetting() {
-    try {
-      const stored = await cachedUiSettings();
-      if (stored.ui_settings?.smartCompletion !== undefined) smartCompletion = !!stored.ui_settings.smartCompletion;
-    } catch {}
-  }
-  function toggleSmartCompletion() {
-    smartCompletion = !smartCompletion;
-    saveUiSetting('smartCompletion', smartCompletion);
-  }
-
   async function loadFirstChatterGlowSetting() {
     try {
       const stored = await cachedUiSettings();
@@ -2842,10 +2828,6 @@
           <div class="hs-mc-setting-row">
             <button class="hs-mc-toggle-pill ${avatarsEnabled ? 'active' : ''}" data-setting="avatars"><span class="hs-mc-toggle-knob"></span></button>
             <span class="hs-mc-setting-label" data-tip="${settingTips.avatars}">${t('mc_settings_avatars')}</span>
-          </div>
-          <div class="hs-mc-setting-row">
-            <button class="hs-mc-toggle-pill ${smartCompletion ? 'active' : ''}" data-setting="smartcompletion"><span class="hs-mc-toggle-knob"></span></button>
-            <span class="hs-mc-setting-label" data-tip="${t('mc_settings_smart_completion_desc')}">${t('mc_settings_smart_completion')}</span>
           </div>
           <div class="hs-mc-setting-row">
             <button class="hs-mc-toggle-pill ${firstChatterGlow ? 'active' : ''}" data-setting="firstchatter"><span class="hs-mc-toggle-knob"></span></button>
@@ -2943,7 +2925,6 @@
           autoclaim: () => { toggleAutoClaim(); },
           dimtimeouts: () => { toggleDimTimeouts(); },
           readablenames: () => { toggleReadableNames(); },
-          smartcompletion: () => { toggleSmartCompletion(); },
           firstchatter: () => { toggleFirstChatterGlow(); },
         };
         if (toggleMap[setting]) {
@@ -2990,7 +2971,6 @@
         showOfflineEvents = false;
         autoClaimPoints = true;
         dimTimeouts = true;
-        smartCompletion = true;
         firstChatterGlow = true;
         keywordHighlights = '';
         rebuildKeywordRegex();
@@ -3000,7 +2980,7 @@
           wysiwygEnabled: false, linksEnabled: true, viMode: false,
           zebra: true, autoHideEmpty: false, timestamps: false,
           avatars: false, showPlatformBadges: true, showOfflineEvents: false,
-          smartCompletion: true, firstChatterGlow: true, keywordHighlights: '',
+          firstChatterGlow: true, keywordHighlights: '',
           inlineNotifs: { ...inlineNotifs }, hermesEvents: { ...hermesToggles },
         };
         try {
@@ -6657,9 +6637,6 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
         if (ns.showOfflineEvents !== undefined && ns.showOfflineEvents !== showOfflineEvents) {
           showOfflineEvents = ns.showOfflineEvents
         }
-        if (ns.smartCompletion !== undefined && ns.smartCompletion !== smartCompletion) {
-          smartCompletion = !!ns.smartCompletion
-        }
         if (ns.firstChatterGlow !== undefined && ns.firstChatterGlow !== firstChatterGlow) {
           firstChatterGlow = !!ns.firstChatterGlow
           needsRender = true
@@ -6953,7 +6930,6 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       loadAutoClaimSetting(),
       loadDimTimeoutsSetting(),
       loadReadableNamesSetting(),
-      loadSmartCompletionSetting(),
       loadFirstChatterGlowSetting(),
       loadKeywordHighlightsSetting(),
       loadOfflineEventsSetting(),

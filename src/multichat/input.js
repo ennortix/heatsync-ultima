@@ -1119,7 +1119,6 @@ function getRecencyMap() {
   // Returns Map<usernameLower, recencyRank> from current tab's chat buffer.
   // Lower rank = more recent. Caps at 50 unique users for sub-ms cost.
   const out = new Map()
-  if (typeof smartCompletion === 'undefined' || !smartCompletion) return out
   if (typeof irc === 'undefined' || !irc?.channels) return out
   let ch = currentTab
   if (currentTab === 'live' && typeof getLiveChannel === 'function') ch = getLiveChannel()

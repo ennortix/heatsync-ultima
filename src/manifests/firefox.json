@@ -108,6 +108,15 @@
       "js": ["youtube-content.js"],
       "run_at": "document_end",
       "all_frames": true
+    },
+    {
+      "matches": [
+        "https://www.youtube.com/watch*",
+        "https://www.youtube.com/live/*",
+        "https://www.youtube.com/shorts/*"
+      ],
+      "js": ["youtube-adskip.js"],
+      "run_at": "document_idle"
     }
   ],
 

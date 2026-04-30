@@ -53,6 +53,7 @@ const COPY_FILES = [
   'vi-mode.js',
   'kick-autocomplete-hook.js',
   'pcard-early.js',
+  'youtube-adskip.js',
 ]
 
 // Assets (images, etc)

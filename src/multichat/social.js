@@ -94,14 +94,8 @@ let feedHasMore = true;
 let feedLastFetch = 0; // Timestamp of last feed fetch
 const FEED_STALE_MS = 120000; // 2 minutes
 
-// Virtual scroll state for feed
-let _feedVirtualScrollHandler = null  // current scroll listener ref
-let _feedVirtualResizeObserver = null // ResizeObserver on msgsEl
-let _feedVirtualItemHeight = 32       // estimated item height (px), recalibrated after first render — tighter than before
-let _feedVirtualScrollRaf = 0         // rAF handle for scroll debounce
-let _feedVirtualLastStart = -1        // last rendered window start
-let _feedVirtualLastEnd = -1          // last rendered window end
-const FEED_VIRTUAL_OVERSCAN = 5       // extra items above/below visible window
+// Feed scroll state — handler ref for teardown only, infinite-scroll trigger
+let _feedVirtualScrollHandler = null
 
 // Engagement state — optimistic local cache
 const feedLiked = new Set()     // base36_ids the user has liked
@@ -845,58 +839,6 @@ function _feedVirtualTeardown(msgsEl) {
     msgsEl.removeEventListener('scroll', _feedVirtualScrollHandler)
   }
   _feedVirtualScrollHandler = null
-  if (_feedVirtualResizeObserver) {
-    cleanup.untrackObserver(_feedVirtualResizeObserver)
-    _feedVirtualResizeObserver = null
-  }
-  if (_feedVirtualScrollRaf) {
-    cancelAnimationFrame(_feedVirtualScrollRaf)
-    _feedVirtualScrollRaf = 0
-  }
-  _feedVirtualLastStart = -1
-  _feedVirtualLastEnd = -1
-  // Reset item height — calibration from the previous session may not match
-  // the new content (e.g. switching feed tab after thread expand changes heights)
-  _feedVirtualItemHeight = 32
-}
-
-// Render only the visible slice of feedMessages into the virtual container.
-// virtualContainer is absolutely positioned inside msgsEl; spacer sets scrollHeight.
-function _feedVirtualRenderWindow(msgsEl, virtualContainer, items) {
-  const scrollTop = msgsEl.scrollTop
-  const viewHeight = msgsEl.clientHeight
-  const h = _feedVirtualItemHeight
-
-  const startIdx = Math.max(0, Math.floor(scrollTop / h) - FEED_VIRTUAL_OVERSCAN)
-  const endIdx = Math.min(items.length, Math.ceil((scrollTop + viewHeight) / h) + FEED_VIRTUAL_OVERSCAN)
-
-  // Skip identical window to avoid DOM thrashing
-  if (startIdx === _feedVirtualLastStart && endIdx === _feedVirtualLastEnd) return
-  _feedVirtualLastStart = startIdx
-  _feedVirtualLastEnd = endIdx
-
-  // Clear and rebuild visible window
-  while (virtualContainer.firstChild) virtualContainer.removeChild(virtualContainer.firstChild)
-
-  const frag = document.createDocumentFragment()
-  let zebraCount = startIdx
-  for (let i = startIdx; i < endIdx; i++) {
-    const m = items[i]
-    const div = buildFeedMessageDiv(m)
-    if (zebraEnabled && ++zebraCount % 2 === 0) div.classList.add('hs-mc-zebra')
-    div.style.position = 'absolute'
-    div.style.top = `${i * h}px`
-    div.style.left = '0'
-    div.style.right = '0'
-    frag.appendChild(div)
-  }
-  virtualContainer.appendChild(frag)
-
-  // Recalibrate item height from first rendered item (once per render cycle)
-  if (startIdx === 0 && virtualContainer.firstElementChild) {
-    const measured = virtualContainer.firstElementChild.getBoundingClientRect().height
-    if (measured > 10) _feedVirtualItemHeight = measured
-  }
 }
 
 function renderFeed() {
@@ -938,33 +880,30 @@ function renderFeed() {
     return;
   }
 
-  // --- Virtual scroll setup ---
+  // Render all feed posts in natural document flow. Virtualization removed —
+  // posts have wildly mixed heights (32px text vs 327px media embeds) and a
+  // uniform-height virtual scroller produced massive overlap. If post counts
+  // grow large enough to hurt scroll perf, re-add virtualization with proper
+  // per-item height measurement (cumulative offsets, not i*h).
   _feedVirtualTeardown(msgsEl)
 
-  const items = feedMessages  // reference — no slice cap
-
-  const totalHeight = items.length * _feedVirtualItemHeight
+  const items = feedMessages
   isProgrammaticScroll = true
   msgsEl.textContent = ''
-  msgsEl.style.position = 'relative'  // needed for absolute children
+  msgsEl.style.position = ''
 
-  // Spacer sets the full scrollable height
-  const spacer = document.createElement('div')
-  spacer.className = 'hs-feed-virtual-spacer'
-  spacer.style.cssText = `position:absolute;top:0;left:0;right:0;height:${totalHeight}px;pointer-events:none;`
-  msgsEl.appendChild(spacer)
+  const frag = document.createDocumentFragment()
+  let zebraCount = 0
+  for (let i = 0; i < items.length; i++) {
+    const div = buildFeedMessageDiv(items[i])
+    if (zebraEnabled && ++zebraCount % 2 === 0) div.classList.add('hs-mc-zebra')
+    frag.appendChild(div)
+  }
+  msgsEl.appendChild(frag)
 
-  // Virtual container holds only visible DOM nodes
-  const virtualContainer = document.createElement('div')
-  virtualContainer.className = 'hs-feed-virtual-container'
-  virtualContainer.style.cssText = 'position:absolute;top:0;left:0;right:0;'
-  msgsEl.appendChild(virtualContainer)
-
-  // Infinite scroll loader at bottom
   if (feedHasMore) {
     const loader = document.createElement('div')
     loader.className = 'hs-mc-empty hs-feed-loader'
-    loader.style.cssText = `position:absolute;top:${totalHeight}px;left:0;right:0;`
     loader.textContent = t('mc_social_scroll_more')
     msgsEl.appendChild(loader)
   }
@@ -972,49 +911,19 @@ function renderFeed() {
   msgsEl.scrollTop = 0
   requestAnimationFrame(() => { isProgrammaticScroll = false; })
 
-  // Initial window render
-  _feedVirtualRenderWindow(msgsEl, virtualContainer, items)
-
-  // Recalibrate spacer after measuring real item height
-  requestAnimationFrame(() => {
-    const newTotal = items.length * _feedVirtualItemHeight
-    spacer.style.height = `${newTotal}px`
-    if (feedHasMore) {
-      const loader = msgsEl.querySelector('.hs-feed-loader')
-      if (loader) loader.style.top = `${newTotal}px`
-    }
-  })
-
-  // Scroll handler: rAF-throttled window recompute + infinite scroll trigger
+  // Infinite scroll: trigger fetch near bottom
   let _feedInfiniteTimer = null
   _feedVirtualScrollHandler = () => {
     if (mcSignal?.aborted) return
-    if (_feedVirtualScrollRaf) return
-    _feedVirtualScrollRaf = requestAnimationFrame(() => {
-      _feedVirtualScrollRaf = 0
-      _feedVirtualRenderWindow(msgsEl, virtualContainer, items)
-
-      // Infinite scroll: near bottom
-      if (currentTab === 'feed' && !feedLoading && feedHasMore) {
-        if (!_feedInfiniteTimer) {
-          _feedInfiniteTimer = cleanup.setTimeout(() => {
-            _feedInfiniteTimer = null
-            const { scrollTop, scrollHeight, clientHeight } = msgsEl
-            if (scrollHeight - scrollTop - clientHeight < 100) fetchFeed(true)
-          }, 200)
-        }
-      }
-    })
+    if (currentTab !== 'feed' || feedLoading || !feedHasMore) return
+    if (_feedInfiniteTimer) return
+    _feedInfiniteTimer = cleanup.setTimeout(() => {
+      _feedInfiniteTimer = null
+      const { scrollTop, scrollHeight, clientHeight } = msgsEl
+      if (scrollHeight - scrollTop - clientHeight < 100) fetchFeed(true)
+    }, 200)
   }
   msgsEl.addEventListener('scroll', _feedVirtualScrollHandler, { signal: mcSignal, passive: true })
-
-  // ResizeObserver: recompute window on container resize
-  _feedVirtualResizeObserver = cleanup.trackObserver(new ResizeObserver(() => {
-    _feedVirtualLastStart = -1
-    _feedVirtualLastEnd = -1
-    _feedVirtualRenderWindow(msgsEl, virtualContainer, items)
-  }))
-  _feedVirtualResizeObserver.observe(msgsEl)
 }
 
 // ---- ENGAGEMENT: heat, bookmark, reactions ----
@@ -1071,13 +980,8 @@ function _applyBookmarkState(btn, active) {
 
 function _applyHeatState(btn, active, count) {
   btn.classList.toggle('active', active)
-  const path = btn.querySelector('path')
-  if (path) {
-    path.setAttribute('fill', active ? '#ff8700' : 'none')
-    path.setAttribute('stroke', active ? '#ff8700' : '#808080')
-  }
   const countEl = btn.querySelector('.hs-fe-count')
-  if (countEl) countEl.textContent = count > 0 ? String(count) : ''
+  if (countEl) countEl.textContent = count > 0 ? formatHeat(count) + '°' : '+'
 }
 
 async function toggleHeat(msgId, btn, m) {
@@ -1270,15 +1174,14 @@ function buildEngagementBar(m) {
   const liked = feedLiked.has(m.base36_id) || !!m.user_liked || (m.user_heat || 0) > 0
   const heatCount = m.heat || 0
 
-  // Heat/like button — flame SVG
+  // Heat/like button — text-only to match heatsync.org (no fire emoji)
   const heatBtn = document.createElement('button')
   heatBtn.className = 'hs-feed-heat-btn' + (liked ? ' active' : '')
   heatBtn.title = liked ? 'already heated' : 'heat'
   heatBtn.dataset.id = m.base36_id
-  heatBtn.appendChild(_makeSvg('M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z', liked))
   const heatCount2 = document.createElement('span')
   heatCount2.className = 'hs-fe-count'
-  heatCount2.textContent = heatCount > 0 ? formatHeat(heatCount) : ''
+  heatCount2.textContent = heatCount > 0 ? formatHeat(heatCount) + '°' : '+'
   heatBtn.appendChild(heatCount2)
 
   // Bookmark button — ribbon SVG

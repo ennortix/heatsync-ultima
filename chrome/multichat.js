@@ -2170,8 +2170,8 @@ function injectStyles() {
       position: fixed;
       z-index: 100000;
       pointer-events: none;
-      background: #000;
-      border: 2px solid #00ff00;
+      background: #808080;
+      border: 1px solid #404040;
       border-radius: 0;
       padding: 10px 6px 6px 6px;
       display: none;

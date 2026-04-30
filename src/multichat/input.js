@@ -607,12 +607,12 @@ function initInput() {
       if (mutedUsers.has(username)) {
         mutedUsers.delete(username);
         wasUnmute = true;
-        showToast(`unmuted ${username}`);
+        showToast(`unmuted ${username}`, 'success');
         // Sync: tell background to unmute (broadcasts to all tabs — server mute expires naturally)
         safeSendMessage({ type: 'unmute_user', username });
       } else {
         mutedUsers.add(username);
-        showToast(`muted ${username} (24h)`);
+        showToast(`muted ${username} (24h)`, 'success');
         // Sync: tell background to mute with 24h expiry (broadcasts to all tabs + server)
         const expiresAt = Date.now() + 86400000;
         safeSendMessage({ type: 'mute_user', username, expiresAt });
@@ -1901,7 +1901,7 @@ async function handleSlashCommand(text, input) {
 
   if (cmd === 'r') {
     if (!rest.trim()) { showToast('usage: /r <message>'); return true }
-    if (!lastWhisperKey) { showToast('no one to reply to'); return true }
+    if (!lastWhisperKey) { showToast('no one to reply to', 'error'); return true }
     if (currentTab !== 'whispers') switchTab('whispers')
     await sendWhisperMessage(lastWhisperKey, rest.trim())
     clearInput(input)
@@ -1915,7 +1915,7 @@ async function handleSlashCommand(text, input) {
     mutedUsers.add(u)
     chrome.storage.local.set({ heatsync_mc_muted: [...mutedUsers] })
     safeSendMessage({ type: 'mute_user', username: u, expiresAt: Date.now() + 86400000 })
-    showToast(`muted ${u} (24h)`)
+    showToast(`muted ${u} (24h)`, 'success')
     renderMessages(currentTab)
     return true
   }
@@ -1927,7 +1927,7 @@ async function handleSlashCommand(text, input) {
     mutedUsers.delete(u)
     chrome.storage.local.set({ heatsync_mc_muted: [...mutedUsers] })
     safeSendMessage({ type: 'unmute_user', username: u })
-    showToast(`unmuted ${u}`)
+    showToast(`unmuted ${u}`, 'success')
     renderMessages(currentTab)
     return true
   }
@@ -1949,7 +1949,7 @@ async function handleSlashCommand(text, input) {
     if (irc?.channels?.has(currentTab)) { irc.channels.get(currentTab).clear?.(); cleared++ }
     if (kickChat?.channels?.has(currentTab)) { kickChat.channels.get(currentTab).clear?.(); cleared++ }
     renderMessages(currentTab)
-    showToast(cleared ? 'local buffer cleared' : 'nothing to clear here')
+    showToast(cleared ? 'local buffer cleared' : 'nothing to clear here', cleared ? 'success' : undefined)
     clearInput(input)
     return true
   }
@@ -2007,12 +2007,12 @@ async function sendSlashWhisper(platform, username, text, input) {
         const resp = await fetch(`https://decapi.me/twitch/id/${encodeURIComponent(lowerUser)}`, { credentials: 'omit' })
         const body = (await resp.text()).trim()
         if (!resp.ok || !/^\d+$/.test(body)) {
-          showToast(t('mc_whisper_user_not_found', [username]))
+          showToast(t('mc_whisper_user_not_found', [username]), 'error')
           return
         }
         whisperUsersSet(key, { platform: 'twitch', userId: body, displayName: username, color: '#fff' })
       } catch (e) {
-        showToast(t('mc_whisper_resolve_failed'))
+        showToast(t('mc_whisper_resolve_failed'), 'error')
         return
       }
     }
@@ -2020,7 +2020,7 @@ async function sendSlashWhisper(platform, username, text, input) {
     // HeatSync DM — resolve username → user_id via profile API
     const profileResp = await apiFetch(`/api/profile/${encodeURIComponent(lowerUser)}`)
     if (!profileResp.ok || !profileResp.data?.profile?.user_id) {
-      showToast(t('mc_whisper_hs_not_found', [username]))
+      showToast(t('mc_whisper_hs_not_found', [username]), 'error')
       return
     }
     const userId = profileResp.data.profile.user_id
@@ -2135,7 +2135,7 @@ async function sendMessage() {
     if (sendToYoutube) {
       sendYoutubeMessage(text).then(result => {
         if (result !== true && result !== 'no_youtube_tab') {
-          showToast('youtube send failed')
+          showToast('youtube send failed', 'error')
         }
       })
     }
@@ -2146,8 +2146,8 @@ async function sendMessage() {
 
       if (kickOk || twitchOk) {
         // Partial failure toasts for dual-send
-        if (isDualSend && !twitchOk) showToast('sent to kick only — twitch failed')
-        if (isDualSend && !kickOk) showToast('sent to twitch only — kick failed')
+        if (isDualSend && !twitchOk) showToast('sent to kick only — twitch failed', 'error')
+        if (isDualSend && !kickOk) showToast('sent to twitch only — kick failed', 'error')
       } else {
         // Both failed (or single Kick failed)
         input.style.borderColor = '#f44'
@@ -2169,7 +2169,7 @@ async function sendMessage() {
       if (result !== true) {
         const errorMsg = result === 'no_youtube_tab' ? 'open youtube live chat first'
           : 'youtube send failed'
-        showToast(errorMsg)
+        showToast(errorMsg, 'error')
       }
     })
     return
@@ -2178,7 +2178,7 @@ async function sendMessage() {
   if (sendToYoutube && sendToTwitch && !sendToKick) {
     sendYoutubeMessage(text).then(result => {
       if (result !== true && result !== 'no_youtube_tab') {
-        showToast('youtube send failed')
+        showToast('youtube send failed', 'error')
       }
     })
     // fall through to Twitch path

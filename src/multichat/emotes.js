@@ -628,9 +628,9 @@
         });
       });
       if (response?.success) handleRemoveSuccess(emoteName, targetEl);
-      else showToast(response?.error || `failed to remove: ${emoteName}`);
+      else showToast(response?.error || `failed to remove: ${emoteName}`, 'error');
     } catch (e) {
-      showToast(`error removing: ${emoteName}`);
+      showToast(`error removing: ${emoteName}`, 'error');
     }
   }
 
@@ -667,7 +667,7 @@
     });
     // Refresh tooltip if visible (state text needs to update instantly)
     refreshEmoteTooltip(emoteName, newState);
-    showToast(`removed: ${emoteName}`);
+    showToast(`removed: ${emoteName}`, 'success');
     flashAllEmotes(emoteName, 'hs-flash-remove');
   }
 
@@ -681,7 +681,7 @@
         count++;
       }
     });
-    if (count > 0) showToast(`blocked ${count} emotes`);
+    if (count > 0) showToast(`blocked ${count} emotes`, 'success');
     stack.classList.remove('expanded');
     stack.setAttribute('title', 'expand');
   }
@@ -719,7 +719,7 @@
     });
 
     refreshEmoteTooltip(emoteName, 'blocked');
-    showToast(`blocked: ${emoteName}`);
+    showToast(`blocked: ${emoteName}`, 'success');
     flashAllEmotes(emoteName, 'hs-flash-block');
     if (typeof clearRenderedHtmlCache === 'function') clearRenderedHtmlCache();
   }
@@ -757,7 +757,7 @@
     });
 
     refreshEmoteTooltip(emoteName, newState);
-    showToast(`unblocked: ${emoteName}`);
+    showToast(`unblocked: ${emoteName}`, 'success');
     flashAllEmotes(emoteName, 'hs-flash-unblock');
     if (typeof clearRenderedHtmlCache === 'function') clearRenderedHtmlCache();
   }
@@ -807,14 +807,14 @@
         });
 
         refreshEmoteTooltip(emoteName, 'owned');
-        showToast(`added: ${emoteName}`);
+        showToast(`added: ${emoteName}`, 'success');
         flashAllEmotes(emoteName, 'hs-flash-add');
       } else {
-        showToast(response?.error || `failed to add: ${emoteName}`);
+        showToast(response?.error || `failed to add: ${emoteName}`, 'error');
       }
     } catch (e) {
       log('Add emote error:', e);
-      showToast(`error adding: ${emoteName}`);
+      showToast(`error adding: ${emoteName}`, 'error');
     } finally {
       pendingEmoteOps.delete(emoteName);
     }

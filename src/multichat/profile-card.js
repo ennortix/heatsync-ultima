@@ -475,7 +475,7 @@ function pcToggleMute(username) {
 // so the new follow shows up in live notifications + badge immediately.
 async function pcToggleFollow(profileId, username, currentlyFollowing) {
   if (!profileId) {
-    if (typeof showToast === 'function') showToast('not registered on heatsync')
+    if (typeof showToast === 'function') showToast('not registered on heatsync', 'error')
     return
   }
   const targetFollowing = !currentlyFollowing
@@ -495,11 +495,11 @@ async function pcToggleFollow(profileId, username, currentlyFollowing) {
           activeProfileCard.data.relationship.youFollow = currentlyFollowing
           renderProfileCardView()
         }
-        if (typeof showToast === 'function') showToast('follow failed: ' + (resp?.error || 'unknown'))
+        if (typeof showToast === 'function') showToast('follow failed: ' + (resp?.error || 'unknown'), 'error')
         return
       }
     }
-    if (typeof showToast === 'function') showToast(targetFollowing ? `following ${username}` : `unfollowed ${username}`)
+    if (typeof showToast === 'function') showToast(targetFollowing ? `following ${username}` : `unfollowed ${username}`, 'success')
     // Tell background to refetch followedUsers — pollFollowedLive runs after,
     // so live notifications + badge include the new follow within ~60s.
     safeSendMessage({ type: 'refresh_followed_users' })
@@ -508,7 +508,7 @@ async function pcToggleFollow(profileId, username, currentlyFollowing) {
       activeProfileCard.data.relationship.youFollow = currentlyFollowing
       renderProfileCardView()
     }
-    if (typeof showToast === 'function') showToast('follow failed: ' + (e?.message || 'unknown'))
+    if (typeof showToast === 'function') showToast('follow failed: ' + (e?.message || 'unknown'), 'error')
   }
 }
 
@@ -518,7 +518,7 @@ async function pcToggleFollow(profileId, username, currentlyFollowing) {
 // that in the relationship object.
 async function pcToggleBlock(profileId, username, currentlyBlocked) {
   if (!profileId) {
-    if (typeof showToast === 'function') showToast('not registered on heatsync')
+    if (typeof showToast === 'function') showToast('not registered on heatsync', 'error')
     return
   }
   const targetBlocked = !currentlyBlocked
@@ -549,11 +549,11 @@ async function pcToggleBlock(profileId, username, currentlyBlocked) {
           activeProfileCard.data.relationship.isBlocked = currentlyBlocked
           renderProfileCardView()
         }
-        if (typeof showToast === 'function') showToast('block failed: ' + (resp?.error || 'unknown'))
+        if (typeof showToast === 'function') showToast('block failed: ' + (resp?.error || 'unknown'), 'error')
         return
       }
     }
-    if (typeof showToast === 'function') showToast(targetBlocked ? `blocked ${username}` : `unblocked ${username}`)
+    if (typeof showToast === 'function') showToast(targetBlocked ? `blocked ${username}` : `unblocked ${username}`, 'success')
     // Block side-effects unfollow on server — re-fetch followedUsers in background
     safeSendMessage({ type: 'refresh_followed_users' })
   } catch (e) {
@@ -562,7 +562,7 @@ async function pcToggleBlock(profileId, username, currentlyBlocked) {
       activeProfileCard.data.relationship.isBlocked = currentlyBlocked
       renderProfileCardView()
     }
-    if (typeof showToast === 'function') showToast('block failed: ' + (e?.message || 'unknown'))
+    if (typeof showToast === 'function') showToast('block failed: ' + (e?.message || 'unknown'), 'error')
   }
 }
 

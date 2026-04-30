@@ -263,20 +263,20 @@ async function sendTwitchWhisper(toUserId, message) {
     // twitch_id, missing user:manage:whispers scope, or Helix rejecting phone-
     // unverified senders. All paths recover via re-running Twitch OAuth.
     if (resp?.status === 401) {
-      showToast(t('mc_whisper_login'))
+      showToast(t('mc_whisper_login'), 'error')
       return { ok: false, error: resp.error || 'not authenticated', errorKind: 'auth' }
     }
-    showToast('whisper failed: ' + (resp?.error || 'unknown'))
+    showToast('whisper failed: ' + (resp?.error || 'unknown'), 'error')
     return { ok: false, error: resp?.error || 'unknown' }
   } catch (e) {
-    showToast('whisper failed: ' + e.message)
+    showToast('whisper failed: ' + e.message, 'error')
     return { ok: false, error: e.message }
   }
 }
 
 async function sendWhisperMessage(key, text) {
   const userInfo = whisperUsers.get(key)
-  if (!userInfo) { showToast('unknown user — whisper someone first'); return }
+  if (!userInfo) { showToast('unknown user — whisper someone first', 'error'); return }
 
   // Optimistic: show message with pending status. Reference kept so we can
   // flip status to 'sent' or 'failed' once the network resolves.

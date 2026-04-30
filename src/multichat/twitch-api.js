@@ -133,11 +133,11 @@ function attachColorHandlers() {
       const color = swatch.dataset.color
       const resp = await helixRequest(`https://api.twitch.tv/helix/chat/color?user_id={me}&color=${encodeURIComponent(color)}`, 'PUT')
       if (resp.ok) {
-        showToast('color: ' + color)
+        showToast('color: ' + color, 'success')
         const el = document.getElementById('hs-mc-current-color')
         if (el) { el.style.backgroundColor = swatch.style.backgroundColor; el.title = color }
       } else {
-        showToast('color failed: ' + (resp.error || 'unknown'))
+        showToast('color failed: ' + (resp.error || 'unknown'), 'error')
       }
     })
   })
@@ -148,14 +148,14 @@ function attachColorHandlers() {
   if (hexBtn && hexInput) {
     hexBtn.addEventListener('click', async () => {
       const color = hexInput.value.trim()
-      if (!/^#[0-9a-f]{6}$/i.test(color)) { showToast('invalid hex — use #RRGGBB'); return }
+      if (!/^#[0-9a-f]{6}$/i.test(color)) { showToast('invalid hex — use #RRGGBB', 'error'); return }
       const resp = await helixRequest(`https://api.twitch.tv/helix/chat/color?user_id={me}&color=${encodeURIComponent(color)}`, 'PUT')
       if (resp.ok) {
-        showToast('color: ' + color)
+        showToast('color: ' + color, 'success')
         const el = document.getElementById('hs-mc-current-color')
         if (el) { el.style.backgroundColor = color; el.title = color }
       } else {
-        showToast('color failed: ' + (resp.error || 'color change failed'))
+        showToast('color failed: ' + (resp.error || 'color change failed'), 'error')
       }
     })
   }
@@ -232,7 +232,7 @@ function attachModeHandlers() {
         btn.dataset.active = newVal ? '1' : '0'
         btn.classList.toggle('active', newVal)
       } else {
-        showToast('mode failed: ' + (resp.error || 'unknown'))
+        showToast('mode failed: ' + (resp.error || 'unknown'), 'error')
       }
     })
   })
@@ -1577,17 +1577,17 @@ function triggerTwitchFeature(action) {
     // Create clip via Helix API
     ;(async () => {
       const userResp = await helixRequest(`https://api.twitch.tv/helix/users?login=${encodeURIComponent(channel)}`)
-      if (!userResp.ok || !userResp.data?.data?.[0]) { showToast('could not resolve channel'); return }
+      if (!userResp.ok || !userResp.data?.data?.[0]) { showToast('could not resolve channel', 'error'); return }
       const broadcasterId = userResp.data.data[0].id
       const resp = await helixRequest(`https://api.twitch.tv/helix/clips?broadcaster_id=${broadcasterId}`, 'POST')
       if (resp.ok && resp.data?.data?.[0]) {
         const editUrl = resp.data.data[0].edit_url
         const clipId = resp.data.data[0].id
-        showToast('clip created! ' + clipId)
+        showToast('clip created! ' + clipId, 'success')
         // Copy clip URL to clipboard
         try { await navigator.clipboard.writeText(editUrl || `https://clips.twitch.tv/${clipId}`) } catch {}
       } else {
-        showToast('clip failed: ' + (resp.error || 'stream must be live'))
+        showToast('clip failed: ' + (resp.error || 'stream must be live'), 'error')
       }
     })()
     return true

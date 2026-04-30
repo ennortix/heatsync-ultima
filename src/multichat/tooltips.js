@@ -7,7 +7,7 @@
 
     const border = type === 'success' ? '#00d000'
       : type === 'error'   ? '#ff4040'
-      : '#fff';
+      : '#888';
 
     const toast = document.createElement('div');
     toast.id = 'hs-mc-toast';

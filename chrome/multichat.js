@@ -8315,9 +8315,9 @@ async function sendKickMessage(kickSlug, text) {
         });
       });
       if (response?.success) handleRemoveSuccess(emoteName, targetEl);
-      else showToast(response?.error || `failed to remove: ${emoteName}`);
+      else showToast(response?.error || `failed to remove: ${emoteName}`, 'error');
     } catch (e) {
-      showToast(`error removing: ${emoteName}`);
+      showToast(`error removing: ${emoteName}`, 'error');
     }
   }
 
@@ -8354,7 +8354,7 @@ async function sendKickMessage(kickSlug, text) {
     });
     // Refresh tooltip if visible (state text needs to update instantly)
     refreshEmoteTooltip(emoteName, newState);
-    showToast(`removed: ${emoteName}`);
+    showToast(`removed: ${emoteName}`, 'success');
     flashAllEmotes(emoteName, 'hs-flash-remove');
   }
 
@@ -8368,7 +8368,7 @@ async function sendKickMessage(kickSlug, text) {
         count++;
       }
     });
-    if (count > 0) showToast(`blocked ${count} emotes`);
+    if (count > 0) showToast(`blocked ${count} emotes`, 'success');
     stack.classList.remove('expanded');
     stack.setAttribute('title', 'expand');
   }
@@ -8406,7 +8406,7 @@ async function sendKickMessage(kickSlug, text) {
     });
 
     refreshEmoteTooltip(emoteName, 'blocked');
-    showToast(`blocked: ${emoteName}`);
+    showToast(`blocked: ${emoteName}`, 'success');
     flashAllEmotes(emoteName, 'hs-flash-block');
     if (typeof clearRenderedHtmlCache === 'function') clearRenderedHtmlCache();
   }
@@ -8444,7 +8444,7 @@ async function sendKickMessage(kickSlug, text) {
     });
 
     refreshEmoteTooltip(emoteName, newState);
-    showToast(`unblocked: ${emoteName}`);
+    showToast(`unblocked: ${emoteName}`, 'success');
     flashAllEmotes(emoteName, 'hs-flash-unblock');
     if (typeof clearRenderedHtmlCache === 'function') clearRenderedHtmlCache();
   }
@@ -8494,14 +8494,14 @@ async function sendKickMessage(kickSlug, text) {
         });
 
         refreshEmoteTooltip(emoteName, 'owned');
-        showToast(`added: ${emoteName}`);
+        showToast(`added: ${emoteName}`, 'success');
         flashAllEmotes(emoteName, 'hs-flash-add');
       } else {
-        showToast(response?.error || `failed to add: ${emoteName}`);
+        showToast(response?.error || `failed to add: ${emoteName}`, 'error');
       }
     } catch (e) {
       log('Add emote error:', e);
-      showToast(`error adding: ${emoteName}`);
+      showToast(`error adding: ${emoteName}`, 'error');
     } finally {
       pendingEmoteOps.delete(emoteName);
     }
@@ -8993,7 +8993,7 @@ async function sendKickMessage(kickSlug, text) {
 
     const border = type === 'success' ? '#00d000'
       : type === 'error'   ? '#ff4040'
-      : '#fff';
+      : '#888';
 
     const toast = document.createElement('div');
     toast.id = 'hs-mc-toast';
@@ -10112,11 +10112,11 @@ function attachColorHandlers() {
       const color = swatch.dataset.color
       const resp = await helixRequest(`https://api.twitch.tv/helix/chat/color?user_id={me}&color=${encodeURIComponent(color)}`, 'PUT')
       if (resp.ok) {
-        showToast('color: ' + color)
+        showToast('color: ' + color, 'success')
         const el = document.getElementById('hs-mc-current-color')
         if (el) { el.style.backgroundColor = swatch.style.backgroundColor; el.title = color }
       } else {
-        showToast('color failed: ' + (resp.error || 'unknown'))
+        showToast('color failed: ' + (resp.error || 'unknown'), 'error')
       }
     })
   })
@@ -10127,14 +10127,14 @@ function attachColorHandlers() {
   if (hexBtn && hexInput) {
     hexBtn.addEventListener('click', async () => {
       const color = hexInput.value.trim()
-      if (!/^#[0-9a-f]{6}$/i.test(color)) { showToast('invalid hex — use #RRGGBB'); return }
+      if (!/^#[0-9a-f]{6}$/i.test(color)) { showToast('invalid hex — use #RRGGBB', 'error'); return }
       const resp = await helixRequest(`https://api.twitch.tv/helix/chat/color?user_id={me}&color=${encodeURIComponent(color)}`, 'PUT')
       if (resp.ok) {
-        showToast('color: ' + color)
+        showToast('color: ' + color, 'success')
         const el = document.getElementById('hs-mc-current-color')
         if (el) { el.style.backgroundColor = color; el.title = color }
       } else {
-        showToast('color failed: ' + (resp.error || 'color change failed'))
+        showToast('color failed: ' + (resp.error || 'color change failed'), 'error')
       }
     })
   }
@@ -10211,7 +10211,7 @@ function attachModeHandlers() {
         btn.dataset.active = newVal ? '1' : '0'
         btn.classList.toggle('active', newVal)
       } else {
-        showToast('mode failed: ' + (resp.error || 'unknown'))
+        showToast('mode failed: ' + (resp.error || 'unknown'), 'error')
       }
     })
   })
@@ -11556,17 +11556,17 @@ function triggerTwitchFeature(action) {
     // Create clip via Helix API
     ;(async () => {
       const userResp = await helixRequest(`https://api.twitch.tv/helix/users?login=${encodeURIComponent(channel)}`)
-      if (!userResp.ok || !userResp.data?.data?.[0]) { showToast('could not resolve channel'); return }
+      if (!userResp.ok || !userResp.data?.data?.[0]) { showToast('could not resolve channel', 'error'); return }
       const broadcasterId = userResp.data.data[0].id
       const resp = await helixRequest(`https://api.twitch.tv/helix/clips?broadcaster_id=${broadcasterId}`, 'POST')
       if (resp.ok && resp.data?.data?.[0]) {
         const editUrl = resp.data.data[0].edit_url
         const clipId = resp.data.data[0].id
-        showToast('clip created! ' + clipId)
+        showToast('clip created! ' + clipId, 'success')
         // Copy clip URL to clipboard
         try { await navigator.clipboard.writeText(editUrl || `https://clips.twitch.tv/${clipId}`) } catch {}
       } else {
-        showToast('clip failed: ' + (resp.error || 'stream must be live'))
+        showToast('clip failed: ' + (resp.error || 'stream must be live'), 'error')
       }
     })()
     return true
@@ -14335,7 +14335,7 @@ function _applyHeatState(btn, active, count) {
 }
 
 async function toggleHeat(msgId, btn, m) {
-  if (!hsAuthToken) { showToast(t('mc_social_log_in_first')); return }
+  if (!hsAuthToken) { showToast(t('mc_social_log_in_first'), 'error'); return }
   // Server-side /api/messages/:id/like is one-way (no unlike route exists).
   if (feedLiked.has(msgId)) return
   const prevHeat = m.heat || 0
@@ -14351,7 +14351,7 @@ async function toggleHeat(msgId, btn, m) {
 }
 
 async function toggleBookmark(msgId, btn) {
-  if (!hsAuthToken) { showToast(t('mc_social_log_in_first')); return }
+  if (!hsAuthToken) { showToast(t('mc_social_log_in_first'), 'error'); return }
   const wasBookmarked = feedBookmarked.has(msgId)
   const newState = !wasBookmarked
   if (newState) feedBookmarked.add(msgId); else feedBookmarked.delete(msgId)
@@ -14414,7 +14414,7 @@ function _renderReactionsIntoRow(engageEl, msgId, reactions) {
 }
 
 async function handleReactionChip(msgId, reaction, chip, row, engageEl) {
-  if (!hsAuthToken) { showToast(t('mc_social_log_in_first')); return }
+  if (!hsAuthToken) { showToast(t('mc_social_log_in_first'), 'error'); return }
   // Snapshot pre-mutation values so rollback can restore exactly, no off-by-one drift
   const prevReacted = reaction.user_reacted
   const prevCount = reaction.count
@@ -14439,7 +14439,7 @@ async function handleReactionChip(msgId, reaction, chip, row, engageEl) {
 }
 
 function openReactionPicker(e, msgId, engageEl) {
-  if (!hsAuthToken) { showToast(t('mc_social_log_in_first')); return }
+  if (!hsAuthToken) { showToast(t('mc_social_log_in_first'), 'error'); return }
   document.getElementById('hs-mc-react-picker')?.remove()
   const emotes = []
   if (typeof emoteCache !== 'undefined') {
@@ -14447,7 +14447,7 @@ function openReactionPicker(e, msgId, engageEl) {
       if (data.url && data.source === 'heatsync') emotes.push({ name, url: data.url, id: data.id || name })
     }
   }
-  if (!emotes.length) { showToast('no emotes available'); return }
+  if (!emotes.length) { showToast('no emotes available', 'error'); return }
 
   const picker = document.createElement('div')
   picker.id = 'hs-mc-react-picker'
@@ -14995,7 +14995,7 @@ async function postFeedMessage(text, { topLevel = false } = {}) {
       : resp.status === 429 ? t('mc_social_slow_down')
       : resp.status === 409 ? t('mc_social_duplicate')
       : t('mc_social_failed_post');
-    showToast(errMsg);
+    showToast(errMsg, 'error');
     setTimeout(() => { input.style.borderColor = ''; }, 1500);
     log('Post failed:', resp.status || resp.error);
     return false
@@ -16002,20 +16002,20 @@ async function sendTwitchWhisper(toUserId, message) {
     // twitch_id, missing user:manage:whispers scope, or Helix rejecting phone-
     // unverified senders. All paths recover via re-running Twitch OAuth.
     if (resp?.status === 401) {
-      showToast(t('mc_whisper_login'))
+      showToast(t('mc_whisper_login'), 'error')
       return { ok: false, error: resp.error || 'not authenticated', errorKind: 'auth' }
     }
-    showToast('whisper failed: ' + (resp?.error || 'unknown'))
+    showToast('whisper failed: ' + (resp?.error || 'unknown'), 'error')
     return { ok: false, error: resp?.error || 'unknown' }
   } catch (e) {
-    showToast('whisper failed: ' + e.message)
+    showToast('whisper failed: ' + e.message, 'error')
     return { ok: false, error: e.message }
   }
 }
 
 async function sendWhisperMessage(key, text) {
   const userInfo = whisperUsers.get(key)
-  if (!userInfo) { showToast('unknown user — whisper someone first'); return }
+  if (!userInfo) { showToast('unknown user — whisper someone first', 'error'); return }
 
   // Optimistic: show message with pending status. Reference kept so we can
   // flip status to 'sent' or 'failed' once the network resolves.
@@ -17111,12 +17111,12 @@ function initInput() {
       if (mutedUsers.has(username)) {
         mutedUsers.delete(username);
         wasUnmute = true;
-        showToast(`unmuted ${username}`);
+        showToast(`unmuted ${username}`, 'success');
         // Sync: tell background to unmute (broadcasts to all tabs — server mute expires naturally)
         safeSendMessage({ type: 'unmute_user', username });
       } else {
         mutedUsers.add(username);
-        showToast(`muted ${username} (24h)`);
+        showToast(`muted ${username} (24h)`, 'success');
         // Sync: tell background to mute with 24h expiry (broadcasts to all tabs + server)
         const expiresAt = Date.now() + 86400000;
         safeSendMessage({ type: 'mute_user', username, expiresAt });
@@ -18405,7 +18405,7 @@ async function handleSlashCommand(text, input) {
 
   if (cmd === 'r') {
     if (!rest.trim()) { showToast('usage: /r <message>'); return true }
-    if (!lastWhisperKey) { showToast('no one to reply to'); return true }
+    if (!lastWhisperKey) { showToast('no one to reply to', 'error'); return true }
     if (currentTab !== 'whispers') switchTab('whispers')
     await sendWhisperMessage(lastWhisperKey, rest.trim())
     clearInput(input)
@@ -18419,7 +18419,7 @@ async function handleSlashCommand(text, input) {
     mutedUsers.add(u)
     chrome.storage.local.set({ heatsync_mc_muted: [...mutedUsers] })
     safeSendMessage({ type: 'mute_user', username: u, expiresAt: Date.now() + 86400000 })
-    showToast(`muted ${u} (24h)`)
+    showToast(`muted ${u} (24h)`, 'success')
     renderMessages(currentTab)
     return true
   }
@@ -18431,7 +18431,7 @@ async function handleSlashCommand(text, input) {
     mutedUsers.delete(u)
     chrome.storage.local.set({ heatsync_mc_muted: [...mutedUsers] })
     safeSendMessage({ type: 'unmute_user', username: u })
-    showToast(`unmuted ${u}`)
+    showToast(`unmuted ${u}`, 'success')
     renderMessages(currentTab)
     return true
   }
@@ -18453,7 +18453,7 @@ async function handleSlashCommand(text, input) {
     if (irc?.channels?.has(currentTab)) { irc.channels.get(currentTab).clear?.(); cleared++ }
     if (kickChat?.channels?.has(currentTab)) { kickChat.channels.get(currentTab).clear?.(); cleared++ }
     renderMessages(currentTab)
-    showToast(cleared ? 'local buffer cleared' : 'nothing to clear here')
+    showToast(cleared ? 'local buffer cleared' : 'nothing to clear here', cleared ? 'success' : undefined)
     clearInput(input)
     return true
   }
@@ -18511,12 +18511,12 @@ async function sendSlashWhisper(platform, username, text, input) {
         const resp = await fetch(`https://decapi.me/twitch/id/${encodeURIComponent(lowerUser)}`, { credentials: 'omit' })
         const body = (await resp.text()).trim()
         if (!resp.ok || !/^\d+$/.test(body)) {
-          showToast(t('mc_whisper_user_not_found', [username]))
+          showToast(t('mc_whisper_user_not_found', [username]), 'error')
           return
         }
         whisperUsersSet(key, { platform: 'twitch', userId: body, displayName: username, color: '#fff' })
       } catch (e) {
-        showToast(t('mc_whisper_resolve_failed'))
+        showToast(t('mc_whisper_resolve_failed'), 'error')
         return
       }
     }
@@ -18524,7 +18524,7 @@ async function sendSlashWhisper(platform, username, text, input) {
     // HeatSync DM — resolve username → user_id via profile API
     const profileResp = await apiFetch(`/api/profile/${encodeURIComponent(lowerUser)}`)
     if (!profileResp.ok || !profileResp.data?.profile?.user_id) {
-      showToast(t('mc_whisper_hs_not_found', [username]))
+      showToast(t('mc_whisper_hs_not_found', [username]), 'error')
       return
     }
     const userId = profileResp.data.profile.user_id
@@ -18639,7 +18639,7 @@ async function sendMessage() {
     if (sendToYoutube) {
       sendYoutubeMessage(text).then(result => {
         if (result !== true && result !== 'no_youtube_tab') {
-          showToast('youtube send failed')
+          showToast('youtube send failed', 'error')
         }
       })
     }
@@ -18650,8 +18650,8 @@ async function sendMessage() {
 
       if (kickOk || twitchOk) {
         // Partial failure toasts for dual-send
-        if (isDualSend && !twitchOk) showToast('sent to kick only — twitch failed')
-        if (isDualSend && !kickOk) showToast('sent to twitch only — kick failed')
+        if (isDualSend && !twitchOk) showToast('sent to kick only — twitch failed', 'error')
+        if (isDualSend && !kickOk) showToast('sent to twitch only — kick failed', 'error')
       } else {
         // Both failed (or single Kick failed)
         input.style.borderColor = '#f44'
@@ -18673,7 +18673,7 @@ async function sendMessage() {
       if (result !== true) {
         const errorMsg = result === 'no_youtube_tab' ? 'open youtube live chat first'
           : 'youtube send failed'
-        showToast(errorMsg)
+        showToast(errorMsg, 'error')
       }
     })
     return
@@ -18682,7 +18682,7 @@ async function sendMessage() {
   if (sendToYoutube && sendToTwitch && !sendToKick) {
     sendYoutubeMessage(text).then(result => {
       if (result !== true && result !== 'no_youtube_tab') {
-        showToast('youtube send failed')
+        showToast('youtube send failed', 'error')
       }
     })
     // fall through to Twitch path
@@ -19367,7 +19367,7 @@ function pcToggleMute(username) {
 // so the new follow shows up in live notifications + badge immediately.
 async function pcToggleFollow(profileId, username, currentlyFollowing) {
   if (!profileId) {
-    if (typeof showToast === 'function') showToast('not registered on heatsync')
+    if (typeof showToast === 'function') showToast('not registered on heatsync', 'error')
     return
   }
   const targetFollowing = !currentlyFollowing
@@ -19387,11 +19387,11 @@ async function pcToggleFollow(profileId, username, currentlyFollowing) {
           activeProfileCard.data.relationship.youFollow = currentlyFollowing
           renderProfileCardView()
         }
-        if (typeof showToast === 'function') showToast('follow failed: ' + (resp?.error || 'unknown'))
+        if (typeof showToast === 'function') showToast('follow failed: ' + (resp?.error || 'unknown'), 'error')
         return
       }
     }
-    if (typeof showToast === 'function') showToast(targetFollowing ? `following ${username}` : `unfollowed ${username}`)
+    if (typeof showToast === 'function') showToast(targetFollowing ? `following ${username}` : `unfollowed ${username}`, 'success')
     // Tell background to refetch followedUsers — pollFollowedLive runs after,
     // so live notifications + badge include the new follow within ~60s.
     safeSendMessage({ type: 'refresh_followed_users' })
@@ -19400,7 +19400,7 @@ async function pcToggleFollow(profileId, username, currentlyFollowing) {
       activeProfileCard.data.relationship.youFollow = currentlyFollowing
       renderProfileCardView()
     }
-    if (typeof showToast === 'function') showToast('follow failed: ' + (e?.message || 'unknown'))
+    if (typeof showToast === 'function') showToast('follow failed: ' + (e?.message || 'unknown'), 'error')
   }
 }
 
@@ -19410,7 +19410,7 @@ async function pcToggleFollow(profileId, username, currentlyFollowing) {
 // that in the relationship object.
 async function pcToggleBlock(profileId, username, currentlyBlocked) {
   if (!profileId) {
-    if (typeof showToast === 'function') showToast('not registered on heatsync')
+    if (typeof showToast === 'function') showToast('not registered on heatsync', 'error')
     return
   }
   const targetBlocked = !currentlyBlocked
@@ -19441,11 +19441,11 @@ async function pcToggleBlock(profileId, username, currentlyBlocked) {
           activeProfileCard.data.relationship.isBlocked = currentlyBlocked
           renderProfileCardView()
         }
-        if (typeof showToast === 'function') showToast('block failed: ' + (resp?.error || 'unknown'))
+        if (typeof showToast === 'function') showToast('block failed: ' + (resp?.error || 'unknown'), 'error')
         return
       }
     }
-    if (typeof showToast === 'function') showToast(targetBlocked ? `blocked ${username}` : `unblocked ${username}`)
+    if (typeof showToast === 'function') showToast(targetBlocked ? `blocked ${username}` : `unblocked ${username}`, 'success')
     // Block side-effects unfollow on server — re-fetch followedUsers in background
     safeSendMessage({ type: 'refresh_followed_users' })
   } catch (e) {
@@ -19454,7 +19454,7 @@ async function pcToggleBlock(profileId, username, currentlyBlocked) {
       activeProfileCard.data.relationship.isBlocked = currentlyBlocked
       renderProfileCardView()
     }
-    if (typeof showToast === 'function') showToast('block failed: ' + (e?.message || 'unknown'))
+    if (typeof showToast === 'function') showToast('block failed: ' + (e?.message || 'unknown'), 'error')
   }
 }
 

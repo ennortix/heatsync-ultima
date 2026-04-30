@@ -1081,7 +1081,7 @@ function _applyHeatState(btn, active, count) {
 }
 
 async function toggleHeat(msgId, btn, m) {
-  if (!hsAuthToken) { showToast(t('mc_social_log_in_first')); return }
+  if (!hsAuthToken) { showToast(t('mc_social_log_in_first'), 'error'); return }
   // Server-side /api/messages/:id/like is one-way (no unlike route exists).
   if (feedLiked.has(msgId)) return
   const prevHeat = m.heat || 0
@@ -1097,7 +1097,7 @@ async function toggleHeat(msgId, btn, m) {
 }
 
 async function toggleBookmark(msgId, btn) {
-  if (!hsAuthToken) { showToast(t('mc_social_log_in_first')); return }
+  if (!hsAuthToken) { showToast(t('mc_social_log_in_first'), 'error'); return }
   const wasBookmarked = feedBookmarked.has(msgId)
   const newState = !wasBookmarked
   if (newState) feedBookmarked.add(msgId); else feedBookmarked.delete(msgId)
@@ -1160,7 +1160,7 @@ function _renderReactionsIntoRow(engageEl, msgId, reactions) {
 }
 
 async function handleReactionChip(msgId, reaction, chip, row, engageEl) {
-  if (!hsAuthToken) { showToast(t('mc_social_log_in_first')); return }
+  if (!hsAuthToken) { showToast(t('mc_social_log_in_first'), 'error'); return }
   // Snapshot pre-mutation values so rollback can restore exactly, no off-by-one drift
   const prevReacted = reaction.user_reacted
   const prevCount = reaction.count
@@ -1185,7 +1185,7 @@ async function handleReactionChip(msgId, reaction, chip, row, engageEl) {
 }
 
 function openReactionPicker(e, msgId, engageEl) {
-  if (!hsAuthToken) { showToast(t('mc_social_log_in_first')); return }
+  if (!hsAuthToken) { showToast(t('mc_social_log_in_first'), 'error'); return }
   document.getElementById('hs-mc-react-picker')?.remove()
   const emotes = []
   if (typeof emoteCache !== 'undefined') {
@@ -1193,7 +1193,7 @@ function openReactionPicker(e, msgId, engageEl) {
       if (data.url && data.source === 'heatsync') emotes.push({ name, url: data.url, id: data.id || name })
     }
   }
-  if (!emotes.length) { showToast('no emotes available'); return }
+  if (!emotes.length) { showToast('no emotes available', 'error'); return }
 
   const picker = document.createElement('div')
   picker.id = 'hs-mc-react-picker'
@@ -1741,7 +1741,7 @@ async function postFeedMessage(text, { topLevel = false } = {}) {
       : resp.status === 429 ? t('mc_social_slow_down')
       : resp.status === 409 ? t('mc_social_duplicate')
       : t('mc_social_failed_post');
-    showToast(errMsg);
+    showToast(errMsg, 'error');
     setTimeout(() => { input.style.borderColor = ''; }, 1500);
     log('Post failed:', resp.status || resp.error);
     return false

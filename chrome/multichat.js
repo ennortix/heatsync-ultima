@@ -14750,6 +14750,24 @@ async function openThread(msgId, highlightId) {
     activeThread.replies = resp.data?.replies || [];
   }
   activeThread.loading = false;
+
+  // Pre-fetch reactions for OP + replies so chips render with the thread.
+  // Without this, buildEngagementBar reads an empty feedReactionsCache and
+  // shows zero reactions even when the server has them.
+  const reactIds = [activeThread.op?.base36_id, ...activeThread.replies.map(r => r.base36_id)].filter(Boolean);
+  await Promise.all(reactIds.map(id =>
+    apiFetch(`/api/messages/${encodeURIComponent(id)}/reactions`, { auth: true }).then(r => {
+      if (!r?.ok) return;
+      const raw = r.data?.reactions || r.reactions || [];
+      const reactions = raw.map(rx => ({
+        ...rx,
+        user_reacted: !!(rx.user_reacted ?? (hsCurrentUserId && Array.isArray(rx.user_ids) && rx.user_ids.map(String).includes(hsCurrentUserId)))
+      }));
+      feedReactionsCache.set(id, reactions);
+    }).catch(() => {})
+  ));
+  _capFeedEngage();
+
   renderFeed();
 
   // Scroll to and highlight the target post
@@ -14779,38 +14797,36 @@ function toggleThread(msgId, highlightId) {
 
 // Render the thread view (OP + replies + back button)
 function renderThreadView(msgsEl) {
-  const t = activeThread;
+  const at = activeThread;
   isProgrammaticScroll = true;
   msgsEl.textContent = '';
   const frag = document.createDocumentFragment();
 
-  // OP message
-  if (t.op) {
-    const opDiv = buildFeedMessageDiv(t.op, t.op?.username);
+  if (at.op) {
+    const opDiv = buildFeedMessageDiv(at.op, at.op?.username);
     opDiv.classList.add('hs-thread-op');
     frag.appendChild(opDiv);
   }
 
-  // Thread container with replies
   const container = document.createElement('div');
   container.className = 'hs-thread-container';
-  container.dataset.thread = t.id;
+  container.dataset.thread = at.id;
 
-  if (t.loading) {
+  if (at.loading) {
     const loading = document.createElement('div');
     loading.className = 'hs-mc-empty';
     loading.textContent = 'loading...';
     loading.style.fontSize = '11px';
     container.appendChild(loading);
-  } else if (t.replies.length === 0) {
+  } else if (at.replies.length === 0) {
     const empty = document.createElement('div');
     empty.className = 'hs-mc-empty';
     empty.textContent = t('mc_social_no_replies');
     empty.style.fontSize = '11px';
     container.appendChild(empty);
   } else {
-    for (const r of t.replies) {
-      const replyDiv = buildFeedMessageDiv(r, t.op?.username);
+    for (const r of at.replies) {
+      const replyDiv = buildFeedMessageDiv(r, at.op?.username);
       replyDiv.classList.add('hs-thread-reply');
       if (r.is_thread_op) replyDiv.classList.add('is-thread-op');
       container.appendChild(replyDiv);

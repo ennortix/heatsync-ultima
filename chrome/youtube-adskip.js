@@ -1,11 +1,8 @@
 /**
- * YouTube ad-skip + player resize
+ * YouTube ad-skip
  *
  * Auto-clicks "Skip Ad", fast-forwards unskippable ads, dismisses overlay banners.
- * Adds an orange resize handle on the player so the user can drag-shrink the
- * video (works during ads too).
- *
- * Runs on watch / live / shorts pages only — skips embeds and the live_chat iframe.
+ * Runs on watch / live / shorts pages — skips embeds and the live_chat iframe.
  */
 ;(function() {
   'use strict'
@@ -113,167 +110,6 @@
     signal.addEventListener('abort', () => clearInterval(id))
   }
 
-  // ─── Player resize handle (orange drag bar) ─────────────────────────────────
-
-  const SCALE_KEY = 'hs-yt-player-scale'
-  const MIN_SCALE = 0.18
-  const MAX_SCALE = 1.0
-
-  function loadScale() {
-    try {
-      const v = parseFloat(localStorage.getItem(SCALE_KEY) || '1')
-      return Number.isFinite(v) && v >= MIN_SCALE && v <= MAX_SCALE ? v : 1
-    } catch (_) { return 1 }
-  }
-
-  function saveScale(v) {
-    try { localStorage.setItem(SCALE_KEY, String(v)) } catch (_) {}
-  }
-
-  let playerScale = loadScale()
-
-  function applyScale() {
-    const player = getPlayer()
-    if (!player) return
-    if (playerScale >= 0.999) {
-      player.style.transform = ''
-      player.style.transformOrigin = ''
-    } else {
-      player.style.transformOrigin = 'top left'
-      player.style.transform = `scale(${playerScale})`
-    }
-    repositionHandle()
-  }
-
-  let resizeHandle = null
-
-  function repositionHandle() {
-    if (!resizeHandle) return
-    const player = getPlayer()
-    if (!player) { resizeHandle.style.display = 'none'; return }
-    const r = player.getBoundingClientRect()
-    if (r.width < 50 || r.height < 50) { resizeHandle.style.display = 'none'; return }
-    resizeHandle.style.display = ''
-    const visW = r.width * playerScale
-    const visH = r.height * playerScale
-    const size = 24
-    resizeHandle.style.left = Math.round(r.left + visW - size) + 'px'
-    resizeHandle.style.top = Math.round(r.top + visH - size) + 'px'
-  }
-
-  function ensureResizeHandle() {
-    const player = getPlayer()
-    if (!player) return
-    if (resizeHandle && document.body.contains(resizeHandle)) { repositionHandle(); return }
-
-    const handle = document.createElement('div')
-    handle.id = 'hs-yt-player-resize'
-    handle.title = 'HeatSync — drag to resize, double-click to reset'
-    handle.style.cssText = [
-      'position:fixed',
-      'width:24px',
-      'height:24px',
-      'background:#ff8700',
-      'cursor:nwse-resize',
-      'z-index:2147483640',
-      'opacity:0.85',
-      'pointer-events:auto',
-      'touch-action:none',
-      'box-shadow:0 0 8px rgba(255,135,0,0.6), inset 0 0 0 1px rgba(0,0,0,0.4)',
-      'border-top-left-radius:6px',
-    ].join(';')
-
-    document.body.appendChild(handle)
-    resizeHandle = handle
-    repositionHandle()
-
-    let dragging = false
-    let startX = 0, startY = 0
-    let startScale = 1
-    let startW = 0
-    let pid = -1
-    let overlay = null
-
-    handle.addEventListener('pointerdown', (e) => {
-      if (e.button !== 0) return
-      dragging = true
-      pid = e.pointerId
-      try { handle.setPointerCapture(e.pointerId) } catch (_) {}
-      startX = e.clientX
-      startY = e.clientY
-      startScale = playerScale
-      startW = player.getBoundingClientRect().width || 1
-      document.body.style.cursor = 'nwse-resize'
-      document.body.style.userSelect = 'none'
-      overlay = document.createElement('div')
-      overlay.style.cssText = 'position:fixed;inset:0;z-index:99999;cursor:nwse-resize'
-      document.body.appendChild(overlay)
-      e.preventDefault()
-      e.stopPropagation()
-    }, { signal })
-
-    handle.addEventListener('pointermove', (e) => {
-      if (!dragging || e.pointerId !== pid) return
-      const dx = e.clientX - startX
-      const dy = e.clientY - startY
-      const delta = (dx + dy) / 2
-      const next = Math.max(MIN_SCALE, Math.min(MAX_SCALE, startScale + delta / Math.max(1, startW)))
-      playerScale = next
-      applyScale()
-      e.preventDefault()
-    }, { signal })
-
-    function endDrag(e) {
-      if (!dragging || (e && e.pointerId !== pid)) return
-      dragging = false
-      pid = -1
-      document.body.style.cursor = ''
-      document.body.style.userSelect = ''
-      if (overlay) { overlay.remove(); overlay = null }
-      saveScale(playerScale)
-    }
-    handle.addEventListener('pointerup', endDrag, { signal })
-    handle.addEventListener('pointercancel', endDrag, { signal })
-
-    // Double-click → reset to full size
-    handle.addEventListener('dblclick', (e) => {
-      e.preventDefault()
-      e.stopPropagation()
-      playerScale = 1
-      saveScale(1)
-      applyScale()
-    }, { signal })
-
-    applyScale()
-  }
-
-  function watchForResize() {
-    const obs = new MutationObserver(() => {
-      ensureResizeHandle()
-      if (playerScale < 1) applyScale()
-      else repositionHandle()
-    })
-    obs.observe(document.documentElement, { childList: true, subtree: true })
-    signal.addEventListener('abort', () => obs.disconnect())
-
-    const onView = () => repositionHandle()
-    window.addEventListener('scroll', onView, { passive: true, signal })
-    window.addEventListener('resize', onView, { signal })
-    // rAF loop while handle exists — cheap (single rect read) and keeps the
-    // handle pinned to the player's bottom-right during YT layout reflows
-    let raf = 0
-    function loop() {
-      raf = requestAnimationFrame(loop)
-      if (resizeHandle) repositionHandle()
-    }
-    raf = requestAnimationFrame(loop)
-    signal.addEventListener('abort', () => cancelAnimationFrame(raf))
-
-    ensureResizeHandle()
-  }
-
-  // ─── Init ────────────────────────────────────────────────────────────────────
-
   function shouldRun() {
     return /^\/(watch|live|shorts)/.test(location.pathname)
   }
@@ -282,21 +118,7 @@
     if (!shouldRun()) return
     watchPlayer()
     pollAdSkip()
-    watchForResize()
   }
-
-  // YouTube SPA navigation — re-init on URL change
-  let lastPath = location.pathname
-  const navPoll = setInterval(() => {
-    if (location.pathname !== lastPath) {
-      lastPath = location.pathname
-      if (shouldRun()) {
-        ensureResizeHandle()
-        tickAdSkip()
-      }
-    }
-  }, 500)
-  signal.addEventListener('abort', () => clearInterval(navPoll))
 
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', init, { once: true, signal })

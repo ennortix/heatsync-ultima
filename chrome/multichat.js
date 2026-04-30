@@ -21209,6 +21209,7 @@ const STORAGE_KEY = 'heatsync_multichat';
   // Orange #ff8700, 6px thick, no text — matches user's resize-handle rule.
   // ============================================
   let _isResizingC = false;
+  let _suppressYtResizeDispatch = false;
   function ensureChatResizeHandle() {
     let handle = document.getElementById('hs-c-resize-handle');
     if (handle) return handle;
@@ -21228,12 +21229,14 @@ const STORAGE_KEY = 'heatsync_multichat';
     handle.addEventListener('mouseenter', () => { handle.style.opacity = '1'; });
     handle.addEventListener('mouseleave', () => { if (!_isResizingC) handle.style.opacity = '0.55'; });
 
-    // Ghost-preview drag: pointermove only re-positions the orange handle
-    // (compositor-only, no layout). Real chatWidth/Height + applyChatPosition
-    // commit fires once on pointerup. This kills the YT video lag where every
-    // drag-frame triggered a video re-decode at the new resolution.
+    // Live drag: chat + player resize on every pointermove (rAF-throttled).
+    // We suppress the YT window-resize dispatch during drag so IMA SDK / html5
+    // player don't re-decode the video on every frame. CSS handles smooth
+    // visual scaling; one final resize event fires on pointerup so the player
+    // re-measures cleanly (and ad <video> elements snap to final dimensions).
     let startX = 0, startY = 0, startW = 0, startH = 0, axis = 'x', activePid = -1;
     let pendingW = 0, pendingH = 0, overlay = null;
+    let liveRaf = 0;
     handle.addEventListener('pointerdown', (e) => {
       if (e.button !== 0) return;
       _isResizingC = true;
@@ -21276,16 +21279,33 @@ const STORAGE_KEY = 'heatsync_multichat';
         pendingH = Math.max(MIN_CHAT_HEIGHT, Math.min(getMaxChatHeight(), startH + (startY - e.clientY)));
         handle.style.bottom = (pendingH - 3) + 'px';
       }
+      // Live commit — chat panel + player + tabbar reflow on every frame.
+      // rAF-throttled so layout work happens at most once per paint regardless
+      // of pointermove rate (browsers fire 120-1000Hz on high-refresh mice).
+      if (!liveRaf) {
+        liveRaf = requestAnimationFrame(() => {
+          liveRaf = 0;
+          if (axis === 'x') chatWidth = pendingW;
+          else chatHeight = pendingH;
+          _suppressYtResizeDispatch = true;
+          try { applyChatPosition() } finally { _suppressYtResizeDispatch = false }
+          if (hostPlatform === 'yt') {
+            try { applyYouTubeChatWidth() } catch (_) {}
+          }
+        });
+      }
     });
     const endDrag = (e) => {
       if (!_isResizingC || (e && e.pointerId !== activePid)) return;
       _isResizingC = false;
       activePid = -1;
+      if (liveRaf) { cancelAnimationFrame(liveRaf); liveRaf = 0; }
       document.body.style.cursor = '';
       document.body.style.userSelect = '';
       handle.style.opacity = '0.55';
       if (overlay) { overlay.remove(); overlay = null; }
-      // Single commit — chat panel + player + tabbar all reflow exactly once.
+      // Final settle — applyChatPosition with resize-event dispatch enabled
+      // so YT's IMA SDK / html5 player re-measure to the committed dimensions.
       if (axis === 'x') chatWidth = pendingW;
       else chatHeight = pendingH;
       applyChatPosition();
@@ -25596,7 +25616,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     // resize events at multiple timing points. The player init is async and
     // can complete after our applyChatPosition runs on initial load — without
     // multiple nudges, YT's own resize observer doesn't fire until ~10s.
-    if (hostPlatform === 'yt') {
+    if (hostPlatform === 'yt' && !_suppressYtResizeDispatch) {
       const fire = () => { try { window.dispatchEvent(new Event('resize')) } catch (_) {} };
       fire();
       setTimeout(fire, 100);

@@ -25740,12 +25740,18 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       ];
       const ytSizedEls = ytSelectors.map(s => document.querySelector(s)).filter(Boolean);
       const PLAYER_GEOM = ['width', 'height', 'max-width', 'max-height', 'min-height'];
-      if (chatPosition === 'top' || chatPosition === 'bottom' || chatPosition === 'left' || chatPosition === 'right') {
+      // chat-right uses YT's native flex layout — #secondary width drives
+      // #primary/player sizing automatically. Forcing inline width/height
+      // on #movie_player here was overriding YT's own controls geometry,
+      // which made volume / play / settings buttons unclickable. Only
+      // the non-right positions need explicit inline player sizing
+      // (their flex parent is collapsed via #secondary width:0).
+      if (chatPosition === 'top' || chatPosition === 'bottom' || chatPosition === 'left') {
         // Compute aspect-preserved player size for the freed area.
         // top/bottom: chat eats height, player fills the rest (full width).
-        // left/right: chat eats width, player fills the rest (full height).
+        // left: chat eats width, player fills the rest (full height).
         let availH, availW;
-        if (chatPosition === 'left' || chatPosition === 'right') {
+        if (chatPosition === 'left') {
           availW = Math.max(200, innerWidth - chatWidth);
           availH = innerHeight;
         } else {

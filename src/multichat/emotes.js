@@ -67,16 +67,72 @@
       .map(k => ({ key: k, label: SECTION_LABELS[k] || k, emotes: groups[k] }))
   }
 
+  // Chunked lazy render: with 2k+ emotes, building all <img> up-front blocks
+  // the main thread for hundreds of ms. Split each section into chunks of
+  // CHUNK_SIZE; render placeholder divs with estimated min-heights so the
+  // scrollbar is correct, then populate each chunk via IntersectionObserver
+  // as it nears the viewport. All emote name/url/source strings remain
+  // escapeHtml'd inside emoteImgHtml() at populate time.
+  const CHUNK_SIZE = 96
+  const _chunkStore = new Map()
+  let _chunkObserver = null
+
+  function clearChunkStore() {
+    _chunkStore.clear()
+    if (_chunkObserver) { _chunkObserver.disconnect(); _chunkObserver = null }
+  }
+
+  function ensureChunkObserver(scrollRoot) {
+    if (_chunkObserver) return _chunkObserver
+    _chunkObserver = new IntersectionObserver((entries) => {
+      for (const e of entries) {
+        if (!e.isIntersecting) continue
+        const el = e.target
+        const key = el.dataset.chunkKey
+        const data = _chunkStore.get(key)
+        if (!data) { _chunkObserver.unobserve(el); continue }
+        el.innerHTML = data.map(emoteImgHtml).join('')
+        el.style.minHeight = ''
+        el.classList.add('hs-mc-chunk-ready')
+        _chunkStore.delete(key)
+        _chunkObserver.unobserve(el)
+      }
+    }, { root: scrollRoot, rootMargin: '300px 0px', threshold: 0 })
+    return _chunkObserver
+  }
+
+  function attachChunkObserver(scope) {
+    const scrollRoot = scope.querySelector('.hs-mc-picker-scroll') || scope
+    const obs = ensureChunkObserver(scrollRoot)
+    scope.querySelectorAll('.hs-mc-picker-chunk:not(.hs-mc-chunk-ready)').forEach(el => obs.observe(el))
+  }
+
+  function estimateChunkHeight(count) {
+    const perRow = 7
+    const rowHeight = 36
+    return Math.ceil(count / perRow) * rowHeight
+  }
+
   function renderEmoteSections(sections, emptyMsg = t('mc_emote_no_loaded')) {
+    clearChunkStore()
     if (!sections.length) return `<div class="hs-mc-picker-empty">${escapeHtml(emptyMsg)}</div>`
-    // Render every emote up-front in one synchronous pass — no chunked rAF
-    // appends, no visible pop-in. Picker fades in over ~80ms via CSS to mask
-    // the parse cost. With native loading="lazy", off-screen imgs cost nothing.
-    return sections.map(s => `
+    return sections.map((s, si) => {
+      const chunks = []
+      for (let i = 0; i < s.emotes.length; i += CHUNK_SIZE) {
+        chunks.push(s.emotes.slice(i, i + CHUNK_SIZE))
+      }
+      const chunksHtml = chunks.map((c, ci) => {
+        const key = si + '-' + ci
+        _chunkStore.set(key, c)
+        const h = estimateChunkHeight(c.length)
+        return '<div class="hs-mc-picker-section-grid hs-mc-picker-chunk" data-chunk-key="' + key + '" style="min-height:' + h + 'px"></div>'
+      }).join('')
+      return `
       <div class="hs-mc-picker-section" data-section-key="${escapeHtml(s.key)}">
         <div class="hs-mc-picker-section-header">${escapeHtml(s.label)} <span class="hs-mc-picker-section-count">${s.emotes.length}</span></div>
-        <div class="hs-mc-picker-section-grid">${s.emotes.map(emoteImgHtml).join('')}</div>
-      </div>`).join('')
+        ${chunksHtml}
+      </div>`
+    }).join('')
   }
 
   function emoteImgHtml([name, emote]) {
@@ -217,6 +273,7 @@
         }
         const filteredSections = groupEmotes(filtered);
         grid.innerHTML = renderEmoteSections(filteredSections, t('common_no_matches'));
+        attachChunkObserver(grid);
         markPickerDirty();
       }, 150);
     });
@@ -273,6 +330,8 @@
         adjustOverlayForPicker(false);
       });
     }
+
+    attachChunkObserver(picker);
 
     _pickerBuiltKey = pickerCacheKey();
 

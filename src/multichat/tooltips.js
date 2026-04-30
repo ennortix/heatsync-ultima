@@ -564,9 +564,9 @@
     const statBadges = [];
     const heatHtml = heatSpanHtml(heat);
     if (heatHtml) statBadges.push(heatHtml);
-    if (op > 0) statBadges.push(`<span class="hs-pc-stat op"><span class="hs-pc-num">${formatCompact(op)}</span> [OP]</span>`);
-    if (mop > 0) statBadges.push(`<span class="hs-pc-stat mop"><span class="hs-pc-num">${formatCompact(mop)}</span> <span style="color:#ff00ff">[OP]</span></span>`);
-    if (re > 0) statBadges.push(`<span class="hs-pc-stat re"><span class="hs-pc-num">${formatCompact(re)}</span> [RE]</span>`);
+    if (op > 0) statBadges.push(`<span class="hs-pc-stat op"><span class="hs-pc-num">${formatCompact(op)}</span>[OP]</span>`);
+    if (mop > 0) statBadges.push(`<span class="hs-pc-stat mop"><span class="hs-pc-num">${formatCompact(mop)}</span>[OP]</span>`);
+    if (re > 0) statBadges.push(`<span class="hs-pc-stat re"><span class="hs-pc-num">${formatCompact(re)}</span>[RE]</span>`);
     if (followers > 0) statBadges.push(`<span class="hs-pc-stat hs-pc-stat-followers">${t('mc_tip_followers', [formatCompact(followers)])}</span>`);
 
     // Relationship — covers all four angles across Twitch and Kick
@@ -615,7 +615,7 @@
       <div class="hs-pc-info">
         <div class="hs-pc-header">${platforms} ${role} ${ageHtml}</div>
         ${bio}
-        ${statBadges.length ? `<div class="hs-pc-stats">${statBadges.join('<span class="hs-pc-sep"> · </span>')}</div>` : ''}
+        ${statBadges.length ? `<div class="hs-pc-stats">${statBadges.join('')}</div>` : ''}
         ${relBadges.length ? `<div class="hs-pc-rel">${relBadges.join(' ')}</div>` : ''}
       </div>`;
   }

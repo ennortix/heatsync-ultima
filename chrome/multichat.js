@@ -2265,23 +2265,33 @@ function injectStyles() {
     #hs-user-tooltip .hs-pc-bio-tag { color: #fff; text-decoration: none; }
     #hs-user-tooltip .hs-pc-bio-tag:hover { text-decoration: underline; }
     #hs-user-tooltip .hs-pc-stats {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
       font-size: 11px;
       color: #fff;
       line-height: 1.3;
     }
     #hs-user-tooltip .hs-pc-stat {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      height: 20px;
+      padding: 0 6px;
+      font-size: 11px;
       font-weight: 500;
       color: #fff;
+      border: 1px solid #fff;
+      background: transparent;
       white-space: nowrap;
+      box-sizing: border-box;
     }
-    #hs-user-tooltip .hs-pc-sep {
-      color: #808080;
-    }
-    #hs-user-tooltip .hs-pc-stat.op { color: #ff0000; font-weight: 700; }
+    #hs-user-tooltip .hs-pc-sep { display: none; }
+    #hs-user-tooltip .hs-pc-stat.op { border-color: #ff0000; color: #ff0000; }
     #hs-user-tooltip .hs-pc-stat.op .hs-pc-num { color: #fff; }
-    #hs-user-tooltip .hs-pc-stat.mop { color: #ff00ff; font-weight: 700; }
+    #hs-user-tooltip .hs-pc-stat.mop { border-color: #ff00ff; color: #ff00ff; }
     #hs-user-tooltip .hs-pc-stat.mop .hs-pc-num { color: #fff; }
-    #hs-user-tooltip .hs-pc-stat.re { color: #00ffff; font-weight: 700; }
+    #hs-user-tooltip .hs-pc-stat.re { border-color: #00ffff; color: #00ffff; }
     #hs-user-tooltip .hs-pc-stat.re .hs-pc-num { color: #fff; }
     #hs-user-tooltip .hs-pc-rel {
       display: flex;
@@ -9685,9 +9695,9 @@ async function sendKickMessage(kickSlug, text) {
     const statBadges = [];
     const heatHtml = heatSpanHtml(heat);
     if (heatHtml) statBadges.push(heatHtml);
-    if (op > 0) statBadges.push(`<span class="hs-pc-stat op"><span class="hs-pc-num">${formatCompact(op)}</span> [OP]</span>`);
-    if (mop > 0) statBadges.push(`<span class="hs-pc-stat mop"><span class="hs-pc-num">${formatCompact(mop)}</span> <span style="color:#ff00ff">[OP]</span></span>`);
-    if (re > 0) statBadges.push(`<span class="hs-pc-stat re"><span class="hs-pc-num">${formatCompact(re)}</span> [RE]</span>`);
+    if (op > 0) statBadges.push(`<span class="hs-pc-stat op"><span class="hs-pc-num">${formatCompact(op)}</span>[OP]</span>`);
+    if (mop > 0) statBadges.push(`<span class="hs-pc-stat mop"><span class="hs-pc-num">${formatCompact(mop)}</span>[OP]</span>`);
+    if (re > 0) statBadges.push(`<span class="hs-pc-stat re"><span class="hs-pc-num">${formatCompact(re)}</span>[RE]</span>`);
     if (followers > 0) statBadges.push(`<span class="hs-pc-stat hs-pc-stat-followers">${t('mc_tip_followers', [formatCompact(followers)])}</span>`);
 
     // Relationship — covers all four angles across Twitch and Kick
@@ -9736,7 +9746,7 @@ async function sendKickMessage(kickSlug, text) {
       <div class="hs-pc-info">
         <div class="hs-pc-header">${platforms} ${role} ${ageHtml}</div>
         ${bio}
-        ${statBadges.length ? `<div class="hs-pc-stats">${statBadges.join('<span class="hs-pc-sep"> · </span>')}</div>` : ''}
+        ${statBadges.length ? `<div class="hs-pc-stats">${statBadges.join('')}</div>` : ''}
         ${relBadges.length ? `<div class="hs-pc-rel">${relBadges.join(' ')}</div>` : ''}
       </div>`;
   }

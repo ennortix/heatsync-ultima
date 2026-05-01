@@ -90,7 +90,8 @@
    inline width on .right-column already shrinks the parent container. The player
    ends up half-sized. Override to 100% so it fills its (correctly sized) parent.
    ============================================ */
-body:has(#hs-mc-container) .channel-root__player--with-chat {
+body:has(#hs-mc-container) .channel-root__player--with-chat,
+body:has(#hs-mc-container) .channel-root__info--with-chat .channel-info-content {
   width: 100% !important;
 }
 

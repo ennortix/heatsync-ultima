@@ -71,6 +71,7 @@
   // State
   let config = { channels: [], enabled: true };
   let currentTab = 'feed';
+  let prevTab = 'feed';
   let liveChannel = null;        // override channel for live tab (null = use URL channel)
   let livePlatformMap = {};      // per-URL-channel platform overrides: { [urlCh]: { twitch, kick, youtube } }
   let liveChannelSet = new Set(); // channels currently live (lowercase twitch names)
@@ -873,6 +874,8 @@
         rotateChatPosition();
       } else if (tabId === 'live') {
         showLiveChannelPicker(tab);
+      } else if (tabId === 'settings' && currentTab === 'settings') {
+        switchTab(prevTab || 'feed');
       } else {
         switchTab(tabId);
       }
@@ -3598,7 +3601,14 @@
       const feedTabBtn = tabBarElement?.querySelector('[data-tab="feed"]');
       if (feedTabBtn) feedTabBtn.textContent = t('mc_tab_feed');
     }
+    if (currentTab !== 'settings') prevTab = currentTab;
     currentTab = id;
+
+    // Update settings button icon: X when settings open, cog otherwise
+    if (tabBarElement) {
+      const settingsBtn = tabBarElement.querySelector('[data-tab="settings"]');
+      if (settingsBtn) settingsBtn.textContent = id === 'settings' ? '✕' : '⚙';
+    }
 
     // Channel/tab switch flips which channel-emote cache the picker reads —
     // mark cache dirty + queue idle prebuild for the new context.

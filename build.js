@@ -113,7 +113,14 @@ const MULTICHAT_MODULES = [
 
 function readMultichatModules() {
   const mcDir = join(SRC_DIR, 'multichat')
+  const chromeDir = join(__dirname, 'chrome')
   let combined = '// === MULTICHAT MODULES (auto-bundled) ===\n'
+
+  // Bundle emoji-data inside IIFE so it's always available regardless of content script load order
+  const emojiDataPath = join(chromeDir, 'emoji-data.js')
+  if (existsSync(emojiDataPath)) {
+    combined += `\n// --- emoji-data.js ---\n${readFileSync(emojiDataPath, 'utf8')}\n`
+  }
 
   for (const file of MULTICHAT_MODULES) {
     const filePath = join(mcDir, file)

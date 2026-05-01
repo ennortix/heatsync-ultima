@@ -1669,7 +1669,6 @@ function insertEmojiFromDropdown(entry) {
 function checkEmojiAutocomplete() {
   const input = document.getElementById('hs-mc-input')
   if (!input) return
-  if (typeof EMOJI_DATA === 'undefined') return
 
   const ctx = getEmojiColonContext(input)
   if (!ctx) {

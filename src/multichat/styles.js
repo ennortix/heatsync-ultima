@@ -4928,14 +4928,17 @@ function injectStyles() {
     body.hs-platform-yt.hs-chat-right #page-manager {
       margin-top: 0 !important;
     }
-    /* chat-right: same vertical-center treatment as chat-left so the
-       player floats centered in the freed area (since #below clutter
-       below the player is gone, primary collapses to player height). */
-    body.hs-platform-yt.hs-chat-right #primary,
-    body.hs-platform-yt.hs-chat-right #primary-inner {
+    /* primary clips to viewport height; primary-inner scrolls so video info
+       below the player is reachable. */
+    body.hs-platform-yt.hs-chat-right #primary {
       height: 100vh !important;
       max-height: 100vh !important;
       overflow: hidden !important;
+    }
+    body.hs-platform-yt.hs-chat-right #primary-inner {
+      height: 100vh !important;
+      max-height: 100vh !important;
+      overflow-y: auto !important;
     }
     /* Chat panel fills viewport height when on right — overrides the
        mount-time inline height cached from the original live-chat-frame
@@ -4974,7 +4977,7 @@ function injectStyles() {
       display: flex !important;
       flex-direction: column !important;
       align-items: center !important;
-      justify-content: center !important;
+      justify-content: flex-start !important;
     }
     /* Tell YT how much vertical space is NOT available for the player so
        its own layout JS shrinks the player to fit. YT computes player
@@ -4994,15 +4997,20 @@ function injectStyles() {
     body.hs-platform-yt.hs-chat-bottom #player-container-outer {
       max-height: calc(100vh - var(--hs-chat-h, 35vh) - 60px) !important;
     }
-    /* Hide YT's #below stack (suggested thumbnails / video info / comments)
-       when chat takes the screen — chat is the focus, the noise goes away.
-       Center the player horizontally so it doesn't hug the left edge once
-       the surrounding content is gone. */
+    /* Show video info below player (title, channel, description) like Twitch/Kick.
+       Hide only comments — noisy, not the focus. #below gets width:100% so it
+       fills primary-inner even when align-items:center is in effect. */
+    body.hs-platform-yt.hs-chat-top ytd-comments,
+    body.hs-platform-yt.hs-chat-bottom ytd-comments,
+    body.hs-platform-yt.hs-chat-left ytd-comments,
+    body.hs-platform-yt.hs-chat-right ytd-comments {
+      display: none !important;
+    }
     body.hs-platform-yt.hs-chat-top #below,
     body.hs-platform-yt.hs-chat-bottom #below,
     body.hs-platform-yt.hs-chat-left #below,
     body.hs-platform-yt.hs-chat-right #below {
-      display: none !important;
+      width: 100% !important;
     }
     /* Top/bottom: player is sized inline to fill availH, just need
        horizontal centering. Don't add min-height — primary has margin-top
@@ -5014,19 +5022,19 @@ function injectStyles() {
       align-items: center !important;
       justify-content: flex-start !important;
     }
-    /* Left: chat fills viewport on left, player needs vertical centering
-       in the freed right area. Constrain primary-inner to viewport height. */
-    body.hs-platform-yt.hs-chat-left #primary,
-    body.hs-platform-yt.hs-chat-left #primary-inner {
+    body.hs-platform-yt.hs-chat-left #primary {
       height: 100vh !important;
       max-height: 100vh !important;
       overflow: hidden !important;
     }
     body.hs-platform-yt.hs-chat-left #primary-inner {
+      height: 100vh !important;
+      max-height: 100vh !important;
+      overflow-y: auto !important;
       display: flex !important;
       flex-direction: column !important;
       align-items: center !important;
-      justify-content: center !important;
+      justify-content: flex-start !important;
     }
     body.hs-platform-yt.hs-chat-top #player,
     body.hs-platform-yt.hs-chat-bottom #player,

@@ -13851,10 +13851,10 @@ async function fetchGlobalBadges() {
       body: JSON.stringify({ query: '{ badges { imageURL(size: NORMAL) setID version } }' }),
       signal: AbortSignal.timeout(5000)
     })
-    if (!resp.ok) return
+    if (!resp.ok) { globalBadgesFetched = false; return }
     const data = await resp.json()
     const badges = data?.data?.badges
-    if (!badges) return
+    if (!badges) { globalBadgesFetched = false; return }
     for (const b of badges) {
       twitchBadgeUrls.set(`${b.setID}/${b.version}`, b.imageURL)
     }
@@ -14825,24 +14825,18 @@ async function fetchChannelBadges(channelLogin) {
     }
   }
   try {
-    // Fetch Twitch GQL + FFZ badges in parallel
-    const [twitchResp, ffzResp] = await Promise.allSettled([
-      fetch(TWITCH_GQL, {
-        method: 'POST',
-        headers: { 'Client-Id': TWITCH_CLIENT_ID, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query: `{ user(login: "${safe}") { broadcastBadges { imageURL(size: NORMAL) setID version } } }` }),
-        signal: AbortSignal.timeout(5000)
-      }),
+    // Fetch channel badges (GQL broadcastBadges) + FFZ in parallel
+    const [gqlResp, ffzResp] = await Promise.allSettled([
+      twitchGql(`{ user(login:"${safe}") { broadcastBadges { imageURL(size: NORMAL) setID version } } }`),
       fetch(`https://api.frankerfacez.com/v1/room/${safe}`, { credentials: 'omit', signal: AbortSignal.timeout(5000) })
     ])
 
-    // Twitch channel badges
-    if (twitchResp.status === 'fulfilled' && twitchResp.value.ok) {
-      const data = await twitchResp.value.json()
-      const badges = data?.data?.user?.broadcastBadges
+    // Channel badges via GQL broadcastBadges (no Client-Integrity needed)
+    if (gqlResp.status === 'fulfilled') {
+      const badges = gqlResp.value?.data?.user?.broadcastBadges
       if (badges) {
         for (const b of badges) {
-          twitchBadgeUrls.set(`${channelLogin}:${b.setID}/${b.version}`, b.imageURL)
+          if (b.imageURL) twitchBadgeUrls.set(`${channelLogin}:${b.setID}/${b.version}`, b.imageURL)
         }
       }
     }
@@ -14872,7 +14866,6 @@ async function fetchChannelBadges(channelLogin) {
     log('Loaded channel badges for', channelLogin)
     renderMessages(currentTab)
   } catch (e) {
-    badgesFetchedChannels.delete(channelLogin)
     log('Failed to fetch channel badges:', e.message)
   }
 }

@@ -1448,9 +1448,9 @@
           // Emoji shortcode cycling: insert emoji character as text
           if (nextEmote.isEmoji) {
             const slateEditor = inst?.chatInputRef?.state?.slateEditor;
+            const settings = getExtensionSettings();
+            const addSpace = settings.emoteSpaceAfter !== false;
             if (slateEditor) {
-              const settings = getExtensionSettings();
-              const addSpace = settings.emoteSpaceAfter !== false;
               const endPt = slateEditor.end([]);
               slateEditor.select(endPt);
               if (justCycled) {
@@ -1475,8 +1475,27 @@
               const focusEl = getInputElement();
               if (focusEl) focusEl.focus();
               log(' ✅ Emoji cycle complete:', nextEmote.name, '→', nextEmote.emoji);
-              return;
+            } else {
+              // Slate unavailable — fall back to execCommand for contenteditable
+              const inputEl2 = getInputElement();
+              if (inputEl2) {
+                inputEl2.focus();
+                if (justCycled) {
+                  const prevEmoji = cycleState.lastCycledEmote;
+                  const deleteLen = prevEmoji ? ([...prevEmoji].length + (addSpace ? 1 : 0)) : 0;
+                  for (let i = 0; i < deleteLen; i++) document.execCommand('delete', false);
+                } else {
+                  const inputText = inputEl2.textContent || '';
+                  const matchResult = inputText.match(/(:?\w+)$/);
+                  const partialLen = matchResult ? matchResult[0].length : 0;
+                  for (let i = 0; i < partialLen; i++) document.execCommand('delete', false);
+                }
+                document.execCommand('insertText', false, nextEmote.emoji + (addSpace ? ' ' : ''));
+                cycleState.lastCycledEmote = nextEmote.emoji;
+                log(' ✅ Emoji cycle via execCommand:', nextEmote.name, '→', nextEmote.emoji);
+              }
             }
+            return;
           }
 
           // CRITICAL: Pass justCycled - first Tab deletes search text, subsequent Tabs update existing emote

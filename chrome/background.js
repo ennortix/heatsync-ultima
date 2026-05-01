@@ -4284,7 +4284,7 @@ async function handleMessage(message, sender, sendResponse) {
     sendResponse({ ok: true })
     return false
   } else if (message.type === 'get_user_cosmetics') {
-    const ids = (message.twitchIds || []).slice(0, 10)
+    const ids = (message.twitchIds || []).slice(0, 25)
     ;(async () => {
       const result = {}
       const toFetch = []

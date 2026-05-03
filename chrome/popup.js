@@ -950,7 +950,7 @@
     try {
       const controller = new AbortController();
       setTimeout(() => controller.abort(), 3000);
-      const resp = await fetch(API_URL + '/api/health', { signal: controller.signal });
+      const resp = await fetch(API_URL + '/health', { signal: controller.signal });
       if (resp.ok) {
         dot.className = 'status-dot green';
         dot.title = t('popup_status_connected');

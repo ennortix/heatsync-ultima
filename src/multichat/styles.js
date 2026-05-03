@@ -5011,6 +5011,8 @@ function injectStyles() {
     body.hs-platform-yt.hs-chat-left #below,
     body.hs-platform-yt.hs-chat-right #below {
       width: 100% !important;
+      max-width: 100% !important;
+      overflow-x: hidden !important;
     }
     /* Top/bottom: player is sized inline to fill availH, just need
        horizontal centering. Don't add min-height — primary has margin-top

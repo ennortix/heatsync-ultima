@@ -269,13 +269,21 @@ class IRC {
     this._heartbeatTimer = null;
     this._reconnectTimer = null;
     this._reconnectAttempts = 0;
+    // Per-channel watchdog: catches the silently-dropped-channel case where
+    // the ws stays alive (PINGs answered, other channels' PRIVMSGs keep
+    // _lastData fresh) but Twitch quietly stops delivering one channel's
+    // messages. The global zombie detector misses it; this catches it.
+    this._chanLastSeen = new Map();      // ch -> ms (any line for this channel)
+    this._chanRejoinAttempts = new Map(); // ch -> count (cleared on healthy traffic)
     this._ac = new AbortController();
     // Reconnect when tab becomes visible after silence
     document.addEventListener('visibilitychange', () => {
       if (this._destroyed) return;
       if (document.visibilityState === 'visible' && this.channels.size > 0) {
         const silence = Date.now() - this._lastData;
-        if (silence > 60000 || !this.ws || this.ws.readyState !== WebSocket.OPEN) {
+        // Tighter than before (was 60s) — visible-tab silence > 30s while
+        // chat is supposedly live is already suspicious.
+        if (silence > 30000 || !this.ws || this.ws.readyState !== WebSocket.OPEN) {
           log('Tab visible after', Math.round(silence / 1000), 's silence, reconnecting');
           this._forceReconnect();
           // Reload history to fill gap from sleep
@@ -285,6 +293,31 @@ class IRC {
         }
       }
     }, { signal: this._ac.signal });
+    // Network transitions — react immediately instead of waiting for
+    // backoff timers. Online == kick a fresh connect, offline == stop
+    // burning retries against a dead network.
+    window.addEventListener('online', () => {
+      if (this._destroyed) return;
+      log('Network online — force reconnect');
+      this._reconnectAttempts = 0;
+      this._forceReconnect();
+    }, { signal: this._ac.signal });
+    window.addEventListener('offline', () => {
+      if (this._destroyed) return;
+      log('Network offline — pausing reconnect');
+      cleanup.clearTimeout(this._reconnectTimer);
+      this._reconnectTimer = null;
+      this._stopHeartbeat();
+    }, { signal: this._ac.signal });
+  }
+
+  // Mark a channel as healthy whenever we see any traffic for it (PRIVMSG,
+  // USERNOTICE, NOTICE, ROOMSTATE, USERSTATE, CLEARCHAT, CLEARMSG, JOIN echo).
+  // Disarms the per-channel watchdog and clears any in-flight rejoin attempts.
+  _touchChannel(ch) {
+    if (!ch) return;
+    this._chanLastSeen.set(ch, Date.now());
+    if (this._chanRejoinAttempts.size) this._chanRejoinAttempts.delete(ch);
   }
 
   connect() {
@@ -316,6 +349,12 @@ class IRC {
       log('IRC connected');
       this._reconnectAttempts = 0;
       this._lastData = Date.now();
+      // Fresh grace for every channel — none have spoken on this socket yet,
+      // so the watchdog must wait the full silence threshold before tripping.
+      // Also clear any stale rejoin counters from the previous socket.
+      const now = Date.now();
+      for (const ch of this.channels.keys()) this._chanLastSeen.set(ch, now);
+      this._chanRejoinAttempts.clear();
       this.ws.send(`NICK ${this.nick}\r\n`);
       this.ws.send('CAP REQ :twitch.tv/tags twitch.tv/commands\r\n');
       for (const ch of this.channels.keys()) {
@@ -364,7 +403,8 @@ class IRC {
         if (!this._destroyed) this._scheduleReconnect();
         return;
       }
-      const silence = Date.now() - this._lastData;
+      const now = Date.now();
+      const silence = now - this._lastData;
       if (silence > 90000) {
         log('Zombie detected —', Math.round(silence / 1000), 's silence');
         this._forceReconnect();
@@ -372,6 +412,38 @@ class IRC {
       }
       try { this.ws.send('PING :heatsync\r\n'); } catch {
         this._forceReconnect();
+        return;
+      }
+
+      // Per-channel watchdog. The global zombie detector above misses the
+      // case where Twitch silently stops delivering for ONE channel — other
+      // channels keep refreshing _lastData. PART+JOIN forces a fresh sub
+      // and Twitch responds with ROOMSTATE within seconds, which touches
+      // _chanLastSeen via parse(). Two failed rejoins → full reconnect.
+      for (const ch of this.channels.keys()) {
+        const last = this._chanLastSeen.get(ch) || 0;
+        if (!last) continue;
+        const chSilence = now - last;
+        if (chSilence < 300000) continue; // 5 min grace — even slow channels emit something
+
+        const attempts = this._chanRejoinAttempts.get(ch) || 0;
+        if (attempts >= 2) {
+          log('Channel', ch, 'unresponsive after', attempts, 're-JOINs — full reconnect');
+          this._chanRejoinAttempts.clear();
+          this._forceReconnect();
+          return;
+        }
+        log('Channel', ch, 'silent for', Math.round(chSilence / 1000), 's — PART+JOIN to re-subscribe');
+        try {
+          this.ws.send(`PART #${ch}\r\n`);
+          this.ws.send(`JOIN #${ch}\r\n`);
+          // Disarm for one cycle; ROOMSTATE on the JOIN will re-touch us.
+          this._chanLastSeen.set(ch, now);
+          this._chanRejoinAttempts.set(ch, attempts + 1);
+        } catch {
+          this._forceReconnect();
+          return;
+        }
       }
     }, 30000);
   }
@@ -398,8 +470,16 @@ class IRC {
 
   _scheduleReconnect() {
     if (this._destroyed) return;
+    // If we know we're offline, don't burn retries — the online listener
+    // will fire a fresh _forceReconnect when the network comes back.
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+      log('Skipping reconnect — navigator.onLine is false');
+      return;
+    }
     cleanup.clearTimeout(this._reconnectTimer);
-    const delay = Math.min(2000 * Math.pow(2, this._reconnectAttempts), 30000);
+    // Cap at 15s (was 30s) — a long-running stream can't tolerate half-minute
+    // gaps when recovering from a transient network blip.
+    const delay = Math.min(2000 * Math.pow(2, this._reconnectAttempts), 15000);
     this._reconnectAttempts++;
     log('Reconnecting in', delay, 'ms (attempt', this._reconnectAttempts, ')');
     // Surface persistent failure to DevTools — silent infinite retry leaves
@@ -432,6 +512,11 @@ class IRC {
         return;
       }
       const msg = parseIrcLine(line);
+      // Touch the per-channel watchdog for ANY parsed line that names a
+      // channel — PRIVMSG, USERNOTICE, NOTICE, ROOMSTATE, USERSTATE,
+      // CLEARCHAT, CLEARMSG, JOIN echo all qualify. This is the single
+      // source of truth for "this channel is still alive on this socket".
+      if (msg?.channel) this._touchChannel(msg.channel);
       if (msg && !msg.type) {
         // PRIVMSG
         const ch = msg.channel;
@@ -552,6 +637,9 @@ class IRC {
     ch = ch.toLowerCase();
     if (this.channels.has(ch)) return;
     this.channels.set(ch, new CircularBuffer(1500));
+    // Seed watchdog clock — gives this channel the full silence threshold
+    // before the watchdog can trip, even if no messages arrive yet.
+    this._chanLastSeen.set(ch, Date.now());
     if (this.ws?.readyState === WebSocket.OPEN) {
       this.ws.send(`JOIN #${ch}\r\n`);
     }
@@ -782,6 +870,8 @@ class IRC {
     ch = ch.toLowerCase();
     if (!this.channels.has(ch)) return;
     this.channels.delete(ch);
+    this._chanLastSeen.delete(ch);
+    this._chanRejoinAttempts.delete(ch);
     if (this.ws?.readyState === WebSocket.OPEN) {
       this.ws.send(`PART #${ch}\r\n`);
     }
@@ -813,6 +903,46 @@ class KickChat {
     this._listener = null
     this._persistTimers = {}
     this._PERSIST_MAX = 200
+    // Per-channel watchdog. Kick traffic flows BG → runtime.sendMessage →
+    // this._listener; if anything between us and the heatsync server drops
+    // a sub silently (BG WS reconnected before our ws_send made it through,
+    // server lost the join state, etc.) we'd never know. Watchdog re-asserts
+    // channel:join when a channel goes too quiet.
+    this._chanLastSeen = new Map()
+    this._watchdogTimer = null
+  }
+
+  _touchChannel(ch) {
+    if (!ch) return
+    this._chanLastSeen.set(ch, Date.now())
+  }
+
+  _startWatchdog() {
+    if (this._watchdogTimer) return
+    this._watchdogTimer = cleanup.setInterval(() => {
+      if (this._destroyed) return
+      const now = Date.now()
+      for (const ch of this.channels.keys()) {
+        const last = this._chanLastSeen.get(ch) || 0
+        if (!last) continue
+        // 5 min silent → nudge BG to re-join. Cheap, idempotent on the
+        // server, and recovers cleanly when the BG WS just reconnected
+        // before our original ws_send was queued.
+        if (now - last > 300000) {
+          log('Kick channel', ch, 'silent for', Math.round((now - last) / 1000), 's — re-asserting channel:join')
+          safeSendMessage({ type: 'ws_send', data: { type: 'channel:join', platform: 'kick', channel: ch } })
+          // Disarm one cycle; real traffic resumes _chanLastSeen via the listener.
+          this._chanLastSeen.set(ch, now)
+        }
+      }
+    }, 60000)
+  }
+
+  _stopWatchdog() {
+    if (this._watchdogTimer) {
+      cleanup.clearInterval(this._watchdogTimer)
+      this._watchdogTimer = null
+    }
   }
 
   connect() {
@@ -824,6 +954,7 @@ class KickChat {
       if (message.type === 'kick_chat_message' && message.data) {
         const d = message.data
         const channel = d.channel?.toLowerCase()
+        this._touchChannel(channel)
         if (!channel || !this.channels.has(channel)) return
         // Convert Kick badge objects [{name,version}] to Twitch-style "name/version" string
         const badgeStr = Array.isArray(d.badges)
@@ -856,6 +987,7 @@ class KickChat {
       // KICKs gifted events (Kick's equivalent of Twitch Bits)
       if (message.type === 'kick_kicks_event') {
         const channel = message.channel?.toLowerCase()
+        this._touchChannel(channel)
         if (!channel || !this.channels.has(channel)) return
         const msg = {
           user: message.username || 'anonymous',
@@ -879,6 +1011,7 @@ class KickChat {
       // Kick subscription events (new sub, resub, gift subs)
       if (message.type === 'kick_sub_event') {
         const channel = message.channel?.toLowerCase()
+        this._touchChannel(channel)
         if (!channel || !this.channels.has(channel)) return
         const msg = {
           user: message.username || 'system',
@@ -899,6 +1032,7 @@ class KickChat {
       }
     }
     chrome.runtime?.onMessage?.addListener(this._listener)
+    this._startWatchdog()
     log('Kick chat listener registered (webhook mode)')
   }
 
@@ -966,6 +1100,7 @@ class KickChat {
 
   destroy() {
     this._destroyed = true
+    this._stopWatchdog()
     if (this._listener) {
       chrome.runtime?.onMessage?.removeListener(this._listener)
       this._listener = null
@@ -977,12 +1112,15 @@ class KickChat {
       safeSendMessage({ type: 'ws_send', data: { type: 'channel:leave', platform: 'kick', channel: username } })
     }
     this.channels.clear()
+    this._chanLastSeen.clear()
   }
 
   async join(kickUsername) {
     kickUsername = kickUsername.toLowerCase()
     if (this.channels.has(kickUsername)) return
     this.channels.set(kickUsername, new CircularBuffer(1500))
+    // Seed watchdog clock — full grace period before re-asserting.
+    this._chanLastSeen.set(kickUsername, Date.now())
     // Load persisted history before joining (so messages appear instantly)
     await this.loadHistory(kickUsername)
     // Tell background to join kick channel via HeatSync WS
@@ -995,6 +1133,7 @@ class KickChat {
     if (!this.channels.has(kickUsername)) return
     safeSendMessage({ type: 'ws_send', data: { type: 'channel:leave', platform: 'kick', channel: kickUsername } })
     this.channels.delete(kickUsername)
+    this._chanLastSeen.delete(kickUsername)
     log('Kick parted', kickUsername)
   }
 

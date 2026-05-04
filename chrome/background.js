@@ -317,6 +317,23 @@ browser.cookies.onChanged.addListener((changeInfo) => {
 const API_URL = 'https://heatsync.org'; // Production
 const WS_URL = 'wss://heatsync.org'; // Production WebSocket
 
+// Network online/offline — react instantly to transitions instead of waiting
+// for backoff timers. Service workers have `self` (global), and these events
+// fire while the SW is alive. If the SW is asleep when the network changes,
+// it'll re-evaluate on next wake anyway.
+try {
+  self.addEventListener('online', () => {
+    log(' 🌐 Network online — kicking fresh WS connect');
+    reconnectAttempts = 0;
+    if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
+    if (!isSocketOpen()) connectWebSocket().catch(err => log(' onlineConnect failed:', err?.message));
+  });
+  self.addEventListener('offline', () => {
+    log(' 🚫 Network offline — pausing reconnect attempts');
+    if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
+  });
+} catch {}
+
 // Normalize relative emote URLs to absolute (API returns /uploads/... paths)
 function absUrl(url) {
   if (!url) return url
@@ -3302,9 +3319,17 @@ function handleWSMessage(msg) {
 function scheduleReconnect() {
   if (authFailedBlock) return; // Auth failed — don't loop
   if (reconnectTimer) return; // Already scheduled
+  // Don't burn retries against a known-dead network — the online listener
+  // will fire a fresh connect when connectivity comes back.
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+    log(' Skipping reconnect — navigator.onLine is false');
+    return;
+  }
 
   const jitter = Math.random() * 1000;
-  const delay = Math.min(1000 * Math.pow(2, reconnectAttempts), 30000) + jitter; // Max 30s + jitter
+  // Capped at 15s (was 30s) — long-running stream sessions can't tolerate
+  // half-minute gaps when recovering from a transient network blip.
+  const delay = Math.min(1000 * Math.pow(2, reconnectAttempts), 15000) + jitter;
   reconnectAttempts++;
   log(` Reconnecting in ${Math.round(delay)}ms (attempt ${reconnectAttempts})`);
 
@@ -4552,6 +4577,24 @@ async function initialize() {
     if (stored.youtube_channel_urls && typeof stored.youtube_channel_urls === 'object') {
       Object.assign(youtubeChannelUrls, stored.youtube_channel_urls);
       log(' ✓ Restored youtubeChannelUrls for', Object.keys(youtubeChannelUrls).length, 'channels');
+      // Race fix: connectWebSocket() was kicked off at the top of init() and
+      // may have already opened, iterating an empty youtubeChannelUrls in its
+      // onopen handler — losing every YT subscription on SW wake. Replay them
+      // explicitly now (mirrors the joined_extra_channels pattern below).
+      // wsSend queues if not yet open, sends if open.
+      for (const [channelId, url] of Object.entries(youtubeChannelUrls)) {
+        const vidMatch = url.match(/[?&]v=([^&]+)/) || url.match(/\/live\/([^?&\/]+)/) || url.match(/youtu\.be\/([^?&]+)/)
+        if (vidMatch) setYtVideoChannel(vidMatch[1], channelId)
+        wsSend({ type: 'youtube:subscribe', url, channelId })
+      }
+      // Also replay the global YT subscription if one was set
+      browser.storage.local.get(['youtube_url']).then(d => {
+        if (d.youtube_url) {
+          const vidMatch = d.youtube_url.match(/[?&]v=([^&]+)/) || d.youtube_url.match(/\/live\/([^?&\/]+)/) || d.youtube_url.match(/youtu\.be\/([^?&]+)/)
+          if (vidMatch) setYtVideoChannel(vidMatch[1], 'global')
+          wsSend({ type: 'youtube:subscribe', url: d.youtube_url })
+        }
+      }).catch(() => {})
     }
     if (stored.yt_video_to_channel && typeof stored.yt_video_to_channel === 'object') {
       // Restore videoId→channelId routing so chat msgs from existing pollers

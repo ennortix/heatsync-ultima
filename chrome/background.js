@@ -2692,12 +2692,14 @@ async function connectWebSocket() {
         // the 2min idle threshold and immediately kill the fresh socket.
         lastWsDataReceived = Date.now();
 
-        // Start heartbeat to keep connection alive (server has 2min idle timeout)
+        // Start heartbeat to keep connection alive (server has 2min idle timeout).
+        // Tighter than before (was 90s/120s) — long-running stream sessions can't
+        // tolerate 2min dead windows for a silent zombie. Heartbeat every 30s,
+        // zombie detection if data stops for 75s (~2.5x heartbeat interval).
         if (heartbeatInterval) untrackInterval(heartbeatInterval)
         heartbeatInterval = trackInterval(setInterval(() => {
           if (isSocketOpen()) {
-            // Zombie detection: if no data received in 2min, connection is silently dead
-            if (lastWsDataReceived && Date.now() - lastWsDataReceived > 120000) {
+            if (lastWsDataReceived && Date.now() - lastWsDataReceived > 75000) {
               log('WS zombie detected, reconnecting')
               socket.close()
               return
@@ -2708,7 +2710,7 @@ async function connectWebSocket() {
               log(' Heartbeat send failed:', err?.message);
             }
           }
-        }, 90000)) // Every 90 seconds (well within 2min server timeout)
+        }, 30000))
 
         // Rejoin all tracked tab channels
         const rejoinedChannels = new Set()
@@ -3909,6 +3911,26 @@ async function handleMessage(message, sender, sendResponse) {
       browser.storage.local.set({ youtube_channel_urls: { ...youtubeChannelUrls } })
     }
     log(' YouTube unsubscribe:', videoId || '(no videoId)', 'channel:', channelId)
+    sendResponse({ ok: true })
+    return
+  }
+
+  // Content-script escalation: a per-channel watchdog has decided the BG WS
+  // is in zombie state. Close the socket and let scheduleReconnect fire a
+  // fresh connection, which replays joins from joinedExtraChannels.
+  if (message.type === 'ws_force_reconnect') {
+    log(' 🚨 ws_force_reconnect requested:', message.source, message.channel || '')
+    if (socket) {
+      try {
+        socket.onclose = null
+        socket.close()
+      } catch {}
+    }
+    wsState = WS_STATE.DISCONNECTED
+    isAuthenticated = false
+    reconnectAttempts = 0
+    if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null }
+    connectWebSocket().catch(err => log(' force-reconnect failed:', err?.message))
     sendResponse({ ok: true })
     return
   }

@@ -424,7 +424,11 @@ class IRC {
         const last = this._chanLastSeen.get(ch) || 0;
         if (!last) continue;
         const chSilence = now - last;
-        if (chSilence < 300000) continue; // 5 min grace — even slow channels emit something
+        // 2-min threshold. Heartbeat fires every 30s, so worst-case dead
+        // window is 150s before we re-JOIN. Trades a tiny re-sub churn
+        // on quiet channels (mostly stream-offline chats) for fast
+        // recovery on busy ones — busy channels never trip this anyway.
+        if (chSilence < 120000) continue;
 
         const attempts = this._chanRejoinAttempts.get(ch) || 0;
         if (attempts >= 2) {
@@ -909,12 +913,14 @@ class KickChat {
     // server lost the join state, etc.) we'd never know. Watchdog re-asserts
     // channel:join when a channel goes too quiet.
     this._chanLastSeen = new Map()
+    this._chanRejoinAttempts = new Map() // ch -> escalation count
     this._watchdogTimer = null
   }
 
   _touchChannel(ch) {
     if (!ch) return
     this._chanLastSeen.set(ch, Date.now())
+    if (this._chanRejoinAttempts.size) this._chanRejoinAttempts.delete(ch)
   }
 
   _startWatchdog() {
@@ -925,17 +931,37 @@ class KickChat {
       for (const ch of this.channels.keys()) {
         const last = this._chanLastSeen.get(ch) || 0
         if (!last) continue
-        // 5 min silent → nudge BG to re-join. Cheap, idempotent on the
-        // server, and recovers cleanly when the BG WS just reconnected
-        // before our original ws_send was queued.
-        if (now - last > 300000) {
-          log('Kick channel', ch, 'silent for', Math.round((now - last) / 1000), 's — re-asserting channel:join')
+        // Escalate the response when a Kick channel keeps coming up silent.
+        // Each rung is more invasive but recovers a different failure class:
+        //   1) re-assert join — server forgot us, idempotent on Kick
+        //   2) leave+join — server thinks we're already subbed; force fresh
+        //   3) BG WS force-reconnect — BG itself is in zombie state
+        // Tick is 30s, so worst-case dead window before rung 1 is 120s.
+        if (now - last <= 90000) continue
+        const attempts = this._chanRejoinAttempts.get(ch) || 0
+        const silenceS = Math.round((now - last) / 1000)
+        if (attempts === 0) {
+          log('Kick channel', ch, 'silent', silenceS, 's — re-asserting channel:join')
           safeSendMessage({ type: 'ws_send', data: { type: 'channel:join', platform: 'kick', channel: ch } })
-          // Disarm one cycle; real traffic resumes _chanLastSeen via the listener.
+        } else if (attempts === 1) {
+          log('Kick channel', ch, 'still silent', silenceS, 's after re-join — leave+join to force fresh sub')
+          safeSendMessage({ type: 'ws_send', data: { type: 'channel:leave', platform: 'kick', channel: ch } })
+          safeSendMessage({ type: 'ws_send', data: { type: 'channel:join', platform: 'kick', channel: ch } })
+        } else {
+          log('Kick channel', ch, 'unresponsive', silenceS, 's after', attempts, 'attempts — asking BG to reconnect WS')
+          safeSendMessage({ type: 'ws_force_reconnect', source: 'kick_watchdog', channel: ch })
+          // After this we let the BG cycle do its thing; reset attempt counter
+          // so the next watchdog tick doesn't immediately escalate again
+          // (BG reconnect takes ~1-3s, fresh traffic should disarm us).
+          this._chanRejoinAttempts.set(ch, 0)
           this._chanLastSeen.set(ch, now)
+          continue
         }
+        this._chanRejoinAttempts.set(ch, attempts + 1)
+        // Disarm one cycle; real traffic resumes _chanLastSeen via the listener.
+        this._chanLastSeen.set(ch, now)
       }
-    }, 60000)
+    }, 30000)
   }
 
   _stopWatchdog() {

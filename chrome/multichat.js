@@ -7800,7 +7800,7 @@ function injectStyles() {
        tabbar, input bar, T/K/YT filter buttons, or any other panel content.
        Border (not padding) shrinks the padding box, which is the containing
        block for abs-positioned children — without this the inputbar/tabbar/
-       overlay (all `position: absolute; bottom: Npx`) snap to the outer edge
+       overlay (all position:absolute; bottom:Npx) snap to the outer edge
        and sit under the bar. With box-sizing: border-box the container's
        outer dim is unchanged. Bar widths: unified #hs-c-resize-handle 10px,
        platform handles 6px — reserve 10px to fit either case. */

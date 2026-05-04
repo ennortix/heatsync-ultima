@@ -764,7 +764,7 @@ function injectStyles() {
       unicode-bidi: plaintext;
     }
     .hs-mc-msg.hs-mc-zebra, .hs-feed-msg.hs-mc-zebra {
-      background: rgba(255,255,255,0.04);
+      background: #1f1f1f;
     }
     .hs-mc-msg:hover {
     }
@@ -3131,10 +3131,10 @@ function injectStyles() {
       justify-content: space-between !important;
     }
     .hs-mc-setting-row:nth-child(even) {
-      background: rgba(255,255,255,0.03);
+      background: #1a1a1a;
     }
     .hs-mc-setting-row:hover {
-      background: rgba(255,255,255,0.06);
+      background: #2a2a2a;
     }
     .hs-mc-setting-label {
       color: #fff !important;
@@ -3888,6 +3888,35 @@ function injectStyles() {
       font-family: monospace;
       font-size: 12px;
     }
+    .hs-mention {
+      color: #8080ff;
+      text-decoration: none;
+      cursor: pointer;
+    }
+    .hs-mention:hover {
+      text-decoration: underline;
+    }
+    .hs-mention.self {
+      background: #800000;
+      color: #fff;
+      padding: 0 2px;
+      border-radius: 2px;
+    }
+    .hs-hashtag {
+      color: #ff00ff;
+      text-decoration: none;
+      cursor: pointer;
+    }
+    .hs-hashtag:hover {
+      box-shadow: inset 0 0 0 100px #fff;
+      color: #000;
+    }
+    .hs-tripcode {
+      color: #117743;
+      font-weight: normal;
+      margin-left: 4px;
+      font-size: 11px;
+    }
 
     /* ---- TAB BADGE ---- */
     .hs-mc-tab .hs-badge {
@@ -4637,6 +4666,20 @@ function injectStyles() {
       width: 100vw !important;
       height: var(--hs-chat-h, 35vh) !important;
     }
+
+    /* Resize bar reservation (dwl tile rule) — chat content reserves border
+       on the player-facing edge so the orange resize bar never overlays the
+       tabbar, input bar, T/K/YT filter buttons, or any other panel content.
+       Border (not padding) shrinks the padding box, which is the containing
+       block for abs-positioned children — without this the inputbar/tabbar/
+       overlay (all `position: absolute; bottom: Npx`) snap to the outer edge
+       and sit under the bar. With box-sizing: border-box the container's
+       outer dim is unchanged. Bar widths: unified #hs-c-resize-handle 10px,
+       platform handles 6px — reserve 10px to fit either case. */
+    body.hs-chat-right #hs-mc-container { border-left: 10px solid transparent !important; }
+    body.hs-chat-left #hs-mc-container { border-right: 10px solid transparent !important; }
+    body.hs-chat-top #hs-mc-container { border-bottom: 10px solid transparent !important; }
+    body.hs-chat-bottom #hs-mc-container { border-top: 10px solid transparent !important; }
 
     /* --- YT narrow viewport rescue ---
        At narrow viewports YT collapses ytd-watch-flexy into a single-column

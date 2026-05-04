@@ -1283,9 +1283,10 @@ function buildFeedMessageDiv(m, opUsername) {
 
   const anonAvatar = avatarsEnabled ? `<img class="hs-feed-avatar" src="https://heatsync.org/anon.webp" alt="" loading="lazy">` : '';
   const userAvatar = avatarsEnabled ? `<img class="hs-feed-avatar" src="${escapeHtml(avatarUrl)}" alt="" loading="lazy" onerror="this.style.display='none'">` : '';
+  const tripcodeHtml = m.tripcode ? `<span class="hs-tripcode">${escapeHtml(m.tripcode)}</span>` : '';
   const userHtml = isAnon
-    ? `${anonAvatar}<span class="hs-feed-user" style="color:#808080">Anonymous</span>`
-    : `${userAvatar}<a href="https://heatsync.org/user/${encodeURIComponent(m.username)}" target="_blank" class="hs-feed-user hs-mc-user" data-username="${escapeHtml((m.username || 'anon').toLowerCase())}" style="color:${sanitizeColor(m.user_color || '#fff')}">${escapeHtml(m.username || 'anon')}</a>`;
+    ? `${anonAvatar}<span class="hs-feed-user" style="color:#808080">Anonymous</span>${tripcodeHtml}`
+    : `${userAvatar}<a href="https://heatsync.org/user/${encodeURIComponent(m.username)}" target="_blank" class="hs-feed-user hs-mc-user" data-username="${escapeHtml((m.username || 'anon').toLowerCase())}" style="color:${sanitizeColor(m.user_color || '#fff')}">${escapeHtml(m.username || 'anon')}</a>${tripcodeHtml}`;
 
   // Media/embeds (img, video, iframe) — values inside are pre-sanitized via escapeHtml/safeUrl/sanitizeEmbedId
   const mediaHtml = buildFeedMediaHtml(m);
@@ -1427,6 +1428,32 @@ function renderFeedContent(content, emoteRefs) {
     const displayId = id.replace(/^0+/, '') || '0';
     return `<span class="hs-post-link" data-id="${paddedId}" style="cursor:pointer">&gt;&gt;${displayId}</span>`;
   });
+
+  // Parse @mentions — must skip inside HTML tags (already-built anchors, post-links, etc.)
+  // Match site's pattern: @username with 1-25 word chars
+  {
+    const parts = html.split(/(<[^>]+>)/);
+    html = parts.map((part, i) => {
+      if (i % 2 === 1) return part;
+      return part.replace(/@([\w]{1,25})\b/g, (m, name) => {
+        const lower = name.toLowerCase();
+        const isSelf = hsCurrentUsername === lower;
+        const cls = isSelf ? 'hs-mention self' : 'hs-mention';
+        return `<a href="https://heatsync.org/user/${encodeURIComponent(name)}" target="_blank" rel="noopener" class="${cls}" data-username="${escapeHtml(lower)}">@${escapeHtml(name)}</a>`;
+      });
+    }).join('');
+  }
+
+  // Parse #hashtags — site pattern: leading letter, 2-30 chars total
+  {
+    const parts = html.split(/(<[^>]+>)/);
+    html = parts.map((part, i) => {
+      if (i % 2 === 1) return part;
+      return part.replace(/#([a-zA-Z][a-zA-Z0-9_]{1,29})\b/g, (m, tag) => {
+        return `<a href="https://heatsync.org/tag/${encodeURIComponent(tag)}" target="_blank" rel="noopener" class="hs-hashtag" data-tag="${escapeHtml(tag)}">#${escapeHtml(tag)}</a>`;
+      });
+    }).join('');
+  }
 
   // Render emote refs as inline images (AFTER linkification so img tags aren't corrupted)
   // emote_refs can be { name: url } or { name: { url, hash, name, provider } }

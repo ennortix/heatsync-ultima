@@ -3892,7 +3892,7 @@ function injectStyles() {
       unicode-bidi: plaintext;
     }
     .hs-mc-msg.hs-mc-zebra, .hs-feed-msg.hs-mc-zebra {
-      background: rgba(255,255,255,0.04);
+      background: #1f1f1f;
     }
     .hs-mc-msg:hover {
     }
@@ -6259,10 +6259,10 @@ function injectStyles() {
       justify-content: space-between !important;
     }
     .hs-mc-setting-row:nth-child(even) {
-      background: rgba(255,255,255,0.03);
+      background: #1a1a1a;
     }
     .hs-mc-setting-row:hover {
-      background: rgba(255,255,255,0.06);
+      background: #2a2a2a;
     }
     .hs-mc-setting-label {
       color: #fff !important;
@@ -7016,6 +7016,35 @@ function injectStyles() {
       font-family: monospace;
       font-size: 12px;
     }
+    .hs-mention {
+      color: #8080ff;
+      text-decoration: none;
+      cursor: pointer;
+    }
+    .hs-mention:hover {
+      text-decoration: underline;
+    }
+    .hs-mention.self {
+      background: #800000;
+      color: #fff;
+      padding: 0 2px;
+      border-radius: 2px;
+    }
+    .hs-hashtag {
+      color: #ff00ff;
+      text-decoration: none;
+      cursor: pointer;
+    }
+    .hs-hashtag:hover {
+      box-shadow: inset 0 0 0 100px #fff;
+      color: #000;
+    }
+    .hs-tripcode {
+      color: #117743;
+      font-weight: normal;
+      margin-left: 4px;
+      font-size: 11px;
+    }
 
     /* ---- TAB BADGE ---- */
     .hs-mc-tab .hs-badge {
@@ -7765,6 +7794,20 @@ function injectStyles() {
       width: 100vw !important;
       height: var(--hs-chat-h, 35vh) !important;
     }
+
+    /* Resize bar reservation (dwl tile rule) — chat content reserves border
+       on the player-facing edge so the orange resize bar never overlays the
+       tabbar, input bar, T/K/YT filter buttons, or any other panel content.
+       Border (not padding) shrinks the padding box, which is the containing
+       block for abs-positioned children — without this the inputbar/tabbar/
+       overlay (all `position: absolute; bottom: Npx`) snap to the outer edge
+       and sit under the bar. With box-sizing: border-box the container's
+       outer dim is unchanged. Bar widths: unified #hs-c-resize-handle 10px,
+       platform handles 6px — reserve 10px to fit either case. */
+    body.hs-chat-right #hs-mc-container { border-left: 10px solid transparent !important; }
+    body.hs-chat-left #hs-mc-container { border-right: 10px solid transparent !important; }
+    body.hs-chat-top #hs-mc-container { border-bottom: 10px solid transparent !important; }
+    body.hs-chat-bottom #hs-mc-container { border-top: 10px solid transparent !important; }
 
     /* --- YT narrow viewport rescue ---
        At narrow viewports YT collapses ytd-watch-flexy into a single-column
@@ -16696,9 +16739,10 @@ function buildFeedMessageDiv(m, opUsername) {
 
   const anonAvatar = avatarsEnabled ? `<img class="hs-feed-avatar" src="https://heatsync.org/anon.webp" alt="" loading="lazy">` : '';
   const userAvatar = avatarsEnabled ? `<img class="hs-feed-avatar" src="${escapeHtml(avatarUrl)}" alt="" loading="lazy" onerror="this.style.display='none'">` : '';
+  const tripcodeHtml = m.tripcode ? `<span class="hs-tripcode">${escapeHtml(m.tripcode)}</span>` : '';
   const userHtml = isAnon
-    ? `${anonAvatar}<span class="hs-feed-user" style="color:#808080">Anonymous</span>`
-    : `${userAvatar}<a href="https://heatsync.org/user/${encodeURIComponent(m.username)}" target="_blank" class="hs-feed-user hs-mc-user" data-username="${escapeHtml((m.username || 'anon').toLowerCase())}" style="color:${sanitizeColor(m.user_color || '#fff')}">${escapeHtml(m.username || 'anon')}</a>`;
+    ? `${anonAvatar}<span class="hs-feed-user" style="color:#808080">Anonymous</span>${tripcodeHtml}`
+    : `${userAvatar}<a href="https://heatsync.org/user/${encodeURIComponent(m.username)}" target="_blank" class="hs-feed-user hs-mc-user" data-username="${escapeHtml((m.username || 'anon').toLowerCase())}" style="color:${sanitizeColor(m.user_color || '#fff')}">${escapeHtml(m.username || 'anon')}</a>${tripcodeHtml}`;
 
   // Media/embeds (img, video, iframe) — values inside are pre-sanitized via escapeHtml/safeUrl/sanitizeEmbedId
   const mediaHtml = buildFeedMediaHtml(m);
@@ -16840,6 +16884,32 @@ function renderFeedContent(content, emoteRefs) {
     const displayId = id.replace(/^0+/, '') || '0';
     return `<span class="hs-post-link" data-id="${paddedId}" style="cursor:pointer">&gt;&gt;${displayId}</span>`;
   });
+
+  // Parse @mentions — must skip inside HTML tags (already-built anchors, post-links, etc.)
+  // Match site's pattern: @username with 1-25 word chars
+  {
+    const parts = html.split(/(<[^>]+>)/);
+    html = parts.map((part, i) => {
+      if (i % 2 === 1) return part;
+      return part.replace(/@([\w]{1,25})\b/g, (m, name) => {
+        const lower = name.toLowerCase();
+        const isSelf = hsCurrentUsername === lower;
+        const cls = isSelf ? 'hs-mention self' : 'hs-mention';
+        return `<a href="https://heatsync.org/user/${encodeURIComponent(name)}" target="_blank" rel="noopener" class="${cls}" data-username="${escapeHtml(lower)}">@${escapeHtml(name)}</a>`;
+      });
+    }).join('');
+  }
+
+  // Parse #hashtags — site pattern: leading letter, 2-30 chars total
+  {
+    const parts = html.split(/(<[^>]+>)/);
+    html = parts.map((part, i) => {
+      if (i % 2 === 1) return part;
+      return part.replace(/#([a-zA-Z][a-zA-Z0-9_]{1,29})\b/g, (m, tag) => {
+        return `<a href="https://heatsync.org/tag/${encodeURIComponent(tag)}" target="_blank" rel="noopener" class="hs-hashtag" data-tag="${escapeHtml(tag)}">#${escapeHtml(tag)}</a>`;
+      });
+    }).join('');
+  }
 
   // Render emote refs as inline images (AFTER linkification so img tags aren't corrupted)
   // emote_refs can be { name: url } or { name: { url, hash, name, provider } }

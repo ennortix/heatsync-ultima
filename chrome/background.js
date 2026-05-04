@@ -132,7 +132,11 @@ function saveTabChannels() {
 }
 
 function saveJoinedExtraChannels() {
-  browser.storage.session?.set({ joined_extra_channels: [...joinedExtraChannels] }).catch(() => {})
+  // Local (not session) — extension reload clears session storage, which
+  // would orphan kick channel subscriptions on every "reload extension"
+  // click and never resubscribe until the user manually edits a channel.
+  // Local survives reloads, only cleared by explicit unjoin or storage wipe.
+  browser.storage.local.set({ joined_extra_channels: [...joinedExtraChannels] }).catch(() => {})
 }
 
 // Clean up tab tracking on close
@@ -4473,7 +4477,7 @@ async function initialize() {
   const storedP = browser.storage.local.get([
     'user_info', 'channel_emotes_fetched_at', 'channel_emotes_map', 'seventv_emote_set_ids',
     'muted_users', 'blocked_users', 'global_emotes', 'emote_inventory', 'blocked_emotes',
-    'local_blocked_emotes', 'youtube_channel_urls', 'yt_video_to_channel', 'badges_fetched_at',
+    'local_blocked_emotes', 'youtube_channel_urls', 'yt_video_to_channel', 'joined_extra_channels', 'badges_fetched_at',
     'bttv_badge_map', 'ffz_badge_map', 'chatterino_badge_map', 'user_cosmetics_cache'
   ]).catch(err => { log(' Storage restore failed:', err.message); return {} })
   const sessionP = (browser.storage.session?.get(['tab_channels', 'joined_extra_channels']) ?? Promise.resolve(null))
@@ -4556,6 +4560,13 @@ async function initialize() {
       for (const [vid, cid] of Object.entries(stored.yt_video_to_channel)) ytVideoToChannel.set(vid, cid);
       log(' ✓ Restored ytVideoToChannel for', ytVideoToChannel.size, 'videos');
     }
+    if (Array.isArray(stored.joined_extra_channels)) {
+      // Restore Kick channel joins so the WS-connect handler replays them.
+      // Survives extension reload (session storage didn't), so re-subscribes
+      // fire automatically without waiting for a content-script re-init.
+      for (const key of stored.joined_extra_channels) joinedExtraChannels.add(key)
+      log(' ✓ Restored', joinedExtraChannels.size, 'extra channel joins from local storage')
+    }
     if (stored.badges_fetched_at && typeof stored.badges_fetched_at === 'number') {
       badgesFetchedAt = stored.badges_fetched_at;
       log(' ✓ Restored badgesFetchedAt:', new Date(badgesFetchedAt).toISOString());
@@ -4608,8 +4619,9 @@ async function initialize() {
       log(' ✓ Restored', tabChannels.size, 'tab channels from session storage')
     }
     if (Array.isArray(session?.joined_extra_channels)) {
+      // Migration path — old code persisted to session. Pull anything still
+      // there and bake it into the local-storage-backed Set on next save.
       for (const key of session.joined_extra_channels) joinedExtraChannels.add(key)
-      log(' ✓ Restored', joinedExtraChannels.size, 'extra channel joins from session storage')
     }
   } catch (e) {
     console.warn('session storage restore failed:', e)

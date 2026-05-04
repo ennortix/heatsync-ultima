@@ -2683,8 +2683,24 @@
   async function loadHiddenTabsSetting() {
     try {
       const stored = await cachedUiSettings();
-      const arr = stored.ui_settings?.hiddenTabs;
-      if (Array.isArray(arr)) hiddenTabs = new Set(arr.filter(id => HIDABLE_TABS.includes(id)));
+      const us = stored.ui_settings || {};
+      const arr = us.hiddenTabs;
+      if (Array.isArray(arr)) {
+        const filtered = arr.filter(id => HIDABLE_TABS.includes(id));
+        // One-time migration: 'pinned' was added to DEFAULT_HIDDEN_TABS after
+        // existing users already had a stored hiddenTabs without it. Force-add
+        // pinned once so legacy users get the new default; respected after.
+        if (!us._pinnedDefaultMigrated && !filtered.includes('pinned')) {
+          filtered.push('pinned');
+          saveUiSetting('hiddenTabs', filtered);
+          saveUiSetting('_pinnedDefaultMigrated', true);
+        } else if (!us._pinnedDefaultMigrated) {
+          saveUiSetting('_pinnedDefaultMigrated', true);
+        }
+        hiddenTabs = new Set(filtered);
+      } else if (!us._pinnedDefaultMigrated) {
+        saveUiSetting('_pinnedDefaultMigrated', true);
+      }
     } catch {}
   }
 

@@ -9,7 +9,7 @@
     "message": "جارٍ التحميل..."
   },
   "common_extension_updated": {
-    "message": "تم تحديث الإضافة — حدّث الصفحة"
+    "message": "تم تحديث الامتداد — أعد تحميل الصفحة"
   },
   "common_no_matches": {
     "message": "لا توجد نتائج"
@@ -346,7 +346,7 @@
     }
   },
   "content_toast_unblocked": {
-    "message": "تم إلغاء حظر $NAME$",
+    "message": "تم رفع الحظر عن $NAME$",
     "placeholders": {
       "name": {
         "content": "$1"
@@ -354,7 +354,7 @@
     }
   },
   "content_toast_failed_unblock": {
-    "message": "فشل إلغاء الحظر: $ERROR$",
+    "message": "فشل رفع الحظر: $ERROR$",
     "placeholders": {
       "error": {
         "content": "$1"
@@ -639,28 +639,28 @@
     "message": "الصور الرمزية"
   },
   "mc_settings_emote_size_desc": {
-    "message": "مضاعف دقة الإيموتس في الدردشة. 1x واضح ومدمج، 2x النقطة المثالية لمعظم الشاشات، 4x لمن يريد رؤية كل بيكسل من فن الإيموت."
+    "message": "1x افتراضي، 2x شبكية، 4x كبير"
   },
   "mc_settings_input_preview_desc": {
-    "message": "يعرض الإيموتس كصور مباشرة في صندوق الإدخال أثناء الكتابة بدلًا من أسماء نصية. ما تراه هو ما ترسله."
+    "message": "صور إيموت في الإدخال أثناء الكتابة"
   },
   "mc_settings_clickable_links_desc": {
-    "message": "يحوّل الروابط في رسائل الدردشة إلى روابط قابلة للنقر. عطّله إن كنت تفضّل النسخ واللصق أو لا تثق بالغرباء على الإنترنت."
+    "message": "تصبح الروابط قابلة للنقر في الدردشة"
   },
   "mc_settings_vi_mode_desc": {
-    "message": "اختصارات Vim للتنقّل في الدردشة. j/k للتمرير، g/G للأعلى/الأسفل، / للبحث. لمن يعتقد أن الفأرة للهواة."
+    "message": "j/k تمرير، g/G أعلى/أسفل، / بحث"
   },
   "mc_settings_zebra_desc": {
-    "message": "تظليل متبادل للأسطر في الدردشة. يسهّل تتبّع الرسائل الطويلة، خاصة في الدردشات السريعة."
+    "message": "تظليل صفوف متناوب"
   },
   "mc_settings_auto_hide_desc": {
-    "message": "يخفي شريط الإدخال حين لا تكتب رسالة. اضغط أو ابدأ الكتابة لإعادته. يضاعف مساحة عرض الدردشة."
+    "message": "يخفي شريط الإدخال عند الخمول"
   },
   "mc_settings_timestamps_desc": {
-    "message": "يعرض وقت إرسال كل رسالة بجانب اسم المستخدم. مفيد لمتابعة ما حدث أثناء غيابك."
+    "message": "طابع زمني على كل رسالة"
   },
   "mc_settings_avatars_desc": {
-    "message": "يعرض صور الملف الشخصي بجانب أسماء المستخدمين. يسهّل التعرّف بصريًا على الدائمين، يكلّف بعض المساحة العمودية."
+    "message": "الصور الرمزية بجانب أسماء المستخدمين"
   },
   "mc_settings_inline_notifs": {
     "message": "إشعارات داخل النص"
@@ -678,16 +678,16 @@
     "message": "[DM] همسات ورسائل خاصة"
   },
   "mc_settings_notif_op_desc": {
-    "message": "إشعار في تبويب الدردشة النشط حين ينشر شخص ما منشورًا جديدًا في الفيد."
+    "message": "تنبيه عند نشر منشور جديد في الخلاصة"
   },
   "mc_settings_notif_op_reply_desc": {
-    "message": "إشعار حين يردّ صاحب المنشور الأصلي في موضوعه."
+    "message": "تنبيه عندما يرد OP في موضوعه"
   },
   "mc_settings_notif_re_desc": {
-    "message": "إشعار لكل ردّ في أي موضوع بالفيد."
+    "message": "تنبيه على كل رد في أي موضوع"
   },
   "mc_settings_notif_dm_desc": {
-    "message": "إشعار حين تستقبل همسة أو رسالة خاصة."
+    "message": "تنبيه على الهمس أو الرسائل المباشرة"
   },
   "mc_settings_twitch_events": {
     "message": "أحداث Twitch"
@@ -696,67 +696,67 @@
     "message": "غارات"
   },
   "mc_settings_raids_desc": {
-    "message": "بانر داخل الدردشة عند غارة دخول أو خروج، مع عدد المشاهدين والقناة المصدر. يتيح لك مرافقة الرحلة إلى البث التالي."
+    "message": "لافتة عند الغزو مع عدد المشاهدين"
   },
   "mc_settings_hype_trains": {
     "message": "hype trains"
   },
   "mc_settings_hype_trains_desc": {
-    "message": "بانر تقدّم مباشر للـ hype train، يعرض المستوى ومؤقّت المساهمة. مغلق افتراضيًا لأنه يُفعّل باستمرار في القنوات الكبيرة."
+    "message": "لافتة تقدم قطار الهايب الحي"
   },
   "mc_settings_gift_subs": {
     "message": "اشتراكات مهداة"
   },
   "mc_settings_gift_subs_desc": {
-    "message": "بانر لقذائف الاشتراكات المهداة للمجتمع والهدايا الفردية، مع اسم المُهدي والمستلم والتير."
+    "message": "لافتة للاشتراكات المهداة مع المهدي والمستوى"
   },
   "mc_settings_redeems": {
     "message": "استبدالات نقاط القناة"
   },
   "mc_settings_redeems_desc": {
-    "message": "تنبيه داخل الدردشة لاستبدالات نقاط القناة مثل 'إبراز رسالتي' لترى على ماذا ينفق الناس النقاط."
+    "message": "لافتة لاستبدالات نقاط القناة"
   },
   "mc_settings_prediction_banner": {
     "message": "التوقعات"
   },
   "mc_settings_prediction_banner_desc": {
-    "message": "بانر مباشر لتوقعات نقاط القناة مع الاحتمالات الحالية والوقت المتبقي لتأكيد التصويت."
+    "message": "لافتة تنبؤ حية مع الاحتمالات والمؤقت"
   },
   "mc_settings_poll_banner": {
     "message": "الاستطلاعات"
   },
   "mc_settings_poll_banner_desc": {
-    "message": "بانر استطلاع نشط مع عدد الأصوات والوقت المتبقي. صوّت مباشرة من الـ overlay."
+    "message": "لافتة استطلاع نشط، صوّت مباشرة"
   },
   "mc_settings_pinned_messages": {
     "message": "الرسائل المثبّتة"
   },
   "mc_settings_pinned_messages_desc": {
-    "message": "بانر ثابت لرسائل الدردشة المثبّتة من قبل المشرفين كي لا تفوّت القواعد أو الجدول."
+    "message": "لافتة ثابتة للرسائل المثبتة من المشرفين"
   },
   "mc_settings_dim_timeouts": {
     "message": "تعتيم رسائل الـ timeout"
   },
   "mc_settings_dim_timeouts_desc": {
-    "message": "يعرض الرسائل المعطّلة والمحظورة بشفافية 50% بدل إخفائها، بأسلوب FFZ/BTTV. يتيح لك رؤية ما حُذف دون مغادرة الدردشة."
+    "message": "شفافية 50% بدلاً من الإخفاء"
   },
   "mc_settings_smart_completion": {
     "message": "إكمال Tab ذكي"
   },
   "mc_settings_smart_completion_desc": {
-    "message": "آخر من تحدّث وإيموتس هذه القناة تظهر أولًا عند الإكمال بـ Tab. أسرع من الترتيب الأبجدي حين تجري الدردشة."
+    "message": "المحادثون الأخيرون/الإيموتات تظهر أولاً"
   },
   "mc_settings_first_chatter": {
     "message": "توهّج أول رسالة"
   },
   "mc_settings_first_chatter_desc": {
-    "message": "علامة برتقالية على حافة أول رسالة يرسلها مستخدم في كل قناة في هذه الجلسة. يجعل القادمين الجدد بارزين في الدردشات السريعة."
+    "message": "حافة برتقالية على أول رسالة لكل جلسة"
   },
   "mc_settings_keyword_highlights": {
     "message": "تمييز الكلمات المفتاحية"
   },
   "mc_settings_keyword_highlights_desc": {
-    "message": "الرسائل التي تحتوي أيًا من هذه الكلمات تأخذ صبغة برتقالية، كإشارة شخصية. كلمة لكل سطر، يتجاهل حالة الأحرف، تطابق كلمة كاملة."
+    "message": "يصبغ الرسائل المطابقة باللون البرتقالي. سطر واحد لكل كلمة، غير حساس لحالة الأحرف، كلمة كاملة"
   },
   "mc_settings_keyword_highlights_placeholder": {
     "message": "كلمة مفتاحية لكل سطر"
@@ -768,7 +768,7 @@
     "message": "جمع تلقائي لنقاط القناة"
   },
   "mc_settings_auto_claim_desc": {
-    "message": "ينقر تلقائيًا على صندوق نقاط القناة الإضافية على Twitch حين يظهر. نقاط مجانية، صفر جهد."
+    "message": "ينقر تلقائياً على صندوق نقاط القناة"
   },
   "mc_settings_muted_users": {
     "message": "مستخدمون مكتومون"
@@ -1008,7 +1008,7 @@
     }
   },
   "mc_input_replying_to": {
-    "message": "ردّ على @$USER$",
+    "message": "ردًّا على @$USER$",
     "placeholders": {
       "user": {
         "content": "$1"
@@ -1016,7 +1016,7 @@
     }
   },
   "mc_input_cancel_reply": {
-    "message": "إلغاء الردّ"
+    "message": "إلغاء الرد"
   },
   "mc_input_not_logged_in": {
     "message": "غير مسجّل"
@@ -1052,10 +1052,10 @@
     "message": "لا منشورات بعد"
   },
   "mc_social_loading_feed": {
-    "message": "جارٍ تحميل فيد المتابعين..."
+    "message": "جارٍ التحميل..."
   },
   "mc_social_scroll_more": {
-    "message": "مرّر للمزيد..."
+    "message": "المزيد"
   },
   "mc_social_no_replies": {
     "message": "لا ردود بعد"
@@ -1162,7 +1162,7 @@
     "message": "تم مسح الدردشة"
   },
   "mc_irc_msg_deleted": {
-    "message": "حُذفت رسالة من $USER$",
+    "message": "تم حذف رسالة $USER$",
     "placeholders": {
       "user": {
         "content": "$1"

@@ -9,7 +9,7 @@
     "message": "carregando..."
   },
   "common_extension_updated": {
-    "message": "Extensão atualizada — atualize a página"
+    "message": "extensão atualizada — recarregue a página"
   },
   "common_no_matches": {
     "message": "sem resultados"
@@ -324,7 +324,7 @@
     "message": "clique para expandir"
   },
   "content_toast_failed_add": {
-    "message": "Falha ao adicionar $NAME$: $ERROR$",
+    "message": "falha ao adicionar $NAME$: $ERROR$",
     "placeholders": {
       "name": {
         "content": "$1"
@@ -335,7 +335,7 @@
     }
   },
   "content_toast_failed_remove": {
-    "message": "Falha ao remover $NAME$: $ERROR$",
+    "message": "falha ao remover $NAME$: $ERROR$",
     "placeholders": {
       "name": {
         "content": "$1"
@@ -346,7 +346,7 @@
     }
   },
   "content_toast_unblocked": {
-    "message": "Desbloqueado $NAME$",
+    "message": "$NAME$ desbloqueado",
     "placeholders": {
       "name": {
         "content": "$1"
@@ -354,7 +354,7 @@
     }
   },
   "content_toast_failed_unblock": {
-    "message": "Falha ao desbloquear: $ERROR$",
+    "message": "falha ao desbloquear: $ERROR$",
     "placeholders": {
       "error": {
         "content": "$1"
@@ -362,7 +362,7 @@
     }
   },
   "content_toast_removed": {
-    "message": "Removido $NAME$ do seu set",
+    "message": "$NAME$ removido do seu set",
     "placeholders": {
       "name": {
         "content": "$1"
@@ -370,7 +370,7 @@
     }
   },
   "content_toast_failed_block": {
-    "message": "Falha ao bloquear: $ERROR$",
+    "message": "falha ao bloquear: $ERROR$",
     "placeholders": {
       "error": {
         "content": "$1"
@@ -378,7 +378,7 @@
     }
   },
   "content_toast_blocked": {
-    "message": "Bloqueado $NAME$",
+    "message": "$NAME$ bloqueado",
     "placeholders": {
       "name": {
         "content": "$1"
@@ -639,28 +639,28 @@
     "message": "avatares"
   },
   "mc_settings_emote_size_desc": {
-    "message": "Multiplicador de resolução para emotes no chat. 1x é nítido e compacto, 2x é o ponto ideal para a maioria dos monitores, 4x é para quando você quer ver cada pixel daquela arte."
+    "message": "1x padrão, 2x retina, 4x grande"
   },
   "mc_settings_input_preview_desc": {
-    "message": "Mostra emotes como imagens diretamente na caixa de entrada enquanto você digita, em vez dos nomes em texto. O que você vê é o que você envia."
+    "message": "imagens de emotes no campo ao digitar"
   },
   "mc_settings_clickable_links_desc": {
-    "message": "Transforma URLs nas mensagens do chat em hyperlinks clicáveis. Desative se preferir copiar e colar ou simplesmente não confiar em estranhos na internet."
+    "message": "urls no chat se tornam clicáveis"
   },
   "mc_settings_vi_mode_desc": {
-    "message": "Atalhos estilo Vim para navegação no chat. j/k para rolar, g/G para topo/fim, / para buscar. Para quem acha que mouse é para amadores."
+    "message": "j/k rolar, g/G cima/baixo, / buscar"
   },
   "mc_settings_zebra_desc": {
-    "message": "Sombreamento alternado nas mensagens do chat. Facilita o acompanhamento de mensagens longas na janela, especialmente durante chats rápidos."
+    "message": "sombreamento alternado de linhas"
   },
   "mc_settings_auto_hide_desc": {
-    "message": "Oculta a barra de entrada quando você não está compondo uma mensagem. Clique ou comece a digitar para exibi-la novamente. Maximiza o espaço de visualização do chat."
+    "message": "oculta barra de entrada ao ficar inativo"
   },
   "mc_settings_timestamps_desc": {
-    "message": "Mostra o horário de envio de cada mensagem, ao lado do nome do usuário. Útil para se atualizar sobre o que aconteceu enquanto você estava AFK."
+    "message": "carimbo de hora em cada mensagem"
   },
   "mc_settings_avatars_desc": {
-    "message": "Exibe fotos de perfil ao lado dos nomes de usuário no chat. Facilita identificar visualmente os frequentes de relance, custa um pouco de espaço vertical."
+    "message": "avatares ao lado dos nomes de usuário"
   },
   "mc_settings_inline_notifs": {
     "message": "notificações inline"
@@ -678,16 +678,16 @@
     "message": "[DM] sussurros e DMs"
   },
   "mc_settings_notif_op_desc": {
-    "message": "Notificação na sua aba de chat ativa quando alguém cria um novo post original no feed."
+    "message": "ping em nova publicação no feed"
   },
   "mc_settings_notif_op_reply_desc": {
-    "message": "Notificação quando o autor original responde no próprio tópico."
+    "message": "ping quando OP responde em seu próprio tópico"
   },
   "mc_settings_notif_re_desc": {
-    "message": "Notificação para cada resposta postada em qualquer tópico do feed."
+    "message": "ping em cada resposta em qualquer tópico"
   },
   "mc_settings_notif_dm_desc": {
-    "message": "Notificação quando você recebe um sussurro ou DM."
+    "message": "ping em sussurro ou mensagem direta"
   },
   "mc_settings_twitch_events": {
     "message": "eventos Twitch"
@@ -696,67 +696,67 @@
     "message": "raids"
   },
   "mc_settings_raids_desc": {
-    "message": "Banner inline quando um streamer faz raid de entrada ou saída, com contagem de espectadores e canal de origem. Permite acompanhar até a próxima stream."
+    "message": "banner em raid com contagem de espectadores"
   },
   "mc_settings_hype_trains": {
     "message": "hype trains"
   },
   "mc_settings_hype_trains_desc": {
-    "message": "Banner de progresso ao vivo para hype trains, mostrando nível e contador de contribuição. Desligado por padrão porque dispara sem parar em canais grandes."
+    "message": "banner de progresso do hype train ao vivo"
   },
   "mc_settings_gift_subs": {
     "message": "inscrições presenteadas"
   },
   "mc_settings_gift_subs_desc": {
-    "message": "Banner para presentes de inscrição em massa para a comunidade e presentes individuais, com presenteador, destinatário e tier."
+    "message": "banner para subs de presente com doador e nível"
   },
   "mc_settings_redeems": {
     "message": "resgates de pontos do canal"
   },
   "mc_settings_redeems_desc": {
-    "message": "Aviso inline para resgates de pontos do canal como 'destacar minha mensagem' para você ver no que o pessoal está gastando os pontos."
+    "message": "banner para resgates de pontos do canal"
   },
   "mc_settings_prediction_banner": {
     "message": "banner de previsão"
   },
   "mc_settings_prediction_banner_desc": {
-    "message": "Banner ao vivo de previsão de pontos do canal com odds atuais e tempo restante para confirmar o voto."
+    "message": "banner de previsão ao vivo com chances e timer"
   },
   "mc_settings_poll_banner": {
     "message": "banner de enquete"
   },
   "mc_settings_poll_banner_desc": {
-    "message": "Banner de enquete ativa com contagem de votos e tempo restante. Vote direto pela sobreposição."
+    "message": "banner de enquete ativa, vote diretamente"
   },
   "mc_settings_pinned_messages": {
     "message": "mensagens fixadas"
   },
   "mc_settings_pinned_messages_desc": {
-    "message": "Banner fixo para mensagens fixadas por moderadores para você não perder as regras ou a programação."
+    "message": "banner fixo para mensagens fixadas por mods"
   },
   "mc_settings_dim_timeouts": {
     "message": "esmaecer mensagens com timeout"
   },
   "mc_settings_dim_timeouts_desc": {
-    "message": "Mostra mensagens com timeout e banidas a 50% de opacidade em vez de esconder, estilo FFZ/BTTV. Permite ver o que foi nukado sem sair do chat."
+    "message": "50% de opacidade em vez de ocultar"
   },
   "mc_settings_smart_completion": {
     "message": "completar com tab inteligente"
   },
   "mc_settings_smart_completion_desc": {
-    "message": "Quem chatou recente e emotes deste canal aparecem primeiro ao completar com tab. Mais rápido que ordem alfabética quando o chat está bombando."
+    "message": "chatters/emotes recentes aparecem primeiro"
   },
   "mc_settings_first_chatter": {
     "message": "brilho na primeira mensagem"
   },
   "mc_settings_first_chatter_desc": {
-    "message": "Marca laranja na borda da primeira mensagem que um usuário envia em cada canal nesta sessão. Facilita identificar recém-chegados em chats rápidos."
+    "message": "borda laranja na primeira mensagem por sessão"
   },
   "mc_settings_keyword_highlights": {
     "message": "destacar por palavra-chave"
   },
   "mc_settings_keyword_highlights_desc": {
-    "message": "Mensagens com qualquer uma dessas palavras ganham um tom laranja, como uma menção pessoal. Separadas por linha, sem distinguir maiúsculas, palavras inteiras."
+    "message": "coloriza mensagens correspondentes de laranja. um por linha, sem distinção de maiúsculas, palavra inteira"
   },
   "mc_settings_keyword_highlights_placeholder": {
     "message": "uma palavra-chave por linha"
@@ -768,7 +768,7 @@
     "message": "coletar pontos automaticamente"
   },
   "mc_settings_auto_claim_desc": {
-    "message": "Clica automaticamente no baú de pontos bônus do canal na Twitch quando ele aparece. Pontos grátis, zero esforço."
+    "message": "clica automaticamente no baú de pontos do canal"
   },
   "mc_settings_muted_users": {
     "message": "usuários mutados"
@@ -1008,7 +1008,7 @@
     }
   },
   "mc_input_replying_to": {
-    "message": "Respondendo a @$USER$",
+    "message": "respondendo a @$USER$",
     "placeholders": {
       "user": {
         "content": "$1"
@@ -1016,7 +1016,7 @@
     }
   },
   "mc_input_cancel_reply": {
-    "message": "Cancelar resposta"
+    "message": "cancelar resposta"
   },
   "mc_input_not_logged_in": {
     "message": "não está logado"
@@ -1052,10 +1052,10 @@
     "message": "nenhum post ainda"
   },
   "mc_social_loading_feed": {
-    "message": "carregando feed de seguidos..."
+    "message": "carregando..."
   },
   "mc_social_scroll_more": {
-    "message": "role para ver mais..."
+    "message": "mais"
   },
   "mc_social_no_replies": {
     "message": "nenhuma resposta ainda"
@@ -1159,10 +1159,10 @@
     }
   },
   "mc_irc_chat_cleared": {
-    "message": "O chat foi limpo"
+    "message": "chat limpo"
   },
   "mc_irc_msg_deleted": {
-    "message": "Mensagem de $USER$ deletada",
+    "message": "mensagem de $USER$ excluída",
     "placeholders": {
       "user": {
         "content": "$1"
@@ -1213,7 +1213,7 @@
     "message": "bloqueado (clique para desbloquear)"
   },
   "content_toast_unknown_error": {
-    "message": "Erro desconhecido"
+    "message": "erro desconhecido"
   },
   "content_toast_loading_emotes": {
     "message": "carregando emotes..."
@@ -1231,7 +1231,7 @@
     "message": "bloquear"
   },
   "btn_close": {
-    "message": "Fechar"
+    "message": "fechar"
   },
   "btn_error_channel": {
     "message": "falha ao carregar emotes do canal"

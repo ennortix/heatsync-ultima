@@ -1203,7 +1203,7 @@
         width: 18px;
         height: 18px;
         background: #fff;
-        border-radius: 50%;
+        border-radius: 0;
         transition: none;
       }
 
@@ -1220,7 +1220,6 @@
         border: 2px solid #ff6b35;
         border-radius: 0;
         padding: 8px;
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
       }
 
       .heatsync-emote-hover-preview img {
@@ -1459,7 +1458,8 @@
         border-bottom: 1px solid rgba(255,255,255,0.04);
         line-height: 1.3;
       }
-      .hs-discover-item:hover { background: rgba(255,135,0,0.07); }
+      .hs-discover-item:hover { background: #fff; color: #000; }
+      .hs-discover-item:hover * { color: #000 !important; }
       .hs-discover-thumb {
         width: 18px;
         height: 18px;
@@ -1919,7 +1919,7 @@
             ${t('btn_tab_emoji')}<span class="heatsync-tab-count" id="count-emoji">...</span>
           </button>
           <button class="heatsync-tab" data-tab="discover">
-            discover<span class="heatsync-tab-count" id="count-discover">...</span>
+            discover<span class="heatsync-tab-count" id="count-discover"></span>
           </button>
         </div>
         <div class="heatsync-emote-grid" id="heatsync-emote-grid">

@@ -10,7 +10,7 @@
     "message": "loading..."
   },
   "common_extension_updated": {
-    "message": "Extension updated — please refresh the page"
+    "message": "extension updated — refresh the page"
   },
   "common_no_matches": {
     "message": "no matches"
@@ -317,45 +317,45 @@
   },
 
   "content_toast_failed_add": {
-    "message": "Failed to add $NAME$: $ERROR$",
+    "message": "failed to add $NAME$: $ERROR$",
     "placeholders": {
       "name": { "content": "$1" },
       "error": { "content": "$2" }
     }
   },
   "content_toast_failed_remove": {
-    "message": "Failed to remove $NAME$: $ERROR$",
+    "message": "failed to remove $NAME$: $ERROR$",
     "placeholders": {
       "name": { "content": "$1" },
       "error": { "content": "$2" }
     }
   },
   "content_toast_unblocked": {
-    "message": "Unblocked $NAME$",
+    "message": "unblocked $NAME$",
     "placeholders": {
       "name": { "content": "$1" }
     }
   },
   "content_toast_failed_unblock": {
-    "message": "Failed to unblock: $ERROR$",
+    "message": "failed to unblock: $ERROR$",
     "placeholders": {
       "error": { "content": "$1" }
     }
   },
   "content_toast_removed": {
-    "message": "Removed $NAME$ from your set",
+    "message": "removed $NAME$ from your set",
     "placeholders": {
       "name": { "content": "$1" }
     }
   },
   "content_toast_failed_block": {
-    "message": "Failed to block: $ERROR$",
+    "message": "failed to block: $ERROR$",
     "placeholders": {
       "error": { "content": "$1" }
     }
   },
   "content_toast_blocked": {
-    "message": "Blocked $NAME$",
+    "message": "blocked $NAME$",
     "placeholders": {
       "name": { "content": "$1" }
     }
@@ -584,28 +584,28 @@
     "message": "avatars"
   },
   "mc_settings_emote_size_desc": {
-    "message": "Resolution multiplier for emotes in chat. 1x is crisp and compact, 2x is the sweet spot for most displays, 4x is for when you want to see every pixel of that emote art."
+    "message": "1x default, 2x retina, 4x huge"
   },
   "mc_settings_input_preview_desc": {
-    "message": "Shows emotes as images directly in the input box as you type, instead of plain text names. What you see is what you send."
+    "message": "emote images in input as you type"
   },
   "mc_settings_clickable_links_desc": {
-    "message": "Turns URLs in chat messages into clickable hyperlinks. Disable if you prefer to copy-paste or just don't trust strangers on the internet."
+    "message": "urls in chat become clickable"
   },
   "mc_settings_vi_mode_desc": {
-    "message": "Vim-style keybindings for chat navigation. j/k to scroll, g/G for top/bottom, / to search. For people who think mice are for casuals."
+    "message": "j/k scroll, g/G top/bottom, / search"
   },
   "mc_settings_zebra_desc": {
-    "message": "Alternating row shading on chat messages. Makes it easier to track long messages across the window, especially during fast chat."
+    "message": "alternating row shading"
   },
   "mc_settings_auto_hide_desc": {
-    "message": "Hides the input bar when you're not actively composing a message. Click or start typing to bring it back. Maximizes chat viewing space."
+    "message": "hides input bar when idle"
   },
   "mc_settings_timestamps_desc": {
-    "message": "Shows the time each message was sent, right next to the username. Useful for catching up on what happened while you were AFK."
+    "message": "timestamp on each message"
   },
   "mc_settings_avatars_desc": {
-    "message": "Displays profile pictures next to usernames in chat. Makes it easier to visually identify regulars at a glance, costs a bit of vertical space."
+    "message": "pfps next to usernames"
   },
   "mc_settings_inline_notifs": {
     "message": "inline notifications"
@@ -623,16 +623,16 @@
     "message": "[DM] whispers & DMs"
   },
   "mc_settings_notif_op_desc": {
-    "message": "Notification in your active chat tab when someone creates a new original post on the feed."
+    "message": "ping when a new post hits the feed"
   },
   "mc_settings_notif_op_reply_desc": {
-    "message": "Notification when the original poster replies in their own thread."
+    "message": "ping when OP replies in their thread"
   },
   "mc_settings_notif_re_desc": {
-    "message": "Notification for every reply posted to any thread on the feed."
+    "message": "ping on every reply in any thread"
   },
   "mc_settings_notif_dm_desc": {
-    "message": "Notification when you receive a whisper or DM."
+    "message": "ping on whisper or DM"
   },
   "mc_settings_twitch_events": {
     "message": "twitch events"
@@ -641,67 +641,67 @@
     "message": "raids"
   },
   "mc_settings_raids_desc": {
-    "message": "Inline banner when a streamer raids in or out, with viewer count and source channel. Lets you ride along to the next stream."
+    "message": "banner on raid in/out with viewer count"
   },
   "mc_settings_hype_trains": {
     "message": "hype trains"
   },
   "mc_settings_hype_trains_desc": {
-    "message": "Live progress banner for hype trains, showing level and contribution timer. Off by default since they fire constantly on big channels."
+    "message": "live hype train progress banner"
   },
   "mc_settings_gift_subs": {
     "message": "gift subs"
   },
   "mc_settings_gift_subs_desc": {
-    "message": "Banner for community gift sub bombs and individual gifts, with gifter, recipient, and tier."
+    "message": "banner for gift subs with gifter and tier"
   },
   "mc_settings_redeems": {
     "message": "channel point redeems"
   },
   "mc_settings_redeems_desc": {
-    "message": "Inline notice for channel point redemptions like 'highlight my message' so you can see what people are spending points on."
+    "message": "banner for channel point redeems"
   },
   "mc_settings_prediction_banner": {
     "message": "predictions"
   },
   "mc_settings_prediction_banner_desc": {
-    "message": "Live channel point prediction banner with current odds and time remaining to lock in a vote."
+    "message": "live prediction banner with odds and timer"
   },
   "mc_settings_poll_banner": {
     "message": "polls"
   },
   "mc_settings_poll_banner_desc": {
-    "message": "Active poll banner with vote tallies and time remaining. Vote directly from the overlay."
+    "message": "active poll banner, vote inline"
   },
   "mc_settings_pinned_messages": {
     "message": "pinned messages"
   },
   "mc_settings_pinned_messages_desc": {
-    "message": "Sticky banner for moderator-pinned chat messages so you don't miss the rules or the schedule."
+    "message": "sticky banner for mod-pinned messages"
   },
   "mc_settings_dim_timeouts": {
     "message": "dim timed-out messages"
   },
   "mc_settings_dim_timeouts_desc": {
-    "message": "Show timed-out and banned messages at 50% opacity instead of hiding them, FFZ/BTTV style. Lets you see what got nuked without leaving chat."
+    "message": "50% opacity instead of hiding"
   },
   "mc_settings_smart_completion": {
     "message": "smart tab completion"
   },
   "mc_settings_smart_completion_desc": {
-    "message": "Recent chatters and emotes in this channel surface first when tab-completing. Faster than alphabetical when chat is moving."
+    "message": "recent chatters/emotes surface first"
   },
   "mc_settings_first_chatter": {
     "message": "first-message glow"
   },
   "mc_settings_first_chatter_desc": {
-    "message": "Orange edge marker on the first message a user sends in each channel this session. Makes new arrivals easy to spot in fast chat."
+    "message": "orange edge on first message per session"
   },
   "mc_settings_keyword_highlights": {
     "message": "keyword highlights"
   },
   "mc_settings_keyword_highlights_desc": {
-    "message": "Messages containing any of these words get an orange tint, like a personal mention. Newline-separated, case-insensitive, whole-word matches."
+    "message": "tints matched messages orange. one per line, case-insensitive, whole-word"
   },
   "mc_settings_keyword_highlights_placeholder": {
     "message": "one keyword per line"
@@ -713,7 +713,7 @@
     "message": "auto-claim channel points"
   },
   "mc_settings_auto_claim_desc": {
-    "message": "Automatically clicks the bonus channel points chest on Twitch when it appears. Free points, zero effort."
+    "message": "auto-clicks the channel points chest"
   },
   "mc_settings_muted_users": {
     "message": "muted users"
@@ -938,13 +938,13 @@
     }
   },
   "mc_input_replying_to": {
-    "message": "Replying to @$USER$",
+    "message": "replying to @$USER$",
     "placeholders": {
       "user": { "content": "$1" }
     }
   },
   "mc_input_cancel_reply": {
-    "message": "Cancel reply"
+    "message": "cancel reply"
   },
   "mc_input_not_logged_in": {
     "message": "not logged in"
@@ -981,10 +981,10 @@
     "message": "no posts yet"
   },
   "mc_social_loading_feed": {
-    "message": "loading following feed..."
+    "message": "loading..."
   },
   "mc_social_scroll_more": {
-    "message": "scroll for more..."
+    "message": "more"
   },
   "mc_social_no_replies": {
     "message": "no replies yet"
@@ -1073,10 +1073,10 @@
   },
 
   "mc_irc_chat_cleared": {
-    "message": "Chat was cleared"
+    "message": "chat cleared"
   },
   "mc_irc_msg_deleted": {
-    "message": "Message from $USER$ deleted",
+    "message": "message from $USER$ deleted",
     "placeholders": {
       "user": { "content": "$1" }
     }
@@ -1120,7 +1120,7 @@
   },
 
   "content_toast_unknown_error": {
-    "message": "Unknown error"
+    "message": "unknown error"
   },
   "content_toast_loading_emotes": {
     "message": "loading emotes..."
@@ -1138,7 +1138,7 @@
     "message": "block"
   },
   "btn_close": {
-    "message": "Close"
+    "message": "close"
   },
   "btn_error_channel": {
     "message": "failed to load channel emotes"

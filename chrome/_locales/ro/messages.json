@@ -9,7 +9,7 @@
     "message": "se încarcă..."
   },
   "common_extension_updated": {
-    "message": "Extensia a fost actualizată — reîncarcă pagina"
+    "message": "extensie actualizată — reîncarcă pagina"
   },
   "common_no_matches": {
     "message": "fără rezultate"
@@ -324,7 +324,7 @@
     "message": "apasă pentru a extinde"
   },
   "content_toast_failed_add": {
-    "message": "Adăugare $NAME$ eșuată: $ERROR$",
+    "message": "adăugarea lui $NAME$ a eșuat: $ERROR$",
     "placeholders": {
       "name": {
         "content": "$1"
@@ -335,7 +335,7 @@
     }
   },
   "content_toast_failed_remove": {
-    "message": "Eliminare $NAME$ eșuată: $ERROR$",
+    "message": "eliminarea lui $NAME$ a eșuat: $ERROR$",
     "placeholders": {
       "name": {
         "content": "$1"
@@ -354,7 +354,7 @@
     }
   },
   "content_toast_failed_unblock": {
-    "message": "Deblocare eșuată: $ERROR$",
+    "message": "deblocarea a eșuat: $ERROR$",
     "placeholders": {
       "error": {
         "content": "$1"
@@ -370,7 +370,7 @@
     }
   },
   "content_toast_failed_block": {
-    "message": "Blocare eșuată: $ERROR$",
+    "message": "blocarea a eșuat: $ERROR$",
     "placeholders": {
       "error": {
         "content": "$1"
@@ -639,28 +639,28 @@
     "message": "avataruri"
   },
   "mc_settings_emote_size_desc": {
-    "message": "Multiplicator de rezoluție pentru emote-urile din chat. 1x este clar și compact, 2x este sweet spot pentru majoritatea ecranelor, 4x pentru cei care vor să vadă fiecare pixel."
+    "message": "1x implicit, 2x retina, 4x mare"
   },
   "mc_settings_input_preview_desc": {
-    "message": "Afișează emote-urile ca imagini direct în câmpul input în timp ce scrii, în loc de nume text. Ce vezi e ce trimiți."
+    "message": "imagini emote în câmp la tastare"
   },
   "mc_settings_clickable_links_desc": {
-    "message": "Transformă URL-urile din mesaje în link-uri clicabile. Dezactivează dacă preferi copy-paste sau nu ai încredere în străini de pe internet."
+    "message": "url-urile din chat devin clicabile"
   },
   "mc_settings_vi_mode_desc": {
-    "message": "Scurtături stil Vim pentru navigarea în chat. j/k scroll, g/G sus/jos, / căutare. Pentru cei care cred că mouse-ul e pentru casuali."
+    "message": "j/k derulare, g/G sus/jos, / căutare"
   },
   "mc_settings_zebra_desc": {
-    "message": "Umbrire alternantă a rândurilor în chat. Ușurează urmărirea mesajelor lungi, mai ales în chat-uri rapide."
+    "message": "umbrire alternativă a rândurilor"
   },
   "mc_settings_auto_hide_desc": {
-    "message": "Ascunde bara de input când nu compui un mesaj. Apasă sau începe să scrii pentru a o aduce înapoi. Maximizează spațiul de vizualizare a chat-ului."
+    "message": "ascunde bara de intrare la inactivitate"
   },
   "mc_settings_timestamps_desc": {
-    "message": "Afișează ora trimiterii fiecărui mesaj lângă numele utilizatorului. Util pentru a recupera ce s-a întâmplat cât ai fost AFK."
+    "message": "marcaj de timp pe fiecare mesaj"
   },
   "mc_settings_avatars_desc": {
-    "message": "Afișează poze de profil lângă nume în chat. Ușurează identificarea vizuală a habitueilor, costă puțin spațiu vertical."
+    "message": "avatare lângă numele utilizatorilor"
   },
   "mc_settings_inline_notifs": {
     "message": "notificări inline"
@@ -678,16 +678,16 @@
     "message": "[DM] whispers și DM"
   },
   "mc_settings_notif_op_desc": {
-    "message": "Notificare în tabul activ de chat când cineva creează o postare nouă în feed."
+    "message": "ping la o postare nouă în feed"
   },
   "mc_settings_notif_op_reply_desc": {
-    "message": "Notificare când autorul postării originale răspunde în propriul thread."
+    "message": "ping când OP răspunde în propriul fir"
   },
   "mc_settings_notif_re_desc": {
-    "message": "Notificare pentru fiecare răspuns într-un thread din feed."
+    "message": "ping la fiecare răspuns dintr-un fir"
   },
   "mc_settings_notif_dm_desc": {
-    "message": "Notificare când primești un whisper sau DM."
+    "message": "ping la șoaptă sau mesaj direct"
   },
   "mc_settings_twitch_events": {
     "message": "evenimente Twitch"
@@ -696,67 +696,67 @@
     "message": "raids"
   },
   "mc_settings_raids_desc": {
-    "message": "Banner inline când un streamer face raid intrând sau ieșind, cu numărul de spectatori și canalul sursă. Te lasă să mergi la următorul stream."
+    "message": "banner la raid cu numărul de spectatori"
   },
   "mc_settings_hype_trains": {
     "message": "hype trains"
   },
   "mc_settings_hype_trains_desc": {
-    "message": "Banner live de progres pentru hype trains, cu nivel și timer de contribuție. Dezactivat implicit pentru că se declanșează constant pe canale mari."
+    "message": "banner live de progres hype train"
   },
   "mc_settings_gift_subs": {
     "message": "sub-uri cadou"
   },
   "mc_settings_gift_subs_desc": {
-    "message": "Banner pentru gift sub bombs ale comunității și cadouri individuale, cu donator, primitor și tier."
+    "message": "banner pentru sub-uri cadou cu donator și nivel"
   },
   "mc_settings_redeems": {
     "message": "redeem-uri channel points"
   },
   "mc_settings_redeems_desc": {
-    "message": "Notificare inline pentru redeem-uri channel points precum 'highlight my message' ca să vezi pe ce cheltuie oamenii puncte."
+    "message": "banner pentru răscumpărări de puncte canal"
   },
   "mc_settings_prediction_banner": {
     "message": "predicții"
   },
   "mc_settings_prediction_banner_desc": {
-    "message": "Banner live de predicție channel points cu cote curente și timp rămas pentru blocarea votului."
+    "message": "banner predicție live cu cote și cronometru"
   },
   "mc_settings_poll_banner": {
     "message": "sondaje"
   },
   "mc_settings_poll_banner_desc": {
-    "message": "Banner sondaj activ cu numărătoarea voturilor și timpul rămas. Votează direct din overlay."
+    "message": "banner sondaj activ, votează direct"
   },
   "mc_settings_pinned_messages": {
     "message": "mesaje fixate"
   },
   "mc_settings_pinned_messages_desc": {
-    "message": "Banner sticky pentru mesajele de chat fixate de moderatori ca să nu pierzi reguli sau program."
+    "message": "banner fix pentru mesaje fixate de mods"
   },
   "mc_settings_dim_timeouts": {
     "message": "atenuează mesajele cu timeout"
   },
   "mc_settings_dim_timeouts_desc": {
-    "message": "Afișează mesajele cu timeout și banate la 50% opacitate în loc să le ascundă, stil FFZ/BTTV. Vezi ce a fost șters fără să părăsești chat-ul."
+    "message": "50% opacitate în loc de ascundere"
   },
   "mc_settings_smart_completion": {
     "message": "completare tab inteligentă"
   },
   "mc_settings_smart_completion_desc": {
-    "message": "Chatterii recenți și emote-urile acestui canal apar primii la completarea cu tab. Mai rapid decât alfabetic când chat-ul curge."
+    "message": "chatterii/emotele recente apar primii"
   },
   "mc_settings_first_chatter": {
     "message": "strălucire primul mesaj"
   },
   "mc_settings_first_chatter_desc": {
-    "message": "Marcaj portocaliu la marginea primului mesaj pe care îl trimite un utilizator pe fiecare canal în această sesiune. Face nou-veniții vizibili în chat rapid."
+    "message": "margine portocalie pe primul mesaj per sesiune"
   },
   "mc_settings_keyword_highlights": {
     "message": "evidențiere cuvinte cheie"
   },
   "mc_settings_keyword_highlights_desc": {
-    "message": "Mesajele care conțin oricare dintre aceste cuvinte primesc o tentă portocalie, ca o mențiune personală. Câte unul pe linie, insensibil la majuscule, cuvinte întregi."
+    "message": "colorează mesajele corespunzătoare în portocaliu. unul pe linie, fără diferență majuscule, cuvânt întreg"
   },
   "mc_settings_keyword_highlights_placeholder": {
     "message": "un cuvânt cheie pe linie"
@@ -768,7 +768,7 @@
     "message": "auto-claim channel points"
   },
   "mc_settings_auto_claim_desc": {
-    "message": "Apasă automat cufărul bonus de channel points pe Twitch când apare. Puncte gratuite, zero efort."
+    "message": "dă click automat pe cufărul cu puncte canal"
   },
   "mc_settings_muted_users": {
     "message": "utilizatori silențiați"
@@ -1008,7 +1008,7 @@
     }
   },
   "mc_input_replying_to": {
-    "message": "Răspunzi @$USER$",
+    "message": "răspuns la @$USER$",
     "placeholders": {
       "user": {
         "content": "$1"
@@ -1016,7 +1016,7 @@
     }
   },
   "mc_input_cancel_reply": {
-    "message": "Anulează răspunsul"
+    "message": "anulează răspunsul"
   },
   "mc_input_not_logged_in": {
     "message": "nu ești autentificat"
@@ -1052,10 +1052,10 @@
     "message": "încă fără postări"
   },
   "mc_social_loading_feed": {
-    "message": "se încarcă feed-ul de la cei urmăriți..."
+    "message": "se încarcă..."
   },
   "mc_social_scroll_more": {
-    "message": "scroll pentru mai multe..."
+    "message": "mai mult"
   },
   "mc_social_no_replies": {
     "message": "încă fără răspunsuri"
@@ -1159,10 +1159,10 @@
     }
   },
   "mc_irc_chat_cleared": {
-    "message": "Chat-ul a fost curățat"
+    "message": "chat șters"
   },
   "mc_irc_msg_deleted": {
-    "message": "Mesaj de la $USER$ șters",
+    "message": "mesajul lui $USER$ șters",
     "placeholders": {
       "user": {
         "content": "$1"
@@ -1213,7 +1213,7 @@
     "message": "blocat (apasă pentru a debloca)"
   },
   "content_toast_unknown_error": {
-    "message": "Eroare necunoscută"
+    "message": "eroare necunoscută"
   },
   "content_toast_loading_emotes": {
     "message": "se încarcă emotes..."
@@ -1231,7 +1231,7 @@
     "message": "blochează"
   },
   "btn_close": {
-    "message": "Închide"
+    "message": "închide"
   },
   "btn_error_channel": {
     "message": "încărcare emotes canal eșuată"

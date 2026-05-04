@@ -9,7 +9,7 @@
     "message": "กำลังโหลด..."
   },
   "common_extension_updated": {
-    "message": "อัปเดตส่วนขยายแล้ว — โปรดรีเฟรชหน้า"
+    "message": "อัปเดตส่วนขยายแล้ว — รีโหลดหน้า"
   },
   "common_no_matches": {
     "message": "ไม่พบผลลัพธ์"
@@ -335,7 +335,7 @@
     }
   },
   "content_toast_failed_remove": {
-    "message": "นำออก $NAME$ ไม่สำเร็จ: $ERROR$",
+    "message": "ลบ $NAME$ ไม่สำเร็จ: $ERROR$",
     "placeholders": {
       "name": {
         "content": "$1"
@@ -346,7 +346,7 @@
     }
   },
   "content_toast_unblocked": {
-    "message": "ปลดบล็อก $NAME$",
+    "message": "ยกเลิกการบล็อก $NAME$ แล้ว",
     "placeholders": {
       "name": {
         "content": "$1"
@@ -354,7 +354,7 @@
     }
   },
   "content_toast_failed_unblock": {
-    "message": "ปลดบล็อกไม่สำเร็จ: $ERROR$",
+    "message": "ยกเลิกการบล็อกไม่สำเร็จ: $ERROR$",
     "placeholders": {
       "error": {
         "content": "$1"
@@ -362,7 +362,7 @@
     }
   },
   "content_toast_removed": {
-    "message": "นำ $NAME$ ออกจากเซ็ตแล้ว",
+    "message": "ลบ $NAME$ ออกจากชุดแล้ว",
     "placeholders": {
       "name": {
         "content": "$1"
@@ -378,7 +378,7 @@
     }
   },
   "content_toast_blocked": {
-    "message": "บล็อก $NAME$",
+    "message": "บล็อก $NAME$ แล้ว",
     "placeholders": {
       "name": {
         "content": "$1"
@@ -639,28 +639,28 @@
     "message": "รูปโปรไฟล์"
   },
   "mc_settings_emote_size_desc": {
-    "message": "ตัวคูณความละเอียดของอีโมตในแชท 1x ชัดและกะทัดรัด 2x จุดที่ดีสำหรับจอส่วนใหญ่ 4x สำหรับคนที่อยากเห็นทุกพิกเซล"
+    "message": "1x ค่าเริ่มต้น, 2x retina, 4x ใหญ่"
   },
   "mc_settings_input_preview_desc": {
-    "message": "แสดงอีโมตเป็นรูปภาพในกล่องพิมพ์ขณะพิมพ์ แทนชื่อข้อความ เห็นยังไงส่งยังงั้น"
+    "message": "แสดงรูปอีโมตในช่องขณะพิมพ์"
   },
   "mc_settings_clickable_links_desc": {
-    "message": "เปลี่ยน URL ในข้อความแชทเป็นลิงก์คลิกได้ ปิดถ้าคุณชอบคัดลอกวางหรือไม่ไว้ใจคนแปลกหน้าในเน็ต"
+    "message": "url ในแชทกลายเป็นลิงก์ที่คลิกได้"
   },
   "mc_settings_vi_mode_desc": {
-    "message": "คีย์ลัดสไตล์ Vim สำหรับนำทางในแชท j/k เลื่อน g/G บน/ล่าง / ค้นหา สำหรับคนที่คิดว่าเมาส์เป็นของคนเล่นแบบ casual"
+    "message": "j/k เลื่อน, g/G บน/ล่าง, / ค้นหา"
   },
   "mc_settings_zebra_desc": {
-    "message": "เงาแถวสลับบนข้อความแชท ช่วยติดตามข้อความยาวๆ โดยเฉพาะแชทเร็ว"
+    "message": "เงาแถวสลับกัน"
   },
   "mc_settings_auto_hide_desc": {
-    "message": "ซ่อนแถบพิมพ์เมื่อคุณไม่ได้ใช้งาน คลิกหรือพิมพ์เพื่อให้กลับมา ขยายพื้นที่ดูแชทให้สูงสุด"
+    "message": "ซ่อนแถบป้อนข้อความเมื่อไม่ได้ใช้งาน"
   },
   "mc_settings_timestamps_desc": {
-    "message": "แสดงเวลาส่งของแต่ละข้อความข้างชื่อผู้ใช้ ดีสำหรับตามเรื่องที่เกิดขึ้นตอน AFK"
+    "message": "เวลาประทับในแต่ละข้อความ"
   },
   "mc_settings_avatars_desc": {
-    "message": "แสดงรูปโปรไฟล์ข้างชื่อผู้ใช้ในแชท ช่วยจำแฟนประจำได้ง่ายขึ้น แลกกับเนื้อที่ในแนวตั้งเล็กน้อย"
+    "message": "อวาตาร์ข้างชื่อผู้ใช้"
   },
   "mc_settings_inline_notifs": {
     "message": "แจ้งเตือนแบบอินไลน์"
@@ -678,16 +678,16 @@
     "message": "[DM] วิสเปอร์และ DM"
   },
   "mc_settings_notif_op_desc": {
-    "message": "แจ้งเตือนในแท็บแชทที่ใช้งานอยู่เมื่อมีคนสร้างโพสต์ใหม่ในฟีด"
+    "message": "แจ้งเตือนเมื่อมีโพสต์ใหม่ในฟีด"
   },
   "mc_settings_notif_op_reply_desc": {
-    "message": "แจ้งเตือนเมื่อเจ้าของโพสต์ตอบในเธรดของตัวเอง"
+    "message": "แจ้งเตือนเมื่อ OP ตอบกลับในกระทู้ของตน"
   },
   "mc_settings_notif_re_desc": {
-    "message": "แจ้งเตือนทุกการตอบกลับในเธรดฟีดใดๆ"
+    "message": "แจ้งเตือนทุกการตอบกลับในกระทู้ใดก็ตาม"
   },
   "mc_settings_notif_dm_desc": {
-    "message": "แจ้งเตือนเมื่อคุณได้รับวิสเปอร์หรือ DM"
+    "message": "แจ้งเตือนเมื่อได้รับ whisper หรือ DM"
   },
   "mc_settings_twitch_events": {
     "message": "กิจกรรม Twitch"
@@ -696,67 +696,67 @@
     "message": "เรด"
   },
   "mc_settings_raids_desc": {
-    "message": "แบนเนอร์อินไลน์เมื่อสตรีมเมอร์เรดเข้าหรือออก พร้อมจำนวนคนดูและช่องต้นทาง ทำให้คุณตามไปสตรีมต่อได้"
+    "message": "แบนเนอร์เมื่อมีเรด พร้อมจำนวนผู้ชม"
   },
   "mc_settings_hype_trains": {
     "message": "hype train"
   },
   "mc_settings_hype_trains_desc": {
-    "message": "แบนเนอร์ความคืบหน้าสดของ hype train แสดงระดับและตัวจับเวลาการบริจาค ปิดเป็นค่าเริ่มต้นเพราะเด้งบ่อยในช่องใหญ่"
+    "message": "แบนเนอร์ความคืบหน้า hype train แบบสด"
   },
   "mc_settings_gift_subs": {
     "message": "ของขวัญซับ"
   },
   "mc_settings_gift_subs_desc": {
-    "message": "แบนเนอร์สำหรับ gift sub bomb ของชุมชนและของขวัญรายเดี่ยว พร้อมผู้ให้ ผู้รับ และเทียร์"
+    "message": "แบนเนอร์สำหรับ sub ของขวัญ พร้อมผู้ให้และระดับ"
   },
   "mc_settings_redeems": {
     "message": "แลกพอยต์ช่อง"
   },
   "mc_settings_redeems_desc": {
-    "message": "ข้อความอินไลน์สำหรับการแลกพอยต์ช่องเช่น 'ไฮไลต์ข้อความของฉัน' เพื่อให้คุณเห็นว่าคนเอาพอยต์ไปใช้กับอะไร"
+    "message": "แบนเนอร์สำหรับการแลกคะแนนช่อง"
   },
   "mc_settings_prediction_banner": {
     "message": "พรีดิกชัน"
   },
   "mc_settings_prediction_banner_desc": {
-    "message": "แบนเนอร์พรีดิกชันพอยต์ช่องสด พร้อมอัตราต่อรองปัจจุบันและเวลาที่เหลือเพื่อยืนยันโหวต"
+    "message": "แบนเนอร์พยากรณ์แบบสดพร้อมอัตราต่อรองและตัวนับเวลา"
   },
   "mc_settings_poll_banner": {
     "message": "โพล"
   },
   "mc_settings_poll_banner_desc": {
-    "message": "แบนเนอร์โพลที่ใช้งานอยู่ พร้อมยอดโหวตและเวลาที่เหลือ โหวตได้โดยตรงจากโอเวอร์เลย์"
+    "message": "แบนเนอร์โหวตที่ใช้งานอยู่ โหวตได้เลย"
   },
   "mc_settings_pinned_messages": {
     "message": "ข้อความปักหมุด"
   },
   "mc_settings_pinned_messages_desc": {
-    "message": "แบนเนอร์ติดสำหรับข้อความที่ถูกแอดมินปักหมุด เพื่อไม่พลาดกฎหรือตารางเวลา"
+    "message": "แบนเนอร์คงที่สำหรับข้อความที่ mod ปักหมุด"
   },
   "mc_settings_dim_timeouts": {
     "message": "หรี่ข้อความที่ถูก timeout"
   },
   "mc_settings_dim_timeouts_desc": {
-    "message": "แสดงข้อความที่ถูก timeout และแบนที่ความทึบ 50% แทนการซ่อน สไตล์ FFZ/BTTV ทำให้คุณเห็นข้อความที่โดนลบโดยไม่ออกจากแชท"
+    "message": "ความทึบ 50% แทนการซ่อน"
   },
   "mc_settings_smart_completion": {
     "message": "เติมคำแบบ Tab อัจฉริยะ"
   },
   "mc_settings_smart_completion_desc": {
-    "message": "ผู้พูดและอีโมตล่าสุดของช่องนี้ขึ้นก่อนเมื่อกด Tab เร็วกว่าตามตัวอักษรเมื่อแชทไหล"
+    "message": "ผู้ใช้/อีโมตล่าสุดปรากฏก่อน"
   },
   "mc_settings_first_chatter": {
     "message": "เรืองแสงข้อความแรก"
   },
   "mc_settings_first_chatter_desc": {
-    "message": "เครื่องหมายส้มที่ขอบของข้อความแรกที่ผู้ใช้ส่งในแต่ละช่องในเซสชันนี้ ทำให้สังเกตคนใหม่ในแชทเร็วได้ง่าย"
+    "message": "ขอบสีส้มบนข้อความแรกของแต่ละเซสชัน"
   },
   "mc_settings_keyword_highlights": {
     "message": "ไฮไลต์คำสำคัญ"
   },
   "mc_settings_keyword_highlights_desc": {
-    "message": "ข้อความที่มีคำเหล่านี้จะมีโทนส้ม เหมือนการกล่าวถึงส่วนตัว แยกบรรทัด ไม่สนตัวพิมพ์ใหญ่/เล็ก คำเต็ม"
+    "message": "ทำให้ข้อความที่ตรงกันเป็นสีส้ม หนึ่งคำต่อบรรทัด ไม่แยกตัวพิมพ์ ทั้งคำ"
   },
   "mc_settings_keyword_highlights_placeholder": {
     "message": "หนึ่งคำต่อบรรทัด"
@@ -768,7 +768,7 @@
     "message": "เก็บพอยต์ช่องอัตโนมัติ"
   },
   "mc_settings_auto_claim_desc": {
-    "message": "คลิกหีบพอยต์ช่องโบนัสบน Twitch โดยอัตโนมัติเมื่อปรากฏ พอยต์ฟรี ไม่ต้องทำอะไร"
+    "message": "คลิกหีบคะแนนช่องโดยอัตโนมัติ"
   },
   "mc_settings_muted_users": {
     "message": "ผู้ใช้ที่ปิดเสียง"
@@ -1008,7 +1008,7 @@
     }
   },
   "mc_input_replying_to": {
-    "message": "ตอบ @$USER$",
+    "message": "ตอบกลับ @$USER$",
     "placeholders": {
       "user": {
         "content": "$1"
@@ -1016,7 +1016,7 @@
     }
   },
   "mc_input_cancel_reply": {
-    "message": "ยกเลิกการตอบ"
+    "message": "ยกเลิกการตอบกลับ"
   },
   "mc_input_not_logged_in": {
     "message": "ยังไม่ได้เข้าสู่ระบบ"
@@ -1052,10 +1052,10 @@
     "message": "ยังไม่มีโพสต์"
   },
   "mc_social_loading_feed": {
-    "message": "กำลังโหลดฟีดของคนที่ตาม..."
+    "message": "กำลังโหลด..."
   },
   "mc_social_scroll_more": {
-    "message": "เลื่อนเพื่อดูเพิ่ม..."
+    "message": "เพิ่มเติม"
   },
   "mc_social_no_replies": {
     "message": "ยังไม่มีการตอบ"
@@ -1159,10 +1159,10 @@
     }
   },
   "mc_irc_chat_cleared": {
-    "message": "แชทถูกล้าง"
+    "message": "ล้างแชทแล้ว"
   },
   "mc_irc_msg_deleted": {
-    "message": "ข้อความจาก $USER$ ถูกลบ",
+    "message": "ลบข้อความของ $USER$ แล้ว",
     "placeholders": {
       "user": {
         "content": "$1"
@@ -1213,7 +1213,7 @@
     "message": "ถูกบล็อก (คลิกเพื่อปลดบล็อก)"
   },
   "content_toast_unknown_error": {
-    "message": "ข้อผิดพลาดที่ไม่ทราบ"
+    "message": "ข้อผิดพลาดไม่ทราบสาเหตุ"
   },
   "content_toast_loading_emotes": {
     "message": "กำลังโหลดอีโมต..."

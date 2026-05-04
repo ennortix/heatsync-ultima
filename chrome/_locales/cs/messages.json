@@ -9,7 +9,7 @@
     "message": "načítám..."
   },
   "common_extension_updated": {
-    "message": "Rozšíření aktualizováno — obnov stránku"
+    "message": "rozšíření aktualizováno — obnovte stránku"
   },
   "common_no_matches": {
     "message": "žádné výsledky"
@@ -324,7 +324,7 @@
     "message": "klikni pro rozbalení"
   },
   "content_toast_failed_add": {
-    "message": "Nepodařilo se přidat $NAME$: $ERROR$",
+    "message": "nepodařilo se přidat $NAME$: $ERROR$",
     "placeholders": {
       "name": {
         "content": "$1"
@@ -335,7 +335,7 @@
     }
   },
   "content_toast_failed_remove": {
-    "message": "Nepodařilo se odebrat $NAME$: $ERROR$",
+    "message": "nepodařilo se odebrat $NAME$: $ERROR$",
     "placeholders": {
       "name": {
         "content": "$1"
@@ -346,7 +346,7 @@
     }
   },
   "content_toast_unblocked": {
-    "message": "Odblokováno $NAME$",
+    "message": "$NAME$ odblokován",
     "placeholders": {
       "name": {
         "content": "$1"
@@ -354,7 +354,7 @@
     }
   },
   "content_toast_failed_unblock": {
-    "message": "Nepodařilo se odblokovat: $ERROR$",
+    "message": "odblokování selhalo: $ERROR$",
     "placeholders": {
       "error": {
         "content": "$1"
@@ -362,7 +362,7 @@
     }
   },
   "content_toast_removed": {
-    "message": "$NAME$ odebráno z tvého setu",
+    "message": "$NAME$ odebrán z vaší sady",
     "placeholders": {
       "name": {
         "content": "$1"
@@ -370,7 +370,7 @@
     }
   },
   "content_toast_failed_block": {
-    "message": "Nepodařilo se zablokovat: $ERROR$",
+    "message": "blokování selhalo: $ERROR$",
     "placeholders": {
       "error": {
         "content": "$1"
@@ -378,7 +378,7 @@
     }
   },
   "content_toast_blocked": {
-    "message": "Zablokováno $NAME$",
+    "message": "$NAME$ zablokován",
     "placeholders": {
       "name": {
         "content": "$1"
@@ -639,28 +639,28 @@
     "message": "avatary"
   },
   "mc_settings_emote_size_desc": {
-    "message": "Násobič rozlišení pro emotky v chatu. 1x je ostrý a kompaktní, 2x je sweet spot pro většinu monitorů, 4x je pro ty co chtějí vidět každý pixel."
+    "message": "1x výchozí, 2x retina, 4x velký"
   },
   "mc_settings_input_preview_desc": {
-    "message": "Při psaní zobrazuje emotky jako obrázky přímo ve vstupním poli místo textových názvů. Co vidíš, to pošleš."
+    "message": "obrázky emotů v poli při psaní"
   },
   "mc_settings_clickable_links_desc": {
-    "message": "Mění URL ve zprávách na klikatelné odkazy. Vypni, pokud preferuješ copy-paste nebo nedůvěřuješ cizincům na internetu."
+    "message": "url v chatu se stanou klikatelné"
   },
   "mc_settings_vi_mode_desc": {
-    "message": "Vim klávesy pro pohyb v chatu. j/k scrollování, g/G nahoru/dolů, / hledání. Pro ty, kdo si myslí, že myš je pro casuály."
+    "message": "j/k posouvání, g/G nahoru/dolů, / hledání"
   },
   "mc_settings_zebra_desc": {
-    "message": "Střídavé pozadí řádků v chatu. Usnadňuje sledovat dlouhé zprávy, hlavně při rychlém chatu."
+    "message": "střídavé stínování řádků"
   },
   "mc_settings_auto_hide_desc": {
-    "message": "Skryje vstupní lištu, když nepíšeš. Klikni nebo začni psát, aby se vrátila. Maximalizuje plochu pro chat."
+    "message": "skryje vstupní lištu při nečinnosti"
   },
   "mc_settings_timestamps_desc": {
-    "message": "Zobrazuje čas odeslání každé zprávy vedle uživatelského jména. Užitečné pro doplnění toho, co se stalo, když jsi byl AFK."
+    "message": "časové razítko na každé zprávě"
   },
   "mc_settings_avatars_desc": {
-    "message": "Zobrazuje profilové obrázky vedle jmen v chatu. Usnadňuje vizuálně rozpoznat stálé hosty, stojí trochu vertikálního místa."
+    "message": "avatary vedle uživatelských jmen"
   },
   "mc_settings_inline_notifs": {
     "message": "inline notifikace"
@@ -678,16 +678,16 @@
     "message": "[DM] whispers a DMs"
   },
   "mc_settings_notif_op_desc": {
-    "message": "Notifikace v aktivní záložce chatu, když někdo přidá nový post na feed."
+    "message": "upozornění při novém příspěvku v kanálu"
   },
   "mc_settings_notif_op_reply_desc": {
-    "message": "Notifikace, když původní autor odpovídá ve vlastním vlákně."
+    "message": "upozornění když OP odpoví ve svém vláknu"
   },
   "mc_settings_notif_re_desc": {
-    "message": "Notifikace pro každou odpověď v jakémkoli vlákně feedu."
+    "message": "upozornění na každou odpověď v libovolném vláknu"
   },
   "mc_settings_notif_dm_desc": {
-    "message": "Notifikace, když dostaneš whisper nebo DM."
+    "message": "upozornění na whisper nebo přímou zprávu"
   },
   "mc_settings_twitch_events": {
     "message": "Twitch události"
@@ -696,67 +696,67 @@
     "message": "raidy"
   },
   "mc_settings_raids_desc": {
-    "message": "Inline banner při příchozím nebo odchozím raidu, s počtem diváků a zdrojovým kanálem. Umožňuje plynule přejít na další stream."
+    "message": "banner při raidu s počtem diváků"
   },
   "mc_settings_hype_trains": {
     "message": "hype train"
   },
   "mc_settings_hype_trains_desc": {
-    "message": "Živý progress banner pro hype train, s úrovní a časovačem příspěvku. Defaultně vypnuto, protože na velkých kanálech jede pořád."
+    "message": "živý banner průběhu hype trainu"
   },
   "mc_settings_gift_subs": {
     "message": "darované suby"
   },
   "mc_settings_gift_subs_desc": {
-    "message": "Banner pro komunitní gift sub bomby a jednotlivé dárky, s dárcem, příjemcem a tierem."
+    "message": "banner pro dárkové odběry s dárcem a úrovní"
   },
   "mc_settings_redeems": {
     "message": "uplatnění channel pointů"
   },
   "mc_settings_redeems_desc": {
-    "message": "Inline upozornění na uplatnění channel pointů jako 'zvýrazni mou zprávu', abys viděl, na co lidi utrácejí body."
+    "message": "banner pro uplatnění bodů kanálu"
   },
   "mc_settings_prediction_banner": {
     "message": "predikce"
   },
   "mc_settings_prediction_banner_desc": {
-    "message": "Živý banner predikce channel pointů s aktuálními kurzy a zbývajícím časem na potvrzení hlasu."
+    "message": "živý banner předpovědi s kurzy a časovačem"
   },
   "mc_settings_poll_banner": {
     "message": "ankety"
   },
   "mc_settings_poll_banner_desc": {
-    "message": "Banner aktivní ankety s počty hlasů a zbývajícím časem. Hlasuj přímo z overlay."
+    "message": "banner aktivního hlasování, hlasujte přímo"
   },
   "mc_settings_pinned_messages": {
     "message": "připnuté zprávy"
   },
   "mc_settings_pinned_messages_desc": {
-    "message": "Sticky banner pro modem připnuté zprávy, abys nezmeškal pravidla nebo program."
+    "message": "přichycený banner pro připnuté zprávy od moderátorů"
   },
   "mc_settings_dim_timeouts": {
     "message": "ztlumit timeoutnuté zprávy"
   },
   "mc_settings_dim_timeouts_desc": {
-    "message": "Zobrazí timeoutnuté a banuté zprávy s 50% průhledností místo skrývání, ve stylu FFZ/BTTV. Vidíš, co bylo smázlé, aniž bys opustil chat."
+    "message": "50% neprůhlednost místo skrytí"
   },
   "mc_settings_smart_completion": {
     "message": "chytré doplňování tabem"
   },
   "mc_settings_smart_completion_desc": {
-    "message": "Nedávní chatteři a emotky tohoto kanálu se zobrazí první při doplňování tabem. Rychlejší než abecední, když chat jede."
+    "message": "nedávní chatři/emoty se zobrazí jako první"
   },
   "mc_settings_first_chatter": {
     "message": "záře první zprávy"
   },
   "mc_settings_first_chatter_desc": {
-    "message": "Oranžové orámování první zprávy, kterou uživatel pošle v každém kanálu v této session. Usnadňuje všimnout si nováčků v rychlém chatu."
+    "message": "oranžový okraj na první zprávě za sezení"
   },
   "mc_settings_keyword_highlights": {
     "message": "zvýraznění klíčových slov"
   },
   "mc_settings_keyword_highlights_desc": {
-    "message": "Zprávy obsahující kterékoli z těchto slov dostanou oranžový odstín, jako osobní zmínka. Jedno na řádek, ignoruje velikost písmen, celá slova."
+    "message": "obarví shodné zprávy oranžově. jeden na řádek, bez rozlišení velikosti, celé slovo"
   },
   "mc_settings_keyword_highlights_placeholder": {
     "message": "jedno klíčové slovo na řádek"
@@ -768,7 +768,7 @@
     "message": "auto-sběr channel pointů"
   },
   "mc_settings_auto_claim_desc": {
-    "message": "Automaticky klikne na bonusovou truhlu channel pointů na Twitchi, když se objeví. Body zdarma, žádná námaha."
+    "message": "automaticky klikne na truhlu s body kanálu"
   },
   "mc_settings_muted_users": {
     "message": "ztlumení uživatelé"
@@ -1008,7 +1008,7 @@
     }
   },
   "mc_input_replying_to": {
-    "message": "Odpověď @$USER$",
+    "message": "odpovídám na @$USER$",
     "placeholders": {
       "user": {
         "content": "$1"
@@ -1016,7 +1016,7 @@
     }
   },
   "mc_input_cancel_reply": {
-    "message": "Zrušit odpověď"
+    "message": "zrušit odpověď"
   },
   "mc_input_not_logged_in": {
     "message": "nepřihlášen"
@@ -1052,10 +1052,10 @@
     "message": "zatím žádné posty"
   },
   "mc_social_loading_feed": {
-    "message": "načítám feed sledovaných..."
+    "message": "načítání..."
   },
   "mc_social_scroll_more": {
-    "message": "scrolluj pro další..."
+    "message": "více"
   },
   "mc_social_no_replies": {
     "message": "zatím žádné odpovědi"
@@ -1159,10 +1159,10 @@
     }
   },
   "mc_irc_chat_cleared": {
-    "message": "Chat byl vymazán"
+    "message": "chat vymazán"
   },
   "mc_irc_msg_deleted": {
-    "message": "Zpráva od $USER$ smazána",
+    "message": "zpráva od $USER$ smazána",
     "placeholders": {
       "user": {
         "content": "$1"
@@ -1213,7 +1213,7 @@
     "message": "zablokováno (klikni pro odblokování)"
   },
   "content_toast_unknown_error": {
-    "message": "Neznámá chyba"
+    "message": "neznámá chyba"
   },
   "content_toast_loading_emotes": {
     "message": "načítám emotky..."
@@ -1231,7 +1231,7 @@
     "message": "blokovat"
   },
   "btn_close": {
-    "message": "Zavřít"
+    "message": "zavřít"
   },
   "btn_error_channel": {
     "message": "načtení emotek kanálu selhalo"

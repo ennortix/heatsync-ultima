@@ -9,7 +9,7 @@
     "message": "đang tải..."
   },
   "common_extension_updated": {
-    "message": "Tiện ích đã cập nhật — tải lại trang"
+    "message": "tiện ích đã được cập nhật — tải lại trang"
   },
   "common_no_matches": {
     "message": "không có kết quả"
@@ -324,7 +324,7 @@
     "message": "bấm để mở rộng"
   },
   "content_toast_failed_add": {
-    "message": "Không thêm được $NAME$: $ERROR$",
+    "message": "thêm $NAME$ thất bại: $ERROR$",
     "placeholders": {
       "name": {
         "content": "$1"
@@ -335,7 +335,7 @@
     }
   },
   "content_toast_failed_remove": {
-    "message": "Không gỡ được $NAME$: $ERROR$",
+    "message": "xóa $NAME$ thất bại: $ERROR$",
     "placeholders": {
       "name": {
         "content": "$1"
@@ -346,7 +346,7 @@
     }
   },
   "content_toast_unblocked": {
-    "message": "Đã bỏ chặn $NAME$",
+    "message": "đã bỏ chặn $NAME$",
     "placeholders": {
       "name": {
         "content": "$1"
@@ -354,7 +354,7 @@
     }
   },
   "content_toast_failed_unblock": {
-    "message": "Không bỏ chặn được: $ERROR$",
+    "message": "bỏ chặn thất bại: $ERROR$",
     "placeholders": {
       "error": {
         "content": "$1"
@@ -362,7 +362,7 @@
     }
   },
   "content_toast_removed": {
-    "message": "Đã gỡ $NAME$ khỏi set",
+    "message": "đã xóa $NAME$ khỏi bộ của bạn",
     "placeholders": {
       "name": {
         "content": "$1"
@@ -370,7 +370,7 @@
     }
   },
   "content_toast_failed_block": {
-    "message": "Không chặn được: $ERROR$",
+    "message": "chặn thất bại: $ERROR$",
     "placeholders": {
       "error": {
         "content": "$1"
@@ -378,7 +378,7 @@
     }
   },
   "content_toast_blocked": {
-    "message": "Đã chặn $NAME$",
+    "message": "đã chặn $NAME$",
     "placeholders": {
       "name": {
         "content": "$1"
@@ -639,28 +639,28 @@
     "message": "ảnh đại diện"
   },
   "mc_settings_emote_size_desc": {
-    "message": "Hệ số độ phân giải cho emote trong chat. 1x sắc nét và gọn, 2x là điểm ngọt cho hầu hết màn hình, 4x cho ai muốn thấy từng pixel."
+    "message": "1x mặc định, 2x retina, 4x lớn"
   },
   "mc_settings_input_preview_desc": {
-    "message": "Hiện emote dưới dạng ảnh trực tiếp trong ô nhập khi bạn gõ, thay vì tên dạng văn bản. Thấy gì gửi nấy."
+    "message": "hình ảnh emote trong ô khi gõ"
   },
   "mc_settings_clickable_links_desc": {
-    "message": "Biến URL trong tin nhắn thành liên kết bấm được. Tắt nếu bạn thích copy-paste hoặc không tin người lạ trên mạng."
+    "message": "url trong chat có thể nhấp"
   },
   "mc_settings_vi_mode_desc": {
-    "message": "Phím tắt kiểu Vim cho điều hướng chat. j/k cuộn, g/G đầu/cuối, / tìm. Cho ai nghĩ chuột là dành cho casual."
+    "message": "j/k cuộn, g/G lên/xuống, / tìm kiếm"
   },
   "mc_settings_zebra_desc": {
-    "message": "Tô bóng xen kẽ trên tin nhắn chat. Giúp theo dõi tin nhắn dài, nhất là khi chat nhanh."
+    "message": "tô màu xen kẽ các hàng"
   },
   "mc_settings_auto_hide_desc": {
-    "message": "Ẩn thanh nhập khi bạn không soạn tin. Bấm hoặc bắt đầu gõ để hiện lại. Tối đa hoá vùng xem chat."
+    "message": "ẩn thanh nhập khi không hoạt động"
   },
   "mc_settings_timestamps_desc": {
-    "message": "Hiện giờ gửi của mỗi tin nhắn cạnh tên người dùng. Hữu ích để biết chuyện gì xảy ra khi bạn AFK."
+    "message": "dấu thời gian trên mỗi tin nhắn"
   },
   "mc_settings_avatars_desc": {
-    "message": "Hiện ảnh đại diện cạnh tên người dùng. Giúp nhận ra khách quen, tốn chút không gian dọc."
+    "message": "avatar bên cạnh tên người dùng"
   },
   "mc_settings_inline_notifs": {
     "message": "thông báo nội tuyến"
@@ -678,16 +678,16 @@
     "message": "[DM] whispers và DM"
   },
   "mc_settings_notif_op_desc": {
-    "message": "Thông báo trong tab chat đang mở khi có người tạo bài gốc trong feed."
+    "message": "ping khi có bài đăng mới trên feed"
   },
   "mc_settings_notif_op_reply_desc": {
-    "message": "Thông báo khi tác giả bài gốc trả lời trong thread của mình."
+    "message": "ping khi OP trả lời trong chủ đề của họ"
   },
   "mc_settings_notif_re_desc": {
-    "message": "Thông báo cho mỗi phản hồi trong bất kỳ thread feed."
+    "message": "ping mỗi lần có câu trả lời trong bất kỳ chủ đề nào"
   },
   "mc_settings_notif_dm_desc": {
-    "message": "Thông báo khi bạn nhận whisper hoặc DM."
+    "message": "ping khi nhận whisper hoặc DM"
   },
   "mc_settings_twitch_events": {
     "message": "sự kiện Twitch"
@@ -696,67 +696,67 @@
     "message": "raid"
   },
   "mc_settings_raids_desc": {
-    "message": "Banner inline khi streamer raid vào hoặc ra, kèm số người xem và kênh nguồn. Cho phép bạn theo qua stream tiếp theo."
+    "message": "banner khi raid kèm số người xem"
   },
   "mc_settings_hype_trains": {
     "message": "hype train"
   },
   "mc_settings_hype_trains_desc": {
-    "message": "Banner tiến trình trực tiếp cho hype train, hiện cấp và bộ đếm đóng góp. Mặc định tắt vì kích hoạt liên tục trên kênh lớn."
+    "message": "banner tiến trình hype train trực tiếp"
   },
   "mc_settings_gift_subs": {
     "message": "sub được tặng"
   },
   "mc_settings_gift_subs_desc": {
-    "message": "Banner cho gift sub bom cộng đồng và tặng đơn lẻ, kèm người tặng, người nhận và tier."
+    "message": "banner cho sub quà tặng với người tặng và cấp độ"
   },
   "mc_settings_redeems": {
     "message": "đổi điểm kênh"
   },
   "mc_settings_redeems_desc": {
-    "message": "Thông báo nội tuyến cho việc đổi điểm kênh như 'làm nổi tin của tôi' để bạn thấy mọi người dùng điểm vào đâu."
+    "message": "banner cho đổi điểm kênh"
   },
   "mc_settings_prediction_banner": {
     "message": "dự đoán"
   },
   "mc_settings_prediction_banner_desc": {
-    "message": "Banner dự đoán điểm kênh trực tiếp với tỷ lệ hiện tại và thời gian còn lại để chốt phiếu."
+    "message": "banner dự đoán trực tiếp với tỷ lệ và bộ đếm"
   },
   "mc_settings_poll_banner": {
     "message": "khảo sát"
   },
   "mc_settings_poll_banner_desc": {
-    "message": "Banner khảo sát đang hoạt động với số phiếu và thời gian còn lại. Bỏ phiếu trực tiếp từ overlay."
+    "message": "banner khảo sát đang hoạt động, bỏ phiếu trực tiếp"
   },
   "mc_settings_pinned_messages": {
     "message": "tin nhắn ghim"
   },
   "mc_settings_pinned_messages_desc": {
-    "message": "Banner cố định cho tin nhắn được mod ghim để bạn không bỏ lỡ luật hay lịch."
+    "message": "banner cố định cho tin nhắn được ghim bởi mod"
   },
   "mc_settings_dim_timeouts": {
     "message": "làm mờ tin nhắn timeout"
   },
   "mc_settings_dim_timeouts_desc": {
-    "message": "Hiện tin nhắn bị timeout và ban với độ mờ 50% thay vì ẩn, kiểu FFZ/BTTV. Bạn thấy được tin nào bị xoá mà không cần rời chat."
+    "message": "độ mờ 50% thay vì ẩn"
   },
   "mc_settings_smart_completion": {
     "message": "tab thông minh"
   },
   "mc_settings_smart_completion_desc": {
-    "message": "Người chat gần đây và emote của kênh này hiện trước khi gõ tab. Nhanh hơn alphabet khi chat trôi."
+    "message": "chatter/emote gần đây xuất hiện trước"
   },
   "mc_settings_first_chatter": {
     "message": "phát sáng tin đầu"
   },
   "mc_settings_first_chatter_desc": {
-    "message": "Đánh dấu cam ở viền của tin nhắn đầu tiên người dùng gửi mỗi kênh trong phiên này. Giúp người mới nổi bật trong chat nhanh."
+    "message": "viền cam trên tin nhắn đầu tiên mỗi phiên"
   },
   "mc_settings_keyword_highlights": {
     "message": "làm nổi từ khoá"
   },
   "mc_settings_keyword_highlights_desc": {
-    "message": "Tin nhắn chứa bất kỳ từ nào trong này sẽ có tông cam, như nhắc cá nhân. Mỗi dòng một từ, không phân biệt hoa thường, khớp cả từ."
+    "message": "tô màu cam các tin nhắn khớp. một dòng một từ, không phân biệt hoa thường, từ đầy đủ"
   },
   "mc_settings_keyword_highlights_placeholder": {
     "message": "một từ khoá mỗi dòng"
@@ -768,7 +768,7 @@
     "message": "tự nhận điểm kênh"
   },
   "mc_settings_auto_claim_desc": {
-    "message": "Tự bấm rương điểm kênh thưởng trên Twitch khi xuất hiện. Điểm miễn phí, không tốn công."
+    "message": "tự động nhấp hòm điểm kênh"
   },
   "mc_settings_muted_users": {
     "message": "người bị ẩn"
@@ -1008,7 +1008,7 @@
     }
   },
   "mc_input_replying_to": {
-    "message": "Trả lời @$USER$",
+    "message": "đang trả lời @$USER$",
     "placeholders": {
       "user": {
         "content": "$1"
@@ -1016,7 +1016,7 @@
     }
   },
   "mc_input_cancel_reply": {
-    "message": "Huỷ trả lời"
+    "message": "hủy trả lời"
   },
   "mc_input_not_logged_in": {
     "message": "chưa đăng nhập"
@@ -1052,10 +1052,10 @@
     "message": "chưa có bài đăng"
   },
   "mc_social_loading_feed": {
-    "message": "đang tải feed người theo dõi..."
+    "message": "đang tải..."
   },
   "mc_social_scroll_more": {
-    "message": "cuộn để xem thêm..."
+    "message": "thêm"
   },
   "mc_social_no_replies": {
     "message": "chưa có phản hồi"
@@ -1159,10 +1159,10 @@
     }
   },
   "mc_irc_chat_cleared": {
-    "message": "Chat đã được xoá"
+    "message": "đã xóa chat"
   },
   "mc_irc_msg_deleted": {
-    "message": "Tin nhắn của $USER$ đã bị xoá",
+    "message": "đã xóa tin nhắn của $USER$",
     "placeholders": {
       "user": {
         "content": "$1"
@@ -1213,7 +1213,7 @@
     "message": "đã chặn (bấm để bỏ chặn)"
   },
   "content_toast_unknown_error": {
-    "message": "Lỗi không xác định"
+    "message": "lỗi không xác định"
   },
   "content_toast_loading_emotes": {
     "message": "đang tải emote..."
@@ -1231,7 +1231,7 @@
     "message": "chặn"
   },
   "btn_close": {
-    "message": "Đóng"
+    "message": "đóng"
   },
   "btn_error_channel": {
     "message": "không tải được emote kênh"

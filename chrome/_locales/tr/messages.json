@@ -9,7 +9,7 @@
     "message": "yükleniyor..."
   },
   "common_extension_updated": {
-    "message": "Eklenti güncellendi — lütfen sayfayı yenileyin"
+    "message": "uzantı güncellendi — sayfayı yenile"
   },
   "common_no_matches": {
     "message": "eşleşme yok"
@@ -354,7 +354,7 @@
     }
   },
   "content_toast_failed_unblock": {
-    "message": "Engel kaldırılamadı: $ERROR$",
+    "message": "engel kaldırma başarısız: $ERROR$",
     "placeholders": {
       "error": {
         "content": "$1"
@@ -370,7 +370,7 @@
     }
   },
   "content_toast_failed_block": {
-    "message": "Engellenemedi: $ERROR$",
+    "message": "engelleme başarısız: $ERROR$",
     "placeholders": {
       "error": {
         "content": "$1"
@@ -639,28 +639,28 @@
     "message": "avatarlar"
   },
   "mc_settings_emote_size_desc": {
-    "message": "Sohbetteki emote'lar için çözünürlük çarpanı. 1x net ve kompakt, 2x çoğu ekran için ideal nokta, 4x emote sanatının her pikselini görmek isteyenler için."
+    "message": "1x varsayılan, 2x retina, 4x büyük"
   },
   "mc_settings_input_preview_desc": {
-    "message": "Yazarken emote'ları girdi kutusunda düz metin yerine doğrudan görsel olarak gösterir. Ne görüyorsan onu gönderirsin."
+    "message": "yazarken alana emote görselleri"
   },
   "mc_settings_clickable_links_desc": {
-    "message": "Sohbet mesajlarındaki URL'leri tıklanabilir bağlantılara dönüştürür. Kopyala-yapıştır yapmayı tercih ediyorsan veya internetteki yabancılara güvenmiyorsan devre dışı bırak."
+    "message": "sohbetteki url'ler tıklanabilir hale gelir"
   },
   "mc_settings_vi_mode_desc": {
-    "message": "Sohbet navigasyonu için Vim tarzı kısayollar. j/k kaydırmak için, g/G üst/alt için, / arama için. Farenin casuallar için olduğunu düşünenler için."
+    "message": "j/k kaydırma, g/G üst/alt, / arama"
   },
   "mc_settings_zebra_desc": {
-    "message": "Sohbet mesajlarında dönüşümlü satır gölgelendirmesi. Özellikle hızlı sohbette uzun mesajları takip etmeyi kolaylaştırır."
+    "message": "dönüşümlü satır gölgelendirme"
   },
   "mc_settings_auto_hide_desc": {
-    "message": "Mesaj yazmadığında girdi çubuğunu gizler. Geri getirmek için tıkla veya yazmaya başla. Sohbet görüntüleme alanını maksimize eder."
+    "message": "boştayken giriş çubuğunu gizler"
   },
   "mc_settings_timestamps_desc": {
-    "message": "Her mesajın gönderilme saatini kullanıcı adının hemen yanında gösterir. AFK iken neler olduğunu takip etmek için kullanışlıdır."
+    "message": "her mesajda zaman damgası"
   },
   "mc_settings_avatars_desc": {
-    "message": "Sohbette kullanıcı adlarının yanında profil resimlerini gösterir. Düzenli izleyicileri görsel olarak tanımayı kolaylaştırır, biraz dikey alan harcar."
+    "message": "kullanıcı adlarının yanında avatarlar"
   },
   "mc_settings_inline_notifs": {
     "message": "satır içi bildirimler"
@@ -678,16 +678,16 @@
     "message": "[DM] fısıltılar & DM'ler"
   },
   "mc_settings_notif_op_desc": {
-    "message": "Birisi feed'de yeni bir orijinal gönderi oluşturduğunda aktif sohbet sekmesinde bildirim."
+    "message": "akışta yeni gönderi gelince ping"
   },
   "mc_settings_notif_op_reply_desc": {
-    "message": "Orijinal poster kendi thread'inde yanıtladığında bildirim."
+    "message": "OP kendi konusunda yanıt verince ping"
   },
   "mc_settings_notif_re_desc": {
-    "message": "Feed'deki herhangi bir thread'e her yanıt gönderildiğinde bildirim."
+    "message": "herhangi bir konudaki her yanıtta ping"
   },
   "mc_settings_notif_dm_desc": {
-    "message": "Fısıltı veya DM aldığında bildirim."
+    "message": "fısıltı veya DM gelince ping"
   },
   "mc_settings_twitch_events": {
     "message": "Twitch etkinlikleri"
@@ -696,67 +696,67 @@
     "message": "raid'ler"
   },
   "mc_settings_raids_desc": {
-    "message": "Bir yayıncı raid alıp gönderdiğinde, izleyici sayısı ve kaynak kanal ile birlikte satır içi banner. Sıradaki yayına eşlik etmenizi sağlar."
+    "message": "izleyici sayısıyla baskın baneri"
   },
   "mc_settings_hype_trains": {
     "message": "hype train'ler"
   },
   "mc_settings_hype_trains_desc": {
-    "message": "Hype trainler için canlı ilerleme bannerı, seviye ve katkı sayacı gösterir. Büyük kanallarda sürekli tetiklendiği için varsayılan kapalı."
+    "message": "canlı hype train ilerleme baneri"
   },
   "mc_settings_gift_subs": {
     "message": "hediye sub'lar"
   },
   "mc_settings_gift_subs_desc": {
-    "message": "Topluluk hediye sub bombaları ve bireysel hediyeler için banner; veren, alan ve seviyeyi gösterir."
+    "message": "hediye sub baneri, gönderenle katmanla birlikte"
   },
   "mc_settings_redeems": {
     "message": "kanal puanı kullanımları"
   },
   "mc_settings_redeems_desc": {
-    "message": "'Mesajımı vurgula' gibi kanal puanı kullanımları için satır içi bildirim, böylece insanların puanlarını neye harcadığını görürsünüz."
+    "message": "kanal puanı kullanımları için baner"
   },
   "mc_settings_prediction_banner": {
     "message": "tahmin banner'ı"
   },
   "mc_settings_prediction_banner_desc": {
-    "message": "Güncel oranlar ve oy verme süresi ile canlı kanal puanı tahmin bannerı."
+    "message": "oranlar ve zamanlayıcılı canlı tahmin baneri"
   },
   "mc_settings_poll_banner": {
     "message": "anket banner'ı"
   },
   "mc_settings_poll_banner_desc": {
-    "message": "Oy sayıları ve kalan süreyle aktif anket bannerı. Doğrudan kaplamadan oy verin."
+    "message": "aktif anket baneri, doğrudan oy ver"
   },
   "mc_settings_pinned_messages": {
     "message": "sabitlenmiş mesajlar"
   },
   "mc_settings_pinned_messages_desc": {
-    "message": "Moderatörlerin sabitlediği sohbet mesajları için yapışkan banner; kuralları veya programı kaçırmayın."
+    "message": "moderatörlerin sabitlediği mesajlar için sabit baner"
   },
   "mc_settings_dim_timeouts": {
     "message": "timeout mesajlarını soluklaştır"
   },
   "mc_settings_dim_timeouts_desc": {
-    "message": "Timeout ve banlanan mesajları gizlemek yerine FFZ/BTTV tarzı %50 opaklıkla göster. Sohbetten çıkmadan ne silinmiş görebilirsin."
+    "message": "gizlemek yerine %50 saydamlık"
   },
   "mc_settings_smart_completion": {
     "message": "akıllı Tab tamamlama"
   },
   "mc_settings_smart_completion_desc": {
-    "message": "Tab ile tamamlarken bu kanalda son sohbet edenler ve emoteler önce görünür. Sohbet hızlıyken alfabetik sıradan daha hızlı."
+    "message": "son aktif kullancılar/emotlar önce gösterilir"
   },
   "mc_settings_first_chatter": {
     "message": "ilk mesaj ışıltısı"
   },
   "mc_settings_first_chatter_desc": {
-    "message": "Bu oturumda her kanalda bir kullanıcının gönderdiği ilk mesajda turuncu kenar işareti. Hızlı sohbetlerde yeni gelenleri öne çıkarır."
+    "message": "oturum başına ilk mesajda turuncu çerçeve"
   },
   "mc_settings_keyword_highlights": {
     "message": "anahtar kelime vurgusu"
   },
   "mc_settings_keyword_highlights_desc": {
-    "message": "Bu kelimelerden birini içeren mesajlar kişisel bir mention gibi turuncu olur. Satır başına bir kelime, büyük/küçük harf duyarsız, tam eşleşme."
+    "message": "eşleşen mesajları turuncuya boyar. satır başına bir, büyük/küçük harf duyarsız, tam kelime"
   },
   "mc_settings_keyword_highlights_placeholder": {
     "message": "satır başına bir anahtar kelime"
@@ -768,7 +768,7 @@
     "message": "kanal puanlarını otomatik al"
   },
   "mc_settings_auto_claim_desc": {
-    "message": "Twitch'te bonus kanal puanları sandığı göründüğünde otomatik tıklar. Bedava puan, sıfır çaba."
+    "message": "kanal puanları sandığını otomatik tıklar"
   },
   "mc_settings_muted_users": {
     "message": "sessize alınan kullanıcılar"
@@ -1008,7 +1008,7 @@
     }
   },
   "mc_input_replying_to": {
-    "message": "@$USER$ kullanıcısına yanıt veriliyor",
+    "message": "@$USER$ adlı kişiye yanıt",
     "placeholders": {
       "user": {
         "content": "$1"
@@ -1052,10 +1052,10 @@
     "message": "henüz gönderi yok"
   },
   "mc_social_loading_feed": {
-    "message": "takip feed'i yükleniyor..."
+    "message": "yükleniyor..."
   },
   "mc_social_scroll_more": {
-    "message": "daha fazlası için kaydır..."
+    "message": "daha fazla"
   },
   "mc_social_no_replies": {
     "message": "henüz yanıt yok"
@@ -1159,7 +1159,7 @@
     }
   },
   "mc_irc_chat_cleared": {
-    "message": "Sohbet temizlendi"
+    "message": "sohbet temizlendi"
   },
   "mc_irc_msg_deleted": {
     "message": "$USER$ kullanıcısının mesajı silindi",
@@ -1213,7 +1213,7 @@
     "message": "engellendi (kaldırmak için tıkla)"
   },
   "content_toast_unknown_error": {
-    "message": "Bilinmeyen hata"
+    "message": "bilinmeyen hata"
   },
   "content_toast_loading_emotes": {
     "message": "emote'lar yükleniyor..."
@@ -1231,7 +1231,7 @@
     "message": "engelle"
   },
   "btn_close": {
-    "message": "Kapat"
+    "message": "kapat"
   },
   "btn_error_channel": {
     "message": "kanal emote'ları yüklenemedi"

@@ -9,7 +9,7 @@
     "message": "加载中..."
   },
   "common_extension_updated": {
-    "message": "扩展已更新 — 请刷新页面"
+    "message": "扩展已更新 — 刷新页面"
   },
   "common_no_matches": {
     "message": "无匹配结果"
@@ -324,7 +324,7 @@
     "message": "点击展开"
   },
   "content_toast_failed_add": {
-    "message": "添加 $NAME$ 失败: $ERROR$",
+    "message": "添加 $NAME$ 失败：$ERROR$",
     "placeholders": {
       "name": {
         "content": "$1"
@@ -335,7 +335,7 @@
     }
   },
   "content_toast_failed_remove": {
-    "message": "移除 $NAME$ 失败: $ERROR$",
+    "message": "移除 $NAME$ 失败：$ERROR$",
     "placeholders": {
       "name": {
         "content": "$1"
@@ -346,7 +346,7 @@
     }
   },
   "content_toast_unblocked": {
-    "message": "已取消屏蔽 $NAME$",
+    "message": "已解除屏蔽 $NAME$",
     "placeholders": {
       "name": {
         "content": "$1"
@@ -354,7 +354,7 @@
     }
   },
   "content_toast_failed_unblock": {
-    "message": "取消屏蔽失败: $ERROR$",
+    "message": "解除屏蔽失败：$ERROR$",
     "placeholders": {
       "error": {
         "content": "$1"
@@ -362,7 +362,7 @@
     }
   },
   "content_toast_removed": {
-    "message": "已从套装中移除 $NAME$",
+    "message": "已从你的收藏中移除 $NAME$",
     "placeholders": {
       "name": {
         "content": "$1"
@@ -370,7 +370,7 @@
     }
   },
   "content_toast_failed_block": {
-    "message": "屏蔽失败: $ERROR$",
+    "message": "屏蔽失败：$ERROR$",
     "placeholders": {
       "error": {
         "content": "$1"
@@ -639,28 +639,28 @@
     "message": "头像"
   },
   "mc_settings_emote_size_desc": {
-    "message": "聊天表情的分辨率倍率。1x 清晰紧凑，2x 适合大多数屏幕，4x 适合想逐像素欣赏表情的你。"
+    "message": "1x 默认，2x 视网膜，4x 超大"
   },
   "mc_settings_input_preview_desc": {
-    "message": "输入时直接在输入框中将表情显示为图片而非文字名称。所见即所发。"
+    "message": "输入时在框内显示表情图片"
   },
   "mc_settings_clickable_links_desc": {
-    "message": "将聊天消息中的 URL 转换为可点击链接。如果你喜欢复制粘贴或不信任陌生人，可以关闭此功能。"
+    "message": "聊天中的链接变为可点击"
   },
   "mc_settings_vi_mode_desc": {
-    "message": "聊天导航的 vim 风格键位绑定。j/k 滚动，g/G 到顶/底，/ 搜索。适合觉得鼠标是休闲玩意的人。"
+    "message": "j/k 滚动，g/G 顶部/底部，/ 搜索"
   },
   "mc_settings_zebra_desc": {
-    "message": "聊天消息交替行阴影。在窗口宽或聊天速度快时更容易追踪长消息。"
+    "message": "交替行背景色"
   },
   "mc_settings_auto_hide_desc": {
-    "message": "不在编写消息时隐藏输入栏。点击或开始输入时重新显示。最大化聊天显示空间。"
+    "message": "空闲时隐藏输入栏"
   },
   "mc_settings_timestamps_desc": {
-    "message": "在用户名旁显示每条消息的发送时间。适合用来补看 AFK 期间发生的事。"
+    "message": "每条消息显示时间戳"
   },
   "mc_settings_avatars_desc": {
-    "message": "在聊天用户名旁显示头像。更容易一眼认出常客，但会占用少量垂直空间。"
+    "message": "用户名旁显示头像"
   },
   "mc_settings_inline_notifs": {
     "message": "内联通知"
@@ -678,16 +678,16 @@
     "message": "[DM] 悄悄话 & DM"
   },
   "mc_settings_notif_op_desc": {
-    "message": "当有人在动态中发布新原创帖子时，在当前聊天标签中通知。"
+    "message": "动态有新帖时提醒"
   },
   "mc_settings_notif_op_reply_desc": {
-    "message": "原帖作者在自己的帖子中回复时通知。"
+    "message": "OP 在自己的帖子中回复时提醒"
   },
   "mc_settings_notif_re_desc": {
-    "message": "动态中任何帖子有新回复时通知。"
+    "message": "任意帖子有回复时提醒"
   },
   "mc_settings_notif_dm_desc": {
-    "message": "收到悄悄话或 DM 时通知。"
+    "message": "收到悄悄话或私信时提醒"
   },
   "mc_settings_twitch_events": {
     "message": "twitch 事件"
@@ -696,67 +696,67 @@
     "message": "突袭"
   },
   "mc_settings_raids_desc": {
-    "message": "主播发起或接收 raid 时的内嵌横幅，显示观众数和来源频道。让你跟着走到下一场直播。"
+    "message": "发生 raid 时显示观众数横幅"
   },
   "mc_settings_hype_trains": {
     "message": "炒作列车"
   },
   "mc_settings_hype_trains_desc": {
-    "message": "Hype Train 实时进度横幅，显示等级和贡献倒计时。默认关闭，因为大频道经常触发。"
+    "message": "直播 hype train 进度横幅"
   },
   "mc_settings_gift_subs": {
     "message": "赠送订阅"
   },
   "mc_settings_gift_subs_desc": {
-    "message": "社区批量赠订和单个赠订的横幅，显示赠送者、接收者和等级。"
+    "message": "赠送订阅横幅，含赠送者和等级"
   },
   "mc_settings_redeems": {
     "message": "频道积分兑换"
   },
   "mc_settings_redeems_desc": {
-    "message": "频道积分兑换的内嵌通知，比如「高亮我的消息」，让你看到大家把积分花在哪。"
+    "message": "频道积分兑换横幅"
   },
   "mc_settings_prediction_banner": {
     "message": "预测横幅"
   },
   "mc_settings_prediction_banner_desc": {
-    "message": "频道积分预测实时横幅，显示当前赔率和锁定投票的剩余时间。"
+    "message": "实时预测横幅，含赔率和计时器"
   },
   "mc_settings_poll_banner": {
     "message": "投票横幅"
   },
   "mc_settings_poll_banner_desc": {
-    "message": "活跃投票横幅，显示票数和剩余时间。直接从覆盖层投票。"
+    "message": "活跃投票横幅，直接投票"
   },
   "mc_settings_pinned_messages": {
     "message": "置顶消息"
   },
   "mc_settings_pinned_messages_desc": {
-    "message": "主播或管理员置顶消息的常驻横幅，让你不会错过规则或日程。"
+    "message": "版主置顶消息的固定横幅"
   },
   "mc_settings_dim_timeouts": {
     "message": "淡化超时消息"
   },
   "mc_settings_dim_timeouts_desc": {
-    "message": "用 FFZ/BTTV 风格以 50% 不透明度显示被超时和封禁的消息，而不是直接隐藏。让你不离开聊天就能看到被删的消息。"
+    "message": "50% 透明度而非隐藏"
   },
   "mc_settings_smart_completion": {
     "message": "智能 Tab 补全"
   },
   "mc_settings_smart_completion_desc": {
-    "message": "Tab 补全时，这个频道里最近聊天的人和表情会优先显示。聊天刷屏时比按字母排序更快。"
+    "message": "最近聊天者/表情优先显示"
   },
   "mc_settings_first_chatter": {
     "message": "首条消息高亮"
   },
   "mc_settings_first_chatter_desc": {
-    "message": "本次会话中用户在每个频道发送的第一条消息边缘加橙色标记。让快速聊天中的新来者一眼可见。"
+    "message": "每次会话首条消息显示橙色边框"
   },
   "mc_settings_keyword_highlights": {
     "message": "关键词高亮"
   },
   "mc_settings_keyword_highlights_desc": {
-    "message": "包含其中任何一个词的消息会变成橙色，像个人提及一样。每行一个，不区分大小写，整词匹配。"
+    "message": "将匹配消息染成橙色。每行一个，不区分大小写，完整单词"
   },
   "mc_settings_keyword_highlights_placeholder": {
     "message": "每行一个关键词"
@@ -768,7 +768,7 @@
     "message": "自动领取频道积分"
   },
   "mc_settings_auto_claim_desc": {
-    "message": "Twitch 出现奖励频道积分宝箱时自动点击。免费积分，零操作。"
+    "message": "自动点击频道积分宝箱"
   },
   "mc_settings_muted_users": {
     "message": "已静音用户"
@@ -1052,10 +1052,10 @@
     "message": "暂无帖子"
   },
   "mc_social_loading_feed": {
-    "message": "加载关注动态中..."
+    "message": "加载中..."
   },
   "mc_social_scroll_more": {
-    "message": "滚动查看更多..."
+    "message": "更多"
   },
   "mc_social_no_replies": {
     "message": "暂无回复"
@@ -1159,10 +1159,10 @@
     }
   },
   "mc_irc_chat_cleared": {
-    "message": "聊天已被清空"
+    "message": "聊天已清空"
   },
   "mc_irc_msg_deleted": {
-    "message": "$USER$ 的消息已被删除",
+    "message": "已删除 $USER$ 的消息",
     "placeholders": {
       "user": {
         "content": "$1"

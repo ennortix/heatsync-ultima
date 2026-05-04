@@ -9,7 +9,7 @@
     "message": "טוען..."
   },
   "common_extension_updated": {
-    "message": "ההרחבה עודכנה — רענן את הדף"
+    "message": "התוסף עודכן — רענן את הדף"
   },
   "common_no_matches": {
     "message": "אין תוצאות"
@@ -346,7 +346,7 @@
     }
   },
   "content_toast_unblocked": {
-    "message": "$NAME$ - החסימה בוטלה",
+    "message": "$NAME$ בוטל חסום",
     "placeholders": {
       "name": {
         "content": "$1"
@@ -362,7 +362,7 @@
     }
   },
   "content_toast_removed": {
-    "message": "$NAME$ הוסר מהסט שלך",
+    "message": "$NAME$ הוסר מהאוסף שלך",
     "placeholders": {
       "name": {
         "content": "$1"
@@ -378,7 +378,7 @@
     }
   },
   "content_toast_blocked": {
-    "message": "$NAME$ נחסם",
+    "message": "$NAME$ חסום",
     "placeholders": {
       "name": {
         "content": "$1"
@@ -639,28 +639,28 @@
     "message": "אווטרים"
   },
   "mc_settings_emote_size_desc": {
-    "message": "מכפיל רזולוציה לאימוג'ים בצ'אט. 1x חד וקומפקטי, 2x נקודה אופטימלית לרוב הצגים, 4x למי שרוצה לראות כל פיקסל."
+    "message": "1x ברירת מחדל, 2x רטינה, 4x גדול"
   },
   "mc_settings_input_preview_desc": {
-    "message": "מציג אימוג'ים כתמונות ישירות בתיבת הקלט תוך כדי הקלדה, במקום שמות טקסט. מה שאתה רואה זה מה שאתה שולח."
+    "message": "תמונות אמוט בשדה בזמן הקלדה"
   },
   "mc_settings_clickable_links_desc": {
-    "message": "הופך URL בהודעות צ'אט ללחיצים. כבה אם אתה מעדיף copy-paste או לא סומך על זרים באינטרנט."
+    "message": "כתובות url בצ'אט הופכות לניתנות ללחיצה"
   },
   "mc_settings_vi_mode_desc": {
-    "message": "קיצורי דרך בסגנון Vim לניווט בצ'אט. j/k גלילה, g/G עליון/תחתון, / חיפוש. למי שחושב שעכבר הוא לcasual."
+    "message": "j/k גלילה, g/G למעלה/למטה, / חיפוש"
   },
   "mc_settings_zebra_desc": {
-    "message": "הצללה מתחלפת על שורות הצ'אט. מקלה על מעקב אחר הודעות ארוכות, במיוחד בצ'אט מהיר."
+    "message": "הצללת שורות לסירוגין"
   },
   "mc_settings_auto_hide_desc": {
-    "message": "מסתיר את שורת הקלט כאשר אינך מקליד. לחץ או התחל להקליד כדי להחזיר אותה. ממקסם שטח צפייה בצ'אט."
+    "message": "מסתיר את שורת הקלט בחוסר פעילות"
   },
   "mc_settings_timestamps_desc": {
-    "message": "מציג את זמן השליחה של כל הודעה ליד שם המשתמש. שימושי לעדכון מה קרה כשהיית AFK."
+    "message": "חותמת זמן על כל הודעה"
   },
   "mc_settings_avatars_desc": {
-    "message": "מציג תמונות פרופיל ליד שמות המשתמשים בצ'אט. מקל על זיהוי ויזואלי של תמידיים, עולה במעט מקום אנכי."
+    "message": "אווטארים ליד שמות המשתמשים"
   },
   "mc_settings_inline_notifs": {
     "message": "התראות inline"
@@ -678,16 +678,16 @@
     "message": "[DM] whispers ו-DM"
   },
   "mc_settings_notif_op_desc": {
-    "message": "התראה בלשונית הצ'אט הפעילה כשמישהו יוצר פוסט חדש בפיד."
+    "message": "התראה על פוסט חדש בפיד"
   },
   "mc_settings_notif_op_reply_desc": {
-    "message": "התראה כשהמפרסם המקורי עונה בשרשור משלו."
+    "message": "התראה כש-OP עונה בשרשור שלו"
   },
   "mc_settings_notif_re_desc": {
-    "message": "התראה לכל תגובה בכל שרשור פיד."
+    "message": "התראה על כל תגובה בכל שרשור"
   },
   "mc_settings_notif_dm_desc": {
-    "message": "התראה כשאתה מקבל whisper או DM."
+    "message": "התראה על לחישה או הודעה ישירה"
   },
   "mc_settings_twitch_events": {
     "message": "אירועי Twitch"
@@ -696,67 +696,67 @@
     "message": "raids"
   },
   "mc_settings_raids_desc": {
-    "message": "באנר inline כששדרן עושה raid פנימה או החוצה, עם מספר צופים וערוץ מקור. מאפשר לך להצטרף לסטרים הבא."
+    "message": "באנר על פשיטה עם מספר הצופים"
   },
   "mc_settings_hype_trains": {
     "message": "hype trains"
   },
   "mc_settings_hype_trains_desc": {
-    "message": "באנר התקדמות חי ל-hype trains, עם רמה וטיימר תרומה. כבוי כברירת מחדל כי מופעל ללא הרף בערוצים גדולים."
+    "message": "באנר התקדמות hype train חי"
   },
   "mc_settings_gift_subs": {
     "message": "subs במתנה"
   },
   "mc_settings_gift_subs_desc": {
-    "message": "באנר ל-gift sub bombs קהילתיים ומתנות בודדות, עם נותן, מקבל ו-tier."
+    "message": "באנר לסאבים מתנה עם מעניק ורמה"
   },
   "mc_settings_redeems": {
     "message": "מימושים של channel points"
   },
   "mc_settings_redeems_desc": {
-    "message": "הודעת inline למימוש channel points כמו 'highlight my message' כדי שתראה על מה אנשים מבזבזים נקודות."
+    "message": "באנר לפדיון נקודות ערוץ"
   },
   "mc_settings_prediction_banner": {
     "message": "תחזיות"
   },
   "mc_settings_prediction_banner_desc": {
-    "message": "באנר חי לתחזית channel points עם odds נוכחיים וזמן שנותר לנעילת הצבעה."
+    "message": "באנר תחזית חי עם סיכויים וטיימר"
   },
   "mc_settings_poll_banner": {
     "message": "סקרים"
   },
   "mc_settings_poll_banner_desc": {
-    "message": "באנר סקר פעיל עם ספירת קולות וזמן שנותר. הצבע ישירות מה-overlay."
+    "message": "באנר הצבעה פעיל, הצבע ישירות"
   },
   "mc_settings_pinned_messages": {
     "message": "הודעות נעוצות"
   },
   "mc_settings_pinned_messages_desc": {
-    "message": "באנר sticky להודעות צ'אט שנעצו על ידי מודרטורים כדי שלא תפספס כללים או לוח זמנים."
+    "message": "באנר קבוע להודעות שנעוצו על ידי מנהלים"
   },
   "mc_settings_dim_timeouts": {
     "message": "עמעם הודעות timeout"
   },
   "mc_settings_dim_timeouts_desc": {
-    "message": "הצג הודעות timeout ובאן ב-50% שקיפות במקום להסתיר, בסגנון FFZ/BTTV. מאפשר לך לראות מה נמחק מבלי לעזוב את הצ'אט."
+    "message": "50% שקיפות במקום הסתרה"
   },
   "mc_settings_smart_completion": {
     "message": "השלמת Tab חכמה"
   },
   "mc_settings_smart_completion_desc": {
-    "message": "צ'אטרים אחרונים ואימוג'ים של הערוץ הזה מופיעים ראשונים בהשלמת Tab. מהיר יותר מאלפבית כשהצ'אט זורם."
+    "message": "משתמשים/אמוטים אחרונים מוצגים ראשונים"
   },
   "mc_settings_first_chatter": {
     "message": "זוהר הודעה ראשונה"
   },
   "mc_settings_first_chatter_desc": {
-    "message": "סימן כתום בקצה ההודעה הראשונה שמשתמש שולח בכל ערוץ במפגש זה. הופך מתחילים לבולטים בצ'אט מהיר."
+    "message": "מסגרת כתומה על ההודעה הראשונה בסשן"
   },
   "mc_settings_keyword_highlights": {
     "message": "הדגשות מילות מפתח"
   },
   "mc_settings_keyword_highlights_desc": {
-    "message": "הודעות המכילות מילים אלה מקבלות גוון כתום, כמו אזכור אישי. אחת בשורה, ללא תלות באותיות גדולות, מילים מלאות."
+    "message": "צובע הודעות תואמות בכתום. אחד לשורה, לא רגיש לאותיות, מילה שלמה"
   },
   "mc_settings_keyword_highlights_placeholder": {
     "message": "מילת מפתח אחת בשורה"
@@ -768,7 +768,7 @@
     "message": "איסוף אוטומטי של channel points"
   },
   "mc_settings_auto_claim_desc": {
-    "message": "לוחץ אוטומטית על תיבת בונוס channel points ב-Twitch כשהיא מופיעה. נקודות חינם, אפס מאמץ."
+    "message": "לוחץ אוטומטית על ארגז נקודות הערוץ"
   },
   "mc_settings_muted_users": {
     "message": "משתמשים מושתקים"
@@ -1008,7 +1008,7 @@
     }
   },
   "mc_input_replying_to": {
-    "message": "מגיב ל-@$USER$",
+    "message": "תגובה ל-@$USER$",
     "placeholders": {
       "user": {
         "content": "$1"
@@ -1052,10 +1052,10 @@
     "message": "עדיין אין פוסטים"
   },
   "mc_social_loading_feed": {
-    "message": "טוען פיד של נעקבים..."
+    "message": "טוען..."
   },
   "mc_social_scroll_more": {
-    "message": "גלול לעוד..."
+    "message": "עוד"
   },
   "mc_social_no_replies": {
     "message": "עדיין אין תגובות"
@@ -1162,7 +1162,7 @@
     "message": "הצ'אט נוקה"
   },
   "mc_irc_msg_deleted": {
-    "message": "הודעה מ-$USER$ נמחקה",
+    "message": "ההודעה של $USER$ נמחקה",
     "placeholders": {
       "user": {
         "content": "$1"

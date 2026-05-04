@@ -9,7 +9,7 @@
     "message": "läser in..."
   },
   "common_extension_updated": {
-    "message": "Tillägget uppdaterat — ladda om sidan"
+    "message": "tillägg uppdaterat — ladda om sidan"
   },
   "common_no_matches": {
     "message": "inga träffar"
@@ -324,7 +324,7 @@
     "message": "klicka för att expandera"
   },
   "content_toast_failed_add": {
-    "message": "Kunde inte lägga till $NAME$: $ERROR$",
+    "message": "misslyckades lägga till $NAME$: $ERROR$",
     "placeholders": {
       "name": {
         "content": "$1"
@@ -335,7 +335,7 @@
     }
   },
   "content_toast_failed_remove": {
-    "message": "Kunde inte ta bort $NAME$: $ERROR$",
+    "message": "misslyckades ta bort $NAME$: $ERROR$",
     "placeholders": {
       "name": {
         "content": "$1"
@@ -354,7 +354,7 @@
     }
   },
   "content_toast_failed_unblock": {
-    "message": "Kunde inte avblockera: $ERROR$",
+    "message": "avblockering misslyckades: $ERROR$",
     "placeholders": {
       "error": {
         "content": "$1"
@@ -362,7 +362,7 @@
     }
   },
   "content_toast_removed": {
-    "message": "$NAME$ borttagen från ditt set",
+    "message": "$NAME$ borttagen från din samling",
     "placeholders": {
       "name": {
         "content": "$1"
@@ -370,7 +370,7 @@
     }
   },
   "content_toast_failed_block": {
-    "message": "Kunde inte blockera: $ERROR$",
+    "message": "blockering misslyckades: $ERROR$",
     "placeholders": {
       "error": {
         "content": "$1"
@@ -639,28 +639,28 @@
     "message": "avatarer"
   },
   "mc_settings_emote_size_desc": {
-    "message": "Upplösningsmultiplikator för emotes i chatten. 1x är skarp och kompakt, 2x är sweet spot för de flesta skärmar, 4x är för dem som vill se varje pixel."
+    "message": "1x standard, 2x retina, 4x stor"
   },
   "mc_settings_input_preview_desc": {
-    "message": "Visar emotes som bilder direkt i inmatningsfältet medan du skriver, istället för textnamn. Det du ser är det du skickar."
+    "message": "emote-bilder i fältet vid skrivning"
   },
   "mc_settings_clickable_links_desc": {
-    "message": "Gör URL:er i chattmeddelanden klickbara. Stäng av om du föredrar copy-paste eller inte litar på främlingar på internet."
+    "message": "url:er i chatten blir klickbara"
   },
   "mc_settings_vi_mode_desc": {
-    "message": "Vim-stil tangentbindningar för chattnavigering. j/k scrolla, g/G upp/ned, / sök. För dem som tycker musen är för casuals."
+    "message": "j/k rulla, g/G topp/botten, / sök"
   },
   "mc_settings_zebra_desc": {
-    "message": "Alternerande radskuggning på chattmeddelanden. Underlättar att följa långa meddelanden, särskilt i snabb chatt."
+    "message": "växlande radskuggning"
   },
   "mc_settings_auto_hide_desc": {
-    "message": "Döljer inmatningsraden när du inte skriver. Klicka eller börja skriva för att få tillbaka den. Maximerar chattytan."
+    "message": "döljer inmatningsfältet vid inaktivitet"
   },
   "mc_settings_timestamps_desc": {
-    "message": "Visar skicktid för varje meddelande bredvid användarnamnet. Bra för att hänga med på vad som hände när du var AFK."
+    "message": "tidsstämpel på varje meddelande"
   },
   "mc_settings_avatars_desc": {
-    "message": "Visar profilbilder bredvid användarnamn i chatten. Hjälper att visuellt känna igen återkommande, kostar lite vertikalt utrymme."
+    "message": "avatarer bredvid användarnamn"
   },
   "mc_settings_inline_notifs": {
     "message": "inline-notiser"
@@ -678,16 +678,16 @@
     "message": "[DM] whispers och DM"
   },
   "mc_settings_notif_op_desc": {
-    "message": "Notis i din aktiva chatt-flik när någon skapar ett nytt inlägg i flödet."
+    "message": "ping vid nytt inlägg i flödet"
   },
   "mc_settings_notif_op_reply_desc": {
-    "message": "Notis när originalpostaren svarar i egen tråd."
+    "message": "ping när OP svarar i sin tråd"
   },
   "mc_settings_notif_re_desc": {
-    "message": "Notis för varje svar i en flödestråd."
+    "message": "ping vid varje svar i vilken tråd som helst"
   },
   "mc_settings_notif_dm_desc": {
-    "message": "Notis när du får en whisper eller DM."
+    "message": "ping vid viskning eller direktmeddelande"
   },
   "mc_settings_twitch_events": {
     "message": "Twitch-events"
@@ -696,67 +696,67 @@
     "message": "raids"
   },
   "mc_settings_raids_desc": {
-    "message": "Inline-banner när en streamer raidar in eller ut, med tittarantal och källkanal. Låter dig följa med till nästa stream."
+    "message": "banner vid raid med antal tittare"
   },
   "mc_settings_hype_trains": {
     "message": "hype trains"
   },
   "mc_settings_hype_trains_desc": {
-    "message": "Live-progressbanner för hype trains, med nivå och bidragstimer. Av som standard eftersom de triggas hela tiden på stora kanaler."
+    "message": "live framstegsvisare för hype train"
   },
   "mc_settings_gift_subs": {
     "message": "gift subs"
   },
   "mc_settings_gift_subs_desc": {
-    "message": "Banner för community gift sub bombs och enskilda gifts, med givare, mottagare och tier."
+    "message": "banner för presentprenumerationer med givare och nivå"
   },
   "mc_settings_redeems": {
     "message": "channel point-inlösningar"
   },
   "mc_settings_redeems_desc": {
-    "message": "Inline-meddelande för channel point-inlösningar som 'highlight my message' så du ser vad folk lägger sina poäng på."
+    "message": "banner för inlösning av kanalpoäng"
   },
   "mc_settings_prediction_banner": {
     "message": "predictions"
   },
   "mc_settings_prediction_banner_desc": {
-    "message": "Live-banner för channel point predictions med aktuella odds och tid kvar att låsa rösten."
+    "message": "live prediktionsbanner med odds och timer"
   },
   "mc_settings_poll_banner": {
     "message": "polls"
   },
   "mc_settings_poll_banner_desc": {
-    "message": "Banner för aktiv poll med röstetal och tid kvar. Rösta direkt från overlayen."
+    "message": "aktiv omröstningsbanner, rösta direkt"
   },
   "mc_settings_pinned_messages": {
     "message": "pinnade meddelanden"
   },
   "mc_settings_pinned_messages_desc": {
-    "message": "Sticky banner för moderator-pinnade chattmeddelanden så du inte missar regler eller schema."
+    "message": "fast banner för meddelanden nålade av mods"
   },
   "mc_settings_dim_timeouts": {
     "message": "dimma timeoutade meddelanden"
   },
   "mc_settings_dim_timeouts_desc": {
-    "message": "Visa timeoutade och bannade meddelanden med 50% opacitet istället för att dölja dem, FFZ/BTTV-stil. Du kan se vad som nukades utan att lämna chatten."
+    "message": "50% genomskinlighet istället för att dölja"
   },
   "mc_settings_smart_completion": {
     "message": "smart tab-komplettering"
   },
   "mc_settings_smart_completion_desc": {
-    "message": "Senaste chatters och emotes från denna kanal visas först vid tab-komplettering. Snabbare än alfabetisk när chatten rusar."
+    "message": "senaste chattarna/emoterna visas först"
   },
   "mc_settings_first_chatter": {
     "message": "förstameddelande-glow"
   },
   "mc_settings_first_chatter_desc": {
-    "message": "Orange kantmarkör på första meddelandet en användare skickar i varje kanal denna session. Gör nykomlingar synliga i snabb chatt."
+    "message": "orange kant på första meddelandet per session"
   },
   "mc_settings_keyword_highlights": {
     "message": "nyckelords-highlights"
   },
   "mc_settings_keyword_highlights_desc": {
-    "message": "Meddelanden med något av dessa ord får orange ton, som personligt omnämnande. En per rad, skiftlägesokänslig, hela ord."
+    "message": "färgar matchande meddelanden orange. ett per rad, skiftlägesokänsligt, hela ord"
   },
   "mc_settings_keyword_highlights_placeholder": {
     "message": "ett nyckelord per rad"
@@ -768,7 +768,7 @@
     "message": "auto-claima channel points"
   },
   "mc_settings_auto_claim_desc": {
-    "message": "Klickar automatiskt på bonus channel points-kistan på Twitch när den dyker upp. Gratis poäng, noll ansträngning."
+    "message": "klickar automatiskt på kanalpoängskistan"
   },
   "mc_settings_muted_users": {
     "message": "tystade användare"
@@ -1008,7 +1008,7 @@
     }
   },
   "mc_input_replying_to": {
-    "message": "Svarar @$USER$",
+    "message": "svarar på @$USER$",
     "placeholders": {
       "user": {
         "content": "$1"
@@ -1016,7 +1016,7 @@
     }
   },
   "mc_input_cancel_reply": {
-    "message": "Avbryt svar"
+    "message": "avbryt svar"
   },
   "mc_input_not_logged_in": {
     "message": "ej inloggad"
@@ -1052,10 +1052,10 @@
     "message": "inga inlägg ännu"
   },
   "mc_social_loading_feed": {
-    "message": "laddar flöde av följda..."
+    "message": "laddar..."
   },
   "mc_social_scroll_more": {
-    "message": "scrolla för mer..."
+    "message": "mer"
   },
   "mc_social_no_replies": {
     "message": "inga svar ännu"
@@ -1159,10 +1159,10 @@
     }
   },
   "mc_irc_chat_cleared": {
-    "message": "Chatten rensades"
+    "message": "chatten rensad"
   },
   "mc_irc_msg_deleted": {
-    "message": "Meddelande från $USER$ borttaget",
+    "message": "meddelande från $USER$ raderat",
     "placeholders": {
       "user": {
         "content": "$1"
@@ -1213,7 +1213,7 @@
     "message": "blockerad (klicka för att avblockera)"
   },
   "content_toast_unknown_error": {
-    "message": "Okänt fel"
+    "message": "okänt fel"
   },
   "content_toast_loading_emotes": {
     "message": "laddar emotes..."
@@ -1231,7 +1231,7 @@
     "message": "blockera"
   },
   "btn_close": {
-    "message": "Stäng"
+    "message": "stäng"
   },
   "btn_error_channel": {
     "message": "kunde inte ladda kanalemotes"

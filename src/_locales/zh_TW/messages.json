@@ -9,7 +9,7 @@
     "message": "載入中..."
   },
   "common_extension_updated": {
-    "message": "擴充功能已更新 — 請重新整理頁面"
+    "message": "擴充功能已更新 — 重新整理頁面"
   },
   "common_no_matches": {
     "message": "無符合結果"
@@ -324,7 +324,7 @@
     "message": "點擊展開"
   },
   "content_toast_failed_add": {
-    "message": "新增 $NAME$ 失敗:$ERROR$",
+    "message": "新增 $NAME$ 失敗：$ERROR$",
     "placeholders": {
       "name": {
         "content": "$1"
@@ -335,7 +335,7 @@
     }
   },
   "content_toast_failed_remove": {
-    "message": "移除 $NAME$ 失敗:$ERROR$",
+    "message": "移除 $NAME$ 失敗：$ERROR$",
     "placeholders": {
       "name": {
         "content": "$1"
@@ -354,7 +354,7 @@
     }
   },
   "content_toast_failed_unblock": {
-    "message": "解除封鎖失敗:$ERROR$",
+    "message": "解除封鎖失敗：$ERROR$",
     "placeholders": {
       "error": {
         "content": "$1"
@@ -362,7 +362,7 @@
     }
   },
   "content_toast_removed": {
-    "message": "已從你的 set 移除 $NAME$",
+    "message": "已從你的收藏中移除 $NAME$",
     "placeholders": {
       "name": {
         "content": "$1"
@@ -370,7 +370,7 @@
     }
   },
   "content_toast_failed_block": {
-    "message": "封鎖失敗:$ERROR$",
+    "message": "封鎖失敗：$ERROR$",
     "placeholders": {
       "error": {
         "content": "$1"
@@ -639,28 +639,28 @@
     "message": "頭像"
   },
   "mc_settings_emote_size_desc": {
-    "message": "聊天表情解析度倍率。1x 銳利緊湊,2x 是大多數螢幕的甜蜜點,4x 適合想看每個像素的人。"
+    "message": "1x 預設，2x 視網膜，4x 超大"
   },
   "mc_settings_input_preview_desc": {
-    "message": "輸入時直接在輸入框顯示表情圖片,而非文字名稱。所見即所傳。"
+    "message": "輸入時在欄位中顯示表情圖片"
   },
   "mc_settings_clickable_links_desc": {
-    "message": "把訊息裡的網址變成可點擊的連結。如果你偏好複製貼上或不信任陌生人,就停用。"
+    "message": "聊天中的連結變為可點擊"
   },
   "mc_settings_vi_mode_desc": {
-    "message": "Vim 風格的聊天瀏覽快捷鍵。j/k 捲動、g/G 頂端/底端、/ 搜尋。給認為滑鼠是給休閒玩家用的人。"
+    "message": "j/k 捲動，g/G 頂端/底部，/ 搜尋"
   },
   "mc_settings_zebra_desc": {
-    "message": "聊天訊息交錯底色。在快聊時更容易追蹤長訊息。"
+    "message": "交替列背景色"
   },
   "mc_settings_auto_hide_desc": {
-    "message": "沒在打字時隱藏輸入列。點擊或開始打字即恢復。最大化聊天瀏覽空間。"
+    "message": "閒置時隱藏輸入列"
   },
   "mc_settings_timestamps_desc": {
-    "message": "在使用者名稱旁顯示每則訊息的傳送時間。AFK 回來後追進度很有用。"
+    "message": "每則訊息顯示時間戳記"
   },
   "mc_settings_avatars_desc": {
-    "message": "在使用者名稱旁顯示大頭貼。容易一眼認出常駐觀眾,代價是一點垂直空間。"
+    "message": "使用者名稱旁顯示頭像"
   },
   "mc_settings_inline_notifs": {
     "message": "內嵌通知"
@@ -678,16 +678,16 @@
     "message": "[DM] 私語與 DM"
   },
   "mc_settings_notif_op_desc": {
-    "message": "有人在動態建立新原創貼文時,在你目前活動中的聊天分頁顯示通知。"
+    "message": "動態有新貼文時提醒"
   },
   "mc_settings_notif_op_reply_desc": {
-    "message": "原始發布者在自己的討論串回覆時通知。"
+    "message": "OP 在自己的貼文中回覆時提醒"
   },
   "mc_settings_notif_re_desc": {
-    "message": "動態任何討論串有回覆時通知。"
+    "message": "任意貼文有回覆時提醒"
   },
   "mc_settings_notif_dm_desc": {
-    "message": "收到私語或 DM 時通知。"
+    "message": "收到悄悄話或私訊時提醒"
   },
   "mc_settings_twitch_events": {
     "message": "Twitch 事件"
@@ -696,67 +696,67 @@
     "message": "raid"
   },
   "mc_settings_raids_desc": {
-    "message": "實況主進行 raid 進入或外出時的內嵌橫幅,顯示觀眾數與來源頻道。讓你跟著移動到下一場直播。"
+    "message": "發生 raid 時顯示觀眾數橫幅"
   },
   "mc_settings_hype_trains": {
     "message": "hype train"
   },
   "mc_settings_hype_trains_desc": {
-    "message": "Hype train 即時進度橫幅,顯示等級與貢獻計時器。預設關閉因為大頻道會一直觸發。"
+    "message": "直播 hype train 進度橫幅"
   },
   "mc_settings_gift_subs": {
     "message": "贈訂"
   },
   "mc_settings_gift_subs_desc": {
-    "message": "社群批量贈訂與單個禮物的橫幅,含贈送者、接收者與級別。"
+    "message": "贈送訂閱橫幅，含贈送者和等級"
   },
   "mc_settings_redeems": {
     "message": "頻道點數兌換"
   },
   "mc_settings_redeems_desc": {
-    "message": "頻道點數兌換的內嵌通知,例如「醒目提示我的訊息」,讓你看到大家把點數花在哪。"
+    "message": "頻道積分兌換橫幅"
   },
   "mc_settings_prediction_banner": {
     "message": "預測"
   },
   "mc_settings_prediction_banner_desc": {
-    "message": "頻道點數預測的即時橫幅,含目前賠率與鎖定投票的剩餘時間。"
+    "message": "即時預測橫幅，含賠率和計時器"
   },
   "mc_settings_poll_banner": {
     "message": "投票"
   },
   "mc_settings_poll_banner_desc": {
-    "message": "進行中投票的橫幅,含票數與剩餘時間。直接從覆蓋層投票。"
+    "message": "活躍投票橫幅，直接投票"
   },
   "mc_settings_pinned_messages": {
     "message": "釘選訊息"
   },
   "mc_settings_pinned_messages_desc": {
-    "message": "管理員釘選訊息的常駐橫幅,以免錯過規則或時程。"
+    "message": "版主置頂訊息的固定橫幅"
   },
   "mc_settings_dim_timeouts": {
     "message": "淡化禁言訊息"
   },
   "mc_settings_dim_timeouts_desc": {
-    "message": "用 FFZ/BTTV 風格以 50% 不透明度顯示被禁言或封鎖的訊息,而非隱藏。讓你不離開聊天就能看到被消除的內容。"
+    "message": "50% 透明度而非隱藏"
   },
   "mc_settings_smart_completion": {
     "message": "智慧 Tab 補全"
   },
   "mc_settings_smart_completion_desc": {
-    "message": "Tab 補全時,本頻道最近的聊天者與表情會優先顯示。聊天刷屏時比按字母順序更快。"
+    "message": "最近聊天者/表情優先顯示"
   },
   "mc_settings_first_chatter": {
     "message": "首訊息發光"
   },
   "mc_settings_first_chatter_desc": {
-    "message": "本工作階段中使用者在每個頻道的首則訊息邊緣加橘色標記。讓快速聊天中的新加入者一目瞭然。"
+    "message": "每次工作階段首則訊息顯示橙色邊框"
   },
   "mc_settings_keyword_highlights": {
     "message": "關鍵字醒目提示"
   },
   "mc_settings_keyword_highlights_desc": {
-    "message": "包含其中任一字詞的訊息會變橘色,如同個人提及。每行一個、不分大小寫、整字比對。"
+    "message": "將相符訊息染成橙色。每行一個，不區分大小寫，完整單詞"
   },
   "mc_settings_keyword_highlights_placeholder": {
     "message": "每行一個關鍵字"
@@ -768,7 +768,7 @@
     "message": "自動領取頻道點數"
   },
   "mc_settings_auto_claim_desc": {
-    "message": "Twitch 上頻道點數獎勵箱出現時自動點擊。免費點數,零努力。"
+    "message": "自動點擊頻道積分寶箱"
   },
   "mc_settings_muted_users": {
     "message": "已靜音使用者"
@@ -1052,10 +1052,10 @@
     "message": "還沒有貼文"
   },
   "mc_social_loading_feed": {
-    "message": "載入追蹤動態..."
+    "message": "載入中..."
   },
   "mc_social_scroll_more": {
-    "message": "繼續捲動以查看更多..."
+    "message": "更多"
   },
   "mc_social_no_replies": {
     "message": "還沒有回覆"
@@ -1159,10 +1159,10 @@
     }
   },
   "mc_irc_chat_cleared": {
-    "message": "聊天已清空"
+    "message": "聊天已清除"
   },
   "mc_irc_msg_deleted": {
-    "message": "$USER$ 的訊息已刪除",
+    "message": "已刪除 $USER$ 的訊息",
     "placeholders": {
       "user": {
         "content": "$1"

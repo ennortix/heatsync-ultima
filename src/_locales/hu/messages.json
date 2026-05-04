@@ -9,7 +9,7 @@
     "message": "betöltés..."
   },
   "common_extension_updated": {
-    "message": "Bővítmény frissült — frissítsd az oldalt"
+    "message": "bővítmény frissítve — töltsd újra az oldalt"
   },
   "common_no_matches": {
     "message": "nincs találat"
@@ -346,7 +346,7 @@
     }
   },
   "content_toast_unblocked": {
-    "message": "$NAME$ tiltása feloldva",
+    "message": "$NAME$ tiltásának feloldva",
     "placeholders": {
       "name": {
         "content": "$1"
@@ -354,7 +354,7 @@
     }
   },
   "content_toast_failed_unblock": {
-    "message": "Tiltás feloldása sikertelen: $ERROR$",
+    "message": "tiltásfeloldás sikertelen: $ERROR$",
     "placeholders": {
       "error": {
         "content": "$1"
@@ -362,7 +362,7 @@
     }
   },
   "content_toast_removed": {
-    "message": "$NAME$ eltávolítva a setedből",
+    "message": "$NAME$ eltávolítva a gyűjteményedből",
     "placeholders": {
       "name": {
         "content": "$1"
@@ -370,7 +370,7 @@
     }
   },
   "content_toast_failed_block": {
-    "message": "Tiltás sikertelen: $ERROR$",
+    "message": "tiltás sikertelen: $ERROR$",
     "placeholders": {
       "error": {
         "content": "$1"
@@ -639,28 +639,28 @@
     "message": "avatarok"
   },
   "mc_settings_emote_size_desc": {
-    "message": "Felbontás-szorzó a chat emote-jaihoz. 1x éles és kompakt, 2x a sweet spot a legtöbb monitorhoz, 4x azoknak akik minden pixelt látni akarnak."
+    "message": "1x alap, 2x retina, 4x nagy"
   },
   "mc_settings_input_preview_desc": {
-    "message": "Az emote-okat képként jeleníti meg közvetlenül a beviteli mezőben gépelés közben, szöveges nevek helyett. Amit látsz, azt küldöd."
+    "message": "emote képek a mezőben gépelés közben"
   },
   "mc_settings_clickable_links_desc": {
-    "message": "Kattinthatóvá teszi a chat-üzenetek URL-jeit. Kapcsold ki ha jobban szereted a copy-paste-et vagy nem bízol idegenekben."
+    "message": "az url-ek a csevegésben kattinthatóvá válnak"
   },
   "mc_settings_vi_mode_desc": {
-    "message": "Vim-stílusú billentyűparancsok chat-navigációhoz. j/k görgetés, g/G fent/lent, / keresés. Akik szerint az egér casualoknak való."
+    "message": "j/k görgetés, g/G fel/le, / keresés"
   },
   "mc_settings_zebra_desc": {
-    "message": "Váltakozó sorárnyékolás a chat-üzeneteken. Megkönnyíti a hosszú üzenetek követését, főleg gyors chatben."
+    "message": "felváltva sorárnyékolás"
   },
   "mc_settings_auto_hide_desc": {
-    "message": "Elrejti a beviteli sávot, amikor nem írsz üzenetet. Kattints vagy kezdj el gépelni, hogy visszahozd. Maximalizálja a chat nézetet."
+    "message": "inaktivitáskor elrejti a beviteli sávot"
   },
   "mc_settings_timestamps_desc": {
-    "message": "Megjeleníti minden üzenet küldési idejét a felhasználónév mellett. Hasznos, hogy kiderüljön mi történt amíg AFK voltál."
+    "message": "időbélyeg minden üzeneten"
   },
   "mc_settings_avatars_desc": {
-    "message": "Profilképet jelenít meg a felhasználónevek mellett a chatben. Megkönnyíti a törzslátogatók vizuális azonosítását, kicsit függőleges helyet vesz el."
+    "message": "avatarok felhasználónevek mellett"
   },
   "mc_settings_inline_notifs": {
     "message": "inline értesítések"
@@ -678,16 +678,16 @@
     "message": "[DM] whispers és DM"
   },
   "mc_settings_notif_op_desc": {
-    "message": "Értesítés az aktív chat-fülön, amikor valaki új posztot tesz a feedbe."
+    "message": "ping új bejegyzésnél a feedben"
   },
   "mc_settings_notif_op_reply_desc": {
-    "message": "Értesítés, amikor az eredeti posztoló válaszol saját szálban."
+    "message": "ping ha OP válaszol saját szálában"
   },
   "mc_settings_notif_re_desc": {
-    "message": "Értesítés minden válaszra a feed bármelyik szálában."
+    "message": "ping minden válasznál bármely szálban"
   },
   "mc_settings_notif_dm_desc": {
-    "message": "Értesítés, amikor whispert vagy DM-et kapsz."
+    "message": "ping súgásnál vagy közvetlen üzenetben"
   },
   "mc_settings_twitch_events": {
     "message": "Twitch események"
@@ -696,67 +696,67 @@
     "message": "raidek"
   },
   "mc_settings_raids_desc": {
-    "message": "Inline banner amikor egy streamer beraidel vagy elraidel, nézőszámmal és forráscsatornával. Lehetővé teszi, hogy átmenj a következő streamre."
+    "message": "banner raidnél nézőszámmal"
   },
   "mc_settings_hype_trains": {
     "message": "hype trainek"
   },
   "mc_settings_hype_trains_desc": {
-    "message": "Élő haladás banner hype trainekhez, szinttel és hozzájárulás-időzítővel. Alapból kikapcsolva, mert nagy csatornákon folyamatosan triggerelődik."
+    "message": "élő hype train haladásbanner"
   },
   "mc_settings_gift_subs": {
     "message": "ajándék subok"
   },
   "mc_settings_gift_subs_desc": {
-    "message": "Banner közösségi gift sub bombokhoz és egyéni ajándékokhoz, ajándékozóval, fogadóval és tier-rel."
+    "message": "banner ajándék subokhoz ajándékozóval és szinttel"
   },
   "mc_settings_redeems": {
     "message": "channel point beváltások"
   },
   "mc_settings_redeems_desc": {
-    "message": "Inline értesítés channel point beváltásokra mint 'highlight my message', hogy lásd mire költik az emberek a pontokat."
+    "message": "banner csatornapontbeváltásokhoz"
   },
   "mc_settings_prediction_banner": {
     "message": "predikciók"
   },
   "mc_settings_prediction_banner_desc": {
-    "message": "Élő banner channel point predikcióhoz aktuális esélyekkel és hátralévő idővel a szavazat zárolásáig."
+    "message": "élő előrejelzésbanner esélyekkel és időzítővel"
   },
   "mc_settings_poll_banner": {
     "message": "szavazások"
   },
   "mc_settings_poll_banner_desc": {
-    "message": "Aktív szavazás banner szavazatszámokkal és hátralévő idővel. Szavazz közvetlenül az overlay-ből."
+    "message": "aktív szavazásbanner, szavazz közvetlenül"
   },
   "mc_settings_pinned_messages": {
     "message": "kitűzött üzenetek"
   },
   "mc_settings_pinned_messages_desc": {
-    "message": "Sticky banner moderátor által kitűzött chat-üzenetekhez, hogy ne maradj le a szabályokról vagy menetrendről."
+    "message": "ragasztott banner moderátorok által rögzített üzenetekhez"
   },
   "mc_settings_dim_timeouts": {
     "message": "timeoutolt üzenetek tompítása"
   },
   "mc_settings_dim_timeouts_desc": {
-    "message": "A timeoutolt és tiltott üzeneteket 50%-os átlátszósággal mutatja, elrejtés helyett, FFZ/BTTV stílusban. Láthatod mit nukoltak chat elhagyása nélkül."
+    "message": "50% átlátszóság elrejtés helyett"
   },
   "mc_settings_smart_completion": {
     "message": "intelligens tab-kiegészítés"
   },
   "mc_settings_smart_completion_desc": {
-    "message": "A legutóbbi chattelők és a csatorna emote-jai elsőként jelennek meg tab-kiegészítésnél. Gyorsabb mint az ABC sorrend amikor a chat áramlik."
+    "message": "legutóbbi chatelők/emote-ok jelennek meg először"
   },
   "mc_settings_first_chatter": {
     "message": "első üzenet ragyogás"
   },
   "mc_settings_first_chatter_desc": {
-    "message": "Narancs szegély-jelzés egy felhasználó első üzenetén minden csatornán ebben a sessionben. Megkönnyíti az újoncok észlelését gyors chatben."
+    "message": "narancssárga keret az első üzeneten munkamenetenként"
   },
   "mc_settings_keyword_highlights": {
     "message": "kulcsszó-kiemelések"
   },
   "mc_settings_keyword_highlights_desc": {
-    "message": "Az ezeket a szavakat tartalmazó üzenetek narancsszínűek lesznek, mint egy személyes említés. Soronként egy, kis-nagybetűt nem nézi, teljes szó."
+    "message": "narancsra színezi az egyező üzeneteket. soronként egy, kis- és nagybetű-független, teljes szó"
   },
   "mc_settings_keyword_highlights_placeholder": {
     "message": "egy kulcsszó soronként"
@@ -768,7 +768,7 @@
     "message": "channel pointok auto-begyűjtése"
   },
   "mc_settings_auto_claim_desc": {
-    "message": "Automatikusan rákattint a bonus channel pointok ládájára Twitchen amikor megjelenik. Ingyen pontok, nulla erőfeszítés."
+    "message": "automatikusan kattint a csatornapontok ládájára"
   },
   "mc_settings_muted_users": {
     "message": "némított felhasználók"
@@ -1008,7 +1008,7 @@
     }
   },
   "mc_input_replying_to": {
-    "message": "Válasz @$USER$ részére",
+    "message": "válasz: @$USER$",
     "placeholders": {
       "user": {
         "content": "$1"
@@ -1016,7 +1016,7 @@
     }
   },
   "mc_input_cancel_reply": {
-    "message": "Válasz mégse"
+    "message": "válasz törlése"
   },
   "mc_input_not_logged_in": {
     "message": "nincs bejelentkezve"
@@ -1052,10 +1052,10 @@
     "message": "még nincs poszt"
   },
   "mc_social_loading_feed": {
-    "message": "követett feed betöltése..."
+    "message": "betöltés..."
   },
   "mc_social_scroll_more": {
-    "message": "görgess a továbbiakhoz..."
+    "message": "több"
   },
   "mc_social_no_replies": {
     "message": "még nincs válasz"
@@ -1159,7 +1159,7 @@
     }
   },
   "mc_irc_chat_cleared": {
-    "message": "Chat törölve"
+    "message": "csevegés törölve"
   },
   "mc_irc_msg_deleted": {
     "message": "$USER$ üzenete törölve",
@@ -1213,7 +1213,7 @@
     "message": "letiltva (kattints a feloldáshoz)"
   },
   "content_toast_unknown_error": {
-    "message": "Ismeretlen hiba"
+    "message": "ismeretlen hiba"
   },
   "content_toast_loading_emotes": {
     "message": "emote-ok betöltése..."
@@ -1231,7 +1231,7 @@
     "message": "letiltás"
   },
   "btn_close": {
-    "message": "Bezárás"
+    "message": "bezárás"
   },
   "btn_error_channel": {
     "message": "csatorna emote-jainak betöltése sikertelen"

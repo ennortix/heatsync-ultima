@@ -3310,7 +3310,7 @@ function injectStyles() {
     }
     .hs-whisper-conv:hover .hs-whisper-preview,
     .hs-whisper-conv:hover .hs-whisper-time {
-      color: #808080;
+      color: #000;
     }
     .hs-whisper-preview {
       color: #808080;
@@ -3380,7 +3380,7 @@ function injectStyles() {
       margin-left: 4px;
       background: #ff8700;
       color: #fff !important;
-      border-radius: 3px;
+      border-radius: 0;
       font-weight: 700;
       text-decoration: none;
       cursor: pointer;
@@ -3650,7 +3650,7 @@ function injectStyles() {
       color: #ff8700;
       background: rgba(0,0,0,0.4);
       padding: 1px 5px;
-      border-radius: 3px;
+      border-radius: 0;
       flex-shrink: 0;
     }
     .hs-mc-chat-banner-badge {
@@ -3829,7 +3829,7 @@ function injectStyles() {
     .hs-mc-avatar {
       width: 18px;
       height: 18px;
-      border-radius: 3px;
+      border-radius: 0;
       vertical-align: middle;
       margin-right: 3px;
       object-fit: cover;
@@ -3969,12 +3969,7 @@ function injectStyles() {
       font-style: italic;
       display: block;
     }
-    /* Event color palette — each notice class gets a distinct ANSI hue so the
-       chat can be read at a glance. Using saturated 16-color anchors plus
-       Twitch/HS conventions (purple = sub, orange = HS brand/raid). */
-    /* Red is reserved for @-mentions. Ban keeps red (severe/permanent). Timeout =
-       green (#008000) — visible mod-action marker so timeouts read at a glance
-       (matches the heatsync site). Recovery (untimeout) keeps the same green. */
+    /* purple=sub, orange=raid/HS, red=@-mention/ban, green=timeout/untimeout (matches site) */
     .hs-mc-msg.hs-mc-notice-ban       { border-left-color: #ff0000 !important; background: rgba(255, 0, 0, 0.12) !important; }
     .hs-mc-msg.hs-mc-notice-ban       .hs-mc-system-text { color: #ff4040; font-weight: 600; }
     .hs-mc-msg.hs-mc-notice-timeout   { border-left-color: #008000 !important; background: rgba(0, 128, 0, 0.10) !important; }
@@ -4102,8 +4097,7 @@ function injectStyles() {
       background: #fff !important;
       color: #000 !important;
       -webkit-text-fill-color: #000 !important;
-      border-radius: 2px;
-      box-shadow: 0 0 6px rgba(255, 255, 255, 0.8);
+      border-radius: 0;
     }
     .hs-mc-platform-badge {
       font-size: var(--hs-badge-font, 10px);
@@ -4147,7 +4141,7 @@ function injectStyles() {
       display: none;
       min-width: 240px;
       max-width: 400px;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.6);
+      border: 1px solid #333;
     }
     #hs-user-tooltip.visible {
       display: flex;
@@ -4232,7 +4226,7 @@ function injectStyles() {
     }
     #hs-user-tooltip .hs-pc-bio-mention { color: #ff8700; cursor: pointer; }
     #hs-user-tooltip .hs-pc-bio-mention:hover { text-decoration: underline; }
-    #hs-user-tooltip .hs-pc-bio-tag { color: #fff; text-decoration: none; }
+    #hs-user-tooltip .hs-pc-bio-tag { color: #ff00ff; text-decoration: none; }
     #hs-user-tooltip .hs-pc-bio-tag:hover { text-decoration: underline; }
     #hs-user-tooltip .hs-pc-stats {
       display: flex;
@@ -4564,7 +4558,7 @@ function injectStyles() {
       flex-direction: column;
       align-items: center;
       gap: 4px;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.6);
+      border: 1px solid #333;
     }
     #hs-badge-tooltip.visible {
       display: flex;
@@ -4603,7 +4597,7 @@ function injectStyles() {
       flex-direction: column;
       align-items: center;
       gap: 6px;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.6);
+      border: 1px solid #333;
     }
     #hs-emote-tooltip.visible {
       display: flex;
@@ -4652,7 +4646,7 @@ function injectStyles() {
       flex-direction: row;
       gap: 8px;
       max-width: 350px;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.6);
+      border: 1px solid #333;
     }
     #hs-link-tooltip.visible { display: flex; }
     #hs-link-tooltip img {
@@ -4768,7 +4762,8 @@ function injectStyles() {
     }
     .hs-mc-emoji-row:hover,
     .hs-mc-emoji-row.selected {
-      background: #808080;
+      background: #fff;
+      color: #000;
     }
     .hs-mc-emoji-preview {
       font-size: 18px;
@@ -4808,7 +4803,8 @@ function injectStyles() {
     }
     .hs-mc-slash-row:hover,
     .hs-mc-slash-row.selected {
-      background: #808080;
+      background: #fff;
+      color: #000;
     }
     .hs-mc-slash-name { color: #ff8700; font-weight: 700; }
     .hs-mc-slash-args { color: #aaa; flex-shrink: 0; }
@@ -4922,9 +4918,7 @@ function injectStyles() {
       padding: 0 6px;
       font-size: 10px;
       color: #aaa;
-      text-transform: uppercase;
       font-weight: 700;
-      letter-spacing: 1px;
     }
     .hs-pcard-id { border-color: #ff8700; }
     .hs-pcard-id .hs-pcard-section-title { color: #ff8700; }
@@ -4935,7 +4929,7 @@ function injectStyles() {
 
     .hs-pcard-id-row { display: flex; gap: 12px; align-items: flex-start; }
     .hs-pcard-avatar {
-      width: 56px; height: 56px; border-radius: 4px; object-fit: cover;
+      width: 56px; height: 56px; border-radius: 0; object-fit: cover;
       border: 1px solid #444; flex-shrink: 0;
     }
     .hs-pcard-id-text { flex: 1; min-width: 0; }
@@ -4947,7 +4941,7 @@ function injectStyles() {
       padding: 2px 6px; border: 1px solid; text-decoration: none;
       font-weight: 600; display: inline-flex; align-items: center; gap: 3px;
     }
-    .hs-pcard-pill:hover { filter: brightness(1.3); }
+    .hs-pcard-pill:hover { background: #fff; color: #000; border-color: #fff; }
     .hs-pcard-pill-twitch { color: #9146ff; border-color: #9146ff; }
     .hs-pcard-pill-kick { color: #53fc18; border-color: #53fc18; }
     .hs-pcard-pill-youtube { color: #ff0000; border-color: #ff0000; }
@@ -4960,7 +4954,7 @@ function injectStyles() {
     }
     .hs-pcard-bio-mention { color: #ff8700; cursor: pointer; font-style: normal; }
     .hs-pcard-bio-mention:hover { text-decoration: underline; }
-    .hs-pcard-bio-tag { color: #fff; text-decoration: none; font-style: normal; }
+    .hs-pcard-bio-tag { color: #ff00ff; text-decoration: none; font-style: normal; }
     .hs-pcard-bio-tag:hover { text-decoration: underline; }
     .hs-pcard-meta {
       display: flex; flex-wrap: wrap; gap: 6px; align-items: center;
@@ -5052,10 +5046,11 @@ function injectStyles() {
       color: #555 !important;
       border-color: #333 !important;
     }
-    .hs-mc-pf-btn:hover { filter: brightness(1.2); }
+    .hs-mc-pf-btn:hover { background: #fff !important; color: #000 !important; border-color: #fff !important; }
     .hs-mc-pf-btn.off:hover {
-      background: rgba(255,255,255,0.06) !important;
-      color: #aaa !important;
+      background: #fff !important;
+      color: #000 !important;
+      border-color: #fff !important;
     }
 
     /* Emote picker panel — full-width section above inputbar */
@@ -5431,7 +5426,6 @@ function injectStyles() {
       height: 100%;
       background: var(--oc, #387aff);
       border-radius: 0;
-      transition: width 0.3s ease;
     }
     .hs-mc-pred-outcome-stats {
       font-size: 10px;
@@ -5546,7 +5540,7 @@ function injectStyles() {
       gap: 2px;
       padding: 8px 12px;
       margin-bottom: 8px;
-      border-radius: 4px;
+      border-radius: 0;
       text-align: center;
     }
     .hs-mc-pred-result-amount {
@@ -5564,12 +5558,9 @@ function injectStyles() {
       margin-left: 4px;
     }
     .hs-mc-pred-result-won {
-      background: linear-gradient(135deg, rgba(0,200,100,0.15), rgba(255,135,0,0.1));
+      background: rgba(0,200,100,0.12);
       color: #00e070;
       border: 1px solid rgba(0,200,100,0.3);
-    }
-    .hs-mc-pred-result-won .hs-mc-pred-result-amount {
-      text-shadow: 0 0 12px rgba(0,224,112,0.4);
     }
     .hs-mc-pred-result-lost {
       background: rgba(255,60,60,0.08);
@@ -5577,7 +5568,7 @@ function injectStyles() {
       border: 1px solid rgba(255,60,60,0.2);
     }
     .hs-mc-pred-result-refund {
-      background: linear-gradient(135deg, rgba(255,135,0,0.1), rgba(255,191,0,0.08));
+      background: rgba(255,135,0,0.1);
       color: #ff8700;
       border: 1px solid rgba(255,135,0,0.25);
     }
@@ -5618,7 +5609,7 @@ function injectStyles() {
       color: #ff8700;
       background: rgba(255,135,0,0.08);
       border: 1px solid rgba(255,135,0,0.2);
-      border-radius: 3px;
+      border-radius: 0;
       padding: 5px 8px;
       margin-top: 6px;
       text-align: center;
@@ -5806,7 +5797,6 @@ function injectStyles() {
       left: 0;
       height: 100%;
       background: rgba(145,71,255,0.35);
-      transition: width 0.3s ease;
     }
     .hs-mc-poll-choice-top .hs-mc-poll-choice-fill {
       background: rgba(145,71,255,0.6);
@@ -6553,6 +6543,11 @@ function injectStyles() {
     .hs-popout #hs-mc-resize-handle {
       display: none !important;
     }
+    /* Popout chat = full window, no video. Rotating the panel into a
+       quadrant only leaves a blank area where the player would be. */
+    .hs-popout .hs-mc-rotate-chat {
+      display: none !important;
+    }
     .hs-popout #hs-mc-emote-picker {
       left: 0 !important;
       right: 0 !important;
@@ -6723,7 +6718,7 @@ function injectStyles() {
       max-width: 100%;
       max-height: 320px;
       display: block;
-      border-radius: 3px;
+      border-radius: 0;
       cursor: pointer;
       background: #000;
     }
@@ -6736,7 +6731,7 @@ function injectStyles() {
       max-height: 180px;
       width: 100%;
       object-fit: cover;
-      border-radius: 3px;
+      border-radius: 0;
       background: #000;
     }
     .hs-feed-embed-container {
@@ -6745,7 +6740,7 @@ function injectStyles() {
       max-width: 480px;
       aspect-ratio: 16 / 9;
       background: #000;
-      border-radius: 3px;
+      border-radius: 0;
       overflow: hidden;
     }
     .hs-feed-embed-container iframe {
@@ -6783,7 +6778,7 @@ function injectStyles() {
       padding: 4px 6px;
       background: rgba(255,255,255,0.04);
       border: 1px solid #333;
-      border-radius: 3px;
+      border-radius: 0;
       max-width: 480px;
     }
     .hs-feed-link-card-link {
@@ -6812,7 +6807,7 @@ function injectStyles() {
       border: 1px solid #444;
       color: #888;
       font-size: 11px;
-      border-radius: 3px;
+      border-radius: 0;
       max-width: 480px;
     }
 
@@ -7190,7 +7185,8 @@ function injectStyles() {
       font-size: 12px;
     }
     .hs-mc-search-result:hover {
-      background: #111;
+      background: #fff;
+      color: #000;
     }
     .hs-mc-search-result:last-child {
       border-bottom: none;
@@ -7263,14 +7259,6 @@ function injectStyles() {
     .hs-discover-heading-title {
       flex-shrink: 0;
     }
-    .hs-discover-subtitle {
-      font-size: 10px;
-      color: #707070;
-      padding: 2px 8px 3px;
-      border-bottom: 1px solid rgba(255,255,255,0.04);
-      font-style: italic;
-      line-height: 1.2;
-    }
     .hs-discover-section-body {
       padding: 1px 0;
     }
@@ -7278,8 +7266,6 @@ function injectStyles() {
       padding: 8px;
       color: #555;
       font-size: 11px;
-      font-style: italic;
-      text-align: center;
     }
     .hs-discover-meta {
       color: #aaa;
@@ -7289,15 +7275,6 @@ function injectStyles() {
       letter-spacing: 0;
       font-variant-numeric: tabular-nums;
       flex-shrink: 0;
-    }
-    .hs-discover-live-count {
-      color: #ff3030;
-      font-weight: 700;
-      animation: hs-pulse-live 1.6s ease-in-out infinite;
-    }
-    @keyframes hs-pulse-live {
-      0%, 100% { opacity: 1; }
-      50% { opacity: 0.55; }
     }
     .hs-discover-chips {
       display: flex;
@@ -7309,17 +7286,17 @@ function injectStyles() {
     .hs-discover-chip {
       display: inline-block;
       padding: 1px 7px;
-      background: rgba(255,135,0,0.12);
-      border: 1px solid rgba(255,135,0,0.4);
-      color: #ff8700;
-      font-size: 12px;
+      background: transparent;
+      border: 1px solid #ff00ff;
+      color: #ff00ff;
+      font-size: 13px;
       text-decoration: none;
       cursor: pointer;
       border-radius: 0;
       line-height: 1.5;
       white-space: nowrap;
     }
-    .hs-discover-chip:hover { background: #fff; color: #000; }
+    .hs-discover-chip:hover { background: #fff; color: #000; border-color: #fff; }
     .hs-discover-profile-row {
       display: flex;
       align-items: center;
@@ -7331,7 +7308,8 @@ function injectStyles() {
       font-size: 13px;
       border-left: 2px solid transparent;
     }
-    .hs-discover-profile-row:hover { background: rgba(255,135,0,0.07); }
+    .hs-discover-profile-row:hover { background: #fff; color: #000; }
+    .hs-discover-profile-row:hover * { color: #000 !important; }
     .hs-discover-profile-row.hs-discover-row-live { border-left-color: #ff3030; }
     .hs-discover-rank {
       color: #666;
@@ -7347,8 +7325,6 @@ function injectStyles() {
       width: 7px; height: 7px;
       border-radius: 50%;
       background: #ff3030;
-      box-shadow: 0 0 5px #ff3030;
-      animation: hs-pulse-live 1.6s ease-in-out infinite;
       flex-shrink: 0;
     }
     .hs-discover-live-spacer { width: 7px; flex-shrink: 0; }
@@ -7381,11 +7357,9 @@ function injectStyles() {
       padding: 0 3px;
       line-height: 1.2;
       text-decoration: none;
-      opacity: 0.6;
-      transition: opacity 0.1s;
     }
-    .hs-discover-platforms .hs-plat:hover { opacity: 1; }
-    .hs-discover-platforms .hs-plat-live { opacity: 1; text-shadow: 0 0 4px currentColor; }
+    .hs-discover-platforms .hs-plat:hover { background: #fff !important; color: #000 !important; }
+    .hs-discover-platforms .hs-plat-live { font-weight: 900; }
     .hs-discover-platforms .hs-plat-t { color: #9146ff; }
     .hs-discover-platforms .hs-plat-k { color: #53fc18; }
     .hs-discover-platforms .hs-plat-yt { color: #ff0000; }
@@ -7407,10 +7381,10 @@ function injectStyles() {
     .hs-discover-bar > i {
       display: block;
       height: 100%;
-      background: linear-gradient(90deg, #ff8700, #ffaa33);
+      background: #ff8700;
     }
     .hs-discover-row-live .hs-discover-bar > i {
-      background: linear-gradient(90deg, #ff3030, #ff8700);
+      background: #ff3030;
     }
     /* Heat number — color/glow comes from inline style via discoverHeatStyle (canonical tiers) */
     .hs-discover-heat {
@@ -7444,8 +7418,6 @@ function injectStyles() {
     .hs-discover-chips-label {
       color: #666;
       font-size: 11px;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
       font-weight: 700;
       margin-right: -2px;
     }
@@ -7460,11 +7432,6 @@ function injectStyles() {
       font-weight: 600;
       border-radius: 0;
       line-height: 1.4;
-      transition: color 0.1s, border-color 0.1s, background 0.1s;
-    }
-    .hs-discover-chip-btn:hover {
-      color: #fff;
-      border-color: #ff8700;
     }
     .hs-discover-chip-btn.hs-active {
       background: #ff8700;
@@ -7486,6 +7453,15 @@ function injectStyles() {
       border-color: #ff0000;
       color: #fff;
     }
+    .hs-discover-chip-btn:hover,
+    .hs-discover-chip-btn.hs-active:hover,
+    .hs-discover-chip-btn.hs-chip-plat-t.hs-active:hover,
+    .hs-discover-chip-btn.hs-chip-plat-k.hs-active:hover,
+    .hs-discover-chip-btn.hs-chip-plat-yt.hs-active:hover {
+      background: #fff;
+      color: #000;
+      border-color: #fff;
+    }
 
     /* Section colour variants — distinct accent borders + headers per widget */
     .hs-discover-section-live {
@@ -7496,18 +7472,6 @@ function injectStyles() {
       border-bottom-color: rgba(255,48,48,0.35);
       color: #ff5050;
     }
-    .hs-discover-section-live > .hs-discover-heading .hs-discover-heading-title::before {
-      content: '';
-      display: inline-block;
-      width: 6px;
-      height: 6px;
-      border-radius: 50%;
-      background: #ff3030;
-      box-shadow: 0 0 5px #ff3030;
-      margin-right: 5px;
-      vertical-align: middle;
-      animation: hs-pulse-live 1.6s ease-in-out infinite;
-    }
     .hs-discover-section-posts {
       border-color: rgba(255,135,0,0.3);
     }
@@ -7516,20 +7480,20 @@ function injectStyles() {
       color: #ffaa44;
     }
     .hs-discover-section-trending {
-      border-color: rgba(0,180,255,0.28);
+      border-color: rgba(255,255,255,0.15);
     }
     .hs-discover-section-trending > .hs-discover-heading {
-      background: rgba(0,180,255,0.08);
-      color: #4dc6ff;
-      border-bottom-color: rgba(0,180,255,0.3);
+      background: rgba(255,255,255,0.04);
+      color: #fff;
+      border-bottom-color: rgba(255,255,255,0.15);
     }
     .hs-discover-section-tags {
-      border-color: rgba(80,255,120,0.28);
+      border-color: rgba(255,0,255,0.35);
     }
     .hs-discover-section-tags > .hs-discover-heading {
-      background: rgba(80,255,120,0.08);
-      color: #6dff8d;
-      border-bottom-color: rgba(80,255,120,0.3);
+      background: rgba(255,0,255,0.08);
+      color: #ff00ff;
+      border-bottom-color: rgba(255,0,255,0.35);
     }
 
     /* Leaderboard multi-column when wide — fewer scrolls */
@@ -7564,9 +7528,11 @@ function injectStyles() {
     }
     .hs-discover-post-row:last-child { border-bottom: none; }
     .hs-discover-post-row:hover {
-      background: rgba(255,135,0,0.07);
-      border-left-color: rgba(255,135,0,0.4);
+      background: #fff;
+      color: #000;
+      border-left-color: #fff;
     }
+    .hs-discover-post-row:hover * { color: #000 !important; }
     .hs-discover-post-meta {
       display: flex;
       align-items: baseline;
@@ -7619,7 +7585,7 @@ function injectStyles() {
     /* Tag chips with optional inline count */
     .hs-discover-chip-count {
       margin-left: 5px;
-      color: rgba(255,135,0,0.6);
+      color: rgba(255,0,255,0.6);
       font-variant-numeric: tabular-nums;
       font-size: 11px;
     }
@@ -17184,7 +17150,7 @@ function heatSpanEl(heat) {
   return span;
 }
 
-function renderDiscoverProfileRow(profile, username, rank, maxHeat) {
+function renderDiscoverProfileRow(profile, username, rank, maxHeat, showRank = true) {
   const row = document.createElement('a');
   row.className = 'hs-discover-profile-row';
   row.href = `https://heatsync.org/user/${encodeURIComponent(username)}`;
@@ -17194,10 +17160,12 @@ function renderDiscoverProfileRow(profile, username, rank, maxHeat) {
   const isLive = !!(profile.twitch_is_live || profile.kick_is_live);
   if (isLive) row.classList.add('hs-discover-row-live');
 
-  const rankEl = document.createElement('span');
-  rankEl.className = 'hs-discover-rank';
-  rankEl.textContent = String(rank).padStart(2, '0');
-  row.appendChild(rankEl);
+  if (showRank) {
+    const rankEl = document.createElement('span');
+    rankEl.className = 'hs-discover-rank';
+    rankEl.textContent = String(rank).padStart(2, '0');
+    row.appendChild(rankEl);
+  }
 
   const dot = document.createElement('span');
   dot.className = isLive ? 'hs-discover-live-dot' : 'hs-discover-live-spacer';
@@ -17291,7 +17259,7 @@ function renderDiscoverProfileRow(profile, username, rank, maxHeat) {
   return row;
 }
 
-// Filter chips bar: sort + platform toggles, click rerenders
+// Platform filter bar — click rerenders
 function renderDiscoverChipsBar() {
   const bar = document.createElement('div');
   bar.className = 'hs-discover-chips-bar';
@@ -17496,7 +17464,7 @@ function renderDiscoverTab() {
   {
     const { section, body } = makeDiscoverSection(
       'live now',
-      'streaming right now — click t/k to watch',
+      null,
       liveProfiles.length > 0 ? `${liveProfiles.length}` : '0',
       'hs-discover-section-live'
     );
@@ -17516,7 +17484,7 @@ function renderDiscoverTab() {
           nudge.className = 'hs-discover-section-empty hs-discover-import-nudge';
           const a = document.createElement('a');
           a.href = '#';
-          a.textContent = '↳ import your follows from twitch';
+          a.textContent = 'import follows from twitch';
           a.style.color = '#ff8700';
           a.style.textDecoration = 'none';
           a.addEventListener('click', async (e) => {
@@ -17540,11 +17508,10 @@ function renderDiscoverTab() {
         }).catch(() => {});
       } catch {}
     } else {
-      let rank = 1;
       for (const profile of liveProfiles) {
         const username = profile.username || profile.name || '';
         if (!username) continue;
-        const row = renderDiscoverProfileRow(profile, username, rank++, maxHeat);
+        const row = renderDiscoverProfileRow(profile, username, 0, maxHeat, false);
         if (row) body.appendChild(row);
       }
     }
@@ -17555,14 +17522,14 @@ function renderDiscoverTab() {
   {
     const { section, body } = makeDiscoverSection(
       'hot posts',
-      'top recent posts by heat — click to read',
-      filteredPosts.length > 0 ? `${filteredPosts.length}` : '0',
+      null,
+      null,
       'hs-discover-section-posts'
     );
     if (filteredPosts.length === 0) {
       const empty = document.createElement('div');
       empty.className = 'hs-discover-section-empty';
-      empty.textContent = 'no hot posts in this filter';
+      empty.textContent = 'no posts match filter';
       body.appendChild(empty);
     } else {
       for (const m of filteredPosts) {
@@ -17579,14 +17546,14 @@ function renderDiscoverTab() {
   {
     const { section, body } = makeDiscoverSection(
       'tags',
-      'trending tags across heatsync',
-      `${discoverTags.length}`,
+      null,
+      null,
       'hs-discover-section-tags'
     );
     if (discoverTags.length === 0) {
       const empty = document.createElement('div');
       empty.className = 'hs-discover-section-empty';
-      empty.textContent = 'no trending tags right now';
+      empty.textContent = 'none right now';
       body.appendChild(empty);
     } else {
       const chips = document.createElement('div');
@@ -17618,8 +17585,8 @@ function renderDiscoverTab() {
   {
     const { section, body } = makeDiscoverSection(
       'leaderboard',
-      'top non-live profiles by heat',
-      `${restProfiles.length}`,
+      null,
+      null,
       'hs-discover-section-trending'
     );
     body.classList.add('hs-discover-leaderboard-body');
@@ -27793,6 +27760,12 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       log('[c-button] sanitizing invalid chatPosition:', chatPosition, '→ right');
       chatPosition = 'right';
     }
+    // Popout chat = full window, no video. Any non-right position leaves a
+    // blank area where the player would be. Force 'right' (which CSS then
+    // expands to full width via .hs-popout overrides).
+    if (document.body.classList.contains('hs-popout') && chatPosition !== 'right') {
+      chatPosition = 'right';
+    }
     // YouTube: only apply layout overrides on watch pages. Home, search,
     // channel pages don't have ytd-watch-flexy / #primary / #player so
     // our rules just left the page broken (blank top, floating handle).
@@ -28157,6 +28130,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     // Strict 4-state cycle: right → bottom → left → top → right.
     // No 'hidden' state — chat panel always visible so the C button stays
     // clickable. If chatPosition is invalid, normalize first then advance.
+    if (document.body.classList.contains('hs-popout')) return; // no-op in popout — no video to share space with
     const positions = ['right', 'bottom', 'left', 'top'];
     let idx = positions.indexOf(chatPosition);
     if (idx === -1) idx = 0; // invalid state → start from 'right' before advancing

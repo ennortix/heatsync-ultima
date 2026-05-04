@@ -9,7 +9,7 @@
     "message": "memuat..."
   },
   "common_extension_updated": {
-    "message": "Ekstensi diperbarui — refresh halaman"
+    "message": "ekstensi diperbarui — muat ulang halaman"
   },
   "common_no_matches": {
     "message": "tidak ada hasil"
@@ -324,7 +324,7 @@
     "message": "klik untuk perluas"
   },
   "content_toast_failed_add": {
-    "message": "Gagal menambah $NAME$: $ERROR$",
+    "message": "gagal menambah $NAME$: $ERROR$",
     "placeholders": {
       "name": {
         "content": "$1"
@@ -335,7 +335,7 @@
     }
   },
   "content_toast_failed_remove": {
-    "message": "Gagal menghapus $NAME$: $ERROR$",
+    "message": "gagal menghapus $NAME$: $ERROR$",
     "placeholders": {
       "name": {
         "content": "$1"
@@ -346,7 +346,7 @@
     }
   },
   "content_toast_unblocked": {
-    "message": "$NAME$ dibuka blokir",
+    "message": "$NAME$ dibuka blokirnya",
     "placeholders": {
       "name": {
         "content": "$1"
@@ -354,7 +354,7 @@
     }
   },
   "content_toast_failed_unblock": {
-    "message": "Gagal buka blokir: $ERROR$",
+    "message": "gagal buka blokir: $ERROR$",
     "placeholders": {
       "error": {
         "content": "$1"
@@ -370,7 +370,7 @@
     }
   },
   "content_toast_failed_block": {
-    "message": "Gagal blokir: $ERROR$",
+    "message": "gagal blokir: $ERROR$",
     "placeholders": {
       "error": {
         "content": "$1"
@@ -639,28 +639,28 @@
     "message": "avatar"
   },
   "mc_settings_emote_size_desc": {
-    "message": "Pengali resolusi emote di chat. 1x tajam dan ringkas, 2x sweet spot untuk kebanyakan layar, 4x untuk yang ingin lihat tiap pikselnya."
+    "message": "1x bawaan, 2x retina, 4x besar"
   },
   "mc_settings_input_preview_desc": {
-    "message": "Menampilkan emote sebagai gambar langsung di kotak input saat kamu mengetik, bukan nama teks. Yang kamu lihat itu yang dikirim."
+    "message": "gambar emote di kolom saat mengetik"
   },
   "mc_settings_clickable_links_desc": {
-    "message": "Mengubah URL di pesan chat menjadi link yang bisa diklik. Matikan kalau lebih suka copy-paste atau tidak percaya orang asing di internet."
+    "message": "url di obrolan menjadi bisa diklik"
   },
   "mc_settings_vi_mode_desc": {
-    "message": "Shortcut gaya Vim untuk navigasi chat. j/k scroll, g/G atas/bawah, / cari. Buat yang menganggap mouse buat casual."
+    "message": "j/k gulir, g/G atas/bawah, / cari"
   },
   "mc_settings_zebra_desc": {
-    "message": "Bayangan baris bergantian di pesan chat. Memudahkan mengikuti pesan panjang, terutama saat chat cepat."
+    "message": "bayangan baris bergantian"
   },
   "mc_settings_auto_hide_desc": {
-    "message": "Menyembunyikan bar input saat kamu tidak menulis. Klik atau mulai mengetik untuk memunculkannya. Memaksimalkan area chat."
+    "message": "menyembunyikan bilah masukan saat tidak aktif"
   },
   "mc_settings_timestamps_desc": {
-    "message": "Menampilkan waktu kirim setiap pesan di samping username. Berguna untuk mengejar yang terjadi saat kamu AFK."
+    "message": "cap waktu pada setiap pesan"
   },
   "mc_settings_avatars_desc": {
-    "message": "Menampilkan foto profil di samping username di chat. Memudahkan mengenali yang sering nongkrong, sedikit memakan ruang vertikal."
+    "message": "avatar di samping nama pengguna"
   },
   "mc_settings_inline_notifs": {
     "message": "notifikasi inline"
@@ -678,16 +678,16 @@
     "message": "[DM] whisper & DM"
   },
   "mc_settings_notif_op_desc": {
-    "message": "Notifikasi di tab chat aktif saat ada yang membuat post baru di feed."
+    "message": "ping saat ada postingan baru di feed"
   },
   "mc_settings_notif_op_reply_desc": {
-    "message": "Notifikasi saat penulis post asli membalas di thread sendiri."
+    "message": "ping saat OP membalas di utas sendiri"
   },
   "mc_settings_notif_re_desc": {
-    "message": "Notifikasi untuk setiap balasan di thread feed mana pun."
+    "message": "ping pada setiap balasan di utas manapun"
   },
   "mc_settings_notif_dm_desc": {
-    "message": "Notifikasi saat kamu menerima whisper atau DM."
+    "message": "ping pada bisikan atau pesan langsung"
   },
   "mc_settings_twitch_events": {
     "message": "event Twitch"
@@ -696,67 +696,67 @@
     "message": "raid"
   },
   "mc_settings_raids_desc": {
-    "message": "Banner inline saat streamer raid masuk atau keluar, dengan jumlah penonton dan channel asal. Memungkinkan kamu ikut ke stream berikutnya."
+    "message": "banner saat raid dengan jumlah penonton"
   },
   "mc_settings_hype_trains": {
     "message": "hype train"
   },
   "mc_settings_hype_trains_desc": {
-    "message": "Banner progres live untuk hype train, menampilkan level dan timer kontribusi. Mati secara default karena terus terpicu di channel besar."
+    "message": "banner kemajuan hype train langsung"
   },
   "mc_settings_gift_subs": {
     "message": "sub hadiah"
   },
   "mc_settings_gift_subs_desc": {
-    "message": "Banner untuk gift sub bom komunitas dan hadiah individual, dengan pemberi, penerima, dan tier."
+    "message": "banner untuk sub hadiah dengan pemberi dan tingkat"
   },
   "mc_settings_redeems": {
     "message": "tukar poin channel"
   },
   "mc_settings_redeems_desc": {
-    "message": "Pemberitahuan inline untuk penukaran poin channel seperti 'highlight pesan saya' supaya kamu tahu ke mana orang menghabiskan poin."
+    "message": "banner untuk penukaran poin saluran"
   },
   "mc_settings_prediction_banner": {
     "message": "prediksi"
   },
   "mc_settings_prediction_banner_desc": {
-    "message": "Banner prediksi poin channel live dengan odds saat ini dan waktu tersisa untuk mengunci suara."
+    "message": "banner prediksi langsung dengan peluang dan timer"
   },
   "mc_settings_poll_banner": {
     "message": "polling"
   },
   "mc_settings_poll_banner_desc": {
-    "message": "Banner polling aktif dengan jumlah suara dan waktu tersisa. Vote langsung dari overlay."
+    "message": "banner polling aktif, vote langsung"
   },
   "mc_settings_pinned_messages": {
     "message": "pesan disematkan"
   },
   "mc_settings_pinned_messages_desc": {
-    "message": "Banner sticky untuk pesan yang disematkan moderator agar kamu tidak melewatkan aturan atau jadwal."
+    "message": "banner tetap untuk pesan yang disematkan mod"
   },
   "mc_settings_dim_timeouts": {
     "message": "redupkan pesan timeout"
   },
   "mc_settings_dim_timeouts_desc": {
-    "message": "Tampilkan pesan timeout dan banned dengan opasitas 50% alih-alih disembunyikan, gaya FFZ/BTTV. Kamu bisa lihat pesan yang dihapus tanpa keluar dari chat."
+    "message": "50% opasitas bukan disembunyikan"
   },
   "mc_settings_smart_completion": {
     "message": "tab autocomplete pintar"
   },
   "mc_settings_smart_completion_desc": {
-    "message": "Penulis chat terbaru dan emote channel ini muncul lebih dulu saat tab autocomplete. Lebih cepat daripada alfabet saat chat berjalan."
+    "message": "chattter/emote terbaru muncul duluan"
   },
   "mc_settings_first_chatter": {
     "message": "kilau pesan pertama"
   },
   "mc_settings_first_chatter_desc": {
-    "message": "Penanda oranye di tepi pesan pertama yang dikirim user di setiap channel di sesi ini. Memudahkan menyadari pendatang baru di chat cepat."
+    "message": "tepi oranye pada pesan pertama per sesi"
   },
   "mc_settings_keyword_highlights": {
     "message": "sorot kata kunci"
   },
   "mc_settings_keyword_highlights_desc": {
-    "message": "Pesan yang mengandung salah satu kata ini mendapat tone oranye, seperti mention pribadi. Pisahkan baris, tidak peka huruf besar/kecil, kata utuh."
+    "message": "mewarnai pesan yang cocok menjadi oranye. satu per baris, tidak sensitif huruf, kata penuh"
   },
   "mc_settings_keyword_highlights_placeholder": {
     "message": "satu kata kunci per baris"
@@ -768,7 +768,7 @@
     "message": "auto-klaim poin channel"
   },
   "mc_settings_auto_claim_desc": {
-    "message": "Otomatis klik peti poin channel bonus di Twitch saat muncul. Poin gratis, tanpa usaha."
+    "message": "otomatis klik peti poin saluran"
   },
   "mc_settings_muted_users": {
     "message": "user dibisukan"
@@ -1008,7 +1008,7 @@
     }
   },
   "mc_input_replying_to": {
-    "message": "Membalas @$USER$",
+    "message": "membalas @$USER$",
     "placeholders": {
       "user": {
         "content": "$1"
@@ -1016,7 +1016,7 @@
     }
   },
   "mc_input_cancel_reply": {
-    "message": "Batal balas"
+    "message": "batalkan balasan"
   },
   "mc_input_not_logged_in": {
     "message": "belum login"
@@ -1052,10 +1052,10 @@
     "message": "belum ada post"
   },
   "mc_social_loading_feed": {
-    "message": "memuat feed yang difollow..."
+    "message": "memuat..."
   },
   "mc_social_scroll_more": {
-    "message": "scroll untuk lebih..."
+    "message": "lagi"
   },
   "mc_social_no_replies": {
     "message": "belum ada balasan"
@@ -1159,10 +1159,10 @@
     }
   },
   "mc_irc_chat_cleared": {
-    "message": "Chat dihapus"
+    "message": "obrolan dibersihkan"
   },
   "mc_irc_msg_deleted": {
-    "message": "Pesan dari $USER$ dihapus",
+    "message": "pesan dari $USER$ dihapus",
     "placeholders": {
       "user": {
         "content": "$1"
@@ -1213,7 +1213,7 @@
     "message": "diblokir (klik untuk buka blokir)"
   },
   "content_toast_unknown_error": {
-    "message": "Error tidak diketahui"
+    "message": "kesalahan tidak diketahui"
   },
   "content_toast_loading_emotes": {
     "message": "memuat emote..."
@@ -1231,7 +1231,7 @@
     "message": "blokir"
   },
   "btn_close": {
-    "message": "Tutup"
+    "message": "tutup"
   },
   "btn_error_channel": {
     "message": "gagal memuat emote channel"

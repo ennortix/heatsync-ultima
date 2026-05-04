@@ -9,7 +9,7 @@
     "message": "завантаження..."
   },
   "common_extension_updated": {
-    "message": "Розширення оновлено — оновіть сторінку"
+    "message": "розширення оновлено — перезавантажте сторінку"
   },
   "common_no_matches": {
     "message": "немає результатів"
@@ -324,7 +324,7 @@
     "message": "натисни, щоб розгорнути"
   },
   "content_toast_failed_add": {
-    "message": "Не вдалося додати $NAME$: $ERROR$",
+    "message": "не вдалося додати $NAME$: $ERROR$",
     "placeholders": {
       "name": {
         "content": "$1"
@@ -335,7 +335,7 @@
     }
   },
   "content_toast_failed_remove": {
-    "message": "Не вдалося видалити $NAME$: $ERROR$",
+    "message": "не вдалося видалити $NAME$: $ERROR$",
     "placeholders": {
       "name": {
         "content": "$1"
@@ -346,7 +346,7 @@
     }
   },
   "content_toast_unblocked": {
-    "message": "Розблоковано $NAME$",
+    "message": "$NAME$ розблоковано",
     "placeholders": {
       "name": {
         "content": "$1"
@@ -354,7 +354,7 @@
     }
   },
   "content_toast_failed_unblock": {
-    "message": "Не вдалося розблокувати: $ERROR$",
+    "message": "розблокування не вдалося: $ERROR$",
     "placeholders": {
       "error": {
         "content": "$1"
@@ -362,7 +362,7 @@
     }
   },
   "content_toast_removed": {
-    "message": "Видалено $NAME$ з твого сету",
+    "message": "$NAME$ видалено з вашої колекції",
     "placeholders": {
       "name": {
         "content": "$1"
@@ -370,7 +370,7 @@
     }
   },
   "content_toast_failed_block": {
-    "message": "Не вдалося заблокувати: $ERROR$",
+    "message": "блокування не вдалося: $ERROR$",
     "placeholders": {
       "error": {
         "content": "$1"
@@ -378,7 +378,7 @@
     }
   },
   "content_toast_blocked": {
-    "message": "Заблоковано $NAME$",
+    "message": "$NAME$ заблоковано",
     "placeholders": {
       "name": {
         "content": "$1"
@@ -639,28 +639,28 @@
     "message": "аватари"
   },
   "mc_settings_emote_size_desc": {
-    "message": "Множник роздільності для emotes у чаті. 1x — чітко й компактно, 2x — оптимально для більшості моніторів, 4x — для тих, хто хоче бачити кожен піксель."
+    "message": "1x стандарт, 2x ретина, 4x великий"
   },
   "mc_settings_input_preview_desc": {
-    "message": "Показує emotes як зображення прямо в полі введення, поки набираєш, замість текстових імен. Що бачиш — те й надсилаєш."
+    "message": "зображення емотів у полі при введенні"
   },
   "mc_settings_clickable_links_desc": {
-    "message": "Перетворює URL у повідомленнях на клікабельні посилання. Вимкни, якщо віддаєш перевагу копі-пасту або не довіряєш незнайомцям в інтернеті."
+    "message": "url у чаті стають клікабельними"
   },
   "mc_settings_vi_mode_desc": {
-    "message": "Vim-стиль клавіш для навігації у чаті. j/k прокрутка, g/G верх/низ, / пошук. Для тих, хто вважає, що миша — для casuals."
+    "message": "j/k прокрутка, g/G верх/низ, / пошук"
   },
   "mc_settings_zebra_desc": {
-    "message": "Чергуюче затінення рядків у чаті. Полегшує стеження за довгими повідомленнями, особливо у швидкому чаті."
+    "message": "чергуване затінення рядків"
   },
   "mc_settings_auto_hide_desc": {
-    "message": "Ховає панель введення, коли ти не пишеш. Натисни або почни писати, щоб повернути її. Максимізує область перегляду чату."
+    "message": "ховає рядок введення при бездіяльності"
   },
   "mc_settings_timestamps_desc": {
-    "message": "Показує час відправлення кожного повідомлення поряд з ім'ям. Корисно, щоб дізнатися, що відбулося, поки ти був AFK."
+    "message": "мітка часу на кожному повідомленні"
   },
   "mc_settings_avatars_desc": {
-    "message": "Показує фото профілю поряд з іменами у чаті. Полегшує візуальне розпізнавання постійних, коштує трохи вертикального простору."
+    "message": "аватари поряд з іменами користувачів"
   },
   "mc_settings_inline_notifs": {
     "message": "вбудовані сповіщення"
@@ -678,16 +678,16 @@
     "message": "[DM] шепіт і DM"
   },
   "mc_settings_notif_op_desc": {
-    "message": "Сповіщення в активній вкладці чату, коли хтось створює новий пост у feed."
+    "message": "сповіщення при новому пості в стрічці"
   },
   "mc_settings_notif_op_reply_desc": {
-    "message": "Сповіщення, коли автор оригіналу відповідає у власній темі."
+    "message": "сповіщення, коли OP відповідає у своїй темі"
   },
   "mc_settings_notif_re_desc": {
-    "message": "Сповіщення для кожної відповіді в будь-якій темі feed."
+    "message": "сповіщення на кожну відповідь у будь-якій темі"
   },
   "mc_settings_notif_dm_desc": {
-    "message": "Сповіщення, коли отримуєш шепіт або DM."
+    "message": "сповіщення при шепоті або приватному повідомленні"
   },
   "mc_settings_twitch_events": {
     "message": "події Twitch"
@@ -696,67 +696,67 @@
     "message": "рейди"
   },
   "mc_settings_raids_desc": {
-    "message": "Inline-банер при вхідному або вихідному рейді, з кількістю глядачів і каналом-джерелом. Дозволяє переїхати на наступну трансляцію."
+    "message": "банер при рейді з кількістю глядачів"
   },
   "mc_settings_hype_trains": {
     "message": "hype trains"
   },
   "mc_settings_hype_trains_desc": {
-    "message": "Live-банер прогресу hype train з рівнем і таймером внеску. За замовчуванням вимкнено, бо на великих каналах спрацьовує постійно."
+    "message": "живий банер прогресу хайп-трейну"
   },
   "mc_settings_gift_subs": {
     "message": "подаровані subs"
   },
   "mc_settings_gift_subs_desc": {
-    "message": "Банер для масових подарованих subs та індивідуальних подарунків, з дарувальником, отримувачем і tier."
+    "message": "банер для подарункових підписок з дарувальником та рівнем"
   },
   "mc_settings_redeems": {
     "message": "обміни channel points"
   },
   "mc_settings_redeems_desc": {
-    "message": "Inline-сповіщення про обмін channel points на 'highlight my message', щоб ти бачив, на що люди витрачають поінти."
+    "message": "банер для обмінів балів каналу"
   },
   "mc_settings_prediction_banner": {
     "message": "передбачення"
   },
   "mc_settings_prediction_banner_desc": {
-    "message": "Live-банер передбачення channel points з поточними коефіцієнтами і часом до закриття."
+    "message": "живий банер прогнозу з коефіцієнтами та таймером"
   },
   "mc_settings_poll_banner": {
     "message": "опитування"
   },
   "mc_settings_poll_banner_desc": {
-    "message": "Банер активного опитування з кількістю голосів і часом, що залишився. Голосуй прямо з overlay."
+    "message": "банер активного голосування, голосуйте напряму"
   },
   "mc_settings_pinned_messages": {
     "message": "закріплені повідомлення"
   },
   "mc_settings_pinned_messages_desc": {
-    "message": "Sticky-банер для повідомлень, закріплених модераторами, щоб не пропустити правила або розклад."
+    "message": "постійний банер для закріплених модераторами повідомлень"
   },
   "mc_settings_dim_timeouts": {
     "message": "затемнити таймаут-повідомлення"
   },
   "mc_settings_dim_timeouts_desc": {
-    "message": "Показує повідомлення з таймаутом і бан з 50% прозорістю замість приховування, у стилі FFZ/BTTV. Дозволяє бачити, що видалили, не виходячи з чату."
+    "message": "50% прозорості замість приховування"
   },
   "mc_settings_smart_completion": {
     "message": "розумне автодоповнення Tab"
   },
   "mc_settings_smart_completion_desc": {
-    "message": "Останні чатери та emotes цього каналу з'являються першими при автодоповненні. Швидше за алфавітне, коли чат летить."
+    "message": "останні чаттери/емоти відображаються першими"
   },
   "mc_settings_first_chatter": {
     "message": "сяйво першого повідомлення"
   },
   "mc_settings_first_chatter_desc": {
-    "message": "Помаранчева мітка на краю першого повідомлення, яке користувач надсилає в кожному каналі за сесію. Допомагає помітити нових у швидкому чаті."
+    "message": "помаранчева рамка на першому повідомленні за сесію"
   },
   "mc_settings_keyword_highlights": {
     "message": "виділення ключових слів"
   },
   "mc_settings_keyword_highlights_desc": {
-    "message": "Повідомлення з будь-яким із цих слів отримують помаранчевий відтінок, як особиста згадка. По одному в рядку, регістр не важливий, цілі слова."
+    "message": "фарбує збіжні повідомлення у помаранчевий. по одному на рядок, без урахування регістру, ціле слово"
   },
   "mc_settings_keyword_highlights_placeholder": {
     "message": "одне слово в рядку"
@@ -768,7 +768,7 @@
     "message": "авто-збір channel points"
   },
   "mc_settings_auto_claim_desc": {
-    "message": "Автоматично натискає на скриньку бонусних channel points у Twitch, коли вона з'являється. Безкоштовні поінти, нульові зусилля."
+    "message": "автоматично натискає скриньку з балами каналу"
   },
   "mc_settings_muted_users": {
     "message": "замьючені користувачі"
@@ -1008,7 +1008,7 @@
     }
   },
   "mc_input_replying_to": {
-    "message": "Відповідь @$USER$",
+    "message": "відповідь @$USER$",
     "placeholders": {
       "user": {
         "content": "$1"
@@ -1016,7 +1016,7 @@
     }
   },
   "mc_input_cancel_reply": {
-    "message": "Скасувати відповідь"
+    "message": "скасувати відповідь"
   },
   "mc_input_not_logged_in": {
     "message": "не виконано вхід"
@@ -1052,10 +1052,10 @@
     "message": "ще немає постів"
   },
   "mc_social_loading_feed": {
-    "message": "завантаження feed підписок..."
+    "message": "завантаження..."
   },
   "mc_social_scroll_more": {
-    "message": "прокрути для більшого..."
+    "message": "ще"
   },
   "mc_social_no_replies": {
     "message": "ще немає відповідей"
@@ -1159,10 +1159,10 @@
     }
   },
   "mc_irc_chat_cleared": {
-    "message": "Чат очищено"
+    "message": "чат очищено"
   },
   "mc_irc_msg_deleted": {
-    "message": "Повідомлення від $USER$ видалено",
+    "message": "повідомлення від $USER$ видалено",
     "placeholders": {
       "user": {
         "content": "$1"
@@ -1213,7 +1213,7 @@
     "message": "заблоковано (натисни для розблокування)"
   },
   "content_toast_unknown_error": {
-    "message": "Невідома помилка"
+    "message": "невідома помилка"
   },
   "content_toast_loading_emotes": {
     "message": "завантаження emotes..."
@@ -1231,7 +1231,7 @@
     "message": "блокувати"
   },
   "btn_close": {
-    "message": "Закрити"
+    "message": "закрити"
   },
   "btn_error_channel": {
     "message": "не вдалося завантажити emotes каналу"

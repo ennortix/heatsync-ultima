@@ -1812,7 +1812,7 @@ function heatSpanEl(heat) {
   return span;
 }
 
-function renderDiscoverProfileRow(profile, username, rank, maxHeat) {
+function renderDiscoverProfileRow(profile, username, rank, maxHeat, showRank = true) {
   const row = document.createElement('a');
   row.className = 'hs-discover-profile-row';
   row.href = `https://heatsync.org/user/${encodeURIComponent(username)}`;
@@ -1822,10 +1822,12 @@ function renderDiscoverProfileRow(profile, username, rank, maxHeat) {
   const isLive = !!(profile.twitch_is_live || profile.kick_is_live);
   if (isLive) row.classList.add('hs-discover-row-live');
 
-  const rankEl = document.createElement('span');
-  rankEl.className = 'hs-discover-rank';
-  rankEl.textContent = String(rank).padStart(2, '0');
-  row.appendChild(rankEl);
+  if (showRank) {
+    const rankEl = document.createElement('span');
+    rankEl.className = 'hs-discover-rank';
+    rankEl.textContent = String(rank).padStart(2, '0');
+    row.appendChild(rankEl);
+  }
 
   const dot = document.createElement('span');
   dot.className = isLive ? 'hs-discover-live-dot' : 'hs-discover-live-spacer';
@@ -1919,7 +1921,7 @@ function renderDiscoverProfileRow(profile, username, rank, maxHeat) {
   return row;
 }
 
-// Filter chips bar: sort + platform toggles, click rerenders
+// Platform filter bar — click rerenders
 function renderDiscoverChipsBar() {
   const bar = document.createElement('div');
   bar.className = 'hs-discover-chips-bar';
@@ -2124,7 +2126,7 @@ function renderDiscoverTab() {
   {
     const { section, body } = makeDiscoverSection(
       'live now',
-      'streaming right now — click t/k to watch',
+      null,
       liveProfiles.length > 0 ? `${liveProfiles.length}` : '0',
       'hs-discover-section-live'
     );
@@ -2144,7 +2146,7 @@ function renderDiscoverTab() {
           nudge.className = 'hs-discover-section-empty hs-discover-import-nudge';
           const a = document.createElement('a');
           a.href = '#';
-          a.textContent = '↳ import your follows from twitch';
+          a.textContent = 'import follows from twitch';
           a.style.color = '#ff8700';
           a.style.textDecoration = 'none';
           a.addEventListener('click', async (e) => {
@@ -2168,11 +2170,10 @@ function renderDiscoverTab() {
         }).catch(() => {});
       } catch {}
     } else {
-      let rank = 1;
       for (const profile of liveProfiles) {
         const username = profile.username || profile.name || '';
         if (!username) continue;
-        const row = renderDiscoverProfileRow(profile, username, rank++, maxHeat);
+        const row = renderDiscoverProfileRow(profile, username, 0, maxHeat, false);
         if (row) body.appendChild(row);
       }
     }
@@ -2183,14 +2184,14 @@ function renderDiscoverTab() {
   {
     const { section, body } = makeDiscoverSection(
       'hot posts',
-      'top recent posts by heat — click to read',
-      filteredPosts.length > 0 ? `${filteredPosts.length}` : '0',
+      null,
+      null,
       'hs-discover-section-posts'
     );
     if (filteredPosts.length === 0) {
       const empty = document.createElement('div');
       empty.className = 'hs-discover-section-empty';
-      empty.textContent = 'no hot posts in this filter';
+      empty.textContent = 'no posts match filter';
       body.appendChild(empty);
     } else {
       for (const m of filteredPosts) {
@@ -2207,14 +2208,14 @@ function renderDiscoverTab() {
   {
     const { section, body } = makeDiscoverSection(
       'tags',
-      'trending tags across heatsync',
-      `${discoverTags.length}`,
+      null,
+      null,
       'hs-discover-section-tags'
     );
     if (discoverTags.length === 0) {
       const empty = document.createElement('div');
       empty.className = 'hs-discover-section-empty';
-      empty.textContent = 'no trending tags right now';
+      empty.textContent = 'none right now';
       body.appendChild(empty);
     } else {
       const chips = document.createElement('div');
@@ -2246,8 +2247,8 @@ function renderDiscoverTab() {
   {
     const { section, body } = makeDiscoverSection(
       'leaderboard',
-      'top non-live profiles by heat',
-      `${restProfiles.length}`,
+      null,
+      null,
       'hs-discover-section-trending'
     );
     body.classList.add('hs-discover-leaderboard-body');

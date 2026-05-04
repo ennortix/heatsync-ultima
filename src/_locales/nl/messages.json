@@ -9,7 +9,7 @@
     "message": "laden..."
   },
   "common_extension_updated": {
-    "message": "Extensie bijgewerkt — herlaad de pagina"
+    "message": "extensie bijgewerkt — laad de pagina opnieuw"
   },
   "common_no_matches": {
     "message": "geen resultaten"
@@ -324,7 +324,7 @@
     "message": "klik om uit te vouwen"
   },
   "content_toast_failed_add": {
-    "message": "Kon $NAME$ niet toevoegen: $ERROR$",
+    "message": "$NAME$ toevoegen mislukt: $ERROR$",
     "placeholders": {
       "name": {
         "content": "$1"
@@ -335,7 +335,7 @@
     }
   },
   "content_toast_failed_remove": {
-    "message": "Kon $NAME$ niet verwijderen: $ERROR$",
+    "message": "$NAME$ verwijderen mislukt: $ERROR$",
     "placeholders": {
       "name": {
         "content": "$1"
@@ -354,7 +354,7 @@
     }
   },
   "content_toast_failed_unblock": {
-    "message": "Kon niet deblokkeren: $ERROR$",
+    "message": "deblokkeren mislukt: $ERROR$",
     "placeholders": {
       "error": {
         "content": "$1"
@@ -362,7 +362,7 @@
     }
   },
   "content_toast_removed": {
-    "message": "$NAME$ uit je set verwijderd",
+    "message": "$NAME$ verwijderd uit je set",
     "placeholders": {
       "name": {
         "content": "$1"
@@ -370,7 +370,7 @@
     }
   },
   "content_toast_failed_block": {
-    "message": "Kon niet blokkeren: $ERROR$",
+    "message": "blokkeren mislukt: $ERROR$",
     "placeholders": {
       "error": {
         "content": "$1"
@@ -639,28 +639,28 @@
     "message": "avatars"
   },
   "mc_settings_emote_size_desc": {
-    "message": "Resolutievermenigvuldiger voor emotes in de chat. 1x is scherp en compact, 2x is de sweet spot voor de meeste schermen, 4x is voor wie elke pixel wil zien."
+    "message": "1x standaard, 2x retina, 4x groot"
   },
   "mc_settings_input_preview_desc": {
-    "message": "Toont emotes als afbeeldingen rechtstreeks in het invoervak terwijl je typt, in plaats van tekstnamen. Wat je ziet is wat je verstuurt."
+    "message": "emote-afbeeldingen in veld tijdens typen"
   },
   "mc_settings_clickable_links_desc": {
-    "message": "Maakt URL's in chatberichten klikbaar. Schakel uit als je liever copy-paste of vreemden op internet niet vertrouwt."
+    "message": "url's in chat worden klikbaar"
   },
   "mc_settings_vi_mode_desc": {
-    "message": "Vim-stijl toetsbindingen voor chatnavigatie. j/k scrollen, g/G boven/onder, / zoeken. Voor wie vindt dat de muis voor casuals is."
+    "message": "j/k scrollen, g/G boven/onder, / zoeken"
   },
   "mc_settings_zebra_desc": {
-    "message": "Afwisselende rijschaduw op chatberichten. Helpt lange berichten te volgen, vooral in snelle chat."
+    "message": "afwisselende rijschaduw"
   },
   "mc_settings_auto_hide_desc": {
-    "message": "Verbergt de invoerbalk wanneer je geen bericht typt. Klik of begin te typen om hem terug te brengen. Maximaliseert chatweergave."
+    "message": "verbergt invoerbalk bij inactiviteit"
   },
   "mc_settings_timestamps_desc": {
-    "message": "Toont de verzendtijd van elk bericht naast de gebruikersnaam. Handig om bij te lezen wat er gebeurde terwijl je AFK was."
+    "message": "tijdstempel op elk bericht"
   },
   "mc_settings_avatars_desc": {
-    "message": "Toont profielfoto's naast gebruikersnamen in de chat. Helpt vaste gezichten visueel te herkennen, kost wat verticale ruimte."
+    "message": "avatars naast gebruikersnamen"
   },
   "mc_settings_inline_notifs": {
     "message": "inline-meldingen"
@@ -678,16 +678,16 @@
     "message": "[DM] whispers en DMs"
   },
   "mc_settings_notif_op_desc": {
-    "message": "Melding in je actieve chat-tab wanneer iemand een nieuw origineel bericht in de feed plaatst."
+    "message": "ping bij nieuw bericht in feed"
   },
   "mc_settings_notif_op_reply_desc": {
-    "message": "Melding wanneer de oorspronkelijke poster in eigen thread reageert."
+    "message": "ping als OP in eigen thread reageert"
   },
   "mc_settings_notif_re_desc": {
-    "message": "Melding voor elke reactie in een feedthread."
+    "message": "ping bij elke reactie in een thread"
   },
   "mc_settings_notif_dm_desc": {
-    "message": "Melding wanneer je een whisper of DM ontvangt."
+    "message": "ping bij fluistering of DM"
   },
   "mc_settings_twitch_events": {
     "message": "Twitch-events"
@@ -696,67 +696,67 @@
     "message": "raids"
   },
   "mc_settings_raids_desc": {
-    "message": "Inline banner wanneer een streamer raid in- of uitgaat, met kijkersaantal en bronkanaal. Laat je meereizen naar de volgende stream."
+    "message": "banner bij raid met kijkersaantal"
   },
   "mc_settings_hype_trains": {
     "message": "hype trains"
   },
   "mc_settings_hype_trains_desc": {
-    "message": "Live voortgangsbanner voor hype trains, met level en bijdrage-timer. Standaard uit omdat ze constant afgaan op grote kanalen."
+    "message": "live voortgangsbanner hype train"
   },
   "mc_settings_gift_subs": {
     "message": "gift subs"
   },
   "mc_settings_gift_subs_desc": {
-    "message": "Banner voor community gift sub bombs en losse gifts, met gever, ontvanger en tier."
+    "message": "banner voor cadeausubs met gever en tier"
   },
   "mc_settings_redeems": {
     "message": "channel point inwisselingen"
   },
   "mc_settings_redeems_desc": {
-    "message": "Inline melding voor channel point inwisselingen zoals 'highlight my message' zodat je ziet waar mensen punten aan uitgeven."
+    "message": "banner voor kanaaluntenpunten-inwisseling"
   },
   "mc_settings_prediction_banner": {
     "message": "voorspellingen"
   },
   "mc_settings_prediction_banner_desc": {
-    "message": "Live banner voor channel point voorspellingen met huidige odds en resterende tijd om je stem vast te zetten."
+    "message": "live voorspellingsbanner met kansen en timer"
   },
   "mc_settings_poll_banner": {
     "message": "polls"
   },
   "mc_settings_poll_banner_desc": {
-    "message": "Banner voor actieve polls met stemmenstand en resterende tijd. Stem direct vanuit de overlay."
+    "message": "actieve stemmer banner, stem direct"
   },
   "mc_settings_pinned_messages": {
     "message": "vastgepinde berichten"
   },
   "mc_settings_pinned_messages_desc": {
-    "message": "Sticky banner voor door mods vastgepinde chatberichten zodat je regels of schema niet mist."
+    "message": "vaste banner voor door mods vastgezette berichten"
   },
   "mc_settings_dim_timeouts": {
     "message": "timeout-berichten dimmen"
   },
   "mc_settings_dim_timeouts_desc": {
-    "message": "Toon timed-out en gebande berichten op 50% dekking in plaats van te verbergen, FFZ/BTTV-stijl. Zo zie je wat is genuked zonder de chat te verlaten."
+    "message": "50% dekking in plaats van verbergen"
   },
   "mc_settings_smart_completion": {
     "message": "slimme tab-aanvulling"
   },
   "mc_settings_smart_completion_desc": {
-    "message": "Recente chatters en emotes uit dit kanaal staan eerst bij tab-aanvulling. Sneller dan alfabetisch als de chat snel gaat."
+    "message": "recente chatters/emotes verschijnen eerst"
   },
   "mc_settings_first_chatter": {
     "message": "eerste-bericht-glow"
   },
   "mc_settings_first_chatter_desc": {
-    "message": "Oranje randmarkering op het eerste bericht dat een gebruiker per kanaal in deze sessie stuurt. Maakt nieuwe gezichten zichtbaar in snelle chat."
+    "message": "oranje rand op eerste bericht per sessie"
   },
   "mc_settings_keyword_highlights": {
     "message": "trefwoord-highlights"
   },
   "mc_settings_keyword_highlights_desc": {
-    "message": "Berichten met een van deze woorden krijgen een oranje tint, als persoonlijke vermelding. Per regel één, hoofdletterongevoelig, hele woorden."
+    "message": "kleurt overeenkomende berichten oranje. één per regel, hoofdletterongevoelig, heel woord"
   },
   "mc_settings_keyword_highlights_placeholder": {
     "message": "één trefwoord per regel"
@@ -768,7 +768,7 @@
     "message": "channel points automatisch claimen"
   },
   "mc_settings_auto_claim_desc": {
-    "message": "Klikt automatisch op de bonus channel points kist op Twitch wanneer hij verschijnt. Gratis punten, nul moeite."
+    "message": "klikt automatisch op de kanaalpunten-kist"
   },
   "mc_settings_muted_users": {
     "message": "gedempte gebruikers"
@@ -1008,7 +1008,7 @@
     }
   },
   "mc_input_replying_to": {
-    "message": "Reageert op @$USER$",
+    "message": "reactie op @$USER$",
     "placeholders": {
       "user": {
         "content": "$1"
@@ -1016,7 +1016,7 @@
     }
   },
   "mc_input_cancel_reply": {
-    "message": "Reactie annuleren"
+    "message": "reactie annuleren"
   },
   "mc_input_not_logged_in": {
     "message": "niet ingelogd"
@@ -1052,10 +1052,10 @@
     "message": "nog geen posts"
   },
   "mc_social_loading_feed": {
-    "message": "feed van gevolgden laden..."
+    "message": "laden..."
   },
   "mc_social_scroll_more": {
-    "message": "scrol voor meer..."
+    "message": "meer"
   },
   "mc_social_no_replies": {
     "message": "nog geen reacties"
@@ -1159,10 +1159,10 @@
     }
   },
   "mc_irc_chat_cleared": {
-    "message": "Chat geleegd"
+    "message": "chat gewist"
   },
   "mc_irc_msg_deleted": {
-    "message": "Bericht van $USER$ verwijderd",
+    "message": "bericht van $USER$ verwijderd",
     "placeholders": {
       "user": {
         "content": "$1"
@@ -1213,7 +1213,7 @@
     "message": "geblokkeerd (klik om te deblokkeren)"
   },
   "content_toast_unknown_error": {
-    "message": "Onbekende fout"
+    "message": "onbekende fout"
   },
   "content_toast_loading_emotes": {
     "message": "emotes laden..."
@@ -1231,7 +1231,7 @@
     "message": "blokkeren"
   },
   "btn_close": {
-    "message": "Sluiten"
+    "message": "sluiten"
   },
   "btn_error_channel": {
     "message": "kan kanaalemotes niet laden"

@@ -9,7 +9,7 @@
     "message": "naglo-load..."
   },
   "common_extension_updated": {
-    "message": "Na-update ang extension — i-refresh ang page"
+    "message": "na-update ang extension — i-reload ang pahina"
   },
   "common_no_matches": {
     "message": "walang nakitang resulta"
@@ -324,7 +324,7 @@
     "message": "i-click para palawakin"
   },
   "content_toast_failed_add": {
-    "message": "Hindi naidagdag ang $NAME$: $ERROR$",
+    "message": "nabigo sa pagdaragdag ng $NAME$: $ERROR$",
     "placeholders": {
       "name": {
         "content": "$1"
@@ -335,7 +335,7 @@
     }
   },
   "content_toast_failed_remove": {
-    "message": "Hindi naalis ang $NAME$: $ERROR$",
+    "message": "nabigo sa pag-aalis ng $NAME$: $ERROR$",
     "placeholders": {
       "name": {
         "content": "$1"
@@ -346,7 +346,7 @@
     }
   },
   "content_toast_unblocked": {
-    "message": "Na-unblock ang $NAME$",
+    "message": "na-unblock ang $NAME$",
     "placeholders": {
       "name": {
         "content": "$1"
@@ -354,7 +354,7 @@
     }
   },
   "content_toast_failed_unblock": {
-    "message": "Hindi na-unblock: $ERROR$",
+    "message": "nabigo sa pag-unblock: $ERROR$",
     "placeholders": {
       "error": {
         "content": "$1"
@@ -362,7 +362,7 @@
     }
   },
   "content_toast_removed": {
-    "message": "Naalis ang $NAME$ sa set mo",
+    "message": "tinanggal ang $NAME$ mula sa iyong set",
     "placeholders": {
       "name": {
         "content": "$1"
@@ -370,7 +370,7 @@
     }
   },
   "content_toast_failed_block": {
-    "message": "Hindi na-block: $ERROR$",
+    "message": "nabigo sa pag-block: $ERROR$",
     "placeholders": {
       "error": {
         "content": "$1"
@@ -378,7 +378,7 @@
     }
   },
   "content_toast_blocked": {
-    "message": "Na-block ang $NAME$",
+    "message": "na-block ang $NAME$",
     "placeholders": {
       "name": {
         "content": "$1"
@@ -639,28 +639,28 @@
     "message": "avatars"
   },
   "mc_settings_emote_size_desc": {
-    "message": "Multiplier ng resolution para sa emotes sa chat. 1x malinaw at compact, 2x sweet spot para sa karamihan ng monitor, 4x para sa gusto makita kada pixel."
+    "message": "1x default, 2x retina, 4x malaki"
   },
   "mc_settings_input_preview_desc": {
-    "message": "Pinapakita ang emotes bilang larawan diretso sa input box habang nagta-type ka, sa halip na text names. Ang nakikita mo ang ipinapadala mo."
+    "message": "mga larawan ng emote sa field habang nagta-type"
   },
   "mc_settings_clickable_links_desc": {
-    "message": "Ginagawang clickable ang URLs sa chat messages. I-off kung mas gusto mo ang copy-paste o hindi mo pinagkakatiwalaan ang mga estranghero sa internet."
+    "message": "ang mga url sa chat ay nagiging maaaring i-click"
   },
   "mc_settings_vi_mode_desc": {
-    "message": "Vim-style shortcuts para sa chat navigation. j/k scroll, g/G top/bottom, / hanapin. Para sa nagiisip na ang mouse ay para sa casuals."
+    "message": "j/k mag-scroll, g/G itaas/ibaba, / maghanap"
   },
   "mc_settings_zebra_desc": {
-    "message": "Salit-salit na shading sa chat messages. Mas madaling sundan ang mahabang messages, lalo na sa mabilis na chat."
+    "message": "alternating na row shading"
   },
   "mc_settings_auto_hide_desc": {
-    "message": "Itinatago ang input bar kapag hindi ka nag-aakto. I-click o magsimula mag-type para ibalik. Pina-maximize ang chat viewing space."
+    "message": "itinatago ang input bar kapag idle"
   },
   "mc_settings_timestamps_desc": {
-    "message": "Ipinapakita ang oras ng pagpapadala bawat message sa tabi ng username. Mainam para malaman kung anong nangyari habang AFK ka."
+    "message": "timestamp sa bawat mensahe"
   },
   "mc_settings_avatars_desc": {
-    "message": "Ipinapakita ang profile pictures sa tabi ng username sa chat. Mas madaling makilala ang regulars, kapalit ng kaunting vertical space."
+    "message": "mga avatar sa tabi ng mga username"
   },
   "mc_settings_inline_notifs": {
     "message": "inline notifications"
@@ -678,16 +678,16 @@
     "message": "[DM] whispers at DMs"
   },
   "mc_settings_notif_op_desc": {
-    "message": "Notification sa active chat tab kapag may gumawa ng bagong post sa feed."
+    "message": "ping sa bagong post sa feed"
   },
   "mc_settings_notif_op_reply_desc": {
-    "message": "Notification kapag ang orihinal poster ay nagre-reply sa sariling thread."
+    "message": "ping kapag sumagot ang OP sa sariling thread"
   },
   "mc_settings_notif_re_desc": {
-    "message": "Notification para sa bawat reply sa kahit anong thread sa feed."
+    "message": "ping sa bawat sagot sa anumang thread"
   },
   "mc_settings_notif_dm_desc": {
-    "message": "Notification kapag may natanggap kang whisper o DM."
+    "message": "ping sa whisper o direktang mensahe"
   },
   "mc_settings_twitch_events": {
     "message": "Twitch events"
@@ -696,67 +696,67 @@
     "message": "raids"
   },
   "mc_settings_raids_desc": {
-    "message": "Inline banner kapag may streamer na nag-raid papasok o palabas, kasama ang viewer count at pinanggalingang channel. Pwede kang sumakay sa next stream."
+    "message": "banner sa raid kasama ang bilang ng manonood"
   },
   "mc_settings_hype_trains": {
     "message": "hype trains"
   },
   "mc_settings_hype_trains_desc": {
-    "message": "Live progress banner para sa hype trains, ipinapakita ang level at contribution timer. Default off kasi palaging nag-fi-fire sa malalaking channel."
+    "message": "live na banner ng progreso ng hype train"
   },
   "mc_settings_gift_subs": {
     "message": "gift subs"
   },
   "mc_settings_gift_subs_desc": {
-    "message": "Banner para sa community gift sub bombs at individual gifts, kasama ang gifter, recipient at tier."
+    "message": "banner para sa gift subs kasama ang nagbibigay at antas"
   },
   "mc_settings_redeems": {
     "message": "channel point redeems"
   },
   "mc_settings_redeems_desc": {
-    "message": "Inline notice para sa channel point redemptions tulad ng 'highlight my message' para makita mo kung saan ginagamit ng mga tao ang puntos."
+    "message": "banner para sa mga pagtubos ng channel points"
   },
   "mc_settings_prediction_banner": {
     "message": "predictions"
   },
   "mc_settings_prediction_banner_desc": {
-    "message": "Live banner ng channel point prediction na may current odds at oras na natitira para mag-lock-in ng vote."
+    "message": "live na banner ng hula kasama ang odds at timer"
   },
   "mc_settings_poll_banner": {
     "message": "polls"
   },
   "mc_settings_poll_banner_desc": {
-    "message": "Active poll banner na may vote tallies at oras na natitira. Mag-vote diretso mula sa overlay."
+    "message": "aktibong banner ng boto, bumoto nang direkta"
   },
   "mc_settings_pinned_messages": {
     "message": "pinned messages"
   },
   "mc_settings_pinned_messages_desc": {
-    "message": "Sticky banner para sa moderator-pinned chat messages para hindi mo ma-miss ang rules o schedule."
+    "message": "nakadikit na banner para sa mga mensaheng na-pin ng mga mod"
   },
   "mc_settings_dim_timeouts": {
     "message": "i-dim ang timed-out messages"
   },
   "mc_settings_dim_timeouts_desc": {
-    "message": "Ipakita ang timed-out at banned messages sa 50% opacity sa halip na itago, FFZ/BTTV style. Makikita mo kung anong na-nuke nang hindi umalis sa chat."
+    "message": "50% opacity sa halip na itago"
   },
   "mc_settings_smart_completion": {
     "message": "smart tab completion"
   },
   "mc_settings_smart_completion_desc": {
-    "message": "Recent chatters at emotes sa channel na ito ay lumalabas muna sa tab-completing. Mas mabilis kaysa sa alphabetical kapag mabilis ang chat."
+    "message": "mga kamakailang chatter/emote ay lilitaw muna"
   },
   "mc_settings_first_chatter": {
     "message": "first-message glow"
   },
   "mc_settings_first_chatter_desc": {
-    "message": "Orange edge marker sa first message ng user sa bawat channel sa session na ito. Madali makita ang mga bago dating sa mabilis na chat."
+    "message": "orange na gilid sa unang mensahe bawat session"
   },
   "mc_settings_keyword_highlights": {
     "message": "keyword highlights"
   },
   "mc_settings_keyword_highlights_desc": {
-    "message": "Mga messages na may kahit anong salita rito ay nagiging orange, parang personal mention. Hiwa-hiwalay ng linya, hindi case-sensitive, whole-word matches."
+    "message": "nagkulay ng orange sa mga mensaheng tumutugma. isa bawat linya, hindi case-sensitive, buong salita"
   },
   "mc_settings_keyword_highlights_placeholder": {
     "message": "isang keyword bawat linya"
@@ -768,7 +768,7 @@
     "message": "auto-claim ng channel points"
   },
   "mc_settings_auto_claim_desc": {
-    "message": "Automatic na ki-click ang bonus channel points chest sa Twitch kapag lumitaw. Libreng puntos, walang effort."
+    "message": "awtomatikong nag-i-click ng channel points chest"
   },
   "mc_settings_muted_users": {
     "message": "naka-mute na users"
@@ -1008,7 +1008,7 @@
     }
   },
   "mc_input_replying_to": {
-    "message": "Sumasagot kay @$USER$",
+    "message": "sumasagot kay @$USER$",
     "placeholders": {
       "user": {
         "content": "$1"
@@ -1016,7 +1016,7 @@
     }
   },
   "mc_input_cancel_reply": {
-    "message": "Kanselahin ang reply"
+    "message": "kanselahin ang sagot"
   },
   "mc_input_not_logged_in": {
     "message": "hindi naka-login"
@@ -1052,10 +1052,10 @@
     "message": "wala pang posts"
   },
   "mc_social_loading_feed": {
-    "message": "naglo-load ng feed ng fina-follow..."
+    "message": "naglo-load..."
   },
   "mc_social_scroll_more": {
-    "message": "i-scroll para sa iba pa..."
+    "message": "higit pa"
   },
   "mc_social_no_replies": {
     "message": "wala pang replies"
@@ -1159,10 +1159,10 @@
     }
   },
   "mc_irc_chat_cleared": {
-    "message": "Na-clear ang chat"
+    "message": "na-clear ang chat"
   },
   "mc_irc_msg_deleted": {
-    "message": "Na-delete ang message ni $USER$",
+    "message": "tinanggal ang mensahe mula kay $USER$",
     "placeholders": {
       "user": {
         "content": "$1"
@@ -1213,7 +1213,7 @@
     "message": "naka-block (i-click para i-unblock)"
   },
   "content_toast_unknown_error": {
-    "message": "Hindi alam na error"
+    "message": "hindi kilalang error"
   },
   "content_toast_loading_emotes": {
     "message": "naglo-load ng emotes..."
@@ -1231,7 +1231,7 @@
     "message": "i-block"
   },
   "btn_close": {
-    "message": "Isara"
+    "message": "isara"
   },
   "btn_error_channel": {
     "message": "hindi na-load ang channel emotes"

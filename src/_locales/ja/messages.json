@@ -9,7 +9,7 @@
     "message": "読み込み中..."
   },
   "common_extension_updated": {
-    "message": "拡張機能が更新されました — ページを更新してください"
+    "message": "拡張機能が更新されました — ページを再読み込み"
   },
   "common_no_matches": {
     "message": "一致なし"
@@ -324,7 +324,7 @@
     "message": "クリックして展開"
   },
   "content_toast_failed_add": {
-    "message": "$NAME$の追加に失敗: $ERROR$",
+    "message": "$NAME$ の追加に失敗: $ERROR$",
     "placeholders": {
       "name": {
         "content": "$1"
@@ -335,7 +335,7 @@
     }
   },
   "content_toast_failed_remove": {
-    "message": "$NAME$の削除に失敗: $ERROR$",
+    "message": "$NAME$ の削除に失敗: $ERROR$",
     "placeholders": {
       "name": {
         "content": "$1"
@@ -346,7 +346,7 @@
     }
   },
   "content_toast_unblocked": {
-    "message": "$NAME$のブロックを解除",
+    "message": "$NAME$ のブロックを解除",
     "placeholders": {
       "name": {
         "content": "$1"
@@ -362,7 +362,7 @@
     }
   },
   "content_toast_removed": {
-    "message": "セットから$NAME$を削除",
+    "message": "セットから $NAME$ を削除",
     "placeholders": {
       "name": {
         "content": "$1"
@@ -378,7 +378,7 @@
     }
   },
   "content_toast_blocked": {
-    "message": "$NAME$をブロック",
+    "message": "$NAME$ をブロック",
     "placeholders": {
       "name": {
         "content": "$1"
@@ -639,28 +639,28 @@
     "message": "アバター"
   },
   "mc_settings_emote_size_desc": {
-    "message": "チャットのエモート解像度倍率。1xはシャープでコンパクト、2xはほとんどの画面に最適、4xはエモートアートをピクセル単位で見たいとき。"
+    "message": "1xデフォルト、2xレティナ、4x大"
   },
   "mc_settings_input_preview_desc": {
-    "message": "入力中にエモートをテキスト名ではなく画像として入力欄に直接表示。見た目通りに送信されます。"
+    "message": "入力中にエモート画像を表示"
   },
   "mc_settings_clickable_links_desc": {
-    "message": "チャットメッセージのURLをクリック可能なリンクに変換。コピペ派や見知らぬ人を信用しない場合は無効化。"
+    "message": "チャットのurlがクリック可能になる"
   },
   "mc_settings_vi_mode_desc": {
-    "message": "チャット操作にvimスタイルキーバインド。j/kでスクロール、g/Gで上端/下端、/で検索。マウスはカジュアル用と思っている人向け。"
+    "message": "j/kスクロール、g/G上/下、/検索"
   },
   "mc_settings_zebra_desc": {
-    "message": "チャットメッセージに交互の行シェーディング。ウィンドウが広いときや高速チャットでも長いメッセージを追いやすい。"
+    "message": "交互の行シェーディング"
   },
   "mc_settings_auto_hide_desc": {
-    "message": "メッセージを作成していないときに入力バーを非表示。クリックまたは入力開始で再表示。チャット表示スペースを最大化。"
+    "message": "非アクティブ時に入力バーを隠す"
   },
   "mc_settings_timestamps_desc": {
-    "message": "各メッセージの送信時刻をユーザー名の横に表示。AFK中の出来事を確認するのに便利。"
+    "message": "各メッセージにタイムスタンプ"
   },
   "mc_settings_avatars_desc": {
-    "message": "チャットのユーザー名横にプロフィール画像を表示。常連を一目で識別しやすくなりますが、縦方向のスペースをやや使用。"
+    "message": "ユーザー名の横にアバター"
   },
   "mc_settings_inline_notifs": {
     "message": "インライン通知"
@@ -678,16 +678,16 @@
     "message": "[DM] ウィスパー & DM"
   },
   "mc_settings_notif_op_desc": {
-    "message": "誰かがフィードに新しいオリジナルポストを投稿したとき、アクティブなチャットタブに通知。"
+    "message": "フィードに新投稿があるとping"
   },
   "mc_settings_notif_op_reply_desc": {
-    "message": "オリジナル投稿者が自分のスレッドに返信したときに通知。"
+    "message": "OPが自身のスレッドに返信するとping"
   },
   "mc_settings_notif_re_desc": {
-    "message": "フィード上のあらゆるスレッドに返信があるたびに通知。"
+    "message": "いずれかのスレッドへの返信ごとにping"
   },
   "mc_settings_notif_dm_desc": {
-    "message": "ウィスパーまたはDMを受け取ったときに通知。"
+    "message": "ウィスパーまたはDMでping"
   },
   "mc_settings_twitch_events": {
     "message": "twitchイベント"
@@ -696,67 +696,67 @@
     "message": "レイド"
   },
   "mc_settings_raids_desc": {
-    "message": "配信者がレイドの送受信をしたときに、視聴者数と元のチャンネルを表示するインラインバナー。次の配信まで一緒に移動できます。"
+    "message": "レイド時に視聴者数付きバナー"
   },
   "mc_settings_hype_trains": {
     "message": "ハイプトレイン"
   },
   "mc_settings_hype_trains_desc": {
-    "message": "ハイプトレインのライブ進行バナー。レベルと貢献タイマーを表示。大型チャンネルでは頻繁に発生するためデフォルトはオフ。"
+    "message": "ハイプトレインのリアルタイム進行バナー"
   },
   "mc_settings_gift_subs": {
     "message": "ギフトサブ"
   },
   "mc_settings_gift_subs_desc": {
-    "message": "コミュニティのギフトサブ爆弾と個別ギフトのバナー。贈り主、受取人、ティアを表示。"
+    "message": "ギフトサブのバナー（ギフター・ティア表示）"
   },
   "mc_settings_redeems": {
     "message": "チャンネルポイント交換"
   },
   "mc_settings_redeems_desc": {
-    "message": "「メッセージをハイライト」などのチャンネルポイント特典のインライン通知。視聴者が何にポイントを使っているかを確認できます。"
+    "message": "チャンネルポイント交換のバナー"
   },
   "mc_settings_prediction_banner": {
     "message": "予測バナー"
   },
   "mc_settings_prediction_banner_desc": {
-    "message": "現在のオッズと投票締切までの時間を表示する、チャンネルポイント予想のライブバナー。"
+    "message": "オッズとタイマー付きのライブ予測バナー"
   },
   "mc_settings_poll_banner": {
     "message": "投票バナー"
   },
   "mc_settings_poll_banner_desc": {
-    "message": "投票数と残り時間を表示するアクティブな投票バナー。オーバーレイから直接投票できます。"
+    "message": "アクティブな投票バナー、直接投票可能"
   },
   "mc_settings_pinned_messages": {
     "message": "ピン留めメッセージ"
   },
   "mc_settings_pinned_messages_desc": {
-    "message": "モデレーターがピン留めしたチャットメッセージの常駐バナー。ルールやスケジュールを見逃しません。"
+    "message": "モデレーターのピン留めメッセージ用固定バナー"
   },
   "mc_settings_dim_timeouts": {
     "message": "タイムアウトしたメッセージを薄く表示"
   },
   "mc_settings_dim_timeouts_desc": {
-    "message": "タイムアウトやBANされたメッセージを非表示にせず、FFZ/BTTV風に50%の不透明度で表示。チャットを離れずに削除されたメッセージを確認できます。"
+    "message": "非表示の代わりに50%の透明度"
   },
   "mc_settings_smart_completion": {
     "message": "スマートTab補完"
   },
   "mc_settings_smart_completion_desc": {
-    "message": "Tab補完時に、このチャンネルで最近発言した人やエモートが先頭に表示されます。チャットが速いときアルファベット順より高速。"
+    "message": "最近のチャッター/エモートが優先表示"
   },
   "mc_settings_first_chatter": {
     "message": "初発言の発光"
   },
   "mc_settings_first_chatter_desc": {
-    "message": "このセッション中に各チャンネルでユーザーが最初に送信したメッセージにオレンジの縁マーカーを表示。速いチャットで新規参加者を見つけやすくします。"
+    "message": "セッション初回メッセージにオレンジの縁取り"
   },
   "mc_settings_keyword_highlights": {
     "message": "キーワードハイライト"
   },
   "mc_settings_keyword_highlights_desc": {
-    "message": "ここで指定した単語を含むメッセージはオレンジ色になり、個人メンションのように扱われます。改行区切り、大文字小文字を区別せず、完全一致。"
+    "message": "一致するメッセージをオレンジ色に。1行1キーワード、大文字小文字を区別しない、完全一致"
   },
   "mc_settings_keyword_highlights_placeholder": {
     "message": "1行に1キーワード"
@@ -768,7 +768,7 @@
     "message": "チャンネルポイントを自動取得"
   },
   "mc_settings_auto_claim_desc": {
-    "message": "Twitchにボーナスチャンネルポイントの宝箱が表示されたら自動でクリック。無料ポイント、ゼロ手間。"
+    "message": "チャンネルポイントの宝箱を自動クリック"
   },
   "mc_settings_muted_users": {
     "message": "ミュートユーザー"
@@ -1008,7 +1008,7 @@
     }
   },
   "mc_input_replying_to": {
-    "message": "@$USER$に返信",
+    "message": "@$USER$ に返信",
     "placeholders": {
       "user": {
         "content": "$1"
@@ -1052,10 +1052,10 @@
     "message": "まだ投稿なし"
   },
   "mc_social_loading_feed": {
-    "message": "フォロー中フィード読み込み中..."
+    "message": "読み込み中..."
   },
   "mc_social_scroll_more": {
-    "message": "スクロールしてさらに表示..."
+    "message": "もっと見る"
   },
   "mc_social_no_replies": {
     "message": "まだ返信なし"
@@ -1162,7 +1162,7 @@
     "message": "チャットがクリアされました"
   },
   "mc_irc_msg_deleted": {
-    "message": "$USER$のメッセージが削除されました",
+    "message": "$USER$ のメッセージを削除",
     "placeholders": {
       "user": {
         "content": "$1"

@@ -9,7 +9,7 @@
     "message": "लोड हो रहा है..."
   },
   "common_extension_updated": {
-    "message": "एक्सटेंशन अपडेट हो गया — पेज रिफ्रेश करें"
+    "message": "एक्सटेंशन अपडेट हुआ — पेज रीफ्रेश करें"
   },
   "common_no_matches": {
     "message": "कोई मेल नहीं"
@@ -324,7 +324,7 @@
     "message": "विस्तार के लिए क्लिक करें"
   },
   "content_toast_failed_add": {
-    "message": "$NAME$ जोड़ने में विफल: $ERROR$",
+    "message": "$NAME$ जोड़ना विफल: $ERROR$",
     "placeholders": {
       "name": {
         "content": "$1"
@@ -335,7 +335,7 @@
     }
   },
   "content_toast_failed_remove": {
-    "message": "$NAME$ हटाने में विफल: $ERROR$",
+    "message": "$NAME$ हटाना विफल: $ERROR$",
     "placeholders": {
       "name": {
         "content": "$1"
@@ -346,7 +346,7 @@
     }
   },
   "content_toast_unblocked": {
-    "message": "$NAME$ अनब्लॉक",
+    "message": "$NAME$ अनब्लॉक किया",
     "placeholders": {
       "name": {
         "content": "$1"
@@ -354,7 +354,7 @@
     }
   },
   "content_toast_failed_unblock": {
-    "message": "अनब्लॉक करने में विफल: $ERROR$",
+    "message": "अनब्लॉक विफल: $ERROR$",
     "placeholders": {
       "error": {
         "content": "$1"
@@ -370,7 +370,7 @@
     }
   },
   "content_toast_failed_block": {
-    "message": "ब्लॉक करने में विफल: $ERROR$",
+    "message": "ब्लॉक विफल: $ERROR$",
     "placeholders": {
       "error": {
         "content": "$1"
@@ -378,7 +378,7 @@
     }
   },
   "content_toast_blocked": {
-    "message": "$NAME$ ब्लॉक",
+    "message": "$NAME$ ब्लॉक किया",
     "placeholders": {
       "name": {
         "content": "$1"
@@ -639,28 +639,28 @@
     "message": "अवतार"
   },
   "mc_settings_emote_size_desc": {
-    "message": "चैट में इमोट का रिज़ॉल्यूशन गुणक। 1x तेज़ और कॉम्पैक्ट, 2x अधिकांश डिस्प्ले के लिए सबसे अच्छा, 4x उनके लिए जो हर पिक्सेल देखना चाहते हैं।"
+    "message": "1x डिफ़ॉल्ट, 2x रेटिना, 4x बड़ा"
   },
   "mc_settings_input_preview_desc": {
-    "message": "टाइप करते समय इनपुट बॉक्स में टेक्स्ट नाम के बजाय इमोट को सीधे छवि के रूप में दिखाता है। जो आप देखते हैं वही भेजते हैं।"
+    "message": "टाइप करते समय इनपुट में इमोट छवियाँ"
   },
   "mc_settings_clickable_links_desc": {
-    "message": "चैट संदेशों में URL को क्लिक करने योग्य लिंक में बदलता है। बंद करें यदि आप कॉपी-पेस्ट पसंद करते हैं या इंटरनेट पर अजनबियों पर भरोसा नहीं करते।"
+    "message": "चैट में url क्लिक करने योग्य बनते हैं"
   },
   "mc_settings_vi_mode_desc": {
-    "message": "चैट नेविगेशन के लिए Vim शैली के शॉर्टकट। j/k स्क्रॉल, g/G ऊपर/नीचे, / खोज। उन लोगों के लिए जो माउस को कैज़ुअल समझते हैं।"
+    "message": "j/k स्क्रॉल, g/G ऊपर/नीचे, / खोजें"
   },
   "mc_settings_zebra_desc": {
-    "message": "चैट संदेशों पर वैकल्पिक पंक्ति छाया। लंबे संदेशों को ट्रैक करना आसान बनाता है, खासकर तेज़ चैट में।"
+    "message": "वैकल्पिक पंक्ति छायांकन"
   },
   "mc_settings_auto_hide_desc": {
-    "message": "जब आप संदेश नहीं लिख रहे हैं तो इनपुट बार छिप जाता है। वापस लाने के लिए क्लिक करें या टाइप करना शुरू करें। चैट देखने की जगह को अधिकतम करता है।"
+    "message": "निष्क्रिय होने पर इनपुट बार छुपाता है"
   },
   "mc_settings_timestamps_desc": {
-    "message": "उपयोगकर्ता नाम के बगल में हर संदेश के भेजे जाने का समय दिखाता है। AFK रहते समय क्या हुआ यह जानने में उपयोगी।"
+    "message": "प्रत्येक संदेश पर टाइमस्टैम्प"
   },
   "mc_settings_avatars_desc": {
-    "message": "चैट में उपयोगकर्ता नामों के बगल में प्रोफ़ाइल चित्र दिखाता है। नियमित दर्शकों को आसानी से पहचानने में मदद करता है, थोड़ी ऊर्ध्वाधर जगह लेता है।"
+    "message": "उपयोगकर्ता नामों के पास अवतार"
   },
   "mc_settings_inline_notifs": {
     "message": "इनलाइन सूचनाएं"
@@ -678,16 +678,16 @@
     "message": "[DM] whispers और DM"
   },
   "mc_settings_notif_op_desc": {
-    "message": "जब कोई फीड में नया मूल पोस्ट बनाता है तो आपके सक्रिय चैट टैब में सूचना।"
+    "message": "फ़ीड में नई पोस्ट पर पिंग"
   },
   "mc_settings_notif_op_reply_desc": {
-    "message": "जब मूल पोस्टर अपने थ्रेड में उत्तर देता है तो सूचना।"
+    "message": "जब OP अपने थ्रेड में जवाब दे पिंग"
   },
   "mc_settings_notif_re_desc": {
-    "message": "किसी भी फीड थ्रेड में हर उत्तर के लिए सूचना।"
+    "message": "किसी भी थ्रेड में हर जवाब पर पिंग"
   },
   "mc_settings_notif_dm_desc": {
-    "message": "जब आपको whisper या DM मिले तो सूचना।"
+    "message": "व्हिस्पर या DM पर पिंग"
   },
   "mc_settings_twitch_events": {
     "message": "Twitch इवेंट"
@@ -696,67 +696,67 @@
     "message": "raids"
   },
   "mc_settings_raids_desc": {
-    "message": "जब कोई स्ट्रीमर raid अंदर या बाहर करता है तो दर्शक संख्या और स्रोत चैनल के साथ इनलाइन बैनर। आपको अगली स्ट्रीम तक साथ ले जाने देता है।"
+    "message": "रेड पर दर्शक संख्या के साथ बैनर"
   },
   "mc_settings_hype_trains": {
     "message": "hype trains"
   },
   "mc_settings_hype_trains_desc": {
-    "message": "hype trains के लिए लाइव प्रगति बैनर, स्तर और योगदान टाइमर के साथ। बड़े चैनलों पर लगातार चलते रहने के कारण डिफ़ॉल्ट रूप से बंद।"
+    "message": "लाइव हाइप ट्रेन प्रगति बैनर"
   },
   "mc_settings_gift_subs": {
     "message": "गिफ्ट सब"
   },
   "mc_settings_gift_subs_desc": {
-    "message": "समुदाय गिफ्ट सब बम और व्यक्तिगत गिफ्ट के लिए बैनर, गिफ्टर, प्राप्तकर्ता और टियर के साथ।"
+    "message": "गिफ्ट सब के लिए बैनर, गिफ्टर और टियर सहित"
   },
   "mc_settings_redeems": {
     "message": "चैनल पॉइंट रिडीम"
   },
   "mc_settings_redeems_desc": {
-    "message": "'highlight my message' जैसे चैनल पॉइंट रिडम्पशन के लिए इनलाइन सूचना ताकि आप देख सकें कि लोग पॉइंट कहाँ खर्च कर रहे हैं।"
+    "message": "चैनल पॉइंट रिडीम के लिए बैनर"
   },
   "mc_settings_prediction_banner": {
     "message": "भविष्यवाणियाँ"
   },
   "mc_settings_prediction_banner_desc": {
-    "message": "वर्तमान odds और वोट लॉक करने के लिए शेष समय के साथ चैनल पॉइंट भविष्यवाणी का लाइव बैनर।"
+    "message": "ऑड्स और टाइमर के साथ लाइव प्रेडिक्शन बैनर"
   },
   "mc_settings_poll_banner": {
     "message": "पोल"
   },
   "mc_settings_poll_banner_desc": {
-    "message": "वोट गिनती और शेष समय के साथ सक्रिय पोल बैनर। ओवरले से सीधे वोट करें।"
+    "message": "सक्रिय पोल बैनर, सीधे वोट करें"
   },
   "mc_settings_pinned_messages": {
     "message": "पिन किए गए संदेश"
   },
   "mc_settings_pinned_messages_desc": {
-    "message": "मॉडरेटर द्वारा पिन किए गए चैट संदेशों के लिए स्टिकी बैनर ताकि आप नियम या समय-सारणी न चूकें।"
+    "message": "मॉड-पिन्ड संदेशों के लिए स्थायी बैनर"
   },
   "mc_settings_dim_timeouts": {
     "message": "टाइमआउट संदेशों को धुंधला करें"
   },
   "mc_settings_dim_timeouts_desc": {
-    "message": "टाइमआउट और बैन किए गए संदेशों को छिपाने के बजाय 50% पारदर्शिता के साथ दिखाएं, FFZ/BTTV शैली। आपको चैट छोड़े बिना देखने देता है कि क्या हटाया गया।"
+    "message": "छुपाने की बजाय 50% अपारदर्शिता"
   },
   "mc_settings_smart_completion": {
     "message": "स्मार्ट टैब कम्पलीशन"
   },
   "mc_settings_smart_completion_desc": {
-    "message": "टैब कम्पलीशन में इस चैनल के हाल के चैटर और इमोट पहले दिखाई देते हैं। चैट चलते समय वर्णानुक्रम से तेज़।"
+    "message": "हाल के चैटर्स/इमोट्स पहले दिखते हैं"
   },
   "mc_settings_first_chatter": {
     "message": "पहले संदेश की चमक"
   },
   "mc_settings_first_chatter_desc": {
-    "message": "इस सत्र में हर चैनल में उपयोगकर्ता द्वारा भेजे गए पहले संदेश पर नारंगी किनारा मार्कर। तेज़ चैट में नवागंतुकों को देखना आसान।"
+    "message": "प्रति सेशन पहले संदेश पर नारंगी बॉर्डर"
   },
   "mc_settings_keyword_highlights": {
     "message": "कीवर्ड हाइलाइट"
   },
   "mc_settings_keyword_highlights_desc": {
-    "message": "इन शब्दों में से किसी को भी रखने वाले संदेशों को व्यक्तिगत मेन्शन की तरह नारंगी रंग मिलता है। प्रति पंक्ति एक, केस-असंवेदनशील, पूरे शब्द।"
+    "message": "मेल खाने वाले संदेश नारंगी रंग में। एक प्रति लाइन, केस-इनसेंसिटिव, पूरा शब्द"
   },
   "mc_settings_keyword_highlights_placeholder": {
     "message": "प्रति पंक्ति एक कीवर्ड"
@@ -768,7 +768,7 @@
     "message": "चैनल पॉइंट ऑटो-क्लेम"
   },
   "mc_settings_auto_claim_desc": {
-    "message": "Twitch पर बोनस चैनल पॉइंट चेस्ट दिखाई देने पर स्वचालित रूप से क्लिक करता है। मुफ़्त पॉइंट, शून्य प्रयास।"
+    "message": "चैनल पॉइंट्स चेस्ट पर स्वतः क्लिक करता है"
   },
   "mc_settings_muted_users": {
     "message": "म्यूट किए गए उपयोगकर्ता"
@@ -1008,7 +1008,7 @@
     }
   },
   "mc_input_replying_to": {
-    "message": "@$USER$ को उत्तर",
+    "message": "@$USER$ को जवाब",
     "placeholders": {
       "user": {
         "content": "$1"
@@ -1016,7 +1016,7 @@
     }
   },
   "mc_input_cancel_reply": {
-    "message": "उत्तर रद्द करें"
+    "message": "जवाब रद्द करें"
   },
   "mc_input_not_logged_in": {
     "message": "लॉग इन नहीं"
@@ -1052,10 +1052,10 @@
     "message": "अभी तक कोई पोस्ट नहीं"
   },
   "mc_social_loading_feed": {
-    "message": "फ़ॉलो किए गए फ़ीड को लोड कर रहा है..."
+    "message": "लोड हो रहा है..."
   },
   "mc_social_scroll_more": {
-    "message": "अधिक के लिए स्क्रॉल करें..."
+    "message": "और"
   },
   "mc_social_no_replies": {
     "message": "अभी तक कोई उत्तर नहीं"
@@ -1159,7 +1159,7 @@
     }
   },
   "mc_irc_chat_cleared": {
-    "message": "चैट साफ़ कर दी गई"
+    "message": "चैट साफ़ किया"
   },
   "mc_irc_msg_deleted": {
     "message": "$USER$ का संदेश हटाया गया",

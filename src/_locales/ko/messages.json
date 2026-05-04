@@ -9,7 +9,7 @@
     "message": "로딩 중..."
   },
   "common_extension_updated": {
-    "message": "확장 프로그램 업데이트됨 — 페이지를 새로고침하세요"
+    "message": "확장 프로그램 업데이트됨 — 페이지 새로고침"
   },
   "common_no_matches": {
     "message": "검색 결과 없음"
@@ -362,7 +362,7 @@
     }
   },
   "content_toast_removed": {
-    "message": "세트에서 $NAME$ 제거됨",
+    "message": "$NAME$ 이(가) 세트에서 제거됨",
     "placeholders": {
       "name": {
         "content": "$1"
@@ -639,28 +639,28 @@
     "message": "아바타"
   },
   "mc_settings_emote_size_desc": {
-    "message": "채팅 이모트의 해상도 배율. 1x는 선명하고 작게, 2x는 대부분 화면에 적합, 4x는 이모트 아트를 픽셀 단위로 보고 싶을 때."
+    "message": "1x 기본, 2x 레티나, 4x 크게"
   },
   "mc_settings_input_preview_desc": {
-    "message": "입력창에서 이모트를 텍스트가 아닌 이미지로 직접 표시. 보이는 대로 전송됩니다."
+    "message": "입력 중 이모트 이미지 표시"
   },
   "mc_settings_clickable_links_desc": {
-    "message": "채팅 메시지의 URL을 클릭 가능한 링크로 변환. 복붙을 선호하거나 낯선 사람을 믿지 않는다면 비활성화."
+    "message": "채팅의 url이 클릭 가능해짐"
   },
   "mc_settings_vi_mode_desc": {
-    "message": "채팅 탐색에 vim 스타일 키바인딩. j/k로 스크롤, g/G로 상단/하단, /로 검색. 마우스는 캐주얼용이라 생각하는 분들을 위해."
+    "message": "j/k 스크롤, g/G 위/아래, / 검색"
   },
   "mc_settings_zebra_desc": {
-    "message": "채팅 메시지에 교대 줄 음영 적용. 창이 넓을 때나 채팅이 빠를 때 긴 메시지 읽기 편함."
+    "message": "교번 행 음영"
   },
   "mc_settings_auto_hide_desc": {
-    "message": "메시지를 작성하지 않을 때 입력창 숨기기. 클릭하거나 타이핑 시작하면 다시 나타남. 채팅 화면 공간 최대화."
+    "message": "비활성 시 입력 바 숨김"
   },
   "mc_settings_timestamps_desc": {
-    "message": "각 메시지 발송 시간을 사용자명 옆에 표시. AFK 중 놓친 내용 확인에 유용."
+    "message": "각 메시지에 타임스탬프"
   },
   "mc_settings_avatars_desc": {
-    "message": "채팅 사용자명 옆에 프로필 사진 표시. 단골 시청자를 한눈에 알아보기 쉽지만 세로 공간을 약간 사용."
+    "message": "사용자 이름 옆에 아바타"
   },
   "mc_settings_inline_notifs": {
     "message": "인라인 알림"
@@ -678,16 +678,16 @@
     "message": "[DM] 귓속말 & DM"
   },
   "mc_settings_notif_op_desc": {
-    "message": "누군가 피드에 새 오리지널 포스트를 작성하면 활성 채팅 탭에 알림."
+    "message": "피드에 새 게시물 시 알림"
   },
   "mc_settings_notif_op_reply_desc": {
-    "message": "원작자가 자신의 스레드에 답글을 달 때 알림."
+    "message": "OP가 자신의 스레드에 답글 시 알림"
   },
   "mc_settings_notif_re_desc": {
-    "message": "피드의 모든 스레드에 답글이 달릴 때마다 알림."
+    "message": "모든 스레드의 답글마다 알림"
   },
   "mc_settings_notif_dm_desc": {
-    "message": "귓속말 또는 DM을 받을 때 알림."
+    "message": "귓속말 또는 DM 시 알림"
   },
   "mc_settings_twitch_events": {
     "message": "twitch 이벤트"
@@ -696,67 +696,67 @@
     "message": "레이드"
   },
   "mc_settings_raids_desc": {
-    "message": "스트리머가 레이드를 시작하거나 받을 때, 시청자 수와 원본 채널을 보여주는 인라인 배너. 다음 스트림까지 함께 이동할 수 있습니다."
+    "message": "레이드 시 시청자 수 포함 배너"
   },
   "mc_settings_hype_trains": {
     "message": "하입 트레인"
   },
   "mc_settings_hype_trains_desc": {
-    "message": "하이프 트레인의 라이브 진행 배너. 레벨과 기여 타이머를 표시. 대형 채널에서는 자주 발생하므로 기본값은 꺼짐."
+    "message": "하이프 트레인 실시간 진행 배너"
   },
   "mc_settings_gift_subs": {
     "message": "선물 구독"
   },
   "mc_settings_gift_subs_desc": {
-    "message": "커뮤니티 기프트 섭 폭격과 개별 선물에 대한 배너. 선물한 사람, 받는 사람, 등급을 표시."
+    "message": "선물 구독 배너(기증자 및 티어 포함)"
   },
   "mc_settings_redeems": {
     "message": "채널 포인트 리딤"
   },
   "mc_settings_redeems_desc": {
-    "message": "'내 메시지 강조' 같은 채널 포인트 보상 사용에 대한 인라인 알림. 시청자가 어디에 포인트를 쓰는지 볼 수 있습니다."
+    "message": "채널 포인트 교환 배너"
   },
   "mc_settings_prediction_banner": {
     "message": "예측 배너"
   },
   "mc_settings_prediction_banner_desc": {
-    "message": "현재 배당률과 투표 마감 시간을 표시하는 채널 포인트 예측 라이브 배너."
+    "message": "배당률과 타이머 포함 라이브 예측 배너"
   },
   "mc_settings_poll_banner": {
     "message": "투표 배너"
   },
   "mc_settings_poll_banner_desc": {
-    "message": "투표 수와 남은 시간을 표시하는 활성 투표 배너. 오버레이에서 직접 투표할 수 있습니다."
+    "message": "활성 투표 배너, 직접 투표 가능"
   },
   "mc_settings_pinned_messages": {
     "message": "고정된 메시지"
   },
   "mc_settings_pinned_messages_desc": {
-    "message": "모더레이터가 고정한 채팅 메시지의 상단 고정 배너. 규칙이나 일정을 놓치지 않도록."
+    "message": "모더레이터가 고정한 메시지의 고정 배너"
   },
   "mc_settings_dim_timeouts": {
     "message": "타임아웃 메시지 흐리게"
   },
   "mc_settings_dim_timeouts_desc": {
-    "message": "타임아웃되거나 차단된 메시지를 숨기지 않고 FFZ/BTTV 스타일로 50% 불투명도로 표시. 채팅을 떠나지 않고도 무엇이 삭제됐는지 볼 수 있습니다."
+    "message": "숨기기 대신 50% 불투명도"
   },
   "mc_settings_smart_completion": {
     "message": "스마트 Tab 자동완성"
   },
   "mc_settings_smart_completion_desc": {
-    "message": "Tab 자동완성 시, 이 채널에서 최근 채팅한 사용자와 이모트가 먼저 표시됩니다. 채팅이 빠를 때 알파벳순보다 빠릅니다."
+    "message": "최근 채터/이모트가 먼저 표시"
   },
   "mc_settings_first_chatter": {
     "message": "첫 메시지 글로우"
   },
   "mc_settings_first_chatter_desc": {
-    "message": "이번 세션에서 각 채널에 사용자가 처음 보낸 메시지에 오렌지색 가장자리 표시. 빠른 채팅에서 새로 온 사람을 쉽게 알아볼 수 있습니다."
+    "message": "세션 첫 메시지에 주황색 테두리"
   },
   "mc_settings_keyword_highlights": {
     "message": "키워드 강조"
   },
   "mc_settings_keyword_highlights_desc": {
-    "message": "여기 지정한 단어를 포함하는 메시지는 오렌지색으로 표시되며 개인 멘션처럼 취급됩니다. 줄바꿈으로 구분, 대소문자 무시, 단어 단위 일치."
+    "message": "일치하는 메시지를 주황색으로 표시. 줄당 하나, 대소문자 무시, 전체 단어"
   },
   "mc_settings_keyword_highlights_placeholder": {
     "message": "한 줄에 키워드 하나"
@@ -768,7 +768,7 @@
     "message": "채널 포인트 자동 수령"
   },
   "mc_settings_auto_claim_desc": {
-    "message": "Twitch에서 보너스 채널 포인트 상자가 나타나면 자동으로 클릭. 공짜 포인트, 노력 제로."
+    "message": "채널 포인트 상자를 자동으로 클릭"
   },
   "mc_settings_muted_users": {
     "message": "음소거된 사용자"
@@ -1008,7 +1008,7 @@
     }
   },
   "mc_input_replying_to": {
-    "message": "@$USER$에게 답글",
+    "message": "@$USER$ 에 답글",
     "placeholders": {
       "user": {
         "content": "$1"
@@ -1052,10 +1052,10 @@
     "message": "아직 포스트 없음"
   },
   "mc_social_loading_feed": {
-    "message": "팔로잉 피드 로딩 중..."
+    "message": "불러오는 중..."
   },
   "mc_social_scroll_more": {
-    "message": "스크롤하여 더 보기..."
+    "message": "더 보기"
   },
   "mc_social_no_replies": {
     "message": "아직 답글 없음"
@@ -1159,10 +1159,10 @@
     }
   },
   "mc_irc_chat_cleared": {
-    "message": "채팅이 삭제됨"
+    "message": "채팅이 지워졌습니다"
   },
   "mc_irc_msg_deleted": {
-    "message": "$USER$의 메시지 삭제됨",
+    "message": "$USER$ 의 메시지가 삭제됨",
     "placeholders": {
       "user": {
         "content": "$1"

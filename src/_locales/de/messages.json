@@ -9,7 +9,7 @@
     "message": "lädt..."
   },
   "common_extension_updated": {
-    "message": "Erweiterung aktualisiert — bitte Seite neu laden"
+    "message": "Erweiterung aktualisiert — Seite neu laden"
   },
   "common_no_matches": {
     "message": "keine Treffer"
@@ -324,7 +324,7 @@
     "message": "klicken zum Erweitern"
   },
   "content_toast_failed_add": {
-    "message": "Hinzufügen von $NAME$ fehlgeschlagen: $ERROR$",
+    "message": "$NAME$ hinzufügen fehlgeschlagen: $ERROR$",
     "placeholders": {
       "name": {
         "content": "$1"
@@ -335,7 +335,7 @@
     }
   },
   "content_toast_failed_remove": {
-    "message": "Entfernen von $NAME$ fehlgeschlagen: $ERROR$",
+    "message": "$NAME$ entfernen fehlgeschlagen: $ERROR$",
     "placeholders": {
       "name": {
         "content": "$1"
@@ -639,28 +639,28 @@
     "message": "avatare"
   },
   "mc_settings_emote_size_desc": {
-    "message": "Auflösungsmultiplikator für Emotes im Chat. 1x ist knackig und kompakt, 2x ist der Sweet Spot für die meisten Displays, 4x ist für alle, die jeden Pixel der Emote-Kunst sehen wollen."
+    "message": "1x Standard, 2x Retina, 4x groß"
   },
   "mc_settings_input_preview_desc": {
-    "message": "Zeigt Emotes direkt als Bilder im Eingabefeld während des Tippens, statt als einfache Textnamen. Was du siehst, wird gesendet."
+    "message": "Emote-Bilder im Eingabefeld beim Tippen"
   },
   "mc_settings_clickable_links_desc": {
-    "message": "Macht URLs in Chat-Nachrichten zu klickbaren Hyperlinks. Deaktivieren, wenn du lieber kopierst oder Fremden im Internet nicht traust."
+    "message": "URLs im Chat werden klickbar"
   },
   "mc_settings_vi_mode_desc": {
-    "message": "Vim-ähnliche Tastenkürzel für die Chat-Navigation. j/k zum Scrollen, g/G für oben/unten, / zum Suchen. Für alle, die denken, Mäuse sind für Casuals."
+    "message": "j/k scrollen, g/G oben/unten, / suchen"
   },
   "mc_settings_zebra_desc": {
-    "message": "Abwechselnde Zeilenschattierung bei Chat-Nachrichten. Erleichtert das Lesen langer Nachrichten, besonders bei schnellem Chat."
+    "message": "wechselnde Zeilenschattierung"
   },
   "mc_settings_auto_hide_desc": {
-    "message": "Blendet die Eingabeleiste aus, wenn du keine Nachricht verfasst. Klicken oder tippen, um sie wieder einzublenden. Maximiert den Chat-Anzeigebereich."
+    "message": "blendet Eingabeleiste bei Inaktivität aus"
   },
   "mc_settings_timestamps_desc": {
-    "message": "Zeigt den Sendezeitpunkt jeder Nachricht direkt neben dem Benutzernamen. Praktisch, um nachzuvollziehen, was während einer AFK-Phase passiert ist."
+    "message": "Zeitstempel auf jeder Nachricht"
   },
   "mc_settings_avatars_desc": {
-    "message": "Zeigt Profilbilder neben Benutzernamen im Chat. Erleichtert die visuelle Erkennung von Stammgästen, kostet etwas vertikalen Platz."
+    "message": "Profilbilder neben Benutzernamen"
   },
   "mc_settings_inline_notifs": {
     "message": "inline-benachrichtigungen"
@@ -678,16 +678,16 @@
     "message": "[DM] flüstern & DMs"
   },
   "mc_settings_notif_op_desc": {
-    "message": "Benachrichtigung im aktiven Chat-Tab, wenn jemand einen neuen Originalbeitrag im Feed erstellt."
+    "message": "Benachrichtigung bei neuem Beitrag im Feed"
   },
   "mc_settings_notif_op_reply_desc": {
-    "message": "Benachrichtigung, wenn der ursprüngliche Autor im eigenen Thread antwortet."
+    "message": "Benachrichtigung wenn OP im eigenen Thread antwortet"
   },
   "mc_settings_notif_re_desc": {
-    "message": "Benachrichtigung für jede Antwort in einem beliebigen Thread im Feed."
+    "message": "Benachrichtigung bei jeder Antwort in einem Thread"
   },
   "mc_settings_notif_dm_desc": {
-    "message": "Benachrichtigung, wenn du eine Flüsternachricht oder DM erhältst."
+    "message": "Benachrichtigung bei Flüsternachricht oder DM"
   },
   "mc_settings_twitch_events": {
     "message": "Twitch-Events"
@@ -696,67 +696,67 @@
     "message": "Raids"
   },
   "mc_settings_raids_desc": {
-    "message": "Inline-Banner, wenn ein Streamer rein- oder rausraidet, mit Zuschauerzahl und Quellkanal. Damit kannst du zur nächsten Stream mitfahren."
+    "message": "Banner bei Raid mit Zuschauerzahl"
   },
   "mc_settings_hype_trains": {
     "message": "Hype Trains"
   },
   "mc_settings_hype_trains_desc": {
-    "message": "Live-Fortschrittsbanner für Hype Trains, mit Level und Beitragstimer. Standardmäßig aus, weil sie auf großen Kanälen ständig anspringen."
+    "message": "Live-Fortschrittsbanner für Hype Train"
   },
   "mc_settings_gift_subs": {
     "message": "Sub-Geschenke"
   },
   "mc_settings_gift_subs_desc": {
-    "message": "Banner für Community-Sub-Bombs und einzelne Geschenke, mit Schenker, Empfänger und Stufe."
+    "message": "Banner für Geschenk-Abos mit Schenker und Stufe"
   },
   "mc_settings_redeems": {
     "message": "Kanalpunkt-Einlösungen"
   },
   "mc_settings_redeems_desc": {
-    "message": "Inline-Hinweis für Kanalpunkt-Einlösungen wie 'Nachricht hervorheben', damit du siehst, wofür Leute ihre Punkte ausgeben."
+    "message": "Banner für Kanalpunkt-Einlösungen"
   },
   "mc_settings_prediction_banner": {
     "message": "prediction-banner"
   },
   "mc_settings_prediction_banner_desc": {
-    "message": "Live-Banner für Kanalpunkt-Vorhersagen mit aktuellen Quoten und Restzeit zum Abstimmen."
+    "message": "Live-Vorhersage-Banner mit Quoten und Timer"
   },
   "mc_settings_poll_banner": {
     "message": "umfrage-banner"
   },
   "mc_settings_poll_banner_desc": {
-    "message": "Banner für aktive Umfragen mit Stimmen und Restzeit. Stimme direkt aus dem Overlay ab."
+    "message": "Aktiver Umfrage-Banner, direkt abstimmen"
   },
   "mc_settings_pinned_messages": {
     "message": "angeheftete Nachrichten"
   },
   "mc_settings_pinned_messages_desc": {
-    "message": "Sticky-Banner für von Mods gepinnte Chatnachrichten, damit du Regeln oder Zeitplan nicht verpasst."
+    "message": "Dauerhafter Banner für von Mods gepinnte Nachrichten"
   },
   "mc_settings_dim_timeouts": {
     "message": "Timeouts ausgrauen"
   },
   "mc_settings_dim_timeouts_desc": {
-    "message": "Zeigt getimeoutete und gebannte Nachrichten mit 50% Deckkraft statt sie auszublenden, wie FFZ/BTTV. So siehst du, was abgeschossen wurde, ohne den Chat zu verlassen."
+    "message": "50% Deckkraft statt ausblenden"
   },
   "mc_settings_smart_completion": {
     "message": "intelligente Tab-Vervollständigung"
   },
   "mc_settings_smart_completion_desc": {
-    "message": "Aktive Chatter und Emotes aus diesem Kanal erscheinen zuerst beim Tab-Vervollständigen. Schneller als alphabetisch, wenn der Chat tobt."
+    "message": "Aktuelle Chatter/Emotes erscheinen zuerst"
   },
   "mc_settings_first_chatter": {
     "message": "Erstmaliger-Chatter-Glow"
   },
   "mc_settings_first_chatter_desc": {
-    "message": "Orange Randmarkierung für die erste Nachricht, die ein User in einem Kanal in dieser Session schickt. Macht Neuankömmlinge in schnellen Chats sichtbar."
+    "message": "Oranger Rand auf erster Nachricht pro Session"
   },
   "mc_settings_keyword_highlights": {
     "message": "Keyword-Highlights"
   },
   "mc_settings_keyword_highlights_desc": {
-    "message": "Nachrichten mit einem dieser Wörter bekommen einen orangen Ton, wie eine persönliche Erwähnung. Pro Zeile ein Wort, Groß-/Kleinschreibung egal, ganzes Wort."
+    "message": "Färbt übereinstimmende Nachrichten orange. Eines pro Zeile, Groß-/Kleinschreibung egal, ganzes Wort"
   },
   "mc_settings_keyword_highlights_placeholder": {
     "message": "ein Keyword pro Zeile"
@@ -768,7 +768,7 @@
     "message": "channel points automatisch einlösen"
   },
   "mc_settings_auto_claim_desc": {
-    "message": "Klickt automatisch auf die Bonus-Channel-Points-Truhe auf Twitch, wenn sie erscheint. Gratis Punkte, null Aufwand."
+    "message": "Klickt automatisch auf die Kanalpunkt-Truhe"
   },
   "mc_settings_muted_users": {
     "message": "stummgeschaltete nutzer"
@@ -1052,10 +1052,10 @@
     "message": "noch keine Beiträge"
   },
   "mc_social_loading_feed": {
-    "message": "following-feed wird geladen..."
+    "message": "lädt..."
   },
   "mc_social_scroll_more": {
-    "message": "scrollen für mehr..."
+    "message": "mehr"
   },
   "mc_social_no_replies": {
     "message": "noch keine Antworten"
@@ -1159,7 +1159,7 @@
     }
   },
   "mc_irc_chat_cleared": {
-    "message": "Chat wurde geleert"
+    "message": "Chat geleert"
   },
   "mc_irc_msg_deleted": {
     "message": "Nachricht von $USER$ gelöscht",
@@ -1213,7 +1213,7 @@
     "message": "blockiert (klicken zum Entsperren)"
   },
   "content_toast_unknown_error": {
-    "message": "Unbekannter Fehler"
+    "message": "unbekannter Fehler"
   },
   "content_toast_loading_emotes": {
     "message": "Emotes werden geladen..."
@@ -1231,7 +1231,7 @@
     "message": "blockieren"
   },
   "btn_close": {
-    "message": "Schließen"
+    "message": "schließen"
   },
   "btn_error_channel": {
     "message": "Channel-Emotes konnten nicht geladen werden"

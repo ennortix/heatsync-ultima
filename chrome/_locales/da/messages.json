@@ -9,7 +9,7 @@
     "message": "indlæser..."
   },
   "common_extension_updated": {
-    "message": "Udvidelse opdateret — genindlæs siden"
+    "message": "udvidelse opdateret — genindlæs siden"
   },
   "common_no_matches": {
     "message": "ingen resultater"
@@ -324,7 +324,7 @@
     "message": "klik for at udvide"
   },
   "content_toast_failed_add": {
-    "message": "Kunne ikke tilføje $NAME$: $ERROR$",
+    "message": "kunne ikke tilføje $NAME$: $ERROR$",
     "placeholders": {
       "name": {
         "content": "$1"
@@ -335,7 +335,7 @@
     }
   },
   "content_toast_failed_remove": {
-    "message": "Kunne ikke fjerne $NAME$: $ERROR$",
+    "message": "kunne ikke fjerne $NAME$: $ERROR$",
     "placeholders": {
       "name": {
         "content": "$1"
@@ -346,7 +346,7 @@
     }
   },
   "content_toast_unblocked": {
-    "message": "$NAME$ blokering fjernet",
+    "message": "$NAME$ fjernet fra blokeret",
     "placeholders": {
       "name": {
         "content": "$1"
@@ -354,7 +354,7 @@
     }
   },
   "content_toast_failed_unblock": {
-    "message": "Kunne ikke fjerne blokering: $ERROR$",
+    "message": "fjernelse af blokering mislykkedes: $ERROR$",
     "placeholders": {
       "error": {
         "content": "$1"
@@ -362,7 +362,7 @@
     }
   },
   "content_toast_removed": {
-    "message": "$NAME$ fjernet fra dit set",
+    "message": "$NAME$ fjernet fra dit sæt",
     "placeholders": {
       "name": {
         "content": "$1"
@@ -370,7 +370,7 @@
     }
   },
   "content_toast_failed_block": {
-    "message": "Kunne ikke blokere: $ERROR$",
+    "message": "blokering mislykkedes: $ERROR$",
     "placeholders": {
       "error": {
         "content": "$1"
@@ -639,28 +639,28 @@
     "message": "avatarer"
   },
   "mc_settings_emote_size_desc": {
-    "message": "Opløsningsmultiplikator for emotes i chat. 1x er skarp og kompakt, 2x er sweet spot for de fleste skærme, 4x er for dem der vil se hver pixel."
+    "message": "1x standard, 2x retina, 4x stor"
   },
   "mc_settings_input_preview_desc": {
-    "message": "Viser emotes som billeder direkte i indtastningsfeltet mens du skriver, i stedet for tekstnavne. Det du ser er det du sender."
+    "message": "emote-billeder i inputfeltet mens du skriver"
   },
   "mc_settings_clickable_links_desc": {
-    "message": "Gør URL'er i chatbeskeder klikbare. Slå fra hvis du foretrækker copy-paste eller ikke stoler på fremmede på internettet."
+    "message": "url'er i chatten bliver klikbare"
   },
   "mc_settings_vi_mode_desc": {
-    "message": "Vim-stil tastebindinger til chat-navigation. j/k scroll, g/G top/bund, / søg. For dem der synes musen er for casuals."
+    "message": "j/k scroll, g/G top/bund, / søg"
   },
   "mc_settings_zebra_desc": {
-    "message": "Skiftende rækkeskygge på chatbeskeder. Gør det lettere at følge lange beskeder, især under hurtig chat."
+    "message": "skiftende række-skyggelægning"
   },
   "mc_settings_auto_hide_desc": {
-    "message": "Skjuler indtastningsbjælken når du ikke skriver. Klik eller begynd at skrive for at få den tilbage. Maksimerer chat-visningsplads."
+    "message": "skjuler inputlinjen ved inaktivitet"
   },
   "mc_settings_timestamps_desc": {
-    "message": "Viser sendetid for hver besked ved siden af brugernavnet. Nyttigt for at indhente hvad der skete mens du var AFK."
+    "message": "tidsstempel på hver besked"
   },
   "mc_settings_avatars_desc": {
-    "message": "Viser profilbilleder ved siden af brugernavne i chatten. Hjælper med at genkende stamgæster, koster lidt vertikal plads."
+    "message": "profilbilleder ved siden af brugernavne"
   },
   "mc_settings_inline_notifs": {
     "message": "inline-notifikationer"
@@ -678,16 +678,16 @@
     "message": "[DM] whispers og DM"
   },
   "mc_settings_notif_op_desc": {
-    "message": "Notifikation i din aktive chat-fane når nogen skaber et nyt opslag i feedet."
+    "message": "ping ved nyt opslag i feedet"
   },
   "mc_settings_notif_op_reply_desc": {
-    "message": "Notifikation når den oprindelige opslagsforfatter svarer i egen tråd."
+    "message": "ping når OP svarer i eget tråd"
   },
   "mc_settings_notif_re_desc": {
-    "message": "Notifikation for hvert svar i en feed-tråd."
+    "message": "ping ved hvert svar i enhver tråd"
   },
   "mc_settings_notif_dm_desc": {
-    "message": "Notifikation når du modtager en whisper eller DM."
+    "message": "ping ved whisper eller direkte besked"
   },
   "mc_settings_twitch_events": {
     "message": "Twitch-events"
@@ -696,67 +696,67 @@
     "message": "raids"
   },
   "mc_settings_raids_desc": {
-    "message": "Inline-banner når en streamer raider ind eller ud, med seerantal og kildekanal. Lader dig følge med til næste stream."
+    "message": "banner ved raid med seerantal"
   },
   "mc_settings_hype_trains": {
     "message": "hype trains"
   },
   "mc_settings_hype_trains_desc": {
-    "message": "Live progress-banner for hype trains, med niveau og bidragstimer. Slukket som standard fordi de udløses konstant på store kanaler."
+    "message": "live hype train fremgangsbanner"
   },
   "mc_settings_gift_subs": {
     "message": "gift subs"
   },
   "mc_settings_gift_subs_desc": {
-    "message": "Banner for community gift sub bombs og enkelte gifts, med giver, modtager og tier."
+    "message": "banner for gave-abonnementer med giver og niveau"
   },
   "mc_settings_redeems": {
     "message": "channel point indløsninger"
   },
   "mc_settings_redeems_desc": {
-    "message": "Inline-besked for channel point indløsninger som 'highlight my message' så du ser hvad folk bruger deres point på."
+    "message": "banner for kanalpoint-indløsninger"
   },
   "mc_settings_prediction_banner": {
     "message": "predictions"
   },
   "mc_settings_prediction_banner_desc": {
-    "message": "Live-banner for channel point predictions med aktuelle odds og tid tilbage til at låse stemmen."
+    "message": "live forudsigelsebanner med odds og timer"
   },
   "mc_settings_poll_banner": {
     "message": "polls"
   },
   "mc_settings_poll_banner_desc": {
-    "message": "Banner for aktiv poll med stemmetal og tid tilbage. Stem direkte fra overlay."
+    "message": "aktivt afstemningsbanner, stem direkte"
   },
   "mc_settings_pinned_messages": {
     "message": "fastgjorte beskeder"
   },
   "mc_settings_pinned_messages_desc": {
-    "message": "Sticky banner for moderator-fastgjorte chatbeskeder så du ikke misser regler eller tidsplan."
+    "message": "fast banner for mod-fastgjorte beskeder"
   },
   "mc_settings_dim_timeouts": {
     "message": "dæmp timeoutede beskeder"
   },
   "mc_settings_dim_timeouts_desc": {
-    "message": "Vis timeoutede og bannede beskeder med 50% opacitet i stedet for at skjule dem, FFZ/BTTV-stil. Lader dig se hvad der blev nuked uden at forlade chatten."
+    "message": "50% gennemsigtighed i stedet for skjul"
   },
   "mc_settings_smart_completion": {
     "message": "smart tab-fuldførelse"
   },
   "mc_settings_smart_completion_desc": {
-    "message": "Seneste chattere og emotes fra denne kanal vises først ved tab-fuldførelse. Hurtigere end alfabetisk når chatten kører."
+    "message": "nylige chattere/emotes vises først"
   },
   "mc_settings_first_chatter": {
     "message": "første-besked-glow"
   },
   "mc_settings_first_chatter_desc": {
-    "message": "Orange kantmarkør på første besked en bruger sender i hver kanal denne session. Gør nybegyndere synlige i hurtig chat."
+    "message": "orange kant på første besked pr. session"
   },
   "mc_settings_keyword_highlights": {
     "message": "nøgleords-highlights"
   },
   "mc_settings_keyword_highlights_desc": {
-    "message": "Beskeder med nogle af disse ord får en orange tone, som personlig omtale. Et per linje, ufølsomt for store/små bogstaver, hele ord."
+    "message": "farver matchende beskeder orange. én per linje, ufølsom for store/små bogstaver, hele ord"
   },
   "mc_settings_keyword_highlights_placeholder": {
     "message": "ét nøgleord per linje"
@@ -768,7 +768,7 @@
     "message": "auto-claim channel points"
   },
   "mc_settings_auto_claim_desc": {
-    "message": "Klikker automatisk på bonus channel points-kisten på Twitch når den dukker op. Gratis point, nul indsats."
+    "message": "klikker automatisk på kanalpoint-kisten"
   },
   "mc_settings_muted_users": {
     "message": "mutede brugere"
@@ -1008,7 +1008,7 @@
     }
   },
   "mc_input_replying_to": {
-    "message": "Svarer @$USER$",
+    "message": "svarer på @$USER$",
     "placeholders": {
       "user": {
         "content": "$1"
@@ -1016,7 +1016,7 @@
     }
   },
   "mc_input_cancel_reply": {
-    "message": "Annuller svar"
+    "message": "annuller svar"
   },
   "mc_input_not_logged_in": {
     "message": "ikke logget ind"
@@ -1052,10 +1052,10 @@
     "message": "ingen opslag endnu"
   },
   "mc_social_loading_feed": {
-    "message": "indlæser feed for fulgte..."
+    "message": "indlæser..."
   },
   "mc_social_scroll_more": {
-    "message": "scroll for mere..."
+    "message": "mere"
   },
   "mc_social_no_replies": {
     "message": "ingen svar endnu"
@@ -1159,10 +1159,10 @@
     }
   },
   "mc_irc_chat_cleared": {
-    "message": "Chat ryddet"
+    "message": "chat ryddet"
   },
   "mc_irc_msg_deleted": {
-    "message": "Besked fra $USER$ slettet",
+    "message": "besked fra $USER$ slettet",
     "placeholders": {
       "user": {
         "content": "$1"
@@ -1213,7 +1213,7 @@
     "message": "blokeret (klik for at fjerne blokering)"
   },
   "content_toast_unknown_error": {
-    "message": "Ukendt fejl"
+    "message": "ukendt fejl"
   },
   "content_toast_loading_emotes": {
     "message": "indlæser emotes..."
@@ -1231,7 +1231,7 @@
     "message": "bloker"
   },
   "btn_close": {
-    "message": "Luk"
+    "message": "luk"
   },
   "btn_error_channel": {
     "message": "kunne ikke indlæse kanal-emotes"

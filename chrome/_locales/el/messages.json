@@ -9,7 +9,7 @@
     "message": "φόρτωση..."
   },
   "common_extension_updated": {
-    "message": "Η επέκταση ενημερώθηκε — ανανέωσε τη σελίδα"
+    "message": "η επέκταση ενημερώθηκε — ανανεώστε τη σελίδα"
   },
   "common_no_matches": {
     "message": "χωρίς αποτελέσματα"
@@ -324,7 +324,7 @@
     "message": "πάτα για ανάπτυξη"
   },
   "content_toast_failed_add": {
-    "message": "Αποτυχία προσθήκης $NAME$: $ERROR$",
+    "message": "αποτυχία προσθήκης $NAME$: $ERROR$",
     "placeholders": {
       "name": {
         "content": "$1"
@@ -335,7 +335,7 @@
     }
   },
   "content_toast_failed_remove": {
-    "message": "Αποτυχία αφαίρεσης $NAME$: $ERROR$",
+    "message": "αποτυχία αφαίρεσης $NAME$: $ERROR$",
     "placeholders": {
       "name": {
         "content": "$1"
@@ -346,7 +346,7 @@
     }
   },
   "content_toast_unblocked": {
-    "message": "Ξεμπλοκαρίστηκε $NAME$",
+    "message": "$NAME$ ξεμπλοκαρίστηκε",
     "placeholders": {
       "name": {
         "content": "$1"
@@ -354,7 +354,7 @@
     }
   },
   "content_toast_failed_unblock": {
-    "message": "Αποτυχία ξεμπλοκαρίσματος: $ERROR$",
+    "message": "αποτυχία ξεμπλοκαρίσματος: $ERROR$",
     "placeholders": {
       "error": {
         "content": "$1"
@@ -362,7 +362,7 @@
     }
   },
   "content_toast_removed": {
-    "message": "Αφαιρέθηκε $NAME$ από το set σου",
+    "message": "$NAME$ αφαιρέθηκε από τη συλλογή σου",
     "placeholders": {
       "name": {
         "content": "$1"
@@ -370,7 +370,7 @@
     }
   },
   "content_toast_failed_block": {
-    "message": "Αποτυχία μπλοκαρίσματος: $ERROR$",
+    "message": "αποτυχία μπλοκαρίσματος: $ERROR$",
     "placeholders": {
       "error": {
         "content": "$1"
@@ -378,7 +378,7 @@
     }
   },
   "content_toast_blocked": {
-    "message": "Μπλοκαρίστηκε $NAME$",
+    "message": "$NAME$ μπλοκαρίστηκε",
     "placeholders": {
       "name": {
         "content": "$1"
@@ -639,28 +639,28 @@
     "message": "avatars"
   },
   "mc_settings_emote_size_desc": {
-    "message": "Πολλαπλασιαστής ανάλυσης για emotes στο chat. 1x ευκρινές και συμπαγές, 2x το γλυκό σημείο για τις περισσότερες οθόνες, 4x για όσους θέλουν να δουν κάθε pixel."
+    "message": "1x προεπιλογή, 2x retina, 4x μεγάλο"
   },
   "mc_settings_input_preview_desc": {
-    "message": "Δείχνει τα emotes ως εικόνες κατευθείαν στο πεδίο εισόδου καθώς πληκτρολογείς, αντί για ονόματα κειμένου. Αυτό που βλέπεις στέλνεις."
+    "message": "εικόνες emote στο πεδίο κατά την πληκτρολόγηση"
   },
   "mc_settings_clickable_links_desc": {
-    "message": "Κάνει τα URL στα μηνύματα κλικαρίσιμα. Απενεργοποίησε αν προτιμάς αντιγραφή-επικόλληση ή δεν εμπιστεύεσαι αγνώστους στο διαδίκτυο."
+    "message": "τα url στο chat γίνονται κλικάρισμα"
   },
   "mc_settings_vi_mode_desc": {
-    "message": "Συντομεύσεις στυλ Vim για πλοήγηση στο chat. j/k κύλιση, g/G κορυφή/τέλος, / αναζήτηση. Για όσους θεωρούν το ποντίκι για casual."
+    "message": "j/k κύλιση, g/G κορυφή/κάτω, / αναζήτηση"
   },
   "mc_settings_zebra_desc": {
-    "message": "Εναλλάξ σκίαση γραμμών στα μηνύματα chat. Διευκολύνει την παρακολούθηση μεγάλων μηνυμάτων, ειδικά σε γρήγορο chat."
+    "message": "εναλλακτική σκίαση γραμμών"
   },
   "mc_settings_auto_hide_desc": {
-    "message": "Κρύβει την μπάρα εισόδου όταν δεν γράφεις. Πάτα ή άρχισε να γράφεις για να επιστρέψει. Μεγιστοποιεί τον χώρο προβολής chat."
+    "message": "αποκρύπτει τη γραμμή εισαγωγής σε αδράνεια"
   },
   "mc_settings_timestamps_desc": {
-    "message": "Δείχνει την ώρα αποστολής κάθε μηνύματος δίπλα στο όνομα. Χρήσιμο για να μάθεις τι έγινε όσο ήσουν AFK."
+    "message": "χρονική σφραγίδα σε κάθε μήνυμα"
   },
   "mc_settings_avatars_desc": {
-    "message": "Δείχνει εικόνες προφίλ δίπλα στα ονόματα στο chat. Διευκολύνει την οπτική αναγνώριση σταθερών χρηστών, κοστίζει λίγο κάθετο χώρο."
+    "message": "avatars δίπλα στα ονόματα χρηστών"
   },
   "mc_settings_inline_notifs": {
     "message": "ενσωματωμένες ειδοποιήσεις"
@@ -678,16 +678,16 @@
     "message": "[DM] whispers και DM"
   },
   "mc_settings_notif_op_desc": {
-    "message": "Ειδοποίηση στην ενεργή καρτέλα chat όταν κάποιος δημιουργεί νέα ανάρτηση στο feed."
+    "message": "ping σε νέα ανάρτηση στο feed"
   },
   "mc_settings_notif_op_reply_desc": {
-    "message": "Ειδοποίηση όταν ο αρχικός συντάκτης απαντά στο δικό του νήμα."
+    "message": "ping όταν ο OP απαντά στο δικό του thread"
   },
   "mc_settings_notif_re_desc": {
-    "message": "Ειδοποίηση για κάθε απάντηση σε οποιοδήποτε νήμα του feed."
+    "message": "ping σε κάθε απάντηση σε οποιοδήποτε thread"
   },
   "mc_settings_notif_dm_desc": {
-    "message": "Ειδοποίηση όταν λαμβάνεις whisper ή DM."
+    "message": "ping σε whisper ή DM"
   },
   "mc_settings_twitch_events": {
     "message": "γεγονότα Twitch"
@@ -696,67 +696,67 @@
     "message": "raids"
   },
   "mc_settings_raids_desc": {
-    "message": "Ενσωματωμένο banner όταν ένας streamer κάνει raid προς ή από το κανάλι, με αριθμό θεατών και πηγή. Σε αφήνει να ακολουθήσεις στο επόμενο stream."
+    "message": "banner σε raid με αριθμό θεατών"
   },
   "mc_settings_hype_trains": {
     "message": "hype trains"
   },
   "mc_settings_hype_trains_desc": {
-    "message": "Ζωντανό banner προόδου για hype trains, με level και timer συνεισφοράς. Απενεργοποιημένο εξ ορισμού γιατί ενεργοποιείται συνέχεια σε μεγάλα κανάλια."
+    "message": "live banner προόδου hype train"
   },
   "mc_settings_gift_subs": {
     "message": "δωρισμένα subs"
   },
   "mc_settings_gift_subs_desc": {
-    "message": "Banner για κοινοτικά gift sub bombs και ατομικά δώρα, με δότη, παραλήπτη και tier."
+    "message": "banner για δωρεάν συνδρομές με αποστολέα και επίπεδο"
   },
   "mc_settings_redeems": {
     "message": "εξαργυρώσεις channel points"
   },
   "mc_settings_redeems_desc": {
-    "message": "Ενσωματωμένη ειδοποίηση για εξαργυρώσεις channel points όπως 'highlight my message' για να δεις πού δαπανούν τα points."
+    "message": "banner για εξαργυρώσεις πόντων καναλιού"
   },
   "mc_settings_prediction_banner": {
     "message": "προβλέψεις"
   },
   "mc_settings_prediction_banner_desc": {
-    "message": "Ζωντανό banner πρόβλεψης channel points με τρέχουσες αποδόσεις και χρόνο που απομένει για κλείδωμα ψήφου."
+    "message": "live banner πρόβλεψης με αποδόσεις και χρονόμετρο"
   },
   "mc_settings_poll_banner": {
     "message": "δημοσκοπήσεις"
   },
   "mc_settings_poll_banner_desc": {
-    "message": "Banner ενεργής δημοσκόπησης με ψήφους και χρόνο που απομένει. Ψήφισε απευθείας από το overlay."
+    "message": "banner ενεργής ψηφοφορίας, ψήφισε άμεσα"
   },
   "mc_settings_pinned_messages": {
     "message": "καρφιτσωμένα μηνύματα"
   },
   "mc_settings_pinned_messages_desc": {
-    "message": "Σταθερό banner για μηνύματα chat καρφιτσωμένα από mods ώστε να μη χάσεις κανόνες ή πρόγραμμα."
+    "message": "σταθερό banner για καρφωμένα μηνύματα από mods"
   },
   "mc_settings_dim_timeouts": {
     "message": "θάμβωση μηνυμάτων με timeout"
   },
   "mc_settings_dim_timeouts_desc": {
-    "message": "Δείχνει μηνύματα με timeout και ban στο 50% αδιαφάνεια αντί να τα κρύβει, στυλ FFZ/BTTV. Σου επιτρέπει να δεις τι διαγράφηκε χωρίς να φύγεις από το chat."
+    "message": "50% αδιαφάνεια αντί για απόκρυψη"
   },
   "mc_settings_smart_completion": {
     "message": "έξυπνη συμπλήρωση tab"
   },
   "mc_settings_smart_completion_desc": {
-    "message": "Πρόσφατοι ομιλητές και emotes αυτού του καναλιού εμφανίζονται πρώτα στη συμπλήρωση tab. Πιο γρήγορο από αλφαβητικό όταν το chat τρέχει."
+    "message": "πρόσφατοι chatters/emotes εμφανίζονται πρώτα"
   },
   "mc_settings_first_chatter": {
     "message": "λάμψη πρώτου μηνύματος"
   },
   "mc_settings_first_chatter_desc": {
-    "message": "Πορτοκαλί ένδειξη στην άκρη του πρώτου μηνύματος που στέλνει χρήστης σε κάθε κανάλι αυτή τη συνεδρία. Κάνει νέους εμφανείς σε γρήγορο chat."
+    "message": "πορτοκαλί περίγραμμα στο πρώτο μήνυμα ανά session"
   },
   "mc_settings_keyword_highlights": {
     "message": "επισημάνσεις λέξεων-κλειδιών"
   },
   "mc_settings_keyword_highlights_desc": {
-    "message": "Μηνύματα με κάποια από αυτές τις λέξεις παίρνουν πορτοκαλί τόνο, σαν προσωπική αναφορά. Ένα ανά γραμμή, αδιαφορεί στα κεφαλαία/πεζά, ολόκληρες λέξεις."
+    "message": "χρωματίζει τα αντίστοιχα μηνύματα πορτοκαλί. ένα ανά γραμμή, χωρίς διάκριση πεζών/κεφαλαίων, ολόκληρη λέξη"
   },
   "mc_settings_keyword_highlights_placeholder": {
     "message": "μία λέξη-κλειδί ανά γραμμή"
@@ -768,7 +768,7 @@
     "message": "αυτόματη συλλογή channel points"
   },
   "mc_settings_auto_claim_desc": {
-    "message": "Πατάει αυτόματα το μπαούλο bonus channel points στο Twitch όταν εμφανίζεται. Δωρεάν points, μηδέν προσπάθεια."
+    "message": "κάνει αυτόματα κλικ στο κουτί πόντων καναλιού"
   },
   "mc_settings_muted_users": {
     "message": "σιωπηλοί χρήστες"
@@ -1008,7 +1008,7 @@
     }
   },
   "mc_input_replying_to": {
-    "message": "Απάντηση σε @$USER$",
+    "message": "απάντηση σε @$USER$",
     "placeholders": {
       "user": {
         "content": "$1"
@@ -1016,7 +1016,7 @@
     }
   },
   "mc_input_cancel_reply": {
-    "message": "Ακύρωση απάντησης"
+    "message": "ακύρωση απάντησης"
   },
   "mc_input_not_logged_in": {
     "message": "δεν συνδέθηκες"
@@ -1052,10 +1052,10 @@
     "message": "δεν υπάρχουν αναρτήσεις ακόμα"
   },
   "mc_social_loading_feed": {
-    "message": "φόρτωση feed από όσους ακολουθείς..."
+    "message": "φόρτωση..."
   },
   "mc_social_scroll_more": {
-    "message": "κύλιση για περισσότερα..."
+    "message": "περισσότερα"
   },
   "mc_social_no_replies": {
     "message": "δεν υπάρχουν απαντήσεις ακόμα"
@@ -1159,10 +1159,10 @@
     }
   },
   "mc_irc_chat_cleared": {
-    "message": "Το chat καθαρίστηκε"
+    "message": "το chat καθαρίστηκε"
   },
   "mc_irc_msg_deleted": {
-    "message": "Το μήνυμα από $USER$ διαγράφηκε",
+    "message": "το μήνυμα του $USER$ διαγράφηκε",
     "placeholders": {
       "user": {
         "content": "$1"
@@ -1213,7 +1213,7 @@
     "message": "μπλοκαρισμένο (πάτα για ξεμπλοκάρισμα)"
   },
   "content_toast_unknown_error": {
-    "message": "Άγνωστο σφάλμα"
+    "message": "άγνωστο σφάλμα"
   },
   "content_toast_loading_emotes": {
     "message": "φόρτωση emotes..."
@@ -1231,7 +1231,7 @@
     "message": "μπλοκάρισμα"
   },
   "btn_close": {
-    "message": "Κλείσιμο"
+    "message": "κλείσιμο"
   },
   "btn_error_channel": {
     "message": "αποτυχία φόρτωσης emotes καναλιού"

@@ -6119,6 +6119,12 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       log('[c-button] sanitizing invalid chatPosition:', chatPosition, '→ right');
       chatPosition = 'right';
     }
+    // Popout chat = full window, no video. Any non-right position leaves a
+    // blank area where the player would be. Force 'right' (which CSS then
+    // expands to full width via .hs-popout overrides).
+    if (document.body.classList.contains('hs-popout') && chatPosition !== 'right') {
+      chatPosition = 'right';
+    }
     // YouTube: only apply layout overrides on watch pages. Home, search,
     // channel pages don't have ytd-watch-flexy / #primary / #player so
     // our rules just left the page broken (blank top, floating handle).
@@ -6483,6 +6489,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     // Strict 4-state cycle: right → bottom → left → top → right.
     // No 'hidden' state — chat panel always visible so the C button stays
     // clickable. If chatPosition is invalid, normalize first then advance.
+    if (document.body.classList.contains('hs-popout')) return; // no-op in popout — no video to share space with
     const positions = ['right', 'bottom', 'left', 'top'];
     let idx = positions.indexOf(chatPosition);
     if (idx === -1) idx = 0; // invalid state → start from 'right' before advancing

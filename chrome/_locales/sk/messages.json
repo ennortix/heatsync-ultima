@@ -9,7 +9,7 @@
     "message": "načítavam..."
   },
   "common_extension_updated": {
-    "message": "Rozšírenie aktualizované — obnov stránku"
+    "message": "rozšírenie aktualizované — obnovte stránku"
   },
   "common_no_matches": {
     "message": "žiadne výsledky"
@@ -324,7 +324,7 @@
     "message": "klikni pre rozbalenie"
   },
   "content_toast_failed_add": {
-    "message": "Pridanie $NAME$ zlyhalo: $ERROR$",
+    "message": "pridanie $NAME$ zlyhalo: $ERROR$",
     "placeholders": {
       "name": {
         "content": "$1"
@@ -335,7 +335,7 @@
     }
   },
   "content_toast_failed_remove": {
-    "message": "Odstránenie $NAME$ zlyhalo: $ERROR$",
+    "message": "odstránenie $NAME$ zlyhalo: $ERROR$",
     "placeholders": {
       "name": {
         "content": "$1"
@@ -346,7 +346,7 @@
     }
   },
   "content_toast_unblocked": {
-    "message": "$NAME$ odblokované",
+    "message": "$NAME$ odblokovaný",
     "placeholders": {
       "name": {
         "content": "$1"
@@ -354,7 +354,7 @@
     }
   },
   "content_toast_failed_unblock": {
-    "message": "Odblokovanie zlyhalo: $ERROR$",
+    "message": "odblokovanie zlyhalo: $ERROR$",
     "placeholders": {
       "error": {
         "content": "$1"
@@ -362,7 +362,7 @@
     }
   },
   "content_toast_removed": {
-    "message": "$NAME$ odstránené z tvojho setu",
+    "message": "$NAME$ odstránený z vašej kolekcie",
     "placeholders": {
       "name": {
         "content": "$1"
@@ -370,7 +370,7 @@
     }
   },
   "content_toast_failed_block": {
-    "message": "Zablokovanie zlyhalo: $ERROR$",
+    "message": "blokovanie zlyhalo: $ERROR$",
     "placeholders": {
       "error": {
         "content": "$1"
@@ -378,7 +378,7 @@
     }
   },
   "content_toast_blocked": {
-    "message": "$NAME$ zablokované",
+    "message": "$NAME$ zablokovaný",
     "placeholders": {
       "name": {
         "content": "$1"
@@ -639,28 +639,28 @@
     "message": "avatary"
   },
   "mc_settings_emote_size_desc": {
-    "message": "Násobič rozlíšenia pre emotky v chate. 1x je ostrý a kompaktný, 2x je sweet spot pre väčšinu monitorov, 4x je pre tých, čo chcú vidieť každý pixel."
+    "message": "1x predvolený, 2x retina, 4x veľký"
   },
   "mc_settings_input_preview_desc": {
-    "message": "Pri písaní zobrazuje emotky ako obrázky priamo vo vstupnom poli, namiesto textových názvov. Čo vidíš, to pošleš."
+    "message": "obrázky emotov v poli počas písania"
   },
   "mc_settings_clickable_links_desc": {
-    "message": "Mení URL v správach na klikateľné odkazy. Vypni, ak preferuješ copy-paste alebo nedôveruješ cudzincom na internete."
+    "message": "url v chate sa stávajú klikateľnými"
   },
   "mc_settings_vi_mode_desc": {
-    "message": "Vim klávesy pre pohyb v chate. j/k scrollovanie, g/G hore/dole, / hľadanie. Pre tých, čo si myslia, že myš je pre casualov."
+    "message": "j/k posúvanie, g/G hore/dole, / hľadaj"
   },
   "mc_settings_zebra_desc": {
-    "message": "Striedavé pozadie riadkov v chate. Uľahčuje sledovanie dlhých správ, najmä pri rýchlom chate."
+    "message": "striedajúce sa tieňovanie riadkov"
   },
   "mc_settings_auto_hide_desc": {
-    "message": "Skryje vstupnú lištu, keď nepíšeš. Klikni alebo začni písať, aby sa vrátila. Maximalizuje plochu pre chat."
+    "message": "skryje vstupnú lištu pri nečinnosti"
   },
   "mc_settings_timestamps_desc": {
-    "message": "Zobrazuje čas odoslania každej správy vedľa používateľského mena. Užitočné na doplnenie toho, čo sa dialo, kým si bol AFK."
+    "message": "časová pečiatka na každej správe"
   },
   "mc_settings_avatars_desc": {
-    "message": "Zobrazuje profilové obrázky vedľa mien v chate. Uľahčuje vizuálne rozpoznávanie stálych hostí, stojí trocha vertikálneho miesta."
+    "message": "avatary vedľa mien používateľov"
   },
   "mc_settings_inline_notifs": {
     "message": "inline notifikácie"
@@ -678,16 +678,16 @@
     "message": "[DM] whispers a DMs"
   },
   "mc_settings_notif_op_desc": {
-    "message": "Notifikácia v aktívnej záložke chatu, keď niekto pridá nový príspevok do feedu."
+    "message": "upozornenie pri novom príspevku v kanáli"
   },
   "mc_settings_notif_op_reply_desc": {
-    "message": "Notifikácia, keď pôvodný autor odpovedá vo vlastnom vlákne."
+    "message": "upozornenie keď OP odpovie vo vlastnom vlákne"
   },
   "mc_settings_notif_re_desc": {
-    "message": "Notifikácia pre každú odpoveď v ľubovoľnom vlákne feedu."
+    "message": "upozornenie na každú odpoveď v akomkoľvek vlákne"
   },
   "mc_settings_notif_dm_desc": {
-    "message": "Notifikácia, keď dostaneš whisper alebo DM."
+    "message": "upozornenie pri šepote alebo priamej správe"
   },
   "mc_settings_twitch_events": {
     "message": "Twitch udalosti"
@@ -696,67 +696,67 @@
     "message": "raidy"
   },
   "mc_settings_raids_desc": {
-    "message": "Inline banner pri prichádzajúcom alebo odchádzajúcom raide, s počtom divákov a zdrojovým kanálom. Umožňuje plynule prejsť na ďalší stream."
+    "message": "banner pri raidu s počtom divákov"
   },
   "mc_settings_hype_trains": {
     "message": "hype train"
   },
   "mc_settings_hype_trains_desc": {
-    "message": "Živý progress banner pre hype train, s úrovňou a časovačom príspevku. Štandardne vypnuté, lebo na veľkých kanáloch beží stále."
+    "message": "živý banner progresu hype trainu"
   },
   "mc_settings_gift_subs": {
     "message": "darované suby"
   },
   "mc_settings_gift_subs_desc": {
-    "message": "Banner pre komunitné gift sub bomby a jednotlivé darčeky, s darcom, prijímateľom a tierom."
+    "message": "banner pre darčekové predplatné s darcom a úrovňou"
   },
   "mc_settings_redeems": {
     "message": "uplatnenie channel pointov"
   },
   "mc_settings_redeems_desc": {
-    "message": "Inline upozornenie na uplatnenie channel pointov ako 'highlight my message', aby si videl, na čo ľudia míňajú body."
+    "message": "banner pre výmeny bodov kanála"
   },
   "mc_settings_prediction_banner": {
     "message": "predikcie"
   },
   "mc_settings_prediction_banner_desc": {
-    "message": "Živý banner predikcie channel pointov s aktuálnymi kurzami a zostávajúcim časom na potvrdenie hlasu."
+    "message": "živý banner predpovede s kurzami a časovačom"
   },
   "mc_settings_poll_banner": {
     "message": "ankety"
   },
   "mc_settings_poll_banner_desc": {
-    "message": "Banner aktívnej ankety s počtom hlasov a zostávajúcim časom. Hlasuj priamo z overlay."
+    "message": "banner aktívneho hlasovania, hlasujte priamo"
   },
   "mc_settings_pinned_messages": {
     "message": "pripnuté správy"
   },
   "mc_settings_pinned_messages_desc": {
-    "message": "Sticky banner pre modom pripnuté správy, aby si nezmeškal pravidlá alebo program."
+    "message": "trvalý banner pre správy pripnuté moderátormi"
   },
   "mc_settings_dim_timeouts": {
     "message": "stlmiť timeoutnuté správy"
   },
   "mc_settings_dim_timeouts_desc": {
-    "message": "Zobrazí timeoutnuté a banuté správy s 50% priehľadnosťou namiesto skrývania, v štýle FFZ/BTTV. Vidíš, čo bolo zmazané, bez opustenia chatu."
+    "message": "50% priehľadnosť namiesto skrytia"
   },
   "mc_settings_smart_completion": {
     "message": "inteligentné doplňovanie tabom"
   },
   "mc_settings_smart_completion_desc": {
-    "message": "Nedávni chatteri a emotky tohto kanála sa zobrazia prví pri doplňovaní tabom. Rýchlejšie ako abecedné, keď chat beží."
+    "message": "nedávni chatteri/emoty sa zobrazujú ako prví"
   },
   "mc_settings_first_chatter": {
     "message": "žiara prvej správy"
   },
   "mc_settings_first_chatter_desc": {
-    "message": "Oranžové orámovanie prvej správy, ktorú používateľ pošle v každom kanáli v tejto session. Uľahčuje všimnúť si nováčikov v rýchlom chate."
+    "message": "oranžový rámik na prvej správe za reláciu"
   },
   "mc_settings_keyword_highlights": {
     "message": "zvýraznenie kľúčových slov"
   },
   "mc_settings_keyword_highlights_desc": {
-    "message": "Správy obsahujúce ktorékoľvek z týchto slov dostanú oranžový odtieň, ako osobná zmienka. Jedno na riadok, ignoruje veľkosť písmen, celé slová."
+    "message": "farbí zodpovedajúce správy na oranžovo. jedno na riadok, bez rozlíšenia veľkosti, celé slovo"
   },
   "mc_settings_keyword_highlights_placeholder": {
     "message": "jedno kľúčové slovo na riadok"
@@ -768,7 +768,7 @@
     "message": "auto-zber channel pointov"
   },
   "mc_settings_auto_claim_desc": {
-    "message": "Automaticky klikne na bonusovú truhlicu channel pointov na Twitchi, keď sa objaví. Body zadarmo, žiadna námaha."
+    "message": "automaticky klikne na truhlu s bodmi kanála"
   },
   "mc_settings_muted_users": {
     "message": "stíšení používatelia"
@@ -1008,7 +1008,7 @@
     }
   },
   "mc_input_replying_to": {
-    "message": "Odpoveď @$USER$",
+    "message": "odpoveď na @$USER$",
     "placeholders": {
       "user": {
         "content": "$1"
@@ -1016,7 +1016,7 @@
     }
   },
   "mc_input_cancel_reply": {
-    "message": "Zrušiť odpoveď"
+    "message": "zrušiť odpoveď"
   },
   "mc_input_not_logged_in": {
     "message": "neprihlásený"
@@ -1052,10 +1052,10 @@
     "message": "zatiaľ žiadne príspevky"
   },
   "mc_social_loading_feed": {
-    "message": "načítavam feed sledovaných..."
+    "message": "načítava sa..."
   },
   "mc_social_scroll_more": {
-    "message": "scrolluj pre ďalšie..."
+    "message": "viac"
   },
   "mc_social_no_replies": {
     "message": "zatiaľ žiadne odpovede"
@@ -1159,10 +1159,10 @@
     }
   },
   "mc_irc_chat_cleared": {
-    "message": "Chat bol vymazaný"
+    "message": "chat vymazaný"
   },
   "mc_irc_msg_deleted": {
-    "message": "Správa od $USER$ zmazaná",
+    "message": "správa od $USER$ vymazaná",
     "placeholders": {
       "user": {
         "content": "$1"
@@ -1213,7 +1213,7 @@
     "message": "zablokované (klikni pre odblokovanie)"
   },
   "content_toast_unknown_error": {
-    "message": "Neznáma chyba"
+    "message": "neznáma chyba"
   },
   "content_toast_loading_emotes": {
     "message": "načítavam emotky..."
@@ -1231,7 +1231,7 @@
     "message": "blokovať"
   },
   "btn_close": {
-    "message": "Zavrieť"
+    "message": "zavrieť"
   },
   "btn_error_channel": {
     "message": "načítanie emotiek kanála zlyhalo"

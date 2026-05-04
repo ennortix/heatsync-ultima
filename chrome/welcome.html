@@ -34,7 +34,6 @@
       font-weight: normal;
       margin-bottom: 12px;
       color: #ff8700;
-      letter-spacing: 4px;
       text-transform: lowercase;
     }
     .tagline {
@@ -52,8 +51,8 @@
     .step {
       display: flex;
       align-items: flex-start;
-      gap: 16px;
-      margin-bottom: 20px;
+      gap: 8px;
+      margin-bottom: 10px;
     }
     .step:last-child {
       margin-bottom: 0;
@@ -73,7 +72,7 @@
     .step-text {
       font-size: 14px;
       line-height: 1.5;
-      color: #aaa;
+      color: #fff;
     }
     .step-text strong {
       color: #fff;
@@ -90,8 +89,9 @@
       border: 1px solid #ff8700;
     }
     .cta-btn:hover {
-      background: #000;
-      color: #ff8700;
+      background: #fff;
+      color: #000;
+      border-color: #fff;
     }
     .note {
       margin-top: 24px;
@@ -103,34 +103,8 @@
       text-decoration: none;
     }
     .note a:hover {
-      color: #aaa;
-    }
-    .highlights {
-      background: #000;
-      border: 1px solid #1a1a1a;
-      padding: 24px;
-      text-align: left;
-      margin-bottom: 32px;
-    }
-    .highlights h2 {
-      font-size: 14px;
-      font-weight: normal;
-      color: #ff8700;
-      margin-bottom: 16px;
-      letter-spacing: 1px;
-      text-transform: lowercase;
-    }
-    .highlights ul {
-      list-style: none;
-      font-size: 13px;
-      line-height: 1.6;
-      color: #aaa;
-    }
-    .highlights li {
-      margin-bottom: 8px;
-    }
-    .highlights li:last-child {
-      margin-bottom: 0;
+      background: #fff;
+      color: #000;
     }
   </style>
 </head>
@@ -152,7 +126,7 @@
         <div class="step-number">2</div>
         <div class="step-text">
           <strong data-i18n="welcome_step2_title">upload your emotes</strong><br>
-          <span data-i18n="welcome_step2_desc">add any images — no slot limits, all formats supported</span>
+          <span data-i18n="welcome_step2_desc">add any images — up to 5000 slots, all formats supported</span>
         </div>
       </div>
       <div class="step">
@@ -164,30 +138,7 @@
       </div>
     </div>
 
-    <div class="highlights">
-      <h2>what's new in 1.4</h2>
-      <ul>
-        <li>emote sets — apply saved sets directly from picker</li>
-        <li>undo/redo — revert chat edits instantly</li>
-        <li>removed emote restore — check history tab instead</li>
-        <li>heat/bookmark/reactions on feed posts</li>
-        <li>compose dms — send messages from popup</li>
-        <li>profile editing in popup</li>
-        <li>live channels in popup</li>
-        <li>user-card cleanup — mod tools, scrolling, followage accuracy</li>
-        <li>compose dms in whispers — reply directly from messages</li>
-        <li>emote rename/move/share — context menu in picker</li>
-        <li>import channel emotes — one-click from picker</li>
-        <li>discover trending — trending tab in picker</li>
-        <li>bookmarks list — quick access in popup</li>
-        <li>referral codes — share in popup</li>
-        <li>kick autocomplete — tab-complete heatsync emotes on kick.com</li>
-        <li>twitch clip creation — from user card</li>
-        <li>streak display — on user cards</li>
-      </ul>
-    </div>
-
-    <a href="https://heatsync.org" target="_blank" class="cta-btn" data-i18n="welcome_cta">get started</a>
+    <a href="https://heatsync.org" target="_blank" class="cta-btn" data-i18n="welcome_cta">open heatsync.org</a>
 
     <p class="note">
       <a href="https://heatsync.org/privacy.html#extension" target="_blank" data-i18n="welcome_privacy">privacy</a> &middot;

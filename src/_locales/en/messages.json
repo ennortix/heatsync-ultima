@@ -568,6 +568,12 @@
   "mc_settings_clickable_links": {
     "message": "clickable links"
   },
+  "mc_settings_link_previews": {
+    "message": "link previews"
+  },
+  "mc_settings_link_previews_desc": {
+    "message": "show og:title/description tooltip on hover"
+  },
   "mc_settings_vi_mode": {
     "message": "vi mode"
   },

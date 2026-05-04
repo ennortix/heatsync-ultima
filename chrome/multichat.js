@@ -3260,7 +3260,16 @@ function injectStyles() {
       flex: 0 0 auto;
       gap: 0;
       align-items: stretch;
-      margin-left: -1px; /* collapse double border with adjacent section */
+    }
+    /* Right-side cluster — wraps util-row + platfilter into a column.
+       Horizontal mode: util on top, pf below (under util). Pinned to right
+       of channel tabs. Vertical mode (left/right) override below. */
+    .hs-mc-right-cluster {
+      display: flex;
+      flex-direction: column;
+      flex: 0 0 auto;
+      align-items: stretch;
+      margin-left: -1px; /* collapse double border with adjacent tabs section */
     }
     /* Vertical mode: util-row becomes a real wrapping row of squares pinned
        to the bottom of the column, just below the platfilter — no vertical
@@ -5020,9 +5029,9 @@ function injectStyles() {
     .hs-pcard-action:disabled { opacity: 0.4; cursor: not-allowed; }
     .hs-pcard-kbd { color: #ff8700; font-weight: 700; }
 
-    /* Per-tab platform filter toggles (T/K/YT). Horizontal mode: own flex
-       section pinned right of channel tabs, before util cluster. Vertical
-       mode (left/right): a 3-up grid spanning the column width. */
+    /* Per-tab platform filter toggles (T/K/YT). Sits AFTER the util cluster
+       (DOM order). Horizontal mode: tight content-sized strip on far right.
+       Vertical mode: full column width row below util. */
     #hs-mc-platfilter {
       display: flex;
       flex: 0 0 auto;
@@ -5031,17 +5040,33 @@ function injectStyles() {
       margin-left: -1px;
     }
     #hs-mc-platfilter:empty { display: none; margin: 0; }
-    /* Vertical mode: platfilter buttons sit in a wrapping row of squares —
-       same 28x28 frame as the rest of the util group. */
+    /* Inside platfilter: T/K/YT buttons each share the cluster width */
+    #hs-mc-platfilter .hs-mc-pf-btn {
+      flex: 1 1 0 !important;
+      width: auto !important;
+      min-width: 18px !important;
+      max-width: none !important;
+    }
+    /* Vertical mode: platfilter spans full column width, buttons share row */
     .hs-tabs-right #hs-mc-platfilter,
     .hs-tabs-left #hs-mc-platfilter {
       display: flex;
       flex-direction: row;
-      flex-wrap: wrap;
-      gap: 1px;
+      flex-wrap: nowrap;
+      gap: 0;
       width: 100%;
       box-sizing: border-box;
-      justify-content: center;
+      margin-left: 0;
+      flex: 0 0 auto;
+    }
+    .hs-tabs-right #hs-mc-platfilter .hs-mc-pf-btn,
+    .hs-tabs-left #hs-mc-platfilter .hs-mc-pf-btn {
+      flex: 1 1 0 !important;
+      width: auto !important;
+      min-width: 0 !important;
+      max-width: none !important;
+      height: 22px !important;
+      font-size: 11px !important;
     }
     .hs-mc-pf-btn {
       background: transparent;
@@ -11418,7 +11443,9 @@ async function sendKickMessage(kickSlug, text) {
           document.querySelectorAll('.hs-emote-highlight').forEach(w => w.classList.remove('hs-emote-highlight'))
         }
         hideBadgeTooltip()
-        if (linkTooltip?.classList.contains('visible')) hideLinkTooltip()
+        // Skip link tooltip — mouse is still on the link, scroll-driven hides
+        // would race with the og fetch and leave the user with nothing.
+        if (linkTooltip?.classList.contains('visible') && !_linkHoverUrl) hideLinkTooltip()
         if (userTooltip?.classList.contains('visible')) hideUserTooltip()
       })
     }
@@ -11984,6 +12011,7 @@ async function sendKickMessage(kickSlug, text) {
   let linkTooltip = null;
   const _linkPreviewCache = new Map(); // url -> { title, description, image } | null
   let _linkHoverUrl = null;
+  let _linkFetchInFlight = null;
 
   function ensureLinkTooltip() {
     if (linkTooltip) return linkTooltip;
@@ -11996,7 +12024,7 @@ async function sendKickMessage(kickSlug, text) {
   let _linkTargetEl = null;
 
   function showLinkTooltip(e, url) {
-    if (!linksEnabled || !url) return;
+    if (!linksEnabled || !linkPreviewsEnabled || !url) return;
     _linkHoverUrl = url;
     _linkTargetEl = e.target.closest('.hs-mc-link') || e.target;
     const tip = ensureLinkTooltip();
@@ -12026,9 +12054,11 @@ async function sendKickMessage(kickSlug, text) {
     }
 
     // Fetch from background
+    _linkFetchInFlight = url
     safeSendMessage({ type: 'fetch_link_preview', url }).then(data => {
       _linkPreviewCache.set(url, data);
       while (_linkPreviewCache.size > 200) _linkPreviewCache.delete(_linkPreviewCache.keys().next().value);
+      if (_linkFetchInFlight === url) _linkFetchInFlight = null
       if (_linkHoverUrl === url && tip.classList.contains('visible')) {
         renderLinkPreview(tip, data, url);
       }
@@ -12081,18 +12111,33 @@ async function sendKickMessage(kickSlug, text) {
     if (linkTooltip) linkTooltip.classList.remove('visible');
   }
 
+  let _linkHideTimer = null;
+  function cancelLinkHide() {
+    if (_linkHideTimer) { clearTimeout(_linkHideTimer); _linkHideTimer = null; }
+  }
+  function scheduleLinkHide(delay = 250) {
+    cancelLinkHide();
+    // If a fetch is in flight, wait for it so the user gets to see the result
+    // even if chat scroll dragged the link out from under their cursor.
+    const wait = _linkFetchInFlight ? Math.max(delay, 1500) : delay;
+    _linkHideTimer = setTimeout(() => { _linkHideTimer = null; hideLinkTooltip(); }, wait);
+  }
+
   function setupLinkTooltipHandlers() {
     if (window._hsLinkTooltipSetup) return;
     window._hsLinkTooltipSetup = true;
 
     cleanup.addEventListener(document, 'mouseover', (e) => {
       const link = e.target.closest('.hs-mc-link');
-      if (link) showLinkTooltip(e, link.href);
+      if (link) { cancelLinkHide(); showLinkTooltip(e, link.href); return; }
+      // Hovering the tooltip itself keeps it open (lets user read/click image).
+      if (e.target.closest?.('#hs-link-tooltip')) cancelLinkHide();
     }, 'mc-link-tooltip-mouseover');
 
     cleanup.addEventListener(document, 'mouseout', (e) => {
       const link = e.target.closest('.hs-mc-link');
-      if (link) hideLinkTooltip();
+      if (link) scheduleLinkHide();
+      else if (e.target.closest?.('#hs-link-tooltip')) scheduleLinkHide();
     }, 'mc-link-tooltip-mouseout');
   }
 
@@ -22515,13 +22560,15 @@ const STORAGE_KEY = 'heatsync_multichat';
         <button class="hs-mc-tab" data-tab="live">${t('mc_tab_live')}</button>
         <button class="hs-mc-tab" data-tab="add">+</button>
       </div>
-      <div id="hs-mc-platfilter"></div>
-      <div class="hs-mc-util-row">
-        <button class="hs-mc-tab hs-mc-util-btn hs-mc-rotate-chat" data-tab="rotate-chat" title="${t('mc_btn_rotate_chat')}">C</button>
-        <button class="hs-mc-tab hs-mc-util-btn hs-mc-rotate" data-tab="rotate" title="${t('mc_btn_rotate_tabs')}">T</button>
-        <button class="hs-mc-tab hs-mc-util-btn hs-mc-font-btn" data-font-dir="-1" title="${t('mc_btn_smaller_text')}">F-</button>
-        <button class="hs-mc-tab hs-mc-util-btn hs-mc-font-btn" data-font-dir="1" title="${t('mc_btn_larger_text')}">F+</button>
-        <button class="hs-mc-tab hs-mc-util-btn" data-tab="settings" title="${t('mc_btn_settings')}">\u2699</button>
+      <div class="hs-mc-right-cluster">
+        <div class="hs-mc-util-row">
+          <button class="hs-mc-tab hs-mc-util-btn hs-mc-rotate-chat" data-tab="rotate-chat" title="${t('mc_btn_rotate_chat')}">C</button>
+          <button class="hs-mc-tab hs-mc-util-btn hs-mc-rotate" data-tab="rotate" title="${t('mc_btn_rotate_tabs')}">T</button>
+          <button class="hs-mc-tab hs-mc-util-btn hs-mc-font-btn" data-font-dir="-1" title="${t('mc_btn_smaller_text')}">F-</button>
+          <button class="hs-mc-tab hs-mc-util-btn hs-mc-font-btn" data-font-dir="1" title="${t('mc_btn_larger_text')}">F+</button>
+          <button class="hs-mc-tab hs-mc-util-btn" data-tab="settings" title="${t('mc_btn_settings')}">\u2699</button>
+        </div>
+        <div id="hs-mc-platfilter"></div>
       </div>
     `;
 
@@ -22656,6 +22703,9 @@ const STORAGE_KEY = 'heatsync_multichat';
 
   // Clickable links in chat messages (default on)
   let linksEnabled = true;
+
+  // Link preview tooltip on hover (default on)
+  let linkPreviewsEnabled = true;
 
   // Vi mode for chat input (default off)
   let viModeEnabled = false;
@@ -24165,6 +24215,22 @@ const STORAGE_KEY = 'heatsync_multichat';
     saveUiSetting('linksEnabled', linksEnabled)
   }
 
+  // Link preview tooltip
+  async function loadLinkPreviewsSetting() {
+    try {
+      const stored = await cachedUiSettings();
+      if (stored.ui_settings?.linkPreviewsEnabled !== undefined) {
+        linkPreviewsEnabled = stored.ui_settings.linkPreviewsEnabled;
+      }
+    } catch (e) {
+      log('Error loading link previews setting:', e);
+    }
+  }
+
+  function saveLinkPreviewsSetting() {
+    saveUiSetting('linkPreviewsEnabled', linkPreviewsEnabled)
+  }
+
   // Vi mode setting
   async function loadViModeSetting() {
     try {
@@ -24497,6 +24563,7 @@ const STORAGE_KEY = 'heatsync_multichat';
       emoteSize: t('mc_settings_emote_size_desc'),
       wysiwyg: t('mc_settings_input_preview_desc'),
       links: t('mc_settings_clickable_links_desc'),
+      linkPreviews: t('mc_settings_link_previews_desc'),
       vi: t('mc_settings_vi_mode_desc'),
       zebra: t('mc_settings_zebra_desc'),
       autohide: t('mc_settings_auto_hide_desc'),
@@ -24523,6 +24590,10 @@ const STORAGE_KEY = 'heatsync_multichat';
           <div class="hs-mc-setting-row">
             <button class="hs-mc-toggle-pill ${linksEnabled ? 'active' : ''}" data-setting="links"><span class="hs-mc-toggle-knob"></span></button>
             <span class="hs-mc-setting-label" data-tip="${settingTips.links}">${t('mc_settings_clickable_links')}</span>
+          </div>
+          <div class="hs-mc-setting-row">
+            <button class="hs-mc-toggle-pill ${linkPreviewsEnabled ? 'active' : ''}" data-setting="linkpreviews"><span class="hs-mc-toggle-knob"></span></button>
+            <span class="hs-mc-setting-label" data-tip="${settingTips.linkPreviews}">${t('mc_settings_link_previews')}</span>
           </div>
           <div class="hs-mc-setting-row">
             <button class="hs-mc-toggle-pill ${viModeEnabled ? 'active' : ''}" data-setting="vi"><span class="hs-mc-toggle-knob"></span></button>
@@ -24658,6 +24729,7 @@ const STORAGE_KEY = 'heatsync_multichat';
         const toggleMap = {
           wysiwyg: () => { wysiwygEnabled = !wysiwygEnabled; saveWysiwygSetting(); rebuildInput(); },
           links: () => { linksEnabled = !linksEnabled; saveLinksSetting(); },
+          linkpreviews: () => { linkPreviewsEnabled = !linkPreviewsEnabled; saveLinkPreviewsSetting(); },
           vi: () => { viModeEnabled = !viModeEnabled; saveViModeSetting(); },
           zebra: () => { toggleZebra(); },
           autohide: () => { toggleAutoHide(); },
@@ -24703,6 +24775,7 @@ const STORAGE_KEY = 'heatsync_multichat';
       if (defaultsBtn) {
         wysiwygEnabled = false;
         linksEnabled = true;
+        linkPreviewsEnabled = true;
         viModeEnabled = false;
         zebraEnabled = true;
         autoHideInput = false;
@@ -24720,7 +24793,7 @@ const STORAGE_KEY = 'heatsync_multichat';
         for (const [k, v] of Object.entries(INLINE_NOTIF_TYPES)) inlineNotifs[k] = v.defaultOn;
         for (const [k, v] of Object.entries(HERMES_EVENT_TYPES)) hermesToggles[k] = v.defaultOn;
         const settings = {
-          wysiwygEnabled: false, linksEnabled: true, viMode: false,
+          wysiwygEnabled: false, linksEnabled: true, linkPreviewsEnabled: true, viMode: false,
           zebra: true, autoHideEmpty: false, timestamps: false,
           avatars: false, showPlatformBadges: true, showOfflineEvents: false,
           firstChatterGlow: true, keywordHighlights: '',
@@ -28369,6 +28442,9 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
           linksEnabled = ns.linksEnabled
           needsRender = true
         }
+        if (ns.linkPreviewsEnabled !== undefined && ns.linkPreviewsEnabled !== linkPreviewsEnabled) {
+          linkPreviewsEnabled = ns.linkPreviewsEnabled
+        }
         if (ns.viMode !== undefined && ns.viMode !== viModeEnabled) {
           viModeEnabled = ns.viMode
           try {
@@ -28695,6 +28771,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       loadEmoteSize(),
       loadWysiwygSetting(),
       loadLinksSetting(),
+      loadLinkPreviewsSetting(),
       loadViModeSetting(),
       loadInlineNotifSettings(),
       loadHermesSettings(),

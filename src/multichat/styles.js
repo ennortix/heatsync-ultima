@@ -132,7 +132,16 @@ function injectStyles() {
       flex: 0 0 auto;
       gap: 0;
       align-items: stretch;
-      margin-left: -1px; /* collapse double border with adjacent section */
+    }
+    /* Right-side cluster — wraps util-row + platfilter into a column.
+       Horizontal mode: util on top, pf below (under util). Pinned to right
+       of channel tabs. Vertical mode (left/right) override below. */
+    .hs-mc-right-cluster {
+      display: flex;
+      flex-direction: column;
+      flex: 0 0 auto;
+      align-items: stretch;
+      margin-left: -1px; /* collapse double border with adjacent tabs section */
     }
     /* Vertical mode: util-row becomes a real wrapping row of squares pinned
        to the bottom of the column, just below the platfilter — no vertical
@@ -1892,9 +1901,9 @@ function injectStyles() {
     .hs-pcard-action:disabled { opacity: 0.4; cursor: not-allowed; }
     .hs-pcard-kbd { color: #ff8700; font-weight: 700; }
 
-    /* Per-tab platform filter toggles (T/K/YT). Horizontal mode: own flex
-       section pinned right of channel tabs, before util cluster. Vertical
-       mode (left/right): a 3-up grid spanning the column width. */
+    /* Per-tab platform filter toggles (T/K/YT). Sits AFTER the util cluster
+       (DOM order). Horizontal mode: tight content-sized strip on far right.
+       Vertical mode: full column width row below util. */
     #hs-mc-platfilter {
       display: flex;
       flex: 0 0 auto;
@@ -1903,17 +1912,33 @@ function injectStyles() {
       margin-left: -1px;
     }
     #hs-mc-platfilter:empty { display: none; margin: 0; }
-    /* Vertical mode: platfilter buttons sit in a wrapping row of squares —
-       same 28x28 frame as the rest of the util group. */
+    /* Inside platfilter: T/K/YT buttons each share the cluster width */
+    #hs-mc-platfilter .hs-mc-pf-btn {
+      flex: 1 1 0 !important;
+      width: auto !important;
+      min-width: 18px !important;
+      max-width: none !important;
+    }
+    /* Vertical mode: platfilter spans full column width, buttons share row */
     .hs-tabs-right #hs-mc-platfilter,
     .hs-tabs-left #hs-mc-platfilter {
       display: flex;
       flex-direction: row;
-      flex-wrap: wrap;
-      gap: 1px;
+      flex-wrap: nowrap;
+      gap: 0;
       width: 100%;
       box-sizing: border-box;
-      justify-content: center;
+      margin-left: 0;
+      flex: 0 0 auto;
+    }
+    .hs-tabs-right #hs-mc-platfilter .hs-mc-pf-btn,
+    .hs-tabs-left #hs-mc-platfilter .hs-mc-pf-btn {
+      flex: 1 1 0 !important;
+      width: auto !important;
+      min-width: 0 !important;
+      max-width: none !important;
+      height: 22px !important;
+      font-size: 11px !important;
     }
     .hs-mc-pf-btn {
       background: transparent;

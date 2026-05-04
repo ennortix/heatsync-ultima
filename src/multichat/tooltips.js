@@ -311,7 +311,9 @@
           document.querySelectorAll('.hs-emote-highlight').forEach(w => w.classList.remove('hs-emote-highlight'))
         }
         hideBadgeTooltip()
-        if (linkTooltip?.classList.contains('visible')) hideLinkTooltip()
+        // Skip link tooltip — mouse is still on the link, scroll-driven hides
+        // would race with the og fetch and leave the user with nothing.
+        if (linkTooltip?.classList.contains('visible') && !_linkHoverUrl) hideLinkTooltip()
         if (userTooltip?.classList.contains('visible')) hideUserTooltip()
       })
     }
@@ -877,6 +879,7 @@
   let linkTooltip = null;
   const _linkPreviewCache = new Map(); // url -> { title, description, image } | null
   let _linkHoverUrl = null;
+  let _linkFetchInFlight = null;
 
   function ensureLinkTooltip() {
     if (linkTooltip) return linkTooltip;
@@ -889,7 +892,7 @@
   let _linkTargetEl = null;
 
   function showLinkTooltip(e, url) {
-    if (!linksEnabled || !url) return;
+    if (!linksEnabled || !linkPreviewsEnabled || !url) return;
     _linkHoverUrl = url;
     _linkTargetEl = e.target.closest('.hs-mc-link') || e.target;
     const tip = ensureLinkTooltip();
@@ -919,9 +922,11 @@
     }
 
     // Fetch from background
+    _linkFetchInFlight = url
     safeSendMessage({ type: 'fetch_link_preview', url }).then(data => {
       _linkPreviewCache.set(url, data);
       while (_linkPreviewCache.size > 200) _linkPreviewCache.delete(_linkPreviewCache.keys().next().value);
+      if (_linkFetchInFlight === url) _linkFetchInFlight = null
       if (_linkHoverUrl === url && tip.classList.contains('visible')) {
         renderLinkPreview(tip, data, url);
       }
@@ -974,17 +979,32 @@
     if (linkTooltip) linkTooltip.classList.remove('visible');
   }
 
+  let _linkHideTimer = null;
+  function cancelLinkHide() {
+    if (_linkHideTimer) { clearTimeout(_linkHideTimer); _linkHideTimer = null; }
+  }
+  function scheduleLinkHide(delay = 250) {
+    cancelLinkHide();
+    // If a fetch is in flight, wait for it so the user gets to see the result
+    // even if chat scroll dragged the link out from under their cursor.
+    const wait = _linkFetchInFlight ? Math.max(delay, 1500) : delay;
+    _linkHideTimer = setTimeout(() => { _linkHideTimer = null; hideLinkTooltip(); }, wait);
+  }
+
   function setupLinkTooltipHandlers() {
     if (window._hsLinkTooltipSetup) return;
     window._hsLinkTooltipSetup = true;
 
     cleanup.addEventListener(document, 'mouseover', (e) => {
       const link = e.target.closest('.hs-mc-link');
-      if (link) showLinkTooltip(e, link.href);
+      if (link) { cancelLinkHide(); showLinkTooltip(e, link.href); return; }
+      // Hovering the tooltip itself keeps it open (lets user read/click image).
+      if (e.target.closest?.('#hs-link-tooltip')) cancelLinkHide();
     }, 'mc-link-tooltip-mouseover');
 
     cleanup.addEventListener(document, 'mouseout', (e) => {
       const link = e.target.closest('.hs-mc-link');
-      if (link) hideLinkTooltip();
+      if (link) scheduleLinkHide();
+      else if (e.target.closest?.('#hs-link-tooltip')) scheduleLinkHide();
     }, 'mc-link-tooltip-mouseout');
   }

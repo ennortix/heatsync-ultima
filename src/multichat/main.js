@@ -844,13 +844,15 @@
         <button class="hs-mc-tab" data-tab="live">${t('mc_tab_live')}</button>
         <button class="hs-mc-tab" data-tab="add">+</button>
       </div>
-      <div id="hs-mc-platfilter"></div>
-      <div class="hs-mc-util-row">
-        <button class="hs-mc-tab hs-mc-util-btn hs-mc-rotate-chat" data-tab="rotate-chat" title="${t('mc_btn_rotate_chat')}">C</button>
-        <button class="hs-mc-tab hs-mc-util-btn hs-mc-rotate" data-tab="rotate" title="${t('mc_btn_rotate_tabs')}">T</button>
-        <button class="hs-mc-tab hs-mc-util-btn hs-mc-font-btn" data-font-dir="-1" title="${t('mc_btn_smaller_text')}">F-</button>
-        <button class="hs-mc-tab hs-mc-util-btn hs-mc-font-btn" data-font-dir="1" title="${t('mc_btn_larger_text')}">F+</button>
-        <button class="hs-mc-tab hs-mc-util-btn" data-tab="settings" title="${t('mc_btn_settings')}">\u2699</button>
+      <div class="hs-mc-right-cluster">
+        <div class="hs-mc-util-row">
+          <button class="hs-mc-tab hs-mc-util-btn hs-mc-rotate-chat" data-tab="rotate-chat" title="${t('mc_btn_rotate_chat')}">C</button>
+          <button class="hs-mc-tab hs-mc-util-btn hs-mc-rotate" data-tab="rotate" title="${t('mc_btn_rotate_tabs')}">T</button>
+          <button class="hs-mc-tab hs-mc-util-btn hs-mc-font-btn" data-font-dir="-1" title="${t('mc_btn_smaller_text')}">F-</button>
+          <button class="hs-mc-tab hs-mc-util-btn hs-mc-font-btn" data-font-dir="1" title="${t('mc_btn_larger_text')}">F+</button>
+          <button class="hs-mc-tab hs-mc-util-btn" data-tab="settings" title="${t('mc_btn_settings')}">\u2699</button>
+        </div>
+        <div id="hs-mc-platfilter"></div>
       </div>
     `;
 
@@ -985,6 +987,9 @@
 
   // Clickable links in chat messages (default on)
   let linksEnabled = true;
+
+  // Link preview tooltip on hover (default on)
+  let linkPreviewsEnabled = true;
 
   // Vi mode for chat input (default off)
   let viModeEnabled = false;
@@ -2494,6 +2499,22 @@
     saveUiSetting('linksEnabled', linksEnabled)
   }
 
+  // Link preview tooltip
+  async function loadLinkPreviewsSetting() {
+    try {
+      const stored = await cachedUiSettings();
+      if (stored.ui_settings?.linkPreviewsEnabled !== undefined) {
+        linkPreviewsEnabled = stored.ui_settings.linkPreviewsEnabled;
+      }
+    } catch (e) {
+      log('Error loading link previews setting:', e);
+    }
+  }
+
+  function saveLinkPreviewsSetting() {
+    saveUiSetting('linkPreviewsEnabled', linkPreviewsEnabled)
+  }
+
   // Vi mode setting
   async function loadViModeSetting() {
     try {
@@ -2826,6 +2847,7 @@
       emoteSize: t('mc_settings_emote_size_desc'),
       wysiwyg: t('mc_settings_input_preview_desc'),
       links: t('mc_settings_clickable_links_desc'),
+      linkPreviews: t('mc_settings_link_previews_desc'),
       vi: t('mc_settings_vi_mode_desc'),
       zebra: t('mc_settings_zebra_desc'),
       autohide: t('mc_settings_auto_hide_desc'),
@@ -2852,6 +2874,10 @@
           <div class="hs-mc-setting-row">
             <button class="hs-mc-toggle-pill ${linksEnabled ? 'active' : ''}" data-setting="links"><span class="hs-mc-toggle-knob"></span></button>
             <span class="hs-mc-setting-label" data-tip="${settingTips.links}">${t('mc_settings_clickable_links')}</span>
+          </div>
+          <div class="hs-mc-setting-row">
+            <button class="hs-mc-toggle-pill ${linkPreviewsEnabled ? 'active' : ''}" data-setting="linkpreviews"><span class="hs-mc-toggle-knob"></span></button>
+            <span class="hs-mc-setting-label" data-tip="${settingTips.linkPreviews}">${t('mc_settings_link_previews')}</span>
           </div>
           <div class="hs-mc-setting-row">
             <button class="hs-mc-toggle-pill ${viModeEnabled ? 'active' : ''}" data-setting="vi"><span class="hs-mc-toggle-knob"></span></button>
@@ -2987,6 +3013,7 @@
         const toggleMap = {
           wysiwyg: () => { wysiwygEnabled = !wysiwygEnabled; saveWysiwygSetting(); rebuildInput(); },
           links: () => { linksEnabled = !linksEnabled; saveLinksSetting(); },
+          linkpreviews: () => { linkPreviewsEnabled = !linkPreviewsEnabled; saveLinkPreviewsSetting(); },
           vi: () => { viModeEnabled = !viModeEnabled; saveViModeSetting(); },
           zebra: () => { toggleZebra(); },
           autohide: () => { toggleAutoHide(); },
@@ -3032,6 +3059,7 @@
       if (defaultsBtn) {
         wysiwygEnabled = false;
         linksEnabled = true;
+        linkPreviewsEnabled = true;
         viModeEnabled = false;
         zebraEnabled = true;
         autoHideInput = false;
@@ -3049,7 +3077,7 @@
         for (const [k, v] of Object.entries(INLINE_NOTIF_TYPES)) inlineNotifs[k] = v.defaultOn;
         for (const [k, v] of Object.entries(HERMES_EVENT_TYPES)) hermesToggles[k] = v.defaultOn;
         const settings = {
-          wysiwygEnabled: false, linksEnabled: true, viMode: false,
+          wysiwygEnabled: false, linksEnabled: true, linkPreviewsEnabled: true, viMode: false,
           zebra: true, autoHideEmpty: false, timestamps: false,
           avatars: false, showPlatformBadges: true, showOfflineEvents: false,
           firstChatterGlow: true, keywordHighlights: '',
@@ -6698,6 +6726,9 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
           linksEnabled = ns.linksEnabled
           needsRender = true
         }
+        if (ns.linkPreviewsEnabled !== undefined && ns.linkPreviewsEnabled !== linkPreviewsEnabled) {
+          linkPreviewsEnabled = ns.linkPreviewsEnabled
+        }
         if (ns.viMode !== undefined && ns.viMode !== viModeEnabled) {
           viModeEnabled = ns.viMode
           try {
@@ -7024,6 +7055,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       loadEmoteSize(),
       loadWysiwygSetting(),
       loadLinksSetting(),
+      loadLinkPreviewsSetting(),
       loadViModeSetting(),
       loadInlineNotifSettings(),
       loadHermesSettings(),

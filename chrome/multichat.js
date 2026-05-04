@@ -24893,7 +24893,7 @@ const STORAGE_KEY = 'heatsync_multichat';
           zebra: true, autoHideEmpty: false, timestamps: false,
           avatars: false, showPlatformBadges: true, showOfflineEvents: false,
           firstChatterGlow: true, keywordHighlights: '',
-          hiddenTabs: [],
+          hiddenTabs: [...DEFAULT_HIDDEN_TABS],
           inlineNotifs: { ...inlineNotifs }, hermesEvents: { ...hermesToggles },
         };
         try {

@@ -661,6 +661,10 @@ function listenForSocialEvents() {
         } else {
           enqueueYtForPacing(targetChannelId, ytMsg)
         }
+      } else if (targetChannelId === 'global') {
+        // Surface unresolved-routing drops so future regressions don't go silent.
+        // Real cause is on background side: videoId→channelId map missed an entry.
+        console.warn('[heatsync-ext] yt msg dropped — channelId=global, videoId=', msg.videoId, 'user=', msg.user)
       }
     }
     if (msg.type === 'youtube_msg_deleted') {

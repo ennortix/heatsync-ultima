@@ -248,6 +248,15 @@ async function getYtChannelHandle(videoId) {
   } catch (e) { return null }
 }
 const MAX_YT_VIDEO_ENTRIES = 100; // LRU cap — evict oldest when full
+let _ytVideoMapPersistTimer = null
+function persistYtVideoMap() {
+  // Debounce burst writes (re-subscribe loops fire many sets in <50ms)
+  if (_ytVideoMapPersistTimer) return
+  _ytVideoMapPersistTimer = setTimeout(() => {
+    _ytVideoMapPersistTimer = null
+    browser.storage.local.set({ yt_video_to_channel: Object.fromEntries(ytVideoToChannel) }).catch(() => {})
+  }, 500)
+}
 function setYtVideoChannel(videoId, channelId) {
   ytVideoToChannel.delete(videoId) // Re-insert for LRU ordering
   ytVideoToChannel.set(videoId, channelId)
@@ -255,6 +264,10 @@ function setYtVideoChannel(videoId, channelId) {
     const oldest = ytVideoToChannel.keys().next().value
     ytVideoToChannel.delete(oldest)
   }
+  persistYtVideoMap()
+}
+function deleteYtVideoChannel(videoId) {
+  if (ytVideoToChannel.delete(videoId)) persistYtVideoMap()
 }
 
 let authToken = null; // Will be set by content script or loaded from storage
@@ -3056,9 +3069,14 @@ function handleWSMessage(msg) {
       if (msg.status === 'connected') {
         activeYoutubeVideoId = msg.videoId
         if (msg.videoId) setYtVideoChannel(msg.videoId, resolvedChannelId)
-      } else if (msg.status === 'ended' || msg.status === 'error') {
+      } else if (msg.status === 'ended') {
         if (activeYoutubeVideoId === msg.videoId) activeYoutubeVideoId = null
-        ytVideoToChannel.delete(msg.videoId)
+        deleteYtVideoChannel(msg.videoId)
+      } else if (msg.status === 'error') {
+        // Transient errors (rate limit, single failed fetch) shouldn't kill routing —
+        // the poller usually recovers and resumes broadcasting. Keeping the mapping
+        // means resumed chat lands on the right tab instead of falling to 'global'.
+        if (activeYoutubeVideoId === msg.videoId) activeYoutubeVideoId = null
       }
       broadcastToTabs({
         type: 'youtube_status',
@@ -3851,7 +3869,7 @@ async function handleMessage(message, sender, sendResponse) {
       wsSend({ type: 'youtube:unsubscribe', videoId })
     }
     if (videoId) {
-      ytVideoToChannel.delete(videoId)
+      deleteYtVideoChannel(videoId)
       if (activeYoutubeVideoId === videoId) activeYoutubeVideoId = null
     }
     // Clean up storage
@@ -4455,7 +4473,7 @@ async function initialize() {
   const storedP = browser.storage.local.get([
     'user_info', 'channel_emotes_fetched_at', 'channel_emotes_map', 'seventv_emote_set_ids',
     'muted_users', 'blocked_users', 'global_emotes', 'emote_inventory', 'blocked_emotes',
-    'local_blocked_emotes', 'youtube_channel_urls', 'badges_fetched_at',
+    'local_blocked_emotes', 'youtube_channel_urls', 'yt_video_to_channel', 'badges_fetched_at',
     'bttv_badge_map', 'ffz_badge_map', 'chatterino_badge_map', 'user_cosmetics_cache'
   ]).catch(err => { log(' Storage restore failed:', err.message); return {} })
   const sessionP = (browser.storage.session?.get(['tab_channels', 'joined_extra_channels']) ?? Promise.resolve(null))
@@ -4530,6 +4548,13 @@ async function initialize() {
     if (stored.youtube_channel_urls && typeof stored.youtube_channel_urls === 'object') {
       Object.assign(youtubeChannelUrls, stored.youtube_channel_urls);
       log(' ✓ Restored youtubeChannelUrls for', Object.keys(youtubeChannelUrls).length, 'channels');
+    }
+    if (stored.yt_video_to_channel && typeof stored.yt_video_to_channel === 'object') {
+      // Restore videoId→channelId routing so chat msgs from existing pollers
+      // (server already broadcasting) land on the right tab even when the
+      // server doesn't re-echo youtube:status connected on SW wake.
+      for (const [vid, cid] of Object.entries(stored.yt_video_to_channel)) ytVideoToChannel.set(vid, cid);
+      log(' ✓ Restored ytVideoToChannel for', ytVideoToChannel.size, 'videos');
     }
     if (stored.badges_fetched_at && typeof stored.badges_fetched_at === 'number') {
       badgesFetchedAt = stored.badges_fetched_at;

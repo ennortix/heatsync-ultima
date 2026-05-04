@@ -16143,6 +16143,10 @@ function listenForSocialEvents() {
         } else {
           enqueueYtForPacing(targetChannelId, ytMsg)
         }
+      } else if (targetChannelId === 'global') {
+        // Surface unresolved-routing drops so future regressions don't go silent.
+        // Real cause is on background side: videoId→channelId map missed an entry.
+        console.warn('[heatsync-ext] yt msg dropped — channelId=global, videoId=', msg.videoId, 'user=', msg.user)
       }
     }
     if (msg.type === 'youtube_msg_deleted') {
@@ -26190,11 +26194,17 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     const empty = msgsEl.querySelector('.hs-mc-empty');
     if (empty) empty.remove();
 
+    // Compute key first so we can skip if a node with this key already exists
+    // (IRC reconnect, replay echo, dual-send race — all paths benefit from
+    // a single guard instead of relying on each caller to dedup).
+    const msgKeyStr = `${_renderEpoch}:${stableMsgId(msg)}`
+    if (msgsEl.querySelector(`[data-msg-key="${CSS.escape(msgKeyStr)}"]`)) return true
+
     const div = buildMessageDiv(msg, tabId);
     if (!div) return false;
     // Tag with the same msgKey renderMessages uses, so a later tab switch into a
     // multi-platform view can prefix-match this DOM and avoid a one-shot rebuild.
-    div.dataset.msgKey = `${_renderEpoch}:${msg.id || msg.base36_id || `${msg.user || ''}:${msg.time || ''}:${(msg.text || '').slice(0, 32)}`}`
+    div.dataset.msgKey = msgKeyStr
     // Strict alternation: append flips from last sibling's zebra. Append-only path
     // always alternates cleanly. Bigger-tier than hash (which only ~50% alternates).
     if (zebraEnabled && msg.type !== 'stream-event' && msg.type !== 'feed-post' && msg.type !== 'inline-dm') {
@@ -26285,12 +26295,22 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     // FULL chronological sort by time. Per-source slicing above already caps
     // each platform's contribution (perSource = 500/N), so a high-volume
     // twitch chat can't wash out kick/yt in the merged result. Sorting the
-    // full merged list by msg.time gives "perfectly timestamp scattered"
-    // accuracy — stream events (game change, went live, etc.), YT backfill,
-    // and IRC msgs all interleave at their real times. Stable Array.sort
-    // preserves relative order within identical-time clusters.
-    merged.sort((a, b) => (a.time || 0) - (b.time || 0))
+    // full merged list by (time, stable-id) ensures deterministic order
+    // across renders — without the secondary key, tied timestamps flip
+    // positions when Bresenham layout shifts as `total` grows, and the
+    // render-diff treats each flipped pair as new inserts → duplicate DOM
+    // nodes accumulating to 1000s over a long stream.
+    merged.sort(byTimeStable)
     return merged
+  }
+  function stableMsgId(m) {
+    return m.id || m.base36_id || `${m.user || ''}:${m.time || ''}:${(m.text || '').slice(0, 32)}`
+  }
+  function byTimeStable(a, b) {
+    const dt = (a.time || 0) - (b.time || 0)
+    if (dt !== 0) return dt
+    const ka = stableMsgId(a), kb = stableMsgId(b)
+    return ka < kb ? -1 : ka > kb ? 1 : 0
   }
 
   // ─── Multistream auto-detect banner ─────────────────────────────────────
@@ -26527,7 +26547,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       )
       if (missing.length > 0) {
         msgs.push(...missing)
-        msgs.sort((a, b) => (a.time || 0) - (b.time || 0))
+        msgs.sort(byTimeStable)
       }
     }
 
@@ -26587,32 +26607,43 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       }
     }
 
-    // PASS A: drop DOM children no longer wanted (yt-status notices for THIS
-    // tab survive at bottom; for other tabs they get dropped). Track yt-status
-    // notices to re-pin at end.
+    // PASS A: index existing DOM by msgKey, dedup pre-existing duplicates,
+    // detach yt-status notices for re-pin at end, drop everything else not in
+    // desiredSet. Pre-existing dupes can exist when a prior buggy diff (or
+    // a code path that bypassed the diff) inserted twice — heal them here so
+    // the renderer is self-correcting across reloads of buggy state.
+    const existingByKey = new Map()
     const detachedExtras = []
-    let i = 0
-    while (i < msgsEl.children.length) {
-      const c = msgsEl.children[i]
-      const k = c.dataset?.msgKey
-      if (k && desiredSet.has(k)) { i++; continue }
-      // Not a wanted msg — yt-status for this tab gets re-pinned, others removed.
+    for (const c of [...msgsEl.children]) {
       if (c.dataset?.hsYtStatus && c.dataset?.hsYtStatusTab === String(id)) {
         detachedExtras.push(c)
+        c.remove()
+        continue
       }
-      c.remove()
+      const k = c.dataset?.msgKey
+      if (k && desiredSet.has(k)) {
+        if (existingByKey.has(k)) c.remove() // dupe — keep only first
+        else existingByKey.set(k, c)
+      } else {
+        c.remove()
+      }
     }
 
     // Snapshot "was at bottom?" BEFORE inserts so we know whether to re-pin.
     const wasAtBottom = (msgsEl.scrollHeight - msgsEl.scrollTop - msgsEl.clientHeight) <= 4
-    const insertedAtTail = []  // track tail-end inserts for scroll-pin decision
 
-    // PASS B: walk desired list, insert missing msgs at correct positions.
+    // PASS B: walk desired list, MOVE existing nodes into position or insert
+    // new ones. Crucially: when a desired key already lives in DOM at the
+    // wrong position, we MOVE its node — never build a second one. This is
+    // the bulletproof guarantee against duplicate-key accumulation.
     let domIdx = 0
     for (let j = 0; j < toRender.length; j++) {
       const key = desiredKeys[j]
       const cur = msgsEl.children[domIdx]
-      if (cur && cur.dataset.msgKey === key) {
+      const existing = existingByKey.get(key)
+      if (existing) {
+        existingByKey.delete(key)
+        if (cur !== existing) msgsEl.insertBefore(existing, cur || null)
         domIdx++
         continue
       }
@@ -26621,16 +26652,20 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       const div = buildMessageDiv(m, id)
       if (!div) continue
       div.dataset.msgKey = key
-      const prevDiv = cur ? cur.previousElementSibling : msgsEl.lastElementChild
+      const prevDiv = msgsEl.children[domIdx - 1] || null
       if (zebraOfInsert(m, prevDiv)) div.classList.add('hs-mc-zebra')
       msgsEl.insertBefore(div, cur || null)
       domIdx++
-      // Tail insert = index reached the end of pre-existing DOM.
-      if (!cur) insertedAtTail.push(div)
     }
 
     // Re-pin yt-status notices to the very end.
     for (const ex of detachedExtras) msgsEl.appendChild(ex)
+
+    // Final safety net: hard-cap DOM so no future regression can OOM the tab.
+    // toRender is already sliced to 500; anything beyond that + yt-status
+    // pins is a leak. trimChildren removes from the front (oldest first).
+    const hardCap = toRender.length + detachedExtras.length
+    if (msgsEl.children.length > hardCap) trimChildren(msgsEl, hardCap)
 
     // Re-apply expanded stacks (only relevant when full rebuild fired).
     for (const [mid, idx] of expandedStacks) {

@@ -4667,6 +4667,32 @@ function injectStyles() {
       height: var(--hs-chat-h, 35vh) !important;
     }
 
+    /* Auth/API status banner — pinned to top edge of the chat panel as a
+       thin horizontal strip, regardless of the container's flex direction
+       (column for chat-right, row for tabs-left/right). Without this the
+       banner stretches to the cross-axis full size in flex-row layouts and
+       fills the panel as a giant orange column. Container reserves 28px
+       border-top so abs-positioned children (tabbar/messages/inputbar) shift
+       down and don't sit under the banner. The banner itself uses top:-28px
+       to land in the border zone (= container's outer top edge). */
+    #hs-mc-container:has(> .hs-mc-auth-banner),
+    #hs-mc-container:has(> .hs-mc-api-banner),
+    #hs-mc-container:has(> [class*="hs-mc-api-banner-"]) {
+      border-top: 28px solid transparent !important;
+    }
+    .hs-mc-auth-banner,
+    .hs-mc-api-banner,
+    [class*="hs-mc-api-banner-"] {
+      position: absolute !important;
+      top: -28px !important;
+      left: 0 !important;
+      right: 0 !important;
+      height: 28px !important;
+      width: auto !important;
+      z-index: 50 !important;
+      box-sizing: border-box !important;
+    }
+
     /* Resize bar reservation (dwl tile rule) — chat content reserves border
        on the player-facing edge so the orange resize bar never overlays the
        tabbar, input bar, T/K/YT filter buttons, or any other panel content.

@@ -4477,7 +4477,7 @@ async function initialize() {
   const storedP = browser.storage.local.get([
     'user_info', 'channel_emotes_fetched_at', 'channel_emotes_map', 'seventv_emote_set_ids',
     'muted_users', 'blocked_users', 'global_emotes', 'emote_inventory', 'blocked_emotes',
-    'local_blocked_emotes', 'youtube_channel_urls', 'yt_video_to_channel', 'joined_extra_channels', 'badges_fetched_at',
+    'local_blocked_emotes', 'youtube_channel_urls', 'yt_video_to_channel', 'joined_extra_channels', 'heatsync_multichat', 'badges_fetched_at',
     'bttv_badge_map', 'ffz_badge_map', 'chatterino_badge_map', 'user_cosmetics_cache'
   ]).catch(err => { log(' Storage restore failed:', err.message); return {} })
   const sessionP = (browser.storage.session?.get(['tab_channels', 'joined_extra_channels']) ?? Promise.resolve(null))
@@ -4566,6 +4566,34 @@ async function initialize() {
       // fire automatically without waiting for a content-script re-init.
       for (const key of stored.joined_extra_channels) joinedExtraChannels.add(key)
       log(' ✓ Restored', joinedExtraChannels.size, 'extra channel joins from local storage')
+      // Replay joins on the WS now — connectWebSocket() was kicked off at the
+      // start of init, so by the time storage restore finishes, the WS connect
+      // handler may have ALREADY iterated an empty joinedExtraChannels Set.
+      // wsSend queues if socket isn't open yet, sends immediately if it is —
+      // either way, server gets the rejoin without waiting for content-script
+      // multichat re-init.
+      for (const key of joinedExtraChannels) {
+        const [platform, channel] = key.split('/')
+        if (platform && channel) wsSend({ type: 'channel:join', platform, channel })
+      }
+    }
+    // Also seed joinedExtraChannels from the user's multichat config — covers
+    // the very first launch after install (or storage wipe) before any content
+    // script has fired kickChat.join. Without this, kick subs only start
+    // working AFTER the user opens a streaming tab, not at SW boot.
+    if (stored.heatsync_multichat?.channels) {
+      const cfg = stored.heatsync_multichat.channels
+      for (const ch of cfg) {
+        if (typeof ch === 'string') continue
+        if (ch.kick && typeof ch.kick === 'string') {
+          const key = `kick/${ch.kick.toLowerCase()}`
+          if (!joinedExtraChannels.has(key)) {
+            joinedExtraChannels.add(key)
+            wsSend({ type: 'channel:join', platform: 'kick', channel: ch.kick.toLowerCase() })
+          }
+        }
+      }
+      saveJoinedExtraChannels()
     }
     if (stored.badges_fetched_at && typeof stored.badges_fetched_at === 'number') {
       badgesFetchedAt = stored.badges_fetched_at;

@@ -3139,22 +3139,22 @@ function injectStyles() {
   style.id = 'hs-mc-styles';
   style.textContent = `
     /* Tab bar - positioned at top of chat via render injection.
-       gap:0 + flex-wrap → channel tabs (flex:1 1 auto) tile dense and grow
-       to fill the last wrap row. Util/pf buttons stay flex:0 0 auto so they
-       remain compact. align-items:stretch so all tab heights match in a row
-       (no half-pixel rendering on alternating heights). */
+       Three flex sections (no-wrap outer): channel tabs fill left, platfilter
+       sits center, util buttons pinned right. Channel-tabs section wraps
+       INTERNALLY when overflowing — no orphan util-only row, no right-side
+       gap. align-items:flex-start so right cluster sticks to first tab row
+       when channels wrap to multiple rows. */
     #hs-mc-tabbar {
       display: flex;
-      flex-wrap: wrap;
+      flex-wrap: nowrap;
       gap: 0;
-      padding: 4px 6px;
+      padding: 0;
       background: #000;
       border-bottom: 1px solid #808080;
       flex-shrink: 0;
       order: -1;
       z-index: 10;
-      align-items: stretch;
-      align-content: flex-start;
+      align-items: flex-start;
       box-sizing: border-box;
     }
 
@@ -3166,7 +3166,7 @@ function injectStyles() {
        adjacent tabs into a shared 1px border (visual grid). padding-right
        reserves space for the live dot so it never overlaps text. */
     .hs-mc-tab {
-      padding: 2px 14px 2px 8px !important;
+      padding: 2px 10px !important;
       margin: 0 -1px -1px 0 !important;
       background: #000 !important;
       color: #808080 !important;
@@ -3183,8 +3183,8 @@ function injectStyles() {
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      flex: 1 1 0 !important;
-      min-width: 70px;
+      flex: 0 0 auto !important; /* content-sized — username width + padding, no grow */
+      min-width: 0;
       max-width: 200px;
       overflow: hidden;
       text-overflow: ellipsis;
@@ -3241,14 +3241,26 @@ function injectStyles() {
     .hs-mc-tab.has-stream-event.active {
       color: #000 !important;
     }
-    /* Tab + util wrappers collapse via display:contents in horizontal mode so
-       all buttons (channel tabs, +, T/K/YT filters, C/T/F-/F+/⚙) become flat
-       children of #hs-mc-tabbar and share its single flex-wrap. Vertical mode
-       (.hs-tabs-left/right) overrides .hs-mc-tabs-scroll to a scrollable
-       column further down. */
-    .hs-mc-tabs-scroll,
+    /* Horizontal mode: 3 real flex sections at the top level of #hs-mc-tabbar.
+       Section sizes to its content (flex 0 1 auto) so pf+util pack tight to
+       the last channel tab — no gap when few tabs. Section can shrink + tabs
+       wrap when channels overflow available width. Vertical mode (.hs-tabs-
+       left/right) overrides below to a column. */
+    .hs-mc-tabs-scroll {
+      display: flex;
+      flex-wrap: wrap;
+      flex: 0 1 auto;
+      min-width: 0;
+      gap: 0;
+      align-content: flex-start;
+      align-items: stretch;
+    }
     .hs-mc-util-row {
-      display: contents;
+      display: flex;
+      flex: 0 0 auto;
+      gap: 0;
+      align-items: stretch;
+      margin-left: -1px; /* collapse double border with adjacent section */
     }
     /* Vertical mode: util-row becomes a real wrapping row of squares pinned
        to the bottom of the column, just below the platfilter — no vertical
@@ -3264,9 +3276,9 @@ function injectStyles() {
       justify-content: center !important;
       flex: 0 0 auto !important;
     }
-    /* Util buttons (C, T, F-, F+, ⚙) AND platfilter buttons (T, K, YT) — btop-style
-       packed squares: smallest possible, no padding, tight border. Same size in
-       all layouts (horizontal + vertical). */
+    /* Util buttons (C, T, F-, F+, ⚙) AND platfilter buttons (T, K, YT) —
+       btop-style packed squares: 18×18, tight border, share borders with the
+       -1px right margin so the strip reads as a single segmented control. */
     .hs-mc-util-btn,
     .hs-mc-pf-btn {
       width: 18px !important;
@@ -3276,16 +3288,22 @@ function injectStyles() {
       max-width: 18px !important;
       max-height: 18px !important;
       padding: 0 !important;
-      margin: 0 !important;
+      margin: 0 -1px 0 0 !important;
       flex: 0 0 18px !important;
       box-sizing: border-box !important;
-      font-size: 9px !important;
+      font-size: 10px !important;
       line-height: 1 !important;
-      letter-spacing: -0.5px !important;
+      letter-spacing: 0 !important;
       display: inline-flex !important;
       align-items: center !important;
       justify-content: center !important;
       border-width: 1px !important;
+      font-family: inherit !important;
+    }
+    /* Last button in each cluster keeps its own right border (no overlap target) */
+    .hs-mc-util-btn:last-child,
+    .hs-mc-pf-btn:last-child {
+      margin-right: 0 !important;
     }
     .hs-mc-util-btn {
       color: #808080 !important;
@@ -5002,13 +5020,17 @@ function injectStyles() {
     .hs-pcard-action:disabled { opacity: 0.4; cursor: not-allowed; }
     .hs-pcard-kbd { color: #ff8700; font-weight: 700; }
 
-    /* Per-tab platform filter toggles (T/K/YT). Horizontal mode: collapse the
-       container so buttons flow inline with channel tabs and util buttons.
-       Vertical mode (left/right): a 3-up grid spanning the column width. */
+    /* Per-tab platform filter toggles (T/K/YT). Horizontal mode: own flex
+       section pinned right of channel tabs, before util cluster. Vertical
+       mode (left/right): a 3-up grid spanning the column width. */
     #hs-mc-platfilter {
-      display: contents;
+      display: flex;
+      flex: 0 0 auto;
+      gap: 0;
+      align-items: stretch;
+      margin-left: -1px;
     }
-    #hs-mc-platfilter:empty { display: none; }
+    #hs-mc-platfilter:empty { display: none; margin: 0; }
     /* Vertical mode: platfilter buttons sit in a wrapping row of squares —
        same 28x28 frame as the rest of the util group. */
     .hs-tabs-right #hs-mc-platfilter,
@@ -5027,7 +5049,7 @@ function injectStyles() {
       color: #fff;
       font-size: 10px;
       font-weight: 700;
-      padding: 2px 0;
+      padding: 0;
       cursor: pointer;
       font-family: inherit;
       line-height: 1;
@@ -5038,11 +5060,19 @@ function injectStyles() {
       align-items: center;
       justify-content: center;
     }
-    .hs-mc-pf-btn.hs-mc-pf-twitch { border-color: #9146ff; background: #9146ff; color: #fff; }
-    .hs-mc-pf-btn.hs-mc-pf-kick { border-color: #53fc18; background: #53fc18; color: #000; }
-    .hs-mc-pf-btn.hs-mc-pf-youtube { border-color: #ff0000; background: #ff0000; color: #fff; }
+    /* ON state — saturated platform color, matches platform identity */
+    .hs-mc-pf-btn.hs-mc-pf-twitch { border-color: #9146ff !important; background: #9146ff !important; color: #fff !important; }
+    .hs-mc-pf-btn.hs-mc-pf-kick { border-color: #53fc18 !important; background: #53fc18 !important; color: #000 !important; }
+    .hs-mc-pf-btn.hs-mc-pf-youtube {
+      border-color: #ff0000 !important;
+      background: #ff0000 !important;
+      color: #fff !important;
+      font-size: 8px !important; /* "YT" is 2 chars — shrink so it fits the 18px square cleanly */
+      letter-spacing: -0.5px !important;
+    }
+    /* OFF state — desaturated, dim border, unmistakable disabled cue */
     .hs-mc-pf-btn.off {
-      background: transparent !important;
+      background: #000 !important;
       color: #555 !important;
       border-color: #333 !important;
     }
@@ -6371,8 +6401,8 @@ function injectStyles() {
       width: 90px;
       flex-direction: column;
       flex-shrink: 0;
-      padding: 4px;
-      gap: 2px;
+      padding: 0;
+      gap: 0;
       border-bottom: none;
       border-left: 1px solid #fff;
       border-radius: 0;
@@ -6440,7 +6470,7 @@ function injectStyles() {
       right: 0;
       bottom: 44px;
       top: auto;
-      padding: 3px 8px;
+      padding: 0;
       border-top: 1px solid #fff;
       border-bottom: none;
       z-index: 1001;
@@ -6476,8 +6506,8 @@ function injectStyles() {
       width: 90px;
       flex-direction: column;
       flex-shrink: 0;
-      padding: 4px;
-      gap: 2px;
+      padding: 0;
+      gap: 0;
       border-bottom: none;
       border-right: 1px solid #fff;
       border-radius: 0;
@@ -22640,7 +22670,9 @@ const STORAGE_KEY = 'heatsync_multichat';
 
   // User-hidable tabs — persisted in ui_settings.hiddenTabs (auto-syncs cross-device)
   const HIDABLE_TABS = ['feed', 'whispers', 'mentions', 'discover', 'pinned'];
-  let hiddenTabs = new Set();
+  // Default hidden — empty for new users until they enable in settings (saved/pinned tab)
+  const DEFAULT_HIDDEN_TABS = ['pinned'];
+  let hiddenTabs = new Set(DEFAULT_HIDDEN_TABS);
 
   // Timestamps on messages (default off)
   let timestampsEnabled = false;
@@ -24683,7 +24715,7 @@ const STORAGE_KEY = 'heatsync_multichat';
         firstChatterGlow = true;
         keywordHighlights = '';
         rebuildKeywordRegex();
-        hiddenTabs = new Set();
+        hiddenTabs = new Set(DEFAULT_HIDDEN_TABS);
         applyHiddenTabs();
         for (const [k, v] of Object.entries(INLINE_NOTIF_TYPES)) inlineNotifs[k] = v.defaultOn;
         for (const [k, v] of Object.entries(HERMES_EVENT_TYPES)) hermesToggles[k] = v.defaultOn;

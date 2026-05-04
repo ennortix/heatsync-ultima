@@ -999,7 +999,9 @@
 
   // User-hidable tabs — persisted in ui_settings.hiddenTabs (auto-syncs cross-device)
   const HIDABLE_TABS = ['feed', 'whispers', 'mentions', 'discover', 'pinned'];
-  let hiddenTabs = new Set();
+  // Default hidden — empty for new users until they enable in settings (saved/pinned tab)
+  const DEFAULT_HIDDEN_TABS = ['pinned'];
+  let hiddenTabs = new Set(DEFAULT_HIDDEN_TABS);
 
   // Timestamps on messages (default off)
   let timestampsEnabled = false;
@@ -3042,7 +3044,7 @@
         firstChatterGlow = true;
         keywordHighlights = '';
         rebuildKeywordRegex();
-        hiddenTabs = new Set();
+        hiddenTabs = new Set(DEFAULT_HIDDEN_TABS);
         applyHiddenTabs();
         for (const [k, v] of Object.entries(INLINE_NOTIF_TYPES)) inlineNotifs[k] = v.defaultOn;
         for (const [k, v] of Object.entries(HERMES_EVENT_TYPES)) hermesToggles[k] = v.defaultOn;

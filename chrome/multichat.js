@@ -15868,7 +15868,14 @@ function ingestReplayYtMsg(targetChannelId, ytMsg) {
 // With per-emit Date.now(), each YT msg's time naturally interleaves with
 // the live twitch ms-arrivals that happen between pacer drains.
 function commitPacedYtMsg(targetChannelId, ytMsg) {
-  ytMsg.time = Date.now()
+  // Monotonic per-channel commit clock — two msgs draining in the same ms
+  // would otherwise share (user, time, text-prefix) and produce identical
+  // stableMsgIds, which the render-diff treats as one key and the dup-set
+  // dedup throws away the second display. +1 each collision keeps the key
+  // unique while still slotting close to real-time in the chrono sort.
+  const lastEmit = _ytPaceLastEmit.get(targetChannelId)
+  const now = Date.now()
+  ytMsg.time = lastEmit?.time && now <= lastEmit.time ? lastEmit.time + 1 : now
   if (!channelYtMessages.has(targetChannelId)) channelYtMessages.set(targetChannelId, [])
   const buf = channelYtMessages.get(targetChannelId)
   buf.push(ytMsg)
@@ -26642,9 +26649,15 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     // new ones. Crucially: when a desired key already lives in DOM at the
     // wrong position, we MOVE its node — never build a second one. This is
     // the bulletproof guarantee against duplicate-key accumulation.
+    // Per-render insertedKeys set — even if two buffer entries collide on
+    // stableMsgId (rare: same user, same ms post-pacer-commit, same text-
+    // prefix), the second occurrence is skipped so DOM stays one-per-key.
+    const insertedKeys = new Set()
     let domIdx = 0
     for (let j = 0; j < toRender.length; j++) {
       const key = desiredKeys[j]
+      if (insertedKeys.has(key)) continue
+      insertedKeys.add(key)
       const cur = msgsEl.children[domIdx]
       const existing = existingByKey.get(key)
       if (existing) {

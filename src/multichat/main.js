@@ -4826,9 +4826,15 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     // new ones. Crucially: when a desired key already lives in DOM at the
     // wrong position, we MOVE its node — never build a second one. This is
     // the bulletproof guarantee against duplicate-key accumulation.
+    // Per-render insertedKeys set — even if two buffer entries collide on
+    // stableMsgId (rare: same user, same ms post-pacer-commit, same text-
+    // prefix), the second occurrence is skipped so DOM stays one-per-key.
+    const insertedKeys = new Set()
     let domIdx = 0
     for (let j = 0; j < toRender.length; j++) {
       const key = desiredKeys[j]
+      if (insertedKeys.has(key)) continue
+      insertedKeys.add(key)
       const cur = msgsEl.children[domIdx]
       const existing = existingByKey.get(key)
       if (existing) {

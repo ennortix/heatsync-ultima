@@ -26196,9 +26196,15 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
 
     // Compute key first so we can skip if a node with this key already exists
     // (IRC reconnect, replay echo, dual-send race — all paths benefit from
-    // a single guard instead of relying on each caller to dedup).
+    // a single guard instead of relying on each caller to dedup). Direct
+    // iteration vs. CSS attr selector — CSS.escape encodes for identifier
+    // grammar, not attribute-value grammar, so a key like "3:@user:t:Tr" was
+    // producing a selector that didn't match the literal dataset value and
+    // the guard silently failed.
     const msgKeyStr = `${_renderEpoch}:${stableMsgId(msg)}`
-    if (msgsEl.querySelector(`[data-msg-key="${CSS.escape(msgKeyStr)}"]`)) return true
+    for (const c of msgsEl.children) {
+      if (c.dataset?.msgKey === msgKeyStr) return true
+    }
 
     const div = buildMessageDiv(msg, tabId);
     if (!div) return false;

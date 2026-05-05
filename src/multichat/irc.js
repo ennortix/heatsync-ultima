@@ -668,6 +668,7 @@ class IRC {
         const msgs = buffer.getAll().slice(-this._PERSIST_MAX).map(m => ({
           user: m.user, userId: m.userId, text: m.text, color: m.color,
           badges: m.badges, channel: m.channel, time: m.time, id: m.id,
+          platform: m.platform || undefined,
           isAction: m.isAction || undefined, replyTo: m.replyTo || undefined,
           subMonths: m.subMonths || undefined, twitchEmotes: m.twitchEmotes || undefined,
           type: m.type || undefined, eventClass: m.eventClass || undefined,

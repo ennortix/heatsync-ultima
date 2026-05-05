@@ -143,6 +143,22 @@ function injectStyles() {
       align-items: stretch;
       margin-left: -1px; /* collapse double border with adjacent tabs section */
     }
+    /* Horizontal tabs (top/bottom): when the tabbar is wide enough, lay
+       util-row + platfilter side-by-side on a single row instead of stacking.
+       Container query keyed off the tabbar's inline-size — at >=220px we
+       have room for util (~90px) + pf (~54px) + a couple channel tabs. The
+       container-type is only set for hs-tabs-{top,bottom} so vertical-mode
+       layouts (left/right) keep their existing column stacking. */
+    body.hs-tabs-top #hs-mc-tabbar,
+    body.hs-tabs-bottom #hs-mc-tabbar {
+      container-type: inline-size;
+      container-name: hs-tabbar;
+    }
+    @container hs-tabbar (min-width: 220px) {
+      .hs-mc-right-cluster {
+        flex-direction: row !important;
+      }
+    }
     /* Vertical mode: util-row becomes a real wrapping row of squares pinned
        to the bottom of the column, just below the platfilter — no vertical
        stacking, takes only the height it needs. */
@@ -4879,6 +4895,47 @@ function injectStyles() {
       height: var(--hs-chat-h, 35vh) !important;
     }
 
+    /* --- TWITCH non-channel pages (/directory, /settings, /videos, …):
+       no .chat-shell to mount in, so we body-mount as a position:fixed
+       overlay and squeeze twitch's content with a body width/height
+       constraint. --hs-twitch-topnav-h tracks the live nav height so the
+       panel slots beneath it (and reclaims the space in theatre / immersive
+       modes that hide the nav). --- */
+    body.hs-platform-twitch.hs-twitch-no-channel.hs-chat-right #hs-mc-container {
+      position: fixed !important;
+      z-index: 9999 !important;
+      background: #000 !important;
+      box-sizing: border-box !important;
+      margin: 0 !important;
+      top: var(--hs-twitch-topnav-h, 50px) !important;
+      bottom: 0 !important;
+      right: 0 !important;
+      left: auto !important;
+      width: var(--hs-chat-w, 340px) !important;
+      height: auto !important;
+    }
+    body.hs-platform-twitch.hs-twitch-no-channel.hs-chat-right {
+      width: calc(100vw - var(--hs-chat-w, 340px)) !important;
+      overflow-x: hidden !important;
+    }
+    body.hs-platform-twitch.hs-twitch-no-channel.hs-chat-left {
+      width: calc(100vw - var(--hs-chat-w, 340px)) !important;
+      margin-left: var(--hs-chat-w, 340px) !important;
+      overflow-x: hidden !important;
+    }
+    /* chat-top: panel slots under top-nav at y=navH and extends chatH down.
+       Body must clear (navH + chatH) AND shrink to fit the remaining viewport,
+       otherwise twitch content overflows into the area covered by the panel. */
+    body.hs-platform-twitch.hs-twitch-no-channel.hs-chat-top {
+      margin-top: calc(var(--hs-twitch-topnav-h, 50px) + var(--hs-chat-h, 35vh)) !important;
+      height: calc(100vh - var(--hs-twitch-topnav-h, 50px) - var(--hs-chat-h, 35vh)) !important;
+      overflow-y: hidden !important;
+    }
+    body.hs-platform-twitch.hs-twitch-no-channel.hs-chat-bottom {
+      height: calc(100vh - var(--hs-chat-h, 35vh)) !important;
+      overflow-y: hidden !important;
+    }
+
     /* Auth/API status banner — pinned to top edge of the chat panel as a
        thin horizontal strip, regardless of the container's flex direction
        (column for chat-right, row for tabs-left/right). Without this the
@@ -5068,6 +5125,19 @@ function injectStyles() {
     body.hs-platform-twitch.hs-chat-top .persistent-player video,
     body.hs-platform-twitch.hs-chat-bottom .persistent-player video {
       object-fit: contain !important;
+    }
+
+    /* Twitch reserves ~618px of margin-top on .channel-root__info--with-chat
+       to clear its absolutely-positioned .persistent-player. That number is
+       sized for the default chat-right player width — when chat docks LEFT
+       the player gets narrower (16:9 → shorter), so the reserved space is
+       way bigger than the player needs. Channel info (pfp, name, desc, sub
+       buttons) hangs ~232px below the video bottom on a 1148px viewport.
+       Recompute margin-top from the actual player width — sideNav is
+       visually hidden behind the HS panel, so player width is exactly
+       100vw - chatWidth, projected through 16:9 for the height. */
+    body.hs-platform-twitch.hs-chat-left .channel-root__info--with-chat {
+      margin-top: calc((100vw - var(--hs-chat-w, 340px)) * 0.5625) !important;
     }
 
     /* --- KICK: #channel-chatroom IS the native chat shell (sibling of

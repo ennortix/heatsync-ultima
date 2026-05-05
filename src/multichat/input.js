@@ -25,25 +25,61 @@ let _ownBadges = ''
 
 // Echo dedup — suppress own message echoes from IRC/KickChat relay
 // Uses a Set of {text, time} to handle rapid sends without overwriting
-const _recentSentMessages = []
+let _recentSentMessages = []
 const SENT_DEDUP_WINDOW = 10000 // 10s
+const RECENT_SENT_KEY = 'hs_recent_sent'
 
-function trackSentMessage(text) {
-  _recentSentMessages.push({ text, time: Date.now() })
-  // Prune old entries
+function _pruneRecent(arr) {
   const cutoff = Date.now() - SENT_DEDUP_WINDOW
-  while (_recentSentMessages.length > 0 && _recentSentMessages[0].time < cutoff) {
-    _recentSentMessages.shift()
-  }
+  return arr.filter(e => e && e.time >= cutoff)
 }
 
-function isSentEcho(msgText) {
+function trackSentMessage(text) {
+  _recentSentMessages.push({ text, time: Date.now(), host: hostPlatform })
+  _recentSentMessages = _pruneRecent(_recentSentMessages)
+  // Cross-tab sync: kick.com tab and twitch.tv tab live in different
+  // content-script contexts, so they each have their own array. Storage
+  // mirrors the entry to every tab via onChanged so peekSentHost on the
+  // OTHER host tagged the IRC echo with the correct origin host. ~50ms
+  // sync latency easily wins the race against the ~100-300ms platform
+  // chat round-trip.
+  try { chrome.storage.local.set({ [RECENT_SENT_KEY]: _recentSentMessages }) } catch (_) {}
+}
+
+// Hydrate from storage on load + listen for cross-tab updates.
+try {
+  chrome.storage.local.get(RECENT_SENT_KEY).then((data) => {
+    const incoming = data?.[RECENT_SENT_KEY]
+    if (Array.isArray(incoming)) _recentSentMessages = _pruneRecent(incoming)
+  }).catch(() => {})
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area !== 'local' || !changes[RECENT_SENT_KEY]) return
+    const incoming = changes[RECENT_SENT_KEY].newValue
+    if (!Array.isArray(incoming)) return
+    // Merge our local writes with the incoming snapshot — last-write-wins
+    // by (text, second-bucketed time). Survives the rare two-tab-send race.
+    const merged = new Map()
+    for (const e of [..._recentSentMessages, ...incoming]) {
+      if (!e || !e.text) continue
+      const k = `${e.text}:${Math.floor((e.time || 0) / 1000)}`
+      const existing = merged.get(k)
+      if (!existing || (existing.time || 0) < (e.time || 0)) merged.set(k, e)
+    }
+    _recentSentMessages = _pruneRecent([...merged.values()].sort((a, b) => a.time - b.time))
+  })
+} catch (_) {}
+
+function isSentEcho(msgText, _msgPlatform) {
   const cutoff = Date.now() - SENT_DEDUP_WINDOW
   for (let i = _recentSentMessages.length - 1; i >= 0; i--) {
     const entry = _recentSentMessages[i]
     if (entry.time < cutoff) break
     if (entry.text === msgText) {
-      // Dual-send only: first echo displays, second is suppressed
+      // First echo displays; second (dual-send duplicate) is suppressed.
+      // Host-platform badge attribution happens separately via peekSentHost,
+      // so we don't suppress on host mismatch — that would drop the only
+      // echo when sending from one platform to a single-platform channel
+      // on a different host (e.g. kick.com → twitch-only mellen).
       entry.suppressed = (entry.suppressed || 0) + 1
       if (entry.suppressed >= 2) {
         _recentSentMessages.splice(i, 1)
@@ -53,6 +89,21 @@ function isSentEcho(msgText) {
     }
   }
   return false
+}
+
+// Peek a recent-sent entry by text WITHOUT consuming it. Used by the IRC/kick
+// handlers to attribute the badge platform on the displayed echo. Returns the
+// host platform string ('twitch' | 'kick' | 'yt') or null if no tracked send
+// matches — letting echoes from elsewhere (e.g. heatsync.org website sends)
+// keep whatever platform tag the server attached.
+function peekSentHost(msgText) {
+  const cutoff = Date.now() - SENT_DEDUP_WINDOW
+  for (let i = _recentSentMessages.length - 1; i >= 0; i--) {
+    const entry = _recentSentMessages[i]
+    if (entry.time < cutoff) break
+    if (entry.text === msgText) return entry.host || null
+  }
+  return null
 }
 
 // Autocomplete state (Tab-only cycling, no dropdown)
@@ -2098,10 +2149,12 @@ async function sendMessage() {
   const sendToYoutube = !!ytUrl || isLiveYt
   const isDualSend = sendToKick && sendToTwitch
 
-  // Track for echo dedup (dual-send only — suppress second platform's duplicate)
-  if (isDualSend) {
-    trackSentMessage(text)
-  }
+  // Track every send (not just dual-send). The host platform stored on each
+  // entry powers two things: (1) dedup of dual-send second echoes, (2) badge
+  // attribution via peekSentHost so own messages render with the platform
+  // the user is viewing FROM (extension input on kick.com → [K]) regardless
+  // of which relay platform actually echoed back.
+  trackSentMessage(text)
 
   // Push to message history (dedup consecutive, cap at max)
   if (mcMessageHistory[0] !== text) {

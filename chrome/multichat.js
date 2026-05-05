@@ -3271,6 +3271,22 @@ function injectStyles() {
       align-items: stretch;
       margin-left: -1px; /* collapse double border with adjacent tabs section */
     }
+    /* Horizontal tabs (top/bottom): when the tabbar is wide enough, lay
+       util-row + platfilter side-by-side on a single row instead of stacking.
+       Container query keyed off the tabbar's inline-size — at >=220px we
+       have room for util (~90px) + pf (~54px) + a couple channel tabs. The
+       container-type is only set for hs-tabs-{top,bottom} so vertical-mode
+       layouts (left/right) keep their existing column stacking. */
+    body.hs-tabs-top #hs-mc-tabbar,
+    body.hs-tabs-bottom #hs-mc-tabbar {
+      container-type: inline-size;
+      container-name: hs-tabbar;
+    }
+    @container hs-tabbar (min-width: 220px) {
+      .hs-mc-right-cluster {
+        flex-direction: row !important;
+      }
+    }
     /* Vertical mode: util-row becomes a real wrapping row of squares pinned
        to the bottom of the column, just below the platfilter — no vertical
        stacking, takes only the height it needs. */
@@ -8007,6 +8023,47 @@ function injectStyles() {
       height: var(--hs-chat-h, 35vh) !important;
     }
 
+    /* --- TWITCH non-channel pages (/directory, /settings, /videos, …):
+       no .chat-shell to mount in, so we body-mount as a position:fixed
+       overlay and squeeze twitch's content with a body width/height
+       constraint. --hs-twitch-topnav-h tracks the live nav height so the
+       panel slots beneath it (and reclaims the space in theatre / immersive
+       modes that hide the nav). --- */
+    body.hs-platform-twitch.hs-twitch-no-channel.hs-chat-right #hs-mc-container {
+      position: fixed !important;
+      z-index: 9999 !important;
+      background: #000 !important;
+      box-sizing: border-box !important;
+      margin: 0 !important;
+      top: var(--hs-twitch-topnav-h, 50px) !important;
+      bottom: 0 !important;
+      right: 0 !important;
+      left: auto !important;
+      width: var(--hs-chat-w, 340px) !important;
+      height: auto !important;
+    }
+    body.hs-platform-twitch.hs-twitch-no-channel.hs-chat-right {
+      width: calc(100vw - var(--hs-chat-w, 340px)) !important;
+      overflow-x: hidden !important;
+    }
+    body.hs-platform-twitch.hs-twitch-no-channel.hs-chat-left {
+      width: calc(100vw - var(--hs-chat-w, 340px)) !important;
+      margin-left: var(--hs-chat-w, 340px) !important;
+      overflow-x: hidden !important;
+    }
+    /* chat-top: panel slots under top-nav at y=navH and extends chatH down.
+       Body must clear (navH + chatH) AND shrink to fit the remaining viewport,
+       otherwise twitch content overflows into the area covered by the panel. */
+    body.hs-platform-twitch.hs-twitch-no-channel.hs-chat-top {
+      margin-top: calc(var(--hs-twitch-topnav-h, 50px) + var(--hs-chat-h, 35vh)) !important;
+      height: calc(100vh - var(--hs-twitch-topnav-h, 50px) - var(--hs-chat-h, 35vh)) !important;
+      overflow-y: hidden !important;
+    }
+    body.hs-platform-twitch.hs-twitch-no-channel.hs-chat-bottom {
+      height: calc(100vh - var(--hs-chat-h, 35vh)) !important;
+      overflow-y: hidden !important;
+    }
+
     /* Auth/API status banner — pinned to top edge of the chat panel as a
        thin horizontal strip, regardless of the container's flex direction
        (column for chat-right, row for tabs-left/right). Without this the
@@ -8196,6 +8253,19 @@ function injectStyles() {
     body.hs-platform-twitch.hs-chat-top .persistent-player video,
     body.hs-platform-twitch.hs-chat-bottom .persistent-player video {
       object-fit: contain !important;
+    }
+
+    /* Twitch reserves ~618px of margin-top on .channel-root__info--with-chat
+       to clear its absolutely-positioned .persistent-player. That number is
+       sized for the default chat-right player width — when chat docks LEFT
+       the player gets narrower (16:9 → shorter), so the reserved space is
+       way bigger than the player needs. Channel info (pfp, name, desc, sub
+       buttons) hangs ~232px below the video bottom on a 1148px viewport.
+       Recompute margin-top from the actual player width — sideNav is
+       visually hidden behind the HS panel, so player width is exactly
+       100vw - chatWidth, projected through 16:9 for the height. */
+    body.hs-platform-twitch.hs-chat-left .channel-root__info--with-chat {
+      margin-top: calc((100vw - var(--hs-chat-w, 340px)) * 0.5625) !important;
     }
 
     /* --- KICK: #channel-chatroom IS the native chat shell (sibling of
@@ -9473,6 +9543,7 @@ class IRC {
         const msgs = buffer.getAll().slice(-this._PERSIST_MAX).map(m => ({
           user: m.user, userId: m.userId, text: m.text, color: m.color,
           badges: m.badges, channel: m.channel, time: m.time, id: m.id,
+          platform: m.platform || undefined,
           isAction: m.isAction || undefined, replyTo: m.replyTo || undefined,
           subMonths: m.subMonths || undefined, twitchEmotes: m.twitchEmotes || undefined,
           type: m.type || undefined, eventClass: m.eventClass || undefined,
@@ -19375,25 +19446,61 @@ let _ownBadges = ''
 
 // Echo dedup — suppress own message echoes from IRC/KickChat relay
 // Uses a Set of {text, time} to handle rapid sends without overwriting
-const _recentSentMessages = []
+let _recentSentMessages = []
 const SENT_DEDUP_WINDOW = 10000 // 10s
+const RECENT_SENT_KEY = 'hs_recent_sent'
 
-function trackSentMessage(text) {
-  _recentSentMessages.push({ text, time: Date.now() })
-  // Prune old entries
+function _pruneRecent(arr) {
   const cutoff = Date.now() - SENT_DEDUP_WINDOW
-  while (_recentSentMessages.length > 0 && _recentSentMessages[0].time < cutoff) {
-    _recentSentMessages.shift()
-  }
+  return arr.filter(e => e && e.time >= cutoff)
 }
 
-function isSentEcho(msgText) {
+function trackSentMessage(text) {
+  _recentSentMessages.push({ text, time: Date.now(), host: hostPlatform })
+  _recentSentMessages = _pruneRecent(_recentSentMessages)
+  // Cross-tab sync: kick.com tab and twitch.tv tab live in different
+  // content-script contexts, so they each have their own array. Storage
+  // mirrors the entry to every tab via onChanged so peekSentHost on the
+  // OTHER host tagged the IRC echo with the correct origin host. ~50ms
+  // sync latency easily wins the race against the ~100-300ms platform
+  // chat round-trip.
+  try { chrome.storage.local.set({ [RECENT_SENT_KEY]: _recentSentMessages }) } catch (_) {}
+}
+
+// Hydrate from storage on load + listen for cross-tab updates.
+try {
+  chrome.storage.local.get(RECENT_SENT_KEY).then((data) => {
+    const incoming = data?.[RECENT_SENT_KEY]
+    if (Array.isArray(incoming)) _recentSentMessages = _pruneRecent(incoming)
+  }).catch(() => {})
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area !== 'local' || !changes[RECENT_SENT_KEY]) return
+    const incoming = changes[RECENT_SENT_KEY].newValue
+    if (!Array.isArray(incoming)) return
+    // Merge our local writes with the incoming snapshot — last-write-wins
+    // by (text, second-bucketed time). Survives the rare two-tab-send race.
+    const merged = new Map()
+    for (const e of [..._recentSentMessages, ...incoming]) {
+      if (!e || !e.text) continue
+      const k = `${e.text}:${Math.floor((e.time || 0) / 1000)}`
+      const existing = merged.get(k)
+      if (!existing || (existing.time || 0) < (e.time || 0)) merged.set(k, e)
+    }
+    _recentSentMessages = _pruneRecent([...merged.values()].sort((a, b) => a.time - b.time))
+  })
+} catch (_) {}
+
+function isSentEcho(msgText, _msgPlatform) {
   const cutoff = Date.now() - SENT_DEDUP_WINDOW
   for (let i = _recentSentMessages.length - 1; i >= 0; i--) {
     const entry = _recentSentMessages[i]
     if (entry.time < cutoff) break
     if (entry.text === msgText) {
-      // Dual-send only: first echo displays, second is suppressed
+      // First echo displays; second (dual-send duplicate) is suppressed.
+      // Host-platform badge attribution happens separately via peekSentHost,
+      // so we don't suppress on host mismatch — that would drop the only
+      // echo when sending from one platform to a single-platform channel
+      // on a different host (e.g. kick.com → twitch-only mellen).
       entry.suppressed = (entry.suppressed || 0) + 1
       if (entry.suppressed >= 2) {
         _recentSentMessages.splice(i, 1)
@@ -19403,6 +19510,21 @@ function isSentEcho(msgText) {
     }
   }
   return false
+}
+
+// Peek a recent-sent entry by text WITHOUT consuming it. Used by the IRC/kick
+// handlers to attribute the badge platform on the displayed echo. Returns the
+// host platform string ('twitch' | 'kick' | 'yt') or null if no tracked send
+// matches — letting echoes from elsewhere (e.g. heatsync.org website sends)
+// keep whatever platform tag the server attached.
+function peekSentHost(msgText) {
+  const cutoff = Date.now() - SENT_DEDUP_WINDOW
+  for (let i = _recentSentMessages.length - 1; i >= 0; i--) {
+    const entry = _recentSentMessages[i]
+    if (entry.time < cutoff) break
+    if (entry.text === msgText) return entry.host || null
+  }
+  return null
 }
 
 // Autocomplete state (Tab-only cycling, no dropdown)
@@ -21448,10 +21570,12 @@ async function sendMessage() {
   const sendToYoutube = !!ytUrl || isLiveYt
   const isDualSend = sendToKick && sendToTwitch
 
-  // Track for echo dedup (dual-send only — suppress second platform's duplicate)
-  if (isDualSend) {
-    trackSentMessage(text)
-  }
+  // Track every send (not just dual-send). The host platform stored on each
+  // entry powers two things: (1) dedup of dual-send second echoes, (2) badge
+  // attribution via peekSentHost so own messages render with the platform
+  // the user is viewing FROM (extension input on kick.com → [K]) regardless
+  // of which relay platform actually echoed back.
+  trackSentMessage(text)
 
   // Push to message history (dedup consecutive, cap at max)
   if (mcMessageHistory[0] !== text) {
@@ -23632,6 +23756,7 @@ const STORAGE_KEY = 'heatsync_multichat';
   // Cap chat-col width so main stays above this threshold.
   const TWITCH_MIN_MAIN_WIDTH = 600;
   const TWITCH_SIDE_NAV_WIDTH = 50; // left rail when collapsed; conservative
+  const TWITCH_TOP_NAV_HEIGHT = 50; // .top-nav strip; hidden in theatre mode
 
   // Compute the largest chat width that won't squash YouTube's video column.
   // Bases on the watch-flexy container width (the actual flex-row that holds
@@ -24060,6 +24185,12 @@ const STORAGE_KEY = 'heatsync_multichat';
       // Force Twitch's player + ad layer (.video-ad-display, IMA iframe) to
       // re-measure. Without this, ad video keeps its pre-resize dimensions.
       try { window.dispatchEvent(new Event('resize')) } catch (_) {}
+      // Re-pin scroll: the single reflow shifts msgsEl.scrollHeight (taller
+      // wrapped lines on shrink, shorter on expand). Without this, a
+      // bottom-pinned user sees their viewport slide up after the drag.
+      // Helper self-bails if isScrolledUp.
+      const m = document.getElementById('hs-mc-messages')
+      if (m) try { scrollMsgsToBottom(m) } catch (_) {}
       saveChatWidth()
     }
     handle.addEventListener('pointerup', endDrag)
@@ -24286,6 +24417,14 @@ const STORAGE_KEY = 'heatsync_multichat';
           } else if (hostPlatform === 'twitch' && chatPosition !== 'right') {
             try { applyPlatformPositionOverrides() } catch (_) {}
           }
+          // Width change re-wraps every message — taller lines push scrollTop
+          // away from the bottom even though the user hasn't scrolled. If they
+          // were pinned at bottom before the drag, re-pin after each rAF so
+          // the scroll position tracks the latest message live during resize.
+          // scrollMsgsToBottom self-bails when isScrolledUp is true, so users
+          // who *were* scrolled up stay where they are.
+          const m = document.getElementById('hs-mc-messages');
+          if (m) try { scrollMsgsToBottom(m) } catch (_) {}
         });
       }
     });
@@ -25944,8 +26083,21 @@ const STORAGE_KEY = 'heatsync_multichat';
       parent = chatRoom.parentElement
       chatRoom.after(container)
     } else {
-      parent = document.querySelector('.chat-shell') || document.querySelector('[class*="chat-shell"]') || chatRoom.parentElement
-      parent.appendChild(container)
+      // Twitch: prefer chat-shell on channel pages (preserves theatre/persistent
+      // -player layout). Fall back to <body> on non-channel pages (directory,
+      // settings, videos, …) where chat-shell doesn't exist — panel becomes a
+      // position:fixed overlay via the hs-twitch-no-channel CSS rules.
+      const chatShell = document.querySelector('.chat-shell') || document.querySelector('[class*="chat-shell"]')
+      if (chatShell) {
+        parent = chatShell
+        parent.appendChild(container)
+      } else {
+        parent = document.body
+        parent.appendChild(container)
+        mcSignal.addEventListener('abort', () => {
+          if (container && container.parentElement === document.body) container.remove()
+        }, { once: true })
+      }
     }
     log('Created #hs-mc-container in', parent.tagName + '.' + [...parent.classList].join('.'))
     return container
@@ -25981,7 +26133,11 @@ const STORAGE_KEY = 'heatsync_multichat';
                  document.querySelector('.chat-room')
     }
 
-    if (!chatRoom) return;
+    // Twitch non-channel pages (/directory, /settings, /videos, …) have no
+    // chat-shell. Fall through with chatRoom=null so getOrCreateHsContainer
+    // body-mounts the panel as a position:fixed overlay. Kick/YT keep the
+    // hard guard — they don't yet have a body-mount fallback.
+    if (!chatRoom && (hostPlatform === 'yt' || isKick)) return;
 
     // Transform fix handled by CSS (#hs-chat-transform-fix) + MutationObserver.
     // No parent tree walking — it displaced the collapse arrow.
@@ -26131,6 +26287,12 @@ const STORAGE_KEY = 'heatsync_multichat';
       setupResizeHandle()
       watchTwitchPersistentPlayer()
     }
+    // Platform-specific handles are only used when chatPosition === 'right'.
+    // hidePlatformResizeHandles ran earlier from applyChatPosition before
+    // these setup* calls created the handle elements, so any non-right mode
+    // would leave a stray handle (e.g. the orange vertical bar on the left
+    // of chat-bottom). Re-apply now with the freshly-created handles in DOM.
+    if (chatPosition && chatPosition !== 'right') hidePlatformResizeHandles(true)
 
     // Always ensure native chat is hidden when our UI is active
     setNativeChatHidden(true);
@@ -26557,9 +26719,9 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       badges += renderThirdPartyBadges(m.userId)
       if (!mcUserCosmetics.has(m.userId)) queueMcCosmeticsLookup(m.userId)
     }
-    const plat = m.platform === 'youtube' ? 'yt' : m.platform === 'kick' ? 'kick' : 'twitch'
-    const platLabel = plat === 'yt' ? '[YT]' : plat === 'kick' ? '[K]' : '[T]'
-    const platColors = { twitch: '#9146ff', kick: '#53fc18', yt: '#ff0000' }
+    const plat = m.platform === 'youtube' ? 'yt' : m.platform === 'kick' ? 'kick' : m.platform === 'heatsync' ? 'heatsync' : 'twitch'
+    const platLabel = plat === 'yt' ? '[YT]' : plat === 'kick' ? '[K]' : plat === 'heatsync' ? '[H]' : '[T]'
+    const platColors = { twitch: '#9146ff', kick: '#53fc18', yt: '#ff0000', heatsync: '#ff8700' }
     const platformBadge = (platformBadgesEnabled || plat !== hostPlatform) ? `<span class="hs-mc-platform-badge hs-mc-pb-${plat}" style="font-size:10px;margin-right:3px;font-weight:700;vertical-align:middle;color:${platColors[plat]}">${platLabel}</span>` : ''
     const safeScColor = sanitizeColor(m.scColor || '#ffd600')
     const scBadge = isSuperChat && m.amount ? `<span class="hs-mc-sc-badge" style="background:${safeScColor};color:#000;padding:0 4px;border-radius:0;font-size:10px;font-weight:700;margin-right:3px;">${escapeHtml(m.amount)}</span>` : ''
@@ -26574,6 +26736,8 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     } else if (plat === 'yt') {
       const ytHandle = (m.user || '').replace(/^@/, '')
       userHref = `https://youtube.com/@${encodeURIComponent(ytHandle)}`
+    } else if (plat === 'heatsync') {
+      userHref = `https://heatsync.org/${encodeURIComponent(m.user)}`
     } else {
       userHref = `https://twitch.tv/${encodeURIComponent(m.user)}`
     }
@@ -27282,6 +27446,24 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       empty.textContent = t('mc_no_messages')
       msgsEl.appendChild(empty)
       return
+    }
+
+    // Stale-history guard: drop anything older than (newest_msg.time - 2h).
+    // Kick history backfill + stream-event replay can span 24h; without this
+    // they pile up at the top of every channel tab and bury the live chat.
+    // 2h is generous enough to still show "went live 90min ago" context but
+    // hides the multi-day stream-event archive.
+    const STALE_WINDOW_MS = 2 * 60 * 60 * 1000
+    let newestTime = 0
+    for (let i = msgs.length - 1; i >= 0; i--) {
+      const t = msgs[i]?.time
+      if (t && t > newestTime) newestTime = t
+      // Most buffers are chrono-ordered, so the tail walk hits the newest fast
+      if (i < msgs.length - 50 && newestTime > 0) break
+    }
+    if (newestTime > 0) {
+      const cutoff = newestTime - STALE_WINDOW_MS
+      msgs = msgs.filter(m => !m.time || m.time >= cutoff)
     }
 
     const toRender = msgs.slice(-500)
@@ -28643,6 +28825,8 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
   let _twitchSideNavObs = null;
   let _twitchSideNavWinHooked = false;
   let _twitchSideNavW = TWITCH_SIDE_NAV_WIDTH;
+  let _twitchTopNavObs = null;
+  let _twitchTopNavH = TWITCH_TOP_NAV_HEIGHT;
 
   // Twitch's left side-nav is 50px when collapsed, ~240px when expanded.
   // It auto-expands on wide viewports (>~1200px), and the user can also
@@ -28662,6 +28846,55 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     if (chatPosition === 'left') {
       try { applyPlatformPositionOverrides() } catch (_) {}
     }
+  }
+
+  // Twitch's top nav (.top-nav) is 50px tall and lives in a sibling DOM tree
+  // that paints above HS's chat container — even though HS has z-index 9999,
+  // the chat container is trapped inside .channel-root__right-column's z=1
+  // stacking context. Fight: don't compete on z-index, just offset chat down
+  // by the nav height when chat docks left/top so the rotate buttons aren't
+  // hidden under Following/Browse. Theatre mode hides .top-nav (height = 0),
+  // so the offset auto-collapses and chat reclaims the full viewport.
+  function updateTwitchTopNavHeight() {
+    if (hostPlatform !== 'twitch') return;
+    const nav = document.querySelector('.top-nav');
+    let h = 0;
+    if (nav) {
+      const r = nav.getBoundingClientRect();
+      // height>0 AND visible — theatre mode collapses to 0 via display:none
+      h = (r.height > 0 && getComputedStyle(nav).display !== 'none') ? Math.round(r.height) : 0;
+    }
+    if (h === _twitchTopNavH) return;
+    _twitchTopNavH = h;
+    document.documentElement.style.setProperty('--hs-twitch-topnav-h', h + 'px');
+    if (chatPosition === 'left' || chatPosition === 'top') {
+      try { applyPlatformPositionOverrides() } catch (_) {}
+    }
+  }
+
+  function setupTwitchTopNavObserver() {
+    if (hostPlatform !== 'twitch') return;
+    document.documentElement.style.setProperty('--hs-twitch-topnav-h', _twitchTopNavH + 'px');
+    if (_twitchTopNavObs) { try { _twitchTopNavObs.disconnect() } catch (_) {} _twitchTopNavObs = null; }
+    const nav = document.querySelector('.top-nav');
+    if (nav && typeof ResizeObserver !== 'undefined') {
+      _twitchTopNavObs = new ResizeObserver(() => updateTwitchTopNavHeight());
+      _twitchTopNavObs.observe(nav);
+      cleanup.trackObserver(_twitchTopNavObs);
+    }
+    updateTwitchTopNavHeight();
+  }
+
+  // Persistent-overlay mode toggle. Sets `hs-twitch-no-channel` on body when
+  // we're on a twitch URL with no .channel-root (directory, settings, videos,
+  // search, …). CSS rules keyed off this class flip the panel to position:
+  // fixed and squeeze twitch's main content via a body width/height
+  // constraint. Re-checked on every SPA nav.
+  function updateTwitchNoChannelClass() {
+    if (hostPlatform !== 'twitch') return;
+    const onChannel = !!document.querySelector('.channel-root, [class*="channel-root"]');
+    const popout = document.body.classList.contains('hs-popout');
+    document.body.classList.toggle('hs-twitch-no-channel', !onChannel && !popout);
   }
 
   function setupTwitchSideNavObserver() {
@@ -28700,6 +28933,8 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       detectTheatreMode();
       setupTheatreObserver();
       setupTwitchSideNavObserver();
+      setupTwitchTopNavObserver();
+      updateTwitchNoChannelClass();
       applyChatPosition();
     } catch (e) {
       log('Error loading chat position:', e);
@@ -28873,15 +29108,20 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
         container.style.setProperty('position', 'fixed', 'important');
         container.style.setProperty('z-index', '9999', 'important');
         container.style.setProperty('background', '#000', 'important');
+        // Twitch-only: offset by .top-nav height for left/top so the rotate
+        // buttons aren't trapped under Following/Browse (HS lives inside
+        // .channel-root__right-column's z=1 stacking context, can't outrank).
+        const twitchTopOffset = (hostPlatform === 'twitch' && !theatreMode) ? _twitchTopNavH : 0;
+        const topPx = twitchTopOffset + 'px';
         if (chatPosition === 'left') {
-          container.style.setProperty('top', '0', 'important');
+          container.style.setProperty('top', topPx, 'important');
           container.style.setProperty('bottom', '0', 'important');
           container.style.setProperty('left', '0', 'important');
           container.style.setProperty('right', 'auto', 'important');
           container.style.setProperty('width', w, 'important');
-          container.style.setProperty('height', '100vh', 'important');
+          container.style.setProperty('height', `calc(100vh - ${topPx})`, 'important');
         } else if (chatPosition === 'top') {
-          container.style.setProperty('top', '0', 'important');
+          container.style.setProperty('top', topPx, 'important');
           container.style.setProperty('bottom', 'auto', 'important');
           container.style.setProperty('left', '0', 'important');
           container.style.setProperty('right', '0', 'important');
@@ -29617,13 +29857,10 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       const kickPath = location.pathname.replace(/\/$/, '').slice(1).toLowerCase();
       if (['categories', 'following', 'search', 'settings'].includes(kickPath)) return;
     } else {
-      // Twitch: Run on channel pages AND popout chat
-      const isChannelPage = location.pathname.match(/^\/[a-zA-Z0-9_]+\/?$/);
+      // Twitch: persistent overlay across every URL — directory, settings,
+      // videos, etc. all keep the panel mounted. getOrCreateHsContainer
+      // body-mounts when no .chat-shell exists; CSS squeezes twitch content.
       isPopout = !!location.pathname.match(/^\/(popout|embed)\/[a-zA-Z0-9_]+\/chat/);
-      if (!isChannelPage && !isPopout) return;
-      const pathName = location.pathname.replace(/\/$/, '').slice(1).toLowerCase();
-      if (['directory', 'settings', 'videos', 'moderator', 'subscriptions', 'downloads', 'search'].includes(pathName)) return;
-
     }
     if (mcInitialized) return;
     mcInitialized = true;
@@ -29815,6 +30052,9 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       if (kickName) {
         kickChat.join(kickName);
       }
+      // YouTube subscription is owned by loadConfig() (line ~6071) so this
+      // loop only handles irc/kick — duplicate yt subs were idempotent but
+      // noisy in the bg log.
     });
 
     // Restore persisted stream events into buffers
@@ -29860,8 +30100,21 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       if (msg.user?.toLowerCase() === currentUsername?.toLowerCase() && msg.badges) {
         _ownBadges = msg.badges
       }
-      // Suppress echo of own sent messages (dedup dual-send)
-      if (isSentEcho(msg.text)) return
+      // Suppress echo of own sent messages (dedup dual-send). Pass 'twitch'
+      // explicitly — IRC msgs leave m.platform unset so the host-platform
+      // preference in isSentEcho can compare against it.
+      if (isSentEcho(msg.text, 'twitch')) return
+      // Own-message badge: only override when the echo matches a message we
+      // tracked as sent FROM the extension input bar. That way echoes
+      // originating from elsewhere (e.g. heatsync.org website) keep
+      // whatever platform tag the server attached — leaving room for a
+      // server-emitted [H] tag without us clobbering it.
+      if (msg.user?.toLowerCase() === currentUsername?.toLowerCase()) {
+        const sentHost = peekSentHost(msg.text)
+        if (sentHost) {
+          msg.platform = sentHost === 'yt' ? 'youtube' : sentHost
+        }
+      }
       // Automod: drop messages matching user-defined filter or all-caps spam.
       // Don't filter own messages (you saw what you typed).
       if (msg.user?.toLowerCase() !== currentUsername?.toLowerCase() && shouldAutomod(msg.text)) return
@@ -29903,8 +30156,18 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
 
     // Handle incoming Kick messages
     kickChat.on('message', (msg) => {
-      // Suppress echo of own sent messages (dedup dual-send)
-      if (isSentEcho(msg.text)) return
+      // Suppress echo of own sent messages (dedup dual-send) — pass 'kick'
+      // so host-platform preference can favor this echo when on kick.com.
+      if (isSentEcho(msg.text, 'kick')) return
+      // Own-message badge: only override for ext-tracked sends (matches
+      // IRC handler comment above). Untracked echoes keep msg.platform='kick'
+      // which already renders as [K].
+      if (msg.user?.toLowerCase() === currentUsername?.toLowerCase()) {
+        const sentHost = peekSentHost(msg.text)
+        if (sentHost) {
+          msg.platform = sentHost === 'yt' ? 'youtube' : sentHost
+        }
+      }
       if (msg.user?.toLowerCase() !== currentUsername?.toLowerCase() && shouldAutomod(msg.text)) return
       const isMent = isMention(msg)
       bumpStreamStats(msg.channel, msg, isMent)
@@ -30504,6 +30767,21 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     let done = false;
     const tryHook = () => {
       if (done || mcSignal?.aborted) return false;
+      // Non-channel twitch pages (/directory, /settings, /videos, /search…)
+      // never mount .chat-shell or chat-room. Body-mount immediately so the
+      // persistent overlay appears without waiting on the 15s safety timeout.
+      // Detection: no .channel-root anywhere AND no popout class. Popout has
+      // its own .chat-shell mount path that we still want to flow through.
+      const onChannel = !!document.querySelector('.channel-root, [class*="channel-root"]');
+      const isPopout = document.body.classList.contains('hs-popout');
+      if (!onChannel && !isPopout) {
+        done = true;
+        log('Twitch non-channel page — body-mount overlay');
+        ensureUIElements();
+        switchTab(_savedActiveTab || 'live');
+        startLayoutWatcher();
+        return true;
+      }
       const chatRoom = findChatRoomComponent();
       if (chatRoom) {
         done = true;
@@ -30602,10 +30880,72 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
   // SPA navigation handler — event-driven via early-inject-main.js history hooks
   let lastPath = location.pathname;
   let spaReinitializing = false;
+  // Twitch SPA nav: zero-flicker soft refresh. Pre-emptively migrate the
+  // panel to <body> so twitch's chat-shell teardown doesn't take it down,
+  // refresh the body class for the new URL, and (if the new page is a
+  // channel page) reparent into the freshly-mounted chat-shell once it
+  // appears. IRC, kickChat, observers, feed state — none of it gets
+  // destroyed, so the visible panel keeps showing live messages without
+  // a single empty frame.
+  function softTwitchNav() {
+    const container = document.getElementById('hs-mc-container');
+    // Step 1 — detach from doomed chat-shell ahead of twitch's teardown.
+    if (container && container.parentElement && container.parentElement !== document.body) {
+      document.body.appendChild(container);
+    }
+    // Step 2 — flip CSS state to match the new URL's mount surface.
+    try { updateTwitchNoChannelClass() } catch (_) {}
+
+    // Step 3 — if the new page is a channel page, wait for its chat-shell to
+    // mount, then reparent the panel back so theatre/persistent-player layout
+    // continues to work. Single-shot observer; gives up after 4s on slow tabs.
+    let done = false;
+    const tryReparent = () => {
+      if (done) return true;
+      const chatShell = document.querySelector('.chat-shell, [class*="chat-shell"]');
+      const c = document.getElementById('hs-mc-container');
+      if (chatShell && c && !chatShell.contains(c)) {
+        chatShell.appendChild(c);
+        try { updateTwitchNoChannelClass() } catch (_) {}
+        done = true;
+        return true;
+      }
+      // No chat-shell on the destination page → leave panel on body.
+      // Detect "settled non-channel page" by checking that .channel-root
+      // has been absent for at least one observer tick.
+      if (!chatShell && document.querySelector('.tw-root, #root')) {
+        // Still might be mid-nav; let the observer keep watching briefly.
+      }
+      return false;
+    };
+    if (tryReparent()) return;
+    const obs = new MutationObserver(() => { if (tryReparent()) obs.disconnect() });
+    obs.observe(document.documentElement, { childList: true, subtree: true });
+    cleanup.trackObserver(obs);
+    cleanup.setTimeout(() => {
+      if (!done) {
+        done = true;
+        obs.disconnect();
+        try { updateTwitchNoChannelClass() } catch (_) {}
+      }
+    }, 4000, 'twitch-soft-nav-finalize');
+  }
+
   function handleMcNav() {
     if (location.pathname === lastPath) return
     lastPath = location.pathname;
     log('Navigation detected, reinitializing...');
+    // Re-evaluate body-mount overlay state for the new URL before teardown so
+    // CSS rules flip ahead of the panel reappearing on the new page.
+    try { updateTwitchNoChannelClass() } catch (_) {}
+
+    // Twitch SPA nav: skip the destroy+rebuild path entirely. The panel
+    // (and IRC, and feed state) all survive intact — see softTwitchNav.
+    // Popout chat is exempt since it never SPA-navigates between URLs.
+    if (hostPlatform === 'twitch' && !document.body.classList.contains('hs-popout')) {
+      softTwitchNav();
+      return;
+    }
 
     // Flag prevents layout watcher from re-injecting elements we're about to remove
     spaReinitializing = true;

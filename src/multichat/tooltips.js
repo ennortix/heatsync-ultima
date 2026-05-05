@@ -565,7 +565,7 @@
 
     const statBadges = [];
     const heatHtml = heatSpanHtml(heat);
-    if (heatHtml) statBadges.push(heatHtml);
+    if (heatHtml) statBadges.push(`<span class="hs-pc-stat hs-pc-stat-heat">${heatHtml}</span>`);
     if (op > 0) statBadges.push(`<span class="hs-pc-stat op"><span class="hs-pc-num">${formatCompact(op)}</span>[OP]</span>`);
     if (mop > 0) statBadges.push(`<span class="hs-pc-stat mop"><span class="hs-pc-num">${formatCompact(mop)}</span>[OP]</span>`);
     if (re > 0) statBadges.push(`<span class="hs-pc-stat re"><span class="hs-pc-num">${formatCompact(re)}</span>[RE]</span>`);

@@ -4161,23 +4161,22 @@ function injectStyles() {
       position: fixed;
       z-index: 100000;
       pointer-events: none;
-      background: #808080;
-      border: 1px solid #404040;
+      background: #000;
+      border: 1px solid #2a2a2a;
       border-radius: 0;
-      padding: 10px 6px 6px 6px;
+      padding: 8px;
       display: none;
       min-width: 240px;
       max-width: 400px;
-      border: 1px solid #333;
     }
     #hs-user-tooltip.visible {
       display: flex;
     }
     #hs-user-tooltip .hs-pc-avatar {
-      width: 32px;
-      height: 32px;
-      min-width: 32px;
-      border: 1px solid #000;
+      width: 40px;
+      height: 40px;
+      min-width: 40px;
+      border: 1px solid #2a2a2a;
       object-fit: cover;
       flex-shrink: 0;
       align-self: flex-start;
@@ -4187,13 +4186,14 @@ function injectStyles() {
       min-width: 0;
       display: flex;
       flex-direction: column;
-      gap: 1px;
-      margin-left: 6px;
+      gap: 6px;
+      margin-left: 8px;
     }
     #hs-user-tooltip .hs-pc-header {
       display: flex;
       align-items: center;
-      gap: 4px;
+      column-gap: 4px;
+      row-gap: 6px;
       flex-wrap: wrap;
       line-height: 1.2;
     }
@@ -4214,13 +4214,10 @@ function injectStyles() {
       color: #000;
     }
     #hs-user-tooltip .hs-pc-name {
-      font-size: 14px;
-      font-weight: 600;
+      font-size: 15px;
+      font-weight: 700;
       white-space: nowrap;
-      background: #fff;
-      border: 1px solid #000;
-      padding: 2px 3px;
-      color: #000;
+      color: #fff;
     }
     #hs-user-tooltip .hs-pc-role {
       padding: 2px 3px;
@@ -4233,14 +4230,14 @@ function injectStyles() {
     #hs-user-tooltip .hs-pc-role.admin { background: #ff0000; color: #fff; }
     #hs-user-tooltip .hs-pc-role.staff { background: #ff8800; color: #000; }
     #hs-user-tooltip .hs-pc-role.partner { background: #ffaa00; color: #000; }
-    #hs-user-tooltip .hs-pc-role.affiliate { background: #808080; color: #fff; }
+    #hs-user-tooltip .hs-pc-role.affiliate { background: transparent; color: #fff; }
     #hs-user-tooltip .hs-pc-age {
-      padding: 2px 3px;
-      font-size: 10px;
+      padding: 2px 4px;
+      font-size: 11px;
       font-weight: 900;
-      border: 1px solid #ffff00;
-      background: transparent;
-      color: #ffff00;
+      border: 1px solid #000;
+      background: #ffff00;
+      color: #000;
       white-space: nowrap;
       letter-spacing: 0.3px;
     }
@@ -4248,8 +4245,11 @@ function injectStyles() {
       font-size: 12px;
       color: #fff;
       line-height: 1.3;
-      margin: 2px 0;
       word-break: break-word;
+      display: -webkit-box;
+      -webkit-line-clamp: 4;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
     }
     #hs-user-tooltip .hs-pc-bio-mention { color: #ff8700; cursor: pointer; }
     #hs-user-tooltip .hs-pc-bio-mention:hover { text-decoration: underline; }
@@ -4284,6 +4284,8 @@ function injectStyles() {
     #hs-user-tooltip .hs-pc-stat.mop .hs-pc-num { color: #fff; }
     #hs-user-tooltip .hs-pc-stat.re { border-color: #00ffff; color: #00ffff; }
     #hs-user-tooltip .hs-pc-stat.re .hs-pc-num { color: #fff; }
+    #hs-user-tooltip .hs-pc-stat-heat { border-color: #ff8700; }
+    #hs-user-tooltip .hs-pc-stat-heat .hs-heat-num { font-size: 11px; font-weight: 700; }
     #hs-user-tooltip .hs-pc-rel {
       display: flex;
       align-items: center;
@@ -4338,7 +4340,7 @@ function injectStyles() {
       color: #fff;
     }
     #hs-user-tooltip .hs-pc-loading {
-      color: #808080;
+      color: #fff;
       font-size: 11px;
     }
     .hs-mc-channel {
@@ -12145,7 +12147,7 @@ async function sendKickMessage(kickSlug, text) {
 
     const statBadges = [];
     const heatHtml = heatSpanHtml(heat);
-    if (heatHtml) statBadges.push(heatHtml);
+    if (heatHtml) statBadges.push(`<span class="hs-pc-stat hs-pc-stat-heat">${heatHtml}</span>`);
     if (op > 0) statBadges.push(`<span class="hs-pc-stat op"><span class="hs-pc-num">${formatCompact(op)}</span>[OP]</span>`);
     if (mop > 0) statBadges.push(`<span class="hs-pc-stat mop"><span class="hs-pc-num">${formatCompact(mop)}</span>[OP]</span>`);
     if (re > 0) statBadges.push(`<span class="hs-pc-stat re"><span class="hs-pc-num">${formatCompact(re)}</span>[RE]</span>`);

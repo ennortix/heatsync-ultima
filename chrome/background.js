@@ -25,6 +25,10 @@ ensureAlarm('refresh-global-emotes', { periodInMinutes: 1440 });
 ensureAlarm('refresh-emote-inventory', { periodInMinutes: 1 });
 ensureAlarm('prune-expired-mutes', { periodInMinutes: 1 });
 ensureAlarm('live-poll', { periodInMinutes: 1 });
+// WS watchdog — survives SW eviction. setInterval timers inside onopen die
+// when the SW is terminated; this alarm wakes the SW and either reconnects,
+// kills a zombie, or sends a heartbeat. Each fire is 30s (chrome.alarms min).
+ensureAlarm('hs-ws-watchdog', { periodInMinutes: 0.5 });
 browser.alarms?.onAlarm?.addListener((alarm) => {
   if (alarm.name === 'keepalive') {
     // Just existing is enough to keep the worker alive
@@ -42,6 +46,26 @@ browser.alarms?.onAlarm?.addListener((alarm) => {
     if (typeof pollFollowedLive === 'function') {
       try { pollFollowedLive().catch(() => {}) } catch {}
     }
+  } else if (alarm.name === 'hs-ws-watchdog') {
+    // Three states to handle:
+    //   1) WS not open: kick a fresh connect (no-op if already connecting)
+    //   2) WS open + zombie (no data received for 75s): close → reconnect
+    //   3) WS open + healthy: send heartbeat to defeat the server's 2min
+    //      idle timeout
+    try {
+      if (typeof isSocketOpen !== 'function') return
+      if (!isSocketOpen()) {
+        if (typeof connectWebSocket === 'function') connectWebSocket().catch(() => {})
+        return
+      }
+      if (typeof lastWsDataReceived !== 'undefined' && lastWsDataReceived
+          && Date.now() - lastWsDataReceived > 75000) {
+        log('WS zombie detected (alarm path), reconnecting')
+        try { socket.close() } catch {}
+        return
+      }
+      try { socket.send(JSON.stringify({ type: 'presence:heartbeat' })) } catch {}
+    } catch (e) { log('hs-ws-watchdog error:', e?.message) }
   }
 });
 
@@ -2692,25 +2716,14 @@ async function connectWebSocket() {
         // the 2min idle threshold and immediately kill the fresh socket.
         lastWsDataReceived = Date.now();
 
-        // Start heartbeat to keep connection alive (server has 2min idle timeout).
-        // Tighter than before (was 90s/120s) — long-running stream sessions can't
-        // tolerate 2min dead windows for a silent zombie. Heartbeat every 30s,
-        // zombie detection if data stops for 75s (~2.5x heartbeat interval).
-        if (heartbeatInterval) untrackInterval(heartbeatInterval)
-        heartbeatInterval = trackInterval(setInterval(() => {
-          if (isSocketOpen()) {
-            if (lastWsDataReceived && Date.now() - lastWsDataReceived > 75000) {
-              log('WS zombie detected, reconnecting')
-              socket.close()
-              return
-            }
-            try {
-              socket.send(JSON.stringify({ type: 'presence:heartbeat' }));
-            } catch (err) {
-              log(' Heartbeat send failed:', err?.message);
-            }
-          }
-        }, 30000))
+        // Heartbeat + zombie detection moved to chrome.alarms 'hs-ws-watchdog'
+        // (registered at SW boot). Alarms survive SW eviction; setInterval did
+        // not — when Chrome killed the SW the heartbeat stopped, the server's
+        // 2min idle timer fired, the socket dropped, and we'd only notice on
+        // the next runtime event. The alarm wakes the SW every 30s regardless.
+        // Send one immediate heartbeat so the server sees us right after auth
+        // instead of waiting up to the next alarm tick.
+        try { socket.send(JSON.stringify({ type: 'presence:heartbeat' })) } catch {}
 
         // Rejoin all tracked tab channels
         const rejoinedChannels = new Set()

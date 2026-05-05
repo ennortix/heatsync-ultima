@@ -127,6 +127,18 @@
   // Per-channel YouTube: messages and links
   const channelYtMessages = new Map();  // channelTabId → message[]
   const youtubeLinks = new Map();       // channelTabId → { url, videoId, channelName }
+  // YouTube watchdog state — per-channel last activity + rejoin escalation count.
+  // Mirrors the kick/twitch watchdogs: catches the case where the heatsync
+  // server's YT poller dies for one video without taking down the WS, so
+  // global metrics look fine but one channel goes silent.
+  const ytChanLastSeen = new Map();        // channelId -> ms
+  const ytChanRejoinAttempts = new Map();  // channelId -> escalation count
+  const ytSubscribedUrls = new Map();      // channelId -> last-known sub URL
+  function touchYtChannel(channelId) {
+    if (!channelId) return;
+    ytChanLastSeen.set(channelId, Date.now());
+    if (ytChanRejoinAttempts.size) ytChanRejoinAttempts.delete(channelId);
+  }
 
   // YouTube global state (per-channel only now — global removed)
 
@@ -5187,6 +5199,8 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     if (names.twitch) irc?.join(names.twitch)
     if (names.kick) kickChat?.join(names.kick)
     if (names.youtube) {
+      ytSubscribedUrls.set('__live_yt_auto__', names.youtube)
+      ytChanLastSeen.set('__live_yt_auto__', Date.now())
       chrome.runtime.sendMessage({
         type: 'youtube_ws_subscribe', url: names.youtube, channelId: '__live_yt_auto__'
       }).catch(() => {})
@@ -5962,6 +5976,8 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       for (const ch of config.channels) {
         if (typeof ch !== 'string' && ch.youtube) {
           youtubeLinks.set(ch.id, { url: ch.youtube, videoId: '', channelName: '' });
+          ytSubscribedUrls.set(ch.id, ch.youtube);
+          ytChanLastSeen.set(ch.id, Date.now());
           chrome.runtime.sendMessage({ type: 'youtube_ws_subscribe', url: ch.youtube, channelId: ch.id }).catch(() => {});
         }
       }
@@ -7223,6 +7239,8 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       const autoYtUrl = onYtVideoPage
         ? `https://youtube.com/watch?v=${currentChannel}`
         : ytUrl
+      ytSubscribedUrls.set('__live_yt_auto__', autoYtUrl)
+      ytChanLastSeen.set('__live_yt_auto__', Date.now())
       chrome.runtime.sendMessage({
         type: 'youtube_ws_subscribe', url: autoYtUrl, channelId: '__live_yt_auto__'
       }).catch(() => {})
@@ -7782,6 +7800,46 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     });
 
     // === BULLETPROOF CONNECTION MAINTENANCE ===
+
+    // 0. YouTube per-channel watchdog. Mirrors the kick watchdog: heatsync
+    // server's per-video YT pollers can die without taking the BG WS down,
+    // which would otherwise leave one channel silent for hours. 30s tick,
+    // 3-min silence threshold (YT chats are slower than twitch/kick on
+    // average), then escalate: re-subscribe → unsubscribe+subscribe → BG
+    // WS force-reconnect.
+    cleanup.setInterval(() => {
+      const now = Date.now()
+      for (const [channelId, last] of ytChanLastSeen) {
+        if (!last || now - last <= 180000) continue
+        // Resolve a URL we can re-subscribe with: in priority order, the
+        // last one we used, the auto-detected link, the config entry.
+        const url = ytSubscribedUrls.get(channelId)
+          || youtubeLinks.get(channelId)?.url
+          || (() => {
+            const c = config.channels.find(ch => typeof ch !== 'string' && ch.id === channelId)
+            return c?.youtube || null
+          })()
+        if (!url) continue
+        const attempts = ytChanRejoinAttempts.get(channelId) || 0
+        const silenceS = Math.round((now - last) / 1000)
+        if (attempts === 0) {
+          log('YT', channelId, 'silent', silenceS, 's — re-subscribing')
+          chrome.runtime.sendMessage({ type: 'youtube_ws_subscribe', url, channelId }).catch(() => {})
+        } else if (attempts === 1) {
+          log('YT', channelId, 'still silent', silenceS, 's — unsubscribe + subscribe')
+          chrome.runtime.sendMessage({ type: 'youtube_ws_unsubscribe', channelId }).catch(() => {})
+          chrome.runtime.sendMessage({ type: 'youtube_ws_subscribe', url, channelId }).catch(() => {})
+        } else {
+          log('YT', channelId, 'unresponsive', silenceS, 's after', attempts, '— BG WS force-reconnect')
+          chrome.runtime.sendMessage({ type: 'ws_force_reconnect', source: 'yt_watchdog', channel: channelId }).catch(() => {})
+          ytChanRejoinAttempts.set(channelId, 0)
+          ytChanLastSeen.set(channelId, now)
+          continue
+        }
+        ytChanRejoinAttempts.set(channelId, attempts + 1)
+        ytChanLastSeen.set(channelId, now) // disarm one cycle
+      }
+    }, 30000, 'yt-watchdog')
 
     // 1. Detect extension context invalidation → auto-reload page
     // When Chrome restarts the service worker or updates the extension,

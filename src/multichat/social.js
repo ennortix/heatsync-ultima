@@ -596,6 +596,11 @@ function listenForSocialEvents() {
     }
     if (msg.type === 'youtube_chat_message') {
       const targetChannelId = msg.channelId
+      // Touch the YT watchdog clock on every chat message regardless of
+      // dedup/filter outcome — even rejected msgs prove the BG-server pipe
+      // is alive for this channel, which is the only thing the watchdog
+      // cares about.
+      try { touchYtChannel(targetChannelId) } catch {}
       // Filter __live_yt_auto__ messages: only accept if videoId matches this tab's subscription
       // (prevents cross-tab leaking — e.g., lofigirl YouTube showing on a Twitch tab)
       if (targetChannelId === '__live_yt_auto__') {
@@ -703,6 +708,11 @@ function listenForSocialEvents() {
     }
     if (msg.type === 'youtube_status') {
       const targetChannelId = msg.channelId
+      // Connected status touches the watchdog — server confirmed our sub,
+      // so the channel is healthy even if no chat messages arrive yet.
+      if (msg.status === 'connected') {
+        try { touchYtChannel(targetChannelId) } catch {}
+      }
       // Track auto-YouTube videoId for cross-tab filtering
       if (targetChannelId === '__live_yt_auto__' && msg.status === 'connected' && msg.videoId) {
         _autoYtVideoId = msg.videoId

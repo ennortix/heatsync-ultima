@@ -24615,6 +24615,18 @@ const STORAGE_KEY = 'heatsync_multichat';
       return
     }
     if (theatreMode) return
+    // Offline channel: Twitch shows a small recommended-VOD PiP mini-player
+    // (~185×104) on the channel-home page. Pinning it top:0/left:0 makes it
+    // float awkwardly in the corner instead of where Twitch positioned it.
+    // Skip pinning when .channel-root--home is present.
+    if (document.querySelector('.channel-root--home')) {
+      // Also clear any prior pin we may have applied before going offline.
+      if (pp.style.top === '0px' || pp.style.left === '0px') {
+        pp.style.removeProperty('top')
+        pp.style.removeProperty('left')
+      }
+      return
+    }
     // chatPosition === 'right' default path — pin top:0 when Twitch's React
     // forgets to set it (player falls to natural-flow position y > 2000px).
     const cur = pp.style.top
@@ -24627,6 +24639,9 @@ const STORAGE_KEY = 'heatsync_multichat';
       if (_ttvPpStyleObserver) { try { _ttvPpStyleObserver.disconnect() } catch (_) {} _ttvPpStyleObserver = null }
       _ttvPpStyleObserver = new MutationObserver(() => {
         if (chatPosition !== 'right' || theatreMode) return
+        // Same offline guard inside the style observer — Twitch's React may
+        // re-render mid-session (live → offline) and we'd otherwise re-pin.
+        if (document.querySelector('.channel-root--home')) return
         const r = parseFloat(getComputedStyle(pp).top) || 0
         if (r > 200) {
           pp.style.setProperty('top', '0', 'important')

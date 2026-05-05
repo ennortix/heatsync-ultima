@@ -16682,6 +16682,17 @@ function listenForSocialEvents() {
         systemMsg: msg.systemMsg || undefined,
       }
 
+      // Echo dedup + host-platform badge attribution (matches IRC/kick
+      // handlers). Without this, a triple-target send would render TWO
+      // copies of the user's own message — the dedup'd twitch/kick echo
+      // PLUS the unfiltered YT echo. peekSentHost ensures the badge
+      // reflects where the user actually typed FROM.
+      if (isSentEcho(ytMsg.text, 'youtube')) return
+      if (ytMsg.user?.toLowerCase() === currentUsername?.toLowerCase()) {
+        const sentHost = peekSentHost(ytMsg.text)
+        if (sentHost) ytMsg.platform = sentHost === 'yt' ? 'youtube' : sentHost
+      }
+
       // Same pipeline as Twitch/Kick handlers: automod → mention → stats
       if (ytMsg.user?.toLowerCase() !== currentUsername?.toLowerCase() && shouldAutomod(ytMsg.text)) return
       const isMent = isMention(ytMsg)

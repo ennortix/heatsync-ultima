@@ -484,6 +484,14 @@ function listenForSocialEvents() {
   window._hsMcSocialListener = true;
 
   chrome.runtime?.onMessage?.addListener((msg) => {
+    if (msg.type === 'chat_origin_broadcast' && msg.text) {
+      // Heatsync.org chat-tile sent a chat — record the origin so the
+      // upcoming platform echo gets tagged [H] via peekSentHost. Same
+      // 10s dedup window as locally-tracked sends; chrome.storage sync
+      // fans this out to other extension tabs automatically.
+      try { trackSentMessage(msg.text, 'heatsync') } catch (_) {}
+      return
+    }
     if (msg.type === 'new-message' && msg.data) {
       if (!feedLoaded) return;
       // Dedup: skip if already in feed

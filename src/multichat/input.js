@@ -34,8 +34,8 @@ function _pruneRecent(arr) {
   return arr.filter(e => e && e.time >= cutoff)
 }
 
-function trackSentMessage(text) {
-  _recentSentMessages.push({ text, time: Date.now(), host: hostPlatform })
+function trackSentMessage(text, hostOverride) {
+  _recentSentMessages.push({ text, time: Date.now(), host: hostOverride || hostPlatform })
   _recentSentMessages = _pruneRecent(_recentSentMessages)
   // Cross-tab sync: kick.com tab and twitch.tv tab live in different
   // content-script contexts, so they each have their own array. Storage

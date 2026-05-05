@@ -3147,6 +3147,19 @@ function handleWSMessage(msg) {
       })
       break
 
+    case 'chat:origin_broadcast':
+      // User sent a chat message from the heatsync.org chat-tile on a
+      // different device — fan out to all tabs so multichat can tag the
+      // upcoming platform-relay echo with [H] instead of [T]/[K].
+      broadcastToTabs({
+        type: 'chat_origin_broadcast',
+        text: msg.text,
+        channel: msg.channel,
+        origin: msg.origin || 'heatsync',
+        ts: msg.ts || Date.now()
+      })
+      break
+
     case 'kick-sub-event':
       // Relay Kick subscription events to content scripts
       broadcastToTabs({

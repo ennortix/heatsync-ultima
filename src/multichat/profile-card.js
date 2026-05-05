@@ -323,7 +323,8 @@ function renderProfileCardView() {
     if (relParts.length) {
       const rline = document.createElement('div')
       rline.className = 'hs-pcard-rel'
-      rline.textContent = relParts.join(' · ')
+      // House style: no dots between profile relationship items.
+      rline.textContent = relParts.join('  ')
       statsSec.appendChild(rline)
     }
     if (!hasStats && !relParts.length) {

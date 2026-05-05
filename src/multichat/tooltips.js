@@ -578,7 +578,7 @@
     const followsYou = rel.profileFollowsViewerOnTwitch || rel.profileFollowsViewerOnKick || rel.followsYou;
     if (followsYou) {
       const since = rel.profileFollowsViewerOnTwitchSince || rel.profileFollowsViewerOnKickSince || rel.followsYouSince;
-      relBadges.push(`<span class="hs-pc-rel-badge mutual">follows you${since ? ' · ' + getCompactRelTime(since).replace(' ago', '') : ''}</span>`);
+      relBadges.push(`<span class="hs-pc-rel-badge mutual">follows you${since ? ' ' + getCompactRelTime(since).replace(' ago', '') : ''}</span>`);
     }
     // They → you (sub) — with tier
     const subsYou = rel.profileSubbedToViewerOnTwitch || rel.profileSubbedToViewerOnKick || rel.subscribesToYou;
@@ -587,13 +587,13 @@
       const rawTier = rel.profileTwitchSubTier || rel.profileKickSubTier || rel.subscribesToYouTier;
       const tierNum = typeof rawTier === 'string' ? Math.round(Number(rawTier) / 1000) : rawTier;
       const tierStr = tierNum && tierNum > 1 ? ' T' + tierNum : '';
-      relBadges.push(`<span class="hs-pc-rel-badge supporter">subs to you${tierStr}${since ? ' · ' + getCompactRelTime(since).replace(' ago', '') : ''}</span>`);
+      relBadges.push(`<span class="hs-pc-rel-badge supporter">subs to you${tierStr}${since ? ' ' + getCompactRelTime(since).replace(' ago', '') : ''}</span>`);
     }
     // You → them (follow) — ?? respects explicit false from canonical youFollow
     const youFollow = rel.youFollow ?? rel.isFollowing ?? rel.followsOnTwitch ?? rel.followsOnKick;
     if (youFollow) {
       const since = rel.youFollowSince || rel.followsOnTwitchSince || rel.followsOnKickSince || rel.followedAt;
-      relBadges.push(`<span class="hs-pc-rel-badge following">following${since ? ' · ' + getCompactRelTime(since).replace(' ago', '') : ''}</span>`);
+      relBadges.push(`<span class="hs-pc-rel-badge following">following${since ? ' ' + getCompactRelTime(since).replace(' ago', '') : ''}</span>`);
     }
     // You → them (sub) — normalize tier
     const youSub = rel.youSub ?? rel.isSubscribed ?? rel.subscribedOnTwitch ?? rel.subscribedOnKick;
@@ -602,7 +602,7 @@
       const tierNum = typeof rawTier === 'string' ? Math.round(Number(rawTier) / 1000) : rawTier;
       const tier = tierNum || 1;
       const since = rel.twitchSubSince || rel.kickSubSince || rel.subscribedAt;
-      relBadges.push(`<span class="hs-pc-rel-badge subbed">you sub${tier > 1 ? ' T' + tier : ''}${since ? ' · ' + getCompactRelTime(since).replace(' ago', '') : ''}</span>`);
+      relBadges.push(`<span class="hs-pc-rel-badge subbed">you sub${tier > 1 ? ' T' + tier : ''}${since ? ' ' + getCompactRelTime(since).replace(' ago', '') : ''}</span>`);
     }
     // Mutual indicators when both directions present
     if (followsYou && youFollow) {

@@ -10,11 +10,19 @@ const lifecycle = new AbortController()
 const mcSignal = lifecycle.signal
 const _timers = { intervals: [], timeouts: [], observers: [] }
 const _pendingRafs = new Set()
+// Listeners on APIs that don't honor AbortSignal (chrome.runtime.onMessage,
+// chrome.storage.onChanged). We track {target, fn} pairs and call removeListener
+// on abort so reinit (SPA nav, hot-reload) doesn't leave stale handlers behind.
+const _trackedListeners = []
 mcSignal.addEventListener('abort', () => {
   _timers.intervals.forEach(clearInterval)
   _timers.timeouts.forEach(clearTimeout)
   _timers.observers.forEach(o => o.disconnect())
   _pendingRafs.forEach(cancelAnimationFrame); _pendingRafs.clear()
+  for (const { target, fn } of _trackedListeners) {
+    try { target.removeListener(fn) } catch (e) {}
+  }
+  _trackedListeners.length = 0
   if (irc) { irc.destroy(); }
   if (kickChat) { kickChat.destroy(); }
   cleanupAuthIrc(true)
@@ -24,6 +32,12 @@ mcSignal.addEventListener('abort', () => {
   delete window._hsMcSettingsListener
   delete window._hsMcTabHandler
   delete window._hsMcTypeRevealHandler
+  delete window._hsMcStreamEventListener
+  delete window._hsMcFollowStreamEventListener
+  delete window._hsMcFollowColorsListener
+  delete window._hsMcFollowHistoryListener
+  delete window._hsMcSocialListener
+  delete window._hsMcInputStorageListener
 })
 window.addEventListener('pagehide', () => lifecycle.abort())
 
@@ -42,6 +56,13 @@ const cleanup = {
   clearTimeout(id) { clearTimeout(id); const i = _timers.timeouts.indexOf(id); if (i !== -1) _timers.timeouts.splice(i, 1) },
   addEventListener(target, event, handler) {
     target.addEventListener(event, handler, { signal: mcSignal })
+  },
+  // For chrome.runtime.onMessage / chrome.storage.onChanged etc — APIs that
+  // expose addListener/removeListener but ignore AbortSignal.
+  addListener(target, fn) {
+    if (!target?.addListener) return
+    target.addListener(fn)
+    _trackedListeners.push({ target, fn })
   },
   trackObserver(obs) { _timers.observers.push(obs); return obs },
   untrackObserver(obs) {

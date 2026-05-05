@@ -580,9 +580,6 @@
     if (!user) return
     if (node.dataset.hsYtDeletedSent) return
     node.dataset.hsYtDeletedSent = '1'
-    // Unconditional log — moderator deletions are rare events and we want
-    // them visible in the console for verification regardless of DEBUG.
-    console.log('[heatsync-ext][yt] msg deleted:', user, reason || '')
     safeSendMessage({
       type: 'youtube_msg_deleted',
       videoId,

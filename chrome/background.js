@@ -29,6 +29,10 @@ ensureAlarm('live-poll', { periodInMinutes: 1 });
 // when the SW is terminated; this alarm wakes the SW and either reconnects,
 // kills a zombie, or sends a heartbeat. Each fire is 30s (chrome.alarms min).
 ensureAlarm('hs-ws-watchdog', { periodInMinutes: 0.5 });
+// 7TV reconnect watchdog — the in-flight setTimeout backoff dies if the SW
+// is evicted mid-disconnect. This alarm wakes the SW every 2 min to resurrect
+// the 7TV WS if there are emote sets that should be subscribed.
+ensureAlarm('hs-7tv-watchdog', { periodInMinutes: 2 });
 browser.alarms?.onAlarm?.addListener((alarm) => {
   if (alarm.name === 'keepalive') {
     // Just existing is enough to keep the worker alive
@@ -66,6 +70,21 @@ browser.alarms?.onAlarm?.addListener((alarm) => {
       }
       try { socket.send(JSON.stringify({ type: 'presence:heartbeat' })) } catch {}
     } catch (e) { log('hs-ws-watchdog error:', e?.message) }
+  } else if (alarm.name === 'hs-7tv-watchdog') {
+    // Resurrect the 7TV WS if it died and the in-flight setTimeout backoff
+    // was lost to SW eviction. No-op if the WS is already healthy.
+    try {
+      if (typeof ensure7TVConnection !== 'function') return
+      if (typeof seventvEmoteSetIds === 'undefined' || !seventvEmoteSetIds || seventvEmoteSetIds.size === 0) return
+      const ws = typeof seventvWebSocket !== 'undefined' ? seventvWebSocket : null
+      const dead = !ws || (ws.readyState !== WebSocket.OPEN && ws.readyState !== WebSocket.CONNECTING)
+      if (dead) {
+        log('7TV reconnect alarm: WS dead, reviving')
+        // Reset backoff cap so we keep trying after an SW restart.
+        try { seventvReconnectAttempts = 0 } catch {}
+        ensure7TVConnection()
+      }
+    } catch (e) { log('hs-7tv-watchdog error:', e?.message) }
   }
 });
 
@@ -986,7 +1005,7 @@ function fireLiveNotificationFromStream(stream, username, platform) {
   try {
     browser.notifications.create(id, {
       type: 'basic',
-      iconUrl: 'icon-128.png',
+      iconUrl: browser.runtime.getURL('icon-128.png'),
       title: `${display} is live`,
       message: `${platName}${viewerStr}`,
       contextMessage: 'heatsync',
@@ -3425,7 +3444,7 @@ function broadcastEmoteUsage(emoteName, emoteHash, senderTabId = null) {
     platform,
     channel,
     emoteName,
-    emoteHash
+    emoteData: emoteHash ? { hash: emoteHash } : undefined
   });
 
   return { success: true };
@@ -3981,7 +4000,7 @@ async function handleMessage(message, sender, sendResponse) {
 
   // Forward WS message from content scripts (used by multichat kick channels)
   if (message.type === 'ws_send') {
-    const allowedWsTypes = ['channel:join', 'channel:leave', 'emote:used', 'youtube:subscribe', 'youtube:unsubscribe', 'multichat:sync', 'user:mute']
+    const allowedWsTypes = ['channel:join', 'channel:leave', 'emote:used', 'youtube:subscribe', 'youtube:unsubscribe', 'multichat:sync', 'user:mute', 'user:unmute']
     if (message.data && allowedWsTypes.includes(message.data.type)) {
       // Track multichat-added channel joins so we can replay on WS reconnect
       // (server restarts, network blips, SW resume — any of these orphan the join).
@@ -4135,10 +4154,18 @@ async function handleMessage(message, sender, sendResponse) {
     return true;
   } else if (message.type === 'join_channel') {
     // Content script detected channel change — wait for init so cached channel emotes are available
-    log(' 📺 Content script requesting channel join:', message.platform, '/', message.channel, 'id:', message.channelId)
+    // Defence in depth: validate platform + channel before forwarding to WS server
+    const VALID_PLATFORMS = new Set(['twitch', 'kick', 'youtube'])
+    const safePlatform = VALID_PLATFORMS.has(message.platform) ? message.platform : null
+    const safeChannel = String(message.channel || '').toLowerCase().replace(/[^a-z0-9_-]/g, '').slice(0, 50)
+    if (!safePlatform || !safeChannel) {
+      sendResponse({ received: false, error: 'invalid platform/channel' })
+      return true
+    }
+    log(' 📺 Content script requesting channel join:', safePlatform, '/', safeChannel, 'id:', message.channelId)
     ;(async () => {
       if (initPromise) await initPromise;
-      joinChannel(message.platform, message.channel, message.channelId, sender.tab?.id)
+      joinChannel(safePlatform, safeChannel, message.channelId, sender.tab?.id)
       sendResponse({ received: true })
     })();
     return true; // Keep channel open for async response

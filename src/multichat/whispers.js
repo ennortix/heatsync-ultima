@@ -76,7 +76,7 @@ function resolveSelfColor() {
   try {
     const el = document.querySelector(`.chat-author__display-name[data-a-user="${me}"]`)
     if (el) { selfWhisperColor = el.style.color || getComputedStyle(el).color; return }
-  } catch {}
+  } catch (e) { warn('selfWhisperColor DOM probe failed:', e?.message) }
 }
 
 let _whisperSaveTimer = null
@@ -98,7 +98,7 @@ function saveWhispers() {
         lastViewed: whisperLastViewedTime
       }
     })
-  } catch {}
+  } catch (e) { warn('whispers save failed:', e?.message) }
 }
 
 function loadWhispers() {
@@ -156,8 +156,8 @@ function loadWhispers() {
 
       whisperTotalUnread = whisperTimeline.filter(m => !m.self && m.time > whisperLastViewedTime).length
       updateWhisperBadge()
-    }).catch(() => {})
-  } catch {}
+    }).catch((e) => warn('whispers load (storage.get) failed:', e?.message))
+  } catch (e) { warn('whispers load failed:', e?.message) }
 }
 
 function updateWhisperBadge() {

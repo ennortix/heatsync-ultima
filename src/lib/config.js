@@ -51,8 +51,8 @@ const CONFIG = {
     WS_7TV_OFFLINE_TIMEOUT: 600000,      // stop reconnecting after 10 min offline
     SEVENTV_POLL_INTERVAL: 30000,
 
-    // Message queue (background.js)
-    MESSAGE_QUEUE_TTL: 30000,            // drop stale queued messages
+    // Message queue (background.js — value mirrored there too)
+    MESSAGE_QUEUE_TTL: 60000,            // matches max reconnect backoff + jitter
 
     // Mute / prune
     MUTE_PRUNE_INTERVAL: 60000,
@@ -88,7 +88,6 @@ const CONFIG = {
     MC_AUTH_RECONNECT_INITIAL: 1000,
     MC_AUTH_RECONNECT_MAX_DELAY: 30000,
     MC_WHISPER_SEND_TIMEOUT: 8000,
-    MC_SEARCH_DEBOUNCE: 300,            // not yet extracted, placeholder
 
     // General fetch default
     FETCH_TIMEOUT: 10000,

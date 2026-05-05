@@ -125,9 +125,6 @@ function findComponent(startEl, predicate, maxDepth = 50) {
 const DEBUG = typeof window !== 'undefined' &&
   (window.HEATSYNC_DEBUG || localStorage.getItem('heatsync_debug') === 'true')
 
-/**
- * Debug log (only when HEATSYNC_DEBUG is true)
- */
 // ============================================
 // READABLE NAME COLOR (luminance boost)
 // ============================================

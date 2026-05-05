@@ -1645,7 +1645,9 @@ const _gqlDataCache = {} // operationName → { data, ts }
 
 // Listen for passively intercepted GQL data from MAIN world
 window.addEventListener('message', (e) => {
-  if (e.origin !== location.origin) return
+  // Same-origin frames (Twitch embeds) could otherwise poison the cache —
+  // restrict to the top window (where early-inject-main.js runs).
+  if (e.source !== window || e.origin !== location.origin) return
   if (e.data?.type === 'heatsync-gql-data') {
     const { operation, data, errors } = e.data
     if (data && !errors?.length) {

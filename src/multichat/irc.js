@@ -336,7 +336,10 @@ class IRC {
     }
     this.partial = '';
 
-    const connectTimeout = setTimeout(() => {
+    // Stored on the instance so destroy() can cancel a still-pending timer
+    // before its 10s closure expires (otherwise it pins this.ws in memory).
+    if (this._connectTimeout) clearTimeout(this._connectTimeout);
+    this._connectTimeout = setTimeout(() => {
       if (this.ws?.readyState !== WebSocket.OPEN) {
         log('IRC connect timeout');
         try { this.ws.close(); } catch {}
@@ -345,7 +348,7 @@ class IRC {
 
     this.ws = new WebSocket('wss://irc-ws.chat.twitch.tv:443');
     this.ws.onopen = () => {
-      clearTimeout(connectTimeout);
+      clearTimeout(this._connectTimeout);
       log('IRC connected');
       this._reconnectAttempts = 0;
       this._lastData = Date.now();
@@ -367,9 +370,9 @@ class IRC {
       if (currentCh) fetchChannelBadges(currentCh);
     };
     this.ws.onmessage = (e) => this.parse(e.data);
-    this.ws.onerror = () => { clearTimeout(connectTimeout); };
+    this.ws.onerror = () => { clearTimeout(this._connectTimeout); };
     this.ws.onclose = () => {
-      clearTimeout(connectTimeout);
+      clearTimeout(this._connectTimeout);
       this._stopHeartbeat();
       if (this._destroyed) return;
       this._scheduleReconnect();
@@ -380,6 +383,7 @@ class IRC {
     this._destroyed = true;
     this._ac?.abort();
     this._stopHeartbeat();
+    if (this._connectTimeout) { clearTimeout(this._connectTimeout); this._connectTimeout = null; }
     cleanup.clearTimeout(this._reconnectTimer);
     for (const id of Object.values(this._persistTimers)) cleanup.clearTimeout(id);
     this._persistTimers = {};

@@ -47,26 +47,31 @@ function trackSentMessage(text, hostOverride) {
 }
 
 // Hydrate from storage on load + listen for cross-tab updates.
+// Listener is tracked via cleanup so SPA reinit doesn't stack copies.
 try {
   chrome.storage.local.get(RECENT_SENT_KEY).then((data) => {
     const incoming = data?.[RECENT_SENT_KEY]
     if (Array.isArray(incoming)) _recentSentMessages = _pruneRecent(incoming)
   }).catch(() => {})
-  chrome.storage.onChanged.addListener((changes, area) => {
-    if (area !== 'local' || !changes[RECENT_SENT_KEY]) return
-    const incoming = changes[RECENT_SENT_KEY].newValue
-    if (!Array.isArray(incoming)) return
-    // Merge our local writes with the incoming snapshot — last-write-wins
-    // by (text, second-bucketed time). Survives the rare two-tab-send race.
-    const merged = new Map()
-    for (const e of [..._recentSentMessages, ...incoming]) {
-      if (!e || !e.text) continue
-      const k = `${e.text}:${Math.floor((e.time || 0) / 1000)}`
-      const existing = merged.get(k)
-      if (!existing || (existing.time || 0) < (e.time || 0)) merged.set(k, e)
+  if (!window._hsMcInputStorageListener) {
+    const _inputStorageHandler = (changes, area) => {
+      if (area !== 'local' || !changes[RECENT_SENT_KEY]) return
+      const incoming = changes[RECENT_SENT_KEY].newValue
+      if (!Array.isArray(incoming)) return
+      // Merge our local writes with the incoming snapshot — last-write-wins
+      // by (text, second-bucketed time). Survives the rare two-tab-send race.
+      const merged = new Map()
+      for (const e of [..._recentSentMessages, ...incoming]) {
+        if (!e || !e.text) continue
+        const k = `${e.text}:${Math.floor((e.time || 0) / 1000)}`
+        const existing = merged.get(k)
+        if (!existing || (existing.time || 0) < (e.time || 0)) merged.set(k, e)
+      }
+      _recentSentMessages = _pruneRecent([...merged.values()].sort((a, b) => a.time - b.time))
     }
-    _recentSentMessages = _pruneRecent([...merged.values()].sort((a, b) => a.time - b.time))
-  })
+    cleanup.addListener(chrome.storage.onChanged, _inputStorageHandler)
+    window._hsMcInputStorageListener = true
+  }
 } catch (_) {}
 
 function isSentEcho(msgText, _msgPlatform) {

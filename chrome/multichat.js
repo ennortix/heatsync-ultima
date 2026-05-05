@@ -57,8 +57,8 @@ const CONFIG = {
     WS_7TV_OFFLINE_TIMEOUT: 600000,      // stop reconnecting after 10 min offline
     SEVENTV_POLL_INTERVAL: 30000,
 
-    // Message queue (background.js)
-    MESSAGE_QUEUE_TTL: 30000,            // drop stale queued messages
+    // Message queue (background.js — value mirrored there too)
+    MESSAGE_QUEUE_TTL: 60000,            // matches max reconnect backoff + jitter
 
     // Mute / prune
     MUTE_PRUNE_INTERVAL: 60000,
@@ -94,7 +94,6 @@ const CONFIG = {
     MC_AUTH_RECONNECT_INITIAL: 1000,
     MC_AUTH_RECONNECT_MAX_DELAY: 30000,
     MC_WHISPER_SEND_TIMEOUT: 8000,
-    MC_SEARCH_DEBOUNCE: 300,            // not yet extracted, placeholder
 
     // General fetch default
     FETCH_TIMEOUT: 10000,
@@ -562,9 +561,6 @@ function findComponent(startEl, predicate, maxDepth = 50) {
 const DEBUG = typeof window !== 'undefined' &&
   (window.HEATSYNC_DEBUG || localStorage.getItem('heatsync_debug') === 'true')
 
-/**
- * Debug log (only when HEATSYNC_DEBUG is true)
- */
 // ============================================
 // READABLE NAME COLOR (luminance boost)
 // ============================================
@@ -3075,11 +3071,19 @@ const lifecycle = new AbortController()
 const mcSignal = lifecycle.signal
 const _timers = { intervals: [], timeouts: [], observers: [] }
 const _pendingRafs = new Set()
+// Listeners on APIs that don't honor AbortSignal (chrome.runtime.onMessage,
+// chrome.storage.onChanged). We track {target, fn} pairs and call removeListener
+// on abort so reinit (SPA nav, hot-reload) doesn't leave stale handlers behind.
+const _trackedListeners = []
 mcSignal.addEventListener('abort', () => {
   _timers.intervals.forEach(clearInterval)
   _timers.timeouts.forEach(clearTimeout)
   _timers.observers.forEach(o => o.disconnect())
   _pendingRafs.forEach(cancelAnimationFrame); _pendingRafs.clear()
+  for (const { target, fn } of _trackedListeners) {
+    try { target.removeListener(fn) } catch (e) {}
+  }
+  _trackedListeners.length = 0
   if (irc) { irc.destroy(); }
   if (kickChat) { kickChat.destroy(); }
   cleanupAuthIrc(true)
@@ -3089,6 +3093,12 @@ mcSignal.addEventListener('abort', () => {
   delete window._hsMcSettingsListener
   delete window._hsMcTabHandler
   delete window._hsMcTypeRevealHandler
+  delete window._hsMcStreamEventListener
+  delete window._hsMcFollowStreamEventListener
+  delete window._hsMcFollowColorsListener
+  delete window._hsMcFollowHistoryListener
+  delete window._hsMcSocialListener
+  delete window._hsMcInputStorageListener
 })
 window.addEventListener('pagehide', () => lifecycle.abort())
 
@@ -3107,6 +3117,13 @@ const cleanup = {
   clearTimeout(id) { clearTimeout(id); const i = _timers.timeouts.indexOf(id); if (i !== -1) _timers.timeouts.splice(i, 1) },
   addEventListener(target, event, handler) {
     target.addEventListener(event, handler, { signal: mcSignal })
+  },
+  // For chrome.runtime.onMessage / chrome.storage.onChanged etc — APIs that
+  // expose addListener/removeListener but ignore AbortSignal.
+  addListener(target, fn) {
+    if (!target?.addListener) return
+    target.addListener(fn)
+    _trackedListeners.push({ target, fn })
   },
   trackObserver(obs) { _timers.observers.push(obs); return obs },
   untrackObserver(obs) {
@@ -9211,7 +9228,10 @@ class IRC {
     }
     this.partial = '';
 
-    const connectTimeout = setTimeout(() => {
+    // Stored on the instance so destroy() can cancel a still-pending timer
+    // before its 10s closure expires (otherwise it pins this.ws in memory).
+    if (this._connectTimeout) clearTimeout(this._connectTimeout);
+    this._connectTimeout = setTimeout(() => {
       if (this.ws?.readyState !== WebSocket.OPEN) {
         log('IRC connect timeout');
         try { this.ws.close(); } catch {}
@@ -9220,7 +9240,7 @@ class IRC {
 
     this.ws = new WebSocket('wss://irc-ws.chat.twitch.tv:443');
     this.ws.onopen = () => {
-      clearTimeout(connectTimeout);
+      clearTimeout(this._connectTimeout);
       log('IRC connected');
       this._reconnectAttempts = 0;
       this._lastData = Date.now();
@@ -9242,9 +9262,9 @@ class IRC {
       if (currentCh) fetchChannelBadges(currentCh);
     };
     this.ws.onmessage = (e) => this.parse(e.data);
-    this.ws.onerror = () => { clearTimeout(connectTimeout); };
+    this.ws.onerror = () => { clearTimeout(this._connectTimeout); };
     this.ws.onclose = () => {
-      clearTimeout(connectTimeout);
+      clearTimeout(this._connectTimeout);
       this._stopHeartbeat();
       if (this._destroyed) return;
       this._scheduleReconnect();
@@ -9255,6 +9275,7 @@ class IRC {
     this._destroyed = true;
     this._ac?.abort();
     this._stopHeartbeat();
+    if (this._connectTimeout) { clearTimeout(this._connectTimeout); this._connectTimeout = null; }
     cleanup.clearTimeout(this._reconnectTimer);
     for (const id of Object.values(this._persistTimers)) cleanup.clearTimeout(id);
     this._persistTimers = {};
@@ -14311,7 +14332,9 @@ const _gqlDataCache = {} // operationName → { data, ts }
 
 // Listen for passively intercepted GQL data from MAIN world
 window.addEventListener('message', (e) => {
-  if (e.origin !== location.origin) return
+  // Same-origin frames (Twitch embeds) could otherwise poison the cache —
+  // restrict to the top window (where early-inject-main.js runs).
+  if (e.source !== window || e.origin !== location.origin) return
   if (e.data?.type === 'heatsync-gql-data') {
     const { operation, data, errors } = e.data
     if (data && !errors?.length) {
@@ -15565,6 +15588,13 @@ async function lookupFollowage(username, channelLogin) {
 // All embeds always-enabled (extension has no per-platform toggles yet).
 // Uses plain iframes (no facade) — feed virtual-scrolls so visible iframe count stays low.
 
+// Defence-in-depth sandbox for third-party iframes. allow-scripts/same-origin
+// are required by every embed provider (player JS + auth cookies); the rest
+// preserves user-clickable share/popup flows. What this BLOCKS: top-level
+// nav, modals, pointer-lock, downloads — i.e. defang most providers if they
+// ship malicious payload.
+const EMBED_SANDBOX = 'allow-scripts allow-same-origin allow-presentation allow-popups allow-popups-to-escape-sandbox allow-forms'
+
 function sanitizeEmbedId(id) {
   if (!id || typeof id !== 'string') return ''
   return id.replace(/[^a-zA-Z0-9_-]/g, '')
@@ -15579,8 +15609,9 @@ function ytEmbed(videoId) {
   if (!id) return ''
   return `<div class="hs-feed-embed-container hs-feed-embed-youtube">
     <iframe src="https://www.youtube-nocookie.com/embed/${id}"
-      allow="accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-      allowfullscreen loading="lazy"
+      sandbox="${EMBED_SANDBOX}"
+      allow="accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
+      loading="lazy"
       referrerpolicy="strict-origin-when-cross-origin"></iframe>
   </div>`
 }
@@ -15591,7 +15622,8 @@ function twitchClipEmbed(clipId) {
   const parent = location.hostname || 'localhost'
   return `<div class="hs-feed-embed-container hs-feed-embed-twitch">
     <iframe src="https://clips.twitch.tv/embed?clip=${id}&parent=${encodeURIComponent(parent)}"
-      allowfullscreen loading="lazy"></iframe>
+      sandbox="${EMBED_SANDBOX}"
+      allow="fullscreen" loading="lazy"></iframe>
   </div>`
 }
 
@@ -15600,8 +15632,9 @@ function kickClipEmbed(clipId) {
   if (!id) return ''
   return `<div class="hs-feed-embed-container hs-feed-embed-kick">
     <iframe src="https://player.kick.com/clips/${id}"
-      allowfullscreen scrolling="no" loading="lazy"
-      allow="accelerometer; encrypted-media; gyroscope; picture-in-picture"></iframe>
+      sandbox="${EMBED_SANDBOX}"
+      scrolling="no" loading="lazy"
+      allow="accelerometer; encrypted-media; gyroscope; picture-in-picture; fullscreen"></iframe>
   </div>`
 }
 
@@ -15609,7 +15642,7 @@ function streamableEmbed(videoId) {
   const id = sanitizeEmbedId(videoId)
   if (!id) return ''
   return `<div class="hs-feed-embed-container hs-feed-embed-streamable">
-    <iframe src="https://streamable.com/e/${id}" allowfullscreen loading="lazy"></iframe>
+    <iframe src="https://streamable.com/e/${id}" sandbox="${EMBED_SANDBOX}" allow="fullscreen" loading="lazy"></iframe>
   </div>`
 }
 
@@ -15618,7 +15651,8 @@ function vimeoEmbed(videoId) {
   if (!id) return ''
   return `<div class="hs-feed-embed-container hs-feed-embed-vimeo">
     <iframe src="https://player.vimeo.com/video/${id}"
-      allow="autoplay; fullscreen; picture-in-picture" allowfullscreen loading="lazy"></iframe>
+      sandbox="${EMBED_SANDBOX}"
+      allow="autoplay; fullscreen; picture-in-picture" loading="lazy"></iframe>
   </div>`
 }
 
@@ -15628,6 +15662,7 @@ function spotifyEmbed(kind, id) {
   if (!safeKind || !safeId) return ''
   return `<div class="hs-feed-embed-container hs-feed-embed-spotify">
     <iframe src="https://open.spotify.com/embed/${safeKind}/${safeId}"
+      sandbox="${EMBED_SANDBOX}"
       width="100%" height="152" allow="encrypted-media" loading="lazy"></iframe>
   </div>`
 }
@@ -15637,6 +15672,7 @@ function soundcloudEmbed(url) {
   if (!safe || !/^https?:\/\/(www\.|m\.)?soundcloud\.com\//i.test(safe)) return ''
   return `<div class="hs-feed-embed-container hs-feed-embed-soundcloud">
     <iframe scrolling="no"
+      sandbox="${EMBED_SANDBOX}"
       src="https://w.soundcloud.com/player/?url=${encodeURIComponent(safe)}&color=%23ff5500&auto_play=false&hide_related=true&show_comments=false&show_user=true&show_reposts=false&show_teaser=false&visual=true"
       loading="lazy"></iframe>
   </div>`
@@ -15646,7 +15682,7 @@ function giphyEmbed(gifId) {
   const id = sanitizeEmbedId(gifId)
   if (!id) return ''
   return `<div class="hs-feed-embed-container hs-feed-embed-giphy">
-    <iframe src="https://giphy.com/embed/${id}" allowfullscreen loading="lazy"></iframe>
+    <iframe src="https://giphy.com/embed/${id}" sandbox="${EMBED_SANDBOX}" allow="fullscreen" loading="lazy"></iframe>
   </div>`
 }
 
@@ -15654,7 +15690,7 @@ function tenorEmbed(gifId) {
   const id = sanitizeEmbedId(gifId)
   if (!id) return ''
   return `<div class="hs-feed-embed-container hs-feed-embed-tenor">
-    <iframe src="https://tenor.com/embed/${id}" allowfullscreen loading="lazy"></iframe>
+    <iframe src="https://tenor.com/embed/${id}" sandbox="${EMBED_SANDBOX}" allow="fullscreen" loading="lazy"></iframe>
   </div>`
 }
 
@@ -15666,19 +15702,22 @@ function twitterEmbed(tweetId, url) {
   // blockquote+script approach the website uses is broken in extension context).
   return `<div class="hs-feed-embed-container hs-feed-embed-twitter">
     <iframe src="https://platform.twitter.com/embed/Tweet.html?id=${id}&theme=dark&dnt=true"
-      allow="autoplay; clipboard-write" allowfullscreen loading="lazy"></iframe>
+      sandbox="${EMBED_SANDBOX}"
+      allow="autoplay; clipboard-write; fullscreen" loading="lazy"></iframe>
   </div>`
 }
 
 function imgurEmbed(imgurId) {
   const id = sanitizeEmbedId(imgurId)
   if (!id) return ''
-  // Imgur embed needs script — fall back to direct image link approach
+  // Imgur embed needs script — fall back to direct image link approach.
+  // data-fb="hide" is the host-CSP-safe replacement for inline onerror;
+  // attachFeedFallbacks() wires the listener post-render.
   return `<div class="hs-feed-embed-container hs-feed-embed-imgur" style="aspect-ratio:auto;max-width:480px">
     <a href="https://imgur.com/${id}" target="_blank" rel="noopener">
       <img src="https://i.imgur.com/${id}.jpg" alt="imgur"
         style="max-width:100%;height:auto;display:block"
-        onerror="this.style.display='none'">
+        data-fb="hide">
     </a>
   </div>`
 }
@@ -15688,7 +15727,8 @@ function tiktokEmbed(videoId, url) {
   if (!id) return ''
   return `<div class="hs-feed-embed-container hs-feed-embed-tiktok">
     <iframe src="https://www.tiktok.com/embed/v2/${id}"
-      allowfullscreen scrolling="no" loading="lazy"></iframe>
+      sandbox="${EMBED_SANDBOX}"
+      allow="fullscreen" scrolling="no" loading="lazy"></iframe>
   </div>`
 }
 
@@ -15834,8 +15874,7 @@ function parseFeedEmbed(url) {
     const safe = safeUrl(cleanUrl)
     if (!safe) return ''
     return `<div class="hs-feed-media-direct">
-      <img src="${attr(safe)}" alt=""
-        onerror="this.outerHTML='<div class=\\'hs-feed-media-deleted\\'>image unavailable</div>'">
+      <img src="${attr(safe)}" alt="" data-fb="deleted">
     </div>`
   }
   if (/\.(mp4|webm|mov)(\?.*)?$/i.test(cleanUrl)) {
@@ -15972,8 +16011,7 @@ function _buildFeedResolvedHtml(ph, data) {
 
   if (data.type === 'image' && data.mediaUrl) {
     return `<a href="${safeUrlStr}" target="_blank" rel="noopener" class="hs-feed-embed-rich-imglink">
-      <img src="${safeMedia}" alt="${safeTitle}" class="hs-feed-embed-rich-image"
-        onerror="this.outerHTML='<span class=\\'hs-feed-media-deleted\\'>image unavailable</span>'">
+      <img src="${safeMedia}" alt="${safeTitle}" class="hs-feed-embed-rich-image" data-fb="deleted-span">
     </a>`
   }
   if (data.type === 'video' && data.mediaUrl) {
@@ -16036,8 +16074,40 @@ function resolvePendingFeedEmbeds(root) {
       } else {
         _swapPlaceholder(ph, _buildFeedResolveFailedHtml(ph), 'hs-feed-embed-resolve-failed')
       }
+      attachFeedFallbacks(ph)
     })
   }
+}
+
+// Wire load-fail fallbacks for images/avatars in the feed. Replaces the inline
+// onerror= patterns that host-page CSP (twitch) silently strips. Idempotent.
+//   data-fb="hide"          → display:none
+//   data-fb="deleted"       → swap node for <div class="hs-feed-media-deleted">image unavailable</div>
+//   data-fb="deleted-span"  → swap node for <span class="hs-feed-media-deleted">image unavailable</span>
+//   data-fallback-anon      → swap src to /anon.webp (avatars)
+function attachFeedFallbacks(root) {
+  if (!root || !root.querySelectorAll) return
+  root.querySelectorAll('img[data-fallback-anon]').forEach((img) => {
+    img.addEventListener('error', () => {
+      img.removeAttribute('data-fallback-anon')
+      img.src = 'https://heatsync.org/anon.webp'
+    }, { once: true })
+  })
+  root.querySelectorAll('img[data-fb]').forEach((img) => {
+    const mode = img.dataset.fb
+    img.removeAttribute('data-fb')
+    img.addEventListener('error', () => {
+      if (mode === 'hide') {
+        img.style.display = 'none'
+      } else if (mode === 'deleted' || mode === 'deleted-span') {
+        const tag = mode === 'deleted-span' ? 'span' : 'div'
+        const replacement = document.createElement(tag)
+        replacement.className = 'hs-feed-media-deleted'
+        replacement.textContent = 'image unavailable'
+        img.replaceWith(replacement)
+      }
+    }, { once: true })
+  })
 }
 
 
@@ -16479,7 +16549,7 @@ function drainYtPaceQueue(targetChannelId) {
   _ytPaceLastEmit.set(targetChannelId, { time: Date.now(), msgTime: realPostMs })
   if (q.length > 0) {
     const due = paceDelayFor(targetChannelId, q[0])
-    const handle = setTimeout(() => drainYtPaceQueue(targetChannelId), due)
+    const handle = cleanup.setTimeout(() => drainYtPaceQueue(targetChannelId), due)
     _ytPaceTimer.set(targetChannelId, handle)
   } else {
     _ytPaceQueue.delete(targetChannelId)
@@ -16516,7 +16586,7 @@ function enqueueYtForPacing(targetChannelId, ytMsg) {
   // Schedule drainer if not already scheduled.
   if (!_ytPaceTimer.has(targetChannelId)) {
     const due = Math.max(paceDelayFor(targetChannelId, q[0]) - idleSince, 0)
-    const handle = setTimeout(() => drainYtPaceQueue(targetChannelId), due)
+    const handle = cleanup.setTimeout(() => drainYtPaceQueue(targetChannelId), due)
     _ytPaceTimer.set(targetChannelId, handle)
   }
 }
@@ -16527,7 +16597,7 @@ function listenForSocialEvents() {
   if (window._hsMcSocialListener) return;
   window._hsMcSocialListener = true;
 
-  chrome.runtime?.onMessage?.addListener((msg) => {
+  cleanup.addListener(chrome.runtime?.onMessage, (msg) => {
     if (msg.type === 'chat_origin_broadcast' && msg.text) {
       // Heatsync.org chat-tile sent a chat — record the origin so the
       // upcoming platform echo gets tagged [H] via peekSentHost. Same
@@ -17423,7 +17493,8 @@ function buildFeedMessageDiv(m, opUsername) {
   div.dataset.msgId = m.base36_id;
 
   const time = formatRelativeTime(m.created_at);
-  const avatarUrl = `https://heatsync.org/api/avatar/${encodeURIComponent(m.username)}`;
+  const rawAvatar = m.profile_image_url || m.twitch_profile_pic || m.kick_profile_pic || '';
+  const avatarUrl = safeUrl(rawAvatar);
   const heat = m.heat || 0;
   const replies = m.reply_count || 0;
   // renderFeedContent sanitizes via escapeHtml + emote ref escaping
@@ -17472,7 +17543,11 @@ function buildFeedMessageDiv(m, opUsername) {
   const statsHtml = stats ? ` ${stats}` : ''
 
   const anonAvatar = avatarsEnabled ? `<img class="hs-feed-avatar" src="https://heatsync.org/anon.webp" alt="" loading="lazy">` : '';
-  const userAvatar = avatarsEnabled ? `<img class="hs-feed-avatar" src="${escapeHtml(avatarUrl)}" alt="" loading="lazy" onerror="this.style.display='none'">` : '';
+  const userAvatar = avatarsEnabled
+    ? (avatarUrl
+      ? `<img class="hs-feed-avatar" src="${escapeHtml(avatarUrl)}" alt="" loading="lazy" data-fallback-anon="1">`
+      : anonAvatar)
+    : '';
   const tripcodeHtml = m.tripcode ? `<span class="hs-tripcode">${escapeHtml(m.tripcode)}</span>` : '';
   const userHtml = isAnon
     ? `${anonAvatar}<span class="hs-feed-user" style="color:#808080">Anonymous</span>${tripcodeHtml}`
@@ -17481,6 +17556,9 @@ function buildFeedMessageDiv(m, opUsername) {
   // Media/embeds (img, video, iframe) — values inside are pre-sanitized via escapeHtml/safeUrl/sanitizeEmbedId
   const mediaHtml = buildFeedMediaHtml(m);
   div.innerHTML = `${timeHtml}${threadLink}${typeTag}${platBadge}${userHtml}${statsHtml}: <span class="hs-feed-body">${content}</span>${mediaHtml}`;
+
+  // Wire host-CSP-safe fallbacks for avatar/media error handlers (no inline onerror=).
+  attachFeedFallbacks(div);
 
   // Click >>id to expand/collapse thread inline — never leaves the stream
   // If this post is a reply, open the parent thread and highlight this post
@@ -17984,7 +18062,7 @@ async function fetchDiscover() {
   const tabAtFetch = currentTab;
   try {
     const [tagsResp, profilesResp, postsResp] = await Promise.all([
-      apiFetch('/api/discover/trending-tags'),
+      apiFetch('/api/tags/trending'),
       apiFetch('/api/profiles/trending'),
       apiFetch('/api/messages?sort=time&limit=40').catch(() => null),
     ]);
@@ -18751,7 +18829,7 @@ function resolveSelfColor() {
   try {
     const el = document.querySelector(`.chat-author__display-name[data-a-user="${me}"]`)
     if (el) { selfWhisperColor = el.style.color || getComputedStyle(el).color; return }
-  } catch {}
+  } catch (e) { warn('selfWhisperColor DOM probe failed:', e?.message) }
 }
 
 let _whisperSaveTimer = null
@@ -18773,7 +18851,7 @@ function saveWhispers() {
         lastViewed: whisperLastViewedTime
       }
     })
-  } catch {}
+  } catch (e) { warn('whispers save failed:', e?.message) }
 }
 
 function loadWhispers() {
@@ -18831,8 +18909,8 @@ function loadWhispers() {
 
       whisperTotalUnread = whisperTimeline.filter(m => !m.self && m.time > whisperLastViewedTime).length
       updateWhisperBadge()
-    }).catch(() => {})
-  } catch {}
+    }).catch((e) => warn('whispers load (storage.get) failed:', e?.message))
+  } catch (e) { warn('whispers load failed:', e?.message) }
 }
 
 function updateWhisperBadge() {
@@ -19487,26 +19565,31 @@ function trackSentMessage(text, hostOverride) {
 }
 
 // Hydrate from storage on load + listen for cross-tab updates.
+// Listener is tracked via cleanup so SPA reinit doesn't stack copies.
 try {
   chrome.storage.local.get(RECENT_SENT_KEY).then((data) => {
     const incoming = data?.[RECENT_SENT_KEY]
     if (Array.isArray(incoming)) _recentSentMessages = _pruneRecent(incoming)
   }).catch(() => {})
-  chrome.storage.onChanged.addListener((changes, area) => {
-    if (area !== 'local' || !changes[RECENT_SENT_KEY]) return
-    const incoming = changes[RECENT_SENT_KEY].newValue
-    if (!Array.isArray(incoming)) return
-    // Merge our local writes with the incoming snapshot — last-write-wins
-    // by (text, second-bucketed time). Survives the rare two-tab-send race.
-    const merged = new Map()
-    for (const e of [..._recentSentMessages, ...incoming]) {
-      if (!e || !e.text) continue
-      const k = `${e.text}:${Math.floor((e.time || 0) / 1000)}`
-      const existing = merged.get(k)
-      if (!existing || (existing.time || 0) < (e.time || 0)) merged.set(k, e)
+  if (!window._hsMcInputStorageListener) {
+    const _inputStorageHandler = (changes, area) => {
+      if (area !== 'local' || !changes[RECENT_SENT_KEY]) return
+      const incoming = changes[RECENT_SENT_KEY].newValue
+      if (!Array.isArray(incoming)) return
+      // Merge our local writes with the incoming snapshot — last-write-wins
+      // by (text, second-bucketed time). Survives the rare two-tab-send race.
+      const merged = new Map()
+      for (const e of [..._recentSentMessages, ...incoming]) {
+        if (!e || !e.text) continue
+        const k = `${e.text}:${Math.floor((e.time || 0) / 1000)}`
+        const existing = merged.get(k)
+        if (!existing || (existing.time || 0) < (e.time || 0)) merged.set(k, e)
+      }
+      _recentSentMessages = _pruneRecent([...merged.values()].sort((a, b) => a.time - b.time))
     }
-    _recentSentMessages = _pruneRecent([...merged.values()].sort((a, b) => a.time - b.time))
-  })
+    cleanup.addListener(chrome.storage.onChanged, _inputStorageHandler)
+    window._hsMcInputStorageListener = true
+  }
 } catch (_) {}
 
 function isSentEcho(msgText, _msgPlatform) {
@@ -22640,9 +22723,6 @@ async function pcAddAsChannel(username) {
 
 const STORAGE_KEY = 'heatsync_multichat';
   const LOG_PREFIX = '[heatsync-mc]';
-
-  // DEBUG: temporary marker to verify script injection on YouTube
-  document.documentElement.dataset.hsMcLoaded = '1';
 
   // bidi direction for the user's locale (ltr/rtl) — applied to injected UI roots
   // host page (twitch/kick) keeps its own dir; we only flip our overlay.
@@ -29471,8 +29551,9 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     if (window._hsMcSettingsListener) return;
     window._hsMcSettingsListener = true;
 
-    // Listen for messages from popup
-    chrome.runtime?.onMessage?.addListener((msg) => {
+    // Listen for messages from popup — tracked through cleanup so SPA
+    // reinit removes the prior handler and replaces it.
+    cleanup.addListener(chrome.runtime?.onMessage, (msg) => {
       if (msg.type === 'ui_settings_changed' && msg.settings) {
         log('Settings changed via message:', msg.settings);
         if (msg.settings.tabPosition !== undefined && msg.settings.tabPosition !== tabPosition) {
@@ -30232,7 +30313,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     // Handle stream events (game switch, online/offline) from HeatSync WS
     if (!window._hsMcStreamEventListener) {
       window._hsMcStreamEventListener = true;
-      chrome.runtime?.onMessage?.addListener((msg) => {
+      cleanup.addListener(chrome.runtime?.onMessage, (msg) => {
         if (msg.type !== 'stream_event') return;
         const channel = msg.channel?.toLowerCase();
         if (!channel) return;
@@ -30452,7 +30533,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     // Handle follow-driven stream events (from followed channels not currently viewed)
     if (!window._hsMcFollowStreamEventListener) {
       window._hsMcFollowStreamEventListener = true;
-      chrome.runtime?.onMessage?.addListener((msg) => {
+      cleanup.addListener(chrome.runtime?.onMessage, (msg) => {
         if (msg.type !== 'follow_stream_event') return;
         const channel = msg.channel?.toLowerCase();
         if (!channel) return;
@@ -30541,7 +30622,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     // Handle color map from server (for persisted stream event history)
     if (!window._hsMcFollowColorsListener) {
       window._hsMcFollowColorsListener = true;
-      chrome.runtime?.onMessage?.addListener((msg) => {
+      cleanup.addListener(chrome.runtime?.onMessage, (msg) => {
         if (msg.type !== 'follow_colors') return;
         processFollowColors(msg.colors);
       });
@@ -30616,7 +30697,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     // Handle real-time follow_history from background broadcast
     if (!window._hsMcFollowHistoryListener) {
       window._hsMcFollowHistoryListener = true;
-      chrome.runtime?.onMessage?.addListener((msg) => {
+      cleanup.addListener(chrome.runtime?.onMessage, (msg) => {
         if (msg.type !== 'follow_history') return;
         processFollowHistory(msg.events);
       });

@@ -14,9 +14,6 @@
   const STORAGE_KEY = 'heatsync_multichat';
   const LOG_PREFIX = '[heatsync-mc]';
 
-  // DEBUG: temporary marker to verify script injection on YouTube
-  document.documentElement.dataset.hsMcLoaded = '1';
-
   // bidi direction for the user's locale (ltr/rtl) — applied to injected UI roots
   // host page (twitch/kick) keeps its own dir; we only flip our overlay.
   // Resolved fresh on each panel mount so a manual locale override (set in options)
@@ -6844,8 +6841,9 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     if (window._hsMcSettingsListener) return;
     window._hsMcSettingsListener = true;
 
-    // Listen for messages from popup
-    chrome.runtime?.onMessage?.addListener((msg) => {
+    // Listen for messages from popup — tracked through cleanup so SPA
+    // reinit removes the prior handler and replaces it.
+    cleanup.addListener(chrome.runtime?.onMessage, (msg) => {
       if (msg.type === 'ui_settings_changed' && msg.settings) {
         log('Settings changed via message:', msg.settings);
         if (msg.settings.tabPosition !== undefined && msg.settings.tabPosition !== tabPosition) {
@@ -7605,7 +7603,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     // Handle stream events (game switch, online/offline) from HeatSync WS
     if (!window._hsMcStreamEventListener) {
       window._hsMcStreamEventListener = true;
-      chrome.runtime?.onMessage?.addListener((msg) => {
+      cleanup.addListener(chrome.runtime?.onMessage, (msg) => {
         if (msg.type !== 'stream_event') return;
         const channel = msg.channel?.toLowerCase();
         if (!channel) return;
@@ -7825,7 +7823,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     // Handle follow-driven stream events (from followed channels not currently viewed)
     if (!window._hsMcFollowStreamEventListener) {
       window._hsMcFollowStreamEventListener = true;
-      chrome.runtime?.onMessage?.addListener((msg) => {
+      cleanup.addListener(chrome.runtime?.onMessage, (msg) => {
         if (msg.type !== 'follow_stream_event') return;
         const channel = msg.channel?.toLowerCase();
         if (!channel) return;
@@ -7914,7 +7912,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     // Handle color map from server (for persisted stream event history)
     if (!window._hsMcFollowColorsListener) {
       window._hsMcFollowColorsListener = true;
-      chrome.runtime?.onMessage?.addListener((msg) => {
+      cleanup.addListener(chrome.runtime?.onMessage, (msg) => {
         if (msg.type !== 'follow_colors') return;
         processFollowColors(msg.colors);
       });
@@ -7989,7 +7987,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     // Handle real-time follow_history from background broadcast
     if (!window._hsMcFollowHistoryListener) {
       window._hsMcFollowHistoryListener = true;
-      chrome.runtime?.onMessage?.addListener((msg) => {
+      cleanup.addListener(chrome.runtime?.onMessage, (msg) => {
         if (msg.type !== 'follow_history') return;
         processFollowHistory(msg.events);
       });

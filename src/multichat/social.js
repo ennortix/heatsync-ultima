@@ -435,7 +435,7 @@ function drainYtPaceQueue(targetChannelId) {
   _ytPaceLastEmit.set(targetChannelId, { time: Date.now(), msgTime: realPostMs })
   if (q.length > 0) {
     const due = paceDelayFor(targetChannelId, q[0])
-    const handle = setTimeout(() => drainYtPaceQueue(targetChannelId), due)
+    const handle = cleanup.setTimeout(() => drainYtPaceQueue(targetChannelId), due)
     _ytPaceTimer.set(targetChannelId, handle)
   } else {
     _ytPaceQueue.delete(targetChannelId)
@@ -472,7 +472,7 @@ function enqueueYtForPacing(targetChannelId, ytMsg) {
   // Schedule drainer if not already scheduled.
   if (!_ytPaceTimer.has(targetChannelId)) {
     const due = Math.max(paceDelayFor(targetChannelId, q[0]) - idleSince, 0)
-    const handle = setTimeout(() => drainYtPaceQueue(targetChannelId), due)
+    const handle = cleanup.setTimeout(() => drainYtPaceQueue(targetChannelId), due)
     _ytPaceTimer.set(targetChannelId, handle)
   }
 }
@@ -483,7 +483,7 @@ function listenForSocialEvents() {
   if (window._hsMcSocialListener) return;
   window._hsMcSocialListener = true;
 
-  chrome.runtime?.onMessage?.addListener((msg) => {
+  cleanup.addListener(chrome.runtime?.onMessage, (msg) => {
     if (msg.type === 'chat_origin_broadcast' && msg.text) {
       // Heatsync.org chat-tile sent a chat — record the origin so the
       // upcoming platform echo gets tagged [H] via peekSentHost. Same
@@ -1379,7 +1379,8 @@ function buildFeedMessageDiv(m, opUsername) {
   div.dataset.msgId = m.base36_id;
 
   const time = formatRelativeTime(m.created_at);
-  const avatarUrl = `https://heatsync.org/api/avatar/${encodeURIComponent(m.username)}`;
+  const rawAvatar = m.profile_image_url || m.twitch_profile_pic || m.kick_profile_pic || '';
+  const avatarUrl = safeUrl(rawAvatar);
   const heat = m.heat || 0;
   const replies = m.reply_count || 0;
   // renderFeedContent sanitizes via escapeHtml + emote ref escaping
@@ -1428,7 +1429,11 @@ function buildFeedMessageDiv(m, opUsername) {
   const statsHtml = stats ? ` ${stats}` : ''
 
   const anonAvatar = avatarsEnabled ? `<img class="hs-feed-avatar" src="https://heatsync.org/anon.webp" alt="" loading="lazy">` : '';
-  const userAvatar = avatarsEnabled ? `<img class="hs-feed-avatar" src="${escapeHtml(avatarUrl)}" alt="" loading="lazy" onerror="this.style.display='none'">` : '';
+  const userAvatar = avatarsEnabled
+    ? (avatarUrl
+      ? `<img class="hs-feed-avatar" src="${escapeHtml(avatarUrl)}" alt="" loading="lazy" data-fallback-anon="1">`
+      : anonAvatar)
+    : '';
   const tripcodeHtml = m.tripcode ? `<span class="hs-tripcode">${escapeHtml(m.tripcode)}</span>` : '';
   const userHtml = isAnon
     ? `${anonAvatar}<span class="hs-feed-user" style="color:#808080">Anonymous</span>${tripcodeHtml}`
@@ -1437,6 +1442,9 @@ function buildFeedMessageDiv(m, opUsername) {
   // Media/embeds (img, video, iframe) — values inside are pre-sanitized via escapeHtml/safeUrl/sanitizeEmbedId
   const mediaHtml = buildFeedMediaHtml(m);
   div.innerHTML = `${timeHtml}${threadLink}${typeTag}${platBadge}${userHtml}${statsHtml}: <span class="hs-feed-body">${content}</span>${mediaHtml}`;
+
+  // Wire host-CSP-safe fallbacks for avatar/media error handlers (no inline onerror=).
+  attachFeedFallbacks(div);
 
   // Click >>id to expand/collapse thread inline — never leaves the stream
   // If this post is a reply, open the parent thread and highlight this post
@@ -1940,7 +1948,7 @@ async function fetchDiscover() {
   const tabAtFetch = currentTab;
   try {
     const [tagsResp, profilesResp, postsResp] = await Promise.all([
-      apiFetch('/api/discover/trending-tags'),
+      apiFetch('/api/tags/trending'),
       apiFetch('/api/profiles/trending'),
       apiFetch('/api/messages?sort=time&limit=40').catch(() => null),
     ]);

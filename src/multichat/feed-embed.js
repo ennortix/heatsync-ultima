@@ -3,6 +3,13 @@
 // All embeds always-enabled (extension has no per-platform toggles yet).
 // Uses plain iframes (no facade) — feed virtual-scrolls so visible iframe count stays low.
 
+// Defence-in-depth sandbox for third-party iframes. allow-scripts/same-origin
+// are required by every embed provider (player JS + auth cookies); the rest
+// preserves user-clickable share/popup flows. What this BLOCKS: top-level
+// nav, modals, pointer-lock, downloads — i.e. defang most providers if they
+// ship malicious payload.
+const EMBED_SANDBOX = 'allow-scripts allow-same-origin allow-presentation allow-popups allow-popups-to-escape-sandbox allow-forms'
+
 function sanitizeEmbedId(id) {
   if (!id || typeof id !== 'string') return ''
   return id.replace(/[^a-zA-Z0-9_-]/g, '')
@@ -17,8 +24,9 @@ function ytEmbed(videoId) {
   if (!id) return ''
   return `<div class="hs-feed-embed-container hs-feed-embed-youtube">
     <iframe src="https://www.youtube-nocookie.com/embed/${id}"
-      allow="accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-      allowfullscreen loading="lazy"
+      sandbox="${EMBED_SANDBOX}"
+      allow="accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
+      loading="lazy"
       referrerpolicy="strict-origin-when-cross-origin"></iframe>
   </div>`
 }
@@ -29,7 +37,8 @@ function twitchClipEmbed(clipId) {
   const parent = location.hostname || 'localhost'
   return `<div class="hs-feed-embed-container hs-feed-embed-twitch">
     <iframe src="https://clips.twitch.tv/embed?clip=${id}&parent=${encodeURIComponent(parent)}"
-      allowfullscreen loading="lazy"></iframe>
+      sandbox="${EMBED_SANDBOX}"
+      allow="fullscreen" loading="lazy"></iframe>
   </div>`
 }
 
@@ -38,8 +47,9 @@ function kickClipEmbed(clipId) {
   if (!id) return ''
   return `<div class="hs-feed-embed-container hs-feed-embed-kick">
     <iframe src="https://player.kick.com/clips/${id}"
-      allowfullscreen scrolling="no" loading="lazy"
-      allow="accelerometer; encrypted-media; gyroscope; picture-in-picture"></iframe>
+      sandbox="${EMBED_SANDBOX}"
+      scrolling="no" loading="lazy"
+      allow="accelerometer; encrypted-media; gyroscope; picture-in-picture; fullscreen"></iframe>
   </div>`
 }
 
@@ -47,7 +57,7 @@ function streamableEmbed(videoId) {
   const id = sanitizeEmbedId(videoId)
   if (!id) return ''
   return `<div class="hs-feed-embed-container hs-feed-embed-streamable">
-    <iframe src="https://streamable.com/e/${id}" allowfullscreen loading="lazy"></iframe>
+    <iframe src="https://streamable.com/e/${id}" sandbox="${EMBED_SANDBOX}" allow="fullscreen" loading="lazy"></iframe>
   </div>`
 }
 
@@ -56,7 +66,8 @@ function vimeoEmbed(videoId) {
   if (!id) return ''
   return `<div class="hs-feed-embed-container hs-feed-embed-vimeo">
     <iframe src="https://player.vimeo.com/video/${id}"
-      allow="autoplay; fullscreen; picture-in-picture" allowfullscreen loading="lazy"></iframe>
+      sandbox="${EMBED_SANDBOX}"
+      allow="autoplay; fullscreen; picture-in-picture" loading="lazy"></iframe>
   </div>`
 }
 
@@ -66,6 +77,7 @@ function spotifyEmbed(kind, id) {
   if (!safeKind || !safeId) return ''
   return `<div class="hs-feed-embed-container hs-feed-embed-spotify">
     <iframe src="https://open.spotify.com/embed/${safeKind}/${safeId}"
+      sandbox="${EMBED_SANDBOX}"
       width="100%" height="152" allow="encrypted-media" loading="lazy"></iframe>
   </div>`
 }
@@ -75,6 +87,7 @@ function soundcloudEmbed(url) {
   if (!safe || !/^https?:\/\/(www\.|m\.)?soundcloud\.com\//i.test(safe)) return ''
   return `<div class="hs-feed-embed-container hs-feed-embed-soundcloud">
     <iframe scrolling="no"
+      sandbox="${EMBED_SANDBOX}"
       src="https://w.soundcloud.com/player/?url=${encodeURIComponent(safe)}&color=%23ff5500&auto_play=false&hide_related=true&show_comments=false&show_user=true&show_reposts=false&show_teaser=false&visual=true"
       loading="lazy"></iframe>
   </div>`
@@ -84,7 +97,7 @@ function giphyEmbed(gifId) {
   const id = sanitizeEmbedId(gifId)
   if (!id) return ''
   return `<div class="hs-feed-embed-container hs-feed-embed-giphy">
-    <iframe src="https://giphy.com/embed/${id}" allowfullscreen loading="lazy"></iframe>
+    <iframe src="https://giphy.com/embed/${id}" sandbox="${EMBED_SANDBOX}" allow="fullscreen" loading="lazy"></iframe>
   </div>`
 }
 
@@ -92,7 +105,7 @@ function tenorEmbed(gifId) {
   const id = sanitizeEmbedId(gifId)
   if (!id) return ''
   return `<div class="hs-feed-embed-container hs-feed-embed-tenor">
-    <iframe src="https://tenor.com/embed/${id}" allowfullscreen loading="lazy"></iframe>
+    <iframe src="https://tenor.com/embed/${id}" sandbox="${EMBED_SANDBOX}" allow="fullscreen" loading="lazy"></iframe>
   </div>`
 }
 
@@ -104,19 +117,22 @@ function twitterEmbed(tweetId, url) {
   // blockquote+script approach the website uses is broken in extension context).
   return `<div class="hs-feed-embed-container hs-feed-embed-twitter">
     <iframe src="https://platform.twitter.com/embed/Tweet.html?id=${id}&theme=dark&dnt=true"
-      allow="autoplay; clipboard-write" allowfullscreen loading="lazy"></iframe>
+      sandbox="${EMBED_SANDBOX}"
+      allow="autoplay; clipboard-write; fullscreen" loading="lazy"></iframe>
   </div>`
 }
 
 function imgurEmbed(imgurId) {
   const id = sanitizeEmbedId(imgurId)
   if (!id) return ''
-  // Imgur embed needs script — fall back to direct image link approach
+  // Imgur embed needs script — fall back to direct image link approach.
+  // data-fb="hide" is the host-CSP-safe replacement for inline onerror;
+  // attachFeedFallbacks() wires the listener post-render.
   return `<div class="hs-feed-embed-container hs-feed-embed-imgur" style="aspect-ratio:auto;max-width:480px">
     <a href="https://imgur.com/${id}" target="_blank" rel="noopener">
       <img src="https://i.imgur.com/${id}.jpg" alt="imgur"
         style="max-width:100%;height:auto;display:block"
-        onerror="this.style.display='none'">
+        data-fb="hide">
     </a>
   </div>`
 }
@@ -126,7 +142,8 @@ function tiktokEmbed(videoId, url) {
   if (!id) return ''
   return `<div class="hs-feed-embed-container hs-feed-embed-tiktok">
     <iframe src="https://www.tiktok.com/embed/v2/${id}"
-      allowfullscreen scrolling="no" loading="lazy"></iframe>
+      sandbox="${EMBED_SANDBOX}"
+      allow="fullscreen" scrolling="no" loading="lazy"></iframe>
   </div>`
 }
 
@@ -272,8 +289,7 @@ function parseFeedEmbed(url) {
     const safe = safeUrl(cleanUrl)
     if (!safe) return ''
     return `<div class="hs-feed-media-direct">
-      <img src="${attr(safe)}" alt=""
-        onerror="this.outerHTML='<div class=\\'hs-feed-media-deleted\\'>image unavailable</div>'">
+      <img src="${attr(safe)}" alt="" data-fb="deleted">
     </div>`
   }
   if (/\.(mp4|webm|mov)(\?.*)?$/i.test(cleanUrl)) {
@@ -410,8 +426,7 @@ function _buildFeedResolvedHtml(ph, data) {
 
   if (data.type === 'image' && data.mediaUrl) {
     return `<a href="${safeUrlStr}" target="_blank" rel="noopener" class="hs-feed-embed-rich-imglink">
-      <img src="${safeMedia}" alt="${safeTitle}" class="hs-feed-embed-rich-image"
-        onerror="this.outerHTML='<span class=\\'hs-feed-media-deleted\\'>image unavailable</span>'">
+      <img src="${safeMedia}" alt="${safeTitle}" class="hs-feed-embed-rich-image" data-fb="deleted-span">
     </a>`
   }
   if (data.type === 'video' && data.mediaUrl) {
@@ -474,6 +489,38 @@ function resolvePendingFeedEmbeds(root) {
       } else {
         _swapPlaceholder(ph, _buildFeedResolveFailedHtml(ph), 'hs-feed-embed-resolve-failed')
       }
+      attachFeedFallbacks(ph)
     })
   }
+}
+
+// Wire load-fail fallbacks for images/avatars in the feed. Replaces the inline
+// onerror= patterns that host-page CSP (twitch) silently strips. Idempotent.
+//   data-fb="hide"          → display:none
+//   data-fb="deleted"       → swap node for <div class="hs-feed-media-deleted">image unavailable</div>
+//   data-fb="deleted-span"  → swap node for <span class="hs-feed-media-deleted">image unavailable</span>
+//   data-fallback-anon      → swap src to /anon.webp (avatars)
+function attachFeedFallbacks(root) {
+  if (!root || !root.querySelectorAll) return
+  root.querySelectorAll('img[data-fallback-anon]').forEach((img) => {
+    img.addEventListener('error', () => {
+      img.removeAttribute('data-fallback-anon')
+      img.src = 'https://heatsync.org/anon.webp'
+    }, { once: true })
+  })
+  root.querySelectorAll('img[data-fb]').forEach((img) => {
+    const mode = img.dataset.fb
+    img.removeAttribute('data-fb')
+    img.addEventListener('error', () => {
+      if (mode === 'hide') {
+        img.style.display = 'none'
+      } else if (mode === 'deleted' || mode === 'deleted-span') {
+        const tag = mode === 'deleted-span' ? 'span' : 'div'
+        const replacement = document.createElement(tag)
+        replacement.className = 'hs-feed-media-deleted'
+        replacement.textContent = 'image unavailable'
+        img.replaceWith(replacement)
+      }
+    }, { once: true })
+  })
 }

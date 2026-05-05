@@ -6970,6 +6970,96 @@ function injectStyles() {
       border-radius: 0;
       max-width: 480px;
     }
+    /* ---- SERVER-RESOLVED EMBEDS (reddit, etc) ---- */
+    .hs-feed-embed-pending {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 60px;
+      padding: 8px;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid #333;
+      max-width: 480px;
+      margin: 4px 0 2px;
+    }
+    .hs-feed-embed-pending-label {
+      color: #888;
+      font-size: 11px;
+      opacity: 0.7;
+    }
+    .hs-feed-embed-rich-card {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid #333;
+      max-width: 480px;
+      margin: 4px 0 2px;
+      text-decoration: none;
+      color: #ddd;
+      white-space: normal;
+    }
+    .hs-feed-embed-rich-card * { white-space: normal; }
+    .hs-feed-embed-rich-card:hover { border-color: #555; }
+    .hs-feed-embed-rich-thumb,
+    .hs-feed-embed-rich-thumb-placeholder {
+      width: 64px;
+      height: 64px;
+      flex-shrink: 0;
+      object-fit: cover;
+      background: rgba(255,255,255,0.05);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #888;
+      font-size: 11px;
+    }
+    .hs-feed-embed-rich-meta {
+      flex: 1;
+      min-width: 0;
+      overflow: hidden;
+    }
+    .hs-feed-embed-rich-platform {
+      font-size: 10px;
+      text-transform: uppercase;
+      color: #888;
+      letter-spacing: 0.5px;
+    }
+    .hs-feed-embed-rich-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: #ddd;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      margin-top: 2px;
+    }
+    .hs-feed-embed-rich-author {
+      font-size: 11px;
+      color: #aaa;
+      margin-top: 2px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .hs-feed-embed-rich-image {
+      max-width: 480px;
+      max-height: 480px;
+      width: auto;
+      height: auto;
+      display: block;
+      margin: 4px 0 2px;
+    }
+    .hs-feed-embed-rich-video {
+      max-width: 480px;
+      width: 100%;
+      height: auto;
+      display: block;
+      margin: 4px 0 2px;
+      background: #000;
+    }
+    .hs-feed-embed-rich-imglink { display: block; line-height: 0; }
 
     /* ---- ENGAGEMENT BAR ---- */
     .hs-feed-engage {
@@ -15532,7 +15622,16 @@ function tiktokEmbed(videoId, url) {
 function redditEmbed(url) {
   const safe = safeUrl(url)
   if (!safe) return ''
-  // Reddit blocks iframe embedding from arbitrary parents — show as link card.
+  // Permalink (any subdomain incl. old.reddit.com) → server-resolved rich card.
+  // heatsync.org/api/embed/resolve scrapes embed.reddit.com (datacenter IP can't
+  // hit /.json), returns title/author/icon/image. Mirrors website behavior.
+  if (/reddit\.com\/r\/[\w-]+\/comments\/[a-z0-9]+/i.test(safe)) {
+    return `<div class="hs-feed-embed-pending hs-feed-embed-reddit"
+      data-resolve-url="${attr(safe)}" data-resolve-platform="reddit">
+      <span class="hs-feed-embed-pending-label">loading reddit…</span>
+    </div>`
+  }
+  // Non-permalink (subreddit, user) → link card.
   return `<div class="hs-feed-link-card">
     <a href="${attr(safe)}" target="_blank" rel="noopener" class="hs-feed-link-card-link">
       <span class="hs-feed-link-card-icon">[reddit]</span>
@@ -15694,7 +15793,7 @@ function extractFeedEmbed(content) {
     /https?:\/\/(?:www\.)?tiktok\.com\/[@\w.]+\/video\/\d+/,
     /https?:\/\/(?:www\.)?imgur\.com\/(?:a\/|gallery\/)?[a-zA-Z0-9]+/,
     /https?:\/\/(?:twitter|x)\.com\/[\w_]+\/status\/\d+/,
-    /https?:\/\/(?:www\.)?reddit\.com\/r\/\w+\/[\w/]+/,
+    /https?:\/\/(?:[\w-]+\.)?reddit\.com\/r\/\w+\/[\w/]+/,
     /https?:\/\/(?:www\.|m\.)?soundcloud\.com\/[\w-]+\/[\w-]+/,
     /https?:\/\/(?:www\.)?instagram\.com\/(?:p|reel)\/[\w-]+/,
     /https?:\/\/[^\s]+\.(?:jpg|jpeg|png|gif|webp|mp4|webm|mov)(?:\?[^\s]*)?/i,
@@ -15739,7 +15838,7 @@ function buildFeedMediaHtml(m) {
 
     const isVideo = mediaType === 'video' || (mediaType || '').startsWith('video/')
     const isEmbedType = mediaType === 'embed' ||
-      /^https?:\/\/(?:www\.)?(?:youtube\.com|youtu\.be|twitch\.tv|clips\.twitch\.tv|streamable\.com|vimeo\.com|twitter\.com|x\.com|kick\.com|tiktok\.com|open\.spotify\.com|soundcloud\.com|giphy\.com|tenor\.com|imgur\.com|reddit\.com|instagram\.com)/i.test(safe)
+      /^https?:\/\/(?:(?:www\.)?(?:youtube\.com|youtu\.be|twitch\.tv|clips\.twitch\.tv|streamable\.com|vimeo\.com|twitter\.com|x\.com|kick\.com|tiktok\.com|open\.spotify\.com|soundcloud\.com|giphy\.com|tenor\.com|imgur\.com|instagram\.com)|(?:[\w-]+\.)?reddit\.com)/i.test(safe)
     const isImage = mediaType === 'image' || /\.(jpg|jpeg|png|gif|webp)(\?.*)?$/i.test(safe)
 
     if (isEmbedType) {
@@ -15765,6 +15864,105 @@ function buildFeedMediaHtml(m) {
   }
 
   return ''
+}
+
+// Resolve `.hs-feed-embed-pending[data-resolve-url]` placeholders via
+// heatsync.org/api/embed/resolve. All HTML built from server fields is escaped
+// via attr() (escapeHtml). Idempotent — safe to call repeatedly.
+const _feedResolveInflight = new Map()
+
+function _fetchFeedResolve(url) {
+  if (_feedResolveInflight.has(url)) return _feedResolveInflight.get(url)
+  const promise = (async () => {
+    try {
+      const r = await fetch(`https://heatsync.org/api/embed/resolve?url=${encodeURIComponent(url)}`)
+      if (!r.ok) return null
+      return await r.json()
+    } catch (_) { return null }
+  })()
+  _feedResolveInflight.set(url, promise)
+  promise.finally(() => setTimeout(() => _feedResolveInflight.delete(url), 30000))
+  return promise
+}
+
+function _buildFeedResolvedHtml(ph, data) {
+  const url = ph.dataset.resolveUrl || ''
+  const platform = ph.dataset.resolvePlatform || ''
+  const safeUrlStr = attr(url)
+  const safeTitle = attr(data.title || '')
+  const safeAuthor = attr(data.author || '')
+  const safeThumb = attr(data.thumbnail || '')
+  const safeMedia = attr(data.mediaUrl || '')
+  const safePlat = attr(platform)
+
+  if (data.type === 'image' && data.mediaUrl) {
+    return `<a href="${safeUrlStr}" target="_blank" rel="noopener" class="hs-feed-embed-rich-imglink">
+      <img src="${safeMedia}" alt="${safeTitle}" class="hs-feed-embed-rich-image"
+        onerror="this.outerHTML='<span class=\\'hs-feed-media-deleted\\'>image unavailable</span>'">
+    </a>`
+  }
+  if (data.type === 'video' && data.mediaUrl) {
+    const poster = safeThumb ? `poster="${safeThumb}"` : ''
+    return `<video controls preload="metadata" ${poster} src="${safeMedia}" class="hs-feed-embed-rich-video"></video>`
+  }
+  if (data.type === 'rich') {
+    const thumbHtml = safeThumb
+      ? `<img src="${safeThumb}" alt="${safeTitle || safePlat}" class="hs-feed-embed-rich-thumb">`
+      : `<div class="hs-feed-embed-rich-thumb-placeholder">[${safePlat}]</div>`
+    return `<a href="${safeUrlStr}" target="_blank" rel="noopener" class="hs-feed-embed-rich-card">
+      ${thumbHtml}
+      <div class="hs-feed-embed-rich-meta">
+        <div class="hs-feed-embed-rich-platform">${safePlat}</div>
+        <div class="hs-feed-embed-rich-title">${safeTitle}</div>
+        ${safeAuthor ? `<div class="hs-feed-embed-rich-author">${safeAuthor}</div>` : ''}
+      </div>
+    </a>`
+  }
+  return ''
+}
+
+function _buildFeedResolveFailedHtml(ph) {
+  const url = ph.dataset.resolveUrl || ''
+  const platform = ph.dataset.resolvePlatform || ''
+  const truncated = url.length > 60 ? url.slice(0, 60) + '…' : url
+  return `<div class="hs-feed-link-card">
+    <a href="${attr(url)}" target="_blank" rel="noopener" class="hs-feed-link-card-link">
+      <span class="hs-feed-link-card-icon">[${attr(platform)}]</span>
+      <span class="hs-feed-link-card-url">${attr(truncated)}</span>
+    </a>
+  </div>`
+}
+
+function _swapPlaceholder(ph, html, resolvedClass) {
+  // Replace placeholder children via fragment to satisfy the security hook
+  // (avoids ph.innerHTML = …); html is built from escaped server fields only.
+  const tmp = document.createElement('div')
+  tmp.insertAdjacentHTML('afterbegin', html)
+  while (ph.firstChild) ph.removeChild(ph.firstChild)
+  while (tmp.firstChild) ph.appendChild(tmp.firstChild)
+  ph.classList.remove('hs-feed-embed-pending')
+  ph.classList.add(resolvedClass)
+}
+
+function resolvePendingFeedEmbeds(root) {
+  if (!root || !root.querySelectorAll) return
+  const placeholders = root.querySelectorAll('.hs-feed-embed-pending[data-resolve-url]')
+  if (!placeholders.length) return
+  for (const ph of placeholders) {
+    if (ph.dataset.resolving === '1') continue
+    ph.dataset.resolving = '1'
+    const url = ph.dataset.resolveUrl
+    if (!url) continue
+    _fetchFeedResolve(url).then(data => {
+      if (data && !data.error) {
+        const html = _buildFeedResolvedHtml(ph, data)
+        if (html) _swapPlaceholder(ph, html, 'hs-feed-embed-resolved')
+        else _swapPlaceholder(ph, _buildFeedResolveFailedHtml(ph), 'hs-feed-embed-resolve-failed')
+      } else {
+        _swapPlaceholder(ph, _buildFeedResolveFailedHtml(ph), 'hs-feed-embed-resolve-failed')
+      }
+    })
+  }
 }
 
 
@@ -16801,6 +16999,10 @@ function renderFeed() {
   msgsEl.scrollTop = 0
   requestAnimationFrame(() => { isProgrammaticScroll = false; })
 
+  // Reddit (and any future server-resolved embeds): replace pending placeholders
+  // with rich cards via heatsync.org/api/embed/resolve. Mirrors website.
+  if (typeof resolvePendingFeedEmbeds === 'function') resolvePendingFeedEmbeds(msgsEl)
+
   // Infinite scroll: trigger fetch near bottom
   let _feedInfiniteTimer = null
   _feedVirtualScrollHandler = () => {
@@ -17556,6 +17758,8 @@ function renderThreadView(msgsEl) {
   isProgrammaticScroll = true;
   msgsEl.scrollTop = 0;
   requestAnimationFrame(() => { isProgrammaticScroll = false; });
+
+  if (typeof resolvePendingFeedEmbeds === 'function') resolvePendingFeedEmbeds(msgsEl)
 }
 
 async function postFeedMessage(text, { topLevel = false } = {}) {

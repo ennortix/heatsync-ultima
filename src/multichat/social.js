@@ -1030,6 +1030,10 @@ function renderFeed() {
   msgsEl.scrollTop = 0
   requestAnimationFrame(() => { isProgrammaticScroll = false; })
 
+  // Reddit (and any future server-resolved embeds): replace pending placeholders
+  // with rich cards via heatsync.org/api/embed/resolve. Mirrors website.
+  if (typeof resolvePendingFeedEmbeds === 'function') resolvePendingFeedEmbeds(msgsEl)
+
   // Infinite scroll: trigger fetch near bottom
   let _feedInfiniteTimer = null
   _feedVirtualScrollHandler = () => {
@@ -1785,6 +1789,8 @@ function renderThreadView(msgsEl) {
   isProgrammaticScroll = true;
   msgsEl.scrollTop = 0;
   requestAnimationFrame(() => { isProgrammaticScroll = false; });
+
+  if (typeof resolvePendingFeedEmbeds === 'function') resolvePendingFeedEmbeds(msgsEl)
 }
 
 async function postFeedMessage(text, { topLevel = false } = {}) {

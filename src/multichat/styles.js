@@ -3842,6 +3842,96 @@ function injectStyles() {
       border-radius: 0;
       max-width: 480px;
     }
+    /* ---- SERVER-RESOLVED EMBEDS (reddit, etc) ---- */
+    .hs-feed-embed-pending {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 60px;
+      padding: 8px;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid #333;
+      max-width: 480px;
+      margin: 4px 0 2px;
+    }
+    .hs-feed-embed-pending-label {
+      color: #888;
+      font-size: 11px;
+      opacity: 0.7;
+    }
+    .hs-feed-embed-rich-card {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid #333;
+      max-width: 480px;
+      margin: 4px 0 2px;
+      text-decoration: none;
+      color: #ddd;
+      white-space: normal;
+    }
+    .hs-feed-embed-rich-card * { white-space: normal; }
+    .hs-feed-embed-rich-card:hover { border-color: #555; }
+    .hs-feed-embed-rich-thumb,
+    .hs-feed-embed-rich-thumb-placeholder {
+      width: 64px;
+      height: 64px;
+      flex-shrink: 0;
+      object-fit: cover;
+      background: rgba(255,255,255,0.05);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #888;
+      font-size: 11px;
+    }
+    .hs-feed-embed-rich-meta {
+      flex: 1;
+      min-width: 0;
+      overflow: hidden;
+    }
+    .hs-feed-embed-rich-platform {
+      font-size: 10px;
+      text-transform: uppercase;
+      color: #888;
+      letter-spacing: 0.5px;
+    }
+    .hs-feed-embed-rich-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: #ddd;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      margin-top: 2px;
+    }
+    .hs-feed-embed-rich-author {
+      font-size: 11px;
+      color: #aaa;
+      margin-top: 2px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .hs-feed-embed-rich-image {
+      max-width: 480px;
+      max-height: 480px;
+      width: auto;
+      height: auto;
+      display: block;
+      margin: 4px 0 2px;
+    }
+    .hs-feed-embed-rich-video {
+      max-width: 480px;
+      width: 100%;
+      height: auto;
+      display: block;
+      margin: 4px 0 2px;
+      background: #000;
+    }
+    .hs-feed-embed-rich-imglink { display: block; line-height: 0; }
 
     /* ---- ENGAGEMENT BAR ---- */
     .hs-feed-engage {

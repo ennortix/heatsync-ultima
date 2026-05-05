@@ -1194,12 +1194,16 @@
             pendingStack.overlays.push(imgHtml);
             pendingWhitespace = '';
           } else {
-            // No base to stack on - render standalone
+            // No prior base — promote this zero-width to the base of a new
+            // stack so following zero-widths can overlay on it. Matches 7TV/
+            // native twitch behavior: "DOOR E0" renders E0 on top of DOOR
+            // even though both carry the zero-width flag (some streamers
+            // use a zero-width as the visual root of a stack on purpose).
             if (pendingWhitespace) {
               result.push(pendingWhitespace);
               pendingWhitespace = '';
             }
-            result.push(imgHtml);
+            pendingStack = { base: imgHtml, overlays: [] };
           }
         } else {
           // Base emote - flush previous stack, start new one

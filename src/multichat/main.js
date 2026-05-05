@@ -3644,6 +3644,10 @@
   function switchTab(id) {
     log('switchTab called:', id);
     editingChannel = false;
+    // Tab switch is the user telling us they care about live state right
+    // now — kick a debounced refresh so any stale red dots on channel tabs
+    // get corrected without waiting up to 30s for the next poll cycle.
+    try { refreshLiveStatusSoon() } catch {}
     // Tab switch closes profile card without re-rendering (we'll render the tab below)
     if (typeof activeProfileCard !== 'undefined' && activeProfileCard) activeProfileCard = null;
 
@@ -5521,10 +5525,21 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
   // ============================================
 
   let liveStatusInterval = null;
+  let _lastLiveStatusPoll = 0;
+  let _liveStatusInFlight = false;
 
   function startLiveStatusPolling() {
     updateLiveStatus();
     liveStatusInterval = cleanup.setInterval(updateLiveStatus, 30000);
+  }
+
+  // Debounced re-poll — call when user activity suggests stale dots are
+  // worth refreshing (tab switch, panel re-open, page focus). Skips the
+  // network round-trip if we polled <5s ago to avoid hammering helix.
+  function refreshLiveStatusSoon() {
+    if (_liveStatusInFlight) return;
+    if (Date.now() - _lastLiveStatusPoll < 5000) return;
+    updateLiveStatus();
   }
 
   async function updateLiveStatus() {
@@ -5539,9 +5554,19 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     }
     if (channels.length === 0) return;
 
+    _liveStatusInFlight = true;
+    _lastLiveStatusPoll = Date.now();
     try {
       const data = await chrome.runtime.sendMessage({ type: 'fetch_live_status', channels });
-      if (!data?.live) return;
+      // data.live MUST be an array even when zero channels are live —
+      // a `null` / `undefined` here means the network call failed and we
+      // shouldn't clobber the last good snapshot. But we ALSO shouldn't
+      // leave stale `data-live="true"` attributes lingering, so re-apply
+      // the existing liveChannelSet to all tabs as a self-heal.
+      if (!Array.isArray(data?.live)) {
+        applyLiveDotsFromCache();
+        return;
+      }
       const liveSet = new Set(data.live.map(c => c.toLowerCase()));
       liveChannelSet = liveSet;
 
@@ -5577,7 +5602,29 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       if (!liveChannel && urlCh && !liveSet.has(urlCh.toLowerCase()) && liveSet.size > 0) {
         // Don't auto-override — user can pick via the menu
       }
-    } catch (e) { /* network error, skip */ }
+    } catch (e) {
+      // Network error — re-apply last known good snapshot so stale dots
+      // don't persist past their truth window.
+      applyLiveDotsFromCache();
+    } finally {
+      _liveStatusInFlight = false;
+    }
+  }
+
+  // Re-stamp data-live on every channel tab from the cached liveChannelSet,
+  // so a failed fetch / DOM re-render race / late tabbar mutation can't leave
+  // a stale dot showing. Single source of truth: liveChannelSet.
+  function applyLiveDotsFromCache() {
+    if (!tabBarElement) return;
+    config.channels.forEach(ch => {
+      const id = typeof ch === 'string' ? ch : ch.id;
+      const twitch = typeof ch === 'string' ? ch : ch.twitch || ch.id;
+      const tab = tabBarElement.querySelector(`[data-tab="${id}"]`);
+      if (!tab) return;
+      const isYtOnly = typeof ch !== 'string' && !ch.twitch && !ch.kick && ch.youtube;
+      if (isYtOnly) return;
+      tab.dataset.live = String(liveChannelSet.has(twitch.toLowerCase()));
+    });
   }
 
   // ============================================
@@ -7890,6 +7937,13 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState !== 'visible') return;
       reconnectEventSubIfDead();
+    }, { signal: mcSignal });
+
+    // 5. Re-poll live status on tab focus — corrects any stale red dots
+    // left over from a missed poll cycle while the tab was hidden.
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState !== 'visible') return;
+      try { refreshLiveStatusSoon() } catch {}
     }, { signal: mcSignal });
 
     // MutationObserver-based mount waiter: fires the moment `find()` returns

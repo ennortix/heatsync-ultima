@@ -16302,11 +16302,18 @@ function listenForSocialEvents() {
       }
 
       if (targetChannelId && targetChannelId !== 'global') {
-        // Mark the YT tab live BEFORE pacing — instant visual signal.
+        // Instant-live signal for YT-only tabs (no Twitch handle = no helix
+        // truth available, so first chat msg is our best signal). Tabs with
+        // a Twitch or Kick handle defer to the live-status poll — otherwise
+        // a YT replay/buffered msg would override the offline-Twitch truth.
         if (targetChannelId !== '__live_yt_auto__') {
           try {
-            const tabEl = document.querySelector(`#hs-mc-tabbar .hs-mc-tab[data-tab="${CSS.escape(targetChannelId)}"]`)
-            if (tabEl && tabEl.dataset.live !== 'true') tabEl.dataset.live = 'true'
+            const ch = config.channels.find(c => typeof c !== 'string' && c.id === targetChannelId)
+            const isYtOnly = ch && !ch.twitch && !ch.kick && ch.youtube
+            if (isYtOnly) {
+              const tabEl = document.querySelector(`#hs-mc-tabbar .hs-mc-tab[data-tab="${CSS.escape(targetChannelId)}"]`)
+              if (tabEl && tabEl.dataset.live !== 'true') tabEl.dataset.live = 'true'
+            }
           } catch {}
         }
         // Backfill replay: bypass per-channel pacing entirely. Each msg has
@@ -16376,19 +16383,24 @@ function listenForSocialEvents() {
         }
         // Reflect status onto the channel tab button so YT-only channels get a
         // live dot and a human-readable label (otherwise YT-only tabs sit dark
-        // forever and show the auto-generated yt-<timestamp> id).
+        // forever and show the auto-generated yt-<timestamp> id). Twitch/Kick-
+        // having tabs defer to the live-status poll for the dot — letting YT
+        // override would falsely show a Twitch streamer as live just because
+        // their YT mirror is live (or replaying buffered chat).
         if (targetChannelId !== '__live_yt_auto__') {
           const tabEl = document.querySelector(`#hs-mc-tabbar .hs-mc-tab[data-tab="${CSS.escape(targetChannelId)}"]`)
           if (tabEl) {
+            const ch = config.channels.find(c => typeof c !== 'string' && c.id === targetChannelId)
+            const isYtOnly = ch && !ch.twitch && !ch.kick && ch.youtube
             if (msg.status === 'connected') {
-              tabEl.dataset.live = 'true'
-              const ch = config.channels.find(c => typeof c !== 'string' && c.id === targetChannelId)
-              const isYtOnly = ch && !ch.twitch && !ch.kick && ch.youtube
-              if (isYtOnly && link.channelName && tabEl.textContent !== link.channelName) {
-                tabEl.textContent = link.channelName
+              if (isYtOnly) {
+                tabEl.dataset.live = 'true'
+                if (link.channelName && tabEl.textContent !== link.channelName) {
+                  tabEl.textContent = link.channelName
+                }
               }
             } else if (msg.status === 'ended' || msg.status === 'error') {
-              tabEl.dataset.live = 'false'
+              if (isYtOnly) tabEl.dataset.live = 'false'
             }
           }
         }

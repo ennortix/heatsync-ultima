@@ -2755,6 +2755,12 @@ async function connectWebSocket() {
           flushMessageQueue();
         }
 
+        // Subscribe to global feed firehose. Replaces the legacy global broadcast
+        // path — server now emits new-message only to topic subscribers.
+        // Extension always wants the full feed for home-tab updates, mention
+        // detection, and OP/reply badge counts. Anon viewers welcome.
+        wsSendDirect({ type: 'feed:join', feed: 'new' });
+
         // Re-subscribe to YouTube channels (global + per-channel)
         log('[hs-bg] WS connected, re-subscribing YouTube channels...')
         browser.storage.local.get(['youtube_url']).then(data => {

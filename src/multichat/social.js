@@ -866,6 +866,95 @@ async function fetchFeed(append = false) {
   checkFeedBookmarks(ids)
 }
 
+// Onboarding card shown when feed has no posts. Replaces the bare
+// "no posts yet" sentinel that produced an immediate uninstall cliff.
+// Variants: anonymous (login CTA) vs authed (import-twitch + discover + post).
+function _renderFeedEmptyCard() {
+  const card = document.createElement('div');
+  card.className = 'hs-mc-empty-card';
+
+  const title = document.createElement('div');
+  title.className = 'hs-mc-empty-title';
+  const sub = document.createElement('div');
+  sub.className = 'hs-mc-empty-sub';
+  const actions = document.createElement('div');
+  actions.className = 'hs-mc-empty-actions';
+
+  if (!hsAuthToken) {
+    title.textContent = 'log in to see your home';
+    sub.textContent = 'follow people, post, share — alongside multichat';
+
+    const loginBtn = document.createElement('a');
+    loginBtn.className = 'hs-mc-empty-btn primary';
+    loginBtn.textContent = 'log in at heatsync.org';
+    loginBtn.href = 'https://heatsync.org/login';
+    loginBtn.target = '_blank';
+    loginBtn.rel = 'noopener noreferrer';
+    actions.appendChild(loginBtn);
+
+    const note = document.createElement('div');
+    note.className = 'hs-mc-empty-note';
+    note.textContent = 'no account needed for multichat — pick a channel tab above';
+
+    card.appendChild(title);
+    card.appendChild(sub);
+    card.appendChild(actions);
+    card.appendChild(note);
+    return card;
+  }
+
+  title.textContent = 'your home is quiet';
+  sub.textContent = 'follow people to see their posts here, or share something yourself';
+
+  const importBtn = document.createElement('button');
+  importBtn.className = 'hs-mc-empty-btn primary';
+  importBtn.textContent = 'import follows from twitch';
+  importBtn.addEventListener('click', async () => {
+    if (importBtn.disabled) return;
+    importBtn.disabled = true;
+    importBtn.textContent = 'syncing…';
+    try {
+      const r = await apiFetch('/api/sync-twitch-follows', { method: 'POST', auth: true });
+      if (r?.ok && r?.data?.success) {
+        importBtn.textContent = `synced ${r.data.synced || 0} ✓`;
+        try { chrome.runtime.sendMessage({ type: 'refresh_followed_users' }); } catch {}
+        setTimeout(() => { feedLoaded = false; if (currentTab === 'feed') renderFeed(); }, 1200);
+      } else {
+        importBtn.disabled = false;
+        importBtn.textContent = (r?.error || r?.data?.error || 'try again').slice(0, 40);
+      }
+    } catch (e) {
+      importBtn.disabled = false;
+      importBtn.textContent = 'try again';
+    }
+  });
+  actions.appendChild(importBtn);
+
+  const discoverBtn = document.createElement('button');
+  discoverBtn.className = 'hs-mc-empty-btn';
+  discoverBtn.textContent = 'discover people →';
+  discoverBtn.addEventListener('click', () => {
+    const tabBtn = tabBarElement?.querySelector('[data-tab="discover"]');
+    if (tabBtn) tabBtn.click();
+  });
+  actions.appendChild(discoverBtn);
+
+  const postBtn = document.createElement('button');
+  postBtn.className = 'hs-mc-empty-btn';
+  postBtn.textContent = 'post something';
+  postBtn.addEventListener('click', () => {
+    if (typeof showInputBar === 'function') showInputBar();
+    const inp = document.getElementById('hs-mc-input');
+    if (inp) inp.focus();
+  });
+  actions.appendChild(postBtn);
+
+  card.appendChild(title);
+  card.appendChild(sub);
+  card.appendChild(actions);
+  return card;
+}
+
 // Tear down virtual scroll state (called before re-setup or when leaving feed)
 function _feedVirtualTeardown(msgsEl) {
   if (_feedVirtualScrollHandler && msgsEl) {
@@ -906,10 +995,7 @@ function renderFeed() {
   if (feedMessages.length === 0) {
     _feedVirtualTeardown(msgsEl)
     msgsEl.textContent = '';
-    const empty = document.createElement('div');
-    empty.className = 'hs-mc-empty';
-    empty.textContent = t('mc_social_no_posts');
-    msgsEl.appendChild(empty);
+    msgsEl.appendChild(_renderFeedEmptyCard());
     return;
   }
 
@@ -1225,21 +1311,25 @@ function buildEngagementBar(m) {
   bmBtn.dataset.id = m.base36_id
   bmBtn.appendChild(_makeSvg('M5 2h14a1 1 0 011 1v18l-8-5-8 5V3a1 1 0 011-1z', bookmarked))
 
-  bar.appendChild(heatBtn)
-  bar.appendChild(bmBtn)
+  // Action buttons overlay — absolute top-right, hover-only (matches .hs-mc-reply-btn pattern)
+  const actions = document.createElement('div')
+  actions.className = 'hs-feed-actions'
+  actions.appendChild(heatBtn)
+  actions.appendChild(bmBtn)
+  const addReactBtn = document.createElement('button')
+  addReactBtn.className = 'hs-feed-react-add'
+  addReactBtn.title = 'react'
+  addReactBtn.textContent = '+'
+  actions.appendChild(addReactBtn)
+  bar.appendChild(actions)
 
-  // Reactions row
+  // Reactions row — always visible in flow (existing chips are data)
   const reactRow = document.createElement('div')
   reactRow.className = 'hs-feed-react-row'
   const cached = feedReactionsCache.get(m.base36_id)
   if (cached?.length) {
     for (const r of cached) reactRow.appendChild(_makeReactChip(r, m.base36_id, bar))
   }
-  const addReactBtn = document.createElement('button')
-  addReactBtn.className = 'hs-feed-react-add'
-  addReactBtn.title = 'react'
-  addReactBtn.textContent = '+'
-  reactRow.appendChild(addReactBtn)
   bar.appendChild(reactRow)
 
   return bar
@@ -1436,24 +1526,24 @@ const _feedEmoteRegexCache = new Map()
 function renderFeedContent(content, emoteRefs) {
   if (!content) return '';
   let html = escapeHtml(String(content));
-  // Text formatting (bold, italic, spoilers, etc.)
-  html = formatText(html)
-  // Linkify URLs BEFORE emote replacement (avoids corrupting img src attributes)
-  // Split by HTML tags to only linkify text segments (like heatsync.org does)
+  // Linkify URLs FIRST so text-formatting can't split them on '_' or eat path chars.
+  // Single regex pass with alternation: full https:// URLs OR bare domains.
+  // (?<![\/\w.]) on the bare-domain branch prevents matching inside an already-linkified URL path.
   if (linksEnabled) {
-    const parts = html.split(/(<[^>]+>)/)
-    html = parts.map((part, i) => {
-      if (i % 2 === 1) return part // skip HTML tags
-      part = part.replace(/(https?:\/\/[^\s<"]+)/gi, (match) => {
-        const escaped = escapeHtml(match)
-        return `<a href="${escaped}" target="_blank" rel="noopener" class="hs-mc-link">${escaped}</a>`
-      })
-      part = part.replace(/(?<!\/\/)([a-z0-9-]+(?:\.[a-z0-9-]+)+\/[^\s<"]*)/gi, (m) => {
-        const escaped = escapeHtml(m)
-        return `<a href="https://${escaped}" target="_blank" rel="noopener" class="hs-mc-link">${escaped}</a>`
-      })
-      return part
-    }).join('')
+    html = html.replace(
+      /(https?:\/\/[^\s<"]+|(?<![\/\w.])[a-z0-9-]+(?:\.[a-z0-9-]+)+\/[^\s<"]*)/gi,
+      (match) => {
+        const url = /^https?:\/\//i.test(match) ? match : 'https://' + match
+        const text = escapeHtml(match)
+        const href = escapeHtml(url)
+        return `<a href="${href}" target="_blank" rel="noopener" class="hs-mc-link">${text}</a>`
+      }
+    )
+  }
+  // Text formatting (bold, italic, spoilers, etc.) — skip <a>...</a> blocks so URL underscores aren't italicized.
+  {
+    const parts = html.split(/(<a\s[^>]*>[^<]*<\/a>)/i)
+    html = parts.map((part, i) => i % 2 === 1 ? part : formatText(part)).join('')
   }
   // Parse >>id post-links (like website does)
   html = html.replace(/(?:&gt;&gt;|>>)(\w{1,6})/g, (match, id) => {
@@ -1550,6 +1640,8 @@ async function openThread(msgId, highlightId) {
   let op = feedMessages.find(m => m.base36_id === msgId);
   activeThread = { id: msgId, op: op || null, replies: [], loading: true, highlightId: highlightId || null };
   renderFeed();
+  _renderFeedReplyChip(activeThread);
+  if (typeof showInputBar === 'function') showInputBar();
 
   const resp = await apiFetch(`/api/messages/${msgId}/replies`);
   if (resp.ok) {
@@ -1590,7 +1682,56 @@ async function openThread(msgId, highlightId) {
 
 function closeThread() {
   activeThread = null;
+  _clearFeedReplyChip();
   renderFeed();
+}
+
+// Reply-state chip shown above input bar when in thread view.
+// [OP] magenta if you are the thread OP, [RE] cyan otherwise.
+// Mirrors the [OP]/[RE] tag system from feed posts so click-to-reply
+// has the same visual language as the rendered output.
+function _renderFeedReplyChip(thread) {
+  document.getElementById('hs-mc-feed-reply-chip')?.remove();
+  if (!thread || !thread.id) return;
+  const bar = document.getElementById('hs-mc-inputbar');
+  if (!bar) return;
+
+  const chip = document.createElement('div');
+  chip.id = 'hs-mc-feed-reply-chip';
+  chip.className = 'hs-mc-feed-reply-chip';
+
+  const opUser = thread.op?.username?.toLowerCase() || '';
+  const isOwnOp = !!(hsCurrentUsername && opUser && hsCurrentUsername.toLowerCase() === opUser);
+
+  const tag = document.createElement('span');
+  tag.className = isOwnOp
+    ? 'hs-feed-tag hs-feed-tag-mop'
+    : 'hs-feed-tag hs-feed-tag-re';
+  tag.textContent = isOwnOp ? '[OP]' : '[RE]';
+  chip.appendChild(tag);
+
+  const ref = document.createElement('span');
+  ref.className = 'hs-mc-feed-reply-ref';
+  const rawId = thread.op?.base36_id || thread.id || '';
+  const displayId = String(rawId).replace(/^0+/, '') || '0';
+  ref.textContent = ` replying to >>${displayId}`;
+  chip.appendChild(ref);
+
+  const cancel = document.createElement('button');
+  cancel.className = 'hs-mc-feed-reply-cancel';
+  cancel.textContent = '✕';
+  cancel.title = 'leave thread';
+  cancel.addEventListener('click', (e) => {
+    e.preventDefault();
+    closeThread();
+  });
+  chip.appendChild(cancel);
+
+  bar.insertBefore(chip, bar.firstChild);
+}
+
+function _clearFeedReplyChip() {
+  document.getElementById('hs-mc-feed-reply-chip')?.remove();
 }
 
 function toggleThread(msgId, highlightId) {

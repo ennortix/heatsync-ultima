@@ -41,12 +41,56 @@
       color: #808080;
       margin-bottom: 32px;
     }
+    .ready-now {
+      background: #000;
+      border: 1px solid #ff8700;
+      padding: 18px 20px;
+      text-align: left;
+      margin-bottom: 16px;
+    }
+    .ready-title {
+      font-size: 13px;
+      color: #ff8700;
+      margin-bottom: 8px;
+      text-transform: lowercase;
+    }
+    .ready-list {
+      list-style: none;
+      padding: 0;
+      margin: 0 0 8px;
+    }
+    .ready-list li {
+      font-size: 13px;
+      color: #fff;
+      line-height: 1.5;
+      padding-left: 14px;
+      position: relative;
+    }
+    .ready-list li::before {
+      content: '→';
+      position: absolute;
+      left: 0;
+      color: #ff8700;
+    }
+    .ready-hint {
+      font-size: 11px;
+      color: #808080;
+      margin-top: 8px;
+    }
     .steps {
       background: #000;
       border: 1px solid #1a1a1a;
       padding: 24px;
       text-align: left;
       margin-bottom: 32px;
+    }
+    .steps-header {
+      font-size: 12px;
+      color: #808080;
+      text-transform: lowercase;
+      margin-bottom: 14px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid #1a1a1a;
     }
     .step {
       display: flex;
@@ -114,7 +158,18 @@
     <h1 data-i18n="welcome_title">welcome to heatsync</h1>
     <p class="tagline" data-i18n="welcome_tagline">your emotes, everywhere you chat</p>
 
+    <div class="ready-now">
+      <div class="ready-title" data-i18n="welcome_ready_title">working right now — no account needed</div>
+      <ul class="ready-list">
+        <li data-i18n="welcome_ready_multichat">multichat panel on twitch / kick / youtube</li>
+        <li data-i18n="welcome_ready_emotes">7tv, ffz, bttv emotes auto-render</li>
+        <li data-i18n="welcome_ready_overlay">cosmetics, paints, badges from linked accounts</li>
+      </ul>
+      <div class="ready-hint" data-i18n="welcome_ready_hint">open any twitch / kick / youtube stream — the panel slides in</div>
+    </div>
+
     <div class="steps">
+      <div class="steps-header" data-i18n="welcome_steps_header">unlock more — emotes, posts, follows</div>
       <div class="step">
         <div class="step-number">1</div>
         <div class="step-text">

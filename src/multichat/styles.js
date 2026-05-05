@@ -1228,6 +1228,71 @@ function injectStyles() {
       padding: 20px;
       text-align: center;
     }
+    .hs-mc-empty-card {
+      padding: 24px 16px;
+      max-width: 360px;
+      margin: 16px auto;
+      text-align: center;
+      color: #ddd;
+      border: 1px solid #1a1a1a;
+      background: #000;
+    }
+    .hs-mc-empty-title {
+      font-size: 14px;
+      color: #ff8700;
+      margin-bottom: 6px;
+      text-transform: lowercase;
+    }
+    .hs-mc-empty-sub {
+      font-size: 12px;
+      color: #a0a0a0;
+      margin-bottom: 14px;
+      line-height: 1.4;
+    }
+    .hs-mc-empty-actions {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      align-items: stretch;
+    }
+    .hs-mc-empty-btn {
+      display: block;
+      padding: 7px 10px;
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.12);
+      color: #ddd;
+      font-family: inherit;
+      font-size: 12px;
+      cursor: pointer;
+      text-decoration: none;
+      text-align: center;
+      box-sizing: border-box;
+    }
+    .hs-mc-empty-btn:hover {
+      background: #fff;
+      color: #000;
+      border-color: #fff;
+    }
+    .hs-mc-empty-btn.primary {
+      background: #ff8700;
+      color: #000;
+      border-color: #ff8700;
+    }
+    .hs-mc-empty-btn.primary:hover {
+      background: #fff;
+      color: #000;
+      border-color: #fff;
+    }
+    .hs-mc-empty-btn:disabled {
+      opacity: 0.6;
+      cursor: default;
+    }
+    .hs-mc-empty-note {
+      font-size: 11px;
+      color: #555;
+      margin-top: 12px;
+      line-height: 1.4;
+    }
     .hs-mc-emote {
       height: var(--hs-emote-size, 32px);
       width: auto;
@@ -3502,6 +3567,7 @@ function injectStyles() {
 
     /* ---- FEED MESSAGE CARDS ---- */
     .hs-feed-msg {
+      position: relative;
       padding: 1px 6px;
       line-height: 1.4;
       font-size: 12px;
@@ -3571,6 +3637,45 @@ function injectStyles() {
     }
     .hs-feed-tag-re {
       color: #00ffff;
+    }
+    .hs-mc-feed-reply-chip {
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: 100%;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      padding: 3px 8px;
+      background: #000;
+      border-top: 1px solid #1a1a1a;
+      border-bottom: 1px solid #1a1a1a;
+      font-size: 11px;
+      line-height: 1.4;
+      box-sizing: border-box;
+      z-index: 1002;
+    }
+    .hs-mc-feed-reply-ref {
+      color: #a0a0a0;
+      flex: 1;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .hs-mc-feed-reply-cancel {
+      background: none;
+      border: none;
+      color: #808080;
+      cursor: pointer;
+      font-size: 12px;
+      padding: 0 4px;
+      font-family: inherit;
+      flex-shrink: 0;
+    }
+    .hs-mc-feed-reply-cancel:hover {
+      background: #fff;
+      color: #000;
     }
     /* Canonical heat number — used everywhere via heatSpanHtml/heatSpanEl. Tier color/glow is set inline. */
     .hs-heat-num {
@@ -3746,6 +3851,21 @@ function injectStyles() {
       margin-top: 2px;
       padding-left: 2px;
     }
+    .hs-feed-actions {
+      display: none;
+      position: absolute;
+      top: 1px;
+      right: 4px;
+      align-items: center;
+      gap: 2px;
+      background: #000;
+      border: 1px solid #808080;
+      padding: 1px 3px;
+      z-index: 10;
+    }
+    .hs-feed-msg:hover .hs-feed-actions {
+      display: inline-flex;
+    }
     .hs-feed-heat-btn,
     .hs-feed-bm-btn {
       display: inline-flex;
@@ -3755,7 +3875,7 @@ function injectStyles() {
       border: none;
       padding: 1px 3px;
       cursor: pointer;
-      color: #808080;
+      color: #fff;
       font-size: 11px;
       font-family: inherit;
       line-height: 1;
@@ -3810,7 +3930,7 @@ function injectStyles() {
     .hs-feed-react-add {
       background: none;
       border: 1px solid #444;
-      color: #808080;
+      color: #fff;
       padding: 1px 4px;
       cursor: pointer;
       font-size: 11px;

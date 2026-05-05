@@ -15873,11 +15873,13 @@ const _feedResolveInflight = new Map()
 
 function _fetchFeedResolve(url) {
   if (_feedResolveInflight.has(url)) return _feedResolveInflight.get(url)
+  // Route via background SW — content script fetches in MV3 still go through
+  // page-origin CORS, but the SW has full host_permissions and bypasses it.
   const promise = (async () => {
     try {
-      const r = await fetch(`https://heatsync.org/api/embed/resolve?url=${encodeURIComponent(url)}`)
-      if (!r.ok) return null
-      return await r.json()
+      const data = await safeSendMessage({ type: 'fetch_embed_resolve', url })
+      if (!data || data.error || data.ok === false) return null
+      return data
     } catch (_) { return null }
   })()
   _feedResolveInflight.set(url, promise)

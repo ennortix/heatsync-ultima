@@ -3763,6 +3763,18 @@ async function handleMessage(message, sender, sendResponse) {
     return true
   }
 
+  // Proxy /api/embed/resolve through SW — content-script fetches in MV3 still
+  // get blocked by CORS even with host_permissions; SW bypasses it.
+  if (message.type === 'fetch_embed_resolve') {
+    const url = message.url
+    if (!url || !/^https?:\/\//i.test(url)) { sendResponse(null); return true }
+    fetch(`https://heatsync.org/api/embed/resolve?url=${encodeURIComponent(url)}`, { signal: AbortSignal.timeout(6000) })
+      .then(r => r.ok ? r.json() : null)
+      .then(data => sendResponse(data))
+      .catch(() => sendResponse(null))
+    return true
+  }
+
   // Query all open Twitch/Kick tabs to find channels the user is watching
   if (message.type === 'get_watching_channels') {
     const skip = new Set(['directory', 'settings', 'videos', 'moderator', 'subscriptions', 'downloads', 'search', 'categories', 'following'])

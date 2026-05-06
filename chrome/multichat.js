@@ -4828,9 +4828,11 @@ function injectStyles() {
     }
 
     /* Emote hover tooltip - 4x preview */
+    /* Max z-index so it beats the reply-stack overlay (also at max int);
+       showEmoteTooltip re-appends to body so DOM order tiebreaks in our favor. */
     #hs-emote-tooltip {
       position: fixed;
-      z-index: 100001;
+      z-index: 2147483647;
       pointer-events: none;
       background: #000;
       border: 2px solid #808080;
@@ -11900,6 +11902,9 @@ async function sendKickMessage(kickSlug, text) {
 
   function showEmoteTooltip(e, emoteName, emoteUrl, state, source, hoveredImg, owner) {
     const tooltip = ensureEmoteTooltip();
+    // Re-append to body so DOM order tiebreaks above other max-int siblings
+    // (reply-stack overlay sits at the same z-index).
+    document.body.appendChild(tooltip);
     const img = tooltip.querySelector('img');
     const nameEl = tooltip.querySelector('.tooltip-name');
     const stateEl = tooltip.querySelector('.tooltip-source');
@@ -11962,6 +11967,7 @@ async function sendKickMessage(kickSlug, text) {
 
   function showEmojiTooltip(targetEl, emoji, name) {
     const tooltip = ensureEmoteTooltip()
+    document.body.appendChild(tooltip)
     const img = tooltip.querySelector('img')
     const nameEl = tooltip.querySelector('.tooltip-name')
     const stateEl = tooltip.querySelector('.tooltip-source')
@@ -13970,6 +13976,31 @@ let _lastPollData = null
 let _lastPinnedMsg = null
 let _hypeTrainActive = null // { level, startedAt }
 let _bannerFingerprint = '' // avoid rebuilding if nothing changed
+const _seenPredChannels = new Set()        // channels we've fetched at least once
+const _broadcastedPredIds = new Map()      // channel → last broadcast pred id
+
+// Emit a chat line when a new prediction starts. Suppresses on first observation
+// per channel so opening a tab mid-prediction doesn't spam old events.
+function maybeBroadcastNewPrediction(channel, pred) {
+  if (!channel) return
+  const ch = String(channel).toLowerCase()
+  const wasSeen = _seenPredChannels.has(ch)
+  _seenPredChannels.add(ch)
+  const newId = pred?.id || null
+  const prevId = _broadcastedPredIds.get(ch) || null
+  if (newId === prevId) return
+  _broadcastedPredIds.set(ch, newId)
+  if (!wasSeen) return
+  if (!pred || pred.status !== 'ACTIVE') return
+  try {
+    window.postMessage({
+      type: 'heatsync-hermes-event',
+      eventType: 'prediction-start',
+      channel: ch,
+      data: { title: pred.title || '', id: pred.id }
+    }, location.origin)
+  } catch {}
+}
 
 function clearBannerTimers() {
   _bannerTimers.forEach(id => cleanup.clearInterval(id))
@@ -14242,6 +14273,7 @@ async function renderTwitchTab() {
   const modBefore = _twitchIsMod
   fetchPrediction(channel).then(result => {
     _lastPredResult = result
+    maybeBroadcastNewPrediction(channel, result?.prediction)
     updateChatBanners(_lastPredResult, _lastPollData)
     predSlot.textContent = ''
     predSlot.className = ''
@@ -14315,6 +14347,7 @@ async function refreshPredictionSlot() {
 
   // Update chat overlay banner
   _lastPredResult = result
+  maybeBroadcastNewPrediction(channel, result?.prediction)
   updateChatBanners(_lastPredResult, _lastPollData)
 
   // Find the prediction slot — it's always a direct child of container marked with data-pred-slot
@@ -23009,10 +23042,21 @@ const STORAGE_KEY = 'heatsync_multichat';
   let isKick = location.hostname.includes('kick.com');
   const hostPlatform = isKick ? 'kick' : location.hostname.includes('youtube.com') ? 'yt' : 'twitch';
 
-  // Scoped emote wrapper query (avoids full-document scan)
+  // Scoped emote wrapper query (avoids full-document scan).
+  // Includes the reply-stack overlays — they're appended to <body>, not inside
+  // #hs-mc-overlay, so without these roots the hover-highlight never lands on
+  // overlay-rendered emotes (and same-name cross-highlight misses overlay copies).
   function queryEmoteWrappers(emoteName) {
-    const scope = document.getElementById('hs-mc-overlay') || document
-    return scope.querySelectorAll(`.hs-mc-emote-wrapper[data-emote-name="${CSS.escape(emoteName)}"]`)
+    const sel = `.hs-mc-emote-wrapper[data-emote-name="${CSS.escape(emoteName)}"]`
+    const main = document.getElementById('hs-mc-overlay')
+    const stackUp = document.getElementById('hs-mc-reply-stack')
+    const stackDown = document.getElementById('hs-mc-reply-stack-down')
+    if (!main && !stackUp && !stackDown) return document.querySelectorAll(sel)
+    const out = []
+    if (main) for (const w of main.querySelectorAll(sel)) out.push(w)
+    if (stackUp) for (const w of stackUp.querySelectorAll(sel)) out.push(w)
+    if (stackDown) for (const w of stackDown.querySelectorAll(sel)) out.push(w)
+    return out
   }
 
   // Batch-remove excess children using a Range (single reflow instead of N)
@@ -24250,6 +24294,19 @@ const STORAGE_KEY = 'heatsync_multichat';
           scrollMsgsToBottom(msgsEl);
         }
       }, { signal: mcSignal });
+
+      // Bulletproof sticky-bottom: any change to msgsEl's box (panel resize,
+      // window resize, tab/input bar height shift, font-size change) re-pins
+      // to bottom unless the user explicitly scrolled up. Plugs the gap where
+      // a width-rewrap shifted scrollTop a few px and the geometric
+      // wasAtBottom check in renderMessages flipped to false.
+      const _stickyResizeObs = new ResizeObserver(() => {
+        if (isScrolledUp) return
+        if (isStaticTab()) return
+        scrollMsgsToBottom(msgsEl)
+      })
+      _stickyResizeObs.observe(msgsEl)
+      cleanup.trackObserver(_stickyResizeObs)
 
       // Reply-chain stack overlay — viewport-bounded stack of all parents above hovered row
       let _stackActiveRow = null
@@ -28153,8 +28210,12 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       }
     }
 
-    // Snapshot "was at bottom?" BEFORE inserts so we know whether to re-pin.
-    const wasAtBottom = (msgsEl.scrollHeight - msgsEl.scrollTop - msgsEl.clientHeight) <= 4
+    // Bulletproof sticky-bottom: if the user hasn't scrolled up via input,
+    // we re-pin unconditionally. Geometric "wasAtBottom" snapshot was
+    // unreliable — a width rewrap, image-load reflow, or content-visibility
+    // resolve could shift scrollTop a few px and flip the gate to false even
+    // though the user logically was at-bottom.
+    const isStaticRender = id === 'feed' || id === 'settings' || id === 'discover' || id === 'pinned'
 
     // PASS B: walk desired list, MOVE existing nodes into position or insert
     // new ones. Crucially: when a desired key already lives in DOM at the
@@ -28207,13 +28268,12 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
 
     applyMcMutes()
 
-    // Scroll behavior: if user was at bottom AND not in scrolled-up state,
-    // re-pin to bottom — covers both tail appends (new live msg) and mid-
-    // list inserts (backfill above existing live msgs would otherwise leave
-    // user 100px+ above the latest twitch msg). mellen's rule: scrollbar
-    // locked at bottom unless user explicitly scrolls up.
+    // Scroll behavior: re-pin if user hasn't paused. Static tabs (feed/
+    // discover/pinned/settings) skip — they pin the newest at TOP, not
+    // bottom. mellen's rule: scrollbar locked at bottom unless user
+    // explicitly scrolls up.
     cleanup.raf(() => { isProgrammaticScroll = false })
-    if (wasAtBottom && !isScrolledUp) {
+    if (!isScrolledUp && !isStaticRender) {
       scrollMsgsToBottom(msgsEl)
     }
   }
@@ -30998,6 +31058,11 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
           redeemTitleMap.set(data.rewardId, { title: data.title, cost: data.cost })
           if (redeemTitleMap.size > 200) redeemTitleMap.delete(redeemTitleMap.keys().next().value)
         }
+      } else if (eventType === 'prediction-start') {
+        toggleKey = 'pred'
+        eventClass = 'event-pred'
+        const title = data?.title ? ' — ' + escapeHtml(data.title) : ''
+        text = `[${escapeHtml(channel)}] ◆ new prediction up${title}`
       } else if (eventType === 'pin') {
         if (typeof onPinnedMessage === 'function') onPinnedMessage({ message: data.message, sender: data.sender, id: data.id, channel })
         return

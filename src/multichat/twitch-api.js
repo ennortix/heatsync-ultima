@@ -1157,6 +1157,31 @@ let _lastPollData = null
 let _lastPinnedMsg = null
 let _hypeTrainActive = null // { level, startedAt }
 let _bannerFingerprint = '' // avoid rebuilding if nothing changed
+const _seenPredChannels = new Set()        // channels we've fetched at least once
+const _broadcastedPredIds = new Map()      // channel → last broadcast pred id
+
+// Emit a chat line when a new prediction starts. Suppresses on first observation
+// per channel so opening a tab mid-prediction doesn't spam old events.
+function maybeBroadcastNewPrediction(channel, pred) {
+  if (!channel) return
+  const ch = String(channel).toLowerCase()
+  const wasSeen = _seenPredChannels.has(ch)
+  _seenPredChannels.add(ch)
+  const newId = pred?.id || null
+  const prevId = _broadcastedPredIds.get(ch) || null
+  if (newId === prevId) return
+  _broadcastedPredIds.set(ch, newId)
+  if (!wasSeen) return
+  if (!pred || pred.status !== 'ACTIVE') return
+  try {
+    window.postMessage({
+      type: 'heatsync-hermes-event',
+      eventType: 'prediction-start',
+      channel: ch,
+      data: { title: pred.title || '', id: pred.id }
+    }, location.origin)
+  } catch {}
+}
 
 function clearBannerTimers() {
   _bannerTimers.forEach(id => cleanup.clearInterval(id))
@@ -1429,6 +1454,7 @@ async function renderTwitchTab() {
   const modBefore = _twitchIsMod
   fetchPrediction(channel).then(result => {
     _lastPredResult = result
+    maybeBroadcastNewPrediction(channel, result?.prediction)
     updateChatBanners(_lastPredResult, _lastPollData)
     predSlot.textContent = ''
     predSlot.className = ''
@@ -1502,6 +1528,7 @@ async function refreshPredictionSlot() {
 
   // Update chat overlay banner
   _lastPredResult = result
+  maybeBroadcastNewPrediction(channel, result?.prediction)
   updateChatBanners(_lastPredResult, _lastPollData)
 
   // Find the prediction slot — it's always a direct child of container marked with data-pred-slot

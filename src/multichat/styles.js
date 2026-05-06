@@ -1683,9 +1683,11 @@ function injectStyles() {
     }
 
     /* Emote hover tooltip - 4x preview */
+    /* Max z-index so it beats the reply-stack overlay (also at max int);
+       showEmoteTooltip re-appends to body so DOM order tiebreaks in our favor. */
     #hs-emote-tooltip {
       position: fixed;
-      z-index: 100001;
+      z-index: 2147483647;
       pointer-events: none;
       background: #000;
       border: 2px solid #808080;

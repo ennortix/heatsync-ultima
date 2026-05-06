@@ -100,6 +100,9 @@
 
   function showEmoteTooltip(e, emoteName, emoteUrl, state, source, hoveredImg, owner) {
     const tooltip = ensureEmoteTooltip();
+    // Re-append to body so DOM order tiebreaks above other max-int siblings
+    // (reply-stack overlay sits at the same z-index).
+    document.body.appendChild(tooltip);
     const img = tooltip.querySelector('img');
     const nameEl = tooltip.querySelector('.tooltip-name');
     const stateEl = tooltip.querySelector('.tooltip-source');
@@ -162,6 +165,7 @@
 
   function showEmojiTooltip(targetEl, emoji, name) {
     const tooltip = ensureEmoteTooltip()
+    document.body.appendChild(tooltip)
     const img = tooltip.querySelector('img')
     const nameEl = tooltip.querySelector('.tooltip-name')
     const stateEl = tooltip.querySelector('.tooltip-source')

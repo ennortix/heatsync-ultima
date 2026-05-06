@@ -102,10 +102,21 @@
   let isKick = location.hostname.includes('kick.com');
   const hostPlatform = isKick ? 'kick' : location.hostname.includes('youtube.com') ? 'yt' : 'twitch';
 
-  // Scoped emote wrapper query (avoids full-document scan)
+  // Scoped emote wrapper query (avoids full-document scan).
+  // Includes the reply-stack overlays — they're appended to <body>, not inside
+  // #hs-mc-overlay, so without these roots the hover-highlight never lands on
+  // overlay-rendered emotes (and same-name cross-highlight misses overlay copies).
   function queryEmoteWrappers(emoteName) {
-    const scope = document.getElementById('hs-mc-overlay') || document
-    return scope.querySelectorAll(`.hs-mc-emote-wrapper[data-emote-name="${CSS.escape(emoteName)}"]`)
+    const sel = `.hs-mc-emote-wrapper[data-emote-name="${CSS.escape(emoteName)}"]`
+    const main = document.getElementById('hs-mc-overlay')
+    const stackUp = document.getElementById('hs-mc-reply-stack')
+    const stackDown = document.getElementById('hs-mc-reply-stack-down')
+    if (!main && !stackUp && !stackDown) return document.querySelectorAll(sel)
+    const out = []
+    if (main) for (const w of main.querySelectorAll(sel)) out.push(w)
+    if (stackUp) for (const w of stackUp.querySelectorAll(sel)) out.push(w)
+    if (stackDown) for (const w of stackDown.querySelectorAll(sel)) out.push(w)
+    return out
   }
 
   // Batch-remove excess children using a Range (single reflow instead of N)
@@ -1343,6 +1354,19 @@
           scrollMsgsToBottom(msgsEl);
         }
       }, { signal: mcSignal });
+
+      // Bulletproof sticky-bottom: any change to msgsEl's box (panel resize,
+      // window resize, tab/input bar height shift, font-size change) re-pins
+      // to bottom unless the user explicitly scrolled up. Plugs the gap where
+      // a width-rewrap shifted scrollTop a few px and the geometric
+      // wasAtBottom check in renderMessages flipped to false.
+      const _stickyResizeObs = new ResizeObserver(() => {
+        if (isScrolledUp) return
+        if (isStaticTab()) return
+        scrollMsgsToBottom(msgsEl)
+      })
+      _stickyResizeObs.observe(msgsEl)
+      cleanup.trackObserver(_stickyResizeObs)
 
       // Reply-chain stack overlay — viewport-bounded stack of all parents above hovered row
       let _stackActiveRow = null
@@ -5246,8 +5270,12 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       }
     }
 
-    // Snapshot "was at bottom?" BEFORE inserts so we know whether to re-pin.
-    const wasAtBottom = (msgsEl.scrollHeight - msgsEl.scrollTop - msgsEl.clientHeight) <= 4
+    // Bulletproof sticky-bottom: if the user hasn't scrolled up via input,
+    // we re-pin unconditionally. Geometric "wasAtBottom" snapshot was
+    // unreliable — a width rewrap, image-load reflow, or content-visibility
+    // resolve could shift scrollTop a few px and flip the gate to false even
+    // though the user logically was at-bottom.
+    const isStaticRender = id === 'feed' || id === 'settings' || id === 'discover' || id === 'pinned'
 
     // PASS B: walk desired list, MOVE existing nodes into position or insert
     // new ones. Crucially: when a desired key already lives in DOM at the
@@ -5300,13 +5328,12 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
 
     applyMcMutes()
 
-    // Scroll behavior: if user was at bottom AND not in scrolled-up state,
-    // re-pin to bottom — covers both tail appends (new live msg) and mid-
-    // list inserts (backfill above existing live msgs would otherwise leave
-    // user 100px+ above the latest twitch msg). mellen's rule: scrollbar
-    // locked at bottom unless user explicitly scrolls up.
+    // Scroll behavior: re-pin if user hasn't paused. Static tabs (feed/
+    // discover/pinned/settings) skip — they pin the newest at TOP, not
+    // bottom. mellen's rule: scrollbar locked at bottom unless user
+    // explicitly scrolls up.
     cleanup.raf(() => { isProgrammaticScroll = false })
-    if (wasAtBottom && !isScrolledUp) {
+    if (!isScrolledUp && !isStaticRender) {
       scrollMsgsToBottom(msgsEl)
     }
   }
@@ -8091,6 +8118,11 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
           redeemTitleMap.set(data.rewardId, { title: data.title, cost: data.cost })
           if (redeemTitleMap.size > 200) redeemTitleMap.delete(redeemTitleMap.keys().next().value)
         }
+      } else if (eventType === 'prediction-start') {
+        toggleKey = 'pred'
+        eventClass = 'event-pred'
+        const title = data?.title ? ' — ' + escapeHtml(data.title) : ''
+        text = `[${escapeHtml(channel)}] ◆ new prediction up${title}`
       } else if (eventType === 'pin') {
         if (typeof onPinnedMessage === 'function') onPinnedMessage({ message: data.message, sender: data.sender, id: data.id, channel })
         return

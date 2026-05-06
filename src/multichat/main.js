@@ -1362,12 +1362,13 @@
       const isInHoverZone = (x, y) => {
         if (!_stackActiveRow) return false
         const r = _stackActiveRow.getBoundingClientRect()
-        const overlay = document.getElementById('hs-mc-reply-stack')
-        const oRect = overlay && overlay.style.display === 'block' ? overlay.getBoundingClientRect() : null
-        const yTop = oRect ? Math.min(oRect.top, r.top) : r.top
-        const yBot = r.bottom
-        const xLeft = oRect ? Math.min(oRect.left, r.left) : r.left
-        const xRight = oRect ? Math.max(oRect.right, r.right) : r.right
+        const oUp = document.getElementById('hs-mc-reply-stack')
+        const oDown = document.getElementById('hs-mc-reply-stack-down')
+        const oUpRect = oUp && oUp.style.display === 'block' ? oUp.getBoundingClientRect() : null
+        const oDownRect = oDown && oDown.style.display === 'block' ? oDown.getBoundingClientRect() : null
+        let yTop = r.top, yBot = r.bottom, xLeft = r.left, xRight = r.right
+        if (oUpRect) { yTop = Math.min(yTop, oUpRect.top); xLeft = Math.min(xLeft, oUpRect.left); xRight = Math.max(xRight, oUpRect.right) }
+        if (oDownRect) { yBot = Math.max(yBot, oDownRect.bottom); xLeft = Math.min(xLeft, oDownRect.left); xRight = Math.max(xRight, oDownRect.right) }
         return x >= xLeft && x <= xRight && y >= yTop && y <= yBot
       }
       const dismissStack = () => {
@@ -1376,6 +1377,11 @@
         if (overlay) {
           overlay.style.display = 'none'
           overlay.replaceChildren()
+        }
+        const overlayDown = document.getElementById('hs-mc-reply-stack-down')
+        if (overlayDown) {
+          overlayDown.style.display = 'none'
+          overlayDown.replaceChildren()
         }
         if (_stackActiveRow) {
           _stackActiveRow.classList.remove('hs-mc-reply-stack-active')
@@ -1424,6 +1430,45 @@
         }
         return chain
       }
+      // Walk forward — find descendants. The first child reply, then its first
+      // child, etc. Linear chain (no branching) for stack visualization.
+      const findFirstChild = (channel, platform, parentId) => {
+        if (!parentId) return null
+        const ch = (channel || '').toLowerCase()
+        const matchInBuf = (buf) => {
+          const msgs = buf.getAll()
+          for (let i = 0; i < msgs.length; i++) if (msgs[i].replyTo?.id === parentId) return msgs[i]
+          return null
+        }
+        if (platform === 'kick') {
+          const buf = kickChat?.channels?.get(ch)
+          return buf ? matchInBuf(buf) : null
+        }
+        if (ch && irc?.channels) {
+          const buf = irc.channels.get(ch)
+          if (buf) { const m = matchInBuf(buf); if (m) return m }
+        }
+        if (irc?.channels) {
+          for (const buf of irc.channels.values()) { const m = matchInBuf(buf); if (m) return m }
+        }
+        return null
+      }
+      const walkDescendants = (channel, platform, startMsgId, maxDepth) => {
+        const chain = []
+        const seen = new Set()
+        let curId = startMsgId
+        let depth = 0
+        while (curId && depth < maxDepth) {
+          if (seen.has(curId)) break
+          seen.add(curId)
+          const child = findFirstChild(channel, platform, curId)
+          if (!child) break
+          chain.push(child)
+          curId = child.id || ''
+          depth++
+        }
+        return chain
+      }
       const ensureStackOverlay = () => {
         let el = document.getElementById('hs-mc-reply-stack')
         if (el) return el
@@ -1431,10 +1476,6 @@
         el.id = 'hs-mc-reply-stack'
         el.style.display = 'none'
         document.body.appendChild(el)
-        el.addEventListener('mouseleave', (ev) => {
-          if (_stackActiveRow && _stackActiveRow.contains(ev.relatedTarget)) return
-          dismissStack()
-        }, { signal: mcSignal })
         el.addEventListener('click', (ev) => {
           const chip = ev.target.closest('.hs-mc-reply-stack-chip')
           if (!chip) return
@@ -1452,68 +1493,105 @@
         }, { signal: mcSignal })
         return el
       }
+      const ensureStackOverlayDown = () => {
+        let el = document.getElementById('hs-mc-reply-stack-down')
+        if (el) return el
+        el = document.createElement('div')
+        el.id = 'hs-mc-reply-stack-down'
+        el.style.display = 'none'
+        document.body.appendChild(el)
+        return el
+      }
       const showStack = (hoveredEl) => {
         const replyId = hoveredEl.dataset.replyId
         if (!replyId) return
-        const chain = walkReplyChain(hoveredEl.dataset.msgChannel, hoveredEl.dataset.msgPlatform, replyId, 128)
-        if (!chain.length) return
-        // Read hovered row's natural styling FIRST (before any class change). This
-        // computes the correct overlap to cover padding-top + line-height slack above
-        // the first glyph. Critically, do NOT modify the hovered row's layout — only
-        // its bg via the active class — otherwise sticky-bottom auto-scroll fires
-        // async after our reflow, shifting the row in viewport coords AFTER we've
-        // anchored the overlay (caused the persistent ~13px gap before this fix).
+        const channel = hoveredEl.dataset.msgChannel
+        const platform = hoveredEl.dataset.msgPlatform
+        const chain = walkReplyChain(channel, platform, replyId, 128)
+        const ownId = hoveredEl.dataset.msgId
+        const descChain = ownId ? walkDescendants(channel, platform, ownId, 128) : []
+        if (!chain.length && !descChain.length) return
         const hCs = getComputedStyle(hoveredEl)
         const hPadTop = parseInt(hCs.paddingTop) || 0
+        const hPadBot = parseInt(hCs.paddingBottom) || 0
         const hLineHeight = parseFloat(hCs.lineHeight) || 0
         const hFontSize = parseFloat(hCs.fontSize) || 13
-        const hSlackAbove = Math.max(0, (hLineHeight - hFontSize) / 2)
-        const overlap = Math.round(hPadTop + hSlackAbove)
+        const hSlack = Math.max(0, (hLineHeight - hFontSize) / 2)
+        const overlapUp = Math.round(hPadTop + hSlack)
+        const overlapDown = Math.round(hPadBot + hSlack)
         const cRect = msgsEl.getBoundingClientRect()
         const hRect = hoveredEl.getBoundingClientRect()
-        const available = hRect.top - cRect.top
-        if (available < 24) return
-        // Use document.documentElement.clientHeight (layout viewport, excludes
-        // horizontal scrollbar) — NOT window.innerHeight (visual viewport, includes
-        // scrollbar). position:fixed bottom is relative to the layout viewport, so
-        // mismatching here puts the overlay off by the scrollbar height (~15px on
-        // pages with a horizontal scrollbar — exactly the gap users were seeing).
+        const availableUp = hRect.top - cRect.top
+        const availableDown = cRect.bottom - hRect.bottom
         const layoutViewportHeight = document.documentElement.clientHeight
-        const overlay = ensureStackOverlay()
-        overlay.replaceChildren()
-        overlay.style.position = 'fixed'
-        overlay.style.left = hRect.left + 'px'
-        overlay.style.width = hRect.width + 'px'
-        overlay.style.bottom = (layoutViewportHeight - hRect.top - overlap) + 'px'
-        overlay.style.maxHeight = (available + overlap) + 'px'
-        overlay.style.display = 'block'
-        let shown = 0
-        for (let i = 0; i < chain.length; i++) {
-          const parent = chain[i]
-          const row = buildMessageDiv(parent, currentTab)
-          if (!row) continue
-          row.classList.add('hs-mc-reply-stack-row')
-          overlay.insertBefore(row, overlay.firstChild)
-          if (overlay.scrollHeight > available) {
-            overlay.removeChild(row)
-            const remaining = chain.length - shown
-            if (remaining > 0) {
-              const chip = document.createElement('div')
-              chip.className = 'hs-mc-reply-stack-chip'
-              chip.textContent = '↑ ' + remaining + ' more'
-              chip.dataset.targetId = chain[chain.length - 1].id
-              overlay.insertBefore(chip, overlay.firstChild)
+
+        // ── Render ANCESTORS in the up overlay ──
+        let upShown = 0
+        if (chain.length && availableUp >= 24) {
+          const overlay = ensureStackOverlay()
+          overlay.replaceChildren()
+          overlay.style.position = 'fixed'
+          overlay.style.left = hRect.left + 'px'
+          overlay.style.width = hRect.width + 'px'
+          overlay.style.bottom = (layoutViewportHeight - hRect.top - overlapUp) + 'px'
+          overlay.style.maxHeight = (availableUp + overlapUp) + 'px'
+          overlay.style.display = 'block'
+          for (let i = 0; i < chain.length; i++) {
+            const parent = chain[i]
+            const row = buildMessageDiv(parent, currentTab)
+            if (!row) continue
+            row.classList.add('hs-mc-reply-stack-row')
+            overlay.insertBefore(row, overlay.firstChild)
+            if (overlay.scrollHeight > availableUp) {
+              overlay.removeChild(row)
+              const remaining = chain.length - upShown
+              if (remaining > 0) {
+                const chip = document.createElement('div')
+                chip.className = 'hs-mc-reply-stack-chip'
+                chip.textContent = '↑ ' + remaining + ' more'
+                chip.dataset.targetId = chain[chain.length - 1].id
+                overlay.insertBefore(chip, overlay.firstChild)
+              }
+              break
             }
-            break
+            upShown++
           }
-          shown++
+          if (!upShown) overlay.style.display = 'none'
+        } else {
+          const overlay = document.getElementById('hs-mc-reply-stack')
+          if (overlay) { overlay.style.display = 'none'; overlay.replaceChildren() }
         }
-        if (!shown) {
-          overlay.style.display = 'none'
-          return
+
+        // ── Render DESCENDANTS in the down overlay ──
+        let downShown = 0
+        if (descChain.length && availableDown >= 24) {
+          const overlay = ensureStackOverlayDown()
+          overlay.replaceChildren()
+          overlay.style.position = 'fixed'
+          overlay.style.left = hRect.left + 'px'
+          overlay.style.width = hRect.width + 'px'
+          overlay.style.top = (hRect.bottom - overlapDown) + 'px'
+          overlay.style.maxHeight = (availableDown + overlapDown) + 'px'
+          overlay.style.display = 'block'
+          for (let i = 0; i < descChain.length; i++) {
+            const child = descChain[i]
+            const row = buildMessageDiv(child, currentTab)
+            if (!row) continue
+            row.classList.add('hs-mc-reply-stack-row')
+            overlay.appendChild(row)  // chronological top-down
+            if (overlay.scrollHeight > (availableDown + overlapDown)) {
+              overlay.removeChild(row)
+              break
+            }
+            downShown++
+          }
+          if (!downShown) overlay.style.display = 'none'
+        } else {
+          const overlay = document.getElementById('hs-mc-reply-stack-down')
+          if (overlay) { overlay.style.display = 'none'; overlay.replaceChildren() }
         }
-        // Apply tint AFTER positioning is complete — class only changes background,
-        // no layout impact, so this is purely visual.
+
+        if (!upShown && !downShown) return
         if (_stackActiveRow && _stackActiveRow !== hoveredEl) {
           _stackActiveRow.classList.remove('hs-mc-reply-stack-active')
         }
@@ -1546,33 +1624,53 @@
           scheduleDismiss()
         }
       }, { passive: true, signal: mcSignal })
-      // On chat scroll, follow the active row instead of dismissing — auto-scroll
-      // on every new message would otherwise tear down the stack while the
-      // cursor is still over the row. Only dismiss if the row scrolled fully
-      // out of the chat viewport.
+      // On chat scroll, follow the active row by repositioning both overlays
+      // (up + down) instead of dismissing. Only dismiss if the row scrolled
+      // fully out of the chat viewport.
       const repositionStack = () => {
         if (!_stackActiveRow) return
-        const overlay = document.getElementById('hs-mc-reply-stack')
-        if (!overlay) return
         const cRect = msgsEl.getBoundingClientRect()
         const hRect = _stackActiveRow.getBoundingClientRect()
         if (hRect.bottom < cRect.top || hRect.top > cRect.bottom) {
           dismissStack()
           return
         }
-        const available = hRect.top - cRect.top
-        if (available < 24) { dismissStack(); return }
         const hCs = getComputedStyle(_stackActiveRow)
         const hPadTop = parseInt(hCs.paddingTop) || 0
+        const hPadBot = parseInt(hCs.paddingBottom) || 0
         const hLineHeight = parseFloat(hCs.lineHeight) || 0
         const hFontSize = parseFloat(hCs.fontSize) || 13
-        const hSlackAbove = Math.max(0, (hLineHeight - hFontSize) / 2)
-        const overlap = Math.round(hPadTop + hSlackAbove)
+        const hSlack = Math.max(0, (hLineHeight - hFontSize) / 2)
+        const overlapUp = Math.round(hPadTop + hSlack)
+        const overlapDown = Math.round(hPadBot + hSlack)
         const layoutH = document.documentElement.clientHeight
-        overlay.style.left = hRect.left + 'px'
-        overlay.style.width = hRect.width + 'px'
-        overlay.style.bottom = (layoutH - hRect.top - overlap) + 'px'
-        overlay.style.maxHeight = (available + overlap) + 'px'
+
+        const overlayUp = document.getElementById('hs-mc-reply-stack')
+        if (overlayUp && overlayUp.style.display === 'block') {
+          const availableUp = hRect.top - cRect.top
+          if (availableUp < 24) {
+            overlayUp.style.display = 'none'
+            overlayUp.replaceChildren()
+          } else {
+            overlayUp.style.left = hRect.left + 'px'
+            overlayUp.style.width = hRect.width + 'px'
+            overlayUp.style.bottom = (layoutH - hRect.top - overlapUp) + 'px'
+            overlayUp.style.maxHeight = (availableUp + overlapUp) + 'px'
+          }
+        }
+        const overlayDown = document.getElementById('hs-mc-reply-stack-down')
+        if (overlayDown && overlayDown.style.display === 'block') {
+          const availableDown = cRect.bottom - hRect.bottom
+          if (availableDown < 24) {
+            overlayDown.style.display = 'none'
+            overlayDown.replaceChildren()
+          } else {
+            overlayDown.style.left = hRect.left + 'px'
+            overlayDown.style.width = hRect.width + 'px'
+            overlayDown.style.top = (hRect.bottom - overlapDown) + 'px'
+            overlayDown.style.maxHeight = (availableDown + overlapDown) + 'px'
+          }
+        }
       }
       msgsEl.addEventListener('scroll', repositionStack, { passive: true, signal: mcSignal })
       window.addEventListener('resize', () => { if (_stackActiveRow) dismissStack() }, { passive: true, signal: mcSignal })

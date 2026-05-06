@@ -805,6 +805,34 @@ function injectStyles() {
       display: flex;
       flex-direction: column;
     }
+    /* Down overlay — descendants stacked BELOW the hovered row. No top border so
+       it butts snug against the row (top edge meets row's content bottom). */
+    #hs-mc-reply-stack-down {
+      box-sizing: border-box;
+      background: #000;
+      border: 1px solid #808000;
+      border-top: none;
+      z-index: 2147483647;
+      pointer-events: auto;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+    #hs-mc-reply-stack-down .hs-mc-reply-stack-row {
+      background: #808000 !important;
+      box-shadow: none !important;
+      margin: 0 !important;
+      padding-top: 0 !important;
+      padding-bottom: 0 !important;
+      content-visibility: visible !important;
+      contain-intrinsic-size: auto !important;
+    }
+    #hs-mc-reply-stack-down .hs-mc-reply-stack-row .hs-mc-reply-ctx {
+      display: none !important;
+    }
+    #hs-mc-reply-stack-down .hs-mc-reply-stack-row .hs-mc-reply-btn {
+      display: none !important;
+    }
     #hs-mc-reply-stack .hs-mc-reply-stack-row {
       background: #808000 !important;
       box-shadow: none !important;

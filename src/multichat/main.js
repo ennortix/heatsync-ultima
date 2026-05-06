@@ -1003,7 +1003,7 @@
   // Vi mode for chat input (default off)
   let viModeEnabled = false;
 
-  // Platform badges [T]/[K]/[YT] on messages (default on)
+  // Platform badges [T]/[K]/[Y] on messages (default on)
   let platformBadgesEnabled = true;
 
   // Zebra striping — alternate row backgrounds (default on)
@@ -4433,7 +4433,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       if (!mcUserCosmetics.has(m.userId)) queueMcCosmeticsLookup(m.userId)
     }
     const plat = m.platform === 'youtube' ? 'yt' : m.platform === 'kick' ? 'kick' : m.platform === 'heatsync' ? 'heatsync' : 'twitch'
-    const platLabel = plat === 'yt' ? '[YT]' : plat === 'kick' ? '[K]' : plat === 'heatsync' ? '[H]' : '[T]'
+    const platLabel = plat === 'yt' ? '[Y]' : plat === 'kick' ? '[K]' : plat === 'heatsync' ? '[H]' : '[T]'
     const platColors = { twitch: '#9146ff', kick: '#53fc18', yt: '#ff0000', heatsync: '#ff8700' }
     const platformBadge = (platformBadgesEnabled || plat !== hostPlatform) ? `<span class="hs-mc-platform-badge hs-mc-pb-${plat}" style="font-size:10px;margin-right:3px;font-weight:700;vertical-align:middle;color:${platColors[plat]}">${platLabel}</span>` : ''
     const safeScColor = sanitizeColor(m.scColor || '#ffd600')

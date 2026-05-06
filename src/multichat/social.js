@@ -1405,8 +1405,8 @@ function buildFeedMessageDiv(m, opUsername) {
 
   const isAnon = !m.platform || m.username === 'Anonymous';
 
-  // Platform badge: [T]/[K]/[YT] (hidden for anonymous)
-  const platLabel = m.platform === 'kick' ? '[K]' : m.platform === 'youtube' ? '[YT]' : m.platform === 'twitch' ? '[T]' : '';
+  // Platform badge: [T]/[K]/[Y] (hidden for anonymous)
+  const platLabel = m.platform === 'kick' ? '[K]' : m.platform === 'youtube' ? '[Y]' : m.platform === 'twitch' ? '[T]' : '';
   const platColors = { twitch: '#9146ff', kick: '#53fc18', youtube: '#ff0000' };
   const platBadge = platLabel ? `<span class="hs-feed-tag" style="color:${platColors[m.platform]}">${platLabel}</span>` : '';
 

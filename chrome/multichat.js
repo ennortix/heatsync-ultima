@@ -3923,8 +3923,6 @@ function injectStyles() {
     .hs-mc-msg.hs-mc-zebra, .hs-feed-msg.hs-mc-zebra {
       background: #1f1f1f;
     }
-    .hs-mc-msg:hover {
-    }
     /* Hovered-row tint while the reply stack is shown — same olive as stack rows.
        Critical: ONLY change the background. Changing padding/line-height shrinks the
        row, which triggers chat auto-scroll-to-bottom adjustment AFTER showStack has
@@ -3932,9 +3930,19 @@ function injectStyles() {
     .hs-mc-msg.hs-mc-reply-stack-active {
       background: #808000 !important;
     }
-    .hs-mc-msg.hs-mc-reply-stack-active .hs-mc-reply-ctx,
-    .hs-mc-msg.hs-mc-reply-stack-active .hs-mc-reply-user {
+    /* High-contrast on olive: forces every text element (gray ts, inline-styled
+       username, purple [T] / red [Y] / green [K] platform badges, links, emote alts)
+       to white. Without this, a #808080 timestamp on #808000 vanishes entirely and
+       saturated badges turn muddy. Scoped to all three olive rows: active hovered row,
+       up-stack parents, down-stack descendants. */
+    .hs-mc-msg.hs-mc-reply-stack-active,
+    .hs-mc-msg.hs-mc-reply-stack-active *,
+    #hs-mc-reply-stack .hs-mc-reply-stack-row,
+    #hs-mc-reply-stack .hs-mc-reply-stack-row *,
+    #hs-mc-reply-stack-down .hs-mc-reply-stack-row,
+    #hs-mc-reply-stack-down .hs-mc-reply-stack-row * {
       color: #fff !important;
+      -webkit-text-fill-color: #fff !important;
       border-left-color: #fff !important;
     }
     /* Reply-chain stack overlay — viewport-bounded vertical stack of parent messages.

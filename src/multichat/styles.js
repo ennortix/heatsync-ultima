@@ -802,6 +802,7 @@ function injectStyles() {
     }
     #hs-mc-reply-stack .hs-mc-reply-stack-row:last-child {
       border-bottom: none;
+      padding-bottom: 0;
     }
     #hs-mc-reply-stack .hs-mc-reply-stack-row .hs-mc-reply-ctx,
     #hs-mc-reply-stack .hs-mc-reply-stack-row .hs-mc-reply-user {

@@ -3947,6 +3947,7 @@ function injectStyles() {
     }
     #hs-mc-reply-stack .hs-mc-reply-stack-row:last-child {
       border-bottom: none;
+      padding-bottom: 0;
     }
     #hs-mc-reply-stack .hs-mc-reply-stack-row .hs-mc-reply-ctx,
     #hs-mc-reply-stack .hs-mc-reply-stack-row .hs-mc-reply-user {
@@ -24140,13 +24141,10 @@ const STORAGE_KEY = 'heatsync_multichat';
       }, { signal: mcSignal });
 
       // Reply-chain stack overlay — viewport-bounded stack of all parents above hovered row
-      let _stackShowTimer = null
       let _stackHideTimer = null
       let _stackActiveRow = null
-      const cancelStackShow = () => { if (_stackShowTimer) { cleanup.clearTimeout(_stackShowTimer); _stackShowTimer = null } }
       const cancelStackHide = () => { if (_stackHideTimer) { cleanup.clearTimeout(_stackHideTimer); _stackHideTimer = null } }
       const dismissStack = () => {
-        cancelStackShow()
         cancelStackHide()
         const overlay = document.getElementById('hs-mc-reply-stack')
         if (overlay) {
@@ -24236,13 +24234,16 @@ const STORAGE_KEY = 'heatsync_multichat';
         const hRect = hoveredEl.getBoundingClientRect()
         const available = hRect.top - cRect.top
         if (available < 24) return
+        // Overlap the hovered row's top padding so the stack's last row butts directly
+        // against the hovered row's content start (no whitespace gap).
+        const hPadTop = parseInt(getComputedStyle(hoveredEl).paddingTop) || 0
         const overlay = ensureStackOverlay()
         overlay.replaceChildren()
         overlay.style.position = 'fixed'
         overlay.style.left = hRect.left + 'px'
         overlay.style.width = hRect.width + 'px'
-        overlay.style.bottom = (window.innerHeight - hRect.top) + 'px'
-        overlay.style.maxHeight = available + 'px'
+        overlay.style.bottom = (window.innerHeight - hRect.top - hPadTop) + 'px'
+        overlay.style.maxHeight = (available + hPadTop) + 'px'
         overlay.style.display = 'block'
         let shown = 0
         for (let i = 0; i < chain.length; i++) {
@@ -24272,21 +24273,16 @@ const STORAGE_KEY = 'heatsync_multichat';
       msgsEl.addEventListener('mouseover', (e) => {
         const msg = e.target.closest('.hs-mc-msg')
         if (!msg) return
-        // Stack overlay (200ms delay) — only for replies with a known parent id
+        // Stack overlay — instant on hover (no delay)
         if (msg.dataset.replyId) {
           if (msg === _stackActiveRow) {
             cancelStackHide()
           } else {
-            cancelStackShow()
             cancelStackHide()
-            _stackShowTimer = cleanup.setTimeout(() => {
-              _stackShowTimer = null
-              showStack(msg)
-            }, 200)
+            showStack(msg)
           }
         } else if (_stackActiveRow !== msg) {
           // Hovering a different row that isn't a reply — start dismissing existing stack
-          cancelStackShow()
           if (_stackActiveRow && !_stackHideTimer) {
             _stackHideTimer = cleanup.setTimeout(dismissStack, 150)
           }
@@ -24301,7 +24297,6 @@ const STORAGE_KEY = 'heatsync_multichat';
           cancelStackHide()
           _stackHideTimer = cleanup.setTimeout(dismissStack, 150)
         }
-        if (_stackShowTimer) cancelStackShow()
       }, { passive: true, signal: mcSignal })
       // Dismiss stack on chat scroll, viewport resize, or new-message append
       msgsEl.addEventListener('scroll', () => { if (_stackActiveRow) dismissStack() }, { passive: true, signal: mcSignal })

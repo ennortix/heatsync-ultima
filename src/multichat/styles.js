@@ -780,6 +780,16 @@ function injectStyles() {
     }
     .hs-mc-msg:hover {
     }
+    /* Hovered-row tint while the reply stack is shown — same olive as stack rows so
+       the hovered row visually merges with the stack (no perceived gap). */
+    .hs-mc-msg.hs-mc-reply-stack-active {
+      background: #808000 !important;
+    }
+    .hs-mc-msg.hs-mc-reply-stack-active .hs-mc-reply-ctx,
+    .hs-mc-msg.hs-mc-reply-stack-active .hs-mc-reply-user {
+      color: #fff !important;
+      border-left-color: #fff !important;
+    }
     /* Reply-chain stack overlay — viewport-bounded vertical stack of parent messages.
        Bottom edge butts directly against the hovered row (no border, no shadow below). */
     #hs-mc-reply-stack {

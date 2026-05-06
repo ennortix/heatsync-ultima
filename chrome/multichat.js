@@ -3925,6 +3925,16 @@ function injectStyles() {
     }
     .hs-mc-msg:hover {
     }
+    /* Hovered-row tint while the reply stack is shown — same olive as stack rows so
+       the hovered row visually merges with the stack (no perceived gap). */
+    .hs-mc-msg.hs-mc-reply-stack-active {
+      background: #808000 !important;
+    }
+    .hs-mc-msg.hs-mc-reply-stack-active .hs-mc-reply-ctx,
+    .hs-mc-msg.hs-mc-reply-stack-active .hs-mc-reply-user {
+      color: #fff !important;
+      border-left-color: #fff !important;
+    }
     /* Reply-chain stack overlay — viewport-bounded vertical stack of parent messages.
        Bottom edge butts directly against the hovered row (no border, no shadow below). */
     #hs-mc-reply-stack {
@@ -24141,15 +24151,15 @@ const STORAGE_KEY = 'heatsync_multichat';
       }, { signal: mcSignal });
 
       // Reply-chain stack overlay — viewport-bounded stack of all parents above hovered row
-      let _stackHideTimer = null
       let _stackActiveRow = null
-      const cancelStackHide = () => { if (_stackHideTimer) { cleanup.clearTimeout(_stackHideTimer); _stackHideTimer = null } }
       const dismissStack = () => {
-        cancelStackHide()
         const overlay = document.getElementById('hs-mc-reply-stack')
         if (overlay) {
           overlay.style.display = 'none'
           overlay.replaceChildren()
+        }
+        if (_stackActiveRow) {
+          _stackActiveRow.classList.remove('hs-mc-reply-stack-active')
         }
         _stackActiveRow = null
       }
@@ -24202,11 +24212,9 @@ const STORAGE_KEY = 'heatsync_multichat';
         el.id = 'hs-mc-reply-stack'
         el.style.display = 'none'
         document.body.appendChild(el)
-        el.addEventListener('mouseenter', () => cancelStackHide(), { signal: mcSignal })
         el.addEventListener('mouseleave', (ev) => {
           if (_stackActiveRow && _stackActiveRow.contains(ev.relatedTarget)) return
-          cancelStackHide()
-          _stackHideTimer = cleanup.setTimeout(dismissStack, 150)
+          dismissStack()
         }, { signal: mcSignal })
         el.addEventListener('click', (ev) => {
           const chip = ev.target.closest('.hs-mc-reply-stack-chip')
@@ -24266,7 +24274,15 @@ const STORAGE_KEY = 'heatsync_multichat';
           }
           shown++
         }
-        if (!shown) overlay.style.display = 'none'
+        if (!shown) {
+          overlay.style.display = 'none'
+          return
+        }
+        // Tint hovered row #808000 so it visually merges with the stack (no perceived gap)
+        if (_stackActiveRow && _stackActiveRow !== hoveredEl) {
+          _stackActiveRow.classList.remove('hs-mc-reply-stack-active')
+        }
+        hoveredEl.classList.add('hs-mc-reply-stack-active')
         _stackActiveRow = hoveredEl
       }
 
@@ -24275,27 +24291,19 @@ const STORAGE_KEY = 'heatsync_multichat';
         if (!msg) return
         // Stack overlay — instant on hover (no delay)
         if (msg.dataset.replyId) {
-          if (msg === _stackActiveRow) {
-            cancelStackHide()
-          } else {
-            cancelStackHide()
-            showStack(msg)
-          }
-        } else if (_stackActiveRow !== msg) {
-          // Hovering a different row that isn't a reply — start dismissing existing stack
-          if (_stackActiveRow && !_stackHideTimer) {
-            _stackHideTimer = cleanup.setTimeout(dismissStack, 150)
-          }
+          if (msg !== _stackActiveRow) showStack(msg)
+        } else if (_stackActiveRow && _stackActiveRow !== msg) {
+          // Hovering a different row that isn't a reply — dismiss existing stack instantly
+          dismissStack()
         }
       }, { passive: true, signal: mcSignal })
       msgsEl.addEventListener('mouseout', (e) => {
-        // Stack: if leaving the active row toward something not the overlay, schedule dismiss
+        // Leaving the active row toward something that isn't the overlay → dismiss instantly
         if (_stackActiveRow && (e.target === _stackActiveRow || _stackActiveRow.contains(e.target))) {
           const goingTo = e.relatedTarget
           if (goingTo && _stackActiveRow.contains(goingTo)) return
           if (goingTo && goingTo.closest?.('#hs-mc-reply-stack')) return
-          cancelStackHide()
-          _stackHideTimer = cleanup.setTimeout(dismissStack, 150)
+          dismissStack()
         }
       }, { passive: true, signal: mcSignal })
       // Dismiss stack on chat scroll, viewport resize, or new-message append

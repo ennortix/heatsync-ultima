@@ -3654,7 +3654,9 @@ function injectStyles() {
       flex: 1;
       overflow-y: auto;
       overflow-x: hidden;
-      padding: 8px;
+      /* Bottom gets extra room so the last message clears the inputbar's top
+         border and message descenders aren't clipped against it. */
+      padding: 8px 8px 12px 8px;
       font-size: var(--hs-chat-font, 13px) !important;
       line-height: 1.4 !important;
       word-wrap: break-word;

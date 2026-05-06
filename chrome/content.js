@@ -2594,19 +2594,24 @@ function processExistingMessages() {
     if (i < tail.length) {
       requestAnimationFrame(processTailChunk)
     } else if (head.length > 0) {
-      // Defer head to idle time
+      // Defer head to idle time. Bind to window — Firefox throws if
+      // requestIdleCallback is invoked with this !== Window, and the
+      // (a || b)(x) grouping strips that binding.
+      const idleCb = window.requestIdleCallback
+        ? window.requestIdleCallback.bind(window)
+        : window.requestAnimationFrame.bind(window)
       let h = 0
       function processHeadChunk(deadline) {
         while (h < head.length && (!deadline || deadline.timeRemaining() > 1)) {
           processMessage(head[h++])
         }
         if (h < head.length) {
-          (window.requestIdleCallback || requestAnimationFrame)(processHeadChunk)
+          idleCb(processHeadChunk)
         } else {
           log(` ⏱️ Processed ${unprocessed.length} messages (${tail.length} tail, ${head.length} deferred) in ${(performance.now() - startTime).toFixed(0)}ms`)
         }
       }
-      (window.requestIdleCallback || requestAnimationFrame)(processHeadChunk)
+      idleCb(processHeadChunk)
     } else {
       log(` ⏱️ Processed ${tail.length} messages in ${(performance.now() - startTime).toFixed(0)}ms`)
     }

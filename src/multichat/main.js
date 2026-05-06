@@ -1446,12 +1446,18 @@
         const hRect = hoveredEl.getBoundingClientRect()
         const available = hRect.top - cRect.top
         if (available < 24) return
+        // Use document.documentElement.clientHeight (layout viewport, excludes
+        // horizontal scrollbar) — NOT window.innerHeight (visual viewport, includes
+        // scrollbar). position:fixed bottom is relative to the layout viewport, so
+        // mismatching here puts the overlay off by the scrollbar height (~15px on
+        // pages with a horizontal scrollbar — exactly the gap users were seeing).
+        const layoutViewportHeight = document.documentElement.clientHeight
         const overlay = ensureStackOverlay()
         overlay.replaceChildren()
         overlay.style.position = 'fixed'
         overlay.style.left = hRect.left + 'px'
         overlay.style.width = hRect.width + 'px'
-        overlay.style.bottom = (window.innerHeight - hRect.top - overlap) + 'px'
+        overlay.style.bottom = (layoutViewportHeight - hRect.top - overlap) + 'px'
         overlay.style.maxHeight = (available + overlap) + 'px'
         overlay.style.display = 'block'
         let shown = 0

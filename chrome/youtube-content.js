@@ -110,6 +110,15 @@
         rebuildEmoteMap(stored.emote_inventory || [], stored.global_emotes || [])
       }).catch(e => log('storage read failed (channel_emotes_update):', e?.message))
     } else if (msg.type === 'youtube_send_relay') {
+      // When awaitConfirm is set (server-relay path), wait for the message to
+      // appear in the chat list before acking. Without it, fire-and-forget for
+      // backwards compat with the earlier multichat-internal caller.
+      if (msg.awaitConfirm) {
+        handleSendRelay(msg).then(result => {
+          try { sendResponse(result || { ok: false, error: 'no_result' }) } catch {}
+        })
+        return true
+      }
       handleSendRelay(msg)
       sendResponse({ ok: true })
       return true
@@ -933,14 +942,58 @@
 
   // ─── Send Relay ───────────────────────────────────────────────────────────────
 
-  function handleSendRelay(msg) {
-    const input = document.querySelector('yt-live-chat-text-input-field-renderer div#input[contenteditable]')
-    if (!input) return
+  /**
+   * Inject text into YT live chat, click send, and (when the server is
+   * waiting for confirmation) wait for the user's own message to appear in
+   * the chat list — that's our proof of delivery, and it's also how we
+   * recover the YT username under which it was sent (server uses that for
+   * single-consume dedup against the heatsync local echo).
+   *
+   * Returns when awaitConfirm is set:
+   *   { ok: true, ytUsername }              — message landed in the chat list
+   *   { ok: false, error: 'no_input' }      — chat input not present
+   *   { ok: false, error: 'chat_disabled' } — input present but disabled (slow mode, sub-only, signed-out)
+   *   { ok: false, error: 'send_disabled' } — send button not clickable
+   *   { ok: false, error: 'send_not_confirmed' } — clicked but never appeared (rate-limited, banned, etc.)
+   */
+  async function handleSendRelay(msg) {
+    const inputRenderer = document.querySelector('yt-live-chat-text-input-field-renderer')
+    if (!inputRenderer) return { ok: false, error: 'no_input' }
+    const input = inputRenderer.querySelector('div#input[contenteditable]')
+    if (!input) return { ok: false, error: 'no_input' }
+    if (input.getAttribute('aria-disabled') === 'true') return { ok: false, error: 'chat_disabled' }
+
+    // Pre-arm the chat-list observer BEFORE we click send — otherwise a fast
+    // YT roundtrip can append the message before we start watching.
+    const itemList = document.querySelector('yt-live-chat-item-list-renderer #items')
+                  || document.querySelector('#items.yt-live-chat-item-list-renderer')
+    let observer = null
+    let seenResolve
+    const seenPromise = new Promise(resolve => { seenResolve = resolve })
+    if (itemList) {
+      observer = new MutationObserver((mutations) => {
+        for (const mut of mutations) {
+          for (const node of mut.addedNodes) {
+            if (!(node instanceof Element)) continue
+            // Either the message renderer itself or a wrapper holding one
+            const messageEl = node.querySelector?.('#message')
+            if (!messageEl) continue
+            const txt = (messageEl.textContent || '').trim()
+            if (txt === msg.text || txt.startsWith(msg.text)) {
+              const authorEl = node.querySelector?.('#author-name')
+              const ytUsername = (authorEl?.textContent || '').trim()
+              seenResolve(ytUsername || '')
+              return
+            }
+          }
+        }
+      })
+      observer.observe(itemList, { childList: true, subtree: true })
+    }
 
     input.focus()
     input.textContent = ''
 
-    // Set caret at end, then insert text via Selection/Range (execCommand is deprecated)
     const range = document.createRange()
     range.selectNodeContents(input)
     range.collapse(false)
@@ -957,14 +1010,27 @@
 
     input.dispatchEvent(new InputEvent('input', { bubbles: true, data: msg.text, inputType: 'insertText' }))
 
-    // Click send button after a brief delay for YouTube to process
-    setTimeout(() => {
-      const sendBtn = document.querySelector('#send-button button') ||
-                      document.querySelector('yt-button-shape button[aria-label]')
-      if (sendBtn && !sendBtn.disabled) {
-        sendBtn.click()
-      }
-    }, 100)
+    // Brief delay so YouTube enables the send button after the input event.
+    await new Promise(r => setTimeout(r, 120))
+
+    const sendBtn = document.querySelector('#send-button button') ||
+                    document.querySelector('yt-button-shape button[aria-label]')
+    if (!sendBtn || sendBtn.disabled) {
+      observer?.disconnect()
+      return { ok: false, error: 'send_disabled' }
+    }
+    sendBtn.click()
+
+    if (!msg.awaitConfirm) {
+      observer?.disconnect()
+      return { ok: true }
+    }
+
+    const timeout = new Promise(resolve => setTimeout(() => resolve(null), 2500))
+    const ytUsername = await Promise.race([seenPromise, timeout])
+    observer?.disconnect()
+    if (ytUsername === null) return { ok: false, error: 'send_not_confirmed' }
+    return { ok: true, ytUsername: ytUsername || undefined }
   }
 
   // ─── Init ─────────────────────────────────────────────────────────────────────

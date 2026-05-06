@@ -3179,6 +3179,46 @@ function handleWSMessage(msg) {
       })
       break
 
+    case 'yt:relay_send':
+      // Server is asking us to DOM-inject text into youtube.com's live chat.
+      // Find a tab on this videoId, hand off to youtube-content's existing
+      // youtube_send_relay path, ack back over the WS so the originating
+      // website socket knows whether it landed.
+      ;(async () => {
+        const reqId = msg.reqId
+        const videoId = msg.videoId
+        const text = msg.text
+        let ok = false
+        let error
+        let ytUsername
+        try {
+          if (!videoId || typeof videoId !== 'string') { error = 'invalid_video_id' }
+          else if (!text || typeof text !== 'string' || text.length === 0 || text.length > 200) { error = 'invalid_text' }
+          else {
+            // Prefer a tab whose URL carries this videoId — works for both
+            // /watch?v= and /live_chat?v= (live_chat is the chat iframe URL).
+            const tabs = await browser.tabs.query({ url: '*://*.youtube.com/*' }).catch(() => [])
+            const matching = tabs.find(t => (t.url || '').includes(`v=${videoId}`)) || tabs[0]
+            if (!matching) { error = 'no_youtube_tab' }
+            else {
+              const result = await browser.tabs.sendMessage(matching.id, {
+                type: 'youtube_send_relay',
+                text,
+                awaitConfirm: true
+              }).catch(e => ({ ok: false, error: e?.message || 'tab_send_failed' }))
+              ok = !!result?.ok
+              error = result?.error
+              ytUsername = result?.ytUsername
+            }
+          }
+        } catch (e) {
+          error = e?.message || 'unknown'
+        } finally {
+          wsSendDirect({ type: 'yt:relay_ack', reqId, ok, ytUsername, error })
+        }
+      })()
+      break
+
     case 'kick-sub-event':
       // Relay Kick subscription events to content scripts
       broadcastToTabs({

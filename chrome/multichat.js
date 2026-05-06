@@ -24316,6 +24316,28 @@ const STORAGE_KEY = 'heatsync_multichat';
       _stickyResizeObs.observe(msgsEl)
       cleanup.trackObserver(_stickyResizeObs)
 
+      // Image-load re-pin: lazy-loaded emotes/badges/avatars decode AFTER the
+      // message row rendered and we already pinned. Late-resolving height
+      // grows the row, pushing bottom past the viewport → "drifted up by a
+      // few px for a few sec" on busy channels with many lazy assets per
+      // message. ResizeObserver doesn't catch this (msgsEl's box stays
+      // constant). `load` doesn't bubble so capture phase is required. rAF
+      // coalesce so a 100-image burst still does one layout per frame.
+      let _imgLoadPinScheduled = false
+      const onImgLoadOrError = () => {
+        if (isScrolledUp) return
+        if (isStaticTab()) return
+        if (_imgLoadPinScheduled) return
+        _imgLoadPinScheduled = true
+        cleanup.raf(() => {
+          _imgLoadPinScheduled = false
+          if (isScrolledUp || isStaticTab()) return
+          scrollMsgsToBottom(msgsEl)
+        })
+      }
+      msgsEl.addEventListener('load', onImgLoadOrError, { capture: true, passive: true, signal: mcSignal })
+      msgsEl.addEventListener('error', onImgLoadOrError, { capture: true, passive: true, signal: mcSignal })
+
       // Reply-chain stack overlay — viewport-bounded stack of all parents above hovered row
       let _stackActiveRow = null
       // Layout-shift gate: chat auto-scroll on a new message slides a different
@@ -24345,6 +24367,28 @@ const STORAGE_KEY = 'heatsync_multichat';
         if (oDownRect) { yBot = Math.max(yBot, oDownRect.bottom); xLeft = Math.min(xLeft, oDownRect.left); xRight = Math.max(xRight, oDownRect.right) }
         return x >= xLeft && x <= xRight && y >= yTop && y <= yBot
       }
+      // When the active class toggles on a chat row, the row's reply-context
+      // chip is shown/hidden via display:none (see styles.js). Hiding shrinks
+      // the row → scrollHeight shrinks → rows BELOW the hovered row shift UP
+      // visually (when not at-bottom). User reads it as "chat scrolled up
+      // mid-hover." Compensate by adjusting scrollTop so the hovered row's
+      // bottom-edge stays anchored: rows BELOW stay put, rows ABOVE shift to
+      // fill/yield the freed/gained space.
+      const compensateChipToggle = (row, applyChange) => {
+        if (!row) { applyChange(); return }
+        const chip = row.querySelector('.hs-mc-reply-ctx')
+        if (!chip) { applyChange(); return }
+        const preBottom = row.getBoundingClientRect().bottom
+        applyChange()
+        // getBoundingClientRect forces sync layout, so post reflects the new height.
+        const postBottom = row.getBoundingClientRect().bottom
+        const diff = postBottom - preBottom
+        if (diff !== 0) {
+          isProgrammaticScroll = true
+          msgsEl.scrollTop += diff
+          cleanup.raf(() => { isProgrammaticScroll = false })
+        }
+      }
       const dismissStack = () => {
         cancelDismiss()
         const overlay = document.getElementById('hs-mc-reply-stack')
@@ -24358,7 +24402,10 @@ const STORAGE_KEY = 'heatsync_multichat';
           overlayDown.replaceChildren()
         }
         if (_stackActiveRow) {
-          _stackActiveRow.classList.remove('hs-mc-reply-stack-active')
+          const row = _stackActiveRow
+          compensateChipToggle(row, () => {
+            row.classList.remove('hs-mc-reply-stack-active')
+          })
         }
         _stackActiveRow = null
       }
@@ -24567,9 +24614,14 @@ const STORAGE_KEY = 'heatsync_multichat';
 
         if (!upShown && !downShown) return
         if (_stackActiveRow && _stackActiveRow !== hoveredEl) {
-          _stackActiveRow.classList.remove('hs-mc-reply-stack-active')
+          const prev = _stackActiveRow
+          compensateChipToggle(prev, () => {
+            prev.classList.remove('hs-mc-reply-stack-active')
+          })
         }
-        hoveredEl.classList.add('hs-mc-reply-stack-active')
+        compensateChipToggle(hoveredEl, () => {
+          hoveredEl.classList.add('hs-mc-reply-stack-active')
+        })
         _stackActiveRow = hoveredEl
       }
 
@@ -27674,27 +27726,23 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
 
   // Scroll helper — reused by both renderMessages and appendMessage
   function scrollMsgsToBottom(msgsEl) {
-    const scrollToBottom = () => {
-      if (isScrolledUp) return;
-      isProgrammaticScroll = true;
-      msgsEl.scrollTop = msgsEl.scrollHeight + 10000;
-      cleanup.raf(() => { isProgrammaticScroll = false; });
-    };
-
     const newBtn = document.getElementById('hs-mc-new-msgs');
     newMessageCount = 0;
     if (newBtn) newBtn.style.display = 'none';
-
-    scrollToBottom();
+    if (isScrolledUp) return;
+    // Single sync write — reading scrollHeight forces layout flush so the
+    // new content's height is reflected before we set scrollTop. The +rAF
+    // catches the rare case where layout settles a frame later (e.g. font
+    // metrics changing post-decode). Late image loads / box changes are
+    // covered by the capture-phase load+error delegation and ResizeObserver
+    // wired in the scroll-listener block above — no need to scan
+    // .hs-mc-emote and attach per-image listeners (was O(N) per call,
+    // duplicated by delegation, and leaked listeners on rapid bursts).
+    isProgrammaticScroll = true;
+    msgsEl.scrollTop = msgsEl.scrollHeight + 10000;
     cleanup.raf(() => {
-      scrollToBottom();
-      cleanup.setTimeout(scrollToBottom, 50);
-    });
-
-    msgsEl.querySelectorAll('.hs-mc-emote').forEach(img => {
-      if (!img.complete) {
-        img.addEventListener('load', scrollToBottom, { once: true });
-      }
+      if (!isScrolledUp) msgsEl.scrollTop = msgsEl.scrollHeight + 10000;
+      isProgrammaticScroll = false;
     });
   }
 

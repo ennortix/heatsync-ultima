@@ -192,7 +192,7 @@ function injectStyles() {
       justify-content: center !important;
       flex: 0 0 auto !important;
     }
-    /* Util buttons (C, T, F-, F+, ⚙) AND platfilter buttons (T, K, YT) —
+    /* Util buttons (C, T, F-, F+, ⚙) AND platfilter buttons (T, K, Y) —
        btop-style packed squares: 18×18, tight border, share borders with the
        -1px right margin so the strip reads as a single segmented control. */
     .hs-mc-util-btn,
@@ -2100,7 +2100,7 @@ function injectStyles() {
     .hs-pcard-action:disabled { opacity: 0.4; cursor: not-allowed; }
     .hs-pcard-kbd { color: #ff8700; font-weight: 700; }
 
-    /* Per-tab platform filter toggles (T/K/YT). Sits AFTER the util cluster
+    /* Per-tab platform filter toggles (T/K/Y). Sits AFTER the util cluster
        (DOM order). Horizontal mode: tight content-sized strip on far right.
        Vertical mode: full column width row below util. */
     #hs-mc-platfilter {
@@ -2111,7 +2111,7 @@ function injectStyles() {
       margin-left: -1px;
     }
     #hs-mc-platfilter:empty { display: none; margin: 0; }
-    /* Inside platfilter: T/K/YT buttons each share the cluster width */
+    /* Inside platfilter: T/K/Y buttons each share the cluster width */
     #hs-mc-platfilter .hs-mc-pf-btn {
       flex: 1 1 0 !important;
       width: auto !important;
@@ -2163,8 +2163,6 @@ function injectStyles() {
       border-color: #ff0000 !important;
       background: #ff0000 !important;
       color: #fff !important;
-      font-size: 8px !important; /* "YT" is 2 chars — shrink so it fits the 18px square cleanly */
-      letter-spacing: -0.5px !important;
     }
     /* OFF state — black bg with white text + dim border. The disabled
        cue is the loss of the saturated brand bg (purple/green/red),
@@ -5083,7 +5081,7 @@ function injectStyles() {
 
     /* Resize bar reservation (dwl tile rule) — chat content reserves border
        on the player-facing edge so the orange resize bar never overlays the
-       tabbar, input bar, T/K/YT filter buttons, or any other panel content.
+       tabbar, input bar, T/K/Y filter buttons, or any other panel content.
        Border (not padding) shrinks the padding box, which is the containing
        block for abs-positioned children — without this the inputbar/tabbar/
        overlay (all position:absolute; bottom:Npx) snap to the outer edge

@@ -2952,7 +2952,7 @@
     const meta = [
       { key: 'twitch', label: 'T', show: hasTwitch },
       { key: 'kick', label: 'K', show: hasKick },
-      { key: 'youtube', label: 'YT', show: hasYt }
+      { key: 'youtube', label: 'Y', show: hasYt }
     ];
 
     for (const p of meta) {

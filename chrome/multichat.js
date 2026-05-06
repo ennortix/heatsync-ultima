@@ -24166,7 +24166,29 @@ const STORAGE_KEY = 'heatsync_multichat';
       // events for the new element. Compare cursor coords to the previous
       // mouseover — identical coords mean cursor didn't actually move, so skip.
       let _lastMouseoverX = -1, _lastMouseoverY = -1
+      // Hover-zone tracking: the stack stays open while the cursor is over the
+      // row OR the overlay (geometric union). Stepping outside schedules a
+      // short grace dismiss (60ms) — long enough to absorb mouse jitter and
+      // brief oscillation, short enough to feel instant.
+      let _dismissTimer = null
+      const cancelDismiss = () => { if (_dismissTimer) { cleanup.clearTimeout(_dismissTimer); _dismissTimer = null } }
+      const scheduleDismiss = () => {
+        if (_dismissTimer) return
+        _dismissTimer = cleanup.setTimeout(() => { _dismissTimer = null; dismissStack() }, 60)
+      }
+      const isInHoverZone = (x, y) => {
+        if (!_stackActiveRow) return false
+        const r = _stackActiveRow.getBoundingClientRect()
+        const overlay = document.getElementById('hs-mc-reply-stack')
+        const oRect = overlay && overlay.style.display === 'block' ? overlay.getBoundingClientRect() : null
+        const yTop = oRect ? Math.min(oRect.top, r.top) : r.top
+        const yBot = r.bottom
+        const xLeft = oRect ? Math.min(oRect.left, r.left) : r.left
+        const xRight = oRect ? Math.max(oRect.right, r.right) : r.right
+        return x >= xLeft && x <= xRight && y >= yTop && y <= yBot
+      }
       const dismissStack = () => {
+        cancelDismiss()
         const overlay = document.getElementById('hs-mc-reply-stack')
         if (overlay) {
           overlay.style.display = 'none'
@@ -24320,25 +24342,26 @@ const STORAGE_KEY = 'heatsync_multichat';
         const msg = e.target.closest('.hs-mc-msg')
         if (!msg) return
         // Layout-shift gate: identical cursor coords as the previous mouseover
-        // means the cursor didn't move — this is auto-scroll sliding a new row
-        // under a stationary cursor, not a real hover. Skip.
+        // means the cursor didn't move — auto-scroll slid a new row under a
+        // stationary cursor. Skip.
         if (e.clientX === _lastMouseoverX && e.clientY === _lastMouseoverY) return
         _lastMouseoverX = e.clientX
         _lastMouseoverY = e.clientY
-        // Sticky behavior: only switch the stack when hovering a DIFFERENT reply.
-        // Hovering a non-reply row (or the same reply) keeps the current stack.
-        // Prevents flicker when cursor briefly grazes an adjacent non-reply row.
+        // Switch when hovering a DIFFERENT reply (cancel any pending dismiss).
         if (msg.dataset.replyId && msg !== _stackActiveRow) {
+          cancelDismiss()
           showStack(msg)
         }
       }, { passive: true, signal: mcSignal })
-      msgsEl.addEventListener('mouseout', (e) => {
+      // Dismissal driven by geometric hover zone. mousemove on document fires
+      // for cursor movement everywhere; we only act if a stack is active.
+      document.addEventListener('mousemove', (e) => {
         if (!_stackActiveRow) return
-        const goingTo = e.relatedTarget
-        // Stay open while cursor is anywhere in the chat panel or the overlay.
-        // Only dismiss when leaving both — i.e., cursor exits the chat entirely.
-        if (goingTo && (msgsEl.contains(goingTo) || goingTo.closest?.('#hs-mc-reply-stack'))) return
-        dismissStack()
+        if (isInHoverZone(e.clientX, e.clientY)) {
+          cancelDismiss()
+        } else {
+          scheduleDismiss()
+        }
       }, { passive: true, signal: mcSignal })
       // On chat scroll, follow the active row instead of dismissing — auto-scroll
       // on every new message would otherwise tear down the stack while the

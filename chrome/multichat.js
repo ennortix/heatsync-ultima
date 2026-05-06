@@ -24230,20 +24230,10 @@ const STORAGE_KEY = 'heatsync_multichat';
       const showStack = (hoveredEl) => {
         const replyId = hoveredEl.dataset.replyId
         if (!replyId) return
-        const fullChain = walkReplyChain(hoveredEl.dataset.msgChannel, hoveredEl.dataset.msgPlatform, replyId, 128)
-        if (!fullChain.length) return
+        const chain = walkReplyChain(hoveredEl.dataset.msgChannel, hoveredEl.dataset.msgPlatform, replyId, 128)
+        if (!chain.length) return
         const cRect = msgsEl.getBoundingClientRect()
         const hRect = hoveredEl.getBoundingClientRect()
-        // Filter out parents already visible in the chat viewport — avoid rendering them twice
-        const isInChatViewport = (id) => {
-          if (!id) return false
-          const el = msgsEl.querySelector(`.hs-mc-msg[data-msg-id="${CSS.escape(id)}"]`)
-          if (!el) return false
-          const er = el.getBoundingClientRect()
-          return er.bottom > cRect.top && er.top < cRect.bottom
-        }
-        const chain = fullChain.filter(p => !isInChatViewport(p.id))
-        if (!chain.length) return
         const available = hRect.top - cRect.top
         if (available < 24) return
         const overlay = ensureStackOverlay()

@@ -4789,9 +4789,11 @@ function injectStyles() {
     }
 
     /* Badge hover tooltip - 4x preview */
+    /* Max z-index so it beats the reply-stack overlay (also at max int);
+       showBadgeTooltip re-appends to body so DOM order tiebreaks in our favor. */
     #hs-badge-tooltip {
       position: fixed;
-      z-index: 100001;
+      z-index: 2147483647;
       pointer-events: none;
       background: #000;
       border: 2px solid #808080;
@@ -4879,9 +4881,10 @@ function injectStyles() {
     #hs-emote-tooltip .tooltip-source.src-kick { background: #53fc18; color: #000; }
     #hs-emote-tooltip .tooltip-source.src-heatsync { background: #ff8700; color: #000; }
 
+    /* Max z-index + showLinkTooltip re-appends to body — beats reply-stack overlay. */
     #hs-link-tooltip {
       position: fixed;
-      z-index: 5000;
+      z-index: 2147483647;
       pointer-events: none;
       background: #000;
       border: 2px solid #808080;
@@ -11853,6 +11856,7 @@ async function sendKickMessage(kickSlug, text) {
 
   function showBadgeTooltip(badgeImg, badgeName) {
     const tooltip = ensureBadgeTooltip()
+    document.body.appendChild(tooltip)
     const img = tooltip.querySelector('img')
     img.src = badgeImg.src
     img.alt = badgeName
@@ -12461,6 +12465,9 @@ async function sendKickMessage(kickSlug, text) {
   // (escapeHtml converts &, <, >, ", ' to HTML entities before any innerHTML assignment)
   async function showUserTooltip(targetEl, username, color, platform) {
     const tooltip = ensureUserTooltip();
+    // Re-append to body so DOM order tiebreaks above other max-int siblings
+    // (reply-stack overlay sits at the same z-index).
+    document.body.appendChild(tooltip);
     const gen = ++_profileGen;
     _userTooltipTarget = targetEl;
 
@@ -12702,6 +12709,7 @@ async function sendKickMessage(kickSlug, text) {
     _linkHoverUrl = url;
     _linkTargetEl = e.target.closest('.hs-mc-link') || e.target;
     const tip = ensureLinkTooltip();
+    document.body.appendChild(tip);
     let hostname = '';
     try { hostname = new URL(url).hostname; } catch { hostname = url; }
 

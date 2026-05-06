@@ -51,6 +51,7 @@
 
   function showBadgeTooltip(badgeImg, badgeName) {
     const tooltip = ensureBadgeTooltip()
+    document.body.appendChild(tooltip)
     const img = tooltip.querySelector('img')
     img.src = badgeImg.src
     img.alt = badgeName
@@ -659,6 +660,9 @@
   // (escapeHtml converts &, <, >, ", ' to HTML entities before any innerHTML assignment)
   async function showUserTooltip(targetEl, username, color, platform) {
     const tooltip = ensureUserTooltip();
+    // Re-append to body so DOM order tiebreaks above other max-int siblings
+    // (reply-stack overlay sits at the same z-index).
+    document.body.appendChild(tooltip);
     const gen = ++_profileGen;
     _userTooltipTarget = targetEl;
 
@@ -900,6 +904,7 @@
     _linkHoverUrl = url;
     _linkTargetEl = e.target.closest('.hs-mc-link') || e.target;
     const tip = ensureLinkTooltip();
+    document.body.appendChild(tip);
     let hostname = '';
     try { hostname = new URL(url).hostname; } catch { hostname = url; }
 

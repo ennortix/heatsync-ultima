@@ -3963,10 +3963,12 @@ function injectStyles() {
       content-visibility: visible !important;
       contain-intrinsic-size: auto !important;
     }
+    /* Hide the "↩ Replying to @user: text" chip in the stack — every parent is
+       already rendered as the row directly above it, so the chip just repeats
+       text the user is already reading. Same on the active hovered row. */
     #hs-mc-reply-stack .hs-mc-reply-stack-row .hs-mc-reply-ctx,
-    #hs-mc-reply-stack .hs-mc-reply-stack-row .hs-mc-reply-user {
-      color: #fff !important;
-      border-left-color: #fff !important;
+    .hs-mc-msg.hs-mc-reply-stack-active .hs-mc-reply-ctx {
+      display: none !important;
     }
     #hs-mc-reply-stack .hs-mc-reply-stack-row .hs-mc-reply-btn {
       display: none !important;

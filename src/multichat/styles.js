@@ -781,9 +781,13 @@ function injectStyles() {
     .hs-mc-msg:hover {
     }
     /* Hovered-row tint while the reply stack is shown — same olive as stack rows so
-       the hovered row visually merges with the stack (no perceived gap). */
+       the hovered row visually merges with the stack (no perceived gap). Line-height
+       and padding match the stack rows so the boundary is seamless. */
     .hs-mc-msg.hs-mc-reply-stack-active {
       background: #808000 !important;
+      line-height: 1.15 !important;
+      padding-top: 1px !important;
+      padding-bottom: 1px !important;
     }
     .hs-mc-msg.hs-mc-reply-stack-active .hs-mc-reply-ctx,
     .hs-mc-msg.hs-mc-reply-stack-active .hs-mc-reply-user {
@@ -806,12 +810,19 @@ function injectStyles() {
     #hs-mc-reply-stack .hs-mc-reply-stack-row {
       background: #808000 !important;
       box-shadow: none !important;
-      border-bottom: 1px solid rgba(0,0,0,0.4);
       margin: 0 !important;
+      /* tight line-height so the line-box hugs the glyphs — no inherent breathing
+         room above/below text that would read as a "gap" between rows */
+      line-height: 1.15 !important;
+      padding-top: 1px !important;
+      padding-bottom: 1px !important;
+      /* override .hs-mc-msg's content-visibility:auto — we render at hover time and
+         the rows must paint immediately, not be replaced by a 28px placeholder */
+      content-visibility: visible !important;
+      contain-intrinsic-size: auto !important;
     }
     #hs-mc-reply-stack .hs-mc-reply-stack-row:last-child {
-      border-bottom: none;
-      padding-bottom: 0;
+      padding-bottom: 0 !important;
     }
     #hs-mc-reply-stack .hs-mc-reply-stack-row .hs-mc-reply-ctx,
     #hs-mc-reply-stack .hs-mc-reply-stack-row .hs-mc-reply-user {

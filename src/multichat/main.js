@@ -1430,10 +1430,22 @@
         if (!replyId) return
         const chain = walkReplyChain(hoveredEl.dataset.msgChannel, hoveredEl.dataset.msgPlatform, replyId, 128)
         if (!chain.length) return
+        // Apply the active class FIRST so padding/line-height are the active values
+        // by the time we measure rects — otherwise padding shifts by 1px after layout
+        // settles and the overlay ends up off-by-one.
+        if (_stackActiveRow && _stackActiveRow !== hoveredEl) {
+          _stackActiveRow.classList.remove('hs-mc-reply-stack-active')
+        }
+        hoveredEl.classList.add('hs-mc-reply-stack-active')
+        // Force synchronous layout so subsequent rect/style reads pick up the new padding
+        void hoveredEl.offsetHeight
         const cRect = msgsEl.getBoundingClientRect()
         const hRect = hoveredEl.getBoundingClientRect()
         const available = hRect.top - cRect.top
-        if (available < 24) return
+        if (available < 24) {
+          hoveredEl.classList.remove('hs-mc-reply-stack-active')
+          return
+        }
         // Overlap the hovered row's top padding so the stack's last row butts directly
         // against the hovered row's content start (no whitespace gap).
         const hPadTop = parseInt(getComputedStyle(hoveredEl).paddingTop) || 0
@@ -1468,13 +1480,9 @@
         }
         if (!shown) {
           overlay.style.display = 'none'
+          hoveredEl.classList.remove('hs-mc-reply-stack-active')
           return
         }
-        // Tint hovered row #808000 so it visually merges with the stack (no perceived gap)
-        if (_stackActiveRow && _stackActiveRow !== hoveredEl) {
-          _stackActiveRow.classList.remove('hs-mc-reply-stack-active')
-        }
-        hoveredEl.classList.add('hs-mc-reply-stack-active')
         _stackActiveRow = hoveredEl
       }
 

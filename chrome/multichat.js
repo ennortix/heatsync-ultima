@@ -3926,9 +3926,13 @@ function injectStyles() {
     .hs-mc-msg:hover {
     }
     /* Hovered-row tint while the reply stack is shown — same olive as stack rows so
-       the hovered row visually merges with the stack (no perceived gap). */
+       the hovered row visually merges with the stack (no perceived gap). Line-height
+       and padding match the stack rows so the boundary is seamless. */
     .hs-mc-msg.hs-mc-reply-stack-active {
       background: #808000 !important;
+      line-height: 1.15 !important;
+      padding-top: 1px !important;
+      padding-bottom: 1px !important;
     }
     .hs-mc-msg.hs-mc-reply-stack-active .hs-mc-reply-ctx,
     .hs-mc-msg.hs-mc-reply-stack-active .hs-mc-reply-user {
@@ -3951,12 +3955,19 @@ function injectStyles() {
     #hs-mc-reply-stack .hs-mc-reply-stack-row {
       background: #808000 !important;
       box-shadow: none !important;
-      border-bottom: 1px solid rgba(0,0,0,0.4);
       margin: 0 !important;
+      /* tight line-height so the line-box hugs the glyphs — no inherent breathing
+         room above/below text that would read as a "gap" between rows */
+      line-height: 1.15 !important;
+      padding-top: 1px !important;
+      padding-bottom: 1px !important;
+      /* override .hs-mc-msg's content-visibility:auto — we render at hover time and
+         the rows must paint immediately, not be replaced by a 28px placeholder */
+      content-visibility: visible !important;
+      contain-intrinsic-size: auto !important;
     }
     #hs-mc-reply-stack .hs-mc-reply-stack-row:last-child {
-      border-bottom: none;
-      padding-bottom: 0;
+      padding-bottom: 0 !important;
     }
     #hs-mc-reply-stack .hs-mc-reply-stack-row .hs-mc-reply-ctx,
     #hs-mc-reply-stack .hs-mc-reply-stack-row .hs-mc-reply-user {
@@ -24237,10 +24248,22 @@ const STORAGE_KEY = 'heatsync_multichat';
         if (!replyId) return
         const chain = walkReplyChain(hoveredEl.dataset.msgChannel, hoveredEl.dataset.msgPlatform, replyId, 128)
         if (!chain.length) return
+        // Apply the active class FIRST so padding/line-height are the active values
+        // by the time we measure rects — otherwise padding shifts by 1px after layout
+        // settles and the overlay ends up off-by-one.
+        if (_stackActiveRow && _stackActiveRow !== hoveredEl) {
+          _stackActiveRow.classList.remove('hs-mc-reply-stack-active')
+        }
+        hoveredEl.classList.add('hs-mc-reply-stack-active')
+        // Force synchronous layout so subsequent rect/style reads pick up the new padding
+        void hoveredEl.offsetHeight
         const cRect = msgsEl.getBoundingClientRect()
         const hRect = hoveredEl.getBoundingClientRect()
         const available = hRect.top - cRect.top
-        if (available < 24) return
+        if (available < 24) {
+          hoveredEl.classList.remove('hs-mc-reply-stack-active')
+          return
+        }
         // Overlap the hovered row's top padding so the stack's last row butts directly
         // against the hovered row's content start (no whitespace gap).
         const hPadTop = parseInt(getComputedStyle(hoveredEl).paddingTop) || 0
@@ -24275,13 +24298,9 @@ const STORAGE_KEY = 'heatsync_multichat';
         }
         if (!shown) {
           overlay.style.display = 'none'
+          hoveredEl.classList.remove('hs-mc-reply-stack-active')
           return
         }
-        // Tint hovered row #808000 so it visually merges with the stack (no perceived gap)
-        if (_stackActiveRow && _stackActiveRow !== hoveredEl) {
-          _stackActiveRow.classList.remove('hs-mc-reply-stack-active')
-        }
-        hoveredEl.classList.add('hs-mc-reply-stack-active')
         _stackActiveRow = hoveredEl
       }
 

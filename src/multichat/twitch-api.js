@@ -1632,6 +1632,31 @@ const BADGE_STYLES = {
 const twitchBadgeUrls = new Map()
 const ffzBadgeKeys = new Set() // tracks which channel:badgeName entries are FFZ (need bg color)
 const badgesFetchedChannels = new Set()
+// Sorted numeric version lists per "channel:setID" — for nearest-tier fallback
+// (e.g. user has subscriber/5 but channel only defines 0,3,6 → use 3).
+const channelBadgeVersions = new Map()
+
+function findNearestChannelBadgeVersion(channel, name, version) {
+  const versions = channelBadgeVersions.get(`${channel}:${name}`)
+  if (!versions || versions.length === 0) return null
+  const v = parseInt(version, 10)
+  if (!Number.isFinite(v)) return null
+  // Subscriber versions encode tier in the thousands digit (2xxx = T2, 3xxx = T3).
+  // Stay within the same tier when picking the nearest lower version.
+  let tierMin = -Infinity, tierMax = Infinity
+  if (name === 'subscriber') {
+    if (v >= 3000) { tierMin = 3000; tierMax = 3999 }
+    else if (v >= 2000) { tierMin = 2000; tierMax = 2999 }
+    else { tierMin = 0; tierMax = 1999 }
+  }
+  let best = -1
+  for (const vv of versions) {
+    if (vv > v) break
+    if (vv < tierMin || vv > tierMax) continue
+    if (vv > best) best = vv
+  }
+  return best >= 0 ? String(best) : null
+}
 let globalBadgesFetched = false
 const TWITCH_GQL = 'https://gql.twitch.tv/gql'
 const TWITCH_CLIENT_ID = 'kimne78kx3ncx6brgo4mv6wki5h1ko'
@@ -2731,6 +2756,9 @@ async function fetchChannelBadges(channelLogin) {
     for (const key of ffzBadgeKeys) {
       if (key.startsWith(`${oldest}:`)) ffzBadgeKeys.delete(key);
     }
+    for (const key of channelBadgeVersions.keys()) {
+      if (key.startsWith(`${oldest}:`)) channelBadgeVersions.delete(key);
+    }
   }
   try {
     // Fetch channel badges (GQL broadcastBadges) + FFZ in parallel
@@ -2743,8 +2771,19 @@ async function fetchChannelBadges(channelLogin) {
     if (gqlResp.status === 'fulfilled') {
       const badges = gqlResp.value?.data?.user?.broadcastBadges
       if (badges) {
+        const versionsBySet = new Map()
         for (const b of badges) {
           if (b.imageURL) twitchBadgeUrls.set(`${channelLogin}:${b.setID}/${b.version}`, b.imageURL)
+          const v = parseInt(b.version, 10)
+          if (Number.isFinite(v)) {
+            let arr = versionsBySet.get(b.setID)
+            if (!arr) { arr = []; versionsBySet.set(b.setID, arr) }
+            arr.push(v)
+          }
+        }
+        for (const [setID, arr] of versionsBySet) {
+          arr.sort((a, b) => a - b)
+          channelBadgeVersions.set(`${channelLogin}:${setID}`, arr)
         }
       }
     }
@@ -2782,8 +2821,15 @@ function renderBadges(badgesStr, channel) {
   if (!badgesStr) return ''
   return badgesStr.split(',').map(badge => {
     const [name, version] = badge.split('/')
-    // Channel-specific first, then global fallback
-    const url = (channel && twitchBadgeUrls.get(`${channel}:${name}/${version}`))
+    // Channel-specific exact match → channel-specific nearest-tier (e.g. 5mo
+    // sub on a channel that only defines 0/3/6 → use 3) → global exact →
+    // global "/1" generic-star fallback.
+    let url = channel && twitchBadgeUrls.get(`${channel}:${name}/${version}`)
+    if (!url && channel) {
+      const nearest = findNearestChannelBadgeVersion(channel, name, version)
+      if (nearest != null) url = twitchBadgeUrls.get(`${channel}:${name}/${nearest}`)
+    }
+    url = url
       || twitchBadgeUrls.get(`${name}/${version}`)
       || twitchBadgeUrls.get(`${name}/1`)
     if (url) {

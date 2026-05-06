@@ -24918,6 +24918,14 @@ const STORAGE_KEY = 'heatsync_multichat';
     let startX = 0, startY = 0, startW = 0, startH = 0, axis = 'x', activePid = -1;
     let pendingW = 0, pendingH = 0, overlay = null;
     let liveRaf = 0;
+    // Panel anchor edges captured at pointerdown — the edges that DON'T
+    // move during the drag (chat-top: top edge fixed, height grows; chat-
+    // bottom: bottom edge fixed; etc). Used to compute handle position
+    // each frame WITHOUT re-reading getBoundingClientRect (forced layout
+    // on every pointermove was a perf cliff). The panel's other edge is
+    // anchor + dimension. See positionChatResizeHandle for the static
+    // (non-drag) equivalent that DOES read rect.
+    let panelTop = 0, panelLeft = 0, panelRight = 0, panelBottom = 0;
     handle.addEventListener('pointerdown', (e) => {
       if (e.button !== 0) return;
       // Stop YT's player-level pointer handlers from also catching this
@@ -24932,6 +24940,14 @@ const STORAGE_KEY = 'heatsync_multichat';
       startW = chatWidth; startH = chatHeight;
       pendingW = chatWidth; pendingH = chatHeight;
       axis = (chatPosition === 'left' || chatPosition === 'right') ? 'x' : 'y';
+      // Capture the panel's actual rendered edges. Container is position:
+      // fixed but transformed ancestors (Twitch top-nav) can shift it from
+      // the viewport's true (0,0) origin — the bar must track the panel's
+      // true edge, not raw chat dimensions.
+      const cont = document.getElementById('hs-mc-container');
+      const r = cont ? cont.getBoundingClientRect()
+                     : { top: 0, left: 0, right: window.innerWidth, bottom: window.innerHeight };
+      panelTop = r.top; panelLeft = r.left; panelRight = r.right; panelBottom = r.bottom;
       document.body.style.cursor = axis === 'x' ? 'col-resize' : 'row-resize';
       document.body.style.userSelect = 'none';
       handle.style.opacity = '1';
@@ -24951,20 +24967,23 @@ const STORAGE_KEY = 'heatsync_multichat';
       // width or expand it until the player is a sliver — both directions
       // are reversible by dragging the bar back.
       const maxW = Math.max(MIN_CHAT_WIDTH, window.innerWidth - 10);
+      // Position handle at panel's INNER edge (the player-facing one):
+      //   right → handle at panel-left edge   (panelRight - pendingW)
+      //   left  → handle at panel-right edge  (panelLeft + pendingW - 10)
+      //   top   → handle at panel-bottom edge (panelTop + pendingH - 10)
+      //   bottom→ handle at panel-top edge    (panelBottom - pendingH)
       if (chatPosition === 'right') {
         pendingW = Math.max(MIN_CHAT_WIDTH, Math.min(maxW, startW + (startX - e.clientX)));
-        // -10 matches positionChatResizeHandle: bar inner edge flush at
-        // chat container's left edge so player + bar are touching.
-        handle.style.right = (pendingW - 10) + 'px';
+        handle.style.left = (panelRight - pendingW) + 'px';
       } else if (chatPosition === 'left') {
         pendingW = Math.max(MIN_CHAT_WIDTH, Math.min(maxW, startW + (e.clientX - startX)));
-        handle.style.left = (pendingW - 10) + 'px';
+        handle.style.left = (panelLeft + pendingW - 10) + 'px';
       } else if (chatPosition === 'top') {
         pendingH = Math.max(MIN_CHAT_HEIGHT, Math.min(getMaxChatHeight(), startH + (e.clientY - startY)));
-        handle.style.top = (pendingH - 10) + 'px';
+        handle.style.top = (panelTop + pendingH - 10) + 'px';
       } else if (chatPosition === 'bottom') {
         pendingH = Math.max(MIN_CHAT_HEIGHT, Math.min(getMaxChatHeight(), startH + (startY - e.clientY)));
-        handle.style.bottom = (pendingH - 10) + 'px';
+        handle.style.top = (panelBottom - pendingH) + 'px';
       }
       // Live commit — minimal work per frame so YT player buttons stay
       // clickable. rAF-throttled. We only touch:
@@ -25061,32 +25080,43 @@ const STORAGE_KEY = 'heatsync_multichat';
       return;
     }
     handle.style.display = 'block';
-    // 10px wide handle, aligned so its INNER edge (toward player) sits at
-    // the chat container's edge. Player ends flush against the bar — no
-    // gap, no straddle. The handle visually consumes the leftmost 10px
-    // of the chat container's footprint.
+    // Anchor the bar to the panel container's ACTUAL rendered edges via
+    // getBoundingClientRect. The handle is position:fixed on body, but
+    // the panel container's own position:fixed can be shifted by a
+    // transformed ancestor (Twitch's top-nav transforms put chat-top at
+    // viewport y≈50 even though it's "fixed; top: 0"). Reading the rect
+    // makes the bar track the panel's true edge regardless of those
+    // offsets — otherwise the bar overlays tabbar/inputbar content.
+    const cont = document.getElementById('hs-mc-container');
+    const r = cont ? cont.getBoundingClientRect() : null;
+    const cTop = r ? r.top : 0;
+    const cLeft = r ? r.left : 0;
+    const cRight = r ? r.right : window.innerWidth;
+    const cBottom = r ? r.bottom : window.innerHeight;
+    const cWidth = r ? r.width : window.innerWidth;
+    const cHeight = r ? r.height : window.innerHeight;
     if (chatPosition === 'right') {
-      handle.style.top = '0';
-      handle.style.bottom = '0';
-      handle.style.right = (chatWidth - 10) + 'px';
+      handle.style.top = cTop + 'px';
+      handle.style.left = cLeft + 'px';
+      handle.style.height = cHeight + 'px';
       handle.style.width = '10px';
       handle.style.cursor = 'col-resize';
     } else if (chatPosition === 'left') {
-      handle.style.top = '0';
-      handle.style.bottom = '0';
-      handle.style.left = (chatWidth - 10) + 'px';
+      handle.style.top = cTop + 'px';
+      handle.style.left = (cRight - 10) + 'px';
+      handle.style.height = cHeight + 'px';
       handle.style.width = '10px';
       handle.style.cursor = 'col-resize';
     } else if (chatPosition === 'top') {
-      handle.style.top = (chatHeight - 10) + 'px';
-      handle.style.left = '0';
-      handle.style.right = '0';
+      handle.style.top = (cBottom - 10) + 'px';
+      handle.style.left = cLeft + 'px';
+      handle.style.width = cWidth + 'px';
       handle.style.height = '10px';
       handle.style.cursor = 'row-resize';
     } else if (chatPosition === 'bottom') {
-      handle.style.bottom = (chatHeight - 10) + 'px';
-      handle.style.left = '0';
-      handle.style.right = '0';
+      handle.style.top = cTop + 'px';
+      handle.style.left = cLeft + 'px';
+      handle.style.width = cWidth + 'px';
       handle.style.height = '10px';
       handle.style.cursor = 'row-resize';
     }

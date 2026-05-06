@@ -24342,8 +24342,35 @@ const STORAGE_KEY = 'heatsync_multichat';
           dismissStack()
         }
       }, { passive: true, signal: mcSignal })
-      // Dismiss stack on chat scroll, viewport resize, or new-message append.
-      msgsEl.addEventListener('scroll', () => { if (_stackActiveRow) dismissStack() }, { passive: true, signal: mcSignal })
+      // On chat scroll, follow the active row instead of dismissing — auto-scroll
+      // on every new message would otherwise tear down the stack while the
+      // cursor is still over the row. Only dismiss if the row scrolled fully
+      // out of the chat viewport.
+      const repositionStack = () => {
+        if (!_stackActiveRow) return
+        const overlay = document.getElementById('hs-mc-reply-stack')
+        if (!overlay) return
+        const cRect = msgsEl.getBoundingClientRect()
+        const hRect = _stackActiveRow.getBoundingClientRect()
+        if (hRect.bottom < cRect.top || hRect.top > cRect.bottom) {
+          dismissStack()
+          return
+        }
+        const available = hRect.top - cRect.top
+        if (available < 24) { dismissStack(); return }
+        const hCs = getComputedStyle(_stackActiveRow)
+        const hPadTop = parseInt(hCs.paddingTop) || 0
+        const hLineHeight = parseFloat(hCs.lineHeight) || 0
+        const hFontSize = parseFloat(hCs.fontSize) || 13
+        const hSlackAbove = Math.max(0, (hLineHeight - hFontSize) / 2)
+        const overlap = Math.round(hPadTop + hSlackAbove)
+        const layoutH = document.documentElement.clientHeight
+        overlay.style.left = hRect.left + 'px'
+        overlay.style.width = hRect.width + 'px'
+        overlay.style.bottom = (layoutH - hRect.top - overlap) + 'px'
+        overlay.style.maxHeight = (available + overlap) + 'px'
+      }
+      msgsEl.addEventListener('scroll', repositionStack, { passive: true, signal: mcSignal })
       window.addEventListener('resize', () => { if (_stackActiveRow) dismissStack() }, { passive: true, signal: mcSignal })
     }, 100);
 

@@ -108,7 +108,7 @@
       "js": ["youtube-content.js"],
       "run_at": "document_end",
       "all_frames": true
-    },
+    }
   ],
 
   "options_ui": {

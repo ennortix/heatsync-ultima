@@ -3942,7 +3942,6 @@ function injectStyles() {
       background: #000;
       border: 1px solid #808000;
       border-bottom: none;
-      box-shadow: 0 -4px 12px rgba(0,0,0,0.5);
       z-index: 2147483647;
       pointer-events: auto;
       overflow: hidden;

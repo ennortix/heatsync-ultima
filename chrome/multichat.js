@@ -19144,8 +19144,9 @@ function handleIncomingDm(data) {
 async function sendTwitchWhisperDirect(toUserId, message) {
   const { token } = await getTwitchAuthTokenAsync()
   if (!token) return { ok: false, noToken: true }
-  const query = 'mutation sendWhisper($input: SendWhisperInput!) { sendWhisper(input: $input) { error { code } } }'
-  const variables = { input: { targetID: String(toUserId), message: String(message) } }
+  const query = 'mutation sendWhisper($input: SendWhisperInput!, $nonce: String!) { sendWhisper(input: $input, nonce: $nonce) { error { code } } }'
+  const nonce = (crypto?.randomUUID?.() || `${Date.now()}_${Math.random().toString(36).slice(2, 12)}`)
+  const variables = { input: { targetID: String(toUserId), message: String(message) }, nonce }
   const data = await twitchGql(query, variables)
   if (data?.errors?.length) return { ok: false, error: data.errors[0]?.message || 'gql error' }
   const code = data?.data?.sendWhisper?.error?.code

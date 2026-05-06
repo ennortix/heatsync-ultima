@@ -408,6 +408,34 @@ function fetchWithTimeout(url, opts = {}, ms = 10000) {
   return fetch(url, { ...opts, credentials, signal: ctrl.signal }).finally(() => clearTimeout(timer))
 }
 
+// Per-URL ETag cache for politeness toward third-party CDN APIs (7TV/BTTV/FFZ).
+// We store last seen ETag in chrome.storage.local under hs_etag:{url}; on the
+// next fetch we send If-None-Match. A 304 response body is empty so the caller
+// must short-circuit on { notModified: true } and reuse its parsed payload.
+const ETAG_KEY_PREFIX = 'hs_etag:'
+async function fetchWithEtag(url, opts = {}, ms = 10000) {
+  let storedEtag = null
+  try {
+    const k = ETAG_KEY_PREFIX + url
+    const got = await browser.storage.local.get(k)
+    storedEtag = got[k] || null
+  } catch {}
+  const headers = { ...(opts.headers || {}) }
+  if (storedEtag) headers['If-None-Match'] = storedEtag
+  const resp = await fetchWithTimeout(url, { ...opts, headers }, ms)
+  if (resp.status === 304) {
+    // body is already empty on 304 — nothing to cancel
+    return { ok: true, status: 304, notModified: true, json: () => null }
+  }
+  if (resp.ok) {
+    const newEtag = resp.headers.get('etag')
+    if (newEtag && newEtag !== storedEtag) {
+      try { await browser.storage.local.set({ [ETAG_KEY_PREFIX + url]: newEtag }) } catch {}
+    }
+  }
+  return resp
+}
+
 // ============================================
 // TOKEN ENCRYPTION (SubtleCrypto)
 // ============================================
@@ -1721,14 +1749,21 @@ async function fetchFFZEmotes() {
   }
 }
 
-// Fetch 7TV global emotes
+// Fetch 7TV global emotes — uses ETag conditional GET so 7TV can answer 304
+// when their global set hasn't changed (saves them ~30KB payload per check).
+// On 304 we reuse the previously parsed list from chrome.storage.local.
+const GLOBAL_7TV_CACHE_KEY = 'hs_7tv_global_cache'
 async function fetch7TVEmotes() {
   try {
-    const response = await fetchWithTimeout('https://7tv.io/v3/emote-sets/global');
-    if (!response.ok) { response.body?.cancel(); return []; }
+    const response = await fetchWithEtag('https://7tv.io/v3/emote-sets/global');
+    if (response.notModified) {
+      const got = await browser.storage.local.get(GLOBAL_7TV_CACHE_KEY)
+      return Array.isArray(got[GLOBAL_7TV_CACHE_KEY]) ? got[GLOBAL_7TV_CACHE_KEY] : [];
+    }
+    if (!response.ok) { response.body?.cancel?.(); return []; }
 
     const data = await response.json();
-    return sanitizeEmoteList((data?.emotes || []).map(e => ({
+    const emotes = sanitizeEmoteList((data?.emotes || []).map(e => ({
       name: e.name,
       url: `https://cdn.7tv.app/emote/${e.id}/1x.webp`,
       source: '7tv',
@@ -1736,6 +1771,8 @@ async function fetch7TVEmotes() {
       flags: e.flags || e.data?.flags || 0,
       zeroWidth: !!((e.flags & 257) || (e.data?.flags & 257))
     })));
+    try { await browser.storage.local.set({ [GLOBAL_7TV_CACHE_KEY]: emotes }) } catch {}
+    return emotes;
   } catch (error) {
     return [];
   }

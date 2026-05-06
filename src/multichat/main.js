@@ -1025,8 +1025,10 @@
   // Show offline stream events (default off)
   let showOfflineEvents = false;
 
-  // Auto-claim Twitch channel points bonus chest (default on)
-  let autoClaimPoints = true;
+  // Auto-claim Twitch channel points bonus chest. Default OFF — automating
+  // Twitch UI on every install is the kind of thing Twitch ToS targets;
+  // users opt in explicitly.
+  let autoClaimPoints = false;
 
   // Dim timed-out/banned messages instead of hiding (default on)
   let dimTimeouts = true;
@@ -3414,7 +3416,7 @@
         avatarsEnabled = false;
         platformBadgesEnabled = true;
         showOfflineEvents = false;
-        autoClaimPoints = true;
+        autoClaimPoints = false;
         dimTimeouts = true;
         firstChatterGlow = true;
         keywordHighlights = '';
@@ -3433,7 +3435,7 @@
         };
         try {
           for (const [k, v] of Object.entries(settings)) saveUiSetting(k, v);
-          chrome.storage.local.set({ hs_auto_claim_points: true });
+          chrome.storage.local.set({ hs_auto_claim_points: false });
         } catch {}
         renderSettingsTab();
         return;

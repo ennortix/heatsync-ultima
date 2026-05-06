@@ -8046,19 +8046,21 @@ function setupAutoClaimPoints() {
   attachObserver()
 }
 
-// Load auto-claim setting and start
+// Load auto-claim setting and start. Default OFF — auto-clicking Twitch's
+// channel-points UI on every install is the kind of automation Twitch ToS
+// prohibits; users opt in explicitly from settings.
 ;(async function loadAutoClaimSetting() {
   try {
     const stored = await chrome.storage.local.get('hs_auto_claim_points')
-    autoClaimEnabled = stored.hs_auto_claim_points !== false // default ON
-  } catch { /* default on */ }
+    autoClaimEnabled = stored.hs_auto_claim_points === true // default OFF
+  } catch { /* default off */ }
   setupAutoClaimPoints()
 })()
 
 // React to setting changes
 function _onAutoClaimStorageChanged(changes) {
   if (changes.hs_auto_claim_points) {
-    autoClaimEnabled = changes.hs_auto_claim_points.newValue !== false
+    autoClaimEnabled = changes.hs_auto_claim_points.newValue === true
     setupAutoClaimPoints()
   }
 }

@@ -1508,22 +1508,20 @@
         if (e.clientX === _lastMouseoverX && e.clientY === _lastMouseoverY) return
         _lastMouseoverX = e.clientX
         _lastMouseoverY = e.clientY
-        // Stack overlay — instant on hover (no delay)
-        if (msg.dataset.replyId) {
-          if (msg !== _stackActiveRow) showStack(msg)
-        } else if (_stackActiveRow && _stackActiveRow !== msg) {
-          // Hovering a different row that isn't a reply — dismiss existing stack instantly
-          dismissStack()
+        // Sticky behavior: only switch the stack when hovering a DIFFERENT reply.
+        // Hovering a non-reply row (or the same reply) keeps the current stack.
+        // Prevents flicker when cursor briefly grazes an adjacent non-reply row.
+        if (msg.dataset.replyId && msg !== _stackActiveRow) {
+          showStack(msg)
         }
       }, { passive: true, signal: mcSignal })
       msgsEl.addEventListener('mouseout', (e) => {
-        // Leaving the active row toward something that isn't the overlay → dismiss instantly
-        if (_stackActiveRow && (e.target === _stackActiveRow || _stackActiveRow.contains(e.target))) {
-          const goingTo = e.relatedTarget
-          if (goingTo && _stackActiveRow.contains(goingTo)) return
-          if (goingTo && goingTo.closest?.('#hs-mc-reply-stack')) return
-          dismissStack()
-        }
+        if (!_stackActiveRow) return
+        const goingTo = e.relatedTarget
+        // Stay open while cursor is anywhere in the chat panel or the overlay.
+        // Only dismiss when leaving both — i.e., cursor exits the chat entirely.
+        if (goingTo && (msgsEl.contains(goingTo) || goingTo.closest?.('#hs-mc-reply-stack'))) return
+        dismissStack()
       }, { passive: true, signal: mcSignal })
       // On chat scroll, follow the active row instead of dismissing — auto-scroll
       // on every new message would otherwise tear down the stack while the

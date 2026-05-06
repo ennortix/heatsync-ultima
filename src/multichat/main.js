@@ -1446,16 +1446,22 @@
           hoveredEl.classList.remove('hs-mc-reply-stack-active')
           return
         }
-        // Overlap the hovered row's top padding so the stack's last row butts directly
-        // against the hovered row's content start (no whitespace gap).
-        const hPadTop = parseInt(getComputedStyle(hoveredEl).paddingTop) || 0
+        // Overlap the hovered row's top padding AND the line-height slack above the
+        // first glyph so the stack's last row butts directly against the hovered
+        // row's first visible character (no whitespace gap of any kind).
+        const hCs = getComputedStyle(hoveredEl)
+        const hPadTop = parseInt(hCs.paddingTop) || 0
+        const hLineHeight = parseFloat(hCs.lineHeight) || 0
+        const hFontSize = parseFloat(hCs.fontSize) || 13
+        const hSlackAbove = Math.max(0, (hLineHeight - hFontSize) / 2)
+        const overlap = Math.round(hPadTop + hSlackAbove)
         const overlay = ensureStackOverlay()
         overlay.replaceChildren()
         overlay.style.position = 'fixed'
         overlay.style.left = hRect.left + 'px'
         overlay.style.width = hRect.width + 'px'
-        overlay.style.bottom = (window.innerHeight - hRect.top - hPadTop) + 'px'
-        overlay.style.maxHeight = (available + hPadTop) + 'px'
+        overlay.style.bottom = (window.innerHeight - hRect.top - overlap) + 'px'
+        overlay.style.maxHeight = (available + overlap) + 'px'
         overlay.style.display = 'block'
         let shown = 0
         for (let i = 0; i < chain.length; i++) {

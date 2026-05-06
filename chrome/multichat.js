@@ -19139,17 +19139,41 @@ function handleIncomingDm(data) {
   whisperSaveDebounced()
 }
 
-// Send Twitch whisper via heatsync server proxy (uses properly scoped OAuth tokens)
+// Direct GQL whisper using the page's twitch.tv auth-token cookie. Sends from
+// whichever Twitch acct is logged in on twitch.tv, independent of any HS JWT.
+async function sendTwitchWhisperDirect(toUserId, message) {
+  const { token } = await getTwitchAuthTokenAsync()
+  if (!token) return { ok: false, noToken: true }
+  const query = 'mutation sendWhisper($input: SendWhisperInput!) { sendWhisper(input: $input) { error { code } } }'
+  const variables = { input: { targetID: String(toUserId), message: String(message) } }
+  const data = await twitchGql(query, variables)
+  if (data?.errors?.length) return { ok: false, error: data.errors[0]?.message || 'gql error' }
+  const code = data?.data?.sendWhisper?.error?.code
+  if (code) return { ok: false, error: code }
+  return { ok: true }
+}
+
+// Whisper send: direct Twitch GQL when a twitch.tv session is available
+// (covers acct mismatches between HS JWT and active Twitch login), HS server
+// proxy as fallback when no Twitch session is reachable.
 async function sendTwitchWhisper(toUserId, message) {
+  try {
+    const direct = await sendTwitchWhisperDirect(toUserId, message)
+    if (direct.ok) return { ok: true }
+    if (!direct.noToken) {
+      showToast('whisper failed: ' + direct.error, 'error')
+      return { ok: false, error: direct.error }
+    }
+  } catch (e) {
+    // Direct path threw — try the proxy fallback below.
+  }
+
   try {
     const resp = await apiFetch('/api/twitch/whisper', {
       method: 'POST',
       body: { toUserId, message }
     })
     if (resp?.ok) return { ok: true }
-    // 401 covers all auth failures from the proxy — missing JWT, JWT without
-    // twitch_id, missing user:manage:whispers scope, or Helix rejecting phone-
-    // unverified senders. All paths recover via re-running Twitch OAuth.
     if (resp?.status === 401) {
       showToast(t('mc_whisper_login'), 'error')
       return { ok: false, error: resp.error || 'not authenticated', errorKind: 'auth' }

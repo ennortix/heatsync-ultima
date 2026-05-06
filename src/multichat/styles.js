@@ -415,14 +415,9 @@ function injectStyles() {
     .hs-mc-tab.active[data-live="true"]::after {
       background: #cc0000;
     }
-    /* YT body scrollbar (~15px) overlays viewport right edge. Reserve a gutter
-       on the container's right so the tab strip — and its right-aligned dot —
-       sit inboard of the scrollbar instead of under it. */
-    body.hs-platform-yt.hs-tabs-right.hs-chat-right #hs-mc-tabbar,
-    body.hs-platform-yt.hs-tabs-right.hs-chat-top #hs-mc-tabbar,
-    body.hs-platform-yt.hs-tabs-right.hs-chat-bottom #hs-mc-tabbar {
-      right: 15px !important;
-    }
+    /* YT: position:fixed children already stop at clientWidth (left edge of
+       the body scrollbar), so no extra gutter is needed — keep tabs flush to
+       the scrollbar edge to match Twitch/Kick. */
     body.hs-platform-yt.hs-tabs-right.hs-chat-right #hs-mc-overlay,
     body.hs-platform-yt.hs-tabs-right.hs-chat-top #hs-mc-overlay,
     body.hs-platform-yt.hs-tabs-right.hs-chat-bottom #hs-mc-overlay,
@@ -432,7 +427,7 @@ function injectStyles() {
     body.hs-platform-yt.hs-tabs-right.hs-chat-right #hs-mc-emote-picker,
     body.hs-platform-yt.hs-tabs-right.hs-chat-top #hs-mc-emote-picker,
     body.hs-platform-yt.hs-tabs-right.hs-chat-bottom #hs-mc-emote-picker {
-      right: 105px !important;
+      right: 90px !important;
     }
 
     /* Overlay - fills chat container (below tab bar, above input bar) */
@@ -785,24 +780,14 @@ function injectStyles() {
     }
     .hs-mc-msg:hover {
     }
-    .hs-mc-msg.hs-mc-thread-highlight {
-      background: #808000 !important;
-      box-shadow: none !important;
-      position: relative;
-      z-index: 2;
-    }
-    /* Reply context text needs to be readable on the olive thread-highlight bg */
-    .hs-mc-msg.hs-mc-thread-highlight .hs-mc-reply-ctx,
-    .hs-mc-msg.hs-mc-thread-highlight .hs-mc-reply-user {
-      color: #fff !important;
-      border-left-color: #fff !important;
-    }
-    /* Reply-chain stack overlay — viewport-bounded vertical stack of parent messages */
+    /* Reply-chain stack overlay — viewport-bounded vertical stack of parent messages.
+       Bottom edge butts directly against the hovered row (no border, no shadow below). */
     #hs-mc-reply-stack {
       box-sizing: border-box;
       background: #000;
       border: 1px solid #808000;
-      box-shadow: 0 0 0 1px #000, 0 4px 12px rgba(0,0,0,0.6);
+      border-bottom: none;
+      box-shadow: 0 -4px 12px rgba(0,0,0,0.5);
       z-index: 2147483647;
       pointer-events: auto;
       overflow: hidden;

@@ -1342,16 +1342,6 @@
         }
       }, { signal: mcSignal });
 
-      // Hover-thread highlight — yellow border on related reply chain (mirrors website)
-      let _threadHover = null
-      const clearThreadHover = () => {
-        if (!_threadHover) return
-        for (const el of msgsEl.querySelectorAll('.hs-mc-thread-highlight')) {
-          el.classList.remove('hs-mc-thread-highlight')
-        }
-        _threadHover = null
-      }
-
       // Reply-chain stack overlay — viewport-bounded stack of all parents above hovered row
       let _stackShowTimer = null
       let _stackHideTimer = null
@@ -1443,10 +1433,20 @@
       const showStack = (hoveredEl) => {
         const replyId = hoveredEl.dataset.replyId
         if (!replyId) return
-        const chain = walkReplyChain(hoveredEl.dataset.msgChannel, hoveredEl.dataset.msgPlatform, replyId, 128)
-        if (!chain.length) return
+        const fullChain = walkReplyChain(hoveredEl.dataset.msgChannel, hoveredEl.dataset.msgPlatform, replyId, 128)
+        if (!fullChain.length) return
         const cRect = msgsEl.getBoundingClientRect()
         const hRect = hoveredEl.getBoundingClientRect()
+        // Filter out parents already visible in the chat viewport — avoid rendering them twice
+        const isInChatViewport = (id) => {
+          if (!id) return false
+          const el = msgsEl.querySelector(`.hs-mc-msg[data-msg-id="${CSS.escape(id)}"]`)
+          if (!el) return false
+          const er = el.getBoundingClientRect()
+          return er.bottom > cRect.top && er.top < cRect.bottom
+        }
+        const chain = fullChain.filter(p => !isInChatViewport(p.id))
+        if (!chain.length) return
         const available = hRect.top - cRect.top
         if (available < 24) return
         const overlay = ensureStackOverlay()
@@ -1485,32 +1485,6 @@
       msgsEl.addEventListener('mouseover', (e) => {
         const msg = e.target.closest('.hs-mc-msg')
         if (!msg) return
-        // Existing instant thread-highlight (in-chat 808000 tint)
-        if (msg !== _threadHover) {
-          const own = msg.dataset.msgId || ''
-          const parent = msg.dataset.replyId || ''
-          const root = msg.dataset.replyThreadId || ''
-          let shouldHighlight = !!(parent || root)
-          if (!shouldHighlight && own) {
-            const childSel = `[data-reply-id="${CSS.escape(own)}"], [data-reply-thread-id="${CSS.escape(own)}"]`
-            if (msgsEl.querySelector(childSel)) shouldHighlight = true
-          }
-          if (shouldHighlight) {
-            clearThreadHover()
-            _threadHover = msg
-            const ids = new Set([own, parent, root].filter(Boolean))
-            const sels = []
-            for (const id of ids) {
-              const safe = CSS.escape(id)
-              sels.push(`[data-msg-id="${safe}"]`, `[data-reply-id="${safe}"]`, `[data-reply-thread-id="${safe}"]`)
-            }
-            for (const el of msgsEl.querySelectorAll(sels.join(','))) {
-              el.classList.add('hs-mc-thread-highlight')
-            }
-          } else {
-            clearThreadHover()
-          }
-        }
         // Stack overlay (200ms delay) — only for replies with a known parent id
         if (msg.dataset.replyId) {
           if (msg === _stackActiveRow) {
@@ -1532,12 +1506,6 @@
         }
       }, { passive: true, signal: mcSignal })
       msgsEl.addEventListener('mouseout', (e) => {
-        if (_threadHover) {
-          if (!_threadHover.contains(e.relatedTarget)) {
-            const stillIn = e.relatedTarget && _threadHover === e.relatedTarget.closest?.('.hs-mc-msg')
-            if (!stillIn) clearThreadHover()
-          }
-        }
         // Stack: if leaving the active row toward something not the overlay, schedule dismiss
         if (_stackActiveRow && (e.target === _stackActiveRow || _stackActiveRow.contains(e.target))) {
           const goingTo = e.relatedTarget

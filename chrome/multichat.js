@@ -3560,14 +3560,9 @@ function injectStyles() {
     .hs-mc-tab.active[data-live="true"]::after {
       background: #cc0000;
     }
-    /* YT body scrollbar (~15px) overlays viewport right edge. Reserve a gutter
-       on the container's right so the tab strip — and its right-aligned dot —
-       sit inboard of the scrollbar instead of under it. */
-    body.hs-platform-yt.hs-tabs-right.hs-chat-right #hs-mc-tabbar,
-    body.hs-platform-yt.hs-tabs-right.hs-chat-top #hs-mc-tabbar,
-    body.hs-platform-yt.hs-tabs-right.hs-chat-bottom #hs-mc-tabbar {
-      right: 15px !important;
-    }
+    /* YT: position:fixed children already stop at clientWidth (left edge of
+       the body scrollbar), so no extra gutter is needed — keep tabs flush to
+       the scrollbar edge to match Twitch/Kick. */
     body.hs-platform-yt.hs-tabs-right.hs-chat-right #hs-mc-overlay,
     body.hs-platform-yt.hs-tabs-right.hs-chat-top #hs-mc-overlay,
     body.hs-platform-yt.hs-tabs-right.hs-chat-bottom #hs-mc-overlay,
@@ -3577,7 +3572,7 @@ function injectStyles() {
     body.hs-platform-yt.hs-tabs-right.hs-chat-right #hs-mc-emote-picker,
     body.hs-platform-yt.hs-tabs-right.hs-chat-top #hs-mc-emote-picker,
     body.hs-platform-yt.hs-tabs-right.hs-chat-bottom #hs-mc-emote-picker {
-      right: 105px !important;
+      right: 90px !important;
     }
 
     /* Overlay - fills chat container (below tab bar, above input bar) */
@@ -3930,24 +3925,14 @@ function injectStyles() {
     }
     .hs-mc-msg:hover {
     }
-    .hs-mc-msg.hs-mc-thread-highlight {
-      background: #808000 !important;
-      box-shadow: none !important;
-      position: relative;
-      z-index: 2;
-    }
-    /* Reply context text needs to be readable on the olive thread-highlight bg */
-    .hs-mc-msg.hs-mc-thread-highlight .hs-mc-reply-ctx,
-    .hs-mc-msg.hs-mc-thread-highlight .hs-mc-reply-user {
-      color: #fff !important;
-      border-left-color: #fff !important;
-    }
-    /* Reply-chain stack overlay — viewport-bounded vertical stack of parent messages */
+    /* Reply-chain stack overlay — viewport-bounded vertical stack of parent messages.
+       Bottom edge butts directly against the hovered row (no border, no shadow below). */
     #hs-mc-reply-stack {
       box-sizing: border-box;
       background: #000;
       border: 1px solid #808000;
-      box-shadow: 0 0 0 1px #000, 0 4px 12px rgba(0,0,0,0.6);
+      border-bottom: none;
+      box-shadow: 0 -4px 12px rgba(0,0,0,0.5);
       z-index: 2147483647;
       pointer-events: auto;
       overflow: hidden;
@@ -14375,6 +14360,31 @@ const BADGE_STYLES = {
 const twitchBadgeUrls = new Map()
 const ffzBadgeKeys = new Set() // tracks which channel:badgeName entries are FFZ (need bg color)
 const badgesFetchedChannels = new Set()
+// Sorted numeric version lists per "channel:setID" — for nearest-tier fallback
+// (e.g. user has subscriber/5 but channel only defines 0,3,6 → use 3).
+const channelBadgeVersions = new Map()
+
+function findNearestChannelBadgeVersion(channel, name, version) {
+  const versions = channelBadgeVersions.get(`${channel}:${name}`)
+  if (!versions || versions.length === 0) return null
+  const v = parseInt(version, 10)
+  if (!Number.isFinite(v)) return null
+  // Subscriber versions encode tier in the thousands digit (2xxx = T2, 3xxx = T3).
+  // Stay within the same tier when picking the nearest lower version.
+  let tierMin = -Infinity, tierMax = Infinity
+  if (name === 'subscriber') {
+    if (v >= 3000) { tierMin = 3000; tierMax = 3999 }
+    else if (v >= 2000) { tierMin = 2000; tierMax = 2999 }
+    else { tierMin = 0; tierMax = 1999 }
+  }
+  let best = -1
+  for (const vv of versions) {
+    if (vv > v) break
+    if (vv < tierMin || vv > tierMax) continue
+    if (vv > best) best = vv
+  }
+  return best >= 0 ? String(best) : null
+}
 let globalBadgesFetched = false
 const TWITCH_GQL = 'https://gql.twitch.tv/gql'
 const TWITCH_CLIENT_ID = 'kimne78kx3ncx6brgo4mv6wki5h1ko'
@@ -15474,6 +15484,9 @@ async function fetchChannelBadges(channelLogin) {
     for (const key of ffzBadgeKeys) {
       if (key.startsWith(`${oldest}:`)) ffzBadgeKeys.delete(key);
     }
+    for (const key of channelBadgeVersions.keys()) {
+      if (key.startsWith(`${oldest}:`)) channelBadgeVersions.delete(key);
+    }
   }
   try {
     // Fetch channel badges (GQL broadcastBadges) + FFZ in parallel
@@ -15486,8 +15499,19 @@ async function fetchChannelBadges(channelLogin) {
     if (gqlResp.status === 'fulfilled') {
       const badges = gqlResp.value?.data?.user?.broadcastBadges
       if (badges) {
+        const versionsBySet = new Map()
         for (const b of badges) {
           if (b.imageURL) twitchBadgeUrls.set(`${channelLogin}:${b.setID}/${b.version}`, b.imageURL)
+          const v = parseInt(b.version, 10)
+          if (Number.isFinite(v)) {
+            let arr = versionsBySet.get(b.setID)
+            if (!arr) { arr = []; versionsBySet.set(b.setID, arr) }
+            arr.push(v)
+          }
+        }
+        for (const [setID, arr] of versionsBySet) {
+          arr.sort((a, b) => a - b)
+          channelBadgeVersions.set(`${channelLogin}:${setID}`, arr)
         }
       }
     }
@@ -15525,8 +15549,15 @@ function renderBadges(badgesStr, channel) {
   if (!badgesStr) return ''
   return badgesStr.split(',').map(badge => {
     const [name, version] = badge.split('/')
-    // Channel-specific first, then global fallback
-    const url = (channel && twitchBadgeUrls.get(`${channel}:${name}/${version}`))
+    // Channel-specific exact match → channel-specific nearest-tier (e.g. 5mo
+    // sub on a channel that only defines 0/3/6 → use 3) → global exact →
+    // global "/1" generic-star fallback.
+    let url = channel && twitchBadgeUrls.get(`${channel}:${name}/${version}`)
+    if (!url && channel) {
+      const nearest = findNearestChannelBadgeVersion(channel, name, version)
+      if (nearest != null) url = twitchBadgeUrls.get(`${channel}:${name}/${nearest}`)
+    }
+    url = url
       || twitchBadgeUrls.get(`${name}/${version}`)
       || twitchBadgeUrls.get(`${name}/1`)
     if (url) {
@@ -24108,16 +24139,6 @@ const STORAGE_KEY = 'heatsync_multichat';
         }
       }, { signal: mcSignal });
 
-      // Hover-thread highlight — yellow border on related reply chain (mirrors website)
-      let _threadHover = null
-      const clearThreadHover = () => {
-        if (!_threadHover) return
-        for (const el of msgsEl.querySelectorAll('.hs-mc-thread-highlight')) {
-          el.classList.remove('hs-mc-thread-highlight')
-        }
-        _threadHover = null
-      }
-
       // Reply-chain stack overlay — viewport-bounded stack of all parents above hovered row
       let _stackShowTimer = null
       let _stackHideTimer = null
@@ -24209,10 +24230,20 @@ const STORAGE_KEY = 'heatsync_multichat';
       const showStack = (hoveredEl) => {
         const replyId = hoveredEl.dataset.replyId
         if (!replyId) return
-        const chain = walkReplyChain(hoveredEl.dataset.msgChannel, hoveredEl.dataset.msgPlatform, replyId, 128)
-        if (!chain.length) return
+        const fullChain = walkReplyChain(hoveredEl.dataset.msgChannel, hoveredEl.dataset.msgPlatform, replyId, 128)
+        if (!fullChain.length) return
         const cRect = msgsEl.getBoundingClientRect()
         const hRect = hoveredEl.getBoundingClientRect()
+        // Filter out parents already visible in the chat viewport — avoid rendering them twice
+        const isInChatViewport = (id) => {
+          if (!id) return false
+          const el = msgsEl.querySelector(`.hs-mc-msg[data-msg-id="${CSS.escape(id)}"]`)
+          if (!el) return false
+          const er = el.getBoundingClientRect()
+          return er.bottom > cRect.top && er.top < cRect.bottom
+        }
+        const chain = fullChain.filter(p => !isInChatViewport(p.id))
+        if (!chain.length) return
         const available = hRect.top - cRect.top
         if (available < 24) return
         const overlay = ensureStackOverlay()
@@ -24251,32 +24282,6 @@ const STORAGE_KEY = 'heatsync_multichat';
       msgsEl.addEventListener('mouseover', (e) => {
         const msg = e.target.closest('.hs-mc-msg')
         if (!msg) return
-        // Existing instant thread-highlight (in-chat 808000 tint)
-        if (msg !== _threadHover) {
-          const own = msg.dataset.msgId || ''
-          const parent = msg.dataset.replyId || ''
-          const root = msg.dataset.replyThreadId || ''
-          let shouldHighlight = !!(parent || root)
-          if (!shouldHighlight && own) {
-            const childSel = `[data-reply-id="${CSS.escape(own)}"], [data-reply-thread-id="${CSS.escape(own)}"]`
-            if (msgsEl.querySelector(childSel)) shouldHighlight = true
-          }
-          if (shouldHighlight) {
-            clearThreadHover()
-            _threadHover = msg
-            const ids = new Set([own, parent, root].filter(Boolean))
-            const sels = []
-            for (const id of ids) {
-              const safe = CSS.escape(id)
-              sels.push(`[data-msg-id="${safe}"]`, `[data-reply-id="${safe}"]`, `[data-reply-thread-id="${safe}"]`)
-            }
-            for (const el of msgsEl.querySelectorAll(sels.join(','))) {
-              el.classList.add('hs-mc-thread-highlight')
-            }
-          } else {
-            clearThreadHover()
-          }
-        }
         // Stack overlay (200ms delay) — only for replies with a known parent id
         if (msg.dataset.replyId) {
           if (msg === _stackActiveRow) {
@@ -24298,12 +24303,6 @@ const STORAGE_KEY = 'heatsync_multichat';
         }
       }, { passive: true, signal: mcSignal })
       msgsEl.addEventListener('mouseout', (e) => {
-        if (_threadHover) {
-          if (!_threadHover.contains(e.relatedTarget)) {
-            const stillIn = e.relatedTarget && _threadHover === e.relatedTarget.closest?.('.hs-mc-msg')
-            if (!stillIn) clearThreadHover()
-          }
-        }
         // Stack: if leaving the active row toward something not the overlay, schedule dismiss
         if (_stackActiveRow && (e.target === _stackActiveRow || _stackActiveRow.contains(e.target))) {
           const goingTo = e.relatedTarget

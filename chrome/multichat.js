@@ -3760,6 +3760,7 @@ function injectStyles() {
       right: 0;
       bottom: 0;
       display: flex;
+      flex-wrap: wrap;
       gap: 6px;
       padding: 8px;
       background: #000;
@@ -3941,6 +3942,59 @@ function injectStyles() {
       color: #fff !important;
       border-left-color: #fff !important;
     }
+    /* Reply-chain stack overlay — viewport-bounded vertical stack of parent messages */
+    #hs-mc-reply-stack {
+      box-sizing: border-box;
+      background: #000;
+      border: 1px solid #808000;
+      box-shadow: 0 0 0 1px #000, 0 4px 12px rgba(0,0,0,0.6);
+      z-index: 2147483647;
+      pointer-events: auto;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+    #hs-mc-reply-stack .hs-mc-reply-stack-row {
+      background: #808000 !important;
+      box-shadow: none !important;
+      border-bottom: 1px solid rgba(0,0,0,0.4);
+      margin: 0 !important;
+    }
+    #hs-mc-reply-stack .hs-mc-reply-stack-row:last-child {
+      border-bottom: none;
+    }
+    #hs-mc-reply-stack .hs-mc-reply-stack-row .hs-mc-reply-ctx,
+    #hs-mc-reply-stack .hs-mc-reply-stack-row .hs-mc-reply-user {
+      color: #fff !important;
+      border-left-color: #fff !important;
+    }
+    #hs-mc-reply-stack .hs-mc-reply-stack-row .hs-mc-reply-btn {
+      display: none !important;
+    }
+    .hs-mc-reply-stack-chip {
+      flex: 0 0 auto;
+      padding: 2px 6px;
+      font-size: 11px;
+      font-weight: 700;
+      color: #fff;
+      background: #000;
+      border-bottom: 1px solid #808000;
+      cursor: pointer;
+      text-align: center;
+      user-select: none;
+    }
+    .hs-mc-reply-stack-chip:hover {
+      color: #000;
+      background: #fff;
+    }
+    /* Brief flash on the message that the overflow chip scrolled to */
+    .hs-mc-msg.hs-mc-thread-flash {
+      animation: hs-mc-thread-flash 1.2s ease-out;
+    }
+    @keyframes hs-mc-thread-flash {
+      0% { background: #808000; }
+      100% { background: transparent; }
+    }
     .hs-mc-feed-inline, .hs-mc-stream-event {
       content-visibility: auto;
       contain-intrinsic-size: auto 32px;
@@ -3970,14 +4024,16 @@ function injectStyles() {
       display: block;
     }
     #hs-mc-reply-indicator {
+      flex: 1 0 100%;
+      order: -1;
       display: flex;
       align-items: center;
       justify-content: space-between;
       background: #000;
-      border-bottom: 1px solid #000;
       padding: 2px 6px;
       font-size: 11px;
       color: #fff;
+      box-sizing: border-box;
     }
     #hs-mc-reply-indicator span {
       overflow: hidden;
@@ -4073,9 +4129,9 @@ function injectStyles() {
     /* Errors / rejections = dim maroon */
     .hs-mc-msg.hs-mc-notice-error     { border-left-color: #800000 !important; background: rgba(128, 0, 0, 0.06) !important; }
     .hs-mc-msg.hs-mc-notice-error     .hs-mc-system-text { color: #ff8080; }
-    /* First-time chatter (Twitch first-msg=1) = HS brand orange */
-    .hs-mc-msg.hs-mc-first-msg { border-left: 3px solid #ff8700; padding-left: 8px; background: rgba(255, 135, 0, 0.08); }
-    .hs-mc-first-tag { display: inline-block; font-size: 10px; font-weight: 700; color: #000; background: #ff8700; padding: 0 4px; border-radius: 2px; margin-right: 4px; vertical-align: middle; }
+    /* First-time chatter (Twitch first-msg=1) = Twitch magenta-purple */
+    .hs-mc-msg.hs-mc-first-msg { border-left: 3px solid #bd5fff; padding-left: 8px; background: rgba(189, 95, 255, 0.12); }
+    .hs-mc-first-tag { display: inline-block; font-size: 10px; font-weight: 700; color: #fff; background: #bd5fff; padding: 0 4px; border-radius: 2px; margin-right: 4px; vertical-align: middle; }
     /* Cleared (timed out / banned / msg deleted) — Twitch-native dim + strikethrough.
        Username and badges stay visible so the reader can see who got hit; the body
        text and emotes get faded with a strikethrough. */
@@ -24061,37 +24117,206 @@ const STORAGE_KEY = 'heatsync_multichat';
         }
         _threadHover = null
       }
+
+      // Reply-chain stack overlay — viewport-bounded stack of all parents above hovered row
+      let _stackShowTimer = null
+      let _stackHideTimer = null
+      let _stackActiveRow = null
+      const cancelStackShow = () => { if (_stackShowTimer) { cleanup.clearTimeout(_stackShowTimer); _stackShowTimer = null } }
+      const cancelStackHide = () => { if (_stackHideTimer) { cleanup.clearTimeout(_stackHideTimer); _stackHideTimer = null } }
+      const dismissStack = () => {
+        cancelStackShow()
+        cancelStackHide()
+        const overlay = document.getElementById('hs-mc-reply-stack')
+        if (overlay) {
+          overlay.style.display = 'none'
+          overlay.replaceChildren()
+        }
+        _stackActiveRow = null
+      }
+      const lookupMsgById = (channel, platform, id) => {
+        if (!id) return null
+        const ch = (channel || '').toLowerCase()
+        if (platform === 'kick') {
+          const buf = kickChat?.channels?.get(ch)
+          if (buf) {
+            const msgs = buf.getAll()
+            for (let i = msgs.length - 1; i >= 0; i--) if (msgs[i].id === id) return msgs[i]
+          }
+          return null
+        }
+        if (ch && irc?.channels) {
+          const buf = irc.channels.get(ch)
+          if (buf) {
+            const msgs = buf.getAll()
+            for (let i = msgs.length - 1; i >= 0; i--) if (msgs[i].id === id) return msgs[i]
+          }
+        }
+        if (irc?.channels) {
+          for (const buf of irc.channels.values()) {
+            const msgs = buf.getAll()
+            for (let i = msgs.length - 1; i >= 0; i--) if (msgs[i].id === id) return msgs[i]
+          }
+        }
+        return null
+      }
+      const walkReplyChain = (channel, platform, startReplyId, maxDepth) => {
+        const chain = []
+        const seen = new Set()
+        let curId = startReplyId
+        let depth = 0
+        while (curId && depth < maxDepth) {
+          if (seen.has(curId)) break
+          seen.add(curId)
+          const m = lookupMsgById(channel, platform, curId)
+          if (!m) break
+          chain.push(m)
+          curId = m.replyTo?.id || ''
+          depth++
+        }
+        return chain
+      }
+      const ensureStackOverlay = () => {
+        let el = document.getElementById('hs-mc-reply-stack')
+        if (el) return el
+        el = document.createElement('div')
+        el.id = 'hs-mc-reply-stack'
+        el.style.display = 'none'
+        document.body.appendChild(el)
+        el.addEventListener('mouseenter', () => cancelStackHide(), { signal: mcSignal })
+        el.addEventListener('mouseleave', (ev) => {
+          if (_stackActiveRow && _stackActiveRow.contains(ev.relatedTarget)) return
+          cancelStackHide()
+          _stackHideTimer = cleanup.setTimeout(dismissStack, 150)
+        }, { signal: mcSignal })
+        el.addEventListener('click', (ev) => {
+          const chip = ev.target.closest('.hs-mc-reply-stack-chip')
+          if (!chip) return
+          ev.preventDefault()
+          const targetId = chip.dataset.targetId
+          if (targetId) {
+            const target = msgsEl.querySelector(`.hs-mc-msg[data-msg-id="${CSS.escape(targetId)}"]`)
+            if (target) {
+              target.scrollIntoView({ block: 'center', behavior: 'smooth' })
+              target.classList.add('hs-mc-thread-flash')
+              cleanup.setTimeout(() => target.classList.remove('hs-mc-thread-flash'), 1200)
+            }
+          }
+          dismissStack()
+        }, { signal: mcSignal })
+        return el
+      }
+      const showStack = (hoveredEl) => {
+        const replyId = hoveredEl.dataset.replyId
+        if (!replyId) return
+        const chain = walkReplyChain(hoveredEl.dataset.msgChannel, hoveredEl.dataset.msgPlatform, replyId, 128)
+        if (!chain.length) return
+        const cRect = msgsEl.getBoundingClientRect()
+        const hRect = hoveredEl.getBoundingClientRect()
+        const available = hRect.top - cRect.top
+        if (available < 24) return
+        const overlay = ensureStackOverlay()
+        overlay.replaceChildren()
+        overlay.style.position = 'fixed'
+        overlay.style.left = hRect.left + 'px'
+        overlay.style.width = hRect.width + 'px'
+        overlay.style.bottom = (window.innerHeight - hRect.top) + 'px'
+        overlay.style.maxHeight = available + 'px'
+        overlay.style.display = 'block'
+        let shown = 0
+        for (let i = 0; i < chain.length; i++) {
+          const parent = chain[i]
+          const row = buildMessageDiv(parent, currentTab)
+          if (!row) continue
+          row.classList.add('hs-mc-reply-stack-row')
+          overlay.insertBefore(row, overlay.firstChild)
+          if (overlay.scrollHeight > available) {
+            overlay.removeChild(row)
+            const remaining = chain.length - shown
+            if (remaining > 0) {
+              const chip = document.createElement('div')
+              chip.className = 'hs-mc-reply-stack-chip'
+              chip.textContent = '↑ ' + remaining + ' more'
+              chip.dataset.targetId = chain[chain.length - 1].id
+              overlay.insertBefore(chip, overlay.firstChild)
+            }
+            break
+          }
+          shown++
+        }
+        if (!shown) overlay.style.display = 'none'
+        _stackActiveRow = hoveredEl
+      }
+
       msgsEl.addEventListener('mouseover', (e) => {
         const msg = e.target.closest('.hs-mc-msg')
-        if (!msg || msg === _threadHover) return
-        const own = msg.dataset.msgId || ''
-        const parent = msg.dataset.replyId || ''
-        const root = msg.dataset.replyThreadId || ''
-        if (!parent && !root) {
-          // Not a reply — only highlight if it has children (other msgs replying to it)
-          if (!own) return clearThreadHover()
-          const childSel = `[data-reply-id="${CSS.escape(own)}"], [data-reply-thread-id="${CSS.escape(own)}"]`
-          if (!msgsEl.querySelector(childSel)) return clearThreadHover()
+        if (!msg) return
+        // Existing instant thread-highlight (in-chat 808000 tint)
+        if (msg !== _threadHover) {
+          const own = msg.dataset.msgId || ''
+          const parent = msg.dataset.replyId || ''
+          const root = msg.dataset.replyThreadId || ''
+          let shouldHighlight = !!(parent || root)
+          if (!shouldHighlight && own) {
+            const childSel = `[data-reply-id="${CSS.escape(own)}"], [data-reply-thread-id="${CSS.escape(own)}"]`
+            if (msgsEl.querySelector(childSel)) shouldHighlight = true
+          }
+          if (shouldHighlight) {
+            clearThreadHover()
+            _threadHover = msg
+            const ids = new Set([own, parent, root].filter(Boolean))
+            const sels = []
+            for (const id of ids) {
+              const safe = CSS.escape(id)
+              sels.push(`[data-msg-id="${safe}"]`, `[data-reply-id="${safe}"]`, `[data-reply-thread-id="${safe}"]`)
+            }
+            for (const el of msgsEl.querySelectorAll(sels.join(','))) {
+              el.classList.add('hs-mc-thread-highlight')
+            }
+          } else {
+            clearThreadHover()
+          }
         }
-        clearThreadHover()
-        _threadHover = msg
-        const ids = new Set([own, parent, root].filter(Boolean))
-        const sels = []
-        for (const id of ids) {
-          const safe = CSS.escape(id)
-          sels.push(`[data-msg-id="${safe}"]`, `[data-reply-id="${safe}"]`, `[data-reply-thread-id="${safe}"]`)
-        }
-        for (const el of msgsEl.querySelectorAll(sels.join(','))) {
-          el.classList.add('hs-mc-thread-highlight')
+        // Stack overlay (200ms delay) — only for replies with a known parent id
+        if (msg.dataset.replyId) {
+          if (msg === _stackActiveRow) {
+            cancelStackHide()
+          } else {
+            cancelStackShow()
+            cancelStackHide()
+            _stackShowTimer = cleanup.setTimeout(() => {
+              _stackShowTimer = null
+              showStack(msg)
+            }, 200)
+          }
+        } else if (_stackActiveRow !== msg) {
+          // Hovering a different row that isn't a reply — start dismissing existing stack
+          cancelStackShow()
+          if (_stackActiveRow && !_stackHideTimer) {
+            _stackHideTimer = cleanup.setTimeout(dismissStack, 150)
+          }
         }
       }, { passive: true, signal: mcSignal })
       msgsEl.addEventListener('mouseout', (e) => {
-        if (!_threadHover) return
-        if (_threadHover.contains(e.relatedTarget)) return
-        const stillIn = e.relatedTarget && _threadHover === e.relatedTarget.closest?.('.hs-mc-msg')
-        if (stillIn) return
-        clearThreadHover()
+        if (_threadHover) {
+          if (!_threadHover.contains(e.relatedTarget)) {
+            const stillIn = e.relatedTarget && _threadHover === e.relatedTarget.closest?.('.hs-mc-msg')
+            if (!stillIn) clearThreadHover()
+          }
+        }
+        // Stack: if leaving the active row toward something not the overlay, schedule dismiss
+        if (_stackActiveRow && (e.target === _stackActiveRow || _stackActiveRow.contains(e.target))) {
+          const goingTo = e.relatedTarget
+          if (goingTo && _stackActiveRow.contains(goingTo)) return
+          if (goingTo && goingTo.closest?.('#hs-mc-reply-stack')) return
+          cancelStackHide()
+          _stackHideTimer = cleanup.setTimeout(dismissStack, 150)
+        }
+        if (_stackShowTimer) cancelStackShow()
       }, { passive: true, signal: mcSignal })
+      // Dismiss stack on chat scroll, viewport resize, or new-message append
+      msgsEl.addEventListener('scroll', () => { if (_stackActiveRow) dismissStack() }, { passive: true, signal: mcSignal })
+      window.addEventListener('resize', () => { if (_stackActiveRow) dismissStack() }, { passive: true, signal: mcSignal })
     }, 100);
 
     // Search bar wiring — debounce 250ms then call /api/search

@@ -615,6 +615,7 @@ function injectStyles() {
       right: 0;
       bottom: 0;
       display: flex;
+      flex-wrap: wrap;
       gap: 6px;
       padding: 8px;
       background: #000;
@@ -796,6 +797,59 @@ function injectStyles() {
       color: #fff !important;
       border-left-color: #fff !important;
     }
+    /* Reply-chain stack overlay — viewport-bounded vertical stack of parent messages */
+    #hs-mc-reply-stack {
+      box-sizing: border-box;
+      background: #000;
+      border: 1px solid #808000;
+      box-shadow: 0 0 0 1px #000, 0 4px 12px rgba(0,0,0,0.6);
+      z-index: 2147483647;
+      pointer-events: auto;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+    #hs-mc-reply-stack .hs-mc-reply-stack-row {
+      background: #808000 !important;
+      box-shadow: none !important;
+      border-bottom: 1px solid rgba(0,0,0,0.4);
+      margin: 0 !important;
+    }
+    #hs-mc-reply-stack .hs-mc-reply-stack-row:last-child {
+      border-bottom: none;
+    }
+    #hs-mc-reply-stack .hs-mc-reply-stack-row .hs-mc-reply-ctx,
+    #hs-mc-reply-stack .hs-mc-reply-stack-row .hs-mc-reply-user {
+      color: #fff !important;
+      border-left-color: #fff !important;
+    }
+    #hs-mc-reply-stack .hs-mc-reply-stack-row .hs-mc-reply-btn {
+      display: none !important;
+    }
+    .hs-mc-reply-stack-chip {
+      flex: 0 0 auto;
+      padding: 2px 6px;
+      font-size: 11px;
+      font-weight: 700;
+      color: #fff;
+      background: #000;
+      border-bottom: 1px solid #808000;
+      cursor: pointer;
+      text-align: center;
+      user-select: none;
+    }
+    .hs-mc-reply-stack-chip:hover {
+      color: #000;
+      background: #fff;
+    }
+    /* Brief flash on the message that the overflow chip scrolled to */
+    .hs-mc-msg.hs-mc-thread-flash {
+      animation: hs-mc-thread-flash 1.2s ease-out;
+    }
+    @keyframes hs-mc-thread-flash {
+      0% { background: #808000; }
+      100% { background: transparent; }
+    }
     .hs-mc-feed-inline, .hs-mc-stream-event {
       content-visibility: auto;
       contain-intrinsic-size: auto 32px;
@@ -825,14 +879,16 @@ function injectStyles() {
       display: block;
     }
     #hs-mc-reply-indicator {
+      flex: 1 0 100%;
+      order: -1;
       display: flex;
       align-items: center;
       justify-content: space-between;
       background: #000;
-      border-bottom: 1px solid #000;
       padding: 2px 6px;
       font-size: 11px;
       color: #fff;
+      box-sizing: border-box;
     }
     #hs-mc-reply-indicator span {
       overflow: hidden;
@@ -928,9 +984,9 @@ function injectStyles() {
     /* Errors / rejections = dim maroon */
     .hs-mc-msg.hs-mc-notice-error     { border-left-color: #800000 !important; background: rgba(128, 0, 0, 0.06) !important; }
     .hs-mc-msg.hs-mc-notice-error     .hs-mc-system-text { color: #ff8080; }
-    /* First-time chatter (Twitch first-msg=1) = HS brand orange */
-    .hs-mc-msg.hs-mc-first-msg { border-left: 3px solid #ff8700; padding-left: 8px; background: rgba(255, 135, 0, 0.08); }
-    .hs-mc-first-tag { display: inline-block; font-size: 10px; font-weight: 700; color: #000; background: #ff8700; padding: 0 4px; border-radius: 2px; margin-right: 4px; vertical-align: middle; }
+    /* First-time chatter (Twitch first-msg=1) = Twitch magenta-purple */
+    .hs-mc-msg.hs-mc-first-msg { border-left: 3px solid #bd5fff; padding-left: 8px; background: rgba(189, 95, 255, 0.12); }
+    .hs-mc-first-tag { display: inline-block; font-size: 10px; font-weight: 700; color: #fff; background: #bd5fff; padding: 0 4px; border-radius: 2px; margin-right: 4px; vertical-align: middle; }
     /* Cleared (timed out / banned / msg deleted) — Twitch-native dim + strikethrough.
        Username and badges stay visible so the reader can see who got hit; the body
        text and emotes get faded with a strikethrough. */

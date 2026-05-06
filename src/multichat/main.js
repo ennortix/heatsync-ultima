@@ -1351,37 +1351,206 @@
         }
         _threadHover = null
       }
+
+      // Reply-chain stack overlay — viewport-bounded stack of all parents above hovered row
+      let _stackShowTimer = null
+      let _stackHideTimer = null
+      let _stackActiveRow = null
+      const cancelStackShow = () => { if (_stackShowTimer) { cleanup.clearTimeout(_stackShowTimer); _stackShowTimer = null } }
+      const cancelStackHide = () => { if (_stackHideTimer) { cleanup.clearTimeout(_stackHideTimer); _stackHideTimer = null } }
+      const dismissStack = () => {
+        cancelStackShow()
+        cancelStackHide()
+        const overlay = document.getElementById('hs-mc-reply-stack')
+        if (overlay) {
+          overlay.style.display = 'none'
+          overlay.replaceChildren()
+        }
+        _stackActiveRow = null
+      }
+      const lookupMsgById = (channel, platform, id) => {
+        if (!id) return null
+        const ch = (channel || '').toLowerCase()
+        if (platform === 'kick') {
+          const buf = kickChat?.channels?.get(ch)
+          if (buf) {
+            const msgs = buf.getAll()
+            for (let i = msgs.length - 1; i >= 0; i--) if (msgs[i].id === id) return msgs[i]
+          }
+          return null
+        }
+        if (ch && irc?.channels) {
+          const buf = irc.channels.get(ch)
+          if (buf) {
+            const msgs = buf.getAll()
+            for (let i = msgs.length - 1; i >= 0; i--) if (msgs[i].id === id) return msgs[i]
+          }
+        }
+        if (irc?.channels) {
+          for (const buf of irc.channels.values()) {
+            const msgs = buf.getAll()
+            for (let i = msgs.length - 1; i >= 0; i--) if (msgs[i].id === id) return msgs[i]
+          }
+        }
+        return null
+      }
+      const walkReplyChain = (channel, platform, startReplyId, maxDepth) => {
+        const chain = []
+        const seen = new Set()
+        let curId = startReplyId
+        let depth = 0
+        while (curId && depth < maxDepth) {
+          if (seen.has(curId)) break
+          seen.add(curId)
+          const m = lookupMsgById(channel, platform, curId)
+          if (!m) break
+          chain.push(m)
+          curId = m.replyTo?.id || ''
+          depth++
+        }
+        return chain
+      }
+      const ensureStackOverlay = () => {
+        let el = document.getElementById('hs-mc-reply-stack')
+        if (el) return el
+        el = document.createElement('div')
+        el.id = 'hs-mc-reply-stack'
+        el.style.display = 'none'
+        document.body.appendChild(el)
+        el.addEventListener('mouseenter', () => cancelStackHide(), { signal: mcSignal })
+        el.addEventListener('mouseleave', (ev) => {
+          if (_stackActiveRow && _stackActiveRow.contains(ev.relatedTarget)) return
+          cancelStackHide()
+          _stackHideTimer = cleanup.setTimeout(dismissStack, 150)
+        }, { signal: mcSignal })
+        el.addEventListener('click', (ev) => {
+          const chip = ev.target.closest('.hs-mc-reply-stack-chip')
+          if (!chip) return
+          ev.preventDefault()
+          const targetId = chip.dataset.targetId
+          if (targetId) {
+            const target = msgsEl.querySelector(`.hs-mc-msg[data-msg-id="${CSS.escape(targetId)}"]`)
+            if (target) {
+              target.scrollIntoView({ block: 'center', behavior: 'smooth' })
+              target.classList.add('hs-mc-thread-flash')
+              cleanup.setTimeout(() => target.classList.remove('hs-mc-thread-flash'), 1200)
+            }
+          }
+          dismissStack()
+        }, { signal: mcSignal })
+        return el
+      }
+      const showStack = (hoveredEl) => {
+        const replyId = hoveredEl.dataset.replyId
+        if (!replyId) return
+        const chain = walkReplyChain(hoveredEl.dataset.msgChannel, hoveredEl.dataset.msgPlatform, replyId, 128)
+        if (!chain.length) return
+        const cRect = msgsEl.getBoundingClientRect()
+        const hRect = hoveredEl.getBoundingClientRect()
+        const available = hRect.top - cRect.top
+        if (available < 24) return
+        const overlay = ensureStackOverlay()
+        overlay.replaceChildren()
+        overlay.style.position = 'fixed'
+        overlay.style.left = hRect.left + 'px'
+        overlay.style.width = hRect.width + 'px'
+        overlay.style.bottom = (window.innerHeight - hRect.top) + 'px'
+        overlay.style.maxHeight = available + 'px'
+        overlay.style.display = 'block'
+        let shown = 0
+        for (let i = 0; i < chain.length; i++) {
+          const parent = chain[i]
+          const row = buildMessageDiv(parent, currentTab)
+          if (!row) continue
+          row.classList.add('hs-mc-reply-stack-row')
+          overlay.insertBefore(row, overlay.firstChild)
+          if (overlay.scrollHeight > available) {
+            overlay.removeChild(row)
+            const remaining = chain.length - shown
+            if (remaining > 0) {
+              const chip = document.createElement('div')
+              chip.className = 'hs-mc-reply-stack-chip'
+              chip.textContent = '↑ ' + remaining + ' more'
+              chip.dataset.targetId = chain[chain.length - 1].id
+              overlay.insertBefore(chip, overlay.firstChild)
+            }
+            break
+          }
+          shown++
+        }
+        if (!shown) overlay.style.display = 'none'
+        _stackActiveRow = hoveredEl
+      }
+
       msgsEl.addEventListener('mouseover', (e) => {
         const msg = e.target.closest('.hs-mc-msg')
-        if (!msg || msg === _threadHover) return
-        const own = msg.dataset.msgId || ''
-        const parent = msg.dataset.replyId || ''
-        const root = msg.dataset.replyThreadId || ''
-        if (!parent && !root) {
-          // Not a reply — only highlight if it has children (other msgs replying to it)
-          if (!own) return clearThreadHover()
-          const childSel = `[data-reply-id="${CSS.escape(own)}"], [data-reply-thread-id="${CSS.escape(own)}"]`
-          if (!msgsEl.querySelector(childSel)) return clearThreadHover()
+        if (!msg) return
+        // Existing instant thread-highlight (in-chat 808000 tint)
+        if (msg !== _threadHover) {
+          const own = msg.dataset.msgId || ''
+          const parent = msg.dataset.replyId || ''
+          const root = msg.dataset.replyThreadId || ''
+          let shouldHighlight = !!(parent || root)
+          if (!shouldHighlight && own) {
+            const childSel = `[data-reply-id="${CSS.escape(own)}"], [data-reply-thread-id="${CSS.escape(own)}"]`
+            if (msgsEl.querySelector(childSel)) shouldHighlight = true
+          }
+          if (shouldHighlight) {
+            clearThreadHover()
+            _threadHover = msg
+            const ids = new Set([own, parent, root].filter(Boolean))
+            const sels = []
+            for (const id of ids) {
+              const safe = CSS.escape(id)
+              sels.push(`[data-msg-id="${safe}"]`, `[data-reply-id="${safe}"]`, `[data-reply-thread-id="${safe}"]`)
+            }
+            for (const el of msgsEl.querySelectorAll(sels.join(','))) {
+              el.classList.add('hs-mc-thread-highlight')
+            }
+          } else {
+            clearThreadHover()
+          }
         }
-        clearThreadHover()
-        _threadHover = msg
-        const ids = new Set([own, parent, root].filter(Boolean))
-        const sels = []
-        for (const id of ids) {
-          const safe = CSS.escape(id)
-          sels.push(`[data-msg-id="${safe}"]`, `[data-reply-id="${safe}"]`, `[data-reply-thread-id="${safe}"]`)
-        }
-        for (const el of msgsEl.querySelectorAll(sels.join(','))) {
-          el.classList.add('hs-mc-thread-highlight')
+        // Stack overlay (200ms delay) — only for replies with a known parent id
+        if (msg.dataset.replyId) {
+          if (msg === _stackActiveRow) {
+            cancelStackHide()
+          } else {
+            cancelStackShow()
+            cancelStackHide()
+            _stackShowTimer = cleanup.setTimeout(() => {
+              _stackShowTimer = null
+              showStack(msg)
+            }, 200)
+          }
+        } else if (_stackActiveRow !== msg) {
+          // Hovering a different row that isn't a reply — start dismissing existing stack
+          cancelStackShow()
+          if (_stackActiveRow && !_stackHideTimer) {
+            _stackHideTimer = cleanup.setTimeout(dismissStack, 150)
+          }
         }
       }, { passive: true, signal: mcSignal })
       msgsEl.addEventListener('mouseout', (e) => {
-        if (!_threadHover) return
-        if (_threadHover.contains(e.relatedTarget)) return
-        const stillIn = e.relatedTarget && _threadHover === e.relatedTarget.closest?.('.hs-mc-msg')
-        if (stillIn) return
-        clearThreadHover()
+        if (_threadHover) {
+          if (!_threadHover.contains(e.relatedTarget)) {
+            const stillIn = e.relatedTarget && _threadHover === e.relatedTarget.closest?.('.hs-mc-msg')
+            if (!stillIn) clearThreadHover()
+          }
+        }
+        // Stack: if leaving the active row toward something not the overlay, schedule dismiss
+        if (_stackActiveRow && (e.target === _stackActiveRow || _stackActiveRow.contains(e.target))) {
+          const goingTo = e.relatedTarget
+          if (goingTo && _stackActiveRow.contains(goingTo)) return
+          if (goingTo && goingTo.closest?.('#hs-mc-reply-stack')) return
+          cancelStackHide()
+          _stackHideTimer = cleanup.setTimeout(dismissStack, 150)
+        }
+        if (_stackShowTimer) cancelStackShow()
       }, { passive: true, signal: mcSignal })
+      // Dismiss stack on chat scroll, viewport resize, or new-message append
+      msgsEl.addEventListener('scroll', () => { if (_stackActiveRow) dismissStack() }, { passive: true, signal: mcSignal })
+      window.addEventListener('resize', () => { if (_stackActiveRow) dismissStack() }, { passive: true, signal: mcSignal })
     }, 100);
 
     // Search bar wiring — debounce 250ms then call /api/search

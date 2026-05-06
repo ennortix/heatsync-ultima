@@ -1103,7 +1103,10 @@ function injectStyles() {
     /* Username hover tooltip - profile preview */
     #hs-user-tooltip {
       position: fixed;
-      z-index: 100000;
+      /* Must beat the unified resize bar (#hs-c-resize-handle uses max int).
+         Equal z-index with later DOM order wins — tooltip is appended on
+         first hover, after the resize handle is created at init. */
+      z-index: 2147483647 !important;
       pointer-events: none;
       background: #000;
       border: 1px solid #2a2a2a;

@@ -372,7 +372,7 @@ style.textContent = `
   /* ============================================ */
   .hs-profile-card {
     position: fixed !important;
-    z-index: 5000 !important;
+    z-index: 2147483647 !important;
     background: #808080 !important;
     border: 1px solid #404040 !important;
     border-radius: 0 !important;

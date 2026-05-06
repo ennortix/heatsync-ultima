@@ -3288,21 +3288,40 @@ function injectStyles() {
       align-items: stretch;
       margin-left: -1px; /* collapse double border with adjacent tabs section */
     }
-    /* Horizontal tabs (top/bottom): when the tabbar is wide enough, lay
-       util-row + platfilter side-by-side on a single row instead of stacking.
-       Container query keyed off the tabbar's inline-size — at >=220px we
-       have room for util (~90px) + pf (~54px) + a couple channel tabs. The
-       container-type is only set for hs-tabs-{top,bottom} so vertical-mode
-       layouts (left/right) keep their existing column stacking. */
+    /* Horizontal tabs (top/bottom): dissolve the section/cluster wrappers
+       so all 14+ buttons (channel tabs + util + pf) flow as one wrapping
+       stream and pack into the minimum number of rows. With the outer
+       tabbar set to flex-wrap:wrap and the four wrappers (.hs-mc-tabs-
+       scroll, .hs-mc-right-cluster, .hs-mc-util-row, #hs-mc-platfilter)
+       on display:contents, every button becomes a direct flex child of
+       #hs-mc-tabbar in DOM order. No more orphan empty space next to
+       channel-tab rows that wrapped past the right cluster's height —
+       util/pf squares slot into trailing space of the last channel-tab
+       row before wrapping. Vertical mode (left/right) keeps its column
+       structure (overrides further down). */
     body.hs-tabs-top #hs-mc-tabbar,
     body.hs-tabs-bottom #hs-mc-tabbar {
-      container-type: inline-size;
-      container-name: hs-tabbar;
+      flex-wrap: wrap;
     }
-    @container hs-tabbar (min-width: 220px) {
-      .hs-mc-right-cluster {
-        flex-direction: row !important;
-      }
+    body.hs-tabs-top .hs-mc-tabs-scroll,
+    body.hs-tabs-bottom .hs-mc-tabs-scroll,
+    body.hs-tabs-top .hs-mc-right-cluster,
+    body.hs-tabs-bottom .hs-mc-right-cluster,
+    body.hs-tabs-top .hs-mc-util-row,
+    body.hs-tabs-bottom .hs-mc-util-row,
+    body.hs-tabs-top #hs-mc-platfilter,
+    body.hs-tabs-bottom #hs-mc-platfilter {
+      display: contents;
+    }
+    /* Once dissolved, pf buttons are inline siblings of channel tabs +
+       util buttons. Default flex:1 1 0 (sized within the pf cluster)
+       would let them grow absurdly here, so pin to fixed 18px squares
+       like every other util button. */
+    body.hs-tabs-top #hs-mc-platfilter .hs-mc-pf-btn,
+    body.hs-tabs-bottom #hs-mc-platfilter .hs-mc-pf-btn {
+      flex: 0 0 18px !important;
+      width: 18px !important;
+      max-width: 18px !important;
     }
     /* Vertical mode: util-row becomes a real wrapping row of squares pinned
        to the bottom of the column, just below the platfilter — no vertical
@@ -5292,10 +5311,13 @@ function injectStyles() {
       font-size: 8px !important; /* "YT" is 2 chars — shrink so it fits the 18px square cleanly */
       letter-spacing: -0.5px !important;
     }
-    /* OFF state — desaturated, dim border, unmistakable disabled cue */
+    /* OFF state — black bg with white text + dim border. The disabled
+       cue is the loss of the saturated brand bg (purple/green/red),
+       not text dimming — keeping the letter at #fff makes it readable
+       against any dark backdrop bleeding through. */
     .hs-mc-pf-btn.off {
       background: #000 !important;
-      color: #555 !important;
+      color: #fff !important;
       border-color: #333 !important;
     }
     .hs-mc-pf-btn:hover { background: #fff !important; color: #000 !important; border-color: #fff !important; }

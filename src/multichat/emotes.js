@@ -1006,6 +1006,11 @@
         const chCache = new Map();
         emotes.forEach(e => {
           if (e.name && e.url) {
+            // Skip Twitch sub/follower/bits-tier emotes: render them only when
+            // the sender's own inventory carries them (proves entitlement).
+            // Without this, any non-entitled sender's text would re-imagify
+            // via this channel cache fallback.
+            if (e.source === 'twitch' && (e.tier || e.emote_type === 'subscriptions' || e.emote_type === 'follower' || e.emote_type === 'bitstier')) return;
             const source = e.source || detectEmoteSource(e.url, '7tv');
             // Channel cache → state 'channel' (unless user owns it in their heatsync inventory)
             const state = inventoryEmotes.has(e.name) ? 'owned' : 'channel';
@@ -1027,18 +1032,17 @@
 
       // Native Twitch emotes — sub emotes carry e.owner (broadcaster login),
       // true Twitch globals do not. Distinguish so tooltips show "(broadcaster) sub" vs "global (Twitch)".
+      // Sub-tier entries are SKIPPED here: emoteCache is the global fallback,
+      // and putting entitled-only emotes there causes them to match any sender's
+      // text in any channel (bypassing Twitch's IRC emotes= gate).
       (stored.native_twitch_emotes || []).forEach(e => {
         if (e.name && e.url && !emoteCache.has(e.name)) {
           const isSub = !!e.owner
+          if (isSub) return
           const entry = {
             url: e.url,
             source: 'twitch',
-            state: isSub ? 'sub' : 'global'
-          }
-          if (isSub) {
-            entry.owner = e.owner
-            entry.ownerDisplay = e.ownerDisplay || e.owner
-            if (e.tier) entry.tier = e.tier
+            state: 'global'
           }
           emoteCache.set(e.name, entry);
           while (emoteCache.size > 2000) { emoteCache.delete(emoteCache.keys().next().value) }
@@ -1090,6 +1094,11 @@
       const url = img.src;
       if (name && url && !cache.has(name) && !emoteCache.has(name)) {
         const source = detectEmoteSource(url);
+        // Twitch native emotes are entitlement-gated server-side and arrive
+        // per-message via the IRC emotes= tag (twitchExtra). Skipping them
+        // here prevents non-entitled senders' text from re-imagifying via
+        // this fallback cache.
+        if (source === 'twitch') continue;
         cache.set(name, { url, source, state: getEmoteState(name, source), zeroWidth: false });
         found++;
       }

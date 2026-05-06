@@ -720,7 +720,8 @@ function fetchEmoteInventory() {
       width: emote.width || 28,
       height: emote.height || 28,
       tier: emote.tier,
-      broadcaster: emote.broadcaster_name
+      broadcaster: emote.broadcaster_name,
+      subscription: true
     }));
 
     // Combine inventory + subscription emotes

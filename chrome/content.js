@@ -1911,15 +1911,23 @@ function rebuildEmoteMapIfDirty() {
   })
 
   // Channel emotes (third-party only — BTTV/FFZ/7TV/Twitch)
+  // Skip Twitch sub/follower/bits-tier emotes: Twitch already renders them
+  // for senders with access via the IRC emotes= tag. Including them here
+  // would re-imagify text from non-entitled senders, bypassing Twitch's gate.
   channelEmotes.forEach(emote => {
     if (!emote.source) return
+    if (emote.source === 'twitch' && (emote.tier || emote.emote_type === 'subscriptions' || emote.emote_type === 'follower' || emote.emote_type === 'bitstier')) return
     cachedAllEmotes.set(emote.name, Object.assign({}, emote, {
       url: emote.url?.startsWith('http') ? emote.url : `${API_URL}${emote.url}`
     }))
   })
 
   // Inventory emotes LAST (highest priority — user's own emotes always win)
+  // Subscription emotes (Twitch sub emotes auto-loaded for the subscriber)
+  // are skipped: Twitch's native DOM gates them via the IRC emotes= tag.
+  // Including them would re-imagify text from non-entitled senders.
   emoteInventory.forEach(emote => {
+    if (emote.subscription) return
     cachedAllEmotes.set(emote.name, Object.assign({}, emote, {
       url: emote.url?.startsWith('http') ? emote.url : `${API_URL}${emote.url}`
     }))

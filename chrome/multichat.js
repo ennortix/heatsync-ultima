@@ -11494,6 +11494,11 @@ async function sendKickMessage(kickSlug, text) {
         const chCache = new Map();
         emotes.forEach(e => {
           if (e.name && e.url) {
+            // Skip Twitch sub/follower/bits-tier emotes: render them only when
+            // the sender's own inventory carries them (proves entitlement).
+            // Without this, any non-entitled sender's text would re-imagify
+            // via this channel cache fallback.
+            if (e.source === 'twitch' && (e.tier || e.emote_type === 'subscriptions' || e.emote_type === 'follower' || e.emote_type === 'bitstier')) return;
             const source = e.source || detectEmoteSource(e.url, '7tv');
             // Channel cache → state 'channel' (unless user owns it in their heatsync inventory)
             const state = inventoryEmotes.has(e.name) ? 'owned' : 'channel';
@@ -11515,18 +11520,17 @@ async function sendKickMessage(kickSlug, text) {
 
       // Native Twitch emotes — sub emotes carry e.owner (broadcaster login),
       // true Twitch globals do not. Distinguish so tooltips show "(broadcaster) sub" vs "global (Twitch)".
+      // Sub-tier entries are SKIPPED here: emoteCache is the global fallback,
+      // and putting entitled-only emotes there causes them to match any sender's
+      // text in any channel (bypassing Twitch's IRC emotes= gate).
       (stored.native_twitch_emotes || []).forEach(e => {
         if (e.name && e.url && !emoteCache.has(e.name)) {
           const isSub = !!e.owner
+          if (isSub) return
           const entry = {
             url: e.url,
             source: 'twitch',
-            state: isSub ? 'sub' : 'global'
-          }
-          if (isSub) {
-            entry.owner = e.owner
-            entry.ownerDisplay = e.ownerDisplay || e.owner
-            if (e.tier) entry.tier = e.tier
+            state: 'global'
           }
           emoteCache.set(e.name, entry);
           while (emoteCache.size > 2000) { emoteCache.delete(emoteCache.keys().next().value) }
@@ -11578,6 +11582,11 @@ async function sendKickMessage(kickSlug, text) {
       const url = img.src;
       if (name && url && !cache.has(name) && !emoteCache.has(name)) {
         const source = detectEmoteSource(url);
+        // Twitch native emotes are entitlement-gated server-side and arrive
+        // per-message via the IRC emotes= tag (twitchExtra). Skipping them
+        // here prevents non-entitled senders' text from re-imagifying via
+        // this fallback cache.
+        if (source === 'twitch') continue;
         cache.set(name, { url, source, state: getEmoteState(name, source), zeroWidth: false });
         found++;
       }
@@ -17682,8 +17691,8 @@ function buildFeedMessageDiv(m, opUsername) {
 
   const isAnon = !m.platform || m.username === 'Anonymous';
 
-  // Platform badge: [T]/[K]/[YT] (hidden for anonymous)
-  const platLabel = m.platform === 'kick' ? '[K]' : m.platform === 'youtube' ? '[YT]' : m.platform === 'twitch' ? '[T]' : '';
+  // Platform badge: [T]/[K]/[Y] (hidden for anonymous)
+  const platLabel = m.platform === 'kick' ? '[K]' : m.platform === 'youtube' ? '[Y]' : m.platform === 'twitch' ? '[T]' : '';
   const platColors = { twitch: '#9146ff', kick: '#53fc18', youtube: '#ff0000' };
   const platBadge = platLabel ? `<span class="hs-feed-tag" style="color:${platColors[m.platform]}">${platLabel}</span>` : '';
 
@@ -23901,7 +23910,7 @@ const STORAGE_KEY = 'heatsync_multichat';
   // Vi mode for chat input (default off)
   let viModeEnabled = false;
 
-  // Platform badges [T]/[K]/[YT] on messages (default on)
+  // Platform badges [T]/[K]/[Y] on messages (default on)
   let platformBadgesEnabled = true;
 
   // Zebra striping — alternate row backgrounds (default on)
@@ -27331,7 +27340,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       if (!mcUserCosmetics.has(m.userId)) queueMcCosmeticsLookup(m.userId)
     }
     const plat = m.platform === 'youtube' ? 'yt' : m.platform === 'kick' ? 'kick' : m.platform === 'heatsync' ? 'heatsync' : 'twitch'
-    const platLabel = plat === 'yt' ? '[YT]' : plat === 'kick' ? '[K]' : plat === 'heatsync' ? '[H]' : '[T]'
+    const platLabel = plat === 'yt' ? '[Y]' : plat === 'kick' ? '[K]' : plat === 'heatsync' ? '[H]' : '[T]'
     const platColors = { twitch: '#9146ff', kick: '#53fc18', yt: '#ff0000', heatsync: '#ff8700' }
     const platformBadge = (platformBadgesEnabled || plat !== hostPlatform) ? `<span class="hs-mc-platform-badge hs-mc-pb-${plat}" style="font-size:10px;margin-right:3px;font-weight:700;vertical-align:middle;color:${platColors[plat]}">${platLabel}</span>` : ''
     const safeScColor = sanitizeColor(m.scColor || '#ffd600')

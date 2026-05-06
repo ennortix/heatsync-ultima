@@ -1430,31 +1430,22 @@
         if (!replyId) return
         const chain = walkReplyChain(hoveredEl.dataset.msgChannel, hoveredEl.dataset.msgPlatform, replyId, 128)
         if (!chain.length) return
-        // Apply the active class FIRST so padding/line-height are the active values
-        // by the time we measure rects — otherwise padding shifts by 1px after layout
-        // settles and the overlay ends up off-by-one.
-        if (_stackActiveRow && _stackActiveRow !== hoveredEl) {
-          _stackActiveRow.classList.remove('hs-mc-reply-stack-active')
-        }
-        hoveredEl.classList.add('hs-mc-reply-stack-active')
-        // Force synchronous layout so subsequent rect/style reads pick up the new padding
-        void hoveredEl.offsetHeight
-        const cRect = msgsEl.getBoundingClientRect()
-        const hRect = hoveredEl.getBoundingClientRect()
-        const available = hRect.top - cRect.top
-        if (available < 24) {
-          hoveredEl.classList.remove('hs-mc-reply-stack-active')
-          return
-        }
-        // Overlap the hovered row's top padding AND the line-height slack above the
-        // first glyph so the stack's last row butts directly against the hovered
-        // row's first visible character (no whitespace gap of any kind).
+        // Read hovered row's natural styling FIRST (before any class change). This
+        // computes the correct overlap to cover padding-top + line-height slack above
+        // the first glyph. Critically, do NOT modify the hovered row's layout — only
+        // its bg via the active class — otherwise sticky-bottom auto-scroll fires
+        // async after our reflow, shifting the row in viewport coords AFTER we've
+        // anchored the overlay (caused the persistent ~13px gap before this fix).
         const hCs = getComputedStyle(hoveredEl)
         const hPadTop = parseInt(hCs.paddingTop) || 0
         const hLineHeight = parseFloat(hCs.lineHeight) || 0
         const hFontSize = parseFloat(hCs.fontSize) || 13
         const hSlackAbove = Math.max(0, (hLineHeight - hFontSize) / 2)
         const overlap = Math.round(hPadTop + hSlackAbove)
+        const cRect = msgsEl.getBoundingClientRect()
+        const hRect = hoveredEl.getBoundingClientRect()
+        const available = hRect.top - cRect.top
+        if (available < 24) return
         const overlay = ensureStackOverlay()
         overlay.replaceChildren()
         overlay.style.position = 'fixed'
@@ -1486,9 +1477,14 @@
         }
         if (!shown) {
           overlay.style.display = 'none'
-          hoveredEl.classList.remove('hs-mc-reply-stack-active')
           return
         }
+        // Apply tint AFTER positioning is complete — class only changes background,
+        // no layout impact, so this is purely visual.
+        if (_stackActiveRow && _stackActiveRow !== hoveredEl) {
+          _stackActiveRow.classList.remove('hs-mc-reply-stack-active')
+        }
+        hoveredEl.classList.add('hs-mc-reply-stack-active')
         _stackActiveRow = hoveredEl
       }
 

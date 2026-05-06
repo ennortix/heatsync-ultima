@@ -24162,12 +24162,10 @@ const STORAGE_KEY = 'heatsync_multichat';
       // Reply-chain stack overlay — viewport-bounded stack of all parents above hovered row
       let _stackActiveRow = null
       // Layout-shift gate: chat auto-scroll on a new message slides a different
-      // row under a stationary cursor; the browser fires a synthetic mouseover
-      // for it, which would re-trigger showStack and flicker-loop. Only react
-      // if the user actually moved the cursor SINCE the last scroll.
-      let _lastMouseMoveTime = 0
-      let _lastScrollTime = 0
-      document.addEventListener('mousemove', () => { _lastMouseMoveTime = Date.now() }, { passive: true, signal: mcSignal })
+      // row under a stationary cursor; the browser fires synthetic mouseover
+      // events for the new element. Compare cursor coords to the previous
+      // mouseover — identical coords mean cursor didn't actually move, so skip.
+      let _lastMouseoverX = -1, _lastMouseoverY = -1
       const dismissStack = () => {
         const overlay = document.getElementById('hs-mc-reply-stack')
         if (overlay) {
@@ -24321,10 +24319,12 @@ const STORAGE_KEY = 'heatsync_multichat';
       msgsEl.addEventListener('mouseover', (e) => {
         const msg = e.target.closest('.hs-mc-msg')
         if (!msg) return
-        // Layout-shift gate: a recent scroll without a subsequent mousemove
-        // means the cursor is stationary and the chat auto-scrolled a new row
-        // under it. Skip — otherwise the stack flickers on every new message.
-        if (_lastScrollTime > _lastMouseMoveTime && Date.now() - _lastScrollTime < 300) return
+        // Layout-shift gate: identical cursor coords as the previous mouseover
+        // means the cursor didn't move — this is auto-scroll sliding a new row
+        // under a stationary cursor, not a real hover. Skip.
+        if (e.clientX === _lastMouseoverX && e.clientY === _lastMouseoverY) return
+        _lastMouseoverX = e.clientX
+        _lastMouseoverY = e.clientY
         // Stack overlay — instant on hover (no delay)
         if (msg.dataset.replyId) {
           if (msg !== _stackActiveRow) showStack(msg)
@@ -24343,12 +24343,7 @@ const STORAGE_KEY = 'heatsync_multichat';
         }
       }, { passive: true, signal: mcSignal })
       // Dismiss stack on chat scroll, viewport resize, or new-message append.
-      // Also stamp _lastScrollTime so the mouseover gate above can ignore the
-      // synthetic mouseover that fires when auto-scroll slides a new row in.
-      msgsEl.addEventListener('scroll', () => {
-        _lastScrollTime = Date.now()
-        if (_stackActiveRow) dismissStack()
-      }, { passive: true, signal: mcSignal })
+      msgsEl.addEventListener('scroll', () => { if (_stackActiveRow) dismissStack() }, { passive: true, signal: mcSignal })
       window.addEventListener('resize', () => { if (_stackActiveRow) dismissStack() }, { passive: true, signal: mcSignal })
     }, 100);
 

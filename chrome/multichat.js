@@ -27427,9 +27427,25 @@ const STORAGE_KEY = 'heatsync_multichat';
   // Note: innerHTML here is safe — badges/emotes are from extension data, user text
   // goes through escapeHtml() and processEmotes() which sanitize content
   function buildMessageDiv(m, tabId) {
-    // Stream event — render as magenta inline notification
+    // Stream event — render as magenta inline notification.
+    // Render-time gate: skip if the corresponding hermes toggle is off
+    // (buffer can hold events saved before a toggle flipped). Mirrors the
+    // heatsync.org chat-tile _streamEventEnabled() filter.
     if (m.type === 'stream-event') {
-      if (!showOfflineEvents && (m.eventClass || '').includes('event-offline')) return null
+      const cls = m.eventClass || ''
+      const tokens = cls.split(/\s+/)
+      const last = tokens[tokens.length - 1] || ''
+      const evtMap = {
+        'event-offline': 'offline',
+        'event-online':  'online',
+        'event-update':  'gameSwitch',
+        'event-raid':    'raid',
+        'event-hype':    'hype',
+        'event-sub':     'sub',
+        'event-redeem':  'redeem'
+      }
+      const hkey = evtMap[last]
+      if (hkey && hermesToggles?.[hkey] === false) return null
       const div = document.createElement('div')
       div.className = `hs-mc-stream-event ${m.eventClass || ''}`
       const tsVal = timestampsEnabled && m.time ? formatTimeFromTs(m.time) : ''

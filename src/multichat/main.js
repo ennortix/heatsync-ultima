@@ -3355,7 +3355,7 @@
           </div>
           <div class="hs-mc-setting-row">
             <button class="hs-mc-toggle-pill ${avatarsEnabled ? 'active' : ''}" data-setting="avatars"><span class="hs-mc-toggle-knob"></span></button>
-            <span class="hs-mc-setting-label" data-tip="${settingTips.avatars}">${t('mc_settings_avatars')}</span>
+            <span class="hs-mc-setting-label" data-tip="${settingTips.avatars}">pfps</span>
           </div>
           <div class="hs-mc-setting-row">
             <button class="hs-mc-toggle-pill ${firstChatterGlow ? 'active' : ''}" data-setting="firstchatter"><span class="hs-mc-toggle-knob"></span></button>

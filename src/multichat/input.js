@@ -887,6 +887,54 @@ function handleInputKeydown(e) {
     }
   }
 
+  // Backspace at the boundary of an input emote / stack — delete the whole
+  // unit instead of letting contenteditable nibble at child overlays one at
+  // a time. "input emote unit" = .hs-input-emote IMG or .hs-input-stack span.
+  if (e.key === 'Backspace' && wysiwygEnabled && input?.isContentEditable) {
+    const sel = window.getSelection()
+    if (sel?.rangeCount && sel.isCollapsed) {
+      const range = sel.getRangeAt(0)
+      const node = range.startContainer
+      const offset = range.startOffset
+      const isInputEmoteUnit = (el) =>
+        el?.nodeType === Node.ELEMENT_NODE && (
+          (el.tagName === 'IMG' && el.classList?.contains('hs-input-emote')) ||
+          el.classList?.contains('hs-input-stack')
+        )
+      let target = null
+      if (node.nodeType === Node.TEXT_NODE) {
+        // At start of text node → previous sibling
+        if (offset === 0 && isInputEmoteUnit(node.previousSibling)) {
+          target = node.previousSibling
+        }
+        // After a single leading space following an emote → consume the space
+        // first, then on the next backspace the unit deletes (no double-jump).
+        else if (offset === 1 &&
+                 (node.textContent[0] === ' ' || node.textContent[0] === ' ') &&
+                 isInputEmoteUnit(node.previousSibling)) {
+          e.preventDefault()
+          node.textContent = node.textContent.slice(1)
+          const r = document.createRange()
+          r.setStart(node, 0); r.collapse(true)
+          sel.removeAllRanges(); sel.addRange(r)
+          pendingMessage = getInputText()
+          return
+        }
+      } else if (node.nodeType === Node.ELEMENT_NODE && offset > 0) {
+        // Cursor between element children: previous child
+        const prev = node.childNodes[offset - 1]
+        if (isInputEmoteUnit(prev)) target = prev
+      }
+      if (target) {
+        e.preventDefault()
+        target.remove()
+        pendingMessage = getInputText()
+        updateCharCount()
+        return
+      }
+    }
+  }
+
   // Tab - cycle through emote completions
   if (e.key === 'Tab') {
     e.preventDefault();

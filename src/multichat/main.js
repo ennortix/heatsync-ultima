@@ -1088,7 +1088,7 @@
   const INLINE_NOTIF_TYPES = {
     op:      { tag: '[OP]', color: '#ff0000', borderColor: '#ff0000', defaultOn: true,  label: t('mc_settings_notif_op'),       desc: t('mc_settings_notif_op_desc') },
     mop:     { tag: '[OP]', color: '#ff00ff', borderColor: '#ff00ff', defaultOn: true,  label: t('mc_settings_notif_op_reply'), desc: t('mc_settings_notif_op_reply_desc') },
-    re:      { tag: '[RE]', color: '#00ffff', borderColor: '#00ffff', defaultOn: false, label: t('mc_settings_notif_re'),       desc: t('mc_settings_notif_re_desc') },
+    re:      { tag: '[RE]', color: '#00ffff', borderColor: '#00ffff', defaultOn: true,  label: t('mc_settings_notif_re'),       desc: t('mc_settings_notif_re_desc') },
     dm:      { tag: '[DM]', color: '#ffff00', borderColor: '#ffff00', defaultOn: false, label: t('mc_settings_notif_dm'),       desc: t('mc_settings_notif_dm_desc') },
   }
   // Runtime state: { op: true, re: false, dm: false, mention: true }

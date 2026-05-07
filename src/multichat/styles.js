@@ -1820,22 +1820,44 @@ function injectStyles() {
       color: #808080;
       pointer-events: none;
     }
-    /* WYSIWYG emote images in input */
+    /* WYSIWYG emote images in input — height clamped, width auto so wide
+       emotes (catKISS, peepoArrive, etc.) render at natural aspect.
+       max-width caps absurdly wide ones so a single emote can't blow out the
+       inputbar layout. */
     #hs-mc-input .hs-input-emote {
       height: var(--hs-emote-size, 32px);
+      width: auto;
+      max-width: 192px;
       vertical-align: middle;
       margin: 0 2px;
+      object-fit: contain;
     }
-    /* WYSIWYG zero-width emote stacking in input */
+    /* WYSIWYG zero-width / overlay emote stacking in input.
+       Fixed height keeps line layout stable when overlays render larger than
+       the base; overflow:visible lets tall overlays bleed above/below the
+       baseline (same effect as .hs-mc-emote-stack in chat messages). */
     #hs-mc-input .hs-input-stack {
       display: inline-grid;
       place-items: center;
       vertical-align: middle;
       margin: 0 2px;
+      height: var(--hs-emote-size, 32px);
+      box-sizing: border-box;
+      position: relative;
+      overflow: visible;
     }
     #hs-mc-input .hs-input-stack > img {
       grid-area: 1 / 1;
       margin: 0;
+      max-width: 192px;
+    }
+    /* Overlay child renders at native size for chat parity (chat uses the
+       same trick via .hs-mc-overlay-emote). The base img keeps its clamped
+       height so the stack stays anchored to the line. */
+    #hs-mc-input .hs-input-stack > .hs-input-overlay {
+      height: auto !important;
+      max-height: none;
+      margin: 0 !important;
     }
     #hs-mc-input .hs-input-stack > img:first-child { z-index: 1; }
     #hs-mc-input .hs-input-stack > img:not(:first-child) { z-index: 2; }

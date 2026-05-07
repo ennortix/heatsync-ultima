@@ -1024,15 +1024,15 @@ function handleInputChange(e) {
           const match = before.match(/(\S+)\s$/)
           if (match) {
             const word = match[1]
-            const emote = lookupEmote(word)
-            if (emote) {
+            const resolved = lookupEmoteWithOverlay(word)
+            if (resolved) {
               const img = createInputEmoteImg(word)
               if (img) {
                 const wordStart = cursor - match[0].length
                 const beforeText = text.slice(0, wordStart)
                 const afterText = text.slice(cursor)
                 const parent = node.parentNode
-                const isZeroWidth = !!emote.zeroWidth
+                const isZeroWidth = resolved.isOverlay
 
                 // Zero-width: stack onto previous emote if possible
                 if (isZeroWidth && beforeText.trim() === '') {
@@ -1492,6 +1492,34 @@ function insertCompletionWysiwyg(match) {
     img.dataset.emoteName = match.name;
     img.className = 'hs-input-emote hs-cycling-emote';
     img.draggable = false;
+    // Zero-width / overlay: stack onto preceding emote so the input preview
+    // matches how chat will render the same word sequence.
+    const resolved = (typeof lookupEmoteWithOverlay === 'function') ? lookupEmoteWithOverlay(match.name) : null;
+    if (resolved?.isOverlay && before.trim() === '') {
+      let prev = textNode.previousSibling;
+      while (prev && prev.nodeType === Node.TEXT_NODE && prev.textContent.trim() === '') {
+        prev = prev.previousSibling;
+      }
+      if (prev && prev.nodeType === Node.ELEMENT_NODE && (
+        (prev.tagName === 'IMG' && prev.classList.contains('hs-input-emote')) ||
+        prev.classList?.contains('hs-input-stack')
+      )) {
+        // Drop whitespace nodes between prev base and current text node
+        let ws = prev.nextSibling;
+        while (ws && ws !== textNode) {
+          const rm = ws;
+          ws = ws.nextSibling;
+          rm.remove();
+        }
+        stackInputEmote(prev, img);
+        textNode.textContent = after || ' ';
+        placeCaretAfter(textNode, 1);
+        pendingMessage = getInputText();
+        updateCharCount();
+        input.focus();
+        return;
+      }
+    }
     insertElement(img);
   } else if (match.type === 'emoji') {
     // Create emoji tracking span

@@ -4965,22 +4965,44 @@ function injectStyles() {
       color: #808080;
       pointer-events: none;
     }
-    /* WYSIWYG emote images in input */
+    /* WYSIWYG emote images in input — height clamped, width auto so wide
+       emotes (catKISS, peepoArrive, etc.) render at natural aspect.
+       max-width caps absurdly wide ones so a single emote can't blow out the
+       inputbar layout. */
     #hs-mc-input .hs-input-emote {
       height: var(--hs-emote-size, 32px);
+      width: auto;
+      max-width: 192px;
       vertical-align: middle;
       margin: 0 2px;
+      object-fit: contain;
     }
-    /* WYSIWYG zero-width emote stacking in input */
+    /* WYSIWYG zero-width / overlay emote stacking in input.
+       Fixed height keeps line layout stable when overlays render larger than
+       the base; overflow:visible lets tall overlays bleed above/below the
+       baseline (same effect as .hs-mc-emote-stack in chat messages). */
     #hs-mc-input .hs-input-stack {
       display: inline-grid;
       place-items: center;
       vertical-align: middle;
       margin: 0 2px;
+      height: var(--hs-emote-size, 32px);
+      box-sizing: border-box;
+      position: relative;
+      overflow: visible;
     }
     #hs-mc-input .hs-input-stack > img {
       grid-area: 1 / 1;
       margin: 0;
+      max-width: 192px;
+    }
+    /* Overlay child renders at native size for chat parity (chat uses the
+       same trick via .hs-mc-overlay-emote). The base img keeps its clamped
+       height so the stack stays anchored to the line. */
+    #hs-mc-input .hs-input-stack > .hs-input-overlay {
+      height: auto !important;
+      max-height: none;
+      margin: 0 !important;
     }
     #hs-mc-input .hs-input-stack > img:first-child { z-index: 1; }
     #hs-mc-input .hs-input-stack > img:not(:first-child) { z-index: 2; }
@@ -10986,22 +11008,28 @@ async function sendKickMessage(kickSlug, text) {
     }
   }
 
-  // Create emote <img> for WYSIWYG input
+  // Create emote <img> for WYSIWYG input. Resolves zero-width + "name0"
+  // overlay convention so img.src points at the actual emote (TriHard) while
+  // alt/dataset preserves the typed name (TriHard0) for round-trip on send.
   function createInputEmoteImg(emoteName) {
-    const emote = lookupEmote(emoteName)
-    if (!emote) return null
+    const resolved = lookupEmoteWithOverlay(emoteName)
+    if (!resolved) return null
+    const { emote, isOverlay } = resolved
     const img = document.createElement('img')
     img.className = 'hs-input-emote'
     img.src = getChatResUrl(emote.url)
     img.alt = emoteName
     img.dataset.emoteName = emoteName
     img.draggable = false
-    if (emote.zeroWidth) img.dataset.zeroWidth = '1'
+    if (isOverlay) img.dataset.zeroWidth = '1'
     return img
   }
 
-  // Stack a zero-width emote onto a base emote/stack in the input
+  // Stack a zero-width emote onto a base emote/stack in the input.
+  // Tags the new overlay child with hs-input-overlay so CSS can render it at
+  // native size (chat parity) while the base stays clamped to emote-size.
   function stackInputEmote(baseEl, overlayImg) {
+    overlayImg.classList.add('hs-input-overlay')
     if (baseEl.classList.contains('hs-input-stack')) {
       baseEl.appendChild(overlayImg)
       return baseEl
@@ -11414,6 +11442,23 @@ async function sendKickMessage(kickSlug, text) {
   // Look up emote — viewer-perspective fallback chain (used by picker, hover preview, etc.)
   function lookupEmote(name) {
     return viewerPersonalEmotes.get(name) || emoteCache.get(name) || channelEmoteCaches[currentTab]?.get(name) || channelEmoteCaches[getLiveChannel()]?.get(name) || channelEmoteCaches[getCurrentChannel()]?.get(name);
+  }
+  // Resolve a typed emote name to {emote, isOverlay, displayName}.
+  // Handles zeroWidth flag AND the 7TV-style "name0" overlay convention
+  // ("TriHard0" → looks up "TriHard" and treats as overlay) so the input
+  // preview matches how the chat renderer resolves the same word.
+  function lookupEmoteWithOverlay(name) {
+    let emote = lookupEmote(name)
+    let isOverlay = !!emote?.zeroWidth
+    if (!emote && name.length > 1 && name.endsWith('0')) {
+      const baseName = name.slice(0, -1)
+      const baseEmote = lookupEmote(baseName)
+      if (baseEmote) {
+        emote = baseEmote
+        isOverlay = true
+      }
+    }
+    return emote ? { emote, isOverlay, displayName: name } : null
   }
   let inventoryHashes = new Map(); // name → hash for remove_from_inventory
   let emoteHashes = new Map(); // name → hash for ALL emotes (block/unblock API)
@@ -12405,7 +12450,11 @@ async function sendKickMessage(kickSlug, text) {
     const youFollow = rel.youFollow ?? rel.isFollowing ?? rel.followsOnTwitch ?? rel.followsOnKick;
     if (youFollow) {
       const since = rel.youFollowSince || rel.followsOnTwitchSince || rel.followsOnKickSince || rel.followedAt;
-      relBadges.push(`<span class="hs-pc-rel-badge following">following${since ? ' ' + getCompactRelTime(since).replace(' ago', '') : ''}</span>`);
+      // "you follow" mirrors "follows you" / "you sub" — bare "following" reads ambiguous.
+      // data-since lets fetchAndShowFollowage compare against the Twitch GQL date and
+      // surface the EARLIEST follow timestamp (heatsync sync date is newer than Twitch).
+      const sinceAttr = since ? ` data-since="${escapeHtml(since)}"` : ''
+      relBadges.push(`<span class="hs-pc-rel-badge following"${sinceAttr}>you follow${since ? ' ' + getCompactRelTime(since).replace(' ago', '') : ''}</span>`);
     }
     // You → them (sub) — normalize tier
     const youSub = rel.youSub ?? rel.isSubscribed ?? rel.subscribedOnTwitch ?? rel.subscribedOnKick;
@@ -12533,7 +12582,13 @@ async function sendKickMessage(kickSlug, text) {
     if (!header) return
     const badge = document.createElement('span')
     badge.className = 'hs-pc-sub-tenure'
-    badge.textContent = t('mc_tip_subbed', [channelLogin, formatSubTenure(months)])
+    // When the channel context is the viewer themselves, "subbed mellen 5y" reads
+    // confusingly self-referential — phrase it as "subbed to you" instead.
+    const isSelfChannel = (typeof currentUsername === 'string' && currentUsername) &&
+      channelLogin.toLowerCase() === currentUsername.toLowerCase()
+    badge.textContent = isSelfChannel
+      ? `subbed to you ${formatSubTenure(months)}`
+      : t('mc_tip_subbed', [channelLogin, formatSubTenure(months)])
     header.appendChild(badge)
   }
 
@@ -12548,24 +12603,57 @@ async function sendKickMessage(kickSlug, text) {
     if (gen !== _profileGen || !result) return
     const header = tooltip.querySelector('.hs-pc-header')
     if (!header) return
-    // Followage badge
+    // When the channel context IS the viewer (e.g. you're hovering a chatter
+    // in your own channel tab), the followage badges duplicate the heatsync
+    // rel-badges ("follows you" / nothing). Skip the literal Twitch-followage
+    // badge entirely — the rel-badge is the single source of truth for the
+    // "they → you" direction. Still process channelFollowedAt below for the
+    // "you follow Xy" age-correction path.
+    const isSelfChannel = (typeof currentUsername === 'string' && currentUsername) &&
+      channelLogin.toLowerCase() === currentUsername.toLowerCase()
     const existing = header.querySelector('.hs-pc-followage')
     if (existing) existing.remove()
-    const badge = document.createElement('span')
-    if (result.followedAt) {
-      badge.className = 'hs-pc-followage'
-      badge.textContent = t('mc_tip_following', [channelLogin, getCompactRelTime(result.followedAt).replace(' ago', '')])
-    } else {
-      badge.className = 'hs-pc-followage hs-pc-nofollow'
-      badge.textContent = t('mc_tip_not_following', [channelLogin])
+    if (!isSelfChannel) {
+      const badge = document.createElement('span')
+      if (result.followedAt) {
+        badge.className = 'hs-pc-followage'
+        const age = getCompactRelTime(result.followedAt).replace(' ago', '')
+        badge.textContent = t('mc_tip_following', [channelLogin, age])
+      } else {
+        badge.className = 'hs-pc-followage hs-pc-nofollow'
+        badge.textContent = t('mc_tip_not_following', [channelLogin])
+      }
+      header.appendChild(badge)
     }
-    header.appendChild(badge)
-    // "followed by {channel}" badge — streamer follows this user
-    if (result.channelFollowedAt) {
+    // "followed by {channel}" badge — streamer follows this user.
+    // Skip when channel === viewer; the rel-badge already says "you follow".
+    if (result.channelFollowedAt && !isSelfChannel) {
       const cfBadge = document.createElement('span')
       cfBadge.className = 'hs-pc-channel-follows'
       cfBadge.textContent = t('mc_tip_followed_by', [channelLogin])
       header.appendChild(cfBadge)
+    }
+    // When channel === viewer, channelFollowedAt is the viewer's authoritative
+    // Twitch follow date — usually OLDER than the heatsync `relationship.followedAt`
+    // sync date (which is when the heatsync follow record was created, not the
+    // original Twitch follow). Pick the earliest available date so "you follow 5mo"
+    // doesn't lie about a multi-year Twitch follow. The heatsync date (if any) is
+    // stashed on the rel-badge by renderProfileCard via data-since.
+    if (isSelfChannel && result.channelFollowedAt) {
+      const relRow = tooltip.querySelector('.hs-pc-rel')
+      const youFollowBadge = relRow?.querySelector('.hs-pc-rel-badge.following')
+      const heatSince = youFollowBadge?.dataset?.since || null
+      const candidates = [heatSince, result.channelFollowedAt].filter(Boolean)
+      const oldest = candidates.sort()[0]
+      const ageStr = oldest ? ' ' + getCompactRelTime(oldest).replace(' ago', '') : ''
+      if (youFollowBadge) {
+        youFollowBadge.textContent = `you follow${ageStr}`
+      } else if (relRow) {
+        const b = document.createElement('span')
+        b.className = 'hs-pc-rel-badge following'
+        b.textContent = `you follow${ageStr}`
+        relRow.appendChild(b)
+      }
     }
     // Update follower count from live data
     const statsEl = tooltip.querySelector('.hs-pc-stats')
@@ -20782,15 +20870,15 @@ function handleInputChange(e) {
           const match = before.match(/(\S+)\s$/)
           if (match) {
             const word = match[1]
-            const emote = lookupEmote(word)
-            if (emote) {
+            const resolved = lookupEmoteWithOverlay(word)
+            if (resolved) {
               const img = createInputEmoteImg(word)
               if (img) {
                 const wordStart = cursor - match[0].length
                 const beforeText = text.slice(0, wordStart)
                 const afterText = text.slice(cursor)
                 const parent = node.parentNode
-                const isZeroWidth = !!emote.zeroWidth
+                const isZeroWidth = resolved.isOverlay
 
                 // Zero-width: stack onto previous emote if possible
                 if (isZeroWidth && beforeText.trim() === '') {
@@ -21250,6 +21338,34 @@ function insertCompletionWysiwyg(match) {
     img.dataset.emoteName = match.name;
     img.className = 'hs-input-emote hs-cycling-emote';
     img.draggable = false;
+    // Zero-width / overlay: stack onto preceding emote so the input preview
+    // matches how chat will render the same word sequence.
+    const resolved = (typeof lookupEmoteWithOverlay === 'function') ? lookupEmoteWithOverlay(match.name) : null;
+    if (resolved?.isOverlay && before.trim() === '') {
+      let prev = textNode.previousSibling;
+      while (prev && prev.nodeType === Node.TEXT_NODE && prev.textContent.trim() === '') {
+        prev = prev.previousSibling;
+      }
+      if (prev && prev.nodeType === Node.ELEMENT_NODE && (
+        (prev.tagName === 'IMG' && prev.classList.contains('hs-input-emote')) ||
+        prev.classList?.contains('hs-input-stack')
+      )) {
+        // Drop whitespace nodes between prev base and current text node
+        let ws = prev.nextSibling;
+        while (ws && ws !== textNode) {
+          const rm = ws;
+          ws = ws.nextSibling;
+          rm.remove();
+        }
+        stackInputEmote(prev, img);
+        textNode.textContent = after || ' ';
+        placeCaretAfter(textNode, 1);
+        pendingMessage = getInputText();
+        updateCharCount();
+        input.focus();
+        return;
+      }
+    }
     insertElement(img);
   } else if (match.type === 'emoji') {
     // Create emoji tracking span

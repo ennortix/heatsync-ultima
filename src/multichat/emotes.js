@@ -491,22 +491,28 @@
     }
   }
 
-  // Create emote <img> for WYSIWYG input
+  // Create emote <img> for WYSIWYG input. Resolves zero-width + "name0"
+  // overlay convention so img.src points at the actual emote (TriHard) while
+  // alt/dataset preserves the typed name (TriHard0) for round-trip on send.
   function createInputEmoteImg(emoteName) {
-    const emote = lookupEmote(emoteName)
-    if (!emote) return null
+    const resolved = lookupEmoteWithOverlay(emoteName)
+    if (!resolved) return null
+    const { emote, isOverlay } = resolved
     const img = document.createElement('img')
     img.className = 'hs-input-emote'
     img.src = getChatResUrl(emote.url)
     img.alt = emoteName
     img.dataset.emoteName = emoteName
     img.draggable = false
-    if (emote.zeroWidth) img.dataset.zeroWidth = '1'
+    if (isOverlay) img.dataset.zeroWidth = '1'
     return img
   }
 
-  // Stack a zero-width emote onto a base emote/stack in the input
+  // Stack a zero-width emote onto a base emote/stack in the input.
+  // Tags the new overlay child with hs-input-overlay so CSS can render it at
+  // native size (chat parity) while the base stays clamped to emote-size.
   function stackInputEmote(baseEl, overlayImg) {
+    overlayImg.classList.add('hs-input-overlay')
     if (baseEl.classList.contains('hs-input-stack')) {
       baseEl.appendChild(overlayImg)
       return baseEl
@@ -919,6 +925,23 @@
   // Look up emote — viewer-perspective fallback chain (used by picker, hover preview, etc.)
   function lookupEmote(name) {
     return viewerPersonalEmotes.get(name) || emoteCache.get(name) || channelEmoteCaches[currentTab]?.get(name) || channelEmoteCaches[getLiveChannel()]?.get(name) || channelEmoteCaches[getCurrentChannel()]?.get(name);
+  }
+  // Resolve a typed emote name to {emote, isOverlay, displayName}.
+  // Handles zeroWidth flag AND the 7TV-style "name0" overlay convention
+  // ("TriHard0" → looks up "TriHard" and treats as overlay) so the input
+  // preview matches how the chat renderer resolves the same word.
+  function lookupEmoteWithOverlay(name) {
+    let emote = lookupEmote(name)
+    let isOverlay = !!emote?.zeroWidth
+    if (!emote && name.length > 1 && name.endsWith('0')) {
+      const baseName = name.slice(0, -1)
+      const baseEmote = lookupEmote(baseName)
+      if (baseEmote) {
+        emote = baseEmote
+        isOverlay = true
+      }
+    }
+    return emote ? { emote, isOverlay, displayName: name } : null
   }
   let inventoryHashes = new Map(); // name → hash for remove_from_inventory
   let emoteHashes = new Map(); // name → hash for ALL emotes (block/unblock API)

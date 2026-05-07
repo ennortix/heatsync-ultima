@@ -484,7 +484,7 @@
     if (styleInjected) return
     styleInjected = true
     const s = document.createElement('style')
-    s.textContent = `.hs-vi-normal { outline: 2px solid #f00 !important; outline-offset: 0 !important; } .hs-vi-cursor { outline: 2px solid rgba(255,255,0,0.9); background: rgba(255,255,0,0.25); border-radius: 2px; }`
+    s.textContent = `.hs-vi-normal { outline: 2px solid #f00 !important; outline-offset: 0 !important; } #hs-mc-input-wrap:has(> .hs-vi-normal) { overflow: visible !important; } .hs-vi-cursor { outline: 2px solid rgba(255,255,0,0.9); background: rgba(255,255,0,0.25); border-radius: 2px; }`
     document.head.appendChild(s)
   }
 

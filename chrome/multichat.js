@@ -24211,6 +24211,9 @@ const STORAGE_KEY = 'heatsync_multichat';
 
   // Hermes event toggles (Twitch-native events: raids, hype trains, etc.)
   const HERMES_EVENT_TYPES = {
+    online:     { color: '#00ff7f', defaultOn: true,  label: 'went live',      desc: 'banner when a channel goes live' },
+    offline:    { color: '#808080', defaultOn: false, label: 'went offline',   desc: 'banner when a channel goes offline (off by default — noisy)' },
+    gameSwitch: { color: '#ff00ff', defaultOn: true,  label: 'game switches',  desc: 'banner when a streamer changes the game' },
     raid:   { color: '#9146ff', defaultOn: true,  label: t('mc_settings_raids'),              desc: t('mc_settings_raids_desc') },
     hype:   { color: '#ff8700', defaultOn: false, label: t('mc_settings_hype_trains'),        desc: t('mc_settings_hype_trains_desc') },
     sub:    { color: '#00ff7f', defaultOn: true,  label: t('mc_settings_gift_subs'),          desc: t('mc_settings_gift_subs_desc') },
@@ -31124,18 +31127,21 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
         // Build inline notification
         let text = '', eventClass = '';
         if (msg.eventType === 'stream:update' && msg.game && msg.prevGame !== msg.game) {
+          if (!hermesToggles?.gameSwitch) return;
           text = msg.prevGame
             ? `[${channel}] \u25C6 switched to ${msg.game}`
             : `[${channel}] \u25C6 now playing ${msg.game}`;
           eventClass = 'event-update';
         } else if (msg.eventType === 'stream:online') {
+          try { streamStats.delete((channel || '').toLowerCase()) } catch (e) {}
+          if (!hermesToggles?.online) return;
           text = msg.game ? `[${channel}] \u25C6 went live \u2014 ${msg.game}` : `[${channel}] \u25C6 went live`;
           eventClass = 'event-online';
-          try { streamStats.delete((channel || '').toLowerCase()) } catch (e) {}
         } else if (msg.eventType === 'stream:offline') {
+          try { renderStreamSummary(channel) } catch (e) {}
+          if (!hermesToggles?.offline) return;
           text = `[${channel}] \u25C6 went offline`;
           eventClass = 'event-offline';
-          try { renderStreamSummary(channel) } catch (e) {}
         } else if (msg.eventType === 'stream:redeem') {
           if (!hermesToggles?.redeem) return;
           text = `\u25C6 redeemed "${escapeHtml(msg.title)}"`;
@@ -31356,14 +31362,17 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
         // Build inline notification
         let text = '', eventClass = '';
         if (msg.eventType === 'stream:update' && msg.game && msg.prevGame !== msg.game) {
+          if (!hermesToggles?.gameSwitch) return;
           text = msg.prevGame
             ? `[${channel}] \u25C6 switched to ${msg.game}`
             : `[${channel}] \u25C6 now playing ${msg.game}`;
           eventClass = 'event-follow event-update';
         } else if (msg.eventType === 'stream:online') {
+          if (!hermesToggles?.online) return;
           text = msg.game ? `[${channel}] \u25C6 went live \u2014 ${msg.game}` : `[${channel}] \u25C6 went live`;
           eventClass = 'event-follow event-online';
         } else if (msg.eventType === 'stream:offline') {
+          if (!hermesToggles?.offline) return;
           text = `[${channel}] \u25C6 went offline`;
           eventClass = 'event-follow event-offline';
         }
@@ -31455,14 +31464,17 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
 
         let text = '', eventClass = '';
         if (e.type === 'follow:stream:update' && e.game) {
+          if (!hermesToggles?.gameSwitch) continue;
           text = e.prevGame
             ? `[${channel}] \u25C6 switched to ${e.game}`
             : `[${channel}] \u25C6 now playing ${e.game}`;
           eventClass = 'event-follow event-update';
         } else if (e.type === 'follow:stream:online') {
+          if (!hermesToggles?.online) continue;
           text = e.game ? `[${channel}] \u25C6 went live \u2014 ${e.game}` : `[${channel}] \u25C6 went live`;
           eventClass = 'event-follow event-online';
         } else if (e.type === 'follow:stream:offline') {
+          if (!hermesToggles?.offline) continue;
           text = `[${channel}] \u25C6 went offline`;
           eventClass = 'event-follow event-offline';
         }

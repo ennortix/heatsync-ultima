@@ -598,7 +598,11 @@
     const youFollow = rel.youFollow ?? rel.isFollowing ?? rel.followsOnTwitch ?? rel.followsOnKick;
     if (youFollow) {
       const since = rel.youFollowSince || rel.followsOnTwitchSince || rel.followsOnKickSince || rel.followedAt;
-      relBadges.push(`<span class="hs-pc-rel-badge following">following${since ? ' ' + getCompactRelTime(since).replace(' ago', '') : ''}</span>`);
+      // "you follow" mirrors "follows you" / "you sub" — bare "following" reads ambiguous.
+      // data-since lets fetchAndShowFollowage compare against the Twitch GQL date and
+      // surface the EARLIEST follow timestamp (heatsync sync date is newer than Twitch).
+      const sinceAttr = since ? ` data-since="${escapeHtml(since)}"` : ''
+      relBadges.push(`<span class="hs-pc-rel-badge following"${sinceAttr}>you follow${since ? ' ' + getCompactRelTime(since).replace(' ago', '') : ''}</span>`);
     }
     // You → them (sub) — normalize tier
     const youSub = rel.youSub ?? rel.isSubscribed ?? rel.subscribedOnTwitch ?? rel.subscribedOnKick;
@@ -726,7 +730,13 @@
     if (!header) return
     const badge = document.createElement('span')
     badge.className = 'hs-pc-sub-tenure'
-    badge.textContent = t('mc_tip_subbed', [channelLogin, formatSubTenure(months)])
+    // When the channel context is the viewer themselves, "subbed mellen 5y" reads
+    // confusingly self-referential — phrase it as "subbed to you" instead.
+    const isSelfChannel = (typeof currentUsername === 'string' && currentUsername) &&
+      channelLogin.toLowerCase() === currentUsername.toLowerCase()
+    badge.textContent = isSelfChannel
+      ? `subbed to you ${formatSubTenure(months)}`
+      : t('mc_tip_subbed', [channelLogin, formatSubTenure(months)])
     header.appendChild(badge)
   }
 
@@ -741,24 +751,57 @@
     if (gen !== _profileGen || !result) return
     const header = tooltip.querySelector('.hs-pc-header')
     if (!header) return
-    // Followage badge
+    // When the channel context IS the viewer (e.g. you're hovering a chatter
+    // in your own channel tab), the followage badges duplicate the heatsync
+    // rel-badges ("follows you" / nothing). Skip the literal Twitch-followage
+    // badge entirely — the rel-badge is the single source of truth for the
+    // "they → you" direction. Still process channelFollowedAt below for the
+    // "you follow Xy" age-correction path.
+    const isSelfChannel = (typeof currentUsername === 'string' && currentUsername) &&
+      channelLogin.toLowerCase() === currentUsername.toLowerCase()
     const existing = header.querySelector('.hs-pc-followage')
     if (existing) existing.remove()
-    const badge = document.createElement('span')
-    if (result.followedAt) {
-      badge.className = 'hs-pc-followage'
-      badge.textContent = t('mc_tip_following', [channelLogin, getCompactRelTime(result.followedAt).replace(' ago', '')])
-    } else {
-      badge.className = 'hs-pc-followage hs-pc-nofollow'
-      badge.textContent = t('mc_tip_not_following', [channelLogin])
+    if (!isSelfChannel) {
+      const badge = document.createElement('span')
+      if (result.followedAt) {
+        badge.className = 'hs-pc-followage'
+        const age = getCompactRelTime(result.followedAt).replace(' ago', '')
+        badge.textContent = t('mc_tip_following', [channelLogin, age])
+      } else {
+        badge.className = 'hs-pc-followage hs-pc-nofollow'
+        badge.textContent = t('mc_tip_not_following', [channelLogin])
+      }
+      header.appendChild(badge)
     }
-    header.appendChild(badge)
-    // "followed by {channel}" badge — streamer follows this user
-    if (result.channelFollowedAt) {
+    // "followed by {channel}" badge — streamer follows this user.
+    // Skip when channel === viewer; the rel-badge already says "you follow".
+    if (result.channelFollowedAt && !isSelfChannel) {
       const cfBadge = document.createElement('span')
       cfBadge.className = 'hs-pc-channel-follows'
       cfBadge.textContent = t('mc_tip_followed_by', [channelLogin])
       header.appendChild(cfBadge)
+    }
+    // When channel === viewer, channelFollowedAt is the viewer's authoritative
+    // Twitch follow date — usually OLDER than the heatsync `relationship.followedAt`
+    // sync date (which is when the heatsync follow record was created, not the
+    // original Twitch follow). Pick the earliest available date so "you follow 5mo"
+    // doesn't lie about a multi-year Twitch follow. The heatsync date (if any) is
+    // stashed on the rel-badge by renderProfileCard via data-since.
+    if (isSelfChannel && result.channelFollowedAt) {
+      const relRow = tooltip.querySelector('.hs-pc-rel')
+      const youFollowBadge = relRow?.querySelector('.hs-pc-rel-badge.following')
+      const heatSince = youFollowBadge?.dataset?.since || null
+      const candidates = [heatSince, result.channelFollowedAt].filter(Boolean)
+      const oldest = candidates.sort()[0]
+      const ageStr = oldest ? ' ' + getCompactRelTime(oldest).replace(' ago', '') : ''
+      if (youFollowBadge) {
+        youFollowBadge.textContent = `you follow${ageStr}`
+      } else if (relRow) {
+        const b = document.createElement('span')
+        b.className = 'hs-pc-rel-badge following'
+        b.textContent = `you follow${ageStr}`
+        relRow.appendChild(b)
+      }
     }
     // Update follower count from live data
     const statsEl = tooltip.querySelector('.hs-pc-stats')

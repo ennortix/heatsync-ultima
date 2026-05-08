@@ -500,9 +500,11 @@ class IRC {
       return;
     }
     cleanup.clearTimeout(this._reconnectTimer);
-    // Cap at 15s (was 30s) — a long-running stream can't tolerate half-minute
-    // gaps when recovering from a transient network blip.
-    const delay = Math.min(2000 * Math.pow(2, this._reconnectAttempts), 15000);
+    // Jitter prevents 30k clients reconnecting in lockstep after a Twitch IRC
+    // bounce — without it, the deterministic backoff ladder synchronises every
+    // tab on the same JOIN attempt and tickles per-IP rate limits.
+    const base = Math.min(2000 * Math.pow(2, this._reconnectAttempts), 15000);
+    const delay = base + Math.random() * 2000;
     this._reconnectAttempts++;
     log('Reconnecting in', delay, 'ms (attempt', this._reconnectAttempts, ')');
     // Surface persistent failure to DevTools — silent infinite retry leaves

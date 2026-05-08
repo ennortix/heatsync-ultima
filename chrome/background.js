@@ -21,10 +21,13 @@ async function ensureAlarm(name, opts) {
   } catch { browser.alarms?.create?.(name, opts) }
 }
 ensureAlarm('keepalive', { periodInMinutes: 0.5 });
-ensureAlarm('refresh-global-emotes', { periodInMinutes: 1440 });
-ensureAlarm('refresh-emote-inventory', { periodInMinutes: 1 });
+// Random delayInMinutes is set once per client when the alarm is created and
+// persists for the alarm's lifetime — this offsets the *phase* of every
+// subsequent fire, so 30k clients don't all hit /api/* at the minute boundary.
+ensureAlarm('refresh-global-emotes', { delayInMinutes: 1440 + Math.random() * 60, periodInMinutes: 1440 });
+ensureAlarm('refresh-emote-inventory', { delayInMinutes: 1 + Math.random(), periodInMinutes: 1 });
 ensureAlarm('prune-expired-mutes', { periodInMinutes: 1 });
-ensureAlarm('live-poll', { periodInMinutes: 1 });
+ensureAlarm('live-poll', { delayInMinutes: 1 + Math.random(), periodInMinutes: 1 });
 // WS watchdog — survives SW eviction. setInterval timers inside onopen die
 // when the SW is terminated; this alarm wakes the SW and either reconnects,
 // kills a zombie, or sends a heartbeat. Each fire is 30s (chrome.alarms min).
@@ -94,6 +97,11 @@ const LINK_PREVIEW_API = 'https://heatsync.org/api/link-preview'
 // Show welcome page on first install, clear stale intervals on update
 browser.runtime.onInstalled.addListener((details) => {
   log(' 📦 onInstalled - extension installed/updated', details.reason);
+  // Spread the herd: when 30k Chrome clients auto-update around the same
+  // hour, every SW will wake and try to connect /ws at once. Delay each
+  // client's first connect by a random 0–60s.
+  pendingStartupJitterMs = Math.random() * 60000;
+  browser.storage.session?.set({ startup_jitter_at: Date.now() + pendingStartupJitterMs }).catch(() => {})
   // Clear any stale intervals from previous version
   activeIntervals.forEach(id => clearInterval(id));
   activeIntervals.clear();
@@ -114,6 +122,14 @@ browser.runtime.onInstalled.addListener((details) => {
       url: browser.runtime.getURL('welcome.html')
     });
   }
+});
+
+// Browser cold-start herd: people open Chrome around the same time of day.
+// Only set jitter if not already set by onInstalled in this session.
+browser.runtime.onStartup?.addListener(() => {
+  if (pendingStartupJitterMs > 0) return;
+  pendingStartupJitterMs = Math.random() * 30000;
+  browser.storage.session?.set({ startup_jitter_at: Date.now() + pendingStartupJitterMs }).catch(() => {})
 });
 
 // One-time migration: ensure clean state
@@ -1204,10 +1220,20 @@ async function fetchFFZChannelEmotes(channelName) {
   }
 }
 
-// Cache Twitch user IDs to avoid repeated decapi lookups (especially for polling)
+// Cache Twitch user IDs to avoid repeated decapi lookups (especially for polling).
+// Persisted to chrome.storage.local — IDs never change, so cross-SW survival
+// eliminates the decapi/GQL cascade on every SW wake (critical at 30k users).
 const twitchIdCache = new Map();
-const TWITCH_ID_CACHE_MAX = 200;
+const TWITCH_ID_CACHE_MAX = 1000;
 const kickChannelIdCache = new Map();
+let twitchIdPersistTimer = null;
+function persistTwitchIdCache() {
+  if (twitchIdPersistTimer) return;
+  twitchIdPersistTimer = setTimeout(() => {
+    twitchIdPersistTimer = null;
+    browser.storage.local.set({ twitch_id_cache: Object.fromEntries(twitchIdCache) }).catch(() => {})
+  }, 5000);
+}
 
 // Lookup Twitch user ID from username — try Twitch GQL first (fast, no rate limit), decapi fallback
 async function lookupTwitchUserId(username) {
@@ -1228,6 +1254,7 @@ async function lookupTwitchUserId(username) {
           twitchIdCache.delete(twitchIdCache.keys().next().value);
         }
         twitchIdCache.set(username, id);
+        persistTwitchIdCache();
         log('[hs-bg] GQL lookup', username, '→', id)
         return id;
       }
@@ -1246,6 +1273,7 @@ async function lookupTwitchUserId(username) {
         twitchIdCache.delete(twitchIdCache.keys().next().value);
       }
       twitchIdCache.set(username, id);
+      persistTwitchIdCache();
       return id;
     }
     return null;
@@ -2281,7 +2309,19 @@ function start7TVPolling() {
   stop7TVPolling()
   if (seventvEmoteSetIds.size === 0) return
   log(' 7TV Poll: Starting for', seventvEmoteSetIds.size, 'channel(s)')
-  seventvPollTimer = trackInterval(setInterval(poll7TVEmoteSet, SEVENTV_POLL_INTERVAL))
+  // Jitter the interval per-client to spread 30k clients across the window
+  // instead of synchronizing on whatever instant start7TVPolling fires.
+  const jittered = SEVENTV_POLL_INTERVAL + Math.random() * SEVENTV_POLL_INTERVAL
+  seventvPollTimer = trackInterval(setInterval(poll7TVEmoteSet, jittered))
+}
+
+// EventAPI is healthy when the WS is OPEN and we received data in the last 3min.
+// When healthy + the channel's set is subscribed, the poll is redundant.
+function isSeventvEventApiHealthy() {
+  return seventvWebSocket
+      && seventvWebSocket.readyState === WebSocket.OPEN
+      && seventvLastData
+      && (Date.now() - seventvLastData) < 180000
 }
 
 function stop7TVPolling() {
@@ -2295,8 +2335,15 @@ async function poll7TVEmoteSet() {
   // Poll ALL channels that have an active 7TV emote set ID
   const channels = Array.from(seventvEmoteSetIds.keys())
   if (channels.length === 0) return
+  const eventApiHealthy = isSeventvEventApiHealthy()
 
   for (const channelName of channels) {
+    // Skip channels whose emote set is actively subscribed via EventAPI —
+    // pushes from the WS supersede polling. Falls back to poll only when
+    // EventAPI is degraded or this set isn't subscribed yet.
+    const setId = seventvEmoteSetIds.get(channelName)
+    if (eventApiHealthy && setId && seventvSubscribedSets.has(setId)) continue
+
     // Find the platform from any tab tracking this channel owner
     let platform = 'twitch'
     for (const entry of tabChannels.values()) {
@@ -2671,6 +2718,10 @@ let reconnectAttempts = 0;
 let heartbeatInterval = null; // Keep connection alive
 let reconnectTimer = null;
 let pendingReconnectSpreadMs = 0; // Set by server:shutdown — consumed once on next scheduleReconnect to spread the herd
+// Set on extension install/update or browser startup. Consumed once by the
+// first connectWebSocket() to delay 0–60s, so 30k clients auto-updating in
+// the same window don't slam /ws simultaneously.
+let pendingStartupJitterMs = 0;
 let messageQueue = []; // Queue messages when socket not ready
 let connectionPromise = null; // Track ongoing connection attempt
 let lastWsDataReceived = 0; // Timestamp of last received WS message (zombie detection)
@@ -2718,6 +2769,16 @@ async function connectWebSocket() {
   if (wsState === WS_STATE.CONNECTING && connectionPromise) {
     log(' Connection in progress, waiting...');
     return connectionPromise;
+  }
+
+  // Consume startup jitter once. SW evictions during the wait are fine —
+  // storage.session preserves the deadline so the next wake honors what's left.
+  if (pendingStartupJitterMs > 0) {
+    const ms = pendingStartupJitterMs;
+    pendingStartupJitterMs = 0;
+    browser.storage.session?.remove('startup_jitter_at').catch(() => {})
+    log(` ⏱ Startup jitter: delaying first connect by ${Math.round(ms)}ms`);
+    await new Promise(r => setTimeout(r, ms));
   }
 
   // If already connected with SAME token, skip
@@ -4716,6 +4777,14 @@ async function handleMessage(message, sender, sendResponse) {
 async function initialize() {
   log(' 🚀 Starting background script...');
 
+  // Restore startup jitter deadline if SW was evicted mid-wait.
+  try {
+    const j = await (browser.storage.session?.get('startup_jitter_at') ?? Promise.resolve(null))
+    const remaining = (j?.startup_jitter_at || 0) - Date.now()
+    if (remaining > 0) pendingStartupJitterMs = remaining
+    else if (j?.startup_jitter_at) browser.storage.session?.remove('startup_jitter_at').catch(() => {})
+  } catch {}
+
   // Run auth load + storage batch reads + session restore in PARALLEL — all independent.
   // Saves ~60-90ms of serial waits vs. awaiting them sequentially.
   const tokenP = getAuthCookie().catch(err => { log(' Could not load auth token:', err.message); return null })
@@ -4723,7 +4792,7 @@ async function initialize() {
     'user_info', 'channel_emotes_fetched_at', 'channel_emotes_map', 'seventv_emote_set_ids',
     'muted_users', 'blocked_users', 'global_emotes', 'emote_inventory', 'blocked_emotes',
     'local_blocked_emotes', 'youtube_channel_urls', 'yt_video_to_channel', 'joined_extra_channels', 'heatsync_multichat', 'badges_fetched_at',
-    'bttv_badge_map', 'ffz_badge_map', 'chatterino_badge_map', 'user_cosmetics_cache'
+    'bttv_badge_map', 'ffz_badge_map', 'chatterino_badge_map', 'user_cosmetics_cache', 'twitch_id_cache'
   ]).catch(err => { log(' Storage restore failed:', err.message); return {} })
   const sessionP = (browser.storage.session?.get(['tab_channels', 'joined_extra_channels']) ?? Promise.resolve(null))
     .catch(e => { console.warn('session storage restore failed:', e); return null })
@@ -4776,6 +4845,12 @@ async function initialize() {
     if (stored.blocked_users && Array.isArray(stored.blocked_users)) {
       blockedUsers = new Set(stored.blocked_users);
       log(' ✓ Loaded', blockedUsers.size, 'blocked users');
+    }
+    if (stored.twitch_id_cache && typeof stored.twitch_id_cache === 'object') {
+      for (const [name, id] of Object.entries(stored.twitch_id_cache)) {
+        if (typeof id === 'string' && /^\d+$/.test(id)) twitchIdCache.set(name, id);
+      }
+      log(' ✓ Restored twitchIdCache for', twitchIdCache.size, 'usernames');
     }
     // Warm emote arrays from storage cache (instant availability while API fetches run)
     if (stored.global_emotes?.length) {

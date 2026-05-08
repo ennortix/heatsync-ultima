@@ -3052,8 +3052,13 @@ function formatSubTenure(months) {
 // HEAT CACHE + BATCH FETCHER
 // ============================================
 const HEAT_CACHE_MAX = 1000
-const HEAT_CACHE_TTL = 120000 // 2 min
-const HEAT_BATCH_INTERVAL = 2000 // 2s debounce for subsequent batches
+// 10min TTL — heat doesn't change fast enough to justify the 2min refetch
+// storm. At 30k users this drops /api/users/heat traffic by ~5x. The full
+// fix is server-pushed heat updates over WS (tracked server-side).
+const HEAT_CACHE_TTL = 600000 // 10 min
+// 5s debounce + per-client jitter — at 30k users a 2s synchronized debounce
+// produced ~15k req/sec spikes against the same 100-user batch endpoint.
+const HEAT_BATCH_INTERVAL = 5000
 const heatCache = new Map() // username -> { heat, op, re, fetchedAt }
 // Periodic cleanup — prune stale entries every 5 min
 cleanup.setInterval(() => {
@@ -3124,10 +3129,12 @@ function queueHeatLookup(username) {
     heatFirstBatch = false
     cleanup.setTimeout(() => flushHeatBatch(), 0)
   } else if (!heatBatchTimer) {
+    // Add per-client jitter so 30k tabs don't synchronize their batches.
+    const jitter = Math.random() * HEAT_BATCH_INTERVAL
     heatBatchTimer = cleanup.setTimeout(() => {
       heatBatchTimer = null
       flushHeatBatch()
-    }, HEAT_BATCH_INTERVAL)
+    }, HEAT_BATCH_INTERVAL + jitter)
   }
 }
 
@@ -3166,12 +3173,13 @@ async function flushHeatBatch() {
     log(' Heat batch fetch failed:', err.message)
   }
 
-  // If more pending, schedule another batch
+  // If more pending, schedule another batch (jittered)
   if (heatPending.size > 0 && !heatBatchTimer) {
+    const jitter = Math.random() * HEAT_BATCH_INTERVAL
     heatBatchTimer = cleanup.setTimeout(() => {
       heatBatchTimer = null
       flushHeatBatch()
-    }, HEAT_BATCH_INTERVAL)
+    }, HEAT_BATCH_INTERVAL + jitter)
   }
 }
 
@@ -6630,10 +6638,12 @@ function queueCosmeticsLookup(userId) {
     return
   }
   if (!cosmeticsBatchTimer) {
+    // Jitter so 30k tabs joining the same channel don't fan out to 7TV in lockstep.
+    const delay = 500 + Math.random() * 1500
     cosmeticsBatchTimer = cleanup.setTimeout(() => {
       cosmeticsBatchTimer = null
       flushCosmeticsBatch()
-    }, 500)
+    }, delay)
   }
 }
 
@@ -6659,7 +6669,7 @@ async function flushCosmeticsBatch() {
     cosmeticsBatchTimer = cleanup.setTimeout(() => {
       cosmeticsBatchTimer = null
       flushCosmeticsBatch()
-    }, 2000)
+    }, 2000 + Math.random() * 2000)
   }
 }
 

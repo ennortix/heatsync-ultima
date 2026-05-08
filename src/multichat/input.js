@@ -494,6 +494,20 @@ function initInput() {
         source: wrapper.dataset.source || 'unknown'
       };
     }
+    // Picker emote wrap — when blocked, the inner img is visibility:hidden so
+    // right-clicks land on the wrap span, not the img. Without this branch
+    // findEmoteTarget returned null and unblock-on-right-click silently failed.
+    const pickerWrap = target.closest('.hs-mc-picker-emote-wrap');
+    if (pickerWrap) {
+      const img = pickerWrap.querySelector('img');
+      return {
+        wrapper: null,
+        emoteName: pickerWrap.dataset.name || img?.alt || 'emote',
+        state: img?.dataset.state || (pickerWrap.classList.contains('blocked') ? 'blocked' : 'global'),
+        emoteUrl: img?.src || '',
+        source: img?.dataset.source || 'unknown'
+      };
+    }
     // Fallback: direct IMG (Twitch/7TV/BTTV native emotes, picker emotes)
     if (target.tagName === 'IMG' && !target.classList.contains('hs-mc-badge-img') && (
       target.classList.contains('hs-mc-emote') ||

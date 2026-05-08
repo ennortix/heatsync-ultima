@@ -4607,6 +4607,7 @@ function injectStyles() {
       display: inline-flex;
       align-items: center;
       justify-content: center;
+      cursor: pointer;
     }
     .hs-mc-picker-emote-wrap.blocked {
       outline: 2px dashed #808080 !important;

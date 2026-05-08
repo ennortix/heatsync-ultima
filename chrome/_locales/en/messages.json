@@ -163,7 +163,7 @@
     "message": "global"
   },
   "btn_tab_mine": {
-    "message": "mine"
+    "message": "set"
   },
   "btn_tab_emoji": {
     "message": "emoji"
@@ -214,10 +214,10 @@
     "message": "unblock emote"
   },
   "btn_ctx_remove_inventory": {
-    "message": "remove from inventory"
+    "message": "remove from set"
   },
   "btn_ctx_add_inventory": {
-    "message": "add to inventory"
+    "message": "add to set"
   },
   "btn_ctx_copy_name": {
     "message": "copy emote name"

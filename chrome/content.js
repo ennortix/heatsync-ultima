@@ -279,6 +279,11 @@ style.textContent = `
     cursor: pointer !important;
   }
 
+  /* Locally name-blocked emotes (e.g. native Twitch sub emotes) — fully hidden */
+  img[data-hs-name-blocked] {
+    display: none !important;
+  }
+
   /* Blocked emotes - gray outline always visible */
   img[data-heatsync-state="blocked"] {
     outline: 2px solid #7f7f7f !important;
@@ -1096,12 +1101,15 @@ style.textContent = `
     background: #7f0000 !important;
   }
 
-  /* Emojis — double-size, stackable as overlay base */
+  /* Emojis — native size by default, doubled when html.hs-bigemoji */
   .heatsync-emoji {
-    font-size: 2em !important;
+    font-size: 1em !important;
     line-height: 1 !important;
     vertical-align: middle !important;
     display: inline-block !important;
+  }
+  html.hs-bigemoji .heatsync-emoji {
+    font-size: 2em !important;
   }
 
   /* Emote overlay stacking (7TV zero-width emotes) */
@@ -1705,6 +1713,9 @@ function applyUiSettings(settings) {
     log(' Applied UI hiding CSS:', rules.length, 'rules');
   }
 
+  // Big emoji toggle — applies 2em font-size to .heatsync-emoji
+  document.documentElement.classList.toggle('hs-bigemoji', !!settings.bigEmoji)
+
   // Cosmetics toggle
   if (settings.showCosmetics === false) {
     cosmeticsEnabled = false
@@ -1832,6 +1843,9 @@ let _mentionRegex = null; // Cached mention regex (rebuilt on username change)
 let _mentionUser = null; // Username the regex was built for
 const HS_WS_SPLIT = /(\s+)/; // Hoisted: avoids per-message regex allocation in hot paths
 let blockedEmotes = new Set();
+// Names blocked locally — covers emotes we never wrap (native Twitch sub/follower/bits).
+// Right-click any img[alt] in chat to toggle. Persisted in chrome.storage.local.
+let localBlockedEmoteNames = new Set();
 // Tracks user-initiated block/unblock per hash so a late `emote_blocked` /
 // `emote_unblocked` broadcast (from server WS echo of the previous action)
 // can't reverse a fresh local toggle. Symptom this fixes: scrolled-to-bottom
@@ -2010,7 +2024,10 @@ async function loadInventory() {
   // Try storage first (instant access)
   try {
     const storageStart = performance.now();
-    const stored = await chrome.storage.local.get(['global_emotes', 'emote_inventory', 'blocked_emotes', 'channel_emotes_map', 'blocked_users']);
+    const stored = await chrome.storage.local.get(['global_emotes', 'emote_inventory', 'blocked_emotes', 'channel_emotes_map', 'blocked_users', 'local_blocked_emote_names']);
+    if (Array.isArray(stored.local_blocked_emote_names)) {
+      localBlockedEmoteNames = new Set(stored.local_blocked_emote_names);
+    }
     log(` ⏱️ Storage read took ${(performance.now() - storageStart).toFixed(0)}ms`);
 
     if (stored.global_emotes && stored.global_emotes.length > 0) {
@@ -4004,6 +4021,15 @@ function processMessage(messageElement) {
   // so replaceChildren() doesn't wipe out the colored spans
   colorUsernameMentions(messageElement, textElements);
 
+  // Apply local name-blocks to native Twitch emotes in this message
+  if (localBlockedEmoteNames.size > 0) {
+    const imgs = messageElement.querySelectorAll('img[src*="static-cdn.jtvnw.net/emoticons"]')
+    for (const im of imgs) {
+      if (im.alt && localBlockedEmoteNames.has(im.alt)) {
+        im.setAttribute('data-hs-name-blocked', '1')
+      }
+    }
+  }
 }
 
 // Check if an emote is a zero-width/overlay emote
@@ -4703,6 +4729,41 @@ function setupEmoteClickHandlers() {
       log(' 💬 Sent insert request for:', emoteName);
     }
   }, 'emote-click');
+
+  // Universal block for emotes we never wrap (native Twitch sub/follower/bits).
+  // Match by alt name only — server-side hash blocks won't reach these so we
+  // store names locally and hide on render.
+  cleanup.addEventListener(document, 'contextmenu', async (e) => {
+    const img = e.target.closest('img');
+    if (!img) return;
+    if (img.closest('.heatsync-emote-wrapper')) return; // existing path handles these
+
+    const src = img.src || '';
+    const isNativeTwitchEmote = src.includes('static-cdn.jtvnw.net/emoticons');
+    if (!isNativeTwitchEmote) return;
+
+    const name = img.alt;
+    if (!name) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+
+    const escName = (window.CSS && CSS.escape) ? CSS.escape(name) : name.replace(/"/g, '\\"');
+    const sel = `img[alt="${escName}"][src*="static-cdn.jtvnw.net/emoticons"]`;
+
+    if (localBlockedEmoteNames.has(name)) {
+      localBlockedEmoteNames.delete(name);
+      document.querySelectorAll(sel).forEach(el => el.removeAttribute('data-hs-name-blocked'));
+      log(' Local-unblocked native emote:', name);
+    } else {
+      localBlockedEmoteNames.add(name);
+      document.querySelectorAll(sel).forEach(el => el.setAttribute('data-hs-name-blocked', '1'));
+      log(' Local-blocked native emote:', name);
+    }
+    try {
+      chrome.storage.local.set({ local_blocked_emote_names: Array.from(localBlockedEmoteNames) });
+    } catch {}
+  }, 'native-twitch-block-contextmenu');
 
   cleanup.addEventListener(document, 'contextmenu', async (e) => {
     const wrapper = e.target.closest('.heatsync-emote-wrapper');

@@ -10596,8 +10596,13 @@ async function sendKickMessage(kickSlug, text) {
   /**
    * Group emotes by state+source into ordered sections
    */
-  const SECTION_ORDER = ['7tv', 'bttv', 'ffz', 'twitch', 'kick', 'heatsync']
+  // 'set' = anything the user owns (state==='owned'), regardless of original
+  // provider. Without this branch a 7tv emote in the user's heatsync set
+  // would bucket into '7tv' and the user's 982-emote set would scatter
+  // across every section instead of sitting in one.
+  const SECTION_ORDER = ['set', '7tv', 'bttv', 'ffz', 'twitch', 'kick', 'heatsync']
   const SECTION_LABELS = {
+    set: 'Set',
     '7tv': '7TV', bttv: 'BTTV', ffz: 'FFZ',
     twitch: 'Twitch', kick: 'Kick', heatsync: 'Heatsync'
   }
@@ -10605,7 +10610,7 @@ async function sendKickMessage(kickSlug, text) {
   function groupEmotes(allEmotes) {
     const groups = {}
     for (const [name, emote] of allEmotes) {
-      const key = emote.source
+      const key = emote.state === 'owned' ? 'set' : emote.source
       if (!groups[key]) groups[key] = []
       groups[key].push([name, emote])
     }

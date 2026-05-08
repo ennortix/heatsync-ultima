@@ -49,8 +49,13 @@
   /**
    * Group emotes by state+source into ordered sections
    */
-  const SECTION_ORDER = ['7tv', 'bttv', 'ffz', 'twitch', 'kick', 'heatsync']
+  // 'set' = anything the user owns (state==='owned'), regardless of original
+  // provider. Without this branch a 7tv emote in the user's heatsync set
+  // would bucket into '7tv' and the user's 982-emote set would scatter
+  // across every section instead of sitting in one.
+  const SECTION_ORDER = ['set', '7tv', 'bttv', 'ffz', 'twitch', 'kick', 'heatsync']
   const SECTION_LABELS = {
+    set: 'Set',
     '7tv': '7TV', bttv: 'BTTV', ffz: 'FFZ',
     twitch: 'Twitch', kick: 'Kick', heatsync: 'Heatsync'
   }
@@ -58,7 +63,7 @@
   function groupEmotes(allEmotes) {
     const groups = {}
     for (const [name, emote] of allEmotes) {
-      const key = emote.source
+      const key = emote.state === 'owned' ? 'set' : emote.source
       if (!groups[key]) groups[key] = []
       groups[key].push([name, emote])
     }
@@ -1022,7 +1027,7 @@
       (stored.emote_inventory || []).forEach(e => {
         if (e.name && e.url) {
           const source = e.source || 'heatsync';
-          viewerPersonalEmotes.set(e.name, { url: e.url, source, state: 'owned', zeroWidth: !!e.zeroWidth });
+          viewerPersonalEmotes.set(e.name, { url: e.url, source, state: 'owned', zeroWidth: !!e.zeroWidth, subscription: !!e.subscription });
         }
       });
 

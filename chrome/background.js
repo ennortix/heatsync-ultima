@@ -395,7 +395,26 @@ function untrackInterval(id) {
 }
 
 // Fetch with 10s timeout to prevent hung requests
-function fetchWithTimeout(url, opts = {}, ms = 10000) {
+// Global heatsync.org backoff state — when the server sends 429 with Retry-After,
+// every subsequent heatsync fetch short-circuits until the window passes. Keeps
+// 10k extensions from hammering a stressed server one endpoint at a time.
+let heatsyncBackoffUntil = 0
+function fakeBackoffResponse() {
+  // Match the Response interface enough that callers checking .status / .ok / .json() / .body work.
+  return {
+    ok: false, status: 429, statusText: 'Too Many Requests (client-side backoff)',
+    headers: new Headers(),
+    body: null,
+    json: () => Promise.resolve(null),
+    text: () => Promise.resolve(''),
+    arrayBuffer: () => Promise.resolve(new ArrayBuffer(0))
+  }
+}
+async function fetchWithTimeout(url, opts = {}, ms = 10000) {
+  const isHeatsync = typeof url === 'string' && /^https?:\/\/(www\.)?heatsync\.org/.test(url)
+  if (isHeatsync && Date.now() < heatsyncBackoffUntil) {
+    return fakeBackoffResponse()
+  }
   const ctrl = new AbortController()
   const timer = setTimeout(() => ctrl.abort(), ms)
   if (opts.signal) {
@@ -403,9 +422,19 @@ function fetchWithTimeout(url, opts = {}, ms = 10000) {
   }
   // Default credentials: 'omit' for third-party APIs (no cookie leakage to 7TV/FFZ/BTTV/etc).
   // heatsync.org calls override with credentials: 'include' explicitly.
-  const isHeatsync = typeof url === 'string' && /^https?:\/\/(www\.)?heatsync\.org/.test(url)
   const credentials = opts.credentials ?? (isHeatsync ? 'include' : 'omit')
-  return fetch(url, { ...opts, credentials, signal: ctrl.signal }).finally(() => clearTimeout(timer))
+  const resp = await fetch(url, { ...opts, credentials, signal: ctrl.signal }).finally(() => clearTimeout(timer))
+  if (isHeatsync && resp.status === 429) {
+    const retryAfter = resp.headers.get('retry-after')
+    let waitMs = 5000
+    if (retryAfter) {
+      const n = parseInt(retryAfter, 10)
+      if (!isNaN(n) && n > 0) waitMs = Math.min(60000, n * 1000)
+    }
+    heatsyncBackoffUntil = Date.now() + waitMs
+    console.warn('[heatsync] 429 — backing off all heatsync fetches for', waitMs, 'ms')
+  }
+  return resp
 }
 
 // Per-URL ETag cache for politeness toward third-party CDN APIs (7TV/BTTV/FFZ).
@@ -2641,6 +2670,7 @@ let socketAuthToken = null;
 let reconnectAttempts = 0;
 let heartbeatInterval = null; // Keep connection alive
 let reconnectTimer = null;
+let pendingReconnectSpreadMs = 0; // Set by server:shutdown — consumed once on next scheduleReconnect to spread the herd
 let messageQueue = []; // Queue messages when socket not ready
 let connectionPromise = null; // Track ongoing connection attempt
 let lastWsDataReceived = 0; // Timestamp of last received WS message (zombie detection)
@@ -2938,6 +2968,16 @@ function handleWSMessage(msg) {
       wsState = WS_STATE.AUTHENTICATED;
       // Flush any queued messages now that we're authenticated
       flushMessageQueue();
+      break;
+
+    case 'server:shutdown':
+      // Server is restarting and asking clients to spread reconnects across a
+      // window so 10k+ extensions don't dogpile the freshly-restarted box.
+      // Honors `reconnectSpreadMs` from the server's payload.
+      if (typeof msg.reconnectSpreadMs === 'number' && msg.reconnectSpreadMs > 0) {
+        pendingReconnectSpreadMs = Math.min(60000, msg.reconnectSpreadMs);
+        log(` 🌊 Server shutdown — will spread reconnect over ${pendingReconnectSpreadMs}ms`);
+      }
       break;
 
     case 'authentication_failed':
@@ -3457,10 +3497,19 @@ function scheduleReconnect() {
     return;
   }
 
+  // If the server signalled a planned shutdown, spread reconnects across the
+  // window it asked for. Consumed once — subsequent transient drops get the
+  // normal exponential backoff.
+  let shutdownSpread = 0;
+  if (pendingReconnectSpreadMs > 0) {
+    shutdownSpread = Math.random() * pendingReconnectSpreadMs;
+    pendingReconnectSpreadMs = 0;
+  }
+
   const jitter = Math.random() * 1000;
   // Capped at 15s (was 30s) — long-running stream sessions can't tolerate
   // half-minute gaps when recovering from a transient network blip.
-  const delay = Math.min(1000 * Math.pow(2, reconnectAttempts), 15000) + jitter;
+  const delay = Math.min(1000 * Math.pow(2, reconnectAttempts), 15000) + jitter + shutdownSpread;
   reconnectAttempts++;
   log(` Reconnecting in ${Math.round(delay)}ms (attempt ${reconnectAttempts})`);
 

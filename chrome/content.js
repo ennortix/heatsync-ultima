@@ -7055,9 +7055,24 @@ function watchForNewMessages() {
     log(' 🔌 Disconnected previous message observer');
   }
 
-  // Batch processing queue to avoid React conflicts
+  // Batch processing queue to avoid React conflicts.
+  // Cap at MAX_QUEUE — sustained 1k+ msg/min raids can outpace processMessage's
+  // ~16ms per call, leaving the queue unbounded between rAF flushes. Drop oldest
+  // when full so live messages always win over backlog.
+  const MAX_QUEUE = 500;
   let processingQueue = [];
   let processingScheduled = false;
+  let processingDropped = 0;
+  function pushToQueue(node) {
+    if (processingQueue.length >= MAX_QUEUE) {
+      processingQueue.shift();
+      processingDropped++;
+      if (processingDropped % 100 === 0) {
+        log(' ⚠️ message queue dropped', processingDropped, 'old messages (raid backlog)');
+      }
+    }
+    processingQueue.push(node);
+  }
 
   messageObserver = cleanup.trackObserver(new MutationObserver((mutations) => {
     mutations.forEach(mutation => {
@@ -7065,15 +7080,15 @@ function watchForNewMessages() {
         if (node.nodeType === 1) {
           // Twitch chat message
           if (node.classList.contains('chat-line__message')) {
-            processingQueue.push(node);
+            pushToQueue(node);
           }
           // Kick chat message (div with data-index inside #chatroom-messages)
           else if (node.hasAttribute?.('data-index') && node.closest?.('#chatroom-messages')) {
-            processingQueue.push(node);
+            pushToQueue(node);
           }
           // Check if it has chat-line__message inside
           else if (node.querySelector && node.querySelector('.chat-line__message')) {
-            node.querySelectorAll('.chat-line__message').forEach(msg => processingQueue.push(msg));
+            node.querySelectorAll('.chat-line__message').forEach(msg => pushToQueue(msg));
           }
         }
       });

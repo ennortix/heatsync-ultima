@@ -1430,8 +1430,8 @@ function injectStyles() {
       line-height: 1.4;
     }
     .hs-mc-emote {
-      height: var(--hs-emote-size, 32px);
       width: auto;
+      height: auto;
       vertical-align: middle;
       margin: 0 2px;
       padding: 4px;
@@ -1455,12 +1455,20 @@ function injectStyles() {
       object-fit: contain;
     }
 
-    /* Emojis — double-size, stackable as overlay base */
+    /* Emojis — native size by default, doubled when #hs-mc-container.hs-2x */
     .hs-mc-emoji {
-      font-size: 2em;
+      font-size: 1em;
       line-height: 1;
       vertical-align: middle;
       display: inline-block;
+    }
+    #hs-mc-container.hs-2x .hs-mc-emoji {
+      font-size: 2em;
+    }
+    /* Small native Twitch emoticons (:), :(, <3 etc.) doubled when toggled on */
+    #hs-mc-container.hs-2x img.hs-mc-emote[src*="static-cdn.jtvnw.net/emoticons"][src*="/1.0"] {
+      width: 56px !important;
+      height: 56px !important;
     }
 
     /* 7TV ZERO-WIDTH OVERLAY EMOTE STACKING */

@@ -1592,8 +1592,8 @@
     emotePlaceholderMode: false, // Show colored rectangles instead of emote images
     viMode: false,               // Vim keybindings for chat input
     showPlatformBadges: true,    // Show [T]/[K]/[YT] badges on messages
-    // 'menu'=show block/cancel popup (default), 'instant'=block on right-click, 'off'=disabled
-    rightClickBlockMode: 'menu',
+    // 'instant'=block on right-click (default), 'menu'=show block/cancel popup, 'off'=disabled
+    rightClickBlockMode: 'instant',
   };
 
   // Get extension settings (sync - returns cached)
@@ -1715,10 +1715,10 @@
           <div class="heatsync-setting-row">
             <div>
               <div class="heatsync-setting-label">right-click block</div>
-              <div class="heatsync-setting-desc">menu shows block/cancel · instant blocks immediately · off disables it</div>
+              <div class="heatsync-setting-desc">instant blocks immediately · menu shows block/cancel · off disables it</div>
             </div>
             <div class="heatsync-rcb-segmented" style="display:inline-flex;border:1px solid #808080;font-family:'CozetteVector',monospace;font-size:12px">
-              ${['menu','instant','off'].map(v => `<button type="button" class="heatsync-rcb-opt" data-rcb="${v}" style="background:${(settings.rightClickBlockMode||'menu')===v?'#fff':'transparent'};color:${(settings.rightClickBlockMode||'menu')===v?'#000':'#fff'};border:none;cursor:pointer;padding:4px 10px;font-family:inherit;font-size:12px">${v}</button>`).join('')}
+              ${['instant','menu','off'].map(v => `<button type="button" class="heatsync-rcb-opt" data-rcb="${v}" style="background:${(settings.rightClickBlockMode||'instant')===v?'#fff':'transparent'};color:${(settings.rightClickBlockMode||'instant')===v?'#000':'#fff'};border:none;cursor:pointer;padding:4px 10px;font-family:inherit;font-size:12px">${v}</button>`).join('')}
             </div>
           </div>
         </div>
@@ -2606,7 +2606,7 @@
           if (!e) return
         }
 
-        const mode = (cachedSettings.rightClickBlockMode || 'menu')
+        const mode = (cachedSettings.rightClickBlockMode || 'instant')
         if (mode === 'off') {
           evt.preventDefault()
           return

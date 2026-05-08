@@ -10703,14 +10703,14 @@ async function sendKickMessage(kickSlug, text) {
   }
 
   function emoteImgHtml([name, emote]) {
-    const state = emote.state || 'global'
-    // Wrap each picker emote in a span so blocked state can show a dashed outline
-    // (outline directly on img with visibility:hidden / opacity:0 renders invisibly
-    // because both kill outlines on replaced elements).
     const isBlocked = blockedEmoteNames.has(name)
+    // state must reflect 'blocked' on the img too — findEmoteTarget reads
+    // img.dataset.state; without this update right-click on a blocked picker
+    // emote returns state='global' and re-blocks instead of unblocking.
+    const state = isBlocked ? 'blocked' : (emote.state || 'global')
     const wrapCls = isBlocked ? 'hs-mc-picker-emote-wrap blocked' : 'hs-mc-picker-emote-wrap'
     const safeName = escapeHtml(name)
-    return `<span class="${wrapCls}" data-name="${safeName}"><img src="${escapeHtml(emote.url)}" alt="${safeName}" title="${safeName} (${escapeHtml(emote.source)})" class="hs-mc-picker-emote hs-emote-${escapeHtml(emote.source)}" data-name="${safeName}" data-source="${escapeHtml(emote.source)}" data-state="${escapeHtml(state)}" loading="lazy"></span>`
+    return `<span class="${wrapCls}" data-name="${safeName}"><img src="${escapeHtml(emote.url)}" alt="${safeName}" title="${safeName} (${escapeHtml(emote.source)})" class="hs-mc-picker-emote hs-emote-${escapeHtml(emote.source)}" data-name="${safeName}" data-source="${escapeHtml(emote.source)}" data-state="${state}" loading="lazy"></span>`
   }
 
   /**
@@ -11298,10 +11298,14 @@ async function sendKickMessage(kickSlug, text) {
     });
 
     // Update any picker thumbnails for this emote (the existing wrapper update
-    // path only touches chat messages, not the picker grid).
+    // path only touches chat messages, not the picker grid). Toggling state on
+    // the img too so the global right-click handler reads it as 'blocked' and
+    // routes to unblockEmote on the next right-click.
     try {
       document.querySelectorAll(`.hs-mc-picker-emote-wrap[data-name="${CSS.escape(emoteName)}"]`).forEach(w => {
         w.classList.add('blocked')
+        const img = w.querySelector('img')
+        if (img) img.dataset.state = 'blocked'
       })
     } catch {}
 
@@ -11343,10 +11347,14 @@ async function sendKickMessage(kickSlug, text) {
       }
     });
 
-    // Also drop the dashed outline on any picker thumbnails for this emote.
+    // Also drop the dashed outline on any picker thumbnails for this emote and
+    // restore the img's state so future right-clicks route through the normal
+    // (non-blocked) branch (which is no-op since picker emotes don't own state).
     try {
       document.querySelectorAll(`.hs-mc-picker-emote-wrap[data-name="${CSS.escape(emoteName)}"]`).forEach(w => {
         w.classList.remove('blocked')
+        const img = w.querySelector('img')
+        if (img) img.dataset.state = newState
       })
     } catch {}
 

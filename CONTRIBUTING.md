@@ -5,7 +5,7 @@
 requires [bun](https://bun.sh) — not node.
 
 ```bash
-git clone https://github.com/heatsync/heatsync-extension
+git clone https://github.com/mellen9999/heatsync-extension
 cd heatsync-extension
 bun install
 ```

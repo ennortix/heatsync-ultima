@@ -17,6 +17,6 @@ please don't open a public GitHub issue for security bugs. we'll acknowledge wit
 
 ## scope
 
-this is a browser extension — no server component, no backend, no user data collection. all processing is local to the browser tab.
+extension-side processing happens locally in the browser tab. the extension communicates with heatsync.org for emote sync, and with 7TV/FFZ/BTTV/decapi.me for cosmetics — see [docs/PRIVACY.md](docs/PRIVACY.md) for the full data flow.
 
 user-supplied content (chat messages, emote names) is passed through `escapeHtml()` before any `innerHTML` assignment. urls are validated via `safeUrl()` which allows `http` and `https` schemes only.

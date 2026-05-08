@@ -65,7 +65,13 @@
 
   function isAtom(node) {
     if (node.nodeType !== Node.ELEMENT_NODE) return false
-    return node.tagName === 'IMG' || node.contentEditable === 'false'
+    if (node.tagName === 'IMG') return true
+    if (node.contentEditable === 'false') return true
+    // Overlay-emote stacks: one indivisible unit so h/l, x, db, dw, c-motions
+    // all walk over and delete the whole stack (base + overlays) at once.
+    const cl = node.classList
+    if (cl?.contains('hs-input-stack') || cl?.contains('input-emote-stack')) return true
+    return false
   }
 
   function getContentNodes(el) {
@@ -111,8 +117,15 @@
         const s = Math.max(0, vStart - vPos)
         const end = Math.min(e.length, vEnd - vPos)
         result += e.node.textContent.slice(s, end)
+      } else if (e.node.tagName === 'IMG') {
+        result += e.node.alt || ''
       } else {
-        result += e.node.alt || e.node.textContent || ''
+        // Stack span: join child img alts with spaces so yank+paste round-trips
+        // back to a re-renderable text form ("TriHard ApuApustaja0").
+        const imgs = e.node.querySelectorAll('img')
+        const parts = []
+        imgs.forEach(img => parts.push(img.alt || ''))
+        result += parts.join(' ') || e.node.textContent || ''
       }
       vPos = eEnd
     }

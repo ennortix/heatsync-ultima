@@ -139,7 +139,7 @@
     "message": "이모트 업로드"
   },
   "welcome_step2_desc": {
-    "message": "이미지를 추가하세요 — 슬롯 제한 없음, 모든 형식 지원"
+    "message": "이미지를 추가하세요 — 5000 슬롯, 모든 형식 지원"
   },
   "welcome_step3_title": {
     "message": "채팅에서 사용"

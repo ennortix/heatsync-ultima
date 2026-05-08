@@ -139,7 +139,7 @@
     "message": "încarcă-ți emote-urile"
   },
   "welcome_step2_desc": {
-    "message": "adaugă orice imagine — fără limite de slot, toate formatele acceptate"
+    "message": "adaugă orice imagine — 5000 sloturi, toate formatele acceptate"
   },
   "welcome_step3_title": {
     "message": "folosește-le în chat"

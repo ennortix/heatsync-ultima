@@ -139,7 +139,7 @@
     "message": "emote'larını yükle"
   },
   "welcome_step2_desc": {
-    "message": "istediğin görselleri ekle — slot sınırı yok, tüm formatlar destekleniyor"
+    "message": "istediğin görselleri ekle — 5000 slot, tüm formatlar destekleniyor"
   },
   "welcome_step3_title": {
     "message": "sohbette kullan"

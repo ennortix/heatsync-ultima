@@ -139,7 +139,7 @@
     "message": "sube tus emotes"
   },
   "welcome_step2_desc": {
-    "message": "añade cualquier imagen — sin límite de slots, todos los formatos soportados"
+    "message": "añade cualquier imagen — 5000 slots, todos los formatos soportados"
   },
   "welcome_step3_title": {
     "message": "úsalos en el chat"

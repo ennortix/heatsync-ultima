@@ -139,7 +139,7 @@
     "message": "エモートをアップロード"
   },
   "welcome_step2_desc": {
-    "message": "画像を追加 — スロット制限なし、全フォーマット対応"
+    "message": "画像を追加 — 5000スロット、全フォーマット対応"
   },
   "welcome_step3_title": {
     "message": "チャットで使う"

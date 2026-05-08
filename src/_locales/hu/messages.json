@@ -139,7 +139,7 @@
     "message": "töltsd fel az emote-jaidat"
   },
   "welcome_step2_desc": {
-    "message": "tölts fel bármilyen képet — nincs slot-korlát, minden formátum támogatott"
+    "message": "tölts fel bármilyen képet — 5000 slot, minden formátum támogatott"
   },
   "welcome_step3_title": {
     "message": "használd a chatben"

@@ -89,9 +89,11 @@ screenshot: [attach if possible]
 
 ## known issues
 
-- firefox: extension unloads on browser restart (temporary install limitation)
-- kick: some chat layouts may not be detected yet
-- youtube: only works in live chat (not regular comments)
+- firefox: in dev mode, extension unloads on browser restart — that's a Firefox
+  "temporary add-on" limitation, not a heatsync bug. Once installed from AMO
+  it persists normally.
+- youtube: only works in live chat (not regular comments). live_chat popout
+  also supported.
 
 ---
 

@@ -1,5 +1,9 @@
 # privacy policy
 
+> **Canonical version:** https://heatsync.org/legal/privacy
+> This file is a repo snapshot for offline review. The live version on
+> heatsync.org is authoritative if the two ever differ.
+
 **version 1.0 — april 2026**
 
 ## what we collect

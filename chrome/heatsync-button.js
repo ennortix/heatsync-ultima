@@ -2414,6 +2414,15 @@
         wrap.classList.add('unadded')
       }
 
+      // Mark blocked: keeps the emote in its slot with the dashed-outline style
+      // (CSS at .heatsync-emote-wrap.blocked img). Without this, blockEmote
+      // filtered the cache and surrounding emotes shifted into the empty slot.
+      const _hash = e.hash || e.id || (e.url ? btoa(e.url || e.pickerUrl || '').slice(0, 24) : null)
+      if (_hash && _blockedHashSet.has(_hash)) {
+        wrap.classList.add('blocked')
+        wrap.dataset.blockedHash = _hash
+      }
+
       // Hover preview — must be per-element for positioning
       let previewTooltip = null
       wrap.addEventListener('mouseenter', () => {
@@ -3227,12 +3236,9 @@
         log('Blocked emote:', emote.name);
       }
 
-      // Remove from current view
-      if (currentTab === 'channel') {
-        channelEmotesCache = channelEmotesCache.filter(e => e.name !== emote.name);
-      } else if (currentTab === 'global') {
-        globalEmotesCache = globalEmotesCache.filter(e => e.name !== emote.name);
-      }
+      // Keep the emote in the cache — let the renderer apply the .blocked class
+      // so it stays in place with a dashed outline instead of shifting siblings.
+      _blockedHashSet.add(hash);
 
       updateTabCounts();
       renderEmoteGrid();
@@ -3320,6 +3326,7 @@
           try {
             await chrome.runtime.sendMessage({ type: 'unblock_emote', hash });
             _blockedHashSet.delete(hash);
+            renderEmoteGrid();
             showPickerToast(t('btn_toast_unblocked'));
           } catch (err) {
             if (err.message?.includes('Extension context invalidated')) {

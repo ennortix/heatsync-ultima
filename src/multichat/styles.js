@@ -3994,6 +3994,39 @@ function injectStyles() {
       aspect-ratio: 9 / 16;
       max-width: 320px;
     }
+    .hs-feed-embed-yt-thumb {
+      position: relative;
+      display: block;
+      width: 100%;
+      max-width: 480px;
+      aspect-ratio: 16 / 9;
+      background: #000;
+      overflow: hidden;
+      cursor: pointer;
+    }
+    .hs-feed-embed-yt-thumb img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+    .hs-feed-embed-yt-play {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #fff;
+      font-size: 28px;
+      text-shadow: 0 0 6px rgba(0,0,0,0.8);
+      background: rgba(0,0,0,0.25);
+      transition: background 0.15s;
+    }
+    .hs-feed-embed-yt-thumb:hover .hs-feed-embed-yt-play {
+      background: #fff;
+      color: #000;
+      text-shadow: none;
+    }
     .hs-feed-link-card {
       margin: 4px 0 2px;
       padding: 4px 6px;

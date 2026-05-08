@@ -5,7 +5,7 @@ thanks for helping test! here's what to do.
 ## install
 
 ### chrome
-1. download and unzip `heatsync-chrome-1.3.4.zip`
+1. download and unzip `heatsync-chrome-1.3.5.zip`
 2. go to `chrome://extensions`
 3. enable "Developer mode" (toggle top right)
 4. click "Load unpacked"
@@ -13,7 +13,7 @@ thanks for helping test! here's what to do.
 6. you should see heatsync icon in toolbar
 
 ### firefox
-1. download `heatsync-firefox-1.3.4.zip`
+1. download `heatsync-firefox-1.3.5.zip`
 2. go to `about:debugging#/runtime/this-firefox`
 3. click "Load Temporary Add-on"
 4. select the zip file

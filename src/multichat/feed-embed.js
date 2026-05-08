@@ -22,10 +22,19 @@ function attr(s) {
 function ytEmbed(videoId) {
   const id = sanitizeEmbedId(videoId)
   if (!id) return ''
+  // YT refuses to embed when parent is youtube.com (Error 153 "Video player
+  // configuration error" — self-embed guard). Fall back to a thumbnail card
+  // that opens the video in a new tab.
+  if (/(^|\.)youtube\.com$/i.test(location.hostname)) {
+    return `<a href="https://www.youtube.com/watch?v=${id}" target="_blank" rel="noopener" class="hs-feed-embed-yt-thumb">
+      <img src="https://i.ytimg.com/vi/${id}/hqdefault.jpg" alt="" loading="lazy" data-fb="hide">
+      <span class="hs-feed-embed-yt-play">▶</span>
+    </a>`
+  }
   return `<div class="hs-feed-embed-container hs-feed-embed-youtube">
-    <iframe src="https://www.youtube-nocookie.com/embed/${id}"
+    <iframe src="https://www.youtube-nocookie.com/embed/${id}?modestbranding=1&playsinline=1&rel=0&enablejsapi=1"
       sandbox="${EMBED_SANDBOX}"
-      allow="accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
+      allow="autoplay; accelerometer; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
       loading="lazy"
       referrerpolicy="strict-origin-when-cross-origin"></iframe>
   </div>`
@@ -42,14 +51,15 @@ function twitchClipEmbed(clipId) {
   </div>`
 }
 
-function kickClipEmbed(clipId) {
+function kickClipEmbed(clipId, fullUrl) {
   const id = sanitizeEmbedId(clipId)
   if (!id) return ''
-  return `<div class="hs-feed-embed-container hs-feed-embed-kick">
-    <iframe src="https://player.kick.com/clips/${id}"
-      sandbox="${EMBED_SANDBOX}"
-      scrolling="no" loading="lazy"
-      allow="accelerometer; encrypted-media; gyroscope; picture-in-picture; fullscreen"></iframe>
+  // player.kick.com sends X-Frame-Options: SAMEORIGIN — iframe always blank.
+  // Route through server-resolve to get thumbnail+title from kick.com/api/v2.
+  const safe = safeUrl(fullUrl) || `https://kick.com/clips/${id}`
+  return `<div class="hs-feed-embed-pending hs-feed-embed-kick"
+    data-resolve-url="${attr(safe)}" data-resolve-platform="kick">
+    <span class="hs-feed-embed-pending-label">loading kick clip…</span>
   </div>`
 }
 
@@ -150,12 +160,19 @@ function tiktokEmbed(videoId, url) {
 function redditEmbed(url) {
   const safe = safeUrl(url)
   if (!safe) return ''
-  // Permalink (any subdomain incl. old.reddit.com) → server-resolved rich card.
-  // heatsync.org/api/embed/resolve scrapes embed.reddit.com (datacenter IP can't
-  // hit /.json), returns title/author/icon/image. Mirrors website behavior.
-  if (/reddit\.com\/r\/[\w-]+\/comments\/[a-z0-9]+/i.test(safe)) {
+  // Permalink → server-resolved rich card with image/icon when reachable.
+  // Reddit blocks the VPS IP ~half the time so we also bake in slug-derived
+  // fallback metadata; the resolver uses it when the server returns nothing.
+  const m = safe.match(/reddit\.com\/r\/([\w-]+)\/comments\/[a-z0-9]+(?:\/([\w-]+))?/i)
+  if (m) {
+    const sub = m[1]
+    const slug = m[2] || ''
+    const title = slug
+      ? slug.replace(/[_-]+/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+      : `r/${sub}`
     return `<div class="hs-feed-embed-pending hs-feed-embed-reddit"
-      data-resolve-url="${attr(safe)}" data-resolve-platform="reddit">
+      data-resolve-url="${attr(safe)}" data-resolve-platform="reddit"
+      data-fb-title="${attr(title)}" data-fb-author="r/${attr(sub)}">
       <span class="hs-feed-embed-pending-label">loading reddit…</span>
     </div>`
   }
@@ -210,7 +227,7 @@ function parseFeedEmbed(url) {
   // Kick clips
   if (cleanUrl.includes('kick.com/') && cleanUrl.includes('/clips/')) {
     const m = cleanUrl.match(/clips\/([a-zA-Z0-9_-]+)/)
-    if (m) return kickClipEmbed(m[1])
+    if (m) return kickClipEmbed(m[1], cleanUrl)
   }
 
   // Streamable
@@ -424,6 +441,21 @@ function _buildFeedResolvedHtml(ph, data) {
     </a>`
   }
   if (data.type === 'video' && data.mediaUrl) {
+    // m3u8 (kick clip) needs hls.js which we don't bundle — render as a
+    // thumbnail card that opens the clip page on click. mp4 plays natively.
+    if (data.mediaUrl.includes('.m3u8')) {
+      const thumbHtml = safeThumb
+        ? `<img src="${safeThumb}" alt="${safeTitle || safePlat}" class="hs-feed-embed-rich-thumb">`
+        : `<div class="hs-feed-embed-rich-thumb-placeholder">[${safePlat}]</div>`
+      return `<a href="${safeUrlStr}" target="_blank" rel="noopener" class="hs-feed-embed-rich-card">
+        ${thumbHtml}
+        <div class="hs-feed-embed-rich-meta">
+          <div class="hs-feed-embed-rich-platform">${safePlat}</div>
+          <div class="hs-feed-embed-rich-title">${safeTitle}</div>
+          ${safeAuthor ? `<div class="hs-feed-embed-rich-author">${safeAuthor}</div>` : ''}
+        </div>
+      </a>`
+    }
     const poster = safeThumb ? `poster="${safeThumb}"` : ''
     return `<video controls preload="metadata" ${poster} src="${safeMedia}" class="hs-feed-embed-rich-video"></video>`
   }
@@ -446,6 +478,20 @@ function _buildFeedResolvedHtml(ph, data) {
 function _buildFeedResolveFailedHtml(ph) {
   const url = ph.dataset.resolveUrl || ''
   const platform = ph.dataset.resolvePlatform || ''
+  // Placeholder may carry baked-in fallback metadata (data-fb-title/-author)
+  // so we can still render a rich card when the server can't reach the source.
+  const fbTitle = ph.dataset.fbTitle || ''
+  const fbAuthor = ph.dataset.fbAuthor || ''
+  if (fbTitle || fbAuthor) {
+    return `<a href="${attr(url)}" target="_blank" rel="noopener" class="hs-feed-embed-rich-card">
+      <div class="hs-feed-embed-rich-thumb-placeholder">[${attr(platform)}]</div>
+      <div class="hs-feed-embed-rich-meta">
+        <div class="hs-feed-embed-rich-platform">${attr(platform)}</div>
+        <div class="hs-feed-embed-rich-title">${attr(fbTitle)}</div>
+        ${fbAuthor ? `<div class="hs-feed-embed-rich-author">${attr(fbAuthor)}</div>` : ''}
+      </div>
+    </a>`
+  }
   const truncated = url.length > 60 ? url.slice(0, 60) + '…' : url
   return `<div class="hs-feed-link-card">
     <a href="${attr(url)}" target="_blank" rel="noopener" class="hs-feed-link-card-link">

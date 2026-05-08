@@ -1,5 +1,13 @@
 # changelog
 
+## [1.3.5] — 2026-05-08
+
+### fixed
+- feed YT embed: youtube.com self-embed Error 153 → thumbnail-card fallback
+- feed Kick clip embed: X-Frame-Options:SAMEORIGIN blocked iframe → server-resolved rich card
+- feed Reddit embed: VPS IP-block fallback uses slug-derived title/author when scraper returns nothing
+- feed video card: m3u8 (kick clip) now renders as thumbnail-link (no hls.js bundled)
+
 ## [1.3.4] — 2026-05-08
 
 ### changed

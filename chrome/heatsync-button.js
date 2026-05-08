@@ -1836,11 +1836,18 @@
     const btn = document.getElementById(BUTTON_ID);
     if (!btn) return;
 
-    // Hydrate blocked set from background
-    try {
-      const inv = await chrome.runtime.sendMessage({ type: 'get_inventory' });
-      if (inv?.blocked) _blockedHashSet = new Set(inv.blocked);
-    } catch (err) {}
+    // Hydrate blocked set from background — fire-and-forget so the panel
+    // opens instantly even when the SW is cold (this awaited 100s+ of ms after sleep).
+    chrome.runtime.sendMessage({ type: 'get_inventory' })
+      .then(inv => {
+        if (!inv?.blocked) return
+        const next = new Set(inv.blocked)
+        // Re-render only if the set actually changed and panel is still open
+        const same = next.size === _blockedHashSet.size && [...next].every(h => _blockedHashSet.has(h))
+        _blockedHashSet = next
+        if (!same && panelOpen) renderEmoteGrid()
+      })
+      .catch(() => {})
 
     // Check if panel already exists (reuse for cached images)
     let panel = document.getElementById(PANEL_ID);
@@ -2169,10 +2176,12 @@
       renderEmoteGrid();
     }, { signal: btnSignal });
 
-    // Load all emotes — one background message for channel+global, one for inventory
+    // Kick off independent loads — each tab repaints when its data lands.
+    // No await: the panel renders the loading state immediately and stale IDB data
+    // (if any) paints inside loadAllEmotesFromBackground.
     currentTab = 'channel';
-    await loadAllEmotesFromBackground(channel);
-    // Set emoji count
+    loadAllEmotesFromBackground(channel);
+    // Set emoji count (synchronous, no fetch)
     if (typeof EMOJI_DATA !== 'undefined') {
       const countEl = document.getElementById('count-emoji')
       if (countEl) countEl.textContent = EMOJI_DATA.length
@@ -2223,6 +2232,19 @@
     return url;
   }
 
+  // Picker-specific URL: routes animated 7TV emotes through the _static
+  // variant which is ~15× smaller and decodes single-frame. Other CDNs
+  // and non-animated 7TV emotes pass through getResolutionUrl unchanged
+  // (their _static variants 404, so we'd need an onerror fallback otherwise).
+  function pickerUrlFor(e, size) {
+    const base = getResolutionUrl(getAnimatedUrl(e.url), size)
+    if (!base) return base
+    if (e.animated && base.includes('cdn.7tv.app')) {
+      return base.replace(/\/([1-4]x)\.webp$/, '/$1_static.webp')
+    }
+    return base
+  }
+
   // Render the emote grid based on current tab and search
   let renderBatchTimeout = null;
 
@@ -2244,9 +2266,17 @@
     return 'provider-unknown';
   }
 
-  function renderEmoteGrid() {
+  function renderEmoteGrid(opts) {
     const grid = document.getElementById('heatsync-emote-grid');
     if (!grid) return;
+
+    // Save scrollTop when this render is triggered by a background broadcast
+    // (progressive channel_emotes_update arrivals). Without this the user gets
+    // teleported to the top mid-scroll because clearing the grid shrinks its
+    // scrollHeight to ~0 and the browser clamps scrollTop to 0. User-initiated
+    // re-renders (tab switch, search) pass no opts so scroll resets normally.
+    const preserveScroll = !!(opts && opts.preserveScroll)
+    const savedScrollTop = preserveScroll ? grid.scrollTop : 0
 
     // Check login state
     const isLoggedIn = cachedAuthToken !== null;
@@ -2352,10 +2382,14 @@
     // Get current size for resolution
     const currentSize = localStorage.getItem('heatsync-emote-size') || '1x';
 
-    // Prepare emotes with resolution-appropriate URLs
+    // Prepare emotes with resolution-appropriate URLs.
+    // For animated 7TV emotes use the static-frame variant in the picker —
+    // it's ~15× smaller (e.g. RainTime: 13.6KB animated vs 0.9KB static)
+    // and decodes a single frame instead of 15. Hover preview still uses
+    // the animated 4x for recognition.
     const pickerEmotes = emotes.map(e => ({
       ...e,
-      pickerUrl: getResolutionUrl(getAnimatedUrl(e.url), currentSize)
+      pickerUrl: pickerUrlFor(e, currentSize)
     }));
 
     while (grid.firstChild) grid.removeChild(grid.firstChild)
@@ -2429,6 +2463,27 @@
     function getItemsPerRow() {
       const gridWidth = grid.clientWidth - gridPadding * 2
       return Math.max(1, Math.floor((gridWidth + GAP) / (emoteSize + GAP)))
+    }
+
+    // Lazy image loader — only assigns src when the <img> intersects the
+    // visible viewport. Native `loading="lazy"` is unreliable inside a
+    // nested scroll container; an explicit IntersectionObserver rooted on
+    // the grid itself is bulletproof. The 96px rootMargin gives a small
+    // preload window so images fade in before they're visually in frame.
+    if (grid._hsImgObserver) grid._hsImgObserver.disconnect()
+    const imgObserver = new IntersectionObserver((entries) => {
+      for (const entry of entries) {
+        if (!entry.isIntersecting) continue
+        const img = entry.target
+        const src = img.dataset.src
+        if (src && !img.src) img.src = src
+        imgObserver.unobserve(img)
+      }
+    }, { root: grid, rootMargin: '96px 0px', threshold: 0 })
+    grid._hsImgObserver = imgObserver
+    function observeImg(wrap) {
+      const img = wrap.querySelector('img')
+      if (img && img.dataset.src) imgObserver.observe(img)
     }
 
     // Create emote element — no click/contextmenu listeners (delegated on grid)
@@ -2542,11 +2597,22 @@
       } else {
         const img = document.createElement('img')
         img.referrerPolicy = 'no-referrer'
-        img.loading = 'eager'
         img.decoding = 'async'
-        // Validate URL before assigning to img.src — defense-in-depth against
-        // poisoned cache or background message
-        img.src = safeUrl(e.pickerUrl) || ''
+        // Defer src until the emote actually intersects the visible viewport.
+        // Without this, mounting the ±4 buffer rows fires ~150 simultaneous
+        // image requests — and 7TV's CDN serves animated webp at 1x that's
+        // both slower to fetch and slower to decode, jamming the pipeline.
+        // The IntersectionObserver below promotes data-src → src on intersect.
+        const url = safeUrl(e.pickerUrl) || ''
+        img.dataset.src = url
+        // One-shot fallback for 7TV _static.webp 404s (e.g. metadata wrongly
+        // flags a static-source emote as animated). Retry the non-static URL.
+        if (url.includes('cdn.7tv.app') && url.includes('_static.webp')) {
+          img.addEventListener('error', () => {
+            const fallback = url.replace('_static.webp', '.webp')
+            if (img.src !== fallback) img.src = fallback
+          }, { once: true })
+        }
         img.alt = e.name
         img.title = e.name
         wrap.appendChild(img)
@@ -2651,6 +2717,7 @@
         const wrap = createEmoteElement(recentEmote, globalIndex)
         appendEmoteContent(wrap, recentEmote)
         recentContainer.appendChild(wrap)
+        observeImg(wrap)
         globalIndex++
       }
       _virtualRecentCount = recentEmotes.length
@@ -2663,54 +2730,91 @@
     grid.appendChild(recentContainer)
 
     // --- Virtual scroll container for main emotes ---
-    const itemsPerRow = getItemsPerRow()
-    const totalRows = Math.ceil(pickerEmotes.length / itemsPerRow)
+    let itemsPerRow = getItemsPerRow()
+    let totalRows = Math.ceil(pickerEmotes.length / itemsPerRow)
     const rowHeight = emoteSize + GAP
-    const totalHeight = totalRows * rowHeight
+    let totalHeight = totalRows * rowHeight
 
     const virtualContainer = document.createElement('div')
     virtualContainer.className = 'heatsync-virtual-container'
     virtualContainer.style.cssText = `position: relative; width: 100%; height: ${totalHeight}px;`
     grid.appendChild(virtualContainer)
 
-    // Track last rendered range to avoid redundant DOM thrashing
-    let _lastRenderedStart = -1
-    let _lastRenderedEnd = -1
+    // Incremental rendering: keep a Map<emoteIndex, HTMLElement> of currently
+    // mounted wraps. On scroll, only ADD new rows entering the viewport and
+    // REMOVE rows leaving it — never touch elements that stay visible.
+    // Recreating <img> nodes triggers re-decode and visible "unloaded" flicker
+    // even on HTTP cache hits, which was the symptom the user saw.
+    const mounted = new Map()
+    let _renderedItemsPerRow = itemsPerRow
+    // Wider buffer than before (was ±2). 4 rows of slack means small scrolls
+    // (mouse wheel ticks) usually don't trigger any DOM mutation at all.
+    const BUFFER_ROWS = 4
+
+    function placeWrap(wrap, i) {
+      const row = Math.floor(i / itemsPerRow)
+      const col = i % itemsPerRow
+      wrap.style.position = 'absolute'
+      wrap.style.top = `${row * rowHeight}px`
+      wrap.style.left = `${col * (emoteSize + GAP)}px`
+      wrap.style.width = `${emoteSize}px`
+      wrap.style.height = `${emoteSize}px`
+    }
 
     function renderVisibleEmotes() {
+      // Recompute itemsPerRow lazily — if the panel was resized, all mounted
+      // wraps need repositioning. Cheap to detect, only acts when changed.
+      const newItemsPerRow = getItemsPerRow()
+      if (newItemsPerRow !== _renderedItemsPerRow) {
+        itemsPerRow = newItemsPerRow
+        _renderedItemsPerRow = newItemsPerRow
+        totalRows = Math.ceil(pickerEmotes.length / itemsPerRow)
+        totalHeight = totalRows * rowHeight
+        virtualContainer.style.height = `${totalHeight}px`
+        for (const [i, wrap] of mounted) placeWrap(wrap, i)
+      }
+
       const scrollTop = grid.scrollTop - recentContainer.offsetHeight
       const viewHeight = grid.clientHeight
       const clampedScroll = Math.max(0, scrollTop)
 
-      const startRow = Math.max(0, Math.floor(clampedScroll / rowHeight) - 2)
-      const endRow = Math.min(totalRows, Math.ceil((clampedScroll + viewHeight) / rowHeight) + 2)
-
-      // Skip if same range already rendered
-      if (startRow === _lastRenderedStart && endRow === _lastRenderedEnd) return
-      _lastRenderedStart = startRow
-      _lastRenderedEnd = endRow
-
-      const fragment = document.createDocumentFragment()
+      const startRow = Math.max(0, Math.floor(clampedScroll / rowHeight) - BUFFER_ROWS)
+      const endRow = Math.min(totalRows, Math.ceil((clampedScroll + viewHeight) / rowHeight) + BUFFER_ROWS)
       const startIdx = startRow * itemsPerRow
       const endIdx = Math.min(endRow * itemsPerRow, pickerEmotes.length)
 
-      for (let i = startIdx; i < endIdx; i++) {
-        const e = pickerEmotes[i]
-        const row = Math.floor(i / itemsPerRow)
-        const col = i % itemsPerRow
-        const wrap = createEmoteElement(e, i + _virtualRecentCount)
-        wrap.style.position = 'absolute'
-        wrap.style.top = `${row * rowHeight}px`
-        wrap.style.left = `${col * (emoteSize + GAP)}px`
-        wrap.style.width = `${emoteSize}px`
-        wrap.style.height = `${emoteSize}px`
-        appendEmoteContent(wrap, e)
-        fragment.appendChild(wrap)
+      // Drop wraps that scrolled out of the buffer window
+      for (const [i, wrap] of mounted) {
+        if (i < startIdx || i >= endIdx) {
+          wrap.remove()
+          mounted.delete(i)
+        }
       }
 
-      while (virtualContainer.firstChild) virtualContainer.removeChild(virtualContainer.firstChild)
-      virtualContainer.appendChild(fragment)
+      // Add wraps for indices that entered the buffer window
+      const newWraps = []
+      const fragment = document.createDocumentFragment()
+      for (let i = startIdx; i < endIdx; i++) {
+        if (mounted.has(i)) continue
+        const e = pickerEmotes[i]
+        const wrap = createEmoteElement(e, i + _virtualRecentCount)
+        placeWrap(wrap, i)
+        appendEmoteContent(wrap, e)
+        mounted.set(i, wrap)
+        fragment.appendChild(wrap)
+        newWraps.push(wrap)
+      }
+      if (fragment.childNodes.length) {
+        virtualContainer.appendChild(fragment)
+        // Observe AFTER attach so layout is computed and IO can determine intersection
+        for (const w of newWraps) observeImg(w)
+      }
     }
+
+    // Restore scroll BEFORE the initial render so renderVisibleEmotes mounts
+    // the correct buffer window (the one matching what the user was looking at).
+    // The browser clamps to the new scrollHeight automatically if the list shrank.
+    if (preserveScroll && savedScrollTop > 0) grid.scrollTop = savedScrollTop
 
     // Initial render
     renderVisibleEmotes()
@@ -3720,62 +3824,110 @@
     }
   }, { signal: btnSignal });
 
-  // Single background round-trip for channel + global + inventory emotes.
-  // Replaces the three individual load calls when opening the panel.
-  async function loadAllEmotesFromBackground(channel) {
-    // Show stale IndexedDB data instantly while waiting for background
-    const [staleChannel, staleGlobal] = await Promise.all([
-      channel ? getCachedEmotes(`channel:${channel}`) : Promise.resolve(null),
-      getCachedEmotes('global')
-    ]);
-    if (staleChannel) { channelEmotesCache = staleChannel; usingCachedData.channel = true; }
-    if (staleGlobal)  { globalEmotesCache  = staleGlobal;  usingCachedData.global  = true; }
-    if (staleChannel || staleGlobal) updateTabCounts();
+  // Independent loads for channel/global and inventory.
+  // Inventory is in-memory in the background and resolves <50ms; channel/global
+  // can wait on third-party APIs. Gating inventory on the picker fetch made the
+  // "mine" tab show "loading…" for seconds even though 2k+ emotes were ready.
+  // Each tab paints stale IDB data immediately, then re-renders when fresh data lands.
+  function loadAllEmotesFromBackground(channel) {
+    // Paint stale IDB data immediately (parallel reads, fire-and-forget render)
+    ;(async () => {
+      const [staleChannel, staleGlobal, staleInventory] = await Promise.all([
+        channel ? getCachedEmotes(`channel:${channel}`) : Promise.resolve(null),
+        getCachedEmotes('global'),
+        getCachedEmotes('inventory')
+      ])
+      let painted = false
+      if (staleChannel)   { channelEmotesCache   = staleChannel;   usingCachedData.channel = true; painted = true }
+      if (staleGlobal)    { globalEmotesCache    = staleGlobal;    usingCachedData.global  = true; painted = true }
+      if (staleInventory) { inventoryEmotesCache = staleInventory; usingCachedData.mine    = true; rebuildInventoryIndex(); painted = true }
+      if (painted) {
+        updateTabCounts()
+        renderEmoteGrid({ preserveScroll: true })
+      }
+    })()
 
-    isLoading.channel = true;
-    isLoading.global = true;
-    isLoading.mine = true;
+    // Loading flags only block the UI when we have NO stale data — otherwise the
+    // tab keeps showing the stale grid until fresh arrives (no flicker).
+    isLoading.channel = true
+    isLoading.global  = true
+    isLoading.mine    = true
 
-    try {
-      const [pickerResp, invResp] = await Promise.all([
-        chrome.runtime.sendMessage({ type: 'get_picker_emotes', channel: channel || null, platform: window.heatsyncPlatform?.detectPlatform() || 'unknown' }),
-        chrome.runtime.sendMessage({ type: 'get_inventory' })
-      ]);
+    // --- Inventory load (fast, independent) ---
+    chrome.runtime.sendMessage({ type: 'get_inventory' })
+      .then(invResp => {
+        inventoryEmotesCache = invResp?.emotes || []
+        rebuildInventoryIndex()
+        usingCachedData.mine = false
+        loadErrors.mine = null
+        if (inventoryEmotesCache.length > 0) setCachedEmotes('inventory', inventoryEmotesCache)
+      })
+      .catch(err => {
+        log(' inventory load failed:', err?.message)
+        // Keep stale IDB data if we had it; only flag error on cold-empty
+        if (!inventoryEmotesCache.length) loadErrors.mine = 'failed to load your emotes'
+      })
+      .finally(() => {
+        isLoading.mine = false
+        updateTabCounts()
+        if (currentTab === 'mine') renderEmoteGrid({ preserveScroll: true })
+      })
 
-      channelEmotesCache  = pickerResp?.channelEmotes  || [];
-      globalEmotesCache   = pickerResp?.globalEmotes   || [];
-      inventoryEmotesCache = invResp?.emotes           || [];
-
-      usingCachedData.channel = false;
-      usingCachedData.global  = false;
-      loadErrors.channel  = null;
-      loadErrors.global   = null;
-      loadErrors.mine = null;
-      rebuildInventoryIndex();
-      updateTabCounts();
-
-      // Write fresh data back to IndexedDB for next cold open
-      if (channel && channelEmotesCache.length > 0) setCachedEmotes(`channel:${channel}`, channelEmotesCache);
-      if (globalEmotesCache.length  > 0) setCachedEmotes('global', globalEmotesCache);
-    } catch (err) {
-      log(' loadAllEmotesFromBackground error:', err.message);
-      // keep whatever stale data we have; show error only if nothing at all
-      if (!staleChannel) { channelEmotesCache = []; loadErrors.channel = 'failed to load channel emotes'; }
-      if (!staleGlobal)  { globalEmotesCache  = []; loadErrors.global  = 'failed to load global emotes'; }
-      inventoryEmotesCache = [];
-      loadErrors.mine = 'failed to load your emotes';
-      rebuildInventoryIndex();
-      updateTabCounts();
-      renderEmoteGrid();
-    } finally {
-      isLoading.channel   = false;
-      isLoading.global    = false;
-      isLoading.mine = false;
-    }
+    // --- Picker load (channel + global, may wait on 7TV/FFZ/BTTV) ---
+    chrome.runtime.sendMessage({
+      type: 'get_picker_emotes',
+      channel: channel || null,
+      platform: window.heatsyncPlatform?.detectPlatform() || 'unknown'
+    })
+      .then(pickerResp => {
+        const ch = pickerResp?.channelEmotes
+        const gl = pickerResp?.globalEmotes
+        const channelStillLoading = !!pickerResp?.channelLoading
+        if (Array.isArray(ch)) {
+          channelEmotesCache = ch
+          usingCachedData.channel = false
+          loadErrors.channel = null
+          if (channel && ch.length > 0) setCachedEmotes(`channel:${channel}`, ch)
+        }
+        if (Array.isArray(gl)) {
+          globalEmotesCache = gl
+          usingCachedData.global = false
+          loadErrors.global = null
+          if (gl.length > 0) setCachedEmotes('global', gl)
+        }
+        // Keep channel loading flag set if background just kicked off fetch —
+        // the channel_emotes_update broadcast listener will clear it on arrival.
+        isLoading.channel = channelStillLoading
+        isLoading.global  = false
+        updateTabCounts()
+        if (currentTab === 'channel' || currentTab === 'global') renderEmoteGrid({ preserveScroll: true })
+        // Watchdog: clear channel loading after 12s if the broadcast never
+        // arrives (e.g. fetchChannelOwnerEmotes hit an exception path).
+        if (channelStillLoading) {
+          cleanup.setTimeout(() => {
+            if (isLoading.channel) {
+              isLoading.channel = false
+              if (!channelEmotesCache.length) loadErrors.channel = 'channel emotes unavailable'
+              updateTabCounts()
+              if (currentTab === 'channel') renderEmoteGrid({ preserveScroll: true })
+            }
+          }, 12000)
+        }
+      })
+      .catch(err => {
+        log(' picker load failed:', err?.message)
+        if (!channelEmotesCache.length) loadErrors.channel = 'failed to load channel emotes'
+        if (!globalEmotesCache.length)  loadErrors.global  = 'failed to load global emotes'
+        isLoading.channel = false
+        isLoading.global  = false
+        updateTabCounts()
+        if (currentTab === 'channel' || currentTab === 'global') renderEmoteGrid({ preserveScroll: true })
+      })
   }
 
-  // Load user's inventory emotes — delegates to background cache via get_picker_emotes
-  // (kept as separate function so retry handlers and addEmoteToInventorySilent can call it)
+  // Load user's inventory emotes — delegates to background cache via get_inventory
+  // (kept as separate function so retry handlers and addEmoteToInventorySilent can call it).
+  // Writes to IDB on success so cold opens after SW sleep paint stale instantly.
   async function loadInventoryEmotes() {
     isLoading.mine = true;
     loadErrors.mine = null;
@@ -3784,11 +3936,15 @@
       inventoryEmotesCache = resp?.emotes || [];
       rebuildInventoryIndex()
       loadErrors.mine = null;
+      usingCachedData.mine = false;
+      if (inventoryEmotesCache.length > 0) setCachedEmotes('inventory', inventoryEmotesCache)
       updateTabCounts();
     } catch (err) {
-      inventoryEmotesCache = [];
-      rebuildInventoryIndex()
-      loadErrors.mine = 'failed to load your emotes';
+      // Don't wipe cached data on transient failure
+      if (!inventoryEmotesCache.length) {
+        rebuildInventoryIndex()
+        loadErrors.mine = 'failed to load your emotes';
+      }
       updateTabCounts();
     } finally {
       isLoading.mine = false;
@@ -4125,6 +4281,50 @@
         loadInventoryEmotes();
       }
     }, { signal: btnSignal });
+
+    // Live picker updates from background: channel emotes arrive progressively
+    // (BTTV/FFZ/7TV/Twitch coalesced at 40ms), inventory updates broadcast on
+    // every emote add/remove/sub. Listen directly — content script's isolated
+    // world has chrome.runtime access, no postMessage bridge needed.
+    if (chrome?.runtime?.onMessage) {
+      chrome.runtime.onMessage.addListener((msg) => {
+        if (!msg?.type) return
+        // preserveScroll prevents background-driven re-renders from teleporting
+        // a mid-scroll user back to the top of the grid.
+        const opts = { preserveScroll: true }
+        if (msg.type === 'channel_emotes_update' && Array.isArray(msg.emotes)) {
+          const owner = (msg.channelOwner || '').toLowerCase()
+          if (currentChannel && owner && owner !== currentChannel) return
+          channelEmotesCache = msg.emotes
+          usingCachedData.channel = false
+          isLoading.channel = false
+          loadErrors.channel = null
+          if (currentChannel && channelEmotesCache.length > 0) setCachedEmotes(`channel:${currentChannel}`, channelEmotesCache)
+          updateTabCounts()
+          if (panelOpen && currentTab === 'channel') renderEmoteGrid(opts)
+        } else if (msg.type === 'global_emotes_update' && Array.isArray(msg.emotes)) {
+          globalEmotesCache = msg.emotes
+          usingCachedData.global = false
+          isLoading.global = false
+          loadErrors.global = null
+          if (globalEmotesCache.length > 0) setCachedEmotes('global', globalEmotesCache)
+          updateTabCounts()
+          if (panelOpen && currentTab === 'global') renderEmoteGrid(opts)
+        } else if (msg.type === 'inventory_update' && Array.isArray(msg.emotes)) {
+          inventoryEmotesCache = msg.emotes
+          rebuildInventoryIndex()
+          usingCachedData.mine = false
+          isLoading.mine = false
+          loadErrors.mine = null
+          if (inventoryEmotesCache.length > 0) setCachedEmotes('inventory', inventoryEmotesCache)
+          updateTabCounts()
+          if (panelOpen && currentTab === 'mine') renderEmoteGrid(opts)
+        } else if (msg.type === 'blocked_update' && Array.isArray(msg.blocked)) {
+          _blockedHashSet = new Set(msg.blocked)
+          if (panelOpen) renderEmoteGrid(opts)
+        }
+      })
+    }
 
     log(' 🔥 Button module initialized');
   }

@@ -1392,7 +1392,8 @@ async function fetch7TVChannelEmotes(channelName, channelId = null, platform = '
       source: '7tv',
       hash: e.id,
       flags: e.flags || e.data?.flags || 0,
-      zeroWidth: !!((e.flags & 257) || (e.data?.flags & 257))
+      zeroWidth: !!((e.flags & 257) || (e.data?.flags & 257)),
+      animated: !!e.data?.animated
     })));
     const cosmeticIds = extract7TVCosmeticIds(data)
     // Resolve cosmetics async — dont block emote return
@@ -1826,6 +1827,7 @@ async function fetch7TVEmotes() {
       url: `https://cdn.7tv.app/emote/${e.id}/1x.webp`,
       source: '7tv',
       hash: e.id,
+      animated: !!e.data?.animated,
       flags: e.flags || e.data?.flags || 0,
       zeroWidth: !!((e.flags & 257) || (e.data?.flags & 257))
     })));
@@ -2218,7 +2220,8 @@ function handle7TVEmoteSetUpdate(updateData) {
         name: String(emote.name || '').slice(0, 100),
         url: `https://cdn.7tv.app/emote/${emote.id}/1x.webp`,
         source: '7tv',
-        hash: emote.id
+        hash: emote.id,
+        animated: !!emote.data?.animated
       };
 
       const chEmotes = Array.isArray(channelEmotesMap[channelName]) ? channelEmotesMap[channelName] : [];
@@ -2386,7 +2389,8 @@ async function poll7TVEmoteSet() {
           source: '7tv',
           hash: e.id,
           flags: e.flags || e.data?.flags || 0,
-          zeroWidth: !!((e.flags & 257) || (e.data?.flags & 257))
+          zeroWidth: !!((e.flags & 257) || (e.data?.flags & 257)),
+          animated: !!e.data?.animated
         })
       }
 
@@ -4398,32 +4402,27 @@ async function handleMessage(message, sender, sendResponse) {
     }
     sendResponse({ count: totalEmotes });
   } else if (message.type === 'get_picker_emotes') {
-    // heatsync-button emote picker requests all emote data from background cache
-    // avoids duplicate API fetches — background already has everything loaded
+    // Return immediately with whatever's cached. If channel emotes aren't
+    // ready, trigger the fetch but DON'T poll-wait — fetchChannelOwnerEmotes
+    // broadcasts channel_emotes_update progressively as each provider
+    // (BTTV/FFZ/7TV/Twitch) lands, and the picker listens for that broadcast.
+    // The old 8s poll-wait gated the entire panel render on the slowest
+    // third-party API.
     ;(async () => {
       if (initPromise) await initPromise
       const channel = message.channel?.toLowerCase()
-      let chEmotes = channel && Array.isArray(channelEmotesMap[channel]) ? channelEmotesMap[channel] : null
-      // if channel emotes not yet cached, trigger fetch and wait (up to 8s)
-      if (channel && !chEmotes && channelEmotesMap[channel] !== 'loading') {
+      const chState = channel ? channelEmotesMap[channel] : null
+      const chEmotes = Array.isArray(chState) ? chState : null
+      if (channel && !chEmotes && chState !== 'loading') {
+        // Fire-and-forget: result will arrive via channel_emotes_update broadcast
         fetchChannelOwnerEmotes(channel, null, message.platform || (sender?.url?.includes('kick.com') ? 'kick' : 'twitch'))
       }
-      if (channel && !chEmotes) {
-        // wait for the sentinel to resolve (loading → array)
-        const deadline = Date.now() + 8000
-        await new Promise(resolve => {
-          const poll = trackInterval(setInterval(() => {
-            if (Array.isArray(channelEmotesMap[channel]) || Date.now() > deadline) {
-              clearInterval(poll)
-              untrackInterval(poll)
-              resolve()
-            }
-          }, 100))
-        })
-        chEmotes = Array.isArray(channelEmotesMap[channel]) ? channelEmotesMap[channel] : []
-      }
+      // channelLoading lets the picker keep showing "loading…" instead of
+      // "no emotes" while the third-party fetch is still in flight.
+      const channelLoading = !!channel && !chEmotes
       sendResponse({
         channelEmotes: chEmotes || [],
+        channelLoading,
         globalEmotes: globalEmotes,
         inventoryEmotes: emoteInventory,
         blocked: Array.from(blockedEmotes)
@@ -4759,7 +4758,8 @@ async function handleMessage(message, sender, sendResponse) {
             source: '7tv',
             state: 'global',
             zeroWidth: !!(flags & 257),
-            hash: e.id
+            hash: e.id,
+            animated: !!e.data?.animated
           }
         }
         // BTTV personal — channelEmotes + sharedEmotes

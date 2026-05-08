@@ -3511,6 +3511,18 @@ function handleWSMessage(msg) {
       })
       break
 
+    case 'user:heat_batch_update': {
+      // Server pushes heat updates every 60s for users whose heat changed.
+      // Forward to tabs so content.js can update its username-keyed heat cache
+      // without polling /api/users/heat. Drops the polled endpoint volume to
+      // near-zero in steady state.
+      const updates = Array.isArray(msg.updates) ? msg.updates : []
+      if (updates.length > 0) {
+        broadcastToTabs({ type: 'heat_batch_update', updates })
+      }
+      break
+    }
+
     case 'user:muted': {
       // Server confirmed mute — update local state and broadcast to all tabs
       const muteUser = msg.username?.toLowerCase()
@@ -4618,8 +4630,6 @@ async function handleMessage(message, sender, sendResponse) {
       const toFetch = []
       for (const id of ids) {
         const cached = userCosmeticsCache.get(id)
-        // Negative cache (no paint AND no badge) gets a shorter TTL so newly-added
-        // 7TV badges/paints show up within 5 min instead of waiting 30 min.
         const isNegative = cached && !cached.paint && !cached.badge
         const ttl = isNegative ? COSMETICS_NEGATIVE_TTL : USER_COSMETICS_TTL
         if (cached && Date.now() - cached.fetchedAt < ttl) {
@@ -4628,17 +4638,46 @@ async function handleMessage(message, sender, sendResponse) {
           toFetch.push(id)
         }
       }
-      await Promise.all(toFetch.map(async (id) => {
+
+      if (toFetch.length > 0) {
+        // Try heatsync proxy first — single request, server-side cache, no
+        // 7TV IP exposure. Falls back to direct 7TV on any failure so an
+        // outage on our side doesn't kill cosmetics for users.
+        let proxied = null
         try {
-          const resp = await fetchWithTimeout(`https://7tv.io/v3/users/twitch/${id}`)
-          if (!resp.ok) { setUserCosmetic(id, null); result[id] = null; return }
-          const data = await resp.json()
-          const ids7tv = extract7TVCosmeticIds(data)
-          const cosmetic = await resolve7TVCosmeticIds(ids7tv)
-          setUserCosmetic(id, cosmetic)
-          result[id] = cosmetic
-        } catch (e) { setUserCosmetic(id, null); result[id] = null }
-      }))
+          const resp = await fetchWithTimeout(`${API_URL}/api/cosmetics/batch`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ twitchIds: toFetch })
+          }, 6000)
+          if (resp.ok) {
+            const data = await resp.json()
+            if (data && data.cosmetics) proxied = data.cosmetics
+          }
+        } catch (e) { /* fall through */ }
+
+        if (proxied) {
+          for (const id of toFetch) {
+            const c = proxied[id] ?? null
+            setUserCosmetic(id, c)
+            result[id] = c
+          }
+        } else {
+          // Proxy unreachable — fall back to direct 7TV (legacy path).
+          await Promise.all(toFetch.map(async (id) => {
+            try {
+              const resp = await fetchWithTimeout(`https://7tv.io/v3/users/twitch/${id}`)
+              if (!resp.ok) { setUserCosmetic(id, null); result[id] = null; return }
+              const data = await resp.json()
+              const ids7tv = extract7TVCosmeticIds(data)
+              const cosmetic = await resolve7TVCosmeticIds(ids7tv)
+              setUserCosmetic(id, cosmetic)
+              result[id] = cosmetic
+            } catch (e) { setUserCosmetic(id, null); result[id] = null }
+          }))
+        }
+      }
+
       sendResponse({ cosmetics: result })
     })()
     return true

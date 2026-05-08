@@ -2515,6 +2515,30 @@ function _onMessageMain(message) {
       }
       break
 
+    case 'heat_batch_update':
+      // Server pushes user-heat updates every 60s for changed users.
+      // Update the username-keyed cache directly — saves a full /api/users/heat
+      // round-trip per user. Re-render heat borders so visible messages reflect
+      // the new tier without waiting for the next batch flush.
+      if (Array.isArray(message.updates)) {
+        const now = Date.now()
+        for (const u of message.updates) {
+          if (!u || typeof u.username !== 'string') continue
+          const key = u.username.toLowerCase()
+          if (heatCache.size >= HEAT_CACHE_MAX) {
+            heatCache.delete(heatCache.keys().next().value)
+          }
+          heatCache.set(key, {
+            heat: typeof u.userHeat === 'number' ? u.userHeat : 0,
+            op: typeof u.op === 'number' ? u.op : 0,
+            re: typeof u.re === 'number' ? u.re : 0,
+            fetchedAt: now
+          })
+        }
+        applyHeatBorders()
+      }
+      break
+
     default:
       log(' Unknown message type:', message.type);
   }

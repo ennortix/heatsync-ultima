@@ -13,13 +13,13 @@ Public store listings for Chrome Web Store and Firefox AMO.
 ## Short Description
 
 ### Option 1 (132 chars max)
-Custom emotes for Twitch, Kick, and YouTube. Unlimited uploads, instant sync, tab completion, plus 7TV/BTTV/FFZ cosmetics and multichat overlay.
+Custom emotes for Twitch, Kick, and YouTube. 5000 slots, instant sync, tab completion, 7TV/BTTV/FFZ cosmetics, multichat.
 
 ### Option 2 (132 chars max)
-Use unlimited custom emotes across Twitch, Kick, and YouTube without approval. Tab complete, apply sets, undo edits, and watch multichat live.
+5000 emote slots across Twitch, Kick, and YouTube. Instant sync, tab completion, multichat, 7TV/BTTV/FFZ cosmetics.
 
 ### Option 3 (132 chars max)
-Your personal emote set on every stream. No slots, no queue. Twitch, Kick, YouTube. Multichat panels, badges, paints, real-time sync from heatsync.org.
+Your emotes on every stream. 5000 slots, instant sync. Twitch, Kick, YouTube. Multichat, badges, paints, real-time.
 
 **Recommended:** Option 1 (most feature-dense, covers core value prop)
 
@@ -28,12 +28,12 @@ Your personal emote set on every stream. No slots, no queue. Twitch, Kick, YouTu
 ## Detailed Description (16,000 char limit)
 
 ### Opening Hook (2-3 sentences)
-heatsync is a custom emote overlay for Twitch, Kick, and YouTube live chat. Upload unlimited images to heatsync.org and they'll appear in chat across all platforms in real time — no approval queues, no slot caps. Built for streamers, mods, and chatters who want personality and control over their chat experience.
+heatsync is a custom emote overlay for Twitch, Kick, and YouTube live chat. Upload images to heatsync.org (5000 slots per user) and they'll appear in chat across all platforms in real time — no approval queue. Built for streamers, mods, and chatters who want personality and control over their chat experience.
 
 ### Feature List (grouped by category)
 
 #### Emotes
-- **Upload without limits** — add any image, any format, any size. No approval queue, live within seconds.
+- **5000 slots, instant upload** — add any image, any format, any size. No approval queue, live within seconds.
 - **Instant tab completion** — type emote names in chat to autocomplete and insert. Works on Twitch, Kick, and YouTube.
 - **Emote sets** — group and save your emotes, apply entire sets with one click.
 - **Undo/redo** — instantly revert chat message edits.
@@ -96,7 +96,6 @@ heatsync is a custom emote overlay for Twitch, Kick, and YouTube live chat. Uplo
 | `cookies` | Read Twitch/Kick authentication to verify user identity and channel context. |
 | `alarms` | Schedule periodic tasks (emote sync every 60s, cosmetic refresh every 24h, WebSocket heartbeat). |
 | `notifications` | Show push notifications for mentions, DMs, and trending emotes (with user permission). |
-| `scripting` | Inject content scripts into chat pages to replace text with emotes and render cosmetics. |
 
 ### Host Permissions
 

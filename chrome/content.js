@@ -1957,6 +1957,13 @@ function rebuildEmoteMapIfDirty() {
   cachedEmotesByHash = new Map()
   for (const e of cachedAllEmotes.values()) {
     if (e.hash) cachedEmotesByHash.set(e.hash, e)
+    // Precompute third-party flag once per cache rebuild — saves 4 url.includes()
+    // per emote per message in generateEmoteElement (hot path during chat).
+    const u = e.url || ''
+    e.isThirdParty = u.includes('cdn.7tv.app') ||
+                     u.includes('cdn.betterttv.net') ||
+                     u.includes('cdn.frankerfacez.com') ||
+                     u.includes('static-cdn.jtvnw.net')
   }
 }
 
@@ -3903,14 +3910,12 @@ function processMessage(messageElement) {
   // Query author element once — passed to highlightUserMentions/colorUsernameMentions to avoid re-querying
   const usernameElement = messageElement.querySelector('.chat-author__display-name, [data-a-target="chat-message-username"], button.inline.font-bold')
   const username = usernameElement ? usernameElement.textContent.trim() : ''
+  const lowerUser = username ? username.toLowerCase() : ''
 
-  // Add to known chatters (for username coloring) - extract their Twitch color
-  // Priority: HeatSync API color > Twitch native color > white fallback
   if (username) {
-    const lowerUser = username.toLowerCase()
+    // Add to known chatters (for username coloring) - HeatSync API color > Twitch native > white
     const hsColor = heatsyncColorMap.get(lowerUser)
     if (hsColor) {
-      // HeatSync API color takes priority — apply it to the DOM element too
       if (usernameElement) usernameElement.style.color = hsColor
       knownChatters.set(lowerUser, hsColor)
     } else if (!knownChatters.has(lowerUser)) {
@@ -3918,11 +3923,8 @@ function processMessage(messageElement) {
       knownChatters.set(lowerUser, color)
       while (knownChatters.size > 500) knownChatters.delete(knownChatters.keys().next().value)
     }
-  }
 
-  // Extract sub tenure from Twitch subscriber badge alt text
-  if (username) {
-    const lowerUser = username.toLowerCase()
+    // Extract sub tenure from Twitch subscriber badge alt text
     if (!subTenureMap.has(lowerUser)) {
       const badgeImgs = messageElement.querySelectorAll('[data-a-target="chat-badge"] img, .chat-badge img')
       for (const img of badgeImgs) {
@@ -3935,11 +3937,8 @@ function processMessage(messageElement) {
         }
       }
     }
-  }
 
-  // Heat border — apply from cache or queue for batch fetch
-  if (username) {
-    const lowerUser = username.toLowerCase()
+    // Heat border — apply from cache or queue for batch fetch
     const cached = heatCache.get(lowerUser)
     if (cached && Date.now() - cached.fetchedAt < HEAT_CACHE_TTL) {
       applyHeatBorderToElement(messageElement, cached.heat)
@@ -3952,10 +3951,9 @@ function processMessage(messageElement) {
   if (cosmeticsEnabled) {
     if (isKick) {
       if (username) {
-        const kickSlug = username.toLowerCase()
-        messageElement.dataset.hsCosmeticKickUser = kickSlug
-        applyKickCosmeticsToMessage(messageElement, kickSlug)
-        queueKickCosmeticsLookup(kickSlug)
+        messageElement.dataset.hsCosmeticKickUser = lowerUser
+        applyKickCosmeticsToMessage(messageElement, lowerUser)
+        queueKickCosmeticsLookup(lowerUser)
       }
     } else {
       const userId = getTwitchUserId(messageElement)
@@ -3967,7 +3965,7 @@ function processMessage(messageElement) {
         // background so 7TV EventAPI can push real-time cosmetic updates.
         if (!_selfTwitchIdRegistered) {
           const me = getCurrentUsername()
-          if (me && username && me.toLowerCase() === username.toLowerCase()) {
+          if (me && username && me.toLowerCase() === lowerUser) {
             _selfTwitchIdRegistered = true
             safeSendMessage({ type: 'register_self_twitch_id', twitchId: userId })
           }
@@ -4002,12 +4000,11 @@ function processMessage(messageElement) {
   // For our own messages, skip broadcasts — our inventory is authoritative
   let allEmotes
   const currentUser = getCurrentUsername()
-  const isOwnMessage = currentUser && username && username.toLowerCase() === currentUser.toLowerCase()
+  const isOwnMessage = currentUser && lowerUser && lowerUser === currentUser.toLowerCase()
   if (pendingEmoteBroadcasts.size === 0 || !username || isOwnMessage) {
     allEmotes = cachedAllEmotes
   } else {
-    const userKey = username.toLowerCase()
-    const userBroadcastMap = pendingBroadcastsByUser.get(userKey)
+    const userBroadcastMap = pendingBroadcastsByUser.get(lowerUser)
     if (!userBroadcastMap || userBroadcastMap.size === 0) {
       allEmotes = cachedAllEmotes
     } else {
@@ -4091,20 +4088,16 @@ function isZeroWidthEmote(emoteName, emoteData, allEmotes) {
 // Post-process message to stack overlay emotes on adjacent base emotes
 function stackAdjacentOverlayEmotes(messageElement, allEmotes) {
   if (!messageElement.querySelector('.heatsync-emote-wrapper')) return
-  // Find ALL emotes: heatsync wrappers AND native Twitch/platform emotes
-  // Use comprehensive selectors for different Twitch DOM versions
-  // Single querySelectorAll preserves DOM order — no sort needed
-  const allEmoteElements = [...messageElement.querySelectorAll(COMBINED_EMOTE_SELECTOR)]
-    .filter(el => !el.closest('.heatsync-emote-stack'))
-
-  log(' 🔍 stackAdjacentOverlayEmotes: combined=' + allEmoteElements.length);
-
-  if (allEmoteElements.length < 2) {
-    log(' 🔍 Not enough emotes to stack:', allEmoteElements.length);
-    return;
+  // Find ALL emotes: heatsync wrappers AND native Twitch/platform emotes.
+  // Single querySelectorAll preserves DOM order — no sort needed. Single-pass
+  // collect avoids spread-into-array + filter allocation per message.
+  const _emoteNl = messageElement.querySelectorAll(COMBINED_EMOTE_SELECTOR)
+  const allEmoteElements = []
+  for (let _i = 0; _i < _emoteNl.length; _i++) {
+    const _el = _emoteNl[_i]
+    if (!_el.closest('.heatsync-emote-stack')) allEmoteElements.push(_el)
   }
-
-  log(' 🔍 stackAdjacentOverlayEmotes: found', allEmoteElements.length, 'emotes (heatsync + native)');
+  if (allEmoteElements.length < 2) return;
 
   // Simple logic: start at index 1, check if current is overlay, stack on previous
   for (let i = 1; i < allEmoteElements.length; i++) {
@@ -4598,12 +4591,16 @@ function generateEmoteElement(emote, isOverlay, modifierClass) {
     const blocked = blockedEmotes.has(emote.hash);
     const inInventory = inventoryHashSet.has(emote.hash) || inventoryNameSet.has(emote.name);
 
-    // Third-party CDN emotes are all "global" (gray) - can only block, not add to inventory
-    const url = emote.url || '';
-    const isThirdPartyCdn = url.includes('cdn.7tv.app') ||
-                            url.includes('cdn.betterttv.net') ||
-                            url.includes('cdn.frankerfacez.com') ||
-                            url.includes('static-cdn.jtvnw.net');
+    // Third-party CDN emotes are all "global" (gray) — flag precomputed in
+    // rebuildEmoteMapIfDirty. Fall back to url scan only if missing (broadcast path).
+    let isThirdPartyCdn = emote.isThirdParty
+    if (isThirdPartyCdn === undefined) {
+      const url = emote.url || '';
+      isThirdPartyCdn = url.includes('cdn.7tv.app') ||
+                        url.includes('cdn.betterttv.net') ||
+                        url.includes('cdn.frankerfacez.com') ||
+                        url.includes('static-cdn.jtvnw.net');
+    }
 
     // Determine overlay class based on state
     let overlayClass = '';
@@ -4667,7 +4664,6 @@ function generateEmoteElement(emote, isOverlay, modifierClass) {
     img.dataset.emoteName = emote.name;
 
     wrapper.appendChild(img);
-    log(' 🎯 generateEmoteElement:', emote.name, 'class:', wrapper.className);
     return wrapper;
 }
 

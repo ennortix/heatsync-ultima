@@ -5360,9 +5360,24 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     }
   }
 
+  // Memoized: input color strings are bounded (Twitch colors per session are
+  // a small set). Cache resets when readableNamesEnabled flips. boostReadability
+  // does HSL math (parseInt x6, Math.max/min) — was running 2-3x per msg build.
+  let _colorCacheReadable = readableNamesEnabled
+  const _colorCache = new Map()
   function sanitizeColor(color) {
-    if (!COLOR_RE.test(color)) return '#ffffff'
-    return readableNamesEnabled ? boostReadability(color) : color
+    if (_colorCacheReadable !== readableNamesEnabled) {
+      _colorCache.clear()
+      _colorCacheReadable = readableNamesEnabled
+    }
+    const hit = _colorCache.get(color)
+    if (hit !== undefined) return hit
+    let out
+    if (!COLOR_RE.test(color)) out = '#ffffff'
+    else out = readableNamesEnabled ? boostReadability(color) : color
+    _colorCache.set(color, out)
+    if (_colorCache.size > 500) _colorCache.delete(_colorCache.keys().next().value)
+    return out
   }
 
 

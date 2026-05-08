@@ -10572,21 +10572,30 @@ async function sendKickMessage(kickSlug, text) {
   // Emote size (1, 2, or 4)
   let emoteSize = 1;
 
-  // Upgrade emote URL to match current emote size setting
+  // Upgrade emote URL to match current emote size setting.
+  // Memoized: input URLs are bounded by emote count (~few thousand). Cache
+  // resets when emoteSize changes — same input → same output otherwise.
+  let _resCacheSize = 1
+  const _resCache = new Map()
   function getChatResUrl(url) {
     if (!url || emoteSize === 1) return url;
+    if (_resCacheSize !== emoteSize) { _resCache.clear(); _resCacheSize = emoteSize }
+    const hit = _resCache.get(url)
+    if (hit !== undefined) return hit
+    let out = url
     if (emoteSize === 2) {
-      if (url.includes('cdn.7tv.app')) return url.replace('/1x', '/2x');
-      if (url.includes('cdn.betterttv.net')) return url.replace('/1x', '/2x');
-      if (url.includes('cdn.frankerfacez.com')) return url.replace(/\/1(?=\.|$)/, '/2');
-      if (url.includes('static-cdn.jtvnw.net')) return url.replace('/1.0', '/2.0');
+      if (url.includes('cdn.7tv.app')) out = url.replace('/1x', '/2x');
+      else if (url.includes('cdn.betterttv.net')) out = url.replace('/1x', '/2x');
+      else if (url.includes('cdn.frankerfacez.com')) out = url.replace(/\/1(?=\.|$)/, '/2');
+      else if (url.includes('static-cdn.jtvnw.net')) out = url.replace('/1.0', '/2.0');
     } else if (emoteSize === 4) {
-      if (url.includes('cdn.7tv.app')) return url.replace('/1x', '/4x').replace('/2x', '/4x');
-      if (url.includes('cdn.betterttv.net')) return url.replace('/1x', '/3x').replace('/2x', '/3x');
-      if (url.includes('cdn.frankerfacez.com')) return url.replace(/\/[12](?=\.|$)/, '/4');
-      if (url.includes('static-cdn.jtvnw.net')) return url.replace(/\/[12]\.0/, '/3.0');
+      if (url.includes('cdn.7tv.app')) out = url.replace('/1x', '/4x').replace('/2x', '/4x');
+      else if (url.includes('cdn.betterttv.net')) out = url.replace('/1x', '/3x').replace('/2x', '/3x');
+      else if (url.includes('cdn.frankerfacez.com')) out = url.replace(/\/[12](?=\.|$)/, '/4');
+      else if (url.includes('static-cdn.jtvnw.net')) out = url.replace(/\/[12]\.0/, '/3.0');
     }
-    return url;
+    _resCache.set(url, out)
+    return out;
   }
 
   // Upgrade emote URL to highest resolution for tooltip
@@ -10668,6 +10677,7 @@ async function sendKickMessage(kickSlug, text) {
         _chunkObserver.unobserve(el)
       }
     }, { root: scrollRoot, rootMargin: '300px 0px', threshold: 0 })
+    cleanup.trackObserver(_chunkObserver)
     return _chunkObserver
   }
 
@@ -11753,14 +11763,18 @@ async function sendKickMessage(kickSlug, text) {
   function processEmotes(text, channel, extraCache, senderEmotes) {
     if (emoteCache.size === 0 && !channelEmoteCaches[channel] && !extraCache?.size && !senderEmotes?.size) return text;
 
-    // Split adjacent Kick emotes and text touching emotes (e.g. "word[emote:id:name]")
-    // Also split unicode emoji from adjacent non-emoji chars so `🌆<3` becomes
-    // `🌆` (rendered big) + `<3` (text). Preserves multi-codepoint emoji sequences:
-    // skin tone modifiers, ZWJ joins, and VS16 variation selectors stay intact.
-    const words = text
-      .replace(/\]\[emote:/g, '] [emote:')
-      .replace(/([^\s\[])\[emote:/g, '$1 [emote:')
-      .replace(/\]([^\s\]])/g, '] $1')
+    // Kick emote splits gated by indexOf — Kick text is <5% of overall msg volume;
+    // skipping 3 replaces on Twitch/YT messages saves allocations per message.
+    // Unicode emoji split always applies: separate emoji from adjacent non-emoji.
+    // Multi-codepoint sequences (skin tone, ZWJ, VS16) stay intact.
+    let pre = text
+    if (pre.indexOf('[emote:') !== -1) {
+      pre = pre
+        .replace(/\]\[emote:/g, '] [emote:')
+        .replace(/([^\s\[])\[emote:/g, '$1 [emote:')
+        .replace(/\]([^\s\]])/g, '] $1')
+    }
+    const words = pre
       .replace(/([\p{Extended_Pictographic}\p{Emoji_Modifier}\uFE0F])(?=[^\s\p{Extended_Pictographic}\p{Emoji_Modifier}\uFE0F\u200D])/gu, '$1 ')
       .replace(/([^\s\p{Extended_Pictographic}\p{Emoji_Modifier}\uFE0F\u200D])(?=\p{Extended_Pictographic})/gu, '$1 ')
       .split(/(\s+)/);
@@ -11825,7 +11839,6 @@ async function sendKickMessage(kickSlug, text) {
 
         if (isOverlayEmote) {
           // Overlay emote - stack on previous base (discard whitespace between)
-          log('FOUND zeroWidth emote:', word, '| hasBase:', !!pendingStack);
           if (pendingStack) {
             pendingStack.overlays.push(imgHtml);
             pendingWhitespace = '';
@@ -28561,9 +28574,24 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     }
   }
 
+  // Memoized: input color strings are bounded (Twitch colors per session are
+  // a small set). Cache resets when readableNamesEnabled flips. boostReadability
+  // does HSL math (parseInt x6, Math.max/min) — was running 2-3x per msg build.
+  let _colorCacheReadable = readableNamesEnabled
+  const _colorCache = new Map()
   function sanitizeColor(color) {
-    if (!COLOR_RE.test(color)) return '#ffffff'
-    return readableNamesEnabled ? boostReadability(color) : color
+    if (_colorCacheReadable !== readableNamesEnabled) {
+      _colorCache.clear()
+      _colorCacheReadable = readableNamesEnabled
+    }
+    const hit = _colorCache.get(color)
+    if (hit !== undefined) return hit
+    let out
+    if (!COLOR_RE.test(color)) out = '#ffffff'
+    else out = readableNamesEnabled ? boostReadability(color) : color
+    _colorCache.set(color, out)
+    if (_colorCache.size > 500) _colorCache.delete(_colorCache.keys().next().value)
+    return out
   }
 
 

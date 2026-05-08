@@ -1002,12 +1002,12 @@ async function pollFollowedLive() {
       }
     }
 
-    // Anything in lastSeenLive but not in current snapshot: stream ended.
-    // Mark not-live in state but don't fire anything (not a transition we notify on).
+    // Anything in lastSeenLive but not in current snapshot: stream ended or
+    // the user was unfollowed. Delete the entry so the map stays bounded by
+    // currently-live followed users instead of growing across all ever-followed
+    // accounts. Off-transition is implicit (no longer in lastSeenLive == not live).
     for (const k of Object.keys(_liveStatusState.lastSeenLive)) {
-      if (!seen.has(k)) {
-        _liveStatusState.lastSeenLive[k] = false
-      }
+      if (!seen.has(k)) delete _liveStatusState.lastSeenLive[k]
     }
     // Prune lastNotifiedAt entries older than throttle window so memory doesn't grow
     const cutoff = Date.now() - LIVE_NOTIFY_THROTTLE_MS
@@ -4778,8 +4778,10 @@ async function handleMessage(message, sender, sendResponse) {
           }
         }
         cache.set(key, { emotes: collected, ts: Date.now() })
-        // LRU evict: keep most-recent 5000
-        if (cache.size > 5000) cache.delete(cache.keys().next().value)
+        // LRU evict: keep most-recent 500. Each entry holds a sender's full
+        // 7TV+BTTV personal set (potentially 100+ emote objects) — 5000 was
+        // overkill for any realistic chatroom and bloated the SW heap.
+        if (cache.size > 500) cache.delete(cache.keys().next().value)
         result[key] = collected
       }))
       sendResponse({ emotes: result })

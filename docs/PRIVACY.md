@@ -80,7 +80,7 @@ we **explicitly do not** collect:
 
 ## contact
 
-**questions or concerns?** email **mellen@heatsync.org** or open a GitHub issue at [github.com/heatsync/extension](https://github.com/heatsync/extension/issues).
+**questions or concerns?** email **mellen@heatsync.org** or open a GitHub issue at [github.com/mellen9999/heatsync-extension](https://github.com/mellen9999/heatsync-extension/issues).
 
 **report a privacy issue?** see [SECURITY.md](../SECURITY.md) for responsible disclosure.
 

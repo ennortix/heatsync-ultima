@@ -1,5 +1,23 @@
 # changelog
 
+## [1.3.4] — 2026-05-08
+
+### changed
+- store-listing copy aligned to 5000-slot limit (was incorrectly "unlimited")
+- privacy URL canonicalized to `heatsync.org/privacy` (no redirect)
+- removed dead `scripting` permission row from store-listing permissions table
+
+### perf
+- multichat picker right-click block/unblock fixes
+- 30k-user scale gating + jitter for backend stability
+- WebSocket emote-broadcast and heat push at scale via heatsync cosmetics proxy
+
+### fixed
+- multichat picker pointer cursor on emote wrap
+- right-click on blocked emote now unblocks
+- right-click on twitch sub emote blocks instead of erroring
+- vi-mode treats overlay-emote stacks as single atoms
+
 ## [1.3.1] — 2026-04-29
 
 ### changed

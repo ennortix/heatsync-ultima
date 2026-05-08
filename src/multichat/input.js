@@ -545,7 +545,17 @@ function initInput() {
       if (state === 'blocked') {
         unblockEmote(emoteName);
       } else if (state === 'owned') {
-        removeEmoteFromInventory(emoteName, e.target);
+        // Sub emotes have no slot — they can't be removed from inventory, only blocked.
+        // The `subscription` flag isn't always set on twitch sub entries in
+        // viewerPersonalEmotes (depends on backend payload), so fall back to
+        // checking slot: anything without a slot can't be DELETEd via the
+        // /api/user/emotes/:slot endpoint, treat as block-only.
+        const cached = lookupEmote(emoteName);
+        if (cached?.subscription || cached?.slot == null) {
+          blockEmote(emoteName);
+        } else {
+          removeEmoteFromInventory(emoteName, e.target);
+        }
       } else {
         blockEmote(emoteName);
       }

@@ -4577,6 +4577,7 @@ function injectStyles() {
     .hs-mc-emote {
       width: auto;
       height: auto;
+      max-height: var(--hs-emote-size, 32px);
       vertical-align: middle;
       margin: 0 2px;
       padding: 4px;

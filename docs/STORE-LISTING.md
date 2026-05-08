@@ -119,8 +119,8 @@ heatsync is a custom emote overlay for Twitch, Kick, and YouTube live chat. Uplo
 ## Categories
 
 ### Chrome Web Store
-- **Primary:** Productivity
-- **Secondary:** Communication
+- **Primary:** Communication
+- **Secondary:** Social Networking (if a secondary slot is offered)
 
 ### Firefox AMO
 - **Category:** Social & Communication

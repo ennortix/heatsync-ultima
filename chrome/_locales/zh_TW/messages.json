@@ -3,7 +3,7 @@
     "message": "heatsync"
   },
   "manifest_description": {
-    "message": "Twitch、Kick 與 YouTube 聊天室自訂表情。無限格位、Tab 自動補全、即時同步。"
+    "message": "Twitch、Kick 與 YouTube 聊天室自訂表情。5000 格位、Tab 自動補全、即時同步。"
   },
   "common_loading": {
     "message": "載入中..."

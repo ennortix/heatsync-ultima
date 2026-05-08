@@ -74,7 +74,7 @@ heatsync is a custom emote overlay for Twitch, Kick, and YouTube live chat. Uplo
 ### Privacy & Open Source
 - **No analytics, no tracking** — we don't collect or sell your data. Your emotes and activity stay between you and heatsync.org.
 - **Open source** — full source code on GitHub (github.com/mellen9999/heatsync-extension). Audit the code yourself.
-- **Privacy policy** — read our transparency statement at heatsync.org/privacy.
+- **Privacy policy** — read our transparency statement at heatsync.org/legal/privacy.
 
 ### Getting Started
 1. **Sign up** — go to heatsync.org, log in with Twitch or Kick.

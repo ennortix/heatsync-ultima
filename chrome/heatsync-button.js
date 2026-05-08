@@ -1592,6 +1592,8 @@
     emotePlaceholderMode: false, // Show colored rectangles instead of emote images
     viMode: false,               // Vim keybindings for chat input
     showPlatformBadges: true,    // Show [T]/[K]/[YT] badges on messages
+    // 'menu'=show block/cancel popup (default), 'instant'=block on right-click, 'off'=disabled
+    rightClickBlockMode: 'menu',
   };
 
   // Get extension settings (sync - returns cached)
@@ -1709,6 +1711,16 @@
             </div>
             <div class="heatsync-toggle ${settings.emotePlaceholderMode ? 'active' : ''}" data-setting="emotePlaceholderMode"></div>
           </div>
+
+          <div class="heatsync-setting-row">
+            <div>
+              <div class="heatsync-setting-label">right-click block</div>
+              <div class="heatsync-setting-desc">menu shows block/cancel · instant blocks immediately · off disables it</div>
+            </div>
+            <div class="heatsync-rcb-segmented" style="display:inline-flex;border:1px solid #808080;font-family:'CozetteVector',monospace;font-size:12px">
+              ${['menu','instant','off'].map(v => `<button type="button" class="heatsync-rcb-opt" data-rcb="${v}" style="background:${(settings.rightClickBlockMode||'menu')===v?'#fff':'transparent'};color:${(settings.rightClickBlockMode||'menu')===v?'#000':'#fff'};border:none;cursor:pointer;padding:4px 10px;font-family:inherit;font-size:12px">${v}</button>`).join('')}
+            </div>
+          </div>
         </div>
 
         <div class="heatsync-settings-section">
@@ -1776,6 +1788,23 @@
         saveExtensionSettings(currentSettings);
         toggle.classList.toggle('active');
         log(' Setting changed:', settingKey, '=', currentSettings[settingKey]);
+      });
+    });
+
+    // Right-click block segmented control
+    const rcbButtons = grid.querySelectorAll('.heatsync-rcb-opt');
+    rcbButtons.forEach(btn => {
+      btn.addEventListener('click', () => {
+        const value = btn.dataset.rcb;
+        const currentSettings = getExtensionSettings();
+        currentSettings.rightClickBlockMode = value;
+        saveExtensionSettings(currentSettings);
+        rcbButtons.forEach(b => {
+          const sel = b.dataset.rcb === value;
+          b.style.background = sel ? '#fff' : 'transparent';
+          b.style.color = sel ? '#000' : '#fff';
+        });
+        log(' rightClickBlockMode →', value);
       });
     });
   }
@@ -2558,7 +2587,10 @@
         }
       })
 
-      // Context menu delegation
+      // Context menu delegation — branches on rightClickBlockMode:
+      //   'menu'    → existing block/cancel popup (default)
+      //   'instant' → block immediately, no menu
+      //   'off'     → preventDefault, do nothing (no native browser menu either)
       grid.addEventListener('contextmenu', (evt) => {
         const wrap = evt.target.closest('.heatsync-emote-wrap')
         if (!wrap) return
@@ -2572,6 +2604,25 @@
         } else {
           e = _virtualPickerEmotes[idx - _virtualRecentCount]
           if (!e) return
+        }
+
+        const mode = (cachedSettings.rightClickBlockMode || 'menu')
+        if (mode === 'off') {
+          evt.preventDefault()
+          return
+        }
+        if (mode === 'instant' && currentTab !== 'mine') {
+          evt.preventDefault()
+          const hash = e.hash || e.id || btoa(e.url || e.pickerUrl || '').slice(0, 24)
+          if (_blockedHashSet.has(hash)) {
+            chrome.runtime.sendMessage({ type: 'unblock_emote', hash })
+              .then(() => { _blockedHashSet.delete(hash); renderEmoteGrid(); showPickerToast(t('btn_toast_unblocked')) })
+              .catch(err => log('Unblock failed:', err.message))
+          } else {
+            blockEmote(e)
+            showPickerToast(t('btn_toast_blocked'))
+          }
+          return
         }
         showContextMenu(evt, e, currentTab)
       })

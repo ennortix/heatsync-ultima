@@ -4600,6 +4600,21 @@ function injectStyles() {
       box-sizing: content-box;
       object-fit: contain;
     }
+    /* Picker emote wrap — blocked state draws a dashed grey outline on the
+       wrap (not the img — opacity/visibility on the img kill its own outline)
+       and hides the inner img while keeping the slot's layout intact. */
+    .hs-mc-picker-emote-wrap {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .hs-mc-picker-emote-wrap.blocked {
+      outline: 2px dashed #808080 !important;
+      outline-offset: -2px !important;
+    }
+    .hs-mc-picker-emote-wrap.blocked img {
+      visibility: hidden !important;
+    }
 
     /* Emojis — native size by default, doubled when #hs-mc-container.hs-2x */
     .hs-mc-emoji {
@@ -10689,7 +10704,13 @@ async function sendKickMessage(kickSlug, text) {
 
   function emoteImgHtml([name, emote]) {
     const state = emote.state || 'global'
-    return `<img src="${escapeHtml(emote.url)}" alt="${escapeHtml(name)}" title="${escapeHtml(name)} (${escapeHtml(emote.source)})" class="hs-mc-picker-emote hs-emote-${escapeHtml(emote.source)}" data-name="${escapeHtml(name)}" data-source="${escapeHtml(emote.source)}" data-state="${escapeHtml(state)}" loading="lazy">`
+    // Wrap each picker emote in a span so blocked state can show a dashed outline
+    // (outline directly on img with visibility:hidden / opacity:0 renders invisibly
+    // because both kill outlines on replaced elements).
+    const isBlocked = blockedEmoteNames.has(name)
+    const wrapCls = isBlocked ? 'hs-mc-picker-emote-wrap blocked' : 'hs-mc-picker-emote-wrap'
+    const safeName = escapeHtml(name)
+    return `<span class="${wrapCls}" data-name="${safeName}"><img src="${escapeHtml(emote.url)}" alt="${safeName}" title="${safeName} (${escapeHtml(emote.source)})" class="hs-mc-picker-emote hs-emote-${escapeHtml(emote.source)}" data-name="${safeName}" data-source="${escapeHtml(emote.source)}" data-state="${escapeHtml(state)}" loading="lazy"></span>`
   }
 
   /**
@@ -11276,6 +11297,14 @@ async function sendKickMessage(kickSlug, text) {
       }
     });
 
+    // Update any picker thumbnails for this emote (the existing wrapper update
+    // path only touches chat messages, not the picker grid).
+    try {
+      document.querySelectorAll(`.hs-mc-picker-emote-wrap[data-name="${CSS.escape(emoteName)}"]`).forEach(w => {
+        w.classList.add('blocked')
+      })
+    } catch {}
+
     refreshEmoteTooltip(emoteName, 'blocked');
     showToast(`blocked: ${emoteName}`, 'success');
     flashAllEmotes(emoteName, 'hs-flash-block');
@@ -11313,6 +11342,13 @@ async function sendKickMessage(kickSlug, text) {
         img.dataset.state = newState;
       }
     });
+
+    // Also drop the dashed outline on any picker thumbnails for this emote.
+    try {
+      document.querySelectorAll(`.hs-mc-picker-emote-wrap[data-name="${CSS.escape(emoteName)}"]`).forEach(w => {
+        w.classList.remove('blocked')
+      })
+    } catch {}
 
     refreshEmoteTooltip(emoteName, newState);
     showToast(`unblocked: ${emoteName}`, 'success');

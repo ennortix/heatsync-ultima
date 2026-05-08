@@ -1455,6 +1455,21 @@ function injectStyles() {
       box-sizing: content-box;
       object-fit: contain;
     }
+    /* Picker emote wrap — blocked state draws a dashed grey outline on the
+       wrap (not the img — opacity/visibility on the img kill its own outline)
+       and hides the inner img while keeping the slot's layout intact. */
+    .hs-mc-picker-emote-wrap {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .hs-mc-picker-emote-wrap.blocked {
+      outline: 2px dashed #808080 !important;
+      outline-offset: -2px !important;
+    }
+    .hs-mc-picker-emote-wrap.blocked img {
+      visibility: hidden !important;
+    }
 
     /* Emojis — native size by default, doubled when #hs-mc-container.hs-2x */
     .hs-mc-emoji {

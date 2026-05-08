@@ -142,7 +142,13 @@
 
   function emoteImgHtml([name, emote]) {
     const state = emote.state || 'global'
-    return `<img src="${escapeHtml(emote.url)}" alt="${escapeHtml(name)}" title="${escapeHtml(name)} (${escapeHtml(emote.source)})" class="hs-mc-picker-emote hs-emote-${escapeHtml(emote.source)}" data-name="${escapeHtml(name)}" data-source="${escapeHtml(emote.source)}" data-state="${escapeHtml(state)}" loading="lazy">`
+    // Wrap each picker emote in a span so blocked state can show a dashed outline
+    // (outline directly on img with visibility:hidden / opacity:0 renders invisibly
+    // because both kill outlines on replaced elements).
+    const isBlocked = blockedEmoteNames.has(name)
+    const wrapCls = isBlocked ? 'hs-mc-picker-emote-wrap blocked' : 'hs-mc-picker-emote-wrap'
+    const safeName = escapeHtml(name)
+    return `<span class="${wrapCls}" data-name="${safeName}"><img src="${escapeHtml(emote.url)}" alt="${safeName}" title="${safeName} (${escapeHtml(emote.source)})" class="hs-mc-picker-emote hs-emote-${escapeHtml(emote.source)}" data-name="${safeName}" data-source="${escapeHtml(emote.source)}" data-state="${escapeHtml(state)}" loading="lazy"></span>`
   }
 
   /**
@@ -729,6 +735,14 @@
       }
     });
 
+    // Update any picker thumbnails for this emote (the existing wrapper update
+    // path only touches chat messages, not the picker grid).
+    try {
+      document.querySelectorAll(`.hs-mc-picker-emote-wrap[data-name="${CSS.escape(emoteName)}"]`).forEach(w => {
+        w.classList.add('blocked')
+      })
+    } catch {}
+
     refreshEmoteTooltip(emoteName, 'blocked');
     showToast(`blocked: ${emoteName}`, 'success');
     flashAllEmotes(emoteName, 'hs-flash-block');
@@ -766,6 +780,13 @@
         img.dataset.state = newState;
       }
     });
+
+    // Also drop the dashed outline on any picker thumbnails for this emote.
+    try {
+      document.querySelectorAll(`.hs-mc-picker-emote-wrap[data-name="${CSS.escape(emoteName)}"]`).forEach(w => {
+        w.classList.remove('blocked')
+      })
+    } catch {}
 
     refreshEmoteTooltip(emoteName, newState);
     showToast(`unblocked: ${emoteName}`, 'success');

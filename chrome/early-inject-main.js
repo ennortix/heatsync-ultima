@@ -346,12 +346,6 @@
     return hdrs
   }
 
-  // Use captured integrity token — it's grabbed from Twitch's own /integrity calls
-  // which include proper Kasada proofs. We can't fetch our own.
-  function hasValidIntegrity() {
-    return gql.integrity && gql.integrityTs && (Date.now() - gql.integrityTs < 1800000) // 30min
-  }
-
   async function executeGqlProxy(req) {
     const hash = gql.hashes[req.operation]
     if (!hash && !req.rawQuery) {

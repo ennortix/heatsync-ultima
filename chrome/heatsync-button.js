@@ -2190,16 +2190,6 @@
     return url;
   }
 
-  // Preloading disabled — new Image() in content scripts uses moz-extension:// origin,
-  // Firefox ORB blocks those opaque responses and poisons the browser cache, causing
-  // actual <img> elements in chat to show as broken. Browser caches images natively
-  // after first render in the emote picker grid.
-  function preloadImages(urls, showProgress = false) {
-    return Promise.resolve();
-  }
-
-
-
   // Render the emote grid based on current tab and search
   let renderBatchTimeout = null;
 
@@ -3890,84 +3880,6 @@
     const btn = document.getElementById(BUTTON_ID);
     if (panel && !panel.contains(e.target) && e.target !== btn && !btn.contains(e.target)) {
       closePanel();
-    }
-  }
-
-  // Load channel emote preview (7TV, BTTV, FFZ)
-  async function loadChannelEmotePreview(channel) {
-    log(' loadChannelEmotePreview called for:', channel);
-    const previewEl = document.getElementById('heatsync-emote-preview');
-    if (!previewEl) {
-      log(' previewEl not found, aborting');
-      return;
-    }
-
-    const importBtn = document.getElementById('heatsync-import-channel');
-    if (importBtn) {
-      importBtn.disabled = true;
-      importBtn.innerHTML = `<span class="heatsync-status loading">${t('btn_loading_emotes')}</span>`;
-    }
-
-    try {
-      // Fetch from our API (aggregates 7TV, BTTV, FFZ)
-      const fetchUrl = `/api/channel/${channel}/emotes`;
-      log(' Fetching:', fetchUrl);
-      const data = await HS.apiFetch(fetchUrl);
-      log(' API returned:', data.count, 'emotes');
-      const emotes = data.emotes || [];
-      channelEmotesCache = emotes;
-
-      if (emotes.length === 0) {
-        previewEl.innerHTML = `<div class="heatsync-status">${t('btn_no_third_party')}</div>`;
-        previewEl.style.display = 'block';
-        if (importBtn) {
-          importBtn.disabled = true;
-          importBtn.textContent = t('btn_no_emotes_import');
-        }
-        return;
-      }
-
-      // Build provider summary
-      const providers = {};
-      emotes.forEach(e => {
-        const p = e.provider || 'unknown';
-        providers[p] = (providers[p] || 0) + 1;
-      });
-
-      // Show preview grid (first 24 emotes)
-      const previewEmotes = emotes.slice(0, 24);
-      previewEl.innerHTML = previewEmotes.map(e =>
-        `<img src="${escapeHtml(e.url)}" alt="${escapeHtml(e.name)}" title="${escapeHtml(e.name)} (${escapeHtml(e.provider)})" loading="lazy" referrerpolicy="no-referrer">`
-      ).join('');
-      previewEl.style.display = 'grid';
-
-      // Update import button
-      if (importBtn) {
-        importBtn.disabled = false;
-        const providerBadges = Object.entries(providers)
-          .map(([p, count]) => `<span class="heatsync-provider ${escapeHtml(p.toLowerCase())}">${escapeHtml(p)}</span>`)
-          .join('');
-        importBtn.innerHTML = `
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M12 5v14M5 12h14"/>
-          </svg>
-          ${t('btn_import_count', [String(emotes.length)])}
-          <span class="heatsync-emote-count">${providerBadges}</span>
-        `;
-      }
-
-    } catch (err) {
-      previewEl.innerHTML = `<div class="heatsync-status">${t('btn_failed_load')}</div>`;
-      previewEl.style.display = 'block';
-      if (importBtn) {
-        importBtn.disabled = false;
-        importBtn.innerHTML = `
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M12 5v14M5 12h14"/>
-          </svg>
-          ${t('btn_retry_loading')}
-        `;
-      }
     }
   }
 

@@ -4,10 +4,6 @@
 
 let activeProfileCard = null  // { username, platform, data, ts }
 
-function isProfileCardOpen() {
-  return !!activeProfileCard
-}
-
 async function openProfileCard(username, platform) {
   if (!username) return
   username = String(username).toLowerCase()
@@ -406,9 +402,9 @@ function renderProfileCardView() {
 
   const isMuted = mutedUsers.has(username)
   const inChannels = config.channels.some(c => {
-    const id = (typeof c === 'string' ? c : c.id)?.toLowerCase()
-    const tw = (typeof c === 'string' ? c : c.twitch)?.toLowerCase()
-    const ki = typeof c === 'string' ? null : c.kick?.toLowerCase()
+    const id = c.id?.toLowerCase()
+    const tw = c.twitch?.toLowerCase()
+    const ki = c.kick?.toLowerCase()
     return id === username || tw === username || ki === username
   })
 
@@ -657,7 +653,7 @@ function setupProfileCardHandlers() {
 function pcMention(name) {
   closeProfileCard()
   // If on a non-chat tab, switch to live first
-  const isChatTab = currentTab === 'live' || (typeof config !== 'undefined' && config.channels?.some(c => (typeof c === 'string' ? c : c.id) === currentTab))
+  const isChatTab = currentTab === 'live' || (typeof config !== 'undefined' && config.channels?.some(c => c.id === currentTab))
   if (!isChatTab) switchTab('live')
   setTimeout(() => {
     const inputBar = document.getElementById('hs-mc-inputbar')
@@ -711,7 +707,7 @@ async function pcAddAsChannel(username) {
   if (!config?.channels) return
   const id = username.toLowerCase()
   const exists = config.channels.some(c => {
-    const cid = (typeof c === 'string' ? c : c.id)?.toLowerCase()
+    const cid = c.id?.toLowerCase()
     return cid === id
   })
   if (exists) {

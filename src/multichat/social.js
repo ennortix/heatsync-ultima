@@ -625,7 +625,7 @@ function listenForSocialEvents() {
       // missing per-channel emotes for the linked streamer.
       let ytChannelHint = null
       if (targetChannelId && targetChannelId !== '__live_yt_auto__') {
-        const linkedCh = config.channels.find(c => typeof c !== 'string' && c.id === targetChannelId)
+        const linkedCh = config.channels.find(c => c.id === targetChannelId)
         if (linkedCh) ytChannelHint = linkedCh.twitch || linkedCh.kick || null
       }
 
@@ -680,7 +680,7 @@ function listenForSocialEvents() {
         // a YT replay/buffered msg would override the offline-Twitch truth.
         if (targetChannelId !== '__live_yt_auto__') {
           try {
-            const ch = config.channels.find(c => typeof c !== 'string' && c.id === targetChannelId)
+            const ch = config.channels.find(c => c.id === targetChannelId)
             const isYtOnly = ch && !ch.twitch && !ch.kick && ch.youtube
             if (isYtOnly) {
               const tabEl = document.querySelector(`#hs-mc-tabbar .hs-mc-tab[data-tab="${CSS.escape(targetChannelId)}"]`)
@@ -762,7 +762,7 @@ function listenForSocialEvents() {
         if (targetChannelId !== '__live_yt_auto__') {
           const tabEl = document.querySelector(`#hs-mc-tabbar .hs-mc-tab[data-tab="${CSS.escape(targetChannelId)}"]`)
           if (tabEl) {
-            const ch = config.channels.find(c => typeof c !== 'string' && c.id === targetChannelId)
+            const ch = config.channels.find(c => c.id === targetChannelId)
             const isYtOnly = ch && !ch.twitch && !ch.kick && ch.youtube
             if (msg.status === 'connected') {
               if (isYtOnly) {

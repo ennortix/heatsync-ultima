@@ -30,9 +30,8 @@
     if (_channelLookup) return _channelLookup
     _channelLookup = { twitch: new Map(), kick: new Map() }
     for (const ch of config.channels) {
-      const c = typeof ch === 'string' ? { twitch: ch } : ch
-      if (c.twitch) _channelLookup.twitch.set(c.twitch, ch)
-      if (c.kick) _channelLookup.kick.set(c.kick, ch)
+      if (ch.twitch) _channelLookup.twitch.set(ch.twitch, ch)
+      if (ch.kick) _channelLookup.kick.set(ch.kick, ch)
     }
     return _channelLookup
   }
@@ -579,24 +578,6 @@
   // Stream event user colors — login → color (populated from server on connect)
   const streamColorMap = new Map();
 
-  // One-time migration: copy ui_settings from storage.local to storage.sync.
-  // Reuses the in-flight cachedUiSettings() to avoid a second sync IPC.
-  async function migrateSettingsToSync() {
-    try {
-      const [syncData, localData] = await Promise.all([
-        cachedUiSettings(),
-        chrome.storage.local.get(['ui_settings']),
-      ])
-      if (!syncData.ui_settings && localData.ui_settings) {
-        await chrome.storage.sync.set({ ui_settings: localData.ui_settings })
-        invalidateUiSettingsCache()
-        log('Migrated ui_settings from local to sync')
-      }
-    } catch (e) {
-      log('Settings migration error:', e)
-    }
-  }
-
   // Init-time storage cache — load* functions all read the SAME `ui_settings`
   // key. Without this, init() fires 17+ separate sync IPCs to chrome.storage.
   // One `cachedUiSettings()` call boots a single in-flight Promise that every
@@ -679,38 +660,17 @@
     return added
   }
 
-  // Normalize stream event text to [channel] ◆ format (old events may lack brackets)
-  function normalizeStreamEventText(text, channel) {
-    if (!text) return text
-    // Already has brackets — keep as-is
-    if (text.startsWith('[')) return text
-    // Migrate: "channel ◆ ..." → "[channel] ◆ ..."
-    if (channel && text.startsWith(channel + ' \u25C6')) {
-      return `[${channel}] \u25C6` + text.slice(channel.length + 2)
-    }
-    // Try to extract channel from "channelname ◆ ..." pattern
-    const m = text.match(/^([a-zA-Z0-9_]+) \u25C6/)
-    if (m) return `[${m[1]}]` + text.slice(m[1].length)
-    return text
-  }
-
   async function loadStreamEvents() {
     try {
       const data = await api.storage.local.get(STREAM_EVENTS_KEY)
       const events = data[STREAM_EVENTS_KEY]
       if (!Array.isArray(events) || events.length === 0) return
       const cutoff = Date.now() - 86400000 // 24h expiry
-      // Dedup by normalized text (multi-tab race can create duplicate entries in storage)
+      // Dedup by text (multi-tab race can create duplicate entries in storage)
       const seenTexts = new Set()
       const valid = []
       for (const e of events) {
         if (e.time <= cutoff) continue
-        // Prune 7TV emote change messages that were incorrectly saved as stream events
-        const evtText = e.text || e.message || ''
-        if (evtText.includes('removed from channel') || evtText.includes('added to channel') ||
-            evtText.includes('removed 7TV emote') || evtText.includes('added 7TV emote')) continue
-        // Normalize old unbracketed format to [channel] format
-        e.text = normalizeStreamEventText(e.text, e.channel)
         if (e.text && seenTexts.has(e.text)) continue
         seenTexts.add(e.text)
         valid.push(e)
@@ -961,7 +921,7 @@
       // Remove any existing context menu
       document.getElementById('hs-mc-ctx-menu')?.remove();
 
-      const ch = config.channels.find(c => (typeof c === 'string' ? c : c.id) === tabId);
+      const ch = config.channels.find(c => c.id === tabId);
       const menu = document.createElement('div');
       menu.id = 'hs-mc-ctx-menu';
       menu.style.cssText = 'position:fixed;z-index:99999;background:#000;border:1px solid #808080;border-radius:0;padding:4px 0;min-width:150px;font-size:12px;font-family:inherit;';
@@ -2900,9 +2860,9 @@
 
     // Persist into ALL channel buffers (IRC + Kick + YouTube) so notification appears on every tab
     for (const ch of config.channels) {
-      const twitchName = typeof ch === 'string' ? ch : ch?.twitch
-      const kickName = typeof ch === 'string' ? null : ch?.kick
-      const chId = typeof ch === 'string' ? ch : ch?.id
+      const twitchName = ch?.twitch
+      const kickName = ch.kick
+      const chId = ch?.id
       const buffer = (twitchName && irc?.channels?.get(twitchName)) ||
                      (kickName && kickChat?.channels?.get(kickName))
       if (buffer) buffer.push(msg)
@@ -2914,7 +2874,7 @@
     // Live-append to current tab if it's a chat tab
     const active = currentTab
     const isChatTab = active === 'live' || active === 'mentions' ||
-      config.channels.some(ch => (typeof ch === 'string' ? ch : ch.id) === active)
+      config.channels.some(ch => ch.id === active)
     if (isChatTab) appendMessage(msg, active)
   }
 
@@ -3045,7 +3005,7 @@
   }
 
   function isPlatformFilterTab(tabId) {
-    return tabId === 'live' || config.channels.some(c => (typeof c === 'string' ? c : c.id) === tabId);
+    return tabId === 'live' || config.channels.some(c => c.id === tabId);
   }
 
   function renderPlatformFilterButtons() {
@@ -3058,8 +3018,8 @@
     // Determine which platforms apply to this tab
     let hasTwitch = true, hasKick = true, hasYt = true;
     if (tab !== 'live') {
-      const ch = config.channels.find(c => (typeof c === 'string' ? c : c.id) === tab);
-      if (ch && typeof ch !== 'string') {
+      const ch = config.channels.find(c => c.id === tab);
+      if (ch) {
         hasTwitch = !!ch.twitch;
         hasKick = !!ch.kick;
         hasYt = !!ch.youtube;
@@ -3100,12 +3060,6 @@
       if (stored.ui_settings?.autoHideEmpty !== undefined) {
         autoHideInput = stored.ui_settings.autoHideEmpty;
       }
-      // Migrate: default changed to false — reset users who never explicitly toggled
-      if (autoHideInput && !stored.ui_settings?._autoHideMigrated) {
-        autoHideInput = false;
-        saveUiSetting('autoHideEmpty', false)
-        saveUiSetting('_autoHideMigrated', true)
-      }
     } catch {}
   }
 
@@ -3130,27 +3084,12 @@
     adjustOverlayForPicker(pickerOpen);
   }
 
-  // Timestamps setting
   async function loadHiddenTabsSetting() {
     try {
       const stored = await cachedUiSettings();
-      const us = stored.ui_settings || {};
-      const arr = us.hiddenTabs;
+      const arr = stored.ui_settings?.hiddenTabs;
       if (Array.isArray(arr)) {
-        const filtered = arr.filter(id => HIDABLE_TABS.includes(id));
-        // One-time migration: 'pinned' was added to DEFAULT_HIDDEN_TABS after
-        // existing users already had a stored hiddenTabs without it. Force-add
-        // pinned once so legacy users get the new default; respected after.
-        if (!us._pinnedDefaultMigrated && !filtered.includes('pinned')) {
-          filtered.push('pinned');
-          saveUiSetting('hiddenTabs', filtered);
-          saveUiSetting('_pinnedDefaultMigrated', true);
-        } else if (!us._pinnedDefaultMigrated) {
-          saveUiSetting('_pinnedDefaultMigrated', true);
-        }
-        hiddenTabs = new Set(filtered);
-      } else if (!us._pinnedDefaultMigrated) {
-        saveUiSetting('_pinnedDefaultMigrated', true);
+        hiddenTabs = new Set(arr.filter(id => HIDABLE_TABS.includes(id)));
       }
     } catch {}
   }
@@ -3198,13 +3137,6 @@
     try {
       const stored = await cachedUiSettings();
       if (stored.ui_settings?.showOfflineEvents !== undefined) {
-        // migrate: old default was true, new default is false — clear stale stored value
-        if (stored.ui_settings.showOfflineEvents === true && !stored.ui_settings._offlineDefaultMigrated) {
-          saveUiSetting('showOfflineEvents', false)
-          saveUiSetting('_offlineDefaultMigrated', true)
-          showOfflineEvents = false
-          return
-        }
         showOfflineEvents = stored.ui_settings.showOfflineEvents;
       }
     } catch {}
@@ -3617,14 +3549,6 @@
     }
   }
 
-
-
-
-
-
-
-
-
   function updateTabBar() {
     if (!tabBarElement) return;
 
@@ -3638,7 +3562,7 @@
     config.channels.forEach(ch => {
       const tab = document.createElement('button');
       tab.className = 'hs-mc-tab';
-      const id = typeof ch === 'string' ? ch : ch.id;
+      const id = ch.id;
       tab.dataset.tab = id;
       // Show best human-readable name. Order:
       //   1. ch.twitch / ch.kick if present
@@ -3648,30 +3572,28 @@
       //      generated `linked_<ts>` / `yt-<ts>` id)
       //   5. URL fallback (last resort — would have shown "watch?v=…" before)
       let label = id
-      if (typeof ch !== 'string') {
-        if (ch.twitch) label = ch.twitch
-        else if (ch.kick) label = ch.kick
-        else if (ch.youtube) {
-          const linked = youtubeLinks.get(ch.id)
-          const m = ch.youtube.match(/@([^/?]+)/)
-          const looksAuto = !ch.id || /^(linked|yt|kick|twitch)[-_]\d+$/.test(ch.id)
-          if (linked?.channelName) label = linked.channelName
-          else if (m) label = m[1]
-          else if (!looksAuto) label = ch.id
-          else label = ch.youtube.replace(/^https?:\/\/(www\.)?youtube\.com\//, '').replace(/\/.*$/, '')
-        }
+      if (ch.twitch) label = ch.twitch
+      else if (ch.kick) label = ch.kick
+      else if (ch.youtube) {
+        const linked = youtubeLinks.get(ch.id)
+        const m = ch.youtube.match(/@([^/?]+)/)
+        const looksAuto = !ch.id || /^(linked|yt|kick|twitch)[-_]\d+$/.test(ch.id)
+        if (linked?.channelName) label = linked.channelName
+        else if (m) label = m[1]
+        else if (!looksAuto) label = ch.id
+        else label = ch.youtube.replace(/^https?:\/\/(www\.)?youtube\.com\//, '').replace(/\/.*$/, '')
       }
       tab.textContent = label;
       // Restore live dot from cached liveChannelSet (survives tab recreate)
       if (liveChannelSet.size > 0) {
-        const twitch = typeof ch === 'string' ? ch : ch.twitch || ch.id
+        const twitch = ch.twitch || ch.id
         tab.dataset.live = String(liveChannelSet.has(twitch.toLowerCase()))
       }
       // YT-only tabs aren't in liveChannelSet (which is Twitch-only), so
       // re-derive live state from the resolved YouTube subscription. This
       // also wins the race when the youtube_status connected event arrived
       // before the tabbar was rendered.
-      if (typeof ch !== 'string' && ch.youtube && !ch.twitch && !ch.kick) {
+      if (ch.youtube && !ch.twitch && !ch.kick) {
         const ytLink = youtubeLinks.get(ch.id)
         if (ytLink?.videoId) tab.dataset.live = 'true'
       }
@@ -4187,10 +4109,10 @@
         }
         // Switching to live also clears the matching channel tab's indicators
         if (id === 'live' && liveCh && t.dataset.tab !== 'live') {
-          const ch = config.channels.find(c => (typeof c === 'string' ? c : c.id) === t.dataset.tab)
+          const ch = config.channels.find(c => c.id === t.dataset.tab)
           if (ch) {
-            const tw = (typeof ch === 'string' ? ch : ch.twitch)?.toLowerCase()
-            const ki = (typeof ch === 'string' ? undefined : ch.kick)?.toLowerCase()
+            const tw = ch.twitch?.toLowerCase()
+            const ki = (ch.kick)?.toLowerCase()
             if (tw === liveCh || ki === liveCh) {
               t.classList.remove('has-new', 'has-stream-event', 'has-mentions')
             }
@@ -4198,10 +4120,10 @@
         }
         // Switching to a channel tab that matches live clears the live tab too
         if (id !== 'live' && liveCh && t.dataset.tab === 'live') {
-          const ch = config.channels.find(c => (typeof c === 'string' ? c : c.id) === id)
+          const ch = config.channels.find(c => c.id === id)
           if (ch) {
-            const tw = (typeof ch === 'string' ? ch : ch.twitch)?.toLowerCase()
-            const ki = (typeof ch === 'string' ? undefined : ch.kick)?.toLowerCase()
+            const tw = ch.twitch?.toLowerCase()
+            const ki = (ch.kick)?.toLowerCase()
             if (tw === liveCh || ki === liveCh) {
               t.classList.remove('has-new', 'has-stream-event', 'has-mentions')
             }
@@ -4843,14 +4765,14 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       if ((channelYtMessages.get('__live_yt_auto__')?.length) || 0) count++
       if (count < 2) {
         // Also check config-linked platforms
-        const linked = config.channels.find(ch => typeof ch !== 'string' && (ch.twitch === curCh || ch.kick === curCh))
+        const linked = config.channels.find(ch => (ch.twitch === curCh || ch.kick === curCh))
         if (linked?.kick && kickChat?.getMessages(linked.kick)?.length) count++
         if (linked?.youtube && channelYtMessages.get(linked.id)?.length) count++
       }
       return count > 1
     }
-    const ch = config.channels.find(c => (typeof c === 'string' ? c : c.id) === tabId)
-    if (!ch || typeof ch === 'string') return false
+    const ch = config.channels.find(c => c.id === tabId)
+    if (!ch) return false
     let count = 0
     if (ch.twitch && irc?.getMessages(ch.twitch)?.length) count++
     if (ch.kick && kickChat?.getMessages(ch.kick)?.length) count++
@@ -5064,7 +4986,6 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     // Already linked in config? Skip.
     const lower = channelName.toLowerCase()
     const alreadyLinked = config.channels.some(ch => {
-      if (typeof ch === 'string') return false
       const t = ch.twitch?.toLowerCase()
       const k = ch.kick?.toLowerCase()
       const matchesThis = (t === lower || k === lower ||
@@ -5137,7 +5058,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       maybeShowMultistreamBanner(liveCh, hostPlatform)
     } else if (id && id !== 'add' && !['mentions','feed','whispers','discover','pinned','settings'].includes(id)) {
       // Per-channel tab — id may be a username or a linked-tab id; resolve from config
-      const ch = config.channels.find(c => typeof c !== 'string' && c.id === id)
+      const ch = config.channels.find(c => c.id === id)
       // YT-only channels: extract handle from the youtube URL so the banner can
       // resolve identity ("foo is also live on Twitch + Kick") for them too.
       let ytHandle = null
@@ -5191,7 +5112,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       let kickMsgs = kickCh ? (kickChat?.getMessages(kickCh) || []) : []
       if (!kickMsgs.length && curCh) {
         // Check if any config entry links current channel to a Kick channel
-        const linked = config.channels.find(ch => typeof ch !== 'string' && ch.twitch === curCh && ch.kick);
+        const linked = config.channels.find(ch => ch.twitch === curCh && ch.kick);
         if (linked) kickMsgs = kickChat?.getMessages(linked.kick) || [];
       }
       // On Kick, also pull messages from the URL channel (may differ from live override)
@@ -5202,7 +5123,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       // YouTube messages for live tab: auto-discovered or linked via config
       let ytMsgs = channelYtMessages.get('__live_yt_auto__') || [];
       if (!ytMsgs.length && curCh) {
-        const linkedYt = config.channels.find(ch => typeof ch !== 'string' && (ch.twitch === curCh || ch.kick === curCh) && ch.youtube);
+        const linkedYt = config.channels.find(ch => (ch.twitch === curCh || ch.kick === curCh) && ch.youtube);
         if (linkedYt) ytMsgs = channelYtMessages.get(linkedYt.id) || [];
       }
       const filt = getPlatformFilter('live')
@@ -5213,9 +5134,9 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       ])
     } else {
       // Channel tab — merge IRC + Kick + per-channel YouTube messages
-      const ch = config.channels.find(c => (typeof c === 'string' ? c : c.id) === id);
-      const twitchName = typeof ch === 'string' ? ch : ch?.twitch;
-      const kickName = typeof ch === 'string' ? null : ch?.kick;
+      const ch = config.channels.find(c => c.id === id);
+      const twitchName = ch?.twitch;
+      const kickName = ch.kick;
       const ircMsgs = twitchName ? (irc?.getMessages(twitchName) || []) : [];
       const kickMsgs = kickName ? (kickChat?.getMessages(kickName) || []) : [];
       let ytMsgs = channelYtMessages.get(id) || [];
@@ -5424,9 +5345,6 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
   }
 
 
-
-
-
   function renderAddChannelForm(msgsEl) {
     msgsEl.textContent = ''
     const wrapper = document.createElement('div')
@@ -5523,16 +5441,16 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
         showErr(t('mc_reserved_name'))
         return
       }
-      if (config.channels.some(c => (typeof c === 'string' ? c : c.id) === id)) {
+      if (config.channels.some(c => c.id === id)) {
         showErr(t('mc_channel_exists'))
         return
       }
       // Check duplicate Twitch/Kick username across channels
-      if (twitchVal && config.channels.some(c => (typeof c === 'string' ? c : c.twitch) === twitchVal)) {
+      if (twitchVal && config.channels.some(c => c.twitch === twitchVal)) {
         showErr(t('mc_twitch_exists'))
         return
       }
-      if (kickVal && config.channels.some(c => typeof c !== 'string' && c.kick === kickVal)) {
+      if (kickVal && config.channels.some(c => c.kick === kickVal)) {
         showErr(t('mc_kick_exists'))
         return
       }
@@ -5639,14 +5557,14 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
   }
 
   function removeChannel(tabId) {
-    const ch = config.channels.find(c => (typeof c === 'string' ? c : c.id) === tabId);
-    config.channels = config.channels.filter(c => (typeof c === 'string' ? c : c.id) !== tabId);
+    const ch = config.channels.find(c => c.id === tabId);
+    config.channels = config.channels.filter(c => c.id !== tabId);
     saveConfig();
 
-    const twitchName = typeof ch === 'string' ? ch : ch?.twitch;
+    const twitchName = ch?.twitch;
     if (twitchName) irc?.part(twitchName);
 
-    const kickName = typeof ch === 'string' ? null : ch?.kick;
+    const kickName = ch.kick;
     if (kickName) kickChat?.part(kickName);
 
     // Clean up per-channel sub tenure data to prevent stale map growth
@@ -5654,7 +5572,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     if (kickName) subTenureMap.delete(kickName.toLowerCase());
 
     // Unsubscribe per-channel YouTube (pass URL as fallback if videoId not yet received)
-    if (ch && typeof ch !== 'string' && ch.youtube) {
+    if (ch && ch.youtube) {
       const link = youtubeLinks.get(tabId);
       chrome.runtime.sendMessage({
         type: 'youtube_ws_unsubscribe',
@@ -5813,15 +5731,9 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
   }
 
   function showEditChannelForm(tabId) {
-    let ch = config.channels.find(c => (typeof c === 'string' ? c : c.id) === tabId);
+    const ch = config.channels.find(c => c.id === tabId);
     if (!ch) return;
     editingChannel = true;
-    // Normalize legacy string format
-    if (typeof ch === 'string') {
-      const idx = config.channels.indexOf(ch);
-      ch = { id: ch, twitch: ch, kick: '', youtube: '' };
-      config.channels[idx] = ch;
-    }
 
     const msgsEl = document.getElementById('hs-mc-messages');
     if (!msgsEl) return;
@@ -5907,11 +5819,11 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       }
 
       // Check duplicate twitch/kick (excluding self)
-      if (twitchVal && config.channels.some(c => c !== ch && (typeof c === 'string' ? c : c.twitch) === twitchVal)) {
+      if (twitchVal && config.channels.some(c => c !== ch && c.twitch === twitchVal)) {
         showErr(t('mc_twitch_exists'));
         return;
       }
-      if (kickVal && config.channels.some(c => c !== ch && typeof c !== 'string' && c.kick === kickVal)) {
+      if (kickVal && config.channels.some(c => c !== ch && c.kick === kickVal)) {
         showErr(t('mc_kick_exists'));
         return;
       }
@@ -5994,18 +5906,18 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     const liveCh = getLiveChannel()?.toLowerCase();
     if (liveCh) {
       if (currentTab === 'live' && tabId !== 'feed' && tabId !== 'mentions') {
-        const chConfig = config.channels.find(ch => (typeof ch === 'string' ? ch : ch.id) === tabId);
+        const chConfig = config.channels.find(ch => ch.id === tabId);
         if (chConfig) {
-          const tw = (typeof chConfig === 'string' ? chConfig : chConfig.twitch)?.toLowerCase();
-          const ki = (typeof chConfig === 'string' ? undefined : chConfig.kick)?.toLowerCase();
+          const tw = chConfig.twitch?.toLowerCase();
+          const ki = (chConfig.kick)?.toLowerCase();
           if (tw === liveCh || ki === liveCh) return;
         }
       }
       if (tabId === 'live') {
-        const curConfig = config.channels.find(ch => (typeof ch === 'string' ? ch : ch.id) === currentTab);
+        const curConfig = config.channels.find(ch => ch.id === currentTab);
         if (curConfig) {
-          const tw = (typeof curConfig === 'string' ? curConfig : curConfig.twitch)?.toLowerCase();
-          const ki = (typeof curConfig === 'string' ? undefined : curConfig.kick)?.toLowerCase();
+          const tw = curConfig.twitch?.toLowerCase();
+          const ki = (curConfig.kick)?.toLowerCase();
           if (tw === liveCh || ki === liveCh) return;
         }
       }
@@ -6047,7 +5959,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
   async function updateLiveStatus() {
     if (!tabBarElement) return;
     const channels = config.channels
-      .map(ch => typeof ch === 'string' ? ch : ch.twitch || ch.id)
+      .map(ch => ch.twitch || ch.id)
       .filter(Boolean);
     // Also check URL channel (for popout / non-config channels)
     const urlCh = getCurrentChannel();
@@ -6073,13 +5985,13 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       liveChannelSet = liveSet;
 
       config.channels.forEach(ch => {
-        const id = typeof ch === 'string' ? ch : ch.id;
-        const twitch = typeof ch === 'string' ? ch : ch.twitch || ch.id;
+        const id = ch.id;
+        const twitch = ch.twitch || ch.id;
         const tab = tabBarElement?.querySelector(`[data-tab="${id}"]`);
         // Twitch helix is the source of truth for Twitch channels. For
         // YT-only channels there's no twitch handle to query, so we leave
         // the dot alone — youtube_status / message-flow handlers own it.
-        const isYtOnly = typeof ch !== 'string' && !ch.twitch && !ch.kick && ch.youtube
+        const isYtOnly = !ch.twitch && !ch.kick && ch.youtube
         if (tab && !isYtOnly) tab.dataset.live = String(liveSet.has(twitch.toLowerCase()));
       });
 
@@ -6119,11 +6031,11 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
   function applyLiveDotsFromCache() {
     if (!tabBarElement) return;
     config.channels.forEach(ch => {
-      const id = typeof ch === 'string' ? ch : ch.id;
-      const twitch = typeof ch === 'string' ? ch : ch.twitch || ch.id;
+      const id = ch.id;
+      const twitch = ch.twitch || ch.id;
       const tab = tabBarElement.querySelector(`[data-tab="${id}"]`);
       if (!tab) return;
-      const isYtOnly = typeof ch !== 'string' && !ch.twitch && !ch.kick && ch.youtube;
+      const isYtOnly = !ch.twitch && !ch.kick && ch.youtube;
       if (isYtOnly) return;
       tab.dataset.live = String(liveChannelSet.has(twitch.toLowerCase()));
     });
@@ -6176,7 +6088,6 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     if (mc === curCh) return true
     // Check configured channel pairs — either side can be the live channel
     return config.channels.some(ch => {
-      if (typeof ch === 'string') return false
       const tw = ch.twitch?.toLowerCase()
       const ki = ch.kick?.toLowerCase()
       return (tw === curCh && ki === mc) || (ki === curCh && tw === mc)
@@ -6268,7 +6179,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
 
     if (!entry) {
       let id = (identity?.heatsync || twitchName || kickName || lower).toLowerCase()
-      if (reserved.includes(id) || config.channels.some(c => (typeof c === 'string' ? c : c.id) === id)) {
+      if (reserved.includes(id) || config.channels.some(c => c.id === id)) {
         id = platform === 'youtube' ? `yt_${Date.now()}` : `ch_${Date.now()}`
       }
       entry = { id, twitch: twitchName, kick: kickName, youtube: ytUrl }
@@ -6311,7 +6222,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       }
     }
 
-    const tabId = typeof entry === 'string' ? entry : entry.id;
+    const tabId = entry.id;
     // Reset liveChannel override — live is no longer the sticky tab.
     liveChannel = null;
     switchTab(tabId);
@@ -6523,7 +6434,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       if (needsSave) saveConfig();
       // Subscribe per-channel YouTube links
       for (const ch of config.channels) {
-        if (typeof ch !== 'string' && ch.youtube) {
+        if (ch.youtube) {
           youtubeLinks.set(ch.id, { url: ch.youtube, videoId: '', channelName: '' });
           ytSubscribedUrls.set(ch.id, ch.youtube);
           ytChanLastSeen.set(ch.id, Date.now());
@@ -6556,14 +6467,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
   async function loadTabsPosition() {
     try {
       const stored = await cachedUiSettings();
-      // Migration: tabsOnRight → tabPosition
-      if (stored.ui_settings?.tabsOnRight !== undefined && stored.ui_settings?.tabPosition === undefined) {
-        tabPosition = stored.ui_settings.tabsOnRight ? 'right' : 'top';
-        stored.ui_settings.tabPosition = tabPosition;
-        delete stored.ui_settings.tabsOnRight;
-        await chrome.storage.sync.set({ ui_settings: stored.ui_settings });
-        log('Migrated tabsOnRight to tabPosition:', tabPosition);
-      } else if (stored.ui_settings?.tabPosition !== undefined) {
+      if (stored.ui_settings?.tabPosition !== undefined) {
         tabPosition = stored.ui_settings.tabPosition;
       }
       applyTabsPosition();
@@ -6579,7 +6483,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       const stored = await cachedUiSettings();
       const saved = stored.ui_settings?.activeTab || 'live';
       // Validate: must be a built-in tab or a configured channel (never restore 'add')
-      const channelIds = config.channels.map(c => typeof c === 'string' ? c : c.id);
+      const channelIds = config.channels.map(c => c.id);
       _savedActiveTab = (saved !== 'add' && (BUILTIN_TABS.includes(saved) || channelIds.includes(saved)))
         ? saved : 'live';
       // Restore live channel override
@@ -7245,7 +7149,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     const id = 'hs-mc-auth-banner'
     const existing = document.getElementById(id)
     if (loggedIn) { existing?.remove(); return }
-    const hasYt = Array.isArray(config?.channels) && config.channels.some(c => typeof c !== 'string' && c.youtube)
+    const hasYt = Array.isArray(config?.channels) && config.channels.some(c => c.youtube)
     if (!hasYt) { existing?.remove(); return }
     if (existing) return
     const banner = document.createElement('div')
@@ -7511,18 +7415,18 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
           const newChannels = newConfig.channels || []
 
           // Diff: find added and removed channels
-          const oldIds = new Set(oldChannels.map(c => typeof c === 'string' ? c : c.id))
-          const newIds = new Set(newChannels.map(c => typeof c === 'string' ? c : c.id))
+          const oldIds = new Set(oldChannels.map(c => c.id))
+          const newIds = new Set(newChannels.map(c => c.id))
 
           // Part removed channels
           for (const ch of oldChannels) {
-            const id = typeof ch === 'string' ? ch : ch.id
+            const id = ch.id
             if (!newIds.has(id)) {
-              const twitchName = typeof ch === 'string' ? ch : ch.twitch
+              const twitchName = ch.twitch
               if (twitchName) irc?.part(twitchName)
-              const kickName = typeof ch === 'string' ? null : ch.kick
+              const kickName = ch.kick
               if (kickName) kickChat?.part(kickName)
-              if (typeof ch !== 'string' && ch.youtube) {
+              if (ch.youtube) {
                 const link = youtubeLinks.get(id)
                 chrome.runtime.sendMessage({
                   type: 'youtube_ws_unsubscribe',
@@ -7538,16 +7442,16 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
 
           // Join added channels
           for (const ch of newChannels) {
-            const id = typeof ch === 'string' ? ch : ch.id
+            const id = ch.id
             if (!oldIds.has(id)) {
-              const twitchName = typeof ch === 'string' ? ch : ch.twitch
+              const twitchName = ch.twitch
               if (twitchName) {
                 irc?.join(twitchName)
                 try { chrome.runtime.sendMessage({ type: 'join_channel', platform: 'twitch', channel: twitchName }) } catch (e) {}
               }
-              const kickName = typeof ch === 'string' ? null : ch.kick
+              const kickName = ch.kick
               if (kickName) kickChat?.join(kickName)
-              if (typeof ch !== 'string' && ch.youtube) {
+              if (ch.youtube) {
                 youtubeLinks.set(id, { url: ch.youtube, videoId: '', channelName: '' })
                 chrome.runtime.sendMessage({ type: 'youtube_ws_subscribe', url: ch.youtube, channelId: id }).catch(() => {})
               }
@@ -7722,12 +7626,10 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     log('Username:', currentUsername);
 
     // ── PHASE 3: settings hydration + emote load (all in parallel) ────────
-    // migrateSettingsToSync, all 23 load* funcs, blocked-emotes, and emotes
-    // all share the cached ui_settings or hit independent local keys; they
-    // can run concurrently. Previously this was 3 sequential await steps.
+    // All load* funcs, blocked-emotes, and emotes share the cached ui_settings
+    // or hit independent local keys; they can run concurrently.
     await Promise.all([
       _uiPrime,  // already in flight; just await here to ensure it landed
-      migrateSettingsToSync(),
       loadActiveTab(),
       loadTabsPosition(),
       loadChatPosition(),
@@ -7861,8 +7763,8 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     }
 
     config.channels.forEach(ch => {
-      const twitchName = typeof ch === 'string' ? ch : ch.twitch;
-      const kickName = typeof ch === 'string' ? null : ch.kick;
+      const twitchName = ch.twitch;
+      const kickName = ch.kick;
       if (twitchName) {
         irc.join(twitchName);
         try {
@@ -7882,7 +7784,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     loadStreamEvents().then(() => {
       if (streamEventsLoaded) {
         const active = currentTab;
-        if (active === 'live' || config.channels.some(ch => (typeof ch === 'string' ? ch : ch.id) === active)) {
+        if (active === 'live' || config.channels.some(ch => ch.id === active)) {
           renderMessages(active);
         }
       }
@@ -7956,7 +7858,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
 
       // Channel tab routing
       const chTabId = getChannelLookup().twitch.get(msg.channel);
-      const tabId = typeof chTabId === 'string' ? chTabId : chTabId?.id;
+      const tabId = chTabId?.id;
       if (tabId && currentTab === tabId) {
         if (!appendMessage(msg, tabId)) renderMessages(tabId);
       } else if (tabId) {
@@ -8123,9 +8025,9 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
         // (live tab and its matching channel tab are equivalent — viewing either counts)
         if (msg.eventType === 'stream:update') {
           const viewingChannel = currentTab === 'live' || config.channels.some(ch => {
-            const tw = (typeof ch === 'string' ? ch : ch.twitch)?.toLowerCase()
-            const ki = (typeof ch !== 'string' ? ch.kick : null)?.toLowerCase()
-            return currentTab === (typeof ch === 'string' ? ch : ch.id) && (tw === channel || ki === channel)
+            const tw = ch.twitch?.toLowerCase()
+            const ki = (ch.kick)?.toLowerCase()
+            return currentTab === ch.id && (tw === channel || ki === channel)
           })
           if (!viewingChannel) {
             // Only yellow the live tab if this event is for the live channel
@@ -8136,9 +8038,9 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
             }
             // Yellow the matching channel tab
             for (const ch of config.channels) {
-              const twName = typeof ch === 'string' ? ch : ch.twitch;
-              const kickName = typeof ch !== 'string' ? ch.kick : null;
-              const tabId = typeof ch === 'string' ? ch : ch.id;
+              const twName = ch.twitch;
+              const kickName = ch.kick;
+              const tabId = ch.id;
               if ((twName === channel || kickName === channel) && currentTab !== tabId) {
                 const tab = tabBarElement?.querySelector(`[data-tab="${tabId}"]`);
                 if (tab) tab.classList.add('has-stream-event');
@@ -8154,10 +8056,10 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
             if (!appendMessage(evt, activeTab)) renderMessages(activeTab);
           }
         } else {
-          const tabCh = config.channels.find(ch => (typeof ch === 'string' ? ch : ch.id) === activeTab)
+          const tabCh = config.channels.find(ch => ch.id === activeTab)
           if (tabCh) {
-            const tw = (typeof tabCh === 'string' ? tabCh : tabCh.twitch)?.toLowerCase()
-            const ki = (typeof tabCh === 'string' ? undefined : tabCh.kick)?.toLowerCase()
+            const tw = tabCh.twitch?.toLowerCase()
+            const ki = (tabCh.kick)?.toLowerCase()
             if (tw === channel || ki === channel) {
               if (!appendMessage(evt, activeTab)) renderMessages(activeTab);
             }
@@ -8248,10 +8150,10 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
           if (!appendMessage(evt, activeTab)) renderMessages(activeTab)
         }
       } else {
-        const tabCh = config.channels.find(ch => (typeof ch === 'string' ? ch : ch.id) === activeTab)
+        const tabCh = config.channels.find(ch => ch.id === activeTab)
         if (tabCh) {
-          const tw = (typeof tabCh === 'string' ? tabCh : tabCh.twitch)?.toLowerCase()
-          const ki = (typeof tabCh === 'string' ? undefined : tabCh.kick)?.toLowerCase()
+          const tw = tabCh.twitch?.toLowerCase()
+          const ki = (tabCh.kick)?.toLowerCase()
           if (tw === channel || ki === channel) {
             if (!appendMessage(evt, activeTab)) renderMessages(activeTab)
           }
@@ -8269,8 +8171,8 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
 
         // Skip channels already in config — they get stream_event, avoid duplicates
         if (config.channels.some(ch => {
-          const id = (typeof ch === 'string' ? ch : ch.id)?.toLowerCase()
-          const tw = (typeof ch === 'string' ? null : ch.twitch)?.toLowerCase()
+          const id = ch.id?.toLowerCase()
+          const tw = (ch.twitch)?.toLowerCase()
           return id === channel || tw === channel
         })) return;
 
@@ -8339,10 +8241,10 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
             if (!appendMessage(evt, activeTab)) renderMessages(activeTab);
           }
         } else {
-          const tabCh = config.channels.find(ch => (typeof ch === 'string' ? ch : ch.id) === activeTab)
+          const tabCh = config.channels.find(ch => ch.id === activeTab)
           if (tabCh) {
-            const tw = (typeof tabCh === 'string' ? tabCh : tabCh.twitch)?.toLowerCase()
-            const ki = (typeof tabCh === 'string' ? undefined : tabCh.kick)?.toLowerCase()
+            const tw = tabCh.twitch?.toLowerCase()
+            const ki = (tabCh.kick)?.toLowerCase()
             if (tw === channel || ki === channel) {
               if (!appendMessage(evt, activeTab)) renderMessages(activeTab);
             }
@@ -8372,8 +8274,8 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
 
         // Skip channels already in config — they get stream_event directly
         if (config.channels.some(ch => {
-          const id = (typeof ch === 'string' ? ch : ch.id)?.toLowerCase()
-          const tw = (typeof ch === 'string' ? null : ch.twitch)?.toLowerCase()
+          const id = ch.id?.toLowerCase()
+          const tw = (ch.twitch)?.toLowerCase()
           return id === channel || tw === channel
         })) continue;
 
@@ -8409,7 +8311,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       if (added > 0) {
         log('[FollowHistory]', added, 'events loaded');
         const active = currentTab;
-        if (active === 'live' || config.channels.some(ch => (typeof ch === 'string' ? ch : ch.id) === active)) {
+        if (active === 'live' || config.channels.some(ch => ch.id === active)) {
           renderMessages(active);
         }
       }
@@ -8424,7 +8326,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       }
       log('[FollowColors]', streamColorMap.size, 'colors received');
       const active = currentTab;
-      if (active === 'live' || config.channels.some(ch => (typeof ch === 'string' ? ch : ch.id) === active)) {
+      if (active === 'live' || config.channels.some(ch => ch.id === active)) {
         renderMessages(active);
       }
     }
@@ -8461,7 +8363,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
         const url = ytSubscribedUrls.get(channelId)
           || youtubeLinks.get(channelId)?.url
           || (() => {
-            const c = config.channels.find(ch => typeof ch !== 'string' && ch.id === channelId)
+            const c = config.channels.find(ch => ch.id === channelId)
             return c?.youtube || null
           })()
         if (!url) continue
@@ -8795,7 +8697,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     }).catch(() => {})
     channelYtMessages.delete('__live_yt_auto__')
     for (const ch of config.channels) {
-      if (typeof ch === 'string' || !ch.youtube) continue
+      if (!ch.youtube) continue
       const link = youtubeLinks.get(ch.id)
       chrome.runtime.sendMessage({
         type: 'youtube_ws_unsubscribe',

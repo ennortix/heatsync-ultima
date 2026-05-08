@@ -740,8 +740,8 @@ function updateInputPlaceholder() {
     placeholder = '';
   } else {
     // Channel tab — resolve display name for placeholder
-    const ch = config.channels.find(c => (typeof c === 'string' ? c : c.id) === currentTab);
-    const chanName = typeof ch === 'string' ? ch : (ch?.twitch || ch?.kick || ch?.youtube?.replace(/^https?:\/\/(www\.)?youtube\.com\/@?/, '').replace(/\/.*/, '') || ch?.id);
+    const ch = config.channels.find(c => c.id === currentTab);
+    const chanName = ch?.twitch || ch?.kick || ch?.youtube?.replace(/^https?:\/\/(www\.)?youtube\.com\/@?/, '').replace(/\/.*/, '') || ch?.id;
     placeholder = t('mc_input_send_channel', [chanName]);
   }
 
@@ -1227,7 +1227,7 @@ function getRecencyMap() {
   let ch = currentTab
   if (currentTab === 'live' && typeof getLiveChannel === 'function') ch = getLiveChannel()
   if (!ch) return out
-  const buffer = irc.channels.get(typeof ch === 'string' ? ch.toLowerCase() : ch)
+  const buffer = irc.channels.get(ch.toLowerCase())
   if (!buffer?.getAll) return out
   const msgs = buffer.getAll()
   let rank = 0
@@ -2171,10 +2171,10 @@ async function sendSlashWhisper(platform, username, text, input) {
 
 async function sendMessage() {
   const input = document.getElementById('hs-mc-input');
-  if (!input) { console.warn('[HS] SEND BAIL: no input element'); return; }
+  if (!input) return;
 
   let text = convertEmojiShortcodes(getInputText().trim());
-  if (!text) { console.warn('[HS] SEND BAIL: empty text'); return; }
+  if (!text) return;
 
   // Slash commands — work from any tab. Handler may return:
   //   true   -> consumed, exit
@@ -2208,8 +2208,8 @@ async function sendMessage() {
     flashInputError(input)
     return
   } else {
-    ch = config.channels.find(c => (typeof c === 'string' ? c : c.id) === currentTab)
-    targetChannel = typeof ch === 'string' ? ch : ch?.twitch || ch?.kick || currentTab
+    ch = config.channels.find(c => c.id === currentTab)
+    targetChannel = ch?.twitch || ch?.kick || currentTab
   }
 
   if (!targetChannel) {
@@ -2218,14 +2218,14 @@ async function sendMessage() {
   }
 
   // Resolve platform targets
-  const kickSlug = typeof ch !== 'string' ? ch?.kick : null
-  const twitchName = typeof ch === 'string' ? ch : ch?.twitch
+  const kickSlug = ch.kick
+  const twitchName = ch?.twitch
   const isLiveKick = currentTab === 'live' && hostPlatform === 'kick'
 
   const sendToKick = !!kickSlug || isLiveKick
   const sendToTwitch = !!twitchName && !isLiveKick
 
-  const ytUrl = typeof ch !== 'string' ? ch?.youtube : null
+  const ytUrl = ch?.youtube
   const isLiveYt = currentTab === 'live' && hostPlatform === 'yt'
   const sendToYoutube = !!ytUrl || isLiveYt
   const isDualSend = sendToKick && sendToTwitch
@@ -2320,7 +2320,6 @@ async function sendMessage() {
   // --- Twitch-only send path (existing behavior) ---
   const { token, username: twitchNick } = await getTwitchAuthTokenAsync()
   if (!token) {
-    console.warn('[HS] SEND BAIL: no auth token (cookie missing)')
     if (wysiwygEnabled) input.dataset.placeholder = t('mc_input_not_logged_in')
     else input.placeholder = t('mc_input_not_logged_in')
     setTimeout(() => updateInputPlaceholder(), 2000)

@@ -909,11 +909,7 @@ function attachPredictionHandlers() {
         setTimeout(() => { btn.textContent = formatPoints(betPoints); btn.disabled = false; btn.title = '' }, 4000)
       } else {
         btn.textContent = '\u2713'
-        try {
-          optimisticBetUpdate(container, btn.dataset.outcome, betPoints)
-        } catch (e) {
-          console.error('[hs-pred] optimistic update failed:', e)
-        }
+        try { optimisticBetUpdate(container, btn.dataset.outcome, betPoints) } catch {}
         setTimeout(() => refreshPredictionSlot(), 3000)
       }
     })
@@ -1374,9 +1370,9 @@ function getActiveTwitchChannel() {
   if (currentTab === 'live' || currentTab === 'feed' || currentTab === 'mentions' || currentTab === 'whispers') {
     return getLiveChannel()
   }
-  const ch = config.channels.find(c => (typeof c === 'string' ? c : c.id) === currentTab)
+  const ch = config.channels.find(c => c.id === currentTab)
   if (!ch) return getLiveChannel()
-  return typeof ch === 'string' ? ch : ch.twitch || ch.id
+  return ch.twitch || ch.id
 }
 
 async function renderTwitchTab() {
@@ -1775,29 +1771,6 @@ function gqlProxy(operation, variables, opts) {
       ac.abort()
       reject(new Error('GQL proxy timeout'))
     }, 4000)
-  })
-}
-
-// Request cached data from MAIN world
-function gqlGetCache(operations) {
-  return new Promise((resolve) => {
-    const id = Math.random().toString(36).slice(2)
-    const ac = new AbortController()
-    const signal = mcSignal ? AbortSignal.any([mcSignal, ac.signal]) : ac.signal
-    const handler = (e) => {
-      if (e.source !== window || e.origin !== location.origin) return
-      if (e.data?.type === 'heatsync-gql-cache-response' && e.data.id === id) {
-        ac.abort()
-        clearTimeout(timer)
-        resolve(e.data)
-      }
-    }
-    window.addEventListener('message', handler, { signal })
-    window.postMessage({ type: 'heatsync-gql-get-cache', id, operations }, location.origin)
-    const timer = setTimeout(() => {
-      ac.abort()
-      resolve({ data: {}, hashes: [] })
-    }, 3000)
   })
 }
 

@@ -641,18 +641,14 @@
       if (wantTwitch && location.hostname.includes('kick.com')) {
         // On Kick live tab but need Twitch channel — find from config
         const liveCh = getLiveChannel()
-        const ch = config.channels.find(c => {
-          if (typeof c === 'string') return c === liveCh
-          return c.kick === liveCh || c.id === liveCh
-        })
-        if (ch && typeof ch !== 'string' && ch.twitch) return ch.twitch
+        const ch = config.channels.find(c => c.kick === liveCh || c.id === liveCh)
+        if (ch && ch.twitch) return ch.twitch
       }
       return getLiveChannel()
     }
     // Channel tab → look up from config
-    const ch = config.channels.find(c => (typeof c === 'string' ? c : c.id) === currentTab)
+    const ch = config.channels.find(c => c.id === currentTab)
     if (ch) {
-      if (typeof ch === 'string') return ch
       // For Twitch users, always return Twitch channel; for Kick users, Kick channel
       if (wantTwitch) return ch.twitch || ch.kick
       return ch.kick || ch.twitch

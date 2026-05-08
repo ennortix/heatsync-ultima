@@ -179,12 +179,6 @@ function instagramEmbed(url) {
   </div>`
 }
 
-function vimeoUrlEmbed(url) {
-  const m = url.match(/vimeo\.com\/(\d+)/)
-  if (!m) return ''
-  return vimeoEmbed(m[1])
-}
-
 // Convert a single URL → embed HTML, or '' if not embeddable
 function parseFeedEmbed(url) {
   if (!url || typeof url !== 'string') return ''

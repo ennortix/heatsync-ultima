@@ -694,11 +694,15 @@
         background: #ff8700;
       }
 
-      /* Blocked emotes: outline on img content area, not wrapper */
-      .heatsync-emote-wrap.blocked img {
-        opacity: 0;
+      /* Blocked emotes: dashed outline on the wrap (so the image's opacity
+         doesn't drag the outline into invisibility), image hidden via
+         visibility so the slot keeps its 32×32 layout. */
+      .heatsync-emote-wrap.blocked {
         outline: 2px dashed #808080 !important;
         outline-offset: -2px !important;
+      }
+      .heatsync-emote-wrap.blocked img {
+        visibility: hidden !important;
       }
       .heatsync-emote-wrap.blocked:hover {
         background: #ff0000;

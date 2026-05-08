@@ -576,13 +576,20 @@ function initInput() {
         return;
       }
       // Collapsed stack left-click → paste all emote names to input
+      // (skip locked emotes — viewer can't post them)
       const collapsedStack = e.target.closest('.hs-mc-emote-stack:not(.expanded)');
       if (collapsedStack) {
         e.preventDefault();
         e.stopPropagation();
-        const names = [...collapsedStack.querySelectorAll('.hs-mc-emote-wrapper[data-emote-name]')]
+        const wrappers = [...collapsedStack.querySelectorAll('.hs-mc-emote-wrapper[data-emote-name]')];
+        const names = wrappers
+          .filter(w => w.dataset.state !== 'locked')
           .map(w => w.dataset.emoteName)
           .filter(Boolean);
+        if (wrappers.length > 0 && names.length === 0) {
+          showToast(`🔒 stack is all locked — you're not subbed`, 'error');
+          return;
+        }
         if (names.length > 0) {
           showInputBar();
           for (const name of names) pasteEmoteToInput(name);
@@ -603,14 +610,25 @@ function initInput() {
 
       if (state === 'blocked') {
         unblockEmote(emoteName);
-      } else if (state === 'owned' || state === 'global' || state === 'channel') {
+        return;
+      }
+      if (state === 'locked') {
+        // Foreign Twitch sub emote — viewer not subbed to this channel, can't
+        // post it. Toast instead of paste (matches website post-b6f23bc8:
+        // visually identical to other emotes, only click is gated).
+        showToast(`🔒 ${emoteName} — you're not subbed to this channel`, 'error');
+        return;
+      }
+      if (state === 'owned' || state === 'global' || state === 'channel') {
         // Paste to input (no lock needed — instant, no async)
         showInputBar();
         pasteEmoteToInput(emoteName);
         const input = document.getElementById('hs-mc-input');
         if (input) input.focus();
         flashAllEmotes(emoteName, 'hs-flash-paste');
-      } else if (state === 'unadded') {
+        return;
+      }
+      if (state === 'unadded') {
         if (pendingEmoteOps.has(emoteName)) return;
         addEmoteToInventory(emoteName, emoteUrl, source, e.target);
         flashAllEmotes(emoteName, 'hs-flash-add');

@@ -154,6 +154,21 @@ function parseIrcLine(raw, channel) {
       }
     }
 
+    // USERSTATE: @badges=...;color=...;display-name=... :tmi.twitch.tv USERSTATE #channel
+    // Sent on JOIN + after every viewer PRIVMSG. Tells us the viewer's own
+    // per-channel badges — used to detect entitlement for this channel's
+    // sub emotes (subscriber/N or founder/N badge).
+    const userstate = raw.match(/USERSTATE #([^ ]+)/)
+    if (userstate) {
+      const ch = channel || userstate[1].toLowerCase()
+      const badgeNames = new Set()
+      for (const part of (tags.badges || '').split(',')) {
+        const name = part.split('/')[0]
+        if (name) badgeNames.add(name)
+      }
+      return { type: 'userstate', channel: ch, badges: badgeNames, time: Date.now() }
+    }
+
     // CLEARCHAT: @tags :tmi.twitch.tv CLEARCHAT #channel :username
     // (timeout/ban of a user)
     const clearchat = raw.match(/CLEARCHAT #([^ ]+)(?: :(.+))?$/)
@@ -636,6 +651,12 @@ class IRC {
               this.emit('message', evt)
             }
           }
+        }
+      } else if (msg && msg.type === 'userstate') {
+        // Track viewer's per-channel badges. Used by render path to lock
+        // foreign sub emotes for non-subbed viewers.
+        if (typeof viewerBadgesPerChannel !== 'undefined') {
+          viewerBadgesPerChannel.set(msg.channel, msg.badges)
         }
       }
     }

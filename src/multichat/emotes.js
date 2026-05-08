@@ -852,6 +852,11 @@
   // Viewer's personal set — separated from emoteCache so it does NOT bleed into
   // OTHER users' rendered messages. Used as senderEmotes only when sender == viewer.
   let viewerPersonalEmotes = new Map(); // Map<name, emoteData>
+  // Viewer's per-channel Twitch IRC badges. Populated from USERSTATE messages
+  // (sent on JOIN + after every viewer PRIVMSG). Used to gate Twitch native
+  // sub-emote clicks: no `subscriber`/`founder` badge → render as locked.
+  // Map<channel, Set<badgeName>>.
+  let viewerBadgesPerChannel = new Map();
   // Per-sender fetched 7TV/BTTV personal sets — write-once-per-(key, name), persistent across sessions.
   // Map<"platform:platform_user_id", Map<name, emoteData>>. Empty inner Map = sender has no personal set (cached miss).
   // Platform prefixes: "twitch:", "kick:", "yt:" (yt uses resolved twitch_id when available).

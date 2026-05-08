@@ -9201,6 +9201,21 @@ function parseIrcLine(raw, channel) {
       }
     }
 
+    // USERSTATE: @badges=...;color=...;display-name=... :tmi.twitch.tv USERSTATE #channel
+    // Sent on JOIN + after every viewer PRIVMSG. Tells us the viewer's own
+    // per-channel badges — used to detect entitlement for this channel's
+    // sub emotes (subscriber/N or founder/N badge).
+    const userstate = raw.match(/USERSTATE #([^ ]+)/)
+    if (userstate) {
+      const ch = channel || userstate[1].toLowerCase()
+      const badgeNames = new Set()
+      for (const part of (tags.badges || '').split(',')) {
+        const name = part.split('/')[0]
+        if (name) badgeNames.add(name)
+      }
+      return { type: 'userstate', channel: ch, badges: badgeNames, time: Date.now() }
+    }
+
     // CLEARCHAT: @tags :tmi.twitch.tv CLEARCHAT #channel :username
     // (timeout/ban of a user)
     const clearchat = raw.match(/CLEARCHAT #([^ ]+)(?: :(.+))?$/)
@@ -9683,6 +9698,12 @@ class IRC {
               this.emit('message', evt)
             }
           }
+        }
+      } else if (msg && msg.type === 'userstate') {
+        // Track viewer's per-channel badges. Used by render path to lock
+        // foreign sub emotes for non-subbed viewers.
+        if (typeof viewerBadgesPerChannel !== 'undefined') {
+          viewerBadgesPerChannel.set(msg.channel, msg.badges)
         }
       }
     }
@@ -11378,6 +11399,11 @@ async function sendKickMessage(kickSlug, text) {
   // Viewer's personal set — separated from emoteCache so it does NOT bleed into
   // OTHER users' rendered messages. Used as senderEmotes only when sender == viewer.
   let viewerPersonalEmotes = new Map(); // Map<name, emoteData>
+  // Viewer's per-channel Twitch IRC badges. Populated from USERSTATE messages
+  // (sent on JOIN + after every viewer PRIVMSG). Used to gate Twitch native
+  // sub-emote clicks: no `subscriber`/`founder` badge → render as locked.
+  // Map<channel, Set<badgeName>>.
+  let viewerBadgesPerChannel = new Map();
   // Per-sender fetched 7TV/BTTV personal sets — write-once-per-(key, name), persistent across sessions.
   // Map<"platform:platform_user_id", Map<name, emoteData>>. Empty inner Map = sender has no personal set (cached miss).
   // Platform prefixes: "twitch:", "kick:", "yt:" (yt uses resolved twitch_id when available).
@@ -20394,13 +20420,20 @@ function initInput() {
         return;
       }
       // Collapsed stack left-click → paste all emote names to input
+      // (skip locked emotes — viewer can't post them)
       const collapsedStack = e.target.closest('.hs-mc-emote-stack:not(.expanded)');
       if (collapsedStack) {
         e.preventDefault();
         e.stopPropagation();
-        const names = [...collapsedStack.querySelectorAll('.hs-mc-emote-wrapper[data-emote-name]')]
+        const wrappers = [...collapsedStack.querySelectorAll('.hs-mc-emote-wrapper[data-emote-name]')];
+        const names = wrappers
+          .filter(w => w.dataset.state !== 'locked')
           .map(w => w.dataset.emoteName)
           .filter(Boolean);
+        if (wrappers.length > 0 && names.length === 0) {
+          showToast(`🔒 stack is all locked — you're not subbed`, 'error');
+          return;
+        }
         if (names.length > 0) {
           showInputBar();
           for (const name of names) pasteEmoteToInput(name);
@@ -20421,14 +20454,25 @@ function initInput() {
 
       if (state === 'blocked') {
         unblockEmote(emoteName);
-      } else if (state === 'owned' || state === 'global' || state === 'channel') {
+        return;
+      }
+      if (state === 'locked') {
+        // Foreign Twitch sub emote — viewer not subbed to this channel, can't
+        // post it. Toast instead of paste (matches website post-b6f23bc8:
+        // visually identical to other emotes, only click is gated).
+        showToast(`🔒 ${emoteName} — you're not subbed to this channel`, 'error');
+        return;
+      }
+      if (state === 'owned' || state === 'global' || state === 'channel') {
         // Paste to input (no lock needed — instant, no async)
         showInputBar();
         pasteEmoteToInput(emoteName);
         const input = document.getElementById('hs-mc-input');
         if (input) input.focus();
         flashAllEmotes(emoteName, 'hs-flash-paste');
-      } else if (state === 'unadded') {
+        return;
+      }
+      if (state === 'unadded') {
         if (pendingEmoteOps.has(emoteName)) return;
         addEmoteToInventory(emoteName, emoteUrl, source, e.target);
         flashAllEmotes(emoteName, 'hs-flash-add');
@@ -26031,6 +26075,20 @@ const STORAGE_KEY = 'heatsync_multichat';
     window.postMessage({ type: 'heatsync-settings-changed', settings: { viMode: viModeEnabled } }, location.origin)
   }
 
+  // Big emoji setting — toggles 2x scaling of emojis + small Twitch emoticons
+  function applyBigEmojiClass(on) {
+    const container = document.getElementById('hs-mc-container')
+    if (container) container.classList.toggle('hs-2x', !!on)
+  }
+  async function loadBigEmojiSetting() {
+    try {
+      const stored = await cachedUiSettings();
+      applyBigEmojiClass(stored.ui_settings?.bigEmoji === true)
+    } catch (e) {
+      log('Error loading big emoji setting:', e);
+    }
+  }
+
   // Platform badges setting
   async function loadPlatformBadgesSetting() {
     try {
@@ -27600,11 +27658,19 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       // they participate in the overlay-stack pipeline alongside 7TV emotes —
       // without this a 7TV zero-width emote following a Twitch sub emote would
       // render with whitespace between them instead of overlaying.
+      const isOwn = m.user && currentUsername && m.user.toLowerCase() === currentUsername.toLowerCase()
       let twitchExtra = null
       if (m.twitchEmotes) {
         twitchExtra = new Map()
+        // Lock detection: viewer can post a Twitch native sub emote only if
+        // they have `subscriber` or `founder` badge in this channel. Own
+        // outgoing messages bypass — viewer's own posts always render
+        // accessible (Twitch wouldn't have echoed otherwise).
+        const viewerBadges = viewerBadgesPerChannel.get(m.channel)
+        const viewerCanPostSub = isOwn || (viewerBadges && (viewerBadges.has('subscriber') || viewerBadges.has('founder')))
+        const state = viewerCanPostSub ? 'global' : 'locked'
         for (const [name, url] of Object.entries(m.twitchEmotes)) {
-          twitchExtra.set(name, { url, source: 'twitch', state: 'global', zeroWidth: false })
+          twitchExtra.set(name, { url, source: 'twitch', state, zeroWidth: false })
         }
       }
       // Sender-perma emote resolution: pick the right per-sender map.
@@ -27612,7 +27678,6 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       // - Other senders → senderEmoteSets["plat:uid"] (lazy-fetched 7TV/BTTV personal set, perma cached)
       let senderEmotes = null
       const senderKey = resolveSenderEmoteKey(m)
-      const isOwn = m.user && currentUsername && m.user.toLowerCase() === currentUsername.toLowerCase()
       if (isOwn) {
         senderEmotes = viewerPersonalEmotes
       } else if (senderKey) {
@@ -30443,6 +30508,9 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
             applyHiddenTabs();
           }
         }
+        if (ns.bigEmoji !== undefined) {
+          applyBigEmojiClass(ns.bigEmoji === true)
+        }
         if (ns.firstChatterGlow !== undefined && ns.firstChatterGlow !== firstChatterGlow) {
           firstChatterGlow = !!ns.firstChatterGlow
           needsRender = true
@@ -30724,6 +30792,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       loadHermesSettings(),
       loadAutomodSettings(),
       loadPlatformBadgesSetting(),
+      loadBigEmojiSetting(),
       loadZebraSetting(),
       loadPlatformFilters(),
       loadAutoHideSetting(),

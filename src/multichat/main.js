@@ -2950,6 +2950,20 @@
     window.postMessage({ type: 'heatsync-settings-changed', settings: { viMode: viModeEnabled } }, location.origin)
   }
 
+  // Big emoji setting — toggles 2x scaling of emojis + small Twitch emoticons
+  function applyBigEmojiClass(on) {
+    const container = document.getElementById('hs-mc-container')
+    if (container) container.classList.toggle('hs-2x', !!on)
+  }
+  async function loadBigEmojiSetting() {
+    try {
+      const stored = await cachedUiSettings();
+      applyBigEmojiClass(stored.ui_settings?.bigEmoji === true)
+    } catch (e) {
+      log('Error loading big emoji setting:', e);
+    }
+  }
+
   // Platform badges setting
   async function loadPlatformBadgesSetting() {
     try {
@@ -4519,11 +4533,19 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       // they participate in the overlay-stack pipeline alongside 7TV emotes —
       // without this a 7TV zero-width emote following a Twitch sub emote would
       // render with whitespace between them instead of overlaying.
+      const isOwn = m.user && currentUsername && m.user.toLowerCase() === currentUsername.toLowerCase()
       let twitchExtra = null
       if (m.twitchEmotes) {
         twitchExtra = new Map()
+        // Lock detection: viewer can post a Twitch native sub emote only if
+        // they have `subscriber` or `founder` badge in this channel. Own
+        // outgoing messages bypass — viewer's own posts always render
+        // accessible (Twitch wouldn't have echoed otherwise).
+        const viewerBadges = viewerBadgesPerChannel.get(m.channel)
+        const viewerCanPostSub = isOwn || (viewerBadges && (viewerBadges.has('subscriber') || viewerBadges.has('founder')))
+        const state = viewerCanPostSub ? 'global' : 'locked'
         for (const [name, url] of Object.entries(m.twitchEmotes)) {
-          twitchExtra.set(name, { url, source: 'twitch', state: 'global', zeroWidth: false })
+          twitchExtra.set(name, { url, source: 'twitch', state, zeroWidth: false })
         }
       }
       // Sender-perma emote resolution: pick the right per-sender map.
@@ -4531,7 +4553,6 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       // - Other senders → senderEmoteSets["plat:uid"] (lazy-fetched 7TV/BTTV personal set, perma cached)
       let senderEmotes = null
       const senderKey = resolveSenderEmoteKey(m)
-      const isOwn = m.user && currentUsername && m.user.toLowerCase() === currentUsername.toLowerCase()
       if (isOwn) {
         senderEmotes = viewerPersonalEmotes
       } else if (senderKey) {
@@ -7362,6 +7383,9 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
             applyHiddenTabs();
           }
         }
+        if (ns.bigEmoji !== undefined) {
+          applyBigEmojiClass(ns.bigEmoji === true)
+        }
         if (ns.firstChatterGlow !== undefined && ns.firstChatterGlow !== firstChatterGlow) {
           firstChatterGlow = !!ns.firstChatterGlow
           needsRender = true
@@ -7643,6 +7667,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       loadHermesSettings(),
       loadAutomodSettings(),
       loadPlatformBadgesSetting(),
+      loadBigEmojiSetting(),
       loadZebraSetting(),
       loadPlatformFilters(),
       loadAutoHideSetting(),

@@ -2255,10 +2255,19 @@
     // For YT, chat-right is now position:fixed so the unified handle
     // owns ALL four positions. For Twitch/Kick, chat-right uses the
     // existing per-platform handles (which have ghost-preview perf
-    // optimisations worth keeping).
+    // optimisations worth keeping) — UNLESS the platform anchor is
+    // missing (Twitch /directory, Kick non-channel pages), in which
+    // case the unified handle takes over so the panel is still
+    // resizeable.
     if ((chatPosition === 'right' || !chatPosition) && hostPlatform !== 'yt') {
-      handle.style.display = 'none';
-      return;
+      const platformAnchor =
+        hostPlatform === 'kick'
+          ? document.getElementById('channel-chatroom')
+          : document.querySelector('.right-column.right-column--beside');
+      if (platformAnchor) {
+        handle.style.display = 'none';
+        return;
+      }
     }
     handle.style.display = 'block';
     // Anchor the bar to the panel container's ACTUAL rendered edges via
@@ -3892,6 +3901,10 @@
       }
     }
     log('Created #hs-mc-container in', parent.tagName + '.' + [...parent.classList].join('.'))
+    // Reposition the unified resize handle now that the container has a real
+    // rect. On no-chat pages (Twitch /directory etc) applyChatPosition fired
+    // before this point with cont=null, so the handle was stranded at 0,0.
+    requestAnimationFrame(() => { try { positionChatResizeHandle() } catch (_) {} })
     return container
   }
 

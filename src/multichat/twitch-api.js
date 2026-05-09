@@ -2718,27 +2718,24 @@ function attachPollHandlers() {
   })
 }
 
+const badgesInFlight = new Set()
+const badgesFailedAt = new Map()  // channelLogin -> ms (last failure)
+const BADGE_FAILURE_BACKOFF_MS = 60000
+
 async function fetchChannelBadges(channelLogin) {
-  if (!channelLogin || badgesFetchedChannels.has(channelLogin)) return
+  if (!channelLogin) return
+  if (badgesFetchedChannels.has(channelLogin)) return
+  if (badgesInFlight.has(channelLogin)) return
+  // Backoff window after a failed fetch — without this, an early fetch that
+  // failed (transient 5xx, network blip, empty data) used to permanently
+  // poison the guard so badges fell back to the global star forever.
+  const lastFail = badgesFailedAt.get(channelLogin)
+  if (lastFail && Date.now() - lastFail < BADGE_FAILURE_BACKOFF_MS) return
   // Sanitize: Twitch logins are alphanumeric + underscore only
   const safe = channelLogin.replace(/[^a-z0-9_]/g, '')
   if (!safe) return
-  badgesFetchedChannels.add(channelLogin)
-  // Evict oldest channel if cache exceeds 20
-  if (badgesFetchedChannels.size > 20) {
-    const oldest = badgesFetchedChannels.values().next().value;
-    badgesFetchedChannels.delete(oldest);
-    // Remove that channel's badge entries
-    for (const key of twitchBadgeUrls.keys()) {
-      if (key.startsWith(`${oldest}:`)) twitchBadgeUrls.delete(key);
-    }
-    for (const key of ffzBadgeKeys) {
-      if (key.startsWith(`${oldest}:`)) ffzBadgeKeys.delete(key);
-    }
-    for (const key of channelBadgeVersions.keys()) {
-      if (key.startsWith(`${oldest}:`)) channelBadgeVersions.delete(key);
-    }
-  }
+  badgesInFlight.add(channelLogin)
+  let populated = false
   try {
     // Fetch channel badges (GQL broadcastBadges) + FFZ in parallel
     const [gqlResp, ffzResp] = await Promise.allSettled([
@@ -2749,10 +2746,13 @@ async function fetchChannelBadges(channelLogin) {
     // Channel badges via GQL broadcastBadges (no Client-Integrity needed)
     if (gqlResp.status === 'fulfilled') {
       const badges = gqlResp.value?.data?.user?.broadcastBadges
-      if (badges) {
+      if (badges?.length) {
         const versionsBySet = new Map()
         for (const b of badges) {
-          if (b.imageURL) twitchBadgeUrls.set(`${channelLogin}:${b.setID}/${b.version}`, b.imageURL)
+          if (b.imageURL) {
+            twitchBadgeUrls.set(`${channelLogin}:${b.setID}/${b.version}`, b.imageURL)
+            populated = true
+          }
           const v = parseInt(b.version, 10)
           if (Number.isFinite(v)) {
             let arr = versionsBySet.get(b.setID)
@@ -2772,27 +2772,52 @@ async function fetchChannelBadges(channelLogin) {
       const ffz = await ffzResp.value.json()
       const room = ffz?.room
       if (room) {
-        // Custom mod badge
         const modUrl = room.mod_urls?.['2'] || room.mod_urls?.['1'] || room.moderator_badge
         if (modUrl) {
           const src = modUrl.startsWith('//') ? 'https:' + modUrl : modUrl
           twitchBadgeUrls.set(`${channelLogin}:moderator/1`, src)
           ffzBadgeKeys.add(`${channelLogin}:moderator`)
+          populated = true
         }
-        // Custom VIP badge
         const vipUrl = room.vip_badge?.['2'] || room.vip_badge?.['1']
         if (vipUrl) {
           const src = vipUrl.startsWith('//') ? 'https:' + vipUrl : vipUrl
           twitchBadgeUrls.set(`${channelLogin}:vip/1`, src)
           ffzBadgeKeys.add(`${channelLogin}:vip`)
+          populated = true
         }
       }
     }
 
-    log('Loaded channel badges for', channelLogin)
-    renderMessages(currentTab)
+    if (populated) {
+      badgesFetchedChannels.add(channelLogin)
+      badgesFailedAt.delete(channelLogin)
+      // Evict oldest channel if cache exceeds 20
+      if (badgesFetchedChannels.size > 20) {
+        const oldest = badgesFetchedChannels.values().next().value
+        badgesFetchedChannels.delete(oldest)
+        for (const key of twitchBadgeUrls.keys()) {
+          if (key.startsWith(`${oldest}:`)) twitchBadgeUrls.delete(key)
+        }
+        for (const key of ffzBadgeKeys) {
+          if (key.startsWith(`${oldest}:`)) ffzBadgeKeys.delete(key)
+        }
+        for (const key of channelBadgeVersions.keys()) {
+          if (key.startsWith(`${oldest}:`)) channelBadgeVersions.delete(key)
+        }
+      }
+      log('Loaded channel badges for', channelLogin)
+      renderMessages(currentTab)
+    } else {
+      // No data populated — schedule retry after backoff
+      badgesFailedAt.set(channelLogin, Date.now())
+      log('No channel badges returned for', channelLogin, '— will retry after backoff')
+    }
   } catch (e) {
     log('Failed to fetch channel badges:', e.message)
+    badgesFailedAt.set(channelLogin, Date.now())
+  } finally {
+    badgesInFlight.delete(channelLogin)
   }
 }
 

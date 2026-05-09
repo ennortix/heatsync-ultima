@@ -964,11 +964,14 @@
 
       injectStreamEventsIntoBuffers(valid, true)
 
-      // Seed dedup map so realtime handlers don't re-add loaded events
+      // Seed dedup map so realtime handlers don't re-add loaded events.
+      // Seed with the event's ORIGINAL time, not Date.now(): the 60s dedup
+      // window is for echo-suppression of fresh broadcasts. Seeding with
+      // `now` makes every loaded event look just-arrived and blocks legit
+      // new same-text events for 60s after every reload.
       if (!window._hsStreamEventDedup) window._hsStreamEventDedup = new Map()
-      const now = Date.now()
       for (const e of valid) {
-        if (e.text) window._hsStreamEventDedup.set(e.text, now)
+        if (e.text && e.time) window._hsStreamEventDedup.set(e.text, e.time)
       }
 
       // Prune expired + deduped from storage
@@ -1250,6 +1253,11 @@
   // Track scroll state for "new messages" button
   let isScrolledUp = false;
   let emoteReloadTimer = null;
+  // Track scopes (channel:X / global / inventory) whose first emote payload
+  // we've already received this session. After first load, subsequent emote
+  // updates skip clearRenderedHtmlCache so old messages keep their rendering
+  // even when emotes are removed — "history is sacred" UX.
+  const _emoteFirstLoad = new Set();
   let newMessageCount = 0;
   let isProgrammaticScroll = false; // Flag to ignore programmatic scrolls
 
@@ -7606,15 +7614,21 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       // Listen for emote updates from background
       if (msg.type === 'global_emotes_update' || msg.type === 'channel_emotes_update') {
         log('received', msg.type, msg.channelOwner || '');
-        // Defer cache invalidation + epoch bump until after loadEmotes resolves.
-        // Bumping immediately caused 2-3 visible rebuilds on refresh because the
-        // runtime msg + storage event paths both fire and any intermediate
-        // renderMessages (rAF-debounced from new chat msgs) wipes the DOM.
+        // Cold-start (first emote payload for this scope) needs clear+rerender
+        // so old plain-text messages from history pick up newly-loaded emotes.
+        // Subsequent updates (add/remove via 7TV EventAPI) preserve _renderedHtml
+        // — old messages keep their emote rendering even if an emote is removed.
+        // History is sacred: what was rendered as an emote stays an emote.
+        const scope = msg.type === 'channel_emotes_update' ? `ch:${msg.channelOwner || '_'}` : 'global'
+        const isFirstLoad = !_emoteFirstLoad.has(scope)
+        _emoteFirstLoad.add(scope)
         cleanup.clearTimeout(emoteReloadTimer);
         emoteReloadTimer = cleanup.setTimeout(() => {
           loadEmotes().then(() => {
-            clearRenderedHtmlCache();
-            renderMessages(currentTab);
+            if (isFirstLoad) {
+              clearRenderedHtmlCache();
+              renderMessages(currentTab);
+            }
           });
         }, 300);
       }
@@ -7856,14 +7870,16 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       // Emote updates - reload when storage changes (debounced to avoid spam)
       if (changes.global_emotes || changes.channel_emotes_map || changes.emote_inventory || changes.native_twitch_emotes) {
         log('storage changed:', changes.channel_emotes_map ? 'channel_emotes_map' : '', changes.global_emotes ? 'global_emotes' : '', changes.emote_inventory ? 'emote_inventory' : '', changes.native_twitch_emotes ? 'native_twitch_emotes' : '');
-        // Same deferral as the runtime msg path — bump epoch + invalidate
-        // cache only once after loadEmotes resolves, otherwise back-to-back
-        // bumps from multiple emote sources cause visible flicker on refresh.
-        const needsBump = !!(changes.global_emotes || changes.channel_emotes_map || changes.native_twitch_emotes)
+        // Cold-start vs. update split: clear cache only on the first payload
+        // per scope this session. Subsequent updates (add/remove) preserve
+        // _renderedHtml so removed emotes stay rendered in old messages.
+        const scope = changes.global_emotes ? 'global' : (changes.channel_emotes_map ? 'ch:_storage' : (changes.native_twitch_emotes ? 'native' : ''))
+        const isFirstLoad = scope && !_emoteFirstLoad.has(scope)
+        if (scope) _emoteFirstLoad.add(scope)
         cleanup.clearTimeout(emoteReloadTimer);
         emoteReloadTimer = cleanup.setTimeout(() => {
           loadEmotes().then(() => {
-            if (needsBump) clearRenderedHtmlCache();
+            if (isFirstLoad) clearRenderedHtmlCache();
             if (!isScrolledUp) renderMessages(currentTab);
           });
         }, 300);

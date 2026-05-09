@@ -15857,27 +15857,24 @@ function attachPollHandlers() {
   })
 }
 
+const badgesInFlight = new Set()
+const badgesFailedAt = new Map()  // channelLogin -> ms (last failure)
+const BADGE_FAILURE_BACKOFF_MS = 60000
+
 async function fetchChannelBadges(channelLogin) {
-  if (!channelLogin || badgesFetchedChannels.has(channelLogin)) return
+  if (!channelLogin) return
+  if (badgesFetchedChannels.has(channelLogin)) return
+  if (badgesInFlight.has(channelLogin)) return
+  // Backoff window after a failed fetch — without this, an early fetch that
+  // failed (transient 5xx, network blip, empty data) used to permanently
+  // poison the guard so badges fell back to the global star forever.
+  const lastFail = badgesFailedAt.get(channelLogin)
+  if (lastFail && Date.now() - lastFail < BADGE_FAILURE_BACKOFF_MS) return
   // Sanitize: Twitch logins are alphanumeric + underscore only
   const safe = channelLogin.replace(/[^a-z0-9_]/g, '')
   if (!safe) return
-  badgesFetchedChannels.add(channelLogin)
-  // Evict oldest channel if cache exceeds 20
-  if (badgesFetchedChannels.size > 20) {
-    const oldest = badgesFetchedChannels.values().next().value;
-    badgesFetchedChannels.delete(oldest);
-    // Remove that channel's badge entries
-    for (const key of twitchBadgeUrls.keys()) {
-      if (key.startsWith(`${oldest}:`)) twitchBadgeUrls.delete(key);
-    }
-    for (const key of ffzBadgeKeys) {
-      if (key.startsWith(`${oldest}:`)) ffzBadgeKeys.delete(key);
-    }
-    for (const key of channelBadgeVersions.keys()) {
-      if (key.startsWith(`${oldest}:`)) channelBadgeVersions.delete(key);
-    }
-  }
+  badgesInFlight.add(channelLogin)
+  let populated = false
   try {
     // Fetch channel badges (GQL broadcastBadges) + FFZ in parallel
     const [gqlResp, ffzResp] = await Promise.allSettled([
@@ -15888,10 +15885,13 @@ async function fetchChannelBadges(channelLogin) {
     // Channel badges via GQL broadcastBadges (no Client-Integrity needed)
     if (gqlResp.status === 'fulfilled') {
       const badges = gqlResp.value?.data?.user?.broadcastBadges
-      if (badges) {
+      if (badges?.length) {
         const versionsBySet = new Map()
         for (const b of badges) {
-          if (b.imageURL) twitchBadgeUrls.set(`${channelLogin}:${b.setID}/${b.version}`, b.imageURL)
+          if (b.imageURL) {
+            twitchBadgeUrls.set(`${channelLogin}:${b.setID}/${b.version}`, b.imageURL)
+            populated = true
+          }
           const v = parseInt(b.version, 10)
           if (Number.isFinite(v)) {
             let arr = versionsBySet.get(b.setID)
@@ -15911,27 +15911,52 @@ async function fetchChannelBadges(channelLogin) {
       const ffz = await ffzResp.value.json()
       const room = ffz?.room
       if (room) {
-        // Custom mod badge
         const modUrl = room.mod_urls?.['2'] || room.mod_urls?.['1'] || room.moderator_badge
         if (modUrl) {
           const src = modUrl.startsWith('//') ? 'https:' + modUrl : modUrl
           twitchBadgeUrls.set(`${channelLogin}:moderator/1`, src)
           ffzBadgeKeys.add(`${channelLogin}:moderator`)
+          populated = true
         }
-        // Custom VIP badge
         const vipUrl = room.vip_badge?.['2'] || room.vip_badge?.['1']
         if (vipUrl) {
           const src = vipUrl.startsWith('//') ? 'https:' + vipUrl : vipUrl
           twitchBadgeUrls.set(`${channelLogin}:vip/1`, src)
           ffzBadgeKeys.add(`${channelLogin}:vip`)
+          populated = true
         }
       }
     }
 
-    log('Loaded channel badges for', channelLogin)
-    renderMessages(currentTab)
+    if (populated) {
+      badgesFetchedChannels.add(channelLogin)
+      badgesFailedAt.delete(channelLogin)
+      // Evict oldest channel if cache exceeds 20
+      if (badgesFetchedChannels.size > 20) {
+        const oldest = badgesFetchedChannels.values().next().value
+        badgesFetchedChannels.delete(oldest)
+        for (const key of twitchBadgeUrls.keys()) {
+          if (key.startsWith(`${oldest}:`)) twitchBadgeUrls.delete(key)
+        }
+        for (const key of ffzBadgeKeys) {
+          if (key.startsWith(`${oldest}:`)) ffzBadgeKeys.delete(key)
+        }
+        for (const key of channelBadgeVersions.keys()) {
+          if (key.startsWith(`${oldest}:`)) channelBadgeVersions.delete(key)
+        }
+      }
+      log('Loaded channel badges for', channelLogin)
+      renderMessages(currentTab)
+    } else {
+      // No data populated — schedule retry after backoff
+      badgesFailedAt.set(channelLogin, Date.now())
+      log('No channel badges returned for', channelLogin, '— will retry after backoff')
+    }
   } catch (e) {
     log('Failed to fetch channel badges:', e.message)
+    badgesFailedAt.set(channelLogin, Date.now())
+  } finally {
+    badgesInFlight.delete(channelLogin)
   }
 }
 
@@ -24426,11 +24451,14 @@ const STORAGE_KEY = 'heatsync_multichat';
 
       injectStreamEventsIntoBuffers(valid, true)
 
-      // Seed dedup map so realtime handlers don't re-add loaded events
+      // Seed dedup map so realtime handlers don't re-add loaded events.
+      // Seed with the event's ORIGINAL time, not Date.now(): the 60s dedup
+      // window is for echo-suppression of fresh broadcasts. Seeding with
+      // `now` makes every loaded event look just-arrived and blocks legit
+      // new same-text events for 60s after every reload.
       if (!window._hsStreamEventDedup) window._hsStreamEventDedup = new Map()
-      const now = Date.now()
       for (const e of valid) {
-        if (e.text) window._hsStreamEventDedup.set(e.text, now)
+        if (e.text && e.time) window._hsStreamEventDedup.set(e.text, e.time)
       }
 
       // Prune expired + deduped from storage
@@ -24712,6 +24740,11 @@ const STORAGE_KEY = 'heatsync_multichat';
   // Track scroll state for "new messages" button
   let isScrolledUp = false;
   let emoteReloadTimer = null;
+  // Track scopes (channel:X / global / inventory) whose first emote payload
+  // we've already received this session. After first load, subsequent emote
+  // updates skip clearRenderedHtmlCache so old messages keep their rendering
+  // even when emotes are removed — "history is sacred" UX.
+  const _emoteFirstLoad = new Set();
   let newMessageCount = 0;
   let isProgrammaticScroll = false; // Flag to ignore programmatic scrolls
 
@@ -31068,15 +31101,21 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       // Listen for emote updates from background
       if (msg.type === 'global_emotes_update' || msg.type === 'channel_emotes_update') {
         log('received', msg.type, msg.channelOwner || '');
-        // Defer cache invalidation + epoch bump until after loadEmotes resolves.
-        // Bumping immediately caused 2-3 visible rebuilds on refresh because the
-        // runtime msg + storage event paths both fire and any intermediate
-        // renderMessages (rAF-debounced from new chat msgs) wipes the DOM.
+        // Cold-start (first emote payload for this scope) needs clear+rerender
+        // so old plain-text messages from history pick up newly-loaded emotes.
+        // Subsequent updates (add/remove via 7TV EventAPI) preserve _renderedHtml
+        // — old messages keep their emote rendering even if an emote is removed.
+        // History is sacred: what was rendered as an emote stays an emote.
+        const scope = msg.type === 'channel_emotes_update' ? `ch:${msg.channelOwner || '_'}` : 'global'
+        const isFirstLoad = !_emoteFirstLoad.has(scope)
+        _emoteFirstLoad.add(scope)
         cleanup.clearTimeout(emoteReloadTimer);
         emoteReloadTimer = cleanup.setTimeout(() => {
           loadEmotes().then(() => {
-            clearRenderedHtmlCache();
-            renderMessages(currentTab);
+            if (isFirstLoad) {
+              clearRenderedHtmlCache();
+              renderMessages(currentTab);
+            }
           });
         }, 300);
       }
@@ -31318,14 +31357,16 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       // Emote updates - reload when storage changes (debounced to avoid spam)
       if (changes.global_emotes || changes.channel_emotes_map || changes.emote_inventory || changes.native_twitch_emotes) {
         log('storage changed:', changes.channel_emotes_map ? 'channel_emotes_map' : '', changes.global_emotes ? 'global_emotes' : '', changes.emote_inventory ? 'emote_inventory' : '', changes.native_twitch_emotes ? 'native_twitch_emotes' : '');
-        // Same deferral as the runtime msg path — bump epoch + invalidate
-        // cache only once after loadEmotes resolves, otherwise back-to-back
-        // bumps from multiple emote sources cause visible flicker on refresh.
-        const needsBump = !!(changes.global_emotes || changes.channel_emotes_map || changes.native_twitch_emotes)
+        // Cold-start vs. update split: clear cache only on the first payload
+        // per scope this session. Subsequent updates (add/remove) preserve
+        // _renderedHtml so removed emotes stay rendered in old messages.
+        const scope = changes.global_emotes ? 'global' : (changes.channel_emotes_map ? 'ch:_storage' : (changes.native_twitch_emotes ? 'native' : ''))
+        const isFirstLoad = scope && !_emoteFirstLoad.has(scope)
+        if (scope) _emoteFirstLoad.add(scope)
         cleanup.clearTimeout(emoteReloadTimer);
         emoteReloadTimer = cleanup.setTimeout(() => {
           loadEmotes().then(() => {
-            if (needsBump) clearRenderedHtmlCache();
+            if (isFirstLoad) clearRenderedHtmlCache();
             if (!isScrolledUp) renderMessages(currentTab);
           });
         }, 300);

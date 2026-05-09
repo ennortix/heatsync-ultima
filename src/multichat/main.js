@@ -129,7 +129,9 @@
     }
   }
 
-  let mentionsSeenCount = 0; // Track how many mentions user has seen
+  // mentionsSeenCount removed — mentions unread is now driven by
+  // seen-state.js (server-backed seenAt.mentions vs client-tracked
+  // latestAt.mentions). See bumpSeen('mentions') / noteSeenEvent('mentions').
 
   // Per-channel YouTube: messages and links
   const channelYtMessages = new Map();  // channelTabId → message[]
@@ -161,7 +163,7 @@
       mcUserCosmetics.delete(mcUserCosmetics.keys().next().value)
     }
   }
-  const MC_COSMETICS_PENDING_MAX = 500
+  const MC_COSMETICS_PENDING_MAX = 100
   const mcCosmeticsPending = new Set()
   let mcCosmeticsTimer = null
 
@@ -595,9 +597,45 @@
   let _pendingSettings = null
   let _settingsSaveTimer = null
 
+  // Layout-critical keys mirror to localStorage so early-layout.js can
+  // read them sync at document_start (before chrome.storage is available
+  // to content scripts). Eliminates the cold-boot flash on hard refresh.
+  const _LAYOUT_MIRROR_KEYS = new Set(['tabPosition', 'chatPosition', 'chatCollapsed'])
+  function _mirrorLayoutToLS(key, value) {
+    try { localStorage.setItem('hs_layout_' + key, JSON.stringify(value)) } catch {}
+  }
+
+  // Cross-fade the document_start prepaint pseudo-element with the real
+  // multichat container. Both transition over 200ms — prepaint opacity 1→0
+  // while container opacity 0→1 — so there's no visible black gap or
+  // tab-bar pop. Two rAFs before the fade guarantee the overlay has
+  // actually painted before the swap starts (rAF 1 = post-style commit,
+  // rAF 2 = post-paint).
+  let _prepaintTornDown = false
+  function tearDownPrepaint() {
+    if (_prepaintTornDown) return
+    _prepaintTornDown = true
+    const html = document.documentElement
+    const container = document.getElementById('hs-mc-container')
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        if (container) container.classList.add('hs-mc-shown')
+        if (html.classList.contains('hs-prepaint-active')) {
+          html.classList.add('hs-prepaint-fade')
+        }
+        setTimeout(() => {
+          html.classList.remove('hs-prepaint-active')
+          html.classList.remove('hs-prepaint-fade')
+          document.getElementById('hs-early-layout')?.remove()
+        }, 220)
+      })
+    })
+  }
+
   function saveUiSetting(key, value) {
     if (!_pendingSettings) _pendingSettings = {}
     _pendingSettings[key] = value
+    if (_LAYOUT_MIRROR_KEYS.has(key)) _mirrorLayoutToLS(key, value)
     if (_settingsSaveTimer) cleanup.clearTimeout(_settingsSaveTimer)
     _settingsSaveTimer = cleanup.setTimeout(() => {
       const pending = _pendingSettings
@@ -607,6 +645,17 @@
       chrome.storage.sync.get(['ui_settings']).then(s => {
         chrome.storage.sync.set({ ui_settings: { ...s.ui_settings, ...pending } })
       })
+      // Cross-surface insta-sync: server merges + fans out to every other
+      // client of this user (other tabs, ext on Twitch/Kick/YT, heatsync.org).
+      // chrome.storage.sync only syncs Chrome → Chrome with same Google
+      // account; server-backed covers Firefox + heatsync.org + signed-out
+      // Chrome profiles using the same heatsync login.
+      try {
+        chrome.runtime.sendMessage({
+          type: 'ws_send',
+          data: { type: 'ui-state:sync', patch: pending }
+        })
+      } catch (_) { /* context invalidated */ }
     }, 100)
   }
 
@@ -847,7 +896,9 @@
       // paths that don't run switchTab (live picker), and survives any new
       // mention that lands in the same frame between click and render.
       tab.classList.remove('has-mentions', 'has-new', 'has-stream-event');
-      if (tabId === 'mentions') mentionsSeenCount = mentionsBuffer.length;
+      if (tabId === 'mentions') bumpSeen('mentions');
+      else if (tabId === 'whispers') bumpSeen('whispers');
+      else if (tabId === 'feed') bumpSeen('home');
       if (tabId === 'add') {
         switchTab('add');
       } else if (tabId === 'rotate') {
@@ -885,8 +936,11 @@
       if (tab.classList.contains('has-mentions') || tab.classList.contains('has-new') || tab.classList.contains('has-stream-event')) {
         e.preventDefault();
         tab.classList.remove('has-mentions', 'has-new', 'has-stream-event');
-        // Sync seen count so updateTabBadges doesn't re-add it
-        if (tabId === 'mentions') mentionsSeenCount = mentionsBuffer.length;
+        // Sync server-backed seen state so the dot doesn't reappear and
+        // every other client clears via WS broadcast.
+        if (tabId === 'mentions') bumpSeen('mentions');
+        else if (tabId === 'whispers') bumpSeen('whispers');
+        else if (tabId === 'feed') bumpSeen('home');
         return;
       }
 
@@ -1979,6 +2033,9 @@
 
   let _saveChatWidthTimer = null;
   function saveChatWidth() {
+    // Mirror to localStorage immediately for early-layout.js to read at
+    // document_start. chrome.storage write is debounced; localStorage isn't.
+    try { localStorage.setItem('hs_layout_chatWidth', String(chatWidth)) } catch {}
     if (_saveChatWidthTimer) cleanup.clearTimeout(_saveChatWidthTimer);
     _saveChatWidthTimer = cleanup.setTimeout(() => {
       _saveChatWidthTimer = null;
@@ -1998,6 +2055,7 @@
   let chatHeight = Math.max(MIN_CHAT_HEIGHT, Math.round(window.innerHeight * 0.35));
   let _saveChatHeightTimer = null;
   function saveChatHeight() {
+    try { localStorage.setItem('hs_layout_chatHeight', String(chatHeight)) } catch {}
     if (_saveChatHeightTimer) cleanup.clearTimeout(_saveChatHeightTimer);
     _saveChatHeightTimer = cleanup.setTimeout(() => {
       _saveChatHeightTimer = null;
@@ -2050,6 +2108,24 @@
     document.body.appendChild(handle);
     handle.addEventListener('mouseenter', () => { handle.style.opacity = '1'; });
     handle.addEventListener('mouseleave', () => { if (!_isResizingC) handle.style.opacity = '0.55'; });
+
+    // Window-level reflow: WM fullscreen (dwl mod-e, sway/i3 fullscreen),
+    // browser zoom, devtools toggle all change viewport without firing the
+    // platform-internal layout signals (Twitch theatre attr, YT flexy attr).
+    // Without this the orange bar's inline px from getBoundingClientRect goes
+    // stale and floats over wrong pixels until the user moves the cursor.
+    // Suppressed during the live drag (drag dispatches resize itself for the
+    // player to re-layout — we don't want recursion).
+    let _resizeReflowTimer = null
+    window.addEventListener('resize', () => {
+      if (_isResizingC) return
+      if (_resizeReflowTimer) clearTimeout(_resizeReflowTimer)
+      _resizeReflowTimer = setTimeout(() => {
+        _resizeReflowTimer = null
+        try { positionChatResizeHandle() } catch {}
+        try { _updateMcLayout() } catch {}
+      }, 60)
+    }, { passive: true, signal: mcSignal });
 
     // Live drag: chat + player resize on every pointermove (rAF-throttled).
     // We suppress the YT window-resize dispatch during drag so IMA SDK / html5
@@ -2622,6 +2698,15 @@
       _ytViewportClampTimer = cleanup.setTimeout(() => {
         _ytViewportClampTimer = null
         applyYouTubeChatWidth()
+        // Re-run full layout reflow — viewport change (WM fullscreen, devtools
+        // toggle, browser zoom) needs every position-dependent piece updated.
+        // The orange resize bar uses inline px from container.getBoundingClientRect
+        // and goes stale; the tab/input bars follow via _updateMcLayout's
+        // ResizeObserver but only when the bars themselves resize, which doesn't
+        // fire on pure viewport changes. Cheap calls — all early-bail when nothing
+        // to reposition.
+        try { positionChatResizeHandle() } catch {}
+        try { _updateMcLayout() } catch {}
       }, 80)
     }
     window.addEventListener('resize', onResize, { signal: mcSignal })
@@ -2640,6 +2725,8 @@
       _kickViewportClampTimer = cleanup.setTimeout(() => {
         _kickViewportClampTimer = null
         applyPlatformPositionOverrides()
+        try { positionChatResizeHandle() } catch {}
+        try { _updateMcLayout() } catch {}
       }, 80)
     }
     window.addEventListener('resize', onResize, { signal: mcSignal })
@@ -4015,6 +4102,7 @@
         }
       }
       renderMessages(currentTab);
+      tearDownPrepaint()
       log('Auto-showed overlay on load');
     }
 
@@ -4082,9 +4170,10 @@
 
     // Mark mentions as seen when switching to that tab
     if (id === 'mentions') {
-      mentionsSeenCount = mentionsBuffer.length;
+      bumpSeen('mentions');
       updateTabBadges();
     }
+    if (id === 'feed') bumpSeen('home');
 
     // Show/hide search bar on mentions tab
     const searchBar = document.getElementById('hs-mc-search-bar')
@@ -4092,11 +4181,9 @@
 
     // Discover/pinned refresh bars removed — auto-poll handles freshness
 
-    // Clear whisper unread when switching to whispers tab
+    // Clear whisper unread when switching to whispers tab — server-backed.
     if (id === 'whispers') {
-      whisperLastViewedTime = Date.now()
-      whisperTotalUnread = 0
-      updateWhisperBadge()
+      bumpSeen('whispers')
       whisperSaveDebounced()
     }
 
@@ -4233,13 +4320,10 @@
   }
 
   function updateTabBadges() {
+    refreshSeenBadges();
     if (!tabBarElement) return;
     const mentionsTab = tabBarElement.querySelector('[data-tab="mentions"]');
-    if (mentionsTab) {
-      const unseenMentions = mentionsBuffer.length - mentionsSeenCount;
-      mentionsTab.textContent = 'mentions';
-      mentionsTab.classList.toggle('has-mentions', unseenMentions > 0);
-    }
+    if (mentionsTab) mentionsTab.textContent = 'mentions';
   }
 
 
@@ -7739,86 +7823,122 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     // Load whisper conversations from storage
     loadWhispers();
 
-    // Initialize IRC (runs on both Twitch and Kick — cross-platform relay)
+    // Seed cross-device unread state from server (mentions/whispers/home).
+    // Independent of auth — anonymous users skip the network hit and use
+    // local-only state. Awaits internally; doesn't block init.
+    loadSeenState();
+
+    // Seed cross-device UI state from server. Server-merged blob lands in
+    // chrome.storage.sync.ui_settings so the existing storage.onChanged
+    // listener applies every changed pref live. WS keeps it warm after.
+    ;(async () => {
+      try {
+        if (typeof hsAuthToken !== 'undefined' && !hsAuthToken) return
+        const resp = await apiFetch('/api/user/ui-state')
+        if (!resp?.ok || !resp.data?.state) return
+        const remote = resp.data.state
+        if (!remote || typeof remote !== 'object' || Object.keys(remote).length === 0) return
+        const stored = await chrome.storage.sync.get(['ui_settings'])
+        const merged = { ...(stored.ui_settings || {}), ...remote }
+        await chrome.storage.sync.set({ ui_settings: merged })
+      } catch (e) { log('ui-state seed failed:', e?.message) }
+    })();
+
+    // ── PHASE 4: defer all network connect to post-paint ─────────────────
+    // IRC/Kick socket open + N channel-join are 500ms-2s of network work
+    // that doesn't need to block the first visible render. The panel can
+    // mount, switch tabs, show settings, etc. while sockets warm up.
+    // requestIdleCallback fires after paint; setTimeout fallback for older
+    // browsers. New IRC()/KickChat() ctor is sync (no socket open) so the
+    // refs `irc`/`kickChat` are available immediately for any sync caller.
     irc = new IRC();
-    irc.connect();
-
-    // Connect auth IRC eagerly so first send is instant (whispers no longer arrive over IRC)
-    if (hostPlatform === 'twitch') {
-      const token = getTwitchAuthToken()
-      const nick = currentUsername || getCurrentUsername()
-      if (token && nick) {
-        connectAuthIrc(token, nick).then(ok => {
-          if (ok === true) log('Auth IRC ready')
-        })
-      }
-    }
-
-    // Twitch deprecated WHISPER over IRC in Feb 2023 — receive via EventSub instead.
-    // Works on any host (the ESW socket is independent of the chat IRC).
-    startEventSubWhispers()
-
-    // Initialize Kick chat (runs on both platforms — cross-platform relay)
     kickChat = new KickChat();
-    kickChat.connect();
+    const startNetwork = () => {
+      irc.connect();
+      kickChat.connect();
 
-    // Auto-join current channel on all platforms (using overrides if set)
-    const currentChannel = getCurrentChannel();
-    if (currentChannel) {
-      const platNames = getLivePlatformNames()
-      const twitchCh = platNames.twitch || currentChannel
-      const kickCh = platNames.kick || currentChannel
-      const ytUrl = platNames.youtube || `https://youtube.com/@${currentChannel}/live`
-
-      irc.join(twitchCh)
-      kickChat.join(kickCh)
-      // Also join the URL channel name if different (for native platform messages)
-      if (twitchCh !== currentChannel) irc.join(currentChannel)
-      if (kickCh !== currentChannel) kickChat.join(currentChannel)
-
-      // Subscribe YouTube. On a YT watch/live URL getCurrentChannel returns the
-      // 11-char videoId — feeding that to `@${id}/live` produces a bogus
-      // @<videoId>/live URL that the server can't resolve. Use the actual
-      // /watch?v=<id> form whenever we're on a YT video page so the server has
-      // something concrete to bind to. The previous `length > 20` check never
-      // matched (videoIds are 11), so YT-tab subs were silently broken.
-      const onYtVideoPage = hostPlatform === 'yt' && /\/watch|\/live\//.test(location.pathname + location.search)
-      const autoYtUrl = onYtVideoPage
-        ? `https://youtube.com/watch?v=${currentChannel}`
-        : ytUrl
-      ytSubscribedUrls.set('__live_yt_auto__', autoYtUrl)
-      ytChanLastSeen.set('__live_yt_auto__', Date.now())
-      chrome.runtime.sendMessage({
-        type: 'youtube_ws_subscribe', url: autoYtUrl, channelId: '__live_yt_auto__'
-      }).catch(() => {})
-      log('Auto-joined current channel:', currentChannel, 'platforms:', twitchCh, kickCh, ytUrl);
-    }
-
-    // Ensure live channel override is also joined on all platforms
-    const liveCh = getLiveChannel();
-    if (liveCh && liveCh !== currentChannel) {
-      irc?.join(liveCh);
-      kickChat?.join(liveCh);
-      log('Auto-joined live channel override:', liveCh);
-    }
-
-    config.channels.forEach(ch => {
-      const twitchName = ch.twitch;
-      const kickName = ch.kick;
-      if (twitchName) {
-        irc.join(twitchName);
-        try {
-          log('sending join_channel for:', twitchName);
-          chrome.runtime.sendMessage({ type: 'join_channel', platform: 'twitch', channel: twitchName });
-        } catch (e) { log('join_channel failed:', e.message); }
+      // Connect auth IRC eagerly so first send is instant (whispers no longer arrive over IRC)
+      if (hostPlatform === 'twitch') {
+        const token = getTwitchAuthToken()
+        const nick = currentUsername || getCurrentUsername()
+        if (token && nick) {
+          connectAuthIrc(token, nick).then(ok => {
+            if (ok === true) log('Auth IRC ready')
+          })
+        }
       }
-      if (kickName) {
-        kickChat.join(kickName);
+
+      // Twitch deprecated WHISPER over IRC in Feb 2023 — receive via EventSub instead.
+      // Works on any host (the ESW socket is independent of the chat IRC).
+      startEventSubWhispers()
+
+      // Auto-join current channel on all platforms (using overrides if set)
+      const currentChannel = getCurrentChannel();
+      if (currentChannel) {
+        const platNames = getLivePlatformNames()
+        const twitchCh = platNames.twitch || currentChannel
+        const kickCh = platNames.kick || currentChannel
+        const ytUrl = platNames.youtube || `https://youtube.com/@${currentChannel}/live`
+
+        irc.join(twitchCh)
+        kickChat.join(kickCh)
+        // Also join the URL channel name if different (for native platform messages)
+        if (twitchCh !== currentChannel) irc.join(currentChannel)
+        if (kickCh !== currentChannel) kickChat.join(currentChannel)
+
+        // Subscribe YouTube. On a YT watch/live URL getCurrentChannel returns the
+        // 11-char videoId — feeding that to `@${id}/live` produces a bogus
+        // @<videoId>/live URL that the server can't resolve. Use the actual
+        // /watch?v=<id> form whenever we're on a YT video page so the server has
+        // something concrete to bind to. The previous `length > 20` check never
+        // matched (videoIds are 11), so YT-tab subs were silently broken.
+        const onYtVideoPage = hostPlatform === 'yt' && /\/watch|\/live\//.test(location.pathname + location.search)
+        const autoYtUrl = onYtVideoPage
+          ? `https://youtube.com/watch?v=${currentChannel}`
+          : ytUrl
+        ytSubscribedUrls.set('__live_yt_auto__', autoYtUrl)
+        ytChanLastSeen.set('__live_yt_auto__', Date.now())
+        chrome.runtime.sendMessage({
+          type: 'youtube_ws_subscribe', url: autoYtUrl, channelId: '__live_yt_auto__'
+        }).catch(() => {})
+        log('Auto-joined current channel:', currentChannel, 'platforms:', twitchCh, kickCh, ytUrl);
       }
-      // YouTube subscription is owned by loadConfig() (line ~6071) so this
-      // loop only handles irc/kick — duplicate yt subs were idempotent but
-      // noisy in the bg log.
-    });
+
+      // Ensure live channel override is also joined on all platforms
+      const liveCh = getLiveChannel();
+      if (liveCh && liveCh !== currentChannel) {
+        irc?.join(liveCh);
+        kickChat?.join(liveCh);
+        log('Auto-joined live channel override:', liveCh);
+      }
+
+      config.channels.forEach(ch => {
+        const twitchName = ch.twitch;
+        const kickName = ch.kick;
+        if (twitchName) {
+          irc.join(twitchName);
+          try {
+            log('sending join_channel for:', twitchName);
+            chrome.runtime.sendMessage({ type: 'join_channel', platform: 'twitch', channel: twitchName });
+          } catch (e) { log('join_channel failed:', e.message); }
+        }
+        if (kickName) {
+          kickChat.join(kickName);
+        }
+        // YouTube subscription is owned by loadConfig() (line ~6071) so this
+        // loop only handles irc/kick — duplicate yt subs were idempotent but
+        // noisy in the bg log.
+      });
+    };
+    // Schedule connect+joins for the next idle slice so paint goes first.
+    // Falls back to setTimeout(0) where rIC is unavailable (older Chrome,
+    // Safari ext). 200ms timeout cap ensures we don't sit idle forever
+    // when the page is busy.
+    if (typeof requestIdleCallback === 'function') {
+      requestIdleCallback(startNetwork, { timeout: 200 });
+    } else {
+      setTimeout(startNetwork, 0);
+    }
 
     // Restore persisted stream events into buffers
     loadStreamEvents().then(() => {
@@ -7887,9 +8007,10 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
         mentionsBuffer.push(msg);
         if (mentionsBuffer.length > MAX_BUFFER + 50) mentionsBuffer.splice(0, mentionsBuffer.length - MAX_BUFFER);
         notifyMention(msg);
+        noteSeenEvent('mentions', msg.time || Date.now());
 
         if (currentTab === 'mentions') {
-          mentionsSeenCount = mentionsBuffer.length;
+          bumpSeen('mentions');
           if (!appendMessage(msg, 'mentions')) renderMessages('mentions');
         } else {
           updateTabIndicator('mentions');
@@ -7938,9 +8059,10 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
         mentionsBuffer.push(msg);
         if (mentionsBuffer.length > MAX_BUFFER + 50) mentionsBuffer.splice(0, mentionsBuffer.length - MAX_BUFFER);
         notifyMention(msg);
+        noteSeenEvent('mentions', msg.time || Date.now());
 
         if (currentTab === 'mentions') {
-          mentionsSeenCount = mentionsBuffer.length;
+          bumpSeen('mentions');
           if (!appendMessage(msg, 'mentions')) renderMessages('mentions');
         } else {
           updateTabIndicator('mentions');

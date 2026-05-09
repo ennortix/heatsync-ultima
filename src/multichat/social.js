@@ -338,6 +338,9 @@ async function loadHsAuth() {
           if (currentTab === 'feed') {
             renderMessages(currentTab);
           }
+          // Auth-bound: re-seed seen-state from the server for the new
+          // identity (or fall back to local-only on logout).
+          loadSeenState();
         }
       }
     });
@@ -492,7 +495,19 @@ function listenForSocialEvents() {
       try { trackSentMessage(msg.text, 'heatsync') } catch (_) {}
       return
     }
+    if (msg.type === 'seen_update') {
+      // Another client (web, other browser, ext on another tab) bumped a
+      // tab's seen-at. Apply locally so the red dot clears here too.
+      applySeenUpdate(msg.surface, msg.at)
+      return
+    }
     if (msg.type === 'new-message' && msg.data) {
+      // Track home/feed unread regardless of feedLoaded — the user may
+      // not have opened the feed tab yet, but we still want a red dot.
+      const ts = msg.data.created_at ? new Date(msg.data.created_at).getTime() : Date.now()
+      if (!isNaN(ts) && msg.data.username !== 'Anonymous') {
+        noteSeenEvent('home', ts)
+      }
       if (!feedLoaded) return;
       // Dedup: skip if already in feed
       const id = msg.data.base36_id;
@@ -665,8 +680,9 @@ function listenForSocialEvents() {
         mentionsBuffer.push(ytMsg)
         if (mentionsBuffer.length > MAX_BUFFER + 50) mentionsBuffer.splice(0, mentionsBuffer.length - MAX_BUFFER)
         notifyMention(ytMsg)
+        noteSeenEvent('mentions', ytMsg.time || Date.now())
         if (currentTab === 'mentions') {
-          mentionsSeenCount = mentionsBuffer.length
+          bumpSeen('mentions')
           if (!appendMessage(ytMsg, 'mentions')) renderMessages('mentions')
         } else {
           updateTabIndicator('mentions')

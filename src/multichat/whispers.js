@@ -23,19 +23,20 @@ function _whisperMarkSeen(key) {
   return false
 }
 
-// Trim oldest READ messages once read-count exceeds cap. Unread (incoming msgs
-// with time > whisperLastViewedTime) survive forever — that's the whole point.
+// Trim oldest READ messages once read-count exceeds cap. Unread (incoming
+// msgs with time > seenAt.whispers) survive forever — that's the whole point.
 // Self-sent messages count as read (we wrote them).
 function trimWhisperTimeline() {
+  const lastViewed = seenAt.whispers
   let readCount = 0
   for (const m of whisperTimeline) {
-    if (m.self || m.time <= whisperLastViewedTime) readCount++
+    if (m.self || m.time <= lastViewed) readCount++
   }
   let toRemove = readCount - WHISPER_TIMELINE_MAX_READ
   if (toRemove <= 0) return
   for (let i = 0; i < whisperTimeline.length && toRemove > 0; ) {
     const m = whisperTimeline[i]
-    if (m.self || m.time <= whisperLastViewedTime) {
+    if (m.self || m.time <= lastViewed) {
       whisperTimeline.splice(i, 1)
       toRemove--
     } else {
@@ -50,8 +51,6 @@ function whisperUsersSet(key, value) {
   }
 }
 let lastWhisperKey = null // for /r — last person involved in a whisper
-let whisperTotalUnread = 0
-let whisperLastViewedTime = 0
 let whisperDmsLoaded = false
 let selfWhisperColor = null // current user's Twitch color
 
@@ -94,8 +93,7 @@ function saveWhispers() {
       hs_whispers_v2: {
         timeline: whisperTimeline.slice(),
         users,
-        lastKey: lastWhisperKey,
-        lastViewed: whisperLastViewedTime
+        lastKey: lastWhisperKey
       }
     })
   } catch (e) { warn('whispers save failed:', e?.message) }
@@ -120,7 +118,6 @@ function loadWhispers() {
           }
         }
         if (data.lastKey) lastWhisperKey = data.lastKey
-        if (data.lastViewed) whisperLastViewedTime = data.lastViewed
       }
 
       // Migrate v1 format (per-conversation) into timeline
@@ -154,16 +151,12 @@ function loadWhispers() {
         whisperSaveDebounced()
       }
 
-      whisperTotalUnread = whisperTimeline.filter(m => !m.self && m.time > whisperLastViewedTime).length
-      updateWhisperBadge()
+      // Re-derive latestAt from any unread on disk so red-dot survives boot.
+      const newest = whisperTimeline.reduce((mx, m) => !m.self && m.time > mx ? m.time : mx, 0)
+      if (newest > 0) noteSeenEvent('whispers', newest)
+      refreshSeenBadges()
     }).catch((e) => warn('whispers load (storage.get) failed:', e?.message))
   } catch (e) { warn('whispers load failed:', e?.message) }
-}
-
-function updateWhisperBadge() {
-  if (!tabBarElement) return
-  const tab = tabBarElement.querySelector('[data-tab="whispers"]')
-  if (tab) tab.classList.toggle('has-new', whisperTotalUnread > 0)
 }
 
 function handleIncomingWhisper(msg) {
@@ -191,12 +184,11 @@ function handleIncomingWhisper(msg) {
   trimWhisperTimeline()
   lastWhisperKey = key
 
+  noteSeenEvent('whispers', msg.time || Date.now())
   if (currentTab === 'whispers') {
-    whisperLastViewedTime = Date.now()
+    bumpSeen('whispers')
     renderWhispersTab()
   } else {
-    whisperTotalUnread++
-    updateWhisperBadge()
     injectInlineNotif('dm', {
       type: 'inline-dm',
       user: msg.user,
@@ -233,12 +225,11 @@ function handleIncomingDm(data) {
   trimWhisperTimeline()
   lastWhisperKey = key
 
+  noteSeenEvent('whispers', time)
   if (currentTab === 'whispers') {
-    whisperLastViewedTime = Date.now()
+    bumpSeen('whispers')
     renderWhispersTab()
   } else {
-    whisperTotalUnread++
-    updateWhisperBadge()
     injectInlineNotif('dm', {
       type: 'inline-dm',
       user: data.from_display_name,
@@ -429,17 +420,22 @@ function renderWhispersTab() {
     })
   }
 
-  // Mark as read
-  whisperLastViewedTime = Date.now()
-  whisperTotalUnread = 0
-  updateWhisperBadge()
+  // Mark as read — server-backed, fans out to other clients via WS.
+  bumpSeen('whispers')
   whisperSaveDebounced()
 
   if (whisperTimeline.length === 0) {
     msgsEl.replaceChildren()
     const emptyDiv = document.createElement('div')
     emptyDiv.className = 'hs-mc-empty'
-    emptyDiv.textContent = t('mc_whisper_hint')
+    // Skeleton while the DM history fetch is in flight — prevents the empty
+    // hint from flashing for a beat before the actual conversations render.
+    // Only relevant on first whispers-tab open with auth + no cached timeline.
+    if (whisperDmsLoaded && hsAuthToken) {
+      emptyDiv.textContent = t('common_loading') || 'loading…'
+    } else {
+      emptyDiv.textContent = t('mc_whisper_hint')
+    }
     msgsEl.appendChild(emptyDiv)
     return
   }

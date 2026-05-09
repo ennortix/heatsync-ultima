@@ -231,6 +231,11 @@ const USER_COSMETICS_TTL = 30 * 60 * 1000
 // pick up within 5 min instead of being masked for 30.
 const COSMETICS_NEGATIVE_TTL = 5 * 60 * 1000
 const USER_COSMETICS_MAX = 500
+// SW-side LRU for /api/embed/resolve responses. Re-rendered feed posts (tab
+// switch, scrollback) reuse cached embed metadata instead of re-fetching
+// the heatsync server every time.
+const _embedResolveCache = new Map()
+const EMBED_RESOLVE_TTL = 60 * 60 * 1000  // 1 hour
 let followedUsers = []; // Users the current user follows
 let currentUsername = null; // Logged-in user's username
 let socket = null;
@@ -3131,6 +3136,23 @@ function handleWSMessage(msg) {
       }
       break
 
+    case 'ui-state:update':
+      // Cross-surface UI prefs sync — server merged a patch from another
+      // client and is fanning out the full state. Mirror into chrome.storage
+      // .sync.ui_settings so the existing storage.onChanged listener applies
+      // every key live (zebra/timestamps/avatars/active tab/etc).
+      if (msg.state && typeof msg.state === 'object') {
+        log(' 🎛️  ui-state sync received:', Object.keys(msg.state).length, 'keys')
+        try {
+          browser.storage.sync.get(['ui_settings']).then(s => {
+            const merged = { ...(s.ui_settings || {}), ...msg.state }
+            browser.storage.sync.set({ ui_settings: merged })
+          }).catch(() => {})
+        } catch (e) { log(' ui-state apply failed:', e?.message) }
+        broadcastToTabs({ type: 'ui_state_update', state: msg.state })
+      }
+      break
+
     case 'multichat:config':
       // Cross-device sync: server sent updated multichat config
       if (Array.isArray(msg.channels)) {
@@ -3298,6 +3320,16 @@ function handleWSMessage(msg) {
       broadcastToTabs({
         type: 'dm_new',
         data: msg
+      })
+      break
+
+    case 'seen:update':
+      // Cross-surface unread sync: another client (web, other ext) bumped a
+      // tab's seen-at. Forward to all multichat tabs so they clear the dot.
+      broadcastToTabs({
+        type: 'seen_update',
+        surface: msg.surface,
+        at: msg.at
       })
       break
 
@@ -4001,12 +4033,30 @@ async function handleMessage(message, sender, sendResponse) {
 
   // Proxy /api/embed/resolve through SW — content-script fetches in MV3 still
   // get blocked by CORS even with host_permissions; SW bypasses it.
+  // 1hr in-memory cache keyed by URL so re-renders (tab switch, scrollback)
+  // don't re-hit the heatsync server. Cache cleared on SW restart, which is
+  // fine — this is a UX cache, not correctness.
   if (message.type === 'fetch_embed_resolve') {
     const url = message.url
     if (!url || !/^https?:\/\//i.test(url)) { sendResponse(null); return true }
+    const cached = _embedResolveCache.get(url)
+    if (cached && Date.now() - cached.ts < EMBED_RESOLVE_TTL) {
+      sendResponse(cached.data)
+      return true
+    }
     fetch(`https://heatsync.org/api/embed/resolve?url=${encodeURIComponent(url)}`, { signal: AbortSignal.timeout(6000) })
       .then(r => r.ok ? r.json() : null)
-      .then(data => sendResponse(data))
+      .then(data => {
+        if (data) {
+          _embedResolveCache.set(url, { data, ts: Date.now() })
+          // LRU trim — Map iteration order is insertion order
+          if (_embedResolveCache.size > 500) {
+            const first = _embedResolveCache.keys().next().value
+            _embedResolveCache.delete(first)
+          }
+        }
+        sendResponse(data)
+      })
       .catch(() => sendResponse(null))
     return true
   }
@@ -4204,7 +4254,7 @@ async function handleMessage(message, sender, sendResponse) {
 
   // Forward WS message from content scripts (used by multichat kick channels)
   if (message.type === 'ws_send') {
-    const allowedWsTypes = ['channel:join', 'channel:leave', 'emote:used', 'youtube:subscribe', 'youtube:unsubscribe', 'multichat:sync', 'user:mute', 'user:unmute']
+    const allowedWsTypes = ['channel:join', 'channel:leave', 'emote:used', 'youtube:subscribe', 'youtube:unsubscribe', 'multichat:sync', 'user:mute', 'user:unmute', 'ui-state:sync']
     if (message.data && allowedWsTypes.includes(message.data.type)) {
       // Track multichat-added channel joins so we can replay on WS reconnect
       // (server restarts, network blips, SW resume — any of these orphan the join).

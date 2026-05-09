@@ -53,6 +53,7 @@ const COPY_FILES = [
   'vi-mode.js',
   'kick-autocomplete-hook.js',
   'pcard-early.js',
+  'early-layout.js',
   'i18n-override.js',
 ]
 
@@ -93,6 +94,7 @@ function readLib() {
 const MULTICHAT_MODULES = [
   'bootstrap.js',
   'styles.js',
+  'seen-state.js',
   'automod.js',
   'stream-stats.js',
   'mentions.js',

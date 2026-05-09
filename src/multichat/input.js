@@ -297,6 +297,23 @@ function initInput() {
   input.addEventListener('keydown', handleInputKeydown);
   input.addEventListener('input', handleInputChange);
   input.addEventListener('input', updateCharCount);
+  // Tab clears emote :hover highlight in chat — mouse stuck over an emote
+  // would otherwise hold the green rect lit while the user cycles autocomplete.
+  // Body class restored on mousemove. Single global install via window flag.
+  if (!window._hsMcTabHoverInstalled) {
+    window._hsMcTabHoverInstalled = true
+    document.addEventListener('keydown', (e) => {
+      if (e.key !== 'Tab') return
+      const ae = document.activeElement
+      if (ae?.id !== 'hs-mc-input') return
+      document.body.classList.add('hs-tab-cycling')
+    })
+    document.addEventListener('mousemove', () => {
+      if (document.body.classList.contains('hs-tab-cycling')) {
+        document.body.classList.remove('hs-tab-cycling')
+      }
+    }, { passive: true })
+  }
   // Sync highlight overlay scroll with input scroll (RAF-throttled)
   let _inputScrollRaf = null
   input.addEventListener('scroll', () => {

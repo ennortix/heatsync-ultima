@@ -1623,6 +1623,18 @@ function injectStyles() {
     .hs-mc-emote-wrapper.hs-emote-highlight > img {
       visibility: hidden;
     }
+    /* Tab cycling: suppress emote hover highlight while user is cycling Tab
+       matches in chat input. Mouse stuck over an emote keeps the green rect
+       lit otherwise. Cleared on the next mousemove. */
+    body.hs-tab-cycling .hs-mc-emote-wrapper.hs-emote-highlight::before {
+      opacity: 0 !important;
+    }
+    body.hs-tab-cycling .hs-mc-emote-wrapper.hs-emote-highlight > img {
+      visibility: visible !important;
+    }
+    body.hs-tab-cycling .hs-mc-emote-stack:not(.expanded):has(.hs-mc-emote-wrapper.hs-emote-highlight)::before {
+      opacity: 0 !important;
+    }
 
     /* State colors via ::before */
     .hs-mc-emote-wrapper.hs-state-global::before { background: #00ff00; }

@@ -201,7 +201,18 @@ function renderProfileCardView() {
     dot.textContent = '●'
     nameLine.appendChild(dot)
   }
-  nameLine.appendChild(document.createTextNode(' ' + (data?.display_name || username)))
+  const nameText = document.createElement('span')
+  nameText.textContent = data?.display_name || username
+  // Apply 7TV paint to the display name when available — same style string
+  // chat uses, so cards match the in-flow username treatment.
+  try {
+    const tid = data?.twitch_user_id || data?.twitch_id || null
+    if (tid && typeof getMcPaintStyle === 'function') {
+      const ps = getMcPaintStyle(String(tid))
+      if (ps) nameText.style.cssText = ps
+    }
+  } catch {}
+  nameLine.appendChild(nameText)
   idText.appendChild(nameLine)
 
   // Platform pills
@@ -218,6 +229,31 @@ function renderProfileCardView() {
   }
   pills.appendChild(pcMakePill('heatsync', username))
   idText.appendChild(pills)
+
+  // Badges row — twitch native (sub/mod/vip/etc) + 7TV/FFZ/BTTV/Chatterino. The
+  // helper fns build escaped <img> markup with internal escapeHtml on every
+  // attribute; createContextualFragment parses without executing scripts so we
+  // get the same render path chat uses without an innerHTML write.
+  try {
+    const userId = data?.twitch_user_id || data?.twitch_id || null
+    const recent = (typeof getRecentMessagesFromUser === 'function') ? getRecentMessagesFromUser(username) : []
+    const recentTwitch = recent.find(m => (m.platform || 'twitch') === 'twitch' && m.badges)
+    let html = ''
+    if (recentTwitch && typeof renderBadges === 'function') {
+      html += renderBadges(recentTwitch.badges, recentTwitch.channel)
+    }
+    if (userId && typeof renderThirdPartyBadges === 'function') {
+      html += renderThirdPartyBadges(String(userId))
+    }
+    if (html) {
+      const row = document.createElement('div')
+      row.className = 'hs-pcard-badges'
+      const range = document.createRange()
+      range.selectNodeContents(row)
+      row.appendChild(range.createContextualFragment(html))
+      idText.appendChild(row)
+    }
+  } catch {}
 
   if (data?.bio) {
     const bio = document.createElement('div')
@@ -412,34 +448,24 @@ function renderProfileCardView() {
   const youBlock = !!(data?.relationship?.youBlock ?? data?.relationship?.isBlocked)
   const profileId = data?.id || data?.userId || null
 
+  // Platform-link buttons (twitch/kick/yt/heatsync) live in the pills row above —
+  // dropped here to kill bloat. These are the actual relationship/state actions.
   const actions = [
-    { key: 't', label: 'twitch', fn: () => pcOpenExt('https://twitch.tv/' + (data?.twitch_username || username)) },
-    { key: 'k', label: 'kick', fn: () => pcOpenExt('https://kick.com/' + (data?.kick_username || username)) },
-    { key: 'y', label: 'youtube', fn: () => pcOpenExt('https://youtube.com/@' + (data?.youtube_username || username)) },
-    { key: 'h', label: 'heatsync', fn: () => pcOpenExt('https://heatsync.org/user/' + username) },
-    { key: 'f', label: youFollow ? 'unfollow' : 'follow', fn: () => pcToggleFollow(profileId, username, youFollow), disabled: !profileId },
-    { key: 'w', label: 'whisper', fn: () => pcDoWhisper(username) },
-    { key: 'd', label: 'dm', fn: () => pcDoDm(username) },
-    { key: 'm', label: 'mention', fn: () => pcMention(data?.display_name || username) },
-    { key: 'x', label: isMuted ? 'unmute' : 'mute', fn: () => pcToggleMute(username) },
-    { key: 'b', label: youBlock ? 'unblock' : 'block', fn: () => pcToggleBlock(profileId, username, youBlock), disabled: !profileId },
-    { key: '+', label: inChannels ? 'in channels' : 'add channel', fn: () => pcAddAsChannel(username), disabled: inChannels },
-    { key: 'esc', label: 'close', fn: closeProfileCard },
+    { label: youFollow ? 'unfollow' : 'follow', fn: () => pcToggleFollow(profileId, username, youFollow), disabled: !profileId },
+    { label: 'whisper', fn: () => pcDoWhisper(username) },
+    { label: 'dm', fn: () => pcDoDm(username) },
+    { label: 'mention', fn: () => pcMention(data?.display_name || username) },
+    { label: isMuted ? 'unmute' : 'mute', fn: () => pcToggleMute(username) },
+    { label: youBlock ? 'unblock' : 'block', fn: () => pcToggleBlock(profileId, username, youBlock), disabled: !profileId },
+    { label: inChannels ? 'in channels' : 'add channel', fn: () => pcAddAsChannel(username), disabled: inChannels },
+    { label: 'close', fn: closeProfileCard },
   ]
 
   for (const a of actions) {
     const btn = document.createElement('button')
     btn.className = 'hs-pcard-action'
     if (a.disabled) btn.disabled = true
-    btn.dataset.pcKey = a.key
-    const kbd = document.createElement('span')
-    kbd.className = 'hs-pcard-kbd'
-    kbd.textContent = `[${a.key}]`
-    const lab = document.createElement('span')
-    lab.className = 'hs-pcard-actlabel'
-    lab.textContent = ' ' + a.label
-    btn.appendChild(kbd)
-    btn.appendChild(lab)
+    btn.textContent = a.label
     btn.addEventListener('click', a.fn)
     grid.appendChild(btn)
   }

@@ -467,19 +467,26 @@ function injectStyles() {
       display: flex;
     }
 
-    /* Resize drag bar — convention: solid #ff8700, ≥6px, no labels.
-       Always visible so user knows the edge is grab-able. */
+    /* Resize drag bar — 3px visible #ff8700, ::before extends hit zone to ~11px. */
     #hs-mc-resize-handle {
       position: absolute;
       top: 0;
       left: 0;
-      width: 6px;
+      width: 3px;
       height: 100%;
       cursor: ew-resize;
       z-index: 2000;
       background: #ff8700;
       opacity: 0.7;
       transition: opacity 0.12s, background 0.12s;
+    }
+    #hs-mc-resize-handle::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: -4px;
+      right: -4px;
+      bottom: 0;
     }
     #hs-mc-resize-handle:hover,
     #hs-mc-resize-handle:active {
@@ -492,13 +499,21 @@ function injectStyles() {
       position: absolute;
       top: 0;
       left: 0;
-      width: 6px;
+      width: 3px;
       height: 100%;
       cursor: ew-resize;
       z-index: 2000;
       background: #ff8700;
       opacity: 0.7;
       transition: opacity 0.12s, background 0.12s;
+    }
+    #hs-yt-resize-handle::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: -4px;
+      right: -4px;
+      bottom: 0;
     }
     #hs-yt-resize-handle:hover,
     #hs-yt-resize-handle:active {
@@ -1873,8 +1888,11 @@ function injectStyles() {
     #hs-mc-input::placeholder {
       color: #808080;
     }
-    /* Contenteditable placeholder */
-    #hs-mc-input[contenteditable]:empty::before {
+    /* Contenteditable placeholder. Browsers leave a stray BR after focus/blur
+       cycles which breaks :empty — match BR-only-child too so the placeholder
+       still paints in that state. */
+    #hs-mc-input[contenteditable]:empty::before,
+    #hs-mc-input[contenteditable]:has(br:only-child)::before {
       content: attr(data-placeholder);
       color: #808080;
       pointer-events: none;
@@ -2079,49 +2097,49 @@ function injectStyles() {
       background: #fff;
     }
 
-    /* === Full-panel btop-style profile card === */
+    /* === Profile card — system sans, no chrome, badges-first === */
     .hs-pcard {
-      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-      padding: 14px 10px 8px 10px;
-      color: #ddd;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, "Helvetica Neue", Arial, sans-serif;
+      padding: 14px;
+      color: #fff;
       background: #000;
-      font-size: 12px;
-      line-height: 1.5;
+      font-size: 13px;
+      line-height: 1.4;
       box-sizing: border-box;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      height: 100%;
+      overflow-y: auto;
     }
+    /* Sections are pure spacing — drop chrome borders + label-on-top */
     .hs-pcard-section {
-      border: 1px solid #555;
-      margin-bottom: 10px;
-      padding: 10px 10px 8px 10px;
-      position: relative;
-      box-sizing: border-box;
+      border: 0; padding: 0; margin: 0; position: static; background: transparent;
     }
-    .hs-pcard-section-title {
-      position: absolute;
-      top: -8px;
-      left: 8px;
-      background: #000;
-      padding: 0 6px;
-      font-size: 10px;
-      color: #aaa;
-      font-weight: 700;
+    .hs-pcard-section-title { display: none; }
+    /* Section dividers — single 1px line, near-invisible info delimiter */
+    .hs-pcard-section + .hs-pcard-section {
+      border-top: 1px solid #1a1a1a; padding-top: 10px;
     }
-    .hs-pcard-id { border-color: #ff8700; }
-    .hs-pcard-id .hs-pcard-section-title { color: #ff8700; }
-    .hs-pcard-stream { border-color: #f00; }
-    .hs-pcard-stream .hs-pcard-section-title { color: #f00; }
-    .hs-pcard-recent { border-color: #888; }
-    .hs-pcard-actions { border-color: #444; }
 
     .hs-pcard-id-row { display: flex; gap: 12px; align-items: flex-start; }
     .hs-pcard-avatar {
       width: 56px; height: 56px; border-radius: 0; object-fit: cover;
-      border: 1px solid #444; flex-shrink: 0;
+      flex-shrink: 0;
     }
-    .hs-pcard-id-text { flex: 1; min-width: 0; }
-    .hs-pcard-name { font-size: 18px; font-weight: 700; color: #fff; margin-bottom: 4px; }
-    .hs-pcard-livedot { color: #f00; animation: hs-pcard-pulse 1.5s infinite; }
-    @keyframes hs-pcard-pulse { 50% { opacity: 0.35; } }
+    .hs-pcard-id-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+    .hs-pcard-name {
+      font-size: 18px; font-weight: 700; color: #fff;
+      display: flex; align-items: center; gap: 6px; line-height: 1.1;
+    }
+    .hs-pcard-livedot { color: #ff5050; font-size: 9px; animation: hs-pcard-pulse 1.5s infinite; }
+    @keyframes hs-pcard-pulse { 50% { opacity: 0.4; } }
+    .hs-pcard-badges {
+      display: flex; gap: 3px; flex-wrap: wrap; align-items: center; min-height: 18px;
+    }
+    .hs-pcard-badges img.hs-mc-badge-img {
+      width: 18px; height: 18px;
+    }
     .hs-pcard-pills { display: flex; flex-wrap: wrap; gap: 6px; font-size: 11px; }
     .hs-pcard-pill {
       padding: 2px 6px; border: 1px solid; text-decoration: none;
@@ -2130,63 +2148,59 @@ function injectStyles() {
     .hs-pcard-pill:hover { background: #fff; color: #000; border-color: #fff; }
     .hs-pcard-pill-twitch { color: #9146ff; border-color: #9146ff; }
     .hs-pcard-pill-kick { color: #53fc18; border-color: #53fc18; }
-    .hs-pcard-pill-youtube { color: #ff0000; border-color: #ff0000; }
+    .hs-pcard-pill-youtube { color: #ff5050; border-color: #ff5050; }
     .hs-pcard-pill-heatsync { color: #ff8700; border-color: #ff8700; }
-    .hs-pcard-pill-live { color: #f00; }
+    .hs-pcard-pill-live { color: #ff5050; }
     .hs-pcard-bio {
-      margin-top: 8px; padding: 4px 0; color: #aaa;
-      font-style: italic; font-size: 11px; border-top: 1px dashed #333;
+      color: #aaa; font-size: 12px; line-height: 1.4;
       white-space: pre-wrap; word-break: break-word;
+      border-left: 2px solid #1a1a1a; padding: 0 0 0 8px;
     }
-    .hs-pcard-bio-mention { color: #ff8700; cursor: pointer; font-style: normal; }
+    .hs-pcard-bio-mention { color: #ff8700; cursor: pointer; }
     .hs-pcard-bio-mention:hover { text-decoration: underline; }
-    .hs-pcard-bio-tag { color: #ff00ff; text-decoration: none; font-style: normal; }
+    .hs-pcard-bio-tag { color: #ff00ff; text-decoration: none; }
     .hs-pcard-bio-tag:hover { text-decoration: underline; }
     .hs-pcard-meta {
-      display: flex; flex-wrap: wrap; gap: 6px; align-items: center;
-      margin-top: 4px; font-size: 10px; line-height: 1.4;
+      display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+      font-size: 11px; color: #888; line-height: 1.4;
     }
-    .hs-pcard-age { color: #808080; }
+    .hs-pcard-age { color: #888; }
     .hs-pcard-role {
-      padding: 0 4px; font-size: 9px; font-weight: 700; text-transform: uppercase;
-      letter-spacing: 0.5px;
+      padding: 0 5px; font-size: 10px; font-weight: 700; line-height: 1.6;
     }
     .hs-pcard-role.partner { background: #ffaa00; color: #000; }
-    .hs-pcard-role.affiliate { background: #808080; color: #fff; }
+    .hs-pcard-role.affiliate { background: #555; color: #fff; }
     .hs-pcard-verified {
       display: inline-flex; align-items: center; justify-content: center;
-      width: 12px; height: 12px; font-size: 9px; font-weight: 700;
+      width: 14px; height: 14px; font-size: 10px; font-weight: 700;
     }
     .hs-pcard-verified.twitch { background: #9146ff; color: #fff; }
     .hs-pcard-verified.kick { background: #53fc18; color: #000; }
-    .hs-pcard-rel { color: #ff8700; font-weight: 600; margin-top: 4px; }
-    .hs-pcard-link { color: #ff8700; text-decoration: none; font-weight: 700; }
+    .hs-pcard-rel { color: #ff8700; font-weight: 600; font-size: 12px; margin-top: 4px; }
+    .hs-pcard-link { color: #ff8700; text-decoration: none; font-weight: 600; }
     .hs-pcard-link:hover { text-decoration: underline; }
     .hs-pcard-msg {
-      display: flex; gap: 6px; padding: 1px 0;
-      font-size: 11px; align-items: baseline;
+      display: flex; gap: 6px; padding: 2px 0;
+      font-size: 13px; align-items: baseline;
     }
-    .hs-pcard-msg-ts { color: #666; flex-shrink: 0; font-size: 10px; }
+    .hs-pcard-msg-ts { color: #555; flex-shrink: 0; font-size: 11px; min-width: 38px; }
     .hs-pcard-msg-plat {
-      flex-shrink: 0; font-size: 9px; padding: 0 3px; border: 1px solid;
-      font-weight: 700; line-height: 1.4;
+      flex-shrink: 0; font-size: 10px; padding: 0 3px;
+      font-weight: 600; line-height: 1.5; color: #888;
     }
     .hs-pcard-msg-text {
-      color: #ddd; word-break: break-word; overflow-wrap: anywhere;
+      color: #fff; word-break: break-word; overflow-wrap: anywhere; flex: 1;
     }
     .hs-pcard-action-grid {
-      display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-      gap: 4px;
+      display: flex; flex-wrap: wrap; gap: 4px;
     }
     .hs-pcard-action {
-      background: #0a0a0a; color: #ddd; border: 1px solid #444;
-      padding: 6px 8px; cursor: pointer; font-family: inherit; font-size: 11px;
-      text-align: left; box-sizing: border-box;
+      background: transparent; color: #fff; border: 1px solid #333;
+      padding: 6px 12px; cursor: pointer; font-family: inherit; font-size: 13px;
+      text-align: center; box-sizing: border-box;
     }
-    .hs-pcard-action:hover:not(:disabled) { background: #fff; color: #000; }
-    .hs-pcard-action:hover:not(:disabled) .hs-pcard-kbd { color: #000; }
+    .hs-pcard-action:hover:not(:disabled) { background: #fff; color: #000; border-color: #fff; }
     .hs-pcard-action:disabled { opacity: 0.4; cursor: not-allowed; }
-    .hs-pcard-kbd { color: #ff8700; font-weight: 700; }
 
     /* Per-tab platform filter toggles (T/K/Y). Sits AFTER the util cluster
        (DOM order). Horizontal mode: tight content-sized strip on far right.
@@ -5195,6 +5209,103 @@ function injectStyles() {
     body.hs-platform-twitch.hs-twitch-no-channel.hs-chat-bottom {
       height: calc(100vh - var(--hs-chat-h, 35vh)) !important;
       overflow-y: hidden !important;
+    }
+
+    /* --- KICK non-channel pages (/browse, /categories, /following,
+       /search, /settings, …): #channel-chatroom doesn't exist, so we
+       body-mount as a position:fixed overlay and squeeze kick's <main>
+       so its content doesn't underlap the panel. Mirror of the twitch
+       no-channel rules above. --- */
+    body.hs-platform-kick.hs-kick-no-channel.hs-chat-right #hs-mc-container,
+    body.hs-platform-kick.hs-kick-no-channel.hs-chat-left #hs-mc-container,
+    body.hs-platform-kick.hs-kick-no-channel.hs-chat-top #hs-mc-container,
+    body.hs-platform-kick.hs-kick-no-channel.hs-chat-bottom #hs-mc-container {
+      position: fixed !important;
+      z-index: 9999 !important;
+      background: #000 !important;
+      box-sizing: border-box !important;
+      margin: 0 !important;
+    }
+    body.hs-platform-kick.hs-kick-no-channel.hs-chat-right #hs-mc-container {
+      top: 0 !important;
+      bottom: 0 !important;
+      right: 0 !important;
+      left: auto !important;
+      width: var(--hs-chat-w, 340px) !important;
+      height: auto !important;
+    }
+    body.hs-platform-kick.hs-kick-no-channel.hs-chat-left #hs-mc-container {
+      top: 0 !important;
+      bottom: 0 !important;
+      left: 0 !important;
+      right: auto !important;
+      width: var(--hs-chat-w, 340px) !important;
+      height: auto !important;
+    }
+    body.hs-platform-kick.hs-kick-no-channel.hs-chat-top #hs-mc-container {
+      top: 0 !important;
+      left: 0 !important;
+      right: 0 !important;
+      bottom: auto !important;
+      width: 100vw !important;
+      height: var(--hs-chat-h, 35vh) !important;
+    }
+    body.hs-platform-kick.hs-kick-no-channel.hs-chat-bottom #hs-mc-container {
+      bottom: 0 !important;
+      left: 0 !important;
+      right: 0 !important;
+      top: auto !important;
+      width: 100vw !important;
+      height: var(--hs-chat-h, 35vh) !important;
+    }
+    body.hs-platform-kick.hs-kick-no-channel.hs-chat-right {
+      width: calc(100vw - var(--hs-chat-w, 340px)) !important;
+      overflow-x: hidden !important;
+    }
+    body.hs-platform-kick.hs-kick-no-channel.hs-chat-left {
+      width: calc(100vw - var(--hs-chat-w, 340px)) !important;
+      margin-left: var(--hs-chat-w, 340px) !important;
+      overflow-x: hidden !important;
+    }
+    body.hs-platform-kick.hs-kick-no-channel.hs-chat-top {
+      margin-top: var(--hs-chat-h, 35vh) !important;
+      height: calc(100vh - var(--hs-chat-h, 35vh)) !important;
+      overflow-y: hidden !important;
+    }
+    body.hs-platform-kick.hs-kick-no-channel.hs-chat-bottom {
+      height: calc(100vh - var(--hs-chat-h, 35vh)) !important;
+      overflow-y: hidden !important;
+    }
+    /* On no-channel pages, the existing kick.hs-chat-left main padding rule
+       (padding-left: var(--hs-chat-w)) is wrong — there's no #channel-
+       chatroom to anchor against and we already shifted body via
+       margin-left. Cancel the padding so main flows naturally inside the
+       shrunken body. */
+    body.hs-platform-kick.hs-kick-no-channel.hs-chat-left main,
+    body.hs-platform-kick.hs-kick-no-channel.hs-chat-right main,
+    body.hs-platform-kick.hs-kick-no-channel.hs-chat-top main,
+    body.hs-platform-kick.hs-kick-no-channel.hs-chat-bottom main {
+      padding-left: 0 !important;
+      padding-right: 0 !important;
+      padding-top: 0 !important;
+      padding-bottom: 0 !important;
+    }
+    /* Kick wraps content in a flex container with w-xvw (= 100vw)
+       which ignores the body width shrink — main ends up overflowing
+       behind our panel. Force every viewport-sized wrapper inside the
+       shrunken body back down to 100% so the grid reflows live as the
+       resize handle drags. h-xvh is the vertical equivalent for chat-top/
+       chat-bottom. */
+    body.hs-platform-kick.hs-kick-no-channel [class*="w-xvw"],
+    body.hs-platform-kick.hs-kick-no-channel main,
+    body.hs-platform-kick.hs-kick-no-channel #main-container {
+      width: 100% !important;
+      max-width: 100% !important;
+    }
+    body.hs-platform-kick.hs-kick-no-channel.hs-chat-top [class*="h-xvh"],
+    body.hs-platform-kick.hs-kick-no-channel.hs-chat-bottom [class*="h-xvh"] {
+      height: 100% !important;
+      max-height: 100% !important;
     }
 
     /* Auth/API status banner — pinned to top edge of the chat panel as a

@@ -127,6 +127,15 @@ function readMultichatModules() {
     const filePath = join(mcDir, file)
     if (!existsSync(filePath)) continue
     const content = readFileSync(filePath, 'utf8')
+    // styles.js is one giant JS template literal — a stray backtick anywhere
+    // (incl. CSS comments) breaks ALL multichat platforms with a syntax error.
+    // Hard-fail the build before that hits chrome.
+    if (file === 'styles.js') {
+      const tickCount = (content.match(/`/g) || []).length
+      if (tickCount !== 2) {
+        throw new Error(`build: styles.js must have exactly 2 backticks (template-literal delimiters); found ${tickCount}. CSS comments cannot contain backticks.`)
+      }
+    }
     combined += `\n// --- multichat/${file} ---\n${stripExports(content)}\n`
   }
 

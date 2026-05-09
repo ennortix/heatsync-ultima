@@ -4184,8 +4184,19 @@
         }
       }, { once: true })
     } else if (isKick) {
-      parent = chatRoom.parentElement
-      chatRoom.after(container)
+      if (chatRoom) {
+        parent = chatRoom.parentElement
+        chatRoom.after(container)
+      } else {
+        // No #channel-chatroom on this Kick URL (browse, settings, search,
+        // categories, …) — body-mount as a position:fixed overlay via the
+        // hs-kick-no-channel CSS rules. Same teardown contract as Twitch.
+        parent = document.body
+        parent.appendChild(container)
+        mcSignal.addEventListener('abort', () => {
+          if (container && container.parentElement === document.body) container.remove()
+        }, { once: true })
+      }
     } else {
       // Twitch: prefer chat-shell on channel pages (preserves theatre/persistent
       // -player layout). Fall back to <body> on non-channel pages (directory,
@@ -4241,13 +4252,11 @@
                  document.querySelector('.chat-room')
     }
 
-    // Twitch non-channel pages (/directory, /settings, /videos, …) have no
-    // chat-shell. Fall through with chatRoom=null so getOrCreateHsContainer
-    // body-mounts the panel as a position:fixed overlay. YT also
-    // body-mounts (getOrCreateHsContainer always appends to body on YT)
-    // so the panel persists across home/search/channel/watch navs. Kick
-    // keeps the hard guard — no body-mount fallback there yet.
-    if (!chatRoom && isKick) return;
+    // Non-channel pages (Twitch /directory, Kick /browse, /categories,
+    // YT home/search) have no chat-shell / #channel-chatroom. Fall
+    // through with chatRoom=null so getOrCreateHsContainer body-mounts
+    // the panel as a position:fixed overlay. Panel persists across
+    // every SPA nav on all three platforms.
 
     // Transform fix handled by CSS (#hs-chat-transform-fix) + MutationObserver.
     // No parent tree walking — it displaced the collapse arrow.
@@ -7027,6 +7036,17 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     document.body.classList.toggle('hs-twitch-no-channel', !onChannel && !popout);
   }
 
+  // Mirror of updateTwitchNoChannelClass for Kick. #channel-chatroom is
+  // present only on /<channel> pages; absent on /browse, /categories,
+  // /following, /search, /settings, etc. CSS keyed off this flips the
+  // panel to position:fixed overlay and squeezes <main> width/height.
+  function updateKickNoChannelClass() {
+    if (!isKick) return;
+    const onChannel = !!document.getElementById('channel-chatroom');
+    const popout = document.body.classList.contains('hs-popout');
+    document.body.classList.toggle('hs-kick-no-channel', !onChannel && !popout);
+  }
+
   function setupTwitchSideNavObserver() {
     if (hostPlatform !== 'twitch') return;
     document.documentElement.style.setProperty('--hs-twitch-sidenav-w', _twitchSideNavW + 'px');
@@ -7065,6 +7085,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       setupTwitchSideNavObserver();
       setupTwitchTopNavObserver();
       updateTwitchNoChannelClass();
+      updateKickNoChannelClass();
       applyChatPosition();
     } catch (e) {
       log('Error loading chat position:', e);
@@ -8068,11 +8089,10 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       // hidden) are gated separately on `:not(.hs-offline)` so non-live
       // pages keep YouTube's native layout intact.
     } else if (isKick) {
-      // Kick: run on channel pages (/<channel>) or popout
-      const isKickChannel = location.pathname.match(/^\/[a-zA-Z0-9_-]+\/?$/);
-      if (!isKickChannel) return;
-      const kickPath = location.pathname.replace(/\/$/, '').slice(1).toLowerCase();
-      if (['categories', 'following', 'search', 'settings'].includes(kickPath)) return;
+      // Kick: persistent overlay across every URL — channel, browse,
+      // categories, search, following, settings — so the panel survives
+      // SPA nav. body-mount fallback in getOrCreateHsContainer when
+      // #channel-chatroom is absent.
     } else {
       // Twitch: persistent overlay across every URL — directory, settings,
       // videos, etc. all keep the panel mounted. getOrCreateHsContainer
@@ -9050,10 +9070,23 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
         try { window.dispatchEvent(new Event('resize')) } catch {}
       });
     } else if (isKick) {
-      waitForMount(
-        () => document.getElementById('channel-chatroom') || document.querySelector('[id*="chatroom"]'),
-        'Kick chatroom'
-      );
+      // Kick non-channel pages (/browse, /categories, /following, /search,
+      // /settings, …) never mount #channel-chatroom. Body-mount immediately
+      // so the persistent overlay appears without waiting on the 15s safety
+      // timeout. Single-segment paths likely become a channel page once
+      // chatroom mounts; waitForMount handles that.
+      const isPopout = document.body.classList.contains('hs-popout');
+      const couldBeChannel = !!location.pathname.match(/^\/[a-zA-Z0-9_-]+\/?$/) && !isPopout;
+      if (!couldBeChannel) {
+        ensureUIElements();
+        switchTab(_savedActiveTab || 'live');
+        startLayoutWatcher();
+      } else {
+        waitForMount(
+          () => document.getElementById('channel-chatroom') || document.querySelector('[id*="chatroom"]'),
+          'Kick chatroom'
+        );
+      }
     } else {
       // Twitch: try to hook into React, fall back to MutationObserver
       tryHookReact();
@@ -9234,6 +9267,43 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     }, 4000, 'twitch-soft-nav-finalize');
   }
 
+  // Kick mirror of softTwitchNav — keep the panel mounted across SPA nav.
+  // Pre-emptively migrate to <body> so kick's React teardown of the
+  // #channel-chatroom region doesn't take it down, refresh the no-channel
+  // class for the new URL, and reparent into a freshly-mounted #channel-
+  // chatroom once it appears (channel pages).
+  function softKickNav() {
+    const container = document.getElementById('hs-mc-container');
+    if (container && container.parentElement && container.parentElement !== document.body) {
+      document.body.appendChild(container);
+    }
+    try { updateKickNoChannelClass() } catch (_) {}
+    let done = false;
+    const tryReparent = () => {
+      if (done) return true;
+      const chatRoom = document.getElementById('channel-chatroom');
+      const c = document.getElementById('hs-mc-container');
+      if (chatRoom && c && c.previousElementSibling !== chatRoom) {
+        chatRoom.after(c);
+        try { updateKickNoChannelClass() } catch (_) {}
+        done = true;
+        return true;
+      }
+      return false;
+    };
+    if (tryReparent()) return;
+    const obs = new MutationObserver(() => { if (tryReparent()) obs.disconnect() });
+    obs.observe(document.documentElement, { childList: true, subtree: true });
+    cleanup.trackObserver(obs);
+    cleanup.setTimeout(() => {
+      if (!done) {
+        done = true;
+        obs.disconnect();
+        try { updateKickNoChannelClass() } catch (_) {}
+      }
+    }, 4000, 'kick-soft-nav-finalize');
+  }
+
   function handleMcNav() {
     if (location.pathname === lastPath) return
     lastPath = location.pathname;
@@ -9241,12 +9311,20 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     // Re-evaluate body-mount overlay state for the new URL before teardown so
     // CSS rules flip ahead of the panel reappearing on the new page.
     try { updateTwitchNoChannelClass() } catch (_) {}
+    try { updateKickNoChannelClass() } catch (_) {}
 
     // Twitch SPA nav: skip the destroy+rebuild path entirely. The panel
     // (and IRC, and feed state) all survive intact — see softTwitchNav.
     // Popout chat is exempt since it never SPA-navigates between URLs.
     if (hostPlatform === 'twitch' && !document.body.classList.contains('hs-popout')) {
       softTwitchNav();
+      return;
+    }
+
+    // Kick SPA nav: same soft path as Twitch. Panel + kickChat persist;
+    // body class refreshes for the new URL.
+    if (isKick && !document.body.classList.contains('hs-popout')) {
+      softKickNav();
       return;
     }
 

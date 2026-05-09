@@ -396,6 +396,7 @@ function injectStyles() {
     .hs-mc-stream-event.event-hype { color: #ff8700; }
     .hs-mc-stream-event.event-sub { color: #00ff7f; }
     .hs-mc-stream-event.event-redeem { color: #00bfff; }
+    .hs-mc-stream-event.event-emote { color: #29d391; }
     /* Inline feed posts in chat timeline */
     .hs-mc-feed-inline {
       padding: 2px 8px;
@@ -1770,7 +1771,7 @@ function injectStyles() {
       width: calc(100% + 16px);
       text-align: center;
     }
-    #hs-emote-tooltip .tooltip-source.owned { background: #00ff00; color: #000; }
+    #hs-emote-tooltip .tooltip-source.owned { background: #ff8700; color: #000; }
     #hs-emote-tooltip .tooltip-source.unadded { background: #ff8700; color: #000; }
     #hs-emote-tooltip .tooltip-source.global { background: #00ff00; color: #000; }
     #hs-emote-tooltip .tooltip-source.channel { background: #00ff00; color: #000; }

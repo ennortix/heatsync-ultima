@@ -2220,7 +2220,7 @@ function handle7TVEmoteSetUpdate(updateData) {
     const isBulkSync = updateData.pushed.length > 3;
     for (const item of updateData.pushed) {
       const emote = item.value;
-      if (!/^[a-f0-9]{24}$/.test(emote.id)) continue
+      if (!emote || typeof emote.id !== 'string' || !/^[0-9A-HJKMNP-TV-Z]{26}$/.test(emote.id)) continue
       const newEmote = {
         name: String(emote.name || '').slice(0, 100),
         url: `https://cdn.7tv.app/emote/${emote.id}/1x.webp`,
@@ -2241,6 +2241,8 @@ function handle7TVEmoteSetUpdate(updateData) {
           broadcastToTabs({
             type: 'channel_emote_added',
             emote: newEmote,
+            channel: channelName,
+            actor: actor || null,
             message: msg
           });
         }
@@ -2273,6 +2275,8 @@ function handle7TVEmoteSetUpdate(updateData) {
             type: 'channel_emote_removed',
             emoteName: emote.name,
             emoteHash: emote.id,
+            channel: channelName,
+            actor: actor || null,
             message: msg
           });
         }
@@ -2284,6 +2288,8 @@ function handle7TVEmoteSetUpdate(updateData) {
         type: 'channel_emote_removed',
         emoteName: null,
         emoteHash: null,
+        channel: channelName,
+        actor: actor || null,
         message: `${removedCount} 7TV emotes removed from channel (set changed)`
       });
     }
@@ -2436,6 +2442,7 @@ async function poll7TVEmoteSet() {
             broadcastToTabs({
               type: 'channel_emote_added',
               emote: null,
+              channel: channelName,
               message: `${added.length} 7TV emotes added to channel (set changed)`
             })
           }
@@ -2444,6 +2451,7 @@ async function poll7TVEmoteSet() {
               type: 'channel_emote_removed',
               emoteName: null,
               emoteHash: null,
+              channel: channelName,
               message: `${removed.length} 7TV emotes removed from channel (set changed)`
             })
           }
@@ -2453,6 +2461,7 @@ async function poll7TVEmoteSet() {
             broadcastToTabs({
               type: 'channel_emote_added',
               emote,
+              channel: channelName,
               message: `${emote.name} added to channel (7TV)`
             })
           }
@@ -2462,6 +2471,7 @@ async function poll7TVEmoteSet() {
               type: 'channel_emote_removed',
               emoteName: emote.name,
               emoteHash: emote.hash,
+              channel: channelName,
               message: `${emote.name} removed from channel (7TV)`
             })
           }
@@ -3273,7 +3283,11 @@ function handleWSMessage(msg) {
         // Bulk dispatch. content-script's social.js routes:
         //   replay → ingestReplayYtMsg (bulk-buffer + 1 microtask render)
         //   live   → enqueueYtForPacing (per-channel 60-400ms cadence)
-        for (const ytMsg of sorted) broadcastToTabs(buildPayload(ytMsg))
+        for (const ytMsg of sorted) {
+          const payload = buildPayload(ytMsg)
+          try { bgYtIngest(payload) } catch {}
+          broadcastToTabs(payload)
+        }
       }
       break
 
@@ -3334,6 +3348,8 @@ function handleWSMessage(msg) {
       break
 
     case 'kick-chat-message':
+      // Tee into BG buffer first so reload-history is instant
+      try { bgKickIngest(msg.data) } catch {}
       // Relay Kick chat messages (via server webhook) to content scripts
       broadcastToTabs({
         type: 'kick_chat_message',
@@ -5300,3 +5316,832 @@ self.addEventListener('unhandledrejection', (ev) => {
   const r = ev.reason
   recordCrash('bg', r?.message || String(r), r?.stack, '')
 })
+
+// ============================================================================
+// BG TWITCH IRC READER — god-tier reload bulletproofing
+// ============================================================================
+// Owns the read-only Twitch IRC connection. Survives content tab reloads —
+// the WebSocket lives in the SW, persists across page navigations, and
+// serves history instantly. Per-tab auth-irc.js still handles SENDING.
+//
+// Message flow:
+//   tab → 'bg_irc_join' / 'bg_irc_part'      (channel subscription)
+//   tab → 'bg_irc_history' (req)             (instant buffer hand-off)
+//   bg  → 'bg_irc_msg' (broadcast)           (live + history backfill events)
+//   bg  → 'bg_irc_history_merged' (broadcast) (robotty filled in late msgs)
+
+const BG_IRC_PERSIST_MAX = 1500
+const BG_IRC_PERSIST_DEBOUNCE_MS = 1500
+const BG_IRC_COLOR_RE = /^#[0-9a-fA-F]{3,6}$/
+
+function bgIrcSanitizeColor(c) {
+  if (!c) return '#fff'
+  return BG_IRC_COLOR_RE.test(c) ? c : '#fff'
+}
+
+function bgIrcParseTags(tagStr) {
+  const tags = {}
+  for (const part of tagStr.split(';')) {
+    const eq = part.indexOf('=')
+    if (eq === -1) { tags[part] = ''; continue }
+    tags[part.slice(0, eq)] = part.slice(eq + 1) || ''
+  }
+  return tags
+}
+
+function bgIrcParseLine(raw, channelHint) {
+  try {
+    const tagsMatch = raw.match(/^@([^ ]+)/)
+    if (!tagsMatch) return null
+    const tags = bgIrcParseTags(tagsMatch[1])
+
+    const privmsg = raw.match(/PRIVMSG #([^ ]+) :(.+)$/)
+    if (privmsg) {
+      const displayName = tags['display-name'] || 'anonymous'
+      let text = privmsg[2]
+      let isAction = false
+      if (text.charCodeAt(0) === 1 && text.startsWith('\x01ACTION ')) {
+        text = text.slice(8, text.endsWith('\x01') ? -1 : undefined)
+        isAction = true
+      }
+      const msg = {
+        user: displayName,
+        userId: tags['user-id'] || '',
+        text,
+        color: bgIrcSanitizeColor(tags.color || '#fff'),
+        badges: tags.badges || '',
+        channel: channelHint || privmsg[1].toLowerCase(),
+        time: parseInt(tags['tmi-sent-ts']) || parseInt(tags['rm-received-ts']) || Date.now(),
+        id: tags.id || '',
+        replyTo: tags['reply-parent-display-name'] ? {
+          user: decodeURIComponent(tags['reply-parent-display-name']),
+          text: tags['reply-parent-msg-body'] ? decodeURIComponent(tags['reply-parent-msg-body'].replace(/\\s/g, ' ')) : '',
+          id: tags['reply-parent-msg-id'] || '',
+          threadId: tags['reply-thread-parent-msg-id'] || tags['reply-parent-msg-id'] || ''
+        } : null
+      }
+      if (tags.emotes) {
+        const twitchEmotes = {}
+        for (const part of tags.emotes.split('/')) {
+          const [emoteId, posStr] = part.split(':')
+          if (!emoteId || !posStr) continue
+          const firstPos = posStr.split(',')[0]
+          const [start, end] = firstPos.split('-').map(Number)
+          if (isNaN(start) || isNaN(end)) continue
+          const name = text.slice(start, end + 1)
+          if (name && !twitchEmotes[name]) {
+            twitchEmotes[name] = `https://static-cdn.jtvnw.net/emoticons/v2/${emoteId}/default/dark/2.0`
+          }
+        }
+        if (Object.keys(twitchEmotes).length > 0) msg.twitchEmotes = twitchEmotes
+      }
+      if (isAction) msg.isAction = true
+      const bits = parseInt(tags.bits) || 0
+      if (bits > 0) msg.bits = bits
+      if (tags['custom-reward-id']) {
+        msg.redeemed = true
+        msg.rewardId = tags['custom-reward-id']
+      }
+      if (tags['msg-id'] === 'highlighted-message') msg.isHighlighted = true
+      if (tags['first-msg'] === '1') msg.isFirstMsg = true
+      const badgeInfo = tags['badge-info']
+      if (badgeInfo) {
+        const subMatch = badgeInfo.match(/subscriber\/(\d+)/)
+        if (subMatch) msg.subMonths = parseInt(subMatch[1])
+      }
+      return msg
+    }
+
+    const usernotice = raw.match(/USERNOTICE #([^ ]+)(?: :(.+))?$/)
+    if (usernotice) {
+      const displayName = tags['display-name'] || 'system'
+      const subPlan = tags['msg-param-sub-plan'] || ''
+      const tier = subPlan === '2000' ? '2' : subPlan === '3000' ? '3' : (subPlan === 'Prime' ? 'prime' : (subPlan ? '1' : ''))
+      const months = parseInt(tags['msg-param-cumulative-months']) || parseInt(tags['msg-param-months']) || 0
+      const giftCount = parseInt(tags['msg-param-mass-gift-count']) || 0
+      const recipient = tags['msg-param-recipient-display-name'] ? decodeURIComponent(tags['msg-param-recipient-display-name'].replace(/\\s/g, ' ')) : ''
+      const raidViewers = parseInt(tags['msg-param-viewerCount']) || 0
+      const raidFrom = tags['msg-param-displayName'] ? decodeURIComponent(tags['msg-param-displayName'].replace(/\\s/g, ' ')) : ''
+      const announceColor = tags['msg-param-color'] || ''
+      const bitsTier = parseInt(tags['msg-param-threshold']) || 0
+      return {
+        user: displayName,
+        text: usernotice[2] || '',
+        systemMsg: decodeURIComponent((tags['system-msg'] || '').replace(/\\s/g, ' ')),
+        color: bgIrcSanitizeColor(tags.color || '#fff'),
+        badges: tags.badges || '',
+        channel: channelHint || usernotice[1].toLowerCase(),
+        time: parseInt(tags['tmi-sent-ts']) || parseInt(tags['rm-received-ts']) || Date.now(),
+        type: 'usernotice',
+        msgId: tags['msg-id'] || '',
+        subTier: tier,
+        subMonths: months,
+        giftCount,
+        recipient,
+        raidViewers,
+        raidFrom,
+        announceColor,
+        bitsTier,
+        id: tags.id || ''
+      }
+    }
+
+    const notice = raw.match(/NOTICE #([^ ]+) :(.+)$/)
+    if (notice) {
+      const ch = channelHint || notice[1].toLowerCase()
+      const time = parseInt(tags['tmi-sent-ts']) || parseInt(tags['rm-received-ts']) || Date.now()
+      const noticeType = tags['msg-id'] || ''
+      const detId = `notice-${ch}-${time}-${notice[2].slice(0, 64)}`
+      return {
+        type: 'notice',
+        noticeType,
+        user: 'system',
+        text: notice[2],
+        color: '#808080',
+        badges: '',
+        channel: ch,
+        time,
+        id: tags.id || detId,
+        systemMsg: notice[2]
+      }
+    }
+
+    const roomstate = raw.match(/ROOMSTATE #([^ ]+)/)
+    if (roomstate) {
+      const ch = channelHint || roomstate[1].toLowerCase()
+      return {
+        type: 'roomstate',
+        channel: ch,
+        time: Date.now(),
+        slow: tags['slow'] != null ? parseInt(tags['slow']) : null,
+        subsOnly: tags['subs-only'] != null ? tags['subs-only'] === '1' : null,
+        emoteOnly: tags['emote-only'] != null ? tags['emote-only'] === '1' : null,
+        followersOnly: tags['followers-only'] != null ? parseInt(tags['followers-only']) : null,
+        r9k: tags['r9k'] != null ? tags['r9k'] === '1' : null
+      }
+    }
+
+    const userstate = raw.match(/USERSTATE #([^ ]+)/)
+    if (userstate) {
+      const ch = channelHint || userstate[1].toLowerCase()
+      const badgeNames = []
+      for (const part of (tags.badges || '').split(',')) {
+        const name = part.split('/')[0]
+        if (name) badgeNames.push(name)
+      }
+      return { type: 'userstate', channel: ch, badges: badgeNames, time: Date.now() }
+    }
+
+    const clearchat = raw.match(/CLEARCHAT #([^ ]+)(?: :(.+))?$/)
+    if (clearchat) {
+      const target = clearchat[2] || ''
+      const duration = tags['ban-duration']
+      const text = target
+        ? (duration ? `${target} timed out for ${duration}s` : `${target} was permanently banned`)
+        : 'chat cleared'
+      const ch = channelHint || clearchat[1].toLowerCase()
+      const time = parseInt(tags['tmi-sent-ts']) || parseInt(tags['rm-received-ts']) || Date.now()
+      const detId = `clearchat-${ch}-${target}-${duration || 'perma'}-${time}`
+      return {
+        type: 'notice',
+        noticeType: duration ? 'timeout_success' : 'ban_success',
+        user: 'system',
+        text,
+        color: '#808080',
+        badges: '',
+        channel: ch,
+        time,
+        id: tags.id || detId,
+        systemMsg: text,
+        targetUser: target,
+        targetUserId: tags['target-user-id'] || '',
+        banDuration: duration ? parseInt(duration) : 0
+      }
+    }
+
+    const clearmsg = raw.match(/CLEARMSG #([^ ]+) :(.+)$/)
+    if (clearmsg) {
+      const targetMsgId = tags['target-msg-id']
+      const text = `${tags.login || 'unknown'}'s message was deleted`
+      return {
+        type: 'notice',
+        noticeType: 'delete_message_success',
+        user: 'system',
+        text,
+        color: '#808080',
+        badges: '',
+        channel: channelHint || clearmsg[1].toLowerCase(),
+        time: parseInt(tags['tmi-sent-ts']) || parseInt(tags['rm-received-ts']) || Date.now(),
+        id: targetMsgId || `clearmsg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        systemMsg: text,
+        targetUser: tags.login || '',
+        targetMsgId: targetMsgId || ''
+      }
+    }
+
+    return null
+  } catch (e) {
+    return null
+  }
+}
+
+class BGCircularBuffer {
+  constructor(cap = BG_IRC_PERSIST_MAX) {
+    this.buf = new Array(cap)
+    this.cap = cap
+    this.head = 0
+    this.size = 0
+  }
+  push(item) {
+    this.buf[this.head] = item
+    this.head = (this.head + 1) % this.cap
+    if (this.size < this.cap) this.size++
+  }
+  getAll() {
+    if (this.size === 0) return []
+    if (this.size < this.cap) return this.buf.slice(0, this.size)
+    return this.buf.slice(this.head).concat(this.buf.slice(0, this.head))
+  }
+  clear() {
+    this.buf = new Array(this.cap)
+    this.head = 0
+    this.size = 0
+  }
+}
+
+const BG_IRC = {
+  ws: null,
+  partial: '',
+  nick: `justinfan${Math.floor(Math.random() * 99999)}`,
+  channels: new Map(),       // ch -> BGCircularBuffer
+  tabInterest: new Map(),    // tabId -> Set<channel>
+  channelTabs: new Map(),    // channel -> Set<tabId>
+  lastData: 0,
+  destroyed: false,
+  reconnectTimer: null,
+  reconnectAttempts: 0,
+  heartbeatTimer: null,
+  connectTimeout: null,
+  chanLastSeen: new Map(),
+  chanRejoinAttempts: new Map(),
+  roomstates: new Map(),
+  historyInFlight: new Set(),
+  persistTimers: new Map(),
+  storageRestored: false,
+  // Tabs that have requested live broadcasts. Empty initially — we don't
+  // broadcast until at least one tab has joined a channel, so a freshly
+  // installed extension with no chat tabs open isn't running for nothing.
+  liveTabs: new Set(),
+}
+
+async function bgIrcRestoreFromStorage() {
+  if (BG_IRC.storageRestored) return
+  BG_IRC.storageRestored = true
+  try {
+    const all = await chrome.storage.local.get(null)
+    let n = 0
+    for (const [k, v] of Object.entries(all)) {
+      if (!k.startsWith('hs_irc_') || k.startsWith('hs_irc_sync_')) continue
+      const ch = k.slice('hs_irc_'.length)
+      if (!ch || !v?.msgs?.length || Date.now() - v.ts >= 86400000) continue
+      const buf = new BGCircularBuffer(BG_IRC_PERSIST_MAX)
+      for (const m of v.msgs) buf.push(m)
+      BG_IRC.channels.set(ch, buf)
+      n++
+    }
+    log('BG IRC restored', n, 'channels from storage')
+  } catch (e) { log('BG IRC restore failed:', e.message) }
+}
+
+function bgIrcPersistChannel(ch) {
+  if (BG_IRC.persistTimers.has(ch)) return
+  BG_IRC.persistTimers.set(ch, setTimeout(() => {
+    BG_IRC.persistTimers.delete(ch)
+    try {
+      const buf = BG_IRC.channels.get(ch)
+      if (!buf) return
+      const msgs = buf.getAll()
+      chrome.storage.local.set({ [`hs_irc_${ch}`]: { msgs, ts: Date.now() } }).catch(() => {})
+    } catch {}
+  }, BG_IRC_PERSIST_DEBOUNCE_MS))
+}
+
+function bgIrcConnect() {
+  if (BG_IRC.destroyed) return
+  bgIrcStopHeartbeat()
+  if (BG_IRC.reconnectTimer) { clearTimeout(BG_IRC.reconnectTimer); BG_IRC.reconnectTimer = null }
+  if (BG_IRC.ws) {
+    try {
+      BG_IRC.ws.onopen = null
+      BG_IRC.ws.onmessage = null
+      BG_IRC.ws.onerror = null
+      BG_IRC.ws.onclose = null
+      BG_IRC.ws.close()
+    } catch {}
+    BG_IRC.ws = null
+  }
+  BG_IRC.partial = ''
+  if (BG_IRC.connectTimeout) clearTimeout(BG_IRC.connectTimeout)
+  BG_IRC.connectTimeout = setTimeout(() => {
+    if (BG_IRC.ws?.readyState !== WebSocket.OPEN) {
+      log('BG IRC: connect timeout')
+      try { BG_IRC.ws?.close() } catch {}
+    }
+  }, 10000)
+
+  BG_IRC.ws = new WebSocket('wss://irc-ws.chat.twitch.tv:443')
+  BG_IRC.ws.onopen = () => {
+    clearTimeout(BG_IRC.connectTimeout)
+    log('BG IRC: connected')
+    BG_IRC.reconnectAttempts = 0
+    BG_IRC.lastData = Date.now()
+    const now = Date.now()
+    for (const ch of BG_IRC.channels.keys()) BG_IRC.chanLastSeen.set(ch, now)
+    BG_IRC.chanRejoinAttempts.clear()
+    BG_IRC.ws.send(`NICK ${BG_IRC.nick}\r\n`)
+    BG_IRC.ws.send('CAP REQ :twitch.tv/tags twitch.tv/commands\r\n')
+    for (const ch of BG_IRC.channels.keys()) {
+      if (BG_IRC.ws.readyState !== WebSocket.OPEN) return
+      BG_IRC.ws.send(`JOIN #${ch}\r\n`)
+    }
+    bgIrcStartHeartbeat()
+  }
+  BG_IRC.ws.onmessage = (e) => bgIrcOnData(e.data)
+  BG_IRC.ws.onerror = () => { clearTimeout(BG_IRC.connectTimeout) }
+  BG_IRC.ws.onclose = () => {
+    clearTimeout(BG_IRC.connectTimeout)
+    bgIrcStopHeartbeat()
+    if (BG_IRC.destroyed) return
+    bgIrcScheduleReconnect()
+  }
+}
+
+function bgIrcScheduleReconnect() {
+  if (BG_IRC.destroyed) return
+  if (BG_IRC.reconnectTimer) clearTimeout(BG_IRC.reconnectTimer)
+  const base = Math.min(2000 * Math.pow(2, BG_IRC.reconnectAttempts), 15000)
+  const delay = base + Math.random() * 2000
+  BG_IRC.reconnectAttempts++
+  log('BG IRC: reconnect in', Math.round(delay), 'ms (attempt', BG_IRC.reconnectAttempts, ')')
+  BG_IRC.reconnectTimer = setTimeout(() => {
+    if (!BG_IRC.destroyed) bgIrcConnect()
+  }, delay)
+}
+
+function bgIrcForceReconnect() {
+  bgIrcStopHeartbeat()
+  if (BG_IRC.ws) {
+    try { BG_IRC.ws.onclose = null; BG_IRC.ws.close() } catch {}
+    BG_IRC.ws = null
+  }
+  if (!BG_IRC.destroyed) bgIrcConnect()
+}
+
+function bgIrcStartHeartbeat() {
+  bgIrcStopHeartbeat()
+  BG_IRC.heartbeatTimer = setInterval(() => {
+    if (!BG_IRC.ws || BG_IRC.ws.readyState !== WebSocket.OPEN) {
+      bgIrcStopHeartbeat()
+      if (!BG_IRC.destroyed) bgIrcScheduleReconnect()
+      return
+    }
+    const now = Date.now()
+    const silence = now - BG_IRC.lastData
+    if (silence > 90000) {
+      log('BG IRC: zombie detected —', Math.round(silence / 1000), 's silence')
+      bgIrcForceReconnect()
+      return
+    }
+    try { BG_IRC.ws.send('PING :heatsync\r\n') } catch {
+      bgIrcForceReconnect()
+      return
+    }
+    // Per-channel watchdog
+    for (const ch of BG_IRC.channels.keys()) {
+      const last = BG_IRC.chanLastSeen.get(ch) || 0
+      if (!last) continue
+      const chSilence = now - last
+      if (chSilence < 120000) continue
+      const attempts = BG_IRC.chanRejoinAttempts.get(ch) || 0
+      if (attempts >= 2) {
+        log('BG IRC: channel', ch, 'unresponsive — full reconnect')
+        BG_IRC.chanRejoinAttempts.clear()
+        bgIrcForceReconnect()
+        return
+      }
+      log('BG IRC: channel', ch, 'silent — PART+JOIN')
+      try {
+        BG_IRC.ws.send(`PART #${ch}\r\n`)
+        BG_IRC.ws.send(`JOIN #${ch}\r\n`)
+        BG_IRC.chanLastSeen.set(ch, now)
+        BG_IRC.chanRejoinAttempts.set(ch, attempts + 1)
+      } catch {
+        bgIrcForceReconnect()
+        return
+      }
+    }
+  }, 30000)
+}
+
+function bgIrcStopHeartbeat() {
+  if (BG_IRC.heartbeatTimer) {
+    clearInterval(BG_IRC.heartbeatTimer)
+    BG_IRC.heartbeatTimer = null
+  }
+}
+
+function bgIrcOnData(data) {
+  BG_IRC.lastData = Date.now()
+  BG_IRC.partial += data
+  if (BG_IRC.partial.length > 65536) BG_IRC.partial = ''
+  const lines = BG_IRC.partial.split('\r\n')
+  BG_IRC.partial = lines.pop()
+  for (const line of lines) {
+    if (!line) continue
+    if (line.startsWith('PING')) {
+      try { BG_IRC.ws.send('PONG :tmi.twitch.tv\r\n') } catch {}
+      continue
+    }
+    if (line.startsWith(':tmi.twitch.tv PONG') || line.startsWith('PONG')) continue
+    if (line.includes('RECONNECT')) {
+      log('BG IRC: server requested RECONNECT')
+      bgIrcForceReconnect()
+      return
+    }
+    bgIrcHandleLine(line)
+  }
+}
+
+function bgIrcHandleLine(line) {
+  const msg = bgIrcParseLine(line)
+  if (!msg) return
+  if (msg.channel) BG_IRC.chanLastSeen.set(msg.channel, Date.now())
+
+  if (msg.type === 'roomstate') {
+    const prev = BG_IRC.roomstates.get(msg.channel) || {}
+    const changes = []
+    if (msg.slow != null && msg.slow !== prev.slow) changes.push(msg.slow > 0 ? `slow mode on (${msg.slow}s)` : 'slow mode off')
+    if (msg.subsOnly != null && msg.subsOnly !== prev.subsOnly) changes.push(msg.subsOnly ? 'sub-only mode on' : 'sub-only mode off')
+    if (msg.emoteOnly != null && msg.emoteOnly !== prev.emoteOnly) changes.push(msg.emoteOnly ? 'emote-only mode on' : 'emote-only mode off')
+    if (msg.followersOnly != null && msg.followersOnly !== prev.followersOnly) {
+      if (msg.followersOnly === -1) changes.push('follower-only mode off')
+      else if (msg.followersOnly === 0) changes.push('follower-only mode on')
+      else changes.push(`follower-only mode on (${msg.followersOnly}m)`)
+    }
+    if (msg.r9k != null && msg.r9k !== prev.r9k) changes.push(msg.r9k ? 'unique-chat mode on' : 'unique-chat mode off')
+    const newState = { ...prev }
+    for (const k of ['slow', 'subsOnly', 'emoteOnly', 'followersOnly', 'r9k']) {
+      if (msg[k] != null) newState[k] = msg[k]
+    }
+    BG_IRC.roomstates.set(msg.channel, newState)
+    if (changes.length && Object.keys(prev).length) {
+      const buf = BG_IRC.channels.get(msg.channel)
+      for (const text of changes) {
+        const evt = {
+          type: 'notice', noticeType: 'mode_change',
+          user: 'system', text,
+          color: '#808080', badges: '',
+          channel: msg.channel,
+          time: Date.now(),
+          id: `mode-${msg.channel}-${Date.now()}-${text.slice(0, 16)}`,
+          systemMsg: text
+        }
+        if (buf) buf.push(evt)
+        bgIrcPersistChannel(msg.channel)
+        bgIrcBroadcast({ type: 'bg_irc_msg', msg: evt })
+      }
+    }
+    bgIrcBroadcast({ type: 'bg_irc_msg', msg })
+    return
+  }
+
+  if (msg.type === 'userstate' || msg.type === 'whisper') {
+    bgIrcBroadcast({ type: 'bg_irc_msg', msg })
+    return
+  }
+
+  // Apply CLEARCHAT/CLEARMSG annotations to existing buffer entries
+  const buf = msg.channel ? BG_IRC.channels.get(msg.channel) : null
+  if (buf && msg.type === 'notice' && (msg.noticeType === 'ban_success' || msg.noticeType === 'timeout_success')) {
+    const targetLc = (msg.targetUser || '').toLowerCase()
+    if (targetLc) {
+      for (const m of buf.getAll()) {
+        if (m.user && m.user.toLowerCase() === targetLc && !m.cleared) {
+          m.cleared = true
+          m.clearedReason = msg.banDuration ? `timed out (${msg.banDuration}s)` : 'banned'
+        }
+      }
+    }
+  }
+  if (buf && msg.type === 'notice' && msg.noticeType === 'delete_message_success' && msg.targetMsgId) {
+    const id = msg.targetMsgId
+    for (const m of buf.getAll()) {
+      if (m.id === id) { m.cleared = true; m.clearedReason = 'deleted'; break }
+    }
+  }
+
+  // PRIVMSG, USERNOTICE, NOTICE → store + broadcast
+  if (buf && (!msg.type || msg.type === 'usernotice' || msg.type === 'notice')) {
+    buf.push(msg)
+    bgIrcPersistChannel(msg.channel)
+  }
+  bgIrcBroadcast({ type: 'bg_irc_msg', msg })
+}
+
+async function bgIrcFetchRobotty(ch) {
+  if (BG_IRC.historyInFlight.has(ch)) return
+  BG_IRC.historyInFlight.add(ch)
+  try {
+    const ctrl = new AbortController()
+    const timer = setTimeout(() => ctrl.abort(), 15000)
+    const resp = await fetch(
+      `https://recent-messages.robotty.de/api/v2/recent-messages/${ch}?limit=800&hide_moderation_messages=false&hide_moderated_messages=false&clearchatToNotice=true`,
+      { signal: ctrl.signal, credentials: 'omit' }
+    )
+    clearTimeout(timer)
+    if (!resp.ok) return
+    const data = await resp.json()
+    if (!data.messages?.length) return
+    const buf = BG_IRC.channels.get(ch)
+    if (!buf) return
+    const existing = buf.getAll()
+    const existingIds = new Set(existing.filter(m => m.id).map(m => m.id))
+    const fpKey = (m) => `${m.user}|${m.time}|${(m.text || '').slice(0, 60)}`
+    const existingFp = new Set(existing.filter(m => !m.id).map(fpKey))
+    const toAdd = []
+    for (const line of data.messages) {
+      const msg = bgIrcParseLine(line, ch)
+      if (!msg) continue
+      msg.isHistory = true
+      if (msg.id && existingIds.has(msg.id)) continue
+      if (!msg.id && existingFp.has(fpKey(msg))) continue
+      toAdd.push(msg)
+    }
+    if (toAdd.length === 0) return
+    const all = [...existing, ...toAdd].sort((a, b) => (a.time || 0) - (b.time || 0))
+    buf.clear()
+    for (const m of all) buf.push(m)
+    bgIrcPersistChannel(ch)
+    bgIrcBroadcast({ type: 'bg_irc_history_merged', channel: ch, count: toAdd.length })
+    log('BG IRC robotty merged', toAdd.length, 'msgs for', ch)
+  } catch (e) {
+    log('BG IRC robotty fetch failed for', ch, ':', e.message)
+  } finally {
+    BG_IRC.historyInFlight.delete(ch)
+  }
+}
+
+async function bgIrcBroadcast(payload) {
+  try {
+    const tabs = await getMatchingTabs()
+    for (const tab of tabs) {
+      browser.tabs.sendMessage(tab.id, payload).catch(() => {})
+    }
+  } catch {}
+}
+
+function bgIrcRegisterTabInterest(tabId, ch) {
+  if (!BG_IRC.tabInterest.has(tabId)) BG_IRC.tabInterest.set(tabId, new Set())
+  BG_IRC.tabInterest.get(tabId).add(ch)
+  if (!BG_IRC.channelTabs.has(ch)) BG_IRC.channelTabs.set(ch, new Set())
+  BG_IRC.channelTabs.get(ch).add(tabId)
+}
+
+function bgIrcUnregisterTabInterest(tabId, ch) {
+  const tabSet = BG_IRC.channelTabs.get(ch)
+  if (tabSet) { tabSet.delete(tabId); if (tabSet.size === 0) BG_IRC.channelTabs.delete(ch) }
+  const interest = BG_IRC.tabInterest.get(tabId)
+  if (interest) interest.delete(ch)
+}
+
+function bgIrcEnsureChannel(ch) {
+  ch = ch.toLowerCase()
+  if (BG_IRC.channels.has(ch)) return
+  BG_IRC.channels.set(ch, new BGCircularBuffer(BG_IRC_PERSIST_MAX))
+  BG_IRC.chanLastSeen.set(ch, Date.now())
+  if (BG_IRC.ws?.readyState === WebSocket.OPEN) {
+    try { BG_IRC.ws.send(`JOIN #${ch}\r\n`) } catch {}
+  }
+  bgIrcFetchRobotty(ch)
+}
+
+// Tab cleanup — drop interest when a tab closes
+chrome.tabs.onRemoved.addListener((tabId) => {
+  BG_IRC.liveTabs.delete(tabId)
+  const interest = BG_IRC.tabInterest.get(tabId)
+  if (!interest) return
+  for (const ch of interest) {
+    const tabSet = BG_IRC.channelTabs.get(ch)
+    if (tabSet) { tabSet.delete(tabId); if (tabSet.size === 0) BG_IRC.channelTabs.delete(ch) }
+  }
+  BG_IRC.tabInterest.delete(tabId)
+})
+
+// Listener — handles bg_irc_join / bg_irc_part / bg_irc_history
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (!message || typeof message !== 'object') return false
+  const tabId = sender?.tab?.id
+  if (message.type === 'bg_irc_join') {
+    const ch = (message.channel || '').toLowerCase()
+    if (!ch) { sendResponse({ ok: false, error: 'no channel' }); return true }
+    bgIrcEnsureChannel(ch)
+    if (tabId) bgIrcRegisterTabInterest(tabId, ch)
+    BG_IRC.liveTabs.add(tabId)
+    sendResponse({ ok: true })
+    return true
+  }
+  if (message.type === 'bg_irc_part') {
+    const ch = (message.channel || '').toLowerCase()
+    if (ch && tabId) bgIrcUnregisterTabInterest(tabId, ch)
+    sendResponse({ ok: true })
+    return true
+  }
+  if (message.type === 'bg_irc_history') {
+    const ch = (message.channel || '').toLowerCase()
+    ;(async () => {
+      if (!BG_IRC.storageRestored) await bgIrcRestoreFromStorage()
+      const buf = BG_IRC.channels.get(ch)
+      sendResponse({ ok: true, msgs: buf ? buf.getAll() : [], hasBg: true })
+    })()
+    return true
+  }
+  if (message.type === 'bg_irc_status') {
+    sendResponse({
+      ok: true,
+      connected: BG_IRC.ws?.readyState === WebSocket.OPEN,
+      channels: Array.from(BG_IRC.channels.keys()),
+      bufferSizes: Object.fromEntries([...BG_IRC.channels].map(([k, v]) => [k, v.size]))
+    })
+    return true
+  }
+  return false
+})
+
+// Boot — restore + connect on SW startup
+;(async () => {
+  await bgIrcRestoreFromStorage()
+  bgIrcConnect()
+})()
+
+// ============================================================================
+// BG KICK + YT BUFFER MIRROR — same god-tier guarantee
+// ============================================================================
+// Kick + YouTube messages already flow through this SW (heatsync server WS).
+// We tee them into per-channel buffers so content tabs hydrate instantly on
+// reload — same architecture as the Twitch IRC reader above.
+
+const BG_KICK_PERSIST_MAX = 1500
+const BG_YT_PERSIST_MAX = 500
+const BG_KICK = {
+  channels: new Map(),    // username -> BGCircularBuffer
+  persistTimers: new Map(),
+  storageRestored: false,
+}
+const BG_YT = {
+  channels: new Map(),    // channelId -> BGCircularBuffer
+  persistTimers: new Map(),
+  storageRestored: false,
+}
+
+async function bgKickRestoreFromStorage() {
+  if (BG_KICK.storageRestored) return
+  BG_KICK.storageRestored = true
+  try {
+    const all = await chrome.storage.local.get(null)
+    let n = 0
+    for (const [k, v] of Object.entries(all)) {
+      if (!k.startsWith('hs_kick_') || k.startsWith('hs_kick_sync_')) continue
+      const ch = k.slice('hs_kick_'.length)
+      if (!ch || !v?.msgs?.length || Date.now() - v.ts >= 86400000) continue
+      const buf = new BGCircularBuffer(BG_KICK_PERSIST_MAX)
+      for (const m of v.msgs) buf.push(m)
+      BG_KICK.channels.set(ch, buf)
+      n++
+    }
+    log('BG KICK restored', n, 'channels')
+  } catch (e) { log('BG KICK restore failed:', e.message) }
+}
+
+async function bgYtRestoreFromStorage() {
+  if (BG_YT.storageRestored) return
+  BG_YT.storageRestored = true
+  try {
+    const all = await chrome.storage.local.get(null)
+    let n = 0
+    for (const [k, v] of Object.entries(all)) {
+      if (!k.startsWith('hs_yt_') || k.startsWith('hs_yt_sync_')) continue
+      const channelId = k.slice('hs_yt_'.length)
+      if (!channelId || !v?.msgs?.length || Date.now() - v.ts >= 86400000) continue
+      const buf = new BGCircularBuffer(BG_YT_PERSIST_MAX)
+      for (const m of v.msgs) buf.push(m)
+      BG_YT.channels.set(channelId, buf)
+      n++
+    }
+    log('BG YT restored', n, 'channels')
+  } catch (e) { log('BG YT restore failed:', e.message) }
+}
+
+function bgKickPersistChannel(ch) {
+  if (BG_KICK.persistTimers.has(ch)) return
+  BG_KICK.persistTimers.set(ch, setTimeout(() => {
+    BG_KICK.persistTimers.delete(ch)
+    try {
+      const buf = BG_KICK.channels.get(ch)
+      if (!buf) return
+      const msgs = buf.getAll()
+      chrome.storage.local.set({ [`hs_kick_${ch}`]: { msgs, ts: Date.now() } }).catch(() => {})
+    } catch {}
+  }, 1500))
+}
+
+function bgYtPersistChannel(channelId) {
+  if (BG_YT.persistTimers.has(channelId)) return
+  BG_YT.persistTimers.set(channelId, setTimeout(() => {
+    BG_YT.persistTimers.delete(channelId)
+    try {
+      const buf = BG_YT.channels.get(channelId)
+      if (!buf) return
+      const msgs = buf.getAll()
+      chrome.storage.local.set({ [`hs_yt_${channelId}`]: { msgs, ts: Date.now() } }).catch(() => {})
+    } catch {}
+  }, 1500))
+}
+
+function bgKickIngest(data) {
+  // data shape from heatsync server kick-chat-message webhook → broadcast
+  // we hook into broadcastToTabs path; this fn is called there
+  if (!data || !data.channel) return
+  const ch = data.channel.toLowerCase()
+  if (!BG_KICK.channels.has(ch)) BG_KICK.channels.set(ch, new BGCircularBuffer(BG_KICK_PERSIST_MAX))
+  // Build a serializable msg matching what content's KickChat constructs
+  const msg = {
+    user: data.username || data.user || 'unknown',
+    text: data.content || data.message || data.text || '',
+    color: data.color || '#53fc18',
+    badges: '',
+    channel: ch,
+    time: data.timestamp || data.time || Date.now(),
+    platform: 'kick',
+    replyTo: data.replyTo ? {
+      user: data.replyTo.username || 'unknown',
+      text: data.replyTo.content || '',
+      id: data.replyTo.id || data.replyTo.message_id || '',
+      threadId: data.replyTo.thread_id || data.replyTo.id || data.replyTo.message_id || ''
+    } : null
+  }
+  BG_KICK.channels.get(ch).push(msg)
+  bgKickPersistChannel(ch)
+}
+
+function bgYtIngest(payload) {
+  // payload is the youtube_chat_message we'd broadcast — store it under channelId
+  if (!payload || !payload.channelId || payload.channelId === 'global') return
+  const channelId = payload.channelId
+  if (!BG_YT.channels.has(channelId)) BG_YT.channels.set(channelId, new BGCircularBuffer(BG_YT_PERSIST_MAX))
+  // Strip transient flags before storing
+  const msg = {
+    user: payload.user,
+    text: payload.text,
+    color: payload.color,
+    time: payload.time,
+    platform: 'youtube',
+    emotes: payload.emotes,
+    msgType: payload.msgType,
+    amount: payload.amount,
+    scColor: payload.scColor,
+    sticker: payload.sticker,
+    avatar: payload.avatar,
+    badges: payload.badges,
+    systemMsg: payload.systemMsg,
+  }
+  BG_YT.channels.get(channelId).push(msg)
+  bgYtPersistChannel(channelId)
+}
+
+// History-pull endpoints
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (!message || typeof message !== 'object') return false
+  if (message.type === 'bg_kick_history') {
+    const ch = (message.channel || '').toLowerCase()
+    ;(async () => {
+      if (!BG_KICK.storageRestored) await bgKickRestoreFromStorage()
+      const buf = BG_KICK.channels.get(ch)
+      sendResponse({ ok: true, msgs: buf ? buf.getAll() : [] })
+    })()
+    return true
+  }
+  if (message.type === 'bg_yt_history') {
+    const channelId = message.channelId || ''
+    ;(async () => {
+      if (!BG_YT.storageRestored) await bgYtRestoreFromStorage()
+      const buf = BG_YT.channels.get(channelId)
+      sendResponse({ ok: true, msgs: buf ? buf.getAll() : [] })
+    })()
+    return true
+  }
+  return false
+})
+
+// Boot restore
+bgKickRestoreFromStorage()
+bgYtRestoreFromStorage()

@@ -149,6 +149,240 @@
     if (ytChanRejoinAttempts.size) ytChanRejoinAttempts.delete(channelId);
   }
 
+  // ============================================
+  // PERSISTED BUFFERS — survives page reload
+  // mentions + per-channel YT messages + per-tab seen-time, mirroring the
+  // IRC/Kick reload-bulletproofing in irc.js. chrome.storage.local writes are
+  // debounced 1.5s; localStorage takes a synchronous tail backup on pagehide
+  // to close the debounce gap that survives a reload mid-burst.
+  // ============================================
+  const PERSIST_DEBOUNCE_MS = 1500
+  const PERSIST_MAX_MENTIONS = 200
+  const PERSIST_MAX_YT = 500
+  const PERSIST_SYNC_MAX = 100
+  const _persistMentionsState = { timer: null, dirty: false }
+  const _persistYtTimers = new Map()      // channelId -> timer
+  const _persistYtDirty = new Set()       // channelIds with unflushed messages
+  let _persistTabSeenTimer = null
+  const tabSeenAt = {}                    // tabId -> ms
+
+  function _serializePersistMsg(m) {
+    return {
+      user: m.user, userId: m.userId, text: m.text, color: m.color,
+      badges: m.badges, channel: m.channel, time: m.time, id: m.id,
+      platform: m.platform || undefined,
+      isAction: m.isAction || undefined, replyTo: m.replyTo || undefined,
+      type: m.type || undefined, msgId: m.msgId || undefined,
+      isHighlighted: m.isHighlighted || undefined,
+      avatar: m.avatar || undefined,
+      msgType: m.msgType || undefined, amount: m.amount || undefined,
+      systemMsg: m.systemMsg || undefined,
+      sticker: m.sticker || undefined,
+      scColor: m.scColor || undefined,
+      emotes: m.emotes || undefined,
+      subMonths: m.subMonths || undefined
+    }
+  }
+
+  function persistMentions() {
+    _persistMentionsState.dirty = true
+    if (_persistMentionsState.timer) return
+    _persistMentionsState.timer = cleanup.setTimeout(() => {
+      _persistMentionsState.timer = null
+      _persistMentionsState.dirty = false
+      try {
+        if (!chrome?.runtime?.id) return
+        const msgs = mentionsBuffer.slice(-PERSIST_MAX_MENTIONS).map(_serializePersistMsg)
+        const p = chrome.storage.local.set({ hs_mentions_v2: { msgs, ts: Date.now() } })
+        if (p && typeof p.catch === 'function') p.catch(() => {})
+      } catch {}
+    }, PERSIST_DEBOUNCE_MS)
+  }
+
+  function persistYt(channelId) {
+    if (!channelId) return
+    _persistYtDirty.add(channelId)
+    if (_persistYtTimers.has(channelId)) return
+    _persistYtTimers.set(channelId, cleanup.setTimeout(() => {
+      _persistYtTimers.delete(channelId)
+      _persistYtDirty.delete(channelId)
+      try {
+        if (!chrome?.runtime?.id) return
+        const buf = channelYtMessages.get(channelId)
+        if (!buf) return
+        const msgs = buf.slice(-PERSIST_MAX_YT).map(_serializePersistMsg)
+        const p = chrome.storage.local.set({ [`hs_yt_${channelId}`]: { msgs, ts: Date.now() } })
+        if (p && typeof p.catch === 'function') p.catch(() => {})
+      } catch {}
+    }, PERSIST_DEBOUNCE_MS))
+  }
+
+  function _persistTabSeenSoon() {
+    if (_persistTabSeenTimer) return
+    _persistTabSeenTimer = cleanup.setTimeout(() => {
+      _persistTabSeenTimer = null
+      try {
+        if (!chrome?.runtime?.id) return
+        chrome.storage.local.set({ hs_tab_seen_v1: { ...tabSeenAt } })
+      } catch {}
+    }, 500)
+  }
+
+  function markTabSeen(tabId) {
+    if (!tabId) return
+    tabSeenAt[tabId] = Date.now()
+    _persistTabSeenSoon()
+  }
+
+  function _flushPersistenceSync() {
+    try {
+      if (_persistMentionsState.dirty) {
+        const msgs = mentionsBuffer.slice(-PERSIST_SYNC_MAX).map(_serializePersistMsg)
+        localStorage.setItem('hs_mentions_sync', JSON.stringify({ msgs, ts: Date.now() }))
+      }
+      for (const channelId of _persistYtDirty) {
+        const buf = channelYtMessages.get(channelId)
+        if (!buf) continue
+        const msgs = buf.slice(-PERSIST_SYNC_MAX).map(_serializePersistMsg)
+        localStorage.setItem(`hs_yt_sync_${channelId}`, JSON.stringify({ msgs, ts: Date.now() }))
+      }
+      if (_persistTabSeenTimer) {
+        localStorage.setItem('hs_tab_seen_sync', JSON.stringify({ data: { ...tabSeenAt }, ts: Date.now() }))
+      }
+    } catch {}
+  }
+
+  window.addEventListener('pagehide', _flushPersistenceSync)
+
+  async function restorePersistedBuffers() {
+    try {
+      const seenRes = await chrome.storage.local.get('hs_tab_seen_v1')
+      if (seenRes.hs_tab_seen_v1 && typeof seenRes.hs_tab_seen_v1 === 'object') {
+        Object.assign(tabSeenAt, seenRes.hs_tab_seen_v1)
+      }
+      try {
+        const raw = localStorage.getItem('hs_tab_seen_sync')
+        if (raw) {
+          const data = JSON.parse(raw)
+          if (data?.data && Date.now() - data.ts < 86400000) {
+            for (const [k, v] of Object.entries(data.data)) {
+              if (typeof v === 'number' && (!tabSeenAt[k] || v > tabSeenAt[k])) tabSeenAt[k] = v
+            }
+          }
+        }
+      } catch {}
+
+      let mChrome = null, mSync = null
+      try {
+        const r = await chrome.storage.local.get('hs_mentions_v2')
+        if (r.hs_mentions_v2?.msgs?.length > 0 && Date.now() - r.hs_mentions_v2.ts < 86400000) {
+          mChrome = r.hs_mentions_v2.msgs
+        }
+      } catch {}
+      try {
+        const raw = localStorage.getItem('hs_mentions_sync')
+        if (raw) {
+          const data = JSON.parse(raw)
+          if (data?.msgs?.length > 0 && Date.now() - data.ts < 86400000) mSync = data.msgs
+        }
+      } catch {}
+      if (mChrome || mSync) {
+        const byId = new Map()
+        const noId = []
+        const ingest = (a) => { if (!a) return; for (const m of a) { if (m.id) byId.set(m.id, m); else noId.push(m) } }
+        ingest(mChrome); ingest(mSync)
+        const merged = [...byId.values(), ...noId].sort((a, b) => (a.time || 0) - (b.time || 0))
+        for (const m of merged) {
+          m.isHistory = true
+          mentionsBuffer.push(m)
+        }
+        if (mentionsBuffer.length > PERSIST_MAX_MENTIONS) {
+          mentionsBuffer.splice(0, mentionsBuffer.length - PERSIST_MAX_MENTIONS)
+        }
+        log('Restored mentions:', mentionsBuffer.length, 'chrome:' + (mChrome?.length || 0), 'sync:' + (mSync?.length || 0))
+      }
+
+      try {
+        const all = await chrome.storage.local.get(null)
+        for (const [k, v] of Object.entries(all)) {
+          if (!k.startsWith('hs_yt_') || k.startsWith('hs_yt_sync_')) continue
+          const channelId = k.slice('hs_yt_'.length)
+          if (!channelId) continue
+          if (!v?.msgs?.length || Date.now() - v.ts >= 86400000) continue
+          if (!channelYtMessages.has(channelId)) channelYtMessages.set(channelId, [])
+          const buf = channelYtMessages.get(channelId)
+          let syncMsgs = null
+          try {
+            const raw = localStorage.getItem(`hs_yt_sync_${channelId}`)
+            if (raw) {
+              const data = JSON.parse(raw)
+              if (data?.msgs?.length > 0 && Date.now() - data.ts < 86400000) syncMsgs = data.msgs
+            }
+          } catch {}
+          const seen = new Set()
+          const ingest = (arr) => {
+            if (!arr) return
+            for (const m of arr) {
+              const key = `${m.user || ''}|${m.time || 0}|${(m.text || '').slice(0, 80)}`
+              if (seen.has(key)) continue
+              seen.add(key)
+              m.isHistory = true
+              buf.push(m)
+            }
+          }
+          ingest(v.msgs); ingest(syncMsgs)
+          buf.sort((a, b) => (a.time || 0) - (b.time || 0))
+          if (buf.length > PERSIST_MAX_YT) buf.splice(0, buf.length - PERSIST_MAX_YT)
+        }
+      } catch {}
+    } catch (e) {
+      log('restorePersistedBuffers failed:', e?.message)
+    }
+  }
+
+  // After buffers + irc/kick history have hydrated, walk every tab and add
+  // has-new / has-mentions if any buffered msg time > tabSeenAt[tabId].
+  // Special tabs (mentions/whispers/feed) are managed by seen-state.js so
+  // they're skipped here.
+  function applyUnreadIndicatorsFromPersist() {
+    if (!tabBarElement) return
+    const tabs = tabBarElement.querySelectorAll('.hs-mc-tab[data-tab]')
+    const SPECIAL = new Set(['mentions', 'whispers', 'feed', 'discover', 'pinned',
+                             'add', 'rotate', 'rotate-chat', 'settings', 'live'])
+    for (const tabEl of tabs) {
+      const tabId = tabEl.dataset.tab
+      if (!tabId || tabId === currentTab) continue
+      if (SPECIAL.has(tabId)) continue
+      const seen = tabSeenAt[tabId] || 0
+      if (!seen) continue  // first-time view of this tab — don't spuriously light up
+      const ch = config.channels.find(c => c.id === tabId)
+      if (!ch) continue
+      let maxTime = 0
+      let hasMention = false
+      const scan = (arr) => {
+        if (!arr) return
+        for (const m of arr) {
+          const t = m.time || 0
+          if (t > maxTime) maxTime = t
+          if (t > seen) {
+            try { if (isMention(m)) hasMention = true } catch {}
+          }
+        }
+      }
+      if (ch.twitch && irc?.channels?.has(ch.twitch.toLowerCase())) {
+        scan(irc.channels.get(ch.twitch.toLowerCase()).getAll())
+      }
+      if (ch.kick && kickChat?.channels?.has(ch.kick.toLowerCase())) {
+        scan(kickChat.channels.get(ch.kick.toLowerCase()).getAll())
+      }
+      scan(channelYtMessages.get(tabId))
+      if (maxTime > seen) {
+        tabEl.classList.add('has-new')
+        if (hasMention) tabEl.classList.add('has-mentions')
+      }
+    }
+  }
+
   // YouTube global state (per-channel only now — global removed)
 
   // Third-party cosmetics state (BTTV/FFZ/Chatterino badges, 7TV paints+badges)
@@ -4199,6 +4433,7 @@
     }
     if (currentTab !== 'settings') prevTab = currentTab;
     currentTab = id;
+    markTabSeen(id);
 
     // Update settings button icon: X when settings open, cog otherwise
     if (tabBarElement) {
@@ -7429,9 +7664,78 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
         }
       }
 
-      // 7TV emote add/remove — just reload emotes, don't spam chat
+      // 7TV emote add/remove — surface as an inline stream-event in the
+      // matching channel tab (and live tab if it IS the live channel).
       if (msg.type === 'channel_emote_added' || msg.type === 'channel_emote_removed') {
         log('7TV emote change:', msg.message);
+        const channel = (msg.channel || '').toLowerCase()
+        if (!channel) return
+        const actor = msg.actor || ''
+        // Build clean action text (actor rendered separately as the username-link;
+        // including it inside text would duplicate it via buildMessageDiv).
+        let action
+        if (msg.type === 'channel_emote_added') {
+          action = msg.emote?.name ? `added 7TV emote ${msg.emote.name}` : (msg.message || '7TV emote set updated')
+        } else {
+          action = msg.emoteName ? `removed 7TV emote ${msg.emoteName}` : (msg.message || '7TV emote set updated')
+        }
+        // Strip leading "${actor} " duplicate that bg may include in single-emote case
+        if (actor && action.toLowerCase().startsWith(actor.toLowerCase() + ' ')) {
+          action = action.slice(actor.length + 1)
+        }
+        const dedup = window._hsStreamEventDedup || (window._hsStreamEventDedup = new Map())
+        const text = `[${channel}] ◆ ${action}`
+        const now = Date.now()
+        if (dedup.has(text) && now - dedup.get(text) < 60000) return
+        dedup.set(text, now)
+        if (dedup.size > 100) {
+          for (const [k, t] of dedup) { if (now - t > 60000) dedup.delete(k) }
+        }
+        const evt = { type: 'stream-event', eventClass: 'event-emote', text, channel, actor: actor || null, time: now }
+        const liveChannel = getLiveChannel()
+        const chBuffer = irc?.channels?.get(channel)
+        if (chBuffer) {
+          const existing = chBuffer.getAll()
+          if (!existing.some(m => m.type === 'stream-event' && m.text === evt.text)) {
+            chBuffer.push(evt)
+            saveStreamEvent(evt)
+          }
+        }
+        if (channel === liveChannel) {
+          const liveBuffer = irc?.channels?.get(liveChannel)
+          if (liveBuffer && liveBuffer !== chBuffer) {
+            const existing = liveBuffer.getAll()
+            if (!existing.some(m => m.type === 'stream-event' && m.text === evt.text)) {
+              liveBuffer.push(evt)
+              if (!chBuffer) saveStreamEvent(evt)
+            }
+          }
+        }
+        try { pushActivityEvent(evt) } catch (e) {}
+        const activeTab = currentTab
+        if (activeTab === 'live') {
+          if (isLiveChannelMessage({ channel })) {
+            if (!appendMessage(evt, activeTab)) renderMessages(activeTab)
+          } else {
+            const liveTab = tabBarElement?.querySelector('[data-tab="live"]')
+            if (liveTab && channel === liveChannel) liveTab.classList.add('has-stream-event')
+          }
+        } else {
+          const tabCh = config.channels.find(ch => ch.id === activeTab)
+          if (tabCh) {
+            const tw = tabCh.twitch?.toLowerCase()
+            const ki = (tabCh.kick)?.toLowerCase()
+            if (tw === channel || ki === channel) {
+              if (!appendMessage(evt, activeTab)) renderMessages(activeTab)
+            } else {
+              const matchTab = config.channels.find(c => (c.twitch?.toLowerCase() === channel) || (c.kick?.toLowerCase() === channel))
+              if (matchTab) {
+                const tabEl = tabBarElement?.querySelector(`[data-tab="${CSS.escape(matchTab.id)}"]`)
+                if (tabEl) tabEl.classList.add('has-stream-event')
+              }
+            }
+          }
+        }
       }
     });
 
@@ -7908,6 +8212,10 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     // refs `irc`/`kickChat` are available immediately for any sync caller.
     irc = new IRC();
     kickChat = new KickChat();
+    // Restore persisted mentions/YT buffers + tab-seen state so first paint
+    // already shows everything from before the reload. Awaited because
+    // mentions tab on reload would otherwise paint empty for a beat.
+    await restorePersistedBuffers();
     const startNetwork = () => {
       irc.connect();
       kickChat.connect();
@@ -7995,15 +8303,28 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       setTimeout(startNetwork, 0);
     }
 
-    // Restore persisted stream events into buffers
-    loadStreamEvents().then(() => {
-      if (streamEventsLoaded) {
-        const active = currentTab;
-        if (active === 'live' || config.channels.some(ch => ch.id === active)) {
-          renderMessages(active);
+    // After channel buffers have hydrated (IRC.loadHistory fires on each JOIN
+    // and resolves async), repaint per-tab unread indicators against the
+    // restored tabSeenAt timestamps. 2s lets storage reads settle without
+    // blocking the panel; an extra pass at 8s catches the second-pass robotty
+    // refetch that fills the reload-window gap.
+    cleanup.setTimeout(() => { try { applyUnreadIndicatorsFromPersist() } catch {} }, 2000)
+    cleanup.setTimeout(() => { try { applyUnreadIndicatorsFromPersist() } catch {} }, 8000)
+
+    // Restore persisted stream events into buffers AFTER irc.join has populated
+    // them. Running in parallel with startNetwork races: storage.get often
+    // resolves before requestIdleCallback fires, so injectStreamEventsIntoBuffers
+    // sees empty irc.channels and silently drops chat injection.
+    cleanup.setTimeout(() => {
+      loadStreamEvents().then(() => {
+        if (streamEventsLoaded) {
+          const active = currentTab;
+          if (active === 'live' || config.channels.some(ch => ch.id === active)) {
+            renderMessages(active);
+          }
         }
-      }
-    });
+      });
+    }, 300);
 
     // Scan existing chat for mentions (before IRC catches new ones)
     cleanup.setTimeout(() => scanExistingMentions(), 2000);
@@ -8061,6 +8382,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       if (isMent) {
         mentionsBuffer.push(msg);
         if (mentionsBuffer.length > MAX_BUFFER + 50) mentionsBuffer.splice(0, mentionsBuffer.length - MAX_BUFFER);
+        persistMentions();
         notifyMention(msg);
         noteSeenEvent('mentions', msg.time || Date.now());
 
@@ -8113,6 +8435,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       if (isMent) {
         mentionsBuffer.push(msg);
         if (mentionsBuffer.length > MAX_BUFFER + 50) mentionsBuffer.splice(0, mentionsBuffer.length - MAX_BUFFER);
+        persistMentions();
         notifyMention(msg);
         noteSeenEvent('mentions', msg.time || Date.now());
 

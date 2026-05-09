@@ -367,6 +367,7 @@ function ingestReplayYtMsg(targetChannelId, ytMsg) {
     buf.sort((a, b) => (a.time || 0) - (b.time || 0))
     buf.splice(0, buf.length - MAX_BUFFER)
   }
+  persistYt(targetChannelId)
   const tabId = targetChannelId === '__live_yt_auto__' ? 'live' : targetChannelId
   if (currentTab !== tabId) {
     updateTabIndicator(tabId)
@@ -401,6 +402,7 @@ function commitPacedYtMsg(targetChannelId, ytMsg) {
   const buf = channelYtMessages.get(targetChannelId)
   buf.push(ytMsg)
   if (buf.length > MAX_BUFFER + 50) buf.splice(0, buf.length - MAX_BUFFER)
+  persistYt(targetChannelId)
   const tabId = targetChannelId === '__live_yt_auto__' ? 'live' : targetChannelId
   if (currentTab === tabId) {
     if (!appendMessage(ytMsg, tabId)) renderMessages(tabId)
@@ -679,6 +681,7 @@ function listenForSocialEvents() {
       if (isMent) {
         mentionsBuffer.push(ytMsg)
         if (mentionsBuffer.length > MAX_BUFFER + 50) mentionsBuffer.splice(0, mentionsBuffer.length - MAX_BUFFER)
+        persistMentions()
         notifyMention(ytMsg)
         noteSeenEvent('mentions', ytMsg.time || Date.now())
         if (currentTab === 'mentions') {

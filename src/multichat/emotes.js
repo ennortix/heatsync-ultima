@@ -229,6 +229,11 @@
       return;
     }
 
+    // Twitch features tab (predictions/polls/rewards/clip/popout/mod) needs the
+    // twitch.tv page context for auth + GQL proxy. Hide it on YT/Kick host.
+    const showTwitchTab = hostPlatform === 'twitch';
+    if (!showTwitchTab && pickerTab === 'twitch') pickerTab = 'emotes';
+
     // Cache hit → no rebuild, just sync which tab content is shown.
     if (!isPrebuild && pickerCacheKey() === _pickerBuiltKey && picker.firstChild) {
       syncPickerTabDisplay(picker);
@@ -264,13 +269,13 @@
           ${renderEmoteSections(sections)}
         </div>
       </div>
-      <div class="hs-mc-tab-content" id="hs-mc-tab-twitch" style="display: ${pickerTab === 'twitch' ? 'flex' : 'none'}; flex-direction: column; padding: 8px 0;">
+      ${showTwitchTab ? `<div class="hs-mc-tab-content" id="hs-mc-tab-twitch" style="display: ${pickerTab === 'twitch' ? 'flex' : 'none'}; flex-direction: column; padding: 8px 0;">
         <div class="hs-mc-pred-loading">${t('common_loading')}</div>
       </div>
       <div class="hs-mc-picker-tabs">
         <button class="hs-mc-picker-tab ${pickerTab === 'emotes' ? 'active' : ''}" data-tab="emotes">emotes</button>
-        <button class="hs-mc-picker-tab ${pickerTab === 'twitch' ? 'active' : ''}" data-tab="twitch">${hostPlatform === 'kick' ? 'kick' : hostPlatform === 'yt' ? 'youtube' : 'twitch'}</button>
-      </div>
+        <button class="hs-mc-picker-tab ${pickerTab === 'twitch' ? 'active' : ''}" data-tab="twitch">twitch</button>
+      </div>` : ''}
     `;
 
     // Search functionality (debounced)

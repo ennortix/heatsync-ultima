@@ -3817,6 +3817,15 @@ function injectStyles() {
       overflow: hidden;
       background: #000;
       font-family: 'Courier New', Courier, monospace;
+      /* Cross-fade with the document_start prepaint pseudo-element. Container
+         starts invisible; main.js sets opacity:1 after the overlay mounts +
+         renders, so prepaint (fading out) and container (fading in) overlap
+         and the user never sees a black gap or a tab-bar pop. */
+      opacity: 0;
+      transition: opacity 200ms ease-out;
+    }
+    #hs-mc-container.hs-mc-shown {
+      opacity: 1;
     }
 
     /* Vertical tabs: container gets row direction */
@@ -4019,6 +4028,18 @@ function injectStyles() {
          the rows must paint immediately, not be replaced by a 28px placeholder */
       content-visibility: visible !important;
       contain-intrinsic-size: auto !important;
+    }
+    /* Zebra striping across the entire reply chain. Anchored to the active row
+       (always #808000) so alternation flows continuously: up-stack rows count
+       from the BOTTOM (the row directly above active is dark), down-stack rows
+       count from the TOP (the row directly below active is dark). Overflow chip
+       sits at child[0] of the up-stack but doesn't affect nth-last-child parity.
+       Darker shade also improves white-text contrast (~6.2 vs ~3.7 on plain
+       olive) and dramatically amplifies the timeout/cleared opacity:0.45 effect
+       — banded muted rows read as visually rich rather than a wall of olive. */
+    #hs-mc-reply-stack .hs-mc-reply-stack-row:nth-last-child(odd),
+    #hs-mc-reply-stack-down .hs-mc-reply-stack-row:nth-child(odd) {
+      background: #5c5c00 !important;
     }
     /* Hide the "↩ Replying to @user: text" chip in the stack — every parent is
        already rendered as the row directly above it, so the chip just repeats
@@ -8318,12 +8339,12 @@ function injectStyles() {
        block for abs-positioned children — without this the inputbar/tabbar/
        overlay (all position:absolute; bottom:Npx) snap to the outer edge
        and sit under the bar. With box-sizing: border-box the container's
-       outer dim is unchanged. Bar widths: unified #hs-c-resize-handle 10px,
-       platform handles 6px — reserve 10px to fit either case. */
-    body.hs-chat-right #hs-mc-container { border-left: 10px solid transparent !important; }
-    body.hs-chat-left #hs-mc-container { border-right: 10px solid transparent !important; }
-    body.hs-chat-top #hs-mc-container { border-bottom: 10px solid transparent !important; }
-    body.hs-chat-bottom #hs-mc-container { border-top: 10px solid transparent !important; }
+       outer dim is unchanged. Bar widths: unified #hs-c-resize-handle 5px,
+       platform handles 6px — reserve 6px to fit either case. */
+    body.hs-chat-right #hs-mc-container { border-left: 6px solid transparent !important; }
+    body.hs-chat-left #hs-mc-container { border-right: 6px solid transparent !important; }
+    body.hs-chat-top #hs-mc-container { border-bottom: 6px solid transparent !important; }
+    body.hs-chat-bottom #hs-mc-container { border-top: 6px solid transparent !important; }
 
     /* --- YT narrow viewport rescue ---
        At narrow viewports YT collapses ytd-watch-flexy into a single-column
@@ -8335,35 +8356,170 @@ function injectStyles() {
        the chat strip in BOTH single-column and two-column modes. The
        wrapper inline-sizing in applyPlatformPositionOverrides is a
        complementary belt-and-suspenders. */
-    body.hs-platform-yt.hs-chat-right #primary,
-    body.hs-platform-yt.hs-chat-right ytd-watch-flexy #primary {
-      max-width: calc(100vw - var(--hs-chat-w, 340px)) !important;
-      width: calc(100vw - var(--hs-chat-w, 340px)) !important;
+    body.hs-platform-yt:not(.hs-offline).hs-chat-right ytd-watch-flexy #primary,
+    body.hs-platform-yt:not(.hs-offline).hs-chat-right ytd-watch-flexy #primary {
+      max-width: calc(100% - var(--hs-chat-w, 340px)) !important;
+      width: calc(100% - var(--hs-chat-w, 340px)) !important;
     }
-    body.hs-platform-yt.hs-chat-left #primary,
-    body.hs-platform-yt.hs-chat-left ytd-watch-flexy #primary {
-      max-width: calc(100vw - var(--hs-chat-w, 340px)) !important;
-      width: calc(100vw - var(--hs-chat-w, 340px)) !important;
+    body.hs-platform-yt:not(.hs-offline).hs-chat-left ytd-watch-flexy #primary,
+    body.hs-platform-yt:not(.hs-offline).hs-chat-left ytd-watch-flexy #primary {
+      max-width: calc(100% - var(--hs-chat-w, 340px)) !important;
+      width: calc(100% - var(--hs-chat-w, 340px)) !important;
       margin-left: var(--hs-chat-w, 340px) !important;
     }
-    body.hs-platform-yt.hs-chat-top #primary,
-    body.hs-platform-yt.hs-chat-top ytd-watch-flexy #primary {
+    body.hs-platform-yt:not(.hs-offline).hs-chat-top ytd-watch-flexy #primary,
+    body.hs-platform-yt:not(.hs-offline).hs-chat-top ytd-watch-flexy #primary {
       margin-top: var(--hs-chat-h, 35vh) !important;
       max-height: calc(100vh - var(--hs-chat-h, 35vh)) !important;
     }
-    body.hs-platform-yt.hs-chat-bottom #primary,
-    body.hs-platform-yt.hs-chat-bottom ytd-watch-flexy #primary {
+    body.hs-platform-yt:not(.hs-offline).hs-chat-bottom ytd-watch-flexy #primary,
+    body.hs-platform-yt:not(.hs-offline).hs-chat-bottom ytd-watch-flexy #primary {
       max-height: calc(100vh - var(--hs-chat-h, 35vh)) !important;
     }
     /* YT's masthead is position:fixed and viewport-anchored — shrink it
-       so the search bar / icons don't slide under the chat overlay. */
+       so the search bar / icons don't slide under the chat overlay.
+       Applies to every YT page: home, search, channel, VOD, live —
+       the multichat panel is always there, masthead must always make room. */
     body.hs-platform-yt.hs-chat-right #masthead-container,
     body.hs-platform-yt.hs-chat-right ytd-masthead {
-      right: var(--hs-chat-w, 340px) !important;
+      right: calc(var(--hs-chat-w, 340px) + 5px) !important;
     }
     body.hs-platform-yt.hs-chat-left #masthead-container,
     body.hs-platform-yt.hs-chat-left ytd-masthead {
-      left: var(--hs-chat-w, 340px) !important;
+      left: calc(var(--hs-chat-w, 340px) + 5px) !important;
+    }
+    body.hs-platform-yt.hs-chat-top #masthead-container,
+    body.hs-platform-yt.hs-chat-top ytd-masthead {
+      top: calc(var(--hs-chat-h, 35vh) + 5px) !important;
+    }
+
+    /* Reflow ALL YT content (every page type) into the viewport area NOT
+       covered by the multichat panel. ytd-app is the React root; capping
+       its viewport-width forces YT's responsive layout to honor the chat
+       strip. Single-column pages (home grid, search results, channel)
+       reflow naturally; watch pages let YT's own breakpoints handle the
+       primary/secondary column collapse when space gets tight. */
+    /* Cap ytd-app ONLY (not page-manager too — page-manager nests inside
+       ytd-app, so its 100% resolves against ytd-app's already-capped
+       width and would subtract the chat strip a second time, leaving the
+       grid renderered at half-width with a giant empty gutter).
+       100% (not 100vw) — vw includes the page scrollbar (~15px); the
+       chat panel is position:fixed and respects the inner viewport that
+       excludes the scrollbar, so 100vw caps were 15px too wide.
+       The 5px padding on the chat-side is the orange resize bar's gutter. */
+    body.hs-platform-yt:not(.hs-yt-watch).hs-chat-right ytd-app {
+      width: calc(100% - var(--hs-chat-w, 340px)) !important;
+      max-width: calc(100% - var(--hs-chat-w, 340px)) !important;
+      padding-right: 5px !important;
+      box-sizing: border-box !important;
+      overflow-x: hidden !important;
+    }
+    body.hs-platform-yt:not(.hs-yt-watch).hs-chat-left ytd-app {
+      width: calc(100% - var(--hs-chat-w, 340px)) !important;
+      max-width: calc(100% - var(--hs-chat-w, 340px)) !important;
+      margin-left: var(--hs-chat-w, 340px) !important;
+      padding-left: 5px !important;
+      box-sizing: border-box !important;
+      overflow-x: hidden !important;
+    }
+    body.hs-platform-yt:not(.hs-yt-watch).hs-chat-top ytd-app {
+      height: calc(100vh - var(--hs-chat-h, 35vh)) !important;
+      max-height: calc(100vh - var(--hs-chat-h, 35vh)) !important;
+      margin-top: var(--hs-chat-h, 35vh) !important;
+      padding-top: 5px !important;
+      box-sizing: border-box !important;
+      overflow-y: auto !important;
+    }
+    body.hs-platform-yt:not(.hs-yt-watch).hs-chat-bottom ytd-app {
+      height: calc(100vh - var(--hs-chat-h, 35vh)) !important;
+      max-height: calc(100vh - var(--hs-chat-h, 35vh)) !important;
+      padding-bottom: 5px !important;
+      box-sizing: border-box !important;
+      overflow-y: auto !important;
+    }
+    /* Lift YT's own width clamps on the grid chain — without these,
+       div#primary inside ytd-two-column-browse-results-renderer stays
+       stuck at the previous page's --ytd-rich-grid-width value after
+       SPA nav, and ytd-rich-grid-renderer/#contents inherit that. Force
+       every level to 100% of parent so our auto-fill grid uses the full
+       page-manager width. */
+    body.hs-platform-yt #page-manager ytd-two-column-browse-results-renderer > #primary,
+    body.hs-platform-yt #page-manager ytd-two-column-browse-results-renderer > ytd-rich-grid-renderer,
+    body.hs-platform-yt #page-manager ytd-rich-grid-renderer,
+    body.hs-platform-yt #page-manager ytd-rich-grid-renderer > #contents {
+      width: 100% !important;
+      max-width: 100% !important;
+      box-sizing: border-box !important;
+    }
+
+    /* YT computes ytd-rich-grid-renderer items-per-row off VIEWPORT width
+       (not container) and bakes it into [items-per-row="N"] attribute
+       selectors — overriding the CSS var alone doesn't change the grid.
+       Bypass the whole system: replace #contents with an auto-fill grid
+       so it wraps fluidly at any width. ytd-rich-grid-row (when present
+       in older YT structures) gets display:contents so its children
+       participate in the parent grid as direct cells. Result: tiles
+       always fit whole, density adapts to chat-panel width. */
+    body.hs-platform-yt #page-manager ytd-rich-grid-renderer > #contents,
+    body.hs-platform-yt #page-manager ytd-rich-grid-row > #contents {
+      display: grid !important;
+      grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)) !important;
+      gap: 16px !important;
+    }
+    body.hs-platform-yt #page-manager ytd-rich-grid-row {
+      display: contents !important;
+    }
+    /* Defense-in-depth: every level inside the grid cell must respect
+       parent width. YT inline-styles widths on ytd-rich-grid-media (and
+       sometimes on the thumbnail anchor) using its own items-per-row
+       math that ignores our chat strip — without forcing each level to
+       100%, the rightmost tile overflows the cell and gets clipped by
+       overflow-x:clip on ytd-app, which is what shows up as a half-cut
+       thumbnail. #page-manager ID prefix bumps specificity above YT's
+       attribute-keyed width rules on ytd-rich-grid-media which would
+       otherwise win on attribute-selector count. */
+    body.hs-platform-yt #page-manager ytd-rich-item-renderer,
+    body.hs-platform-yt #page-manager ytd-rich-item-renderer > #content,
+    body.hs-platform-yt #page-manager ytd-rich-grid-media,
+    body.hs-platform-yt #page-manager ytd-rich-grid-media > #thumbnail,
+    body.hs-platform-yt #page-manager ytd-rich-grid-media a#thumbnail,
+    body.hs-platform-yt #page-manager ytd-rich-grid-media yt-image,
+    body.hs-platform-yt #page-manager ytd-rich-grid-media yt-image img,
+    body.hs-platform-yt #page-manager ytd-rich-item-renderer ytd-thumbnail {
+      width: 100% !important;
+      max-width: 100% !important;
+      min-width: 0 !important;
+      box-sizing: border-box !important;
+      margin-left: 0 !important;
+      margin-right: 0 !important;
+    }
+    /* Older grid (subscriptions/library still use it on some accounts). */
+    body.hs-platform-yt ytd-grid-renderer > #items {
+      display: grid !important;
+      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)) !important;
+      gap: 16px !important;
+    }
+    body.hs-platform-yt ytd-grid-video-renderer {
+      width: 100% !important;
+      max-width: 100% !important;
+      margin: 0 !important;
+    }
+
+    /* Shorts: out across the board. Aspect ratio breaks grid uniformity,
+       vertical-only feed doesn't fit the streamer-centric HeatSync UX. */
+    body.hs-platform-yt ytd-rich-section-renderer:has(ytd-rich-shelf-renderer[is-shorts]),
+    body.hs-platform-yt ytd-rich-section-renderer:has([is-shorts]),
+    body.hs-platform-yt ytd-rich-section-renderer:has(grid-shelf-view-model),
+    body.hs-platform-yt ytd-rich-shelf-renderer[is-shorts],
+    body.hs-platform-yt ytd-reel-shelf-renderer,
+    body.hs-platform-yt grid-shelf-view-model,
+    body.hs-platform-yt ytd-rich-item-renderer:has(ytd-shorts),
+    body.hs-platform-yt ytd-mini-guide-entry-renderer[aria-label="Shorts"],
+    body.hs-platform-yt ytd-guide-entry-renderer:has(a[title="Shorts"]),
+    body.hs-platform-yt ytd-pivot-bar-item-renderer:has(a[title="Shorts"]),
+    body.hs-platform-yt a[href="/shorts"],
+    body.hs-platform-yt a[href^="/shorts/"][role="tab"] {
+      display: none !important;
     }
 
     /* --- TWITCH: collapse .right-column to give the player back its space.
@@ -8535,128 +8691,133 @@ function injectStyles() {
       padding-left: 0 !important;
     }
 
-    /* --- YOUTUBE: collapse #secondary; pad #primary --- */
-    body.hs-platform-yt.hs-chat-left #secondary,
-    body.hs-platform-yt.hs-chat-top #secondary,
-    body.hs-platform-yt.hs-chat-bottom #secondary,
-    body.hs-platform-yt.hs-chat-right #secondary {
+    /* --- YOUTUBE: collapse #secondary; pad #primary ---
+       Gated on  — on VODs (non-live), keep YT's native
+       sidebar so recommended/related videos remain visible to the viewer. */
+    body.hs-platform-yt:not(.hs-offline).hs-chat-left ytd-watch-flexy #secondary,
+    body.hs-platform-yt:not(.hs-offline).hs-chat-top ytd-watch-flexy #secondary,
+    body.hs-platform-yt:not(.hs-offline).hs-chat-bottom ytd-watch-flexy #secondary,
+    body.hs-platform-yt:not(.hs-offline).hs-chat-right ytd-watch-flexy #secondary {
       width: 0 !important;
       min-width: 0 !important;
       max-width: 0 !important;
       flex: 0 0 0 !important;
       overflow: hidden !important;
     }
-    body.hs-platform-yt.hs-chat-left #chat-container,
-    body.hs-platform-yt.hs-chat-top #chat-container,
-    body.hs-platform-yt.hs-chat-bottom #chat-container {
+    body.hs-platform-yt:not(.hs-offline).hs-chat-left ytd-watch-flexy #chat-container,
+    body.hs-platform-yt:not(.hs-offline).hs-chat-top ytd-watch-flexy #chat-container,
+    body.hs-platform-yt:not(.hs-offline).hs-chat-bottom ytd-watch-flexy #chat-container {
       overflow: hidden !important;
     }
-    /* Nuke the entire suggested-videos sidebar tree. overflow:hidden on
-       #secondary doesn't clip because YT renders these via children that
-       escape the secondary box (they're rendered at x>=1017 absolutely).
-       display:none kills them outright. We keep #chat-container alive
-       because hs-mc-container is mounted inside it. */
-    body.hs-platform-yt.hs-chat-left #related,
-    body.hs-platform-yt.hs-chat-top #related,
-    body.hs-platform-yt.hs-chat-bottom #related,
-    body.hs-platform-yt.hs-chat-right #related,
-    body.hs-platform-yt.hs-chat-left ytd-watch-next-secondary-results-renderer,
-    body.hs-platform-yt.hs-chat-top ytd-watch-next-secondary-results-renderer,
-    body.hs-platform-yt.hs-chat-bottom ytd-watch-next-secondary-results-renderer,
-    body.hs-platform-yt.hs-chat-right ytd-watch-next-secondary-results-renderer,
-    body.hs-platform-yt.hs-chat-left #secondary-inner > *:not(#chat-container),
-    body.hs-platform-yt.hs-chat-top #secondary-inner > *:not(#chat-container),
-    body.hs-platform-yt.hs-chat-bottom #secondary-inner > *:not(#chat-container),
-    body.hs-platform-yt.hs-chat-right #secondary-inner > *:not(#chat-container) {
+    /* Nuke the entire suggested-videos sidebar tree on LIVE only.
+       overflow:hidden on #secondary doesn't clip because YT renders these
+       via children that escape the secondary box (rendered at x>=1017
+       absolutely). display:none kills them outright. We keep #chat-container
+       alive because hs-mc-container is mounted inside it. */
+    body.hs-platform-yt:not(.hs-offline).hs-chat-left ytd-watch-flexy #related,
+    body.hs-platform-yt:not(.hs-offline).hs-chat-top ytd-watch-flexy #related,
+    body.hs-platform-yt:not(.hs-offline).hs-chat-bottom ytd-watch-flexy #related,
+    body.hs-platform-yt:not(.hs-offline).hs-chat-right ytd-watch-flexy #related,
+    body.hs-platform-yt:not(.hs-offline).hs-chat-left ytd-watch-flexy ytd-watch-next-secondary-results-renderer,
+    body.hs-platform-yt:not(.hs-offline).hs-chat-top ytd-watch-flexy ytd-watch-next-secondary-results-renderer,
+    body.hs-platform-yt:not(.hs-offline).hs-chat-bottom ytd-watch-flexy ytd-watch-next-secondary-results-renderer,
+    body.hs-platform-yt:not(.hs-offline).hs-chat-right ytd-watch-flexy ytd-watch-next-secondary-results-renderer,
+    body.hs-platform-yt:not(.hs-offline).hs-chat-left ytd-watch-flexy #secondary-inner > *:not(#chat-container),
+    body.hs-platform-yt:not(.hs-offline).hs-chat-top ytd-watch-flexy #secondary-inner > *:not(#chat-container),
+    body.hs-platform-yt:not(.hs-offline).hs-chat-bottom ytd-watch-flexy #secondary-inner > *:not(#chat-container),
+    body.hs-platform-yt:not(.hs-offline).hs-chat-right ytd-watch-flexy #secondary-inner > *:not(#chat-container) {
       display: none !important;
     }
     /* Default 'right' position — give up on YT's flex layout entirely
        and pin primary-inner to viewport-left with explicit width. Sibling
-       battles with #secondary flex were giving primary negative x. */
-    body.hs-platform-yt.hs-chat-right #primary {
+       battles with #secondary flex were giving primary negative x.
+       Live-only — VODs keep YT's native two-column flex. */
+    body.hs-platform-yt:not(.hs-offline).hs-chat-right ytd-watch-flexy #primary {
       margin: 0 !important;
       flex: 0 0 0 !important;
       width: 0 !important;
       overflow: visible !important;
     }
-    body.hs-platform-yt.hs-chat-right #primary-inner {
+    body.hs-platform-yt:not(.hs-offline).hs-chat-right ytd-watch-flexy #primary-inner {
       position: fixed !important;
       top: 0 !important;
       left: 0 !important;
-      width: calc(100vw - var(--hs-chat-w, 340px)) !important;
+      right: var(--hs-chat-w, 340px) !important;
+      width: auto !important;
       height: 100vh !important;
     }
-    body.hs-platform-yt.hs-chat-right ytd-watch-flexy {
+    body.hs-platform-yt:not(.hs-offline).hs-chat-right ytd-watch-flexy {
       --ytd-watch-flexy-side-menu-margin: 0 !important;
       --ytd-watch-flexy-non-player-width: var(--hs-chat-w, 340px) !important;
     }
     /* Force the player containers to fill #primary's inner width — kills
        the YT-side-menu-margin gap (right) AND the YT-non-player-width gap
        (left). For top/bottom the JS-driven inline width owns sizing. */
-    body.hs-platform-yt.hs-chat-right #player-container,
-    body.hs-platform-yt.hs-chat-right #player-container-outer,
-    body.hs-platform-yt.hs-chat-right #player-container-inner,
-    body.hs-platform-yt.hs-chat-right ytd-player,
-    body.hs-platform-yt.hs-chat-right #player,
-    body.hs-platform-yt.hs-chat-left #player-container,
-    body.hs-platform-yt.hs-chat-left #player-container-outer,
-    body.hs-platform-yt.hs-chat-left #player-container-inner,
-    body.hs-platform-yt.hs-chat-left ytd-player,
-    body.hs-platform-yt.hs-chat-left #player {
+    body.hs-platform-yt:not(.hs-offline).hs-chat-right ytd-watch-flexy #player-container,
+    body.hs-platform-yt:not(.hs-offline).hs-chat-right ytd-watch-flexy #player-container-outer,
+    body.hs-platform-yt:not(.hs-offline).hs-chat-right ytd-watch-flexy #player-container-inner,
+    body.hs-platform-yt:not(.hs-offline).hs-chat-right ytd-watch-flexy ytd-player,
+    body.hs-platform-yt:not(.hs-offline).hs-chat-right ytd-watch-flexy #player,
+    body.hs-platform-yt:not(.hs-offline).hs-chat-left ytd-watch-flexy #player-container,
+    body.hs-platform-yt:not(.hs-offline).hs-chat-left ytd-watch-flexy #player-container-outer,
+    body.hs-platform-yt:not(.hs-offline).hs-chat-left ytd-watch-flexy #player-container-inner,
+    body.hs-platform-yt:not(.hs-offline).hs-chat-left ytd-watch-flexy ytd-player,
+    body.hs-platform-yt:not(.hs-offline).hs-chat-left ytd-watch-flexy #player {
       width: 100% !important;
     }
     /* chat-left: same gutter-kill as chat-right so YT computes the player
        width as primary's full width (708px) instead of vw - 450 (= 598). */
-    body.hs-platform-yt.hs-chat-left ytd-watch-flexy {
+    body.hs-platform-yt:not(.hs-offline).hs-chat-left ytd-watch-flexy {
       --ytd-watch-flexy-side-menu-margin: 0 !important;
       --ytd-watch-flexy-non-player-width: var(--hs-chat-w, 340px) !important;
     }
-    body.hs-platform-yt.hs-chat-left #primary {
+    body.hs-platform-yt:not(.hs-offline).hs-chat-left ytd-watch-flexy #primary {
       margin: 0 !important;
       flex: 0 0 0 !important;
       width: 0 !important;
       overflow: visible !important;
     }
-    body.hs-platform-yt.hs-chat-left #primary-inner {
+    body.hs-platform-yt:not(.hs-offline).hs-chat-left ytd-watch-flexy #primary-inner {
       position: fixed !important;
       top: 0 !important;
       left: var(--hs-chat-w, 340px) !important;
-      width: calc(100vw - var(--hs-chat-w, 340px)) !important;
+      right: 0 !important;
+      width: auto !important;
       height: 100vh !important;
     }
     /* Kill the secondary's residual 16px (its own padding/margin still
-       takes layout space even with width:0). */
-    body.hs-platform-yt.hs-chat-left #secondary,
-    body.hs-platform-yt.hs-chat-top #secondary,
-    body.hs-platform-yt.hs-chat-bottom #secondary {
+       takes layout space even with width:0). Live-only. */
+    body.hs-platform-yt:not(.hs-offline).hs-chat-left ytd-watch-flexy #secondary,
+    body.hs-platform-yt:not(.hs-offline).hs-chat-top ytd-watch-flexy #secondary,
+    body.hs-platform-yt:not(.hs-offline).hs-chat-bottom ytd-watch-flexy #secondary {
       padding: 0 !important;
       margin: 0 !important;
     }
-    body.hs-platform-yt.hs-chat-top #primary {
+    body.hs-platform-yt:not(.hs-offline).hs-chat-top ytd-watch-flexy #primary {
       margin-top: var(--hs-chat-h, 35vh) !important;
       padding-top: 0 !important;
     }
-    body.hs-platform-yt.hs-chat-bottom #primary {
+    body.hs-platform-yt:not(.hs-offline).hs-chat-bottom ytd-watch-flexy #primary {
       margin-bottom: var(--hs-chat-h, 35vh) !important;
       padding-top: 0 !important;
     }
     /* Kill the masthead reservation — chat clutter is hidden, no need to
        reserve top-bar space below it. Applies to ALL chat positions on YT
-       so the player floats flush in every layout. */
-    body.hs-platform-yt.hs-chat-top #page-manager,
-    body.hs-platform-yt.hs-chat-bottom #page-manager,
-    body.hs-platform-yt.hs-chat-left #page-manager,
-    body.hs-platform-yt.hs-chat-right #page-manager {
+       so the player floats flush in every layout. Live-only. */
+    body.hs-platform-yt:not(.hs-yt-watch).hs-chat-top #page-manager,
+    body.hs-platform-yt:not(.hs-yt-watch).hs-chat-bottom #page-manager,
+    body.hs-platform-yt:not(.hs-yt-watch).hs-chat-left #page-manager,
+    body.hs-platform-yt:not(.hs-yt-watch).hs-chat-right #page-manager {
       margin-top: 0 !important;
     }
     /* primary clips to viewport height; primary-inner scrolls so video info
-       below the player is reachable. */
-    body.hs-platform-yt.hs-chat-right #primary {
+       below the player is reachable. Live-only. */
+    body.hs-platform-yt:not(.hs-offline).hs-chat-right ytd-watch-flexy #primary {
       height: 100vh !important;
       max-height: 100vh !important;
       overflow: hidden !important;
     }
-    body.hs-platform-yt.hs-chat-right #primary-inner {
+    body.hs-platform-yt:not(.hs-offline).hs-chat-right ytd-watch-flexy #primary-inner {
       height: 100vh !important;
       max-height: 100vh !important;
       overflow-y: auto !important;
@@ -8665,8 +8826,8 @@ function injectStyles() {
        mount-time inline height cached from the original live-chat-frame
        (~500-600px). #secondary-inner and #chat-container also need to
        extend so our container can fill them. */
-    body.hs-platform-yt.hs-chat-right #secondary-inner,
-    body.hs-platform-yt.hs-chat-right #chat-container {
+    body.hs-platform-yt:not(.hs-offline).hs-chat-right ytd-watch-flexy #secondary-inner,
+    body.hs-platform-yt:not(.hs-offline).hs-chat-right ytd-watch-flexy #chat-container {
       height: 100vh !important;
       max-height: 100vh !important;
     }
@@ -8694,7 +8855,7 @@ function injectStyles() {
     #hs-mc-emote-btn {
       flex: 0 0 auto !important;
     }
-    body.hs-platform-yt.hs-chat-right #primary-inner {
+    body.hs-platform-yt:not(.hs-offline).hs-chat-right ytd-watch-flexy #primary-inner {
       display: flex !important;
       flex-direction: column !important;
       align-items: center !important;
@@ -8704,33 +8865,35 @@ function injectStyles() {
        its own layout JS shrinks the player to fit. YT computes player
        height = viewport - --ytd-watch-flexy-non-player-height. Bumping
        that var by chat-strip height makes YT shrink the player itself,
-       which keeps the 16:9 aspect ratio (no distortion, no clipping). */
-    body.hs-platform-yt.hs-chat-top ytd-watch-flexy,
-    body.hs-platform-yt.hs-chat-bottom ytd-watch-flexy {
+       which keeps the 16:9 aspect ratio (no distortion, no clipping).
+       Live-only — VOD viewers expect full-height YT layout. */
+    body.hs-platform-yt:not(.hs-offline).hs-chat-top ytd-watch-flexy,
+    body.hs-platform-yt:not(.hs-offline).hs-chat-bottom ytd-watch-flexy {
       --ytd-watch-flexy-non-player-height: calc(56px + 12px + 92px + var(--hs-chat-h, 35vh)) !important;
       --ytd-watch-flexy-min-player-height: 200px !important;
     }
     /* Belt-and-braces: cap player container too, in case YT's JS doesn't
        re-read the var on every chat-height change. */
-    body.hs-platform-yt.hs-chat-top #player-container,
-    body.hs-platform-yt.hs-chat-top #player-container-outer,
-    body.hs-platform-yt.hs-chat-bottom #player-container,
-    body.hs-platform-yt.hs-chat-bottom #player-container-outer {
+    body.hs-platform-yt:not(.hs-offline).hs-chat-top ytd-watch-flexy #player-container,
+    body.hs-platform-yt:not(.hs-offline).hs-chat-top ytd-watch-flexy #player-container-outer,
+    body.hs-platform-yt:not(.hs-offline).hs-chat-bottom ytd-watch-flexy #player-container,
+    body.hs-platform-yt:not(.hs-offline).hs-chat-bottom ytd-watch-flexy #player-container-outer {
       max-height: calc(100vh - var(--hs-chat-h, 35vh) - 60px) !important;
     }
     /* Show video info below player (title, channel, description) like Twitch/Kick.
        Hide only comments — noisy, not the focus. #below gets width:100% so it
-       fills primary-inner even when align-items:center is in effect. */
-    body.hs-platform-yt.hs-chat-top ytd-comments,
-    body.hs-platform-yt.hs-chat-bottom ytd-comments,
-    body.hs-platform-yt.hs-chat-left ytd-comments,
-    body.hs-platform-yt.hs-chat-right ytd-comments {
+       fills primary-inner even when align-items:center is in effect.
+       Live-only — VOD viewers want comments and native description sizing. */
+    body.hs-platform-yt:not(.hs-offline).hs-chat-top ytd-watch-flexy ytd-comments,
+    body.hs-platform-yt:not(.hs-offline).hs-chat-bottom ytd-watch-flexy ytd-comments,
+    body.hs-platform-yt:not(.hs-offline).hs-chat-left ytd-watch-flexy ytd-comments,
+    body.hs-platform-yt:not(.hs-offline).hs-chat-right ytd-watch-flexy ytd-comments {
       display: none !important;
     }
-    body.hs-platform-yt.hs-chat-top #below,
-    body.hs-platform-yt.hs-chat-bottom #below,
-    body.hs-platform-yt.hs-chat-left #below,
-    body.hs-platform-yt.hs-chat-right #below {
+    body.hs-platform-yt:not(.hs-offline).hs-chat-top ytd-watch-flexy #below,
+    body.hs-platform-yt:not(.hs-offline).hs-chat-bottom ytd-watch-flexy #below,
+    body.hs-platform-yt:not(.hs-offline).hs-chat-left ytd-watch-flexy #below,
+    body.hs-platform-yt:not(.hs-offline).hs-chat-right ytd-watch-flexy #below {
       width: 100% !important;
       max-width: 100% !important;
       overflow-x: hidden !important;
@@ -8738,19 +8901,19 @@ function injectStyles() {
     /* Top/bottom: player is sized inline to fill availH, just need
        horizontal centering. Don't add min-height — primary has margin-top
        for chat-top, so 100vh would push content off the bottom. */
-    body.hs-platform-yt.hs-chat-top #primary-inner,
-    body.hs-platform-yt.hs-chat-bottom #primary-inner {
+    body.hs-platform-yt:not(.hs-offline).hs-chat-top ytd-watch-flexy #primary-inner,
+    body.hs-platform-yt:not(.hs-offline).hs-chat-bottom ytd-watch-flexy #primary-inner {
       display: flex !important;
       flex-direction: column !important;
       align-items: center !important;
       justify-content: flex-start !important;
     }
-    body.hs-platform-yt.hs-chat-left #primary {
+    body.hs-platform-yt:not(.hs-offline).hs-chat-left ytd-watch-flexy #primary {
       height: 100vh !important;
       max-height: 100vh !important;
       overflow: hidden !important;
     }
-    body.hs-platform-yt.hs-chat-left #primary-inner {
+    body.hs-platform-yt:not(.hs-offline).hs-chat-left ytd-watch-flexy #primary-inner {
       height: 100vh !important;
       max-height: 100vh !important;
       overflow-y: auto !important;
@@ -8759,9 +8922,9 @@ function injectStyles() {
       align-items: center !important;
       justify-content: flex-start !important;
     }
-    body.hs-platform-yt.hs-chat-top #player,
-    body.hs-platform-yt.hs-chat-bottom #player,
-    body.hs-platform-yt.hs-chat-left #player {
+    body.hs-platform-yt:not(.hs-offline).hs-chat-top ytd-watch-flexy #player,
+    body.hs-platform-yt:not(.hs-offline).hs-chat-bottom ytd-watch-flexy #player,
+    body.hs-platform-yt:not(.hs-offline).hs-chat-left ytd-watch-flexy #player {
       margin-left: auto !important;
       margin-right: auto !important;
     }
@@ -8777,7 +8940,8 @@ function injectStyles() {
       transform: translateX(-50%) !important;
     }
     /* YouTube theatre: ytd-watch-flexy[theater] makes the player full-row.
-       The #full-bleed-container is what owns the player. Inset it. */
+       The #full-bleed-container is what owns the player. Inset it.
+       Live-only — VOD theatre keeps native YT layout. */
     body.hs-platform-yt.hs-mode-theatre.hs-chat-left ytd-watch-flexy[theater] #full-bleed-container,
     body.hs-platform-yt.hs-mode-theatre.hs-chat-left ytd-watch-flexy[theater] #player-full-bleed-container {
       padding-left: var(--hs-chat-w, 340px) !important;
@@ -8993,6 +9157,48 @@ function getStats(channel) {
   }
   return s
 }
+// Hot-path counters only — emote scan is deferred to an idle queue so the
+// IRC message handler stays branch-light. The summary card only renders on
+// stream:offline (and reads the maps fresh) so a few hundred ms lag in
+// emote-count accuracy is invisible.
+const _statsScanQueue = []
+let _statsScanScheduled = false
+function _flushStatsScanQueue() {
+  _statsScanScheduled = false
+  if (typeof emoteCache === 'undefined') { _statsScanQueue.length = 0; return }
+  const start = performance.now()
+  while (_statsScanQueue.length && performance.now() - start < 4) {
+    const job = _statsScanQueue.shift()
+    const s = streamStats.get(job.key)
+    if (!s) continue
+    const text = job.text
+    // split(' ') beats split(/\s+/) by ~3x and chat lines almost never use tabs/newlines
+    const words = text.split(' ')
+    const cap = Math.min(words.length, 50)
+    for (let i = 0; i < cap; i++) {
+      const word = words[i]
+      if (!word || word.length > 30) continue
+      if (emoteCache.has(word)) {
+        s.emotes.set(word, (s.emotes.get(word) || 0) + 1)
+      }
+    }
+    if (s.emotes.size > 2000) {
+      const arr = [...s.emotes.entries()].sort((a, b) => b[1] - a[1]).slice(0, 500)
+      s.emotes = new Map(arr)
+    }
+  }
+  if (_statsScanQueue.length) _scheduleStatsScan()
+}
+function _scheduleStatsScan() {
+  if (_statsScanScheduled) return
+  _statsScanScheduled = true
+  if (typeof requestIdleCallback === 'function') {
+    requestIdleCallback(_flushStatsScanQueue, { timeout: 1000 })
+  } else {
+    setTimeout(_flushStatsScanQueue, 50)
+  }
+}
+
 function bumpStreamStats(channel, msg, isMent) {
   const s = getStats(channel)
   if (!s || !msg) return
@@ -9008,18 +9214,10 @@ function bumpStreamStats(channel, msg, isMent) {
     }
   }
   const text = msg.text || ''
-  if (text && typeof emoteCache !== 'undefined') {
-    // count emote name occurrences via word scan
-    for (const word of text.split(/\s+/)) {
-      if (!word) continue
-      if (emoteCache.has(word)) {
-        s.emotes.set(word, (s.emotes.get(word) || 0) + 1)
-      }
-    }
-    if (s.emotes.size > 2000) {
-      const arr = [...s.emotes.entries()].sort((a, b) => b[1] - a[1]).slice(0, 500)
-      s.emotes = new Map(arr)
-    }
+  if (text) {
+    _statsScanQueue.push({ key: channel.toLowerCase(), text })
+    if (_statsScanQueue.length > 500) _statsScanQueue.splice(0, _statsScanQueue.length - 500)
+    _scheduleStatsScan()
   }
 }
 function topN(map, n) {
@@ -10966,6 +11164,11 @@ async function sendKickMessage(kickSlug, text) {
       return;
     }
 
+    // Twitch features tab (predictions/polls/rewards/clip/popout/mod) needs the
+    // twitch.tv page context for auth + GQL proxy. Hide it on YT/Kick host.
+    const showTwitchTab = hostPlatform === 'twitch';
+    if (!showTwitchTab && pickerTab === 'twitch') pickerTab = 'emotes';
+
     // Cache hit → no rebuild, just sync which tab content is shown.
     if (!isPrebuild && pickerCacheKey() === _pickerBuiltKey && picker.firstChild) {
       syncPickerTabDisplay(picker);
@@ -11001,13 +11204,13 @@ async function sendKickMessage(kickSlug, text) {
           ${renderEmoteSections(sections)}
         </div>
       </div>
-      <div class="hs-mc-tab-content" id="hs-mc-tab-twitch" style="display: ${pickerTab === 'twitch' ? 'flex' : 'none'}; flex-direction: column; padding: 8px 0;">
+      ${showTwitchTab ? `<div class="hs-mc-tab-content" id="hs-mc-tab-twitch" style="display: ${pickerTab === 'twitch' ? 'flex' : 'none'}; flex-direction: column; padding: 8px 0;">
         <div class="hs-mc-pred-loading">${t('common_loading')}</div>
       </div>
       <div class="hs-mc-picker-tabs">
         <button class="hs-mc-picker-tab ${pickerTab === 'emotes' ? 'active' : ''}" data-tab="emotes">emotes</button>
-        <button class="hs-mc-picker-tab ${pickerTab === 'twitch' ? 'active' : ''}" data-tab="twitch">${hostPlatform === 'kick' ? 'kick' : hostPlatform === 'yt' ? 'youtube' : 'twitch'}</button>
-      </div>
+        <button class="hs-mc-picker-tab ${pickerTab === 'twitch' ? 'active' : ''}" data-tab="twitch">twitch</button>
+      </div>` : ''}
     `;
 
     // Search functionality (debounced)
@@ -12223,6 +12426,10 @@ async function sendKickMessage(kickSlug, text) {
     return emoteTooltip;
   }
 
+  // Set of hi-res URLs we've successfully preloaded. Once an emote is in here,
+  // skip the 1x→4x swap entirely on next hover (no flicker, no re-fetch).
+  const _hiResLoaded = new Set();
+
   function showEmoteTooltip(e, emoteName, emoteUrl, state, source, hoveredImg, owner) {
     const tooltip = ensureEmoteTooltip();
     // Re-append to body so DOM order tiebreaks above other max-int siblings
@@ -12232,19 +12439,28 @@ async function sendKickMessage(kickSlug, text) {
     const nameEl = tooltip.querySelector('.tooltip-name');
     const stateEl = tooltip.querySelector('.tooltip-source');
 
-    // Show 1x immediately (no stale image), upgrade to hi-res in background
     const w4 = (hoveredImg?.offsetWidth || 28) * 4;
     const h4 = (hoveredImg?.offsetHeight || 28) * 4;
     img.style.width = w4 + 'px';
     img.style.height = h4 + 'px';
-    img.src = emoteUrl;
     img.alt = emoteName;
-    // Try loading hi-res - swap in if it works, keep 1x if it fails
     const hiResUrl = getHighResUrl(emoteUrl);
-    if (hiResUrl !== emoteUrl) {
-      const hiRes = new Image();
-      hiRes.onload = () => { if (img.alt === emoteName) img.src = hiResUrl; };
-      hiRes.src = hiResUrl;
+    if (hiResUrl !== emoteUrl && _hiResLoaded.has(hiResUrl)) {
+      // Already preloaded — go straight to hi-res, no swap-flicker.
+      img.src = hiResUrl;
+    } else {
+      // First time: show 1x immediately, upgrade in background. The hi-res URL
+      // is cached after first load so subsequent hovers are flicker-free.
+      img.src = emoteUrl;
+      if (hiResUrl !== emoteUrl) {
+        const hiRes = new Image();
+        hiRes.onload = () => {
+          _hiResLoaded.add(hiResUrl);
+          if (_hiResLoaded.size > 2000) _hiResLoaded.delete(_hiResLoaded.values().next().value);
+          if (img.alt === emoteName) img.src = hiResUrl;
+        };
+        hiRes.src = hiResUrl;
+      }
     }
     nameEl.textContent = emoteName;
 
@@ -13009,13 +13225,41 @@ async function sendKickMessage(kickSlug, text) {
     if (window._hsUserTooltipSetup) return;
     window._hsUserTooltipSetup = true;
 
+    // 120ms hover-intent debounce: scrolling chat passes the cursor across
+    // 10+ usernames in a single scroll-tick. Without debounce every one
+    // fires apiFetch immediately. Cache hits already render instantly so
+    // those bypass the debounce; only cold lookups wait.
+    let _userHoverTimer = null
+    let _userHoverTarget = null
+    function clearUserHoverTimer() {
+      if (_userHoverTimer) { clearTimeout(_userHoverTimer); _userHoverTimer = null }
+      _userHoverTarget = null
+    }
+
     cleanup.addEventListener(document, 'mouseover', (e) => {
       const target = e.target.closest('.hs-mc-user');
       if (target) {
         const username = target.dataset.username || target.textContent.replace(/^@/, '');
         const color = target.style.color;
         const platform = target.dataset.platform || null;
-        showUserTooltip(target, username, color, platform);
+        const cacheKey = `${platform || 'unknown'}:${username.toLowerCase()}`
+        const cached = _profileCache.get(cacheKey)
+        if (cached && Date.now() - cached.ts < PROFILE_CACHE_TTL) {
+          // Cache hit: render synchronously, no debounce needed.
+          clearUserHoverTimer()
+          showUserTooltip(target, username, color, platform);
+        } else {
+          // Cold lookup: debounce + show skeleton immediately so the user
+          // sees acknowledgement of the hover even while the fetch runs.
+          clearUserHoverTimer()
+          _userHoverTarget = target
+          showUserSkeleton(target, username, color)
+          _userHoverTimer = setTimeout(() => {
+            _userHoverTimer = null
+            if (_userHoverTarget !== target || !document.contains(target)) return
+            showUserTooltip(target, username, color, platform);
+          }, 120)
+        }
 
         // Highlight all matching usernames
         const name = target.dataset.username;
@@ -13033,6 +13277,7 @@ async function sendKickMessage(kickSlug, text) {
     cleanup.addEventListener(document, 'mouseout', (e) => {
       const target = e.target.closest('.hs-mc-user');
       if (target) {
+        clearUserHoverTimer()
         hideUserTooltip();
 
         // Remove all username highlights
@@ -13044,6 +13289,24 @@ async function sendKickMessage(kickSlug, text) {
         }
       }
     }, 'mc-user-tooltip-mouseout');
+  }
+
+  // Synchronous skeleton — username + color, no fetch. Replaced by full
+  // card when the apiFetch resolves (showUserTooltip post-debounce).
+  // Uses textContent (no innerHTML) so the username string is never parsed as HTML.
+  function showUserSkeleton(targetEl, username, color) {
+    const tooltip = ensureUserTooltip();
+    document.body.appendChild(tooltip);
+    _userTooltipTarget = targetEl;
+    while (tooltip.firstChild) tooltip.removeChild(tooltip.firstChild);
+    const loading = document.createElement('div');
+    loading.className = 'hs-pc-loading';
+    if (color) loading.style.color = color;
+    else loading.style.color = '#fff';
+    loading.textContent = username + '…';
+    tooltip.appendChild(loading);
+    tooltip.classList.add('visible');
+    positionTooltipAtElement(tooltip, targetEl);
   }
 
   // Link preview tooltip (Chatterino-style)
@@ -13097,12 +13360,23 @@ async function sendKickMessage(kickSlug, text) {
     _linkFetchInFlight = url
     safeSendMessage({ type: 'fetch_link_preview', url }).then(data => {
       _linkPreviewCache.set(url, data);
-      while (_linkPreviewCache.size > 200) _linkPreviewCache.delete(_linkPreviewCache.keys().next().value);
+      while (_linkPreviewCache.size > 500) _linkPreviewCache.delete(_linkPreviewCache.keys().next().value);
       if (_linkFetchInFlight === url) _linkFetchInFlight = null
       if (_linkHoverUrl === url && tip.classList.contains('visible')) {
         renderLinkPreview(tip, data, url);
       }
     });
+  }
+
+  // Background-prefetch link preview without showing the tooltip — fired on
+  // mousedown (click-intent) so the og fetch lands before the user releases.
+  // No-op when cache already has it. Used by mousedown handler in setupLinkTooltipHandlers.
+  function prefetchLinkPreview(url) {
+    if (!url || _linkPreviewCache.has(url)) return;
+    safeSendMessage({ type: 'fetch_link_preview', url }).then(data => {
+      _linkPreviewCache.set(url, data);
+      while (_linkPreviewCache.size > 500) _linkPreviewCache.delete(_linkPreviewCache.keys().next().value);
+    }).catch(() => {});
   }
 
   function renderLinkPreview(tip, data, url) {
@@ -13179,6 +13453,13 @@ async function sendKickMessage(kickSlug, text) {
       if (link) scheduleLinkHide();
       else if (e.target.closest?.('#hs-link-tooltip')) scheduleLinkHide();
     }, 'mc-link-tooltip-mouseout');
+
+    // Click-intent prefetch: mousedown fires ~150ms before click. Warm the
+    // og cache so users who click without hovering long enough don't wait.
+    cleanup.addEventListener(document, 'mousedown', (e) => {
+      const link = e.target.closest?.('.hs-mc-link')
+      if (link?.href) prefetchLinkPreview(link.href)
+    }, 'mc-link-prefetch-mousedown');
   }
 
 
@@ -14565,27 +14846,6 @@ async function renderTwitchTab() {
   if (!container) return
 
   const channel = getActiveTwitchChannel()
-
-  // YouTube/Kick: Twitch features (predictions, polls, rewards, color, clips) require
-  // the Twitch page context (auth cookie + GQL proxy). Show what's available instead.
-  if (hostPlatform === 'yt' || hostPlatform === 'kick') {
-    container.textContent = ''
-    const notice = document.createElement('div')
-    notice.className = 'hs-mc-pred-empty'
-    notice.style.cssText = 'padding:20px;text-align:center;'
-    const msg = document.createElement('div')
-    msg.className = 'hs-mc-pred-empty-text'
-    msg.textContent = hostPlatform === 'yt'
-      ? 'twitch features (predictions, polls, rewards, clips) are available when viewing on twitch'
-      : 'some features require the twitch page'
-    notice.appendChild(msg)
-    container.appendChild(notice)
-    // Popout chat still works — opens in new window
-    if (channel) {
-      container.appendChild(renderQuickLinks())
-    }
-    return
-  }
 
   if (!channel) {
     container.textContent = ''
@@ -20826,42 +21086,124 @@ function initInput() {
     }, { signal: mcSignal })
   }
 
-  // Right-click on message → mute/unmute user (synced across all tabs + devices via server WS)
+  // Right-click on message → context menu (mute, whisper, copy, profile, cancel).
+  // Replaces the previous insta-mute behavior so accidental right-clicks don't
+  // silently 24h-mute someone.
   if (!window._hsMcMsgContextHandler) {
     window._hsMcMsgContextHandler = true;
     document.addEventListener('contextmenu', (e) => {
       const msg = e.target.closest('.hs-mc-msg');
       if (!msg) return;
-      // Don't intercept if clicking an emote (let emote handler handle it)
       if (findEmoteTarget(e.target)) return;
-
-      e.preventDefault();
-      const userEl = msg.querySelector('.hs-mc-user');
-      const username = userEl?.textContent?.trim()?.toLowerCase();
+      const userEl = msg.querySelector('.hs-mc-user:not(.hs-mc-reply-user)');
+      const username = userEl?.textContent?.trim()?.replace(/^@/, '').toLowerCase();
       if (!username) return;
-
-      let wasUnmute = false;
-      if (mutedUsers.has(username)) {
-        mutedUsers.delete(username);
-        wasUnmute = true;
-        showToast(`unmuted ${username}`, 'success');
-        // Sync: tell background to unmute (broadcasts to all tabs — server mute expires naturally)
-        safeSendMessage({ type: 'unmute_user', username });
-      } else {
-        mutedUsers.add(username);
-        showToast(`muted ${username} (24h)`, 'success');
-        // Sync: tell background to mute with 24h expiry (broadcasts to all tabs + server)
-        const expiresAt = Date.now() + 86400000;
-        safeSendMessage({ type: 'mute_user', username, expiresAt });
-      }
-      // Also persist locally for offline/fallback
-      chrome.storage.local.set({ heatsync_mc_muted: [...mutedUsers] });
-      // Strip destroys DOM irreversibly — drop those rows so renderMessages
-      // rebuilds them from the buffer's _renderedHtml cache.
-      if (wasUnmute) restoreMcUnmutedDom(username);
-      renderMessages(currentTab);
+      e.preventDefault();
+      showMcMsgContextMenu(e.clientX, e.clientY, msg, username);
     }, { signal: mcSignal });
   }
+}
+
+function _toggleMcMute(username) {
+  let wasUnmute = false
+  if (mutedUsers.has(username)) {
+    mutedUsers.delete(username)
+    wasUnmute = true
+    showToast(`unmuted ${username}`, 'success')
+    safeSendMessage({ type: 'unmute_user', username })
+  } else {
+    mutedUsers.add(username)
+    showToast(`muted ${username} (24h)`, 'success')
+    safeSendMessage({ type: 'mute_user', username, expiresAt: Date.now() + 86400000 })
+  }
+  chrome.storage.local.set({ heatsync_mc_muted: [...mutedUsers] })
+  if (wasUnmute) restoreMcUnmutedDom(username)
+  renderMessages(currentTab)
+}
+
+function _extractMcMsgText(msg) {
+  // Walk siblings after the username link, gathering text nodes + emote alts.
+  // textContent on the whole row leaks badge/timestamp/username junk; this
+  // gives the readable body a user would expect "copy message" to produce.
+  const userEl = msg.querySelector('.hs-mc-user:not(.hs-mc-reply-user)')
+  if (!userEl) return (msg.textContent || '').trim()
+  const parts = []
+  let node = userEl.nextSibling
+  while (node) {
+    if (node.nodeType === 3) {
+      parts.push(node.textContent)
+    } else if (node.nodeType === 1) {
+      const cls = node.classList
+      if (cls?.contains('hs-mc-platform-badge') || cls?.contains('hs-mc-badge') || cls?.contains('hs-mc-time') || cls?.contains('hs-mc-reply-ctx')) {
+        // skip
+      } else if (node.tagName === 'IMG' && node.alt) {
+        parts.push(node.alt)
+      } else {
+        const innerImg = node.querySelector?.('img[alt]')
+        if (innerImg) parts.push(innerImg.alt)
+        else parts.push(node.textContent || '')
+      }
+    }
+    node = node.nextSibling
+  }
+  return parts.join(' ').replace(/\s+/g, ' ').trim()
+}
+
+function _openWhisperFor(username) {
+  if (typeof switchTab === 'function') switchTab('whispers')
+  const input = document.getElementById('hs-mc-input')
+  if (!input) return
+  const prefill = `/w ${username} `
+  if (input.tagName === 'INPUT' || input.tagName === 'TEXTAREA') {
+    input.value = prefill
+    input.focus()
+    try { input.setSelectionRange(prefill.length, prefill.length) } catch {}
+  } else {
+    input.textContent = prefill
+    input.focus()
+  }
+}
+
+function showMcMsgContextMenu(x, y, msg, username) {
+  document.getElementById('hs-mc-msg-ctx')?.remove()
+  const menu = document.createElement('div')
+  menu.id = 'hs-mc-msg-ctx'
+  menu.style.cssText = 'position:fixed;z-index:2147483646;background:#000;border:1px solid #808080;padding:4px 0;min-width:160px;font:13px/1.2 inherit;color:#fff;user-select:none;'
+  const isMuted = mutedUsers.has(username)
+  const items = [
+    { label: isMuted ? `unmute ${username}` : `mute ${username} (24h)`, run: () => _toggleMcMute(username) },
+    { label: `whisper ${username}`, run: () => _openWhisperFor(username) },
+    { label: 'copy username', run: () => { try { navigator.clipboard.writeText(username) } catch {} } },
+    { label: 'copy message', run: () => { try { navigator.clipboard.writeText(_extractMcMsgText(msg)) } catch {} } },
+    { label: 'profile', run: () => window.open(`https://heatsync.org/user/${encodeURIComponent(username)}`, '_blank', 'noopener') },
+    { label: 'cancel', run: () => {} },
+  ]
+  for (const it of items) {
+    const row = document.createElement('div')
+    row.textContent = it.label
+    row.style.cssText = 'padding:6px 12px;cursor:pointer;color:#fff;background:#000;'
+    row.addEventListener('mouseenter', () => { row.style.background = '#fff'; row.style.color = '#000' })
+    row.addEventListener('mouseleave', () => { row.style.background = '#000'; row.style.color = '#fff' })
+    row.addEventListener('click', () => { dismiss(); it.run() })
+    menu.appendChild(row)
+  }
+  document.body.appendChild(menu)
+  const mw = menu.offsetWidth, mh = menu.offsetHeight
+  menu.style.left = Math.min(x, window.innerWidth - mw - 4) + 'px'
+  menu.style.top = Math.min(y, window.innerHeight - mh - 4) + 'px'
+  function dismiss() {
+    menu.remove()
+    document.removeEventListener('mousedown', outside, true)
+    document.removeEventListener('keydown', esc, true)
+    document.removeEventListener('contextmenu', outside, true)
+  }
+  function outside(ev) { if (!menu.contains(ev.target)) dismiss() }
+  function esc(ev) { if (ev.key === 'Escape') { ev.preventDefault(); dismiss() } }
+  setTimeout(() => {
+    document.addEventListener('mousedown', outside, true)
+    document.addEventListener('keydown', esc, true)
+    document.addEventListener('contextmenu', outside, true)
+  }, 0)
 }
 function applyMcMutes() {
   document.querySelectorAll('.hs-mc-msg').forEach(msg => {
@@ -24627,7 +24969,7 @@ const STORAGE_KEY = 'heatsync_multichat';
   // YT_MIN_PRIMARY_WIDTH gutter for the player.
   function getYtMaxChatWidth() {
     if (hostPlatform !== 'yt') return MAX_CHAT_WIDTH
-    const flexy = document.querySelector('ytd-watch-flexy')
+    const flexy = document.querySelector('ytd-watch-flexy:not([hidden])')
     const flexyW = flexy?.getBoundingClientRect?.().width || 0
     const vw = window.innerWidth || document.documentElement.clientWidth || 1280
     const available = flexyW > 0 ? Math.min(flexyW, vw) : vw
@@ -25003,6 +25345,18 @@ const STORAGE_KEY = 'heatsync_multichat';
         }
         return chain
       }
+      // Forward wheel events from the reply-stack overlays to the chat
+      // container. Without this, wheeling while hovering the overlay
+      // (positioned above/below the active row) does nothing — the overlay
+      // has overflow:hidden and isn't a scroll target — so the user feels
+      // the chat "lock up" mid-scroll.
+      const forwardWheelToMsgs = (ev) => {
+        if (isStaticTab()) return
+        ev.preventDefault()
+        _userInputScroll = true
+        if (ev.deltaY < 0) setPaused(true)
+        msgsEl.scrollTop += ev.deltaY
+      }
       const ensureStackOverlay = () => {
         let el = document.getElementById('hs-mc-reply-stack')
         if (el) return el
@@ -25010,6 +25364,7 @@ const STORAGE_KEY = 'heatsync_multichat';
         el.id = 'hs-mc-reply-stack'
         el.style.display = 'none'
         document.body.appendChild(el)
+        el.addEventListener('wheel', forwardWheelToMsgs, { passive: false, signal: mcSignal })
         el.addEventListener('click', (ev) => {
           const chip = ev.target.closest('.hs-mc-reply-stack-chip')
           if (!chip) return
@@ -25034,6 +25389,7 @@ const STORAGE_KEY = 'heatsync_multichat';
         el.id = 'hs-mc-reply-stack-down'
         el.style.display = 'none'
         document.body.appendChild(el)
+        el.addEventListener('wheel', forwardWheelToMsgs, { passive: false, signal: mcSignal })
         return el
       }
       const showStack = (hoveredEl) => {
@@ -25725,13 +26081,6 @@ const STORAGE_KEY = 'heatsync_multichat';
   function positionChatResizeHandle() {
     const handle = ensureChatResizeHandle();
     ;['top','bottom','left','right','width','height'].forEach(p => handle.style.removeProperty(p));
-    // YouTube: only show the handle on watch pages (where ytd-watch-flexy
-    // and the chat panel exist). Home/search/channel pages have no chat
-    // to resize — the orange bar would just float over empty space.
-    if (hostPlatform === 'yt' && !document.querySelector('ytd-watch-flexy')) {
-      handle.style.display = 'none';
-      return;
-    }
     // For YT, chat-right is now position:fixed so the unified handle
     // owns ALL four positions. For Twitch/Kick, chat-right uses the
     // existing per-platform handles (which have ghost-preview perf
@@ -25769,25 +26118,25 @@ const STORAGE_KEY = 'heatsync_multichat';
       handle.style.top = cTop + 'px';
       handle.style.left = cLeft + 'px';
       handle.style.height = cHeight + 'px';
-      handle.style.width = '10px';
+      handle.style.width = '5px';
       handle.style.cursor = 'col-resize';
     } else if (chatPosition === 'left') {
       handle.style.top = cTop + 'px';
-      handle.style.left = (cRight - 10) + 'px';
+      handle.style.left = (cRight - 5) + 'px';
       handle.style.height = cHeight + 'px';
-      handle.style.width = '10px';
+      handle.style.width = '5px';
       handle.style.cursor = 'col-resize';
     } else if (chatPosition === 'top') {
-      handle.style.top = (cBottom - 10) + 'px';
+      handle.style.top = (cBottom - 5) + 'px';
       handle.style.left = cLeft + 'px';
       handle.style.width = cWidth + 'px';
-      handle.style.height = '10px';
+      handle.style.height = '5px';
       handle.style.cursor = 'row-resize';
     } else if (chatPosition === 'bottom') {
       handle.style.top = cTop + 'px';
       handle.style.left = cLeft + 'px';
       handle.style.width = cWidth + 'px';
-      handle.style.height = '10px';
+      handle.style.height = '5px';
       handle.style.cursor = 'row-resize';
     }
   }
@@ -25957,6 +26306,25 @@ const STORAGE_KEY = 'heatsync_multichat';
   function applyYouTubeChatWidth() {
     const secondary = document.querySelector('#secondary, ytd-watch-flexy #secondary')
     if (!secondary) return
+    // Only modify #secondary on actual watch pages — home/search/channel
+    // have their OWN #secondary (the recommended-sidebar wrapper inside
+    // ytd-two-column-browse-results-renderer) that we must not touch.
+    // Without this guard, after a watch → home SPA back, #secondary on
+    // the home grid stays clamped at the chat width and #primary collapses
+    // to (parent − chatWidth) ≈ 334px, breaking the grid wrap.
+    // `:not([hidden])` matters: ytd-watch-flexy stays in the DOM with
+    // `hidden` attr on non-watch pages — bare `ytd-watch-flexy` selector
+    // returns true on home and we'd clamp #secondary anyway.
+    const onWatchPage = !!document.querySelector('ytd-watch-flexy:not([hidden])')
+    if (!onWatchPage) {
+      secondary.style.removeProperty('width')
+      secondary.style.removeProperty('min-width')
+      secondary.style.removeProperty('max-width')
+      secondary.style.removeProperty('flex')
+      const handle = document.getElementById('hs-yt-resize-handle')
+      if (handle) handle.style.display = 'none'
+      return
+    }
     // C button took chat off the right edge — collapse #secondary to 0 so
     // the freed width goes back to the player; don't run the native width
     // sizer which would re-claim the sidebar.
@@ -25974,7 +26342,7 @@ const STORAGE_KEY = 'heatsync_multichat';
     // would fight that reflow, so just clear our overrides and let YT's CSS
     // run unmodified. Also hide the left-edge resize handle since the panel
     // no longer has a left edge to drag against.
-    const flexy = document.querySelector('ytd-watch-flexy')
+    const flexy = document.querySelector('ytd-watch-flexy:not([hidden])')
     const isTheater = !!flexy?.hasAttribute('theater') || !!flexy?.hasAttribute('fullscreen')
     const handle = document.getElementById('hs-yt-resize-handle')
     if (isTheater) {
@@ -26098,7 +26466,7 @@ const STORAGE_KEY = 'heatsync_multichat';
   // restore our width overrides at the right moment.
   function watchYtLayoutAttrs() {
     if (hostPlatform !== 'yt') return
-    const flexy = document.querySelector('ytd-watch-flexy')
+    const flexy = document.querySelector('ytd-watch-flexy:not([hidden])')
     if (!flexy) return
     const obs = new MutationObserver(() => applyYouTubeChatWidth())
     obs.observe(flexy, { attributes: true, attributeFilter: ['theater', 'fullscreen', 'is-two-columns_'] })
@@ -26119,9 +26487,9 @@ const STORAGE_KEY = 'heatsync_multichat';
     // observer was already torn down.
     if (hostPlatform !== 'yt') return
     if (_ytFlexyMountObs) return
-    if (document.querySelector('ytd-watch-flexy')) return // already there
+    if (document.querySelector('ytd-watch-flexy:not([hidden])')) return // already there
     _ytFlexyMountObs = new MutationObserver(() => {
-      if (!document.querySelector('ytd-watch-flexy')) return
+      if (!document.querySelector('ytd-watch-flexy:not([hidden])')) return
       _ytFlexyMountObs.disconnect()
       _ytFlexyMountObs = null
       try { applyChatPosition() } catch {}
@@ -27407,9 +27775,11 @@ const STORAGE_KEY = 'heatsync_multichat';
 
     // Twitch non-channel pages (/directory, /settings, /videos, …) have no
     // chat-shell. Fall through with chatRoom=null so getOrCreateHsContainer
-    // body-mounts the panel as a position:fixed overlay. Kick/YT keep the
-    // hard guard — they don't yet have a body-mount fallback.
-    if (!chatRoom && (hostPlatform === 'yt' || isKick)) return;
+    // body-mounts the panel as a position:fixed overlay. YT also
+    // body-mounts (getOrCreateHsContainer always appends to body on YT)
+    // so the panel persists across home/search/channel/watch navs. Kick
+    // keeps the hard guard — no body-mount fallback there yet.
+    if (!chatRoom && isKick) return;
 
     // Transform fix handled by CSS (#hs-chat-transform-fix) + MutationObserver.
     // No parent tree walking — it displaced the collapse arrow.
@@ -30254,7 +30624,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     if (_theatreObserver) { try { _theatreObserver.disconnect() } catch (_) {} _theatreObserver = null }
     const targets = [];
     if (hostPlatform === 'yt') {
-      const flexy = document.querySelector('ytd-watch-flexy');
+      const flexy = document.querySelector('ytd-watch-flexy:not([hidden])');
       if (flexy) targets.push(flexy);
     } else if (isKick) {
       const main = document.querySelector('main');
@@ -30300,28 +30670,22 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     if (document.body.classList.contains('hs-popout') && chatPosition !== 'right') {
       chatPosition = 'right';
     }
-    // YouTube: only apply layout overrides on watch pages. Home, search,
-    // channel pages don't have ytd-watch-flexy / #primary / #player so
-    // our rules just left the page broken (blank top, floating handle).
-    // BUT: don't strip hs-platform-yt itself — it's set unconditionally in
-    // loadChatPosition and survives across SPA navs. Stripping it caused the
-    // CSS rule for `body.hs-platform-yt.hs-chat-right #hs-mc-container`
-    // to stop matching when applyChatPosition fired before ytd-watch-flexy
-    // had mounted on a watch-page navigation, leaving the chat panel in
-    // position:relative and the resize handle visibly snapping on commit.
-    const isYtNonWatch = hostPlatform === 'yt' && !document.querySelector('ytd-watch-flexy');
+    // YouTube: layout overrides that touch #primary/#secondary are gated
+    // separately (live-only via :not(.hs-offline)). The hs-chat-{position}
+    // class is now applied on EVERY YT page so the persistent multichat
+    // panel renders via the position:fixed CSS rule across home, search,
+    // VOD, channel, and live — matching the Twitch persistent overlay.
+    const isYtNonWatch = hostPlatform === 'yt' && !document.querySelector('ytd-watch-flexy:not([hidden])');
     document.body.classList.remove('hs-chat-top', 'hs-chat-right', 'hs-chat-bottom', 'hs-chat-left');
     document.body.classList.toggle('hs-platform-yt', hostPlatform === 'yt');
     document.body.classList.toggle('hs-platform-twitch', hostPlatform !== 'yt' && !isKick);
     document.body.classList.toggle('hs-platform-kick', !!isKick);
-    if (!isYtNonWatch) {
-      document.body.classList.add(`hs-chat-${chatPosition}`);
-    } else if (location.pathname === '/watch') {
+    document.body.classList.add(`hs-chat-${chatPosition}`);
+    if (isYtNonWatch && location.pathname === '/watch') {
       // We're on a watch URL but flexy hasn't mounted yet (SPA cold-load,
       // /watch → /watch transition where React unmounted then remounts).
       // Re-arm the flexy-mount observer so applyChatPosition fires again
-      // once it's there. Without this, hs-chat-{position} stays missing
-      // and CSS rules for non-right positions never match.
+      // once it's there.
       try { watchYtFlexyMount() } catch (_) {}
     }
     document.body.classList.toggle('hs-mode-theatre', theatreMode);
@@ -31083,6 +31447,18 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
         const liveTab = tabBarElement?.querySelector('[data-tab="live"]')
         if (liveTab) liveTab.dataset.live = String(isLive)
         document.body.classList.toggle('hs-offline', !isLive)
+        // Watch-page detection: ytd-watch-flexy stays in DOM with `hidden`
+        // attr off-watch — only count it as a watch page when visible.
+        const onWatch = !!document.querySelector('ytd-watch-flexy:not([hidden])')
+        document.body.classList.toggle('hs-yt-watch', onWatch)
+        // Hide native YT live chat once it mounts — our multichat panel
+        // takes its place. Container creation runs before the chatframe
+        // exists now (body-mount on every YT page), so the hide must be
+        // re-attempted as the iframe lazy-loads.
+        const frameEl = document.querySelector('ytd-live-chat-frame#chat')
+        if (frameEl && frameEl.style.display !== 'none') {
+          frameEl.style.display = 'none'
+        }
       }
       checkYtLive()
       cleanup.setInterval(checkYtLive, 4000)
@@ -31137,11 +31513,11 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
   async function init() {
     let isPopout = false;
     if (hostPlatform === 'yt') {
-      // YouTube: run on watch pages, live pages, and @channel/live
-      const isYtLive = !!location.pathname.match(/^\/@[^/]+\/live/) ||
-                       !!location.pathname.match(/^\/watch/) ||
-                       !!location.pathname.match(/^\/live\//)
-      if (!isYtLive) return;
+      // YouTube: persistent overlay across every URL — home, watch, search,
+      // channel, /live, etc. — so the multichat panel survives SPA nav.
+      // The destructive layout overrides (#secondary collapse, recommendeds
+      // hidden) are gated separately on `:not(.hs-offline)` so non-live
+      // pages keep YouTube's native layout intact.
     } else if (isKick) {
       // Kick: run on channel pages (/<channel>) or popout
       const isKickChannel = location.pathname.match(/^\/[a-zA-Z0-9_-]+\/?$/);
@@ -31162,6 +31538,12 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     // mounts. injectStyles has zero settings deps — moving it before any
     // await shaves ~10-15ms off the cold visual path.
     injectStyles();
+    // YouTube: pre-set hs-offline so the destructive layout overrides
+    // (#secondary collapse, #primary fixed, recommendeds hidden) don't fire
+    // on first paint for VOD viewers. checkYtLive() removes the class once
+    // it detects a live chatframe; if it's actually a livestream, native
+    // YT live chat is shown briefly until our override kicks in.
+    if (hostPlatform === 'yt') document.body.classList.add('hs-offline');
     detectOfflineState();
     if (isPopout) document.body.classList.add('hs-popout');
     currentUsername = getCurrentUsername();
@@ -32084,11 +32466,21 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       }, 15000);
     };
     if (hostPlatform === 'yt') {
-      waitForMount(
-        () => document.getElementById('chat-container') ||
-              document.querySelector('ytd-live-chat-frame#chat')?.parentElement,
-        'YouTube chat container'
-      );
+      // YT panel is body-mounted on every page (home, VOD, live, channel),
+      // so there's no DOM mount point to wait on. Inject immediately; any
+      // late-mounting live chatframe is hidden separately by the chatframe
+      // observer in getOrCreateHsContainer + the SPA nav handler.
+      ensureUIElements();
+      switchTab(_savedActiveTab || 'live');
+      startLayoutWatcher();
+      // YT computes grid items-per-row + #primary widths from window-keyed
+      // ResizeObservers; our layout overrides happen mid-cycle and YT
+      // doesn't re-measure until something fires `resize`. One synthetic
+      // dispatch (after a paint) gets the home grid to render at the
+      // capped width without the user having to wiggle the chat handle.
+      requestAnimationFrame(() => {
+        try { window.dispatchEvent(new Event('resize')) } catch {}
+      });
     } else if (isKick) {
       waitForMount(
         () => document.getElementById('channel-chatroom') || document.querySelector('[id*="chatroom"]'),
@@ -32287,6 +32679,31 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     // Popout chat is exempt since it never SPA-navigates between URLs.
     if (hostPlatform === 'twitch' && !document.body.classList.contains('hs-popout')) {
       softTwitchNav();
+      return;
+    }
+
+    // YouTube SPA nav: panel is body-mounted and survives across URLs.
+    // Same rationale as Twitch — destroying + waiting 1s for init left a
+    // visible blank gap when the user clicked back from a stream. Just
+    // refresh per-page WS subs, re-apply layout. The 4s checkYtLive
+    // interval already refreshes hs-offline class within 4s.
+    if (hostPlatform === 'yt') {
+      // Unsubscribe the auto-YT route for the previous page so the new
+      // page gets a clean __live_yt_auto__ binding (videoId differs).
+      chrome.runtime.sendMessage({
+        type: 'youtube_ws_unsubscribe', channelId: '__live_yt_auto__'
+      }).catch(() => {})
+      channelYtMessages.delete('__live_yt_auto__')
+      _autoYtVideoId = null;
+      // Re-apply layout so destructive overrides re-evaluate against the
+      // new pathname (watch ↔ home).
+      try { applyChatPosition(); } catch {}
+      try { applyYouTubeChatWidth(); } catch {}
+      // Nudge YT's responsive code so it recomputes --ytd-rich-grid-width
+      // and #primary widths against the new page. Without this the home
+      // grid stays clamped at the previous page's width until the user
+      // wiggles the resize handle.
+      try { window.dispatchEvent(new Event('resize')) } catch {}
       return;
     }
 

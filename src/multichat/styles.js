@@ -672,6 +672,15 @@ function injectStyles() {
       overflow: hidden;
       background: #000;
       font-family: 'Courier New', Courier, monospace;
+      /* Cross-fade with the document_start prepaint pseudo-element. Container
+         starts invisible; main.js sets opacity:1 after the overlay mounts +
+         renders, so prepaint (fading out) and container (fading in) overlap
+         and the user never sees a black gap or a tab-bar pop. */
+      opacity: 0;
+      transition: opacity 200ms ease-out;
+    }
+    #hs-mc-container.hs-mc-shown {
+      opacity: 1;
     }
 
     /* Vertical tabs: container gets row direction */
@@ -874,6 +883,18 @@ function injectStyles() {
          the rows must paint immediately, not be replaced by a 28px placeholder */
       content-visibility: visible !important;
       contain-intrinsic-size: auto !important;
+    }
+    /* Zebra striping across the entire reply chain. Anchored to the active row
+       (always #808000) so alternation flows continuously: up-stack rows count
+       from the BOTTOM (the row directly above active is dark), down-stack rows
+       count from the TOP (the row directly below active is dark). Overflow chip
+       sits at child[0] of the up-stack but doesn't affect nth-last-child parity.
+       Darker shade also improves white-text contrast (~6.2 vs ~3.7 on plain
+       olive) and dramatically amplifies the timeout/cleared opacity:0.45 effect
+       — banded muted rows read as visually rich rather than a wall of olive. */
+    #hs-mc-reply-stack .hs-mc-reply-stack-row:nth-last-child(odd),
+    #hs-mc-reply-stack-down .hs-mc-reply-stack-row:nth-child(odd) {
+      background: #5c5c00 !important;
     }
     /* Hide the "↩ Replying to @user: text" chip in the stack — every parent is
        already rendered as the row directly above it, so the chip just repeats
@@ -5173,12 +5194,12 @@ function injectStyles() {
        block for abs-positioned children — without this the inputbar/tabbar/
        overlay (all position:absolute; bottom:Npx) snap to the outer edge
        and sit under the bar. With box-sizing: border-box the container's
-       outer dim is unchanged. Bar widths: unified #hs-c-resize-handle 10px,
-       platform handles 6px — reserve 10px to fit either case. */
-    body.hs-chat-right #hs-mc-container { border-left: 10px solid transparent !important; }
-    body.hs-chat-left #hs-mc-container { border-right: 10px solid transparent !important; }
-    body.hs-chat-top #hs-mc-container { border-bottom: 10px solid transparent !important; }
-    body.hs-chat-bottom #hs-mc-container { border-top: 10px solid transparent !important; }
+       outer dim is unchanged. Bar widths: unified #hs-c-resize-handle 5px,
+       platform handles 6px — reserve 6px to fit either case. */
+    body.hs-chat-right #hs-mc-container { border-left: 6px solid transparent !important; }
+    body.hs-chat-left #hs-mc-container { border-right: 6px solid transparent !important; }
+    body.hs-chat-top #hs-mc-container { border-bottom: 6px solid transparent !important; }
+    body.hs-chat-bottom #hs-mc-container { border-top: 6px solid transparent !important; }
 
     /* --- YT narrow viewport rescue ---
        At narrow viewports YT collapses ytd-watch-flexy into a single-column
@@ -5190,35 +5211,170 @@ function injectStyles() {
        the chat strip in BOTH single-column and two-column modes. The
        wrapper inline-sizing in applyPlatformPositionOverrides is a
        complementary belt-and-suspenders. */
-    body.hs-platform-yt.hs-chat-right #primary,
-    body.hs-platform-yt.hs-chat-right ytd-watch-flexy #primary {
-      max-width: calc(100vw - var(--hs-chat-w, 340px)) !important;
-      width: calc(100vw - var(--hs-chat-w, 340px)) !important;
+    body.hs-platform-yt:not(.hs-offline).hs-chat-right ytd-watch-flexy #primary,
+    body.hs-platform-yt:not(.hs-offline).hs-chat-right ytd-watch-flexy #primary {
+      max-width: calc(100% - var(--hs-chat-w, 340px)) !important;
+      width: calc(100% - var(--hs-chat-w, 340px)) !important;
     }
-    body.hs-platform-yt.hs-chat-left #primary,
-    body.hs-platform-yt.hs-chat-left ytd-watch-flexy #primary {
-      max-width: calc(100vw - var(--hs-chat-w, 340px)) !important;
-      width: calc(100vw - var(--hs-chat-w, 340px)) !important;
+    body.hs-platform-yt:not(.hs-offline).hs-chat-left ytd-watch-flexy #primary,
+    body.hs-platform-yt:not(.hs-offline).hs-chat-left ytd-watch-flexy #primary {
+      max-width: calc(100% - var(--hs-chat-w, 340px)) !important;
+      width: calc(100% - var(--hs-chat-w, 340px)) !important;
       margin-left: var(--hs-chat-w, 340px) !important;
     }
-    body.hs-platform-yt.hs-chat-top #primary,
-    body.hs-platform-yt.hs-chat-top ytd-watch-flexy #primary {
+    body.hs-platform-yt:not(.hs-offline).hs-chat-top ytd-watch-flexy #primary,
+    body.hs-platform-yt:not(.hs-offline).hs-chat-top ytd-watch-flexy #primary {
       margin-top: var(--hs-chat-h, 35vh) !important;
       max-height: calc(100vh - var(--hs-chat-h, 35vh)) !important;
     }
-    body.hs-platform-yt.hs-chat-bottom #primary,
-    body.hs-platform-yt.hs-chat-bottom ytd-watch-flexy #primary {
+    body.hs-platform-yt:not(.hs-offline).hs-chat-bottom ytd-watch-flexy #primary,
+    body.hs-platform-yt:not(.hs-offline).hs-chat-bottom ytd-watch-flexy #primary {
       max-height: calc(100vh - var(--hs-chat-h, 35vh)) !important;
     }
     /* YT's masthead is position:fixed and viewport-anchored — shrink it
-       so the search bar / icons don't slide under the chat overlay. */
+       so the search bar / icons don't slide under the chat overlay.
+       Applies to every YT page: home, search, channel, VOD, live —
+       the multichat panel is always there, masthead must always make room. */
     body.hs-platform-yt.hs-chat-right #masthead-container,
     body.hs-platform-yt.hs-chat-right ytd-masthead {
-      right: var(--hs-chat-w, 340px) !important;
+      right: calc(var(--hs-chat-w, 340px) + 5px) !important;
     }
     body.hs-platform-yt.hs-chat-left #masthead-container,
     body.hs-platform-yt.hs-chat-left ytd-masthead {
-      left: var(--hs-chat-w, 340px) !important;
+      left: calc(var(--hs-chat-w, 340px) + 5px) !important;
+    }
+    body.hs-platform-yt.hs-chat-top #masthead-container,
+    body.hs-platform-yt.hs-chat-top ytd-masthead {
+      top: calc(var(--hs-chat-h, 35vh) + 5px) !important;
+    }
+
+    /* Reflow ALL YT content (every page type) into the viewport area NOT
+       covered by the multichat panel. ytd-app is the React root; capping
+       its viewport-width forces YT's responsive layout to honor the chat
+       strip. Single-column pages (home grid, search results, channel)
+       reflow naturally; watch pages let YT's own breakpoints handle the
+       primary/secondary column collapse when space gets tight. */
+    /* Cap ytd-app ONLY (not page-manager too — page-manager nests inside
+       ytd-app, so its 100% resolves against ytd-app's already-capped
+       width and would subtract the chat strip a second time, leaving the
+       grid renderered at half-width with a giant empty gutter).
+       100% (not 100vw) — vw includes the page scrollbar (~15px); the
+       chat panel is position:fixed and respects the inner viewport that
+       excludes the scrollbar, so 100vw caps were 15px too wide.
+       The 5px padding on the chat-side is the orange resize bar's gutter. */
+    body.hs-platform-yt:not(.hs-yt-watch).hs-chat-right ytd-app {
+      width: calc(100% - var(--hs-chat-w, 340px)) !important;
+      max-width: calc(100% - var(--hs-chat-w, 340px)) !important;
+      padding-right: 5px !important;
+      box-sizing: border-box !important;
+      overflow-x: hidden !important;
+    }
+    body.hs-platform-yt:not(.hs-yt-watch).hs-chat-left ytd-app {
+      width: calc(100% - var(--hs-chat-w, 340px)) !important;
+      max-width: calc(100% - var(--hs-chat-w, 340px)) !important;
+      margin-left: var(--hs-chat-w, 340px) !important;
+      padding-left: 5px !important;
+      box-sizing: border-box !important;
+      overflow-x: hidden !important;
+    }
+    body.hs-platform-yt:not(.hs-yt-watch).hs-chat-top ytd-app {
+      height: calc(100vh - var(--hs-chat-h, 35vh)) !important;
+      max-height: calc(100vh - var(--hs-chat-h, 35vh)) !important;
+      margin-top: var(--hs-chat-h, 35vh) !important;
+      padding-top: 5px !important;
+      box-sizing: border-box !important;
+      overflow-y: auto !important;
+    }
+    body.hs-platform-yt:not(.hs-yt-watch).hs-chat-bottom ytd-app {
+      height: calc(100vh - var(--hs-chat-h, 35vh)) !important;
+      max-height: calc(100vh - var(--hs-chat-h, 35vh)) !important;
+      padding-bottom: 5px !important;
+      box-sizing: border-box !important;
+      overflow-y: auto !important;
+    }
+    /* Lift YT's own width clamps on the grid chain — without these,
+       div#primary inside ytd-two-column-browse-results-renderer stays
+       stuck at the previous page's --ytd-rich-grid-width value after
+       SPA nav, and ytd-rich-grid-renderer/#contents inherit that. Force
+       every level to 100% of parent so our auto-fill grid uses the full
+       page-manager width. */
+    body.hs-platform-yt #page-manager ytd-two-column-browse-results-renderer > #primary,
+    body.hs-platform-yt #page-manager ytd-two-column-browse-results-renderer > ytd-rich-grid-renderer,
+    body.hs-platform-yt #page-manager ytd-rich-grid-renderer,
+    body.hs-platform-yt #page-manager ytd-rich-grid-renderer > #contents {
+      width: 100% !important;
+      max-width: 100% !important;
+      box-sizing: border-box !important;
+    }
+
+    /* YT computes ytd-rich-grid-renderer items-per-row off VIEWPORT width
+       (not container) and bakes it into [items-per-row="N"] attribute
+       selectors — overriding the CSS var alone doesn't change the grid.
+       Bypass the whole system: replace #contents with an auto-fill grid
+       so it wraps fluidly at any width. ytd-rich-grid-row (when present
+       in older YT structures) gets display:contents so its children
+       participate in the parent grid as direct cells. Result: tiles
+       always fit whole, density adapts to chat-panel width. */
+    body.hs-platform-yt #page-manager ytd-rich-grid-renderer > #contents,
+    body.hs-platform-yt #page-manager ytd-rich-grid-row > #contents {
+      display: grid !important;
+      grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)) !important;
+      gap: 16px !important;
+    }
+    body.hs-platform-yt #page-manager ytd-rich-grid-row {
+      display: contents !important;
+    }
+    /* Defense-in-depth: every level inside the grid cell must respect
+       parent width. YT inline-styles widths on ytd-rich-grid-media (and
+       sometimes on the thumbnail anchor) using its own items-per-row
+       math that ignores our chat strip — without forcing each level to
+       100%, the rightmost tile overflows the cell and gets clipped by
+       overflow-x:clip on ytd-app, which is what shows up as a half-cut
+       thumbnail. #page-manager ID prefix bumps specificity above YT's
+       attribute-keyed width rules on ytd-rich-grid-media which would
+       otherwise win on attribute-selector count. */
+    body.hs-platform-yt #page-manager ytd-rich-item-renderer,
+    body.hs-platform-yt #page-manager ytd-rich-item-renderer > #content,
+    body.hs-platform-yt #page-manager ytd-rich-grid-media,
+    body.hs-platform-yt #page-manager ytd-rich-grid-media > #thumbnail,
+    body.hs-platform-yt #page-manager ytd-rich-grid-media a#thumbnail,
+    body.hs-platform-yt #page-manager ytd-rich-grid-media yt-image,
+    body.hs-platform-yt #page-manager ytd-rich-grid-media yt-image img,
+    body.hs-platform-yt #page-manager ytd-rich-item-renderer ytd-thumbnail {
+      width: 100% !important;
+      max-width: 100% !important;
+      min-width: 0 !important;
+      box-sizing: border-box !important;
+      margin-left: 0 !important;
+      margin-right: 0 !important;
+    }
+    /* Older grid (subscriptions/library still use it on some accounts). */
+    body.hs-platform-yt ytd-grid-renderer > #items {
+      display: grid !important;
+      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)) !important;
+      gap: 16px !important;
+    }
+    body.hs-platform-yt ytd-grid-video-renderer {
+      width: 100% !important;
+      max-width: 100% !important;
+      margin: 0 !important;
+    }
+
+    /* Shorts: out across the board. Aspect ratio breaks grid uniformity,
+       vertical-only feed doesn't fit the streamer-centric HeatSync UX. */
+    body.hs-platform-yt ytd-rich-section-renderer:has(ytd-rich-shelf-renderer[is-shorts]),
+    body.hs-platform-yt ytd-rich-section-renderer:has([is-shorts]),
+    body.hs-platform-yt ytd-rich-section-renderer:has(grid-shelf-view-model),
+    body.hs-platform-yt ytd-rich-shelf-renderer[is-shorts],
+    body.hs-platform-yt ytd-reel-shelf-renderer,
+    body.hs-platform-yt grid-shelf-view-model,
+    body.hs-platform-yt ytd-rich-item-renderer:has(ytd-shorts),
+    body.hs-platform-yt ytd-mini-guide-entry-renderer[aria-label="Shorts"],
+    body.hs-platform-yt ytd-guide-entry-renderer:has(a[title="Shorts"]),
+    body.hs-platform-yt ytd-pivot-bar-item-renderer:has(a[title="Shorts"]),
+    body.hs-platform-yt a[href="/shorts"],
+    body.hs-platform-yt a[href^="/shorts/"][role="tab"] {
+      display: none !important;
     }
 
     /* --- TWITCH: collapse .right-column to give the player back its space.
@@ -5390,128 +5546,133 @@ function injectStyles() {
       padding-left: 0 !important;
     }
 
-    /* --- YOUTUBE: collapse #secondary; pad #primary --- */
-    body.hs-platform-yt.hs-chat-left #secondary,
-    body.hs-platform-yt.hs-chat-top #secondary,
-    body.hs-platform-yt.hs-chat-bottom #secondary,
-    body.hs-platform-yt.hs-chat-right #secondary {
+    /* --- YOUTUBE: collapse #secondary; pad #primary ---
+       Gated on  — on VODs (non-live), keep YT's native
+       sidebar so recommended/related videos remain visible to the viewer. */
+    body.hs-platform-yt:not(.hs-offline).hs-chat-left ytd-watch-flexy #secondary,
+    body.hs-platform-yt:not(.hs-offline).hs-chat-top ytd-watch-flexy #secondary,
+    body.hs-platform-yt:not(.hs-offline).hs-chat-bottom ytd-watch-flexy #secondary,
+    body.hs-platform-yt:not(.hs-offline).hs-chat-right ytd-watch-flexy #secondary {
       width: 0 !important;
       min-width: 0 !important;
       max-width: 0 !important;
       flex: 0 0 0 !important;
       overflow: hidden !important;
     }
-    body.hs-platform-yt.hs-chat-left #chat-container,
-    body.hs-platform-yt.hs-chat-top #chat-container,
-    body.hs-platform-yt.hs-chat-bottom #chat-container {
+    body.hs-platform-yt:not(.hs-offline).hs-chat-left ytd-watch-flexy #chat-container,
+    body.hs-platform-yt:not(.hs-offline).hs-chat-top ytd-watch-flexy #chat-container,
+    body.hs-platform-yt:not(.hs-offline).hs-chat-bottom ytd-watch-flexy #chat-container {
       overflow: hidden !important;
     }
-    /* Nuke the entire suggested-videos sidebar tree. overflow:hidden on
-       #secondary doesn't clip because YT renders these via children that
-       escape the secondary box (they're rendered at x>=1017 absolutely).
-       display:none kills them outright. We keep #chat-container alive
-       because hs-mc-container is mounted inside it. */
-    body.hs-platform-yt.hs-chat-left #related,
-    body.hs-platform-yt.hs-chat-top #related,
-    body.hs-platform-yt.hs-chat-bottom #related,
-    body.hs-platform-yt.hs-chat-right #related,
-    body.hs-platform-yt.hs-chat-left ytd-watch-next-secondary-results-renderer,
-    body.hs-platform-yt.hs-chat-top ytd-watch-next-secondary-results-renderer,
-    body.hs-platform-yt.hs-chat-bottom ytd-watch-next-secondary-results-renderer,
-    body.hs-platform-yt.hs-chat-right ytd-watch-next-secondary-results-renderer,
-    body.hs-platform-yt.hs-chat-left #secondary-inner > *:not(#chat-container),
-    body.hs-platform-yt.hs-chat-top #secondary-inner > *:not(#chat-container),
-    body.hs-platform-yt.hs-chat-bottom #secondary-inner > *:not(#chat-container),
-    body.hs-platform-yt.hs-chat-right #secondary-inner > *:not(#chat-container) {
+    /* Nuke the entire suggested-videos sidebar tree on LIVE only.
+       overflow:hidden on #secondary doesn't clip because YT renders these
+       via children that escape the secondary box (rendered at x>=1017
+       absolutely). display:none kills them outright. We keep #chat-container
+       alive because hs-mc-container is mounted inside it. */
+    body.hs-platform-yt:not(.hs-offline).hs-chat-left ytd-watch-flexy #related,
+    body.hs-platform-yt:not(.hs-offline).hs-chat-top ytd-watch-flexy #related,
+    body.hs-platform-yt:not(.hs-offline).hs-chat-bottom ytd-watch-flexy #related,
+    body.hs-platform-yt:not(.hs-offline).hs-chat-right ytd-watch-flexy #related,
+    body.hs-platform-yt:not(.hs-offline).hs-chat-left ytd-watch-flexy ytd-watch-next-secondary-results-renderer,
+    body.hs-platform-yt:not(.hs-offline).hs-chat-top ytd-watch-flexy ytd-watch-next-secondary-results-renderer,
+    body.hs-platform-yt:not(.hs-offline).hs-chat-bottom ytd-watch-flexy ytd-watch-next-secondary-results-renderer,
+    body.hs-platform-yt:not(.hs-offline).hs-chat-right ytd-watch-flexy ytd-watch-next-secondary-results-renderer,
+    body.hs-platform-yt:not(.hs-offline).hs-chat-left ytd-watch-flexy #secondary-inner > *:not(#chat-container),
+    body.hs-platform-yt:not(.hs-offline).hs-chat-top ytd-watch-flexy #secondary-inner > *:not(#chat-container),
+    body.hs-platform-yt:not(.hs-offline).hs-chat-bottom ytd-watch-flexy #secondary-inner > *:not(#chat-container),
+    body.hs-platform-yt:not(.hs-offline).hs-chat-right ytd-watch-flexy #secondary-inner > *:not(#chat-container) {
       display: none !important;
     }
     /* Default 'right' position — give up on YT's flex layout entirely
        and pin primary-inner to viewport-left with explicit width. Sibling
-       battles with #secondary flex were giving primary negative x. */
-    body.hs-platform-yt.hs-chat-right #primary {
+       battles with #secondary flex were giving primary negative x.
+       Live-only — VODs keep YT's native two-column flex. */
+    body.hs-platform-yt:not(.hs-offline).hs-chat-right ytd-watch-flexy #primary {
       margin: 0 !important;
       flex: 0 0 0 !important;
       width: 0 !important;
       overflow: visible !important;
     }
-    body.hs-platform-yt.hs-chat-right #primary-inner {
+    body.hs-platform-yt:not(.hs-offline).hs-chat-right ytd-watch-flexy #primary-inner {
       position: fixed !important;
       top: 0 !important;
       left: 0 !important;
-      width: calc(100vw - var(--hs-chat-w, 340px)) !important;
+      right: var(--hs-chat-w, 340px) !important;
+      width: auto !important;
       height: 100vh !important;
     }
-    body.hs-platform-yt.hs-chat-right ytd-watch-flexy {
+    body.hs-platform-yt:not(.hs-offline).hs-chat-right ytd-watch-flexy {
       --ytd-watch-flexy-side-menu-margin: 0 !important;
       --ytd-watch-flexy-non-player-width: var(--hs-chat-w, 340px) !important;
     }
     /* Force the player containers to fill #primary's inner width — kills
        the YT-side-menu-margin gap (right) AND the YT-non-player-width gap
        (left). For top/bottom the JS-driven inline width owns sizing. */
-    body.hs-platform-yt.hs-chat-right #player-container,
-    body.hs-platform-yt.hs-chat-right #player-container-outer,
-    body.hs-platform-yt.hs-chat-right #player-container-inner,
-    body.hs-platform-yt.hs-chat-right ytd-player,
-    body.hs-platform-yt.hs-chat-right #player,
-    body.hs-platform-yt.hs-chat-left #player-container,
-    body.hs-platform-yt.hs-chat-left #player-container-outer,
-    body.hs-platform-yt.hs-chat-left #player-container-inner,
-    body.hs-platform-yt.hs-chat-left ytd-player,
-    body.hs-platform-yt.hs-chat-left #player {
+    body.hs-platform-yt:not(.hs-offline).hs-chat-right ytd-watch-flexy #player-container,
+    body.hs-platform-yt:not(.hs-offline).hs-chat-right ytd-watch-flexy #player-container-outer,
+    body.hs-platform-yt:not(.hs-offline).hs-chat-right ytd-watch-flexy #player-container-inner,
+    body.hs-platform-yt:not(.hs-offline).hs-chat-right ytd-watch-flexy ytd-player,
+    body.hs-platform-yt:not(.hs-offline).hs-chat-right ytd-watch-flexy #player,
+    body.hs-platform-yt:not(.hs-offline).hs-chat-left ytd-watch-flexy #player-container,
+    body.hs-platform-yt:not(.hs-offline).hs-chat-left ytd-watch-flexy #player-container-outer,
+    body.hs-platform-yt:not(.hs-offline).hs-chat-left ytd-watch-flexy #player-container-inner,
+    body.hs-platform-yt:not(.hs-offline).hs-chat-left ytd-watch-flexy ytd-player,
+    body.hs-platform-yt:not(.hs-offline).hs-chat-left ytd-watch-flexy #player {
       width: 100% !important;
     }
     /* chat-left: same gutter-kill as chat-right so YT computes the player
        width as primary's full width (708px) instead of vw - 450 (= 598). */
-    body.hs-platform-yt.hs-chat-left ytd-watch-flexy {
+    body.hs-platform-yt:not(.hs-offline).hs-chat-left ytd-watch-flexy {
       --ytd-watch-flexy-side-menu-margin: 0 !important;
       --ytd-watch-flexy-non-player-width: var(--hs-chat-w, 340px) !important;
     }
-    body.hs-platform-yt.hs-chat-left #primary {
+    body.hs-platform-yt:not(.hs-offline).hs-chat-left ytd-watch-flexy #primary {
       margin: 0 !important;
       flex: 0 0 0 !important;
       width: 0 !important;
       overflow: visible !important;
     }
-    body.hs-platform-yt.hs-chat-left #primary-inner {
+    body.hs-platform-yt:not(.hs-offline).hs-chat-left ytd-watch-flexy #primary-inner {
       position: fixed !important;
       top: 0 !important;
       left: var(--hs-chat-w, 340px) !important;
-      width: calc(100vw - var(--hs-chat-w, 340px)) !important;
+      right: 0 !important;
+      width: auto !important;
       height: 100vh !important;
     }
     /* Kill the secondary's residual 16px (its own padding/margin still
-       takes layout space even with width:0). */
-    body.hs-platform-yt.hs-chat-left #secondary,
-    body.hs-platform-yt.hs-chat-top #secondary,
-    body.hs-platform-yt.hs-chat-bottom #secondary {
+       takes layout space even with width:0). Live-only. */
+    body.hs-platform-yt:not(.hs-offline).hs-chat-left ytd-watch-flexy #secondary,
+    body.hs-platform-yt:not(.hs-offline).hs-chat-top ytd-watch-flexy #secondary,
+    body.hs-platform-yt:not(.hs-offline).hs-chat-bottom ytd-watch-flexy #secondary {
       padding: 0 !important;
       margin: 0 !important;
     }
-    body.hs-platform-yt.hs-chat-top #primary {
+    body.hs-platform-yt:not(.hs-offline).hs-chat-top ytd-watch-flexy #primary {
       margin-top: var(--hs-chat-h, 35vh) !important;
       padding-top: 0 !important;
     }
-    body.hs-platform-yt.hs-chat-bottom #primary {
+    body.hs-platform-yt:not(.hs-offline).hs-chat-bottom ytd-watch-flexy #primary {
       margin-bottom: var(--hs-chat-h, 35vh) !important;
       padding-top: 0 !important;
     }
     /* Kill the masthead reservation — chat clutter is hidden, no need to
        reserve top-bar space below it. Applies to ALL chat positions on YT
-       so the player floats flush in every layout. */
-    body.hs-platform-yt.hs-chat-top #page-manager,
-    body.hs-platform-yt.hs-chat-bottom #page-manager,
-    body.hs-platform-yt.hs-chat-left #page-manager,
-    body.hs-platform-yt.hs-chat-right #page-manager {
+       so the player floats flush in every layout. Live-only. */
+    body.hs-platform-yt:not(.hs-yt-watch).hs-chat-top #page-manager,
+    body.hs-platform-yt:not(.hs-yt-watch).hs-chat-bottom #page-manager,
+    body.hs-platform-yt:not(.hs-yt-watch).hs-chat-left #page-manager,
+    body.hs-platform-yt:not(.hs-yt-watch).hs-chat-right #page-manager {
       margin-top: 0 !important;
     }
     /* primary clips to viewport height; primary-inner scrolls so video info
-       below the player is reachable. */
-    body.hs-platform-yt.hs-chat-right #primary {
+       below the player is reachable. Live-only. */
+    body.hs-platform-yt:not(.hs-offline).hs-chat-right ytd-watch-flexy #primary {
       height: 100vh !important;
       max-height: 100vh !important;
       overflow: hidden !important;
     }
-    body.hs-platform-yt.hs-chat-right #primary-inner {
+    body.hs-platform-yt:not(.hs-offline).hs-chat-right ytd-watch-flexy #primary-inner {
       height: 100vh !important;
       max-height: 100vh !important;
       overflow-y: auto !important;
@@ -5520,8 +5681,8 @@ function injectStyles() {
        mount-time inline height cached from the original live-chat-frame
        (~500-600px). #secondary-inner and #chat-container also need to
        extend so our container can fill them. */
-    body.hs-platform-yt.hs-chat-right #secondary-inner,
-    body.hs-platform-yt.hs-chat-right #chat-container {
+    body.hs-platform-yt:not(.hs-offline).hs-chat-right ytd-watch-flexy #secondary-inner,
+    body.hs-platform-yt:not(.hs-offline).hs-chat-right ytd-watch-flexy #chat-container {
       height: 100vh !important;
       max-height: 100vh !important;
     }
@@ -5549,7 +5710,7 @@ function injectStyles() {
     #hs-mc-emote-btn {
       flex: 0 0 auto !important;
     }
-    body.hs-platform-yt.hs-chat-right #primary-inner {
+    body.hs-platform-yt:not(.hs-offline).hs-chat-right ytd-watch-flexy #primary-inner {
       display: flex !important;
       flex-direction: column !important;
       align-items: center !important;
@@ -5559,33 +5720,35 @@ function injectStyles() {
        its own layout JS shrinks the player to fit. YT computes player
        height = viewport - --ytd-watch-flexy-non-player-height. Bumping
        that var by chat-strip height makes YT shrink the player itself,
-       which keeps the 16:9 aspect ratio (no distortion, no clipping). */
-    body.hs-platform-yt.hs-chat-top ytd-watch-flexy,
-    body.hs-platform-yt.hs-chat-bottom ytd-watch-flexy {
+       which keeps the 16:9 aspect ratio (no distortion, no clipping).
+       Live-only — VOD viewers expect full-height YT layout. */
+    body.hs-platform-yt:not(.hs-offline).hs-chat-top ytd-watch-flexy,
+    body.hs-platform-yt:not(.hs-offline).hs-chat-bottom ytd-watch-flexy {
       --ytd-watch-flexy-non-player-height: calc(56px + 12px + 92px + var(--hs-chat-h, 35vh)) !important;
       --ytd-watch-flexy-min-player-height: 200px !important;
     }
     /* Belt-and-braces: cap player container too, in case YT's JS doesn't
        re-read the var on every chat-height change. */
-    body.hs-platform-yt.hs-chat-top #player-container,
-    body.hs-platform-yt.hs-chat-top #player-container-outer,
-    body.hs-platform-yt.hs-chat-bottom #player-container,
-    body.hs-platform-yt.hs-chat-bottom #player-container-outer {
+    body.hs-platform-yt:not(.hs-offline).hs-chat-top ytd-watch-flexy #player-container,
+    body.hs-platform-yt:not(.hs-offline).hs-chat-top ytd-watch-flexy #player-container-outer,
+    body.hs-platform-yt:not(.hs-offline).hs-chat-bottom ytd-watch-flexy #player-container,
+    body.hs-platform-yt:not(.hs-offline).hs-chat-bottom ytd-watch-flexy #player-container-outer {
       max-height: calc(100vh - var(--hs-chat-h, 35vh) - 60px) !important;
     }
     /* Show video info below player (title, channel, description) like Twitch/Kick.
        Hide only comments — noisy, not the focus. #below gets width:100% so it
-       fills primary-inner even when align-items:center is in effect. */
-    body.hs-platform-yt.hs-chat-top ytd-comments,
-    body.hs-platform-yt.hs-chat-bottom ytd-comments,
-    body.hs-platform-yt.hs-chat-left ytd-comments,
-    body.hs-platform-yt.hs-chat-right ytd-comments {
+       fills primary-inner even when align-items:center is in effect.
+       Live-only — VOD viewers want comments and native description sizing. */
+    body.hs-platform-yt:not(.hs-offline).hs-chat-top ytd-watch-flexy ytd-comments,
+    body.hs-platform-yt:not(.hs-offline).hs-chat-bottom ytd-watch-flexy ytd-comments,
+    body.hs-platform-yt:not(.hs-offline).hs-chat-left ytd-watch-flexy ytd-comments,
+    body.hs-platform-yt:not(.hs-offline).hs-chat-right ytd-watch-flexy ytd-comments {
       display: none !important;
     }
-    body.hs-platform-yt.hs-chat-top #below,
-    body.hs-platform-yt.hs-chat-bottom #below,
-    body.hs-platform-yt.hs-chat-left #below,
-    body.hs-platform-yt.hs-chat-right #below {
+    body.hs-platform-yt:not(.hs-offline).hs-chat-top ytd-watch-flexy #below,
+    body.hs-platform-yt:not(.hs-offline).hs-chat-bottom ytd-watch-flexy #below,
+    body.hs-platform-yt:not(.hs-offline).hs-chat-left ytd-watch-flexy #below,
+    body.hs-platform-yt:not(.hs-offline).hs-chat-right ytd-watch-flexy #below {
       width: 100% !important;
       max-width: 100% !important;
       overflow-x: hidden !important;
@@ -5593,19 +5756,19 @@ function injectStyles() {
     /* Top/bottom: player is sized inline to fill availH, just need
        horizontal centering. Don't add min-height — primary has margin-top
        for chat-top, so 100vh would push content off the bottom. */
-    body.hs-platform-yt.hs-chat-top #primary-inner,
-    body.hs-platform-yt.hs-chat-bottom #primary-inner {
+    body.hs-platform-yt:not(.hs-offline).hs-chat-top ytd-watch-flexy #primary-inner,
+    body.hs-platform-yt:not(.hs-offline).hs-chat-bottom ytd-watch-flexy #primary-inner {
       display: flex !important;
       flex-direction: column !important;
       align-items: center !important;
       justify-content: flex-start !important;
     }
-    body.hs-platform-yt.hs-chat-left #primary {
+    body.hs-platform-yt:not(.hs-offline).hs-chat-left ytd-watch-flexy #primary {
       height: 100vh !important;
       max-height: 100vh !important;
       overflow: hidden !important;
     }
-    body.hs-platform-yt.hs-chat-left #primary-inner {
+    body.hs-platform-yt:not(.hs-offline).hs-chat-left ytd-watch-flexy #primary-inner {
       height: 100vh !important;
       max-height: 100vh !important;
       overflow-y: auto !important;
@@ -5614,9 +5777,9 @@ function injectStyles() {
       align-items: center !important;
       justify-content: flex-start !important;
     }
-    body.hs-platform-yt.hs-chat-top #player,
-    body.hs-platform-yt.hs-chat-bottom #player,
-    body.hs-platform-yt.hs-chat-left #player {
+    body.hs-platform-yt:not(.hs-offline).hs-chat-top ytd-watch-flexy #player,
+    body.hs-platform-yt:not(.hs-offline).hs-chat-bottom ytd-watch-flexy #player,
+    body.hs-platform-yt:not(.hs-offline).hs-chat-left ytd-watch-flexy #player {
       margin-left: auto !important;
       margin-right: auto !important;
     }
@@ -5632,7 +5795,8 @@ function injectStyles() {
       transform: translateX(-50%) !important;
     }
     /* YouTube theatre: ytd-watch-flexy[theater] makes the player full-row.
-       The #full-bleed-container is what owns the player. Inset it. */
+       The #full-bleed-container is what owns the player. Inset it.
+       Live-only — VOD theatre keeps native YT layout. */
     body.hs-platform-yt.hs-mode-theatre.hs-chat-left ytd-watch-flexy[theater] #full-bleed-container,
     body.hs-platform-yt.hs-mode-theatre.hs-chat-left ytd-watch-flexy[theater] #player-full-bleed-container {
       padding-left: var(--hs-chat-w, 340px) !important;

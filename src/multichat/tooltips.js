@@ -99,6 +99,10 @@
     return emoteTooltip;
   }
 
+  // Set of hi-res URLs we've successfully preloaded. Once an emote is in here,
+  // skip the 1x→4x swap entirely on next hover (no flicker, no re-fetch).
+  const _hiResLoaded = new Set();
+
   function showEmoteTooltip(e, emoteName, emoteUrl, state, source, hoveredImg, owner) {
     const tooltip = ensureEmoteTooltip();
     // Re-append to body so DOM order tiebreaks above other max-int siblings
@@ -108,19 +112,28 @@
     const nameEl = tooltip.querySelector('.tooltip-name');
     const stateEl = tooltip.querySelector('.tooltip-source');
 
-    // Show 1x immediately (no stale image), upgrade to hi-res in background
     const w4 = (hoveredImg?.offsetWidth || 28) * 4;
     const h4 = (hoveredImg?.offsetHeight || 28) * 4;
     img.style.width = w4 + 'px';
     img.style.height = h4 + 'px';
-    img.src = emoteUrl;
     img.alt = emoteName;
-    // Try loading hi-res - swap in if it works, keep 1x if it fails
     const hiResUrl = getHighResUrl(emoteUrl);
-    if (hiResUrl !== emoteUrl) {
-      const hiRes = new Image();
-      hiRes.onload = () => { if (img.alt === emoteName) img.src = hiResUrl; };
-      hiRes.src = hiResUrl;
+    if (hiResUrl !== emoteUrl && _hiResLoaded.has(hiResUrl)) {
+      // Already preloaded — go straight to hi-res, no swap-flicker.
+      img.src = hiResUrl;
+    } else {
+      // First time: show 1x immediately, upgrade in background. The hi-res URL
+      // is cached after first load so subsequent hovers are flicker-free.
+      img.src = emoteUrl;
+      if (hiResUrl !== emoteUrl) {
+        const hiRes = new Image();
+        hiRes.onload = () => {
+          _hiResLoaded.add(hiResUrl);
+          if (_hiResLoaded.size > 2000) _hiResLoaded.delete(_hiResLoaded.values().next().value);
+          if (img.alt === emoteName) img.src = hiResUrl;
+        };
+        hiRes.src = hiResUrl;
+      }
     }
     nameEl.textContent = emoteName;
 
@@ -885,13 +898,41 @@
     if (window._hsUserTooltipSetup) return;
     window._hsUserTooltipSetup = true;
 
+    // 120ms hover-intent debounce: scrolling chat passes the cursor across
+    // 10+ usernames in a single scroll-tick. Without debounce every one
+    // fires apiFetch immediately. Cache hits already render instantly so
+    // those bypass the debounce; only cold lookups wait.
+    let _userHoverTimer = null
+    let _userHoverTarget = null
+    function clearUserHoverTimer() {
+      if (_userHoverTimer) { clearTimeout(_userHoverTimer); _userHoverTimer = null }
+      _userHoverTarget = null
+    }
+
     cleanup.addEventListener(document, 'mouseover', (e) => {
       const target = e.target.closest('.hs-mc-user');
       if (target) {
         const username = target.dataset.username || target.textContent.replace(/^@/, '');
         const color = target.style.color;
         const platform = target.dataset.platform || null;
-        showUserTooltip(target, username, color, platform);
+        const cacheKey = `${platform || 'unknown'}:${username.toLowerCase()}`
+        const cached = _profileCache.get(cacheKey)
+        if (cached && Date.now() - cached.ts < PROFILE_CACHE_TTL) {
+          // Cache hit: render synchronously, no debounce needed.
+          clearUserHoverTimer()
+          showUserTooltip(target, username, color, platform);
+        } else {
+          // Cold lookup: debounce + show skeleton immediately so the user
+          // sees acknowledgement of the hover even while the fetch runs.
+          clearUserHoverTimer()
+          _userHoverTarget = target
+          showUserSkeleton(target, username, color)
+          _userHoverTimer = setTimeout(() => {
+            _userHoverTimer = null
+            if (_userHoverTarget !== target || !document.contains(target)) return
+            showUserTooltip(target, username, color, platform);
+          }, 120)
+        }
 
         // Highlight all matching usernames
         const name = target.dataset.username;
@@ -909,6 +950,7 @@
     cleanup.addEventListener(document, 'mouseout', (e) => {
       const target = e.target.closest('.hs-mc-user');
       if (target) {
+        clearUserHoverTimer()
         hideUserTooltip();
 
         // Remove all username highlights
@@ -920,6 +962,24 @@
         }
       }
     }, 'mc-user-tooltip-mouseout');
+  }
+
+  // Synchronous skeleton — username + color, no fetch. Replaced by full
+  // card when the apiFetch resolves (showUserTooltip post-debounce).
+  // Uses textContent (no innerHTML) so the username string is never parsed as HTML.
+  function showUserSkeleton(targetEl, username, color) {
+    const tooltip = ensureUserTooltip();
+    document.body.appendChild(tooltip);
+    _userTooltipTarget = targetEl;
+    while (tooltip.firstChild) tooltip.removeChild(tooltip.firstChild);
+    const loading = document.createElement('div');
+    loading.className = 'hs-pc-loading';
+    if (color) loading.style.color = color;
+    else loading.style.color = '#fff';
+    loading.textContent = username + '…';
+    tooltip.appendChild(loading);
+    tooltip.classList.add('visible');
+    positionTooltipAtElement(tooltip, targetEl);
   }
 
   // Link preview tooltip (Chatterino-style)
@@ -973,12 +1033,23 @@
     _linkFetchInFlight = url
     safeSendMessage({ type: 'fetch_link_preview', url }).then(data => {
       _linkPreviewCache.set(url, data);
-      while (_linkPreviewCache.size > 200) _linkPreviewCache.delete(_linkPreviewCache.keys().next().value);
+      while (_linkPreviewCache.size > 500) _linkPreviewCache.delete(_linkPreviewCache.keys().next().value);
       if (_linkFetchInFlight === url) _linkFetchInFlight = null
       if (_linkHoverUrl === url && tip.classList.contains('visible')) {
         renderLinkPreview(tip, data, url);
       }
     });
+  }
+
+  // Background-prefetch link preview without showing the tooltip — fired on
+  // mousedown (click-intent) so the og fetch lands before the user releases.
+  // No-op when cache already has it. Used by mousedown handler in setupLinkTooltipHandlers.
+  function prefetchLinkPreview(url) {
+    if (!url || _linkPreviewCache.has(url)) return;
+    safeSendMessage({ type: 'fetch_link_preview', url }).then(data => {
+      _linkPreviewCache.set(url, data);
+      while (_linkPreviewCache.size > 500) _linkPreviewCache.delete(_linkPreviewCache.keys().next().value);
+    }).catch(() => {});
   }
 
   function renderLinkPreview(tip, data, url) {
@@ -1055,4 +1126,11 @@
       if (link) scheduleLinkHide();
       else if (e.target.closest?.('#hs-link-tooltip')) scheduleLinkHide();
     }, 'mc-link-tooltip-mouseout');
+
+    // Click-intent prefetch: mousedown fires ~150ms before click. Warm the
+    // og cache so users who click without hovering long enough don't wait.
+    cleanup.addEventListener(document, 'mousedown', (e) => {
+      const link = e.target.closest?.('.hs-mc-link')
+      if (link?.href) prefetchLinkPreview(link.href)
+    }, 'mc-link-prefetch-mousedown');
   }

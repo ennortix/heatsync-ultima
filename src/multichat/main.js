@@ -1183,7 +1183,7 @@
   // YT_MIN_PRIMARY_WIDTH gutter for the player.
   function getYtMaxChatWidth() {
     if (hostPlatform !== 'yt') return MAX_CHAT_WIDTH
-    const flexy = document.querySelector('ytd-watch-flexy')
+    const flexy = document.querySelector('ytd-watch-flexy:not([hidden])')
     const flexyW = flexy?.getBoundingClientRect?.().width || 0
     const vw = window.innerWidth || document.documentElement.clientWidth || 1280
     const available = flexyW > 0 ? Math.min(flexyW, vw) : vw
@@ -1559,6 +1559,18 @@
         }
         return chain
       }
+      // Forward wheel events from the reply-stack overlays to the chat
+      // container. Without this, wheeling while hovering the overlay
+      // (positioned above/below the active row) does nothing — the overlay
+      // has overflow:hidden and isn't a scroll target — so the user feels
+      // the chat "lock up" mid-scroll.
+      const forwardWheelToMsgs = (ev) => {
+        if (isStaticTab()) return
+        ev.preventDefault()
+        _userInputScroll = true
+        if (ev.deltaY < 0) setPaused(true)
+        msgsEl.scrollTop += ev.deltaY
+      }
       const ensureStackOverlay = () => {
         let el = document.getElementById('hs-mc-reply-stack')
         if (el) return el
@@ -1566,6 +1578,7 @@
         el.id = 'hs-mc-reply-stack'
         el.style.display = 'none'
         document.body.appendChild(el)
+        el.addEventListener('wheel', forwardWheelToMsgs, { passive: false, signal: mcSignal })
         el.addEventListener('click', (ev) => {
           const chip = ev.target.closest('.hs-mc-reply-stack-chip')
           if (!chip) return
@@ -1590,6 +1603,7 @@
         el.id = 'hs-mc-reply-stack-down'
         el.style.display = 'none'
         document.body.appendChild(el)
+        el.addEventListener('wheel', forwardWheelToMsgs, { passive: false, signal: mcSignal })
         return el
       }
       const showStack = (hoveredEl) => {
@@ -2281,13 +2295,6 @@
   function positionChatResizeHandle() {
     const handle = ensureChatResizeHandle();
     ;['top','bottom','left','right','width','height'].forEach(p => handle.style.removeProperty(p));
-    // YouTube: only show the handle on watch pages (where ytd-watch-flexy
-    // and the chat panel exist). Home/search/channel pages have no chat
-    // to resize — the orange bar would just float over empty space.
-    if (hostPlatform === 'yt' && !document.querySelector('ytd-watch-flexy')) {
-      handle.style.display = 'none';
-      return;
-    }
     // For YT, chat-right is now position:fixed so the unified handle
     // owns ALL four positions. For Twitch/Kick, chat-right uses the
     // existing per-platform handles (which have ghost-preview perf
@@ -2325,25 +2332,25 @@
       handle.style.top = cTop + 'px';
       handle.style.left = cLeft + 'px';
       handle.style.height = cHeight + 'px';
-      handle.style.width = '10px';
+      handle.style.width = '5px';
       handle.style.cursor = 'col-resize';
     } else if (chatPosition === 'left') {
       handle.style.top = cTop + 'px';
-      handle.style.left = (cRight - 10) + 'px';
+      handle.style.left = (cRight - 5) + 'px';
       handle.style.height = cHeight + 'px';
-      handle.style.width = '10px';
+      handle.style.width = '5px';
       handle.style.cursor = 'col-resize';
     } else if (chatPosition === 'top') {
-      handle.style.top = (cBottom - 10) + 'px';
+      handle.style.top = (cBottom - 5) + 'px';
       handle.style.left = cLeft + 'px';
       handle.style.width = cWidth + 'px';
-      handle.style.height = '10px';
+      handle.style.height = '5px';
       handle.style.cursor = 'row-resize';
     } else if (chatPosition === 'bottom') {
       handle.style.top = cTop + 'px';
       handle.style.left = cLeft + 'px';
       handle.style.width = cWidth + 'px';
-      handle.style.height = '10px';
+      handle.style.height = '5px';
       handle.style.cursor = 'row-resize';
     }
   }
@@ -2513,6 +2520,25 @@
   function applyYouTubeChatWidth() {
     const secondary = document.querySelector('#secondary, ytd-watch-flexy #secondary')
     if (!secondary) return
+    // Only modify #secondary on actual watch pages — home/search/channel
+    // have their OWN #secondary (the recommended-sidebar wrapper inside
+    // ytd-two-column-browse-results-renderer) that we must not touch.
+    // Without this guard, after a watch → home SPA back, #secondary on
+    // the home grid stays clamped at the chat width and #primary collapses
+    // to (parent − chatWidth) ≈ 334px, breaking the grid wrap.
+    // `:not([hidden])` matters: ytd-watch-flexy stays in the DOM with
+    // `hidden` attr on non-watch pages — bare `ytd-watch-flexy` selector
+    // returns true on home and we'd clamp #secondary anyway.
+    const onWatchPage = !!document.querySelector('ytd-watch-flexy:not([hidden])')
+    if (!onWatchPage) {
+      secondary.style.removeProperty('width')
+      secondary.style.removeProperty('min-width')
+      secondary.style.removeProperty('max-width')
+      secondary.style.removeProperty('flex')
+      const handle = document.getElementById('hs-yt-resize-handle')
+      if (handle) handle.style.display = 'none'
+      return
+    }
     // C button took chat off the right edge — collapse #secondary to 0 so
     // the freed width goes back to the player; don't run the native width
     // sizer which would re-claim the sidebar.
@@ -2530,7 +2556,7 @@
     // would fight that reflow, so just clear our overrides and let YT's CSS
     // run unmodified. Also hide the left-edge resize handle since the panel
     // no longer has a left edge to drag against.
-    const flexy = document.querySelector('ytd-watch-flexy')
+    const flexy = document.querySelector('ytd-watch-flexy:not([hidden])')
     const isTheater = !!flexy?.hasAttribute('theater') || !!flexy?.hasAttribute('fullscreen')
     const handle = document.getElementById('hs-yt-resize-handle')
     if (isTheater) {
@@ -2654,7 +2680,7 @@
   // restore our width overrides at the right moment.
   function watchYtLayoutAttrs() {
     if (hostPlatform !== 'yt') return
-    const flexy = document.querySelector('ytd-watch-flexy')
+    const flexy = document.querySelector('ytd-watch-flexy:not([hidden])')
     if (!flexy) return
     const obs = new MutationObserver(() => applyYouTubeChatWidth())
     obs.observe(flexy, { attributes: true, attributeFilter: ['theater', 'fullscreen', 'is-two-columns_'] })
@@ -2675,9 +2701,9 @@
     // observer was already torn down.
     if (hostPlatform !== 'yt') return
     if (_ytFlexyMountObs) return
-    if (document.querySelector('ytd-watch-flexy')) return // already there
+    if (document.querySelector('ytd-watch-flexy:not([hidden])')) return // already there
     _ytFlexyMountObs = new MutationObserver(() => {
-      if (!document.querySelector('ytd-watch-flexy')) return
+      if (!document.querySelector('ytd-watch-flexy:not([hidden])')) return
       _ytFlexyMountObs.disconnect()
       _ytFlexyMountObs = null
       try { applyChatPosition() } catch {}
@@ -3963,9 +3989,11 @@
 
     // Twitch non-channel pages (/directory, /settings, /videos, …) have no
     // chat-shell. Fall through with chatRoom=null so getOrCreateHsContainer
-    // body-mounts the panel as a position:fixed overlay. Kick/YT keep the
-    // hard guard — they don't yet have a body-mount fallback.
-    if (!chatRoom && (hostPlatform === 'yt' || isKick)) return;
+    // body-mounts the panel as a position:fixed overlay. YT also
+    // body-mounts (getOrCreateHsContainer always appends to body on YT)
+    // so the panel persists across home/search/channel/watch navs. Kick
+    // keeps the hard guard — no body-mount fallback there yet.
+    if (!chatRoom && isKick) return;
 
     // Transform fix handled by CSS (#hs-chat-transform-fix) + MutationObserver.
     // No parent tree walking — it displaced the collapse arrow.
@@ -6810,7 +6838,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     if (_theatreObserver) { try { _theatreObserver.disconnect() } catch (_) {} _theatreObserver = null }
     const targets = [];
     if (hostPlatform === 'yt') {
-      const flexy = document.querySelector('ytd-watch-flexy');
+      const flexy = document.querySelector('ytd-watch-flexy:not([hidden])');
       if (flexy) targets.push(flexy);
     } else if (isKick) {
       const main = document.querySelector('main');
@@ -6856,28 +6884,22 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     if (document.body.classList.contains('hs-popout') && chatPosition !== 'right') {
       chatPosition = 'right';
     }
-    // YouTube: only apply layout overrides on watch pages. Home, search,
-    // channel pages don't have ytd-watch-flexy / #primary / #player so
-    // our rules just left the page broken (blank top, floating handle).
-    // BUT: don't strip hs-platform-yt itself — it's set unconditionally in
-    // loadChatPosition and survives across SPA navs. Stripping it caused the
-    // CSS rule for `body.hs-platform-yt.hs-chat-right #hs-mc-container`
-    // to stop matching when applyChatPosition fired before ytd-watch-flexy
-    // had mounted on a watch-page navigation, leaving the chat panel in
-    // position:relative and the resize handle visibly snapping on commit.
-    const isYtNonWatch = hostPlatform === 'yt' && !document.querySelector('ytd-watch-flexy');
+    // YouTube: layout overrides that touch #primary/#secondary are gated
+    // separately (live-only via :not(.hs-offline)). The hs-chat-{position}
+    // class is now applied on EVERY YT page so the persistent multichat
+    // panel renders via the position:fixed CSS rule across home, search,
+    // VOD, channel, and live — matching the Twitch persistent overlay.
+    const isYtNonWatch = hostPlatform === 'yt' && !document.querySelector('ytd-watch-flexy:not([hidden])');
     document.body.classList.remove('hs-chat-top', 'hs-chat-right', 'hs-chat-bottom', 'hs-chat-left');
     document.body.classList.toggle('hs-platform-yt', hostPlatform === 'yt');
     document.body.classList.toggle('hs-platform-twitch', hostPlatform !== 'yt' && !isKick);
     document.body.classList.toggle('hs-platform-kick', !!isKick);
-    if (!isYtNonWatch) {
-      document.body.classList.add(`hs-chat-${chatPosition}`);
-    } else if (location.pathname === '/watch') {
+    document.body.classList.add(`hs-chat-${chatPosition}`);
+    if (isYtNonWatch && location.pathname === '/watch') {
       // We're on a watch URL but flexy hasn't mounted yet (SPA cold-load,
       // /watch → /watch transition where React unmounted then remounts).
       // Re-arm the flexy-mount observer so applyChatPosition fires again
-      // once it's there. Without this, hs-chat-{position} stays missing
-      // and CSS rules for non-right positions never match.
+      // once it's there.
       try { watchYtFlexyMount() } catch (_) {}
     }
     document.body.classList.toggle('hs-mode-theatre', theatreMode);
@@ -7639,6 +7661,18 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
         const liveTab = tabBarElement?.querySelector('[data-tab="live"]')
         if (liveTab) liveTab.dataset.live = String(isLive)
         document.body.classList.toggle('hs-offline', !isLive)
+        // Watch-page detection: ytd-watch-flexy stays in DOM with `hidden`
+        // attr off-watch — only count it as a watch page when visible.
+        const onWatch = !!document.querySelector('ytd-watch-flexy:not([hidden])')
+        document.body.classList.toggle('hs-yt-watch', onWatch)
+        // Hide native YT live chat once it mounts — our multichat panel
+        // takes its place. Container creation runs before the chatframe
+        // exists now (body-mount on every YT page), so the hide must be
+        // re-attempted as the iframe lazy-loads.
+        const frameEl = document.querySelector('ytd-live-chat-frame#chat')
+        if (frameEl && frameEl.style.display !== 'none') {
+          frameEl.style.display = 'none'
+        }
       }
       checkYtLive()
       cleanup.setInterval(checkYtLive, 4000)
@@ -7693,11 +7727,11 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
   async function init() {
     let isPopout = false;
     if (hostPlatform === 'yt') {
-      // YouTube: run on watch pages, live pages, and @channel/live
-      const isYtLive = !!location.pathname.match(/^\/@[^/]+\/live/) ||
-                       !!location.pathname.match(/^\/watch/) ||
-                       !!location.pathname.match(/^\/live\//)
-      if (!isYtLive) return;
+      // YouTube: persistent overlay across every URL — home, watch, search,
+      // channel, /live, etc. — so the multichat panel survives SPA nav.
+      // The destructive layout overrides (#secondary collapse, recommendeds
+      // hidden) are gated separately on `:not(.hs-offline)` so non-live
+      // pages keep YouTube's native layout intact.
     } else if (isKick) {
       // Kick: run on channel pages (/<channel>) or popout
       const isKickChannel = location.pathname.match(/^\/[a-zA-Z0-9_-]+\/?$/);
@@ -7718,6 +7752,12 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     // mounts. injectStyles has zero settings deps — moving it before any
     // await shaves ~10-15ms off the cold visual path.
     injectStyles();
+    // YouTube: pre-set hs-offline so the destructive layout overrides
+    // (#secondary collapse, #primary fixed, recommendeds hidden) don't fire
+    // on first paint for VOD viewers. checkYtLive() removes the class once
+    // it detects a live chatframe; if it's actually a livestream, native
+    // YT live chat is shown briefly until our override kicks in.
+    if (hostPlatform === 'yt') document.body.classList.add('hs-offline');
     detectOfflineState();
     if (isPopout) document.body.classList.add('hs-popout');
     currentUsername = getCurrentUsername();
@@ -8640,11 +8680,21 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       }, 15000);
     };
     if (hostPlatform === 'yt') {
-      waitForMount(
-        () => document.getElementById('chat-container') ||
-              document.querySelector('ytd-live-chat-frame#chat')?.parentElement,
-        'YouTube chat container'
-      );
+      // YT panel is body-mounted on every page (home, VOD, live, channel),
+      // so there's no DOM mount point to wait on. Inject immediately; any
+      // late-mounting live chatframe is hidden separately by the chatframe
+      // observer in getOrCreateHsContainer + the SPA nav handler.
+      ensureUIElements();
+      switchTab(_savedActiveTab || 'live');
+      startLayoutWatcher();
+      // YT computes grid items-per-row + #primary widths from window-keyed
+      // ResizeObservers; our layout overrides happen mid-cycle and YT
+      // doesn't re-measure until something fires `resize`. One synthetic
+      // dispatch (after a paint) gets the home grid to render at the
+      // capped width without the user having to wiggle the chat handle.
+      requestAnimationFrame(() => {
+        try { window.dispatchEvent(new Event('resize')) } catch {}
+      });
     } else if (isKick) {
       waitForMount(
         () => document.getElementById('channel-chatroom') || document.querySelector('[id*="chatroom"]'),
@@ -8843,6 +8893,31 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     // Popout chat is exempt since it never SPA-navigates between URLs.
     if (hostPlatform === 'twitch' && !document.body.classList.contains('hs-popout')) {
       softTwitchNav();
+      return;
+    }
+
+    // YouTube SPA nav: panel is body-mounted and survives across URLs.
+    // Same rationale as Twitch — destroying + waiting 1s for init left a
+    // visible blank gap when the user clicked back from a stream. Just
+    // refresh per-page WS subs, re-apply layout. The 4s checkYtLive
+    // interval already refreshes hs-offline class within 4s.
+    if (hostPlatform === 'yt') {
+      // Unsubscribe the auto-YT route for the previous page so the new
+      // page gets a clean __live_yt_auto__ binding (videoId differs).
+      chrome.runtime.sendMessage({
+        type: 'youtube_ws_unsubscribe', channelId: '__live_yt_auto__'
+      }).catch(() => {})
+      channelYtMessages.delete('__live_yt_auto__')
+      _autoYtVideoId = null;
+      // Re-apply layout so destructive overrides re-evaluate against the
+      // new pathname (watch ↔ home).
+      try { applyChatPosition(); } catch {}
+      try { applyYouTubeChatWidth(); } catch {}
+      // Nudge YT's responsive code so it recomputes --ytd-rich-grid-width
+      // and #primary widths against the new page. Without this the home
+      // grid stays clamped at the previous page's width until the user
+      // wiggles the resize handle.
+      try { window.dispatchEvent(new Event('resize')) } catch {}
       return;
     }
 

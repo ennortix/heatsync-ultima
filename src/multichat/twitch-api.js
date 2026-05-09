@@ -1381,27 +1381,6 @@ async function renderTwitchTab() {
 
   const channel = getActiveTwitchChannel()
 
-  // YouTube/Kick: Twitch features (predictions, polls, rewards, color, clips) require
-  // the Twitch page context (auth cookie + GQL proxy). Show what's available instead.
-  if (hostPlatform === 'yt' || hostPlatform === 'kick') {
-    container.textContent = ''
-    const notice = document.createElement('div')
-    notice.className = 'hs-mc-pred-empty'
-    notice.style.cssText = 'padding:20px;text-align:center;'
-    const msg = document.createElement('div')
-    msg.className = 'hs-mc-pred-empty-text'
-    msg.textContent = hostPlatform === 'yt'
-      ? 'twitch features (predictions, polls, rewards, clips) are available when viewing on twitch'
-      : 'some features require the twitch page'
-    notice.appendChild(msg)
-    container.appendChild(notice)
-    // Popout chat still works — opens in new window
-    if (channel) {
-      container.appendChild(renderQuickLinks())
-    }
-    return
-  }
-
   if (!channel) {
     container.textContent = ''
     const empty = document.createElement('div')

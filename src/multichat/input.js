@@ -687,42 +687,124 @@ function initInput() {
     }, { signal: mcSignal })
   }
 
-  // Right-click on message → mute/unmute user (synced across all tabs + devices via server WS)
+  // Right-click on message → context menu (mute, whisper, copy, profile, cancel).
+  // Replaces the previous insta-mute behavior so accidental right-clicks don't
+  // silently 24h-mute someone.
   if (!window._hsMcMsgContextHandler) {
     window._hsMcMsgContextHandler = true;
     document.addEventListener('contextmenu', (e) => {
       const msg = e.target.closest('.hs-mc-msg');
       if (!msg) return;
-      // Don't intercept if clicking an emote (let emote handler handle it)
       if (findEmoteTarget(e.target)) return;
-
-      e.preventDefault();
-      const userEl = msg.querySelector('.hs-mc-user');
-      const username = userEl?.textContent?.trim()?.toLowerCase();
+      const userEl = msg.querySelector('.hs-mc-user:not(.hs-mc-reply-user)');
+      const username = userEl?.textContent?.trim()?.replace(/^@/, '').toLowerCase();
       if (!username) return;
-
-      let wasUnmute = false;
-      if (mutedUsers.has(username)) {
-        mutedUsers.delete(username);
-        wasUnmute = true;
-        showToast(`unmuted ${username}`, 'success');
-        // Sync: tell background to unmute (broadcasts to all tabs — server mute expires naturally)
-        safeSendMessage({ type: 'unmute_user', username });
-      } else {
-        mutedUsers.add(username);
-        showToast(`muted ${username} (24h)`, 'success');
-        // Sync: tell background to mute with 24h expiry (broadcasts to all tabs + server)
-        const expiresAt = Date.now() + 86400000;
-        safeSendMessage({ type: 'mute_user', username, expiresAt });
-      }
-      // Also persist locally for offline/fallback
-      chrome.storage.local.set({ heatsync_mc_muted: [...mutedUsers] });
-      // Strip destroys DOM irreversibly — drop those rows so renderMessages
-      // rebuilds them from the buffer's _renderedHtml cache.
-      if (wasUnmute) restoreMcUnmutedDom(username);
-      renderMessages(currentTab);
+      e.preventDefault();
+      showMcMsgContextMenu(e.clientX, e.clientY, msg, username);
     }, { signal: mcSignal });
   }
+}
+
+function _toggleMcMute(username) {
+  let wasUnmute = false
+  if (mutedUsers.has(username)) {
+    mutedUsers.delete(username)
+    wasUnmute = true
+    showToast(`unmuted ${username}`, 'success')
+    safeSendMessage({ type: 'unmute_user', username })
+  } else {
+    mutedUsers.add(username)
+    showToast(`muted ${username} (24h)`, 'success')
+    safeSendMessage({ type: 'mute_user', username, expiresAt: Date.now() + 86400000 })
+  }
+  chrome.storage.local.set({ heatsync_mc_muted: [...mutedUsers] })
+  if (wasUnmute) restoreMcUnmutedDom(username)
+  renderMessages(currentTab)
+}
+
+function _extractMcMsgText(msg) {
+  // Walk siblings after the username link, gathering text nodes + emote alts.
+  // textContent on the whole row leaks badge/timestamp/username junk; this
+  // gives the readable body a user would expect "copy message" to produce.
+  const userEl = msg.querySelector('.hs-mc-user:not(.hs-mc-reply-user)')
+  if (!userEl) return (msg.textContent || '').trim()
+  const parts = []
+  let node = userEl.nextSibling
+  while (node) {
+    if (node.nodeType === 3) {
+      parts.push(node.textContent)
+    } else if (node.nodeType === 1) {
+      const cls = node.classList
+      if (cls?.contains('hs-mc-platform-badge') || cls?.contains('hs-mc-badge') || cls?.contains('hs-mc-time') || cls?.contains('hs-mc-reply-ctx')) {
+        // skip
+      } else if (node.tagName === 'IMG' && node.alt) {
+        parts.push(node.alt)
+      } else {
+        const innerImg = node.querySelector?.('img[alt]')
+        if (innerImg) parts.push(innerImg.alt)
+        else parts.push(node.textContent || '')
+      }
+    }
+    node = node.nextSibling
+  }
+  return parts.join(' ').replace(/\s+/g, ' ').trim()
+}
+
+function _openWhisperFor(username) {
+  if (typeof switchTab === 'function') switchTab('whispers')
+  const input = document.getElementById('hs-mc-input')
+  if (!input) return
+  const prefill = `/w ${username} `
+  if (input.tagName === 'INPUT' || input.tagName === 'TEXTAREA') {
+    input.value = prefill
+    input.focus()
+    try { input.setSelectionRange(prefill.length, prefill.length) } catch {}
+  } else {
+    input.textContent = prefill
+    input.focus()
+  }
+}
+
+function showMcMsgContextMenu(x, y, msg, username) {
+  document.getElementById('hs-mc-msg-ctx')?.remove()
+  const menu = document.createElement('div')
+  menu.id = 'hs-mc-msg-ctx'
+  menu.style.cssText = 'position:fixed;z-index:2147483646;background:#000;border:1px solid #808080;padding:4px 0;min-width:160px;font:13px/1.2 inherit;color:#fff;user-select:none;'
+  const isMuted = mutedUsers.has(username)
+  const items = [
+    { label: isMuted ? `unmute ${username}` : `mute ${username} (24h)`, run: () => _toggleMcMute(username) },
+    { label: `whisper ${username}`, run: () => _openWhisperFor(username) },
+    { label: 'copy username', run: () => { try { navigator.clipboard.writeText(username) } catch {} } },
+    { label: 'copy message', run: () => { try { navigator.clipboard.writeText(_extractMcMsgText(msg)) } catch {} } },
+    { label: 'profile', run: () => window.open(`https://heatsync.org/user/${encodeURIComponent(username)}`, '_blank', 'noopener') },
+    { label: 'cancel', run: () => {} },
+  ]
+  for (const it of items) {
+    const row = document.createElement('div')
+    row.textContent = it.label
+    row.style.cssText = 'padding:6px 12px;cursor:pointer;color:#fff;background:#000;'
+    row.addEventListener('mouseenter', () => { row.style.background = '#fff'; row.style.color = '#000' })
+    row.addEventListener('mouseleave', () => { row.style.background = '#000'; row.style.color = '#fff' })
+    row.addEventListener('click', () => { dismiss(); it.run() })
+    menu.appendChild(row)
+  }
+  document.body.appendChild(menu)
+  const mw = menu.offsetWidth, mh = menu.offsetHeight
+  menu.style.left = Math.min(x, window.innerWidth - mw - 4) + 'px'
+  menu.style.top = Math.min(y, window.innerHeight - mh - 4) + 'px'
+  function dismiss() {
+    menu.remove()
+    document.removeEventListener('mousedown', outside, true)
+    document.removeEventListener('keydown', esc, true)
+    document.removeEventListener('contextmenu', outside, true)
+  }
+  function outside(ev) { if (!menu.contains(ev.target)) dismiss() }
+  function esc(ev) { if (ev.key === 'Escape') { ev.preventDefault(); dismiss() } }
+  setTimeout(() => {
+    document.addEventListener('mousedown', outside, true)
+    document.addEventListener('keydown', esc, true)
+    document.addEventListener('contextmenu', outside, true)
+  }, 0)
 }
 function applyMcMutes() {
   document.querySelectorAll('.hs-mc-msg').forEach(msg => {

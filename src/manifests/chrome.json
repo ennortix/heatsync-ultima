@@ -53,7 +53,7 @@
     },
     {
       "matches": ["https://*.twitch.tv/*", "https://kick.com/*", "https://*.kick.com/*", "https://www.youtube.com/*"],
-      "js": ["pcard-early.js"],
+      "js": ["early-layout.js", "pcard-early.js"],
       "run_at": "document_start"
     },
     {

@@ -3955,10 +3955,13 @@ function injectStyles() {
       0%, 100% { transform: scale(1); opacity: 1; }
       50% { transform: scale(1.04); opacity: 0.9; }
     }
-    /* Pause every animation inside the multichat panel when its host page
-       is hidden — twitch/kick/yt tabs in the background skip compositor
-       work entirely. Toggled by the visibilitychange handler in content.js. */
-    body.hs-ext-hidden #hs-mc-container * {
+    /* Pause our infinite animations inside the multichat panel when the
+       host page is hidden. Scoped to specific animated elements rather
+       than universal selectors — those caused selector-match thrash on
+       every state change in heatsync.org. */
+    body.hs-ext-hidden .hs-pcard-livedot,
+    body.hs-ext-hidden [style*="hs-heat-breathe"],
+    body.hs-ext-hidden [style*="hs-feed-heat-breathe"] {
       animation-play-state: paused !important;
     }
     .hs-post-link {

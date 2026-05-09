@@ -372,10 +372,11 @@ style.textContent = `
     0%, 100% { transform: scale(1); opacity: 1; }
     50% { transform: scale(1.04); opacity: 0.9; }
   }
-  /* Pause hs-heat-breathe (and any other extension animations) when
-     the host page is hidden. Saves compositor work on backgrounded
-     twitch/kick/yt tabs that have many tier-8+ heat messages. */
-  body.hs-ext-hidden * {
+  /* Pause our infinite heat-breathe animation when the host page is
+     hidden. Scoped to chat-line messages that we've decorated, not
+     the whole document — `*` against twitch's massive subtree caused
+     selector-match thrash. */
+  body.hs-ext-hidden .chat-line__message[data-hs-heat-applied] {
     animation-play-state: paused !important;
   }
 

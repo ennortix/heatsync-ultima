@@ -6742,6 +6742,38 @@ function injectStyles() {
       flex: 0 0 auto !important;
       margin: 0 0 -1px 0 !important;
     }
+    /* Vertical-tabs override for util buttons (C/T/F-/F+/⚙): the .hs-tabs-
+       right/.hs-tabs-left .hs-mc-tab rule above forces width:100% on every
+       tab, stretching util-btns to 90px and stacking them. Re-pin to 18px
+       squares (matches horizontal mode + heatsync.org chat-tile) so all 5
+       sit on one row above the platfilter. */
+    .hs-tabs-right .hs-mc-util-btn,
+    .hs-tabs-left .hs-mc-util-btn {
+      width: 18px !important;
+      max-width: 18px !important;
+      min-width: 18px !important;
+      padding: 0 !important;
+      flex: 0 0 18px !important;
+      margin: 0 -1px 0 0 !important;
+    }
+    /* Platfilter (T/K/Y) in vertical mode: stretch each button to fill its
+       row (3 buttons share the 90px column width). */
+    .hs-tabs-right .hs-mc-pf-btn,
+    .hs-tabs-left .hs-mc-pf-btn {
+      flex: 1 1 0 !important;
+      width: auto !important;
+      min-width: 0 !important;
+      max-width: none !important;
+      padding: 0 !important;
+      margin: 0 -1px 0 0 !important;
+    }
+    .hs-tabs-right #hs-mc-platfilter,
+    .hs-tabs-left #hs-mc-platfilter {
+      display: flex !important;
+      flex-direction: row !important;
+      width: 100% !important;
+      flex: 0 0 auto !important;
+    }
     .hs-tabs-right .hs-mc-tabs-scroll {
       display: flex;
       flex-direction: column;
@@ -6835,15 +6867,6 @@ function injectStyles() {
       z-index: 1001;
     }
     .hs-tabs-left #hs-mc-tabbar::-webkit-scrollbar { display: none; }
-    .hs-tabs-left .hs-mc-tab {
-      padding: 4px 6px;
-      font-size: 11px;
-      min-width: auto;
-      width: 100%;
-      text-align: center;
-      box-sizing: border-box;
-      flex: 0 0 auto;
-    }
     .hs-tabs-left .hs-mc-tabs-scroll {
       display: flex;
       flex-direction: column;
@@ -8376,21 +8399,66 @@ function injectStyles() {
     body.hs-platform-yt.hs-chat-bottom ytd-watch-flexy #primary {
       max-height: calc(100vh - var(--hs-chat-h, 35vh)) !important;
     }
-    /* YT's masthead is position:fixed and viewport-anchored — shrink it
-       so the search bar / icons don't slide under the chat overlay.
+    /* YT's masthead is position:fixed with width:100% (viewport-anchored).
+       Setting right alone without overriding width:100% makes the
+       browser compute left = -chatW — pushing burger + YT logo off the
+       LEFT edge of the screen. Anchor BOTH sides (left + right) and let
+       width auto-fit, so the masthead shrinks INTO the visible strip.
        Applies to every YT page: home, search, channel, VOD, live —
        the multichat panel is always there, masthead must always make room. */
     body.hs-platform-yt.hs-chat-right #masthead-container,
     body.hs-platform-yt.hs-chat-right ytd-masthead {
+      left: 0 !important;
       right: calc(var(--hs-chat-w, 340px) + 5px) !important;
+      width: auto !important;
     }
     body.hs-platform-yt.hs-chat-left #masthead-container,
     body.hs-platform-yt.hs-chat-left ytd-masthead {
       left: calc(var(--hs-chat-w, 340px) + 5px) !important;
+      right: 0 !important;
+      width: auto !important;
     }
     body.hs-platform-yt.hs-chat-top #masthead-container,
     body.hs-platform-yt.hs-chat-top ytd-masthead {
       top: calc(var(--hs-chat-h, 35vh) + 5px) !important;
+    }
+    /* YT's responsive @media rules use viewport width, but our masthead
+       is narrower (chat panel eats real estate). At our reduced widths
+       YT doesn't auto-collapse, so we drive it: hide the voice-search
+       and ai-companion buttons (non-essential, eat 40px each), then let
+       #center flex-shrink so the search input keeps a usable width. The
+       burger + logo (#start) and sign-in icons (#end) stay full-size. */
+    body.hs-platform-yt.hs-chat-right ytd-masthead #voice-search-button,
+    body.hs-platform-yt.hs-chat-right ytd-masthead #ai-companion-button,
+    body.hs-platform-yt.hs-chat-left ytd-masthead #voice-search-button,
+    body.hs-platform-yt.hs-chat-left ytd-masthead #ai-companion-button {
+      display: none !important;
+    }
+    body.hs-platform-yt.hs-chat-right ytd-masthead #center,
+    body.hs-platform-yt.hs-chat-left ytd-masthead #center {
+      flex: 1 1 auto !important;
+      min-width: 0 !important;
+    }
+    body.hs-platform-yt.hs-chat-right ytd-masthead ytd-searchbox,
+    body.hs-platform-yt.hs-chat-right ytd-masthead yt-searchbox,
+    body.hs-platform-yt.hs-chat-left ytd-masthead ytd-searchbox,
+    body.hs-platform-yt.hs-chat-left ytd-masthead yt-searchbox {
+      width: 100% !important;
+      min-width: 0 !important;
+      flex: 1 1 auto !important;
+      margin-left: 0 !important;
+      box-sizing: border-box !important;
+    }
+    body.hs-platform-yt.hs-chat-right ytd-masthead #search-form,
+    body.hs-platform-yt.hs-chat-left ytd-masthead #search-form {
+      min-width: 0 !important;
+      flex: 1 1 auto !important;
+    }
+    body.hs-platform-yt.hs-chat-right ytd-masthead #start,
+    body.hs-platform-yt.hs-chat-right ytd-masthead #end,
+    body.hs-platform-yt.hs-chat-left ytd-masthead #start,
+    body.hs-platform-yt.hs-chat-left ytd-masthead #end {
+      flex: 0 0 auto !important;
     }
 
     /* Reflow ALL YT content (every page type) into the viewport area NOT

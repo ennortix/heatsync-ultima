@@ -1017,7 +1017,7 @@
   let isProgrammaticScroll = false; // Flag to ignore programmatic scrolls
 
   // WYSIWYG mode (inline emote images in input)
-  let wysiwygEnabled = false;
+  let wysiwygEnabled = true;
 
   // Clickable links in chat messages (default on)
   let linksEnabled = true;
@@ -2995,8 +2995,17 @@
   async function loadWysiwygSetting() {
     try {
       const stored = await cachedUiSettings();
-      if (stored.ui_settings?.wysiwygEnabled !== undefined) {
-        wysiwygEnabled = stored.ui_settings.wysiwygEnabled;
+      const ui = stored.ui_settings || {};
+      // One-shot migration: default flipped from false→true; retire stale false
+      // saved when default was off, so existing users land on the new default.
+      if (!ui.wysiwygDefaultOn_v1) {
+        wysiwygEnabled = true;
+        saveUiSetting('wysiwygEnabled', true);
+        saveUiSetting('wysiwygDefaultOn_v1', true);
+        return;
+      }
+      if (ui.wysiwygEnabled !== undefined) {
+        wysiwygEnabled = ui.wysiwygEnabled;
       }
     } catch (e) {
       log('Error loading WYSIWYG setting:', e);
@@ -3583,7 +3592,7 @@
 
       const defaultsBtn = e.target.closest('.hs-mc-defaults-btn');
       if (defaultsBtn) {
-        wysiwygEnabled = false;
+        wysiwygEnabled = true;
         linksEnabled = true;
         linkPreviewsEnabled = true;
         viModeEnabled = false;
@@ -3603,7 +3612,7 @@
         for (const [k, v] of Object.entries(INLINE_NOTIF_TYPES)) inlineNotifs[k] = v.defaultOn;
         for (const [k, v] of Object.entries(HERMES_EVENT_TYPES)) hermesToggles[k] = v.defaultOn;
         const settings = {
-          wysiwygEnabled: false, linksEnabled: true, linkPreviewsEnabled: true, viMode: false,
+          wysiwygEnabled: true, linksEnabled: true, linkPreviewsEnabled: true, viMode: false,
           zebra: true, autoHideEmpty: false, timestamps: false,
           avatars: false, showPlatformBadges: true, showOfflineEvents: false,
           firstChatterGlow: true, keywordHighlights: '',

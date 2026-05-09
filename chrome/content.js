@@ -372,6 +372,12 @@ style.textContent = `
     0%, 100% { transform: scale(1); opacity: 1; }
     50% { transform: scale(1.04); opacity: 0.9; }
   }
+  /* Pause hs-heat-breathe (and any other extension animations) when
+     the host page is hidden. Saves compositor work on backgrounded
+     twitch/kick/yt tabs that have many tier-8+ heat messages. */
+  body.hs-ext-hidden * {
+    animation-play-state: paused !important;
+  }
 
   /* ============================================ */
   /* PROFILE CARD (username click)               */
@@ -8073,7 +8079,12 @@ window.addEventListener('pagehide', flushMsgCacheNow, { signal })
 window.addEventListener('beforeunload', flushMsgCacheNow, { signal })
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'hidden') flushMsgCacheNow()
+  // Toggle the body class our injected stylesheet uses to pause
+  // CSS animations (hs-heat-breathe and similar) while hidden.
+  document.body?.classList.toggle('hs-ext-hidden', document.hidden)
 }, { signal })
+// Apply initial state.
+if (document.hidden) document.body?.classList.add('hs-ext-hidden')
 
 // Auto-claim Twitch channel points bonus
 let autoClaimObserver = null

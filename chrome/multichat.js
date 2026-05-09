@@ -9810,6 +9810,10 @@ class IRC {
       }
     }
     cleanup.addListener(chrome.runtime?.onMessage, this._listener)
+    // Global twitch badges (mod sword, vip diamond, subscriber/0 star, etc.)
+    // were previously fetched in irc.ws.onopen — removed when WebSocket moved
+    // to BG. Without this, mod/sub fall back to TEXT badges instead of images.
+    try { fetchGlobalBadges() } catch {}
   }
 
   _handleMsg(msg) {
@@ -9888,6 +9892,9 @@ class IRC {
     if (this.channels.has(ch)) return
     this.channels.set(ch, new CircularBuffer(1500))
     log('Joined', ch)
+    // Pre-warm channel badges (sub tiers, FFZ custom mod/vip overrides) so
+    // restored history from BG renders with proper images on first paint.
+    try { fetchChannelBadges(ch) } catch {}
     try { chrome.runtime.sendMessage({ type: 'bg_irc_join', channel: ch }).catch(() => {}) } catch {}
     // Pull initial buffer from BG (in-memory; instant on warm SW)
     try {

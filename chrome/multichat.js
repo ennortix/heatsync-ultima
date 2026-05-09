@@ -24484,13 +24484,16 @@ const STORAGE_KEY = 'heatsync_multichat';
   // rAF 2 = post-paint).
   let _prepaintTornDown = false
   function tearDownPrepaint() {
-    if (_prepaintTornDown) return
-    _prepaintTornDown = true
     const html = document.documentElement
     const container = document.getElementById('hs-mc-container')
+    const firstRun = !_prepaintTornDown
+    _prepaintTornDown = true
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
+        // Always (re)apply on every call — container can be recreated on
+        // SPA navigation, and a fresh element won't carry the class.
         if (container) container.classList.add('hs-mc-shown')
+        if (!firstRun) return
         if (html.classList.contains('hs-prepaint-active')) {
           html.classList.add('hs-prepaint-fade')
         }
@@ -28010,9 +28013,12 @@ const STORAGE_KEY = 'heatsync_multichat';
         }
       }
       renderMessages(currentTab);
-      tearDownPrepaint()
       log('Auto-showed overlay on load');
     }
+    // Always reveal container — when overlay is reclaimed (SPA persist /
+    // re-mount), the visible-gated branch above is skipped and the
+    // container would stay at opacity:0. Idempotent via _prepaintTornDown.
+    tearDownPrepaint()
 
     // Ensure resize handle exists on left edge of chat panel
     if (hostPlatform === 'yt') {

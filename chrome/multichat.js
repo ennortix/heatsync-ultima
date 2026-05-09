@@ -21600,6 +21600,46 @@ function insertCompletionWysiwyg(match) {
   const existingUser = input.querySelector('span.hs-cycling-user');
   if (existingEmote) {
     if (match.url) {
+      // Re-check overlay state: cycling through Tab matches can move between
+      // overlay and non-overlay alternatives. Without this, the FIRST insert's
+      // overlay state sticks — every cycle stays inside the stack span and
+      // non-overlay matches appear to stack onto whatever's before them.
+      const resolved = (typeof lookupEmoteWithOverlay === 'function') ? lookupEmoteWithOverlay(match.name) : null
+      const wantsOverlay = !!resolved?.isOverlay
+      const stack = existingEmote.parentElement?.classList?.contains('hs-input-stack')
+        ? existingEmote.parentElement : null
+      if (stack && !wantsOverlay) {
+        // Pull the cycling img out of the stack and place it after the stack
+        // as a standalone unit. Strip the overlay class so its native sizing
+        // returns. If the stack ends up with one child, unwrap it back to a
+        // bare emote img.
+        existingEmote.classList.remove('hs-input-overlay')
+        stack.parentNode.insertBefore(existingEmote, stack.nextSibling)
+        // Insert a separator space so following typed text gets a word break
+        if (!existingEmote.nextSibling || existingEmote.nextSibling.textContent !== ' ') {
+          existingEmote.parentNode.insertBefore(document.createTextNode(' '), existingEmote.nextSibling)
+        }
+        if (stack.children.length === 1) {
+          const base = stack.firstElementChild
+          stack.parentNode.insertBefore(base, stack)
+          stack.remove()
+        } else if (stack.children.length === 0) {
+          stack.remove()
+        }
+      } else if (!stack && wantsOverlay) {
+        // Cycle landed on an overlay match while the cycling img is standalone.
+        // Find a preceding emote/stack and move the img into a stack on top.
+        let prev = existingEmote.previousSibling
+        while (prev && prev.nodeType === Node.TEXT_NODE && prev.textContent.trim() === '') {
+          const rm = prev; prev = prev.previousSibling; rm.remove()
+        }
+        if (prev && prev.nodeType === Node.ELEMENT_NODE && (
+          (prev.tagName === 'IMG' && prev.classList.contains('hs-input-emote')) ||
+          prev.classList?.contains('hs-input-stack')
+        )) {
+          stackInputEmote(prev, existingEmote)
+        }
+      }
       existingEmote.src = match.url;
       existingEmote.alt = match.name;
       existingEmote.dataset.emoteName = match.name;

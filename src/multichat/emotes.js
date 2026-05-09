@@ -1191,7 +1191,7 @@
   }
 
   // Periodically scan for new emotes
-  cleanup.setInterval(scanDomForEmotes, 10000, 'emote-scan');
+  cleanup.setIntervalIfVisible(scanDomForEmotes, 10000);
 
   // Process text and replace emote codes with images.
   // Supports 7TV zero-width (overlay) emotes that stack on base emotes.

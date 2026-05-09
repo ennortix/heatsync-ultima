@@ -8002,7 +8002,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       checkKickLive()
       const fastPoll = cleanup.setInterval(() => {
         checkKickLive()
-        if (kickLiveFound) { cleanup.clearInterval(fastPoll); cleanup.setInterval(checkKickLive, 10000) }
+        if (kickLiveFound) { cleanup.clearInterval(fastPoll); cleanup.setIntervalIfVisible(checkKickLive, 10000) }
       }, 1000)
       return
     }
@@ -8031,7 +8031,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
         }
       }
       checkYtLive()
-      cleanup.setInterval(checkYtLive, 4000)
+      cleanup.setIntervalIfVisible(checkYtLive, 4000)
       return
     }
     // Popout chat has no video — don't mark as offline
@@ -8064,7 +8064,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     }, 1000)
 
     // Steady-state polling
-    cleanup.setInterval(checkOffline, 5000)
+    cleanup.setIntervalIfVisible(checkOffline, 5000)
 
     // MutationObserver for instant transitions
     const root = document.querySelector('[class*="channel-root"]')
@@ -9180,27 +9180,11 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       renderMessages(currentTab);
     }
 
-    // Faster safety-net (was 5000ms — caused a 2-5s panel-gone window on Kick
-    // after the fast mount started landing during React's first reconciliation
-    // pass).
-    cleanup.setInterval(() => reinject(), 500, 'layout-check');
-
-    // Wide-scope MutationObserver: watches documentElement subtree so
-    // ANY removal of #hs-mc-container is caught — including when our
-    // container's React-owned parent is itself replaced (which would
-    // detach a parent-scoped observer and leave us blind).
-    let _checkScheduled = false
-    cleanup.trackObserver(new MutationObserver(() => {
-      if (spaReinitializing || _checkScheduled) return;
-      if (document.getElementById('hs-mc-container')) return;
-      _checkScheduled = true
-      // Coalesce per-frame: many React mutations fire in one tick; we only
-      // need to react once.
-      cleanup.raf(() => { _checkScheduled = false; reinject() })
-    }), 'layout-observer').observe(
-      document.documentElement,
-      { childList: true, subtree: true }
-    )
+    // Safety-net poll. Previously paired with a documentElement-scoped
+    // MutationObserver — that observer fired on every Twitch React
+    // reconciliation tick (huge sustained CPU). Removed in favor of poll-only.
+    // Skipped while tab is hidden so backgrounded tabs cost ~0.
+    cleanup.setIntervalIfVisible(() => reinject(), 500);
   }
 
   // ============================================
@@ -9442,6 +9426,6 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
   }
 
   // Fallback: polling in case MAIN world script didn't load
-  cleanup.setInterval(() => handleMcNav(), 5000, 'spa-nav-fallback');
+  cleanup.setIntervalIfVisible(() => handleMcNav(), 5000);
 
 })();

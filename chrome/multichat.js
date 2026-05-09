@@ -319,6 +319,12 @@ if (typeof window !== 'undefined') {
     return id
   }
 
+  function _setIntervalIfVisible(fn, ms) {
+    const id = setInterval(() => { if (!document.hidden) fn() }, ms)
+    _intervals.add(id)
+    return id
+  }
+
   function _clearInterval(id) {
     clearInterval(id)
     _intervals.delete(id)
@@ -417,6 +423,7 @@ if (typeof window !== 'undefined') {
 
   window.heatsyncCleanup = {
     setInterval: _setInterval,
+    setIntervalIfVisible: _setIntervalIfVisible,
     clearInterval: _clearInterval,
     setTimeout: _setTimeout,
     clearTimeout: _clearTimeout,
@@ -3104,6 +3111,7 @@ window.addEventListener('pagehide', () => lifecycle.abort())
 
 const cleanup = {
   setInterval(fn, ms) { const id = setInterval(fn, ms); _timers.intervals.push(id); return id },
+  setIntervalIfVisible(fn, ms) { const id = setInterval(() => { if (!document.hidden) fn() }, ms); _timers.intervals.push(id); return id },
   clearInterval(id) { clearInterval(id); const i = _timers.intervals.indexOf(id); if (i !== -1) _timers.intervals.splice(i, 1) },
   setTimeout(fn, ms) {
     const id = setTimeout(() => {
@@ -3612,19 +3620,26 @@ function injectStyles() {
       display: flex;
     }
 
-    /* Resize drag bar — convention: solid #ff8700, ≥6px, no labels.
-       Always visible so user knows the edge is grab-able. */
+    /* Resize drag bar — 3px visible #ff8700, ::before extends hit zone to ~11px. */
     #hs-mc-resize-handle {
       position: absolute;
       top: 0;
       left: 0;
-      width: 6px;
+      width: 3px;
       height: 100%;
       cursor: ew-resize;
       z-index: 2000;
       background: #ff8700;
       opacity: 0.7;
       transition: opacity 0.12s, background 0.12s;
+    }
+    #hs-mc-resize-handle::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: -4px;
+      right: -4px;
+      bottom: 0;
     }
     #hs-mc-resize-handle:hover,
     #hs-mc-resize-handle:active {
@@ -3637,13 +3652,21 @@ function injectStyles() {
       position: absolute;
       top: 0;
       left: 0;
-      width: 6px;
+      width: 3px;
       height: 100%;
       cursor: ew-resize;
       z-index: 2000;
       background: #ff8700;
       opacity: 0.7;
       transition: opacity 0.12s, background 0.12s;
+    }
+    #hs-yt-resize-handle::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: -4px;
+      right: -4px;
+      bottom: 0;
     }
     #hs-yt-resize-handle:hover,
     #hs-yt-resize-handle:active {
@@ -5018,8 +5041,11 @@ function injectStyles() {
     #hs-mc-input::placeholder {
       color: #808080;
     }
-    /* Contenteditable placeholder */
-    #hs-mc-input[contenteditable]:empty::before {
+    /* Contenteditable placeholder. Browsers leave a stray BR after focus/blur
+       cycles which breaks :empty — match BR-only-child too so the placeholder
+       still paints in that state. */
+    #hs-mc-input[contenteditable]:empty::before,
+    #hs-mc-input[contenteditable]:has(br:only-child)::before {
       content: attr(data-placeholder);
       color: #808080;
       pointer-events: none;
@@ -5224,49 +5250,49 @@ function injectStyles() {
       background: #fff;
     }
 
-    /* === Full-panel btop-style profile card === */
+    /* === Profile card — system sans, no chrome, badges-first === */
     .hs-pcard {
-      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-      padding: 14px 10px 8px 10px;
-      color: #ddd;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, "Helvetica Neue", Arial, sans-serif;
+      padding: 14px;
+      color: #fff;
       background: #000;
-      font-size: 12px;
-      line-height: 1.5;
+      font-size: 13px;
+      line-height: 1.4;
       box-sizing: border-box;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      height: 100%;
+      overflow-y: auto;
     }
+    /* Sections are pure spacing — drop chrome borders + label-on-top */
     .hs-pcard-section {
-      border: 1px solid #555;
-      margin-bottom: 10px;
-      padding: 10px 10px 8px 10px;
-      position: relative;
-      box-sizing: border-box;
+      border: 0; padding: 0; margin: 0; position: static; background: transparent;
     }
-    .hs-pcard-section-title {
-      position: absolute;
-      top: -8px;
-      left: 8px;
-      background: #000;
-      padding: 0 6px;
-      font-size: 10px;
-      color: #aaa;
-      font-weight: 700;
+    .hs-pcard-section-title { display: none; }
+    /* Section dividers — single 1px line, near-invisible info delimiter */
+    .hs-pcard-section + .hs-pcard-section {
+      border-top: 1px solid #1a1a1a; padding-top: 10px;
     }
-    .hs-pcard-id { border-color: #ff8700; }
-    .hs-pcard-id .hs-pcard-section-title { color: #ff8700; }
-    .hs-pcard-stream { border-color: #f00; }
-    .hs-pcard-stream .hs-pcard-section-title { color: #f00; }
-    .hs-pcard-recent { border-color: #888; }
-    .hs-pcard-actions { border-color: #444; }
 
     .hs-pcard-id-row { display: flex; gap: 12px; align-items: flex-start; }
     .hs-pcard-avatar {
       width: 56px; height: 56px; border-radius: 0; object-fit: cover;
-      border: 1px solid #444; flex-shrink: 0;
+      flex-shrink: 0;
     }
-    .hs-pcard-id-text { flex: 1; min-width: 0; }
-    .hs-pcard-name { font-size: 18px; font-weight: 700; color: #fff; margin-bottom: 4px; }
-    .hs-pcard-livedot { color: #f00; animation: hs-pcard-pulse 1.5s infinite; }
-    @keyframes hs-pcard-pulse { 50% { opacity: 0.35; } }
+    .hs-pcard-id-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+    .hs-pcard-name {
+      font-size: 18px; font-weight: 700; color: #fff;
+      display: flex; align-items: center; gap: 6px; line-height: 1.1;
+    }
+    .hs-pcard-livedot { color: #ff5050; font-size: 9px; animation: hs-pcard-pulse 1.5s infinite; }
+    @keyframes hs-pcard-pulse { 50% { opacity: 0.4; } }
+    .hs-pcard-badges {
+      display: flex; gap: 3px; flex-wrap: wrap; align-items: center; min-height: 18px;
+    }
+    .hs-pcard-badges img.hs-mc-badge-img {
+      width: 18px; height: 18px;
+    }
     .hs-pcard-pills { display: flex; flex-wrap: wrap; gap: 6px; font-size: 11px; }
     .hs-pcard-pill {
       padding: 2px 6px; border: 1px solid; text-decoration: none;
@@ -5275,63 +5301,59 @@ function injectStyles() {
     .hs-pcard-pill:hover { background: #fff; color: #000; border-color: #fff; }
     .hs-pcard-pill-twitch { color: #9146ff; border-color: #9146ff; }
     .hs-pcard-pill-kick { color: #53fc18; border-color: #53fc18; }
-    .hs-pcard-pill-youtube { color: #ff0000; border-color: #ff0000; }
+    .hs-pcard-pill-youtube { color: #ff5050; border-color: #ff5050; }
     .hs-pcard-pill-heatsync { color: #ff8700; border-color: #ff8700; }
-    .hs-pcard-pill-live { color: #f00; }
+    .hs-pcard-pill-live { color: #ff5050; }
     .hs-pcard-bio {
-      margin-top: 8px; padding: 4px 0; color: #aaa;
-      font-style: italic; font-size: 11px; border-top: 1px dashed #333;
+      color: #aaa; font-size: 12px; line-height: 1.4;
       white-space: pre-wrap; word-break: break-word;
+      border-left: 2px solid #1a1a1a; padding: 0 0 0 8px;
     }
-    .hs-pcard-bio-mention { color: #ff8700; cursor: pointer; font-style: normal; }
+    .hs-pcard-bio-mention { color: #ff8700; cursor: pointer; }
     .hs-pcard-bio-mention:hover { text-decoration: underline; }
-    .hs-pcard-bio-tag { color: #ff00ff; text-decoration: none; font-style: normal; }
+    .hs-pcard-bio-tag { color: #ff00ff; text-decoration: none; }
     .hs-pcard-bio-tag:hover { text-decoration: underline; }
     .hs-pcard-meta {
-      display: flex; flex-wrap: wrap; gap: 6px; align-items: center;
-      margin-top: 4px; font-size: 10px; line-height: 1.4;
+      display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+      font-size: 11px; color: #888; line-height: 1.4;
     }
-    .hs-pcard-age { color: #808080; }
+    .hs-pcard-age { color: #888; }
     .hs-pcard-role {
-      padding: 0 4px; font-size: 9px; font-weight: 700; text-transform: uppercase;
-      letter-spacing: 0.5px;
+      padding: 0 5px; font-size: 10px; font-weight: 700; line-height: 1.6;
     }
     .hs-pcard-role.partner { background: #ffaa00; color: #000; }
-    .hs-pcard-role.affiliate { background: #808080; color: #fff; }
+    .hs-pcard-role.affiliate { background: #555; color: #fff; }
     .hs-pcard-verified {
       display: inline-flex; align-items: center; justify-content: center;
-      width: 12px; height: 12px; font-size: 9px; font-weight: 700;
+      width: 14px; height: 14px; font-size: 10px; font-weight: 700;
     }
     .hs-pcard-verified.twitch { background: #9146ff; color: #fff; }
     .hs-pcard-verified.kick { background: #53fc18; color: #000; }
-    .hs-pcard-rel { color: #ff8700; font-weight: 600; margin-top: 4px; }
-    .hs-pcard-link { color: #ff8700; text-decoration: none; font-weight: 700; }
+    .hs-pcard-rel { color: #ff8700; font-weight: 600; font-size: 12px; margin-top: 4px; }
+    .hs-pcard-link { color: #ff8700; text-decoration: none; font-weight: 600; }
     .hs-pcard-link:hover { text-decoration: underline; }
     .hs-pcard-msg {
-      display: flex; gap: 6px; padding: 1px 0;
-      font-size: 11px; align-items: baseline;
+      display: flex; gap: 6px; padding: 2px 0;
+      font-size: 13px; align-items: baseline;
     }
-    .hs-pcard-msg-ts { color: #666; flex-shrink: 0; font-size: 10px; }
+    .hs-pcard-msg-ts { color: #555; flex-shrink: 0; font-size: 11px; min-width: 38px; }
     .hs-pcard-msg-plat {
-      flex-shrink: 0; font-size: 9px; padding: 0 3px; border: 1px solid;
-      font-weight: 700; line-height: 1.4;
+      flex-shrink: 0; font-size: 10px; padding: 0 3px;
+      font-weight: 600; line-height: 1.5; color: #888;
     }
     .hs-pcard-msg-text {
-      color: #ddd; word-break: break-word; overflow-wrap: anywhere;
+      color: #fff; word-break: break-word; overflow-wrap: anywhere; flex: 1;
     }
     .hs-pcard-action-grid {
-      display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-      gap: 4px;
+      display: flex; flex-wrap: wrap; gap: 4px;
     }
     .hs-pcard-action {
-      background: #0a0a0a; color: #ddd; border: 1px solid #444;
-      padding: 6px 8px; cursor: pointer; font-family: inherit; font-size: 11px;
-      text-align: left; box-sizing: border-box;
+      background: transparent; color: #fff; border: 1px solid #333;
+      padding: 6px 12px; cursor: pointer; font-family: inherit; font-size: 13px;
+      text-align: center; box-sizing: border-box;
     }
-    .hs-pcard-action:hover:not(:disabled) { background: #fff; color: #000; }
-    .hs-pcard-action:hover:not(:disabled) .hs-pcard-kbd { color: #000; }
+    .hs-pcard-action:hover:not(:disabled) { background: #fff; color: #000; border-color: #fff; }
     .hs-pcard-action:disabled { opacity: 0.4; cursor: not-allowed; }
-    .hs-pcard-kbd { color: #ff8700; font-weight: 700; }
 
     /* Per-tab platform filter toggles (T/K/Y). Sits AFTER the util cluster
        (DOM order). Horizontal mode: tight content-sized strip on far right.
@@ -8340,6 +8362,103 @@ function injectStyles() {
     body.hs-platform-twitch.hs-twitch-no-channel.hs-chat-bottom {
       height: calc(100vh - var(--hs-chat-h, 35vh)) !important;
       overflow-y: hidden !important;
+    }
+
+    /* --- KICK non-channel pages (/browse, /categories, /following,
+       /search, /settings, …): #channel-chatroom doesn't exist, so we
+       body-mount as a position:fixed overlay and squeeze kick's <main>
+       so its content doesn't underlap the panel. Mirror of the twitch
+       no-channel rules above. --- */
+    body.hs-platform-kick.hs-kick-no-channel.hs-chat-right #hs-mc-container,
+    body.hs-platform-kick.hs-kick-no-channel.hs-chat-left #hs-mc-container,
+    body.hs-platform-kick.hs-kick-no-channel.hs-chat-top #hs-mc-container,
+    body.hs-platform-kick.hs-kick-no-channel.hs-chat-bottom #hs-mc-container {
+      position: fixed !important;
+      z-index: 9999 !important;
+      background: #000 !important;
+      box-sizing: border-box !important;
+      margin: 0 !important;
+    }
+    body.hs-platform-kick.hs-kick-no-channel.hs-chat-right #hs-mc-container {
+      top: 0 !important;
+      bottom: 0 !important;
+      right: 0 !important;
+      left: auto !important;
+      width: var(--hs-chat-w, 340px) !important;
+      height: auto !important;
+    }
+    body.hs-platform-kick.hs-kick-no-channel.hs-chat-left #hs-mc-container {
+      top: 0 !important;
+      bottom: 0 !important;
+      left: 0 !important;
+      right: auto !important;
+      width: var(--hs-chat-w, 340px) !important;
+      height: auto !important;
+    }
+    body.hs-platform-kick.hs-kick-no-channel.hs-chat-top #hs-mc-container {
+      top: 0 !important;
+      left: 0 !important;
+      right: 0 !important;
+      bottom: auto !important;
+      width: 100vw !important;
+      height: var(--hs-chat-h, 35vh) !important;
+    }
+    body.hs-platform-kick.hs-kick-no-channel.hs-chat-bottom #hs-mc-container {
+      bottom: 0 !important;
+      left: 0 !important;
+      right: 0 !important;
+      top: auto !important;
+      width: 100vw !important;
+      height: var(--hs-chat-h, 35vh) !important;
+    }
+    body.hs-platform-kick.hs-kick-no-channel.hs-chat-right {
+      width: calc(100vw - var(--hs-chat-w, 340px)) !important;
+      overflow-x: hidden !important;
+    }
+    body.hs-platform-kick.hs-kick-no-channel.hs-chat-left {
+      width: calc(100vw - var(--hs-chat-w, 340px)) !important;
+      margin-left: var(--hs-chat-w, 340px) !important;
+      overflow-x: hidden !important;
+    }
+    body.hs-platform-kick.hs-kick-no-channel.hs-chat-top {
+      margin-top: var(--hs-chat-h, 35vh) !important;
+      height: calc(100vh - var(--hs-chat-h, 35vh)) !important;
+      overflow-y: hidden !important;
+    }
+    body.hs-platform-kick.hs-kick-no-channel.hs-chat-bottom {
+      height: calc(100vh - var(--hs-chat-h, 35vh)) !important;
+      overflow-y: hidden !important;
+    }
+    /* On no-channel pages, the existing kick.hs-chat-left main padding rule
+       (padding-left: var(--hs-chat-w)) is wrong — there's no #channel-
+       chatroom to anchor against and we already shifted body via
+       margin-left. Cancel the padding so main flows naturally inside the
+       shrunken body. */
+    body.hs-platform-kick.hs-kick-no-channel.hs-chat-left main,
+    body.hs-platform-kick.hs-kick-no-channel.hs-chat-right main,
+    body.hs-platform-kick.hs-kick-no-channel.hs-chat-top main,
+    body.hs-platform-kick.hs-kick-no-channel.hs-chat-bottom main {
+      padding-left: 0 !important;
+      padding-right: 0 !important;
+      padding-top: 0 !important;
+      padding-bottom: 0 !important;
+    }
+    /* Kick wraps content in a flex container with w-xvw (= 100vw)
+       which ignores the body width shrink — main ends up overflowing
+       behind our panel. Force every viewport-sized wrapper inside the
+       shrunken body back down to 100% so the grid reflows live as the
+       resize handle drags. h-xvh is the vertical equivalent for chat-top/
+       chat-bottom. */
+    body.hs-platform-kick.hs-kick-no-channel [class*="w-xvw"],
+    body.hs-platform-kick.hs-kick-no-channel main,
+    body.hs-platform-kick.hs-kick-no-channel #main-container {
+      width: 100% !important;
+      max-width: 100% !important;
+    }
+    body.hs-platform-kick.hs-kick-no-channel.hs-chat-top [class*="h-xvh"],
+    body.hs-platform-kick.hs-kick-no-channel.hs-chat-bottom [class*="h-xvh"] {
+      height: 100% !important;
+      max-height: 100% !important;
     }
 
     /* Auth/API status banner — pinned to top edge of the chat panel as a
@@ -11811,7 +11930,7 @@ async function sendKickMessage(kickSlug, text) {
   }
 
   // Periodically scan for new emotes
-  cleanup.setInterval(scanDomForEmotes, 10000, 'emote-scan');
+  cleanup.setIntervalIfVisible(scanDomForEmotes, 10000);
 
   // Process text and replace emote codes with images.
   // Supports 7TV zero-width (overlay) emotes that stack on base emotes.
@@ -23014,7 +23133,18 @@ function renderProfileCardView() {
     dot.textContent = '●'
     nameLine.appendChild(dot)
   }
-  nameLine.appendChild(document.createTextNode(' ' + (data?.display_name || username)))
+  const nameText = document.createElement('span')
+  nameText.textContent = data?.display_name || username
+  // Apply 7TV paint to the display name when available — same style string
+  // chat uses, so cards match the in-flow username treatment.
+  try {
+    const tid = data?.twitch_user_id || data?.twitch_id || null
+    if (tid && typeof getMcPaintStyle === 'function') {
+      const ps = getMcPaintStyle(String(tid))
+      if (ps) nameText.style.cssText = ps
+    }
+  } catch {}
+  nameLine.appendChild(nameText)
   idText.appendChild(nameLine)
 
   // Platform pills
@@ -23031,6 +23161,31 @@ function renderProfileCardView() {
   }
   pills.appendChild(pcMakePill('heatsync', username))
   idText.appendChild(pills)
+
+  // Badges row — twitch native (sub/mod/vip/etc) + 7TV/FFZ/BTTV/Chatterino. The
+  // helper fns build escaped <img> markup with internal escapeHtml on every
+  // attribute; createContextualFragment parses without executing scripts so we
+  // get the same render path chat uses without an innerHTML write.
+  try {
+    const userId = data?.twitch_user_id || data?.twitch_id || null
+    const recent = (typeof getRecentMessagesFromUser === 'function') ? getRecentMessagesFromUser(username) : []
+    const recentTwitch = recent.find(m => (m.platform || 'twitch') === 'twitch' && m.badges)
+    let html = ''
+    if (recentTwitch && typeof renderBadges === 'function') {
+      html += renderBadges(recentTwitch.badges, recentTwitch.channel)
+    }
+    if (userId && typeof renderThirdPartyBadges === 'function') {
+      html += renderThirdPartyBadges(String(userId))
+    }
+    if (html) {
+      const row = document.createElement('div')
+      row.className = 'hs-pcard-badges'
+      const range = document.createRange()
+      range.selectNodeContents(row)
+      row.appendChild(range.createContextualFragment(html))
+      idText.appendChild(row)
+    }
+  } catch {}
 
   if (data?.bio) {
     const bio = document.createElement('div')
@@ -23225,34 +23380,24 @@ function renderProfileCardView() {
   const youBlock = !!(data?.relationship?.youBlock ?? data?.relationship?.isBlocked)
   const profileId = data?.id || data?.userId || null
 
+  // Platform-link buttons (twitch/kick/yt/heatsync) live in the pills row above —
+  // dropped here to kill bloat. These are the actual relationship/state actions.
   const actions = [
-    { key: 't', label: 'twitch', fn: () => pcOpenExt('https://twitch.tv/' + (data?.twitch_username || username)) },
-    { key: 'k', label: 'kick', fn: () => pcOpenExt('https://kick.com/' + (data?.kick_username || username)) },
-    { key: 'y', label: 'youtube', fn: () => pcOpenExt('https://youtube.com/@' + (data?.youtube_username || username)) },
-    { key: 'h', label: 'heatsync', fn: () => pcOpenExt('https://heatsync.org/user/' + username) },
-    { key: 'f', label: youFollow ? 'unfollow' : 'follow', fn: () => pcToggleFollow(profileId, username, youFollow), disabled: !profileId },
-    { key: 'w', label: 'whisper', fn: () => pcDoWhisper(username) },
-    { key: 'd', label: 'dm', fn: () => pcDoDm(username) },
-    { key: 'm', label: 'mention', fn: () => pcMention(data?.display_name || username) },
-    { key: 'x', label: isMuted ? 'unmute' : 'mute', fn: () => pcToggleMute(username) },
-    { key: 'b', label: youBlock ? 'unblock' : 'block', fn: () => pcToggleBlock(profileId, username, youBlock), disabled: !profileId },
-    { key: '+', label: inChannels ? 'in channels' : 'add channel', fn: () => pcAddAsChannel(username), disabled: inChannels },
-    { key: 'esc', label: 'close', fn: closeProfileCard },
+    { label: youFollow ? 'unfollow' : 'follow', fn: () => pcToggleFollow(profileId, username, youFollow), disabled: !profileId },
+    { label: 'whisper', fn: () => pcDoWhisper(username) },
+    { label: 'dm', fn: () => pcDoDm(username) },
+    { label: 'mention', fn: () => pcMention(data?.display_name || username) },
+    { label: isMuted ? 'unmute' : 'mute', fn: () => pcToggleMute(username) },
+    { label: youBlock ? 'unblock' : 'block', fn: () => pcToggleBlock(profileId, username, youBlock), disabled: !profileId },
+    { label: inChannels ? 'in channels' : 'add channel', fn: () => pcAddAsChannel(username), disabled: inChannels },
+    { label: 'close', fn: closeProfileCard },
   ]
 
   for (const a of actions) {
     const btn = document.createElement('button')
     btn.className = 'hs-pcard-action'
     if (a.disabled) btn.disabled = true
-    btn.dataset.pcKey = a.key
-    const kbd = document.createElement('span')
-    kbd.className = 'hs-pcard-kbd'
-    kbd.textContent = `[${a.key}]`
-    const lab = document.createElement('span')
-    lab.className = 'hs-pcard-actlabel'
-    lab.textContent = ' ' + a.label
-    btn.appendChild(kbd)
-    btn.appendChild(lab)
+    btn.textContent = a.label
     btn.addEventListener('click', a.fn)
     grid.appendChild(btn)
   }
@@ -27740,8 +27885,19 @@ const STORAGE_KEY = 'heatsync_multichat';
         }
       }, { once: true })
     } else if (isKick) {
-      parent = chatRoom.parentElement
-      chatRoom.after(container)
+      if (chatRoom) {
+        parent = chatRoom.parentElement
+        chatRoom.after(container)
+      } else {
+        // No #channel-chatroom on this Kick URL (browse, settings, search,
+        // categories, …) — body-mount as a position:fixed overlay via the
+        // hs-kick-no-channel CSS rules. Same teardown contract as Twitch.
+        parent = document.body
+        parent.appendChild(container)
+        mcSignal.addEventListener('abort', () => {
+          if (container && container.parentElement === document.body) container.remove()
+        }, { once: true })
+      }
     } else {
       // Twitch: prefer chat-shell on channel pages (preserves theatre/persistent
       // -player layout). Fall back to <body> on non-channel pages (directory,
@@ -27797,13 +27953,11 @@ const STORAGE_KEY = 'heatsync_multichat';
                  document.querySelector('.chat-room')
     }
 
-    // Twitch non-channel pages (/directory, /settings, /videos, …) have no
-    // chat-shell. Fall through with chatRoom=null so getOrCreateHsContainer
-    // body-mounts the panel as a position:fixed overlay. YT also
-    // body-mounts (getOrCreateHsContainer always appends to body on YT)
-    // so the panel persists across home/search/channel/watch navs. Kick
-    // keeps the hard guard — no body-mount fallback there yet.
-    if (!chatRoom && isKick) return;
+    // Non-channel pages (Twitch /directory, Kick /browse, /categories,
+    // YT home/search) have no chat-shell / #channel-chatroom. Fall
+    // through with chatRoom=null so getOrCreateHsContainer body-mounts
+    // the panel as a position:fixed overlay. Panel persists across
+    // every SPA nav on all three platforms.
 
     // Transform fix handled by CSS (#hs-chat-transform-fix) + MutationObserver.
     // No parent tree walking — it displaced the collapse arrow.
@@ -30583,6 +30737,17 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     document.body.classList.toggle('hs-twitch-no-channel', !onChannel && !popout);
   }
 
+  // Mirror of updateTwitchNoChannelClass for Kick. #channel-chatroom is
+  // present only on /<channel> pages; absent on /browse, /categories,
+  // /following, /search, /settings, etc. CSS keyed off this flips the
+  // panel to position:fixed overlay and squeezes <main> width/height.
+  function updateKickNoChannelClass() {
+    if (!isKick) return;
+    const onChannel = !!document.getElementById('channel-chatroom');
+    const popout = document.body.classList.contains('hs-popout');
+    document.body.classList.toggle('hs-kick-no-channel', !onChannel && !popout);
+  }
+
   function setupTwitchSideNavObserver() {
     if (hostPlatform !== 'twitch') return;
     document.documentElement.style.setProperty('--hs-twitch-sidenav-w', _twitchSideNavW + 'px');
@@ -30621,6 +30786,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       setupTwitchSideNavObserver();
       setupTwitchTopNavObserver();
       updateTwitchNoChannelClass();
+      updateKickNoChannelClass();
       applyChatPosition();
     } catch (e) {
       log('Error loading chat position:', e);
@@ -31537,7 +31703,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       checkKickLive()
       const fastPoll = cleanup.setInterval(() => {
         checkKickLive()
-        if (kickLiveFound) { cleanup.clearInterval(fastPoll); cleanup.setInterval(checkKickLive, 10000) }
+        if (kickLiveFound) { cleanup.clearInterval(fastPoll); cleanup.setIntervalIfVisible(checkKickLive, 10000) }
       }, 1000)
       return
     }
@@ -31566,7 +31732,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
         }
       }
       checkYtLive()
-      cleanup.setInterval(checkYtLive, 4000)
+      cleanup.setIntervalIfVisible(checkYtLive, 4000)
       return
     }
     // Popout chat has no video — don't mark as offline
@@ -31599,7 +31765,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     }, 1000)
 
     // Steady-state polling
-    cleanup.setInterval(checkOffline, 5000)
+    cleanup.setIntervalIfVisible(checkOffline, 5000)
 
     // MutationObserver for instant transitions
     const root = document.querySelector('[class*="channel-root"]')
@@ -31624,11 +31790,10 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       // hidden) are gated separately on `:not(.hs-offline)` so non-live
       // pages keep YouTube's native layout intact.
     } else if (isKick) {
-      // Kick: run on channel pages (/<channel>) or popout
-      const isKickChannel = location.pathname.match(/^\/[a-zA-Z0-9_-]+\/?$/);
-      if (!isKickChannel) return;
-      const kickPath = location.pathname.replace(/\/$/, '').slice(1).toLowerCase();
-      if (['categories', 'following', 'search', 'settings'].includes(kickPath)) return;
+      // Kick: persistent overlay across every URL — channel, browse,
+      // categories, search, following, settings — so the panel survives
+      // SPA nav. body-mount fallback in getOrCreateHsContainer when
+      // #channel-chatroom is absent.
     } else {
       // Twitch: persistent overlay across every URL — directory, settings,
       // videos, etc. all keep the panel mounted. getOrCreateHsContainer
@@ -32606,10 +32771,23 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
         try { window.dispatchEvent(new Event('resize')) } catch {}
       });
     } else if (isKick) {
-      waitForMount(
-        () => document.getElementById('channel-chatroom') || document.querySelector('[id*="chatroom"]'),
-        'Kick chatroom'
-      );
+      // Kick non-channel pages (/browse, /categories, /following, /search,
+      // /settings, …) never mount #channel-chatroom. Body-mount immediately
+      // so the persistent overlay appears without waiting on the 15s safety
+      // timeout. Single-segment paths likely become a channel page once
+      // chatroom mounts; waitForMount handles that.
+      const isPopout = document.body.classList.contains('hs-popout');
+      const couldBeChannel = !!location.pathname.match(/^\/[a-zA-Z0-9_-]+\/?$/) && !isPopout;
+      if (!couldBeChannel) {
+        ensureUIElements();
+        switchTab(_savedActiveTab || 'live');
+        startLayoutWatcher();
+      } else {
+        waitForMount(
+          () => document.getElementById('channel-chatroom') || document.querySelector('[id*="chatroom"]'),
+          'Kick chatroom'
+        );
+      }
     } else {
       // Twitch: try to hook into React, fall back to MutationObserver
       tryHookReact();
@@ -32703,27 +32881,11 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       renderMessages(currentTab);
     }
 
-    // Faster safety-net (was 5000ms — caused a 2-5s panel-gone window on Kick
-    // after the fast mount started landing during React's first reconciliation
-    // pass).
-    cleanup.setInterval(() => reinject(), 500, 'layout-check');
-
-    // Wide-scope MutationObserver: watches documentElement subtree so
-    // ANY removal of #hs-mc-container is caught — including when our
-    // container's React-owned parent is itself replaced (which would
-    // detach a parent-scoped observer and leave us blind).
-    let _checkScheduled = false
-    cleanup.trackObserver(new MutationObserver(() => {
-      if (spaReinitializing || _checkScheduled) return;
-      if (document.getElementById('hs-mc-container')) return;
-      _checkScheduled = true
-      // Coalesce per-frame: many React mutations fire in one tick; we only
-      // need to react once.
-      cleanup.raf(() => { _checkScheduled = false; reinject() })
-    }), 'layout-observer').observe(
-      document.documentElement,
-      { childList: true, subtree: true }
-    )
+    // Safety-net poll. Previously paired with a documentElement-scoped
+    // MutationObserver — that observer fired on every Twitch React
+    // reconciliation tick (huge sustained CPU). Removed in favor of poll-only.
+    // Skipped while tab is hidden so backgrounded tabs cost ~0.
+    cleanup.setIntervalIfVisible(() => reinject(), 500);
   }
 
   // ============================================
@@ -32790,6 +32952,43 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     }, 4000, 'twitch-soft-nav-finalize');
   }
 
+  // Kick mirror of softTwitchNav — keep the panel mounted across SPA nav.
+  // Pre-emptively migrate to <body> so kick's React teardown of the
+  // #channel-chatroom region doesn't take it down, refresh the no-channel
+  // class for the new URL, and reparent into a freshly-mounted #channel-
+  // chatroom once it appears (channel pages).
+  function softKickNav() {
+    const container = document.getElementById('hs-mc-container');
+    if (container && container.parentElement && container.parentElement !== document.body) {
+      document.body.appendChild(container);
+    }
+    try { updateKickNoChannelClass() } catch (_) {}
+    let done = false;
+    const tryReparent = () => {
+      if (done) return true;
+      const chatRoom = document.getElementById('channel-chatroom');
+      const c = document.getElementById('hs-mc-container');
+      if (chatRoom && c && c.previousElementSibling !== chatRoom) {
+        chatRoom.after(c);
+        try { updateKickNoChannelClass() } catch (_) {}
+        done = true;
+        return true;
+      }
+      return false;
+    };
+    if (tryReparent()) return;
+    const obs = new MutationObserver(() => { if (tryReparent()) obs.disconnect() });
+    obs.observe(document.documentElement, { childList: true, subtree: true });
+    cleanup.trackObserver(obs);
+    cleanup.setTimeout(() => {
+      if (!done) {
+        done = true;
+        obs.disconnect();
+        try { updateKickNoChannelClass() } catch (_) {}
+      }
+    }, 4000, 'kick-soft-nav-finalize');
+  }
+
   function handleMcNav() {
     if (location.pathname === lastPath) return
     lastPath = location.pathname;
@@ -32797,12 +32996,20 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     // Re-evaluate body-mount overlay state for the new URL before teardown so
     // CSS rules flip ahead of the panel reappearing on the new page.
     try { updateTwitchNoChannelClass() } catch (_) {}
+    try { updateKickNoChannelClass() } catch (_) {}
 
     // Twitch SPA nav: skip the destroy+rebuild path entirely. The panel
     // (and IRC, and feed state) all survive intact — see softTwitchNav.
     // Popout chat is exempt since it never SPA-navigates between URLs.
     if (hostPlatform === 'twitch' && !document.body.classList.contains('hs-popout')) {
       softTwitchNav();
+      return;
+    }
+
+    // Kick SPA nav: same soft path as Twitch. Panel + kickChat persist;
+    // body class refreshes for the new URL.
+    if (isKick && !document.body.classList.contains('hs-popout')) {
+      softKickNav();
       return;
     }
 
@@ -32920,7 +33127,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
   }
 
   // Fallback: polling in case MAIN world script didn't load
-  cleanup.setInterval(() => handleMcNav(), 5000, 'spa-nav-fallback');
+  cleanup.setIntervalIfVisible(() => handleMcNav(), 5000);
 
 
 }

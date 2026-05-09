@@ -54,6 +54,7 @@ const overlayMap = new WeakMap()
 // Helpers matching old cleanup API but wired to AbortController
 const cleanup = {
   setInterval(fn, ms) { const id = setInterval(fn, ms); _timers.intervals.push(id); return id },
+  setIntervalIfVisible(fn, ms) { const id = setInterval(() => { if (!document.hidden) fn() }, ms); _timers.intervals.push(id); return id },
   clearInterval(id) { clearInterval(id); const idx = _timers.intervals.indexOf(id); if (idx !== -1) _timers.intervals.splice(idx, 1) },
   clearTimeout(id) { clearTimeout(id); const idx = _timers.timeouts.indexOf(id); if (idx !== -1) _timers.timeouts.splice(idx, 1) },
   setTimeout(fn, ms) {
@@ -1590,14 +1591,15 @@ document.addEventListener('mouseout', (e) => {
   }
 }, { capture: true, signal });
 
-// Fallback: mousemove killswitch — if mouse isn't over an emote img, nuke the overlay
+// Combined mousemove killswitch (overlay + preview). Single dispatch, passive.
+// _hsPreviewKill is registered later by the emote hover module.
 document.addEventListener('mousemove', throttle((e) => {
-  if (!activeOverlay) return;
-  if (!isEmoteImage(e.target)) {
+  if (activeOverlay && !isEmoteImage(e.target)) {
     activeOverlay.remove();
     activeOverlay = null;
   }
-}, 16), { signal });
+  if (typeof window._hsPreviewKill === 'function') window._hsPreviewKill(e);
+}, 16), { passive: true, signal });
 
 // Emote preloading removed — browser caches images natively after first render.
 // Firefox ORB blocks moz-extension:// origin preloads anyway.
@@ -5190,14 +5192,15 @@ function updateEmoteState(hash, emoteName, state) {
     }
   }, 'emote-hover-mouseout', true);
 
-  // BULLETPROOF: mousemove kills preview if not on an emote — no lingering, no delay
-  cleanup.addEventListener(document, 'mousemove', throttle((e) => {
+  // mousemove preview killswitch — dispatched by the combined listener above
+  // (single addEventListener for both overlay+preview, passive, 60fps).
+  window._hsPreviewKill = (e) => {
     if (!currentWrapper) return
     const target = e.target
     if (!target || !target.closest) return
     if (target.closest('.heatsync-emote-wrapper') || target.closest('.heatsync-emote-preview')) return
     hidePreview()
-  }, 16), 'emote-hover-mousemove-kill')
+  }
 
   log(' ✅ Emote hover preview setup');
 })();
@@ -7123,8 +7126,10 @@ function watchForNewMessages() {
         }
       });
 
-      // Detect timeout/ban: two cases to handle
-      if (dimTimeoutsEnabled) {
+      // Detect timeout/ban: two cases to handle.
+      // Short-circuit: if we have no recent message bodies cached, neither
+      // case can match — skip the closest()/querySelector() walks entirely.
+      if (dimTimeoutsEnabled && originalMessageBodies.size > 0) {
         // Case 1: Twitch replaces body with "message deleted" (mod view / show deleted msgs)
         if (mutation.target) {
           const msgEl = mutation.target.closest?.('.chat-line__message')
@@ -8065,11 +8070,11 @@ try {
 } catch {}
 
 // Fallback: polling in case MAIN world script didn't load (e.g. Firefox edge cases)
-cleanup.setInterval(() => handleNavigation(), 5000, 'url-watcher-fallback');
+cleanup.setIntervalIfVisible(() => handleNavigation(), 5000);
 
 // Check if observed container was replaced by React (e.g. after sending a message)
 // Always compare against live DOM — old container may still be isConnected but orphaned from React tree
-cleanup.setInterval(() => {
+cleanup.setIntervalIfVisible(() => {
   const freshContainer = findChatContainer();
   if (freshContainer && freshContainer !== observedContainer) {
     log(' 🔄 Chat container changed, re-hooking observer');
@@ -8084,14 +8089,14 @@ cleanup.setInterval(() => {
     if (messageObserver) { cleanup.untrackObserver(messageObserver); messageObserver = null; }
     observedContainer = null;
   }
-}, 2000, 'observer-health-check');
+}, 2000);
 
 // Periodic re-scan to catch messages that might have been missed (10s — observer handles most)
-cleanup.setInterval(() => {
+cleanup.setIntervalIfVisible(() => {
   if (emoteInventory.length > 0 || globalEmotes.length > 0) {
     processExistingMessages();
   }
-}, 10000, 'periodic-rescan');
+}, 10000);
 
 // Flush message cache on page hide/unload so we don't lose the last 5s.
 // pagehide+visibilitychange are more reliable than beforeunload on mobile/bfcache.

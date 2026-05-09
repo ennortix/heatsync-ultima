@@ -43,6 +43,7 @@ window.addEventListener('pagehide', () => lifecycle.abort())
 
 const cleanup = {
   setInterval(fn, ms) { const id = setInterval(fn, ms); _timers.intervals.push(id); return id },
+  setIntervalIfVisible(fn, ms) { const id = setInterval(() => { if (!document.hidden) fn() }, ms); _timers.intervals.push(id); return id },
   clearInterval(id) { clearInterval(id); const i = _timers.intervals.indexOf(id); if (i !== -1) _timers.intervals.splice(i, 1) },
   setTimeout(fn, ms) {
     const id = setTimeout(() => {

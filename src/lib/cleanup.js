@@ -34,6 +34,12 @@
     return id
   }
 
+  function _setIntervalIfVisible(fn, ms) {
+    const id = setInterval(() => { if (!document.hidden) fn() }, ms)
+    _intervals.add(id)
+    return id
+  }
+
   function _clearInterval(id) {
     clearInterval(id)
     _intervals.delete(id)
@@ -132,6 +138,7 @@
 
   window.heatsyncCleanup = {
     setInterval: _setInterval,
+    setIntervalIfVisible: _setIntervalIfVisible,
     clearInterval: _clearInterval,
     setTimeout: _setTimeout,
     clearTimeout: _clearTimeout,

@@ -3561,7 +3561,7 @@ function colorUsernameMentions(messageElement, preQueriedFragments) {
 }
 
 // MutationObserver for persistent username coloring (survives React re-renders)
-let usernameColoringObserver = null;
+// usernameColoringObserver merged into messageObserver (single observer pattern).
 let usernameClickHandlerInstalled = false;
 
 function setupUsernameColoringObserver() {
@@ -3785,104 +3785,8 @@ function setupUsernameColoringObserver() {
     log(' ✅ Emote stack expand/collapse handler installed');
   }
 
-  if (usernameColoringObserver) {
-    log(' Observer already setup, skipping');
-    return;
-  }
-
-  const chatContainer = findChatContainer();
-  if (!chatContainer) {
-    log(' ❌ No chat container found for observer');
-    return;
-  }
-
-  usernameColoringObserver = cleanup.trackObserver(new MutationObserver((mutations) => {
-    // Collect new chat messages from addedNodes directly — avoid full container scan
-    const newMessages = []
-    const cosmeticRefresh = []
-    for (const mutation of mutations) {
-      for (const node of mutation.addedNodes) {
-        if (node.nodeType !== 1) continue
-        if (node.classList?.contains('chat-line__message') || node.hasAttribute?.('data-index')) {
-          if (!node.dataset.heatsyncUsernamesColored) newMessages.push(node)
-        } else if (node.querySelectorAll) {
-          for (const msg of node.querySelectorAll('.chat-line__message:not([data-heatsync-usernames-colored]), [data-index]:not([data-heatsync-usernames-colored])')) {
-            newMessages.push(msg)
-          }
-          // Detect React re-rendering username elements inside already-processed messages
-          // When React replaces a username span, the paint styles are lost
-          const msgParent = node.closest?.('.chat-line__message, [data-index]')
-          if (msgParent?.dataset.hsCosmeticDone === '1') {
-            const nameEl = msgParent.querySelector('.chat-author__display-name, [data-a-target="chat-message-username"]')
-            if (nameEl && !nameEl.dataset.hsPaintApplied) {
-              cosmeticRefresh.push(msgParent)
-            }
-          }
-        }
-      }
-    }
-
-    // Re-apply cosmetics to messages where React replaced the username element
-    if (cosmeticRefresh.length > 0) {
-      requestAnimationFrame(() => {
-        for (const msg of cosmeticRefresh) {
-          delete msg.dataset.hsCosmeticDone
-          const uid = msg.dataset.hsCosmeticUserId
-          const kickUser = msg.dataset.hsCosmeticKickUser
-          if (uid) applyCosmeticsToMessage(msg, uid)
-          else if (kickUser) applyKickCosmeticsToMessage(msg, kickUser)
-        }
-      })
-    }
-
-    if (newMessages.length === 0) return
-
-    // Debounce - only process once per animation frame
-    if (usernameColoringObserver._pending) {
-      // Stash nodes for next frame
-      const q = usernameColoringObserver._queued || []
-      q.push(...newMessages)
-      usernameColoringObserver._queued = q
-      return
-    }
-    usernameColoringObserver._pending = true
-    usernameColoringObserver._queued = newMessages
-
-    requestAnimationFrame(() => {
-      usernameColoringObserver._pending = false
-      const batch = usernameColoringObserver._queued || []
-      usernameColoringObserver._queued = null
-
-      // Use cached emote map (rebuilt on dirty flag in processMessage)
-      const allEmotes = cachedAllEmotes || new Map()
-
-      const vh = window.innerHeight
-      // Read pass: collect visible messages (avoid layout thrashing)
-      const visible = []
-      for (const msg of batch) {
-        if (msg.dataset.heatsyncUsernamesColored) continue
-        const rect = msg.getBoundingClientRect()
-        if (rect.top < vh && rect.bottom > 0) visible.push(msg)
-      }
-      // Write pass: process collected messages
-      for (const msg of visible) {
-        msg.dataset.heatsyncUsernamesColored = '1'
-        highlightUserMentions(msg)
-        colorUsernameMentions(msg)
-        // Only stack if processMessage hasn't already done it
-        if (msg.dataset.heatsyncGeneration != emoteGeneration) {
-          stackAdjacentOverlayEmotes(msg, allEmotes)
-        }
-      }
-    })
-  }), 'username-coloring');
-
-  usernameColoringObserver.observe(chatContainer, {
-    childList: true,
-    subtree: true
-  });
-
-  log(' ✅ Username coloring observer active');
+  // Observer setup folded into watchForNewMessages (single unified observer).
+  // This function now only installs click handlers above.
 }
 
 // Process individual message for emote replacement
@@ -7107,21 +7011,66 @@ function watchForNewMessages() {
     processingQueue.push(node);
   }
 
+  // Unified chat observer: replaces 3 separate observers (messages, username
+  // coloring, userId attribute) on the same chatContainer subtree. Browser
+  // fires every observer's callback per mutation, so 3 observers = 3x dispatch
+  // cost on every Twitch React reconciliation. One observer = one dispatch.
+  const newColoringMessages = []
+  const cosmeticRefresh = []
   messageObserver = cleanup.trackObserver(new MutationObserver((mutations) => {
+    newColoringMessages.length = 0
+    cosmeticRefresh.length = 0
     mutations.forEach(mutation => {
+      // === ATTRIBUTE MUTATION (was userIdObserver) ===
+      if (mutation.type === 'attributes') {
+        if (!cosmeticsEnabled || isKick) return
+        if (mutation.attributeName !== 'data-user-id') return
+        const el = mutation.target
+        if (!el || !el.classList?.contains('chat-line__message')) return
+        const userId = el.getAttribute('data-user-id')
+        if (!userId) return
+        if (el.dataset.hsCosmeticUserId === userId) return
+        el.dataset.hsCosmeticUserId = userId
+        const usernameEl = el.querySelector('.chat-author__display-name, [data-a-target="chat-message-username"]')
+        applyCosmeticsToMessage(el, userId, usernameEl)
+        queueCosmeticsLookup(userId)
+        if (!_selfTwitchIdRegistered) {
+          const me = getCurrentUsername()
+          const username = usernameEl?.textContent?.trim().toLowerCase()
+          if (me && username && me === username) {
+            _selfTwitchIdRegistered = true
+            safeSendMessage({ type: 'register_self_twitch_id', twitchId: userId })
+          }
+        }
+        return
+      }
+
+      // === CHILD-LIST MUTATION ===
       mutation.addedNodes.forEach(node => {
         if (node.nodeType === 1) {
           // Twitch chat message
           if (node.classList.contains('chat-line__message')) {
             pushToQueue(node);
+            if (!node.dataset.heatsyncUsernamesColored) newColoringMessages.push(node)
           }
           // Kick chat message (div with data-index inside #chatroom-messages)
           else if (node.hasAttribute?.('data-index') && node.closest?.('#chatroom-messages')) {
             pushToQueue(node);
+            if (!node.dataset.heatsyncUsernamesColored) newColoringMessages.push(node)
           }
           // Check if it has chat-line__message inside
           else if (node.querySelector && node.querySelector('.chat-line__message')) {
             node.querySelectorAll('.chat-line__message').forEach(msg => pushToQueue(msg));
+            // Username-coloring fallback: collect uncolored inner messages
+            for (const msg of node.querySelectorAll('.chat-line__message:not([data-heatsync-usernames-colored]), [data-index]:not([data-heatsync-usernames-colored])')) {
+              newColoringMessages.push(msg)
+            }
+            // Detect React replacing username elements inside already-processed messages
+            const msgParent = node.closest?.('.chat-line__message, [data-index]')
+            if (msgParent?.dataset.hsCosmeticDone === '1') {
+              const nameEl = msgParent.querySelector('.chat-author__display-name, [data-a-target="chat-message-username"]')
+              if (nameEl && !nameEl.dataset.hsPaintApplied) cosmeticRefresh.push(msgParent)
+            }
           }
         }
       });
@@ -7199,44 +7148,65 @@ function watchForNewMessages() {
         }, 16); // Wait one frame for React to settle (animated emotes need this)
       });
     }
+
+    // Re-apply cosmetics where React replaced username elements inside
+    // already-processed messages (was usernameColoringObserver's branch).
+    if (cosmeticRefresh.length > 0) {
+      const refreshBatch = cosmeticRefresh.slice()
+      requestAnimationFrame(() => {
+        for (const msg of refreshBatch) {
+          delete msg.dataset.hsCosmeticDone
+          const uid = msg.dataset.hsCosmeticUserId
+          const kickUser = msg.dataset.hsCosmeticKickUser
+          if (uid) applyCosmeticsToMessage(msg, uid)
+          else if (kickUser) applyKickCosmeticsToMessage(msg, kickUser)
+        }
+      })
+    }
+
+    // Username-coloring rAF batch (was usernameColoringObserver's main path).
+    if (newColoringMessages.length > 0) {
+      if (messageObserver._coloringPending) {
+        const q = messageObserver._coloringQueued || []
+        q.push(...newColoringMessages)
+        messageObserver._coloringQueued = q
+      } else {
+        messageObserver._coloringPending = true
+        messageObserver._coloringQueued = newColoringMessages.slice()
+        requestAnimationFrame(() => {
+          messageObserver._coloringPending = false
+          const batch = messageObserver._coloringQueued || []
+          messageObserver._coloringQueued = null
+          const allEmotes = cachedAllEmotes || new Map()
+          const vh = window.innerHeight
+          const visible = []
+          for (const msg of batch) {
+            if (msg.dataset.heatsyncUsernamesColored) continue
+            const rect = msg.getBoundingClientRect()
+            if (rect.top < vh && rect.bottom > 0) visible.push(msg)
+          }
+          for (const msg of visible) {
+            msg.dataset.heatsyncUsernamesColored = '1'
+            highlightUserMentions(msg)
+            colorUsernameMentions(msg)
+            if (msg.dataset.heatsyncGeneration != emoteGeneration) {
+              stackAdjacentOverlayEmotes(msg, allEmotes)
+            }
+          }
+        })
+      }
+    }
   }), 'message-observer');
 
   observedContainer = chatContainer;
-  messageObserver.observe(chatContainer, { childList: true, subtree: true });
-  log(' 👁️ Watching for new messages in chat container');
-
-  // Separate attribute observer: data-user-id is stamped by early-inject MAIN
-  // world AFTER content.js processMessage already ran (cross-world MO ordering),
-  // so cosmetics get skipped. Watch for the attribute to land, then apply.
-  const userIdObserver = cleanup.trackObserver(new MutationObserver((mutations) => {
-    if (!cosmeticsEnabled || isKick) return
-    for (const m of mutations) {
-      if (m.type !== 'attributes' || m.attributeName !== 'data-user-id') continue
-      const el = m.target
-      if (!el || !el.classList?.contains('chat-line__message')) continue
-      const userId = el.getAttribute('data-user-id')
-      if (!userId) continue
-      if (el.dataset.hsCosmeticUserId === userId) continue
-      el.dataset.hsCosmeticUserId = userId
-      const usernameEl = el.querySelector('.chat-author__display-name, [data-a-target="chat-message-username"]')
-      applyCosmeticsToMessage(el, userId, usernameEl)
-      queueCosmeticsLookup(userId)
-      // Self detection on first stamp from a username matching the current user
-      if (!_selfTwitchIdRegistered) {
-        const me = getCurrentUsername()
-        const username = usernameEl?.textContent?.trim().toLowerCase()
-        if (me && username && me === username) {
-          _selfTwitchIdRegistered = true
-          safeSendMessage({ type: 'register_self_twitch_id', twitchId: userId })
-        }
-      }
-    }
-  }), 'user-id-observer')
-  userIdObserver.observe(chatContainer, {
+  // childList+subtree for messages, attributes for cosmetic data-user-id stamping.
+  messageObserver.observe(chatContainer, {
+    childList: true,
+    subtree: true,
     attributes: true,
-    attributeFilter: ['data-user-id'],
-    subtree: true
-  })
+    attributeFilter: ['data-user-id']
+  });
+  log(' 👁️ Watching for new messages in chat container');
   // Sweep existing messages where data-user-id was already stamped before our
   // observer attached (page load with backfill / live messages already there).
   // Also build a username→uid map from live (uid-bearing) messages, then
@@ -8079,11 +8049,6 @@ cleanup.setIntervalIfVisible(() => {
   if (freshContainer && freshContainer !== observedContainer) {
     log(' 🔄 Chat container changed, re-hooking observer');
     watchForNewMessages();
-    if (usernameColoringObserver) {
-      cleanup.untrackObserver(usernameColoringObserver)
-      usernameColoringObserver = null;
-    }
-    setupUsernameColoringObserver();
   } else if (!freshContainer && observedContainer && !observedContainer.isConnected) {
     log(' ⚠️ Chat container removed from DOM, clearing observer');
     if (messageObserver) { cleanup.untrackObserver(messageObserver); messageObserver = null; }

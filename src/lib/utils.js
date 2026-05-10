@@ -241,6 +241,52 @@ function debounce(fn, ms = 100) {
   }
 }
 
+// ============================================
+// UI SETTINGS SANITIZATION
+// ============================================
+
+// Keys that must NEVER be stored in chrome.storage.sync — they're either
+// unbounded (per-tab maps, free-form text) or simply too large for the
+// 8 KB QUOTA_BYTES_PER_ITEM ceiling. These move to chrome.storage.local
+// (we hold the unlimitedStorage permission) and are not part of cross-
+// device sync. Server-backed sync (ws ui-state:sync) also excludes them.
+const UI_SYNC_BLOCKLIST = new Set(['platformFilters', 'keywordHighlights'])
+
+/**
+ * Sanitize a ui_settings-shaped object before merging into chrome.storage.sync
+ * or echoing into localStorage. Strips:
+ *   - numeric-string keys (corruption marker — once seen, always copy through)
+ *   - prototype pollution keys
+ *   - blocklist keys (platformFilters, keywordHighlights — too big for sync)
+ *   - oversized strings (>4 KB) and oversized values (JSON >6 KB)
+ *   - non-data values (function/symbol)
+ * Returns a fresh plain object — never mutates input.
+ * @param {*} obj
+ * @returns {object}
+ */
+function sanitizeUiSettings(obj) {
+  if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return {}
+  const out = {}
+  for (const key in obj) {
+    if (!Object.prototype.hasOwnProperty.call(obj, key)) continue
+    if (/^\d+$/.test(key)) continue
+    if (key === '__proto__' || key === 'constructor' || key === 'prototype') continue
+    if (key.length === 0 || key.length > 64) continue
+    if (UI_SYNC_BLOCKLIST.has(key)) continue
+    const v = obj[key]
+    const t = typeof v
+    if (t === 'function' || t === 'symbol') continue
+    if (t === 'string' && v.length > 4096) continue
+    if (t === 'object' && v !== null) {
+      try {
+        if (JSON.stringify(v).length > 6144) continue
+      } catch { continue }
+    }
+    out[key] = v
+  }
+  return out
+}
+
 // Export
 const utils = {
   // XSS
@@ -267,7 +313,11 @@ const utils = {
   log,
   warn,
   error,
-  DEBUG
+  DEBUG,
+
+  // Storage hygiene
+  sanitizeUiSettings,
+  UI_SYNC_BLOCKLIST,
 }
 
 // Global export
@@ -288,6 +338,8 @@ export {
   debounce,
   log,
   warn,
-  error
+  error,
+  sanitizeUiSettings,
+  UI_SYNC_BLOCKLIST,
 }
 export default utils

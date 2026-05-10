@@ -1610,7 +1610,7 @@
     try {
       const stored = await chrome.storage.sync.get('ui_settings');
       if (stored.ui_settings) {
-        cachedSettings = { ...cachedSettings, ...stored.ui_settings };
+        cachedSettings = { ...cachedSettings, ...sanitizeUiSettings(stored.ui_settings) };
       }
       // ALSO sync to localStorage for autocomplete-hook.js (page context)
       try {
@@ -1629,9 +1629,9 @@
   function saveExtensionSettings(settings) {
     log(' saveExtensionSettings called with:', settings);
     try {
-      cachedSettings = { ...settings };
+      cachedSettings = { ...sanitizeUiSettings(settings) };
       // Save to chrome.storage.local (same key as popup.js)
-      chrome.storage.sync.set({ ui_settings: settings }).then(() => {
+      chrome.storage.sync.set({ ui_settings: cachedSettings }).then(() => {
         log(' Settings saved to storage');
       }).catch(err => {
         console.error('[heatsync-button] Failed to save to storage:', err);
@@ -1660,7 +1660,7 @@
     if (area === 'sync' && changes.ui_settings) {
       const newSettings = changes.ui_settings.newValue;
       if (newSettings) {
-        cachedSettings = { ...cachedSettings, ...newSettings };
+        cachedSettings = { ...cachedSettings, ...sanitizeUiSettings(newSettings) };
         // ALSO sync to localStorage for autocomplete-hook.js (page context)
         try {
           localStorage.setItem('heatsync-extension-settings', JSON.stringify(cachedSettings));

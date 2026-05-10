@@ -10,6 +10,30 @@
     })
   }
 
+  // Storage hygiene — sanitize ui_settings on read/write to drop indexed-key
+  // bloat and oversized values. See src/lib/utils.js for the canonical impl.
+  const UI_SYNC_BLOCKLIST = new Set(['platformFilters', 'keywordHighlights'])
+  function sanitizeUiSettings(obj) {
+    if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return {}
+    const out = {}
+    for (const key in obj) {
+      if (!Object.prototype.hasOwnProperty.call(obj, key)) continue
+      if (/^\d+$/.test(key)) continue
+      if (key === '__proto__' || key === 'constructor' || key === 'prototype') continue
+      if (key.length === 0 || key.length > 64) continue
+      if (UI_SYNC_BLOCKLIST.has(key)) continue
+      const v = obj[key]
+      const t = typeof v
+      if (t === 'function' || t === 'symbol') continue
+      if (t === 'string' && v.length > 4096) continue
+      if (t === 'object' && v !== null) {
+        try { if (JSON.stringify(v).length > 6144) continue } catch { continue }
+      }
+      out[key] = v
+    }
+    return out
+  }
+
   const DEFAULTS = {
     emoteWysiwyg: true,
     emoteSpaceAfter: true,
@@ -34,9 +58,10 @@
   async function load() {
     const stored = await chrome.storage.sync.get('ui_settings')
     if (stored.ui_settings) {
-      settings = { ...DEFAULTS, ...stored.ui_settings }
+      const cleaned = sanitizeUiSettings(stored.ui_settings)
+      settings = { ...DEFAULTS, ...cleaned }
       // showCosmetics: absent = true
-      if (stored.ui_settings.showCosmetics === undefined) {
+      if (cleaned.showCosmetics === undefined) {
         settings.showCosmetics = true
       }
     }
@@ -88,7 +113,7 @@
   }
 
   async function save() {
-    await chrome.storage.sync.set({ ui_settings: settings })
+    await chrome.storage.sync.set({ ui_settings: sanitizeUiSettings(settings) })
   }
 
   document.addEventListener('click', (e) => {

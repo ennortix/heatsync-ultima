@@ -227,7 +227,7 @@
     try {
       const stored = localStorage.getItem('heatsync-extension-settings');
       if (stored) {
-        cachedSettings = JSON.parse(stored);
+        cachedSettings = sanitizeUiSettings(JSON.parse(stored));
         settingsLastRead = now;
         return cachedSettings;
       }
@@ -246,8 +246,9 @@
     if (e.origin !== location.origin) return
     if (e.source !== window) return
     if (e.data?.type === 'heatsync-settings-changed' && e.data.settings) {
-      // Clone to avoid any cross-origin wrapper issues
-      cachedSettings = JSON.parse(JSON.stringify(e.data.settings));
+      // Clone to avoid any cross-origin wrapper issues, then sanitize so a
+      // corrupted page-world payload can't pollute our cache.
+      cachedSettings = sanitizeUiSettings(JSON.parse(JSON.stringify(e.data.settings)));
       log(' Settings updated:', cachedSettings);
     }
 

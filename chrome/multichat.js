@@ -723,6 +723,52 @@ function debounce(fn, ms = 100) {
   }
 }
 
+// ============================================
+// UI SETTINGS SANITIZATION
+// ============================================
+
+// Keys that must NEVER be stored in chrome.storage.sync — they're either
+// unbounded (per-tab maps, free-form text) or simply too large for the
+// 8 KB QUOTA_BYTES_PER_ITEM ceiling. These move to chrome.storage.local
+// (we hold the unlimitedStorage permission) and are not part of cross-
+// device sync. Server-backed sync (ws ui-state:sync) also excludes them.
+const UI_SYNC_BLOCKLIST = new Set(['platformFilters', 'keywordHighlights'])
+
+/**
+ * Sanitize a ui_settings-shaped object before merging into chrome.storage.sync
+ * or echoing into localStorage. Strips:
+ *   - numeric-string keys (corruption marker — once seen, always copy through)
+ *   - prototype pollution keys
+ *   - blocklist keys (platformFilters, keywordHighlights — too big for sync)
+ *   - oversized strings (>4 KB) and oversized values (JSON >6 KB)
+ *   - non-data values (function/symbol)
+ * Returns a fresh plain object — never mutates input.
+ * @param {*} obj
+ * @returns {object}
+ */
+function sanitizeUiSettings(obj) {
+  if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return {}
+  const out = {}
+  for (const key in obj) {
+    if (!Object.prototype.hasOwnProperty.call(obj, key)) continue
+    if (/^\d+$/.test(key)) continue
+    if (key === '__proto__' || key === 'constructor' || key === 'prototype') continue
+    if (key.length === 0 || key.length > 64) continue
+    if (UI_SYNC_BLOCKLIST.has(key)) continue
+    const v = obj[key]
+    const t = typeof v
+    if (t === 'function' || t === 'symbol') continue
+    if (t === 'string' && v.length > 4096) continue
+    if (t === 'object' && v !== null) {
+      try {
+        if (JSON.stringify(v).length > 6144) continue
+      } catch { continue }
+    }
+    out[key] = v
+  }
+  return out
+}
+
 // Export
 const utils = {
   // XSS
@@ -749,7 +795,11 @@ const utils = {
   log,
   warn,
   error,
-  DEBUG
+  DEBUG,
+
+  // Storage hygiene
+  sanitizeUiSettings,
+  UI_SYNC_BLOCKLIST,
 }
 
 // Global export
@@ -3961,6 +4011,57 @@ function injectStyles() {
     }
     .hs-native-hidden {
       background: #000 !important;
+    }
+
+    /* Permanent black backdrop on every Twitch/Kick chat-region ancestor.
+       Twitch's right-column wrappers paint rgb(14,14,16) and rgb(24,24,27)
+       (their dark-grey theme) — when chat-shell dimensions blip during SPA
+       nav reflow, the grey bleeds through as a visible flash. Painting all
+       ancestors solid black makes every blip imperceptible: black-on-black
+       reveals nothing. Always-on, not gated to nav, since the user already
+       sees pure-black chat in steady state. */
+    .channel-root__right-column,
+    .channel-root__right-column--expanded,
+    aside#live-page-chat,
+    .right-column .chat-shell,
+    .right-column [class*="chat-shell"],
+    .right-column [class*="stream-chat"] {
+      background: #000 !important;
+    }
+    /* Twitch sets transition:all on chat-shell + its Layout-sc wrappers.
+       During SPA nav these animate width/height changes, dragging the dark-
+       grey theme through frames as the new chat-shell snaps in. Killing the
+       transition removes the motion blur entirely — content swaps instantly
+       behind our overlay instead of crossfading the grey through. Scoped to
+       chat-region only so we don't disrupt Twitch's other animations. */
+    .right-column .chat-shell,
+    .right-column [class*="chat-shell"],
+    .right-column [class*="stream-chat"],
+    .channel-root__right-column,
+    .channel-root__right-column > *,
+    aside#live-page-chat,
+    aside#live-page-chat > * {
+      transition: none !important;
+    }
+
+    /* SPA-nav transition guard. While body.hs-mc-navigating is set we paint
+       black on every chat-shell variant and force-hide all of its children
+       except our overlay + profile card. Held from soft-nav entry until the
+       new chat-shell is settled (≈300ms after reparent — enough to absorb
+       Twitch's full render cycle, not so long that user notices a stall). */
+    body.hs-mc-navigating .chat-shell,
+    body.hs-mc-navigating [class*="chat-shell"],
+    body.hs-mc-navigating [class*="stream-chat"],
+    body.hs-mc-navigating #channel-chatroom,
+    body.hs-mc-navigating .channel-root__right-column,
+    body.hs-mc-navigating aside#live-page-chat {
+      background: #000 !important;
+    }
+    body.hs-mc-navigating .chat-shell > *:not(#hs-mc-container):not(.hs-pc-panel):not(.hs-profile-card),
+    body.hs-mc-navigating [class*="chat-shell"] > *:not(#hs-mc-container):not(.hs-pc-panel):not(.hs-profile-card),
+    body.hs-mc-navigating [class*="stream-chat"] > *:not(#hs-mc-container):not(.hs-pc-panel):not(.hs-profile-card),
+    body.hs-mc-navigating #channel-chatroom > *:not(#hs-mc-container):not(.hs-pc-panel):not(.hs-profile-card) {
+      visibility: hidden !important;
     }
 
     /* Never hide Twitch's native collapse/expand arrows — user needs them.
@@ -24740,6 +24841,97 @@ const STORAGE_KEY = 'heatsync_multichat';
   }
   function invalidateUiSettingsCache() { _uiSettingsCachePromise = null }
 
+  // Overflow cache — large/per-tab settings live in chrome.storage.local
+  // (unlimitedStorage permission) instead of sync (8 KB QUOTA_BYTES_PER_ITEM).
+  // Keeps sync featherweight for cross-device prefs and avoids ever-bloating
+  // the single ui_settings record with platformFilters[tabId] / keyword text.
+  let _uiOverflowCachePromise = null
+  function cachedUiOverflow() {
+    if (!_uiOverflowCachePromise) {
+      _uiOverflowCachePromise = chrome.storage.local.get(['platform_filters', 'keyword_highlights'])
+    }
+    return _uiOverflowCachePromise
+  }
+  function invalidateUiOverflowCache() { _uiOverflowCachePromise = null }
+
+  // One-shot migration: heal any chrome.storage.sync.ui_settings record that
+  // accumulated indexed-key bloat (server fanout used to merge raw payloads
+  // without validation, which once injected `{0:{},1:"...",...}` shaped data
+  // and pushed the record over the 8 KB QUOTA_BYTES_PER_ITEM ceiling). Also
+  // moves platformFilters / keywordHighlights to chrome.storage.local where
+  // they belong (per-tab map and free-form text — neither fits in sync).
+  // Idempotent + race-safe — multiple tabs running in parallel converge to
+  // the same cleaned record. Gated by ui_settings_migrated_v2 in local.
+  async function migrateUiSettingsOnce() {
+    try {
+      const flag = await chrome.storage.local.get('ui_settings_migrated_v2')
+      if (flag.ui_settings_migrated_v2) return
+      const synced = await chrome.storage.sync.get('ui_settings')
+      const dirty = synced.ui_settings || {}
+      const overflow = {}
+      if (dirty.platformFilters && typeof dirty.platformFilters === 'object' && !Array.isArray(dirty.platformFilters)) {
+        // Shape-validate each entry: { twitch?: bool, kick?: bool, youtube?: bool }
+        const safe = {}
+        for (const [id, val] of Object.entries(dirty.platformFilters)) {
+          if (!id || typeof id !== 'string' || id.length > 128) continue
+          if (!val || typeof val !== 'object' || Array.isArray(val)) continue
+          const e = {}
+          if (typeof val.twitch === 'boolean') e.twitch = val.twitch
+          if (typeof val.kick === 'boolean') e.kick = val.kick
+          if (typeof val.youtube === 'boolean') e.youtube = val.youtube
+          if (Object.keys(e).length) safe[id] = e
+        }
+        if (Object.keys(safe).length) overflow.platform_filters = safe
+      }
+      if (typeof dirty.keywordHighlights === 'string' && dirty.keywordHighlights.length <= 65536) {
+        overflow.keyword_highlights = dirty.keywordHighlights
+      }
+      const cleaned = sanitizeUiSettings(dirty)
+      const writes = []
+      writes.push(chrome.storage.sync.set({ ui_settings: cleaned }))
+      if (Object.keys(overflow).length) writes.push(chrome.storage.local.set(overflow))
+      writes.push(chrome.storage.local.set({ ui_settings_migrated_v2: true }))
+      await Promise.all(writes.map(p => p.catch(() => {})))
+      invalidateUiSettingsCache()
+      invalidateUiOverflowCache()
+    } catch {}
+  }
+
+  // Bound localStorage chat_history footprint. These keys can accumulate to
+  // 2 MB+ on heavy users (tracked across many channels over months). Keep
+  // newest N channels by savedAt/last-write timestamp; older keys evict.
+  // Runs once per session as an opportunistic janitor.
+  function pruneChatHistoryOnce() {
+    try {
+      const HISTORY_KEEP = 5
+      const MSG_CACHE_KEEP = 5
+      const collect = (prefix) => {
+        const entries = []
+        for (let i = 0; i < localStorage.length; i++) {
+          const k = localStorage.key(i)
+          if (!k || !k.startsWith(prefix)) continue
+          let ts = 0
+          try {
+            const raw = localStorage.getItem(k)
+            const parsed = raw ? JSON.parse(raw) : null
+            ts = parsed?.savedAt || parsed?.ts || parsed?.timestamp || 0
+          } catch {}
+          entries.push({ k, ts, sz: (localStorage.getItem(k) || '').length })
+        }
+        return entries
+      }
+      const evict = (entries, keep) => {
+        if (entries.length <= keep) return
+        entries.sort((a, b) => a.ts - b.ts) // oldest first
+        for (let i = 0; i < entries.length - keep; i++) {
+          try { localStorage.removeItem(entries[i].k) } catch {}
+        }
+      }
+      evict(collect('hs_chat_history_'), HISTORY_KEEP)
+      evict(collect('hs_msg_cache_'), MSG_CACHE_KEEP)
+    } catch {}
+  }
+
   // Batched ui_settings writer — coalesces multiple saves into one read-modify-write
   let _pendingSettings = null
   let _settingsSaveTimer = null
@@ -24791,21 +24983,44 @@ const STORAGE_KEY = 'heatsync_multichat';
       const pending = _pendingSettings
       _pendingSettings = null
       _settingsSaveTimer = null
-      invalidateUiSettingsCache()
-      chrome.storage.sync.get(['ui_settings']).then(s => {
-        chrome.storage.sync.set({ ui_settings: { ...s.ui_settings, ...pending } })
-      })
-      // Cross-surface insta-sync: server merges + fans out to every other
-      // client of this user (other tabs, ext on Twitch/Kick/YT, heatsync.org).
-      // chrome.storage.sync only syncs Chrome → Chrome with same Google
-      // account; server-backed covers Firefox + heatsync.org + signed-out
-      // Chrome profiles using the same heatsync login.
-      try {
-        chrome.runtime.sendMessage({
-          type: 'ws_send',
-          data: { type: 'ui-state:sync', patch: pending }
+
+      // Split: blocklist keys go to chrome.storage.local (no quota cap, no
+      // server sync, no cross-device leak). Everything else goes to sync.
+      const localPatch = {}
+      const syncPatch = {}
+      for (const k in pending) {
+        if (UI_SYNC_BLOCKLIST.has(k)) {
+          if (k === 'platformFilters') localPatch.platform_filters = pending[k]
+          else if (k === 'keywordHighlights') localPatch.keyword_highlights = pending[k]
+        } else {
+          syncPatch[k] = pending[k]
+        }
+      }
+
+      if (Object.keys(localPatch).length) {
+        invalidateUiOverflowCache()
+        chrome.storage.local.set(localPatch).catch(() => {})
+      }
+
+      if (Object.keys(syncPatch).length) {
+        invalidateUiSettingsCache()
+        chrome.storage.sync.get(['ui_settings']).then(s => {
+          const merged = sanitizeUiSettings({ ...s.ui_settings, ...syncPatch })
+          chrome.storage.sync.set({ ui_settings: merged }).catch(() => {})
         })
-      } catch (_) { /* context invalidated */ }
+        // Cross-surface insta-sync: server merges + fans out to every other
+        // client of this user (other tabs, ext on Twitch/Kick/YT, heatsync.org).
+        // chrome.storage.sync only syncs Chrome → Chrome with same Google
+        // account; server-backed covers Firefox + heatsync.org + signed-out
+        // Chrome profiles using the same heatsync login. Blocklist keys are
+        // omitted — they're per-device by design.
+        try {
+          chrome.runtime.sendMessage({
+            type: 'ws_send',
+            data: { type: 'ui-state:sync', patch: syncPatch }
+          })
+        } catch (_) { /* context invalidated */ }
+      }
     }, 100)
   }
 
@@ -27288,11 +27503,30 @@ const STORAGE_KEY = 'heatsync_multichat';
     renderMessages(currentTab);
   }
 
-  // Platform filters — per-tab toggle to mute Twitch/Kick/YT messages
+  // Platform filters — per-tab toggle to mute Twitch/Kick/YT messages.
+  // Persisted to chrome.storage.local (overflow bucket); never enters sync.
+  // Self-prunes here: only keep entries for tabs this user actually has now.
   async function loadPlatformFilters() {
     try {
-      const stored = await cachedUiSettings();
-      if (stored.ui_settings?.platformFilters) platformFilters = stored.ui_settings.platformFilters;
+      const overflow = await cachedUiOverflow();
+      let stored = overflow.platform_filters
+      if (!stored || typeof stored !== 'object' || Array.isArray(stored)) {
+        // One-shot migration: pull from sync if a legacy install still has it.
+        const legacy = await cachedUiSettings();
+        if (legacy.ui_settings?.platformFilters && typeof legacy.ui_settings.platformFilters === 'object') {
+          stored = legacy.ui_settings.platformFilters
+          chrome.storage.local.set({ platform_filters: stored }).catch(() => {})
+        }
+      }
+      if (stored && typeof stored === 'object') {
+        // Drop entries for tab IDs we no longer have — bounded growth.
+        const knownIds = new Set((config.channels || []).map(c => c.id))
+        const pruned = {}
+        for (const [id, val] of Object.entries(stored)) {
+          if (knownIds.has(id) && val && typeof val === 'object') pruned[id] = val
+        }
+        platformFilters = pruned
+      }
     } catch {}
   }
 
@@ -27531,8 +27765,17 @@ const STORAGE_KEY = 'heatsync_multichat';
 
   async function loadKeywordHighlightsSetting() {
     try {
-      const stored = await cachedUiSettings();
-      if (typeof stored.ui_settings?.keywordHighlights === 'string') keywordHighlights = stored.ui_settings.keywordHighlights;
+      const overflow = await cachedUiOverflow();
+      if (typeof overflow.keyword_highlights === 'string') {
+        keywordHighlights = overflow.keyword_highlights
+      } else {
+        // One-shot migration: pull from sync if a legacy install still has it.
+        const legacy = await cachedUiSettings();
+        if (typeof legacy.ui_settings?.keywordHighlights === 'string') {
+          keywordHighlights = legacy.ui_settings.keywordHighlights
+          chrome.storage.local.set({ keyword_highlights: keywordHighlights }).catch(() => {})
+        }
+      }
     } catch {}
     rebuildKeywordRegex();
   }
@@ -31843,11 +32086,6 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
           firstChatterGlow = !!ns.firstChatterGlow
           needsRender = true
         }
-        if (typeof ns.keywordHighlights === 'string' && ns.keywordHighlights !== keywordHighlights) {
-          keywordHighlights = ns.keywordHighlights
-          rebuildKeywordRegex()
-          needsRender = true
-        }
         if (ns.inlineNotifs) {
           for (const k of Object.keys(INLINE_NOTIF_TYPES)) {
             if (ns.inlineNotifs[k] !== undefined) inlineNotifs[k] = ns.inlineNotifs[k]
@@ -31865,6 +32103,25 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       }
 
       if (area !== 'local') return
+
+      // Overflow bucket — large/per-tab UI prefs that bypass the 8 KB sync
+      // ceiling. Local-only, so cross-device sync intentionally skips them.
+      if (changes.keyword_highlights) {
+        const v = changes.keyword_highlights.newValue
+        if (typeof v === 'string' && v !== keywordHighlights) {
+          keywordHighlights = v
+          rebuildKeywordRegex()
+          renderMessages(currentTab)
+          if (currentTab === 'settings') renderSettingsTab()
+        }
+      }
+      if (changes.platform_filters) {
+        const v = changes.platform_filters.newValue
+        if (v && typeof v === 'object' && !Array.isArray(v)) {
+          platformFilters = v
+          renderMessages(currentTab)
+        }
+      }
 
       // Emote updates - reload when storage changes (debounced to avoid spam)
       if (changes.global_emotes || changes.channel_emotes_map || changes.emote_inventory || changes.native_twitch_emotes) {
@@ -32113,6 +32370,11 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     // ── PHASE 1: warm caches in parallel ──────────────────────────────────
     // Prime ui_settings cache so the 18+ load* functions all pull from one
     // in-flight Promise. Also fan out independent storage.local reads.
+    // Migration + chat_history prune are fire-and-forget — they don't block
+    // first paint; sanitizeUiSettings is also applied on every save so the
+    // worst-case failure of migration is "we self-heal on next user action."
+    migrateUiSettingsOnce()
+    pruneChatHistoryOnce()
     const _uiPrime = cachedUiSettings()
     const _localPrime = chrome.storage.local.get([STORAGE_KEY, 'user_info', 'muted_users'])
     await loadConfig();
@@ -33202,6 +33464,9 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
   // a single empty frame.
   function softTwitchNav() {
     const container = document.getElementById('hs-mc-container');
+    // Mark body for the entire transition window so the CSS guard hides any
+    // native chat-shell children that paint during Twitch's teardown/remount.
+    document.body.classList.add('hs-mc-navigating');
     // Step 1 — detach from doomed chat-shell ahead of twitch's teardown.
     if (container && container.parentElement && container.parentElement !== document.body) {
       document.body.appendChild(container);
@@ -33213,6 +33478,38 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     // mount, then reparent the panel back so theatre/persistent-player layout
     // continues to work. Single-shot observer; gives up after 4s on slow tabs.
     let done = false;
+    const finish = () => {
+      // Re-apply hs-native-hidden to the new chat-shell + chat-room + stream-
+      // chat. Without this the body.hs-mc-navigating guard would be the only
+      // thing hiding native chat — once we drop that class native chat blooms.
+      try { setNativeChatHidden(true) } catch (_) {}
+      // Resume sticky-bottom on every channel switch — the panel persists
+      // across SPA nav, so without this reset the new channel inherits the
+      // previous channel's mid-scroll position and live messages stack
+      // behind a "N new" pause indicator the user never asked for.
+      isScrolledUp = false;
+      newMessageCount = 0;
+      const newBtn = document.getElementById('hs-mc-new-msgs');
+      if (newBtn) newBtn.style.display = 'none';
+      const msgsEl = document.getElementById('hs-mc-messages');
+      if (msgsEl) try { scrollMsgsToBottom(msgsEl) } catch (_) {}
+      // Hold the nav guard for ~300ms so Twitch's render cycle + width
+      // transitions on chat-shell ancestors complete entirely behind it.
+      // Two rAFs (~32ms) was too short — the grey theme wrappers re-bled in
+      // mid-transition. 300ms covers Twitch's full reflow on every machine
+      // tested. Plus a chat-shell mutation observer continuously re-applies
+      // hs-native-hidden in case React swaps the chat-room__content node.
+      const reHide = new MutationObserver(() => { try { setNativeChatHidden(true) } catch (_) {} });
+      const target = document.querySelector('.chat-shell, [class*="chat-shell"]');
+      if (target) {
+        reHide.observe(target, { childList: true });
+        cleanup.trackObserver(reHide);
+      }
+      cleanup.setTimeout(() => {
+        try { reHide.disconnect() } catch (_) {}
+        document.body.classList.remove('hs-mc-navigating');
+      }, 300, 'twitch-soft-nav-release');
+    };
     const tryReparent = () => {
       if (done) return true;
       const chatShell = document.querySelector('.chat-shell, [class*="chat-shell"]');
@@ -33221,13 +33518,8 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
         chatShell.appendChild(c);
         try { updateTwitchNoChannelClass() } catch (_) {}
         done = true;
+        finish();
         return true;
-      }
-      // No chat-shell on the destination page → leave panel on body.
-      // Detect "settled non-channel page" by checking that .channel-root
-      // has been absent for at least one observer tick.
-      if (!chatShell && document.querySelector('.tw-root, #root')) {
-        // Still might be mid-nav; let the observer keep watching briefly.
       }
       return false;
     };
@@ -33240,6 +33532,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
         done = true;
         obs.disconnect();
         try { updateTwitchNoChannelClass() } catch (_) {}
+        finish();
       }
     }, 4000, 'twitch-soft-nav-finalize');
   }
@@ -33251,11 +33544,31 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
   // chatroom once it appears (channel pages).
   function softKickNav() {
     const container = document.getElementById('hs-mc-container');
+    document.body.classList.add('hs-mc-navigating');
     if (container && container.parentElement && container.parentElement !== document.body) {
       document.body.appendChild(container);
     }
     try { updateKickNoChannelClass() } catch (_) {}
     let done = false;
+    const finish = () => {
+      try { setNativeChatHidden(true) } catch (_) {}
+      isScrolledUp = false;
+      newMessageCount = 0;
+      const newBtn = document.getElementById('hs-mc-new-msgs');
+      if (newBtn) newBtn.style.display = 'none';
+      const msgsEl = document.getElementById('hs-mc-messages');
+      if (msgsEl) try { scrollMsgsToBottom(msgsEl) } catch (_) {}
+      const reHide = new MutationObserver(() => { try { setNativeChatHidden(true) } catch (_) {} });
+      const target = document.getElementById('channel-chatroom');
+      if (target) {
+        reHide.observe(target, { childList: true });
+        cleanup.trackObserver(reHide);
+      }
+      cleanup.setTimeout(() => {
+        try { reHide.disconnect() } catch (_) {}
+        document.body.classList.remove('hs-mc-navigating');
+      }, 300, 'kick-soft-nav-release');
+    };
     const tryReparent = () => {
       if (done) return true;
       const chatRoom = document.getElementById('channel-chatroom');
@@ -33264,6 +33577,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
         chatRoom.after(c);
         try { updateKickNoChannelClass() } catch (_) {}
         done = true;
+        finish();
         return true;
       }
       return false;
@@ -33277,6 +33591,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
         done = true;
         obs.disconnect();
         try { updateKickNoChannelClass() } catch (_) {}
+        finish();
       }
     }, 4000, 'kick-soft-nav-finalize');
   }
@@ -33311,6 +33626,11 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     // refresh per-page WS subs, re-apply layout. The 4s checkYtLive
     // interval already refreshes hs-offline class within 4s.
     if (hostPlatform === 'yt') {
+      // Mark transition so the CSS guard absorbs any flash from YT's primary
+      // column reflow (watch ↔ home swaps #primary width, recommendeds visible
+      // /hidden, chatframe iframe mount). 300ms covers the full page-state
+      // pivot; same pattern as Twitch/Kick soft-nav.
+      document.body.classList.add('hs-mc-navigating');
       // Unsubscribe the auto-YT route for the previous page so the new
       // page gets a clean __live_yt_auto__ binding (videoId differs).
       chrome.runtime.sendMessage({
@@ -33327,6 +33647,17 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       // grid stays clamped at the previous page's width until the user
       // wiggles the resize handle.
       try { window.dispatchEvent(new Event('resize')) } catch {}
+      // Resume sticky-bottom on the persistent panel — without this the new
+      // page inherits whatever scroll position the previous video left.
+      isScrolledUp = false;
+      newMessageCount = 0;
+      const newBtn = document.getElementById('hs-mc-new-msgs');
+      if (newBtn) newBtn.style.display = 'none';
+      const msgsEl = document.getElementById('hs-mc-messages');
+      if (msgsEl) try { scrollMsgsToBottom(msgsEl) } catch (_) {}
+      cleanup.setTimeout(() => {
+        document.body.classList.remove('hs-mc-navigating');
+      }, 300, 'yt-soft-nav-release');
       return;
     }
 

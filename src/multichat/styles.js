@@ -727,6 +727,57 @@ function injectStyles() {
       background: #000 !important;
     }
 
+    /* Permanent black backdrop on every Twitch/Kick chat-region ancestor.
+       Twitch's right-column wrappers paint rgb(14,14,16) and rgb(24,24,27)
+       (their dark-grey theme) — when chat-shell dimensions blip during SPA
+       nav reflow, the grey bleeds through as a visible flash. Painting all
+       ancestors solid black makes every blip imperceptible: black-on-black
+       reveals nothing. Always-on, not gated to nav, since the user already
+       sees pure-black chat in steady state. */
+    .channel-root__right-column,
+    .channel-root__right-column--expanded,
+    aside#live-page-chat,
+    .right-column .chat-shell,
+    .right-column [class*="chat-shell"],
+    .right-column [class*="stream-chat"] {
+      background: #000 !important;
+    }
+    /* Twitch sets transition:all on chat-shell + its Layout-sc wrappers.
+       During SPA nav these animate width/height changes, dragging the dark-
+       grey theme through frames as the new chat-shell snaps in. Killing the
+       transition removes the motion blur entirely — content swaps instantly
+       behind our overlay instead of crossfading the grey through. Scoped to
+       chat-region only so we don't disrupt Twitch's other animations. */
+    .right-column .chat-shell,
+    .right-column [class*="chat-shell"],
+    .right-column [class*="stream-chat"],
+    .channel-root__right-column,
+    .channel-root__right-column > *,
+    aside#live-page-chat,
+    aside#live-page-chat > * {
+      transition: none !important;
+    }
+
+    /* SPA-nav transition guard. While body.hs-mc-navigating is set we paint
+       black on every chat-shell variant and force-hide all of its children
+       except our overlay + profile card. Held from soft-nav entry until the
+       new chat-shell is settled (≈300ms after reparent — enough to absorb
+       Twitch's full render cycle, not so long that user notices a stall). */
+    body.hs-mc-navigating .chat-shell,
+    body.hs-mc-navigating [class*="chat-shell"],
+    body.hs-mc-navigating [class*="stream-chat"],
+    body.hs-mc-navigating #channel-chatroom,
+    body.hs-mc-navigating .channel-root__right-column,
+    body.hs-mc-navigating aside#live-page-chat {
+      background: #000 !important;
+    }
+    body.hs-mc-navigating .chat-shell > *:not(#hs-mc-container):not(.hs-pc-panel):not(.hs-profile-card),
+    body.hs-mc-navigating [class*="chat-shell"] > *:not(#hs-mc-container):not(.hs-pc-panel):not(.hs-profile-card),
+    body.hs-mc-navigating [class*="stream-chat"] > *:not(#hs-mc-container):not(.hs-pc-panel):not(.hs-profile-card),
+    body.hs-mc-navigating #channel-chatroom > *:not(#hs-mc-container):not(.hs-pc-panel):not(.hs-profile-card) {
+      visibility: hidden !important;
+    }
+
     /* Never hide Twitch's native collapse/expand arrows — user needs them.
        Hide HS UI when chat is collapsed so it doesn't interfere with layout. */
     .right-column--collapsed #hs-mc-container {

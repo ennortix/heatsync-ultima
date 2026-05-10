@@ -3,6 +3,34 @@
 // Chrome compatibility - Firefox uses 'browser', Chrome uses 'chrome'
 const browser = globalThis.browser || chrome;
 
+// Storage hygiene — sanitize ui_settings before merging into chrome.storage
+// .sync. Strips numeric-string keys (corruption marker), prototype-pollution
+// keys, blocklist keys (platformFilters / keywordHighlights belong in local),
+// oversized strings (>4 KB) and oversized values (JSON >6 KB). Mirrors the
+// canonical implementation in src/lib/utils.js — duplicated here because the
+// service worker is not bundled with the lib.
+const UI_SYNC_BLOCKLIST = new Set(['platformFilters', 'keywordHighlights']);
+function sanitizeUiSettings(obj) {
+  if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return {};
+  const out = {};
+  for (const key in obj) {
+    if (!Object.prototype.hasOwnProperty.call(obj, key)) continue;
+    if (/^\d+$/.test(key)) continue;
+    if (key === '__proto__' || key === 'constructor' || key === 'prototype') continue;
+    if (key.length === 0 || key.length > 64) continue;
+    if (UI_SYNC_BLOCKLIST.has(key)) continue;
+    const v = obj[key];
+    const t = typeof v;
+    if (t === 'function' || t === 'symbol') continue;
+    if (t === 'string' && v.length > 4096) continue;
+    if (t === 'object' && v !== null) {
+      try { if (JSON.stringify(v).length > 6144) continue; } catch { continue; }
+    }
+    out[key] = v;
+  }
+  return out;
+}
+
 // Debug logging - set to false for production
 const DEBUG = false;
 const log = DEBUG ? console.log.bind(console, '[heatsync]') : () => {};
@@ -3151,15 +3179,22 @@ function handleWSMessage(msg) {
       // client and is fanning out the full state. Mirror into chrome.storage
       // .sync.ui_settings so the existing storage.onChanged listener applies
       // every key live (zebra/timestamps/avatars/active tab/etc).
+      // Sanitize the patch first — never trust server-fanned-out state. A
+      // single malformed payload here will otherwise corrupt every client of
+      // this user permanently (sync replicates everywhere; once bad data is
+      // in, every tab and the heatsync.org chat-tile inherit it).
       if (msg.state && typeof msg.state === 'object') {
-        log(' 🎛️  ui-state sync received:', Object.keys(msg.state).length, 'keys')
+        const cleanState = sanitizeUiSettings(msg.state)
+        const cleanKeys = Object.keys(cleanState)
+        if (cleanKeys.length === 0) break
+        log(' 🎛️  ui-state sync received:', cleanKeys.length, 'keys')
         try {
           browser.storage.sync.get(['ui_settings']).then(s => {
-            const merged = { ...(s.ui_settings || {}), ...msg.state }
-            browser.storage.sync.set({ ui_settings: merged })
+            const merged = sanitizeUiSettings({ ...(s.ui_settings || {}), ...cleanState })
+            browser.storage.sync.set({ ui_settings: merged }).catch(() => {})
           }).catch(() => {})
         } catch (e) { log(' ui-state apply failed:', e?.message) }
-        broadcastToTabs({ type: 'ui_state_update', state: msg.state })
+        broadcastToTabs({ type: 'ui_state_update', state: cleanState })
       }
       break
 

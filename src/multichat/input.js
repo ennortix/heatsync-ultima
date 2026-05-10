@@ -643,27 +643,42 @@ function initInput() {
         if (stack) blockAllEmotesInStack(stack);
         return;
       }
-      // Collapsed stack left-click → paste all emote names to input
-      // (skip locked emotes — viewer can't post them)
+      // Collapsed stack left-click → add unowned emotes to inventory, then
+      // paste every postable emote to input in DOM order.
+      // (skip locked/blocked emotes — viewer can't post them)
       const collapsedStack = e.target.closest('.hs-mc-emote-stack:not(.expanded)');
       if (collapsedStack) {
         e.preventDefault();
         e.stopPropagation();
         const wrappers = [...collapsedStack.querySelectorAll('.hs-mc-emote-wrapper[data-emote-name]')];
-        const names = wrappers
-          .filter(w => w.dataset.state !== 'locked')
-          .map(w => w.dataset.emoteName)
-          .filter(Boolean);
-        if (wrappers.length > 0 && names.length === 0) {
-          showToast(`🔒 stack is all locked — you're not subbed`, 'error');
+        const postable = wrappers.filter(w => {
+          const s = w.dataset.state;
+          return s !== 'locked' && s !== 'blocked';
+        });
+        if (wrappers.length > 0 && postable.length === 0) {
+          showToast(`🔒 stack has nothing postable`, 'error');
           return;
         }
-        if (names.length > 0) {
+        if (postable.length > 0) {
+          // Fire add-to-inventory for each unowned (don't block paste on the
+          // server roundtrip; state flips green when each resolves).
+          for (const w of postable) {
+            if (w.dataset.state === 'unadded') {
+              const name = w.dataset.emoteName;
+              if (!name || pendingEmoteOps.has(name)) continue;
+              const url = w.dataset.emoteUrl || w.querySelector('img')?.src || '';
+              const source = w.dataset.source || 'heatsync';
+              addEmoteToInventory(name, url, source, w);
+            }
+          }
           showInputBar();
-          for (const name of names) pasteEmoteToInput(name);
+          for (const w of postable) {
+            const name = w.dataset.emoteName;
+            if (name) pasteEmoteToInput(name);
+          }
           const input = document.getElementById('hs-mc-input');
           if (input) input.focus();
-          flashAllEmotes(names[0], 'hs-flash-paste');
+          flashAllEmotes(postable[0].dataset.emoteName, 'hs-flash-paste');
         }
         return;
       }

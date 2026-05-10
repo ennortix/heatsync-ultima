@@ -4555,7 +4555,7 @@ function setupUsernameColoringObserver() {
             }, location.origin);
           });
           if (addedNames.length) {
-            showToast(t('content_toast_added', [addedNames.join(', ')]) || `added: ${addedNames.join(', ')}`, 'success');
+            showToast(`added: ${addedNames.join(', ')}`, 'success');
           }
         } else {
           // Expanded stack — absorb ALL clicks to prevent Twitch React re-render

@@ -431,7 +431,6 @@ function commitPacedYtMsg(targetChannelId, ytMsg) {
   if (currentTab === tabId) {
     if (!appendMessage(ytMsg, tabId)) renderMessages(tabId)
   } else {
-    appendToCachedTab(ytMsg, tabId)
     updateTabIndicator(tabId)
   }
 }
@@ -713,7 +712,6 @@ function listenForSocialEvents() {
           bumpSeen('mentions')
           if (!appendMessage(ytMsg, 'mentions')) renderMessages('mentions')
         } else {
-          appendToCachedTab(ytMsg, 'mentions')
           updateTabIndicator('mentions')
         }
       }

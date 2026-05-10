@@ -226,8 +226,627 @@ function _onStorageChanged(changes, areaName) {
     const next = changes.ui_settings.newValue
     if (next) applyUiSettings(next)
   }
+  // Keyword highlights — update regex + reapply
+  if (changes.keyword_highlights) {
+    rebuildKeywordRegex(changes.keyword_highlights.newValue)
+    applyKeywordHighlightsToVisibleMessages()
+  }
+  // Per-user color overrides — update map + reapply
+  if (changes.hs_user_colors) {
+    rebuildUserColorMap(changes.hs_user_colors.newValue)
+    applyUserColorsToVisibleMessages()
+  }
 }
 chrome.storage.onChanged.addListener(_onStorageChanged)
+
+// Keyword highlights (BTTV/FFZ-style custom highlight word list)
+let _keywordRegex = null
+function rebuildKeywordRegex(raw) {
+  if (!raw) { _keywordRegex = null; return }
+  const list = (typeof raw === 'string' ? raw.split(/[\n,]/) : Array.isArray(raw) ? raw : [])
+    .map(s => String(s).trim()).filter(s => s && s.length < 64).slice(0, 50)
+  if (!list.length) { _keywordRegex = null; return }
+  const escaped = list.map(s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+  try { _keywordRegex = new RegExp('\\b(' + escaped.join('|') + ')\\b', 'i') } catch { _keywordRegex = null }
+}
+function highlightKeywords(messageElement) {
+  if (!_keywordRegex) return
+  const txt = messageElement.textContent || ''
+  if (!_keywordRegex.test(txt)) return
+  let parent = messageElement
+  while (parent && !parent.classList.contains('chat-line__message') && !parent.hasAttribute('data-index')) {
+    parent = parent.parentElement
+  }
+  const target = (parent && (parent.classList.contains('chat-line__message') || parent.hasAttribute('data-index'))) ? parent : messageElement
+  target.classList.add('hs-keyword-match')
+}
+function applyKeywordHighlightsToVisibleMessages() {
+  document.querySelectorAll('.hs-keyword-match').forEach(el => el.classList.remove('hs-keyword-match'))
+  if (!_keywordRegex) return
+  document.querySelectorAll('.chat-line__message, [data-index]').forEach(highlightKeywords)
+}
+
+// Per-user color overrides (right-click username → set color)
+const _userColors = new Map() // username (lower) → '#rrggbb'
+function rebuildUserColorMap(raw) {
+  _userColors.clear()
+  if (!raw) return
+  const arr = Array.isArray(raw) ? raw : (typeof raw === 'object' ? Object.entries(raw).map(([username, color]) => ({ username, color })) : [])
+  for (const entry of arr) {
+    if (entry?.username && /^#[0-9a-fA-F]{6}$/.test(entry.color || '')) {
+      _userColors.set(String(entry.username).toLowerCase(), entry.color)
+    }
+  }
+}
+function applyUserColorToMessage(messageElement, username) {
+  const lower = String(username || '').toLowerCase()
+  if (!lower) return
+  const color = _userColors.get(lower)
+  if (!color) return
+  const userEl = messageElement.querySelector('.chat-author__display-name, [data-a-target="chat-message-username"], button.inline.font-bold')
+  if (userEl) {
+    userEl.style.setProperty('--hs-user-color', color)
+    userEl.classList.add('hs-user-colored')
+  }
+}
+function applyUserColorsToVisibleMessages() {
+  document.querySelectorAll('.hs-user-colored').forEach(el => {
+    el.classList.remove('hs-user-colored')
+    el.style.removeProperty('--hs-user-color')
+  })
+  if (!_userColors.size) return
+  document.querySelectorAll('.chat-line__message, [data-index]').forEach(msg => {
+    const userEl = msg.querySelector('.chat-author__display-name, [data-a-target="chat-message-username"], button.inline.font-bold')
+    if (!userEl) return
+    const lower = (userEl.textContent || '').toLowerCase().trim()
+    const color = _userColors.get(lower)
+    if (color) {
+      userEl.style.setProperty('--hs-user-color', color)
+      userEl.classList.add('hs-user-colored')
+    }
+  })
+}
+
+// Initial load of keyword + user color settings
+chrome.storage.local.get(['keyword_highlights', 'hs_user_colors']).then(d => {
+  rebuildKeywordRegex(d.keyword_highlights)
+  rebuildUserColorMap(d.hs_user_colors)
+}).catch(() => {})
+
+// User color picker popup (right-click username → open)
+const HS_USER_COLOR_SWATCHES = [
+  '#ff8700', '#ffd700', '#ff4d4d', '#ff66cc', '#cc66ff', '#6666ff',
+  '#33ccff', '#33ffcc', '#66ff66', '#a3ff00', '#ffaa00', '#ff5500',
+  '#ffffff', '#bbbbbb', '#888888', '#000000'
+]
+let _ucpEl = null
+function closeUserColorPicker() {
+  if (_ucpEl) { _ucpEl.remove(); _ucpEl = null }
+}
+function persistUserColors() {
+  const arr = Array.from(_userColors.entries()).map(([username, color]) => ({ username, color }))
+  chrome.storage.local.set({ hs_user_colors: arr }).catch(() => {})
+}
+function setUserColor(username, color) {
+  const lower = String(username || '').toLowerCase()
+  if (!lower) return
+  if (color && /^#[0-9a-fA-F]{6}$/.test(color)) {
+    _userColors.set(lower, color)
+  } else {
+    _userColors.delete(lower)
+  }
+  persistUserColors()
+  applyUserColorsToVisibleMessages()
+}
+function openUserColorPicker(username, x, y) {
+  closeUserColorPicker()
+  const lower = username.toLowerCase()
+  const current = _userColors.get(lower) || '#ff8700'
+
+  const el = document.createElement('div')
+  el.id = 'hs-user-color-picker'
+  el.style.left = Math.min(x, window.innerWidth - 240) + 'px'
+  el.style.top = Math.min(y, window.innerHeight - 200) + 'px'
+
+  const header = document.createElement('div')
+  header.className = 'hs-ucp-header'
+  header.textContent = 'color for ' + username
+  el.appendChild(header)
+
+  const swatches = document.createElement('div')
+  swatches.className = 'hs-ucp-swatches'
+  for (const sw of HS_USER_COLOR_SWATCHES) {
+    const cell = document.createElement('div')
+    cell.className = 'hs-ucp-swatch'
+    cell.style.background = sw
+    cell.title = sw
+    cell.addEventListener('click', () => {
+      setUserColor(username, sw)
+      closeUserColorPicker()
+    })
+    swatches.appendChild(cell)
+  }
+  el.appendChild(swatches)
+
+  const row = document.createElement('div')
+  row.className = 'hs-ucp-row'
+  const colorInput = document.createElement('input')
+  colorInput.type = 'color'
+  colorInput.value = current
+  const hexInput = document.createElement('input')
+  hexInput.type = 'text'
+  hexInput.value = current
+  hexInput.maxLength = 7
+  hexInput.placeholder = '#ff8700'
+  colorInput.addEventListener('input', () => { hexInput.value = colorInput.value })
+  hexInput.addEventListener('input', () => {
+    if (/^#[0-9a-fA-F]{6}$/.test(hexInput.value)) colorInput.value = hexInput.value
+  })
+  const applyBtn = document.createElement('button')
+  applyBtn.textContent = 'set'
+  applyBtn.addEventListener('click', () => {
+    setUserColor(username, hexInput.value || colorInput.value)
+    closeUserColorPicker()
+  })
+  const clearBtn = document.createElement('button')
+  clearBtn.textContent = 'clear'
+  clearBtn.addEventListener('click', () => {
+    setUserColor(username, null)
+    closeUserColorPicker()
+  })
+  row.appendChild(colorInput)
+  row.appendChild(hexInput)
+  row.appendChild(applyBtn)
+  row.appendChild(clearBtn)
+  el.appendChild(row)
+
+  document.body.appendChild(el)
+  _ucpEl = el
+
+  setTimeout(() => {
+    const off = (ev) => {
+      if (!_ucpEl || _ucpEl.contains(ev.target)) return
+      closeUserColorPicker()
+      document.removeEventListener('mousedown', off, true)
+    }
+    document.addEventListener('mousedown', off, true)
+  }, 0)
+}
+
+// Predictions/polls chip — fed by MAIN-world GQL captures
+let _eventChipEl = null
+let _eventChipDismissTimer = null
+function closeEventChip() {
+  if (_eventChipEl) { _eventChipEl.remove(); _eventChipEl = null }
+  clearTimeout(_eventChipDismissTimer); _eventChipDismissTimer = null
+}
+function renderEventChip({ kind, title, rows }) {
+  closeEventChip()
+  const el = document.createElement('div')
+  el.className = 'hs-event-chip'
+
+  const close = document.createElement('span')
+  close.className = 'hs-event-close'
+  close.textContent = '×'
+  close.addEventListener('click', closeEventChip)
+  el.appendChild(close)
+
+  const t = document.createElement('div')
+  t.className = 'hs-event-title'
+  t.textContent = (kind === 'poll' ? '📊 poll · ' : '🎯 prediction · ') + (title || '(active)')
+  el.appendChild(t)
+
+  for (const r of (rows || []).slice(0, 8)) {
+    const row = document.createElement('div')
+    row.className = 'hs-event-row'
+    const lbl = document.createElement('span')
+    lbl.textContent = r.label || ''
+    const val = document.createElement('span')
+    val.textContent = r.value || ''
+    row.appendChild(lbl); row.appendChild(val)
+    el.appendChild(row)
+  }
+
+  document.body.appendChild(el)
+  _eventChipEl = el
+  _eventChipDismissTimer = setTimeout(closeEventChip, 5 * 60 * 1000)
+}
+function renderEventChipFromGql(op, data) {
+  if (!data || typeof data !== 'object') return
+  // Best-effort shape extraction — Twitch GQL shapes vary
+  const u = data.user || data.channel || data
+  const event = u?.predictionEvent || u?.activePoll || data?.event || data?.poll || data?.prediction
+  if (!event) return
+  const isPoll = /Poll/i.test(op) || event.choices
+  if (isPoll) {
+    const choices = event.choices || []
+    const total = choices.reduce((s, c) => s + (c.totalVotes || c.votes || 0), 0) || 1
+    const rows = choices.map(c => ({
+      label: (c.title || c.text || '').slice(0, 32),
+      value: ((c.totalVotes || c.votes || 0) / total * 100).toFixed(0) + '%'
+    }))
+    renderEventChip({ kind: 'poll', title: (event.title || '').slice(0, 64), rows })
+    return
+  }
+  // Prediction shape
+  const outcomes = event.outcomes || []
+  const totalPts = outcomes.reduce((s, o) => s + (o.totalPoints || 0), 0) || 1
+  const rows = outcomes.map(o => ({
+    label: (o.title || '').slice(0, 32),
+    value: ((o.totalPoints || 0) / totalPts * 100).toFixed(0) + '%'
+  }))
+  renderEventChip({ kind: 'prediction', title: (event.title || '').slice(0, 64), rows })
+}
+
+// FFZ/BTTV modifier WYSIWYG preview in chat input box.
+// As the user types `Kappa w! h! ffzX c!#ff8700`, the inserted Kappa <img>
+// inside `.wysiwig-chat-input-emote` previews wide+tall+flipped+tinted live.
+const HS_INPUT_EMOTE_SELECTOR = '.wysiwig-chat-input-emote, span[data-slate-node="element"][data-slate-void]'
+const HS_INPUT_EDITOR_SELECTOR = '[data-slate-editor="true"], .chat-wysiwyg-input__editor, [data-testid="chat-input"]'
+function _hsParseModifierTokens(text) {
+  if (!text) return { mods: [], hue: null }
+  const tokens = String(text).trim().split(/\s+/).filter(Boolean)
+  const mods = []
+  let hue = null
+  for (const tok of tokens) {
+    if (HS_MODIFIER_CLASSES[tok]) { mods.push(HS_MODIFIER_CLASSES[tok]); continue }
+    const m = tok.match(HS_C_HEX_RE)
+    if (m) { hue = hsHexToHueDeg(m[1]); continue }
+    break
+  }
+  return { mods, hue }
+}
+function _hsTextAfterEmoteSpan(emoteSpan, maxChars = 80) {
+  const block = emoteSpan.closest('p, [data-slate-node="element"]:not([data-slate-void])') || emoteSpan.parentElement
+  if (!block) return ''
+  const walker = document.createTreeWalker(block, NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT)
+  let txt = ''
+  let found = false
+  let n = walker.nextNode()
+  while (n) {
+    if (n === emoteSpan) { found = true }
+    else if (found) {
+      if (n.nodeType === 1 && n !== emoteSpan && n.matches?.(HS_INPUT_EMOTE_SELECTOR)) break
+      if (n.nodeType === 3) {
+        txt += n.textContent
+        if (txt.length > maxChars) break
+      }
+    }
+    n = walker.nextNode()
+  }
+  return txt
+}
+// Walk forward from emoteSpan and collect modifier text nodes (until the next emote).
+// Returns { mods, hue, modTextElements } — elements are the parent spans we need to chip-style.
+function _hsCollectModsAfterSpan(emoteSpan) {
+  const out = { mods: [], hue: null, modTextElements: [], plainTextEncountered: false }
+  const block = emoteSpan.closest('p, [data-slate-node="element"]:not([data-slate-void])') || emoteSpan.parentElement
+  if (!block) return out
+  const walker = document.createTreeWalker(block, NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT)
+  let n = walker.nextNode()
+  let found = false
+  while (n) {
+    if (n === emoteSpan) { found = true }
+    else if (found) {
+      if (n.nodeType === 1 && n !== emoteSpan && n.matches?.(HS_INPUT_EMOTE_SELECTOR)) break
+      if (n.nodeType === 3) {
+        const tx = (n.textContent || '').trim()
+        if (!tx) { n = walker.nextNode(); continue }
+        // Try parsing tokens; stop at first non-modifier
+        const tokens = tx.split(/\s+/).filter(Boolean)
+        let allConsumed = true
+        for (const tok of tokens) {
+          if (HS_MODIFIER_CLASSES[tok]) { out.mods.push(HS_MODIFIER_CLASSES[tok]); continue }
+          const m = tok.match(HS_C_HEX_RE); if (m) { out.hue = hsHexToHueDeg(m[1]); continue }
+          allConsumed = false
+          break
+        }
+        if (allConsumed) {
+          // Mark for chip styling — entire text is modifiers
+          if (n.parentElement) out.modTextElements.push(n.parentElement)
+        } else {
+          out.plainTextEncountered = true
+          break
+        }
+      }
+    }
+    n = walker.nextNode()
+  }
+  return out
+}
+
+function applyInputModifierPreview(editor) {
+  if (!editor || !_uiPrefs.emoteModifiers) return
+  const spans = editor.querySelectorAll(HS_INPUT_EMOTE_SELECTOR)
+  for (const span of spans) {
+    const img = span.querySelector('img')
+    if (!img) continue
+    const { mods, hue, modTextElements } = _hsCollectModsAfterSpan(span)
+    const key = mods.join(',') + '|' + (hue == null ? '' : hue)
+    if (span.dataset.hsModCache === key) continue
+    span.dataset.hsModCache = key
+
+    // Reset previous mod styles on this span/img
+    span.style.removeProperty('transform')
+    span.style.removeProperty('transform-origin')
+    span.style.removeProperty('margin-left')
+    span.style.removeProperty('margin-right')
+    span.style.removeProperty('margin-top')
+    span.style.removeProperty('margin-bottom')
+    span.style.removeProperty('--hs-mod-scale')
+    img.style.removeProperty('filter')
+
+    if (!mods.length && hue == null) {
+      // Restore any previously-chipped mod-text spans we no longer recognize
+      continue
+    }
+
+    // Multiset compose then clamp at ±4x per axis (layout limit)
+    let sx = 1, sy = 1, filter = ''
+    for (const m of mods) {
+      if (m === 'wide') sx *= 2
+      else if (m === 'tall') sy *= 2
+      else if (m === 'hflip') sx *= -1
+      else if (m === 'vmirror') sy *= -1
+    }
+    sx = Math.min(Math.max(sx, -4), 4)
+    sy = Math.min(Math.max(sy, -4), 4)
+    if (mods.includes('cursed')) filter += ' hue-rotate(45deg) saturate(2)'
+    if (hue != null) filter += ` hue-rotate(${hue}deg) saturate(1.6)`
+
+    // Apply transform to the WRAPPER span (so all visual artifacts scale together)
+    if (sx !== 1 || sy !== 1) {
+      span.style.setProperty('transform', `scale(${sx}, ${sy})`, 'important')
+      span.style.setProperty('transform-origin', 'center', 'important')
+      const fx = Math.abs(sx), fy = Math.abs(sy)
+      if (fx > 1) {
+        const halfX = `calc(1em * ${(fx - 1) / 2})`
+        span.style.setProperty('margin-left', halfX, 'important')
+        span.style.setProperty('margin-right', halfX, 'important')
+      }
+      if (fy > 1) {
+        const halfY = `calc(1em * ${(fy - 1) / 2})`
+        span.style.setProperty('margin-top', halfY, 'important')
+        span.style.setProperty('margin-bottom', halfY, 'important')
+      }
+      span.style.setProperty('--hs-mod-scale', String(Math.max(fx, fy)))
+    }
+    if (filter.trim()) img.style.setProperty('filter', filter, 'important')
+
+    // Style the modifier text as an invisible chip + make non-editable so
+    // it merges with the preceding emote — single backspace removes both.
+    for (const el of modTextElements) {
+      el.classList.add('hs-input-mod-chip')
+      el.setAttribute('contenteditable', 'false')
+      el.dataset.hsModChipText = el.textContent || ''
+    }
+  }
+  // Clean stale chips: any element with the chip class whose text is no longer
+  // a pure modifier sequence gets reset.
+  editor.querySelectorAll('.hs-input-mod-chip').forEach(el => {
+    const tx = (el.textContent || '').trim()
+    const tokens = tx.split(/\s+/).filter(Boolean)
+    const allMods = tokens.length && tokens.every(t => HS_MODIFIER_CLASSES[t] || HS_C_HEX_RE.test(t))
+    if (!allMods) el.classList.remove('hs-input-mod-chip')
+  })
+
+  // Zero-width overlay stacking in input — when a known-overlay emote (rain0,
+  // hat0, RainTime, cvMask, etc.) sits AFTER another emote, pull it back over
+  // the previous emote with negative margin so it visually overlays.
+  // Walk through emote spans in order; track previous BASE.
+  let prevBaseSpan = null
+  const allInputEmotes = editor.querySelectorAll(HS_INPUT_EMOTE_SELECTOR)
+  for (const span of allInputEmotes) {
+    const img = span.querySelector('img')
+    const name = img?.alt || ''
+    const isOverlayName = _hsIsLikelyOverlayName(name)
+    if (isOverlayName && prevBaseSpan) {
+      span.classList.add('hs-input-overlay-on-prev')
+    } else {
+      span.classList.remove('hs-input-overlay-on-prev')
+      prevBaseSpan = span
+    }
+  }
+}
+// Hardcoded zero-width / known-overlay heuristic for input
+const HS_KNOWN_OVERLAY_NAMES = new Set([
+  'RainTime','IceCold','cvMask','cvHazmat','SoSnowy','SantaHat','ReinDeer',
+  'TombStone','HypeChat','Hyperextend','3Below','TwitchVibes','SoCool',
+  'CandyCane','Holidays','Holiday','withcoffee','rain','fog','snow','ash','fire'
+])
+function _hsIsLikelyOverlayName(name) {
+  if (!name) return false
+  if (HS_KNOWN_OVERLAY_NAMES.has(name)) return true
+  // ends-with-0 convention: "rain0" → "rain" is the base, this is overlay
+  if (name.endsWith('0') && name.length > 1) return true
+  return false
+}
+function applyInputModifiersToAllEditors() {
+  document.querySelectorAll(HS_INPUT_EDITOR_SELECTOR).forEach(applyInputModifierPreview)
+}
+let _hsInputModRaf = 0
+function scheduleInputModifierPreview() {
+  if (_hsInputModRaf) return
+  _hsInputModRaf = requestAnimationFrame(() => {
+    _hsInputModRaf = 0
+    applyInputModifiersToAllEditors()
+  })
+}
+cleanup.addEventListener(document, 'input', (e) => {
+  if (!_uiPrefs.emoteModifiers) return
+  if (e.target.closest?.(HS_INPUT_EDITOR_SELECTOR)) scheduleInputModifierPreview()
+}, 'input-modifier-preview')
+
+// Backspace handler: when cursor is right after a modifier chip,
+// delete the chip + the preceding emote atomically (single keypress).
+cleanup.addEventListener(document, 'keydown', (e) => {
+  if (!_uiPrefs.emoteModifiers) return
+  if (e.key !== 'Backspace' && e.key !== 'Delete') return
+  const editor = e.target.closest?.(HS_INPUT_EDITOR_SELECTOR)
+  if (!editor) return
+  const sel = window.getSelection?.()
+  if (!sel || sel.rangeCount === 0) return
+  const range = sel.getRangeAt(0)
+  if (!range.collapsed) return
+  // Look for a chip immediately before cursor
+  const node = range.startContainer
+  let probe = null
+  if (node.nodeType === 3 && range.startOffset === 0) {
+    probe = node.previousSibling || node.parentElement?.previousSibling
+  } else if (node.nodeType === 1) {
+    probe = range.startOffset > 0 ? node.childNodes[range.startOffset - 1] : null
+  }
+  // Walk up to find a chip element
+  while (probe && probe.nodeType === 1 && !probe.classList?.contains('hs-input-mod-chip')) {
+    if (probe.querySelector?.('.hs-input-mod-chip')) break
+    probe = probe.previousSibling
+  }
+  if (!probe || probe.nodeType !== 1) return
+  const chip = probe.classList?.contains('hs-input-mod-chip') ? probe : probe.querySelector?.('.hs-input-mod-chip')
+  if (!chip) return
+  // Found a chip — also find the preceding emote span to delete with it
+  let prev = chip.previousSibling
+  while (prev && !(prev.nodeType === 1 && prev.matches?.(HS_INPUT_EMOTE_SELECTOR))) {
+    prev = prev.previousSibling
+  }
+  e.preventDefault()
+  e.stopPropagation()
+  // Remove chip + preceding emote in one go
+  try {
+    chip.remove()
+    if (prev) prev.remove()
+    scheduleInputModifierPreview()
+    // Trigger Slate to re-normalize
+    editor.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'deleteContentBackward' }))
+  } catch {}
+}, 'input-modifier-backspace')
+cleanup.addEventListener(document, 'keyup', (e) => {
+  if (!_uiPrefs.emoteModifiers) return
+  if (e.target.closest?.(HS_INPUT_EDITOR_SELECTOR)) scheduleInputModifierPreview()
+}, 'input-modifier-preview-keyup')
+// Also catch programmatic changes (Slate void inserts) via observer
+const _hsInputObserver = new MutationObserver(scheduleInputModifierPreview)
+function attachInputModifierObserver() {
+  document.querySelectorAll(HS_INPUT_EDITOR_SELECTOR).forEach(ed => {
+    if (ed.dataset.hsInputModObserver) return
+    ed.dataset.hsInputModObserver = '1'
+    _hsInputObserver.observe(ed, { childList: true, subtree: true, characterData: true })
+  })
+}
+setTimeout(attachInputModifierObserver, 1500)
+setInterval(attachInputModifierObserver, 5000)
+
+// Right-click emote action menu (7TV-style: view on, copy name/URL, block, add)
+let _emoteMenuEl = null
+function closeEmoteMenu() { if (_emoteMenuEl) { _emoteMenuEl.remove(); _emoteMenuEl = null } }
+function detectEmoteProvider(url) {
+  if (!url) return null
+  if (url.includes('cdn.7tv.app')) return '7TV'
+  if (url.includes('cdn.betterttv.net')) return 'BTTV'
+  if (url.includes('cdn.frankerfacez.com')) return 'FFZ'
+  if (url.includes('static-cdn.jtvnw.net')) return 'Twitch'
+  return 'heatsync'
+}
+function providerEmoteUrl(provider, url, name) {
+  if (!provider || !url) return null
+  try {
+    if (provider === '7TV') {
+      const m = url.match(/cdn\.7tv\.app\/emote\/([^/]+)/)
+      if (m) return 'https://7tv.app/emotes/' + m[1]
+    }
+    if (provider === 'BTTV') {
+      const m = url.match(/cdn\.betterttv\.net\/emote\/([^/]+)/)
+      if (m) return 'https://betterttv.com/emotes/' + m[1]
+    }
+    if (provider === 'FFZ') {
+      const m = url.match(/cdn\.frankerfacez\.com\/emote\/(\d+)/)
+      if (m) return 'https://www.frankerfacez.com/emoticon/' + m[1]
+    }
+    if (provider === 'Twitch') {
+      const m = url.match(/emoticons\/v2\/(\d+)/)
+      if (m) return 'https://www.twitch.tv/popout/global/emote/' + m[1]
+    }
+  } catch {}
+  return null
+}
+function openEmoteActionMenu(wrapper, x, y) {
+  closeEmoteMenu()
+  const img = wrapper.querySelector('img')
+  const name = wrapper.dataset.emoteName || img?.alt || 'emote'
+  const hash = wrapper.dataset.emoteHash || ''
+  const url = img?.src || ''
+  const provider = detectEmoteProvider(url)
+  const externalUrl = providerEmoteUrl(provider, url, name)
+  const isBlocked = blockedEmotes.has(hash)
+  const inInventory = inventoryHashSet.has(hash) || inventoryNameSet.has(name)
+
+  const el = document.createElement('div')
+  el.id = 'hs-emote-menu'
+  el.style.left = Math.min(x, window.innerWidth - 200) + 'px'
+  el.style.top = Math.min(y, window.innerHeight - 200) + 'px'
+
+  const header = document.createElement('div')
+  header.className = 'hs-em-header'
+  header.textContent = name + (provider ? ' · ' + provider : '')
+  el.appendChild(header)
+
+  const addItem = (label, fn) => {
+    const it = document.createElement('div')
+    it.className = 'hs-em-item'
+    it.textContent = label
+    it.addEventListener('click', () => { try { fn() } catch {} ; closeEmoteMenu() })
+    el.appendChild(it)
+  }
+  const addSep = () => {
+    const s = document.createElement('div')
+    s.className = 'hs-em-sep'
+    el.appendChild(s)
+  }
+
+  addItem('insert in chat', () => {
+    window.postMessage({ type: 'heatsync-insert-emote', name, hash: hash || name, url }, location.origin)
+  })
+  addItem('copy name', () => navigator.clipboard?.writeText(name))
+  if (url) addItem('copy image url', () => navigator.clipboard?.writeText(url))
+  if (externalUrl) addItem('view on ' + provider.toLowerCase() + '.app', () => window.open(externalUrl, '_blank', 'noopener,noreferrer'))
+  addSep()
+
+  if (isBlocked) {
+    addItem('unblock', async () => {
+      try {
+        await safeSendMessage({ type: 'unblock_emote', hash })
+        blockedEmotes.delete(hash)
+        if (typeof markLocalBlockToggle === 'function') markLocalBlockToggle(hash, 'unblocked')
+      } catch {}
+    })
+  } else {
+    addItem('block', async () => {
+      try {
+        await safeSendMessage({ type: 'block_emote', hash, name })
+        blockedEmotes.add(hash)
+        if (typeof markLocalBlockToggle === 'function') markLocalBlockToggle(hash, 'blocked')
+      } catch {}
+    })
+  }
+
+  if (!inInventory && hash && provider !== 'Twitch') {
+    addItem('add to inventory', async () => {
+      try { await safeSendMessage({ type: 'add_emote', hash, name, url }) } catch {}
+    })
+  }
+
+  document.body.appendChild(el)
+  _emoteMenuEl = el
+
+  setTimeout(() => {
+    const off = (ev) => {
+      if (!_emoteMenuEl || _emoteMenuEl.contains(ev.target)) return
+      closeEmoteMenu()
+      document.removeEventListener('mousedown', off, true)
+    }
+    document.addEventListener('mousedown', off, true)
+  }, 0)
+}
 
 // Non-sensitive postMessage handlers (no tokens)
 cleanup.addEventListener(window, 'message', async (event) => {
@@ -251,6 +870,14 @@ cleanup.addEventListener(window, 'message', async (event) => {
     )
     log(' Received', emotes.length, 'native Twitch emotes from MAIN world')
     chrome.storage.local.set({ native_twitch_emotes: emotes })
+  }
+
+  // Predictions/polls chip from MAIN-world GQL interception
+  if (event.data?.type === 'heatsync-gql-data' && _uiPrefs.showPredictionsChip) {
+    const op = String(event.data.operation || '')
+    if (/Prediction|Poll/i.test(op)) {
+      try { renderEventChipFromGql(op, event.data.data) } catch {}
+    }
   }
 }, 'auth-message-handler');
 
@@ -302,6 +929,16 @@ style.textContent = `
     height: auto !important;
   }
 
+  /* Tighten gap between consecutive heatsync emotes (e.g. "eel1 eel2 eel3")
+     so the run reads as one continuous image instead of spaced-out tiles.
+     Negative margin pulls the wrapper over the preceding whitespace text node. */
+  .heatsync-emote-wrapper + .heatsync-emote-wrapper,
+  .heatsync-emote-wrapper + .heatsync-emote-stack,
+  .heatsync-emote-stack + .heatsync-emote-wrapper,
+  .heatsync-emote-stack + .heatsync-emote-stack {
+    margin-left: -3px !important;
+  }
+
   /* Emote cursor */
   img[src*="cdn.7tv.app"],
   img[src*="cdn.betterttv.net"],
@@ -314,18 +951,19 @@ style.textContent = `
     display: none !important;
   }
 
-  /* Blocked emotes - gray outline always visible */
+  /* Blocked emotes - gray outline always visible (compensate for modifier scale via --hs-mod-scale) */
   img[data-heatsync-state="blocked"] {
-    outline: 2px solid #7f7f7f !important;
-    outline-offset: -2px !important;
+    outline: calc(2px / var(--hs-mod-scale, 1)) solid #7f7f7f !important;
+    outline-offset: calc(-2px / var(--hs-mod-scale, 1)) !important;
   }
 
-  /* Blocked emotes - subtle gray outline normally */
-  /* Outline is INSIDE the emote bounds using inset box-shadow (no layout shift) */
+  /* Blocked emotes - subtle gray outline normally
+     Outline width inverse-scales with modifier transform so visual stays 2px
+     even when wrapper has scale(2,1) etc. */
   .heatsync-emote-wrapper.emote-overlay-blocked > img.heatsync-emote {
     opacity: 0 !important;
-    outline: 2px dashed #7f7f7f !important;
-    outline-offset: -2px !important;
+    outline: calc(2px / var(--hs-mod-scale, 1)) dashed #7f7f7f !important;
+    outline-offset: calc(-2px / var(--hs-mod-scale, 1)) !important;
   }
 
   /* Blocked emotes inside expanded stacks - keep dimensions locked so layout doesn't shift */
@@ -403,8 +1041,8 @@ style.textContent = `
   }
   /* Pause our infinite heat-breathe animation when the host page is
      hidden. Scoped to chat-line messages that we've decorated, not
-     the whole document — `*` against twitch's massive subtree caused
-     selector-match thrash. */
+     the whole document — universal selector against twitch's massive
+     subtree caused selector-match thrash. */
   body.hs-ext-hidden .chat-line__message[data-hs-heat-applied] {
     animation-play-state: paused !important;
   }
@@ -1448,6 +2086,144 @@ style.textContent = `
     background: #808080;
     color: #fff;
   }
+
+  /* FFZ-style emote modifiers (w! h! ffzX ffzY c!#hex etc.) */
+  .heatsync-emote-wrapper.heatsync-mod-wide { padding-right: 1ch; }
+  .heatsync-emote-wrapper.heatsync-mod-tall { vertical-align: top; }
+
+  /* Modifier text in chat input — fully hidden (transparent + zero-size).
+     The modifier still exists in the Slate model so backspace/edit work,
+     but it takes zero visual space → next emote (raintime overlay) sits
+     directly adjacent to the actual emote, not past a "w!" placeholder. */
+  .hs-input-mod-chip {
+    display: inline-block !important;
+    font-size: 0 !important;
+    line-height: 0 !important;
+    width: 0 !important;
+    height: 0 !important;
+    color: transparent !important;
+    opacity: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: hidden !important;
+    vertical-align: middle !important;
+    user-select: text;
+    pointer-events: none;
+  }
+  /* Zero-width overlay emotes in input — pull the next emote back over
+     the previous one so it visually stacks (raintime sits over Kappa). */
+  .wysiwig-chat-input-emote.hs-input-overlay-on-prev {
+    margin-left: calc(-1 * var(--hs-emote-width, 28px)) !important;
+    position: relative !important;
+    z-index: 2 !important;
+    pointer-events: none !important;
+  }
+  .heatsync-emote-wrapper.heatsync-mod-cursed > img {
+    animation: hs-mod-cursed 1.2s linear infinite !important;
+  }
+  @keyframes hs-mod-cursed {
+    0%   { filter: hue-rotate(0deg)   saturate(1.4); }
+    25%  { filter: hue-rotate(90deg)  saturate(1.4); }
+    50%  { filter: hue-rotate(180deg) saturate(1.4); }
+    75%  { filter: hue-rotate(270deg) saturate(1.4); }
+    100% { filter: hue-rotate(360deg) saturate(1.4); }
+  }
+
+  /* Custom keyword highlight (BTTV/FFZ-style) */
+  .chat-line__message.hs-keyword-match,
+  .hs-keyword-match {
+    background-color: rgba(255, 135, 0, 0.18) !important;
+    box-shadow: inset 0 0 0 1px #ff8700 !important;
+  }
+
+  /* Show deleted/timeout messages (toggle .hs-show-cleared on <html>) */
+  .hs-show-cleared .chat-line__message--deleted,
+  .hs-show-cleared [class*="chat-line__message"][class*="deleted"],
+  .hs-show-cleared .chat-line__message--moderated {
+    display: block !important;
+    opacity: 0.55 !important;
+  }
+  .hs-show-cleared .chat-line__message--deleted *,
+  .hs-show-cleared [class*="chat-line__message"][class*="deleted"] * {
+    text-decoration: line-through !important;
+  }
+
+  /* Per-user color override (right-click username → set color) */
+  .hs-user-colored {
+    color: var(--hs-user-color, inherit) !important;
+  }
+
+  /* User color picker popup */
+  #hs-user-color-picker {
+    position: fixed; z-index: 2147483646;
+    background: #000; color: #fff;
+    border: 1px solid #ff8700;
+    padding: 8px; min-width: 220px;
+    font-family: ui-monospace, Menlo, monospace; font-size: 12px;
+    box-shadow: 0 4px 24px rgba(0,0,0,0.6);
+  }
+  #hs-user-color-picker .hs-ucp-header {
+    font-size: 11px; opacity: 0.8; margin-bottom: 6px;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  #hs-user-color-picker .hs-ucp-swatches {
+    display: grid; grid-template-columns: repeat(8, 1fr); gap: 3px; margin-bottom: 6px;
+  }
+  #hs-user-color-picker .hs-ucp-swatch {
+    width: 20px; height: 20px; cursor: pointer;
+    border: 1px solid #444;
+  }
+  #hs-user-color-picker .hs-ucp-swatch:hover { border-color: #fff; }
+  #hs-user-color-picker .hs-ucp-row { display: flex; gap: 4px; }
+  #hs-user-color-picker input[type=color] { width: 32px; height: 24px; padding: 0; border: 1px solid #444; background: #000; }
+  #hs-user-color-picker input[type=text] { flex: 1; background: #000; color: #fff; border: 1px solid #444; padding: 2px 4px; font-family: inherit; font-size: 11px; }
+  #hs-user-color-picker button {
+    background: #000; color: #fff; border: 1px solid #444;
+    padding: 2px 8px; cursor: pointer; font: inherit;
+  }
+  #hs-user-color-picker button:hover { background: #fff; color: #000; }
+
+  /* Right-click emote action menu */
+  #hs-emote-menu {
+    position: fixed; z-index: 2147483646;
+    background: #000; color: #fff;
+    border: 1px solid #ff8700;
+    padding: 0; min-width: 180px;
+    font-family: ui-monospace, Menlo, monospace; font-size: 12px;
+    box-shadow: 0 4px 24px rgba(0,0,0,0.6);
+  }
+  #hs-emote-menu .hs-em-header {
+    padding: 6px 10px; border-bottom: 1px solid #333;
+    font-size: 11px; opacity: 0.8;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  #hs-emote-menu .hs-em-item {
+    padding: 5px 10px; cursor: pointer; user-select: none;
+  }
+  #hs-emote-menu .hs-em-item:hover { background: #fff; color: #000; }
+  #hs-emote-menu .hs-em-sep { height: 1px; background: #333; margin: 2px 0; }
+
+  /* Predictions/polls chip */
+  .hs-event-chip {
+    position: fixed; right: 12px; bottom: 12px;
+    z-index: 9999;
+    background: #000; color: #fff;
+    border: 1px solid #ff8700;
+    padding: 6px 10px;
+    font-family: ui-monospace, Menlo, monospace; font-size: 11px;
+    max-width: 280px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.6);
+  }
+  .hs-event-chip .hs-event-title { font-weight: 600; margin-bottom: 4px; }
+  .hs-event-chip .hs-event-row {
+    display: flex; justify-content: space-between; gap: 8px;
+    padding: 1px 0; opacity: 0.85;
+  }
+  .hs-event-chip .hs-event-close {
+    position: absolute; top: 2px; right: 4px;
+    cursor: pointer; opacity: 0.5;
+  }
+  .hs-event-chip .hs-event-close:hover { opacity: 1; color: #ff8700; }
 `;
 document.head.appendChild(style);
 log(' 🎨 CSS injected for emote hover effects');
@@ -1700,10 +2476,28 @@ function disableHeaderHiding() {
 // END HEADER HIDING
 // =============================================================================
 
+// Cached UI prefs for runtime feature gating (default-on except where noted)
+const _uiPrefs = {
+  emoteModifiers: true,
+  emoteRightClickMenu: true,
+  userColors: true,
+  showClearedMessages: false,
+  showPredictionsChip: true,
+  anonChat: false
+}
+
 function applyUiSettings(settings) {
   if (!settings) return;
 
   log(' Applying UI hiding settings:', settings);
+  // Update cached UI prefs (default-on if absent in settings)
+  for (const k of Object.keys(_uiPrefs)) {
+    if (settings[k] !== undefined) _uiPrefs[k] = !!settings[k]
+  }
+  // Toggle deleted-message visibility CSS
+  document.documentElement.classList.toggle('hs-show-cleared', !!_uiPrefs.showClearedMessages)
+  // Anon-mode flag — read by typing/presence interceptors
+  document.documentElement.classList.toggle('hs-anon-chat', !!_uiPrefs.anonChat)
 
   // Remove existing UI hiding style
   if (uiHidingStyle) {
@@ -3719,11 +4513,50 @@ function setupUsernameColoringObserver() {
       const stack = e.target.closest('.heatsync-emote-stack');
       if (stack) {
         if (!stack.classList.contains('expanded')) {
-          // Collapsed → expand + lock
+          // Collapsed → bulk-insert every emote in the stack in DOM order,
+          // adding unowned heatsync emotes to the user's inventory first.
+          // Right-click still expands (for per-emote interaction).
           e.preventDefault();
           e.stopPropagation();
-          stack.dataset.hsLocked = '1';
-          stack.classList.add('expanded');
+          const wrappers = stack.querySelectorAll('.heatsync-emote-wrapper');
+          const addedNames = [];
+          wrappers.forEach((wrapper) => {
+            const hash = wrapper.dataset.emoteHash || '';
+            const emoteName = wrapper.dataset.emoteName;
+            if (!emoteName) return;
+            const isBlocked = hash ? blockedEmotes.has(hash) : blockedEmotes.has(emoteName);
+            if (isBlocked) return; // Skip blocked emotes — don't insert or add
+            const imgEl = wrapper.querySelector('img');
+            const emoteUrl = imgEl?.src || '';
+            const inInv = inventoryHashSet.has(hash) || inventoryNameSet.has(emoteName);
+            const isGlobalEmote = wrapper.classList.contains('emote-overlay-global') || globalNameSet.has(emoteName);
+            // Add to inventory: only own heatsync emotes (have hash, not third-party global)
+            if (!inInv && hash && !isGlobalEmote) {
+              safeSendMessage({
+                type: 'add_to_inventory',
+                emoteName,
+                emoteHash: hash,
+                emoteUrl
+              }).then((result) => {
+                if (result?.success) {
+                  inventoryHashSet.add(result.hash || hash);
+                  inventoryNameSet.add(emoteName);
+                  updateEmoteState(hash, emoteName, 'added');
+                }
+              }).catch(() => {});
+              addedNames.push(emoteName);
+            }
+            // Insert into chat input via MAIN-world hook (handles Slate editor)
+            window.postMessage({
+              type: 'heatsync-insert-emote',
+              name: emoteName,
+              hash: hash || emoteName,
+              url: emoteUrl
+            }, location.origin);
+          });
+          if (addedNames.length) {
+            showToast(t('content_toast_added', [addedNames.join(', ')]) || `added: ${addedNames.join(', ')}`, 'success');
+          }
         } else {
           // Expanded stack — absorb ALL clicks to prevent Twitch React re-render
           // which would destroy the stack DOM. Emote insert handled below.
@@ -3931,6 +4764,12 @@ function processMessage(messageElement) {
   // Highlight mentions of current user (FFZ-style red background on entire line)
   highlightUserMentions(messageElement, usernameElement, textElements);
 
+  // Highlight custom keywords (BTTV/FFZ-style custom highlight list)
+  highlightKeywords(messageElement);
+
+  // Apply per-user color override (right-click on username sets color)
+  if (_userColors.size && username) applyUserColorToMessage(messageElement, username);
+
   // Ensure emote map is current (rebuilt eagerly by event handlers, fallback here)
   rebuildEmoteMapIfDirty()
 
@@ -3987,6 +4826,10 @@ function processMessage(messageElement) {
 
   // Post-process: Stack overlay emotes that are adjacent to base emotes
   stackAdjacentOverlayEmotes(messageElement, allEmotes);
+
+  // FFZ modifiers across DOM boundaries — text-fragments split modifiers
+  // from preceding emotes, so do a post-pass walking the message timeline.
+  if (_uiPrefs.emoteModifiers) applyModifiersAcrossMessage(messageElement)
 
   // Color all @username mentions (Chatterino-style) - AFTER emote replacement
   // so replaceChildren() doesn't wipe out the colored spans
@@ -4297,15 +5140,115 @@ function wrapExistingHeatsyncEmotes(messageElement, allEmotes) {
 // Unicode emoji detection — matches emoji sequences (presentation + ZWJ combos)
 const UNICODE_EMOJI_RE = /^[\p{Extended_Pictographic}\p{Emoji_Presentation}\uFE0F\u200D]+$/u
 
-// BTTV/FFZ modifier emotes — applied as a CSS class on the next emote.
-// w! = wide, h! = tall, v! = vertical flip, l! = horizontal flip, c! = rotate.
-const HS_MODIFIER_CLASSES = {
-  'w!': 'heatsync-mod-wide',
-  'h!': 'heatsync-mod-tall',
-  'v!': 'heatsync-mod-vmirror',
-  'l!': 'heatsync-mod-hflip',
-  'c!': 'heatsync-mod-cursed'
+// BTTV/FFZ modifier definitions live in src/lib/modifiers.js (bundled).
+// Aliases for backward-compat across this file:
+const HS_MODIFIER_CLASSES = HS_MOD_TOKENS
+const HS_C_HEX_RE = HS_MOD_C_HEX_RE
+// Walk a chat message left→right; build groups of {base, overlays, mods, hue},
+// then apply transform/filter to each base. Modifiers in a group ALWAYS target
+// the base (skipping overlays), and chain multiplicatively (w! w! = 4x wide).
+function applyModifiersAcrossMessage(messageElement) {
+  if (!messageElement || !messageElement.isConnected) return
+  const walker = document.createTreeWalker(messageElement, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT)
+  const timeline = []
+  let n = walker.nextNode()
+  while (n) {
+    if (n.nodeType === 1) {
+      if (n.matches?.('.heatsync-emote-wrapper')) {
+        timeline.push({ kind: 'emote', el: n, isOverlay: n.classList.contains('heatsync-overlay') })
+      } else if (n.tagName === 'IMG' && !n.closest('.heatsync-emote-wrapper') && !n.closest('.hs-cosmetic-badge') && (n.alt || '').length > 0) {
+        const src = n.src || ''
+        if (src.includes('static-cdn.jtvnw.net/emoticons') || src.includes('cdn.7tv.app') || src.includes('cdn.betterttv.net') || src.includes('cdn.frankerfacez.com')) {
+          timeline.push({ kind: 'emote', el: n, isOverlay: false })
+        }
+      }
+    } else if (n.nodeType === 3) {
+      const tx = n.textContent || ''
+      if (tx.trim()) timeline.push({ kind: 'text', text: tx })
+    }
+    n = walker.nextNode()
+  }
+  // FFZ semantic: modifier attaches to IMMEDIATELY PRECEDING emote (base
+  // OR overlay). Track currentTarget = last emote seen.
+  let currentTarget = null
+  let currentMods = []
+  let currentHue = null
+  const flushTo = (targetInfo) => {
+    if (!targetInfo) return
+    if (!currentMods.length && currentHue == null) return
+    const { el } = targetInfo
+    const isHsWrapper = el.matches?.('.heatsync-emote-wrapper')
+    const targetImg = el.tagName === 'IMG' ? el : el.querySelector('img')
+    if (!targetImg) return
+    let sx = 1, sy = 1, filter = ''
+    for (const m of currentMods) {
+      if (m === 'wide') sx *= 2
+      else if (m === 'tall') sy *= 2
+      else if (m === 'hflip') sx *= -1
+      else if (m === 'vmirror') sy *= -1
+    }
+    sx = Math.min(Math.max(sx, -4), 4)
+    sy = Math.min(Math.max(sy, -4), 4)
+    if (currentMods.includes('cursed')) filter += ' hue-rotate(45deg) saturate(2)'
+    if (currentHue != null) filter += ` hue-rotate(${currentHue}deg) saturate(1.6)`
+    if (sx !== 1 || sy !== 1) {
+      const fx = Math.abs(sx), fy = Math.abs(sy)
+      if (isHsWrapper) {
+        el.style.setProperty('transform', `scale(${sx}, ${sy})`, 'important')
+        el.style.setProperty('transform-origin', 'center', 'important')
+        if (fx > 1) {
+          const halfX = `calc(var(--hs-emote-width, 28px) * ${(fx - 1) / 2})`
+          el.style.setProperty('margin-left', halfX, 'important')
+          el.style.setProperty('margin-right', halfX, 'important')
+        }
+        if (fy > 1) {
+          const halfY = `calc(var(--hs-emote-height, 28px) * ${(fy - 1) / 2})`
+          el.style.setProperty('margin-top', halfY, 'important')
+          el.style.setProperty('margin-bottom', halfY, 'important')
+        }
+        el.style.setProperty('--hs-mod-scale', String(Math.max(fx, fy)))
+      } else {
+        targetImg.style.setProperty('transform', `scale(${sx}, ${sy})`, 'important')
+        targetImg.style.setProperty('transform-origin', 'center', 'important')
+        if (fx > 1) targetImg.style.setProperty('margin-right', 'var(--hs-emote-width, 28px)', 'important')
+        if (fy > 1) targetImg.style.setProperty('margin-bottom', 'calc(var(--hs-emote-height, 28px) * 0.6)', 'important')
+      }
+    }
+    if (filter.trim()) targetImg.style.setProperty('filter', filter, 'important')
+    if (el.classList) for (const m of new Set(currentMods)) el.classList.add('heatsync-mod-' + m)
+  }
+  for (let i = 0; i < timeline.length; i++) {
+    const item = timeline[i]
+    if (item.kind === 'emote') {
+      // Any emote (base or overlay) becomes the new modifier target.
+      // Flush pending mods to whatever was previous, then retarget.
+      flushTo(currentTarget)
+      currentTarget = item
+      currentMods = []
+      currentHue = null
+    } else if (item.kind === 'text') {
+      const tokens = item.text.trim().split(/\s+/).filter(Boolean)
+      let allConsumed = true
+      for (const tok of tokens) {
+        if (HS_MODIFIER_CLASSES[tok]) { currentMods.push(HS_MODIFIER_CLASSES[tok]); continue }
+        const m = tok.match(HS_C_HEX_RE)
+        if (m) { currentHue = hsHexToHueDeg(m[1]); continue }
+        allConsumed = false
+        break
+      }
+      if (!allConsumed) {
+        flushTo(currentTarget)
+        currentTarget = null
+        currentMods = []
+        currentHue = null
+      }
+    }
+  }
+  flushTo(currentTarget)
 }
+
+// hex → hue degrees. Delegates to lib/modifiers.js
+function hsHexToHueDeg(hex) { return hsModHexToHue(hex) }
 
 // Replace emotes with overlay stacking support (emotes ending in 0 stack on previous)
 // Using DOM nodes instead of innerHTML to avoid React conflicts
@@ -4319,7 +5262,25 @@ function replaceEmotesWithStacking(element, allEmotes) {
   const resultNodes = [];
   let currentStack = [];
   let pendingWhitespace = '';
-  let pendingModifier = null; // BTTV/FFZ modifier waiting to apply to next emote
+  let pendingModifiers = []; // BTTV/FFZ modifier classes (chain) — applied to PREVIOUS emote
+  let pendingModColor = null; // c!#hex parsed hue degrees
+
+  // FFZ semantic: modifier attaches to the IMMEDIATELY PRECEDING emote.
+  // For "Kappa RainTime w!" — w! applies to RainTime (last entry), not Kappa.
+  // Multiset semantics: chain `w! w!` on same emote = 4x wide.
+  const applyPendingToLast = () => {
+    if (!currentStack.length) return
+    const target = currentStack[currentStack.length - 1]
+    if (target.isEmoji) return
+    if (pendingModifiers.length) {
+      target.modifiers = (target.modifiers || []).concat(pendingModifiers)
+      pendingModifiers = []
+    }
+    if (pendingModColor != null) {
+      target.modColorHue = pendingModColor
+      pendingModColor = null
+    }
+  }
 
   for (let i = 0; i < words.length; i++) {
     const word = words[i];
@@ -4331,10 +5292,48 @@ function replaceEmotesWithStacking(element, allEmotes) {
       continue;
     }
 
-    // BTTV/FFZ modifier emote — capture and apply to the next renderable emote.
-    if (HS_MODIFIER_CLASSES[trimmed]) {
-      pendingModifier = HS_MODIFIER_CLASSES[trimmed]
-      pendingWhitespace = '' // modifier absorbs preceding space
+    // Chained modifier word (e.g. "w!h!ffzX" or "w!c!#ff8700") — peel into parts.
+    if (_uiPrefs.emoteModifiers && !HS_MODIFIER_CLASSES[trimmed] && !HS_C_HEX_RE.test(trimmed)) {
+      const _hsPeel = (() => {
+        if (!trimmed || trimmed.length < 2) return null
+        const sortedKeys = Object.keys(HS_MODIFIER_CLASSES).sort((a, b) => b.length - a.length)
+        const mods = []
+        let hue = null
+        let rem = trimmed
+        while (rem.length > 0) {
+          let matched = false
+          for (const k of sortedKeys) {
+            if (rem.startsWith(k)) { mods.push(HS_MODIFIER_CLASSES[k]); rem = rem.slice(k.length); matched = true; break }
+          }
+          if (matched) continue
+          const cm = rem.match(/^c!#?([0-9a-fA-F]{3}|[0-9a-fA-F]{6})/)
+          if (cm) { hue = hsHexToHueDeg(cm[1]); rem = rem.slice(cm[0].length); continue }
+          return null
+        }
+        return (mods.length || hue != null) ? { mods, hue } : null
+      })()
+      if (_hsPeel) {
+        for (const m of _hsPeel.mods) pendingModifiers.push(m)
+        if (_hsPeel.hue != null) pendingModColor = _hsPeel.hue
+        pendingWhitespace = ''
+        applyPendingToLast()
+        continue
+      }
+    }
+    // FFZ-style modifier — applies to BASE of current group.
+    // Chain: "Kappa w! raintime0 h! w!" → all mods apply to Kappa, raintime overlays.
+    if (_uiPrefs.emoteModifiers && HS_MODIFIER_CLASSES[trimmed]) {
+      pendingModifiers.push(HS_MODIFIER_CLASSES[trimmed])
+      pendingWhitespace = ''
+      applyPendingToLast()
+      continue
+    }
+    // c!#RRGGBB color modifier
+    const cHexMatch = _uiPrefs.emoteModifiers ? trimmed.match(HS_C_HEX_RE) : null
+    if (cHexMatch) {
+      pendingModColor = hsHexToHueDeg(cHexMatch[1])
+      pendingWhitespace = ''
+      applyPendingToLast()
       continue
     }
 
@@ -4365,22 +5364,26 @@ function replaceEmotesWithStacking(element, allEmotes) {
     }
 
     if (emote && isOverlay && currentStack.length > 0) {
-      // Overlay emote with existing base - add to stack, discard pending whitespace
-      currentStack.push({ emote, isOverlay: true, originalWord: trimmed, modifier: pendingModifier });
-      pendingModifier = null
+      // Overlay emote with existing base — add to stack as overlay (no mods)
+      const entry = { emote, isOverlay: true, originalWord: trimmed }
+      currentStack.push(entry);
       pendingWhitespace = '';
     } else if (emote && isOverlay && currentStack.length === 0) {
-      // Overlay emote but NO base in our emote map (base might be native Twitch emote)
-      // Output as standalone overlay - stackAdjacentOverlayEmotes will handle stacking with native emotes
+      // Overlay with no base — promote to standalone (modifiers may still
+      // apply since this becomes the "base" of a new group)
       if (pendingWhitespace) {
         resultNodes.push(document.createTextNode(pendingWhitespace));
         pendingWhitespace = '';
       }
-      // Mark as overlay so stackAdjacentOverlayEmotes knows to stack it
-      resultNodes.push(generateEmoteElement(emote, true, pendingModifier));
-      pendingModifier = null
+      const overlayEntry = { emote, isOverlay: true, originalWord: trimmed }
+      // No base anchor — apply pending mods/hue to this standalone entry.
+      if (pendingModifiers.length) overlayEntry.modifiers = pendingModifiers
+      if (pendingModColor != null) overlayEntry.modColorHue = pendingModColor
+      pendingModifiers = []
+      pendingModColor = null
+      resultNodes.push(generateEmoteElement(emote, true, overlayEntry.modifiers, overlayEntry.modColorHue));
     } else if (emote) {
-      // Non-overlay emote - flush previous stack first
+      // Non-overlay (base) emote — flush previous group, start new group
       if (currentStack.length > 0) {
         resultNodes.push(flushEmoteStack(currentStack));
         currentStack = [];
@@ -4390,8 +5393,10 @@ function replaceEmotesWithStacking(element, allEmotes) {
         resultNodes.push(document.createTextNode(pendingWhitespace));
         pendingWhitespace = '';
       }
-      currentStack.push({ emote, isOverlay: false, originalWord: trimmed, modifier: pendingModifier });
-      pendingModifier = null
+      const entry = { emote, isOverlay: false, originalWord: trimmed }
+      currentStack.push(entry);
+      // Apply any pending mods (floating before base, e.g. "w! Kappa") to this base
+      applyPendingToLast()
     } else {
       // Check for emoji :shortcode:
       if (typeof EMOJI_BY_NAME !== 'undefined' && trimmed.startsWith(':') && trimmed.endsWith(':') && trimmed.length > 2) {
@@ -4475,7 +5480,7 @@ function replaceEmotesWithStacking(element, allEmotes) {
     if (stack.length === 1) {
       const entry = stack[0]
       if (entry.isEmoji) return generateEmojiElement(entry.emoji, entry.emojiName)
-      return generateEmoteElement(entry.emote, entry.isOverlay, entry.modifier);
+      return generateEmoteElement(entry.emote, entry.isOverlay, entry.modifiers, entry.modColorHue);
     }
     // Multiple emotes - wrap in stack container with buttons
     const stackContainer = document.createElement('span');
@@ -4495,7 +5500,7 @@ function replaceEmotesWithStacking(element, allEmotes) {
       if (entry.isEmoji) {
         stackContainer.appendChild(generateEmojiElement(entry.emoji, entry.emojiName))
       } else {
-        stackContainer.appendChild(generateEmoteElement(entry.emote, entry.isOverlay, entry.modifier))
+        stackContainer.appendChild(generateEmoteElement(entry.emote, entry.isOverlay, entry.modifiers, entry.modColorHue))
       }
     });
 
@@ -4529,7 +5534,9 @@ function replaceEmotesWithStacking(element, allEmotes) {
 }
 
 // Generate DOM element for a single emote (React-safe, no innerHTML)
-function generateEmoteElement(emote, isOverlay, modifierClass) {
+// modifiers: array of class suffixes like ['wide','hflip']  (FFZ-style chained)
+// modColorHue: optional 0-359 deg from c!#hex
+function generateEmoteElement(emote, isOverlay, modifiers, modColorHue) {
     const blocked = blockedEmotes.has(emote.hash);
     const inInventory = inventoryHashSet.has(emote.hash) || inventoryNameSet.has(emote.name);
 
@@ -4562,7 +5569,10 @@ function generateEmoteElement(emote, isOverlay, modifierClass) {
     else if (isThirdPartyCdn) cssClasses.push('emote-global');
 
     const overlayWrapperClass = isOverlay ? ' heatsync-overlay' : '';
-    const modClass = modifierClass ? ` ${modifierClass}` : '';
+    // FFZ-style modifier multiset (chain: w! w! → 4x wide)
+    const modList = modifiers && modifiers.length ? modifiers.slice() : null
+    // CSS classes use deduped names (one each is enough for state CSS)
+    const modClass = modList ? ' ' + Array.from(new Set(modList)).map(m => 'heatsync-mod-' + m).join(' ') : '';
 
     // Create wrapper span
     const wrapper = document.createElement('span');
@@ -4571,11 +5581,56 @@ function generateEmoteElement(emote, isOverlay, modifierClass) {
     wrapper.dataset.emoteHash = emote.hash;
     wrapper.dataset.emoteName = emote.name;
     wrapper.dataset.inInventory = String(inInventory);
+    // Compose multiset modifier transform — repeats compound (w! w! → 4x wide).
+    // Cap each axis at ±4x: chat layout breaks past 4x (line-height etc.) and
+    // recipients can't reserve more vertical/horizontal space without overlap.
+    const _composeMods = (mods) => {
+      let sx = 1, sy = 1
+      if (mods) for (const m of mods) {
+        if (m === 'wide') sx *= 2
+        else if (m === 'tall') sy *= 2
+        else if (m === 'hflip') sx *= -1
+        else if (m === 'vmirror') sy *= -1
+      }
+      sx = Math.min(Math.max(sx, -4), 4)
+      sy = Math.min(Math.max(sy, -4), 4)
+      return { sx, sy }
+    }
     if (isOverlay) {
-      // Overlay wrapper: absolute positioned, centered on base emote
-      wrapper.style.cssText = 'position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: auto; height: auto; display: inline-block; z-index: 2; pointer-events: auto; overflow: visible; cursor: pointer;';
+      // Overlay wrapper: absolute positioned, centered on base emote.
+      // Modifier composes with translate to keep centering: translate(-50%,-50%) scale(...)
+      const ov = _composeMods(modList)
+      const overlayTransform = (ov.sx !== 1 || ov.sy !== 1)
+        ? `translate(-50%, -50%) scale(${ov.sx}, ${ov.sy})`
+        : 'translate(-50%, -50%)'
+      wrapper.style.cssText = `position: absolute; top: 50%; left: 50%; transform: ${overlayTransform}; transform-origin: center; width: auto; height: auto; display: inline-block; z-index: 2; pointer-events: auto; overflow: visible; cursor: pointer;`;
     } else {
-      wrapper.style.cssText = 'display: inline-block; vertical-align: middle; cursor: pointer; position: relative; line-height: 0; font-size: 0;';
+      // Base wrapper. Modifier scale goes here (not on img) so the green
+      // ::before indicator and hit-box scale with the visual emote.
+      // Symmetric margins so the scaled visual fits exactly within layout
+      // (no off-screen bleed, no overlap with neighbors).
+      let baseTransform = ''
+      let layoutMargin = ''
+      let modScaleVar = ''
+      if (modList) {
+        const { sx, sy } = _composeMods(modList)
+        if (sx !== 1 || sy !== 1) {
+          const fx = Math.abs(sx), fy = Math.abs(sy)
+          baseTransform = `transform: scale(${sx}, ${sy}) !important; transform-origin: center !important;`
+          if (fx > 1) {
+            const halfX = `calc(var(--hs-emote-width, 28px) * ${(fx - 1) / 2})`
+            layoutMargin += `margin-left: ${halfX} !important; margin-right: ${halfX} !important;`
+          }
+          if (fy > 1) {
+            const halfY = `calc(var(--hs-emote-height, 28px) * ${(fy - 1) / 2})`
+            layoutMargin += `margin-top: ${halfY} !important; margin-bottom: ${halfY} !important;`
+          }
+          // Inverse-scale CSS var so outline/box-shadow widths can compensate
+          // and look 2px regardless of modifier scale.
+          modScaleVar = `--hs-mod-scale: ${Math.max(fx, fy)};`
+        }
+      }
+      wrapper.style.cssText = `display: inline-block; vertical-align: middle; cursor: pointer; position: relative; line-height: 0; font-size: 0; ${baseTransform} ${layoutMargin} ${modScaleVar}`;
     }
 
     // Overlay emotes render at 1x native size (their designed display size)
@@ -4586,7 +5641,13 @@ function generateEmoteElement(emote, isOverlay, modifierClass) {
     img.src = imgSrc;
     img.alt = emote.name;
     img.decoding = 'async';
-    img.style.cssText = `display: block !important; width: auto !important; height: ${isOverlay ? 'auto' : 'var(--hs-emote-height, 28px)'} !important; max-width: none !important; max-height: none !important; ${blocked ? 'opacity: 0;' : ''} cursor: pointer;`;
+    // Filters (cursed animation, hue tint) stay on img — wrapper-level transform
+    // handles scale/flip so the green ::before indicator scales with the emote.
+    let modFilter = ''
+    if (modList && modList.includes('cursed')) modFilter += ' hue-rotate(0deg)'  // anchor; CSS animation overrides
+    if (modColorHue != null) modFilter += ` hue-rotate(${modColorHue}deg) saturate(1.6)`
+    const filterStyle = modFilter.trim() ? `filter:${modFilter} !important;` : ''
+    img.style.cssText = `display: block !important; width: auto !important; height: ${isOverlay ? 'auto' : 'var(--hs-emote-height, 28px)'} !important; max-width: none !important; max-height: none !important; ${blocked ? 'opacity: 0;' : ''} cursor: pointer; ${filterStyle}`;
     // Overlay images need explicit natural dims so Twitch CSS can't constrain them.
     // Fire even when blocked so a later unblock has correct dims (img is opacity:0
     // while blocked, so this is layout-only — no visual flash).
@@ -4744,6 +5805,12 @@ function setupEmoteClickHandlers() {
 
     e.preventDefault();
     e.stopPropagation();
+
+    // 7TV-style action menu (gated by setting; falls through to block toggle below)
+    if (_uiPrefs.emoteRightClickMenu) {
+      openEmoteActionMenu(wrapper, e.clientX, e.clientY)
+      return
+    }
 
     const hash = wrapper.dataset.emoteHash;
     const emoteName = wrapper.dataset.emoteName;
@@ -5809,7 +6876,8 @@ function updateEmoteState(hash, emoteName, state) {
       { action: 'mod', label: 'mod' },
       { action: 'unmod', label: 'unmod' },
       { action: 'vip', label: 'vip' },
-      { action: 'unvip', label: 'unvip' }
+      { action: 'unvip', label: 'unvip' },
+      { action: 'purge', label: 'purge', danger: true }
     ]
     for (const { action, label, danger } of hardActions) {
       const b = document.createElement('button')
@@ -6070,10 +7138,36 @@ function updateEmoteState(hash, emoteName, state) {
       case 'mention': {
         const input = document.querySelector('[data-a-target="chat-input"]')
         if (input) {
+          const currentText = input.textContent || ''
           input.focus()
-          document.execCommand('insertText', false, `@${username} `)
+          if (currentText.trim() === '') {
+            document.execCommand('selectAll')
+            document.execCommand('insertText', false, `@${username} `)
+          } else {
+            const needsSpace = !currentText.endsWith(' ')
+            document.execCommand('insertText', false, `${needsSpace ? ' ' : ''}@${username} `)
+          }
         }
         closeCard()
+        break
+      }
+      case 'purge': {
+        // Local mass-purge: hide all visible chat lines from this user.
+        // Mod-side cleanup is up to /timeout/ban — this is the client view.
+        const lower = String(username || '').toLowerCase()
+        if (!lower) break
+        let n = 0
+        document.querySelectorAll('.chat-line__message, [data-index]').forEach(msg => {
+          const userEl = msg.querySelector('.chat-author__display-name, [data-a-target="chat-message-username"], button.inline.font-bold')
+          const u = (userEl?.textContent || '').toLowerCase().trim()
+          if (u && u === lower) {
+            msg.classList.add('hs-message-purged')
+            msg.style.opacity = '0.25'
+            msg.style.textDecoration = 'line-through'
+            n++
+          }
+        })
+        log(' 🗑️ purged', n, 'messages from', username)
         break
       }
     }
@@ -6329,6 +7423,21 @@ function updateEmoteState(hash, emoteName, state) {
         closeCard()
       }
     }, { signal })
+
+    // Right-click on username → user color picker
+    document.addEventListener('contextmenu', (e) => {
+      if (!_uiPrefs.userColors) return
+      const target = e.target.closest(usernameSelectors)
+      if (!target) return
+      const inner = target.querySelector?.('.chat-author__display-name, [data-a-target="chat-message-username"]')
+      const src = inner || target
+      const raw = src.dataset?.hsUsername || src.dataset?.username || src.textContent?.replace(/^@/, '').trim()
+      const username = raw?.replace(/[:\s]+$/, '').trim()
+      if (!username) return
+      e.preventDefault()
+      e.stopPropagation()
+      openUserColorPicker(username, e.clientX, e.clientY)
+    }, { capture: true, signal })
 
   log(' ✅ Profile card (click) setup')
 })();

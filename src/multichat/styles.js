@@ -778,6 +778,56 @@ function injectStyles() {
       visibility: hidden !important;
     }
 
+    /* During SPA nav on Kick, the panel pre-migrates to <body> so React's
+       teardown of chat-layout doesn't take it down. Pin it in the eventual
+       chat-layout slot via fixed positioning so it doesn't reflow into a
+       weird body-default position mid-transition (visible quick flash).
+       The post-reparent CSS in chat-layout swaps back to flex-relative. */
+    body.hs-mc-navigating.hs-platform-kick.hs-chat-right > #hs-mc-container {
+      position: fixed !important;
+      top: 0 !important;
+      bottom: 0 !important;
+      right: 0 !important;
+      left: auto !important;
+      width: var(--hs-kick-chat-width, 340px) !important;
+      height: 100vh !important;
+      z-index: 9999 !important;
+      margin: 0 !important;
+    }
+    body.hs-mc-navigating.hs-platform-kick.hs-chat-left > #hs-mc-container {
+      position: fixed !important;
+      top: 0 !important;
+      bottom: 0 !important;
+      left: 0 !important;
+      right: auto !important;
+      width: var(--hs-kick-chat-width, 340px) !important;
+      height: 100vh !important;
+      z-index: 9999 !important;
+      margin: 0 !important;
+    }
+    body.hs-mc-navigating.hs-platform-kick.hs-chat-top > #hs-mc-container {
+      position: fixed !important;
+      top: 0 !important;
+      left: 0 !important;
+      right: 0 !important;
+      bottom: auto !important;
+      width: 100vw !important;
+      height: var(--hs-kick-chat-height, 35vh) !important;
+      z-index: 9999 !important;
+      margin: 0 !important;
+    }
+    body.hs-mc-navigating.hs-platform-kick.hs-chat-bottom > #hs-mc-container {
+      position: fixed !important;
+      bottom: 0 !important;
+      left: 0 !important;
+      right: 0 !important;
+      top: auto !important;
+      width: 100vw !important;
+      height: var(--hs-kick-chat-height, 35vh) !important;
+      z-index: 9999 !important;
+      margin: 0 !important;
+    }
+
     /* Never hide Twitch's native collapse/expand arrows — user needs them.
        Hide HS UI when chat is collapsed so it doesn't interfere with layout. */
     .right-column--collapsed #hs-mc-container {
@@ -1522,12 +1572,22 @@ function injectStyles() {
       height: auto;
       max-height: var(--hs-emote-size, 32px);
       vertical-align: middle;
-      margin: 0 2px;
-      padding: 4px;
+      margin: 0;
+      padding: 2px;
       border-radius: 0;
       transition: none;
       cursor: pointer;
       box-sizing: content-box;
+    }
+    /* Tighten gap between consecutive emotes so "eel1 eel2 eel3"
+       reads as one continuous run instead of three spaced-out images.
+       Negative margin pulls the second wrapper over the whitespace
+       text node that separates them in the DOM. */
+    .hs-mc-emote-wrapper + .hs-mc-emote-wrapper,
+    .hs-mc-emote-wrapper + .hs-mc-emote-stack,
+    .hs-mc-emote-stack + .hs-mc-emote-wrapper,
+    .hs-mc-emote-stack + .hs-mc-emote-stack {
+      margin-left: -4px;
     }
     .hs-mc-picker-emote {
       height: auto;
@@ -1932,6 +1992,7 @@ function injectStyles() {
       font-size: 13px;
       font-family: inherit;
       outline: none;
+      position: relative;
     }
     #hs-mc-input:focus {
       border-color: #9147ff;
@@ -1947,6 +2008,9 @@ function injectStyles() {
       content: attr(data-placeholder);
       color: #808080;
       pointer-events: none;
+      position: absolute;
+      left: 12px;
+      top: 8px;
     }
     /* WYSIWYG emote images in input — height clamped, width auto so wide
        emotes (catKISS, peepoArrive, etc.) render at natural aspect.

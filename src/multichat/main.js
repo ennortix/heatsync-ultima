@@ -280,6 +280,13 @@
     _mentionIndex.clear()
   }
 
+  // Set true by restoreTabState, consumed by renderMessages on the next
+  // call. Tells the renderer "trust the mounted DOM — don't remove or
+  // reorder existing children, only append msgs that aren't there yet."
+  // Without this gate, a fair-merge proportion shift after new msgs
+  // arrived during the user's absence triggers visible reshuffles.
+  let _cacheJustRestored = false
+
   function restoreTabState(tabId) {
     _msgKeyIndex.clear()
     _uidIndex.clear()
@@ -290,6 +297,7 @@
     const msgsEl = document.getElementById('hs-mc-messages')
     if (!msgsEl) return false
     msgsEl.appendChild(cache.frag)
+    _cacheJustRestored = true
     for (const k of cache.msgKeyIndex) _msgKeyIndex.add(k)
     for (const [k, v] of cache.uidIndex) _uidIndex.set(k, new Set(v))
     for (const [k, v] of cache.mentionIndex) _mentionIndex.set(k, new Set(v))
@@ -3754,12 +3762,6 @@
     const isChatTab = active === 'live' || active === 'mentions' ||
       config.channels.some(ch => ch.id === active)
     if (isChatTab) appendMessage(msg, active)
-    // Fan into inactive chat-tab caches so they stay hot for instant switch
-    if (active !== 'live') appendToCachedTab(msg, 'live')
-    for (const ch of config.channels) {
-      if (!ch?.id || ch.id === active) continue
-      appendToCachedTab(msg, ch.id)
-    }
   }
 
   // WYSIWYG setting
@@ -6261,6 +6263,37 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       }
     }
 
+    // CACHE-RESTORED FAST PATH: when restoreTabState just mounted a cached
+    // fragment, trust its DOM order. Don't remove/reorder — only APPEND
+    // msgs the user didn't see yet (those whose key isn't in DOM). This
+    // eliminates the brief "reorder shimmer" from fairMerge proportions
+    // shifting after new msgs arrived during the user's absence.
+    if (_cacheJustRestored) {
+      _cacheJustRestored = false
+      const insertedKeys = new Set()
+      for (let j = 0; j < toRender.length; j++) {
+        const key = desiredKeys[j]
+        if (insertedKeys.has(key)) continue
+        insertedKeys.add(key)
+        if (_msgKeyIndex.has(key)) continue // already in DOM somewhere — leave it
+        const m = toRender[j]
+        const div = buildMessageDiv(m, id)
+        if (!div) continue
+        div.dataset.msgKey = key
+        const prev = msgsEl.lastElementChild
+        if (zebraOfInsert(m, prev)) div.classList.add('hs-mc-zebra')
+        msgsEl.appendChild(div)
+        _indexMessageDiv(div, key)
+      }
+      if (msgsEl.children.length > toRender.length) trimMessagesEl(msgsEl, toRender.length)
+      applyMcMutes()
+      cleanup.raf(() => { isProgrammaticScroll = false })
+      if (!isScrolledUp && !(id === 'feed' || id === 'settings' || id === 'discover' || id === 'pinned')) {
+        scrollMsgsToBottom(msgsEl)
+      }
+      return
+    }
+
     // PASS A: index existing DOM by msgKey, dedup pre-existing duplicates,
     // detach yt-status notices for re-pin at end, drop everything else not in
     // desiredSet. Pre-existing dupes can exist when a prior buggy diff (or
@@ -8396,7 +8429,6 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
             }
           }
         }
-        fanStreamEventToCaches(evt, channel)
       }
     });
 
@@ -9086,7 +9118,6 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
           bumpSeen('mentions');
           if (!appendMessage(msg, 'mentions')) renderMessages('mentions');
         } else {
-          appendToCachedTab(msg, 'mentions');
           updateTabIndicator('mentions');
         }
       }
@@ -9097,7 +9128,6 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       if (tabId && currentTab === tabId) {
         if (!appendMessage(msg, tabId)) renderMessages(tabId);
       } else if (tabId) {
-        appendToCachedTab(msg, tabId);
         updateTabIndicator(tabId);
         if (isMent) updateTabMentionIndicator(tabId)
       }
@@ -9107,7 +9137,6 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
         if (currentTab === 'live') {
           if (!appendMessage(msg, 'live')) renderMessages('live');
         } else {
-          appendToCachedTab(msg, 'live');
           updateTabIndicator('live');
           if (isMent) updateTabMentionIndicator('live')
         }
@@ -9142,7 +9171,6 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
           bumpSeen('mentions');
           if (!appendMessage(msg, 'mentions')) renderMessages('mentions');
         } else {
-          appendToCachedTab(msg, 'mentions');
           updateTabIndicator('mentions');
         }
       }
@@ -9153,7 +9181,6 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       if (tabId && currentTab === tabId) {
         if (!appendMessage(msg, tabId)) renderMessages(tabId);
       } else if (tabId) {
-        appendToCachedTab(msg, tabId);
         updateTabIndicator(tabId);
         if (isMent) updateTabMentionIndicator(tabId)
       }
@@ -9163,7 +9190,6 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
         if (currentTab === 'live') {
           if (!appendMessage(msg, 'live')) renderMessages('live');
         } else {
-          appendToCachedTab(msg, 'live');
           updateTabIndicator('live');
           if (isMent) updateTabMentionIndicator('live')
         }
@@ -9307,7 +9333,6 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
             }
           }
         }
-        fanStreamEventToCaches(evt, channel)
       });
     }
 
@@ -9402,7 +9427,6 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
           }
         }
       }
-      fanStreamEventToCaches(evt, channel)
     }, { signal: mcSignal })
 
     // Handle follow-driven stream events (from followed channels not currently viewed)
@@ -9494,7 +9518,6 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
             }
           }
         }
-        fanStreamEventToCaches(evt, channel)
       });
     }
 
@@ -10148,6 +10171,44 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       spaReinitializing = false;
       init();
     }, 1000, 'spa-reinit');
+  }
+
+  // KICK PRE-EMPTIVE MIGRATE: Kick's router calls React's render BEFORE it
+  // commits the URL via history.pushState — so by the time our MAIN-world
+  // pushState hook fires, React has already removed our panel from the
+  // chat-layout div. softKickNav running on the heatsync-nav event then
+  // sees a detached container and can't save it.
+  //
+  // Catch the user's click on streamer links in CAPTURE PHASE — runs BEFORE
+  // Kick's bubble/target-phase listener triggers React. Migrate container
+  // to <body> synchronously; React's teardown of chat-layout no longer
+  // affects us. softKickNav still fires post-nav to handle the reparent
+  // back into the new chat-room.
+  if (isKick) {
+    document.addEventListener('click', (ev) => {
+      // Only primary button, no modifier keys, no defaultPrevented
+      if (ev.button !== 0 || ev.metaKey || ev.ctrlKey || ev.shiftKey || ev.altKey || ev.defaultPrevented) return
+      const a = ev.target?.closest?.('a[href]')
+      if (!a) return
+      // Skip new-tab clicks — those don't navigate this tab
+      if (a.target && a.target !== '_self') return
+      let href = a.getAttribute('href')
+      if (!href || !href.startsWith('/')) return
+      // Streamer slug = single-segment path (no slashes after first), not a
+      // reserved Kick route. Mirrors the eligibility checks in waitForMount.
+      const slug = href.replace(/^\/+|\/+$/g, '').toLowerCase()
+      if (!slug) return
+      if (slug.includes('/')) return
+      const reserved = new Set(['browse','category','categories','following','search','settings','login','signup','help','community','privacy','terms','support','dmca','dashboard','partner','vip','agency','bug','press','redeem','clips','games','api','admin','moderation','jobs','about','blog','company','careers','dmca','responsible-disclosure','accessibility','referrals','agent','kickbot','wallet','vault','feedback'])
+      if (reserved.has(slug)) return
+      // Same URL — don't move anything
+      if (location.pathname === href) return
+      const container = document.getElementById('hs-mc-container')
+      if (!container || container.parentElement === document.body) return
+      // Pre-emptive migrate. Runs BEFORE Kick's React handler fires.
+      document.body.appendChild(container)
+      document.body.classList.add('hs-mc-navigating')
+    }, { capture: true, signal: mcSignal })
   }
 
   // Primary: instant notification from MAIN world history hooks

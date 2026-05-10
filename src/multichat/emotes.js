@@ -531,6 +531,10 @@
     img.dataset.emoteName = emoteName
     img.draggable = false
     if (isOverlay) img.dataset.zeroWidth = '1'
+    // Broken-image recovery — shared helper in input.js (cache-bust retry then
+    // text fallback). Defined later in the bundle but function declarations
+    // hoist to IIFE scope so it's available when this runs.
+    if (typeof attachInputEmoteErrorRecovery === 'function') attachInputEmoteErrorRecovery(img)
     return img
   }
 
@@ -545,6 +549,9 @@
     }
     const stack = document.createElement('span')
     stack.className = 'hs-input-stack'
+    // Atomic inline unit — cursor can't enter, typed text stays on the
+    // outside line instead of getting trapped as a child grid cell.
+    stack.setAttribute('contenteditable', 'false')
     baseEl.parentNode.insertBefore(stack, baseEl)
     stack.appendChild(baseEl)
     stack.appendChild(overlayImg)
@@ -1200,6 +1207,24 @@
   // - senderEmotes: optional Map<name, emoteData> — sender's personal set frozen at first sight.
   //   For viewer's own outgoing messages, caller passes viewerPersonalEmotes here.
   //   For others' messages, caller passes their fetched 7TV/BTTV personal set (or empty Map if not yet known).
+  // FFZ/BTTV-style modifier helpers — bridged to lib/modifiers.js
+  // (HS_MOD_TOKENS, hsModClassify, hsModBuildStyleAttr, hsModInjectWrapperStyle,
+  // hsModComposeFilter, hsModHexToHue) are bundled by build.js.
+  const HS_MC_MODS = HS_MOD_TOKENS
+  const HS_MC_C_RE = HS_MOD_C_HEX_RE
+  function _hsMcHexToHue(h) { return hsModHexToHue(h) }
+  function _hsMcApplyMods(html, mods, hue) {
+    if ((!mods || !mods.length) && hue == null) return html
+    const wrapperStyle = hsModBuildStyleAttr(mods, null)  // transform/margins
+    const imgFilter = hsModComposeFilter(mods, hue)
+    let out = html
+    if (wrapperStyle) out = hsModInjectWrapperStyle(out, wrapperStyle)
+    if (imgFilter) {
+      out = out.replace(/<img(\s)/, `<img style="filter:${imgFilter} !important;"$1`)
+    }
+    return out
+  }
+
   function processEmotes(text, channel, extraCache, senderEmotes) {
     if (emoteCache.size === 0 && !channelEmoteCaches[channel] && !extraCache?.size && !senderEmotes?.size) return text;
 
@@ -1232,14 +1257,82 @@
         .split(/(\s+)/);
     }
     const result = [];
-    let pendingStack = null; // { base: html, overlays: [html...] }
-    let pendingWhitespace = ''; // Accumulate whitespace - don't flush stack on spaces
+    // pendingStack tracks an items list. Each item (base OR overlay) has its
+    // OWN mods/hue. Modifier tokens attach to the LAST item — so
+    // "Kappa RainTime w!" makes RainTime wide, not Kappa.
+    let pendingStack = null; // { items: [{ kind, raw, mods, hue }] }
+    let pendingWhitespace = '';
+    let pendingMods = [];
+    let pendingHue = null
 
-    for (const word of words) {
+    const _lastItem = () => (pendingStack && pendingStack.items.length) ? pendingStack.items[pendingStack.items.length - 1] : null
+
+    const _flushStackToResult = () => {
+      if (!pendingStack || !pendingStack.items.length) { pendingStack = null; return }
+      const items = pendingStack.items
+      const baseHtml = _hsMcApplyMods(items[0].raw, items[0].mods, items[0].hue)
+      const overlays = items.slice(1).map(it => _hsMcApplyMods(it.raw, it.mods, it.hue))
+      result.push(renderEmoteStack({ base: baseHtml, overlays }))
+      pendingStack = null
+    }
+
+    for (let _wIdx = 0; _wIdx < words.length; _wIdx++) {
+      const word = words[_wIdx]
       // Whitespace - accumulate, don't flush yet (overlays are space-separated)
       if (WS_RE.test(word)) {
         pendingWhitespace += word;
         continue;
+      }
+
+      // FFZ semantic: modifier attaches to the IMMEDIATELY PRECEDING emote.
+      // Kappa RainTime w! → wide RainTime (not Kappa).
+      const modKind = HS_MC_MODS[word]
+      if (modKind) {
+        const last = _lastItem()
+        if (last) last.mods.push(modKind)
+        else pendingMods.push(modKind)
+        pendingWhitespace = ''
+        continue
+      }
+      const cMatchTok = word.match(HS_MC_C_RE)
+      if (cMatchTok) {
+        const hue = _hsMcHexToHue(cMatchTok[1])
+        const last = _lastItem()
+        if (last) last.hue = hue
+        else pendingHue = hue
+        pendingWhitespace = ''
+        continue
+      }
+      // Peel chained modifier word (e.g. "w!h!ffzX" or "w!c!#ff8700h!")
+      const _hsPeel = (() => {
+        if (!word) return null
+        const sortedKeys = Object.keys(HS_MC_MODS).sort((a, b) => b.length - a.length)
+        const mods = []
+        let hue = null
+        let rem = word
+        while (rem.length > 0) {
+          let matched = false
+          for (const k of sortedKeys) {
+            if (rem.startsWith(k)) { mods.push(HS_MC_MODS[k]); rem = rem.slice(k.length); matched = true; break }
+          }
+          if (matched) continue
+          const cm = rem.match(/^c!#?([0-9a-fA-F]{3}|[0-9a-fA-F]{6})/)
+          if (cm) { hue = _hsMcHexToHue(cm[1]); rem = rem.slice(cm[0].length); continue }
+          return null
+        }
+        return (mods.length || hue != null) ? { mods, hue } : null
+      })()
+      if (_hsPeel) {
+        const last = _lastItem()
+        if (last) {
+          for (const m of _hsPeel.mods) last.mods.push(m)
+          if (_hsPeel.hue != null) last.hue = _hsPeel.hue
+        } else {
+          for (const m of _hsPeel.mods) pendingMods.push(m)
+          if (_hsPeel.hue != null) pendingHue = _hsPeel.hue
+        }
+        pendingWhitespace = ''
+        continue
       }
 
       // Kick emote format: [emote:ID:NAME] -> render as image from Kick CDN
@@ -1252,15 +1345,11 @@
         // Cross-reference caches to find real provider (7tv/bttv/ffz), fall back to kick
         const cached = emoteCache.get(emoteName) || (channel && channelEmoteCaches[channel]?.get(emoteName))
         const provider = cached?.source || 'kick'
-        const imgHtml = `<span class="hs-mc-emote-wrapper hs-state-channel" data-emote-name="${safeName}" data-emote-url="${safeKickUrl}" data-state="channel" data-source="${escapeHtml(provider)}"><img src="${safeKickUrl}" alt="${safeName}" title="${safeName} (${escapeHtml(provider)} via kick)" class="hs-mc-emote hs-emote-channel" data-emote-name="${safeName}" data-state="channel" data-source="${escapeHtml(provider)}" loading="lazy" decoding="async"></span>`
-        if (pendingStack) {
-          result.push(renderEmoteStack(pendingStack))
-        }
-        if (pendingWhitespace) {
-          result.push(pendingWhitespace)
-          pendingWhitespace = ''
-        }
-        pendingStack = { base: imgHtml, overlays: [] }
+        const imgHtmlRaw = `<span class="hs-mc-emote-wrapper hs-state-channel" data-emote-name="${safeName}" data-emote-url="${safeKickUrl}" data-state="channel" data-source="${escapeHtml(provider)}"><img src="${safeKickUrl}" alt="${safeName}" title="${safeName} (${escapeHtml(provider)} via kick)" class="hs-mc-emote hs-emote-channel" data-emote-name="${safeName}" data-state="channel" data-source="${escapeHtml(provider)}" loading="lazy" decoding="async"></span>`
+        _flushStackToResult()
+        if (pendingWhitespace) { result.push(pendingWhitespace); pendingWhitespace = '' }
+        pendingStack = { items: [{ kind: 'base', raw: imgHtmlRaw, mods: pendingMods.slice(), hue: pendingHue }] }
+        pendingMods = []; pendingHue = null
         continue
       }
 
@@ -1280,43 +1369,74 @@
         // when an uploader didn't set the flag despite naming the emote for overlay use.
         if (emote) isOverlayEmote = !!emote.zeroWidth || endsWithZero
       }
+      // FFZ-style fallback: token like "Kappaw!" or "KappaffzX" — when the
+      // upstream send pipeline strips the space between emote and modifier,
+      // try peeling a known modifier suffix and re-resolving the base name.
+      // Only consider modifier suffixes (not random emote-name endings).
+      let _hsInlineModSuffix = null
+      if (!emote && word.length > 2) {
+        const suffixCandidates = ['ffzCursed', 'ffzWide', 'ffzTall', 'ffzX', 'ffzY', 'w!', 'h!', 'v!', 'l!', 'c!', 'z!', 'x!', 'y!']
+        for (const suf of suffixCandidates) {
+          if (word.endsWith(suf) && word.length > suf.length + 1) {
+            const baseGuess = word.slice(0, word.length - suf.length)
+            const candidate = senderEmotes?.get(baseGuess) || (channel && channelEmoteCaches[channel]?.get(baseGuess)) || extraCache?.get(baseGuess) || emoteCache.get(baseGuess)
+            if (candidate) {
+              emote = candidate
+              isOverlayEmote = !!candidate.zeroWidth
+              _hsInlineModSuffix = HS_MC_MODS[suf] || null
+              break
+            }
+          }
+        }
+        // c!#hex inline (KappaC!#ff8700 — also try)
+        if (!emote) {
+          const inlineColor = word.match(/^(.+?)(c!#?[0-9a-fA-F]{3}(?:[0-9a-fA-F]{3})?)$/)
+          if (inlineColor) {
+            const baseGuess = inlineColor[1]
+            const candidate = senderEmotes?.get(baseGuess) || (channel && channelEmoteCaches[channel]?.get(baseGuess)) || extraCache?.get(baseGuess) || emoteCache.get(baseGuess)
+            if (candidate) {
+              emote = candidate
+              isOverlayEmote = !!candidate.zeroWidth
+              const m = inlineColor[2].match(HS_MC_C_RE)
+              if (m) _hsInlineModSuffix = { hue: _hsMcHexToHue(m[1]) }
+            }
+          }
+        }
+      }
       if (emote) {
         const isBlocked = blockedEmoteNames.has(word);
         const state = isBlocked ? 'blocked' : (emote.state || 'global');
         const source = escapeHtml(emote.source || 'unknown');
-        const imgSrc = escapeHtml(getChatResUrl(emote.url)); // Upgrade to 2x/4x based on emote size setting
+        const imgSrc = escapeHtml(getChatResUrl(emote.url));
         const safeHash = emote.hash ? escapeHtml(emote.hash) : '';
         const displayName = escapeHtml(word)
         const ownerAttr = emote.ownerDisplay ? ` data-owner="${escapeHtml(emote.ownerDisplay)}"` : ''
-        const imgHtml = `<span class="hs-mc-emote-wrapper hs-state-${state}" data-emote-name="${displayName}" data-emote-url="${imgSrc}" data-state="${state}" data-source="${source}"${ownerAttr}${safeHash ? ` data-emote-hash="${safeHash}"` : ''}><img src="${imgSrc}" alt="${displayName}" title="${displayName}" class="hs-mc-emote hs-emote-${state}" data-emote-name="${displayName}" data-state="${state}" data-source="${source}"${ownerAttr} loading="lazy" decoding="async"></span>`;
+        const imgHtmlRaw = `<span class="hs-mc-emote-wrapper hs-state-${state}" data-emote-name="${displayName}" data-emote-url="${imgSrc}" data-state="${state}" data-source="${source}"${ownerAttr}${safeHash ? ` data-emote-hash="${safeHash}"` : ''}><img src="${imgSrc}" alt="${displayName}" title="${displayName}" class="hs-mc-emote hs-emote-${state}" data-emote-name="${displayName}" data-state="${state}" data-source="${source}"${ownerAttr} loading="lazy" decoding="async"></span>`;
 
-        if (isOverlayEmote) {
-          // Overlay emote - stack on previous base (discard whitespace between)
-          if (pendingStack) {
-            pendingStack.overlays.push(imgHtml);
-            pendingWhitespace = '';
-          } else {
-            // No prior base — promote this zero-width to the base of a new
-            // stack so following zero-widths can overlay on it. Matches 7TV/
-            // native twitch behavior: "DOOR E0" renders E0 on top of DOOR
-            // even though both carry the zero-width flag (some streamers
-            // use a zero-width as the visual root of a stack on purpose).
-            if (pendingWhitespace) {
-              result.push(pendingWhitespace);
-              pendingWhitespace = '';
-            }
-            pendingStack = { base: imgHtml, overlays: [] };
-          }
+        // Build the new item — inline-glued suffix mod attaches to THIS emote
+        // (e.g. "RainTimew!" → wide RainTime, not wide whatever-was-base).
+        const itemMods = []
+        let itemHue = null
+        if (_hsInlineModSuffix) {
+          if (typeof _hsInlineModSuffix === 'string') itemMods.push(_hsInlineModSuffix)
+          else if (_hsInlineModSuffix.hue != null) itemHue = _hsInlineModSuffix.hue
+        }
+        if (isOverlayEmote && pendingStack) {
+          // Append as overlay item in the current group; floating mods (none yet
+          // typically) drain onto this overlay
+          for (const m of pendingMods) itemMods.push(m)
+          if (pendingHue != null && itemHue == null) itemHue = pendingHue
+          pendingMods = []; pendingHue = null
+          pendingStack.items.push({ kind: 'overlay', raw: imgHtmlRaw, mods: itemMods, hue: itemHue })
+          pendingWhitespace = ''
         } else {
-          // Base emote - flush previous stack, start new one
-          if (pendingStack) {
-            result.push(renderEmoteStack(pendingStack));
-          }
-          if (pendingWhitespace) {
-            result.push(pendingWhitespace);
-            pendingWhitespace = '';
-          }
-          pendingStack = { base: imgHtml, overlays: [] };
+          // New group — base (or overlay-without-base which becomes promoted base)
+          _flushStackToResult()
+          if (pendingWhitespace) { result.push(pendingWhitespace); pendingWhitespace = '' }
+          for (const m of pendingMods) itemMods.push(m)
+          if (pendingHue != null && itemHue == null) itemHue = pendingHue
+          pendingMods = []; pendingHue = null
+          pendingStack = { items: [{ kind: 'base', raw: imgHtmlRaw, mods: itemMods, hue: itemHue }] }
         }
       } else {
         // Check for emoji :shortcode: — treat as stackable base
@@ -1324,36 +1444,30 @@
           const emojiName = word.slice(1, -1)
           const emojiEntry = EMOJI_BY_NAME.get(emojiName)
           if (emojiEntry) {
-            if (pendingStack) {
-              result.push(renderEmoteStack(pendingStack))
-            }
-            if (pendingWhitespace) {
-              result.push(pendingWhitespace)
-              pendingWhitespace = ''
-            }
-            const emojiHtml = `<span class="hs-mc-emoji" title=":${escapeHtml(emojiName)}:">${emojiEntry.emoji}</span>`
-            pendingStack = { base: emojiHtml, overlays: [] }
+            _flushStackToResult()
+            if (pendingWhitespace) { result.push(pendingWhitespace); pendingWhitespace = '' }
+            const emojiHtmlRaw = `<span class="hs-mc-emoji" title=":${escapeHtml(emojiName)}:">${emojiEntry.emoji}</span>`
+            const startMods = pendingMods.slice()
+            const startHue = pendingHue
+            pendingMods = []; pendingHue = null
+            pendingStack = { items: [{ kind: 'base', raw: emojiHtmlRaw, mods: startMods, hue: startHue }] }
             continue
           }
         }
         // Check for Unicode emoji — treat as stackable base
         if (UNICODE_EMOJI_RE.test(word)) {
-          if (pendingStack) {
-            result.push(renderEmoteStack(pendingStack))
-          }
-          if (pendingWhitespace) {
-            result.push(pendingWhitespace)
-            pendingWhitespace = ''
-          }
-          const emojiHtml = `<span class="hs-mc-emoji">${escapeHtml(word)}</span>`
-          pendingStack = { base: emojiHtml, overlays: [] }
+          _flushStackToResult()
+          if (pendingWhitespace) { result.push(pendingWhitespace); pendingWhitespace = '' }
+          const emojiHtmlRaw = `<span class="hs-mc-emoji">${escapeHtml(word)}</span>`
+          const startMods = pendingMods.slice()
+          const startHue = pendingHue
+          pendingMods = []; pendingHue = null
+          pendingStack = { items: [{ kind: 'base', raw: emojiHtmlRaw, mods: startMods, hue: startHue }] }
           continue
         }
-        // Text - flush stack and add text
-        if (pendingStack) {
-          result.push(renderEmoteStack(pendingStack));
-          pendingStack = null;
-        }
+        // Text - flush stack and add text. Drop any pending mods/hue (they had no anchor).
+        _flushStackToResult()
+        pendingMods = []; pendingHue = null
         if (pendingWhitespace) {
           result.push(pendingWhitespace);
           pendingWhitespace = '';
@@ -1379,9 +1493,7 @@
     }
 
     // Flush any remaining stack
-    if (pendingStack) {
-      result.push(renderEmoteStack(pendingStack));
-    }
+    _flushStackToResult()
     if (pendingWhitespace) {
       result.push(pendingWhitespace);
     }

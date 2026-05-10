@@ -6,6 +6,23 @@ const MC_HISTORY_MAX = 50
 let mcHistoryIndex = -1
 let mcHistoryDraft = ''
 
+// Broken-image recovery for input-area emote imgs. Browser negatively caches
+// failed image responses (proxy hiccup, CDN blip); without this hook the typed
+// word renders forever as a broken-image placeholder in the composer.
+// Strategy: retry once with a cache-bust to defeat the negative cache, then
+// fall back to the alt text so the message still ships as plain text.
+function attachInputEmoteErrorRecovery(img) {
+  img.addEventListener('error', () => {
+    if (img.dataset.hsRetried) {
+      const t = document.createTextNode(img.alt || '')
+      img.replaceWith(t)
+      return
+    }
+    img.dataset.hsRetried = '1'
+    img.src = img.src + (img.src.includes('?') ? '&' : '?') + 'r=' + Date.now()
+  })
+}
+
 // Brief red flash on input to indicate message can't be sent from this tab
 function flashInputError(input) {
   if (!input) return
@@ -241,24 +258,34 @@ function getInputText() {
   const input = document.getElementById('hs-mc-input');
   if (!input) return '';
   if (wysiwygEnabled) {
-    // Convert emote images, stacks, and cycling spans back to text
+    // Convert emote images, stacks, and cycling spans back to text.
+    // Modifiers stored in dataset.hsWords (canonical, set by hsModApplyToImg)
+    // appended after the emote so recipients see "Kappa w! h!" not "Kappa".
     let text = '';
+    const appendImg = (img) => {
+      text += img.dataset.emoteName || img.alt || ''
+      const modWords = img.dataset.hsWords || img.dataset.hsModWords  // back-compat
+      if (modWords) {
+        for (const w of modWords.split(/\s+/).filter(Boolean)) text += ' ' + w
+      }
+    }
     const extractNode = (node) => {
       if (node.nodeType === Node.TEXT_NODE) {
         text += node.textContent
       } else if (node.nodeType === Node.ELEMENT_NODE && node.tagName === 'IMG') {
-        text += node.dataset.emoteName || node.alt || ''
+        appendImg(node)
       } else if (node.nodeType === Node.ELEMENT_NODE && node.classList?.contains('hs-input-stack')) {
-        // Stack: extract each child emote name, space-separated
         for (const child of node.children) {
           if (child.tagName === 'IMG') {
             if (text && !text.endsWith(' ')) text += ' '
-            text += child.dataset.emoteName || child.alt || ''
+            appendImg(child)
           }
         }
       } else if (node.nodeType === Node.ELEMENT_NODE && node.classList?.contains('hs-mc-user')) {
-        // Bare-username mention chip: send as raw username
-        text += node.dataset.username || node.textContent || ''
+        // Bare-username Tab completion → serialize as @user so recipients
+        // render it as a colored mention chip (processEmotes only colors @-prefixed).
+        const u = node.dataset.username || node.textContent || ''
+        text += (node.dataset.completionType === 'user-bare') ? ('@' + u) : u
       } else if (node.nodeType === Node.ELEMENT_NODE) {
         text += node.textContent || ''
       }
@@ -1076,9 +1103,16 @@ function handleInputKeydown(e) {
     }
   }
 
-  // Tab - cycle through emote completions
+  // Tab - cycle through emote completions OR apply FFZ modifier to prev emote
   if (e.key === 'Tab') {
     e.preventDefault();
+
+    // FFZ-style modifier on Tab — scans ENTIRE input (not just cursor) for any
+    // modifier shorthand adjacent to an emote, applies them all in one shot.
+    // Type `Kappa w` then Tab from any cursor position → wide Kappa.
+    if (!acState.active) {
+      if (scanAndApplyModifiersInInput(input)) return
+    }
 
     if (acState.active && acState.matches.length > 0) {
       // Already cycling - next (Tab) or previous (Shift+Tab)
@@ -1139,6 +1173,31 @@ function handleInputKeydown(e) {
 }
 
 function handleInputChange(e) {
+  // Defensive: pull any stray text nodes out of .hs-input-stack spans.
+  // Stacks are inline-grid with overlay imgs at grid-area 1/1; a text node
+  // inside auto-places in a new row and renders BELOW the emote. If the
+  // cursor was inside the stack when the user typed (e.g. clicked an emote
+  // in the stack, or a path that left selection inside), text gets trapped.
+  // Also retro-fits contenteditable=false on legacy stacks built before
+  // this fix so the cursor can't re-enter.
+  const inputEl = document.getElementById('hs-mc-input')
+  if (inputEl) {
+    for (const stack of inputEl.querySelectorAll('.hs-input-stack')) {
+      if (stack.getAttribute('contenteditable') !== 'false') {
+        stack.setAttribute('contenteditable', 'false')
+      }
+      let n = stack.firstChild
+      while (n) {
+        const next = n.nextSibling
+        if (n.nodeType === Node.TEXT_NODE ||
+            (n.nodeType === Node.ELEMENT_NODE && n.tagName !== 'IMG')) {
+          stack.parentNode.insertBefore(n, stack.nextSibling)
+        }
+        n = next
+      }
+    }
+  }
+
   // Save pending message (persists across tab switches)
   pendingMessage = getInputText();
 
@@ -1213,6 +1272,35 @@ function handleInputChange(e) {
           const match = before.match(/(\S+)\s$/)
           if (match) {
             const word = match[1]
+            // FFZ-style modifier token / chain — apply to the previous emote
+            // (don't insert as BTTV emote even if "w!" is a real emote name).
+            // Live-replace modifier path — delegate to shared lib + apply.
+            const cls = hsModClassify(word, { allowPrefix: false })
+            if (cls.kind === 'modifier') {
+              let prev = node.previousSibling
+              while (prev && prev.nodeType === Node.TEXT_NODE && prev.textContent.trim() === '') {
+                prev = prev.previousSibling
+              }
+              if (prev && prev.nodeType === Node.ELEMENT_NODE &&
+                  (prev.classList.contains('hs-input-emote') || prev.classList.contains('hs-input-stack'))) {
+                const imgs = prev.tagName === 'IMG' ? [prev] : prev.querySelectorAll('img')
+                const targetImg = imgs.length ? imgs[imgs.length - 1] : null
+                if (targetImg) {
+                  hsModApplyToImg(targetImg, cls.mods, cls.hue, cls.words)
+                  const wordStart = cursor - match[0].length
+                  node.textContent = text.slice(0, wordStart) + (text.slice(cursor) || ' ')
+                  const nr = document.createRange()
+                  nr.setStart(node, wordStart)
+                  nr.collapse(true)
+                  sel.removeAllRanges()
+                  sel.addRange(nr)
+                  pendingMessage = getInputText()
+                  return
+                }
+              }
+              // Modifier without an anchor — keep as plain text, don't insert as BTTV emote
+              return
+            }
             const resolved = lookupEmoteWithOverlay(word)
             if (resolved) {
               const img = createInputEmoteImg(word)
@@ -1380,8 +1468,143 @@ function getRecencyMap() {
   return out
 }
 
+// Modifier constants/helpers live in src/lib/modifiers.js (bundled into IIFE
+// scope by build.js). Aliases for backward-compat usage inside this file:
+const HS_MODS_MAP = HS_MOD_TOKENS
+const HS_C_HEX_RE = HS_MOD_C_HEX_RE
+function peelModifierChain(w) { return hsModPeelChain(w) }
+function resolveModifierPrefix(w) { return hsModResolvePrefix(w) }
+function _hsHexToHueDeg(h) { return hsModHexToHue(h) }
+
+// Scan input for modifier shorthands adjacent to emotes; apply via lib helper.
+// Cursor-position-agnostic. Returns true if any modifier was applied.
+// Only mutates a text node if it consumed at least one token from it — leaves
+// non-modifier text alone so emote autocomplete can still find words.
+function scanAndApplyModifiersInInput(input) {
+  if (!input) return false
+  let appliedAny = false
+  let prevEmote = null
+  for (const child of [...input.childNodes]) {
+    if (child.nodeType === Node.ELEMENT_NODE) {
+      const isEmote = child.classList?.contains('hs-input-emote') ||
+                      child.classList?.contains('hs-input-stack')
+      if (isEmote) prevEmote = child
+      else if (child.tagName !== 'BR') prevEmote = null
+      continue
+    }
+    if (child.nodeType !== Node.TEXT_NODE || !prevEmote) continue
+    const tokens = child.textContent.split(/(\s+)/)
+    const remaining = []
+    let consumedHere = false
+    for (const tok of tokens) {
+      if (!tok || /^\s*$/.test(tok)) { remaining.push(tok); continue }
+      const cls = hsModClassify(tok, { allowPrefix: true })
+      if (cls.kind !== 'modifier') { remaining.push(tok); continue }
+      const imgs = prevEmote.tagName === 'IMG' ? [prevEmote] : prevEmote.querySelectorAll('img')
+      const targetImg = imgs.length ? imgs[imgs.length - 1] : null
+      if (!targetImg) { remaining.push(tok); continue }
+      hsModApplyToImg(targetImg, cls.mods, cls.hue, cls.words)
+      appliedAny = true
+      consumedHere = true
+    }
+    if (consumedHere) {
+      child.textContent = remaining.join('').replace(/\s+/g, ' ') || ' '
+    }
+  }
+  if (appliedAny && typeof pendingMessage !== 'undefined') pendingMessage = getInputText()
+  return appliedAny
+}
+
+// Apply modifier word at cursor (Tab/space-trigger paths). Walks back from
+// cursor's text node to find the previous emote element, applies via lib.
+function applyModifierAtCursor(modWord, _ignoredModKey, _ignoredCMatch) {
+  const cls = hsModClassify(modWord, { allowPrefix: true })
+  if (cls.kind !== 'modifier') return false
+  const input = document.getElementById('hs-mc-input')
+  if (!input?.isContentEditable) return false
+  const sel = window.getSelection()
+  if (!sel?.rangeCount) return false
+  const range = sel.getRangeAt(0)
+  let textNode = range.startContainer
+  let cursor = range.startOffset
+  if (textNode.nodeType === Node.ELEMENT_NODE && cursor > 0) {
+    const child = textNode.childNodes[cursor - 1]
+    if (child?.nodeType === Node.TEXT_NODE) { textNode = child; cursor = child.textContent.length }
+  }
+  if (textNode.nodeType !== Node.TEXT_NODE) return false
+  const text = textNode.textContent
+  const before = text.slice(0, cursor)
+  const after = text.slice(cursor)
+  const bm = before.match(/(\s*)(\S+)$/)
+  const am = after.match(/^(\S*)/)
+  if (!bm) return false
+  const fullWord = bm[2] + (am ? am[1] : '')
+  // Accept exact match, OR a resolved-prefix match (typed "w", target "w!")
+  const expected = cls.resolvedFrom || modWord
+  if (fullWord !== expected && fullWord !== modWord) return false
+  const wsStart = cursor - bm[0].length
+  const wordEnd = cursor + (am ? am[1].length : 0)
+  // Need previous text in this node to be only whitespace before the word
+  if (text.slice(0, wsStart).trim().length > 0) return false
+  let prev = textNode.previousSibling
+  while (prev && prev.nodeType === Node.TEXT_NODE && prev.textContent.trim() === '') prev = prev.previousSibling
+  if (!prev || prev.nodeType !== Node.ELEMENT_NODE) return false
+  if (!(prev.classList.contains('hs-input-emote') || prev.classList.contains('hs-input-stack'))) return false
+  const imgs = prev.tagName === 'IMG' ? [prev] : prev.querySelectorAll('img')
+  const targetImg = imgs.length ? imgs[imgs.length - 1] : null
+  if (!targetImg) return false
+  hsModApplyToImg(targetImg, cls.mods, cls.hue, cls.words)
+  // Remove the modifier text + leading whitespace
+  textNode.textContent = (text.slice(0, wsStart) + text.slice(wordEnd)) || ' '
+  const nr = document.createRange()
+  nr.setStart(textNode, Math.min(wsStart, textNode.textContent.length))
+  nr.collapse(true)
+  sel.removeAllRanges()
+  sel.addRange(nr)
+  if (typeof pendingMessage !== 'undefined') pendingMessage = getInputText()
+  return true
+}
+
+// Replace the word at cursor in a contenteditable input with newWord. Used
+// when Tab expands a modifier shorthand (typed "w" → replace with "w!").
+function replaceWordAtCursor(input, oldWord, newWord) {
+  const sel = window.getSelection()
+  if (!sel?.rangeCount) return
+  const range = sel.getRangeAt(0)
+  let node = range.startContainer
+  let offset = range.startOffset
+  if (node.nodeType === Node.ELEMENT_NODE && offset > 0) {
+    const child = node.childNodes[offset - 1]
+    if (child?.nodeType === Node.TEXT_NODE) { node = child; offset = child.textContent.length }
+  }
+  if (node.nodeType !== Node.TEXT_NODE) return
+  const text = node.textContent
+  const before = text.slice(0, offset)
+  const after = text.slice(offset)
+  const m = before.match(/(\S+)$/)
+  const am = after.match(/^(\S*)/)
+  if (!m) return
+  const fullCurrent = m[1] + (am ? am[1] : '')
+  if (fullCurrent !== oldWord) return
+  const wordStart = offset - m[1].length
+  const wordEnd = offset + (am ? am[1].length : 0)
+  node.textContent = text.slice(0, wordStart) + newWord + text.slice(wordEnd)
+  const nr = document.createRange()
+  nr.setStart(node, wordStart + newWord.length)
+  nr.collapse(true)
+  sel.removeAllRanges()
+  sel.addRange(nr)
+}
+
+
 function findEmoteMatches(search) {
   const matches = [];
+
+  // FFZ-style modifier tokens MUST NOT autocomplete — even if BTTV has an emote
+  // literally named "w!". Use shared classifier; if it's a modifier, return [].
+  if (hsModClassify(search, { allowPrefix: false }).kind === 'modifier') {
+    return matches
+  }
 
   // Check if searching for username (starts with @)
   const isUserSearch = search.startsWith('@');
@@ -1391,18 +1614,22 @@ function findEmoteMatches(search) {
   const recency = getRecencyMap()
 
   // Search usernames if @ prefix or if it could be a username
+  const _hsPrefetchList = []
   if (isUserSearch || searchTerm.length >= 2) {
     for (const username of usernameCache) {
       if (!username) continue
       const userLower = username.toLowerCase();
-      const color = (typeof knownColors !== 'undefined' && knownColors.get(userLower)) || '#fff'
+      // Resolution priority: knownColors → _hsUserColorCache → fetch
+      let color = (typeof knownColors !== 'undefined' && knownColors.get(userLower)) || null
+      if (!color && _hsUserColorCache.has(userLower)) color = _hsUserColorCache.get(userLower) || null
+      if (!color) _hsPrefetchList.push(userLower)
+      color = color || '#fff'
       const recencyRank = recency.get(userLower)
       if (isUserSearch) {
         if (userLower.startsWith(searchLower)) {
           matches.push({ name: '@' + username, url: null, priority: 0, type: 'user', recencyRank });
         }
       } else {
-        // No @ prefix: bare-name completion that renders as a styled mention chip
         if (userLower.startsWith(searchLower)) {
           matches.push({ name: username, url: null, priority: 0, type: 'user-bare', color, recencyRank });
         } else if (userLower.includes(searchLower)) {
@@ -1410,6 +1637,10 @@ function findEmoteMatches(search) {
         }
       }
     }
+  }
+  // Fire batched prefetch — by the time user hits Tab, colors are likely cached
+  if (_hsPrefetchList.length) {
+    try { hsPrefetchUserColors(_hsPrefetchList.slice(0, 30)) } catch {}
   }
 
   // Search emote cache (unless explicitly searching users with @)
@@ -1484,7 +1715,9 @@ function insertCompletionKeepOpen(match) {
   updateCharCount();
 }
 
-// Build a styled mention chip span for bare-username completion
+// Build a styled mention chip span for bare-username completion.
+// Resolves color synchronously from caches FIRST (no white flash for known
+// users), then async-fetches only if still unknown.
 function createUserMentionSpan(username, color) {
   const span = document.createElement('span')
   span.className = 'hs-mc-user hs-cycling-user'
@@ -1492,18 +1725,155 @@ function createUserMentionSpan(username, color) {
   span.dataset.username = lower
   span.dataset.completionType = 'user-bare'
   span.textContent = username
-  const safeColor = (typeof sanitizeColor === 'function') ? sanitizeColor(color || '#fff') : (color || '#fff')
-  span.style.color = safeColor
+  const sanitize = (c) => (typeof sanitizeColor === 'function' ? sanitizeColor(c || '#fff') : (c || '#fff'))
+
+  // Sync cache resolution — instant for anyone we've already seen this session
+  let finalColor = (color && color !== '#fff') ? color : null
+  if (!finalColor && _hsUserColorCache.has(lower)) finalColor = _hsUserColorCache.get(lower) || null
+  if (!finalColor && typeof knownColors !== 'undefined') {
+    const k = knownColors.get(lower)
+    if (k && k !== '#fff') finalColor = k
+  }
+
+  span.style.color = sanitize(finalColor || '#fff')
   span.style.fontWeight = 'bold'
   span.style.cursor = 'pointer'
   span.contentEditable = 'false'
-  // Click opens user profile — contenteditable swallows anchor clicks, so use explicit handler
   span.addEventListener('mousedown', (e) => {
     e.preventDefault()
     e.stopPropagation()
     window.open(`https://heatsync.org/user/${encodeURIComponent(lower)}`, '_blank', 'noopener,noreferrer')
   })
+  // Only async-fetch when truly unknown
+  if (!finalColor) hsFetchUserColorAndApply(lower, span)
   return span
+}
+
+// Cache: username (lower) → color hex (or null for "fetched but no color")
+const _hsUserColorCache = new Map()
+const _hsUserColorInflight = new Map()
+
+// Persist cache across page reloads — colors don't change often. Loads at startup.
+try {
+  (typeof api !== 'undefined' ? api : chrome).storage.local.get('hs_user_color_cache').then(d => {
+    const obj = d?.hs_user_color_cache
+    if (obj && typeof obj === 'object') {
+      for (const k in obj) _hsUserColorCache.set(k, obj[k])
+    }
+  }).catch(() => {})
+} catch {}
+
+let _hsUserColorCacheSaveTimer = null
+function _hsPersistUserColorCache() {
+  if (_hsUserColorCacheSaveTimer) return
+  _hsUserColorCacheSaveTimer = setTimeout(() => {
+    _hsUserColorCacheSaveTimer = null
+    const obj = {}
+    for (const [k, v] of _hsUserColorCache) if (v) obj[k] = v  // skip nulls
+    try { (typeof api !== 'undefined' ? api : chrome).storage.local.set({ hs_user_color_cache: obj }) } catch {}
+  }, 2000)
+}
+
+// Prefetch colors for a list of usernames in the background. Deduped + batched
+// via GQL so 10 names = 1 round-trip. Populates _hsUserColorCache for later
+// instant lookup in createUserMentionSpan.
+function hsPrefetchUserColors(usernames) {
+  const needed = []
+  for (const u of usernames || []) {
+    const lower = String(u || '').toLowerCase()
+    if (!lower) continue
+    if (_hsUserColorCache.has(lower)) continue
+    if (_hsUserColorInflight.has(lower)) continue
+    // Don't re-fetch if knownColors already has them
+    if (typeof knownColors !== 'undefined' && knownColors.get(lower)) continue
+    needed.push(lower)
+  }
+  if (!needed.length) return
+  // Mark inflight
+  const batchPromise = (async () => {
+    try {
+      // Build batched GQL with aliases — single request for all users
+      const aliases = needed.map((u, i) => `u${i}: user(login: "${u.replace(/"/g, '')}") { chatColor }`).join(' ')
+      const resp = await fetch('https://gql.twitch.tv/gql', {
+        method: 'POST',
+        credentials: 'omit',
+        headers: { 'Content-Type': 'application/json', 'Client-Id': 'kimne78kx3ncx6brgo4mv6wki5h1ko' },
+        body: JSON.stringify({ query: `{ ${aliases} }` })
+      })
+      if (!resp.ok) return
+      const j = await resp.json()
+      const data = j?.data || {}
+      for (let i = 0; i < needed.length; i++) {
+        const u = needed[i]
+        const c = data[`u${i}`]?.chatColor || null
+        _hsUserColorCache.set(u, c)
+        if (c) { try { setKnownColor(u, c) } catch {} }
+      }
+      _hsPersistUserColorCache()
+    } catch {}
+  })()
+  for (const u of needed) _hsUserColorInflight.set(u, batchPromise)
+  batchPromise.finally(() => { for (const u of needed) _hsUserColorInflight.delete(u) })
+}
+function hsFetchUserColorAndApply(lower, span) {
+  if (_hsUserColorCache.has(lower)) {
+    const cached = _hsUserColorCache.get(lower)
+    if (cached) {
+      span.style.color = (typeof sanitizeColor === 'function' ? sanitizeColor(cached) : cached)
+      try { setKnownColor(lower, cached) } catch {}
+    }
+    return
+  }
+  let p = _hsUserColorInflight.get(lower)
+  if (!p) {
+    p = (async () => {
+      try {
+        if (typeof apiFetch !== 'function') return null
+        const resp = await apiFetch(`/api/profile/${encodeURIComponent(lower)}`)
+        const profile = resp?.data?.profile
+        // 1. heatsync custom color (set on heatsync.org)
+        let c = profile?.color || profile?.user_color || profile?.userColor || null
+        // 2. fallback: fetch Twitch chat color via unauthed GQL (no scope needed)
+        if (!c && profile?.twitch_username) {
+          try {
+            const gqlResp = await fetch('https://gql.twitch.tv/gql', {
+              method: 'POST',
+              credentials: 'omit',
+              headers: {
+                'Content-Type': 'application/json',
+                'Client-Id': 'kimne78kx3ncx6brgo4mv6wki5h1ko'
+              },
+              body: JSON.stringify({
+                query: 'query($login:String!){user(login:$login){chatColor}}',
+                variables: { login: profile.twitch_username }
+              })
+            })
+            if (gqlResp.ok) {
+              const j = await gqlResp.json()
+              c = j?.data?.user?.chatColor || null
+            }
+          } catch {}
+        }
+        // 3. fallback: Twitch's 15 auto-assigned colors (hash of username)
+        if (!c) {
+          const palette = ['#FF0000','#0000FF','#008000','#B22222','#FF7F50','#9ACD32','#FF4500','#2E8B57','#DAA520','#D2691E','#5F9EA0','#1E90FF','#FF69B4','#8A2BE2','#00FF7F']
+          let h = 0
+          for (let i = 0; i < lower.length; i++) h = (h * 31 + lower.charCodeAt(i)) | 0
+          c = palette[Math.abs(h) % palette.length]
+        }
+        _hsUserColorCache.set(lower, c || null)
+        if (c) { try { setKnownColor(lower, c) } catch {} }
+        return c
+      } catch { return null }
+    })()
+    _hsUserColorInflight.set(lower, p)
+    p.finally(() => _hsUserColorInflight.delete(lower))
+  }
+  p.then(c => {
+    if (c && span.isConnected) {
+      span.style.color = (typeof sanitizeColor === 'function' ? sanitizeColor(c) : c)
+    }
+  })
 }
 
 // WYSIWYG emote insertion
@@ -1595,6 +1965,7 @@ function insertCompletionWysiwyg(match) {
       img.dataset.emoteName = match.name
       img.className = 'hs-input-emote hs-cycling-emote'
       img.draggable = false
+      attachInputEmoteErrorRecovery(img)
       existingText.replaceWith(img)
       const space = img.nextSibling
       if (space) placeCaretAfter(space, 1)
@@ -1629,6 +2000,7 @@ function insertCompletionWysiwyg(match) {
       img.dataset.emoteName = match.name
       img.className = 'hs-input-emote hs-cycling-emote'
       img.draggable = false
+      attachInputEmoteErrorRecovery(img)
       existingUser.replaceWith(img)
       const space = img.nextSibling
       if (space) placeCaretAfter(space, 1)
@@ -1721,6 +2093,7 @@ function insertCompletionWysiwyg(match) {
     img.dataset.emoteName = match.name;
     img.className = 'hs-input-emote hs-cycling-emote';
     img.draggable = false;
+    attachInputEmoteErrorRecovery(img);
     // Zero-width / overlay: stack onto preceding emote so the input preview
     // matches how chat will render the same word sequence.
     const resolved = (typeof lookupEmoteWithOverlay === 'function') ? lookupEmoteWithOverlay(match.name) : null;

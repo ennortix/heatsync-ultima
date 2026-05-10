@@ -4062,22 +4062,19 @@
     if (platform === 'youtube') {
       // YouTube: delegate to youtube-content.js via message (execCommand deprecated)
       chrome.runtime.sendMessage({ type: 'youtube_insert_emote', emoteName })
-    } else if (platform === 'kick') {
-      // Kick: contenteditable div.editor-input
-      const currentText = chatInput.textContent || '';
-      const needsSpace = currentText.length > 0 && !currentText.endsWith(' ');
-      const textToInsert = (needsSpace ? ' ' : '') + emoteName + ' ';
-
-      chatInput.focus();
-      document.execCommand('insertText', false, textToInsert);
     } else {
-      // Twitch: contenteditable
+      // Twitch/Kick: contenteditable. Slate keeps phantom <p><br></p> blocks
+      // when visually empty — textContent is "" but cursor sits in a later
+      // paragraph, so plain insertText leaves a blank line above.
       const currentText = chatInput.textContent || '';
-      const needsSpace = currentText.length > 0 && !currentText.endsWith(' ');
-      const textToInsert = (needsSpace ? ' ' : '') + emoteName + ' ';
-
       chatInput.focus();
-      document.execCommand('insertText', false, textToInsert);
+      if (currentText.trim() === '') {
+        document.execCommand('selectAll');
+        document.execCommand('insertText', false, emoteName + ' ');
+      } else {
+        const needsSpace = !currentText.endsWith(' ');
+        document.execCommand('insertText', false, (needsSpace ? ' ' : '') + emoteName + ' ');
+      }
     }
 
     // Close panel after inserting

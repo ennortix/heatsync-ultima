@@ -222,10 +222,30 @@
   ]
 
 
+  // Anon-chat presence-blocklist (FFZ-style read-only mode)
+  const HS_ANON_OPS = new Set([
+    'UpdateUserActivity', 'UseLive', 'PresenceMap', 'UpdateChatPresence',
+    'PresenceUpdate', 'ChatPresence', 'CurrentUserActiveChannel'
+  ])
+
   // Hook fetch to intercept Twitch GQL traffic
   const origFetch = window.fetch
   const hsFetch = function(input, init) {
     const url = typeof input === 'string' ? input : input?.url
+    // Anon mode: drop presence/activity GQL calls so Twitch stops broadcasting "online"
+    if (url && url.includes('gql.twitch.tv') && init?.method === 'POST' &&
+        document.documentElement.classList.contains('hs-anon-chat')) {
+      try {
+        const body = typeof init.body === 'string' ? JSON.parse(init.body) : null
+        const ops = Array.isArray(body) ? body : (body ? [body] : [])
+        if (ops.length && ops.every(op => HS_ANON_OPS.has(op?.operationName))) {
+          // Pretend it succeeded; return empty data array
+          return Promise.resolve(new Response(JSON.stringify(ops.map(() => ({ data: null }))), {
+            status: 200, headers: { 'Content-Type': 'application/json' }
+          }))
+        }
+      } catch {}
+    }
     if (url && url.includes('gql.twitch.tv') && init?.method === 'POST') {
       // Capture headers
       try {

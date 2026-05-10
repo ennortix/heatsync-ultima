@@ -723,6 +723,18 @@
         const hsEmotes = getHeatsyncEmotes();
         const searchLower = search.toLowerCase();
 
+        // FFZ modifier tokens MUST NOT autocomplete — they're not emotes.
+        // (Otherwise typing "w!" + Tab inserts a random emote whose name
+        // contains "w" + "!", breaking the modifier-on-previous-emote flow.)
+        const HS_MODIFIER_TOKENS = new Set([
+          'w!','h!','v!','l!','c!','z!','x!','y!',
+          'ffzX','ffzY','ffzWide','ffzTall','ffzCursed'
+        ])
+        if (HS_MODIFIER_TOKENS.has(search) || /^c!#?[0-9a-fA-F]{3,6}$/.test(search)) {
+          log(' [heatsync-autocomplete] modifier token, suppressing match:', search)
+          return []
+        }
+
         // Fuzzy match: sequential character match with scoring
         function fuzzyMatch(query, name) {
           if (name.includes(query)) return 2 + (query.length / name.length) // exact substring
@@ -1197,20 +1209,31 @@
 
       // After emote, insert space using Slate apply (like 7TV does)
       if (addSpace) {
+        // Prefer insertText — it routes through the editor's selection
+        // and keeps the cursor positioned correctly after the void node.
+        let inserted = false
         try {
-          // Get cursor position after emote insertion
-          const point = slateEditor.end([]);
-          slateEditor.apply({
-            type: 'insert_text',
-            path: point.path,
-            offset: point.offset,
-            text: ' '
-          });
-          log(' 📝 Inserted space via Slate apply');
+          slateEditor.select(slateEditor.end([]))
+          slateEditor.insertText(' ')
+          inserted = true
+          log(' 📝 Inserted trailing space via insertText')
         } catch (err) {
-          log(' ❌ Slate apply failed:', err.message);
-          // Fallback: try insertText
-          slateEditor.insertText(' ');
+          log(' ⚠️ insertText space failed:', err.message)
+        }
+        // Fallback: low-level apply (works when selection is across a void boundary)
+        if (!inserted) {
+          try {
+            const point = slateEditor.end([])
+            slateEditor.apply({
+              type: 'insert_text',
+              path: point.path,
+              offset: point.offset,
+              text: ' '
+            })
+            log(' 📝 Inserted trailing space via Slate apply (fallback)')
+          } catch (err) {
+            log(' ❌ Slate apply space failed:', err.message)
+          }
         }
       }
     } else {

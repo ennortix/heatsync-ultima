@@ -50,7 +50,13 @@
     debugLogging: false,
     crashTelemetry: false,
     automodAllCaps: false,
-    automodRegex: ''
+    automodRegex: '',
+    emoteModifiers: true,
+    emoteRightClickMenu: true,
+    userColors: true,
+    showClearedMessages: false,
+    showPredictionsChip: true,
+    anonChat: false
   }
 
   let settings = { ...DEFAULTS }
@@ -110,6 +116,14 @@
 
     const automodRegex = document.getElementById('automod-regex')
     if (automodRegex) automodRegex.value = settings.automodRegex || ''
+
+    const keywordHl = document.getElementById('keyword-highlights')
+    if (keywordHl && !keywordHl.dataset.loaded) {
+      keywordHl.dataset.loaded = '1'
+      chrome.storage.local.get('keyword_highlights').then(d => {
+        keywordHl.value = typeof d.keyword_highlights === 'string' ? d.keyword_highlights : ''
+      }).catch(() => {})
+    }
   }
 
   async function save() {
@@ -160,13 +174,22 @@
 
   // Live-save automod regex on input (debounced)
   let _automodSaveTimer = null
+  let _kwSaveTimer = null
   document.addEventListener('input', (e) => {
-    if (e.target.id !== 'automod-regex') return
-    clearTimeout(_automodSaveTimer)
-    _automodSaveTimer = setTimeout(() => {
-      settings.automodRegex = e.target.value
-      save()
-    }, 400)
+    if (e.target.id === 'automod-regex') {
+      clearTimeout(_automodSaveTimer)
+      _automodSaveTimer = setTimeout(() => {
+        settings.automodRegex = e.target.value
+        save()
+      }, 400)
+      return
+    }
+    if (e.target.id === 'keyword-highlights') {
+      clearTimeout(_kwSaveTimer)
+      _kwSaveTimer = setTimeout(() => {
+        chrome.storage.local.set({ keyword_highlights: e.target.value })
+      }, 400)
+    }
   })
 
   function fmtTs(ts) {

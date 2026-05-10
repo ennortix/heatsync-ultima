@@ -195,6 +195,55 @@
       </div>
       <button type="button" class="toggle" data-setting="highlightMentions" role="switch" aria-checked="false" aria-labelledby="lbl-highlightMentions"></button>
     </div>
+    <div class="setting-row" style="flex-direction:column;align-items:stretch;gap:6px">
+      <div>
+        <label class="setting-label" for="keyword-highlights">keyword highlights</label>
+        <div class="setting-desc">comma- or newline-separated; chat lines containing any are highlighted orange</div>
+      </div>
+      <textarea id="keyword-highlights" placeholder="my-name, mygame, raid" style="background:#000;color:#fff;border:1px solid #808080;padding:6px 8px;font-family:monospace;font-size:11px;width:100%;min-height:60px;resize:vertical"></textarea>
+    </div>
+    <div class="setting-row">
+      <div>
+        <div class="setting-label" id="lbl-emoteModifiers">FFZ emote modifiers</div>
+        <div class="setting-desc">w! h! ffzX ffzY c!#hex chains on the previous emote</div>
+      </div>
+      <button type="button" class="toggle" data-setting="emoteModifiers" role="switch" aria-checked="false" aria-labelledby="lbl-emoteModifiers"></button>
+    </div>
+    <div class="setting-row">
+      <div>
+        <div class="setting-label" id="lbl-emoteRightClickMenu">emote right-click menu</div>
+        <div class="setting-desc">right-click an emote for view-on/copy-name/copy-url/block</div>
+      </div>
+      <button type="button" class="toggle" data-setting="emoteRightClickMenu" role="switch" aria-checked="false" aria-labelledby="lbl-emoteRightClickMenu"></button>
+    </div>
+    <div class="setting-row">
+      <div>
+        <div class="setting-label" id="lbl-userColors">per-user color overrides</div>
+        <div class="setting-desc">right-click a username in chat to set its display color</div>
+      </div>
+      <button type="button" class="toggle" data-setting="userColors" role="switch" aria-checked="false" aria-labelledby="lbl-userColors"></button>
+    </div>
+    <div class="setting-row">
+      <div>
+        <div class="setting-label" id="lbl-showClearedMessages">show deleted messages</div>
+        <div class="setting-desc">keep timed-out/deleted lines visible (dimmed) instead of hiding</div>
+      </div>
+      <button type="button" class="toggle" data-setting="showClearedMessages" role="switch" aria-checked="false" aria-labelledby="lbl-showClearedMessages"></button>
+    </div>
+    <div class="setting-row">
+      <div>
+        <div class="setting-label" id="lbl-showPredictionsChip">show predictions/polls chip</div>
+        <div class="setting-desc">live overlay when a prediction or poll is active</div>
+      </div>
+      <button type="button" class="toggle" data-setting="showPredictionsChip" role="switch" aria-checked="false" aria-labelledby="lbl-showPredictionsChip"></button>
+    </div>
+    <div class="setting-row">
+      <div>
+        <div class="setting-label" id="lbl-anonChat">anonymous chat</div>
+        <div class="setting-desc">suppress presence/typing-indicator outbound traffic</div>
+      </div>
+      <button type="button" class="toggle" data-setting="anonChat" role="switch" aria-checked="false" aria-labelledby="lbl-anonChat"></button>
+    </div>
     <div class="setting-row">
       <div>
         <div class="setting-label" id="lbl-showPlatformBadges">platform badges</div>
@@ -285,6 +334,13 @@
         <div class="setting-desc">show a desktop notification when someone @s you</div>
       </div>
       <button type="button" class="toggle" data-storage-key="hs_notifications" role="switch" aria-checked="false" aria-labelledby="lbl-hs_notifications"></button>
+    </div>
+    <div class="setting-row">
+      <div>
+        <div class="setting-label" id="lbl-hs_auto_claim_points">auto-claim channel points</div>
+        <div class="setting-desc">click bonus chest automatically (twitch only)</div>
+      </div>
+      <button type="button" class="toggle" data-storage-key="hs_auto_claim_points" role="switch" aria-checked="false" aria-labelledby="lbl-hs_auto_claim_points"></button>
     </div>
   </div>
 

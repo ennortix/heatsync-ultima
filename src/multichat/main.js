@@ -2429,7 +2429,6 @@
   // Orange #ff8700, 6px thick, no text — matches user's resize-handle rule.
   // ============================================
   let _isResizingC = false;
-  let _suppressYtResizeDispatch = false;
   function ensureChatResizeHandle() {
     let handle = document.getElementById('hs-c-resize-handle');
     if (handle) return handle;
@@ -2476,14 +2475,10 @@
     // visual scaling; one final resize event fires on pointerup so the player
     // re-measures cleanly (and ad <video> elements snap to final dimensions).
     let startX = 0, startY = 0, startW = 0, startH = 0, axis = 'x', activePid = -1;
-    let pendingW = 0, pendingH = 0, overlay = null;
+    let pendingW = 0, pendingH = 0, overlay = null, ghost = null;
     let liveRaf = 0;
     // Panel anchor edges captured at pointerdown — the edges that DON'T
-    // move during the drag (chat-top: top edge fixed, height grows; chat-
-    // bottom: bottom edge fixed; etc). Used to compute handle position
-    // each frame WITHOUT re-reading getBoundingClientRect (forced layout
-    // on every pointermove was a perf cliff). The panel's other edge is
-    // anchor + dimension. See positionChatResizeHandle for the static
+    // move during the drag. See positionChatResizeHandle for the static
     // (non-drag) equivalent that DOES read rect.
     let panelTop = 0, panelLeft = 0, panelRight = 0, panelBottom = 0;
     handle.addEventListener('pointerdown', (e) => {
@@ -2517,74 +2512,60 @@
       overlay.id = 'hs-c-resize-overlay';
       overlay.style.cssText = `position:fixed;inset:0;z-index:99998;cursor:${axis === 'x' ? 'col-resize' : 'row-resize'};`;
       document.body.appendChild(overlay);
+      // Ghost preview — fixed-positioned, pointer-events:none, will-change
+      // for the compositor. Mirrors the per-platform handles' approach
+      // (#hs-mc-resize-handle, #hs-kick-resize-handle, #hs-yt-resize-handle).
+      // Memory rule: never touch the actual chat width/player layout during
+      // the live drag — Twitch right-column has ~2500 React Layout nodes
+      // and inline-style writes on YT player wrappers thrash IMA SDK.
+      ghost = document.createElement('div');
+      ghost.id = 'hs-c-resize-ghost';
+      const baseStyle = 'position:fixed;background:rgba(255,135,0,0.06);pointer-events:none;z-index:99997;';
+      if (chatPosition === 'right') {
+        ghost.style.cssText = baseStyle + `top:${panelTop}px;right:0;height:${panelBottom - panelTop}px;width:${pendingW}px;border-left:3px solid #ff8700;will-change:width;`;
+      } else if (chatPosition === 'left') {
+        ghost.style.cssText = baseStyle + `top:${panelTop}px;left:0;height:${panelBottom - panelTop}px;width:${pendingW}px;border-right:3px solid #ff8700;will-change:width;`;
+      } else if (chatPosition === 'top') {
+        ghost.style.cssText = baseStyle + `top:0;left:0;right:0;height:${pendingH}px;border-bottom:3px solid #ff8700;will-change:height;`;
+      } else if (chatPosition === 'bottom') {
+        ghost.style.cssText = baseStyle + `bottom:0;left:0;right:0;height:${pendingH}px;border-top:3px solid #ff8700;will-change:height;`;
+      }
+      document.body.appendChild(ghost);
       e.preventDefault();
     });
     handle.addEventListener('pointermove', (e) => {
       if (!_isResizingC || e.pointerId !== activePid) return;
       // Full pixel-freedom drag — bounded only by viewport-10 so the
-      // handle stays grabbable on either extreme. No "min player width"
-      // gate, no platform-specific cap. User can shrink chat to handle
-      // width or expand it until the player is a sliver — both directions
-      // are reversible by dragging the bar back.
+      // handle stays grabbable on either extreme.
       const maxW = Math.max(MIN_CHAT_WIDTH, window.innerWidth - 10);
-      // Position handle at panel's INNER edge (the player-facing one):
-      //   right → handle at panel-left edge   (panelRight - pendingW)
-      //   left  → handle at panel-right edge  (panelLeft + pendingW - 10)
-      //   top   → handle at panel-bottom edge (panelTop + pendingH - 10)
-      //   bottom→ handle at panel-top edge    (panelBottom - pendingH)
       if (chatPosition === 'right') {
         pendingW = Math.max(MIN_CHAT_WIDTH, Math.min(maxW, startW + (startX - e.clientX)));
-        handle.style.left = (panelRight - pendingW) + 'px';
       } else if (chatPosition === 'left') {
         pendingW = Math.max(MIN_CHAT_WIDTH, Math.min(maxW, startW + (e.clientX - startX)));
-        handle.style.left = (panelLeft + pendingW - 10) + 'px';
       } else if (chatPosition === 'top') {
         pendingH = Math.max(MIN_CHAT_HEIGHT, Math.min(getMaxChatHeight(), startH + (e.clientY - startY)));
-        handle.style.top = (panelTop + pendingH - 10) + 'px';
       } else if (chatPosition === 'bottom') {
         pendingH = Math.max(MIN_CHAT_HEIGHT, Math.min(getMaxChatHeight(), startH + (startY - e.clientY)));
-        handle.style.top = (panelBottom - pendingH) + 'px';
       }
-      // Live commit — minimal work per frame so YT player buttons stay
-      // clickable. rAF-throttled. We only touch:
-      //   1. CSS vars (--hs-chat-w / --hs-chat-h) — chat container CSS reads these
-      //   2. #secondary inline width on YT — YT's flex auto-resizes the player
-      //   3. Kick chat width (same idea — flex handles player)
-      //   4. Handle position
-      // We deliberately do NOT call applyChatPosition here — that path writes
-      // inline width/height to #movie_player + 5 other player elements every
-      // frame, which (a) thrashes YT's internal layout and (b) appeared to
-      // block pointer events on player controls. Final settle on pointerup
-      // does the full applyChatPosition + resize-event dispatch.
+      // Compositor-only update during drag — no layout, no React reconcile,
+      // no inline-style writes on player wrappers. Just move the orange bar
+      // and resize the ghost preview. Final commit happens on pointerup.
       if (!liveRaf) {
         liveRaf = requestAnimationFrame(() => {
           liveRaf = 0;
-          if (axis === 'x') chatWidth = pendingW;
-          else chatHeight = pendingH;
-          document.documentElement.style.setProperty('--hs-chat-w', chatWidth + 'px');
-          document.documentElement.style.setProperty('--hs-chat-h', chatHeight + 'px');
-          if (hostPlatform === 'yt') {
-            try { applyYouTubeChatWidth() } catch (_) {}
-            // Re-size player wrappers (NOT #movie_player itself) so the
-            // player tracks chat resize live without desyncing YT's
-            // control hit-targets.
-            try { applyPlatformPositionOverrides() } catch (_) {}
-          } else if (isKick) {
-            try { applyKickChatWidth() } catch (_) {}
-            if (chatPosition !== 'right') {
-              try { applyPlatformPositionOverrides() } catch (_) {}
-            }
-          } else if (hostPlatform === 'twitch' && chatPosition !== 'right') {
-            try { applyPlatformPositionOverrides() } catch (_) {}
+          if (chatPosition === 'right') {
+            handle.style.left = (panelRight - pendingW) + 'px';
+            if (ghost) ghost.style.width = pendingW + 'px';
+          } else if (chatPosition === 'left') {
+            handle.style.left = (panelLeft + pendingW - 10) + 'px';
+            if (ghost) ghost.style.width = pendingW + 'px';
+          } else if (chatPosition === 'top') {
+            handle.style.top = (panelTop + pendingH - 10) + 'px';
+            if (ghost) ghost.style.height = pendingH + 'px';
+          } else if (chatPosition === 'bottom') {
+            handle.style.top = (panelBottom - pendingH) + 'px';
+            if (ghost) ghost.style.height = pendingH + 'px';
           }
-          // Width change re-wraps every message — taller lines push scrollTop
-          // away from the bottom even though the user hasn't scrolled. If they
-          // were pinned at bottom before the drag, re-pin after each rAF so
-          // the scroll position tracks the latest message live during resize.
-          // scrollMsgsToBottom self-bails when isScrolledUp is true, so users
-          // who *were* scrolled up stay where they are.
-          const m = document.getElementById('hs-mc-messages');
-          if (m) try { scrollMsgsToBottom(m) } catch (_) {}
         });
       }
     });
@@ -2597,23 +2578,25 @@
       document.body.style.userSelect = '';
       handle.style.opacity = '0.55';
       if (overlay) { overlay.remove(); overlay = null; }
-      // Final settle — applyChatPosition with resize-event dispatch enabled
-      // so YT's IMA SDK / html5 player re-measure to the committed dimensions.
+      if (ghost) { ghost.remove(); ghost = null; }
+      // Final commit — single reflow for the player + React tree.
       if (axis === 'x') chatWidth = pendingW;
       else chatHeight = pendingH;
+      document.documentElement.style.setProperty('--hs-chat-w', chatWidth + 'px');
+      document.documentElement.style.setProperty('--hs-chat-h', chatHeight + 'px');
       applyChatPosition();
       // applyChatPosition strips inline width on #secondary for YT chat-right
-      // and relies on "next reflow" to repopulate it — but nothing guarantees
-      // that fires promptly, so the chat panel visually lags behind the
-      // committed chatWidth (the "snap on release" the user perceives).
+      // and relies on "next reflow" to repopulate it — force it now.
       if (hostPlatform === 'yt') {
         try { applyYouTubeChatWidth() } catch {}
       }
       // Force every platform's player (including ad layers — Twitch
-      // .video-ad-display, YT IMA SDK, Kick video.js) to re-measure. Without
-      // this, ad <video> elements with explicit inline dimensions keep their
-      // pre-resize size and overlap the chat or leave black bars until refresh.
+      // .video-ad-display, YT IMA SDK, Kick video.js) to re-measure.
       try { window.dispatchEvent(new Event('resize')) } catch (_) {}
+      // Re-pin scroll: width change re-wraps messages, scrollHeight shifts.
+      // Helper self-bails if isScrolledUp.
+      const m = document.getElementById('hs-mc-messages');
+      if (m) try { scrollMsgsToBottom(m) } catch (_) {}
       saveChatWidth();
       saveChatHeight();
     };
@@ -7344,7 +7327,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     // resize events at multiple timing points. The player init is async and
     // can complete after our applyChatPosition runs on initial load — without
     // multiple nudges, YT's own resize observer doesn't fire until ~10s.
-    if (hostPlatform === 'yt' && !_suppressYtResizeDispatch) {
+    if (hostPlatform === 'yt') {
       const fire = () => { try { window.dispatchEvent(new Event('resize')) } catch (_) {} };
       fire();
       setTimeout(fire, 100);

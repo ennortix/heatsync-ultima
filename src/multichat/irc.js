@@ -361,7 +361,10 @@ class IRC {
         buf.push(m)
       }
       try { _dropAllTabCaches() } catch {}
-      if (currentTab === ch || (currentTab === 'live' && getLiveChannel() === ch)) {
+      // Skip rebuild when chat is already populated — wipe+rebuild reloads
+      // every image and looks like a flash on streamer switch. Live messages
+      // will append organically and the 500-cap rolls out stale msgs.
+      if ((currentTab === ch || (currentTab === 'live' && getLiveChannel() === ch)) && isMsgsElEmpty()) {
         renderMessages(currentTab)
       }
     } catch (e) { log('BG history refresh failed:', e?.message) }
@@ -394,7 +397,7 @@ class IRC {
         }
         log('BG history hydrated:', resp.msgs.length, 'msgs for', ch)
         try { _dropAllTabCaches() } catch {}
-        if (currentTab === ch || (currentTab === 'live' && getLiveChannel() === ch)) {
+        if ((currentTab === ch || (currentTab === 'live' && getLiveChannel() === ch)) && isMsgsElEmpty()) {
           renderMessages(currentTab)
         }
       }
@@ -711,7 +714,7 @@ class KickChat {
       }
       buffer.push(msg)
     }
-    if (currentTab === ch || (currentTab === 'live' && getLiveChannel() === ch)) {
+    if ((currentTab === ch || (currentTab === 'live' && getLiveChannel() === ch)) && isMsgsElEmpty()) {
       renderMessages(currentTab)
     }
   }
@@ -762,7 +765,7 @@ class KickChat {
         hydrated = true
         log('Kick BG history hydrated:', resp.msgs.length, 'msgs for', kickUsername)
         try { _dropAllTabCaches() } catch {}
-        if (currentTab === kickUsername || (currentTab === 'live' && getLiveChannel() === kickUsername)) {
+        if ((currentTab === kickUsername || (currentTab === 'live' && getLiveChannel() === kickUsername)) && isMsgsElEmpty()) {
           renderMessages(currentTab)
         }
       }

@@ -236,6 +236,19 @@
     _tabCache.clear()
   }
 
+  // True when #hs-mc-messages is empty (cold start) or holds only the empty
+  // placeholder. Used by history-hydration paths to skip a wipe+rebuild render
+  // when the chat is already populated — that rebuild reloads every avatar/
+  // emote/badge image and looks to the user like a flash on streamer switch.
+  // Live messages will append organically; the 500-cap rolls out stale msgs.
+  function isMsgsElEmpty() {
+    const el = document.getElementById('hs-mc-messages')
+    if (!el) return true
+    if (el.children.length === 0) return true
+    if (el.children.length === 1 && el.firstElementChild?.classList?.contains('hs-mc-empty')) return true
+    return false
+  }
+
   function snapshotTabState(tabId) {
     if (!_isChatTab(tabId)) return
     const msgsEl = document.getElementById('hs-mc-messages')
@@ -9865,11 +9878,10 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
   // a single empty frame.
   function softTwitchNav() {
     const container = document.getElementById('hs-mc-container');
-    // SPA nav changes the URL channel — every cached chat tab fragment is now
-    // potentially stale (live shows different channel; per-channel tabs may
-    // have new msgs from the just-joined IRC). Drop all caches so the next
-    // tab switch builds cleanly from the buffer.
-    try { _dropAllTabCaches() } catch {}
+    // SPA nav changes the URL channel — only the LIVE tab cache becomes
+    // stale (it follows getLiveChannel()). Per-channel tab caches stay
+    // valid since their data is keyed by channel buffer, not URL.
+    try { _dropTabCache('live') } catch {}
     // Mark body for the entire transition window so the CSS guard hides any
     // native chat-shell children that paint during Twitch's teardown/remount.
     document.body.classList.add('hs-mc-navigating');
@@ -9950,7 +9962,9 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
   // chatroom once it appears (channel pages).
   function softKickNav() {
     const container = document.getElementById('hs-mc-container');
-    try { _dropAllTabCaches() } catch {}
+    // Only invalidate live cache — per-channel tabs stay valid (their
+    // buffers are keyed by channel name, unchanged by URL).
+    try { _dropTabCache('live') } catch {}
     document.body.classList.add('hs-mc-navigating');
     if (container && container.parentElement && container.parentElement !== document.body) {
       document.body.appendChild(container);

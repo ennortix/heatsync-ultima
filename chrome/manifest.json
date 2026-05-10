@@ -52,6 +52,12 @@
       "world": "MAIN"
     },
     {
+      "matches": ["https://kick.com/*", "https://*.kick.com/*"],
+      "js": ["kick-nav-watcher.js"],
+      "run_at": "document_start",
+      "world": "MAIN"
+    },
+    {
       "matches": ["https://*.twitch.tv/*", "https://kick.com/*", "https://*.kick.com/*", "https://www.youtube.com/*"],
       "js": ["early-layout.js", "pcard-early.js"],
       "run_at": "document_start"

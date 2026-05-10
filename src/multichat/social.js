@@ -353,19 +353,33 @@ async function loadHsAuth() {
 // final render after the burst settles. Tab indicator only updates if user
 // isn't viewing this tab.
 const _replayRenderPending = new Set()  // tabIds awaiting coalesced render
+// Sidecar dedup index. O(1) lookup vs the previous O(n) buf.some() scan over
+// up to 1550 entries per replay msg — replay bursts at reconnect can be huge.
+const _replayDedupKeys = new Map()  // channelId -> Set<dupKey>
+function _ytDupKey(m) {
+  return `${m.user}|${(m.text || '').slice(0, 50)}|${Math.floor((m.time || 0) / 1000)}`
+}
 function ingestReplayYtMsg(targetChannelId, ytMsg) {
   if (!channelYtMessages.has(targetChannelId)) channelYtMessages.set(targetChannelId, [])
   const buf = channelYtMessages.get(targetChannelId)
-  // Dedup against existing buffer (refresh resends backfill we may already
-  // have). Same key as isYtDuplicate — user+text+time-bucketed.
-  const dupKey = `${ytMsg.user}|${(ytMsg.text || '').slice(0, 50)}|${Math.floor((ytMsg.time || 0) / 1000)}`
-  if (buf.some(m => `${m.user}|${(m.text || '').slice(0, 50)}|${Math.floor((m.time || 0) / 1000)}` === dupKey)) return
+  let dedup = _replayDedupKeys.get(targetChannelId)
+  if (!dedup) {
+    dedup = new Set()
+    for (const m of buf) dedup.add(_ytDupKey(m))
+    _replayDedupKeys.set(targetChannelId, dedup)
+  }
+  const dupKey = _ytDupKey(ytMsg)
+  if (dedup.has(dupKey)) return
+  dedup.add(dupKey)
   buf.push(ytMsg)
   if (buf.length > MAX_BUFFER + 50) {
     // Sort by time before truncating so we keep the most recent across
     // backfill + live, not just newest-arrived.
     buf.sort((a, b) => (a.time || 0) - (b.time || 0))
     buf.splice(0, buf.length - MAX_BUFFER)
+    // Rebuild dedup set from surviving entries (splice dropped some).
+    dedup.clear()
+    for (const m of buf) dedup.add(_ytDupKey(m))
   }
   persistYt(targetChannelId)
   const tabId = targetChannelId === '__live_yt_auto__' ? 'live' : targetChannelId
@@ -401,7 +415,17 @@ function commitPacedYtMsg(targetChannelId, ytMsg) {
   if (!channelYtMessages.has(targetChannelId)) channelYtMessages.set(targetChannelId, [])
   const buf = channelYtMessages.get(targetChannelId)
   buf.push(ytMsg)
-  if (buf.length > MAX_BUFFER + 50) buf.splice(0, buf.length - MAX_BUFFER)
+  // Keep the replay-dedup index aligned with the buffer so a later replay msg
+  // doesn't get re-inserted as if the live one were missing.
+  const dedup = _replayDedupKeys.get(targetChannelId)
+  if (dedup) dedup.add(_ytDupKey(ytMsg))
+  if (buf.length > MAX_BUFFER + 50) {
+    buf.splice(0, buf.length - MAX_BUFFER)
+    if (dedup) {
+      dedup.clear()
+      for (const m of buf) dedup.add(_ytDupKey(m))
+    }
+  }
   persistYt(targetChannelId)
   const tabId = targetChannelId === '__live_yt_auto__' ? 'live' : targetChannelId
   if (currentTab === tabId) {

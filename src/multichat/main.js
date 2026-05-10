@@ -24,16 +24,23 @@
 
   const COLOR_RE = /^#[0-9a-fA-F]{3,6}$/
 
-  // Reverse-lookup Map for config.channels — rebuilt on config changes
+  // Reverse-lookup Map for config.channels — rebuilt on config changes.
+  // .byId added so the dozens of `config.channels.find(c => c.id === X)`
+  // calls scattered through the render path become O(1) instead of O(N).
   let _channelLookup = null
   function getChannelLookup() {
     if (_channelLookup) return _channelLookup
-    _channelLookup = { twitch: new Map(), kick: new Map() }
+    _channelLookup = { twitch: new Map(), kick: new Map(), byId: new Map() }
     for (const ch of config.channels) {
       if (ch.twitch) _channelLookup.twitch.set(ch.twitch, ch)
       if (ch.kick) _channelLookup.kick.set(ch.kick, ch)
+      if (ch.id) _channelLookup.byId.set(ch.id, ch)
     }
     return _channelLookup
+  }
+  function getChannelById(id) {
+    if (id == null) return undefined
+    return getChannelLookup().byId.get(id)
   }
 
   // Safe runtime.sendMessage wrapper (context invalidation guard, Firefox-compatible).
@@ -126,6 +133,78 @@
       range.setStartBefore(el.firstChild)
       range.setEndBefore(el.children[excess])
       range.deleteContents()
+    }
+  }
+
+  // ============================================
+  // MESSAGE-LIST DOM INDICES
+  // Replace per-message O(n) DOM scans (dedup, cosmetic repaint, mention paint)
+  // with O(1) Set/Map lookups. At 100 msgs/sec × 500 children, this collapses
+  // ~50k DOM reads/sec to a handful.
+  //   _msgKeyIndex   : Set<msgKeyStr> — appendMessage dedup
+  //   _uidIndex      : Map<uid, Set<HTMLElement>> — sender msg divs by userId
+  //   _mentionIndex  : Map<uid, Set<HTMLElement>> — inline @mention anchors
+  // All three MUST be kept in sync with #hs-mc-messages children. Every code
+  // path that adds/removes a message div has to call indexAdd / indexRemove.
+  // ============================================
+  const _msgKeyIndex = new Set()
+  const _uidIndex = new Map()
+  const _mentionIndex = new Map()
+
+  function _indexMessageDiv(div, msgKeyStr) {
+    if (!div) return
+    if (msgKeyStr) _msgKeyIndex.add(msgKeyStr)
+    const uid = div.dataset?.uid
+    if (uid) {
+      let s = _uidIndex.get(uid)
+      if (!s) { s = new Set(); _uidIndex.set(uid, s) }
+      s.add(div)
+    }
+    // Inline mentions inside this msg
+    const mentions = div.querySelectorAll('a.hs-mc-mention[data-uid]')
+    for (const m of mentions) {
+      const muid = m.dataset.uid
+      if (!muid) continue
+      let ms = _mentionIndex.get(muid)
+      if (!ms) { ms = new Set(); _mentionIndex.set(muid, ms) }
+      ms.add(m)
+    }
+  }
+
+  function _unindexMessageDiv(div) {
+    if (!div) return
+    const k = div.dataset?.msgKey
+    if (k) _msgKeyIndex.delete(k)
+    const uid = div.dataset?.uid
+    if (uid) {
+      const s = _uidIndex.get(uid)
+      if (s) { s.delete(div); if (!s.size) _uidIndex.delete(uid) }
+    }
+    const mentions = div.querySelectorAll('a.hs-mc-mention[data-uid]')
+    for (const m of mentions) {
+      const muid = m.dataset.uid
+      if (!muid) continue
+      const ms = _mentionIndex.get(muid)
+      if (ms) { ms.delete(m); if (!ms.size) _mentionIndex.delete(muid) }
+    }
+  }
+
+  function _clearMessageIndices() {
+    _msgKeyIndex.clear()
+    _uidIndex.clear()
+    _mentionIndex.clear()
+  }
+
+  // Trim variant that maintains the indices. Use anywhere we trim
+  // #hs-mc-messages — never call trimChildren directly on that element.
+  function trimMessagesEl(el, limit) {
+    const excess = el.children.length - limit
+    if (excess <= 0) return
+    for (let i = 0; i < excess; i++) {
+      const c = el.firstElementChild
+      if (!c) break
+      _unindexMessageDiv(c)
+      c.remove()
     }
   }
 
@@ -355,7 +434,7 @@
       if (SPECIAL.has(tabId)) continue
       const seen = tabSeenAt[tabId] || 0
       if (!seen) continue  // first-time view of this tab — don't spuriously light up
-      const ch = config.channels.find(c => c.id === tabId)
+      const ch = getChannelById(tabId)
       if (!ch) continue
       let maxTime = 0
       let hasMention = false
@@ -703,22 +782,26 @@
     }, 600)
   }
 
-  // Update cosmetics (badges + paint) in-place without full re-render
+  // Update cosmetics (badges + paint) in-place without full re-render.
+  // O(1) lookup via _uidIndex / _mentionIndex instead of querySelectorAll over
+  // the full message container — at 25-user batches × 500 children that was
+  // 50 full DOM scans per cosmetic flush.
   function updateCosmeticsInPlace(userIds) {
-    const container = document.getElementById('hs-mc-messages')
-    if (!container) return
+    if (!document.getElementById('hs-mc-messages')) return
     for (const uid of userIds) {
       const cosmetic = mcUserCosmetics.get(uid)
       if (!cosmetic) continue
       const paintStyle = getMcPaintStyle(uid)
       // Repaint inline @mentions of this user across all visible messages
       if (paintStyle) {
-        for (const mention of container.querySelectorAll(`a.hs-mc-mention[data-uid="${uid}"]`)) {
-          mention.setAttribute('style', paintStyle)
+        const mentionSet = _mentionIndex.get(uid)
+        if (mentionSet) {
+          for (const mention of mentionSet) mention.setAttribute('style', paintStyle)
         }
       }
-      const divs = container.querySelectorAll(`.hs-mc-msg[data-uid="${uid}"]`)
-      for (const div of divs) {
+      const divSet = _uidIndex.get(uid)
+      if (!divSet) continue
+      for (const div of divSet) {
         // Update paint on the SENDER's username link — exclude the reply
         // target (.hs-mc-reply-user) which also has .hs-mc-user but is a
         // different person and would get the wrong paint/badge.
@@ -1215,7 +1298,7 @@
       // Remove any existing context menu
       document.getElementById('hs-mc-ctx-menu')?.remove();
 
-      const ch = config.channels.find(c => c.id === tabId);
+      const ch = getChannelById(tabId);
       const menu = document.createElement('div');
       menu.id = 'hs-mc-ctx-menu';
       menu.style.cssText = 'position:fixed;z-index:99999;background:#000;border:1px solid #808080;border-radius:0;padding:4px 0;min-width:150px;font-size:12px;font-family:inherit;';
@@ -1822,7 +1905,7 @@
         el = document.createElement('div')
         el.id = 'hs-mc-reply-stack'
         el.style.display = 'none'
-        document.body.appendChild(el)
+        document.body.appendChild(cleanup.trackNode(el))
         el.addEventListener('wheel', forwardWheelToMsgs, { passive: false, signal: mcSignal })
         el.addEventListener('click', (ev) => {
           const chip = ev.target.closest('.hs-mc-reply-stack-chip')
@@ -1847,7 +1930,7 @@
         el = document.createElement('div')
         el.id = 'hs-mc-reply-stack-down'
         el.style.display = 'none'
-        document.body.appendChild(el)
+        document.body.appendChild(cleanup.trackNode(el))
         el.addEventListener('wheel', forwardWheelToMsgs, { passive: false, signal: mcSignal })
         return el
       }
@@ -2081,6 +2164,7 @@
   }
 
   function renderSearchResults(msgsEl, results, query) {
+    _clearMessageIndices()
     msgsEl.textContent = ''
     if (!results.length) {
       const empty = document.createElement('div')
@@ -2364,7 +2448,7 @@
     // Use !important on z-index so YT can't compete with its own
     // own modal stacking contexts (chrome bottom bar, settings menu).
     handle.style.setProperty('z-index', '2147483647', 'important');
-    document.body.appendChild(handle);
+    document.body.appendChild(cleanup.trackNode(handle));
     handle.addEventListener('mouseenter', () => { handle.style.opacity = '1'; });
     handle.addEventListener('mouseleave', () => { if (!_isResizingC) handle.style.opacity = '0.55'; });
 
@@ -3399,7 +3483,7 @@
     // Determine which platforms apply to this tab
     let hasTwitch = true, hasKick = true, hasYt = true;
     if (tab !== 'live') {
-      const ch = config.channels.find(c => c.id === tab);
+      const ch = getChannelById(tab);
       if (ch) {
         hasTwitch = !!ch.twitch;
         hasKick = !!ch.kick;
@@ -3634,6 +3718,7 @@
       timestamps: t('mc_settings_timestamps_desc'),
       avatars: t('mc_settings_avatars_desc'),
     }
+    _clearMessageIndices()
     // Static settings HTML — no user input, all tooltip values are hardcoded strings above
     msgsEl.innerHTML = `
       <div class="hs-mc-settings-panel">
@@ -3908,7 +3993,7 @@
     if (!tip) {
       tip = document.createElement('div');
       tip.id = 'hs-settings-tip';
-      document.body.appendChild(tip);
+      document.body.appendChild(cleanup.trackNode(tip));
     }
     if (!msgsEl._hsSettingsTipBound) {
       msgsEl._hsSettingsTipBound = true;
@@ -4069,7 +4154,7 @@
         transition: none !important;
       }
     `;
-    document.head.appendChild(style);
+    document.head.appendChild(cleanup.trackNode(style));
     log('✅ Injected chat column CSS fixes');
   }
 
@@ -4505,7 +4590,7 @@
         }
         // Switching to live also clears the matching channel tab's indicators
         if (id === 'live' && liveCh && t.dataset.tab !== 'live') {
-          const ch = config.channels.find(c => c.id === t.dataset.tab)
+          const ch = getChannelById(t.dataset.tab)
           if (ch) {
             const tw = ch.twitch?.toLowerCase()
             const ki = (ch.kick)?.toLowerCase()
@@ -4516,7 +4601,7 @@
         }
         // Switching to a channel tab that matches live clears the live tab too
         if (id !== 'live' && liveCh && t.dataset.tab === 'live') {
-          const ch = config.channels.find(c => c.id === id)
+          const ch = getChannelById(id)
           if (ch) {
             const tw = ch.twitch?.toLowerCase()
             const ki = (ch.kick)?.toLowerCase()
@@ -4830,7 +4915,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     if (m.platform === 'youtube' && Array.isArray(m.badges)) {
       badges = m.badges.map(b => {
         if (b.url) {
-          return `<img class="hs-mc-badge-img" src="${escapeHtml(b.url)}" alt="${escapeHtml(b.label)}" title="${escapeHtml(b.label)}" style="width:18px;height:18px;">`
+          return `<img class="hs-mc-badge-img" src="${escapeHtml(b.url)}" alt="${escapeHtml(b.label)}" title="${escapeHtml(b.label)}" loading="lazy" decoding="async" width="18" height="18" style="width:18px;height:18px;">`
         }
         // Text fallback for owner/mod without image
         const ytBadgeStyles = { owner: { bg: '#ffd600', fg: '#000', label: '\u2606' }, moderator: { bg: '#5e84f1', fg: '#fff', label: '\u2694' } }
@@ -4881,9 +4966,14 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     let avatarHtml = ''
     if (avatarsEnabled) {
       const userKey = m.user.toLowerCase()
-      // YouTube messages carry avatar URL directly — cache it and skip decapi
+      // YouTube messages carry avatar URL directly — cache it and skip decapi.
+      // Same 500-entry LRU as the decapi path so 30k unique YT chatters can't
+      // grow the Map unbounded over an 8h stream.
       if (m.avatar && m.platform === 'youtube') {
         avatarCache.set(userKey, m.avatar)
+        if (avatarCache.size > 500) {
+          avatarCache.delete(avatarCache.keys().next().value)
+        }
       }
       const cachedUrl = avatarCache.get(userKey)
       if (cachedUrl) {
@@ -4957,7 +5047,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     // Sticker for super stickers
     let stickerHtml = ''
     if (m.sticker && m.sticker.url) {
-      stickerHtml = ` <img src="${escapeHtml(m.sticker.url)}" alt="${escapeHtml(m.sticker.alt || 'sticker')}" style="height:48px;vertical-align:middle;" />`
+      stickerHtml = ` <img src="${escapeHtml(m.sticker.url)}" alt="${escapeHtml(m.sticker.alt || 'sticker')}" loading="lazy" decoding="async" style="height:48px;vertical-align:middle;" />`
     }
 
     const div = document.createElement('div');
@@ -5002,9 +5092,12 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     }
     // USERNOTICE system line (all values go through escapeHtml — same pattern as existing innerHTML above)
     const systemLine = (m.systemMsg ? `<span class="hs-mc-system-text">${escapeHtml(m.systemMsg)}</span>` : '') + redeemLabel
-    const ts = formatTimeFromTs(m.time);
+    // Skip the date-format work entirely when the timestamp won't render —
+    // formatTimeFromTs builds a Date and runs Intl, ~1µs each, but at 100msg/s
+    // that's free CPU we can give back when timestamps are off.
     const showTs = timestampsEnabled || tabId === 'mentions';
-    const tsHtml = ts && showTs ? `<span class="hs-mc-ts" data-ts="${m.time}">${ts}</span>` : '';
+    const ts = showTs ? formatTimeFromTs(m.time) : '';
+    const tsHtml = ts ? `<span class="hs-mc-ts" data-ts="${m.time}">${ts}</span>` : '';
     const msgBody = (m.type === 'usernotice' || m.type === 'notice') && !m.text
       ? `${tsHtml}${systemLine}`
       : m.type === 'notice'
@@ -5013,16 +5106,21 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       ? `${tsHtml}${systemLine}${platformBadge}${scBadge}${bitsBadge}${badges}${avatarHtml}${userLink}${channelSpan} <span style="color:${sanitizeColor(m.color || '#fff')};font-style:italic">${processedText}</span>${stickerHtml}`
       : `${tsHtml}${systemLine}${platformBadge}${scBadge}${bitsBadge}${badges}${avatarHtml}${userLink}${channelSpan}: ${processedText}${stickerHtml}`
     div.innerHTML = `${replyBar}${msgBody}`;
-    // Correct emote states based on current inventory + blocked (cached HTML may have stale states)
-    for (const w of div.querySelectorAll('.hs-mc-emote-wrapper[data-source="heatsync"]')) {
-      const name = w.dataset.emoteName;
-      const newState = blockedEmoteNames.has(name) ? 'blocked'
-        : inventoryEmotes.has(name) ? 'owned'
-        : 'unadded';
-      if (w.dataset.state !== newState) {
-        w.classList.remove('hs-state-owned', 'hs-state-unadded', 'hs-state-blocked', 'hs-state-global', 'hs-state-channel');
-        w.classList.add(`hs-state-${newState}`);
-        w.dataset.state = newState;
+    // Correct emote states based on current inventory + blocked (cached HTML
+    // may have stale states). String-includes gate skips the querySelectorAll
+    // walk on the >95% of msgs that don't contain heatsync emotes — the gate
+    // is a single substring scan, the QSA was iterating div subtree.
+    if (processedText.includes('data-source="heatsync"')) {
+      for (const w of div.querySelectorAll('.hs-mc-emote-wrapper[data-source="heatsync"]')) {
+        const name = w.dataset.emoteName;
+        const newState = blockedEmoteNames.has(name) ? 'blocked'
+          : inventoryEmotes.has(name) ? 'owned'
+          : 'unadded';
+        if (w.dataset.state !== newState) {
+          w.classList.remove('hs-state-owned', 'hs-state-unadded', 'hs-state-blocked', 'hs-state-global', 'hs-state-channel');
+          w.classList.add(`hs-state-${newState}`);
+          w.dataset.state = newState;
+        }
       }
     }
     // Reply button for threading (Twitch/Kick — YT has no native thread id,
@@ -5047,6 +5145,28 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     return div;
   }
 
+  // LRU cache for processYtEmotes' combined regex. Pattern key is the joined
+  // alt-text alternation; same emote-set across many messages → same key →
+  // one RegExp compile per unique set instead of per message.
+  const _YT_EMOTE_REGEX_CACHE_MAX = 64
+  const _ytEmoteRegexCache = new Map()
+  function _getYtCombinedRegex(joined) {
+    const hit = _ytEmoteRegexCache.get(joined)
+    if (hit) {
+      // LRU touch — move to most-recent
+      _ytEmoteRegexCache.delete(joined)
+      _ytEmoteRegexCache.set(joined, hit)
+      return hit
+    }
+    const re = new RegExp(`(<[^>]*>)|(${joined})`, 'g')
+    _ytEmoteRegexCache.set(joined, re)
+    if (_ytEmoteRegexCache.size > _YT_EMOTE_REGEX_CACHE_MAX) {
+      const oldest = _ytEmoteRegexCache.keys().next().value
+      _ytEmoteRegexCache.delete(oldest)
+    }
+    return re
+  }
+
   // Process YouTube emotes (inline emoji images from innertube)
   // preEscaped=true when input is already HTML-escaped (chained after processEmotes)
   function processYtEmotes(text, emotes, preEscaped) {
@@ -5065,15 +5185,17 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       // like `<3`, `<3` need to render. (Alt is set via escaped attribute below.)
       const escaped = escapeHtml(alt)
       if (replacements.has(escaped)) continue
-      const imgHtml = `<img src="${escapeHtml(url)}" alt="${escaped}" class="hs-mc-emote" style="height:1.2em;vertical-align:middle;" />`
+      const imgHtml = `<img src="${escapeHtml(url)}" alt="${escaped}" class="hs-mc-emote" loading="lazy" decoding="async" style="height:1.2em;vertical-align:middle;" />`
       replacements.set(escaped, imgHtml)
       altPatterns.push(escaped.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
     }
 
     // Single-pass replacement that skips HTML tags — prevents matching inside
-    // attributes of already-rendered emote/emoji spans from processEmotes
+    // attributes of already-rendered emote/emoji spans from processEmotes.
+    // RegExp compile is the slow step: cached by joined pattern so the same
+    // emote-set across many YT messages reuses a single compiled instance.
     if (altPatterns.length > 0) {
-      const combined = new RegExp(`(<[^>]*>)|(${altPatterns.join('|')})`, 'g')
+      const combined = _getYtCombinedRegex(altPatterns.join('|'))
       result = result.replace(combined, (match, htmlTag) => {
         if (htmlTag) return htmlTag
         return replacements.get(match) || match
@@ -5171,7 +5293,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       }
       return count > 1
     }
-    const ch = config.channels.find(c => c.id === tabId)
+    const ch = getChannelById(tabId)
     if (!ch) return false
     let count = 0
     if (ch.twitch && irc?.getMessages(ch.twitch)?.length) count++
@@ -5221,9 +5343,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     // producing a selector that didn't match the literal dataset value and
     // the guard silently failed.
     const msgKeyStr = `${_renderEpoch}:${stableMsgId(msg)}`
-    for (const c of msgsEl.children) {
-      if (c.dataset?.msgKey === msgKeyStr) return true
-    }
+    if (_msgKeyIndex.has(msgKeyStr)) return true
 
     const div = buildMessageDiv(msg, tabId);
     if (!div) return false;
@@ -5238,13 +5358,14 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       if (!prevZ) div.classList.add('hs-mc-zebra')
     }
     msgsEl.appendChild(div);
+    _indexMessageDiv(div, msgKeyStr)
 
     // Trim oldest messages beyond cap (500 with content-visibility virtualization)
-    trimChildren(msgsEl, 500);
+    trimMessagesEl(msgsEl, 500);
 
-    // Apply mute to just this message — strip content for muted users
-    // (use sender's link, not the reply-target link)
-    const username = div.querySelector('.hs-mc-user:not(.hs-mc-reply-user)')?.textContent?.trim()?.toLowerCase();
+    // Apply mute to just this message — strip content for muted users.
+    // msg.user is the sender; avoid a DOM scan to recompute it.
+    const username = msg.user ? String(msg.user).toLowerCase() : '';
     if (username && mutedUsers.has(username)) {
       stripMcMutedMessage(div);
     }
@@ -5277,7 +5398,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
   // dominates any region of the output — even when their time ranges
   // don't overlap (e.g. IRC history from hours ago + YT from seconds ago).
   function fairMerge(sources) {
-    log('fairMerge sources:', sources.map(s => s.length))
+    if (MC_DEBUG) log('fairMerge sources:', sources.map(s => s.length))
     const active = sources.filter(s => s.length > 0)
     if (active.length === 0) return []
     if (active.length === 1) return active[0]
@@ -5458,7 +5579,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       maybeShowMultistreamBanner(liveCh, hostPlatform)
     } else if (id && id !== 'add' && !['mentions','feed','whispers','discover','pinned','settings'].includes(id)) {
       // Per-channel tab — id may be a username or a linked-tab id; resolve from config
-      const ch = config.channels.find(c => c.id === id)
+      const ch = getChannelById(id)
       // YT-only channels: extract handle from the youtube URL so the banner can
       // resolve identity ("foo is also live on Twitch + Kick") for them too.
       let ytHandle = null
@@ -5534,7 +5655,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       ])
     } else {
       // Channel tab — merge IRC + Kick + per-channel YouTube messages
-      const ch = config.channels.find(c => c.id === id);
+      const ch = getChannelById(id);
       const twitchName = ch?.twitch;
       const kickName = ch.kick;
       const ircMsgs = twitchName ? (irc?.getMessages(twitchName) || []) : [];
@@ -5578,6 +5699,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     updateTabBadges()
 
     if (msgs.length === 0) {
+      _clearMessageIndices()
       msgsEl.textContent = ''
       const empty = document.createElement('div')
       empty.className = 'hs-mc-empty'
@@ -5601,7 +5723,13 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     }
     if (newestTime > 0) {
       const cutoff = newestTime - STALE_WINDOW_MS
-      msgs = msgs.filter(m => !m.time || m.time >= cutoff)
+      // Fast-path: buffers are mostly chrono-ordered; if the oldest entry is
+      // already in-window, the full filter alloc is wasted. Steady-state hits
+      // this branch every render — saves an N-element filter+alloc per frame.
+      const first = msgs[0]
+      if (first && first.time && first.time < cutoff) {
+        msgs = msgs.filter(m => !m.time || m.time >= cutoff)
+      }
     }
 
     const toRender = msgs.slice(-500)
@@ -5659,14 +5787,19 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     for (const c of [...msgsEl.children]) {
       if (c.dataset?.hsYtStatus && c.dataset?.hsYtStatusTab === String(id)) {
         detachedExtras.push(c)
-        c.remove()
+        c.remove() // yt-status pins aren't tracked in indices
         continue
       }
       const k = c.dataset?.msgKey
       if (k && desiredSet.has(k)) {
-        if (existingByKey.has(k)) c.remove() // dupe — keep only first
-        else existingByKey.set(k, c)
+        if (existingByKey.has(k)) {
+          _unindexMessageDiv(c) // pre-existing dupe — drop the second copy
+          c.remove()
+        } else {
+          existingByKey.set(k, c)
+        }
       } else {
+        _unindexMessageDiv(c)
         c.remove()
       }
     }
@@ -5707,6 +5840,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       const prevDiv = msgsEl.children[domIdx - 1] || null
       if (zebraOfInsert(m, prevDiv)) div.classList.add('hs-mc-zebra')
       msgsEl.insertBefore(div, cur || null)
+      _indexMessageDiv(div, key)
       domIdx++
     }
 
@@ -5715,9 +5849,10 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
 
     // Final safety net: hard-cap DOM so no future regression can OOM the tab.
     // toRender is already sliced to 500; anything beyond that + yt-status
-    // pins is a leak. trimChildren removes from the front (oldest first).
+    // pins is a leak. trimMessagesEl removes from the front (oldest first)
+    // and keeps indices in sync.
     const hardCap = toRender.length + detachedExtras.length
-    if (msgsEl.children.length > hardCap) trimChildren(msgsEl, hardCap)
+    if (msgsEl.children.length > hardCap) trimMessagesEl(msgsEl, hardCap)
 
     // Re-apply expanded stacks (only relevant when full rebuild fired).
     for (const [mid, idx] of expandedStacks) {
@@ -5761,6 +5896,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
 
 
   function renderAddChannelForm(msgsEl) {
+    _clearMessageIndices()
     msgsEl.textContent = ''
     const wrapper = document.createElement('div')
     wrapper.style.cssText = 'display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:12px;color:#a8a8a8;font-size:13px;padding:20px;box-sizing:border-box;'
@@ -5972,7 +6108,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
   }
 
   function removeChannel(tabId) {
-    const ch = config.channels.find(c => c.id === tabId);
+    const ch = getChannelById(tabId);
     config.channels = config.channels.filter(c => c.id !== tabId);
     saveConfig();
 
@@ -6055,6 +6191,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
 
     const msgsEl = document.getElementById('hs-mc-messages')
     if (!msgsEl) return
+    _clearMessageIndices()
     msgsEl.textContent = ''
 
     const wrapper = document.createElement('div')
@@ -6146,12 +6283,13 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
   }
 
   function showEditChannelForm(tabId) {
-    const ch = config.channels.find(c => c.id === tabId);
+    const ch = getChannelById(tabId);
     if (!ch) return;
     editingChannel = true;
 
     const msgsEl = document.getElementById('hs-mc-messages');
     if (!msgsEl) return;
+    _clearMessageIndices();
     msgsEl.textContent = '';
 
     const wrapper = document.createElement('div');
@@ -6321,7 +6459,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     const liveCh = getLiveChannel()?.toLowerCase();
     if (liveCh) {
       if (currentTab === 'live' && tabId !== 'feed' && tabId !== 'mentions') {
-        const chConfig = config.channels.find(ch => ch.id === tabId);
+        const chConfig = getChannelById(tabId);
         if (chConfig) {
           const tw = chConfig.twitch?.toLowerCase();
           const ki = (chConfig.kick)?.toLowerCase();
@@ -6329,7 +6467,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
         }
       }
       if (tabId === 'live') {
-        const curConfig = config.channels.find(ch => ch.id === currentTab);
+        const curConfig = getChannelById(currentTab);
         if (curConfig) {
           const tw = curConfig.twitch?.toLowerCase();
           const ki = (curConfig.kick)?.toLowerCase();
@@ -7756,7 +7894,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
             if (liveTab && channel === liveChannel) liveTab.classList.add('has-stream-event')
           }
         } else {
-          const tabCh = config.channels.find(ch => ch.id === activeTab)
+          const tabCh = getChannelById(activeTab)
           if (tabCh) {
             const tw = tabCh.twitch?.toLowerCase()
             const ki = (tabCh.kick)?.toLowerCase()
@@ -7978,6 +8116,21 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       // optimistic toggles if storage lagged the user action.
       if (changes.blocked_emotes) {
         applyBlockedHashDelta(changes.blocked_emotes.newValue || []);
+      }
+
+      // Multi-tab seen-state merge — without this, three open tabs writing
+      // hs_tab_seen_v1 in close succession last-write-wins and lose each
+      // other's per-tab seen timestamps. Merge with max-per-key so any tab
+      // marking a channel seen propagates instead of getting clobbered when
+      // another tab flushes.
+      if (changes.hs_tab_seen_v1?.newValue && typeof changes.hs_tab_seen_v1.newValue === 'object') {
+        const remote = changes.hs_tab_seen_v1.newValue
+        for (const k of Object.keys(remote)) {
+          const v = remote[k]
+          if (typeof v === 'number' && (!tabSeenAt[k] || v > tabSeenAt[k])) {
+            tabSeenAt[k] = v
+          }
+        }
       }
     }
     chrome.storage.onChanged.addListener(_mcStorageListener)
@@ -8632,7 +8785,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
             if (!appendMessage(evt, activeTab)) renderMessages(activeTab);
           }
         } else {
-          const tabCh = config.channels.find(ch => ch.id === activeTab)
+          const tabCh = getChannelById(activeTab)
           if (tabCh) {
             const tw = tabCh.twitch?.toLowerCase()
             const ki = (tabCh.kick)?.toLowerCase()
@@ -8726,7 +8879,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
           if (!appendMessage(evt, activeTab)) renderMessages(activeTab)
         }
       } else {
-        const tabCh = config.channels.find(ch => ch.id === activeTab)
+        const tabCh = getChannelById(activeTab)
         if (tabCh) {
           const tw = tabCh.twitch?.toLowerCase()
           const ki = (tabCh.kick)?.toLowerCase()
@@ -8817,7 +8970,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
             if (!appendMessage(evt, activeTab)) renderMessages(activeTab);
           }
         } else {
-          const tabCh = config.channels.find(ch => ch.id === activeTab)
+          const tabCh = getChannelById(activeTab)
           if (tabCh) {
             const tw = tabCh.twitch?.toLowerCase()
             const ki = (tabCh.kick)?.toLowerCase()
@@ -8939,7 +9092,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
         const url = ytSubscribedUrls.get(channelId)
           || youtubeLinks.get(channelId)?.url
           || (() => {
-            const c = config.channels.find(ch => ch.id === channelId)
+            const c = getChannelById(channelId)
             return c?.youtube || null
           })()
         if (!url) continue

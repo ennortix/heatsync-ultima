@@ -1214,10 +1214,23 @@
         .replace(/([^\s\[])\[emote:/g, '$1 [emote:')
         .replace(/\]([^\s\]])/g, '] $1')
     }
-    const words = pre
-      .replace(/([\p{Extended_Pictographic}\p{Emoji_Modifier}\uFE0F])(?=[^\s\p{Extended_Pictographic}\p{Emoji_Modifier}\uFE0F\u200D])/gu, '$1 ')
-      .replace(/([^\s\p{Extended_Pictographic}\p{Emoji_Modifier}\uFE0F\u200D])(?=\p{Extended_Pictographic})/gu, '$1 ')
-      .split(/(\s+)/);
+    // ASCII fast-path: skip the two Unicode-property emoji-split regexes when
+    // the message has no high-byte characters. Pure-ASCII messages are the
+    // overwhelming majority of Twitch/Kick traffic; the /gu lookbehind regex
+    // is the single most expensive per-message operation otherwise.
+    let words
+    let asciiOnly = true
+    for (let i = 0; i < pre.length; i++) {
+      if (pre.charCodeAt(i) > 127) { asciiOnly = false; break }
+    }
+    if (asciiOnly) {
+      words = pre.split(/(\s+)/)
+    } else {
+      words = pre
+        .replace(/([\p{Extended_Pictographic}\p{Emoji_Modifier}\uFE0F])(?=[^\s\p{Extended_Pictographic}\p{Emoji_Modifier}\uFE0F\u200D])/gu, '$1 ')
+        .replace(/([^\s\p{Extended_Pictographic}\p{Emoji_Modifier}\uFE0F\u200D])(?=\p{Extended_Pictographic})/gu, '$1 ')
+        .split(/(\s+)/);
+    }
     const result = [];
     let pendingStack = null; // { base: html, overlays: [html...] }
     let pendingWhitespace = ''; // Accumulate whitespace - don't flush stack on spaces
@@ -1239,7 +1252,7 @@
         // Cross-reference caches to find real provider (7tv/bttv/ffz), fall back to kick
         const cached = emoteCache.get(emoteName) || (channel && channelEmoteCaches[channel]?.get(emoteName))
         const provider = cached?.source || 'kick'
-        const imgHtml = `<span class="hs-mc-emote-wrapper hs-state-channel" data-emote-name="${safeName}" data-emote-url="${safeKickUrl}" data-state="channel" data-source="${escapeHtml(provider)}"><img src="${safeKickUrl}" alt="${safeName}" title="${safeName} (${escapeHtml(provider)} via kick)" class="hs-mc-emote hs-emote-channel" data-emote-name="${safeName}" data-state="channel" data-source="${escapeHtml(provider)}"></span>`
+        const imgHtml = `<span class="hs-mc-emote-wrapper hs-state-channel" data-emote-name="${safeName}" data-emote-url="${safeKickUrl}" data-state="channel" data-source="${escapeHtml(provider)}"><img src="${safeKickUrl}" alt="${safeName}" title="${safeName} (${escapeHtml(provider)} via kick)" class="hs-mc-emote hs-emote-channel" data-emote-name="${safeName}" data-state="channel" data-source="${escapeHtml(provider)}" loading="lazy" decoding="async"></span>`
         if (pendingStack) {
           result.push(renderEmoteStack(pendingStack))
         }
@@ -1275,7 +1288,7 @@
         const safeHash = emote.hash ? escapeHtml(emote.hash) : '';
         const displayName = escapeHtml(word)
         const ownerAttr = emote.ownerDisplay ? ` data-owner="${escapeHtml(emote.ownerDisplay)}"` : ''
-        const imgHtml = `<span class="hs-mc-emote-wrapper hs-state-${state}" data-emote-name="${displayName}" data-emote-url="${imgSrc}" data-state="${state}" data-source="${source}"${ownerAttr}${safeHash ? ` data-emote-hash="${safeHash}"` : ''}><img src="${imgSrc}" alt="${displayName}" title="${displayName}" class="hs-mc-emote hs-emote-${state}" data-emote-name="${displayName}" data-state="${state}" data-source="${source}"${ownerAttr}></span>`;
+        const imgHtml = `<span class="hs-mc-emote-wrapper hs-state-${state}" data-emote-name="${displayName}" data-emote-url="${imgSrc}" data-state="${state}" data-source="${source}"${ownerAttr}${safeHash ? ` data-emote-hash="${safeHash}"` : ''}><img src="${imgSrc}" alt="${displayName}" title="${displayName}" class="hs-mc-emote hs-emote-${state}" data-emote-name="${displayName}" data-state="${state}" data-source="${source}"${ownerAttr} loading="lazy" decoding="async"></span>`;
 
         if (isOverlayEmote) {
           // Overlay emote - stack on previous base (discard whitespace between)

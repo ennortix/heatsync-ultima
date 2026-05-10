@@ -2842,7 +2842,7 @@ function renderBadges(badgesStr, channel) {
       const isFFZ = ffzKey && ffzBadgeKeys.has(`${channel}:${name}`)
       const bgStyle = isFFZ && BADGE_STYLES[name] ? `background:${BADGE_STYLES[name].bg};padding:1px;border-radius:2px;` : ''
       const label = BADGE_STYLES[name]?.label || name
-      return `<img class="hs-mc-badge-img" src="${escapeHtml(url)}" alt="${escapeHtml(name)}" title="${escapeHtml(label)}" style="width:18px;height:18px;${bgStyle}">`
+      return `<img class="hs-mc-badge-img" src="${escapeHtml(url)}" alt="${escapeHtml(name)}" title="${escapeHtml(label)}" loading="lazy" decoding="async" width="18" height="18" style="width:18px;height:18px;${bgStyle}">`
     }
     // Text fallback
     const style = BADGE_STYLES[name]
@@ -2856,18 +2856,18 @@ function renderThirdPartyBadges(userId) {
   let html = ''
   const bttv = mcBttvBadgeMap.get(userId)
   if (bttv) {
-    html += `<img class="hs-mc-badge-img" src="${escapeHtml(bttv.url)}" alt="${escapeHtml(bttv.description)}" title="${escapeHtml(bttv.description)}" style="width:18px;height:18px;">`
+    html += `<img class="hs-mc-badge-img" src="${escapeHtml(bttv.url)}" alt="${escapeHtml(bttv.description)}" title="${escapeHtml(bttv.description)}" loading="lazy" decoding="async" width="18" height="18" style="width:18px;height:18px;">`
   }
   const ffzList = mcFfzBadgeMap.get(userId)
   if (ffzList) {
     for (const b of ffzList) {
       const safeColor = /^#[0-9a-fA-F]{3,8}$/.test(b.color) ? b.color : ''
-      html += `<img class="hs-mc-badge-img" src="${escapeHtml(b.url)}" alt="${escapeHtml(b.title)}" title="${escapeHtml(b.title)}" style="width:18px;height:18px;${safeColor ? 'background:' + safeColor + ';border-radius:2px;' : ''}">`
+      html += `<img class="hs-mc-badge-img" src="${escapeHtml(b.url)}" alt="${escapeHtml(b.title)}" title="${escapeHtml(b.title)}" loading="lazy" decoding="async" width="18" height="18" style="width:18px;height:18px;${safeColor ? 'background:' + safeColor + ';border-radius:2px;' : ''}">`
     }
   }
   const chat = mcChatterinoBadgeMap.get(userId)
   if (chat) {
-    html += `<img class="hs-mc-badge-img" src="${escapeHtml(chat.url)}" alt="Chatterino" title="${escapeHtml(chat.tooltip || 'Chatterino')}" style="width:18px;height:18px;">`
+    html += `<img class="hs-mc-badge-img" src="${escapeHtml(chat.url)}" alt="Chatterino" title="${escapeHtml(chat.tooltip || 'Chatterino')}" loading="lazy" decoding="async" width="18" height="18" style="width:18px;height:18px;">`
   }
   const cosmetic = mcUserCosmetics.get(userId)
   if (cosmetic?.badge) {
@@ -2884,7 +2884,7 @@ function renderThirdPartyBadges(userId) {
         // Class includes hs-mc-7tv-badge so updateCosmeticsInPlace's dedup
         // selector finds it and doesn't insert a duplicate when the async
         // cosmetic fetch resolves after the inline render.
-        html += `<img class="hs-mc-badge-img hs-mc-7tv-badge" src="${escapeHtml(url)}" alt="7TV" title="${escapeHtml(cosmetic.badge.tooltip || '7TV')}" style="width:18px;height:18px;">`
+        html += `<img class="hs-mc-badge-img hs-mc-7tv-badge" src="${escapeHtml(url)}" alt="7TV" title="${escapeHtml(cosmetic.badge.tooltip || '7TV')}" loading="lazy" decoding="async" width="18" height="18" style="width:18px;height:18px;">`
       }
     }
   }

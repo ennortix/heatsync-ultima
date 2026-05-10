@@ -25,7 +25,7 @@
       z-index: 5000;
       pointer-events: none;
     `;
-    document.body.appendChild(toast);
+    document.body.appendChild(cleanup.trackNode(toast));
     setTimeout(() => toast.remove(), 1500);
   }
 
@@ -44,14 +44,14 @@
       badgeTooltip.appendChild(img)
       badgeTooltip.appendChild(name)
       badgeTooltip.appendChild(source)
-      document.body.appendChild(badgeTooltip)
+      document.body.appendChild(cleanup.trackNode(badgeTooltip))
     }
     return badgeTooltip
   }
 
   function showBadgeTooltip(badgeImg, badgeName) {
     const tooltip = ensureBadgeTooltip()
-    document.body.appendChild(tooltip)
+    document.body.appendChild(cleanup.trackNode(tooltip))
     const img = tooltip.querySelector('img')
     img.src = badgeImg.src
     img.alt = badgeName
@@ -94,7 +94,7 @@
         <span class="tooltip-name"></span>
         <span class="tooltip-source"></span>
       `;
-      document.body.appendChild(emoteTooltip);
+      document.body.appendChild(cleanup.trackNode(emoteTooltip));
     }
     return emoteTooltip;
   }
@@ -107,7 +107,7 @@
     const tooltip = ensureEmoteTooltip();
     // Re-append to body so DOM order tiebreaks above other max-int siblings
     // (reply-stack overlay sits at the same z-index).
-    document.body.appendChild(tooltip);
+    document.body.appendChild(cleanup.trackNode(tooltip));
     const img = tooltip.querySelector('img');
     const nameEl = tooltip.querySelector('.tooltip-name');
     const stateEl = tooltip.querySelector('.tooltip-source');
@@ -179,7 +179,7 @@
 
   function showEmojiTooltip(targetEl, emoji, name) {
     const tooltip = ensureEmoteTooltip()
-    document.body.appendChild(tooltip)
+    document.body.appendChild(cleanup.trackNode(tooltip))
     const img = tooltip.querySelector('img')
     const nameEl = tooltip.querySelector('.tooltip-name')
     const stateEl = tooltip.querySelector('.tooltip-source')
@@ -471,7 +471,7 @@
     if (!userTooltip || !document.contains(userTooltip)) {
       userTooltip = document.createElement('div');
       userTooltip.id = 'hs-user-tooltip';
-      document.body.appendChild(userTooltip);
+      document.body.appendChild(cleanup.trackNode(userTooltip));
       // Keep tooltip away from the hovered username even as content fills in async
       // (followage badge, sub tenure badge, lazy-loaded data — all change height)
       if (typeof ResizeObserver !== 'undefined') {
@@ -675,7 +675,7 @@
     const tooltip = ensureUserTooltip();
     // Re-append to body so DOM order tiebreaks above other max-int siblings
     // (reply-stack overlay sits at the same z-index).
-    document.body.appendChild(tooltip);
+    document.body.appendChild(cleanup.trackNode(tooltip));
     const gen = ++_profileGen;
     _userTooltipTarget = targetEl;
 
@@ -969,7 +969,7 @@
   // Uses textContent (no innerHTML) so the username string is never parsed as HTML.
   function showUserSkeleton(targetEl, username, color) {
     const tooltip = ensureUserTooltip();
-    document.body.appendChild(tooltip);
+    document.body.appendChild(cleanup.trackNode(tooltip));
     _userTooltipTarget = targetEl;
     while (tooltip.firstChild) tooltip.removeChild(tooltip.firstChild);
     const loading = document.createElement('div');
@@ -992,7 +992,7 @@
     if (linkTooltip) return linkTooltip;
     linkTooltip = document.createElement('div');
     linkTooltip.id = 'hs-link-tooltip';
-    document.body.appendChild(linkTooltip);
+    document.body.appendChild(cleanup.trackNode(linkTooltip));
     return linkTooltip;
   }
 
@@ -1003,7 +1003,7 @@
     _linkHoverUrl = url;
     _linkTargetEl = e.target.closest('.hs-mc-link') || e.target;
     const tip = ensureLinkTooltip();
-    document.body.appendChild(tip);
+    document.body.appendChild(cleanup.trackNode(tip));
     let hostname = '';
     try { hostname = new URL(url).hostname; } catch { hostname = url; }
 

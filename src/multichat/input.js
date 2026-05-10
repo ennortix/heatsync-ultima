@@ -307,12 +307,12 @@ function initInput() {
       const ae = document.activeElement
       if (ae?.id !== 'hs-mc-input') return
       document.body.classList.add('hs-tab-cycling')
-    })
+    }, { signal: mcSignal })
     document.addEventListener('mousemove', () => {
       if (document.body.classList.contains('hs-tab-cycling')) {
         document.body.classList.remove('hs-tab-cycling')
       }
-    }, { passive: true })
+    }, { passive: true, signal: mcSignal })
   }
   // Sync highlight overlay scroll with input scroll (RAF-throttled)
   let _inputScrollRaf = null

@@ -10,6 +10,10 @@ const lifecycle = new AbortController()
 const mcSignal = lifecycle.signal
 const _timers = { intervals: [], timeouts: [], observers: [] }
 const _pendingRafs = new Set()
+// Singleton DOM nodes appended to <body> (tooltips, toasts, overlays). On
+// SPA reinit / pagehide, lifecycle.abort() removes them so they don't pile up
+// across reload cycles.
+const _trackedNodes = []
 // Listeners on APIs that don't honor AbortSignal (chrome.runtime.onMessage,
 // chrome.storage.onChanged). We track {target, fn} pairs and call removeListener
 // on abort so reinit (SPA nav, hot-reload) doesn't leave stale handlers behind.
@@ -23,21 +27,24 @@ mcSignal.addEventListener('abort', () => {
     try { target.removeListener(fn) } catch (e) {}
   }
   _trackedListeners.length = 0
+  for (const n of _trackedNodes) {
+    try { n.remove() } catch (e) {}
+  }
+  _trackedNodes.length = 0
   if (irc) { irc.destroy(); }
   if (kickChat) { kickChat.destroy(); }
   cleanupAuthIrc(true)
-  delete window._hsMcEmoteContextHandler
-  delete window._hsMcEmoteClickHandler
-  delete window._hsEmoteTooltipSetup
-  delete window._hsMcSettingsListener
-  delete window._hsMcTabHandler
-  delete window._hsMcTypeRevealHandler
-  delete window._hsMcStreamEventListener
-  delete window._hsMcFollowStreamEventListener
-  delete window._hsMcFollowColorsListener
-  delete window._hsMcFollowHistoryListener
-  delete window._hsMcSocialListener
-  delete window._hsMcInputStorageListener
+  // Wildcard reset of every _hsMc*/_hsEmote* install-once flag so reinit
+  // (SPA nav, hot-reload) re-attaches handlers to the fresh IIFE state.
+  // Without this, reinit gates re-bind on `!window._hsMcXxx` and silently
+  // skips — old listeners stay attached and capture the now-dead old IIFE
+  // closure, leaking it. Wildcard avoids the maintenance burden of listing
+  // every flag (some are added in feature files I don't always edit here).
+  for (const k of Object.keys(window)) {
+    if (k.startsWith('_hsMc') || k.startsWith('_hsEmote')) {
+      try { delete window[k] } catch {}
+    }
+  }
 })
 window.addEventListener('pagehide', () => lifecycle.abort())
 
@@ -79,4 +86,12 @@ const cleanup = {
     return id
   },
   cancelRaf(id) { cancelAnimationFrame(id); _pendingRafs.delete(id) },
+  // Track a singleton body-level node (tooltip, toast, overlay) so that
+  // lifecycle.abort() removes it. Returns the node for chaining:
+  //   document.body.appendChild(cleanup.trackNode(el))
+  trackNode(node) {
+    if (!node) return node
+    _trackedNodes.push(node)
+    return node
+  },
 }

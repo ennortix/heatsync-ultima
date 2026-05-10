@@ -6028,5 +6028,5 @@ function injectStyles() {
     }
 
   `;
-  document.head.appendChild(style);
+  document.head.appendChild(cleanup.trackNode(style));
 }

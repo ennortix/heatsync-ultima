@@ -7477,6 +7477,20 @@ function injectStyles() {
     .hs-popout.hs-tabs-left #hs-mc-emote-picker {
       left: 90px !important;
     }
+    /* Popout chat has no .chat-shell — container body-mounts and collapses to
+       0 height because its only child is position:absolute. Pin it to fill
+       the popout window so the overlay/input bar have real dimensions. */
+    body.hs-popout #hs-mc-container {
+      position: fixed !important;
+      top: 0 !important;
+      left: 0 !important;
+      right: 0 !important;
+      bottom: 0 !important;
+      width: auto !important;
+      height: auto !important;
+      z-index: 9999 !important;
+      background: #000 !important;
+    }
 
     /* ---- FEED MESSAGE CARDS ---- */
     .hs-feed-msg {
@@ -13946,6 +13960,10 @@ function renderQuickLinks() {
     el.style.setProperty('--menu-accent', item.accent)
     // Static HTML with SVG icons only — no dynamic values, safe innerHTML
     el.innerHTML = `<div class="hs-mc-menu-icon">${item.icon}</div><div class="hs-mc-menu-text"><div class="hs-mc-menu-title">${item.label}</div></div><svg class="hs-mc-menu-arrow" width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>`
+    el.addEventListener('click', (e) => {
+      e.stopPropagation()
+      triggerTwitchFeature(item.action)
+    })
     links.appendChild(el)
   }
   return links
@@ -14779,14 +14797,6 @@ function optimisticBetUpdate(container, outcomeId, points) {
 function attachPredictionHandlers() {
   const container = document.getElementById('hs-mc-tab-twitch')
   if (!container) return
-
-  // Quick link handlers
-  container.querySelectorAll('.hs-mc-pred-link').forEach(item => {
-    item.addEventListener('click', (e) => {
-      e.stopPropagation()
-      triggerTwitchFeature(item.dataset.action)
-    })
-  })
 
   // Human-readable prediction error messages
   const predErrorMsg = (code) => {
@@ -17798,6 +17808,7 @@ function ingestReplayYtMsg(targetChannelId, ytMsg) {
   if (dedup.has(dupKey)) return
   dedup.add(dupKey)
   buf.push(ytMsg)
+  if (ytMsg.user) { try { usernameCache.add(ytMsg.user) } catch {} }
   if (buf.length > MAX_BUFFER + 50) {
     // Sort by time before truncating so we keep the most recent across
     // backfill + live, not just newest-arrived.
@@ -17841,6 +17852,7 @@ function commitPacedYtMsg(targetChannelId, ytMsg) {
   if (!channelYtMessages.has(targetChannelId)) channelYtMessages.set(targetChannelId, [])
   const buf = channelYtMessages.get(targetChannelId)
   buf.push(ytMsg)
+  if (ytMsg.user) { try { usernameCache.add(ytMsg.user) } catch {} }
   // Keep the replay-dedup index aligned with the buffer so a later replay msg
   // doesn't get re-inserted as if the live one were missing.
   const dedup = _replayDedupKeys.get(targetChannelId)
@@ -22360,17 +22372,23 @@ function getCurrentWord(input) {
 function getRecencyMap() {
   // Returns Map<usernameLower, recencyRank> from current tab's chat buffer.
   // Lower rank = more recent. Caps at 50 unique users for sub-ms cost.
+  // Merges Twitch/Kick irc buffer + YouTube buffer (channelYtMessages) so
+  // YT-only chatters tab-complete on YT-only channels.
   const out = new Map()
-  if (typeof irc === 'undefined' || !irc?.channels) return out
   let ch = currentTab
   if (currentTab === 'live' && typeof getLiveChannel === 'function') ch = getLiveChannel()
-  if (!ch) return out
-  const buffer = irc.channels.get(ch.toLowerCase())
-  if (!buffer?.getAll) return out
-  const msgs = buffer.getAll()
+  const ircMsgs = (ch && typeof irc !== 'undefined' && irc?.channels?.get(ch.toLowerCase())?.getAll?.()) || []
+  const ytMsgs = (typeof channelYtMessages !== 'undefined' && channelYtMessages.get(currentTab)) || []
+  // Walk both buffers from newest tail, picking whichever has the later time.
+  let i = ircMsgs.length - 1
+  let j = ytMsgs.length - 1
   let rank = 0
-  for (let i = msgs.length - 1; i >= 0 && rank < 50; i--) {
-    const u = (msgs[i]?.user || '').toLowerCase()
+  while (rank < 50 && (i >= 0 || j >= 0)) {
+    const a = i >= 0 ? (ircMsgs[i]?.time || 0) : -1
+    const b = j >= 0 ? (ytMsgs[j]?.time || 0) : -1
+    const pickIrc = a >= b
+    const msg = pickIrc ? ircMsgs[i--] : ytMsgs[j--]
+    const u = (msg?.user || '').toLowerCase()
     if (!u || out.has(u)) continue
     out.set(u, rank++)
   }
@@ -32315,6 +32333,16 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       // Restore live channel override
       if (stored.ui_settings?.liveChannel) {
         liveChannel = stored.ui_settings.liveChannel;
+      }
+      // Popout window is locked to one channel by URL — ignore the parent
+      // session's saved tab (which often points to a different channel and
+      // produces a blank panel because that channel's pane was never built).
+      if (document.body.classList.contains('hs-popout')) {
+        const urlCh = location.pathname.match(/^\/(?:popout|embed)\/([a-zA-Z0-9_]+)/)?.[1]
+        if (urlCh) {
+          _savedActiveTab = 'live'
+          liveChannel = urlCh
+        }
       }
     } catch (e) {
       _savedActiveTab = 'live';

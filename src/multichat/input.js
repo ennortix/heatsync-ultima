@@ -1466,17 +1466,23 @@ function getCurrentWord(input) {
 function getRecencyMap() {
   // Returns Map<usernameLower, recencyRank> from current tab's chat buffer.
   // Lower rank = more recent. Caps at 50 unique users for sub-ms cost.
+  // Merges Twitch/Kick irc buffer + YouTube buffer (channelYtMessages) so
+  // YT-only chatters tab-complete on YT-only channels.
   const out = new Map()
-  if (typeof irc === 'undefined' || !irc?.channels) return out
   let ch = currentTab
   if (currentTab === 'live' && typeof getLiveChannel === 'function') ch = getLiveChannel()
-  if (!ch) return out
-  const buffer = irc.channels.get(ch.toLowerCase())
-  if (!buffer?.getAll) return out
-  const msgs = buffer.getAll()
+  const ircMsgs = (ch && typeof irc !== 'undefined' && irc?.channels?.get(ch.toLowerCase())?.getAll?.()) || []
+  const ytMsgs = (typeof channelYtMessages !== 'undefined' && channelYtMessages.get(currentTab)) || []
+  // Walk both buffers from newest tail, picking whichever has the later time.
+  let i = ircMsgs.length - 1
+  let j = ytMsgs.length - 1
   let rank = 0
-  for (let i = msgs.length - 1; i >= 0 && rank < 50; i--) {
-    const u = (msgs[i]?.user || '').toLowerCase()
+  while (rank < 50 && (i >= 0 || j >= 0)) {
+    const a = i >= 0 ? (ircMsgs[i]?.time || 0) : -1
+    const b = j >= 0 ? (ytMsgs[j]?.time || 0) : -1
+    const pickIrc = a >= b
+    const msg = pickIrc ? ircMsgs[i--] : ytMsgs[j--]
+    const u = (msg?.user || '').toLowerCase()
     if (!u || out.has(u)) continue
     out.set(u, rank++)
   }

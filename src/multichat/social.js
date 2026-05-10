@@ -372,6 +372,7 @@ function ingestReplayYtMsg(targetChannelId, ytMsg) {
   if (dedup.has(dupKey)) return
   dedup.add(dupKey)
   buf.push(ytMsg)
+  if (ytMsg.user) { try { usernameCache.add(ytMsg.user) } catch {} }
   if (buf.length > MAX_BUFFER + 50) {
     // Sort by time before truncating so we keep the most recent across
     // backfill + live, not just newest-arrived.
@@ -415,6 +416,7 @@ function commitPacedYtMsg(targetChannelId, ytMsg) {
   if (!channelYtMessages.has(targetChannelId)) channelYtMessages.set(targetChannelId, [])
   const buf = channelYtMessages.get(targetChannelId)
   buf.push(ytMsg)
+  if (ytMsg.user) { try { usernameCache.add(ytMsg.user) } catch {} }
   // Keep the replay-dedup index aligned with the buffer so a later replay msg
   // doesn't get re-inserted as if the live one were missing.
   const dedup = _replayDedupKeys.get(targetChannelId)

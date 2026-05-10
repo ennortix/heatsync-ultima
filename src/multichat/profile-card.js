@@ -319,9 +319,10 @@ function renderProfileCardView() {
 
     const rel = data.relationship || {}
     const youFollow = rel.youFollow ?? rel.isFollowing ?? rel.followsOnTwitch ?? rel.followsOnKick
-    const followsYou = rel.profileFollowsViewerOnTwitch || rel.profileFollowsViewerOnKick || rel.followsYou
+    // Platform-verified only — heatsync-DB-only flags can be stale for streamers
+    const followsYou = rel.profileFollowsViewerOnTwitch || rel.profileFollowsViewerOnKick
     const youSub = rel.youSub ?? rel.isSubscribed ?? rel.subscribedOnTwitch ?? rel.subscribedOnKick
-    const subsYou = rel.profileSubbedToViewerOnTwitch || rel.profileSubbedToViewerOnKick || rel.subscribesToYou
+    const subsYou = rel.profileSubbedToViewerOnTwitch || rel.profileSubbedToViewerOnKick
 
     const relParts = []
     if (youFollow && followsYou) relParts.push('mutual')

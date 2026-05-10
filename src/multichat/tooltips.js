@@ -589,33 +589,38 @@
     if (re > 0) statBadges.push(`<span class="hs-pc-stat re"><span class="hs-pc-num">${formatCompact(re)}</span>[RE]</span>`);
     if (followers > 0) statBadges.push(`<span class="hs-pc-stat hs-pc-stat-followers">${t('mc_tip_followers', [formatCompact(followers)])}</span>`);
 
-    // Relationship — covers all four angles across Twitch and Kick
+    // Relationship — covers all four angles across Twitch and Kick.
+    // Timestamps: platform-verified only (Twitch helix followed_at / sub started_at,
+    // Kick equivalents). Heatsync's own DB carries created_at sync timestamps that
+    // do NOT reflect the actual platform relationship date — they read as the
+    // signup/sync date for every profile (e.g. "5mo" everywhere) and lie about
+    // multi-year Twitch follows. Show bare label when no platform date exists.
     const rel = p.relationship || {};
     const relBadges = [];
-    // They → you (follow)
-    const followsYou = rel.profileFollowsViewerOnTwitch || rel.profileFollowsViewerOnKick || rel.followsYou;
+    // They → you (follow) — platform-verified flag only; heatsync DB rows can
+    // be stale and don't reflect actual Twitch/Kick state for arbitrary streamers.
+    const followsYou = rel.profileFollowsViewerOnTwitch || rel.profileFollowsViewerOnKick;
     if (followsYou) {
-      const since = rel.profileFollowsViewerOnTwitchSince || rel.profileFollowsViewerOnKickSince || rel.followsYouSince;
-      relBadges.push(`<span class="hs-pc-rel-badge mutual">follows you${since ? ' ' + getCompactRelTime(since).replace(' ago', '') : ''}</span>`);
+      const since = rel.profileFollowsViewerOnTwitchSince || rel.profileFollowsViewerOnKickSince;
+      const ageStr = since ? ' ' + getCompactRelTime(since).replace(' ago', '') : '';
+      relBadges.push(`<span class="hs-pc-rel-badge mutual">follows you${ageStr}</span>`);
     }
-    // They → you (sub) — with tier
-    const subsYou = rel.profileSubbedToViewerOnTwitch || rel.profileSubbedToViewerOnKick || rel.subscribesToYou;
+    // They → you (sub) — platform-verified flag only
+    const subsYou = rel.profileSubbedToViewerOnTwitch || rel.profileSubbedToViewerOnKick;
     if (subsYou) {
-      const since = rel.profileTwitchSubSince || rel.profileKickSubSince || rel.subscribesToYouSince;
-      const rawTier = rel.profileTwitchSubTier || rel.profileKickSubTier || rel.subscribesToYouTier;
+      const since = rel.profileTwitchSubSince || rel.profileKickSubSince;
+      const rawTier = rel.profileTwitchSubTier || rel.profileKickSubTier;
       const tierNum = typeof rawTier === 'string' ? Math.round(Number(rawTier) / 1000) : rawTier;
       const tierStr = tierNum && tierNum > 1 ? ' T' + tierNum : '';
-      relBadges.push(`<span class="hs-pc-rel-badge supporter">subs to you${tierStr}${since ? ' ' + getCompactRelTime(since).replace(' ago', '') : ''}</span>`);
+      const ageStr = since ? ' ' + getCompactRelTime(since).replace(' ago', '') : '';
+      relBadges.push(`<span class="hs-pc-rel-badge supporter">subs to you${tierStr}${ageStr}</span>`);
     }
     // You → them (follow) — ?? respects explicit false from canonical youFollow
     const youFollow = rel.youFollow ?? rel.isFollowing ?? rel.followsOnTwitch ?? rel.followsOnKick;
     if (youFollow) {
-      const since = rel.youFollowSince || rel.followsOnTwitchSince || rel.followsOnKickSince || rel.followedAt;
-      // "you follow" mirrors "follows you" / "you sub" — bare "following" reads ambiguous.
-      // data-since lets fetchAndShowFollowage compare against the Twitch GQL date and
-      // surface the EARLIEST follow timestamp (heatsync sync date is newer than Twitch).
-      const sinceAttr = since ? ` data-since="${escapeHtml(since)}"` : ''
-      relBadges.push(`<span class="hs-pc-rel-badge following"${sinceAttr}>you follow${since ? ' ' + getCompactRelTime(since).replace(' ago', '') : ''}</span>`);
+      const since = rel.followsOnTwitchSince || rel.followsOnKickSince;
+      const ageStr = since ? ' ' + getCompactRelTime(since).replace(' ago', '') : '';
+      relBadges.push(`<span class="hs-pc-rel-badge following">you follow${ageStr}</span>`);
     }
     // You → them (sub) — normalize tier
     const youSub = rel.youSub ?? rel.isSubscribed ?? rel.subscribedOnTwitch ?? rel.subscribedOnKick;
@@ -623,8 +628,9 @@
       const rawTier = rel.twitchSubTier || rel.kickSubTier || rel.subTier;
       const tierNum = typeof rawTier === 'string' ? Math.round(Number(rawTier) / 1000) : rawTier;
       const tier = tierNum || 1;
-      const since = rel.twitchSubSince || rel.kickSubSince || rel.subscribedAt;
-      relBadges.push(`<span class="hs-pc-rel-badge subbed">you sub${tier > 1 ? ' T' + tier : ''}${since ? ' ' + getCompactRelTime(since).replace(' ago', '') : ''}</span>`);
+      const since = rel.twitchSubSince || rel.kickSubSince;
+      const ageStr = since ? ' ' + getCompactRelTime(since).replace(' ago', '') : '';
+      relBadges.push(`<span class="hs-pc-rel-badge subbed">you sub${tier > 1 ? ' T' + tier : ''}${ageStr}</span>`);
     }
     // Mutual indicators when both directions present
     if (followsYou && youFollow) {
@@ -791,18 +797,11 @@
       header.appendChild(cfBadge)
     }
     // When channel === viewer, channelFollowedAt is the viewer's authoritative
-    // Twitch follow date — usually OLDER than the heatsync `relationship.followedAt`
-    // sync date (which is when the heatsync follow record was created, not the
-    // original Twitch follow). Pick the earliest available date so "you follow 5mo"
-    // doesn't lie about a multi-year Twitch follow. The heatsync date (if any) is
-    // stashed on the rel-badge by renderProfileCard via data-since.
+    // Twitch follow date. Use it to fill in (or override) the rel-badge time.
     if (isSelfChannel && result.channelFollowedAt) {
       const relRow = tooltip.querySelector('.hs-pc-rel')
       const youFollowBadge = relRow?.querySelector('.hs-pc-rel-badge.following')
-      const heatSince = youFollowBadge?.dataset?.since || null
-      const candidates = [heatSince, result.channelFollowedAt].filter(Boolean)
-      const oldest = candidates.sort()[0]
-      const ageStr = oldest ? ' ' + getCompactRelTime(oldest).replace(' ago', '') : ''
+      const ageStr = ' ' + getCompactRelTime(result.channelFollowedAt).replace(' ago', '')
       if (youFollowBadge) {
         youFollowBadge.textContent = `you follow${ageStr}`
       } else if (relRow) {

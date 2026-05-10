@@ -1788,6 +1788,7 @@
       }
       const dismissStack = () => {
         cancelDismiss()
+        _stackStyleCache = null
         const overlay = document.getElementById('hs-mc-reply-stack')
         if (overlay) {
           overlay.style.display = 'none'
@@ -2052,62 +2053,87 @@
         }
       }, { passive: true, signal: mcSignal })
       // Dismissal driven by geometric hover zone. mousemove on document fires
-      // for cursor movement everywhere; we only act if a stack is active.
+      // on every cursor pixel; rAF-throttle the layout reads to one per frame
+      // even when the cursor moves at 1000+ events/sec on a high-poll mouse.
+      let _hoverMoveRaf = 0
+      let _hoverMoveX = 0, _hoverMoveY = 0
       document.addEventListener('mousemove', (e) => {
         if (!_stackActiveRow) return
-        if (isInHoverZone(e.clientX, e.clientY)) {
-          cancelDismiss()
-        } else {
-          scheduleDismiss()
-        }
+        _hoverMoveX = e.clientX; _hoverMoveY = e.clientY
+        if (_hoverMoveRaf) return
+        _hoverMoveRaf = requestAnimationFrame(() => {
+          _hoverMoveRaf = 0
+          if (!_stackActiveRow) return
+          if (isInHoverZone(_hoverMoveX, _hoverMoveY)) cancelDismiss()
+          else scheduleDismiss()
+        })
       }, { passive: true, signal: mcSignal })
       // On chat scroll, follow the active row by repositioning both overlays
       // (up + down) instead of dismissing. Only dismiss if the row scrolled
-      // fully out of the chat viewport.
+      // fully out of the chat viewport. Cache style metrics that don't change
+      // for the same row — getComputedStyle in scroll path forced layout on
+      // every wheel tick, the user-perceived "laggy when scrolling on a
+      // reply thread."
+      let _stackStyleCache = null // { row, overlapUp, overlapDown, layoutH }
+      const refreshStackStyleCache = (row) => {
+        if (!row) { _stackStyleCache = null; return }
+        const cs = getComputedStyle(row)
+        const padTop = parseInt(cs.paddingTop) || 0
+        const padBot = parseInt(cs.paddingBottom) || 0
+        const lh = parseFloat(cs.lineHeight) || 0
+        const fs = parseFloat(cs.fontSize) || 13
+        const slack = Math.max(0, (lh - fs) / 2)
+        _stackStyleCache = {
+          row,
+          overlapUp: Math.round(padTop + slack),
+          overlapDown: Math.round(padBot + slack),
+          layoutH: document.documentElement.clientHeight,
+        }
+      }
+      let _repositionRaf = 0
       const repositionStack = () => {
-        if (!_stackActiveRow) return
-        const cRect = msgsEl.getBoundingClientRect()
-        const hRect = _stackActiveRow.getBoundingClientRect()
-        if (hRect.bottom < cRect.top || hRect.top > cRect.bottom) {
-          dismissStack()
-          return
-        }
-        const hCs = getComputedStyle(_stackActiveRow)
-        const hPadTop = parseInt(hCs.paddingTop) || 0
-        const hPadBot = parseInt(hCs.paddingBottom) || 0
-        const hLineHeight = parseFloat(hCs.lineHeight) || 0
-        const hFontSize = parseFloat(hCs.fontSize) || 13
-        const hSlack = Math.max(0, (hLineHeight - hFontSize) / 2)
-        const overlapUp = Math.round(hPadTop + hSlack)
-        const overlapDown = Math.round(hPadBot + hSlack)
-        const layoutH = document.documentElement.clientHeight
+        if (_repositionRaf) return
+        _repositionRaf = requestAnimationFrame(() => {
+          _repositionRaf = 0
+          if (!_stackActiveRow) return
+          const cRect = msgsEl.getBoundingClientRect()
+          const hRect = _stackActiveRow.getBoundingClientRect()
+          if (hRect.bottom < cRect.top || hRect.top > cRect.bottom) {
+            dismissStack()
+            return
+          }
+          if (!_stackStyleCache || _stackStyleCache.row !== _stackActiveRow) {
+            refreshStackStyleCache(_stackActiveRow)
+          }
+          const { overlapUp, overlapDown, layoutH } = _stackStyleCache
 
-        const overlayUp = document.getElementById('hs-mc-reply-stack')
-        if (overlayUp && overlayUp.style.display === 'block') {
-          const availableUp = hRect.top - cRect.top
-          if (availableUp < 24) {
-            overlayUp.style.display = 'none'
-            overlayUp.replaceChildren()
-          } else {
-            overlayUp.style.left = hRect.left + 'px'
-            overlayUp.style.width = hRect.width + 'px'
-            overlayUp.style.bottom = (layoutH - hRect.top - overlapUp) + 'px'
-            overlayUp.style.maxHeight = (availableUp + overlapUp) + 'px'
+          const overlayUp = document.getElementById('hs-mc-reply-stack')
+          if (overlayUp && overlayUp.style.display === 'block') {
+            const availableUp = hRect.top - cRect.top
+            if (availableUp < 24) {
+              overlayUp.style.display = 'none'
+              overlayUp.replaceChildren()
+            } else {
+              overlayUp.style.left = hRect.left + 'px'
+              overlayUp.style.width = hRect.width + 'px'
+              overlayUp.style.bottom = (layoutH - hRect.top - overlapUp) + 'px'
+              overlayUp.style.maxHeight = (availableUp + overlapUp) + 'px'
+            }
           }
-        }
-        const overlayDown = document.getElementById('hs-mc-reply-stack-down')
-        if (overlayDown && overlayDown.style.display === 'block') {
-          const availableDown = cRect.bottom - hRect.bottom
-          if (availableDown < 24) {
-            overlayDown.style.display = 'none'
-            overlayDown.replaceChildren()
-          } else {
-            overlayDown.style.left = hRect.left + 'px'
-            overlayDown.style.width = hRect.width + 'px'
-            overlayDown.style.top = (hRect.bottom - overlapDown) + 'px'
-            overlayDown.style.maxHeight = (availableDown + overlapDown) + 'px'
+          const overlayDown = document.getElementById('hs-mc-reply-stack-down')
+          if (overlayDown && overlayDown.style.display === 'block') {
+            const availableDown = cRect.bottom - hRect.bottom
+            if (availableDown < 24) {
+              overlayDown.style.display = 'none'
+              overlayDown.replaceChildren()
+            } else {
+              overlayDown.style.left = hRect.left + 'px'
+              overlayDown.style.width = hRect.width + 'px'
+              overlayDown.style.top = (hRect.bottom - overlapDown) + 'px'
+              overlayDown.style.maxHeight = (availableDown + overlapDown) + 'px'
+            }
           }
-        }
+        })
       }
       msgsEl.addEventListener('scroll', repositionStack, { passive: true, signal: mcSignal })
       window.addEventListener('resize', () => { if (_stackActiveRow) dismissStack() }, { passive: true, signal: mcSignal })
@@ -5664,11 +5690,12 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       ])
     }
 
-    // Merge follow stream events into every tab (went live, switched game,
-    // went offline). fairMerge's full sort below puts everything at its
-    // correct chronological position regardless of insertion order, so we
-    // just append missing events here and let the sort handle placement.
-    if (activityEvents.length > 0 && msgs.length > 0) {
+    // Merge follow stream events into channel + live tabs (went live,
+    // switched game, went offline). Skip mentions: it's reserved for actual
+    // @-mentions of the user, not followed-channel stream events. fairMerge's
+    // full sort below puts everything at its correct chronological position
+    // regardless of insertion order.
+    if (id !== 'mentions' && activityEvents.length > 0 && msgs.length > 0) {
       const existingTexts = new Set(msgs.filter(m => m.type === 'stream-event').map(m => m.text))
       const missing = activityEvents.filter(e =>
         e.eventClass?.includes('event-follow') && !existingTexts.has(e.text)

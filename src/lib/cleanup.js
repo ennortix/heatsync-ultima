@@ -28,14 +28,52 @@
 
   // --- intervals ---
 
+  // Optional perf tracer. Set window.__hsPerfTrace = true at runtime to
+  // start logging callbacks that exceed 50ms of main-thread work into
+  // window.__hsPerfLog (capped at 200 entries). Source location captured
+  // at registration time so each interval has a stable identifier even
+  // for anonymous arrow fns.
+  function _wrap(fn, ms, kind) {
+    let src = ''
+    try {
+      const stack = (new Error()).stack || ''
+      const lines = stack.split('\n')
+      // Skip frames inside this module
+      for (const line of lines) {
+        if (!line) continue
+        if (line.includes('cleanup.js') || line.includes('multichat.js')) {
+          if (line.includes('multichat.js')) { src = line.trim().slice(0, 120); break }
+          continue
+        }
+        if (line.includes('content.js') || line.includes('background.js') || line.includes('youtube-content.js')) {
+          src = line.trim().slice(0, 120); break
+        }
+      }
+      if (!src) src = (lines[3] || lines[2] || '').trim().slice(0, 120)
+    } catch {}
+    return function() {
+      if (!window.__hsPerfTrace) return fn.apply(this, arguments)
+      const t = performance.now()
+      try { return fn.apply(this, arguments) }
+      finally {
+        const d = performance.now() - t
+        if (d > 50) {
+          (window.__hsPerfLog ||= []).push({ kind, ms, dur: Math.round(d), at: Math.round(t), src })
+          if (window.__hsPerfLog.length > 200) window.__hsPerfLog.shift()
+        }
+      }
+    }
+  }
+
   function _setInterval(fn, ms) {
-    const id = setInterval(fn, ms)
+    const id = setInterval(_wrap(fn, ms, 'interval'), ms)
     _intervals.add(id)
     return id
   }
 
   function _setIntervalIfVisible(fn, ms) {
-    const id = setInterval(() => { if (!document.hidden) fn() }, ms)
+    const wrapped = _wrap(fn, ms, 'intervalIfVisible')
+    const id = setInterval(() => { if (!document.hidden) wrapped() }, ms)
     _intervals.add(id)
     return id
   }
@@ -49,9 +87,10 @@
 
   function _setTimeout(fn, ms) {
     let id
+    const wrapped = _wrap(fn, ms, 'timeout')
     id = setTimeout(() => {
       _timeouts.delete(id)
-      fn()
+      wrapped()
     }, ms)
     _timeouts.add(id)
     return id

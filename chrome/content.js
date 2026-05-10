@@ -51,17 +51,46 @@ window.addEventListener('pagehide', () => lifecycle.abort())
 // WeakMap for emote overlay references — avoids DOM property leaks
 const overlayMap = new WeakMap()
 
+// Optional perf tracer. window.__hsPerfTrace = true at runtime to log slow
+// callbacks into window.__hsPerfLog. Source captured at registration so
+// anonymous arrows still get a stable identifier.
+function _hsPerfWrap(fn, ms, kind) {
+  let src = ''
+  try {
+    const stack = (new Error()).stack || ''
+    const lines = stack.split('\n')
+    for (const line of lines) {
+      if (!line || line.includes('content.js') && line.includes('_hsPerfWrap')) continue
+      if (!line || line.includes('_hsPerfWrap') || line.includes('cleanup.set')) continue
+      src = line.trim().slice(0, 160); break
+    }
+  } catch {}
+  return function() {
+    if (!window.__hsPerfTrace) return fn.apply(this, arguments)
+    const t = performance.now()
+    try { return fn.apply(this, arguments) }
+    finally {
+      const d = performance.now() - t
+      if (d > 50) {
+        (window.__hsPerfLog ||= []).push({ side: 'twitch', kind, ms, dur: Math.round(d), at: Math.round(t), src })
+        if (window.__hsPerfLog.length > 300) window.__hsPerfLog.shift()
+      }
+    }
+  }
+}
+
 // Helpers matching old cleanup API but wired to AbortController
 const cleanup = {
-  setInterval(fn, ms) { const id = setInterval(fn, ms); _timers.intervals.push(id); return id },
-  setIntervalIfVisible(fn, ms) { const id = setInterval(() => { if (!document.hidden) fn() }, ms); _timers.intervals.push(id); return id },
+  setInterval(fn, ms) { const id = setInterval(_hsPerfWrap(fn, ms, 'interval'), ms); _timers.intervals.push(id); return id },
+  setIntervalIfVisible(fn, ms) { const w = _hsPerfWrap(fn, ms, 'intervalIfVisible'); const id = setInterval(() => { if (!document.hidden) w() }, ms); _timers.intervals.push(id); return id },
   clearInterval(id) { clearInterval(id); const idx = _timers.intervals.indexOf(id); if (idx !== -1) _timers.intervals.splice(idx, 1) },
   clearTimeout(id) { clearTimeout(id); const idx = _timers.timeouts.indexOf(id); if (idx !== -1) _timers.timeouts.splice(idx, 1) },
   setTimeout(fn, ms) {
+    const w = _hsPerfWrap(fn, ms, 'timeout')
     const id = setTimeout(() => {
       const idx = _timers.timeouts.indexOf(id)
       if (idx !== -1) _timers.timeouts.splice(idx, 1)
-      fn()
+      w()
     }, ms)
     _timers.timeouts.push(id)
     return id

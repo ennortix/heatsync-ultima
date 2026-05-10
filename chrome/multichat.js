@@ -313,14 +313,52 @@ if (typeof window !== 'undefined') {
 
   // --- intervals ---
 
+  // Optional perf tracer. Set window.__hsPerfTrace = true at runtime to
+  // start logging callbacks that exceed 50ms of main-thread work into
+  // window.__hsPerfLog (capped at 200 entries). Source location captured
+  // at registration time so each interval has a stable identifier even
+  // for anonymous arrow fns.
+  function _wrap(fn, ms, kind) {
+    let src = ''
+    try {
+      const stack = (new Error()).stack || ''
+      const lines = stack.split('\n')
+      // Skip frames inside this module
+      for (const line of lines) {
+        if (!line) continue
+        if (line.includes('cleanup.js') || line.includes('multichat.js')) {
+          if (line.includes('multichat.js')) { src = line.trim().slice(0, 120); break }
+          continue
+        }
+        if (line.includes('content.js') || line.includes('background.js') || line.includes('youtube-content.js')) {
+          src = line.trim().slice(0, 120); break
+        }
+      }
+      if (!src) src = (lines[3] || lines[2] || '').trim().slice(0, 120)
+    } catch {}
+    return function() {
+      if (!window.__hsPerfTrace) return fn.apply(this, arguments)
+      const t = performance.now()
+      try { return fn.apply(this, arguments) }
+      finally {
+        const d = performance.now() - t
+        if (d > 50) {
+          (window.__hsPerfLog ||= []).push({ kind, ms, dur: Math.round(d), at: Math.round(t), src })
+          if (window.__hsPerfLog.length > 200) window.__hsPerfLog.shift()
+        }
+      }
+    }
+  }
+
   function _setInterval(fn, ms) {
-    const id = setInterval(fn, ms)
+    const id = setInterval(_wrap(fn, ms, 'interval'), ms)
     _intervals.add(id)
     return id
   }
 
   function _setIntervalIfVisible(fn, ms) {
-    const id = setInterval(() => { if (!document.hidden) fn() }, ms)
+    const wrapped = _wrap(fn, ms, 'intervalIfVisible')
+    const id = setInterval(() => { if (!document.hidden) wrapped() }, ms)
     _intervals.add(id)
     return id
   }
@@ -334,9 +372,10 @@ if (typeof window !== 'undefined') {
 
   function _setTimeout(fn, ms) {
     let id
+    const wrapped = _wrap(fn, ms, 'timeout')
     id = setTimeout(() => {
       _timeouts.delete(id)
-      fn()
+      wrapped()
     }, ms)
     _timeouts.add(id)
     return id
@@ -3116,15 +3155,43 @@ mcSignal.addEventListener('abort', () => {
 })
 window.addEventListener('pagehide', () => lifecycle.abort())
 
+// Optional perf tracer. window.__hsPerfTrace = true at runtime to log
+// callbacks exceeding 50ms into window.__hsPerfLog. Source captured at
+// registration so anonymous arrows still get a stable identifier.
+function _hsPerfWrap(fn, ms, kind) {
+  let src = ''
+  try {
+    const stack = (new Error()).stack || ''
+    const lines = stack.split('\n')
+    for (const line of lines) {
+      if (!line || line.includes('bootstrap.js') || line.includes('_hsPerfWrap')) continue
+      src = line.trim().slice(0, 160); break
+    }
+  } catch {}
+  return function() {
+    if (!window.__hsPerfTrace) return fn.apply(this, arguments)
+    const t = performance.now()
+    try { return fn.apply(this, arguments) }
+    finally {
+      const d = performance.now() - t
+      if (d > 50) {
+        (window.__hsPerfLog ||= []).push({ side: 'mc', kind, ms, dur: Math.round(d), at: Math.round(t), src })
+        if (window.__hsPerfLog.length > 300) window.__hsPerfLog.shift()
+      }
+    }
+  }
+}
+
 const cleanup = {
-  setInterval(fn, ms) { const id = setInterval(fn, ms); _timers.intervals.push(id); return id },
-  setIntervalIfVisible(fn, ms) { const id = setInterval(() => { if (!document.hidden) fn() }, ms); _timers.intervals.push(id); return id },
+  setInterval(fn, ms) { const id = setInterval(_hsPerfWrap(fn, ms, 'interval'), ms); _timers.intervals.push(id); return id },
+  setIntervalIfVisible(fn, ms) { const w = _hsPerfWrap(fn, ms, 'intervalIfVisible'); const id = setInterval(() => { if (!document.hidden) w() }, ms); _timers.intervals.push(id); return id },
   clearInterval(id) { clearInterval(id); const i = _timers.intervals.indexOf(id); if (i !== -1) _timers.intervals.splice(i, 1) },
   setTimeout(fn, ms) {
+    const w = _hsPerfWrap(fn, ms, 'timeout')
     const id = setTimeout(() => {
       const idx = _timers.timeouts.indexOf(id)
       if (idx !== -1) _timers.timeouts.splice(idx, 1)
-      fn()
+      w()
     }, ms)
     _timers.timeouts.push(id)
     return id
@@ -3149,7 +3216,8 @@ const cleanup = {
   },
   raf(fn) {
     let id
-    id = requestAnimationFrame(() => { _pendingRafs.delete(id); fn() })
+    const w = _hsPerfWrap(fn, 0, 'raf')
+    id = requestAnimationFrame(() => { _pendingRafs.delete(id); w() })
     _pendingRafs.add(id)
     return id
   },
@@ -25550,6 +25618,7 @@ const STORAGE_KEY = 'heatsync_multichat';
       }
       const dismissStack = () => {
         cancelDismiss()
+        _stackStyleCache = null
         const overlay = document.getElementById('hs-mc-reply-stack')
         if (overlay) {
           overlay.style.display = 'none'
@@ -25814,62 +25883,87 @@ const STORAGE_KEY = 'heatsync_multichat';
         }
       }, { passive: true, signal: mcSignal })
       // Dismissal driven by geometric hover zone. mousemove on document fires
-      // for cursor movement everywhere; we only act if a stack is active.
+      // on every cursor pixel; rAF-throttle the layout reads to one per frame
+      // even when the cursor moves at 1000+ events/sec on a high-poll mouse.
+      let _hoverMoveRaf = 0
+      let _hoverMoveX = 0, _hoverMoveY = 0
       document.addEventListener('mousemove', (e) => {
         if (!_stackActiveRow) return
-        if (isInHoverZone(e.clientX, e.clientY)) {
-          cancelDismiss()
-        } else {
-          scheduleDismiss()
-        }
+        _hoverMoveX = e.clientX; _hoverMoveY = e.clientY
+        if (_hoverMoveRaf) return
+        _hoverMoveRaf = requestAnimationFrame(() => {
+          _hoverMoveRaf = 0
+          if (!_stackActiveRow) return
+          if (isInHoverZone(_hoverMoveX, _hoverMoveY)) cancelDismiss()
+          else scheduleDismiss()
+        })
       }, { passive: true, signal: mcSignal })
       // On chat scroll, follow the active row by repositioning both overlays
       // (up + down) instead of dismissing. Only dismiss if the row scrolled
-      // fully out of the chat viewport.
+      // fully out of the chat viewport. Cache style metrics that don't change
+      // for the same row — getComputedStyle in scroll path forced layout on
+      // every wheel tick, the user-perceived "laggy when scrolling on a
+      // reply thread."
+      let _stackStyleCache = null // { row, overlapUp, overlapDown, layoutH }
+      const refreshStackStyleCache = (row) => {
+        if (!row) { _stackStyleCache = null; return }
+        const cs = getComputedStyle(row)
+        const padTop = parseInt(cs.paddingTop) || 0
+        const padBot = parseInt(cs.paddingBottom) || 0
+        const lh = parseFloat(cs.lineHeight) || 0
+        const fs = parseFloat(cs.fontSize) || 13
+        const slack = Math.max(0, (lh - fs) / 2)
+        _stackStyleCache = {
+          row,
+          overlapUp: Math.round(padTop + slack),
+          overlapDown: Math.round(padBot + slack),
+          layoutH: document.documentElement.clientHeight,
+        }
+      }
+      let _repositionRaf = 0
       const repositionStack = () => {
-        if (!_stackActiveRow) return
-        const cRect = msgsEl.getBoundingClientRect()
-        const hRect = _stackActiveRow.getBoundingClientRect()
-        if (hRect.bottom < cRect.top || hRect.top > cRect.bottom) {
-          dismissStack()
-          return
-        }
-        const hCs = getComputedStyle(_stackActiveRow)
-        const hPadTop = parseInt(hCs.paddingTop) || 0
-        const hPadBot = parseInt(hCs.paddingBottom) || 0
-        const hLineHeight = parseFloat(hCs.lineHeight) || 0
-        const hFontSize = parseFloat(hCs.fontSize) || 13
-        const hSlack = Math.max(0, (hLineHeight - hFontSize) / 2)
-        const overlapUp = Math.round(hPadTop + hSlack)
-        const overlapDown = Math.round(hPadBot + hSlack)
-        const layoutH = document.documentElement.clientHeight
+        if (_repositionRaf) return
+        _repositionRaf = requestAnimationFrame(() => {
+          _repositionRaf = 0
+          if (!_stackActiveRow) return
+          const cRect = msgsEl.getBoundingClientRect()
+          const hRect = _stackActiveRow.getBoundingClientRect()
+          if (hRect.bottom < cRect.top || hRect.top > cRect.bottom) {
+            dismissStack()
+            return
+          }
+          if (!_stackStyleCache || _stackStyleCache.row !== _stackActiveRow) {
+            refreshStackStyleCache(_stackActiveRow)
+          }
+          const { overlapUp, overlapDown, layoutH } = _stackStyleCache
 
-        const overlayUp = document.getElementById('hs-mc-reply-stack')
-        if (overlayUp && overlayUp.style.display === 'block') {
-          const availableUp = hRect.top - cRect.top
-          if (availableUp < 24) {
-            overlayUp.style.display = 'none'
-            overlayUp.replaceChildren()
-          } else {
-            overlayUp.style.left = hRect.left + 'px'
-            overlayUp.style.width = hRect.width + 'px'
-            overlayUp.style.bottom = (layoutH - hRect.top - overlapUp) + 'px'
-            overlayUp.style.maxHeight = (availableUp + overlapUp) + 'px'
+          const overlayUp = document.getElementById('hs-mc-reply-stack')
+          if (overlayUp && overlayUp.style.display === 'block') {
+            const availableUp = hRect.top - cRect.top
+            if (availableUp < 24) {
+              overlayUp.style.display = 'none'
+              overlayUp.replaceChildren()
+            } else {
+              overlayUp.style.left = hRect.left + 'px'
+              overlayUp.style.width = hRect.width + 'px'
+              overlayUp.style.bottom = (layoutH - hRect.top - overlapUp) + 'px'
+              overlayUp.style.maxHeight = (availableUp + overlapUp) + 'px'
+            }
           }
-        }
-        const overlayDown = document.getElementById('hs-mc-reply-stack-down')
-        if (overlayDown && overlayDown.style.display === 'block') {
-          const availableDown = cRect.bottom - hRect.bottom
-          if (availableDown < 24) {
-            overlayDown.style.display = 'none'
-            overlayDown.replaceChildren()
-          } else {
-            overlayDown.style.left = hRect.left + 'px'
-            overlayDown.style.width = hRect.width + 'px'
-            overlayDown.style.top = (hRect.bottom - overlapDown) + 'px'
-            overlayDown.style.maxHeight = (availableDown + overlapDown) + 'px'
+          const overlayDown = document.getElementById('hs-mc-reply-stack-down')
+          if (overlayDown && overlayDown.style.display === 'block') {
+            const availableDown = cRect.bottom - hRect.bottom
+            if (availableDown < 24) {
+              overlayDown.style.display = 'none'
+              overlayDown.replaceChildren()
+            } else {
+              overlayDown.style.left = hRect.left + 'px'
+              overlayDown.style.width = hRect.width + 'px'
+              overlayDown.style.top = (hRect.bottom - overlapDown) + 'px'
+              overlayDown.style.maxHeight = (availableDown + overlapDown) + 'px'
+            }
           }
-        }
+        })
       }
       msgsEl.addEventListener('scroll', repositionStack, { passive: true, signal: mcSignal })
       window.addEventListener('resize', () => { if (_stackActiveRow) dismissStack() }, { passive: true, signal: mcSignal })
@@ -29426,11 +29520,12 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       ])
     }
 
-    // Merge follow stream events into every tab (went live, switched game,
-    // went offline). fairMerge's full sort below puts everything at its
-    // correct chronological position regardless of insertion order, so we
-    // just append missing events here and let the sort handle placement.
-    if (activityEvents.length > 0 && msgs.length > 0) {
+    // Merge follow stream events into channel + live tabs (went live,
+    // switched game, went offline). Skip mentions: it's reserved for actual
+    // @-mentions of the user, not followed-channel stream events. fairMerge's
+    // full sort below puts everything at its correct chronological position
+    // regardless of insertion order.
+    if (id !== 'mentions' && activityEvents.length > 0 && msgs.length > 0) {
       const existingTexts = new Set(msgs.filter(m => m.type === 'stream-event').map(m => m.text))
       const missing = activityEvents.filter(e =>
         e.eventClass?.includes('event-follow') && !existingTexts.has(e.text)

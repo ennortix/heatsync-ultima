@@ -360,6 +360,7 @@ class IRC {
         if (m.subMonths) { try { trackSubTenure(ch, m.user, m.subMonths) } catch {} }
         buf.push(m)
       }
+      try { _dropAllTabCaches() } catch {}
       if (currentTab === ch || (currentTab === 'live' && getLiveChannel() === ch)) {
         renderMessages(currentTab)
       }
@@ -392,6 +393,7 @@ class IRC {
           buf.push(m)
         }
         log('BG history hydrated:', resp.msgs.length, 'msgs for', ch)
+        try { _dropAllTabCaches() } catch {}
         if (currentTab === ch || (currentTab === 'live' && getLiveChannel() === ch)) {
           renderMessages(currentTab)
         }
@@ -759,6 +761,7 @@ class KickChat {
         }
         hydrated = true
         log('Kick BG history hydrated:', resp.msgs.length, 'msgs for', kickUsername)
+        try { _dropAllTabCaches() } catch {}
         if (currentTab === kickUsername || (currentTab === 'live' && getLiveChannel() === kickUsername)) {
           renderMessages(currentTab)
         }

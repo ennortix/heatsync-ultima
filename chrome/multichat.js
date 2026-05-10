@@ -10203,6 +10203,7 @@ class IRC {
         if (m.subMonths) { try { trackSubTenure(ch, m.user, m.subMonths) } catch {} }
         buf.push(m)
       }
+      try { _dropAllTabCaches() } catch {}
       if (currentTab === ch || (currentTab === 'live' && getLiveChannel() === ch)) {
         renderMessages(currentTab)
       }
@@ -10235,6 +10236,7 @@ class IRC {
           buf.push(m)
         }
         log('BG history hydrated:', resp.msgs.length, 'msgs for', ch)
+        try { _dropAllTabCaches() } catch {}
         if (currentTab === ch || (currentTab === 'live' && getLiveChannel() === ch)) {
           renderMessages(currentTab)
         }
@@ -10602,6 +10604,7 @@ class KickChat {
         }
         hydrated = true
         log('Kick BG history hydrated:', resp.msgs.length, 'msgs for', kickUsername)
+        try { _dropAllTabCaches() } catch {}
         if (currentTab === kickUsername || (currentTab === 'live' && getLiveChannel() === kickUsername)) {
           renderMessages(currentTab)
         }
@@ -17424,6 +17427,7 @@ function commitPacedYtMsg(targetChannelId, ytMsg) {
   if (currentTab === tabId) {
     if (!appendMessage(ytMsg, tabId)) renderMessages(tabId)
   } else {
+    appendToCachedTab(ytMsg, tabId)
     updateTabIndicator(tabId)
   }
 }
@@ -17705,6 +17709,7 @@ function listenForSocialEvents() {
           bumpSeen('mentions')
           if (!appendMessage(ytMsg, 'mentions')) renderMessages('mentions')
         } else {
+          appendToCachedTab(ytMsg, 'mentions')
           updateTabIndicator('mentions')
         }
       }
@@ -24139,6 +24144,195 @@ const STORAGE_KEY = 'heatsync_multichat';
     }
   }
 
+  // ============================================
+  // PER-TAB DOM CACHE — flash-free tab/channel switches
+  // Snapshot the active tab's children + indexes into a DocumentFragment when
+  // leaving; restore when returning. New messages arriving for an inactive tab
+  // append to its cached fragment so on switch-back the content is already
+  // up-to-date — no teardown→rebuild cycle, no image-load flicker, no zebra
+  // resettle.
+  // ============================================
+  const _tabCache = new Map() // tabId → { frag, msgKeyIndex, uidIndex, mentionIndex }
+  const TAB_CACHE_DOM_CAP = 500
+  try { document.documentElement.dataset.hsTabCacheV1 = '1' } catch {}
+
+  function _isChatTab(id) {
+    if (!id) return false
+    if (id === 'live' || id === 'mentions') return true
+    if (id === 'feed' || id === 'whispers' || id === 'discover' ||
+        id === 'pinned' || id === 'settings' || id === 'add') return false
+    return true // per-channel tab
+  }
+
+  function _dropTabCache(tabId) {
+    _tabCache.delete(tabId)
+  }
+
+  function _dropAllTabCaches() {
+    _tabCache.clear()
+  }
+
+  function snapshotTabState(tabId) {
+    if (!_isChatTab(tabId)) return
+    const msgsEl = document.getElementById('hs-mc-messages')
+    if (!msgsEl) return
+    if (!msgsEl.firstChild) {
+      _tabCache.delete(tabId)
+      return
+    }
+    // Capture scroll state BEFORE detaching children — once moved to a frag
+    // the host's scrollHeight resets to 0 and the snapshot is useless.
+    const scrollTop = msgsEl.scrollTop
+    const scrollHeight = msgsEl.scrollHeight
+    const clientHeight = msgsEl.clientHeight
+    const atBottom = !isScrolledUp || (scrollHeight - clientHeight - scrollTop) < 8
+    const frag = document.createDocumentFragment()
+    while (msgsEl.firstChild) frag.appendChild(msgsEl.firstChild)
+    const msgKeyIndex = new Set(_msgKeyIndex)
+    const uidIndex = new Map()
+    for (const [k, v] of _uidIndex) uidIndex.set(k, new Set(v))
+    const mentionIndex = new Map()
+    for (const [k, v] of _mentionIndex) mentionIndex.set(k, new Set(v))
+    _tabCache.set(tabId, {
+      frag, msgKeyIndex, uidIndex, mentionIndex,
+      scrollTop, scrollHeight, clientHeight, atBottom,
+      isScrolledUp, newMessageCount,
+    })
+    _msgKeyIndex.clear()
+    _uidIndex.clear()
+    _mentionIndex.clear()
+  }
+
+  function restoreTabState(tabId) {
+    _msgKeyIndex.clear()
+    _uidIndex.clear()
+    _mentionIndex.clear()
+    if (!_isChatTab(tabId)) return false
+    const cache = _tabCache.get(tabId)
+    if (!cache) return false
+    const msgsEl = document.getElementById('hs-mc-messages')
+    if (!msgsEl) return false
+    msgsEl.appendChild(cache.frag)
+    for (const k of cache.msgKeyIndex) _msgKeyIndex.add(k)
+    for (const [k, v] of cache.uidIndex) _uidIndex.set(k, new Set(v))
+    for (const [k, v] of cache.mentionIndex) _mentionIndex.set(k, new Set(v))
+    // Restore scroll state. If the user was at-bottom, re-pin to bottom (new
+    // arrivals appended while detached push the bottom further down). If they
+    // were scrolled up reading old msgs, restore exact scrollTop and the
+    // newMessageCount badge so the resume context is preserved.
+    const newBtn = document.getElementById('hs-mc-new-msgs')
+    if (cache.atBottom) {
+      isScrolledUp = false
+      newMessageCount = 0
+      if (newBtn) newBtn.style.display = 'none'
+      // Defer scroll to after layout flush so scrollHeight reflects appended frag
+      cleanup.raf(() => { try { msgsEl.scrollTop = msgsEl.scrollHeight + 10000 } catch {} })
+    } else {
+      isScrolledUp = true
+      newMessageCount = cache.newMessageCount || 0
+      if (newBtn) {
+        if (newMessageCount > 0) {
+          newBtn.replaceChildren()
+          const arrow = document.createElement('span')
+          arrow.className = 'hs-arrow-down'
+          arrow.textContent = '▼'
+          newBtn.append(arrow, ' ' + String(newMessageCount) + ' new')
+          newBtn.style.display = 'flex'
+        } else {
+          newBtn.style.display = 'none'
+        }
+      }
+      cleanup.raf(() => { try { msgsEl.scrollTop = cache.scrollTop } catch {} })
+    }
+    _tabCache.delete(tabId) // entry is now empty (children moved out); next snapshot rebuilds
+    return true
+  }
+
+  // Fan a stream event into every inactive tab whose channel matches, so
+  // their caches stay hot. Active tab is handled by the caller's normal
+  // appendMessage path.
+  function fanStreamEventToCaches(evt, channel) {
+    if (!evt || !channel) return
+    const ch = String(channel).toLowerCase()
+    try {
+      if (currentTab !== 'live' && typeof isLiveChannelMessage === 'function' && isLiveChannelMessage({ channel: ch })) {
+        appendToCachedTab(evt, 'live')
+      }
+    } catch {}
+    if (!Array.isArray(config?.channels)) return
+    for (const c of config.channels) {
+      if (!c?.id || c.id === currentTab) continue
+      const tw = c.twitch?.toLowerCase()
+      const ki = c.kick?.toLowerCase()
+      if (tw === ch || ki === ch) appendToCachedTab(evt, c.id)
+    }
+  }
+
+  // Append a message to a tab that's NOT currently visible. Builds the div,
+  // inserts into the cached fragment, maintains cached indexes + cap.
+  // Returns true if cached, false if no cache exists (no-op — buffer holds it,
+  // first switch into the tab will full-build).
+  function appendToCachedTab(msg, tabId) {
+    if (!_isChatTab(tabId)) return false
+    if (tabId === currentTab) return false // active tab uses appendMessage
+    const cache = _tabCache.get(tabId)
+    if (!cache) return false
+    // Multi-platform tabs need fairMerge — raw appends break proportional
+    // interleave. Drop the cache; force full rebuild on next visit.
+    try { if (typeof isMultiPlatformTab === 'function' && isMultiPlatformTab(tabId)) { _tabCache.delete(tabId); return true } } catch {}
+    if (msg.platform && typeof isPlatformFilterTab === 'function' && isPlatformFilterTab(tabId)) {
+      const k = msg.platform === 'youtube' ? 'youtube' : msg.platform
+      try { if (getPlatformFilter(tabId)[k] === false) return true } catch {}
+    }
+    const msgKeyStr = `${_renderEpoch}:${stableMsgId(msg)}`
+    if (cache.msgKeyIndex.has(msgKeyStr)) return true
+    let div
+    try { div = buildMessageDiv(msg, tabId) } catch { return false }
+    if (!div) return false
+    div.dataset.msgKey = msgKeyStr
+    if (zebraEnabled && msg.type !== 'stream-event' && msg.type !== 'feed-post' && msg.type !== 'inline-dm') {
+      const prev = cache.frag.lastElementChild
+      const prevZ = prev?.classList.contains('hs-mc-zebra') === true
+      if (!prevZ) div.classList.add('hs-mc-zebra')
+    }
+    cache.frag.appendChild(div)
+    cache.msgKeyIndex.add(msgKeyStr)
+    const uid = div.dataset?.uid
+    if (uid) {
+      let s = cache.uidIndex.get(uid)
+      if (!s) { s = new Set(); cache.uidIndex.set(uid, s) }
+      s.add(div)
+    }
+    const mentions = div.querySelectorAll('a.hs-mc-mention[data-uid]')
+    for (const m of mentions) {
+      const muid = m.dataset.uid
+      if (!muid) continue
+      let ms = cache.mentionIndex.get(muid)
+      if (!ms) { ms = new Set(); cache.mentionIndex.set(muid, ms) }
+      ms.add(m)
+    }
+    while (cache.frag.children.length > TAB_CACHE_DOM_CAP) {
+      const old = cache.frag.firstElementChild
+      if (!old) break
+      const oldKey = old.dataset?.msgKey
+      if (oldKey) cache.msgKeyIndex.delete(oldKey)
+      const oldUid = old.dataset?.uid
+      if (oldUid) {
+        const s = cache.uidIndex.get(oldUid)
+        if (s) { s.delete(old); if (!s.size) cache.uidIndex.delete(oldUid) }
+      }
+      const oldMentions = old.querySelectorAll('a.hs-mc-mention[data-uid]')
+      for (const m of oldMentions) {
+        const muid = m.dataset.uid
+        if (!muid) continue
+        const ms = cache.mentionIndex.get(muid)
+        if (ms) { ms.delete(m); if (!ms.size) cache.mentionIndex.delete(muid) }
+      }
+      old.remove()
+    }
+    return true
+  }
+
   // mentionsSeenCount removed — mentions unread is now driven by
   // seen-state.js (server-backed seenAt.mentions vs client-tracked
   // latestAt.mentions). See bumpSeen('mentions') / noteSeenEvent('mentions').
@@ -25782,6 +25976,14 @@ const STORAGE_KEY = 'heatsync_multichat';
 
       // Reply-chain stack overlay — viewport-bounded stack of all parents above hovered row
       let _stackActiveRow = null
+      // Live-extend bookkeeping: when a new reply arrives whose replyTo matches
+      // the bottommost id of the current descendant chain, append it to the
+      // down-stack so the user sees the new message slide into the olive zebra
+      // without breaking hover.
+      let _stackTailId = ''
+      let _stackChannel = ''
+      let _stackPlatform = ''
+      let _stackOwnId = ''
       // Layout-shift gate: chat auto-scroll on a new message slides a different
       // row under a stationary cursor; the browser fires synthetic mouseover
       // events for the new element. Compare cursor coords to the previous
@@ -25838,6 +26040,10 @@ const STORAGE_KEY = 'heatsync_multichat';
         if (overlay) {
           overlay.style.display = 'none'
           overlay.replaceChildren()
+          overlay.dataset.expanded = ''
+          overlay.style.overflowY = ''
+          overlay.style.overscrollBehavior = ''
+          overlay._fullChain = null
         }
         const overlayDown = document.getElementById('hs-mc-reply-stack-down')
         if (overlayDown) {
@@ -25851,6 +26057,10 @@ const STORAGE_KEY = 'heatsync_multichat';
           })
         }
         _stackActiveRow = null
+        _stackTailId = ''
+        _stackChannel = ''
+        _stackPlatform = ''
+        _stackOwnId = ''
       }
       const lookupMsgById = (channel, platform, id) => {
         if (!id) return null
@@ -25939,11 +26149,25 @@ const STORAGE_KEY = 'heatsync_multichat';
       // has overflow:hidden and isn't a scroll target — so the user feels
       // the chat "lock up" mid-scroll.
       const forwardWheelToMsgs = (ev) => {
+        // Expanded up-stack scrolls inside the overlay — let native wheel run
+        // (CSS overscroll-behavior:contain blocks chaining at the edge).
+        if (ev.currentTarget && ev.currentTarget.dataset?.expanded === '1') return
         if (isStaticTab()) return
+        // Re-fetch the live msgsEl every wheel — the closure-captured ref can
+        // become a detached node if the overlay HTML is ever rebuilt (SPA nav,
+        // settings reload). Writing to a detached node is a silent no-op which
+        // looks to the user like "scroll is broken when hovering a reply
+        // thread" — wheel preventDefault fires but chat never moves.
+        const liveMsgsEl = document.getElementById('hs-mc-messages') || msgsEl
+        if (!liveMsgsEl) return
         ev.preventDefault()
         _userInputScroll = true
         if (ev.deltaY < 0) setPaused(true)
-        msgsEl.scrollTop += ev.deltaY
+        // scrollBy honors deltaMode (lines/pages/pixels) so high-DPI mice and
+        // line-mode wheels feel native. The += assignment treated everything
+        // as pixels.
+        const px = ev.deltaMode === 1 ? ev.deltaY * 16 : ev.deltaMode === 2 ? ev.deltaY * liveMsgsEl.clientHeight : ev.deltaY
+        liveMsgsEl.scrollTop += px
       }
       const ensureStackOverlay = () => {
         let el = document.getElementById('hs-mc-reply-stack')
@@ -25957,16 +26181,25 @@ const STORAGE_KEY = 'heatsync_multichat';
           const chip = ev.target.closest('.hs-mc-reply-stack-chip')
           if (!chip) return
           ev.preventDefault()
-          const targetId = chip.dataset.targetId
-          if (targetId) {
-            const target = msgsEl.querySelector(`.hs-mc-msg[data-msg-id="${CSS.escape(targetId)}"]`)
-            if (target) {
-              target.scrollIntoView({ block: 'center', behavior: 'smooth' })
-              target.classList.add('hs-mc-thread-flash')
-              cleanup.setTimeout(() => target.classList.remove('hs-mc-thread-flash'), 1200)
-            }
+          ev.stopPropagation()
+          // Expand inline: render the full chain into the up overlay and
+          // turn it into a scrollable popover. User reads all parents in
+          // place, no chat jump, hover stays alive.
+          const chain = el._fullChain
+          if (!chain || !chain.length) return
+          el.replaceChildren()
+          el.dataset.expanded = '1'
+          el.style.overflowY = 'auto'
+          el.style.overscrollBehavior = 'contain'
+          for (let i = 0; i < chain.length; i++) {
+            const row = buildMessageDiv(chain[i], currentTab)
+            if (!row) continue
+            row.classList.add('hs-mc-reply-stack-row')
+            el.insertBefore(row, el.firstChild)
           }
-          dismissStack()
+          // Pin to bottom — immediate parent (closest to active row) visible
+          // first, oldest scroll-up.
+          el.scrollTop = el.scrollHeight
         }, { signal: mcSignal })
         return el
       }
@@ -26008,6 +26241,10 @@ const STORAGE_KEY = 'heatsync_multichat';
         if (chain.length && availableUp >= 24) {
           const overlay = ensureStackOverlay()
           overlay.replaceChildren()
+          overlay.dataset.expanded = ''
+          overlay.style.overflowY = ''
+          overlay.style.overscrollBehavior = ''
+          overlay._fullChain = chain
           overlay.style.position = 'fixed'
           overlay.style.left = hRect.left + 'px'
           overlay.style.width = hRect.width + 'px'
@@ -26080,6 +26317,14 @@ const STORAGE_KEY = 'heatsync_multichat';
           hoveredEl.classList.add('hs-mc-reply-stack-active')
         })
         _stackActiveRow = hoveredEl
+        // Tail = id of the actual chain tail (the deepest known descendant) so
+        // new replies whose replyTo matches it slot in below. If descChain was
+        // overflow-clipped, the tail is still the buffer's deepest descendant
+        // — live appends roll the visible window forward.
+        _stackTailId = descChain.length ? (descChain[descChain.length - 1].id || '') : (ownId || '')
+        _stackChannel = (channel || '').toLowerCase()
+        _stackPlatform = platform || ''
+        _stackOwnId = ownId || ''
       }
 
       msgsEl.addEventListener('mouseover', (e) => {
@@ -26182,6 +26427,66 @@ const STORAGE_KEY = 'heatsync_multichat';
       }
       msgsEl.addEventListener('scroll', repositionStack, { passive: true, signal: mcSignal })
       window.addEventListener('resize', () => { if (_stackActiveRow) dismissStack() }, { passive: true, signal: mcSignal })
+
+      // Live-extend the down-stack: when a new chat row is appended whose
+      // replyTo id matches the current chain tail, mirror it into the down
+      // overlay so the user sees it slot into the olive zebra without losing
+      // hover. If the overlay is full, drop oldest rows from the top of the
+      // down stack (closest to active row) so the latest reply stays visible
+      // — same behavior chat itself has at-bottom.
+      const tryExtendStack = (newDiv) => {
+        if (!_stackActiveRow || !_stackActiveRow.isConnected) return
+        if (!_stackTailId) return
+        const replyId = newDiv.dataset.replyId || ''
+        if (replyId !== _stackTailId) return
+        const newMsgId = newDiv.dataset.msgId || ''
+        if (!newMsgId) return
+        const msgChannel = (newDiv.dataset.msgChannel || '').toLowerCase()
+        const msgPlatform = newDiv.dataset.msgPlatform || ''
+        if (msgChannel !== _stackChannel || msgPlatform !== _stackPlatform) return
+        const m = lookupMsgById(msgChannel, msgPlatform, newMsgId)
+        if (!m) return
+        const overlay = ensureStackOverlayDown()
+        const cRect = msgsEl.getBoundingClientRect()
+        const hRect = _stackActiveRow.getBoundingClientRect()
+        if (hRect.bottom < cRect.top || hRect.top > cRect.bottom) return
+        if (!_stackStyleCache || _stackStyleCache.row !== _stackActiveRow) refreshStackStyleCache(_stackActiveRow)
+        const { overlapDown } = _stackStyleCache
+        const availableDown = cRect.bottom - hRect.bottom
+        if (availableDown < 24) return
+        const maxH = availableDown + overlapDown
+        overlay.style.position = 'fixed'
+        overlay.style.left = hRect.left + 'px'
+        overlay.style.width = hRect.width + 'px'
+        overlay.style.top = (hRect.bottom - overlapDown) + 'px'
+        overlay.style.maxHeight = maxH + 'px'
+        overlay.style.display = 'block'
+        const row = buildMessageDiv(m, currentTab)
+        if (!row) return
+        row.classList.add('hs-mc-reply-stack-row')
+        overlay.appendChild(row)
+        while (overlay.scrollHeight > maxH && overlay.firstElementChild && overlay.firstElementChild !== row) {
+          overlay.removeChild(overlay.firstElementChild)
+        }
+        if (overlay.scrollHeight > maxH) {
+          overlay.removeChild(row)
+          if (!overlay.firstElementChild) overlay.style.display = 'none'
+          return
+        }
+        _stackTailId = newMsgId
+      }
+      const _liveStackObs = new MutationObserver((muts) => {
+        if (!_stackActiveRow) return
+        for (const mut of muts) {
+          for (const node of mut.addedNodes) {
+            if (node.nodeType !== 1) continue
+            if (!node.classList || !node.classList.contains('hs-mc-msg')) continue
+            tryExtendStack(node)
+          }
+        }
+      })
+      _liveStackObs.observe(msgsEl, { childList: true })
+      cleanup.trackObserver(_liveStackObs)
     }, 100);
 
     // Search bar wiring — debounce 250ms then call /api/search
@@ -27372,6 +27677,12 @@ const STORAGE_KEY = 'heatsync_multichat';
     const isChatTab = active === 'live' || active === 'mentions' ||
       config.channels.some(ch => ch.id === active)
     if (isChatTab) appendMessage(msg, active)
+    // Fan into inactive chat-tab caches so they stay hot for instant switch
+    if (active !== 'live') appendToCachedTab(msg, 'live')
+    for (const ch of config.channels) {
+      if (!ch?.id || ch.id === active) continue
+      appendToCachedTab(msg, ch.id)
+    }
   }
 
   // WYSIWYG setting
@@ -28616,6 +28927,10 @@ const STORAGE_KEY = 'heatsync_multichat';
       if (feedTabBtn) feedTabBtn.textContent = t('mc_tab_feed');
     }
     if (currentTab !== 'settings') prevTab = currentTab;
+    // Snapshot the outgoing tab's DOM into the cache so a future switch back
+    // restores it instantly (no rebuild). Skipped for static tabs which manage
+    // their own DOM. Must run BEFORE currentTab flips.
+    snapshotTabState(currentTab);
     currentTab = id;
     markTabSeen(id);
 
@@ -28734,6 +29049,11 @@ const STORAGE_KEY = 'heatsync_multichat';
       // input is back so the CSS bottom-padding-for-input-bar reapplies
       if (inputBarVisible) overlayElement.style.bottom = ''
       else overlayElement.style.bottom = '0'
+      // Restore cached fragment for the incoming tab if we have one. The
+      // existing renderMessages diff then operates against pre-painted DOM —
+      // most diffs become no-ops (cache stayed hot via appendToCachedTab),
+      // worst case it adds a few late arrivals.
+      restoreTabState(id);
       renderMessages(id);
     } else {
       log('No overlay element to show!');
@@ -29472,6 +29792,10 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     clearBuf(mentionsBuffer);
     for (const msgs of channelYtMessages.values()) clearBuf(msgs);
     _renderEpoch++;
+    // Tab caches are keyed by old epoch — drop them all so next switch
+    // rebuilds at the new epoch instead of restoring stale-keyed children
+    // that the diff would immediately wipe.
+    _dropAllTabCaches();
   }
 
   // Merge multiple platform sources into ~150 messages with proportional
@@ -30194,6 +30518,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     const ch = getChannelById(tabId);
     config.channels = config.channels.filter(c => c.id !== tabId);
     saveConfig();
+    _dropTabCache(tabId);
 
     const twitchName = ch?.twitch;
     if (twitchName) irc?.part(twitchName);
@@ -30645,6 +30970,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       if (liveChannel && !liveSet.has(liveChannel)) {
         liveChannel = null;
         updateLiveTabLabel();
+        _dropTabCache('live');
         if (currentTab === 'live') renderMessages('live');
       }
 
@@ -30861,6 +31187,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     const tabId = entry.id;
     // Reset liveChannel override — live is no longer the sticky tab.
     liveChannel = null;
+    _dropTabCache('live');
     switchTab(tabId);
   }
 
@@ -31992,6 +32319,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
             }
           }
         }
+        fanStreamEventToCaches(evt, channel)
       }
     });
 
@@ -32681,6 +33009,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
           bumpSeen('mentions');
           if (!appendMessage(msg, 'mentions')) renderMessages('mentions');
         } else {
+          appendToCachedTab(msg, 'mentions');
           updateTabIndicator('mentions');
         }
       }
@@ -32691,6 +33020,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       if (tabId && currentTab === tabId) {
         if (!appendMessage(msg, tabId)) renderMessages(tabId);
       } else if (tabId) {
+        appendToCachedTab(msg, tabId);
         updateTabIndicator(tabId);
         if (isMent) updateTabMentionIndicator(tabId)
       }
@@ -32700,6 +33030,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
         if (currentTab === 'live') {
           if (!appendMessage(msg, 'live')) renderMessages('live');
         } else {
+          appendToCachedTab(msg, 'live');
           updateTabIndicator('live');
           if (isMent) updateTabMentionIndicator('live')
         }
@@ -32734,6 +33065,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
           bumpSeen('mentions');
           if (!appendMessage(msg, 'mentions')) renderMessages('mentions');
         } else {
+          appendToCachedTab(msg, 'mentions');
           updateTabIndicator('mentions');
         }
       }
@@ -32744,6 +33076,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       if (tabId && currentTab === tabId) {
         if (!appendMessage(msg, tabId)) renderMessages(tabId);
       } else if (tabId) {
+        appendToCachedTab(msg, tabId);
         updateTabIndicator(tabId);
         if (isMent) updateTabMentionIndicator(tabId)
       }
@@ -32753,6 +33086,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
         if (currentTab === 'live') {
           if (!appendMessage(msg, 'live')) renderMessages('live');
         } else {
+          appendToCachedTab(msg, 'live');
           updateTabIndicator('live');
           if (isMent) updateTabMentionIndicator('live')
         }
@@ -32896,6 +33230,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
             }
           }
         }
+        fanStreamEventToCaches(evt, channel)
       });
     }
 
@@ -32990,6 +33325,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
           }
         }
       }
+      fanStreamEventToCaches(evt, channel)
     }, { signal: mcSignal })
 
     // Handle follow-driven stream events (from followed channels not currently viewed)
@@ -33081,6 +33417,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
             }
           }
         }
+        fanStreamEventToCaches(evt, channel)
       });
     }
 
@@ -33464,6 +33801,11 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
   // a single empty frame.
   function softTwitchNav() {
     const container = document.getElementById('hs-mc-container');
+    // SPA nav changes the URL channel — every cached chat tab fragment is now
+    // potentially stale (live shows different channel; per-channel tabs may
+    // have new msgs from the just-joined IRC). Drop all caches so the next
+    // tab switch builds cleanly from the buffer.
+    try { _dropAllTabCaches() } catch {}
     // Mark body for the entire transition window so the CSS guard hides any
     // native chat-shell children that paint during Twitch's teardown/remount.
     document.body.classList.add('hs-mc-navigating');
@@ -33544,6 +33886,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
   // chatroom once it appears (channel pages).
   function softKickNav() {
     const container = document.getElementById('hs-mc-container');
+    try { _dropAllTabCaches() } catch {}
     document.body.classList.add('hs-mc-navigating');
     if (container && container.parentElement && container.parentElement !== document.body) {
       document.body.appendChild(container);

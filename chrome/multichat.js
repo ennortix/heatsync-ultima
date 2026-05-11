@@ -4343,17 +4343,72 @@ function injectStyles() {
     [data-test-selector="chat-private-callout-queue__callout-container"] button[aria-label="pinned"] {
       display: none !important;
     }
+    /* Flatten the callout to a single tight row — minimal vertical footprint */
+    [data-test-selector="chat-private-callout-queue__callout-container"] .pinned-callout {
+      display: flex !important;
+      flex-direction: row !important;
+      align-items: center !important;
+      gap: 8px !important;
+      padding: 4px 8px !important;
+      min-height: 0 !important;
+      line-height: 1.2 !important;
+    }
+    /* All descendants flatten to inline + clip overflow so multi-line text
+       collapses to a single line. Buttons keep their own padding. */
+    [data-test-selector="chat-private-callout-queue__callout-container"] .pinned-callout > * {
+      margin: 0 !important;
+    }
+    [data-test-selector="chat-private-callout-queue__callout-container"] .pinned-callout :is(div, span, p):not(:has(button)) {
+      display: inline !important;
+      font-size: 12px !important;
+      line-height: 1.2 !important;
+      white-space: nowrap !important;
+      overflow: hidden !important;
+      text-overflow: ellipsis !important;
+    }
+    /* Wrapping container that holds text — keep flex but flatten */
+    [data-test-selector="chat-private-callout-queue__callout-container"] .pinned-callout > div:has(div, span, p) {
+      display: flex !important;
+      flex: 1 1 auto !important;
+      min-width: 0 !important;
+      gap: 6px !important;
+      align-items: center !important;
+      overflow: hidden !important;
+    }
+    /* Icon container — fixed small size */
+    [data-test-selector="chat-private-callout-queue__callout-container"] .pinned-callout__icon {
+      flex: 0 0 auto !important;
+      width: 16px !important;
+      height: 16px !important;
+      display: flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+    }
+    [data-test-selector="chat-private-callout-queue__callout-container"] .pinned-callout__icon * {
+      width: 16px !important;
+      height: 16px !important;
+      font-size: 14px !important;
+    }
+    /* Tighten Share button */
+    [data-test-selector="chat-private-callout-queue__callout-container"] [data-a-target="chat-private-callout__primary-button"] {
+      padding: 2px 10px !important;
+      font-size: 12px !important;
+      min-height: 0 !important;
+      height: auto !important;
+      line-height: 1.4 !important;
+    }
     .hs-mc-callout-close {
       background: transparent;
       border: none;
       color: #fff;
       cursor: pointer;
-      font-size: 14px;
+      font-size: 12px;
       font-weight: 600;
-      padding: 4px 10px;
-      margin-left: 6px;
+      padding: 2px 6px;
+      margin-left: 0;
       line-height: 1;
       border-radius: 2px;
+      flex: 0 0 auto;
     }
     .hs-mc-callout-close:hover {
       background: #fff;

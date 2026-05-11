@@ -756,6 +756,171 @@ function injectStyles() {
       background: #000 !important;
     }
 
+    /* === GOD-TIER NOTIF LAYERS (HsNotifs) ===
+       Layer containers are positioned via CSS vars set by HsNotifs.updateLayout.
+       Adding a new layer = registerLayer(name, ...) + matching CSS rule below. */
+    .hs-notif-layer {
+      position: fixed;
+      z-index: 100000;
+      pointer-events: none;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      overflow: hidden;
+      min-width: 0;
+    }
+    .hs-notif-layer > .hs-notif {
+      pointer-events: auto;
+      box-sizing: border-box;
+      max-width: 100%;
+      min-width: 0;
+      overflow: hidden;
+    }
+    .hs-notif-layer-toast-stack {
+      bottom: var(--hs-layer-toast-stack-bottom, 70px);
+      right: var(--hs-layer-toast-stack-right, 20px);
+      align-items: flex-end;
+    }
+    .hs-notif-layer-chat-docked-bottom {
+      bottom: var(--hs-layer-chat-docked-bottom-bottom, 0px);
+      left: var(--hs-layer-chat-docked-bottom-left, 0px);
+      right: var(--hs-layer-chat-docked-bottom-right, 0px);
+    }
+    .hs-notif-layer-chat-docked-top {
+      top: var(--hs-layer-chat-docked-top-top, 0px);
+      left: var(--hs-layer-chat-docked-top-left, 0px);
+      right: var(--hs-layer-chat-docked-top-right, 0px);
+    }
+    /* Default notif body — types override per className. container-type makes
+       the notif queryable so progressive collapse rules fire on its own width
+       (not viewport) — narrow chat → smaller font → hide icon → button-only. */
+    .hs-notif {
+      display: flex;
+      flex-direction: row;
+      align-items: center;
+      gap: 8px;
+      padding: 4px 8px;
+      background: #18181b;
+      color: #fff;
+      font: 12px/1.2 'Courier New', Courier, monospace;
+      container-type: inline-size;
+    }
+    /* Body wrapper — sole shrinkable child of .hs-notif. flex-basis:0 lets
+       it ignore content width when computing layout, so the actions next to
+       it always render at their natural content size first; body absorbs the
+       rest, ellipsifying if needed. */
+    .hs-notif-body {
+      flex: 1 1 0;
+      min-width: 0;
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      min-height: 0;
+    }
+    .hs-notif-actions {
+      display: inline-flex;
+      gap: 4px;
+      flex: 0 0 auto;
+      margin-left: auto;
+    }
+    .hs-notif-action {
+      max-width: 100%;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .hs-notif-action {
+      background: transparent;
+      color: #fff;
+      border: 1px solid #808080;
+      padding: 2px 10px;
+      font: 600 11px/1.4 inherit;
+      cursor: pointer;
+      border-radius: 0;
+    }
+    .hs-notif-action:hover {
+      background: #fff;
+      color: #000;
+    }
+    .hs-notif-action-primary {
+      background: #ff8700;
+      color: #000;
+      border-color: #ff8700;
+    }
+    .hs-notif-action-primary:hover {
+      background: #fff;
+      color: #000;
+    }
+    .hs-notif-action-dismiss {
+      border: none;
+      padding: 2px 6px;
+      font-size: 14px;
+    }
+    /* Toast type */
+    .hs-notif-toast {
+      background: #000;
+      border: 1px solid #888;
+      padding: 6px 14px;
+      font: bold 12px monospace;
+      pointer-events: none;
+    }
+    .hs-notif-toast-text { color: #888; }
+    .hs-notif-toast-text.hs-notif-toast-success { color: #00d000; }
+    .hs-notif-toast-text.hs-notif-toast-error   { color: #ff4040; }
+    .hs-notif-toast:has(.hs-notif-toast-success) { border-color: #00d000; }
+    .hs-notif-toast:has(.hs-notif-toast-error)   { border-color: #ff4040; }
+    /* Resub-share type */
+    .hs-notif-twitch-resub-share {
+      border-top: 1px solid #ff8700;
+      border-bottom: 1px solid #808080;
+      box-shadow: 0 -2px 8px rgba(0,0,0,0.5);
+    }
+    .hs-notif-resub-body {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex: 1 1 0;
+      min-width: 0;
+      overflow: hidden;
+    }
+    .hs-notif-resub-icon {
+      flex: 0 0 auto;
+      font-size: 14px;
+      color: #ff8700;
+    }
+    .hs-notif-resub-text {
+      flex: 1 1 0;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    /* Progressive shortening — fires off .hs-notif's own width. The Share +
+       ✕ buttons are ALWAYS visible; the message gives up parts of itself
+       (prefix → suffix → " months" abbreviation → icon) to make room.
+       Worst case: just "104mo" + buttons. Never just buttons-only.   */
+    .hs-rt-mo { display: none; }
+    @container (max-width: 280px) {
+      .hs-notif-resub-body { font-size: 11px; }
+      .hs-notif-action { padding: 2px 6px; font-size: 11px; }
+      .hs-rt-prefix { display: none; }
+    }
+    @container (max-width: 220px) {
+      .hs-rt-suffix { display: none; }
+    }
+    @container (max-width: 180px) {
+      .hs-notif-resub-icon { display: none; }
+    }
+    @container (max-width: 140px) {
+      .hs-rt-months { display: none; }
+      .hs-rt-mo { display: inline; }
+    }
+    /* Hide native Twitch resub-share callout queue — HsNotifs renders our own
+       version in the chat-docked-bottom layer with controlled actions. */
+    [data-test-selector="chat-private-callout-queue__callout-container"] {
+      display: none !important;
+    }
+
     /* Twitch private-callout queue (resub-share / sub-anniversary "Share" +
        "Pin to chat" prompt) lives inside .chat-input, which our overlay nukes.
        The :not(:has(...)) exclusions on the hide rules above keep the callout
@@ -770,7 +935,13 @@ function injectStyles() {
       left: var(--hs-callout-left, 0px) !important;
       right: var(--hs-callout-right, 0px) !important;
       width: auto !important;
-      max-width: none !important;
+      /* Hard ceiling on width — backstop in case position:fixed's containing
+         block isn't the viewport (Twitch ancestor with transform/filter/will-
+         change creates a new containing block). max-width is independent of
+         positioning, so even if left/right drift the box can never exceed
+         the chat content width. */
+      max-width: var(--hs-callout-max-width, 100vw) !important;
+      overflow: hidden !important;
       z-index: 100000 !important;
       pointer-events: auto !important;
       background: #18181b !important;
@@ -787,7 +958,9 @@ function injectStyles() {
     [data-test-selector="chat-private-callout-queue__callout-container"] button[aria-label="pinned"] {
       display: none !important;
     }
-    /* Flatten the callout to a single tight row — minimal vertical footprint */
+    /* Flatten the callout to a single tight row — minimal vertical footprint.
+       container-type makes .pinned-callout queryable so we can drop the icon /
+       hide text entirely when chat gets too thin to fit the celebration line. */
     [data-test-selector="chat-private-callout-queue__callout-container"] .pinned-callout {
       display: flex !important;
       flex-direction: row !important;
@@ -796,30 +969,33 @@ function injectStyles() {
       padding: 4px 8px !important;
       min-height: 0 !important;
       line-height: 1.2 !important;
+      min-width: 0 !important;
+      max-width: 100% !important;
+      overflow: hidden !important;
+      container-type: inline-size !important;
     }
-    /* All descendants flatten to inline + clip overflow so multi-line text
-       collapses to a single line. Buttons keep their own padding. */
     [data-test-selector="chat-private-callout-queue__callout-container"] .pinned-callout > * {
       margin: 0 !important;
+      min-width: 0 !important;
     }
+    /* Inline so multiple text spans concatenate; the wrapper handles ellipsis. */
     [data-test-selector="chat-private-callout-queue__callout-container"] .pinned-callout :is(div, span, p):not(:has(button)) {
       display: inline !important;
       font-size: 12px !important;
       line-height: 1.2 !important;
-      white-space: nowrap !important;
+    }
+    /* Text wrapper — single block that ellipsifies when chat narrows.
+       flex: 1 1 0 + min-width: 0 lets it shrink past content width, which is
+       required for text-overflow:ellipsis inside a flex parent. */
+    [data-test-selector="chat-private-callout-queue__callout-container"] .pinned-callout > div:has(div, span, p) {
+      display: block !important;
+      flex: 1 1 0 !important;
+      min-width: 0 !important;
       overflow: hidden !important;
       text-overflow: ellipsis !important;
+      white-space: nowrap !important;
     }
-    /* Wrapping container that holds text — keep flex but flatten */
-    [data-test-selector="chat-private-callout-queue__callout-container"] .pinned-callout > div:has(div, span, p) {
-      display: flex !important;
-      flex: 1 1 auto !important;
-      min-width: 0 !important;
-      gap: 6px !important;
-      align-items: center !important;
-      overflow: hidden !important;
-    }
-    /* Icon container — fixed small size */
+    /* Icon — fixed small size, drop when chat is too thin. */
     [data-test-selector="chat-private-callout-queue__callout-container"] .pinned-callout__icon {
       flex: 0 0 auto !important;
       width: 16px !important;
@@ -833,13 +1009,42 @@ function injectStyles() {
       height: 16px !important;
       font-size: 14px !important;
     }
-    /* Tighten Share button */
+    /* Share button — shrinkable, with internal ellipsis. flex:0 1 auto +
+       min-width:0 lets it compress instead of overflowing when chat narrows. */
     [data-test-selector="chat-private-callout-queue__callout-container"] [data-a-target="chat-private-callout__primary-button"] {
       padding: 2px 10px !important;
       font-size: 12px !important;
       min-height: 0 !important;
       height: auto !important;
       line-height: 1.4 !important;
+      flex: 0 1 auto !important;
+      min-width: 0 !important;
+      max-width: 100% !important;
+      overflow: hidden !important;
+      text-overflow: ellipsis !important;
+      white-space: nowrap !important;
+    }
+    /* Progressive shrink as the chat panel narrows. Container queries fire
+       against .pinned-callout's own width — independent of viewport, so it
+       degrades correctly for narrow chat in any tab-position layout. */
+    @container (max-width: 280px) {
+      [data-test-selector="chat-private-callout-queue__callout-container"] .pinned-callout :is(div, span, p):not(:has(button)) {
+        font-size: 11px !important;
+      }
+      [data-test-selector="chat-private-callout-queue__callout-container"] [data-a-target="chat-private-callout__primary-button"] {
+        padding: 2px 6px !important;
+        font-size: 11px !important;
+      }
+    }
+    @container (max-width: 220px) {
+      [data-test-selector="chat-private-callout-queue__callout-container"] .pinned-callout__icon {
+        display: none !important;
+      }
+    }
+    @container (max-width: 160px) {
+      [data-test-selector="chat-private-callout-queue__callout-container"] .pinned-callout > div:has(div, span, p) {
+        display: none !important;
+      }
     }
     .hs-mc-callout-close {
       background: transparent;
@@ -3002,7 +3207,7 @@ function injectStyles() {
       color: #ff8700;
     }
     .hs-mc-pred-bet-max:hover {
-      background: #ff8700;
+      background: #fff;
       color: #000;
     }
 
@@ -3112,7 +3317,7 @@ function injectStyles() {
       color: #ff8700 !important;
     }
     .hs-mc-pred-resolve-yours:hover {
-      background: #ff8700 !important;
+      background: #fff !important;
       color: #000 !important;
     }
     .hs-mc-pred-mod-row {
@@ -3153,8 +3358,9 @@ function injectStyles() {
       border-color: var(--oc);
     }
     .hs-mc-pred-resolve-btn:hover {
-      background: var(--oc);
+      background: #fff;
       color: #000;
+      border-color: #fff;
     }
 
     /* ═══ Create prediction form ═══ */
@@ -3218,8 +3424,9 @@ function injectStyles() {
       font-weight: 600;
     }
     .hs-mc-pred-create-submit:hover {
-      background: #ff8700;
+      background: #fff;
       color: #000;
+      border-color: #fff;
     }
 
     /* ═══ Polls ═══ */
@@ -3440,8 +3647,9 @@ function injectStyles() {
       font-weight: 600;
     }
     .hs-mc-poll-create-submit:hover {
-      background: #ff8700;
+      background: #fff;
       color: #000;
+      border-color: #fff;
     }
 
     .hs-mc-pred-links {
@@ -3501,8 +3709,13 @@ function injectStyles() {
       cursor: pointer;
       transition: none;
     }
-    .hs-mc-reward-card:hover {
-      background: rgba(255,255,255,0.08);
+    .hs-mc-reward-card:not(.hs-mc-reward-unavailable):hover {
+      background: #fff;
+    }
+    .hs-mc-reward-card:not(.hs-mc-reward-unavailable):hover .hs-mc-reward-title,
+    .hs-mc-reward-card:not(.hs-mc-reward-unavailable):hover .hs-mc-reward-cost,
+    .hs-mc-reward-card:not(.hs-mc-reward-unavailable):hover .hs-mc-reward-reason {
+      color: #000;
     }
     .hs-mc-reward-unavailable {
       opacity: 0.4;
@@ -3660,8 +3873,9 @@ function injectStyles() {
       letter-spacing: 0.3px;
     }
     .hs-mc-mode-btn:hover {
-      background: rgba(255,255,255,0.12);
-      color: #fff;
+      background: #fff;
+      color: #000;
+      border-color: #fff;
     }
     .hs-mc-mode-btn.active {
       background: rgba(0,200,175,0.15);

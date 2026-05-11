@@ -2,31 +2,14 @@
 // Note: all innerHTML usage passes content through escapeHtml() first (see src/lib/utils.js)
 
   function showToast(msg, type) {
-    const existing = document.getElementById('hs-mc-toast');
-    if (existing) existing.remove();
-
-    const border = type === 'success' ? '#00d000'
-      : type === 'error'   ? '#ff4040'
-      : '#888';
-
-    const toast = document.createElement('div');
-    toast.id = 'hs-mc-toast';
-    toast.textContent = msg;
-    toast.style.cssText = `
-      position: fixed;
-      bottom: 70px;
-      right: 20px;
-      background: #000;
-      color: ${border};
-      border: 1px solid ${border};
-      padding: 6px 14px;
-      border-radius: 0;
-      font: bold 12px monospace;
-      z-index: 5000;
-      pointer-events: none;
-    `;
-    document.body.appendChild(cleanup.trackNode(toast));
-    setTimeout(() => toast.remove(), 1500);
+    // Routed through HsNotifs (notifs.js) — single source of truth for layers,
+    // dedup, lifecycle. Adding/removing notif types happens there.
+    try {
+      HsNotifs.emit('toast', { text: msg, level: type })
+    } catch (_) {
+      // Fallback if manager somehow unavailable (shouldn't happen — same IIFE)
+      console.warn('[heatsync-mc]', type || 'info', msg)
+    }
   }
 
   // Badge hover tooltip (4x preview with name)

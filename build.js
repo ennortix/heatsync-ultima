@@ -94,6 +94,7 @@ function readLib() {
 // Read multichat module files (only bundled into multichat.js)
 const MULTICHAT_MODULES = [
   'bootstrap.js',
+  'notifs.js',
   'styles.js',
   'seen-state.js',
   'automod.js',

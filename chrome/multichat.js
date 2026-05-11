@@ -3588,6 +3588,358 @@ const cleanup = {
 }
 
 
+// --- multichat/notifs.js ---
+// Notifs — god-tier notification system.
+//
+// Single source of truth for every popup/toast/callout/banner in multichat.
+// Adding a new notif type is a single registerType call. Layer positioning is
+// computed in ONE place (HsNotifs.updateLayout) instead of scattered CSS-var
+// spew across main.js + styles.js.
+//
+// THREE ABSTRACTIONS
+//
+//   1. Layer  — positioned region of the page (toast-stack, chat-docked-bottom,
+//               chat-docked-top, modal, …). Owns its container element + a
+//               geometry function that returns top/left/right/bottom from the
+//               current overlay/inputbar/tabbar rects. The manager publishes
+//               those values as --hs-layer-{name}-{prop} CSS vars; CSS in
+//               styles.js positions the layer container off them.
+//
+//   2. Type   — declarative notif spec: which layer, render fn, dedupe key,
+//               timeout, action buttons (primary/dismiss/secondary). Each
+//               type is independent; deleting the registerType call removes
+//               the notif from the system entirely.
+//
+//   3. Source — adapter that feeds notifs in. Three flavors:
+//                 direct       HsNotifs.emit('toast', { text, level })
+//                 dom-observer registerType handles its own observer in onInit
+//                 irc-events   subscribe to irc.on('message'), emit on match
+//
+// HOW TO ADD A NEW TYPE (worked example)
+//
+//     HsNotifs.registerType('twitch-raid', {
+//       layer: 'chat-docked-top',
+//       dedupeKey: ({ raidFrom }) => `raid:${raidFrom}`,
+//       timeout: 30000,
+//       render: ({ data }) => {
+//         const el = document.createElement('span')
+//         el.textContent = `${data.raidFrom} raided with ${data.viewers}!`
+//         return el
+//       },
+//       actions: { dismiss: { label: '✕' } },
+//     })
+//     // Then anywhere:
+//     HsNotifs.emit('twitch-raid', { raidFrom: 'someone', viewers: 50 })
+//
+// HOW TO REMOVE — delete the registerType call. Done.
+//
+// LAYER GEOMETRY — main.js's _updateMcLayout calls HsNotifs.updateLayout(ctx)
+// once per layout change. The manager iterates layers and re-publishes their
+// CSS vars. Animations are CSS, not JS.
+
+const HsNotifs = (() => {
+  const layers = new Map()  // name -> { def, current: [], _container }
+  const types = new Map()   // name -> def
+  let _idCounter = 0
+
+  function registerLayer(name, def) {
+    if (layers.has(name)) return
+    layers.set(name, { def: def || {}, current: [], _container: null })
+  }
+
+  function registerType(name, def) {
+    if (!def?.layer) { console.warn('[notifs] type', name, 'missing layer'); return }
+    if (!layers.has(def.layer)) { console.warn('[notifs] type', name, 'unknown layer', def.layer); return }
+    types.set(name, def)
+  }
+
+  function emit(typeName, data) {
+    const t = types.get(typeName)
+    if (!t) { console.warn('[notifs] unknown type', typeName); return null }
+    const l = layers.get(t.layer)
+
+    const key = t.dedupeKey?.(data)
+    if (key) {
+      const existing = l.current.find(n => n.key === key)
+      if (existing) {
+        if (t.dedupePolicy === 'replace') {
+          existing.data = data
+          if (existing.el) _renderInto(existing)
+          return existing.id
+        }
+        return existing.id
+      }
+    }
+
+    if (l.def.stack === 'replace' && l.current.length > 0) {
+      for (const old of [...l.current]) dismiss(old.id)
+    }
+    if (l.def.maxVisible && l.current.length >= l.def.maxVisible) {
+      dismiss(l.current[0].id)
+    }
+
+    const id = `hs-notif-${typeName}-${++_idCounter}`
+    const notif = { id, typeName, type: t, data, key, el: null, _timer: null }
+    _mount(notif, l)
+    return id
+  }
+
+  function dismiss(id) {
+    for (const l of layers.values()) {
+      const idx = l.current.findIndex(n => n.id === id)
+      if (idx >= 0) {
+        const n = l.current[idx]
+        l.current.splice(idx, 1)
+        if (n._timer) clearTimeout(n._timer)
+        try { n.type.onDismiss?.(n.data) } catch (_) {}
+        try { n.el?.remove() } catch (_) {}
+        return true
+      }
+    }
+    return false
+  }
+
+  function dismissByKey(typeName, key) {
+    const t = types.get(typeName)
+    if (!t) return false
+    const l = layers.get(t.layer)
+    const found = l.current.find(n => n.typeName === typeName && n.key === key)
+    return found ? dismiss(found.id) : false
+  }
+
+  function _mount(notif, l) {
+    const container = _ensureContainer(notif.type.layer, l)
+    if (!container) return
+    const wrapper = document.createElement('div')
+    wrapper.className = `hs-notif hs-notif-${notif.typeName}`
+    wrapper.dataset.notifId = notif.id
+    notif.el = wrapper
+    _renderInto(notif)
+    container.appendChild(wrapper)
+    l.current.push(notif)
+    try { notif.type.onMount?.(notif.data, () => dismiss(notif.id)) } catch (_) {}
+    if (notif.type.timeout) {
+      notif._timer = setTimeout(() => dismiss(notif.id), notif.type.timeout)
+    }
+  }
+
+  function _renderInto(notif) {
+    const wrapper = notif.el
+    if (!wrapper) return
+    wrapper.textContent = ''
+    const dismissFn = () => dismiss(notif.id)
+    let body
+    try { body = notif.type.render({ data: notif.data, dismiss: dismissFn }) } catch (_) { body = '' }
+    if (typeof body === 'string') {
+      const span = document.createElement('span')
+      span.className = 'hs-notif-body'
+      span.textContent = body
+      wrapper.appendChild(span)
+    } else if (body instanceof Node) {
+      const w = document.createElement('span')
+      w.className = 'hs-notif-body'
+      w.appendChild(body)
+      wrapper.appendChild(w)
+    }
+    if (notif.type.actions) {
+      const actionsEl = document.createElement('span')
+      actionsEl.className = 'hs-notif-actions'
+      for (const [kind, def] of Object.entries(notif.type.actions)) {
+        if (!def) continue
+        const btn = document.createElement('button')
+        btn.className = `hs-notif-action hs-notif-action-${kind}`
+        btn.textContent = def.label || kind
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation(); e.preventDefault()
+          let result
+          try { result = def.onClick?.(notif.data, dismissFn) } catch (_) {}
+          if (kind === 'dismiss' || result === true) dismissFn()
+        })
+        actionsEl.appendChild(btn)
+      }
+      wrapper.appendChild(actionsEl)
+    }
+  }
+
+  function _ensureContainer(name, l) {
+    if (l._container && document.body.contains(l._container)) return l._container
+    let el = document.getElementById(`hs-notif-layer-${name}`)
+    if (!el) {
+      el = document.createElement('div')
+      el.id = `hs-notif-layer-${name}`
+      el.className = `hs-notif-layer hs-notif-layer-${name}`
+      document.body.appendChild(el)
+    }
+    l._container = el
+    return el
+  }
+
+  // Recompute every layer's geometry. Called from main.js's _updateMcLayout.
+  // ctx: { overlayElement, inputBarElement, tabBarElement, containerElement, tabPosition }
+  function updateLayout(ctx) {
+    const root = document.documentElement
+    for (const [name, l] of layers) {
+      _ensureContainer(name, l)
+      let geom = null
+      try { geom = l.def.geometry?.(ctx || {}) } catch (_) {}
+      if (geom) {
+        for (const [k, v] of Object.entries(geom)) {
+          const cssName = `--hs-layer-${name}-${k}`
+          if (v == null) root.style.removeProperty(cssName)
+          else root.style.setProperty(cssName, typeof v === 'number' ? v + 'px' : v)
+        }
+      }
+    }
+  }
+
+  // === STANDARD LAYERS ===
+
+  // Toast stack — bottom-right corner, max 3 visible at once.
+  registerLayer('toast-stack', {
+    stack: 'queue',
+    maxVisible: 3,
+    geometry: () => ({ bottom: 70, right: 20 }),
+  })
+
+  // Chat-docked-bottom — full-width band above the inputbar (and tabbar in
+  // bottom-tabs mode). Spans the chat content area horizontally; right edge
+  // ends at the vertical tab strip's left edge when tabs are left/right.
+  // Used by twitch-resub-share, sub-anniversary, viewer-milestone callouts.
+  registerLayer('chat-docked-bottom', {
+    stack: 'replace',
+    geometry: ({ overlayElement, inputBarElement, tabBarElement, tabPosition }) => {
+      if (!overlayElement && !inputBarElement) return null
+      const ibVisible = inputBarElement && !inputBarElement.classList.contains('hs-hidden')
+      const tbVisible = tabBarElement && !tabBarElement.classList.contains('hs-hidden')
+      const ibRect = ibVisible ? inputBarElement.getBoundingClientRect() : null
+      const tbRect = tbVisible ? tabBarElement.getBoundingClientRect() : null
+      const ovRect = overlayElement ? overlayElement.getBoundingClientRect() : null
+      let bottomY = null
+      if (ibRect && ibRect.height > 0) bottomY = ibRect.top
+      if (tabPosition === 'bottom' && tbRect && tbRect.height > 0) {
+        bottomY = bottomY !== null ? Math.min(bottomY, tbRect.top) : tbRect.top
+      }
+      const horRect = (ovRect && ovRect.width > 0) ? ovRect : ibRect
+      if (!horRect || bottomY === null) return null
+      return {
+        bottom: window.innerHeight - bottomY,
+        left: horRect.left,
+        right: window.innerWidth - (horRect.left + horRect.width),
+      }
+    },
+  })
+
+  // Chat-docked-top — top of overlay (or below tabbar in top-tabs mode).
+  // For raid alerts, "stream went live" inline notifications, etc.
+  registerLayer('chat-docked-top', {
+    stack: 'queue',
+    maxVisible: 1,
+    geometry: ({ overlayElement, tabBarElement, tabPosition }) => {
+      if (!overlayElement) return null
+      const ovRect = overlayElement.getBoundingClientRect()
+      const tbVisible = tabBarElement && !tabBarElement.classList.contains('hs-hidden')
+      const tbRect = tbVisible ? tabBarElement.getBoundingClientRect() : null
+      const topY = (tabPosition === 'top' && tbRect && tbRect.height > 0)
+        ? tbRect.bottom : ovRect.top
+      return {
+        top: topY,
+        left: ovRect.left,
+        right: window.innerWidth - (ovRect.left + ovRect.width),
+      }
+    },
+  })
+
+  // === STANDARD TYPES ===
+
+  // Toast — short status message, color-coded by level. ~1.5s default.
+  registerType('toast', {
+    layer: 'toast-stack',
+    timeout: 1500,
+    render: ({ data }) => {
+      const el = document.createElement('span')
+      el.textContent = data.text || ''
+      el.className = `hs-notif-toast-text hs-notif-toast-${data.level || 'info'}`
+      return el
+    },
+  })
+
+  // Twitch resub-share — user's own resub callout. Surfaces above input,
+  // shows month count + Share button (clicks the native Twitch share so the
+  // existing _enterResubShareMode flow runs) and X to dismiss. Native DOM is
+  // hidden via CSS; we render our own controlled version.
+  registerType('twitch-resub-share', {
+    layer: 'chat-docked-bottom',
+    dedupeKey: ({ months, channel }) => `resub:${channel}:${months}`,
+    render: ({ data }) => {
+      const months = data.months | 0
+      const el = document.createElement('span')
+      el.className = 'hs-notif-resub-body'
+      const icon = document.createElement('span')
+      icon.className = 'hs-notif-resub-icon'
+      icon.textContent = '★'
+      // Text broken into parts so container queries can progressively shorten:
+      //   wide   "Celebrating 104 months as a subscriber"
+      //   < 280  "104 months as a subscriber"
+      //   < 220  "104 months"
+      //   < 140  "104mo"
+      // Button always remains visible — message gives up space, not the action.
+      const text = document.createElement('span')
+      text.className = 'hs-notif-resub-text'
+      const parts = [
+        ['hs-rt-prefix', 'Celebrating '],
+        ['hs-rt-num',    String(months)],
+        ['hs-rt-mo',     'mo'],
+        ['hs-rt-months', ' months'],
+        ['hs-rt-suffix', ' as a subscriber'],
+      ]
+      for (const [cls, t] of parts) {
+        const s = document.createElement('span')
+        s.className = cls
+        s.textContent = t
+        text.appendChild(s)
+      }
+      el.appendChild(icon)
+      el.appendChild(text)
+      return el
+    },
+    actions: {
+      primary: {
+        label: 'Share',
+        onClick: (data) => {
+          // Forward to the native Twitch share button so its existing handler
+          // runs — main.js hooks that click and enters resub-share mode.
+          try { data._nativeShareBtn?.click() } catch (_) {}
+          return false  // resub-share mode controls dismissal
+        },
+      },
+      dismiss: { label: '✕' },
+    },
+  })
+
+  // Twitch raid (worked example — not yet emitted; ready when needed).
+  registerType('twitch-raid', {
+    layer: 'chat-docked-top',
+    dedupeKey: ({ raidFrom }) => `raid:${raidFrom}`,
+    timeout: 30000,
+    render: ({ data }) => {
+      const el = document.createElement('span')
+      el.textContent = `${data.raidFrom} raided with ${data.viewers || 0}!`
+      return el
+    },
+    actions: { dismiss: { label: '✕' } },
+  })
+
+  return {
+    registerLayer, registerType, emit, dismiss, dismissByKey, updateLayout,
+    _layers: layers, _types: types,
+  }
+})()
+
+// Expose for devtools / cross-script debug. Same singleton; mutating it from
+// the page will affect all multichat notifs, so use only for inspection.
+try { window.HsNotifs = HsNotifs } catch (_) {}
+
+
 // --- multichat/styles.js ---
 // Styles - all CSS for multichat panel, tabs, messages, modals
 
@@ -4347,6 +4699,171 @@ function injectStyles() {
       background: #000 !important;
     }
 
+    /* === GOD-TIER NOTIF LAYERS (HsNotifs) ===
+       Layer containers are positioned via CSS vars set by HsNotifs.updateLayout.
+       Adding a new layer = registerLayer(name, ...) + matching CSS rule below. */
+    .hs-notif-layer {
+      position: fixed;
+      z-index: 100000;
+      pointer-events: none;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      overflow: hidden;
+      min-width: 0;
+    }
+    .hs-notif-layer > .hs-notif {
+      pointer-events: auto;
+      box-sizing: border-box;
+      max-width: 100%;
+      min-width: 0;
+      overflow: hidden;
+    }
+    .hs-notif-layer-toast-stack {
+      bottom: var(--hs-layer-toast-stack-bottom, 70px);
+      right: var(--hs-layer-toast-stack-right, 20px);
+      align-items: flex-end;
+    }
+    .hs-notif-layer-chat-docked-bottom {
+      bottom: var(--hs-layer-chat-docked-bottom-bottom, 0px);
+      left: var(--hs-layer-chat-docked-bottom-left, 0px);
+      right: var(--hs-layer-chat-docked-bottom-right, 0px);
+    }
+    .hs-notif-layer-chat-docked-top {
+      top: var(--hs-layer-chat-docked-top-top, 0px);
+      left: var(--hs-layer-chat-docked-top-left, 0px);
+      right: var(--hs-layer-chat-docked-top-right, 0px);
+    }
+    /* Default notif body — types override per className. container-type makes
+       the notif queryable so progressive collapse rules fire on its own width
+       (not viewport) — narrow chat → smaller font → hide icon → button-only. */
+    .hs-notif {
+      display: flex;
+      flex-direction: row;
+      align-items: center;
+      gap: 8px;
+      padding: 4px 8px;
+      background: #18181b;
+      color: #fff;
+      font: 12px/1.2 'Courier New', Courier, monospace;
+      container-type: inline-size;
+    }
+    /* Body wrapper — sole shrinkable child of .hs-notif. flex-basis:0 lets
+       it ignore content width when computing layout, so the actions next to
+       it always render at their natural content size first; body absorbs the
+       rest, ellipsifying if needed. */
+    .hs-notif-body {
+      flex: 1 1 0;
+      min-width: 0;
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      min-height: 0;
+    }
+    .hs-notif-actions {
+      display: inline-flex;
+      gap: 4px;
+      flex: 0 0 auto;
+      margin-left: auto;
+    }
+    .hs-notif-action {
+      max-width: 100%;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .hs-notif-action {
+      background: transparent;
+      color: #fff;
+      border: 1px solid #808080;
+      padding: 2px 10px;
+      font: 600 11px/1.4 inherit;
+      cursor: pointer;
+      border-radius: 0;
+    }
+    .hs-notif-action:hover {
+      background: #fff;
+      color: #000;
+    }
+    .hs-notif-action-primary {
+      background: #ff8700;
+      color: #000;
+      border-color: #ff8700;
+    }
+    .hs-notif-action-primary:hover {
+      background: #fff;
+      color: #000;
+    }
+    .hs-notif-action-dismiss {
+      border: none;
+      padding: 2px 6px;
+      font-size: 14px;
+    }
+    /* Toast type */
+    .hs-notif-toast {
+      background: #000;
+      border: 1px solid #888;
+      padding: 6px 14px;
+      font: bold 12px monospace;
+      pointer-events: none;
+    }
+    .hs-notif-toast-text { color: #888; }
+    .hs-notif-toast-text.hs-notif-toast-success { color: #00d000; }
+    .hs-notif-toast-text.hs-notif-toast-error   { color: #ff4040; }
+    .hs-notif-toast:has(.hs-notif-toast-success) { border-color: #00d000; }
+    .hs-notif-toast:has(.hs-notif-toast-error)   { border-color: #ff4040; }
+    /* Resub-share type */
+    .hs-notif-twitch-resub-share {
+      border-top: 1px solid #ff8700;
+      border-bottom: 1px solid #808080;
+      box-shadow: 0 -2px 8px rgba(0,0,0,0.5);
+    }
+    .hs-notif-resub-body {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex: 1 1 0;
+      min-width: 0;
+      overflow: hidden;
+    }
+    .hs-notif-resub-icon {
+      flex: 0 0 auto;
+      font-size: 14px;
+      color: #ff8700;
+    }
+    .hs-notif-resub-text {
+      flex: 1 1 0;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    /* Progressive shortening — fires off .hs-notif's own width. The Share +
+       ✕ buttons are ALWAYS visible; the message gives up parts of itself
+       (prefix → suffix → " months" abbreviation → icon) to make room.
+       Worst case: just "104mo" + buttons. Never just buttons-only.   */
+    .hs-rt-mo { display: none; }
+    @container (max-width: 280px) {
+      .hs-notif-resub-body { font-size: 11px; }
+      .hs-notif-action { padding: 2px 6px; font-size: 11px; }
+      .hs-rt-prefix { display: none; }
+    }
+    @container (max-width: 220px) {
+      .hs-rt-suffix { display: none; }
+    }
+    @container (max-width: 180px) {
+      .hs-notif-resub-icon { display: none; }
+    }
+    @container (max-width: 140px) {
+      .hs-rt-months { display: none; }
+      .hs-rt-mo { display: inline; }
+    }
+    /* Hide native Twitch resub-share callout queue — HsNotifs renders our own
+       version in the chat-docked-bottom layer with controlled actions. */
+    [data-test-selector="chat-private-callout-queue__callout-container"] {
+      display: none !important;
+    }
+
     /* Twitch private-callout queue (resub-share / sub-anniversary "Share" +
        "Pin to chat" prompt) lives inside .chat-input, which our overlay nukes.
        The :not(:has(...)) exclusions on the hide rules above keep the callout
@@ -4361,7 +4878,13 @@ function injectStyles() {
       left: var(--hs-callout-left, 0px) !important;
       right: var(--hs-callout-right, 0px) !important;
       width: auto !important;
-      max-width: none !important;
+      /* Hard ceiling on width — backstop in case position:fixed's containing
+         block isn't the viewport (Twitch ancestor with transform/filter/will-
+         change creates a new containing block). max-width is independent of
+         positioning, so even if left/right drift the box can never exceed
+         the chat content width. */
+      max-width: var(--hs-callout-max-width, 100vw) !important;
+      overflow: hidden !important;
       z-index: 100000 !important;
       pointer-events: auto !important;
       background: #18181b !important;
@@ -4378,7 +4901,9 @@ function injectStyles() {
     [data-test-selector="chat-private-callout-queue__callout-container"] button[aria-label="pinned"] {
       display: none !important;
     }
-    /* Flatten the callout to a single tight row — minimal vertical footprint */
+    /* Flatten the callout to a single tight row — minimal vertical footprint.
+       container-type makes .pinned-callout queryable so we can drop the icon /
+       hide text entirely when chat gets too thin to fit the celebration line. */
     [data-test-selector="chat-private-callout-queue__callout-container"] .pinned-callout {
       display: flex !important;
       flex-direction: row !important;
@@ -4387,30 +4912,33 @@ function injectStyles() {
       padding: 4px 8px !important;
       min-height: 0 !important;
       line-height: 1.2 !important;
+      min-width: 0 !important;
+      max-width: 100% !important;
+      overflow: hidden !important;
+      container-type: inline-size !important;
     }
-    /* All descendants flatten to inline + clip overflow so multi-line text
-       collapses to a single line. Buttons keep their own padding. */
     [data-test-selector="chat-private-callout-queue__callout-container"] .pinned-callout > * {
       margin: 0 !important;
+      min-width: 0 !important;
     }
+    /* Inline so multiple text spans concatenate; the wrapper handles ellipsis. */
     [data-test-selector="chat-private-callout-queue__callout-container"] .pinned-callout :is(div, span, p):not(:has(button)) {
       display: inline !important;
       font-size: 12px !important;
       line-height: 1.2 !important;
-      white-space: nowrap !important;
+    }
+    /* Text wrapper — single block that ellipsifies when chat narrows.
+       flex: 1 1 0 + min-width: 0 lets it shrink past content width, which is
+       required for text-overflow:ellipsis inside a flex parent. */
+    [data-test-selector="chat-private-callout-queue__callout-container"] .pinned-callout > div:has(div, span, p) {
+      display: block !important;
+      flex: 1 1 0 !important;
+      min-width: 0 !important;
       overflow: hidden !important;
       text-overflow: ellipsis !important;
+      white-space: nowrap !important;
     }
-    /* Wrapping container that holds text — keep flex but flatten */
-    [data-test-selector="chat-private-callout-queue__callout-container"] .pinned-callout > div:has(div, span, p) {
-      display: flex !important;
-      flex: 1 1 auto !important;
-      min-width: 0 !important;
-      gap: 6px !important;
-      align-items: center !important;
-      overflow: hidden !important;
-    }
-    /* Icon container — fixed small size */
+    /* Icon — fixed small size, drop when chat is too thin. */
     [data-test-selector="chat-private-callout-queue__callout-container"] .pinned-callout__icon {
       flex: 0 0 auto !important;
       width: 16px !important;
@@ -4424,13 +4952,42 @@ function injectStyles() {
       height: 16px !important;
       font-size: 14px !important;
     }
-    /* Tighten Share button */
+    /* Share button — shrinkable, with internal ellipsis. flex:0 1 auto +
+       min-width:0 lets it compress instead of overflowing when chat narrows. */
     [data-test-selector="chat-private-callout-queue__callout-container"] [data-a-target="chat-private-callout__primary-button"] {
       padding: 2px 10px !important;
       font-size: 12px !important;
       min-height: 0 !important;
       height: auto !important;
       line-height: 1.4 !important;
+      flex: 0 1 auto !important;
+      min-width: 0 !important;
+      max-width: 100% !important;
+      overflow: hidden !important;
+      text-overflow: ellipsis !important;
+      white-space: nowrap !important;
+    }
+    /* Progressive shrink as the chat panel narrows. Container queries fire
+       against .pinned-callout's own width — independent of viewport, so it
+       degrades correctly for narrow chat in any tab-position layout. */
+    @container (max-width: 280px) {
+      [data-test-selector="chat-private-callout-queue__callout-container"] .pinned-callout :is(div, span, p):not(:has(button)) {
+        font-size: 11px !important;
+      }
+      [data-test-selector="chat-private-callout-queue__callout-container"] [data-a-target="chat-private-callout__primary-button"] {
+        padding: 2px 6px !important;
+        font-size: 11px !important;
+      }
+    }
+    @container (max-width: 220px) {
+      [data-test-selector="chat-private-callout-queue__callout-container"] .pinned-callout__icon {
+        display: none !important;
+      }
+    }
+    @container (max-width: 160px) {
+      [data-test-selector="chat-private-callout-queue__callout-container"] .pinned-callout > div:has(div, span, p) {
+        display: none !important;
+      }
     }
     .hs-mc-callout-close {
       background: transparent;
@@ -6593,7 +7150,7 @@ function injectStyles() {
       color: #ff8700;
     }
     .hs-mc-pred-bet-max:hover {
-      background: #ff8700;
+      background: #fff;
       color: #000;
     }
 
@@ -6703,7 +7260,7 @@ function injectStyles() {
       color: #ff8700 !important;
     }
     .hs-mc-pred-resolve-yours:hover {
-      background: #ff8700 !important;
+      background: #fff !important;
       color: #000 !important;
     }
     .hs-mc-pred-mod-row {
@@ -6744,8 +7301,9 @@ function injectStyles() {
       border-color: var(--oc);
     }
     .hs-mc-pred-resolve-btn:hover {
-      background: var(--oc);
+      background: #fff;
       color: #000;
+      border-color: #fff;
     }
 
     /* ═══ Create prediction form ═══ */
@@ -6809,8 +7367,9 @@ function injectStyles() {
       font-weight: 600;
     }
     .hs-mc-pred-create-submit:hover {
-      background: #ff8700;
+      background: #fff;
       color: #000;
+      border-color: #fff;
     }
 
     /* ═══ Polls ═══ */
@@ -7031,8 +7590,9 @@ function injectStyles() {
       font-weight: 600;
     }
     .hs-mc-poll-create-submit:hover {
-      background: #ff8700;
+      background: #fff;
       color: #000;
+      border-color: #fff;
     }
 
     .hs-mc-pred-links {
@@ -7092,8 +7652,13 @@ function injectStyles() {
       cursor: pointer;
       transition: none;
     }
-    .hs-mc-reward-card:hover {
-      background: rgba(255,255,255,0.08);
+    .hs-mc-reward-card:not(.hs-mc-reward-unavailable):hover {
+      background: #fff;
+    }
+    .hs-mc-reward-card:not(.hs-mc-reward-unavailable):hover .hs-mc-reward-title,
+    .hs-mc-reward-card:not(.hs-mc-reward-unavailable):hover .hs-mc-reward-cost,
+    .hs-mc-reward-card:not(.hs-mc-reward-unavailable):hover .hs-mc-reward-reason {
+      color: #000;
     }
     .hs-mc-reward-unavailable {
       opacity: 0.4;
@@ -7251,8 +7816,9 @@ function injectStyles() {
       letter-spacing: 0.3px;
     }
     .hs-mc-mode-btn:hover {
-      background: rgba(255,255,255,0.12);
-      color: #fff;
+      background: #fff;
+      color: #000;
+      border-color: #fff;
     }
     .hs-mc-mode-btn.active {
       background: rgba(0,200,175,0.15);
@@ -12999,31 +13565,14 @@ async function sendKickMessage(kickSlug, text) {
 // Note: all innerHTML usage passes content through escapeHtml() first (see src/lib/utils.js)
 
   function showToast(msg, type) {
-    const existing = document.getElementById('hs-mc-toast');
-    if (existing) existing.remove();
-
-    const border = type === 'success' ? '#00d000'
-      : type === 'error'   ? '#ff4040'
-      : '#888';
-
-    const toast = document.createElement('div');
-    toast.id = 'hs-mc-toast';
-    toast.textContent = msg;
-    toast.style.cssText = `
-      position: fixed;
-      bottom: 70px;
-      right: 20px;
-      background: #000;
-      color: ${border};
-      border: 1px solid ${border};
-      padding: 6px 14px;
-      border-radius: 0;
-      font: bold 12px monospace;
-      z-index: 5000;
-      pointer-events: none;
-    `;
-    document.body.appendChild(cleanup.trackNode(toast));
-    setTimeout(() => toast.remove(), 1500);
+    // Routed through HsNotifs (notifs.js) — single source of truth for layers,
+    // dedup, lifecycle. Adding/removing notif types happens there.
+    try {
+      HsNotifs.emit('toast', { text: msg, level: type })
+    } catch (_) {
+      // Fallback if manager somehow unavailable (shouldn't happen — same IIFE)
+      console.warn('[heatsync-mc]', type || 'info', msg)
+    }
   }
 
   // Badge hover tooltip (4x preview with name)
@@ -29894,36 +30443,24 @@ const STORAGE_KEY = 'heatsync_multichat';
   }
   function setupHsCalloutCloseButton() {
     if (_hsCalloutCloseObs) return
-    const inject = (calloutEl) => {
-      if (!calloutEl || calloutEl.dataset.hsCloseInjected === '1') return
-      calloutEl.dataset.hsCloseInjected = '1'
-      const closeBtn = document.createElement('button')
-      closeBtn.className = 'hs-mc-callout-close'
-      closeBtn.setAttribute('aria-label', 'close')
-      closeBtn.textContent = '✕'
-      closeBtn.addEventListener('click', (e) => {
-        e.stopPropagation()
-        e.preventDefault()
-        const queue = calloutEl.closest('[data-test-selector="chat-private-callout-queue__callout-container"]')
-        if (queue) queue.style.display = 'none'
-      })
-      calloutEl.appendChild(closeBtn)
-      // Hook the native Share button: enter resub-share mode so the user types
-      // a custom celebration message in HeatSync's input. Twitch's native Share
-      // is one-click-immediate-send with empty body, which left the user with a
-      // blank celebration on chat. Our hook keeps Twitch's broadcast running
-      // (banner appears for viewers) while capturing the user's text locally.
+    // Native callout is hidden by CSS (.hs-notif-twitch-resub-share rule).
+    // We extract data from the native DOM, hook its Share button so the
+    // existing _enterResubShareMode flow runs when user clicks our forwarded
+    // Share, and emit our own HsNotifs notif to render the controlled UI.
+    const surface = (calloutEl) => {
+      if (!calloutEl || calloutEl.dataset.hsSurfaced === '1') return
+      calloutEl.dataset.hsSurfaced = '1'
+      const txt = calloutEl.textContent || ''
+      const mm = txt.match(/(\d+)\s*month/i)
+      const months = mm ? parseInt(mm[1]) : 0
+      const ch = (getLiveChannel?.() || getCurrentChannel?.() || '').toLowerCase()
+      const user = currentUsername || ''
+      if (!ch || !user || !months) return
       const shareBtn = calloutEl.querySelector('[data-a-target="chat-private-callout__primary-button"]')
       if (shareBtn && shareBtn.dataset.hsShareHooked !== '1') {
         shareBtn.dataset.hsShareHooked = '1'
         shareBtn.addEventListener('click', () => {
           try {
-            const txt = calloutEl.textContent || ''
-            const mm = txt.match(/(\d+)\s*month/i)
-            const months = mm ? parseInt(mm[1]) : 0
-            const ch = (getLiveChannel?.() || getCurrentChannel?.() || '').toLowerCase()
-            const user = currentUsername || ''
-            if (!ch || !user || !months) return
             if (_pendingShareClaim) {
               clearTimeout(_pendingShareClaim.preTimer)
               clearTimeout(_pendingShareClaim.postTimer)
@@ -29934,29 +30471,30 @@ const STORAGE_KEY = 'heatsync_multichat';
           } catch (_) {}
         })
       }
+      try {
+        HsNotifs.emit('twitch-resub-share', {
+          months, user, channel: ch,
+          _nativeShareBtn: shareBtn,
+          _nativeCallout: calloutEl,
+        })
+      } catch (_) {}
+      // Refresh layer geometry — ResizeObserver only fires on tabbar/inputbar
+      // resize, so a freshly-mounted layer container would land at fallback (0).
+      try { _updateMcLayout?.() } catch (_) {}
     }
-    // Process existing callouts on init
-    document.querySelectorAll('[data-test-selector="chat-private-callout-queue__callout-container"] .pinned-callout').forEach(inject)
+    document.querySelectorAll('[data-test-selector="chat-private-callout-queue__callout-container"] .pinned-callout').forEach(surface)
     _hsCalloutCloseObs = new MutationObserver((muts) => {
-      let sawCallout = false
       for (const m of muts) {
         for (const node of m.addedNodes) {
           if (node.nodeType !== 1) continue
           if (node.classList?.contains('pinned-callout') &&
               node.closest('[data-test-selector="chat-private-callout-queue__callout-container"]')) {
-            inject(node)
-            sawCallout = true
+            surface(node)
           } else if (node.querySelector) {
-            const matches = node.querySelectorAll('[data-test-selector="chat-private-callout-queue__callout-container"] .pinned-callout')
-            if (matches.length) sawCallout = true
-            matches.forEach(inject)
+            node.querySelectorAll('[data-test-selector="chat-private-callout-queue__callout-container"] .pinned-callout').forEach(surface)
           }
         }
       }
-      // Refresh callout dock geometry the moment the queue appears — the
-      // ResizeObserver only fires on tabbar/inputbar resize, so a callout
-      // arriving with stale CSS vars would render at the fallback (100vw).
-      if (sawCallout) try { _updateMcLayout?.() } catch (_) {}
     })
     _hsCalloutCloseObs.observe(document.body, { childList: true, subtree: true })
     cleanup.trackObserver(_hsCalloutCloseObs)
@@ -30112,35 +30650,16 @@ const STORAGE_KEY = 'heatsync_multichat';
         }
       }
 
-      // Publish CSS vars so the docked Twitch resub-share callout
-      // (chat-private-callout-queue__callout-container, styled in styles.js)
-      // spans the FULL chat-shell width — including the vertical tab strip
-      // when tabs are left/right — so the banner sits flush against the
-      // chat-shell edges with no awkward gap to the tab column. Horizontal
-      // bounds come from #hs-mc-container (the chat-shell child that contains
-      // BOTH overlay and vertical tabbar). Bottom edge docks above the
-      // topmost stacked element (tabbar in bottom mode, otherwise inputbar).
-      const root = document.documentElement
-      const ibVisible = inputBarElement && !inputBarElement.classList.contains('hs-hidden')
-      const tbVisible = tabBarElement && !tabBarElement.classList.contains('hs-hidden')
-      const ibRect = ibVisible ? inputBarElement.getBoundingClientRect() : null
-      const tbRect = tbVisible ? tabBarElement.getBoundingClientRect() : null
-      const ovRect = overlayElement ? overlayElement.getBoundingClientRect() : null
-      let bottomY = null
-      if (ibRect && ibRect.height > 0) bottomY = ibRect.top
-      if (tabPosition === 'bottom' && tbRect && tbRect.height > 0) {
-        bottomY = bottomY !== null ? Math.min(bottomY, tbRect.top) : tbRect.top
-      }
-      const horRect = (ovRect && ovRect.width > 0) ? ovRect : ibRect
-      if (horRect && bottomY !== null) {
-        root.style.setProperty('--hs-callout-bottom', Math.max(0, window.innerHeight - bottomY) + 'px')
-        root.style.setProperty('--hs-callout-left', horRect.left + 'px')
-        root.style.setProperty('--hs-callout-right', Math.max(0, window.innerWidth - (horRect.left + horRect.width)) + 'px')
-      } else {
-        root.style.removeProperty('--hs-callout-bottom')
-        root.style.removeProperty('--hs-callout-left')
-        root.style.removeProperty('--hs-callout-right')
-      }
+      // Recompute geometry for ALL HsNotifs layers in one place. Each layer's
+      // CSS vars (--hs-layer-*-{top|left|right|bottom}) drive its container's
+      // CSS positioning. Adding a new layer = registerLayer + matching CSS.
+      const containerEl = document.getElementById('hs-mc-container')
+      try {
+        HsNotifs.updateLayout({
+          overlayElement, inputBarElement, tabBarElement,
+          containerElement: containerEl, tabPosition,
+        })
+      } catch (_) {}
     }
 
     if (tabBarElement && overlayElement && !resizeObserver) {

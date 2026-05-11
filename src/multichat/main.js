@@ -4898,36 +4898,24 @@
   }
   function setupHsCalloutCloseButton() {
     if (_hsCalloutCloseObs) return
-    const inject = (calloutEl) => {
-      if (!calloutEl || calloutEl.dataset.hsCloseInjected === '1') return
-      calloutEl.dataset.hsCloseInjected = '1'
-      const closeBtn = document.createElement('button')
-      closeBtn.className = 'hs-mc-callout-close'
-      closeBtn.setAttribute('aria-label', 'close')
-      closeBtn.textContent = '✕'
-      closeBtn.addEventListener('click', (e) => {
-        e.stopPropagation()
-        e.preventDefault()
-        const queue = calloutEl.closest('[data-test-selector="chat-private-callout-queue__callout-container"]')
-        if (queue) queue.style.display = 'none'
-      })
-      calloutEl.appendChild(closeBtn)
-      // Hook the native Share button: enter resub-share mode so the user types
-      // a custom celebration message in HeatSync's input. Twitch's native Share
-      // is one-click-immediate-send with empty body, which left the user with a
-      // blank celebration on chat. Our hook keeps Twitch's broadcast running
-      // (banner appears for viewers) while capturing the user's text locally.
+    // Native callout is hidden by CSS (.hs-notif-twitch-resub-share rule).
+    // We extract data from the native DOM, hook its Share button so the
+    // existing _enterResubShareMode flow runs when user clicks our forwarded
+    // Share, and emit our own HsNotifs notif to render the controlled UI.
+    const surface = (calloutEl) => {
+      if (!calloutEl || calloutEl.dataset.hsSurfaced === '1') return
+      calloutEl.dataset.hsSurfaced = '1'
+      const txt = calloutEl.textContent || ''
+      const mm = txt.match(/(\d+)\s*month/i)
+      const months = mm ? parseInt(mm[1]) : 0
+      const ch = (getLiveChannel?.() || getCurrentChannel?.() || '').toLowerCase()
+      const user = currentUsername || ''
+      if (!ch || !user || !months) return
       const shareBtn = calloutEl.querySelector('[data-a-target="chat-private-callout__primary-button"]')
       if (shareBtn && shareBtn.dataset.hsShareHooked !== '1') {
         shareBtn.dataset.hsShareHooked = '1'
         shareBtn.addEventListener('click', () => {
           try {
-            const txt = calloutEl.textContent || ''
-            const mm = txt.match(/(\d+)\s*month/i)
-            const months = mm ? parseInt(mm[1]) : 0
-            const ch = (getLiveChannel?.() || getCurrentChannel?.() || '').toLowerCase()
-            const user = currentUsername || ''
-            if (!ch || !user || !months) return
             if (_pendingShareClaim) {
               clearTimeout(_pendingShareClaim.preTimer)
               clearTimeout(_pendingShareClaim.postTimer)
@@ -4938,29 +4926,30 @@
           } catch (_) {}
         })
       }
+      try {
+        HsNotifs.emit('twitch-resub-share', {
+          months, user, channel: ch,
+          _nativeShareBtn: shareBtn,
+          _nativeCallout: calloutEl,
+        })
+      } catch (_) {}
+      // Refresh layer geometry — ResizeObserver only fires on tabbar/inputbar
+      // resize, so a freshly-mounted layer container would land at fallback (0).
+      try { _updateMcLayout?.() } catch (_) {}
     }
-    // Process existing callouts on init
-    document.querySelectorAll('[data-test-selector="chat-private-callout-queue__callout-container"] .pinned-callout').forEach(inject)
+    document.querySelectorAll('[data-test-selector="chat-private-callout-queue__callout-container"] .pinned-callout').forEach(surface)
     _hsCalloutCloseObs = new MutationObserver((muts) => {
-      let sawCallout = false
       for (const m of muts) {
         for (const node of m.addedNodes) {
           if (node.nodeType !== 1) continue
           if (node.classList?.contains('pinned-callout') &&
               node.closest('[data-test-selector="chat-private-callout-queue__callout-container"]')) {
-            inject(node)
-            sawCallout = true
+            surface(node)
           } else if (node.querySelector) {
-            const matches = node.querySelectorAll('[data-test-selector="chat-private-callout-queue__callout-container"] .pinned-callout')
-            if (matches.length) sawCallout = true
-            matches.forEach(inject)
+            node.querySelectorAll('[data-test-selector="chat-private-callout-queue__callout-container"] .pinned-callout').forEach(surface)
           }
         }
       }
-      // Refresh callout dock geometry the moment the queue appears — the
-      // ResizeObserver only fires on tabbar/inputbar resize, so a callout
-      // arriving with stale CSS vars would render at the fallback (100vw).
-      if (sawCallout) try { _updateMcLayout?.() } catch (_) {}
     })
     _hsCalloutCloseObs.observe(document.body, { childList: true, subtree: true })
     cleanup.trackObserver(_hsCalloutCloseObs)
@@ -5116,35 +5105,16 @@
         }
       }
 
-      // Publish CSS vars so the docked Twitch resub-share callout
-      // (chat-private-callout-queue__callout-container, styled in styles.js)
-      // spans the FULL chat-shell width — including the vertical tab strip
-      // when tabs are left/right — so the banner sits flush against the
-      // chat-shell edges with no awkward gap to the tab column. Horizontal
-      // bounds come from #hs-mc-container (the chat-shell child that contains
-      // BOTH overlay and vertical tabbar). Bottom edge docks above the
-      // topmost stacked element (tabbar in bottom mode, otherwise inputbar).
-      const root = document.documentElement
-      const ibVisible = inputBarElement && !inputBarElement.classList.contains('hs-hidden')
-      const tbVisible = tabBarElement && !tabBarElement.classList.contains('hs-hidden')
-      const ibRect = ibVisible ? inputBarElement.getBoundingClientRect() : null
-      const tbRect = tbVisible ? tabBarElement.getBoundingClientRect() : null
-      const ovRect = overlayElement ? overlayElement.getBoundingClientRect() : null
-      let bottomY = null
-      if (ibRect && ibRect.height > 0) bottomY = ibRect.top
-      if (tabPosition === 'bottom' && tbRect && tbRect.height > 0) {
-        bottomY = bottomY !== null ? Math.min(bottomY, tbRect.top) : tbRect.top
-      }
-      const horRect = (ovRect && ovRect.width > 0) ? ovRect : ibRect
-      if (horRect && bottomY !== null) {
-        root.style.setProperty('--hs-callout-bottom', Math.max(0, window.innerHeight - bottomY) + 'px')
-        root.style.setProperty('--hs-callout-left', horRect.left + 'px')
-        root.style.setProperty('--hs-callout-right', Math.max(0, window.innerWidth - (horRect.left + horRect.width)) + 'px')
-      } else {
-        root.style.removeProperty('--hs-callout-bottom')
-        root.style.removeProperty('--hs-callout-left')
-        root.style.removeProperty('--hs-callout-right')
-      }
+      // Recompute geometry for ALL HsNotifs layers in one place. Each layer's
+      // CSS vars (--hs-layer-*-{top|left|right|bottom}) drive its container's
+      // CSS positioning. Adding a new layer = registerLayer + matching CSS.
+      const containerEl = document.getElementById('hs-mc-container')
+      try {
+        HsNotifs.updateLayout({
+          overlayElement, inputBarElement, tabBarElement,
+          containerElement: containerEl, tabPosition,
+        })
+      } catch (_) {}
     }
 
     if (tabBarElement && overlayElement && !resizeObserver) {

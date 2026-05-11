@@ -676,9 +676,20 @@ function injectStyles() {
     .hs-native-hidden [class*="chat-room__content"] > *:not(.hs-pc-panel):not(.hs-profile-card):not(:has([data-test-selector="chat-private-callout-queue__callout-container"] *)) {
       display: none !important;
     }
-    /* Collapse the native chat container itself so #hs-mc-container gets flex space */
-    [class*="chat-room__content"].hs-native-hidden {
+    /* Collapse the native chat container itself so #hs-mc-container gets flex space.
+       Exception: when the resub-share callout queue is present, keep this
+       container in flow (zero box) so the fixed-positioned callout can render
+       — position:fixed descendants still don't render under display:none. */
+    [class*="chat-room__content"].hs-native-hidden:not(:has([data-test-selector="chat-private-callout-queue__callout-container"] *)) {
       display: none !important;
+    }
+    [class*="chat-room__content"].hs-native-hidden:has([data-test-selector="chat-private-callout-queue__callout-container"] *) {
+      display: block !important;
+      position: absolute !important;
+      width: 0 !important;
+      height: 0 !important;
+      overflow: visible !important;
+      pointer-events: none !important;
     }
     /* HeatSync container — sibling of React's chat-room__content, outside React's tree */
     #hs-mc-container {

@@ -37,6 +37,10 @@ function renderQuickLinks() {
     el.style.setProperty('--menu-accent', item.accent)
     // Static HTML with SVG icons only — no dynamic values, safe innerHTML
     el.innerHTML = `<div class="hs-mc-menu-icon">${item.icon}</div><div class="hs-mc-menu-text"><div class="hs-mc-menu-title">${item.label}</div></div><svg class="hs-mc-menu-arrow" width="12" height="12" viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>`
+    el.addEventListener('click', (e) => {
+      e.stopPropagation()
+      triggerTwitchFeature(item.action)
+    })
     links.appendChild(el)
   }
   return links
@@ -870,14 +874,6 @@ function optimisticBetUpdate(container, outcomeId, points) {
 function attachPredictionHandlers() {
   const container = document.getElementById('hs-mc-tab-twitch')
   if (!container) return
-
-  // Quick link handlers
-  container.querySelectorAll('.hs-mc-pred-link').forEach(item => {
-    item.addEventListener('click', (e) => {
-      e.stopPropagation()
-      triggerTwitchFeature(item.dataset.action)
-    })
-  })
 
   // Human-readable prediction error messages
   const predErrorMsg = (code) => {

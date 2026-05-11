@@ -7563,6 +7563,16 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       if (stored.ui_settings?.liveChannel) {
         liveChannel = stored.ui_settings.liveChannel;
       }
+      // Popout window is locked to one channel by URL — ignore the parent
+      // session's saved tab (which often points to a different channel and
+      // produces a blank panel because that channel's pane was never built).
+      if (document.body.classList.contains('hs-popout')) {
+        const urlCh = location.pathname.match(/^\/(?:popout|embed)\/([a-zA-Z0-9_]+)/)?.[1]
+        if (urlCh) {
+          _savedActiveTab = 'live'
+          liveChannel = urlCh
+        }
+      }
     } catch (e) {
       _savedActiveTab = 'live';
     }

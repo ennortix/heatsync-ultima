@@ -7279,17 +7279,25 @@ function injectStyles() {
     }
     /* Vertical-tabs override for util buttons (C/T/F-/F+/⚙): the .hs-tabs-
        right/.hs-tabs-left .hs-mc-tab rule above forces width:100% on every
-       tab, stretching util-btns to 90px and stacking them. Re-pin to 18px
-       squares (matches horizontal mode + heatsync.org chat-tile) so all 5
-       sit on one row above the platfilter. */
+       tab, stretching util-btns to 90px and stacking them. Grow each button
+       to fill its share of the 90px tabbar row so the strip reaches the far
+       right edge (no 18px gap from fixed-size squares + left-aligned row). */
     .hs-tabs-right .hs-mc-util-btn,
     .hs-tabs-left .hs-mc-util-btn {
-      width: 18px !important;
-      max-width: 18px !important;
+      width: auto !important;
+      max-width: none !important;
       min-width: 18px !important;
       padding: 0 !important;
-      flex: 0 0 18px !important;
+      flex: 1 1 0 !important;
       margin: 0 -1px 0 0 !important;
+    }
+    /* Right-cluster (util-row + platfilter) wraps both rows. In vertical mode
+       the tabbar's align-items:flex-start collapses it to content width, so
+       force full tabbar width so the rows themselves can stretch to the edge. */
+    .hs-tabs-right .hs-mc-right-cluster,
+    .hs-tabs-left .hs-mc-right-cluster {
+      width: 100% !important;
+      align-self: stretch !important;
     }
     /* Platfilter (T/K/Y) in vertical mode: stretch each button to fill its
        row (3 buttons share the 90px column width). */

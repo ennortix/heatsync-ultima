@@ -766,6 +766,28 @@ function injectStyles() {
       box-shadow: 0 -2px 8px rgba(0,0,0,0.5) !important;
       box-sizing: border-box !important;
     }
+    /* Hide Twitch's native Pin toggle on the callout — it pins the resub to
+       the hidden native chat, which looks like the callout just disappeared.
+       Our injected .hs-mc-callout-close X button replaces it. */
+    [data-test-selector="chat-private-callout-queue__callout-container"] button[aria-label="pinned"] {
+      display: none !important;
+    }
+    .hs-mc-callout-close {
+      background: transparent;
+      border: none;
+      color: #fff;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 600;
+      padding: 4px 10px;
+      margin-left: 6px;
+      line-height: 1;
+      border-radius: 2px;
+    }
+    .hs-mc-callout-close:hover {
+      background: #fff;
+      color: #000;
+    }
 
     /* Permanent black backdrop on every Twitch/Kick chat-region ancestor.
        Twitch's right-column wrappers paint rgb(14,14,16) and rgb(24,24,27)

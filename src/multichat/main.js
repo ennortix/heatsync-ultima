@@ -91,6 +91,27 @@
   let _updateMcLayout = () => {} // Set by ensureUIElements; callable from rotateTabPosition
   let _mcStorageListener = null;
 
+  // Resize-drag safety net. Each resize handler (right-edge, content-region,
+  // YT, Kick) sets document.body.style.cursor + appends an orange #hs-*-ghost
+  // bar + a full-viewport overlay with cursor:ew-resize. If pointer capture
+  // is lost (release-outside-window, captured-element removed mid-drag, tab
+  // hidden), the per-handler endDrag never fires and the user is stuck with
+  // a permanent ew-resize / col-resize cursor system-wide + an orange bar
+  // floating in chat. Wire window-level abort on blur / hidden / focus-loss
+  // so any orphaned drag artifacts get cleared even when pointerup is lost.
+  function _hsAbortAllResizes() {
+    document.body.style.cursor = ''
+    document.body.style.userSelect = ''
+    for (const id of [
+      'hs-resize-ghost', 'hs-resize-overlay',
+      'hs-c-resize-ghost', 'hs-c-resize-overlay',
+      'hs-yt-resize-ghost', 'hs-yt-resize-overlay',
+      'hs-kick-resize-ghost', 'hs-kick-resize-overlay'
+    ]) document.getElementById(id)?.remove()
+  }
+  cleanup.addEventListener(window, 'blur', _hsAbortAllResizes)
+  cleanup.addEventListener(document, 'visibilitychange', () => { if (document.hidden) _hsAbortAllResizes() })
+
   // Muted users (right-click to hide) — loaded async from chrome.storage.local
   let mutedUsers = new Set();
 
@@ -4783,6 +4804,48 @@
     return container
   }
 
+  // Twitch resub-share / sub-anniversary callout: hide the native Pin toggle
+  // (it pins to the hidden native chat → looks broken), inject our own X
+  // button that just hides the callout. Idempotent + survives re-mounts via
+  // dataset guard. Native Share button is left alone — clicking it still posts
+  // the resub message to chat.
+  let _hsCalloutCloseObs = null
+  function setupHsCalloutCloseButton() {
+    if (_hsCalloutCloseObs) return
+    const inject = (calloutEl) => {
+      if (!calloutEl || calloutEl.dataset.hsCloseInjected === '1') return
+      calloutEl.dataset.hsCloseInjected = '1'
+      const closeBtn = document.createElement('button')
+      closeBtn.className = 'hs-mc-callout-close'
+      closeBtn.setAttribute('aria-label', 'close')
+      closeBtn.textContent = '✕'
+      closeBtn.addEventListener('click', (e) => {
+        e.stopPropagation()
+        e.preventDefault()
+        const queue = calloutEl.closest('[data-test-selector="chat-private-callout-queue__callout-container"]')
+        if (queue) queue.style.display = 'none'
+      })
+      calloutEl.appendChild(closeBtn)
+    }
+    // Process existing callouts on init
+    document.querySelectorAll('[data-test-selector="chat-private-callout-queue__callout-container"] .pinned-callout').forEach(inject)
+    _hsCalloutCloseObs = new MutationObserver((muts) => {
+      for (const m of muts) {
+        for (const node of m.addedNodes) {
+          if (node.nodeType !== 1) continue
+          if (node.classList?.contains('pinned-callout') &&
+              node.closest('[data-test-selector="chat-private-callout-queue__callout-container"]')) {
+            inject(node)
+          } else if (node.querySelector) {
+            node.querySelectorAll('[data-test-selector="chat-private-callout-queue__callout-container"] .pinned-callout').forEach(inject)
+          }
+        }
+      }
+    })
+    _hsCalloutCloseObs.observe(document.body, { childList: true, subtree: true })
+    cleanup.trackObserver(_hsCalloutCloseObs)
+  }
+
   function ensureUIElements() {
     // Always watch for collapse/expand class changes so we can clean up
     // inline styles when the user clicks the expand arrow
@@ -4961,6 +5024,13 @@
       cleanup.trackObserver(resizeObserver)
       _updateMcLayout()
     }
+
+    // Twitch resub-share callout: swap the native Pin toggle for our own X
+    // close button. The native Pin pins the resub message to Twitch's chat
+    // (which we hide), so it just dismisses the callout with nothing visible
+    // afterward. Our X just clears the callout from view — Share button is
+    // untouched.
+    setupHsCalloutCloseButton()
 
     // Auto-show overlay if not already visible
     if (overlayElement && !overlayElement.classList.contains('visible')) {

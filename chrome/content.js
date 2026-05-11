@@ -165,6 +165,10 @@ let extensionContextValid = true;
 
 // Cached allEmotes map — rebuilt only when emote data changes
 let cachedAllEmotes = null
+// name → emote[] in priority order (inventory[0], channel[1..], global[N..]).
+// Same-named emotes from different sources are kept as siblings so right-click
+// block on the active one swaps to the next non-blocked variant in DOM.
+let cachedAllEmoteVariants = null
 let allEmotesDirty = true
 let emoteGeneration = 0
 
@@ -1880,7 +1884,10 @@ style.textContent = `
     object-fit: none !important;
   }
 
-  /* Emote hover color status indicator via ::before */
+  /* Emote hover color status indicator via ::before.
+     background-color transitions 250ms so block↔unblock during hover
+     feels like a directional state shift (color flows in/out) rather than
+     a snap. Opacity stays snappy (0.1s) for hover-in/hover-out. */
   .heatsync-emote-wrapper::before {
     content: '' !important;
     position: absolute !important;
@@ -1888,7 +1895,7 @@ style.textContent = `
     opacity: 0 !important;
     pointer-events: none !important;
     z-index: 1 !important;
-    transition: opacity 0.1s !important;
+    transition: opacity 0.1s, background-color 0.25s ease-out !important;
   }
   .heatsync-emote-wrapper:hover::before {
     opacity: 1 !important;
@@ -2793,34 +2800,59 @@ function rebuildEmoteMapIfDirty() {
   if (!allEmotesDirty && cachedAllEmotes) return
   allEmotesDirty = false
   cachedAllEmotes = new Map()
+  cachedAllEmoteVariants = new Map()
 
-  // Global emotes (lowest priority)
-  globalEmotes.forEach(emote => {
-    cachedAllEmotes.set(emote.name, Object.assign({}, emote, { hash: emote.hash || btoa(emote.url), isGlobal: true }))
+  // Normalize + push a variant into the per-name array. Inventory variants
+  // go first (highest priority), then channel, then global. Dedupe by hash so
+  // a single source can't list the same emote twice.
+  const _addVariant = (emote, source) => {
+    const rawUrl = emote.url || ''
+    const url = rawUrl.startsWith('http') ? rawUrl : `${API_URL}${rawUrl}`
+    const norm = Object.assign({}, emote, {
+      url,
+      hash: emote.hash || btoa(rawUrl),
+      isGlobal: source === 'global',
+      inInventory: source === 'inventory',
+    })
+    norm.isThirdParty = url.includes('cdn.7tv.app') ||
+                        url.includes('cdn.betterttv.net') ||
+                        url.includes('cdn.frankerfacez.com') ||
+                        url.includes('static-cdn.jtvnw.net')
+    let arr = cachedAllEmoteVariants.get(emote.name)
+    if (!arr) {
+      arr = []
+      cachedAllEmoteVariants.set(emote.name, arr)
+    }
+    if (arr.some(v => v.hash === norm.hash)) return
+    arr.push(norm)
+  }
+
+  // Inventory FIRST (highest priority — user's own emotes always win).
+  // Subscription emotes are skipped: Twitch's native DOM gates them via the
+  // IRC emotes= tag, so re-imagifying them would surface them for non-entitled senders.
+  emoteInventory.forEach(emote => {
+    if (emote.subscription) return
+    _addVariant(emote, 'inventory')
   })
 
-  // Channel emotes (third-party only — BTTV/FFZ/7TV/Twitch)
-  // Skip Twitch sub/follower/bits-tier emotes: Twitch already renders them
-  // for senders with access via the IRC emotes= tag. Including them here
-  // would re-imagify text from non-entitled senders, bypassing Twitch's gate.
+  // Channel emotes (third-party only — BTTV/FFZ/7TV/Twitch).
+  // Skip Twitch sub/follower/bits-tier emotes for the same reason as above.
   channelEmotes.forEach(emote => {
     if (!emote.source) return
     if (emote.source === 'twitch' && (emote.tier || emote.emote_type === 'subscriptions' || emote.emote_type === 'follower' || emote.emote_type === 'bitstier')) return
-    cachedAllEmotes.set(emote.name, Object.assign({}, emote, {
-      url: emote.url?.startsWith('http') ? emote.url : `${API_URL}${emote.url}`
-    }))
+    _addVariant(emote, 'channel')
   })
 
-  // Inventory emotes LAST (highest priority — user's own emotes always win)
-  // Subscription emotes (Twitch sub emotes auto-loaded for the subscriber)
-  // are skipped: Twitch's native DOM gates them via the IRC emotes= tag.
-  // Including them would re-imagify text from non-entitled senders.
-  emoteInventory.forEach(emote => {
-    if (emote.subscription) return
-    cachedAllEmotes.set(emote.name, Object.assign({}, emote, {
-      url: emote.url?.startsWith('http') ? emote.url : `${API_URL}${emote.url}`
-    }))
+  // Global emotes LAST (lowest priority, fallback only).
+  globalEmotes.forEach(emote => {
+    _addVariant(emote, 'global')
   })
+
+  // cachedAllEmotes points to the highest-priority variant — preserves existing
+  // single-lookup callers (replaceEmotesWithStacking, autocomplete, picker).
+  for (const [name, variants] of cachedAllEmoteVariants) {
+    cachedAllEmotes.set(name, variants[0])
+  }
 
   // Rebuild O(1) lookup sets
   inventoryHashSet = new Set()
@@ -2829,16 +2861,13 @@ function rebuildEmoteMapIfDirty() {
   for (const e of emoteInventory) inventoryNameSet.add(e.name)
   globalNameSet = new Set()
   for (const e of globalEmotes) globalNameSet.add(e.name)
+  // Index every variant hash so hover preview / tooltip can resolve a swapped-in
+  // variant just as well as the original primary.
   cachedEmotesByHash = new Map()
-  for (const e of cachedAllEmotes.values()) {
-    if (e.hash) cachedEmotesByHash.set(e.hash, e)
-    // Precompute third-party flag once per cache rebuild — saves 4 url.includes()
-    // per emote per message in generateEmoteElement (hot path during chat).
-    const u = e.url || ''
-    e.isThirdParty = u.includes('cdn.7tv.app') ||
-                     u.includes('cdn.betterttv.net') ||
-                     u.includes('cdn.frankerfacez.com') ||
-                     u.includes('static-cdn.jtvnw.net')
+  for (const variants of cachedAllEmoteVariants.values()) {
+    for (const v of variants) {
+      if (v.hash) cachedEmotesByHash.set(v.hash, v)
+    }
   }
 }
 
@@ -5710,6 +5739,52 @@ function generateEmoteElement(emote, isOverlay, modifiers, modColorHue) {
     img.dataset.emoteName = emote.name;
 
     wrapper.appendChild(img);
+
+    // Multi-variant fallback: if the same name exists in other sources (e.g.,
+    // user inventory + 7TV global), append the other variants as hidden sibling
+    // imgs with lazy src. Right-clicking to block the active variant then swaps
+    // to the next non-blocked sibling in-place — no DOM rebuild, no fetch round-trip
+    // (subsequent swaps are instant once the variant img loads once).
+    const variants = cachedAllEmoteVariants?.get(emote.name)
+    if (variants && variants.length > 1) {
+      wrapper.dataset.hasVariants = '1'
+      // Tag the primary img with its priority index + classification so
+      // pickActiveVariant can sort + categorize it on later state changes.
+      const primaryIdx = variants.findIndex(v => v.hash === emote.hash)
+      img.dataset.variantIndex = String(primaryIdx >= 0 ? primaryIdx : 0)
+      img.dataset.variantClass = emote.inInventory ? 'inventory' : (emote.isGlobal ? 'global' : 'channel')
+      img.dataset.emoteUrl = emote.url
+
+      for (let i = 0; i < variants.length; i++) {
+        const v = variants[i]
+        if (v.hash === emote.hash) continue
+        const alt = document.createElement('img')
+        alt.alt = emote.name
+        alt.dataset.emoteHash = v.hash
+        alt.dataset.emoteName = emote.name
+        alt.dataset.emoteUrl = v.url
+        alt.dataset.variantIndex = String(i)
+        alt.dataset.variantClass = v.inInventory ? 'inventory' : (v.isGlobal ? 'global' : 'channel')
+        alt.decoding = 'async'
+        alt.className = 'heatsync-emote'
+        // Match primary img dims so layout doesn't reflow when swapping in.
+        alt.style.cssText = `display:none !important; width:auto !important; height:${isOverlay ? 'auto' : 'var(--hs-emote-height, 28px)'} !important; max-width:none !important; max-height:none !important; cursor:pointer;`
+        if (isOverlay) {
+          alt.onload = function() {
+            const nw = this.naturalWidth, nh = this.naturalHeight
+            this.style.setProperty('width', nw + 'px', 'important')
+            this.style.setProperty('height', nh + 'px', 'important')
+            this.style.setProperty('min-width', nw + 'px', 'important')
+            this.style.setProperty('min-height', nh + 'px', 'important')
+          }
+        }
+        wrapper.appendChild(alt)
+      }
+
+      // If the primary is already blocked at render time, swap to first available.
+      if (blockedEmotes.has(emote.hash)) pickActiveVariant(wrapper)
+    }
+
     return wrapper;
 }
 
@@ -5954,6 +6029,76 @@ function setupEmoteClickHandlers() {
   log(' ✅ Event delegation setup for emote clicks');
 }
 
+// Multi-variant fallback: when an emote name has variants from different sources
+// (e.g., user inventory + 7TV global), each variant lives as a sibling img in the
+// wrapper. This picks the first non-blocked variant by priority and makes it the
+// active one — moving it to be first child so wrapper.querySelector('img') still
+// returns the visible emote (tooltips, hover preview, etc. read it that way).
+function pickActiveVariant(wrapper) {
+  if (!wrapper || wrapper.dataset.hasVariants !== '1') return
+  const imgs = Array.from(wrapper.querySelectorAll(':scope > img.heatsync-emote'))
+  if (imgs.length <= 1) return
+
+  // Priority order is encoded in data-variant-index (0 = highest).
+  imgs.sort((a, b) => (+a.dataset.variantIndex || 0) - (+b.dataset.variantIndex || 0))
+
+  // First non-blocked variant wins. If all are blocked, fall back to primary so
+  // the standard blocked rendering applies (greyed-out highest-priority emote).
+  let activeImg = null
+  for (const img of imgs) {
+    if (!blockedEmotes.has(img.dataset.emoteHash)) { activeImg = img; break }
+  }
+  if (!activeImg) activeImg = imgs[0]
+
+  // Keep active as firstElementChild so legacy wrapper.querySelector('img') hits it.
+  if (wrapper.firstElementChild !== activeImg) {
+    wrapper.insertBefore(activeImg, wrapper.firstElementChild)
+  }
+
+  for (const img of imgs) {
+    if (img === activeImg) {
+      img.style.removeProperty('display')
+      // Primary img rendered while blocked has inline opacity:0 — clear it so
+      // unblock-via-variant-swap restores visibility. Blocked rendering re-applies
+      // via the emote-overlay-blocked class CSS rule, not inline opacity.
+      img.style.removeProperty('opacity')
+      // Lazy-load src on first activation. Subsequent swaps are instant (cached).
+      if (!img.src && img.dataset.emoteUrl) img.src = img.dataset.emoteUrl
+    } else {
+      img.style.setProperty('display', 'none', 'important')
+    }
+  }
+
+  const hash = activeImg.dataset.emoteHash
+  const name = activeImg.dataset.emoteName
+  wrapper.dataset.emoteHash = hash
+  wrapper.dataset.emoteName = name
+
+  const variantClass = activeImg.dataset.variantClass
+  const inInventory = variantClass === 'inventory' || inventoryHashSet.has(hash)
+  const isThirdPartyCdn = !inInventory && (variantClass === 'global' || variantClass === 'channel')
+  const isBlocked = blockedEmotes.has(hash)
+  wrapper.dataset.inInventory = String(inInventory)
+
+  // Reset overlay + own-emote class to reflect the active variant's category.
+  wrapper.classList.remove('emote-overlay-blocked', 'emote-overlay-owned', 'emote-overlay-global', 'emote-overlay-unadded')
+  if (isBlocked) wrapper.classList.add('emote-overlay-blocked')
+  else if (inInventory) wrapper.classList.add('emote-overlay-owned')
+  else if (isThirdPartyCdn) wrapper.classList.add('emote-overlay-global')
+  else wrapper.classList.add('emote-overlay-unadded')
+  if (inInventory) wrapper.classList.add('heatsync-own-emote')
+  else wrapper.classList.remove('heatsync-own-emote')
+
+  // Img state classes — set on the active img only, clear on hidden siblings.
+  for (const img of imgs) {
+    img.classList.remove('emote-blocked', 'emote-in-set', 'emote-global')
+    if (img !== activeImg) continue
+    if (isBlocked) img.classList.add('emote-blocked')
+    else if (inInventory) img.classList.add('emote-in-set')
+    else if (isThirdPartyCdn) img.classList.add('emote-global')
+  }
+}
+
 // Update visual state of all instances of an emote
 function updateEmoteState(hash, emoteName, state) {
   log(` Updating emote "${emoteName}" to state: ${state}, hash: ${hash}`);
@@ -5962,6 +6107,17 @@ function updateEmoteState(hash, emoteName, state) {
   const selector = `[data-emote-hash="${hash}"], [data-emote-name="${emoteName}"]`;
   const elements = (findChatContainer() || document).querySelectorAll(selector);
   log(` updateEmoteState found ${elements.length} elements for selector:`, selector);
+
+  // Multi-variant wrappers: re-pick from blockedEmotes state, skip the
+  // single-variant class-stamping logic entirely. Dedupe via Set since the
+  // selector matches both wrapper and inner img for the same wrapper.
+  const variantWrappers = new Set()
+  elements.forEach(el => {
+    const w = el.classList?.contains('heatsync-emote-wrapper') ? el
+            : (el.tagName === 'IMG' ? el.parentElement : null)
+    if (w && w.dataset.hasVariants === '1') variantWrappers.add(w)
+  })
+  variantWrappers.forEach(w => pickActiveVariant(w))
 
   elements.forEach(el => {
     // Handle both wrapper divs and direct img elements
@@ -5972,6 +6128,8 @@ function updateEmoteState(hash, emoteName, state) {
     }
 
     const wrapper = el.tagName === 'IMG' ? el.parentElement : el;
+    // Variant wrappers already handled above — pickActiveVariant owns their state.
+    if (wrapper && wrapper.dataset.hasVariants === '1') return;
     const emoteUrl = wrapper?.dataset?.emoteUrl || img?.src || '';
 
     // Check if third-party CDN emote (7TV, BTTV, FFZ, Twitch native)

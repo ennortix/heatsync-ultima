@@ -3414,6 +3414,15 @@ function log(...args) {
   if (MC_DEBUG) console.log(LOG_PREFIX, ...args)
 }
 
+// Re-injection guard. background.js re-executes multichat.js on extension
+// update/reload — without this, OLD + NEW both run: doubled observers, doubled
+// IRC connections, doubled DOM nodes. Heavy CPU/memory load = Chrome crash.
+try {
+  if (typeof window.__heatsyncMcLifecycle?.abort === 'function') {
+    window.__heatsyncMcLifecycle.abort()
+  }
+} catch (_) {}
+
 // Lifecycle controller — abort() tears down ALL listeners, timers, observers
 const lifecycle = new AbortController()
 const mcSignal = lifecycle.signal
@@ -3456,6 +3465,30 @@ mcSignal.addEventListener('abort', () => {
   }
 })
 window.addEventListener('pagehide', () => lifecycle.abort())
+
+// Export abort handle so a future re-injection of this script can tear us down.
+// _hsMcTakenOver flips iff someone outside this closure called our abort —
+// i.e. a NEW multichat.js instance took over. Internal aborts skip the flag.
+let _hsMcTakenOver = false
+window.__heatsyncMcLifecycle = {
+  abort: () => { _hsMcTakenOver = true; try { lifecycle.abort() } catch (_) {} }
+}
+
+// Fast context-death detector. chrome.runtime.id becomes undefined sync on
+// extension reload — catches it within 2s instead of waiting for the 30s
+// health-ping. Aborts lifecycle immediately, then jitter-reloads 1–10s so N
+// tabs don't all reload at once and crash Chrome. If a NEW instance arrives
+// before the reload fires, skip the reload (NEW is already alive).
+const _hsMcCtxDeathTimer = setInterval(() => {
+  if (chrome.runtime?.id) return
+  clearInterval(_hsMcCtxDeathTimer)
+  try { lifecycle.abort() } catch (_) {}
+  setTimeout(() => {
+    if (_hsMcTakenOver) return
+    try { location.reload() } catch (_) {}
+  }, 1000 + Math.random() * 9000)
+}, 2000)
+_timers.intervals.push(_hsMcCtxDeathTimer)
 
 // Optional perf tracer. window.__hsPerfTrace = true at runtime to log
 // callbacks exceeding 50ms into window.__hsPerfLog. Source captured at
@@ -34453,12 +34486,13 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
         if (!chrome.runtime?.id) throw new Error('dead');
         // Ping background to verify it's alive
         chrome.runtime.sendMessage({ type: 'ping' }).catch(() => {
-          log('Background unreachable, reloading page...');
-          location.reload();
+          log('Background unreachable, reloading page (jittered)...');
+          // Jitter so N tabs don't all reload at once on extension update
+          setTimeout(() => { try { location.reload() } catch (_) {} }, 1000 + Math.random() * 9000)
         });
       } catch {
-        log('Extension context invalidated, reloading page...');
-        location.reload();
+        log('Extension context invalidated, reloading page (jittered)...');
+        setTimeout(() => { try { location.reload() } catch (_) {} }, 1000 + Math.random() * 9000)
       }
     }, 30000, 'context-health');
 

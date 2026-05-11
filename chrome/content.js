@@ -33,6 +33,15 @@ const NATIVE_EMOTE_SELECTORS = [
 // Combined selector for stackAdjacentOverlayEmotes (heatsync + native, single querySelectorAll)
 const COMBINED_EMOTE_SELECTOR = '.heatsync-emote-wrapper, ' + NATIVE_EMOTE_SELECTORS
 
+// Re-injection guard. background.js re-executes content.js on extension
+// update/reload (manifest content scripts don't auto re-inject). Without this,
+// OLD + NEW both run: doubled MutationObservers, doubled listeners, 2x CPU.
+try {
+  if (typeof window.__heatsyncContentLifecycle?.abort === 'function') {
+    window.__heatsyncContentLifecycle.abort()
+  }
+} catch (_) {}
+
 // Lifecycle controller — abort() tears down ALL listeners, timers, observers
 const lifecycle = new AbortController()
 const { signal } = lifecycle
@@ -41,12 +50,38 @@ signal.addEventListener('abort', () => {
   _timers.intervals.forEach(clearInterval)
   _timers.timeouts.forEach(clearTimeout)
   _timers.observers.forEach(o => o.disconnect())
-  chrome.runtime.onMessage.removeListener(_onMessageMain)
-  chrome.runtime.onMessage.removeListener(_onMessageKickRelay)
-  chrome.storage.onChanged.removeListener(_onStorageChanged)
-  chrome.storage.onChanged.removeListener(_onAutoClaimStorageChanged)
+  try { chrome.runtime.onMessage.removeListener(_onMessageMain) } catch (_) {}
+  try { chrome.runtime.onMessage.removeListener(_onMessageKickRelay) } catch (_) {}
+  try { chrome.storage.onChanged.removeListener(_onStorageChanged) } catch (_) {}
+  try { chrome.storage.onChanged.removeListener(_onAutoClaimStorageChanged) } catch (_) {}
 })
 window.addEventListener('pagehide', () => lifecycle.abort())
+// Export abort handle so a future re-injection of this script can tear us down.
+// _hsTakenOver flips iff someone outside this closure called our abort — i.e.
+// a NEW content.js instance took over. Internal abort() calls go via
+// `lifecycle.abort()` directly and leave the flag false.
+let _hsTakenOver = false
+window.__heatsyncContentLifecycle = {
+  abort: () => { _hsTakenOver = true; try { lifecycle.abort() } catch (_) {} }
+}
+
+// Fast context-death detector. chrome.runtime.id is a sync property that
+// becomes undefined on extension reload — much faster than waiting for the
+// 30s health-ping. Once dead: stop all observers/intervals immediately, then
+// jitter the page reload across 1–10s so N tabs don't all reload at once and
+// crash Chrome from a thundering herd of Twitch React re-mounts. If a NEW
+// instance arrives before our scheduled reload fires, skip the reload.
+const _hsCtxDeathTimer = setInterval(() => {
+  if (chrome.runtime?.id) return
+  clearInterval(_hsCtxDeathTimer)
+  extensionContextValid = false
+  try { lifecycle.abort() } catch (_) {}
+  setTimeout(() => {
+    if (_hsTakenOver) return
+    try { location.reload() } catch (_) {}
+  }, 1000 + Math.random() * 9000)
+}, 2000)
+_timers.intervals.push(_hsCtxDeathTimer)
 
 // WeakMap for emote overlay references — avoids DOM property leaks
 const overlayMap = new WeakMap()

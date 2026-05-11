@@ -139,9 +139,22 @@ browser.runtime.onInstalled.addListener((details) => {
   browser.storage.local.remove('channel_emotes_map').catch(() => {})
   browser.storage.local.remove('channel_emotes_fetched_at').catch(() => {})
   if (details.reason === 'update') {
+    // Re-inject content scripts that have re-injection guards (each aborts
+    // the prior instance via window.__heatsync*Lifecycle so OLD + NEW don't
+    // both run). Stagger across tabs by 0–4s so N tabs of Twitch React don't
+    // all re-mount simultaneously and OOM Chrome.
     browser.tabs.query({ url: ['*://*.twitch.tv/*', '*://*.kick.com/*', '*://*.youtube.com/*'] }).then(tabs => {
       for (const tab of tabs) {
-        browser.scripting?.executeScript({ target: { tabId: tab.id }, files: ['content.js'] }).catch(() => {})
+        const delayMs = Math.random() * 4000
+        setTimeout(() => {
+          // shared-utils refreshes window.HS (used by heatsync-button.js for createLifecycle).
+          // Order matters: content.js first so its lifecycle is rebound before multichat
+          // sends it any postMessage / events on init.
+          browser.scripting?.executeScript({
+            target: { tabId: tab.id },
+            files: ['shared-utils.js', 'content.js', 'multichat.js', 'heatsync-button.js']
+          }).catch(() => {})
+        }, delayMs)
       }
     }).catch(() => {})
   }

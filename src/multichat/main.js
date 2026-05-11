@@ -9674,12 +9674,13 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
         if (!chrome.runtime?.id) throw new Error('dead');
         // Ping background to verify it's alive
         chrome.runtime.sendMessage({ type: 'ping' }).catch(() => {
-          log('Background unreachable, reloading page...');
-          location.reload();
+          log('Background unreachable, reloading page (jittered)...');
+          // Jitter so N tabs don't all reload at once on extension update
+          setTimeout(() => { try { location.reload() } catch (_) {} }, 1000 + Math.random() * 9000)
         });
       } catch {
-        log('Extension context invalidated, reloading page...');
-        location.reload();
+        log('Extension context invalidated, reloading page (jittered)...');
+        setTimeout(() => { try { location.reload() } catch (_) {} }, 1000 + Math.random() * 9000)
       }
     }, 30000, 'context-health');
 

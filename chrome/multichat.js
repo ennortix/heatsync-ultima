@@ -4235,13 +4235,16 @@ function injectStyles() {
     .hs-native-hidden [data-a-target="chat-scroller"] {
       display: none !important;
     }
-    /* Hide native chat input area */
-    .hs-native-hidden [class*="chat-input-container"],
-    .hs-native-hidden [data-a-target="chat-input"] {
+    /* Hide native chat input area.
+       Exception: keep the .chat-input wrapper visible when it contains the
+       resub-share / sub-anniversary callout queue, so our floating-banner CSS
+       below can surface it. */
+    .hs-native-hidden [class*="chat-input-container"]:not(:has([data-test-selector="chat-private-callout-queue__callout-container"] *)),
+    .hs-native-hidden [data-a-target="chat-input"]:not(:has([data-test-selector="chat-private-callout-queue__callout-container"] *)) {
       display: none !important;
     }
     /* Hide native chat header/room content — our elements are in #hs-mc-container (sibling) */
-    .hs-native-hidden [class*="chat-room__content"] > *:not(.hs-pc-panel):not(.hs-profile-card) {
+    .hs-native-hidden [class*="chat-room__content"] > *:not(.hs-pc-panel):not(.hs-profile-card):not(:has([data-test-selector="chat-private-callout-queue__callout-container"] *)) {
       display: none !important;
     }
     /* Collapse the native chat container itself so #hs-mc-container gets flex space */
@@ -4284,8 +4287,8 @@ function injectStyles() {
       min-width: 0 !important;
       background: #000 !important;
     }
-    .chat-shell.hs-native-hidden > *:not(#hs-mc-container):not(.hs-pc-panel):not(.hs-profile-card),
-    [class*="chat-shell"].hs-native-hidden > *:not(#hs-mc-container):not(.hs-pc-panel):not(.hs-profile-card) {
+    .chat-shell.hs-native-hidden > *:not(#hs-mc-container):not(.hs-pc-panel):not(.hs-profile-card):not(:has([data-test-selector="chat-private-callout-queue__callout-container"] *)),
+    [class*="chat-shell"].hs-native-hidden > *:not(#hs-mc-container):not(.hs-pc-panel):not(.hs-profile-card):not(:has([data-test-selector="chat-private-callout-queue__callout-container"] *)) {
       display: none !important;
     }
     /* Ensure stream-chat ancestor also stays sized */
@@ -4296,6 +4299,25 @@ function injectStyles() {
     }
     .hs-native-hidden {
       background: #000 !important;
+    }
+
+    /* Twitch private-callout queue (resub-share / sub-anniversary "Share" +
+       "Pin to chat" prompt) lives inside .chat-input, which our overlay nukes.
+       The :not(:has(...)) exclusions on the hide rules above keep the callout
+       path visible. Float the queue itself as a fixed banner so it overlays
+       our chat without pushing layout. */
+    [data-test-selector="chat-private-callout-queue__callout-container"]:has(*) {
+      position: fixed !important;
+      top: 70px !important;
+      right: 16px !important;
+      width: 340px !important;
+      max-width: calc(100vw - 32px) !important;
+      z-index: 100000 !important;
+      pointer-events: auto !important;
+      background: #18181b !important;
+      border: 1px solid #ff8700 !important;
+      border-radius: 4px !important;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.6) !important;
     }
 
     /* Permanent black backdrop on every Twitch/Kick chat-region ancestor.
@@ -8154,9 +8176,11 @@ function injectStyles() {
     }
 
     /* ---- KICK NATIVE CHAT HIDING ---- */
+    /* Twitch's .chat-input wrapper also matches [class*="chat-input"]. Exclude
+       it when it carries the resub-share callout queue so the banner surfaces. */
     .hs-native-hidden #chatroom-messages,
     .hs-native-hidden [class*="chatroom-footer"],
-    .hs-native-hidden [class*="chat-input"],
+    .hs-native-hidden [class*="chat-input"]:not(:has([data-test-selector="chat-private-callout-queue__callout-container"] *)),
     .hs-native-hidden div.editor-input {
       display: none !important;
     }

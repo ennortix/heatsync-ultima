@@ -244,14 +244,20 @@ function handleIncomingDm(data) {
 
 // Direct GQL whisper using the page's twitch.tv auth-token cookie. Sends from
 // whichever Twitch acct is logged in on twitch.tv, independent of any HS JWT.
+// Must route through gqlMutation — Twitch rejects mutations without
+// Client-Integrity, which only the MAIN-world proxy can attach.
 async function sendTwitchWhisperDirect(toUserId, message) {
   const { token } = await getTwitchAuthTokenAsync()
   if (!token) return { ok: false, noToken: true }
   const query = 'mutation sendWhisper($input: SendWhisperInput!) { sendWhisper(input: $input) { error { code } } }'
   const nonce = (crypto?.randomUUID?.() || `${Date.now()}_${Math.random().toString(36).slice(2, 12)}`)
   const variables = { input: { recipientUserID: String(toUserId), message: String(message), nonce } }
-  const data = await twitchGql(query, variables)
-  if (data?.errors?.length) return { ok: false, error: data.errors[0]?.message || 'gql error' }
+  const data = await gqlMutation(query, variables)
+  if (data?.errors?.length) {
+    const errMsg = data.errors[0]?.message || 'gql error'
+    const integrity = /integrity/i.test(errMsg)
+    return { ok: false, error: errMsg, integrity }
+  }
   const code = data?.data?.sendWhisper?.error?.code
   if (code) return { ok: false, error: code }
   return { ok: true }
@@ -264,7 +270,10 @@ async function sendTwitchWhisper(toUserId, message) {
   try {
     const direct = await sendTwitchWhisperDirect(toUserId, message)
     if (direct.ok) return { ok: true }
-    if (!direct.noToken) {
+    // noToken or integrity failure → fall through to HS proxy (transient — Twitch
+    // hasn't minted an integrity token yet). Other errors are real (blocked recipient,
+    // banned, etc.) and shouldn't be retried.
+    if (!direct.noToken && !direct.integrity) {
       showToast('whisper failed: ' + direct.error, 'error')
       return { ok: false, error: direct.error }
     }

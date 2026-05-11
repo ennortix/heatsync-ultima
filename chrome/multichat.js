@@ -4315,20 +4315,27 @@ function injectStyles() {
     /* Twitch private-callout queue (resub-share / sub-anniversary "Share" +
        "Pin to chat" prompt) lives inside .chat-input, which our overlay nukes.
        The :not(:has(...)) exclusions on the hide rules above keep the callout
-       path visible. Float the queue itself as a fixed banner so it overlays
-       our chat without pushing layout. */
+       path visible. Dock the queue as a full-width bar locked directly above
+       #hs-mc-inputbar — when the reply-indicator is added inside the inputbar
+       it grows in height, the ResizeObserver in main.js fires _updateMcLayout,
+       and the callout naturally floats above BOTH the reply-chip and input. */
     [data-test-selector="chat-private-callout-queue__callout-container"]:has(*) {
       position: fixed !important;
-      top: 70px !important;
-      right: 16px !important;
-      width: 340px !important;
-      max-width: calc(100vw - 32px) !important;
+      top: auto !important;
+      right: auto !important;
+      bottom: var(--hs-callout-bottom, 0px) !important;
+      left: var(--hs-callout-left, 0px) !important;
+      width: var(--hs-callout-width, 100vw) !important;
+      max-width: none !important;
       z-index: 100000 !important;
       pointer-events: auto !important;
       background: #18181b !important;
-      border: 1px solid #ff8700 !important;
-      border-radius: 4px !important;
-      box-shadow: 0 4px 16px rgba(0,0,0,0.6) !important;
+      border: none !important;
+      border-top: 1px solid #ff8700 !important;
+      border-bottom: 1px solid #808080 !important;
+      border-radius: 0 !important;
+      box-shadow: 0 -2px 8px rgba(0,0,0,0.5) !important;
+      box-sizing: border-box !important;
     }
 
     /* Permanent black backdrop on every Twitch/Kick chat-region ancestor.
@@ -26633,6 +26640,9 @@ const STORAGE_KEY = 'heatsync_multichat';
     if (overlay) overlay.style.bottom = ''
     const picker = document.getElementById('hs-mc-emote-picker')
     adjustOverlayForPicker(picker?.classList.contains('visible') || false)
+    // ResizeObserver doesn't fire on display:none → :flex; recompute anchors
+    // so the docked Twitch callout follows the inputbar.
+    _updateMcLayout?.()
   }
 
   function hideInputBar() {
@@ -26652,6 +26662,7 @@ const STORAGE_KEY = 'heatsync_multichat';
     if (bar) bar.classList.add('hs-hidden')
     const overlay = document.getElementById('hs-mc-overlay')
     if (overlay) overlay.style.bottom = '0'
+    _updateMcLayout?.()
   }
 
   // Chat width state
@@ -29774,6 +29785,26 @@ const STORAGE_KEY = 'heatsync_multichat';
           overlayElement.style.left = tw + 'px'
           if (inputBarElement) inputBarElement.style.left = tw + 'px'
         }
+      }
+
+      // Publish CSS vars so the docked Twitch resub-share callout
+      // (chat-private-callout-queue__callout-container, styled in styles.js)
+      // can pin itself directly above #hs-mc-inputbar — full width of the
+      // inputbar, bottom edge flush with the inputbar's top edge. Reply
+      // indicator gets inserted inside the inputbar, so its height is already
+      // counted here; both bars stack above the input field for free.
+      const root = document.documentElement
+      if (inputBarElement && !inputBarElement.classList.contains('hs-hidden')) {
+        const ibRect = inputBarElement.getBoundingClientRect()
+        if (ibRect.width > 0 && ibRect.height > 0) {
+          root.style.setProperty('--hs-callout-bottom', Math.max(0, window.innerHeight - ibRect.top) + 'px')
+          root.style.setProperty('--hs-callout-left', ibRect.left + 'px')
+          root.style.setProperty('--hs-callout-width', ibRect.width + 'px')
+        }
+      } else {
+        root.style.removeProperty('--hs-callout-bottom')
+        root.style.removeProperty('--hs-callout-left')
+        root.style.removeProperty('--hs-callout-width')
       }
     }
 

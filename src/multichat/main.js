@@ -1786,6 +1786,9 @@
     if (overlay) overlay.style.bottom = ''
     const picker = document.getElementById('hs-mc-emote-picker')
     adjustOverlayForPicker(picker?.classList.contains('visible') || false)
+    // ResizeObserver doesn't fire on display:none → :flex; recompute anchors
+    // so the docked Twitch callout follows the inputbar.
+    _updateMcLayout?.()
   }
 
   function hideInputBar() {
@@ -1805,6 +1808,7 @@
     if (bar) bar.classList.add('hs-hidden')
     const overlay = document.getElementById('hs-mc-overlay')
     if (overlay) overlay.style.bottom = '0'
+    _updateMcLayout?.()
   }
 
   // Chat width state
@@ -4927,6 +4931,26 @@
           overlayElement.style.left = tw + 'px'
           if (inputBarElement) inputBarElement.style.left = tw + 'px'
         }
+      }
+
+      // Publish CSS vars so the docked Twitch resub-share callout
+      // (chat-private-callout-queue__callout-container, styled in styles.js)
+      // can pin itself directly above #hs-mc-inputbar — full width of the
+      // inputbar, bottom edge flush with the inputbar's top edge. Reply
+      // indicator gets inserted inside the inputbar, so its height is already
+      // counted here; both bars stack above the input field for free.
+      const root = document.documentElement
+      if (inputBarElement && !inputBarElement.classList.contains('hs-hidden')) {
+        const ibRect = inputBarElement.getBoundingClientRect()
+        if (ibRect.width > 0 && ibRect.height > 0) {
+          root.style.setProperty('--hs-callout-bottom', Math.max(0, window.innerHeight - ibRect.top) + 'px')
+          root.style.setProperty('--hs-callout-left', ibRect.left + 'px')
+          root.style.setProperty('--hs-callout-width', ibRect.width + 'px')
+        }
+      } else {
+        root.style.removeProperty('--hs-callout-bottom')
+        root.style.removeProperty('--hs-callout-left')
+        root.style.removeProperty('--hs-callout-width')
       }
     }
 

@@ -356,6 +356,61 @@
     return null
   }
 
+  // Read Twitch's persistent device ID — needed for /integrity call signature.
+  // Falls back to a random ID; Twitch accepts random IDs as long as they're stable.
+  function getDeviceId() {
+    try {
+      const raw = localStorage.getItem('local_storage_device_id')
+      if (raw) return raw.replace(/^"|"$/g, '')
+    } catch {}
+    try {
+      const m = document.cookie.match(/(?:^|;\s*)unique_id=([^;]+)/)
+      if (m) return m[1]
+    } catch {}
+    if (!gql._fallbackDeviceId) gql._fallbackDeviceId = 'heatsync-' + Math.random().toString(36).slice(2, 18)
+    return gql._fallbackDeviceId
+  }
+
+  // Fetch a fresh Client-Integrity token from Twitch's /integrity endpoint.
+  // Mutations require this; reads work without. Cached + refreshed on demand.
+  let _integrityRefreshPromise = null
+  async function fetchIntegrity() {
+    if (gql.integrity && gql.integrityExp && Date.now() < gql.integrityExp - 30000) {
+      return gql.integrity
+    }
+    if (_integrityRefreshPromise) return _integrityRefreshPromise
+    _integrityRefreshPromise = (async () => {
+      const token = getAuthToken()
+      if (!token) return null
+      const cid = gql.clientId || 'kimne78kx3ncx6brgo4mv6wki5h1ko'
+      try {
+        const r = await origFetch('https://gql.twitch.tv/integrity', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Client-Id': cid,
+            'Authorization': 'OAuth ' + token,
+            'X-Device-Id': getDeviceId(),
+          },
+          body: '{}'
+        })
+        if (!r.ok) return null
+        const d = await r.json()
+        if (!d?.token) return null
+        gql.integrity = d.token
+        // Twitch returns expiration as ms-since-epoch; fall back to +5min if missing/bogus
+        gql.integrityExp = (typeof d.expiration === 'number' && d.expiration > Date.now())
+          ? d.expiration : (Date.now() + 5 * 60 * 1000)
+        gql.integrityTs = Date.now()
+        return d.token
+      } catch {
+        return null
+      }
+    })()
+    try { return await _integrityRefreshPromise }
+    finally { _integrityRefreshPromise = null }
+  }
+
   function buildGqlHeaders() {
     const hdrs = { 'Content-Type': 'application/json' }
     if (gql.clientId) hdrs['Client-Id'] = gql.clientId
@@ -363,6 +418,7 @@
     const token = getAuthToken()
     if (token) hdrs['Authorization'] = 'OAuth ' + token
     if (gql.integrity) hdrs['Client-Integrity'] = gql.integrity
+    hdrs['X-Device-Id'] = getDeviceId()
     return hdrs
   }
 
@@ -399,30 +455,42 @@
       return
     }
 
-    // Mutations need valid integrity — reads work without it
-    const hdrs = buildGqlHeaders()
+    // Mutations need valid integrity — reads work without. Detect:
+    //   rawQuery starting with "mutation", or non-cache GQL_OPS persisted query
+    const isMutation = req.rawQuery
+      ? /^\s*mutation\b/i.test(req.rawQuery)
+      : !GQL_OPS_TO_CACHE.includes(req.operation)
+    if (isMutation) {
+      try { await fetchIntegrity() } catch {}
+    }
 
-    origFetch('https://gql.twitch.tv/gql', {
+    const doFetch = () => origFetch('https://gql.twitch.tv/gql', {
       method: 'POST',
-      headers: hdrs,
+      headers: buildGqlHeaders(),
       body: JSON.stringify(payload)
-    })
-    .then(r => {
+    }).then(r => {
       if (DEBUG) console.log('[heatsync-gql] response status:', r.status)
       return r.json()
     })
-    .then(data => {
+
+    try {
+      let data = await doFetch()
+      // On integrity failure, force-refresh integrity and retry once
+      const items = Array.isArray(data) ? data : [data]
+      const integrityFail = items.some(it => Array.isArray(it?.errors) &&
+        it.errors.some(e => /integrity/i.test(e?.message || '')))
+      if (integrityFail) {
+        gql.integrity = null
+        gql.integrityExp = 0
+        await fetchIntegrity()
+        data = await doFetch()
+      }
       if (DEBUG) console.log('[heatsync-gql] response data:', JSON.stringify(data).slice(0, 500))
-      window.postMessage({
-        type: 'heatsync-gql-response', id: req.id, data
-      }, location.origin)
-    })
-    .catch(err => {
-      console.error('[heatsync-gql] fetch error:', err.message)
-      window.postMessage({
-        type: 'heatsync-gql-response', id: req.id, error: err.message
-      }, location.origin)
-    })
+      window.postMessage({ type: 'heatsync-gql-response', id: req.id, data }, location.origin)
+    } catch (err) {
+      console.error('[heatsync-gql] fetch error:', err?.message || err)
+      window.postMessage({ type: 'heatsync-gql-response', id: req.id, error: err?.message || String(err) }, location.origin)
+    }
   }
 
   // ═══ Nonce-based request authentication ═══

@@ -684,6 +684,13 @@
         visibility: hidden;
       }
 
+      /* background-color cross-fades 0.25s so block↔unblock under cursor
+         flows between legend colors. ease-out front-loads the change so
+         hover-in still feels immediate. */
+      .heatsync-emote-wrap {
+        transition: background-color 0.25s ease-out;
+      }
+
       /* Usable = green (inventory + global + channel) */
       .heatsync-emote-wrap:hover {
         background: #00ff00;

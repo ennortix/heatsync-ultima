@@ -2073,7 +2073,10 @@ function injectStyles() {
       inset: 4px;
       border-radius: 0;
       opacity: 0;
-      transition: none;
+      /* Opacity stays untransitioned (kept snappy on cross-highlight class
+         toggles); background-color fades 0.25s so block↔unblock during
+         hover smoothly cross-fades between legend colors instead of snapping. */
+      transition: background-color 0.25s ease-out;
       z-index: 1;
       pointer-events: none;
     }

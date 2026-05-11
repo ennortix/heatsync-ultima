@@ -8562,6 +8562,23 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
           renderMessages(currentTab)
         }
       }
+      // Server cleared the entire mute list (e.g. user clicked "clear all" on heatsync.org)
+      if (msg.type === 'mutes_cleared' && mutedUsers.size > 0) {
+        for (const u of mutedUsers) restoreMcUnmutedDom(u)
+        mutedUsers.clear()
+        renderMessages(currentTab)
+      }
+
+      // Server-evaluated mention rule match — show as inline toast
+      if (msg.type === 'mention_rule_match') {
+        const channel = String(msg.channel || '').toLowerCase()
+        const username = String(msg.username || '')
+        const snippet = String(msg.snippet || '').slice(0, 200)
+        const pattern = String(msg.pattern || '')
+        try {
+          HsNotifs.emit('server-mention-rule', { channel, username, snippet, pattern })
+        } catch (_) {}
+      }
 
       // 7TV emote add/remove — surface as an inline stream-event in the
       // matching channel tab (and live tab if it IS the live channel).

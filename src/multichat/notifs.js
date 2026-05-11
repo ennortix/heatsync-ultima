@@ -338,6 +338,25 @@ const HsNotifs = (() => {
     actions: { dismiss: { label: '✕' } },
   })
 
+  // Server-evaluated mention rule match — heatsync.org evaluated the user's
+  // saved mention rules on the server and found a match in a channel message.
+  // Shows as a toast; tap/click to dismiss. Deduplicated per channel+snippet
+  // to avoid repeat fires from the same message being re-evaluated.
+  registerType('server-mention-rule', {
+    layer: 'toast-stack',
+    timeout: 8000,
+    dedupeKey: ({ channel, snippet }) => `smr:${channel}:${snippet}`,
+    render: ({ data }) => {
+      const el = document.createElement('span')
+      const who = data.username ? `${data.username}: ` : ''
+      const ch = data.channel ? `[${data.channel}] ` : ''
+      el.textContent = `${ch}${who}${data.snippet}`
+      el.className = 'hs-notif-toast-text hs-notif-toast-mention'
+      return el
+    },
+    actions: { dismiss: { label: '✕' } },
+  })
+
   return {
     registerLayer, registerType, emit, dismiss, dismissByKey, updateLayout,
     _layers: layers, _types: types,

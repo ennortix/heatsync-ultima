@@ -3929,6 +3929,25 @@ const HsNotifs = (() => {
     actions: { dismiss: { label: '✕' } },
   })
 
+  // Server-evaluated mention rule match — heatsync.org evaluated the user's
+  // saved mention rules on the server and found a match in a channel message.
+  // Shows as a toast; tap/click to dismiss. Deduplicated per channel+snippet
+  // to avoid repeat fires from the same message being re-evaluated.
+  registerType('server-mention-rule', {
+    layer: 'toast-stack',
+    timeout: 8000,
+    dedupeKey: ({ channel, snippet }) => `smr:${channel}:${snippet}`,
+    render: ({ data }) => {
+      const el = document.createElement('span')
+      const who = data.username ? `${data.username}: ` : ''
+      const ch = data.channel ? `[${data.channel}] ` : ''
+      el.textContent = `${ch}${who}${data.snippet}`
+      el.className = 'hs-notif-toast-text hs-notif-toast-mention'
+      return el
+    },
+    actions: { dismiss: { label: '✕' } },
+  })
+
   return {
     registerLayer, registerType, emit, dismiss, dismissByKey, updateLayout,
     _layers: layers, _types: types,
@@ -6016,7 +6035,10 @@ function injectStyles() {
       inset: 4px;
       border-radius: 0;
       opacity: 0;
-      transition: none;
+      /* Opacity stays untransitioned (kept snappy on cross-highlight class
+         toggles); background-color fades 0.25s so block↔unblock during
+         hover smoothly cross-fades between legend colors instead of snapping. */
+      transition: background-color 0.25s ease-out;
       z-index: 1;
       pointer-events: none;
     }
@@ -34106,6 +34128,23 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
           restoreMcUnmutedDom(u)
           renderMessages(currentTab)
         }
+      }
+      // Server cleared the entire mute list (e.g. user clicked "clear all" on heatsync.org)
+      if (msg.type === 'mutes_cleared' && mutedUsers.size > 0) {
+        for (const u of mutedUsers) restoreMcUnmutedDom(u)
+        mutedUsers.clear()
+        renderMessages(currentTab)
+      }
+
+      // Server-evaluated mention rule match — show as inline toast
+      if (msg.type === 'mention_rule_match') {
+        const channel = String(msg.channel || '').toLowerCase()
+        const username = String(msg.username || '')
+        const snippet = String(msg.snippet || '').slice(0, 200)
+        const pattern = String(msg.pattern || '')
+        try {
+          HsNotifs.emit('server-mention-rule', { channel, username, snippet, pattern })
+        } catch (_) {}
       }
 
       // 7TV emote add/remove — surface as an inline stream-event in the

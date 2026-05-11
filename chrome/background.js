@@ -2695,6 +2695,44 @@ function persistMutedUsers() {
   browser.storage.local.set({ muted_users: arr }).catch(() => {})
 }
 
+// Fetch server-side mute list on first auth — merges with any locally-stored
+// mutes so cross-device mutes (set on heatsync.org) take effect immediately.
+// Gracefully no-ops if not logged in, server is unreachable, or returns 401.
+let _serverMutesFetched = false
+async function fetchServerMutes() {
+  if (_serverMutesFetched) return
+  _serverMutesFetched = true
+  try {
+    const res = await fetch('https://heatsync.org/api/mutes', {
+      credentials: 'include',
+      signal: AbortSignal.timeout(8000),
+    })
+    if (!res.ok) return // 401 = not logged in, skip silently
+    const data = await res.json()
+    const list = Array.isArray(data) ? data : (Array.isArray(data?.mutes) ? data.mutes : null)
+    if (!list) return
+    const now = Date.now()
+    let changed = false
+    for (const entry of list) {
+      const u = (entry.username || entry.user || '').toLowerCase()
+      if (!u) continue
+      const rawExp = entry.expires_at || entry.expiresAt || null
+      const expiresAt = rawExp ? new Date(rawExp).getTime() : null
+      if (expiresAt !== null && expiresAt <= now) continue // already expired
+      if (!mutedUsers.has(u)) {
+        mutedUsers.set(u, expiresAt)
+        broadcastToTabs({ type: 'user_muted', username: u, expiresAt })
+        changed = true
+        log(' server mute synced:', u)
+      }
+    }
+    if (changed) persistMutedUsers()
+  } catch (e) {
+    log(' fetchServerMutes failed:', e?.message)
+    _serverMutesFetched = false // allow retry on next auth
+  }
+}
+
 // Remove expired mutes and broadcast unmutes
 function pruneExpiredMutes() {
   const now = Date.now();
@@ -3105,6 +3143,9 @@ function handleWSMessage(msg) {
       wsState = WS_STATE.AUTHENTICATED;
       // Flush any queued messages now that we're authenticated
       flushMessageQueue();
+      // Pull server mute list once per session so heatsync.org mutes are
+      // reflected immediately (WS events only arrive for changes while connected)
+      fetchServerMutes().catch(() => {})
       break;
 
     case 'server:shutdown':
@@ -3121,6 +3162,7 @@ function handleWSMessage(msg) {
       isAuthenticated = false;
       authToken = null;
       authFailedBlock = true;
+      _serverMutesFetched = false // reset so re-login triggers a fresh sync
       // Drop the stored token so the next reconnect (after a fresh login)
       // doesn't keep replaying the dead one and looping us back to here.
       browser.storage.local.remove(['auth_token_encrypted', 'auth_token']).catch(() => {})
@@ -3661,6 +3703,140 @@ function handleWSMessage(msg) {
         broadcastToTabs({ type: 'user_unmuted', username: unmuteUser })
         log(' Server unmuted user:', unmuteUser)
       }
+      break
+    }
+
+    // Server-synced mute list — fired when the user mutes/unmutes on heatsync.org
+    // (REST /api/mutes) which broadcasts these WS events to all of the user's sockets.
+    case 'mute:added': {
+      const u = msg.username?.toLowerCase()
+      if (u) {
+        const rawExp = msg.expires_at
+        const expiresAt = rawExp ? new Date(rawExp).getTime() : null
+        if (!mutedUsers.has(u)) {
+          mutedUsers.set(u, expiresAt)
+          persistMutedUsers()
+          broadcastToTabs({ type: 'user_muted', username: u, expiresAt })
+          log(' mute:added from server:', u)
+        }
+      }
+      break
+    }
+
+    case 'mute:removed':
+    case 'mute:expired': {
+      const u = msg.username?.toLowerCase()
+      if (u && mutedUsers.has(u)) {
+        mutedUsers.delete(u)
+        persistMutedUsers()
+        broadcastToTabs({ type: 'user_unmuted', username: u })
+        log(' mute:removed/expired from server:', u)
+      }
+      break
+    }
+
+    case 'mute:cleared': {
+      if (mutedUsers.size > 0) {
+        mutedUsers.clear()
+        persistMutedUsers()
+        broadcastToTabs({ type: 'mutes_cleared' })
+        log(' mute:cleared from server')
+      }
+      break
+    }
+
+    // Cross-device settings sync (partial patch variant).
+    // ui-state:update covers the full-state fanout; settings:patch/delete
+    // cover incremental edits from /api/settings on heatsync.org.
+    case 'settings:patch': {
+      if (msg.patches && typeof msg.patches === 'object') {
+        const cleanPatch = sanitizeUiSettings(msg.patches)
+        if (Object.keys(cleanPatch).length > 0) {
+          log(' settings:patch received:', Object.keys(cleanPatch))
+          browser.storage.sync.get(['ui_settings']).then(s => {
+            const merged = sanitizeUiSettings({ ...(s.ui_settings || {}), ...cleanPatch })
+            browser.storage.sync.set({ ui_settings: merged }).catch(() => {})
+          }).catch(() => {})
+          broadcastToTabs({ type: 'ui_state_update', state: cleanPatch })
+        }
+      }
+      break
+    }
+
+    case 'settings:delete': {
+      const delKey = typeof msg.key === 'string' ? msg.key : null
+      if (delKey && delKey.length > 0 && delKey.length <= 64) {
+        log(' settings:delete received:', delKey)
+        browser.storage.sync.get(['ui_settings']).then(s => {
+          const copy = sanitizeUiSettings(s.ui_settings || {})
+          delete copy[delKey]
+          browser.storage.sync.set({ ui_settings: copy }).catch(() => {})
+        }).catch(() => {})
+        broadcastToTabs({ type: 'settings_key_deleted', key: delKey })
+      }
+      break
+    }
+
+    // Server-evaluated mention rule match — show inline notif in multichat overlay.
+    case 'mention:rule-match': {
+      const d = msg.data
+      if (d && typeof d === 'object') {
+        broadcastToTabs({
+          type: 'mention_rule_match',
+          ruleId: d.ruleId,
+          pattern: String(d.pattern || '').slice(0, 200),
+          channel: String(d.channel || '').slice(0, 50),
+          platform: String(d.platform || '').slice(0, 20),
+          username: String(d.username || '').slice(0, 50),
+          snippet: String(d.snippet || '').slice(0, 200),
+        })
+        log(' mention:rule-match:', d.pattern, 'in', d.channel)
+      }
+      break
+    }
+
+    // EventSub fan-out — server pushes channel events subscribed via eventsub:subscribe.
+    // Translate into the same stream_event shape the existing renderers expect.
+    case 'eventsub:event': {
+      const evName = String(msg.eventName || '')
+      const channelId = String(msg.channelId || '')
+      const payload = msg.payload && typeof msg.payload === 'object' ? msg.payload : {}
+      // Map EventSub event names to the stream_event eventType strings used by main.js
+      const typeMap = {
+        'channel.update':              'stream:update',
+        'stream.online':               'stream:online',
+        'stream.offline':              'stream:offline',
+        'channel.channel_points_custom_reward_redemption.add': 'stream:redeem',
+        'channel.raid':                'stream:raid',
+        'channel.hype_train.begin':    'stream:hype-start',
+        'channel.hype_train.end':      'stream:hype-end',
+        'channel.subscription.gift':   'stream:sub-gift',
+        'channel.subscribe':           'stream:sub',
+        'channel.follow':              'stream:follow',
+      }
+      const eventType = typeMap[evName]
+      if (!eventType) break
+      // Build stream_event broadcast — mirrors what stream:raid etc. handlers do
+      const evt = {
+        type: 'stream_event',
+        eventType,
+        channel: String(payload.broadcaster_user_login || payload.to_broadcaster_user_login || channelId || '').toLowerCase(),
+        platform: 'twitch',
+        game: String(payload.category_name || payload.game_name || ''),
+        title: String(payload.title || ''),
+        prevGame: String(payload.category_name || ''),
+        prevTitle: String(payload.title || ''),
+        user: String(payload.user_login || payload.from_broadcaster_user_login || ''),
+        target: String(payload.to_broadcaster_user_login || ''),
+        viewers: Number(payload.viewers || 0) || 0,
+        level: Number(payload.level || 0) || 0,
+        count: Number(payload.total || 0) || 0,
+        title2: String(payload.reward?.title || ''),
+        cost: Number(payload.reward?.cost || 0) || 0,
+      }
+      if (eventType === 'stream:redeem') evt.title = evt.title2
+      broadcastToTabs(evt)
+      log(' eventsub:event dispatched:', eventType, evt.channel)
       break
     }
 

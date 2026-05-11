@@ -66,18 +66,26 @@ window.__heatsyncMcLifecycle = {
 }
 
 // Fast context-death detector. chrome.runtime.id becomes undefined sync on
-// extension reload — catches it within 2s instead of waiting for the 30s
-// health-ping. Aborts lifecycle immediately, then jitter-reloads 1–10s so N
-// tabs don't all reload at once and crash Chrome. If a NEW instance arrives
-// before the reload fires, skip the reload (NEW is already alive).
+// extension reload. Tear down lifecycle immediately, then defer reload to
+// visibility — active tab reloads in 1–5s, background tabs wait until user
+// focuses them. Avoids the N-tab thundering React mount herd that crashes
+// Chrome. content.js sets __heatsyncReloadScheduled — dedupe across scripts.
 const _hsMcCtxDeathTimer = setInterval(() => {
   if (chrome.runtime?.id) return
   clearInterval(_hsMcCtxDeathTimer)
   try { lifecycle.abort() } catch (_) {}
-  setTimeout(() => {
-    if (_hsMcTakenOver) return
-    try { location.reload() } catch (_) {}
-  }, 1000 + Math.random() * 9000)
+  if (window.__heatsyncReloadScheduled) return
+  window.__heatsyncReloadScheduled = true
+  const doReload = () => { if (_hsMcTakenOver) return; try { location.reload() } catch (_) {} }
+  if (document.visibilityState === 'visible') {
+    setTimeout(doReload, 1000 + Math.random() * 4000)
+  } else {
+    document.addEventListener('visibilitychange', function once() {
+      if (document.visibilityState !== 'visible') return
+      document.removeEventListener('visibilitychange', once)
+      setTimeout(doReload, 500 + Math.random() * 2000)
+    })
+  }
 }, 2000)
 _timers.intervals.push(_hsMcCtxDeathTimer)
 

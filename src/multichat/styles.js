@@ -731,6 +731,21 @@ function injectStyles() {
     [class*="chat-shell"].hs-native-hidden > *:not(#hs-mc-container):not(.hs-pc-panel):not(.hs-profile-card):not(:has([data-test-selector="chat-private-callout-queue__callout-container"] *)) {
       display: none !important;
     }
+    /* When the callout queue is present, the wrapper holding it (a Twitch
+       Layout-sc-* div between chat-shell and chat-room__content) is excluded
+       from the hide rule above and naturally expands to fill all flex space —
+       starving #hs-mc-container down to h:0 so the overlay disappears. Collapse
+       the wrapper to absolute 0×0; the callout is position:fixed so it still
+       renders, and hs-mc-container reclaims its flex:1 height. */
+    .chat-shell.hs-native-hidden > *:has([data-test-selector="chat-private-callout-queue__callout-container"] *):not(#hs-mc-container):not(.hs-pc-panel):not(.hs-profile-card),
+    [class*="chat-shell"].hs-native-hidden > *:has([data-test-selector="chat-private-callout-queue__callout-container"] *):not(#hs-mc-container):not(.hs-pc-panel):not(.hs-profile-card) {
+      display: block !important;
+      position: absolute !important;
+      width: 0 !important;
+      height: 0 !important;
+      overflow: visible !important;
+      pointer-events: none !important;
+    }
     /* Ensure stream-chat ancestor also stays sized */
     [class*="stream-chat"].hs-native-hidden {
       display: flex !important;
@@ -751,10 +766,10 @@ function injectStyles() {
     [data-test-selector="chat-private-callout-queue__callout-container"]:has(*) {
       position: fixed !important;
       top: auto !important;
-      right: auto !important;
       bottom: var(--hs-callout-bottom, 0px) !important;
       left: var(--hs-callout-left, 0px) !important;
-      width: var(--hs-callout-width, 100vw) !important;
+      right: var(--hs-callout-right, 0px) !important;
+      width: auto !important;
       max-width: none !important;
       z-index: 100000 !important;
       pointer-events: auto !important;
@@ -2116,6 +2131,23 @@ function injectStyles() {
     }
     #hs-mc-input::placeholder {
       color: #808080;
+    }
+    /* Resub-share mode — purple border on the whole inputbar so the user
+       knows their next message becomes the resub celebration body. */
+    #hs-mc-inputbar.hs-mc-resub-share {
+      box-shadow: 0 0 0 2px #9147ff inset, 0 0 8px rgba(145,71,255,0.4);
+      background: rgba(145,71,255,0.08);
+    }
+    #hs-mc-input.hs-mc-resub-share,
+    #hs-mc-input.hs-mc-resub-share:focus {
+      border-color: #9147ff !important;
+      background: #faf5ff !important;
+    }
+    #hs-mc-input.hs-mc-resub-share::placeholder,
+    #hs-mc-input.hs-mc-resub-share[contenteditable]:empty::before,
+    #hs-mc-input.hs-mc-resub-share[contenteditable]:has(br:only-child)::before {
+      color: #9147ff !important;
+      font-weight: 600 !important;
     }
     /* Contenteditable placeholder. Browsers leave a stray BR after focus/blur
        cycles which breaks :empty — match BR-only-child too so the placeholder

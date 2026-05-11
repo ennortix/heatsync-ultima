@@ -4807,9 +4807,95 @@
   // Twitch resub-share / sub-anniversary callout: hide the native Pin toggle
   // (it pins to the hidden native chat → looks broken), inject our own X
   // button that just hides the callout. Idempotent + survives re-mounts via
-  // dataset guard. Native Share button is left alone — clicking it still posts
-  // the resub message to chat.
+  // dataset guard. Also hooks the Share button so we can guarantee a local
+  // celebration line even if Twitch suppresses the self-echo USERNOTICE.
+  //
+  // Share-dedupe contract (bulletproof against duplicates):
+  //   Phase 1 [0–2000ms after click]: wait for Twitch's real USERNOTICE.
+  //     - If it arrives matching channel+user+msg-id → cancel synthetic.
+  //   Phase 2 [+0–30s after synthetic injection]: keep watching.
+  //     - If real arrives late → hide synthetic from buffer + remove its
+  //       DOM row → real takes its place. Single celebration always.
   let _hsCalloutCloseObs = null
+  let _pendingShareClaim = null
+  let _resubShareModeTimer = null
+  let _resubShareCtx = null
+  function _injectShareSynthetic(claim, user, months, customText) {
+    const synthId = `hs-synth-share-${claim.channel}-${months}-${Date.now()}`
+    claim.synthId = synthId
+    claim.customText = customText || ''
+    const synth = {
+      type: 'usernotice', msgId: 'resub', user, text: customText || '',
+      systemMsg: `${user} is celebrating ${months} months as a subscriber!`,
+      color: '#ff8700', badges: _ownBadges || '', channel: claim.channel,
+      time: Date.now(), subTier: '1', subMonths: months, giftCount: 0,
+      recipient: '', raidViewers: 0, raidFrom: '', announceColor: '',
+      bitsTier: 0, id: synthId, isSynthetic: true, userOverride: !!customText
+    }
+    try { irc?._handleMsg?.(synth) } catch (_) {}
+    claim.postTimer = setTimeout(() => {
+      if (_pendingShareClaim === claim) _pendingShareClaim = null
+    }, 30000)
+  }
+  function _enterResubShareMode(claim, user, months) {
+    _resubShareCtx = { claim, user, months }
+    const input = document.getElementById('hs-mc-input')
+    const inputBar = document.getElementById('hs-mc-inputbar')
+    if (!input) return
+    inputBar?.classList.add('hs-mc-resub-share')
+    input.classList.add('hs-mc-resub-share')
+    if (input.dataset.hsOrigPlaceholder === undefined) {
+      input.dataset.hsOrigPlaceholder = input.getAttribute('placeholder') || ''
+    }
+    if (input.dataset.hsOrigDataPlaceholder === undefined) {
+      input.dataset.hsOrigDataPlaceholder = input.getAttribute('data-placeholder') || ''
+    }
+    const placeholder = `🎉 Resub message (${months}mo) — Enter to share`
+    input.setAttribute('placeholder', placeholder)
+    input.setAttribute('data-placeholder', placeholder)
+    try { input.focus() } catch (_) {}
+    if (_resubShareModeTimer) clearTimeout(_resubShareModeTimer)
+    _resubShareModeTimer = setTimeout(() => _exitResubShareMode(claim, true), 30000)
+  }
+  function _exitResubShareMode(claim, fireFallback) {
+    if (claim && _resubShareCtx?.claim !== claim) return
+    const wasCtx = _resubShareCtx
+    _resubShareCtx = null
+    if (_resubShareModeTimer) { clearTimeout(_resubShareModeTimer); _resubShareModeTimer = null }
+    const input = document.getElementById('hs-mc-input')
+    const inputBar = document.getElementById('hs-mc-inputbar')
+    inputBar?.classList.remove('hs-mc-resub-share')
+    input?.classList.remove('hs-mc-resub-share')
+    if (input?.dataset.hsOrigPlaceholder !== undefined) {
+      input.setAttribute('placeholder', input.dataset.hsOrigPlaceholder)
+      delete input.dataset.hsOrigPlaceholder
+    }
+    if (input?.dataset.hsOrigDataPlaceholder !== undefined) {
+      if (input.dataset.hsOrigDataPlaceholder) {
+        input.setAttribute('data-placeholder', input.dataset.hsOrigDataPlaceholder)
+      } else {
+        input.removeAttribute('data-placeholder')
+      }
+      delete input.dataset.hsOrigDataPlaceholder
+    }
+    // 30s timeout with no user text → fall back to the empty-body synthetic so
+    // the celebration banner still shows locally.
+    if (fireFallback && wasCtx && !wasCtx.claim.synthId) {
+      _injectShareSynthetic(wasCtx.claim, wasCtx.user, wasCtx.months, '')
+    }
+  }
+  // Exposed for input.js sendMessage: consume typed text as resub-share body.
+  window.__hsResubShare = {
+    active: () => !!_resubShareCtx,
+    consume: (text) => {
+      if (!_resubShareCtx) return false
+      const { claim, user, months } = _resubShareCtx
+      if (claim.preTimer) { clearTimeout(claim.preTimer); claim.preTimer = null }
+      _injectShareSynthetic(claim, user, months, text)
+      _exitResubShareMode(claim, false)
+      return true
+    }
+  }
   function setupHsCalloutCloseButton() {
     if (_hsCalloutCloseObs) return
     const inject = (calloutEl) => {
@@ -4826,21 +4912,55 @@
         if (queue) queue.style.display = 'none'
       })
       calloutEl.appendChild(closeBtn)
+      // Hook the native Share button: enter resub-share mode so the user types
+      // a custom celebration message in HeatSync's input. Twitch's native Share
+      // is one-click-immediate-send with empty body, which left the user with a
+      // blank celebration on chat. Our hook keeps Twitch's broadcast running
+      // (banner appears for viewers) while capturing the user's text locally.
+      const shareBtn = calloutEl.querySelector('[data-a-target="chat-private-callout__primary-button"]')
+      if (shareBtn && shareBtn.dataset.hsShareHooked !== '1') {
+        shareBtn.dataset.hsShareHooked = '1'
+        shareBtn.addEventListener('click', () => {
+          try {
+            const txt = calloutEl.textContent || ''
+            const mm = txt.match(/(\d+)\s*month/i)
+            const months = mm ? parseInt(mm[1]) : 0
+            const ch = (getLiveChannel?.() || getCurrentChannel?.() || '').toLowerCase()
+            const user = currentUsername || ''
+            if (!ch || !user || !months) return
+            if (_pendingShareClaim) {
+              clearTimeout(_pendingShareClaim.preTimer)
+              clearTimeout(_pendingShareClaim.postTimer)
+            }
+            const claim = { channel: ch, userLc: user.toLowerCase(), months, synthId: null, preTimer: null, postTimer: null, customText: '' }
+            _pendingShareClaim = claim
+            _enterResubShareMode(claim, user, months)
+          } catch (_) {}
+        })
+      }
     }
     // Process existing callouts on init
     document.querySelectorAll('[data-test-selector="chat-private-callout-queue__callout-container"] .pinned-callout').forEach(inject)
     _hsCalloutCloseObs = new MutationObserver((muts) => {
+      let sawCallout = false
       for (const m of muts) {
         for (const node of m.addedNodes) {
           if (node.nodeType !== 1) continue
           if (node.classList?.contains('pinned-callout') &&
               node.closest('[data-test-selector="chat-private-callout-queue__callout-container"]')) {
             inject(node)
+            sawCallout = true
           } else if (node.querySelector) {
-            node.querySelectorAll('[data-test-selector="chat-private-callout-queue__callout-container"] .pinned-callout').forEach(inject)
+            const matches = node.querySelectorAll('[data-test-selector="chat-private-callout-queue__callout-container"] .pinned-callout')
+            if (matches.length) sawCallout = true
+            matches.forEach(inject)
           }
         }
       }
+      // Refresh callout dock geometry the moment the queue appears — the
+      // ResizeObserver only fires on tabbar/inputbar resize, so a callout
+      // arriving with stale CSS vars would render at the fallback (100vw).
+      if (sawCallout) try { _updateMcLayout?.() } catch (_) {}
     })
     _hsCalloutCloseObs.observe(document.body, { childList: true, subtree: true })
     cleanup.trackObserver(_hsCalloutCloseObs)
@@ -4998,22 +5118,32 @@
 
       // Publish CSS vars so the docked Twitch resub-share callout
       // (chat-private-callout-queue__callout-container, styled in styles.js)
-      // can pin itself directly above #hs-mc-inputbar — full width of the
-      // inputbar, bottom edge flush with the inputbar's top edge. Reply
-      // indicator gets inserted inside the inputbar, so its height is already
-      // counted here; both bars stack above the input field for free.
+      // spans the FULL chat-shell width — including the vertical tab strip
+      // when tabs are left/right — so the banner sits flush against the
+      // chat-shell edges with no awkward gap to the tab column. Horizontal
+      // bounds come from #hs-mc-container (the chat-shell child that contains
+      // BOTH overlay and vertical tabbar). Bottom edge docks above the
+      // topmost stacked element (tabbar in bottom mode, otherwise inputbar).
       const root = document.documentElement
-      if (inputBarElement && !inputBarElement.classList.contains('hs-hidden')) {
-        const ibRect = inputBarElement.getBoundingClientRect()
-        if (ibRect.width > 0 && ibRect.height > 0) {
-          root.style.setProperty('--hs-callout-bottom', Math.max(0, window.innerHeight - ibRect.top) + 'px')
-          root.style.setProperty('--hs-callout-left', ibRect.left + 'px')
-          root.style.setProperty('--hs-callout-width', ibRect.width + 'px')
-        }
+      const ibVisible = inputBarElement && !inputBarElement.classList.contains('hs-hidden')
+      const tbVisible = tabBarElement && !tabBarElement.classList.contains('hs-hidden')
+      const ibRect = ibVisible ? inputBarElement.getBoundingClientRect() : null
+      const tbRect = tbVisible ? tabBarElement.getBoundingClientRect() : null
+      const ovRect = overlayElement ? overlayElement.getBoundingClientRect() : null
+      let bottomY = null
+      if (ibRect && ibRect.height > 0) bottomY = ibRect.top
+      if (tabPosition === 'bottom' && tbRect && tbRect.height > 0) {
+        bottomY = bottomY !== null ? Math.min(bottomY, tbRect.top) : tbRect.top
+      }
+      const horRect = (ovRect && ovRect.width > 0) ? ovRect : ibRect
+      if (horRect && bottomY !== null) {
+        root.style.setProperty('--hs-callout-bottom', Math.max(0, window.innerHeight - bottomY) + 'px')
+        root.style.setProperty('--hs-callout-left', horRect.left + 'px')
+        root.style.setProperty('--hs-callout-right', Math.max(0, window.innerWidth - (horRect.left + horRect.width)) + 'px')
       } else {
         root.style.removeProperty('--hs-callout-bottom')
         root.style.removeProperty('--hs-callout-left')
-        root.style.removeProperty('--hs-callout-width')
+        root.style.removeProperty('--hs-callout-right')
       }
     }
 
@@ -5880,6 +6010,8 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
 
   function appendMessage(msg, tabId) {
     if (editingChannel) return false;
+    // Hidden by share-dedupe (real USERNOTICE replaced our synthetic)
+    if (msg?.hidden) return true;
     // Skip live append while profile card is open — buffer keeps the msg, restored on close
     if (typeof activeProfileCard !== 'undefined' && activeProfileCard) return true;
     if (isScrolledUp || currentTab !== tabId) return false;
@@ -6312,7 +6444,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       }
     }
 
-    const toRender = msgs.slice(-500)
+    const toRender = msgs.slice(-500).filter(m => !m?.hidden)
     isProgrammaticScroll = true;
 
     // GOD-TIER STABLE-ORDER RENDER:
@@ -9163,6 +9295,41 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
 
     // Handle incoming IRC messages
     irc.on('message', (msg) => {
+      // Share-claim dedupe: a real resub/milestone USERNOTICE from Twitch
+      // matches a pending Share click. Pre-injection → cancel synthetic.
+      // Post-injection → hide synthetic so real takes its place. Single
+      // celebration always.
+      if (_pendingShareClaim && msg.type === 'usernotice' && !msg.isSynthetic &&
+          msg.channel?.toLowerCase() === _pendingShareClaim.channel &&
+          msg.user?.toLowerCase() === _pendingShareClaim.userLc &&
+          (msg.msgId === 'resub' || msg.msgId === 'sub' || msg.msgId === 'viewermilestone')) {
+        const claim = _pendingShareClaim
+        // If our synthetic carries user-typed body and the real broadcast came
+        // through empty (Twitch's one-click Share has no composer), keep the
+        // synthetic and hide real so the chat shows the user's custom message.
+        const realBody = (msg.text || '').trim()
+        if (claim.customText && claim.synthId && !realBody) {
+          msg.hidden = true
+          return
+        }
+        clearTimeout(claim.preTimer)
+        clearTimeout(claim.postTimer)
+        _pendingShareClaim = null
+        if (claim.synthId) {
+          const buf = irc?.channels?.get(claim.channel)
+          if (buf) {
+            for (const m of buf.getAll()) {
+              if (m.id === claim.synthId) { m.hidden = true; break }
+            }
+          }
+          try {
+            const msgsEl = document.getElementById('hs-mc-messages')
+            const safe = (CSS.escape ? CSS.escape(claim.synthId) : claim.synthId.replace(/"/g, '\\"'))
+            const row = msgsEl?.querySelector(`.hs-mc-msg[data-msg-id="${safe}"]`)
+            if (row) row.remove()
+          } catch (_) {}
+        }
+      }
       // CLEARCHAT/CLEARMSG → live-dim already-rendered DOM rows from the offender.
       // Buffer entries were already flagged with `cleared=true` inside the IRC client,
       // so future re-renders pick it up via the renderer; this just patches the visible DOM.
@@ -9760,21 +9927,35 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       }
     }, 30000, 'yt-watchdog')
 
-    // 1. Detect extension context invalidation → auto-reload page
-    // When Chrome restarts the service worker or updates the extension,
-    // content scripts become orphaned. Detect and reload.
+    // 1. Detect extension context invalidation → defer reload to visibility.
+    // When Chrome restarts the service worker or updates the extension, content
+    // scripts become orphaned. Defer reload until tab is visible so background
+    // tabs don't all reload at once and crash Chrome. Dedupe via global flag —
+    // bootstrap.js + content.js may also schedule.
     cleanup.setInterval(() => {
+      const scheduleReload = () => {
+        if (window.__heatsyncReloadScheduled) return
+        window.__heatsyncReloadScheduled = true
+        const doReload = () => { try { location.reload() } catch (_) {} }
+        if (document.visibilityState === 'visible') {
+          setTimeout(doReload, 1000 + Math.random() * 4000)
+        } else {
+          document.addEventListener('visibilitychange', function once() {
+            if (document.visibilityState !== 'visible') return
+            document.removeEventListener('visibilitychange', once)
+            setTimeout(doReload, 500 + Math.random() * 2000)
+          })
+        }
+      }
       try {
         if (!chrome.runtime?.id) throw new Error('dead');
-        // Ping background to verify it's alive
         chrome.runtime.sendMessage({ type: 'ping' }).catch(() => {
-          log('Background unreachable, reloading page (jittered)...');
-          // Jitter so N tabs don't all reload at once on extension update
-          setTimeout(() => { try { location.reload() } catch (_) {} }, 1000 + Math.random() * 9000)
+          log('Background unreachable, deferring reload to visibility...');
+          scheduleReload()
         });
       } catch {
-        log('Extension context invalidated, reloading page (jittered)...');
-        setTimeout(() => { try { location.reload() } catch (_) {} }, 1000 + Math.random() * 9000)
+        log('Extension context invalidated, deferring reload to visibility...');
+        scheduleReload()
       }
     }, 30000, 'context-health');
 

@@ -138,26 +138,12 @@ browser.runtime.onInstalled.addListener((details) => {
   channelEmotesFetchedAt = {};
   browser.storage.local.remove('channel_emotes_map').catch(() => {})
   browser.storage.local.remove('channel_emotes_fetched_at').catch(() => {})
-  if (details.reason === 'update') {
-    // Re-inject content scripts that have re-injection guards (each aborts
-    // the prior instance via window.__heatsync*Lifecycle so OLD + NEW don't
-    // both run). Stagger across tabs by 0–4s so N tabs of Twitch React don't
-    // all re-mount simultaneously and OOM Chrome.
-    browser.tabs.query({ url: ['*://*.twitch.tv/*', '*://*.kick.com/*', '*://*.youtube.com/*'] }).then(tabs => {
-      for (const tab of tabs) {
-        const delayMs = Math.random() * 4000
-        setTimeout(() => {
-          // shared-utils refreshes window.HS (used by heatsync-button.js for createLifecycle).
-          // Order matters: content.js first so its lifecycle is rebound before multichat
-          // sends it any postMessage / events on init.
-          browser.scripting?.executeScript({
-            target: { tabId: tab.id },
-            files: ['shared-utils.js', 'content.js', 'multichat.js', 'heatsync-button.js']
-          }).catch(() => {})
-        }, delayMs)
-      }
-    }).catch(() => {})
-  }
+  // Don't re-inject content scripts on update. Soft-reinjection of 1.5MB of
+  // bundled JS on top of a live React-mounted Twitch DOM was blanking the
+  // renderer (and worse — crashing Chrome when fanned out to N tabs). Content
+  // scripts detect ctx-death and defer location.reload() to visibilitychange:
+  // active tab reloads in 1–5s, background tabs reload only when focused.
+  // Trade-off: lose scroll position vs. reliable recovery. Scroll loses.
   if (details.reason === 'install') {
     browser.tabs.create({
       url: browser.runtime.getURL('welcome.html')
@@ -1074,7 +1060,8 @@ async function pollFollowedLive() {
     updateLiveBadgeTooltip()
     broadcastToTabs({ type: 'live_followed_updated', snapshot: _liveFollowedSnapshot })
 
-    for (const t of transitions) fireLiveNotificationFromStream(t.stream, t.username, t.platform)
+    if (transitions.length >= 3) fireLiveCoalescedNotification(transitions)
+    else for (const t of transitions) fireLiveNotificationFromStream(t.stream, t.username, t.platform)
   } catch (e) {
     console.warn('[heatsync] pollFollowedLive failed:', e?.message || e)
   } finally {
@@ -1133,6 +1120,35 @@ function fireLiveNotificationFromStream(stream, username, platform) {
     })
   } catch (e) {
     console.warn('[heatsync] fireLiveNotification failed:', e?.message)
+  }
+}
+
+function fireLiveCoalescedNotification(transitions) {
+  if (!browser.notifications?.create) return
+  const names = transitions.map(t => {
+    const s = t.stream
+    return s.heatsyncDisplayName || s.displayName || s.display_name || t.username
+  })
+  const uniqNames = [...new Set(names)]
+  const head = uniqNames.slice(0, 3).join(', ')
+  const more = uniqNames.length > 3 ? ` +${uniqNames.length - 3} more` : ''
+  const id = `hs-live-batch-${Date.now()}`
+  _liveNotificationUrls.set(id, `${API_URL}/?tab=following`)
+  if (_liveNotificationUrls.size > 50) {
+    const oldest = _liveNotificationUrls.keys().next().value
+    _liveNotificationUrls.delete(oldest)
+  }
+  try {
+    browser.notifications.create(id, {
+      type: 'basic',
+      iconUrl: browser.runtime.getURL('icon-128.png'),
+      title: `${uniqNames.length} followed creators are live`,
+      message: `${head}${more}`,
+      contextMessage: 'heatsync',
+      priority: 1,
+    })
+  } catch (e) {
+    console.warn('[heatsync] fireLiveCoalescedNotification failed:', e?.message)
   }
 }
 

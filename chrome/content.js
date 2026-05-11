@@ -65,21 +65,29 @@ window.__heatsyncContentLifecycle = {
   abort: () => { _hsTakenOver = true; try { lifecycle.abort() } catch (_) {} }
 }
 
-// Fast context-death detector. chrome.runtime.id is a sync property that
-// becomes undefined on extension reload — much faster than waiting for the
-// 30s health-ping. Once dead: stop all observers/intervals immediately, then
-// jitter the page reload across 1–10s so N tabs don't all reload at once and
-// crash Chrome from a thundering herd of Twitch React re-mounts. If a NEW
-// instance arrives before our scheduled reload fires, skip the reload.
+// Fast context-death detector. chrome.runtime.id becomes undefined sync on
+// extension reload. Once dead: tear down listeners immediately, then defer
+// the page reload to visibility — active tab reloads in 1–5s, background
+// tabs wait until user focuses them. This avoids the N-tab thundering React
+// mount herd that crashes Chrome when many Twitch tabs reload at once.
+// If a NEW content.js instance arrives before reload fires, skip the reload.
 const _hsCtxDeathTimer = setInterval(() => {
   if (chrome.runtime?.id) return
   clearInterval(_hsCtxDeathTimer)
   extensionContextValid = false
   try { lifecycle.abort() } catch (_) {}
-  setTimeout(() => {
-    if (_hsTakenOver) return
-    try { location.reload() } catch (_) {}
-  }, 1000 + Math.random() * 9000)
+  if (window.__heatsyncReloadScheduled) return
+  window.__heatsyncReloadScheduled = true
+  const doReload = () => { if (_hsTakenOver) return; try { location.reload() } catch (_) {} }
+  if (document.visibilityState === 'visible') {
+    setTimeout(doReload, 1000 + Math.random() * 4000)
+  } else {
+    document.addEventListener('visibilitychange', function once() {
+      if (document.visibilityState !== 'visible') return
+      document.removeEventListener('visibilitychange', once)
+      setTimeout(doReload, 500 + Math.random() * 2000)
+    })
+  }
 }, 2000)
 _timers.intervals.push(_hsCtxDeathTimer)
 

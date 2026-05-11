@@ -130,14 +130,15 @@ const DEBUG = typeof window !== 'undefined' &&
 // ============================================
 
 /**
- * Boost the lightness of a hex color so it's readable on a dark/black bg.
- * Preserves hue and saturation; only raises L (HSL) when below threshold.
- * Returns the input unchanged if already readable, malformed, or non-hex.
+ * Boost a hex color so it's readable on a dark/black bg.
+ * Uses WCAG relative luminance — catches pure blue (#0000ff) which has
+ * HSL L=0.5 but perceptual L≈0.07, invisible on black.
+ * Raises HSL L (preserving hue + saturation) until relL clears threshold.
  * @param {string} hex - "#rgb" or "#rrggbb"
- * @param {number} [minL=0.5] - minimum lightness (0..1)
+ * @param {number} [minRelL=0.25] - minimum WCAG relative luminance (0..1)
  * @returns {string}
  */
-function boostReadability(hex, minL = 0.5) {
+function boostReadability(hex, minRelL = 0.25) {
   if (typeof hex !== 'string') return hex
   let m = hex.match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i)
   if (!m) return hex
@@ -146,6 +147,8 @@ function boostReadability(hex, minL = 0.5) {
   const r = parseInt(h6.slice(0,2), 16) / 255
   const g = parseInt(h6.slice(2,4), 16) / 255
   const b = parseInt(h6.slice(4,6), 16) / 255
+  const relL = 0.2126*r + 0.7152*g + 0.0722*b
+  if (relL >= minRelL) return hex
   const max = Math.max(r,g,b), min = Math.min(r,g,b)
   let h, s, l = (max+min)/2
   if (max === min) { h = 0; s = 0 }
@@ -159,8 +162,6 @@ function boostReadability(hex, minL = 0.5) {
     }
     h /= 6
   }
-  if (l >= minL) return hex
-  l = minL
   const hue2rgb = (p, q, t) => {
     if (t < 0) t += 1
     if (t > 1) t -= 1
@@ -169,10 +170,21 @@ function boostReadability(hex, minL = 0.5) {
     if (t < 2/3) return p + (q-p)*(2/3-t)*6
     return p
   }
-  const q = l < 0.5 ? l*(1+s) : l+s-l*s
-  const p = 2*l - q
-  const toByte = (x) => Math.round(hue2rgb(p,q,x)*255).toString(16).padStart(2,'0')
-  return '#' + toByte(h+1/3) + toByte(h) + toByte(h-1/3)
+  const rgbAt = (ll) => {
+    const q = ll < 0.5 ? ll*(1+s) : ll+s-ll*s
+    const p = 2*ll - q
+    return [hue2rgb(p,q,h+1/3), hue2rgb(p,q,h), hue2rgb(p,q,h-1/3)]
+  }
+  let lT = Math.max(l, 0.5)
+  let rr, gg, bb
+  for (let i = 0; i < 9; i++) {
+    [rr,gg,bb] = rgbAt(lT)
+    if (0.2126*rr + 0.7152*gg + 0.0722*bb >= minRelL) break
+    if (lT >= 0.85) break
+    lT = Math.min(0.85, lT + 0.05)
+  }
+  const toByte = (x) => Math.round(x*255).toString(16).padStart(2,'0')
+  return '#' + toByte(rr) + toByte(gg) + toByte(bb)
 }
 
 function log(...args) {

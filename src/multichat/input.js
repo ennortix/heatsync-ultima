@@ -2751,6 +2751,19 @@ async function sendMessage() {
   let text = convertEmojiShortcodes(getInputText().trim());
   if (!text) return;
 
+  // Resub-share mode — text becomes the celebration body. main.js injects a
+  // synthetic usernotice with this text and the dedup keeps it over Twitch's
+  // empty real broadcast.
+  if (window.__hsResubShare?.active?.()) {
+    if (window.__hsResubShare.consume(text)) {
+      if (wysiwygEnabled) input.textContent = ''
+      else input.value = ''
+      pendingMessage = ''
+      updateCharCount()
+      return
+    }
+  }
+
   // Slash commands — work from any tab. Handler may return:
   //   true   -> consumed, exit
   //   string -> rewrite outgoing text and continue normal send

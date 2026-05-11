@@ -146,9 +146,17 @@
         label = sourceName;
       }
     }
+    // Stale-emote ghost hint: append "· removed by @actor" if the hovered
+    // wrapper carries data-stale-actor (set by main.js channel_emote_removed).
+    const wrapper = (hoveredImg || e.target)?.closest?.('.hs-mc-emote-wrapper')
+    const staleActor = wrapper?.dataset.staleActor || ''
+    const isStale = wrapper?.classList.contains('hs-state-stale')
+    if (isStale) {
+      label = staleActor ? `${label} · removed by @${staleActor}` : `${label} · removed from channel`
+    }
     stateEl.textContent = label;
     const srcClass = (state === 'global' || state === 'channel' || state === 'sub') && source ? ' src-' + source.toLowerCase().replace(/[^a-z0-9]/g, '') : ''
-    stateEl.className = 'tooltip-source ' + (state || 'global') + srcClass;
+    stateEl.className = 'tooltip-source ' + (state || 'global') + srcClass + (isStale ? ' stale' : '');
 
     // Position: anchor above the emote element
     const anchorEl = hoveredImg || e.target;

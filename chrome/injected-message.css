@@ -119,3 +119,19 @@ body:has(#hs-mc-container) .channel-root__info--with-chat .channel-info-content 
 .heatsync-emote-wrapper.heatsync-mod-cursed img {
   transform: rotate(180deg) !important;
 }
+
+/* Stale-emote ghost — applied to native Twitch/Kick chat IMG elements via
+   data-emote-name. Cached IMG keeps rendering after channel removes the emote
+   from its set; dim + desaturate so the ghost is visible without blocking
+   visibility of the message. */
+[data-emote-name].hs-state-stale,
+.hs-state-stale > [data-emote-name] {
+  opacity: 0.55;
+  filter: saturate(0.45);
+  transition: opacity 0.2s ease-out, filter 0.2s ease-out;
+}
+[data-emote-name].hs-state-stale:hover,
+.hs-state-stale > [data-emote-name]:hover {
+  opacity: 1;
+  filter: none;
+}

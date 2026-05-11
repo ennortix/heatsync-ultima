@@ -1411,7 +1411,25 @@
         const safeHash = emote.hash ? escapeHtml(emote.hash) : '';
         const displayName = escapeHtml(word)
         const ownerAttr = emote.ownerDisplay ? ` data-owner="${escapeHtml(emote.ownerDisplay)}"` : ''
-        const imgHtmlRaw = `<span class="hs-mc-emote-wrapper hs-state-${state}" data-emote-name="${displayName}" data-emote-url="${imgSrc}" data-state="${state}" data-source="${source}"${ownerAttr}${safeHash ? ` data-emote-hash="${safeHash}"` : ''}><img src="${imgSrc}" alt="${displayName}" title="${displayName}" class="hs-mc-emote hs-emote-${state}" data-emote-name="${displayName}" data-state="${state}" data-source="${source}"${ownerAttr} loading="lazy" decoding="async"></span>`;
+        // Stale-emote ghost: if any channel's stale registry has this name, mark
+        // the wrapper so dim/desaturate CSS applies. Iterating all channels is
+        // O(small) and avoids passing channel context through the render path.
+        let staleClass = '', staleAttr = ''
+        try {
+          const reg = window._hsStaleEmotes
+          if (reg) {
+            for (const m of reg.values()) {
+              if (m.has(word)) {
+                const meta = m.get(word)
+                staleClass = ' hs-state-stale'
+                if (meta?.actor) staleAttr += ` data-stale-actor="${escapeHtml(meta.actor)}"`
+                if (meta?.at) staleAttr += ` data-stale-at="${meta.at}"`
+                break
+              }
+            }
+          }
+        } catch (e) {}
+        const imgHtmlRaw = `<span class="hs-mc-emote-wrapper hs-state-${state}${staleClass}" data-emote-name="${displayName}" data-emote-url="${imgSrc}" data-state="${state}" data-source="${source}"${ownerAttr}${safeHash ? ` data-emote-hash="${safeHash}"` : ''}${staleAttr}><img src="${imgSrc}" alt="${displayName}" title="${displayName}" class="hs-mc-emote hs-emote-${state}" data-emote-name="${displayName}" data-state="${state}" data-source="${source}"${ownerAttr} loading="lazy" decoding="async"></span>`;
 
         // Build the new item — inline-glued suffix mod attaches to THIS emote
         // (e.g. "RainTimew!" → wide RainTime, not wide whatever-was-base).

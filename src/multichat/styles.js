@@ -2109,6 +2109,22 @@ function injectStyles() {
     .hs-mc-emote-wrapper.hs-state-channel::before { background: #00ff00; }
     .hs-mc-emote-wrapper.hs-state-blocked::before { background: #ff0000; }
 
+    /* Stale ghost: emote was in the channel set when the message posted but
+       has since been removed. Dim + desaturate the cached IMG; muted-orange
+       marker distinguishes from active orange unadded state. */
+    .hs-mc-emote-wrapper.hs-state-stale > img {
+      opacity: 0.55;
+      filter: saturate(0.45);
+      transition: opacity 0.2s ease-out, filter 0.2s ease-out;
+    }
+    .hs-mc-emote-wrapper.hs-state-stale:hover > img {
+      opacity: 1;
+      filter: none;
+    }
+    .hs-mc-emote-wrapper.hs-state-stale::before {
+      background: #7a4400;
+    }
+
     /* Blocked emotes: hide img (keeps natural dimensions), dashed line via ::before */
     .hs-mc-emote-wrapper.hs-state-blocked > img {
       visibility: hidden;

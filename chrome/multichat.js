@@ -6071,6 +6071,22 @@ function injectStyles() {
     .hs-mc-emote-wrapper.hs-state-channel::before { background: #00ff00; }
     .hs-mc-emote-wrapper.hs-state-blocked::before { background: #ff0000; }
 
+    /* Stale ghost: emote was in the channel set when the message posted but
+       has since been removed. Dim + desaturate the cached IMG; muted-orange
+       marker distinguishes from active orange unadded state. */
+    .hs-mc-emote-wrapper.hs-state-stale > img {
+      opacity: 0.55;
+      filter: saturate(0.45);
+      transition: opacity 0.2s ease-out, filter 0.2s ease-out;
+    }
+    .hs-mc-emote-wrapper.hs-state-stale:hover > img {
+      opacity: 1;
+      filter: none;
+    }
+    .hs-mc-emote-wrapper.hs-state-stale::before {
+      background: #7a4400;
+    }
+
     /* Blocked emotes: hide img (keeps natural dimensions), dashed line via ::before */
     .hs-mc-emote-wrapper.hs-state-blocked > img {
       visibility: hidden;
@@ -13479,7 +13495,25 @@ async function sendKickMessage(kickSlug, text) {
         const safeHash = emote.hash ? escapeHtml(emote.hash) : '';
         const displayName = escapeHtml(word)
         const ownerAttr = emote.ownerDisplay ? ` data-owner="${escapeHtml(emote.ownerDisplay)}"` : ''
-        const imgHtmlRaw = `<span class="hs-mc-emote-wrapper hs-state-${state}" data-emote-name="${displayName}" data-emote-url="${imgSrc}" data-state="${state}" data-source="${source}"${ownerAttr}${safeHash ? ` data-emote-hash="${safeHash}"` : ''}><img src="${imgSrc}" alt="${displayName}" title="${displayName}" class="hs-mc-emote hs-emote-${state}" data-emote-name="${displayName}" data-state="${state}" data-source="${source}"${ownerAttr} loading="lazy" decoding="async"></span>`;
+        // Stale-emote ghost: if any channel's stale registry has this name, mark
+        // the wrapper so dim/desaturate CSS applies. Iterating all channels is
+        // O(small) and avoids passing channel context through the render path.
+        let staleClass = '', staleAttr = ''
+        try {
+          const reg = window._hsStaleEmotes
+          if (reg) {
+            for (const m of reg.values()) {
+              if (m.has(word)) {
+                const meta = m.get(word)
+                staleClass = ' hs-state-stale'
+                if (meta?.actor) staleAttr += ` data-stale-actor="${escapeHtml(meta.actor)}"`
+                if (meta?.at) staleAttr += ` data-stale-at="${meta.at}"`
+                break
+              }
+            }
+          }
+        } catch (e) {}
+        const imgHtmlRaw = `<span class="hs-mc-emote-wrapper hs-state-${state}${staleClass}" data-emote-name="${displayName}" data-emote-url="${imgSrc}" data-state="${state}" data-source="${source}"${ownerAttr}${safeHash ? ` data-emote-hash="${safeHash}"` : ''}${staleAttr}><img src="${imgSrc}" alt="${displayName}" title="${displayName}" class="hs-mc-emote hs-emote-${state}" data-emote-name="${displayName}" data-state="${state}" data-source="${source}"${ownerAttr} loading="lazy" decoding="async"></span>`;
 
         // Build the new item — inline-glued suffix mod attaches to THIS emote
         // (e.g. "RainTimew!" → wide RainTime, not wide whatever-was-base).
@@ -13731,9 +13765,17 @@ async function sendKickMessage(kickSlug, text) {
         label = sourceName;
       }
     }
+    // Stale-emote ghost hint: append "· removed by @actor" if the hovered
+    // wrapper carries data-stale-actor (set by main.js channel_emote_removed).
+    const wrapper = (hoveredImg || e.target)?.closest?.('.hs-mc-emote-wrapper')
+    const staleActor = wrapper?.dataset.staleActor || ''
+    const isStale = wrapper?.classList.contains('hs-state-stale')
+    if (isStale) {
+      label = staleActor ? `${label} · removed by @${staleActor}` : `${label} · removed from channel`
+    }
     stateEl.textContent = label;
     const srcClass = (state === 'global' || state === 'channel' || state === 'sub') && source ? ' src-' + source.toLowerCase().replace(/[^a-z0-9]/g, '') : ''
-    stateEl.className = 'tooltip-source ' + (state || 'global') + srcClass;
+    stateEl.className = 'tooltip-source ' + (state || 'global') + srcClass + (isStale ? ' stale' : '');
 
     // Position: anchor above the emote element
     const anchorEl = hoveredImg || e.target;
@@ -26467,6 +26509,27 @@ const STORAGE_KEY = 'heatsync_multichat';
 
   // ═══ Sender-perma emote queue ═══
   // Lazy-fetch each unseen sender's 7TV/BTTV personal set ONCE, cache write-once-per-(sender, name) forever.
+  /**
+   * Load stale-emote registry from chrome.storage.local. Populates the
+   * window._hsStaleEmotes Map<channelLower, Map<emoteName, meta>> so message
+   * render can decorate ghost emotes from prior sessions. 7-day TTL.
+   */
+  async function loadStaleEmotes() {
+    try {
+      const stored = await chrome.storage.local.get(['hs_stale_emotes_v1'])
+      const obj = stored?.hs_stale_emotes_v1 || {}
+      const reg = window._hsStaleEmotes || (window._hsStaleEmotes = new Map())
+      const cutoff = Date.now() - 7 * 86400000
+      for (const [ch, entries] of Object.entries(obj)) {
+        const m = new Map()
+        for (const [name, meta] of (entries || [])) {
+          if ((meta?.at || 0) >= cutoff) m.set(name, meta)
+        }
+        if (m.size) reg.set(ch, m)
+      }
+    } catch (e) {}
+  }
+
   // Survives hard refresh because emotes.js loadSenderEmoteSets() runs at boot before render.
   const senderEmotePending = new Set()
   let senderEmoteTimer = null
@@ -34163,6 +34226,53 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
         const channel = (msg.channel || '').toLowerCase()
         if (!channel) return
         const actor = msg.actor || ''
+        // Stale-emote ghost: when an emote leaves the channel set, mark
+        // historical messages so the cached IMG renders dimmed + tagged with
+        // who removed it. Restored on re-add. Persisted to chrome.storage so
+        // it survives reload. 7-day TTL handled at read.
+        const _staleReg = window._hsStaleEmotes || (window._hsStaleEmotes = new Map())
+        const _ensureChannel = (ch) => { let m = _staleReg.get(ch); if (!m) { m = new Map(); _staleReg.set(ch, m) } return m }
+        const _persistStale = () => {
+          try {
+            const out = {}; const cutoff = Date.now() - 7 * 86400000
+            for (const [ch, m] of _staleReg) {
+              const entries = []
+              for (const [name, meta] of m) { if ((meta?.at || 0) >= cutoff) entries.push([name, meta]) }
+              if (entries.length) out[ch] = entries.slice(-100)
+            }
+            chrome.storage.local.set({ hs_stale_emotes_v1: out }).catch(() => {})
+          } catch (e) {}
+        }
+        const _patchDom = (emoteName, mode, meta) => {
+          try {
+            const sel = `img[data-name="${CSS.escape(emoteName)}"], .hs-mc-emote-wrapper[data-name="${CSS.escape(emoteName)}"]`
+            for (const node of document.querySelectorAll(sel)) {
+              const w = node.classList.contains('hs-mc-emote-wrapper') ? node : node.closest('.hs-mc-emote-wrapper')
+              if (!w) continue
+              if (mode === 'mark') {
+                w.classList.add('hs-state-stale')
+                if (meta?.actor) w.dataset.staleActor = meta.actor
+                if (meta?.at) w.dataset.staleAt = String(meta.at)
+              } else {
+                w.classList.remove('hs-state-stale')
+                delete w.dataset.staleActor
+                delete w.dataset.staleAt
+              }
+            }
+          } catch (e) {}
+        }
+        if (msg.type === 'channel_emote_removed' && msg.emoteName) {
+          _ensureChannel(channel).set(msg.emoteName, { at: Date.now(), actor, hash: msg.emoteHash || '', provider: '7tv' })
+          _patchDom(msg.emoteName, 'mark', { actor, at: Date.now() })
+          _persistStale()
+        } else if (msg.type === 'channel_emote_added' && msg.emote?.name) {
+          const m = _staleReg.get(channel)
+          if (m?.delete(msg.emote.name)) {
+            if (m.size === 0) _staleReg.delete(channel)
+            _patchDom(msg.emote.name, 'unmark', null)
+            _persistStale()
+          }
+        }
         // Build clean action text (actor rendered separately as the username-link;
         // including it inside text would duplicate it via buildMessageDiv).
         let action
@@ -34668,6 +34778,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       loadBlockedEmotes(),
       loadEmotes(),
       loadSenderEmoteSets(),
+      loadStaleEmotes(),
     ]);
     // Init done — drop the cache so subsequent reads see fresh data.
     invalidateUiSettingsCache()

@@ -3332,7 +3332,19 @@ function _onMessageMain(message) {
       break;
 
     case 'channel_emote_added':
-      // Handled by multichat.js as a persistent stream-event
+      // Handled by multichat.js as a persistent stream-event. Also clear the
+      // stale-ghost class from any previously-rendered emote of that name in
+      // the native Twitch/Kick chat DOM (we use Twitch's own wrapper class).
+      if (message.emote?.name) {
+        try {
+          const sel = `[data-emote-name="${CSS.escape(message.emote.name)}"]`;
+          document.querySelectorAll(sel).forEach(el => {
+            el.classList.remove('hs-state-stale');
+            delete el.dataset.staleActor;
+            delete el.dataset.staleAt;
+          });
+        } catch (e) {}
+      }
       break;
 
     case 'cosmetics_invalidated':
@@ -3351,7 +3363,19 @@ function _onMessageMain(message) {
       break;
 
     case 'channel_emote_removed':
-      // Handled by multichat.js as a persistent stream-event
+      // Handled by multichat.js as a persistent stream-event. Also patch the
+      // native Twitch/Kick chat DOM: query existing rendered emotes by name
+      // and add hs-state-stale + actor metadata so they dim in-place.
+      if (message.emoteName) {
+        try {
+          const sel = `[data-emote-name="${CSS.escape(message.emoteName)}"]`;
+          document.querySelectorAll(sel).forEach(el => {
+            el.classList.add('hs-state-stale');
+            if (message.actor) el.dataset.staleActor = message.actor;
+            el.dataset.staleAt = String(Date.now());
+          });
+        } catch (e) {}
+      }
       break;
 
     case 'emote_removed_broadcast':

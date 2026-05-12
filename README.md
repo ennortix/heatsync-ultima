@@ -9,7 +9,7 @@ emotes + multichat for twitch, kick, and youtube.
 
 ## install
 
-> not yet on the chrome web store or firefox addons — install manually below (60 seconds)
+> chrome web store + firefox add-ons listings are in review — install manually below in 60 seconds
 
 ### chrome / edge / brave / arc / opera
 
@@ -32,10 +32,17 @@ firefox unloads temporary add-ons on restart — will become one-click once appr
 ## build from source
 
 ```bash
+bun install
 bun run build.js chrome    # → dist/chrome/
 bun run build.js firefox   # → dist/firefox/
-bun run build.js --package # both + zip
+bun run build.js --package # both + signed zips + source zip
 ```
+
+`--package` runs `node --check` on every output bundle, minifies, and emits `dist/heatsync-{chrome,firefox}-X.Y.Z.zip` plus `dist/heatsync-source-X.Y.Z.zip` for AMO review.
+
+## release process
+
+push a `v*` tag and `.github/workflows/release.yml` does the rest — build, package, attach versioned zips + versionless aliases + source zip to a new GitHub release. README install links resolve to the latest tag automatically.
 
 ## license
 

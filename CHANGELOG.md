@@ -1,5 +1,51 @@
 # changelog
 
+## [1.3.9] — 2026-05-12
+
+### fixed
+- content.js failed to parse on load — a stray backtick inside a CSS comment terminated the `style.textContent` template literal, throwing SyntaxError. effect: emote replacement and cosmetics silently dead since 1.3.7. now caught by `node --check` over every built bundle during `bun run build.js`.
+
+### changed
+- build pipeline: post-build syntax check on every js output (chrome + firefox)
+- build pipeline: `--source` flag (auto-enabled with `--package`) emits `heatsync-source-X.Y.Z.zip` for AMO review
+- release workflow: `.github/workflows/release.yml` builds + packages + attaches versioned zips, source zip, and versionless `heatsync-chrome.zip` / `heatsync-firefox.xpi` aliases on every `v*` tag push
+
+## [1.3.8] — 2026-05-12
+
+### note
+- shipped to chrome web store but never published — superseded by 1.3.9 before review cleared. firefox upload was rejected by amo validator (same parse error caught later).
+
+## [1.3.7] — 2026-05-11
+
+### added
+- service-worker-owned twitch irc with cross-device unread sync and ui_state insta-sync
+- wysiwyg modifier system: `w!`, `h!`, `ffzX`, `c!#hex` chains over emote stacks
+- kick persistent overlay survives spa nav; profile card v2 with quick actions
+- emote picker context-menu rename; stack-click adds unowned emotes; paste drops blocked
+- yt user pool merges into @-completion; recency-weighted ordering
+- keyword highlights, per-user colors, mod toggle; resub-share callout via HsNotifs
+
+### changed
+- multi-variant emote fallback; smooth block-state cross-fade across panel + picker
+- whisper-send routes through gqlMutation with directly minted Client-Integrity
+- server-side feature sync (mutes, settings, mention rules, eventsub) wired into ext
+
+### perf
+- emote picker decoupled, lazy-loaded, scroll-locked; 7tv assets static
+- per-tab dom cache → flash-free tab switching
+- three chat observers folded into one unified observer
+- hot intervals gated; wide layout-observer dropped
+- css animations paused on host hidden; selectors scoped
+- orange c-handle uses ghost overlay during drag
+
+### fixed
+- twitch miniplayer-restore: chat off-screen + missing resize bar
+- autocompleted emoji wrapped in span — stops caret snap on U+FE0F
+- ghost-render for removed emotes via hs-state-stale
+- reply-ctx stays black on olive reply-stack — no chat-jump
+- channel badges retry on failure; fake "follows you 5mo" on streamers removed
+- popout fills window; vertical-tab util row stretches; twitch quick-links restored
+
 ## [1.3.5] — 2026-05-08
 
 ### fixed

@@ -2,25 +2,40 @@
 
 thanks for helping test! here's what to do.
 
-## install
+## install (manual, while store approvals are pending)
 
-### chrome
-1. download and unzip `heatsync-chrome-1.3.5.zip`
-2. go to `chrome://extensions`
-3. enable "Developer mode" (toggle top right)
-4. click "Load unpacked"
-5. select the unzipped folder
-6. you should see heatsync icon in toolbar
+direct downloads from github releases — always grab the latest:
+
+- chrome/edge/brave: https://github.com/mellen9999/heatsync-extension/releases/latest/download/heatsync-chrome.zip
+- firefox: https://github.com/mellen9999/heatsync-extension/releases/latest/download/heatsync-firefox.xpi
+
+### chrome / edge / brave / arc / opera
+1. download `heatsync-chrome.zip` from the link above
+2. unzip it (double-click the file)
+3. paste `chrome://extensions` in the address bar
+4. flip on **developer mode** (top-right toggle)
+5. click **load unpacked** → pick the unzipped folder
+6. you should see the heatsync icon in toolbar
 
 ### firefox
-1. download `heatsync-firefox-1.3.5.zip`
-2. go to `about:debugging#/runtime/this-firefox`
-3. click "Load Temporary Add-on"
-4. select the zip file
-5. you should see heatsync icon in toolbar
+1. download `heatsync-firefox.xpi` from the link above
+2. paste `about:debugging#/runtime/this-firefox` in the address bar
+3. click **load temporary add-on…**
+4. select the `.xpi` file (or its `manifest.json` if firefox blocks the xpi)
+5. you should see the heatsync icon in toolbar
 
-### edge
-same as chrome, use the chrome zip
+note: firefox unloads temporary add-ons on every restart — that's a firefox dev-mode limitation. once we're approved on addons.mozilla.org, it'll persist normally.
+
+## building from source (reviewers)
+
+reproducible build with bun (https://bun.sh):
+```
+bun install
+bun run build.js --package
+```
+output: `dist/chrome/`, `dist/firefox/`, plus zips in `dist/`.
+
+minification: esbuild minify runs automatically when `--package` (or `--deploy`) is passed; see build.js `minifyDistFile()`.
 
 ---
 
@@ -57,6 +72,14 @@ open twitch.tv, kick.com, or a youtube live stream and try these:
 - [ ] test on kick.com
 - [ ] test on youtube live chat
 - [ ] emotes work on all three
+
+### multichat
+- [ ] click the heatsync chat-toggle button — multichat panel opens
+- [ ] add a second channel — tabs appear; switching between channels swaps message buffers
+- [ ] mentions tab fills when you're tagged on any active channel
+- [ ] whispers tab opens DMs from twitch users (right-click username → whisper)
+- [ ] social feed tab loads posts; reactions, replies, bookmark all work
+- [ ] popout button opens the panel in a standalone window
 
 ### performance
 - [ ] open browser devtools (F12)

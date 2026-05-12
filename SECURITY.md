@@ -19,4 +19,16 @@ please don't open a public GitHub issue for security bugs. we'll acknowledge wit
 
 extension-side processing happens locally in the browser tab. the extension communicates with heatsync.org for emote sync, and with 7TV/FFZ/BTTV/decapi.me for cosmetics — see [docs/PRIVACY.md](docs/PRIVACY.md) for the full data flow.
 
-user-supplied content (chat messages, emote names) is passed through `escapeHtml()` before any `innerHTML` assignment. urls are validated via `safeUrl()` which allows `http` and `https` schemes only.
+## content-script defenses
+
+- **`escapeHtml()`** wraps every user-supplied value (chat text, display names, emote names, profile fields, feed content) before it can reach `innerHTML` or `insertAdjacentHTML`. enforced in `src/lib/utils.js`.
+- **`safeUrl()`** validates urls before assigning them to `href` / `src`; only `http(s):` schemes pass.
+- **`sanitizeColor()`** restricts user-supplied colors to `#rrggbb` / `#rgb` hex.
+- **CSP**: extension pages declare `script-src 'self'; object-src 'none'` in both MV3 (`extension_pages`) and MV2 manifests — no inline eval, no remote scripts.
+- **trusted origins** allowlist in `src/lib/utils.js` gates any url passed to background.
+
+## build pipeline guards
+
+- post-build `node --check` over every output bundle (catches template-literal termination bugs before zip).
+- explicit backtick-count assertion on `src/multichat/styles.js` (its giant CSS template literal is a known foot-gun).
+- minification runs `esbuild` with `keepNames: true` so stack traces in the wild are still legible.

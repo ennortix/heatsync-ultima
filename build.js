@@ -17,7 +17,7 @@
 import { readFileSync, writeFileSync, mkdirSync, cpSync, existsSync, rmSync, readdirSync } from 'fs'
 import { join, dirname } from 'path'
 import { fileURLToPath } from 'url'
-import { execSync } from 'child_process'
+import { execSync, execFileSync } from 'child_process'
 import { transformSync } from 'esbuild'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
@@ -129,9 +129,10 @@ function readMultichatModules() {
     const filePath = join(mcDir, file)
     if (!existsSync(filePath)) continue
     const content = readFileSync(filePath, 'utf8')
-    // styles.js is one giant JS template literal — a stray backtick anywhere
-    // (incl. CSS comments) breaks ALL multichat platforms with a syntax error.
-    // Hard-fail the build before that hits chrome.
+    // styles.js wraps CSS in one template literal — stray backticks
+    // (even in CSS comments) terminate it early. Sister files like
+    // chrome/content.js have the same shape; comprehensive syntax check
+    // runs over every output bundle in syntaxCheck() below.
     if (file === 'styles.js') {
       const tickCount = (content.match(/`/g) || []).length
       if (tickCount !== 2) {
@@ -256,6 +257,55 @@ function getVersion() {
   return manifest.version
 }
 
+// Run `node --check` over every JS file in the built output. Catches
+// template-literal termination bugs (a CSS comment with a stray backtick
+// killed v1.3.7 content.js silently). Hard-fails the build on first error.
+function syntaxCheck(outDir, browser) {
+  const files = readdirSync(outDir).filter(f => f.endsWith('.js'))
+  let failed = 0
+  for (const f of files) {
+    const p = join(outDir, f)
+    try {
+      execFileSync('node', ['--check', p], { stdio: 'pipe' })
+    } catch (e) {
+      failed++
+      const stderr = (e.stderr || '').toString().split('\n').slice(0, 4).join('\n')
+      console.error(`  x ${browser}/${f} parse error:\n${stderr}`)
+    }
+  }
+  if (failed > 0) {
+    throw new Error(`syntaxCheck: ${failed} file(s) failed to parse in ${browser} build`)
+  }
+  console.log(`  Syntax check: ${files.length} files clean`)
+}
+
+// Build a source zip suitable for AMO source-code review:
+// - everything needed to reproduce the build (chrome/, src/, build.js, lockfile, package.json)
+// - reviewer-facing docs (README, CHANGELOG, LICENSE, TESTER-GUIDE, etc.)
+// - excludes generated multichat.js (regenerated from src/multichat/), dist/, node_modules/, .git/
+function buildSourceZip() {
+  const version = getVersion()
+  const zipName = `heatsync-source-${version}.zip`
+  const zipPath = join(__dirname, 'dist', zipName)
+  if (existsSync(zipPath)) rmSync(zipPath)
+
+  const include = [
+    'chrome', 'src', 'build.js', 'bun.lock', 'package.json',
+    'README.md', 'CHANGELOG.md', 'CONTRIBUTING.md', 'LICENSE',
+    'SECURITY.md', 'TESTER-GUIDE.md', 'BACKEND-ASKS.md',
+  ].filter(p => existsSync(join(__dirname, p)))
+
+  const excludes = [
+    'chrome/multichat.js',
+    'dist/*', 'node_modules/*', '.git/*', '*/.DS_Store',
+  ]
+  const args = ['-rq', zipPath, ...include]
+  for (const ex of excludes) args.push('-x', ex)
+  execFileSync('zip', args, { cwd: __dirname, stdio: 'inherit' })
+  console.log(`  ${zipName}`)
+  return zipPath
+}
+
 // Zip a built extension directory
 function packageBrowser(browser) {
   const version = getVersion()
@@ -272,7 +322,7 @@ function packageBrowser(browser) {
   if (existsSync(zipPath)) rmSync(zipPath)
 
   // Zip from inside the build dir so paths are relative
-  execSync(`cd "${outDir}" && zip -r "${zipPath}" .`, { stdio: 'inherit' })
+  execFileSync('zip', ['-r', zipPath, '.'], { cwd: outDir, stdio: 'inherit' })
   console.log(`  ${zipName}`)
   return zipPath
 }
@@ -281,11 +331,13 @@ function packageBrowser(browser) {
 function deploy() {
   const distDir = join(__dirname, 'dist')
   console.log('\nDeploying to server...')
-  execSync(
-    `rsync -avz --chmod=F644,D755 ${distDir}/heatsync-*.zip heatsync:/opt/heatsync/dist/downloads/`,
-    { stdio: 'inherit' }
-  )
-  console.log('✓ Deployed')
+  const zips = readdirSync(distDir).filter(f => f.startsWith('heatsync-') && f.endsWith('.zip')).map(f => join(distDir, f))
+  if (zips.length === 0) {
+    console.error('  no zips to deploy')
+    return
+  }
+  execFileSync('rsync', ['-avz', '--chmod=F644,D755', ...zips, 'heatsync:/opt/heatsync/dist/downloads/'], { stdio: 'inherit' })
+  console.log('Deployed')
 }
 
 // Minify a content script in place inside its dist dir.
@@ -332,6 +384,7 @@ const target = targets[0] || null
 const shouldPackage = flags.has('--package') || flags.has('--deploy')
 const shouldDeploy = flags.has('--deploy')
 const shouldMinify = flags.has('--minify') || shouldPackage || shouldDeploy
+const shouldSource = flags.has('--source') || shouldPackage
 
 console.log('Building heatsync extension...\n')
 
@@ -339,18 +392,25 @@ if (!target || target === 'chrome') {
   console.log('Chrome:')
   build('chrome')
   if (shouldMinify) minifyDist(CHROME_OUT)
+  syntaxCheck(CHROME_OUT, 'chrome')
 }
 
 if (!target || target === 'firefox') {
   console.log('\nFirefox:')
   build('firefox')
   if (shouldMinify) minifyDist(FIREFOX_OUT)
+  syntaxCheck(FIREFOX_OUT, 'firefox')
 }
 
 if (shouldPackage) {
   console.log('\nPackaging:')
   if (!target || target === 'chrome') packageBrowser('chrome')
   if (!target || target === 'firefox') packageBrowser('firefox')
+}
+
+if (shouldSource) {
+  console.log('\nSource zip:')
+  buildSourceZip()
 }
 
 if (shouldDeploy) deploy()

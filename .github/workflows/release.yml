@@ -1,0 +1,69 @@
+name: release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'tag to release (e.g. v1.3.9)'
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: install
+        run: bun install --frozen-lockfile 2>/dev/null || bun install
+
+      - name: build + package
+        run: bun run build.js --package
+
+      - name: derive version
+        id: ver
+        run: |
+          v=$(node -e "console.log(require('./chrome/manifest.json').version)")
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+          echo "tag=v$v" >> "$GITHUB_OUTPUT"
+
+      - name: stage versionless aliases for README links
+        env:
+          VERSION: ${{ steps.ver.outputs.version }}
+        run: |
+          cp "dist/heatsync-chrome-${VERSION}.zip" dist/heatsync-chrome.zip
+          cp "dist/heatsync-firefox-${VERSION}.zip" dist/heatsync-firefox.xpi
+
+      - name: create release + attach assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.ver.outputs.version }}
+          TAG: ${{ steps.ver.outputs.tag }}
+        run: |
+          notes=$(awk -v ver="$VERSION" '
+            $0 ~ "^## \\[" ver "\\]" { found=1; print; next }
+            found && /^## \[/ { exit }
+            found { print }
+          ' CHANGELOG.md)
+          if [ -z "$notes" ]; then
+            notes="release $TAG"
+          fi
+          gh release create "$TAG" \
+            --title "$TAG" \
+            --notes "$notes" \
+            "dist/heatsync-chrome-${VERSION}.zip" \
+            "dist/heatsync-firefox-${VERSION}.zip" \
+            "dist/heatsync-source-${VERSION}.zip" \
+            dist/heatsync-chrome.zip \
+            dist/heatsync-firefox.xpi

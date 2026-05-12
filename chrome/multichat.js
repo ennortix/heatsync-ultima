@@ -6619,7 +6619,28 @@ function injectStyles() {
       gap: 10px;
       height: 100%;
       overflow-y: auto;
+      position: relative;
     }
+    /* Sticky close — pinned to card top-right, stays visible while scrolling.
+       Negative bottom margin lets it overlay the id-row without taking column
+       space; id-row gets right padding so display name never slides under it. */
+    .hs-pcard-close {
+      position: sticky; top: 0; align-self: flex-end;
+      margin: -6px -6px -30px 0;
+      width: 30px; height: 30px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 22px; line-height: 1; font-weight: 400;
+      background: rgba(0, 0, 0, 0.75);
+      color: #888;
+      border: 1px solid #2a2a2a;
+      cursor: pointer; padding: 0;
+      z-index: 5;
+      transition: background 80ms, color 80ms, border-color 80ms, transform 80ms;
+    }
+    .hs-pcard-close:hover { background: #fff; color: #000; border-color: #fff; transform: scale(1.08); }
+    .hs-pcard-close:active { transform: scale(0.96); }
+    .hs-pcard-close:focus-visible { outline: 1px solid #ff8700; outline-offset: 1px; }
+    .hs-pcard-id-row { padding-right: 28px; }
     /* Sections are pure spacing — drop chrome borders + label-on-top */
     .hs-pcard-section {
       border: 0; padding: 0; margin: 0; position: static; background: transparent;
@@ -22877,6 +22898,9 @@ function handleInputKeydown(e) {
           r.setStart(node, 0); r.collapse(true)
           sel.removeAllRanges(); sel.addRange(r)
           pendingMessage = getInputText()
+          // The chips on either side of this consumed-space may now be
+          // visually stuck — collapse them back to source text.
+          unwrapStuckChips(input, true)
           return
         }
       } else if (node.nodeType === Node.ELEMENT_NODE && offset > 0) {
@@ -22885,6 +22909,37 @@ function handleInputKeydown(e) {
         if (isInputEmoteUnit(prev)) target = prev
       }
       if (target) {
+        // If `target` is the second chip in a stuck pair (only whitespace
+        // separating it from a previous chip), unwrap both back to source
+        // text instead of silently deleting target — the user's intent
+        // was to merge the visually-adjacent chips, not lose them.
+        let prevChip = target.previousSibling
+        const between = []
+        while (prevChip && prevChip.nodeType === Node.TEXT_NODE) {
+          if (prevChip.textContent.length > 0 && !/^\s+$/.test(prevChip.textContent)) {
+            prevChip = null; break
+          }
+          between.unshift(prevChip)
+          prevChip = prevChip.previousSibling
+        }
+        if (isInlineChip(prevChip)) {
+          const aText = chipToText(prevChip)
+          const bText = chipToText(target)
+          if (aText != null && bText != null) {
+            e.preventDefault()
+            for (const m of between) m.remove()
+            target.remove()
+            const merged = aText + bText
+            const textNode = document.createTextNode(merged)
+            prevChip.parentNode.replaceChild(textNode, prevChip)
+            const r2 = document.createRange()
+            r2.setStart(textNode, aText.length); r2.collapse(true)
+            sel.removeAllRanges(); sel.addRange(r2)
+            pendingMessage = getInputText()
+            updateCharCount()
+            return
+          }
+        }
         e.preventDefault()
         target.remove()
         pendingMessage = getInputText()
@@ -23021,6 +23076,67 @@ function deflectAdjacentChip(node, wordStart) {
   return true
 }
 
+// Scan for any two adjacent chips with no real content between them and
+// unwrap both back to plain text in place. `acceptWhitespace` widens the
+// definition of "no content" to include whitespace-only nodes — used on
+// deletion events so a single backspace can collapse a 2-char nbsp+space
+// gap (which Tab insertion + user-typed space leaves between chips).
+function unwrapStuckChips(inputEl, acceptWhitespace) {
+  if (!inputEl) return false
+  let changed = false
+  let cursorTarget = null
+  let cursorOffset = 0
+  // Bounded loop so a malformed DOM can't spin forever.
+  for (let pass = 0; pass < 50; pass++) {
+    const chips = inputEl.querySelectorAll('img.hs-input-emote, .hs-input-stack, .hs-mc-user, .hs-mc-emoji')
+    let pair = null
+    for (let i = 0; i < chips.length - 1; i++) {
+      const a = chips[i]
+      const b = chips[i + 1]
+      if (a.parentNode !== b.parentNode) continue
+      let n = a.nextSibling
+      let blocked = false
+      const between = []
+      while (n && n !== b) {
+        if (n.nodeType === Node.TEXT_NODE && n.textContent.length > 0) {
+          if (acceptWhitespace && /^\s+$/.test(n.textContent)) {
+            between.push(n); n = n.nextSibling; continue
+          }
+          blocked = true; break
+        }
+        between.push(n)
+        n = n.nextSibling
+      }
+      if (!blocked) { pair = { a, b, between }; break }
+    }
+    if (!pair) break
+    const aText = chipToText(pair.a)
+    const bText = chipToText(pair.b)
+    if (aText == null || bText == null) break
+    const merged = aText + bText
+    const parent = pair.a.parentNode
+    const textNode = document.createTextNode(merged)
+    for (const m of pair.between) m.remove()
+    pair.b.remove()
+    parent.replaceChild(textNode, pair.a)
+    cursorTarget = textNode
+    cursorOffset = aText.length
+    changed = true
+  }
+  if (changed && cursorTarget) {
+    const sel = window.getSelection()
+    if (sel) {
+      const r = document.createRange()
+      r.setStart(cursorTarget, Math.min(cursorOffset, cursorTarget.textContent.length))
+      r.collapse(true)
+      sel.removeAllRanges()
+      sel.addRange(r)
+    }
+    pendingMessage = getInputText()
+  }
+  return changed
+}
+
 function handleInputChange(e) {
   // Defensive: pull any stray text nodes out of .hs-input-stack spans.
   // Stacks are inline-grid with overlay imgs at grid-area 1/1; a text node
@@ -23046,6 +23162,13 @@ function handleInputChange(e) {
       }
     }
   }
+
+  // Two chips with no real content between them visually merge — unwrap both
+  // back to source text so the user can see the missing space and fix it.
+  // On deletion events, also collapse whitespace-only gaps so a single
+  // backspace handles the 2-char nbsp+space that Tab insertion leaves.
+  const isDeletion = typeof e?.inputType === 'string' && e.inputType.startsWith('delete')
+  if (inputEl) unwrapStuckChips(inputEl, isDeletion)
 
   // Save pending message (persists across tab switches)
   pendingMessage = getInputText();
@@ -23204,6 +23327,33 @@ function handleInputChange(e) {
                 newRange.collapse(true)
                 sel.removeAllRanges()
                 sel.addRange(newRange)
+                // Cascade: if afterNode begins with another emote name (the
+                // "user just re-spaced two stuck names" pattern), imagify
+                // those too, separated by nbsp. Stops as soon as the next
+                // word isn't an emote, or has whitespace before it (the
+                // user explicitly separated them). Skip overlay/zero-width
+                // emotes \u2014 those need stack handling we don't replicate here.
+                while (true) {
+                  const cm = afterNode.textContent.match(/^(\S+)(\s|$)/)
+                  if (!cm) break
+                  const cName = cm[1]
+                  const cResolved = lookupEmoteWithOverlay(cName)
+                  if (!cResolved || cResolved.isOverlay) break
+                  const cImg = createInputEmoteImg(cName)
+                  if (!cImg) break
+                  parent.insertBefore(document.createTextNode('\u00A0'), afterNode)
+                  parent.insertBefore(cImg, afterNode)
+                  // Keep the leading whitespace from after the consumed name
+                  // \u2014 it acts as the user's explicit separator and also
+                  // prevents the next iteration from cascading further.
+                  const remaining = afterNode.textContent.slice(cName.length)
+                  afterNode.textContent = remaining || '\u00A0'
+                  newRange.setStart(afterNode, remaining ? 0 : 1)
+                  newRange.collapse(true)
+                  sel.removeAllRanges()
+                  sel.addRange(newRange)
+                  if (!remaining) break
+                }
                 pendingMessage = getInputText()
               }
             }
@@ -25127,6 +25277,17 @@ function renderProfileCardView() {
   const { username, data } = activeProfileCard
   const card = document.createElement('div')
   card.className = 'hs-pcard'
+
+  // Sticky close — pinned top-right, stays in place while card scrolls.
+  // Redundant with ESC + actions-grid close, but discoverability is king.
+  const closeBtn = document.createElement('button')
+  closeBtn.className = 'hs-pcard-close'
+  closeBtn.type = 'button'
+  closeBtn.title = 'close (Esc)'
+  closeBtn.setAttribute('aria-label', 'close profile')
+  closeBtn.textContent = '×'
+  closeBtn.addEventListener('click', closeProfileCard)
+  card.appendChild(closeBtn)
 
   // === Identity section ===
   const idSec = pcMakeSection(data?.display_name || username)

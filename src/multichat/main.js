@@ -3092,7 +3092,13 @@
     // case the unified handle takes over so the panel is still
     // resizeable.
     if ((chatPosition === 'right' || !chatPosition) && hostPlatform !== 'yt') {
-      const platformAnchor =
+      // In no-channel / clipped-chat mode the per-platform handle lives inside
+      // a broken/missing chat-shell and can't be reached — always use the
+      // unified body-mounted handle.
+      const noChannelMode =
+        document.body.classList.contains('hs-twitch-no-channel') ||
+        document.body.classList.contains('hs-kick-no-channel');
+      const platformAnchor = noChannelMode ? null :
         hostPlatform === 'kick'
           ? document.getElementById('channel-chatroom')
           : document.querySelector('.right-column.right-column--beside');
@@ -7888,7 +7894,23 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     if (hostPlatform !== 'twitch') return;
     const onChannel = !!document.querySelector('.channel-root, [class*="channel-root"]');
     const popout = document.body.classList.contains('hs-popout');
-    document.body.classList.toggle('hs-twitch-no-channel', !onChannel && !popout);
+    let noChannel = !onChannel && !popout;
+    if (!noChannel && !popout) {
+      // Twitch layout bug: on miniplayer-restore from twitch.tv/, the channel
+      // page mounts but the right-column flex slot stays 0-width — chat-shell
+      // overflows off-screen to the right (x ≥ viewport.right). Detect and
+      // fall back to body-mounted fixed-overlay mode so chat stays visible.
+      const chatShell = document.querySelector('.chat-shell, [class*="chat-shell"]');
+      if (chatShell) {
+        const r = chatShell.getBoundingClientRect();
+        if (r.right > window.innerWidth + 1 || r.width === 0) {
+          noChannel = true;
+          const c = document.getElementById('hs-mc-container');
+          if (c && c.parentElement !== document.body) document.body.appendChild(c);
+        }
+      }
+    }
+    document.body.classList.toggle('hs-twitch-no-channel', noChannel);
   }
 
   // Mirror of updateTwitchNoChannelClass for Kick. #channel-chatroom is
@@ -10261,7 +10283,17 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       cleanup.setTimeout(() => {
         try { reHide.disconnect() } catch (_) {}
         document.body.classList.remove('hs-mc-navigating');
+        // Bar tracks container.getBoundingClientRect — re-anchor now that the
+        // container has moved out of its nav-guard fixed slot into chat-shell.
+        try { positionChatResizeHandle() } catch (_) {}
       }, 300, 'twitch-soft-nav-release');
+      // Twitch's right-column slide-in animation is 500ms. Re-check after it
+      // settles so the clipped-chat detection in updateTwitchNoChannelClass
+      // catches miniplayer→fullscreen layout breakage post-animation.
+      cleanup.setTimeout(() => {
+        try { updateTwitchNoChannelClass() } catch (_) {}
+        try { positionChatResizeHandle() } catch (_) {}
+      }, 700, 'twitch-soft-nav-clipped-check');
     };
     const tryReparent = () => {
       if (done) return true;

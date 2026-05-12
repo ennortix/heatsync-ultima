@@ -1165,6 +1165,58 @@ function injectStyles() {
       margin: 0 !important;
     }
 
+    /* Twitch mirror: panel pinned fixed-overlay across the entire SPA-nav
+       window. Covers the gap between .channel-root mounting (which strips
+       hs-twitch-no-channel) and .chat-shell mounting (which gives the panel
+       its real flex slot). Without this, mid-transition the body-mounted
+       container has no positioning rules and collapses to default block flow
+       — orange bar stays anchored, chat disappears until reparent finishes
+       (the miniplayer→fullscreen bug). */
+    body.hs-mc-navigating.hs-platform-twitch.hs-chat-right > #hs-mc-container {
+      position: fixed !important;
+      top: var(--hs-twitch-topnav-h, 50px) !important;
+      bottom: 0 !important;
+      right: 0 !important;
+      left: auto !important;
+      width: var(--hs-chat-w, 340px) !important;
+      height: auto !important;
+      z-index: 9999 !important;
+      margin: 0 !important;
+    }
+    body.hs-mc-navigating.hs-platform-twitch.hs-chat-left > #hs-mc-container {
+      position: fixed !important;
+      top: var(--hs-twitch-topnav-h, 50px) !important;
+      bottom: 0 !important;
+      left: 0 !important;
+      right: auto !important;
+      width: var(--hs-chat-w, 340px) !important;
+      height: auto !important;
+      z-index: 9999 !important;
+      margin: 0 !important;
+    }
+    body.hs-mc-navigating.hs-platform-twitch.hs-chat-top > #hs-mc-container {
+      position: fixed !important;
+      top: var(--hs-twitch-topnav-h, 50px) !important;
+      left: 0 !important;
+      right: 0 !important;
+      bottom: auto !important;
+      width: 100vw !important;
+      height: var(--hs-chat-h, 35vh) !important;
+      z-index: 9999 !important;
+      margin: 0 !important;
+    }
+    body.hs-mc-navigating.hs-platform-twitch.hs-chat-bottom > #hs-mc-container {
+      position: fixed !important;
+      bottom: 0 !important;
+      left: 0 !important;
+      right: 0 !important;
+      top: auto !important;
+      width: 100vw !important;
+      height: var(--hs-chat-h, 35vh) !important;
+      z-index: 9999 !important;
+      margin: 0 !important;
+    }
+
     /* Never hide Twitch's native collapse/expand arrows — user needs them.
        Hide HS UI when chat is collapsed so it doesn't interfere with layout. */
     .right-column--collapsed #hs-mc-container {

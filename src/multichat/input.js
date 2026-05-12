@@ -1165,6 +1165,64 @@ function handleInputKeydown(e) {
   }
 }
 
+// Inline chips = atomic input pieces (emote IMG, stack, mention, emoji span).
+function isInlineChip(el) {
+  if (!el || el.nodeType !== Node.ELEMENT_NODE) return false
+  return (el.tagName === 'IMG' && el.classList?.contains('hs-input-emote')) ||
+         el.classList?.contains('hs-input-stack') ||
+         el.classList?.contains('hs-mc-user') ||
+         el.classList?.contains('hs-mc-emoji')
+}
+
+// Source-text representation of a chip (so unwrapping preserves what the
+// user originally typed and lets them re-trigger conversion after fixing
+// the missing space).
+function chipToText(el) {
+  if (!el || el.nodeType !== Node.ELEMENT_NODE) return null
+  if (el.tagName === 'IMG' && el.classList?.contains('hs-input-emote')) {
+    let txt = el.dataset.emoteName || el.alt || ''
+    const mods = el.dataset.hsWords || el.dataset.hsModWords
+    if (mods) for (const w of mods.split(/\s+/).filter(Boolean)) txt += ' ' + w
+    return txt
+  }
+  if (el.classList?.contains('hs-input-stack')) {
+    const parts = []
+    for (const child of el.children) {
+      if (child.tagName !== 'IMG') continue
+      let txt = child.dataset.emoteName || child.alt || ''
+      const mods = child.dataset.hsWords || child.dataset.hsModWords
+      if (mods) for (const w of mods.split(/\s+/).filter(Boolean)) txt += ' ' + w
+      parts.push(txt)
+    }
+    return parts.join(' ')
+  }
+  if (el.classList?.contains('hs-mc-user')) {
+    const u = el.dataset.username || el.textContent || ''
+    return (el.dataset.completionType === 'user-bare') ? ('@' + u) : u
+  }
+  if (el.classList?.contains('hs-mc-emoji')) {
+    const name = el.dataset.emojiName || el.getAttribute('data-emoji-name')
+    return name ? ':' + name + ':' : (el.textContent || '')
+  }
+  return null
+}
+
+// If the word being auto-converted starts at offset 0 of its text node and
+// the previous sibling is a chip with no whitespace separator, unwrap that
+// chip back to plain text and signal the caller to skip the conversion.
+// Both the chip and the word stay as plain text so the user can see the
+// missing space and add it.
+function deflectAdjacentChip(node, wordStart) {
+  if (wordStart !== 0) return false
+  const prev = node.previousSibling
+  if (!isInlineChip(prev)) return false
+  const chipText = chipToText(prev)
+  if (chipText == null) return false
+  prev.parentNode.replaceChild(document.createTextNode(chipText), prev)
+  pendingMessage = getInputText()
+  return true
+}
+
 function handleInputChange(e) {
   // Defensive: pull any stray text nodes out of .hs-input-stack spans.
   // Stacks are inline-grid with overlay imgs at grid-area 1/1; a text node
@@ -1224,6 +1282,7 @@ function handleInputChange(e) {
         const emoji = _emojiMap.get(match[1])
         if (emoji) {
           const start = cursorOffset - match[0].length
+          if (deflectAdjacentChip(node, start)) return
           // Replace the :shortcode: text with emoji span
           const span = document.createElement('span')
           span.className = 'hs-mc-emoji'
@@ -1296,9 +1355,10 @@ function handleInputChange(e) {
             }
             const resolved = lookupEmoteWithOverlay(word)
             if (resolved) {
+              const wordStart = cursor - match[0].length
+              if (deflectAdjacentChip(node, wordStart)) return
               const img = createInputEmoteImg(word)
               if (img) {
-                const wordStart = cursor - match[0].length
                 const beforeText = text.slice(0, wordStart)
                 const afterText = text.slice(cursor)
                 const parent = node.parentNode

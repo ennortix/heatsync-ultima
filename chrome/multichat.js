@@ -5281,9 +5281,6 @@ function injectStyles() {
       content-visibility: visible !important;
       contain-intrinsic-size: auto !important;
     }
-    #hs-mc-reply-stack-down .hs-mc-reply-stack-row .hs-mc-reply-ctx {
-      display: none !important;
-    }
     #hs-mc-reply-stack-down .hs-mc-reply-stack-row .hs-mc-reply-btn {
       display: none !important;
     }
@@ -5312,12 +5309,21 @@ function injectStyles() {
     #hs-mc-reply-stack-down .hs-mc-reply-stack-row:nth-child(odd) {
       background: #5c5c00 !important;
     }
-    /* Hide the "↩ Replying to @user: text" chip in the stack — every parent is
-       already rendered as the row directly above it, so the chip just repeats
-       text the user is already reading. Same on the active hovered row. */
+    /* Reply-context chip stays visible on olive rows so the row height never
+       changes on hover (no scrollTop compensation needed → zero chat-jump).
+       Black against #808000 gives ~6.5:1 contrast — clearly readable yet
+       visually distinct from the white message text, so the eye treats it as
+       skip-me metadata while reading the thread. Must override the blanket
+       white-text rule with the same !important. */
+    .hs-mc-msg.hs-mc-reply-stack-active .hs-mc-reply-ctx,
+    .hs-mc-msg.hs-mc-reply-stack-active .hs-mc-reply-ctx *,
     #hs-mc-reply-stack .hs-mc-reply-stack-row .hs-mc-reply-ctx,
-    .hs-mc-msg.hs-mc-reply-stack-active .hs-mc-reply-ctx {
-      display: none !important;
+    #hs-mc-reply-stack .hs-mc-reply-stack-row .hs-mc-reply-ctx *,
+    #hs-mc-reply-stack-down .hs-mc-reply-stack-row .hs-mc-reply-ctx,
+    #hs-mc-reply-stack-down .hs-mc-reply-stack-row .hs-mc-reply-ctx * {
+      color: #000 !important;
+      -webkit-text-fill-color: #000 !important;
+      border-left-color: #000 !important;
     }
     #hs-mc-reply-stack .hs-mc-reply-stack-row .hs-mc-reply-btn {
       display: none !important;
@@ -22743,38 +22749,16 @@ function handleInputKeydown(e) {
           // afterText is everything after cursor
           acState.afterText = val.slice(cursor)
         }
-        // For WYSIWYG, mark the inserted emoji span as cycling element
+        // For WYSIWYG, mark the inserted emoji span as cycling element.
+        // insertEmojiFromDropdown wraps the emoji in span.hs-mc-emoji — find
+        // the most-recently inserted one and tag it for cycling.
         if (wysiwygEnabled) {
-          const input = document.getElementById('hs-mc-input')
-          const sel = window.getSelection()
-          if (sel?.rangeCount && input) {
-            // Find the emoji text we just inserted and wrap it in cycling span
-            const range = sel.getRangeAt(0)
-            const node = range.startContainer
-            if (node?.nodeType === Node.TEXT_NODE) {
-              const text = node.textContent
-              const emojiIdx = text.lastIndexOf(emojiMatch.emoji)
-              if (emojiIdx >= 0) {
-                const before = text.slice(0, emojiIdx)
-                const after = text.slice(emojiIdx + emojiMatch.emoji.length)
-                node.textContent = before
-                const span = document.createElement('span')
-                span.className = 'hs-cycling-text'
-                span.textContent = emojiMatch.emoji
-                span.dataset.completionName = emojiMatch.name
-                const afterNode = document.createTextNode(after)
-                const parent = node.parentNode
-                const next = node.nextSibling
-                if (next) {
-                  parent.insertBefore(span, next)
-                  parent.insertBefore(afterNode, next)
-                } else {
-                  parent.appendChild(span)
-                  parent.appendChild(afterNode)
-                }
-                placeCaretAfter(afterNode.textContent ? afterNode : span)
-              }
-            }
+          const inputEl = document.getElementById('hs-mc-input')
+          const spans = inputEl?.querySelectorAll('span.hs-mc-emoji[data-emoji-name="' + emojiMatch.name + '"]')
+          const span = spans?.[spans.length - 1]
+          if (span) {
+            span.classList.add('hs-cycling-text')
+            span.dataset.completionName = emojiMatch.name
           }
         }
         showCycleTooltip()
@@ -23961,9 +23945,16 @@ function hideAutocomplete() {
     }
     const cyclingText = input?.querySelector('.hs-cycling-text');
     if (cyclingText) {
-      // Replace span with plain text node
-      const textNode = document.createTextNode(cyclingText.textContent);
-      cyclingText.replaceWith(textNode);
+      // Emoji spans must stay wrapped (caret would otherwise snap mid-grapheme
+      // around the U+FE0F variation selector). For non-emoji cycling text,
+      // unwrap to a plain text node so it merges naturally with surrounding text.
+      if (cyclingText.classList.contains('hs-mc-emoji')) {
+        cyclingText.classList.remove('hs-cycling-text');
+        delete cyclingText.dataset.completionName;
+      } else {
+        const textNode = document.createTextNode(cyclingText.textContent);
+        cyclingText.replaceWith(textNode);
+      }
     }
     const cyclingUser = input?.querySelector('.hs-cycling-user');
     if (cyclingUser) {
@@ -24086,12 +24077,24 @@ function insertEmojiFromDropdown(entry) {
     const colonIdx = before.lastIndexOf(':')
     if (colonIdx === -1) { hideEmojiDropdown(); return }
 
-    // Replace :query with emoji
-    const newText = text.slice(0, colonIdx) + entry.emoji + text.slice(cursor)
-    node.textContent = newText
-    const newPos = colonIdx + entry.emoji.length
+    // Wrap emoji in a span so the caret has an unambiguous boundary. Setting
+    // a caret offset past a U+FE0F variation selector inside a plain text
+    // node confuses Chrome's keyboard handler — the next typed char snaps to
+    // *before* the grapheme.
+    const span = document.createElement('span')
+    span.className = 'hs-mc-emoji'
+    span.textContent = entry.emoji
+    span.title = ':' + entry.name + ':'
+    span.setAttribute('data-emoji-name', entry.name)
+    const beforeNode = document.createTextNode(text.slice(0, colonIdx))
+    const afterNode = document.createTextNode(text.slice(cursor))
+    const parent = node.parentNode
+    parent.insertBefore(beforeNode, node)
+    parent.insertBefore(span, node)
+    parent.insertBefore(afterNode, node)
+    parent.removeChild(node)
     const newRange = document.createRange()
-    newRange.setStart(node, Math.min(newPos, node.textContent.length))
+    newRange.setStart(afterNode, 0)
     newRange.collapse(true)
     sel.removeAllRanges()
     sel.addRange(newRange)
@@ -27760,28 +27763,6 @@ const STORAGE_KEY = 'heatsync_multichat';
         if (oDownRect) { yBot = Math.max(yBot, oDownRect.bottom); xLeft = Math.min(xLeft, oDownRect.left); xRight = Math.max(xRight, oDownRect.right) }
         return x >= xLeft && x <= xRight && y >= yTop && y <= yBot
       }
-      // When the active class toggles on a chat row, the row's reply-context
-      // chip is shown/hidden via display:none (see styles.js). Hiding shrinks
-      // the row → scrollHeight shrinks → rows BELOW the hovered row shift UP
-      // visually (when not at-bottom). User reads it as "chat scrolled up
-      // mid-hover." Compensate by adjusting scrollTop so the hovered row's
-      // bottom-edge stays anchored: rows BELOW stay put, rows ABOVE shift to
-      // fill/yield the freed/gained space.
-      const compensateChipToggle = (row, applyChange) => {
-        if (!row) { applyChange(); return }
-        const chip = row.querySelector('.hs-mc-reply-ctx')
-        if (!chip) { applyChange(); return }
-        const preBottom = row.getBoundingClientRect().bottom
-        applyChange()
-        // getBoundingClientRect forces sync layout, so post reflects the new height.
-        const postBottom = row.getBoundingClientRect().bottom
-        const diff = postBottom - preBottom
-        if (diff !== 0) {
-          isProgrammaticScroll = true
-          msgsEl.scrollTop += diff
-          cleanup.raf(() => { isProgrammaticScroll = false })
-        }
-      }
       const dismissStack = () => {
         cancelDismiss()
         _stackStyleCache = null
@@ -27800,10 +27781,7 @@ const STORAGE_KEY = 'heatsync_multichat';
           overlayDown.replaceChildren()
         }
         if (_stackActiveRow) {
-          const row = _stackActiveRow
-          compensateChipToggle(row, () => {
-            row.classList.remove('hs-mc-reply-stack-active')
-          })
+          _stackActiveRow.classList.remove('hs-mc-reply-stack-active')
         }
         _stackActiveRow = null
         _stackTailId = ''
@@ -28057,14 +28035,9 @@ const STORAGE_KEY = 'heatsync_multichat';
 
         if (!upShown && !downShown) return
         if (_stackActiveRow && _stackActiveRow !== hoveredEl) {
-          const prev = _stackActiveRow
-          compensateChipToggle(prev, () => {
-            prev.classList.remove('hs-mc-reply-stack-active')
-          })
+          _stackActiveRow.classList.remove('hs-mc-reply-stack-active')
         }
-        compensateChipToggle(hoveredEl, () => {
-          hoveredEl.classList.add('hs-mc-reply-stack-active')
-        })
+        hoveredEl.classList.add('hs-mc-reply-stack-active')
         _stackActiveRow = hoveredEl
         // Tail = id of the actual chain tail (the deepest known descendant) so
         // new replies whose replyTo matches it slot in below. If descChain was

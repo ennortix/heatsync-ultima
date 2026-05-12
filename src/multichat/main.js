@@ -2142,28 +2142,6 @@
         if (oDownRect) { yBot = Math.max(yBot, oDownRect.bottom); xLeft = Math.min(xLeft, oDownRect.left); xRight = Math.max(xRight, oDownRect.right) }
         return x >= xLeft && x <= xRight && y >= yTop && y <= yBot
       }
-      // When the active class toggles on a chat row, the row's reply-context
-      // chip is shown/hidden via display:none (see styles.js). Hiding shrinks
-      // the row → scrollHeight shrinks → rows BELOW the hovered row shift UP
-      // visually (when not at-bottom). User reads it as "chat scrolled up
-      // mid-hover." Compensate by adjusting scrollTop so the hovered row's
-      // bottom-edge stays anchored: rows BELOW stay put, rows ABOVE shift to
-      // fill/yield the freed/gained space.
-      const compensateChipToggle = (row, applyChange) => {
-        if (!row) { applyChange(); return }
-        const chip = row.querySelector('.hs-mc-reply-ctx')
-        if (!chip) { applyChange(); return }
-        const preBottom = row.getBoundingClientRect().bottom
-        applyChange()
-        // getBoundingClientRect forces sync layout, so post reflects the new height.
-        const postBottom = row.getBoundingClientRect().bottom
-        const diff = postBottom - preBottom
-        if (diff !== 0) {
-          isProgrammaticScroll = true
-          msgsEl.scrollTop += diff
-          cleanup.raf(() => { isProgrammaticScroll = false })
-        }
-      }
       const dismissStack = () => {
         cancelDismiss()
         _stackStyleCache = null
@@ -2182,10 +2160,7 @@
           overlayDown.replaceChildren()
         }
         if (_stackActiveRow) {
-          const row = _stackActiveRow
-          compensateChipToggle(row, () => {
-            row.classList.remove('hs-mc-reply-stack-active')
-          })
+          _stackActiveRow.classList.remove('hs-mc-reply-stack-active')
         }
         _stackActiveRow = null
         _stackTailId = ''
@@ -2439,14 +2414,9 @@
 
         if (!upShown && !downShown) return
         if (_stackActiveRow && _stackActiveRow !== hoveredEl) {
-          const prev = _stackActiveRow
-          compensateChipToggle(prev, () => {
-            prev.classList.remove('hs-mc-reply-stack-active')
-          })
+          _stackActiveRow.classList.remove('hs-mc-reply-stack-active')
         }
-        compensateChipToggle(hoveredEl, () => {
-          hoveredEl.classList.add('hs-mc-reply-stack-active')
-        })
+        hoveredEl.classList.add('hs-mc-reply-stack-active')
         _stackActiveRow = hoveredEl
         // Tail = id of the actual chain tail (the deepest known descendant) so
         // new replies whose replyTo matches it slot in below. If descChain was

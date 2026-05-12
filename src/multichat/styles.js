@@ -1319,9 +1319,6 @@ function injectStyles() {
       content-visibility: visible !important;
       contain-intrinsic-size: auto !important;
     }
-    #hs-mc-reply-stack-down .hs-mc-reply-stack-row .hs-mc-reply-ctx {
-      display: none !important;
-    }
     #hs-mc-reply-stack-down .hs-mc-reply-stack-row .hs-mc-reply-btn {
       display: none !important;
     }
@@ -1350,12 +1347,21 @@ function injectStyles() {
     #hs-mc-reply-stack-down .hs-mc-reply-stack-row:nth-child(odd) {
       background: #5c5c00 !important;
     }
-    /* Hide the "↩ Replying to @user: text" chip in the stack — every parent is
-       already rendered as the row directly above it, so the chip just repeats
-       text the user is already reading. Same on the active hovered row. */
+    /* Reply-context chip stays visible on olive rows so the row height never
+       changes on hover (no scrollTop compensation needed → zero chat-jump).
+       Black against #808000 gives ~6.5:1 contrast — clearly readable yet
+       visually distinct from the white message text, so the eye treats it as
+       skip-me metadata while reading the thread. Must override the blanket
+       white-text rule with the same !important. */
+    .hs-mc-msg.hs-mc-reply-stack-active .hs-mc-reply-ctx,
+    .hs-mc-msg.hs-mc-reply-stack-active .hs-mc-reply-ctx *,
     #hs-mc-reply-stack .hs-mc-reply-stack-row .hs-mc-reply-ctx,
-    .hs-mc-msg.hs-mc-reply-stack-active .hs-mc-reply-ctx {
-      display: none !important;
+    #hs-mc-reply-stack .hs-mc-reply-stack-row .hs-mc-reply-ctx *,
+    #hs-mc-reply-stack-down .hs-mc-reply-stack-row .hs-mc-reply-ctx,
+    #hs-mc-reply-stack-down .hs-mc-reply-stack-row .hs-mc-reply-ctx * {
+      color: #000 !important;
+      -webkit-text-fill-color: #000 !important;
+      border-left-color: #000 !important;
     }
     #hs-mc-reply-stack .hs-mc-reply-stack-row .hs-mc-reply-btn {
       display: none !important;

@@ -2601,13 +2601,12 @@ async function blockEmote(hash) {
       log(' Removed blocked emote from local inventory:', removedEmote.name);
     }
 
-    // Persist updated blocked set so a page refresh doesn't restore stale state.
-    // Overwrite any stale `blocked_update` snapshot in the debounce queue too —
-    // otherwise a queued flush from a prior broadcast can clobber this fresh
-    // direct write 5s later, re-blocking what the user just unblocked.
-    const blockedArr = Array.from(blockedEmotes)
-    _broadcastStorageQueue.set('blocked_emotes', blockedArr)
-    browser.storage.local.set({ blocked_emotes: blockedArr }).catch(() => {})
+    // Persist server-only set under `blocked_emotes`. Local blocks live in
+    // `local_blocked_emotes`. Mixing them under the same key poisons the
+    // warm-boot rehydrate (line ~5211) — local-era hashes leak into the
+    // server-truth Set and get re-broadcast as fake server blocks.
+    persistServerBlockedEmotes()
+    broadcastToTabs({ type: 'blocked_update', blocked: Array.from(new Set([...blockedEmotes, ...localBlockedEmotes])) });
     broadcastToTabs({ type: 'emote_blocked', hash });
     return { success: true };
   } catch (error) {
@@ -2620,19 +2619,34 @@ async function unblockEmote(hash) {
   // Same hash-validity guard as blockEmote — silent 404 corrupts state otherwise.
   if (!hash || typeof hash !== 'string') return { success: false, error: 'no hash' };
   try {
+    // Always strip local block too — covers the anon→login transition where a
+    // hash sits in localBlockedEmotes and the user expects "unblock" to clear
+    // both layers. Without this, the picker (which reads merged via blocked_update)
+    // shows the emote as blocked forever even after the server-side unblock.
+    const hadLocal = localBlockedEmotes.delete(hash);
+    if (hadLocal) await saveLocalBlockedEmotes();
+
     const authToken = await getAuthCookie();
     if (!authToken) {
-      // Not logged in - use local storage
-      localBlockedEmotes.delete(hash);
       markBlockToggle(hash, 'unblocked');
-      await saveLocalBlockedEmotes();
 
-      // Broadcast update
       const allBlocked = new Set([...blockedEmotes, ...localBlockedEmotes]);
       broadcastToTabs({ type: 'blocked_update', blocked: Array.from(allBlocked) });
       broadcastToTabs({ type: 'emote_unblocked', hash });
 
       log(' 🔓 Unblocked emote locally (not logged in):', hash);
+      return { success: true, local: true };
+    }
+
+    // If the hash was only ever a local block (anon-era), there's nothing to
+    // delete on the server. Skip the HTTP call so a 404 doesn't surface as a
+    // false failure to the picker.
+    const hadServer = blockedEmotes.has(hash);
+    if (!hadServer && hadLocal) {
+      markBlockToggle(hash, 'unblocked');
+      const allBlocked = new Set([...blockedEmotes, ...localBlockedEmotes]);
+      broadcastToTabs({ type: 'blocked_update', blocked: Array.from(allBlocked) });
+      broadcastToTabs({ type: 'emote_unblocked', hash });
       return { success: true, local: true };
     }
 
@@ -2648,24 +2662,36 @@ async function unblockEmote(hash) {
       }
     });
 
-    if (!response.ok) {
+    // Treat 404 as success — the hash isn't on the server, so "unblock" is a no-op.
+    // Without this, hash-formula mismatches between block/unblock surfaces (24-slice
+    // vs 32-slice vs server-supplied) make every cross-surface unblock look like
+    // a network failure and the UI rolls back the optimistic local clear.
+    if (!response.ok && response.status !== 404) {
       // Rollback optimistic delete
       blockedEmotes.add(hash);
       const error = await response.json().catch(() => ({ error: 'Unknown error' }));
       return { success: false, error: error.error || `HTTP ${response.status}` };
     }
 
-    // Persist updated blocked set so a page refresh doesn't restore stale state.
-    // Same rationale as blockEmote: keep the debounced queue snapshot in sync
-    // so a 5s-later flush can't re-add the hash the user just unblocked.
-    const blockedArr = Array.from(blockedEmotes)
-    _broadcastStorageQueue.set('blocked_emotes', blockedArr)
-    browser.storage.local.set({ blocked_emotes: blockedArr }).catch(() => {})
+    persistServerBlockedEmotes()
+    // Picker subscribes to `blocked_update` (merged set) only — without this
+    // broadcast the open picker keeps showing the just-unblocked emote as
+    // blocked until its next `get_inventory` round-trip.
+    broadcastToTabs({ type: 'blocked_update', blocked: Array.from(new Set([...blockedEmotes, ...localBlockedEmotes])) });
     broadcastToTabs({ type: 'emote_unblocked', hash });
     return { success: true };
   } catch (error) {
     return { success: false, error: error.message || 'Network error' };
   }
+}
+
+// Single owner of the `blocked_emotes` storage key — only server-blocked hashes.
+// Drops any queued merged-set write from broadcastToTabs so the next debounce
+// flush can't clobber this with stale anon-era hashes.
+function persistServerBlockedEmotes() {
+  const blockedArr = Array.from(blockedEmotes)
+  _broadcastStorageQueue.delete('blocked_emotes')
+  browser.storage.local.set({ blocked_emotes: blockedArr }).catch(() => {})
 }
 
 // Extension badge — combined source: live followed creators (red, priority) +
@@ -2794,8 +2820,11 @@ async function broadcastToTabs(message) {
     _broadcastStorageQueue.set('global_emotes', message.emotes)
     _scheduleBroadcastStorageFlush()
   } else if (message.type === 'blocked_update') {
-    _broadcastStorageQueue.set('blocked_emotes', message.blocked)
-    _scheduleBroadcastStorageFlush()
+    // `message.blocked` is merged (server + local) — used by content scripts to
+    // render combined block state. Do NOT persist it under `blocked_emotes`:
+    // that storage key is owned by persistServerBlockedEmotes() and holds the
+    // server-only set. Mixing leaks anon-era local blocks into the server set
+    // on warm boot. Local set is persisted separately via saveLocalBlockedEmotes.
   }
 
   // Broadcast to streaming tabs only (filtered query instead of all-tabs scan)
@@ -4626,10 +4655,13 @@ async function handleMessage(message, sender, sendResponse) {
         await initPromise;
       }
       log(' Background: get_inventory request - responding with', emoteInventory.length, 'personal,', globalEmotes.length, 'global');
+      // Merged set — picker needs to surface BOTH server and local blocks so
+      // anon-era hashes (now lingering in localBlockedEmotes after login) can
+      // still be unblocked from the UI. unblockEmote handles either layer.
       sendResponse({
         emotes: emoteInventory,
         globalEmotes: globalEmotes,
-        blocked: Array.from(blockedEmotes)
+        blocked: Array.from(new Set([...blockedEmotes, ...localBlockedEmotes]))
       });
     })();
     return true; // Keep channel open for async response
@@ -4731,7 +4763,7 @@ async function handleMessage(message, sender, sendResponse) {
         channelLoading,
         globalEmotes: globalEmotes,
         inventoryEmotes: emoteInventory,
-        blocked: Array.from(blockedEmotes)
+        blocked: Array.from(new Set([...blockedEmotes, ...localBlockedEmotes]))
       })
     })()
     return true

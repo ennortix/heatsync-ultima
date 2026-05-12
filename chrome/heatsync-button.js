@@ -2693,7 +2693,13 @@
           const hash = e.hash || e.id || btoa(e.url || e.pickerUrl || '').slice(0, 24)
           if (_blockedHashSet.has(hash)) {
             chrome.runtime.sendMessage({ type: 'unblock_emote', hash })
-              .then(() => { _blockedHashSet.delete(hash); renderEmoteGrid(); showPickerToast(t('btn_toast_unblocked')) })
+              .then(result => {
+                if (result?.success) {
+                  _blockedHashSet.delete(hash); renderEmoteGrid(); showPickerToast(t('btn_toast_unblocked'))
+                } else {
+                  showPickerToast(result?.error || 'unblock failed')
+                }
+              })
               .catch(err => log('Unblock failed:', err.message))
           } else {
             blockEmote(e)
@@ -3490,10 +3496,14 @@
         dismissContextMenu();
         if (isBlocked) {
           try {
-            await chrome.runtime.sendMessage({ type: 'unblock_emote', hash });
-            _blockedHashSet.delete(hash);
-            renderEmoteGrid();
-            showPickerToast(t('btn_toast_unblocked'));
+            const result = await chrome.runtime.sendMessage({ type: 'unblock_emote', hash });
+            if (result?.success) {
+              _blockedHashSet.delete(hash);
+              renderEmoteGrid();
+              showPickerToast(t('btn_toast_unblocked'));
+            } else {
+              showPickerToast(result?.error || 'unblock failed');
+            }
           } catch (err) {
             if (err.message?.includes('Extension context invalidated')) {
               const toast = document.createElement('div');

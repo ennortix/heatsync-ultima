@@ -3,6 +3,89 @@
 // Chrome compatibility - Firefox uses 'browser', Chrome uses 'chrome'
 const browser = globalThis.browser || chrome;
 
+// --- error reporter (service worker) ---
+// Inlined here because lib/ is bundled into content scripts only. Same shape
+// as src/lib/error-reporter.js: ring-buffer 50 in chrome.storage.local key
+// 'hs_errors', popup reads + clears.
+;(function() {
+  if (globalThis.__hsErrorReporterSw) return
+  const MAX = 50, KEY = 'hs_errors', MSG_CAP = 500, STACK_CAP = 2000
+  let ver = 'unknown'
+  try { ver = browser.runtime.getManifest().version || ver } catch (_) {}
+  const pending = []
+  let timer = null
+  let reentry = false
+  function trunc(s, n) {
+    if (typeof s !== 'string') { try { s = String(s) } catch { return '' } }
+    return s.length > n ? s.slice(0, n) : s
+  }
+  function fmt(e) {
+    if (e == null) return { msg: '' }
+    if (e instanceof Error || (typeof e === 'object' && e && 'stack' in e)) {
+      return { msg: trunc(e.message || String(e), MSG_CAP), stack: trunc(String(e.stack || ''), STACK_CAP) }
+    }
+    if (typeof e === 'object') {
+      try { return { msg: trunc(JSON.stringify(e), MSG_CAP) } } catch { return { msg: '[unserializable]' } }
+    }
+    return { msg: trunc(String(e), MSG_CAP) }
+  }
+  function capture(rec) {
+    if (reentry) return
+    reentry = true
+    try {
+      pending.push(rec)
+      if (pending.length > MAX) pending.splice(0, pending.length - MAX)
+      if (!timer) timer = setTimeout(flush, 500)
+    } finally { reentry = false }
+  }
+  function flush() {
+    timer = null
+    if (pending.length === 0) return
+    const batch = pending.splice(0, pending.length)
+    try {
+      browser.storage.local.get(KEY, (cur) => {
+        try {
+          if (browser.runtime.lastError) return
+          const existing = Array.isArray(cur?.[KEY]) ? cur[KEY] : []
+          const next = existing.concat(batch).slice(-MAX)
+          browser.storage.local.set({ [KEY]: next }, () => { void browser.runtime.lastError })
+        } catch (_) {}
+      })
+    } catch (_) {}
+  }
+  try {
+    self.addEventListener('error', (e) => {
+      const f = fmt(e.error != null ? e.error : e.message)
+      capture({ ts: Date.now(), type: 'error', plat: 'sw', ver, url: 'background', msg: f.msg, stack: f.stack, file: trunc(e.filename || '', 200), line: e.lineno || 0 })
+    })
+  } catch (_) {}
+  try {
+    self.addEventListener('unhandledrejection', (e) => {
+      const f = fmt(e.reason)
+      capture({ ts: Date.now(), type: 'rejection', plat: 'sw', ver, url: 'background', msg: f.msg, stack: f.stack })
+    })
+  } catch (_) {}
+  try {
+    const origErr = console.error
+    if (origErr && !origErr.__hsWrapped) {
+      const wrapped = function(...args) {
+        try {
+          const msg = args.map(a => {
+            if (a instanceof Error) return (a.message || '') + (a.stack ? '\n' + a.stack : '')
+            if (typeof a === 'string') return a
+            try { return JSON.stringify(a) } catch { return String(a) }
+          }).join(' ')
+          capture({ ts: Date.now(), type: 'console', plat: 'sw', ver, url: 'background', msg: trunc(msg, MSG_CAP) })
+        } catch (_) {}
+        return origErr.apply(this, args)
+      }
+      wrapped.__hsWrapped = true
+      console.error = wrapped
+    }
+  } catch (_) {}
+  globalThis.__hsErrorReporterSw = { capture, flush, ver }
+})();
+
 // Storage hygiene — sanitize ui_settings before merging into chrome.storage
 // .sync. Strips numeric-string keys (corruption marker), prototype-pollution
 // keys, blocklist keys (platformFilters / keywordHighlights belong in local),

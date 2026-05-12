@@ -142,6 +142,45 @@
     if (chrome.runtime.openOptionsPage) chrome.runtime.openOptionsPage();
   });
 
+  // Errors footer: left-click → copy last 50 to clipboard, right-click → clear.
+  // Stored as ring-buffer in chrome.storage.local key 'hs_errors' by lib/error-reporter.js
+  // (content scripts) and inline reporter in background.js (service worker).
+  const linkErrors = document.getElementById('link-errors');
+  function refreshErrorCount() {
+    chrome.storage.local.get('hs_errors', (cur) => {
+      const arr = Array.isArray(cur?.hs_errors) ? cur.hs_errors : [];
+      linkErrors.textContent = 'errors (' + arr.length + ')';
+    });
+  }
+  async function copyErrors() {
+    const cur = await new Promise(r => chrome.storage.local.get('hs_errors', r));
+    const arr = Array.isArray(cur?.hs_errors) ? cur.hs_errors : [];
+    if (arr.length === 0) {
+      linkErrors.textContent = 'no errors';
+      setTimeout(refreshErrorCount, 1200);
+      return;
+    }
+    const ua = navigator.userAgent;
+    const ver = chrome.runtime.getManifest().version;
+    const payload = { ver, ua, count: arr.length, errors: arr };
+    try {
+      await navigator.clipboard.writeText(JSON.stringify(payload, null, 2));
+      linkErrors.textContent = 'copied ' + arr.length;
+    } catch {
+      linkErrors.textContent = 'copy failed';
+    }
+    setTimeout(refreshErrorCount, 1200);
+  }
+  function clearErrors() {
+    chrome.storage.local.remove('hs_errors', () => {
+      linkErrors.textContent = 'cleared';
+      setTimeout(refreshErrorCount, 800);
+    });
+  }
+  linkErrors.addEventListener('click', (e) => { e.preventDefault(); copyErrors(); });
+  linkErrors.addEventListener('contextmenu', (e) => { e.preventDefault(); clearErrors(); });
+  refreshErrorCount();
+
   autofillFromActiveTab();
   input.focus();
 })();

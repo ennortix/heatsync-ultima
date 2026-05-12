@@ -9,14 +9,33 @@ emotes + multichat for twitch, kick, and youtube.
 
 ## install
 
+> not yet on the chrome web store or firefox addons — install manually below (60 seconds)
+
+### chrome / edge / brave / arc / opera
+
+1. download **[heatsync-chrome.zip](https://github.com/mellen9999/heatsync-extension/releases/latest/download/heatsync-chrome.zip)**
+2. unzip it (double-click the file)
+3. paste `chrome://extensions` into the address bar
+4. flip on **developer mode** (top-right toggle)
+5. click **load unpacked** → pick the unzipped folder
+6. open twitch, kick, or a youtube live stream — done
+
+### firefox
+
+1. download **[heatsync-firefox.xpi](https://github.com/mellen9999/heatsync-extension/releases/latest/download/heatsync-firefox.xpi)**
+2. paste `about:debugging#/runtime/this-firefox` into the address bar
+3. click **load temporary add-on…** → pick the `.xpi` file
+4. open twitch, kick, or a youtube live stream — done
+
+firefox unloads temporary add-ons on restart — will become one-click once approved on addons.mozilla.org
+
+## build from source
+
 ```bash
 bun run build.js chrome    # → dist/chrome/
 bun run build.js firefox   # → dist/firefox/
 bun run build.js --package # both + zip
 ```
-
-- chrome: `chrome://extensions` → developer mode → load unpacked → `dist/chrome/`
-- firefox: `about:debugging` → load temporary add-on → `dist/firefox/manifest.json`
 
 ## license
 

@@ -1003,38 +1003,16 @@ function handleInputKeydown(e) {
           // afterText is everything after cursor
           acState.afterText = val.slice(cursor)
         }
-        // For WYSIWYG, mark the inserted emoji span as cycling element
+        // For WYSIWYG, mark the inserted emoji span as cycling element.
+        // insertEmojiFromDropdown wraps the emoji in span.hs-mc-emoji — find
+        // the most-recently inserted one and tag it for cycling.
         if (wysiwygEnabled) {
-          const input = document.getElementById('hs-mc-input')
-          const sel = window.getSelection()
-          if (sel?.rangeCount && input) {
-            // Find the emoji text we just inserted and wrap it in cycling span
-            const range = sel.getRangeAt(0)
-            const node = range.startContainer
-            if (node?.nodeType === Node.TEXT_NODE) {
-              const text = node.textContent
-              const emojiIdx = text.lastIndexOf(emojiMatch.emoji)
-              if (emojiIdx >= 0) {
-                const before = text.slice(0, emojiIdx)
-                const after = text.slice(emojiIdx + emojiMatch.emoji.length)
-                node.textContent = before
-                const span = document.createElement('span')
-                span.className = 'hs-cycling-text'
-                span.textContent = emojiMatch.emoji
-                span.dataset.completionName = emojiMatch.name
-                const afterNode = document.createTextNode(after)
-                const parent = node.parentNode
-                const next = node.nextSibling
-                if (next) {
-                  parent.insertBefore(span, next)
-                  parent.insertBefore(afterNode, next)
-                } else {
-                  parent.appendChild(span)
-                  parent.appendChild(afterNode)
-                }
-                placeCaretAfter(afterNode.textContent ? afterNode : span)
-              }
-            }
+          const inputEl = document.getElementById('hs-mc-input')
+          const spans = inputEl?.querySelectorAll('span.hs-mc-emoji[data-emoji-name="' + emojiMatch.name + '"]')
+          const span = spans?.[spans.length - 1]
+          if (span) {
+            span.classList.add('hs-cycling-text')
+            span.dataset.completionName = emojiMatch.name
           }
         }
         showCycleTooltip()
@@ -2221,9 +2199,16 @@ function hideAutocomplete() {
     }
     const cyclingText = input?.querySelector('.hs-cycling-text');
     if (cyclingText) {
-      // Replace span with plain text node
-      const textNode = document.createTextNode(cyclingText.textContent);
-      cyclingText.replaceWith(textNode);
+      // Emoji spans must stay wrapped (caret would otherwise snap mid-grapheme
+      // around the U+FE0F variation selector). For non-emoji cycling text,
+      // unwrap to a plain text node so it merges naturally with surrounding text.
+      if (cyclingText.classList.contains('hs-mc-emoji')) {
+        cyclingText.classList.remove('hs-cycling-text');
+        delete cyclingText.dataset.completionName;
+      } else {
+        const textNode = document.createTextNode(cyclingText.textContent);
+        cyclingText.replaceWith(textNode);
+      }
     }
     const cyclingUser = input?.querySelector('.hs-cycling-user');
     if (cyclingUser) {
@@ -2346,12 +2331,24 @@ function insertEmojiFromDropdown(entry) {
     const colonIdx = before.lastIndexOf(':')
     if (colonIdx === -1) { hideEmojiDropdown(); return }
 
-    // Replace :query with emoji
-    const newText = text.slice(0, colonIdx) + entry.emoji + text.slice(cursor)
-    node.textContent = newText
-    const newPos = colonIdx + entry.emoji.length
+    // Wrap emoji in a span so the caret has an unambiguous boundary. Setting
+    // a caret offset past a U+FE0F variation selector inside a plain text
+    // node confuses Chrome's keyboard handler — the next typed char snaps to
+    // *before* the grapheme.
+    const span = document.createElement('span')
+    span.className = 'hs-mc-emoji'
+    span.textContent = entry.emoji
+    span.title = ':' + entry.name + ':'
+    span.setAttribute('data-emoji-name', entry.name)
+    const beforeNode = document.createTextNode(text.slice(0, colonIdx))
+    const afterNode = document.createTextNode(text.slice(cursor))
+    const parent = node.parentNode
+    parent.insertBefore(beforeNode, node)
+    parent.insertBefore(span, node)
+    parent.insertBefore(afterNode, node)
+    parent.removeChild(node)
     const newRange = document.createRange()
-    newRange.setStart(node, Math.min(newPos, node.textContent.length))
+    newRange.setStart(afterNode, 0)
     newRange.collapse(true)
     sel.removeAllRanges()
     sel.addRange(newRange)

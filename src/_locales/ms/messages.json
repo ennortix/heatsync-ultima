@@ -3,7 +3,7 @@
     "message": "heatsync"
   },
   "manifest_description": {
-    "message": "Emote tersuai untuk chat Twitch, Kick dan YouTube. Slot tanpa had, autolengkap dengan tab, penyegerakan masa nyata."
+    "message": "Emote tersuai untuk chat Twitch, Kick dan YouTube. Autolengkap dengan tab, penyegerakan masa nyata."
   },
   "common_loading": {
     "message": "memuat..."
@@ -139,7 +139,7 @@
     "message": "muat naik emote anda"
   },
   "welcome_step2_desc": {
-    "message": "tambah apa-apa imej — 5000 slot, semua format disokong"
+    "message": "tambah apa-apa imej — semua format disokong"
   },
   "welcome_step3_title": {
     "message": "guna dalam chat"

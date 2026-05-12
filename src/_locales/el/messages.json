@@ -3,7 +3,7 @@
     "message": "heatsync"
   },
   "manifest_description": {
-    "message": "Προσαρμοσμένα emotes για chat στο Twitch, Kick και YouTube. Απεριόριστες θέσεις, αυτόματη συμπλήρωση με tab, συγχρονισμός σε πραγματικό χρόνο."
+    "message": "Προσαρμοσμένα emotes για chat στο Twitch, Kick και YouTube. αυτόματη συμπλήρωση με tab, συγχρονισμός σε πραγματικό χρόνο."
   },
   "common_loading": {
     "message": "φόρτωση..."
@@ -139,7 +139,7 @@
     "message": "ανέβασε τα emotes σου"
   },
   "welcome_step2_desc": {
-    "message": "πρόσθεσε όποια εικόνα — 5000 θέσεις, υποστηρίζονται όλα τα formats"
+    "message": "πρόσθεσε όποια εικόνα — υποστηρίζονται όλα τα formats"
   },
   "welcome_step3_title": {
     "message": "χρησιμοποίησέ τα στο chat"

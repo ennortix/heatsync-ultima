@@ -3,7 +3,7 @@
     "message": "heatsync"
   },
   "manifest_description": {
-    "message": "Emotes personalizate pentru chat pe Twitch, Kick și YouTube. 5000 sloturi, completare cu tab, sincronizare în timp real."
+    "message": "Emotes personalizate pentru chat pe Twitch, Kick și YouTube. Completare cu tab, sincronizare în timp real."
   },
   "common_loading": {
     "message": "se încarcă..."
@@ -139,7 +139,7 @@
     "message": "încarcă-ți emote-urile"
   },
   "welcome_step2_desc": {
-    "message": "adaugă orice imagine — 5000 sloturi, toate formatele acceptate"
+    "message": "adaugă orice imagine — toate formatele acceptate"
   },
   "welcome_step3_title": {
     "message": "folosește-le în chat"

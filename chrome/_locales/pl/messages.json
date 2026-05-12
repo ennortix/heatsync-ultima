@@ -3,7 +3,7 @@
     "message": "heatsync"
   },
   "manifest_description": {
-    "message": "Niestandardowe emotki dla czatów Twitch, Kick i YouTube. Bez limitu slotów, autouzupełnianie tabem, synchronizacja w czasie rzeczywistym."
+    "message": "Niestandardowe emotki dla czatów Twitch, Kick i YouTube. Autouzupełnianie tabem, synchronizacja w czasie rzeczywistym."
   },
   "common_loading": {
     "message": "ładowanie..."
@@ -139,7 +139,7 @@
     "message": "wgraj swoje emotki"
   },
   "welcome_step2_desc": {
-    "message": "dodaj dowolne obrazy — 5000 slotów, wszystkie formaty"
+    "message": "dodaj dowolne obrazy — wszystkie formaty"
   },
   "welcome_step3_title": {
     "message": "używaj ich w czacie"

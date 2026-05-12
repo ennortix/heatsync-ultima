@@ -3,7 +3,7 @@
     "message": "heatsync"
   },
   "manifest_description": {
-    "message": "Emotes personnalisés pour Twitch, Kick et YouTube chat. 5000 slots, complétion par tab, synchronisation en temps réel."
+    "message": "Emotes personnalisés pour Twitch, Kick et YouTube chat. Complétion par tab, synchronisation en temps réel."
   },
   "common_loading": {
     "message": "chargement..."
@@ -139,7 +139,7 @@
     "message": "uploade tes emotes"
   },
   "welcome_step2_desc": {
-    "message": "ajoute n'importe quelle image — 5000 slots, tous les formats supportés"
+    "message": "ajoute n'importe quelle image — tous les formats supportés"
   },
   "welcome_step3_title": {
     "message": "utilise-les dans le chat"

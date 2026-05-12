@@ -3,7 +3,7 @@
     "message": "heatsync"
   },
   "manifest_description": {
-    "message": "Twitch, Kick, YouTube 채팅용 커스텀 이모트. 슬롯 무제한, 탭 완성, 실시간 동기화."
+    "message": "Twitch, Kick, YouTube 채팅용 커스텀 이모트. 탭 완성, 실시간 동기화."
   },
   "common_loading": {
     "message": "로딩 중..."
@@ -139,7 +139,7 @@
     "message": "이모트 업로드"
   },
   "welcome_step2_desc": {
-    "message": "이미지를 추가하세요 — 5000 슬롯, 모든 형식 지원"
+    "message": "이미지를 추가하세요 — 모든 형식 지원"
   },
   "welcome_step3_title": {
     "message": "채팅에서 사용"

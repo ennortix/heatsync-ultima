@@ -3,7 +3,7 @@
     "message": "heatsync"
   },
   "manifest_description": {
-    "message": "إيموتس مخصصة لدردشة Twitch وKick وYouTube. خانات غير محدودة، إكمال تلقائي بـ Tab، مزامنة فورية."
+    "message": "إيموتس مخصصة لدردشة Twitch وKick وYouTube. إكمال تلقائي بـ Tab، مزامنة فورية."
   },
   "common_loading": {
     "message": "جارٍ التحميل..."
@@ -139,7 +139,7 @@
     "message": "ارفع إيموتسك"
   },
   "welcome_step2_desc": {
-    "message": "أضف أي صور — 5000 خانة، جميع الصيغ مدعومة"
+    "message": "أضف أي صور — جميع الصيغ مدعومة"
   },
   "welcome_step3_title": {
     "message": "استخدمها في الدردشة"

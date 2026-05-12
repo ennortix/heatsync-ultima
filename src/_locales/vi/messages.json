@@ -3,7 +3,7 @@
     "message": "heatsync"
   },
   "manifest_description": {
-    "message": "Emote tùy chỉnh cho chat Twitch, Kick và YouTube. 5000 slot, gõ tab để hoàn thành, đồng bộ thời gian thực."
+    "message": "Emote tùy chỉnh cho chat Twitch, Kick và YouTube. Gõ tab để hoàn thành, đồng bộ thời gian thực."
   },
   "common_loading": {
     "message": "đang tải..."
@@ -139,7 +139,7 @@
     "message": "tải emote lên"
   },
   "welcome_step2_desc": {
-    "message": "thêm bất kỳ ảnh nào — 5000 slot, hỗ trợ mọi định dạng"
+    "message": "thêm bất kỳ ảnh nào — hỗ trợ mọi định dạng"
   },
   "welcome_step3_title": {
     "message": "dùng trong chat"

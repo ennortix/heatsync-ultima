@@ -1,38 +1,22 @@
 # heatsync
 
-custom emotes for twitch, kick, and youtube chat.
+emotes + multichat for twitch, kick, and youtube.
 
-upload any image to [heatsync.org](https://heatsync.org), install the extension, and your emotes work in live chat — no approval queue, 5000 slots per user. other heatsync users see them in real time.
-
-## what makes it different
-
-- **5000 emote slots, instant upload** — no approval, no waiting
-- **one emote set, three platforms** — same emotes on twitch, kick, and youtube
-- **multichat** — multiple channels in one panel with tabs, mentions, whispers, social feed, IRC, and youtube live chat
-- **full third-party support** — bttv, ffz, 7tv emotes + cosmetics (paints, badges) load automatically
-- **zero-width stacking, tab completion, emote picker, vi-mode, user muting, emote blocking**
+- **custom emotes** — upload at [heatsync.org](https://heatsync.org), use them in any twitch/kick/youtube chat. real-time sync, no channel approval
+- **multichat** — twitch, kick, and youtube in one tabbed panel: live chat, mentions, whispers, social feed
+- **7tv, bttv, ffz** — emotes, paints, badges render automatically. works without an account
+- tab completion, emote picker, zero-width stacking, user muting, emote blocking
 
 ## install
 
-### chrome / edge
-
-1. clone → `bun run build.js chrome`
-2. `chrome://extensions` → developer mode → load unpacked → `dist/chrome/`
-
-### firefox
-
-1. clone → `bun run build.js firefox`
-2. `about:debugging#/runtime/this-firefox` → load temporary add-on → `dist/firefox/manifest.json`
-
-## build
-
 ```bash
-bun run build.js           # both browsers
-bun run build.js chrome    # chrome only
-bun run build.js firefox   # firefox only
-bun run build.js --package # build + zip
-bun run build.js --deploy  # build + zip + rsync to server
+bun run build.js chrome    # → dist/chrome/
+bun run build.js firefox   # → dist/firefox/
+bun run build.js --package # both + zip
 ```
+
+- chrome: `chrome://extensions` → developer mode → load unpacked → `dist/chrome/`
+- firefox: `about:debugging` → load temporary add-on → `dist/firefox/manifest.json`
 
 ## license
 

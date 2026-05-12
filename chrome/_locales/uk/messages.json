@@ -3,7 +3,7 @@
     "message": "heatsync"
   },
   "manifest_description": {
-    "message": "Кастомні emotes для чатів Twitch, Kick та YouTube. Безмежні слоти, автодоповнення Tab, синхронізація в реальному часі."
+    "message": "Кастомні emotes для чатів Twitch, Kick та YouTube. Автодоповнення Tab, синхронізація в реальному часі."
   },
   "common_loading": {
     "message": "завантаження..."
@@ -139,7 +139,7 @@
     "message": "завантаж свої emotes"
   },
   "welcome_step2_desc": {
-    "message": "додай будь-які зображення — 5000 слотів, усі формати"
+    "message": "додай будь-які зображення — усі формати"
   },
   "welcome_step3_title": {
     "message": "використовуй у чаті"

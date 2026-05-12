@@ -3,7 +3,7 @@
     "message": "heatsync"
   },
   "manifest_description": {
-    "message": "Brugerdefinerede emotes til Twitch-, Kick- og YouTube-chat. Ubegrænsede slots, tab-fuldførelse, realtidssynkronisering."
+    "message": "Brugerdefinerede emotes til Twitch-, Kick- og YouTube-chat. Tab-fuldførelse, realtidssynkronisering."
   },
   "common_loading": {
     "message": "indlæser..."
@@ -139,7 +139,7 @@
     "message": "upload dine emotes"
   },
   "welcome_step2_desc": {
-    "message": "tilføj vilkårlige billeder — 5000 slots, alle formater understøttes"
+    "message": "tilføj vilkårlige billeder — alle formater understøttes"
   },
   "welcome_step3_title": {
     "message": "brug dem i chat"

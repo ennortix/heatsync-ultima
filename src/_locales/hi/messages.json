@@ -3,7 +3,7 @@
     "message": "heatsync"
   },
   "manifest_description": {
-    "message": "Twitch, Kick और YouTube चैट के लिए कस्टम इमोट। असीमित स्लॉट, टैब कम्पलीशन, रियल-टाइम सिंक।"
+    "message": "Twitch, Kick और YouTube चैट के लिए कस्टम इमोट। टैब कम्पलीशन, रियल-टाइम सिंक।"
   },
   "common_loading": {
     "message": "लोड हो रहा है..."
@@ -139,7 +139,7 @@
     "message": "अपने इमोट अपलोड करें"
   },
   "welcome_step2_desc": {
-    "message": "कोई भी छवि जोड़ें — 5000 स्लॉट, सभी फॉर्मेट समर्थित"
+    "message": "कोई भी छवि जोड़ें — सभी फॉर्मेट समर्थित"
   },
   "welcome_step3_title": {
     "message": "उन्हें चैट में उपयोग करें"

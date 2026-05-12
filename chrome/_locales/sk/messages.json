@@ -3,7 +3,7 @@
     "message": "heatsync"
   },
   "manifest_description": {
-    "message": "Vlastné emotky pre chat na Twitchi, Kicku a YouTube. Neobmedzené sloty, doplňovanie tabom, synchronizácia v reálnom čase."
+    "message": "Vlastné emotky pre chat na Twitchi, Kicku a YouTube. Doplňovanie tabom, synchronizácia v reálnom čase."
   },
   "common_loading": {
     "message": "načítavam..."
@@ -139,7 +139,7 @@
     "message": "nahraj svoje emotky"
   },
   "welcome_step2_desc": {
-    "message": "pridaj akékoľvek obrázky — 5000 slotov, všetky formáty"
+    "message": "pridaj akékoľvek obrázky — všetky formáty"
   },
   "welcome_step3_title": {
     "message": "používaj ich v chate"

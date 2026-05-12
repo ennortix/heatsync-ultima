@@ -3,7 +3,7 @@
     "message": "heatsync"
   },
   "manifest_description": {
-    "message": "Twitch、Kick、YouTubeチャット用カスタムエモート。5000スロット、タブ補完、リアルタイム同期。"
+    "message": "Twitch、Kick、YouTubeチャット用カスタムエモート。タブ補完、リアルタイム同期。"
   },
   "common_loading": {
     "message": "読み込み中..."
@@ -139,7 +139,7 @@
     "message": "エモートをアップロード"
   },
   "welcome_step2_desc": {
-    "message": "画像を追加 — 5000スロット、全フォーマット対応"
+    "message": "画像を追加 — 全フォーマット対応"
   },
   "welcome_step3_title": {
     "message": "チャットで使う"

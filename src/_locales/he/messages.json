@@ -3,7 +3,7 @@
     "message": "heatsync"
   },
   "manifest_description": {
-    "message": "אימוג'ים מותאמים אישית לצ'אט Twitch, Kick ו-YouTube. סלוטים בלתי מוגבלים, השלמה אוטומטית עם Tab, סנכרון בזמן אמת."
+    "message": "אימוג'ים מותאמים אישית לצ'אט Twitch, Kick ו-YouTube. השלמה אוטומטית עם Tab, סנכרון בזמן אמת."
   },
   "common_loading": {
     "message": "טוען..."
@@ -139,7 +139,7 @@
     "message": "העלה את האימוג'ים שלך"
   },
   "welcome_step2_desc": {
-    "message": "הוסף תמונות כלשהן — 5000 סלוטים, כל הפורמטים נתמכים"
+    "message": "הוסף תמונות כלשהן — כל הפורמטים נתמכים"
   },
   "welcome_step3_title": {
     "message": "השתמש בהם בצ'אט"

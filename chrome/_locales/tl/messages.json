@@ -3,7 +3,7 @@
     "message": "heatsync"
   },
   "manifest_description": {
-    "message": "Custom emotes para sa Twitch, Kick at YouTube chat. Walang limit na slots, tab completion, real-time sync."
+    "message": "Custom emotes para sa Twitch, Kick at YouTube chat. Tab completion, real-time sync."
   },
   "common_loading": {
     "message": "naglo-load..."
@@ -139,7 +139,7 @@
     "message": "mag-upload ng emotes"
   },
   "welcome_step2_desc": {
-    "message": "magdagdag ng anumang larawan — 5000 slots, lahat ng format suportado"
+    "message": "magdagdag ng anumang larawan — lahat ng format suportado"
   },
   "welcome_step3_title": {
     "message": "gamitin sa chat"

@@ -3,7 +3,7 @@
     "message": "heatsync"
   },
   "manifest_description": {
-    "message": "Mukautetut emotet Twitchin, Kickin ja YouTuben chattiin. Rajaton paikkamäärä, sarkaintäydennys, reaaliaikainen synkronointi."
+    "message": "Mukautetut emotet Twitchin, Kickin ja YouTuben chattiin. Sarkaintäydennys, reaaliaikainen synkronointi."
   },
   "common_loading": {
     "message": "ladataan..."
@@ -139,7 +139,7 @@
     "message": "lataa emotesi"
   },
   "welcome_step2_desc": {
-    "message": "lisää mitä tahansa kuvia — 5000 paikkaa, kaikki formaatit tuettu"
+    "message": "lisää mitä tahansa kuvia — kaikki formaatit tuettu"
   },
   "welcome_step3_title": {
     "message": "käytä niitä chatissä"

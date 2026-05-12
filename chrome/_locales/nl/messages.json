@@ -3,7 +3,7 @@
     "message": "heatsync"
   },
   "manifest_description": {
-    "message": "Aangepaste emotes voor Twitch-, Kick- en YouTube-chat. 5000 slots, tab-aanvulling, realtime synchronisatie."
+    "message": "Aangepaste emotes voor Twitch-, Kick- en YouTube-chat. Tab-aanvulling, realtime synchronisatie."
   },
   "common_loading": {
     "message": "laden..."
@@ -139,7 +139,7 @@
     "message": "upload je emotes"
   },
   "welcome_step2_desc": {
-    "message": "voeg willekeurige afbeeldingen toe — 5000 slots, alle formaten ondersteund"
+    "message": "voeg willekeurige afbeeldingen toe — alle formaten ondersteund"
   },
   "welcome_step3_title": {
     "message": "gebruik ze in de chat"

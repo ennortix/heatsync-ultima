@@ -3,7 +3,7 @@
     "message": "heatsync"
   },
   "manifest_description": {
-    "message": "Персонализирани emotes за чат в Twitch, Kick и YouTube. 5000 слота, автодовършване с tab, синхронизация в реално време."
+    "message": "Персонализирани emotes за чат в Twitch, Kick и YouTube. Автодовършване с tab, синхронизация в реално време."
   },
   "common_loading": {
     "message": "зарежда се..."
@@ -139,7 +139,7 @@
     "message": "качи си emotes"
   },
   "welcome_step2_desc": {
-    "message": "добави всякакви снимки — 5000 слота, всички формати"
+    "message": "добави всякакви снимки — всички формати"
   },
   "welcome_step3_title": {
     "message": "използвай ги в чата"

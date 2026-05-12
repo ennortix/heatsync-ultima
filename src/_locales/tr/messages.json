@@ -3,7 +3,7 @@
     "message": "heatsync"
   },
   "manifest_description": {
-    "message": "Twitch, Kick ve YouTube sohbeti için özel emote'lar. 5000 slot, tab tamamlama, gerçek zamanlı senkronizasyon."
+    "message": "Twitch, Kick ve YouTube sohbeti için özel emote'lar. Tab tamamlama, gerçek zamanlı senkronizasyon."
   },
   "common_loading": {
     "message": "yükleniyor..."
@@ -139,7 +139,7 @@
     "message": "emote'larını yükle"
   },
   "welcome_step2_desc": {
-    "message": "istediğin görselleri ekle — 5000 slot, tüm formatlar destekleniyor"
+    "message": "istediğin görselleri ekle — tüm formatlar destekleniyor"
   },
   "welcome_step3_title": {
     "message": "sohbette kullan"

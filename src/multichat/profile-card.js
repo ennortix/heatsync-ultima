@@ -165,6 +165,17 @@ function renderProfileCardView() {
   const card = document.createElement('div')
   card.className = 'hs-pcard'
 
+  // Sticky close — pinned top-right, stays in place while card scrolls.
+  // Redundant with ESC + actions-grid close, but discoverability is king.
+  const closeBtn = document.createElement('button')
+  closeBtn.className = 'hs-pcard-close'
+  closeBtn.type = 'button'
+  closeBtn.title = 'close (Esc)'
+  closeBtn.setAttribute('aria-label', 'close profile')
+  closeBtn.textContent = '×'
+  closeBtn.addEventListener('click', closeProfileCard)
+  card.appendChild(closeBtn)
+
   // === Identity section ===
   const idSec = pcMakeSection(data?.display_name || username)
   idSec.classList.add('hs-pcard-id')

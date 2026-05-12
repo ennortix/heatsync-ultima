@@ -2657,7 +2657,28 @@ function injectStyles() {
       gap: 10px;
       height: 100%;
       overflow-y: auto;
+      position: relative;
     }
+    /* Sticky close — pinned to card top-right, stays visible while scrolling.
+       Negative bottom margin lets it overlay the id-row without taking column
+       space; id-row gets right padding so display name never slides under it. */
+    .hs-pcard-close {
+      position: sticky; top: 0; align-self: flex-end;
+      margin: -6px -6px -30px 0;
+      width: 30px; height: 30px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 22px; line-height: 1; font-weight: 400;
+      background: rgba(0, 0, 0, 0.75);
+      color: #888;
+      border: 1px solid #2a2a2a;
+      cursor: pointer; padding: 0;
+      z-index: 5;
+      transition: background 80ms, color 80ms, border-color 80ms, transform 80ms;
+    }
+    .hs-pcard-close:hover { background: #fff; color: #000; border-color: #fff; transform: scale(1.08); }
+    .hs-pcard-close:active { transform: scale(0.96); }
+    .hs-pcard-close:focus-visible { outline: 1px solid #ff8700; outline-offset: 1px; }
+    .hs-pcard-id-row { padding-right: 28px; }
     /* Sections are pure spacing — drop chrome borders + label-on-top */
     .hs-pcard-section {
       border: 0; padding: 0; margin: 0; position: static; background: transparent;

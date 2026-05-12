@@ -993,10 +993,8 @@ style.textContent = `
     cursor: pointer !important;
   }
 
-  /* Locally name-blocked emotes (e.g. native Twitch sub emotes) — kept in
-   * flow but visually muted so the user can still right-click to unblock.
-   * `display:none` makes the emote unreachable: there's no other surface
-   * that can clear local name-blocks. */
+  /* Locally name-blocked emotes — kept in flow but visually muted so the
+     user can still right-click to unblock; hiding would strip that surface. */
   img[data-hs-name-blocked] {
     opacity: 0.15 !important;
     filter: grayscale(1) !important;

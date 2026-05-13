@@ -1255,6 +1255,54 @@ function deflectAdjacentChip(node, wordStart) {
 // definition of "no content" to include whitespace-only nodes — used on
 // deletion events so a single backspace can collapse a 2-char nbsp+space
 // gap (which Tab insertion + user-typed space leaves between chips).
+function buildInputEmoteImg(emote, isOverlay) {
+  const img = document.createElement('img')
+  img.src = emote.url
+  img.alt = emote.name
+  img.dataset.emoteName = emote.name
+  img.className = 'hs-input-emote' + (isOverlay ? ' input-emote-overlay' : '')
+  img.draggable = false
+  if (typeof attachInputEmoteErrorRecovery === 'function') attachInputEmoteErrorRecovery(img)
+  return img
+}
+
+function imagifyValidWordsInTextNode(textNode) {
+  if (!textNode || textNode.nodeType !== Node.TEXT_NODE) return false
+  if (typeof lookupEmoteWithOverlay !== 'function') return false
+  const text = textNode.textContent
+  if (!text.trim()) return false
+  const parts = text.split(/(\s+)/)
+  const replacements = []
+  let didChange = false
+  for (let i = 0; i < parts.length; i++) {
+    const part = parts[i]
+    if (!part) continue
+    if (/^\s+$/.test(part)) {
+      replacements.push(document.createTextNode(part))
+      continue
+    }
+    const hasLeftWs = i === 0 || (parts[i - 1] && /^\s+$/.test(parts[i - 1]))
+    const hasRightWs = i === parts.length - 1 || (parts[i + 1] && /^\s+$/.test(parts[i + 1]))
+    if (!hasLeftWs || !hasRightWs) {
+      replacements.push(document.createTextNode(part))
+      continue
+    }
+    let resolved = null
+    try { resolved = lookupEmoteWithOverlay(part) } catch (_) {}
+    if (!resolved?.emote) {
+      replacements.push(document.createTextNode(part))
+      continue
+    }
+    replacements.push(buildInputEmoteImg(resolved.emote, !!resolved.isOverlay))
+    didChange = true
+  }
+  if (!didChange) return false
+  const frag = document.createDocumentFragment()
+  for (const n of replacements) frag.appendChild(n)
+  textNode.parentNode.replaceChild(frag, textNode)
+  return true
+}
+
 function unwrapStuckChips(inputEl, acceptWhitespace) {
   if (!inputEl) return false
   let changed = false
@@ -1303,7 +1351,15 @@ function unwrapStuckChips(inputEl, acceptWhitespace) {
     cursorOffset = aText.length
     changed = true
   }
-  if (changed && cursorTarget) {
+  // After merging, re-imagify whitespace-separated valid emote names in the
+  // resulting text so only the touching boundary stays as text. Matches
+  // what the chat-side parseEmotes will render from the wire.
+  if (changed) {
+    for (const child of [...inputEl.childNodes]) {
+      if (child.nodeType === Node.TEXT_NODE) imagifyValidWordsInTextNode(child)
+    }
+  }
+  if (changed && cursorTarget && cursorTarget.parentNode) {
     const sel = window.getSelection()
     if (sel) {
       const r = document.createRange()

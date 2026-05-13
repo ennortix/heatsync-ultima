@@ -772,7 +772,7 @@ cleanup.addEventListener(document, 'keyup', (e) => {
   if (e.target.closest?.(HS_INPUT_EDITOR_SELECTOR)) scheduleInputModifierPreview()
 }, 'input-modifier-preview-keyup')
 // Also catch programmatic changes (Slate void inserts) via observer
-const _hsInputObserver = new MutationObserver(scheduleInputModifierPreview)
+const _hsInputObserver = cleanup.trackObserver(new MutationObserver(scheduleInputModifierPreview))
 function attachInputModifierObserver() {
   document.querySelectorAll(HS_INPUT_EDITOR_SELECTOR).forEach(ed => {
     if (ed.dataset.hsInputModObserver) return
@@ -781,7 +781,7 @@ function attachInputModifierObserver() {
   })
 }
 setTimeout(attachInputModifierObserver, 1500)
-setInterval(attachInputModifierObserver, 5000)
+cleanup.setInterval(attachInputModifierObserver, 5000)
 
 // Right-click emote action menu (7TV-style: view on, copy name/URL, block, add)
 let _emoteMenuEl = null

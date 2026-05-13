@@ -6334,7 +6334,7 @@ function bgIrcForceReconnect() {
 
 function bgIrcStartHeartbeat() {
   bgIrcStopHeartbeat()
-  BG_IRC.heartbeatTimer = setInterval(() => {
+  BG_IRC.heartbeatTimer = trackInterval(setInterval(() => {
     if (!BG_IRC.ws || BG_IRC.ws.readyState !== WebSocket.OPEN) {
       bgIrcStopHeartbeat()
       if (!BG_IRC.destroyed) bgIrcScheduleReconnect()
@@ -6375,12 +6375,12 @@ function bgIrcStartHeartbeat() {
         return
       }
     }
-  }, 30000)
+  }, 30000))
 }
 
 function bgIrcStopHeartbeat() {
   if (BG_IRC.heartbeatTimer) {
-    clearInterval(BG_IRC.heartbeatTimer)
+    untrackInterval(BG_IRC.heartbeatTimer)
     BG_IRC.heartbeatTimer = null
   }
 }

@@ -23704,7 +23704,13 @@ function unwrapStuckChips(inputEl, acceptWhitespace) {
   let cursorOffset = 0
   // Bounded loop so a malformed DOM can't spin forever.
   for (let pass = 0; pass < 50; pass++) {
-    const chips = inputEl.querySelectorAll('img.hs-input-emote, .hs-input-stack, .hs-mc-user, .hs-mc-emoji')
+    const allChips = inputEl.querySelectorAll('img.hs-input-emote, .hs-input-stack, .hs-mc-user, .hs-mc-emoji')
+    // Skip imgs nested inside a stack — overlay children are LEGITIMATELY
+    // touching (that's the whole point of stacking). Without this filter,
+    // every stacked emote collapses to "KappaWave" text on the next input.
+    const chips = [...allChips].filter(c =>
+      !(c.tagName === 'IMG' && c.parentElement?.classList?.contains('hs-input-stack'))
+    )
     let pair = null
     for (let i = 0; i < chips.length - 1; i++) {
       const a = chips[i]

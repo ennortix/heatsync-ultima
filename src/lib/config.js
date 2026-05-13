@@ -143,6 +143,19 @@ const CONFIG = {
     TWITCH_CHAT_ROOM: '[data-test-selector="chat-room-component"]',
     TWITCH_CHAT_ROOM_CONTENT: '[class*="chat-room__content"]',
 
+    // Twitch chat layout wrappers — site builds vary the class suffix per release
+    TWITCH_CHAT_SHELL: '[class*="chat-shell"]',
+    TWITCH_STREAM_CHAT: '[class*="stream-chat"]',
+    TWITCH_CHAT_AUTOCOMPLETE: '[class*="chat-autocomplete"]',
+    TWITCH_CHAT_INPUT_WRAPPER: '[class*="chat-input"]',
+
+    // Kick chat layout
+    KICK_EDITOR_INPUT: '[class*="editor-input"]',
+    KICK_CHATROOM_FOOTER: '[class*="chatroom-footer"]',
+    KICK_CHAT_ENTRY_USERNAME: '[class*="chat-entry-username"]',
+    KICK_CHAT_ENTRY_CONTENT: '[class*="chat-entry-content"]',
+    KICK_CHAT_IDENTITY: '[class*="chat-identity"]',
+
     // Twitch message parts
     TWITCH_USERNAME: '.chat-author__display-name',
     TWITCH_USERNAME_ALT: '[data-a-target="chat-message-username"]',

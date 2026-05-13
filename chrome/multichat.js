@@ -334,6 +334,19 @@ const CONFIG = {
     TWITCH_CHAT_ROOM: '[data-test-selector="chat-room-component"]',
     TWITCH_CHAT_ROOM_CONTENT: '[class*="chat-room__content"]',
 
+    // Twitch chat layout wrappers — site builds vary the class suffix per release
+    TWITCH_CHAT_SHELL: '[class*="chat-shell"]',
+    TWITCH_STREAM_CHAT: '[class*="stream-chat"]',
+    TWITCH_CHAT_AUTOCOMPLETE: '[class*="chat-autocomplete"]',
+    TWITCH_CHAT_INPUT_WRAPPER: '[class*="chat-input"]',
+
+    // Kick chat layout
+    KICK_EDITOR_INPUT: '[class*="editor-input"]',
+    KICK_CHATROOM_FOOTER: '[class*="chatroom-footer"]',
+    KICK_CHAT_ENTRY_USERNAME: '[class*="chat-entry-username"]',
+    KICK_CHAT_ENTRY_CONTENT: '[class*="chat-entry-content"]',
+    KICK_CHAT_IDENTITY: '[class*="chat-identity"]',
+
     // Twitch message parts
     TWITCH_USERNAME: '.chat-author__display-name',
     TWITCH_USERNAME_ALT: '[data-a-target="chat-message-username"]',
@@ -28245,10 +28258,10 @@ const STORAGE_KEY = 'heatsync_multichat';
     // Try multiple starting points (including popout chat selectors)
     const selectors = [
       '[class*="chat-room"]',
-      '[class*="stream-chat"]',
+      CONFIG.SELECTORS.TWITCH_STREAM_CHAT,
       '[data-test-selector="chat-room-component"]',
       '[data-a-target="chat-room-component"]',
-      '[class*="chat-shell"]',
+      CONFIG.SELECTORS.TWITCH_CHAT_SHELL,
       '.chat-room'
     ];
 
@@ -31519,7 +31532,7 @@ const STORAGE_KEY = 'heatsync_multichat';
       // -player layout). Fall back to <body> on non-channel pages (directory,
       // settings, videos, …) where chat-shell doesn't exist — panel becomes a
       // position:fixed overlay via the hs-twitch-no-channel CSS rules.
-      const chatShell = document.querySelector('.chat-shell') || document.querySelector('[class*="chat-shell"]')
+      const chatShell = document.querySelector('.chat-shell') || document.querySelector(CONFIG.SELECTORS.TWITCH_CHAT_SHELL)
       if (chatShell) {
         parent = chatShell
         parent.appendChild(container)
@@ -31716,7 +31729,7 @@ const STORAGE_KEY = 'heatsync_multichat';
       chatRoom = document.querySelector('[class*="chat-room__content"]') ||
                  document.querySelector('[data-a-target="chat-room-component"]') ||
                  document.querySelector('.chat-shell') ||
-                 document.querySelector('[class*="stream-chat"]') ||
+                 document.querySelector(CONFIG.SELECTORS.TWITCH_STREAM_CHAT) ||
                  document.querySelector('.chat-room')
     }
 
@@ -32089,7 +32102,7 @@ const STORAGE_KEY = 'heatsync_multichat';
 
     // Twitch: Add class to chat-shell (outermost container)
     const chatShell = document.querySelector('.chat-shell') ||
-                      document.querySelector('[class*="chat-shell"]');
+                      document.querySelector(CONFIG.SELECTORS.TWITCH_CHAT_SHELL);
     if (chatShell) {
       chatShell.classList.toggle('hs-native-hidden', hidden);
     }
@@ -32103,7 +32116,7 @@ const STORAGE_KEY = 'heatsync_multichat';
 
     // Also try stream-chat for popout mode
     const streamChat = document.querySelector('.stream-chat') ||
-                       document.querySelector('[class*="stream-chat"]');
+                       document.querySelector(CONFIG.SELECTORS.TWITCH_STREAM_CHAT);
     if (streamChat) {
       streamChat.classList.toggle('hs-native-hidden', hidden);
     }
@@ -34638,7 +34651,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       // page mounts but the right-column flex slot stays 0-width — chat-shell
       // overflows off-screen to the right (x ≥ viewport.right). Detect and
       // fall back to body-mounted fixed-overlay mode so chat stays visible.
-      const chatShell = document.querySelector('.chat-shell, [class*="chat-shell"]');
+      const chatShell = document.querySelector('.chat-shell, ' + CONFIG.SELECTORS.TWITCH_CHAT_SHELL);
       if (chatShell) {
         const r = chatShell.getBoundingClientRect();
         if (r.right > window.innerWidth + 1 || r.width === 0) {
@@ -36935,7 +36948,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       const chatContainer = document.querySelector('[class*="chat-room__content"]') ||
                            document.querySelector('[data-a-target="chat-room-component"]') ||
                            document.querySelector('.chat-shell') ||
-                           document.querySelector('[class*="stream-chat"]') ||
+                           document.querySelector(CONFIG.SELECTORS.TWITCH_STREAM_CHAT) ||
                            document.querySelector('.chat-room');
       if (chatContainer) {
         done = true;
@@ -37053,7 +37066,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       // tested. Plus a chat-shell mutation observer continuously re-applies
       // hs-native-hidden in case React swaps the chat-room__content node.
       const reHide = new MutationObserver(() => { try { setNativeChatHidden(true) } catch (_) {} });
-      const target = document.querySelector('.chat-shell, [class*="chat-shell"]');
+      const target = document.querySelector('.chat-shell, ' + CONFIG.SELECTORS.TWITCH_CHAT_SHELL);
       if (target) {
         reHide.observe(target, { childList: true });
         cleanup.trackObserver(reHide);

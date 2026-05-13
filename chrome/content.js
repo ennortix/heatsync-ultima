@@ -7057,7 +7057,7 @@ function updateEmoteState(hash, emoteName, state) {
     if (mcContainer) return mcContainer
     const host = window.location.hostname
     if (host.includes('twitch.tv')) {
-      return document.querySelector('[class*="chat-shell"], section.chat-shell, .chat-shell, .chat-room__content, [data-test-selector="chat-shell"], [data-test-selector="chat-room-component"]')
+      return document.querySelector(CONFIG.SELECTORS.TWITCH_CHAT_SHELL + ', section.chat-shell, .chat-shell, .chat-room__content, [data-test-selector="chat-shell"], [data-test-selector="chat-room-component"]')
     }
     if (host.includes('kick.com')) {
       return document.querySelector('#chatroom') || document.querySelector('#channel-chatroom')

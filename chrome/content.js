@@ -882,6 +882,12 @@ function openEmoteActionMenu(wrapper, x, y) {
     })
   }
 
+  if (inInventory) {
+    addItem('remove from set', async () => {
+      try { await safeSendMessage({ type: 'remove_from_inventory', emoteHash: hash, emoteName: name }) } catch {}
+    })
+  }
+
   document.body.appendChild(el)
   _emoteMenuEl = el
 
@@ -2379,14 +2385,18 @@ function isEmoteImage(el) {
 }
 
 function getEmoteColor(img) {
+  // Three-state palette mirroring the website's wrapper hover bg:
+  //   in-set / default → green   #00ff00  (click pastes)
+  //   available        → orange  #ff8700  (click adds, then pastes)
+  //   blocked          → red     #ff0000  (you've blocked it)
   const state = img.dataset?.heatsyncState;
-  if (state === 'unadded') return '#ff8700';
   if (state === 'blocked') return '#ff0000';
-  // Fallback: read wrapper class from website
+  if (state === 'unadded') return '#ff8700';
+  // Fallback: read wrapper class from website. .available is the current
+  // name for "not in your set yet"; .neutral kept for older surfaces.
   const wrapper = img.closest?.('.emote-hover-wrapper');
-  if (wrapper?.classList.contains('neutral')) return '#ff8700';
   if (wrapper?.classList.contains('blocked')) return '#ff0000';
-  // Default: green for usable (owned + global + channel)
+  if (wrapper?.classList.contains('available') || wrapper?.classList.contains('neutral')) return '#ff8700';
   return '#00ff00';
 }
 
@@ -2792,6 +2802,7 @@ cleanup.setInterval(() => {
 }, 30000);
 let pendingOperations = new Set(); // Track in-flight operations to prevent double-clicks
 let pendingRemovals = new Set(); // Emote names pending removal — suppress inventory_update re-adds
+let _pendingRemovalSnapshots = new Map(); // name → emote object, for rollback on emote_removing_cancel
 // O(1) lookup sets — rebuilt when arrays change (via allEmotesDirty flag)
 let inventoryHashSet = new Set();
 let cachedEmotesByHash = new Map(); // hash → emote, O(1) lookup for hover previews
@@ -3194,28 +3205,50 @@ function _onMessageMain(message) {
       window.postMessage({ type: 'heatsync-inventory-update', count: emoteInventory.length }, location.origin);
       break;
 
-    case 'emote_removing':
-      // Background is about to remove this emote — suppress it in new messages immediately
+    case 'emote_removing': {
+      // Background is about to remove this emote — suppress it in new messages immediately.
+      // Snapshot the emote before filtering so a cancel can restore it without waiting
+      // for the periodic re-fetch.
       pendingRemovals.add(message.emoteName);
+      const _snap = emoteInventory.find(e => e.name === message.emoteName || (message.hash && e.hash === message.hash));
+      if (_snap) _pendingRemovalSnapshots.set(message.emoteName, _snap);
       emoteInventory = emoteInventory.filter(e => e.name !== message.emoteName);
       allEmotesDirty = true
       _tabEmoteMapDirty = true
       rebuildEmoteMapIfDirty()
+      // Optimistic visual tier-drop on existing rendered messages: pickActiveVariant
+      // now sees inventoryHashSet sans this emote and skips the inventory variant in
+      // favor of channel/global siblings.
+      if (message.hash || message.emoteName) {
+        updateEmoteState(message.hash || '', message.emoteName, 'neutral');
+      }
       log(' ⏳ Emote removal starting:', message.emoteName);
       break;
+    }
 
-    case 'emote_removing_cancel':
-      // Removal failed — allow emote again
+    case 'emote_removing_cancel': {
+      // Removal failed — restore the eagerly-removed emote so existing wrappers
+      // tier-up back to the inventory variant and new messages re-render with it.
       pendingRemovals.delete(message.emoteName);
+      const _snap = _pendingRemovalSnapshots.get(message.emoteName);
+      if (_snap && !emoteInventory.some(e => e.name === _snap.name)) {
+        emoteInventory.push(_snap);
+      }
+      _pendingRemovalSnapshots.delete(message.emoteName);
       allEmotesDirty = true
       _tabEmoteMapDirty = true
       rebuildEmoteMapIfDirty()
+      if (_snap) {
+        updateEmoteState(_snap.hash || '', _snap.name, 'added');
+      }
       log(' ↩️ Emote removal cancelled:', message.emoteName);
       break;
+    }
 
     case 'emote_removed':
       // Emote was successfully removed from your set
       pendingRemovals.add(message.emoteName);
+      _pendingRemovalSnapshots.delete(message.emoteName);
       allEmotesDirty = true
       emoteGeneration++
       _tabEmoteMapDirty = true
@@ -6015,7 +6048,51 @@ function setupEmoteClickHandlers() {
         }
       }
     } else {
-      // NEUTRAL → BLOCKED
+      // Progressive tier degradation: if the active variant is from the user's
+      // inventory AND there's a lower-tier sibling still available (channel or
+      // global), remove from set so the wrapper falls back to that sibling.
+      // Going straight to block here would leave the chat without a renderable
+      // variant when one was right there. Only block when there's nowhere to fall.
+      const activeImg = wrapper.firstElementChild?.tagName === 'IMG' ? wrapper.firstElementChild : wrapper.querySelector('img.heatsync-emote')
+      const activeIsInventory = (activeImg?.dataset.variantClass === 'inventory') || (!wrapper.dataset.hasVariants && inInventory)
+      let hasFallback = false
+      if (activeIsInventory && wrapper.dataset.hasVariants === '1') {
+        const sibs = wrapper.querySelectorAll(':scope > img.heatsync-emote')
+        for (const s of sibs) {
+          if (s === activeImg) continue
+          if (s.dataset.variantClass === 'inventory') continue
+          if (blockedEmotes.has(s.dataset.emoteHash)) continue
+          hasFallback = true; break
+        }
+      }
+
+      if (activeIsInventory && hasFallback && !inStack) {
+        // INVENTORY (with lower tier) → drop tier via remove_from_inventory.
+        // Skipped inside stacks: stack right-click semantics still go to block.
+        pendingOperations.add(operationKey);
+        try {
+          const result = await safeSendMessage({ type: 'remove_from_inventory', emoteHash: hash, emoteName });
+          if (result?.success) {
+            log(' ⬇ Removed from set (tier drop):', emoteName);
+            showToast(t('content_toast_removed', [emoteName]), 'info');
+            // emote_removed broadcast will arrive and trigger updateEmoteState → pickActiveVariant
+          } else {
+            showToast(t('content_toast_failed_remove', [emoteName, String(result?.error || 'Unknown error')]), 'error');
+          }
+        } catch (err) {
+          if (!extensionContextValid) return;
+          showToast(t('content_toast_failed_remove', [emoteName, String(err.message)]), 'error');
+        } finally {
+          pendingOperations.delete(operationKey);
+          if (parentStack) {
+            parentStack.classList.add('expanded');
+            requestAnimationFrame(() => parentStack.classList.add('expanded'));
+          }
+        }
+        return;
+      }
+
+      // NEUTRAL/LAST-TIER → BLOCKED
       pendingOperations.add(operationKey);
 
       // Optimistically block
@@ -6069,11 +6146,19 @@ function pickActiveVariant(wrapper) {
   // Priority order is encoded in data-variant-index (0 = highest).
   imgs.sort((a, b) => (+a.dataset.variantIndex || 0) - (+b.dataset.variantIndex || 0))
 
-  // First non-blocked variant wins. If all are blocked, fall back to primary so
-  // the standard blocked rendering applies (greyed-out highest-priority emote).
+  // First non-blocked, non-stale variant wins. Stale = an `inventory` variant
+  // whose hash is no longer in inventoryHashSet (user removed it from their set).
+  // Without the stale skip, removing an inventory emote leaves the heatsync img
+  // active and re-classed as 'unadded' instead of dropping to the next tier
+  // (e.g. 7TV channel) sibling that's still valid.
+  // If everything fails both checks, fall back to primary so the standard blocked
+  // rendering still applies (greyed-out highest-priority emote).
   let activeImg = null
   for (const img of imgs) {
-    if (!blockedEmotes.has(img.dataset.emoteHash)) { activeImg = img; break }
+    const h = img.dataset.emoteHash
+    if (blockedEmotes.has(h)) continue
+    if (img.dataset.variantClass === 'inventory' && !inventoryHashSet.has(h)) continue
+    activeImg = img; break
   }
   if (!activeImg) activeImg = imgs[0]
 

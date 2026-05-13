@@ -4,6 +4,108 @@
 
 let activeProfileCard = null  // { username, platform, data, ts }
 
+// In-page LRU for fetched banners — survives card open/close within a session.
+// Background SW caches authoritatively (12h); this layer just avoids the SW
+// round-trip for repeat hovers/opens. Keyed `${platform}:${login}` so the
+// same name on different platforms never collides.
+const _bannerCache = new Map()
+const BANNER_LOCAL_TTL = 10 * 60 * 1000
+
+// Resolve a single platform banner via SW. Returns the banner record or null.
+async function fetchChannelBanner(platform, login) {
+  if (!platform || !login) return null
+  const key = `${platform}:${String(login).toLowerCase()}`
+  const hit = _bannerCache.get(key)
+  if (hit && Date.now() - hit.ts < BANNER_LOCAL_TTL) return hit.data
+  try {
+    const data = await safeSendMessage({ type: 'fetch_channel_banner', platform, username: login })
+    _bannerCache.set(key, { data: data || null, ts: Date.now() })
+    if (_bannerCache.size > 300) _bannerCache.delete(_bannerCache.keys().next().value)
+    return data || null
+  } catch {
+    return null
+  }
+}
+
+// Build the platform-preference chain for a profile + context. The context
+// platform always wins — a user's identity belongs to the platform you were
+// viewing them on. Cross-platform accent inheritance (a kick green ring on
+// a twitch user just because they also have a kick account) is wrong: it
+// reads as "this person is on kick" when chat says otherwise.
+//
+// Resolution order:
+//   1) Explicit contextPlatform passed by the caller (data-platform on the
+//      hovered chat message).
+//   2) Hostname inference — multichat overlay runs on twitch.tv / kick.com /
+//      youtube.com so the host is a natural fallback when no data-platform
+//      attribute is present (mentions in feed posts, etc.).
+//   3) Only when neither yields a platform: walk linked accounts on the
+//      profile (twitch > kick > youtube).
+function pickBannerChain(data, contextPlatform, username) {
+  // Hostname fallback when caller didn't pass an explicit platform
+  if (!contextPlatform && typeof location !== 'undefined') {
+    const h = String(location.hostname || '')
+    if (h.includes('twitch.tv')) contextPlatform = 'twitch'
+    else if (h.includes('kick.com')) contextPlatform = 'kick'
+    else if (h.includes('youtube.com')) contextPlatform = 'youtube'
+  }
+
+  const out = []
+  const seen = new Set()
+  const add = (p, l) => {
+    if (!p || !l) return
+    const k = `${p}:${String(l).toLowerCase()}`
+    if (seen.has(k)) return
+    seen.add(k); out.push({ platform: p, login: l })
+  }
+
+  // Step 1: the context platform — usually the only entry in the chain.
+  if (contextPlatform === 'twitch') add('twitch', data?.twitch_username || username)
+  else if (contextPlatform === 'kick') add('kick', data?.kick_username || username)
+  else if (contextPlatform === 'youtube' || contextPlatform === 'yt') {
+    add('youtube', data?.youtube_channel_id || data?.youtube_username || username)
+  }
+
+  // Step 2: only if no context resolved anything — walk linked accounts in
+  // the profile-data fallback order. Keeps cross-platform users (e.g. a YT
+  // chatter mentioned in a heatsync feed post with no platform context) able
+  // to show *some* banner instead of nothing.
+  if (!out.length) {
+    add('twitch', data?.twitch_username)
+    add('kick', data?.kick_username)
+    add('youtube', data?.youtube_channel_id || data?.youtube_username)
+  }
+
+  // Step 3: last-ditch — raw username, guessing platform from shape.
+  if (!out.length && username) {
+    if (/^uc[a-z0-9_-]{20,}$/i.test(username)) add('youtube', username)
+    else add('twitch', username)
+  }
+  return out
+}
+
+// Walk the chain until one platform returns a usable banner. "Usable" = a real
+// bannerUrl/offlineUrl; an empty record is treated as continue. Returns the
+// first hit or null after the chain exhausts.
+async function fetchBannerChain(chain) {
+  // Pass 1 — first real banner image wins, any platform in the chain.
+  for (const c of chain) {
+    const data = await fetchChannelBanner(c.platform, c.login)
+    if (data && (data.bannerUrl || data.offlineUrl)) return data
+  }
+  // Pass 2 — accent-only fallback is restricted to the FIRST chain entry
+  // (the context platform when available). This prevents a Kick brand-green
+  // accent from leaking onto a Twitch user just because Twitch's GQL call
+  // returned no banner image. Cross-platform accent inheritance is wrong:
+  // a user's identity color belongs to the platform they were viewed on.
+  if (chain.length) {
+    const first = chain[0]
+    const data = await fetchChannelBanner(first.platform, first.login)
+    if (data && (data.accent || data.profileUrl)) return data
+  }
+  return null
+}
+
 async function openProfileCard(username, platform) {
   if (!username) return
   username = String(username).toLowerCase()
@@ -179,6 +281,22 @@ function renderProfileCardView() {
   // === Identity section ===
   const idSec = pcMakeSection(data?.display_name || username)
   idSec.classList.add('hs-pcard-id')
+
+  // Hero banner — wide channel banner image as background, with a gradient
+  // scrim so text/avatar always read clearly. Filled async by pcApplyBanner
+  // when the Twitch GQL response lands. Stays empty (CSS gradient placeholder)
+  // until then so layout doesn't jump.
+  const heroBanner = document.createElement('div')
+  heroBanner.className = 'hs-pcard-hero'
+  // dataset target so async banner fetch can find it without storing a closure
+  heroBanner.dataset.heroFor = username
+  const heroImg = document.createElement('div')
+  heroImg.className = 'hs-pcard-hero-img'
+  const heroScrim = document.createElement('div')
+  heroScrim.className = 'hs-pcard-hero-scrim'
+  heroBanner.appendChild(heroImg)
+  heroBanner.appendChild(heroScrim)
+  idSec.appendChild(heroBanner)
 
   const idRow = document.createElement('div')
   idRow.className = 'hs-pcard-id-row'
@@ -485,6 +603,47 @@ function renderProfileCardView() {
   card.appendChild(asec)
 
   msgsEl.appendChild(card)
+
+  // Hero banner — kick off async fetch using the multi-platform chain. The
+  // hero element is already in the DOM with a gradient placeholder; the
+  // applier mutates .hs-pcard-hero-img once a banner resolves.
+  const chain = pickBannerChain(data, activeProfileCard.platform, username)
+  if (chain.length) pcApplyBanner(card, chain)
+}
+
+// Async banner application — walks the platform chain and applies the first
+// real banner. No-op when the card was closed/re-rendered while in-flight
+// (we re-resolve the element off the live messages root each call).
+async function pcApplyBanner(card, chain) {
+  const banner = await fetchBannerChain(chain)
+  if (!banner) return
+  const root = document.getElementById('hs-mc-messages')?.querySelector('.hs-pcard') || card
+  const hero = root.querySelector('.hs-pcard-hero')
+  if (!hero) return
+  const heroImg = hero.querySelector('.hs-pcard-hero-img')
+  if (!heroImg) return
+  const url = banner.bannerUrl || banner.offlineUrl
+  if (url) {
+    // Preload, then commit — so the fade-in starts on a decoded image,
+    // not on a flash of nothing → cached image.
+    const probe = new Image()
+    probe.onload = () => {
+      heroImg.style.backgroundImage = `url("${url}")`
+      hero.classList.add('hs-pcard-hero-loaded')
+    }
+    probe.referrerPolicy = 'no-referrer'
+    probe.src = url
+  }
+  if (banner.accent) {
+    // Accent tints scrim + avatar ring + section divider so the whole card
+    // adopts the streamer's identity color (Twitch primaryColorHex when
+    // present, platform-brand fallbacks for Kick/YouTube).
+    root.style.setProperty('--hs-pcard-accent', banner.accent)
+    hero.classList.add('hs-pcard-hero-accent')
+  }
+  if (banner.sourcePlatform) {
+    hero.dataset.source = banner.sourcePlatform
+  }
 }
 
 function pcOpenExt(url) {

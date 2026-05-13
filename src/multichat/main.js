@@ -1707,6 +1707,11 @@
   // updates skip clearRenderedHtmlCache so old messages keep their rendering
   // even when emotes are removed — "history is sacred" UX.
   const _emoteFirstLoad = new Set();
+  // Scopes that arrived since the last debounce flush. Collected across
+  // progressive broadcasts (BTTV/FFZ/7TV/Twitch arrive separately for the
+  // same channel) so the eventual loadEmotes() knows every scope to
+  // first-load-clear in one shot. Drained when the timer fires.
+  let _pendingEmoteScopes = new Set();
   let newMessageCount = 0;
   let isProgrammaticScroll = false; // Flag to ignore programmatic scrolls
 
@@ -2115,6 +2120,7 @@
       let _stackChannel = ''
       let _stackPlatform = ''
       let _stackOwnId = ''
+      let _stackThreadId = ''
       // Layout-shift gate: chat auto-scroll on a new message slides a different
       // row under a stationary cursor; the browser fires synthetic mouseover
       // events for the new element. Compare cursor coords to the previous
@@ -2167,6 +2173,7 @@
         _stackChannel = ''
         _stackPlatform = ''
         _stackOwnId = ''
+        _stackThreadId = ''
       }
       const lookupMsgById = (channel, platform, id) => {
         if (!id) return null
@@ -2194,60 +2201,55 @@
         }
         return null
       }
-      const walkReplyChain = (channel, platform, startReplyId, maxDepth) => {
-        const chain = []
-        const seen = new Set()
-        let curId = startReplyId
-        let depth = 0
-        while (curId && depth < maxDepth) {
-          if (seen.has(curId)) break
-          seen.add(curId)
-          const m = lookupMsgById(channel, platform, curId)
-          if (!m) break
-          chain.push(m)
-          curId = m.replyTo?.id || ''
-          depth++
-        }
-        return chain
-      }
-      // Walk forward — find descendants. The first child reply, then its first
-      // child, etc. Linear chain (no branching) for stack visualization.
-      const findFirstChild = (channel, platform, parentId) => {
-        if (!parentId) return null
+      // Thread = all messages sharing the same Twitch reply-thread root (or
+      // Kick thread_id). Walks the channel buffer once, splits members into
+      // those before and after the hovered row by buffer order. Falls back to
+      // direct-parent linkage when threadId isn't set (older Kick payloads).
+      // Returns ancestors (chronological, oldest→newest) and descendants
+      // (chronological, oldest→newest).
+      const walkThreadMembers = (channel, platform, hoveredMsg, maxMembers) => {
+        const out = { ancestors: [], descendants: [] }
+        if (!hoveredMsg) return out
+        const threadId = hoveredMsg.replyTo?.threadId || hoveredMsg.replyTo?.id || hoveredMsg.id
+        if (!threadId) return out
         const ch = (channel || '').toLowerCase()
-        const matchInBuf = (buf) => {
+        const isMember = (m) => m === hoveredMsg
+          || m.id === threadId
+          || m.replyTo?.threadId === threadId
+          || m.replyTo?.id === threadId
+        const collectFrom = (buf) => {
           const msgs = buf.getAll()
-          for (let i = 0; i < msgs.length; i++) if (msgs[i].replyTo?.id === parentId) return msgs[i]
-          return null
+          let foundHovered = false
+          for (let i = 0; i < msgs.length; i++) {
+            const m = msgs[i]
+            const match = m === hoveredMsg || (hoveredMsg.id && m.id === hoveredMsg.id)
+            if (match) { foundHovered = true; continue }
+            if (!isMember(m)) continue
+            if (!foundHovered) {
+              out.ancestors.push(m)
+              if (out.ancestors.length > maxMembers) out.ancestors.shift()
+            } else {
+              out.descendants.push(m)
+              if (out.descendants.length >= maxMembers) return true
+            }
+          }
+          return foundHovered
         }
         if (platform === 'kick') {
           const buf = kickChat?.channels?.get(ch)
-          return buf ? matchInBuf(buf) : null
+          if (buf) collectFrom(buf)
+          return out
         }
         if (ch && irc?.channels) {
           const buf = irc.channels.get(ch)
-          if (buf) { const m = matchInBuf(buf); if (m) return m }
+          if (buf && collectFrom(buf)) return out
         }
         if (irc?.channels) {
-          for (const buf of irc.channels.values()) { const m = matchInBuf(buf); if (m) return m }
+          for (const buf of irc.channels.values()) {
+            if (collectFrom(buf)) break
+          }
         }
-        return null
-      }
-      const walkDescendants = (channel, platform, startMsgId, maxDepth) => {
-        const chain = []
-        const seen = new Set()
-        let curId = startMsgId
-        let depth = 0
-        while (curId && depth < maxDepth) {
-          if (seen.has(curId)) break
-          seen.add(curId)
-          const child = findFirstChild(channel, platform, curId)
-          if (!child) break
-          chain.push(child)
-          curId = child.id || ''
-          depth++
-        }
-        return chain
+        return out
       }
       // Forward wheel events from the reply-stack overlays to the chat
       // container. Without this, wheeling while hovering the overlay
@@ -2324,9 +2326,16 @@
         if (!replyId) return
         const channel = hoveredEl.dataset.msgChannel
         const platform = hoveredEl.dataset.msgPlatform
-        const chain = walkReplyChain(channel, platform, replyId, 128)
         const ownId = hoveredEl.dataset.msgId
-        const descChain = ownId ? walkDescendants(channel, platform, ownId, 128) : []
+        const threadId = hoveredEl.dataset.replyThreadId || replyId
+        const hoveredMsg = ownId ? lookupMsgById(channel, platform, ownId) : null
+        const { ancestors, descendants } = hoveredMsg
+          ? walkThreadMembers(channel, platform, hoveredMsg, 128)
+          : { ancestors: [], descendants: [] }
+        // chain[0] = closest ancestor (immediate parent), chain[n] = oldest.
+        // Up-overlay rendering loop prepends each → visual top-down is oldest→newest.
+        const chain = ancestors.slice().reverse()
+        const descChain = descendants
         if (!chain.length && !descChain.length) return
         // Overlay rows match native .hs-mc-msg padding exactly, so the stack
         // butts flush against the active row — no overlap into the row's
@@ -2421,6 +2430,7 @@
         _stackChannel = (channel || '').toLowerCase()
         _stackPlatform = platform || ''
         _stackOwnId = ownId || ''
+        _stackThreadId = threadId || ''
       }
 
       msgsEl.addEventListener('mouseover', (e) => {
@@ -2521,9 +2531,12 @@
       // — same behavior chat itself has at-bottom.
       const tryExtendStack = (newDiv) => {
         if (!_stackActiveRow || !_stackActiveRow.isConnected) return
-        if (!_stackTailId) return
+        if (!_stackThreadId) return
         const replyId = newDiv.dataset.replyId || ''
-        if (replyId !== _stackTailId) return
+        const replyThreadId = newDiv.dataset.replyThreadId || ''
+        // Thread match: new reply belongs if its threadId matches, or its
+        // direct parent is the thread root (covers Twitch + Kick fallbacks).
+        if (replyThreadId !== _stackThreadId && replyId !== _stackThreadId && replyId !== _stackTailId) return
         const newMsgId = newDiv.dataset.msgId || ''
         if (!newMsgId) return
         const msgChannel = (newDiv.dataset.msgChannel || '').toLowerCase()
@@ -8501,12 +8514,17 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
         // — old messages keep their emote rendering even if an emote is removed.
         // History is sacred: what was rendered as an emote stays an emote.
         const scope = msg.type === 'channel_emotes_update' ? `ch:${msg.channelOwner || '_'}` : 'global'
-        const isFirstLoad = !_emoteFirstLoad.has(scope)
-        _emoteFirstLoad.add(scope)
+        _pendingEmoteScopes.add(scope)
         cleanup.clearTimeout(emoteReloadTimer);
         emoteReloadTimer = cleanup.setTimeout(() => {
+          const pending = _pendingEmoteScopes
+          _pendingEmoteScopes = new Set()
           loadEmotes().then(() => {
-            if (isFirstLoad) {
+            let firstLoad = false
+            for (const s of pending) {
+              if (!_emoteFirstLoad.has(s)) { _emoteFirstLoad.add(s); firstLoad = true }
+            }
+            if (firstLoad) {
               clearRenderedHtmlCache();
               renderMessages(currentTab);
             }
@@ -8833,12 +8851,17 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
         // per scope this session. Subsequent updates (add/remove) preserve
         // _renderedHtml so removed emotes stay rendered in old messages.
         const scope = changes.global_emotes ? 'global' : (changes.channel_emotes_map ? 'ch:_storage' : (changes.native_twitch_emotes ? 'native' : ''))
-        const isFirstLoad = scope && !_emoteFirstLoad.has(scope)
-        if (scope) _emoteFirstLoad.add(scope)
+        if (scope) _pendingEmoteScopes.add(scope)
         cleanup.clearTimeout(emoteReloadTimer);
         emoteReloadTimer = cleanup.setTimeout(() => {
+          const pending = _pendingEmoteScopes
+          _pendingEmoteScopes = new Set()
           loadEmotes().then(() => {
-            if (isFirstLoad) clearRenderedHtmlCache();
+            let firstLoad = false
+            for (const s of pending) {
+              if (!_emoteFirstLoad.has(s)) { _emoteFirstLoad.add(s); firstLoad = true }
+            }
+            if (firstLoad) clearRenderedHtmlCache();
             if (!isScrolledUp) renderMessages(currentTab);
           });
         }, 300);

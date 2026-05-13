@@ -3780,7 +3780,7 @@ const cleanup = {
 
 
 // --- multichat/notifs.js ---
-// Notifs — god-tier notification system.
+// Notifs — central notification system for multichat.
 //
 // Single source of truth for every popup/toast/callout/banner in multichat.
 // Adding a new notif type is a single registerType call. Layer positioning is
@@ -3881,9 +3881,21 @@ const HsNotifs = (() => {
       if (idx >= 0) {
         const n = l.current[idx]
         l.current.splice(idx, 1)
-        if (n._timer) clearTimeout(n._timer)
+        if (n._timer) { clearTimeout(n._timer); n._timer = null }
         try { n.type.onDismiss?.(n.data) } catch (_) {}
-        try { n.el?.remove() } catch (_) {}
+        // Exit animation — flag wrapper for CSS to fade/slide out, then
+        // remove on animation end. Falls back to immediate remove if the
+        // animation event never fires (detached, reduced-motion, etc.).
+        const el = n.el
+        if (el && el.isConnected) {
+          el.classList.add('hs-notif-exiting')
+          let removed = false
+          const cleanup = () => { if (removed) return; removed = true; try { el.remove() } catch (_) {} }
+          el.addEventListener('animationend', cleanup, { once: true })
+          setTimeout(cleanup, 220)
+        } else {
+          try { el?.remove() } catch (_) {}
+        }
         return true
       }
     }
@@ -3904,6 +3916,7 @@ const HsNotifs = (() => {
     const wrapper = document.createElement('div')
     wrapper.className = `hs-notif hs-notif-${notif.typeName}`
     wrapper.dataset.notifId = notif.id
+    wrapper.setAttribute('role', notif.data?.level === 'error' ? 'alert' : 'status')
     notif.el = wrapper
     _renderInto(notif)
     container.appendChild(wrapper)
@@ -3916,9 +3929,30 @@ const HsNotifs = (() => {
     if (notif.type.clickToDismiss) {
       wrapper.addEventListener('click', () => dismiss(notif.id))
     }
+    // Right-click dismiss — global UX convention: every popup/indicator
+    // accepts right-click to clear without firing any action.
+    wrapper.addEventListener('contextmenu', (e) => {
+      e.preventDefault(); e.stopPropagation()
+      dismiss(notif.id)
+    })
     try { notif.type.onMount?.(notif.data, () => dismiss(notif.id), wrapper) } catch (_) {}
     if (notif.type.timeout) {
-      notif._timer = setTimeout(() => dismiss(notif.id), notif.type.timeout)
+      // Pause-on-hover. Errors are easy to miss if they vanish mid-read.
+      let remaining = notif.type.timeout
+      let startedAt = Date.now()
+      notif._timer = setTimeout(() => dismiss(notif.id), remaining)
+      wrapper.addEventListener('mouseenter', () => {
+        if (notif._timer) {
+          clearTimeout(notif._timer); notif._timer = null
+          remaining = Math.max(0, remaining - (Date.now() - startedAt))
+        }
+      })
+      wrapper.addEventListener('mouseleave', () => {
+        if (!notif._timer && remaining > 0) {
+          startedAt = Date.now()
+          notif._timer = setTimeout(() => dismiss(notif.id), remaining)
+        }
+      })
     }
   }
 
@@ -3928,26 +3962,31 @@ const HsNotifs = (() => {
     wrapper.textContent = ''
     const dismissFn = () => dismiss(notif.id)
     let body
-    try { body = notif.type.render({ data: notif.data, dismiss: dismissFn }) } catch (_) { body = '' }
-    if (typeof body === 'string') {
-      const span = document.createElement('span')
-      span.className = 'hs-notif-body'
-      span.textContent = body
-      wrapper.appendChild(span)
+    try { body = notif.type.render({ data: notif.data, dismiss: dismissFn }) }
+    catch (e) { console.warn('[notifs] render threw for', notif.typeName, e); body = '' }
+    // Always render a body wrapper. If render returned nothing usable, fall
+    // back to a placeholder so a notif can never be a blank rectangle.
+    const bodyEl = document.createElement('span')
+    bodyEl.className = 'hs-notif-body'
+    if (typeof body === 'string' && body.length > 0) {
+      bodyEl.textContent = body
     } else if (body instanceof Node) {
-      const w = document.createElement('span')
-      w.className = 'hs-notif-body'
-      w.appendChild(body)
-      wrapper.appendChild(w)
+      bodyEl.appendChild(body)
+    } else {
+      bodyEl.textContent = `[${notif.typeName}]`
+      bodyEl.classList.add('hs-notif-body-fallback')
     }
+    wrapper.appendChild(bodyEl)
     if (notif.type.actions) {
       const actionsEl = document.createElement('span')
       actionsEl.className = 'hs-notif-actions'
       for (const [kind, def] of Object.entries(notif.type.actions)) {
         if (!def) continue
         const btn = document.createElement('button')
+        btn.type = 'button'
         btn.className = `hs-notif-action hs-notif-action-${kind}`
         btn.textContent = def.label || kind
+        if (def.title) btn.title = def.title
         btn.addEventListener('click', (e) => {
           e.stopPropagation(); e.preventDefault()
           let result
@@ -4936,30 +4975,33 @@ function injectStyles() {
       background: #000 !important;
     }
 
-    /* === GOD-TIER NOTIF LAYERS (HsNotifs) ===
+    /* === NOTIF LAYERS (HsNotifs) ===
        Layer containers are positioned via CSS vars set by HsNotifs.updateLayout.
-       Adding a new layer = registerLayer(name, ...) + matching CSS rule below. */
+       Adding a new layer = registerLayer(name, ...) + matching CSS rule below.
+       Empty layers collapse to 0×0 (overflow:hidden + no children) so they
+       never leave a stray rectangle on the page. */
     .hs-notif-layer {
       position: fixed;
       z-index: 100000;
       pointer-events: none;
       display: flex;
       flex-direction: column;
-      gap: 4px;
-      overflow: hidden;
+      gap: 6px;
+      overflow: visible;
       min-width: 0;
     }
+    .hs-notif-layer:empty { display: none; }
     .hs-notif-layer > .hs-notif {
       pointer-events: auto;
       box-sizing: border-box;
       max-width: 100%;
       min-width: 0;
-      overflow: hidden;
     }
     .hs-notif-layer-toast-stack {
       bottom: var(--hs-layer-toast-stack-bottom, 70px);
       right: var(--hs-layer-toast-stack-right, 20px);
       align-items: flex-end;
+      max-width: min(380px, calc(100vw - 40px));
     }
     .hs-notif-layer-chat-docked-bottom {
       bottom: var(--hs-layer-chat-docked-bottom-bottom, 0px);
@@ -4971,97 +5013,141 @@ function injectStyles() {
       left: var(--hs-layer-chat-docked-top-left, 0px);
       right: var(--hs-layer-chat-docked-top-right, 0px);
     }
-    /* Default notif body — types override per className. container-type makes
-       the notif queryable so progressive collapse rules fire on its own width
-       (not viewport) — narrow chat → smaller font → hide icon → button-only. */
+
+    /* Animations — slide in from the layer's edge, fade out on dismiss. */
+    @keyframes hs-notif-slide-in-right {
+      from { transform: translateX(calc(100% + 12px)); opacity: 0; }
+      to   { transform: translateX(0); opacity: 1; }
+    }
+    @keyframes hs-notif-slide-in-up {
+      from { transform: translateY(calc(100% + 12px)); opacity: 0; }
+      to   { transform: translateY(0); opacity: 1; }
+    }
+    @keyframes hs-notif-slide-in-down {
+      from { transform: translateY(calc(-100% - 12px)); opacity: 0; }
+      to   { transform: translateY(0); opacity: 1; }
+    }
+    @keyframes hs-notif-fade-out {
+      from { transform: translateX(0); opacity: 1; }
+      to   { transform: translateX(24%); opacity: 0; }
+    }
+
+    /* Base notif — flex row, accent strip on the left edge (set per level
+       via --hs-notif-accent), tight padding, mono font for info-per-pixel
+       density. container-type makes the notif queryable so internal types
+       (resub-share, raid) can progressively collapse based on their own
+       rendered width rather than the viewport. */
     .hs-notif {
       display: flex;
       flex-direction: row;
-      align-items: center;
-      gap: 8px;
-      padding: 4px 8px;
-      background: #18181b;
-      color: #fff;
-      font: 12px/1.2 'Courier New', Courier, monospace;
+      align-items: stretch;
+      gap: 0;
+      padding: 0;
+      background: #0a0a0d;
+      color: #efeff1;
+      font: 12px/1.35 ui-monospace, 'JetBrains Mono', 'Cascadia Mono', 'SF Mono', Menlo, Consolas, 'Courier New', monospace;
       container-type: inline-size;
+      border: 1px solid #2a2a2e;
+      border-left: 3px solid var(--hs-notif-accent, #555);
+      box-shadow: 0 6px 16px rgba(0,0,0,0.55), 0 0 0 1px rgba(255,255,255,0.03) inset;
+      animation: hs-notif-slide-in-right 180ms cubic-bezier(0.16, 1, 0.3, 1) both;
+      transform-origin: right center;
+      will-change: transform, opacity;
     }
-    /* Body wrapper — sole shrinkable child of .hs-notif. flex-basis:0 lets
-       it ignore content width when computing layout, so the actions next to
-       it always render at their natural content size first; body absorbs the
-       rest, ellipsifying if needed. */
+    .hs-notif-layer-chat-docked-bottom .hs-notif { animation-name: hs-notif-slide-in-up; transform-origin: bottom center; }
+    .hs-notif-layer-chat-docked-top    .hs-notif { animation-name: hs-notif-slide-in-down; transform-origin: top center; }
+    .hs-notif-exiting { animation: hs-notif-fade-out 160ms ease-in forwards !important; pointer-events: none; }
+    @media (prefers-reduced-motion: reduce) {
+      .hs-notif, .hs-notif-exiting { animation: none !important; }
+    }
+
+    /* Body — sole shrinkable child. flex-basis:0 lets actions render at
+       their natural width first; body absorbs the rest, wrapping if long
+       (not ellipsifying — chat status messages are short, error reasons
+       can be long, both benefit from full readability). */
     .hs-notif-body {
       flex: 1 1 0;
       min-width: 0;
-      overflow: hidden;
       display: flex;
       align-items: center;
-      min-height: 0;
+      gap: 8px;
+      padding: 6px 10px;
+      word-break: break-word;
     }
+    .hs-notif-body-fallback { opacity: 0.55; font-style: italic; }
     .hs-notif-actions {
       display: inline-flex;
-      gap: 4px;
+      gap: 0;
       flex: 0 0 auto;
+      align-items: stretch;
       margin-left: auto;
     }
     .hs-notif-action {
-      max-width: 100%;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-    .hs-notif-action {
       background: transparent;
-      color: #fff;
-      border: 1px solid #808080;
-      padding: 2px 10px;
-      font: 600 11px/1.4 inherit;
+      color: #efeff1;
+      border: none;
+      border-left: 1px solid #2a2a2e;
+      padding: 0 12px;
+      font: 600 11px/1 inherit;
       cursor: pointer;
       border-radius: 0;
+      white-space: nowrap;
+      transition: background 80ms linear, color 80ms linear;
     }
-    .hs-notif-action:hover {
-      background: #fff;
-      color: #000;
-    }
-    .hs-notif-action-primary {
-      background: #ff8700;
-      color: #000;
-      border-color: #ff8700;
-    }
-    .hs-notif-action-primary:hover {
-      background: #fff;
-      color: #000;
-    }
-    .hs-notif-action-dismiss {
-      border: none;
-      padding: 2px 6px;
-      font-size: 14px;
-    }
-    /* Toast type — clickable to dismiss (clickToDismiss in notifs.js wires
-       the handler). min-width prevents the empty/short-text "black square
-       with red outline" rendering — if level=error and text was missing,
-       toast collapsed to ~30px wide; min-width forces a readable strip. */
-    .hs-notif-toast {
-      background: #000;
-      border: 1px solid #888;
-      padding: 6px 14px;
-      font: bold 12px monospace;
-      min-width: 120px;
-      text-align: center;
+    .hs-notif-action:hover { background: #fff; color: #000; }
+    .hs-notif-action:focus-visible { outline: 1px solid #ff8700; outline-offset: -2px; }
+    .hs-notif-action-primary { color: #ff8700; font-weight: 700; }
+    .hs-notif-action-primary:hover { background: #ff8700; color: #000; }
+    .hs-notif-action-dismiss { padding: 0 10px; font-size: 14px; color: #848494; }
+    .hs-notif-action-dismiss:hover { background: #ff4040; color: #000; }
+
+    /* Toast-stack — every notif on this layer gets the toast aesthetic:
+       icon prefix, level accent, click-to-dismiss cursor. Applies to the
+       'toast' type AND any other type that opts in to the layer (e.g.
+       server-mention-rule). */
+    .hs-notif-layer-toast-stack > .hs-notif {
+      min-width: 180px;
+      max-width: 100%;
       cursor: pointer;
-      pointer-events: auto;
     }
-    .hs-notif-toast:hover { background: #fff; }
-    .hs-notif-toast:hover .hs-notif-toast-text { color: #000 !important; }
-    .hs-notif-toast-text { color: #888; }
-    .hs-notif-toast-text.hs-notif-toast-success { color: #00d000; }
-    .hs-notif-toast-text.hs-notif-toast-error   { color: #ff4040; }
-    .hs-notif-toast:has(.hs-notif-toast-success) { border-color: #00d000; }
-    .hs-notif-toast:has(.hs-notif-toast-error)   { border-color: #ff4040; }
-    /* Resub-share type */
-    .hs-notif-twitch-resub-share {
+    .hs-notif-toast-text { color: #efeff1; display: inline; }
+    .hs-notif-toast-text::before {
+      content: var(--hs-notif-icon, '·');
+      color: var(--hs-notif-accent, #888);
+      display: inline-block;
+      width: 14px;
+      margin-right: 8px;
+      font-weight: 700;
+      text-align: center;
+      flex: 0 0 auto;
+    }
+    .hs-notif-toast-text.hs-notif-toast-success { --hs-notif-icon: '✓'; --hs-notif-accent: #00d65a; color: #c0f5d4; }
+    .hs-notif-toast-text.hs-notif-toast-error   { --hs-notif-icon: '✕'; --hs-notif-accent: #ff4f4d; color: #ffd0cf; }
+    .hs-notif-toast-text.hs-notif-toast-warn    { --hs-notif-icon: '!'; --hs-notif-accent: #ff8700; color: #ffe0b8; }
+    .hs-notif-toast-text.hs-notif-toast-info    { --hs-notif-icon: 'i'; --hs-notif-accent: #6aa0ff; color: #d0ddff; }
+    .hs-notif-toast-text.hs-notif-toast-mention { --hs-notif-icon: '@'; --hs-notif-accent: #ff8700; color: #ffd9a8; }
+    /* Wrapper accent strip mirrors the text level (CSS custom property
+       cascades from the inner span up via :has). */
+    .hs-notif:has(.hs-notif-toast-success) { --hs-notif-accent: #00d65a; }
+    .hs-notif:has(.hs-notif-toast-error)   { --hs-notif-accent: #ff4f4d; }
+    .hs-notif:has(.hs-notif-toast-warn)    { --hs-notif-accent: #ff8700; }
+    .hs-notif:has(.hs-notif-toast-info)    { --hs-notif-accent: #6aa0ff; }
+    .hs-notif:has(.hs-notif-toast-mention) { --hs-notif-accent: #ff8700; }
+    .hs-notif-layer-toast-stack > .hs-notif:hover { background: #fff; }
+    .hs-notif-layer-toast-stack > .hs-notif:hover .hs-notif-toast-text,
+    .hs-notif-layer-toast-stack > .hs-notif:hover .hs-notif-toast-text::before {
+      color: #000 !important;
+    }
+    /* Chat-docked-bottom callouts (resub-share, sub-anniversary, raid alert)
+       use a full-width band — reset the toast accent strip and edge borders
+       in favor of an orange top edge that visually anchors the bar to the
+       inputbar below. */
+    .hs-notif-layer-chat-docked-bottom > .hs-notif {
+      border: none;
       border-top: 1px solid #ff8700;
       border-bottom: 1px solid #808080;
       box-shadow: 0 -2px 8px rgba(0,0,0,0.5);
+      background: #0a0a0d;
     }
     .hs-notif-resub-body {
       display: flex;
@@ -5896,22 +5982,70 @@ function injectStyles() {
       background: #000;
       border: 1px solid #2a2a2a;
       border-radius: 0;
-      padding: 8px;
+      padding: 0;
       display: none;
       min-width: 240px;
       max-width: 400px;
+      overflow: hidden;
+      isolation: isolate;
+      --hs-pc-accent: #ff8700;
     }
     #hs-user-tooltip.visible {
+      display: block;
+    }
+    /* Hero band — wide channel banner image up top, accent-tinted gradient
+       placeholder until the GQL response lands. Image is decoded off-DOM
+       (Image() probe) and committed in one go so there's no flash. */
+    #hs-user-tooltip .hs-pc-hero {
+      position: relative;
+      height: 56px;
+      background: linear-gradient(135deg, var(--hs-pc-accent, #1a1a1a) 0%, #0a0a0a 90%);
+      border-bottom: 1px solid var(--hs-pc-accent, #2a2a2a);
+      overflow: hidden;
+    }
+    #hs-user-tooltip .hs-pc-hero-img {
+      position: absolute; inset: 0;
+      background-position: center; background-size: cover; background-repeat: no-repeat;
+      opacity: 0; transition: opacity 240ms ease-out, transform 600ms ease-out;
+      transform: scale(1.06);
+      filter: saturate(1.1);
+    }
+    #hs-user-tooltip .hs-pc-hero.hs-pc-hero-loaded .hs-pc-hero-img {
+      opacity: 0.85; transform: scale(1);
+    }
+    /* Scrim — bottom-weighted dark gradient so name/badges below the hero
+       remain crisp regardless of banner color. */
+    #hs-user-tooltip .hs-pc-hero-scrim {
+      position: absolute; inset: 0;
+      background: linear-gradient(180deg, rgba(0,0,0,0.15) 0%, rgba(0,0,0,0.55) 60%, rgba(0,0,0,0.92) 100%);
+      pointer-events: none;
+    }
+    /* Body wraps everything below the banner; padding lives here now so the
+       hero can run flush to the tooltip edge. */
+    #hs-user-tooltip .hs-pc-body {
       display: flex;
+      padding: 8px;
     }
     #hs-user-tooltip .hs-pc-avatar {
-      width: 40px;
-      height: 40px;
-      min-width: 40px;
-      border: 1px solid #2a2a2a;
+      width: 48px;
+      height: 48px;
+      min-width: 48px;
+      border: 2px solid var(--hs-pc-accent, #2a2a2a);
       object-fit: cover;
       flex-shrink: 0;
       align-self: flex-start;
+      /* Lifts avatar so it bridges the hero banner and the body, the same
+         move every modern social profile uses to anchor identity. Margin-top
+         is negative to overlap the hero by ~half the avatar height. */
+      margin-top: -32px;
+      margin-right: 10px;
+      box-shadow:
+        0 0 0 1px #000,
+        0 0 12px rgba(0, 0, 0, 0.6),
+        0 0 18px color-mix(in srgb, var(--hs-pc-accent, transparent) 25%, transparent);
+      background: #000;
+      position: relative;
+      z-index: 1;
     }
     #hs-user-tooltip .hs-pc-info {
       flex: 1;
@@ -6851,41 +6985,101 @@ function injectStyles() {
       height: 100%;
       overflow-y: auto;
       position: relative;
+      /* Accent CSS var — defaults to heatsync orange, overridden per-streamer
+         when the GQL response carries a primaryColorHex. Drives the hero
+         border, avatar ring, and accent-tinted divider glow below. */
+      --hs-pcard-accent: #ff8700;
+    }
+    /* Hero banner — runs full-bleed across the identity section, with a
+       gradient placeholder (accent at top-left, fading to near-black) so the
+       layout never empty-flashes before the GQL fetch lands. */
+    .hs-pcard-hero {
+      position: relative;
+      height: 140px;
+      margin: -14px -14px 0 -14px;
+      background: linear-gradient(135deg, var(--hs-pcard-accent, #1a1a1a) 0%, #0a0a0a 70%, #000 100%);
+      overflow: hidden;
+      border-bottom: 1px solid var(--hs-pcard-accent, #2a2a2a);
+    }
+    .hs-pcard-hero-img {
+      position: absolute; inset: 0;
+      background-position: center; background-size: cover; background-repeat: no-repeat;
+      opacity: 0;
+      transform: scale(1.04);
+      transition: opacity 320ms ease-out, transform 1200ms ease-out;
+      filter: saturate(1.1) contrast(1.04);
+    }
+    .hs-pcard-hero.hs-pcard-hero-loaded .hs-pcard-hero-img {
+      opacity: 0.9;
+      transform: scale(1);
+    }
+    .hs-pcard-hero-scrim {
+      position: absolute; inset: 0;
+      background:
+        linear-gradient(180deg, rgba(0,0,0,0.0) 0%, rgba(0,0,0,0.35) 55%, rgba(0,0,0,0.95) 100%),
+        linear-gradient(90deg, rgba(0,0,0,0.35) 0%, transparent 30%, transparent 70%, rgba(0,0,0,0.35) 100%);
+      pointer-events: none;
+    }
+    /* Identity row sits flush below the hero; only the avatar lifts upward
+       to overlap the seam. Discord/Twitter idiom — banner + half-overlapping
+       pfp + name below, with the rest of the column flowing normally. */
+    .hs-pcard-id .hs-pcard-id-row {
+      position: relative;
+      z-index: 1;
+      margin-top: 8px;
     }
     /* Sticky close — pinned to card top-right, stays visible while scrolling.
        Negative bottom margin lets it overlay the id-row without taking column
        space; id-row gets right padding so display name never slides under it. */
     .hs-pcard-close {
-      position: sticky; top: 0; align-self: flex-end;
-      margin: -6px -6px -30px 0;
+      position: absolute; top: 8px; right: 8px;
+      margin: 0;
       width: 30px; height: 30px;
       display: flex; align-items: center; justify-content: center;
       font-size: 22px; line-height: 1; font-weight: 400;
-      background: rgba(0, 0, 0, 0.75);
-      color: #888;
-      border: 1px solid #2a2a2a;
+      background: rgba(0, 0, 0, 0.55);
+      color: #fff;
+      border: 1px solid rgba(255, 255, 255, 0.25);
+      -webkit-backdrop-filter: blur(6px);
+      backdrop-filter: blur(6px);
       cursor: pointer; padding: 0;
-      z-index: 5;
+      z-index: 10;
       transition: background 80ms, color 80ms, border-color 80ms, transform 80ms;
     }
     .hs-pcard-close:hover { background: #fff; color: #000; border-color: #fff; transform: scale(1.08); }
     .hs-pcard-close:active { transform: scale(0.96); }
     .hs-pcard-close:focus-visible { outline: 1px solid #ff8700; outline-offset: 1px; }
-    .hs-pcard-id-row { padding-right: 28px; }
+    /* Close button overlays the hero — no need to reserve right space on the id row.
+       Kept rule absent so the row sits flush; the absolute-positioned close has its own footprint. */
     /* Sections are pure spacing — drop chrome borders + label-on-top */
     .hs-pcard-section {
       border: 0; padding: 0; margin: 0; position: static; background: transparent;
     }
     .hs-pcard-section-title { display: none; }
-    /* Section dividers — single 1px line, near-invisible info delimiter */
+    /* Section dividers — accent-tinted at low opacity so each card adopts
+       the streamer's identity color, without the divider screaming for
+       attention. Falls back to #1a1a1a when accent is unset. */
     .hs-pcard-section + .hs-pcard-section {
-      border-top: 1px solid #1a1a1a; padding-top: 10px;
+      border-top: 1px solid color-mix(in srgb, var(--hs-pcard-accent, #1a1a1a) 18%, #0a0a0a);
+      padding-top: 10px;
     }
 
     .hs-pcard-id-row { display: flex; gap: 12px; align-items: flex-start; }
     .hs-pcard-avatar {
-      width: 56px; height: 56px; border-radius: 0; object-fit: cover;
+      width: 72px; height: 72px; border-radius: 0; object-fit: cover;
       flex-shrink: 0;
+      border: 2px solid var(--hs-pcard-accent, #fff);
+      background: #000;
+      /* Negative top margin lifts the avatar to overlap the hero base by ~half
+         its height, anchoring identity at the banner seam. Hero is 140px tall,
+         hero's bottom margin is 0 → avatar negative margin moves it upward. */
+      margin-top: -44px;
+      position: relative;
+      z-index: 2;
+      box-shadow:
+        0 0 0 2px #000,
+        0 8px 20px rgba(0, 0, 0, 0.7),
+        0 0 24px color-mix(in srgb, var(--hs-pcard-accent, transparent) 35%, transparent);
     }
     .hs-pcard-id-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
     .hs-pcard-name {
@@ -13091,12 +13285,25 @@ async function sendKickMessage(kickSlug, text) {
         cache.delete(emoteName);
       }
     }
-    // Update all existing wrappers in DOM
+    // Update all existing wrappers in DOM. If a lower-tier variant (channel/global)
+    // exists with a different URL, swap img.src so the chat shows the fallback emote
+    // (e.g. 7TV channel Pog) instead of leaving the heatsync image with a new class.
     const newState = cachedEmote?.state || 'unadded';
+    const fallbackUrl = cachedEmote?.url;
     queryEmoteWrappers(emoteName).forEach(w => {
       w.classList.remove('hs-state-global', 'hs-state-channel', 'hs-state-owned', 'hs-state-blocked', 'hs-state-unadded');
       w.classList.add(`hs-state-${newState}`);
       w.dataset.state = newState;
+      if (fallbackUrl) {
+        const img = w.querySelector('img');
+        if (img && img.src !== fallbackUrl) {
+          img.src = fallbackUrl;
+          img.classList.remove('hs-emote-global', 'hs-emote-channel', 'hs-emote-owned', 'hs-emote-blocked', 'hs-emote-unadded');
+          img.classList.add(`hs-emote-${newState}`);
+          img.dataset.state = newState;
+        }
+        w.dataset.emoteUrl = fallbackUrl;
+      }
     });
     // Refresh tooltip if visible (state text needs to update instantly)
     refreshEmoteTooltip(emoteName, newState);
@@ -14560,14 +14767,54 @@ async function sendKickMessage(kickSlug, text) {
       relBadges.push(`<span class="hs-pc-rel-badge mutual-sub">mutual sub</span>`);
     }
 
+    // Hero banner placeholder — wraps the whole card so the banner sits behind
+    // the avatar/info row. Filled async by pcApplyBanner once the Twitch GQL
+    // response lands; until then the gradient placeholder (from CSS) carries
+    // the layout so the tooltip doesn't resize after fetch.
     return `
-      ${pfp ? `<img class="hs-pc-avatar" src="${escapeHtml(pfp)}" alt="${escapeHtml(displayName)}">` : ''}
-      <div class="hs-pc-info">
-        <div class="hs-pc-header">${platforms} ${role} ${ageHtml}</div>
-        ${bio}
-        ${statBadges.length ? `<div class="hs-pc-stats">${statBadges.join('')}</div>` : ''}
-        ${relBadges.length ? `<div class="hs-pc-rel">${relBadges.join(' ')}</div>` : ''}
+      <div class="hs-pc-hero"><div class="hs-pc-hero-img"></div><div class="hs-pc-hero-scrim"></div></div>
+      <div class="hs-pc-body">
+        ${pfp ? `<img class="hs-pc-avatar" src="${escapeHtml(pfp)}" alt="${escapeHtml(displayName)}">` : ''}
+        <div class="hs-pc-info">
+          <div class="hs-pc-header">${platforms} ${role} ${ageHtml}</div>
+          ${bio}
+          ${statBadges.length ? `<div class="hs-pc-stats">${statBadges.join('')}</div>` : ''}
+          ${relBadges.length ? `<div class="hs-pc-rel">${relBadges.join(' ')}</div>` : ''}
+        </div>
       </div>`;
+  }
+
+  // Async banner fetch + apply for the hover tooltip. Mirrors pcApplyBanner in
+  // profile-card.js but targets #hs-user-tooltip's hero element. Bails if the
+  // tooltip moved to a different user/profile while we were fetching.
+  // Walks the platform chain (twitch > kick > youtube, context-prioritized).
+  async function applyTooltipBanner(tooltip, profile, platform, username, gen) {
+    if (typeof fetchBannerChain !== 'function' || typeof pickBannerChain !== 'function') return
+    const chain = pickBannerChain(profile || {}, platform, username)
+    if (!chain.length) return
+    const banner = await fetchBannerChain(chain)
+    if (!banner) return
+    if (gen !== _profileGen) return
+    const hero = tooltip.querySelector('.hs-pc-hero')
+    if (!hero) return
+    const heroImg = hero.querySelector('.hs-pc-hero-img')
+    const url = banner.bannerUrl || banner.offlineUrl
+    if (url && heroImg) {
+      const probe = new Image()
+      probe.onload = () => {
+        if (gen !== _profileGen) return
+        heroImg.style.backgroundImage = `url("${url}")`
+        hero.classList.add('hs-pc-hero-loaded')
+        if (_userTooltipTarget) positionTooltipAtElement(tooltip, _userTooltipTarget)
+      }
+      probe.referrerPolicy = 'no-referrer'
+      probe.src = url
+    }
+    if (banner.accent) {
+      tooltip.style.setProperty('--hs-pc-accent', banner.accent)
+      hero.classList.add('hs-pc-hero-accent')
+    }
+    if (banner.sourcePlatform) hero.dataset.source = banner.sourcePlatform
   }
 
   // Determine Twitch channel context for followage lookups
@@ -14623,6 +14870,7 @@ async function sendKickMessage(kickSlug, text) {
       appendSubTenureBadge(tooltip, username, msgChannel);
       positionTooltipAtElement(tooltip, targetEl);
       fetchAndShowFollowage(tooltip, username, gen, platform);
+      applyTooltipBanner(tooltip, cached.profile, platform, username, gen)
       return;
     }
 
@@ -14644,11 +14892,17 @@ async function sendKickMessage(kickSlug, text) {
       appendSubTenureBadge(tooltip, username, msgChannel);
       positionTooltipAtElement(tooltip, targetEl);
       fetchAndShowFollowage(tooltip, username, gen, platform);
+      applyTooltipBanner(tooltip, profile, platform, username, gen)
     } else {
-      // Fallback — show basic info (username sanitized via escapeHtml)
-      tooltip.innerHTML = `<div class="hs-pc-info"><div class="hs-pc-header"><span class="hs-pc-name">${escapeHtml(username)}</span></div></div>`;
+      // Fallback — show basic info (username sanitized via escapeHtml).
+      // Still wraps in hero + body so banner can apply if this is a Twitch user
+      // with no heatsync profile (most chatters in busy channels).
+      tooltip.innerHTML = `<div class="hs-pc-hero"><div class="hs-pc-hero-img"></div><div class="hs-pc-hero-scrim"></div></div><div class="hs-pc-body"><div class="hs-pc-info"><div class="hs-pc-header"><span class="hs-pc-name">${escapeHtml(username)}</span></div></div></div>`;
       appendSubTenureBadge(tooltip, username, msgChannel);
       fetchAndShowFollowage(tooltip, username, gen, platform);
+      // No heatsync profile — still try platform-direct banner using whatever
+      // context platform we have (or twitch as the default guess).
+      applyTooltipBanner(tooltip, null, platform, username, gen)
     }
   }
 
@@ -25508,6 +25762,108 @@ function setupMediaDropHandlers() {
 
 let activeProfileCard = null  // { username, platform, data, ts }
 
+// In-page LRU for fetched banners — survives card open/close within a session.
+// Background SW caches authoritatively (12h); this layer just avoids the SW
+// round-trip for repeat hovers/opens. Keyed `${platform}:${login}` so the
+// same name on different platforms never collides.
+const _bannerCache = new Map()
+const BANNER_LOCAL_TTL = 10 * 60 * 1000
+
+// Resolve a single platform banner via SW. Returns the banner record or null.
+async function fetchChannelBanner(platform, login) {
+  if (!platform || !login) return null
+  const key = `${platform}:${String(login).toLowerCase()}`
+  const hit = _bannerCache.get(key)
+  if (hit && Date.now() - hit.ts < BANNER_LOCAL_TTL) return hit.data
+  try {
+    const data = await safeSendMessage({ type: 'fetch_channel_banner', platform, username: login })
+    _bannerCache.set(key, { data: data || null, ts: Date.now() })
+    if (_bannerCache.size > 300) _bannerCache.delete(_bannerCache.keys().next().value)
+    return data || null
+  } catch {
+    return null
+  }
+}
+
+// Build the platform-preference chain for a profile + context. The context
+// platform always wins — a user's identity belongs to the platform you were
+// viewing them on. Cross-platform accent inheritance (a kick green ring on
+// a twitch user just because they also have a kick account) is wrong: it
+// reads as "this person is on kick" when chat says otherwise.
+//
+// Resolution order:
+//   1) Explicit contextPlatform passed by the caller (data-platform on the
+//      hovered chat message).
+//   2) Hostname inference — multichat overlay runs on twitch.tv / kick.com /
+//      youtube.com so the host is a natural fallback when no data-platform
+//      attribute is present (mentions in feed posts, etc.).
+//   3) Only when neither yields a platform: walk linked accounts on the
+//      profile (twitch > kick > youtube).
+function pickBannerChain(data, contextPlatform, username) {
+  // Hostname fallback when caller didn't pass an explicit platform
+  if (!contextPlatform && typeof location !== 'undefined') {
+    const h = String(location.hostname || '')
+    if (h.includes('twitch.tv')) contextPlatform = 'twitch'
+    else if (h.includes('kick.com')) contextPlatform = 'kick'
+    else if (h.includes('youtube.com')) contextPlatform = 'youtube'
+  }
+
+  const out = []
+  const seen = new Set()
+  const add = (p, l) => {
+    if (!p || !l) return
+    const k = `${p}:${String(l).toLowerCase()}`
+    if (seen.has(k)) return
+    seen.add(k); out.push({ platform: p, login: l })
+  }
+
+  // Step 1: the context platform — usually the only entry in the chain.
+  if (contextPlatform === 'twitch') add('twitch', data?.twitch_username || username)
+  else if (contextPlatform === 'kick') add('kick', data?.kick_username || username)
+  else if (contextPlatform === 'youtube' || contextPlatform === 'yt') {
+    add('youtube', data?.youtube_channel_id || data?.youtube_username || username)
+  }
+
+  // Step 2: only if no context resolved anything — walk linked accounts in
+  // the profile-data fallback order. Keeps cross-platform users (e.g. a YT
+  // chatter mentioned in a heatsync feed post with no platform context) able
+  // to show *some* banner instead of nothing.
+  if (!out.length) {
+    add('twitch', data?.twitch_username)
+    add('kick', data?.kick_username)
+    add('youtube', data?.youtube_channel_id || data?.youtube_username)
+  }
+
+  // Step 3: last-ditch — raw username, guessing platform from shape.
+  if (!out.length && username) {
+    if (/^uc[a-z0-9_-]{20,}$/i.test(username)) add('youtube', username)
+    else add('twitch', username)
+  }
+  return out
+}
+
+// Walk the chain until one platform returns a usable banner. "Usable" = a real
+// bannerUrl/offlineUrl; an empty record is treated as continue. Returns the
+// first hit or null after the chain exhausts.
+async function fetchBannerChain(chain) {
+  // Pass 1 — first real banner image wins, any platform in the chain.
+  for (const c of chain) {
+    const data = await fetchChannelBanner(c.platform, c.login)
+    if (data && (data.bannerUrl || data.offlineUrl)) return data
+  }
+  // Pass 2 — accent-only fallback is restricted to the FIRST chain entry
+  // (the context platform when available). This prevents a Kick brand-green
+  // accent from leaking onto a Twitch user just because Twitch's GQL call
+  // returned no banner image. Cross-platform accent inheritance is wrong:
+  // a user's identity color belongs to the platform they were viewed on.
+  if (chain.length) {
+    const first = chain[0]
+    const data = await fetchChannelBanner(first.platform, first.login)
+    if (data && (data.accent || data.profileUrl)) return data
+  }
+  return null
+}
+
 async function openProfileCard(username, platform) {
   if (!username) return
   username = String(username).toLowerCase()
@@ -25683,6 +26039,22 @@ function renderProfileCardView() {
   // === Identity section ===
   const idSec = pcMakeSection(data?.display_name || username)
   idSec.classList.add('hs-pcard-id')
+
+  // Hero banner — wide channel banner image as background, with a gradient
+  // scrim so text/avatar always read clearly. Filled async by pcApplyBanner
+  // when the Twitch GQL response lands. Stays empty (CSS gradient placeholder)
+  // until then so layout doesn't jump.
+  const heroBanner = document.createElement('div')
+  heroBanner.className = 'hs-pcard-hero'
+  // dataset target so async banner fetch can find it without storing a closure
+  heroBanner.dataset.heroFor = username
+  const heroImg = document.createElement('div')
+  heroImg.className = 'hs-pcard-hero-img'
+  const heroScrim = document.createElement('div')
+  heroScrim.className = 'hs-pcard-hero-scrim'
+  heroBanner.appendChild(heroImg)
+  heroBanner.appendChild(heroScrim)
+  idSec.appendChild(heroBanner)
 
   const idRow = document.createElement('div')
   idRow.className = 'hs-pcard-id-row'
@@ -25989,6 +26361,47 @@ function renderProfileCardView() {
   card.appendChild(asec)
 
   msgsEl.appendChild(card)
+
+  // Hero banner — kick off async fetch using the multi-platform chain. The
+  // hero element is already in the DOM with a gradient placeholder; the
+  // applier mutates .hs-pcard-hero-img once a banner resolves.
+  const chain = pickBannerChain(data, activeProfileCard.platform, username)
+  if (chain.length) pcApplyBanner(card, chain)
+}
+
+// Async banner application — walks the platform chain and applies the first
+// real banner. No-op when the card was closed/re-rendered while in-flight
+// (we re-resolve the element off the live messages root each call).
+async function pcApplyBanner(card, chain) {
+  const banner = await fetchBannerChain(chain)
+  if (!banner) return
+  const root = document.getElementById('hs-mc-messages')?.querySelector('.hs-pcard') || card
+  const hero = root.querySelector('.hs-pcard-hero')
+  if (!hero) return
+  const heroImg = hero.querySelector('.hs-pcard-hero-img')
+  if (!heroImg) return
+  const url = banner.bannerUrl || banner.offlineUrl
+  if (url) {
+    // Preload, then commit — so the fade-in starts on a decoded image,
+    // not on a flash of nothing → cached image.
+    const probe = new Image()
+    probe.onload = () => {
+      heroImg.style.backgroundImage = `url("${url}")`
+      hero.classList.add('hs-pcard-hero-loaded')
+    }
+    probe.referrerPolicy = 'no-referrer'
+    probe.src = url
+  }
+  if (banner.accent) {
+    // Accent tints scrim + avatar ring + section divider so the whole card
+    // adopts the streamer's identity color (Twitch primaryColorHex when
+    // present, platform-brand fallbacks for Kick/YouTube).
+    root.style.setProperty('--hs-pcard-accent', banner.accent)
+    hero.classList.add('hs-pcard-hero-accent')
+  }
+  if (banner.sourcePlatform) {
+    hero.dataset.source = banner.sourcePlatform
+  }
 }
 
 function pcOpenExt(url) {
@@ -27992,6 +28405,11 @@ const STORAGE_KEY = 'heatsync_multichat';
   // updates skip clearRenderedHtmlCache so old messages keep their rendering
   // even when emotes are removed — "history is sacred" UX.
   const _emoteFirstLoad = new Set();
+  // Scopes that arrived since the last debounce flush. Collected across
+  // progressive broadcasts (BTTV/FFZ/7TV/Twitch arrive separately for the
+  // same channel) so the eventual loadEmotes() knows every scope to
+  // first-load-clear in one shot. Drained when the timer fires.
+  let _pendingEmoteScopes = new Set();
   let newMessageCount = 0;
   let isProgrammaticScroll = false; // Flag to ignore programmatic scrolls
 
@@ -28400,6 +28818,7 @@ const STORAGE_KEY = 'heatsync_multichat';
       let _stackChannel = ''
       let _stackPlatform = ''
       let _stackOwnId = ''
+      let _stackThreadId = ''
       // Layout-shift gate: chat auto-scroll on a new message slides a different
       // row under a stationary cursor; the browser fires synthetic mouseover
       // events for the new element. Compare cursor coords to the previous
@@ -28452,6 +28871,7 @@ const STORAGE_KEY = 'heatsync_multichat';
         _stackChannel = ''
         _stackPlatform = ''
         _stackOwnId = ''
+        _stackThreadId = ''
       }
       const lookupMsgById = (channel, platform, id) => {
         if (!id) return null
@@ -28479,60 +28899,55 @@ const STORAGE_KEY = 'heatsync_multichat';
         }
         return null
       }
-      const walkReplyChain = (channel, platform, startReplyId, maxDepth) => {
-        const chain = []
-        const seen = new Set()
-        let curId = startReplyId
-        let depth = 0
-        while (curId && depth < maxDepth) {
-          if (seen.has(curId)) break
-          seen.add(curId)
-          const m = lookupMsgById(channel, platform, curId)
-          if (!m) break
-          chain.push(m)
-          curId = m.replyTo?.id || ''
-          depth++
-        }
-        return chain
-      }
-      // Walk forward — find descendants. The first child reply, then its first
-      // child, etc. Linear chain (no branching) for stack visualization.
-      const findFirstChild = (channel, platform, parentId) => {
-        if (!parentId) return null
+      // Thread = all messages sharing the same Twitch reply-thread root (or
+      // Kick thread_id). Walks the channel buffer once, splits members into
+      // those before and after the hovered row by buffer order. Falls back to
+      // direct-parent linkage when threadId isn't set (older Kick payloads).
+      // Returns ancestors (chronological, oldest→newest) and descendants
+      // (chronological, oldest→newest).
+      const walkThreadMembers = (channel, platform, hoveredMsg, maxMembers) => {
+        const out = { ancestors: [], descendants: [] }
+        if (!hoveredMsg) return out
+        const threadId = hoveredMsg.replyTo?.threadId || hoveredMsg.replyTo?.id || hoveredMsg.id
+        if (!threadId) return out
         const ch = (channel || '').toLowerCase()
-        const matchInBuf = (buf) => {
+        const isMember = (m) => m === hoveredMsg
+          || m.id === threadId
+          || m.replyTo?.threadId === threadId
+          || m.replyTo?.id === threadId
+        const collectFrom = (buf) => {
           const msgs = buf.getAll()
-          for (let i = 0; i < msgs.length; i++) if (msgs[i].replyTo?.id === parentId) return msgs[i]
-          return null
+          let foundHovered = false
+          for (let i = 0; i < msgs.length; i++) {
+            const m = msgs[i]
+            const match = m === hoveredMsg || (hoveredMsg.id && m.id === hoveredMsg.id)
+            if (match) { foundHovered = true; continue }
+            if (!isMember(m)) continue
+            if (!foundHovered) {
+              out.ancestors.push(m)
+              if (out.ancestors.length > maxMembers) out.ancestors.shift()
+            } else {
+              out.descendants.push(m)
+              if (out.descendants.length >= maxMembers) return true
+            }
+          }
+          return foundHovered
         }
         if (platform === 'kick') {
           const buf = kickChat?.channels?.get(ch)
-          return buf ? matchInBuf(buf) : null
+          if (buf) collectFrom(buf)
+          return out
         }
         if (ch && irc?.channels) {
           const buf = irc.channels.get(ch)
-          if (buf) { const m = matchInBuf(buf); if (m) return m }
+          if (buf && collectFrom(buf)) return out
         }
         if (irc?.channels) {
-          for (const buf of irc.channels.values()) { const m = matchInBuf(buf); if (m) return m }
+          for (const buf of irc.channels.values()) {
+            if (collectFrom(buf)) break
+          }
         }
-        return null
-      }
-      const walkDescendants = (channel, platform, startMsgId, maxDepth) => {
-        const chain = []
-        const seen = new Set()
-        let curId = startMsgId
-        let depth = 0
-        while (curId && depth < maxDepth) {
-          if (seen.has(curId)) break
-          seen.add(curId)
-          const child = findFirstChild(channel, platform, curId)
-          if (!child) break
-          chain.push(child)
-          curId = child.id || ''
-          depth++
-        }
-        return chain
+        return out
       }
       // Forward wheel events from the reply-stack overlays to the chat
       // container. Without this, wheeling while hovering the overlay
@@ -28609,9 +29024,16 @@ const STORAGE_KEY = 'heatsync_multichat';
         if (!replyId) return
         const channel = hoveredEl.dataset.msgChannel
         const platform = hoveredEl.dataset.msgPlatform
-        const chain = walkReplyChain(channel, platform, replyId, 128)
         const ownId = hoveredEl.dataset.msgId
-        const descChain = ownId ? walkDescendants(channel, platform, ownId, 128) : []
+        const threadId = hoveredEl.dataset.replyThreadId || replyId
+        const hoveredMsg = ownId ? lookupMsgById(channel, platform, ownId) : null
+        const { ancestors, descendants } = hoveredMsg
+          ? walkThreadMembers(channel, platform, hoveredMsg, 128)
+          : { ancestors: [], descendants: [] }
+        // chain[0] = closest ancestor (immediate parent), chain[n] = oldest.
+        // Up-overlay rendering loop prepends each → visual top-down is oldest→newest.
+        const chain = ancestors.slice().reverse()
+        const descChain = descendants
         if (!chain.length && !descChain.length) return
         // Overlay rows match native .hs-mc-msg padding exactly, so the stack
         // butts flush against the active row — no overlap into the row's
@@ -28706,6 +29128,7 @@ const STORAGE_KEY = 'heatsync_multichat';
         _stackChannel = (channel || '').toLowerCase()
         _stackPlatform = platform || ''
         _stackOwnId = ownId || ''
+        _stackThreadId = threadId || ''
       }
 
       msgsEl.addEventListener('mouseover', (e) => {
@@ -28806,9 +29229,12 @@ const STORAGE_KEY = 'heatsync_multichat';
       // — same behavior chat itself has at-bottom.
       const tryExtendStack = (newDiv) => {
         if (!_stackActiveRow || !_stackActiveRow.isConnected) return
-        if (!_stackTailId) return
+        if (!_stackThreadId) return
         const replyId = newDiv.dataset.replyId || ''
-        if (replyId !== _stackTailId) return
+        const replyThreadId = newDiv.dataset.replyThreadId || ''
+        // Thread match: new reply belongs if its threadId matches, or its
+        // direct parent is the thread root (covers Twitch + Kick fallbacks).
+        if (replyThreadId !== _stackThreadId && replyId !== _stackThreadId && replyId !== _stackTailId) return
         const newMsgId = newDiv.dataset.msgId || ''
         if (!newMsgId) return
         const msgChannel = (newDiv.dataset.msgChannel || '').toLowerCase()
@@ -34786,12 +35212,17 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
         // — old messages keep their emote rendering even if an emote is removed.
         // History is sacred: what was rendered as an emote stays an emote.
         const scope = msg.type === 'channel_emotes_update' ? `ch:${msg.channelOwner || '_'}` : 'global'
-        const isFirstLoad = !_emoteFirstLoad.has(scope)
-        _emoteFirstLoad.add(scope)
+        _pendingEmoteScopes.add(scope)
         cleanup.clearTimeout(emoteReloadTimer);
         emoteReloadTimer = cleanup.setTimeout(() => {
+          const pending = _pendingEmoteScopes
+          _pendingEmoteScopes = new Set()
           loadEmotes().then(() => {
-            if (isFirstLoad) {
+            let firstLoad = false
+            for (const s of pending) {
+              if (!_emoteFirstLoad.has(s)) { _emoteFirstLoad.add(s); firstLoad = true }
+            }
+            if (firstLoad) {
               clearRenderedHtmlCache();
               renderMessages(currentTab);
             }
@@ -35118,12 +35549,17 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
         // per scope this session. Subsequent updates (add/remove) preserve
         // _renderedHtml so removed emotes stay rendered in old messages.
         const scope = changes.global_emotes ? 'global' : (changes.channel_emotes_map ? 'ch:_storage' : (changes.native_twitch_emotes ? 'native' : ''))
-        const isFirstLoad = scope && !_emoteFirstLoad.has(scope)
-        if (scope) _emoteFirstLoad.add(scope)
+        if (scope) _pendingEmoteScopes.add(scope)
         cleanup.clearTimeout(emoteReloadTimer);
         emoteReloadTimer = cleanup.setTimeout(() => {
+          const pending = _pendingEmoteScopes
+          _pendingEmoteScopes = new Set()
           loadEmotes().then(() => {
-            if (isFirstLoad) clearRenderedHtmlCache();
+            let firstLoad = false
+            for (const s of pending) {
+              if (!_emoteFirstLoad.has(s)) { _emoteFirstLoad.add(s); firstLoad = true }
+            }
+            if (firstLoad) clearRenderedHtmlCache();
             if (!isScrolledUp) renderMessages(currentTab);
           });
         }, 300);

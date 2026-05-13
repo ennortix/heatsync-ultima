@@ -767,30 +767,33 @@ function injectStyles() {
       background: #000 !important;
     }
 
-    /* === GOD-TIER NOTIF LAYERS (HsNotifs) ===
+    /* === NOTIF LAYERS (HsNotifs) ===
        Layer containers are positioned via CSS vars set by HsNotifs.updateLayout.
-       Adding a new layer = registerLayer(name, ...) + matching CSS rule below. */
+       Adding a new layer = registerLayer(name, ...) + matching CSS rule below.
+       Empty layers collapse to 0×0 (overflow:hidden + no children) so they
+       never leave a stray rectangle on the page. */
     .hs-notif-layer {
       position: fixed;
       z-index: 100000;
       pointer-events: none;
       display: flex;
       flex-direction: column;
-      gap: 4px;
-      overflow: hidden;
+      gap: 6px;
+      overflow: visible;
       min-width: 0;
     }
+    .hs-notif-layer:empty { display: none; }
     .hs-notif-layer > .hs-notif {
       pointer-events: auto;
       box-sizing: border-box;
       max-width: 100%;
       min-width: 0;
-      overflow: hidden;
     }
     .hs-notif-layer-toast-stack {
       bottom: var(--hs-layer-toast-stack-bottom, 70px);
       right: var(--hs-layer-toast-stack-right, 20px);
       align-items: flex-end;
+      max-width: min(380px, calc(100vw - 40px));
     }
     .hs-notif-layer-chat-docked-bottom {
       bottom: var(--hs-layer-chat-docked-bottom-bottom, 0px);
@@ -802,97 +805,141 @@ function injectStyles() {
       left: var(--hs-layer-chat-docked-top-left, 0px);
       right: var(--hs-layer-chat-docked-top-right, 0px);
     }
-    /* Default notif body — types override per className. container-type makes
-       the notif queryable so progressive collapse rules fire on its own width
-       (not viewport) — narrow chat → smaller font → hide icon → button-only. */
+
+    /* Animations — slide in from the layer's edge, fade out on dismiss. */
+    @keyframes hs-notif-slide-in-right {
+      from { transform: translateX(calc(100% + 12px)); opacity: 0; }
+      to   { transform: translateX(0); opacity: 1; }
+    }
+    @keyframes hs-notif-slide-in-up {
+      from { transform: translateY(calc(100% + 12px)); opacity: 0; }
+      to   { transform: translateY(0); opacity: 1; }
+    }
+    @keyframes hs-notif-slide-in-down {
+      from { transform: translateY(calc(-100% - 12px)); opacity: 0; }
+      to   { transform: translateY(0); opacity: 1; }
+    }
+    @keyframes hs-notif-fade-out {
+      from { transform: translateX(0); opacity: 1; }
+      to   { transform: translateX(24%); opacity: 0; }
+    }
+
+    /* Base notif — flex row, accent strip on the left edge (set per level
+       via --hs-notif-accent), tight padding, mono font for info-per-pixel
+       density. container-type makes the notif queryable so internal types
+       (resub-share, raid) can progressively collapse based on their own
+       rendered width rather than the viewport. */
     .hs-notif {
       display: flex;
       flex-direction: row;
-      align-items: center;
-      gap: 8px;
-      padding: 4px 8px;
-      background: #18181b;
-      color: #fff;
-      font: 12px/1.2 'Courier New', Courier, monospace;
+      align-items: stretch;
+      gap: 0;
+      padding: 0;
+      background: #0a0a0d;
+      color: #efeff1;
+      font: 12px/1.35 ui-monospace, 'JetBrains Mono', 'Cascadia Mono', 'SF Mono', Menlo, Consolas, 'Courier New', monospace;
       container-type: inline-size;
+      border: 1px solid #2a2a2e;
+      border-left: 3px solid var(--hs-notif-accent, #555);
+      box-shadow: 0 6px 16px rgba(0,0,0,0.55), 0 0 0 1px rgba(255,255,255,0.03) inset;
+      animation: hs-notif-slide-in-right 180ms cubic-bezier(0.16, 1, 0.3, 1) both;
+      transform-origin: right center;
+      will-change: transform, opacity;
     }
-    /* Body wrapper — sole shrinkable child of .hs-notif. flex-basis:0 lets
-       it ignore content width when computing layout, so the actions next to
-       it always render at their natural content size first; body absorbs the
-       rest, ellipsifying if needed. */
+    .hs-notif-layer-chat-docked-bottom .hs-notif { animation-name: hs-notif-slide-in-up; transform-origin: bottom center; }
+    .hs-notif-layer-chat-docked-top    .hs-notif { animation-name: hs-notif-slide-in-down; transform-origin: top center; }
+    .hs-notif-exiting { animation: hs-notif-fade-out 160ms ease-in forwards !important; pointer-events: none; }
+    @media (prefers-reduced-motion: reduce) {
+      .hs-notif, .hs-notif-exiting { animation: none !important; }
+    }
+
+    /* Body — sole shrinkable child. flex-basis:0 lets actions render at
+       their natural width first; body absorbs the rest, wrapping if long
+       (not ellipsifying — chat status messages are short, error reasons
+       can be long, both benefit from full readability). */
     .hs-notif-body {
       flex: 1 1 0;
       min-width: 0;
-      overflow: hidden;
       display: flex;
       align-items: center;
-      min-height: 0;
+      gap: 8px;
+      padding: 6px 10px;
+      word-break: break-word;
     }
+    .hs-notif-body-fallback { opacity: 0.55; font-style: italic; }
     .hs-notif-actions {
       display: inline-flex;
-      gap: 4px;
+      gap: 0;
       flex: 0 0 auto;
+      align-items: stretch;
       margin-left: auto;
     }
     .hs-notif-action {
-      max-width: 100%;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-    .hs-notif-action {
       background: transparent;
-      color: #fff;
-      border: 1px solid #808080;
-      padding: 2px 10px;
-      font: 600 11px/1.4 inherit;
+      color: #efeff1;
+      border: none;
+      border-left: 1px solid #2a2a2e;
+      padding: 0 12px;
+      font: 600 11px/1 inherit;
       cursor: pointer;
       border-radius: 0;
+      white-space: nowrap;
+      transition: background 80ms linear, color 80ms linear;
     }
-    .hs-notif-action:hover {
-      background: #fff;
-      color: #000;
-    }
-    .hs-notif-action-primary {
-      background: #ff8700;
-      color: #000;
-      border-color: #ff8700;
-    }
-    .hs-notif-action-primary:hover {
-      background: #fff;
-      color: #000;
-    }
-    .hs-notif-action-dismiss {
-      border: none;
-      padding: 2px 6px;
-      font-size: 14px;
-    }
-    /* Toast type — clickable to dismiss (clickToDismiss in notifs.js wires
-       the handler). min-width prevents the empty/short-text "black square
-       with red outline" rendering — if level=error and text was missing,
-       toast collapsed to ~30px wide; min-width forces a readable strip. */
-    .hs-notif-toast {
-      background: #000;
-      border: 1px solid #888;
-      padding: 6px 14px;
-      font: bold 12px monospace;
-      min-width: 120px;
-      text-align: center;
+    .hs-notif-action:hover { background: #fff; color: #000; }
+    .hs-notif-action:focus-visible { outline: 1px solid #ff8700; outline-offset: -2px; }
+    .hs-notif-action-primary { color: #ff8700; font-weight: 700; }
+    .hs-notif-action-primary:hover { background: #ff8700; color: #000; }
+    .hs-notif-action-dismiss { padding: 0 10px; font-size: 14px; color: #848494; }
+    .hs-notif-action-dismiss:hover { background: #ff4040; color: #000; }
+
+    /* Toast-stack — every notif on this layer gets the toast aesthetic:
+       icon prefix, level accent, click-to-dismiss cursor. Applies to the
+       'toast' type AND any other type that opts in to the layer (e.g.
+       server-mention-rule). */
+    .hs-notif-layer-toast-stack > .hs-notif {
+      min-width: 180px;
+      max-width: 100%;
       cursor: pointer;
-      pointer-events: auto;
     }
-    .hs-notif-toast:hover { background: #fff; }
-    .hs-notif-toast:hover .hs-notif-toast-text { color: #000 !important; }
-    .hs-notif-toast-text { color: #888; }
-    .hs-notif-toast-text.hs-notif-toast-success { color: #00d000; }
-    .hs-notif-toast-text.hs-notif-toast-error   { color: #ff4040; }
-    .hs-notif-toast:has(.hs-notif-toast-success) { border-color: #00d000; }
-    .hs-notif-toast:has(.hs-notif-toast-error)   { border-color: #ff4040; }
-    /* Resub-share type */
-    .hs-notif-twitch-resub-share {
+    .hs-notif-toast-text { color: #efeff1; display: inline; }
+    .hs-notif-toast-text::before {
+      content: var(--hs-notif-icon, '·');
+      color: var(--hs-notif-accent, #888);
+      display: inline-block;
+      width: 14px;
+      margin-right: 8px;
+      font-weight: 700;
+      text-align: center;
+      flex: 0 0 auto;
+    }
+    .hs-notif-toast-text.hs-notif-toast-success { --hs-notif-icon: '✓'; --hs-notif-accent: #00d65a; color: #c0f5d4; }
+    .hs-notif-toast-text.hs-notif-toast-error   { --hs-notif-icon: '✕'; --hs-notif-accent: #ff4f4d; color: #ffd0cf; }
+    .hs-notif-toast-text.hs-notif-toast-warn    { --hs-notif-icon: '!'; --hs-notif-accent: #ff8700; color: #ffe0b8; }
+    .hs-notif-toast-text.hs-notif-toast-info    { --hs-notif-icon: 'i'; --hs-notif-accent: #6aa0ff; color: #d0ddff; }
+    .hs-notif-toast-text.hs-notif-toast-mention { --hs-notif-icon: '@'; --hs-notif-accent: #ff8700; color: #ffd9a8; }
+    /* Wrapper accent strip mirrors the text level (CSS custom property
+       cascades from the inner span up via :has). */
+    .hs-notif:has(.hs-notif-toast-success) { --hs-notif-accent: #00d65a; }
+    .hs-notif:has(.hs-notif-toast-error)   { --hs-notif-accent: #ff4f4d; }
+    .hs-notif:has(.hs-notif-toast-warn)    { --hs-notif-accent: #ff8700; }
+    .hs-notif:has(.hs-notif-toast-info)    { --hs-notif-accent: #6aa0ff; }
+    .hs-notif:has(.hs-notif-toast-mention) { --hs-notif-accent: #ff8700; }
+    .hs-notif-layer-toast-stack > .hs-notif:hover { background: #fff; }
+    .hs-notif-layer-toast-stack > .hs-notif:hover .hs-notif-toast-text,
+    .hs-notif-layer-toast-stack > .hs-notif:hover .hs-notif-toast-text::before {
+      color: #000 !important;
+    }
+    /* Chat-docked-bottom callouts (resub-share, sub-anniversary, raid alert)
+       use a full-width band — reset the toast accent strip and edge borders
+       in favor of an orange top edge that visually anchors the bar to the
+       inputbar below. */
+    .hs-notif-layer-chat-docked-bottom > .hs-notif {
+      border: none;
       border-top: 1px solid #ff8700;
       border-bottom: 1px solid #808080;
       box-shadow: 0 -2px 8px rgba(0,0,0,0.5);
+      background: #0a0a0d;
     }
     .hs-notif-resub-body {
       display: flex;
@@ -1727,22 +1774,70 @@ function injectStyles() {
       background: #000;
       border: 1px solid #2a2a2a;
       border-radius: 0;
-      padding: 8px;
+      padding: 0;
       display: none;
       min-width: 240px;
       max-width: 400px;
+      overflow: hidden;
+      isolation: isolate;
+      --hs-pc-accent: #ff8700;
     }
     #hs-user-tooltip.visible {
+      display: block;
+    }
+    /* Hero band — wide channel banner image up top, accent-tinted gradient
+       placeholder until the GQL response lands. Image is decoded off-DOM
+       (Image() probe) and committed in one go so there's no flash. */
+    #hs-user-tooltip .hs-pc-hero {
+      position: relative;
+      height: 56px;
+      background: linear-gradient(135deg, var(--hs-pc-accent, #1a1a1a) 0%, #0a0a0a 90%);
+      border-bottom: 1px solid var(--hs-pc-accent, #2a2a2a);
+      overflow: hidden;
+    }
+    #hs-user-tooltip .hs-pc-hero-img {
+      position: absolute; inset: 0;
+      background-position: center; background-size: cover; background-repeat: no-repeat;
+      opacity: 0; transition: opacity 240ms ease-out, transform 600ms ease-out;
+      transform: scale(1.06);
+      filter: saturate(1.1);
+    }
+    #hs-user-tooltip .hs-pc-hero.hs-pc-hero-loaded .hs-pc-hero-img {
+      opacity: 0.85; transform: scale(1);
+    }
+    /* Scrim — bottom-weighted dark gradient so name/badges below the hero
+       remain crisp regardless of banner color. */
+    #hs-user-tooltip .hs-pc-hero-scrim {
+      position: absolute; inset: 0;
+      background: linear-gradient(180deg, rgba(0,0,0,0.15) 0%, rgba(0,0,0,0.55) 60%, rgba(0,0,0,0.92) 100%);
+      pointer-events: none;
+    }
+    /* Body wraps everything below the banner; padding lives here now so the
+       hero can run flush to the tooltip edge. */
+    #hs-user-tooltip .hs-pc-body {
       display: flex;
+      padding: 8px;
     }
     #hs-user-tooltip .hs-pc-avatar {
-      width: 40px;
-      height: 40px;
-      min-width: 40px;
-      border: 1px solid #2a2a2a;
+      width: 48px;
+      height: 48px;
+      min-width: 48px;
+      border: 2px solid var(--hs-pc-accent, #2a2a2a);
       object-fit: cover;
       flex-shrink: 0;
       align-self: flex-start;
+      /* Lifts avatar so it bridges the hero banner and the body, the same
+         move every modern social profile uses to anchor identity. Margin-top
+         is negative to overlap the hero by ~half the avatar height. */
+      margin-top: -32px;
+      margin-right: 10px;
+      box-shadow:
+        0 0 0 1px #000,
+        0 0 12px rgba(0, 0, 0, 0.6),
+        0 0 18px color-mix(in srgb, var(--hs-pc-accent, transparent) 25%, transparent);
+      background: #000;
+      position: relative;
+      z-index: 1;
     }
     #hs-user-tooltip .hs-pc-info {
       flex: 1;
@@ -2682,41 +2777,101 @@ function injectStyles() {
       height: 100%;
       overflow-y: auto;
       position: relative;
+      /* Accent CSS var — defaults to heatsync orange, overridden per-streamer
+         when the GQL response carries a primaryColorHex. Drives the hero
+         border, avatar ring, and accent-tinted divider glow below. */
+      --hs-pcard-accent: #ff8700;
+    }
+    /* Hero banner — runs full-bleed across the identity section, with a
+       gradient placeholder (accent at top-left, fading to near-black) so the
+       layout never empty-flashes before the GQL fetch lands. */
+    .hs-pcard-hero {
+      position: relative;
+      height: 140px;
+      margin: -14px -14px 0 -14px;
+      background: linear-gradient(135deg, var(--hs-pcard-accent, #1a1a1a) 0%, #0a0a0a 70%, #000 100%);
+      overflow: hidden;
+      border-bottom: 1px solid var(--hs-pcard-accent, #2a2a2a);
+    }
+    .hs-pcard-hero-img {
+      position: absolute; inset: 0;
+      background-position: center; background-size: cover; background-repeat: no-repeat;
+      opacity: 0;
+      transform: scale(1.04);
+      transition: opacity 320ms ease-out, transform 1200ms ease-out;
+      filter: saturate(1.1) contrast(1.04);
+    }
+    .hs-pcard-hero.hs-pcard-hero-loaded .hs-pcard-hero-img {
+      opacity: 0.9;
+      transform: scale(1);
+    }
+    .hs-pcard-hero-scrim {
+      position: absolute; inset: 0;
+      background:
+        linear-gradient(180deg, rgba(0,0,0,0.0) 0%, rgba(0,0,0,0.35) 55%, rgba(0,0,0,0.95) 100%),
+        linear-gradient(90deg, rgba(0,0,0,0.35) 0%, transparent 30%, transparent 70%, rgba(0,0,0,0.35) 100%);
+      pointer-events: none;
+    }
+    /* Identity row sits flush below the hero; only the avatar lifts upward
+       to overlap the seam. Discord/Twitter idiom — banner + half-overlapping
+       pfp + name below, with the rest of the column flowing normally. */
+    .hs-pcard-id .hs-pcard-id-row {
+      position: relative;
+      z-index: 1;
+      margin-top: 8px;
     }
     /* Sticky close — pinned to card top-right, stays visible while scrolling.
        Negative bottom margin lets it overlay the id-row without taking column
        space; id-row gets right padding so display name never slides under it. */
     .hs-pcard-close {
-      position: sticky; top: 0; align-self: flex-end;
-      margin: -6px -6px -30px 0;
+      position: absolute; top: 8px; right: 8px;
+      margin: 0;
       width: 30px; height: 30px;
       display: flex; align-items: center; justify-content: center;
       font-size: 22px; line-height: 1; font-weight: 400;
-      background: rgba(0, 0, 0, 0.75);
-      color: #888;
-      border: 1px solid #2a2a2a;
+      background: rgba(0, 0, 0, 0.55);
+      color: #fff;
+      border: 1px solid rgba(255, 255, 255, 0.25);
+      -webkit-backdrop-filter: blur(6px);
+      backdrop-filter: blur(6px);
       cursor: pointer; padding: 0;
-      z-index: 5;
+      z-index: 10;
       transition: background 80ms, color 80ms, border-color 80ms, transform 80ms;
     }
     .hs-pcard-close:hover { background: #fff; color: #000; border-color: #fff; transform: scale(1.08); }
     .hs-pcard-close:active { transform: scale(0.96); }
     .hs-pcard-close:focus-visible { outline: 1px solid #ff8700; outline-offset: 1px; }
-    .hs-pcard-id-row { padding-right: 28px; }
+    /* Close button overlays the hero — no need to reserve right space on the id row.
+       Kept rule absent so the row sits flush; the absolute-positioned close has its own footprint. */
     /* Sections are pure spacing — drop chrome borders + label-on-top */
     .hs-pcard-section {
       border: 0; padding: 0; margin: 0; position: static; background: transparent;
     }
     .hs-pcard-section-title { display: none; }
-    /* Section dividers — single 1px line, near-invisible info delimiter */
+    /* Section dividers — accent-tinted at low opacity so each card adopts
+       the streamer's identity color, without the divider screaming for
+       attention. Falls back to #1a1a1a when accent is unset. */
     .hs-pcard-section + .hs-pcard-section {
-      border-top: 1px solid #1a1a1a; padding-top: 10px;
+      border-top: 1px solid color-mix(in srgb, var(--hs-pcard-accent, #1a1a1a) 18%, #0a0a0a);
+      padding-top: 10px;
     }
 
     .hs-pcard-id-row { display: flex; gap: 12px; align-items: flex-start; }
     .hs-pcard-avatar {
-      width: 56px; height: 56px; border-radius: 0; object-fit: cover;
+      width: 72px; height: 72px; border-radius: 0; object-fit: cover;
       flex-shrink: 0;
+      border: 2px solid var(--hs-pcard-accent, #fff);
+      background: #000;
+      /* Negative top margin lifts the avatar to overlap the hero base by ~half
+         its height, anchoring identity at the banner seam. Hero is 140px tall,
+         hero's bottom margin is 0 → avatar negative margin moves it upward. */
+      margin-top: -44px;
+      position: relative;
+      z-index: 2;
+      box-shadow:
+        0 0 0 2px #000,
+        0 8px 20px rgba(0, 0, 0, 0.7),
+        0 0 24px color-mix(in srgb, var(--hs-pcard-accent, transparent) 35%, transparent);
     }
     .hs-pcard-id-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
     .hs-pcard-name {

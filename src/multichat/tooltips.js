@@ -631,14 +631,54 @@
       relBadges.push(`<span class="hs-pc-rel-badge mutual-sub">mutual sub</span>`);
     }
 
+    // Hero banner placeholder — wraps the whole card so the banner sits behind
+    // the avatar/info row. Filled async by pcApplyBanner once the Twitch GQL
+    // response lands; until then the gradient placeholder (from CSS) carries
+    // the layout so the tooltip doesn't resize after fetch.
     return `
-      ${pfp ? `<img class="hs-pc-avatar" src="${escapeHtml(pfp)}" alt="${escapeHtml(displayName)}">` : ''}
-      <div class="hs-pc-info">
-        <div class="hs-pc-header">${platforms} ${role} ${ageHtml}</div>
-        ${bio}
-        ${statBadges.length ? `<div class="hs-pc-stats">${statBadges.join('')}</div>` : ''}
-        ${relBadges.length ? `<div class="hs-pc-rel">${relBadges.join(' ')}</div>` : ''}
+      <div class="hs-pc-hero"><div class="hs-pc-hero-img"></div><div class="hs-pc-hero-scrim"></div></div>
+      <div class="hs-pc-body">
+        ${pfp ? `<img class="hs-pc-avatar" src="${escapeHtml(pfp)}" alt="${escapeHtml(displayName)}">` : ''}
+        <div class="hs-pc-info">
+          <div class="hs-pc-header">${platforms} ${role} ${ageHtml}</div>
+          ${bio}
+          ${statBadges.length ? `<div class="hs-pc-stats">${statBadges.join('')}</div>` : ''}
+          ${relBadges.length ? `<div class="hs-pc-rel">${relBadges.join(' ')}</div>` : ''}
+        </div>
       </div>`;
+  }
+
+  // Async banner fetch + apply for the hover tooltip. Mirrors pcApplyBanner in
+  // profile-card.js but targets #hs-user-tooltip's hero element. Bails if the
+  // tooltip moved to a different user/profile while we were fetching.
+  // Walks the platform chain (twitch > kick > youtube, context-prioritized).
+  async function applyTooltipBanner(tooltip, profile, platform, username, gen) {
+    if (typeof fetchBannerChain !== 'function' || typeof pickBannerChain !== 'function') return
+    const chain = pickBannerChain(profile || {}, platform, username)
+    if (!chain.length) return
+    const banner = await fetchBannerChain(chain)
+    if (!banner) return
+    if (gen !== _profileGen) return
+    const hero = tooltip.querySelector('.hs-pc-hero')
+    if (!hero) return
+    const heroImg = hero.querySelector('.hs-pc-hero-img')
+    const url = banner.bannerUrl || banner.offlineUrl
+    if (url && heroImg) {
+      const probe = new Image()
+      probe.onload = () => {
+        if (gen !== _profileGen) return
+        heroImg.style.backgroundImage = `url("${url}")`
+        hero.classList.add('hs-pc-hero-loaded')
+        if (_userTooltipTarget) positionTooltipAtElement(tooltip, _userTooltipTarget)
+      }
+      probe.referrerPolicy = 'no-referrer'
+      probe.src = url
+    }
+    if (banner.accent) {
+      tooltip.style.setProperty('--hs-pc-accent', banner.accent)
+      hero.classList.add('hs-pc-hero-accent')
+    }
+    if (banner.sourcePlatform) hero.dataset.source = banner.sourcePlatform
   }
 
   // Determine Twitch channel context for followage lookups
@@ -694,6 +734,7 @@
       appendSubTenureBadge(tooltip, username, msgChannel);
       positionTooltipAtElement(tooltip, targetEl);
       fetchAndShowFollowage(tooltip, username, gen, platform);
+      applyTooltipBanner(tooltip, cached.profile, platform, username, gen)
       return;
     }
 
@@ -715,11 +756,17 @@
       appendSubTenureBadge(tooltip, username, msgChannel);
       positionTooltipAtElement(tooltip, targetEl);
       fetchAndShowFollowage(tooltip, username, gen, platform);
+      applyTooltipBanner(tooltip, profile, platform, username, gen)
     } else {
-      // Fallback — show basic info (username sanitized via escapeHtml)
-      tooltip.innerHTML = `<div class="hs-pc-info"><div class="hs-pc-header"><span class="hs-pc-name">${escapeHtml(username)}</span></div></div>`;
+      // Fallback — show basic info (username sanitized via escapeHtml).
+      // Still wraps in hero + body so banner can apply if this is a Twitch user
+      // with no heatsync profile (most chatters in busy channels).
+      tooltip.innerHTML = `<div class="hs-pc-hero"><div class="hs-pc-hero-img"></div><div class="hs-pc-hero-scrim"></div></div><div class="hs-pc-body"><div class="hs-pc-info"><div class="hs-pc-header"><span class="hs-pc-name">${escapeHtml(username)}</span></div></div></div>`;
       appendSubTenureBadge(tooltip, username, msgChannel);
       fetchAndShowFollowage(tooltip, username, gen, platform);
+      // No heatsync profile — still try platform-direct banner using whatever
+      // context platform we have (or twitch as the default guess).
+      applyTooltipBanner(tooltip, null, platform, username, gen)
     }
   }
 

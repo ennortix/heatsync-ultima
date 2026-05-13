@@ -1,4 +1,4 @@
-// Notifs — god-tier notification system.
+// Notifs — central notification system for multichat.
 //
 // Single source of truth for every popup/toast/callout/banner in multichat.
 // Adding a new notif type is a single registerType call. Layer positioning is
@@ -99,9 +99,21 @@ const HsNotifs = (() => {
       if (idx >= 0) {
         const n = l.current[idx]
         l.current.splice(idx, 1)
-        if (n._timer) clearTimeout(n._timer)
+        if (n._timer) { clearTimeout(n._timer); n._timer = null }
         try { n.type.onDismiss?.(n.data) } catch (_) {}
-        try { n.el?.remove() } catch (_) {}
+        // Exit animation — flag wrapper for CSS to fade/slide out, then
+        // remove on animation end. Falls back to immediate remove if the
+        // animation event never fires (detached, reduced-motion, etc.).
+        const el = n.el
+        if (el && el.isConnected) {
+          el.classList.add('hs-notif-exiting')
+          let removed = false
+          const cleanup = () => { if (removed) return; removed = true; try { el.remove() } catch (_) {} }
+          el.addEventListener('animationend', cleanup, { once: true })
+          setTimeout(cleanup, 220)
+        } else {
+          try { el?.remove() } catch (_) {}
+        }
         return true
       }
     }
@@ -122,6 +134,7 @@ const HsNotifs = (() => {
     const wrapper = document.createElement('div')
     wrapper.className = `hs-notif hs-notif-${notif.typeName}`
     wrapper.dataset.notifId = notif.id
+    wrapper.setAttribute('role', notif.data?.level === 'error' ? 'alert' : 'status')
     notif.el = wrapper
     _renderInto(notif)
     container.appendChild(wrapper)
@@ -134,9 +147,30 @@ const HsNotifs = (() => {
     if (notif.type.clickToDismiss) {
       wrapper.addEventListener('click', () => dismiss(notif.id))
     }
+    // Right-click dismiss — global UX convention: every popup/indicator
+    // accepts right-click to clear without firing any action.
+    wrapper.addEventListener('contextmenu', (e) => {
+      e.preventDefault(); e.stopPropagation()
+      dismiss(notif.id)
+    })
     try { notif.type.onMount?.(notif.data, () => dismiss(notif.id), wrapper) } catch (_) {}
     if (notif.type.timeout) {
-      notif._timer = setTimeout(() => dismiss(notif.id), notif.type.timeout)
+      // Pause-on-hover. Errors are easy to miss if they vanish mid-read.
+      let remaining = notif.type.timeout
+      let startedAt = Date.now()
+      notif._timer = setTimeout(() => dismiss(notif.id), remaining)
+      wrapper.addEventListener('mouseenter', () => {
+        if (notif._timer) {
+          clearTimeout(notif._timer); notif._timer = null
+          remaining = Math.max(0, remaining - (Date.now() - startedAt))
+        }
+      })
+      wrapper.addEventListener('mouseleave', () => {
+        if (!notif._timer && remaining > 0) {
+          startedAt = Date.now()
+          notif._timer = setTimeout(() => dismiss(notif.id), remaining)
+        }
+      })
     }
   }
 
@@ -146,26 +180,31 @@ const HsNotifs = (() => {
     wrapper.textContent = ''
     const dismissFn = () => dismiss(notif.id)
     let body
-    try { body = notif.type.render({ data: notif.data, dismiss: dismissFn }) } catch (_) { body = '' }
-    if (typeof body === 'string') {
-      const span = document.createElement('span')
-      span.className = 'hs-notif-body'
-      span.textContent = body
-      wrapper.appendChild(span)
+    try { body = notif.type.render({ data: notif.data, dismiss: dismissFn }) }
+    catch (e) { console.warn('[notifs] render threw for', notif.typeName, e); body = '' }
+    // Always render a body wrapper. If render returned nothing usable, fall
+    // back to a placeholder so a notif can never be a blank rectangle.
+    const bodyEl = document.createElement('span')
+    bodyEl.className = 'hs-notif-body'
+    if (typeof body === 'string' && body.length > 0) {
+      bodyEl.textContent = body
     } else if (body instanceof Node) {
-      const w = document.createElement('span')
-      w.className = 'hs-notif-body'
-      w.appendChild(body)
-      wrapper.appendChild(w)
+      bodyEl.appendChild(body)
+    } else {
+      bodyEl.textContent = `[${notif.typeName}]`
+      bodyEl.classList.add('hs-notif-body-fallback')
     }
+    wrapper.appendChild(bodyEl)
     if (notif.type.actions) {
       const actionsEl = document.createElement('span')
       actionsEl.className = 'hs-notif-actions'
       for (const [kind, def] of Object.entries(notif.type.actions)) {
         if (!def) continue
         const btn = document.createElement('button')
+        btn.type = 'button'
         btn.className = `hs-notif-action hs-notif-action-${kind}`
         btn.textContent = def.label || kind
+        if (def.title) btn.title = def.title
         btn.addEventListener('click', (e) => {
           e.stopPropagation(); e.preventDefault()
           let result

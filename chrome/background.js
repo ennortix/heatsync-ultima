@@ -374,6 +374,14 @@ const USER_COSMETICS_MAX = 500
 // the heatsync server every time.
 const _embedResolveCache = new Map()
 const EMBED_RESOLVE_TTL = 60 * 60 * 1000  // 1 hour
+// Channel banner / accent across platforms — Twitch GQL (public client id),
+// Kick public API, YouTube HTML scrape via ytInitialData. All sources return
+// the same shape: { bannerUrl, offlineUrl, accent, profileUrl }. Cache keyed
+// by `${platform}:${lowercased-login}` so cross-platform same-name users don't
+// collide. 12h TTL — banners rarely change and a stale URL still resolves.
+const _channelBannerCache = new Map()
+const CHANNEL_BANNER_TTL = 12 * 60 * 60 * 1000
+const CHANNEL_BANNER_MAX = 800
 let followedUsers = []; // Users the current user follows
 let currentUsername = null; // Logged-in user's username
 let socket = null;
@@ -2879,6 +2887,38 @@ async function fetchServerMutes() {
   }
 }
 
+// Write a mute to the server's REST /api/mutes endpoint. Server broadcasts
+// mute:added WS event so heatsync.org MuteManager + other ext instances pick
+// up. Bearer auth → CSRF-exempt.
+async function syncMuteToServer(username, expiresAtMs) {
+  const token = await getAuthCookie()
+  if (!token) return // not logged in
+  const body = {
+    username: username.toLowerCase(),
+    platform: null,
+    expires_at: expiresAtMs ? new Date(expiresAtMs).toISOString() : null,
+    reason: null,
+  }
+  const res = await fetch('https://heatsync.org/api/mutes', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(8000),
+  })
+  if (!res.ok) log(' /api/mutes POST', res.status)
+}
+
+async function syncUnmuteToServer(username) {
+  const token = await getAuthCookie()
+  if (!token) return
+  const res = await fetch(`https://heatsync.org/api/mutes/${encodeURIComponent(username.toLowerCase())}`, {
+    method: 'DELETE',
+    headers: { 'Authorization': `Bearer ${token}` },
+    signal: AbortSignal.timeout(8000),
+  })
+  if (!res.ok) log(' /api/mutes DELETE', res.status)
+}
+
 // Remove expired mutes and broadcast unmutes
 function pruneExpiredMutes() {
   const now = Date.now();
@@ -4210,8 +4250,10 @@ async function _removeFromInventoryImpl(emoteHash, emoteName) {
     log(' Removing from your set via API:', emoteName, 'hash:', emoteHash?.substring(0, 8));
 
     // Tell content scripts early so they suppress this emote in new messages immediately
-    // This must happen BEFORE any fetchEmoteInventory() which would broadcast inventory_update
-    broadcastToTabs({ type: 'emote_removing', emoteName });
+    // This must happen BEFORE any fetchEmoteInventory() which would broadcast inventory_update.
+    // Hash is forwarded so content can optimistically tier-drop existing rendered wrappers
+    // before the server roundtrip completes.
+    broadcastToTabs({ type: 'emote_removing', emoteName, hash: emoteHash });
 
     // Find slot number by hash or name
     let emote = emoteInventory.find(e => e.hash === emoteHash || e.name === emoteName);
@@ -4465,6 +4507,131 @@ async function handleMessage(message, sender, sendResponse) {
       .catch(() => sendResponse(null))
     return true
   }
+
+  // Channel banner — multi-platform (twitch/kick/youtube). All routes return
+  // { bannerUrl, offlineUrl, accent, profileUrl } and respect a shared 12h LRU
+  // keyed by `${platform}:${login}`. Banners rarely change so a stale URL is
+  // tolerable; cache also survives SW wake (in-memory only by design — this is
+  // pure UX-warming, not correctness state).
+  if (message.type === 'fetch_channel_banner') {
+    const platform = String(message.platform || '').toLowerCase()
+    let username = String(message.username || '').toLowerCase()
+    if (!platform || !username) { sendResponse(null); return true }
+    // Sanitization differs per platform — Twitch is the strictest (a–z, 0–9,
+    // underscore); Kick allows hyphens; YouTube handles and channel IDs allow
+    // a-z, 0-9, dot, dash, underscore. Be conservative but permissive enough
+    // to handle real names without false-negatives.
+    if (platform === 'twitch') username = username.replace(/[^a-z0-9_]/g, '')
+    else if (platform === 'kick') username = username.replace(/[^a-z0-9_-]/g, '')
+    else if (platform === 'youtube') username = username.replace(/[^a-z0-9._-]/g, '')
+    else { sendResponse(null); return true }
+    if (!username) { sendResponse(null); return true }
+    const cacheKey = `${platform}:${username}`
+    const cached = _channelBannerCache.get(cacheKey)
+    if (cached && Date.now() - cached.ts < CHANNEL_BANNER_TTL) {
+      sendResponse(cached.data)
+      return true
+    }
+    const handle = (data) => {
+      _channelBannerCache.set(cacheKey, { data, ts: Date.now() })
+      if (_channelBannerCache.size > CHANNEL_BANNER_MAX) {
+        _channelBannerCache.delete(_channelBannerCache.keys().next().value)
+      }
+      sendResponse(data)
+    }
+    if (platform === 'twitch') {
+      // Public GQL — kimne client id is the same one twitch.tv uses, no token
+      // required for read-only profile fields.
+      fetchWithTimeout('https://gql.twitch.tv/gql', {
+        method: 'POST',
+        headers: { 'Client-Id': 'kimne78kx3ncx6brgo4mv6wki5h1ko', 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          query: `{ user(login: "${username}") { bannerImageURL offlineImageURL primaryColorHex profileImageURL(width: 600) } }`
+        })
+      }, 5000)
+        .then(r => r.ok ? r.json() : null)
+        .then(json => {
+          const u = json?.data?.user
+          if (!u) { handle(null); return }
+          handle({
+            bannerUrl: u.bannerImageURL || null,
+            offlineUrl: u.offlineImageURL || null,
+            accent: u.primaryColorHex ? ('#' + u.primaryColorHex.replace(/^#/, '')) : null,
+            profileUrl: u.profileImageURL || null,
+            sourcePlatform: 'twitch',
+          })
+        })
+        .catch(() => handle(null))
+      return true
+    }
+    if (platform === 'kick') {
+      // Kick public v2 — channel slug → banner_image.url and user.profile_pic.
+      // Kick provides no accent so we default to the platform brand green.
+      fetchWithTimeout(`https://kick.com/api/v2/channels/${encodeURIComponent(username)}`, {
+        headers: { 'Accept': 'application/json' }
+      }, 5000)
+        .then(r => r.ok ? r.json() : null)
+        .then(j => {
+          if (!j) { handle(null); return }
+          const banner = j.banner_image?.url || j.banner_image?.responsive?.split(' ')[0] || null
+          const offline = j.offline_banner_image?.src || j.offline_banner_image?.url || null
+          handle({
+            bannerUrl: banner,
+            offlineUrl: offline,
+            accent: '#53fc18',
+            profileUrl: j.user?.profile_pic || null,
+            sourcePlatform: 'kick',
+          })
+        })
+        .catch(() => handle(null))
+      return true
+    }
+    if (platform === 'youtube') {
+      // YouTube has no documented public banner API without OAuth/key, so we
+      // fetch the channel page HTML and pull bannerExternalUrl out of the
+      // embedded ytInitialData JSON. Works for both @handles and UC* channel
+      // IDs because youtube.com routes both to the same page shape.
+      const path = /^uc[a-z0-9_-]{20,}$/i.test(username) ? `/channel/${username}` : `/@${username}`
+      fetchWithTimeout(`https://www.youtube.com${path}`, {
+        headers: { 'Accept': 'text/html', 'Accept-Language': 'en' }
+      }, 8000)
+        .then(r => r.ok ? r.text() : null)
+        .then(html => {
+          if (!html) { handle(null); return }
+          let banner = null
+          // First match wins — bannerExternalUrl is the desktop hero banner;
+          // banner.thumbnails[] (last entry = highest res) is the mobile path.
+          const m1 = html.match(/"bannerExternalUrl":"([^"]+)"/)
+          if (m1) banner = m1[1].replace(/\\u002F/g, '/').replace(/\\\//g, '/')
+          if (!banner) {
+            const all = [...html.matchAll(/"banner":\s*\{\s*"thumbnails":\s*\[([^\]]+)\]/g)]
+            for (const m of all) {
+              const last = [...m[1].matchAll(/"url":"([^"]+)"/g)].pop()
+              if (last) { banner = last[1].replace(/\\u002F/g, '/').replace(/\\\//g, '/'); break }
+            }
+          }
+          let avatar = null
+          const av = html.match(/"avatar":\s*\{\s*"thumbnails":\s*\[\s*\{\s*"url":"([^"]+)"/)
+          if (av) avatar = av[1].replace(/\\u002F/g, '/').replace(/\\\//g, '/')
+          if (!avatar) {
+            const og = html.match(/<meta property="og:image" content="([^"]+)"/)
+            if (og) avatar = og[1]
+          }
+          handle({
+            bannerUrl: banner,
+            offlineUrl: null,
+            accent: '#ff0033',
+            profileUrl: avatar,
+            sourcePlatform: 'youtube',
+          })
+        })
+        .catch(() => handle(null))
+      return true
+    }
+    sendResponse(null)
+    return true
+  }
+
 
   // Query all open Twitch/Kick tabs to find channels the user is watching
   if (message.type === 'get_watching_channels') {
@@ -4727,17 +4894,20 @@ async function handleMessage(message, sender, sendResponse) {
     mutedUsers.set(message.username, expiresAt);
     persistMutedUsers();
     broadcastToTabs({ type: 'user_muted', username: message.username, expiresAt });
-    // Sync to server for cross-device muting
-    const duration = expiresAt ? expiresAt - Date.now() : null;
-    if (duration && duration > 0) wsSend({ type: 'user:mute', username: message.username, duration });
+    // Sync to server via REST /api/mutes — writes to user_mutes table and
+    // broadcasts mute:added WS event so heatsync.org tabs + other ext sockets
+    // pick up the mute instantly. Replaces the old `user:mute` WS path which
+    // wrote to user_blocks (different table, never read by chat-mute UI).
+    syncMuteToServer(message.username, expiresAt).catch(err => log(' syncMuteToServer failed:', err?.message))
     log(' Muted user:', message.username, expiresAt ? `(expires ${new Date(expiresAt).toISOString()})` : '(permanent)');
     sendResponse({ ok: true });
   } else if (message.type === 'unmute_user') {
     mutedUsers.delete(message.username);
     persistMutedUsers();
     broadcastToTabs({ type: 'user_unmuted', username: message.username });
-    // Sync to server for cross-device unmuting
-    wsSend({ type: 'user:unmute', username: message.username });
+    // Sync to server via REST DELETE /api/mutes/:username — broadcasts
+    // mute:removed WS event for cross-device + cross-surface unmute.
+    syncUnmuteToServer(message.username).catch(err => log(' syncUnmuteToServer failed:', err?.message))
     log(' Unmuted user:', message.username);
     sendResponse({ ok: true });
   } else if (message.type === 'get_muted_users') {

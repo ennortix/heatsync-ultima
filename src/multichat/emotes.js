@@ -697,12 +697,25 @@
         cache.delete(emoteName);
       }
     }
-    // Update all existing wrappers in DOM
+    // Update all existing wrappers in DOM. If a lower-tier variant (channel/global)
+    // exists with a different URL, swap img.src so the chat shows the fallback emote
+    // (e.g. 7TV channel Pog) instead of leaving the heatsync image with a new class.
     const newState = cachedEmote?.state || 'unadded';
+    const fallbackUrl = cachedEmote?.url;
     queryEmoteWrappers(emoteName).forEach(w => {
       w.classList.remove('hs-state-global', 'hs-state-channel', 'hs-state-owned', 'hs-state-blocked', 'hs-state-unadded');
       w.classList.add(`hs-state-${newState}`);
       w.dataset.state = newState;
+      if (fallbackUrl) {
+        const img = w.querySelector('img');
+        if (img && img.src !== fallbackUrl) {
+          img.src = fallbackUrl;
+          img.classList.remove('hs-emote-global', 'hs-emote-channel', 'hs-emote-owned', 'hs-emote-blocked', 'hs-emote-unadded');
+          img.classList.add(`hs-emote-${newState}`);
+          img.dataset.state = newState;
+        }
+        w.dataset.emoteUrl = fallbackUrl;
+      }
     });
     // Refresh tooltip if visible (state text needs to update instantly)
     refreshEmoteTooltip(emoteName, newState);

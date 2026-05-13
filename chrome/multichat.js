@@ -23855,10 +23855,24 @@ function handleInputChange(e) {
           span.title = ':' + match[1] + ':'
           span.setAttribute('data-emoji-name', match[1])
           const tail = text.slice(cursorOffset)
-          // Trailing space prevents `:fire:KEKW` from fusing into one
-          // unparseable token on the wire — KEKW must stay whitespace-bounded.
+          const head = text.slice(0, start)
+          // Trailing space prevents fused tokens on the wire.
           const trailing = !/^\s/.test(tail) ? ' ' : ''
-          const beforeNode = document.createTextNode(text.slice(0, start))
+          // Leading space when the new emoji lands right after an existing
+          // chip — without it the chip-merge safeguard collapses both back
+          // to plain text.
+          let leading = ''
+          if (!head) {
+            const prev = node.previousSibling
+            const prevIsChip = prev?.nodeType === Node.ELEMENT_NODE && (
+              (prev.tagName === 'IMG' && (prev.classList?.contains('hs-input-emote') || prev.dataset?.emoteName)) ||
+              prev.classList?.contains('hs-input-stack') ||
+              prev.classList?.contains('hs-mc-emoji') ||
+              prev.classList?.contains('hs-mc-user')
+            )
+            if (prevIsChip) leading = ' '
+          }
+          const beforeNode = document.createTextNode(leading + head)
           const afterNode = document.createTextNode(trailing + tail)
           const parent = node.parentNode
           parent.insertBefore(beforeNode, node)
@@ -24726,7 +24740,24 @@ function insertCompletionWysiwyg(match) {
 
   // Helper: insert element after textNode with before/after text
   const insertElement = (el) => {
-    textNode.textContent = before;
+    // Defensive leading separator: if the typed word started at textNode
+    // offset 0 (so `before` is empty) and the previous sibling is a chip,
+    // splice an nbsp into `before` so the new chip doesn't touch the prior
+    // chip \u2014 otherwise unwrapStuckChips collapses both back to plain text.
+    let leadBefore = before;
+    if (!leadBefore) {
+      const prev = textNode.previousSibling;
+      const prevIsChip = prev?.nodeType === Node.ELEMENT_NODE && (
+        (prev.tagName === 'IMG' && (prev.classList?.contains('hs-input-emote') || prev.dataset?.emoteName)) ||
+        prev.classList?.contains('hs-input-stack') ||
+        prev.classList?.contains('hs-mc-emoji') ||
+        prev.classList?.contains('hs-mc-user') ||
+        prev.classList?.contains('hs-cycling-emote') ||
+        prev.classList?.contains('hs-cycling-text')
+      );
+      if (prevIsChip) leadBefore = '\u00A0';
+    }
+    textNode.textContent = leadBefore;
     const space = document.createTextNode('\u00A0' + after);
     const parent = textNode.parentNode;
     const nextSibling = textNode.nextSibling;
@@ -24997,10 +25028,24 @@ function insertEmojiFromDropdown(entry) {
     span.title = ':' + entry.name + ':'
     span.setAttribute('data-emoji-name', entry.name)
     const tail = text.slice(cursor)
-    // Trailing space keeps emote-name boundaries intact downstream — without
-    // it `:fire:KEKW` serializes as `🔥KEKW` and KEKW never renders.
+    const head = text.slice(0, colonIdx)
+    // Trailing space keeps emote-name boundaries intact downstream.
     const trailing = !/^\s/.test(tail) ? ' ' : ''
-    const beforeNode = document.createTextNode(text.slice(0, colonIdx))
+    // Leading space when this emoji lands right after an existing chip (no
+    // plain-text gap). Without it the input event triggers chip-merge
+    // safeguards that collapse adjacent chips back to plain text.
+    let leading = ''
+    if (!head) {
+      const prev = node.previousSibling
+      const prevIsChip = prev?.nodeType === Node.ELEMENT_NODE && (
+        (prev.tagName === 'IMG' && (prev.classList?.contains('hs-input-emote') || prev.dataset?.emoteName)) ||
+        prev.classList?.contains('hs-input-stack') ||
+        prev.classList?.contains('hs-mc-emoji') ||
+        prev.classList?.contains('hs-mc-user')
+      )
+      if (prevIsChip) leading = ' '
+    }
+    const beforeNode = document.createTextNode(leading + head)
     const afterNode = document.createTextNode(trailing + tail)
     const parent = node.parentNode
     parent.insertBefore(beforeNode, node)

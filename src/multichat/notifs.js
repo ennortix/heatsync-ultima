@@ -126,7 +126,15 @@ const HsNotifs = (() => {
     _renderInto(notif)
     container.appendChild(wrapper)
     l.current.push(notif)
-    try { notif.type.onMount?.(notif.data, () => dismiss(notif.id)) } catch (_) {}
+    // clickToDismiss: any click anywhere on the wrapper dismisses. Inner
+    // action buttons stopPropagation in _renderInto so they still fire
+    // their own onClick before the dismiss bubbles. Without this, toast
+    // pointer-events:none made the wrapper unclickable — see registerType
+    // 'toast' below.
+    if (notif.type.clickToDismiss) {
+      wrapper.addEventListener('click', () => dismiss(notif.id))
+    }
+    try { notif.type.onMount?.(notif.data, () => dismiss(notif.id), wrapper) } catch (_) {}
     if (notif.type.timeout) {
       notif._timer = setTimeout(() => dismiss(notif.id), notif.type.timeout)
     }
@@ -260,14 +268,22 @@ const HsNotifs = (() => {
 
   // === STANDARD TYPES ===
 
-  // Toast — short status message, color-coded by level. ~1.5s default.
+  // Toast — short status message, color-coded by level. Click anywhere on
+  // the toast to dismiss (clickToDismiss → _mount wires the click handler).
+  // 4s default (was 1.5s — too fast to read for errors). Empty/whitespace
+  // text falls back to "[level]" so an error toast can never render as an
+  // empty black-box-with-red-outline (the old bug where any showToast call
+  // with an undefined/missing error code produced an unclickable square).
   registerType('toast', {
     layer: 'toast-stack',
-    timeout: 1500,
+    timeout: 4000,
+    clickToDismiss: true,
     render: ({ data }) => {
+      const level = data.level || 'info'
+      const text = (typeof data.text === 'string' ? data.text : '').trim() || `[${level}]`
       const el = document.createElement('span')
-      el.textContent = data.text || ''
-      el.className = `hs-notif-toast-text hs-notif-toast-${data.level || 'info'}`
+      el.textContent = text
+      el.className = `hs-notif-toast-text hs-notif-toast-${level}`
       return el
     },
   })

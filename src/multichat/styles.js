@@ -867,14 +867,22 @@ function injectStyles() {
       padding: 2px 6px;
       font-size: 14px;
     }
-    /* Toast type */
+    /* Toast type — clickable to dismiss (clickToDismiss in notifs.js wires
+       the handler). min-width prevents the empty/short-text "black square
+       with red outline" rendering — if level=error and text was missing,
+       toast collapsed to ~30px wide; min-width forces a readable strip. */
     .hs-notif-toast {
       background: #000;
       border: 1px solid #888;
       padding: 6px 14px;
       font: bold 12px monospace;
-      pointer-events: none;
+      min-width: 120px;
+      text-align: center;
+      cursor: pointer;
+      pointer-events: auto;
     }
+    .hs-notif-toast:hover { background: #fff; }
+    .hs-notif-toast:hover .hs-notif-toast-text { color: #000 !important; }
     .hs-notif-toast-text { color: #888; }
     .hs-notif-toast-text.hs-notif-toast-success { color: #00d000; }
     .hs-notif-toast-text.hs-notif-toast-error   { color: #ff4040; }

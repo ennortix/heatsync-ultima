@@ -2752,8 +2752,16 @@ const SLASH_ALIASES = {
   whisper: 'w',
   re: 'r',
   reply: 'r',
-  unban: null,        // pass through to platform
-  untimeout: null,    // pass through to platform
+  // /ban /unban /timeout /to /b /untimeout /delete — handled below via GQL,
+  // not passthrough. Twitch deprecated these as IRC chat commands in Feb 2023;
+  // sending them as text now silently no-ops, which is what caused multichat's
+  // pre-fix /unban to do nothing. Aliases map all common shorthands to the
+  // canonical command.
+  b: 'ban',
+  to: 'timeout',
+  untimeout: 'unban',
+  unto: 'unban',
+  del: 'delete',
   lc: 'lclear',
   '?': 'help',
 }
@@ -2852,25 +2860,82 @@ async function handleSlashCommand(text, input) {
     return true
   }
 
+  // ─── Twitch mod actions (deprecated from IRC PRIVMSG in 2023; routed via GQL) ───
+  // currentTab = channel login when on a per-channel tab; on aggregate tabs we
+  // can't pick a single channel, so refuse with a useful toast.
+  const modChannel = (typeof currentTab === 'string' && /^[a-z0-9_]{2,40}$/i.test(currentTab))
+    ? currentTab : null
+
+  if (cmd === 'ban' || cmd === 'timeout' || cmd === 'unban') {
+    if (!modChannel) {
+      showToast(`/${cmd} needs a channel tab (not live/mentions/posts)`, 'error')
+      return true
+    }
+    if (cmd === 'ban') {
+      const m = rest.match(/^@?(\S+)(?:\s+(.+))?$/)
+      if (!m) { showToast('usage: /ban <user> [reason]', 'error'); return true }
+      const [, target, reason] = m
+      const resp = await banTwitchUser(modChannel, target, reason || '')
+      showToast(resp.ok ? `banned ${target}` : `ban failed: ${resp.error || 'unknown'}`, resp.ok ? 'success' : 'error')
+      if (resp.ok) clearInput(input)
+      return true
+    }
+    if (cmd === 'timeout') {
+      const m = rest.match(/^@?(\S+)(?:\s+(\d+))?(?:\s+(.+))?$/)
+      if (!m) { showToast('usage: /timeout <user> [seconds] [reason]', 'error'); return true }
+      const [, target, secStr, reason] = m
+      const sec = secStr ? Math.max(1, parseInt(secStr)) : 600
+      const resp = await timeoutTwitchUser(modChannel, target, sec, reason || '')
+      showToast(resp.ok ? `timed out ${target} ${sec}s` : `timeout failed: ${resp.error || 'unknown'}`, resp.ok ? 'success' : 'error')
+      if (resp.ok) clearInput(input)
+      return true
+    }
+    if (cmd === 'unban') {
+      const target = rest.trim().replace(/^@/, '')
+      if (!target) { showToast('usage: /unban <user>', 'error'); return true }
+      const resp = await unbanTwitchUser(modChannel, target)
+      showToast(resp.ok ? `unbanned ${target}` : `unban failed: ${resp.error || 'unknown'}`, resp.ok ? 'success' : 'error')
+      if (resp.ok) clearInput(input)
+      return true
+    }
+  }
+
+  if (cmd === 'delete') {
+    if (!modChannel) { showToast('/delete needs a channel tab', 'error'); return true }
+    const messageID = rest.trim()
+    if (!messageID) { showToast('usage: /delete <message-id> (right-click a message)', 'error'); return true }
+    const resp = await deleteTwitchMessage(modChannel, messageID)
+    showToast(resp.ok ? 'deleted' : `delete failed: ${resp.error || 'unknown'}`, resp.ok ? 'success' : 'error')
+    if (resp.ok) clearInput(input)
+    return true
+  }
+
   return false
 }
 
 const SLASH_HELP_LINES = [
-  '/op <text>           — post to home',
-  '/w <user> <msg>      — twitch whisper',
-  '/dm <user> <msg>     — heatsync DM',
-  '/r <msg>             — reply to last whisper',
-  '/mute <user>         — local mute (24h)',
-  '/unmute <user>       — local unmute',
-  '/shrug [text]        — append ¯\\_(ツ)_/¯',
-  '/tableflip [text]    — append (╯°□°)╯︵ ┻━┻',
-  '/unflip [text]       — append ┬─┬ノ( ゜-゜ノ)',
-  '/lclear              — clear current tab locally',
-  '/help                — this list',
+  '/op <text>             — post to home',
+  '/w <user> <msg>        — twitch whisper',
+  '/dm <user> <msg>       — heatsync DM',
+  '/r <msg>               — reply to last whisper',
+  '/mute <user>           — local mute (24h)',
+  '/unmute <user>         — local unmute',
+  '/shrug [text]          — append ¯\\_(ツ)_/¯',
+  '/tableflip [text]      — append (╯°□°)╯︵ ┻━┻',
+  '/unflip [text]         — append ┬─┬ノ( ゜-゜ノ)',
+  '/lclear                — clear current tab locally',
+  '/help                  — this list',
   '',
-  'mod commands (/ban /timeout /unban /mod /vip /raid',
-  '/slow /clear /followers /emoteonly /color /me etc.)',
-  'pass through to twitch & kick when you have permission.',
+  'twitch mod (routed via GQL, need a channel tab):',
+  '/ban <user> [reason]   — perma ban',
+  '/timeout <user> [s] [r]— timeout, default 600s',
+  '/unban <user>          — unban or end timeout',
+  '/delete <msg-id>       — delete one message',
+  '',
+  '/me /color and chat pass through to twitch & kick.',
+  'other native commands (/mod /vip /raid /slow /clear /',
+  'followers /emoteonly /announce) are not yet wired —',
+  'use twitch native chat or mod panel.',
 ]
 
 function showSlashHelp() {

@@ -3908,7 +3908,15 @@ const HsNotifs = (() => {
     _renderInto(notif)
     container.appendChild(wrapper)
     l.current.push(notif)
-    try { notif.type.onMount?.(notif.data, () => dismiss(notif.id)) } catch (_) {}
+    // clickToDismiss: any click anywhere on the wrapper dismisses. Inner
+    // action buttons stopPropagation in _renderInto so they still fire
+    // their own onClick before the dismiss bubbles. Without this, toast
+    // pointer-events:none made the wrapper unclickable — see registerType
+    // 'toast' below.
+    if (notif.type.clickToDismiss) {
+      wrapper.addEventListener('click', () => dismiss(notif.id))
+    }
+    try { notif.type.onMount?.(notif.data, () => dismiss(notif.id), wrapper) } catch (_) {}
     if (notif.type.timeout) {
       notif._timer = setTimeout(() => dismiss(notif.id), notif.type.timeout)
     }
@@ -4042,14 +4050,22 @@ const HsNotifs = (() => {
 
   // === STANDARD TYPES ===
 
-  // Toast — short status message, color-coded by level. ~1.5s default.
+  // Toast — short status message, color-coded by level. Click anywhere on
+  // the toast to dismiss (clickToDismiss → _mount wires the click handler).
+  // 4s default (was 1.5s — too fast to read for errors). Empty/whitespace
+  // text falls back to "[level]" so an error toast can never render as an
+  // empty black-box-with-red-outline (the old bug where any showToast call
+  // with an undefined/missing error code produced an unclickable square).
   registerType('toast', {
     layer: 'toast-stack',
-    timeout: 1500,
+    timeout: 4000,
+    clickToDismiss: true,
     render: ({ data }) => {
+      const level = data.level || 'info'
+      const text = (typeof data.text === 'string' ? data.text : '').trim() || `[${level}]`
       const el = document.createElement('span')
-      el.textContent = data.text || ''
-      el.className = `hs-notif-toast-text hs-notif-toast-${data.level || 'info'}`
+      el.textContent = text
+      el.className = `hs-notif-toast-text hs-notif-toast-${level}`
       return el
     },
   })
@@ -5020,14 +5036,22 @@ function injectStyles() {
       padding: 2px 6px;
       font-size: 14px;
     }
-    /* Toast type */
+    /* Toast type — clickable to dismiss (clickToDismiss in notifs.js wires
+       the handler). min-width prevents the empty/short-text "black square
+       with red outline" rendering — if level=error and text was missing,
+       toast collapsed to ~30px wide; min-width forces a readable strip. */
     .hs-notif-toast {
       background: #000;
       border: 1px solid #888;
       padding: 6px 14px;
       font: bold 12px monospace;
-      pointer-events: none;
+      min-width: 120px;
+      text-align: center;
+      cursor: pointer;
+      pointer-events: auto;
     }
+    .hs-notif-toast:hover { background: #fff; }
+    .hs-notif-toast:hover .hs-notif-toast-text { color: #000 !important; }
     .hs-notif-toast-text { color: #888; }
     .hs-notif-toast-text.hs-notif-toast-success { color: #00d000; }
     .hs-notif-toast-text.hs-notif-toast-error   { color: #ff4040; }
@@ -17958,6 +17982,101 @@ async function lookupFollowage(username, channelLogin) {
   }
 }
 
+// ═══ Mod actions (ban/unban/timeout/delete) ═══
+// Twitch deprecated /ban /unban /timeout /clear /delete and most mod chat commands
+// via IRC PRIVMSG in Feb 2023; sending them as text now silently no-ops. We route
+// via the existing apolloMutate → gqlMutation fallback chain (same pattern as
+// predictionMutation), so the user's normal Twitch session integrity covers it.
+// Mutation names (Chat_BanUserFromChatRoom etc.) are the long-standing ones used
+// by Twitch's own web client and reflected in FFZ/Chatterino integrations.
+
+const _twChannelIdCache = new Map() // login(lc) → { id, ts }
+
+async function resolveTwitchChannelId(channelLogin) {
+  const lc = (channelLogin || '').toLowerCase().replace(/^@/, '').replace(/[^a-z0-9_]/g, '')
+  if (!lc) return null
+  const cached = _twChannelIdCache.get(lc)
+  if (cached && Date.now() - cached.ts < 3600000) return cached.id
+  try {
+    const r = await fetch(`https://decapi.me/twitch/id/${encodeURIComponent(lc)}`, { credentials: 'omit' })
+    const body = (await r.text()).trim()
+    if (r.ok && /^\d+$/.test(body)) {
+      _twChannelIdCache.set(lc, { id: body, ts: Date.now() })
+      return body
+    }
+  } catch (_) {}
+  try {
+    const data = await gqlProxy(null, null, { rawQuery: `{ user(login: "${lc}") { id } }` })
+    const id = data?.data?.user?.id || (Array.isArray(data) ? data[0]?.data?.user?.id : null)
+    if (id) {
+      _twChannelIdCache.set(lc, { id, ts: Date.now() })
+      return id
+    }
+  } catch (_) {}
+  return null
+}
+
+async function _modActionMutation(searchTerm, resultField, rawQuery, variables) {
+  const apolloResult = await apolloMutate({ searchTerm, variables, resultField, rawQuery })
+  if (apolloResult.ok) return { ok: true }
+  try {
+    const data = await gqlMutation(rawQuery, variables)
+    if (data?.errors?.length) return { error: data.errors[0].message || `${resultField} failed` }
+    const err = data?.data?.[resultField]?.error
+    if (err) return { error: err.code || `${resultField} failed` }
+    return { ok: true }
+  } catch (e) {
+    return { error: apolloResult.error || e.message }
+  }
+}
+
+async function banTwitchUser(channelLogin, targetLogin, reason) {
+  const channelID = await resolveTwitchChannelId(channelLogin)
+  if (!channelID) return { error: 'channel not found' }
+  const bannedUserLogin = (targetLogin || '').toLowerCase().replace(/^@/, '')
+  if (!bannedUserLogin) return { error: 'no target user' }
+  return _modActionMutation(
+    'Chat_BanUserFromChatRoom', 'banUserFromChatRoom',
+    'mutation($input: BanUserFromChatRoomInput!) { banUserFromChatRoom(input: $input) { error { code } } }',
+    { input: { channelID, bannedUserLogin, expiresIn: null, reason: reason || '' } }
+  )
+}
+
+async function timeoutTwitchUser(channelLogin, targetLogin, durationSec, reason) {
+  const channelID = await resolveTwitchChannelId(channelLogin)
+  if (!channelID) return { error: 'channel not found' }
+  const bannedUserLogin = (targetLogin || '').toLowerCase().replace(/^@/, '')
+  if (!bannedUserLogin) return { error: 'no target user' }
+  return _modActionMutation(
+    'Chat_BanUserFromChatRoom', 'banUserFromChatRoom',
+    'mutation($input: BanUserFromChatRoomInput!) { banUserFromChatRoom(input: $input) { error { code } } }',
+    { input: { channelID, bannedUserLogin, expiresIn: Math.max(1, durationSec | 0), reason: reason || '' } }
+  )
+}
+
+async function unbanTwitchUser(channelLogin, targetLogin) {
+  const channelID = await resolveTwitchChannelId(channelLogin)
+  if (!channelID) return { error: 'channel not found' }
+  const bannedUserLogin = (targetLogin || '').toLowerCase().replace(/^@/, '')
+  if (!bannedUserLogin) return { error: 'no target user' }
+  return _modActionMutation(
+    'Chat_UnbanUserFromChatRoom', 'unbanUserFromChatRoom',
+    'mutation($input: UnbanUserFromChatRoomInput!) { unbanUserFromChatRoom(input: $input) { error { code } } }',
+    { input: { channelID, bannedUserLogin } }
+  )
+}
+
+async function deleteTwitchMessage(channelLogin, messageID) {
+  const channelID = await resolveTwitchChannelId(channelLogin)
+  if (!channelID) return { error: 'channel not found' }
+  if (!messageID) return { error: 'no message id' }
+  return _modActionMutation(
+    'Chat_DeleteChatMessage', 'deleteChatMessage',
+    'mutation($input: DeleteChatMessageInput!) { deleteChatMessage(input: $input) { error { code } } }',
+    { input: { channelID, messageID } }
+  )
+}
+
 
 // --- multichat/feed-embed.js ---
 // Feed media + embed rendering for the extension home tab.
@@ -24762,8 +24881,16 @@ const SLASH_ALIASES = {
   whisper: 'w',
   re: 'r',
   reply: 'r',
-  unban: null,        // pass through to platform
-  untimeout: null,    // pass through to platform
+  // /ban /unban /timeout /to /b /untimeout /delete — handled below via GQL,
+  // not passthrough. Twitch deprecated these as IRC chat commands in Feb 2023;
+  // sending them as text now silently no-ops, which is what caused multichat's
+  // pre-fix /unban to do nothing. Aliases map all common shorthands to the
+  // canonical command.
+  b: 'ban',
+  to: 'timeout',
+  untimeout: 'unban',
+  unto: 'unban',
+  del: 'delete',
   lc: 'lclear',
   '?': 'help',
 }
@@ -24862,25 +24989,82 @@ async function handleSlashCommand(text, input) {
     return true
   }
 
+  // ─── Twitch mod actions (deprecated from IRC PRIVMSG in 2023; routed via GQL) ───
+  // currentTab = channel login when on a per-channel tab; on aggregate tabs we
+  // can't pick a single channel, so refuse with a useful toast.
+  const modChannel = (typeof currentTab === 'string' && /^[a-z0-9_]{2,40}$/i.test(currentTab))
+    ? currentTab : null
+
+  if (cmd === 'ban' || cmd === 'timeout' || cmd === 'unban') {
+    if (!modChannel) {
+      showToast(`/${cmd} needs a channel tab (not live/mentions/posts)`, 'error')
+      return true
+    }
+    if (cmd === 'ban') {
+      const m = rest.match(/^@?(\S+)(?:\s+(.+))?$/)
+      if (!m) { showToast('usage: /ban <user> [reason]', 'error'); return true }
+      const [, target, reason] = m
+      const resp = await banTwitchUser(modChannel, target, reason || '')
+      showToast(resp.ok ? `banned ${target}` : `ban failed: ${resp.error || 'unknown'}`, resp.ok ? 'success' : 'error')
+      if (resp.ok) clearInput(input)
+      return true
+    }
+    if (cmd === 'timeout') {
+      const m = rest.match(/^@?(\S+)(?:\s+(\d+))?(?:\s+(.+))?$/)
+      if (!m) { showToast('usage: /timeout <user> [seconds] [reason]', 'error'); return true }
+      const [, target, secStr, reason] = m
+      const sec = secStr ? Math.max(1, parseInt(secStr)) : 600
+      const resp = await timeoutTwitchUser(modChannel, target, sec, reason || '')
+      showToast(resp.ok ? `timed out ${target} ${sec}s` : `timeout failed: ${resp.error || 'unknown'}`, resp.ok ? 'success' : 'error')
+      if (resp.ok) clearInput(input)
+      return true
+    }
+    if (cmd === 'unban') {
+      const target = rest.trim().replace(/^@/, '')
+      if (!target) { showToast('usage: /unban <user>', 'error'); return true }
+      const resp = await unbanTwitchUser(modChannel, target)
+      showToast(resp.ok ? `unbanned ${target}` : `unban failed: ${resp.error || 'unknown'}`, resp.ok ? 'success' : 'error')
+      if (resp.ok) clearInput(input)
+      return true
+    }
+  }
+
+  if (cmd === 'delete') {
+    if (!modChannel) { showToast('/delete needs a channel tab', 'error'); return true }
+    const messageID = rest.trim()
+    if (!messageID) { showToast('usage: /delete <message-id> (right-click a message)', 'error'); return true }
+    const resp = await deleteTwitchMessage(modChannel, messageID)
+    showToast(resp.ok ? 'deleted' : `delete failed: ${resp.error || 'unknown'}`, resp.ok ? 'success' : 'error')
+    if (resp.ok) clearInput(input)
+    return true
+  }
+
   return false
 }
 
 const SLASH_HELP_LINES = [
-  '/op <text>           — post to home',
-  '/w <user> <msg>      — twitch whisper',
-  '/dm <user> <msg>     — heatsync DM',
-  '/r <msg>             — reply to last whisper',
-  '/mute <user>         — local mute (24h)',
-  '/unmute <user>       — local unmute',
-  '/shrug [text]        — append ¯\\_(ツ)_/¯',
-  '/tableflip [text]    — append (╯°□°)╯︵ ┻━┻',
-  '/unflip [text]       — append ┬─┬ノ( ゜-゜ノ)',
-  '/lclear              — clear current tab locally',
-  '/help                — this list',
+  '/op <text>             — post to home',
+  '/w <user> <msg>        — twitch whisper',
+  '/dm <user> <msg>       — heatsync DM',
+  '/r <msg>               — reply to last whisper',
+  '/mute <user>           — local mute (24h)',
+  '/unmute <user>         — local unmute',
+  '/shrug [text]          — append ¯\\_(ツ)_/¯',
+  '/tableflip [text]      — append (╯°□°)╯︵ ┻━┻',
+  '/unflip [text]         — append ┬─┬ノ( ゜-゜ノ)',
+  '/lclear                — clear current tab locally',
+  '/help                  — this list',
   '',
-  'mod commands (/ban /timeout /unban /mod /vip /raid',
-  '/slow /clear /followers /emoteonly /color /me etc.)',
-  'pass through to twitch & kick when you have permission.',
+  'twitch mod (routed via GQL, need a channel tab):',
+  '/ban <user> [reason]   — perma ban',
+  '/timeout <user> [s] [r]— timeout, default 600s',
+  '/unban <user>          — unban or end timeout',
+  '/delete <msg-id>       — delete one message',
+  '',
+  '/me /color and chat pass through to twitch & kick.',
+  'other native commands (/mod /vip /raid /slow /clear /',
+  'followers /emoteonly /announce) are not yet wired —',
+  'use twitch native chat or mod panel.',
 ]
 
 function showSlashHelp() {

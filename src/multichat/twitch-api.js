@@ -2939,3 +2939,98 @@ async function lookupFollowage(username, channelLogin) {
     return null
   }
 }
+
+// ═══ Mod actions (ban/unban/timeout/delete) ═══
+// Twitch deprecated /ban /unban /timeout /clear /delete and most mod chat commands
+// via IRC PRIVMSG in Feb 2023; sending them as text now silently no-ops. We route
+// via the existing apolloMutate → gqlMutation fallback chain (same pattern as
+// predictionMutation), so the user's normal Twitch session integrity covers it.
+// Mutation names (Chat_BanUserFromChatRoom etc.) are the long-standing ones used
+// by Twitch's own web client and reflected in FFZ/Chatterino integrations.
+
+const _twChannelIdCache = new Map() // login(lc) → { id, ts }
+
+async function resolveTwitchChannelId(channelLogin) {
+  const lc = (channelLogin || '').toLowerCase().replace(/^@/, '').replace(/[^a-z0-9_]/g, '')
+  if (!lc) return null
+  const cached = _twChannelIdCache.get(lc)
+  if (cached && Date.now() - cached.ts < 3600000) return cached.id
+  try {
+    const r = await fetch(`https://decapi.me/twitch/id/${encodeURIComponent(lc)}`, { credentials: 'omit' })
+    const body = (await r.text()).trim()
+    if (r.ok && /^\d+$/.test(body)) {
+      _twChannelIdCache.set(lc, { id: body, ts: Date.now() })
+      return body
+    }
+  } catch (_) {}
+  try {
+    const data = await gqlProxy(null, null, { rawQuery: `{ user(login: "${lc}") { id } }` })
+    const id = data?.data?.user?.id || (Array.isArray(data) ? data[0]?.data?.user?.id : null)
+    if (id) {
+      _twChannelIdCache.set(lc, { id, ts: Date.now() })
+      return id
+    }
+  } catch (_) {}
+  return null
+}
+
+async function _modActionMutation(searchTerm, resultField, rawQuery, variables) {
+  const apolloResult = await apolloMutate({ searchTerm, variables, resultField, rawQuery })
+  if (apolloResult.ok) return { ok: true }
+  try {
+    const data = await gqlMutation(rawQuery, variables)
+    if (data?.errors?.length) return { error: data.errors[0].message || `${resultField} failed` }
+    const err = data?.data?.[resultField]?.error
+    if (err) return { error: err.code || `${resultField} failed` }
+    return { ok: true }
+  } catch (e) {
+    return { error: apolloResult.error || e.message }
+  }
+}
+
+async function banTwitchUser(channelLogin, targetLogin, reason) {
+  const channelID = await resolveTwitchChannelId(channelLogin)
+  if (!channelID) return { error: 'channel not found' }
+  const bannedUserLogin = (targetLogin || '').toLowerCase().replace(/^@/, '')
+  if (!bannedUserLogin) return { error: 'no target user' }
+  return _modActionMutation(
+    'Chat_BanUserFromChatRoom', 'banUserFromChatRoom',
+    'mutation($input: BanUserFromChatRoomInput!) { banUserFromChatRoom(input: $input) { error { code } } }',
+    { input: { channelID, bannedUserLogin, expiresIn: null, reason: reason || '' } }
+  )
+}
+
+async function timeoutTwitchUser(channelLogin, targetLogin, durationSec, reason) {
+  const channelID = await resolveTwitchChannelId(channelLogin)
+  if (!channelID) return { error: 'channel not found' }
+  const bannedUserLogin = (targetLogin || '').toLowerCase().replace(/^@/, '')
+  if (!bannedUserLogin) return { error: 'no target user' }
+  return _modActionMutation(
+    'Chat_BanUserFromChatRoom', 'banUserFromChatRoom',
+    'mutation($input: BanUserFromChatRoomInput!) { banUserFromChatRoom(input: $input) { error { code } } }',
+    { input: { channelID, bannedUserLogin, expiresIn: Math.max(1, durationSec | 0), reason: reason || '' } }
+  )
+}
+
+async function unbanTwitchUser(channelLogin, targetLogin) {
+  const channelID = await resolveTwitchChannelId(channelLogin)
+  if (!channelID) return { error: 'channel not found' }
+  const bannedUserLogin = (targetLogin || '').toLowerCase().replace(/^@/, '')
+  if (!bannedUserLogin) return { error: 'no target user' }
+  return _modActionMutation(
+    'Chat_UnbanUserFromChatRoom', 'unbanUserFromChatRoom',
+    'mutation($input: UnbanUserFromChatRoomInput!) { unbanUserFromChatRoom(input: $input) { error { code } } }',
+    { input: { channelID, bannedUserLogin } }
+  )
+}
+
+async function deleteTwitchMessage(channelLogin, messageID) {
+  const channelID = await resolveTwitchChannelId(channelLogin)
+  if (!channelID) return { error: 'channel not found' }
+  if (!messageID) return { error: 'no message id' }
+  return _modActionMutation(
+    'Chat_DeleteChatMessage', 'deleteChatMessage',
+    'mutation($input: DeleteChatMessageInput!) { deleteChatMessage(input: $input) { error { code } } }',
+    { input: { channelID, messageID } }
+  )
+}

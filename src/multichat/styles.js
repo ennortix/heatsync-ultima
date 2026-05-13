@@ -1635,10 +1635,17 @@ function injectStyles() {
     .hs-mc-msg.mention {
       background: #800000;
     }
-    .hs-mc-msg.mention .hs-mc-reply-ctx,
-    .hs-mc-msg.mention .hs-mc-reply-user {
-      color: #fff;
-      border-left-color: #fff;
+    /* Tinted-bg scope: maroon #800000 drowns out #808080 timestamps and
+       channel tags, makes saturated user colors muddy, and breaks the
+       platform-badge palette. Force every descendant to white. Mirrors the
+       olive reply-stack treatment at styles.js:1329 — same "tinted bg →
+       white * !important" rule. Apply on the row itself too so direct
+       text nodes (channel-tag prefix, ◆ glyph) inherit. */
+    .hs-mc-msg.mention,
+    .hs-mc-msg.mention * {
+      color: #fff !important;
+      -webkit-text-fill-color: #fff !important;
+      border-left-color: #fff !important;
     }
     .hs-mc-msg.hs-first-msg {
       box-shadow: inset 2px 0 0 #ff8700;

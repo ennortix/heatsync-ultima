@@ -39,19 +39,44 @@
   function _fmtErr(e) {
     if (e == null) return { msg: '' }
     if (e instanceof Error || (typeof e === 'object' && e && 'stack' in e)) {
-      return {
-        msg: _truncate(e.message || String(e), MSG_CAP),
-        stack: _truncate(String(e.stack || ''), STACK_CAP),
+      let msg = ''
+      let stack = ''
+      try { msg = String(e.message || '') } catch (_) {}
+      try { stack = String(e.stack || '') } catch (_) {}
+      if (!msg) {
+        try { msg = String(e) } catch (_) { msg = '[unreadable]' }
+        if (msg === '[object Object]') msg = ''
       }
+      return { msg: _truncate(msg, MSG_CAP), stack: _truncate(stack, STACK_CAP) }
     }
     if (typeof e === 'object') {
-      try { return { msg: _truncate(JSON.stringify(e), MSG_CAP) } } catch { return { msg: '[unserializable]' } }
+      try {
+        const s = JSON.stringify(e)
+        if (s && s !== '{}' && s !== '[]') return { msg: _truncate(s, MSG_CAP) }
+      } catch (_) {}
+      try { return { msg: _truncate(String(e), MSG_CAP) } } catch { return { msg: '[unserializable]' } }
     }
     return { msg: _truncate(String(e), MSG_CAP) }
   }
 
+  // Synthesize a stack at the call-site so console-wrapped + reasonless rejection
+  // entries still point somewhere useful. Two leading frames trimmed: this fn +
+  // the caller wrapper.
+  function _synthStack(skip) {
+    try {
+      const s = String(new Error().stack || '')
+      const lines = s.split('\n')
+      return lines.slice((skip || 0) + 1).join('\n')
+    } catch (_) { return '' }
+  }
+
   function _capture(rec) {
     if (_reentry) return
+    // Drop entries with no useful payload — empty msg AND empty stack.
+    // Keeps "Script error." cross-origin sanitization noise out of the buffer
+    // and stops reasonless rejections from displacing real errors.
+    if (!rec.msg && !rec.stack) return
+    if (rec.msg === 'Script error.' && !rec.stack) return
     _reentry = true
     try {
       _pending.push(rec)
@@ -99,10 +124,12 @@
   function _onRejection(e) {
     try {
       const f = _fmtErr(e.reason)
+      const stack = f.stack || _synthStack(2)
       _capture({
         ts: Date.now(), type: 'rejection', plat: _plat, ver: _ver,
         url: _truncate(location.href, 200),
-        msg: f.msg, stack: f.stack,
+        msg: f.msg || '(promise rejection with no reason)',
+        stack,
       })
     } catch (_) {}
   }
@@ -118,15 +145,25 @@
     if (origErr && !origErr.__hsWrapped) {
       const wrapped = function(...args) {
         try {
-          const msg = args.map(a => {
-            if (a instanceof Error) return (a.message || '') + (a.stack ? '\n' + a.stack : '')
+          let derivedStack = ''
+          const parts = args.map(a => {
+            if (a instanceof Error || (typeof a === 'object' && a && 'stack' in a)) {
+              if (!derivedStack && a.stack) { try { derivedStack = String(a.stack) } catch (_) {} }
+              try { return String(a.message || a) } catch (_) { return '[unreadable]' }
+            }
             if (typeof a === 'string') return a
-            try { return JSON.stringify(a) } catch { return String(a) }
-          }).join(' ')
+            try {
+              const s = JSON.stringify(a)
+              return s && s !== '{}' ? s : String(a)
+            } catch { return String(a) }
+          })
+          const msg = parts.filter(p => p && p !== '[object Object]').join(' ')
+          if (!derivedStack) derivedStack = _synthStack(2)
           _capture({
             ts: Date.now(), type: 'console', plat: _plat, ver: _ver,
             url: _truncate(location.href, 200),
             msg: _truncate(msg, MSG_CAP),
+            stack: _truncate(derivedStack, STACK_CAP),
           })
         } catch (_) {}
         return origErr.apply(this, args)

@@ -22,6 +22,12 @@ const isChrome = typeof chrome !== 'undefined' && !isFirefox
 const rawApi = isFirefox ? browser : (typeof chrome !== 'undefined' ? chrome : null)
 
 let _ctxInvalidatedLogged = false
+let _storageMissingLogged = false
+function _warnStorageMissing() {
+  if (_storageMissingLogged) return
+  _storageMissingLogged = true
+  console.warn('[heatsync] Storage API not available (extension context likely invalidated — page reload needed)')
+}
 
 /**
  * Promisify Chrome callback-based APIs
@@ -50,7 +56,7 @@ const storage = {
   local: {
     get: async (keys) => {
       if (!rawApi?.storage?.local) {
-        console.warn('[heatsync] Storage API not available')
+        _warnStorageMissing()
         return {}
       }
       if (isFirefox) {
@@ -60,7 +66,7 @@ const storage = {
     },
     set: async (items) => {
       if (!rawApi?.storage?.local) {
-        console.warn('[heatsync] Storage API not available')
+        _warnStorageMissing()
         return
       }
       if (isFirefox) {

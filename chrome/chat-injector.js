@@ -240,6 +240,14 @@ async function initChatInjector() {
 
     log(' ✅ Initialized successfully');
   } catch (error) {
+    // "Chat container not found" is expected on /directory, /settings, /inventory,
+    // /wallet, /videos, /search etc. — pages outside a channel context. Log
+    // quietly so the error buffer doesn't flood with non-actionable noise.
+    const msg = String(error?.message || error || '')
+    if (msg.startsWith('Chat container not found')) {
+      log(' chat-injector: no chat on this page, skipping');
+      return
+    }
     console.error('[heatsync] chat-injector init failed:', error);
   }
 }

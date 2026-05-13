@@ -1094,15 +1094,15 @@ function handleInputKeydown(e) {
         else if (offset === 1 &&
                  (node.textContent[0] === ' ' || node.textContent[0] === ' ') &&
                  isInputEmoteUnit(node.previousSibling)) {
+          // Consume the trailing nbsp first; next backspace pops the unit.
+          // Don't unwrap chips — that destroyed WYSIWYG state on every
+          // backspace ("turns to text" complaint).
           e.preventDefault()
           node.textContent = node.textContent.slice(1)
           const r = document.createRange()
           r.setStart(node, 0); r.collapse(true)
           sel.removeAllRanges(); sel.addRange(r)
           pendingMessage = getInputText()
-          // The chips on either side of this consumed-space may now be
-          // visually stuck — collapse them back to source text.
-          unwrapStuckChips(input, true)
           return
         }
       } else if (node.nodeType === Node.ELEMENT_NODE && offset > 0) {
@@ -1111,37 +1111,9 @@ function handleInputKeydown(e) {
         if (isInputEmoteUnit(prev)) target = prev
       }
       if (target) {
-        // If `target` is the second chip in a stuck pair (only whitespace
-        // separating it from a previous chip), unwrap both back to source
-        // text instead of silently deleting target — the user's intent
-        // was to merge the visually-adjacent chips, not lose them.
-        let prevChip = target.previousSibling
-        const between = []
-        while (prevChip && prevChip.nodeType === Node.TEXT_NODE) {
-          if (prevChip.textContent.length > 0 && !/^\s+$/.test(prevChip.textContent)) {
-            prevChip = null; break
-          }
-          between.unshift(prevChip)
-          prevChip = prevChip.previousSibling
-        }
-        if (isInlineChip(prevChip)) {
-          const aText = chipToText(prevChip)
-          const bText = chipToText(target)
-          if (aText != null && bText != null) {
-            e.preventDefault()
-            for (const m of between) m.remove()
-            target.remove()
-            const merged = aText + bText
-            const textNode = document.createTextNode(merged)
-            prevChip.parentNode.replaceChild(textNode, prevChip)
-            const r2 = document.createRange()
-            r2.setStart(textNode, aText.length); r2.collapse(true)
-            sel.removeAllRanges(); sel.addRange(r2)
-            pendingMessage = getInputText()
-            updateCharCount()
-            return
-          }
-        }
+        // Just delete the one chip — never auto-merge adjacent chips back
+        // to text. The "merge intent" path was destroying valid WYSIWYG
+        // state on every backspace.
         e.preventDefault()
         target.remove()
         pendingMessage = getInputText()
@@ -1365,12 +1337,11 @@ function handleInputChange(e) {
     }
   }
 
-  // Two chips with no real content between them visually merge — unwrap both
-  // back to source text so the user can see the missing space and fix it.
-  // On deletion events, also collapse whitespace-only gaps so a single
-  // backspace handles the 2-char nbsp+space that Tab insertion leaves.
-  const isDeletion = typeof e?.inputType === 'string' && e.inputType.startsWith('delete')
-  if (inputEl) unwrapStuckChips(inputEl, isDeletion)
+  // Two chips with LITERALLY no content between them are unrecoverable
+  // (wire payload reads as `KEKWPogChamp`) — unwrap as a paste/bug safety
+  // net only. Never collapse on whitespace-between: that was eating WYSIWYG
+  // state on every backspace ("turns to text").
+  if (inputEl) unwrapStuckChips(inputEl, false)
 
   // Save pending message (persists across tab switches)
   pendingMessage = getInputText();

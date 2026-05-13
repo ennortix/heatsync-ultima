@@ -22704,6 +22704,14 @@ function getInputText() {
     // Modifiers stored in dataset.hsWords (canonical, set by hsModApplyToImg)
     // appended after the emote so recipients see "Kappa w! h!" not "Kappa".
     let text = '';
+    // Adjacency-safe serialization: chips (emote img / stack / emoji span /
+    // mention) must stay whitespace-bounded on the wire — `parseEmotes` and
+    // peer renderers tokenize on /\s+/, so two adjacent chips that serialize
+    // as `KEKWPogChamp` resolve to nothing.
+    let _lastWasChip = false
+    const sepBefore = () => {
+      if (text && !/\s$/.test(text)) text += ' '
+    }
     const appendImg = (img) => {
       text += img.dataset.emoteName || img.alt || ''
       const modWords = img.dataset.hsWords || img.dataset.hsModWords  // back-compat
@@ -22713,21 +22721,34 @@ function getInputText() {
     }
     const extractNode = (node) => {
       if (node.nodeType === Node.TEXT_NODE) {
-        text += node.textContent
+        const t = node.textContent || ''
+        if (_lastWasChip && t && !/^\s/.test(t) && text && !/\s$/.test(text)) text += ' '
+        text += t
+        if (t.length > 0) _lastWasChip = false
       } else if (node.nodeType === Node.ELEMENT_NODE && node.tagName === 'IMG') {
+        sepBefore()
         appendImg(node)
+        _lastWasChip = true
       } else if (node.nodeType === Node.ELEMENT_NODE && node.classList?.contains('hs-input-stack')) {
+        sepBefore()
         for (const child of node.children) {
           if (child.tagName === 'IMG') {
             if (text && !text.endsWith(' ')) text += ' '
             appendImg(child)
           }
         }
+        _lastWasChip = true
       } else if (node.nodeType === Node.ELEMENT_NODE && node.classList?.contains('hs-mc-user')) {
+        sepBefore()
         // Bare-username Tab completion → serialize as @user so recipients
         // render it as a colored mention chip (processEmotes only colors @-prefixed).
         const u = node.dataset.username || node.textContent || ''
         text += (node.dataset.completionType === 'user-bare') ? ('@' + u) : u
+        _lastWasChip = true
+      } else if (node.nodeType === Node.ELEMENT_NODE && node.classList?.contains('hs-mc-emoji')) {
+        sepBefore()
+        text += node.textContent || ''
+        _lastWasChip = true
       } else if (node.nodeType === Node.ELEMENT_NODE) {
         text += node.textContent || ''
       }
@@ -23833,16 +23854,20 @@ function handleInputChange(e) {
           span.textContent = emoji
           span.title = ':' + match[1] + ':'
           span.setAttribute('data-emoji-name', match[1])
+          const tail = text.slice(cursorOffset)
+          // Trailing space prevents `:fire:KEKW` from fusing into one
+          // unparseable token on the wire — KEKW must stay whitespace-bounded.
+          const trailing = !/^\s/.test(tail) ? ' ' : ''
           const beforeNode = document.createTextNode(text.slice(0, start))
-          const afterNode = document.createTextNode(text.slice(cursorOffset))
+          const afterNode = document.createTextNode(trailing + tail)
           const parent = node.parentNode
           parent.insertBefore(beforeNode, node)
           parent.insertBefore(span, node)
           parent.insertBefore(afterNode, node)
           parent.removeChild(node)
-          // Place cursor after emoji
+          // Place cursor after emoji + space
           const newRange = document.createRange()
-          newRange.setStart(afterNode, 0)
+          newRange.setStart(afterNode, Math.min(trailing.length, afterNode.textContent.length))
           newRange.collapse(true)
           sel.removeAllRanges()
           sel.addRange(newRange)
@@ -24971,15 +24996,19 @@ function insertEmojiFromDropdown(entry) {
     span.textContent = entry.emoji
     span.title = ':' + entry.name + ':'
     span.setAttribute('data-emoji-name', entry.name)
+    const tail = text.slice(cursor)
+    // Trailing space keeps emote-name boundaries intact downstream — without
+    // it `:fire:KEKW` serializes as `🔥KEKW` and KEKW never renders.
+    const trailing = !/^\s/.test(tail) ? ' ' : ''
     const beforeNode = document.createTextNode(text.slice(0, colonIdx))
-    const afterNode = document.createTextNode(text.slice(cursor))
+    const afterNode = document.createTextNode(trailing + tail)
     const parent = node.parentNode
     parent.insertBefore(beforeNode, node)
     parent.insertBefore(span, node)
     parent.insertBefore(afterNode, node)
     parent.removeChild(node)
     const newRange = document.createRange()
-    newRange.setStart(afterNode, 0)
+    newRange.setStart(afterNode, Math.min(trailing.length, afterNode.textContent.length))
     newRange.collapse(true)
     sel.removeAllRanges()
     sel.addRange(newRange)
@@ -24989,9 +25018,10 @@ function insertEmojiFromDropdown(entry) {
     const before = text.slice(0, cursor)
     const colonIdx = before.lastIndexOf(':')
     if (colonIdx === -1) { hideEmojiDropdown(); return }
-
-    input.value = text.slice(0, colonIdx) + entry.emoji + text.slice(cursor)
-    const newPos = colonIdx + entry.emoji.length
+    const tail = text.slice(cursor)
+    const space = !/^\s/.test(tail) ? ' ' : ''
+    input.value = text.slice(0, colonIdx) + entry.emoji + space + tail
+    const newPos = colonIdx + entry.emoji.length + space.length
     input.selectionStart = input.selectionEnd = newPos
   }
 

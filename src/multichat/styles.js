@@ -376,27 +376,38 @@ function injectStyles() {
     .hs-mc-multi-dismiss:hover {
       color: #fff;
     }
-    /* Inline stream event notifications */
+    /* Inline stream event notifications. Single --evt custom prop per type drives
+       left-stripe color, tinted-near-black bg, and text color. Replaces the old
+       global rgba(128,128,0,0.25) olive wash which (a) composited muddy against
+       zebra-striped chat rows and (b) clashed with per-type text colors (purple
+       raid on yellow bg, green sub on yellow bg, etc.). 7% color-mix keeps bg
+       visually "near-black with a hue suggestion" so saturated event text reads
+       at full contrast while the 3px stripe carries type identification. */
     .hs-mc-stream-event {
-      padding: 2px 4px;
+      --evt: #ffff00;
+      padding: 2px 4px 2px 8px;
       font-size: 13px;
       line-height: 1.4;
       font-style: italic;
-      background: rgba(128, 128, 0, 0.25);
+      border-left: 3px solid var(--evt);
       border-bottom: 1px solid #000;
-      color: #ffff00;
+      background: color-mix(in srgb, var(--evt) 7%, #000);
+      color: var(--evt);
     }
     .hs-mc-stream-event .hs-mc-user { text-decoration: none; font-weight: bold; }
     .hs-mc-stream-event .hs-mc-user:hover { text-decoration: underline; }
     .hs-mc-stream-event .hs-evt-game { color: #fff; font-style: normal; }
-    .hs-mc-stream-event.event-online { color: #f44; }
+    .hs-mc-stream-event.event-update  { --evt: #ffff00; }
+    .hs-mc-stream-event.event-online  { --evt: #ff4444; }
     .hs-mc-stream-event.event-online .hs-evt-game { color: #fff; }
-    .hs-mc-stream-event.event-offline { color: #808080; opacity: 1; }
-    .hs-mc-stream-event.event-raid { color: #9146ff; }
-    .hs-mc-stream-event.event-hype { color: #ff8700; }
-    .hs-mc-stream-event.event-sub { color: #00ff7f; }
-    .hs-mc-stream-event.event-redeem { color: #00bfff; }
-    .hs-mc-stream-event.event-emote { color: #29d391; }
+    .hs-mc-stream-event.event-offline { --evt: #888888; }
+    .hs-mc-stream-event.event-raid    { --evt: #9146ff; }
+    .hs-mc-stream-event.event-hype    { --evt: #ff8700; }
+    .hs-mc-stream-event.event-sub     { --evt: #00ff7f; }
+    .hs-mc-stream-event.event-redeem  { --evt: #00bfff; }
+    .hs-mc-stream-event.event-emote   { --evt: #29d391; }
+    .hs-mc-stream-event.event-pred    { --evt: #ffaa00; }
+    .hs-mc-stream-event.event-follow  { opacity: 0.8; }
     /* Inline feed posts in chat timeline */
     .hs-mc-feed-inline {
       padding: 2px 8px;

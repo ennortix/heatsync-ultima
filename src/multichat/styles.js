@@ -1647,6 +1647,15 @@ function injectStyles() {
       -webkit-text-fill-color: #fff !important;
       border-left-color: #fff !important;
     }
+    /* Channel tag override — black makes it read as skip-me metadata
+       against the maroon, same pattern as the reply-stack's black-ctx-chip
+       on olive. Higher specificity (3 classes) than the white * rule
+       (2 classes + 1 element) so this wins without !important conflict. */
+    .hs-mc-msg.mention .hs-mc-channel,
+    .hs-mc-msg.mention .hs-mc-channel * {
+      color: #000 !important;
+      -webkit-text-fill-color: #000 !important;
+    }
     .hs-mc-msg.hs-first-msg {
       box-shadow: inset 2px 0 0 #ff8700;
     }

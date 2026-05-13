@@ -2974,7 +2974,18 @@ async function resolveTwitchChannelId(channelLogin) {
   return null
 }
 
+// Server kill-switch — refuses every mod mutation when the 'mutations' feature
+// is flagged. Used when a regression in our ban/timeout pipeline is shipping
+// false-positive actions; flip the server flag, no extension update needed.
+function _isMutationsKilled() {
+  try {
+    const h = (typeof window !== 'undefined' && window.__hsHealth) || null
+    return !!(h && (h.kill || (Array.isArray(h.disabled) && h.disabled.includes('mutations'))))
+  } catch { return false }
+}
+
 async function _modActionMutation(searchTerm, resultField, rawQuery, variables) {
+  if (_isMutationsKilled()) return { error: 'mod actions disabled by server' }
   const apolloResult = await apolloMutate({ searchTerm, variables, resultField, rawQuery })
   if (apolloResult.ok) return { ok: true }
   try {

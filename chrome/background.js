@@ -175,6 +175,9 @@ ensureAlarm('hs-ws-watchdog', { periodInMinutes: 0.5 });
 // is evicted mid-disconnect. This alarm wakes the SW every 2 min to resurrect
 // the 7TV WS if there are emote sets that should be subscribed.
 ensureAlarm('hs-7tv-watchdog', { periodInMinutes: 2 });
+// Server kill-switch poll — recovers from a broken release without forcing a
+// CWS update push. delayInMinutes jitter spreads 30k clients' first hit.
+ensureAlarm('hs-health-poll', { delayInMinutes: 0.25 + Math.random() * 0.5, periodInMinutes: 5 });
 browser.alarms?.onAlarm?.addListener((alarm) => {
   if (alarm.name === 'keepalive') {
     // Just existing is enough to keep the worker alive
@@ -212,6 +215,8 @@ browser.alarms?.onAlarm?.addListener((alarm) => {
       }
       try { socket.send(JSON.stringify({ type: 'presence:heartbeat' })) } catch {}
     } catch (e) { log('hs-ws-watchdog error:', e?.message) }
+  } else if (alarm.name === 'hs-health-poll') {
+    fetchHealth().catch(() => {})
   } else if (alarm.name === 'hs-7tv-watchdog') {
     // Resurrect the 7TV WS if it died and the in-flight setTimeout backoff
     // was lost to SW eviction. No-op if the WS is already healthy.
@@ -232,6 +237,53 @@ browser.alarms?.onAlarm?.addListener((alarm) => {
 
 // Link preview via heatsync.org server proxy (avoids CORS)
 const LINK_PREVIEW_API = 'https://heatsync.org/api/link-preview'
+
+// ── Server kill-switch / version-floor ──────────────────────────────────────
+// One endpoint to recover from a broken release without forcing a CWS update
+// push. Response shape is frozen at v=1; older clients ignore unknown keys,
+// newer servers must keep returning the v1 shape. Fails OPEN — any error
+// or schema mismatch leaves the extension fully active. Last-known state is
+// cached in storage so SW restart inherits it.
+//
+//   { v:1, ext_min, ext_hard_min, kill, disabled[], msg }
+//
+//   kill         — true → every content surface bails on init
+//   ext_min      — current_version < this → soft "update available" notif
+//   ext_hard_min — current_version < this → hard bail (emergency only)
+//   disabled[]   — feature names: 'multichat' | 'mutations' | 'cosmetics' | 'feed' | 'whispers'
+//   msg          — optional banner text shown next to update prompt
+const HEALTH_URL = 'https://heatsync.org/api/extension/health'
+const HEALTH_DEFAULT = Object.freeze({
+  v: 1, ext_min: '0.0.0', ext_hard_min: null,
+  kill: false, disabled: [], msg: null
+})
+async function fetchHealth() {
+  try {
+    const resp = await fetchWithTimeout(HEALTH_URL, { cache: 'no-store' }, 8000)
+    if (!resp || !resp.ok) return
+    const j = await resp.json().catch(() => null)
+    if (!j || typeof j !== 'object' || j.v !== 1) return
+    const sane = {
+      v: 1,
+      ext_min: typeof j.ext_min === 'string' ? j.ext_min : HEALTH_DEFAULT.ext_min,
+      ext_hard_min: typeof j.ext_hard_min === 'string' ? j.ext_hard_min : null,
+      kill: j.kill === true,
+      disabled: Array.isArray(j.disabled)
+        ? j.disabled.filter(x => typeof x === 'string').slice(0, 32)
+        : [],
+      msg: typeof j.msg === 'string' ? j.msg.slice(0, 200) : null
+    }
+    await browser.storage.local.set({ hs_health: sane, hs_health_at: Date.now() })
+  } catch {}
+}
+async function getCachedHealth() {
+  try {
+    const { hs_health } = await browser.storage.local.get('hs_health')
+    return hs_health || HEALTH_DEFAULT
+  } catch { return HEALTH_DEFAULT }
+}
+// First fetch is non-blocking — SW init must not stall on a slow heatsync.org.
+fetchHealth().catch(() => {})
 
 // Show welcome page on first install, clear stale intervals on update
 browser.runtime.onInstalled.addListener((details) => {
@@ -4376,6 +4428,15 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
   // Health check ping from content scripts
   if (message.type === 'ping') {
     sendResponse({ ok: true })
+    return true
+  }
+
+  // Cached server health (kill-switch + version-floor). Fail-open default if
+  // we've never successfully fetched. Synchronous content-script callers use
+  // this to early-bail before painting any UI.
+  if (message.type === 'get_health') {
+    getCachedHealth().then(h => sendResponse({ ok: true, health: h }))
+      .catch(() => sendResponse({ ok: true, health: HEALTH_DEFAULT }))
     return true
   }
 

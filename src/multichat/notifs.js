@@ -393,6 +393,25 @@ const HsNotifs = (() => {
     actions: { dismiss: { label: '✕' } },
   })
 
+  // Server-driven "please update" prompt — fires when the version-floor in
+  // /api/extension/health is above current manifest version. dedupeKey keeps
+  // it to one prompt per (current, min) pair so re-fetching health doesn't
+  // re-stack toasts. No auto-timeout: it stays until dismissed or update.
+  registerType('hs-update-required', {
+    layer: 'toast-stack',
+    dedupeKey: ({ current, min }) => `upd:${current}:${min}`,
+    render: ({ data }) => {
+      const el = document.createElement('span')
+      el.className = 'hs-notif-toast-text hs-notif-toast-warn'
+      const body = data.msg
+        ? String(data.msg).slice(0, 200)
+        : `Update available — running ${data.current}, latest is ${data.min}+`
+      el.textContent = body
+      return el
+    },
+    actions: { dismiss: { label: '✕' } },
+  })
+
   // Server-evaluated mention rule match — heatsync.org evaluated the user's
   // saved mention rules on the server and found a match in a channel message.
   // Shows as a toast; tap/click to dismiss. Deduplicated per channel+snippet

@@ -99,6 +99,20 @@
   // a permanent ew-resize / col-resize cursor system-wide + an orange bar
   // floating in chat. Wire window-level abort on blur / hidden / focus-loss
   // so any orphaned drag artifacts get cleared even when pointerup is lost.
+  // Tiny semver comparator for server-driven version-floor checks. Pads to
+  // 3 parts, treats non-numeric as 0, accepts "1.2.3-foo" by stripping the
+  // suffix. Returns true iff a < b. Strict-enough for kill-switch decisions.
+  function _hsSemverLt(a, b) {
+    const norm = (s) => String(s || '0').split('-')[0].split('.').slice(0, 3)
+      .map(x => parseInt(x, 10) || 0).concat([0,0,0]).slice(0, 3)
+    const A = norm(a), B = norm(b)
+    for (let i = 0; i < 3; i++) {
+      if (A[i] < B[i]) return true
+      if (A[i] > B[i]) return false
+    }
+    return false
+  }
+
   function _hsAbortAllResizes() {
     document.body.style.cursor = ''
     document.body.style.userSelect = ''
@@ -9077,6 +9091,36 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     }
     if (mcInitialized) return;
     mcInitialized = true;
+
+    // ── PHASE -1: server kill-switch ──────────────────────────────────────
+    // One round-trip to background for cached health. If the server flagged
+    // a broken release, bail before painting anything. Default is fail-open
+    // — background only stores a record after a successful schema-valid
+    // fetch, so a never-reached server leaves us fully active.
+    let _hsHealth = null
+    try {
+      const r = await new Promise(res => {
+        try { chrome.runtime.sendMessage({ type: 'get_health' }, res) }
+        catch { res(null) }
+      })
+      _hsHealth = r?.health || null
+    } catch {}
+    window.__hsHealth = _hsHealth || { v:1, kill:false, disabled:[], ext_min:'0.0.0', ext_hard_min:null, msg:null }
+    if (_hsHealth?.kill) { log('kill-switch active, aborting init'); return }
+    if (Array.isArray(_hsHealth?.disabled) && _hsHealth.disabled.includes('multichat')) {
+      log('multichat disabled by server health flag'); return
+    }
+    const _curVer = (chrome.runtime.getManifest?.().version) || '0.0.0'
+    if (_hsHealth?.ext_hard_min && _hsSemverLt(_curVer, _hsHealth.ext_hard_min)) {
+      log('extension below ext_hard_min', _curVer, '<', _hsHealth.ext_hard_min); return
+    }
+    if (_hsHealth?.ext_min && _hsSemverLt(_curVer, _hsHealth.ext_min)) {
+      // Deferred emit — HsNotifs needs the overlay container before it can
+      // mount. Fire after init completes so toast-stack geometry is ready.
+      setTimeout(() => {
+        try { HsNotifs.emit('hs-update-required', { current: _curVer, min: _hsHealth.ext_min, msg: _hsHealth.msg }) } catch (_) {}
+      }, 4000)
+    }
 
     // ── PHASE 0: synchronous prep (no awaits) ─────────────────────────────
     // Inject CSS NOW so the panel paints with correct styles the moment it

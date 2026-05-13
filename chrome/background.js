@@ -22,15 +22,33 @@ const browser = globalThis.browser || chrome;
   function fmt(e) {
     if (e == null) return { msg: '' }
     if (e instanceof Error || (typeof e === 'object' && e && 'stack' in e)) {
-      return { msg: trunc(e.message || String(e), MSG_CAP), stack: trunc(String(e.stack || ''), STACK_CAP) }
+      let msg = ''
+      let stack = ''
+      try { msg = String(e.message || '') } catch (_) {}
+      try { stack = String(e.stack || '') } catch (_) {}
+      if (!msg) { try { msg = String(e) } catch (_) { msg = '[unreadable]' } }
+      if (msg === '[object Object]') msg = ''
+      return { msg: trunc(msg, MSG_CAP), stack: trunc(stack, STACK_CAP) }
     }
     if (typeof e === 'object') {
-      try { return { msg: trunc(JSON.stringify(e), MSG_CAP) } } catch { return { msg: '[unserializable]' } }
+      try {
+        const s = JSON.stringify(e)
+        if (s && s !== '{}' && s !== '[]') return { msg: trunc(s, MSG_CAP) }
+      } catch (_) {}
+      try { return { msg: trunc(String(e), MSG_CAP) } } catch { return { msg: '[unserializable]' } }
     }
     return { msg: trunc(String(e), MSG_CAP) }
   }
+  function synthStack(skip) {
+    try {
+      const s = String(new Error().stack || '')
+      return s.split('\n').slice((skip || 0) + 1).join('\n')
+    } catch (_) { return '' }
+  }
   function capture(rec) {
     if (reentry) return
+    if (!rec.msg && !rec.stack) return
+    if (rec.msg === 'Script error.' && !rec.stack) return
     reentry = true
     try {
       pending.push(rec)
@@ -62,7 +80,8 @@ const browser = globalThis.browser || chrome;
   try {
     self.addEventListener('unhandledrejection', (e) => {
       const f = fmt(e.reason)
-      capture({ ts: Date.now(), type: 'rejection', plat: 'sw', ver, url: 'background', msg: f.msg, stack: f.stack })
+      const stack = f.stack || synthStack(2)
+      capture({ ts: Date.now(), type: 'rejection', plat: 'sw', ver, url: 'background', msg: f.msg || '(promise rejection with no reason)', stack })
     })
   } catch (_) {}
   try {
@@ -70,12 +89,21 @@ const browser = globalThis.browser || chrome;
     if (origErr && !origErr.__hsWrapped) {
       const wrapped = function(...args) {
         try {
-          const msg = args.map(a => {
-            if (a instanceof Error) return (a.message || '') + (a.stack ? '\n' + a.stack : '')
+          let derivedStack = ''
+          const parts = args.map(a => {
+            if (a instanceof Error || (typeof a === 'object' && a && 'stack' in a)) {
+              if (!derivedStack && a.stack) { try { derivedStack = String(a.stack) } catch (_) {} }
+              try { return String(a.message || a) } catch (_) { return '[unreadable]' }
+            }
             if (typeof a === 'string') return a
-            try { return JSON.stringify(a) } catch { return String(a) }
-          }).join(' ')
-          capture({ ts: Date.now(), type: 'console', plat: 'sw', ver, url: 'background', msg: trunc(msg, MSG_CAP) })
+            try {
+              const s = JSON.stringify(a)
+              return s && s !== '{}' ? s : String(a)
+            } catch { return String(a) }
+          })
+          const msg = parts.filter(p => p && p !== '[object Object]').join(' ')
+          if (!derivedStack) derivedStack = synthStack(2)
+          capture({ ts: Date.now(), type: 'console', plat: 'sw', ver, url: 'background', msg: trunc(msg, MSG_CAP), stack: trunc(derivedStack, STACK_CAP) })
         } catch (_) {}
         return origErr.apply(this, args)
       }
@@ -1266,7 +1294,16 @@ async function fetchUserInfo() {
       return
     }
 
-    const user = await response.json()
+    const bodyText = await response.text()
+    if (!bodyText) {
+      browser.storage.local.remove('user_info')
+      return
+    }
+    let user
+    try { user = JSON.parse(bodyText) } catch {
+      browser.storage.local.remove('user_info')
+      return
+    }
     if (!user) {
       browser.storage.local.remove('user_info')
       return
@@ -5941,6 +5978,7 @@ const BG_IRC = {
   chanRejoinAttempts: new Map(),
   roomstates: new Map(),
   historyInFlight: new Set(),
+  lastRobottyAt: new Map(),  // ch -> ts (last successful/attempted robotty fetch)
   persistTimers: new Map(),
   storageRestored: false,
   // Tabs that have requested live broadcasts. Empty initially — we don't
@@ -6020,6 +6058,17 @@ function bgIrcConnect() {
       BG_IRC.ws.send(`JOIN #${ch}\r\n`)
     }
     bgIrcStartHeartbeat()
+    // Gap-fill: SW eviction + WS dropout can lose minutes of chat. On every
+    // (re)connect, refetch robotty for each channel to backfill the gap.
+    // 60s per-channel cooldown keeps us polite during flappy reconnects;
+    // historyInFlight prevents concurrent fetches when ensureChannel races.
+    const reconnectGapMs = 60_000
+    const now2 = Date.now()
+    for (const ch of BG_IRC.channels.keys()) {
+      const last = BG_IRC.lastRobottyAt.get(ch) || 0
+      if (now2 - last < reconnectGapMs) continue
+      bgIrcFetchRobotty(ch)
+    }
   }
   BG_IRC.ws.onmessage = (e) => bgIrcOnData(e.data)
   BG_IRC.ws.onerror = () => { clearTimeout(BG_IRC.connectTimeout) }
@@ -6203,9 +6252,48 @@ function bgIrcHandleLine(line) {
   bgIrcBroadcast({ type: 'bg_irc_msg', msg })
 }
 
+// Cross-reference CLEARCHAT/CLEARMSG notices in a buffer against PRIVMSGs
+// from the same window, so banned/deleted historical messages render cleared
+// instead of as normal text. Live IRC handles this on the fly in
+// bgIrcHandleLine, but the robotty backfill merges everything in one shot —
+// without this pass, a user's pre-ban history shows up un-struck.
+function bgIrcReconcileCleared(buf) {
+  if (!buf) return
+  const all = buf.getAll()
+  if (!all.length) return
+  const byId = new Map()
+  for (const m of all) {
+    if (!m.id) continue
+    if (m.type === 'notice' || m.type === 'usernotice') continue
+    byId.set(m.id, m)
+  }
+  for (const m of all) {
+    if (m.type !== 'notice') continue
+    if (m.noticeType === 'delete_message_success' && m.targetMsgId) {
+      const target = byId.get(m.targetMsgId)
+      if (target && !target.cleared) { target.cleared = true; target.clearedReason = 'deleted' }
+      continue
+    }
+    if (m.noticeType !== 'timeout_success' && m.noticeType !== 'ban_success') continue
+    const targetLc = (m.targetUser || '').toLowerCase()
+    if (!targetLc) continue
+    const eventTime = m.time || 0
+    const reason = m.banDuration ? `timed out (${m.banDuration}s)` : 'banned'
+    for (const v of all) {
+      if (v.cleared) continue
+      if (v.type === 'notice' || v.type === 'usernotice') continue
+      if (!v.user || v.user.toLowerCase() !== targetLc) continue
+      if ((v.time || 0) > eventTime) continue
+      v.cleared = true
+      v.clearedReason = reason
+    }
+  }
+}
+
 async function bgIrcFetchRobotty(ch) {
   if (BG_IRC.historyInFlight.has(ch)) return
   BG_IRC.historyInFlight.add(ch)
+  BG_IRC.lastRobottyAt.set(ch, Date.now())
   try {
     const ctrl = new AbortController()
     const timer = setTimeout(() => ctrl.abort(), 15000)
@@ -6232,10 +6320,16 @@ async function bgIrcFetchRobotty(ch) {
       if (!msg.id && existingFp.has(fpKey(msg))) continue
       toAdd.push(msg)
     }
-    if (toAdd.length === 0) return
+    if (toAdd.length === 0) {
+      // Even on a no-op merge, reconcile — a live CLEARCHAT may have landed
+      // for a user whose backfilled msgs predate it; this paints them cleared.
+      bgIrcReconcileCleared(buf)
+      return
+    }
     const all = [...existing, ...toAdd].sort((a, b) => (a.time || 0) - (b.time || 0))
     buf.clear()
     for (const m of all) buf.push(m)
+    bgIrcReconcileCleared(buf)
     bgIrcPersistChannel(ch)
     bgIrcBroadcast({ type: 'bg_irc_history_merged', channel: ch, count: toAdd.length })
     log('BG IRC robotty merged', toAdd.length, 'msgs for', ch)

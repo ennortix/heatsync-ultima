@@ -45,19 +45,44 @@
   function _fmtErr(e) {
     if (e == null) return { msg: '' }
     if (e instanceof Error || (typeof e === 'object' && e && 'stack' in e)) {
-      return {
-        msg: _truncate(e.message || String(e), MSG_CAP),
-        stack: _truncate(String(e.stack || ''), STACK_CAP),
+      let msg = ''
+      let stack = ''
+      try { msg = String(e.message || '') } catch (_) {}
+      try { stack = String(e.stack || '') } catch (_) {}
+      if (!msg) {
+        try { msg = String(e) } catch (_) { msg = '[unreadable]' }
+        if (msg === '[object Object]') msg = ''
       }
+      return { msg: _truncate(msg, MSG_CAP), stack: _truncate(stack, STACK_CAP) }
     }
     if (typeof e === 'object') {
-      try { return { msg: _truncate(JSON.stringify(e), MSG_CAP) } } catch { return { msg: '[unserializable]' } }
+      try {
+        const s = JSON.stringify(e)
+        if (s && s !== '{}' && s !== '[]') return { msg: _truncate(s, MSG_CAP) }
+      } catch (_) {}
+      try { return { msg: _truncate(String(e), MSG_CAP) } } catch { return { msg: '[unserializable]' } }
     }
     return { msg: _truncate(String(e), MSG_CAP) }
   }
 
+  // Synthesize a stack at the call-site so console-wrapped + reasonless rejection
+  // entries still point somewhere useful. Two leading frames trimmed: this fn +
+  // the caller wrapper.
+  function _synthStack(skip) {
+    try {
+      const s = String(new Error().stack || '')
+      const lines = s.split('\n')
+      return lines.slice((skip || 0) + 1).join('\n')
+    } catch (_) { return '' }
+  }
+
   function _capture(rec) {
     if (_reentry) return
+    // Drop entries with no useful payload — empty msg AND empty stack.
+    // Keeps "Script error." cross-origin sanitization noise out of the buffer
+    // and stops reasonless rejections from displacing real errors.
+    if (!rec.msg && !rec.stack) return
+    if (rec.msg === 'Script error.' && !rec.stack) return
     _reentry = true
     try {
       _pending.push(rec)
@@ -105,10 +130,12 @@
   function _onRejection(e) {
     try {
       const f = _fmtErr(e.reason)
+      const stack = f.stack || _synthStack(2)
       _capture({
         ts: Date.now(), type: 'rejection', plat: _plat, ver: _ver,
         url: _truncate(location.href, 200),
-        msg: f.msg, stack: f.stack,
+        msg: f.msg || '(promise rejection with no reason)',
+        stack,
       })
     } catch (_) {}
   }
@@ -124,15 +151,25 @@
     if (origErr && !origErr.__hsWrapped) {
       const wrapped = function(...args) {
         try {
-          const msg = args.map(a => {
-            if (a instanceof Error) return (a.message || '') + (a.stack ? '\n' + a.stack : '')
+          let derivedStack = ''
+          const parts = args.map(a => {
+            if (a instanceof Error || (typeof a === 'object' && a && 'stack' in a)) {
+              if (!derivedStack && a.stack) { try { derivedStack = String(a.stack) } catch (_) {} }
+              try { return String(a.message || a) } catch (_) { return '[unreadable]' }
+            }
             if (typeof a === 'string') return a
-            try { return JSON.stringify(a) } catch { return String(a) }
-          }).join(' ')
+            try {
+              const s = JSON.stringify(a)
+              return s && s !== '{}' ? s : String(a)
+            } catch { return String(a) }
+          })
+          const msg = parts.filter(p => p && p !== '[object Object]').join(' ')
+          if (!derivedStack) derivedStack = _synthStack(2)
           _capture({
             ts: Date.now(), type: 'console', plat: _plat, ver: _ver,
             url: _truncate(location.href, 200),
             msg: _truncate(msg, MSG_CAP),
+            stack: _truncate(derivedStack, STACK_CAP),
           })
         } catch (_) {}
         return origErr.apply(this, args)
@@ -994,6 +1031,12 @@ const isChrome = typeof chrome !== 'undefined' && !isFirefox
 const rawApi = isFirefox ? browser : (typeof chrome !== 'undefined' ? chrome : null)
 
 let _ctxInvalidatedLogged = false
+let _storageMissingLogged = false
+function _warnStorageMissing() {
+  if (_storageMissingLogged) return
+  _storageMissingLogged = true
+  console.warn('[heatsync] Storage API not available (extension context likely invalidated — page reload needed)')
+}
 
 /**
  * Promisify Chrome callback-based APIs
@@ -1022,7 +1065,7 @@ const storage = {
   local: {
     get: async (keys) => {
       if (!rawApi?.storage?.local) {
-        console.warn('[heatsync] Storage API not available')
+        _warnStorageMissing()
         return {}
       }
       if (isFirefox) {
@@ -1032,7 +1075,7 @@ const storage = {
     },
     set: async (items) => {
       if (!rawApi?.storage?.local) {
-        console.warn('[heatsync] Storage API not available')
+        _warnStorageMissing()
         return
       }
       if (isFirefox) {
@@ -5483,30 +5526,22 @@ function injectStyles() {
       display: flex;
       flex-direction: column;
     }
-    #hs-mc-reply-stack-down .hs-mc-reply-stack-row {
-      background: #808000 !important;
-      box-shadow: none !important;
-      margin: 0 !important;
-      padding-top: 0 !important;
-      padding-bottom: 0 !important;
-      content-visibility: visible !important;
-      contain-intrinsic-size: auto !important;
-    }
-    #hs-mc-reply-stack-down .hs-mc-reply-stack-row .hs-mc-reply-btn {
-      display: none !important;
-    }
+    /* Overlay rows must match native .hs-mc-msg height EXACTLY — same padding,
+       same line-height. Mismatched heights make the olive stack look like a
+       broken copy of the active row sitting above/below it. */
+    #hs-mc-reply-stack-down .hs-mc-reply-stack-row,
     #hs-mc-reply-stack .hs-mc-reply-stack-row {
       background: #808000 !important;
       box-shadow: none !important;
       margin: 0 !important;
-      padding-top: 0 !important;
-      padding-bottom: 0 !important;
-      /* keep natural line-height (1.4) — tighter values clip the 18x18 badge images
-         against .hs-mc-msg's overflow:hidden, making them look like text */
-      /* override .hs-mc-msg's content-visibility:auto — we render at hover time and
-         the rows must paint immediately, not be replaced by a 28px placeholder */
+      /* override .hs-mc-msg's content-visibility:auto — we render at hover time
+         and rows must paint immediately, not be replaced by a 28px placeholder */
       content-visibility: visible !important;
       contain-intrinsic-size: auto !important;
+    }
+    #hs-mc-reply-stack-down .hs-mc-reply-stack-row .hs-mc-reply-btn,
+    #hs-mc-reply-stack .hs-mc-reply-stack-row .hs-mc-reply-btn {
+      display: none !important;
     }
     /* Zebra striping across the entire reply chain. Anchored to the active row
        (always #808000) so alternation flows continuously: up-stack rows count
@@ -5535,9 +5570,6 @@ function injectStyles() {
       color: #000 !important;
       -webkit-text-fill-color: #000 !important;
       border-left-color: #000 !important;
-    }
-    #hs-mc-reply-stack .hs-mc-reply-stack-row .hs-mc-reply-btn {
-      display: none !important;
     }
     .hs-mc-reply-stack-chip {
       flex: 0 0 auto;
@@ -28381,14 +28413,9 @@ const STORAGE_KEY = 'heatsync_multichat';
         const ownId = hoveredEl.dataset.msgId
         const descChain = ownId ? walkDescendants(channel, platform, ownId, 128) : []
         if (!chain.length && !descChain.length) return
-        const hCs = getComputedStyle(hoveredEl)
-        const hPadTop = parseInt(hCs.paddingTop) || 0
-        const hPadBot = parseInt(hCs.paddingBottom) || 0
-        const hLineHeight = parseFloat(hCs.lineHeight) || 0
-        const hFontSize = parseFloat(hCs.fontSize) || 13
-        const hSlack = Math.max(0, (hLineHeight - hFontSize) / 2)
-        const overlapUp = Math.round(hPadTop + hSlack)
-        const overlapDown = Math.round(hPadBot + hSlack)
+        // Overlay rows match native .hs-mc-msg padding exactly, so the stack
+        // butts flush against the active row — no overlap into the row's
+        // padding (which used to compensate for zero-padded overlay rows).
         const cRect = msgsEl.getBoundingClientRect()
         const hRect = hoveredEl.getBoundingClientRect()
         const availableUp = hRect.top - cRect.top
@@ -28407,8 +28434,8 @@ const STORAGE_KEY = 'heatsync_multichat';
           overlay.style.position = 'fixed'
           overlay.style.left = hRect.left + 'px'
           overlay.style.width = hRect.width + 'px'
-          overlay.style.bottom = (layoutViewportHeight - hRect.top - overlapUp) + 'px'
-          overlay.style.maxHeight = (availableUp + overlapUp) + 'px'
+          overlay.style.bottom = (layoutViewportHeight - hRect.top) + 'px'
+          overlay.style.maxHeight = availableUp + 'px'
           overlay.style.display = 'block'
           for (let i = 0; i < chain.length; i++) {
             const parent = chain[i]
@@ -28444,8 +28471,8 @@ const STORAGE_KEY = 'heatsync_multichat';
           overlay.style.position = 'fixed'
           overlay.style.left = hRect.left + 'px'
           overlay.style.width = hRect.width + 'px'
-          overlay.style.top = (hRect.bottom - overlapDown) + 'px'
-          overlay.style.maxHeight = (availableDown + overlapDown) + 'px'
+          overlay.style.top = hRect.bottom + 'px'
+          overlay.style.maxHeight = availableDown + 'px'
           overlay.style.display = 'block'
           for (let i = 0; i < descChain.length; i++) {
             const child = descChain[i]
@@ -28453,7 +28480,7 @@ const STORAGE_KEY = 'heatsync_multichat';
             if (!row) continue
             row.classList.add('hs-mc-reply-stack-row')
             overlay.appendChild(row)  // chronological top-down
-            if (overlay.scrollHeight > (availableDown + overlapDown)) {
+            if (overlay.scrollHeight > availableDown) {
               overlay.removeChild(row)
               break
             }
@@ -28518,21 +28545,10 @@ const STORAGE_KEY = 'heatsync_multichat';
       // for the same row — getComputedStyle in scroll path forced layout on
       // every wheel tick, the user-perceived "laggy when scrolling on a
       // reply thread."
-      let _stackStyleCache = null // { row, overlapUp, overlapDown, layoutH }
+      let _stackStyleCache = null // { row, layoutH }
       const refreshStackStyleCache = (row) => {
         if (!row) { _stackStyleCache = null; return }
-        const cs = getComputedStyle(row)
-        const padTop = parseInt(cs.paddingTop) || 0
-        const padBot = parseInt(cs.paddingBottom) || 0
-        const lh = parseFloat(cs.lineHeight) || 0
-        const fs = parseFloat(cs.fontSize) || 13
-        const slack = Math.max(0, (lh - fs) / 2)
-        _stackStyleCache = {
-          row,
-          overlapUp: Math.round(padTop + slack),
-          overlapDown: Math.round(padBot + slack),
-          layoutH: document.documentElement.clientHeight,
-        }
+        _stackStyleCache = { row, layoutH: document.documentElement.clientHeight }
       }
       let _repositionRaf = 0
       const repositionStack = () => {
@@ -28549,7 +28565,7 @@ const STORAGE_KEY = 'heatsync_multichat';
           if (!_stackStyleCache || _stackStyleCache.row !== _stackActiveRow) {
             refreshStackStyleCache(_stackActiveRow)
           }
-          const { overlapUp, overlapDown, layoutH } = _stackStyleCache
+          const { layoutH } = _stackStyleCache
 
           const overlayUp = document.getElementById('hs-mc-reply-stack')
           if (overlayUp && overlayUp.style.display === 'block') {
@@ -28560,8 +28576,8 @@ const STORAGE_KEY = 'heatsync_multichat';
             } else {
               overlayUp.style.left = hRect.left + 'px'
               overlayUp.style.width = hRect.width + 'px'
-              overlayUp.style.bottom = (layoutH - hRect.top - overlapUp) + 'px'
-              overlayUp.style.maxHeight = (availableUp + overlapUp) + 'px'
+              overlayUp.style.bottom = (layoutH - hRect.top) + 'px'
+              overlayUp.style.maxHeight = availableUp + 'px'
             }
           }
           const overlayDown = document.getElementById('hs-mc-reply-stack-down')
@@ -28573,8 +28589,8 @@ const STORAGE_KEY = 'heatsync_multichat';
             } else {
               overlayDown.style.left = hRect.left + 'px'
               overlayDown.style.width = hRect.width + 'px'
-              overlayDown.style.top = (hRect.bottom - overlapDown) + 'px'
-              overlayDown.style.maxHeight = (availableDown + overlapDown) + 'px'
+              overlayDown.style.top = hRect.bottom + 'px'
+              overlayDown.style.maxHeight = availableDown + 'px'
             }
           }
         })
@@ -28605,14 +28621,13 @@ const STORAGE_KEY = 'heatsync_multichat';
         const hRect = _stackActiveRow.getBoundingClientRect()
         if (hRect.bottom < cRect.top || hRect.top > cRect.bottom) return
         if (!_stackStyleCache || _stackStyleCache.row !== _stackActiveRow) refreshStackStyleCache(_stackActiveRow)
-        const { overlapDown } = _stackStyleCache
         const availableDown = cRect.bottom - hRect.bottom
         if (availableDown < 24) return
-        const maxH = availableDown + overlapDown
+        const maxH = availableDown
         overlay.style.position = 'fixed'
         overlay.style.left = hRect.left + 'px'
         overlay.style.width = hRect.width + 'px'
-        overlay.style.top = (hRect.bottom - overlapDown) + 'px'
+        overlay.style.top = hRect.bottom + 'px'
         overlay.style.maxHeight = maxH + 'px'
         overlay.style.display = 'block'
         const row = buildMessageDiv(m, currentTab)

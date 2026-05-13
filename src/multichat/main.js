@@ -2328,14 +2328,9 @@
         const ownId = hoveredEl.dataset.msgId
         const descChain = ownId ? walkDescendants(channel, platform, ownId, 128) : []
         if (!chain.length && !descChain.length) return
-        const hCs = getComputedStyle(hoveredEl)
-        const hPadTop = parseInt(hCs.paddingTop) || 0
-        const hPadBot = parseInt(hCs.paddingBottom) || 0
-        const hLineHeight = parseFloat(hCs.lineHeight) || 0
-        const hFontSize = parseFloat(hCs.fontSize) || 13
-        const hSlack = Math.max(0, (hLineHeight - hFontSize) / 2)
-        const overlapUp = Math.round(hPadTop + hSlack)
-        const overlapDown = Math.round(hPadBot + hSlack)
+        // Overlay rows match native .hs-mc-msg padding exactly, so the stack
+        // butts flush against the active row — no overlap into the row's
+        // padding (which used to compensate for zero-padded overlay rows).
         const cRect = msgsEl.getBoundingClientRect()
         const hRect = hoveredEl.getBoundingClientRect()
         const availableUp = hRect.top - cRect.top
@@ -2354,8 +2349,8 @@
           overlay.style.position = 'fixed'
           overlay.style.left = hRect.left + 'px'
           overlay.style.width = hRect.width + 'px'
-          overlay.style.bottom = (layoutViewportHeight - hRect.top - overlapUp) + 'px'
-          overlay.style.maxHeight = (availableUp + overlapUp) + 'px'
+          overlay.style.bottom = (layoutViewportHeight - hRect.top) + 'px'
+          overlay.style.maxHeight = availableUp + 'px'
           overlay.style.display = 'block'
           for (let i = 0; i < chain.length; i++) {
             const parent = chain[i]
@@ -2391,8 +2386,8 @@
           overlay.style.position = 'fixed'
           overlay.style.left = hRect.left + 'px'
           overlay.style.width = hRect.width + 'px'
-          overlay.style.top = (hRect.bottom - overlapDown) + 'px'
-          overlay.style.maxHeight = (availableDown + overlapDown) + 'px'
+          overlay.style.top = hRect.bottom + 'px'
+          overlay.style.maxHeight = availableDown + 'px'
           overlay.style.display = 'block'
           for (let i = 0; i < descChain.length; i++) {
             const child = descChain[i]
@@ -2400,7 +2395,7 @@
             if (!row) continue
             row.classList.add('hs-mc-reply-stack-row')
             overlay.appendChild(row)  // chronological top-down
-            if (overlay.scrollHeight > (availableDown + overlapDown)) {
+            if (overlay.scrollHeight > availableDown) {
               overlay.removeChild(row)
               break
             }
@@ -2465,21 +2460,10 @@
       // for the same row — getComputedStyle in scroll path forced layout on
       // every wheel tick, the user-perceived "laggy when scrolling on a
       // reply thread."
-      let _stackStyleCache = null // { row, overlapUp, overlapDown, layoutH }
+      let _stackStyleCache = null // { row, layoutH }
       const refreshStackStyleCache = (row) => {
         if (!row) { _stackStyleCache = null; return }
-        const cs = getComputedStyle(row)
-        const padTop = parseInt(cs.paddingTop) || 0
-        const padBot = parseInt(cs.paddingBottom) || 0
-        const lh = parseFloat(cs.lineHeight) || 0
-        const fs = parseFloat(cs.fontSize) || 13
-        const slack = Math.max(0, (lh - fs) / 2)
-        _stackStyleCache = {
-          row,
-          overlapUp: Math.round(padTop + slack),
-          overlapDown: Math.round(padBot + slack),
-          layoutH: document.documentElement.clientHeight,
-        }
+        _stackStyleCache = { row, layoutH: document.documentElement.clientHeight }
       }
       let _repositionRaf = 0
       const repositionStack = () => {
@@ -2496,7 +2480,7 @@
           if (!_stackStyleCache || _stackStyleCache.row !== _stackActiveRow) {
             refreshStackStyleCache(_stackActiveRow)
           }
-          const { overlapUp, overlapDown, layoutH } = _stackStyleCache
+          const { layoutH } = _stackStyleCache
 
           const overlayUp = document.getElementById('hs-mc-reply-stack')
           if (overlayUp && overlayUp.style.display === 'block') {
@@ -2507,8 +2491,8 @@
             } else {
               overlayUp.style.left = hRect.left + 'px'
               overlayUp.style.width = hRect.width + 'px'
-              overlayUp.style.bottom = (layoutH - hRect.top - overlapUp) + 'px'
-              overlayUp.style.maxHeight = (availableUp + overlapUp) + 'px'
+              overlayUp.style.bottom = (layoutH - hRect.top) + 'px'
+              overlayUp.style.maxHeight = availableUp + 'px'
             }
           }
           const overlayDown = document.getElementById('hs-mc-reply-stack-down')
@@ -2520,8 +2504,8 @@
             } else {
               overlayDown.style.left = hRect.left + 'px'
               overlayDown.style.width = hRect.width + 'px'
-              overlayDown.style.top = (hRect.bottom - overlapDown) + 'px'
-              overlayDown.style.maxHeight = (availableDown + overlapDown) + 'px'
+              overlayDown.style.top = hRect.bottom + 'px'
+              overlayDown.style.maxHeight = availableDown + 'px'
             }
           }
         })
@@ -2552,14 +2536,13 @@
         const hRect = _stackActiveRow.getBoundingClientRect()
         if (hRect.bottom < cRect.top || hRect.top > cRect.bottom) return
         if (!_stackStyleCache || _stackStyleCache.row !== _stackActiveRow) refreshStackStyleCache(_stackActiveRow)
-        const { overlapDown } = _stackStyleCache
         const availableDown = cRect.bottom - hRect.bottom
         if (availableDown < 24) return
-        const maxH = availableDown + overlapDown
+        const maxH = availableDown
         overlay.style.position = 'fixed'
         overlay.style.left = hRect.left + 'px'
         overlay.style.width = hRect.width + 'px'
-        overlay.style.top = (hRect.bottom - overlapDown) + 'px'
+        overlay.style.top = hRect.bottom + 'px'
         overlay.style.maxHeight = maxH + 'px'
         overlay.style.display = 'block'
         const row = buildMessageDiv(m, currentTab)

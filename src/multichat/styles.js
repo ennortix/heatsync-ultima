@@ -1373,30 +1373,22 @@ function injectStyles() {
       display: flex;
       flex-direction: column;
     }
-    #hs-mc-reply-stack-down .hs-mc-reply-stack-row {
-      background: #808000 !important;
-      box-shadow: none !important;
-      margin: 0 !important;
-      padding-top: 0 !important;
-      padding-bottom: 0 !important;
-      content-visibility: visible !important;
-      contain-intrinsic-size: auto !important;
-    }
-    #hs-mc-reply-stack-down .hs-mc-reply-stack-row .hs-mc-reply-btn {
-      display: none !important;
-    }
+    /* Overlay rows must match native .hs-mc-msg height EXACTLY — same padding,
+       same line-height. Mismatched heights make the olive stack look like a
+       broken copy of the active row sitting above/below it. */
+    #hs-mc-reply-stack-down .hs-mc-reply-stack-row,
     #hs-mc-reply-stack .hs-mc-reply-stack-row {
       background: #808000 !important;
       box-shadow: none !important;
       margin: 0 !important;
-      padding-top: 0 !important;
-      padding-bottom: 0 !important;
-      /* keep natural line-height (1.4) — tighter values clip the 18x18 badge images
-         against .hs-mc-msg's overflow:hidden, making them look like text */
-      /* override .hs-mc-msg's content-visibility:auto — we render at hover time and
-         the rows must paint immediately, not be replaced by a 28px placeholder */
+      /* override .hs-mc-msg's content-visibility:auto — we render at hover time
+         and rows must paint immediately, not be replaced by a 28px placeholder */
       content-visibility: visible !important;
       contain-intrinsic-size: auto !important;
+    }
+    #hs-mc-reply-stack-down .hs-mc-reply-stack-row .hs-mc-reply-btn,
+    #hs-mc-reply-stack .hs-mc-reply-stack-row .hs-mc-reply-btn {
+      display: none !important;
     }
     /* Zebra striping across the entire reply chain. Anchored to the active row
        (always #808000) so alternation flows continuously: up-stack rows count
@@ -1425,9 +1417,6 @@ function injectStyles() {
       color: #000 !important;
       -webkit-text-fill-color: #000 !important;
       border-left-color: #000 !important;
-    }
-    #hs-mc-reply-stack .hs-mc-reply-stack-row .hs-mc-reply-btn {
-      display: none !important;
     }
     .hs-mc-reply-stack-chip {
       flex: 0 0 auto;

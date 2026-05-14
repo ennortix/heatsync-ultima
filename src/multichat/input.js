@@ -1571,7 +1571,7 @@ function handleInputChange(e) {
                       rm.remove()
                     }
                     stackInputEmote(prev, img)
-                    node.textContent = afterText || '\u00A0'
+                    node.textContent = afterText || ' '
                     const newRange = document.createRange()
                     newRange.setStart(node, 0)
                     newRange.collapse(true)
@@ -1584,7 +1584,7 @@ function handleInputChange(e) {
 
                 // Regular emote: replace text with img
                 const beforeNode = beforeText ? document.createTextNode(beforeText) : null
-                const afterNode = document.createTextNode(afterText || '\u00A0')
+                const afterNode = document.createTextNode(afterText || ' ')
                 if (beforeNode) parent.insertBefore(beforeNode, node)
                 parent.insertBefore(img, node)
                 parent.insertBefore(afterNode, node)
@@ -1614,7 +1614,7 @@ function handleInputChange(e) {
                   // \u2014 it acts as the user's explicit separator and also
                   // prevents the next iteration from cascading further.
                   const remaining = afterNode.textContent.slice(cName.length)
-                  afterNode.textContent = remaining || '\u00A0'
+                  afterNode.textContent = remaining || ' '
                   newRange.setStart(afterNode, remaining ? 0 : 1)
                   newRange.collapse(true)
                   sel.removeAllRanges()

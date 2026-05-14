@@ -2367,7 +2367,7 @@ function insertCompletionWysiwyg(match) {
     // trailing spaces collapse to 0 width and look invisible. Backspace
     // handler still consumes this in one keystroke, so it behaves like a
     // typed space (1st press eats it, 2nd press deletes the chip).
-    const space = document.createTextNode('\u00a0' + after);
+    const space = document.createTextNode(' ' + after);
     const parent = textNode.parentNode;
     const nextSibling = textNode.nextSibling;
     if (nextSibling) {

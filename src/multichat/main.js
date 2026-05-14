@@ -2491,13 +2491,24 @@
         if (!row) { _stackStyleCache = null; return }
         _stackStyleCache = { row, layoutH: document.documentElement.clientHeight }
       }
+      // msgsEl sits inside fixed-position #hs-mc-container, so its viewport
+      // rect is invariant across chat-scroll. Cache it and invalidate only on
+      // resize/layout updates — halves forced-layout reads per scroll frame
+      // (was 2 getBoundingClientRect, now 1) so reply-stack scrolling stops
+      // stalling the compositor on busy channels.
+      let _msgsRectCache = null
+      const invalidateMsgsRect = () => { _msgsRectCache = null }
+      const getMsgsRect = () => {
+        if (!_msgsRectCache) _msgsRectCache = msgsEl.getBoundingClientRect()
+        return _msgsRectCache
+      }
       let _repositionRaf = 0
       const repositionStack = () => {
         if (_repositionRaf) return
         _repositionRaf = requestAnimationFrame(() => {
           _repositionRaf = 0
           if (!_stackActiveRow) return
-          const cRect = msgsEl.getBoundingClientRect()
+          const cRect = getMsgsRect()
           const hRect = _stackActiveRow.getBoundingClientRect()
           if (hRect.bottom < cRect.top || hRect.top > cRect.bottom) {
             dismissStack()
@@ -2537,7 +2548,13 @@
         })
       }
       msgsEl.addEventListener('scroll', repositionStack, { passive: true, signal: mcSignal })
-      window.addEventListener('resize', () => { if (_stackActiveRow) dismissStack() }, { passive: true, signal: mcSignal })
+      window.addEventListener('resize', () => { invalidateMsgsRect(); if (_stackActiveRow) dismissStack() }, { passive: true, signal: mcSignal })
+      // Panel resize (drag handle) and tab/input bar height shifts change the
+      // msgsEl viewport rect. Invalidate the cache so the next scroll-frame
+      // reposition uses fresh coords.
+      const _msgsRectInvalidator = new ResizeObserver(invalidateMsgsRect)
+      _msgsRectInvalidator.observe(msgsEl)
+      cleanup.trackObserver(_msgsRectInvalidator)
 
       // Live-extend the down-stack: when a new chat row is appended whose
       // replyTo id matches the current chain tail, mirror it into the down
@@ -3479,18 +3496,52 @@
     pinTwitchPersistentPlayer() // immediate, in case it's already mounted
     if (_ttvPpObserver) return
     let _ttvPpRaf = 0
-    _ttvPpObserver = new MutationObserver(() => {
-      // Player already tracked and still attached? _ttvPpStyleObserver handles
-      // any inline-style resets on it — skip walking body subtree.
-      if (_ttvPpLastSeen && document.body.contains(_ttvPpLastSeen)) return
-      if (_ttvPpRaf) return
-      _ttvPpRaf = requestAnimationFrame(() => {
-        _ttvPpRaf = 0
-        pinTwitchPersistentPlayer()
+    let _ttvPpDetachObs = null
+    // Two-phase observer to avoid permanent body-subtree dispatch on Twitch:
+    //   1. Body watch — fires until the persistent player mounts and we pin it,
+    //      then disconnects. Walking body subtree is only paid during SPA nav.
+    //   2. Detach watch — observes the pinned player's PARENT (childList only,
+    //      no subtree) so we re-arm phase 1 the moment Twitch unmounts the
+    //      player on channel→channel nav. Effectively zero per-frame overhead
+    //      while the player is stable, which is 99% of session time.
+    const armDetachWatch = () => {
+      if (_ttvPpDetachObs) { try { _ttvPpDetachObs.disconnect() } catch (_) {} _ttvPpDetachObs = null }
+      const pp = _ttvPpLastSeen
+      const parent = pp?.parentElement
+      if (!parent) { armBodyWatch(); return }
+      _ttvPpDetachObs = new MutationObserver(() => {
+        if (pp && pp.isConnected) return
+        try { _ttvPpDetachObs.disconnect() } catch (_) {}
+        _ttvPpDetachObs = null
+        _ttvPpLastSeen = null
+        armBodyWatch()
       })
-    })
-    _ttvPpObserver.observe(document.body, { childList: true, subtree: true })
-    cleanup.trackObserver(_ttvPpObserver)
+      _ttvPpDetachObs.observe(parent, { childList: true })
+      cleanup.trackObserver(_ttvPpDetachObs)
+    }
+    function armBodyWatch() {
+      if (_ttvPpObserver) { try { _ttvPpObserver.disconnect() } catch (_) {} }
+      _ttvPpObserver = new MutationObserver(() => {
+        if (_ttvPpLastSeen && _ttvPpLastSeen.isConnected) {
+          try { _ttvPpObserver.disconnect() } catch (_) {}
+          armDetachWatch()
+          return
+        }
+        if (_ttvPpRaf) return
+        _ttvPpRaf = requestAnimationFrame(() => {
+          _ttvPpRaf = 0
+          pinTwitchPersistentPlayer()
+          if (_ttvPpLastSeen?.isConnected) {
+            try { _ttvPpObserver.disconnect() } catch (_) {}
+            armDetachWatch()
+          }
+        })
+      })
+      _ttvPpObserver.observe(document.body, { childList: true, subtree: true })
+      cleanup.trackObserver(_ttvPpObserver)
+    }
+    if (_ttvPpLastSeen?.isConnected) armDetachWatch()
+    else armBodyWatch()
   }
 
   // Re-apply layout whenever YT toggles theater/fullscreen so we release or
@@ -4965,20 +5016,40 @@
       try { _updateMcLayout?.() } catch (_) {}
     }
     document.querySelectorAll('[data-test-selector="chat-private-callout-queue__callout-container"] .pinned-callout').forEach(surface)
+    const QUEUE_SEL = '[data-test-selector="chat-private-callout-queue__callout-container"]'
+    let _narrowed = false
     _hsCalloutCloseObs = new MutationObserver((muts) => {
       for (const m of muts) {
         for (const node of m.addedNodes) {
           if (node.nodeType !== 1) continue
           if (node.classList?.contains('pinned-callout') &&
-              node.closest('[data-test-selector="chat-private-callout-queue__callout-container"]')) {
+              node.closest(QUEUE_SEL)) {
             surface(node)
           } else if (node.querySelector) {
-            node.querySelectorAll('[data-test-selector="chat-private-callout-queue__callout-container"] .pinned-callout').forEach(surface)
+            node.querySelectorAll(QUEUE_SEL + ' .pinned-callout').forEach(surface)
           }
         }
       }
+      // Opportunistically narrow the observed target once the callout queue
+      // container appears. Twitch's React fires hundreds of body-subtree
+      // mutations per second; staying on body keeps dispatching them to this
+      // observer forever. Switching to the small queue container drops that
+      // per-frame overhead to ~zero.
+      if (_narrowed) return
+      const queue = document.querySelector(QUEUE_SEL)
+      if (queue) {
+        _narrowed = true
+        try { _hsCalloutCloseObs.disconnect() } catch (_) {}
+        _hsCalloutCloseObs.observe(queue, { childList: true, subtree: true })
+      }
     })
-    _hsCalloutCloseObs.observe(document.body, { childList: true, subtree: true })
+    const initialQueue = document.querySelector(QUEUE_SEL)
+    if (initialQueue) {
+      _narrowed = true
+      _hsCalloutCloseObs.observe(initialQueue, { childList: true, subtree: true })
+    } else {
+      _hsCalloutCloseObs.observe(document.body, { childList: true, subtree: true })
+    }
     cleanup.trackObserver(_hsCalloutCloseObs)
   }
 

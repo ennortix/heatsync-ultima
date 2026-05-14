@@ -35582,33 +35582,53 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     saveUiSetting('chatPosition', chatPosition);
   }
 
-  // Pop out the active per-channel tab as a heatsync.org chat-popout window.
-  // Mirrors the website's chat-tile ⛶ button. Hidden on static tabs (handled
-  // by updatePopoutBtnVisibility); guard here too in case of misclick races.
-  function openPopoutForCurrentTab() {
+  // Resolve the channel context to popout for the active tab.
+  // Returns { name, twitch, kick, youtube } or null if no channel context.
+  function resolvePopoutContext() {
     const id = currentTab
-    if (!id || !_isChatTab(id) || id === 'live') return
-    const ch = (config.channels || []).find(c => c.id === id)
-    if (!ch) return
+    if (!id) return null
+    // Per-channel tab → use its config row directly
+    if (_isChatTab(id) && id !== 'live') {
+      const ch = (config.channels || []).find(c => c.id === id)
+      if (!ch) return null
+      return { name: ch.id, twitch: ch.twitch || '', kick: ch.kick || '', youtube: ch.youtube || '' }
+    }
+    // Live tab → use the live channel for the host platform
+    if (id === 'live') {
+      const ch = (getLiveChannel() || '').toLowerCase()
+      if (!ch) return null
+      const ctx = { name: ch, twitch: '', kick: '', youtube: '' }
+      if (hostPlatform === 'twitch') ctx.twitch = ch
+      else if (hostPlatform === 'kick') ctx.kick = ch
+      else if (hostPlatform === 'yt') ctx.youtube = ch
+      return (ctx.twitch || ctx.kick || ctx.youtube) ? ctx : null
+    }
+    return null
+  }
+
+  // Pop out the active tab as a heatsync.org chat-popout window. Mirrors the
+  // website's chat-tile ⛶ button.
+  function openPopoutForCurrentTab() {
+    const ctx = resolvePopoutContext()
+    if (!ctx) return
     const params = new URLSearchParams()
-    if (ch.twitch) params.set('twitch', ch.twitch)
-    if (ch.kick) params.set('kick', ch.kick)
-    if (ch.youtube) params.set('yt', ch.youtube)
-    params.set('name', ch.id)
-    if (![...params.keys()].some(k => k === 'twitch' || k === 'kick' || k === 'yt')) return
+    if (ctx.twitch) params.set('twitch', ctx.twitch)
+    if (ctx.kick) params.set('kick', ctx.kick)
+    if (ctx.youtube) params.set('yt', ctx.youtube)
+    params.set('name', ctx.name)
     const url = `https://heatsync.org/chat-popout.html?${params.toString()}`
     const features = 'width=400,height=600,menubar=no,toolbar=no,location=no,status=no'
     try {
-      window.open(url, `hs-popout-${ch.id}`, features)
+      window.open(url, `hs-popout-${ctx.name}`, features)
     } catch (e) { log('popout open failed:', e) }
   }
 
-  // Show the popout button only on per-channel chat tabs (not feed/mentions/etc).
+  // Show the popout button when the active tab has a channel context.
+  // Hidden on static tabs (feed/mentions/whispers/pinned/settings/add).
   function updatePopoutBtnVisibility() {
     const btn = tabBarElement?.querySelector('.hs-mc-popout-btn')
     if (!btn) return
-    const show = !!(currentTab && _isChatTab(currentTab) && currentTab !== 'live')
-    btn.style.display = show ? '' : 'none'
+    btn.style.display = resolvePopoutContext() ? '' : 'none'
   }
 
   // Render a small banner inside the multichat panel when an upstream API is unreachable.

@@ -1099,28 +1099,11 @@ function handleInputKeydown(e) {
         else if (offset === 1 &&
                  (node.textContent[0] === ' ' || node.textContent[0] === ' ') &&
                  isInputEmoteUnit(node.previousSibling)) {
-          // When the text node is ONLY the auto-space, treat chip+space as
-          // one Tab-insert unit and delete both atomically (old behavior
-          // required two backspaces to undo a fresh autocomplete). When the
-          // node has more text, just consume the space — don't eat user
-          // content in one press.
+          // Consume the auto-space on this Backspace; the next press will
+          // land at offset 0 and pop the chip. Two presses total — matches
+          // typed-space semantics so a Tab-inserted unit deletes as if the
+          // user had typed "Kappa" + space themselves.
           e.preventDefault()
-          if (node.textContent.length === 1) {
-            const prevSibling = node.previousSibling
-            const beforeNode = prevSibling.previousSibling
-            const afterNode = node.nextSibling
-            prevSibling.remove()
-            node.remove()
-            const r = document.createRange()
-            if (afterNode) r.setStartBefore(afterNode)
-            else if (beforeNode) r.setStartAfter(beforeNode)
-            else { r.selectNodeContents(input); r.collapse(true) }
-            r.collapse(true)
-            sel.removeAllRanges(); sel.addRange(r)
-            pendingMessage = getInputText()
-            updateCharCount()
-            return
-          }
           node.textContent = node.textContent.slice(1)
           const r = document.createRange()
           r.setStart(node, 0); r.collapse(true)
@@ -2380,7 +2363,11 @@ function insertCompletionWysiwyg(match) {
       if (prevIsChip) leadBefore = '\u00A0';
     }
     textNode.textContent = leadBefore;
-    const space = document.createTextNode('\u00A0' + after);
+    // Auto-space after Tab uses a REGULAR space (not nbsp) so Backspace
+    // consumes it like a typed space \u2014 first press eats the space, next
+    // press deletes the chip. Matches user expectation that Tab feels like
+    // typing "Kappa " by hand.
+    const space = document.createTextNode(' ' + after);
     const parent = textNode.parentNode;
     const nextSibling = textNode.nextSibling;
     if (nextSibling) {
@@ -2422,7 +2409,7 @@ function insertCompletionWysiwyg(match) {
           rm.remove();
         }
         stackInputEmote(prev, img);
-        textNode.textContent = after || ' ';
+        textNode.textContent = after || ' ';
         placeCaretAfter(textNode, 1);
         pendingMessage = getInputText();
         updateCharCount();

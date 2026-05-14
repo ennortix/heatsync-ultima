@@ -8548,20 +8548,43 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     return null
   }
 
-  // Pop out the active tab as a heatsync.org chat-popout window. Mirrors the
-  // website's chat-tile ⛶ button.
+  // Pop out the active tab to the host platform's native chat popout window
+  // (twitch.tv / kick.com / youtube.com). When a tab is linked to multiple
+  // platforms, prefer the platform we're currently browsing on so the user
+  // gets the chat for the page they're already watching.
   function openPopoutForCurrentTab() {
     const ctx = resolvePopoutContext()
     if (!ctx) return
-    const params = new URLSearchParams()
-    if (ctx.twitch) params.set('twitch', ctx.twitch)
-    if (ctx.kick) params.set('kick', ctx.kick)
-    if (ctx.youtube) params.set('yt', ctx.youtube)
-    params.set('name', ctx.name)
-    const url = `https://heatsync.org/chat-popout.html?${params.toString()}`
-    const features = 'width=400,height=600,menubar=no,toolbar=no,location=no,status=no'
+
+    // Pick which platform's native chat to open. Prefer host platform if the
+    // tab has a channel for it; else fall back to whichever platform exists.
+    const hostPick = (hostPlatform === 'twitch' && ctx.twitch) ? 'twitch'
+                   : (hostPlatform === 'kick' && ctx.kick) ? 'kick'
+                   : (hostPlatform === 'yt' && ctx.youtube) ? 'youtube'
+                   : null
+    const platform = hostPick
+      || (ctx.twitch ? 'twitch' : ctx.kick ? 'kick' : ctx.youtube ? 'youtube' : null)
+    if (!platform) return
+
+    let url, features = 'width=400,height=600,menubar=no,toolbar=no,location=no,status=no'
+    if (platform === 'twitch') {
+      url = `https://www.twitch.tv/popout/${ctx.twitch}/chat?popout=`
+    } else if (platform === 'kick') {
+      url = `https://kick.com/popout/${ctx.kick}/chat`
+    } else if (platform === 'youtube') {
+      // youtube live_chat needs a videoId — pull from cached youtubeLinks
+      // if the active tab is in there; else fall back to channel-page redirect.
+      const link = youtubeLinks.get(currentTab)
+      if (link?.videoId) {
+        url = `https://www.youtube.com/live_chat?v=${link.videoId}&is_popout=1`
+      } else {
+        // ctx.youtube is the original watch URL — open it in a small window
+        // so the user can use yt's own popout-chat from there.
+        url = ctx.youtube
+      }
+    }
     try {
-      window.open(url, `hs-popout-${ctx.name}`, features)
+      window.open(url, `hs-popout-${platform}-${ctx.name}`, features)
     } catch (e) { log('popout open failed:', e) }
   }
 

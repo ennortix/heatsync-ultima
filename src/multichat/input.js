@@ -2363,11 +2363,11 @@ function insertCompletionWysiwyg(match) {
       if (prevIsChip) leadBefore = '\u00A0';
     }
     textNode.textContent = leadBefore;
-    // Auto-space after Tab uses a REGULAR space (not nbsp) so Backspace
-    // consumes it like a typed space \u2014 first press eats the space, next
-    // press deletes the chip. Matches user expectation that Tab feels like
-    // typing "Kappa " by hand.
-    const space = document.createTextNode(' ' + after);
+    // Auto-space after Tab uses nbsp \u2014 at end of contenteditable, regular
+    // trailing spaces collapse to 0 width and look invisible. Backspace
+    // handler still consumes this in one keystroke, so it behaves like a
+    // typed space (1st press eats it, 2nd press deletes the chip).
+    const space = document.createTextNode('\u00a0' + after);
     const parent = textNode.parentNode;
     const nextSibling = textNode.nextSibling;
     if (nextSibling) {

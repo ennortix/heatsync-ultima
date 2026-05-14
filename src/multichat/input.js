@@ -1099,10 +1099,28 @@ function handleInputKeydown(e) {
         else if (offset === 1 &&
                  (node.textContent[0] === ' ' || node.textContent[0] === ' ') &&
                  isInputEmoteUnit(node.previousSibling)) {
-          // Consume the trailing nbsp first; next backspace pops the unit.
-          // Don't unwrap chips — that destroyed WYSIWYG state on every
-          // backspace ("turns to text" complaint).
+          // When the text node is ONLY the auto-space, treat chip+space as
+          // one Tab-insert unit and delete both atomically (old behavior
+          // required two backspaces to undo a fresh autocomplete). When the
+          // node has more text, just consume the space — don't eat user
+          // content in one press.
           e.preventDefault()
+          if (node.textContent.length === 1) {
+            const prevSibling = node.previousSibling
+            const beforeNode = prevSibling.previousSibling
+            const afterNode = node.nextSibling
+            prevSibling.remove()
+            node.remove()
+            const r = document.createRange()
+            if (afterNode) r.setStartBefore(afterNode)
+            else if (beforeNode) r.setStartAfter(beforeNode)
+            else { r.selectNodeContents(input); r.collapse(true) }
+            r.collapse(true)
+            sel.removeAllRanges(); sel.addRange(r)
+            pendingMessage = getInputText()
+            updateCharCount()
+            return
+          }
           node.textContent = node.textContent.slice(1)
           const r = document.createRange()
           r.setStart(node, 0); r.collapse(true)

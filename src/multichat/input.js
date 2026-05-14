@@ -345,6 +345,11 @@ function initInput() {
   input.addEventListener('keydown', handleInputKeydown);
   input.addEventListener('input', handleInputChange);
   input.addEventListener('input', updateCharCount);
+  // Unified undo/redo — same module as the website. installUndoManager
+  // attaches a manager to input._undoManager and wires Ctrl+Z hotkeys
+  // (capture phase) + auto-capture on input events. Per-keystroke for
+  // typing, one step per structural op (Tab autocomplete, smart unwrap, etc.).
+  try { installUndoManager(input, { max: 100 }) } catch (_) {}
   // Tab clears emote :hover highlight in chat — mouse stuck over an emote
   // would otherwise hold the green rect lit while the user cycles autocomplete.
   // Body class restored on mousemove. Single global install via window flag.

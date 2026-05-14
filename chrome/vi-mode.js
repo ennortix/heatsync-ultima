@@ -276,27 +276,44 @@
 
   // --- Undo ---
 
-  function pushUndo(el) {
-    undoStack.push({ text: getText(el), cursor })
-    if (undoStack.length > 100) undoStack.shift()
-    redoStack.length = 0 // new edit clears redo
+  // Delegate to the shared UndoManager on input._undoManager (installed by
+  // multichat input init). Vi's 'u' / Ctrl+R thereby step through the same
+  // stack as Ctrl+Z — emote chips survive vi undo (the old text-only stack
+  // would have flattened them on restore).
+  function pushUndo(_el) {
+    // No-op: UndoManager auto-captures on input events. Vi mutations use
+    // execCommand which fires input events, so captures happen naturally.
   }
 
   function popUndo(el) {
-    if (!undoStack.length) return
-    redoStack.push({ text: getText(el), cursor })
-    const s = undoStack.pop()
-    replaceAll(el, s.text)
-    cursor = s.cursor
+    const mgr = el?._undoManager
+    if (!mgr) {
+      if (!undoStack.length) return
+      redoStack.push({ text: getText(el), cursor })
+      const s = undoStack.pop()
+      replaceAll(el, s.text)
+      cursor = s.cursor
+      syncCursor(el)
+      return
+    }
+    if (!mgr.undo()) return
+    cursor = getCursorPos(el)
     syncCursor(el)
   }
 
   function popRedo(el) {
-    if (!redoStack.length) return
-    undoStack.push({ text: getText(el), cursor })
-    const s = redoStack.pop()
-    replaceAll(el, s.text)
-    cursor = s.cursor
+    const mgr = el?._undoManager
+    if (!mgr) {
+      if (!redoStack.length) return
+      undoStack.push({ text: getText(el), cursor })
+      const s = redoStack.pop()
+      replaceAll(el, s.text)
+      cursor = s.cursor
+      syncCursor(el)
+      return
+    }
+    if (!mgr.redo()) return
+    cursor = getCursorPos(el)
     syncCursor(el)
   }
 

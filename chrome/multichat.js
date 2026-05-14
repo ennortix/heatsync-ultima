@@ -28641,6 +28641,7 @@ const STORAGE_KEY = 'heatsync_multichat';
           <button class="hs-mc-tab hs-mc-util-btn hs-mc-font-btn" data-font-dir="-1" title="${t('mc_btn_smaller_text')}">F-</button>
           <button class="hs-mc-tab hs-mc-util-btn hs-mc-font-btn" data-font-dir="1" title="${t('mc_btn_larger_text')}">F+</button>
           <button class="hs-mc-tab hs-mc-util-btn" data-tab="settings" title="${t('mc_btn_settings')}">\u2699</button>
+          <button class="hs-mc-tab hs-mc-util-btn hs-mc-popout-btn" data-tab="popout" title="pop out chat to standalone window" style="display:none">\u26f6</button>
         </div>
         <div id="hs-mc-platfilter"></div>
       </div>
@@ -28666,6 +28667,8 @@ const STORAGE_KEY = 'heatsync_multichat';
         rotateTabPosition();
       } else if (tabId === 'rotate-chat') {
         rotateChatPosition();
+      } else if (tabId === 'popout') {
+        openPopoutForCurrentTab();
       } else if (tabId === 'live') {
         showLiveChannelPicker(tab);
       } else if (tabId === 'settings' && currentTab === 'settings') {
@@ -32298,6 +32301,7 @@ const STORAGE_KEY = 'heatsync_multichat';
       const settingsBtn = tabBarElement.querySelector('[data-tab="settings"]');
       if (settingsBtn) settingsBtn.textContent = id === 'settings' ? '✕' : '⚙';
     }
+    updatePopoutBtnVisibility();
 
     // Channel/tab switch flips which channel-emote cache the picker reads —
     // mark cache dirty + queue idle prebuild for the new context.
@@ -35507,6 +35511,35 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     log('rotate-chat:', prev, '→', chatPosition);
     applyChatPosition();
     saveUiSetting('chatPosition', chatPosition);
+  }
+
+  // Pop out the active per-channel tab as a heatsync.org chat-popout window.
+  // Mirrors the website's chat-tile ⛶ button. Hidden on static tabs (handled
+  // by updatePopoutBtnVisibility); guard here too in case of misclick races.
+  function openPopoutForCurrentTab() {
+    const id = currentTab
+    if (!id || !_isChatTab(id) || id === 'live') return
+    const ch = (config.channels || []).find(c => c.id === id)
+    if (!ch) return
+    const params = new URLSearchParams()
+    if (ch.twitch) params.set('twitch', ch.twitch)
+    if (ch.kick) params.set('kick', ch.kick)
+    if (ch.youtube) params.set('yt', ch.youtube)
+    params.set('name', ch.id)
+    if (![...params.keys()].some(k => k === 'twitch' || k === 'kick' || k === 'yt')) return
+    const url = `https://heatsync.org/chat-popout.html?${params.toString()}`
+    const features = 'width=400,height=600,menubar=no,toolbar=no,location=no,status=no'
+    try {
+      window.open(url, `hs-popout-${ch.id}`, features)
+    } catch (e) { log('popout open failed:', e) }
+  }
+
+  // Show the popout button only on per-channel chat tabs (not feed/mentions/etc).
+  function updatePopoutBtnVisibility() {
+    const btn = tabBarElement?.querySelector('.hs-mc-popout-btn')
+    if (!btn) return
+    const show = !!(currentTab && _isChatTab(currentTab) && currentTab !== 'live')
+    btn.style.display = show ? '' : 'none'
   }
 
   // Render a small banner inside the multichat panel when an upstream API is unreachable.

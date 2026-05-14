@@ -8819,7 +8819,9 @@ function injectStyles() {
     .hs-tabs-left .hs-mc-util-btn {
       width: auto !important;
       max-width: none !important;
-      min-width: 18px !important;
+      /* 14px min lets all 6 util buttons (C/T/F-/F+/⚙/⛶) share the 90px
+         tabbar column without wrapping. flex:1 still lets them grow. */
+      min-width: 14px !important;
       padding: 0 !important;
       flex: 1 1 0 !important;
       margin: 0 -1px 0 0 !important;

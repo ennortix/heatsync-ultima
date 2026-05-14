@@ -1214,7 +1214,12 @@ function chipToText(el) {
   if (el.tagName === 'IMG' && el.classList?.contains('hs-input-emote')) {
     let txt = el.dataset.emoteName || el.alt || ''
     const mods = el.dataset.hsWords || el.dataset.hsModWords
-    if (mods) for (const w of mods.split(/\s+/).filter(Boolean)) txt += ' ' + w
+    if (mods) {
+      for (const w of mods.split(/\s+/).filter(Boolean)) txt += ' ' + w
+      // Trailing space keeps modifier tokens parseable when merged into adjacent
+      // text — "Kappa w!" + "4He" must become "Kappa w! 4He", not "Kappa w!4He".
+      txt += ' '
+    }
     return txt
   }
   if (el.classList?.contains('hs-input-stack')) {
@@ -1223,7 +1228,10 @@ function chipToText(el) {
       if (child.tagName !== 'IMG') continue
       let txt = child.dataset.emoteName || child.alt || ''
       const mods = child.dataset.hsWords || child.dataset.hsModWords
-      if (mods) for (const w of mods.split(/\s+/).filter(Boolean)) txt += ' ' + w
+      if (mods) {
+        for (const w of mods.split(/\s+/).filter(Boolean)) txt += ' ' + w
+        txt += ' '
+      }
       parts.push(txt)
     }
     return parts.join(' ')

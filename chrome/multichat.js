@@ -23844,7 +23844,12 @@ function chipToText(el) {
   if (el.tagName === 'IMG' && el.classList?.contains('hs-input-emote')) {
     let txt = el.dataset.emoteName || el.alt || ''
     const mods = el.dataset.hsWords || el.dataset.hsModWords
-    if (mods) for (const w of mods.split(/\s+/).filter(Boolean)) txt += ' ' + w
+    if (mods) {
+      for (const w of mods.split(/\s+/).filter(Boolean)) txt += ' ' + w
+      // Trailing space keeps modifier tokens parseable when merged into adjacent
+      // text — "Kappa w!" + "4He" must become "Kappa w! 4He", not "Kappa w!4He".
+      txt += ' '
+    }
     return txt
   }
   if (el.classList?.contains('hs-input-stack')) {
@@ -23853,7 +23858,10 @@ function chipToText(el) {
       if (child.tagName !== 'IMG') continue
       let txt = child.dataset.emoteName || child.alt || ''
       const mods = child.dataset.hsWords || child.dataset.hsModWords
-      if (mods) for (const w of mods.split(/\s+/).filter(Boolean)) txt += ' ' + w
+      if (mods) {
+        for (const w of mods.split(/\s+/).filter(Boolean)) txt += ' ' + w
+        txt += ' '
+      }
       parts.push(txt)
     }
     return parts.join(' ')
@@ -29851,6 +29859,16 @@ const STORAGE_KEY = 'heatsync_multichat';
   function applyChatWidth(cachedRightCol) {
     const rightCol = cachedRightCol || document.querySelector('.right-column')
     if (!rightCol) return
+    // No-channel pages (/videos, /directory, …) body-mount the panel as a
+    // fixed overlay, so Twitch's flex .right-column slot is dead space. Zero
+    // it so twilight-main reclaims the width — otherwise users see a 306px
+    // gap between page content and the floating chat.
+    if (document.body.classList.contains('hs-twitch-no-channel')) {
+      rightCol.style.setProperty('width', '0', 'important')
+      rightCol.style.setProperty('min-width', '0', 'important')
+      rightCol.style.setProperty('max-width', '0', 'important')
+      return
+    }
     // C button took chat off the right edge — don't restore native width here
     // or the right-column reclaims its 340px and the player snaps back.
     if (chatPosition && chatPosition !== 'right') {
@@ -34962,7 +34980,13 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
         }
       }
     }
+    const prev = document.body.classList.contains('hs-twitch-no-channel');
     document.body.classList.toggle('hs-twitch-no-channel', noChannel);
+    // State flip: re-run width so the right-column slot zeros (entering
+    // no-channel) or reclaims its size (returning to a channel page).
+    if (prev !== noChannel) {
+      try { applyChatWidth() } catch (_) {}
+    }
   }
 
   // Mirror of updateTwitchNoChannelClass for Kick. #channel-chatroom is

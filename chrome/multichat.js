@@ -31405,6 +31405,17 @@ const STORAGE_KEY = 'heatsync_multichat';
           }
         </div>
         <div class="hs-mc-settings-group">
+          <div class="hs-mc-settings-group-title">chat input tips</div>
+          <div class="hs-mc-setting-row" style="display:block;padding:6px 8px;color:#ccc;font-size:11px;line-height:1.55">
+            <div style="margin-bottom:6px"><strong style="color:#ff8700">overlay any emote (0 suffix)</strong></div>
+            <div>append <code style="background:#000;color:#fff;padding:1px 4px">0</code> to ANY emote name to render it as an overlay on the previous emote. <code style="background:#000;color:#fff;padding:1px 4px">Kappa PepeLaugh0</code> stacks PepeLaugh on top of Kappa. works on every emote — the lookup falls back to the stripped name.</div>
+            <div style="margin-top:8px;margin-bottom:6px"><strong style="color:#ff8700">FFZ modifiers (w! h! v! z! ffzX c!#hex)</strong></div>
+            <div>type a modifier token after an emote and Tab/space → attaches to the preceding emote. <code style="background:#000;color:#fff;padding:1px 4px">Kappa w!</code> = wide Kappa. <code style="background:#000;color:#fff;padding:1px 4px">Kappa c!#ff0000</code> = red Kappa. chains too: <code style="background:#000;color:#fff;padding:1px 4px">Kappa w!h!</code></div>
+            <div style="margin-top:8px;margin-bottom:6px"><strong style="color:#ff8700">Tab autocomplete</strong></div>
+            <div>type partial name + Tab to imagify. press Tab again to cycle. inserts a real space after the chip so backspace eats space first, chip second.</div>
+          </div>
+        </div>
+        <div class="hs-mc-settings-group">
           <div class="hs-mc-setting-row" style="justify-content:flex-end">
             <button class="hs-mc-defaults-btn" style="background:#808080;border:2px outset #fff;padding:2px 10px;font-size:11px;font-weight:bold;cursor:pointer;font-family:'Liberation Mono',monospace;color:#000;box-shadow:1px 1px 0 #000">default</button>
           </div>

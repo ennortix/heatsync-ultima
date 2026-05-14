@@ -28629,7 +28629,6 @@ const STORAGE_KEY = 'heatsync_multichat';
         <button class="hs-mc-tab active" data-tab="feed">${t('mc_tab_feed')}</button>
         <button class="hs-mc-tab" data-tab="whispers">${t('mc_tab_whispers')}</button>
         <button class="hs-mc-tab" data-tab="mentions">${t('mc_tab_mentions')}</button>
-        <button class="hs-mc-tab" data-tab="discover">${t('mc_tab_discover')}</button>
         <button class="hs-mc-tab" data-tab="pinned">${t('mc_tab_pinned')}</button>
         <button class="hs-mc-tab" data-tab="live">${t('mc_tab_live')}</button>
         <button class="hs-mc-tab" data-tab="add">+</button>
@@ -31409,13 +31408,10 @@ const STORAGE_KEY = 'heatsync_multichat';
         </div>
         <div class="hs-mc-settings-group">
           <div class="hs-mc-settings-group-title">chat input tips</div>
-          <div class="hs-mc-setting-row" style="display:block;padding:6px 8px;color:#ccc;font-size:11px;line-height:1.55">
-            <div style="margin-bottom:6px"><strong style="color:#ff8700">overlay any emote (0 suffix)</strong></div>
-            <div>append <code style="background:#000;color:#fff;padding:1px 4px">0</code> to ANY emote name to render it as an overlay on the previous emote. <code style="background:#000;color:#fff;padding:1px 4px">Kappa PepeLaugh0</code> stacks PepeLaugh on top of Kappa. works on every emote — the lookup falls back to the stripped name.</div>
-            <div style="margin-top:8px;margin-bottom:6px"><strong style="color:#ff8700">FFZ modifiers (w! h! v! z! ffzX c!#hex)</strong></div>
-            <div>type a modifier token after an emote and Tab/space → attaches to the preceding emote. <code style="background:#000;color:#fff;padding:1px 4px">Kappa w!</code> = wide Kappa. <code style="background:#000;color:#fff;padding:1px 4px">Kappa c!#ff0000</code> = red Kappa. chains too: <code style="background:#000;color:#fff;padding:1px 4px">Kappa w!h!</code></div>
-            <div style="margin-top:8px;margin-bottom:6px"><strong style="color:#ff8700">Tab autocomplete</strong></div>
-            <div>type partial name + Tab to imagify. press Tab again to cycle. inserts a real space after the chip so backspace eats space first, chip second.</div>
+          <div class="hs-mc-setting-row" style="display:block;padding:6px 8px;color:#ccc;font-size:11px;line-height:1.5">
+            <div><code style="background:#000;color:#fff;padding:1px 4px">name0</code> overlay on prev emote &mdash; <code style="background:#000;color:#fff;padding:1px 4px">Kappa PepeLaugh0</code></div>
+            <div style="margin-top:4px"><code style="background:#000;color:#fff;padding:1px 4px">w!</code> <code style="background:#000;color:#fff;padding:1px 4px">h!</code> <code style="background:#000;color:#fff;padding:1px 4px">v!</code> <code style="background:#000;color:#fff;padding:1px 4px">z!</code> <code style="background:#000;color:#fff;padding:1px 4px">c!#hex</code> ffz mods &mdash; chain <code style="background:#000;color:#fff;padding:1px 4px">w!h!</code></div>
+            <div style="margin-top:4px"><code style="background:#000;color:#fff;padding:1px 4px">Tab</code> imagify &middot; again to cycle</div>
           </div>
         </div>
         <div class="hs-mc-settings-group">
@@ -34836,7 +34832,9 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
   }
 
   let _savedActiveTab = null;
-  const BUILTIN_TABS = ['live', 'feed', 'mentions', 'discover', 'pinned', 'add'];
+  // 'discover' intentionally omitted — tab is hidden from the bar pre-launch,
+  // so a stale saved 'discover' falls back to 'live' on restore.
+  const BUILTIN_TABS = ['live', 'feed', 'mentions', 'pinned', 'add'];
   async function loadActiveTab() {
     try {
       const stored = await cachedUiSettings();

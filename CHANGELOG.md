@@ -1,5 +1,36 @@
 # changelog
 
+## [1.4.0] — 2026-05-14
+
+### added
+- popout button in multichat tab bar — opens host platform's native chat in a clean window (Twitch /popout, Kick /chatroom, YouTube /live_chat) right of the settings cog
+- unified UndoManager for multichat input — Ctrl+Z / Ctrl+Shift+Z across chip insertions, modifier chains, vi-mode edits with one stack
+- server-controlled kill-switch + version-floor — ops can disable misbehaving features or force-update without a store push
+- thread-walk replies — multi-hop conversation traversal in the multichat overlay
+- tier-drop emote removal + multi-platform channel banners
+- moderation commands wired through GQL: `/ban`, `/unban`, `/timeout`, `/delete` with dismissible toasts
+- chat input tips group in settings (overlay-0, FFZ modifiers, Tab auto-space)
+
+### changed
+- centralized inline Twitch/Kick selectors into a single SELECTORS map (3 callsites → 1)
+- multichat hides discover tab; tighter input-tip surface
+- whitespace handling: real keyboard space after Tab; auto-space stays nbsp at chip boundaries to survive trailing-collapse
+- smart unwrap preserves chips around the touching boundary; backspace deletes chip + auto-space atomically
+
+### perf
+- multichat scroll on Twitch — main-thread stalls cut by hoisting hot selector lookups
+- dropped util-btn min-width 18→14px in vertical multichat mode
+
+### fixed
+- 3 untracked memory leaks now flow through the cleanup system
+- robotty CLEARCHAT cross-references on backfill + SW-wake gap-fill alignment with reply-stack overlay
+- error reporter noise: synthetic stacks + filtered transient errors; storage warn dedup; chat-injector non-channel skip; fetchUserInfo JSON safety
+- maroon mention rows force white text + black channel-tag (was unreadable)
+- stack-internal overlay imgs no longer unwrap on chip edits
+- twitch right-column slot zeroed on no-channel pages
+- popout button visible on live tab + whitelisted in updateTabBar selector
+- live-imagify nbsp fallbacks → regular space for parity with website
+
 ## [1.3.9] — 2026-05-12
 
 ### fixed

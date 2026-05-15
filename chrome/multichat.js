@@ -6954,9 +6954,11 @@ function injectStyles() {
       font-family: inherit;
       outline: none;
       position: relative;
-      /* pre preserves trailing whitespace so the auto-space after Tab renders
-         as a real, visible, backspace-able keyboard space. */
-      white-space: pre;
+      /* pre-wrap preserves trailing whitespace (the auto-space after Tab
+         completion stays visible + backspace-able) AND wraps long lines so
+         text doesn't escape the inputbar into the tab area. */
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
     }
     #hs-mc-input:focus {
       border-color: #9147ff;

@@ -2121,14 +2121,36 @@ function injectStyles() {
       box-sizing: content-box;
       object-fit: contain;
     }
-    /* Picker emote wrap — blocked state draws a dashed grey outline on the
-       wrap (not the img — opacity/visibility on the img kill its own outline)
-       and hides the inner img while keeping the slot's layout intact. */
+    /* Picker emote wrap — three hover states:
+       - default (owned/global/channel) → green rectangle on hover
+       - .unadded → orange rectangle on hover (click adds to set)
+       - .blocked → persistent 2px dashed grey rectangle (no hover color)
+       Rectangle paints via ::before on the wrap (not the img) so visibility:
+       hidden on the img during hover/blocked keeps the slot's layout intact. */
     .hs-mc-picker-emote-wrap {
       display: inline-flex;
       align-items: center;
       justify-content: center;
       cursor: pointer;
+      position: relative;
+    }
+    .hs-mc-picker-emote-wrap::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      opacity: 0;
+      pointer-events: none;
+      z-index: 1;
+      background: #00ff00;
+    }
+    .hs-mc-picker-emote-wrap.unadded::before {
+      background: #ff8700;
+    }
+    .hs-mc-picker-emote-wrap:not(.blocked):hover::before {
+      opacity: 1;
+    }
+    .hs-mc-picker-emote-wrap:not(.blocked):hover > img {
+      visibility: hidden;
     }
     .hs-mc-picker-emote-wrap.blocked {
       outline: 2px dashed #808080 !important;

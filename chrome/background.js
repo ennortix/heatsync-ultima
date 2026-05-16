@@ -4947,6 +4947,12 @@ async function handleMessage(message, sender, sendResponse) {
           joinedExtraChannels.add(key)
           saveJoinedExtraChannels()
         }
+        // Kick: pull deep archive from postgres alongside the server's 200-msg
+        // ring backfill. Internal cooldown prevents duplicate fetches on
+        // rapid switches.
+        if (message.data.platform.toLowerCase() === 'kick') {
+          try { bgKickFetchArchive(message.data.channel.toLowerCase()).catch(() => {}) } catch {}
+        }
       } else if (message.data.type === 'channel:leave' && message.data.platform && message.data.channel) {
         const key = `${message.data.platform}/${message.data.channel.toLowerCase()}`
         if (joinedExtraChannels.delete(key)) saveJoinedExtraChannels()
@@ -6580,6 +6586,10 @@ function bgIrcReconcileCleared(buf) {
 
 function bgIrcFetchRobotty(ch) {
   if (BG_IRC.historyInFlight.has(ch)) return BG_IRC.historyInFlight.get(ch)
+  // 30s per-channel cooldown — protects robotty + our SW from thrash on
+  // rapid page reloads / channel switches. Initial join still fetches.
+  const lastAt = BG_IRC.lastRobottyAt.get(ch) || 0
+  if (Date.now() - lastAt < 30_000) return Promise.resolve()
   BG_IRC.lastRobottyAt.set(ch, Date.now())
   const p = (async () => {
     try {
@@ -6853,19 +6863,27 @@ function bgIrcUnregisterTabInterest(tabId, ch) {
 
 function bgIrcEnsureChannel(ch) {
   ch = ch.toLowerCase()
-  if (BG_IRC.channels.has(ch)) return
-  BG_IRC.channels.set(ch, new BGCircularBuffer(BG_IRC_PERSIST_MAX))
-  BG_IRC.chanLastSeen.set(ch, Date.now())
-  if (BG_IRC.ws?.readyState === WebSocket.OPEN) {
-    try { BG_IRC.ws.send(`JOIN #${ch}\r\n`) } catch {}
+  const isNew = !BG_IRC.channels.has(ch)
+  if (isNew) {
+    BG_IRC.channels.set(ch, new BGCircularBuffer(BG_IRC_PERSIST_MAX))
+    BG_IRC.chanLastSeen.set(ch, Date.now())
+    if (BG_IRC.ws?.readyState === WebSocket.OPEN) {
+      try { BG_IRC.ws.send(`JOIN #${ch}\r\n`) } catch {}
+    }
   }
-  // Pull heatsync's deeper server-side ring (500 msgs / 24h Redis) alongside
-  // robotty. Since=0 → flush the full buffer. Live msgs still come via direct
-  // Twitch IRC so we don't double-tap; this is history-only.
+  // External history sources fire regardless of whether the channel already
+  // exists in our in-memory map. A channel restored from chrome.storage on
+  // SW boot has the buffer but never had this SW's external fetches run —
+  // without firing them on every join, restored channels permanently miss
+  // the deeper sources (justlog / heatsync irc:resume / fresh robotty).
+  // All three have internal cooldowns to prevent hammering.
   try { wsSend({ type: 'irc:join', channel: ch }) } catch {}
-  try { wsSend({ type: 'irc:resume', channel: ch, since: 0 }) } catch {}
-  // Public justlog instances — thousands of past msgs for opted-in channels.
-  // Async, deduped by msg id against robotty/Redis-ring output.
+  try {
+    const buf = BG_IRC.channels.get(ch)
+    const all = buf?.getAll() || []
+    const lastTs = all.length > 0 ? (all[all.length - 1].time || 0) : 0
+    wsSend({ type: 'irc:resume', channel: ch, since: lastTs })
+  } catch {}
   try { bgIrcFetchJustlog(ch) } catch {}
   bgIrcFetchRobotty(ch)
 }

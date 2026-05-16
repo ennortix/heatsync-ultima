@@ -32,6 +32,8 @@
     "https://cdn.betterttv.net/*",
     "https://cdn.7tv.app/*",
     "https://recent-messages.robotty.de/api/v2/recent-messages/*",
+    "https://logs.ivr.fi/*",
+    "https://logs.spanix.team/*",
     "https://decapi.me/*",
     "https://api.chatterino.com/badges"
   ],

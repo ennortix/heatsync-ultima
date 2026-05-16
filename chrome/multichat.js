@@ -6553,18 +6553,52 @@ function injectStyles() {
       box-sizing: content-box;
       object-fit: contain;
     }
-    /* Picker emote wrap — blocked state draws a dashed grey outline on the
-       wrap (not the img — opacity/visibility on the img kill its own outline)
-       and hides the inner img while keeping the slot's layout intact. */
+    /* Picker emote wrap — three hover states:
+       - default (owned/global/channel) → green rectangle on hover
+       - .unadded → orange rectangle on hover (click adds to set)
+       - .blocked → persistent 2px dashed grey rectangle (no hover color)
+       Rectangle paints via ::before on the wrap (not the img) so visibility:
+       hidden on the img during hover/blocked keeps the slot's layout intact. */
     .hs-mc-picker-emote-wrap {
       display: inline-flex;
       align-items: center;
       justify-content: center;
       cursor: pointer;
+      position: relative;
     }
-    .hs-mc-picker-emote-wrap.blocked {
-      outline: 2px dashed #808080 !important;
-      outline-offset: -2px !important;
+    .hs-mc-picker-emote-wrap::before {
+      content: '';
+      position: absolute;
+      /* Match img content-box, not its padding-box. .hs-mc-picker-emote
+         carries padding:4px, so the wrap is 8px wider/taller than the
+         visible emote — inset:0 here would paint orange/green 4px past
+         the emote on every side ("rect bigger than emote" / "two stacked
+         rects" perception). Inset by the picker-emote padding so the
+         hover rect tracks the visible image instead. box-sizing keeps the
+         dashed border (blocked state) from inflating the rect. */
+      inset: 4px;
+      box-sizing: border-box;
+      opacity: 0;
+      pointer-events: none;
+      z-index: 1;
+      background: #00ff00;
+    }
+    .hs-mc-picker-emote-wrap.unadded::before {
+      background: #ff8700;
+    }
+    .hs-mc-picker-emote-wrap:not(.blocked):hover::before {
+      opacity: 1;
+    }
+    .hs-mc-picker-emote-wrap:not(.blocked):hover > img {
+      visibility: hidden !important;
+    }
+    /* Blocked: persistent dashed rect via ::before (not outline on the
+       wrap) so it tracks emote content size like the green/orange hover
+       does, instead of sitting 4px outside on the wrap's padding-box. */
+    .hs-mc-picker-emote-wrap.blocked::before {
+      opacity: 1;
+      background: none;
+      border: 2px dashed #808080;
     }
     .hs-mc-picker-emote-wrap.blocked img {
       visibility: hidden !important;
@@ -7013,7 +7047,10 @@ function injectStyles() {
     /* WYSIWYG emote images in input — height clamped, width auto so wide
        emotes (catKISS, peepoArrive, etc.) render at natural aspect.
        max-width caps absurdly wide ones so a single emote can't blow out the
-       inputbar layout. */
+       inputbar layout. cursor:pointer overrides the contenteditable's text
+       caret so every state reads as interactive (right-click blocks, blocked
+       left-click unblocks). The chrome content.js hover-overlay paints the
+       state-coloured rect over the IMG on hover. */
     #hs-mc-input .hs-input-emote {
       height: var(--hs-emote-size, 32px);
       width: auto;
@@ -7021,6 +7058,7 @@ function injectStyles() {
       vertical-align: middle;
       margin: 0 2px;
       object-fit: contain;
+      cursor: pointer;
     }
     /* WYSIWYG zero-width / overlay emote stacking in input.
        Fixed height keeps line layout stable when overlays render larger than
@@ -7055,12 +7093,15 @@ function injectStyles() {
        image hidden. Image content is masked to a 1×1 transparent placeholder
        (src swap in applyInputEmoteBlockState) so outline still renders (a
        visibility:hidden / opacity:0 approach also hides the outline). Width
-       collapses to a fixed square so dashed box is always visible. */
+       collapses to a fixed square so dashed box is always visible. Cursor
+       hints clickability (chrome content.js hover-overlay paints the red
+       rect over the dashed box on hover, matching chat-wrapper behaviour). */
     #hs-mc-input .hs-input-emote.hs-state-blocked {
       outline: 2px dashed #808080;
       outline-offset: -2px;
       width: var(--hs-emote-size, 32px);
       min-width: var(--hs-emote-size, 32px);
+      cursor: pointer;
     }
     .hs-mc-emoji {
       font-variant-emoji: emoji;
@@ -7692,18 +7733,12 @@ function injectStyles() {
       display: inline-block !important;
       visibility: visible !important;
     }
-    /* Hover state cues — subtle bg-fill only, no outline. Convention:
-       green = already in your set, orange = not in your set yet (clicking
-       adds + pastes), red = blocked. */
-    .hs-mc-picker-emote:hover {
-      background: rgba(0, 204, 102, 0.18);
-    }
-    .hs-mc-picker-emote[data-state="unadded"]:hover {
-      background: rgba(0, 255, 255, 0.22);
-    }
-    .hs-mc-picker-emote[data-state="blocked"]:hover {
-      background: rgba(255, 64, 64, 0.20);
-    }
+    /* Hover state lives on the wrap (.hs-mc-picker-emote-wrap ::before) —
+       solid green/orange/dashed-grey rects there. Old img-level translucent
+       bg-fills (green for owned, cyan for unadded, red for blocked) were
+       fighting the new wrap rect: img sat on top of ::before in the stacking
+       order, so the user saw green/cyan rect-with-orange-outline instead of
+       a clean orange rect. Removed; wrap ::before is now the single source. */
     .hs-mc-picker-empty {
       padding: 32px !important;
       text-align: center !important;
@@ -13699,19 +13734,26 @@ async function sendKickMessage(kickSlug, text) {
     if (typeof clearRenderedHtmlCache === 'function') clearRenderedHtmlCache();
   }
 
-  // Flash all wrappers for a given emote name
+  // Flash all wrappers for a given emote name. Also touches multichat input
+  // chips (.hs-input-emote IMGs) so the user gets the same red/green ring
+  // feedback on the emote they just blocked/unblocked from the input.
   function flashAllEmotes(emoteName, flashClass) {
     const wrappers = queryEmoteWrappers(emoteName)
-    if (wrappers.length === 0) return
+    const inputImgs = []
+    for (const img of document.querySelectorAll('img.hs-input-emote')) {
+      if (img.alt === emoteName || img.dataset.emoteName === emoteName) inputImgs.push(img)
+    }
+    const targets = wrappers.length === 0 ? inputImgs : [...wrappers, ...inputImgs]
+    if (targets.length === 0) return
     // Batch read/write to avoid per-element reflow
-    for (const w of wrappers) {
-      w.classList.remove('hs-flash-paste', 'hs-flash-add', 'hs-flash-block', 'hs-flash-unblock', 'hs-flash-remove');
+    for (const t of targets) {
+      t.classList.remove('hs-flash-paste', 'hs-flash-add', 'hs-flash-block', 'hs-flash-unblock', 'hs-flash-remove');
     }
     // Single reflow trigger for all elements
     void document.body.offsetWidth
-    for (const w of wrappers) {
-      w.classList.add(flashClass);
-      w.addEventListener('animationend', () => w.classList.remove(flashClass), { once: true });
+    for (const t of targets) {
+      t.classList.add(flashClass);
+      t.addEventListener('animationend', () => t.classList.remove(flashClass), { once: true });
     }
   }
 
@@ -13751,6 +13793,10 @@ async function sendKickMessage(kickSlug, text) {
       if (img.src && !img.src.startsWith('data:')) img.dataset.hsOrigSrc = img.src
       img.src = HS_TRANSPARENT_PX
       img.classList.add('hs-state-blocked')
+      // dataset.state lets findEmoteTarget (input.js) and the chrome content.js
+      // hover-overlay color picker route through the blocked branch even when
+      // src is the transparent placeholder.
+      img.dataset.state = 'blocked'
     } else {
       if (img.dataset.hsInputBlocked !== '1') return
       const orig = img.dataset.hsOrigSrc
@@ -13758,6 +13804,7 @@ async function sendKickMessage(kickSlug, text) {
       delete img.dataset.hsInputBlocked
       delete img.dataset.hsOrigSrc
       img.classList.remove('hs-state-blocked')
+      delete img.dataset.state
     }
   }
 
@@ -15033,17 +15080,25 @@ async function sendKickMessage(kickSlug, text) {
         return;
       }
 
-      // Check wrapper first, then IMG
+      // Check wrapper first, then IMG. Input chips (.hs-input-emote) also
+      // surface the tooltip so users can read name + state without leaving
+      // the input box.
       const wrapper = target.closest('.hs-mc-emote-wrapper');
       const img = wrapper ? wrapper.querySelector('img') : (
-        target.tagName === 'IMG' && (target.classList.contains('hs-mc-emote') || target.classList.contains('hs-mc-picker-emote')) ? target : null
+        target.tagName === 'IMG' && (
+          target.classList.contains('hs-mc-emote') ||
+          target.classList.contains('hs-mc-picker-emote') ||
+          target.classList.contains('hs-input-emote')
+        ) ? target : null
       );
       if (!img && !wrapper) return;
 
       const emoteName = wrapper?.dataset.emoteName || img?.alt || img?.dataset.emoteName || img?.title?.split(' ')[0];
       if (!emoteName) return;
 
-      const emoteUrl = wrapper?.dataset.emoteUrl || img?.src;
+      // For blocked input chips, dataset.hsOrigSrc holds the real image URL
+      // (src has been swapped to a 1×1 transparent placeholder).
+      const emoteUrl = wrapper?.dataset.emoteUrl || img?.dataset.hsOrigSrc || img?.src;
       const state = wrapper?.dataset.state || img?.dataset.state || 'global';
       const source = wrapper?.dataset.source || img?.dataset.source || detectEmoteSource(emoteUrl);
       const owner = wrapper?.dataset.owner || img?.dataset.owner || '';
@@ -15081,7 +15136,11 @@ async function sendKickMessage(kickSlug, text) {
 
       const wrapper = target.closest('.hs-mc-emote-wrapper');
       const img = wrapper ? wrapper.querySelector('img') : (
-        target.tagName === 'IMG' && (target.classList.contains('hs-mc-emote') || target.classList.contains('hs-mc-picker-emote')) ? target : null
+        target.tagName === 'IMG' && (
+          target.classList.contains('hs-mc-emote') ||
+          target.classList.contains('hs-mc-picker-emote') ||
+          target.classList.contains('hs-input-emote')
+        ) ? target : null
       );
       if (!img && !wrapper) return;
 
@@ -15127,7 +15186,11 @@ async function sendKickMessage(kickSlug, text) {
       requestAnimationFrame(() => {
         _tooltipRafPending = false
         const onEmote = target?.closest?.('.hs-mc-emote-wrapper') ||
-          (target?.tagName === 'IMG' && (target.classList?.contains('hs-mc-emote') || target.classList?.contains('hs-mc-picker-emote')))
+          (target?.tagName === 'IMG' && (
+            target.classList?.contains('hs-mc-emote') ||
+            target.classList?.contains('hs-mc-picker-emote') ||
+            target.classList?.contains('hs-input-emote')
+          ))
         const onUser = target?.closest?.('.hs-mc-user')
         const onBadge = target?.tagName === 'IMG' && target.classList?.contains('hs-mc-badge-img')
 
@@ -23647,10 +23710,13 @@ function initInput() {
         source: img?.dataset.source || 'unknown'
       };
     }
-    // Fallback: direct IMG (Twitch/7TV/BTTV native emotes, picker emotes)
+    // Fallback: direct IMG (Twitch/7TV/BTTV native emotes, picker emotes,
+    // and multichat WYSIWYG input chips — class match catches blocked input
+    // emotes whose src has been swapped to a transparent placeholder).
     if (target.tagName === 'IMG' && !target.classList.contains('hs-mc-badge-img') && (
       target.classList.contains('hs-mc-emote') ||
       target.classList.contains('hs-mc-picker-emote') ||
+      target.classList.contains('hs-input-emote') ||
       target.classList.contains('chat-line__message--emote') ||
       target.classList.contains('chat-image') ||
       target.src?.includes('7tv.app') ||
@@ -23658,11 +23724,12 @@ function initInput() {
       (target.src?.includes('frankerfacez') && !target.src?.includes('room-badge/')) ||
       target.src?.includes('static-cdn.jtvnw.net/emoticons')
     )) {
+      const isBlocked = target.classList.contains('hs-state-blocked') || target.dataset.state === 'blocked';
       return {
         wrapper: null,
         emoteName: target.alt || target.dataset.emoteName || target.title?.split(' ')[0] || 'emote',
-        state: target.dataset.state || 'global',
-        emoteUrl: target.src || '',
+        state: isBlocked ? 'blocked' : (target.dataset.state || 'global'),
+        emoteUrl: target.dataset.hsOrigSrc || target.src || '',
         source: target.dataset.source || 'unknown'
       };
     }
@@ -23780,6 +23847,13 @@ function initInput() {
 
       const emoteInfo = findEmoteTarget(e.target);
       if (!emoteInfo) return;
+
+      // Multichat input WYSIWYG chip — only intercept clicks for the blocked
+      // state (left-click unblocks). For any other state we let the
+      // contenteditable handle the click so the caret lands at the click
+      // position; intercepting would silently re-paste the same emote on
+      // every cursor placement, which is hostile.
+      if (e.target.closest('#hs-mc-input') && emoteInfo.state !== 'blocked') return;
 
       e.preventDefault();
       e.stopPropagation();

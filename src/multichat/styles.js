@@ -2150,7 +2150,7 @@ function injectStyles() {
       opacity: 1;
     }
     .hs-mc-picker-emote-wrap:not(.blocked):hover > img {
-      visibility: hidden;
+      visibility: hidden !important;
     }
     .hs-mc-picker-emote-wrap.blocked {
       outline: 2px dashed #808080 !important;
@@ -2645,12 +2645,15 @@ function injectStyles() {
        image hidden. Image content is masked to a 1×1 transparent placeholder
        (src swap in applyInputEmoteBlockState) so outline still renders (a
        visibility:hidden / opacity:0 approach also hides the outline). Width
-       collapses to a fixed square so dashed box is always visible. */
+       collapses to a fixed square so dashed box is always visible. Cursor
+       hints clickability (chrome content.js hover-overlay paints the red
+       rect over the dashed box on hover, matching chat-wrapper behaviour). */
     #hs-mc-input .hs-input-emote.hs-state-blocked {
       outline: 2px dashed #808080;
       outline-offset: -2px;
       width: var(--hs-emote-size, 32px);
       min-width: var(--hs-emote-size, 32px);
+      cursor: pointer;
     }
     .hs-mc-emoji {
       font-variant-emoji: emoji;
@@ -3282,18 +3285,12 @@ function injectStyles() {
       display: inline-block !important;
       visibility: visible !important;
     }
-    /* Hover state cues — subtle bg-fill only, no outline. Convention:
-       green = already in your set, orange = not in your set yet (clicking
-       adds + pastes), red = blocked. */
-    .hs-mc-picker-emote:hover {
-      background: rgba(0, 204, 102, 0.18);
-    }
-    .hs-mc-picker-emote[data-state="unadded"]:hover {
-      background: rgba(0, 255, 255, 0.22);
-    }
-    .hs-mc-picker-emote[data-state="blocked"]:hover {
-      background: rgba(255, 64, 64, 0.20);
-    }
+    /* Hover state lives on the wrap (.hs-mc-picker-emote-wrap ::before) —
+       solid green/orange/dashed-grey rects there. Old img-level translucent
+       bg-fills (green for owned, cyan for unadded, red for blocked) were
+       fighting the new wrap rect: img sat on top of ::before in the stacking
+       order, so the user saw green/cyan rect-with-orange-outline instead of
+       a clean orange rect. Removed; wrap ::before is now the single source. */
     .hs-mc-picker-empty {
       padding: 32px !important;
       text-align: center !important;

@@ -4526,6 +4526,32 @@ function colorUsernameMentions(messageElement, preQueriedFragments) {
 // usernameColoringObserver merged into messageObserver (single observer pattern).
 let usernameClickHandlerInstalled = false;
 
+// Lock/unlock helpers for emote stacks. Per-stack MutationObserver attached
+// only when locked — bounded by # locked stacks (typically 0-2). Replaces the
+// old subtree-on-chat scan that fired on every React class mutation in the
+// entire chat tree (major OOM source over long sessions).
+function lockStack(stack) {
+  if (!stack || stack._hsLockObserver) return;
+  stack.dataset.hsLocked = '1';
+  stack.classList.add('expanded');
+  const obs = new MutationObserver(() => {
+    if (stack.dataset.hsLocked === '1' && !stack.classList.contains('expanded')) {
+      stack.classList.add('expanded');
+    }
+  });
+  obs.observe(stack, { attributes: true, attributeFilter: ['class'] });
+  stack._hsLockObserver = obs;
+}
+function unlockStack(stack) {
+  if (!stack) return;
+  delete stack.dataset.hsLocked;
+  stack.classList.remove('expanded');
+  if (stack._hsLockObserver) {
+    stack._hsLockObserver.disconnect();
+    stack._hsLockObserver = null;
+  }
+}
+
 function setupUsernameColoringObserver() {
   log(' setupUsernameColoringObserver called');
 
@@ -4538,26 +4564,6 @@ function setupUsernameColoringObserver() {
 
     // Emote stack expand/collapse handlers
     // Click-to-expand, stays open until × button. Bulletproof — nothing else collapses.
-
-    // Guard: MutationObserver catches ANY external removal of 'expanded' class
-    // (Twitch React re-renders, other extensions, etc.) and re-asserts it
-    const stackGuardObserver = cleanup.trackObserver(new MutationObserver((mutations) => {
-      for (const m of mutations) {
-        if (m.type !== 'attributes' || m.attributeName !== 'class') continue;
-        const stack = m.target;
-        if (!stack.classList.contains('heatsync-emote-stack')) continue;
-        // If stack was expanded (locked) but class was removed externally, re-add it
-        if (stack.dataset.hsLocked === '1' && !stack.classList.contains('expanded')) {
-          stack.classList.add('expanded');
-        }
-      }
-    }));
-    const stackGuardRoot = findChatContainer() || document.body;
-    stackGuardObserver.observe(stackGuardRoot, {
-      attributes: true,
-      attributeFilter: ['class'],
-      subtree: true,
-    });
 
     // CRITICAL: Intercept mousedown/pointerdown on stacks in capture phase
     // Right-click generates mousedown BEFORE contextmenu — Twitch React handles
@@ -4583,10 +4589,7 @@ function setupUsernameColoringObserver() {
         e.preventDefault();
         e.stopPropagation();
         const stack = collapseBtn.closest('.heatsync-emote-stack');
-        if (stack) {
-          delete stack.dataset.hsLocked;
-          stack.classList.remove('expanded');
-        }
+        unlockStack(stack);
         return;
       }
 
@@ -4739,8 +4742,7 @@ function setupUsernameColoringObserver() {
       e.preventDefault();
       e.stopImmediatePropagation();
       if (!stack.classList.contains('expanded')) {
-        stack.dataset.hsLocked = '1';
-        stack.classList.add('expanded');
+        lockStack(stack);
       }
       const wrapper = e.target.closest('.heatsync-emote-wrapper');
       if (!wrapper) return;
@@ -6012,7 +6014,7 @@ function setupEmoteClickHandlers() {
 
     // Guard: lock expanded state before any mutation so nothing can collapse it
     if (parentStack && parentStack.classList.contains('expanded')) {
-      parentStack.dataset.hsLocked = '1';
+      lockStack(parentStack);
     }
 
     if (isBlocked) {

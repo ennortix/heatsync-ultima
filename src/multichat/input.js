@@ -739,6 +739,28 @@ function initInput() {
       }
       if (state === 'unadded') {
         if (pendingEmoteOps.has(emoteName)) return;
+        // Picker unadded → first click adds (orange→owned), second click pastes
+        // via the owned/global/channel branch above. Splitting prevents a
+        // mis-click from silently burning a slot in the user's 5000-cap set.
+        const inPicker = !!e.target.closest('#hs-mc-emote-picker');
+        if (inPicker) {
+          if (!viewerPersonalEmotes.has(emoteName)) {
+            viewerPersonalEmotes.set(emoteName, {
+              url: emoteUrl,
+              source: source || 'heatsync',
+              state: 'owned',
+            });
+          }
+          const pickerWrap = e.target.closest('.hs-mc-picker-emote-wrap');
+          if (pickerWrap) {
+            pickerWrap.classList.remove('unadded');
+            const pImg = pickerWrap.querySelector('img');
+            if (pImg) pImg.dataset.state = 'owned';
+          }
+          addEmoteToInventory(emoteName, emoteUrl, source, e.target);
+          flashAllEmotes(emoteName, 'hs-flash-add');
+          return;
+        }
         addEmoteToInventory(emoteName, emoteUrl, source, e.target);
         flashAllEmotes(emoteName, 'hs-flash-add');
       }
@@ -3128,17 +3150,15 @@ async function sendMessage() {
   let text = convertEmojiShortcodes(getInputText().trim());
   if (!text) return;
 
-  // Resub-share mode — text becomes the celebration body. main.js injects a
-  // synthetic usernotice with this text and the dedup keeps it over Twitch's
-  // empty real broadcast.
+  // Resub-share mode — typed text becomes a follow-up custom chat message.
+  // consume(text) does three things: (1) inject a local synthetic celebration
+  // styled with the user's custom text so they get instant visual feedback,
+  // (2) programmatically click Twitch's native Share button so the resub
+  // celebration broadcasts to all viewers, (3) returns false so we FALL
+  // THROUGH below — the user's text then goes out as a normal chat message
+  // that everyone sees and that persists in Twitch's history.
   if (window.__hsResubShare?.active?.()) {
-    if (window.__hsResubShare.consume(text)) {
-      if (wysiwygEnabled) input.textContent = ''
-      else input.value = ''
-      pendingMessage = ''
-      updateCharCount()
-      return
-    }
+    try { window.__hsResubShare.consume(text) } catch (_) {}
   }
 
   // Slash commands — work from any tab. Handler may return:
@@ -3183,7 +3203,7 @@ async function sendMessage() {
   }
 
   // Resolve platform targets
-  const kickSlug = ch.kick
+  const kickSlug = ch?.kick
   const twitchName = ch?.twitch
   const isLiveKick = currentTab === 'live' && hostPlatform === 'kick'
 

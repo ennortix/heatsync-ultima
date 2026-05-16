@@ -4940,6 +4940,14 @@
     const wasCtx = _resubShareCtx
     _resubShareCtx = null
     if (_resubShareModeTimer) { clearTimeout(_resubShareModeTimer); _resubShareModeTimer = null }
+    // Dismiss the HsNotifs banner — once the user has sent (or the timeout
+    // fired the fallback) the callout is consumed; leaving it visible feels
+    // like the click did nothing.
+    if (wasCtx) {
+      try {
+        window.HsNotifs?.dismissByKey?.('twitch-resub-share', `resub:${wasCtx.claim.channel}:${wasCtx.months}`)
+      } catch (_) {}
+    }
     const input = document.getElementById('hs-mc-input')
     const inputBar = document.getElementById('hs-mc-inputbar')
     inputBar?.classList.remove('hs-mc-resub-share')
@@ -4962,17 +4970,57 @@
       _injectShareSynthetic(wasCtx.claim, wasCtx.user, wasCtx.months, '')
     }
   }
+  // Programmatic-click escape hatch so consume() can fire the native Twitch
+  // Share button without our own surface() hook re-entering share-mode.
+  let _allowNativeShare = false
   // Exposed for input.js sendMessage: consume typed text as resub-share body.
+  // .enter() is called directly by the HsNotifs Share button — bypasses the
+  // native Twitch click which would insta-send a default celebration message.
   window.__hsResubShare = {
     active: () => !!_resubShareCtx,
+    // Returns false so input.js sendMessage CONTINUES into the regular IRC
+    // send path — the typed text needs to actually go to Twitch chat so other
+    // viewers see it and it persists across refresh. We also inject a local
+    // synthetic usernotice for instant visual feedback, AND fire the native
+    // Twitch share button for the global celebration broadcast.
     consume: (text) => {
       if (!_resubShareCtx) return false
       const { claim, user, months } = _resubShareCtx
       if (claim.preTimer) { clearTimeout(claim.preTimer); claim.preTimer = null }
-      _injectShareSynthetic(claim, user, months, text)
+      // 1. Local synthetic — instant styled celebration in OUR view with the
+      //    user's custom text. Doesn't go anywhere else; viewer-only.
+      try { _injectShareSynthetic(claim, user, months, text || '') } catch (_) {}
+      // 2. Native broadcast — programmatically click Twitch's Share button so
+      //    the resub-celebration goes out to all viewers. _allowNativeShare
+      //    tells our surface() hook to let the click pass through (without
+      //    re-entering share mode). Best-effort: if the callout DOM has
+      //    already been removed, this silently no-ops and only the local
+      //    synthetic + the IRC message below land.
+      try {
+        const QUEUE_SEL = '[data-test-selector="chat-private-callout-queue__callout-container"]'
+        const btn = document.querySelector(QUEUE_SEL + ' [data-a-target="chat-private-callout__primary-button"]')
+        if (btn) {
+          _allowNativeShare = true
+          try { btn.click() } finally { _allowNativeShare = false }
+        }
+      } catch (_) {}
       _exitResubShareMode(claim, false)
-      return true
-    }
+      return false
+    },
+    enter: (months, user, channel) => {
+      try {
+        if (_pendingShareClaim) {
+          clearTimeout(_pendingShareClaim.preTimer)
+          clearTimeout(_pendingShareClaim.postTimer)
+        }
+        const claim = { channel, userLc: (user || '').toLowerCase(), months, synthId: null, preTimer: null, postTimer: null, customText: '' }
+        _pendingShareClaim = claim
+        _enterResubShareMode(claim, user, months)
+      } catch (_) {}
+    },
+    // Internal: surface()'s native-button hook reads this to know whether to
+    // block the click (user-initiated) or pass through (programmatic from us).
+    _allowNativeShare: () => _allowNativeShare,
   }
   function setupHsCalloutCloseButton() {
     if (_hsCalloutCloseObs) return
@@ -4992,7 +5040,14 @@
       const shareBtn = calloutEl.querySelector('[data-a-target="chat-private-callout__primary-button"]')
       if (shareBtn && shareBtn.dataset.hsShareHooked !== '1') {
         shareBtn.dataset.hsShareHooked = '1'
-        shareBtn.addEventListener('click', () => {
+        // User-initiated click on the (hidden) native Share button → enter
+        // our share-mode flow instead of letting Twitch insta-send.
+        // Programmatic clicks from consume() pass through (Twitch's native
+        // onClick fires) so the celebration actually broadcasts.
+        shareBtn.addEventListener('click', (e) => {
+          if (window.__hsResubShare?._allowNativeShare?.()) return
+          e.stopImmediatePropagation()
+          e.preventDefault()
           try {
             if (_pendingShareClaim) {
               clearTimeout(_pendingShareClaim.preTimer)
@@ -5002,7 +5057,7 @@
             _pendingShareClaim = claim
             _enterResubShareMode(claim, user, months)
           } catch (_) {}
-        })
+        }, { capture: true })
       }
       try {
         HsNotifs.emit('twitch-resub-share', {
@@ -5015,28 +5070,28 @@
       // resize, so a freshly-mounted layer container would land at fallback (0).
       try { _updateMcLayout?.() } catch (_) {}
     }
-    document.querySelectorAll('[data-test-selector="chat-private-callout-queue__callout-container"] .pinned-callout').forEach(surface)
+    // Twitch removed `.pinned-callout` in a recent refactor — the callout body
+    // now lives directly under the queue container. Surface the container
+    // itself; surface() reads text + Share button via descendant selectors.
     const QUEUE_SEL = '[data-test-selector="chat-private-callout-queue__callout-container"]'
+    document.querySelectorAll(QUEUE_SEL).forEach(c => { if (c.querySelector('*')) surface(c) })
     let _narrowed = false
     _hsCalloutCloseObs = new MutationObserver((muts) => {
+      // On any mutation, re-check the queue container — when populated, surface.
+      const queue = document.querySelector(QUEUE_SEL)
+      if (queue && queue.querySelector('*')) surface(queue)
       for (const m of muts) {
         for (const node of m.addedNodes) {
           if (node.nodeType !== 1) continue
-          if (node.classList?.contains('pinned-callout') &&
-              node.closest(QUEUE_SEL)) {
-            surface(node)
-          } else if (node.querySelector) {
-            node.querySelectorAll(QUEUE_SEL + ' .pinned-callout').forEach(surface)
+          if (node.matches?.(QUEUE_SEL)) { if (node.querySelector('*')) surface(node) }
+          else if (node.querySelector) {
+            node.querySelectorAll(QUEUE_SEL).forEach(c => { if (c.querySelector('*')) surface(c) })
           }
         }
       }
-      // Opportunistically narrow the observed target once the callout queue
-      // container appears. Twitch's React fires hundreds of body-subtree
-      // mutations per second; staying on body keeps dispatching them to this
-      // observer forever. Switching to the small queue container drops that
-      // per-frame overhead to ~zero.
+      // Narrow the observed target to the queue container once it exists so we
+      // stop processing every body subtree mutation Twitch fires.
       if (_narrowed) return
-      const queue = document.querySelector(QUEUE_SEL)
       if (queue) {
         _narrowed = true
         try { _hsCalloutCloseObs.disconnect() } catch (_) {}
@@ -6169,6 +6224,17 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     // Tab caches are keyed by old epoch — drop them all so next switch
     // rebuilds at the new epoch instead of restoring stale-keyed children
     // that the diff would immediately wipe.
+    _dropAllTabCaches();
+  }
+
+  // Bump render epoch WITHOUT clearing _renderedHtml. Used when late-arriving
+  // out-of-band data (Twitch native badges, BTTV/FFZ/Chatterino bulk badge
+  // maps) needs to re-flow into the DOM. The diff renderer skips identical
+  // msgKeys, so a bare renderMessages after badge fetch is a no-op — bumping
+  // the epoch forces a fresh build that recomputes badges while keeping
+  // cached emote HTML on _renderedHtml.
+  function bumpRenderEpoch() {
+    _renderEpoch++;
     _dropAllTabCaches();
   }
 
@@ -8681,6 +8747,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
         mcBttvBadgeMap = new Map(Object.entries(msg.bttvBadges || {}))
         mcFfzBadgeMap = new Map(Object.entries(msg.ffzBadges || {}))
         mcChatterinoBadgeMap = new Map(Object.entries(msg.chatterinoBadges || {}))
+        bumpRenderEpoch()
         renderMessages(currentTab)
       }
       // 7TV EventAPI pushed user.update / entitlement.* — drop our local
@@ -9392,9 +9459,18 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
 
     // Request initial BTTV/FFZ/Chatterino badge maps from background
     safeSendMessage({ type: 'get_bulk_badges' }).then(resp => {
-      if (resp?.bttvBadges) mcBttvBadgeMap = new Map(Object.entries(resp.bttvBadges))
-      if (resp?.ffzBadges) mcFfzBadgeMap = new Map(Object.entries(resp.ffzBadges))
-      if (resp?.chatterinoBadges) mcChatterinoBadgeMap = new Map(Object.entries(resp.chatterinoBadges))
+      let touched = false
+      if (resp?.bttvBadges) { mcBttvBadgeMap = new Map(Object.entries(resp.bttvBadges)); touched = true }
+      if (resp?.ffzBadges) { mcFfzBadgeMap = new Map(Object.entries(resp.ffzBadges)); touched = true }
+      if (resp?.chatterinoBadges) { mcChatterinoBadgeMap = new Map(Object.entries(resp.chatterinoBadges)); touched = true }
+      // Bulk badge maps just landed — existing messages need a rebuild to pick
+      // up 3rd-party badges. cosmetics_update normally drives this, but it
+      // doesn't fire if BG already broadcast warm cache before our listener
+      // attached. This response is the get_bulk_badges fallback path.
+      if (touched) {
+        bumpRenderEpoch()
+        renderMessages(currentTab)
+      }
     }).catch(() => {})
 
     // Load heatsync auth state

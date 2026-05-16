@@ -58,6 +58,12 @@
       "world": "MAIN"
     },
     {
+      "matches": ["https://www.youtube.com/*"],
+      "js": ["youtube-keyboard-guard.js"],
+      "run_at": "document_start",
+      "world": "MAIN"
+    },
+    {
       "matches": ["https://*.twitch.tv/*", "https://kick.com/*", "https://*.kick.com/*", "https://www.youtube.com/*"],
       "js": ["early-layout.js", "pcard-early.js"],
       "run_at": "document_start"

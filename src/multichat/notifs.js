@@ -370,9 +370,13 @@ const HsNotifs = (() => {
       primary: {
         label: 'Share',
         onClick: (data) => {
-          // Forward to the native Twitch share button so its existing handler
-          // runs — main.js hooks that click and enters resub-share mode.
-          try { data._nativeShareBtn?.click() } catch (_) {}
+          // Bypass the native Twitch share button — its native onClick auto-
+          // sends a default "<user> is celebrating Nmo as a subscriber!"
+          // message to chat, robbing the user of the custom-message window.
+          // Call _enterResubShareMode directly via the exposed API instead.
+          try {
+            window.__hsResubShare?.enter?.(data.months, data.user, data.channel)
+          } catch (_) {}
           return false  // resub-share mode controls dismissal
         },
       },

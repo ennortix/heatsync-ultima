@@ -45,6 +45,7 @@ const COPY_FILES = [
   'options.html',
   'early-inject-main.js',
   'kick-nav-watcher.js',
+  'youtube-keyboard-guard.js',
   'platform-detector.js',
   'shared-utils.js',
   'emoji-data.js',

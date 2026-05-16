@@ -1,5 +1,193 @@
 // Emotes - cache, lookup, processing, picker, block/inventory
 
+  // Multichat picker provider toggles \u2014 three filter chips that only show
+  // when the user focuses the search input. Local matches are always
+  // included; the chips control which provider APIs contribute.
+  let mcPickerSources = (() => {
+    try {
+      const raw = localStorage.getItem('hs-mc-picker-sources')
+      if (raw) {
+        const arr = JSON.parse(raw)
+        if (Array.isArray(arr) && arr.length) {
+          // Migrate old 'here' entries \u2014 local matches are now implicit.
+          return new Set(arr.filter(s => s !== 'here'))
+        }
+      }
+    } catch (_) {}
+    return new Set(['7tv', 'bttv', 'ffz'])
+  })()
+  function mcSaveSources() {
+    try { localStorage.setItem('hs-mc-picker-sources', JSON.stringify([...mcPickerSources])) } catch (_) {}
+  }
+  function mcHasExternalSource() {
+    return mcPickerSources.has('7tv') || mcPickerSources.has('bttv') || mcPickerSources.has('ffz')
+  }
+
+  // Per-provider result caches keyed per-query. AbortController cancels stale
+  // in-flight requests on each keystroke.
+  let mcProviderResults = { '7tv': [], 'bttv': [], 'ffz': [] }
+  let mcProviderLastQuery = { '7tv': '', 'bttv': '', 'ffz': '' }
+  let mcProviderInFlight = { '7tv': false, 'bttv': false, 'ffz': false }
+  let _mcProviderAborts = { '7tv': null, 'bttv': null, 'ffz': null }
+  let mcCurrentQuery = ''
+  // Map<name, {url, provider, id}> — populated by rerenderSearch with remote
+  // provider results so the click handler can fire add-to-inventory before
+  // pasting. Bounded by # of unique provider-search names per session.
+  const mcRemoteEmoteIndex = new Map()
+
+  // Module-scope re-render so the async event listener can drive it.
+  function mcRerenderSearch(query) {
+    const grid = document.getElementById('hs-mc-emote-grid')
+    if (!grid) return
+    mcRemoteEmoteIndex.clear()
+    if (!query) {
+      const allMap = new Map()
+      for (const [k, v] of viewerPersonalEmotes) allMap.set(k, v)
+      const cc = channelEmoteCaches[currentTab] || channelEmoteCaches[getCurrentChannel()]
+      if (cc) for (const [k, v] of cc) if (!allMap.has(k)) allMap.set(k, v)
+      for (const [k, v] of emoteCache) if (!allMap.has(k)) allMap.set(k, v)
+      grid.innerHTML = renderEmoteSections(groupEmotes(allMap))
+      attachChunkObserver(grid)
+      markPickerDirty()
+      return
+    }
+    const filtered = new Map()
+    // Local matches (channel + global + your set) always included.
+    {
+      const pool = new Map()
+      for (const [k, v] of viewerPersonalEmotes) pool.set(k, v)
+      const sc = channelEmoteCaches[currentTab] || channelEmoteCaches[getCurrentChannel()]
+      if (sc) for (const [k, v] of sc) if (!pool.has(k)) pool.set(k, v)
+      for (const [k, v] of emoteCache) if (!pool.has(k)) pool.set(k, v)
+      for (const [name, emote] of pool) {
+        if (name.toLowerCase().includes(query)) filtered.set(name, emote)
+      }
+    }
+    for (const p of ['7tv', 'bttv', 'ffz']) {
+      if (!mcPickerSources.has(p)) continue
+      if (mcProviderLastQuery[p] !== query) continue
+      for (const r of mcProviderResults[p]) {
+        if (!r.name || filtered.has(r.name)) continue
+        // state='unadded' aligns with the existing emote-click handler
+        // (input.js:740) which knows that branch — 'remote' fell through
+        // every branch, leaving stopPropagation alive and the click dead.
+        filtered.set(r.name, { source: p, state: 'unadded', url: r.url, provider: r.provider })
+        mcRemoteEmoteIndex.set(r.name, { url: r.url, provider: r.provider, id: r.id })
+      }
+    }
+    // One unified flat feed — no section headers, no visual distinction
+    // between owned and remote results. Click handler still routes remote
+    // emotes through add-to-inventory transparently.
+    const flatEntries = [...filtered.entries()]
+    const flatSection = [{ key: 'search', label: '', emotes: flatEntries }]
+    grid.innerHTML = renderEmoteSections(flatSection, t('common_no_matches'), { noHeaders: true })
+    attachChunkObserver(grid)
+    markPickerDirty()
+  }
+
+  // 7TV v4 GraphQL \u2014 TOP_ALL_TIME popularity. perPage 200 captures substring
+  // matches that 7TV's prefix-ranked algorithm pushes deep in the result list.
+  const MC_SEVEN_TV_V4_GQL = `query SearchEmotes($query: String!, $page: Int!, $perPage: Int!) {
+    emotes {
+      search(query: $query, sort: { sortBy: TOP_ALL_TIME, order: DESCENDING }, page: $page, perPage: $perPage) {
+        totalCount
+        items { id defaultName flags { animated } }
+      }
+    }
+  }`
+
+  async function mcSearch7tvApi(q, signal) {
+    const resp = await fetch('https://api.7tv.app/v4/gql', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      signal,
+      body: JSON.stringify({
+        operationName: 'SearchEmotes',
+        query: MC_SEVEN_TV_V4_GQL,
+        variables: { query: q, page: 1, perPage: 200 }
+      })
+    })
+    if (!resp.ok) throw new Error(`7tv ${resp.status}`)
+    const data = await resp.json()
+    const items = (data && data.data && data.data.emotes && data.data.emotes.search && data.data.emotes.search.items) || []
+    return items.map(e => ({
+      name: e.defaultName,
+      url: `https://cdn.7tv.app/emote/${e.id}/1x.webp`,
+      provider: '7tv',
+      id: e.id,
+      animated: !!(e.flags && e.flags.animated),
+    }))
+  }
+
+  async function mcSearchBttvApi(q, signal) {
+    const r = await fetch(`https://api.betterttv.net/3/emotes/shared/search?query=${encodeURIComponent(q)}&offset=0&limit=100`, { signal })
+    if (!r.ok) throw new Error(`bttv ${r.status}`)
+    const items = await r.json()
+    if (!Array.isArray(items)) return []
+    return items.map(e => ({
+      name: e.code,
+      url: `https://cdn.betterttv.net/emote/${e.id}/1x.${e.imageType || 'webp'}`,
+      provider: 'bttv',
+      id: e.id,
+      animated: !!e.animated,
+    }))
+  }
+
+  async function mcSearchFfzApi(q, signal) {
+    const r = await fetch(`https://api.frankerfacez.com/v1/emotes?q=${encodeURIComponent(q)}&sort=count-desc&per_page=200`, { signal })
+    if (!r.ok) throw new Error(`ffz ${r.status}`)
+    const data = await r.json()
+    const items = Array.isArray(data?.emoticons) ? data.emoticons : []
+    return items.map(e => {
+      const u = e.urls || {}
+      return {
+        name: e.name,
+        url: u['1'] || u['2'] || u['4'] || '',
+        provider: 'ffz',
+        id: String(e.id),
+        animated: !!e.animated,
+        uses: Number(e.usage_count || 0),
+      }
+    })
+  }
+
+  function mcTriggerProviderSearches(q) {
+    for (const p of ['7tv', 'bttv', 'ffz']) {
+      if (_mcProviderAborts[p]) { try { _mcProviderAborts[p].abort() } catch (_) {} }
+      if (!q) {
+        mcProviderResults[p] = []
+        mcProviderLastQuery[p] = ''
+        mcProviderInFlight[p] = false
+        continue
+      }
+      if (!mcPickerSources.has(p)) { mcProviderInFlight[p] = false; continue }
+      if (mcProviderLastQuery[p] === q && mcProviderResults[p].length > 0) { mcProviderInFlight[p] = false; continue }
+      const ac = new AbortController()
+      _mcProviderAborts[p] = ac
+      mcProviderInFlight[p] = true
+      const fn = p === '7tv' ? mcSearch7tvApi : p === 'bttv' ? mcSearchBttvApi : mcSearchFfzApi
+      fn(q, ac.signal).then(items => {
+        if (ac.signal.aborted) return
+        mcProviderResults[p] = items
+        mcProviderLastQuery[p] = q
+        mcProviderInFlight[p] = false
+        if (mcCurrentQuery === q) {
+          // Re-render the picker grid with merged results.
+          const ev = new CustomEvent('hs-mc-search-results-ready', { detail: { query: q, provider: p } })
+          document.dispatchEvent(ev)
+        }
+      }).catch(err => {
+        if (ac.signal.aborted || err?.name === 'AbortError') return
+        mcProviderInFlight[p] = false
+        mcProviderResults[p] = []
+        if (mcCurrentQuery === q) {
+          const ev = new CustomEvent('hs-mc-search-results-ready', { detail: { query: q, provider: p } })
+          document.dispatchEvent(ev)
+        }
+      })
+    }
+  }
+
   const UNICODE_EMOJI_RE = /^[\p{Extended_Pictographic}\p{Emoji_Presentation}\uFE0F\u200D]+$/u;
   const WS_RE = /^\s+$/
   const LINK_RE = /^(https?:\/\/\S+|[a-z0-9-]+(\.[a-z0-9-]+)+\/\S*)/i
@@ -128,9 +316,10 @@
     return Math.ceil(count / perRow) * rowHeight
   }
 
-  function renderEmoteSections(sections, emptyMsg = t('mc_emote_no_loaded')) {
+  function renderEmoteSections(sections, emptyMsg = t('mc_emote_no_loaded'), opts) {
     clearChunkStore()
     if (!sections.length) return `<div class="hs-mc-picker-empty">${escapeHtml(emptyMsg)}</div>`
+    const noHeaders = !!(opts && opts.noHeaders)
     return sections.map((s, si) => {
       const chunks = []
       for (let i = 0; i < s.emotes.length; i += CHUNK_SIZE) {
@@ -142,9 +331,10 @@
         const h = estimateChunkHeight(c.length)
         return '<div class="hs-mc-picker-section-grid hs-mc-picker-chunk" data-chunk-key="' + key + '" style="min-height:' + h + 'px"></div>'
       }).join('')
+      const header = noHeaders ? '' : `<div class="hs-mc-picker-section-header">${escapeHtml(s.label)} <span class="hs-mc-picker-section-count">${s.emotes.length}</span></div>`
       return `
       <div class="hs-mc-picker-section" data-section-key="${escapeHtml(s.key)}">
-        <div class="hs-mc-picker-section-header">${escapeHtml(s.label)} <span class="hs-mc-picker-section-count">${s.emotes.length}</span></div>
+        ${header}
         ${chunksHtml}
       </div>`
     }).join('')
@@ -156,7 +346,9 @@
     // img.dataset.state; without this update right-click on a blocked picker
     // emote returns state='global' and re-blocks instead of unblocking.
     const state = isBlocked ? 'blocked' : (emote.state || 'global')
-    const wrapCls = isBlocked ? 'hs-mc-picker-emote-wrap blocked' : 'hs-mc-picker-emote-wrap'
+    const wrapCls = isBlocked
+      ? 'hs-mc-picker-emote-wrap blocked'
+      : (state === 'unadded' ? 'hs-mc-picker-emote-wrap unadded' : 'hs-mc-picker-emote-wrap')
     const safeName = escapeHtml(name)
     return `<span class="${wrapCls}" data-name="${safeName}"><img src="${escapeHtml(emote.url)}" alt="${safeName}" title="${safeName} (${escapeHtml(emote.source)})" class="hs-mc-picker-emote hs-emote-${escapeHtml(emote.source)}" data-name="${safeName}" data-source="${escapeHtml(emote.source)}" data-state="${state}" loading="lazy"></span>`
   }
@@ -278,31 +470,77 @@
       </div>` : ''}
     `;
 
-    // Search functionality (debounced)
+    // Inject provider filter chips next to the search input. Hidden by default —
+    // revealed only when the search input is focused or has a value.
+    const searchWrap = picker.querySelector('.hs-mc-search-wrap');
+    if (searchWrap && !searchWrap.parentElement.querySelector('.hs-mc-src-chips')) {
+      const chipBar = document.createElement('div');
+      chipBar.className = 'hs-mc-src-chips';
+      chipBar.title = 'toggle which providers to search';
+      for (const src of ['7tv', 'bttv', 'ffz']) {
+        const btn = document.createElement('button');
+        btn.className = 'hs-mc-src-chip' + (mcPickerSources.has(src) ? ' active' : '');
+        btn.dataset.src = src;
+        btn.textContent = src;
+        btn.type = 'button';
+        chipBar.appendChild(btn);
+      }
+      // Clicking a chip blurs the search input; preventDefault keeps focus.
+      chipBar.addEventListener('mousedown', (e) => {
+        if (e.target.closest('.hs-mc-src-chip')) e.preventDefault();
+      });
+      searchWrap.parentElement.appendChild(chipBar);
+
+      // Focus/blur drives chip visibility.
+      const inputEl = document.getElementById('hs-mc-emote-search');
+      function updateMcChipsVisibility() {
+        const focused = document.activeElement === inputEl;
+        const hasValue = (inputEl?.value || '').length > 0;
+        chipBar.classList.toggle('visible', focused || hasValue);
+      }
+      inputEl?.addEventListener('focus', updateMcChipsVisibility);
+      inputEl?.addEventListener('blur', () => setTimeout(updateMcChipsVisibility, 0));
+      inputEl?.addEventListener('input', updateMcChipsVisibility);
+      updateMcChipsVisibility();
+    }
+
+    // Source chip click handler — toggle, persist, re-search.
+    picker.querySelectorAll('.hs-mc-src-chip').forEach(chip => {
+      chip.addEventListener('click', () => {
+        const src = chip.dataset.src;
+        if (mcPickerSources.has(src)) mcPickerSources.delete(src);
+        else mcPickerSources.add(src);
+        chip.classList.toggle('active', mcPickerSources.has(src));
+        mcSaveSources();
+        const q = (document.getElementById('hs-mc-emote-search')?.value || '').toLowerCase().trim();
+        if (!q) return;
+        if (mcHasExternalSource()) mcTriggerProviderSearches(q);
+        rerenderSearch(q);
+      });
+    });
+
+    // Search functionality (debounced). When external chips are on the query
+    // fires the provider APIs (7TV v4 / BTTV / FFZ) in parallel. Local-only
+    // mode keeps the original instant filter behaviour.
     let _searchTimer = null;
     const searchInput = document.getElementById('hs-mc-emote-search');
     searchInput?.addEventListener('input', (e) => {
       cleanup.clearTimeout(_searchTimer);
       _searchTimer = cleanup.setTimeout(() => {
-        const query = e.target.value.toLowerCase();
-        const grid = document.getElementById('hs-mc-emote-grid');
-        if (!grid) return;
-
-        const searchEmotes = new Map();
-        for (const [k, v] of viewerPersonalEmotes) searchEmotes.set(k, v);
-        const searchChCache = channelEmoteCaches[currentTab] || channelEmoteCaches[getCurrentChannel()];
-        if (searchChCache) for (const [k, v] of searchChCache) if (!searchEmotes.has(k)) searchEmotes.set(k, v);
-        for (const [k, v] of emoteCache) if (!searchEmotes.has(k)) searchEmotes.set(k, v);
-        const filtered = new Map();
-        for (const [name, emote] of searchEmotes) {
-          if (name.toLowerCase().includes(query)) filtered.set(name, emote);
+        const query = e.target.value.toLowerCase().trim();
+        mcCurrentQuery = query;
+        if (query && mcHasExternalSource()) {
+          mcTriggerProviderSearches(query);
+        } else {
+          mcTriggerProviderSearches('');
         }
-        const filteredSections = groupEmotes(filtered);
-        grid.innerHTML = renderEmoteSections(filteredSections, t('common_no_matches'));
-        attachChunkObserver(grid);
-        markPickerDirty();
-      }, 150);
+        rerenderSearch(query);
+      }, 200);
     });
+
+    // rerenderSearch is now module-scope (mcRerenderSearch) so async provider
+    // result callbacks can call it directly.
+    const rerenderSearch = mcRerenderSearch;
 
     // Emote size controls
     picker.querySelectorAll('.hs-mc-size-btn').forEach(btn => {
@@ -331,17 +569,41 @@
       });
     });
 
-    // Event delegation for emote clicks (single handler, works for chunked rendering)
-    if (!picker._hsDelegated) {
-      picker._hsDelegated = true;
+    // Event delegation for emote clicks (single handler, works for chunked rendering).
+    // Bumped to v2 — the old `_hsDelegated` boolean property survives extension
+    // reload (page owns the DOM), but the listener it tracked is destroyed with
+    // the previous content-script context. Versioning forces re-attach when this
+    // bundle's flag is missing.
+    if (picker.dataset.hsClickVersion !== '2') {
+      picker.dataset.hsClickVersion = '2';
       picker.addEventListener('click', (e) => {
         const img = e.target.closest('.hs-mc-picker-emote');
         if (!img) return;
         const name = img.dataset.name;
         const input = document.getElementById('hs-mc-input');
         if (!input || !name) return;
+
+        // Remote (provider search) result — not yet in user's local emotes.
+        // Optimistically register the emote in viewerPersonalEmotes so
+        // pasteEmoteToInput resolves immediately (avoid the dead-click feel
+        // from awaiting a network round-trip). The server-side add fires in
+        // the background; on success the state is reconciled, on failure the
+        // user still sees the emote (server sync re-evaluates next load).
+        if (img.dataset.state === 'remote') {
+          const remote = mcRemoteEmoteIndex.get(name);
+          if (remote) {
+            if (!viewerPersonalEmotes.has(name)) {
+              viewerPersonalEmotes.set(name, {
+                url: remote.url,
+                source: remote.provider || '7tv',
+                state: 'owned',
+              });
+            }
+            addEmoteToInventory(name, remote.url, remote.provider, img).catch(() => {});
+          }
+        }
+
         if (wysiwygEnabled || !('value' in input)) {
-          // WYSIWYG: insert emote image (with zero-width stacking)
           pasteEmoteToInput(name)
         } else {
           const pos = input.selectionStart || input.value.length;
@@ -355,6 +617,14 @@
         picker.classList.remove('visible');
         adjustOverlayForPicker(false);
       });
+
+      // Provider search results land asynchronously — re-render when each one
+      // arrives so the user sees the picture filling out instead of waiting
+      // for the slowest provider.
+      cleanup.addEventListener(document, 'hs-mc-search-results-ready', (ev) => {
+        if (ev.detail?.query !== mcCurrentQuery) return;
+        mcRerenderSearch(mcCurrentQuery);
+      }, 'mc-search-results-ready');
     }
 
     attachChunkObserver(picker);
@@ -464,6 +734,7 @@
           img.dataset.state = 'blocked';
         }
       });
+      applyInputEmoteBlockState(name, true);
     }
 
     for (const hash of toUnblock) {
@@ -490,6 +761,7 @@
           img.dataset.state = newState;
         }
       });
+      applyInputEmoteBlockState(name, false);
     }
 
     // Cached _renderedHtml on buffered messages bakes in `hs-state-blocked` from
@@ -535,7 +807,45 @@
     // text fallback). Defined later in the bundle but function declarations
     // hoist to IIFE scope so it's available when this runs.
     if (typeof attachInputEmoteErrorRecovery === 'function') attachInputEmoteErrorRecovery(img)
+    // If the emote was already blocked before this paste, apply the dashed
+    // state from creation so the user never sees the live image flash.
+    if (blockedEmoteNames.has(emoteName)) markInputEmoteBlocked(img, true)
     return img
+  }
+
+  // 1×1 transparent gif — swap src to this so the IMG box stays paintable
+  // (visibility:hidden / opacity:0 would also drop the outline).
+  const HS_TRANSPARENT_PX = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'
+
+  function markInputEmoteBlocked(img, blocked) {
+    if (!img) return
+    if (blocked) {
+      if (img.dataset.hsInputBlocked === '1') return
+      img.dataset.hsInputBlocked = '1'
+      if (img.src && !img.src.startsWith('data:')) img.dataset.hsOrigSrc = img.src
+      img.src = HS_TRANSPARENT_PX
+      img.classList.add('hs-state-blocked')
+    } else {
+      if (img.dataset.hsInputBlocked !== '1') return
+      const orig = img.dataset.hsOrigSrc
+      if (orig) img.src = orig
+      delete img.dataset.hsInputBlocked
+      delete img.dataset.hsOrigSrc
+      img.classList.remove('hs-state-blocked')
+    }
+  }
+
+  // Update every .hs-input-emote IMG matching the name across both the
+  // multichat input and any cycling/preview imgs that share the class. Match
+  // by alt + dataset.emoteName (both set at creation; alt may be the typed
+  // overlay name like "TriHard0" while dataset is identical).
+  function applyInputEmoteBlockState(emoteName, blocked) {
+    if (!emoteName) return
+    const inputs = document.querySelectorAll('img.hs-input-emote')
+    for (const img of inputs) {
+      if (img.alt !== emoteName && img.dataset.emoteName !== emoteName) continue
+      markInputEmoteBlocked(img, blocked)
+    }
   }
 
   // Stack a zero-width emote onto a base emote/stack in the input.
@@ -782,6 +1092,8 @@
       })
     } catch {}
 
+    applyInputEmoteBlockState(emoteName, true);
+
     refreshEmoteTooltip(emoteName, 'blocked');
     showToast(`blocked: ${emoteName}`, 'success');
     flashAllEmotes(emoteName, 'hs-flash-block');
@@ -830,6 +1142,8 @@
         if (img) img.dataset.state = newState
       })
     } catch {}
+
+    applyInputEmoteBlockState(emoteName, false);
 
     refreshEmoteTooltip(emoteName, newState);
     showToast(`unblocked: ${emoteName}`, 'success');

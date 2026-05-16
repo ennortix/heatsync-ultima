@@ -4353,9 +4353,13 @@ const HsNotifs = (() => {
       primary: {
         label: 'Share',
         onClick: (data) => {
-          // Forward to the native Twitch share button so its existing handler
-          // runs — main.js hooks that click and enters resub-share mode.
-          try { data._nativeShareBtn?.click() } catch (_) {}
+          // Bypass the native Twitch share button — its native onClick auto-
+          // sends a default "<user> is celebrating Nmo as a subscriber!"
+          // message to chat, robbing the user of the custom-message window.
+          // Call _enterResubShareMode directly via the exposed API instead.
+          try {
+            window.__hsResubShare?.enter?.(data.months, data.user, data.channel)
+          } catch (_) {}
           return false  // resub-share mode controls dismissal
         },
       },
@@ -4830,7 +4834,7 @@ function injectStyles() {
     .hs-mc-stream-event.event-online .hs-evt-game { color: #fff; }
     .hs-mc-stream-event.event-offline { --evt: #888888; }
     .hs-mc-stream-event.event-raid    { --evt: #9146ff; }
-    .hs-mc-stream-event.event-hype    { --evt: #ff8700; }
+    .hs-mc-stream-event.event-hype    { --evt: #00ffff; }
     .hs-mc-stream-event.event-sub     { --evt: #00ff7f; }
     .hs-mc-stream-event.event-redeem  { --evt: #00bfff; }
     .hs-mc-stream-event.event-emote   { --evt: #29d391; }
@@ -5343,16 +5347,16 @@ function injectStyles() {
     }
     .hs-notif-toast-text.hs-notif-toast-success { --hs-notif-icon: '✓'; --hs-notif-accent: #00d65a; color: #c0f5d4; }
     .hs-notif-toast-text.hs-notif-toast-error   { --hs-notif-icon: '✕'; --hs-notif-accent: #ff4f4d; color: #ffd0cf; }
-    .hs-notif-toast-text.hs-notif-toast-warn    { --hs-notif-icon: '!'; --hs-notif-accent: #ff8700; color: #ffe0b8; }
+    .hs-notif-toast-text.hs-notif-toast-warn    { --hs-notif-icon: '!'; --hs-notif-accent: #ffff00; color: #ffffb8; }
     .hs-notif-toast-text.hs-notif-toast-info    { --hs-notif-icon: 'i'; --hs-notif-accent: #6aa0ff; color: #d0ddff; }
-    .hs-notif-toast-text.hs-notif-toast-mention { --hs-notif-icon: '@'; --hs-notif-accent: #ff8700; color: #ffd9a8; }
+    .hs-notif-toast-text.hs-notif-toast-mention { --hs-notif-icon: '@'; --hs-notif-accent: #ff00ff; color: #ffd0ff; }
     /* Wrapper accent strip mirrors the text level (CSS custom property
        cascades from the inner span up via :has). */
     .hs-notif:has(.hs-notif-toast-success) { --hs-notif-accent: #00d65a; }
     .hs-notif:has(.hs-notif-toast-error)   { --hs-notif-accent: #ff4f4d; }
-    .hs-notif:has(.hs-notif-toast-warn)    { --hs-notif-accent: #ff8700; }
+    .hs-notif:has(.hs-notif-toast-warn)    { --hs-notif-accent: #ffff00; }
     .hs-notif:has(.hs-notif-toast-info)    { --hs-notif-accent: #6aa0ff; }
-    .hs-notif:has(.hs-notif-toast-mention) { --hs-notif-accent: #ff8700; }
+    .hs-notif:has(.hs-notif-toast-mention) { --hs-notif-accent: #ff00ff; }
     .hs-notif-layer-toast-stack > .hs-notif:hover { background: #fff; }
     .hs-notif-layer-toast-stack > .hs-notif:hover .hs-notif-toast-text,
     .hs-notif-layer-toast-stack > .hs-notif:hover .hs-notif-toast-text::before {
@@ -5423,18 +5427,17 @@ function injectStyles() {
        it grows in height, the ResizeObserver in main.js fires _updateMcLayout,
        and the callout naturally floats above BOTH the reply-chip and input. */
     [data-test-selector="chat-private-callout-queue__callout-container"]:has(*) {
+      /* Native callout stays hidden — our HsNotifs version (twitch-resub-share)
+         renders the controlled UI from extracted data. The position-fixed bits
+         below are inert as long as display:none from the base rule stands; kept
+         as a safety net in case the base rule is overridden upstream. */
       position: fixed !important;
       top: auto !important;
-      bottom: var(--hs-callout-bottom, 0px) !important;
-      left: var(--hs-callout-left, 0px) !important;
-      right: var(--hs-callout-right, 0px) !important;
+      bottom: var(--hs-layer-chat-docked-bottom-bottom, 0px) !important;
+      left: var(--hs-layer-chat-docked-bottom-left, 0px) !important;
+      right: var(--hs-layer-chat-docked-bottom-right, 0px) !important;
       width: auto !important;
-      /* Hard ceiling on width — backstop in case position:fixed's containing
-         block isn't the viewport (Twitch ancestor with transform/filter/will-
-         change creates a new containing block). max-width is independent of
-         positioning, so even if left/right drift the box can never exceed
-         the chat content width. */
-      max-width: var(--hs-callout-max-width, 100vw) !important;
+      max-width: 100vw !important;
       overflow: hidden !important;
       z-index: 100000 !important;
       pointer-events: auto !important;
@@ -6015,7 +6018,12 @@ function injectStyles() {
       font-style: italic;
       display: block;
     }
-    /* purple=sub, orange=raid/HS, red=@-mention/ban, green=timeout/untimeout (matches site) */
+    /* ANSI 0-15 semantic palette:
+       red(9)=ban/blocked/error, green(10)=owned/untimeout/safe,
+       yellow(11)=first-seen/announcement/bits/DM/kw-match/warn (attention),
+       magenta(13)=raid/gift/mention/first-msg-ever (special event),
+       cyan(14)=unadded/stream-hype/milestone (action-needed).
+       #ff8700 reserved for brand chrome only (buttons, frames, drag bars). */
     .hs-mc-msg.hs-mc-notice-ban       { border-left-color: #ff0000 !important; background: rgba(255, 0, 0, 0.12) !important; }
     .hs-mc-msg.hs-mc-notice-ban       .hs-mc-system-text { color: #ff4040; font-weight: 600; }
     .hs-mc-msg.hs-mc-notice-timeout   { border-left-color: #008000 !important; background: rgba(0, 128, 0, 0.10) !important; }
@@ -6044,9 +6052,9 @@ function injectStyles() {
     .hs-mc-msg.hs-mc-notice-sub       .hs-mc-system-text { color: #b87aff; font-weight: 600; }
     .hs-mc-msg.hs-mc-notice-gift      { border-left-color: #cc44ff !important; background: rgba(204, 68, 255, 0.16) !important; }
     .hs-mc-msg.hs-mc-notice-gift      .hs-mc-system-text { color: #cc44ff; font-weight: 600; }
-    /* Raid = HS brand orange */
-    .hs-mc-msg.hs-mc-notice-raid      { border-left-color: #ff8700 !important; background: rgba(255, 135, 0, 0.18) !important; }
-    .hs-mc-msg.hs-mc-notice-raid      .hs-mc-system-text { color: #ff8700; font-weight: 700; }
+    /* Raid = magenta (ANSI 13) — special event family */
+    .hs-mc-msg.hs-mc-notice-raid      { border-left-color: #ff00ff !important; background: rgba(255, 0, 255, 0.14) !important; }
+    .hs-mc-msg.hs-mc-notice-raid      .hs-mc-system-text { color: #ff00ff; font-weight: 700; }
     /* Announcement = pure yellow (broadcaster speaking) */
     .hs-mc-msg.hs-mc-notice-announce  { border-left-color: #ffff00 !important; background: rgba(255, 255, 0, 0.10) !important; }
     .hs-mc-msg.hs-mc-notice-announce  .hs-mc-system-text { color: #ffff00; font-weight: 600; }
@@ -6055,7 +6063,7 @@ function injectStyles() {
     .hs-mc-msg.hs-mc-notice-bits      .hs-mc-system-text { color: #ffd700; font-weight: 600; }
     /* Watch-streak milestone = teal (different from cyan mode change) */
     .hs-mc-msg.hs-mc-notice-milestone { border-left-color: #008080 !important; background: rgba(0, 128, 128, 0.12) !important; }
-    .hs-mc-msg.hs-mc-notice-milestone .hs-mc-system-text { color: #00cccc; font-weight: 600; }
+    .hs-mc-msg.hs-mc-notice-milestone .hs-mc-system-text { color: #00ffff; font-weight: 600; }
     /* Errors / rejections = dim maroon */
     .hs-mc-msg.hs-mc-notice-error     { border-left-color: #800000 !important; background: rgba(128, 0, 0, 0.06) !important; }
     .hs-mc-msg.hs-mc-notice-error     .hs-mc-system-text { color: #ff8080; }
@@ -6132,11 +6140,11 @@ function injectStyles() {
       -webkit-text-fill-color: #000 !important;
     }
     .hs-mc-msg.hs-first-msg {
-      box-shadow: inset 2px 0 0 #ff8700;
+      box-shadow: inset 2px 0 0 #ffff00;
     }
     .hs-mc-msg.hs-kw-match {
-      background: rgba(255, 135, 0, 0.18);
-      box-shadow: inset 0 0 0 1px #ff8700;
+      background: rgba(255, 255, 0, 0.14);
+      box-shadow: inset 0 0 0 1px #ffff00;
     }
     .hs-mc-msg.tweet {
       background: rgba(212, 73, 73, 0.3);
@@ -6710,7 +6718,7 @@ function injectStyles() {
     /* State colors via ::before */
     .hs-mc-emote-wrapper.hs-state-global::before { background: #00ff00; }
     .hs-mc-emote-wrapper.hs-state-owned::before { background: #00ff00; }
-    .hs-mc-emote-wrapper.hs-state-unadded::before { background: #ff8700; }
+    .hs-mc-emote-wrapper.hs-state-unadded::before { background: #00ffff; }
     .hs-mc-emote-wrapper.hs-state-channel::before { background: #00ff00; }
     .hs-mc-emote-wrapper.hs-state-blocked::before { background: #ff0000; }
 
@@ -6994,6 +7002,13 @@ function injectStyles() {
       position: absolute;
       left: 12px;
       top: 8px;
+      /* Single line — long placeholders (resub-share mode) were wrapping
+         below the input box because absolute placement leaves the text
+         unconstrained. Clip with ellipsis if it overflows. */
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: calc(100% - 24px);
     }
     /* WYSIWYG emote images in input — height clamped, width auto so wide
        emotes (catKISS, peepoArrive, etc.) render at natural aspect.
@@ -7036,6 +7051,17 @@ function injectStyles() {
     }
     #hs-mc-input .hs-input-stack > img:first-child { z-index: 1; }
     #hs-mc-input .hs-input-stack > img:not(:first-child) { z-index: 2; }
+    /* Blocked emote in input — parity with chat/picker: dashed gray border,
+       image hidden. Image content is masked to a 1×1 transparent placeholder
+       (src swap in applyInputEmoteBlockState) so outline still renders (a
+       visibility:hidden / opacity:0 approach also hides the outline). Width
+       collapses to a fixed square so dashed box is always visible. */
+    #hs-mc-input .hs-input-emote.hs-state-blocked {
+      outline: 2px dashed #808080;
+      outline-offset: -2px;
+      width: var(--hs-emote-size, 32px);
+      min-width: var(--hs-emote-size, 32px);
+    }
     .hs-mc-emoji {
       font-variant-emoji: emoji;
     }
@@ -7620,6 +7646,34 @@ function injectStyles() {
     #hs-mc-emote-search:focus {
       border-color: #ff6b35;
     }
+    .hs-mc-src-chips {
+      display: none;
+      gap: 3px;
+      margin-top: 6px;
+    }
+    .hs-mc-src-chips.visible {
+      display: flex;
+    }
+    .hs-mc-src-chip {
+      background: none;
+      border: 1px solid rgba(255,255,255,0.18);
+      color: #aaa;
+      font-size: 10px;
+      font-weight: 600;
+      padding: 3px 7px;
+      cursor: pointer;
+      font-family: inherit;
+      border-radius: 0;
+      line-height: 1.2;
+      text-transform: lowercase;
+    }
+    .hs-mc-src-chip:hover { background: #fff; color: #000; border-color: #fff; }
+    .hs-mc-src-chip.active {
+      background: #ff8700;
+      border-color: #ff8700;
+      color: #000;
+    }
+    .hs-mc-src-chip.active:hover { background: #fff; border-color: #fff; }
     #hs-mc-emote-search::placeholder {
       color: #808080;
     }
@@ -7638,7 +7692,17 @@ function injectStyles() {
       display: inline-block !important;
       visibility: visible !important;
     }
+    /* Hover state cues — subtle bg-fill only, no outline. Convention:
+       green = already in your set, orange = not in your set yet (clicking
+       adds + pastes), red = blocked. */
     .hs-mc-picker-emote:hover {
+      background: rgba(0, 204, 102, 0.18);
+    }
+    .hs-mc-picker-emote[data-state="unadded"]:hover {
+      background: rgba(0, 255, 255, 0.22);
+    }
+    .hs-mc-picker-emote[data-state="blocked"]:hover {
+      background: rgba(255, 64, 64, 0.20);
     }
     .hs-mc-picker-empty {
       padding: 32px !important;
@@ -12070,6 +12134,7 @@ class IRC {
       const resp = await chrome.runtime.sendMessage({ type: 'bg_irc_history', channel: ch })
       if (!resp?.ok) return
       const buf = this.channels.get(ch)
+      const wasSize = buf.size
       buf.clear()
       for (const m of resp.msgs || []) {
         m.isHistory = true
@@ -12081,10 +12146,12 @@ class IRC {
         buf.push(m)
       }
       try { _dropAllTabCaches() } catch {}
-      // Skip rebuild when chat is already populated — wipe+rebuild reloads
-      // every image and looks like a flash on streamer switch. Live messages
-      // will append organically and the 500-cap rolls out stale msgs.
-      if ((currentTab === ch || (currentTab === 'live' && getLiveChannel() === ch)) && isMsgsElEmpty()) {
+      // Rebuild when empty OR when a real backfill landed (delta ≥ 5). Small
+      // incremental merges skip to avoid streamer-switch flash; large history
+      // hydrations always rebuild so the DOM matches the buffer.
+      const isCurrent = (currentTab === ch || (currentTab === 'live' && getLiveChannel() === ch))
+      const delta = buf.size - wasSize
+      if (isCurrent && (isMsgsElEmpty() || delta >= 5)) {
         renderMessages(currentTab)
       }
     } catch (e) { log('BG history refresh failed:', e?.message) }
@@ -12117,7 +12184,11 @@ class IRC {
         }
         log('BG history hydrated:', resp.msgs.length, 'msgs for', ch)
         try { _dropAllTabCaches() } catch {}
-        if ((currentTab === ch || (currentTab === 'live' && getLiveChannel() === ch)) && isMsgsElEmpty()) {
+        // Always render if we just hydrated any history and panel is current —
+        // a few live msgs may have painted before this resolved, but the buf
+        // now has more (history below them) and must be reflected in DOM.
+        const isCurrent = (currentTab === ch || (currentTab === 'live' && getLiveChannel() === ch))
+        if (isCurrent && resp.msgs.length > 0) {
           renderMessages(currentTab)
         }
       }
@@ -12264,6 +12335,12 @@ class KickChat {
 
     // Listen for kick chat messages relayed from background.js
     this._listener = (message) => {
+      // BG ingested a server-side backfill batch — refresh our local mirror
+      // from BG so the DOM reflects the newly merged history.
+      if (message.type === 'bg_kick_history_merged' && message.channel) {
+        this._refreshFromBg(message.channel)
+        return
+      }
       if (message.type === 'kick_chat_message' && message.data) {
         const d = message.data
         const channel = d.channel?.toLowerCase()
@@ -12366,6 +12443,35 @@ class KickChat {
     }, this._PERSIST_DEBOUNCE_MS)
   }
 
+  // BG merged a server-side backfill — re-pull merged buffer into local
+  // mirror. Mirrors IRC._refreshFromBg semantics: render when empty OR when
+  // the buffer grew meaningfully (real backfill).
+  async _refreshFromBg(ch) {
+    ch = ch.toLowerCase()
+    if (!this.channels.has(ch)) return
+    try {
+      const resp = await chrome.runtime.sendMessage({ type: 'bg_kick_history', channel: ch })
+      if (!resp?.ok || !Array.isArray(resp.msgs)) return
+      const buf = this.channels.get(ch)
+      const wasSize = buf.size
+      buf.clear()
+      for (const m of resp.msgs) {
+        m.isHistory = true
+        if (m.user) {
+          try { usernameCache.add(m.user) } catch {}
+          try { setKnownColor(m.user.toLowerCase(), m.color, m.userId) } catch {}
+        }
+        buf.push(m)
+      }
+      try { _dropAllTabCaches() } catch {}
+      const isCurrent = (currentTab === ch || (currentTab === 'live' && getLiveChannel() === ch))
+      const delta = buf.size - wasSize
+      if (isCurrent && (isMsgsElEmpty() || delta >= 5)) {
+        renderMessages(currentTab)
+      }
+    } catch (e) { log('Kick BG refresh failed:', e?.message) }
+  }
+
   async loadHistory(ch) {
     const buffer = this.channels.get(ch)
     if (!buffer) return
@@ -12434,7 +12540,11 @@ class KickChat {
       }
       buffer.push(msg)
     }
-    if ((currentTab === ch || (currentTab === 'live' && getLiveChannel() === ch)) && isMsgsElEmpty()) {
+    // Always render when history hydrates and panel is current — even if a
+    // couple live msgs already painted, the buffer just grew and the DOM
+    // must reflect it.
+    const isCurrent = (currentTab === ch || (currentTab === 'live' && getLiveChannel() === ch))
+    if (isCurrent && filtered.length > 0) {
       renderMessages(currentTab)
     }
   }
@@ -12485,7 +12595,8 @@ class KickChat {
         hydrated = true
         log('Kick BG history hydrated:', resp.msgs.length, 'msgs for', kickUsername)
         try { _dropAllTabCaches() } catch {}
-        if ((currentTab === kickUsername || (currentTab === 'live' && getLiveChannel() === kickUsername)) && isMsgsElEmpty()) {
+        const isCurrent = (currentTab === kickUsername || (currentTab === 'live' && getLiveChannel() === kickUsername))
+        if (isCurrent && resp.msgs.length > 0) {
           renderMessages(currentTab)
         }
       }
@@ -12815,6 +12926,194 @@ async function sendKickMessage(kickSlug, text) {
 // --- multichat/emotes.js ---
 // Emotes - cache, lookup, processing, picker, block/inventory
 
+  // Multichat picker provider toggles \u2014 three filter chips that only show
+  // when the user focuses the search input. Local matches are always
+  // included; the chips control which provider APIs contribute.
+  let mcPickerSources = (() => {
+    try {
+      const raw = localStorage.getItem('hs-mc-picker-sources')
+      if (raw) {
+        const arr = JSON.parse(raw)
+        if (Array.isArray(arr) && arr.length) {
+          // Migrate old 'here' entries \u2014 local matches are now implicit.
+          return new Set(arr.filter(s => s !== 'here'))
+        }
+      }
+    } catch (_) {}
+    return new Set(['7tv', 'bttv', 'ffz'])
+  })()
+  function mcSaveSources() {
+    try { localStorage.setItem('hs-mc-picker-sources', JSON.stringify([...mcPickerSources])) } catch (_) {}
+  }
+  function mcHasExternalSource() {
+    return mcPickerSources.has('7tv') || mcPickerSources.has('bttv') || mcPickerSources.has('ffz')
+  }
+
+  // Per-provider result caches keyed per-query. AbortController cancels stale
+  // in-flight requests on each keystroke.
+  let mcProviderResults = { '7tv': [], 'bttv': [], 'ffz': [] }
+  let mcProviderLastQuery = { '7tv': '', 'bttv': '', 'ffz': '' }
+  let mcProviderInFlight = { '7tv': false, 'bttv': false, 'ffz': false }
+  let _mcProviderAborts = { '7tv': null, 'bttv': null, 'ffz': null }
+  let mcCurrentQuery = ''
+  // Map<name, {url, provider, id}> — populated by rerenderSearch with remote
+  // provider results so the click handler can fire add-to-inventory before
+  // pasting. Bounded by # of unique provider-search names per session.
+  const mcRemoteEmoteIndex = new Map()
+
+  // Module-scope re-render so the async event listener can drive it.
+  function mcRerenderSearch(query) {
+    const grid = document.getElementById('hs-mc-emote-grid')
+    if (!grid) return
+    mcRemoteEmoteIndex.clear()
+    if (!query) {
+      const allMap = new Map()
+      for (const [k, v] of viewerPersonalEmotes) allMap.set(k, v)
+      const cc = channelEmoteCaches[currentTab] || channelEmoteCaches[getCurrentChannel()]
+      if (cc) for (const [k, v] of cc) if (!allMap.has(k)) allMap.set(k, v)
+      for (const [k, v] of emoteCache) if (!allMap.has(k)) allMap.set(k, v)
+      grid.innerHTML = renderEmoteSections(groupEmotes(allMap))
+      attachChunkObserver(grid)
+      markPickerDirty()
+      return
+    }
+    const filtered = new Map()
+    // Local matches (channel + global + your set) always included.
+    {
+      const pool = new Map()
+      for (const [k, v] of viewerPersonalEmotes) pool.set(k, v)
+      const sc = channelEmoteCaches[currentTab] || channelEmoteCaches[getCurrentChannel()]
+      if (sc) for (const [k, v] of sc) if (!pool.has(k)) pool.set(k, v)
+      for (const [k, v] of emoteCache) if (!pool.has(k)) pool.set(k, v)
+      for (const [name, emote] of pool) {
+        if (name.toLowerCase().includes(query)) filtered.set(name, emote)
+      }
+    }
+    for (const p of ['7tv', 'bttv', 'ffz']) {
+      if (!mcPickerSources.has(p)) continue
+      if (mcProviderLastQuery[p] !== query) continue
+      for (const r of mcProviderResults[p]) {
+        if (!r.name || filtered.has(r.name)) continue
+        // state='unadded' aligns with the existing emote-click handler
+        // (input.js:740) which knows that branch — 'remote' fell through
+        // every branch, leaving stopPropagation alive and the click dead.
+        filtered.set(r.name, { source: p, state: 'unadded', url: r.url, provider: r.provider })
+        mcRemoteEmoteIndex.set(r.name, { url: r.url, provider: r.provider, id: r.id })
+      }
+    }
+    // One unified flat feed — no section headers, no visual distinction
+    // between owned and remote results. Click handler still routes remote
+    // emotes through add-to-inventory transparently.
+    const flatEntries = [...filtered.entries()]
+    const flatSection = [{ key: 'search', label: '', emotes: flatEntries }]
+    grid.innerHTML = renderEmoteSections(flatSection, t('common_no_matches'), { noHeaders: true })
+    attachChunkObserver(grid)
+    markPickerDirty()
+  }
+
+  // 7TV v4 GraphQL \u2014 TOP_ALL_TIME popularity. perPage 200 captures substring
+  // matches that 7TV's prefix-ranked algorithm pushes deep in the result list.
+  const MC_SEVEN_TV_V4_GQL = `query SearchEmotes($query: String!, $page: Int!, $perPage: Int!) {
+    emotes {
+      search(query: $query, sort: { sortBy: TOP_ALL_TIME, order: DESCENDING }, page: $page, perPage: $perPage) {
+        totalCount
+        items { id defaultName flags { animated } }
+      }
+    }
+  }`
+
+  async function mcSearch7tvApi(q, signal) {
+    const resp = await fetch('https://api.7tv.app/v4/gql', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      signal,
+      body: JSON.stringify({
+        operationName: 'SearchEmotes',
+        query: MC_SEVEN_TV_V4_GQL,
+        variables: { query: q, page: 1, perPage: 200 }
+      })
+    })
+    if (!resp.ok) throw new Error(`7tv ${resp.status}`)
+    const data = await resp.json()
+    const items = (data && data.data && data.data.emotes && data.data.emotes.search && data.data.emotes.search.items) || []
+    return items.map(e => ({
+      name: e.defaultName,
+      url: `https://cdn.7tv.app/emote/${e.id}/1x.webp`,
+      provider: '7tv',
+      id: e.id,
+      animated: !!(e.flags && e.flags.animated),
+    }))
+  }
+
+  async function mcSearchBttvApi(q, signal) {
+    const r = await fetch(`https://api.betterttv.net/3/emotes/shared/search?query=${encodeURIComponent(q)}&offset=0&limit=100`, { signal })
+    if (!r.ok) throw new Error(`bttv ${r.status}`)
+    const items = await r.json()
+    if (!Array.isArray(items)) return []
+    return items.map(e => ({
+      name: e.code,
+      url: `https://cdn.betterttv.net/emote/${e.id}/1x.${e.imageType || 'webp'}`,
+      provider: 'bttv',
+      id: e.id,
+      animated: !!e.animated,
+    }))
+  }
+
+  async function mcSearchFfzApi(q, signal) {
+    const r = await fetch(`https://api.frankerfacez.com/v1/emotes?q=${encodeURIComponent(q)}&sort=count-desc&per_page=200`, { signal })
+    if (!r.ok) throw new Error(`ffz ${r.status}`)
+    const data = await r.json()
+    const items = Array.isArray(data?.emoticons) ? data.emoticons : []
+    return items.map(e => {
+      const u = e.urls || {}
+      return {
+        name: e.name,
+        url: u['1'] || u['2'] || u['4'] || '',
+        provider: 'ffz',
+        id: String(e.id),
+        animated: !!e.animated,
+        uses: Number(e.usage_count || 0),
+      }
+    })
+  }
+
+  function mcTriggerProviderSearches(q) {
+    for (const p of ['7tv', 'bttv', 'ffz']) {
+      if (_mcProviderAborts[p]) { try { _mcProviderAborts[p].abort() } catch (_) {} }
+      if (!q) {
+        mcProviderResults[p] = []
+        mcProviderLastQuery[p] = ''
+        mcProviderInFlight[p] = false
+        continue
+      }
+      if (!mcPickerSources.has(p)) { mcProviderInFlight[p] = false; continue }
+      if (mcProviderLastQuery[p] === q && mcProviderResults[p].length > 0) { mcProviderInFlight[p] = false; continue }
+      const ac = new AbortController()
+      _mcProviderAborts[p] = ac
+      mcProviderInFlight[p] = true
+      const fn = p === '7tv' ? mcSearch7tvApi : p === 'bttv' ? mcSearchBttvApi : mcSearchFfzApi
+      fn(q, ac.signal).then(items => {
+        if (ac.signal.aborted) return
+        mcProviderResults[p] = items
+        mcProviderLastQuery[p] = q
+        mcProviderInFlight[p] = false
+        if (mcCurrentQuery === q) {
+          // Re-render the picker grid with merged results.
+          const ev = new CustomEvent('hs-mc-search-results-ready', { detail: { query: q, provider: p } })
+          document.dispatchEvent(ev)
+        }
+      }).catch(err => {
+        if (ac.signal.aborted || err?.name === 'AbortError') return
+        mcProviderInFlight[p] = false
+        mcProviderResults[p] = []
+        if (mcCurrentQuery === q) {
+          const ev = new CustomEvent('hs-mc-search-results-ready', { detail: { query: q, provider: p } })
+          document.dispatchEvent(ev)
+        }
+      })
+    }
+  }
+
   const UNICODE_EMOJI_RE = /^[\p{Extended_Pictographic}\p{Emoji_Presentation}\uFE0F\u200D]+$/u;
   const WS_RE = /^\s+$/
   const LINK_RE = /^(https?:\/\/\S+|[a-z0-9-]+(\.[a-z0-9-]+)+\/\S*)/i
@@ -12943,9 +13242,10 @@ async function sendKickMessage(kickSlug, text) {
     return Math.ceil(count / perRow) * rowHeight
   }
 
-  function renderEmoteSections(sections, emptyMsg = t('mc_emote_no_loaded')) {
+  function renderEmoteSections(sections, emptyMsg = t('mc_emote_no_loaded'), opts) {
     clearChunkStore()
     if (!sections.length) return `<div class="hs-mc-picker-empty">${escapeHtml(emptyMsg)}</div>`
+    const noHeaders = !!(opts && opts.noHeaders)
     return sections.map((s, si) => {
       const chunks = []
       for (let i = 0; i < s.emotes.length; i += CHUNK_SIZE) {
@@ -12957,9 +13257,10 @@ async function sendKickMessage(kickSlug, text) {
         const h = estimateChunkHeight(c.length)
         return '<div class="hs-mc-picker-section-grid hs-mc-picker-chunk" data-chunk-key="' + key + '" style="min-height:' + h + 'px"></div>'
       }).join('')
+      const header = noHeaders ? '' : `<div class="hs-mc-picker-section-header">${escapeHtml(s.label)} <span class="hs-mc-picker-section-count">${s.emotes.length}</span></div>`
       return `
       <div class="hs-mc-picker-section" data-section-key="${escapeHtml(s.key)}">
-        <div class="hs-mc-picker-section-header">${escapeHtml(s.label)} <span class="hs-mc-picker-section-count">${s.emotes.length}</span></div>
+        ${header}
         ${chunksHtml}
       </div>`
     }).join('')
@@ -12971,7 +13272,9 @@ async function sendKickMessage(kickSlug, text) {
     // img.dataset.state; without this update right-click on a blocked picker
     // emote returns state='global' and re-blocks instead of unblocking.
     const state = isBlocked ? 'blocked' : (emote.state || 'global')
-    const wrapCls = isBlocked ? 'hs-mc-picker-emote-wrap blocked' : 'hs-mc-picker-emote-wrap'
+    const wrapCls = isBlocked
+      ? 'hs-mc-picker-emote-wrap blocked'
+      : (state === 'unadded' ? 'hs-mc-picker-emote-wrap unadded' : 'hs-mc-picker-emote-wrap')
     const safeName = escapeHtml(name)
     return `<span class="${wrapCls}" data-name="${safeName}"><img src="${escapeHtml(emote.url)}" alt="${safeName}" title="${safeName} (${escapeHtml(emote.source)})" class="hs-mc-picker-emote hs-emote-${escapeHtml(emote.source)}" data-name="${safeName}" data-source="${escapeHtml(emote.source)}" data-state="${state}" loading="lazy"></span>`
   }
@@ -13093,31 +13396,77 @@ async function sendKickMessage(kickSlug, text) {
       </div>` : ''}
     `;
 
-    // Search functionality (debounced)
+    // Inject provider filter chips next to the search input. Hidden by default —
+    // revealed only when the search input is focused or has a value.
+    const searchWrap = picker.querySelector('.hs-mc-search-wrap');
+    if (searchWrap && !searchWrap.parentElement.querySelector('.hs-mc-src-chips')) {
+      const chipBar = document.createElement('div');
+      chipBar.className = 'hs-mc-src-chips';
+      chipBar.title = 'toggle which providers to search';
+      for (const src of ['7tv', 'bttv', 'ffz']) {
+        const btn = document.createElement('button');
+        btn.className = 'hs-mc-src-chip' + (mcPickerSources.has(src) ? ' active' : '');
+        btn.dataset.src = src;
+        btn.textContent = src;
+        btn.type = 'button';
+        chipBar.appendChild(btn);
+      }
+      // Clicking a chip blurs the search input; preventDefault keeps focus.
+      chipBar.addEventListener('mousedown', (e) => {
+        if (e.target.closest('.hs-mc-src-chip')) e.preventDefault();
+      });
+      searchWrap.parentElement.appendChild(chipBar);
+
+      // Focus/blur drives chip visibility.
+      const inputEl = document.getElementById('hs-mc-emote-search');
+      function updateMcChipsVisibility() {
+        const focused = document.activeElement === inputEl;
+        const hasValue = (inputEl?.value || '').length > 0;
+        chipBar.classList.toggle('visible', focused || hasValue);
+      }
+      inputEl?.addEventListener('focus', updateMcChipsVisibility);
+      inputEl?.addEventListener('blur', () => setTimeout(updateMcChipsVisibility, 0));
+      inputEl?.addEventListener('input', updateMcChipsVisibility);
+      updateMcChipsVisibility();
+    }
+
+    // Source chip click handler — toggle, persist, re-search.
+    picker.querySelectorAll('.hs-mc-src-chip').forEach(chip => {
+      chip.addEventListener('click', () => {
+        const src = chip.dataset.src;
+        if (mcPickerSources.has(src)) mcPickerSources.delete(src);
+        else mcPickerSources.add(src);
+        chip.classList.toggle('active', mcPickerSources.has(src));
+        mcSaveSources();
+        const q = (document.getElementById('hs-mc-emote-search')?.value || '').toLowerCase().trim();
+        if (!q) return;
+        if (mcHasExternalSource()) mcTriggerProviderSearches(q);
+        rerenderSearch(q);
+      });
+    });
+
+    // Search functionality (debounced). When external chips are on the query
+    // fires the provider APIs (7TV v4 / BTTV / FFZ) in parallel. Local-only
+    // mode keeps the original instant filter behaviour.
     let _searchTimer = null;
     const searchInput = document.getElementById('hs-mc-emote-search');
     searchInput?.addEventListener('input', (e) => {
       cleanup.clearTimeout(_searchTimer);
       _searchTimer = cleanup.setTimeout(() => {
-        const query = e.target.value.toLowerCase();
-        const grid = document.getElementById('hs-mc-emote-grid');
-        if (!grid) return;
-
-        const searchEmotes = new Map();
-        for (const [k, v] of viewerPersonalEmotes) searchEmotes.set(k, v);
-        const searchChCache = channelEmoteCaches[currentTab] || channelEmoteCaches[getCurrentChannel()];
-        if (searchChCache) for (const [k, v] of searchChCache) if (!searchEmotes.has(k)) searchEmotes.set(k, v);
-        for (const [k, v] of emoteCache) if (!searchEmotes.has(k)) searchEmotes.set(k, v);
-        const filtered = new Map();
-        for (const [name, emote] of searchEmotes) {
-          if (name.toLowerCase().includes(query)) filtered.set(name, emote);
+        const query = e.target.value.toLowerCase().trim();
+        mcCurrentQuery = query;
+        if (query && mcHasExternalSource()) {
+          mcTriggerProviderSearches(query);
+        } else {
+          mcTriggerProviderSearches('');
         }
-        const filteredSections = groupEmotes(filtered);
-        grid.innerHTML = renderEmoteSections(filteredSections, t('common_no_matches'));
-        attachChunkObserver(grid);
-        markPickerDirty();
-      }, 150);
+        rerenderSearch(query);
+      }, 200);
     });
+
+    // rerenderSearch is now module-scope (mcRerenderSearch) so async provider
+    // result callbacks can call it directly.
+    const rerenderSearch = mcRerenderSearch;
 
     // Emote size controls
     picker.querySelectorAll('.hs-mc-size-btn').forEach(btn => {
@@ -13146,17 +13495,41 @@ async function sendKickMessage(kickSlug, text) {
       });
     });
 
-    // Event delegation for emote clicks (single handler, works for chunked rendering)
-    if (!picker._hsDelegated) {
-      picker._hsDelegated = true;
+    // Event delegation for emote clicks (single handler, works for chunked rendering).
+    // Bumped to v2 — the old `_hsDelegated` boolean property survives extension
+    // reload (page owns the DOM), but the listener it tracked is destroyed with
+    // the previous content-script context. Versioning forces re-attach when this
+    // bundle's flag is missing.
+    if (picker.dataset.hsClickVersion !== '2') {
+      picker.dataset.hsClickVersion = '2';
       picker.addEventListener('click', (e) => {
         const img = e.target.closest('.hs-mc-picker-emote');
         if (!img) return;
         const name = img.dataset.name;
         const input = document.getElementById('hs-mc-input');
         if (!input || !name) return;
+
+        // Remote (provider search) result — not yet in user's local emotes.
+        // Optimistically register the emote in viewerPersonalEmotes so
+        // pasteEmoteToInput resolves immediately (avoid the dead-click feel
+        // from awaiting a network round-trip). The server-side add fires in
+        // the background; on success the state is reconciled, on failure the
+        // user still sees the emote (server sync re-evaluates next load).
+        if (img.dataset.state === 'remote') {
+          const remote = mcRemoteEmoteIndex.get(name);
+          if (remote) {
+            if (!viewerPersonalEmotes.has(name)) {
+              viewerPersonalEmotes.set(name, {
+                url: remote.url,
+                source: remote.provider || '7tv',
+                state: 'owned',
+              });
+            }
+            addEmoteToInventory(name, remote.url, remote.provider, img).catch(() => {});
+          }
+        }
+
         if (wysiwygEnabled || !('value' in input)) {
-          // WYSIWYG: insert emote image (with zero-width stacking)
           pasteEmoteToInput(name)
         } else {
           const pos = input.selectionStart || input.value.length;
@@ -13170,6 +13543,14 @@ async function sendKickMessage(kickSlug, text) {
         picker.classList.remove('visible');
         adjustOverlayForPicker(false);
       });
+
+      // Provider search results land asynchronously — re-render when each one
+      // arrives so the user sees the picture filling out instead of waiting
+      // for the slowest provider.
+      cleanup.addEventListener(document, 'hs-mc-search-results-ready', (ev) => {
+        if (ev.detail?.query !== mcCurrentQuery) return;
+        mcRerenderSearch(mcCurrentQuery);
+      }, 'mc-search-results-ready');
     }
 
     attachChunkObserver(picker);
@@ -13279,6 +13660,7 @@ async function sendKickMessage(kickSlug, text) {
           img.dataset.state = 'blocked';
         }
       });
+      applyInputEmoteBlockState(name, true);
     }
 
     for (const hash of toUnblock) {
@@ -13305,6 +13687,7 @@ async function sendKickMessage(kickSlug, text) {
           img.dataset.state = newState;
         }
       });
+      applyInputEmoteBlockState(name, false);
     }
 
     // Cached _renderedHtml on buffered messages bakes in `hs-state-blocked` from
@@ -13350,7 +13733,45 @@ async function sendKickMessage(kickSlug, text) {
     // text fallback). Defined later in the bundle but function declarations
     // hoist to IIFE scope so it's available when this runs.
     if (typeof attachInputEmoteErrorRecovery === 'function') attachInputEmoteErrorRecovery(img)
+    // If the emote was already blocked before this paste, apply the dashed
+    // state from creation so the user never sees the live image flash.
+    if (blockedEmoteNames.has(emoteName)) markInputEmoteBlocked(img, true)
     return img
+  }
+
+  // 1×1 transparent gif — swap src to this so the IMG box stays paintable
+  // (visibility:hidden / opacity:0 would also drop the outline).
+  const HS_TRANSPARENT_PX = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'
+
+  function markInputEmoteBlocked(img, blocked) {
+    if (!img) return
+    if (blocked) {
+      if (img.dataset.hsInputBlocked === '1') return
+      img.dataset.hsInputBlocked = '1'
+      if (img.src && !img.src.startsWith('data:')) img.dataset.hsOrigSrc = img.src
+      img.src = HS_TRANSPARENT_PX
+      img.classList.add('hs-state-blocked')
+    } else {
+      if (img.dataset.hsInputBlocked !== '1') return
+      const orig = img.dataset.hsOrigSrc
+      if (orig) img.src = orig
+      delete img.dataset.hsInputBlocked
+      delete img.dataset.hsOrigSrc
+      img.classList.remove('hs-state-blocked')
+    }
+  }
+
+  // Update every .hs-input-emote IMG matching the name across both the
+  // multichat input and any cycling/preview imgs that share the class. Match
+  // by alt + dataset.emoteName (both set at creation; alt may be the typed
+  // overlay name like "TriHard0" while dataset is identical).
+  function applyInputEmoteBlockState(emoteName, blocked) {
+    if (!emoteName) return
+    const inputs = document.querySelectorAll('img.hs-input-emote')
+    for (const img of inputs) {
+      if (img.alt !== emoteName && img.dataset.emoteName !== emoteName) continue
+      markInputEmoteBlocked(img, blocked)
+    }
   }
 
   // Stack a zero-width emote onto a base emote/stack in the input.
@@ -13597,6 +14018,8 @@ async function sendKickMessage(kickSlug, text) {
       })
     } catch {}
 
+    applyInputEmoteBlockState(emoteName, true);
+
     refreshEmoteTooltip(emoteName, 'blocked');
     showToast(`blocked: ${emoteName}`, 'success');
     flashAllEmotes(emoteName, 'hs-flash-block');
@@ -13645,6 +14068,8 @@ async function sendKickMessage(kickSlug, text) {
         if (img) img.dataset.state = newState
       })
     } catch {}
+
+    applyInputEmoteBlockState(emoteName, false);
 
     refreshEmoteTooltip(emoteName, newState);
     showToast(`unblocked: ${emoteName}`, 'success');
@@ -17306,6 +17731,9 @@ async function fetchGlobalBadges() {
       twitchBadgeUrls.set(`${b.setID}/${b.version}`, b.imageURL)
     }
     log('Loaded global badges:', twitchBadgeUrls.size)
+    // Existing message DOM was built before badges loaded — bump epoch so the
+    // diff invalidates old msgKeys and rebuilds with the now-populated URLs.
+    if (typeof bumpRenderEpoch === 'function') bumpRenderEpoch()
     renderMessages(currentTab)
   } catch (e) {
     globalBadgesFetched = false
@@ -18342,6 +18770,10 @@ async function fetchChannelBadges(channelLogin) {
         }
       }
       log('Loaded channel badges for', channelLogin)
+      // Same cold-start race as global badges — bump epoch so messages from
+      // this channel that already rendered with the text-fallback star get
+      // rebuilt with the channel-specific image.
+      if (typeof bumpRenderEpoch === 'function') bumpRenderEpoch()
       renderMessages(currentTab)
     } else {
       // No data populated — schedule retry after backoff
@@ -23376,6 +23808,28 @@ function initInput() {
       }
       if (state === 'unadded') {
         if (pendingEmoteOps.has(emoteName)) return;
+        // Picker unadded → first click adds (orange→owned), second click pastes
+        // via the owned/global/channel branch above. Splitting prevents a
+        // mis-click from silently burning a slot in the user's 5000-cap set.
+        const inPicker = !!e.target.closest('#hs-mc-emote-picker');
+        if (inPicker) {
+          if (!viewerPersonalEmotes.has(emoteName)) {
+            viewerPersonalEmotes.set(emoteName, {
+              url: emoteUrl,
+              source: source || 'heatsync',
+              state: 'owned',
+            });
+          }
+          const pickerWrap = e.target.closest('.hs-mc-picker-emote-wrap');
+          if (pickerWrap) {
+            pickerWrap.classList.remove('unadded');
+            const pImg = pickerWrap.querySelector('img');
+            if (pImg) pImg.dataset.state = 'owned';
+          }
+          addEmoteToInventory(emoteName, emoteUrl, source, e.target);
+          flashAllEmotes(emoteName, 'hs-flash-add');
+          return;
+        }
         addEmoteToInventory(emoteName, emoteUrl, source, e.target);
         flashAllEmotes(emoteName, 'hs-flash-add');
       }
@@ -25765,17 +26219,15 @@ async function sendMessage() {
   let text = convertEmojiShortcodes(getInputText().trim());
   if (!text) return;
 
-  // Resub-share mode — text becomes the celebration body. main.js injects a
-  // synthetic usernotice with this text and the dedup keeps it over Twitch's
-  // empty real broadcast.
+  // Resub-share mode — typed text becomes a follow-up custom chat message.
+  // consume(text) does three things: (1) inject a local synthetic celebration
+  // styled with the user's custom text so they get instant visual feedback,
+  // (2) programmatically click Twitch's native Share button so the resub
+  // celebration broadcasts to all viewers, (3) returns false so we FALL
+  // THROUGH below — the user's text then goes out as a normal chat message
+  // that everyone sees and that persists in Twitch's history.
   if (window.__hsResubShare?.active?.()) {
-    if (window.__hsResubShare.consume(text)) {
-      if (wysiwygEnabled) input.textContent = ''
-      else input.value = ''
-      pendingMessage = ''
-      updateCharCount()
-      return
-    }
+    try { window.__hsResubShare.consume(text) } catch (_) {}
   }
 
   // Slash commands — work from any tab. Handler may return:
@@ -25820,7 +26272,7 @@ async function sendMessage() {
   }
 
   // Resolve platform targets
-  const kickSlug = ch.kick
+  const kickSlug = ch?.kick
   const twitchName = ch?.twitch
   const isLiveKick = currentTab === 'live' && hostPlatform === 'kick'
 
@@ -32002,6 +32454,14 @@ const STORAGE_KEY = 'heatsync_multichat';
     const wasCtx = _resubShareCtx
     _resubShareCtx = null
     if (_resubShareModeTimer) { clearTimeout(_resubShareModeTimer); _resubShareModeTimer = null }
+    // Dismiss the HsNotifs banner — once the user has sent (or the timeout
+    // fired the fallback) the callout is consumed; leaving it visible feels
+    // like the click did nothing.
+    if (wasCtx) {
+      try {
+        window.HsNotifs?.dismissByKey?.('twitch-resub-share', `resub:${wasCtx.claim.channel}:${wasCtx.months}`)
+      } catch (_) {}
+    }
     const input = document.getElementById('hs-mc-input')
     const inputBar = document.getElementById('hs-mc-inputbar')
     inputBar?.classList.remove('hs-mc-resub-share')
@@ -32024,17 +32484,57 @@ const STORAGE_KEY = 'heatsync_multichat';
       _injectShareSynthetic(wasCtx.claim, wasCtx.user, wasCtx.months, '')
     }
   }
+  // Programmatic-click escape hatch so consume() can fire the native Twitch
+  // Share button without our own surface() hook re-entering share-mode.
+  let _allowNativeShare = false
   // Exposed for input.js sendMessage: consume typed text as resub-share body.
+  // .enter() is called directly by the HsNotifs Share button — bypasses the
+  // native Twitch click which would insta-send a default celebration message.
   window.__hsResubShare = {
     active: () => !!_resubShareCtx,
+    // Returns false so input.js sendMessage CONTINUES into the regular IRC
+    // send path — the typed text needs to actually go to Twitch chat so other
+    // viewers see it and it persists across refresh. We also inject a local
+    // synthetic usernotice for instant visual feedback, AND fire the native
+    // Twitch share button for the global celebration broadcast.
     consume: (text) => {
       if (!_resubShareCtx) return false
       const { claim, user, months } = _resubShareCtx
       if (claim.preTimer) { clearTimeout(claim.preTimer); claim.preTimer = null }
-      _injectShareSynthetic(claim, user, months, text)
+      // 1. Local synthetic — instant styled celebration in OUR view with the
+      //    user's custom text. Doesn't go anywhere else; viewer-only.
+      try { _injectShareSynthetic(claim, user, months, text || '') } catch (_) {}
+      // 2. Native broadcast — programmatically click Twitch's Share button so
+      //    the resub-celebration goes out to all viewers. _allowNativeShare
+      //    tells our surface() hook to let the click pass through (without
+      //    re-entering share mode). Best-effort: if the callout DOM has
+      //    already been removed, this silently no-ops and only the local
+      //    synthetic + the IRC message below land.
+      try {
+        const QUEUE_SEL = '[data-test-selector="chat-private-callout-queue__callout-container"]'
+        const btn = document.querySelector(QUEUE_SEL + ' [data-a-target="chat-private-callout__primary-button"]')
+        if (btn) {
+          _allowNativeShare = true
+          try { btn.click() } finally { _allowNativeShare = false }
+        }
+      } catch (_) {}
       _exitResubShareMode(claim, false)
-      return true
-    }
+      return false
+    },
+    enter: (months, user, channel) => {
+      try {
+        if (_pendingShareClaim) {
+          clearTimeout(_pendingShareClaim.preTimer)
+          clearTimeout(_pendingShareClaim.postTimer)
+        }
+        const claim = { channel, userLc: (user || '').toLowerCase(), months, synthId: null, preTimer: null, postTimer: null, customText: '' }
+        _pendingShareClaim = claim
+        _enterResubShareMode(claim, user, months)
+      } catch (_) {}
+    },
+    // Internal: surface()'s native-button hook reads this to know whether to
+    // block the click (user-initiated) or pass through (programmatic from us).
+    _allowNativeShare: () => _allowNativeShare,
   }
   function setupHsCalloutCloseButton() {
     if (_hsCalloutCloseObs) return
@@ -32054,7 +32554,14 @@ const STORAGE_KEY = 'heatsync_multichat';
       const shareBtn = calloutEl.querySelector('[data-a-target="chat-private-callout__primary-button"]')
       if (shareBtn && shareBtn.dataset.hsShareHooked !== '1') {
         shareBtn.dataset.hsShareHooked = '1'
-        shareBtn.addEventListener('click', () => {
+        // User-initiated click on the (hidden) native Share button → enter
+        // our share-mode flow instead of letting Twitch insta-send.
+        // Programmatic clicks from consume() pass through (Twitch's native
+        // onClick fires) so the celebration actually broadcasts.
+        shareBtn.addEventListener('click', (e) => {
+          if (window.__hsResubShare?._allowNativeShare?.()) return
+          e.stopImmediatePropagation()
+          e.preventDefault()
           try {
             if (_pendingShareClaim) {
               clearTimeout(_pendingShareClaim.preTimer)
@@ -32064,7 +32571,7 @@ const STORAGE_KEY = 'heatsync_multichat';
             _pendingShareClaim = claim
             _enterResubShareMode(claim, user, months)
           } catch (_) {}
-        })
+        }, { capture: true })
       }
       try {
         HsNotifs.emit('twitch-resub-share', {
@@ -32077,28 +32584,28 @@ const STORAGE_KEY = 'heatsync_multichat';
       // resize, so a freshly-mounted layer container would land at fallback (0).
       try { _updateMcLayout?.() } catch (_) {}
     }
-    document.querySelectorAll('[data-test-selector="chat-private-callout-queue__callout-container"] .pinned-callout').forEach(surface)
+    // Twitch removed `.pinned-callout` in a recent refactor — the callout body
+    // now lives directly under the queue container. Surface the container
+    // itself; surface() reads text + Share button via descendant selectors.
     const QUEUE_SEL = '[data-test-selector="chat-private-callout-queue__callout-container"]'
+    document.querySelectorAll(QUEUE_SEL).forEach(c => { if (c.querySelector('*')) surface(c) })
     let _narrowed = false
     _hsCalloutCloseObs = new MutationObserver((muts) => {
+      // On any mutation, re-check the queue container — when populated, surface.
+      const queue = document.querySelector(QUEUE_SEL)
+      if (queue && queue.querySelector('*')) surface(queue)
       for (const m of muts) {
         for (const node of m.addedNodes) {
           if (node.nodeType !== 1) continue
-          if (node.classList?.contains('pinned-callout') &&
-              node.closest(QUEUE_SEL)) {
-            surface(node)
-          } else if (node.querySelector) {
-            node.querySelectorAll(QUEUE_SEL + ' .pinned-callout').forEach(surface)
+          if (node.matches?.(QUEUE_SEL)) { if (node.querySelector('*')) surface(node) }
+          else if (node.querySelector) {
+            node.querySelectorAll(QUEUE_SEL).forEach(c => { if (c.querySelector('*')) surface(c) })
           }
         }
       }
-      // Opportunistically narrow the observed target once the callout queue
-      // container appears. Twitch's React fires hundreds of body-subtree
-      // mutations per second; staying on body keeps dispatching them to this
-      // observer forever. Switching to the small queue container drops that
-      // per-frame overhead to ~zero.
+      // Narrow the observed target to the queue container once it exists so we
+      // stop processing every body subtree mutation Twitch fires.
       if (_narrowed) return
-      const queue = document.querySelector(QUEUE_SEL)
       if (queue) {
         _narrowed = true
         try { _hsCalloutCloseObs.disconnect() } catch (_) {}
@@ -33231,6 +33738,17 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     // Tab caches are keyed by old epoch — drop them all so next switch
     // rebuilds at the new epoch instead of restoring stale-keyed children
     // that the diff would immediately wipe.
+    _dropAllTabCaches();
+  }
+
+  // Bump render epoch WITHOUT clearing _renderedHtml. Used when late-arriving
+  // out-of-band data (Twitch native badges, BTTV/FFZ/Chatterino bulk badge
+  // maps) needs to re-flow into the DOM. The diff renderer skips identical
+  // msgKeys, so a bare renderMessages after badge fetch is a no-op — bumping
+  // the epoch forces a fresh build that recomputes badges while keeping
+  // cached emote HTML on _renderedHtml.
+  function bumpRenderEpoch() {
+    _renderEpoch++;
     _dropAllTabCaches();
   }
 
@@ -35743,6 +36261,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
         mcBttvBadgeMap = new Map(Object.entries(msg.bttvBadges || {}))
         mcFfzBadgeMap = new Map(Object.entries(msg.ffzBadges || {}))
         mcChatterinoBadgeMap = new Map(Object.entries(msg.chatterinoBadges || {}))
+        bumpRenderEpoch()
         renderMessages(currentTab)
       }
       // 7TV EventAPI pushed user.update / entitlement.* — drop our local
@@ -36454,9 +36973,18 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
 
     // Request initial BTTV/FFZ/Chatterino badge maps from background
     safeSendMessage({ type: 'get_bulk_badges' }).then(resp => {
-      if (resp?.bttvBadges) mcBttvBadgeMap = new Map(Object.entries(resp.bttvBadges))
-      if (resp?.ffzBadges) mcFfzBadgeMap = new Map(Object.entries(resp.ffzBadges))
-      if (resp?.chatterinoBadges) mcChatterinoBadgeMap = new Map(Object.entries(resp.chatterinoBadges))
+      let touched = false
+      if (resp?.bttvBadges) { mcBttvBadgeMap = new Map(Object.entries(resp.bttvBadges)); touched = true }
+      if (resp?.ffzBadges) { mcFfzBadgeMap = new Map(Object.entries(resp.ffzBadges)); touched = true }
+      if (resp?.chatterinoBadges) { mcChatterinoBadgeMap = new Map(Object.entries(resp.chatterinoBadges)); touched = true }
+      // Bulk badge maps just landed — existing messages need a rebuild to pick
+      // up 3rd-party badges. cosmetics_update normally drives this, but it
+      // doesn't fire if BG already broadcast warm cache before our listener
+      // attached. This response is the get_bulk_badges fallback path.
+      if (touched) {
+        bumpRenderEpoch()
+        renderMessages(currentTab)
+      }
     }).catch(() => {})
 
     // Load heatsync auth state

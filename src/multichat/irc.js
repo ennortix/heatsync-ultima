@@ -350,6 +350,7 @@ class IRC {
       const resp = await chrome.runtime.sendMessage({ type: 'bg_irc_history', channel: ch })
       if (!resp?.ok) return
       const buf = this.channels.get(ch)
+      const wasSize = buf.size
       buf.clear()
       for (const m of resp.msgs || []) {
         m.isHistory = true
@@ -361,10 +362,12 @@ class IRC {
         buf.push(m)
       }
       try { _dropAllTabCaches() } catch {}
-      // Skip rebuild when chat is already populated — wipe+rebuild reloads
-      // every image and looks like a flash on streamer switch. Live messages
-      // will append organically and the 500-cap rolls out stale msgs.
-      if ((currentTab === ch || (currentTab === 'live' && getLiveChannel() === ch)) && isMsgsElEmpty()) {
+      // Rebuild when empty OR when a real backfill landed (delta ≥ 5). Small
+      // incremental merges skip to avoid streamer-switch flash; large history
+      // hydrations always rebuild so the DOM matches the buffer.
+      const isCurrent = (currentTab === ch || (currentTab === 'live' && getLiveChannel() === ch))
+      const delta = buf.size - wasSize
+      if (isCurrent && (isMsgsElEmpty() || delta >= 5)) {
         renderMessages(currentTab)
       }
     } catch (e) { log('BG history refresh failed:', e?.message) }
@@ -397,7 +400,11 @@ class IRC {
         }
         log('BG history hydrated:', resp.msgs.length, 'msgs for', ch)
         try { _dropAllTabCaches() } catch {}
-        if ((currentTab === ch || (currentTab === 'live' && getLiveChannel() === ch)) && isMsgsElEmpty()) {
+        // Always render if we just hydrated any history and panel is current —
+        // a few live msgs may have painted before this resolved, but the buf
+        // now has more (history below them) and must be reflected in DOM.
+        const isCurrent = (currentTab === ch || (currentTab === 'live' && getLiveChannel() === ch))
+        if (isCurrent && resp.msgs.length > 0) {
           renderMessages(currentTab)
         }
       }
@@ -544,6 +551,12 @@ class KickChat {
 
     // Listen for kick chat messages relayed from background.js
     this._listener = (message) => {
+      // BG ingested a server-side backfill batch — refresh our local mirror
+      // from BG so the DOM reflects the newly merged history.
+      if (message.type === 'bg_kick_history_merged' && message.channel) {
+        this._refreshFromBg(message.channel)
+        return
+      }
       if (message.type === 'kick_chat_message' && message.data) {
         const d = message.data
         const channel = d.channel?.toLowerCase()
@@ -646,6 +659,35 @@ class KickChat {
     }, this._PERSIST_DEBOUNCE_MS)
   }
 
+  // BG merged a server-side backfill — re-pull merged buffer into local
+  // mirror. Mirrors IRC._refreshFromBg semantics: render when empty OR when
+  // the buffer grew meaningfully (real backfill).
+  async _refreshFromBg(ch) {
+    ch = ch.toLowerCase()
+    if (!this.channels.has(ch)) return
+    try {
+      const resp = await chrome.runtime.sendMessage({ type: 'bg_kick_history', channel: ch })
+      if (!resp?.ok || !Array.isArray(resp.msgs)) return
+      const buf = this.channels.get(ch)
+      const wasSize = buf.size
+      buf.clear()
+      for (const m of resp.msgs) {
+        m.isHistory = true
+        if (m.user) {
+          try { usernameCache.add(m.user) } catch {}
+          try { setKnownColor(m.user.toLowerCase(), m.color, m.userId) } catch {}
+        }
+        buf.push(m)
+      }
+      try { _dropAllTabCaches() } catch {}
+      const isCurrent = (currentTab === ch || (currentTab === 'live' && getLiveChannel() === ch))
+      const delta = buf.size - wasSize
+      if (isCurrent && (isMsgsElEmpty() || delta >= 5)) {
+        renderMessages(currentTab)
+      }
+    } catch (e) { log('Kick BG refresh failed:', e?.message) }
+  }
+
   async loadHistory(ch) {
     const buffer = this.channels.get(ch)
     if (!buffer) return
@@ -714,7 +756,11 @@ class KickChat {
       }
       buffer.push(msg)
     }
-    if ((currentTab === ch || (currentTab === 'live' && getLiveChannel() === ch)) && isMsgsElEmpty()) {
+    // Always render when history hydrates and panel is current — even if a
+    // couple live msgs already painted, the buffer just grew and the DOM
+    // must reflect it.
+    const isCurrent = (currentTab === ch || (currentTab === 'live' && getLiveChannel() === ch))
+    if (isCurrent && filtered.length > 0) {
       renderMessages(currentTab)
     }
   }
@@ -765,7 +811,8 @@ class KickChat {
         hydrated = true
         log('Kick BG history hydrated:', resp.msgs.length, 'msgs for', kickUsername)
         try { _dropAllTabCaches() } catch {}
-        if ((currentTab === kickUsername || (currentTab === 'live' && getLiveChannel() === kickUsername)) && isMsgsElEmpty()) {
+        const isCurrent = (currentTab === kickUsername || (currentTab === 'live' && getLiveChannel() === kickUsername))
+        if (isCurrent && resp.msgs.length > 0) {
           renderMessages(currentTab)
         }
       }

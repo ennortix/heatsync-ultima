@@ -136,10 +136,52 @@
   let savedSetsCache = []
   let setsLoaded = false
 
-  // Discover/trending — lazy-loaded on first 'discover' tab open
-  let discoverEmotesCache = []
-  let discoverLoaded = false
+  // Share-set link — populated by the "share set" context-menu action.
   let discoverShareUrl = null
+
+  // Direct provider API search. Each enabled chip fires its own API in parallel
+  // (7TV GQL, BTTV REST, FFZ REST). Results are normalized to a uniform shape
+  // and sorted by each provider's native popularity metric. AbortController
+  // cancels stale in-flight requests when the query changes.
+  const PROVIDER_NAMES = ['7tv', 'bttv', 'ffz']
+  let providerResults = { '7tv': [], 'bttv': [], 'ffz': [] }
+  let providerLastQuery = { '7tv': '', 'bttv': '', 'ffz': '' }
+  let providerInFlight = { '7tv': false, 'bttv': false, 'ffz': false }
+  let providerErrors = { '7tv': null, 'bttv': null, 'ffz': null }
+  let _providerAborts = { '7tv': null, 'bttv': null, 'ffz': null }
+
+  // Heatsync indexed search — supplements provider APIs with SQL substring
+  // matches (ILIKE %q%). 7TV's API is prefix-ranked, so a query like "WTFF"
+  // never returns "KEKWTFF" upstream. Heatsync's index catches those because
+  // any popular substring emote will already be in the deduped DB from prior
+  // imports. Provider chip determines which heatsync results contribute.
+  let hsIndexResults = []
+  let hsIndexQuery = ''
+  let hsIndexInFlight = false
+  let _hsIndexSeq = 0
+
+  // Provider filter chips. Hidden until the user focuses the search input.
+  // Local matches (channel + global + mine) are ALWAYS included — only the
+  // provider toggles are user-controllable. Default: all three providers on.
+  let pickerSources = (() => {
+    try {
+      const raw = localStorage.getItem('hs-picker-sources')
+      if (raw) {
+        const arr = JSON.parse(raw)
+        if (Array.isArray(arr) && arr.length) {
+          // Migrate old 'here' entries — local matches are now implicit.
+          return new Set(arr.filter(s => s !== 'here'))
+        }
+      }
+    } catch (_) {}
+    return new Set(['7tv', 'bttv', 'ffz'])
+  })()
+  function saveSources() {
+    try { localStorage.setItem('hs-picker-sources', JSON.stringify([...pickerSources])) } catch (_) {}
+  }
+  function hasExternalSource() {
+    return pickerSources.has('7tv') || pickerSources.has('bttv') || pickerSources.has('ffz')
+  }
 
   // IndexedDB cache for emote metadata
   const DB_NAME = 'heatsync-emote-cache';
@@ -584,6 +626,62 @@
       .heatsync-search input::placeholder {
         color: #808080;
       }
+
+      /* Top search row — search input + source chips. Replaces the bottom search wrap. */
+      .hs-top-search {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 6px 8px;
+        background: #000;
+        border-bottom: 1px solid rgba(255,255,255,0.12);
+        flex-shrink: 0;
+      }
+      .hs-top-search input {
+        flex: 1;
+        min-width: 0;
+        background: #000;
+        border: 1px solid rgba(255,255,255,0.12);
+        border-radius: 0;
+        color: #fff;
+        font-size: 12px;
+        padding: 5px 8px;
+        outline: none;
+        font-family: inherit;
+      }
+      .hs-top-search input:focus { border-color: #ff8700; }
+      .hs-top-search input::placeholder { color: #808080; }
+
+      .hs-src-chips {
+        display: none;
+        gap: 2px;
+        flex-shrink: 0;
+      }
+      .hs-src-chips.visible {
+        display: flex;
+      }
+      .hs-src-chip {
+        background: none;
+        border: 1px solid rgba(255,255,255,0.18);
+        color: #808080;
+        font-size: 10px;
+        font-weight: 600;
+        padding: 3px 6px;
+        cursor: pointer;
+        font-family: inherit;
+        border-radius: 0;
+        line-height: 1.2;
+        text-transform: lowercase;
+      }
+      .hs-src-chip:hover { background: #fff; color: #000; border-color: #fff; }
+      .hs-src-chip.active {
+        background: #ff8700;
+        border-color: #ff8700;
+        color: #000;
+      }
+      .hs-src-chip.active:hover { background: #fff; border-color: #fff; }
+
+      .hs-discover-item { cursor: pointer; }
 
       /* Tabs */
       .heatsync-tabs {
@@ -1500,6 +1598,51 @@
       .hs-discover-add-btn:hover { background: #ff8700; color: #000; }
       .hs-discover-add-btn.added { border-color: #00cc66; color: #00cc66; background: none; cursor: default; }
       .hs-discover-add-btn:disabled { opacity: 0.4; cursor: wait; }
+      .hs-discover-hint {
+        font-size: 10px;
+        color: #888;
+        padding: 4px 8px 6px;
+        border-bottom: 1px solid rgba(255,255,255,0.06);
+        line-height: 1.3;
+      }
+      .hs-search-all-cta {
+        display: block;
+        width: calc(100% - 16px);
+        margin: 6px 8px;
+        background: none;
+        border: 1px solid #ff8700;
+        color: #ff8700;
+        font-size: 11px;
+        font-weight: 600;
+        padding: 6px 8px;
+        cursor: pointer;
+        border-radius: 0;
+        text-align: center;
+        font-family: inherit;
+      }
+      .hs-search-all-cta:hover { background: #fff; color: #000; border-color: #fff; }
+      .hs-discover-prov {
+        font-size: 9px;
+        font-weight: 700;
+        text-transform: uppercase;
+        padding: 0 4px;
+        line-height: 1.5;
+        border: 1px solid currentColor;
+        flex-shrink: 0;
+      }
+      .hs-discover-prov.prov-7tv { color: #29d9ff; }
+      .hs-discover-prov.prov-bttv { color: #ffaa00; }
+      .hs-discover-prov.prov-ffz { color: #5c8bff; }
+      .hs-discover-prov.prov-hs { color: #ff8700; }
+      .hs-discover-item:hover .hs-discover-prov { color: #000 !important; border-color: #000 !important; }
+      .hs-discover-uses {
+        font-size: 10px;
+        color: #888;
+        flex-shrink: 0;
+        min-width: 28px;
+        text-align: right;
+      }
+      .hs-discover-item:hover .hs-discover-uses { color: #000 !important; }
 
     `;
     document.head.appendChild(style);
@@ -1603,8 +1746,9 @@
     emotePlaceholderMode: false, // Show colored rectangles instead of emote images
     viMode: false,               // Vim keybindings for chat input
     showPlatformBadges: true,    // Show [T]/[K]/[YT] badges on messages
-    // 'instant'=block on right-click (default), 'menu'=show block/cancel popup, 'off'=disabled
-    rightClickBlockMode: 'instant',
+    // 'menu'=rich context menu (default — open-on-provider, copy, block, +add),
+    // 'instant'=block immediately on right-click (no menu), 'off'=disabled.
+    rightClickBlockMode: 'menu',
   };
 
   // Get extension settings (sync - returns cached)
@@ -1945,6 +2089,14 @@
         <span><a href="https://heatsync.org" target="_blank">${t('btn_auth_login')}</a> ${t('btn_auth_save_emotes')}</span>
       </div>
       ` : ''}
+      <div class="hs-top-search">
+        <input type="text" id="heatsync-search" placeholder="search emotes…" autocomplete="off">
+        <div class="hs-src-chips" id="hs-src-chips" title="toggle which providers to search">
+          <button class="hs-src-chip ${pickerSources.has('7tv') ? 'active' : ''}" data-src="7tv" title="include 7TV results">7tv</button>
+          <button class="hs-src-chip ${pickerSources.has('bttv') ? 'active' : ''}" data-src="bttv" title="include BetterTTV results">bttv</button>
+          <button class="hs-src-chip ${pickerSources.has('ffz') ? 'active' : ''}" data-src="ffz" title="include FrankerFaceZ results">ffz</button>
+        </div>
+      </div>
       <div class="heatsync-panel-content">
         <div class="heatsync-tabs">
           <button class="heatsync-tab active" data-tab="channel">
@@ -1965,18 +2117,12 @@
           <button class="heatsync-tab" data-tab="emoji">
             ${t('btn_tab_emoji')}<span class="heatsync-tab-count" id="count-emoji">...</span>
           </button>
-          <button class="heatsync-tab" data-tab="discover">
-            discover<span class="heatsync-tab-count" id="count-discover"></span>
-          </button>
         </div>
         <div class="heatsync-emote-grid" id="heatsync-emote-grid">
           <div class="heatsync-empty">${t('common_loading')}</div>
         </div>
       </div>
       <div class="heatsync-panel-bottom">
-        <div class="heatsync-search">
-          <input type="text" id="heatsync-search" placeholder="${t('btn_search_placeholder')}" autocomplete="off">
-        </div>
         <div class="heatsync-panel-footer">
           <div class="heatsync-size-buttons">
             <button class="heatsync-size-btn" data-size="1x">${t('btn_size_1x')}</button>
@@ -2129,8 +2275,9 @@
         currentTab = tab.dataset.tab;
         focusedEmoteIndex = -1;
         // Clear search input when switching to tabs that don't use searchQuery
-        // (sets/history/discover have their own search). Avoids stale filter UI.
-        if (['sets', 'history', 'discover'].includes(currentTab)) {
+        // (sets/history have their own pickers). The "all" tab (data-tab=discover)
+        // uses the shared search bar to drive server-side emote search.
+        if (['sets', 'history'].includes(currentTab)) {
           const si = panel.querySelector('#heatsync-search');
           if (si && si.value) { si.value = ''; searchQuery = ''; }
         }
@@ -2141,14 +2288,56 @@
       });
     });
 
-    // Search handler (debounced 150ms)
+    // Search handler. Local matches are filtered instantly; external providers
+    // (7tv/bttv/ffz) hit their public APIs in parallel via triggerProviderSearches.
     let _searchDebounce = null
     const searchInput = panel.querySelector('#heatsync-search');
+    const chipsBar = panel.querySelector('#hs-src-chips');
+    function updateChipsVisibility() {
+      const focused = document.activeElement === searchInput
+      const hasValue = searchInput.value.length > 0
+      chipsBar?.classList.toggle('visible', focused || hasValue)
+    }
+    searchInput.addEventListener('focus', updateChipsVisibility);
+    searchInput.addEventListener('blur', () => {
+      // Defer so a chip click (which blurs the input) keeps the bar visible
+      // long enough to process. updateChipsVisibility re-evaluates: if value
+      // is non-empty the bar stays.
+      setTimeout(updateChipsVisibility, 0)
+    });
+    // Clicking a chip blurs the input — preventDefault on mousedown keeps focus.
+    chipsBar?.addEventListener('mousedown', (e) => {
+      if (e.target.closest('.hs-src-chip')) e.preventDefault()
+    });
     searchInput.addEventListener('input', (e) => {
       searchQuery = e.target.value.toLowerCase();
       focusedEmoteIndex = -1;
+      updateChipsVisibility();
       clearTimeout(_searchDebounce)
-      _searchDebounce = setTimeout(() => renderEmoteGrid(), 150)
+      const q = searchQuery.trim()
+      if (q && hasExternalSource()) {
+        _searchDebounce = setTimeout(() => triggerProviderSearches(q), 250)
+      } else {
+        triggerProviderSearches('')
+        _searchDebounce = setTimeout(() => renderEmoteGrid(), 150)
+      }
+    });
+
+    // Source chip handlers — toggle whether each source contributes to search.
+    // Provider caches are keyed per-query; toggling a chip back on triggers a
+    // fetch only when we don't yet have cached results for the current query.
+    panel.querySelectorAll('.hs-src-chip').forEach(chip => {
+      chip.addEventListener('click', () => {
+        const src = chip.dataset.src
+        if (pickerSources.has(src)) pickerSources.delete(src)
+        else pickerSources.add(src)
+        chip.classList.toggle('active', pickerSources.has(src))
+        saveSources()
+        const q = searchQuery.trim()
+        if (!q) { renderEmoteGrid(); return }
+        if (hasExternalSource()) triggerProviderSearches(q)
+        else { triggerProviderSearches(''); renderEmoteGrid() }
+      })
     });
 
     // Close on click outside
@@ -2175,10 +2364,6 @@
         historyLoaded = false
         loadErrors.history = null
         await loadHistory();
-      } else if (tab === 'discover') {
-        discoverLoaded = false
-        loadErrors.discover = null
-        await loadDiscover();
       }
       renderEmoteGrid();
     }, { signal: btnSignal });
@@ -2194,6 +2379,9 @@
       if (countEl) countEl.textContent = EMOJI_DATA.length
     }
     renderEmoteGrid();
+
+    // Auto-focus the search bar — top search is the primary entry point.
+    setTimeout(() => panel.querySelector('#heatsync-search')?.focus(), 30);
   }
 
   // Return URL as-is (upgrading causes CORS/ORB issues in content scripts)
@@ -2315,6 +2503,16 @@
       return;
     }
 
+    // Top search bar takes over whenever there's a query — across every tab.
+    // Unified results from enabled source chips (here / 7tv / bttv / ffz).
+    // Clear the search to return to per-tab browsing.
+    if (searchQuery) {
+      _virtualPickerEmotes = []
+      _virtualRecentCount = 0
+      renderSearchResults(grid, isLoggedIn)
+      return
+    }
+
     if (currentTab === 'sets') {
       _virtualPickerEmotes = []
       _virtualRecentCount = 0
@@ -2326,13 +2524,6 @@
       _virtualPickerEmotes = []
       _virtualRecentCount = 0
       renderHistoryList(grid, isLoggedIn)
-      return
-    }
-
-    if (currentTab === 'discover') {
-      _virtualPickerEmotes = []
-      _virtualRecentCount = 0
-      renderDiscoverList(grid, isLoggedIn)
       return
     }
 
@@ -2373,7 +2564,7 @@
       if (currentTab === 'mine' && !isLoggedIn) {
         grid.innerHTML = `<div class="heatsync-login-msg">${t('btn_login_save_emotes')}</div>`;
       } else {
-        grid.innerHTML = `<div class="heatsync-empty">${searchQuery ? t('common_no_matches') : t('btn_no_emotes')}</div>`;
+        grid.innerHTML = `<div class="heatsync-empty">${t('btn_no_emotes')}</div>`;
       }
       return;
     }
@@ -3207,45 +3398,163 @@
     }
   }
 
-  // ===== Discover / Trending =====
-  function renderDiscoverList(grid, isLoggedIn) {
+  // Unified search results view. Local (channel + global + mine) matches lead
+  // when 'here' is on; provider results (7tv/bttv/ffz) are interleaved by their
+  // native popularity ranking from the provider API. Dedupes by name across
+  // sources so the same emote doesn't appear twice.
+  function renderSearchResults(grid, isLoggedIn) {
     while (grid.firstChild) grid.removeChild(grid.firstChild)
 
-    if (!discoverLoaded && !isLoading.discover) {
-      isLoading.discover = true
-      const loadingEl = document.createElement('div')
-      loadingEl.className = 'heatsync-empty'
-      loadingEl.textContent = t('common_loading')
-      grid.appendChild(loadingEl)
-      loadDiscover().finally(() => {
-        isLoading.discover = false
-        if (currentTab === 'discover') renderEmoteGrid()
-      })
-      return
+
+    const q = searchQuery
+    const seen = new Set()
+    const keyOf = (e) => (e.hash || ('_n_' + (e.name || '').toLowerCase()))
+    const localMatches = []
+
+    // Local matches (channel + global + mine) always included — they're what
+    // the user can paste right now without a network hop.
+    {
+      const channelNames = new Set(channelEmotesCache.map(e => e.name))
+      const pools = [
+        channelEmotesCache,
+        globalEmotesCache.filter(e => !channelNames.has(e.name)),
+        inventoryEmotesCache,
+      ]
+      for (const pool of pools) {
+        for (const e of pool) {
+          const s = fuzzyScore(q, e.name || '')
+          if (s <= 0) continue
+          const k = keyOf(e)
+          if (seen.has(k)) continue
+          seen.add(k)
+          localMatches.push({ ...e, _score: s, _local: true })
+        }
+      }
+      localMatches.sort((a, b) => b._score - a._score)
     }
 
-    if (loadErrors.discover) {
-      const err = document.createElement('div')
-      err.className = 'heatsync-empty'
-      err.textContent = loadErrors.discover
-      grid.appendChild(err)
-      return
+    // Provider results — interleaved in chip order (7tv first), each block
+    // preserving the provider's native popularity order.
+    const providerMatches = []
+    for (const p of PROVIDER_NAMES) {
+      if (!pickerSources.has(p)) continue
+      if (providerLastQuery[p] !== q) continue
+      for (const e of providerResults[p]) {
+        const k = keyOf(e)
+        if (seen.has(k)) continue
+        seen.add(k)
+        providerMatches.push(e)
+      }
     }
 
-    if (!discoverEmotesCache.length) {
+    // Heatsync indexed substring matches — fills the gap where provider APIs
+    // do prefix-only matching. Filtered by chip so each provider's substring
+    // matches respect the chip toggle.
+    const hsMatches = []
+    if (hsIndexQuery === q && hsIndexResults.length) {
+      for (const e of hsIndexResults) {
+        const p = (e.provider || '').toLowerCase()
+        const tag = p.includes('7tv') || p === 'seventv' ? '7tv'
+          : p.includes('bttv') || p === 'betterttv' ? 'bttv'
+          : p.includes('ffz') || p === 'frankerfacez' ? 'ffz'
+          : 'hs'
+        // Skip if the matching chip is off. Uploads/hs ride along whenever any
+        // external chip is on so heatsync's own emotes stay searchable.
+        if (tag !== 'hs' && !pickerSources.has(tag)) continue
+        if (tag === 'hs' && !hasExternalSource()) continue
+        const k = keyOf(e)
+        if (seen.has(k)) continue
+        seen.add(k)
+        hsMatches.push(e)
+      }
+    }
+
+    const combined = localMatches.concat(providerMatches).concat(hsMatches)
+
+    // Header — count + per-provider loading/error indicators
+    const meta = document.createElement('div')
+    meta.className = 'hs-discover-hint'
+    const status = []
+    if (localMatches.length) status.push(`${localMatches.length} owned`)
+    for (const p of PROVIDER_NAMES) {
+      if (!pickerSources.has(p)) continue
+      if (providerInFlight[p]) status.push(`${p}: …`)
+      else if (providerErrors[p]) status.push(`${p}: err`)
+      else if (providerLastQuery[p] === q) status.push(`${p}: ${providerResults[p].length}`)
+    }
+    if (hasExternalSource()) {
+      if (hsIndexInFlight) status.push('hs: …')
+      else if (hsIndexQuery === q && hsMatches.length) status.push(`hs: +${hsMatches.length}`)
+    }
+    meta.textContent = status.length ? `“${q}” — ${status.join(' · ')}` : `“${q}” — searching…`
+    grid.appendChild(meta)
+
+    if (combined.length === 0) {
       const empty = document.createElement('div')
       empty.className = 'heatsync-empty'
-      empty.textContent = 'no trending emotes found'
+      const anyInFlight = PROVIDER_NAMES.some(p => pickerSources.has(p) && providerInFlight[p])
+      if (anyInFlight) empty.textContent = t('common_loading')
+      else empty.textContent = `no emotes match “${q}”`
       grid.appendChild(empty)
       return
     }
 
+    renderEmoteResultList(grid, combined)
+  }
+
+  // Add (if needed) + paste + close — used by both the row click on search
+  // results and the context-menu "+ add" path.
+  async function pasteOrAddFromSearch(emote) {
+    const inInv = isInInventory(emote)
+    if (!inInv) {
+      if (!cachedAuthToken) {
+        showPickerToast('log in to add emotes')
+        return
+      }
+      try {
+        await addEmoteToInventorySilent(emote)
+      } catch (_) {
+        showPickerToast('failed to add')
+        return
+      }
+    }
+    recordRecentEmote(emote)
+    insertEmoteIntoChat(emote.name)
+    closePanel()
+  }
+
+  // Shared row renderer for search results. Whole row is the click target
+  // (add to inventory if missing, paste into chat, close picker). Right-click
+  // opens the rich context menu regardless of the global instant/menu setting.
+  function renderEmoteResultList(grid, items) {
     const list = document.createElement('div')
     list.className = 'hs-discover-list'
 
-    for (const e of discoverEmotesCache) {
+    list.addEventListener('contextmenu', (evt) => {
+      const row = evt.target.closest('.hs-discover-item')
+      if (!row) return
+      const idx = parseInt(row.dataset.idx, 10)
+      if (isNaN(idx)) return
+      const e = items[idx]
+      if (!e) return
+      showContextMenu(evt, e, 'discover')
+    })
+
+    list.addEventListener('click', (evt) => {
+      const row = evt.target.closest('.hs-discover-item')
+      if (!row) return
+      const idx = parseInt(row.dataset.idx, 10)
+      if (isNaN(idx)) return
+      const e = items[idx]
+      if (!e) return
+      pasteOrAddFromSearch(e)
+    })
+
+    for (let i = 0; i < items.length; i++) {
+      const e = items[i]
       const item = document.createElement('div')
       item.className = 'hs-discover-item'
+      item.dataset.idx = String(i)
 
       // Server can return relative paths like '/uploads/abc.webp' — absolutize
       const rawUrl = e.url || e.animated_url || ''
@@ -3266,73 +3575,202 @@
       nameEl.textContent = e.name || ''
       item.appendChild(nameEl)
 
-      const addBtn = document.createElement('button')
-      addBtn.className = 'hs-discover-add-btn'
-      addBtn.type = 'button'
-      const alreadyIn = isInInventory(e)
-      if (alreadyIn) {
-        addBtn.textContent = 'added'
-        addBtn.classList.add('added')
-        addBtn.disabled = true
-      } else {
-        addBtn.textContent = '+ add'
-        addBtn.addEventListener('click', async () => {
-          if (!cachedAuthToken) {
-            showPickerToast('log in to add emotes')
-            return
-          }
-          addBtn.disabled = true
-          addBtn.textContent = '…'
-          try {
-            await addEmoteToInventorySilent(e)
-            addBtn.textContent = 'added'
-            addBtn.classList.add('added')
-          } catch (_) {
-            addBtn.textContent = 'failed'
-            addBtn.style.borderColor = '#ff4444'
-            addBtn.style.color = '#ff4444'
-            setTimeout(() => {
-              addBtn.textContent = '+ add'
-              addBtn.style.borderColor = ''
-              addBtn.style.color = ''
-              addBtn.disabled = false
-            }, 1500)
-          }
-        })
+      // Provider chip (7TV / BTTV / FFZ / upload). Hide when unknown.
+      const provRaw = (e.provider || '').toLowerCase()
+      const provLabel = provRaw.includes('7tv') || provRaw === 'seventv' ? '7tv'
+        : provRaw.includes('bttv') || provRaw === 'betterttv' ? 'bttv'
+        : provRaw.includes('ffz') || provRaw === 'frankerfacez' ? 'ffz'
+        : (provRaw === 'upload' || provRaw === 'imported') ? 'hs' : ''
+      if (provLabel) {
+        const chip = document.createElement('span')
+        chip.className = `hs-discover-prov prov-${provLabel}`
+        chip.textContent = provLabel
+        item.appendChild(chip)
       }
-      item.appendChild(addBtn)
+
+      // Usage count (server-side trending signal). 0 hidden, large counts compacted.
+      const usesCount = Number(e.uses || 0)
+      if (usesCount > 0) {
+        const uses = document.createElement('span')
+        uses.className = 'hs-discover-uses'
+        uses.textContent = usesCount >= 1000 ? `${(usesCount / 1000).toFixed(usesCount >= 10000 ? 0 : 1)}k` : String(usesCount)
+        uses.title = `${usesCount.toLocaleString()} uses on heatsync`
+        item.appendChild(uses)
+      }
+
       list.appendChild(item)
     }
 
     grid.appendChild(list)
   }
 
-  async function loadDiscover() {
-    try {
-      // /api/emotes/hot is the canonical trending endpoint.
-      // /api/emotes/trending does NOT exist (returns 404). The analytics
-      // variant lives at /api/analytics/emotes/trending with a different shape.
-      let resp = await chrome.runtime.sendMessage({
-        type: 'api_fetch',
-        path: '/api/emotes/hot',
-        method: 'GET',
-        auth: false
-      })
-      if (!resp || resp.ok === false) {
-        loadErrors.discover = resp?.error || 'failed to load trending emotes'
-        discoverEmotesCache = []
-        return
+  // ===== Provider-direct search APIs =====
+  // 7TV v4 GraphQL — the v4 endpoint is what 7tv.app uses. perPage 200 is the
+  // sweet spot for catching substring matches that appear deep in the ranked
+  // result set (7TV's search prioritizes name-prefix matches first).
+  const SEVEN_TV_V4_GQL = `query SearchEmotes($query: String!, $page: Int!, $perPage: Int!) {
+    emotes {
+      search(query: $query, sort: { sortBy: TOP_ALL_TIME, order: DESCENDING }, page: $page, perPage: $perPage) {
+        totalCount
+        items {
+          id
+          defaultName
+          flags { animated }
+        }
       }
-      const data = resp.data || resp
-      discoverEmotesCache = Array.isArray(data?.emotes) ? data.emotes : (Array.isArray(data) ? data : [])
-      discoverLoaded = true
-      loadErrors.discover = null
-      const countEl = document.getElementById('count-discover')
-      if (countEl) countEl.textContent = String(discoverEmotesCache.length)
-    } catch (err) {
-      loadErrors.discover = 'failed to load trending emotes'
-      discoverEmotesCache = []
     }
+  }`
+
+  async function search7tvApi(q, signal) {
+    const resp = await fetch('https://api.7tv.app/v4/gql', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      signal,
+      body: JSON.stringify({
+        operationName: 'SearchEmotes',
+        query: SEVEN_TV_V4_GQL,
+        variables: { query: q, page: 1, perPage: 200 }
+      })
+    })
+    if (!resp.ok) throw new Error(`7tv ${resp.status}`)
+    const data = await resp.json()
+    const items = (data && data.data && data.data.emotes && data.data.emotes.search && data.data.emotes.search.items) || []
+    return items.map(e => ({
+      name: e.defaultName,
+      url: `https://cdn.7tv.app/emote/${e.id}/4x.webp`,
+      provider: '7tv',
+      id: e.id,
+      animated: !!(e.flags && e.flags.animated),
+    }))
+  }
+
+  // BTTV: REST search sorted by popularity (server-side default).
+  async function searchBttvApi(q, signal) {
+    const url = `https://api.betterttv.net/3/emotes/shared/search?query=${encodeURIComponent(q)}&offset=0&limit=200`
+    const resp = await fetch(url, { signal })
+    if (!resp.ok) throw new Error(`bttv ${resp.status}`)
+    const items = await resp.json()
+    if (!Array.isArray(items)) return []
+    return items.map(e => ({
+      name: e.code,
+      url: `https://cdn.betterttv.net/emote/${e.id}/3x.${e.imageType || 'webp'}`,
+      provider: 'bttv',
+      id: e.id,
+      animated: !!e.animated,
+    }))
+  }
+
+  // FFZ: REST search sorted by usage count descending.
+  async function searchFfzApi(q, signal) {
+    const url = `https://api.frankerfacez.com/v1/emotes?q=${encodeURIComponent(q)}&sort=count-desc&per_page=200`
+    const resp = await fetch(url, { signal })
+    if (!resp.ok) throw new Error(`ffz ${resp.status}`)
+    const data = await resp.json()
+    const items = Array.isArray(data?.emoticons) ? data.emoticons : []
+    return items.map(e => {
+      const u = e.urls || {}
+      return {
+        name: e.name,
+        url: u['4'] || u['2'] || u['1'] || '',
+        provider: 'ffz',
+        id: String(e.id),
+        animated: !!e.animated,
+        uses: Number(e.usage_count || 0),
+      }
+    })
+  }
+
+  // Heatsync indexed substring search. Provider APIs are prefix-ranked which
+  // means "WTFF" never returns "KEKWTFF" upstream. Heatsync's SQL ILIKE %q%
+  // catches those — but only for emotes already in heatsync's deduped DB.
+  // Server response shape: { results: [{ name, url, provider, hash, uses, ... }] }
+  async function searchHsIndexFor(q) {
+    const mySeq = ++_hsIndexSeq
+    if (!q) {
+      hsIndexResults = []
+      hsIndexQuery = ''
+      hsIndexInFlight = false
+      return
+    }
+    if (hsIndexQuery === q && hsIndexResults.length > 0) return // cached
+    hsIndexInFlight = true
+    try {
+      const resp = await chrome.runtime.sendMessage({
+        type: 'api_fetch',
+        path: `/api/search?mode=emotes&q=${encodeURIComponent(q)}&limit=100`,
+        method: 'GET',
+        auth: false,
+      })
+      if (mySeq !== _hsIndexSeq) return
+      if (!resp || resp.ok === false) {
+        hsIndexResults = []
+      } else {
+        const data = resp.data || resp
+        hsIndexResults = Array.isArray(data?.results) ? data.results : []
+      }
+      hsIndexQuery = q
+    } catch (_) {
+      if (mySeq !== _hsIndexSeq) return
+      hsIndexResults = []
+    } finally {
+      if (mySeq === _hsIndexSeq) {
+        hsIndexInFlight = false
+        if (searchQuery === q) renderEmoteGrid()
+      }
+    }
+  }
+
+  // Fire all enabled provider searches in parallel. Each result lands as soon
+  // as it returns and the grid re-renders with a partial picture. AbortController
+  // cancels in-flight requests when the query changes mid-flight.
+  function triggerProviderSearches(q) {
+    // Fire heatsync indexed substring search alongside the provider APIs —
+    // any enabled external chip benefits from it (filtered by result.provider).
+    if (hasExternalSource() && q) searchHsIndexFor(q)
+    else if (!q) searchHsIndexFor('')
+    for (const p of PROVIDER_NAMES) {
+      // Abort whatever was in flight for this provider — query changed.
+      if (_providerAborts[p]) { try { _providerAborts[p].abort() } catch (_) {} }
+      if (!q) {
+        providerResults[p] = []
+        providerLastQuery[p] = ''
+        providerInFlight[p] = false
+        providerErrors[p] = null
+        continue
+      }
+      if (!pickerSources.has(p)) {
+        // Chip is off — abort any in-flight fetch but keep cached results so
+        // toggling back on doesn't trigger a refetch.
+        providerInFlight[p] = false
+        continue
+      }
+      // Already-aborted controller from the line above means we'll start fresh.
+      if (providerLastQuery[p] === q && providerResults[p].length > 0) {
+        // Cached for this query — no refetch.
+        providerInFlight[p] = false
+        continue
+      }
+      const ac = new AbortController()
+      _providerAborts[p] = ac
+      providerInFlight[p] = true
+      providerErrors[p] = null
+      const fn = p === '7tv' ? search7tvApi : p === 'bttv' ? searchBttvApi : searchFfzApi
+      fn(q, ac.signal).then(items => {
+        if (ac.signal.aborted) return
+        providerResults[p] = items
+        providerLastQuery[p] = q
+        providerInFlight[p] = false
+        providerErrors[p] = null
+        if (searchQuery === q) renderEmoteGrid()
+      }).catch(err => {
+        if (ac.signal.aborted || err?.name === 'AbortError') return
+        providerInFlight[p] = false
+        providerErrors[p] = err?.message || 'failed'
+        providerResults[p] = []
+        if (searchQuery === q) renderEmoteGrid()
+      })
+    }
+    if (searchQuery === q) renderEmoteGrid()
   }
 
   // Silent add to inventory (no UI feedback, used for click-to-use)
@@ -3474,6 +3912,23 @@
     toast._hideTimer = setTimeout(() => { toast.style.opacity = '0' }, 2200);
   }
 
+  // Derive the provider's emote-detail page URL from a CDN url. Returns null
+  // for providers without a canonical page (twitch, heatsync uploads).
+  function emoteProviderPage(emote) {
+    const url = emote?.url || emote?.pickerUrl || '';
+    let m;
+    if ((m = url.match(/cdn\.7tv\.app\/emote\/([a-zA-Z0-9]+)\//))) {
+      return { label: '7tv', url: `https://7tv.app/emotes/${m[1]}` };
+    }
+    if ((m = url.match(/cdn\.betterttv\.net\/emote\/([a-zA-Z0-9]+)\//))) {
+      return { label: 'bttv', url: `https://betterttv.com/emotes/${m[1]}` };
+    }
+    if ((m = url.match(/cdn\.frankerfacez\.com\/emote\/(\d+)\//))) {
+      return { label: 'ffz', url: `https://www.frankerfacez.com/emoticon/${m[1]}` };
+    }
+    return null;
+  }
+
   function showContextMenu(evt, emote, tab) {
     evt.preventDefault();
     evt.stopPropagation();
@@ -3486,6 +3941,23 @@
     const hash = emote.hash || emote.id || btoa(emote.url || emote.pickerUrl || '').slice(0, 24);
     const inInv = isInInventory(emote);
     const isBlocked = _blockedHashSet.has(hash);
+
+    // Open on provider (7TV / BTTV / FFZ). Skipped for twitch + heatsync uploads.
+    // Copy-name / copy-url already live at the bottom of this menu.
+    const provider = emoteProviderPage(emote);
+    if (provider) {
+      const openBtn = document.createElement('button');
+      openBtn.className = 'hs-emote-ctx-item';
+      openBtn.textContent = `open on ${provider.label} →`;
+      openBtn.addEventListener('click', () => {
+        dismissContextMenu();
+        window.open(provider.url, '_blank', 'noopener,noreferrer');
+      });
+      menu.appendChild(openBtn);
+      const sep = document.createElement('div');
+      sep.className = 'hs-emote-ctx-sep';
+      menu.appendChild(sep);
+    }
 
     // Block / unblock
     if (tab !== 'mine') {

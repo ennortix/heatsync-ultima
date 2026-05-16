@@ -1767,6 +1767,9 @@ async function fetchGlobalBadges() {
       twitchBadgeUrls.set(`${b.setID}/${b.version}`, b.imageURL)
     }
     log('Loaded global badges:', twitchBadgeUrls.size)
+    // Existing message DOM was built before badges loaded — bump epoch so the
+    // diff invalidates old msgKeys and rebuilds with the now-populated URLs.
+    if (typeof bumpRenderEpoch === 'function') bumpRenderEpoch()
     renderMessages(currentTab)
   } catch (e) {
     globalBadgesFetched = false
@@ -2803,6 +2806,10 @@ async function fetchChannelBadges(channelLogin) {
         }
       }
       log('Loaded channel badges for', channelLogin)
+      // Same cold-start race as global badges — bump epoch so messages from
+      // this channel that already rendered with the text-fallback star get
+      // rebuilt with the channel-specific image.
+      if (typeof bumpRenderEpoch === 'function') bumpRenderEpoch()
       renderMessages(currentTab)
     } else {
       // No data populated — schedule retry after backoff

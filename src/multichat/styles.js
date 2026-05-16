@@ -402,7 +402,7 @@ function injectStyles() {
     .hs-mc-stream-event.event-online .hs-evt-game { color: #fff; }
     .hs-mc-stream-event.event-offline { --evt: #888888; }
     .hs-mc-stream-event.event-raid    { --evt: #9146ff; }
-    .hs-mc-stream-event.event-hype    { --evt: #ff8700; }
+    .hs-mc-stream-event.event-hype    { --evt: #00ffff; }
     .hs-mc-stream-event.event-sub     { --evt: #00ff7f; }
     .hs-mc-stream-event.event-redeem  { --evt: #00bfff; }
     .hs-mc-stream-event.event-emote   { --evt: #29d391; }
@@ -915,16 +915,16 @@ function injectStyles() {
     }
     .hs-notif-toast-text.hs-notif-toast-success { --hs-notif-icon: '✓'; --hs-notif-accent: #00d65a; color: #c0f5d4; }
     .hs-notif-toast-text.hs-notif-toast-error   { --hs-notif-icon: '✕'; --hs-notif-accent: #ff4f4d; color: #ffd0cf; }
-    .hs-notif-toast-text.hs-notif-toast-warn    { --hs-notif-icon: '!'; --hs-notif-accent: #ff8700; color: #ffe0b8; }
+    .hs-notif-toast-text.hs-notif-toast-warn    { --hs-notif-icon: '!'; --hs-notif-accent: #ffff00; color: #ffffb8; }
     .hs-notif-toast-text.hs-notif-toast-info    { --hs-notif-icon: 'i'; --hs-notif-accent: #6aa0ff; color: #d0ddff; }
-    .hs-notif-toast-text.hs-notif-toast-mention { --hs-notif-icon: '@'; --hs-notif-accent: #ff8700; color: #ffd9a8; }
+    .hs-notif-toast-text.hs-notif-toast-mention { --hs-notif-icon: '@'; --hs-notif-accent: #ff00ff; color: #ffd0ff; }
     /* Wrapper accent strip mirrors the text level (CSS custom property
        cascades from the inner span up via :has). */
     .hs-notif:has(.hs-notif-toast-success) { --hs-notif-accent: #00d65a; }
     .hs-notif:has(.hs-notif-toast-error)   { --hs-notif-accent: #ff4f4d; }
-    .hs-notif:has(.hs-notif-toast-warn)    { --hs-notif-accent: #ff8700; }
+    .hs-notif:has(.hs-notif-toast-warn)    { --hs-notif-accent: #ffff00; }
     .hs-notif:has(.hs-notif-toast-info)    { --hs-notif-accent: #6aa0ff; }
-    .hs-notif:has(.hs-notif-toast-mention) { --hs-notif-accent: #ff8700; }
+    .hs-notif:has(.hs-notif-toast-mention) { --hs-notif-accent: #ff00ff; }
     .hs-notif-layer-toast-stack > .hs-notif:hover { background: #fff; }
     .hs-notif-layer-toast-stack > .hs-notif:hover .hs-notif-toast-text,
     .hs-notif-layer-toast-stack > .hs-notif:hover .hs-notif-toast-text::before {
@@ -995,18 +995,17 @@ function injectStyles() {
        it grows in height, the ResizeObserver in main.js fires _updateMcLayout,
        and the callout naturally floats above BOTH the reply-chip and input. */
     [data-test-selector="chat-private-callout-queue__callout-container"]:has(*) {
+      /* Native callout stays hidden — our HsNotifs version (twitch-resub-share)
+         renders the controlled UI from extracted data. The position-fixed bits
+         below are inert as long as display:none from the base rule stands; kept
+         as a safety net in case the base rule is overridden upstream. */
       position: fixed !important;
       top: auto !important;
-      bottom: var(--hs-callout-bottom, 0px) !important;
-      left: var(--hs-callout-left, 0px) !important;
-      right: var(--hs-callout-right, 0px) !important;
+      bottom: var(--hs-layer-chat-docked-bottom-bottom, 0px) !important;
+      left: var(--hs-layer-chat-docked-bottom-left, 0px) !important;
+      right: var(--hs-layer-chat-docked-bottom-right, 0px) !important;
       width: auto !important;
-      /* Hard ceiling on width — backstop in case position:fixed's containing
-         block isn't the viewport (Twitch ancestor with transform/filter/will-
-         change creates a new containing block). max-width is independent of
-         positioning, so even if left/right drift the box can never exceed
-         the chat content width. */
-      max-width: var(--hs-callout-max-width, 100vw) !important;
+      max-width: 100vw !important;
       overflow: hidden !important;
       z-index: 100000 !important;
       pointer-events: auto !important;
@@ -1587,7 +1586,12 @@ function injectStyles() {
       font-style: italic;
       display: block;
     }
-    /* purple=sub, orange=raid/HS, red=@-mention/ban, green=timeout/untimeout (matches site) */
+    /* ANSI 0-15 semantic palette:
+       red(9)=ban/blocked/error, green(10)=owned/untimeout/safe,
+       yellow(11)=first-seen/announcement/bits/DM/kw-match/warn (attention),
+       magenta(13)=raid/gift/mention/first-msg-ever (special event),
+       cyan(14)=unadded/stream-hype/milestone (action-needed).
+       #ff8700 reserved for brand chrome only (buttons, frames, drag bars). */
     .hs-mc-msg.hs-mc-notice-ban       { border-left-color: #ff0000 !important; background: rgba(255, 0, 0, 0.12) !important; }
     .hs-mc-msg.hs-mc-notice-ban       .hs-mc-system-text { color: #ff4040; font-weight: 600; }
     .hs-mc-msg.hs-mc-notice-timeout   { border-left-color: #008000 !important; background: rgba(0, 128, 0, 0.10) !important; }
@@ -1616,9 +1620,9 @@ function injectStyles() {
     .hs-mc-msg.hs-mc-notice-sub       .hs-mc-system-text { color: #b87aff; font-weight: 600; }
     .hs-mc-msg.hs-mc-notice-gift      { border-left-color: #cc44ff !important; background: rgba(204, 68, 255, 0.16) !important; }
     .hs-mc-msg.hs-mc-notice-gift      .hs-mc-system-text { color: #cc44ff; font-weight: 600; }
-    /* Raid = HS brand orange */
-    .hs-mc-msg.hs-mc-notice-raid      { border-left-color: #ff8700 !important; background: rgba(255, 135, 0, 0.18) !important; }
-    .hs-mc-msg.hs-mc-notice-raid      .hs-mc-system-text { color: #ff8700; font-weight: 700; }
+    /* Raid = magenta (ANSI 13) — special event family */
+    .hs-mc-msg.hs-mc-notice-raid      { border-left-color: #ff00ff !important; background: rgba(255, 0, 255, 0.14) !important; }
+    .hs-mc-msg.hs-mc-notice-raid      .hs-mc-system-text { color: #ff00ff; font-weight: 700; }
     /* Announcement = pure yellow (broadcaster speaking) */
     .hs-mc-msg.hs-mc-notice-announce  { border-left-color: #ffff00 !important; background: rgba(255, 255, 0, 0.10) !important; }
     .hs-mc-msg.hs-mc-notice-announce  .hs-mc-system-text { color: #ffff00; font-weight: 600; }
@@ -1627,7 +1631,7 @@ function injectStyles() {
     .hs-mc-msg.hs-mc-notice-bits      .hs-mc-system-text { color: #ffd700; font-weight: 600; }
     /* Watch-streak milestone = teal (different from cyan mode change) */
     .hs-mc-msg.hs-mc-notice-milestone { border-left-color: #008080 !important; background: rgba(0, 128, 128, 0.12) !important; }
-    .hs-mc-msg.hs-mc-notice-milestone .hs-mc-system-text { color: #00cccc; font-weight: 600; }
+    .hs-mc-msg.hs-mc-notice-milestone .hs-mc-system-text { color: #00ffff; font-weight: 600; }
     /* Errors / rejections = dim maroon */
     .hs-mc-msg.hs-mc-notice-error     { border-left-color: #800000 !important; background: rgba(128, 0, 0, 0.06) !important; }
     .hs-mc-msg.hs-mc-notice-error     .hs-mc-system-text { color: #ff8080; }
@@ -1704,11 +1708,11 @@ function injectStyles() {
       -webkit-text-fill-color: #000 !important;
     }
     .hs-mc-msg.hs-first-msg {
-      box-shadow: inset 2px 0 0 #ff8700;
+      box-shadow: inset 2px 0 0 #ffff00;
     }
     .hs-mc-msg.hs-kw-match {
-      background: rgba(255, 135, 0, 0.18);
-      box-shadow: inset 0 0 0 1px #ff8700;
+      background: rgba(255, 255, 0, 0.14);
+      box-shadow: inset 0 0 0 1px #ffff00;
     }
     .hs-mc-msg.tweet {
       background: rgba(212, 73, 73, 0.3);
@@ -2282,7 +2286,7 @@ function injectStyles() {
     /* State colors via ::before */
     .hs-mc-emote-wrapper.hs-state-global::before { background: #00ff00; }
     .hs-mc-emote-wrapper.hs-state-owned::before { background: #00ff00; }
-    .hs-mc-emote-wrapper.hs-state-unadded::before { background: #ff8700; }
+    .hs-mc-emote-wrapper.hs-state-unadded::before { background: #00ffff; }
     .hs-mc-emote-wrapper.hs-state-channel::before { background: #00ff00; }
     .hs-mc-emote-wrapper.hs-state-blocked::before { background: #ff0000; }
 
@@ -2566,6 +2570,13 @@ function injectStyles() {
       position: absolute;
       left: 12px;
       top: 8px;
+      /* Single line — long placeholders (resub-share mode) were wrapping
+         below the input box because absolute placement leaves the text
+         unconstrained. Clip with ellipsis if it overflows. */
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: calc(100% - 24px);
     }
     /* WYSIWYG emote images in input — height clamped, width auto so wide
        emotes (catKISS, peepoArrive, etc.) render at natural aspect.
@@ -2608,6 +2619,17 @@ function injectStyles() {
     }
     #hs-mc-input .hs-input-stack > img:first-child { z-index: 1; }
     #hs-mc-input .hs-input-stack > img:not(:first-child) { z-index: 2; }
+    /* Blocked emote in input — parity with chat/picker: dashed gray border,
+       image hidden. Image content is masked to a 1×1 transparent placeholder
+       (src swap in applyInputEmoteBlockState) so outline still renders (a
+       visibility:hidden / opacity:0 approach also hides the outline). Width
+       collapses to a fixed square so dashed box is always visible. */
+    #hs-mc-input .hs-input-emote.hs-state-blocked {
+      outline: 2px dashed #808080;
+      outline-offset: -2px;
+      width: var(--hs-emote-size, 32px);
+      min-width: var(--hs-emote-size, 32px);
+    }
     .hs-mc-emoji {
       font-variant-emoji: emoji;
     }
@@ -3192,6 +3214,34 @@ function injectStyles() {
     #hs-mc-emote-search:focus {
       border-color: #ff6b35;
     }
+    .hs-mc-src-chips {
+      display: none;
+      gap: 3px;
+      margin-top: 6px;
+    }
+    .hs-mc-src-chips.visible {
+      display: flex;
+    }
+    .hs-mc-src-chip {
+      background: none;
+      border: 1px solid rgba(255,255,255,0.18);
+      color: #aaa;
+      font-size: 10px;
+      font-weight: 600;
+      padding: 3px 7px;
+      cursor: pointer;
+      font-family: inherit;
+      border-radius: 0;
+      line-height: 1.2;
+      text-transform: lowercase;
+    }
+    .hs-mc-src-chip:hover { background: #fff; color: #000; border-color: #fff; }
+    .hs-mc-src-chip.active {
+      background: #ff8700;
+      border-color: #ff8700;
+      color: #000;
+    }
+    .hs-mc-src-chip.active:hover { background: #fff; border-color: #fff; }
     #hs-mc-emote-search::placeholder {
       color: #808080;
     }
@@ -3210,7 +3260,17 @@ function injectStyles() {
       display: inline-block !important;
       visibility: visible !important;
     }
+    /* Hover state cues — subtle bg-fill only, no outline. Convention:
+       green = already in your set, orange = not in your set yet (clicking
+       adds + pastes), red = blocked. */
     .hs-mc-picker-emote:hover {
+      background: rgba(0, 204, 102, 0.18);
+    }
+    .hs-mc-picker-emote[data-state="unadded"]:hover {
+      background: rgba(0, 255, 255, 0.22);
+    }
+    .hs-mc-picker-emote[data-state="blocked"]:hover {
+      background: rgba(255, 64, 64, 0.20);
     }
     .hs-mc-picker-empty {
       padding: 32px !important;

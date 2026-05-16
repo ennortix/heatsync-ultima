@@ -465,6 +465,7 @@ function recentBlockToggleState(hash) {
 let lastInventoryFetch = 0 // Timestamp of last successful inventory fetch
 let inventoryRefreshTimer = null // Debounce WS-triggered inventory refreshes
 let inventoryFetchPromise = null // In-flight guard for fetchEmoteInventory
+let inventoryFetchOK = false // Last fetch succeeded — gate persist writes so transient failures don't store []
 let pendingUserInfoToPersist = null // Buffered for batched init write
 let globalEmotesFetchPromise = null // In-flight guard for fetchGlobalEmotes
 
@@ -915,6 +916,7 @@ function fetchEmoteInventory() {
     if (!authToken) {
       log(' No auth token for inventory fetch');
       emoteInventory = [];
+      inventoryFetchOK = false;
       // Only broadcast empty once to prevent spam (every 60s poll was flooding console)
       if (!lastBroadcastWasEmpty) {
         broadcastToTabs({ type: 'inventory_update', emotes: emoteInventory });
@@ -932,11 +934,20 @@ function fetchEmoteInventory() {
 
     if (!response.ok) {
       response.body?.cancel()
-      emoteInventory = [];
-      // Only broadcast empty once
-      if (!lastBroadcastWasEmpty) {
-        broadcastToTabs({ type: 'inventory_update', emotes: emoteInventory });
-        lastBroadcastWasEmpty = true;
+      // Only clobber on auth failure (token revoked/expired). Transient errors
+      // (5xx, 429 backoff, server warm-up) must preserve the warm cache —
+      // otherwise a single cold-start hiccup broadcasts an empty inventory and
+      // strips every rendered emote on every open Twitch/Kick tab.
+      if (response.status === 401 || response.status === 403) {
+        emoteInventory = [];
+        inventoryFetchOK = false;
+        if (!lastBroadcastWasEmpty) {
+          broadcastToTabs({ type: 'inventory_update', emotes: emoteInventory });
+          lastBroadcastWasEmpty = true;
+        }
+      } else {
+        log(' Inventory fetch ' + response.status + ' — keeping warm cache');
+        inventoryFetchOK = false;
       }
       return;
     }
@@ -983,15 +994,14 @@ function fetchEmoteInventory() {
     }
     lastBroadcastWasEmpty = false // Reset - we have real emotes now
     lastInventoryFetch = Date.now()
+    inventoryFetchOK = true
     broadcastToTabs({ type: 'inventory_update', emotes: emoteInventory })
   } catch (error) {
     console.error('[heatsync] fetchEmoteInventory failed:', error.message || error)
-    emoteInventory = [];
-    // Only broadcast empty once
-    if (!lastBroadcastWasEmpty) {
-      broadcastToTabs({ type: 'inventory_update', emotes: emoteInventory });
-      lastBroadcastWasEmpty = true;
-    }
+    // Network/timeout — preserve warm cache. Broadcasting [] here was the
+    // source of the cold-start "no emotes" symptom: a single transient
+    // failure nuked the in-memory inventory AND every tab's rendered emotes.
+    inventoryFetchOK = false
   } finally {
     inventoryFetchPromise = null
   }
@@ -3248,6 +3258,20 @@ async function connectWebSocket() {
           rejoinedChannels.add(key)
         }
 
+        // Re-subscribe to heatsync's server-side Twitch IRC ring for every
+        // channel we have locally. since=lastTime gap-fills msgs that arrived
+        // while the SW was asleep / WS was disconnected; first connect with
+        // empty buffers passes since=0 to pull the full 500-msg ring.
+        try {
+          for (const ch of BG_IRC.channels.keys()) {
+            const buf = BG_IRC.channels.get(ch)
+            const all = buf?.getAll() || []
+            const lastTs = all.length > 0 ? (all[all.length - 1].time || 0) : 0
+            wsSendDirect({ type: 'irc:join', channel: ch })
+            wsSendDirect({ type: 'irc:resume', channel: ch, since: lastTs })
+          }
+        } catch (e) { log('irc:resume replay err:', e?.message) }
+
         // Authenticate if we have a token
         if (authToken) {
           log(' 🔐 Authenticating...');
@@ -3702,6 +3726,32 @@ function handleWSMessage(msg) {
         type: 'kick_chat_message',
         data: msg.data
       })
+      break
+
+    case 'irc:backlog':
+      // Heatsync server-side Twitch IRC ring buffer (500 msgs / 24h Redis).
+      // Way deeper than robotty's instant fetch; merge it in.
+      try { bgIrcMergeServerBacklog(msg.channel, msg.messages) } catch (e) { log('irc:backlog merge err:', e?.message) }
+      break
+
+    case 'kick-chat-backfill':
+      // Server-side Kick ring buffer (200 msgs) replayed on channel:join.
+      // Ingest into BG buffer for instant history on future tab joins, then
+      // broadcast a merge notice so already-open tabs refresh.
+      try {
+        const ch = (msg.channel || '').toLowerCase()
+        const list = Array.isArray(msg.messages) ? msg.messages : []
+        if (ch && list.length > 0) {
+          let added = 0
+          for (const m of list) {
+            try { if (bgKickIngestBackfill(ch, m)) added++ } catch {}
+          }
+          if (added > 0) {
+            broadcastToTabs({ type: 'bg_kick_history_merged', channel: ch, count: added })
+            log('BG KICK backfill merged', added, 'msgs for', ch)
+          }
+        }
+      } catch {}
       break
 
     case 'chat:origin_broadcast':
@@ -5744,11 +5794,18 @@ async function initialize() {
   ]).then(() => {
     log(' ✓ All fetches complete - global:', globalEmotes.length, 'personal:', emoteInventory.length);
     broadcastToTabs({ type: 'loading_status', done: true });
-    // Persist fresh data — single batched write (fire-and-forget, don't await)
+    // Persist fresh data — single batched write (fire-and-forget, don't await).
+    // emote_inventory is gated on inventoryFetchOK: if the API call failed
+    // transiently, the in-memory array is the warm cache from storage and
+    // writing it back is a no-op; if the API call clobbered it to [] on a
+    // 401 the logout path already cleaned storage. Either way, never let a
+    // post-init persist overwrite a healthy warm cache with [].
     const persist = {
       global_emotes: globalEmotes,
-      emote_inventory: emoteInventory,
       blocked_emotes: Array.from(blockedEmotes)
+    }
+    if (inventoryFetchOK) {
+      persist.emote_inventory = emoteInventory
     }
     if (pendingUserInfoToPersist) {
       persist.user_info = pendingUserInfoToPersist
@@ -6208,7 +6265,7 @@ const BG_IRC = {
   chanLastSeen: new Map(),
   chanRejoinAttempts: new Map(),
   roomstates: new Map(),
-  historyInFlight: new Set(),
+  historyInFlight: new Map(), // ch -> Promise<void> (awaitable in-flight robotty fetch)
   lastRobottyAt: new Map(),  // ch -> ts (last successful/attempted robotty fetch)
   persistTimers: new Map(),
   storageRestored: false,
@@ -6521,54 +6578,186 @@ function bgIrcReconcileCleared(buf) {
   }
 }
 
-async function bgIrcFetchRobotty(ch) {
-  if (BG_IRC.historyInFlight.has(ch)) return
-  BG_IRC.historyInFlight.add(ch)
+function bgIrcFetchRobotty(ch) {
+  if (BG_IRC.historyInFlight.has(ch)) return BG_IRC.historyInFlight.get(ch)
   BG_IRC.lastRobottyAt.set(ch, Date.now())
-  try {
-    const ctrl = new AbortController()
-    const timer = setTimeout(() => ctrl.abort(), 15000)
-    const resp = await fetch(
-      `https://recent-messages.robotty.de/api/v2/recent-messages/${ch}?limit=800&hide_moderation_messages=false&hide_moderated_messages=false&clearchatToNotice=true`,
-      { signal: ctrl.signal, credentials: 'omit' }
-    )
-    clearTimeout(timer)
-    if (!resp.ok) return
-    const data = await resp.json()
-    if (!data.messages?.length) return
-    const buf = BG_IRC.channels.get(ch)
-    if (!buf) return
-    const existing = buf.getAll()
-    const existingIds = new Set(existing.filter(m => m.id).map(m => m.id))
-    const fpKey = (m) => `${m.user}|${m.time}|${(m.text || '').slice(0, 60)}`
-    const existingFp = new Set(existing.filter(m => !m.id).map(fpKey))
-    const toAdd = []
-    for (const line of data.messages) {
-      const msg = bgIrcParseLine(line, ch)
-      if (!msg) continue
-      msg.isHistory = true
-      if (msg.id && existingIds.has(msg.id)) continue
-      if (!msg.id && existingFp.has(fpKey(msg))) continue
-      toAdd.push(msg)
-    }
-    if (toAdd.length === 0) {
-      // Even on a no-op merge, reconcile — a live CLEARCHAT may have landed
-      // for a user whose backfilled msgs predate it; this paints them cleared.
+  const p = (async () => {
+    try {
+      const ctrl = new AbortController()
+      const timer = setTimeout(() => ctrl.abort(), 15000)
+      const resp = await fetch(
+        `https://recent-messages.robotty.de/api/v2/recent-messages/${ch}?limit=1000&hide_moderation_messages=false&hide_moderated_messages=false&clearchatToNotice=true`,
+        { signal: ctrl.signal, credentials: 'omit' }
+      )
+      clearTimeout(timer)
+      if (!resp.ok) return
+      const data = await resp.json()
+      if (!data.messages?.length) return
+      const buf = BG_IRC.channels.get(ch)
+      if (!buf) return
+      const existing = buf.getAll()
+      const existingIds = new Set(existing.filter(m => m.id).map(m => m.id))
+      const fpKey = (m) => `${m.user}|${m.time}|${(m.text || '').slice(0, 60)}`
+      const existingFp = new Set(existing.filter(m => !m.id).map(fpKey))
+      const toAdd = []
+      for (const line of data.messages) {
+        const msg = bgIrcParseLine(line, ch)
+        if (!msg) continue
+        msg.isHistory = true
+        if (msg.id && existingIds.has(msg.id)) continue
+        if (!msg.id && existingFp.has(fpKey(msg))) continue
+        toAdd.push(msg)
+      }
+      if (toAdd.length === 0) {
+        // Even on a no-op merge, reconcile — a live CLEARCHAT may have landed
+        // for a user whose backfilled msgs predate it; this paints them cleared.
+        bgIrcReconcileCleared(buf)
+        return
+      }
+      const all = [...existing, ...toAdd].sort((a, b) => (a.time || 0) - (b.time || 0))
+      buf.clear()
+      for (const m of all) buf.push(m)
       bgIrcReconcileCleared(buf)
-      return
+      bgIrcPersistChannel(ch)
+      bgIrcBroadcast({ type: 'bg_irc_history_merged', channel: ch, count: toAdd.length })
+      log('BG IRC robotty merged', toAdd.length, 'msgs for', ch)
+    } catch (e) {
+      log('BG IRC robotty fetch failed for', ch, ':', e.message)
+    } finally {
+      BG_IRC.historyInFlight.delete(ch)
     }
-    const all = [...existing, ...toAdd].sort((a, b) => (a.time || 0) - (b.time || 0))
-    buf.clear()
-    for (const m of all) buf.push(m)
-    bgIrcReconcileCleared(buf)
-    bgIrcPersistChannel(ch)
-    bgIrcBroadcast({ type: 'bg_irc_history_merged', channel: ch, count: toAdd.length })
-    log('BG IRC robotty merged', toAdd.length, 'msgs for', ch)
-  } catch (e) {
-    log('BG IRC robotty fetch failed for', ch, ':', e.message)
-  } finally {
-    BG_IRC.historyInFlight.delete(ch)
+  })()
+  BG_IRC.historyInFlight.set(ch, p)
+  return p
+}
+
+// Convert one heatsync server-side IrcRecord (structured shape) into the ext's
+// own msg shape used by BG_IRC buffers + tab renderer. Heatsync persists a
+// 500-msg Redis ring per channel for 24h — way more reach than robotty's
+// instant-API endpoint. Records cover privmsg / usernotice / clearchat /
+// clearmsg / notice; ext only renders the first three meaningfully.
+function bgIrcRecordToExt(rec, channelHint) {
+  if (!rec || typeof rec !== 'object') return null
+  const ch = channelHint || (typeof rec.channel === 'string' ? rec.channel.toLowerCase() : '')
+  if (!ch) return null
+  const t = rec.type
+  if (t === 'privmsg') {
+    const msg = {
+      user: rec.displayName || rec.username || 'anonymous',
+      userId: rec.userId || '',
+      text: rec.content || '',
+      color: bgIrcSanitizeColor(rec.color || '#fff'),
+      badges: rec.badges || '',
+      channel: ch,
+      time: rec.timestamp || Date.now(),
+      id: rec.id || '',
+      isHistory: true,
+      replyTo: rec.replyTo ? {
+        user: rec.replyTo.username || '',
+        text: rec.replyTo.content || '',
+        id: rec.replyTo.messageId || '',
+        threadId: rec.replyTo.threadId || rec.replyTo.messageId || ''
+      } : null
+    }
+    if (rec.emotes) {
+      const twitchEmotes = {}
+      for (const part of String(rec.emotes).split('/')) {
+        const [emoteId, posStr] = part.split(':')
+        if (!emoteId || !posStr) continue
+        const firstPos = posStr.split(',')[0]
+        const [start, end] = firstPos.split('-').map(Number)
+        if (isNaN(start) || isNaN(end)) continue
+        const name = (rec.content || '').slice(start, end + 1)
+        if (name && !twitchEmotes[name]) {
+          twitchEmotes[name] = `https://static-cdn.jtvnw.net/emoticons/v2/${emoteId}/default/dark/2.0`
+        }
+      }
+      if (Object.keys(twitchEmotes).length > 0) msg.twitchEmotes = twitchEmotes
+    }
+    if (rec.bits && rec.bits > 0) msg.bits = rec.bits
+    if (rec.isHighlighted) msg.isHighlighted = true
+    if (rec.isFirstMsg) msg.isFirstMsg = true
+    if (rec.isRedemption) msg.redeemed = true
+    const subMatch = (rec.badgeInfo || '').match?.(/subscriber\/(\d+)/)
+    if (subMatch) msg.subMonths = parseInt(subMatch[1])
+    return msg
   }
+  if (t === 'usernotice') {
+    return {
+      user: rec.displayName || rec.username || 'system',
+      text: rec.content || '',
+      systemMsg: rec.systemMessage || '',
+      color: bgIrcSanitizeColor(rec.color || '#fff'),
+      badges: rec.badges || '',
+      channel: ch,
+      time: rec.timestamp || Date.now(),
+      type: 'usernotice',
+      msgId: rec.subType || '',
+      subTier: '',
+      subMonths: 0,
+      giftCount: 0,
+      recipient: '',
+      raidViewers: 0,
+      raidFrom: '',
+      announceColor: '',
+      bitsTier: 0,
+      id: rec.id || '',
+      isHistory: true
+    }
+  }
+  if (t === 'clearchat') {
+    const target = rec.targetUsername || ''
+    const duration = rec.banDuration
+    const text = target
+      ? (duration ? `${target} timed out for ${duration}s` : `${target} was permanently banned`)
+      : 'Chat was cleared'
+    return {
+      type: 'notice',
+      noticeType: duration ? 'timeout_success' : 'ban_success',
+      user: 'system',
+      text,
+      color: '#808080',
+      badges: '',
+      channel: ch,
+      time: rec.timestamp || Date.now(),
+      id: rec.id || `clearchat-${ch}-${target}-${duration || 'perma'}-${rec.timestamp || 0}`,
+      systemMsg: text,
+      targetUser: target,
+      targetUserId: rec.targetUserId || '',
+      banDuration: duration || 0,
+      isHistory: true
+    }
+  }
+  return null
+}
+
+// Merge a heatsync `irc:backlog` payload into BG_IRC. Dedupes by id (PRIVMSG
+// ids overlap with Twitch tag.id, so this catches what robotty also saw).
+function bgIrcMergeServerBacklog(ch, records) {
+  ch = (ch || '').toLowerCase()
+  if (!ch || !Array.isArray(records) || records.length === 0) return
+  if (!BG_IRC.channels.has(ch)) BG_IRC.channels.set(ch, new BGCircularBuffer(BG_IRC_PERSIST_MAX))
+  const buf = BG_IRC.channels.get(ch)
+  const existing = buf.getAll()
+  const existingIds = new Set(existing.filter(m => m.id).map(m => m.id))
+  const fpKey = (m) => `${m.user}|${m.time}|${(m.text || '').slice(0, 60)}`
+  const existingFp = new Set(existing.filter(m => !m.id).map(fpKey))
+  const toAdd = []
+  for (const rec of records) {
+    const msg = bgIrcRecordToExt(rec, ch)
+    if (!msg) continue
+    if (msg.id && existingIds.has(msg.id)) continue
+    if (!msg.id && existingFp.has(fpKey(msg))) continue
+    toAdd.push(msg)
+  }
+  if (toAdd.length === 0) return
+  const all = [...existing, ...toAdd].sort((a, b) => (a.time || 0) - (b.time || 0))
+  buf.clear()
+  for (const m of all) buf.push(m)
+  bgIrcReconcileCleared(buf)
+  bgIrcPersistChannel(ch)
+  bgIrcBroadcast({ type: 'bg_irc_history_merged', channel: ch, count: toAdd.length })
+  log('BG IRC heatsync backlog merged', toAdd.length, 'msgs for', ch)
 }
 
 async function bgIrcBroadcast(payload) {
@@ -6602,6 +6791,11 @@ function bgIrcEnsureChannel(ch) {
   if (BG_IRC.ws?.readyState === WebSocket.OPEN) {
     try { BG_IRC.ws.send(`JOIN #${ch}\r\n`) } catch {}
   }
+  // Pull heatsync's deeper server-side ring (500 msgs / 24h Redis) alongside
+  // robotty. Since=0 → flush the full buffer. Live msgs still come via direct
+  // Twitch IRC so we don't double-tap; this is history-only.
+  try { wsSend({ type: 'irc:join', channel: ch }) } catch {}
+  try { wsSend({ type: 'irc:resume', channel: ch, since: 0 }) } catch {}
   bgIrcFetchRobotty(ch)
 }
 
@@ -6640,6 +6834,19 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     const ch = (message.channel || '').toLowerCase()
     ;(async () => {
       if (!BG_IRC.storageRestored) await bgIrcRestoreFromStorage()
+      // If a robotty backfill is in flight (cold SW / fresh channel), wait
+      // for it so the tab's first paint already has full history instead of
+      // depending on the later bg_irc_history_merged broadcast. Cap the wait
+      // so a slow robotty doesn't block the page indefinitely.
+      const pending = BG_IRC.historyInFlight.get(ch)
+      if (pending) {
+        try {
+          await Promise.race([
+            pending,
+            new Promise(r => setTimeout(r, 4000))
+          ])
+        } catch {}
+      }
       const buf = BG_IRC.channels.get(ch)
       sendResponse({ ok: true, msgs: buf ? buf.getAll() : [], hasBg: true })
     })()
@@ -6762,6 +6969,7 @@ function bgKickIngest(data) {
     channel: ch,
     time: data.timestamp || data.time || Date.now(),
     platform: 'kick',
+    id: data.id || '',
     replyTo: data.replyTo ? {
       user: data.replyTo.username || 'unknown',
       text: data.replyTo.content || '',
@@ -6771,6 +6979,58 @@ function bgKickIngest(data) {
   }
   BG_KICK.channels.get(ch).push(msg)
   bgKickPersistChannel(ch)
+}
+
+// Ingest a single backfill entry (server ring buffer replay on channel:join).
+// Dedupes against existing buffer by id, falling back to user|time|text
+// fingerprint when id is absent. After a batch, caller should re-sort.
+// Returns true when a new msg was actually pushed.
+function bgKickIngestBackfill(ch, data) {
+  if (!ch || !data) return false
+  if (!BG_KICK.channels.has(ch)) BG_KICK.channels.set(ch, new BGCircularBuffer(BG_KICK_PERSIST_MAX))
+  const buf = BG_KICK.channels.get(ch)
+  // Normalize Kick badge array → "name/version,name/version" string
+  const badgeStr = Array.isArray(data.badges)
+    ? data.badges.map(b => `${b.name || 'badge'}/${b.version || '1'}`).join(',')
+    : ''
+  const msg = {
+    user: data.username || data.displayName || data.user || 'unknown',
+    text: data.content || data.message || data.text || '',
+    color: data.color || '#53fc18',
+    badges: badgeStr,
+    channel: ch,
+    time: data.timestamp || data.time || Date.now(),
+    platform: 'kick',
+    id: data.id || '',
+    isHistory: true,
+    replyTo: data.replyTo ? {
+      user: data.replyTo.username || 'unknown',
+      text: data.replyTo.content || '',
+      id: data.replyTo.id || data.replyTo.message_id || '',
+      threadId: data.replyTo.thread_id || data.replyTo.id || data.replyTo.message_id || ''
+    } : null
+  }
+  const existing = buf.getAll()
+  if (msg.id) {
+    for (const e of existing) if (e.id && e.id === msg.id) return false
+  } else {
+    const fp = `${msg.user}|${msg.time}|${(msg.text || '').slice(0, 60)}`
+    for (const e of existing) {
+      if (e.id) continue
+      if (`${e.user}|${e.time}|${(e.text || '').slice(0, 60)}` === fp) return false
+    }
+  }
+  // Time-ordered insert: if newer than tail, push; otherwise re-sort the buffer
+  // so live + backfill interleave correctly.
+  const tailTime = existing.length > 0 ? (existing[existing.length - 1].time || 0) : 0
+  buf.push(msg)
+  if (msg.time && msg.time < tailTime) {
+    const all = buf.getAll().slice().sort((a, b) => (a.time || 0) - (b.time || 0))
+    buf.clear()
+    for (const m of all) buf.push(m)
+  }
+  bgKickPersistChannel(ch)
+  return true
 }
 
 function bgYtIngest(payload) {

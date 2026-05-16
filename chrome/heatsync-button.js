@@ -2427,17 +2427,13 @@
     return url;
   }
 
-  // Picker-specific URL: routes animated 7TV emotes through the _static
-  // variant which is ~15× smaller and decodes single-frame. Other CDNs
-  // and non-animated 7TV emotes pass through getResolutionUrl unchanged
-  // (their _static variants 404, so we'd need an onerror fallback otherwise).
+  // Picker-specific URL: animate by default to match Twitch/Discord/7TV's
+  // own pickers. IntersectionObserver below already viewport-gates loads, so
+  // the perf hit is bounded. (Prior behaviour silently swapped animated 7TV
+  // emotes to _static.webp — saved bandwidth but contradicted user
+  // expectation.) Hover-preview still bumps to 4x animated unchanged.
   function pickerUrlFor(e, size) {
-    const base = getResolutionUrl(getAnimatedUrl(e.url), size)
-    if (!base) return base
-    if (e.animated && base.includes('cdn.7tv.app')) {
-      return base.replace(/\/([1-4]x)\.webp$/, '/$1_static.webp')
-    }
-    return base
+    return getResolutionUrl(getAnimatedUrl(e.url), size)
   }
 
   // Render the emote grid based on current tab and search

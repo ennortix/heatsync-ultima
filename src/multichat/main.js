@@ -6579,7 +6579,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       }
     }
 
-    const toRender = msgs.slice(-500).filter(m => !m?.hidden)
+    const toRender = msgs.slice(-1500).filter(m => !m?.hidden)
     isProgrammaticScroll = true;
 
     // GOD-TIER STABLE-ORDER RENDER:

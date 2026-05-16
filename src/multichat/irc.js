@@ -378,7 +378,7 @@ class IRC {
   async join(ch) {
     ch = ch.toLowerCase()
     if (this.channels.has(ch)) return
-    this.channels.set(ch, new CircularBuffer(1500))
+    this.channels.set(ch, new CircularBuffer(3000))
     log('Joined', ch)
     // Pre-warm channel badges (sub tiers, FFZ custom mod/vip overrides) so
     // restored history from BG renders with proper images on first paint.
@@ -789,7 +789,7 @@ class KickChat {
   async join(kickUsername) {
     kickUsername = kickUsername.toLowerCase()
     if (this.channels.has(kickUsername)) return
-    this.channels.set(kickUsername, new CircularBuffer(1500))
+    this.channels.set(kickUsername, new CircularBuffer(3000))
     // Seed watchdog clock — full grace period before re-asserting.
     this._chanLastSeen.set(kickUsername, Date.now())
     // god-tier: ask BG for in-memory buffer first (always fresher than the

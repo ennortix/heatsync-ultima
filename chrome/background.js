@@ -6010,7 +6010,7 @@ self.addEventListener('unhandledrejection', (ev) => {
 //   bg  → 'bg_irc_msg' (broadcast)           (live + history backfill events)
 //   bg  → 'bg_irc_history_merged' (broadcast) (robotty filled in late msgs)
 
-const BG_IRC_PERSIST_MAX = 1500
+const BG_IRC_PERSIST_MAX = 3000
 const BG_IRC_PERSIST_DEBOUNCE_MS = 1500
 const BG_IRC_COLOR_RE = /^#[0-9a-fA-F]{3,6}$/
 
@@ -6631,6 +6631,74 @@ function bgIrcFetchRobotty(ch) {
   return p
 }
 
+// justlog (logs.ivr.fi) — public Twitch chat archive going back years for any
+// opted-in channel. ~50k popular channels covered. Pulls a few hours of recent
+// msgs in raw IRC format (parseable by our existing parser). Caps at logs'
+// response size. Channels not in the archive 404 cleanly — non-fatal.
+const JUSTLOG_INSTANCES = [
+  'https://logs.ivr.fi',
+  'https://logs.spanix.team'
+]
+const BG_IRC_JUSTLOG_COOLDOWN_MS = 5 * 60 * 1000
+function bgIrcFetchJustlog(ch) {
+  ch = (ch || '').toLowerCase()
+  if (!ch) return Promise.resolve()
+  const last = BG_IRC.lastJustlogAt?.get?.(ch) || 0
+  if (Date.now() - last < BG_IRC_JUSTLOG_COOLDOWN_MS) return Promise.resolve()
+  if (!BG_IRC.lastJustlogAt) BG_IRC.lastJustlogAt = new Map()
+  BG_IRC.lastJustlogAt.set(ch, Date.now())
+  return (async () => {
+    for (const base of JUSTLOG_INSTANCES) {
+      try {
+        const ctrl = new AbortController()
+        const timer = setTimeout(() => ctrl.abort(), 15000)
+        // /channel/{name}?json=true — most recent ~1000 msgs (instance-dependent).
+        // Universal across justlog forks. Each entry has a .raw field holding
+        // the full IRC line (tags + PRIVMSG/USERNOTICE).
+        const resp = await fetch(
+          `${base}/channel/${encodeURIComponent(ch)}?json=true&reverse=true`,
+          { signal: ctrl.signal, credentials: 'omit' }
+        )
+        clearTimeout(timer)
+        if (!resp.ok) continue
+        const data = await resp.json()
+        const list = Array.isArray(data?.messages) ? data.messages : []
+        if (list.length === 0) continue
+        const buf = BG_IRC.channels.get(ch)
+        if (!buf) return
+        const existing = buf.getAll()
+        const existingIds = new Set(existing.filter(m => m.id).map(m => m.id))
+        const fpKey = (m) => `${m.user}|${m.time}|${(m.text || '').slice(0, 60)}`
+        const existingFp = new Set(existing.filter(m => !m.id).map(fpKey))
+        const toAdd = []
+        for (const item of list) {
+          const raw = typeof item === 'string' ? item : (item?.raw || '')
+          if (!raw) continue
+          const msg = bgIrcParseLine(raw, ch)
+          if (!msg) continue
+          msg.isHistory = true
+          if (msg.id && existingIds.has(msg.id)) continue
+          if (!msg.id && existingFp.has(fpKey(msg))) continue
+          existingIds.add(msg.id)
+          if (!msg.id) existingFp.add(fpKey(msg))
+          toAdd.push(msg)
+        }
+        if (toAdd.length === 0) return
+        const all = [...existing, ...toAdd].sort((a, b) => (a.time || 0) - (b.time || 0))
+        buf.clear()
+        for (const m of all) buf.push(m)
+        bgIrcReconcileCleared(buf)
+        bgIrcPersistChannel(ch)
+        bgIrcBroadcast({ type: 'bg_irc_history_merged', channel: ch, count: toAdd.length })
+        log('BG IRC justlog merged', toAdd.length, 'msgs for', ch, 'via', base)
+        return
+      } catch (e) {
+        log('BG IRC justlog', base, 'failed for', ch, ':', e?.message)
+      }
+    }
+  })()
+}
+
 // Convert one heatsync server-side IrcRecord (structured shape) into the ext's
 // own msg shape used by BG_IRC buffers + tab renderer. Heatsync persists a
 // 500-msg Redis ring per channel for 24h — way more reach than robotty's
@@ -6796,6 +6864,9 @@ function bgIrcEnsureChannel(ch) {
   // Twitch IRC so we don't double-tap; this is history-only.
   try { wsSend({ type: 'irc:join', channel: ch }) } catch {}
   try { wsSend({ type: 'irc:resume', channel: ch, since: 0 }) } catch {}
+  // Public justlog instances — thousands of past msgs for opted-in channels.
+  // Async, deduped by msg id against robotty/Redis-ring output.
+  try { bgIrcFetchJustlog(ch) } catch {}
   bgIrcFetchRobotty(ch)
 }
 
@@ -6877,7 +6948,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 // We tee them into per-channel buffers so content tabs hydrate instantly on
 // reload — same architecture as the Twitch IRC reader above.
 
-const BG_KICK_PERSIST_MAX = 1500
+const BG_KICK_PERSIST_MAX = 3000
 const BG_YT_PERSIST_MAX = 500
 const BG_KICK = {
   channels: new Map(),    // username -> BGCircularBuffer
@@ -6959,7 +7030,14 @@ function bgKickIngest(data) {
   // we hook into broadcastToTabs path; this fn is called there
   if (!data || !data.channel) return
   const ch = data.channel.toLowerCase()
-  if (!BG_KICK.channels.has(ch)) BG_KICK.channels.set(ch, new BGCircularBuffer(BG_KICK_PERSIST_MAX))
+  const isFirstSightOfChannel = !BG_KICK.channels.has(ch)
+  if (isFirstSightOfChannel) {
+    BG_KICK.channels.set(ch, new BGCircularBuffer(BG_KICK_PERSIST_MAX))
+    // First time we see this Kick channel — pull deep history from postgres
+    // archive in addition to the 200-msg server ring (which came via
+    // kick-chat-backfill on the WS).
+    bgKickFetchArchive(ch).catch(() => {})
+  }
   // Build a serializable msg matching what content's KickChat constructs
   const msg = {
     user: data.username || data.user || 'unknown',
@@ -6987,7 +7065,11 @@ function bgKickIngest(data) {
 // Returns true when a new msg was actually pushed.
 function bgKickIngestBackfill(ch, data) {
   if (!ch || !data) return false
-  if (!BG_KICK.channels.has(ch)) BG_KICK.channels.set(ch, new BGCircularBuffer(BG_KICK_PERSIST_MAX))
+  const isFirstSightOfChannel = !BG_KICK.channels.has(ch)
+  if (isFirstSightOfChannel) {
+    BG_KICK.channels.set(ch, new BGCircularBuffer(BG_KICK_PERSIST_MAX))
+    bgKickFetchArchive(ch).catch(() => {})
+  }
   const buf = BG_KICK.channels.get(ch)
   // Normalize Kick badge array → "name/version,name/version" string
   const badgeStr = Array.isArray(data.badges)
@@ -7031,6 +7113,77 @@ function bgKickIngestBackfill(ch, data) {
   }
   bgKickPersistChannel(ch)
   return true
+}
+
+// chat_archive postgres pull for Kick — heatsync persists every Kick msg
+// permanently. /api/archive/search returns up to 100 newest msgs DESC, with
+// cursor for older pages. Used to seed the BG buffer beyond the 200-msg ring.
+// Rate-limited server-side at 30/min/IP; one call per channel-join is fine.
+const BG_KICK_ARCHIVE_COOLDOWN_MS = 5 * 60 * 1000
+const BG_KICK_lastArchiveAt = new Map()
+async function bgKickFetchArchive(ch, beforeIso) {
+  ch = (ch || '').toLowerCase()
+  if (!ch) return
+  if (!beforeIso) {
+    const last = BG_KICK_lastArchiveAt.get(ch) || 0
+    if (Date.now() - last < BG_KICK_ARCHIVE_COOLDOWN_MS) return
+    BG_KICK_lastArchiveAt.set(ch, Date.now())
+  }
+  try {
+    const ctrl = new AbortController()
+    const timer = setTimeout(() => ctrl.abort(), 12000)
+    const params = new URLSearchParams({
+      channel: ch,
+      platform: 'kick',
+      limit: '100'
+    })
+    if (beforeIso) params.set('cursor', beforeIso)
+    const resp = await fetch(`${API_URL}/api/archive/search?${params}`, {
+      signal: ctrl.signal,
+      credentials: 'omit'
+    })
+    clearTimeout(timer)
+    if (!resp.ok) return
+    const data = await resp.json()
+    const rows = Array.isArray(data?.results) ? data.results : []
+    if (rows.length === 0) return
+    if (!BG_KICK.channels.has(ch)) BG_KICK.channels.set(ch, new BGCircularBuffer(BG_KICK_PERSIST_MAX))
+    const buf = BG_KICK.channels.get(ch)
+    const existing = buf.getAll()
+    const existingIds = new Set(existing.filter(m => m.id).map(m => m.id))
+    const fpKey = (m) => `${m.user}|${m.time}|${(m.text || '').slice(0, 60)}`
+    const existingFp = new Set(existing.filter(m => !m.id).map(fpKey))
+    const toAdd = []
+    for (const r of rows) {
+      const id = r.message_id || r.id || ''
+      const text = r.message || r.content || ''
+      const user = r.display_name || r.username || 'unknown'
+      const ts = r.timestamp ? new Date(r.timestamp).getTime() : Date.now()
+      const badgeStr = Array.isArray(r.badges)
+        ? r.badges.map(b => `${b.name || 'badge'}/${b.version || '1'}`).join(',')
+        : (typeof r.badges === 'string' ? r.badges : '')
+      const msg = {
+        user, text, color: '#53fc18', badges: badgeStr,
+        channel: ch, time: ts, platform: 'kick', id,
+        isHistory: true,
+        replyTo: r.reply_to_id ? { user: '', text: '', id: r.reply_to_id, threadId: r.reply_to_id } : null
+      }
+      if (msg.id && existingIds.has(msg.id)) continue
+      if (!msg.id && existingFp.has(fpKey(msg))) continue
+      existingIds.add(msg.id)
+      if (!msg.id) existingFp.add(fpKey(msg))
+      toAdd.push(msg)
+    }
+    if (toAdd.length === 0) return
+    const all = [...existing, ...toAdd].sort((a, b) => (a.time || 0) - (b.time || 0))
+    buf.clear()
+    for (const m of all) buf.push(m)
+    bgKickPersistChannel(ch)
+    broadcastToTabs({ type: 'bg_kick_history_merged', channel: ch, count: toAdd.length })
+    log('BG KICK archive merged', toAdd.length, 'msgs for', ch)
+  } catch (e) {
+    log('BG KICK archive fetch failed for', ch, ':', e?.message)
+  }
 }
 
 function bgYtIngest(payload) {

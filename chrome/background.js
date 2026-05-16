@@ -6953,7 +6953,17 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       ok: true,
       connected: BG_IRC.ws?.readyState === WebSocket.OPEN,
       channels: Array.from(BG_IRC.channels.keys()),
-      bufferSizes: Object.fromEntries([...BG_IRC.channels].map(([k, v]) => [k, v.size]))
+      bufferSizes: Object.fromEntries([...BG_IRC.channels].map(([k, v]) => [k, v.size])),
+      lastJustlogAt: BG_IRC.lastJustlogAt ? Object.fromEntries([...BG_IRC.lastJustlogAt]) : {},
+      lastRobottyAt: Object.fromEntries([...BG_IRC.lastRobottyAt])
+    })
+    return true
+  }
+  if (message.type === 'bg_kick_status') {
+    sendResponse({
+      ok: true,
+      channels: Array.from(BG_KICK.channels.keys()),
+      bufferSizes: Object.fromEntries([...BG_KICK.channels].map(([k, v]) => [k, v.size]))
     })
     return true
   }

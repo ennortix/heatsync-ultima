@@ -36390,7 +36390,38 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
           applyChatPosition();
         }
       }
-      if (msg.type === 'debug_log') console.log('[hs-bg]', msg.msg)
+      if (msg.type === 'debug_log') {
+        console.log('[hs-bg]', msg.msg)
+        try {
+          if (!window.__hsDiag) window.__hsDiag = []
+          window.__hsDiag.push({ t: Date.now(), msg: msg.msg })
+          if (window.__hsDiag.length > 200) window.__hsDiag.shift()
+        } catch {}
+      }
+      // Probe bridge — MAIN-world JS posts {__hsProbe} to window, we respond
+      // from this isolated content-script context which has chrome.runtime.
+      // Used to inspect BG_IRC buffer sizes from outside (e.g. debugger tools).
+      try {
+        if (!window.__hsProbeWired) {
+          window.__hsProbeWired = true
+          window.addEventListener('message', async (e) => {
+            if (e.source !== window) return
+            const probe = e.data?.__hsProbe
+            if (!probe) return
+            try {
+              if (probe === 'irc_state') {
+                const r = await chrome.runtime.sendMessage({ type: 'bg_irc_status' })
+                window.postMessage({ __hsProbeResp: 'irc_state', data: r }, '*')
+              } else if (probe === 'kick_state') {
+                const r = await chrome.runtime.sendMessage({ type: 'bg_kick_status' })
+                window.postMessage({ __hsProbeResp: 'kick_state', data: r }, '*')
+              }
+            } catch (err) {
+              window.postMessage({ __hsProbeResp: probe, err: err?.message || 'unknown' }, '*')
+            }
+          })
+        }
+      } catch {}
       if (msg.type === 'api_status') {
         try { showApiStatusBanner(msg.source, msg.state) } catch (e) {}
       }

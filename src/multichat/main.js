@@ -8796,7 +8796,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
           applyChatPosition();
         }
       }
-      if (msg.type === 'debug_log' && MC_DEBUG) console.log('[hs-bg]', msg.msg)
+      if (msg.type === 'debug_log') console.log('[hs-bg]', msg.msg)
       if (msg.type === 'api_status') {
         try { showApiStatusBanner(msg.source, msg.state) } catch (e) {}
       }

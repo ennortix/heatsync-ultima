@@ -6654,9 +6654,13 @@ function bgIrcFetchJustlog(ch) {
   ch = (ch || '').toLowerCase()
   if (!ch) return Promise.resolve()
   const last = BG_IRC.lastJustlogAt?.get?.(ch) || 0
-  if (Date.now() - last < BG_IRC_JUSTLOG_COOLDOWN_MS) return Promise.resolve()
+  if (Date.now() - last < BG_IRC_JUSTLOG_COOLDOWN_MS) {
+    broadcastToTabs({ type: 'debug_log', msg: `[justlog] ${ch} cooldown — skipped` })
+    return Promise.resolve()
+  }
   if (!BG_IRC.lastJustlogAt) BG_IRC.lastJustlogAt = new Map()
   BG_IRC.lastJustlogAt.set(ch, Date.now())
+  broadcastToTabs({ type: 'debug_log', msg: `[justlog] ${ch} starting fetch` })
   return (async () => {
     for (const base of JUSTLOG_INSTANCES) {
       try {
@@ -6670,12 +6674,14 @@ function bgIrcFetchJustlog(ch) {
           { signal: ctrl.signal, credentials: 'omit' }
         )
         clearTimeout(timer)
+        broadcastToTabs({ type: 'debug_log', msg: `[justlog] ${ch} ${base} → HTTP ${resp.status}` })
         if (!resp.ok) continue
         const data = await resp.json()
         const list = Array.isArray(data?.messages) ? data.messages : []
+        broadcastToTabs({ type: 'debug_log', msg: `[justlog] ${ch} ${base} returned ${list.length} entries` })
         if (list.length === 0) continue
         const buf = BG_IRC.channels.get(ch)
-        if (!buf) return
+        if (!buf) { broadcastToTabs({ type: 'debug_log', msg: `[justlog] ${ch} BUF MISSING — aborting merge` }); return }
         const existing = buf.getAll()
         const existingIds = new Set(existing.filter(m => m.id).map(m => m.id))
         const fpKey = (m) => `${m.user}|${m.time}|${(m.text || '').slice(0, 60)}`
@@ -6693,6 +6699,7 @@ function bgIrcFetchJustlog(ch) {
           if (!msg.id) existingFp.add(fpKey(msg))
           toAdd.push(msg)
         }
+        broadcastToTabs({ type: 'debug_log', msg: `[justlog] ${ch} parsed → ${toAdd.length} new (existing: ${existing.length})` })
         if (toAdd.length === 0) return
         const all = [...existing, ...toAdd].sort((a, b) => (a.time || 0) - (b.time || 0))
         buf.clear()
@@ -6700,10 +6707,10 @@ function bgIrcFetchJustlog(ch) {
         bgIrcReconcileCleared(buf)
         bgIrcPersistChannel(ch)
         bgIrcBroadcast({ type: 'bg_irc_history_merged', channel: ch, count: toAdd.length })
-        log('BG IRC justlog merged', toAdd.length, 'msgs for', ch, 'via', base)
+        broadcastToTabs({ type: 'debug_log', msg: `[justlog] ${ch} merged ${toAdd.length}, buf=${buf.size}` })
         return
       } catch (e) {
-        log('BG IRC justlog', base, 'failed for', ch, ':', e?.message)
+        broadcastToTabs({ type: 'debug_log', msg: `[justlog] ${ch} ${base} threw: ${e?.message}` })
       }
     }
   })()

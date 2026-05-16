@@ -2137,7 +2137,15 @@ function injectStyles() {
     .hs-mc-picker-emote-wrap::before {
       content: '';
       position: absolute;
-      inset: 0;
+      /* Match img content-box, not its padding-box. .hs-mc-picker-emote
+         carries padding:4px, so the wrap is 8px wider/taller than the
+         visible emote — inset:0 here would paint orange/green 4px past
+         the emote on every side ("rect bigger than emote" / "two stacked
+         rects" perception). Inset by the picker-emote padding so the
+         hover rect tracks the visible image instead. box-sizing keeps the
+         dashed border (blocked state) from inflating the rect. */
+      inset: 4px;
+      box-sizing: border-box;
       opacity: 0;
       pointer-events: none;
       z-index: 1;
@@ -2152,9 +2160,13 @@ function injectStyles() {
     .hs-mc-picker-emote-wrap:not(.blocked):hover > img {
       visibility: hidden !important;
     }
-    .hs-mc-picker-emote-wrap.blocked {
-      outline: 2px dashed #808080 !important;
-      outline-offset: -2px !important;
+    /* Blocked: persistent dashed rect via ::before (not outline on the
+       wrap) so it tracks emote content size like the green/orange hover
+       does, instead of sitting 4px outside on the wrap's padding-box. */
+    .hs-mc-picker-emote-wrap.blocked::before {
+      opacity: 1;
+      background: none;
+      border: 2px dashed #808080;
     }
     .hs-mc-picker-emote-wrap.blocked img {
       visibility: hidden !important;

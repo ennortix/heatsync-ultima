@@ -2372,6 +2372,10 @@ function isEmoteImage(el) {
   if (el.classList.contains('pfp') || el.classList.contains('cluster-pfp-img')) return false;
   if (el.classList.contains('hs-mc-badge-img')) return false;
   if (el.closest('#emote-picker-btn')) return false;
+  // Multichat WYSIWYG input chip — class match keeps the hover-overlay
+  // working on blocked input emotes whose src has been swapped to a 1×1
+  // transparent placeholder (none of the URL checks below would match).
+  if (el.classList.contains('hs-input-emote')) return true;
   const src = el.src || '';
   // Exclude icon images (not emotes)
   if (src.includes('/icons/')) return false;
@@ -2392,6 +2396,10 @@ function getEmoteColor(img) {
   const state = img.dataset?.heatsyncState;
   if (state === 'blocked') return '#ff0000';
   if (state === 'unadded') return '#ff8700';
+  // Multichat input chip — markInputEmoteBlocked tags the IMG with both
+  // dataset.state='blocked' and the hs-state-blocked class. The dataset
+  // check above is heatsyncState (legacy chat path); read either.
+  if (img.classList?.contains('hs-state-blocked') || img.dataset?.state === 'blocked') return '#ff0000';
   // Fallback: read wrapper class from website. .available is the current
   // name for "not in your set yet"; .neutral kept for older surfaces.
   const wrapper = img.closest?.('.emote-hover-wrapper');

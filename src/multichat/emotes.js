@@ -773,19 +773,26 @@
     if (typeof clearRenderedHtmlCache === 'function') clearRenderedHtmlCache();
   }
 
-  // Flash all wrappers for a given emote name
+  // Flash all wrappers for a given emote name. Also touches multichat input
+  // chips (.hs-input-emote IMGs) so the user gets the same red/green ring
+  // feedback on the emote they just blocked/unblocked from the input.
   function flashAllEmotes(emoteName, flashClass) {
     const wrappers = queryEmoteWrappers(emoteName)
-    if (wrappers.length === 0) return
+    const inputImgs = []
+    for (const img of document.querySelectorAll('img.hs-input-emote')) {
+      if (img.alt === emoteName || img.dataset.emoteName === emoteName) inputImgs.push(img)
+    }
+    const targets = wrappers.length === 0 ? inputImgs : [...wrappers, ...inputImgs]
+    if (targets.length === 0) return
     // Batch read/write to avoid per-element reflow
-    for (const w of wrappers) {
-      w.classList.remove('hs-flash-paste', 'hs-flash-add', 'hs-flash-block', 'hs-flash-unblock', 'hs-flash-remove');
+    for (const t of targets) {
+      t.classList.remove('hs-flash-paste', 'hs-flash-add', 'hs-flash-block', 'hs-flash-unblock', 'hs-flash-remove');
     }
     // Single reflow trigger for all elements
     void document.body.offsetWidth
-    for (const w of wrappers) {
-      w.classList.add(flashClass);
-      w.addEventListener('animationend', () => w.classList.remove(flashClass), { once: true });
+    for (const t of targets) {
+      t.classList.add(flashClass);
+      t.addEventListener('animationend', () => t.classList.remove(flashClass), { once: true });
     }
   }
 
@@ -825,6 +832,10 @@
       if (img.src && !img.src.startsWith('data:')) img.dataset.hsOrigSrc = img.src
       img.src = HS_TRANSPARENT_PX
       img.classList.add('hs-state-blocked')
+      // dataset.state lets findEmoteTarget (input.js) and the chrome content.js
+      // hover-overlay color picker route through the blocked branch even when
+      // src is the transparent placeholder.
+      img.dataset.state = 'blocked'
     } else {
       if (img.dataset.hsInputBlocked !== '1') return
       const orig = img.dataset.hsOrigSrc
@@ -832,6 +843,7 @@
       delete img.dataset.hsInputBlocked
       delete img.dataset.hsOrigSrc
       img.classList.remove('hs-state-blocked')
+      delete img.dataset.state
     }
   }
 

@@ -578,10 +578,13 @@ function initInput() {
         source: img?.dataset.source || 'unknown'
       };
     }
-    // Fallback: direct IMG (Twitch/7TV/BTTV native emotes, picker emotes)
+    // Fallback: direct IMG (Twitch/7TV/BTTV native emotes, picker emotes,
+    // and multichat WYSIWYG input chips — class match catches blocked input
+    // emotes whose src has been swapped to a transparent placeholder).
     if (target.tagName === 'IMG' && !target.classList.contains('hs-mc-badge-img') && (
       target.classList.contains('hs-mc-emote') ||
       target.classList.contains('hs-mc-picker-emote') ||
+      target.classList.contains('hs-input-emote') ||
       target.classList.contains('chat-line__message--emote') ||
       target.classList.contains('chat-image') ||
       target.src?.includes('7tv.app') ||
@@ -589,11 +592,12 @@ function initInput() {
       (target.src?.includes('frankerfacez') && !target.src?.includes('room-badge/')) ||
       target.src?.includes('static-cdn.jtvnw.net/emoticons')
     )) {
+      const isBlocked = target.classList.contains('hs-state-blocked') || target.dataset.state === 'blocked';
       return {
         wrapper: null,
         emoteName: target.alt || target.dataset.emoteName || target.title?.split(' ')[0] || 'emote',
-        state: target.dataset.state || 'global',
-        emoteUrl: target.src || '',
+        state: isBlocked ? 'blocked' : (target.dataset.state || 'global'),
+        emoteUrl: target.dataset.hsOrigSrc || target.src || '',
         source: target.dataset.source || 'unknown'
       };
     }
@@ -711,6 +715,13 @@ function initInput() {
 
       const emoteInfo = findEmoteTarget(e.target);
       if (!emoteInfo) return;
+
+      // Multichat input WYSIWYG chip — only intercept clicks for the blocked
+      // state (left-click unblocks). For any other state we let the
+      // contenteditable handle the click so the caret lands at the click
+      // position; intercepting would silently re-paste the same emote on
+      // every cursor placement, which is hostile.
+      if (e.target.closest('#hs-mc-input') && emoteInfo.state !== 'blocked') return;
 
       e.preventDefault();
       e.stopPropagation();

@@ -245,17 +245,25 @@
         return;
       }
 
-      // Check wrapper first, then IMG
+      // Check wrapper first, then IMG. Input chips (.hs-input-emote) also
+      // surface the tooltip so users can read name + state without leaving
+      // the input box.
       const wrapper = target.closest('.hs-mc-emote-wrapper');
       const img = wrapper ? wrapper.querySelector('img') : (
-        target.tagName === 'IMG' && (target.classList.contains('hs-mc-emote') || target.classList.contains('hs-mc-picker-emote')) ? target : null
+        target.tagName === 'IMG' && (
+          target.classList.contains('hs-mc-emote') ||
+          target.classList.contains('hs-mc-picker-emote') ||
+          target.classList.contains('hs-input-emote')
+        ) ? target : null
       );
       if (!img && !wrapper) return;
 
       const emoteName = wrapper?.dataset.emoteName || img?.alt || img?.dataset.emoteName || img?.title?.split(' ')[0];
       if (!emoteName) return;
 
-      const emoteUrl = wrapper?.dataset.emoteUrl || img?.src;
+      // For blocked input chips, dataset.hsOrigSrc holds the real image URL
+      // (src has been swapped to a 1×1 transparent placeholder).
+      const emoteUrl = wrapper?.dataset.emoteUrl || img?.dataset.hsOrigSrc || img?.src;
       const state = wrapper?.dataset.state || img?.dataset.state || 'global';
       const source = wrapper?.dataset.source || img?.dataset.source || detectEmoteSource(emoteUrl);
       const owner = wrapper?.dataset.owner || img?.dataset.owner || '';
@@ -293,7 +301,11 @@
 
       const wrapper = target.closest('.hs-mc-emote-wrapper');
       const img = wrapper ? wrapper.querySelector('img') : (
-        target.tagName === 'IMG' && (target.classList.contains('hs-mc-emote') || target.classList.contains('hs-mc-picker-emote')) ? target : null
+        target.tagName === 'IMG' && (
+          target.classList.contains('hs-mc-emote') ||
+          target.classList.contains('hs-mc-picker-emote') ||
+          target.classList.contains('hs-input-emote')
+        ) ? target : null
       );
       if (!img && !wrapper) return;
 
@@ -339,7 +351,11 @@
       requestAnimationFrame(() => {
         _tooltipRafPending = false
         const onEmote = target?.closest?.('.hs-mc-emote-wrapper') ||
-          (target?.tagName === 'IMG' && (target.classList?.contains('hs-mc-emote') || target.classList?.contains('hs-mc-picker-emote')))
+          (target?.tagName === 'IMG' && (
+            target.classList?.contains('hs-mc-emote') ||
+            target.classList?.contains('hs-mc-picker-emote') ||
+            target.classList?.contains('hs-input-emote')
+          ))
         const onUser = target?.closest?.('.hs-mc-user')
         const onBadge = target?.tagName === 'IMG' && target.classList?.contains('hs-mc-badge-img')
 

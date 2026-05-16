@@ -1,37 +1,80 @@
-// MAIN-world script. Loaded only on youtube.com.
-// Prevents <video>.pause() from firing while the multichat input has focus,
-// so pressing space while typing in our chat overlay doesn't pause the video.
-// Without this, YT's keyboard handler runs in capture phase (before our input's
-// keydown reaches us) and calls pause() — even an immediate replay leaves an
-// audible click. Patching pause() at the element level is the only path that
-// fully suppresses it; isolated-world content scripts can't intercept calls
-// page scripts make on shared DOM nodes.
+// MAIN-world script. Loaded only on youtube.com at document_start.
+// Wraps every key handler (added via addEventListener) so that key events
+// targeted at our multichat input become a no-op for page-script listeners.
+//
+// Why this is needed: YT's hotkey handler runs in capture phase on document /
+// window, before our input's keydown reaches our own bubble-phase listener.
+// stopPropagation in capture would kill the input's default action (typing
+// nothing inserted) and our own handler (Enter-to-send broken). The only
+// surgical fix is to make YT's handler return early — which we do by wrapping
+// every keydown/keypress/keyup listener at registration time.
+//
+// Safety: the wrap only short-circuits when the event's target is inside
+// `#hs-mc-input`. All other key events flow normally — clicking the player
+// then pressing space still pauses, custom hotkeys elsewhere still fire.
+// removeEventListener is mirrored so YT can still detach its own listeners.
 (() => {
-  if (window._hsMcYtPausePatched) return
-  window._hsMcYtPausePatched = true
+  if (window._hsMcKbdGuardPatched) return
+  window._hsMcKbdGuardPatched = true
 
-  const inOurInput = () => {
-    const ae = document.activeElement
-    if (!ae) return false
-    if (ae.id === 'hs-mc-input') return true
-    return !!(ae.closest && ae.closest('#hs-mc-input'))
+  const KEY_EVENTS = new Set(['keydown', 'keypress', 'keyup'])
+
+  const inOurInput = (t) => {
+    if (!t || t.nodeType !== 1) return false
+    if (t.id === 'hs-mc-input') return true
+    return !!(t.closest && t.closest('#hs-mc-input'))
   }
 
+  const wrapMap = new WeakMap()
+  const wrap = (fn) => {
+    if (typeof fn !== 'function') return fn
+    let w = wrapMap.get(fn)
+    if (w) return w
+    w = function (e) {
+      if (e && KEY_EVENTS.has(e.type) && inOurInput(e.target)) return
+      return fn.apply(this, arguments)
+    }
+    wrapMap.set(fn, w)
+    return w
+  }
+
+  const origAdd = EventTarget.prototype.addEventListener
+  const origRemove = EventTarget.prototype.removeEventListener
+
+  EventTarget.prototype.addEventListener = function (type, fn, opts) {
+    if (KEY_EVENTS.has(type) && typeof fn === 'function') {
+      return origAdd.call(this, type, wrap(fn), opts)
+    }
+    return origAdd.apply(this, arguments)
+  }
+
+  EventTarget.prototype.removeEventListener = function (type, fn, opts) {
+    if (KEY_EVENTS.has(type) && typeof fn === 'function') {
+      const w = wrapMap.get(fn)
+      if (w) return origRemove.call(this, type, w, opts)
+    }
+    return origRemove.apply(this, arguments)
+  }
+
+  // Belt-and-braces: patch <video>.pause() too, in case a code path calls it
+  // outside a key event (e.g. YT's internal state machine triggered via a
+  // toggle that bypasses the listener system). Only blocks while our input
+  // has focus — user-initiated pauses via clicks still work because focus
+  // moves to the player.
   const patchVideo = (v) => {
     if (!v || v._hsMcPausePatched) return
     v._hsMcPausePatched = true
     const origPause = v.pause
     v.pause = function () {
-      if (inOurInput()) return
+      const ae = document.activeElement
+      if (ae && (ae.id === 'hs-mc-input' || (ae.closest && ae.closest('#hs-mc-input')))) return
       return origPause.apply(this, arguments)
     }
   }
-
   const scan = () => {
     const vids = document.querySelectorAll('video')
     for (let i = 0; i < vids.length; i++) patchVideo(vids[i])
   }
-
   if (document.documentElement) scan()
   new MutationObserver(scan).observe(document.documentElement || document, {
     childList: true,

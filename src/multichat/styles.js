@@ -2615,7 +2615,10 @@ function injectStyles() {
     /* WYSIWYG emote images in input — height clamped, width auto so wide
        emotes (catKISS, peepoArrive, etc.) render at natural aspect.
        max-width caps absurdly wide ones so a single emote can't blow out the
-       inputbar layout. */
+       inputbar layout. cursor:pointer overrides the contenteditable's text
+       caret so every state reads as interactive (right-click blocks, blocked
+       left-click unblocks). The chrome content.js hover-overlay paints the
+       state-coloured rect over the IMG on hover. */
     #hs-mc-input .hs-input-emote {
       height: var(--hs-emote-size, 32px);
       width: auto;
@@ -2623,6 +2626,7 @@ function injectStyles() {
       vertical-align: middle;
       margin: 0 2px;
       object-fit: contain;
+      cursor: pointer;
     }
     /* WYSIWYG zero-width / overlay emote stacking in input.
        Fixed height keeps line layout stable when overlays render larger than
@@ -3259,26 +3263,32 @@ function injectStyles() {
     .hs-mc-src-chips.visible {
       display: flex;
     }
+    /* Provider chips wear each network's brand color (7TV cyan, BTTV red,
+       FFZ blue) — matches src-* tooltip colors and keeps orange reserved
+       for HeatSync brand chrome. Inactive = ghost (brand text, half-strength
+       border, no fill); active = full brand fill with contrasting text;
+       hover = white (snappy override across both states). */
     .hs-mc-src-chip {
-      background: none;
-      border: 1px solid rgba(255,255,255,0.18);
-      color: #aaa;
+      background: transparent;
+      border: 1px solid;
       font-size: 10px;
-      font-weight: 600;
+      font-weight: 700;
       padding: 3px 7px;
       cursor: pointer;
       font-family: inherit;
       border-radius: 0;
       line-height: 1.2;
-      text-transform: lowercase;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      transition: background 60ms, color 60ms, border-color 60ms;
     }
-    .hs-mc-src-chip:hover { background: #fff; color: #000; border-color: #fff; }
-    .hs-mc-src-chip.active {
-      background: #ff8700;
-      border-color: #ff8700;
-      color: #000;
-    }
-    .hs-mc-src-chip.active:hover { background: #fff; border-color: #fff; }
+    .hs-mc-src-chip[data-src="7tv"]  { color: #29d8f6; border-color: rgba(41,216,246,0.5); }
+    .hs-mc-src-chip[data-src="bttv"] { color: #d50014; border-color: rgba(213,0,20,0.5); }
+    .hs-mc-src-chip[data-src="ffz"]  { color: #0086c8; border-color: rgba(0,134,200,0.5); }
+    .hs-mc-src-chip.active[data-src="7tv"]  { background: #29d8f6; color: #000; border-color: #29d8f6; }
+    .hs-mc-src-chip.active[data-src="bttv"] { background: #d50014; color: #fff; border-color: #d50014; }
+    .hs-mc-src-chip.active[data-src="ffz"]  { background: #0086c8; color: #fff; border-color: #0086c8; }
+    .hs-mc-src-chip:hover { background: #fff !important; color: #000 !important; border-color: #fff !important; }
     #hs-mc-emote-search::placeholder {
       color: #808080;
     }

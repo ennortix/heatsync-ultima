@@ -4898,6 +4898,7 @@
   let _pendingShareClaim = null
   let _resubShareModeTimer = null
   let _resubShareCtx = null
+  let _lastSurfacedShareBtn = null
   function _injectShareSynthetic(claim, user, months, customText) {
     const synthId = `hs-synth-share-${claim.channel}-${months}-${Date.now()}`
     claim.synthId = synthId
@@ -4990,20 +4991,75 @@
       // 1. Local synthetic — instant styled celebration in OUR view with the
       //    user's custom text. Doesn't go anywhere else; viewer-only.
       try { _injectShareSynthetic(claim, user, months, text || '') } catch (_) {}
-      // 2. Native broadcast — programmatically click Twitch's Share button so
-      //    the resub-celebration goes out to all viewers. _allowNativeShare
-      //    tells our surface() hook to let the click pass through (without
-      //    re-entering share mode). Best-effort: if the callout DOM has
-      //    already been removed, this silently no-ops and only the local
-      //    synthetic + the IRC message below land.
-      try {
+      // 2. Native broadcast — fire Twitch's celebration share. Plain btn.click()
+      //    on the hidden native button proved unreliable (Twitch's React onClick
+      //    sometimes fails to fire on display:none nodes or the node has been
+      //    pruned). We now layer three strategies, returning on first success:
+      //      A) React fiber → memoizedProps.onClick (bypasses DOM/event system)
+      //      B) Stored fiber/onClick captured at surface() time (DOM may be gone)
+      //      C) Full mousedown→mouseup→click sequence + plain .click() fallback
+      //    Every step logs so a failed broadcast leaves a trail in console.
+      const broadcastShare = () => {
         const QUEUE_SEL = '[data-test-selector="chat-private-callout-queue__callout-container"]'
-        const btn = document.querySelector(QUEUE_SEL + ' [data-a-target="chat-private-callout__primary-button"]')
-        if (btn) {
-          _allowNativeShare = true
-          try { btn.click() } finally { _allowNativeShare = false }
+        const liveBtn = document.querySelector(QUEUE_SEL + ' [data-a-target="chat-private-callout__primary-button"]')
+        const candidates = [liveBtn, claim._nativeShareBtn].filter(Boolean)
+        const seen = new Set()
+        const tryFiberOnClick = (btn) => {
+          try {
+            if (typeof getFiber !== 'function') return false
+            let f = getFiber(btn)
+            for (let i = 0; f && i < 10; i++, f = f.return) {
+              const oc = f?.memoizedProps?.onClick
+              if (typeof oc === 'function') {
+                const fakeEvt = {
+                  preventDefault() {}, stopPropagation() {}, persist() {},
+                  currentTarget: btn, target: btn, nativeEvent: { isTrusted: true },
+                  type: 'click', button: 0, buttons: 0,
+                }
+                oc(fakeEvt)
+                console.log('[heatsync-ext] resub-share: fired via fiber onClick')
+                return true
+              }
+            }
+          } catch (e) {
+            console.warn('[heatsync-ext] resub-share fiber onClick threw:', e)
+          }
+          return false
         }
-      } catch (_) {}
+        const tryDomClick = (btn) => {
+          try {
+            _allowNativeShare = true
+            try {
+              const opts = { bubbles: true, cancelable: true, composed: true, view: window, button: 0 }
+              btn.dispatchEvent(new MouseEvent('mousedown', opts))
+              btn.dispatchEvent(new MouseEvent('mouseup', opts))
+              btn.dispatchEvent(new MouseEvent('click', opts))
+              btn.click()
+            } finally { _allowNativeShare = false }
+            console.log('[heatsync-ext] resub-share: fired via DOM click sequence')
+            return true
+          } catch (e) {
+            console.warn('[heatsync-ext] resub-share DOM click threw:', e)
+            return false
+          }
+        }
+        for (const btn of candidates) {
+          if (!btn || seen.has(btn)) continue
+          seen.add(btn)
+          if (tryFiberOnClick(btn)) return true
+        }
+        for (const btn of candidates) {
+          if (!btn) continue
+          if (tryDomClick(btn)) return true
+        }
+        console.warn('[heatsync-ext] resub-share: NO broadcast — native callout btn missing', {
+          liveBtnFound: !!liveBtn,
+          storedBtnFound: !!claim._nativeShareBtn,
+          storedBtnInDom: claim._nativeShareBtn ? document.contains(claim._nativeShareBtn) : false,
+        })
+        return false
+      }
+      try { broadcastShare() } catch (e) { console.warn('[heatsync-ext] resub-share broadcast outer threw:', e) }
       _exitResubShareMode(claim, false)
       return false
     },
@@ -5013,7 +5069,7 @@
           clearTimeout(_pendingShareClaim.preTimer)
           clearTimeout(_pendingShareClaim.postTimer)
         }
-        const claim = { channel, userLc: (user || '').toLowerCase(), months, synthId: null, preTimer: null, postTimer: null, customText: '' }
+        const claim = { channel, userLc: (user || '').toLowerCase(), months, synthId: null, preTimer: null, postTimer: null, customText: '', _nativeShareBtn: _lastSurfacedShareBtn }
         _pendingShareClaim = claim
         _enterResubShareMode(claim, user, months)
       } catch (_) {}
@@ -5053,12 +5109,16 @@
               clearTimeout(_pendingShareClaim.preTimer)
               clearTimeout(_pendingShareClaim.postTimer)
             }
-            const claim = { channel: ch, userLc: user.toLowerCase(), months, synthId: null, preTimer: null, postTimer: null, customText: '' }
+            const claim = { channel: ch, userLc: user.toLowerCase(), months, synthId: null, preTimer: null, postTimer: null, customText: '', _nativeShareBtn: shareBtn }
             _pendingShareClaim = claim
             _enterResubShareMode(claim, user, months)
           } catch (_) {}
         }, { capture: true })
       }
+      // Cache the share button on a module-scoped slot so enter() (called from
+      // the HsNotifs banner — fires AFTER native callout may have been pruned)
+      // can still hand it to consume()'s broadcast fallback.
+      _lastSurfacedShareBtn = shareBtn || null
       try {
         HsNotifs.emit('twitch-resub-share', {
           months, user, channel: ch,

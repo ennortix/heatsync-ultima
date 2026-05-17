@@ -148,12 +148,16 @@ function injectStyles() {
       background: #fff !important;
       color: #ff0000 !important;
     }
-    /* Active — focused tab */
+    /* Active — focused tab. Weight stays at 400: Cozette ships only the
+       regular face, and font-synthesis:none in the bitmap block tells the
+       browser not to fake-bold — but requesting 600 against a single-weight
+       bitmap font still nudges Chrome's text path off the crisp bitmap
+       route in practice. White-on-black background already conveys focus. */
     .hs-mc-tab.active {
       background: #fff !important;
       color: #000 !important;
       border-color: #fff !important;
-      font-weight: 600;
+      font-weight: 400 !important;
     }
     /* Active ignores hover */
     .hs-mc-tab.active:hover {
@@ -450,7 +454,7 @@ function injectStyles() {
       --evt: #ffff00;
       padding: 2px 4px 2px 8px;
       font-size: 13px;
-      line-height: 1.4;
+      line-height: 18px;
       font-style: italic;
       border-left: 3px solid var(--evt);
       border-bottom: 1px solid #000;
@@ -603,7 +607,7 @@ function injectStyles() {
          border and message descenders aren't clipped against it. */
       padding: 8px 8px 12px 8px;
       font-size: var(--hs-chat-font, 13px) !important;
-      line-height: 1.4 !important;
+      line-height: 18px !important;
       word-wrap: break-word;
       word-break: break-word;
       max-width: 100%;
@@ -778,8 +782,16 @@ function injectStyles() {
       min-height: 0;
       overflow: hidden;
       background: #000;
-      font-family: var(--hs-mc-font, 'CozetteVector', 'Courier New', monospace);
+      /* 'Noto Color Emoji' belongs in the body stack so color-emoji codepoints
+         resolve to a known font with stable metrics — matching heatsync.org's
+         --font-family-mono. Without it the browser picks an unpredictable
+         system emoji font and the per-glyph advance can be fractional. */
+      font-family: var(--hs-mc-font, 'CozetteVector'), 'Courier New', monospace, 'Noto Color Emoji';
       font-size: var(--hs-mc-base-size, 13px);
+      /* Integer line-height (mirrors heatsync.org body 17px). Unitless lh
+         multiplied by 13px = 18.2px = fractional baseline = bitmap blur on
+         every line. Anything that inherits this stays on the pixel grid. */
+      line-height: 17px;
       /* Cross-fade with the document_start prepaint pseudo-element. Container
          starts invisible; main.js sets opacity:1 after the overlay mounts +
          renders, so prepaint (fading out) and container (fading in) overlap
@@ -1167,7 +1179,7 @@ function injectStyles() {
       gap: 8px !important;
       padding: 4px 8px !important;
       min-height: 0 !important;
-      line-height: 1.2 !important;
+      line-height: 15px !important;
       min-width: 0 !important;
       max-width: 100% !important;
       overflow: hidden !important;
@@ -1181,7 +1193,7 @@ function injectStyles() {
     [data-test-selector="chat-private-callout-queue__callout-container"] .pinned-callout :is(div, span, p):not(:has(button)) {
       display: inline !important;
       font-size: 13px !important;
-      line-height: 1.2 !important;
+      line-height: 15px !important;
     }
     /* Text wrapper — single block that ellipsifies when chat narrows.
        flex: 1 1 0 + min-width: 0 lets it shrink past content width, which is
@@ -1215,7 +1227,7 @@ function injectStyles() {
       font-size: 13px !important;
       min-height: 0 !important;
       height: auto !important;
-      line-height: 1.4 !important;
+      line-height: 18px !important;
       flex: 0 1 auto !important;
       min-width: 0 !important;
       max-width: 100% !important;
@@ -1495,7 +1507,10 @@ function injectStyles() {
       padding: 2px 4px;
       border-radius: 0;
       font-size: var(--hs-chat-font, 13px) !important;
-      line-height: 1.4 !important;
+      /* 18px integer (mirrors heatsync.org main.css:629) — keep baseline on
+         the pixel grid. 1.4 × 13px = 18.2px fractional half-leading makes
+         every bitmap glyph render off-grid. */
+      line-height: 18px !important;
       word-wrap: break-word;
       word-break: break-word;
       overflow-wrap: anywhere;
@@ -2038,7 +2053,7 @@ function injectStyles() {
       column-gap: 4px;
       row-gap: 6px;
       flex-wrap: wrap;
-      line-height: 1.2;
+      line-height: 15px;
     }
     #hs-user-tooltip .hs-pc-platform {
       font-size: 13px;
@@ -2087,7 +2102,7 @@ function injectStyles() {
     #hs-user-tooltip .hs-pc-bio {
       font-size: 13px;
       color: #fff;
-      line-height: 1.3;
+      line-height: 17px;
       word-break: break-word;
       display: -webkit-box;
       -webkit-line-clamp: 4;
@@ -2104,7 +2119,7 @@ function injectStyles() {
       flex-wrap: wrap;
       font-size: 13px;
       color: #fff;
-      line-height: 1.3;
+      line-height: 17px;
     }
     #hs-user-tooltip .hs-pc-stat {
       display: inline-flex;
@@ -2135,7 +2150,7 @@ function injectStyles() {
       gap: 4px;
       flex-wrap: wrap;
       font-size: 13px;
-      line-height: 1.2;
+      line-height: 15px;
     }
     #hs-user-tooltip .hs-pc-rel-badge {
       padding: 2px 3px;
@@ -2220,7 +2235,7 @@ function injectStyles() {
       font-size: 13px;
       color: #a0a0a0;
       margin-bottom: 14px;
-      line-height: 1.4;
+      line-height: 18px;
     }
     .hs-mc-empty-actions {
       display: flex;
@@ -2264,7 +2279,7 @@ function injectStyles() {
       font-size: 13px;
       color: #555;
       margin-top: 12px;
-      line-height: 1.4;
+      line-height: 18px;
     }
     .hs-mc-emote {
       width: auto;
@@ -2353,10 +2368,16 @@ function injectStyles() {
       visibility: hidden !important;
     }
 
-    /* Emojis — scale driven by --hs-emoji-scale (1|2|4). Default 2x. */
+    /* Emojis — scale driven by --hs-emoji-scale (1|2|4). Default 2x.
+       line-height MUST match the parent message's integer line-height
+       (18px) so a tall color-emoji glyph does NOT grow the inline line-box.
+       If the line-box grows from emoji metrics, half-leading for 13px text
+       becomes fractional and every character that follows the emoji on
+       the same row renders at a sub-integer baseline (= bitmap smear).
+       Emoji visual overflows the 18px box vertically — intentional. */
     .hs-mc-emoji {
       font-size: calc(1em * var(--hs-emoji-scale, 2));
-      line-height: 1;
+      line-height: 18px;
       vertical-align: middle;
       display: inline-block;
     }
@@ -3026,7 +3047,7 @@ function injectStyles() {
       color: #fff;
       background: #000;
       font-size: 13px;
-      line-height: 1.4;
+      line-height: 18px;
       box-sizing: border-box;
       display: flex;
       flex-direction: column;
@@ -3133,7 +3154,7 @@ function injectStyles() {
     .hs-pcard-id-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
     .hs-pcard-name {
       font-size: 18px; font-weight: 700; color: #fff;
-      display: flex; align-items: center; gap: 6px; line-height: 1.1;
+      display: flex; align-items: center; gap: 6px; line-height: 13px;
     }
     .hs-pcard-livedot { color: #ff5050; font-size: 9px; animation: hs-pcard-pulse 1.5s infinite; }
     @keyframes hs-pcard-pulse { 50% { opacity: 0.4; } }
@@ -3155,7 +3176,7 @@ function injectStyles() {
     .hs-pcard-pill-heatsync { color: #ff8700; border-color: #ff8700; }
     .hs-pcard-pill-live { color: #ff5050; }
     .hs-pcard-bio {
-      color: #aaa; font-size: 13px; line-height: 1.4;
+      color: #aaa; font-size: 13px; line-height: 18px;
       white-space: pre-wrap; word-break: break-word;
       border-left: 2px solid #1a1a1a; padding: 0 0 0 8px;
     }
@@ -3165,11 +3186,11 @@ function injectStyles() {
     .hs-pcard-bio-tag:hover { text-decoration: underline; }
     .hs-pcard-meta {
       display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
-      font-size: 13px; color: #888; line-height: 1.4;
+      font-size: 13px; color: #888; line-height: 18px;
     }
     .hs-pcard-age { color: #888; }
     .hs-pcard-role {
-      padding: 0 5px; font-size: 13px; font-weight: 700; line-height: 1.6;
+      padding: 0 5px; font-size: 13px; font-weight: 700; line-height: 21px;
     }
     .hs-pcard-role.partner { background: #ffaa00; color: #000; }
     .hs-pcard-role.affiliate { background: #555; color: #fff; }
@@ -3189,7 +3210,7 @@ function injectStyles() {
     .hs-pcard-msg-ts { color: #555; flex-shrink: 0; font-size: 13px; min-width: 38px; }
     .hs-pcard-msg-plat {
       flex-shrink: 0; font-size: 13px; padding: 0 3px;
-      font-weight: 600; line-height: 1.5; color: #888;
+      font-weight: 600; line-height: 19px; color: #888;
     }
     .hs-pcard-msg-text {
       color: #fff; word-break: break-word; overflow-wrap: anywhere; flex: 1;
@@ -3472,7 +3493,7 @@ function injectStyles() {
       cursor: pointer;
       font-family: inherit;
       border-radius: 0;
-      line-height: 1.2;
+      line-height: 15px;
       text-transform: uppercase;
       letter-spacing: 1px;
       transition: background 60ms, color 60ms, border-color 60ms;
@@ -3571,12 +3592,12 @@ function injectStyles() {
       font-size: 13px;
       font-weight: 500;
       color: #fff;
-      line-height: 1.3;
+      line-height: 17px;
     }
     .hs-mc-menu-desc {
       font-size: 13px;
       color: #808080;
-      line-height: 1.3;
+      line-height: 17px;
       margin-top: 1px;
     }
     .hs-mc-menu-item:hover .hs-mc-menu-title {
@@ -3629,7 +3650,7 @@ function injectStyles() {
       font-size: 13px;
       font-weight: 600;
       color: #fff;
-      line-height: 1.3;
+      line-height: 17px;
       flex: 1;
     }
     .hs-mc-pred-title img,
@@ -4023,7 +4044,7 @@ function injectStyles() {
       font-size: 13px;
       font-weight: 600;
       color: #fff;
-      line-height: 1.3;
+      line-height: 17px;
       flex: 1;
     }
     .hs-mc-poll-status {
@@ -4508,7 +4529,7 @@ function injectStyles() {
       border: 1px solid #808080;
       padding: 6px 8px;
       font-size: 13px;
-      line-height: 1.4;
+      line-height: 18px;
       max-width: 260px;
       pointer-events: none;
       display: none;
@@ -4909,7 +4930,7 @@ function injectStyles() {
     .hs-feed-msg {
       position: relative;
       padding: 1px 6px;
-      line-height: 1.4;
+      line-height: 18px;
       font-size: 13px;
       word-wrap: break-word;
       word-break: break-word;
@@ -4991,7 +5012,7 @@ function injectStyles() {
       border-top: 1px solid #1a1a1a;
       border-bottom: 1px solid #1a1a1a;
       font-size: 13px;
-      line-height: 1.4;
+      line-height: 18px;
       box-sizing: border-box;
       z-index: 1002;
     }
@@ -5074,7 +5095,7 @@ function injectStyles() {
     }
     .hs-thread-reply {
       padding: 1px 4px;
-      line-height: 1.3;
+      line-height: 17px;
       font-size: 13px;
     }
     .hs-thread-reply.is-thread-op {
@@ -5800,7 +5821,7 @@ function injectStyles() {
       padding: 4px 8px;
       background: rgba(255,135,0,0.08);
       border-bottom: 1px solid rgba(255,135,0,0.2);
-      line-height: 1.3;
+      line-height: 17px;
       display: flex;
       justify-content: space-between;
       align-items: baseline;
@@ -5843,7 +5864,7 @@ function injectStyles() {
       text-decoration: none;
       cursor: pointer;
       border-radius: 0;
-      line-height: 1.5;
+      line-height: 19px;
       white-space: nowrap;
     }
     .hs-discover-chip:hover { background: #fff; color: #000; border-color: #fff; }
@@ -5854,7 +5875,7 @@ function injectStyles() {
       padding: 2px 8px;
       text-decoration: none;
       cursor: pointer;
-      line-height: 1.3;
+      line-height: 17px;
       font-size: 13px;
       border-left: 2px solid transparent;
     }
@@ -5905,7 +5926,7 @@ function injectStyles() {
       font-size: 13px;
       font-weight: 700;
       padding: 0 3px;
-      line-height: 1.2;
+      line-height: 15px;
       text-decoration: none;
     }
     .hs-discover-platforms .hs-plat:hover { background: #fff !important; color: #000 !important; }
@@ -5981,7 +6002,7 @@ function injectStyles() {
       font-family: ui-monospace, SFMono-Regular, monospace;
       font-weight: 600;
       border-radius: 0;
-      line-height: 1.4;
+      line-height: 18px;
     }
     .hs-discover-chip-btn.hs-active {
       background: #ff8700;
@@ -6072,7 +6093,7 @@ function injectStyles() {
       padding: 5px 8px;
       text-decoration: none;
       cursor: pointer;
-      line-height: 1.35;
+      line-height: 17px;
       border-left: 2px solid transparent;
       border-bottom: 1px solid rgba(255,255,255,0.04);
     }
@@ -6112,7 +6133,7 @@ function injectStyles() {
     .hs-discover-post-text {
       color: #c8c8c8;
       font-size: 13px;
-      line-height: 1.4;
+      line-height: 18px;
       overflow: hidden;
       display: -webkit-box;
       -webkit-line-clamp: 2;
@@ -6147,7 +6168,7 @@ function injectStyles() {
       border-bottom: 1px solid rgba(255,255,255,0.04);
       text-decoration: none;
       cursor: pointer;
-      line-height: 1.4;
+      line-height: 18px;
     }
     .hs-pinned-row:hover { background: rgba(255,135,0,0.07); }
     .hs-pinned-meta {

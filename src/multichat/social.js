@@ -260,7 +260,7 @@ function showFeedPostContextMenu(e, div, msg) {
   menu.style.left = Math.min(e.clientX, window.innerWidth - mw - 4) + 'px'
   menu.style.top = Math.min(e.clientY, window.innerHeight - mh - 4) + 'px'
   const dismiss = (ev) => { if (!menu.contains(ev.target)) { menu.remove(); document.removeEventListener('click', dismiss) } }
-  setTimeout(() => document.addEventListener('click', dismiss, { signal: mcSignal }), 0)
+  cleanup.setTimeout(() => document.addEventListener('click', dismiss, { signal: mcSignal }), 0)
 }
 
 // ============================================
@@ -372,7 +372,7 @@ function ingestReplayYtMsg(targetChannelId, ytMsg) {
   if (dedup.has(dupKey)) return
   dedup.add(dupKey)
   buf.push(ytMsg)
-  if (ytMsg.user) { try { usernameCache.add(ytMsg.user) } catch {} }
+  if (ytMsg.user) { try { addUsername(ytMsg.user) } catch {} }
   if (buf.length > MAX_BUFFER + 50) {
     // Sort by time before truncating so we keep the most recent across
     // backfill + live, not just newest-arrived.
@@ -416,7 +416,7 @@ function commitPacedYtMsg(targetChannelId, ytMsg) {
   if (!channelYtMessages.has(targetChannelId)) channelYtMessages.set(targetChannelId, [])
   const buf = channelYtMessages.get(targetChannelId)
   buf.push(ytMsg)
-  if (ytMsg.user) { try { usernameCache.add(ytMsg.user) } catch {} }
+  if (ytMsg.user) { try { addUsername(ytMsg.user) } catch {} }
   // Keep the replay-dedup index aligned with the buffer so a later replay msg
   // doesn't get re-inserted as if the live one were missing.
   const dedup = _replayDedupKeys.get(targetChannelId)
@@ -921,6 +921,8 @@ async function fetchFeed(append = false) {
     feedMessages = msgs;
     feedPage = 1;
   }
+  // Clamp after bulk load — push-path uses .pop() cap but server can return >150 in one fetch.
+  if (feedMessages.length > 150) feedMessages.length = 150;
   feedHasMore = resp.data?.pagination?.hasMore ?? msgs.length >= 30;
   feedLoaded = true;
   feedLastFetch = Date.now();
@@ -982,7 +984,7 @@ function _renderFeedEmptyCard() {
       if (r?.ok && r?.data?.success) {
         importBtn.textContent = `synced ${r.data.synced || 0} ✓`;
         try { chrome.runtime.sendMessage({ type: 'refresh_followed_users' }); } catch {}
-        setTimeout(() => { feedLoaded = false; if (currentTab === 'feed') renderFeed(); }, 1200);
+        cleanup.setTimeout(() => { feedLoaded = false; if (currentTab === 'feed') renderFeed(); }, 1200);
       } else {
         importBtn.disabled = false;
         importBtn.textContent = (r?.error || r?.data?.error || 'try again').slice(0, 40);
@@ -1342,7 +1344,7 @@ function openReactionPicker(e, msgId, engageEl) {
   picker.style.left = Math.min(rect.left, window.innerWidth - pw - 4) + 'px'
   picker.style.top = Math.max(rect.top - ph - 4, 4) + 'px'
 
-  setTimeout(() => {
+  cleanup.setTimeout(() => {
     const dismiss = (ev) => {
       if (!picker.contains(ev.target)) { picker.remove(); document.removeEventListener('click', dismiss) }
     }
@@ -1751,7 +1753,7 @@ async function openThread(msgId, highlightId) {
     if (target) {
       target.scrollIntoView({ behavior: 'instant', block: 'center' });
       target.classList.add('hs-post-highlight');
-      setTimeout(() => target.classList.remove('hs-post-highlight'), 1000);
+      cleanup.setTimeout(() => target.classList.remove('hs-post-highlight'), 1000);
     }
   }
 }
@@ -1875,7 +1877,7 @@ async function postFeedMessage(text, { topLevel = false } = {}) {
     } else {
       input.placeholder = t('mc_social_login_first');
     }
-    setTimeout(() => updateInputPlaceholder(), 2000);
+    cleanup.setTimeout(() => updateInputPlaceholder(), 2000);
     return false;
   }
 
@@ -1940,7 +1942,7 @@ async function postFeedMessage(text, { topLevel = false } = {}) {
       : resp.status === 409 ? t('mc_social_duplicate')
       : t('mc_social_failed_post');
     showToast(errMsg, 'error');
-    setTimeout(() => { input.style.borderColor = ''; }, 1500);
+    cleanup.setTimeout(() => { input.style.borderColor = ''; }, 1500);
     log('Post failed:', resp.status || resp.error);
     return false
   }
@@ -2436,7 +2438,7 @@ function renderDiscoverTab() {
               if (r?.ok && r?.data?.success) {
                 a.textContent = `synced ${r.data.synced} ✓`;
                 try { chrome.runtime.sendMessage({ type: 'refresh_followed_users' }); } catch {}
-                setTimeout(() => renderDiscoverTab(), 1500);
+                cleanup.setTimeout(() => renderDiscoverTab(), 1500);
               } else {
                 a.textContent = (r?.error || r?.data?.error || 'failed').slice(0, 30);
               }

@@ -99,7 +99,7 @@ const HsNotifs = (() => {
       if (idx >= 0) {
         const n = l.current[idx]
         l.current.splice(idx, 1)
-        if (n._timer) { clearTimeout(n._timer); n._timer = null }
+        if (n._timer) { cleanup.clearTimeout(n._timer); n._timer = null }
         try { n.type.onDismiss?.(n.data) } catch (_) {}
         // Exit animation — flag wrapper for CSS to fade/slide out, then
         // remove on animation end. Falls back to immediate remove if the
@@ -108,9 +108,9 @@ const HsNotifs = (() => {
         if (el && el.isConnected) {
           el.classList.add('hs-notif-exiting')
           let removed = false
-          const cleanup = () => { if (removed) return; removed = true; try { el.remove() } catch (_) {} }
-          el.addEventListener('animationend', cleanup, { once: true })
-          setTimeout(cleanup, 220)
+          const finishExit = () => { if (removed) return; removed = true; try { el.remove() } catch (_) {} }
+          el.addEventListener('animationend', finishExit, { once: true })
+          cleanup.setTimeout(finishExit, 220)
         } else {
           try { el?.remove() } catch (_) {}
         }
@@ -158,17 +158,17 @@ const HsNotifs = (() => {
       // Pause-on-hover. Errors are easy to miss if they vanish mid-read.
       let remaining = notif.type.timeout
       let startedAt = Date.now()
-      notif._timer = setTimeout(() => dismiss(notif.id), remaining)
+      notif._timer = cleanup.setTimeout(() => dismiss(notif.id), remaining)
       wrapper.addEventListener('mouseenter', () => {
         if (notif._timer) {
-          clearTimeout(notif._timer); notif._timer = null
+          cleanup.clearTimeout(notif._timer); notif._timer = null
           remaining = Math.max(0, remaining - (Date.now() - startedAt))
         }
       })
       wrapper.addEventListener('mouseleave', () => {
         if (!notif._timer && remaining > 0) {
           startedAt = Date.now()
-          notif._timer = setTimeout(() => dismiss(notif.id), remaining)
+          notif._timer = cleanup.setTimeout(() => dismiss(notif.id), remaining)
         }
       })
     }

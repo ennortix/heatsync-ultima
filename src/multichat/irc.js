@@ -321,7 +321,7 @@ class IRC {
     const ch = msg.channel
     if (!ch || !this.channels.has(ch)) return
     if (msg.user) {
-      try { usernameCache.add(msg.user) } catch {}
+      try { addUsername(msg.user) } catch {}
       try { setKnownColor(msg.user.toLowerCase(), msg.color, msg.userId) } catch {}
     }
     if (msg.subMonths) { try { trackSubTenure(ch, msg.user, msg.subMonths) } catch {} }
@@ -364,7 +364,7 @@ class IRC {
       for (const m of resp.msgs || []) {
         m.isHistory = true
         if (m.user) {
-          try { usernameCache.add(m.user) } catch {}
+          try { addUsername(m.user) } catch {}
           try { setKnownColor(m.user.toLowerCase(), m.color, m.userId) } catch {}
         }
         if (m.subMonths) { try { trackSubTenure(ch, m.user, m.subMonths) } catch {} }
@@ -401,7 +401,7 @@ class IRC {
         for (const m of resp.msgs) {
           m.isHistory = true
           if (m.user) {
-            try { usernameCache.add(m.user) } catch {}
+            try { addUsername(m.user) } catch {}
             try { setKnownColor(m.user.toLowerCase(), m.color, m.userId) } catch {}
           }
           if (m.subMonths) { try { trackSubTenure(ch, m.user, m.subMonths) } catch {} }
@@ -592,7 +592,7 @@ class KickChat {
         }
         this.channels.get(channel).push(msg)
         if (msg.user) {
-          usernameCache.add(msg.user)
+          addUsername(msg.user)
           setKnownColor(msg.user.toLowerCase(), msg.color, msg.userId)
         }
         this.persistBuffer(channel)
@@ -683,7 +683,7 @@ class KickChat {
       for (const m of resp.msgs) {
         m.isHistory = true
         if (m.user) {
-          try { usernameCache.add(m.user) } catch {}
+          try { addUsername(m.user) } catch {}
           try { setKnownColor(m.user.toLowerCase(), m.color, m.userId) } catch {}
         }
         buf.push(m)
@@ -760,7 +760,7 @@ class KickChat {
     for (const msg of filtered) {
       msg.isHistory = true
       if (msg.user) {
-        usernameCache.add(msg.user)
+        addUsername(msg.user)
         setKnownColor(msg.user.toLowerCase(), msg.color, msg.userId)
       }
       buffer.push(msg)
@@ -812,7 +812,7 @@ class KickChat {
         for (const m of resp.msgs) {
           m.isHistory = true
           if (m.user) {
-            try { usernameCache.add(m.user) } catch {}
+            try { addUsername(m.user) } catch {}
             try { setKnownColor(m.user.toLowerCase(), m.color, m.userId) } catch {}
           }
           buf.push(m)

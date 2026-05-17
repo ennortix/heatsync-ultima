@@ -2332,8 +2332,12 @@ function ensure7TVConnection() {
       if (seventvZombieTimer) { untrackInterval(seventvZombieTimer); seventvZombieTimer = null }
 
       if (seventvReconnectAttempts < SEVENTV_MAX_RECONNECT_ATTEMPTS && seventvEmoteSetIds.size > 0) {
-        const jitter7tv = Math.random() * 1000;
-        const delay = Math.min(1000 * Math.pow(2, seventvReconnectAttempts), 30000) + jitter7tv;
+        // Jitter scales with the base delay (capped at 30s). At 100k clients
+        // a shared 7TV outage hits a wide spread, not a 1s synchronization
+        // window — prevents thundering-herd reconnects against 7TV.
+        const baseDelay = Math.min(1000 * Math.pow(2, seventvReconnectAttempts), 30000);
+        const jitter7tv = Math.random() * baseDelay;
+        const delay = baseDelay + jitter7tv;
         seventvReconnectAttempts++;
         log(` 7TV EventAPI: Reconnecting in ${Math.round(delay)}ms (attempt ${seventvReconnectAttempts}/${SEVENTV_MAX_RECONNECT_ATTEMPTS})`);
         clearTimeout(seventvReconnectTimer);
@@ -2592,11 +2596,23 @@ function stop7TVPolling() {
   }
 }
 
+// Tracks when EventAPI first became unhealthy. Gates polling so brief
+// WS hiccups don't trigger a 100k-client REST burst against 7TV.
+let seventvUnhealthySince = 0
+const SEVENTV_UNHEALTHY_GRACE_MS = 60000
+
 async function poll7TVEmoteSet() {
   // Poll ALL channels that have an active 7TV emote set ID
   const channels = Array.from(seventvEmoteSetIds.keys())
   if (channels.length === 0) return
   const eventApiHealthy = isSeventvEventApiHealthy()
+  if (eventApiHealthy) {
+    seventvUnhealthySince = 0
+  } else {
+    if (!seventvUnhealthySince) seventvUnhealthySince = Date.now()
+    // Within the grace window, skip the entire poll — reconnect is in progress.
+    if (Date.now() - seventvUnhealthySince < SEVENTV_UNHEALTHY_GRACE_MS) return
+  }
 
   for (const channelName of channels) {
     // Skip channels whose emote set is actively subscribed via EventAPI —
@@ -5896,9 +5912,17 @@ async function subscribeToPush(token) {
       log(' PushManager not available — skipping push subscription')
       return
     }
+    // Fast-path: storage marker means we already confirmed a subscription this
+    // browser session — skip the getSubscription() call entirely. Cleared on
+    // logout / unsubscribe paths. Cuts SW-wake noise across 100k clients.
+    try {
+      const m = await chrome.storage.session?.get?.('hs_push_ok')
+      if (m?.hs_push_ok) return
+    } catch {}
     const existing = await self.registration.pushManager.getSubscription()
     if (existing) {
       log(' Push already subscribed:', existing.endpoint.slice(0, 40) + '...')
+      try { chrome.storage.session?.set?.({ hs_push_ok: 1 }) } catch {}
       return
     }
     const keyRes = await fetchWithTimeout(`${API_URL}/api/push/vapid-key`, {
@@ -5935,6 +5959,7 @@ async function subscribeToPush(token) {
       return
     }
     log(' Push subscription registered')
+    try { chrome.storage.session?.set?.({ hs_push_ok: 1 }) } catch {}
   } catch (err) {
     log(' subscribeToPush error:', err?.message)
   }
@@ -5943,6 +5968,7 @@ async function subscribeToPush(token) {
 async function unsubscribeFromPush(token) {
   try {
     if (!self.registration?.pushManager) return
+    try { chrome.storage.session?.remove?.('hs_push_ok') } catch {}
     const sub = await self.registration.pushManager.getSubscription()
     if (!sub) return
     const endpoint = sub.endpoint
@@ -6298,6 +6324,38 @@ async function bgIrcRestoreFromStorage() {
     }
     log('BG IRC restored', n, 'channels from storage')
   } catch (e) { log('BG IRC restore failed:', e.message) }
+  // Restore lastRobottyAt from session storage — survives SW eviction within
+  // the same browser session. Without this, every SW wake refetched robotty
+  // for every joined channel, hammering a community-run free service.
+  try {
+    const sess = await chrome.storage.session?.get?.('hs_irc_last_robotty')
+    const obj = sess?.hs_irc_last_robotty
+    if (obj && typeof obj === 'object') {
+      for (const [ch, ts] of Object.entries(obj)) {
+        if (typeof ts === 'number') BG_IRC.lastRobottyAt.set(ch, ts)
+      }
+    }
+  } catch {}
+}
+
+const ROBOTTY_PERSIST_DEBOUNCE_MS = 2000
+const ROBOTTY_TS_MAX_CHANNELS = 200
+let _robottyPersistTimer = null
+function bgIrcPersistRobottyTs() {
+  if (_robottyPersistTimer) return
+  _robottyPersistTimer = setTimeout(() => {
+    _robottyPersistTimer = null
+    try {
+      // Cap entries — long-running SW with channel churn shouldn't grow forever.
+      if (BG_IRC.lastRobottyAt.size > ROBOTTY_TS_MAX_CHANNELS) {
+        const excess = BG_IRC.lastRobottyAt.size - ROBOTTY_TS_MAX_CHANNELS
+        const it = BG_IRC.lastRobottyAt.keys()
+        for (let i = 0; i < excess; i++) BG_IRC.lastRobottyAt.delete(it.next().value)
+      }
+      const obj = Object.fromEntries(BG_IRC.lastRobottyAt)
+      chrome.storage.session?.set?.({ hs_irc_last_robotty: obj })?.catch?.(() => {})
+    } catch {}
+  }, ROBOTTY_PERSIST_DEBOUNCE_MS)
 }
 
 function bgIrcPersistChannel(ch) {
@@ -6587,10 +6645,13 @@ function bgIrcReconcileCleared(buf) {
 function bgIrcFetchRobotty(ch) {
   if (BG_IRC.historyInFlight.has(ch)) return BG_IRC.historyInFlight.get(ch)
   // 30s per-channel cooldown — protects robotty + our SW from thrash on
-  // rapid page reloads / channel switches. Initial join still fetches.
+  // rapid page reloads / channel switches. Survives SW eviction via
+  // chrome.storage.session (bgIrcPersistRobottyTs). At 100k users, SW-eviction
+  // waves used to refetch robotty for every joined channel — this kills that.
   const lastAt = BG_IRC.lastRobottyAt.get(ch) || 0
   if (Date.now() - lastAt < 30_000) return Promise.resolve()
   BG_IRC.lastRobottyAt.set(ch, Date.now())
+  bgIrcPersistRobottyTs()
   const p = (async () => {
     try {
       const ctrl = new AbortController()

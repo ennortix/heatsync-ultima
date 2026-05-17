@@ -4082,7 +4082,7 @@ const HsNotifs = (() => {
       if (idx >= 0) {
         const n = l.current[idx]
         l.current.splice(idx, 1)
-        if (n._timer) { clearTimeout(n._timer); n._timer = null }
+        if (n._timer) { cleanup.clearTimeout(n._timer); n._timer = null }
         try { n.type.onDismiss?.(n.data) } catch (_) {}
         // Exit animation — flag wrapper for CSS to fade/slide out, then
         // remove on animation end. Falls back to immediate remove if the
@@ -4091,9 +4091,9 @@ const HsNotifs = (() => {
         if (el && el.isConnected) {
           el.classList.add('hs-notif-exiting')
           let removed = false
-          const cleanup = () => { if (removed) return; removed = true; try { el.remove() } catch (_) {} }
-          el.addEventListener('animationend', cleanup, { once: true })
-          setTimeout(cleanup, 220)
+          const finishExit = () => { if (removed) return; removed = true; try { el.remove() } catch (_) {} }
+          el.addEventListener('animationend', finishExit, { once: true })
+          cleanup.setTimeout(finishExit, 220)
         } else {
           try { el?.remove() } catch (_) {}
         }
@@ -4141,17 +4141,17 @@ const HsNotifs = (() => {
       // Pause-on-hover. Errors are easy to miss if they vanish mid-read.
       let remaining = notif.type.timeout
       let startedAt = Date.now()
-      notif._timer = setTimeout(() => dismiss(notif.id), remaining)
+      notif._timer = cleanup.setTimeout(() => dismiss(notif.id), remaining)
       wrapper.addEventListener('mouseenter', () => {
         if (notif._timer) {
-          clearTimeout(notif._timer); notif._timer = null
+          cleanup.clearTimeout(notif._timer); notif._timer = null
           remaining = Math.max(0, remaining - (Date.now() - startedAt))
         }
       })
       wrapper.addEventListener('mouseleave', () => {
         if (!notif._timer && remaining > 0) {
           startedAt = Date.now()
-          notif._timer = setTimeout(() => dismiss(notif.id), remaining)
+          notif._timer = cleanup.setTimeout(() => dismiss(notif.id), remaining)
         }
       })
     }
@@ -11844,7 +11844,7 @@ function _scheduleStatsScan() {
   if (typeof requestIdleCallback === 'function') {
     requestIdleCallback(_flushStatsScanQueue, { timeout: 1000 })
   } else {
-    setTimeout(_flushStatsScanQueue, 50)
+    cleanup.setTimeout(_flushStatsScanQueue, 50)
   }
 }
 
@@ -12403,7 +12403,7 @@ class IRC {
     const ch = msg.channel
     if (!ch || !this.channels.has(ch)) return
     if (msg.user) {
-      try { usernameCache.add(msg.user) } catch {}
+      try { addUsername(msg.user) } catch {}
       try { setKnownColor(msg.user.toLowerCase(), msg.color, msg.userId) } catch {}
     }
     if (msg.subMonths) { try { trackSubTenure(ch, msg.user, msg.subMonths) } catch {} }
@@ -12446,7 +12446,7 @@ class IRC {
       for (const m of resp.msgs || []) {
         m.isHistory = true
         if (m.user) {
-          try { usernameCache.add(m.user) } catch {}
+          try { addUsername(m.user) } catch {}
           try { setKnownColor(m.user.toLowerCase(), m.color, m.userId) } catch {}
         }
         if (m.subMonths) { try { trackSubTenure(ch, m.user, m.subMonths) } catch {} }
@@ -12483,7 +12483,7 @@ class IRC {
         for (const m of resp.msgs) {
           m.isHistory = true
           if (m.user) {
-            try { usernameCache.add(m.user) } catch {}
+            try { addUsername(m.user) } catch {}
             try { setKnownColor(m.user.toLowerCase(), m.color, m.userId) } catch {}
           }
           if (m.subMonths) { try { trackSubTenure(ch, m.user, m.subMonths) } catch {} }
@@ -12674,7 +12674,7 @@ class KickChat {
         }
         this.channels.get(channel).push(msg)
         if (msg.user) {
-          usernameCache.add(msg.user)
+          addUsername(msg.user)
           setKnownColor(msg.user.toLowerCase(), msg.color, msg.userId)
         }
         this.persistBuffer(channel)
@@ -12765,7 +12765,7 @@ class KickChat {
       for (const m of resp.msgs) {
         m.isHistory = true
         if (m.user) {
-          try { usernameCache.add(m.user) } catch {}
+          try { addUsername(m.user) } catch {}
           try { setKnownColor(m.user.toLowerCase(), m.color, m.userId) } catch {}
         }
         buf.push(m)
@@ -12842,7 +12842,7 @@ class KickChat {
     for (const msg of filtered) {
       msg.isHistory = true
       if (msg.user) {
-        usernameCache.add(msg.user)
+        addUsername(msg.user)
         setKnownColor(msg.user.toLowerCase(), msg.color, msg.userId)
       }
       buffer.push(msg)
@@ -12894,7 +12894,7 @@ class KickChat {
         for (const m of resp.msgs) {
           m.isHistory = true
           if (m.user) {
-            try { usernameCache.add(m.user) } catch {}
+            try { addUsername(m.user) } catch {}
             try { setKnownColor(m.user.toLowerCase(), m.color, m.userId) } catch {}
           }
           buf.push(m)
@@ -13064,7 +13064,7 @@ async function connectAuthIrc(token, nick) {
     const ws = new WebSocket('wss://irc-ws.chat.twitch.tv:443');
     authState.ws = ws;
     await new Promise((resolve, reject) => {
-      const timeout = setTimeout(() => reject(new Error('timeout')), 8000);
+      const timeout = cleanup.setTimeout(() => reject(new Error('timeout')), 8000);
       ws.onopen = () => {
         ws.send(`PASS oauth:${token}\r\n`);
         ws.send(`NICK ${nick}\r\n`);
@@ -13075,19 +13075,19 @@ async function connectAuthIrc(token, nick) {
           authState.ready = true;
           authState.lastData = Date.now();
           authState.reconnectDelay = 1000;
-          clearTimeout(timeout);
+          cleanup.clearTimeout(timeout);
           resolve();
         }
         if (event.data.includes('Login authentication failed') || event.data.includes('Login unsuccessful')) {
-          clearTimeout(timeout);
+          cleanup.clearTimeout(timeout);
           reject(new Error('auth_failed'));
         }
         for (const l of event.data.split('\r\n')) {
           if (l.startsWith('PING')) try { ws.send(l.replace('PING', 'PONG') + '\r\n'); } catch {}
         }
       };
-      ws.onerror = () => { clearTimeout(timeout); reject(new Error('ws_error')); };
-      ws.onclose = () => { clearTimeout(timeout); reject(new Error('ws_closed')); };
+      ws.onerror = () => { cleanup.clearTimeout(timeout); reject(new Error('ws_error')); };
+      ws.onclose = () => { cleanup.clearTimeout(timeout); reject(new Error('ws_closed')); };
     });
     // Release handshake closures (timeout/resolve/reject) before reassigning
     ws.onopen = null;
@@ -13132,7 +13132,7 @@ function joinChannel(channel) {
   if (!authIrcAlive()) return Promise.resolve(false);
   try { authState.ws.send(`JOIN #${channel}\r\n`); } catch { return Promise.resolve(false); }
   return new Promise(resolve => {
-    const timer = setTimeout(() => {
+    const timer = cleanup.setTimeout(() => {
       authState.joinWaiters.delete(channel);
       authState.joined.add(channel);
       resolve(true);
@@ -14422,7 +14422,7 @@ async function sendKickMessage(kickSlug, text) {
         const serverHash = response.hash || emoteHash;
         inventoryEmotes.add(emoteName);
         inventoryHashes.set(emoteName, serverHash);
-        viewerPersonalEmotes.set(emoteName, { url: emoteUrl, source: emoteSource || 'heatsync', state: 'owned', hash: serverHash });
+        viewerPersonalEmotes.set(emoteName, { url: emoteUrl, source: emoteSource || 'heatsync', state: 'owned', hash: serverHash, slot: response.slot });
         if (emoteCache.has(emoteName)) {
           const cached = emoteCache.get(emoteName);
           cached.state = 'owned';
@@ -14497,7 +14497,7 @@ async function sendKickMessage(kickSlug, text) {
 
   function _scheduleSenderEmotePersist() {
     if (_senderEmotePersistTimer || !_senderEmoteDirty) return;
-    _senderEmotePersistTimer = setTimeout(() => {
+    _senderEmotePersistTimer = cleanup.setTimeout(() => {
       _senderEmotePersistTimer = null;
       if (!_senderEmoteDirty) return;
       _senderEmoteDirty = false;
@@ -14651,7 +14651,7 @@ async function sendKickMessage(kickSlug, text) {
       (stored.emote_inventory || []).forEach(e => {
         if (e.name && e.url) {
           const source = e.source || 'heatsync';
-          viewerPersonalEmotes.set(e.name, { url: e.url, source, state: 'owned', zeroWidth: !!e.zeroWidth, subscription: !!e.subscription });
+          viewerPersonalEmotes.set(e.name, { url: e.url, source, state: 'owned', zeroWidth: !!e.zeroWidth, subscription: !!e.subscription, slot: e.slot });
         }
       });
 
@@ -16066,7 +16066,7 @@ async function sendKickMessage(kickSlug, text) {
     let _userHoverTimer = null
     let _userHoverTarget = null
     function clearUserHoverTimer() {
-      if (_userHoverTimer) { clearTimeout(_userHoverTimer); _userHoverTimer = null }
+      if (_userHoverTimer) { cleanup.clearTimeout(_userHoverTimer); _userHoverTimer = null }
       _userHoverTarget = null
     }
 
@@ -16088,7 +16088,7 @@ async function sendKickMessage(kickSlug, text) {
           clearUserHoverTimer()
           _userHoverTarget = target
           showUserSkeleton(target, username, color)
-          _userHoverTimer = setTimeout(() => {
+          _userHoverTimer = cleanup.setTimeout(() => {
             _userHoverTimer = null
             if (_userHoverTarget !== target || !document.contains(target)) return
             showUserTooltip(target, username, color, platform);
@@ -16261,14 +16261,14 @@ async function sendKickMessage(kickSlug, text) {
 
   let _linkHideTimer = null;
   function cancelLinkHide() {
-    if (_linkHideTimer) { clearTimeout(_linkHideTimer); _linkHideTimer = null; }
+    if (_linkHideTimer) { cleanup.clearTimeout(_linkHideTimer); _linkHideTimer = null; }
   }
   function scheduleLinkHide(delay = 250) {
     cancelLinkHide();
     // If a fetch is in flight, wait for it so the user gets to see the result
     // even if chat scroll dragged the link out from under their cursor.
     const wait = _linkFetchInFlight ? Math.max(delay, 1500) : delay;
-    _linkHideTimer = setTimeout(() => { _linkHideTimer = null; hideLinkTooltip(); }, wait);
+    _linkHideTimer = cleanup.setTimeout(() => { _linkHideTimer = null; hideLinkTooltip(); }, wait);
   }
 
   function setupLinkTooltipHandlers() {
@@ -19025,8 +19025,9 @@ function attachPollHandlers() {
 }
 
 const badgesInFlight = new Set()
-const badgesFailedAt = new Map()  // channelLogin -> ms (last failure)
+const badgesFailedAt = new Map()  // channelLogin -> ms (last failure) — LRU-capped at 100
 const BADGE_FAILURE_BACKOFF_MS = 60000
+const BADGES_FAILED_MAX = 100
 
 async function fetchChannelBadges(channelLogin) {
   if (!channelLogin) return
@@ -19120,11 +19121,17 @@ async function fetchChannelBadges(channelLogin) {
       renderMessages(currentTab)
     } else {
       // No data populated — schedule retry after backoff
+      if (badgesFailedAt.size >= BADGES_FAILED_MAX) {
+        badgesFailedAt.delete(badgesFailedAt.keys().next().value)
+      }
       badgesFailedAt.set(channelLogin, Date.now())
       log('No channel badges returned for', channelLogin, '— will retry after backoff')
     }
   } catch (e) {
     log('Failed to fetch channel badges:', e.message)
+    if (badgesFailedAt.size >= BADGES_FAILED_MAX) {
+      badgesFailedAt.delete(badgesFailedAt.keys().next().value)
+    }
     badgesFailedAt.set(channelLogin, Date.now())
   } finally {
     badgesInFlight.delete(channelLogin)
@@ -19772,6 +19779,7 @@ function buildFeedMediaHtml(m) {
 // heatsync.org/api/embed/resolve. All HTML built from server fields is escaped
 // via attr() (escapeHtml). Idempotent — safe to call repeatedly.
 const _feedResolveInflight = new Map()
+const FEED_RESOLVE_INFLIGHT_MAX = 200
 
 function _fetchFeedResolve(url) {
   if (_feedResolveInflight.has(url)) return _feedResolveInflight.get(url)
@@ -19784,8 +19792,11 @@ function _fetchFeedResolve(url) {
       return data
     } catch (_) { return null }
   })()
+  if (_feedResolveInflight.size >= FEED_RESOLVE_INFLIGHT_MAX) {
+    _feedResolveInflight.delete(_feedResolveInflight.keys().next().value)
+  }
   _feedResolveInflight.set(url, promise)
-  promise.finally(() => setTimeout(() => _feedResolveInflight.delete(url), 30000))
+  promise.finally(() => cleanup.setTimeout(() => _feedResolveInflight.delete(url), 30000))
   return promise
 }
 
@@ -20193,7 +20204,7 @@ function showFeedPostContextMenu(e, div, msg) {
   menu.style.left = Math.min(e.clientX, window.innerWidth - mw - 4) + 'px'
   menu.style.top = Math.min(e.clientY, window.innerHeight - mh - 4) + 'px'
   const dismiss = (ev) => { if (!menu.contains(ev.target)) { menu.remove(); document.removeEventListener('click', dismiss) } }
-  setTimeout(() => document.addEventListener('click', dismiss, { signal: mcSignal }), 0)
+  cleanup.setTimeout(() => document.addEventListener('click', dismiss, { signal: mcSignal }), 0)
 }
 
 // ============================================
@@ -20305,7 +20316,7 @@ function ingestReplayYtMsg(targetChannelId, ytMsg) {
   if (dedup.has(dupKey)) return
   dedup.add(dupKey)
   buf.push(ytMsg)
-  if (ytMsg.user) { try { usernameCache.add(ytMsg.user) } catch {} }
+  if (ytMsg.user) { try { addUsername(ytMsg.user) } catch {} }
   if (buf.length > MAX_BUFFER + 50) {
     // Sort by time before truncating so we keep the most recent across
     // backfill + live, not just newest-arrived.
@@ -20349,7 +20360,7 @@ function commitPacedYtMsg(targetChannelId, ytMsg) {
   if (!channelYtMessages.has(targetChannelId)) channelYtMessages.set(targetChannelId, [])
   const buf = channelYtMessages.get(targetChannelId)
   buf.push(ytMsg)
-  if (ytMsg.user) { try { usernameCache.add(ytMsg.user) } catch {} }
+  if (ytMsg.user) { try { addUsername(ytMsg.user) } catch {} }
   // Keep the replay-dedup index aligned with the buffer so a later replay msg
   // doesn't get re-inserted as if the live one were missing.
   const dedup = _replayDedupKeys.get(targetChannelId)
@@ -20854,6 +20865,8 @@ async function fetchFeed(append = false) {
     feedMessages = msgs;
     feedPage = 1;
   }
+  // Clamp after bulk load — push-path uses .pop() cap but server can return >150 in one fetch.
+  if (feedMessages.length > 150) feedMessages.length = 150;
   feedHasMore = resp.data?.pagination?.hasMore ?? msgs.length >= 30;
   feedLoaded = true;
   feedLastFetch = Date.now();
@@ -20915,7 +20928,7 @@ function _renderFeedEmptyCard() {
       if (r?.ok && r?.data?.success) {
         importBtn.textContent = `synced ${r.data.synced || 0} ✓`;
         try { chrome.runtime.sendMessage({ type: 'refresh_followed_users' }); } catch {}
-        setTimeout(() => { feedLoaded = false; if (currentTab === 'feed') renderFeed(); }, 1200);
+        cleanup.setTimeout(() => { feedLoaded = false; if (currentTab === 'feed') renderFeed(); }, 1200);
       } else {
         importBtn.disabled = false;
         importBtn.textContent = (r?.error || r?.data?.error || 'try again').slice(0, 40);
@@ -21275,7 +21288,7 @@ function openReactionPicker(e, msgId, engageEl) {
   picker.style.left = Math.min(rect.left, window.innerWidth - pw - 4) + 'px'
   picker.style.top = Math.max(rect.top - ph - 4, 4) + 'px'
 
-  setTimeout(() => {
+  cleanup.setTimeout(() => {
     const dismiss = (ev) => {
       if (!picker.contains(ev.target)) { picker.remove(); document.removeEventListener('click', dismiss) }
     }
@@ -21684,7 +21697,7 @@ async function openThread(msgId, highlightId) {
     if (target) {
       target.scrollIntoView({ behavior: 'instant', block: 'center' });
       target.classList.add('hs-post-highlight');
-      setTimeout(() => target.classList.remove('hs-post-highlight'), 1000);
+      cleanup.setTimeout(() => target.classList.remove('hs-post-highlight'), 1000);
     }
   }
 }
@@ -21808,7 +21821,7 @@ async function postFeedMessage(text, { topLevel = false } = {}) {
     } else {
       input.placeholder = t('mc_social_login_first');
     }
-    setTimeout(() => updateInputPlaceholder(), 2000);
+    cleanup.setTimeout(() => updateInputPlaceholder(), 2000);
     return false;
   }
 
@@ -21873,7 +21886,7 @@ async function postFeedMessage(text, { topLevel = false } = {}) {
       : resp.status === 409 ? t('mc_social_duplicate')
       : t('mc_social_failed_post');
     showToast(errMsg, 'error');
-    setTimeout(() => { input.style.borderColor = ''; }, 1500);
+    cleanup.setTimeout(() => { input.style.borderColor = ''; }, 1500);
     log('Post failed:', resp.status || resp.error);
     return false
   }
@@ -22369,7 +22382,7 @@ function renderDiscoverTab() {
               if (r?.ok && r?.data?.success) {
                 a.textContent = `synced ${r.data.synced} ✓`;
                 try { chrome.runtime.sendMessage({ type: 'refresh_followed_users' }); } catch {}
-                setTimeout(() => renderDiscoverTab(), 1500);
+                cleanup.setTimeout(() => renderDiscoverTab(), 1500);
               } else {
                 a.textContent = (r?.error || r?.data?.error || 'failed').slice(0, 30);
               }
@@ -27713,7 +27726,7 @@ function pcDoWhisper(username) {
   closeProfileCard()
   switchTab('whispers')
   // Pre-fill input with /w <username> for quick start
-  setTimeout(() => {
+  cleanup.setTimeout(() => {
     const input = document.getElementById('hs-mc-input')
     if (input) {
       const cmd = `/w ${username} `
@@ -27801,7 +27814,7 @@ function pcMention(name) {
   // If on a non-chat tab, switch to live first
   const isChatTab = currentTab === 'live' || (typeof config !== 'undefined' && config.channels?.some(c => c.id === currentTab))
   if (!isChatTab) switchTab('live')
-  setTimeout(() => {
+  cleanup.setTimeout(() => {
     const inputBar = document.getElementById('hs-mc-inputbar')
     if (inputBar) inputBar.classList.remove('hs-hidden')
     const input = document.getElementById('hs-mc-input')
@@ -27833,7 +27846,7 @@ function pcDoDm(username) {
   closeProfileCard()
   switchTab('whispers')
   // Pre-fill input with /dm <username> for quick start (heatsync DM, not Twitch whisper)
-  setTimeout(() => {
+  cleanup.setTimeout(() => {
     const input = document.getElementById('hs-mc-input')
     if (input) {
       const cmd = `/dm ${username} `
@@ -28084,8 +28097,12 @@ const STORAGE_KEY = 'heatsync_multichat';
       if (!s) { s = new Set(); _uidIndex.set(uid, s) }
       s.add(div)
     }
-    // Inline mentions inside this msg
-    const mentions = div.querySelectorAll('a.hs-mc-mention[data-uid]')
+    // Inline mentions inside this msg — cache on div for O(1) unindex on trim.
+    let mentions = div._hsMentionEls
+    if (!mentions) {
+      mentions = [...div.querySelectorAll('a.hs-mc-mention[data-uid]')]
+      div._hsMentionEls = mentions
+    }
     for (const m of mentions) {
       const muid = m.dataset.uid
       if (!muid) continue
@@ -28104,7 +28121,7 @@ const STORAGE_KEY = 'heatsync_multichat';
       const s = _uidIndex.get(uid)
       if (s) { s.delete(div); if (!s.size) _uidIndex.delete(uid) }
     }
-    const mentions = div.querySelectorAll('a.hs-mc-mention[data-uid]')
+    const mentions = div._hsMentionEls || div.querySelectorAll('a.hs-mc-mention[data-uid]')
     for (const m of mentions) {
       const muid = m.dataset.uid
       if (!muid) continue
@@ -28124,12 +28141,21 @@ const STORAGE_KEY = 'heatsync_multichat';
   function trimMessagesEl(el, limit) {
     const excess = el.children.length - limit
     if (excess <= 0) return
+    // Unindex JS-side maps first, then batch DOM removal via Range — one tree
+    // mutation instead of N .remove() calls. At 1000 msg/min trim cycles, this
+    // collapses N layout-tree updates into one.
     for (let i = 0; i < excess; i++) {
-      const c = el.firstElementChild
-      if (!c) break
-      _unindexMessageDiv(c)
-      c.remove()
+      _unindexMessageDiv(el.children[i])
     }
+    if (excess >= el.children.length) {
+      el.replaceChildren()
+      return
+    }
+    const range = document.createRange()
+    range.setStartBefore(el.firstChild)
+    range.setEndBefore(el.children[excess])
+    range.deleteContents()
+    range.detach?.()
   }
 
   // ============================================
@@ -28312,7 +28338,11 @@ const STORAGE_KEY = 'heatsync_multichat';
       if (!s) { s = new Set(); cache.uidIndex.set(uid, s) }
       s.add(div)
     }
-    const mentions = div.querySelectorAll('a.hs-mc-mention[data-uid]')
+    let mentions = div._hsMentionEls
+    if (!mentions) {
+      mentions = [...div.querySelectorAll('a.hs-mc-mention[data-uid]')]
+      div._hsMentionEls = mentions
+    }
     for (const m of mentions) {
       const muid = m.dataset.uid
       if (!muid) continue
@@ -28330,7 +28360,7 @@ const STORAGE_KEY = 'heatsync_multichat';
         const s = cache.uidIndex.get(oldUid)
         if (s) { s.delete(old); if (!s.size) cache.uidIndex.delete(oldUid) }
       }
-      const oldMentions = old.querySelectorAll('a.hs-mc-mention[data-uid]')
+      const oldMentions = old._hsMentionEls || old.querySelectorAll('a.hs-mc-mention[data-uid]')
       for (const m of oldMentions) {
         const muid = m.dataset.uid
         if (!muid) continue
@@ -28466,7 +28496,7 @@ const STORAGE_KEY = 'heatsync_multichat';
     } catch {}
   }
 
-  window.addEventListener('pagehide', _flushPersistenceSync)
+  window.addEventListener('pagehide', _flushPersistenceSync, { signal: mcSignal })
 
   async function restorePersistedBuffers() {
     try {
@@ -28615,8 +28645,22 @@ const STORAGE_KEY = 'heatsync_multichat';
   const mcCosmeticsPending = new Set()
   let mcCosmeticsTimer = null
 
-  // Username cache for tab completion
+  // Username cache for tab completion — LRU-capped (Set preserves insertion order)
   const usernameCache = new Set();
+  const USERNAME_CACHE_MAX = 5000
+  function addUsername(name) {
+    if (!name) return
+    if (usernameCache.has(name)) {
+      usernameCache.delete(name)
+      usernameCache.add(name)
+      return
+    }
+    usernameCache.add(name)
+    if (usernameCache.size > USERNAME_CACHE_MAX) {
+      const iter = usernameCache.values()
+      for (let i = 0; i < 500; i++) usernameCache.delete(iter.next().value)
+    }
+  }
   // Username → color map for @mention coloring (LRU-bounded)
   const knownColors = new Map()
   // Username → Twitch userId for paint cosmetics on @mentions
@@ -35942,10 +35986,40 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
   let liveStatusInterval = null;
   let _lastLiveStatusPoll = 0;
   let _liveStatusInFlight = false;
+  // Cached SW snapshot of followed-user live state. Refreshed by the SW alarm
+  // every 60s and pushed via `live_followed_updated`. We use it to short-circuit
+  // /api/platform/live-status calls for channels the SW already covers — at
+  // 100k users this turns the per-content 30s poll into a no-op for most users.
+  let _swLiveSet = null;
 
   function startLiveStatusPolling() {
-    updateLiveStatus();
-    liveStatusInterval = cleanup.setInterval(updateLiveStatus, 30000);
+    // Seed from SW cached snapshot, so first paint doesn't wait on the network.
+    try {
+      chrome.runtime.sendMessage({ type: 'get_live_followed' }).then(resp => {
+        if (resp?.snapshot) _applyFollowedSnapshot(resp.snapshot);
+        updateLiveStatus();
+      }).catch(() => updateLiveStatus());
+    } catch { updateLiveStatus(); }
+    // Backup poll covers channels the SW doesn't follow (popout / unfollowed).
+    // Extended 30s → 90s — SW broadcast handles freshness for the common case.
+    liveStatusInterval = cleanup.setInterval(updateLiveStatus, 90000);
+  }
+
+  function _applyFollowedSnapshot(snapshot) {
+    if (!Array.isArray(snapshot)) return;
+    _swLiveSet = new Set(
+      snapshot
+        .filter(s => s.platform === 'twitch' || s.platform === 'kick')
+        .map(s => String(s.username || '').toLowerCase())
+        .filter(Boolean)
+    );
+    // Stamp dots from SW snapshot, then re-apply local cache as overlay.
+    if (!tabBarElement) return;
+    if (_swLiveSet.size) {
+      const merged = new Set([...liveChannelSet, ..._swLiveSet]);
+      liveChannelSet = merged;
+      applyLiveDotsFromCache();
+    }
   }
 
   // Debounced re-poll — call when user activity suggests stale dots are
@@ -35959,15 +36033,27 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
 
   async function updateLiveStatus() {
     if (!tabBarElement) return;
-    const channels = config.channels
+    const allChannels = config.channels
       .map(ch => ch.twitch || ch.id)
       .filter(Boolean);
-    // Also check URL channel (for popout / non-config channels)
     const urlCh = getCurrentChannel();
-    if (urlCh && !channels.some(c => c.toLowerCase() === urlCh.toLowerCase())) {
-      channels.push(urlCh);
+    if (urlCh && !allChannels.some(c => c.toLowerCase() === urlCh.toLowerCase())) {
+      allChannels.push(urlCh);
     }
-    if (channels.length === 0) return;
+    if (allChannels.length === 0) return;
+
+    // Skip /api/platform/live-status for channels the SW snapshot already
+    // covers — common case at 100k users since most multichat channels are
+    // followed. Empty `channels` after filter means skip the fetch entirely.
+    const channels = _swLiveSet
+      ? allChannels.filter(c => !_swLiveSet.has(c.toLowerCase()))
+      : allChannels;
+
+    if (channels.length === 0) {
+      applyLiveDotsFromCache();
+      _lastLiveStatusPoll = Date.now();
+      return;
+    }
 
     _liveStatusInFlight = true;
     _lastLiveStatusPoll = Date.now();
@@ -35982,7 +36068,11 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
         applyLiveDotsFromCache();
         return;
       }
-      const liveSet = new Set(data.live.map(c => c.toLowerCase()));
+      const fetchedSet = new Set(data.live.map(c => c.toLowerCase()));
+      // Merge with SW snapshot — we only fetched channels the SW didn't cover.
+      const liveSet = _swLiveSet
+        ? new Set([..._swLiveSet, ...fetchedSet])
+        : fetchedSet;
       liveChannelSet = liveSet;
 
       config.channels.forEach(ch => {
@@ -37387,6 +37477,12 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
         bumpRenderEpoch()
         renderMessages(currentTab)
       }
+      // SW pushes its `/api/live/following` snapshot every ~60s. Consume it
+      // here so we can skip /api/platform/live-status calls for the channels
+      // it already covers — the bulk of the 100k-client live-poll load.
+      if (msg.type === 'live_followed_updated') {
+        try { _applyFollowedSnapshot(msg.snapshot) } catch {}
+      }
       // 7TV EventAPI pushed user.update / entitlement.* — drop our local
       // cosmetic cache and re-queue lookup so badges/paint show up fresh.
       if (msg.type === 'cosmetics_invalidated' && msg.twitchId) {
@@ -37432,10 +37528,13 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
             if (e.hash) inventoryHashes.set(e.name, e.hash);
             // Ensure emote is in cache for tab completion + rendering
             if (!emoteCache.has(e.name) && e.url) {
-              emoteCache.set(e.name, { url: e.url, source: 'heatsync', state: 'owned', hash: e.hash });
+              emoteCache.set(e.name, { url: e.url, source: 'heatsync', state: 'owned', hash: e.hash, slot: e.slot });
             } else if (emoteCache.has(e.name)) {
-              emoteCache.get(e.name).state = 'owned';
+              const c = emoteCache.get(e.name);
+              c.state = 'owned';
+              if (e.slot != null) c.slot = e.slot;
             }
+            if (e.url) viewerPersonalEmotes.set(e.name, { url: e.url, source: 'heatsync', state: 'owned', hash: e.hash, slot: e.slot });
           }
         });
         // Remove emotes no longer in inventory from cache (if heatsync source)
@@ -37443,6 +37542,9 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
           if (emote.source === 'heatsync' && !inventoryEmotes.has(name)) {
             emoteCache.delete(name);
           }
+        }
+        for (const name of viewerPersonalEmotes.keys()) {
+          if (!inventoryEmotes.has(name)) viewerPersonalEmotes.delete(name);
         }
         log('inventory_update:', inventoryEmotes.size, 'emotes');
         // Inventory just changed emoteCache contents — picker is stale.

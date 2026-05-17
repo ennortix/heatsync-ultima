@@ -764,7 +764,7 @@ function pcDoWhisper(username) {
   closeProfileCard()
   switchTab('whispers')
   // Pre-fill input with /w <username> for quick start
-  setTimeout(() => {
+  cleanup.setTimeout(() => {
     const input = document.getElementById('hs-mc-input')
     if (input) {
       const cmd = `/w ${username} `
@@ -852,7 +852,7 @@ function pcMention(name) {
   // If on a non-chat tab, switch to live first
   const isChatTab = currentTab === 'live' || (typeof config !== 'undefined' && config.channels?.some(c => c.id === currentTab))
   if (!isChatTab) switchTab('live')
-  setTimeout(() => {
+  cleanup.setTimeout(() => {
     const inputBar = document.getElementById('hs-mc-inputbar')
     if (inputBar) inputBar.classList.remove('hs-hidden')
     const input = document.getElementById('hs-mc-input')
@@ -884,7 +884,7 @@ function pcDoDm(username) {
   closeProfileCard()
   switchTab('whispers')
   // Pre-fill input with /dm <username> for quick start (heatsync DM, not Twitch whisper)
-  setTimeout(() => {
+  cleanup.setTimeout(() => {
     const input = document.getElementById('hs-mc-input')
     if (input) {
       const cmd = `/dm ${username} `

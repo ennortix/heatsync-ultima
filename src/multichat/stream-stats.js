@@ -53,7 +53,7 @@ function _scheduleStatsScan() {
   if (typeof requestIdleCallback === 'function') {
     requestIdleCallback(_flushStatsScanQueue, { timeout: 1000 })
   } else {
-    setTimeout(_flushStatsScanQueue, 50)
+    cleanup.setTimeout(_flushStatsScanQueue, 50)
   }
 }
 

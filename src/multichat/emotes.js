@@ -1189,7 +1189,7 @@
         const serverHash = response.hash || emoteHash;
         inventoryEmotes.add(emoteName);
         inventoryHashes.set(emoteName, serverHash);
-        viewerPersonalEmotes.set(emoteName, { url: emoteUrl, source: emoteSource || 'heatsync', state: 'owned', hash: serverHash });
+        viewerPersonalEmotes.set(emoteName, { url: emoteUrl, source: emoteSource || 'heatsync', state: 'owned', hash: serverHash, slot: response.slot });
         if (emoteCache.has(emoteName)) {
           const cached = emoteCache.get(emoteName);
           cached.state = 'owned';
@@ -1264,7 +1264,7 @@
 
   function _scheduleSenderEmotePersist() {
     if (_senderEmotePersistTimer || !_senderEmoteDirty) return;
-    _senderEmotePersistTimer = setTimeout(() => {
+    _senderEmotePersistTimer = cleanup.setTimeout(() => {
       _senderEmotePersistTimer = null;
       if (!_senderEmoteDirty) return;
       _senderEmoteDirty = false;
@@ -1418,7 +1418,7 @@
       (stored.emote_inventory || []).forEach(e => {
         if (e.name && e.url) {
           const source = e.source || 'heatsync';
-          viewerPersonalEmotes.set(e.name, { url: e.url, source, state: 'owned', zeroWidth: !!e.zeroWidth, subscription: !!e.subscription });
+          viewerPersonalEmotes.set(e.name, { url: e.url, source, state: 'owned', zeroWidth: !!e.zeroWidth, subscription: !!e.subscription, slot: e.slot });
         }
       });
 

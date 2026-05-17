@@ -958,7 +958,7 @@
     let _userHoverTimer = null
     let _userHoverTarget = null
     function clearUserHoverTimer() {
-      if (_userHoverTimer) { clearTimeout(_userHoverTimer); _userHoverTimer = null }
+      if (_userHoverTimer) { cleanup.clearTimeout(_userHoverTimer); _userHoverTimer = null }
       _userHoverTarget = null
     }
 
@@ -980,7 +980,7 @@
           clearUserHoverTimer()
           _userHoverTarget = target
           showUserSkeleton(target, username, color)
-          _userHoverTimer = setTimeout(() => {
+          _userHoverTimer = cleanup.setTimeout(() => {
             _userHoverTimer = null
             if (_userHoverTarget !== target || !document.contains(target)) return
             showUserTooltip(target, username, color, platform);
@@ -1153,14 +1153,14 @@
 
   let _linkHideTimer = null;
   function cancelLinkHide() {
-    if (_linkHideTimer) { clearTimeout(_linkHideTimer); _linkHideTimer = null; }
+    if (_linkHideTimer) { cleanup.clearTimeout(_linkHideTimer); _linkHideTimer = null; }
   }
   function scheduleLinkHide(delay = 250) {
     cancelLinkHide();
     // If a fetch is in flight, wait for it so the user gets to see the result
     // even if chat scroll dragged the link out from under their cursor.
     const wait = _linkFetchInFlight ? Math.max(delay, 1500) : delay;
-    _linkHideTimer = setTimeout(() => { _linkHideTimer = null; hideLinkTooltip(); }, wait);
+    _linkHideTimer = cleanup.setTimeout(() => { _linkHideTimer = null; hideLinkTooltip(); }, wait);
   }
 
   function setupLinkTooltipHandlers() {

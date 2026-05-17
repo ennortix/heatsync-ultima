@@ -124,7 +124,7 @@ async function connectAuthIrc(token, nick) {
     const ws = new WebSocket('wss://irc-ws.chat.twitch.tv:443');
     authState.ws = ws;
     await new Promise((resolve, reject) => {
-      const timeout = setTimeout(() => reject(new Error('timeout')), 8000);
+      const timeout = cleanup.setTimeout(() => reject(new Error('timeout')), 8000);
       ws.onopen = () => {
         ws.send(`PASS oauth:${token}\r\n`);
         ws.send(`NICK ${nick}\r\n`);
@@ -135,19 +135,19 @@ async function connectAuthIrc(token, nick) {
           authState.ready = true;
           authState.lastData = Date.now();
           authState.reconnectDelay = 1000;
-          clearTimeout(timeout);
+          cleanup.clearTimeout(timeout);
           resolve();
         }
         if (event.data.includes('Login authentication failed') || event.data.includes('Login unsuccessful')) {
-          clearTimeout(timeout);
+          cleanup.clearTimeout(timeout);
           reject(new Error('auth_failed'));
         }
         for (const l of event.data.split('\r\n')) {
           if (l.startsWith('PING')) try { ws.send(l.replace('PING', 'PONG') + '\r\n'); } catch {}
         }
       };
-      ws.onerror = () => { clearTimeout(timeout); reject(new Error('ws_error')); };
-      ws.onclose = () => { clearTimeout(timeout); reject(new Error('ws_closed')); };
+      ws.onerror = () => { cleanup.clearTimeout(timeout); reject(new Error('ws_error')); };
+      ws.onclose = () => { cleanup.clearTimeout(timeout); reject(new Error('ws_closed')); };
     });
     // Release handshake closures (timeout/resolve/reject) before reassigning
     ws.onopen = null;
@@ -192,7 +192,7 @@ function joinChannel(channel) {
   if (!authIrcAlive()) return Promise.resolve(false);
   try { authState.ws.send(`JOIN #${channel}\r\n`); } catch { return Promise.resolve(false); }
   return new Promise(resolve => {
-    const timer = setTimeout(() => {
+    const timer = cleanup.setTimeout(() => {
       authState.joinWaiters.delete(channel);
       authState.joined.add(channel);
       resolve(true);

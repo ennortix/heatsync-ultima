@@ -195,8 +195,12 @@
       if (!s) { s = new Set(); _uidIndex.set(uid, s) }
       s.add(div)
     }
-    // Inline mentions inside this msg
-    const mentions = div.querySelectorAll('a.hs-mc-mention[data-uid]')
+    // Inline mentions inside this msg — cache on div for O(1) unindex on trim.
+    let mentions = div._hsMentionEls
+    if (!mentions) {
+      mentions = [...div.querySelectorAll('a.hs-mc-mention[data-uid]')]
+      div._hsMentionEls = mentions
+    }
     for (const m of mentions) {
       const muid = m.dataset.uid
       if (!muid) continue
@@ -215,7 +219,7 @@
       const s = _uidIndex.get(uid)
       if (s) { s.delete(div); if (!s.size) _uidIndex.delete(uid) }
     }
-    const mentions = div.querySelectorAll('a.hs-mc-mention[data-uid]')
+    const mentions = div._hsMentionEls || div.querySelectorAll('a.hs-mc-mention[data-uid]')
     for (const m of mentions) {
       const muid = m.dataset.uid
       if (!muid) continue
@@ -235,12 +239,21 @@
   function trimMessagesEl(el, limit) {
     const excess = el.children.length - limit
     if (excess <= 0) return
+    // Unindex JS-side maps first, then batch DOM removal via Range — one tree
+    // mutation instead of N .remove() calls. At 1000 msg/min trim cycles, this
+    // collapses N layout-tree updates into one.
     for (let i = 0; i < excess; i++) {
-      const c = el.firstElementChild
-      if (!c) break
-      _unindexMessageDiv(c)
-      c.remove()
+      _unindexMessageDiv(el.children[i])
     }
+    if (excess >= el.children.length) {
+      el.replaceChildren()
+      return
+    }
+    const range = document.createRange()
+    range.setStartBefore(el.firstChild)
+    range.setEndBefore(el.children[excess])
+    range.deleteContents()
+    range.detach?.()
   }
 
   // ============================================
@@ -423,7 +436,11 @@
       if (!s) { s = new Set(); cache.uidIndex.set(uid, s) }
       s.add(div)
     }
-    const mentions = div.querySelectorAll('a.hs-mc-mention[data-uid]')
+    let mentions = div._hsMentionEls
+    if (!mentions) {
+      mentions = [...div.querySelectorAll('a.hs-mc-mention[data-uid]')]
+      div._hsMentionEls = mentions
+    }
     for (const m of mentions) {
       const muid = m.dataset.uid
       if (!muid) continue
@@ -441,7 +458,7 @@
         const s = cache.uidIndex.get(oldUid)
         if (s) { s.delete(old); if (!s.size) cache.uidIndex.delete(oldUid) }
       }
-      const oldMentions = old.querySelectorAll('a.hs-mc-mention[data-uid]')
+      const oldMentions = old._hsMentionEls || old.querySelectorAll('a.hs-mc-mention[data-uid]')
       for (const m of oldMentions) {
         const muid = m.dataset.uid
         if (!muid) continue
@@ -577,7 +594,7 @@
     } catch {}
   }
 
-  window.addEventListener('pagehide', _flushPersistenceSync)
+  window.addEventListener('pagehide', _flushPersistenceSync, { signal: mcSignal })
 
   async function restorePersistedBuffers() {
     try {
@@ -726,8 +743,22 @@
   const mcCosmeticsPending = new Set()
   let mcCosmeticsTimer = null
 
-  // Username cache for tab completion
+  // Username cache for tab completion — LRU-capped (Set preserves insertion order)
   const usernameCache = new Set();
+  const USERNAME_CACHE_MAX = 5000
+  function addUsername(name) {
+    if (!name) return
+    if (usernameCache.has(name)) {
+      usernameCache.delete(name)
+      usernameCache.add(name)
+      return
+    }
+    usernameCache.add(name)
+    if (usernameCache.size > USERNAME_CACHE_MAX) {
+      const iter = usernameCache.values()
+      for (let i = 0; i < 500; i++) usernameCache.delete(iter.next().value)
+    }
+  }
   // Username → color map for @mention coloring (LRU-bounded)
   const knownColors = new Map()
   // Username → Twitch userId for paint cosmetics on @mentions
@@ -8053,10 +8084,40 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
   let liveStatusInterval = null;
   let _lastLiveStatusPoll = 0;
   let _liveStatusInFlight = false;
+  // Cached SW snapshot of followed-user live state. Refreshed by the SW alarm
+  // every 60s and pushed via `live_followed_updated`. We use it to short-circuit
+  // /api/platform/live-status calls for channels the SW already covers — at
+  // 100k users this turns the per-content 30s poll into a no-op for most users.
+  let _swLiveSet = null;
 
   function startLiveStatusPolling() {
-    updateLiveStatus();
-    liveStatusInterval = cleanup.setInterval(updateLiveStatus, 30000);
+    // Seed from SW cached snapshot, so first paint doesn't wait on the network.
+    try {
+      chrome.runtime.sendMessage({ type: 'get_live_followed' }).then(resp => {
+        if (resp?.snapshot) _applyFollowedSnapshot(resp.snapshot);
+        updateLiveStatus();
+      }).catch(() => updateLiveStatus());
+    } catch { updateLiveStatus(); }
+    // Backup poll covers channels the SW doesn't follow (popout / unfollowed).
+    // Extended 30s → 90s — SW broadcast handles freshness for the common case.
+    liveStatusInterval = cleanup.setInterval(updateLiveStatus, 90000);
+  }
+
+  function _applyFollowedSnapshot(snapshot) {
+    if (!Array.isArray(snapshot)) return;
+    _swLiveSet = new Set(
+      snapshot
+        .filter(s => s.platform === 'twitch' || s.platform === 'kick')
+        .map(s => String(s.username || '').toLowerCase())
+        .filter(Boolean)
+    );
+    // Stamp dots from SW snapshot, then re-apply local cache as overlay.
+    if (!tabBarElement) return;
+    if (_swLiveSet.size) {
+      const merged = new Set([...liveChannelSet, ..._swLiveSet]);
+      liveChannelSet = merged;
+      applyLiveDotsFromCache();
+    }
   }
 
   // Debounced re-poll — call when user activity suggests stale dots are
@@ -8070,15 +8131,27 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
 
   async function updateLiveStatus() {
     if (!tabBarElement) return;
-    const channels = config.channels
+    const allChannels = config.channels
       .map(ch => ch.twitch || ch.id)
       .filter(Boolean);
-    // Also check URL channel (for popout / non-config channels)
     const urlCh = getCurrentChannel();
-    if (urlCh && !channels.some(c => c.toLowerCase() === urlCh.toLowerCase())) {
-      channels.push(urlCh);
+    if (urlCh && !allChannels.some(c => c.toLowerCase() === urlCh.toLowerCase())) {
+      allChannels.push(urlCh);
     }
-    if (channels.length === 0) return;
+    if (allChannels.length === 0) return;
+
+    // Skip /api/platform/live-status for channels the SW snapshot already
+    // covers — common case at 100k users since most multichat channels are
+    // followed. Empty `channels` after filter means skip the fetch entirely.
+    const channels = _swLiveSet
+      ? allChannels.filter(c => !_swLiveSet.has(c.toLowerCase()))
+      : allChannels;
+
+    if (channels.length === 0) {
+      applyLiveDotsFromCache();
+      _lastLiveStatusPoll = Date.now();
+      return;
+    }
 
     _liveStatusInFlight = true;
     _lastLiveStatusPoll = Date.now();
@@ -8093,7 +8166,11 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
         applyLiveDotsFromCache();
         return;
       }
-      const liveSet = new Set(data.live.map(c => c.toLowerCase()));
+      const fetchedSet = new Set(data.live.map(c => c.toLowerCase()));
+      // Merge with SW snapshot — we only fetched channels the SW didn't cover.
+      const liveSet = _swLiveSet
+        ? new Set([..._swLiveSet, ...fetchedSet])
+        : fetchedSet;
       liveChannelSet = liveSet;
 
       config.channels.forEach(ch => {
@@ -9498,6 +9575,12 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
         bumpRenderEpoch()
         renderMessages(currentTab)
       }
+      // SW pushes its `/api/live/following` snapshot every ~60s. Consume it
+      // here so we can skip /api/platform/live-status calls for the channels
+      // it already covers — the bulk of the 100k-client live-poll load.
+      if (msg.type === 'live_followed_updated') {
+        try { _applyFollowedSnapshot(msg.snapshot) } catch {}
+      }
       // 7TV EventAPI pushed user.update / entitlement.* — drop our local
       // cosmetic cache and re-queue lookup so badges/paint show up fresh.
       if (msg.type === 'cosmetics_invalidated' && msg.twitchId) {
@@ -9543,10 +9626,13 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
             if (e.hash) inventoryHashes.set(e.name, e.hash);
             // Ensure emote is in cache for tab completion + rendering
             if (!emoteCache.has(e.name) && e.url) {
-              emoteCache.set(e.name, { url: e.url, source: 'heatsync', state: 'owned', hash: e.hash });
+              emoteCache.set(e.name, { url: e.url, source: 'heatsync', state: 'owned', hash: e.hash, slot: e.slot });
             } else if (emoteCache.has(e.name)) {
-              emoteCache.get(e.name).state = 'owned';
+              const c = emoteCache.get(e.name);
+              c.state = 'owned';
+              if (e.slot != null) c.slot = e.slot;
             }
+            if (e.url) viewerPersonalEmotes.set(e.name, { url: e.url, source: 'heatsync', state: 'owned', hash: e.hash, slot: e.slot });
           }
         });
         // Remove emotes no longer in inventory from cache (if heatsync source)
@@ -9554,6 +9640,9 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
           if (emote.source === 'heatsync' && !inventoryEmotes.has(name)) {
             emoteCache.delete(name);
           }
+        }
+        for (const name of viewerPersonalEmotes.keys()) {
+          if (!inventoryEmotes.has(name)) viewerPersonalEmotes.delete(name);
         }
         log('inventory_update:', inventoryEmotes.size, 'emotes');
         // Inventory just changed emoteCache contents — picker is stale.

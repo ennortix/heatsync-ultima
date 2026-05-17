@@ -2725,8 +2725,9 @@ function attachPollHandlers() {
 }
 
 const badgesInFlight = new Set()
-const badgesFailedAt = new Map()  // channelLogin -> ms (last failure)
+const badgesFailedAt = new Map()  // channelLogin -> ms (last failure) — LRU-capped at 100
 const BADGE_FAILURE_BACKOFF_MS = 60000
+const BADGES_FAILED_MAX = 100
 
 async function fetchChannelBadges(channelLogin) {
   if (!channelLogin) return
@@ -2820,11 +2821,17 @@ async function fetchChannelBadges(channelLogin) {
       renderMessages(currentTab)
     } else {
       // No data populated — schedule retry after backoff
+      if (badgesFailedAt.size >= BADGES_FAILED_MAX) {
+        badgesFailedAt.delete(badgesFailedAt.keys().next().value)
+      }
       badgesFailedAt.set(channelLogin, Date.now())
       log('No channel badges returned for', channelLogin, '— will retry after backoff')
     }
   } catch (e) {
     log('Failed to fetch channel badges:', e.message)
+    if (badgesFailedAt.size >= BADGES_FAILED_MAX) {
+      badgesFailedAt.delete(badgesFailedAt.keys().next().value)
+    }
     badgesFailedAt.set(channelLogin, Date.now())
   } finally {
     badgesInFlight.delete(channelLogin)

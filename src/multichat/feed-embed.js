@@ -408,6 +408,7 @@ function buildFeedMediaHtml(m) {
 // heatsync.org/api/embed/resolve. All HTML built from server fields is escaped
 // via attr() (escapeHtml). Idempotent — safe to call repeatedly.
 const _feedResolveInflight = new Map()
+const FEED_RESOLVE_INFLIGHT_MAX = 200
 
 function _fetchFeedResolve(url) {
   if (_feedResolveInflight.has(url)) return _feedResolveInflight.get(url)
@@ -420,8 +421,11 @@ function _fetchFeedResolve(url) {
       return data
     } catch (_) { return null }
   })()
+  if (_feedResolveInflight.size >= FEED_RESOLVE_INFLIGHT_MAX) {
+    _feedResolveInflight.delete(_feedResolveInflight.keys().next().value)
+  }
   _feedResolveInflight.set(url, promise)
-  promise.finally(() => setTimeout(() => _feedResolveInflight.delete(url), 30000))
+  promise.finally(() => cleanup.setTimeout(() => _feedResolveInflight.delete(url), 30000))
   return promise
 }
 

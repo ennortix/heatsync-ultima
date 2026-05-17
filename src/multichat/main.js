@@ -8830,13 +8830,33 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
                 try { if (typeof kickChat !== 'undefined' && kickChat?.channels) {
                   for (const [k, v] of kickChat.channels) kickBufs[k] = v.size
                 } } catch {}
+                // What does the live merge produce right now for the current view?
+                let merged = null, sliced = null, sourceMsgs = null
+                try {
+                  if (typeof currentTab !== 'undefined' && typeof fairMerge === 'function') {
+                    const id = currentTab
+                    const ch = typeof getChannelById === 'function' ? getChannelById(id) : null
+                    const twN = ch?.twitch
+                    const kN = ch?.kick
+                    const ircMsgs = twN && typeof irc !== 'undefined' ? (irc.getMessages(twN) || []) : []
+                    const kickMsgs = kN && typeof kickChat !== 'undefined' ? (kickChat.getMessages(kN) || []) : []
+                    sourceMsgs = { ircMsgsLen: ircMsgs.length, kickMsgsLen: kickMsgs.length }
+                    const fm = fairMerge([ircMsgs, kickMsgs])
+                    merged = fm.length
+                    sliced = fm.slice(-1500).length
+                  }
+                } catch (e) { merged = 'err:' + e.message }
                 window.postMessage({ __hsProbeResp: 'tab_state', data: {
                   currentTab: typeof currentTab !== 'undefined' ? currentTab : '?',
                   liveChannel: typeof getLiveChannel === 'function' ? getLiveChannel() : null,
                   hostPlatform: typeof hostPlatform !== 'undefined' ? hostPlatform : null,
                   ircBufs,
                   kickBufs,
-                  domMsgs: document.getElementById('hs-mc-messages')?.children?.length || 0
+                  domMsgs: document.getElementById('hs-mc-messages')?.children?.length || 0,
+                  mergedLen: merged,
+                  slicedLen: sliced,
+                  sourceMsgs,
+                  bundleMarker: 'v3-cap1500'
                 }}, '*')
               }
             } catch (err) {

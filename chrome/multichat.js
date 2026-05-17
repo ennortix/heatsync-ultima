@@ -35168,27 +35168,22 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       return
     }
 
-    // Stale-history guard: drop anything older than (newest_msg.time - 2h).
-    // Kick history backfill + stream-event replay can span 24h; without this
-    // they pile up at the top of every channel tab and bury the live chat.
-    // 2h is generous enough to still show "went live 90min ago" context but
-    // hides the multi-day stream-event archive.
+    // Stale-event guard: drop stream-events older than 2h so the 24h
+    // event archive doesn't pile up at the top. Chat msgs are NOT capped —
+    // buffer (3000) + render (1500) caps already bound volume, and the
+    // user expects a full night of scrollback to match heatsync.org chat-tile.
     const STALE_WINDOW_MS = 2 * 60 * 60 * 1000
     let newestTime = 0
     for (let i = msgs.length - 1; i >= 0; i--) {
       const t = msgs[i]?.time
       if (t && t > newestTime) newestTime = t
-      // Most buffers are chrono-ordered, so the tail walk hits the newest fast
       if (i < msgs.length - 50 && newestTime > 0) break
     }
     if (newestTime > 0) {
       const cutoff = newestTime - STALE_WINDOW_MS
-      // Fast-path: buffers are mostly chrono-ordered; if the oldest entry is
-      // already in-window, the full filter alloc is wasted. Steady-state hits
-      // this branch every render — saves an N-element filter+alloc per frame.
       const first = msgs[0]
       if (first && first.time && first.time < cutoff) {
-        msgs = msgs.filter(m => !m.time || m.time >= cutoff)
+        msgs = msgs.filter(m => m.type !== 'stream-event' || !m.time || m.time >= cutoff)
       }
     }
 

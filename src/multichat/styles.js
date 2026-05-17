@@ -114,10 +114,16 @@ function injectStyles() {
       font-weight: 400 !important;
       white-space: nowrap !important;
       transition: none;
-      text-align: center;
+      /* flex-start, not center: centering a variable-width text run inside
+         a fixed-width container produces a fractional X origin half the
+         time, and Chrome with -webkit-font-smoothing:none does NOT snap the
+         text run to integer pixels — so every glyph renders at a sub-pixel
+         X and the bitmap font smears. Util buttons override this back to
+         center (their single-glyph squares have integer math). */
+      text-align: left;
       display: inline-flex;
       align-items: center;
-      justify-content: center;
+      justify-content: flex-start;
       flex: 0 0 auto !important; /* content-sized — username width + padding, no grow */
       min-width: 0;
       max-width: 200px;
@@ -4696,10 +4702,21 @@ function injectStyles() {
       min-width: 0 !important;
       max-width: none !important;
       width: 100% !important;
-      text-align: center !important;
+      /* Left-align (not center) — see .hs-mc-tab base for the bitmap-snap
+         reasoning. Util buttons override this back to center below. */
+      text-align: left !important;
       box-sizing: border-box !important;
       flex: 0 0 auto !important;
       margin: 0 0 -1px 0 !important;
+    }
+    /* Util buttons (C/T/F-/F+/⚙) — single-glyph 18×18 squares — keep
+       centered. Their text origin math always lands on an integer pixel
+       because both inner width and glyph width are even. */
+    .hs-tabs-right .hs-mc-util-btn,
+    .hs-tabs-right .hs-mc-pf-btn,
+    .hs-tabs-left .hs-mc-util-btn,
+    .hs-tabs-left .hs-mc-pf-btn {
+      text-align: center !important;
     }
     /* Vertical-tabs override for util buttons (C/T/F-/F+/⚙): the .hs-tabs-
        right/.hs-tabs-left .hs-mc-tab rule above forces width:100% on every

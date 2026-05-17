@@ -470,12 +470,14 @@
       </div>` : ''}
     `;
 
-    // Inject provider filter chips next to the search input. Hidden by default —
-    // revealed only when the search input is focused or has a value.
+    // Inject provider filter chips INSIDE the search wrap (not as a sibling
+    // below it) so they sit on the right edge of the search input. Single
+    // bordered row makes it unambiguous that these chips filter the search
+    // input, not the emote grid below. Always visible on the emotes tab.
     const searchWrap = picker.querySelector('.hs-mc-search-wrap');
-    if (searchWrap && !searchWrap.parentElement.querySelector('.hs-mc-src-chips')) {
+    if (searchWrap && !searchWrap.querySelector('.hs-mc-src-chips')) {
       const chipBar = document.createElement('div');
-      chipBar.className = 'hs-mc-src-chips';
+      chipBar.className = 'hs-mc-src-chips visible';
       chipBar.title = 'toggle which providers to search';
       for (const src of ['7tv', 'bttv', 'ffz']) {
         const btn = document.createElement('button');
@@ -489,19 +491,7 @@
       chipBar.addEventListener('mousedown', (e) => {
         if (e.target.closest('.hs-mc-src-chip')) e.preventDefault();
       });
-      searchWrap.parentElement.appendChild(chipBar);
-
-      // Focus/blur drives chip visibility.
-      const inputEl = document.getElementById('hs-mc-emote-search');
-      function updateMcChipsVisibility() {
-        const focused = document.activeElement === inputEl;
-        const hasValue = (inputEl?.value || '').length > 0;
-        chipBar.classList.toggle('visible', focused || hasValue);
-      }
-      inputEl?.addEventListener('focus', updateMcChipsVisibility);
-      inputEl?.addEventListener('blur', () => setTimeout(updateMcChipsVisibility, 0));
-      inputEl?.addEventListener('input', updateMcChipsVisibility);
-      updateMcChipsVisibility();
+      searchWrap.appendChild(chipBar);
     }
 
     // Source chip click handler — toggle, persist, re-search.

@@ -7661,19 +7661,27 @@ function injectStyles() {
       visibility: visible !important;
       background: #000 !important;
     }
+    /* Search-wrap hosts BOTH the input (flex:1) and the chip bar (right
+       edge), so providers chips visibly anchor to the search input — not
+       to the emote grid below. Z-index 2 on the icon keeps it above the
+       input's white bg without intercepting clicks. */
     .hs-mc-search-wrap {
       position: relative;
       display: flex;
       align-items: center;
+      gap: 6px;
     }
     .hs-mc-search-icon {
       position: absolute;
       left: 10px;
       pointer-events: none;
       opacity: 0.4;
+      z-index: 2;
     }
     #hs-mc-emote-search {
-      width: 100%;
+      flex: 1;
+      min-width: 0;
+      width: auto;
       padding: 4px 8px 4px 28px;
       background: #fff;
       color: #000;
@@ -7688,12 +7696,10 @@ function injectStyles() {
       border-color: #ff6b35;
     }
     .hs-mc-src-chips {
-      display: none;
-      gap: 3px;
-      margin-top: 6px;
-    }
-    .hs-mc-src-chips.visible {
       display: flex;
+      align-items: center;
+      gap: 3px;
+      flex-shrink: 0;
     }
     /* Provider chips wear each network's brand color (7TV cyan, BTTV red,
        FFZ blue) — matches src-* tooltip colors and keeps orange reserved
@@ -13437,12 +13443,14 @@ async function sendKickMessage(kickSlug, text) {
       </div>` : ''}
     `;
 
-    // Inject provider filter chips next to the search input. Hidden by default —
-    // revealed only when the search input is focused or has a value.
+    // Inject provider filter chips INSIDE the search wrap (not as a sibling
+    // below it) so they sit on the right edge of the search input. Single
+    // bordered row makes it unambiguous that these chips filter the search
+    // input, not the emote grid below. Always visible on the emotes tab.
     const searchWrap = picker.querySelector('.hs-mc-search-wrap');
-    if (searchWrap && !searchWrap.parentElement.querySelector('.hs-mc-src-chips')) {
+    if (searchWrap && !searchWrap.querySelector('.hs-mc-src-chips')) {
       const chipBar = document.createElement('div');
-      chipBar.className = 'hs-mc-src-chips';
+      chipBar.className = 'hs-mc-src-chips visible';
       chipBar.title = 'toggle which providers to search';
       for (const src of ['7tv', 'bttv', 'ffz']) {
         const btn = document.createElement('button');
@@ -13456,19 +13464,7 @@ async function sendKickMessage(kickSlug, text) {
       chipBar.addEventListener('mousedown', (e) => {
         if (e.target.closest('.hs-mc-src-chip')) e.preventDefault();
       });
-      searchWrap.parentElement.appendChild(chipBar);
-
-      // Focus/blur drives chip visibility.
-      const inputEl = document.getElementById('hs-mc-emote-search');
-      function updateMcChipsVisibility() {
-        const focused = document.activeElement === inputEl;
-        const hasValue = (inputEl?.value || '').length > 0;
-        chipBar.classList.toggle('visible', focused || hasValue);
-      }
-      inputEl?.addEventListener('focus', updateMcChipsVisibility);
-      inputEl?.addEventListener('blur', () => setTimeout(updateMcChipsVisibility, 0));
-      inputEl?.addEventListener('input', updateMcChipsVisibility);
-      updateMcChipsVisibility();
+      searchWrap.appendChild(chipBar);
     }
 
     // Source chip click handler — toggle, persist, re-search.

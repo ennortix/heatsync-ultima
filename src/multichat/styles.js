@@ -3229,19 +3229,27 @@ function injectStyles() {
       visibility: visible !important;
       background: #000 !important;
     }
+    /* Search-wrap hosts BOTH the input (flex:1) and the chip bar (right
+       edge), so providers chips visibly anchor to the search input — not
+       to the emote grid below. Z-index 2 on the icon keeps it above the
+       input's white bg without intercepting clicks. */
     .hs-mc-search-wrap {
       position: relative;
       display: flex;
       align-items: center;
+      gap: 6px;
     }
     .hs-mc-search-icon {
       position: absolute;
       left: 10px;
       pointer-events: none;
       opacity: 0.4;
+      z-index: 2;
     }
     #hs-mc-emote-search {
-      width: 100%;
+      flex: 1;
+      min-width: 0;
+      width: auto;
       padding: 4px 8px 4px 28px;
       background: #fff;
       color: #000;
@@ -3256,12 +3264,10 @@ function injectStyles() {
       border-color: #ff6b35;
     }
     .hs-mc-src-chips {
-      display: none;
-      gap: 3px;
-      margin-top: 6px;
-    }
-    .hs-mc-src-chips.visible {
       display: flex;
+      align-items: center;
+      gap: 3px;
+      flex-shrink: 0;
     }
     /* Provider chips wear each network's brand color (7TV cyan, BTTV red,
        FFZ blue) — matches src-* tooltip colors and keeps orange reserved

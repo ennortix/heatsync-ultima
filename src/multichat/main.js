@@ -4219,6 +4219,16 @@
     return "'CozetteVector', 'Courier New', monospace";
   }
   function applyFontSettings(fontFamily, fontSize, customFontName) {
+    // Bitmap-font mode flag — kills AA + faux-bold + hinting for crisp
+    // pixel-grid rendering. Cozette/Gohu only ship a single 400 master,
+    // so any font-weight ≥500 in CSS would otherwise synthesize a blurry
+    // bold. .hs-font-bitmap rule in styles.js sets font-synthesis:none.
+    // Toggle on body+root FIRST (always available) — reply-stack/notif
+    // overlays mount to <body> outside the container, so body is the
+    // authoritative carrier. Container toggle below is belt-and-braces.
+    const isBitmap = fontFamily === 'CozetteVector' || fontFamily === 'GohuFont' || !fontFamily;
+    document.body.classList.toggle('hs-font-bitmap', isBitmap);
+    document.documentElement.classList.toggle('hs-font-bitmap', isBitmap);
     const container = document.getElementById('hs-mc-container');
     if (!container) return;
     const stack = resolveFontStack(fontFamily, customFontName);
@@ -4228,12 +4238,6 @@
     const root = document.documentElement;
     root.style.setProperty('--hs-mc-font', stack);
     container.style.setProperty('--hs-mc-font', stack);
-    // Bitmap-font mode flag — kills AA + faux-bold + hinting for crisp
-    // pixel-grid rendering. Cozette/Gohu only ship a single 400 master,
-    // so any font-weight ≥500 in CSS would otherwise synthesize a blurry
-    // bold. .hs-font-bitmap rule in styles.js sets font-synthesis:none.
-    const isBitmap = fontFamily === 'CozetteVector' || fontFamily === 'GohuFont' || !fontFamily;
-    document.body.classList.toggle('hs-font-bitmap', isBitmap);
     container.classList.toggle('hs-font-bitmap', isBitmap);
     const sizeNum = parseInt(fontSize, 10);
     if (sizeNum >= 10 && sizeNum <= 22) {

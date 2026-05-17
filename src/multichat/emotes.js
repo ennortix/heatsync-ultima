@@ -394,6 +394,11 @@
       if (typeof mcSignal !== 'undefined' && mcSignal.aborted) return;
       const picker = document.getElementById('hs-mc-emote-picker');
       if (!picker) return;
+      // Don't rebuild while the user is actively inside the picker — the
+      // innerHTML swap destroys the search input element + its typed value,
+      // which manifests as "I clicked an emote and the picker reset to no
+      // search". Cache key stays stale; next close+reopen rebuilds fresh.
+      if (picker.classList.contains('visible')) return;
       if (pickerCacheKey() !== _pickerBuiltKey) showEmotePicker('__prebuild');
     }, { timeout: 1500 });
   }

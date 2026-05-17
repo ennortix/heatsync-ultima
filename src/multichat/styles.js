@@ -30,32 +30,32 @@ function injectStyles() {
       font-display: block;
     }
 
-    /* Bitmap-font mode — toggled by JS (applyFontSettings) when the user
-       picks CozetteVector or GohuFont. Forces pixel-perfect rendering:
-       - font-smoothing OFF: bitmap glyphs render to pixel grid, no AA smear
-       - font-synthesis NONE: prevents faux-bold blur on .active tab, .has-new
-         system notices, hover effects, etc — all the font-weight:600/700/900
-         rules become inert for Cozette (no bold variant exists) instead of
-         being synthesized into a blurry stroke-expanded shape
-       - text-rendering OPTIMIZESPEED: skips hinting/kerning that round
-         metrics to fractional pixels and re-introduce blur
-       Applies to body so reply-stack/notif overlays mounted outside the
-       container also inherit. */
+    /* Bitmap-font mode — mirrors heatsync.org's base.css crisp-pixel block.
+       Toggled by applyFontSettings when CozetteVector or GohuFont is active.
+       The hidden killer was font-kerning + OpenType feature settings:
+       kern/liga/clig/calt subpixel-position glyphs by fractional amounts
+       based on adjacent character pairs, smearing bitmap text even when
+       smoothing is off. font-optical-sizing handles variable-font axes
+       that warp glyph metrics. Every property below MUST be set together —
+       missing any one re-introduces blur on a subset of glyph pairs. */
     body.hs-font-bitmap,
     body.hs-font-bitmap *,
     body.hs-font-bitmap *::before,
     body.hs-font-bitmap *::after {
       -webkit-font-smoothing: none !important;
-      -moz-osx-font-smoothing: grayscale !important;
+      -moz-osx-font-smoothing: unset !important;
       font-smooth: never !important;
-      font-synthesis: none !important;
       text-rendering: optimizeSpeed !important;
+      font-synthesis: none !important;
+      font-optical-sizing: none !important;
+      font-kerning: none !important;
+      font-variant-ligatures: none !important;
+      font-variant-position: normal !important;
+      font-feature-settings: "kern" 0, "liga" 0, "clig" 0, "calt" 0 !important;
     }
     /* Counter-rule: a handful of surfaces explicitly use NON-bitmap fonts
-       (system sans, Inter, ui-monospace) where the user expects AA. Without
-       this rule, the global hs-font-bitmap setting would alias those too,
-       making sans-serif text look jaggy. Order matters — these rules must
-       come after the bitmap rule to win the cascade. */
+       (system sans, Inter, ui-monospace) where the user expects AA + kern.
+       Order matters — these rules must come after the bitmap rule. */
     body.hs-font-bitmap .hs-pcard,
     body.hs-font-bitmap .hs-pcard *,
     body.hs-font-bitmap .hs-notif,
@@ -67,6 +67,10 @@ function injectStyles() {
       font-smooth: auto !important;
       font-synthesis: weight style !important;
       text-rendering: auto !important;
+      font-optical-sizing: auto !important;
+      font-kerning: auto !important;
+      font-variant-ligatures: normal !important;
+      font-feature-settings: normal !important;
     }
 
     /* Tab bar - positioned at top of chat via render injection.
@@ -7114,4 +7118,11 @@ function injectStyles() {
     .replace(/__HS_FONT_COZETTE__/g, cozetteUrl)
     .replace(/__HS_FONT_GOHU__/g, gohuUrl);
   document.head.appendChild(cleanup.trackNode(style));
+  // Default to bitmap-mode on style inject — Cozette is the default font.
+  // applyFontSettings() flips this off if the user picked a non-bitmap font.
+  // Set here so tabs render crisp even before the async settings load fires
+  // (loadFontSettings races with container mount; bare default prevents
+  // the brief AA-on flash).
+  document.body.classList.add('hs-font-bitmap');
+  document.documentElement.classList.add('hs-font-bitmap');
 }

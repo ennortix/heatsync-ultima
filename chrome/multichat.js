@@ -31764,9 +31764,15 @@ const STORAGE_KEY = 'heatsync_multichat';
     messagesEl.addEventListener('mouseover', async (e) => {
       const row = e.target.closest('.hs-mc-msg')
       if (!row || row === _modToolbarRow) return
-      if (row.dataset.msgPlatform !== 'twitch') return
+      const plat = row.dataset.msgPlatform
+      // Empty platform = Twitch IRC (m.platform isn't always set on Twitch msgs).
+      // Skip explicit Kick (no API yet) and YT (no mod role).
+      if (plat === 'kick' || plat === 'youtube' || plat === 'yt') return
       const channel = row.dataset.msgChannel
-      if (!channel) return
+      const msgId = row.dataset.msgId
+      const user = row.dataset.msgUser
+      if (!channel || !user) return
+      if (!msgId && !user) return
       if (!(await isModFor(channel))) return
       // After awaiting, verify mouse is still over the same row before attach.
       if (row.matches(':hover')) attachModToolbarTo(row)
@@ -34807,6 +34813,10 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
 
   function renderMessages(id) {
     if (editingChannel) return;
+    // Idempotent — ensures mod toolbar hover works even when extension reloads
+    // mid-session (the overlay-init setTimeout doesn't re-fire).
+    const _msgsForMod = document.getElementById('hs-mc-messages')
+    if (_msgsForMod && !_msgsForMod._hsModToolbarWired) wireModToolbarHover(_msgsForMod)
     // Profile card overrides normal tab content while open
     if (typeof activeProfileCard !== 'undefined' && activeProfileCard) {
       renderProfileCardView();

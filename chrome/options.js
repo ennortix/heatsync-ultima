@@ -161,6 +161,13 @@
       settings.fontFamily = e.target.value
       const customRow = document.getElementById('ext-custom-font-row')
       if (customRow) customRow.style.display = e.target.value === 'custom' ? '' : 'none'
+      // Auto-switch to native size for bundled bitmap fonts (mirrors heatsync.org)
+      const nativeSize = e.target.value === 'GohuFont' ? '14' : e.target.value === 'CozetteVector' ? '13' : null
+      if (nativeSize) {
+        settings.fontSize = nativeSize
+        const sizeSel = document.getElementById('ext-font-size')
+        if (sizeSel) sizeSel.value = nativeSize
+      }
       updateFontPreview()
       save()
     }

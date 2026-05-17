@@ -3955,6 +3955,47 @@
     }
   }
 
+  // Font family + size — mirrors heatsync.org's appearance picker.
+  // CozetteVector + GohuFont are bundled bitmap fonts (chrome/fonts/);
+  // 'monospace' uses host system, 'custom' uses settings.customFontName.
+  // Apply via CSS vars on #hs-mc-container so storage.onChanged can flip
+  // it live without rebuilding the panel.
+  function resolveFontStack(family, customName) {
+    if (family === 'GohuFont') return "'GohuFont', 'Courier New', monospace";
+    if (family === 'monospace') return "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace";
+    if (family === 'custom') {
+      const name = (customName || '').trim();
+      if (name) return `'${name.replace(/'/g, '')}', 'Courier New', monospace`;
+    }
+    return "'CozetteVector', 'Courier New', monospace";
+  }
+  function applyFontSettings(fontFamily, fontSize, customFontName) {
+    const container = document.getElementById('hs-mc-container');
+    if (!container) return;
+    const stack = resolveFontStack(fontFamily, customFontName);
+    container.style.setProperty('--hs-mc-font', stack);
+    const sizeNum = parseInt(fontSize, 10);
+    if (sizeNum >= 10 && sizeNum <= 22) {
+      container.style.setProperty('--hs-mc-base-size', sizeNum + 'px');
+      // Also drive the messages-area var. F+/F- localStorage override below
+      // wins if present (per-channel/per-tab quick adjust).
+      const fOverride = parseInt(localStorage.getItem('heatsync-chat-font-size'), 10);
+      const msgsSize = (fOverride >= 10 && fOverride <= 22) ? fOverride : sizeNum;
+      container.style.setProperty('--hs-chat-font', msgsSize + 'px');
+      const msgsEl = document.getElementById('hs-mc-messages');
+      if (msgsEl) msgsEl.style.setProperty('--hs-chat-font', msgsSize + 'px');
+    }
+  }
+  async function loadFontSettings() {
+    try {
+      const stored = await cachedUiSettings();
+      const s = stored.ui_settings || {};
+      applyFontSettings(s.fontFamily || 'CozetteVector', s.fontSize || '13', s.customFontName || '');
+    } catch (e) {
+      log('Error loading font settings:', e);
+    }
+  }
+
   // Platform badges setting
   async function loadPlatformBadgesSetting() {
     try {
@@ -8910,75 +8951,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
           applyChatPosition();
         }
       }
-      if (msg.type === 'debug_log') {
-        console.log('[hs-bg]', msg.msg)
-        try {
-          if (!window.__hsDiag) window.__hsDiag = []
-          window.__hsDiag.push({ t: Date.now(), msg: msg.msg })
-          if (window.__hsDiag.length > 200) window.__hsDiag.shift()
-        } catch {}
-      }
-      // Probe bridge — MAIN-world JS posts {__hsProbe} to window, we respond
-      // from this isolated content-script context which has chrome.runtime.
-      // Used to inspect BG_IRC buffer sizes from outside (e.g. debugger tools).
-      try {
-        if (!window.__hsProbeWired) {
-          window.__hsProbeWired = true
-          window.addEventListener('message', async (e) => {
-            if (e.source !== window) return
-            const probe = e.data?.__hsProbe
-            if (!probe) return
-            try {
-              if (probe === 'irc_state') {
-                const r = await chrome.runtime.sendMessage({ type: 'bg_irc_status' })
-                window.postMessage({ __hsProbeResp: 'irc_state', data: r }, '*')
-              } else if (probe === 'kick_state') {
-                const r = await chrome.runtime.sendMessage({ type: 'bg_kick_status' })
-                window.postMessage({ __hsProbeResp: 'kick_state', data: r }, '*')
-              } else if (probe === 'tab_state') {
-                const ircBufs = {}
-                try { if (typeof irc !== 'undefined' && irc?.channels) {
-                  for (const [k, v] of irc.channels) ircBufs[k] = v.size
-                } } catch {}
-                const kickBufs = {}
-                try { if (typeof kickChat !== 'undefined' && kickChat?.channels) {
-                  for (const [k, v] of kickChat.channels) kickBufs[k] = v.size
-                } } catch {}
-                // What does the live merge produce right now for the current view?
-                let merged = null, sliced = null, sourceMsgs = null
-                try {
-                  if (typeof currentTab !== 'undefined' && typeof fairMerge === 'function') {
-                    const id = currentTab
-                    const ch = typeof getChannelById === 'function' ? getChannelById(id) : null
-                    const twN = ch?.twitch
-                    const kN = ch?.kick
-                    const ircMsgs = twN && typeof irc !== 'undefined' ? (irc.getMessages(twN) || []) : []
-                    const kickMsgs = kN && typeof kickChat !== 'undefined' ? (kickChat.getMessages(kN) || []) : []
-                    sourceMsgs = { ircMsgsLen: ircMsgs.length, kickMsgsLen: kickMsgs.length }
-                    const fm = fairMerge([ircMsgs, kickMsgs])
-                    merged = fm.length
-                    sliced = fm.slice(-1500).length
-                  }
-                } catch (e) { merged = 'err:' + e.message }
-                window.postMessage({ __hsProbeResp: 'tab_state', data: {
-                  currentTab: typeof currentTab !== 'undefined' ? currentTab : '?',
-                  liveChannel: typeof getLiveChannel === 'function' ? getLiveChannel() : null,
-                  hostPlatform: typeof hostPlatform !== 'undefined' ? hostPlatform : null,
-                  ircBufs,
-                  kickBufs,
-                  domMsgs: document.getElementById('hs-mc-messages')?.children?.length || 0,
-                  mergedLen: merged,
-                  slicedLen: sliced,
-                  sourceMsgs,
-                  bundleMarker: 'v3-cap1500'
-                }}, '*')
-              }
-            } catch (err) {
-              window.postMessage({ __hsProbeResp: probe, err: err?.message || 'unknown' }, '*')
-            }
-          })
-        }
-      } catch {}
+      if (msg.type === 'debug_log' && MC_DEBUG) console.log('[hs-bg]', msg.msg)
       if (msg.type === 'api_status') {
         try { showApiStatusBanner(msg.source, msg.state) } catch (e) {}
       }
@@ -9297,6 +9270,13 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
         }
         if (ns.bigEmoji !== undefined) {
           applyBigEmojiClass(ns.bigEmoji === true)
+        }
+        if (ns.fontFamily !== undefined || ns.fontSize !== undefined || ns.customFontName !== undefined) {
+          applyFontSettings(
+            ns.fontFamily || 'CozetteVector',
+            ns.fontSize || '13',
+            ns.customFontName || ''
+          )
         }
         if (ns.firstChatterGlow !== undefined && ns.firstChatterGlow !== firstChatterGlow) {
           firstChatterGlow = !!ns.firstChatterGlow
@@ -9668,6 +9648,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       loadAutomodSettings(),
       loadPlatformBadgesSetting(),
       loadBigEmojiSetting(),
+      loadFontSettings(),
       loadZebraSetting(),
       loadPlatformFilters(),
       loadAutoHideSetting(),

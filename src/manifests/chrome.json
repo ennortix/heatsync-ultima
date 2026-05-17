@@ -158,6 +158,10 @@
     {
       "resources": ["_locales/*/messages.json"],
       "matches": ["https://*.twitch.tv/*", "https://kick.com/*", "https://*.kick.com/*", "https://www.youtube.com/*"]
+    },
+    {
+      "resources": ["fonts/CozetteVector.woff2", "fonts/GohuFont-14.woff2"],
+      "matches": ["https://*.twitch.tv/*", "https://kick.com/*", "https://*.kick.com/*", "https://www.youtube.com/*"]
     }
   ]
 }

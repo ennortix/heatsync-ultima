@@ -1461,7 +1461,7 @@ async function renderTwitchTab() {
 
   fetchChannelRewards(channel).then(rewardsResult => {
     if (rewardsResult?.availableClaim && rewardsResult.channelId) {
-      claimCommunityPoints(rewardsResult.availableClaim, rewardsResult.channelId)
+      claimCommunityPoints(rewardsResult.availableClaim, rewardsResult.channelId, channel)
     }
     if (rewardsResult?.rewards?.length) {
       rewardsSlot.appendChild(renderRewards(rewardsResult.rewards, rewardsResult.balance, rewardsResult.channelId))
@@ -2193,15 +2193,16 @@ async function redeemChannelReward(channelId, rewardId, cost, title, textInput) 
   }
 }
 
-async function claimCommunityPoints(claimId, channelId) {
+async function claimCommunityPoints(claimId, channelId, channelLogin) {
   const token = getTwitchAuthToken()
-  if (!token) return
+  if (!token) return false
+  let claimed = false
   try {
     await gqlProxy('ClaimCommunityPoints', {
       input: { claimID: claimId, channelID: channelId }
     }).catch(async () => {
       // Fallback to raw GQL
-      await fetch(TWITCH_GQL, {
+      const resp = await fetch(TWITCH_GQL, {
         method: 'POST',
         headers: {
           'Client-Id': TWITCH_CLIENT_ID,
@@ -2215,10 +2216,16 @@ async function claimCommunityPoints(claimId, channelId) {
           variables: { input: { claimID: claimId, channelID: channelId } }
         })
       })
+      if (!resp.ok) throw new Error('HTTP ' + resp.status)
     })
+    claimed = true
   } catch (e) {
     log('Failed to claim bonus points:', e.message)
   }
+  if (claimed && channelLogin) {
+    try { window.HsNotifs?.emit?.('toast', { text: '+50 · ' + channelLogin, level: 'success' }) } catch (_) {}
+  }
+  return claimed
 }
 
 // Persist active poll to storage (survives reloads; Twitch has no public poll query)

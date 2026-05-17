@@ -113,6 +113,7 @@
     }
     if (fontSizeSelect) fontSizeSelect.value = settings.fontSize || '13'
     if (customFontInput) customFontInput.value = settings.customFontName || ''
+    updateFontPreview()
 
     const automodRegex = document.getElementById('automod-regex')
     if (automodRegex) automodRegex.value = settings.automodRegex || ''
@@ -160,15 +161,43 @@
       settings.fontFamily = e.target.value
       const customRow = document.getElementById('ext-custom-font-row')
       if (customRow) customRow.style.display = e.target.value === 'custom' ? '' : 'none'
+      updateFontPreview()
       save()
     }
     if (e.target.id === 'ext-font-size') {
       settings.fontSize = e.target.value
+      updateFontPreview()
       save()
     }
     if (e.target.id === 'ext-custom-font') {
       settings.customFontName = e.target.value.trim()
+      updateFontPreview()
       save()
+    }
+  })
+
+  // Update the font preview swatch using the same resolution as multichat.
+  function resolveFontStack(family, customName) {
+    if (family === 'GohuFont') return "'GohuFont', 'Courier New', monospace"
+    if (family === 'monospace') return "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace"
+    if (family === 'custom') {
+      const name = (customName || '').trim()
+      if (name) return `'${name.replace(/'/g, '')}', 'Courier New', monospace`
+    }
+    return "'CozetteVector', 'Courier New', monospace"
+  }
+  function updateFontPreview() {
+    const el = document.getElementById('ext-font-preview')
+    if (!el) return
+    el.style.fontFamily = resolveFontStack(settings.fontFamily, settings.customFontName)
+    const size = parseInt(settings.fontSize || '13', 10)
+    el.style.fontSize = (size >= 10 && size <= 22 ? size : 13) + 'px'
+  }
+  // Also live-preview on raw input (debounced via change handler ↑ for save)
+  document.addEventListener('input', (e) => {
+    if (e.target.id === 'ext-custom-font') {
+      settings.customFontName = e.target.value.trim()
+      updateFontPreview()
     }
   })
 

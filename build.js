@@ -249,6 +249,13 @@ function build(browser) {
     console.log(`  Copied _locales`)
   }
 
+  // Copy fonts (bundled bitmap fonts: CozetteVector, GohuFont-14)
+  const fontsDir = join(chromeDir, 'fonts')
+  if (existsSync(fontsDir)) {
+    cpSync(fontsDir, join(outDir, 'fonts'), { recursive: true })
+    console.log(`  Copied fonts`)
+  }
+
   console.log(`✓ Built ${browser} → ${outDir}`)
 }
 

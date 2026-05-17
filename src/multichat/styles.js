@@ -9,7 +9,21 @@ function injectStyles() {
 
   const style = document.createElement('style');
   style.id = 'hs-mc-styles';
-  style.textContent = `
+  const css = `
+    /* Bundled bitmap fonts — URLs replaced via chrome.runtime.getURL after
+       template evaluation (woff2 lives in chrome/fonts/, exposed via
+       web_accessible_resources). font-display:block prevents FOUT flash. */
+    @font-face {
+      font-family: 'CozetteVector';
+      src: url('__HS_FONT_COZETTE__') format('woff2');
+      font-display: block;
+    }
+    @font-face {
+      font-family: 'GohuFont';
+      src: url('__HS_FONT_GOHU__') format('woff2');
+      font-display: block;
+    }
+
     /* Tab bar - positioned at top of chat via render injection.
        Three flex sections (no-wrap outer): channel tabs fill left, platfilter
        sits center, util buttons pinned right. Channel-tabs section wraps
@@ -702,7 +716,10 @@ function injectStyles() {
       overflow: visible !important;
       pointer-events: none !important;
     }
-    /* HeatSync container — sibling of React's chat-room__content, outside React's tree */
+    /* HeatSync container — sibling of React's chat-room__content, outside React's tree.
+       font-family + size driven by ui_settings.fontFamily / ui_settings.fontSize
+       via CSS vars set on the container element in applyFontSettings() (main.js).
+       Defaults: CozetteVector @ 13px to match heatsync.org's bitmap aesthetic. */
     #hs-mc-container {
       position: relative;
       display: flex;
@@ -712,7 +729,8 @@ function injectStyles() {
       min-height: 0;
       overflow: hidden;
       background: #000;
-      font-family: 'Courier New', Courier, monospace;
+      font-family: var(--hs-mc-font, 'CozetteVector', 'Courier New', monospace);
+      font-size: var(--hs-mc-base-size, 13px);
       /* Cross-fade with the document_start prepaint pseudo-element. Container
          starts invisible; main.js sets opacity:1 after the overlay mounts +
          renders, so prepaint (fading out) and container (fading in) overlap
@@ -6944,5 +6962,12 @@ function injectStyles() {
     }
 
   `;
+  const cozetteUrl = (typeof chrome !== 'undefined' && chrome.runtime?.getURL)
+    ? chrome.runtime.getURL('fonts/CozetteVector.woff2') : ''
+  const gohuUrl = (typeof chrome !== 'undefined' && chrome.runtime?.getURL)
+    ? chrome.runtime.getURL('fonts/GohuFont-14.woff2') : ''
+  style.textContent = css
+    .replace(/__HS_FONT_COZETTE__/g, cozetteUrl)
+    .replace(/__HS_FONT_GOHU__/g, gohuUrl);
   document.head.appendChild(cleanup.trackNode(style));
 }

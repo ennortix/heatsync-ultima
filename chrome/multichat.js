@@ -33841,8 +33841,8 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     msgsEl.appendChild(div);
     _indexMessageDiv(div, msgKeyStr)
 
-    // Trim oldest messages beyond cap (500 with content-visibility virtualization)
-    trimMessagesEl(msgsEl, 500);
+    // Trim oldest messages beyond cap (1500 with content-visibility virtualization)
+    trimMessagesEl(msgsEl, 1500);
 
     // Apply mute to just this message — strip content for muted users.
     // msg.user is the sender; avoid a DOM scan to recompute it.
@@ -33899,7 +33899,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     if (active.length === 0) return []
     if (active.length === 1) return active[0]
 
-    const limit = 500
+    const limit = 1500
     const perSource = Math.ceil(limit / active.length)
     // Take each platform's most recent messages (internally chronological)
     const slices = active.map(s => s.slice(-perSource))

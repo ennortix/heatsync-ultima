@@ -6081,25 +6081,45 @@ function injectStyles() {
     .hs-mc-msg[data-msg-id]:hover .hs-mc-reply-btn {
       display: block;
     }
-    /* Mod toolbar — inline buttons sitting just left of the reply button. */
+    /* Mod toolbar — singleton bar inserted into the hovered row as a sibling
+       of .hs-mc-reply-btn. Pure CSS positioning: absolute, flush against the
+       left edge of the reply button. Shared 1px #808080 dividers between
+       buttons; last button's right border drops out to merge with the reply
+       button's left border. Matches heatsync.org spec exactly. */
+    .hs-mc-msg[data-msg-id] {
+      position: relative;
+    }
     .hs-mod-toolbar {
+      position: absolute;
+      top: 1px;
+      right: 22px;
+      z-index: 11;
       display: inline-flex;
-      gap: 2px;
-      vertical-align: middle;
-      margin-right: 4px;
+      align-items: stretch;
+      background: #000;
+      color: #fff;
+      border: 1px solid #808080;
+      border-right: 0;
+      font: 11px/18px 'CozetteVector', monospace;
+      user-select: none;
+      height: 20px;
     }
     .hs-mod-btn {
-      background: #1a1a1a;
-      color: #ccc;
-      border: 1px solid #333;
-      padding: 0 6px;
-      font-family: inherit;
-      font-size: 11px;
-      line-height: 16px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 22px;
+      padding: 0 5px;
+      background: #000;
+      color: #fff;
+      border: 0;
+      border-right: 1px solid #808080;
+      font: inherit;
       cursor: pointer;
+      line-height: 1;
     }
+    .hs-mod-btn:last-child { border-right: 0; }
     .hs-mod-btn:hover { background: #fff; color: #000; }
-    .hs-mod-delete:hover, .hs-mod-ban:hover { background: #ff3333; color: #000; }
     #hs-mc-reply-indicator {
       flex: 1 0 100%;
       order: -1;
@@ -31640,18 +31660,20 @@ const STORAGE_KEY = 'heatsync_multichat';
   }
 
   // =====================================================================
-  // MOD TOOLBAR — hover-row buttons for delete/timeout/ban. Twitch only
-  // for now (GQL APIs already in twitch-api.js). Mirrors heatsync.org spec.
+  // MOD TOOLBAR — singleton element moved row→row on hover. Mirrors the
+  // heatsync.org website spec (mod-toolbar.js + mod-toolbar.css).
+  // Twitch only — GQL APIs already in twitch-api.js. No re-build on hover;
+  // only the per-row gate runs to show/hide individual buttons.
   // =====================================================================
   const MOD_BUTTON_CATALOG = {
-    delete_message: { label: 'x',  title: 'delete this message', action: 'delete',  durationSec: null,   needsMsgId: true  },
-    timeout_1m:     { label: '1m', title: 'timeout 1 minute',    action: 'timeout', durationSec: 60,     needsMsgId: false },
-    timeout_10m:    { label: '10m',title: 'timeout 10 minutes',  action: 'timeout', durationSec: 600,    needsMsgId: false },
-    timeout_1h:     { label: '1h', title: 'timeout 1 hour',      action: 'timeout', durationSec: 3600,   needsMsgId: false },
-    timeout_24h:    { label: '24h',title: 'timeout 24 hours',    action: 'timeout', durationSec: 86400,  needsMsgId: false },
-    timeout_7d:     { label: '7d', title: 'timeout 7 days',      action: 'timeout', durationSec: 604800, needsMsgId: false },
-    ban:            { label: '⛔',title: 'permanent ban',    action: 'ban',     durationSec: null,   needsMsgId: false },
-    unban:          { label: '✓',title: 'unban user',       action: 'unban',   durationSec: null,   needsMsgId: false },
+    delete_message: { label: 'x',  title: 'delete this message', action: 'delete',  durationSec: null,   needsMsgId: true,  hotkey: 'd' },
+    timeout_1m:     { label: '1m', title: 'timeout 1 minute',    action: 'timeout', durationSec: 60,     needsMsgId: false, hotkey: null },
+    timeout_10m:    { label: '10m',title: 'timeout 10 minutes',  action: 'timeout', durationSec: 600,    needsMsgId: false, hotkey: 't' },
+    timeout_1h:     { label: '1h', title: 'timeout 1 hour',      action: 'timeout', durationSec: 3600,   needsMsgId: false, hotkey: null },
+    timeout_24h:    { label: '24h',title: 'timeout 24 hours',    action: 'timeout', durationSec: 86400,  needsMsgId: false, hotkey: null },
+    timeout_7d:     { label: '7d', title: 'timeout 7 days',      action: 'timeout', durationSec: 604800, needsMsgId: false, hotkey: null },
+    ban:            { label: '⛔',title: 'permanent ban',    action: 'ban',     durationSec: null,   needsMsgId: false, hotkey: 'b' },
+    unban:          { label: '✓',title: 'unban user',       action: 'unban',   durationSec: null,   needsMsgId: false, hotkey: null },
   }
   const DEFAULT_MOD_BUTTONS = ['delete_message', 'timeout_10m']
   let modToolbarButtons = [...DEFAULT_MOD_BUTTONS]
@@ -31663,12 +31685,14 @@ const STORAGE_KEY = 'heatsync_multichat';
         if (filtered.length) modToolbarButtons = filtered
       }
     } catch (_) {}
+    if (_modToolbar) rebuildModToolbarButtons()
   }
   function saveModToolbarButtons() {
     try { chrome.storage.local.set({ hs_mod_toolbar_buttons: modToolbarButtons }) } catch (_) {}
+    if (_modToolbar) rebuildModToolbarButtons()
   }
 
-  // Per-channel mod-state cache so the toolbar only shows where we have powers.
+  // Per-channel mod state. Pre-fetch on tab/render so first hover doesn't lag.
   const _modStateCache = new Map()
   const _modStatePending = new Map()
   async function isModFor(channel) {
@@ -31690,38 +31714,93 @@ const STORAGE_KEY = 'heatsync_multichat';
     _modStatePending.set(channel, p)
     return p
   }
+  function isModForSync(channel) {
+    if (!channel) return false
+    const c = channel.toLowerCase()
+    return _modStateCache.get(c) === true
+  }
+  function prefetchModFor(channel) {
+    if (!channel) return
+    const c = channel.toLowerCase()
+    if (!_modStateCache.has(c) && !_modStatePending.has(c)) isModFor(c)
+  }
 
-  let _modToolbarEl = null
-  let _modToolbarRow = null
-  let _modToolbarHideTimer = null
-  function buildModToolbar(row) {
-    const el = document.createElement('div')
-    el.className = 'hs-mod-toolbar'
-    const hasMsgId = !!row.dataset.msgId
+  // Singleton toolbar — built once, moved between rows.
+  let _modToolbar = null
+  let _modRow = null
+  let _modCtx = null
+  let _modHideTimer = null
+
+  function buildModToolbarOnce() {
+    if (_modToolbar) return _modToolbar
+    const bar = document.createElement('div')
+    bar.className = 'hs-mod-toolbar'
+    bar.setAttribute('role', 'toolbar')
+    bar.setAttribute('aria-label', 'message moderation actions')
+    bar.addEventListener('mousedown', e => e.stopPropagation())
+    bar.addEventListener('click', e => e.stopPropagation())
+    _modToolbar = bar
+    rebuildModToolbarButtons()
+    return bar
+  }
+  function rebuildModToolbarButtons() {
+    if (!_modToolbar) return
+    _modToolbar.textContent = ''
     for (const id of modToolbarButtons) {
       const def = MOD_BUTTON_CATALOG[id]
       if (!def) continue
-      if (def.needsMsgId && !hasMsgId) continue
       const b = document.createElement('button')
       b.className = 'hs-mod-btn hs-mod-' + def.action
+      b.type = 'button'
       b.textContent = def.label
-      b.title = def.title
+      b.title = def.title + (def.hotkey ? ` (${def.hotkey.toUpperCase()})` : '')
       b.dataset.modBtn = id
+      b.tabIndex = -1
       b.addEventListener('mousedown', e => { e.preventDefault(); e.stopPropagation() })
-      b.addEventListener('click', e => { e.preventDefault(); e.stopPropagation(); runModAction(id, row) })
-      el.appendChild(b)
+      b.addEventListener('click', e => { e.preventDefault(); e.stopPropagation(); runModAction(id) })
+      _modToolbar.appendChild(b)
     }
-    return el
   }
-  async function runModAction(id, row) {
+  function gateModButtons(ctx) {
+    if (!_modToolbar) return false
+    let anyVisible = false
+    for (const btn of _modToolbar.querySelectorAll('.hs-mod-btn')) {
+      const def = MOD_BUTTON_CATALOG[btn.dataset.modBtn]
+      let ok = !!def
+      if (ok && def.needsMsgId && !ctx.msgId) ok = false
+      if (ok && !ctx.user) ok = false
+      btn.style.display = ok ? '' : 'none'
+      if (ok) anyVisible = true
+    }
+    return anyVisible
+  }
+  function attachToRow(row) {
+    if (_modRow === row && _modToolbar?.parentElement === row) return
+    const bar = buildModToolbarOnce()
+    const replyBtn = row.querySelector('.hs-mc-reply-btn')
+    if (replyBtn) row.insertBefore(bar, replyBtn)
+    else row.appendChild(bar)
+    _modRow = row
+  }
+  function detachModToolbar() {
+    if (_modHideTimer) { clearTimeout(_modHideTimer); _modHideTimer = null }
+    if (_modToolbar?.parentElement) _modToolbar.parentElement.removeChild(_modToolbar)
+    _modRow = null
+    _modCtx = null
+  }
+  function cancelModHide() {
+    if (_modHideTimer) { clearTimeout(_modHideTimer); _modHideTimer = null }
+  }
+  function scheduleModHide() {
+    cancelModHide()
+    _modHideTimer = setTimeout(detachModToolbar, 200)
+  }
+  async function runModAction(id) {
     const def = MOD_BUTTON_CATALOG[id]
-    if (!def) return
-    const channel = row.dataset.msgChannel
-    const user = row.dataset.msgUser
-    const msgId = row.dataset.msgId
-    if (!channel) return
-    const wasOpacity = row.style.opacity
-    row.style.opacity = '0.5'
+    if (!def || !_modCtx) return
+    const { channel, user, msgId, row } = _modCtx
+    const wasOp = row?.style?.opacity
+    if (row) row.style.opacity = '0.5'
     let resp
     try {
       if (def.action === 'delete')       resp = await deleteTwitchMessage(channel, msgId)
@@ -31729,9 +31808,9 @@ const STORAGE_KEY = 'heatsync_multichat';
       else if (def.action === 'ban')     resp = await banTwitchUser(channel, user, '')
       else if (def.action === 'unban')   resp = await unbanTwitchUser(channel, user)
     } catch (e) { resp = { error: e.message } }
-    row.style.opacity = wasOpacity || ''
+    if (row) row.style.opacity = wasOp || ''
     if (resp?.ok) {
-      if (def.action === 'delete') row.classList.add('hs-mc-msg-cleared')
+      if (def.action === 'delete' && row) row.classList.add('hs-mc-msg-cleared')
       const verb = def.action === 'timeout' ? `timed out ${user} ${def.durationSec}s`
                  : def.action === 'ban'     ? `banned ${user}`
                  : def.action === 'unban'   ? `unbanned ${user}`
@@ -31742,49 +31821,55 @@ const STORAGE_KEY = 'heatsync_multichat';
     }
     detachModToolbar()
   }
-  function attachModToolbarTo(row) {
-    if (_modToolbarRow === row) return
-    detachModToolbar()
-    const replyBtn = row.querySelector('.hs-mc-reply-btn')
-    _modToolbarEl = buildModToolbar(row)
-    if (!_modToolbarEl.children.length) { _modToolbarEl = null; return }
-    if (replyBtn) row.insertBefore(_modToolbarEl, replyBtn)
-    else row.appendChild(_modToolbarEl)
-    _modToolbarRow = row
-  }
-  function detachModToolbar() {
-    if (_modToolbarHideTimer) { clearTimeout(_modToolbarHideTimer); _modToolbarHideTimer = null }
-    if (_modToolbarEl?.parentElement) _modToolbarEl.parentElement.removeChild(_modToolbarEl)
-    _modToolbarEl = null
-    _modToolbarRow = null
-  }
   function wireModToolbarHover(messagesEl) {
     if (!messagesEl || messagesEl._hsModToolbarWired) return
     messagesEl._hsModToolbarWired = true
-    messagesEl.addEventListener('mouseover', async (e) => {
+    messagesEl.addEventListener('mouseover', (e) => {
       const row = e.target.closest('.hs-mc-msg')
-      if (!row || row === _modToolbarRow) return
+      if (!row) return
+      if (row === _modRow) { cancelModHide(); return }
       const plat = row.dataset.msgPlatform
-      // Empty platform = Twitch IRC (m.platform isn't always set on Twitch msgs).
-      // Skip explicit Kick (no API yet) and YT (no mod role).
       if (plat === 'kick' || plat === 'youtube' || plat === 'yt') return
       const channel = row.dataset.msgChannel
-      const msgId = row.dataset.msgId
       const user = row.dataset.msgUser
+      const msgId = row.dataset.msgId
       if (!channel || !user) return
-      if (!msgId && !user) return
-      if (!(await isModFor(channel))) return
-      // After awaiting, verify mouse is still over the same row before attach.
-      if (row.matches(':hover')) attachModToolbarTo(row)
+      // Sync gate: only attach if we already know we're a mod. Pre-fetch otherwise
+      // so the next hover in this channel is instant — no UI lag.
+      if (!isModForSync(channel)) { prefetchModFor(channel); return }
+      const ctx = { channel, user, msgId, row }
+      _modCtx = ctx
+      buildModToolbarOnce()
+      if (!gateModButtons(ctx)) return
+      attachToRow(row)
+      cancelModHide()
     }, true)
     messagesEl.addEventListener('mouseout', (e) => {
-      if (!_modToolbarRow) return
+      if (!_modRow) return
       const to = e.relatedTarget
-      if (to && _modToolbarRow.contains(to)) return
-      if (_modToolbarHideTimer) clearTimeout(_modToolbarHideTimer)
-      _modToolbarHideTimer = setTimeout(detachModToolbar, 200)
+      if (to && _modRow.contains(to)) return
+      scheduleModHide()
     }, true)
+    messagesEl.addEventListener('scroll', () => detachModToolbar(), { passive: true })
   }
+
+  // Hotkeys — d (delete), t (10m timeout), b (ban). Hold while hovering a row.
+  document.addEventListener('keydown', (e) => {
+    if (!_modCtx) return
+    const t = e.target
+    const typing = t && (t.isContentEditable || ['INPUT', 'TEXTAREA'].includes(t.tagName))
+    if (typing) return
+    if (e.ctrlKey || e.metaKey || e.altKey) return
+    const key = (e.key || '').toLowerCase()
+    for (const id of modToolbarButtons) {
+      const def = MOD_BUTTON_CATALOG[id]
+      if (def?.hotkey === key) {
+        e.preventDefault()
+        runModAction(id)
+        return
+      }
+    }
+  })
 
   // Inline notification settings
   async function loadInlineNotifSettings() {
@@ -34817,6 +34902,8 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     // mid-session (the overlay-init setTimeout doesn't re-fire).
     const _msgsForMod = document.getElementById('hs-mc-messages')
     if (_msgsForMod && !_msgsForMod._hsModToolbarWired) wireModToolbarHover(_msgsForMod)
+    // Pre-fetch isMod for the active channel so first hover is instant.
+    if (typeof id === 'string' && /^[a-z0-9_]{2,40}$/i.test(id)) prefetchModFor(id)
     // Profile card overrides normal tab content while open
     if (typeof activeProfileCard !== 'undefined' && activeProfileCard) {
       renderProfileCardView();

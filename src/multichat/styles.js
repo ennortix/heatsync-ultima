@@ -1601,25 +1601,45 @@ function injectStyles() {
     .hs-mc-msg[data-msg-id]:hover .hs-mc-reply-btn {
       display: block;
     }
-    /* Mod toolbar — inline buttons sitting just left of the reply button. */
+    /* Mod toolbar — singleton bar inserted into the hovered row as a sibling
+       of .hs-mc-reply-btn. Pure CSS positioning: absolute, flush against the
+       left edge of the reply button. Shared 1px #808080 dividers between
+       buttons; last button's right border drops out to merge with the reply
+       button's left border. Matches heatsync.org spec exactly. */
+    .hs-mc-msg[data-msg-id] {
+      position: relative;
+    }
     .hs-mod-toolbar {
+      position: absolute;
+      top: 1px;
+      right: 22px;
+      z-index: 11;
       display: inline-flex;
-      gap: 2px;
-      vertical-align: middle;
-      margin-right: 4px;
+      align-items: stretch;
+      background: #000;
+      color: #fff;
+      border: 1px solid #808080;
+      border-right: 0;
+      font: 11px/18px 'CozetteVector', monospace;
+      user-select: none;
+      height: 20px;
     }
     .hs-mod-btn {
-      background: #1a1a1a;
-      color: #ccc;
-      border: 1px solid #333;
-      padding: 0 6px;
-      font-family: inherit;
-      font-size: 11px;
-      line-height: 16px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 22px;
+      padding: 0 5px;
+      background: #000;
+      color: #fff;
+      border: 0;
+      border-right: 1px solid #808080;
+      font: inherit;
       cursor: pointer;
+      line-height: 1;
     }
+    .hs-mod-btn:last-child { border-right: 0; }
     .hs-mod-btn:hover { background: #fff; color: #000; }
-    .hs-mod-delete:hover, .hs-mod-ban:hover { background: #ff3333; color: #000; }
     #hs-mc-reply-indicator {
       flex: 1 0 100%;
       order: -1;

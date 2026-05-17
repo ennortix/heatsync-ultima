@@ -4243,9 +4243,12 @@ const HsNotifs = (() => {
   // Chat-docked-bottom — full-width band above the inputbar (and tabbar in
   // bottom-tabs mode). Spans the chat content area horizontally; right edge
   // ends at the vertical tab strip's left edge when tabs are left/right.
-  // Used by twitch-resub-share, sub-anniversary, viewer-milestone callouts.
+  // Used by twitch-resub-share, twitch-watchstreak-share, sub-anniversary,
+  // viewer-milestone callouts. Stacks vertically (newer on top) so multiple
+  // celebration opportunities can coexist — user picks which to share first.
   registerLayer('chat-docked-bottom', {
-    stack: 'replace',
+    stack: 'queue',
+    maxVisible: 3,
     geometry: ({ overlayElement, inputBarElement, tabBarElement, tabPosition }) => {
       if (!overlayElement && !inputBarElement) return null
       const ibVisible = inputBarElement && !inputBarElement.classList.contains('hs-hidden')
@@ -32312,14 +32315,6 @@ const STORAGE_KEY = 'heatsync_multichat';
           }
         </div>
         <div class="hs-mc-settings-group">
-          <div class="hs-mc-settings-group-title">chat input tips</div>
-          <div class="hs-mc-setting-row" style="display:block;padding:6px 8px;color:#ccc;font-size:13px;line-height:1.5">
-            <div><code style="background:#000;color:#fff;padding:1px 4px">name0</code> overlay on prev emote &mdash; <code style="background:#000;color:#fff;padding:1px 4px">Kappa PepeLaugh0</code></div>
-            <div style="margin-top:4px"><code style="background:#000;color:#fff;padding:1px 4px">w!</code> <code style="background:#000;color:#fff;padding:1px 4px">h!</code> <code style="background:#000;color:#fff;padding:1px 4px">v!</code> <code style="background:#000;color:#fff;padding:1px 4px">z!</code> <code style="background:#000;color:#fff;padding:1px 4px">c!#hex</code> ffz mods &mdash; chain <code style="background:#000;color:#fff;padding:1px 4px">w!h!</code></div>
-            <div style="margin-top:4px"><code style="background:#000;color:#fff;padding:1px 4px">Tab</code> imagify &middot; again to cycle</div>
-          </div>
-        </div>
-        <div class="hs-mc-settings-group">
           <div class="hs-mc-setting-row" style="justify-content:flex-end">
             <button class="hs-mc-defaults-btn" style="background:#808080;border:2px outset #fff;padding:2px 10px;font-size:13px;font-weight:bold;cursor:pointer;font-family:'Liberation Mono',monospace;color:#000;box-shadow:1px 1px 0 #000">default</button>
           </div>
@@ -32857,6 +32852,9 @@ const STORAGE_KEY = 'heatsync_multichat';
     }, 30000)
   }
   function _enterResubShareMode(claim, user, months) {
+    // Mutually exclusive with watchstreak-share — exit that first if active,
+    // silently (keep its banner up so user can come back to it).
+    if (_watchstreakShareCtx) _exitWatchstreakShareMode(_watchstreakShareCtx.claim, false, true)
     _resubShareCtx = { claim, user, months }
     const input = document.getElementById('hs-mc-input')
     const inputBar = document.getElementById('hs-mc-inputbar')
@@ -32876,15 +32874,15 @@ const STORAGE_KEY = 'heatsync_multichat';
     if (_resubShareModeTimer) clearTimeout(_resubShareModeTimer)
     _resubShareModeTimer = setTimeout(() => _exitResubShareMode(claim, true), 30000)
   }
-  function _exitResubShareMode(claim, fireFallback) {
+  function _exitResubShareMode(claim, fireFallback, silent) {
     if (claim && _resubShareCtx?.claim !== claim) return
     const wasCtx = _resubShareCtx
     _resubShareCtx = null
     if (_resubShareModeTimer) { clearTimeout(_resubShareModeTimer); _resubShareModeTimer = null }
-    // Dismiss the HsNotifs banner — once the user has sent (or the timeout
-    // fired the fallback) the callout is consumed; leaving it visible feels
-    // like the click did nothing.
-    if (wasCtx) {
+    // Dismiss the HsNotifs banner only on VOLUNTARY exit (consume, timeout,
+    // dismiss-click). On a forced exit (another share-mode took the input),
+    // silent=true keeps the banner visible so the user can come back to it.
+    if (wasCtx && !silent) {
       try {
         window.HsNotifs?.dismissByKey?.('twitch-resub-share', `resub:${wasCtx.claim.channel}:${wasCtx.months}`)
       } catch (_) {}
@@ -33042,8 +33040,9 @@ const STORAGE_KEY = 'heatsync_multichat';
     }, 30000)
   }
   function _enterWatchstreakShareMode(claim, user, streakCount) {
-    // Mutually exclusive with resub-share — exit that first if active.
-    if (_resubShareCtx) _exitResubShareMode(_resubShareCtx.claim, false)
+    // Mutually exclusive with resub-share — exit that first if active, silently
+    // (keep its banner up so user can come back to it).
+    if (_resubShareCtx) _exitResubShareMode(_resubShareCtx.claim, false, true)
     _watchstreakShareCtx = { claim, user, streakCount }
     const input = document.getElementById('hs-mc-input')
     const inputBar = document.getElementById('hs-mc-inputbar')
@@ -33063,12 +33062,12 @@ const STORAGE_KEY = 'heatsync_multichat';
     if (_watchstreakShareModeTimer) clearTimeout(_watchstreakShareModeTimer)
     _watchstreakShareModeTimer = setTimeout(() => _exitWatchstreakShareMode(claim, true), 30000)
   }
-  function _exitWatchstreakShareMode(claim, fireFallback) {
+  function _exitWatchstreakShareMode(claim, fireFallback, silent) {
     if (claim && _watchstreakShareCtx?.claim !== claim) return
     const wasCtx = _watchstreakShareCtx
     _watchstreakShareCtx = null
     if (_watchstreakShareModeTimer) { clearTimeout(_watchstreakShareModeTimer); _watchstreakShareModeTimer = null }
-    if (wasCtx) {
+    if (wasCtx && !silent) {
       try {
         window.HsNotifs?.dismissByKey?.('twitch-watchstreak-share', `watchstreak:${wasCtx.claim.channel}:${wasCtx.streakCount}`)
       } catch (_) {}

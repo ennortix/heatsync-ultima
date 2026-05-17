@@ -260,9 +260,12 @@ const HsNotifs = (() => {
   // Chat-docked-bottom — full-width band above the inputbar (and tabbar in
   // bottom-tabs mode). Spans the chat content area horizontally; right edge
   // ends at the vertical tab strip's left edge when tabs are left/right.
-  // Used by twitch-resub-share, sub-anniversary, viewer-milestone callouts.
+  // Used by twitch-resub-share, twitch-watchstreak-share, sub-anniversary,
+  // viewer-milestone callouts. Stacks vertically (newer on top) so multiple
+  // celebration opportunities can coexist — user picks which to share first.
   registerLayer('chat-docked-bottom', {
-    stack: 'replace',
+    stack: 'queue',
+    maxVisible: 3,
     geometry: ({ overlayElement, inputBarElement, tabBarElement, tabPosition }) => {
       if (!overlayElement && !inputBarElement) return null
       const ibVisible = inputBarElement && !inputBarElement.classList.contains('hs-hidden')

@@ -5367,7 +5367,19 @@ function injectStyles() {
       transform-origin: right center;
       will-change: transform, opacity;
     }
-    .hs-notif-layer-chat-docked-bottom .hs-notif { animation-name: hs-notif-slide-in-up; transform-origin: bottom center; }
+    /* Docked-bottom uses opacity-only fade-in so transform never offsets the
+       flex child relative to its natural stacking position. The slide-in-up
+       keyframe was getting stuck in its translateY pre-start state on
+       simultaneous double-emit, visually pushing both banners below the input
+       bar. Plain opacity fade always lands in the right spot. */
+    .hs-notif-layer-chat-docked-bottom .hs-notif {
+      animation-name: hs-notif-fade-in;
+      transform-origin: bottom center;
+    }
+    @keyframes hs-notif-fade-in {
+      from { opacity: 0; }
+      to   { opacity: 1; }
+    }
     .hs-notif-layer-chat-docked-top    .hs-notif { animation-name: hs-notif-slide-in-down; transform-origin: top center; }
     .hs-notif-exiting { animation: hs-notif-fade-out 160ms ease-in forwards !important; pointer-events: none; }
     @media (prefers-reduced-motion: reduce) {
@@ -6069,6 +6081,25 @@ function injectStyles() {
     .hs-mc-msg[data-msg-id]:hover .hs-mc-reply-btn {
       display: block;
     }
+    /* Mod toolbar — inline buttons sitting just left of the reply button. */
+    .hs-mod-toolbar {
+      display: inline-flex;
+      gap: 2px;
+      vertical-align: middle;
+      margin-right: 4px;
+    }
+    .hs-mod-btn {
+      background: #1a1a1a;
+      color: #ccc;
+      border: 1px solid #333;
+      padding: 0 6px;
+      font-family: inherit;
+      font-size: 11px;
+      line-height: 16px;
+      cursor: pointer;
+    }
+    .hs-mod-btn:hover { background: #fff; color: #000; }
+    .hs-mod-delete:hover, .hs-mod-ban:hover { background: #ff3333; color: #000; }
     #hs-mc-reply-indicator {
       flex: 1 0 100%;
       order: -1;
@@ -29738,6 +29769,7 @@ const STORAGE_KEY = 'heatsync_multichat';
       const msgsEl = document.getElementById('hs-mc-messages');
       const newBtn = document.getElementById('hs-mc-new-msgs');
       if (!msgsEl || !newBtn) return;
+      wireModToolbarHover(msgsEl);
 
       const isStaticTab = () => currentTab === 'feed' || currentTab === 'settings' || currentTab === 'discover' || currentTab === 'pinned';
 
@@ -31607,6 +31639,146 @@ const STORAGE_KEY = 'heatsync_multichat';
     saveEmojiSize();
   }
 
+  // =====================================================================
+  // MOD TOOLBAR — hover-row buttons for delete/timeout/ban. Twitch only
+  // for now (GQL APIs already in twitch-api.js). Mirrors heatsync.org spec.
+  // =====================================================================
+  const MOD_BUTTON_CATALOG = {
+    delete_message: { label: 'x',  title: 'delete this message', action: 'delete',  durationSec: null,   needsMsgId: true  },
+    timeout_1m:     { label: '1m', title: 'timeout 1 minute',    action: 'timeout', durationSec: 60,     needsMsgId: false },
+    timeout_10m:    { label: '10m',title: 'timeout 10 minutes',  action: 'timeout', durationSec: 600,    needsMsgId: false },
+    timeout_1h:     { label: '1h', title: 'timeout 1 hour',      action: 'timeout', durationSec: 3600,   needsMsgId: false },
+    timeout_24h:    { label: '24h',title: 'timeout 24 hours',    action: 'timeout', durationSec: 86400,  needsMsgId: false },
+    timeout_7d:     { label: '7d', title: 'timeout 7 days',      action: 'timeout', durationSec: 604800, needsMsgId: false },
+    ban:            { label: '⛔',title: 'permanent ban',    action: 'ban',     durationSec: null,   needsMsgId: false },
+    unban:          { label: '✓',title: 'unban user',       action: 'unban',   durationSec: null,   needsMsgId: false },
+  }
+  const DEFAULT_MOD_BUTTONS = ['delete_message', 'timeout_10m']
+  let modToolbarButtons = [...DEFAULT_MOD_BUTTONS]
+  async function loadModToolbarButtons() {
+    try {
+      const data = await chrome.storage.local.get(['hs_mod_toolbar_buttons'])
+      if (Array.isArray(data.hs_mod_toolbar_buttons)) {
+        const filtered = data.hs_mod_toolbar_buttons.filter(id => MOD_BUTTON_CATALOG[id])
+        if (filtered.length) modToolbarButtons = filtered
+      }
+    } catch (_) {}
+  }
+  function saveModToolbarButtons() {
+    try { chrome.storage.local.set({ hs_mod_toolbar_buttons: modToolbarButtons }) } catch (_) {}
+  }
+
+  // Per-channel mod-state cache so the toolbar only shows where we have powers.
+  const _modStateCache = new Map()
+  const _modStatePending = new Map()
+  async function isModFor(channel) {
+    if (!channel) return false
+    channel = channel.toLowerCase()
+    if (_modStateCache.has(channel)) return _modStateCache.get(channel)
+    if (_modStatePending.has(channel)) return _modStatePending.get(channel)
+    const p = (async () => {
+      try {
+        const safe = channel.replace(/[^a-z0-9_]/g, '')
+        if (!safe) return false
+        const data = await twitchGql(`{ user(login: "${safe}") { self { isModerator } } }`)
+        const isMod = !!data?.data?.user?.self?.isModerator
+        _modStateCache.set(channel, isMod)
+        return isMod
+      } catch (_) { return false }
+      finally { _modStatePending.delete(channel) }
+    })()
+    _modStatePending.set(channel, p)
+    return p
+  }
+
+  let _modToolbarEl = null
+  let _modToolbarRow = null
+  let _modToolbarHideTimer = null
+  function buildModToolbar(row) {
+    const el = document.createElement('div')
+    el.className = 'hs-mod-toolbar'
+    const hasMsgId = !!row.dataset.msgId
+    for (const id of modToolbarButtons) {
+      const def = MOD_BUTTON_CATALOG[id]
+      if (!def) continue
+      if (def.needsMsgId && !hasMsgId) continue
+      const b = document.createElement('button')
+      b.className = 'hs-mod-btn hs-mod-' + def.action
+      b.textContent = def.label
+      b.title = def.title
+      b.dataset.modBtn = id
+      b.addEventListener('mousedown', e => { e.preventDefault(); e.stopPropagation() })
+      b.addEventListener('click', e => { e.preventDefault(); e.stopPropagation(); runModAction(id, row) })
+      el.appendChild(b)
+    }
+    return el
+  }
+  async function runModAction(id, row) {
+    const def = MOD_BUTTON_CATALOG[id]
+    if (!def) return
+    const channel = row.dataset.msgChannel
+    const user = row.dataset.msgUser
+    const msgId = row.dataset.msgId
+    if (!channel) return
+    const wasOpacity = row.style.opacity
+    row.style.opacity = '0.5'
+    let resp
+    try {
+      if (def.action === 'delete')       resp = await deleteTwitchMessage(channel, msgId)
+      else if (def.action === 'timeout') resp = await timeoutTwitchUser(channel, user, def.durationSec, '')
+      else if (def.action === 'ban')     resp = await banTwitchUser(channel, user, '')
+      else if (def.action === 'unban')   resp = await unbanTwitchUser(channel, user)
+    } catch (e) { resp = { error: e.message } }
+    row.style.opacity = wasOpacity || ''
+    if (resp?.ok) {
+      if (def.action === 'delete') row.classList.add('hs-mc-msg-cleared')
+      const verb = def.action === 'timeout' ? `timed out ${user} ${def.durationSec}s`
+                 : def.action === 'ban'     ? `banned ${user}`
+                 : def.action === 'unban'   ? `unbanned ${user}`
+                 :                            'deleted'
+      try { showToast(verb, 'success') } catch (_) {}
+    } else {
+      try { showToast(`${def.action} failed: ${resp?.error || 'unknown'}`, 'error') } catch (_) {}
+    }
+    detachModToolbar()
+  }
+  function attachModToolbarTo(row) {
+    if (_modToolbarRow === row) return
+    detachModToolbar()
+    const replyBtn = row.querySelector('.hs-mc-reply-btn')
+    _modToolbarEl = buildModToolbar(row)
+    if (!_modToolbarEl.children.length) { _modToolbarEl = null; return }
+    if (replyBtn) row.insertBefore(_modToolbarEl, replyBtn)
+    else row.appendChild(_modToolbarEl)
+    _modToolbarRow = row
+  }
+  function detachModToolbar() {
+    if (_modToolbarHideTimer) { clearTimeout(_modToolbarHideTimer); _modToolbarHideTimer = null }
+    if (_modToolbarEl?.parentElement) _modToolbarEl.parentElement.removeChild(_modToolbarEl)
+    _modToolbarEl = null
+    _modToolbarRow = null
+  }
+  function wireModToolbarHover(messagesEl) {
+    if (!messagesEl || messagesEl._hsModToolbarWired) return
+    messagesEl._hsModToolbarWired = true
+    messagesEl.addEventListener('mouseover', async (e) => {
+      const row = e.target.closest('.hs-mc-msg')
+      if (!row || row === _modToolbarRow) return
+      if (row.dataset.msgPlatform !== 'twitch') return
+      const channel = row.dataset.msgChannel
+      if (!channel) return
+      if (!(await isModFor(channel))) return
+      // After awaiting, verify mouse is still over the same row before attach.
+      if (row.matches(':hover')) attachModToolbarTo(row)
+    }, true)
+    messagesEl.addEventListener('mouseout', (e) => {
+      if (!_modToolbarRow) return
+      const to = e.relatedTarget
+      if (to && _modToolbarRow.contains(to)) return
+      if (_modToolbarHideTimer) clearTimeout(_modToolbarHideTimer)
+      _modToolbarHideTimer = setTimeout(detachModToolbar, 200)
+    }, true)
+  }
 
   // Inline notification settings
   async function loadInlineNotifSettings() {
@@ -32272,6 +32444,16 @@ const STORAGE_KEY = 'heatsync_multichat';
           </div>`).join('')}
         </div>
         <div class="hs-mc-settings-group">
+          <div class="hs-mc-settings-group-title">mod toolbar — hover actions on chat rows when you mod the channel</div>
+          ${Object.entries(MOD_BUTTON_CATALOG).map(([id, def]) => {
+            const enabled = modToolbarButtons.includes(id)
+            return `<div class="hs-mc-setting-row">
+              <button class="hs-mc-toggle-pill ${enabled ? 'active' : ''}" data-mod-btn="${id}"><span class="hs-mc-toggle-knob"></span></button>
+              <span class="hs-mc-setting-label"><span style="font-family:monospace;color:#ff8700;margin-right:6px;min-width:34px;display:inline-block">${def.label}</span>${escapeHtml(def.title)}</span>
+            </div>`
+          }).join('')}
+        </div>
+        <div class="hs-mc-settings-group">
           <div class="hs-mc-settings-group-title">${t('mc_settings_features')}</div>
           <div class="hs-mc-setting-row">
             <button class="hs-mc-toggle-pill ${autoClaimPoints ? 'active' : ''}" data-setting="autoclaim"><span class="hs-mc-toggle-knob"></span></button>
@@ -32325,6 +32507,21 @@ const STORAGE_KEY = 'heatsync_multichat';
     // Wire up toggles via event delegation
     if (msgsEl._hsSettingsClick) msgsEl.removeEventListener('click', msgsEl._hsSettingsClick);
     msgsEl._hsSettingsClick = function settingsClick(e) {
+      // Mod toolbar button toggle — adds/removes id from modToolbarButtons array
+      const modBtnPill = e.target.closest('.hs-mc-toggle-pill[data-mod-btn]')
+      if (modBtnPill) {
+        const id = modBtnPill.dataset.modBtn
+        if (!MOD_BUTTON_CATALOG[id]) return
+        const enabling = !modBtnPill.classList.contains('active')
+        modBtnPill.classList.toggle('active', enabling)
+        if (enabling) {
+          if (!modToolbarButtons.includes(id)) modToolbarButtons.push(id)
+        } else {
+          modToolbarButtons = modToolbarButtons.filter(x => x !== id)
+        }
+        saveModToolbarButtons()
+        return
+      }
       const toggle = e.target.closest('.hs-mc-toggle-pill[data-setting]');
       if (toggle) {
         const setting = toggle.dataset.setting;
@@ -33262,37 +33459,48 @@ const STORAGE_KEY = 'heatsync_multichat';
       try { _updateMcLayout?.() } catch (_) {}
     }
     // Twitch removed `.pinned-callout` in a recent refactor — the callout body
-    // now lives directly under the queue container. Surface the container
-    // itself; surface() reads text + Share button via descendant selectors.
+    // now lives directly under the queue container. Surface every container;
+    // surface() reads text + Share button via descendant selectors and self-
+    // gates with dataset.hsSurfaced='1'. Multiple callouts (e.g. resub +
+    // watch-streak) can fire as siblings inside the queue parent — we must
+    // observe each on first touch and the parent of any we see so subsequent
+    // siblings are caught.
     const QUEUE_SEL = '[data-test-selector="chat-private-callout-queue__callout-container"]'
     document.querySelectorAll(QUEUE_SEL).forEach(c => { if (c.querySelector('*')) surface(c) })
-    let _narrowed = false
+    let _narrowedTo = null
+    const _narrowIfPossible = (calloutEl) => {
+      const parent = calloutEl?.parentElement
+      if (!parent || _narrowedTo === parent) return
+      _narrowedTo = parent
+      try { _hsCalloutCloseObs.disconnect() } catch (_) {}
+      // Observe the queue PARENT (not the callout itself) — sibling callouts
+      // added later land as direct children and fire childList mutations here.
+      _hsCalloutCloseObs.observe(parent, { childList: true, subtree: true })
+    }
     _hsCalloutCloseObs = new MutationObserver((muts) => {
-      // On any mutation, re-check the queue container — when populated, surface.
-      const queue = document.querySelector(QUEUE_SEL)
-      if (queue && queue.querySelector('*')) surface(queue)
+      // Surface ALL currently-present callouts on any mutation — the
+      // dataset.hsSurfaced guard makes this idempotent.
+      for (const c of document.querySelectorAll(QUEUE_SEL)) {
+        if (c.querySelector('*')) surface(c)
+      }
       for (const m of muts) {
         for (const node of m.addedNodes) {
           if (node.nodeType !== 1) continue
-          if (node.matches?.(QUEUE_SEL)) { if (node.querySelector('*')) surface(node) }
-          else if (node.querySelector) {
-            node.querySelectorAll(QUEUE_SEL).forEach(c => { if (c.querySelector('*')) surface(c) })
+          if (node.matches?.(QUEUE_SEL)) {
+            if (node.querySelector('*')) surface(node)
+            _narrowIfPossible(node)
+          } else if (node.querySelector) {
+            node.querySelectorAll(QUEUE_SEL).forEach(c => {
+              if (c.querySelector('*')) surface(c)
+              _narrowIfPossible(c)
+            })
           }
         }
       }
-      // Narrow the observed target to the queue container once it exists so we
-      // stop processing every body subtree mutation Twitch fires.
-      if (_narrowed) return
-      if (queue) {
-        _narrowed = true
-        try { _hsCalloutCloseObs.disconnect() } catch (_) {}
-        _hsCalloutCloseObs.observe(queue, { childList: true, subtree: true })
-      }
     })
-    const initialQueue = document.querySelector(QUEUE_SEL)
-    if (initialQueue) {
-      _narrowed = true
-      _hsCalloutCloseObs.observe(initialQueue, { childList: true, subtree: true })
+    const initialCallouts = document.querySelectorAll(QUEUE_SEL)
+    if (initialCallouts.length > 0) {
+      _narrowIfPossible(initialCallouts[0])
     } else {
       _hsCalloutCloseObs.observe(document.body, { childList: true, subtree: true })
     }
@@ -37695,6 +37903,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       loadLivePlatformMap(),
       loadEmoteSize(),
       loadEmojiSize(),
+      loadModToolbarButtons(),
       loadWysiwygSetting(),
       loadLinksSetting(),
       loadLinkPreviewsSetting(),

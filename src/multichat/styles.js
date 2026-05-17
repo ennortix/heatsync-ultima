@@ -887,7 +887,19 @@ function injectStyles() {
       transform-origin: right center;
       will-change: transform, opacity;
     }
-    .hs-notif-layer-chat-docked-bottom .hs-notif { animation-name: hs-notif-slide-in-up; transform-origin: bottom center; }
+    /* Docked-bottom uses opacity-only fade-in so transform never offsets the
+       flex child relative to its natural stacking position. The slide-in-up
+       keyframe was getting stuck in its translateY pre-start state on
+       simultaneous double-emit, visually pushing both banners below the input
+       bar. Plain opacity fade always lands in the right spot. */
+    .hs-notif-layer-chat-docked-bottom .hs-notif {
+      animation-name: hs-notif-fade-in;
+      transform-origin: bottom center;
+    }
+    @keyframes hs-notif-fade-in {
+      from { opacity: 0; }
+      to   { opacity: 1; }
+    }
     .hs-notif-layer-chat-docked-top    .hs-notif { animation-name: hs-notif-slide-in-down; transform-origin: top center; }
     .hs-notif-exiting { animation: hs-notif-fade-out 160ms ease-in forwards !important; pointer-events: none; }
     @media (prefers-reduced-motion: reduce) {
@@ -1589,6 +1601,25 @@ function injectStyles() {
     .hs-mc-msg[data-msg-id]:hover .hs-mc-reply-btn {
       display: block;
     }
+    /* Mod toolbar — inline buttons sitting just left of the reply button. */
+    .hs-mod-toolbar {
+      display: inline-flex;
+      gap: 2px;
+      vertical-align: middle;
+      margin-right: 4px;
+    }
+    .hs-mod-btn {
+      background: #1a1a1a;
+      color: #ccc;
+      border: 1px solid #333;
+      padding: 0 6px;
+      font-family: inherit;
+      font-size: 11px;
+      line-height: 16px;
+      cursor: pointer;
+    }
+    .hs-mod-btn:hover { background: #fff; color: #000; }
+    .hs-mod-delete:hover, .hs-mod-ban:hover { background: #ff3333; color: #000; }
     #hs-mc-reply-indicator {
       flex: 1 0 100%;
       order: -1;

@@ -36411,6 +36411,23 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
               } else if (probe === 'kick_state') {
                 const r = await chrome.runtime.sendMessage({ type: 'bg_kick_status' })
                 window.postMessage({ __hsProbeResp: 'kick_state', data: r }, '*')
+              } else if (probe === 'tab_state') {
+                const ircBufs = {}
+                try { if (typeof irc !== 'undefined' && irc?.channels) {
+                  for (const [k, v] of irc.channels) ircBufs[k] = v.size
+                } } catch {}
+                const kickBufs = {}
+                try { if (typeof kickChat !== 'undefined' && kickChat?.channels) {
+                  for (const [k, v] of kickChat.channels) kickBufs[k] = v.size
+                } } catch {}
+                window.postMessage({ __hsProbeResp: 'tab_state', data: {
+                  currentTab: typeof currentTab !== 'undefined' ? currentTab : '?',
+                  liveChannel: typeof getLiveChannel === 'function' ? getLiveChannel() : null,
+                  hostPlatform: typeof hostPlatform !== 'undefined' ? hostPlatform : null,
+                  ircBufs,
+                  kickBufs,
+                  domMsgs: document.getElementById('hs-mc-messages')?.children?.length || 0
+                }}, '*')
               }
             } catch (err) {
               window.postMessage({ __hsProbeResp: probe, err: err?.message || 'unknown' }, '*')

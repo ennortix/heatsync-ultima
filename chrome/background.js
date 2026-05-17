@@ -6669,8 +6669,10 @@ function bgIrcFetchJustlog(ch) {
         // /channel/{name}?json=true — most recent ~1000 msgs (instance-dependent).
         // Universal across justlog forks. Each entry has a .raw field holding
         // the full IRC line (tags + PRIVMSG/USERNOTICE).
+        // No &reverse — that flag truncates to ~tens of msgs on every fork
+        // tested (ivr 41, spanix 7). Default returns hundreds-to-thousands.
         const resp = await fetch(
-          `${base}/channel/${encodeURIComponent(ch)}?json=true&reverse=true`,
+          `${base}/channel/${encodeURIComponent(ch)}?json=true`,
           { signal: ctrl.signal, credentials: 'omit' }
         )
         clearTimeout(timer)

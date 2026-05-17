@@ -5156,6 +5156,29 @@ function injectStyles() {
       opacity: 1;
     }
 
+    /* CHAT HIDDEN STATE */
+    body.hs-chat-hidden #hs-mc-container { display: none !important; }
+    body.hs-chat-hidden #hs-c-resize-handle,
+    body.hs-chat-hidden #hs-mc-resize-handle,
+    body.hs-chat-hidden #hs-kick-resize-handle,
+    body.hs-chat-hidden #hs-yt-resize-handle { display: none !important; }
+    body.hs-chat-hidden .chat-shell.hs-native-hidden,
+    body.hs-chat-hidden [class*="chat-shell"].hs-native-hidden { display: none !important; }
+    #hs-chat-restore-pill {
+      position: fixed !important;
+      background: #ff8700 !important;
+      z-index: 2147483647 !important;
+      cursor: pointer !important;
+      transition: opacity 120ms ease-out !important;
+      opacity: 0.85 !important;
+      box-shadow: 0 0 4px rgba(255,135,0,0.5) !important;
+    }
+    #hs-chat-restore-pill:hover { opacity: 1 !important; }
+    #hs-chat-restore-pill[data-edge="right"] { top: 25% !important; right: 0 !important; width: 6px !important; height: 50% !important; }
+    #hs-chat-restore-pill[data-edge="left"] { top: 25% !important; left: 0 !important; width: 6px !important; height: 50% !important; }
+    #hs-chat-restore-pill[data-edge="top"] { top: 0 !important; left: 25% !important; height: 6px !important; width: 50% !important; }
+    #hs-chat-restore-pill[data-edge="bottom"] { bottom: 0 !important; left: 25% !important; height: 6px !important; width: 50% !important; }
+
     /* Vertical tabs: container gets row direction */
     .hs-tabs-left #hs-mc-container,
     .hs-tabs-right #hs-mc-container {
@@ -23619,6 +23642,20 @@ function initInput() {
     }, { capture: true, signal: mcSignal });
   }
 
+  // Global \\ toggle → hide/show chat (mirrors heatsync.org).
+  if (!window._hsMcChatToggleHandler) {
+    window._hsMcChatToggleHandler = true;
+    document.addEventListener('keydown', (e) => {
+      if (e.key !== '\\') return;
+      if (e.ctrlKey || e.altKey || e.metaKey) return;
+      const active = document.activeElement;
+      if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable)) return;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      try { toggleChatHidden() } catch (err) { log('chat-toggle keydown:', err) }
+    }, { capture: true, signal: mcSignal });
+  }
+
   // Auto-reveal input bar when user starts typing anywhere
   if (!window._hsMcTypeRevealHandler) {
     window._hsMcTypeRevealHandler = true
@@ -35773,6 +35810,11 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       if (stored.ui_settings?.chatPosition !== undefined) {
         chatPosition = stored.ui_settings.chatPosition;
       }
+      const prev = stored.ui_settings?.chatPositionPrevious;
+      if (['right','bottom','left','top'].includes(prev)) chatPositionPrevious = prev;
+      if (['right','bottom','left','top'].includes(chatPosition)) {
+        chatPositionPrevious = chatPosition;
+      }
       // Load saved width + height BEFORE first applyChatPosition. Without this,
       // applyChatPosition runs with default chatHeight (35% innerHeight) and
       // positions the orange handle there. loadChatHeight then updates the
@@ -35853,19 +35895,35 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
   }
 
   function applyChatPosition() {
-    // Sanitize — only ever 4 valid positions. If chatPosition somehow
-    // drifted (stale storage from old build, manual edit), force to 'right'.
-    const VALID_POSITIONS = ['right', 'bottom', 'left', 'top'];
+    // Sanitize — 5 valid positions: 4 visible + 'hidden'.
+    const VALID_POSITIONS = ['right', 'bottom', 'left', 'top', 'hidden'];
     if (!VALID_POSITIONS.includes(chatPosition)) {
       log('[c-button] sanitizing invalid chatPosition:', chatPosition, '→ right');
       chatPosition = 'right';
     }
-    // Popout chat = full window, no video. Any non-right position leaves a
-    // blank area where the player would be. Force 'right' (which CSS then
-    // expands to full width via .hs-popout overrides).
+    // Popout chat = full window. Force 'right' + visible.
     if (document.body.classList.contains('hs-popout') && chatPosition !== 'right') {
       chatPosition = 'right';
     }
+    // Hidden state: collapse overlay, drop all handles, show edge-pill.
+    if (chatPosition === 'hidden') {
+      document.body.classList.remove('hs-chat-top', 'hs-chat-right', 'hs-chat-bottom', 'hs-chat-left');
+      document.body.classList.add('hs-chat-hidden');
+      document.body.classList.toggle('hs-platform-yt', hostPlatform === 'yt');
+      document.body.classList.toggle('hs-platform-twitch', hostPlatform !== 'yt' && !isKick);
+      document.body.classList.toggle('hs-platform-kick', !!isKick);
+      document.body.classList.toggle('hs-mode-theatre', theatreMode);
+      document.body.classList.toggle('hs-mode-normal', !theatreMode);
+      hidePlatformResizeHandles(true);
+      const uh = document.getElementById('hs-c-resize-handle');
+      if (uh) uh.style.setProperty('display', 'none', 'important');
+      ensureChatRestorePill(true);
+      try { applyPlatformPositionOverrides() } catch (_) {}
+      log('Chat position: hidden, theatre:', theatreMode);
+      return;
+    }
+    document.body.classList.remove('hs-chat-hidden');
+    ensureChatRestorePill(false);
     // YouTube: layout overrides that touch #primary/#secondary are gated
     // separately (live-only via :not(.hs-offline)). The hs-chat-{position}
     // class is now applied on EVERY YT page so the persistent multichat
@@ -36226,18 +36284,51 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
   }
 
   function rotateChatPosition() {
-    // Strict 4-state cycle: right → bottom → left → top → right.
-    // No 'hidden' state — chat panel always visible so the C button stays
-    // clickable. If chatPosition is invalid, normalize first then advance.
-    if (document.body.classList.contains('hs-popout')) return; // no-op in popout — no video to share space with
+    // C cycles 4 visible. Hidden via toggleChatHidden(). From hidden → previous-visible.
+    if (document.body.classList.contains('hs-popout')) return;
     const positions = ['right', 'bottom', 'left', 'top'];
-    let idx = positions.indexOf(chatPosition);
-    if (idx === -1) idx = 0; // invalid state → start from 'right' before advancing
     const prev = chatPosition;
-    chatPosition = positions[(idx + 1) % positions.length];
+    if (chatPosition === 'hidden') {
+      chatPosition = positions.includes(chatPositionPrevious) ? chatPositionPrevious : 'right';
+    } else {
+      let idx = positions.indexOf(chatPosition);
+      if (idx === -1) idx = 0;
+      chatPosition = positions[(idx + 1) % positions.length];
+    }
     log('rotate-chat:', prev, '→', chatPosition);
     applyChatPosition();
     saveUiSetting('chatPosition', chatPosition);
+  }
+
+  // CHAT HIDE/SHOW TOGGLE — \\ key + edge-pill. previous restores last visible position.
+  let chatPositionPrevious = 'right';
+  function toggleChatHidden() {
+    if (document.body.classList.contains('hs-popout')) return;
+    const visible = ['right', 'bottom', 'left', 'top'];
+    if (chatPosition === 'hidden') {
+      chatPosition = visible.includes(chatPositionPrevious) ? chatPositionPrevious : 'right';
+    } else {
+      if (visible.includes(chatPosition)) chatPositionPrevious = chatPosition;
+      chatPosition = 'hidden';
+    }
+    applyChatPosition();
+    saveUiSetting('chatPosition', chatPosition);
+    saveUiSetting('chatPositionPrevious', chatPositionPrevious);
+    log('[chat-toggle] →', chatPosition, 'prev:', chatPositionPrevious);
+  }
+  function ensureChatRestorePill(show) {
+    let pill = document.getElementById('hs-chat-restore-pill');
+    if (!show) { if (pill) pill.remove(); return; }
+    if (!pill) {
+      pill = document.createElement('div');
+      pill.id = 'hs-chat-restore-pill';
+      pill.title = 'show chat (\\)';
+      pill.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); toggleChatHidden(); });
+      pill.addEventListener('mousedown', (e) => e.stopPropagation());
+      document.body.appendChild(pill);
+    }
+    const edge = ['right', 'bottom', 'left', 'top'].includes(chatPositionPrevious) ? chatPositionPrevious : 'right';
+    pill.dataset.edge = edge;
   }
 
   // Resolve the channel context to popout for the active tab.

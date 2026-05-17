@@ -504,7 +504,8 @@
       sticker: m.sticker || undefined,
       scColor: m.scColor || undefined,
       emotes: m.emotes || undefined,
-      subMonths: m.subMonths || undefined
+      subMonths: m.subMonths || undefined,
+      streakCount: m.streakCount || undefined
     }
   }
 
@@ -1655,7 +1656,7 @@
         document.getElementById('hs-mc-ctx-menu')?.remove();
         const menu = document.createElement('div');
         menu.id = 'hs-mc-ctx-menu';
-        menu.style.cssText = 'position:fixed;z-index:99999;background:#000;border:1px solid #808080;border-radius:0;padding:4px 0;min-width:150px;font-size:12px;font-family:inherit;';
+        menu.style.cssText = 'position:fixed;z-index:99999;background:#000;border:1px solid #808080;border-radius:0;padding:4px 0;min-width:150px;font-size:13px;font-family:inherit;';
         const item = document.createElement('div');
         item.textContent = 'edit platforms';
         item.style.cssText = 'padding:6px 12px;cursor:pointer;color:#fff;';
@@ -1683,7 +1684,7 @@
       const ch = getChannelById(tabId);
       const menu = document.createElement('div');
       menu.id = 'hs-mc-ctx-menu';
-      menu.style.cssText = 'position:fixed;z-index:99999;background:#000;border:1px solid #808080;border-radius:0;padding:4px 0;min-width:150px;font-size:12px;font-family:inherit;';
+      menu.style.cssText = 'position:fixed;z-index:99999;background:#000;border:1px solid #808080;border-radius:0;padding:4px 0;min-width:150px;font-size:13px;font-family:inherit;';
 
       const mkItem = (label, color, fn) => {
         const item = document.createElement('div');
@@ -3776,8 +3777,8 @@
 
   function applyEmoteSize() {
     const targets = [document.documentElement, document.getElementById('hs-mc-messages')].filter(Boolean);
-    const baseEmote = 32;
-    // Only scale emote images and badges — font size stays independent (A-/A+ controls it)
+    // 28px = Twitch /1.0 native; /2.0 = 56; /3.0 = 112. Base matches URL res so 1x is truly native.
+    const baseEmote = 28;
     const vars = {
       '--hs-emote-size': (baseEmote * emoteSize) + 'px',
       '--hs-time-font': (10 * emoteSize) + 'px',
@@ -3791,6 +3792,42 @@
       for (const [k, v] of Object.entries(vars)) el.style.setProperty(k, v);
     }
     renderMessages(currentTab);
+  }
+
+  // Emoji scale — separate var, default 2x. Mirrors emoteSize storage/lifecycle.
+  let emojiSize = 2;
+  let _saveEmojiSizeTimer = null;
+  function saveEmojiSize() {
+    if (_saveEmojiSizeTimer) cleanup.clearTimeout(_saveEmojiSizeTimer);
+    _saveEmojiSizeTimer = cleanup.setTimeout(() => {
+      _saveEmojiSizeTimer = null;
+      chrome.storage.local.set({ hs_emoji_size: emojiSize });
+    }, 250);
+  }
+  async function loadEmojiSize() {
+    try {
+      const data = await chrome.storage.local.get(['hs_emoji_size']);
+      if (data.hs_emoji_size === 1 || data.hs_emoji_size === 2 || data.hs_emoji_size === 4) {
+        emojiSize = data.hs_emoji_size;
+      } else {
+        // Migrate legacy bigEmoji toggle: explicit false → 1x; otherwise default 2x.
+        const stored = await cachedUiSettings();
+        if (stored.ui_settings?.bigEmoji === false) emojiSize = 1;
+      }
+      applyEmojiSize();
+    } catch (e) {
+      log('Error loading emoji size:', e);
+    }
+  }
+  function applyEmojiSize() {
+    const targets = [document.documentElement, document.getElementById('hs-mc-messages')].filter(Boolean);
+    for (const el of targets) el.style.setProperty('--hs-emoji-scale', String(emojiSize));
+  }
+  function setEmojiSize(size) {
+    if (size !== 1 && size !== 2 && size !== 4) return;
+    emojiSize = size;
+    applyEmojiSize();
+    saveEmojiSize();
   }
 
 
@@ -3973,14 +4010,21 @@
     const container = document.getElementById('hs-mc-container');
     if (!container) return;
     const stack = resolveFontStack(fontFamily, customFontName);
+    // Root + container both: reply-stack overlays are appended to <body>
+    // (outside the container's subtree), so they need the vars on :root to
+    // inherit. Container copy keeps the existing fallback path intact.
+    const root = document.documentElement;
+    root.style.setProperty('--hs-mc-font', stack);
     container.style.setProperty('--hs-mc-font', stack);
     const sizeNum = parseInt(fontSize, 10);
     if (sizeNum >= 10 && sizeNum <= 22) {
+      root.style.setProperty('--hs-mc-base-size', sizeNum + 'px');
       container.style.setProperty('--hs-mc-base-size', sizeNum + 'px');
       // Also drive the messages-area var. F+/F- localStorage override below
       // wins if present (per-channel/per-tab quick adjust).
       const fOverride = parseInt(localStorage.getItem('heatsync-chat-font-size'), 10);
       const msgsSize = (fOverride >= 10 && fOverride <= 22) ? fOverride : sizeNum;
+      root.style.setProperty('--hs-chat-font', msgsSize + 'px');
       container.style.setProperty('--hs-chat-font', msgsSize + 'px');
       const msgsEl = document.getElementById('hs-mc-messages');
       if (msgsEl) msgsEl.style.setProperty('--hs-chat-font', msgsSize + 'px');
@@ -4385,6 +4429,14 @@
               <button class="hs-mc-size-btn ${emoteSize === 4 ? 'active' : ''}" data-size="4">4x</button>
             </div>
           </div>
+          <div class="hs-mc-setting-row hs-mc-setting-row-split">
+            <span class="hs-mc-setting-label" data-tip="emoji size — 1x native, 2x (default)/4x scale unicode emoji">emoji size</span>
+            <div class="hs-mc-size-btns">
+              <button class="hs-mc-size-btn ${emojiSize === 1 ? 'active' : ''}" data-emoji-size="1">1x</button>
+              <button class="hs-mc-size-btn ${emojiSize === 2 ? 'active' : ''}" data-emoji-size="2">2x</button>
+              <button class="hs-mc-size-btn ${emojiSize === 4 ? 'active' : ''}" data-emoji-size="4">4x</button>
+            </div>
+          </div>
           <div class="hs-mc-setting-row">
             <button class="hs-mc-toggle-pill ${wysiwygEnabled ? 'active' : ''}" data-setting="wysiwyg"><span class="hs-mc-toggle-knob"></span></button>
             <span class="hs-mc-setting-label" data-tip="${settingTips.wysiwyg}">${t('mc_settings_input_preview')}</span>
@@ -4477,17 +4529,17 @@
         <div class="hs-mc-settings-group">
           <div class="hs-mc-settings-group-title">${t('mc_settings_muted_users')}</div>
           ${mutedUsers.size === 0
-            ? `<div class="hs-mc-setting-row" style="color:#808080;font-size:11px">${t('mc_settings_no_muted')}</div>`
+            ? `<div class="hs-mc-setting-row" style="color:#808080;font-size:13px">${t('mc_settings_no_muted')}</div>`
             : [...mutedUsers].sort().map(u => `
           <div class="hs-mc-setting-row hs-mc-setting-row-split">
-            <span class="hs-mc-setting-label" style="font-size:11px">${escapeHtml(u)}</span>
-            <button class="hs-mc-unmute-btn" data-username="${escapeHtml(u)}" style="background:none;border:1px solid #808080;color:#808080;font-size:11px;cursor:pointer;padding:1px 6px;line-height:1.4" title="${t('mc_settings_unmute')}">&#x2715;</button>
+            <span class="hs-mc-setting-label" style="font-size:13px">${escapeHtml(u)}</span>
+            <button class="hs-mc-unmute-btn" data-username="${escapeHtml(u)}" style="background:none;border:1px solid #808080;color:#808080;font-size:13px;cursor:pointer;padding:1px 6px;line-height:1.4" title="${t('mc_settings_unmute')}">&#x2715;</button>
           </div>`).join('')
           }
         </div>
         <div class="hs-mc-settings-group">
           <div class="hs-mc-settings-group-title">chat input tips</div>
-          <div class="hs-mc-setting-row" style="display:block;padding:6px 8px;color:#ccc;font-size:11px;line-height:1.5">
+          <div class="hs-mc-setting-row" style="display:block;padding:6px 8px;color:#ccc;font-size:13px;line-height:1.5">
             <div><code style="background:#000;color:#fff;padding:1px 4px">name0</code> overlay on prev emote &mdash; <code style="background:#000;color:#fff;padding:1px 4px">Kappa PepeLaugh0</code></div>
             <div style="margin-top:4px"><code style="background:#000;color:#fff;padding:1px 4px">w!</code> <code style="background:#000;color:#fff;padding:1px 4px">h!</code> <code style="background:#000;color:#fff;padding:1px 4px">v!</code> <code style="background:#000;color:#fff;padding:1px 4px">z!</code> <code style="background:#000;color:#fff;padding:1px 4px">c!#hex</code> ffz mods &mdash; chain <code style="background:#000;color:#fff;padding:1px 4px">w!h!</code></div>
             <div style="margin-top:4px"><code style="background:#000;color:#fff;padding:1px 4px">Tab</code> imagify &middot; again to cycle</div>
@@ -4495,7 +4547,7 @@
         </div>
         <div class="hs-mc-settings-group">
           <div class="hs-mc-setting-row" style="justify-content:flex-end">
-            <button class="hs-mc-defaults-btn" style="background:#808080;border:2px outset #fff;padding:2px 10px;font-size:11px;font-weight:bold;cursor:pointer;font-family:'Liberation Mono',monospace;color:#000;box-shadow:1px 1px 0 #000">default</button>
+            <button class="hs-mc-defaults-btn" style="background:#808080;border:2px outset #fff;padding:2px 10px;font-size:13px;font-weight:bold;cursor:pointer;font-family:'Liberation Mono',monospace;color:#000;box-shadow:1px 1px 0 #000">default</button>
           </div>
         </div>
       </div>
@@ -4562,7 +4614,17 @@
         const size = parseInt(sizeBtn.dataset.size);
         if (size) {
           setEmoteSize(size);
-          msgsEl.querySelectorAll('.hs-mc-size-btn').forEach(b => b.classList.toggle('active', parseInt(b.dataset.size) === size));
+          msgsEl.querySelectorAll('.hs-mc-size-btn[data-size]').forEach(b => b.classList.toggle('active', parseInt(b.dataset.size) === size));
+        }
+        return;
+      }
+
+      const emojiSizeBtn = e.target.closest('.hs-mc-size-btn[data-emoji-size]');
+      if (emojiSizeBtn) {
+        const size = parseInt(emojiSizeBtn.dataset.emojiSize);
+        if (size) {
+          setEmojiSize(size);
+          msgsEl.querySelectorAll('.hs-mc-size-btn[data-emoji-size]').forEach(b => b.classList.toggle('active', parseInt(b.dataset.emojiSize) === size));
         }
         return;
       }
@@ -4985,7 +5047,24 @@
   let _pendingShareClaim = null
   let _resubShareModeTimer = null
   let _resubShareCtx = null
+  let _watchstreakShareModeTimer = null
+  let _watchstreakShareCtx = null
   let _lastSurfacedShareBtn = null
+
+  // Once-per-day rate-limit on the watch-streak share UI. Twitch sometimes
+  // re-shows the callout if you reload the tab mid-stream; cap our surfacing
+  // at one per channel per local-day so it never feels spammy.
+  function _watchstreakDayKey(channel) {
+    const d = new Date()
+    const ymd = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
+    return `hs-watchstreak-shared:${channel}:${ymd}`
+  }
+  function _watchstreakAlreadySharedToday(channel) {
+    try { return !!localStorage.getItem(_watchstreakDayKey(channel)) } catch (_) { return false }
+  }
+  function _markWatchstreakSharedToday(channel) {
+    try { localStorage.setItem(_watchstreakDayKey(channel), '1') } catch (_) {}
+  }
   function _injectShareSynthetic(claim, user, months, customText) {
     const synthId = `hs-synth-share-${claim.channel}-${months}-${Date.now()}`
     claim.synthId = synthId
@@ -5165,6 +5244,162 @@
     // block the click (user-initiated) or pass through (programmatic from us).
     _allowNativeShare: () => _allowNativeShare,
   }
+
+  // ── Watch-streak share: mirror of resub-share for Twitch's daily ───────
+  // "you're on an N stream watch streak!" callout. Same dedupe contract,
+  // same native-button forwarding, separate placeholder/mode CSS so the
+  // user can tell which celebration they're composing. Once-per-day per
+  // channel via localStorage.
+  function _injectWatchstreakSynthetic(claim, user, streakCount, customText) {
+    const synthId = `hs-synth-wstreak-${claim.channel}-${streakCount}-${Date.now()}`
+    claim.synthId = synthId
+    claim.customText = customText || ''
+    const synth = {
+      type: 'usernotice', msgId: 'watchstreak', user, text: customText || '',
+      systemMsg: `${user} just watched ${streakCount} streams in a row! They're on a watch streak!`,
+      color: '#ff8700', badges: _ownBadges || '', channel: claim.channel,
+      time: Date.now(), subTier: '', subMonths: 0, giftCount: 0,
+      recipient: '', raidViewers: 0, raidFrom: '', announceColor: '',
+      bitsTier: 0, streakCount, id: synthId, isSynthetic: true, userOverride: !!customText
+    }
+    try { irc?._handleMsg?.(synth) } catch (_) {}
+    claim.postTimer = setTimeout(() => {
+      if (_pendingShareClaim === claim) _pendingShareClaim = null
+    }, 30000)
+  }
+  function _enterWatchstreakShareMode(claim, user, streakCount) {
+    // Mutually exclusive with resub-share — exit that first if active.
+    if (_resubShareCtx) _exitResubShareMode(_resubShareCtx.claim, false)
+    _watchstreakShareCtx = { claim, user, streakCount }
+    const input = document.getElementById('hs-mc-input')
+    const inputBar = document.getElementById('hs-mc-inputbar')
+    if (!input) return
+    inputBar?.classList.add('hs-mc-watchstreak-share')
+    input.classList.add('hs-mc-watchstreak-share')
+    if (input.dataset.hsOrigPlaceholder === undefined) {
+      input.dataset.hsOrigPlaceholder = input.getAttribute('placeholder') || ''
+    }
+    if (input.dataset.hsOrigDataPlaceholder === undefined) {
+      input.dataset.hsOrigDataPlaceholder = input.getAttribute('data-placeholder') || ''
+    }
+    const placeholder = `🔥 Watch streak (${streakCount}) — Enter to share`
+    input.setAttribute('placeholder', placeholder)
+    input.setAttribute('data-placeholder', placeholder)
+    try { input.focus() } catch (_) {}
+    if (_watchstreakShareModeTimer) clearTimeout(_watchstreakShareModeTimer)
+    _watchstreakShareModeTimer = setTimeout(() => _exitWatchstreakShareMode(claim, true), 30000)
+  }
+  function _exitWatchstreakShareMode(claim, fireFallback) {
+    if (claim && _watchstreakShareCtx?.claim !== claim) return
+    const wasCtx = _watchstreakShareCtx
+    _watchstreakShareCtx = null
+    if (_watchstreakShareModeTimer) { clearTimeout(_watchstreakShareModeTimer); _watchstreakShareModeTimer = null }
+    if (wasCtx) {
+      try {
+        window.HsNotifs?.dismissByKey?.('twitch-watchstreak-share', `watchstreak:${wasCtx.claim.channel}:${wasCtx.streakCount}`)
+      } catch (_) {}
+    }
+    const input = document.getElementById('hs-mc-input')
+    const inputBar = document.getElementById('hs-mc-inputbar')
+    inputBar?.classList.remove('hs-mc-watchstreak-share')
+    input?.classList.remove('hs-mc-watchstreak-share')
+    if (input?.dataset.hsOrigPlaceholder !== undefined) {
+      input.setAttribute('placeholder', input.dataset.hsOrigPlaceholder)
+      delete input.dataset.hsOrigPlaceholder
+    }
+    if (input?.dataset.hsOrigDataPlaceholder !== undefined) {
+      if (input.dataset.hsOrigDataPlaceholder) {
+        input.setAttribute('data-placeholder', input.dataset.hsOrigDataPlaceholder)
+      } else {
+        input.removeAttribute('data-placeholder')
+      }
+      delete input.dataset.hsOrigDataPlaceholder
+    }
+    if (fireFallback && wasCtx && !wasCtx.claim.synthId) {
+      _injectWatchstreakSynthetic(wasCtx.claim, wasCtx.user, wasCtx.streakCount, '')
+    }
+  }
+  window.__hsWatchstreakShare = {
+    active: () => !!_watchstreakShareCtx,
+    consume: (text) => {
+      if (!_watchstreakShareCtx) return false
+      const { claim, user, streakCount } = _watchstreakShareCtx
+      if (claim.preTimer) { clearTimeout(claim.preTimer); claim.preTimer = null }
+      try { _injectWatchstreakSynthetic(claim, user, streakCount, text || '') } catch (_) {}
+      const broadcastShare = () => {
+        const QUEUE_SEL = '[data-test-selector="chat-private-callout-queue__callout-container"]'
+        const liveBtn = document.querySelector(QUEUE_SEL + ' [data-a-target="chat-private-callout__primary-button"]')
+        const candidates = [liveBtn, claim._nativeShareBtn].filter(Boolean)
+        const seen = new Set()
+        const tryFiberOnClick = (btn) => {
+          try {
+            if (typeof getFiber !== 'function') return false
+            let f = getFiber(btn)
+            for (let i = 0; f && i < 10; i++, f = f.return) {
+              const oc = f?.memoizedProps?.onClick
+              if (typeof oc === 'function') {
+                const fakeEvt = {
+                  preventDefault() {}, stopPropagation() {}, persist() {},
+                  currentTarget: btn, target: btn, nativeEvent: { isTrusted: true },
+                  type: 'click', button: 0, buttons: 0,
+                }
+                oc(fakeEvt)
+                console.log('[heatsync-ext] watchstreak-share: fired via fiber onClick')
+                return true
+              }
+            }
+          } catch (e) {
+            console.warn('[heatsync-ext] watchstreak-share fiber onClick threw:', e)
+          }
+          return false
+        }
+        const tryDomClick = (btn) => {
+          try {
+            _allowNativeShare = true
+            try {
+              const opts = { bubbles: true, cancelable: true, composed: true, view: window, button: 0 }
+              btn.dispatchEvent(new MouseEvent('mousedown', opts))
+              btn.dispatchEvent(new MouseEvent('mouseup', opts))
+              btn.dispatchEvent(new MouseEvent('click', opts))
+              btn.click()
+            } finally { _allowNativeShare = false }
+            console.log('[heatsync-ext] watchstreak-share: fired via DOM click sequence')
+            return true
+          } catch (e) {
+            console.warn('[heatsync-ext] watchstreak-share DOM click threw:', e)
+            return false
+          }
+        }
+        for (const btn of candidates) {
+          if (!btn || seen.has(btn)) continue
+          seen.add(btn)
+          if (tryFiberOnClick(btn)) return true
+        }
+        for (const btn of candidates) {
+          if (!btn) continue
+          if (tryDomClick(btn)) return true
+        }
+        console.warn('[heatsync-ext] watchstreak-share: NO broadcast — native callout btn missing')
+        return false
+      }
+      try { broadcastShare() } catch (e) { console.warn('[heatsync-ext] watchstreak-share broadcast outer threw:', e) }
+      _markWatchstreakSharedToday(claim.channel)
+      _exitWatchstreakShareMode(claim, false)
+      return false
+    },
+    enter: (streakCount, user, channel) => {
+      try {
+        if (_pendingShareClaim) {
+          clearTimeout(_pendingShareClaim.preTimer)
+          clearTimeout(_pendingShareClaim.postTimer)
+        }
+        const claim = { kind: 'watchstreak', channel, userLc: (user || '').toLowerCase(), streakCount, synthId: null, preTimer: null, postTimer: null, customText: '', _nativeShareBtn: _lastSurfacedShareBtn }
+        _pendingShareClaim = claim
+        _enterWatchstreakShareMode(claim, user, streakCount)
+      } catch (_) {}
+    },
+  }
+
   function setupHsCalloutCloseButton() {
     if (_hsCalloutCloseObs) return
     // Native callout is hidden by CSS (.hs-notif-twitch-resub-share rule).
@@ -5173,20 +5408,61 @@
     // Share, and emit our own HsNotifs notif to render the controlled UI.
     const surface = (calloutEl) => {
       if (!calloutEl || calloutEl.dataset.hsSurfaced === '1') return
-      calloutEl.dataset.hsSurfaced = '1'
       const txt = calloutEl.textContent || ''
-      const mm = txt.match(/(\d+)\s*month/i)
-      const months = mm ? parseInt(mm[1]) : 0
       const ch = (getLiveChannel?.() || getCurrentChannel?.() || '').toLowerCase()
       const user = currentUsername || ''
-      if (!ch || !user || !months) return
+      if (!ch || !user) return
       const shareBtn = calloutEl.querySelector('[data-a-target="chat-private-callout__primary-button"]')
+
+      // Watch-streak first (text mentions "watch streak"); resub fallback (only
+      // "N month" — without "watch streak"). Order matters: a watch-streak
+      // callout never mentions months, but a sub-anniversary may incidentally
+      // contain "stream", so explicit watchstreak check wins.
+      const isWatchstreak = /watch[\s-]*streak/i.test(txt)
+      const streakMatch   = isWatchstreak ? txt.match(/(\d+)\s*stream/i) : null
+      const streakCount   = streakMatch ? parseInt(streakMatch[1]) : 0
+      const monthMatch    = !isWatchstreak ? txt.match(/(\d+)\s*month/i) : null
+      const months        = monthMatch ? parseInt(monthMatch[1]) : 0
+
+      if (isWatchstreak && streakCount) {
+        if (_watchstreakAlreadySharedToday(ch)) {
+          calloutEl.dataset.hsSurfaced = '1'
+          return
+        }
+        calloutEl.dataset.hsSurfaced = '1'
+        if (shareBtn && shareBtn.dataset.hsShareHooked !== '1') {
+          shareBtn.dataset.hsShareHooked = '1'
+          shareBtn.addEventListener('click', (e) => {
+            if (_allowNativeShare) return
+            e.stopImmediatePropagation()
+            e.preventDefault()
+            try {
+              if (_pendingShareClaim) {
+                clearTimeout(_pendingShareClaim.preTimer)
+                clearTimeout(_pendingShareClaim.postTimer)
+              }
+              const claim = { kind: 'watchstreak', channel: ch, userLc: user.toLowerCase(), streakCount, synthId: null, preTimer: null, postTimer: null, customText: '', _nativeShareBtn: shareBtn }
+              _pendingShareClaim = claim
+              _enterWatchstreakShareMode(claim, user, streakCount)
+            } catch (_) {}
+          }, { capture: true })
+        }
+        _lastSurfacedShareBtn = shareBtn || null
+        try {
+          HsNotifs.emit('twitch-watchstreak-share', {
+            streakCount, user, channel: ch,
+            _nativeShareBtn: shareBtn,
+            _nativeCallout: calloutEl,
+          })
+        } catch (_) {}
+        try { _updateMcLayout?.() } catch (_) {}
+        return
+      }
+
+      if (!months) return
+      calloutEl.dataset.hsSurfaced = '1'
       if (shareBtn && shareBtn.dataset.hsShareHooked !== '1') {
         shareBtn.dataset.hsShareHooked = '1'
-        // User-initiated click on the (hidden) native Share button → enter
-        // our share-mode flow instead of letting Twitch insta-send.
-        // Programmatic clicks from consume() pass through (Twitch's native
-        // onClick fires) so the celebration actually broadcasts.
         shareBtn.addEventListener('click', (e) => {
           if (window.__hsResubShare?._allowNativeShare?.()) return
           e.stopImmediatePropagation()
@@ -5196,15 +5472,12 @@
               clearTimeout(_pendingShareClaim.preTimer)
               clearTimeout(_pendingShareClaim.postTimer)
             }
-            const claim = { channel: ch, userLc: user.toLowerCase(), months, synthId: null, preTimer: null, postTimer: null, customText: '', _nativeShareBtn: shareBtn }
+            const claim = { kind: 'resub', channel: ch, userLc: user.toLowerCase(), months, synthId: null, preTimer: null, postTimer: null, customText: '', _nativeShareBtn: shareBtn }
             _pendingShareClaim = claim
             _enterResubShareMode(claim, user, months)
           } catch (_) {}
         }, { capture: true })
       }
-      // Cache the share button on a module-scoped slot so enter() (called from
-      // the HsNotifs banner — fires AFTER native callout may have been pruned)
-      // can still hand it to consume()'s broadcast fallback.
       _lastSurfacedShareBtn = shareBtn || null
       try {
         HsNotifs.emit('twitch-resub-share', {
@@ -5213,8 +5486,6 @@
           _nativeCallout: calloutEl,
         })
       } catch (_) {}
-      // Refresh layer geometry — ResizeObserver only fires on tabbar/inputbar
-      // resize, so a freshly-mounted layer container would land at fallback (0).
       try { _updateMcLayout?.() } catch (_) {}
     }
     // Twitch removed `.pinned-callout` in a recent refactor — the callout body
@@ -5786,7 +6057,7 @@
       const tsSpan = tsVal ? `<span class="hs-mc-ts" data-ts="${m.time}">${tsVal}</span>` : ''
       const tagColor = typeDef?.color || '#ff0000'
       const tagLabel = isThreadOp || isOp ? '[OP]' : '[RE]'
-      const typeTag = `<span class="hs-feed-tag" style="color:${tagColor};font-size:10px;margin-right:3px">${tagLabel}</span>`
+      const typeTag = `<span class="hs-feed-tag" style="color:${tagColor};font-size:13px;margin-right:3px">${tagLabel}</span>`
       const shortId = (m.base36_id || '').replace(/^0+/, '') || '0'
       const threadLink = `<a href="https://heatsync.org/post/${encodeURIComponent(m.base36_id)}" target="_blank" class="hs-feed-thread-link">&gt;&gt;${escapeHtml(shortId)}</a>`
       const userLink = `<a href="https://heatsync.org/user/${encodeURIComponent(m.feedUser)}" target="_blank" class="hs-mc-user" data-username="${escapeHtml((m.feedUser || 'anon').toLowerCase())}" style="color:${sanitizeColor(m.color || '#fff')}">${escapeHtml(m.feedUser || 'anon')}</a>`
@@ -5814,10 +6085,10 @@
       const tsVal = timestampsEnabled ? formatTimeFromTs(m.time) : ''
       const tsSpan = tsVal ? `<span class="hs-mc-ts" data-ts="${m.time}">${tsVal}</span>` : ''
       const labelColor = m.inlineNotifColor || INLINE_NOTIF_TYPES.dm.color
-      const label = `<span style="color:${labelColor};font-size:10px;font-weight:700;margin-right:3px">[DM]</span>`
+      const label = `<span style="color:${labelColor};font-size:13px;font-weight:700;margin-right:3px">[DM]</span>`
       const platBadge = m.platform === 'twitch'
-        ? '<span style="color:#9146ff;font-size:10px;font-weight:700;margin-right:3px">[T]</span>'
-        : '<span style="color:#ff8700;font-size:10px;font-weight:700;margin-right:3px">[HS]</span>'
+        ? '<span style="color:#9146ff;font-size:13px;font-weight:700;margin-right:3px">[T]</span>'
+        : '<span style="color:#ff8700;font-size:13px;font-weight:700;margin-right:3px">[HS]</span>'
       const userName = `<span style="color:${sanitizeColor(m.color)};font-weight:600">${escapeHtml(m.user)}</span>`
       // All values sanitized — safe innerHTML
       if (m._renderedHtml == null) m._renderedHtml = processEmotes(escapeHtml(m.text), null)
@@ -5872,6 +6143,7 @@
       if (id === 'raid' || id === 'unraid') return 'hs-mc-notice-raid'
       if (id === 'announcement') return 'hs-mc-notice-announce'
       if (id === 'bitsbadgetier') return 'hs-mc-notice-bits'
+      if (id === 'watchstreak') return 'hs-mc-notice-watchstreak'
       if (id === 'viewermilestone') return 'hs-mc-notice-milestone'
       if (id === 'msg_banned' || id === 'msg_timedout' || id === 'no_permission' ||
           id.startsWith('bad_') || id.startsWith('usage_')) return 'hs-mc-notice-error'
@@ -5919,9 +6191,9 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     const plat = m.platform === 'youtube' ? 'yt' : m.platform === 'kick' ? 'kick' : m.platform === 'heatsync' ? 'heatsync' : 'twitch'
     const platLabel = plat === 'yt' ? '[Y]' : plat === 'kick' ? '[K]' : plat === 'heatsync' ? '[H]' : '[T]'
     const platColors = { twitch: '#9146ff', kick: '#53fc18', yt: '#ff0000', heatsync: '#ff8700' }
-    const platformBadge = (platformBadgesEnabled || plat !== hostPlatform) ? `<span class="hs-mc-platform-badge hs-mc-pb-${plat}" style="font-size:10px;margin-right:3px;font-weight:700;vertical-align:middle;color:${platColors[plat]}">${platLabel}</span>` : ''
+    const platformBadge = (platformBadgesEnabled || plat !== hostPlatform) ? `<span class="hs-mc-platform-badge hs-mc-pb-${plat}" style="font-size:13px;margin-right:3px;font-weight:700;vertical-align:middle;color:${platColors[plat]}">${platLabel}</span>` : ''
     const safeScColor = sanitizeColor(m.scColor || '#ffd600')
-    const scBadge = isSuperChat && m.amount ? `<span class="hs-mc-sc-badge" style="background:${safeScColor};color:#000;padding:0 4px;border-radius:0;font-size:10px;font-weight:700;margin-right:3px;">${escapeHtml(m.amount)}</span>` : ''
+    const scBadge = isSuperChat && m.amount ? `<span class="hs-mc-sc-badge" style="background:${safeScColor};color:#000;padding:0 4px;border-radius:0;font-size:13px;font-weight:700;margin-right:3px;">${escapeHtml(m.amount)}</span>` : ''
     const bitsBadge = m.bits ? `<span class="hs-mc-bits-badge" title="${m.bits} bits">${m.bits} bits</span>` : ''
     const paintStyle = m.userId ? getMcPaintStyle(m.userId) : ''
     // Build the channel link for the username. YouTube usernames arrive
@@ -7071,7 +7343,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
 
     // Heatsync linkage status indicator (between rows and error)
     const linkStatus = document.createElement('div')
-    linkStatus.style.cssText = 'font-size:11px;color:#808080;min-height:14px;font-family:ui-monospace,monospace;'
+    linkStatus.style.cssText = 'font-size:13px;color:#808080;min-height:14px;font-family:ui-monospace,monospace;'
     wrapper.insertBefore(linkStatus, errEl)
 
     // Debounced autofill — when user types in any field, look up that name on
@@ -7876,7 +8148,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     const menu = document.createElement('div');
     menu.id = 'hs-mc-live-picker';
     const rect = anchorEl.getBoundingClientRect();
-    menu.style.cssText = `position:fixed;z-index:99999;background:#000;border:1px solid #808080;padding:4px 0;min-width:130px;font-size:12px;font-family:inherit;left:${rect.left}px;top:${rect.bottom + 2}px;`;
+    menu.style.cssText = `position:fixed;z-index:99999;background:#000;border:1px solid #808080;padding:4px 0;min-width:130px;font-size:13px;font-family:inherit;left:${rect.left}px;top:${rect.bottom + 2}px;`;
 
     const curLive = getLiveChannel()?.toLowerCase();
 
@@ -9416,6 +9688,16 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
         applyBlockedHashDelta(changes.blocked_emotes.newValue || []);
       }
 
+      // Emote/emoji scale changes from options page propagate live.
+      if (changes.hs_emote_size) {
+        const v = changes.hs_emote_size.newValue
+        if (v === 1 || v === 2 || v === 4) { emoteSize = v; applyEmoteSize() }
+      }
+      if (changes.hs_emoji_size) {
+        const v = changes.hs_emoji_size.newValue
+        if (v === 1 || v === 2 || v === 4) { emojiSize = v; applyEmojiSize() }
+      }
+
       // Multi-tab seen-state merge — without this, three open tabs writing
       // hs_tab_seen_v1 in close succession last-write-wins and lose each
       // other's per-tab seen timestamps. Merge with max-per-key so any tab
@@ -9639,6 +9921,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       loadChatPosition(),
       loadLivePlatformMap(),
       loadEmoteSize(),
+      loadEmojiSize(),
       loadWysiwygSetting(),
       loadLinksSetting(),
       loadLinkPreviewsSetting(),
@@ -9868,10 +10151,14 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       // matches a pending Share click. Pre-injection → cancel synthetic.
       // Post-injection → hide synthetic so real takes its place. Single
       // celebration always.
+      const _claimKind = _pendingShareClaim?.kind || 'resub'
+      const _allowedMsgIds = _claimKind === 'watchstreak'
+        ? ['watchstreak', 'viewermilestone']
+        : ['resub', 'sub', 'viewermilestone']
       if (_pendingShareClaim && msg.type === 'usernotice' && !msg.isSynthetic &&
           msg.channel?.toLowerCase() === _pendingShareClaim.channel &&
           msg.user?.toLowerCase() === _pendingShareClaim.userLc &&
-          (msg.msgId === 'resub' || msg.msgId === 'sub' || msg.msgId === 'viewermilestone')) {
+          _allowedMsgIds.includes(msg.msgId)) {
         const claim = _pendingShareClaim
         // If our synthetic carries user-typed body and the real broadcast came
         // through empty (Twitch's one-click Share has no composer), keep the

@@ -91,6 +91,14 @@ function parseIrcLine(raw, channel) {
       const raidFrom = tags['msg-param-displayName'] ? decodeURIComponent(tags['msg-param-displayName'].replace(/\\s/g, ' ')) : ''
       const announceColor = tags['msg-param-color'] || ''
       const bitsTier = parseInt(tags['msg-param-threshold']) || 0
+      const category = tags['msg-param-category'] || ''
+      const rawMsgId = tags['msg-id'] || ''
+      // Watch-streak: Twitch ships it under viewermilestone w/ category=watch-streak.
+      // Promote to its own msgId so renderers + dedupe can distinguish.
+      const msgId = (rawMsgId === 'viewermilestone' && category === 'watch-streak')
+        ? 'watchstreak' : rawMsgId
+      const streakCount = (msgId === 'watchstreak')
+        ? (parseInt(tags['msg-param-value'], 10) || 0) : 0
       return {
         user: displayName,
         text: usernotice[2] || '',
@@ -100,7 +108,7 @@ function parseIrcLine(raw, channel) {
         channel: channel || usernotice[1].toLowerCase(),
         time: parseInt(tags['tmi-sent-ts']) || parseInt(tags['rm-received-ts']) || Date.now(),
         type: 'usernotice',
-        msgId: tags['msg-id'] || '',
+        msgId,
         subTier: tier,
         subMonths: months,
         giftCount,
@@ -109,6 +117,7 @@ function parseIrcLine(raw, channel) {
         raidFrom,
         announceColor,
         bitsTier,
+        streakCount,
         id: tags.id || ''
       }
     }

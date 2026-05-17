@@ -384,6 +384,51 @@ const HsNotifs = (() => {
     },
   })
 
+  // Twitch watch-streak share — user's own daily watch-streak callout.
+  // Mirrors resub-share UI but uses 🔥 + orange tone. Once-per-day rate-limit
+  // is enforced upstream in main.js's surface() via localStorage.
+  registerType('twitch-watchstreak-share', {
+    layer: 'chat-docked-bottom',
+    dedupeKey: ({ streakCount, channel }) => `watchstreak:${channel}:${streakCount}`,
+    render: ({ data }) => {
+      const n = data.streakCount | 0
+      const el = document.createElement('span')
+      el.className = 'hs-notif-watchstreak-body'
+      const icon = document.createElement('span')
+      icon.className = 'hs-notif-watchstreak-icon'
+      icon.textContent = '🔥'
+      const text = document.createElement('span')
+      text.className = 'hs-notif-watchstreak-text'
+      const parts = [
+        ['hs-wt-prefix', 'On a '],
+        ['hs-wt-num',    String(n)],
+        ['hs-wt-stream', ' stream'],
+        ['hs-wt-suffix', ' watch streak'],
+      ]
+      for (const [cls, t] of parts) {
+        const s = document.createElement('span')
+        s.className = cls
+        s.textContent = t
+        text.appendChild(s)
+      }
+      el.appendChild(icon)
+      el.appendChild(text)
+      return el
+    },
+    actions: {
+      primary: {
+        label: 'Share',
+        onClick: (data) => {
+          try {
+            window.__hsWatchstreakShare?.enter?.(data.streakCount, data.user, data.channel)
+          } catch (_) {}
+          return false
+        },
+      },
+      dismiss: { label: '✕' },
+    },
+  })
+
   // Twitch raid (worked example — not yet emitted; ready when needed).
   registerType('twitch-raid', {
     layer: 'chat-docked-top',

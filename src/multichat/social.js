@@ -159,12 +159,12 @@ function showFeedEditUI(div, msg) {
   ta.style.cssText = 'flex:1;background:#000;color:#fff;border:1px solid #808080;padding:4px;font-family:inherit;font-size:13px;resize:vertical;'
   const saveBtn = document.createElement('button')
   saveBtn.textContent = 'save'
-  saveBtn.style.cssText = 'background:#ff8700;color:#000;border:none;padding:4px 8px;font-family:inherit;font-size:12px;cursor:pointer;'
+  saveBtn.style.cssText = 'background:#ff8700;color:#000;border:none;padding:4px 8px;font-family:inherit;font-size:13px;cursor:pointer;'
   const cancelBtn = document.createElement('button')
   cancelBtn.textContent = 'cancel'
-  cancelBtn.style.cssText = 'background:#000;color:#fff;border:1px solid #808080;padding:4px 8px;font-family:inherit;font-size:12px;cursor:pointer;'
+  cancelBtn.style.cssText = 'background:#000;color:#fff;border:1px solid #808080;padding:4px 8px;font-family:inherit;font-size:13px;cursor:pointer;'
   const errEl = document.createElement('div')
-  errEl.style.cssText = 'font-size:11px;color:#ff4444;margin-top:2px;'
+  errEl.style.cssText = 'font-size:13px;color:#ff4444;margin-top:2px;'
   form.append(ta, saveBtn, cancelBtn)
   body.style.display = 'none'
   body.parentNode.insertBefore(form, body.nextSibling)
@@ -227,7 +227,7 @@ function showFeedPostContextMenu(e, div, msg) {
   document.getElementById('hs-mc-ctx-menu')?.remove()
   const menu = document.createElement('div')
   menu.id = 'hs-mc-ctx-menu'
-  menu.style.cssText = 'position:fixed;z-index:99999;background:#000;border:1px solid #808080;border-radius:0;padding:4px 0;min-width:120px;font-size:12px;font-family:inherit;'
+  menu.style.cssText = 'position:fixed;z-index:99999;background:#000;border:1px solid #808080;border-radius:0;padding:4px 0;min-width:120px;font-size:13px;font-family:inherit;'
 
   const createdAt = new Date(msg.created_at).getTime()
   const elapsed = Date.now() - createdAt
@@ -1542,7 +1542,7 @@ function buildFeedMessageDiv(m, opUsername) {
       const badge = document.createElement('span')
       badge.className = 'hs-feed-edited'
       badge.textContent = ' (edited)'
-      badge.style.cssText = 'color:#888;font-size:11px;font-style:italic;margin-left:4px;'
+      badge.style.cssText = 'color:#888;font-size:13px;font-style:italic;margin-left:4px;'
       body.appendChild(badge)
     }
   }

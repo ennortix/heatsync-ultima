@@ -201,12 +201,18 @@
   let _resCacheSize = 1
   const _resCache = new Map()
   function getChatResUrl(url) {
-    if (!url || emoteSize === 1) return url;
+    if (!url) return url;
     if (_resCacheSize !== emoteSize) { _resCache.clear(); _resCacheSize = emoteSize }
     const hit = _resCache.get(url)
     if (hit !== undefined) return hit
     let out = url
-    if (emoteSize === 2) {
+    if (emoteSize === 1) {
+      // True native: downgrade Twitch native (IRC fetches at /2.0) and 3rd-party CDNs to 1x.
+      if (url.includes('static-cdn.jtvnw.net')) out = url.replace(/\/[23]\.0/, '/1.0');
+      else if (url.includes('cdn.7tv.app')) out = url.replace(/\/[234]x/, '/1x');
+      else if (url.includes('cdn.betterttv.net')) out = url.replace(/\/[23]x/, '/1x');
+      else if (url.includes('cdn.frankerfacez.com')) out = url.replace(/\/[24](?=\.|$)/, '/1');
+    } else if (emoteSize === 2) {
       if (url.includes('cdn.7tv.app')) out = url.replace('/1x', '/2x');
       else if (url.includes('cdn.betterttv.net')) out = url.replace('/1x', '/2x');
       else if (url.includes('cdn.frankerfacez.com')) out = url.replace(/\/1(?=\.|$)/, '/2');

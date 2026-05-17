@@ -79,13 +79,25 @@
   // (e.g. hs_notifications, used by background.js for desktop notif gating)
   async function loadStorageKeyToggles() {
     const keys = [...document.querySelectorAll('.toggle[data-storage-key]')].map(t => t.dataset.storageKey)
-    if (!keys.length) return
-    const stored = await chrome.storage.local.get(keys)
+    // Also load size-btn groups (hs_emote_size default 1, hs_emoji_size default 2)
+    const sizeGroups = [...document.querySelectorAll('.size-btns[data-storage-key]')]
+    const sizeKeys = sizeGroups.map(g => g.dataset.storageKey)
+    const allKeys = [...keys, ...sizeKeys]
+    if (!allKeys.length) return
+    const stored = await chrome.storage.local.get(allKeys)
     for (const toggle of document.querySelectorAll('.toggle[data-storage-key]')) {
       const k = toggle.dataset.storageKey
       const on = !!stored[k]
       toggle.classList.toggle('active', on)
       toggle.setAttribute('aria-checked', on ? 'true' : 'false')
+    }
+    for (const group of sizeGroups) {
+      const k = group.dataset.storageKey
+      const defaultSize = k === 'hs_emoji_size' ? 2 : 1
+      const current = stored[k] === 1 || stored[k] === 2 || stored[k] === 4 ? stored[k] : defaultSize
+      group.querySelectorAll('.size-btn[data-size]').forEach(b => {
+        b.classList.toggle('active', parseInt(b.dataset.size) === current)
+      })
     }
   }
 
@@ -153,6 +165,21 @@
     if (next && key === 'hs_notifications' && typeof Notification !== 'undefined' && Notification.permission === 'default') {
       Notification.requestPermission().catch(() => {})
     }
+  })
+
+  // chrome.storage.local size-btn groups (hs_emote_size, hs_emoji_size)
+  document.addEventListener('click', (e) => {
+    const btn = e.target.closest('.size-btn[data-size]')
+    if (!btn) return
+    const group = btn.closest('.size-btns[data-storage-key]')
+    if (!group) return
+    const key = group.dataset.storageKey
+    const size = parseInt(btn.dataset.size, 10)
+    if (size !== 1 && size !== 2 && size !== 4) return
+    group.querySelectorAll('.size-btn[data-size]').forEach(b => {
+      b.classList.toggle('active', parseInt(b.dataset.size, 10) === size)
+    })
+    chrome.storage.local.set({ [key]: size })
   })
 
   // Font selector handlers

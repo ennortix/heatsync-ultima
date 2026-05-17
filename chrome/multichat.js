@@ -4367,6 +4367,51 @@ const HsNotifs = (() => {
     },
   })
 
+  // Twitch watch-streak share — user's own daily watch-streak callout.
+  // Mirrors resub-share UI but uses 🔥 + orange tone. Once-per-day rate-limit
+  // is enforced upstream in main.js's surface() via localStorage.
+  registerType('twitch-watchstreak-share', {
+    layer: 'chat-docked-bottom',
+    dedupeKey: ({ streakCount, channel }) => `watchstreak:${channel}:${streakCount}`,
+    render: ({ data }) => {
+      const n = data.streakCount | 0
+      const el = document.createElement('span')
+      el.className = 'hs-notif-watchstreak-body'
+      const icon = document.createElement('span')
+      icon.className = 'hs-notif-watchstreak-icon'
+      icon.textContent = '🔥'
+      const text = document.createElement('span')
+      text.className = 'hs-notif-watchstreak-text'
+      const parts = [
+        ['hs-wt-prefix', 'On a '],
+        ['hs-wt-num',    String(n)],
+        ['hs-wt-stream', ' stream'],
+        ['hs-wt-suffix', ' watch streak'],
+      ]
+      for (const [cls, t] of parts) {
+        const s = document.createElement('span')
+        s.className = cls
+        s.textContent = t
+        text.appendChild(s)
+      }
+      el.appendChild(icon)
+      el.appendChild(text)
+      return el
+    },
+    actions: {
+      primary: {
+        label: 'Share',
+        onClick: (data) => {
+          try {
+            window.__hsWatchstreakShare?.enter?.(data.streakCount, data.user, data.channel)
+          } catch (_) {}
+          return false
+        },
+      },
+      dismiss: { label: '✕' },
+    },
+  })
+
   // Twitch raid (worked example — not yet emitted; ready when needed).
   registerType('twitch-raid', {
     layer: 'chat-docked-top',
@@ -4492,7 +4537,7 @@ function injectStyles() {
       border-radius: 0 !important;
       cursor: pointer !important;
       font-family: inherit;
-      font-size: 12px !important;
+      font-size: 13px !important;
       line-height: 1 !important;
       font-weight: 400 !important;
       white-space: nowrap !important;
@@ -4653,7 +4698,7 @@ function injectStyles() {
       margin: 0 -1px 0 0 !important;
       flex: 0 0 18px !important;
       box-sizing: border-box !important;
-      font-size: 10px !important;
+      font-size: 13px !important;
       line-height: 1 !important;
       letter-spacing: 0 !important;
       display: inline-flex !important;
@@ -4694,7 +4739,7 @@ function injectStyles() {
     }
     .hs-whisper-preview {
       color: #808080;
-      font-size: 11px;
+      font-size: 13px;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
@@ -4702,13 +4747,13 @@ function injectStyles() {
     }
     .hs-whisper-time {
       color: #808080;
-      font-size: 10px;
+      font-size: 13px;
       float: right;
     }
     .hs-whisper-unread {
       background: #ff8700;
       color: #000;
-      font-size: 10px;
+      font-size: 13px;
       font-weight: 700;
       padding: 0 4px;
       border-radius: 0;
@@ -4775,7 +4820,7 @@ function injectStyles() {
       margin-right: 3px;
       background: #9146ff;
       color: #fff;
-      font-size: 10px;
+      font-size: 13px;
       font-weight: 700;
       vertical-align: middle;
     }
@@ -4786,7 +4831,7 @@ function injectStyles() {
       padding: 4px 8px;
       background: #1a1a1a;
       border-bottom: 1px solid #ff8700;
-      font-size: 12px;
+      font-size: 13px;
       color: #fff;
     }
     #hs-mc-multistream-banner[hidden] {
@@ -4804,7 +4849,7 @@ function injectStyles() {
       border: 0;
       padding: 2px 8px;
       font-weight: 700;
-      font-size: 11px;
+      font-size: 13px;
       cursor: pointer;
     }
     .hs-mc-multi-link:hover {
@@ -4865,7 +4910,7 @@ function injectStyles() {
     .hs-mc-feed-inline .hs-mc-ts { margin-right: 4px; }
     .hs-mc-feed-inline .hs-feed-body { color: #fff; }
     .hs-mc-feed-inline .hs-feed-thread-link {
-      color: #ffff00; text-decoration: none; font-size: 10px; margin-right: 4px;
+      color: #ffff00; text-decoration: none; font-size: 13px; margin-right: 4px;
     }
     .hs-mc-feed-inline .hs-feed-thread-link:hover { text-decoration: underline; }
     .hs-mc-dm-inline {
@@ -5009,7 +5054,7 @@ function injectStyles() {
       align-items: center;
       gap: 6px;
       padding: 5px 10px;
-      font-size: 12px;
+      font-size: 13px;
       font-weight: 600;
       transition: background 0.15s;
     }
@@ -5049,7 +5094,7 @@ function injectStyles() {
     }
     .hs-mc-chat-banner-timer {
       font-family: 'SF Mono', 'Consolas', monospace;
-      font-size: 11px;
+      font-size: 13px;
       font-weight: 700;
       color: #ff8700;
       background: rgba(0,0,0,0.4);
@@ -5058,7 +5103,7 @@ function injectStyles() {
       flex-shrink: 0;
     }
     .hs-mc-chat-banner-badge {
-      font-size: 10px;
+      font-size: 13px;
       font-weight: 700;
       color: #ff5050;
       text-transform: uppercase;
@@ -5440,8 +5485,8 @@ function injectStyles() {
        Worst case: just "104mo" + buttons. Never just buttons-only.   */
     .hs-rt-mo { display: none; }
     @container (max-width: 280px) {
-      .hs-notif-resub-body { font-size: 11px; }
-      .hs-notif-action { padding: 2px 6px; font-size: 11px; }
+      .hs-notif-resub-body { font-size: 13px; }
+      .hs-notif-action { padding: 2px 6px; font-size: 13px; }
       .hs-rt-prefix { display: none; }
     }
     @container (max-width: 220px) {
@@ -5453,6 +5498,38 @@ function injectStyles() {
     @container (max-width: 140px) {
       .hs-rt-months { display: none; }
       .hs-rt-mo { display: inline; }
+    }
+    /* Watch-streak notif — same skeleton as resub, orange-themed, shorter text. */
+    .hs-notif-watchstreak-body {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex: 1 1 0;
+      min-width: 0;
+      overflow: hidden;
+    }
+    .hs-notif-watchstreak-icon {
+      flex: 0 0 auto;
+      font-size: 14px;
+    }
+    .hs-notif-watchstreak-text {
+      flex: 1 1 0;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      color: #ffa040;
+      font-weight: 600;
+    }
+    @container (max-width: 240px) {
+      .hs-wt-prefix { display: none; }
+    }
+    @container (max-width: 180px) {
+      .hs-wt-suffix { display: none; }
+    }
+    @container (max-width: 140px) {
+      .hs-wt-stream { display: none; }
+      .hs-notif-watchstreak-icon { display: none; }
     }
     /* Hide native Twitch resub-share callout queue — HsNotifs renders our own
        version in the chat-docked-bottom layer with controlled actions. */
@@ -5519,7 +5596,7 @@ function injectStyles() {
     /* Inline so multiple text spans concatenate; the wrapper handles ellipsis. */
     [data-test-selector="chat-private-callout-queue__callout-container"] .pinned-callout :is(div, span, p):not(:has(button)) {
       display: inline !important;
-      font-size: 12px !important;
+      font-size: 13px !important;
       line-height: 1.2 !important;
     }
     /* Text wrapper — single block that ellipsifies when chat narrows.
@@ -5551,7 +5628,7 @@ function injectStyles() {
        min-width:0 lets it compress instead of overflowing when chat narrows. */
     [data-test-selector="chat-private-callout-queue__callout-container"] [data-a-target="chat-private-callout__primary-button"] {
       padding: 2px 10px !important;
-      font-size: 12px !important;
+      font-size: 13px !important;
       min-height: 0 !important;
       height: auto !important;
       line-height: 1.4 !important;
@@ -5567,11 +5644,11 @@ function injectStyles() {
        degrades correctly for narrow chat in any tab-position layout. */
     @container (max-width: 280px) {
       [data-test-selector="chat-private-callout-queue__callout-container"] .pinned-callout :is(div, span, p):not(:has(button)) {
-        font-size: 11px !important;
+        font-size: 13px !important;
       }
       [data-test-selector="chat-private-callout-queue__callout-container"] [data-a-target="chat-private-callout__primary-button"] {
         padding: 2px 6px !important;
-        font-size: 11px !important;
+        font-size: 13px !important;
       }
     }
     @container (max-width: 220px) {
@@ -5589,7 +5666,7 @@ function injectStyles() {
       border: none;
       color: #fff;
       cursor: pointer;
-      font-size: 12px;
+      font-size: 13px;
       font-weight: 600;
       padding: 2px 6px;
       margin-left: 0;
@@ -5807,7 +5884,7 @@ function injectStyles() {
 
     .hs-mc-ts {
       color: #808080;
-      font-size: 10px;
+      font-size: 13px;
       margin-right: 4px;
       font-variant-numeric: tabular-nums;
     }
@@ -5824,7 +5901,7 @@ function injectStyles() {
       align-items: center;
       justify-content: center;
       color: #fff;
-      font-size: 11px;
+      font-size: 13px;
       font-weight: 700;
       text-transform: uppercase;
       line-height: 1;
@@ -5852,27 +5929,20 @@ function injectStyles() {
     .hs-mc-msg.hs-mc-zebra, .hs-feed-msg.hs-mc-zebra {
       background: #1f1f1f;
     }
-    /* Hovered-row tint while the reply stack is shown — same olive as stack rows.
+    /* Hovered-row tint while the reply stack is shown — same dark olive as stack rows.
        Critical: ONLY change the background. Changing padding/line-height shrinks the
        row, which triggers chat auto-scroll-to-bottom adjustment AFTER showStack has
        already anchored the overlay → 8-15px visible gap. Pure visual change only. */
     .hs-mc-msg.hs-mc-reply-stack-active {
-      background: #808000 !important;
+      background: #2e2e08 !important;
     }
-    /* High-contrast on olive: forces every text element (gray ts, inline-styled
-       username, purple [T] / red [Y] / green [K] platform badges, links, emote alts)
-       to white. Without this, a #808080 timestamp on #808000 vanishes entirely and
-       saturated badges turn muddy. Scoped to all three olive rows: active hovered row,
-       up-stack parents, down-stack descendants. */
+    /* Dark olive bg lets full-color inline usernames through. Row base color is
+       white for non-colored text (timestamps, plain message body) — inline
+       user colors override naturally. No star-cascade so colored names breathe. */
     .hs-mc-msg.hs-mc-reply-stack-active,
-    .hs-mc-msg.hs-mc-reply-stack-active *,
     #hs-mc-reply-stack .hs-mc-reply-stack-row,
-    #hs-mc-reply-stack .hs-mc-reply-stack-row *,
-    #hs-mc-reply-stack-down .hs-mc-reply-stack-row,
-    #hs-mc-reply-stack-down .hs-mc-reply-stack-row * {
-      color: #fff !important;
-      -webkit-text-fill-color: #fff !important;
-      border-left-color: #fff !important;
+    #hs-mc-reply-stack-down .hs-mc-reply-stack-row {
+      color: #fff;
     }
     /* Reply-chain stack overlay — viewport-bounded vertical stack of parent messages.
        Bottom edge butts directly against the hovered row (no border, no shadow below). */
@@ -5886,6 +5956,11 @@ function injectStyles() {
       overflow: hidden;
       display: flex;
       flex-direction: column;
+      /* Overlay lives on <body>, outside #hs-mc-container — pull font from
+         :root vars so rows render in Cozette at the panel size, not the
+         host page's font (Inter/Roobert on Twitch). */
+      font-family: var(--hs-mc-font, 'CozetteVector', 'Courier New', monospace);
+      font-size: var(--hs-mc-base-size, 13px);
     }
     /* Down overlay — descendants stacked BELOW the hovered row. No top border so
        it butts snug against the row (top edge meets row's content bottom). */
@@ -5899,13 +5974,15 @@ function injectStyles() {
       overflow: hidden;
       display: flex;
       flex-direction: column;
+      font-family: var(--hs-mc-font, 'CozetteVector', 'Courier New', monospace);
+      font-size: var(--hs-mc-base-size, 13px);
     }
     /* Overlay rows must match native .hs-mc-msg height EXACTLY — same padding,
        same line-height. Mismatched heights make the olive stack look like a
        broken copy of the active row sitting above/below it. */
     #hs-mc-reply-stack-down .hs-mc-reply-stack-row,
     #hs-mc-reply-stack .hs-mc-reply-stack-row {
-      background: #808000 !important;
+      background: #2e2e08 !important;
       box-shadow: none !important;
       margin: 0 !important;
       /* override .hs-mc-msg's content-visibility:auto — we render at hover time
@@ -5918,37 +5995,29 @@ function injectStyles() {
       display: none !important;
     }
     /* Zebra striping across the entire reply chain. Anchored to the active row
-       (always #808000) so alternation flows continuously: up-stack rows count
-       from the BOTTOM (the row directly above active is dark), down-stack rows
-       count from the TOP (the row directly below active is dark). Overflow chip
-       sits at child[0] of the up-stack but doesn't affect nth-last-child parity.
-       Darker shade also improves white-text contrast (~6.2 vs ~3.7 on plain
-       olive) and dramatically amplifies the timeout/cleared opacity:0.45 effect
-       — banded muted rows read as visually rich rather than a wall of olive. */
+       (always #2e2e08): up-stack rows count from BOTTOM, down-stack rows count
+       from TOP. Banded muted rows amplify the timeout/cleared opacity effect
+       — visually rich rather than a wall of olive. */
     #hs-mc-reply-stack .hs-mc-reply-stack-row:nth-last-child(odd),
     #hs-mc-reply-stack-down .hs-mc-reply-stack-row:nth-child(odd) {
-      background: #5c5c00 !important;
+      background: #1a1a04 !important;
     }
-    /* Reply-context chip stays visible on olive rows so the row height never
-       changes on hover (no scrollTop compensation needed → zero chat-jump).
-       Black against #808000 gives ~6.5:1 contrast — clearly readable yet
-       visually distinct from the white message text, so the eye treats it as
-       skip-me metadata while reading the thread. Must override the blanket
-       white-text rule with the same !important. */
+    /* Reply-context chip on dark olive rows — dim gray reads as skip-me
+       metadata against the dark bg (was black against bright olive). */
     .hs-mc-msg.hs-mc-reply-stack-active .hs-mc-reply-ctx,
     .hs-mc-msg.hs-mc-reply-stack-active .hs-mc-reply-ctx *,
     #hs-mc-reply-stack .hs-mc-reply-stack-row .hs-mc-reply-ctx,
     #hs-mc-reply-stack .hs-mc-reply-stack-row .hs-mc-reply-ctx *,
     #hs-mc-reply-stack-down .hs-mc-reply-stack-row .hs-mc-reply-ctx,
     #hs-mc-reply-stack-down .hs-mc-reply-stack-row .hs-mc-reply-ctx * {
-      color: #000 !important;
-      -webkit-text-fill-color: #000 !important;
-      border-left-color: #000 !important;
+      color: #999 !important;
+      -webkit-text-fill-color: #999 !important;
+      border-left-color: #999 !important;
     }
     .hs-mc-reply-stack-chip {
       flex: 0 0 auto;
       padding: 2px 6px;
-      font-size: 11px;
+      font-size: 13px;
       font-weight: 700;
       color: #fff;
       background: #000;
@@ -5966,7 +6035,7 @@ function injectStyles() {
       animation: hs-mc-thread-flash 1.2s ease-out;
     }
     @keyframes hs-mc-thread-flash {
-      0% { background: #808000; }
+      0% { background: #2e2e08; }
       100% { background: transparent; }
     }
     .hs-mc-feed-inline, .hs-mc-stream-event {
@@ -5984,7 +6053,7 @@ function injectStyles() {
       background: #000;
       border: 1px solid #808080;
       color: #fff;
-      font-size: 11px;
+      font-size: 13px;
       padding: 0 4px;
       cursor: pointer;
       line-height: 18px;
@@ -6005,7 +6074,7 @@ function injectStyles() {
       justify-content: space-between;
       background: #000;
       padding: 2px 6px;
-      font-size: 11px;
+      font-size: 13px;
       color: #fff;
       box-sizing: border-box;
     }
@@ -6055,7 +6124,7 @@ function injectStyles() {
     }
     .hs-mc-system-text {
       color: #b0b0b0;
-      font-size: 12px;
+      font-size: 13px;
       font-style: italic;
       display: block;
     }
@@ -6102,15 +6171,18 @@ function injectStyles() {
     /* Bits = gold/amber (distinct from raid orange and announce yellow) */
     .hs-mc-msg.hs-mc-notice-bits      { border-left-color: #ffaa00 !important; background: rgba(255, 170, 0, 0.10) !important; }
     .hs-mc-msg.hs-mc-notice-bits      .hs-mc-system-text { color: #ffd700; font-weight: 600; }
-    /* Watch-streak milestone = teal (different from cyan mode change) */
+    /* viewermilestone (sub anniversary, etc.) = teal */
     .hs-mc-msg.hs-mc-notice-milestone { border-left-color: #008080 !important; background: rgba(0, 128, 128, 0.12) !important; }
     .hs-mc-msg.hs-mc-notice-milestone .hs-mc-system-text { color: #00ffff; font-weight: 600; }
+    /* Watch-streak = brand orange — engagement heat, distinct from raid magenta */
+    .hs-mc-msg.hs-mc-notice-watchstreak { border-left-color: #ff7f00 !important; background: rgba(255, 127, 0, 0.12) !important; }
+    .hs-mc-msg.hs-mc-notice-watchstreak .hs-mc-system-text { color: #ffa040; font-weight: 600; }
     /* Errors / rejections = dim maroon */
     .hs-mc-msg.hs-mc-notice-error     { border-left-color: #800000 !important; background: rgba(128, 0, 0, 0.06) !important; }
     .hs-mc-msg.hs-mc-notice-error     .hs-mc-system-text { color: #ff8080; }
     /* First-time chatter (Twitch first-msg=1) = Twitch magenta-purple */
     .hs-mc-msg.hs-mc-first-msg { border-left: 3px solid #bd5fff; padding-left: 8px; background: rgba(189, 95, 255, 0.12); }
-    .hs-mc-first-tag { display: inline-block; font-size: 10px; font-weight: 700; color: #fff; background: #bd5fff; padding: 0 4px; border-radius: 2px; margin-right: 4px; vertical-align: middle; }
+    .hs-mc-first-tag { display: inline-block; font-size: 13px; font-weight: 700; color: #fff; background: #bd5fff; padding: 0 4px; border-radius: 2px; margin-right: 4px; vertical-align: middle; }
     /* Cleared (timed out / banned / msg deleted) — Twitch-native dim + strikethrough.
        Username and badges stay visible so the reader can see who got hit; the body
        text and emotes get faded with a strikethrough. */
@@ -6132,18 +6204,18 @@ function injectStyles() {
     }
     .hs-mc-redeem-label {
       color: #9147ff;
-      font-size: 11px;
+      font-size: 13px;
       font-style: normal;
       font-weight: 600;
     }
     .hs-mc-highlight-label {
       color: #ffd700;
-      font-size: 11px;
+      font-size: 13px;
       font-style: normal;
       font-weight: 600;
     }
     .hs-mc-reply-ctx {
-      font-size: 11px;
+      font-size: 13px;
       color: #808080;
       padding: 1px 0 1px 8px;
       border-left: 2px solid #808080;
@@ -6156,29 +6228,30 @@ function injectStyles() {
       color: #808080;
       font-weight: 600;
     }
+    /* Dark blood-red — saturated enough to read as "you got mentioned" but
+       dark enough to let full-color Twitch usernames render on top without
+       the bg drowning them. Mirrors heatsync.org messages.css. */
     .hs-mc-msg.mention {
-      background: #800000;
+      background: #330808;
     }
-    /* Tinted-bg scope: maroon #800000 drowns out #808080 timestamps and
-       channel tags, makes saturated user colors muddy, and breaks the
-       platform-badge palette. Force every descendant to white. Mirrors the
-       olive reply-stack treatment at styles.js:1329 — same "tinted bg →
-       white * !important" rule. Apply on the row itself too so direct
-       text nodes (channel-tag prefix, ◆ glyph) inherit. */
-    .hs-mc-msg.mention,
-    .hs-mc-msg.mention * {
-      color: #fff !important;
-      -webkit-text-fill-color: #fff !important;
-      border-left-color: #fff !important;
+    /* Zebra striping for consecutive mentions — leverages the existing
+       neighbor-flip .hs-mc-zebra cadence so adjacent mention rows alternate
+       without looking like a wall of identical red. Darker red maintains
+       the mention semantic while distinguishing rows. */
+    .hs-mc-msg.mention.hs-mc-zebra {
+      background: #1a0404;
     }
-    /* Channel tag override — black makes it read as skip-me metadata
-       against the maroon, same pattern as the reply-stack's black-ctx-chip
-       on olive. Higher specificity (3 classes) than the white * rule
-       (2 classes + 1 element) so this wins without !important conflict. */
+    /* Row base color white for non-colored text (gray timestamps, plain
+       message body) — inline user colors override naturally. No star-cascade
+       so colored names breathe. */
+    .hs-mc-msg.mention {
+      color: #fff;
+    }
+    /* Channel tag — dim gray reads as skip-me metadata against the dark bg. */
     .hs-mc-msg.mention .hs-mc-channel,
     .hs-mc-msg.mention .hs-mc-channel * {
-      color: #000 !important;
-      -webkit-text-fill-color: #000 !important;
+      color: #999 !important;
+      -webkit-text-fill-color: #999 !important;
     }
     .hs-mc-msg.hs-first-msg {
       box-shadow: inset 2px 0 0 #ffff00;
@@ -6241,6 +6314,18 @@ function injectStyles() {
     }
 
     /* Username hover tooltip - profile preview */
+    /* Body-appended popovers — pull font from :root vars so they render in
+       Cozette/user-chosen face instead of inheriting Twitch's Inter. .hs-pcard
+       and .hs-notif set their own font-family intentionally (system sans /
+       ui-monospace) — leave those alone. */
+    #hs-user-tooltip,
+    #hs-badge-tooltip,
+    #hs-emote-tooltip,
+    #hs-link-tooltip,
+    #hs-mc-msg-ctx {
+      font-family: var(--hs-mc-font, 'CozetteVector', 'Courier New', monospace);
+      font-size: var(--hs-mc-base-size, 13px);
+    }
     #hs-user-tooltip {
       position: fixed;
       /* Must beat the unified resize bar (#hs-c-resize-handle uses max int).
@@ -6333,7 +6418,7 @@ function injectStyles() {
       line-height: 1.2;
     }
     #hs-user-tooltip .hs-pc-platform {
-      font-size: 10px;
+      font-size: 13px;
       padding: 1px 2px;
       font-weight: 900;
       border: 1px solid #000;
@@ -6356,7 +6441,7 @@ function injectStyles() {
     }
     #hs-user-tooltip .hs-pc-role {
       padding: 2px 3px;
-      font-size: 10px;
+      font-size: 13px;
       font-weight: 900;
       white-space: nowrap;
       border: 1px solid #000;
@@ -6368,7 +6453,7 @@ function injectStyles() {
     #hs-user-tooltip .hs-pc-role.affiliate { background: transparent; color: #fff; }
     #hs-user-tooltip .hs-pc-age {
       padding: 2px 4px;
-      font-size: 11px;
+      font-size: 13px;
       font-weight: 900;
       border: 1px solid #000;
       background: #ffff00;
@@ -6377,7 +6462,7 @@ function injectStyles() {
       letter-spacing: 0.3px;
     }
     #hs-user-tooltip .hs-pc-bio {
-      font-size: 12px;
+      font-size: 13px;
       color: #fff;
       line-height: 1.3;
       word-break: break-word;
@@ -6394,7 +6479,7 @@ function injectStyles() {
       display: flex;
       gap: 6px;
       flex-wrap: wrap;
-      font-size: 11px;
+      font-size: 13px;
       color: #fff;
       line-height: 1.3;
     }
@@ -6404,7 +6489,7 @@ function injectStyles() {
       gap: 4px;
       height: 20px;
       padding: 0 6px;
-      font-size: 11px;
+      font-size: 13px;
       font-weight: 500;
       color: #fff;
       border: 1px solid #fff;
@@ -6420,18 +6505,18 @@ function injectStyles() {
     #hs-user-tooltip .hs-pc-stat.re { border-color: #00ffff; color: #00ffff; }
     #hs-user-tooltip .hs-pc-stat.re .hs-pc-num { color: #fff; }
     #hs-user-tooltip .hs-pc-stat-heat { border-color: #ff8700; }
-    #hs-user-tooltip .hs-pc-stat-heat .hs-heat-num { font-size: 11px; font-weight: 700; }
+    #hs-user-tooltip .hs-pc-stat-heat .hs-heat-num { font-size: 13px; font-weight: 700; }
     #hs-user-tooltip .hs-pc-rel {
       display: flex;
       align-items: center;
       gap: 4px;
       flex-wrap: wrap;
-      font-size: 10px;
+      font-size: 13px;
       line-height: 1.2;
     }
     #hs-user-tooltip .hs-pc-rel-badge {
       padding: 2px 3px;
-      font-size: 10px;
+      font-size: 13px;
       font-weight: 900;
       white-space: nowrap;
       letter-spacing: 0.3px;
@@ -6444,7 +6529,7 @@ function injectStyles() {
     #hs-user-tooltip .hs-pc-rel-badge.mutual-sub { background: #000; color: #fff; border: 1px solid #ff8700; }
     #hs-user-tooltip .hs-pc-followage {
       padding: 2px 3px;
-      font-size: 10px;
+      font-size: 13px;
       font-weight: 900;
       white-space: nowrap;
       letter-spacing: 0.3px;
@@ -6458,7 +6543,7 @@ function injectStyles() {
     }
     #hs-user-tooltip .hs-pc-channel-follows {
       padding: 2px 3px;
-      font-size: 10px;
+      font-size: 13px;
       font-weight: 900;
       white-space: nowrap;
       letter-spacing: 0.3px;
@@ -6467,7 +6552,7 @@ function injectStyles() {
     }
     #hs-user-tooltip .hs-pc-sub-tenure {
       padding: 2px 3px;
-      font-size: 10px;
+      font-size: 13px;
       font-weight: 900;
       white-space: nowrap;
       letter-spacing: 0.3px;
@@ -6476,11 +6561,11 @@ function injectStyles() {
     }
     #hs-user-tooltip .hs-pc-loading {
       color: #fff;
-      font-size: 11px;
+      font-size: 13px;
     }
     .hs-mc-channel {
       color: #808080;
-      font-size: 11px;
+      font-size: 13px;
       margin-left: 4px;
     }
     .hs-mc-time {
@@ -6509,7 +6594,7 @@ function injectStyles() {
       text-transform: lowercase;
     }
     .hs-mc-empty-sub {
-      font-size: 12px;
+      font-size: 13px;
       color: #a0a0a0;
       margin-bottom: 14px;
       line-height: 1.4;
@@ -6527,7 +6612,7 @@ function injectStyles() {
       border: 1px solid rgba(255,255,255,0.12);
       color: #ddd;
       font-family: inherit;
-      font-size: 12px;
+      font-size: 13px;
       cursor: pointer;
       text-decoration: none;
       text-align: center;
@@ -6553,7 +6638,7 @@ function injectStyles() {
       cursor: default;
     }
     .hs-mc-empty-note {
-      font-size: 11px;
+      font-size: 13px;
       color: #555;
       margin-top: 12px;
       line-height: 1.4;
@@ -6645,22 +6730,13 @@ function injectStyles() {
       visibility: hidden !important;
     }
 
-    /* Emojis — native size by default, doubled when #hs-mc-container.hs-2x */
+    /* Emojis — scale driven by --hs-emoji-scale (1|2|4). Default 2x. */
     .hs-mc-emoji {
-      font-size: 1em;
+      font-size: calc(1em * var(--hs-emoji-scale, 2));
       line-height: 1;
       vertical-align: middle;
       display: inline-block;
     }
-    #hs-mc-container.hs-2x .hs-mc-emoji {
-      font-size: 2em;
-    }
-    /* Small native Twitch emoticons (:), :(, <3 etc.) doubled when toggled on */
-    #hs-mc-container.hs-2x img.hs-mc-emote[src*="static-cdn.jtvnw.net/emoticons"][src*="/1.0"] {
-      width: 56px !important;
-      height: 56px !important;
-    }
-
     /* 7TV ZERO-WIDTH OVERLAY EMOTE STACKING */
     .hs-mc-emote-stack {
       display: inline-flex;
@@ -6905,7 +6981,7 @@ function injectStyles() {
       font-weight: 600;
     }
     #hs-badge-tooltip .tooltip-source {
-      font-size: 11px;
+      font-size: 13px;
       padding: 2px 6px;
       margin: 2px -8px -8px;
       border-radius: 0;
@@ -6945,7 +7021,7 @@ function injectStyles() {
       font-weight: 600;
     }
     #hs-emote-tooltip .tooltip-source {
-      font-size: 11px;
+      font-size: 13px;
       padding: 2px 6px;
       margin: 2px -8px -8px;
       border-radius: 0;
@@ -6999,7 +7075,7 @@ function injectStyles() {
     }
     #hs-link-tooltip .link-title {
       color: #fff;
-      font-size: 12px;
+      font-size: 13px;
       font-weight: 600;
       overflow: hidden;
       text-overflow: ellipsis;
@@ -7009,7 +7085,7 @@ function injectStyles() {
     }
     #hs-link-tooltip .link-desc {
       color: #fff;
-      font-size: 11px;
+      font-size: 13px;
       overflow: hidden;
       text-overflow: ellipsis;
       display: -webkit-box;
@@ -7018,11 +7094,11 @@ function injectStyles() {
     }
     #hs-link-tooltip .link-domain {
       color: #8080ff;
-      font-size: 10px;
+      font-size: 13px;
     }
     #hs-link-tooltip .link-loading {
       color: #808080;
-      font-size: 11px;
+      font-size: 13px;
     }
 
     /* Input styles (used in #hs-mc-inputbar) */
@@ -7064,6 +7140,23 @@ function injectStyles() {
     #hs-mc-input.hs-mc-resub-share[contenteditable]:empty::before,
     #hs-mc-input.hs-mc-resub-share[contenteditable]:has(br:only-child)::before {
       color: #9147ff !important;
+      font-weight: 600 !important;
+    }
+    /* Watch-streak share mode — orange glow signals heat/streak, distinct
+       from resub purple. Same input mechanism, different brand color. */
+    #hs-mc-inputbar.hs-mc-watchstreak-share {
+      box-shadow: 0 0 0 2px #ff7f00 inset, 0 0 8px rgba(255,127,0,0.4);
+      background: rgba(255,127,0,0.08);
+    }
+    #hs-mc-input.hs-mc-watchstreak-share,
+    #hs-mc-input.hs-mc-watchstreak-share:focus {
+      border-color: #ff7f00 !important;
+      background: #fff5ea !important;
+    }
+    #hs-mc-input.hs-mc-watchstreak-share::placeholder,
+    #hs-mc-input.hs-mc-watchstreak-share[contenteditable]:empty::before,
+    #hs-mc-input.hs-mc-watchstreak-share[contenteditable]:has(br:only-child)::before {
+      color: #ff7f00 !important;
       font-weight: 600 !important;
     }
     /* Contenteditable placeholder. Browsers leave a stray BR after focus/blur
@@ -7183,7 +7276,7 @@ function injectStyles() {
     }
     .hs-mc-emoji-name {
       color: #808080;
-      font-size: 12px;
+      font-size: 13px;
     }
     .hs-mc-emoji-row.selected .hs-mc-emoji-name,
     .hs-mc-emoji-row:hover .hs-mc-emoji-name {
@@ -7208,7 +7301,7 @@ function injectStyles() {
       gap: 6px;
       padding: 5px 10px;
       cursor: pointer;
-      font-size: 12px;
+      font-size: 13px;
       color: #fff;
     }
     .hs-mc-slash-row:hover,
@@ -7218,7 +7311,7 @@ function injectStyles() {
     }
     .hs-mc-slash-name { color: #ff8700; font-weight: 700; }
     .hs-mc-slash-args { color: #aaa; flex-shrink: 0; }
-    .hs-mc-slash-desc { color: #808080; font-size: 11px; margin-left: auto; }
+    .hs-mc-slash-desc { color: #808080; font-size: 13px; margin-left: auto; }
     .hs-mc-slash-row:hover .hs-mc-slash-args,
     .hs-mc-slash-row.selected .hs-mc-slash-args,
     .hs-mc-slash-row:hover .hs-mc-slash-desc,
@@ -7232,7 +7325,7 @@ function injectStyles() {
       color: #808080;
       border: none;
       border-radius: 0;
-      font-size: 11px;
+      font-size: 13px;
       cursor: pointer;
       transition: none;
     }
@@ -7427,7 +7520,7 @@ function injectStyles() {
     .hs-pcard-badges img.hs-mc-badge-img {
       width: 18px; height: 18px;
     }
-    .hs-pcard-pills { display: flex; flex-wrap: wrap; gap: 6px; font-size: 11px; }
+    .hs-pcard-pills { display: flex; flex-wrap: wrap; gap: 6px; font-size: 13px; }
     .hs-pcard-pill {
       padding: 2px 6px; border: 1px solid; text-decoration: none;
       font-weight: 600; display: inline-flex; align-items: center; gap: 3px;
@@ -7439,7 +7532,7 @@ function injectStyles() {
     .hs-pcard-pill-heatsync { color: #ff8700; border-color: #ff8700; }
     .hs-pcard-pill-live { color: #ff5050; }
     .hs-pcard-bio {
-      color: #aaa; font-size: 12px; line-height: 1.4;
+      color: #aaa; font-size: 13px; line-height: 1.4;
       white-space: pre-wrap; word-break: break-word;
       border-left: 2px solid #1a1a1a; padding: 0 0 0 8px;
     }
@@ -7449,30 +7542,30 @@ function injectStyles() {
     .hs-pcard-bio-tag:hover { text-decoration: underline; }
     .hs-pcard-meta {
       display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
-      font-size: 11px; color: #888; line-height: 1.4;
+      font-size: 13px; color: #888; line-height: 1.4;
     }
     .hs-pcard-age { color: #888; }
     .hs-pcard-role {
-      padding: 0 5px; font-size: 10px; font-weight: 700; line-height: 1.6;
+      padding: 0 5px; font-size: 13px; font-weight: 700; line-height: 1.6;
     }
     .hs-pcard-role.partner { background: #ffaa00; color: #000; }
     .hs-pcard-role.affiliate { background: #555; color: #fff; }
     .hs-pcard-verified {
       display: inline-flex; align-items: center; justify-content: center;
-      width: 14px; height: 14px; font-size: 10px; font-weight: 700;
+      width: 14px; height: 14px; font-size: 13px; font-weight: 700;
     }
     .hs-pcard-verified.twitch { background: #9146ff; color: #fff; }
     .hs-pcard-verified.kick { background: #53fc18; color: #000; }
-    .hs-pcard-rel { color: #ff8700; font-weight: 600; font-size: 12px; margin-top: 4px; }
+    .hs-pcard-rel { color: #ff8700; font-weight: 600; font-size: 13px; margin-top: 4px; }
     .hs-pcard-link { color: #ff8700; text-decoration: none; font-weight: 600; }
     .hs-pcard-link:hover { text-decoration: underline; }
     .hs-pcard-msg {
       display: flex; gap: 6px; padding: 2px 0;
       font-size: 13px; align-items: baseline;
     }
-    .hs-pcard-msg-ts { color: #555; flex-shrink: 0; font-size: 11px; min-width: 38px; }
+    .hs-pcard-msg-ts { color: #555; flex-shrink: 0; font-size: 13px; min-width: 38px; }
     .hs-pcard-msg-plat {
-      flex-shrink: 0; font-size: 10px; padding: 0 3px;
+      flex-shrink: 0; font-size: 13px; padding: 0 3px;
       font-weight: 600; line-height: 1.5; color: #888;
     }
     .hs-pcard-msg-text {
@@ -7526,13 +7619,13 @@ function injectStyles() {
       min-width: 0 !important;
       max-width: none !important;
       height: 22px !important;
-      font-size: 11px !important;
+      font-size: 13px !important;
     }
     .hs-mc-pf-btn {
       background: transparent;
       border: 1px solid;
       color: #fff;
-      font-size: 10px;
+      font-size: 13px;
       font-weight: 700;
       padding: 0;
       cursor: pointer;
@@ -7611,7 +7704,7 @@ function injectStyles() {
       color: #808080 !important;
       border: none !important;
       cursor: pointer;
-      font-size: 12px !important;
+      font-size: 13px !important;
       font-weight: 600 !important;
       line-height: 1 !important;
       text-align: center;
@@ -7683,7 +7776,7 @@ function injectStyles() {
     }
     .hs-mc-picker-section-count {
       color: #808080;
-      font-size: 10px;
+      font-size: 13px;
       background: rgba(255,255,255,0.06);
       padding: 1px 5px;
       border-radius: 0;
@@ -7750,7 +7843,7 @@ function injectStyles() {
     .hs-mc-src-chip {
       background: transparent;
       border: 1px solid;
-      font-size: 10px;
+      font-size: 13px;
       font-weight: 700;
       padding: 3px 7px;
       cursor: pointer;
@@ -7858,7 +7951,7 @@ function injectStyles() {
       line-height: 1.3;
     }
     .hs-mc-menu-desc {
-      font-size: 11px;
+      font-size: 13px;
       color: #808080;
       line-height: 1.3;
       margin-top: 1px;
@@ -7923,7 +8016,7 @@ function injectStyles() {
       margin: 0 1px;
     }
     .hs-mc-pred-locked {
-      font-size: 10px;
+      font-size: 13px;
       padding: 2px 6px;
       border-radius: 0;
       background: rgba(255,255,255,0.1);
@@ -7932,7 +8025,7 @@ function injectStyles() {
       flex-shrink: 0;
     }
     .hs-mc-pred-timer {
-      font-size: 12px;
+      font-size: 13px;
       color: #ff6b35;
       font-weight: 600;
       font-variant-numeric: tabular-nums;
@@ -7940,7 +8033,7 @@ function injectStyles() {
       flex-shrink: 0;
     }
     .hs-mc-pred-balance {
-      font-size: 12px;
+      font-size: 13px;
       color: #808080;
       margin-bottom: 8px;
       display: flex;
@@ -7965,7 +8058,7 @@ function injectStyles() {
       margin-bottom: 4px;
     }
     .hs-mc-pred-outcome-title {
-      font-size: 12px;
+      font-size: 13px;
       color: #fff;
       font-weight: 500;
     }
@@ -7988,7 +8081,7 @@ function injectStyles() {
       border-radius: 0;
     }
     .hs-mc-pred-outcome-stats {
-      font-size: 10px;
+      font-size: 13px;
       color: #808080;
       margin-bottom: 6px;
     }
@@ -8002,7 +8095,7 @@ function injectStyles() {
       background: rgba(0,0,0,0.7);
       border: 1px solid rgba(255,255,255,0.2);
       color: #fff;
-      font-size: 11px;
+      font-size: 13px;
       padding: 3px 8px;
       cursor: pointer;
       font-family: inherit;
@@ -8024,7 +8117,7 @@ function injectStyles() {
       background: #fff;
       border: 1px solid rgba(255,255,255,0.2);
       color: #000;
-      font-size: 11px;
+      font-size: 13px;
       padding: 2px 6px;
       outline: none;
       font-family: inherit;
@@ -8046,7 +8139,7 @@ function injectStyles() {
       background: rgba(0,0,0,0.7);
       border: 1px solid rgba(255,255,255,0.2);
       color: #fff;
-      font-size: 11px;
+      font-size: 13px;
       font-weight: 600;
       padding: 3px 10px;
       cursor: pointer;
@@ -8075,7 +8168,7 @@ function injectStyles() {
 
     /* Prediction states */
     .hs-mc-pred-status {
-      font-size: 10px;
+      font-size: 13px;
       padding: 2px 6px;
       white-space: nowrap;
       flex-shrink: 0;
@@ -8110,7 +8203,7 @@ function injectStyles() {
       letter-spacing: -0.5px;
     }
     .hs-mc-pred-result-label {
-      font-size: 12px;
+      font-size: 13px;
       font-weight: 600;
       opacity: 0.7;
       text-transform: uppercase;
@@ -8133,7 +8226,7 @@ function injectStyles() {
       border: 1px solid rgba(255,135,0,0.25);
     }
     .hs-mc-pred-result-neutral {
-      font-size: 12px;
+      font-size: 13px;
       font-weight: 600;
       color: rgba(255,255,255,0.5);
       background: rgba(255,255,255,0.04);
@@ -8165,7 +8258,7 @@ function injectStyles() {
 
     /* ═══ Mod controls ═══ */
     .hs-mc-pred-mod-notice {
-      font-size: 11px;
+      font-size: 13px;
       color: #ff8700;
       background: rgba(255,135,0,0.08);
       border: 1px solid rgba(255,135,0,0.2);
@@ -8188,7 +8281,7 @@ function injectStyles() {
       margin-top: 8px;
     }
     .hs-mc-pred-mod-btn {
-      font-size: 11px;
+      font-size: 13px;
       padding: 4px 10px;
       background: rgba(0,0,0,0.7);
       color: #fff;
@@ -8239,7 +8332,7 @@ function injectStyles() {
       margin-top: 8px;
     }
     .hs-mc-pred-create-input {
-      font-size: 12px;
+      font-size: 13px;
       padding: 2px 8px;
       background: #fff;
       color: #000;
@@ -8257,12 +8350,12 @@ function injectStyles() {
       flex-wrap: wrap;
     }
     .hs-mc-pred-create-dur-label {
-      font-size: 11px;
+      font-size: 13px;
       color: #808080;
       margin-right: 2px;
     }
     .hs-mc-pred-create-dur {
-      font-size: 10px;
+      font-size: 13px;
       padding: 2px 6px;
       background: rgba(0,0,0,0.7);
       color: #aaa;
@@ -8311,7 +8404,7 @@ function injectStyles() {
       flex: 1;
     }
     .hs-mc-poll-status {
-      font-size: 10px;
+      font-size: 13px;
       padding: 2px 6px;
       white-space: nowrap;
       flex-shrink: 0;
@@ -8324,7 +8417,7 @@ function injectStyles() {
       color: #808080;
     }
     .hs-mc-poll-timer {
-      font-size: 12px;
+      font-size: 13px;
       color: #ff8700;
       font-weight: 600;
       font-variant-numeric: tabular-nums;
@@ -8332,7 +8425,7 @@ function injectStyles() {
       flex-shrink: 0;
     }
     .hs-mc-poll-meta {
-      font-size: 11px;
+      font-size: 13px;
       color: #808080;
       margin-bottom: 8px;
     }
@@ -8376,14 +8469,14 @@ function injectStyles() {
       height: 28px;
     }
     .hs-mc-poll-choice-name {
-      font-size: 12px;
+      font-size: 13px;
       color: #fff;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
     }
     .hs-mc-poll-choice-pct {
-      font-size: 12px;
+      font-size: 13px;
       font-weight: 700;
       color: #9147ff;
       font-variant-numeric: tabular-nums;
@@ -8401,7 +8494,7 @@ function injectStyles() {
       background: rgba(145,71,255,0.3);
       border: none;
       color: #bf8fff;
-      font-size: 11px;
+      font-size: 13px;
       font-weight: 600;
       padding: 4px 10px;
       cursor: pointer;
@@ -8422,7 +8515,7 @@ function injectStyles() {
       margin-top: 6px;
     }
     .hs-mc-poll-mod-btn {
-      font-size: 11px;
+      font-size: 13px;
       padding: 4px 10px;
       background: rgba(0,0,0,0.7);
       color: #fff;
@@ -8460,7 +8553,7 @@ function injectStyles() {
       margin-top: 8px;
     }
     .hs-mc-poll-create-input {
-      font-size: 12px;
+      font-size: 13px;
       padding: 2px 8px;
       background: #fff;
       color: #000;
@@ -8478,12 +8571,12 @@ function injectStyles() {
       flex-wrap: wrap;
     }
     .hs-mc-poll-create-dur-label {
-      font-size: 11px;
+      font-size: 13px;
       color: #808080;
       margin-right: 2px;
     }
     .hs-mc-poll-create-dur {
-      font-size: 10px;
+      font-size: 13px;
       padding: 2px 6px;
       background: rgba(0,0,0,0.7);
       color: #808080;
@@ -8540,18 +8633,18 @@ function injectStyles() {
       padding: 0 14px 6px;
     }
     .hs-mc-rewards-label {
-      font-size: 10px;
+      font-size: 13px;
       font-weight: 600;
       color: #808080;
       text-transform: uppercase;
       letter-spacing: 0.5px;
     }
     .hs-mc-rewards-balance {
-      font-size: 11px;
+      font-size: 13px;
       color: #808080;
     }
     .hs-mc-rewards-empty {
-      font-size: 11px;
+      font-size: 13px;
       color: #808080;
       padding: 8px 14px;
     }
@@ -8595,14 +8688,14 @@ function injectStyles() {
       overflow: hidden;
     }
     .hs-mc-reward-title {
-      font-size: 11px;
+      font-size: 13px;
       color: #fff;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
     }
     .hs-mc-reward-cost {
-      font-size: 10px;
+      font-size: 13px;
       color: #808080;
     }
     .hs-mc-reward-reason {
@@ -8621,7 +8714,7 @@ function injectStyles() {
       background: rgba(255,255,255,0.08);
       border: 1px solid rgba(255,255,255,0.1);
       color: #fff;
-      font-size: 11px;
+      font-size: 13px;
       padding: 4px 6px;
       border-radius: 0;
       outline: none;
@@ -8633,7 +8726,7 @@ function injectStyles() {
       background: #9147ff;
       border: none;
       color: #fff;
-      font-size: 11px;
+      font-size: 13px;
       font-weight: 600;
       padding: 4px 10px;
       border-radius: 0;
@@ -8690,7 +8783,7 @@ function injectStyles() {
       background: rgba(255,255,255,0.08);
       border: 1px solid rgba(255,255,255,0.1);
       color: #fff;
-      font-size: 11px;
+      font-size: 13px;
       padding: 3px 6px;
       font-family: inherit;
       border-radius: 0;
@@ -8703,7 +8796,7 @@ function injectStyles() {
       background: #9147ff;
       border: none;
       color: #fff;
-      font-size: 11px;
+      font-size: 13px;
       font-weight: 600;
       padding: 3px 10px;
       cursor: pointer;
@@ -8724,7 +8817,7 @@ function injectStyles() {
       padding: 4px 14px;
     }
     .hs-mc-mode-btn {
-      font-size: 10px;
+      font-size: 13px;
       padding: 3px 8px;
       background: rgba(255,255,255,0.06);
       color: #808080;
@@ -8753,7 +8846,7 @@ function injectStyles() {
       border-top: 1px solid rgba(255,255,255,0.06);
     }
     .hs-mc-settings-group-title {
-      font-size: 10px;
+      font-size: 13px;
       font-weight: 600;
       color: #808080;
       text-transform: uppercase;
@@ -8765,7 +8858,7 @@ function injectStyles() {
       align-items: center !important;
       gap: 8px !important;
       padding: 6px 14px !important;
-      font-size: 12px !important;
+      font-size: 13px !important;
       color: #fff !important;
       visibility: visible !important;
     }
@@ -8791,7 +8884,7 @@ function injectStyles() {
       color: #fff;
       border: 1px solid #808080;
       padding: 6px 8px;
-      font-size: 11px;
+      font-size: 13px;
       line-height: 1.4;
       max-width: 260px;
       pointer-events: none;
@@ -8809,7 +8902,7 @@ function injectStyles() {
       color: #fff;
       border: 1px solid #808080;
       font-family: 'Liberation Mono', monospace;
-      font-size: 12px;
+      font-size: 13px;
       padding: 4px 6px;
       resize: vertical;
       min-height: 48px;
@@ -8825,7 +8918,7 @@ function injectStyles() {
       color: #fff;
       border: 1px solid #808080;
       font-family: 'Liberation Mono', monospace;
-      font-size: 12px;
+      font-size: 13px;
       padding: 3px 6px;
       cursor: pointer;
       flex-shrink: 0;
@@ -8853,7 +8946,7 @@ function injectStyles() {
       color: #808080 !important;
       border: none !important;
       border-radius: 0 !important;
-      font-size: 11px !important;
+      font-size: 13px !important;
       cursor: pointer !important;
       display: inline-block !important;
       visibility: visible !important;
@@ -8955,7 +9048,7 @@ function injectStyles() {
     .hs-tabs-right .hs-mc-tab,
     .hs-tabs-left .hs-mc-tab {
       padding: 4px 14px 4px 6px !important;
-      font-size: 11px !important;
+      font-size: 13px !important;
       min-width: 0 !important;
       max-width: none !important;
       width: 100% !important;
@@ -9194,7 +9287,7 @@ function injectStyles() {
       position: relative;
       padding: 1px 6px;
       line-height: 1.4;
-      font-size: 12px;
+      font-size: 13px;
       word-wrap: break-word;
       word-break: break-word;
     }
@@ -9216,7 +9309,7 @@ function injectStyles() {
       text-decoration: none;
     }
     .hs-feed-time {
-      font-size: 11px;
+      font-size: 13px;
       color: #808080;
       margin: 0 3px;
     }
@@ -9224,7 +9317,7 @@ function injectStyles() {
       color: #fff;
     }
     .hs-feed-stat {
-      font-size: 11px;
+      font-size: 13px;
       margin: 0 2px;
       cursor: default;
     }
@@ -9233,7 +9326,7 @@ function injectStyles() {
     }
     .hs-feed-thread-link {
       color: #ff0;
-      font-size: 11px;
+      font-size: 13px;
       font-weight: 700;
       margin-right: 3px;
       text-decoration: none;
@@ -9248,7 +9341,7 @@ function injectStyles() {
       color: #000 !important;
     }
     .hs-feed-tag {
-      font-size: 10px;
+      font-size: 13px;
       font-weight: 700;
       margin-right: 3px;
       vertical-align: middle;
@@ -9274,7 +9367,7 @@ function injectStyles() {
       background: #000;
       border-top: 1px solid #1a1a1a;
       border-bottom: 1px solid #1a1a1a;
-      font-size: 11px;
+      font-size: 13px;
       line-height: 1.4;
       box-sizing: border-box;
       z-index: 1002;
@@ -9292,7 +9385,7 @@ function injectStyles() {
       border: none;
       color: #808080;
       cursor: pointer;
-      font-size: 12px;
+      font-size: 13px;
       padding: 0 4px;
       font-family: inherit;
       flex-shrink: 0;
@@ -9359,7 +9452,7 @@ function injectStyles() {
     .hs-thread-reply {
       padding: 1px 4px;
       line-height: 1.3;
-      font-size: 12px;
+      font-size: 13px;
     }
     .hs-thread-reply.is-thread-op {
       border-left: 2px solid #ff00ff;
@@ -9368,7 +9461,7 @@ function injectStyles() {
     }
     .hs-feed-loader {
       cursor: default;
-      font-size: 12px;
+      font-size: 13px;
     }
 
     /* ---- MEDIA / EMBEDS ---- */
@@ -9485,14 +9578,14 @@ function injectStyles() {
       gap: 6px;
       color: #ff8700;
       text-decoration: none;
-      font-size: 11px;
+      font-size: 13px;
     }
     .hs-feed-link-card-link:hover {
       text-decoration: underline;
     }
     .hs-feed-link-card-icon {
       color: #888;
-      font-size: 10px;
+      font-size: 13px;
       flex-shrink: 0;
     }
     .hs-feed-link-card-url {
@@ -9504,7 +9597,7 @@ function injectStyles() {
       background: #1a1a1a;
       border: 1px solid #444;
       color: #888;
-      font-size: 11px;
+      font-size: 13px;
       border-radius: 0;
       max-width: 480px;
     }
@@ -9522,7 +9615,7 @@ function injectStyles() {
     }
     .hs-feed-embed-pending-label {
       color: #888;
-      font-size: 11px;
+      font-size: 13px;
       opacity: 0.7;
     }
     .hs-feed-embed-rich-card {
@@ -9551,7 +9644,7 @@ function injectStyles() {
       align-items: center;
       justify-content: center;
       color: #888;
-      font-size: 11px;
+      font-size: 13px;
     }
     .hs-feed-embed-rich-meta {
       flex: 1;
@@ -9559,7 +9652,7 @@ function injectStyles() {
       overflow: hidden;
     }
     .hs-feed-embed-rich-platform {
-      font-size: 10px;
+      font-size: 13px;
       text-transform: uppercase;
       color: #888;
       letter-spacing: 0.5px;
@@ -9574,7 +9667,7 @@ function injectStyles() {
       margin-top: 2px;
     }
     .hs-feed-embed-rich-author {
-      font-size: 11px;
+      font-size: 13px;
       color: #aaa;
       margin-top: 2px;
       white-space: nowrap;
@@ -9632,7 +9725,7 @@ function injectStyles() {
       padding: 1px 3px;
       cursor: pointer;
       color: #fff;
-      font-size: 11px;
+      font-size: 13px;
       font-family: inherit;
       line-height: 1;
     }
@@ -9644,7 +9737,7 @@ function injectStyles() {
       color: #ff8700;
     }
     .hs-fe-count {
-      font-size: 10px;
+      font-size: 13px;
       color: #808080;
       min-width: 0;
     }
@@ -9666,7 +9759,7 @@ function injectStyles() {
       border: 1px solid #444;
       padding: 1px 3px;
       cursor: pointer;
-      font-size: 10px;
+      font-size: 13px;
       color: #808080;
       font-family: inherit;
       line-height: 1;
@@ -9689,7 +9782,7 @@ function injectStyles() {
       color: #fff;
       padding: 1px 4px;
       cursor: pointer;
-      font-size: 11px;
+      font-size: 13px;
       font-family: inherit;
       line-height: 1;
     }
@@ -9717,7 +9810,7 @@ function injectStyles() {
       color: #fff;
       padding: 3px 5px;
       font-family: inherit;
-      font-size: 11px;
+      font-size: 13px;
     }
     .hs-mc-react-grid {
       display: flex;
@@ -9762,7 +9855,7 @@ function injectStyles() {
       padding: 1px 4px;
       border-radius: 2px;
       font-family: monospace;
-      font-size: 12px;
+      font-size: 13px;
     }
     .hs-mention {
       color: #8080ff;
@@ -9791,7 +9884,7 @@ function injectStyles() {
       color: #117743;
       font-weight: normal;
       margin-left: 4px;
-      font-size: 11px;
+      font-size: 13px;
     }
 
     /* ---- TAB BADGE ---- */
@@ -9799,7 +9892,7 @@ function injectStyles() {
       background: #ff6b35;
       color: #fff;
       border-radius: 2px;
-      font-size: 10px;
+      font-size: 13px;
       min-width: 14px;
       height: 14px;
       display: inline-flex;
@@ -9983,7 +10076,7 @@ function injectStyles() {
       color: #000;
       border: 1px solid #808080;
       border-radius: 0;
-      font-size: 12px;
+      font-size: 13px;
       font-family: inherit;
       outline: none;
     }
@@ -10016,7 +10109,7 @@ function injectStyles() {
       padding: 5px 8px;
       border-bottom: 1px solid #1a1a1a;
       cursor: pointer;
-      font-size: 12px;
+      font-size: 13px;
     }
     .hs-mc-search-result:hover {
       background: #fff;
@@ -10030,7 +10123,7 @@ function injectStyles() {
       align-items: center;
       gap: 6px;
       color: #666;
-      font-size: 11px;
+      font-size: 13px;
     }
     .hs-mc-search-user {
       font-weight: bold;
@@ -10044,7 +10137,7 @@ function injectStyles() {
       padding: 16px;
       text-align: center;
       color: #808080;
-      font-size: 12px;
+      font-size: 13px;
     }
     /* btop-style discover: bordered widgets, distinct accents per section */
     .hs-discover-root {
@@ -10075,7 +10168,7 @@ function injectStyles() {
     }
     .hs-discover-section + .hs-discover-section { margin-top: 0; }
     .hs-discover-heading {
-      font-size: 12px;
+      font-size: 13px;
       color: #ff8700;
       font-weight: 700;
       text-transform: uppercase;
@@ -10099,11 +10192,11 @@ function injectStyles() {
     .hs-discover-section-empty {
       padding: 8px;
       color: #555;
-      font-size: 11px;
+      font-size: 13px;
     }
     .hs-discover-meta {
       color: #aaa;
-      font-size: 11px;
+      font-size: 13px;
       font-weight: 600;
       text-transform: none;
       letter-spacing: 0;
@@ -10147,7 +10240,7 @@ function injectStyles() {
     .hs-discover-profile-row.hs-discover-row-live { border-left-color: #ff3030; }
     .hs-discover-rank {
       color: #666;
-      font-size: 11px;
+      font-size: 13px;
       font-variant-numeric: tabular-nums;
       width: 18px;
       text-align: right;
@@ -10186,7 +10279,7 @@ function injectStyles() {
     }
     .hs-discover-platforms .hs-plat {
       font-family: ui-monospace, SFMono-Regular, monospace;
-      font-size: 11px;
+      font-size: 13px;
       font-weight: 700;
       padding: 0 3px;
       line-height: 1.2;
@@ -10223,14 +10316,14 @@ function injectStyles() {
     /* Heat number — color/glow comes from inline style via discoverHeatStyle (canonical tiers) */
     .hs-discover-heat {
       display: inline-block;
-      font-size: 12px;
+      font-size: 13px;
       font-variant-numeric: tabular-nums;
       flex-shrink: 0;
       font-family: ui-monospace, SFMono-Regular, monospace;
       line-height: 1;
     }
     .hs-discover-viewers {
-      font-size: 11px;
+      font-size: 13px;
       color: #ff5050;
       font-variant-numeric: tabular-nums;
       font-family: ui-monospace, SFMono-Regular, monospace;
@@ -10246,12 +10339,12 @@ function injectStyles() {
       padding: 5px 8px;
       background: rgba(0,0,0,0.25);
       border-bottom: 1px solid rgba(255,255,255,0.05);
-      font-size: 11px;
+      font-size: 13px;
       font-family: ui-monospace, SFMono-Regular, monospace;
     }
     .hs-discover-chips-label {
       color: #666;
-      font-size: 11px;
+      font-size: 13px;
       font-weight: 700;
       margin-right: -2px;
     }
@@ -10261,7 +10354,7 @@ function injectStyles() {
       border: 1px solid rgba(255,255,255,0.12);
       color: #aaa;
       cursor: pointer;
-      font-size: 11px;
+      font-size: 13px;
       font-family: ui-monospace, SFMono-Regular, monospace;
       font-weight: 600;
       border-radius: 0;
@@ -10371,12 +10464,12 @@ function injectStyles() {
       display: flex;
       align-items: baseline;
       gap: 5px;
-      font-size: 11px;
+      font-size: 13px;
     }
     .hs-discover-post-spacer { flex: 1; }
     .hs-discover-post-time {
       color: #666;
-      font-size: 11px;
+      font-size: 13px;
       font-variant-numeric: tabular-nums;
       font-family: ui-monospace, SFMono-Regular, monospace;
       flex-shrink: 0;
@@ -10385,7 +10478,7 @@ function injectStyles() {
       flex-shrink: 0;
     }
     .hs-discover-post-user {
-      font-size: 12px;
+      font-size: 13px;
       font-weight: 600;
       white-space: nowrap;
       flex-shrink: 1;
@@ -10395,7 +10488,7 @@ function injectStyles() {
     }
     .hs-discover-post-text {
       color: #c8c8c8;
-      font-size: 12px;
+      font-size: 13px;
       line-height: 1.4;
       overflow: hidden;
       display: -webkit-box;
@@ -10409,7 +10502,7 @@ function injectStyles() {
       flex-shrink: 0;
     }
     .hs-discover-post-replies {
-      font-size: 11px;
+      font-size: 13px;
       color: #808080;
       font-variant-numeric: tabular-nums;
       font-family: ui-monospace, SFMono-Regular, monospace;
@@ -10421,7 +10514,7 @@ function injectStyles() {
       margin-left: 5px;
       color: rgba(255,0,255,0.6);
       font-variant-numeric: tabular-nums;
-      font-size: 11px;
+      font-size: 13px;
     }
     .hs-discover-chip:hover .hs-discover-chip-count { color: #000; }
 
@@ -10440,11 +10533,11 @@ function injectStyles() {
       gap: 5px;
       margin: 0;
     }
-    .hs-pinned-channel { font-size: 10px; color: #ff8700; font-weight: 600; }
-    .hs-pinned-user { font-size: 10px; color: #bbb; }
-    .hs-pinned-time { font-size: 10px; color: #808080; margin-left: auto; }
+    .hs-pinned-channel { font-size: 13px; color: #ff8700; font-weight: 600; }
+    .hs-pinned-user { font-size: 13px; color: #bbb; }
+    .hs-pinned-time { font-size: 13px; color: #808080; margin-left: auto; }
     .hs-pinned-body {
-      font-size: 11px;
+      font-size: 13px;
       color: #ddd;
       word-break: break-word;
       white-space: nowrap;
@@ -11970,6 +12063,14 @@ function parseIrcLine(raw, channel) {
       const raidFrom = tags['msg-param-displayName'] ? decodeURIComponent(tags['msg-param-displayName'].replace(/\\s/g, ' ')) : ''
       const announceColor = tags['msg-param-color'] || ''
       const bitsTier = parseInt(tags['msg-param-threshold']) || 0
+      const category = tags['msg-param-category'] || ''
+      const rawMsgId = tags['msg-id'] || ''
+      // Watch-streak: Twitch ships it under viewermilestone w/ category=watch-streak.
+      // Promote to its own msgId so renderers + dedupe can distinguish.
+      const msgId = (rawMsgId === 'viewermilestone' && category === 'watch-streak')
+        ? 'watchstreak' : rawMsgId
+      const streakCount = (msgId === 'watchstreak')
+        ? (parseInt(tags['msg-param-value'], 10) || 0) : 0
       return {
         user: displayName,
         text: usernotice[2] || '',
@@ -11979,7 +12080,7 @@ function parseIrcLine(raw, channel) {
         channel: channel || usernotice[1].toLowerCase(),
         time: parseInt(tags['tmi-sent-ts']) || parseInt(tags['rm-received-ts']) || Date.now(),
         type: 'usernotice',
-        msgId: tags['msg-id'] || '',
+        msgId,
         subTier: tier,
         subMonths: months,
         giftCount,
@@ -11988,6 +12089,7 @@ function parseIrcLine(raw, channel) {
         raidFrom,
         announceColor,
         bitsTier,
+        streakCount,
         id: tags.id || ''
       }
     }
@@ -13222,12 +13324,18 @@ async function sendKickMessage(kickSlug, text) {
   let _resCacheSize = 1
   const _resCache = new Map()
   function getChatResUrl(url) {
-    if (!url || emoteSize === 1) return url;
+    if (!url) return url;
     if (_resCacheSize !== emoteSize) { _resCache.clear(); _resCacheSize = emoteSize }
     const hit = _resCache.get(url)
     if (hit !== undefined) return hit
     let out = url
-    if (emoteSize === 2) {
+    if (emoteSize === 1) {
+      // True native: downgrade Twitch native (IRC fetches at /2.0) and 3rd-party CDNs to 1x.
+      if (url.includes('static-cdn.jtvnw.net')) out = url.replace(/\/[23]\.0/, '/1.0');
+      else if (url.includes('cdn.7tv.app')) out = url.replace(/\/[234]x/, '/1x');
+      else if (url.includes('cdn.betterttv.net')) out = url.replace(/\/[23]x/, '/1x');
+      else if (url.includes('cdn.frankerfacez.com')) out = url.replace(/\/[24](?=\.|$)/, '/1');
+    } else if (emoteSize === 2) {
       if (url.includes('cdn.7tv.app')) out = url.replace('/1x', '/2x');
       else if (url.includes('cdn.betterttv.net')) out = url.replace('/1x', '/2x');
       else if (url.includes('cdn.frankerfacez.com')) out = url.replace(/\/1(?=\.|$)/, '/2');
@@ -19869,12 +19977,12 @@ function showFeedEditUI(div, msg) {
   ta.style.cssText = 'flex:1;background:#000;color:#fff;border:1px solid #808080;padding:4px;font-family:inherit;font-size:13px;resize:vertical;'
   const saveBtn = document.createElement('button')
   saveBtn.textContent = 'save'
-  saveBtn.style.cssText = 'background:#ff8700;color:#000;border:none;padding:4px 8px;font-family:inherit;font-size:12px;cursor:pointer;'
+  saveBtn.style.cssText = 'background:#ff8700;color:#000;border:none;padding:4px 8px;font-family:inherit;font-size:13px;cursor:pointer;'
   const cancelBtn = document.createElement('button')
   cancelBtn.textContent = 'cancel'
-  cancelBtn.style.cssText = 'background:#000;color:#fff;border:1px solid #808080;padding:4px 8px;font-family:inherit;font-size:12px;cursor:pointer;'
+  cancelBtn.style.cssText = 'background:#000;color:#fff;border:1px solid #808080;padding:4px 8px;font-family:inherit;font-size:13px;cursor:pointer;'
   const errEl = document.createElement('div')
-  errEl.style.cssText = 'font-size:11px;color:#ff4444;margin-top:2px;'
+  errEl.style.cssText = 'font-size:13px;color:#ff4444;margin-top:2px;'
   form.append(ta, saveBtn, cancelBtn)
   body.style.display = 'none'
   body.parentNode.insertBefore(form, body.nextSibling)
@@ -19937,7 +20045,7 @@ function showFeedPostContextMenu(e, div, msg) {
   document.getElementById('hs-mc-ctx-menu')?.remove()
   const menu = document.createElement('div')
   menu.id = 'hs-mc-ctx-menu'
-  menu.style.cssText = 'position:fixed;z-index:99999;background:#000;border:1px solid #808080;border-radius:0;padding:4px 0;min-width:120px;font-size:12px;font-family:inherit;'
+  menu.style.cssText = 'position:fixed;z-index:99999;background:#000;border:1px solid #808080;border-radius:0;padding:4px 0;min-width:120px;font-size:13px;font-family:inherit;'
 
   const createdAt = new Date(msg.created_at).getTime()
   const elapsed = Date.now() - createdAt
@@ -21252,7 +21360,7 @@ function buildFeedMessageDiv(m, opUsername) {
       const badge = document.createElement('span')
       badge.className = 'hs-feed-edited'
       badge.textContent = ' (edited)'
-      badge.style.cssText = 'color:#888;font-size:11px;font-style:italic;margin-left:4px;'
+      badge.style.cssText = 'color:#888;font-size:13px;font-style:italic;margin-left:4px;'
       body.appendChild(badge)
     }
   }
@@ -22898,7 +23006,7 @@ function renderWhispersTab() {
     }
 
     // All dynamic values pass through escapeHtml/sanitizeColor — safe innerHTML (all values escaped above)
-    div.innerHTML = `${tsHtml}<span style="color:${platColor};font-size:10px;font-weight:700">[${platTag}]</span> ${senderLink} <span style="color:#808080">-&gt;</span> ${recipientLink}: ${processEmotes(escapeHtml(m.text), null)}${statusHtml}`
+    div.innerHTML = `${tsHtml}<span style="color:${platColor};font-size:13px;font-weight:700">[${platTag}]</span> ${senderLink} <span style="color:#808080">-&gt;</span> ${recipientLink}: ${processEmotes(escapeHtml(m.text), null)}${statusHtml}`
     frag.appendChild(div)
   }
 
@@ -25701,7 +25809,7 @@ function showCycleTooltip() {
   if (!tt) {
     tt = document.createElement('div');
     tt.id = 'hs-mc-cycle-tooltip';
-    tt.style.cssText = 'position:absolute;bottom:100%;left:8px;background:#000;color:#fff;padding:4px 8px;font-size:12px;border-radius: 0;z-index:1003;margin-bottom:4px;';
+    tt.style.cssText = 'position:absolute;bottom:100%;left:8px;background:#000;color:#fff;padding:4px 8px;font-size:13px;border-radius: 0;z-index:1003;margin-bottom:4px;';
     document.getElementById('hs-mc-inputbar')?.appendChild(tt);
   }
   const m = acState.matches[acState.index];
@@ -26375,6 +26483,12 @@ async function sendMessage() {
   if (window.__hsResubShare?.active?.()) {
     try { window.__hsResubShare.consume(text) } catch (_) {}
   }
+  // Watch-streak share mode — same contract as resub-share. consume() fires
+  // the native broadcast + injects a local synth, then we fall through so the
+  // user's typed body also lands as a normal PRIVMSG (visible to everyone).
+  if (window.__hsWatchstreakShare?.active?.()) {
+    try { window.__hsWatchstreakShare.consume(text) } catch (_) {}
+  }
 
   // Slash commands — work from any tab. Handler may return:
   //   true   -> consumed, exit
@@ -26579,7 +26693,7 @@ function showUploadStatus(msg, isError) {
     if (!inputbar) return
     const el = document.createElement('div')
     el.id = 'hs-mc-upload-status'
-    el.style.cssText = 'padding:2px 8px;font-size:11px;color:#ff8700;background:#000;border-top:1px solid #808080;'
+    el.style.cssText = 'padding:2px 8px;font-size:13px;color:#ff8700;background:#000;border-top:1px solid #808080;'
     el.textContent = msg
     inputbar.insertBefore(el, inputbar.firstChild)
   } else if (bar) {
@@ -28164,7 +28278,8 @@ const STORAGE_KEY = 'heatsync_multichat';
       sticker: m.sticker || undefined,
       scColor: m.scColor || undefined,
       emotes: m.emotes || undefined,
-      subMonths: m.subMonths || undefined
+      subMonths: m.subMonths || undefined,
+      streakCount: m.streakCount || undefined
     }
   }
 
@@ -29315,7 +29430,7 @@ const STORAGE_KEY = 'heatsync_multichat';
         document.getElementById('hs-mc-ctx-menu')?.remove();
         const menu = document.createElement('div');
         menu.id = 'hs-mc-ctx-menu';
-        menu.style.cssText = 'position:fixed;z-index:99999;background:#000;border:1px solid #808080;border-radius:0;padding:4px 0;min-width:150px;font-size:12px;font-family:inherit;';
+        menu.style.cssText = 'position:fixed;z-index:99999;background:#000;border:1px solid #808080;border-radius:0;padding:4px 0;min-width:150px;font-size:13px;font-family:inherit;';
         const item = document.createElement('div');
         item.textContent = 'edit platforms';
         item.style.cssText = 'padding:6px 12px;cursor:pointer;color:#fff;';
@@ -29343,7 +29458,7 @@ const STORAGE_KEY = 'heatsync_multichat';
       const ch = getChannelById(tabId);
       const menu = document.createElement('div');
       menu.id = 'hs-mc-ctx-menu';
-      menu.style.cssText = 'position:fixed;z-index:99999;background:#000;border:1px solid #808080;border-radius:0;padding:4px 0;min-width:150px;font-size:12px;font-family:inherit;';
+      menu.style.cssText = 'position:fixed;z-index:99999;background:#000;border:1px solid #808080;border-radius:0;padding:4px 0;min-width:150px;font-size:13px;font-family:inherit;';
 
       const mkItem = (label, color, fn) => {
         const item = document.createElement('div');
@@ -31436,8 +31551,8 @@ const STORAGE_KEY = 'heatsync_multichat';
 
   function applyEmoteSize() {
     const targets = [document.documentElement, document.getElementById('hs-mc-messages')].filter(Boolean);
-    const baseEmote = 32;
-    // Only scale emote images and badges — font size stays independent (A-/A+ controls it)
+    // 28px = Twitch /1.0 native; /2.0 = 56; /3.0 = 112. Base matches URL res so 1x is truly native.
+    const baseEmote = 28;
     const vars = {
       '--hs-emote-size': (baseEmote * emoteSize) + 'px',
       '--hs-time-font': (10 * emoteSize) + 'px',
@@ -31451,6 +31566,42 @@ const STORAGE_KEY = 'heatsync_multichat';
       for (const [k, v] of Object.entries(vars)) el.style.setProperty(k, v);
     }
     renderMessages(currentTab);
+  }
+
+  // Emoji scale — separate var, default 2x. Mirrors emoteSize storage/lifecycle.
+  let emojiSize = 2;
+  let _saveEmojiSizeTimer = null;
+  function saveEmojiSize() {
+    if (_saveEmojiSizeTimer) cleanup.clearTimeout(_saveEmojiSizeTimer);
+    _saveEmojiSizeTimer = cleanup.setTimeout(() => {
+      _saveEmojiSizeTimer = null;
+      chrome.storage.local.set({ hs_emoji_size: emojiSize });
+    }, 250);
+  }
+  async function loadEmojiSize() {
+    try {
+      const data = await chrome.storage.local.get(['hs_emoji_size']);
+      if (data.hs_emoji_size === 1 || data.hs_emoji_size === 2 || data.hs_emoji_size === 4) {
+        emojiSize = data.hs_emoji_size;
+      } else {
+        // Migrate legacy bigEmoji toggle: explicit false → 1x; otherwise default 2x.
+        const stored = await cachedUiSettings();
+        if (stored.ui_settings?.bigEmoji === false) emojiSize = 1;
+      }
+      applyEmojiSize();
+    } catch (e) {
+      log('Error loading emoji size:', e);
+    }
+  }
+  function applyEmojiSize() {
+    const targets = [document.documentElement, document.getElementById('hs-mc-messages')].filter(Boolean);
+    for (const el of targets) el.style.setProperty('--hs-emoji-scale', String(emojiSize));
+  }
+  function setEmojiSize(size) {
+    if (size !== 1 && size !== 2 && size !== 4) return;
+    emojiSize = size;
+    applyEmojiSize();
+    saveEmojiSize();
   }
 
 
@@ -31633,14 +31784,21 @@ const STORAGE_KEY = 'heatsync_multichat';
     const container = document.getElementById('hs-mc-container');
     if (!container) return;
     const stack = resolveFontStack(fontFamily, customFontName);
+    // Root + container both: reply-stack overlays are appended to <body>
+    // (outside the container's subtree), so they need the vars on :root to
+    // inherit. Container copy keeps the existing fallback path intact.
+    const root = document.documentElement;
+    root.style.setProperty('--hs-mc-font', stack);
     container.style.setProperty('--hs-mc-font', stack);
     const sizeNum = parseInt(fontSize, 10);
     if (sizeNum >= 10 && sizeNum <= 22) {
+      root.style.setProperty('--hs-mc-base-size', sizeNum + 'px');
       container.style.setProperty('--hs-mc-base-size', sizeNum + 'px');
       // Also drive the messages-area var. F+/F- localStorage override below
       // wins if present (per-channel/per-tab quick adjust).
       const fOverride = parseInt(localStorage.getItem('heatsync-chat-font-size'), 10);
       const msgsSize = (fOverride >= 10 && fOverride <= 22) ? fOverride : sizeNum;
+      root.style.setProperty('--hs-chat-font', msgsSize + 'px');
       container.style.setProperty('--hs-chat-font', msgsSize + 'px');
       const msgsEl = document.getElementById('hs-mc-messages');
       if (msgsEl) msgsEl.style.setProperty('--hs-chat-font', msgsSize + 'px');
@@ -32045,6 +32203,14 @@ const STORAGE_KEY = 'heatsync_multichat';
               <button class="hs-mc-size-btn ${emoteSize === 4 ? 'active' : ''}" data-size="4">4x</button>
             </div>
           </div>
+          <div class="hs-mc-setting-row hs-mc-setting-row-split">
+            <span class="hs-mc-setting-label" data-tip="emoji size — 1x native, 2x (default)/4x scale unicode emoji">emoji size</span>
+            <div class="hs-mc-size-btns">
+              <button class="hs-mc-size-btn ${emojiSize === 1 ? 'active' : ''}" data-emoji-size="1">1x</button>
+              <button class="hs-mc-size-btn ${emojiSize === 2 ? 'active' : ''}" data-emoji-size="2">2x</button>
+              <button class="hs-mc-size-btn ${emojiSize === 4 ? 'active' : ''}" data-emoji-size="4">4x</button>
+            </div>
+          </div>
           <div class="hs-mc-setting-row">
             <button class="hs-mc-toggle-pill ${wysiwygEnabled ? 'active' : ''}" data-setting="wysiwyg"><span class="hs-mc-toggle-knob"></span></button>
             <span class="hs-mc-setting-label" data-tip="${settingTips.wysiwyg}">${t('mc_settings_input_preview')}</span>
@@ -32137,17 +32303,17 @@ const STORAGE_KEY = 'heatsync_multichat';
         <div class="hs-mc-settings-group">
           <div class="hs-mc-settings-group-title">${t('mc_settings_muted_users')}</div>
           ${mutedUsers.size === 0
-            ? `<div class="hs-mc-setting-row" style="color:#808080;font-size:11px">${t('mc_settings_no_muted')}</div>`
+            ? `<div class="hs-mc-setting-row" style="color:#808080;font-size:13px">${t('mc_settings_no_muted')}</div>`
             : [...mutedUsers].sort().map(u => `
           <div class="hs-mc-setting-row hs-mc-setting-row-split">
-            <span class="hs-mc-setting-label" style="font-size:11px">${escapeHtml(u)}</span>
-            <button class="hs-mc-unmute-btn" data-username="${escapeHtml(u)}" style="background:none;border:1px solid #808080;color:#808080;font-size:11px;cursor:pointer;padding:1px 6px;line-height:1.4" title="${t('mc_settings_unmute')}">&#x2715;</button>
+            <span class="hs-mc-setting-label" style="font-size:13px">${escapeHtml(u)}</span>
+            <button class="hs-mc-unmute-btn" data-username="${escapeHtml(u)}" style="background:none;border:1px solid #808080;color:#808080;font-size:13px;cursor:pointer;padding:1px 6px;line-height:1.4" title="${t('mc_settings_unmute')}">&#x2715;</button>
           </div>`).join('')
           }
         </div>
         <div class="hs-mc-settings-group">
           <div class="hs-mc-settings-group-title">chat input tips</div>
-          <div class="hs-mc-setting-row" style="display:block;padding:6px 8px;color:#ccc;font-size:11px;line-height:1.5">
+          <div class="hs-mc-setting-row" style="display:block;padding:6px 8px;color:#ccc;font-size:13px;line-height:1.5">
             <div><code style="background:#000;color:#fff;padding:1px 4px">name0</code> overlay on prev emote &mdash; <code style="background:#000;color:#fff;padding:1px 4px">Kappa PepeLaugh0</code></div>
             <div style="margin-top:4px"><code style="background:#000;color:#fff;padding:1px 4px">w!</code> <code style="background:#000;color:#fff;padding:1px 4px">h!</code> <code style="background:#000;color:#fff;padding:1px 4px">v!</code> <code style="background:#000;color:#fff;padding:1px 4px">z!</code> <code style="background:#000;color:#fff;padding:1px 4px">c!#hex</code> ffz mods &mdash; chain <code style="background:#000;color:#fff;padding:1px 4px">w!h!</code></div>
             <div style="margin-top:4px"><code style="background:#000;color:#fff;padding:1px 4px">Tab</code> imagify &middot; again to cycle</div>
@@ -32155,7 +32321,7 @@ const STORAGE_KEY = 'heatsync_multichat';
         </div>
         <div class="hs-mc-settings-group">
           <div class="hs-mc-setting-row" style="justify-content:flex-end">
-            <button class="hs-mc-defaults-btn" style="background:#808080;border:2px outset #fff;padding:2px 10px;font-size:11px;font-weight:bold;cursor:pointer;font-family:'Liberation Mono',monospace;color:#000;box-shadow:1px 1px 0 #000">default</button>
+            <button class="hs-mc-defaults-btn" style="background:#808080;border:2px outset #fff;padding:2px 10px;font-size:13px;font-weight:bold;cursor:pointer;font-family:'Liberation Mono',monospace;color:#000;box-shadow:1px 1px 0 #000">default</button>
           </div>
         </div>
       </div>
@@ -32222,7 +32388,17 @@ const STORAGE_KEY = 'heatsync_multichat';
         const size = parseInt(sizeBtn.dataset.size);
         if (size) {
           setEmoteSize(size);
-          msgsEl.querySelectorAll('.hs-mc-size-btn').forEach(b => b.classList.toggle('active', parseInt(b.dataset.size) === size));
+          msgsEl.querySelectorAll('.hs-mc-size-btn[data-size]').forEach(b => b.classList.toggle('active', parseInt(b.dataset.size) === size));
+        }
+        return;
+      }
+
+      const emojiSizeBtn = e.target.closest('.hs-mc-size-btn[data-emoji-size]');
+      if (emojiSizeBtn) {
+        const size = parseInt(emojiSizeBtn.dataset.emojiSize);
+        if (size) {
+          setEmojiSize(size);
+          msgsEl.querySelectorAll('.hs-mc-size-btn[data-emoji-size]').forEach(b => b.classList.toggle('active', parseInt(b.dataset.emojiSize) === size));
         }
         return;
       }
@@ -32645,7 +32821,24 @@ const STORAGE_KEY = 'heatsync_multichat';
   let _pendingShareClaim = null
   let _resubShareModeTimer = null
   let _resubShareCtx = null
+  let _watchstreakShareModeTimer = null
+  let _watchstreakShareCtx = null
   let _lastSurfacedShareBtn = null
+
+  // Once-per-day rate-limit on the watch-streak share UI. Twitch sometimes
+  // re-shows the callout if you reload the tab mid-stream; cap our surfacing
+  // at one per channel per local-day so it never feels spammy.
+  function _watchstreakDayKey(channel) {
+    const d = new Date()
+    const ymd = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
+    return `hs-watchstreak-shared:${channel}:${ymd}`
+  }
+  function _watchstreakAlreadySharedToday(channel) {
+    try { return !!localStorage.getItem(_watchstreakDayKey(channel)) } catch (_) { return false }
+  }
+  function _markWatchstreakSharedToday(channel) {
+    try { localStorage.setItem(_watchstreakDayKey(channel), '1') } catch (_) {}
+  }
   function _injectShareSynthetic(claim, user, months, customText) {
     const synthId = `hs-synth-share-${claim.channel}-${months}-${Date.now()}`
     claim.synthId = synthId
@@ -32825,6 +33018,162 @@ const STORAGE_KEY = 'heatsync_multichat';
     // block the click (user-initiated) or pass through (programmatic from us).
     _allowNativeShare: () => _allowNativeShare,
   }
+
+  // ── Watch-streak share: mirror of resub-share for Twitch's daily ───────
+  // "you're on an N stream watch streak!" callout. Same dedupe contract,
+  // same native-button forwarding, separate placeholder/mode CSS so the
+  // user can tell which celebration they're composing. Once-per-day per
+  // channel via localStorage.
+  function _injectWatchstreakSynthetic(claim, user, streakCount, customText) {
+    const synthId = `hs-synth-wstreak-${claim.channel}-${streakCount}-${Date.now()}`
+    claim.synthId = synthId
+    claim.customText = customText || ''
+    const synth = {
+      type: 'usernotice', msgId: 'watchstreak', user, text: customText || '',
+      systemMsg: `${user} just watched ${streakCount} streams in a row! They're on a watch streak!`,
+      color: '#ff8700', badges: _ownBadges || '', channel: claim.channel,
+      time: Date.now(), subTier: '', subMonths: 0, giftCount: 0,
+      recipient: '', raidViewers: 0, raidFrom: '', announceColor: '',
+      bitsTier: 0, streakCount, id: synthId, isSynthetic: true, userOverride: !!customText
+    }
+    try { irc?._handleMsg?.(synth) } catch (_) {}
+    claim.postTimer = setTimeout(() => {
+      if (_pendingShareClaim === claim) _pendingShareClaim = null
+    }, 30000)
+  }
+  function _enterWatchstreakShareMode(claim, user, streakCount) {
+    // Mutually exclusive with resub-share — exit that first if active.
+    if (_resubShareCtx) _exitResubShareMode(_resubShareCtx.claim, false)
+    _watchstreakShareCtx = { claim, user, streakCount }
+    const input = document.getElementById('hs-mc-input')
+    const inputBar = document.getElementById('hs-mc-inputbar')
+    if (!input) return
+    inputBar?.classList.add('hs-mc-watchstreak-share')
+    input.classList.add('hs-mc-watchstreak-share')
+    if (input.dataset.hsOrigPlaceholder === undefined) {
+      input.dataset.hsOrigPlaceholder = input.getAttribute('placeholder') || ''
+    }
+    if (input.dataset.hsOrigDataPlaceholder === undefined) {
+      input.dataset.hsOrigDataPlaceholder = input.getAttribute('data-placeholder') || ''
+    }
+    const placeholder = `🔥 Watch streak (${streakCount}) — Enter to share`
+    input.setAttribute('placeholder', placeholder)
+    input.setAttribute('data-placeholder', placeholder)
+    try { input.focus() } catch (_) {}
+    if (_watchstreakShareModeTimer) clearTimeout(_watchstreakShareModeTimer)
+    _watchstreakShareModeTimer = setTimeout(() => _exitWatchstreakShareMode(claim, true), 30000)
+  }
+  function _exitWatchstreakShareMode(claim, fireFallback) {
+    if (claim && _watchstreakShareCtx?.claim !== claim) return
+    const wasCtx = _watchstreakShareCtx
+    _watchstreakShareCtx = null
+    if (_watchstreakShareModeTimer) { clearTimeout(_watchstreakShareModeTimer); _watchstreakShareModeTimer = null }
+    if (wasCtx) {
+      try {
+        window.HsNotifs?.dismissByKey?.('twitch-watchstreak-share', `watchstreak:${wasCtx.claim.channel}:${wasCtx.streakCount}`)
+      } catch (_) {}
+    }
+    const input = document.getElementById('hs-mc-input')
+    const inputBar = document.getElementById('hs-mc-inputbar')
+    inputBar?.classList.remove('hs-mc-watchstreak-share')
+    input?.classList.remove('hs-mc-watchstreak-share')
+    if (input?.dataset.hsOrigPlaceholder !== undefined) {
+      input.setAttribute('placeholder', input.dataset.hsOrigPlaceholder)
+      delete input.dataset.hsOrigPlaceholder
+    }
+    if (input?.dataset.hsOrigDataPlaceholder !== undefined) {
+      if (input.dataset.hsOrigDataPlaceholder) {
+        input.setAttribute('data-placeholder', input.dataset.hsOrigDataPlaceholder)
+      } else {
+        input.removeAttribute('data-placeholder')
+      }
+      delete input.dataset.hsOrigDataPlaceholder
+    }
+    if (fireFallback && wasCtx && !wasCtx.claim.synthId) {
+      _injectWatchstreakSynthetic(wasCtx.claim, wasCtx.user, wasCtx.streakCount, '')
+    }
+  }
+  window.__hsWatchstreakShare = {
+    active: () => !!_watchstreakShareCtx,
+    consume: (text) => {
+      if (!_watchstreakShareCtx) return false
+      const { claim, user, streakCount } = _watchstreakShareCtx
+      if (claim.preTimer) { clearTimeout(claim.preTimer); claim.preTimer = null }
+      try { _injectWatchstreakSynthetic(claim, user, streakCount, text || '') } catch (_) {}
+      const broadcastShare = () => {
+        const QUEUE_SEL = '[data-test-selector="chat-private-callout-queue__callout-container"]'
+        const liveBtn = document.querySelector(QUEUE_SEL + ' [data-a-target="chat-private-callout__primary-button"]')
+        const candidates = [liveBtn, claim._nativeShareBtn].filter(Boolean)
+        const seen = new Set()
+        const tryFiberOnClick = (btn) => {
+          try {
+            if (typeof getFiber !== 'function') return false
+            let f = getFiber(btn)
+            for (let i = 0; f && i < 10; i++, f = f.return) {
+              const oc = f?.memoizedProps?.onClick
+              if (typeof oc === 'function') {
+                const fakeEvt = {
+                  preventDefault() {}, stopPropagation() {}, persist() {},
+                  currentTarget: btn, target: btn, nativeEvent: { isTrusted: true },
+                  type: 'click', button: 0, buttons: 0,
+                }
+                oc(fakeEvt)
+                console.log('[heatsync-ext] watchstreak-share: fired via fiber onClick')
+                return true
+              }
+            }
+          } catch (e) {
+            console.warn('[heatsync-ext] watchstreak-share fiber onClick threw:', e)
+          }
+          return false
+        }
+        const tryDomClick = (btn) => {
+          try {
+            _allowNativeShare = true
+            try {
+              const opts = { bubbles: true, cancelable: true, composed: true, view: window, button: 0 }
+              btn.dispatchEvent(new MouseEvent('mousedown', opts))
+              btn.dispatchEvent(new MouseEvent('mouseup', opts))
+              btn.dispatchEvent(new MouseEvent('click', opts))
+              btn.click()
+            } finally { _allowNativeShare = false }
+            console.log('[heatsync-ext] watchstreak-share: fired via DOM click sequence')
+            return true
+          } catch (e) {
+            console.warn('[heatsync-ext] watchstreak-share DOM click threw:', e)
+            return false
+          }
+        }
+        for (const btn of candidates) {
+          if (!btn || seen.has(btn)) continue
+          seen.add(btn)
+          if (tryFiberOnClick(btn)) return true
+        }
+        for (const btn of candidates) {
+          if (!btn) continue
+          if (tryDomClick(btn)) return true
+        }
+        console.warn('[heatsync-ext] watchstreak-share: NO broadcast — native callout btn missing')
+        return false
+      }
+      try { broadcastShare() } catch (e) { console.warn('[heatsync-ext] watchstreak-share broadcast outer threw:', e) }
+      _markWatchstreakSharedToday(claim.channel)
+      _exitWatchstreakShareMode(claim, false)
+      return false
+    },
+    enter: (streakCount, user, channel) => {
+      try {
+        if (_pendingShareClaim) {
+          clearTimeout(_pendingShareClaim.preTimer)
+          clearTimeout(_pendingShareClaim.postTimer)
+        }
+        const claim = { kind: 'watchstreak', channel, userLc: (user || '').toLowerCase(), streakCount, synthId: null, preTimer: null, postTimer: null, customText: '', _nativeShareBtn: _lastSurfacedShareBtn }
+        _pendingShareClaim = claim
+        _enterWatchstreakShareMode(claim, user, streakCount)
+      } catch (_) {}
+    },
+  }
+
   function setupHsCalloutCloseButton() {
     if (_hsCalloutCloseObs) return
     // Native callout is hidden by CSS (.hs-notif-twitch-resub-share rule).
@@ -32833,20 +33182,61 @@ const STORAGE_KEY = 'heatsync_multichat';
     // Share, and emit our own HsNotifs notif to render the controlled UI.
     const surface = (calloutEl) => {
       if (!calloutEl || calloutEl.dataset.hsSurfaced === '1') return
-      calloutEl.dataset.hsSurfaced = '1'
       const txt = calloutEl.textContent || ''
-      const mm = txt.match(/(\d+)\s*month/i)
-      const months = mm ? parseInt(mm[1]) : 0
       const ch = (getLiveChannel?.() || getCurrentChannel?.() || '').toLowerCase()
       const user = currentUsername || ''
-      if (!ch || !user || !months) return
+      if (!ch || !user) return
       const shareBtn = calloutEl.querySelector('[data-a-target="chat-private-callout__primary-button"]')
+
+      // Watch-streak first (text mentions "watch streak"); resub fallback (only
+      // "N month" — without "watch streak"). Order matters: a watch-streak
+      // callout never mentions months, but a sub-anniversary may incidentally
+      // contain "stream", so explicit watchstreak check wins.
+      const isWatchstreak = /watch[\s-]*streak/i.test(txt)
+      const streakMatch   = isWatchstreak ? txt.match(/(\d+)\s*stream/i) : null
+      const streakCount   = streakMatch ? parseInt(streakMatch[1]) : 0
+      const monthMatch    = !isWatchstreak ? txt.match(/(\d+)\s*month/i) : null
+      const months        = monthMatch ? parseInt(monthMatch[1]) : 0
+
+      if (isWatchstreak && streakCount) {
+        if (_watchstreakAlreadySharedToday(ch)) {
+          calloutEl.dataset.hsSurfaced = '1'
+          return
+        }
+        calloutEl.dataset.hsSurfaced = '1'
+        if (shareBtn && shareBtn.dataset.hsShareHooked !== '1') {
+          shareBtn.dataset.hsShareHooked = '1'
+          shareBtn.addEventListener('click', (e) => {
+            if (_allowNativeShare) return
+            e.stopImmediatePropagation()
+            e.preventDefault()
+            try {
+              if (_pendingShareClaim) {
+                clearTimeout(_pendingShareClaim.preTimer)
+                clearTimeout(_pendingShareClaim.postTimer)
+              }
+              const claim = { kind: 'watchstreak', channel: ch, userLc: user.toLowerCase(), streakCount, synthId: null, preTimer: null, postTimer: null, customText: '', _nativeShareBtn: shareBtn }
+              _pendingShareClaim = claim
+              _enterWatchstreakShareMode(claim, user, streakCount)
+            } catch (_) {}
+          }, { capture: true })
+        }
+        _lastSurfacedShareBtn = shareBtn || null
+        try {
+          HsNotifs.emit('twitch-watchstreak-share', {
+            streakCount, user, channel: ch,
+            _nativeShareBtn: shareBtn,
+            _nativeCallout: calloutEl,
+          })
+        } catch (_) {}
+        try { _updateMcLayout?.() } catch (_) {}
+        return
+      }
+
+      if (!months) return
+      calloutEl.dataset.hsSurfaced = '1'
       if (shareBtn && shareBtn.dataset.hsShareHooked !== '1') {
         shareBtn.dataset.hsShareHooked = '1'
-        // User-initiated click on the (hidden) native Share button → enter
-        // our share-mode flow instead of letting Twitch insta-send.
-        // Programmatic clicks from consume() pass through (Twitch's native
-        // onClick fires) so the celebration actually broadcasts.
         shareBtn.addEventListener('click', (e) => {
           if (window.__hsResubShare?._allowNativeShare?.()) return
           e.stopImmediatePropagation()
@@ -32856,15 +33246,12 @@ const STORAGE_KEY = 'heatsync_multichat';
               clearTimeout(_pendingShareClaim.preTimer)
               clearTimeout(_pendingShareClaim.postTimer)
             }
-            const claim = { channel: ch, userLc: user.toLowerCase(), months, synthId: null, preTimer: null, postTimer: null, customText: '', _nativeShareBtn: shareBtn }
+            const claim = { kind: 'resub', channel: ch, userLc: user.toLowerCase(), months, synthId: null, preTimer: null, postTimer: null, customText: '', _nativeShareBtn: shareBtn }
             _pendingShareClaim = claim
             _enterResubShareMode(claim, user, months)
           } catch (_) {}
         }, { capture: true })
       }
-      // Cache the share button on a module-scoped slot so enter() (called from
-      // the HsNotifs banner — fires AFTER native callout may have been pruned)
-      // can still hand it to consume()'s broadcast fallback.
       _lastSurfacedShareBtn = shareBtn || null
       try {
         HsNotifs.emit('twitch-resub-share', {
@@ -32873,8 +33260,6 @@ const STORAGE_KEY = 'heatsync_multichat';
           _nativeCallout: calloutEl,
         })
       } catch (_) {}
-      // Refresh layer geometry — ResizeObserver only fires on tabbar/inputbar
-      // resize, so a freshly-mounted layer container would land at fallback (0).
       try { _updateMcLayout?.() } catch (_) {}
     }
     // Twitch removed `.pinned-callout` in a recent refactor — the callout body
@@ -33446,7 +33831,7 @@ const STORAGE_KEY = 'heatsync_multichat';
       const tsSpan = tsVal ? `<span class="hs-mc-ts" data-ts="${m.time}">${tsVal}</span>` : ''
       const tagColor = typeDef?.color || '#ff0000'
       const tagLabel = isThreadOp || isOp ? '[OP]' : '[RE]'
-      const typeTag = `<span class="hs-feed-tag" style="color:${tagColor};font-size:10px;margin-right:3px">${tagLabel}</span>`
+      const typeTag = `<span class="hs-feed-tag" style="color:${tagColor};font-size:13px;margin-right:3px">${tagLabel}</span>`
       const shortId = (m.base36_id || '').replace(/^0+/, '') || '0'
       const threadLink = `<a href="https://heatsync.org/post/${encodeURIComponent(m.base36_id)}" target="_blank" class="hs-feed-thread-link">&gt;&gt;${escapeHtml(shortId)}</a>`
       const userLink = `<a href="https://heatsync.org/user/${encodeURIComponent(m.feedUser)}" target="_blank" class="hs-mc-user" data-username="${escapeHtml((m.feedUser || 'anon').toLowerCase())}" style="color:${sanitizeColor(m.color || '#fff')}">${escapeHtml(m.feedUser || 'anon')}</a>`
@@ -33474,10 +33859,10 @@ const STORAGE_KEY = 'heatsync_multichat';
       const tsVal = timestampsEnabled ? formatTimeFromTs(m.time) : ''
       const tsSpan = tsVal ? `<span class="hs-mc-ts" data-ts="${m.time}">${tsVal}</span>` : ''
       const labelColor = m.inlineNotifColor || INLINE_NOTIF_TYPES.dm.color
-      const label = `<span style="color:${labelColor};font-size:10px;font-weight:700;margin-right:3px">[DM]</span>`
+      const label = `<span style="color:${labelColor};font-size:13px;font-weight:700;margin-right:3px">[DM]</span>`
       const platBadge = m.platform === 'twitch'
-        ? '<span style="color:#9146ff;font-size:10px;font-weight:700;margin-right:3px">[T]</span>'
-        : '<span style="color:#ff8700;font-size:10px;font-weight:700;margin-right:3px">[HS]</span>'
+        ? '<span style="color:#9146ff;font-size:13px;font-weight:700;margin-right:3px">[T]</span>'
+        : '<span style="color:#ff8700;font-size:13px;font-weight:700;margin-right:3px">[HS]</span>'
       const userName = `<span style="color:${sanitizeColor(m.color)};font-weight:600">${escapeHtml(m.user)}</span>`
       // All values sanitized — safe innerHTML
       if (m._renderedHtml == null) m._renderedHtml = processEmotes(escapeHtml(m.text), null)
@@ -33532,6 +33917,7 @@ const STORAGE_KEY = 'heatsync_multichat';
       if (id === 'raid' || id === 'unraid') return 'hs-mc-notice-raid'
       if (id === 'announcement') return 'hs-mc-notice-announce'
       if (id === 'bitsbadgetier') return 'hs-mc-notice-bits'
+      if (id === 'watchstreak') return 'hs-mc-notice-watchstreak'
       if (id === 'viewermilestone') return 'hs-mc-notice-milestone'
       if (id === 'msg_banned' || id === 'msg_timedout' || id === 'no_permission' ||
           id.startsWith('bad_') || id.startsWith('usage_')) return 'hs-mc-notice-error'
@@ -33579,9 +33965,9 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     const plat = m.platform === 'youtube' ? 'yt' : m.platform === 'kick' ? 'kick' : m.platform === 'heatsync' ? 'heatsync' : 'twitch'
     const platLabel = plat === 'yt' ? '[Y]' : plat === 'kick' ? '[K]' : plat === 'heatsync' ? '[H]' : '[T]'
     const platColors = { twitch: '#9146ff', kick: '#53fc18', yt: '#ff0000', heatsync: '#ff8700' }
-    const platformBadge = (platformBadgesEnabled || plat !== hostPlatform) ? `<span class="hs-mc-platform-badge hs-mc-pb-${plat}" style="font-size:10px;margin-right:3px;font-weight:700;vertical-align:middle;color:${platColors[plat]}">${platLabel}</span>` : ''
+    const platformBadge = (platformBadgesEnabled || plat !== hostPlatform) ? `<span class="hs-mc-platform-badge hs-mc-pb-${plat}" style="font-size:13px;margin-right:3px;font-weight:700;vertical-align:middle;color:${platColors[plat]}">${platLabel}</span>` : ''
     const safeScColor = sanitizeColor(m.scColor || '#ffd600')
-    const scBadge = isSuperChat && m.amount ? `<span class="hs-mc-sc-badge" style="background:${safeScColor};color:#000;padding:0 4px;border-radius:0;font-size:10px;font-weight:700;margin-right:3px;">${escapeHtml(m.amount)}</span>` : ''
+    const scBadge = isSuperChat && m.amount ? `<span class="hs-mc-sc-badge" style="background:${safeScColor};color:#000;padding:0 4px;border-radius:0;font-size:13px;font-weight:700;margin-right:3px;">${escapeHtml(m.amount)}</span>` : ''
     const bitsBadge = m.bits ? `<span class="hs-mc-bits-badge" title="${m.bits} bits">${m.bits} bits</span>` : ''
     const paintStyle = m.userId ? getMcPaintStyle(m.userId) : ''
     // Build the channel link for the username. YouTube usernames arrive
@@ -34731,7 +35117,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
 
     // Heatsync linkage status indicator (between rows and error)
     const linkStatus = document.createElement('div')
-    linkStatus.style.cssText = 'font-size:11px;color:#808080;min-height:14px;font-family:ui-monospace,monospace;'
+    linkStatus.style.cssText = 'font-size:13px;color:#808080;min-height:14px;font-family:ui-monospace,monospace;'
     wrapper.insertBefore(linkStatus, errEl)
 
     // Debounced autofill — when user types in any field, look up that name on
@@ -35536,7 +35922,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     const menu = document.createElement('div');
     menu.id = 'hs-mc-live-picker';
     const rect = anchorEl.getBoundingClientRect();
-    menu.style.cssText = `position:fixed;z-index:99999;background:#000;border:1px solid #808080;padding:4px 0;min-width:130px;font-size:12px;font-family:inherit;left:${rect.left}px;top:${rect.bottom + 2}px;`;
+    menu.style.cssText = `position:fixed;z-index:99999;background:#000;border:1px solid #808080;padding:4px 0;min-width:130px;font-size:13px;font-family:inherit;left:${rect.left}px;top:${rect.bottom + 2}px;`;
 
     const curLive = getLiveChannel()?.toLowerCase();
 
@@ -37076,6 +37462,16 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
         applyBlockedHashDelta(changes.blocked_emotes.newValue || []);
       }
 
+      // Emote/emoji scale changes from options page propagate live.
+      if (changes.hs_emote_size) {
+        const v = changes.hs_emote_size.newValue
+        if (v === 1 || v === 2 || v === 4) { emoteSize = v; applyEmoteSize() }
+      }
+      if (changes.hs_emoji_size) {
+        const v = changes.hs_emoji_size.newValue
+        if (v === 1 || v === 2 || v === 4) { emojiSize = v; applyEmojiSize() }
+      }
+
       // Multi-tab seen-state merge — without this, three open tabs writing
       // hs_tab_seen_v1 in close succession last-write-wins and lose each
       // other's per-tab seen timestamps. Merge with max-per-key so any tab
@@ -37299,6 +37695,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       loadChatPosition(),
       loadLivePlatformMap(),
       loadEmoteSize(),
+      loadEmojiSize(),
       loadWysiwygSetting(),
       loadLinksSetting(),
       loadLinkPreviewsSetting(),
@@ -37528,10 +37925,14 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       // matches a pending Share click. Pre-injection → cancel synthetic.
       // Post-injection → hide synthetic so real takes its place. Single
       // celebration always.
+      const _claimKind = _pendingShareClaim?.kind || 'resub'
+      const _allowedMsgIds = _claimKind === 'watchstreak'
+        ? ['watchstreak', 'viewermilestone']
+        : ['resub', 'sub', 'viewermilestone']
       if (_pendingShareClaim && msg.type === 'usernotice' && !msg.isSynthetic &&
           msg.channel?.toLowerCase() === _pendingShareClaim.channel &&
           msg.user?.toLowerCase() === _pendingShareClaim.userLc &&
-          (msg.msgId === 'resub' || msg.msgId === 'sub' || msg.msgId === 'viewermilestone')) {
+          _allowedMsgIds.includes(msg.msgId)) {
         const claim = _pendingShareClaim
         // If our synthetic carries user-typed body and the real broadcast came
         // through empty (Twitch's one-click Share has no composer), keep the

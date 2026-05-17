@@ -1822,14 +1822,15 @@ style.textContent = `
     color: #808080;
   }
 
-  /* Mention highlight - Chatterino-style dark red background on entire message */
+  /* Mention highlight - Chatterino-style dark red background on entire message.
+     Dark blood-red so full-color Twitch usernames render on top. */
   .chat-line__message.hs-mentioned,
   .hs-mentioned,
   div.hs-mentioned,
   [class*="chat-line"].hs-mentioned,
   .chat-scrollable-area__message-container .hs-mentioned {
-    background-color: #7f0000 !important;
-    background: #7f0000 !important;
+    background-color: #330808 !important;
+    background: #330808 !important;
   }
 
   /* Emojis — native size by default, doubled when html.hs-bigemoji */
@@ -7200,7 +7201,7 @@ function updateEmoteState(hash, emoteName, state) {
       { action: 'unmod', label: 'unmod' },
       { action: 'vip', label: 'vip' },
       { action: 'unvip', label: 'unvip' },
-      { action: 'purge', label: 'purge', danger: true }
+      { action: 'purge', label: 'x', danger: true }
     ]
     for (const { action, label, danger } of hardActions) {
       const b = document.createElement('button')

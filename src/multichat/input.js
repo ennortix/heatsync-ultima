@@ -2512,7 +2512,7 @@ function showCycleTooltip() {
   if (!tt) {
     tt = document.createElement('div');
     tt.id = 'hs-mc-cycle-tooltip';
-    tt.style.cssText = 'position:absolute;bottom:100%;left:8px;background:#000;color:#fff;padding:4px 8px;font-size:12px;border-radius: 0;z-index:1003;margin-bottom:4px;';
+    tt.style.cssText = 'position:absolute;bottom:100%;left:8px;background:#000;color:#fff;padding:4px 8px;font-size:13px;border-radius: 0;z-index:1003;margin-bottom:4px;';
     document.getElementById('hs-mc-inputbar')?.appendChild(tt);
   }
   const m = acState.matches[acState.index];
@@ -3186,6 +3186,12 @@ async function sendMessage() {
   if (window.__hsResubShare?.active?.()) {
     try { window.__hsResubShare.consume(text) } catch (_) {}
   }
+  // Watch-streak share mode — same contract as resub-share. consume() fires
+  // the native broadcast + injects a local synth, then we fall through so the
+  // user's typed body also lands as a normal PRIVMSG (visible to everyone).
+  if (window.__hsWatchstreakShare?.active?.()) {
+    try { window.__hsWatchstreakShare.consume(text) } catch (_) {}
+  }
 
   // Slash commands — work from any tab. Handler may return:
   //   true   -> consumed, exit
@@ -3390,7 +3396,7 @@ function showUploadStatus(msg, isError) {
     if (!inputbar) return
     const el = document.createElement('div')
     el.id = 'hs-mc-upload-status'
-    el.style.cssText = 'padding:2px 8px;font-size:11px;color:#ff8700;background:#000;border-top:1px solid #808080;'
+    el.style.cssText = 'padding:2px 8px;font-size:13px;color:#ff8700;background:#000;border-top:1px solid #808080;'
     el.textContent = msg
     inputbar.insertBefore(el, inputbar.firstChild)
   } else if (bar) {

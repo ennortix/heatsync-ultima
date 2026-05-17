@@ -138,6 +138,21 @@
       opacity: 0.35;
       cursor: not-allowed;
     }
+    .size-btns {
+      display: inline-flex;
+      gap: 4px;
+    }
+    .size-btn {
+      background: #1a1a1a;
+      color: #fff;
+      border: 1px solid #333;
+      padding: 4px 10px;
+      font-family: inherit;
+      font-size: 12px;
+      cursor: pointer;
+    }
+    .size-btn:hover { background: #fff; color: #000; }
+    .size-btn.active { background: #ff8700; color: #000; border-color: #ff8700; }
     #server-settings-status {
       font-size: 11px;
       color: #a0a0a0;
@@ -279,10 +294,25 @@
     </div>
     <div class="setting-row">
       <div>
-        <div class="setting-label" id="lbl-bigEmoji">big emoji</div>
-        <div class="setting-desc">2x size for unicode emojis and small twitch emoticons (:), :(, &lt;3)</div>
+        <div class="setting-label">emote size</div>
+        <div class="setting-desc">1x native, 2x/4x scale Twitch/Kick/BTTV/FFZ/7TV emotes</div>
       </div>
-      <button type="button" class="toggle" data-setting="bigEmoji" role="switch" aria-checked="false" aria-labelledby="lbl-bigEmoji"></button>
+      <div class="size-btns" data-storage-key="hs_emote_size">
+        <button type="button" class="size-btn" data-size="1">1x</button>
+        <button type="button" class="size-btn" data-size="2">2x</button>
+        <button type="button" class="size-btn" data-size="4">4x</button>
+      </div>
+    </div>
+    <div class="setting-row">
+      <div>
+        <div class="setting-label">emoji size</div>
+        <div class="setting-desc">1x native, 2x (default) / 4x scale unicode emojis</div>
+      </div>
+      <div class="size-btns" data-storage-key="hs_emoji_size">
+        <button type="button" class="size-btn" data-size="1">1x</button>
+        <button type="button" class="size-btn" data-size="2">2x</button>
+        <button type="button" class="size-btn" data-size="4">4x</button>
+      </div>
     </div>
     <div class="setting-row">
       <div>

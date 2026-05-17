@@ -4492,16 +4492,61 @@ function injectStyles() {
   const css = `
     /* Bundled bitmap fonts — URLs replaced via chrome.runtime.getURL after
        template evaluation (woff2 lives in chrome/fonts/, exposed via
-       web_accessible_resources). font-display:block prevents FOUT flash. */
+       web_accessible_resources). font-display:block prevents FOUT flash.
+       Explicit weight/style + font-synthesis:none (in .hs-font-bitmap rule
+       below) prevent the browser from faux-bolding when CSS asks for 600+. */
     @font-face {
       font-family: 'CozetteVector';
       src: url('__HS_FONT_COZETTE__') format('woff2');
+      font-weight: 400;
+      font-style: normal;
       font-display: block;
     }
     @font-face {
       font-family: 'GohuFont';
       src: url('__HS_FONT_GOHU__') format('woff2');
+      font-weight: 400;
+      font-style: normal;
       font-display: block;
+    }
+
+    /* Bitmap-font mode — toggled by JS (applyFontSettings) when the user
+       picks CozetteVector or GohuFont. Forces pixel-perfect rendering:
+       - font-smoothing OFF: bitmap glyphs render to pixel grid, no AA smear
+       - font-synthesis NONE: prevents faux-bold blur on .active tab, .has-new
+         system notices, hover effects, etc — all the font-weight:600/700/900
+         rules become inert for Cozette (no bold variant exists) instead of
+         being synthesized into a blurry stroke-expanded shape
+       - text-rendering OPTIMIZESPEED: skips hinting/kerning that round
+         metrics to fractional pixels and re-introduce blur
+       Applies to body so reply-stack/notif overlays mounted outside the
+       container also inherit. */
+    body.hs-font-bitmap,
+    body.hs-font-bitmap *,
+    body.hs-font-bitmap *::before,
+    body.hs-font-bitmap *::after {
+      -webkit-font-smoothing: none !important;
+      -moz-osx-font-smoothing: grayscale !important;
+      font-smooth: never !important;
+      font-synthesis: none !important;
+      text-rendering: optimizeSpeed !important;
+    }
+    /* Counter-rule: a handful of surfaces explicitly use NON-bitmap fonts
+       (system sans, Inter, ui-monospace) where the user expects AA. Without
+       this rule, the global hs-font-bitmap setting would alias those too,
+       making sans-serif text look jaggy. Order matters — these rules must
+       come after the bitmap rule to win the cascade. */
+    body.hs-font-bitmap .hs-pcard,
+    body.hs-font-bitmap .hs-pcard *,
+    body.hs-font-bitmap .hs-notif,
+    body.hs-font-bitmap .hs-notif *,
+    body.hs-font-bitmap .hs-mc-pred-result-amount,
+    body.hs-font-bitmap .hs-heat-num {
+      -webkit-font-smoothing: subpixel-antialiased !important;
+      -moz-osx-font-smoothing: auto !important;
+      font-smooth: auto !important;
+      font-synthesis: weight style !important;
+      text-rendering: auto !important;
     }
 
     /* Tab bar - positioned at top of chat via render injection.
@@ -6100,7 +6145,7 @@ function injectStyles() {
       color: #fff;
       border: 1px solid #808080;
       border-right: 0;
-      font: 11px/18px 'CozetteVector', monospace;
+      font: 13px/18px 'CozetteVector', monospace;
       user-select: none;
       height: 20px;
     }
@@ -32056,6 +32101,13 @@ const STORAGE_KEY = 'heatsync_multichat';
     const root = document.documentElement;
     root.style.setProperty('--hs-mc-font', stack);
     container.style.setProperty('--hs-mc-font', stack);
+    // Bitmap-font mode flag — kills AA + faux-bold + hinting for crisp
+    // pixel-grid rendering. Cozette/Gohu only ship a single 400 master,
+    // so any font-weight ≥500 in CSS would otherwise synthesize a blurry
+    // bold. .hs-font-bitmap rule in styles.js sets font-synthesis:none.
+    const isBitmap = fontFamily === 'CozetteVector' || fontFamily === 'GohuFont' || !fontFamily;
+    document.body.classList.toggle('hs-font-bitmap', isBitmap);
+    container.classList.toggle('hs-font-bitmap', isBitmap);
     const sizeNum = parseInt(fontSize, 10);
     if (sizeNum >= 10 && sizeNum <= 22) {
       root.style.setProperty('--hs-mc-base-size', sizeNum + 'px');

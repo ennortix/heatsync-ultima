@@ -4228,6 +4228,13 @@
     const root = document.documentElement;
     root.style.setProperty('--hs-mc-font', stack);
     container.style.setProperty('--hs-mc-font', stack);
+    // Bitmap-font mode flag — kills AA + faux-bold + hinting for crisp
+    // pixel-grid rendering. Cozette/Gohu only ship a single 400 master,
+    // so any font-weight ≥500 in CSS would otherwise synthesize a blurry
+    // bold. .hs-font-bitmap rule in styles.js sets font-synthesis:none.
+    const isBitmap = fontFamily === 'CozetteVector' || fontFamily === 'GohuFont' || !fontFamily;
+    document.body.classList.toggle('hs-font-bitmap', isBitmap);
+    container.classList.toggle('hs-font-bitmap', isBitmap);
     const sizeNum = parseInt(fontSize, 10);
     if (sizeNum >= 10 && sizeNum <= 22) {
       root.style.setProperty('--hs-mc-base-size', sizeNum + 'px');

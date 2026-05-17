@@ -1765,10 +1765,11 @@
   // Show offline stream events (default off)
   let showOfflineEvents = false;
 
-  // Auto-claim Twitch channel points bonus chest. Default OFF — automating
-  // Twitch UI on every install is the kind of thing Twitch ToS targets;
-  // users opt in explicitly.
-  let autoClaimPoints = false;
+  // Auto-claim Twitch channel points bonus chests across every twitch
+  // channel in your multichat. Uses the official ClaimCommunityPoints GQL
+  // call (same one Twitch's own UI fires) — pure user benefit, ToS-clean.
+  // Toast notifies on each successful claim.
+  let autoClaimPoints = true;
 
   // Dim timed-out/banned messages instead of hiding (default on)
   let dimTimeouts = true;
@@ -4201,6 +4202,48 @@
         autoClaimPoints = stored.hs_auto_claim_points;
       }
     } catch {}
+    if (autoClaimPoints) startAutoClaimPoller()
+  }
+
+  // Background chest-claim sweeper. Chests spawn every ~15min during active
+  // viewing and expire after ~15min unclaimed. 5min poll catches each within
+  // its claim window. Calls fetchChannelRewards (from twitch-api.js) which
+  // returns availableClaim id, then claimCommunityPoints fires the GQL mutation
+  // and emits a toast on success.
+  let _autoClaimPoller = null
+  let _autoClaimSweepInFlight = false
+  async function _autoClaimSweep() {
+    if (_autoClaimSweepInFlight || !autoClaimPoints) return
+    _autoClaimSweepInFlight = true
+    try {
+      const seen = new Set()
+      const channels = (config.channels || [])
+        .map(c => (c.twitch || '').toLowerCase().trim())
+        .filter(ch => ch && !seen.has(ch) && (seen.add(ch), true))
+      for (let i = 0; i < channels.length; i++) {
+        if (!autoClaimPoints) break
+        const ch = channels[i]
+        try {
+          const r = await fetchChannelRewards(ch)
+          if (r?.availableClaim && r.channelId) {
+            await claimCommunityPoints(r.availableClaim, r.channelId, ch)
+          }
+        } catch (_) {}
+        if (i < channels.length - 1) await new Promise(res => setTimeout(res, 2000))
+      }
+    } finally {
+      _autoClaimSweepInFlight = false
+    }
+  }
+  function startAutoClaimPoller() {
+    if (_autoClaimPoller || !autoClaimPoints) return
+    setTimeout(_autoClaimSweep, 20000)
+    _autoClaimPoller = cleanup.setInterval(_autoClaimSweep, 5 * 60 * 1000)
+  }
+  function stopAutoClaimPoller() {
+    if (!_autoClaimPoller) return
+    cleanup.clearInterval(_autoClaimPoller)
+    _autoClaimPoller = null
   }
 
   async function loadDimTimeoutsSetting() {
@@ -4234,6 +4277,8 @@
   function toggleAutoClaim() {
     autoClaimPoints = !autoClaimPoints;
     chrome.storage.local.set({ hs_auto_claim_points: autoClaimPoints });
+    if (autoClaimPoints) startAutoClaimPoller()
+    else stopAutoClaimPoller()
   }
 
   async function loadFirstChatterGlowSetting() {
@@ -4507,7 +4552,8 @@
         avatarsEnabled = false;
         platformBadgesEnabled = true;
         showOfflineEvents = false;
-        autoClaimPoints = false;
+        autoClaimPoints = true;
+        startAutoClaimPoller();
         dimTimeouts = true;
         firstChatterGlow = true;
         keywordHighlights = '';
@@ -8183,6 +8229,12 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       if (stored.ui_settings?.chatPosition !== undefined) {
         chatPosition = stored.ui_settings.chatPosition;
       }
+      // Load previous-visible for hide↔show toggle restore.
+      const prevStored = stored.ui_settings?.chatPositionPrevious;
+      if (['right','bottom','left','top'].includes(prevStored)) chatPositionPrevious = prevStored;
+      if (['right','bottom','left','top'].includes(chatPosition)) {
+        chatPositionPrevious = chatPosition;
+      }
       // Load saved width + height BEFORE first applyChatPosition. Without this,
       // applyChatPosition runs with default chatHeight (35% innerHeight) and
       // positions the orange handle there. loadChatHeight then updates the
@@ -8263,19 +8315,36 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
   }
 
   function applyChatPosition() {
-    // Sanitize — only ever 4 valid positions. If chatPosition somehow
-    // drifted (stale storage from old build, manual edit), force to 'right'.
-    const VALID_POSITIONS = ['right', 'bottom', 'left', 'top'];
+    // Sanitize — 5 valid positions: 4 visible + 'hidden'.
+    const VALID_POSITIONS = ['right', 'bottom', 'left', 'top', 'hidden'];
     if (!VALID_POSITIONS.includes(chatPosition)) {
       log('[c-button] sanitizing invalid chatPosition:', chatPosition, '→ right');
       chatPosition = 'right';
     }
-    // Popout chat = full window, no video. Any non-right position leaves a
-    // blank area where the player would be. Force 'right' (which CSS then
-    // expands to full width via .hs-popout overrides).
+    // Popout chat = full window. Force 'right' + visible.
     if (document.body.classList.contains('hs-popout') && chatPosition !== 'right') {
       chatPosition = 'right';
     }
+    // Hidden state: collapse overlay, drop all handles, show edge-pill.
+    // Pill + `\` shortcut are the ONLY restore paths.
+    if (chatPosition === 'hidden') {
+      document.body.classList.remove('hs-chat-top', 'hs-chat-right', 'hs-chat-bottom', 'hs-chat-left');
+      document.body.classList.add('hs-chat-hidden');
+      document.body.classList.toggle('hs-platform-yt', hostPlatform === 'yt');
+      document.body.classList.toggle('hs-platform-twitch', hostPlatform !== 'yt' && !isKick);
+      document.body.classList.toggle('hs-platform-kick', !!isKick);
+      document.body.classList.toggle('hs-mode-theatre', theatreMode);
+      document.body.classList.toggle('hs-mode-normal', !theatreMode);
+      hidePlatformResizeHandles(true);
+      const uh = document.getElementById('hs-c-resize-handle');
+      if (uh) uh.style.setProperty('display', 'none', 'important');
+      ensureChatRestorePill(true);
+      try { applyPlatformPositionOverrides() } catch (_) {}
+      log('Chat position: hidden, theatre:', theatreMode);
+      return;
+    }
+    document.body.classList.remove('hs-chat-hidden');
+    ensureChatRestorePill(false);
     // YouTube: layout overrides that touch #primary/#secondary are gated
     // separately (live-only via :not(.hs-offline)). The hs-chat-{position}
     // class is now applied on EVERY YT page so the persistent multichat
@@ -8636,18 +8705,63 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
   }
 
   function rotateChatPosition() {
-    // Strict 4-state cycle: right → bottom → left → top → right.
-    // No 'hidden' state — chat panel always visible so the C button stays
-    // clickable. If chatPosition is invalid, normalize first then advance.
-    if (document.body.classList.contains('hs-popout')) return; // no-op in popout — no video to share space with
+    // C cycles 4 visible. Hidden via toggleChatHidden(). From hidden → previous-visible.
+    if (document.body.classList.contains('hs-popout')) return;
     const positions = ['right', 'bottom', 'left', 'top'];
-    let idx = positions.indexOf(chatPosition);
-    if (idx === -1) idx = 0; // invalid state → start from 'right' before advancing
     const prev = chatPosition;
-    chatPosition = positions[(idx + 1) % positions.length];
+    if (chatPosition === 'hidden') {
+      chatPosition = positions.includes(chatPositionPrevious) ? chatPositionPrevious : 'right';
+    } else {
+      let idx = positions.indexOf(chatPosition);
+      if (idx === -1) idx = 0;
+      chatPosition = positions[(idx + 1) % positions.length];
+    }
     log('rotate-chat:', prev, '→', chatPosition);
     applyChatPosition();
     saveUiSetting('chatPosition', chatPosition);
+  }
+
+  // ============================================
+  // CHAT HIDE/SHOW TOGGLE — \ key + edge-pill.
+  // chatPositionPrevious survives across hide cycles so restore lands on the
+  // last-known visible position, not the default 'right'.
+  // ============================================
+  let chatPositionPrevious = 'right';
+
+  function toggleChatHidden() {
+    if (document.body.classList.contains('hs-popout')) return;
+    const visible = ['right', 'bottom', 'left', 'top'];
+    if (chatPosition === 'hidden') {
+      chatPosition = visible.includes(chatPositionPrevious) ? chatPositionPrevious : 'right';
+    } else {
+      if (visible.includes(chatPosition)) chatPositionPrevious = chatPosition;
+      chatPosition = 'hidden';
+    }
+    applyChatPosition();
+    saveUiSetting('chatPosition', chatPosition);
+    saveUiSetting('chatPositionPrevious', chatPositionPrevious);
+    log('[chat-toggle] →', chatPosition, 'prev:', chatPositionPrevious);
+  }
+
+  // Edge-pill: 6px orange strip pinned to the edge where chat last lived.
+  // Resize-handle convention: #ff8700, ≥6px, no text.
+  function ensureChatRestorePill(show) {
+    let pill = document.getElementById('hs-chat-restore-pill');
+    if (!show) { if (pill) pill.remove(); return; }
+    if (!pill) {
+      pill = document.createElement('div');
+      pill.id = 'hs-chat-restore-pill';
+      pill.title = 'show chat (\\)';
+      pill.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        toggleChatHidden();
+      });
+      pill.addEventListener('mousedown', (e) => e.stopPropagation());
+      document.body.appendChild(pill);
+    }
+    const edge = ['right', 'bottom', 'left', 'top'].includes(chatPositionPrevious) ? chatPositionPrevious : 'right';
+    pill.dataset.edge = edge;
   }
 
   // Resolve the channel context to popout for the active tab.

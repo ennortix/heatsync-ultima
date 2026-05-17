@@ -485,6 +485,21 @@ function initInput() {
     }, { capture: true, signal: mcSignal });
   }
 
+  // Global `\` toggle → hide/show chat. Mirrors heatsync.org keyboard shortcut.
+  // Skip when input is focused so users can type `\` into chat normally.
+  if (!window._hsMcChatToggleHandler) {
+    window._hsMcChatToggleHandler = true
+    document.addEventListener('keydown', (e) => {
+      if (e.key !== '\\') return
+      if (e.ctrlKey || e.altKey || e.metaKey) return
+      const active = document.activeElement
+      if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable)) return
+      e.preventDefault()
+      e.stopImmediatePropagation()
+      try { toggleChatHidden() } catch (err) { log('chat-toggle keydown:', err) }
+    }, { capture: true, signal: mcSignal })
+  }
+
   // Auto-reveal input bar when user starts typing anywhere
   if (!window._hsMcTypeRevealHandler) {
     window._hsMcTypeRevealHandler = true

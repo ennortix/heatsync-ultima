@@ -179,6 +179,12 @@ function applyEmoteSize() {
   document.documentElement.style.setProperty('--hs-emote-height', (HS_EMOTE_BASE_PX * hsEmoteSize) + 'px')
 }
 
+// Unicode emoji size (1x/2x/4x) — mirrors multichat's hs_emoji_size.
+let hsEmojiSize = 2
+function applyEmojiSize() {
+  document.documentElement.style.setProperty('--hs-emoji-scale', String(hsEmojiSize))
+}
+
 // Crash telemetry: capture unhandled errors and unhandled promise rejections.
 // Filtered to only forward errors that look like ours (heatsync stack frames or
 // triggered from our injected scripts). Page-side noise gets dropped.
@@ -267,6 +273,11 @@ function _onStorageChanged(changes, areaName) {
   if (changes.hs_emote_size != null) {
     hsEmoteSize = parseFloat(changes.hs_emote_size.newValue) || 1
     applyEmoteSize()
+  }
+  if (changes.hs_emoji_size != null) {
+    const v = changes.hs_emoji_size.newValue
+    hsEmojiSize = (v === 1 || v === 2 || v === 4) ? v : 2
+    applyEmojiSize()
   }
   // Live-apply ui_settings changes from options page (sync storage)
   if (areaName === 'sync' && changes.ui_settings) {
@@ -1833,15 +1844,12 @@ style.textContent = `
     background: #330808 !important;
   }
 
-  /* Emojis — native size by default, doubled when html.hs-bigemoji */
+  /* Emojis — scaled by --hs-emoji-scale (1/2/4x) from hs_emoji_size storage. */
   .heatsync-emoji {
-    font-size: 1em !important;
+    font-size: calc(1em * var(--hs-emoji-scale, 1)) !important;
     line-height: 1 !important;
     vertical-align: middle !important;
     display: inline-block !important;
-  }
-  html.hs-bigemoji .heatsync-emoji {
-    font-size: 2em !important;
   }
 
   /* Emote overlay stacking (7TV zero-width emotes) */
@@ -2617,9 +2625,6 @@ function applyUiSettings(settings) {
     log(' Applied UI hiding CSS:', rules.length, 'rules');
   }
 
-  // Big emoji toggle — applies 2em font-size to .heatsync-emoji
-  document.documentElement.classList.toggle('hs-bigemoji', !!settings.bigEmoji)
-
   // Cosmetics toggle
   if (settings.showCosmetics === false) {
     cosmeticsEnabled = false
@@ -2670,6 +2675,16 @@ function applyUiSettings(settings) {
     }
     applyEmoteSize()
   } catch { applyEmoteSize() }
+})()
+
+// Load emoji size setting (1x/2x/4x — replaces legacy bigEmoji toggle)
+;(async function loadEmojiSize() {
+  try {
+    const stored = await chrome.storage.local.get('hs_emoji_size')
+    const v = stored.hs_emoji_size
+    if (v === 1 || v === 2 || v === 4) hsEmojiSize = v
+    applyEmojiSize()
+  } catch { applyEmojiSize() }
 })()
 
 // Loading indicator with coggers emote
@@ -9636,21 +9651,21 @@ function setupAutoClaimPoints() {
   attachObserver()
 }
 
-// Load auto-claim setting and start. Default OFF — auto-clicking Twitch's
-// channel-points UI on every install is the kind of automation Twitch ToS
-// prohibits; users opt in explicitly from settings.
+// Load auto-claim setting and start. Default ON — multichat (main.js) seeds
+// hs_auto_claim_points:true on first run, so we follow that. Off only if the
+// user explicitly toggled it off (storage === false).
 ;(async function loadAutoClaimSetting() {
   try {
     const stored = await chrome.storage.local.get('hs_auto_claim_points')
-    autoClaimEnabled = stored.hs_auto_claim_points === true // default OFF
-  } catch { /* default off */ }
+    autoClaimEnabled = stored.hs_auto_claim_points !== false
+  } catch { /* default on */ }
   setupAutoClaimPoints()
 })()
 
 // React to setting changes
 function _onAutoClaimStorageChanged(changes) {
   if (changes.hs_auto_claim_points) {
-    autoClaimEnabled = changes.hs_auto_claim_points.newValue === true
+    autoClaimEnabled = changes.hs_auto_claim_points.newValue !== false
     setupAutoClaimPoints()
   }
 }

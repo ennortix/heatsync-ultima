@@ -29805,8 +29805,8 @@ const STORAGE_KEY = 'heatsync_multichat';
   window._hsTimestampsEnabled = false;
   let avatarsEnabled = false;
 
-  // Show offline stream events (default off)
-  let showOfflineEvents = false;
+  // Show offline stream events (default on — multichat is built for awareness)
+  let showOfflineEvents = true;
 
   // Auto-claim Twitch channel points bonus chests across every twitch
   // channel in your multichat. Uses the official ClaimCommunityPoints GQL
@@ -32251,20 +32251,6 @@ const STORAGE_KEY = 'heatsync_multichat';
     window.postMessage({ type: 'heatsync-settings-changed', settings: { viMode: viModeEnabled } }, location.origin)
   }
 
-  // Big emoji setting — toggles 2x scaling of emojis + small Twitch emoticons
-  function applyBigEmojiClass(on) {
-    const container = document.getElementById('hs-mc-container')
-    if (container) container.classList.toggle('hs-2x', !!on)
-  }
-  async function loadBigEmojiSetting() {
-    try {
-      const stored = await cachedUiSettings();
-      applyBigEmojiClass(stored.ui_settings?.bigEmoji === true)
-    } catch (e) {
-      log('Error loading big emoji setting:', e);
-    }
-  }
-
   // Font family + size — mirrors heatsync.org's appearance picker.
   // CozetteVector + GohuFont are bundled bitmap fonts (chrome/fonts/);
   // 'monospace' uses host system, 'custom' uses settings.customFontName.
@@ -32567,7 +32553,11 @@ const STORAGE_KEY = 'heatsync_multichat';
   async function loadAutoClaimSetting() {
     try {
       const stored = await chrome.storage.local.get(['hs_auto_claim_points']);
-      if (stored.hs_auto_claim_points !== undefined) {
+      if (stored.hs_auto_claim_points === undefined) {
+        // First run — runtime default is ON; persist so the options page
+        // toggle reflects reality instead of rendering OFF.
+        chrome.storage.local.set({ hs_auto_claim_points: true });
+      } else {
         autoClaimPoints = stored.hs_auto_claim_points;
       }
     } catch {}
@@ -32955,7 +32945,7 @@ const STORAGE_KEY = 'heatsync_multichat';
         timestampsEnabled = false;
         avatarsEnabled = false;
         platformBadgesEnabled = true;
-        showOfflineEvents = false;
+        showOfflineEvents = true;
         autoClaimPoints = true;
         startAutoClaimPoller();
         dimTimeouts = true;
@@ -32969,14 +32959,14 @@ const STORAGE_KEY = 'heatsync_multichat';
         const settings = {
           wysiwygEnabled: true, linksEnabled: true, linkPreviewsEnabled: true, viMode: false,
           zebra: true, autoHideEmpty: false, timestamps: false,
-          avatars: false, showPlatformBadges: true, showOfflineEvents: false,
+          avatars: false, showPlatformBadges: true, showOfflineEvents: true,
           firstChatterGlow: true, keywordHighlights: '',
           hiddenTabs: [...DEFAULT_HIDDEN_TABS],
           inlineNotifs: { ...inlineNotifs }, hermesEvents: { ...hermesToggles },
         };
         try {
           for (const [k, v] of Object.entries(settings)) saveUiSetting(k, v);
-          chrome.storage.local.set({ hs_auto_claim_points: false });
+          chrome.storage.local.set({ hs_auto_claim_points: true });
         } catch {}
         renderSettingsTab();
         return;
@@ -37990,9 +37980,6 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
             applyHiddenTabs();
           }
         }
-        if (ns.bigEmoji !== undefined) {
-          applyBigEmojiClass(ns.bigEmoji === true)
-        }
         if (ns.fontFamily !== undefined || ns.fontSize !== undefined || ns.customFontName !== undefined) {
           applyFontSettings(
             ns.fontFamily || 'CozetteVector',
@@ -38381,7 +38368,6 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       loadHermesSettings(),
       loadAutomodSettings(),
       loadPlatformBadgesSetting(),
-      loadBigEmojiSetting(),
       loadFontSettings(),
       loadZebraSetting(),
       loadPlatformFilters(),

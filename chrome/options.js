@@ -43,7 +43,6 @@
     highlightMentions: true,
     showPlatformBadges: true,
     showCosmetics: true,
-    bigEmoji: false,
     viMode: false,
     hideStreamTitle: false,
     hideViewerCount: false,

@@ -5685,6 +5685,24 @@ function replaceEmotesWithStacking(element, allEmotes) {
   }
 }
 
+// Retry broken emote imgs — 7TV/BTTV/FFZ CDNs occasionally serve 503 and
+// Chrome surfaces them as broken (complete=true, naturalWidth=0). Re-assigning
+// the same src refetches and recovers. Backoff: 1s, 3s, 8s; max 3 tries.
+function hsArmEmoteRetry(img) {
+  let tries = 0
+  img.addEventListener('error', () => {
+    if (tries >= 3 || !img.src || !img.isConnected) return
+    tries++
+    const delay = tries === 1 ? 1000 : tries === 2 ? 3000 : 8000
+    const target = img.src
+    cleanup.setTimeout(() => {
+      if (!img.isConnected || img.src !== target) return
+      img.removeAttribute('src')
+      img.src = target
+    }, delay)
+  })
+}
+
 // Generate DOM element for a single emote (React-safe, no innerHTML)
 // modifiers: array of class suffixes like ['wide','hflip']  (FFZ-style chained)
 // modColorHue: optional 0-359 deg from c!#hex
@@ -5818,6 +5836,7 @@ function generateEmoteElement(emote, isOverlay, modifiers, modColorHue) {
     img.dataset.emoteHash = emote.hash;
     img.dataset.emoteName = emote.name;
 
+    hsArmEmoteRetry(img);
     wrapper.appendChild(img);
 
     // Multi-variant fallback: if the same name exists in other sources (e.g.,
@@ -5858,6 +5877,7 @@ function generateEmoteElement(emote, isOverlay, modifiers, modColorHue) {
             this.style.setProperty('min-height', nh + 'px', 'important')
           }
         }
+        hsArmEmoteRetry(alt);
         wrapper.appendChild(alt)
       }
 

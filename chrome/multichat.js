@@ -4872,7 +4872,7 @@ function injectStyles() {
     .hs-mc-util-btn {
       color: #808080 !important;
       border: 1px solid #808080 !important;
-      font-weight: 700 !important;
+      font-weight: 400 !important;
       background: transparent !important;
     }
     .hs-mc-util-btn:hover {

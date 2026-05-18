@@ -3929,6 +3929,57 @@ function _hsPerfWrap(fn, ms, kind) {
   }
 }
 
+// hsSched — cooperative scheduler for boot-burst work in the multichat
+// panel. Identical contract to content.js side: budget-yield chunking, pause
+// while user is actively scrolling, scheduler.postTask priority. Keeps a
+// 5-channel hydration from holding the main thread > ~4ms per slice.
+const hsSched = (() => {
+  let _scrollIdle = true
+  let _scrollIdleTimer = null
+  const markBusy = () => {
+    _scrollIdle = false
+    if (_scrollIdleTimer) clearTimeout(_scrollIdleTimer)
+    _scrollIdleTimer = setTimeout(() => { _scrollIdle = true; _scrollIdleTimer = null }, 180)
+  }
+  for (const ev of ['scroll', 'wheel', 'touchmove', 'pointerdown']) {
+    try { window.addEventListener(ev, markBusy, { passive: true, capture: true, signal: mcSignal }) } catch {}
+  }
+  const _yield = () => {
+    if (typeof scheduler !== 'undefined' && typeof scheduler.yield === 'function') {
+      return scheduler.yield()
+    }
+    return new Promise(r => setTimeout(r, 0))
+  }
+  const untilIdle = async () => {
+    let waited = 0
+    while (!_scrollIdle && waited < 2000) {
+      await new Promise(r => setTimeout(r, 60))
+      waited += 60
+    }
+  }
+  const idle = (fn, { timeout = 2000, priority = 'background' } = {}) => {
+    if (typeof scheduler !== 'undefined' && typeof scheduler.postTask === 'function') {
+      return scheduler.postTask(fn, { priority })
+    }
+    if (typeof window.requestIdleCallback === 'function') {
+      return new Promise(r => requestIdleCallback(() => { try { r(fn()) } catch (e) { r() } }, { timeout }))
+    }
+    return new Promise(r => setTimeout(() => { try { r(fn()) } catch (e) { r() } }, 0))
+  }
+  const chunk = async (items, fn, { budgetMs = 4, respectScroll = true } = {}) => {
+    let t0 = performance.now()
+    for (let i = 0; i < items.length; i++) {
+      if (respectScroll && !_scrollIdle) await untilIdle()
+      try { await fn(items[i], i) } catch (e) {}
+      if (performance.now() - t0 > budgetMs) {
+        await _yield()
+        t0 = performance.now()
+      }
+    }
+  }
+  return { yield: _yield, idle, chunk, untilIdle, get scrollIdle() { return _scrollIdle } }
+})()
+
 const cleanup = {
   setInterval(fn, ms) { const id = setInterval(_hsPerfWrap(fn, ms, 'interval'), ms); _timers.intervals.push(id); return id },
   setIntervalIfVisible(fn, ms) { const w = _hsPerfWrap(fn, ms, 'intervalIfVisible'); const id = setInterval(() => { if (!document.hidden) w() }, ms); _timers.intervals.push(id); return id },
@@ -5142,6 +5193,22 @@ function injectStyles() {
       word-break: break-word;
       max-width: 100%;
       box-sizing: border-box;
+      /* Isolate paint/layout from the host Twitch column. Without this,
+         every panel mutation forced a style recalc walk up through the
+         2500-node React layout tree. paint clips repaints to this box,
+         style blocks inherited cascade leakage, layout blocks the host
+         from re-flowing through us. */
+      contain: layout style paint;
+    }
+    /* Per-message rows: cheap containment + content-visibility:auto so the
+       browser can skip layout/paint for rows that aren't in (or near) the
+       viewport. The intrinsic-size keeps the scrollbar honest while rows
+       are skipped. ~22-26px tall typical; 32px is conservative so we
+       don't undercount and snap on scroll. */
+    #hs-mc-messages > .hs-mc-msg {
+      contain: layout style paint;
+      content-visibility: auto;
+      contain-intrinsic-size: auto 32px;
     }
 
     /* Chat overlay banners (predictions + polls at top of messages) */
@@ -6499,10 +6566,90 @@ function injectStyles() {
     #hs-badge-tooltip,
     #hs-emote-tooltip,
     #hs-link-tooltip,
-    #hs-mc-msg-ctx {
+    #hs-mc-msg-ctx,
+    #hs-mc-emote-ctx {
       font-family: var(--hs-mc-font, 'CozetteVector', 'Courier New', monospace);
       font-size: var(--hs-mc-base-size, 13px);
     }
+
+    /* Right-click emote action menu (multichat panel) */
+    #hs-mc-emote-ctx {
+      position: fixed; z-index: 2147483646;
+      background: #000; color: #fff;
+      border: 1px solid #ff8700;
+      padding: 0; min-width: 220px; max-width: 280px;
+      box-shadow: 0 6px 32px rgba(0,0,0,0.75);
+      animation: hs-mc-em-in 80ms ease-out;
+      transform-origin: top left;
+      user-select: none;
+    }
+    @keyframes hs-mc-em-in {
+      from { opacity: 0; transform: scale(0.96); }
+      to   { opacity: 1; transform: scale(1); }
+    }
+    #hs-mc-emote-ctx.hs-mc-em-flip-x { transform-origin: top right; }
+    #hs-mc-emote-ctx.hs-mc-em-flip-y { transform-origin: bottom left; }
+    #hs-mc-emote-ctx.hs-mc-em-flip-x.hs-mc-em-flip-y { transform-origin: bottom right; }
+    #hs-mc-emote-ctx .hs-mc-em-preview {
+      display: flex; align-items: center; gap: 10px;
+      padding: 8px 10px; border-bottom: 1px solid #222;
+      background: linear-gradient(180deg, #0a0a0a, #000);
+    }
+    #hs-mc-emote-ctx .hs-mc-em-thumb {
+      width: 56px; height: 56px; flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center;
+      background-image:
+        linear-gradient(45deg, #161616 25%, transparent 25%),
+        linear-gradient(-45deg, #161616 25%, transparent 25%),
+        linear-gradient(45deg, transparent 75%, #161616 75%),
+        linear-gradient(-45deg, transparent 75%, #161616 75%);
+      background-size: 12px 12px;
+      background-position: 0 0, 0 6px, 6px -6px, -6px 0;
+      border: 1px solid #222;
+    }
+    #hs-mc-emote-ctx .hs-mc-em-thumb img {
+      max-width: 100%; max-height: 100%;
+      image-rendering: pixelated;
+    }
+    #hs-mc-emote-ctx .hs-mc-em-meta { flex: 1; min-width: 0; }
+    #hs-mc-emote-ctx .hs-mc-em-name {
+      font-weight: 700; font-size: 13px; color: #fff;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    #hs-mc-emote-ctx .hs-mc-em-sub {
+      font-size: 11px; color: #888; margin-top: 2px;
+      display: flex; gap: 6px; align-items: center;
+    }
+    #hs-mc-emote-ctx .hs-mc-em-provider {
+      display: inline-block; padding: 0 4px;
+      border: 1px solid #444; color: #ff8700;
+      font-size: 10px; line-height: 14px;
+    }
+    #hs-mc-emote-ctx .hs-mc-em-header {
+      padding: 4px 10px; font-size: 10px; color: #666;
+      text-transform: uppercase; letter-spacing: 0.5px;
+      background: #050505;
+    }
+    #hs-mc-emote-ctx .hs-mc-em-item {
+      padding: 6px 10px; cursor: pointer;
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 8px;
+    }
+    #hs-mc-emote-ctx .hs-mc-em-item:hover { background: #fff; color: #000; }
+    #hs-mc-emote-ctx .hs-mc-em-item:hover .hs-mc-em-kbd { background: #000; color: #fff; border-color: #000; }
+    #hs-mc-emote-ctx .hs-mc-em-item:hover .hs-mc-em-hint { color: #555; }
+    #hs-mc-emote-ctx .hs-mc-em-item.hs-mc-em-danger { color: #ff5959; }
+    #hs-mc-emote-ctx .hs-mc-em-item.hs-mc-em-danger:hover { background: #ff2020; color: #fff; }
+    #hs-mc-emote-ctx .hs-mc-em-item.hs-mc-em-good { color: #59ff8a; }
+    #hs-mc-emote-ctx .hs-mc-em-item.hs-mc-em-good:hover { background: #1faf48; color: #fff; }
+    #hs-mc-emote-ctx .hs-mc-em-label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    #hs-mc-emote-ctx .hs-mc-em-hint { color: #666; font-size: 11px; }
+    #hs-mc-emote-ctx .hs-mc-em-kbd {
+      display: inline-block; min-width: 14px; padding: 0 4px;
+      border: 1px solid #333; background: #0a0a0a; color: #888;
+      font-size: 10px; line-height: 14px; text-align: center;
+    }
+    #hs-mc-emote-ctx .hs-mc-em-sep { height: 1px; background: #1a1a1a; margin: 2px 0; }
     #hs-user-tooltip {
       position: fixed;
       /* Must beat the unified resize bar (#hs-c-resize-handle uses max int).
@@ -7049,10 +7196,11 @@ function injectStyles() {
       opacity: 0 !important;
     }
 
-    /* State colors via ::before */
+    /* State colors via ::before — match heatsync.org + native chat convention:
+       owned/global/channel = green, unadded = orange (#ff8700), blocked = red. */
     .hs-mc-emote-wrapper.hs-state-global::before { background: #00ff00; }
     .hs-mc-emote-wrapper.hs-state-owned::before { background: #00ff00; }
-    .hs-mc-emote-wrapper.hs-state-unadded::before { background: #00ffff; }
+    .hs-mc-emote-wrapper.hs-state-unadded::before { background: #ff8700; }
     .hs-mc-emote-wrapper.hs-state-channel::before { background: #00ff00; }
     .hs-mc-emote-wrapper.hs-state-blocked::before { background: #ff0000; }
 
@@ -14444,6 +14592,28 @@ async function sendKickMessage(kickSlug, text) {
     if (typeof clearRenderedHtmlCache === 'function') clearRenderedHtmlCache();
   }
 
+  // Re-apply current state to all rendered wrappers for `emoteName`. Use after
+  // inventory changes so already-posted messages flip the green 'owned' marker
+  // to the orange 'unadded' marker (or back) without a full re-render. Never
+  // overrides hs-state-blocked — that branch is owned by block/unblock.
+  function refreshEmoteWrappersState(emoteName) {
+    if (!emoteName) return
+    const emote = lookupEmote(emoteName)
+    const newState = emote ? getEmoteState(emoteName, emote.source) : 'unadded'
+    queryEmoteWrappers(emoteName).forEach(w => {
+      if (w.classList.contains('hs-state-blocked')) return
+      w.classList.remove('hs-state-global', 'hs-state-channel', 'hs-state-owned', 'hs-state-unadded')
+      w.classList.add(`hs-state-${newState}`)
+      w.dataset.state = newState
+      const img = w.querySelector('img')
+      if (img) {
+        img.classList.remove('hs-emote-global', 'hs-emote-channel', 'hs-emote-owned', 'hs-emote-unadded')
+        img.classList.add(`hs-emote-${newState}`)
+        img.dataset.state = newState
+      }
+    })
+  }
+
   function unblockEmote(emoteName) {
     if (!emoteName) return;
 
@@ -14700,11 +14870,42 @@ async function sendKickMessage(kickSlug, text) {
     return 'unadded';
   }
 
+  // Build a single channel's emote cache from a flat emotes array. Shared
+  // between loadEmotes (cold-start from storage) and the live broadcast handler
+  // in main.js so a channel_emotes_update lands directly in channelEmoteCaches
+  // — no waiting on the BG storage.set, no race where a partial broadcast
+  // triggers loadEmotes against still-stale storage.
+  function _buildChannelEmoteCache(ch, emotes) {
+    if (!ch || !Array.isArray(emotes)) return
+    const chCache = new Map()
+    for (const e of emotes) {
+      if (!e.name || !e.url) continue
+      if (e.source === 'twitch' && (e.tier || e.emote_type === 'subscriptions' || e.emote_type === 'follower' || e.emote_type === 'bitstier')) continue
+      const source = e.source || detectEmoteSource(e.url, '7tv')
+      const state = inventoryEmotes.has(e.name) ? 'owned' : 'channel'
+      chCache.set(e.name, { url: e.url, source, state, zeroWidth: !!e.zeroWidth })
+      if (e.hash) {
+        emoteHashes.set(e.name, e.hash)
+        hashToName.set(e.hash, e.name)
+      }
+    }
+    channelEmoteCaches[ch] = chCache
+    const keys = Object.keys(channelEmoteCaches)
+    if (keys.length > 20) {
+      for (const old of keys.slice(0, keys.length - 20)) {
+        if (old !== ch) delete channelEmoteCaches[old]
+      }
+    }
+  }
+
   async function loadEmotes() {
     try {
       const stored = await chrome.storage.local.get(['global_emotes', 'emote_inventory', 'channel_emotes_map', 'native_twitch_emotes']);
       emoteCache.clear();
-      channelEmoteCaches = {};
+      // Don't wipe channelEmoteCaches — live broadcasts may have direct-
+      // populated a channel that storage hasn't persisted yet (BG writes
+      // storage AFTER the final broadcast). Wiping would clobber it; the
+      // loop below refreshes each channel that storage knows about.
       inventoryEmotes.clear();
       viewerPersonalEmotes.clear();
       inventoryHashes.clear();
@@ -14755,35 +14956,10 @@ async function sendKickMessage(kickSlug, text) {
 
       // Load per-channel emotes into separate caches (prevents cross-channel leaking)
       const map = stored.channel_emotes_map || {};
-      log('loadEmotes channel_emotes_map:', Object.entries(map).map(([k, v]) => `${k}:${Array.isArray(v) ? v.length : v}`).join(', ') || '(empty)');
       for (const [ch, emotes] of Object.entries(map)) {
         if (!Array.isArray(emotes)) continue; // skip 'loading' sentinels
-        const chCache = new Map();
-        emotes.forEach(e => {
-          if (e.name && e.url) {
-            // Skip Twitch sub/follower/bits-tier emotes: render them only when
-            // the sender's own inventory carries them (proves entitlement).
-            // Without this, any non-entitled sender's text would re-imagify
-            // via this channel cache fallback.
-            if (e.source === 'twitch' && (e.tier || e.emote_type === 'subscriptions' || e.emote_type === 'follower' || e.emote_type === 'bitstier')) return;
-            const source = e.source || detectEmoteSource(e.url, '7tv');
-            // Channel cache → state 'channel' (unless user owns it in their heatsync inventory)
-            const state = inventoryEmotes.has(e.name) ? 'owned' : 'channel';
-            chCache.set(e.name, { url: e.url, source, state, zeroWidth: !!e.zeroWidth });
-            if (e.hash) registerHash(e.name, e.hash);
-          }
-        });
-        channelEmoteCaches[ch] = chCache;
-        log('channel emote cache for', ch, ':', chCache.size, 'emotes, sample:', Array.from(chCache.keys()).slice(0, 5).join(', '));
+        _buildChannelEmoteCache(ch, emotes)
       }
-      // Evict oldest channel emote caches if exceeds 20
-      const channelKeys = Object.keys(channelEmoteCaches);
-      if (channelKeys.length > 20) {
-        for (const old of channelKeys.slice(0, channelKeys.length - 20)) {
-          delete channelEmoteCaches[old];
-        }
-      }
-      log('Channel emote caches:', Object.entries(channelEmoteCaches).map(([c, m]) => `${c}: ${m.size}`).join(', '));
 
       // Native Twitch emotes — sub emotes carry e.owner (broadcaster login),
       // true Twitch globals do not. Distinguish so tooltips show "(broadcaster) sub" vs "global (Twitch)".
@@ -17185,7 +17361,7 @@ function attachRewardHandlers() {
   // Cooldown timers
   container.querySelectorAll('.hs-mc-reward-reason[data-cooldown-ends]').forEach(el => {
     const endsAt = parseInt(el.dataset.cooldownEnds)
-    const iv = cleanup.setInterval(() => {
+    const iv = cleanup.setIntervalIfVisible(() => {
       if (!el.isConnected) { cleanup.clearInterval(iv); return }
       const secs = Math.max(0, Math.ceil((endsAt - Date.now()) / 1000))
       if (secs <= 0) {
@@ -17532,7 +17708,7 @@ function attachPredictionHandlers() {
       el.textContent = m > 0 ? `${m}:${String(s).padStart(2, '0')}` : `${s}s`
     }
     update()
-    const iv = cleanup.setInterval(() => {
+    const iv = cleanup.setIntervalIfVisible(() => {
       if (!el.isConnected) { cleanup.clearInterval(iv); return }
       update()
     }, 1000)
@@ -17587,7 +17763,7 @@ function _startBannerTimer(el, endsAt) {
     el.textContent = m > 0 ? m + ':' + String(s).padStart(2, '0') : s + 's'
   }
   update()
-  _bannerTimers.push(cleanup.setInterval(() => {
+  _bannerTimers.push(cleanup.setIntervalIfVisible(() => {
     if (!el.isConnected) return
     update()
   }, 1000))
@@ -17872,7 +18048,7 @@ async function renderTwitchTab() {
 
 function startPredictionPoll() {
   stopPredictionPoll()
-  _predictionPollTimer = cleanup.setInterval(() => {
+  _predictionPollTimer = cleanup.setIntervalIfVisible(() => {
     const container = document.getElementById('hs-mc-tab-twitch')
     if (!container || container.style.display === 'none') {
       stopPredictionPoll()
@@ -18192,8 +18368,24 @@ const PRED_CACHE_TTL = 5000 // 5s — fresh enough to feel instant, short enough
 
 const PRED_FIELDS = 'id title status createdAt endedAt predictionWindowSeconds winningOutcome { id } outcomes { id title totalPoints totalUsers color } self { prediction { outcome { id } points } }'
 
-// GQL call — tries direct fetch first (Chrome MV3), falls back to MAIN world proxy (Firefox MV2)
+// True when this content script is running on a twitch.tv page (cookies +
+// MAIN-world Apollo client + integrity are all directly available).
+const _isOnTwitchPage = () => /(^|\.)twitch\.tv$/i.test(location.hostname || '')
+
+// GQL call — on Twitch: direct fetch / MAIN-world proxy. Off Twitch (Kick /
+// YouTube): route through background.js so the request carries the user's
+// twitch.tv auth cookie. This lets mod-state checks (isModerator etc.) work
+// from any page the multichat overlay runs on.
 async function twitchGql(query, variables) {
+  if (!_isOnTwitchPage()) {
+    try {
+      const resp = await safeSendMessage({ type: 'twitch_gql_authed', query, variables: variables || null })
+      if (resp?.ok && resp.data) return resp.data
+      throw new Error(resp?.error || 'twitch_gql bridge failed')
+    } catch (e) {
+      throw new Error('GQL bridge failed: ' + e.message)
+    }
+  }
   // Try direct fetch (works in Chrome MV3 content scripts with host_permissions)
   try {
     const token = getTwitchAuthToken()
@@ -19115,7 +19307,7 @@ function attachPollHandlers() {
       el.textContent = m > 0 ? m + ':' + String(s).padStart(2, '0') : s + 's'
     }
     update()
-    const iv = cleanup.setInterval(() => {
+    const iv = cleanup.setIntervalIfVisible(() => {
       if (!el.isConnected) { cleanup.clearInterval(iv); return }
       update()
     }, 1000)
@@ -19405,6 +19597,20 @@ function _isMutationsKilled() {
 
 async function _modActionMutation(searchTerm, resultField, rawQuery, variables) {
   if (_isMutationsKilled()) return { error: 'mod actions disabled by server' }
+  // Off-Twitch (Kick/YouTube pages): relay through a twitch.tv tab — Apollo +
+  // Client-Integrity only exist in Twitch's page context. The relay runs this
+  // same function inside the Twitch tab and returns the result.
+  if (!_isOnTwitchPage()) {
+    const resp = await safeSendMessage({
+      type: 'twitch_relay',
+      op: 'mod_action',
+      args: { searchTerm, resultField, rawQuery, variables }
+    })
+    if (resp?.ok && resp.result) return resp.result
+    if (resp?.error === 'no_twitch_tab')   return { error: 'open a twitch.tv tab to use mod actions' }
+    if (resp?.error === 'stale_twitch_tab') return { error: 'refresh your twitch.tv tab (extension was updated)' }
+    return { error: resp?.error || 'relay failed' }
+  }
   const apolloResult = await apolloMutate({ searchTerm, variables, resultField, rawQuery })
   if (apolloResult.ok) return { ok: true }
   try {
@@ -19416,6 +19622,28 @@ async function _modActionMutation(searchTerm, resultField, rawQuery, variables) 
   } catch (e) {
     return { error: apolloResult.error || e.message }
   }
+}
+
+// Twitch-tab-only: respond to relay requests from off-Twitch pages.
+// Runs ban/timeout/delete locally (has integrity), returns the result.
+if (_isOnTwitchPage() && typeof chrome !== 'undefined' && chrome.runtime?.onMessage) {
+  chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+    if (msg?.type !== 'twitch_relay_exec') return false
+    ;(async () => {
+      try {
+        if (msg.op === 'mod_action') {
+          const { searchTerm, resultField, rawQuery, variables } = msg.args || {}
+          const result = await _modActionMutation(searchTerm, resultField, rawQuery, variables)
+          sendResponse({ ok: true, result })
+        } else {
+          sendResponse({ ok: false, error: 'unknown op' })
+        }
+      } catch (e) {
+        sendResponse({ ok: false, error: e.message })
+      }
+    })()
+    return true
+  })
 }
 
 async function banTwitchUser(channelLogin, targetLogin, reason) {
@@ -21741,7 +21969,7 @@ function formatTimeFromTs(ts) {
 }
 
 // Refresh timestamps every 30s — lightweight DOM-only update, no rebuild
-cleanup.setInterval(() => {
+cleanup.setIntervalIfVisible(() => {
   const msgsEl = document.getElementById('hs-mc-messages');
   if (!msgsEl) return;
   const now = Date.now();
@@ -22001,7 +22229,7 @@ let discoverPollTimer = null;
 function startDiscoverPolling() {
   if (discoverPollTimer) return;
   // Auto-refresh while user is viewing the discover tab
-  discoverPollTimer = cleanup.setInterval(() => {
+  discoverPollTimer = cleanup.setIntervalIfVisible(() => {
     if (currentTab === 'discover' && !discoverLoading) {
       discoverLoaded = false;
       fetchDiscover();
@@ -22601,7 +22829,7 @@ let pinnedLoading = false;
 let pinnedPollTimer = null;
 function startPinnedPolling() {
   if (pinnedPollTimer) return;
-  pinnedPollTimer = cleanup.setInterval(() => {
+  pinnedPollTimer = cleanup.setIntervalIfVisible(() => {
     if (currentTab === 'pinned' && !pinnedLoading) {
       pinnedLoaded = false;
       fetchPinned();
@@ -24170,28 +24398,11 @@ function initInput() {
       e.preventDefault();
       e.stopPropagation();
 
-      const { emoteName, state } = emoteInfo;
+      // Race-guard before any UI: blocks the menu from opening while
+      // a previous op for this emote is still in-flight.
+      if (pendingEmoteOps.has(emoteInfo.emoteName)) return;
 
-      // Prevent race conditions from rapid clicking
-      if (pendingEmoteOps.has(emoteName)) return;
-
-      if (state === 'blocked') {
-        unblockEmote(emoteName);
-      } else if (state === 'owned') {
-        // Sub emotes have no slot — they can't be removed from inventory, only blocked.
-        // The `subscription` flag isn't always set on twitch sub entries in
-        // viewerPersonalEmotes (depends on backend payload), so fall back to
-        // checking slot: anything without a slot can't be DELETEd via the
-        // /api/user/emotes/:slot endpoint, treat as block-only.
-        const cached = lookupEmote(emoteName);
-        if (cached?.subscription || cached?.slot == null) {
-          blockEmote(emoteName);
-        } else {
-          removeEmoteFromInventory(emoteName, e.target);
-        }
-      } else {
-        blockEmote(emoteName);
-      }
+      showMcEmoteActionMenu(e.clientX, e.clientY, emoteInfo, e.target);
     }, { capture: true, signal: mcSignal });
   }
 
@@ -24426,6 +24637,232 @@ function _openWhisperFor(username) {
     input.textContent = prefill
     input.focus()
   }
+}
+
+// Right-click action menu for any emote rendered in the multichat panel
+// (chat tiles + WYSIWYG input chips + native Twitch sub/bits images that
+// findEmoteTarget catches). Mirrors the page-level menu in chrome/content.js.
+function showMcEmoteActionMenu(x, y, emoteInfo, evtTarget) {
+  document.getElementById('hs-mc-emote-ctx')?.remove()
+  const { emoteName, state, emoteUrl, source, wrapper } = emoteInfo
+  const url = emoteUrl || evtTarget?.src || ''
+  const cached = (typeof lookupEmote === 'function') ? lookupEmote(emoteName) : null
+  const provider = (() => {
+    const s = (source || '').toLowerCase()
+    if (s === '7tv' || url.includes('cdn.7tv.app')) return '7TV'
+    if (s === 'bttv' || url.includes('cdn.betterttv.net')) return 'BTTV'
+    if (s === 'ffz' || url.includes('cdn.frankerfacez.com')) return 'FFZ'
+    if (s === 'twitch' || url.includes('static-cdn.jtvnw.net')) return 'Twitch'
+    if (s === 'heatsync') return 'heatsync'
+    return null
+  })()
+  const externalUrl = (() => {
+    try {
+      if (provider === '7TV') {
+        const m = url.match(/cdn\.7tv\.app\/emote\/([^/]+)/)
+        if (m) return 'https://7tv.app/emotes/' + m[1]
+      }
+      if (provider === 'BTTV') {
+        const m = url.match(/cdn\.betterttv\.net\/emote\/([^/]+)/)
+        if (m) return 'https://betterttv.com/emotes/' + m[1]
+      }
+      if (provider === 'FFZ') {
+        const m = url.match(/cdn\.frankerfacez\.com\/emote\/(\d+)/)
+        if (m) return 'https://www.frankerfacez.com/emoticon/' + m[1]
+      }
+      if (provider === 'Twitch') {
+        const m = url.match(/emoticons\/v2\/(\d+)/)
+        if (m) return 'https://www.twitch.tv/popout/global/emote/' + m[1]
+      }
+    } catch {}
+    return null
+  })()
+
+  const isOwned = state === 'owned'
+  const isBlocked = state === 'blocked'
+  const isLocked = state === 'locked'
+  const isUnadded = state === 'unadded'
+  const isPostable = state === 'owned' || state === 'global' || state === 'channel'
+  // Sub emotes / no-slot entries can be blocked but not removed
+  const canRemoveFromSet = isOwned && cached && cached.slot != null && !cached.subscription
+
+  const menu = document.createElement('div')
+  menu.id = 'hs-mc-emote-ctx'
+  menu.tabIndex = -1
+  menu.addEventListener('contextmenu', (e) => e.preventDefault())
+
+  // Preview tile
+  const preview = document.createElement('div')
+  preview.className = 'hs-mc-em-preview'
+  const thumb = document.createElement('div')
+  thumb.className = 'hs-mc-em-thumb'
+  if (url) {
+    const big = document.createElement('img')
+    big.src = url
+    big.alt = emoteName
+    big.decoding = 'async'
+    big.referrerPolicy = 'no-referrer'
+    thumb.appendChild(big)
+  }
+  const meta = document.createElement('div')
+  meta.className = 'hs-mc-em-meta'
+  const nm = document.createElement('div')
+  nm.className = 'hs-mc-em-name'
+  nm.textContent = emoteName
+  const sub = document.createElement('div')
+  sub.className = 'hs-mc-em-sub'
+  if (provider) {
+    const tag = document.createElement('span')
+    tag.className = 'hs-mc-em-provider'
+    tag.textContent = provider
+    sub.appendChild(tag)
+  }
+  const stxt = document.createElement('span')
+  const dimW = evtTarget?.naturalWidth || evtTarget?.width || 0
+  const dimH = evtTarget?.naturalHeight || evtTarget?.height || 0
+  const subParts = []
+  if (dimW && dimH) subParts.push(`${dimW}×${dimH}`)
+  subParts.push(state)
+  stxt.textContent = subParts.join(' · ')
+  sub.appendChild(stxt)
+  meta.appendChild(nm)
+  meta.appendChild(sub)
+  preview.appendChild(thumb)
+  preview.appendChild(meta)
+  menu.appendChild(preview)
+
+  // Items
+  let kbdIndex = 1
+  const kbdHandlers = {}
+  const addHeader = (text) => {
+    const h = document.createElement('div')
+    h.className = 'hs-mc-em-header'
+    h.textContent = text
+    menu.appendChild(h)
+  }
+  const addItem = (label, fn, opts = {}) => {
+    const it = document.createElement('div')
+    it.className = 'hs-mc-em-item' + (opts.danger ? ' hs-mc-em-danger' : '') + (opts.good ? ' hs-mc-em-good' : '')
+    const lab = document.createElement('span')
+    lab.className = 'hs-mc-em-label'
+    lab.textContent = label
+    it.appendChild(lab)
+    if (opts.hint) {
+      const h = document.createElement('span')
+      h.className = 'hs-mc-em-hint'
+      h.textContent = opts.hint
+      it.appendChild(h)
+    }
+    if (opts.kbd !== false && kbdIndex <= 9) {
+      const k = document.createElement('span')
+      k.className = 'hs-mc-em-kbd'
+      k.textContent = String(kbdIndex)
+      it.appendChild(k)
+      kbdHandlers[String(kbdIndex)] = fn
+      kbdIndex++
+    }
+    it.addEventListener('click', () => { dismiss(); try { fn() } catch {} })
+    menu.appendChild(it)
+  }
+  const addSep = () => {
+    const s = document.createElement('div')
+    s.className = 'hs-mc-em-sep'
+    menu.appendChild(s)
+  }
+
+  // Actions
+  addHeader('actions')
+  if (isPostable) {
+    addItem('paste to input', () => {
+      showInputBar()
+      pasteEmoteToInput(emoteName)
+      const input = document.getElementById('hs-mc-input')
+      if (input) input.focus()
+      flashAllEmotes(emoteName, 'hs-flash-paste')
+    })
+  } else if (isLocked) {
+    addItem('paste anyway', () => {
+      // Locked = foreign sub emote. Server will reject; keep available for users who know better.
+      showInputBar()
+      pasteEmoteToInput(emoteName)
+      const input = document.getElementById('hs-mc-input')
+      if (input) input.focus()
+    }, { hint: 'locked' })
+  }
+  addItem('copy name', () => { try { navigator.clipboard.writeText(emoteName) } catch {} })
+  if (url) {
+    addItem('copy image url', () => { try { navigator.clipboard.writeText(url) } catch {} })
+    addItem('copy markdown', () => { try { navigator.clipboard.writeText(`![${emoteName}](${url})`) } catch {} })
+  }
+  if (externalUrl) {
+    addItem('view on ' + provider.toLowerCase() + (provider === 'Twitch' ? '.tv' : '.app'),
+      () => window.open(externalUrl, '_blank', 'noopener,noreferrer'))
+  }
+
+  // Set membership
+  if (isUnadded) {
+    addSep()
+    addHeader('set')
+    addItem('add to set', () => {
+      addEmoteToInventory(emoteName, url, source || 'heatsync', evtTarget || wrapper)
+      flashAllEmotes(emoteName, 'hs-flash-add')
+    }, { good: true })
+  } else if (canRemoveFromSet) {
+    addSep()
+    addHeader('set')
+    addItem('remove from set', () => {
+      removeEmoteFromInventory(emoteName, evtTarget || wrapper)
+    })
+  }
+
+  // Block toggle
+  addSep()
+  if (isBlocked) {
+    addItem('unblock emote', () => { unblockEmote(emoteName) }, { good: true })
+  } else {
+    addItem('block emote', () => { blockEmote(emoteName) }, { danger: true })
+  }
+
+  document.body.appendChild(menu)
+
+  // Edge-aware positioning
+  menu.style.visibility = 'hidden'
+  menu.style.left = '0px'
+  menu.style.top = '0px'
+  const mw = menu.offsetWidth, mh = menu.offsetHeight
+  const vw = window.innerWidth, vh = window.innerHeight
+  const flipX = x + mw + 8 > vw
+  const flipY = y + mh + 8 > vh
+  const left = flipX ? Math.max(4, x - mw) : Math.min(x, vw - mw - 4)
+  const top  = flipY ? Math.max(4, y - mh) : Math.min(y, vh - mh - 4)
+  menu.style.left = left + 'px'
+  menu.style.top = top + 'px'
+  if (flipX) menu.classList.add('hs-mc-em-flip-x')
+  if (flipY) menu.classList.add('hs-mc-em-flip-y')
+  menu.style.visibility = ''
+  try { menu.focus({ preventScroll: true }) } catch {}
+
+  function dismiss() {
+    menu.remove()
+    document.removeEventListener('mousedown', outside, true)
+    document.removeEventListener('keydown', keyHandler, true)
+    document.removeEventListener('contextmenu', outside, true)
+    window.removeEventListener('blur', dismiss)
+    window.removeEventListener('scroll', dismiss, true)
+  }
+  function outside(ev) { if (!menu.contains(ev.target)) dismiss() }
+  function keyHandler(ev) {
+    if (ev.key === 'Escape') { ev.preventDefault(); dismiss(); return }
+    const fn = kbdHandlers[ev.key]
+    if (fn) { ev.preventDefault(); dismiss(); try { fn() } catch {} }
+  }
+  setTimeout(() => {
+    document.addEventListener('mousedown', outside, true)
+    document.addEventListener('keydown', keyHandler, true)
+    document.addEventListener('contextmenu', outside, true)
+    window.addEventListener('blur', dismiss, { once: true })
+    window.addEventListener('scroll', dismiss, { passive: true, capture: true, once: true })
+  }, 0)
 }
 
 function showMcMsgContextMenu(x, y, msg, username) {
@@ -30364,6 +30801,7 @@ const STORAGE_KEY = 'heatsync_multichat';
         el.id = 'hs-mc-reply-stack'
         el.style.display = 'none'
         document.body.appendChild(cleanup.trackNode(el))
+        wireModToolbarHover(el)
         el.addEventListener('wheel', forwardWheelToMsgs, { passive: false, signal: mcSignal })
         el.addEventListener('click', (ev) => {
           const chip = ev.target.closest('.hs-mc-reply-stack-chip')
@@ -30398,6 +30836,7 @@ const STORAGE_KEY = 'heatsync_multichat';
         el.id = 'hs-mc-reply-stack-down'
         el.style.display = 'none'
         document.body.appendChild(cleanup.trackNode(el))
+        wireModToolbarHover(el)
         el.addEventListener('wheel', forwardWheelToMsgs, { passive: false, signal: mcSignal })
         return el
       }
@@ -32026,7 +32465,10 @@ const STORAGE_KEY = 'heatsync_multichat';
   }
   function scheduleModHide() {
     cancelModHide()
-    _modHideTimer = setTimeout(detachModToolbar, 200)
+    // 0ms: detach on next task tick — cancelable by an adjacent-row mouseover
+    // firing in the same event-loop turn (sibling row, mod button inside row,
+    // or overlay row via the wiring in ensureStackOverlay*). 200ms felt laggy.
+    _modHideTimer = setTimeout(detachModToolbar, 0)
   }
   async function runModAction(id) {
     const def = MOD_BUTTON_CATALOG[id]
@@ -37681,7 +38123,16 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       }
       // Listen for emote updates from background
       if (msg.type === 'global_emotes_update' || msg.type === 'channel_emotes_update') {
-        log('received', msg.type, msg.channelOwner || '');
+        // Channel updates: take the broadcast payload at face value and populate
+        // channelEmoteCaches synchronously. BG sends multiple coalesced broadcasts
+        // during a fetch (one per provider) and only writes storage AFTER the
+        // final one — the old loadEmotes-from-storage path raced with that write
+        // and could leave the cache empty for a channel whose fetch completed
+        // mid-debounce. Direct populate sidesteps the race entirely.
+        if (msg.type === 'channel_emotes_update' && msg.channelOwner && Array.isArray(msg.emotes)) {
+          _buildChannelEmoteCache(msg.channelOwner.toLowerCase(), msg.emotes)
+          markPickerDirty()
+        }
         // Cold-start (first emote payload for this scope) needs clear+rerender
         // so old plain-text messages from history pick up newly-loaded emotes.
         // Subsequent updates (add/remove via 7TV EventAPI) preserve _renderedHtml
@@ -37708,6 +38159,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       // Inventory changes: update membership + ensure emotes are in cache for tab completion
       // Old messages keep their rendered emotes, new messages use updated inventory
       if (msg.type === 'inventory_update') {
+        const prevInventory = new Set(inventoryEmotes)
         inventoryEmotes.clear();
         inventoryHashes.clear();
         (msg.emotes || []).forEach(e => {
@@ -37734,6 +38186,13 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
         for (const name of viewerPersonalEmotes.keys()) {
           if (!inventoryEmotes.has(name)) viewerPersonalEmotes.delete(name);
         }
+        // Flip already-rendered wrappers in chat: owned ↔ unadded so a just-
+        // posted emote that the viewer then removes turns orange instead of
+        // staying green. No-op on names whose membership didn't change.
+        const removed = [...prevInventory].filter(n => !inventoryEmotes.has(n))
+        const added = [...inventoryEmotes].filter(n => !prevInventory.has(n))
+        for (const n of removed) refreshEmoteWrappersState(n)
+        for (const n of added) refreshEmoteWrappersState(n)
         log('inventory_update:', inventoryEmotes.size, 'emotes');
         // Inventory just changed emoteCache contents — picker is stale.
         markPickerDirty();
@@ -38528,15 +38987,27 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
         log('Auto-joined live channel override:', liveCh);
       }
 
-      config.channels.forEach(ch => {
+      // Serialize background-channel joins. Each irc.join awaits bg_irc_history
+      // (up to 3000 msgs replay + buffer hydration); N parallel joins meant N
+      // simultaneous renderMessages + DOM walks fighting paint at boot. Active
+      // channel is already joined above — these are the bystander tabs.
+      const bgChannels = config.channels.filter(ch => {
+        const tw = ch.twitch?.toLowerCase()
+        const kk = ch.kick?.toLowerCase()
+        return (tw && !irc.channels.has(tw)) || (kk && !kickChat.channels.has(kk))
+      })
+      hsSched.chunk(bgChannels, async (ch) => {
         const twitchName = ch.twitch;
         const kickName = ch.kick;
         if (twitchName) {
+          // Don't gate the join_channel sendMessage on irc.join — irc.join
+          // awaits bg_irc_history (up to 4s) and a stalled history fetch would
+          // delay the BG channel-emotes fetch indefinitely. Kick off both
+          // independently; emote fetch only needs the channel name.
           irc.join(twitchName);
           try {
-            log('sending join_channel for:', twitchName);
-            chrome.runtime.sendMessage({ type: 'join_channel', platform: 'twitch', channel: twitchName });
-          } catch (e) { log('join_channel failed:', e.message); }
+            chrome.runtime.sendMessage({ type: 'join_channel', platform: 'twitch', channel: twitchName })
+          } catch (e) {}
         }
         if (kickName) {
           kickChat.join(kickName);
@@ -38544,7 +39015,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
         // YouTube subscription is owned by loadConfig() (line ~6071) so this
         // loop only handles irc/kick — duplicate yt subs were idempotent but
         // noisy in the bg log.
-      });
+      }, { budgetMs: 6, respectScroll: false }).catch(() => {})
     };
     // Schedule connect+joins for the next idle slice so paint goes first.
     // Falls back to setTimeout(0) where rIC is unavailable (older Chrome,

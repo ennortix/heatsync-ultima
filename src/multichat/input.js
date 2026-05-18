@@ -647,28 +647,11 @@ function initInput() {
       e.preventDefault();
       e.stopPropagation();
 
-      const { emoteName, state } = emoteInfo;
+      // Race-guard before any UI: blocks the menu from opening while
+      // a previous op for this emote is still in-flight.
+      if (pendingEmoteOps.has(emoteInfo.emoteName)) return;
 
-      // Prevent race conditions from rapid clicking
-      if (pendingEmoteOps.has(emoteName)) return;
-
-      if (state === 'blocked') {
-        unblockEmote(emoteName);
-      } else if (state === 'owned') {
-        // Sub emotes have no slot — they can't be removed from inventory, only blocked.
-        // The `subscription` flag isn't always set on twitch sub entries in
-        // viewerPersonalEmotes (depends on backend payload), so fall back to
-        // checking slot: anything without a slot can't be DELETEd via the
-        // /api/user/emotes/:slot endpoint, treat as block-only.
-        const cached = lookupEmote(emoteName);
-        if (cached?.subscription || cached?.slot == null) {
-          blockEmote(emoteName);
-        } else {
-          removeEmoteFromInventory(emoteName, e.target);
-        }
-      } else {
-        blockEmote(emoteName);
-      }
+      showMcEmoteActionMenu(e.clientX, e.clientY, emoteInfo, e.target);
     }, { capture: true, signal: mcSignal });
   }
 
@@ -903,6 +886,232 @@ function _openWhisperFor(username) {
     input.textContent = prefill
     input.focus()
   }
+}
+
+// Right-click action menu for any emote rendered in the multichat panel
+// (chat tiles + WYSIWYG input chips + native Twitch sub/bits images that
+// findEmoteTarget catches). Mirrors the page-level menu in chrome/content.js.
+function showMcEmoteActionMenu(x, y, emoteInfo, evtTarget) {
+  document.getElementById('hs-mc-emote-ctx')?.remove()
+  const { emoteName, state, emoteUrl, source, wrapper } = emoteInfo
+  const url = emoteUrl || evtTarget?.src || ''
+  const cached = (typeof lookupEmote === 'function') ? lookupEmote(emoteName) : null
+  const provider = (() => {
+    const s = (source || '').toLowerCase()
+    if (s === '7tv' || url.includes('cdn.7tv.app')) return '7TV'
+    if (s === 'bttv' || url.includes('cdn.betterttv.net')) return 'BTTV'
+    if (s === 'ffz' || url.includes('cdn.frankerfacez.com')) return 'FFZ'
+    if (s === 'twitch' || url.includes('static-cdn.jtvnw.net')) return 'Twitch'
+    if (s === 'heatsync') return 'heatsync'
+    return null
+  })()
+  const externalUrl = (() => {
+    try {
+      if (provider === '7TV') {
+        const m = url.match(/cdn\.7tv\.app\/emote\/([^/]+)/)
+        if (m) return 'https://7tv.app/emotes/' + m[1]
+      }
+      if (provider === 'BTTV') {
+        const m = url.match(/cdn\.betterttv\.net\/emote\/([^/]+)/)
+        if (m) return 'https://betterttv.com/emotes/' + m[1]
+      }
+      if (provider === 'FFZ') {
+        const m = url.match(/cdn\.frankerfacez\.com\/emote\/(\d+)/)
+        if (m) return 'https://www.frankerfacez.com/emoticon/' + m[1]
+      }
+      if (provider === 'Twitch') {
+        const m = url.match(/emoticons\/v2\/(\d+)/)
+        if (m) return 'https://www.twitch.tv/popout/global/emote/' + m[1]
+      }
+    } catch {}
+    return null
+  })()
+
+  const isOwned = state === 'owned'
+  const isBlocked = state === 'blocked'
+  const isLocked = state === 'locked'
+  const isUnadded = state === 'unadded'
+  const isPostable = state === 'owned' || state === 'global' || state === 'channel'
+  // Sub emotes / no-slot entries can be blocked but not removed
+  const canRemoveFromSet = isOwned && cached && cached.slot != null && !cached.subscription
+
+  const menu = document.createElement('div')
+  menu.id = 'hs-mc-emote-ctx'
+  menu.tabIndex = -1
+  menu.addEventListener('contextmenu', (e) => e.preventDefault())
+
+  // Preview tile
+  const preview = document.createElement('div')
+  preview.className = 'hs-mc-em-preview'
+  const thumb = document.createElement('div')
+  thumb.className = 'hs-mc-em-thumb'
+  if (url) {
+    const big = document.createElement('img')
+    big.src = url
+    big.alt = emoteName
+    big.decoding = 'async'
+    big.referrerPolicy = 'no-referrer'
+    thumb.appendChild(big)
+  }
+  const meta = document.createElement('div')
+  meta.className = 'hs-mc-em-meta'
+  const nm = document.createElement('div')
+  nm.className = 'hs-mc-em-name'
+  nm.textContent = emoteName
+  const sub = document.createElement('div')
+  sub.className = 'hs-mc-em-sub'
+  if (provider) {
+    const tag = document.createElement('span')
+    tag.className = 'hs-mc-em-provider'
+    tag.textContent = provider
+    sub.appendChild(tag)
+  }
+  const stxt = document.createElement('span')
+  const dimW = evtTarget?.naturalWidth || evtTarget?.width || 0
+  const dimH = evtTarget?.naturalHeight || evtTarget?.height || 0
+  const subParts = []
+  if (dimW && dimH) subParts.push(`${dimW}×${dimH}`)
+  subParts.push(state)
+  stxt.textContent = subParts.join(' · ')
+  sub.appendChild(stxt)
+  meta.appendChild(nm)
+  meta.appendChild(sub)
+  preview.appendChild(thumb)
+  preview.appendChild(meta)
+  menu.appendChild(preview)
+
+  // Items
+  let kbdIndex = 1
+  const kbdHandlers = {}
+  const addHeader = (text) => {
+    const h = document.createElement('div')
+    h.className = 'hs-mc-em-header'
+    h.textContent = text
+    menu.appendChild(h)
+  }
+  const addItem = (label, fn, opts = {}) => {
+    const it = document.createElement('div')
+    it.className = 'hs-mc-em-item' + (opts.danger ? ' hs-mc-em-danger' : '') + (opts.good ? ' hs-mc-em-good' : '')
+    const lab = document.createElement('span')
+    lab.className = 'hs-mc-em-label'
+    lab.textContent = label
+    it.appendChild(lab)
+    if (opts.hint) {
+      const h = document.createElement('span')
+      h.className = 'hs-mc-em-hint'
+      h.textContent = opts.hint
+      it.appendChild(h)
+    }
+    if (opts.kbd !== false && kbdIndex <= 9) {
+      const k = document.createElement('span')
+      k.className = 'hs-mc-em-kbd'
+      k.textContent = String(kbdIndex)
+      it.appendChild(k)
+      kbdHandlers[String(kbdIndex)] = fn
+      kbdIndex++
+    }
+    it.addEventListener('click', () => { dismiss(); try { fn() } catch {} })
+    menu.appendChild(it)
+  }
+  const addSep = () => {
+    const s = document.createElement('div')
+    s.className = 'hs-mc-em-sep'
+    menu.appendChild(s)
+  }
+
+  // Actions
+  addHeader('actions')
+  if (isPostable) {
+    addItem('paste to input', () => {
+      showInputBar()
+      pasteEmoteToInput(emoteName)
+      const input = document.getElementById('hs-mc-input')
+      if (input) input.focus()
+      flashAllEmotes(emoteName, 'hs-flash-paste')
+    })
+  } else if (isLocked) {
+    addItem('paste anyway', () => {
+      // Locked = foreign sub emote. Server will reject; keep available for users who know better.
+      showInputBar()
+      pasteEmoteToInput(emoteName)
+      const input = document.getElementById('hs-mc-input')
+      if (input) input.focus()
+    }, { hint: 'locked' })
+  }
+  addItem('copy name', () => { try { navigator.clipboard.writeText(emoteName) } catch {} })
+  if (url) {
+    addItem('copy image url', () => { try { navigator.clipboard.writeText(url) } catch {} })
+    addItem('copy markdown', () => { try { navigator.clipboard.writeText(`![${emoteName}](${url})`) } catch {} })
+  }
+  if (externalUrl) {
+    addItem('view on ' + provider.toLowerCase() + (provider === 'Twitch' ? '.tv' : '.app'),
+      () => window.open(externalUrl, '_blank', 'noopener,noreferrer'))
+  }
+
+  // Set membership
+  if (isUnadded) {
+    addSep()
+    addHeader('set')
+    addItem('add to set', () => {
+      addEmoteToInventory(emoteName, url, source || 'heatsync', evtTarget || wrapper)
+      flashAllEmotes(emoteName, 'hs-flash-add')
+    }, { good: true })
+  } else if (canRemoveFromSet) {
+    addSep()
+    addHeader('set')
+    addItem('remove from set', () => {
+      removeEmoteFromInventory(emoteName, evtTarget || wrapper)
+    })
+  }
+
+  // Block toggle
+  addSep()
+  if (isBlocked) {
+    addItem('unblock emote', () => { unblockEmote(emoteName) }, { good: true })
+  } else {
+    addItem('block emote', () => { blockEmote(emoteName) }, { danger: true })
+  }
+
+  document.body.appendChild(menu)
+
+  // Edge-aware positioning
+  menu.style.visibility = 'hidden'
+  menu.style.left = '0px'
+  menu.style.top = '0px'
+  const mw = menu.offsetWidth, mh = menu.offsetHeight
+  const vw = window.innerWidth, vh = window.innerHeight
+  const flipX = x + mw + 8 > vw
+  const flipY = y + mh + 8 > vh
+  const left = flipX ? Math.max(4, x - mw) : Math.min(x, vw - mw - 4)
+  const top  = flipY ? Math.max(4, y - mh) : Math.min(y, vh - mh - 4)
+  menu.style.left = left + 'px'
+  menu.style.top = top + 'px'
+  if (flipX) menu.classList.add('hs-mc-em-flip-x')
+  if (flipY) menu.classList.add('hs-mc-em-flip-y')
+  menu.style.visibility = ''
+  try { menu.focus({ preventScroll: true }) } catch {}
+
+  function dismiss() {
+    menu.remove()
+    document.removeEventListener('mousedown', outside, true)
+    document.removeEventListener('keydown', keyHandler, true)
+    document.removeEventListener('contextmenu', outside, true)
+    window.removeEventListener('blur', dismiss)
+    window.removeEventListener('scroll', dismiss, true)
+  }
+  function outside(ev) { if (!menu.contains(ev.target)) dismiss() }
+  function keyHandler(ev) {
+    if (ev.key === 'Escape') { ev.preventDefault(); dismiss(); return }
+    const fn = kbdHandlers[ev.key]
+    if (fn) { ev.preventDefault(); dismiss(); try { fn() } catch {} }
+  }
+  setTimeout(() => {
+    document.addEventListener('mousedown', outside, true)
+    document.addEventListener('keydown', keyHandler, true)
+    document.addEventListener('contextmenu', outside, true)
+    window.addEventListener('blur', dismiss, { once: true })
+    window.addEventListener('scroll', dismiss, { passive: true, capture: true, once: true })
+  }, 0)
 }
 
 function showMcMsgContextMenu(x, y, msg, username) {

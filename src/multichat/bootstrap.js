@@ -116,6 +116,57 @@ function _hsPerfWrap(fn, ms, kind) {
   }
 }
 
+// hsSched — cooperative scheduler for boot-burst work in the multichat
+// panel. Identical contract to content.js side: budget-yield chunking, pause
+// while user is actively scrolling, scheduler.postTask priority. Keeps a
+// 5-channel hydration from holding the main thread > ~4ms per slice.
+const hsSched = (() => {
+  let _scrollIdle = true
+  let _scrollIdleTimer = null
+  const markBusy = () => {
+    _scrollIdle = false
+    if (_scrollIdleTimer) clearTimeout(_scrollIdleTimer)
+    _scrollIdleTimer = setTimeout(() => { _scrollIdle = true; _scrollIdleTimer = null }, 180)
+  }
+  for (const ev of ['scroll', 'wheel', 'touchmove', 'pointerdown']) {
+    try { window.addEventListener(ev, markBusy, { passive: true, capture: true, signal: mcSignal }) } catch {}
+  }
+  const _yield = () => {
+    if (typeof scheduler !== 'undefined' && typeof scheduler.yield === 'function') {
+      return scheduler.yield()
+    }
+    return new Promise(r => setTimeout(r, 0))
+  }
+  const untilIdle = async () => {
+    let waited = 0
+    while (!_scrollIdle && waited < 2000) {
+      await new Promise(r => setTimeout(r, 60))
+      waited += 60
+    }
+  }
+  const idle = (fn, { timeout = 2000, priority = 'background' } = {}) => {
+    if (typeof scheduler !== 'undefined' && typeof scheduler.postTask === 'function') {
+      return scheduler.postTask(fn, { priority })
+    }
+    if (typeof window.requestIdleCallback === 'function') {
+      return new Promise(r => requestIdleCallback(() => { try { r(fn()) } catch (e) { r() } }, { timeout }))
+    }
+    return new Promise(r => setTimeout(() => { try { r(fn()) } catch (e) { r() } }, 0))
+  }
+  const chunk = async (items, fn, { budgetMs = 4, respectScroll = true } = {}) => {
+    let t0 = performance.now()
+    for (let i = 0; i < items.length; i++) {
+      if (respectScroll && !_scrollIdle) await untilIdle()
+      try { await fn(items[i], i) } catch (e) {}
+      if (performance.now() - t0 > budgetMs) {
+        await _yield()
+        t0 = performance.now()
+      }
+    }
+  }
+  return { yield: _yield, idle, chunk, untilIdle, get scrollIdle() { return _scrollIdle } }
+})()
+
 const cleanup = {
   setInterval(fn, ms) { const id = setInterval(_hsPerfWrap(fn, ms, 'interval'), ms); _timers.intervals.push(id); return id },
   setIntervalIfVisible(fn, ms) { const w = _hsPerfWrap(fn, ms, 'intervalIfVisible'); const id = setInterval(() => { if (!document.hidden) w() }, ms); _timers.intervals.push(id); return id },

@@ -1901,12 +1901,14 @@ async function fetchChannelOwnerEmotes(channelName, channelId = null, platform =
     ]);
     let heatsyncEmotes = [];
     if (heatsyncResult?.status === 429) {
-      console.warn('[heatsync] fetchChannelOwnerEmotes: rate limited (429) for', channelName, '- skipping, will retry on next channel join')
+      // Heatsync API rate-limited — skip the heatsync emote slot but DO NOT
+      // bail the whole fetch. BTTV/FFZ/7TV/Twitch are independent providers;
+      // a heatsync 429 should never starve the channel of its third-party
+      // emote set. (Pre-fix this returned, leaving the cache empty until next
+      // manual join — channels would silently lose all 7TV emotes.)
+      console.warn('[heatsync] fetchChannelOwnerEmotes: heatsync 429 for', channelName, '— continuing third-party fetch')
       heatsyncResult.body?.cancel()
-      // Clear sentinel so retry is possible on next join, but don't store empty result
-      delete channelEmotesMap[channelName]
-      broadcastToTabs({ type: 'loading_status', done: true })
-      return
+      // heatsyncEmotes stays [] (default); flow continues to third-party tasks
     } else if (heatsyncResult?.ok) {
       const data = await heatsyncResult.json();
       heatsyncEmotes = (data.emotes || []).map(e => ({
@@ -4492,6 +4494,15 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 
   // Health check ping from content scripts
+  if (message.type === 'extension_reload') {
+    // Dev hook so an automation/page can reload the extension without manual
+    // chrome://extensions clicking. Fired by content.js on receipt of
+    // window.postMessage({type:'heatsync-reload-extension'}).
+    log(' 🔁 extension_reload requested via page message')
+    try { sendResponse({ ok: true }) } catch {}
+    setTimeout(() => { try { chrome.runtime.reload() } catch (e) { console.error('[heatsync] reload failed:', e) } }, 50)
+    return true
+  }
   if (message.type === 'ping') {
     sendResponse({ ok: true })
     return true
@@ -5229,6 +5240,74 @@ async function handleMessage(message, sender, sendResponse) {
       colors: cachedFollowColors
     });
     return true; // Required for Firefox — sendResponse ignored without this
+  } else if (message.type === 'twitch_gql_authed') {
+    // Cross-platform Twitch GQL: queries authenticated with the twitch.tv
+    // auth-token cookie, so content scripts on Kick/YouTube can read mod
+    // state and other authed data without a Twitch tab being open.
+    // Mutations that need Client-Integrity should go through twitch_relay
+    // instead (relays through a live Twitch tab).
+    ;(async () => {
+      try {
+        const cookie = await browser.cookies.get({ url: 'https://www.twitch.tv', name: 'auth-token' }).catch(() => null)
+        const hdrs = {
+          'Content-Type': 'application/json',
+          'Client-Id': 'kimne78kx3ncx6brgo4mv6wki5h1ko',
+        }
+        if (cookie?.value) hdrs['Authorization'] = 'OAuth ' + cookie.value
+        const body = message.variables
+          ? { query: message.query, variables: message.variables }
+          : { query: message.query }
+        const resp = await fetchWithTimeout('https://gql.twitch.tv/gql', {
+          method: 'POST', headers: hdrs, body: JSON.stringify(body)
+        }, 8000)
+        if (!resp.ok) { sendResponse({ ok: false, error: 'GQL ' + resp.status }); return }
+        const data = await resp.json()
+        sendResponse({ ok: true, data })
+      } catch (e) {
+        sendResponse({ ok: false, error: e.message })
+      }
+    })()
+    return true
+
+  } else if (message.type === 'twitch_relay') {
+    // Relay a Twitch API call through an open twitch.tv tab. Used for
+    // mutations (ban/timeout/delete) that require a Client-Integrity token
+    // which can only be minted from a Twitch page context.
+    ;(async () => {
+      try {
+        const tabs = await browser.tabs.query({ url: '*://*.twitch.tv/*' })
+        if (!tabs || tabs.length === 0) {
+          sendResponse({ ok: false, error: 'no_twitch_tab' })
+          return
+        }
+        // Try every Twitch tab — after an extension reload, content scripts
+        // in existing tabs become orphans (no listener for new message types)
+        // until the page is refreshed. Fall through to the next tab, then
+        // surface a 'stale_twitch_tab' code so the UI can prompt a refresh.
+        const candidates = [...tabs.filter(t => t.active), ...tabs.filter(t => !t.active)]
+        let lastErr = null
+        for (const tab of candidates) {
+          try {
+            const result = await browser.tabs.sendMessage(tab.id, {
+              type: 'twitch_relay_exec',
+              op: message.op,
+              args: message.args || {}
+            })
+            if (result) { sendResponse(result); return }
+          } catch (e) {
+            lastErr = e?.message || ''
+            if (/Could not establish connection|Receiving end does not exist/i.test(lastErr)) continue
+            sendResponse({ ok: false, error: lastErr })
+            return
+          }
+        }
+        sendResponse({ ok: false, error: 'stale_twitch_tab' })
+      } catch (e) {
+        sendResponse({ ok: false, error: e.message })
+      }
+    })()
+    return true
+
   } else if (message.type === 'kick_resolve_channel') {
     // Resolve Kick channel slug → numeric channelId
     (async () => {

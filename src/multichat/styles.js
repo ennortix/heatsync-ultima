@@ -618,6 +618,22 @@ function injectStyles() {
       word-break: break-word;
       max-width: 100%;
       box-sizing: border-box;
+      /* Isolate paint/layout from the host Twitch column. Without this,
+         every panel mutation forced a style recalc walk up through the
+         2500-node React layout tree. paint clips repaints to this box,
+         style blocks inherited cascade leakage, layout blocks the host
+         from re-flowing through us. */
+      contain: layout style paint;
+    }
+    /* Per-message rows: cheap containment + content-visibility:auto so the
+       browser can skip layout/paint for rows that aren't in (or near) the
+       viewport. The intrinsic-size keeps the scrollbar honest while rows
+       are skipped. ~22-26px tall typical; 32px is conservative so we
+       don't undercount and snap on scroll. */
+    #hs-mc-messages > .hs-mc-msg {
+      contain: layout style paint;
+      content-visibility: auto;
+      contain-intrinsic-size: auto 32px;
     }
 
     /* Chat overlay banners (predictions + polls at top of messages) */
@@ -1975,10 +1991,90 @@ function injectStyles() {
     #hs-badge-tooltip,
     #hs-emote-tooltip,
     #hs-link-tooltip,
-    #hs-mc-msg-ctx {
+    #hs-mc-msg-ctx,
+    #hs-mc-emote-ctx {
       font-family: var(--hs-mc-font, 'CozetteVector', 'Courier New', monospace);
       font-size: var(--hs-mc-base-size, 13px);
     }
+
+    /* Right-click emote action menu (multichat panel) */
+    #hs-mc-emote-ctx {
+      position: fixed; z-index: 2147483646;
+      background: #000; color: #fff;
+      border: 1px solid #ff8700;
+      padding: 0; min-width: 220px; max-width: 280px;
+      box-shadow: 0 6px 32px rgba(0,0,0,0.75);
+      animation: hs-mc-em-in 80ms ease-out;
+      transform-origin: top left;
+      user-select: none;
+    }
+    @keyframes hs-mc-em-in {
+      from { opacity: 0; transform: scale(0.96); }
+      to   { opacity: 1; transform: scale(1); }
+    }
+    #hs-mc-emote-ctx.hs-mc-em-flip-x { transform-origin: top right; }
+    #hs-mc-emote-ctx.hs-mc-em-flip-y { transform-origin: bottom left; }
+    #hs-mc-emote-ctx.hs-mc-em-flip-x.hs-mc-em-flip-y { transform-origin: bottom right; }
+    #hs-mc-emote-ctx .hs-mc-em-preview {
+      display: flex; align-items: center; gap: 10px;
+      padding: 8px 10px; border-bottom: 1px solid #222;
+      background: linear-gradient(180deg, #0a0a0a, #000);
+    }
+    #hs-mc-emote-ctx .hs-mc-em-thumb {
+      width: 56px; height: 56px; flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center;
+      background-image:
+        linear-gradient(45deg, #161616 25%, transparent 25%),
+        linear-gradient(-45deg, #161616 25%, transparent 25%),
+        linear-gradient(45deg, transparent 75%, #161616 75%),
+        linear-gradient(-45deg, transparent 75%, #161616 75%);
+      background-size: 12px 12px;
+      background-position: 0 0, 0 6px, 6px -6px, -6px 0;
+      border: 1px solid #222;
+    }
+    #hs-mc-emote-ctx .hs-mc-em-thumb img {
+      max-width: 100%; max-height: 100%;
+      image-rendering: pixelated;
+    }
+    #hs-mc-emote-ctx .hs-mc-em-meta { flex: 1; min-width: 0; }
+    #hs-mc-emote-ctx .hs-mc-em-name {
+      font-weight: 700; font-size: 13px; color: #fff;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    #hs-mc-emote-ctx .hs-mc-em-sub {
+      font-size: 11px; color: #888; margin-top: 2px;
+      display: flex; gap: 6px; align-items: center;
+    }
+    #hs-mc-emote-ctx .hs-mc-em-provider {
+      display: inline-block; padding: 0 4px;
+      border: 1px solid #444; color: #ff8700;
+      font-size: 10px; line-height: 14px;
+    }
+    #hs-mc-emote-ctx .hs-mc-em-header {
+      padding: 4px 10px; font-size: 10px; color: #666;
+      text-transform: uppercase; letter-spacing: 0.5px;
+      background: #050505;
+    }
+    #hs-mc-emote-ctx .hs-mc-em-item {
+      padding: 6px 10px; cursor: pointer;
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 8px;
+    }
+    #hs-mc-emote-ctx .hs-mc-em-item:hover { background: #fff; color: #000; }
+    #hs-mc-emote-ctx .hs-mc-em-item:hover .hs-mc-em-kbd { background: #000; color: #fff; border-color: #000; }
+    #hs-mc-emote-ctx .hs-mc-em-item:hover .hs-mc-em-hint { color: #555; }
+    #hs-mc-emote-ctx .hs-mc-em-item.hs-mc-em-danger { color: #ff5959; }
+    #hs-mc-emote-ctx .hs-mc-em-item.hs-mc-em-danger:hover { background: #ff2020; color: #fff; }
+    #hs-mc-emote-ctx .hs-mc-em-item.hs-mc-em-good { color: #59ff8a; }
+    #hs-mc-emote-ctx .hs-mc-em-item.hs-mc-em-good:hover { background: #1faf48; color: #fff; }
+    #hs-mc-emote-ctx .hs-mc-em-label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    #hs-mc-emote-ctx .hs-mc-em-hint { color: #666; font-size: 11px; }
+    #hs-mc-emote-ctx .hs-mc-em-kbd {
+      display: inline-block; min-width: 14px; padding: 0 4px;
+      border: 1px solid #333; background: #0a0a0a; color: #888;
+      font-size: 10px; line-height: 14px; text-align: center;
+    }
+    #hs-mc-emote-ctx .hs-mc-em-sep { height: 1px; background: #1a1a1a; margin: 2px 0; }
     #hs-user-tooltip {
       position: fixed;
       /* Must beat the unified resize bar (#hs-c-resize-handle uses max int).
@@ -2525,10 +2621,11 @@ function injectStyles() {
       opacity: 0 !important;
     }
 
-    /* State colors via ::before */
+    /* State colors via ::before — match heatsync.org + native chat convention:
+       owned/global/channel = green, unadded = orange (#ff8700), blocked = red. */
     .hs-mc-emote-wrapper.hs-state-global::before { background: #00ff00; }
     .hs-mc-emote-wrapper.hs-state-owned::before { background: #00ff00; }
-    .hs-mc-emote-wrapper.hs-state-unadded::before { background: #00ffff; }
+    .hs-mc-emote-wrapper.hs-state-unadded::before { background: #ff8700; }
     .hs-mc-emote-wrapper.hs-state-channel::before { background: #00ff00; }
     .hs-mc-emote-wrapper.hs-state-blocked::before { background: #ff0000; }
 

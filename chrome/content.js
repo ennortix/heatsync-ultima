@@ -145,6 +145,66 @@ const cleanup = {
   untrackObserver(obs) { const i = _timers.observers.indexOf(obs); if (i !== -1) _timers.observers.splice(i, 1) },
 }
 
+// hsSched — cooperative scheduler used by boot-burst processors. Goal: never
+// hold the main thread > ~4ms while we still have a backlog. Burns time in
+// budget slices, yields, resumes. Listens for scroll/wheel/touchmove and
+// pauses non-urgent work while the user is actively scrolling, so chat-page
+// scroll never competes with backfill processing for the main thread.
+const hsSched = (() => {
+  let _scrollIdle = true
+  let _scrollIdleTimer = null
+  const markBusy = () => {
+    _scrollIdle = false
+    if (_scrollIdleTimer) clearTimeout(_scrollIdleTimer)
+    _scrollIdleTimer = setTimeout(() => { _scrollIdle = true; _scrollIdleTimer = null }, 180)
+  }
+  // capture+passive so we don't perturb wheel/scroll perf ourselves
+  for (const ev of ['scroll', 'wheel', 'touchmove', 'pointerdown']) {
+    try { window.addEventListener(ev, markBusy, { passive: true, capture: true, signal }) } catch {}
+  }
+  const _yield = () => {
+    // scheduler.yield() (Chrome 129+) returns priority back to caller after
+    // browser deals with input/paint. Falls back to a macrotask which lets
+    // the event loop process input before resuming us.
+    if (typeof scheduler !== 'undefined' && typeof scheduler.yield === 'function') {
+      return scheduler.yield()
+    }
+    return new Promise(r => setTimeout(r, 0))
+  }
+  const untilIdle = async () => {
+    // Bounded wait — never starve processing if scroll never stops.
+    let waited = 0
+    while (!_scrollIdle && waited < 2000) {
+      await new Promise(r => setTimeout(r, 60))
+      waited += 60
+    }
+  }
+  const idle = (fn, { timeout = 2000, priority = 'background' } = {}) => {
+    if (typeof scheduler !== 'undefined' && typeof scheduler.postTask === 'function') {
+      return scheduler.postTask(fn, { priority })
+    }
+    if (typeof window.requestIdleCallback === 'function') {
+      return new Promise(r => requestIdleCallback(() => { try { r(fn()) } catch (e) { r() } }, { timeout }))
+    }
+    return new Promise(r => setTimeout(() => { try { r(fn()) } catch (e) { r() } }, 0))
+  }
+  // Process items[] with `fn`. Yield to browser whenever the current slice
+  // exceeds budgetMs. Pauses during active scroll. Total wall-clock can be
+  // anything — caller cares about main-thread smoothness, not total time.
+  const chunk = async (items, fn, { budgetMs = 4, respectScroll = true } = {}) => {
+    let t0 = performance.now()
+    for (let i = 0; i < items.length; i++) {
+      if (respectScroll && !_scrollIdle) await untilIdle()
+      try { fn(items[i], i) } catch (e) { try { log(' chunk fn err:', e?.message) } catch {} }
+      if (performance.now() - t0 > budgetMs) {
+        await _yield()
+        t0 = performance.now()
+      }
+    }
+  }
+  return { yield: _yield, idle, chunk, untilIdle, get scrollIdle() { return _scrollIdle } }
+})()
+
 // HTML escaping for safe interpolation into innerHTML templates
 function escapeHtml(str) {
   if (typeof str !== 'string') return '';
@@ -796,7 +856,11 @@ cleanup.setInterval(attachInputModifierObserver, 5000)
 
 // Right-click emote action menu (7TV-style: view on, copy name/URL, block, add)
 let _emoteMenuEl = null
-function closeEmoteMenu() { if (_emoteMenuEl) { _emoteMenuEl.remove(); _emoteMenuEl = null } }
+let _emoteMenuCleanup = null
+function closeEmoteMenu() {
+  if (_emoteMenuEl) { _emoteMenuEl.remove(); _emoteMenuEl = null }
+  if (_emoteMenuCleanup) { try { _emoteMenuCleanup() } catch {} ; _emoteMenuCleanup = null }
+}
 function detectEmoteProvider(url) {
   if (!url) return null
   if (url.includes('cdn.7tv.app')) return '7TV'
@@ -827,31 +891,112 @@ function providerEmoteUrl(provider, url, name) {
   } catch {}
   return null
 }
-function openEmoteActionMenu(wrapper, x, y) {
+// Right-click action menu — opens for any emote (wrapped, stacked, or native
+// Twitch). opts.nativeTwitch=true switches into name-only mode (no hash → no
+// server block, no inventory add; local-block-by-name + copy/insert/view).
+function openEmoteActionMenu(wrapper, x, y, opts = {}) {
   closeEmoteMenu()
-  const img = wrapper.querySelector('img')
-  const name = wrapper.dataset.emoteName || img?.alt || 'emote'
-  const hash = wrapper.dataset.emoteHash || ''
-  const url = img?.src || ''
-  const provider = detectEmoteProvider(url)
+
+  const nativeTwitch = !!opts.nativeTwitch
+  const img = nativeTwitch ? wrapper : wrapper.querySelector('img')
+  const name = (nativeTwitch ? (img?.alt) : wrapper.dataset?.emoteName) || img?.alt || 'emote'
+  const hash = nativeTwitch ? '' : (wrapper.dataset?.emoteHash || '')
+  const url = img?.src || wrapper.dataset?.emoteUrl || ''
+  const provider = detectEmoteProvider(url) || (nativeTwitch ? 'Twitch' : null)
   const externalUrl = providerEmoteUrl(provider, url, name)
-  const isBlocked = blockedEmotes.has(hash)
-  const inInventory = inventoryHashSet.has(hash) || inventoryNameSet.has(name)
+
+  const isBlocked = hash ? blockedEmotes.has(hash) : false
+  const isLocalNameBlocked = localBlockedEmoteNames.has(name)
+  const inInventory = !nativeTwitch && (inventoryHashSet.has(hash) || inventoryNameSet.has(name))
+  const isGlobal = !nativeTwitch && (wrapper.classList?.contains('emote-overlay-global') || globalNameSet.has(name))
+
+  // Variants — only meaningful for non-native wrappers
+  const variantImgs = (!nativeTwitch && wrapper.dataset?.hasVariants === '1')
+    ? Array.from(wrapper.querySelectorAll(':scope > img.heatsync-emote'))
+        .sort((a, b) => (+a.dataset.variantIndex || 0) - (+b.dataset.variantIndex || 0))
+    : []
+  const activeImg = (!nativeTwitch && wrapper.firstElementChild?.tagName === 'IMG') ? wrapper.firstElementChild : null
+
+  // Natural pixel dimensions for the "AxB" subtitle
+  const dimW = img?.naturalWidth || img?.width || 0
+  const dimH = img?.naturalHeight || img?.height || 0
 
   const el = document.createElement('div')
   el.id = 'hs-emote-menu'
-  el.style.left = Math.min(x, window.innerWidth - 200) + 'px'
-  el.style.top = Math.min(y, window.innerHeight - 200) + 'px'
+  el.tabIndex = -1
+  el.addEventListener('contextmenu', (e) => e.preventDefault())
 
-  const header = document.createElement('div')
-  header.className = 'hs-em-header'
-  header.textContent = name + (provider ? ' · ' + provider : '')
-  el.appendChild(header)
+  // --- Preview tile ---
+  const preview = document.createElement('div')
+  preview.className = 'hs-em-preview'
+  const thumb = document.createElement('div')
+  thumb.className = 'hs-em-thumb'
+  if (url) {
+    const big = document.createElement('img')
+    big.src = url
+    big.alt = name
+    big.decoding = 'async'
+    big.referrerPolicy = 'no-referrer'
+    thumb.appendChild(big)
+  }
+  const meta = document.createElement('div')
+  meta.className = 'hs-em-meta'
+  const nm = document.createElement('div')
+  nm.className = 'hs-em-name'
+  nm.textContent = name
+  const sub = document.createElement('div')
+  sub.className = 'hs-em-sub'
+  if (provider) {
+    const tag = document.createElement('span')
+    tag.className = 'hs-em-provider'
+    tag.textContent = provider
+    sub.appendChild(tag)
+  }
+  const subText = []
+  if (dimW && dimH) subText.push(`${dimW}×${dimH}`)
+  if (inInventory) subText.push('in set')
+  else if (isGlobal) subText.push('global')
+  if (isBlocked) subText.push('blocked')
+  if (isLocalNameBlocked) subText.push('hidden')
+  const subT = document.createElement('span')
+  subT.textContent = subText.join(' · ')
+  sub.appendChild(subT)
+  meta.appendChild(nm)
+  meta.appendChild(sub)
+  preview.appendChild(thumb)
+  preview.appendChild(meta)
+  el.appendChild(preview)
 
-  const addItem = (label, fn) => {
+  // --- Items ---
+  let kbdIndex = 1
+  const kbdHandlers = {}
+  const addHeader = (text) => {
+    const h = document.createElement('div')
+    h.className = 'hs-em-header'
+    h.textContent = text
+    el.appendChild(h)
+  }
+  const addItem = (label, fn, { kbd = true, danger = false, good = false, hint = '' } = {}) => {
     const it = document.createElement('div')
-    it.className = 'hs-em-item'
-    it.textContent = label
+    it.className = 'hs-em-item' + (danger ? ' hs-em-danger' : '') + (good ? ' hs-em-good' : '')
+    const lab = document.createElement('span')
+    lab.className = 'hs-em-label'
+    lab.textContent = label
+    it.appendChild(lab)
+    if (hint) {
+      const h = document.createElement('span')
+      h.className = 'hs-em-hint'
+      h.textContent = hint
+      it.appendChild(h)
+    }
+    if (kbd && kbdIndex <= 9) {
+      const k = document.createElement('span')
+      k.className = 'hs-em-kbd'
+      k.textContent = String(kbdIndex)
+      it.appendChild(k)
+      kbdHandlers[String(kbdIndex)] = fn
+      kbdIndex++
+    }
     it.addEventListener('click', () => { try { fn() } catch {} ; closeEmoteMenu() })
     el.appendChild(it)
   }
@@ -861,54 +1006,167 @@ function openEmoteActionMenu(wrapper, x, y) {
     el.appendChild(s)
   }
 
+  // -- Actions --
+  addHeader('actions')
   addItem('insert in chat', () => {
     window.postMessage({ type: 'heatsync-insert-emote', name, hash: hash || name, url }, location.origin)
   })
   addItem('copy name', () => navigator.clipboard?.writeText(name))
-  if (url) addItem('copy image url', () => navigator.clipboard?.writeText(url))
-  if (externalUrl) addItem('view on ' + provider.toLowerCase() + '.app', () => window.open(externalUrl, '_blank', 'noopener,noreferrer'))
+  if (url) {
+    addItem('copy image url', () => navigator.clipboard?.writeText(url))
+    addItem('copy markdown', () => navigator.clipboard?.writeText(`![${name}](${url})`))
+  }
+  if (externalUrl) {
+    addItem('view on ' + provider.toLowerCase() + (provider === 'Twitch' ? '.tv' : '.app'),
+      () => window.open(externalUrl, '_blank', 'noopener,noreferrer'))
+  }
+
+  // -- Set membership (non-native only) --
+  if (!nativeTwitch && hash && provider !== 'Twitch') {
+    addSep()
+    addHeader('set')
+    if (inInventory) {
+      addItem('remove from set', async () => {
+        try { await safeSendMessage({ type: 'remove_from_inventory', emoteHash: hash, emoteName: name }) } catch {}
+      })
+    } else {
+      addItem('add to set', async () => {
+        try { await safeSendMessage({ type: 'add_emote', hash, name, url }) } catch {}
+      }, { good: true })
+    }
+  }
+
+  // -- Variants (only when multi-source) --
+  if (variantImgs.length > 1) {
+    addSep()
+    addHeader('variants · click to block')
+    const wrap = document.createElement('div')
+    wrap.className = 'hs-em-variants'
+    for (const v of variantImgs) {
+      const vhash = v.dataset.emoteHash
+      const vclass = v.dataset.variantClass || ''
+      const vblocked = blockedEmotes.has(vhash)
+      const vactive = v === activeImg
+      const row = document.createElement('div')
+      row.className = 'hs-em-variant' + (vactive ? ' active' : '') + (vblocked ? ' blocked' : '')
+      const vimg = document.createElement('img')
+      vimg.src = v.dataset.emoteUrl || v.src
+      vimg.alt = name
+      vimg.decoding = 'async'
+      vimg.referrerPolicy = 'no-referrer'
+      row.appendChild(vimg)
+      const label = document.createElement('span')
+      label.textContent = vclass || 'variant'
+      row.appendChild(label)
+      const tag = document.createElement('span')
+      tag.className = 'hs-em-vtag'
+      tag.textContent = vblocked ? 'blocked' : (vactive ? 'active' : 'block')
+      row.appendChild(tag)
+      row.addEventListener('click', async () => {
+        closeEmoteMenu()
+        if (!vhash) return
+        if (vblocked) {
+          blockedEmotes.delete(vhash)
+          markLocalBlockToggle(vhash, 'unblocked')
+          updateEmoteState(vhash, name, inventoryHashSet.has(vhash) ? 'added' : (isGlobal ? 'global' : 'neutral'))
+          try { await safeSendMessage({ type: 'unblock_emote', hash: vhash }) } catch {}
+        } else {
+          blockedEmotes.add(vhash)
+          markLocalBlockToggle(vhash, 'blocked')
+          updateEmoteState(vhash, name, 'blocked')
+          try { await safeSendMessage({ type: 'block_emote', hash: vhash }) } catch {}
+        }
+      })
+      wrap.appendChild(row)
+    }
+    el.appendChild(wrap)
+  }
+
+  // -- Block toggle (terminal action) --
   addSep()
-
-  if (isBlocked) {
-    addItem('unblock', async () => {
-      try {
-        await safeSendMessage({ type: 'unblock_emote', hash })
+  if (nativeTwitch) {
+    if (isLocalNameBlocked) {
+      addItem('unhide locally', () => {
+        localBlockedEmoteNames.delete(name)
+        const esc = (window.CSS && CSS.escape) ? CSS.escape(name) : name.replace(/"/g, '\\"')
+        document.querySelectorAll(`img[alt="${esc}"][src*="static-cdn.jtvnw.net/emoticons"]`)
+          .forEach(el => el.removeAttribute('data-hs-name-blocked'))
+        try { chrome.storage.local.set({ local_blocked_emote_names: Array.from(localBlockedEmoteNames) }) } catch {}
+      }, { good: true })
+    } else {
+      addItem('hide locally', () => {
+        localBlockedEmoteNames.add(name)
+        const esc = (window.CSS && CSS.escape) ? CSS.escape(name) : name.replace(/"/g, '\\"')
+        document.querySelectorAll(`img[alt="${esc}"][src*="static-cdn.jtvnw.net/emoticons"]`)
+          .forEach(el => el.setAttribute('data-hs-name-blocked', '1'))
+        try { chrome.storage.local.set({ local_blocked_emote_names: Array.from(localBlockedEmoteNames) }) } catch {}
+      }, { danger: true, hint: 'name-only' })
+    }
+  } else if (hash) {
+    if (isBlocked) {
+      addItem('unblock emote', async () => {
+        const restored = inInventory ? 'added' : (isGlobal ? 'global' : 'neutral')
         blockedEmotes.delete(hash)
-        if (typeof markLocalBlockToggle === 'function') markLocalBlockToggle(hash, 'unblocked')
-      } catch {}
-    })
-  } else {
-    addItem('block', async () => {
-      try {
-        await safeSendMessage({ type: 'block_emote', hash, name })
+        markLocalBlockToggle(hash, 'unblocked')
+        updateEmoteState(hash, name, restored)
+        try { await safeSendMessage({ type: 'unblock_emote', hash }) } catch {}
+      }, { good: true })
+    } else {
+      addItem('block emote', async () => {
         blockedEmotes.add(hash)
-        if (typeof markLocalBlockToggle === 'function') markLocalBlockToggle(hash, 'blocked')
-      } catch {}
-    })
+        markLocalBlockToggle(hash, 'blocked')
+        updateEmoteState(hash, name, 'blocked')
+        try { await safeSendMessage({ type: 'block_emote', hash }) } catch {}
+      }, { danger: true })
+    }
   }
 
-  if (!inInventory && hash && provider !== 'Twitch') {
-    addItem('add to inventory', async () => {
-      try { await safeSendMessage({ type: 'add_emote', hash, name, url }) } catch {}
-    })
-  }
-
-  if (inInventory) {
-    addItem('remove from set', async () => {
-      try { await safeSendMessage({ type: 'remove_from_inventory', emoteHash: hash, emoteName: name }) } catch {}
-    })
-  }
-
+  // --- Place ---
+  // Append off-screen first so we can measure, then position with edge-flip.
+  el.style.visibility = 'hidden'
+  el.style.left = '0px'
+  el.style.top = '0px'
   document.body.appendChild(el)
   _emoteMenuEl = el
 
+  const mw = el.offsetWidth
+  const mh = el.offsetHeight
+  const vw = window.innerWidth
+  const vh = window.innerHeight
+  const flipX = x + mw + 8 > vw
+  const flipY = y + mh + 8 > vh
+  const left = flipX ? Math.max(4, x - mw) : Math.min(x, vw - mw - 4)
+  const top  = flipY ? Math.max(4, y - mh) : Math.min(y, vh - mh - 4)
+  el.style.left = left + 'px'
+  el.style.top = top + 'px'
+  if (flipX) el.classList.add('hs-em-flip-x')
+  if (flipY) el.classList.add('hs-em-flip-y')
+  el.style.visibility = ''
+  try { el.focus({ preventScroll: true }) } catch {}
+
+  // --- Dismiss handlers ---
+  const onDown = (ev) => {
+    if (!_emoteMenuEl || _emoteMenuEl.contains(ev.target)) return
+    closeEmoteMenu()
+  }
+  const onKey = (ev) => {
+    if (!_emoteMenuEl) return
+    if (ev.key === 'Escape') { ev.preventDefault(); closeEmoteMenu(); return }
+    const fn = kbdHandlers[ev.key]
+    if (fn) { ev.preventDefault(); try { fn() } catch {} ; closeEmoteMenu() }
+  }
+  const onScroll = () => closeEmoteMenu()
   setTimeout(() => {
-    const off = (ev) => {
-      if (!_emoteMenuEl || _emoteMenuEl.contains(ev.target)) return
-      closeEmoteMenu()
-      document.removeEventListener('mousedown', off, true)
+    document.addEventListener('mousedown', onDown, true)
+    document.addEventListener('keydown', onKey, true)
+    window.addEventListener('blur', closeEmoteMenu, { once: true })
+    window.addEventListener('scroll', onScroll, { passive: true, capture: true, once: true })
+    _emoteMenuCleanup = () => {
+      document.removeEventListener('mousedown', onDown, true)
+      document.removeEventListener('keydown', onKey, true)
+      window.removeEventListener('blur', closeEmoteMenu)
+      window.removeEventListener('scroll', onScroll, true)
     }
-    document.addEventListener('mousedown', off, true)
   }, 0)
 }
 
@@ -2256,20 +2514,97 @@ style.textContent = `
     position: fixed; z-index: 2147483646;
     background: #000; color: #fff;
     border: 1px solid #ff8700;
-    padding: 0; min-width: 180px;
-    font-family: ui-monospace, Menlo, monospace; font-size: 12px;
-    box-shadow: 0 4px 24px rgba(0,0,0,0.6);
+    padding: 0; min-width: 220px; max-width: 280px;
+    font-family: ui-monospace, Menlo, monospace; font-size: 13px;
+    box-shadow: 0 6px 32px rgba(0,0,0,0.75);
+    animation: hs-em-in 80ms ease-out;
+    transform-origin: top left;
   }
-  #hs-emote-menu .hs-em-header {
-    padding: 6px 10px; border-bottom: 1px solid #333;
-    font-size: 11px; opacity: 0.8;
+  @keyframes hs-em-in {
+    from { opacity: 0; transform: scale(0.96); }
+    to   { opacity: 1; transform: scale(1); }
+  }
+  #hs-emote-menu.hs-em-flip-x { transform-origin: top right; }
+  #hs-emote-menu.hs-em-flip-y { transform-origin: bottom left; }
+  #hs-emote-menu.hs-em-flip-x.hs-em-flip-y { transform-origin: bottom right; }
+  #hs-emote-menu .hs-em-preview {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 10px; border-bottom: 1px solid #222;
+    background: linear-gradient(180deg, #0a0a0a, #000);
+  }
+  #hs-emote-menu .hs-em-thumb {
+    width: 56px; height: 56px; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    background-image:
+      linear-gradient(45deg, #161616 25%, transparent 25%),
+      linear-gradient(-45deg, #161616 25%, transparent 25%),
+      linear-gradient(45deg, transparent 75%, #161616 75%),
+      linear-gradient(-45deg, transparent 75%, #161616 75%);
+    background-size: 12px 12px;
+    background-position: 0 0, 0 6px, 6px -6px, -6px 0;
+    border: 1px solid #222;
+  }
+  #hs-emote-menu .hs-em-thumb img {
+    max-width: 100%; max-height: 100%;
+    image-rendering: pixelated;
+  }
+  #hs-emote-menu .hs-em-meta { flex: 1; min-width: 0; }
+  #hs-emote-menu .hs-em-name {
+    font-weight: 700; font-size: 13px; color: #fff;
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
+  #hs-emote-menu .hs-em-sub {
+    font-size: 11px; color: #888; margin-top: 2px;
+    display: flex; gap: 6px; align-items: center;
+  }
+  #hs-emote-menu .hs-em-provider {
+    display: inline-block; padding: 0 4px;
+    border: 1px solid #444; color: #ff8700;
+    font-size: 10px; line-height: 14px;
+  }
+  #hs-emote-menu .hs-em-header {
+    padding: 4px 10px; font-size: 10px; color: #666;
+    text-transform: uppercase; letter-spacing: 0.5px;
+    background: #050505;
+  }
   #hs-emote-menu .hs-em-item {
-    padding: 5px 10px; cursor: pointer; user-select: none;
+    padding: 6px 10px; cursor: pointer; user-select: none;
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 8px;
   }
   #hs-emote-menu .hs-em-item:hover { background: #fff; color: #000; }
-  #hs-emote-menu .hs-em-sep { height: 1px; background: #333; margin: 2px 0; }
+  #hs-emote-menu .hs-em-item:hover .hs-em-kbd { background: #000; color: #fff; border-color: #000; }
+  #hs-emote-menu .hs-em-item:hover .hs-em-hint { color: #555; }
+  #hs-emote-menu .hs-em-item.hs-em-danger { color: #ff5959; }
+  #hs-emote-menu .hs-em-item.hs-em-danger:hover { background: #ff2020; color: #fff; }
+  #hs-emote-menu .hs-em-item.hs-em-good { color: #59ff8a; }
+  #hs-emote-menu .hs-em-item.hs-em-good:hover { background: #1faf48; color: #fff; }
+  #hs-emote-menu .hs-em-label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #hs-emote-menu .hs-em-hint { color: #666; font-size: 11px; }
+  #hs-emote-menu .hs-em-kbd {
+    display: inline-block; min-width: 14px; padding: 0 4px;
+    border: 1px solid #333; background: #0a0a0a; color: #888;
+    font-size: 10px; line-height: 14px; text-align: center;
+  }
+  #hs-emote-menu .hs-em-sep { height: 1px; background: #1a1a1a; margin: 2px 0; }
+  #hs-emote-menu .hs-em-variants {
+    display: flex; flex-direction: column;
+    max-height: 140px; overflow-y: auto;
+  }
+  #hs-emote-menu .hs-em-variant {
+    display: flex; align-items: center; gap: 8px;
+    padding: 4px 10px; cursor: pointer; font-size: 11px;
+  }
+  #hs-emote-menu .hs-em-variant:hover { background: #fff; color: #000; }
+  #hs-emote-menu .hs-em-variant img { width: 20px; height: 20px; object-fit: contain; }
+  #hs-emote-menu .hs-em-variant.active { background: #1a0d00; }
+  #hs-emote-menu .hs-em-variant.active::before { content: '●'; color: #ff8700; }
+  #hs-emote-menu .hs-em-variant.blocked { opacity: 0.45; }
+  #hs-emote-menu .hs-em-variant .hs-em-vtag {
+    margin-left: auto; font-size: 10px; color: #666;
+    text-transform: uppercase; letter-spacing: 0.5px;
+  }
+  #hs-emote-menu .hs-em-variant:hover .hs-em-vtag { color: #333; }
 
   /* Predictions/polls chip */
   .hs-event-chip {
@@ -2818,7 +3153,7 @@ function _deleteBroadcast(key) {
     }
   }
 }
-cleanup.setInterval(() => {
+cleanup.setIntervalIfVisible(() => {
   const now = Date.now()
   for (const [key, entry] of pendingEmoteBroadcasts) {
     if (now - entry.addedAt > 30000) _deleteBroadcast(key)
@@ -3623,44 +3958,28 @@ function processExistingMessages() {
   const unprocessed = messageArray.filter(msg => msg.dataset.heatsyncGeneration != gen);
   if (unprocessed.length === 0) return
 
-  // Process visible tail first (bottom = on-screen). Chunk the rest in rAF
-  // batches so a 200-message backfill doesn't freeze the main thread.
+  // Process visible tail first (bottom = on-screen). Both halves go through
+  // hsSched.chunk: 4ms budget per slice, yields between, pauses while user
+  // is actively scrolling. Replaces the old "10 msgs per rAF" loop that
+  // could spend 150ms on one frame when processMessage hit a heavy msg.
   const VISIBLE_ESTIMATE = 50
   const tail = unprocessed.slice(-VISIBLE_ESTIMATE)
   const head = unprocessed.length > VISIBLE_ESTIMATE ? unprocessed.slice(0, -VISIBLE_ESTIMATE) : []
 
-  // Chunk the tail too — 50 sync processMessage calls can be ~150-250ms.
-  const CHUNK = 10
-  let i = 0
-  function processTailChunk() {
-    const end = Math.min(i + CHUNK, tail.length)
-    for (; i < end; i++) processMessage(tail[i])
-    if (i < tail.length) {
-      requestAnimationFrame(processTailChunk)
-    } else if (head.length > 0) {
-      // Defer head to idle time. Bind to window — Firefox throws if
-      // requestIdleCallback is invoked with this !== Window, and the
-      // (a || b)(x) grouping strips that binding.
-      const idleCb = window.requestIdleCallback
-        ? window.requestIdleCallback.bind(window)
-        : window.requestAnimationFrame.bind(window)
-      let h = 0
-      function processHeadChunk(deadline) {
-        while (h < head.length && (!deadline || deadline.timeRemaining() > 1)) {
-          processMessage(head[h++])
-        }
-        if (h < head.length) {
-          idleCb(processHeadChunk)
-        } else {
-          log(` ⏱️ Processed ${unprocessed.length} messages (${tail.length} tail, ${head.length} deferred) in ${(performance.now() - startTime).toFixed(0)}ms`)
-        }
-      }
-      idleCb(processHeadChunk)
-    } else {
-      log(` ⏱️ Processed ${tail.length} messages in ${(performance.now() - startTime).toFixed(0)}ms`)
+  ;(async () => {
+    // Tail gets a slightly larger budget — these are on-screen, user is
+    // most likely to notice "missing cosmetics" on them, so we err toward
+    // painting them sooner. Still bounded so scroll never feels locked.
+    await hsSched.chunk(tail, processMessage, { budgetMs: 5 })
+    if (head.length > 0) {
+      // Head is offscreen by definition (chat is bottom-anchored). Drop to
+      // background priority so it never competes with input or animation.
+      await hsSched.idle(async () => {
+        await hsSched.chunk(head, processMessage, { budgetMs: 3 })
+      })
     }
-  }
-  processTailChunk()
+    log(` ⏱️ Processed ${unprocessed.length} messages (${tail.length} tail, ${head.length} head) in ${(performance.now() - startTime).toFixed(0)}ms`)
+  })()
 }
 
 // ============================================================
@@ -4080,7 +4399,7 @@ const HEAT_CACHE_TTL = 600000 // 10 min
 const HEAT_BATCH_INTERVAL = 5000
 const heatCache = new Map() // username -> { heat, op, re, fetchedAt }
 // Periodic cleanup — prune stale entries every 5 min
-cleanup.setInterval(() => {
+cleanup.setIntervalIfVisible(() => {
   const now = Date.now()
   for (const [k, v] of heatCache) {
     if (now - v.fetchedAt > HEAT_CACHE_TTL) heatCache.delete(k)
@@ -4756,10 +5075,11 @@ function setupUsernameColoringObserver() {
       // Click outside does NOT close expanded stacks — only × button closes them
     }, { capture: true, signal });
 
-    // Right-click on stack — ALL right-click handling for stacks lives here (capture phase)
-    // stopImmediatePropagation prevents Twitch React + our bubble handlers from firing.
-    // Every right-click blocks the wrapper under the cursor; auto-expand collapsed stacks
-    // so the user sees what was blocked and can act on siblings without a second click.
+    // Right-click on stack — capture phase so we beat Twitch React + bubble
+    // handlers. When the action menu is enabled (pref on, default), open the
+    // full menu on the wrapper under cursor so users get the same affordances
+    // as standalone emotes. Stack auto-expands so siblings are visible while
+    // the menu is open. Pref off → fast insta-block path (preserved behavior).
     document.addEventListener('contextmenu', (e) => {
       const stack = e.target.closest('.heatsync-emote-stack');
       if (!stack) return;
@@ -4773,11 +5093,18 @@ function setupUsernameColoringObserver() {
       const hash = wrapper.dataset.emoteHash;
       const emoteName = wrapper.dataset.emoteName;
       if (!hash) return;
+
+      if (_uiPrefs.emoteRightClickMenu) {
+        openEmoteActionMenu(wrapper, e.clientX, e.clientY);
+        // Keep stack expanded while menu is open
+        stack.classList.add('expanded');
+        return;
+      }
+
       const isBlocked = blockedEmotes.has(hash);
       const isGlobalEmote = wrapper.classList.contains('emote-overlay-global') || globalNameSet.has(emoteName);
       const inInv = inventoryHashSet.has(hash) || inventoryNameSet.has(emoteName);
       if (isBlocked) {
-        // Optimistic unblock — UI updates instantly; rollback on server failure
         const restoredState = inInv ? 'added' : (isGlobalEmote ? 'global' : 'neutral');
         blockedEmotes.delete(hash);
         markLocalBlockToggle(hash, 'unblocked');
@@ -5994,13 +6321,15 @@ function setupEmoteClickHandlers() {
     }
   }, 'emote-click');
 
-  // Universal block for emotes we never wrap (native Twitch sub/follower/bits).
-  // Match by alt name only — server-side hash blocks won't reach these so we
-  // store names locally and hide on render.
+  // Right-click on native Twitch emotes (sub/follower/bits) — these never get
+  // wrapped, so no hash exists for server-side block. Route through the same
+  // action menu in nativeTwitch mode (insert/copy/view + local-block-by-name).
+  // Pref off → fall back to legacy instant local-toggle for muscle-memory users.
   cleanup.addEventListener(document, 'contextmenu', async (e) => {
     const img = e.target.closest('img');
     if (!img) return;
-    if (img.closest('.heatsync-emote-wrapper')) return; // existing path handles these
+    if (img.closest('.heatsync-emote-wrapper')) return;
+    if (img.closest('.heatsync-emote-stack')) return;
 
     const src = img.src || '';
     const isNativeTwitchEmote = src.includes('static-cdn.jtvnw.net/emoticons');
@@ -6012,17 +6341,19 @@ function setupEmoteClickHandlers() {
     e.preventDefault();
     e.stopPropagation();
 
+    if (_uiPrefs.emoteRightClickMenu) {
+      openEmoteActionMenu(img, e.clientX, e.clientY, { nativeTwitch: true });
+      return;
+    }
+
     const escName = (window.CSS && CSS.escape) ? CSS.escape(name) : name.replace(/"/g, '\\"');
     const sel = `img[alt="${escName}"][src*="static-cdn.jtvnw.net/emoticons"]`;
-
     if (localBlockedEmoteNames.has(name)) {
       localBlockedEmoteNames.delete(name);
       document.querySelectorAll(sel).forEach(el => el.removeAttribute('data-hs-name-blocked'));
-      log(' Local-unblocked native emote:', name);
     } else {
       localBlockedEmoteNames.add(name);
       document.querySelectorAll(sel).forEach(el => el.setAttribute('data-hs-name-blocked', '1'));
-      log(' Local-blocked native emote:', name);
     }
     try {
       chrome.storage.local.set({ local_blocked_emote_names: Array.from(localBlockedEmoteNames) });
@@ -8640,26 +8971,34 @@ function watchForNewMessages() {
       }
     });
 
-    // Defer processing to let React settle (prevents DOM conflicts)
+    // Defer processing to let React settle (prevents DOM conflicts).
+    // Small batches (≤8 msgs — live chat trickle) get the tight rAF+16ms
+    // path. Large batches (boot backfill, raid burst, scroll-back hydration)
+    // route through hsSched.chunk so no single frame blocks > ~4ms.
     if (!processingScheduled && processingQueue.length > 0) {
       processingScheduled = true;
       log(' 📬 Queued', processingQueue.length, 'messages for processing');
       requestAnimationFrame(() => {
-        cleanup.setTimeout(() => {
+        cleanup.setTimeout(async () => {
           const batch = processingQueue.splice(0); // Copy and clear queue
           log(' 🔄 Processing batch of', batch.length, 'messages');
 
-          batch.forEach(msg => {
+          const processOne = (msg) => {
             try {
               processMessage(msg)
-              // Capture to localStorage cache (skip our own cached/backfilled msgs)
               if (!msg.dataset.heatsyncCached && !msg.dataset.heatsyncBackfill) {
                 captureMessageToCache(msg)
               }
             } catch (e) {
               log(' ❌ processMessage error:', e.message);
             }
-          });
+          }
+
+          if (batch.length <= 8) {
+            for (const msg of batch) processOne(msg)
+          } else {
+            await hsSched.chunk(batch, processOne, { budgetMs: 4 })
+          }
           processingScheduled = false;
         }, 16); // Wait one frame for React to settle (animated emotes need this)
       });
@@ -8729,11 +9068,21 @@ function watchForNewMessages() {
   // back-fill data-user-id onto cached/backfilled messages by username so
   // their cosmetics work too (cached entries from older builds didn't store
   // the twitch id, and robotty backfill may not have it for every user).
+  //
+  // The querySelectorAll calls themselves are cheap, but the per-msg
+  // applyCosmeticsToMessage (creates badge imgs, walks fiber for paints) is
+  // not. On 150-msg backfill it was the second-biggest boot stall after
+  // processExistingMessages. Both sweeps now go through hsSched.chunk.
   const usernameToUid = new Map()
-  chatContainer.querySelectorAll('.chat-line__message[data-user-id]').forEach(el => {
+  const stampedEls = Array.from(chatContainer.querySelectorAll('.chat-line__message[data-user-id]'))
+  for (const el of stampedEls) {
     const uid = el.getAttribute('data-user-id')
     const username = el.dataset.aUser || el.querySelector('.chat-author__display-name')?.textContent?.trim().toLowerCase()
     if (uid && username) usernameToUid.set(username, uid)
+  }
+  const applyStamped = (el) => {
+    const uid = el.getAttribute('data-user-id')
+    if (!uid) return
     if (el.dataset.hsCosmeticUserId === uid) return
     el.dataset.hsCosmeticUserId = uid
     const usernameEl = el.querySelector('.chat-author__display-name, [data-a-target="chat-message-username"]')
@@ -8741,16 +9090,15 @@ function watchForNewMessages() {
     queueCosmeticsLookup(uid)
     if (!_selfTwitchIdRegistered) {
       const me = getCurrentUsername()
+      const username = el.dataset.aUser || usernameEl?.textContent?.trim().toLowerCase()
       if (me && username && me === username) {
         _selfTwitchIdRegistered = true
         safeSendMessage({ type: 'register_self_twitch_id', twitchId: uid })
       }
     }
-  })
-  // Back-fill: cached/backfilled messages without data-user-id but whose
-  // username was seen on a live (stamped) message. Look up uid, stamp it,
-  // apply cosmetics.
-  chatContainer.querySelectorAll('.chat-line__message:not([data-user-id])').forEach(el => {
+  }
+  const unstampedEls = Array.from(chatContainer.querySelectorAll('.chat-line__message:not([data-user-id])'))
+  const applyUnstamped = (el) => {
     const username = el.dataset.aUser || el.querySelector('.chat-author__display-name')?.textContent?.trim().toLowerCase()
     if (!username) return
     const uid = usernameToUid.get(username)
@@ -8760,7 +9108,11 @@ function watchForNewMessages() {
     const usernameEl = el.querySelector('.chat-author__display-name, [data-a-target="chat-message-username"]')
     applyCosmeticsToMessage(el, uid, usernameEl)
     queueCosmeticsLookup(uid)
-  })
+  }
+  ;(async () => {
+    await hsSched.chunk(stampedEls, applyStamped, { budgetMs: 4 })
+    await hsSched.chunk(unstampedEls, applyUnstamped, { budgetMs: 4 })
+  })()
 }
 
 // Extract Twitch channel ID from page (needed for 7TV API)
@@ -9530,6 +9882,15 @@ window.addEventListener('message', (event) => {
     safeSendMessage({ type: 'clear_history' }).then(r => {
       window.postMessage({ type: 'heatsync-clear-history-result', result: r }, location.origin)
     })
+  }
+  // Dev/automation hook: page asks BG to reload the whole extension. Trigger
+  // from the page console via:
+  //   window.postMessage({ type: 'heatsync-reload-extension' }, location.origin)
+  // No auth — anyone with page access can already inspect chrome.runtime; the
+  // worst this enables is the user reloading their own extension. Same-origin
+  // gate (above) prevents cross-frame triggers from third-party scripts.
+  if (event.data?.type === 'heatsync-reload-extension') {
+    safeSendMessage({ type: 'extension_reload' }).catch(() => {})
   }
   // Self twitch ID resolved by early-inject MAIN world via currentUser GQL —
   // critical for popout chat where twilight.user localStorage is null and

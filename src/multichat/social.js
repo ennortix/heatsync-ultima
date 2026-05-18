@@ -1699,7 +1699,7 @@ function formatTimeFromTs(ts) {
 }
 
 // Refresh timestamps every 30s — lightweight DOM-only update, no rebuild
-cleanup.setInterval(() => {
+cleanup.setIntervalIfVisible(() => {
   const msgsEl = document.getElementById('hs-mc-messages');
   if (!msgsEl) return;
   const now = Date.now();
@@ -1959,7 +1959,7 @@ let discoverPollTimer = null;
 function startDiscoverPolling() {
   if (discoverPollTimer) return;
   // Auto-refresh while user is viewing the discover tab
-  discoverPollTimer = cleanup.setInterval(() => {
+  discoverPollTimer = cleanup.setIntervalIfVisible(() => {
     if (currentTab === 'discover' && !discoverLoading) {
       discoverLoaded = false;
       fetchDiscover();
@@ -2559,7 +2559,7 @@ let pinnedLoading = false;
 let pinnedPollTimer = null;
 function startPinnedPolling() {
   if (pinnedPollTimer) return;
-  pinnedPollTimer = cleanup.setInterval(() => {
+  pinnedPollTimer = cleanup.setIntervalIfVisible(() => {
     if (currentTab === 'pinned' && !pinnedLoading) {
       pinnedLoaded = false;
       fetchPinned();

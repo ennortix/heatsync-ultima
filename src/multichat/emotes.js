@@ -1113,6 +1113,28 @@
     if (typeof clearRenderedHtmlCache === 'function') clearRenderedHtmlCache();
   }
 
+  // Re-apply current state to all rendered wrappers for `emoteName`. Use after
+  // inventory changes so already-posted messages flip the green 'owned' marker
+  // to the orange 'unadded' marker (or back) without a full re-render. Never
+  // overrides hs-state-blocked — that branch is owned by block/unblock.
+  function refreshEmoteWrappersState(emoteName) {
+    if (!emoteName) return
+    const emote = lookupEmote(emoteName)
+    const newState = emote ? getEmoteState(emoteName, emote.source) : 'unadded'
+    queryEmoteWrappers(emoteName).forEach(w => {
+      if (w.classList.contains('hs-state-blocked')) return
+      w.classList.remove('hs-state-global', 'hs-state-channel', 'hs-state-owned', 'hs-state-unadded')
+      w.classList.add(`hs-state-${newState}`)
+      w.dataset.state = newState
+      const img = w.querySelector('img')
+      if (img) {
+        img.classList.remove('hs-emote-global', 'hs-emote-channel', 'hs-emote-owned', 'hs-emote-unadded')
+        img.classList.add(`hs-emote-${newState}`)
+        img.dataset.state = newState
+      }
+    })
+  }
+
   function unblockEmote(emoteName) {
     if (!emoteName) return;
 
@@ -1369,11 +1391,42 @@
     return 'unadded';
   }
 
+  // Build a single channel's emote cache from a flat emotes array. Shared
+  // between loadEmotes (cold-start from storage) and the live broadcast handler
+  // in main.js so a channel_emotes_update lands directly in channelEmoteCaches
+  // — no waiting on the BG storage.set, no race where a partial broadcast
+  // triggers loadEmotes against still-stale storage.
+  function _buildChannelEmoteCache(ch, emotes) {
+    if (!ch || !Array.isArray(emotes)) return
+    const chCache = new Map()
+    for (const e of emotes) {
+      if (!e.name || !e.url) continue
+      if (e.source === 'twitch' && (e.tier || e.emote_type === 'subscriptions' || e.emote_type === 'follower' || e.emote_type === 'bitstier')) continue
+      const source = e.source || detectEmoteSource(e.url, '7tv')
+      const state = inventoryEmotes.has(e.name) ? 'owned' : 'channel'
+      chCache.set(e.name, { url: e.url, source, state, zeroWidth: !!e.zeroWidth })
+      if (e.hash) {
+        emoteHashes.set(e.name, e.hash)
+        hashToName.set(e.hash, e.name)
+      }
+    }
+    channelEmoteCaches[ch] = chCache
+    const keys = Object.keys(channelEmoteCaches)
+    if (keys.length > 20) {
+      for (const old of keys.slice(0, keys.length - 20)) {
+        if (old !== ch) delete channelEmoteCaches[old]
+      }
+    }
+  }
+
   async function loadEmotes() {
     try {
       const stored = await chrome.storage.local.get(['global_emotes', 'emote_inventory', 'channel_emotes_map', 'native_twitch_emotes']);
       emoteCache.clear();
-      channelEmoteCaches = {};
+      // Don't wipe channelEmoteCaches — live broadcasts may have direct-
+      // populated a channel that storage hasn't persisted yet (BG writes
+      // storage AFTER the final broadcast). Wiping would clobber it; the
+      // loop below refreshes each channel that storage knows about.
       inventoryEmotes.clear();
       viewerPersonalEmotes.clear();
       inventoryHashes.clear();
@@ -1424,35 +1477,10 @@
 
       // Load per-channel emotes into separate caches (prevents cross-channel leaking)
       const map = stored.channel_emotes_map || {};
-      log('loadEmotes channel_emotes_map:', Object.entries(map).map(([k, v]) => `${k}:${Array.isArray(v) ? v.length : v}`).join(', ') || '(empty)');
       for (const [ch, emotes] of Object.entries(map)) {
         if (!Array.isArray(emotes)) continue; // skip 'loading' sentinels
-        const chCache = new Map();
-        emotes.forEach(e => {
-          if (e.name && e.url) {
-            // Skip Twitch sub/follower/bits-tier emotes: render them only when
-            // the sender's own inventory carries them (proves entitlement).
-            // Without this, any non-entitled sender's text would re-imagify
-            // via this channel cache fallback.
-            if (e.source === 'twitch' && (e.tier || e.emote_type === 'subscriptions' || e.emote_type === 'follower' || e.emote_type === 'bitstier')) return;
-            const source = e.source || detectEmoteSource(e.url, '7tv');
-            // Channel cache → state 'channel' (unless user owns it in their heatsync inventory)
-            const state = inventoryEmotes.has(e.name) ? 'owned' : 'channel';
-            chCache.set(e.name, { url: e.url, source, state, zeroWidth: !!e.zeroWidth });
-            if (e.hash) registerHash(e.name, e.hash);
-          }
-        });
-        channelEmoteCaches[ch] = chCache;
-        log('channel emote cache for', ch, ':', chCache.size, 'emotes, sample:', Array.from(chCache.keys()).slice(0, 5).join(', '));
+        _buildChannelEmoteCache(ch, emotes)
       }
-      // Evict oldest channel emote caches if exceeds 20
-      const channelKeys = Object.keys(channelEmoteCaches);
-      if (channelKeys.length > 20) {
-        for (const old of channelKeys.slice(0, channelKeys.length - 20)) {
-          delete channelEmoteCaches[old];
-        }
-      }
-      log('Channel emote caches:', Object.entries(channelEmoteCaches).map(([c, m]) => `${c}: ${m.size}`).join(', '));
 
       // Native Twitch emotes — sub emotes carry e.owner (broadcaster login),
       // true Twitch globals do not. Distinguish so tooltips show "(broadcaster) sub" vs "global (Twitch)".

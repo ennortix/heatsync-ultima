@@ -787,7 +787,7 @@ function attachRewardHandlers() {
   // Cooldown timers
   container.querySelectorAll('.hs-mc-reward-reason[data-cooldown-ends]').forEach(el => {
     const endsAt = parseInt(el.dataset.cooldownEnds)
-    const iv = cleanup.setInterval(() => {
+    const iv = cleanup.setIntervalIfVisible(() => {
       if (!el.isConnected) { cleanup.clearInterval(iv); return }
       const secs = Math.max(0, Math.ceil((endsAt - Date.now()) / 1000))
       if (secs <= 0) {
@@ -1134,7 +1134,7 @@ function attachPredictionHandlers() {
       el.textContent = m > 0 ? `${m}:${String(s).padStart(2, '0')}` : `${s}s`
     }
     update()
-    const iv = cleanup.setInterval(() => {
+    const iv = cleanup.setIntervalIfVisible(() => {
       if (!el.isConnected) { cleanup.clearInterval(iv); return }
       update()
     }, 1000)
@@ -1189,7 +1189,7 @@ function _startBannerTimer(el, endsAt) {
     el.textContent = m > 0 ? m + ':' + String(s).padStart(2, '0') : s + 's'
   }
   update()
-  _bannerTimers.push(cleanup.setInterval(() => {
+  _bannerTimers.push(cleanup.setIntervalIfVisible(() => {
     if (!el.isConnected) return
     update()
   }, 1000))
@@ -1474,7 +1474,7 @@ async function renderTwitchTab() {
 
 function startPredictionPoll() {
   stopPredictionPoll()
-  _predictionPollTimer = cleanup.setInterval(() => {
+  _predictionPollTimer = cleanup.setIntervalIfVisible(() => {
     const container = document.getElementById('hs-mc-tab-twitch')
     if (!container || container.style.display === 'none') {
       stopPredictionPoll()
@@ -1794,8 +1794,24 @@ const PRED_CACHE_TTL = 5000 // 5s — fresh enough to feel instant, short enough
 
 const PRED_FIELDS = 'id title status createdAt endedAt predictionWindowSeconds winningOutcome { id } outcomes { id title totalPoints totalUsers color } self { prediction { outcome { id } points } }'
 
-// GQL call — tries direct fetch first (Chrome MV3), falls back to MAIN world proxy (Firefox MV2)
+// True when this content script is running on a twitch.tv page (cookies +
+// MAIN-world Apollo client + integrity are all directly available).
+const _isOnTwitchPage = () => /(^|\.)twitch\.tv$/i.test(location.hostname || '')
+
+// GQL call — on Twitch: direct fetch / MAIN-world proxy. Off Twitch (Kick /
+// YouTube): route through background.js so the request carries the user's
+// twitch.tv auth cookie. This lets mod-state checks (isModerator etc.) work
+// from any page the multichat overlay runs on.
 async function twitchGql(query, variables) {
+  if (!_isOnTwitchPage()) {
+    try {
+      const resp = await safeSendMessage({ type: 'twitch_gql_authed', query, variables: variables || null })
+      if (resp?.ok && resp.data) return resp.data
+      throw new Error(resp?.error || 'twitch_gql bridge failed')
+    } catch (e) {
+      throw new Error('GQL bridge failed: ' + e.message)
+    }
+  }
   // Try direct fetch (works in Chrome MV3 content scripts with host_permissions)
   try {
     const token = getTwitchAuthToken()
@@ -2717,7 +2733,7 @@ function attachPollHandlers() {
       el.textContent = m > 0 ? m + ':' + String(s).padStart(2, '0') : s + 's'
     }
     update()
-    const iv = cleanup.setInterval(() => {
+    const iv = cleanup.setIntervalIfVisible(() => {
       if (!el.isConnected) { cleanup.clearInterval(iv); return }
       update()
     }, 1000)
@@ -3007,6 +3023,20 @@ function _isMutationsKilled() {
 
 async function _modActionMutation(searchTerm, resultField, rawQuery, variables) {
   if (_isMutationsKilled()) return { error: 'mod actions disabled by server' }
+  // Off-Twitch (Kick/YouTube pages): relay through a twitch.tv tab — Apollo +
+  // Client-Integrity only exist in Twitch's page context. The relay runs this
+  // same function inside the Twitch tab and returns the result.
+  if (!_isOnTwitchPage()) {
+    const resp = await safeSendMessage({
+      type: 'twitch_relay',
+      op: 'mod_action',
+      args: { searchTerm, resultField, rawQuery, variables }
+    })
+    if (resp?.ok && resp.result) return resp.result
+    if (resp?.error === 'no_twitch_tab')   return { error: 'open a twitch.tv tab to use mod actions' }
+    if (resp?.error === 'stale_twitch_tab') return { error: 'refresh your twitch.tv tab (extension was updated)' }
+    return { error: resp?.error || 'relay failed' }
+  }
   const apolloResult = await apolloMutate({ searchTerm, variables, resultField, rawQuery })
   if (apolloResult.ok) return { ok: true }
   try {
@@ -3018,6 +3048,28 @@ async function _modActionMutation(searchTerm, resultField, rawQuery, variables) 
   } catch (e) {
     return { error: apolloResult.error || e.message }
   }
+}
+
+// Twitch-tab-only: respond to relay requests from off-Twitch pages.
+// Runs ban/timeout/delete locally (has integrity), returns the result.
+if (_isOnTwitchPage() && typeof chrome !== 'undefined' && chrome.runtime?.onMessage) {
+  chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+    if (msg?.type !== 'twitch_relay_exec') return false
+    ;(async () => {
+      try {
+        if (msg.op === 'mod_action') {
+          const { searchTerm, resultField, rawQuery, variables } = msg.args || {}
+          const result = await _modActionMutation(searchTerm, resultField, rawQuery, variables)
+          sendResponse({ ok: true, result })
+        } else {
+          sendResponse({ ok: false, error: 'unknown op' })
+        }
+      } catch (e) {
+        sendResponse({ ok: false, error: e.message })
+      }
+    })()
+    return true
+  })
 }
 
 async function banTwitchUser(channelLogin, targetLogin, reason) {

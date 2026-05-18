@@ -2353,6 +2353,7 @@
         el.id = 'hs-mc-reply-stack'
         el.style.display = 'none'
         document.body.appendChild(cleanup.trackNode(el))
+        wireModToolbarHover(el)
         el.addEventListener('wheel', forwardWheelToMsgs, { passive: false, signal: mcSignal })
         el.addEventListener('click', (ev) => {
           const chip = ev.target.closest('.hs-mc-reply-stack-chip')
@@ -2387,6 +2388,7 @@
         el.id = 'hs-mc-reply-stack-down'
         el.style.display = 'none'
         document.body.appendChild(cleanup.trackNode(el))
+        wireModToolbarHover(el)
         el.addEventListener('wheel', forwardWheelToMsgs, { passive: false, signal: mcSignal })
         return el
       }
@@ -4015,7 +4017,10 @@
   }
   function scheduleModHide() {
     cancelModHide()
-    _modHideTimer = setTimeout(detachModToolbar, 200)
+    // 0ms: detach on next task tick — cancelable by an adjacent-row mouseover
+    // firing in the same event-loop turn (sibling row, mod button inside row,
+    // or overlay row via the wiring in ensureStackOverlay*). 200ms felt laggy.
+    _modHideTimer = setTimeout(detachModToolbar, 0)
   }
   async function runModAction(id) {
     const def = MOD_BUTTON_CATALOG[id]
@@ -9670,7 +9675,16 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       }
       // Listen for emote updates from background
       if (msg.type === 'global_emotes_update' || msg.type === 'channel_emotes_update') {
-        log('received', msg.type, msg.channelOwner || '');
+        // Channel updates: take the broadcast payload at face value and populate
+        // channelEmoteCaches synchronously. BG sends multiple coalesced broadcasts
+        // during a fetch (one per provider) and only writes storage AFTER the
+        // final one — the old loadEmotes-from-storage path raced with that write
+        // and could leave the cache empty for a channel whose fetch completed
+        // mid-debounce. Direct populate sidesteps the race entirely.
+        if (msg.type === 'channel_emotes_update' && msg.channelOwner && Array.isArray(msg.emotes)) {
+          _buildChannelEmoteCache(msg.channelOwner.toLowerCase(), msg.emotes)
+          markPickerDirty()
+        }
         // Cold-start (first emote payload for this scope) needs clear+rerender
         // so old plain-text messages from history pick up newly-loaded emotes.
         // Subsequent updates (add/remove via 7TV EventAPI) preserve _renderedHtml
@@ -9697,6 +9711,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       // Inventory changes: update membership + ensure emotes are in cache for tab completion
       // Old messages keep their rendered emotes, new messages use updated inventory
       if (msg.type === 'inventory_update') {
+        const prevInventory = new Set(inventoryEmotes)
         inventoryEmotes.clear();
         inventoryHashes.clear();
         (msg.emotes || []).forEach(e => {
@@ -9723,6 +9738,13 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
         for (const name of viewerPersonalEmotes.keys()) {
           if (!inventoryEmotes.has(name)) viewerPersonalEmotes.delete(name);
         }
+        // Flip already-rendered wrappers in chat: owned ↔ unadded so a just-
+        // posted emote that the viewer then removes turns orange instead of
+        // staying green. No-op on names whose membership didn't change.
+        const removed = [...prevInventory].filter(n => !inventoryEmotes.has(n))
+        const added = [...inventoryEmotes].filter(n => !prevInventory.has(n))
+        for (const n of removed) refreshEmoteWrappersState(n)
+        for (const n of added) refreshEmoteWrappersState(n)
         log('inventory_update:', inventoryEmotes.size, 'emotes');
         // Inventory just changed emoteCache contents — picker is stale.
         markPickerDirty();
@@ -10517,15 +10539,27 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
         log('Auto-joined live channel override:', liveCh);
       }
 
-      config.channels.forEach(ch => {
+      // Serialize background-channel joins. Each irc.join awaits bg_irc_history
+      // (up to 3000 msgs replay + buffer hydration); N parallel joins meant N
+      // simultaneous renderMessages + DOM walks fighting paint at boot. Active
+      // channel is already joined above — these are the bystander tabs.
+      const bgChannels = config.channels.filter(ch => {
+        const tw = ch.twitch?.toLowerCase()
+        const kk = ch.kick?.toLowerCase()
+        return (tw && !irc.channels.has(tw)) || (kk && !kickChat.channels.has(kk))
+      })
+      hsSched.chunk(bgChannels, async (ch) => {
         const twitchName = ch.twitch;
         const kickName = ch.kick;
         if (twitchName) {
+          // Don't gate the join_channel sendMessage on irc.join — irc.join
+          // awaits bg_irc_history (up to 4s) and a stalled history fetch would
+          // delay the BG channel-emotes fetch indefinitely. Kick off both
+          // independently; emote fetch only needs the channel name.
           irc.join(twitchName);
           try {
-            log('sending join_channel for:', twitchName);
-            chrome.runtime.sendMessage({ type: 'join_channel', platform: 'twitch', channel: twitchName });
-          } catch (e) { log('join_channel failed:', e.message); }
+            chrome.runtime.sendMessage({ type: 'join_channel', platform: 'twitch', channel: twitchName })
+          } catch (e) {}
         }
         if (kickName) {
           kickChat.join(kickName);
@@ -10533,7 +10567,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
         // YouTube subscription is owned by loadConfig() (line ~6071) so this
         // loop only handles irc/kick — duplicate yt subs were idempotent but
         // noisy in the bg log.
-      });
+      }, { budgetMs: 6, respectScroll: false }).catch(() => {})
     };
     // Schedule connect+joins for the next idle slice so paint goes first.
     // Falls back to setTimeout(0) where rIC is unavailable (older Chrome,

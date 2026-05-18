@@ -6201,7 +6201,11 @@ function bgIrcParseLine(raw, channelHint) {
         const name = part.split('/')[0]
         if (name) badgeNames.push(name)
       }
-      return { type: 'userstate', channel: ch, badges: badgeNames, time: Date.now() }
+      // rawBadges keeps tier suffixes (`subscriber/40`) for our synthetic
+      // celebrations to stamp the right sub badge before the user has sent
+      // a message on this channel. badges Set drops tiers, used elsewhere
+      // for membership gating.
+      return { type: 'userstate', channel: ch, badges: badgeNames, rawBadges: tags.badges || '', time: Date.now() }
     }
 
     const clearchat = raw.match(/CLEARCHAT #([^ ]+)(?: :(.+))?$/)

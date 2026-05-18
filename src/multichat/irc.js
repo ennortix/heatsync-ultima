@@ -314,6 +314,13 @@ class IRC {
         const badges = msg.badges instanceof Set ? msg.badges : new Set(Array.isArray(msg.badges) ? msg.badges : [])
         viewerBadgesPerChannel.set(msg.channel, badges)
       }
+      // rawBadges carries the full tag string with tier suffixes — feed it
+      // into the per-channel own-badges cache so synthetic resub/watchstreak
+      // celebrations render with the right sub tier on first-render (before
+      // the user has sent a PRIVMSG on this channel).
+      if (typeof _ownBadgesByChannel !== 'undefined' && msg.rawBadges) {
+        _ownBadgesByChannel.set(String(msg.channel).toLowerCase(), msg.rawBadges)
+      }
       return
     }
     if (msg.type === 'whisper') return  // whispers come via EventSub now

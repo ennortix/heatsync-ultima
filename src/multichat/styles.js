@@ -1050,6 +1050,15 @@ function injectStyles() {
     .hs-notif-layer-toast-stack > .hs-notif:hover .hs-notif-toast-text::before {
       color: #000 !important;
     }
+    /* Channel-scope filter — HsNotifs flags any per-channel notif (e.g.
+       twitch-resub-share, twitch-watchstreak-share) with this class when the
+       active multichat tab doesn't match the notif's data.channel. Toggled
+       on/off without remounting so re-entry to the matching tab restores
+       the same notif instance with its timer + dismiss handlers intact. */
+    .hs-notif.hs-notif-out-of-scope {
+      display: none !important;
+    }
+
     /* Chat-docked-bottom callouts (resub-share, sub-anniversary, raid alert)
        use a full-width band — reset the toast accent strip and edge borders
        in favor of an orange top edge that visually anchors the bar to the

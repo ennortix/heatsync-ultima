@@ -37,8 +37,15 @@ function flashInputError(input) {
 // Per-emote operation lock to prevent race conditions from rapid clicking
 const pendingEmoteOps = new Set();
 
-// Cache own badge string from IRC messages for optimistic display
+// Cache own badge string from IRC messages for optimistic display.
+// Per-channel: sub badge tier differs by streamer, so a single global ref
+// stamped the wrong channel's sub badge onto synthetic celebrations.
 let _ownBadges = ''
+const _ownBadgesByChannel = new Map()  // channelLower -> badges string
+function ownBadgesFor(channel) {
+  if (!channel) return _ownBadges
+  return _ownBadgesByChannel.get(String(channel).toLowerCase()) || _ownBadges
+}
 
 // Echo dedup — suppress own message echoes from IRC/KickChat relay
 // Uses a Set of {text, time} to handle rapid sends without overwriting
@@ -3176,15 +3183,19 @@ async function sendMessage() {
   let text = convertEmojiShortcodes(getInputText().trim());
   if (!text) return;
 
-  // Resub-share mode — typed text becomes a follow-up custom chat message.
-  // consume(text) does three things: (1) inject a local synthetic celebration
-  // styled with the user's custom text so they get instant visual feedback,
-  // (2) programmatically click Twitch's native Share button so the resub
-  // celebration broadcasts to all viewers, (3) returns false so we FALL
-  // THROUGH below — the user's text then goes out as a normal chat message
-  // that everyone sees and that persists in Twitch's history.
+  // Resub-share mode — typed text becomes the celebration BODY via Twitch's
+  // Chat_ShareResub_UseResubToken GQL mutation. consume() fires that mutation
+  // and injects a local synthetic for instant visual feedback. Returns true
+  // when the text was consumed AS the celebration body (don't send again as
+  // plain PRIVMSG — would duplicate); returns false in the no-token fallback
+  // path so the typed text still lands as a normal chat message.
   if (window.__hsResubShare?.active?.()) {
-    try { window.__hsResubShare.consume(text) } catch (_) {}
+    try {
+      if (window.__hsResubShare.consume(text) === true) {
+        clearInput(document.getElementById('hs-mc-input'))
+        return
+      }
+    } catch (_) {}
   }
   // Watch-streak share mode — same contract as resub-share. consume() fires
   // the native broadcast + injects a local synth, then we fall through so the

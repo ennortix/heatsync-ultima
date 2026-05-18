@@ -50,6 +50,11 @@ const HsNotifs = (() => {
   const layers = new Map()  // name -> { def, current: [], _container }
   const types = new Map()   // name -> def
   let _idCounter = 0
+  // Active viewed channels. null = scope filter inactive (show everything).
+  // A Set of lowercase channel names = only show `channelScoped` notifs whose
+  // data.channel is in the set. Tracks the user's current tab in multichat so
+  // per-channel callouts (resub-share, watchstreak) don't bleed across tabs.
+  let _activeChannels = null
 
   function registerLayer(name, def) {
     if (layers.has(name)) return
@@ -136,9 +141,13 @@ const HsNotifs = (() => {
     wrapper.dataset.notifId = notif.id
     wrapper.setAttribute('role', notif.data?.level === 'error' ? 'alert' : 'status')
     notif.el = wrapper
+    // Stamp channel for scope filtering. Empty/missing channel = global notif,
+    // never filtered. Lowercase normalization matches getActiveViewedChannels.
+    if (notif.data?.channel) wrapper.dataset.channel = String(notif.data.channel).toLowerCase()
     _renderInto(notif)
     container.appendChild(wrapper)
     l.current.push(notif)
+    _applyScopeTo(notif)
     // clickToDismiss: any click anywhere on the wrapper dismisses. Inner
     // action buttons stopPropagation in _renderInto so they still fire
     // their own onClick before the dismiss bubbles. Without this, toast
@@ -230,9 +239,41 @@ const HsNotifs = (() => {
     return el
   }
 
+  // Set the channel scope. Pass null/undefined to disable filtering, or an
+  // iterable of channel names to restrict `channelScoped` notifs to those
+  // channels. Idempotent — comparing the set against existing skips no-op
+  // work when the user clicks around inside the same channel context.
+  function setActiveChannels(channels) {
+    if (channels == null) {
+      if (_activeChannels === null) return
+      _activeChannels = null
+    } else {
+      const next = new Set()
+      for (const c of channels) { if (c) next.add(String(c).toLowerCase()) }
+      if (_activeChannels && _activeChannels.size === next.size) {
+        let same = true
+        for (const c of next) { if (!_activeChannels.has(c)) { same = false; break } }
+        if (same) return
+      }
+      _activeChannels = next
+    }
+    for (const l of layers.values()) for (const n of l.current) _applyScopeTo(n)
+  }
+
+  function _applyScopeTo(notif) {
+    const el = notif.el
+    if (!el) return
+    if (!notif.type.channelScoped || !notif.data?.channel) return
+    const ch = String(notif.data.channel).toLowerCase()
+    const hidden = _activeChannels != null && !_activeChannels.has(ch)
+    el.classList.toggle('hs-notif-out-of-scope', hidden)
+  }
+
   // Recompute every layer's geometry. Called from main.js's _updateMcLayout.
-  // ctx: { overlayElement, inputBarElement, tabBarElement, containerElement, tabPosition }
+  // ctx: { overlayElement, inputBarElement, tabBarElement, containerElement,
+  //        tabPosition, activeChannels }
   function updateLayout(ctx) {
+    if (ctx && 'activeChannels' in ctx) setActiveChannels(ctx.activeChannels)
     const root = document.documentElement
     for (const [name, l] of layers) {
       _ensureContainer(name, l)
@@ -336,6 +377,7 @@ const HsNotifs = (() => {
   // hidden via CSS; we render our own controlled version.
   registerType('twitch-resub-share', {
     layer: 'chat-docked-bottom',
+    channelScoped: true,
     dedupeKey: ({ months, channel }) => `resub:${channel}:${months}`,
     render: ({ data }) => {
       const months = data.months | 0
@@ -378,7 +420,7 @@ const HsNotifs = (() => {
           // message to chat, robbing the user of the custom-message window.
           // Call _enterResubShareMode directly via the exposed API instead.
           try {
-            window.__hsResubShare?.enter?.(data.months, data.user, data.channel)
+            window.__hsResubShare?.enter?.(data.months, data.user, data.channel, data._resubToken)
           } catch (_) {}
           return false  // resub-share mode controls dismissal
         },
@@ -392,6 +434,7 @@ const HsNotifs = (() => {
   // is enforced upstream in main.js's surface() via localStorage.
   registerType('twitch-watchstreak-share', {
     layer: 'chat-docked-bottom',
+    channelScoped: true,
     dedupeKey: ({ streakCount, channel }) => `watchstreak:${channel}:${streakCount}`,
     render: ({ data }) => {
       const n = data.streakCount | 0
@@ -485,6 +528,7 @@ const HsNotifs = (() => {
 
   return {
     registerLayer, registerType, emit, dismiss, dismissByKey, updateLayout,
+    setActiveChannels,
     _layers: layers, _types: types,
   }
 })()

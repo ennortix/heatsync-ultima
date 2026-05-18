@@ -1994,6 +1994,25 @@
       if (!msgsEl || !newBtn) return;
       wireModToolbarHover(msgsEl);
 
+      // Retry broken emote imgs — 7TV/BTTV/FFZ CDNs occasionally 503 and
+      // surface as broken (naturalWidth=0). Capture phase since 'error' doesn't
+      // bubble. Backoff 1s/3s/8s, max 3 tries, scoped to .hs-mc-emote.
+      cleanup.addEventListener(msgsEl, 'error', (e) => {
+        const img = e.target
+        if (!(img instanceof HTMLImageElement)) return
+        if (!img.classList.contains('hs-mc-emote')) return
+        const tries = +(img.dataset.hsRetries || 0)
+        if (tries >= 3 || !img.src || !img.isConnected) return
+        img.dataset.hsRetries = String(tries + 1)
+        const delay = tries === 0 ? 1000 : tries === 1 ? 3000 : 8000
+        const target = img.src
+        cleanup.setTimeout(() => {
+          if (!img.isConnected || img.src !== target) return
+          img.removeAttribute('src')
+          img.src = target
+        }, delay)
+      }, true);
+
       const isStaticTab = () => currentTab === 'feed' || currentTab === 'settings' || currentTab === 'discover' || currentTab === 'pinned';
 
       // Bulletproof scroll-pause: ANY upward movement pauses chat sticky.
@@ -3869,7 +3888,7 @@
   // only the per-row gate runs to show/hide individual buttons.
   // =====================================================================
   const MOD_BUTTON_CATALOG = {
-    delete_message: { label: 'x',  title: 'delete this message', action: 'delete',  durationSec: null,   needsMsgId: true,  hotkey: 'd' },
+    delete_message: { label: 'x',  title: 'delete this message', action: 'delete',  durationSec: null,   needsMsgId: true,  hotkey: 'x' },
     timeout_1m:     { label: '1m', title: 'timeout 1 minute',    action: 'timeout', durationSec: 60,     needsMsgId: false, hotkey: null },
     timeout_10m:    { label: '10m',title: 'timeout 10 minutes',  action: 'timeout', durationSec: 600,    needsMsgId: false, hotkey: 't' },
     timeout_1h:     { label: '1h', title: 'timeout 1 hour',      action: 'timeout', durationSec: 3600,   needsMsgId: false, hotkey: null },
@@ -4056,7 +4075,7 @@
     messagesEl.addEventListener('scroll', () => detachModToolbar(), { passive: true })
   }
 
-  // Hotkeys — d (delete), t (10m timeout), b (ban). Hold while hovering a row.
+  // Hotkeys — x (delete), t (10m timeout), b (ban). Hold while hovering a row.
   document.addEventListener('keydown', (e) => {
     if (!_modCtx) return
     const t = e.target
@@ -5343,7 +5362,7 @@
     const synth = {
       type: 'usernotice', msgId: 'resub', user, text: customText || '',
       systemMsg: `${user} is celebrating ${months} months as a subscriber!`,
-      color: '#ff8700', badges: _ownBadges || '', channel: claim.channel,
+      color: '#ff8700', badges: ownBadgesFor(claim.channel) || '', channel: claim.channel,
       time: Date.now(), subTier: '1', subMonths: months, giftCount: 0,
       recipient: '', raidViewers: 0, raidFrom: '', announceColor: '',
       bitsTier: 0, id: synthId, isSynthetic: true, userOverride: !!customText
@@ -5431,85 +5450,67 @@
       // 1. Local synthetic — instant styled celebration in OUR view with the
       //    user's custom text. Doesn't go anywhere else; viewer-only.
       try { _injectShareSynthetic(claim, user, months, text || '') } catch (_) {}
-      // 2. Native broadcast — fire Twitch's celebration share. Plain btn.click()
-      //    on the hidden native button proved unreliable (Twitch's React onClick
-      //    sometimes fails to fire on display:none nodes or the node has been
-      //    pruned). We now layer three strategies, returning on first success:
-      //      A) React fiber → memoizedProps.onClick (bypasses DOM/event system)
-      //      B) Stored fiber/onClick captured at surface() time (DOM may be gone)
-      //      C) Full mousedown→mouseup→click sequence + plain .click() fallback
-      //    Every step logs so a failed broadcast leaves a trail in console.
-      const broadcastShare = () => {
+      // 2. GQL broadcast — call Chat_ShareResub_UseResubToken directly with the
+      //    typed body. Sidesteps Twitch's hidden composer UI entirely; reaches
+      //    the same backend mutation their native "Send" button fires after the
+      //    composer opens. The token is the resub claim Twitch hands us in the
+      //    callout's React props (or reconstructed from <userId>:<channelId>:
+      //    <months>:cumulative when the prop wasn't found).
+      const nativeClickFallback = () => {
+        // No token — last-resort: programmatic-click the hidden native button.
+        // Fires Twitch's default empty-body celebration; the typed text still
+        // goes out as a plain follow-up message via the IRC send path below.
         const QUEUE_SEL = '[data-test-selector="chat-private-callout-queue__callout-container"]'
         const liveBtn = document.querySelector(QUEUE_SEL + ' [data-a-target="chat-private-callout__primary-button"]')
-        const candidates = [liveBtn, claim._nativeShareBtn].filter(Boolean)
-        const seen = new Set()
-        const tryFiberOnClick = (btn) => {
-          try {
-            if (typeof getFiber !== 'function') return false
-            let f = getFiber(btn)
-            for (let i = 0; f && i < 10; i++, f = f.return) {
-              const oc = f?.memoizedProps?.onClick
-              if (typeof oc === 'function') {
-                const fakeEvt = {
-                  preventDefault() {}, stopPropagation() {}, persist() {},
-                  currentTarget: btn, target: btn, nativeEvent: { isTrusted: true },
-                  type: 'click', button: 0, buttons: 0,
-                }
-                oc(fakeEvt)
-                console.log('[heatsync-ext] resub-share: fired via fiber onClick')
-                return true
-              }
+        const btn = liveBtn || claim._nativeShareBtn
+        if (!btn || typeof getFiber !== 'function') return false
+        try {
+          let f = getFiber(btn)
+          for (let i = 0; f && i < 10; i++, f = f.return) {
+            const oc = f?.memoizedProps?.onClick
+            if (typeof oc === 'function') {
+              oc({ preventDefault(){}, stopPropagation(){}, persist(){}, currentTarget: btn, target: btn, nativeEvent: { isTrusted: true }, type: 'click', button: 0, buttons: 0 })
+              return true
             }
-          } catch (e) {
-            console.warn('[heatsync-ext] resub-share fiber onClick threw:', e)
           }
-          return false
-        }
-        const tryDomClick = (btn) => {
-          try {
-            _allowNativeShare = true
-            try {
-              const opts = { bubbles: true, cancelable: true, composed: true, view: window, button: 0 }
-              btn.dispatchEvent(new MouseEvent('mousedown', opts))
-              btn.dispatchEvent(new MouseEvent('mouseup', opts))
-              btn.dispatchEvent(new MouseEvent('click', opts))
-              btn.click()
-            } finally { _allowNativeShare = false }
-            console.log('[heatsync-ext] resub-share: fired via DOM click sequence')
-            return true
-          } catch (e) {
-            console.warn('[heatsync-ext] resub-share DOM click threw:', e)
-            return false
-          }
-        }
-        for (const btn of candidates) {
-          if (!btn || seen.has(btn)) continue
-          seen.add(btn)
-          if (tryFiberOnClick(btn)) return true
-        }
-        for (const btn of candidates) {
-          if (!btn) continue
-          if (tryDomClick(btn)) return true
-        }
-        console.warn('[heatsync-ext] resub-share: NO broadcast — native callout btn missing', {
-          liveBtnFound: !!liveBtn,
-          storedBtnFound: !!claim._nativeShareBtn,
-          storedBtnInDom: claim._nativeShareBtn ? document.contains(claim._nativeShareBtn) : false,
-        })
+        } catch (_) {}
         return false
       }
-      try { broadcastShare() } catch (e) { console.warn('[heatsync-ext] resub-share broadcast outer threw:', e) }
+      ;(async () => {
+        if (!claim.resubToken) {
+          console.warn('[heatsync-ext] resub-share: no token — fallback to native btn click')
+          try { nativeClickFallback() } catch (_) {}
+          return
+        }
+        try {
+          const data = await gqlProxy('Chat_ShareResub_UseResubToken', {
+            input: {
+              message: text || '',
+              channelLogin: claim.channel,
+              includeStreak: false,
+              tokenID: claim.resubToken,
+            }
+          })
+          const errs = data?.errors || data?.data?.shareResub?.error
+          if (errs) console.warn('[heatsync-ext] resub-share GQL error:', JSON.stringify(errs).slice(0, 200))
+          else console.log('[heatsync-ext] resub-share: GQL fired ok')
+        } catch (e) {
+          console.warn('[heatsync-ext] resub-share GQL threw:', e?.message || e)
+        }
+      })()
       _exitResubShareMode(claim, false)
-      return false
+      // true = sendMessage stops here. The typed text becomes the celebration
+      // BODY (via the GQL mutation above) — sending it again as a plain IRC
+      // PRIVMSG would duplicate it in chat.
+      return true
     },
-    enter: (months, user, channel) => {
+    enter: (months, user, channel, resubToken) => {
       try {
         if (_pendingShareClaim) {
           clearTimeout(_pendingShareClaim.preTimer)
           clearTimeout(_pendingShareClaim.postTimer)
         }
-        const claim = { channel, userLc: (user || '').toLowerCase(), months, synthId: null, preTimer: null, postTimer: null, customText: '', _nativeShareBtn: _lastSurfacedShareBtn }
+        const claim = { channel, userLc: (user || '').toLowerCase(), months, synthId: null, preTimer: null, postTimer: null, customText: '', _nativeShareBtn: _lastSurfacedShareBtn, resubToken: resubToken || null }
         _pendingShareClaim = claim
         _enterResubShareMode(claim, user, months)
       } catch (_) {}
@@ -5531,7 +5532,7 @@
     const synth = {
       type: 'usernotice', msgId: 'watchstreak', user, text: customText || '',
       systemMsg: `${user} just watched ${streakCount} streams in a row! They're on a watch streak!`,
-      color: '#ff8700', badges: _ownBadges || '', channel: claim.channel,
+      color: '#ff8700', badges: ownBadgesFor(claim.channel) || '', channel: claim.channel,
       time: Date.now(), subTier: '', subMonths: 0, giftCount: 0,
       recipient: '', raidViewers: 0, raidFrom: '', announceColor: '',
       bitsTier: 0, streakCount, id: synthId, isSynthetic: true, userOverride: !!customText
@@ -5689,6 +5690,58 @@
       if (!ch || !user) return
       const shareBtn = calloutEl.querySelector('[data-a-target="chat-private-callout__primary-button"]')
 
+      // Capture Twitch's resub token from React props on the callout subtree.
+      // Token is what Chat_ShareResub_UseResubToken GQL expects as input.tokenID.
+      // Format observed: base64("<userId>:<channelId>:<months>:cumulative").
+      // We walk up from both the button and container — Twitch wraps the token
+      // in different ancestor components across surfaces (chat, popout, embed).
+      // Whichever prop name Twitch uses, we accept; also record channelId for
+      // fallback reconstruction if no direct token prop is found.
+      const fiberTokenScan = (rootEl) => {
+        if (typeof getFiber !== 'function' || !rootEl) return null
+        const out = { token: null, channelId: null }
+        const queue = [getFiber(rootEl)]
+        const seen = new WeakSet()
+        let steps = 0
+        const tokenKeys = ['tokenID', 'tokenId', 'resubToken', 'token', 'calloutID', 'calloutId', 'shareToken']
+        const channelKeys = ['channelID', 'channelId']
+        while (queue.length && steps < 60 && !(out.token && out.channelId)) {
+          const f = queue.shift()
+          if (!f || seen.has(f)) continue
+          seen.add(f); steps++
+          const p = f.memoizedProps
+          if (p && typeof p === 'object') {
+            if (!out.token) {
+              for (const k of tokenKeys) {
+                const v = p[k]
+                if (typeof v === 'string' && v.length > 12) { out.token = v; break }
+              }
+            }
+            if (!out.channelId) {
+              for (const k of channelKeys) {
+                const v = p[k]
+                if (typeof v === 'string' && /^\d+$/.test(v)) { out.channelId = v; break }
+              }
+            }
+          }
+          if (f.return) queue.push(f.return)
+          if (f.child) queue.push(f.child)
+        }
+        return out
+      }
+      const scan = fiberTokenScan(shareBtn || calloutEl) || {}
+      let resubToken = scan.token || null
+      // ChannelId for token reconstruction. Twitch's React tree often doesn't
+      // expose channelID near the callout (private callouts mount above the
+      // chat-root), so prefer the documentElement attribute that early-inject
+      // stamps from the page channel resolver. Fiber scan is fallback.
+      const channelIdForToken = document.documentElement?.dataset?.hsTwitchChannelId || scan.channelId || null
+      const fallbackToken = (months) => {
+        const selfId = document.documentElement?.dataset?.hsSelfTwitchId
+        if (!selfId || !channelIdForToken || !months) return null
+        try { return btoa(`${selfId}:${channelIdForToken}:${months}:cumulative`) } catch { return null }
+      }
+
       // Watch-streak first (text mentions "watch streak"); resub fallback (only
       // "N month" — without "watch streak"). Order matters: a watch-streak
       // callout never mentions months, but a sub-anniversary may incidentally
@@ -5736,6 +5789,7 @@
 
       if (!months) return
       calloutEl.dataset.hsSurfaced = '1'
+      if (!resubToken) resubToken = fallbackToken(months)
       if (shareBtn && shareBtn.dataset.hsShareHooked !== '1') {
         shareBtn.dataset.hsShareHooked = '1'
         shareBtn.addEventListener('click', (e) => {
@@ -5747,7 +5801,7 @@
               clearTimeout(_pendingShareClaim.preTimer)
               clearTimeout(_pendingShareClaim.postTimer)
             }
-            const claim = { kind: 'resub', channel: ch, userLc: user.toLowerCase(), months, synthId: null, preTimer: null, postTimer: null, customText: '', _nativeShareBtn: shareBtn }
+            const claim = { kind: 'resub', channel: ch, userLc: user.toLowerCase(), months, synthId: null, preTimer: null, postTimer: null, customText: '', _nativeShareBtn: shareBtn, resubToken }
             _pendingShareClaim = claim
             _enterResubShareMode(claim, user, months)
           } catch (_) {}
@@ -5759,6 +5813,7 @@
           months, user, channel: ch,
           _nativeShareBtn: shareBtn,
           _nativeCallout: calloutEl,
+          _resubToken: resubToken,
         })
       } catch (_) {}
       try { _updateMcLayout?.() } catch (_) {}
@@ -5970,6 +6025,7 @@
         HsNotifs.updateLayout({
           overlayElement, inputBarElement, tabBarElement,
           containerElement: containerEl, tabPosition,
+          activeChannels: getActiveViewedChannels(),
         })
       } catch (_) {}
     }
@@ -6195,6 +6251,11 @@
 
     // Hide native chat when our overlay is active
     setNativeChatHidden(true);
+
+    // Refresh HsNotifs channel scope so per-channel callouts (resub-share,
+    // watchstreak) hide when leaving their channel's tab and reappear when
+    // returning. Layout call piggybacks on the existing recompute path.
+    try { _updateMcLayout?.() } catch (_) {}
   }
 
   /**
@@ -8261,6 +8322,39 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
   /** Channel the live tab is currently showing (override or URL fallback) */
   function getLiveChannel() {
     return liveChannel || getCurrentChannel();
+  }
+
+  /** Lowercase channel-name set the user is *currently viewing* — used by
+   *  HsNotifs to scope channel-tagged callouts (resub-share, watchstreak) to
+   *  the matching tab only. On non-channel tabs (feed/mentions/whispers/etc)
+   *  returns an empty Set so channel-scoped callouts hide. Never returns
+   *  null — passing null to setActiveChannels disables the filter, which
+   *  would let stale callouts bleed across tabs. */
+  function getActiveViewedChannels() {
+    const out = new Set()
+    const addCh = (ch) => {
+      if (!ch) return
+      if (ch.twitch) out.add(ch.twitch.toLowerCase())
+      if (ch.kick) out.add(ch.kick.toLowerCase())
+      if (ch.id) out.add(String(ch.id).toLowerCase())
+    }
+    if (currentTab === 'live') {
+      const liveCh = getLiveChannel()?.toLowerCase()
+      if (liveCh) {
+        out.add(liveCh)
+        // Paired channel: live=zackrawrr (twitch) + kick=asmongold belong to
+        // the same logical "stream" — show callouts for either side.
+        for (const ch of config.channels) {
+          const tw = ch.twitch?.toLowerCase()
+          const ki = ch.kick?.toLowerCase()
+          if (tw === liveCh || ki === liveCh) addCh(ch)
+        }
+      }
+      return out
+    }
+    const ch = getChannelById(currentTab)
+    if (ch) addCh(ch)
+    return out
   }
 
   // Check if a message belongs to the live tab — direct match OR paired via config
@@ -10556,9 +10650,12 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       if (msg.subMonths && msg.channel) {
         trackSubTenure(msg.channel, msg.user, msg.subMonths)
       }
-      // Cache own badges for optimistic display
+      // Cache own badges for optimistic display. Per-channel + global mirror —
+      // synthetic celebrations stamp the right sub badge tier when injected on
+      // a channel where the user has previously sent at least once.
       if (msg.user?.toLowerCase() === currentUsername?.toLowerCase() && msg.badges) {
         _ownBadges = msg.badges
+        if (msg.channel) _ownBadgesByChannel.set(String(msg.channel).toLowerCase(), msg.badges)
       }
       // Suppress echo of own sent messages (dedup dual-send). Pass 'twitch'
       // explicitly — IRC msgs leave m.platform unset so the host-platform

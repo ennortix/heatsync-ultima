@@ -171,7 +171,11 @@
   const gql = {
     hashes: {         // operationName → sha256Hash (seeded with known working hashes)
       MakePrediction: 'b44682ecc88358817009f20e69d75081b1e58825bb40aa53d5dbadcc17c881d8',
-      ChannelPointsPredictionContext: 'beb846598256b75bd7c1fe54a80431335996153e358ca9c7837ce7bb83d7d383'
+      ChannelPointsPredictionContext: 'beb846598256b75bd7c1fe54a80431335996153e358ca9c7837ce7bb83d7d383',
+      // Resub/sub-anniversary "Share to chat" — fires the celebrated USERNOTICE
+      // with the user's typed body. Tokens are formatted base64(userId:channelId:months:cumulative).
+      // Captured live from Twitch; replaced automatically if Twitch ships a new hash.
+      Chat_ShareResub_UseResubToken: '61045d4a4bb10d25080bc0a01a74232f1fa67a6a530e0f2ebf05df2f1ba3fa59'
     },
     integrity: null,  // Client-Integrity token
     clientId: null,   // Client-Id

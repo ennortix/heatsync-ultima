@@ -3360,7 +3360,7 @@ function injectStyles() {
     /* === Profile card — system sans, no chrome, badges-first === */
     .hs-pcard {
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, "Helvetica Neue", Arial, sans-serif;
-      padding: 14px;
+      padding: 10px;
       color: #fff;
       background: #000;
       font-size: 13px;
@@ -3368,7 +3368,7 @@ function injectStyles() {
       box-sizing: border-box;
       display: flex;
       flex-direction: column;
-      gap: 10px;
+      gap: 7px;
       height: 100%;
       overflow-y: auto;
       position: relative;
@@ -3377,13 +3377,12 @@ function injectStyles() {
          border, avatar ring, and accent-tinted divider glow below. */
       --hs-pcard-accent: #ff8700;
     }
-    /* Hero banner — runs full-bleed across the identity section, with a
-       gradient placeholder (accent at top-left, fading to near-black) so the
-       layout never empty-flashes before the GQL fetch lands. */
+    /* Hero banner — compact strip, image lives behind the avatar/name. Shorter
+       than the original 140px so identity + actions fit in the first viewport. */
     .hs-pcard-hero {
       position: relative;
-      height: 140px;
-      margin: -14px -14px 0 -14px;
+      height: 76px;
+      margin: -10px -10px 0 -10px;
       background: linear-gradient(135deg, var(--hs-pcard-accent, #1a1a1a) 0%, #0a0a0a 70%, #000 100%);
       overflow: hidden;
       border-bottom: 1px solid var(--hs-pcard-accent, #2a2a2a);
@@ -3413,7 +3412,7 @@ function injectStyles() {
     .hs-pcard-id .hs-pcard-id-row {
       position: relative;
       z-index: 1;
-      margin-top: 8px;
+      margin-top: 4px;
     }
     /* Sticky close — pinned to card top-right, stays visible while scrolling.
        Negative bottom margin lets it overlay the id-row without taking column
@@ -3448,30 +3447,28 @@ function injectStyles() {
        attention. Falls back to #1a1a1a when accent is unset. */
     .hs-pcard-section + .hs-pcard-section {
       border-top: 1px solid color-mix(in srgb, var(--hs-pcard-accent, #1a1a1a) 18%, #0a0a0a);
-      padding-top: 10px;
+      padding-top: 7px;
     }
 
-    .hs-pcard-id-row { display: flex; gap: 12px; align-items: flex-start; }
+    .hs-pcard-id-row { display: flex; gap: 10px; align-items: flex-start; }
     .hs-pcard-avatar {
-      width: 72px; height: 72px; border-radius: 0; object-fit: cover;
+      width: 56px; height: 56px; border-radius: 0; object-fit: cover;
       flex-shrink: 0;
       border: 2px solid var(--hs-pcard-accent, #fff);
       background: #000;
-      /* Negative top margin lifts the avatar to overlap the hero base by ~half
-         its height, anchoring identity at the banner seam. Hero is 140px tall,
-         hero's bottom margin is 0 → avatar negative margin moves it upward. */
-      margin-top: -44px;
+      /* Lifts avatar so it half-overlaps the shorter (76px) hero strip. */
+      margin-top: -32px;
       position: relative;
       z-index: 2;
       box-shadow:
         0 0 0 2px #000,
-        0 8px 20px rgba(0, 0, 0, 0.7),
-        0 0 24px color-mix(in srgb, var(--hs-pcard-accent, transparent) 35%, transparent);
+        0 6px 16px rgba(0, 0, 0, 0.7),
+        0 0 18px color-mix(in srgb, var(--hs-pcard-accent, transparent) 35%, transparent);
     }
-    .hs-pcard-id-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+    .hs-pcard-id-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
     .hs-pcard-name {
-      font-size: 18px; font-weight: 700; color: #fff;
-      display: flex; align-items: center; gap: 6px; line-height: 13px;
+      font-size: 16px; font-weight: 700; color: #fff;
+      display: flex; align-items: center; gap: 6px; line-height: 18px;
     }
     .hs-pcard-livedot { color: #ff5050; font-size: 9px; animation: hs-pcard-pulse 1.5s infinite; }
     @keyframes hs-pcard-pulse { 50% { opacity: 0.4; } }
@@ -3533,15 +3530,47 @@ function injectStyles() {
       color: #fff; word-break: break-word; overflow-wrap: anywhere; flex: 1;
     }
     .hs-pcard-action-grid {
-      display: flex; flex-wrap: wrap; gap: 4px;
+      display: flex; flex-wrap: wrap; gap: 3px;
     }
     .hs-pcard-action {
       background: transparent; color: #fff; border: 1px solid #333;
-      padding: 6px 12px; cursor: pointer; font-family: inherit; font-size: 13px;
-      text-align: center; box-sizing: border-box;
+      padding: 4px 10px; cursor: pointer; font-family: inherit; font-size: 13px;
+      text-align: center; box-sizing: border-box; line-height: 18px;
     }
     .hs-pcard-action:hover:not(:disabled) { background: #fff; color: #000; border-color: #fff; }
     .hs-pcard-action:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    /* Mod actions row — compact toolbar at the top of the card when you mod
+       a channel this user has chatted in. Channel label + del/timeout/ban
+       buttons sit on a single line per channel. Buttons share borders so the
+       group reads as one unit, mirroring the inline hover toolbar style. */
+    .hs-pcard-mod {
+      background: color-mix(in srgb, var(--hs-pcard-accent, #ff8700) 10%, #000);
+      border-left: 2px solid var(--hs-pcard-accent, #ff8700);
+      padding: 5px 8px;
+      margin: -2px 0;
+    }
+    .hs-pcard-mod-row {
+      display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+      font-size: 13px; line-height: 18px;
+    }
+    .hs-pcard-mod-row + .hs-pcard-mod-row { margin-top: 4px; }
+    .hs-pcard-mod-ch {
+      color: var(--hs-pcard-accent, #ff8700);
+      font-weight: 700; font-size: 13px;
+      min-width: 0; flex-shrink: 0; margin-right: 2px;
+    }
+    .hs-pcard-mod-btn {
+      background: transparent; color: #fff;
+      border: 1px solid #555; border-right-width: 0;
+      padding: 2px 7px; cursor: pointer; font-family: inherit;
+      font-size: 13px; line-height: 16px; box-sizing: border-box;
+    }
+    .hs-pcard-mod-btn:last-child { border-right-width: 1px; }
+    .hs-pcard-mod-btn:hover:not(:disabled) { background: #fff; color: #000; border-color: #fff; }
+    .hs-pcard-mod-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+    .hs-pcard-mod-btn-danger { color: #ff5050; border-color: #5a1414; }
+    .hs-pcard-mod-btn-danger:hover:not(:disabled) { background: #ff5050; color: #000; border-color: #ff5050; }
 
     /* Per-tab platform filter toggles (T/K/Y). Sits AFTER the util cluster
        (DOM order). Horizontal mode: tight content-sized strip on far right.

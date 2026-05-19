@@ -7733,10 +7733,13 @@ function updateEmoteState(hash, emoteName, state) {
             auth: true,
             body: { channel: channelLogin || username },
           })
-          // Server returns snake_case (edit_url, clip_id, clip_url). Try both for safety.
-          clipEditUrl = result?.edit_url || result?.editUrl || result?.clip_url || null
+          clipEditUrl = result?.edit_url || result?.editUrl || null
+          const clipShareUrl = result?.clip_url || result?.clipUrl || null
+          if (clipShareUrl) {
+            try { await navigator.clipboard.writeText(clipShareUrl) } catch (_e) {}
+          }
           if (!clipBtn.isConnected) return
-          clipBtn.textContent = '✓ clip created'
+          clipBtn.textContent = clipShareUrl ? '✓ url copied' : '✓ clip created'
           clipBtn.disabled = false
         } catch (_e) {
           clipBtn.textContent = 'clip'

@@ -3899,7 +3899,11 @@
     ban:            { label: '⛔',title: 'permanent ban',    action: 'ban',     durationSec: null,   needsMsgId: false, hotkey: 'b' },
     unban:          { label: '✓',title: 'unban user',       action: 'unban',   durationSec: null,   needsMsgId: false, hotkey: null },
   }
-  const DEFAULT_MOD_BUTTONS = ['delete_message', 'timeout_10m']
+  // Hover toolbar is opt-in heavy: only the X (delete-this-message) ships on by
+  // default. Timeouts/bans live on the profile-card mod row instead — left-click
+  // username surfaces the full set at the top of the card. Users can re-enable
+  // hover buttons in settings → mod toolbar.
+  const DEFAULT_MOD_BUTTONS = ['delete_message']
   let modToolbarButtons = [...DEFAULT_MOD_BUTTONS]
   async function loadModToolbarButtons() {
     try {
@@ -4061,6 +4065,11 @@
       const user = row.dataset.msgUser
       const msgId = row.dataset.msgId
       if (!channel || !user) return
+      // Skip own messages — mod actions on yourself are nonsense UX. Use the
+      // data-msg-self flag set at build time (currentUsername may be null at
+      // hover time during pre-auth bootstrap); fall back to live compare.
+      if (row.dataset.msgSelf === '1') return
+      if (currentUsername && user.toLowerCase() === currentUsername.toLowerCase()) return
       // Sync gate: only attach if we already know we're a mod. Pre-fetch otherwise
       // so the next hover in this channel is instant — no UI lag.
       if (!isModForSync(channel)) { prefetchModFor(channel); return }
@@ -6736,6 +6745,13 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       div.dataset.msgUser = m.user
       div.dataset.msgChannel = m.channel || ''
       div.dataset.msgPlatform = m.platform || ''
+      // Mark self-messages so the mod hover toolbar can skip them without
+      // re-deriving currentUsername (which may be null pre-auth). Inlined
+      // compare — the `isOwn` const above is scoped to the !_renderedHtml
+      // branch, so it's undefined when the cached-html path is taken.
+      if (m.user && currentUsername && m.user.toLowerCase() === currentUsername.toLowerCase()) {
+        div.dataset.msgSelf = '1'
+      }
       const replyBtn = document.createElement('button')
       replyBtn.className = 'hs-mc-reply-btn'
       replyBtn.textContent = '↩'

@@ -2184,17 +2184,21 @@ function findEmoteMatches(search) {
 
   // Search emote cache (unless explicitly searching users with @)
   if (!isUserSearch) {
-    // Search global + channel emotes for current tab
+    // Composition pool: globals + current channel + viewer's personal set.
+    // viewerPersonalEmotes carries heatsync inventory uploads AND owned native
+    // Twitch sub emotes — both are sendable as your own outgoing message.
     const acEmotes = new Map(emoteCache);
     const acChCache = channelEmoteCaches[currentTab] || channelEmoteCaches[getCurrentChannel()];
     if (acChCache) for (const [k, v] of acChCache) acEmotes.set(k, v);
+    for (const [k, v] of viewerPersonalEmotes) acEmotes.set(k, v);
     for (const [name, emote] of acEmotes) {
       // Only tab-complete heatsync emotes you own (can't send emotes not in your set)
       if (emote.source === 'heatsync' && emote.state !== 'owned') continue;
+      const sub = !!emote.subscription;
       if (name.toLowerCase().startsWith(searchLower)) {
-        matches.push({ name, url: emote.url, source: emote.source, priority: 0, type: 'emote' });
+        matches.push({ name, url: emote.url, source: emote.source, priority: 0, type: 'emote', sub });
       } else if (name.toLowerCase().includes(searchLower)) {
-        matches.push({ name, url: emote.url, source: emote.source, priority: 1, type: 'emote' });
+        matches.push({ name, url: emote.url, source: emote.source, priority: 1, type: 'emote', sub });
       }
     }
   }
@@ -2216,9 +2220,11 @@ function findEmoteMatches(search) {
     }
   }
 
-  // Sort: prefix matches first, then by recency for username matches, then alphabetical
+  // Sort: prefix matches first, then sub emotes (rare + entitlement-scarce),
+  // then by recency for username matches, then alphabetical.
   matches.sort((a, b) => {
     if (a.priority !== b.priority) return a.priority - b.priority;
+    if (!!a.sub !== !!b.sub) return a.sub ? -1 : 1;
     const ar = (a.recencyRank ?? Infinity)
     const br = (b.recencyRank ?? Infinity)
     if (ar !== br) return ar - br;

@@ -377,6 +377,9 @@
     const emotes = [];
     for (const set of inst.props.emotes) {
       if (!set?.emotes || set.id === 'HeatSyncEmotes') continue;
+      // Sub/follower/bits sets carry an owner; setID '0' and ownerless sets are Twitch globals
+      const ownerLogin = set.owner?.login || set.owner?.displayName || '';
+      const isSub = set.id !== '0' && !!ownerLogin;
       for (const e of set.emotes) {
         if (!e.token) continue;
         emotes.push({
@@ -384,7 +387,9 @@
           nameLower: e.token.toLowerCase(),
           hash: e.id,
           url: `https://static-cdn.jtvnw.net/emoticons/v2/${e.id}/default/dark/1.0`,
-          native: true
+          native: true,
+          sub: isSub,
+          owner: ownerLogin
         });
       }
     }
@@ -836,7 +841,8 @@
               setID: setId,
               token: emote.name,
               srcSet: srcSet
-            }
+            },
+            _heatsyncSub: !!emote.sub
           });
         }
 
@@ -859,10 +865,18 @@
         // Emoji shortcodes (:name:) handled by Tab cycling only — not injected into dropdown
 
         // Sort results: EMOTES first, then USERNAMES
-        // Pre-compute sort keys to avoid repeated toLowerCase() in comparator
+        // Pre-compute sort keys to avoid repeated toLowerCase() in comparator.
+        // Sub emotes flagged via _heatsyncSub on the matches we pushed; for results
+        // Twitch returned natively, derive from name (sub names tracked above).
+        const nativeSubNames = new Set();
+        for (const e of getNativeTwitchEmotes()) {
+          if (e.sub) nativeSubNames.add(e.name);
+        }
         for (const r of results) {
-          r._sortKey = (r.replacement || r.emote?.token || '').toLowerCase()
+          const name = r.replacement || r.emote?.token || '';
+          r._sortKey = name.toLowerCase()
           r._sortType = r.emote ? 0 : 1 // 0=emote, 1=username
+          r._isSub = r._heatsyncSub || nativeSubNames.has(name);
         }
         results.sort((a, b) => {
           // Category sort: emotes < usernames
@@ -871,7 +885,7 @@
           // Usernames: alphabetical only
           if (a._sortType === 2) return a._sortKey.localeCompare(b._sortKey);
 
-          // Emotes/emojis: exact > prefix > contains > shorter > alpha
+          // Emotes/emojis: exact > prefix > contains > sub > shorter > alpha
           const aExact = a._sortKey === searchLower;
           const bExact = b._sortKey === searchLower;
           if (aExact !== bExact) return aExact ? -1 : 1;
@@ -880,11 +894,14 @@
           const bPrefix = b._sortKey.startsWith(searchLower);
           if (aPrefix !== bPrefix) return aPrefix ? -1 : 1;
 
+          // Within same prefix/contains tier: native sub emotes float above globals/custom
+          if (a._isSub !== b._isSub) return a._isSub ? -1 : 1;
+
           if (a._sortKey.length !== b._sortKey.length) return a._sortKey.length - b._sortKey.length;
           return a._sortKey.localeCompare(b._sortKey);
         });
         // Clean up sort keys
-        for (const r of results) { delete r._sortKey; delete r._sortType; }
+        for (const r of results) { delete r._sortKey; delete r._sortType; delete r._isSub; delete r._heatsyncSub; }
 
         if (results.length > 0) {
           log(' getMatches returning:', results.length, 'total, first:', results[0]?.replacement || results[0]?.emote?.token);
@@ -1393,13 +1410,15 @@
           // Strip leading colon for emoji shortcode search
           const emojiSearch = currentSearch.startsWith(':') ? currentSearch.slice(1) : null;
           const emoteSearch = emojiSearch || currentSearch;
+          // No iteration cap: sub emotes live at the tail of hsEmotes (bridge-first ordering),
+          // so any cap silently hides them once the user has many custom emotes that match.
+          // Substring-scanning ~5k names is sub-millisecond; correctness > micro-perf.
           for (const em of hsEmotes) {
             if (em.nameLower?.startsWith(emoteSearch)) {
               prefixMatches.push(em);
             } else if (em.nameLower?.includes(emoteSearch)) {
               substringMatches.push(em);
             }
-            if (prefixMatches.length + substringMatches.length >= 50) break;
           }
           // Add emoji shortcode matches when searching with :prefix
           if (emojiSearch && emojiSearch.length >= 2) {
@@ -1418,8 +1437,19 @@
             // Emotes first, then emojis (prefix before substring for each)
             substringMatches.push(...emojiPrefix, ...emojiSubstring);
           }
-          prefixMatches.sort((a, b) => (a.name || '').length - (b.name || '').length);
-          substringMatches.sort((a, b) => (a.name || '').length - (b.name || '').length);
+          // Within each tier: native sub emotes first (rare + entitlement-scarce),
+          // then heatsync custom emotes by shortest-first, then alpha.
+          const tierSort = (a, b) => {
+            const aSub = a.sub ? 0 : 1;
+            const bSub = b.sub ? 0 : 1;
+            if (aSub !== bSub) return aSub - bSub;
+            const la = (a.name || '').length;
+            const lb = (b.name || '').length;
+            if (la !== lb) return la - lb;
+            return (a.name || '').localeCompare(b.name || '');
+          };
+          prefixMatches.sort(tierSort);
+          substringMatches.sort(tierSort);
           cycleState.matches = [...prefixMatches, ...substringMatches];
           cycleState.searchTerm = currentSearch;
           cycleState.index = 0;

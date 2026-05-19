@@ -1483,23 +1483,26 @@
       }
 
       // Native Twitch emotes — sub emotes carry e.owner (broadcaster login),
-      // true Twitch globals do not. Distinguish so tooltips show "(broadcaster) sub" vs "global (Twitch)".
-      // Sub-tier entries are SKIPPED here: emoteCache is the global fallback,
-      // and putting entitled-only emotes there causes them to match any sender's
-      // text in any channel (bypassing Twitch's IRC emotes= gate).
+      // true Twitch globals do not. Globals → emoteCache (everyone can render them).
+      // Subs → viewerPersonalEmotes: same gate as heatsync inventory — surfaced
+      // for picker/autocomplete/own outgoing, kept out of the global render
+      // fallback so they don't bleed into other senders' messages.
       (stored.native_twitch_emotes || []).forEach(e => {
-        if (e.name && e.url && !emoteCache.has(e.name)) {
-          const isSub = !!e.owner
-          if (isSub) return
-          const entry = {
-            url: e.url,
-            source: 'twitch',
-            state: 'global'
+        if (!e.name || !e.url) return;
+        const isSub = !!e.owner
+        if (isSub) {
+          if (!viewerPersonalEmotes.has(e.name)) {
+            viewerPersonalEmotes.set(e.name, {
+              url: e.url, source: 'twitch', state: 'owned', subscription: true, owner: e.owner
+            })
+            if (e.hash) registerHash(e.name, e.hash);
           }
-          emoteCache.set(e.name, entry);
-          while (emoteCache.size > 2000) { emoteCache.delete(emoteCache.keys().next().value) }
-          if (e.hash) registerHash(e.name, e.hash);
+          return
         }
+        if (emoteCache.has(e.name)) return
+        emoteCache.set(e.name, { url: e.url, source: 'twitch', state: 'global' });
+        while (emoteCache.size > 2000) { emoteCache.delete(emoteCache.keys().next().value) }
+        if (e.hash) registerHash(e.name, e.hash);
       });
 
       // Rebuild blockedEmoteNames from loaded hashes

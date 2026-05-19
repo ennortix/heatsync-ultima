@@ -845,6 +845,7 @@ cleanup.addEventListener(document, 'keyup', (e) => {
 // Also catch programmatic changes (Slate void inserts) via observer
 const _hsInputObserver = cleanup.trackObserver(new MutationObserver(scheduleInputModifierPreview))
 function attachInputModifierObserver() {
+  if (!_uiPrefs.emoteModifiers) return
   document.querySelectorAll(HS_INPUT_EDITOR_SELECTOR).forEach(ed => {
     if (ed.dataset.hsInputModObserver) return
     ed.dataset.hsInputModObserver = '1'
@@ -3986,7 +3987,7 @@ function processExistingMessages() {
 // Chat message cache — persist messages across page reloads
 // Matches website behavior: 2000 msgs/channel, 24h TTL, debounced saves
 // ============================================================
-const MSG_CACHE_MAX = 2000
+const MSG_CACHE_MAX = 500
 const MSG_CACHE_TTL = 24 * 60 * 60 * 1000 // 24 hours
 let msgCacheBuffer = [] // in-memory buffer of {id, user, text, color, ts}
 const msgCacheIds = new Set() // O(1) dedup lookup for message IDs

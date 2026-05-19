@@ -63,6 +63,12 @@ function parseIrcLine(raw, channel) {
       if (isAction) msg.isAction = true
       const bits = parseInt(tags.bits) || 0
       if (bits > 0) msg.bits = bits
+      // No own-cheer fallbacks — the renderer is bulletproof-strict: only
+      // server-confirmed `bits=N` tags from twitch's IRC count. If the user
+      // sent a cheer and bits weren't credited, no cheermote shows (which is
+      // honest — the bit didn't deduct). The send-side wiring (native lexical
+      // chat input → twitch GQL sendChatMessage) is what credits bits; if it
+      // fails, that's the bug to fix, not the renderer.
       if (tags['custom-reward-id']) {
         msg.redeemed = true
         msg.rewardId = tags['custom-reward-id']

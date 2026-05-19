@@ -175,7 +175,10 @@
       // Resub/sub-anniversary "Share to chat" — fires the celebrated USERNOTICE
       // with the user's typed body. Tokens are formatted base64(userId:channelId:months:cumulative).
       // Captured live from Twitch; replaced automatically if Twitch ships a new hash.
-      Chat_ShareResub_UseResubToken: '61045d4a4bb10d25080bc0a01a74232f1fa67a6a530e0f2ebf05df2f1ba3fa59'
+      Chat_ShareResub_UseResubToken: '61045d4a4bb10d25080bc0a01a74232f1fa67a6a530e0f2ebf05df2f1ba3fa59',
+      // Cheer bits — the canonical bits-send mutation twitch's own client fires
+      // when the bits modal confirms. Captures auto-update if rotated.
+      ChatInput_SendCheer: '57b0d6bd979e516ae3767f6586e7f23666d612d3a65af1d5436dba130c9426fd'
     },
     integrity: null,  // Client-Integrity token
     clientId: null,   // Client-Id
@@ -727,6 +730,14 @@
       return
     }
 
+    // (bits-modal opening was attempted via fiber-invoke + DOM hacks but every
+    // path hit twitch's anti-bot or layout walls; replaced by popup-window
+    // approach in twitch-api.js — kept as no-op for backward compat if a
+    // content script ever fires the old message.)
+    if (e.data?.type === 'heatsync-open-bits-modal') {
+      window.postMessage({ type: 'heatsync-open-bits-modal-response', id: e.data.id, error: 'deprecated — bits now opens via popup window' }, location.origin)
+      return
+    }
     // Content script requesting GQL proxy call
     if (e.data?.type === 'heatsync-gql-request') {
       if (!_hsNonce || e.data.nonce !== _hsNonce) {

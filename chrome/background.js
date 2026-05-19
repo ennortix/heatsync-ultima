@@ -198,7 +198,7 @@ browser.alarms?.onAlarm?.addListener((alarm) => {
   } else if (alarm.name === 'hs-ws-watchdog') {
     // Three states to handle:
     //   1) WS not open: kick a fresh connect (no-op if already connecting)
-    //   2) WS open + zombie (no data received for 75s): close → reconnect
+    //   2) WS open + zombie (no data received for 45s): close → reconnect
     //   3) WS open + healthy: send heartbeat to defeat the server's 2min
     //      idle timeout
     try {
@@ -208,7 +208,7 @@ browser.alarms?.onAlarm?.addListener((alarm) => {
         return
       }
       if (typeof lastWsDataReceived !== 'undefined' && lastWsDataReceived
-          && Date.now() - lastWsDataReceived > 75000) {
+          && Date.now() - lastWsDataReceived > 45000) {
         log('WS zombie detected (alarm path), reconnecting')
         try { socket.close() } catch {}
         return

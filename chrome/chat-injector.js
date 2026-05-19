@@ -319,10 +319,11 @@ function injectMessage(message) {
   // Inject at the bottom of chat (new messages appear at bottom)
   container.appendChild(messageElement);
 
-  // Prune oldest injected messages to prevent unbounded DOM growth
+  // Prune oldest injected messages to prevent unbounded DOM growth.
+  // Native chat keeps ~150 of its own; ours stack on top — keep small.
   const injected = container.querySelectorAll('.heatsync-injected-message');
-  if (injected.length > 50) {
-    const toRemove = injected.length - 50;
+  if (injected.length > 20) {
+    const toRemove = injected.length - 20;
     for (let i = 0; i < toRemove; i++) {
       injected[i].remove();
     }

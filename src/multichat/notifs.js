@@ -76,6 +76,15 @@ const HsNotifs = (() => {
     if (key) {
       const existing = l.current.find(n => n.key === key)
       if (existing) {
+        if (t.onDedupe) {
+          try { t.onDedupe(existing.data, data) } catch (_) {}
+          if (existing.el) _renderInto(existing)
+          if (t.timeout) {
+            if (existing._timer) cleanup.clearTimeout(existing._timer)
+            existing._timer = cleanup.setTimeout(() => dismiss(existing.id), t.timeout)
+          }
+          return existing.id
+        }
         if (t.dedupePolicy === 'replace') {
           existing.data = data
           if (existing.el) _renderInto(existing)
@@ -291,11 +300,28 @@ const HsNotifs = (() => {
 
   // === STANDARD LAYERS ===
 
-  // Toast stack — bottom-right corner, max 3 visible at once.
+  // Toast stack — top-right of the chat overlay, max 3 visible at once.
+  // Previously bottom-right at 70px, which planted toasts directly on top of
+  // the newest chat message and crowded the inputbar. Topping the overlay
+  // keeps them off the read zone (chat reads bottom-up, so the top edge is
+  // the *oldest* visible messages — those scroll away naturally). Falls back
+  // to viewport corner if overlay rect isn't available yet.
   registerLayer('toast-stack', {
     stack: 'queue',
     maxVisible: 3,
-    geometry: () => ({ bottom: 70, right: 20 }),
+    geometry: ({ overlayElement, tabBarElement, tabPosition }) => {
+      const ovRect = overlayElement ? overlayElement.getBoundingClientRect() : null
+      const tbVisible = tabBarElement && !tabBarElement.classList.contains('hs-hidden')
+      const tbRect = tbVisible ? tabBarElement.getBoundingClientRect() : null
+      if (!ovRect || ovRect.width <= 0) return { top: 12, right: 20, bottom: null }
+      const topY = (tabPosition === 'top' && tbRect && tbRect.height > 0)
+        ? tbRect.bottom + 6 : ovRect.top + 6
+      return {
+        top: topY,
+        right: window.innerWidth - (ovRect.left + ovRect.width) + 6,
+        bottom: null,
+      }
+    },
   })
 
   // Chat-docked-bottom — full-width band above the inputbar (and tabbar in
@@ -361,11 +387,18 @@ const HsNotifs = (() => {
     layer: 'toast-stack',
     timeout: 4000,
     clickToDismiss: true,
+    // Dedupe identical text — repeated kick/twitch send failures used to
+    // stack one toast per attempt, crowding the chat. Same text+level now
+    // collapses to a single toast with a "×N" counter and a refreshed timer.
+    dedupeKey: ({ text, level }) =>
+      `toast:${level || 'info'}:${String(text || '').slice(0, 200)}`,
+    onDedupe: (existing) => { existing._count = (existing._count || 1) + 1 },
     render: ({ data }) => {
       const level = data.level || 'info'
-      const text = (typeof data.text === 'string' ? data.text : '').trim() || `[${level}]`
+      const base = (typeof data.text === 'string' ? data.text : '').trim() || `[${level}]`
+      const count = data._count | 0
       const el = document.createElement('span')
-      el.textContent = text
+      el.textContent = count > 1 ? `${base} ×${count}` : base
       el.className = `hs-notif-toast-text hs-notif-toast-${level}`
       return el
     },

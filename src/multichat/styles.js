@@ -914,8 +914,9 @@ function injectStyles() {
       min-width: 0;
     }
     .hs-notif-layer-toast-stack {
-      bottom: var(--hs-layer-toast-stack-bottom, 70px);
+      top: var(--hs-layer-toast-stack-top, 12px);
       right: var(--hs-layer-toast-stack-right, 20px);
+      bottom: auto;
       align-items: flex-end;
       max-width: min(380px, calc(100vw - 40px));
     }
@@ -3150,6 +3151,210 @@ function injectStyles() {
     }
     #hs-mc-emote-btn:hover {
       background: #fff;
+    }
+
+    /* ── Twitch tab sub-tabs (square icon row at top) ─────────────────────── */
+    .hs-mc-tw-subtabs {
+      display: flex;
+      gap: 4px;
+      padding: 6px 8px 4px 8px;
+      border-bottom: 1px solid rgba(255,255,255,0.2);
+      flex-shrink: 0;
+    }
+    .hs-mc-tw-subtab {
+      width: 36px;
+      height: 36px;
+      padding: 0;
+      background: #000;
+      color: #fff;
+      border: 1px solid rgba(255,255,255,0.3);
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      transition: none;
+    }
+    .hs-mc-tw-subtab:hover,
+    .hs-mc-tw-subtab:focus-visible {
+      background: rgba(255,255,255,0.12);
+      border-color: #fff;
+      outline: none;
+    }
+    .hs-mc-tw-subtab.active {
+      background: #fff;
+      color: #000;
+      border-color: #fff;
+    }
+    .hs-mc-tw-subtab svg { display: block; }
+    .hs-mc-tw-content {
+      flex: 1;
+      overflow-y: auto;
+      padding: 4px 0;
+    }
+    .hs-mc-cheer-inline {
+      margin: 6px 8px;
+    }
+
+    /* ── Cheer panel — inline bits purchase in the picker's twitch tab ────── */
+    .hs-mc-cheer-panel {
+      background: #000;
+      color: #fff;
+      border: 1px solid #fff;
+      padding: 10px;
+      margin: 6px 8px 10px 8px;
+      font: inherit;
+      font-size: 13px;
+      line-height: 1.3;
+      box-sizing: border-box;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .hs-mc-cheer-panel .hs-mc-cheer-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 8px;
+      padding-bottom: 4px;
+      border-bottom: 1px solid rgba(255,255,255,0.25);
+    }
+    .hs-mc-cheer-panel .hs-mc-cheer-title {
+      font-weight: 600;
+      flex: 1;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .hs-mc-cheer-panel .hs-mc-cheer-balance {
+      font-variant-numeric: tabular-nums;
+      opacity: 0.85;
+      flex-shrink: 0;
+    }
+    .hs-mc-cheer-panel .hs-mc-cheer-preview {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      min-height: 28px;
+      padding: 4px 8px;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.18);
+    }
+    .hs-mc-cheer-panel .hs-mc-cheer-preview-img {
+      width: 28px;
+      height: 28px;
+      object-fit: contain;
+    }
+    .hs-mc-cheer-panel .hs-mc-cheer-preview-label {
+      font-variant-numeric: tabular-nums;
+      flex: 1;
+    }
+    .hs-mc-cheer-panel .hs-mc-cheer-amounts {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+    }
+    .hs-mc-cheer-panel .hs-mc-cheer-amt {
+      flex: 1 0 auto;
+      min-width: 48px;
+      padding: 6px 10px;
+      background: #000;
+      color: #fff;
+      border: 1px solid #fff;
+      cursor: pointer;
+      font: inherit;
+      font-variant-numeric: tabular-nums;
+      transition: none;
+    }
+    .hs-mc-cheer-panel .hs-mc-cheer-amt:hover,
+    .hs-mc-cheer-panel .hs-mc-cheer-amt:focus-visible {
+      background: #fff;
+      color: #000;
+      outline: none;
+    }
+    .hs-mc-cheer-panel .hs-mc-cheer-amt.active {
+      background: #fff;
+      color: #000;
+    }
+    .hs-mc-cheer-panel .hs-mc-cheer-custom {
+      flex: 1 0 80px;
+      min-width: 80px;
+      padding: 6px 10px;
+      background: #000;
+      color: #fff;
+      border: 1px solid #fff;
+      font: inherit;
+      font-variant-numeric: tabular-nums;
+      -moz-appearance: textfield;
+    }
+    .hs-mc-cheer-panel .hs-mc-cheer-custom::-webkit-outer-spin-button,
+    .hs-mc-cheer-panel .hs-mc-cheer-custom::-webkit-inner-spin-button {
+      -webkit-appearance: none;
+      margin: 0;
+    }
+    .hs-mc-cheer-panel .hs-mc-cheer-msg {
+      padding: 6px 10px;
+      background: #000;
+      color: #fff;
+      border: 1px solid #fff;
+      font: inherit;
+      width: 100%;
+      box-sizing: border-box;
+    }
+    .hs-mc-cheer-panel .hs-mc-cheer-msg::placeholder,
+    .hs-mc-cheer-panel .hs-mc-cheer-custom::placeholder {
+      color: rgba(255,255,255,0.45);
+    }
+    .hs-mc-cheer-panel .hs-mc-cheer-actions {
+      display: flex;
+      gap: 6px;
+      justify-content: flex-end;
+    }
+    .hs-mc-cheer-panel .hs-mc-cheer-cancel,
+    .hs-mc-cheer-panel .hs-mc-cheer-send {
+      padding: 6px 14px;
+      background: #000;
+      color: #fff;
+      border: 1px solid #fff;
+      cursor: pointer;
+      font: inherit;
+    }
+    .hs-mc-cheer-panel .hs-mc-cheer-cancel:hover,
+    .hs-mc-cheer-panel .hs-mc-cheer-send:hover:not(:disabled) {
+      background: #fff;
+      color: #000;
+    }
+    .hs-mc-cheer-panel .hs-mc-cheer-send:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+    .hs-mc-cheer-panel .hs-mc-cheer-launch {
+      width: 100%;
+      padding: 12px;
+      font-size: 1.05em;
+      font-weight: 700;
+    }
+    .hs-mc-cheer-panel .hs-mc-cheer-note {
+      font-size: 0.85em;
+      opacity: 0.7;
+      padding: 4px 2px;
+      line-height: 1.4;
+    }
+
+    /* Cheermote rendering inside chat messages — universal Cheer tier image
+       (animated) + colored amount. Triggered by msg.bits > 0 in the renderer. */
+    .hs-mc-cheermote {
+      height: 24px;
+      width: auto;
+      vertical-align: middle;
+      display: inline-block;
+      margin: -2px 2px 0 0;
+    }
+    .hs-mc-cheer-amt {
+      font-weight: 700;
+      margin-right: 2px;
+      font-variant-numeric: tabular-nums;
+      font-size: 1.05em;
     }
 
     /* === Profile card — system sans, no chrome, badges-first === */

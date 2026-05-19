@@ -176,7 +176,14 @@ function bundleContentScript(srcPath, lib, mcModules) {
   // Multichat modules go before body: bootstrap.js declares cleanup/log first,
   // then modules declare their state + functions, then body has state + init()
   const modules = mcModules ? `${mcModules}\n` : ''
-  return `(function() {\n'use strict';\n\n${lib}\n{\n${modules}${body}\n}\n})();`
+  // Cheer-popup short-circuit: if this window was opened by heatsync's cheer
+  // launcher (via window.open with name 'hs-cheer-<channel>'), skip ALL
+  // heatsync content scripts so the popup runs pure twitch — chat, gem icon,
+  // cheer modal all work in their native UI without heatsync's overlay
+  // covering anything. Cheermote echoes still arrive in the MAIN tab's
+  // multichat through the IRC stream, so renderer still fires there.
+  const cheerPopupGuard = `if (typeof window !== 'undefined' && typeof window.name === 'string' && window.name.indexOf('hs-cheer-') === 0) return;`
+  return `(function() {\n'use strict';\n${cheerPopupGuard}\n\n${lib}\n{\n${modules}${body}\n}\n})();`
 }
 
 // Build for a specific browser

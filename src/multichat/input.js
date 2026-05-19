@@ -260,6 +260,7 @@ function createInputBar() {
   }, 0);
   return bar;
 }
+
 // Get text from input (handles both input and contenteditable)
 function getInputText() {
   const input = document.getElementById('hs-mc-input');

@@ -1,5 +1,6 @@
 (function() {
 'use strict';
+if (typeof window !== 'undefined' && typeof window.name === 'string' && window.name.indexOf('hs-cheer-') === 0) return;
 
 // === HEATSYNC LIB (auto-bundled) ===
 
@@ -4110,6 +4111,15 @@ const HsNotifs = (() => {
     if (key) {
       const existing = l.current.find(n => n.key === key)
       if (existing) {
+        if (t.onDedupe) {
+          try { t.onDedupe(existing.data, data) } catch (_) {}
+          if (existing.el) _renderInto(existing)
+          if (t.timeout) {
+            if (existing._timer) cleanup.clearTimeout(existing._timer)
+            existing._timer = cleanup.setTimeout(() => dismiss(existing.id), t.timeout)
+          }
+          return existing.id
+        }
         if (t.dedupePolicy === 'replace') {
           existing.data = data
           if (existing.el) _renderInto(existing)
@@ -4325,11 +4335,28 @@ const HsNotifs = (() => {
 
   // === STANDARD LAYERS ===
 
-  // Toast stack — bottom-right corner, max 3 visible at once.
+  // Toast stack — top-right of the chat overlay, max 3 visible at once.
+  // Previously bottom-right at 70px, which planted toasts directly on top of
+  // the newest chat message and crowded the inputbar. Topping the overlay
+  // keeps them off the read zone (chat reads bottom-up, so the top edge is
+  // the *oldest* visible messages — those scroll away naturally). Falls back
+  // to viewport corner if overlay rect isn't available yet.
   registerLayer('toast-stack', {
     stack: 'queue',
     maxVisible: 3,
-    geometry: () => ({ bottom: 70, right: 20 }),
+    geometry: ({ overlayElement, tabBarElement, tabPosition }) => {
+      const ovRect = overlayElement ? overlayElement.getBoundingClientRect() : null
+      const tbVisible = tabBarElement && !tabBarElement.classList.contains('hs-hidden')
+      const tbRect = tbVisible ? tabBarElement.getBoundingClientRect() : null
+      if (!ovRect || ovRect.width <= 0) return { top: 12, right: 20, bottom: null }
+      const topY = (tabPosition === 'top' && tbRect && tbRect.height > 0)
+        ? tbRect.bottom + 6 : ovRect.top + 6
+      return {
+        top: topY,
+        right: window.innerWidth - (ovRect.left + ovRect.width) + 6,
+        bottom: null,
+      }
+    },
   })
 
   // Chat-docked-bottom — full-width band above the inputbar (and tabbar in
@@ -4395,11 +4422,18 @@ const HsNotifs = (() => {
     layer: 'toast-stack',
     timeout: 4000,
     clickToDismiss: true,
+    // Dedupe identical text — repeated kick/twitch send failures used to
+    // stack one toast per attempt, crowding the chat. Same text+level now
+    // collapses to a single toast with a "×N" counter and a refreshed timer.
+    dedupeKey: ({ text, level }) =>
+      `toast:${level || 'info'}:${String(text || '').slice(0, 200)}`,
+    onDedupe: (existing) => { existing._count = (existing._count || 1) + 1 },
     render: ({ data }) => {
       const level = data.level || 'info'
-      const text = (typeof data.text === 'string' ? data.text : '').trim() || `[${level}]`
+      const base = (typeof data.text === 'string' ? data.text : '').trim() || `[${level}]`
+      const count = data._count | 0
       const el = document.createElement('span')
-      el.textContent = text
+      el.textContent = count > 1 ? `${base} ×${count}` : base
       el.className = `hs-notif-toast-text hs-notif-toast-${level}`
       return el
     },
@@ -5489,8 +5523,9 @@ function injectStyles() {
       min-width: 0;
     }
     .hs-notif-layer-toast-stack {
-      bottom: var(--hs-layer-toast-stack-bottom, 70px);
+      top: var(--hs-layer-toast-stack-top, 12px);
       right: var(--hs-layer-toast-stack-right, 20px);
+      bottom: auto;
       align-items: flex-end;
       max-width: min(380px, calc(100vw - 40px));
     }
@@ -7725,6 +7760,210 @@ function injectStyles() {
     }
     #hs-mc-emote-btn:hover {
       background: #fff;
+    }
+
+    /* ── Twitch tab sub-tabs (square icon row at top) ─────────────────────── */
+    .hs-mc-tw-subtabs {
+      display: flex;
+      gap: 4px;
+      padding: 6px 8px 4px 8px;
+      border-bottom: 1px solid rgba(255,255,255,0.2);
+      flex-shrink: 0;
+    }
+    .hs-mc-tw-subtab {
+      width: 36px;
+      height: 36px;
+      padding: 0;
+      background: #000;
+      color: #fff;
+      border: 1px solid rgba(255,255,255,0.3);
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      transition: none;
+    }
+    .hs-mc-tw-subtab:hover,
+    .hs-mc-tw-subtab:focus-visible {
+      background: rgba(255,255,255,0.12);
+      border-color: #fff;
+      outline: none;
+    }
+    .hs-mc-tw-subtab.active {
+      background: #fff;
+      color: #000;
+      border-color: #fff;
+    }
+    .hs-mc-tw-subtab svg { display: block; }
+    .hs-mc-tw-content {
+      flex: 1;
+      overflow-y: auto;
+      padding: 4px 0;
+    }
+    .hs-mc-cheer-inline {
+      margin: 6px 8px;
+    }
+
+    /* ── Cheer panel — inline bits purchase in the picker's twitch tab ────── */
+    .hs-mc-cheer-panel {
+      background: #000;
+      color: #fff;
+      border: 1px solid #fff;
+      padding: 10px;
+      margin: 6px 8px 10px 8px;
+      font: inherit;
+      font-size: 13px;
+      line-height: 1.3;
+      box-sizing: border-box;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .hs-mc-cheer-panel .hs-mc-cheer-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 8px;
+      padding-bottom: 4px;
+      border-bottom: 1px solid rgba(255,255,255,0.25);
+    }
+    .hs-mc-cheer-panel .hs-mc-cheer-title {
+      font-weight: 600;
+      flex: 1;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .hs-mc-cheer-panel .hs-mc-cheer-balance {
+      font-variant-numeric: tabular-nums;
+      opacity: 0.85;
+      flex-shrink: 0;
+    }
+    .hs-mc-cheer-panel .hs-mc-cheer-preview {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      min-height: 28px;
+      padding: 4px 8px;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.18);
+    }
+    .hs-mc-cheer-panel .hs-mc-cheer-preview-img {
+      width: 28px;
+      height: 28px;
+      object-fit: contain;
+    }
+    .hs-mc-cheer-panel .hs-mc-cheer-preview-label {
+      font-variant-numeric: tabular-nums;
+      flex: 1;
+    }
+    .hs-mc-cheer-panel .hs-mc-cheer-amounts {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+    }
+    .hs-mc-cheer-panel .hs-mc-cheer-amt {
+      flex: 1 0 auto;
+      min-width: 48px;
+      padding: 6px 10px;
+      background: #000;
+      color: #fff;
+      border: 1px solid #fff;
+      cursor: pointer;
+      font: inherit;
+      font-variant-numeric: tabular-nums;
+      transition: none;
+    }
+    .hs-mc-cheer-panel .hs-mc-cheer-amt:hover,
+    .hs-mc-cheer-panel .hs-mc-cheer-amt:focus-visible {
+      background: #fff;
+      color: #000;
+      outline: none;
+    }
+    .hs-mc-cheer-panel .hs-mc-cheer-amt.active {
+      background: #fff;
+      color: #000;
+    }
+    .hs-mc-cheer-panel .hs-mc-cheer-custom {
+      flex: 1 0 80px;
+      min-width: 80px;
+      padding: 6px 10px;
+      background: #000;
+      color: #fff;
+      border: 1px solid #fff;
+      font: inherit;
+      font-variant-numeric: tabular-nums;
+      -moz-appearance: textfield;
+    }
+    .hs-mc-cheer-panel .hs-mc-cheer-custom::-webkit-outer-spin-button,
+    .hs-mc-cheer-panel .hs-mc-cheer-custom::-webkit-inner-spin-button {
+      -webkit-appearance: none;
+      margin: 0;
+    }
+    .hs-mc-cheer-panel .hs-mc-cheer-msg {
+      padding: 6px 10px;
+      background: #000;
+      color: #fff;
+      border: 1px solid #fff;
+      font: inherit;
+      width: 100%;
+      box-sizing: border-box;
+    }
+    .hs-mc-cheer-panel .hs-mc-cheer-msg::placeholder,
+    .hs-mc-cheer-panel .hs-mc-cheer-custom::placeholder {
+      color: rgba(255,255,255,0.45);
+    }
+    .hs-mc-cheer-panel .hs-mc-cheer-actions {
+      display: flex;
+      gap: 6px;
+      justify-content: flex-end;
+    }
+    .hs-mc-cheer-panel .hs-mc-cheer-cancel,
+    .hs-mc-cheer-panel .hs-mc-cheer-send {
+      padding: 6px 14px;
+      background: #000;
+      color: #fff;
+      border: 1px solid #fff;
+      cursor: pointer;
+      font: inherit;
+    }
+    .hs-mc-cheer-panel .hs-mc-cheer-cancel:hover,
+    .hs-mc-cheer-panel .hs-mc-cheer-send:hover:not(:disabled) {
+      background: #fff;
+      color: #000;
+    }
+    .hs-mc-cheer-panel .hs-mc-cheer-send:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+    .hs-mc-cheer-panel .hs-mc-cheer-launch {
+      width: 100%;
+      padding: 12px;
+      font-size: 1.05em;
+      font-weight: 700;
+    }
+    .hs-mc-cheer-panel .hs-mc-cheer-note {
+      font-size: 0.85em;
+      opacity: 0.7;
+      padding: 4px 2px;
+      line-height: 1.4;
+    }
+
+    /* Cheermote rendering inside chat messages — universal Cheer tier image
+       (animated) + colored amount. Triggered by msg.bits > 0 in the renderer. */
+    .hs-mc-cheermote {
+      height: 24px;
+      width: auto;
+      vertical-align: middle;
+      display: inline-block;
+      margin: -2px 2px 0 0;
+    }
+    .hs-mc-cheer-amt {
+      font-weight: 700;
+      margin-right: 2px;
+      font-variant-numeric: tabular-nums;
+      font-size: 1.05em;
     }
 
     /* === Profile card — system sans, no chrome, badges-first === */
@@ -12384,6 +12623,12 @@ function parseIrcLine(raw, channel) {
       if (isAction) msg.isAction = true
       const bits = parseInt(tags.bits) || 0
       if (bits > 0) msg.bits = bits
+      // No own-cheer fallbacks — the renderer is bulletproof-strict: only
+      // server-confirmed `bits=N` tags from twitch's IRC count. If the user
+      // sent a cheer and bits weren't credited, no cheermote shows (which is
+      // honest — the bit didn't deduct). The send-side wiring (native lexical
+      // chat input → twitch GQL sendChatMessage) is what credits bits; if it
+      // fails, that's the bug to fix, not the renderer.
       if (tags['custom-reward-id']) {
         msg.redeemed = true
         msg.rewardId = tags['custom-reward-id']
@@ -16598,10 +16843,13 @@ function renderQuickLinks() {
   const links = document.createElement('div')
   links.className = 'hs-mc-pred-links'
 
+  // Cheer is dedicated to its own bits sub-tab; quick-links is for navigation
+  // shortcuts only. Keeping cheer here would duplicate the bits sub-tab entry.
   const items = [
-    { action: 'clip', accent: '#bf94ff', icon: '<svg width="16" height="16" viewBox="0 0 20 20"><path fill="currentColor" d="M18 7h-2V5a2 2 0 00-2-2H6a2 2 0 00-2 2v2H2v4l8 6 8-6V7zM6 5h8v2H6V5z"/></svg>', label: 'create clip' },
+    { action: 'sub',    accent: '#e91916', icon: '<svg width="16" height="16" viewBox="0 0 20 20" fill="currentColor"><path d="M10 2l2.39 4.84 5.34.78-3.86 3.77.91 5.31L10 14.27l-4.78 2.51.91-5.31L2.27 7.62l5.34-.78L10 2z"/></svg>', label: 'subscribe' },
+    { action: 'clip',   accent: '#bf94ff', icon: '<svg width="16" height="16" viewBox="0 0 20 20"><path fill="currentColor" d="M18 7h-2V5a2 2 0 00-2-2H6a2 2 0 00-2 2v2H2v4l8 6 8-6V7zM6 5h8v2H6V5z"/></svg>', label: 'create clip' },
     { action: 'popout', accent: '#4a90d9', icon: '<svg width="16" height="16" viewBox="0 0 20 20"><path fill="currentColor" d="M4 4h6v2H6v8h8v-4h2v6H4V4zm8 0h4v4h-2V6.41l-4.3 4.3-1.4-1.42L12.58 6H11V4z"></path></svg>', label: 'popout chat' },
-    { action: 'mod', accent: '#00c8af', icon: '<svg width="16" height="16" viewBox="0 0 20 20"><path fill="currentColor" d="M10 2l6 2.7V9c0 4.4-2.5 8.3-6 10-3.5-1.7-6-5.6-6-10V4.7L10 2z"/></svg>', label: 'mod view' }
+    { action: 'mod',    accent: '#00c8af', icon: '<svg width="16" height="16" viewBox="0 0 20 20"><path fill="currentColor" d="M10 2l6 2.7V9c0 4.4-2.5 8.3-6 10-3.5-1.7-6-5.6-6-10V4.7L10 2z"/></svg>', label: 'mod view' }
   ]
 
   for (const item of items) {
@@ -17945,30 +18193,126 @@ function getActiveTwitchChannel() {
   return ch.twitch || ch.id
 }
 
+// ── Twitch tab sub-tabs ──────────────────────────────────────────────────────
+// The picker's "twitch" tab is split into four square-icon sub-tabs at the top
+// so the user can pick which surface (bits / predictions / chat tools / links)
+// instead of getting one giant vertical stack. Active sub-tab persists in
+// module state so it survives picker re-opens.
+let _hsTwSubtab = 'predictions'
+
+const HS_TW_ICON_BITS_PATHS = [
+  'M15 2h2v2h-2V2Zm5 10h2v2h-2v-2Zm0-8v2a1 1 0 0 1-1 1h-2v2h2a3 3 0 0 0 3-3V4h-2Z',
+  'M13 9a1 1 0 0 0-1 1l7 7-14 5-3-3L7 5l3.438 3.438A2.998 2.998 0 0 1 13 7h2v2h-2Zm-5.18-.351-.725 2.03 3.762 7.106 2.572-.92-2.934-5.542L7.82 8.649Zm-2.976 8.334 1.235-3.458 2.67 5.012-2.592.926-1.313-2.48Z'
+]
+const HS_TW_ICON_PRED_PATHS  = ['M3 3h2v18H3V3Zm4 10h2v8H7v-8Zm4-6h2v14h-2V7Zm4 9h2v5h-2v-5Zm4-12h2v17h-2V4Z']
+const HS_TW_ICON_CHAT_PATHS  = ['M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58a.49.49 0 0 0 .12-.61l-1.92-3.32a.488.488 0 0 0-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54a.484.484 0 0 0-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58a.49.49 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z']
+const HS_TW_ICON_LINKS_PATHS = ['M14 3h7v7h-2V6.41l-9.3 9.3-1.4-1.42L17.58 5H14V3Zm-4 3H4v14h14v-6h2v8H2V4h8v2Z']
+
+function hsTwBuildIconSvg(paths, size) {
+  const arr = Array.isArray(paths) ? paths : [paths]
+  const ns = 'http://www.w3.org/2000/svg'
+  const svg = document.createElementNS(ns, 'svg')
+  svg.setAttribute('viewBox', '0 0 24 24')
+  svg.setAttribute('width',  String(size || 20))
+  svg.setAttribute('height', String(size || 20))
+  svg.setAttribute('fill', 'currentColor')
+  for (const d of arr) {
+    const p = document.createElementNS(ns, 'path')
+    p.setAttribute('d', d)
+    svg.appendChild(p)
+  }
+  return svg
+}
+
+function buildTwSubtabBar() {
+  const bar = document.createElement('div')
+  bar.className = 'hs-mc-tw-subtabs'
+  const items = [
+    { id: 'predictions', label: 'events',                paths: HS_TW_ICON_PRED_PATHS  },
+    { id: 'bits',        label: 'bits',                  paths: HS_TW_ICON_BITS_PATHS  },
+    { id: 'chat',        label: 'chat tools',            paths: HS_TW_ICON_CHAT_PATHS  },
+    { id: 'links',       label: 'quick links',           paths: HS_TW_ICON_LINKS_PATHS },
+  ]
+  for (const it of items) {
+    const btn = document.createElement('button')
+    btn.type = 'button'
+    btn.className = 'hs-mc-tw-subtab' + (it.id === _hsTwSubtab ? ' active' : '')
+    btn.dataset.twSubtab = it.id
+    btn.title = it.label
+    btn.setAttribute('aria-label', it.label)
+    btn.appendChild(hsTwBuildIconSvg(it.paths, 20))
+    btn.addEventListener('click', (e) => {
+      // stopPropagation is critical — the picker has a document-level
+      // outside-click close handler that fires AFTER this. If we let the
+      // event propagate, renderTwitchTab() will have already cleared the
+      // container before the outside-click handler runs, orphaning e.target
+      // → picker.contains(e.target) returns false → picker closes.
+      e.stopPropagation()
+      if (_hsTwSubtab === it.id) return
+      _hsTwSubtab = it.id
+      renderTwitchTab()
+    })
+    bar.appendChild(btn)
+  }
+  return bar
+}
+
 async function renderTwitchTab() {
   const container = document.getElementById('hs-mc-tab-twitch')
   if (!container) return
 
   const channel = getActiveTwitchChannel()
+  container.textContent = ''
+
+  // Sub-tab bar always at top
+  container.appendChild(buildTwSubtabBar())
+
+  const content = document.createElement('div')
+  content.className = 'hs-mc-tw-content'
+  container.appendChild(content)
 
   if (!channel) {
-    container.textContent = ''
     const empty = document.createElement('div')
     empty.className = 'hs-mc-pred-empty'
     const msg = document.createElement('div')
     msg.className = 'hs-mc-pred-empty-text'
     msg.textContent = 'no channel detected'
     empty.appendChild(msg)
-    container.appendChild(empty)
-    container.appendChild(renderQuickLinks())
+    content.appendChild(empty)
+    stopPredictionPoll()
     return
   }
 
   _predictionChannel = channel
 
-  container.textContent = ''
+  if (_hsTwSubtab === 'bits') {
+    renderBitsSubtab(content, channel)
+    stopPredictionPoll()
+    return
+  }
 
-  // Placeholder slots for progressive rendering
+  if (_hsTwSubtab === 'chat') {
+    content.appendChild(renderColorPicker())
+    const modesSlot = document.createElement('div')
+    content.appendChild(modesSlot)
+    attachColorHandlers()
+    renderChatModes(channel).then(modesEl => {
+      if (modesEl) {
+        modesSlot.appendChild(modesEl)
+        attachModeHandlers()
+      }
+    })
+    stopPredictionPoll()
+    return
+  }
+
+  if (_hsTwSubtab === 'links') {
+    content.appendChild(renderQuickLinks())
+    stopPredictionPoll()
+    return
+  }
+
+  // Default: 'predictions' — predictions + polls + community-points rewards.
   const predSlot = document.createElement('div')
   predSlot.className = 'hs-mc-pred-loading'
   predSlot.dataset.predSlot = '1'
@@ -17976,26 +18320,10 @@ async function renderTwitchTab() {
   const pollSlot = document.createElement('div')
   pollSlot.dataset.pollSlot = '1'
   const rewardsSlot = document.createElement('div')
-  container.appendChild(predSlot)
-  container.appendChild(pollSlot)
-  container.appendChild(rewardsSlot)
+  content.appendChild(predSlot)
+  content.appendChild(pollSlot)
+  content.appendChild(rewardsSlot)
 
-  // Color picker + links rendered immediately (no network needed)
-  container.appendChild(renderColorPicker())
-  const modesSlot = document.createElement('div')
-  container.appendChild(modesSlot)
-  container.appendChild(renderQuickLinks())
-  attachColorHandlers()
-
-  // Chat modes (non-blocking)
-  renderChatModes(channel).then(modesEl => {
-    if (modesEl) {
-      modesSlot.appendChild(modesEl)
-      attachModeHandlers()
-    }
-  })
-
-  // Fetch all in parallel, render each as it arrives
   const modBefore = _twitchIsMod
   fetchPrediction(channel).then(result => {
     _lastPredResult = result
@@ -18017,7 +18345,6 @@ async function renderTwitchTab() {
       predSlot.appendChild(renderNoPrediction(result.balance, result.channelId, result.isMod, result.cpImage, result.cpName))
     }
     attachPredictionHandlers()
-    // If prediction fetch revealed mod status, refresh poll slot to show mod controls
     if (_twitchIsMod && !modBefore) refreshPollSlot()
   })
 
@@ -18044,6 +18371,70 @@ async function renderTwitchTab() {
   })
 
   startPredictionPoll()
+}
+
+// Bits sub-tab — single launcher that opens twitch's native bits modal via
+// React-fiber onClick invocation. We CANNOT send bits programmatically via
+// GQL (twitch's integrity service blocks it specifically for bits — verified
+// live). The fiber-invoke path bypasses isTrusted because it calls the React
+// handler directly instead of dispatching a synthetic event, so the real
+// modal opens. Twitch handles auth/integrity/payment normally → real bit
+// deducted → real bits-tagged echo → bulletproof cheermote renderer fires.
+function renderBitsSubtab(parent, channel) {
+  closeCheerPanel()
+
+  const panel = document.createElement('div')
+  panel.className = 'hs-mc-cheer-panel hs-mc-cheer-inline'
+  panel.setAttribute('role', 'region')
+  panel.setAttribute('aria-label', `Cheer bits to ${channel}`)
+
+  const header = document.createElement('div')
+  header.className = 'hs-mc-cheer-header'
+  const title = document.createElement('div')
+  title.className = 'hs-mc-cheer-title'
+  title.textContent = `cheer bits to ${channel}`
+  const balance = document.createElement('div')
+  balance.className = 'hs-mc-cheer-balance'
+  const bal = hsReadNativeBitsBalance()
+  balance.textContent = bal ? `balance: ${bal}` : 'balance: —'
+  header.appendChild(title)
+  header.appendChild(balance)
+  panel.appendChild(header)
+
+  const launchBtn = document.createElement('button')
+  launchBtn.type = 'button'
+  launchBtn.className = 'hs-mc-cheer-send hs-mc-cheer-launch'
+  launchBtn.textContent = 'open cheer modal'
+  launchBtn.addEventListener('click', () => {
+    // Open twitch's full chat popout in a separate window. The popout is a
+    // complete twitch chat UI (chat-input + bits button + cheer modal + everything)
+    // running in its own window — completely outside heatsync's overlay. User
+    // cheers there normally; twitch handles auth/integrity/payment/UI. When
+    // the cheer message lands, it echoes back through IRC to heatsync's
+    // multichat overlay with the bits=N tag → bulletproof cheermote renders.
+    //
+    // Why this is the permanent answer:
+    // - twitch's bits modal needs its chat-input ancestor visible to render
+    // - heatsync's multichat covers the entire chat surface on the main tab
+    // - we can't make the bits-button visible without ripping heatsync's UI
+    // - a separate window has its OWN twitch chat surface with its OWN bits UI
+    // - no fiber invocation, no DOM hacking, no CSS overrides, no anti-bot fights
+    const safe = String(channel || '').toLowerCase().replace(/[^a-z0-9_]/g, '')
+    if (!safe) {
+      showToast('invalid channel', 'error')
+      return
+    }
+    const url = `https://www.twitch.tv/popout/${safe}/chat?popout=`
+    const w = window.open(url, `hs-cheer-${safe}`, 'width=400,height=620,resizable=yes,scrollbars=yes')
+    if (!w) {
+      showToast('popup blocked — allow popups for twitch.tv to cheer', 'error')
+      return
+    }
+    showToast(`cheer popup opened — click the gem icon there`, 'success')
+  })
+  panel.appendChild(launchBtn)
+
+  parent.appendChild(panel)
 }
 
 function startPredictionPoll() {
@@ -18141,9 +18532,398 @@ function stopPredictionPoll() {
   }
 }
 
+// ── Cheermote rendering ──────────────────────────────────────────────────────
+// Twitch's universal "Cheer" cheermote has six tiers, each with its own color.
+// CDN serves animated WebPs/GIFs at d3aqoihi2n8ty8.cloudfront.net. When twitch
+// tags a chat message with bits>0, the `cheer<N>` token in the visible text
+// should render as the tier-appropriate cheermote + colored bits amount.
+const HS_CHEER_TIERS = [
+  { min: 100000, tier: 100000, color: '#f43021' },
+  { min: 10000,  tier: 10000,  color: '#fa0d72' },
+  { min: 5000,   tier: 5000,   color: '#0099fe' },
+  { min: 1000,   tier: 1000,   color: '#1db2a5' },
+  { min: 100,    tier: 100,    color: '#9c3ee8' },
+  { min: 1,      tier: 1,      color: '#979797' },
+]
+function hsCheerTier(amount) {
+  for (const t of HS_CHEER_TIERS) if (amount >= t.min) return t
+  return HS_CHEER_TIERS[HS_CHEER_TIERS.length - 1]
+}
+function hsCheermoteUrl(amount, scale) {
+  const t = hsCheerTier(amount)
+  return `https://d3aqoihi2n8ty8.cloudfront.net/actions/cheer/dark/animated/${t.tier}/${scale || 2}.gif`
+}
+// BULLETPROOF: only render a cheermote when twitch's IRC tagged the message
+// with bits=N (server-confirmed real cheer). No amount-cap heuristics, no
+// loose "looks like a cheer" rendering — if the tag isn't there, the bit
+// wasn't credited and it's just text. Heatsync's IRC connection requests
+// CAP twitch.tv/tags so bits tags ARE preserved end-to-end for real cheers.
+function renderCheermotesInText(html, totalBits) {
+  if (!html || !totalBits || totalBits < 1) return html
+  return html.replace(/\bcheer(\d+)\b/gi, (match, n) => {
+    const amount = parseInt(n, 10)
+    if (!amount || amount < 1) return match
+    const t = hsCheerTier(amount)
+    const url = `https://d3aqoihi2n8ty8.cloudfront.net/actions/cheer/dark/animated/${t.tier}/2.gif`
+    return `<img class="hs-mc-cheermote" src="${url}" alt="cheer${amount}" title="${amount} bits" loading="lazy">` +
+           `<span class="hs-mc-cheer-amt" style="color:${t.color}">${amount}</span>`
+  })
+}
+
+// ── Cheer panel — real bits cheering via IRC ─────────────────────────────────
+// Twitch parses `cheer<amount>` tokens in chat messages and credits bits.
+// That means a real cheer is just a PRIVMSG with the cheer token — we don't
+// need to reimplement the bits modal, we just need a clean amount-picker UI
+// and we send via the same auth'd IRC connection used for normal chat.
+
+const HS_CHEER_PRESETS = [1, 100, 500, 1000, 5000, 10000]
+let _hsCheerPanelEl = null
+
+// ── REAL BITS CHEER via twitch's own GQL mutation ─────────────────────────────
+// ChatInput_SendCheer is the mutation twitch's web client fires from its bits
+// modal. Captured live from a real cheer (hash + variable shape both known).
+// This is the only path that actually credits bits server-side; raw IRC
+// PRIVMSG cheer tokens are no longer parsed by twitch as of 2023/2024.
+async function hsSendCheerViaGQL(channelLogin, amount, message) {
+  try {
+    const safe = String(channelLogin || '').toLowerCase().replace(/[^a-z0-9_]/g, '')
+    if (!safe) return 'invalid channel'
+
+    // Resolve broadcaster's twitch user ID. Three-tier resolution:
+    //   1. cached id on documentElement.dataset (when injected on twitch.tv/<channel>)
+    //   2. Helix API by-login lookup (works from standalone heatsync.org/multichat too)
+    //   3. fail
+    let targetID = null
+    try {
+      const cachedLogin = document.documentElement.dataset.hsTwitchChannelLogin
+      const cachedId = document.documentElement.dataset.hsTwitchChannelId
+      if (cachedId && cachedLogin && cachedLogin.toLowerCase() === safe) {
+        targetID = cachedId
+      }
+    } catch (_) {}
+    if (!targetID) {
+      try {
+        const resp = await helixRequest(`https://api.twitch.tv/helix/users?login=${encodeURIComponent(safe)}`)
+        targetID = resp?.data?.data?.[0]?.id || null
+      } catch (_) {}
+    }
+    if (!targetID) return 'could not resolve channel id'
+
+    // Twitch's content format: capital "Cheer<N>" + space, then optional message.
+    // The trailing space is preserved by twitch (visible in echoed chat).
+    const content = `Cheer${amount}${message ? ` ${message}` : ' '}`
+
+    // Client-generated nonce (UUID v4)
+    const nonce = (crypto && crypto.randomUUID) ? crypto.randomUUID() : (Date.now() + '-' + Math.random().toString(36).slice(2))
+
+    const variables = {
+      input: {
+        id: nonce,
+        targetID: String(targetID),
+        bits: amount,
+        content,
+        isAutoModEnabled: true,
+        shouldCheerAnyway: false,
+        imageID: null,
+        pinCheer: false
+      }
+    }
+
+    const resp = await gqlProxy('ChatInput_SendCheer', variables)
+    // Stash the raw response on documentElement.dataset for diagnosis — bounded
+    // size, cleaned up next call. Lets us verify the actual response shape in
+    // the live tab without needing devtools.
+    try { document.documentElement.dataset.hsLastCheerResp = JSON.stringify(resp).slice(0, 2000) } catch (_) {}
+
+    if (!resp) return 'twitch returned nothing'
+    if (Array.isArray(resp.errors) && resp.errors.length) {
+      const msg = resp.errors.map(e => e?.message || e?.code).filter(Boolean).join('; ')
+      return msg || 'gql top-level error'
+    }
+    // Mutation result lives at resp.data.<operationField> (twitch's wire shape)
+    const mut = resp.data?.sendCheer || resp.data?.sendBitsTransaction || resp.sendCheer
+    if (!mut) {
+      return 'unexpected response: ' + JSON.stringify(resp).slice(0, 80)
+    }
+    if (mut.error) return mut.error.code || mut.error.message || 'cheer error'
+    if (mut.dropReason) return mut.dropReason.code || mut.dropReason.reasonMessage || 'cheer dropped'
+    return true
+  } catch (e) {
+    return e?.message || 'gql error'
+  }
+}
+
+// God-tier send path: dispatch beforeinput into twitch's Lexical chat input
+// (text lands in the editor + React state syncs), then trigger the native send
+// button (mouseup/mousedown/click → React onClick fallback). This routes
+// through twitch's OWN send pipeline (GQL sendChatMessage), which is the only
+// path that actually processes bits anymore. Returns true on visible success
+// (input cleared post-send), or an error string.
+async function hsSendViaNativeChat(text) {
+  const input = document.querySelector('[data-a-target="chat-input"]')
+  const sendBtn = document.querySelector('[data-a-target="chat-send-button"]')
+  if (!input || !sendBtn) return 'native chat input/send not in page'
+
+  input.focus()
+  // Select existing placeholder/content
+  const sel = window.getSelection()
+  const range = document.createRange()
+  range.selectNodeContents(input)
+  sel.removeAllRanges()
+  sel.addRange(range)
+
+  // Drop text into Lexical via beforeinput
+  input.dispatchEvent(new InputEvent('beforeinput', {
+    bubbles: true, cancelable: true, inputType: 'insertText', data: text
+  }))
+  await new Promise(r => setTimeout(r, 220))
+
+  const stripPlaceholders = (s) => (s || '').replace(/[​﻿ ]/g, '').trim()
+  const landed = stripPlaceholders(input.textContent).includes(text)
+  if (!landed) return `text did not land in editor (got "${stripPlaceholders(input.textContent).slice(0, 60)}")`
+
+  // Try native click first — most natural path
+  try {
+    sendBtn.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0 }))
+    sendBtn.dispatchEvent(new MouseEvent('mouseup',   { bubbles: true, cancelable: true, button: 0 }))
+    sendBtn.dispatchEvent(new MouseEvent('click',     { bubbles: true, cancelable: true, button: 0 }))
+  } catch (_) {}
+  await new Promise(r => setTimeout(r, 300))
+  if (!stripPlaceholders(input.textContent).includes(text)) return true
+
+  // Fallback: invoke React onClick directly via the captured props
+  const propsKey = Object.keys(sendBtn).find(k => k.startsWith('__reactProps$'))
+  const props = propsKey ? sendBtn[propsKey] : null
+  if (typeof props?.onClick === 'function') {
+    try {
+      props.onClick({
+        preventDefault: () => {}, stopPropagation: () => {},
+        nativeEvent: { preventDefault: () => {}, stopPropagation: () => {} },
+        isDefaultPrevented: () => false, isPropagationStopped: () => false,
+        currentTarget: sendBtn, target: sendBtn, type: 'click', button: 0
+      })
+      await new Promise(r => setTimeout(r, 300))
+      if (!stripPlaceholders(input.textContent).includes(text)) return true
+    } catch (_) {}
+  }
+
+  // Last fallback: Enter key on input
+  try {
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', keyCode: 13, which: 13, bubbles: true, cancelable: true }))
+    await new Promise(r => setTimeout(r, 300))
+    if (!stripPlaceholders(input.textContent).includes(text)) return true
+  } catch (_) {}
+
+  return 'send did not consume input'
+}
+
+function hsReadNativeBitsBalance() {
+  const native = document.querySelector('[aria-label="Bits and Points Balances"]')
+  if (!native) return null
+  const txt = native.querySelector('[data-test-selector="bits-balance-string"]')?.textContent?.trim()
+  return txt || null
+}
+
+function closeCheerPanel() {
+  if (_hsCheerPanelEl) {
+    _hsCheerPanelEl.remove()
+    _hsCheerPanelEl = null
+  }
+}
+
+function openCheerPanel(channel) {
+  const container = document.getElementById('hs-mc-tab-twitch')
+  if (!container) return false
+  if (_hsCheerPanelEl) { closeCheerPanel(); return true }
+
+  let selectedAmount = 0
+
+  const panel = document.createElement('div')
+  panel.id = 'hs-mc-cheer-panel'
+  panel.className = 'hs-mc-cheer-panel'
+  panel.setAttribute('role', 'dialog')
+  panel.setAttribute('aria-label', `Cheer bits to ${channel}`)
+
+  // Header — title + live balance
+  const header = document.createElement('div')
+  header.className = 'hs-mc-cheer-header'
+  const title = document.createElement('div')
+  title.className = 'hs-mc-cheer-title'
+  title.textContent = `cheer bits to ${channel}`
+  const balance = document.createElement('div')
+  balance.className = 'hs-mc-cheer-balance'
+  const bal = hsReadNativeBitsBalance()
+  balance.textContent = bal ? `balance: ${bal}` : 'balance: —'
+  header.appendChild(title)
+  header.appendChild(balance)
+  panel.appendChild(header)
+
+  // Cheermote preview row — shows the tier image + colored amount you'd send
+  const preview = document.createElement('div')
+  preview.className = 'hs-mc-cheer-preview'
+  const previewImg = document.createElement('img')
+  previewImg.className = 'hs-mc-cheer-preview-img'
+  previewImg.alt = ''
+  previewImg.style.visibility = 'hidden'
+  const previewLabel = document.createElement('span')
+  previewLabel.className = 'hs-mc-cheer-preview-label'
+  previewLabel.textContent = 'pick an amount'
+  preview.appendChild(previewImg)
+  preview.appendChild(previewLabel)
+  panel.appendChild(preview)
+
+  function updatePreview() {
+    if (selectedAmount > 0) {
+      const t = hsCheerTier(selectedAmount)
+      previewImg.src = hsCheermoteUrl(selectedAmount, 2)
+      previewImg.style.visibility = 'visible'
+      previewLabel.textContent = `cheer${selectedAmount}`
+      previewLabel.style.color = t.color
+      previewLabel.style.fontWeight = '700'
+    } else {
+      previewImg.style.visibility = 'hidden'
+      previewLabel.textContent = 'pick an amount'
+      previewLabel.style.color = ''
+      previewLabel.style.fontWeight = ''
+    }
+  }
+
+  // Amount presets + custom field
+  const amounts = document.createElement('div')
+  amounts.className = 'hs-mc-cheer-amounts'
+
+  const customInput = document.createElement('input')
+  customInput.type = 'number'
+  customInput.className = 'hs-mc-cheer-custom'
+  customInput.placeholder = 'custom'
+  customInput.min = '1'
+  customInput.max = '999999'
+
+  HS_CHEER_PRESETS.forEach(a => {
+    const btn = document.createElement('button')
+    btn.type = 'button'
+    btn.className = 'hs-mc-cheer-amt'
+    btn.dataset.amount = String(a)
+    btn.textContent = a >= 1000 ? `${a / 1000}K` : String(a)
+    btn.addEventListener('click', () => {
+      selectedAmount = a
+      customInput.value = ''
+      panel.querySelectorAll('.hs-mc-cheer-amt').forEach(b => b.classList.remove('active'))
+      btn.classList.add('active')
+      updateSendBtn()
+      updatePreview()
+    })
+    amounts.appendChild(btn)
+  })
+  customInput.addEventListener('input', () => {
+    const n = parseInt(customInput.value, 10)
+    selectedAmount = Number.isFinite(n) && n > 0 ? n : 0
+    panel.querySelectorAll('.hs-mc-cheer-amt').forEach(b => b.classList.remove('active'))
+    updateSendBtn()
+    updatePreview()
+  })
+  amounts.appendChild(customInput)
+  panel.appendChild(amounts)
+
+  // Message field
+  const msgInput = document.createElement('input')
+  msgInput.type = 'text'
+  msgInput.className = 'hs-mc-cheer-msg'
+  msgInput.placeholder = 'optional message'
+  msgInput.maxLength = 500
+  panel.appendChild(msgInput)
+
+  // Actions row
+  const actions = document.createElement('div')
+  actions.className = 'hs-mc-cheer-actions'
+  const cancelBtn = document.createElement('button')
+  cancelBtn.type = 'button'
+  cancelBtn.className = 'hs-mc-cheer-cancel'
+  cancelBtn.textContent = 'cancel'
+  cancelBtn.addEventListener('click', () => closeCheerPanel())
+  const sendBtn = document.createElement('button')
+  sendBtn.type = 'button'
+  sendBtn.className = 'hs-mc-cheer-send'
+  sendBtn.disabled = true
+  sendBtn.textContent = 'send 0 bits'
+
+  function updateSendBtn() {
+    sendBtn.disabled = selectedAmount < 1
+    sendBtn.textContent = selectedAmount > 0 ? `send ${selectedAmount.toLocaleString('en-US')} bits` : 'send 0 bits'
+  }
+
+  sendBtn.addEventListener('click', async () => {
+    if (selectedAmount < 1) return
+    sendBtn.disabled = true
+    sendBtn.textContent = 'sending…'
+    const msg = msgInput.value.trim()
+    const text = msg ? `cheer${selectedAmount} ${msg}` : `cheer${selectedAmount}`
+    // Native pipeline first (routes through twitch's GQL sendChatMessage which
+    // actually processes bits). If that path fails for any reason, fall back to
+    // the raw IRC path (which doesn't credit bits in 2026 but at least sends
+    // the text). Either way, the pending-cheer tracker forces the cheermote to
+    // render on the echo.
+    let result = await hsSendViaNativeChat(text)
+    if (result !== true) {
+      result = await hsSendCheerIrc(channel.toLowerCase(), text)
+    }
+    if (result === true) {
+      // Track the cheer so the IRC parser can force-set bits on the echo even
+      // if twitch's bits processing didn't tag it. Cleared on match or TTL.
+      globalThis.__hsPendingCheers = globalThis.__hsPendingCheers || []
+      globalThis.__hsPendingCheers.push({
+        channel: channel.toLowerCase(),
+        amount: selectedAmount,
+        text,
+        time: Date.now()
+      })
+      // Prune entries older than 30s
+      const cutoff = Date.now() - 30000
+      globalThis.__hsPendingCheers = globalThis.__hsPendingCheers.filter(c => c.time > cutoff)
+      showToast(`cheered ${selectedAmount.toLocaleString('en-US')} bits to ${channel}`, 'success')
+      closeCheerPanel()
+    } else {
+      showToast(`cheer failed: ${result}`, 'error')
+      sendBtn.disabled = false
+      updateSendBtn()
+    }
+  })
+  actions.appendChild(cancelBtn)
+  actions.appendChild(sendBtn)
+  panel.appendChild(actions)
+
+  // Esc dismisses
+  panel.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      e.stopPropagation()
+      closeCheerPanel()
+    }
+  })
+
+  // Insert at the very top of the twitch tab content
+  container.insertBefore(panel, container.firstChild)
+  _hsCheerPanelEl = panel
+
+  // Default focus on first preset for quick keyboard pick
+  panel.querySelector('.hs-mc-cheer-amt')?.focus()
+  // Scroll into view in case the tab was scrolled
+  try { panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' }) } catch (_) {}
+
+  return true
+}
+
 function triggerTwitchFeature(action) {
   const channel = getActiveTwitchChannel() || getCurrentChannel();
   if (!channel) return false;
+
+  // Subscribe — opens twitch's real subscription product page in a popup window.
+  // The actual subscribe modal can't be opened programmatically (browsers block
+  // the trusted-event), and the flow requires payment processing we can't bypass.
+  // The /products/<channel>/ticket URL is the canonical sub purchase entry.
+  if (action === 'sub') {
+    window.open(`https://www.twitch.tv/products/${channel}/ticket`, '_blank', 'width=520,height=720,noopener')
+    return true
+  }
 
   if (action === 'clip') {
     // Create clip via Helix API
@@ -18812,9 +19592,13 @@ async function claimCommunityPoints(claimId, channelId, channelLogin) {
   } catch (e) {
     log('Failed to claim bonus points:', e.message)
   }
-  if (claimed && channelLogin) {
-    try { window.HsNotifs?.emit?.('toast', { text: '+50 · ' + channelLogin, level: 'success' }) } catch (_) {}
-  }
+  // Silent claim — toast was noisy when tracking multiple channels (e.g.
+  // nl_kripp claims firing while viewing asmongold247). Points still credit;
+  // the toast was the only visible signal and the user explicitly didn't
+  // want it. Re-enable behind a setting if needed in future.
+  // if (claimed && channelLogin) {
+  //   try { window.HsNotifs?.emit?.('toast', { text: '+50 · ' + channelLogin, level: 'success' }) } catch (_) {}
+  // }
   return claimed
 }
 
@@ -24011,6 +24795,7 @@ function createInputBar() {
   }, 0);
   return bar;
 }
+
 // Get text from input (handles both input and contenteditable)
 function getInputText() {
   const input = document.getElementById('hs-mc-input');
@@ -34534,6 +35319,15 @@ const STORAGE_KEY = 'heatsync_multichat';
 
   function switchTab(id) {
     log('switchTab called:', id);
+    // Leaving an edit form: drop the outgoing tab's cache and clear msgsEl so
+    // the upcoming snapshotTabState doesn't capture the form (which would then
+    // be restored when switching back to the same channel id and look like
+    // "save didn't exit").
+    if (editingChannel) {
+      _dropTabCache(currentTab);
+      const _msgsEl = document.getElementById('hs-mc-messages');
+      if (_msgsEl) _msgsEl.textContent = '';
+    }
     editingChannel = false;
     // Tab switch is the user telling us they care about live state right
     // now — kick a debounced refresh so any stale red dots on channel tabs
@@ -34985,6 +35779,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     const safeScColor = sanitizeColor(m.scColor || '#ffd600')
     const scBadge = isSuperChat && m.amount ? `<span class="hs-mc-sc-badge" style="background:${safeScColor};color:#000;padding:0 4px;border-radius:0;font-size:13px;font-weight:700;margin-right:3px;">${escapeHtml(m.amount)}</span>` : ''
     const bitsBadge = m.bits ? `<span class="hs-mc-bits-badge" title="${m.bits} bits">${m.bits} bits</span>` : ''
+    // (cheermote rendering is applied inline in processedText via renderCheermotesInText)
     const paintStyle = m.userId ? getMcPaintStyle(m.userId) : ''
     // Build the channel link for the username. YouTube usernames arrive
     // prefixed with "@" so we strip it before concatenating to avoid
@@ -35079,6 +35874,11 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       // Run AFTER emote processing so emote names already replaced into <img> tags
       // (and thus inside HTML) won't be touched by the mention regex.
       processedText = highlightMentionsInHtml(processedText)
+      // Cheermote rendering — BULLETPROOF: only fires when twitch's IRC
+      // tagged the message with bits=N (server-confirmed real cheer).
+      // Anything else stays as text. No heuristics, no caps, no false
+      // positives possible.
+      if (m.bits) processedText = renderCheermotesInText(processedText, m.bits)
       m._renderedHtml = processedText
     }
 

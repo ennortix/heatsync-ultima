@@ -6086,6 +6086,15 @@
 
   function switchTab(id) {
     log('switchTab called:', id);
+    // Leaving an edit form: drop the outgoing tab's cache and clear msgsEl so
+    // the upcoming snapshotTabState doesn't capture the form (which would then
+    // be restored when switching back to the same channel id and look like
+    // "save didn't exit").
+    if (editingChannel) {
+      _dropTabCache(currentTab);
+      const _msgsEl = document.getElementById('hs-mc-messages');
+      if (_msgsEl) _msgsEl.textContent = '';
+    }
     editingChannel = false;
     // Tab switch is the user telling us they care about live state right
     // now — kick a debounced refresh so any stale red dots on channel tabs
@@ -6537,6 +6546,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     const safeScColor = sanitizeColor(m.scColor || '#ffd600')
     const scBadge = isSuperChat && m.amount ? `<span class="hs-mc-sc-badge" style="background:${safeScColor};color:#000;padding:0 4px;border-radius:0;font-size:13px;font-weight:700;margin-right:3px;">${escapeHtml(m.amount)}</span>` : ''
     const bitsBadge = m.bits ? `<span class="hs-mc-bits-badge" title="${m.bits} bits">${m.bits} bits</span>` : ''
+    // (cheermote rendering is applied inline in processedText via renderCheermotesInText)
     const paintStyle = m.userId ? getMcPaintStyle(m.userId) : ''
     // Build the channel link for the username. YouTube usernames arrive
     // prefixed with "@" so we strip it before concatenating to avoid
@@ -6631,6 +6641,11 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       // Run AFTER emote processing so emote names already replaced into <img> tags
       // (and thus inside HTML) won't be touched by the mention regex.
       processedText = highlightMentionsInHtml(processedText)
+      // Cheermote rendering — BULLETPROOF: only fires when twitch's IRC
+      // tagged the message with bits=N (server-confirmed real cheer).
+      // Anything else stays as text. No heuristics, no caps, no false
+      // positives possible.
+      if (m.bits) processedText = renderCheermotesInText(processedText, m.bits)
       m._renderedHtml = processedText
     }
 

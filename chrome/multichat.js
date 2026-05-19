@@ -7969,7 +7969,7 @@ function injectStyles() {
     /* === Profile card — system sans, no chrome, badges-first === */
     .hs-pcard {
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, "Helvetica Neue", Arial, sans-serif;
-      padding: 14px;
+      padding: 10px;
       color: #fff;
       background: #000;
       font-size: 13px;
@@ -7977,7 +7977,7 @@ function injectStyles() {
       box-sizing: border-box;
       display: flex;
       flex-direction: column;
-      gap: 10px;
+      gap: 7px;
       height: 100%;
       overflow-y: auto;
       position: relative;
@@ -7986,13 +7986,12 @@ function injectStyles() {
          border, avatar ring, and accent-tinted divider glow below. */
       --hs-pcard-accent: #ff8700;
     }
-    /* Hero banner — runs full-bleed across the identity section, with a
-       gradient placeholder (accent at top-left, fading to near-black) so the
-       layout never empty-flashes before the GQL fetch lands. */
+    /* Hero banner — compact strip, image lives behind the avatar/name. Shorter
+       than the original 140px so identity + actions fit in the first viewport. */
     .hs-pcard-hero {
       position: relative;
-      height: 140px;
-      margin: -14px -14px 0 -14px;
+      height: 76px;
+      margin: -10px -10px 0 -10px;
       background: linear-gradient(135deg, var(--hs-pcard-accent, #1a1a1a) 0%, #0a0a0a 70%, #000 100%);
       overflow: hidden;
       border-bottom: 1px solid var(--hs-pcard-accent, #2a2a2a);
@@ -8022,7 +8021,7 @@ function injectStyles() {
     .hs-pcard-id .hs-pcard-id-row {
       position: relative;
       z-index: 1;
-      margin-top: 8px;
+      margin-top: 4px;
     }
     /* Sticky close — pinned to card top-right, stays visible while scrolling.
        Negative bottom margin lets it overlay the id-row without taking column
@@ -8057,30 +8056,28 @@ function injectStyles() {
        attention. Falls back to #1a1a1a when accent is unset. */
     .hs-pcard-section + .hs-pcard-section {
       border-top: 1px solid color-mix(in srgb, var(--hs-pcard-accent, #1a1a1a) 18%, #0a0a0a);
-      padding-top: 10px;
+      padding-top: 7px;
     }
 
-    .hs-pcard-id-row { display: flex; gap: 12px; align-items: flex-start; }
+    .hs-pcard-id-row { display: flex; gap: 10px; align-items: flex-start; }
     .hs-pcard-avatar {
-      width: 72px; height: 72px; border-radius: 0; object-fit: cover;
+      width: 56px; height: 56px; border-radius: 0; object-fit: cover;
       flex-shrink: 0;
       border: 2px solid var(--hs-pcard-accent, #fff);
       background: #000;
-      /* Negative top margin lifts the avatar to overlap the hero base by ~half
-         its height, anchoring identity at the banner seam. Hero is 140px tall,
-         hero's bottom margin is 0 → avatar negative margin moves it upward. */
-      margin-top: -44px;
+      /* Lifts avatar so it half-overlaps the shorter (76px) hero strip. */
+      margin-top: -32px;
       position: relative;
       z-index: 2;
       box-shadow:
         0 0 0 2px #000,
-        0 8px 20px rgba(0, 0, 0, 0.7),
-        0 0 24px color-mix(in srgb, var(--hs-pcard-accent, transparent) 35%, transparent);
+        0 6px 16px rgba(0, 0, 0, 0.7),
+        0 0 18px color-mix(in srgb, var(--hs-pcard-accent, transparent) 35%, transparent);
     }
-    .hs-pcard-id-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+    .hs-pcard-id-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
     .hs-pcard-name {
-      font-size: 18px; font-weight: 700; color: #fff;
-      display: flex; align-items: center; gap: 6px; line-height: 13px;
+      font-size: 16px; font-weight: 700; color: #fff;
+      display: flex; align-items: center; gap: 6px; line-height: 18px;
     }
     .hs-pcard-livedot { color: #ff5050; font-size: 9px; animation: hs-pcard-pulse 1.5s infinite; }
     @keyframes hs-pcard-pulse { 50% { opacity: 0.4; } }
@@ -8142,15 +8139,47 @@ function injectStyles() {
       color: #fff; word-break: break-word; overflow-wrap: anywhere; flex: 1;
     }
     .hs-pcard-action-grid {
-      display: flex; flex-wrap: wrap; gap: 4px;
+      display: flex; flex-wrap: wrap; gap: 3px;
     }
     .hs-pcard-action {
       background: transparent; color: #fff; border: 1px solid #333;
-      padding: 6px 12px; cursor: pointer; font-family: inherit; font-size: 13px;
-      text-align: center; box-sizing: border-box;
+      padding: 4px 10px; cursor: pointer; font-family: inherit; font-size: 13px;
+      text-align: center; box-sizing: border-box; line-height: 18px;
     }
     .hs-pcard-action:hover:not(:disabled) { background: #fff; color: #000; border-color: #fff; }
     .hs-pcard-action:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    /* Mod actions row — compact toolbar at the top of the card when you mod
+       a channel this user has chatted in. Channel label + del/timeout/ban
+       buttons sit on a single line per channel. Buttons share borders so the
+       group reads as one unit, mirroring the inline hover toolbar style. */
+    .hs-pcard-mod {
+      background: color-mix(in srgb, var(--hs-pcard-accent, #ff8700) 10%, #000);
+      border-left: 2px solid var(--hs-pcard-accent, #ff8700);
+      padding: 5px 8px;
+      margin: -2px 0;
+    }
+    .hs-pcard-mod-row {
+      display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+      font-size: 13px; line-height: 18px;
+    }
+    .hs-pcard-mod-row + .hs-pcard-mod-row { margin-top: 4px; }
+    .hs-pcard-mod-ch {
+      color: var(--hs-pcard-accent, #ff8700);
+      font-weight: 700; font-size: 13px;
+      min-width: 0; flex-shrink: 0; margin-right: 2px;
+    }
+    .hs-pcard-mod-btn {
+      background: transparent; color: #fff;
+      border: 1px solid #555; border-right-width: 0;
+      padding: 2px 7px; cursor: pointer; font-family: inherit;
+      font-size: 13px; line-height: 16px; box-sizing: border-box;
+    }
+    .hs-pcard-mod-btn:last-child { border-right-width: 1px; }
+    .hs-pcard-mod-btn:hover:not(:disabled) { background: #fff; color: #000; border-color: #fff; }
+    .hs-pcard-mod-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+    .hs-pcard-mod-btn-danger { color: #ff5050; border-color: #5a1414; }
+    .hs-pcard-mod-btn-danger:hover:not(:disabled) { background: #ff5050; color: #000; border-color: #ff5050; }
 
     /* Per-tab platform filter toggles (T/K/Y). Sits AFTER the util cluster
        (DOM order). Horizontal mode: tight content-sized strip on far right.
@@ -15207,23 +15236,26 @@ async function sendKickMessage(kickSlug, text) {
       }
 
       // Native Twitch emotes — sub emotes carry e.owner (broadcaster login),
-      // true Twitch globals do not. Distinguish so tooltips show "(broadcaster) sub" vs "global (Twitch)".
-      // Sub-tier entries are SKIPPED here: emoteCache is the global fallback,
-      // and putting entitled-only emotes there causes them to match any sender's
-      // text in any channel (bypassing Twitch's IRC emotes= gate).
+      // true Twitch globals do not. Globals → emoteCache (everyone can render them).
+      // Subs → viewerPersonalEmotes: same gate as heatsync inventory — surfaced
+      // for picker/autocomplete/own outgoing, kept out of the global render
+      // fallback so they don't bleed into other senders' messages.
       (stored.native_twitch_emotes || []).forEach(e => {
-        if (e.name && e.url && !emoteCache.has(e.name)) {
-          const isSub = !!e.owner
-          if (isSub) return
-          const entry = {
-            url: e.url,
-            source: 'twitch',
-            state: 'global'
+        if (!e.name || !e.url) return;
+        const isSub = !!e.owner
+        if (isSub) {
+          if (!viewerPersonalEmotes.has(e.name)) {
+            viewerPersonalEmotes.set(e.name, {
+              url: e.url, source: 'twitch', state: 'owned', subscription: true, owner: e.owner
+            })
+            if (e.hash) registerHash(e.name, e.hash);
           }
-          emoteCache.set(e.name, entry);
-          while (emoteCache.size > 2000) { emoteCache.delete(emoteCache.keys().next().value) }
-          if (e.hash) registerHash(e.name, e.hash);
+          return
         }
+        if (emoteCache.has(e.name)) return
+        emoteCache.set(e.name, { url: e.url, source: 'twitch', state: 'global' });
+        while (emoteCache.size > 2000) { emoteCache.delete(emoteCache.keys().next().value) }
+        if (e.hash) registerHash(e.name, e.hash);
       });
 
       // Rebuild blockedEmoteNames from loaded hashes
@@ -26719,17 +26751,21 @@ function findEmoteMatches(search) {
 
   // Search emote cache (unless explicitly searching users with @)
   if (!isUserSearch) {
-    // Search global + channel emotes for current tab
+    // Composition pool: globals + current channel + viewer's personal set.
+    // viewerPersonalEmotes carries heatsync inventory uploads AND owned native
+    // Twitch sub emotes — both are sendable as your own outgoing message.
     const acEmotes = new Map(emoteCache);
     const acChCache = channelEmoteCaches[currentTab] || channelEmoteCaches[getCurrentChannel()];
     if (acChCache) for (const [k, v] of acChCache) acEmotes.set(k, v);
+    for (const [k, v] of viewerPersonalEmotes) acEmotes.set(k, v);
     for (const [name, emote] of acEmotes) {
       // Only tab-complete heatsync emotes you own (can't send emotes not in your set)
       if (emote.source === 'heatsync' && emote.state !== 'owned') continue;
+      const sub = !!emote.subscription;
       if (name.toLowerCase().startsWith(searchLower)) {
-        matches.push({ name, url: emote.url, source: emote.source, priority: 0, type: 'emote' });
+        matches.push({ name, url: emote.url, source: emote.source, priority: 0, type: 'emote', sub });
       } else if (name.toLowerCase().includes(searchLower)) {
-        matches.push({ name, url: emote.url, source: emote.source, priority: 1, type: 'emote' });
+        matches.push({ name, url: emote.url, source: emote.source, priority: 1, type: 'emote', sub });
       }
     }
   }
@@ -26751,9 +26787,11 @@ function findEmoteMatches(search) {
     }
   }
 
-  // Sort: prefix matches first, then by recency for username matches, then alphabetical
+  // Sort: prefix matches first, then sub emotes (rare + entitlement-scarce),
+  // then by recency for username matches, then alphabetical.
   matches.sort((a, b) => {
     if (a.priority !== b.priority) return a.priority - b.priority;
+    if (!!a.sub !== !!b.sub) return a.sub ? -1 : 1;
     const ar = (a.recencyRank ?? Infinity)
     const br = (b.recencyRank ?? Infinity)
     if (ar !== br) return ar - br;
@@ -28551,6 +28589,79 @@ function pcMakePill(plat, name, isLive) {
   return pill
 }
 
+// Top-of-card mod actions — left-click username on a chatter in a channel you
+// mod surfaces delete/timeout/ban right at the top, replacing the bulky inline
+// hover toolbar on every row. Returns null when not applicable so callers can
+// skip the section entirely. Twitch-only (Kick/YT mod GQL not wired).
+function pcBuildModActions(username) {
+  if (typeof isModForSync !== 'function') return null
+  if (typeof getRecentMessagesFromUser !== 'function') return null
+  if (!username) return null
+  // Don't surface mod actions on your own profile — self-mod buttons are nonsense.
+  if (typeof currentUsername !== 'undefined' && currentUsername &&
+      username.toLowerCase() === currentUsername.toLowerCase()) return null
+  const recent = getRecentMessagesFromUser(username)
+  if (!recent.length) return null
+  // Group by twitch channel — find most recent msgId per channel where I mod.
+  const byChannel = new Map()
+  for (const m of recent) {
+    if ((m.platform || 'twitch') !== 'twitch') continue
+    const ch = (m.channel || '').toLowerCase()
+    if (!ch) continue
+    if (!isModForSync(ch)) {
+      if (typeof prefetchModFor === 'function') prefetchModFor(ch)
+      continue
+    }
+    if (!byChannel.has(ch)) byChannel.set(ch, { channel: ch, msgId: m.id || null })
+  }
+  if (!byChannel.size) return null
+  const sec = document.createElement('div')
+  sec.className = 'hs-pcard-section hs-pcard-mod'
+  for (const { channel, msgId } of byChannel.values()) {
+    const row = document.createElement('div')
+    row.className = 'hs-pcard-mod-row'
+    const chLabel = document.createElement('span')
+    chLabel.className = 'hs-pcard-mod-ch'
+    chLabel.textContent = '#' + channel
+    row.appendChild(chLabel)
+    const actions = [
+      { label: 'del msg', title: 'delete this user\'s latest message', need: 'msg', fn: () => deleteTwitchMessage(channel, msgId), verb: 'deleted' },
+      { label: '1m',  title: 'timeout 1 minute',   fn: () => timeoutTwitchUser(channel, username, 60, ''),     verb: `timed out ${username} 60s` },
+      { label: '10m', title: 'timeout 10 minutes', fn: () => timeoutTwitchUser(channel, username, 600, ''),    verb: `timed out ${username} 600s` },
+      { label: '1h',  title: 'timeout 1 hour',     fn: () => timeoutTwitchUser(channel, username, 3600, ''),   verb: `timed out ${username} 1h` },
+      { label: '24h', title: 'timeout 24 hours',   fn: () => timeoutTwitchUser(channel, username, 86400, ''),  verb: `timed out ${username} 24h` },
+      { label: 'ban', title: 'permanent ban',      fn: () => banTwitchUser(channel, username, ''),             verb: `banned ${username}`, danger: true },
+      { label: 'unban', title: 'unban user',       fn: () => unbanTwitchUser(channel, username),               verb: `unbanned ${username}` },
+    ]
+    for (const a of actions) {
+      const b = document.createElement('button')
+      b.className = 'hs-pcard-mod-btn' + (a.danger ? ' hs-pcard-mod-btn-danger' : '')
+      b.type = 'button'
+      b.textContent = a.label
+      b.title = a.title
+      if (a.need === 'msg' && !msgId) b.disabled = true
+      b.addEventListener('click', async (e) => {
+        e.preventDefault(); e.stopPropagation()
+        b.disabled = true
+        const orig = b.textContent
+        b.textContent = '…'
+        let resp
+        try { resp = await a.fn() } catch (err) { resp = { error: err?.message || 'error' } }
+        b.textContent = orig
+        if (resp?.ok) {
+          if (typeof showToast === 'function') showToast(a.verb, 'success')
+        } else {
+          if (typeof showToast === 'function') showToast(`${a.label} failed: ${resp?.error || 'unknown'}`, 'error')
+        }
+        b.disabled = a.need === 'msg' && !msgId
+      })
+      row.appendChild(b)
+    }
+    sec.appendChild(row)
+  }
+  return sec
+}
+
 function renderProfileCardView() {
   const msgsEl = document.getElementById('hs-mc-messages')
   if (!msgsEl || !activeProfileCard) return
@@ -28727,6 +28838,53 @@ function renderProfileCardView() {
   idSec.appendChild(idRow)
   card.appendChild(idSec)
 
+  // === Mod actions === — top priority when you mod a channel this user is in
+  const modSec = pcBuildModActions(username)
+  if (modSec) card.appendChild(modSec)
+
+  // === Actions section === — main interactions (follow/whisper/etc) sit above
+  // stats now so the useful buttons land in the first viewport, not below the
+  // recent-messages scroll.
+  {
+    const asec = pcMakeSection('actions')
+    asec.classList.add('hs-pcard-actions')
+    const grid = document.createElement('div')
+    grid.className = 'hs-pcard-action-grid'
+
+    const isMuted = mutedUsers.has(username)
+    const inChannels = config.channels.some(c => {
+      const id = c.id?.toLowerCase()
+      const tw = c.twitch?.toLowerCase()
+      const ki = c.kick?.toLowerCase()
+      return id === username || tw === username || ki === username
+    })
+
+    const youFollow = !!(data?.relationship?.youFollow ?? data?.relationship?.isFollowing)
+    const youBlock = !!(data?.relationship?.youBlock ?? data?.relationship?.isBlocked)
+    const profileId = data?.id || data?.userId || null
+
+    const actions = [
+      { label: youFollow ? 'unfollow' : 'follow', fn: () => pcToggleFollow(profileId, username, youFollow), disabled: !profileId },
+      { label: 'whisper', fn: () => pcDoWhisper(username) },
+      { label: 'dm', fn: () => pcDoDm(username) },
+      { label: 'mention', fn: () => pcMention(data?.display_name || username) },
+      { label: isMuted ? 'unmute' : 'mute', fn: () => pcToggleMute(username) },
+      { label: youBlock ? 'unblock' : 'block', fn: () => pcToggleBlock(profileId, username, youBlock), disabled: !profileId },
+    ]
+    if (!inChannels) actions.push({ label: 'add channel', fn: () => pcAddAsChannel(username) })
+
+    for (const a of actions) {
+      const btn = document.createElement('button')
+      btn.className = 'hs-pcard-action'
+      if (a.disabled) btn.disabled = true
+      btn.textContent = a.label
+      btn.addEventListener('click', a.fn)
+      grid.appendChild(btn)
+    }
+    asec.appendChild(grid)
+    card.appendChild(asec)
+  }
+
   // === Stats section ===
   const statsSec = pcMakeSection('stats')
   if (!data) {
@@ -28852,48 +29010,6 @@ function renderProfileCardView() {
     }
     card.appendChild(rsec)
   }
-
-  // === Actions section ===
-  const asec = pcMakeSection('actions')
-  asec.classList.add('hs-pcard-actions')
-  const grid = document.createElement('div')
-  grid.className = 'hs-pcard-action-grid'
-
-  const isMuted = mutedUsers.has(username)
-  const inChannels = config.channels.some(c => {
-    const id = c.id?.toLowerCase()
-    const tw = c.twitch?.toLowerCase()
-    const ki = c.kick?.toLowerCase()
-    return id === username || tw === username || ki === username
-  })
-
-  const youFollow = !!(data?.relationship?.youFollow ?? data?.relationship?.isFollowing)
-  const youBlock = !!(data?.relationship?.youBlock ?? data?.relationship?.isBlocked)
-  const profileId = data?.id || data?.userId || null
-
-  // Platform-link buttons (twitch/kick/yt/heatsync) live in the pills row above —
-  // dropped here to kill bloat. These are the actual relationship/state actions.
-  const actions = [
-    { label: youFollow ? 'unfollow' : 'follow', fn: () => pcToggleFollow(profileId, username, youFollow), disabled: !profileId },
-    { label: 'whisper', fn: () => pcDoWhisper(username) },
-    { label: 'dm', fn: () => pcDoDm(username) },
-    { label: 'mention', fn: () => pcMention(data?.display_name || username) },
-    { label: isMuted ? 'unmute' : 'mute', fn: () => pcToggleMute(username) },
-    { label: youBlock ? 'unblock' : 'block', fn: () => pcToggleBlock(profileId, username, youBlock), disabled: !profileId },
-    { label: inChannels ? 'in channels' : 'add channel', fn: () => pcAddAsChannel(username), disabled: inChannels },
-    { label: 'close', fn: closeProfileCard },
-  ]
-
-  for (const a of actions) {
-    const btn = document.createElement('button')
-    btn.className = 'hs-pcard-action'
-    if (a.disabled) btn.disabled = true
-    btn.textContent = a.label
-    btn.addEventListener('click', a.fn)
-    grid.appendChild(btn)
-  }
-  asec.appendChild(grid)
-  card.appendChild(asec)
 
   msgsEl.appendChild(card)
 
@@ -33132,7 +33248,11 @@ const STORAGE_KEY = 'heatsync_multichat';
     ban:            { label: '⛔',title: 'permanent ban',    action: 'ban',     durationSec: null,   needsMsgId: false, hotkey: 'b' },
     unban:          { label: '✓',title: 'unban user',       action: 'unban',   durationSec: null,   needsMsgId: false, hotkey: null },
   }
-  const DEFAULT_MOD_BUTTONS = ['delete_message', 'timeout_10m']
+  // Hover toolbar is opt-in heavy: only the X (delete-this-message) ships on by
+  // default. Timeouts/bans live on the profile-card mod row instead — left-click
+  // username surfaces the full set at the top of the card. Users can re-enable
+  // hover buttons in settings → mod toolbar.
+  const DEFAULT_MOD_BUTTONS = ['delete_message']
   let modToolbarButtons = [...DEFAULT_MOD_BUTTONS]
   async function loadModToolbarButtons() {
     try {
@@ -33294,6 +33414,11 @@ const STORAGE_KEY = 'heatsync_multichat';
       const user = row.dataset.msgUser
       const msgId = row.dataset.msgId
       if (!channel || !user) return
+      // Skip own messages — mod actions on yourself are nonsense UX. Use the
+      // data-msg-self flag set at build time (currentUsername may be null at
+      // hover time during pre-auth bootstrap); fall back to live compare.
+      if (row.dataset.msgSelf === '1') return
+      if (currentUsername && user.toLowerCase() === currentUsername.toLowerCase()) return
       // Sync gate: only attach if we already know we're a mod. Pre-fetch otherwise
       // so the next hover in this channel is instant — no UI lag.
       if (!isModForSync(channel)) { prefetchModFor(channel); return }
@@ -35969,6 +36094,13 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       div.dataset.msgUser = m.user
       div.dataset.msgChannel = m.channel || ''
       div.dataset.msgPlatform = m.platform || ''
+      // Mark self-messages so the mod hover toolbar can skip them without
+      // re-deriving currentUsername (which may be null pre-auth). Inlined
+      // compare — the `isOwn` const above is scoped to the !_renderedHtml
+      // branch, so it's undefined when the cached-html path is taken.
+      if (m.user && currentUsername && m.user.toLowerCase() === currentUsername.toLowerCase()) {
+        div.dataset.msgSelf = '1'
+      }
       const replyBtn = document.createElement('button')
       replyBtn.className = 'hs-mc-reply-btn'
       replyBtn.textContent = '↩'

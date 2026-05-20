@@ -14608,12 +14608,14 @@ async function sendKickMessage(kickSlug, text) {
     const toUnblock = [];
     for (const h of blockedEmoteHashes) if (!newSet.has(h)) toUnblock.push(h);
     if (toBlock.length === 0 && toUnblock.length === 0) return;
+    const changedNames = [];
 
     for (const hash of toBlock) {
       const name = hashToName.get(hash);
       blockedEmoteHashes.add(hash);
       if (!name) continue;
       blockedEmoteNames.add(name);
+      changedNames.push(name);
       queryEmoteWrappers(name).forEach(w => {
         if (w.classList.contains('hs-state-blocked')) return;
         w.classList.remove('hs-state-global', 'hs-state-channel', 'hs-state-owned', 'hs-state-unadded', 'hs-emote-highlight');
@@ -14634,6 +14636,7 @@ async function sendKickMessage(kickSlug, text) {
       blockedEmoteHashes.delete(hash);
       if (!name) continue;
       blockedEmoteNames.delete(name);
+      changedNames.push(name);
       const emote = lookupEmote(name);
       const realUrl = emote?.url || '';
       // Mirror unblockEmote: block dropped this from the set, so restore to the
@@ -14665,9 +14668,10 @@ async function sendKickMessage(kickSlug, text) {
     // the moment the message was first processed. Without invalidation, any later
     // re-render (clicking "new messages", tab switch, scroll resume) replays the
     // stale state for non-heatsync emotes — the post-render correction loop only
-    // touches data-source="heatsync" wrappers. Bump the epoch so the diff-aware
-    // render rebuilds DOM with current block state.
-    if (typeof clearRenderedHtmlCache === 'function') clearRenderedHtmlCache();
+    // touches data-source="heatsync" wrappers. Invalidate ONLY the messages that
+    // reference the changed emotes (no global epoch bump → no whole-chat rebuild
+    // flash); live DOM was already corrected in-place above.
+    if (typeof invalidateRenderedForEmotes === 'function') invalidateRenderedForEmotes(changedNames);
   }
 
   // Flash all wrappers for a given emote name. Also touches multichat input
@@ -15014,7 +15018,9 @@ async function sendKickMessage(kickSlug, text) {
     refreshEmoteTooltip(emoteName, 'blocked');
     showToast(`blocked: ${emoteName}`, 'success');
     flashAllEmotes(emoteName, 'hs-flash-block');
-    if (typeof clearRenderedHtmlCache === 'function') clearRenderedHtmlCache();
+    // Surgical: only re-key messages that reference this emote (no epoch bump →
+    // no whole-chat rebuild flash). Live DOM already updated in-place above.
+    if (typeof invalidateRenderedForEmotes === 'function') invalidateRenderedForEmotes(emoteName);
   }
 
   // Re-apply current state to all rendered wrappers for `emoteName`. Use after
@@ -15096,7 +15102,7 @@ async function sendKickMessage(kickSlug, text) {
     refreshEmoteTooltip(emoteName, newState);
     showToast(`unblocked: ${emoteName}`, 'success');
     flashAllEmotes(emoteName, 'hs-flash-unblock');
-    if (typeof clearRenderedHtmlCache === 'function') clearRenderedHtmlCache();
+    if (typeof invalidateRenderedForEmotes === 'function') invalidateRenderedForEmotes(emoteName);
   }
 
   // Add emote to inventory (click-to-add for unadded emotes)
@@ -24990,7 +24996,11 @@ async function fetchRemoteEmoteMatches(search) {
     }
   }
   if (!add.length) return
-  add.sort((a, b) => (a.priority - b.priority) || a.name.localeCompare(b.name))
+  // Stable sort by tier ONLY — items arrive most-popular-first (7TV TOP_ALL_TIME,
+  // FFZ count-desc), and a stable sort preserves that order within each tier. So
+  // prefix matches lead, then substring matches, each in provider popularity order
+  // (most-used first) instead of alphabetical.
+  add.sort((a, b) => a.priority - b.priority)
   const wasEmpty = acState.matches.length === 0
   acState.matches.push(...add.slice(0, 60))
   // No local match existed when Tab was pressed — insert the first remote hit now.
@@ -28396,6 +28406,13 @@ function autoAddInputEmotes(text) {
     if (typeof blockedEmoteNames !== 'undefined' && blockedEmoteNames.has(word)) continue
     if (typeof inventoryEmotes !== 'undefined' && inventoryEmotes.has(word)) continue
     if (typeof pendingEmoteOps !== 'undefined' && pendingEmoteOps.has(word)) continue
+    // Optimistically register locally so the own-message echo (arrives in ~ms,
+    // before the server add resolves) renders the emote image instead of raw
+    // text — text has no wrapper, so a late add can't retro-fix it. Mirrors the
+    // picker's optimistic add (emotes.js). addEmoteToInventory then persists it.
+    if (typeof viewerPersonalEmotes !== 'undefined' && !viewerPersonalEmotes.has(word)) {
+      viewerPersonalEmotes.set(word, { url: rec.url, source: rec.source, state: 'owned' })
+    }
     if (typeof addEmoteToInventory === 'function') addEmoteToInventory(word, rec.url, rec.source)
   }
 }
@@ -37274,6 +37291,32 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
   function bumpRenderEpoch() {
     _renderEpoch++;
     _dropAllTabCaches();
+  }
+
+  // Surgical invalidation for a block/unblock of specific emote(s). The full
+  // clearRenderedHtmlCache() bumps _renderEpoch, which re-keys EVERY message so
+  // the next render (constant on live chat) tears down and rebuilds the whole
+  // list — a visible whole-chat flash. block/unblockEmote already correct the
+  // live DOM in-place, so we only need to (a) drop cached _renderedHtml on the
+  // messages that actually reference these emotes, so a LATER rebuild reprocesses
+  // them with current block state, and (b) drop other tabs' cached fragments so
+  // they rebuild fresh on next visit. No epoch bump → current tab is untouched →
+  // no flash.
+  function invalidateRenderedForEmotes(names) {
+    const list = Array.isArray(names) ? names : [names]
+    const wanted = list.filter(Boolean)
+    if (wanted.length === 0) return
+    const clearBuf = (msgs) => {
+      for (const m of msgs) {
+        if (m._renderedHtml == null || !m.text) continue
+        for (const n of wanted) { if (m.text.includes(n)) { delete m._renderedHtml; break } }
+      }
+    }
+    if (irc?.channels) for (const [, buf] of irc.channels) clearBuf(buf.getAll())
+    if (kickChat?.channels) for (const [, buf] of kickChat.channels) clearBuf(buf.getAll())
+    clearBuf(mentionsBuffer)
+    for (const msgs of channelYtMessages.values()) clearBuf(msgs)
+    _dropAllTabCaches()
   }
 
   // Merge multiple platform sources into ~150 messages with proportional

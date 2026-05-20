@@ -3180,6 +3180,19 @@ cleanup.setIntervalIfVisible(() => {
     if (now - entry.addedAt > 30000) _deleteBroadcast(key)
   }
 }, 30000);
+
+// Per-sender heatsync + personal (7TV/BTTV) emote sets, keyed "twitch:<id>".
+// PERSISTENT (no TTL) overlay layered under live broadcasts — unlike the 10s
+// broadcast window, this renders another user's ADDED emotes (e.g. a BTTV emote
+// they added to heatsync that isn't in their BTTV account) in chat history and
+// after refresh, not just while they're actively posting. Twitch-only: the
+// endpoint + 7TV/BTTV fetches need a numeric platform id, which getTwitchUserId
+// provides but Kick's DOM path does not. Mirrors the cosmetics fetch machinery.
+const senderHeatsyncEmotes = new Map() // "twitch:<id>" -> Map<name, {name,url,hash,zeroWidth,source}> | null (fetched-empty)
+const SENDER_EMOTE_MAX = 500
+const senderEmotePending = new Set()
+const SENDER_EMOTE_PENDING_MAX = 10
+let senderEmoteBatchTimer = null
 let pendingOperations = new Set(); // Track in-flight operations to prevent double-clicks
 let pendingRemovals = new Set(); // Emote names pending removal — suppress inventory_update re-adds
 let _pendingRemovalSnapshots = new Map(); // name → emote object, for rollback on emote_removing_cancel
@@ -5232,6 +5245,21 @@ function processMessage(messageElement) {
     }
   }
 
+  // Resolve the sender's Twitch id once — drives BOTH cosmetics and the
+  // sender-emote overlay. Tagging + the emote fetch run regardless of the
+  // cosmetics toggle so disabling cosmetics never stops emotes from resolving.
+  let twitchUid = ''
+  if (!isKick && username) {
+    twitchUid = getTwitchUserId(messageElement) || ''
+    if (twitchUid) {
+      messageElement.dataset.hsCosmeticUserId = twitchUid
+      // Lazy-fetch this sender's heatsync + personal emote set (persistent
+      // overlay) so their added emotes resolve in native chat, not just during
+      // a live broadcast. Deduped/cached — fires at most once per sender.
+      queueSenderEmotes(twitchUid)
+    }
+  }
+
   // Apply third-party cosmetics (BTTV/FFZ badges + 7TV paints/badges)
   if (cosmeticsEnabled) {
     if (isKick) {
@@ -5240,20 +5268,16 @@ function processMessage(messageElement) {
         applyKickCosmeticsToMessage(messageElement, lowerUser)
         queueKickCosmeticsLookup(lowerUser)
       }
-    } else {
-      const userId = getTwitchUserId(messageElement)
-      if (userId) {
-        messageElement.dataset.hsCosmeticUserId = userId
-        applyCosmeticsToMessage(messageElement, userId, usernameElement)
-        queueCosmeticsLookup(userId)
-        // Discover self twitch ID once per session and register with the
-        // background so 7TV EventAPI can push real-time cosmetic updates.
-        if (!_selfTwitchIdRegistered) {
-          const me = getCurrentUsername()
-          if (me && username && me.toLowerCase() === lowerUser) {
-            _selfTwitchIdRegistered = true
-            safeSendMessage({ type: 'register_self_twitch_id', twitchId: userId })
-          }
+    } else if (twitchUid) {
+      applyCosmeticsToMessage(messageElement, twitchUid, usernameElement)
+      queueCosmeticsLookup(twitchUid)
+      // Discover self twitch ID once per session and register with the
+      // background so 7TV EventAPI can push real-time cosmetic updates.
+      if (!_selfTwitchIdRegistered) {
+        const me = getCurrentUsername()
+        if (me && username && me.toLowerCase() === lowerUser) {
+          _selfTwitchIdRegistered = true
+          safeSendMessage({ type: 'register_self_twitch_id', twitchId: twitchUid })
         }
       }
     }
@@ -5292,17 +5316,18 @@ function processMessage(messageElement) {
   let allEmotes
   const currentUser = getCurrentUsername()
   const isOwnMessage = currentUser && lowerUser && lowerUser === currentUser.toLowerCase()
-  if (pendingEmoteBroadcasts.size === 0 || !username || isOwnMessage) {
-    allEmotes = cachedAllEmotes
-  } else {
+  // Sender's persistent heatsync/personal set (Twitch only; null until fetched or
+  // fetched-empty). Skipped for own messages — our own inventory is authoritative.
+  const senderUid = (!isKick && !isOwnMessage) ? messageElement.dataset.hsCosmeticUserId : ''
+  const senderSet = senderUid ? senderHeatsyncEmotes.get(`twitch:${senderUid}`) : null
+  // Live 10s broadcast overlay (highest priority, freshest).
+  let userBroadcasts = null
+  if (pendingEmoteBroadcasts.size > 0 && username && !isOwnMessage) {
     const userBroadcastMap = pendingBroadcastsByUser.get(lowerUser)
-    if (!userBroadcastMap || userBroadcastMap.size === 0) {
-      allEmotes = cachedAllEmotes
-    } else {
+    if (userBroadcastMap && userBroadcastMap.size > 0) {
       // Defer Map alloc — most messages have no surviving entries after the
       // pendingRemovals filter. At 1000 msgs/min with one broadcaster active,
       // this skipped 1000 Map allocs/min.
-      let userBroadcasts = null
       for (const [emoteName, emoteData] of userBroadcastMap) {
         if (pendingRemovals.has(emoteName)) continue
         if (!userBroadcasts) userBroadcasts = new Map()
@@ -5314,15 +5339,25 @@ function processMessage(messageElement) {
           height: emoteData.height
         })
       }
-      if (!userBroadcasts) {
-        allEmotes = cachedAllEmotes
-      } else {
-        allEmotes = {
-          get(name) { return userBroadcasts.get(name) || cachedAllEmotes.get(name) },
-          has(name) { return userBroadcasts.has(name) || cachedAllEmotes.has(name) },
-          get size() { return cachedAllEmotes.size + userBroadcasts.size }
-        }
-      }
+    }
+  }
+  if (!userBroadcasts && (!senderSet || senderSet.size === 0)) {
+    // Fast path — no overlays, no Map alloc.
+    allEmotes = cachedAllEmotes
+  } else {
+    // Precedence: live broadcast > sender's persistent set > channel/global cache.
+    allEmotes = {
+      get(name) {
+        return (userBroadcasts && userBroadcasts.get(name))
+            || (senderSet && senderSet.get(name))
+            || cachedAllEmotes.get(name)
+      },
+      has(name) {
+        return !!(userBroadcasts && userBroadcasts.has(name))
+            || !!(senderSet && senderSet.has(name))
+            || cachedAllEmotes.has(name)
+      },
+      get size() { return cachedAllEmotes.size + (userBroadcasts ? userBroadcasts.size : 0) + (senderSet ? senderSet.size : 0) }
     }
   }
 
@@ -8482,6 +8517,74 @@ function applyPendingCosmetics(userIds) {
     if (el.dataset.hsCosmeticDone === '1') return
     const uid = el.dataset.hsCosmeticUserId
     if (idSet.has(uid)) applyCosmeticsToMessage(el, uid)
+  })
+}
+
+// Queue a one-time fetch of a sender's heatsync + personal emote set. Deduped via
+// the cache (presence = fetched), batched + jittered like cosmetics so 30k tabs
+// don't fan out in lockstep. Twitch numeric ids only.
+function queueSenderEmotes(userId) {
+  if (isKick || !userId || !/^\d+$/.test(userId)) return
+  const key = `twitch:${userId}`
+  if (senderHeatsyncEmotes.has(key) || senderEmotePending.has(key)) return
+  senderEmotePending.add(key)
+  if (senderEmotePending.size >= SENDER_EMOTE_PENDING_MAX) {
+    if (senderEmoteBatchTimer) { cleanup.clearTimeout(senderEmoteBatchTimer); senderEmoteBatchTimer = null }
+    flushSenderEmoteBatch()
+    return
+  }
+  if (!senderEmoteBatchTimer) {
+    const delay = 500 + Math.random() * 1500
+    senderEmoteBatchTimer = cleanup.setTimeout(() => {
+      senderEmoteBatchTimer = null
+      flushSenderEmoteBatch()
+    }, delay)
+  }
+}
+
+async function flushSenderEmoteBatch() {
+  if (senderEmotePending.size === 0) return
+  const batch = [...senderEmotePending].slice(0, SENDER_EMOTE_PENDING_MAX)
+  batch.forEach(k => senderEmotePending.delete(k))
+  try {
+    const resp = await safeSendMessage({ type: 'get_sender_emotes', senderKeys: batch })
+    const emotes = resp?.emotes || {}
+    for (const key of batch) {
+      const nameToData = emotes[key] || {}
+      let inner = null
+      for (const [name, data] of Object.entries(nameToData)) {
+        if (!data?.url) continue
+        if (!inner) inner = new Map()
+        inner.set(name, { name, url: data.url, hash: data.hash || '', zeroWidth: !!data.zeroWidth, source: data.source })
+      }
+      // Store the Map (or null for fetched-empty) so we never re-fetch this sender.
+      if (senderHeatsyncEmotes.size >= SENDER_EMOTE_MAX) {
+        senderHeatsyncEmotes.delete(senderHeatsyncEmotes.keys().next().value)
+      }
+      senderHeatsyncEmotes.set(key, inner)
+    }
+    // Retro-render: messages from these senders already drawn (as text) need a re-pass.
+    applySenderEmotesToMessages(batch.filter(k => senderHeatsyncEmotes.get(k)))
+  } catch (e) {
+    // Drop the pending mark on failure so a later message can retry.
+    for (const k of batch) senderEmotePending.delete(k)
+    log(' flushSenderEmoteBatch failed:', e?.message)
+  }
+}
+
+// Re-run emote replacement on already-rendered messages from senders whose set
+// just arrived. Bounded to the live container; resets the generation guard so
+// processMessage runs again (its per-fragment .heatsync-emote-wrapper check keeps
+// it from double-wrapping text that already resolved).
+function applySenderEmotesToMessages(senderKeys) {
+  if (!senderKeys || senderKeys.length === 0) return
+  const container = findChatContainer()
+  if (!container) return
+  const idSet = new Set(senderKeys.map(k => k.slice(k.indexOf(':') + 1)))
+  container.querySelectorAll('[data-hs-cosmetic-user-id]').forEach(el => {
+    if (!idSet.has(el.dataset.hsCosmeticUserId)) return
+    el.dataset.heatsyncGeneration = ''
+    processMessage(el)
   })
 }
 

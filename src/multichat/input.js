@@ -1171,6 +1171,7 @@ function showMcEmoteActionMenu(x, y, emoteInfo, evtTarget) {
     addItem('block emote', () => { blockEmote(emoteName) }, { danger: true })
   }
 
+  assignBottomUpKbd()
   document.body.appendChild(menu)
 
   // Edge-aware positioning

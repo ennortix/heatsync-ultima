@@ -2788,7 +2788,7 @@ function injectStyles() {
       width: calc(100% + 16px);
       text-align: center;
     }
-    #hs-emote-tooltip .tooltip-source.owned { background: #ff8700; color: #000; }
+    #hs-emote-tooltip .tooltip-source.owned { background: #00ff00; color: #000; }
     #hs-emote-tooltip .tooltip-source.unadded { background: #ff8700; color: #000; }
     #hs-emote-tooltip .tooltip-source.global { background: #00ff00; color: #000; }
     #hs-emote-tooltip .tooltip-source.channel { background: #00ff00; color: #000; }

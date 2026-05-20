@@ -970,11 +970,12 @@ function openEmoteActionMenu(wrapper, x, y, opts = {}) {
   el.appendChild(preview)
 
   // --- Items ---
-  // Keys 1/2 reserved for the membership/block toggle family so muscle memory
-  // holds across states: 1 = restore (unblock / add to set), 2 = destructive
-  // (block / remove from set). Utilities auto-number from 3.
-  let kbdIndex = 3
+  // Keybinds number bottom-up: the primary action (block/unblock/add/remove)
+  // sits at the bottom, where the cursor lands when the menu flips up off a
+  // bottom-anchored chat panel — so key 1 is the closest/most-used item,
+  // ascending toward utilities up top. Numbered after all items exist.
   const kbdHandlers = {}
+  const kbdItems = [] // {el, fn} in DOM order; numbered 1..9 from the bottom
   const addHeader = (text) => {
     const h = document.createElement('div')
     h.className = 'hs-em-header'
@@ -994,18 +995,19 @@ function openEmoteActionMenu(wrapper, x, y, opts = {}) {
       h.textContent = hint
       it.appendChild(h)
     }
-    // kbd: false = no key; a number/string = explicit reserved key; true = auto (3..9).
-    const key = kbd === false ? null
-      : (kbd !== true && kbd != null ? String(kbd) : (kbdIndex <= 9 ? String(kbdIndex++) : null))
-    if (key) {
-      const k = document.createElement('span')
-      k.className = 'hs-em-kbd'
-      k.textContent = key
-      it.appendChild(k)
-      kbdHandlers[key] = fn
-    }
+    if (kbd !== false) kbdItems.push({ el: it, fn })
     it.addEventListener('click', () => { try { fn() } catch {} ; closeEmoteMenu() })
     el.appendChild(it)
+  }
+  const assignBottomUpKbd = () => {
+    let n = 1
+    for (let i = kbdItems.length - 1; i >= 0 && n <= 9; i--, n++) {
+      const k = document.createElement('span')
+      k.className = 'hs-em-kbd'
+      k.textContent = String(n)
+      kbdItems[i].el.appendChild(k)
+      kbdHandlers[String(n)] = kbdItems[i].fn
+    }
   }
   const addSep = () => {
     const s = document.createElement('div')
@@ -1035,11 +1037,11 @@ function openEmoteActionMenu(wrapper, x, y, opts = {}) {
     if (inInventory) {
       addItem('remove from set', async () => {
         try { await safeSendMessage({ type: 'remove_from_inventory', emoteHash: hash, emoteName: name }) } catch {}
-      }, { kbd: 2 })
+      })
     } else {
       addItem('add to set', async () => {
         try { await safeSendMessage({ type: 'add_emote', hash, name, url }) } catch {}
-      }, { good: true, kbd: 1 })
+      }, { good: true })
     }
   }
 
@@ -1120,7 +1122,7 @@ function openEmoteActionMenu(wrapper, x, y, opts = {}) {
         markLocalBlockToggle(hash, 'unblocked')
         updateEmoteState(hash, name, restored)
         try { await safeSendMessage({ type: 'unblock_emote', hash }) } catch {}
-      }, { good: true, kbd: 1 })
+      }, { good: true })
     } else if (!inInventory) {
       // green > orange > block: an in-set emote shows "remove from set" (above),
       // not block. Globals/3rd-party aren't in your set, so block shows here.
@@ -1129,10 +1131,11 @@ function openEmoteActionMenu(wrapper, x, y, opts = {}) {
         markLocalBlockToggle(hash, 'blocked')
         updateEmoteState(hash, name, 'blocked')
         try { await safeSendMessage({ type: 'block_emote', hash }) } catch {}
-      }, { danger: true, kbd: 2 })
+      }, { danger: true })
     }
   }
 
+  assignBottomUpKbd()
   placeAndWireMenu(el, x, y, kbdHandlers)
 }
 

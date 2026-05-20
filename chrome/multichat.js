@@ -14589,7 +14589,10 @@ async function sendKickMessage(kickSlug, text) {
       const name = hashToName.get(hash);
       if (name) blockedEmoteNames.add(name);
     }
-    log('Blocked names rebuilt:', blockedEmoteNames.size, 'from', blockedEmoteHashes.size, 'hashes');
+    // Names persisted at block time — survive refresh even when hashToName can't
+    // map the hash (blocked emote removed from set / not in any loaded cache).
+    for (const name of blockedEmoteFallback.keys()) blockedEmoteNames.add(name);
+    log('Blocked names rebuilt:', blockedEmoteNames.size, 'from', blockedEmoteHashes.size, 'hashes +', blockedEmoteFallback.size, 'fallback');
   }
 
   async function loadBlockedEmotes() {
@@ -14983,6 +14986,12 @@ async function sendKickMessage(kickSlug, text) {
   function blockEmote(emoteName) {
     if (!emoteName) return;
 
+    // Capture url/source BEFORE the deletes below strip the emote from caches —
+    // persists the name so the dashed box renders after refresh, and the url so
+    // unblock can restore the real image inline. See blockedEmoteFallback.
+    const _be = lookupEmote(emoteName);
+    rememberBlockedEmote(emoteName, _be?.url, _be?.source, _be?.zeroWidth);
+
     // Blocking and owning are mutually exclusive
     inventoryEmotes.delete(emoteName);
     inventoryHashes.delete(emoteName);
@@ -15064,13 +15073,18 @@ async function sendKickMessage(kickSlug, text) {
     const hash = emoteHashes.get(emoteName) ||
       (lookupEmote(emoteName)?.url ? btoa(lookupEmote(emoteName).url).slice(0, 32) : emoteName);
     blockedEmoteHashes.delete(hash);
+    // Drop the persisted block fallback so it can't re-seed blockedEmoteNames on
+    // the next refresh (which would re-hide an emote the user just unblocked).
+    const _bfEmote = blockedEmoteFallback.get(emoteName);
+    if (blockedEmoteFallback.delete(emoteName)) persistBlockedFallback();
 
     // Sync to heatsync.org API via background.js
     syncBlockToAPI(emoteName, false);
 
-    // Instant DOM update - restore images
+    // Instant DOM update - restore images. After refresh the emote is in no live
+    // cache, so lookupEmote misses — fall back to the persisted block url.
     const emote = lookupEmote(emoteName);
-    const realUrl = emote?.url || '';
+    const realUrl = emote?.url || _bfEmote?.url || '';
     // Blocking removes the emote from the set (server-side too — background.js
     // drops it from emoteInventory on block). So unblock must land on the
     // "available, not in set" tier — orange/unadded for heatsync — never straight
@@ -15138,8 +15152,9 @@ async function sendKickMessage(kickSlug, text) {
         // Update local cache - change from unadded to owned
         // Adding and blocking are mutually exclusive
         blockedEmoteNames.delete(emoteName);
-        // No longer "removed" — drop the stale render fallback entry.
+        // No longer "removed" or blocked — drop the stale render fallback entries.
         if (removedEmoteFallback.delete(emoteName)) persistRemovedFallback();
+        if (blockedEmoteFallback.delete(emoteName)) persistBlockedFallback();
         const serverHash = response.hash || emoteHash;
         inventoryEmotes.add(emoteName);
         inventoryHashes.set(emoteName, serverHash);
@@ -15228,6 +15243,35 @@ async function sendKickMessage(kickSlug, text) {
       removedEmoteFallback.delete(removedEmoteFallback.keys().next().value);
     }
     persistRemovedFallback();
+  }
+
+  // Block-state render fallback. Blocking strips the emote from inventory/caches,
+  // and blockedEmoteNames is otherwise reconstructed from blockedEmoteHashes via
+  // hashToName — which can't recover a name after refresh when the emote is in no
+  // loaded cache (removed from set, foreign channel). The name is then unknown, so
+  // the blocked-box render branch never fires and the token leaks as raw text. This
+  // bounded, persisted map keeps the NAME (and url/source, for inline unblock-restore)
+  // so the 2px dashed box survives refresh. Mirror of removedEmoteFallback.
+  let blockedEmoteFallback = new Map(); // Map<name, {url, source, zeroWidth}>
+  const BLOCKED_FALLBACK_CAP = 1000;
+  let _blockedFallbackPersistTimer = null;
+  function persistBlockedFallback() {
+    if (_blockedFallbackPersistTimer) return;
+    _blockedFallbackPersistTimer = cleanup.setTimeout(() => {
+      _blockedFallbackPersistTimer = null;
+      const obj = {};
+      for (const [name, e] of blockedEmoteFallback) obj[name] = e;
+      try { chrome.storage.local.set({ hs_blocked_emote_fallback: obj }); } catch {}
+    }, 1000);
+  }
+  function rememberBlockedEmote(name, url, source, zeroWidth) {
+    if (!name) return; // url optional — a name with no resolvable url still needs the box
+    blockedEmoteFallback.delete(name); // re-insert to refresh LRU position
+    blockedEmoteFallback.set(name, { url: url || '', source: source || 'heatsync', zeroWidth: !!zeroWidth });
+    while (blockedEmoteFallback.size > BLOCKED_FALLBACK_CAP) {
+      blockedEmoteFallback.delete(blockedEmoteFallback.keys().next().value);
+    }
+    persistBlockedFallback();
   }
   // Viewer's per-channel Twitch IRC badges. Populated from USERSTATE messages
   // (sent on JOIN + after every viewer PRIVMSG). Used to gate Twitch native
@@ -15387,13 +15431,22 @@ async function sendKickMessage(kickSlug, text) {
 
   async function loadEmotes() {
     try {
-      const stored = await chrome.storage.local.get(['global_emotes', 'emote_inventory', 'channel_emotes_map', 'native_twitch_emotes', 'hs_removed_emote_fallback']);
+      const stored = await chrome.storage.local.get(['global_emotes', 'emote_inventory', 'channel_emotes_map', 'native_twitch_emotes', 'hs_removed_emote_fallback', 'hs_blocked_emote_fallback']);
       // Restore removed-emote render fallback (persists across refresh).
       removedEmoteFallback.clear();
       const rf = stored.hs_removed_emote_fallback;
       if (rf && typeof rf === 'object') {
         for (const [name, e] of Object.entries(rf)) {
           if (e && e.url) removedEmoteFallback.set(name, { url: e.url, source: e.source || 'heatsync', zeroWidth: !!e.zeroWidth, state: 'unadded' });
+        }
+      }
+      // Restore block-state render fallback so the dashed box survives refresh
+      // (rebuildBlockedNames at the tail of this fn seeds blockedEmoteNames from it).
+      blockedEmoteFallback.clear();
+      const bf = stored.hs_blocked_emote_fallback;
+      if (bf && typeof bf === 'object') {
+        for (const [name, e] of Object.entries(bf)) {
+          if (e) blockedEmoteFallback.set(name, { url: e.url || '', source: e.source || 'heatsync', zeroWidth: !!e.zeroWidth });
         }
       }
       emoteCache.clear();
@@ -24965,6 +25018,23 @@ remoteDone: false // 7tv fallback already merged for this search
 let recentRemoteCompletions = new Map()
 const REMOTE_COMPLETION_CAP = 300
 
+// Register a Tab-completed emote for auto-add-on-send. Covers the LOCAL-match
+// path that fetchRemoteEmoteMatches misses: an aliased channel/global 7TV/BTTV/FFZ
+// emote tab-completes as a local hit, never enters the registry, and so renders
+// live (channel context) but vanishes after refresh because it was never added
+// to the viewer's heatsync set. Gated to third-party providers with a URL —
+// owned/blocked/pending are filtered later in autoAddInputEmotes.
+function trackCompletionForAutoAdd(match) {
+  if (!match || match.type !== 'emote' || !match.name || !match.url) return
+  const src = match.source
+  if (src !== '7tv' && src !== 'bttv' && src !== 'ffz') return
+  recentRemoteCompletions.delete(match.name)
+  recentRemoteCompletions.set(match.name, { url: match.url, source: src })
+  while (recentRemoteCompletions.size > REMOTE_COMPLETION_CAP) {
+    recentRemoteCompletions.delete(recentRemoteCompletions.keys().next().value)
+  }
+}
+
 // Infinite Tab-cycle: once local matches run out, pull more from the 7TV
 // search API (same source the picker uses) and append. Aborts stale fetches
 // so rapid re-triggering never merges results from an old search term.
@@ -27281,6 +27351,8 @@ function findEmoteMatches(search) {
 function insertCompletionKeepOpen(match) {
   const input = document.getElementById('hs-mc-input');
   if (!input || !match) return;
+
+  trackCompletionForAutoAdd(match);
 
   if (wysiwygEnabled) {
     insertCompletionWysiwyg(match);

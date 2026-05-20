@@ -154,6 +154,23 @@ remoteDone: false // 7tv fallback already merged for this search
 let recentRemoteCompletions = new Map()
 const REMOTE_COMPLETION_CAP = 300
 
+// Register a Tab-completed emote for auto-add-on-send. Covers the LOCAL-match
+// path that fetchRemoteEmoteMatches misses: an aliased channel/global 7TV/BTTV/FFZ
+// emote tab-completes as a local hit, never enters the registry, and so renders
+// live (channel context) but vanishes after refresh because it was never added
+// to the viewer's heatsync set. Gated to third-party providers with a URL —
+// owned/blocked/pending are filtered later in autoAddInputEmotes.
+function trackCompletionForAutoAdd(match) {
+  if (!match || match.type !== 'emote' || !match.name || !match.url) return
+  const src = match.source
+  if (src !== '7tv' && src !== 'bttv' && src !== 'ffz') return
+  recentRemoteCompletions.delete(match.name)
+  recentRemoteCompletions.set(match.name, { url: match.url, source: src })
+  while (recentRemoteCompletions.size > REMOTE_COMPLETION_CAP) {
+    recentRemoteCompletions.delete(recentRemoteCompletions.keys().next().value)
+  }
+}
+
 // Infinite Tab-cycle: once local matches run out, pull more from the 7TV
 // search API (same source the picker uses) and append. Aborts stale fetches
 // so rapid re-triggering never merges results from an old search term.
@@ -2470,6 +2487,8 @@ function findEmoteMatches(search) {
 function insertCompletionKeepOpen(match) {
   const input = document.getElementById('hs-mc-input');
   if (!input || !match) return;
+
+  trackCompletionForAutoAdd(match);
 
   if (wysiwygEnabled) {
     insertCompletionWysiwyg(match);

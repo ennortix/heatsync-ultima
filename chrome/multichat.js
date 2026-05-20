@@ -16207,6 +16207,11 @@ async function sendKickMessage(kickSlug, text) {
     const labels = { owned: t('mc_emote_in_set'), unadded: t('mc_emote_click_add'), blocked: t('mc_emote_blocked') };
     stateEl.textContent = labels[newState] || newState;
     stateEl.className = 'tooltip-source ' + (newState || 'global');
+    // The cross-highlight color is set once on mouseover; if the state flips while
+    // you're still hovering (click-to-add: unadded→owned), the orange outline goes
+    // stale against the now-green tooltip. Re-sync it to match the new state.
+    const hl = newState === 'blocked' ? '#ff0000' : newState === 'unadded' ? '#ff8700' : '#00ff00';
+    document.body.style.setProperty('--hs-highlight-color', hl);
   }
 
   function hideEmoteTooltip() {

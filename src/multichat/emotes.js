@@ -1038,6 +1038,11 @@
     inventoryEmotes.delete(emoteName);
     inventoryHashes.delete(emoteName);
     viewerPersonalEmotes.delete(emoteName);
+    // Drop from the tab-complete auto-add registry — otherwise posting an emote you
+    // just removed re-adds it on send (autoAddInputEmotes), fighting the removal and
+    // leaving it in a half-owned/pending flux that errors on interaction until the
+    // async re-add settles.
+    if (typeof recentRemoteCompletions !== 'undefined') recentRemoteCompletions.delete(emoteName);
     const cachedEmote = lookupEmote(emoteName);
     if (cachedEmote) {
       const isThirdParty = ['7tv', 'bttv', 'ffz', 'twitch', 'kick'].includes(cachedEmote.source);

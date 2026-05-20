@@ -201,7 +201,11 @@ async function fetchRemoteEmoteMatches(search) {
     }
   }
   if (!add.length) return
-  add.sort((a, b) => (a.priority - b.priority) || a.name.localeCompare(b.name))
+  // Stable sort by tier ONLY — items arrive most-popular-first (7TV TOP_ALL_TIME,
+  // FFZ count-desc), and a stable sort preserves that order within each tier. So
+  // prefix matches lead, then substring matches, each in provider popularity order
+  // (most-used first) instead of alphabetical.
+  add.sort((a, b) => a.priority - b.priority)
   const wasEmpty = acState.matches.length === 0
   acState.matches.push(...add.slice(0, 60))
   // No local match existed when Tab was pressed — insert the first remote hit now.
@@ -3607,6 +3611,13 @@ function autoAddInputEmotes(text) {
     if (typeof blockedEmoteNames !== 'undefined' && blockedEmoteNames.has(word)) continue
     if (typeof inventoryEmotes !== 'undefined' && inventoryEmotes.has(word)) continue
     if (typeof pendingEmoteOps !== 'undefined' && pendingEmoteOps.has(word)) continue
+    // Optimistically register locally so the own-message echo (arrives in ~ms,
+    // before the server add resolves) renders the emote image instead of raw
+    // text — text has no wrapper, so a late add can't retro-fix it. Mirrors the
+    // picker's optimistic add (emotes.js). addEmoteToInventory then persists it.
+    if (typeof viewerPersonalEmotes !== 'undefined' && !viewerPersonalEmotes.has(word)) {
+      viewerPersonalEmotes.set(word, { url: rec.url, source: rec.source, state: 'owned' })
+    }
     if (typeof addEmoteToInventory === 'function') addEmoteToInventory(word, rec.url, rec.source)
   }
 }

@@ -997,6 +997,21 @@ function _toggleMcMute(username) {
   renderMessages(currentTab)
 }
 
+function _toggleMcBlock(username) {
+  const u = String(username).toLowerCase()
+  if (blockedUsers.has(u)) {
+    blockedUsers.delete(u)
+    showToast(`unblocked ${username}`, 'success')
+    safeSendMessage({ type: 'unblock_user', username: u })
+  } else {
+    blockedUsers.add(u)
+    showToast(`blocked ${username}`, 'success')
+    safeSendMessage({ type: 'block_user', username: u })
+  }
+  // buildMessageDiv filters blocked users, so a full re-render hides/restores them.
+  renderMessages(currentTab)
+}
+
 function _extractMcMsgText(msg) {
   // Walk siblings after the username link, gathering text nodes + emote alts.
   // textContent on the whole row leaks badge/timestamp/username junk; this
@@ -1055,27 +1070,6 @@ function showMcEmoteActionMenu(x, y, emoteInfo, evtTarget) {
     if (s === 'ffz' || url.includes('cdn.frankerfacez.com')) return 'FFZ'
     if (s === 'twitch' || url.includes('static-cdn.jtvnw.net')) return 'Twitch'
     if (s === 'heatsync') return 'heatsync'
-    return null
-  })()
-  const externalUrl = (() => {
-    try {
-      if (provider === '7TV') {
-        const m = url.match(/cdn\.7tv\.app\/emote\/([^/]+)/)
-        if (m) return 'https://7tv.app/emotes/' + m[1]
-      }
-      if (provider === 'BTTV') {
-        const m = url.match(/cdn\.betterttv\.net\/emote\/([^/]+)/)
-        if (m) return 'https://betterttv.com/emotes/' + m[1]
-      }
-      if (provider === 'FFZ') {
-        const m = url.match(/cdn\.frankerfacez\.com\/emote\/(\d+)/)
-        if (m) return 'https://www.frankerfacez.com/emoticon/' + m[1]
-      }
-      if (provider === 'Twitch') {
-        const m = url.match(/emoticons\/v2\/(\d+)/)
-        if (m) return 'https://www.twitch.tv/popout/global/emote/' + m[1]
-      }
-    } catch {}
     return null
   })()
 
@@ -1202,11 +1196,6 @@ function showMcEmoteActionMenu(x, y, emoteInfo, evtTarget) {
   addItem('copy name', () => { try { navigator.clipboard.writeText(emoteName) } catch {} })
   if (url) {
     addItem('copy image url', () => { try { navigator.clipboard.writeText(url) } catch {} })
-    addItem('copy markdown', () => { try { navigator.clipboard.writeText(`![${emoteName}](${url})`) } catch {} })
-  }
-  if (externalUrl) {
-    addItem('view on ' + provider.toLowerCase() + (provider === 'Twitch' ? '.tv' : '.app'),
-      () => window.open(externalUrl, '_blank', 'noopener,noreferrer'))
   }
 
   // Set membership
@@ -1345,22 +1334,17 @@ function showMcMsgContextMenu(x, y, msg, username) {
     menu.appendChild(s)
   }
 
-  // Ordered so pure bottom-up numbering (key 1 nearest the cursor, like the emote
-  // menu) puts the two most-used actions on the low keys: mute/unmute = 1 at the
-  // very bottom, copy message = 2 just above it. Rarer utilities ascend from there.
+  // Trimmed to the actions that matter, numbered bottom-up (key 1 nearest the
+  // cursor, like the emote menu): mute/unmute=1, block/unblock=2, copy message=3,
+  // copy username=4. The two mod actions sit at the bottom for fastest reach.
+  const isBlocked = blockedUsers.has(String(username).toLowerCase())
   addHeader(username)
-  if (msg?.dataset?.msgId && typeof setReplyState === 'function') {
-    addItem('reply', () => setReplyState({ msgId: msg.dataset.msgId, user: msg.dataset.msgUser || username, channel: msg.dataset.msgChannel }))
-  }
-  addItem('mention', () => _mentionInMcInput(username))
-  addItem('whisper', () => _openWhisperFor(username))
   addItem('copy username', () => { try { navigator.clipboard.writeText(username) } catch {} })
-
-  addSep()
-  addItem('profile', () => window.open(`https://heatsync.org/user/${encodeURIComponent(username)}`, '_blank', 'noopener'))
   addItem('copy message', () => { try { navigator.clipboard.writeText(_extractMcMsgText(msg)) } catch {} })
 
   addSep()
+  if (isBlocked) addItem('unblock', () => _toggleMcBlock(username), { good: true })
+  else addItem('block', () => _toggleMcBlock(username), { danger: true })
   if (isMuted) addItem('unmute', () => _toggleMcMute(username), { good: true })
   else addItem('mute (24h)', () => _toggleMcMute(username), { danger: true })
 

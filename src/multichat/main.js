@@ -128,6 +128,9 @@
 
   // Muted users (right-click to hide) — loaded async from chrome.storage.local
   let mutedUsers = new Set();
+  // Blocked users (right-click → block) — fully hidden, not just stripped like mute.
+  // Synced with background's block_user/unblock_user (shared with content.js).
+  let blockedUsers = new Set();
 
   // Active settings sub-tab — persisted across re-renders
   let _settingsSubtab = 'display';
@@ -6799,6 +6802,10 @@
   // Note: innerHTML here is safe — badges/emotes are from extension data, user text
   // goes through escapeHtml() and processEmotes() which sanitize content
   function buildMessageDiv(m, tabId) {
+    // Blocked user — fully hide (skip render entirely). Both the append and the
+    // full-rebuild path go through buildMessageDiv, so returning null here hides
+    // the message everywhere. Unblock + renderMessages brings them back.
+    if (m.user && blockedUsers.has(String(m.user).toLowerCase())) return null;
     // Stream event — render as magenta inline notification.
     // Render-time gate: skip if the corresponding hermes toggle is off
     // (buffer can hold events saved before a toggle flipped). Mirrors the
@@ -10305,6 +10312,16 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
         mutedUsers.clear()
         renderMessages(currentTab)
       }
+      // Cross-surface block sync (content.js, other tabs). Full re-render so blocked
+      // users drop out / reappear (buildMessageDiv filters them).
+      if (msg.type === 'user_blocked') {
+        const u = msg.username?.toLowerCase()
+        if (u && !blockedUsers.has(u)) { blockedUsers.add(u); renderMessages(currentTab) }
+      }
+      if (msg.type === 'user_unblocked') {
+        const u = msg.username?.toLowerCase()
+        if (u && blockedUsers.delete(u)) renderMessages(currentTab)
+      }
 
       // Server-evaluated mention rule match — show as inline toast
       if (msg.type === 'mention_rule_match') {
@@ -10888,6 +10905,11 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
           if (u && (!exp || exp > now)) mutedUsers.add(u)
         }
       }
+    } catch {}
+    // Blocked users — shared with content.js via background's `blocked_users`.
+    try {
+      const bd = await new Promise(res => { try { chrome.storage.local.get('blocked_users', r => res(r || {})) } catch { res({}) } })
+      if (Array.isArray(bd.blocked_users)) for (const u of bd.blocked_users) { if (u) blockedUsers.add(String(u).toLowerCase()) }
     } catch {}
     log('Username:', currentUsername);
 

@@ -25905,6 +25905,21 @@ function _toggleMcMute(username) {
   renderMessages(currentTab)
 }
 
+function _toggleMcBlock(username) {
+  const u = String(username).toLowerCase()
+  if (blockedUsers.has(u)) {
+    blockedUsers.delete(u)
+    showToast(`unblocked ${username}`, 'success')
+    safeSendMessage({ type: 'unblock_user', username: u })
+  } else {
+    blockedUsers.add(u)
+    showToast(`blocked ${username}`, 'success')
+    safeSendMessage({ type: 'block_user', username: u })
+  }
+  // buildMessageDiv filters blocked users, so a full re-render hides/restores them.
+  renderMessages(currentTab)
+}
+
 function _extractMcMsgText(msg) {
   // Walk siblings after the username link, gathering text nodes + emote alts.
   // textContent on the whole row leaks badge/timestamp/username junk; this
@@ -25963,27 +25978,6 @@ function showMcEmoteActionMenu(x, y, emoteInfo, evtTarget) {
     if (s === 'ffz' || url.includes('cdn.frankerfacez.com')) return 'FFZ'
     if (s === 'twitch' || url.includes('static-cdn.jtvnw.net')) return 'Twitch'
     if (s === 'heatsync') return 'heatsync'
-    return null
-  })()
-  const externalUrl = (() => {
-    try {
-      if (provider === '7TV') {
-        const m = url.match(/cdn\.7tv\.app\/emote\/([^/]+)/)
-        if (m) return 'https://7tv.app/emotes/' + m[1]
-      }
-      if (provider === 'BTTV') {
-        const m = url.match(/cdn\.betterttv\.net\/emote\/([^/]+)/)
-        if (m) return 'https://betterttv.com/emotes/' + m[1]
-      }
-      if (provider === 'FFZ') {
-        const m = url.match(/cdn\.frankerfacez\.com\/emote\/(\d+)/)
-        if (m) return 'https://www.frankerfacez.com/emoticon/' + m[1]
-      }
-      if (provider === 'Twitch') {
-        const m = url.match(/emoticons\/v2\/(\d+)/)
-        if (m) return 'https://www.twitch.tv/popout/global/emote/' + m[1]
-      }
-    } catch {}
     return null
   })()
 
@@ -26110,11 +26104,6 @@ function showMcEmoteActionMenu(x, y, emoteInfo, evtTarget) {
   addItem('copy name', () => { try { navigator.clipboard.writeText(emoteName) } catch {} })
   if (url) {
     addItem('copy image url', () => { try { navigator.clipboard.writeText(url) } catch {} })
-    addItem('copy markdown', () => { try { navigator.clipboard.writeText(`![${emoteName}](${url})`) } catch {} })
-  }
-  if (externalUrl) {
-    addItem('view on ' + provider.toLowerCase() + (provider === 'Twitch' ? '.tv' : '.app'),
-      () => window.open(externalUrl, '_blank', 'noopener,noreferrer'))
   }
 
   // Set membership
@@ -26253,22 +26242,17 @@ function showMcMsgContextMenu(x, y, msg, username) {
     menu.appendChild(s)
   }
 
-  // Ordered so pure bottom-up numbering (key 1 nearest the cursor, like the emote
-  // menu) puts the two most-used actions on the low keys: mute/unmute = 1 at the
-  // very bottom, copy message = 2 just above it. Rarer utilities ascend from there.
+  // Trimmed to the actions that matter, numbered bottom-up (key 1 nearest the
+  // cursor, like the emote menu): mute/unmute=1, block/unblock=2, copy message=3,
+  // copy username=4. The two mod actions sit at the bottom for fastest reach.
+  const isBlocked = blockedUsers.has(String(username).toLowerCase())
   addHeader(username)
-  if (msg?.dataset?.msgId && typeof setReplyState === 'function') {
-    addItem('reply', () => setReplyState({ msgId: msg.dataset.msgId, user: msg.dataset.msgUser || username, channel: msg.dataset.msgChannel }))
-  }
-  addItem('mention', () => _mentionInMcInput(username))
-  addItem('whisper', () => _openWhisperFor(username))
   addItem('copy username', () => { try { navigator.clipboard.writeText(username) } catch {} })
-
-  addSep()
-  addItem('profile', () => window.open(`https://heatsync.org/user/${encodeURIComponent(username)}`, '_blank', 'noopener'))
   addItem('copy message', () => { try { navigator.clipboard.writeText(_extractMcMsgText(msg)) } catch {} })
 
   addSep()
+  if (isBlocked) addItem('unblock', () => _toggleMcBlock(username), { good: true })
+  else addItem('block', () => _toggleMcBlock(username), { danger: true })
   if (isMuted) addItem('unmute', () => _toggleMcMute(username), { good: true })
   else addItem('mute (24h)', () => _toggleMcMute(username), { danger: true })
 
@@ -30195,6 +30179,9 @@ const STORAGE_KEY = 'heatsync_multichat';
 
   // Muted users (right-click to hide) — loaded async from chrome.storage.local
   let mutedUsers = new Set();
+  // Blocked users (right-click → block) — fully hidden, not just stripped like mute.
+  // Synced with background's block_user/unblock_user (shared with content.js).
+  let blockedUsers = new Set();
 
   // Active settings sub-tab — persisted across re-renders
   let _settingsSubtab = 'display';
@@ -36866,6 +36853,10 @@ const STORAGE_KEY = 'heatsync_multichat';
   // Note: innerHTML here is safe — badges/emotes are from extension data, user text
   // goes through escapeHtml() and processEmotes() which sanitize content
   function buildMessageDiv(m, tabId) {
+    // Blocked user — fully hide (skip render entirely). Both the append and the
+    // full-rebuild path go through buildMessageDiv, so returning null here hides
+    // the message everywhere. Unblock + renderMessages brings them back.
+    if (m.user && blockedUsers.has(String(m.user).toLowerCase())) return null;
     // Stream event — render as magenta inline notification.
     // Render-time gate: skip if the corresponding hermes toggle is off
     // (buffer can hold events saved before a toggle flipped). Mirrors the
@@ -40372,6 +40363,16 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
         mutedUsers.clear()
         renderMessages(currentTab)
       }
+      // Cross-surface block sync (content.js, other tabs). Full re-render so blocked
+      // users drop out / reappear (buildMessageDiv filters them).
+      if (msg.type === 'user_blocked') {
+        const u = msg.username?.toLowerCase()
+        if (u && !blockedUsers.has(u)) { blockedUsers.add(u); renderMessages(currentTab) }
+      }
+      if (msg.type === 'user_unblocked') {
+        const u = msg.username?.toLowerCase()
+        if (u && blockedUsers.delete(u)) renderMessages(currentTab)
+      }
 
       // Server-evaluated mention rule match — show as inline toast
       if (msg.type === 'mention_rule_match') {
@@ -40955,6 +40956,11 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
           if (u && (!exp || exp > now)) mutedUsers.add(u)
         }
       }
+    } catch {}
+    // Blocked users — shared with content.js via background's `blocked_users`.
+    try {
+      const bd = await new Promise(res => { try { chrome.storage.local.get('blocked_users', r => res(r || {})) } catch { res({}) } })
+      if (Array.isArray(bd.blocked_users)) for (const u of bd.blocked_users) { if (u) blockedUsers.add(String(u).toLowerCase()) }
     } catch {}
     log('Username:', currentUsername);
 

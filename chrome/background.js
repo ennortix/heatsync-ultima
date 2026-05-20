@@ -2788,6 +2788,7 @@ async function blockEmote(hash) {
 
     const response = await fetchWithTimeout(`${API_URL}/api/user/emotes/block`, {
       method: 'POST',
+      credentials: 'omit', // Bearer-only → CSRF-exempt (cookie would trigger CSRF)
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${authToken}`
@@ -2865,6 +2866,7 @@ async function unblockEmote(hash) {
 
     const response = await fetchWithTimeout(`${API_URL}/api/user/emotes/blocked/${hash}`, {
       method: 'DELETE',
+      credentials: 'omit', // Bearer-only → CSRF-exempt (cookie would trigger CSRF)
       headers: {
         'Authorization': `Bearer ${authToken}`
       }
@@ -4269,7 +4271,10 @@ async function addToInventory(emoteName, emoteHash, emoteUrl) {
     // Call server API to add emote
     const response = await fetchWithTimeout(`${API_URL}/api/user/emotes`, {
       method: 'POST',
-      credentials: 'include',
+      // Bearer-only (omit cookie): sending the cookie makes the server enforce
+      // CSRF on this mutation, which the extension can't satisfy → 403/hang. The
+      // Bearer token alone is CSRF-exempt (matches the working syncMuteToServer).
+      credentials: 'omit',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${authToken}`
@@ -4413,7 +4418,7 @@ async function _removeFromInventoryImpl(emoteHash, emoteName) {
     // Call server API to remove emote
     const response = await fetchWithTimeout(`${API_URL}/api/user/emotes/${emote.slot}`, {
       method: 'DELETE',
-      credentials: 'include',
+      credentials: 'omit', // Bearer-only → CSRF-exempt (cookie would trigger CSRF)
       headers: {
         'Authorization': `Bearer ${authToken}`
       }
@@ -5224,6 +5229,7 @@ async function handleMessage(message, sender, sendResponse) {
       if (token) {
         fetchWithTimeout(`${API_URL}/api/user/emotes/blocks/clear`, {
           method: 'POST',
+          credentials: 'omit', // Bearer-only → CSRF-exempt (cookie would trigger CSRF)
           headers: { 'Authorization': `Bearer ${token}` }
         }).then(r => r.body?.cancel()).catch(err => log(' Clear blocked emotes failed:', err?.message))
       }

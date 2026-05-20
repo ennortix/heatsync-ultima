@@ -14770,9 +14770,26 @@ async function sendKickMessage(kickSlug, text) {
   function applyInputEmoteBlockState(emoteName, blocked) {
     if (!emoteName) return
     const inputs = document.querySelectorAll('img.hs-input-emote')
+    let removed = false
     for (const img of inputs) {
       if (img.alt !== emoteName && img.dataset.emoteName !== emoteName) continue
-      markInputEmoteBlocked(img, blocked)
+      if (blocked) {
+        // Blocking an emote that's sitting in the compose box removes it: you've
+        // said you don't want this emote, so it shouldn't ride out in the message
+        // (right-click-block then send was the source of the "blocked but sent,
+        // renders blank" edge case). Drop an emptied stack wrapper too.
+        const stack = img.closest('.hs-input-stack')
+        img.remove()
+        if (stack && !stack.querySelector('img')) stack.remove()
+        removed = true
+      } else {
+        markInputEmoteBlocked(img, false)
+      }
+    }
+    // Resync persisted draft + char count after structural removal.
+    if (removed) {
+      const input = document.getElementById('hs-mc-input')
+      if (input) input.dispatchEvent(new InputEvent('input', { bubbles: true }))
     }
   }
 
@@ -15298,6 +15315,10 @@ async function sendKickMessage(kickSlug, text) {
   // Loaded fully at boot from chrome.storage.local["sender_emote_sets"] BEFORE first render → survives hard refresh.
   const senderEmoteSets = new Map();
   const SENDER_EMOTE_LRU_MAX = 5000;
+  // Bump whenever the set of sources baked into a sender fetch changes — a stale
+  // persisted cache is otherwise never refreshed (queueSenderEmoteFetch skips any
+  // sender already present). v2 added the sender's heatsync set to 7TV/BTTV.
+  const SENDER_EMOTE_SETS_VERSION = 2;
   let _senderEmotePersistTimer = null;
   let _senderEmoteDirty = false;
 
@@ -15311,7 +15332,7 @@ async function sendKickMessage(kickSlug, text) {
       for (const [k, m] of senderEmoteSets) {
         out[k] = Object.fromEntries(m);
       }
-      try { chrome.storage.local.set({ sender_emote_sets: out }) } catch {}
+      try { chrome.storage.local.set({ sender_emote_sets: out, sender_emote_sets_v: SENDER_EMOTE_SETS_VERSION }) } catch {}
     }, 500);
   }
 
@@ -15349,9 +15370,18 @@ async function sendKickMessage(kickSlug, text) {
 
   async function loadSenderEmoteSets() {
     try {
-      const stored = await chrome.storage.local.get(['sender_emote_sets']);
-      const obj = stored.sender_emote_sets || {};
+      const stored = await chrome.storage.local.get(['sender_emote_sets', 'sender_emote_sets_v']);
       senderEmoteSets.clear();
+      // Stale-version cache (fetched before a source was added, e.g. heatsync in
+      // v2) is discarded wholesale — queueSenderEmoteFetch skips senders already
+      // present, so a stale entry would never pick up the new source otherwise.
+      // Dropping it forces a lazy one-time re-fetch per sender as messages arrive.
+      if (stored.sender_emote_sets_v !== SENDER_EMOTE_SETS_VERSION) {
+        log('sender_emote_sets version', stored.sender_emote_sets_v, '!=', SENDER_EMOTE_SETS_VERSION, '— discarding stale cache');
+        try { chrome.storage.local.set({ sender_emote_sets: {}, sender_emote_sets_v: SENDER_EMOTE_SETS_VERSION }) } catch {}
+        return;
+      }
+      const obj = stored.sender_emote_sets || {};
       for (const [k, names] of Object.entries(obj)) {
         if (!names || typeof names !== 'object') continue;
         senderEmoteSets.set(k, new Map(Object.entries(names)));
@@ -25078,6 +25108,16 @@ async function fetchRemoteEmoteMatches(search) {
   acState.remoteDone = true
   const items = []
   for (const s of settled) if (s.status === 'fulfilled' && Array.isArray(s.value)) items.push(...s.value)
+  // 7TV popularity rank by name — the v4 search returns TOP_ALL_TIME order, so the
+  // item's index IS its rank. Built from the full 7TV result set so channel/owned
+  // 7TV emotes (which dedupe out of `add`) still inherit a popularity rank below.
+  const popRank = new Map()
+  let _rk = 0
+  for (const it of items) {
+    if ((it.provider || '7tv') !== '7tv' || !it.name) continue
+    const k = it.name.toLowerCase()
+    if (!popRank.has(k)) popRank.set(k, _rk++)
+  }
   // Dedupe by EXACT name (casing distinguishes emotes — NODDERS vs Nodders are
   // different uploads), matching the picker. Avoids collapsing the cycle to one.
   const have = new Set(acState.matches.map(m => m.name))
@@ -25088,7 +25128,7 @@ async function fetchRemoteEmoteMatches(search) {
     if (!it.name.toLowerCase().includes(searchLower)) continue // drop API noise
     have.add(it.name)
     const src = it.provider || '7tv'
-    add.push({ name: it.name, url: it.url, source: src, priority: it.name.toLowerCase().startsWith(searchLower) ? 0 : 1, type: 'emote', remote: true })
+    add.push({ name: it.name, url: it.url, source: src, priority: it.name.toLowerCase().startsWith(searchLower) ? 0 : 1, type: 'emote', remote: true, _ai: add.length })
     // Remember for auto-add-on-send (only matters if the user actually sends it).
     recentRemoteCompletions.delete(it.name)
     recentRemoteCompletions.set(it.name, { url: it.url, source: src })
@@ -25097,17 +25137,31 @@ async function fetchRemoteEmoteMatches(search) {
     }
   }
   if (!add.length) return
-  // Stable sort by tier ONLY — items arrive most-popular-first (7TV TOP_ALL_TIME,
-  // FFZ count-desc), and a stable sort preserves that order within each tier. So
-  // prefix matches lead, then substring matches, each in provider popularity order
-  // (most-used first) instead of alphabetical.
-  add.sort((a, b) => a.priority - b.priority)
   const wasEmpty = acState.matches.length === 0
+  const prev = acState.matches[acState.index]
   acState.matches.push(...add.slice(0, 60))
+  // Own/channel emotes first, then remote — each block: prefix before substring,
+  // then by 7TV popularity (most-used first). Channel/owned 7TV emotes inherit the
+  // global rank instead of ordering alphabetically. Non-7TV remote (BTTV/FFZ) lack
+  // a rank, so `_ai` keeps their provider popularity order; local ties fall to alpha.
+  const rankOf = (m) => { const r = popRank.get((m.name || '').toLowerCase()); return r === undefined ? Infinity : r }
+  acState.matches.sort((a, b) => {
+    const al = a.remote ? 1 : 0, bl = b.remote ? 1 : 0
+    if (al !== bl) return al - bl
+    if (a.priority !== b.priority) return a.priority - b.priority
+    const ar = rankOf(a), br = rankOf(b)
+    if (ar !== br) return ar - br
+    if (!!a.sub !== !!b.sub) return a.sub ? -1 : 1
+    if (a.remote && b.remote) return (a._ai || 0) - (b._ai || 0)
+    return (a.name || '').localeCompare(b.name || '')
+  })
   // No local match existed when Tab was pressed — insert the first remote hit now.
   if (wasEmpty && acState.matches.length > 0) {
     acState.index = 0
     insertCompletionKeepOpen(acState.matches[0])
+  } else if (prev) {
+    const ni = acState.matches.indexOf(prev)
+    if (ni >= 0) acState.index = ni
   }
   showCycleTooltip() // refresh the N/M denominator
 }

@@ -872,9 +872,26 @@
   function applyInputEmoteBlockState(emoteName, blocked) {
     if (!emoteName) return
     const inputs = document.querySelectorAll('img.hs-input-emote')
+    let removed = false
     for (const img of inputs) {
       if (img.alt !== emoteName && img.dataset.emoteName !== emoteName) continue
-      markInputEmoteBlocked(img, blocked)
+      if (blocked) {
+        // Blocking an emote that's sitting in the compose box removes it: you've
+        // said you don't want this emote, so it shouldn't ride out in the message
+        // (right-click-block then send was the source of the "blocked but sent,
+        // renders blank" edge case). Drop an emptied stack wrapper too.
+        const stack = img.closest('.hs-input-stack')
+        img.remove()
+        if (stack && !stack.querySelector('img')) stack.remove()
+        removed = true
+      } else {
+        markInputEmoteBlocked(img, false)
+      }
+    }
+    // Resync persisted draft + char count after structural removal.
+    if (removed) {
+      const input = document.getElementById('hs-mc-input')
+      if (input) input.dispatchEvent(new InputEvent('input', { bubbles: true }))
     }
   }
 
@@ -1400,6 +1417,10 @@
   // Loaded fully at boot from chrome.storage.local["sender_emote_sets"] BEFORE first render → survives hard refresh.
   const senderEmoteSets = new Map();
   const SENDER_EMOTE_LRU_MAX = 5000;
+  // Bump whenever the set of sources baked into a sender fetch changes — a stale
+  // persisted cache is otherwise never refreshed (queueSenderEmoteFetch skips any
+  // sender already present). v2 added the sender's heatsync set to 7TV/BTTV.
+  const SENDER_EMOTE_SETS_VERSION = 2;
   let _senderEmotePersistTimer = null;
   let _senderEmoteDirty = false;
 
@@ -1413,7 +1434,7 @@
       for (const [k, m] of senderEmoteSets) {
         out[k] = Object.fromEntries(m);
       }
-      try { chrome.storage.local.set({ sender_emote_sets: out }) } catch {}
+      try { chrome.storage.local.set({ sender_emote_sets: out, sender_emote_sets_v: SENDER_EMOTE_SETS_VERSION }) } catch {}
     }, 500);
   }
 
@@ -1451,9 +1472,18 @@
 
   async function loadSenderEmoteSets() {
     try {
-      const stored = await chrome.storage.local.get(['sender_emote_sets']);
-      const obj = stored.sender_emote_sets || {};
+      const stored = await chrome.storage.local.get(['sender_emote_sets', 'sender_emote_sets_v']);
       senderEmoteSets.clear();
+      // Stale-version cache (fetched before a source was added, e.g. heatsync in
+      // v2) is discarded wholesale — queueSenderEmoteFetch skips senders already
+      // present, so a stale entry would never pick up the new source otherwise.
+      // Dropping it forces a lazy one-time re-fetch per sender as messages arrive.
+      if (stored.sender_emote_sets_v !== SENDER_EMOTE_SETS_VERSION) {
+        log('sender_emote_sets version', stored.sender_emote_sets_v, '!=', SENDER_EMOTE_SETS_VERSION, '— discarding stale cache');
+        try { chrome.storage.local.set({ sender_emote_sets: {}, sender_emote_sets_v: SENDER_EMOTE_SETS_VERSION }) } catch {}
+        return;
+      }
+      const obj = stored.sender_emote_sets || {};
       for (const [k, names] of Object.entries(obj)) {
         if (!names || typeof names !== 'object') continue;
         senderEmoteSets.set(k, new Map(Object.entries(names)));

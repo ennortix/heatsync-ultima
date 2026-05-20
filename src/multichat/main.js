@@ -7483,6 +7483,32 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     _dropAllTabCaches();
   }
 
+  // Surgical invalidation for a block/unblock of specific emote(s). The full
+  // clearRenderedHtmlCache() bumps _renderEpoch, which re-keys EVERY message so
+  // the next render (constant on live chat) tears down and rebuilds the whole
+  // list — a visible whole-chat flash. block/unblockEmote already correct the
+  // live DOM in-place, so we only need to (a) drop cached _renderedHtml on the
+  // messages that actually reference these emotes, so a LATER rebuild reprocesses
+  // them with current block state, and (b) drop other tabs' cached fragments so
+  // they rebuild fresh on next visit. No epoch bump → current tab is untouched →
+  // no flash.
+  function invalidateRenderedForEmotes(names) {
+    const list = Array.isArray(names) ? names : [names]
+    const wanted = list.filter(Boolean)
+    if (wanted.length === 0) return
+    const clearBuf = (msgs) => {
+      for (const m of msgs) {
+        if (m._renderedHtml == null || !m.text) continue
+        for (const n of wanted) { if (m.text.includes(n)) { delete m._renderedHtml; break } }
+      }
+    }
+    if (irc?.channels) for (const [, buf] of irc.channels) clearBuf(buf.getAll())
+    if (kickChat?.channels) for (const [, buf] of kickChat.channels) clearBuf(buf.getAll())
+    clearBuf(mentionsBuffer)
+    for (const msgs of channelYtMessages.values()) clearBuf(msgs)
+    _dropAllTabCaches()
+  }
+
   // Merge multiple platform sources into ~150 messages with proportional
   // interleaving. Each platform's messages maintain internal chronological
   // order, but platforms are woven together evenly so no single source

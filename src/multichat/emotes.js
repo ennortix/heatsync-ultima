@@ -717,12 +717,14 @@
     const toUnblock = [];
     for (const h of blockedEmoteHashes) if (!newSet.has(h)) toUnblock.push(h);
     if (toBlock.length === 0 && toUnblock.length === 0) return;
+    const changedNames = [];
 
     for (const hash of toBlock) {
       const name = hashToName.get(hash);
       blockedEmoteHashes.add(hash);
       if (!name) continue;
       blockedEmoteNames.add(name);
+      changedNames.push(name);
       queryEmoteWrappers(name).forEach(w => {
         if (w.classList.contains('hs-state-blocked')) return;
         w.classList.remove('hs-state-global', 'hs-state-channel', 'hs-state-owned', 'hs-state-unadded', 'hs-emote-highlight');
@@ -743,6 +745,7 @@
       blockedEmoteHashes.delete(hash);
       if (!name) continue;
       blockedEmoteNames.delete(name);
+      changedNames.push(name);
       const emote = lookupEmote(name);
       const realUrl = emote?.url || '';
       // Mirror unblockEmote: block dropped this from the set, so restore to the
@@ -774,9 +777,10 @@
     // the moment the message was first processed. Without invalidation, any later
     // re-render (clicking "new messages", tab switch, scroll resume) replays the
     // stale state for non-heatsync emotes — the post-render correction loop only
-    // touches data-source="heatsync" wrappers. Bump the epoch so the diff-aware
-    // render rebuilds DOM with current block state.
-    if (typeof clearRenderedHtmlCache === 'function') clearRenderedHtmlCache();
+    // touches data-source="heatsync" wrappers. Invalidate ONLY the messages that
+    // reference the changed emotes (no global epoch bump → no whole-chat rebuild
+    // flash); live DOM was already corrected in-place above.
+    if (typeof invalidateRenderedForEmotes === 'function') invalidateRenderedForEmotes(changedNames);
   }
 
   // Flash all wrappers for a given emote name. Also touches multichat input
@@ -1123,7 +1127,9 @@
     refreshEmoteTooltip(emoteName, 'blocked');
     showToast(`blocked: ${emoteName}`, 'success');
     flashAllEmotes(emoteName, 'hs-flash-block');
-    if (typeof clearRenderedHtmlCache === 'function') clearRenderedHtmlCache();
+    // Surgical: only re-key messages that reference this emote (no epoch bump →
+    // no whole-chat rebuild flash). Live DOM already updated in-place above.
+    if (typeof invalidateRenderedForEmotes === 'function') invalidateRenderedForEmotes(emoteName);
   }
 
   // Re-apply current state to all rendered wrappers for `emoteName`. Use after
@@ -1205,7 +1211,7 @@
     refreshEmoteTooltip(emoteName, newState);
     showToast(`unblocked: ${emoteName}`, 'success');
     flashAllEmotes(emoteName, 'hs-flash-unblock');
-    if (typeof clearRenderedHtmlCache === 'function') clearRenderedHtmlCache();
+    if (typeof invalidateRenderedForEmotes === 'function') invalidateRenderedForEmotes(emoteName);
   }
 
   // Add emote to inventory (click-to-add for unadded emotes)

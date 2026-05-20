@@ -1601,6 +1601,21 @@
         border-bottom: 1px solid rgba(255,255,255,0.04);
         line-height: 1.3;
       }
+      .hs-discover-item.blocked {
+        outline: 2px dashed #808080;
+        outline-offset: -2px;
+        opacity: 0.5;
+      }
+      .hs-discover-item.blocked .hs-discover-thumb { filter: grayscale(1); }
+      .hs-discover-item.blocked::after {
+        content: 'blocked';
+        margin-left: auto;
+        font-size: 10px;
+        color: #808080;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+      }
+      .hs-discover-item.blocked:hover { background: #ff0000; color: #fff; opacity: 1; }
       .hs-discover-item:hover { background: #fff; color: #000; }
       .hs-discover-item:hover * { color: #000 !important; }
       .hs-discover-thumb {
@@ -3577,6 +3592,20 @@
       if (isNaN(idx)) return
       const e = items[idx]
       if (!e) return
+      // Blocked result: left-click unblocks and restores it, mirroring the grid.
+      const hash = e.hash || e.id || btoa(e.url || e.pickerUrl || '').slice(0, 24)
+      if (_blockedHashSet.has(hash)) {
+        chrome.runtime.sendMessage({ type: 'unblock_emote', hash })
+          .then(result => {
+            if (result?.success) {
+              _blockedHashSet.delete(hash); renderEmoteGrid(); showPickerToast(t('btn_toast_unblocked'))
+            } else {
+              showPickerToast(result?.error || 'unblock failed')
+            }
+          })
+          .catch(err => log('Unblock failed:', err.message))
+        return
+      }
       pasteOrAddFromSearch(e)
     })
 
@@ -3585,6 +3614,12 @@
       const item = document.createElement('div')
       item.className = 'hs-discover-item'
       item.dataset.idx = String(i)
+
+      // Reflect blocked state — same hash derivation as the grid/block path.
+      // Without this the search list looked unchanged after a block, reading
+      // as "not saving" even though the server-side block persisted fine.
+      const _hash = e.hash || e.id || btoa(e.url || e.pickerUrl || '').slice(0, 24)
+      if (_hash && _blockedHashSet.has(_hash)) item.classList.add('blocked')
 
       // Server can return relative paths like '/uploads/abc.webp' — absolutize
       const rawUrl = e.url || e.animated_url || ''
@@ -4671,6 +4706,11 @@
   function handleClickOutside(e) {
     const panel = document.getElementById(PANEL_ID);
     const btn = document.getElementById(BUTTON_ID);
+    // The emote context menu lives on document.body, outside the panel — clicks
+    // on its items (block / remove from set / rename) must not close the picker.
+    // The item handler dismisses the menu before this fires, so _ctxMenu is
+    // already null; match the (now-detached) target by class instead.
+    if (e.target.closest && e.target.closest('.hs-emote-ctx')) return;
     if (panel && !panel.contains(e.target) && e.target !== btn && !btn.contains(e.target)) {
       closePanel();
     }

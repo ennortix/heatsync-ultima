@@ -199,6 +199,16 @@ async function fetchRemoteEmoteMatches(search) {
   acState.remoteDone = true
   const items = []
   for (const s of settled) if (s.status === 'fulfilled' && Array.isArray(s.value)) items.push(...s.value)
+  // 7TV popularity rank by name — the v4 search returns TOP_ALL_TIME order, so the
+  // item's index IS its rank. Built from the full 7TV result set so channel/owned
+  // 7TV emotes (which dedupe out of `add`) still inherit a popularity rank below.
+  const popRank = new Map()
+  let _rk = 0
+  for (const it of items) {
+    if ((it.provider || '7tv') !== '7tv' || !it.name) continue
+    const k = it.name.toLowerCase()
+    if (!popRank.has(k)) popRank.set(k, _rk++)
+  }
   // Dedupe by EXACT name (casing distinguishes emotes — NODDERS vs Nodders are
   // different uploads), matching the picker. Avoids collapsing the cycle to one.
   const have = new Set(acState.matches.map(m => m.name))
@@ -209,7 +219,7 @@ async function fetchRemoteEmoteMatches(search) {
     if (!it.name.toLowerCase().includes(searchLower)) continue // drop API noise
     have.add(it.name)
     const src = it.provider || '7tv'
-    add.push({ name: it.name, url: it.url, source: src, priority: it.name.toLowerCase().startsWith(searchLower) ? 0 : 1, type: 'emote', remote: true })
+    add.push({ name: it.name, url: it.url, source: src, priority: it.name.toLowerCase().startsWith(searchLower) ? 0 : 1, type: 'emote', remote: true, _ai: add.length })
     // Remember for auto-add-on-send (only matters if the user actually sends it).
     recentRemoteCompletions.delete(it.name)
     recentRemoteCompletions.set(it.name, { url: it.url, source: src })
@@ -218,17 +228,31 @@ async function fetchRemoteEmoteMatches(search) {
     }
   }
   if (!add.length) return
-  // Stable sort by tier ONLY — items arrive most-popular-first (7TV TOP_ALL_TIME,
-  // FFZ count-desc), and a stable sort preserves that order within each tier. So
-  // prefix matches lead, then substring matches, each in provider popularity order
-  // (most-used first) instead of alphabetical.
-  add.sort((a, b) => a.priority - b.priority)
   const wasEmpty = acState.matches.length === 0
+  const prev = acState.matches[acState.index]
   acState.matches.push(...add.slice(0, 60))
+  // Own/channel emotes first, then remote — each block: prefix before substring,
+  // then by 7TV popularity (most-used first). Channel/owned 7TV emotes inherit the
+  // global rank instead of ordering alphabetically. Non-7TV remote (BTTV/FFZ) lack
+  // a rank, so `_ai` keeps their provider popularity order; local ties fall to alpha.
+  const rankOf = (m) => { const r = popRank.get((m.name || '').toLowerCase()); return r === undefined ? Infinity : r }
+  acState.matches.sort((a, b) => {
+    const al = a.remote ? 1 : 0, bl = b.remote ? 1 : 0
+    if (al !== bl) return al - bl
+    if (a.priority !== b.priority) return a.priority - b.priority
+    const ar = rankOf(a), br = rankOf(b)
+    if (ar !== br) return ar - br
+    if (!!a.sub !== !!b.sub) return a.sub ? -1 : 1
+    if (a.remote && b.remote) return (a._ai || 0) - (b._ai || 0)
+    return (a.name || '').localeCompare(b.name || '')
+  })
   // No local match existed when Tab was pressed — insert the first remote hit now.
   if (wasEmpty && acState.matches.length > 0) {
     acState.index = 0
     insertCompletionKeepOpen(acState.matches[0])
+  } else if (prev) {
+    const ni = acState.matches.indexOf(prev)
+    if (ni >= 0) acState.index = ni
   }
   showCycleTooltip() // refresh the N/M denominator
 }

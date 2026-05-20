@@ -459,11 +459,43 @@
       if (!name || have.has(name)) continue
       have.add(name)
       const nl = name.toLowerCase()
-      add.push({ name, nameLower: nl, url: `https://cdn.7tv.app/emote/${it.id}/1x.webp`, remote: true, _pfx: nl.startsWith(searchLower) ? 0 : 1 })
+      add.push({ name, nameLower: nl, url: `https://cdn.7tv.app/emote/${it.id}/1x.webp`, remote: true })
     }
     if (!add.length) return
-    add.sort((a, b) => (a._pfx - b._pfx) || a.name.localeCompare(b.name))
+    add.forEach((m, i) => { m._ai = i })
+    // 7TV popularity rank by name — the search returns TOP_ALL_TIME order, so the
+    // item's index IS its rank. Built from the full result set so channel/owned 7TV
+    // emotes (which dedupe out of `add`) still inherit a popularity rank below.
+    const popRank = new Map()
+    let _rk = 0
+    for (const it of items) {
+      const nm = it.defaultName
+      if (!nm) continue
+      const k = nm.toLowerCase()
+      if (!popRank.has(k)) popRank.set(k, _rk++)
+    }
+    const prev = cycleState.matches[cycleState.index]
     cycleState.matches.push(...add)
+    // Own/channel emotes first, then remote 7TV — each block: prefix before
+    // substring, then by 7TV popularity (most-used first). Channel/owned 7TV
+    // emotes inherit the global rank so they no longer order alphabetically.
+    const prefixOf = (m) => ((m.nameLower || (m.name || '').toLowerCase()).startsWith(searchLower) ? 0 : 1)
+    const rankOf = (m) => { const r = popRank.get((m.name || '').toLowerCase()); return r === undefined ? Infinity : r }
+    cycleState.matches.sort((a, b) => {
+      const al = a.remote ? 1 : 0, bl = b.remote ? 1 : 0
+      if (al !== bl) return al - bl
+      const ap = prefixOf(a), bp = prefixOf(b)
+      if (ap !== bp) return ap - bp
+      const ar = rankOf(a), br = rankOf(b)
+      if (ar !== br) return ar - br
+      if (a.remote && b.remote) return (a._ai || 0) - (b._ai || 0)
+      const aSub = a.sub ? 0 : 1, bSub = b.sub ? 0 : 1
+      if (aSub !== bSub) return aSub - bSub
+      const la = (a.name || '').length, lb = (b.name || '').length
+      if (la !== lb) return la - lb
+      return (a.name || '').localeCompare(b.name || '')
+    })
+    if (prev) { const ni = cycleState.matches.indexOf(prev); if (ni >= 0) cycleState.index = ni }
     // Refresh the N/M denominator if the user is mid-cycle.
     if (cycleState.lastCycledEmote != null) {
       const cur = cycleState.matches[cycleState.index]

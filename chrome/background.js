@@ -5637,10 +5637,21 @@ async function handleMessage(message, sender, sendResponse) {
         for (const e of hsEmotes) {
           const name = e?.custom_name || e?.name
           if (!name || !e?.url) continue
+          const u = e.url
+          // Server stores source:'extension' for ext-added emotes — meaningless to
+          // the UI. Derive the real provider from the CDN url for an accurate label.
+          const src = /cdn\.7tv\.app/.test(u) ? '7tv'
+            : /cdn\.betterttv\.net/.test(u) ? 'bttv'
+            : /cdn\.frankerfacez\.com/.test(u) ? 'ffz'
+            : (e.source && e.source !== 'extension') ? e.source
+            : 'heatsync'
           collected[name] = {
-            url: e.url,
-            source: e.source || 'heatsync',
-            state: 'global',
+            url: u,
+            source: src,
+            // 'unadded' (not 'global') so a viewer who doesn't own it sees the
+            // orange "click to add" affordance — they can grab a shared emote.
+            // processEmotes upgrades to 'owned' if they already have it.
+            state: 'unadded',
             zeroWidth: false,
             hash: e.hash || ''
           }

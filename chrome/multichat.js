@@ -15315,10 +15315,11 @@ async function sendKickMessage(kickSlug, text) {
   // Loaded fully at boot from chrome.storage.local["sender_emote_sets"] BEFORE first render → survives hard refresh.
   const senderEmoteSets = new Map();
   const SENDER_EMOTE_LRU_MAX = 5000;
-  // Bump whenever the set of sources baked into a sender fetch changes — a stale
-  // persisted cache is otherwise never refreshed (queueSenderEmoteFetch skips any
-  // sender already present). v2 added the sender's heatsync set to 7TV/BTTV.
-  const SENDER_EMOTE_SETS_VERSION = 2;
+  // Bump whenever the shape/semantics of a cached sender set changes — write-once
+  // merge + persistence otherwise pin the stale copy. v2 added the sender's heatsync
+  // set; v3 marks shared heatsync emotes 'unadded' (addable) with a real provider
+  // source instead of 'global'/'extension'.
+  const SENDER_EMOTE_SETS_VERSION = 3;
   let _senderEmotePersistTimer = null;
   let _senderEmoteDirty = false;
 
@@ -15852,7 +15853,11 @@ async function sendKickMessage(kickSlug, text) {
       }
       if (emote) {
         const isBlocked = blockedEmoteNames.has(word);
-        const state = isBlocked ? 'blocked' : (emote.state || 'global');
+        let state = isBlocked ? 'blocked' : (emote.state || 'global');
+        // A sender's shared (or a removed) emote arrives as 'unadded'; if the
+        // viewer actually owns it, show owned (green) instead of the orange
+        // click-to-add affordance.
+        if (state === 'unadded' && inventoryEmotes.has(word)) state = 'owned';
         const source = escapeHtml(emote.source || 'unknown');
         const imgSrc = escapeHtml(getChatResUrl(emote.url));
         const safeHash = emote.hash ? escapeHtml(emote.hash) : '';

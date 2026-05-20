@@ -26215,8 +26215,8 @@ function showMcMsgContextMenu(x, y, msg, username) {
   menu.addEventListener('contextmenu', (e) => e.preventDefault())
   const isMuted = mutedUsers.has(username)
 
-  let kbdIndex = 1
   const kbdHandlers = {}
+  const kbdItems = [] // {el, fn, fixed} — numbered bottom-up after all items exist
   const addHeader = (text) => {
     const h = document.createElement('div')
     h.className = 'hs-mc-em-header'
@@ -26230,16 +26230,33 @@ function showMcMsgContextMenu(x, y, msg, username) {
     lab.className = 'hs-mc-em-label'
     lab.textContent = label
     it.appendChild(lab)
-    if (kbdIndex <= 9) {
-      const k = document.createElement('span')
-      k.className = 'hs-mc-em-kbd'
-      k.textContent = String(kbdIndex)
-      it.appendChild(k)
-      kbdHandlers[String(kbdIndex)] = fn
-      kbdIndex++
-    }
+    kbdItems.push({ el: it, fn, fixed: opts.fixedKbd })
     it.addEventListener('click', () => { dismiss(); try { fn() } catch {} })
     menu.appendChild(it)
+  }
+  // Number bottom-up (key 1 nearest the cursor) like the emote menu. Pinned keys
+  // (mute=1, unmute=2) are assigned first so the primary mod action is stable
+  // regardless of which other items are present; the rest fill remaining digits.
+  const assignBottomUpKbd = () => {
+    const used = new Set()
+    const setKbd = (el, key, fn) => {
+      const k = document.createElement('span')
+      k.className = 'hs-mc-em-kbd'
+      k.textContent = key
+      el.appendChild(k)
+      kbdHandlers[key] = fn
+      used.add(key)
+    }
+    for (const it of kbdItems) if (it.fixed) setKbd(it.el, it.fixed, it.fn)
+    let n = 1
+    for (let i = kbdItems.length - 1; i >= 0; i--) {
+      const it = kbdItems[i]
+      if (it.fixed) continue
+      while (n <= 9 && used.has(String(n))) n++
+      if (n > 9) break
+      setKbd(it.el, String(n), it.fn)
+      n++
+    }
   }
   const addSep = () => {
     const s = document.createElement('div')
@@ -26257,12 +26274,16 @@ function showMcMsgContextMenu(x, y, msg, username) {
   addItem('copy message', () => { try { navigator.clipboard.writeText(_extractMcMsgText(msg)) } catch {} })
 
   addSep()
-  if (isMuted) addItem('unmute', () => _toggleMcMute(username), { good: true })
-  else addItem('mute (24h)', () => _toggleMcMute(username), { danger: true })
-
-  addSep()
   addItem('profile', () => window.open(`https://heatsync.org/user/${encodeURIComponent(username)}`, '_blank', 'noopener'))
 
+  // Primary mod action at the bottom (nearest the cursor), like the emote menu's
+  // block/add. Pinned so muting is always 1 and unmuting always 2 — stable muscle
+  // memory, and the one-key gap keeps a reflexive "1" from unmuting by accident.
+  addSep()
+  if (isMuted) addItem('unmute', () => _toggleMcMute(username), { good: true, fixedKbd: '2' })
+  else addItem('mute (24h)', () => _toggleMcMute(username), { danger: true, fixedKbd: '1' })
+
+  assignBottomUpKbd()
   document.body.appendChild(menu)
   menu.style.visibility = 'hidden'
   menu.style.left = '0px'

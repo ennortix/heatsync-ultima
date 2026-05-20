@@ -3,7 +3,7 @@
     "message": "heatsync"
   },
   "manifest_description": {
-    "message": "อีโมตคัสตอมสำหรับแชท Twitch, Kick และ YouTube เติมคำด้วย Tab ซิงค์เรียลไทม์"
+    "message": "แชท Twitch, Kick และ YouTube ในแผงเดียว อีโมตคัสตอม, 7TV/BTTV/FFZ เพนต์ + แบดจ์ในตัว"
   },
   "common_loading": {
     "message": "กำลังโหลด..."
@@ -127,7 +127,7 @@
     "message": "ยินดีต้อนรับสู่ heatsync"
   },
   "welcome_tagline": {
-    "message": "อีโมตของคุณ ทุกที่ที่คุณแชท"
+    "message": "twitch + kick + youtube, แชทเดียว"
   },
   "welcome_step1_title": {
     "message": "เข้าสู่ระบบที่ heatsync.org"

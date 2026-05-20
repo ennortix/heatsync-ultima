@@ -3,7 +3,7 @@
     "message": "heatsync"
   },
   "manifest_description": {
-    "message": "Emotes personalizate pentru chat pe Twitch, Kick și YouTube. Completare cu tab, sincronizare în timp real."
+    "message": "Chat Twitch, Kick și YouTube într-un singur panou. Emotes personalizate, skinuri + insigne 7TV/BTTV/FFZ incluse."
   },
   "common_loading": {
     "message": "se încarcă..."
@@ -127,7 +127,7 @@
     "message": "bun venit la heatsync"
   },
   "welcome_tagline": {
-    "message": "emote-urile tale, oriunde discuți"
+    "message": "twitch + kick + youtube, un singur chat"
   },
   "welcome_step1_title": {
     "message": "autentifică-te pe heatsync.org"

@@ -3,7 +3,7 @@
     "message": "heatsync"
   },
   "manifest_description": {
-    "message": "Egendefinerte emotes for Twitch-, Kick- og YouTube-chat. Tab-fullføring, sanntidssynkronisering."
+    "message": "Twitch, Kick og YouTube-chat i ett panel. Egendefinerte emotes, 7TV/BTTV/FFZ paints + badges inkludert."
   },
   "common_loading": {
     "message": "laster..."
@@ -127,7 +127,7 @@
     "message": "velkommen til heatsync"
   },
   "welcome_tagline": {
-    "message": "emotene dine, overalt der du chatter"
+    "message": "twitch + kick + youtube, én chat"
   },
   "welcome_step1_title": {
     "message": "logg inn på heatsync.org"

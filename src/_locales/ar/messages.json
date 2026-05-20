@@ -3,7 +3,7 @@
     "message": "heatsync"
   },
   "manifest_description": {
-    "message": "إيموتس مخصصة لدردشة Twitch وKick وYouTube. إكمال تلقائي بـ Tab، مزامنة فورية."
+    "message": "دردشة Twitch وKick وYouTube في لوحة واحدة. إيموتس مخصصة، طلاءات وشارات 7TV/BTTV/FFZ مدمجة."
   },
   "common_loading": {
     "message": "جارٍ التحميل..."
@@ -127,7 +127,7 @@
     "message": "مرحبًا بك في heatsync"
   },
   "welcome_tagline": {
-    "message": "إيموتسك في كل مكان تتحدّث فيه"
+    "message": "twitch + kick + youtube, محادثة واحدة"
   },
   "welcome_step1_title": {
     "message": "سجّل دخول على heatsync.org"

@@ -3,7 +3,7 @@
     "message": "heatsync"
   },
   "manifest_description": {
-    "message": "Twitch, Kick और YouTube चैट के लिए कस्टम इमोट। टैब कम्पलीशन, रियल-टाइम सिंक।"
+    "message": "Twitch, Kick और YouTube चैट एक पैनल में। कस्टम इमोट, 7TV/BTTV/FFZ पेंट + बैज बिल्ट-इन।"
   },
   "common_loading": {
     "message": "लोड हो रहा है..."
@@ -127,7 +127,7 @@
     "message": "heatsync में आपका स्वागत है"
   },
   "welcome_tagline": {
-    "message": "आपके इमोट, हर जगह जहाँ आप चैट करते हैं"
+    "message": "twitch + kick + youtube, एक चैट"
   },
   "welcome_step1_title": {
     "message": "heatsync.org पर लॉगिन करें"

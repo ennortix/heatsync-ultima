@@ -3,7 +3,7 @@
     "message": "heatsync"
   },
   "manifest_description": {
-    "message": "Custom emotes para sa Twitch, Kick at YouTube chat. Tab completion, real-time sync."
+    "message": "Chat ng Twitch, Kick at YouTube sa isang panel. Custom emotes, 7TV/BTTV/FFZ paints + badges built-in."
   },
   "common_loading": {
     "message": "naglo-load..."
@@ -127,7 +127,7 @@
     "message": "welcome sa heatsync"
   },
   "welcome_tagline": {
-    "message": "ang emotes mo, kahit saan ka mag-chat"
+    "message": "twitch + kick + youtube, isang chat"
   },
   "welcome_step1_title": {
     "message": "mag-login sa heatsync.org"

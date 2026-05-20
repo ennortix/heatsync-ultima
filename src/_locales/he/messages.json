@@ -3,7 +3,7 @@
     "message": "heatsync"
   },
   "manifest_description": {
-    "message": "אימוג'ים מותאמים אישית לצ'אט Twitch, Kick ו-YouTube. השלמה אוטומטית עם Tab, סנכרון בזמן אמת."
+    "message": "צ'אט Twitch, Kick ו-YouTube בלוח אחד. אימוג'ים מותאמים, צבעים + תגים של 7TV/BTTV/FFZ מובנים."
   },
   "common_loading": {
     "message": "טוען..."
@@ -127,7 +127,7 @@
     "message": "ברוך הבא ל-heatsync"
   },
   "welcome_tagline": {
-    "message": "האימוג'ים שלך, בכל מקום שאתה מצ'וטט"
+    "message": "twitch + kick + youtube, צ'אט אחד"
   },
   "welcome_step1_title": {
     "message": "התחבר ב-heatsync.org"

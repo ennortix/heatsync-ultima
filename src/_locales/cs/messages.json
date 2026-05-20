@@ -3,7 +3,7 @@
     "message": "heatsync"
   },
   "manifest_description": {
-    "message": "Vlastní emotky pro chat na Twitchi, Kicku a YouTube. Doplňování tabem, synchronizace v reálném čase."
+    "message": "Chat Twitch, Kick a YouTube v jednom panelu. Vlastní emotky, skiny + odznaky 7TV/BTTV/FFZ v balení."
   },
   "common_loading": {
     "message": "načítám..."
@@ -127,7 +127,7 @@
     "message": "vítej v heatsync"
   },
   "welcome_tagline": {
-    "message": "tvé emotky všude, kde si píšeš"
+    "message": "twitch + kick + youtube, jeden chat"
   },
   "welcome_step1_title": {
     "message": "přihlas se na heatsync.org"

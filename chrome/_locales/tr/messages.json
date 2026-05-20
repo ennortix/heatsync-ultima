@@ -3,7 +3,7 @@
     "message": "heatsync"
   },
   "manifest_description": {
-    "message": "Twitch, Kick ve YouTube sohbeti için özel emote'lar. Tab tamamlama, gerçek zamanlı senkronizasyon."
+    "message": "Twitch, Kick ve YouTube sohbeti tek panelde. Özel emote'lar, 7TV/BTTV/FFZ paintler + rozetler dahil."
   },
   "common_loading": {
     "message": "yükleniyor..."
@@ -127,7 +127,7 @@
     "message": "heatsync'e hoş geldin"
   },
   "welcome_tagline": {
-    "message": "emote'ların, sohbet ettiğin her yerde"
+    "message": "twitch + kick + youtube, tek sohbet"
   },
   "welcome_step1_title": {
     "message": "heatsync.org'da giriş yap"

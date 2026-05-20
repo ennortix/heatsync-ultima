@@ -3,7 +3,7 @@
     "message": "heatsync"
   },
   "manifest_description": {
-    "message": "Emotes personalizados para Twitch, Kick y YouTube chat. Completar con tab, sincronización en tiempo real."
+    "message": "Chat de Twitch, Kick y YouTube en un panel. Emotes personalizados, pinturas y badges de 7TV/BTTV/FFZ incluidos."
   },
   "common_loading": {
     "message": "cargando..."
@@ -127,7 +127,7 @@
     "message": "bienvenido a heatsync"
   },
   "welcome_tagline": {
-    "message": "tus emotes, en todos los chats"
+    "message": "twitch + kick + youtube, un chat"
   },
   "welcome_step1_title": {
     "message": "inicia sesión en heatsync.org"

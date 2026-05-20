@@ -3,7 +3,7 @@
     "message": "heatsync"
   },
   "manifest_description": {
-    "message": "Egyéni emote-ok Twitch, Kick és YouTube chathez. Tab-kiegészítés, valós idejű szinkronizálás."
+    "message": "Twitch, Kick és YouTube chat egy panelen. Egyéni emote-ok, 7TV/BTTV/FFZ skinek + jelvények beépítve."
   },
   "common_loading": {
     "message": "betöltés..."
@@ -127,7 +127,7 @@
     "message": "üdv a heatsync-en"
   },
   "welcome_tagline": {
-    "message": "az emote-jaid mindenütt, ahol chatelsz"
+    "message": "twitch + kick + youtube, egy chat"
   },
   "welcome_step1_title": {
     "message": "jelentkezz be a heatsync.org oldalon"

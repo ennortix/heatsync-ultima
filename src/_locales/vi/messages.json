@@ -3,7 +3,7 @@
     "message": "heatsync"
   },
   "manifest_description": {
-    "message": "Emote tùy chỉnh cho chat Twitch, Kick và YouTube. Gõ tab để hoàn thành, đồng bộ thời gian thực."
+    "message": "Chat Twitch, Kick và YouTube trong một bảng. Emote tùy chỉnh, 7TV/BTTV/FFZ paints + badges tích hợp sẵn."
   },
   "common_loading": {
     "message": "đang tải..."
@@ -127,7 +127,7 @@
     "message": "chào mừng đến với heatsync"
   },
   "welcome_tagline": {
-    "message": "emote của bạn, ở mọi nơi bạn chat"
+    "message": "twitch + kick + youtube, một khung chat"
   },
   "welcome_step1_title": {
     "message": "đăng nhập tại heatsync.org"

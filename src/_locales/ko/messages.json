@@ -3,7 +3,7 @@
     "message": "heatsync"
   },
   "manifest_description": {
-    "message": "Twitch, Kick, YouTube 채팅용 커스텀 이모트. 탭 완성, 실시간 동기화."
+    "message": "Twitch, Kick, YouTube 채팅을 하나의 패널에. 커스텀 이모트, 7TV/BTTV/FFZ 페인트 + 배지 내장."
   },
   "common_loading": {
     "message": "로딩 중..."
@@ -127,7 +127,7 @@
     "message": "heatsync에 오신 걸 환영합니다"
   },
   "welcome_tagline": {
-    "message": "내 이모트, 어디서든 채팅에서"
+    "message": "twitch + kick + youtube, 하나의 채팅"
   },
   "welcome_step1_title": {
     "message": "heatsync.org에서 로그인"

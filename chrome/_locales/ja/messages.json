@@ -3,7 +3,7 @@
     "message": "heatsync"
   },
   "manifest_description": {
-    "message": "Twitch、Kick、YouTubeチャット用カスタムエモート。タブ補完、リアルタイム同期。"
+    "message": "Twitch・Kick・YouTubeのチャットをひとつのパネルに。カスタムエモート、7TV/BTTV/FFZペイント+バッジ搭載。"
   },
   "common_loading": {
     "message": "読み込み中..."
@@ -127,7 +127,7 @@
     "message": "heatsyncへようこそ"
   },
   "welcome_tagline": {
-    "message": "あなたのエモート、どこのチャットでも"
+    "message": "twitch + kick + youtube, ひとつのチャット"
   },
   "welcome_step1_title": {
     "message": "heatsync.orgでログイン"

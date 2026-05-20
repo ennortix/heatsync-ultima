@@ -3,7 +3,7 @@
     "message": "heatsync"
   },
   "manifest_description": {
-    "message": "Mukautetut emotet Twitchin, Kickin ja YouTuben chattiin. Sarkaintäydennys, reaaliaikainen synkronointi."
+    "message": "Twitch, Kick ja YouTube-chat yhdessä paneelissa. Omat emotet, 7TV/BTTV/FFZ paintit + badget sisäänrakennettu."
   },
   "common_loading": {
     "message": "ladataan..."
@@ -127,7 +127,7 @@
     "message": "tervetuloa heatsynciin"
   },
   "welcome_tagline": {
-    "message": "emotesi kaikkialla missä chattaat"
+    "message": "twitch + kick + youtube, yksi chat"
   },
   "welcome_step1_title": {
     "message": "kirjaudu sivulle heatsync.org"

@@ -3,7 +3,7 @@
     "message": "heatsync"
   },
   "manifest_description": {
-    "message": "Кастомные эмоуты для чата Twitch, Kick и YouTube. Автодополнение по Tab, синхронизация в реальном времени."
+    "message": "Чат Twitch, Kick и YouTube в одной панели. Кастомные эмоуты, скины + значки 7TV/BTTV/FFZ встроены."
   },
   "common_loading": {
     "message": "загрузка..."
@@ -127,7 +127,7 @@
     "message": "добро пожаловать в heatsync"
   },
   "welcome_tagline": {
-    "message": "ваши эмоуты везде, где вы общаетесь"
+    "message": "twitch + kick + youtube, один чат"
   },
   "welcome_step1_title": {
     "message": "войдите на heatsync.org"

@@ -3,7 +3,7 @@
     "message": "heatsync"
   },
   "manifest_description": {
-    "message": "Emote kustom untuk chat Twitch, Kick, dan YouTube. Autocomplete dengan tab, sinkronisasi real-time."
+    "message": "Chat Twitch, Kick, dan YouTube dalam satu panel. Emote kustom, 7TV/BTTV/FFZ paints + badges bawaan."
   },
   "common_loading": {
     "message": "memuat..."
@@ -127,7 +127,7 @@
     "message": "selamat datang di heatsync"
   },
   "welcome_tagline": {
-    "message": "emote kamu, di mana pun kamu chat"
+    "message": "twitch + kick + youtube, satu chat"
   },
   "welcome_step1_title": {
     "message": "login di heatsync.org"

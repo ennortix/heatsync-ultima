@@ -3,7 +3,7 @@
     "message": "heatsync"
   },
   "manifest_description": {
-    "message": "Custom emotes + multichat for Twitch, Kick, and YouTube. 7TV, BTTV, FFZ built in."
+    "message": "Twitch, Kick, and YouTube chat in one panel. Custom emotes, 7TV/BTTV/FFZ paints + badges built in."
   },
 
   "common_loading": {
@@ -120,7 +120,7 @@
     "message": "welcome to heatsync"
   },
   "welcome_tagline": {
-    "message": "your emotes, everywhere you chat"
+    "message": "twitch + kick + youtube, one chat"
   },
   "welcome_step1_title": {
     "message": "log in at heatsync.org"

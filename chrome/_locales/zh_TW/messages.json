@@ -3,7 +3,7 @@
     "message": "heatsync"
   },
   "manifest_description": {
-    "message": "Twitch、Kick 與 YouTube 聊天室自訂表情。Tab 自動補全、即時同步。"
+    "message": "Twitch、Kick 與 YouTube 聊天室集於一個面板。自訂表情，內建 7TV/BTTV/FFZ 塗裝 + 徽章。"
   },
   "common_loading": {
     "message": "載入中..."
@@ -127,7 +127,7 @@
     "message": "歡迎來到 heatsync"
   },
   "welcome_tagline": {
-    "message": "你的表情,在你聊天的每個地方"
+    "message": "twitch + kick + youtube, 一個聊天"
   },
   "welcome_step1_title": {
     "message": "在 heatsync.org 登入"

@@ -3,7 +3,7 @@
     "message": "heatsync"
   },
   "manifest_description": {
-    "message": "Персонализирани emotes за чат в Twitch, Kick и YouTube. Автодовършване с tab, синхронизация в реално време."
+    "message": "Чат на Twitch, Kick и YouTube в един панел. Персонализирани emotes, skins + значки 7TV/BTTV/FFZ включени."
   },
   "common_loading": {
     "message": "зарежда се..."
@@ -127,7 +127,7 @@
     "message": "добре дошъл в heatsync"
   },
   "welcome_tagline": {
-    "message": "твоите emotes навсякъде, където чатиш"
+    "message": "twitch + kick + youtube, един чат"
   },
   "welcome_step1_title": {
     "message": "влез на heatsync.org"

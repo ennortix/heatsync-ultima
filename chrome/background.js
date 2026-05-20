@@ -632,7 +632,12 @@ function fakeBackoffResponse() {
 }
 async function fetchWithTimeout(url, opts = {}, ms = 10000) {
   const isHeatsync = typeof url === 'string' && /^https?:\/\/(www\.)?heatsync\.org/.test(url)
-  if (isHeatsync && Date.now() < heatsyncBackoffUntil) {
+  // noBackoff: opt a non-critical, high-volume call (sender-emote batch) OUT of the
+  // shared heatsync backoff. Otherwise a 429 from ANY heatsync call (colors, inventory,
+  // cosmetics — common in busy channels) fake-429s it for up to 60s and it never loads;
+  // and a batch 429 shouldn't in turn block those critical calls.
+  const backoffManaged = isHeatsync && !opts.noBackoff
+  if (backoffManaged && Date.now() < heatsyncBackoffUntil) {
     return fakeBackoffResponse()
   }
   const ctrl = new AbortController()
@@ -644,7 +649,7 @@ async function fetchWithTimeout(url, opts = {}, ms = 10000) {
   // heatsync.org calls override with credentials: 'include' explicitly.
   const credentials = opts.credentials ?? (isHeatsync ? 'include' : 'omit')
   const resp = await fetch(url, { ...opts, credentials, signal: ctrl.signal }).finally(() => clearTimeout(timer))
-  if (isHeatsync && resp.status === 429) {
+  if (backoffManaged && resp.status === 429) {
     const retryAfter = resp.headers.get('retry-after')
     let waitMs = 5000
     if (retryAfter) {
@@ -5579,7 +5584,7 @@ async function handleMessage(message, sender, sendResponse) {
         .filter(id => /^\d+$/.test(id)))]
       let hsBatch = {}
       if (_missIds.length) {
-        const hb = await fetchWithTimeout(`${API_URL}/api/users/emotes/batch?ids=${_missIds.join(',')}`, { credentials: 'omit' }).then(r => r.ok ? r.json() : null).catch(() => null)
+        const hb = await fetchWithTimeout(`${API_URL}/api/users/emotes/batch?ids=${_missIds.join(',')}`, { credentials: 'omit', noBackoff: true }).then(r => r.ok ? r.json() : null).catch(() => null)
         hsBatch = hb?.sets || {}
       }
       await Promise.all(senderKeys.map(async (key) => {

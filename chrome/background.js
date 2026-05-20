@@ -5584,16 +5584,22 @@ async function handleMessage(message, sender, sendResponse) {
         // 7TV — twitch + kick supported by /users/{platform}/{id}; "yt" key falls
         // back to twitch-id which arrives once ytNameToTwitchId resolves.
         const sevenTvPath = platform === 'kick' ? `kick/${encodeURIComponent(id)}` : `twitch/${encodeURIComponent(id)}`
-        const fetches = [
-          fetchWithTimeout(`https://7tv.io/v3/users/${sevenTvPath}`).then(r => r.ok ? r.json() : null).catch(() => null)
-        ]
+        const isNumericId = /^\d+$/.test(id)
+        const stvP = fetchWithTimeout(`https://7tv.io/v3/users/${sevenTvPath}`).then(r => r.ok ? r.json() : null).catch(() => null)
         // BTTV — only twitch-id endpoint. Skip for kick/yt.
-        if (platform === 'twitch' && /^\d+$/.test(id)) {
-          fetches.push(
-            fetchWithTimeout(`https://api.betterttv.net/3/cached/users/twitch/${id}`).then(r => r.ok ? r.json() : null).catch(() => null)
-          )
-        }
-        const [stv, bttv] = await Promise.all(fetches)
+        const bttvP = (platform === 'twitch' && isNumericId)
+          ? fetchWithTimeout(`https://api.betterttv.net/3/cached/users/twitch/${id}`).then(r => r.ok ? r.json() : null).catch(() => null)
+          : Promise.resolve(null)
+        // HeatSync personal set — the sender's added/custom emotes (public endpoint,
+        // users.id == platform id). This is the ONLY source for an emote a user
+        // added to heatsync that isn't in their 7TV/BTTV provider set (e.g. a 7TV
+        // catalog emote added via the picker, or a self-hosted upload). Without it,
+        // those emotes render only for the sender themselves and as raw text for
+        // everyone else. Numeric ids only (twitch/kick; yt once twitch-resolved).
+        const hsP = isNumericId
+          ? fetchWithTimeout(`${API_URL}/api/users/${encodeURIComponent(id)}/emotes`).then(r => r.ok ? r.json() : null).catch(() => null)
+          : Promise.resolve(null)
+        const [stv, bttv, hs] = await Promise.all([stvP, bttvP, hsP])
         // 7TV personal emote_set
         const stvEmotes = stv?.emote_set?.emotes || []
         for (const e of stvEmotes) {
@@ -5621,6 +5627,22 @@ async function handleMessage(message, sender, sendResponse) {
               zeroWidth: false,
               hash: e.id
             }
+          }
+        }
+        // HeatSync personal set — overrides provider entries because it's the
+        // sender's curated set (and what they actually post via heatsync). URLs
+        // are already absolute (server normalizes /uploads/ → CDN). No overlay
+        // flag in the emotes table, so zeroWidth defaults false.
+        const hsEmotes = hs?.emotes || []
+        for (const e of hsEmotes) {
+          const name = e?.custom_name || e?.name
+          if (!name || !e?.url) continue
+          collected[name] = {
+            url: e.url,
+            source: e.source || 'heatsync',
+            state: 'global',
+            zeroWidth: false,
+            hash: e.hash || ''
           }
         }
         cache.set(key, { emotes: collected, ts: Date.now() })

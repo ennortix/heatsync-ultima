@@ -853,40 +853,12 @@ function initInput() {
       const { emoteName, state, emoteUrl, source } = emoteInfo;
 
       if (state === 'blocked') {
-        // Left-click means "I want this" → unblock AND restore to the set in one
-        // click. unblockEmote clears block state but lands on the orange/unadded
-        // rung (block drops set membership server-side); re-add via the same
-        // optimistic path the unadded→owned branch uses so the picker thumbnail
-        // flips straight to owned/green. Applies to any source — third-party
-        // emotes (7tv/bttv/ffz/etc.) can be set members too. Right-click → menu
-        // (its "unblock emote" stays unblock-only, landing at unadded).
+        // One rung up the ladder per click: unblock → unadded (orange). A second
+        // click (now in the unadded branch below) adds it to the set → owned/green.
+        // unblockEmote lands on the unadded rung and restores the image from the
+        // block fallback, matching the right-click menu's "unblock emote".
         if (pendingEmoteOps.has(emoteName)) return;
-        // The clicked element is a blocked render — its src is a transparent
-        // placeholder (chat dashed box / hidden picker img), NOT the real emote
-        // url. Recover the real url from caches/fallback (lookupEmote) so we
-        // re-add the actual image, falling back to the click src only if it's a
-        // real http(s) url. Without this the re-add stores a blank emote.
-        const _resolved = (typeof lookupEmote === 'function') ? lookupEmote(emoteName) : null;
-        const realUrl = (_resolved?.url && /^https?:\/\//i.test(_resolved.url))
-          ? _resolved.url
-          : (/^https?:\/\//i.test(emoteUrl) ? emoteUrl : '');
         unblockEmote(emoteName);
-        if (!realUrl) {
-          // Unblocked, but we have no resolvable image to re-add. Leave it at the
-          // unblocked/unadded rung rather than persisting a blank.
-          showToast(`unblocked ${emoteName} — re-add once its image loads`, 'info');
-          return;
-        }
-        if (!viewerPersonalEmotes.has(emoteName)) {
-          viewerPersonalEmotes.set(emoteName, { url: realUrl, source: source || 'heatsync', state: 'owned' });
-        }
-        const pickerWrap = e.target.closest('.hs-mc-picker-emote-wrap');
-        if (pickerWrap) {
-          pickerWrap.classList.remove('unadded', 'blocked');
-          const pImg = pickerWrap.querySelector('img');
-          if (pImg) { pImg.dataset.state = 'owned'; if (pImg.src !== realUrl) pImg.src = realUrl; }
-        }
-        addEmoteToInventory(emoteName, realUrl, source || 'heatsync', e.target);
         return;
       }
       if (state === 'locked') {

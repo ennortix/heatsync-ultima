@@ -2982,6 +2982,13 @@ function injectStyles() {
     }
     #hs-mc-input .hs-input-stack > img:first-child { z-index: 1; }
     #hs-mc-input .hs-input-stack > img:not(:first-child) { z-index: 2; }
+    /* Emoji base of an input stack (overlay emote stacked onto an emoji) —
+       co-locate at the grid cell so the overlay img lands on top of it. */
+    #hs-mc-input .hs-input-stack > .hs-mc-emoji {
+      grid-area: 1 / 1;
+      margin: 0;
+      z-index: 1;
+    }
     /* Blocked emote in input — parity with chat/picker: dashed gray border,
        image hidden. Image content is masked to a 1×1 transparent placeholder
        (src swap in applyInputEmoteBlockState) so outline still renders (a

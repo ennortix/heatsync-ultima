@@ -906,6 +906,8 @@
       if (node.nodeType === Node.ELEMENT_NODE) {
         if (node.tagName === 'IMG' && node.classList.contains('hs-input-emote')) return node
         if (node.classList?.contains('hs-input-stack')) return node
+        // Emoji span is a valid overlay base (chat stacks overlays onto emoji).
+        if (node.classList?.contains('hs-mc-emoji')) return node
       }
       break
     }
@@ -929,8 +931,10 @@
     if (wysiwygEnabled || !('value' in input)) {
       const img = createInputEmoteImg(emoteName)
       if (img) {
-        const emote = lookupEmote(emoteName)
-        const isZeroWidth = emote && !!emote.zeroWidth
+        // createInputEmoteImg already resolved overlay status (zeroWidth flag
+        // OR "name0" convention) and tagged the img — reuse it for parity with
+        // the typed live-replace path.
+        const isZeroWidth = img.dataset.zeroWidth === '1'
 
         if (isZeroWidth) {
           const target = findLastInputEmote(input)
@@ -1413,9 +1417,14 @@
   // ("TriHard0" → looks up "TriHard" and treats as overlay) so the input
   // preview matches how the chat renderer resolves the same word.
   function lookupEmoteWithOverlay(name) {
+    const endsWithZero = name.length > 1 && name.endsWith('0')
     let emote = lookupEmote(name)
-    let isOverlay = !!emote?.zeroWidth
-    if (!emote && name.length > 1 && name.endsWith('0')) {
+    // Mirror processEmotes (chat render): a direct hit ending in "0" is an
+    // overlay even without the zeroWidth flag (7TV "name0" convention). Without
+    // this, an emote literally named "fog0" rendered inline in the input box
+    // while chat stacked it.
+    let isOverlay = !!emote?.zeroWidth || (!!emote && endsWithZero)
+    if (!emote && endsWithZero) {
       const baseName = name.slice(0, -1)
       const baseEmote = lookupEmote(baseName)
       if (baseEmote) {

@@ -373,6 +373,11 @@ function getInputText() {
           if (child.tagName === 'IMG') {
             if (text && !text.endsWith(' ')) text += ' '
             appendImg(child)
+          } else if (child.classList?.contains('hs-mc-emoji')) {
+            // Emoji base of a stack (overlay emote stacked onto an emoji) —
+            // serialize the unicode char so peer renderers re-stack it.
+            if (text && !text.endsWith(' ')) text += ' '
+            text += child.textContent || ''
           }
         }
         _lastWasChip = true
@@ -1670,6 +1675,11 @@ function chipToText(el) {
   if (el.classList?.contains('hs-input-stack')) {
     const parts = []
     for (const child of el.children) {
+      if (child.classList?.contains('hs-mc-emoji')) {
+        const name = child.dataset.emojiName || child.getAttribute('data-emoji-name')
+        parts.push(name ? ':' + name + ':' : (child.textContent || ''))
+        continue
+      }
       if (child.tagName !== 'IMG') continue
       let txt = child.dataset.emoteName || child.alt || ''
       const mods = child.dataset.hsWords || child.dataset.hsModWords
@@ -1690,6 +1700,22 @@ function chipToText(el) {
     return name ? ':' + name + ':' : (el.textContent || '')
   }
   return null
+}
+
+// Peel a trailing unicode emoji grapheme off a string. Used to stack an
+// overlay emote onto a raw-typed/pasted emoji that was never converted to a
+// .hs-mc-emoji span (only :shortcode: gets live-converted). Returns
+// { emoji, rest } or null. Grapheme segmentation keeps ZWJ sequences, skin
+// tones, and VS16 emoji intact.
+function peelTrailingEmoji(s) {
+  if (!s) return null
+  let segmenter
+  try { segmenter = new Intl.Segmenter(undefined, { granularity: 'grapheme' }) } catch (_) { return null }
+  const graphemes = [...segmenter.segment(s)].map(g => g.segment)
+  if (!graphemes.length) return null
+  const last = graphemes[graphemes.length - 1]
+  if (typeof UNICODE_EMOJI_RE === 'undefined' || !UNICODE_EMOJI_RE.test(last)) return null
+  return { emoji: last, rest: graphemes.slice(0, -1).join('') }
 }
 
 // If the word being auto-converted starts at offset 0 of its text node and
@@ -1773,7 +1799,8 @@ function unwrapStuckChips(inputEl, acceptWhitespace) {
     // touching (that's the whole point of stacking). Without this filter,
     // every stacked emote collapses to "KappaWave" text on the next input.
     const chips = [...allChips].filter(c =>
-      !(c.tagName === 'IMG' && c.parentElement?.classList?.contains('hs-input-stack'))
+      !(c.parentElement?.classList?.contains('hs-input-stack') &&
+        (c.tagName === 'IMG' || c.classList?.contains('hs-mc-emoji')))
     )
     let pair = null
     for (let i = 0; i < chips.length - 1; i++) {
@@ -2005,7 +2032,8 @@ function handleInputChange(e) {
                   }
                   if (prev && (
                     (prev.tagName === 'IMG' && prev.classList.contains('hs-input-emote')) ||
-                    prev.classList?.contains('hs-input-stack')
+                    prev.classList?.contains('hs-input-stack') ||
+                    prev.classList?.contains('hs-mc-emoji')
                   )) {
                     // Remove whitespace text nodes between prev and current
                     let ws = prev.nextSibling
@@ -2015,6 +2043,31 @@ function handleInputChange(e) {
                       rm.remove()
                     }
                     stackInputEmote(prev, img)
+                    node.textContent = afterText || ' '
+                    const newRange = document.createRange()
+                    newRange.setStart(node, 0)
+                    newRange.collapse(true)
+                    sel.removeAllRanges()
+                    sel.addRange(newRange)
+                    pendingMessage = getInputText()
+                    return
+                  }
+                }
+
+                // Zero-width onto a raw unicode emoji typed/pasted as plain
+                // text (never converted to a .hs-mc-emoji span). Peel the
+                // trailing emoji, wrap it as a span, and stack onto it — parity
+                // with chat's processEmotes, which treats emoji as a base.
+                if (isZeroWidth) {
+                  const peeled = peelTrailingEmoji(beforeText.replace(/\s+$/, ''))
+                  if (peeled) {
+                    const restNode = peeled.rest ? document.createTextNode(peeled.rest) : null
+                    const emojiSpan = document.createElement('span')
+                    emojiSpan.className = 'hs-mc-emoji'
+                    emojiSpan.textContent = peeled.emoji
+                    if (restNode) parent.insertBefore(restNode, node)
+                    parent.insertBefore(emojiSpan, node)
+                    stackInputEmote(emojiSpan, img)
                     node.textContent = afterText || ' '
                     const newRange = document.createRange()
                     newRange.setStart(node, 0)
@@ -2662,7 +2715,8 @@ function insertCompletionWysiwyg(match) {
         }
         if (prev && prev.nodeType === Node.ELEMENT_NODE && (
           (prev.tagName === 'IMG' && prev.classList.contains('hs-input-emote')) ||
-          prev.classList?.contains('hs-input-stack')
+          prev.classList?.contains('hs-input-stack') ||
+          prev.classList?.contains('hs-mc-emoji')
         )) {
           stackInputEmote(prev, existingEmote)
         }
@@ -2869,7 +2923,8 @@ function insertCompletionWysiwyg(match) {
       }
       if (prev && prev.nodeType === Node.ELEMENT_NODE && (
         (prev.tagName === 'IMG' && prev.classList.contains('hs-input-emote')) ||
-        prev.classList?.contains('hs-input-stack')
+        prev.classList?.contains('hs-input-stack') ||
+        prev.classList?.contains('hs-mc-emoji')
       )) {
         // Drop whitespace nodes between prev base and current text node
         let ws = prev.nextSibling;
@@ -2879,6 +2934,27 @@ function insertCompletionWysiwyg(match) {
           rm.remove();
         }
         stackInputEmote(prev, img);
+        textNode.textContent = after || ' ';
+        placeCaretAfter(textNode, 1);
+        pendingMessage = getInputText();
+        updateCharCount();
+        input.focus();
+        return;
+      }
+    }
+    // Overlay onto a raw unicode emoji typed/pasted as plain text in `before`
+    // (parity with the typed live-replace path and chat render).
+    if (resolved?.isOverlay && typeof peelTrailingEmoji === 'function') {
+      const peeled = peelTrailingEmoji(before.replace(/\s+$/, ''));
+      if (peeled) {
+        const parent = textNode.parentNode;
+        const restNode = peeled.rest ? document.createTextNode(peeled.rest) : null;
+        const emojiSpan = document.createElement('span');
+        emojiSpan.className = 'hs-mc-emoji';
+        emojiSpan.textContent = peeled.emoji;
+        if (restNode) parent.insertBefore(restNode, textNode);
+        parent.insertBefore(emojiSpan, textNode);
+        stackInputEmote(emojiSpan, img);
         textNode.textContent = after || ' ';
         placeCaretAfter(textNode, 1);
         pendingMessage = getInputText();

@@ -15315,11 +15315,6 @@ async function sendKickMessage(kickSlug, text) {
   // Loaded fully at boot from chrome.storage.local["sender_emote_sets"] BEFORE first render → survives hard refresh.
   const senderEmoteSets = new Map();
   const SENDER_EMOTE_LRU_MAX = 5000;
-  // Bump whenever the shape/semantics of a cached sender set changes — write-once
-  // merge + persistence otherwise pin the stale copy. v2 added the sender's heatsync
-  // set; v3 marks shared heatsync emotes 'unadded' (addable) with a real provider
-  // source instead of 'global'/'extension'.
-  const SENDER_EMOTE_SETS_VERSION = 3;
   let _senderEmotePersistTimer = null;
   let _senderEmoteDirty = false;
 
@@ -15333,13 +15328,14 @@ async function sendKickMessage(kickSlug, text) {
       for (const [k, m] of senderEmoteSets) {
         out[k] = Object.fromEntries(m);
       }
-      try { chrome.storage.local.set({ sender_emote_sets: out, sender_emote_sets_v: SENDER_EMOTE_SETS_VERSION }) } catch {}
+      try { chrome.storage.local.set({ sender_emote_sets: out }) } catch {}
     }, 500);
   }
 
-  // Write-once-per-(senderKey, name) merge — NEVER overwrites existing entries.
-  // This is the perma guarantee: once we've stored URL X for ("twitch:123", "67"),
-  // a later fetch returning a different URL for the same name is IGNORED.
+  // Merge a sender's fetched set, UPDATING entries whose url/state/source changed
+  // (a re-fetch picks up emotes the sender added AND state/label corrections). Names
+  // absent from a fetch are kept — an empty/partial fetch never wipes known emotes.
+  // The set keeps rendering throughout; only changed names trigger a re-render.
   function mergeSenderEmotes(senderKey, nameToEmote) {
     if (!senderKey) return false;
     let inner = senderEmoteSets.get(senderKey);
@@ -15355,14 +15351,17 @@ async function sendKickMessage(kickSlug, text) {
       senderEmoteSets.delete(senderKey);
       senderEmoteSets.set(senderKey, inner);
     }
-    let added = false;
+    let changed = false;
     if (nameToEmote) {
       for (const [name, data] of Object.entries(nameToEmote)) {
-        if (!inner.has(name)) { inner.set(name, data); added = true; }
+        const prev = inner.get(name);
+        if (!prev || prev.url !== data.url || prev.state !== data.state || prev.source !== data.source) {
+          inner.set(name, data); changed = true;
+        }
       }
     }
-    if (added) { _senderEmoteDirty = true; _scheduleSenderEmotePersist(); }
-    return added;
+    if (changed) { _senderEmoteDirty = true; _scheduleSenderEmotePersist(); }
+    return changed;
   }
 
   function getSenderEmotes(senderKey) {
@@ -15371,17 +15370,12 @@ async function sendKickMessage(kickSlug, text) {
 
   async function loadSenderEmoteSets() {
     try {
-      const stored = await chrome.storage.local.get(['sender_emote_sets', 'sender_emote_sets_v']);
+      const stored = await chrome.storage.local.get(['sender_emote_sets']);
       senderEmoteSets.clear();
-      // Stale-version cache (fetched before a source was added, e.g. heatsync in
-      // v2) is discarded wholesale — queueSenderEmoteFetch skips senders already
-      // present, so a stale entry would never pick up the new source otherwise.
-      // Dropping it forces a lazy one-time re-fetch per sender as messages arrive.
-      if (stored.sender_emote_sets_v !== SENDER_EMOTE_SETS_VERSION) {
-        log('sender_emote_sets version', stored.sender_emote_sets_v, '!=', SENDER_EMOTE_SETS_VERSION, '— discarding stale cache');
-        try { chrome.storage.local.set({ sender_emote_sets: {}, sender_emote_sets_v: SENDER_EMOTE_SETS_VERSION }) } catch {}
-        return;
-      }
+      // Load the persisted cache so senders render IMMEDIATELY on boot. Staleness
+      // is handled non-destructively: the in-memory freshness map is empty after a
+      // reload, so every sender is re-fetched once this session, and mergeSenderEmotes
+      // UPDATES changed entries in place (no discard → no text gap while refreshing).
       const obj = stored.sender_emote_sets || {};
       for (const [k, names] of Object.entries(obj)) {
         if (!names || typeof names !== 'object') continue;

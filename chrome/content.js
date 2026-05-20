@@ -924,6 +924,7 @@ function openEmoteActionMenu(wrapper, x, y, opts = {}) {
 
   const el = document.createElement('div')
   el.id = 'hs-emote-menu'
+  el.className = 'hs-ctx-menu'
   el.tabIndex = -1
   el.addEventListener('contextmenu', (e) => e.preventDefault())
 
@@ -1112,7 +1113,9 @@ function openEmoteActionMenu(wrapper, x, y, opts = {}) {
         updateEmoteState(hash, name, restored)
         try { await safeSendMessage({ type: 'unblock_emote', hash }) } catch {}
       }, { good: true })
-    } else {
+    } else if (!inInventory) {
+      // green > orange > block: an in-set emote shows "remove from set" (above),
+      // not block. Globals/3rd-party aren't in your set, so block shows here.
       addItem('block emote', async () => {
         blockedEmotes.add(hash)
         markLocalBlockToggle(hash, 'blocked')
@@ -1122,8 +1125,12 @@ function openEmoteActionMenu(wrapper, x, y, opts = {}) {
     }
   }
 
-  // --- Place ---
-  // Append off-screen first so we can measure, then position with edge-flip.
+  placeAndWireMenu(el, x, y, kbdHandlers)
+}
+
+// Shared placement + dismiss wiring for right-click menus (emote + message).
+// Measures off-screen, edge-flips, then wires mousedown/key/blur/scroll dismiss.
+function placeAndWireMenu(el, x, y, kbdHandlers = {}) {
   el.style.visibility = 'hidden'
   el.style.left = '0px'
   el.style.top = '0px'
@@ -1145,7 +1152,6 @@ function openEmoteActionMenu(wrapper, x, y, opts = {}) {
   el.style.visibility = ''
   try { el.focus({ preventScroll: true }) } catch {}
 
-  // --- Dismiss handlers ---
   const onDown = (ev) => {
     if (!_emoteMenuEl || _emoteMenuEl.contains(ev.target)) return
     closeEmoteMenu()
@@ -2511,7 +2517,7 @@ style.textContent = `
   #hs-user-color-picker button:hover { background: #fff; color: #000; }
 
   /* Right-click emote action menu */
-  #hs-emote-menu {
+  .hs-ctx-menu {
     position: fixed; z-index: 2147483646;
     background: #000; color: #fff;
     border: 1px solid #ff8700;
@@ -2525,15 +2531,15 @@ style.textContent = `
     from { opacity: 0; transform: scale(0.96); }
     to   { opacity: 1; transform: scale(1); }
   }
-  #hs-emote-menu.hs-em-flip-x { transform-origin: top right; }
-  #hs-emote-menu.hs-em-flip-y { transform-origin: bottom left; }
-  #hs-emote-menu.hs-em-flip-x.hs-em-flip-y { transform-origin: bottom right; }
-  #hs-emote-menu .hs-em-preview {
+  .hs-ctx-menu.hs-em-flip-x { transform-origin: top right; }
+  .hs-ctx-menu.hs-em-flip-y { transform-origin: bottom left; }
+  .hs-ctx-menu.hs-em-flip-x.hs-em-flip-y { transform-origin: bottom right; }
+  .hs-ctx-menu .hs-em-preview {
     display: flex; align-items: center; gap: 10px;
     padding: 8px 10px; border-bottom: 1px solid #222;
     background: linear-gradient(180deg, #0a0a0a, #000);
   }
-  #hs-emote-menu .hs-em-thumb {
+  .hs-ctx-menu .hs-em-thumb {
     width: 56px; height: 56px; flex-shrink: 0;
     display: flex; align-items: center; justify-content: center;
     background-image:
@@ -2545,67 +2551,67 @@ style.textContent = `
     background-position: 0 0, 0 6px, 6px -6px, -6px 0;
     border: 1px solid #222;
   }
-  #hs-emote-menu .hs-em-thumb img {
+  .hs-ctx-menu .hs-em-thumb img {
     max-width: 100%; max-height: 100%;
     image-rendering: pixelated;
   }
-  #hs-emote-menu .hs-em-meta { flex: 1; min-width: 0; }
-  #hs-emote-menu .hs-em-name {
+  .hs-ctx-menu .hs-em-meta { flex: 1; min-width: 0; }
+  .hs-ctx-menu .hs-em-name {
     font-weight: 700; font-size: 13px; color: #fff;
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
-  #hs-emote-menu .hs-em-sub {
+  .hs-ctx-menu .hs-em-sub {
     font-size: 11px; color: #888; margin-top: 2px;
     display: flex; gap: 6px; align-items: center;
   }
-  #hs-emote-menu .hs-em-provider {
+  .hs-ctx-menu .hs-em-provider {
     display: inline-block; padding: 0 4px;
     border: 1px solid #444; color: #ff8700;
     font-size: 10px; line-height: 14px;
   }
-  #hs-emote-menu .hs-em-header {
+  .hs-ctx-menu .hs-em-header {
     padding: 4px 10px; font-size: 10px; color: #666;
     text-transform: uppercase; letter-spacing: 0.5px;
     background: #050505;
   }
-  #hs-emote-menu .hs-em-item {
+  .hs-ctx-menu .hs-em-item {
     padding: 6px 10px; cursor: pointer; user-select: none;
     display: flex; align-items: center; justify-content: space-between;
     gap: 8px;
   }
-  #hs-emote-menu .hs-em-item:hover { background: #fff; color: #000; }
-  #hs-emote-menu .hs-em-item:hover .hs-em-kbd { background: #000; color: #fff; border-color: #000; }
-  #hs-emote-menu .hs-em-item:hover .hs-em-hint { color: #555; }
-  #hs-emote-menu .hs-em-item.hs-em-danger { color: #ff5959; }
-  #hs-emote-menu .hs-em-item.hs-em-danger:hover { background: #ff2020; color: #fff; }
-  #hs-emote-menu .hs-em-item.hs-em-good { color: #59ff8a; }
-  #hs-emote-menu .hs-em-item.hs-em-good:hover { background: #1faf48; color: #fff; }
-  #hs-emote-menu .hs-em-label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  #hs-emote-menu .hs-em-hint { color: #666; font-size: 11px; }
-  #hs-emote-menu .hs-em-kbd {
+  .hs-ctx-menu .hs-em-item:hover { background: #fff; color: #000; }
+  .hs-ctx-menu .hs-em-item:hover .hs-em-kbd { background: #000; color: #fff; border-color: #000; }
+  .hs-ctx-menu .hs-em-item:hover .hs-em-hint { color: #555; }
+  .hs-ctx-menu .hs-em-item.hs-em-danger { color: #ff5959; }
+  .hs-ctx-menu .hs-em-item.hs-em-danger:hover { background: #ff2020; color: #fff; }
+  .hs-ctx-menu .hs-em-item.hs-em-good { color: #59ff8a; }
+  .hs-ctx-menu .hs-em-item.hs-em-good:hover { background: #1faf48; color: #fff; }
+  .hs-ctx-menu .hs-em-label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .hs-ctx-menu .hs-em-hint { color: #666; font-size: 11px; }
+  .hs-ctx-menu .hs-em-kbd {
     display: inline-block; min-width: 14px; padding: 0 4px;
     border: 1px solid #333; background: #0a0a0a; color: #888;
     font-size: 10px; line-height: 14px; text-align: center;
   }
-  #hs-emote-menu .hs-em-sep { height: 1px; background: #1a1a1a; margin: 2px 0; }
-  #hs-emote-menu .hs-em-variants {
+  .hs-ctx-menu .hs-em-sep { height: 1px; background: #1a1a1a; margin: 2px 0; }
+  .hs-ctx-menu .hs-em-variants {
     display: flex; flex-direction: column;
     max-height: 140px; overflow-y: auto;
   }
-  #hs-emote-menu .hs-em-variant {
+  .hs-ctx-menu .hs-em-variant {
     display: flex; align-items: center; gap: 8px;
     padding: 4px 10px; cursor: pointer; font-size: 11px;
   }
-  #hs-emote-menu .hs-em-variant:hover { background: #fff; color: #000; }
-  #hs-emote-menu .hs-em-variant img { width: 20px; height: 20px; object-fit: contain; }
-  #hs-emote-menu .hs-em-variant.active { background: #1a0d00; }
-  #hs-emote-menu .hs-em-variant.active::before { content: '●'; color: #ff8700; }
-  #hs-emote-menu .hs-em-variant.blocked { opacity: 0.45; }
-  #hs-emote-menu .hs-em-variant .hs-em-vtag {
+  .hs-ctx-menu .hs-em-variant:hover { background: #fff; color: #000; }
+  .hs-ctx-menu .hs-em-variant img { width: 20px; height: 20px; object-fit: contain; }
+  .hs-ctx-menu .hs-em-variant.active { background: #1a0d00; }
+  .hs-ctx-menu .hs-em-variant.active::before { content: '●'; color: #ff8700; }
+  .hs-ctx-menu .hs-em-variant.blocked { opacity: 0.45; }
+  .hs-ctx-menu .hs-em-variant .hs-em-vtag {
     margin-left: auto; font-size: 10px; color: #666;
     text-transform: uppercase; letter-spacing: 0.5px;
   }
-  #hs-emote-menu .hs-em-variant:hover .hs-em-vtag { color: #333; }
+  .hs-ctx-menu .hs-em-variant:hover .hs-em-vtag { color: #333; }
 
   /* Predictions/polls chip */
   .hs-event-chip {
@@ -8130,6 +8136,9 @@ function updateEmoteState(hash, emoteName, state) {
     // Right-click on username → user color picker
     document.addEventListener('contextmenu', (e) => {
       if (!_uiPrefs.userColors) return
+      // Multichat panel messages own their own right-click menu (mute/whisper/
+      // copy/profile). Don't hijack panel usernames for the color picker.
+      if (e.target.closest('.hs-mc-msg')) return
       const target = e.target.closest(usernameSelectors)
       if (!target) return
       const inner = target.querySelector?.('.chat-author__display-name, [data-a-target="chat-message-username"]')
@@ -8682,8 +8691,11 @@ function applyPendingKickCosmetics(slugs) {
 // Right-click on chat message or username → instant 24h mute
 function setupMessageContextMenu() {
   cleanup.addEventListener(document, 'contextmenu', (e) => {
-    // Don't intercept emote right-clicks
+    // Don't intercept emote right-clicks (heatsync wrappers or native Twitch
+    // emotes) — those open the emote action menu via their own handlers.
     if (e.target.closest('.heatsync-emote-wrapper')) return;
+    const imgEl = e.target.closest('img');
+    if (imgEl && (imgEl.src || '').includes('static-cdn.jtvnw.net/emoticons')) return;
 
     const msgEl = e.target.closest('.chat-line__message, #chatroom-messages [data-index]');
     if (!msgEl) return;
@@ -8692,19 +8704,95 @@ function setupMessageContextMenu() {
     if (!username) return;
 
     e.preventDefault();
-
-    if (mutedUsers.has(username)) {
-      mutedUsers.delete(username);
-      safeSendMessage({ type: 'unmute_user', username }).catch(() => {});
-      unmuteUser(username);
-      showToast(t('content_toast_unmuted', [username]));
-    } else {
-      mutedUsers.add(username);
-      safeSendMessage({ type: 'mute_user', username, expiresAt: Date.now() + 86400000 }).catch(() => {});
-      muteUser(username);
-      showToast(t('content_toast_muted_24h', [username]));
-    }
+    openMessageActionMenu(msgEl, username, e.clientX, e.clientY);
   }, { signal });
+}
+
+function _toggleUserMute(username) {
+  if (mutedUsers.has(username)) {
+    mutedUsers.delete(username);
+    safeSendMessage({ type: 'unmute_user', username }).catch(() => {});
+    unmuteUser(username);
+    showToast(t('content_toast_unmuted', [username]));
+  } else {
+    mutedUsers.add(username);
+    safeSendMessage({ type: 'mute_user', username, expiresAt: Date.now() + 86400000 }).catch(() => {});
+    muteUser(username);
+    showToast(t('content_toast_muted_24h', [username]));
+  }
+}
+
+// Readable message body: walk fragments + emote alts, skip badges/timestamps.
+function _extractMessageText(msgEl) {
+  const frags = msgEl.querySelectorAll(
+    '[data-a-target="chat-message-text"], .text-fragment, .message [class*="text-fragment"], #chatroom-messages .chat-entry-content'
+  );
+  if (frags.length) {
+    return Array.from(frags).map(f => {
+      const img = f.querySelector?.('img[alt]');
+      return img ? img.alt : (f.textContent || '');
+    }).join(' ').replace(/\s+/g, ' ').trim();
+  }
+  const body = msgEl.querySelector('.chat-line__message-body, [data-test-selector="chat-line-message-body"], .chat-entry');
+  return ((body || msgEl).textContent || '').replace(/\s+/g, ' ').trim();
+}
+
+// Right-click action menu for a chat message (mirrors the multichat panel menu).
+// Replaces the old insta-mute so an accidental right-click can't silently 24h-mute.
+function openMessageActionMenu(msgEl, username, x, y) {
+  closeEmoteMenu();
+  const isMuted = mutedUsers.has(username);
+
+  const el = document.createElement('div');
+  el.id = 'hs-msg-menu';
+  el.className = 'hs-ctx-menu';
+  el.tabIndex = -1;
+  el.addEventListener('contextmenu', (ev) => ev.preventDefault());
+
+  let kbdIndex = 1;
+  const kbdHandlers = {};
+  const addHeader = (text) => {
+    const h = document.createElement('div');
+    h.className = 'hs-em-header';
+    h.textContent = text;
+    el.appendChild(h);
+  };
+  const addItem = (label, fn, { danger = false, good = false } = {}) => {
+    const it = document.createElement('div');
+    it.className = 'hs-em-item' + (danger ? ' hs-em-danger' : '') + (good ? ' hs-em-good' : '');
+    const lab = document.createElement('span');
+    lab.className = 'hs-em-label';
+    lab.textContent = label;
+    it.appendChild(lab);
+    if (kbdIndex <= 9) {
+      const k = document.createElement('span');
+      k.className = 'hs-em-kbd';
+      k.textContent = String(kbdIndex);
+      it.appendChild(k);
+      kbdHandlers[String(kbdIndex)] = fn;
+      kbdIndex++;
+    }
+    it.addEventListener('click', () => { try { fn() } catch {} ; closeEmoteMenu() });
+    el.appendChild(it);
+  };
+  const addSep = () => {
+    const s = document.createElement('div');
+    s.className = 'hs-em-sep';
+    el.appendChild(s);
+  };
+
+  addHeader(username);
+  addItem('copy username', () => navigator.clipboard?.writeText(username));
+  addItem('copy message', () => navigator.clipboard?.writeText(_extractMessageText(msgEl)));
+
+  addSep();
+  if (isMuted) addItem('unmute', () => _toggleUserMute(username), { good: true });
+  else addItem('mute (24h)', () => _toggleUserMute(username), { danger: true });
+
+  addSep();
+  addItem('profile', () => window.open(`https://heatsync.org/user/${encodeURIComponent(username)}`, '_blank', 'noopener,noreferrer'));
+
+  placeAndWireMenu(el, x, y, kbdHandlers);
 }
 
 // Hide all messages from a blocked user

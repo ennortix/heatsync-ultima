@@ -824,8 +824,9 @@ function initInput() {
       const username = userEl?.textContent?.trim()?.replace(/^@/, '').toLowerCase();
       if (!username) return;
       e.preventDefault();
+      e.stopPropagation();
       showMcMsgContextMenu(e.clientX, e.clientY, msg, username);
-    }, { signal: mcSignal });
+    }, { capture: true, signal: mcSignal });
   }
 }
 
@@ -938,6 +939,7 @@ function showMcEmoteActionMenu(x, y, emoteInfo, evtTarget) {
 
   const menu = document.createElement('div')
   menu.id = 'hs-mc-emote-ctx'
+  menu.className = 'hs-mc-ctx'
   menu.tabIndex = -1
   menu.addEventListener('contextmenu', (e) => e.preventDefault())
 
@@ -1065,11 +1067,14 @@ function showMcEmoteActionMenu(x, y, emoteInfo, evtTarget) {
     })
   }
 
-  // Block toggle
-  addSep()
+  // Block toggle — green > orange > block. A removable in-set emote shows
+  // "remove from set" (above), not block. Sub emotes (owned but not removable)
+  // and unowned/global emotes still show block. Always allow unblock.
   if (isBlocked) {
+    addSep()
     addItem('unblock emote', () => { unblockEmote(emoteName) }, { good: true })
-  } else {
+  } else if (!canRemoveFromSet) {
+    addSep()
     addItem('block emote', () => { blockEmote(emoteName) }, { danger: true })
   }
 
@@ -1115,44 +1120,109 @@ function showMcEmoteActionMenu(x, y, emoteInfo, evtTarget) {
   }, 0)
 }
 
+function _mentionInMcInput(username) {
+  showInputBar()
+  const input = document.getElementById('hs-mc-input')
+  if (!input) return
+  const mention = `@${username} `
+  if (input.tagName === 'INPUT' || input.tagName === 'TEXTAREA') {
+    const cur = input.value
+    input.value = (cur && !cur.endsWith(' ') ? cur + ' ' : cur) + mention
+    input.focus()
+    try { input.setSelectionRange(input.value.length, input.value.length) } catch {}
+  } else {
+    input.textContent = (input.textContent || '') + mention
+    input.focus()
+  }
+}
+
 function showMcMsgContextMenu(x, y, msg, username) {
   document.getElementById('hs-mc-msg-ctx')?.remove()
   const menu = document.createElement('div')
   menu.id = 'hs-mc-msg-ctx'
-  menu.style.cssText = 'position:fixed;z-index:2147483646;background:#000;border:1px solid #808080;padding:4px 0;min-width:160px;font:13px/1.2 inherit;color:#fff;user-select:none;'
+  menu.className = 'hs-mc-ctx'
+  menu.tabIndex = -1
+  menu.addEventListener('contextmenu', (e) => e.preventDefault())
   const isMuted = mutedUsers.has(username)
-  const items = [
-    { label: isMuted ? `unmute ${username}` : `mute ${username} (24h)`, run: () => _toggleMcMute(username) },
-    { label: `whisper ${username}`, run: () => _openWhisperFor(username) },
-    { label: 'copy username', run: () => { try { navigator.clipboard.writeText(username) } catch {} } },
-    { label: 'copy message', run: () => { try { navigator.clipboard.writeText(_extractMcMsgText(msg)) } catch {} } },
-    { label: 'profile', run: () => window.open(`https://heatsync.org/user/${encodeURIComponent(username)}`, '_blank', 'noopener') },
-    { label: 'cancel', run: () => {} },
-  ]
-  for (const it of items) {
-    const row = document.createElement('div')
-    row.textContent = it.label
-    row.style.cssText = 'padding:6px 12px;cursor:pointer;color:#fff;background:#000;'
-    row.addEventListener('mouseenter', () => { row.style.background = '#fff'; row.style.color = '#000' })
-    row.addEventListener('mouseleave', () => { row.style.background = '#000'; row.style.color = '#fff' })
-    row.addEventListener('click', () => { dismiss(); it.run() })
-    menu.appendChild(row)
+
+  let kbdIndex = 1
+  const kbdHandlers = {}
+  const addHeader = (text) => {
+    const h = document.createElement('div')
+    h.className = 'hs-mc-em-header'
+    h.textContent = text
+    menu.appendChild(h)
   }
+  const addItem = (label, fn, opts = {}) => {
+    const it = document.createElement('div')
+    it.className = 'hs-mc-em-item' + (opts.danger ? ' hs-mc-em-danger' : '') + (opts.good ? ' hs-mc-em-good' : '')
+    const lab = document.createElement('span')
+    lab.className = 'hs-mc-em-label'
+    lab.textContent = label
+    it.appendChild(lab)
+    if (kbdIndex <= 9) {
+      const k = document.createElement('span')
+      k.className = 'hs-mc-em-kbd'
+      k.textContent = String(kbdIndex)
+      it.appendChild(k)
+      kbdHandlers[String(kbdIndex)] = fn
+      kbdIndex++
+    }
+    it.addEventListener('click', () => { dismiss(); try { fn() } catch {} })
+    menu.appendChild(it)
+  }
+  const addSep = () => {
+    const s = document.createElement('div')
+    s.className = 'hs-mc-em-sep'
+    menu.appendChild(s)
+  }
+
+  addHeader(username)
+  if (msg?.dataset?.msgId && typeof setReplyState === 'function') {
+    addItem('reply', () => setReplyState({ msgId: msg.dataset.msgId, user: msg.dataset.msgUser || username, channel: msg.dataset.msgChannel }))
+  }
+  addItem('mention', () => _mentionInMcInput(username))
+  addItem('whisper', () => _openWhisperFor(username))
+  addItem('copy username', () => { try { navigator.clipboard.writeText(username) } catch {} })
+  addItem('copy message', () => { try { navigator.clipboard.writeText(_extractMcMsgText(msg)) } catch {} })
+
+  addSep()
+  if (isMuted) addItem('unmute', () => _toggleMcMute(username), { good: true })
+  else addItem('mute (24h)', () => _toggleMcMute(username), { danger: true })
+
+  addSep()
+  addItem('profile', () => window.open(`https://heatsync.org/user/${encodeURIComponent(username)}`, '_blank', 'noopener'))
+
   document.body.appendChild(menu)
+  menu.style.visibility = 'hidden'
+  menu.style.left = '0px'
+  menu.style.top = '0px'
   const mw = menu.offsetWidth, mh = menu.offsetHeight
-  menu.style.left = Math.min(x, window.innerWidth - mw - 4) + 'px'
-  menu.style.top = Math.min(y, window.innerHeight - mh - 4) + 'px'
+  const vw = window.innerWidth, vh = window.innerHeight
+  const flipX = x + mw + 8 > vw
+  const flipY = y + mh + 8 > vh
+  menu.style.left = (flipX ? Math.max(4, x - mw) : Math.min(x, vw - mw - 4)) + 'px'
+  menu.style.top  = (flipY ? Math.max(4, y - mh) : Math.min(y, vh - mh - 4)) + 'px'
+  if (flipX) menu.classList.add('hs-mc-em-flip-x')
+  if (flipY) menu.classList.add('hs-mc-em-flip-y')
+  menu.style.visibility = ''
+  try { menu.focus({ preventScroll: true }) } catch {}
+
   function dismiss() {
     menu.remove()
     document.removeEventListener('mousedown', outside, true)
-    document.removeEventListener('keydown', esc, true)
+    document.removeEventListener('keydown', keyHandler, true)
     document.removeEventListener('contextmenu', outside, true)
   }
   function outside(ev) { if (!menu.contains(ev.target)) dismiss() }
-  function esc(ev) { if (ev.key === 'Escape') { ev.preventDefault(); dismiss() } }
+  function keyHandler(ev) {
+    if (ev.key === 'Escape') { ev.preventDefault(); dismiss(); return }
+    const fn = kbdHandlers[ev.key]
+    if (fn) { ev.preventDefault(); dismiss(); try { fn() } catch {} }
+  }
   setTimeout(() => {
     document.addEventListener('mousedown', outside, true)
-    document.addEventListener('keydown', esc, true)
+    document.addEventListener('keydown', keyHandler, true)
     document.addEventListener('contextmenu', outside, true)
   }, 0)
 }

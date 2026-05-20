@@ -1993,13 +1993,13 @@ function injectStyles() {
     #hs-emote-tooltip,
     #hs-link-tooltip,
     #hs-mc-msg-ctx,
-    #hs-mc-emote-ctx {
+    .hs-mc-ctx {
       font-family: var(--hs-mc-font, 'CozetteVector', 'Courier New', monospace);
       font-size: var(--hs-mc-base-size, 13px);
     }
 
     /* Right-click emote action menu (multichat panel) */
-    #hs-mc-emote-ctx {
+    .hs-mc-ctx {
       position: fixed; z-index: 2147483646;
       background: #000; color: #fff;
       border: 1px solid #ff8700;
@@ -2013,15 +2013,15 @@ function injectStyles() {
       from { opacity: 0; transform: scale(0.96); }
       to   { opacity: 1; transform: scale(1); }
     }
-    #hs-mc-emote-ctx.hs-mc-em-flip-x { transform-origin: top right; }
-    #hs-mc-emote-ctx.hs-mc-em-flip-y { transform-origin: bottom left; }
-    #hs-mc-emote-ctx.hs-mc-em-flip-x.hs-mc-em-flip-y { transform-origin: bottom right; }
-    #hs-mc-emote-ctx .hs-mc-em-preview {
+    .hs-mc-ctx.hs-mc-em-flip-x { transform-origin: top right; }
+    .hs-mc-ctx.hs-mc-em-flip-y { transform-origin: bottom left; }
+    .hs-mc-ctx.hs-mc-em-flip-x.hs-mc-em-flip-y { transform-origin: bottom right; }
+    .hs-mc-ctx .hs-mc-em-preview {
       display: flex; align-items: center; gap: 10px;
       padding: 8px 10px; border-bottom: 1px solid #222;
       background: linear-gradient(180deg, #0a0a0a, #000);
     }
-    #hs-mc-emote-ctx .hs-mc-em-thumb {
+    .hs-mc-ctx .hs-mc-em-thumb {
       width: 56px; height: 56px; flex-shrink: 0;
       display: flex; align-items: center; justify-content: center;
       background-image:
@@ -2033,49 +2033,49 @@ function injectStyles() {
       background-position: 0 0, 0 6px, 6px -6px, -6px 0;
       border: 1px solid #222;
     }
-    #hs-mc-emote-ctx .hs-mc-em-thumb img {
+    .hs-mc-ctx .hs-mc-em-thumb img {
       max-width: 100%; max-height: 100%;
       image-rendering: pixelated;
     }
-    #hs-mc-emote-ctx .hs-mc-em-meta { flex: 1; min-width: 0; }
-    #hs-mc-emote-ctx .hs-mc-em-name {
+    .hs-mc-ctx .hs-mc-em-meta { flex: 1; min-width: 0; }
+    .hs-mc-ctx .hs-mc-em-name {
       font-weight: 700; font-size: 13px; color: #fff;
       overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
     }
-    #hs-mc-emote-ctx .hs-mc-em-sub {
+    .hs-mc-ctx .hs-mc-em-sub {
       font-size: 11px; color: #888; margin-top: 2px;
       display: flex; gap: 6px; align-items: center;
     }
-    #hs-mc-emote-ctx .hs-mc-em-provider {
+    .hs-mc-ctx .hs-mc-em-provider {
       display: inline-block; padding: 0 4px;
       border: 1px solid #444; color: #ff8700;
       font-size: 10px; line-height: 14px;
     }
-    #hs-mc-emote-ctx .hs-mc-em-header {
+    .hs-mc-ctx .hs-mc-em-header {
       padding: 4px 10px; font-size: 10px; color: #666;
       text-transform: uppercase; letter-spacing: 0.5px;
       background: #050505;
     }
-    #hs-mc-emote-ctx .hs-mc-em-item {
+    .hs-mc-ctx .hs-mc-em-item {
       padding: 6px 10px; cursor: pointer;
       display: flex; align-items: center; justify-content: space-between;
       gap: 8px;
     }
-    #hs-mc-emote-ctx .hs-mc-em-item:hover { background: #fff; color: #000; }
-    #hs-mc-emote-ctx .hs-mc-em-item:hover .hs-mc-em-kbd { background: #000; color: #fff; border-color: #000; }
-    #hs-mc-emote-ctx .hs-mc-em-item:hover .hs-mc-em-hint { color: #555; }
-    #hs-mc-emote-ctx .hs-mc-em-item.hs-mc-em-danger { color: #ff5959; }
-    #hs-mc-emote-ctx .hs-mc-em-item.hs-mc-em-danger:hover { background: #ff2020; color: #fff; }
-    #hs-mc-emote-ctx .hs-mc-em-item.hs-mc-em-good { color: #59ff8a; }
-    #hs-mc-emote-ctx .hs-mc-em-item.hs-mc-em-good:hover { background: #1faf48; color: #fff; }
-    #hs-mc-emote-ctx .hs-mc-em-label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    #hs-mc-emote-ctx .hs-mc-em-hint { color: #666; font-size: 11px; }
-    #hs-mc-emote-ctx .hs-mc-em-kbd {
+    .hs-mc-ctx .hs-mc-em-item:hover { background: #fff; color: #000; }
+    .hs-mc-ctx .hs-mc-em-item:hover .hs-mc-em-kbd { background: #000; color: #fff; border-color: #000; }
+    .hs-mc-ctx .hs-mc-em-item:hover .hs-mc-em-hint { color: #555; }
+    .hs-mc-ctx .hs-mc-em-item.hs-mc-em-danger { color: #ff5959; }
+    .hs-mc-ctx .hs-mc-em-item.hs-mc-em-danger:hover { background: #ff2020; color: #fff; }
+    .hs-mc-ctx .hs-mc-em-item.hs-mc-em-good { color: #59ff8a; }
+    .hs-mc-ctx .hs-mc-em-item.hs-mc-em-good:hover { background: #1faf48; color: #fff; }
+    .hs-mc-ctx .hs-mc-em-label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .hs-mc-ctx .hs-mc-em-hint { color: #666; font-size: 11px; }
+    .hs-mc-ctx .hs-mc-em-kbd {
       display: inline-block; min-width: 14px; padding: 0 4px;
       border: 1px solid #333; background: #0a0a0a; color: #888;
       font-size: 10px; line-height: 14px; text-align: center;
     }
-    #hs-mc-emote-ctx .hs-mc-em-sep { height: 1px; background: #1a1a1a; margin: 2px 0; }
+    .hs-mc-ctx .hs-mc-em-sep { height: 1px; background: #1a1a1a; margin: 2px 0; }
     #hs-user-tooltip {
       position: fixed;
       /* Must beat the unified resize bar (#hs-c-resize-handle uses max int).
@@ -6550,9 +6550,19 @@ function injectStyles() {
     /* ---- YOUTUBE NATIVE CHAT HIDING ----
        Inline display:none on the iframe gets blown away when YT recreates
        <ytd-live-chat-frame> during ad transitions. CSS rule keyed off our
-       container survives the swap. */
+       container survives the swap.
+
+       #chat-container is killed too: on narrow / single-column viewports
+       (player column < YT's ~1016px two-column breakpoint — which our 340px
+       panel trips at almost every window size) YT relocates the live/replay
+       chat OUT of #secondary and into #primary > #below as a top-pinned
+       #chat-container, which lies ON TOP of the player and eats every hover
+       so the scrubber/volume/pause controls never appear. We body-mount our
+       own panel (never inside #chat-container), so nuking native chat
+       wherever YT parks it is always safe. */
     body:has(#hs-mc-container) ytd-live-chat-frame#chat,
-    body:has(#hs-mc-container) ytd-live-chat-frame {
+    body:has(#hs-mc-container) ytd-live-chat-frame,
+    body:has(#hs-mc-container) ytd-watch-flexy #chat-container {
       display: none !important;
     }
 
@@ -7220,16 +7230,13 @@ function injectStyles() {
       flex: 0 0 0 !important;
       overflow: hidden !important;
     }
-    body.hs-platform-yt.hs-chat-left ytd-watch-flexy #chat-container,
-    body.hs-platform-yt.hs-chat-top ytd-watch-flexy #chat-container,
-    body.hs-platform-yt.hs-chat-bottom ytd-watch-flexy #chat-container {
-      overflow: hidden !important;
-    }
     /* Nuke the entire suggested-videos sidebar tree on LIVE only.
        overflow:hidden on #secondary doesn't clip because YT renders these
        via children that escape the secondary box (rendered at x>=1017
-       absolutely). display:none kills them outright. We keep #chat-container
-       alive because hs-mc-container is mounted inside it. */
+       absolutely). display:none kills them outright. #chat-container is
+       hidden separately by the native-chat-hiding block above (it's body-
+       mounted now, not nested in #chat-container), so it's swept up here
+       too. */
     body.hs-platform-yt.hs-chat-left ytd-watch-flexy #related,
     body.hs-platform-yt.hs-chat-top ytd-watch-flexy #related,
     body.hs-platform-yt.hs-chat-bottom ytd-watch-flexy #related,
@@ -7238,10 +7245,10 @@ function injectStyles() {
     body.hs-platform-yt.hs-chat-top ytd-watch-flexy ytd-watch-next-secondary-results-renderer,
     body.hs-platform-yt.hs-chat-bottom ytd-watch-flexy ytd-watch-next-secondary-results-renderer,
     body.hs-platform-yt.hs-chat-right ytd-watch-flexy ytd-watch-next-secondary-results-renderer,
-    body.hs-platform-yt.hs-chat-left ytd-watch-flexy #secondary-inner > *:not(#chat-container),
-    body.hs-platform-yt.hs-chat-top ytd-watch-flexy #secondary-inner > *:not(#chat-container),
-    body.hs-platform-yt.hs-chat-bottom ytd-watch-flexy #secondary-inner > *:not(#chat-container),
-    body.hs-platform-yt.hs-chat-right ytd-watch-flexy #secondary-inner > *:not(#chat-container) {
+    body.hs-platform-yt.hs-chat-left ytd-watch-flexy #secondary-inner > *,
+    body.hs-platform-yt.hs-chat-top ytd-watch-flexy #secondary-inner > *,
+    body.hs-platform-yt.hs-chat-bottom ytd-watch-flexy #secondary-inner > *,
+    body.hs-platform-yt.hs-chat-right ytd-watch-flexy #secondary-inner > * {
       display: none !important;
     }
     /* Default 'right' position — give up on YT's flex layout entirely
@@ -7340,10 +7347,9 @@ function injectStyles() {
     }
     /* Chat panel fills viewport height when on right — overrides the
        mount-time inline height cached from the original live-chat-frame
-       (~500-600px). #secondary-inner and #chat-container also need to
-       extend so our container can fill them. */
-    body.hs-platform-yt.hs-chat-right ytd-watch-flexy #secondary-inner,
-    body.hs-platform-yt.hs-chat-right ytd-watch-flexy #chat-container {
+       (~500-600px). #secondary-inner extends so the freed sidebar slot
+       doesn't cap height. (#chat-container is display:none now.) */
+    body.hs-platform-yt.hs-chat-right ytd-watch-flexy #secondary-inner {
       height: 100vh !important;
       max-height: 100vh !important;
     }
@@ -7459,6 +7465,61 @@ function injectStyles() {
     body.hs-platform-yt.hs-chat-left ytd-watch-flexy #player {
       margin-left: auto !important;
       margin-right: auto !important;
+    }
+
+    /* ============================================
+       SINGLE-COLUMN RESCUE
+       Below YT's ~1016px two-column breakpoint (which our 340px panel trips
+       at almost every window size) ytd-watch-flexy flips to is-single-column:
+       it pulls the player OUT of #primary-inner into #full-bleed-container (a
+       direct child of ytd-watch-flexy, anchored at 0,0) and leaves #primary-
+       inner holding only an empty 0×0 #player slot plus the #below metadata.
+       Our two-column rules pin #primary-inner position:fixed top:0 left:0 —
+       which then lies ON TOP of the full-bleed player and drops #below over
+       it, killing every hover (no scrubber/volume/pause). The [is-single-
+       column] attribute out-specifies the two-column rules above.
+
+       Fix: let #primary-inner fall back to normal document flow so #columns/
+       #primary stacks BELOW #full-bleed-container (its previous sibling), and
+       inset the full-bleed player away from the panel edge per position. The
+       player wrapper is already aspect-sized to innerWidth-chatWidth by
+       applyPlatformPositionOverrides, so right needs no inset at all. */
+    body.hs-platform-yt:has(#hs-mc-container) ytd-watch-flexy[is-single-column] #primary-inner {
+      position: static !important;
+      top: auto !important;
+      left: auto !important;
+      right: auto !important;
+      width: auto !important;
+      height: auto !important;
+      max-height: none !important;
+    }
+    body.hs-platform-yt:has(#hs-mc-container) ytd-watch-flexy[is-single-column] #primary {
+      width: auto !important;
+      max-width: none !important;
+      flex: 1 1 auto !important;
+      margin: 0 !important;
+      height: auto !important;
+      max-height: none !important;
+      overflow: visible !important;
+    }
+    /* Inset the full-bleed player away from the panel edge. Margin on the
+       full-bleed wrappers (not padding on flexy) so the masthead reservation
+       isn't double-counted, mirroring the player-sizing JS which already
+       shrinks the wrapper to innerWidth-chatWidth / innerHeight-chatHeight.
+       Right needs no inset (panel is on the right, player anchored at 0,0). */
+    body.hs-platform-yt.hs-chat-left:has(#hs-mc-container) ytd-watch-flexy[is-single-column] #full-bleed-container,
+    body.hs-platform-yt.hs-chat-left:has(#hs-mc-container) ytd-watch-flexy[is-single-column] #player-full-bleed-container {
+      margin-left: var(--hs-chat-w, 340px) !important;
+    }
+    body.hs-platform-yt.hs-chat-top:has(#hs-mc-container) ytd-watch-flexy[is-single-column] #full-bleed-container,
+    body.hs-platform-yt.hs-chat-top:has(#hs-mc-container) ytd-watch-flexy[is-single-column] #player-full-bleed-container {
+      margin-top: var(--hs-chat-h, 35vh) !important;
+    }
+    /* bottom: player stays anchored at the top; reserve bottom space so the
+       metadata stacked below it never scrolls under the panel. */
+    body.hs-platform-yt.hs-chat-bottom:has(#hs-mc-container) ytd-watch-flexy[is-single-column] {
+      padding-bottom: var(--hs-chat-h, 35vh) !important;
+      box-sizing: border-box !important;
     }
     /* Live streams render via #full-bleed-container > #player-container
        (position:absolute, left:0). Centering #primary-inner doesn't reach

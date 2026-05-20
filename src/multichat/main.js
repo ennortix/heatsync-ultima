@@ -129,6 +129,11 @@
   // Muted users (right-click to hide) — loaded async from chrome.storage.local
   let mutedUsers = new Set();
 
+  // Active settings sub-tab — persisted across re-renders
+  let _settingsSubtab = 'display';
+  // Cached server content-filter settings (lazy-loaded when filters sub-tab shown)
+  let _serverSettings = null;
+
   // Per-tab platform filters: { [tabId]: { twitch, kick, youtube } }, defaults all true
   let platformFilters = {};
 
@@ -4262,6 +4267,7 @@
   function resolveFontStack(family, customName) {
     if (family === 'GohuFont') return "'GohuFont', 'Courier New', monospace";
     if (family === 'monospace') return "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace";
+    if (family === 'twitch') return "Inter, 'Helvetica Neue', Helvetica, Arial, sans-serif";
     if (family === 'custom') {
       const name = (customName || '').trim();
       if (name) return `'${name.replace(/'/g, '')}', 'Courier New', monospace`;
@@ -9267,13 +9273,19 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
         // Compute aspect-preserved player size for the freed area.
         // top/bottom: chat eats height, player fills the rest (full width).
         // left/right: chat eats width, player fills the rest (full height).
+        // Use clientWidth (NOT innerWidth) — innerWidth counts the ~15px
+        // vertical scrollbar that the fixed panel anchors outside of, so
+        // sizing off innerWidth makes the player overshoot its column and
+        // tuck its right edge (where the Skip Ad / fullscreen buttons live)
+        // under the panel.
+        const usableW = document.documentElement.clientWidth;
         let availH, availW;
         if (chatPosition === 'left' || chatPosition === 'right') {
-          availW = Math.max(200, innerWidth - chatWidth);
+          availW = Math.max(200, usableW - chatWidth);
           availH = innerHeight;
         } else {
           availH = Math.max(200, innerHeight - chatHeight);
-          availW = innerWidth - 32;
+          availW = usableW - 32;
         }
         const aspectW = availH * 16 / 9;
         const aspectH = availW * 9 / 16;

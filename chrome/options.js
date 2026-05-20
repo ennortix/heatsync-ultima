@@ -188,7 +188,7 @@
       const customRow = document.getElementById('ext-custom-font-row')
       if (customRow) customRow.style.display = e.target.value === 'custom' ? '' : 'none'
       // Auto-switch to native size for bundled bitmap fonts (mirrors heatsync.org)
-      const nativeSize = e.target.value === 'GohuFont' ? '14' : e.target.value === 'CozetteVector' ? '13' : null
+      const nativeSize = e.target.value === 'GohuFont' ? '14' : e.target.value === 'CozetteVector' ? '13' : e.target.value === 'twitch' ? '13' : null
       if (nativeSize) {
         settings.fontSize = nativeSize
         const sizeSel = document.getElementById('ext-font-size')
@@ -213,6 +213,7 @@
   function resolveFontStack(family, customName) {
     if (family === 'GohuFont') return "'GohuFont', 'Courier New', monospace"
     if (family === 'monospace') return "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace"
+    if (family === 'twitch') return "Inter, 'Helvetica Neue', Helvetica, Arial, sans-serif"
     if (family === 'custom') {
       const name = (customName || '').trim()
       if (name) return `'${name.replace(/'/g, '')}', 'Courier New', monospace`

@@ -1467,12 +1467,46 @@
         position: fixed;
         z-index: 5001;
         background: #000;
-        border: 1px solid #808080;
-        border-radius: 4px;
-        padding: 4px 0;
-        min-width: 160px;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.6);
+        color: #fff;
+        border: 1px solid #ff8700;
+        padding: 0 0 4px;
+        min-width: 200px;
+        max-width: 280px;
+        box-shadow: 0 6px 32px rgba(0,0,0,0.75);
         font-size: 13px;
+      }
+      .hs-emote-ctx-preview {
+        display: flex; align-items: center; gap: 10px;
+        padding: 8px 10px; margin-bottom: 4px;
+        border-bottom: 1px solid #222;
+        background: linear-gradient(180deg, #0a0a0a, #000);
+      }
+      .hs-emote-ctx-thumb {
+        width: 56px; height: 56px; flex-shrink: 0;
+        display: flex; align-items: center; justify-content: center;
+        background-image:
+          linear-gradient(45deg, #161616 25%, transparent 25%),
+          linear-gradient(-45deg, #161616 25%, transparent 25%),
+          linear-gradient(45deg, transparent 75%, #161616 75%),
+          linear-gradient(-45deg, transparent 75%, #161616 75%);
+        background-size: 12px 12px;
+        background-position: 0 0, 0 6px, 6px -6px, -6px 0;
+        border: 1px solid #222;
+      }
+      .hs-emote-ctx-thumb img { max-width: 100%; max-height: 100%; }
+      .hs-emote-ctx-meta { flex: 1; min-width: 0; }
+      .hs-emote-ctx-name {
+        font-weight: 700; font-size: 13px; color: #fff;
+        overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+      }
+      .hs-emote-ctx-sub {
+        font-size: 11px; color: #888; margin-top: 2px;
+        display: flex; gap: 6px; align-items: center; flex-wrap: wrap;
+      }
+      .hs-emote-ctx-provider {
+        display: inline-block; padding: 0 4px;
+        border: 1px solid #444; color: #ff8700;
+        font-size: 10px; line-height: 14px;
       }
       .hs-emote-ctx-item {
         display: block;
@@ -1492,7 +1526,7 @@
       }
       .hs-emote-ctx-sep {
         height: 1px;
-        background: #808080;
+        background: #1a1a1a;
         margin: 4px 0;
       }
 
@@ -3941,6 +3975,51 @@
     // Open on provider (7TV / BTTV / FFZ). Skipped for twitch + heatsync uploads.
     // Copy-name / copy-url already live at the bottom of this menu.
     const provider = emoteProviderPage(emote);
+
+    // Preview tile — thumbnail + name + provider/state, matches the page + panel menus
+    const emoteUrl = emote.url || emote.pickerUrl || '';
+    const preview = document.createElement('div');
+    preview.className = 'hs-emote-ctx-preview';
+    const thumb = document.createElement('div');
+    thumb.className = 'hs-emote-ctx-thumb';
+    const subEl = document.createElement('div');
+    subEl.className = 'hs-emote-ctx-sub';
+    if (emoteUrl) {
+      const big = document.createElement('img');
+      big.src = emoteUrl;
+      big.alt = emote.name;
+      big.decoding = 'async';
+      big.referrerPolicy = 'no-referrer';
+      big.addEventListener('load', () => {
+        if (big.naturalWidth && big.naturalHeight) {
+          const dim = document.createElement('span');
+          dim.textContent = `${big.naturalWidth}×${big.naturalHeight}`;
+          subEl.insertBefore(dim, subEl.firstChild);
+        }
+      });
+      thumb.appendChild(big);
+    }
+    const meta = document.createElement('div');
+    meta.className = 'hs-emote-ctx-meta';
+    const nameEl = document.createElement('div');
+    nameEl.className = 'hs-emote-ctx-name';
+    nameEl.textContent = emote.name;
+    const provLabel = provider?.label || (emote.source ? String(emote.source).toLowerCase() : (emoteUrl.includes('static-cdn.jtvnw.net') ? 'twitch' : 'heatsync'));
+    if (provLabel) {
+      const tag = document.createElement('span');
+      tag.className = 'hs-emote-ctx-provider';
+      tag.textContent = provLabel;
+      subEl.appendChild(tag);
+    }
+    const stateTxt = document.createElement('span');
+    stateTxt.textContent = isBlocked ? 'blocked' : (inInv ? 'in set' : 'not in set');
+    subEl.appendChild(stateTxt);
+    meta.appendChild(nameEl);
+    meta.appendChild(subEl);
+    preview.appendChild(thumb);
+    preview.appendChild(meta);
+    menu.appendChild(preview);
+
     if (provider) {
       const openBtn = document.createElement('button');
       openBtn.className = 'hs-emote-ctx-item';
@@ -3955,8 +4034,11 @@
       menu.appendChild(sep);
     }
 
-    // Block / unblock
-    if (tab !== 'mine') {
+    // Block / unblock — green > orange > block. An emote in your set shows
+    // "remove from set" (below), not block; you block it after removing. Globals
+    // and 3rd-party channel emotes aren't in your set, so block shows directly.
+    // Always allow unblock when already blocked.
+    if (isBlocked || !inInv) {
       const blockBtn = document.createElement('button');
       blockBtn.className = 'hs-emote-ctx-item';
       blockBtn.textContent = isBlocked ? t('btn_ctx_unblock') : t('btn_ctx_block');
@@ -4213,6 +4295,17 @@
       showPickerToast(t('btn_toast_copied'));
     });
     menu.appendChild(copyUrl);
+
+    // Copy markdown
+    const copyMd = document.createElement('button');
+    copyMd.className = 'hs-emote-ctx-item';
+    copyMd.textContent = 'copy markdown';
+    copyMd.addEventListener('click', () => {
+      dismissContextMenu();
+      navigator.clipboard.writeText(`![${emote.name}](${emote.url || emote.pickerUrl || ''})`).catch(() => {});
+      showPickerToast(t('btn_toast_copied'));
+    });
+    menu.appendChild(copyMd);
 
     document.body.appendChild(menu);
 

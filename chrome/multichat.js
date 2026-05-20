@@ -31025,6 +31025,13 @@ const STORAGE_KEY = 'heatsync_multichat';
   const senderEmotePending = new Set()
   let senderEmoteTimer = null
   const SENDER_EMOTE_BATCH = 15
+  // Per-sender fetch freshness (in-memory, NOT persisted). A sender's set was
+  // previously fetched once and never re-validated, so any emote they ADDED
+  // afterward never reached viewers who'd already cached them. Re-fetch when the
+  // entry is older than this; the empty in-memory map after a reload means every
+  // sender is re-validated once per session (picks up adds made since last visit).
+  const senderEmoteFetchedAt = new Map() // senderKey -> ts
+  const SENDER_EMOTE_REFETCH_MS = 5 * 60 * 1000
 
   function resolveSenderEmoteKey(m) {
     if (!m) return null
@@ -31046,7 +31053,11 @@ const STORAGE_KEY = 'heatsync_multichat';
   function queueSenderEmoteFetch(senderKey, m) {
     if (!senderKey) return
     if (senderEmotePending.has(senderKey)) return
-    if (typeof senderEmoteSets !== 'undefined' && senderEmoteSets.has(senderKey)) return
+    // Re-fetch when stale (or never validated this session) so emotes a sender
+    // adds later propagate. The cached set is still used for rendering meanwhile;
+    // mergeSenderEmotes layers any new names on top without dropping the old.
+    const fetchedAt = senderEmoteFetchedAt.get(senderKey)
+    if (fetchedAt && (Date.now() - fetchedAt) < SENDER_EMOTE_REFETCH_MS) return
     senderEmotePending.add(senderKey)
     if (senderEmotePending.size >= SENDER_EMOTE_BATCH) {
       if (senderEmoteTimer) { cleanup.clearTimeout(senderEmoteTimer); senderEmoteTimer = null }
@@ -31068,19 +31079,21 @@ const STORAGE_KEY = 'heatsync_multichat';
     safeSendMessage({ type: 'get_sender_emotes', senderKeys: batch }).then(resp => {
       const emotes = resp?.emotes || {}
       const changedKeys = []
-      // Seed sentinel for EVERY batch key. Keys missing from resp.emotes
-      // (sender has no personal set, backend doesn't recognize them) get an
-      // empty Map — without this, every render re-queues them and we loop
-      // render→fetch→re-render forever on busy chats with 50+ unique senders.
+      // Stamp freshness for EVERY batch key (even empty ones) so we don't re-fetch
+      // until the TTL elapses — without this, senders with no personal set re-queue
+      // on every render and loop render→fetch→re-render on busy chats.
+      const now = Date.now()
       for (const key of batch) {
         const added = mergeSenderEmotes(key, emotes[key] || {})
+        senderEmoteFetchedAt.set(key, now)
         if (added) changedKeys.push(key)
       }
       if (changedKeys.length) upgradeMessagesForSenders(changedKeys)
     }).catch(() => {
-      // Network/IPC failure — still seed empty sentinel for each key so the
-      // next render doesn't re-queue them and trigger the same loop.
-      for (const key of batch) mergeSenderEmotes(key, {})
+      // Network/IPC failure — seed empty sentinel + freshness so the next render
+      // doesn't re-queue immediately (retries after the TTL).
+      const now = Date.now()
+      for (const key of batch) { mergeSenderEmotes(key, {}); senderEmoteFetchedAt.set(key, now) }
     })
     if (senderEmotePending.size > 0) {
       senderEmoteTimer = cleanup.setTimeout(() => { senderEmoteTimer = null; flushSenderEmoteBatch() }, 500)
@@ -37146,7 +37159,10 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
         senderEmotes = viewerPersonalEmotes
       } else if (senderKey) {
         senderEmotes = getSenderEmotes(senderKey)
-        if (!senderEmotes) queueSenderEmoteFetch(senderKey, m)
+        // Always offer for fetch — queueSenderEmoteFetch gates on freshness, so a
+        // cached-but-stale set still gets re-validated (picks up the sender's
+        // newly-added emotes) while the existing set keeps rendering meanwhile.
+        queueSenderEmoteFetch(senderKey, m)
       }
       processedText = processEmotes(escapeHtml(m.text), m.channel, twitchExtra, senderEmotes)
       if (m.emotes && m.emotes.length > 0) {

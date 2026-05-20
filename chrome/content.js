@@ -3193,6 +3193,10 @@ const SENDER_EMOTE_MAX = 500
 const senderEmotePending = new Set()
 const SENDER_EMOTE_PENDING_MAX = 10
 let senderEmoteBatchTimer = null
+// Freshness so a sender's newly-added emotes propagate — without a TTL the set was
+// fetched once and never re-validated. In-memory, so a reload also re-fetches.
+const senderEmoteFetchedAt = new Map() // "twitch:<id>" -> ts
+const SENDER_EMOTE_REFETCH_MS = 5 * 60 * 1000
 let pendingOperations = new Set(); // Track in-flight operations to prevent double-clicks
 let pendingRemovals = new Set(); // Emote names pending removal — suppress inventory_update re-adds
 let _pendingRemovalSnapshots = new Map(); // name → emote object, for rollback on emote_removing_cancel
@@ -8526,7 +8530,9 @@ function applyPendingCosmetics(userIds) {
 function queueSenderEmotes(userId) {
   if (isKick || !userId || !/^\d+$/.test(userId)) return
   const key = `twitch:${userId}`
-  if (senderHeatsyncEmotes.has(key) || senderEmotePending.has(key)) return
+  if (senderEmotePending.has(key)) return
+  const fetchedAt = senderEmoteFetchedAt.get(key)
+  if (fetchedAt && (Date.now() - fetchedAt) < SENDER_EMOTE_REFETCH_MS) return
   senderEmotePending.add(key)
   if (senderEmotePending.size >= SENDER_EMOTE_PENDING_MAX) {
     if (senderEmoteBatchTimer) { cleanup.clearTimeout(senderEmoteBatchTimer); senderEmoteBatchTimer = null }
@@ -8557,11 +8563,13 @@ async function flushSenderEmoteBatch() {
         if (!inner) inner = new Map()
         inner.set(name, { name, url: data.url, hash: data.hash || '', zeroWidth: !!data.zeroWidth, source: data.source })
       }
-      // Store the Map (or null for fetched-empty) so we never re-fetch this sender.
+      // Store the Map (or null for fetched-empty); freshness stamp gates re-fetch
+      // until the TTL so newly-added emotes propagate without re-fetching forever.
       if (senderHeatsyncEmotes.size >= SENDER_EMOTE_MAX) {
         senderHeatsyncEmotes.delete(senderHeatsyncEmotes.keys().next().value)
       }
       senderHeatsyncEmotes.set(key, inner)
+      senderEmoteFetchedAt.set(key, Date.now())
     }
     // Retro-render: messages from these senders already drawn (as text) need a re-pass.
     applySenderEmotesToMessages(batch.filter(k => senderHeatsyncEmotes.get(k)))

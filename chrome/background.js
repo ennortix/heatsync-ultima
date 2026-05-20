@@ -5568,7 +5568,7 @@ async function handleMessage(message, sender, sendResponse) {
       // Per-name perma is enforced on the content side via mergeSenderEmotes.
       if (!globalThis.__senderEmoteCache) globalThis.__senderEmoteCache = new Map()
       const cache = globalThis.__senderEmoteCache
-      const SENDER_EMOTE_CACHE_TTL = 21600000 // 6h
+      const SENDER_EMOTE_CACHE_TTL = 300000 // 5min — short so a sender's newly-added heatsync emotes reach viewers; panel re-fetches on the same cadence
       await Promise.all(senderKeys.map(async (key) => {
         const hit = cache.get(key)
         if (hit && Date.now() - hit.ts < SENDER_EMOTE_CACHE_TTL) {

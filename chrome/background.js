@@ -5596,8 +5596,13 @@ async function handleMessage(message, sender, sendResponse) {
         // catalog emote added via the picker, or a self-hosted upload). Without it,
         // those emotes render only for the sender themselves and as raw text for
         // everyone else. Numeric ids only (twitch/kick; yt once twitch-resolved).
+        // credentials:'omit' is REQUIRED: this public endpoint sends
+        // Access-Control-Allow-Origin:* (for cross-origin extension reads), and a
+        // CREDENTIALED request (the heatsync.org default in fetchWithTimeout) makes
+        // the browser reject `*`+credentials — Firefox then drops the response and
+        // the sender's heatsync emotes never load. No cookie is needed here anyway.
         const hsP = isNumericId
-          ? fetchWithTimeout(`${API_URL}/api/users/${encodeURIComponent(id)}/emotes`).then(r => r.ok ? r.json() : null).catch(() => null)
+          ? fetchWithTimeout(`${API_URL}/api/users/${encodeURIComponent(id)}/emotes`, { credentials: 'omit' }).then(r => r.ok ? r.json() : null).catch(() => null)
           : Promise.resolve(null)
         const [stv, bttv, hs] = await Promise.all([stvP, bttvP, hsP])
         // 7TV personal emote_set

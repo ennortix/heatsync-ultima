@@ -1915,9 +1915,10 @@
   // Chat width state
   let chatWidth = 340; // Default width
   const DEFAULT_CHAT_WIDTH = 340;
-  // 10px floor matches the resize-bar width — chat can shrink to just the
-  // handle so the player nearly fills the viewport, but the handle is
-  // always grabbable to drag it back. No artificial "minimum usable size"
+  // 10px floor ≈ the bar's invisible grab-zone (2px line + 4px each side) —
+  // chat can shrink to just the handle so the player nearly fills the
+  // viewport, but the handle stays grabbable to drag it back. No artificial
+  // "minimum usable size"
   // — user explicitly wants pixel-level freedom.
   const MIN_CHAT_WIDTH = 10;
   const MAX_CHAT_WIDTH = 800;
@@ -3002,8 +3003,10 @@
   // is called from applyChatPosition. Drags chatWidth (left/right) or
   // chatHeight (top/bottom). Hides itself when chatPosition='right' and
   // delegates to existing per-platform handles for the default layout.
-  // Orange #ff8700, 6px thick, no text — matches user's resize-handle rule.
+  // Orange #ff8700, 2px thin + invisible grab, no text — matches the
+  // --hs-resize-thickness token in styles.js (and heatsync.org's .hs-resizer).
   // ============================================
+  const HS_RESIZE_PX = 2; // visible thickness — mirrors --hs-resize-thickness
   let _isResizingC = false;
   function ensureChatResizeHandle() {
     let handle = document.getElementById('hs-c-resize-handle');
@@ -3226,25 +3229,25 @@
       handle.style.top = cTop + 'px';
       handle.style.left = cLeft + 'px';
       handle.style.height = cHeight + 'px';
-      handle.style.width = '5px';
+      handle.style.width = HS_RESIZE_PX + 'px';
       handle.style.cursor = 'col-resize';
     } else if (chatPosition === 'left') {
       handle.style.top = cTop + 'px';
-      handle.style.left = (cRight - 5) + 'px';
+      handle.style.left = (cRight - HS_RESIZE_PX) + 'px';
       handle.style.height = cHeight + 'px';
-      handle.style.width = '5px';
+      handle.style.width = HS_RESIZE_PX + 'px';
       handle.style.cursor = 'col-resize';
     } else if (chatPosition === 'top') {
-      handle.style.top = (cBottom - 5) + 'px';
+      handle.style.top = (cBottom - HS_RESIZE_PX) + 'px';
       handle.style.left = cLeft + 'px';
       handle.style.width = cWidth + 'px';
-      handle.style.height = '5px';
+      handle.style.height = HS_RESIZE_PX + 'px';
       handle.style.cursor = 'row-resize';
     } else if (chatPosition === 'bottom') {
       handle.style.top = cTop + 'px';
       handle.style.left = cLeft + 'px';
       handle.style.width = cWidth + 'px';
-      handle.style.height = '5px';
+      handle.style.height = HS_RESIZE_PX + 'px';
       handle.style.cursor = 'row-resize';
     }
   }
@@ -4682,225 +4685,598 @@
     rebuildKeywordRegex();
   }
 
+  // ─── settings sub-tab helpers ────────────────────────────────────────────
+
+  // SVG icons for the six settings sub-tabs (16x16 stroke, no fill)
+  const _SET_SUBTAB_ICONS = {
+    display: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1" y="2" width="14" height="10" rx="1"/><line x1="5" y1="14" x2="11" y2="14"/><line x1="8" y1="12" x2="8" y2="14"/></svg>',
+    chat:    '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 3a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1H6l-3 2v-2H3a1 1 0 0 1-1-1V3z"/></svg>',
+    notifs:  '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 2a5 5 0 0 1 5 5v3l1 1H2l1-1V7a5 5 0 0 1 5-5z"/><line x1="6.5" y1="13" x2="9.5" y2="13"/></svg>',
+    mod:     '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 1.5l5 2.5v4c0 3-2.5 5.5-5 6.5C5.5 13.5 3 11 3 8V4l5-2.5z"/></svg>',
+    filters: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 4h12M4 8h8M6 12h4"/></svg>',
+    system:  '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="2.5"/><path d="M8 1v2M8 13v2M1 8h2M13 8h2M3.05 3.05l1.42 1.42M11.53 11.53l1.42 1.42M3.05 12.95l1.42-1.42M11.53 4.47l1.42-1.42"/></svg>',
+  };
+  const _SET_SUBTAB_ORDER = ['display', 'chat', 'notifs', 'mod', 'filters', 'system'];
+
+  function _renderSetSubtabBar() {
+    return '<div class="hs-mc-set-subtabs">' +
+      _SET_SUBTAB_ORDER.map(function(id) {
+        return '<button class="hs-mc-set-subtab' + (_settingsSubtab === id ? ' active' : '') + '" data-set-subtab="' + id + '" title="' + id + '">' +
+          _SET_SUBTAB_ICONS[id] + '</button>';
+      }).join('') +
+    '</div>';
+  }
+
+  function _renderUiToggleRow(settingKey, label, tip, currentVal) {
+    var tipAttr = tip ? ' data-tip="' + escapeHtml(tip) + '"' : '';
+    return '<div class="hs-mc-setting-row">' +
+      '<button class="hs-mc-toggle-pill' + (currentVal ? ' active' : '') + '" data-setting="' + settingKey + '"><span class="hs-mc-toggle-knob"></span></button>' +
+      '<span class="hs-mc-setting-label"' + tipAttr + '>' + escapeHtml(label) + '</span>' +
+    '</div>';
+  }
+
+  function _renderDisplaySubtab(ui) {
+    var fam = (ui && ui.fontFamily) || 'CozetteVector';
+    var fsz = (ui && ui.fontSize) || '13';
+    var fcust = (ui && ui.customFontName) || '';
+    var showCustom = fam === 'custom';
+    return '<div class="hs-mc-settings-group">' +
+      '<div class="hs-mc-settings-group-title">font</div>' +
+      '<div class="hs-mc-setting-row hs-mc-setting-row-split">' +
+        '<span class="hs-mc-setting-label" data-tip="multichat font family">font family</span>' +
+        '<select class="hs-mc-locale-select" data-setting="fontfamily" style="max-width:55%">' +
+          '<option value="CozetteVector">CozetteVector (13px)</option>' +
+          '<option value="GohuFont">GohuFont (14px)</option>' +
+          '<option value="monospace">system monospace</option>' +
+          '<option value="twitch">Twitch default (Inter)</option>' +
+          '<option value="custom">custom...</option>' +
+        '</select>' +
+      '</div>' +
+      (showCustom ? '<div class="hs-mc-setting-row hs-mc-setting-row-split">' +
+        '<span class="hs-mc-setting-label">custom font name</span>' +
+        '<input class="hs-mc-set-text-input" data-setting="customfontname" type="text" placeholder="font name" value="' + escapeHtml(fcust) + '" style="width:140px">' +
+      '</div>' : '') +
+      '<div class="hs-mc-setting-row hs-mc-setting-row-split">' +
+        '<span class="hs-mc-setting-label" data-tip="base font size for multichat panel">font size</span>' +
+        '<select class="hs-mc-locale-select" data-setting="fontsize" style="max-width:35%">' +
+          '<option value="13">13px</option>' +
+          '<option value="14">14px</option>' +
+          '<option value="16">16px</option>' +
+        '</select>' +
+      '</div>' +
+    '</div>' +
+    '<div class="hs-mc-settings-group">' +
+      '<div class="hs-mc-settings-group-title">' + t('mc_settings_display') + '</div>' +
+      '<div class="hs-mc-setting-row hs-mc-setting-row-split">' +
+        '<span class="hs-mc-setting-label" data-tip="' + t('mc_settings_emote_size_desc') + '">' + t('mc_settings_emote_size') + '</span>' +
+        '<div class="hs-mc-size-btns">' +
+          '<button class="hs-mc-size-btn ' + (emoteSize === 1 ? 'active' : '') + '" data-size="1">1x</button>' +
+          '<button class="hs-mc-size-btn ' + (emoteSize === 2 ? 'active' : '') + '" data-size="2">2x</button>' +
+          '<button class="hs-mc-size-btn ' + (emoteSize === 4 ? 'active' : '') + '" data-size="4">4x</button>' +
+        '</div>' +
+      '</div>' +
+      '<div class="hs-mc-setting-row hs-mc-setting-row-split">' +
+        '<span class="hs-mc-setting-label" data-tip="emoji size -- 1x native, 2x (default)/4x scale unicode emoji">emoji size</span>' +
+        '<div class="hs-mc-size-btns">' +
+          '<button class="hs-mc-size-btn ' + (emojiSize === 1 ? 'active' : '') + '" data-emoji-size="1">1x</button>' +
+          '<button class="hs-mc-size-btn ' + (emojiSize === 2 ? 'active' : '') + '" data-emoji-size="2">2x</button>' +
+          '<button class="hs-mc-size-btn ' + (emojiSize === 4 ? 'active' : '') + '" data-emoji-size="4">4x</button>' +
+        '</div>' +
+      '</div>' +
+      _renderUiToggleRow('timestamps', t('mc_settings_timestamps'), t('mc_settings_timestamps_desc'), timestampsEnabled) +
+      _renderUiToggleRow('avatars', 'pfps', t('mc_settings_avatars_desc'), avatarsEnabled) +
+      _renderUiToggleRow('zebra', t('mc_settings_zebra'), t('mc_settings_zebra_desc'), zebraEnabled) +
+      _renderUiToggleRow('readablenames', 'readable names', "brighten dim username colors so they're readable on the black bg", readableNamesEnabled) +
+      _renderUiToggleRow('firstchatter', t('mc_settings_first_chatter'), t('mc_settings_first_chatter_desc'), firstChatterGlow) +
+      _renderUiToggleRow('autohide', t('mc_settings_auto_hide'), t('mc_settings_auto_hide_desc'), autoHideInput) +
+      _renderUiToggleRow('hidechatheader', 'hide header', 'hide chat room header bar', true) +
+      _renderUiToggleRow('compactchatinput', 'compact input', 'minimize chat input buttons', true) +
+      _renderUiToggleRow('hidestreamtitle', 'hide stream title', 'hide the stream title above chat', false) +
+      _renderUiToggleRow('hideviewercount', 'hide viewer count', 'hide viewer count display', false) +
+      _renderUiToggleRow('showcosmetics', 'cosmetics', '7TV/BTTV/FFZ paints and badges', true) +
+      _renderUiToggleRow('showplatformbadges', 'platform badges', '[T] [K] [Y] labels on messages', platformBadgesEnabled) +
+    '</div>';
+  }
+
+  function _renderChatSubtab(ui) {
+    return '<div class="hs-mc-settings-group">' +
+      '<div class="hs-mc-settings-group-title">input</div>' +
+      _renderUiToggleRow('wysiwyg', t('mc_settings_input_preview'), t('mc_settings_input_preview_desc'), wysiwygEnabled) +
+      _renderUiToggleRow('emotewysiwyg', 'wysiwyg emotes', 'show emote images in chat input while typing', true) +
+      _renderUiToggleRow('emotespaceafter', 'space after emote', 'auto-insert space after tab completion', true) +
+      _renderUiToggleRow('emoteplaceholdermode', 'placeholder mode', 'show colored boxes instead of emote images', false) +
+      _renderUiToggleRow('vi', t('mc_settings_vi_mode'), t('mc_settings_vi_mode_desc'), viModeEnabled) +
+    '</div>' +
+    '<div class="hs-mc-settings-group">' +
+      '<div class="hs-mc-settings-group-title">messages</div>' +
+      _renderUiToggleRow('links', t('mc_settings_clickable_links'), t('mc_settings_clickable_links_desc'), linksEnabled) +
+      _renderUiToggleRow('linkpreviews', t('mc_settings_link_previews'), t('mc_settings_link_previews_desc'), linkPreviewsEnabled) +
+      _renderUiToggleRow('emotemodifiers', 'FFZ emote modifiers', 'w! h! ffzX ffzY c!#hex chains on the previous emote', true) +
+      _renderUiToggleRow('emoterightclickmenu', 'emote right-click menu', 'right-click an emote for view-on/copy-name/copy-url/block', true) +
+      _renderUiToggleRow('usercolors', 'per-user color overrides', 'right-click a username in chat to set its display color', true) +
+      _renderUiToggleRow('highlightmentions', 'highlight mentions', 'red background on chat lines mentioning you', true) +
+      _renderUiToggleRow('showclearedmessages', 'show deleted messages', 'keep timed-out/deleted lines visible (dimmed) instead of hiding', false) +
+      _renderUiToggleRow('showpredictionschip', 'show predictions/polls chip', 'live overlay when a prediction or poll is active', true) +
+      _renderUiToggleRow('anonchat', 'anonymous chat', 'suppress presence/typing-indicator outbound traffic', false) +
+      _renderUiToggleRow('autoclaim', t('mc_settings_auto_claim'), t('mc_settings_auto_claim_desc'), autoClaimPoints) +
+      _renderUiToggleRow('dimtimeouts', t('mc_settings_dim_timeouts'), t('mc_settings_dim_timeouts_desc'), dimTimeouts) +
+      '<div class="hs-mc-setting-row hs-mc-setting-row-block">' +
+        '<span class="hs-mc-setting-label" data-tip="' + t('mc_settings_keyword_highlights_desc') + '">' + t('mc_settings_keyword_highlights') + '</span>' +
+        '<textarea class="hs-mc-setting-textarea" data-setting="keywordhighlights" placeholder="' + t('mc_settings_keyword_highlights_placeholder') + '" rows="3">' + escapeHtml(keywordHighlights) + '</textarea>' +
+      '</div>' +
+    '</div>';
+  }
+
+  function _renderNotifsSubtab() {
+    return '<div class="hs-mc-settings-group">' +
+      '<div class="hs-mc-settings-group-title">' + t('mc_settings_inline_notifs') + '</div>' +
+      Object.entries(INLINE_NOTIF_TYPES).map(function(entry) {
+        var key = entry[0]; var def = entry[1];
+        return '<div class="hs-mc-setting-row">' +
+          '<button class="hs-mc-toggle-pill' + (inlineNotifs[key] ? ' active' : '') + '" data-setting="notif_' + key + '"><span class="hs-mc-toggle-knob"></span></button>' +
+          '<span class="hs-mc-setting-label" data-tip="' + escapeHtml(def.desc) + '"><span style="color:' + def.color + '">' + def.tag + '</span> ' + escapeHtml(def.label.replace(def.tag, '').trim()) + '</span>' +
+        '</div>';
+      }).join('') +
+    '</div>' +
+    '<div class="hs-mc-settings-group">' +
+      '<div class="hs-mc-settings-group-title">' + t('mc_settings_twitch_events') + '</div>' +
+      Object.entries(HERMES_EVENT_TYPES).map(function(entry) {
+        var key = entry[0]; var def = entry[1];
+        return '<div class="hs-mc-setting-row">' +
+          '<button class="hs-mc-toggle-pill' + (hermesToggles[key] ? ' active' : '') + '" data-setting="hermes_' + key + '"><span class="hs-mc-toggle-knob"></span></button>' +
+          '<span class="hs-mc-setting-label" data-tip="' + escapeHtml(def.desc) + '"><span style="color:' + def.color + '">◆</span> ' + escapeHtml(def.label) + '</span>' +
+        '</div>';
+      }).join('') +
+    '</div>' +
+    '<div class="hs-mc-settings-group">' +
+      '<div class="hs-mc-settings-group-title">browser</div>' +
+      '<div class="hs-mc-setting-row">' +
+        '<button class="hs-mc-toggle-pill" data-storage-key="hs_notifications"><span class="hs-mc-toggle-knob"></span></button>' +
+        '<span class="hs-mc-setting-label" data-tip="show a desktop notification when someone @s you">browser notification on mention</span>' +
+      '</div>' +
+    '</div>';
+  }
+
+  function _renderModSubtab() {
+    return '<div class="hs-mc-settings-group">' +
+      '<div class="hs-mc-settings-group-title">mod toolbar -- hover actions on chat rows when you mod the channel</div>' +
+      Object.entries(MOD_BUTTON_CATALOG).map(function(entry) {
+        var id = entry[0]; var def = entry[1];
+        var enabled = modToolbarButtons.includes(id);
+        return '<div class="hs-mc-setting-row">' +
+          '<button class="hs-mc-toggle-pill' + (enabled ? ' active' : '') + '" data-mod-btn="' + id + '"><span class="hs-mc-toggle-knob"></span></button>' +
+          '<span class="hs-mc-setting-label"><span style="font-family:monospace;color:#ff8700;margin-right:6px;min-width:34px;display:inline-block">' + def.label + '</span>' + escapeHtml(def.title) + '</span>' +
+        '</div>';
+      }).join('') +
+    '</div>' +
+    '<div class="hs-mc-settings-group">' +
+      '<div class="hs-mc-settings-group-title">automod</div>' +
+      '<div class="hs-mc-setting-row">' +
+        '<button class="hs-mc-toggle-pill" data-uisetting="automodAllCaps"><span class="hs-mc-toggle-knob"></span></button>' +
+        '<span class="hs-mc-setting-label" data-tip="hide messages over 10 chars that are mostly uppercase">hide all-caps spam</span>' +
+      '</div>' +
+      '<div class="hs-mc-setting-row hs-mc-setting-row-block">' +
+        '<span class="hs-mc-setting-label" data-tip="one pattern per line, case-insensitive -- matching messages get hidden">filter regex</span>' +
+        '<textarea class="hs-mc-setting-textarea" data-setting="automodregex" placeholder="bit\\.ly\nfree\\s+v[\\-]?bucks" rows="3"></textarea>' +
+      '</div>' +
+    '</div>';
+  }
+
+  var _SERVER_FILTER_DEFS = [
+    { key: 'allow_nsfw_text',       label: 'nsfw text',        desc: 'show sexually explicit text in chat' },
+    { key: 'allow_nsfw_images',     label: 'nsfw images',      desc: 'show adult image emotes' },
+    { key: 'allow_nsfw_videos',     label: 'nsfw videos',      desc: 'show adult video clips' },
+    { key: 'allow_nsfw_emotes',     label: 'nsfw emotes',      desc: 'render emotes flagged as nsfw' },
+    { key: 'allow_nsfw_usernames',  label: 'nsfw usernames',   desc: 'show usernames flagged as inappropriate' },
+    { key: 'allow_violent_content', label: 'violent content',  desc: 'show messages containing violent content' },
+    { key: 'allow_hate_speech',     label: 'hate speech',      desc: 'show messages flagged for hate speech' },
+    { key: 'allow_weapons',         label: 'weapons',          desc: 'show content referencing weapons' },
+    { key: 'allow_drugs',           label: 'drugs',            desc: 'show content referencing drugs' },
+    { key: 'show_spam',             label: 'spam',             desc: 'show messages detected as spam' },
+    { key: 'show_hidden_messages',  label: 'hidden messages',  desc: 'show server-hidden messages' },
+  ];
+
+  function _renderFiltersSubtab() {
+    var sv = _serverSettings;
+    return '<div class="hs-mc-settings-group">' +
+      '<div class="hs-mc-settings-group-title">content filters (server-synced)</div>' +
+      '<div class="hs-mc-set-status" id="hs-set-srv-status"></div>' +
+      _SERVER_FILTER_DEFS.map(function(def) {
+        var on = sv ? !!sv[def.key] : false;
+        return '<div class="hs-mc-setting-row">' +
+          '<button class="hs-mc-toggle-pill' + (on ? ' active' : '') + '" data-server-setting="' + def.key + '"' + (sv ? '' : ' disabled') + '><span class="hs-mc-toggle-knob"></span></button>' +
+          '<span class="hs-mc-setting-label" data-tip="' + escapeHtml(def.desc) + '">' + escapeHtml(def.label) + '</span>' +
+        '</div>';
+      }).join('') +
+    '</div>';
+  }
+
+  function _renderSystemSubtab(ui) {
+    var dbg = !!(ui && ui.debugLogging);
+    var crash = !!(ui && ui.crashTelemetry);
+    return '<div class="hs-mc-settings-group">' +
+      '<div class="hs-mc-settings-group-title">tabs</div>' +
+      HIDABLE_TABS.map(function(id) {
+        return '<div class="hs-mc-setting-row">' +
+          '<button class="hs-mc-toggle-pill' + (!hiddenTabs.has(id) ? ' active' : '') + '" data-setting="hidetab_' + id + '"><span class="hs-mc-toggle-knob"></span></button>' +
+          '<span class="hs-mc-setting-label">' + t('mc_tab_' + id) + '</span>' +
+        '</div>';
+      }).join('') +
+    '</div>' +
+    '<div class="hs-mc-settings-group">' +
+      '<div class="hs-mc-settings-group-title">language</div>' +
+      '<div class="hs-mc-setting-row hs-mc-setting-row-split">' +
+        '<span class="hs-mc-setting-label">interface language</span>' +
+        '<select class="hs-mc-locale-select" data-setting="locale">' +
+          Object.entries(I18N_LOCALE_NAMES).map(function(e2) {
+            return '<option value="' + escapeHtml(e2[0]) + '"' + (e2[0] === getI18nLocale() ? ' selected' : '') + '>' + escapeHtml(e2[1]) + '</option>';
+          }).join('') +
+        '</select>' +
+      '</div>' +
+    '</div>' +
+    '<div class="hs-mc-settings-group">' +
+      '<div class="hs-mc-settings-group-title">' + t('mc_settings_muted_users') + '</div>' +
+      (mutedUsers.size === 0
+        ? '<div class="hs-mc-setting-row" style="color:#808080;font-size:13px">' + t('mc_settings_no_muted') + '</div>'
+        : Array.from(mutedUsers).sort().map(function(u) {
+          return '<div class="hs-mc-setting-row hs-mc-setting-row-split">' +
+            '<span class="hs-mc-setting-label" style="font-size:13px">' + escapeHtml(u) + '</span>' +
+            '<button class="hs-mc-unmute-btn" data-username="' + escapeHtml(u) + '" style="background:none;border:1px solid #808080;color:#808080;font-size:13px;cursor:pointer;padding:1px 6px;line-height:1.4" title="' + t('mc_settings_unmute') + '">✕</button>' +
+          '</div>';
+        }).join('')
+      ) +
+    '</div>' +
+    '<div class="hs-mc-settings-group">' +
+      '<div class="hs-mc-settings-group-title">advanced</div>' +
+      '<div class="hs-mc-setting-row">' +
+        '<button class="hs-mc-toggle-pill' + (dbg ? ' active' : '') + '" data-uisetting="debugLogging"><span class="hs-mc-toggle-knob"></span></button>' +
+        '<span class="hs-mc-setting-label" data-tip="verbose console output, reload tab after toggle">debug logging</span>' +
+      '</div>' +
+      '<div class="hs-mc-setting-row">' +
+        '<button class="hs-mc-toggle-pill' + (crash ? ' active' : '') + '" data-uisetting="crashTelemetry"><span class="hs-mc-toggle-knob"></span></button>' +
+        '<span class="hs-mc-setting-label" data-tip="capture errors locally for diagnosis (never auto-uploaded)">crash telemetry</span>' +
+      '</div>' +
+      (crash ? '<div class="hs-mc-setting-row hs-mc-setting-row-block" id="hs-set-crashlog-row">' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;width:100%">' +
+          '<span class="hs-mc-setting-label">recent errors</span>' +
+          '<div style="display:flex;gap:4px">' +
+            '<button id="hs-set-crash-copy" style="background:#000;color:#fff;border:1px solid #808080;padding:2px 8px;font-size:11px;cursor:pointer;font-family:\'Liberation Mono\',monospace">copy</button>' +
+            '<button id="hs-set-crash-clear" style="background:#000;color:#fff;border:1px solid #808080;padding:2px 8px;font-size:11px;cursor:pointer;font-family:\'Liberation Mono\',monospace">clear</button>' +
+          '</div>' +
+        '</div>' +
+        '<pre id="hs-set-crash-pre" class="hs-mc-set-crash-pre">(loading...)</pre>' +
+      '</div>' : '') +
+    '</div>' +
+    '<div class="hs-mc-settings-group">' +
+      '<div class="hs-mc-setting-row" style="justify-content:flex-end">' +
+        '<button class="hs-mc-defaults-btn" style="background:#808080;border:2px outset #fff;padding:2px 10px;font-size:13px;font-weight:bold;cursor:pointer;font-family:\'Liberation Mono\',monospace;color:#000;box-shadow:1px 1px 0 #000">default</button>' +
+      '</div>' +
+    '</div>';
+  }
+
+  // Lazy-load server content filters; only fetches once per session
+  async function _loadServerFilters() {
+    var statusEl = document.getElementById('hs-set-srv-status');
+    if (_serverSettings !== null) {
+      // Already loaded -- reflect current state in DOM
+      if (statusEl) { statusEl.textContent = ''; statusEl.className = 'hs-mc-set-status'; }
+      for (var i = 0; i < _SERVER_FILTER_DEFS.length; i++) {
+        var def = _SERVER_FILTER_DEFS[i];
+        var pill = document.querySelector('.hs-mc-toggle-pill[data-server-setting="' + def.key + '"]');
+        if (pill) {
+          pill.classList.toggle('active', !!_serverSettings[def.key]);
+          pill.removeAttribute('disabled');
+        }
+      }
+      return;
+    }
+    if (statusEl) { statusEl.textContent = 'loading…'; statusEl.className = 'hs-mc-set-status'; }
+    try {
+      var resp = await safeSendMessage({ type: 'api_fetch', path: '/api/user/settings', method: 'GET', auth: true });
+      if (!resp || !resp.ok) {
+        var st = resp && resp.status;
+        if (st === 401 || st === 403) {
+          if (statusEl) { statusEl.textContent = 'not logged in — sign in at heatsync.org'; statusEl.className = 'hs-mc-set-status'; }
+        } else {
+          if (statusEl) { statusEl.textContent = 'failed to load: ' + ((resp && resp.error) || 'unknown'); statusEl.className = 'hs-mc-set-status err'; }
+        }
+        return;
+      }
+      _serverSettings = (resp.data && resp.data.settings) || resp.settings || null;
+      if (!_serverSettings) {
+        if (statusEl) { statusEl.textContent = 'no settings data returned'; statusEl.className = 'hs-mc-set-status err'; }
+        return;
+      }
+      for (var j = 0; j < _SERVER_FILTER_DEFS.length; j++) {
+        var def2 = _SERVER_FILTER_DEFS[j];
+        var pill2 = document.querySelector('.hs-mc-toggle-pill[data-server-setting="' + def2.key + '"]');
+        if (pill2) {
+          pill2.classList.toggle('active', !!_serverSettings[def2.key]);
+          pill2.removeAttribute('disabled');
+        }
+      }
+      if (statusEl) { statusEl.textContent = ''; statusEl.className = 'hs-mc-set-status'; }
+    } catch (err) {
+      if (statusEl) { statusEl.textContent = 'not logged in — sign in at heatsync.org'; statusEl.className = 'hs-mc-set-status'; }
+    }
+  }
+
+  // Load crash log into the system sub-tab pre element
+  async function _loadCrashLog() {
+    var pre = document.getElementById('hs-set-crash-pre');
+    if (!pre) return;
+    try {
+      var resp = await chrome.runtime.sendMessage({ type: 'get_crash_log' });
+      var log = (resp && resp.log) || [];
+      if (log.length === 0) { pre.textContent = '(no errors recorded)'; return; }
+      function fmtTs(ts) {
+        var d = new Date(ts);
+        return d.toISOString().replace('T', ' ').slice(0, 19);
+      }
+      pre.textContent = log.slice().reverse().map(function(entry) {
+        var cnt = entry.count > 1 ? ' \xD7' + entry.count : '';
+        return '[' + fmtTs(entry.ts) + '] ' + entry.source + cnt + ': ' + entry.message + '\n' + (entry.stack || '') + '\n';
+      }).join('\n');
+    } catch (err) {
+      pre.textContent = '(unable to read log)';
+    }
+  }
+
+  // Populate hs_notifications toggle state (async storage read)
+  async function _populateNotifStorageToggle() {
+    try {
+      var stored = await chrome.storage.local.get(['hs_notifications']);
+      var pill = document.querySelector('.hs-mc-toggle-pill[data-storage-key="hs_notifications"]');
+      if (pill) pill.classList.toggle('active', !!stored.hs_notifications);
+    } catch (_e) {}
+  }
+
   function renderSettingsTab() {
-    const msgsEl = document.getElementById('hs-mc-messages');
+    var msgsEl = document.getElementById('hs-mc-messages');
     if (!msgsEl) return;
 
-    // Tooltip descriptions for settings — all static strings, no user input
-    const settingTips = {
-      emoteSize: t('mc_settings_emote_size_desc'),
-      wysiwyg: t('mc_settings_input_preview_desc'),
-      links: t('mc_settings_clickable_links_desc'),
-      linkPreviews: t('mc_settings_link_previews_desc'),
-      vi: t('mc_settings_vi_mode_desc'),
-      zebra: t('mc_settings_zebra_desc'),
-      autohide: t('mc_settings_auto_hide_desc'),
-      timestamps: t('mc_settings_timestamps_desc'),
-      avatars: t('mc_settings_avatars_desc'),
+    _clearMessageIndices();
+
+    var subtabContent = '';
+    if (_settingsSubtab === 'display') {
+      subtabContent = _renderDisplaySubtab(null);
+    } else if (_settingsSubtab === 'chat') {
+      subtabContent = _renderChatSubtab(null);
+    } else if (_settingsSubtab === 'notifs') {
+      subtabContent = _renderNotifsSubtab();
+    } else if (_settingsSubtab === 'mod') {
+      subtabContent = _renderModSubtab();
+    } else if (_settingsSubtab === 'filters') {
+      subtabContent = _renderFiltersSubtab();
+    } else if (_settingsSubtab === 'system') {
+      subtabContent = _renderSystemSubtab(null);
     }
-    _clearMessageIndices()
-    // Static settings HTML — no user input, all tooltip values are hardcoded strings above
-    msgsEl.innerHTML = `
-      <div class="hs-mc-settings-panel">
-        <div class="hs-mc-settings-group">
-          <div class="hs-mc-settings-group-title">${t('mc_settings_display')}</div>
-          <div class="hs-mc-setting-row hs-mc-setting-row-split">
-            <span class="hs-mc-setting-label" data-tip="${settingTips.emoteSize}">${t('mc_settings_emote_size')}</span>
-            <div class="hs-mc-size-btns">
-              <button class="hs-mc-size-btn ${emoteSize === 1 ? 'active' : ''}" data-size="1">1x</button>
-              <button class="hs-mc-size-btn ${emoteSize === 2 ? 'active' : ''}" data-size="2">2x</button>
-              <button class="hs-mc-size-btn ${emoteSize === 4 ? 'active' : ''}" data-size="4">4x</button>
-            </div>
-          </div>
-          <div class="hs-mc-setting-row hs-mc-setting-row-split">
-            <span class="hs-mc-setting-label" data-tip="emoji size — 1x native, 2x (default)/4x scale unicode emoji">emoji size</span>
-            <div class="hs-mc-size-btns">
-              <button class="hs-mc-size-btn ${emojiSize === 1 ? 'active' : ''}" data-emoji-size="1">1x</button>
-              <button class="hs-mc-size-btn ${emojiSize === 2 ? 'active' : ''}" data-emoji-size="2">2x</button>
-              <button class="hs-mc-size-btn ${emojiSize === 4 ? 'active' : ''}" data-emoji-size="4">4x</button>
-            </div>
-          </div>
-          <div class="hs-mc-setting-row">
-            <button class="hs-mc-toggle-pill ${wysiwygEnabled ? 'active' : ''}" data-setting="wysiwyg"><span class="hs-mc-toggle-knob"></span></button>
-            <span class="hs-mc-setting-label" data-tip="${settingTips.wysiwyg}">${t('mc_settings_input_preview')}</span>
-          </div>
-          <div class="hs-mc-setting-row">
-            <button class="hs-mc-toggle-pill ${linksEnabled ? 'active' : ''}" data-setting="links"><span class="hs-mc-toggle-knob"></span></button>
-            <span class="hs-mc-setting-label" data-tip="${settingTips.links}">${t('mc_settings_clickable_links')}</span>
-          </div>
-          <div class="hs-mc-setting-row">
-            <button class="hs-mc-toggle-pill ${linkPreviewsEnabled ? 'active' : ''}" data-setting="linkpreviews"><span class="hs-mc-toggle-knob"></span></button>
-            <span class="hs-mc-setting-label" data-tip="${settingTips.linkPreviews}">${t('mc_settings_link_previews')}</span>
-          </div>
-          <div class="hs-mc-setting-row">
-            <button class="hs-mc-toggle-pill ${viModeEnabled ? 'active' : ''}" data-setting="vi"><span class="hs-mc-toggle-knob"></span></button>
-            <span class="hs-mc-setting-label" data-tip="${settingTips.vi}">${t('mc_settings_vi_mode')}</span>
-          </div>
-          <div class="hs-mc-setting-row">
-            <button class="hs-mc-toggle-pill ${zebraEnabled ? 'active' : ''}" data-setting="zebra"><span class="hs-mc-toggle-knob"></span></button>
-            <span class="hs-mc-setting-label" data-tip="${settingTips.zebra}">${t('mc_settings_zebra')}</span>
-          </div>
-          <div class="hs-mc-setting-row">
-            <button class="hs-mc-toggle-pill ${autoHideInput ? 'active' : ''}" data-setting="autohide"><span class="hs-mc-toggle-knob"></span></button>
-            <span class="hs-mc-setting-label" data-tip="${settingTips.autohide}">${t('mc_settings_auto_hide')}</span>
-          </div>
-          <div class="hs-mc-setting-row">
-            <button class="hs-mc-toggle-pill ${timestampsEnabled ? 'active' : ''}" data-setting="timestamps"><span class="hs-mc-toggle-knob"></span></button>
-            <span class="hs-mc-setting-label" data-tip="${settingTips.timestamps}">${t('mc_settings_timestamps')}</span>
-          </div>
-          <div class="hs-mc-setting-row">
-            <button class="hs-mc-toggle-pill ${avatarsEnabled ? 'active' : ''}" data-setting="avatars"><span class="hs-mc-toggle-knob"></span></button>
-            <span class="hs-mc-setting-label" data-tip="${settingTips.avatars}">pfps</span>
-          </div>
-          <div class="hs-mc-setting-row">
-            <button class="hs-mc-toggle-pill ${firstChatterGlow ? 'active' : ''}" data-setting="firstchatter"><span class="hs-mc-toggle-knob"></span></button>
-            <span class="hs-mc-setting-label" data-tip="${t('mc_settings_first_chatter_desc')}">${t('mc_settings_first_chatter')}</span>
-          </div>
-          <div class="hs-mc-setting-row hs-mc-setting-row-block">
-            <span class="hs-mc-setting-label" data-tip="${t('mc_settings_keyword_highlights_desc')}">${t('mc_settings_keyword_highlights')}</span>
-            <textarea class="hs-mc-setting-textarea" data-setting="keywordhighlights" placeholder="${t('mc_settings_keyword_highlights_placeholder')}" rows="3">${escapeHtml(keywordHighlights)}</textarea>
-          </div>
-        </div>
-        <div class="hs-mc-settings-group">
-          <div class="hs-mc-settings-group-title">${t('mc_settings_inline_notifs')}</div>
-          ${Object.entries(INLINE_NOTIF_TYPES).map(([key, def]) => `
-          <div class="hs-mc-setting-row">
-            <button class="hs-mc-toggle-pill ${inlineNotifs[key] ? 'active' : ''}" data-setting="notif_${key}"><span class="hs-mc-toggle-knob"></span></button>
-            <span class="hs-mc-setting-label" data-tip="${escapeHtml(def.desc)}"><span style="color:${def.color}">${def.tag}</span> ${escapeHtml(def.label.replace(def.tag, '').trim())}</span>
-          </div>`).join('')}
-        </div>
-        <div class="hs-mc-settings-group">
-          <div class="hs-mc-settings-group-title">${t('mc_settings_twitch_events')}</div>
-          ${Object.entries(HERMES_EVENT_TYPES).map(([key, def]) => `
-          <div class="hs-mc-setting-row">
-            <button class="hs-mc-toggle-pill ${hermesToggles[key] ? 'active' : ''}" data-setting="hermes_${key}"><span class="hs-mc-toggle-knob"></span></button>
-            <span class="hs-mc-setting-label" data-tip="${escapeHtml(def.desc)}"><span style="color:${def.color}">\u25C6</span> ${escapeHtml(def.label)}</span>
-          </div>`).join('')}
-        </div>
-        <div class="hs-mc-settings-group">
-          <div class="hs-mc-settings-group-title">mod toolbar — hover actions on chat rows when you mod the channel</div>
-          ${Object.entries(MOD_BUTTON_CATALOG).map(([id, def]) => {
-            const enabled = modToolbarButtons.includes(id)
-            return `<div class="hs-mc-setting-row">
-              <button class="hs-mc-toggle-pill ${enabled ? 'active' : ''}" data-mod-btn="${id}"><span class="hs-mc-toggle-knob"></span></button>
-              <span class="hs-mc-setting-label"><span style="font-family:monospace;color:#ff8700;margin-right:6px;min-width:34px;display:inline-block">${def.label}</span>${escapeHtml(def.title)}</span>
-            </div>`
-          }).join('')}
-        </div>
-        <div class="hs-mc-settings-group">
-          <div class="hs-mc-settings-group-title">${t('mc_settings_features')}</div>
-          <div class="hs-mc-setting-row">
-            <button class="hs-mc-toggle-pill ${autoClaimPoints ? 'active' : ''}" data-setting="autoclaim"><span class="hs-mc-toggle-knob"></span></button>
-            <span class="hs-mc-setting-label" data-tip="${t('mc_settings_auto_claim_desc')}">${t('mc_settings_auto_claim')}</span>
-          </div>
-          <div class="hs-mc-setting-row">
-            <button class="hs-mc-toggle-pill ${dimTimeouts ? 'active' : ''}" data-setting="dimtimeouts"><span class="hs-mc-toggle-knob"></span></button>
-            <span class="hs-mc-setting-label" data-tip="${t('mc_settings_dim_timeouts_desc')}">${t('mc_settings_dim_timeouts')}</span>
-          </div>
-          <div class="hs-mc-setting-row">
-            <button class="hs-mc-toggle-pill ${readableNamesEnabled ? 'active' : ''}" data-setting="readablenames"><span class="hs-mc-toggle-knob"></span></button>
-            <span class="hs-mc-setting-label" data-tip="brighten dim username colors so they're readable on the black bg">readable names</span>
-          </div>
-        </div>
-        <div class="hs-mc-settings-group">
-          <div class="hs-mc-settings-group-title">tabs</div>
-          ${HIDABLE_TABS.map(id => `
-          <div class="hs-mc-setting-row">
-            <button class="hs-mc-toggle-pill ${!hiddenTabs.has(id) ? 'active' : ''}" data-setting="hidetab_${id}"><span class="hs-mc-toggle-knob"></span></button>
-            <span class="hs-mc-setting-label">${t('mc_tab_' + id)}</span>
-          </div>`).join('')}
-        </div>
-        <div class="hs-mc-settings-group">
-          <div class="hs-mc-settings-group-title">language</div>
-          <div class="hs-mc-setting-row hs-mc-setting-row-split">
-            <span class="hs-mc-setting-label">interface language</span>
-            <select class="hs-mc-locale-select" data-setting="locale">
-              ${Object.entries(I18N_LOCALE_NAMES).map(([code, name]) => `<option value="${escapeHtml(code)}" ${code === getI18nLocale() ? 'selected' : ''}>${escapeHtml(name)}</option>`).join('')}
-            </select>
-          </div>
-        </div>
-        <div class="hs-mc-settings-group">
-          <div class="hs-mc-settings-group-title">${t('mc_settings_muted_users')}</div>
-          ${mutedUsers.size === 0
-            ? `<div class="hs-mc-setting-row" style="color:#808080;font-size:13px">${t('mc_settings_no_muted')}</div>`
-            : [...mutedUsers].sort().map(u => `
-          <div class="hs-mc-setting-row hs-mc-setting-row-split">
-            <span class="hs-mc-setting-label" style="font-size:13px">${escapeHtml(u)}</span>
-            <button class="hs-mc-unmute-btn" data-username="${escapeHtml(u)}" style="background:none;border:1px solid #808080;color:#808080;font-size:13px;cursor:pointer;padding:1px 6px;line-height:1.4" title="${t('mc_settings_unmute')}">&#x2715;</button>
-          </div>`).join('')
-          }
-        </div>
-        <div class="hs-mc-settings-group">
-          <div class="hs-mc-setting-row" style="justify-content:flex-end">
-            <button class="hs-mc-defaults-btn" style="background:#808080;border:2px outset #fff;padding:2px 10px;font-size:13px;font-weight:bold;cursor:pointer;font-family:'Liberation Mono',monospace;color:#000;box-shadow:1px 1px 0 #000">default</button>
-          </div>
-        </div>
-      </div>
-    `;
+
+    // All values in the template are from module state or escapeHtml'd -- no raw user input
+    msgsEl.innerHTML =
+      '<div class="hs-mc-settings-panel">' +
+        _renderSetSubtabBar() +
+        '<div class="hs-mc-set-subtab-body">' +
+          subtabContent +
+        '</div>' +
+      '</div>';
+
+    // Async-populate settings that live in storage (options-only keys not already as module vars)
+    cachedUiSettings().then(function(stored) {
+      var ui = (stored && stored.ui_settings) || {};
+      if (_settingsSubtab === 'display') {
+        var famSel = msgsEl.querySelector('select[data-setting="fontfamily"]');
+        if (famSel) famSel.value = ui.fontFamily || 'CozetteVector';
+        var fszSel = msgsEl.querySelector('select[data-setting="fontsize"]');
+        if (fszSel) fszSel.value = ui.fontSize || '13';
+        var boolMap = {
+          hidechatheader:    ui.hideChatHeader !== undefined ? ui.hideChatHeader : true,
+          compactchatinput:  ui.compactChatInput !== undefined ? ui.compactChatInput : true,
+          hidestreamtitle:   !!ui.hideStreamTitle,
+          hideviewercount:   !!ui.hideViewerCount,
+          showcosmetics:     ui.showCosmetics !== undefined ? ui.showCosmetics : true,
+          showplatformbadges: platformBadgesEnabled,
+        };
+        Object.entries(boolMap).forEach(function(kv) {
+          var pill = msgsEl.querySelector('.hs-mc-toggle-pill[data-setting="' + kv[0] + '"]');
+          if (pill) pill.classList.toggle('active', !!kv[1]);
+        });
+      }
+      if (_settingsSubtab === 'chat') {
+        var chatBoolMap = {
+          emotewysiwyg:        ui.emoteWysiwyg !== undefined ? ui.emoteWysiwyg : true,
+          emotespaceafter:     ui.emoteSpaceAfter !== undefined ? ui.emoteSpaceAfter : true,
+          emoteplaceholdermode: !!ui.emotePlaceholderMode,
+          emotemodifiers:      ui.emoteModifiers !== undefined ? ui.emoteModifiers : true,
+          emoterightclickmenu: ui.emoteRightClickMenu !== undefined ? ui.emoteRightClickMenu : true,
+          usercolors:          ui.userColors !== undefined ? ui.userColors : true,
+          highlightmentions:   ui.highlightMentions !== undefined ? ui.highlightMentions : true,
+          showclearedmessages: !!ui.showClearedMessages,
+          showpredictionschip: ui.showPredictionsChip !== undefined ? ui.showPredictionsChip : true,
+          anonchat:            !!ui.anonChat,
+        };
+        Object.entries(chatBoolMap).forEach(function(kv) {
+          var pill = msgsEl.querySelector('.hs-mc-toggle-pill[data-setting="' + kv[0] + '"]');
+          if (pill) pill.classList.toggle('active', !!kv[1]);
+        });
+      }
+      if (_settingsSubtab === 'mod') {
+        var capsPill = msgsEl.querySelector('.hs-mc-toggle-pill[data-uisetting="automodAllCaps"]');
+        if (capsPill) capsPill.classList.toggle('active', !!ui.automodAllCaps);
+        var reTa = msgsEl.querySelector('textarea[data-setting="automodregex"]');
+        if (reTa) reTa.value = typeof ui.automodRegex === 'string' ? ui.automodRegex : '';
+      }
+      if (_settingsSubtab === 'system') {
+        var dbgPill = msgsEl.querySelector('.hs-mc-toggle-pill[data-uisetting="debugLogging"]');
+        if (dbgPill) dbgPill.classList.toggle('active', !!ui.debugLogging);
+        var crashPill = msgsEl.querySelector('.hs-mc-toggle-pill[data-uisetting="crashTelemetry"]');
+        if (crashPill) crashPill.classList.toggle('active', !!ui.crashTelemetry);
+        if (ui.crashTelemetry) _loadCrashLog();
+      }
+    }).catch(function() {});
+
+    if (_settingsSubtab === 'notifs') _populateNotifStorageToggle();
+    if (_settingsSubtab === 'filters') _loadServerFilters();
 
     // Wire up toggles via event delegation
     if (msgsEl._hsSettingsClick) msgsEl.removeEventListener('click', msgsEl._hsSettingsClick);
     msgsEl._hsSettingsClick = function settingsClick(e) {
-      // Mod toolbar button toggle — adds/removes id from modToolbarButtons array
-      const modBtnPill = e.target.closest('.hs-mc-toggle-pill[data-mod-btn]')
-      if (modBtnPill) {
-        const id = modBtnPill.dataset.modBtn
-        if (!MOD_BUTTON_CATALOG[id]) return
-        const enabling = !modBtnPill.classList.contains('active')
-        modBtnPill.classList.toggle('active', enabling)
-        if (enabling) {
-          if (!modToolbarButtons.includes(id)) modToolbarButtons.push(id)
-        } else {
-          modToolbarButtons = modToolbarButtons.filter(x => x !== id)
+      // Sub-tab navigation
+      var subtabBtn = e.target.closest('.hs-mc-set-subtab[data-set-subtab]');
+      if (subtabBtn) {
+        var next = subtabBtn.dataset.setSubtab;
+        if (next && next !== _settingsSubtab) {
+          _settingsSubtab = next;
+          renderSettingsTab();
         }
-        saveModToolbarButtons()
-        return
+        return;
       }
-      const toggle = e.target.closest('.hs-mc-toggle-pill[data-setting]');
+
+      // Mod toolbar button toggle
+      var modBtnPill = e.target.closest('.hs-mc-toggle-pill[data-mod-btn]');
+      if (modBtnPill) {
+        var id = modBtnPill.dataset.modBtn;
+        if (!MOD_BUTTON_CATALOG[id]) return;
+        var enabling = !modBtnPill.classList.contains('active');
+        modBtnPill.classList.toggle('active', enabling);
+        if (enabling) {
+          if (!modToolbarButtons.includes(id)) modToolbarButtons.push(id);
+        } else {
+          modToolbarButtons = modToolbarButtons.filter(function(x) { return x !== id; });
+        }
+        saveModToolbarButtons();
+        return;
+      }
+
+      // Server content filter toggles
+      var serverPill = e.target.closest('.hs-mc-toggle-pill[data-server-setting]');
+      if (serverPill) {
+        if (serverPill.disabled || serverPill.hasAttribute('disabled')) return;
+        var srvKey = serverPill.dataset.serverSetting;
+        if (!_serverSettings) return;
+        var srvNext = !_serverSettings[srvKey];
+        _serverSettings[srvKey] = srvNext;
+        serverPill.classList.toggle('active', srvNext);
+        serverPill.setAttribute('disabled', '');
+        var statusEl = document.getElementById('hs-set-srv-status');
+        if (statusEl) { statusEl.textContent = 'saving…'; statusEl.className = 'hs-mc-set-status'; }
+        safeSendMessage({ type: 'api_fetch', path: '/api/user/settings', method: 'PATCH', auth: true, body: { [srvKey]: srvNext } }).then(function(resp) {
+          if (!resp || !resp.ok) {
+            _serverSettings[srvKey] = !srvNext;
+            serverPill.classList.toggle('active', !srvNext);
+            if (statusEl) { statusEl.textContent = 'save failed: ' + ((resp && resp.error) || 'unknown'); statusEl.className = 'hs-mc-set-status err'; }
+          } else {
+            if (statusEl) { statusEl.textContent = 'saved'; statusEl.className = 'hs-mc-set-status ok'; }
+            cleanup.setTimeout(function() { if (statusEl) { statusEl.textContent = ''; statusEl.className = 'hs-mc-set-status'; } }, 1500);
+          }
+        }).catch(function(err) {
+          _serverSettings[srvKey] = !srvNext;
+          serverPill.classList.toggle('active', !srvNext);
+          if (statusEl) { statusEl.textContent = 'save failed: ' + ((err && err.message) || 'unknown'); statusEl.className = 'hs-mc-set-status err'; }
+        }).finally(function() {
+          serverPill.removeAttribute('disabled');
+        });
+        return;
+      }
+
+      // chrome.storage.local toggles (hs_notifications)
+      var storageKeyPill = e.target.closest('.hs-mc-toggle-pill[data-storage-key]');
+      if (storageKeyPill) {
+        var storKey = storageKeyPill.dataset.storageKey;
+        var storNext = !storageKeyPill.classList.contains('active');
+        storageKeyPill.classList.toggle('active', storNext);
+        chrome.storage.local.set({ [storKey]: storNext });
+        if (storNext && storKey === 'hs_notifications' && typeof Notification !== 'undefined' && Notification.permission === 'default') {
+          Notification.requestPermission().catch(function() {});
+        }
+        return;
+      }
+
+      // ui_settings generic boolean toggles (data-uisetting attribute)
+      var uiPill = e.target.closest('.hs-mc-toggle-pill[data-uisetting]');
+      if (uiPill) {
+        var uiKey = uiPill.dataset.uisetting;
+        var uiNext = !uiPill.classList.contains('active');
+        uiPill.classList.toggle('active', uiNext);
+        saveUiSetting(uiKey, uiNext);
+        if (uiKey === 'crashTelemetry' && uiNext) {
+          renderSettingsTab(); // re-render to show crash log block
+        }
+        return;
+      }
+
+      var toggle = e.target.closest('.hs-mc-toggle-pill[data-setting]');
       if (toggle) {
-        const setting = toggle.dataset.setting;
-        // Inline notification toggles (notif_op, notif_re, etc.)
+        var setting = toggle.dataset.setting;
+        // Inline notification toggles
         if (setting.startsWith('notif_')) {
-          const notifKey = setting.slice(6)
+          var notifKey = setting.slice(6);
           if (INLINE_NOTIF_TYPES[notifKey] !== undefined) {
-            inlineNotifs[notifKey] = !inlineNotifs[notifKey]
-            saveInlineNotifSettings()
-            toggle.classList.toggle('active')
+            inlineNotifs[notifKey] = !inlineNotifs[notifKey];
+            saveInlineNotifSettings();
+            toggle.classList.toggle('active');
           }
-          return
+          return;
         }
-        // Tab visibility toggles (hidetab_feed, hidetab_pinned, etc.) — pill ON = tab visible
+        // Tab visibility toggles
         if (setting.startsWith('hidetab_')) {
-          const tabId = setting.slice(8)
+          var tabId = setting.slice(8);
           if (HIDABLE_TABS.includes(tabId)) {
-            toggleHiddenTab(tabId)
-            toggle.classList.toggle('active')
+            toggleHiddenTab(tabId);
+            toggle.classList.toggle('active');
           }
-          return
+          return;
         }
-        // Hermes event toggles (hermes_raid, hermes_hype, etc.)
+        // Hermes event toggles
         if (setting.startsWith('hermes_')) {
-          const key = setting.slice(7)
-          if (HERMES_EVENT_TYPES[key] !== undefined) {
-            hermesToggles[key] = !hermesToggles[key]
-            saveHermesSettings()
-            toggle.classList.toggle('active')
+          var hermKey = setting.slice(7);
+          if (HERMES_EVENT_TYPES[hermKey] !== undefined) {
+            hermesToggles[hermKey] = !hermesToggles[hermKey];
+            saveHermesSettings();
+            toggle.classList.toggle('active');
           }
-          return
+          return;
         }
-        const toggleMap = {
-          wysiwyg: () => { wysiwygEnabled = !wysiwygEnabled; saveWysiwygSetting(); rebuildInput(); },
-          links: () => { linksEnabled = !linksEnabled; saveLinksSetting(); },
-          linkpreviews: () => { linkPreviewsEnabled = !linkPreviewsEnabled; saveLinkPreviewsSetting(); },
-          vi: () => { viModeEnabled = !viModeEnabled; saveViModeSetting(); },
-          zebra: () => { toggleZebra(); },
-          autohide: () => { toggleAutoHide(); },
-          timestamps: () => { toggleTimestamps(); },
-          avatars: () => { toggleAvatars(); },
-          autoclaim: () => { toggleAutoClaim(); },
-          dimtimeouts: () => { toggleDimTimeouts(); },
-          readablenames: () => { toggleReadableNames(); },
-          firstchatter: () => { toggleFirstChatterGlow(); },
+        // Options-only ui_settings boolean toggles (map data-setting kebab -> camelCase)
+        var uiSettingKeyMap = {
+          hidechatheader:       'hideChatHeader',
+          compactchatinput:     'compactChatInput',
+          hidestreamtitle:      'hideStreamTitle',
+          hideviewercount:      'hideViewerCount',
+          showcosmetics:        'showCosmetics',
+          showplatformbadges:   'showPlatformBadges',
+          emotewysiwyg:         'emoteWysiwyg',
+          emotespaceafter:      'emoteSpaceAfter',
+          emoteplaceholdermode: 'emotePlaceholderMode',
+          emotemodifiers:       'emoteModifiers',
+          emoterightclickmenu:  'emoteRightClickMenu',
+          usercolors:           'userColors',
+          highlightmentions:    'highlightMentions',
+          showclearedmessages:  'showClearedMessages',
+          showpredictionschip:  'showPredictionsChip',
+          anonchat:             'anonChat',
+        };
+        if (uiSettingKeyMap[setting]) {
+          var camelKey = uiSettingKeyMap[setting];
+          var optNext = !toggle.classList.contains('active');
+          toggle.classList.toggle('active', optNext);
+          if (setting === 'showplatformbadges') platformBadgesEnabled = optNext;
+          saveUiSetting(camelKey, optNext);
+          return;
+        }
+        var toggleMap = {
+          wysiwyg:      function() { wysiwygEnabled = !wysiwygEnabled; saveWysiwygSetting(); rebuildInput(); },
+          links:        function() { linksEnabled = !linksEnabled; saveLinksSetting(); },
+          linkpreviews: function() { linkPreviewsEnabled = !linkPreviewsEnabled; saveLinkPreviewsSetting(); },
+          vi:           function() { viModeEnabled = !viModeEnabled; saveViModeSetting(); },
+          zebra:        function() { toggleZebra(); },
+          autohide:     function() { toggleAutoHide(); },
+          timestamps:   function() { toggleTimestamps(); },
+          avatars:      function() { toggleAvatars(); },
+          autoclaim:    function() { toggleAutoClaim(); },
+          dimtimeouts:  function() { toggleDimTimeouts(); },
+          readablenames: function() { toggleReadableNames(); },
+          firstchatter: function() { toggleFirstChatterGlow(); },
         };
         if (toggleMap[setting]) {
           toggleMap[setting]();
@@ -4909,33 +5285,32 @@
         return;
       }
 
-      const sizeBtn = e.target.closest('.hs-mc-size-btn[data-size]');
+      var sizeBtn = e.target.closest('.hs-mc-size-btn[data-size]');
       if (sizeBtn) {
-        const size = parseInt(sizeBtn.dataset.size);
-        if (size) {
-          setEmoteSize(size);
-          msgsEl.querySelectorAll('.hs-mc-size-btn[data-size]').forEach(b => b.classList.toggle('active', parseInt(b.dataset.size) === size));
+        var emSize = parseInt(sizeBtn.dataset.size);
+        if (emSize) {
+          setEmoteSize(emSize);
+          msgsEl.querySelectorAll('.hs-mc-size-btn[data-size]').forEach(function(b) { b.classList.toggle('active', parseInt(b.dataset.size) === emSize); });
         }
         return;
       }
 
-      const emojiSizeBtn = e.target.closest('.hs-mc-size-btn[data-emoji-size]');
+      var emojiSizeBtn = e.target.closest('.hs-mc-size-btn[data-emoji-size]');
       if (emojiSizeBtn) {
-        const size = parseInt(emojiSizeBtn.dataset.emojiSize);
-        if (size) {
-          setEmojiSize(size);
-          msgsEl.querySelectorAll('.hs-mc-size-btn[data-emoji-size]').forEach(b => b.classList.toggle('active', parseInt(b.dataset.emojiSize) === size));
+        var ejSize = parseInt(emojiSizeBtn.dataset.emojiSize);
+        if (ejSize) {
+          setEmojiSize(ejSize);
+          msgsEl.querySelectorAll('.hs-mc-size-btn[data-emoji-size]').forEach(function(b) { b.classList.toggle('active', parseInt(b.dataset.emojiSize) === ejSize); });
         }
         return;
       }
 
-      const unmuteBtn = e.target.closest('.hs-mc-unmute-btn[data-username]');
+      var unmuteBtn = e.target.closest('.hs-mc-unmute-btn[data-username]');
       if (unmuteBtn) {
-        const username = unmuteBtn.dataset.username;
+        var username = unmuteBtn.dataset.username;
         if (username) {
           mutedUsers.delete(username);
-          // Sync to background (broadcasts to all tabs + server)
-          safeSendMessage({ type: 'unmute_user', username });
+          safeSendMessage({ type: 'unmute_user', username: username });
           restoreMcUnmutedDom(username);
           renderMessages(currentTab);
           renderSettingsTab();
@@ -4943,7 +5318,24 @@
         return;
       }
 
-      const defaultsBtn = e.target.closest('.hs-mc-defaults-btn');
+      // Crash log buttons
+      if (e.target.id === 'hs-set-crash-copy') {
+        var pre = document.getElementById('hs-set-crash-pre');
+        if (pre && pre.textContent) {
+          navigator.clipboard.writeText(pre.textContent).catch(function() {});
+          var copyBtn = e.target;
+          copyBtn.textContent = 'copied';
+          cleanup.setTimeout(function() { copyBtn.textContent = 'copy'; }, 1500);
+        }
+        return;
+      }
+      if (e.target.id === 'hs-set-crash-clear') {
+        chrome.runtime.sendMessage({ type: 'clear_crash_log' }).catch(function() {});
+        _loadCrashLog();
+        return;
+      }
+
+      var defaultsBtn = e.target.closest('.hs-mc-defaults-btn');
       if (defaultsBtn) {
         wysiwygEnabled = true;
         linksEnabled = true;
@@ -4963,57 +5355,111 @@
         rebuildKeywordRegex();
         hiddenTabs = new Set(DEFAULT_HIDDEN_TABS);
         applyHiddenTabs();
-        for (const [k, v] of Object.entries(INLINE_NOTIF_TYPES)) inlineNotifs[k] = v.defaultOn;
-        for (const [k, v] of Object.entries(HERMES_EVENT_TYPES)) hermesToggles[k] = v.defaultOn;
-        const settings = {
+        for (var k in INLINE_NOTIF_TYPES) inlineNotifs[k] = INLINE_NOTIF_TYPES[k].defaultOn;
+        for (var k2 in HERMES_EVENT_TYPES) hermesToggles[k2] = HERMES_EVENT_TYPES[k2].defaultOn;
+        var defSettings = {
           wysiwygEnabled: true, linksEnabled: true, linkPreviewsEnabled: true, viMode: false,
           zebra: true, autoHideEmpty: false, timestamps: false,
           avatars: false, showPlatformBadges: true, showOfflineEvents: true,
           firstChatterGlow: true, keywordHighlights: '',
-          hiddenTabs: [...DEFAULT_HIDDEN_TABS],
-          inlineNotifs: { ...inlineNotifs }, hermesEvents: { ...hermesToggles },
+          hiddenTabs: Array.from(DEFAULT_HIDDEN_TABS),
+          inlineNotifs: Object.assign({}, inlineNotifs), hermesEvents: Object.assign({}, hermesToggles),
         };
         try {
-          for (const [k, v] of Object.entries(settings)) saveUiSetting(k, v);
+          Object.entries(defSettings).forEach(function(kv) { saveUiSetting(kv[0], kv[1]); });
           chrome.storage.local.set({ hs_auto_claim_points: true });
-        } catch {}
+        } catch (_e) {}
         renderSettingsTab();
         return;
       }
     };
     msgsEl.addEventListener('click', msgsEl._hsSettingsClick);
 
-    // Keyword highlights textarea — debounced save on input
-    if (!msgsEl._hsSettingsInput) {
-      msgsEl._hsSettingsInput = true;
-      let kwDebounce = null;
-      msgsEl.addEventListener('input', (e) => {
-        const ta = e.target.closest('textarea[data-setting="keywordhighlights"]');
-        if (!ta) return;
+    // Input handler — keyword highlights, automod regex, custom font name (all debounced)
+    if (msgsEl._hsSettingsInput) msgsEl.removeEventListener('input', msgsEl._hsSettingsInput);
+    var kwDebounce = null;
+    var automodDebounce = null;
+    var customFontDebounce = null;
+    msgsEl._hsSettingsInput = function settingsInput(e) {
+      var ta = e.target.closest('textarea[data-setting="keywordhighlights"]');
+      if (ta) {
         if (kwDebounce) cleanup.clearTimeout(kwDebounce);
-        kwDebounce = cleanup.setTimeout(() => {
+        kwDebounce = cleanup.setTimeout(function() {
           keywordHighlights = ta.value;
           saveKeywordHighlightsSetting();
           renderMessages(currentTab);
         }, 400);
-      });
-    }
+        return;
+      }
+      var automodTa = e.target.closest('textarea[data-setting="automodregex"]');
+      if (automodTa) {
+        if (automodDebounce) cleanup.clearTimeout(automodDebounce);
+        automodDebounce = cleanup.setTimeout(function() {
+          saveUiSetting('automodRegex', automodTa.value);
+        }, 400);
+        return;
+      }
+      var customFontInput = e.target.closest('input[data-setting="customfontname"]');
+      if (customFontInput) {
+        if (customFontDebounce) cleanup.clearTimeout(customFontDebounce);
+        customFontDebounce = cleanup.setTimeout(function() {
+          cachedUiSettings().then(function(stored) {
+            var ui = (stored && stored.ui_settings) || {};
+            var fam = ui.fontFamily || 'CozetteVector';
+            var fsz = ui.fontSize || '13';
+            var name = customFontInput.value;
+            saveUiSetting('customFontName', name);
+            applyFontSettings(fam, fsz, name);
+          }).catch(function() {});
+        }, 400);
+        return;
+      }
+    };
+    msgsEl.addEventListener('input', msgsEl._hsSettingsInput);
 
-    // Locale picker — saves and reloads page so all rendered ui picks up new locale
-    if (!msgsEl._hsSettingsChange) {
-      msgsEl._hsSettingsChange = true;
-      msgsEl.addEventListener('change', async (e) => {
-        const sel = e.target.closest('select[data-setting="locale"]');
-        if (!sel) return;
-        try {
-          await setI18nLocale(sel.value);
-        } catch {}
-        try { location.reload(); } catch {}
-      });
-    }
+    // Change handler — locale, font family, font size selects
+    if (msgsEl._hsSettingsChange) msgsEl.removeEventListener('change', msgsEl._hsSettingsChange);
+    msgsEl._hsSettingsChange = function settingsChange(e) {
+      var localeSel = e.target.closest('select[data-setting="locale"]');
+      if (localeSel) {
+        setI18nLocale(localeSel.value).catch(function() {});
+        try { location.reload(); } catch (_e) {}
+        return;
+      }
+      var famSel = e.target.closest('select[data-setting="fontfamily"]');
+      if (famSel) {
+        var fam = famSel.value;
+        saveUiSetting('fontFamily', fam);
+        var nativeSize = fam === 'GohuFont' ? '14' : (fam === 'CozetteVector' || fam === 'twitch') ? '13' : null;
+        if (nativeSize) {
+          saveUiSetting('fontSize', nativeSize);
+          var fszSel2 = msgsEl.querySelector('select[data-setting="fontsize"]');
+          if (fszSel2) fszSel2.value = nativeSize;
+        }
+        cachedUiSettings().then(function(stored) {
+          var ui = (stored && stored.ui_settings) || {};
+          var fsz = nativeSize || ui.fontSize || '13';
+          var fcust = ui.customFontName || '';
+          applyFontSettings(fam, fsz, fcust);
+        }).catch(function() { applyFontSettings(fam, nativeSize || '13', ''); });
+        renderSettingsTab();
+        return;
+      }
+      var fszSel = e.target.closest('select[data-setting="fontsize"]');
+      if (fszSel) {
+        var fsz = fszSel.value;
+        saveUiSetting('fontSize', fsz);
+        cachedUiSettings().then(function(stored) {
+          var ui = (stored && stored.ui_settings) || {};
+          applyFontSettings(ui.fontFamily || 'CozetteVector', fsz, ui.customFontName || '');
+        }).catch(function() { applyFontSettings('CozetteVector', fsz, ''); });
+        return;
+      }
+    };
+    msgsEl.addEventListener('change', msgsEl._hsSettingsChange);
 
-    // Custom tooltip for settings labels (native title doesn't work in content scripts)
-    let tip = document.getElementById('hs-settings-tip');
+    // Custom tooltip for settings labels (native title attribute blocked in content scripts)
+    var tip = document.getElementById('hs-settings-tip');
     if (!tip) {
       tip = document.createElement('div');
       tip.id = 'hs-settings-tip';
@@ -5021,23 +5467,24 @@
     }
     if (!msgsEl._hsSettingsTipBound) {
       msgsEl._hsSettingsTipBound = true;
-      msgsEl.addEventListener('mouseenter', (e) => {
-        const label = e.target.closest('.hs-mc-setting-label[data-tip]');
+      msgsEl.addEventListener('mouseenter', function(e) {
+        var label = e.target.closest('.hs-mc-setting-label[data-tip]');
         if (!label) return;
-        const t = document.getElementById('hs-settings-tip');
-        if (!t) return;
-        t.textContent = label.dataset.tip;
-        const rect = label.getBoundingClientRect();
-        t.style.left = rect.left + 'px';
-        t.style.top = (rect.bottom + 4) + 'px';
-        t.classList.add('visible');
+        var tipEl = document.getElementById('hs-settings-tip');
+        if (!tipEl) return;
+        tipEl.textContent = label.dataset.tip;
+        var rect = label.getBoundingClientRect();
+        tipEl.style.left = rect.left + 'px';
+        tipEl.style.top = (rect.bottom + 4) + 'px';
+        tipEl.classList.add('visible');
       }, { capture: true, signal: mcSignal });
-      msgsEl.addEventListener('mouseleave', (e) => {
-        const label = e.target.closest('.hs-mc-setting-label[data-tip]');
-        if (label) { const t = document.getElementById('hs-settings-tip'); if (t) t.classList.remove('visible'); }
+      msgsEl.addEventListener('mouseleave', function(e) {
+        var label = e.target.closest('.hs-mc-setting-label[data-tip]');
+        if (label) { var tipEl = document.getElementById('hs-settings-tip'); if (tipEl) tipEl.classList.remove('visible'); }
       }, { capture: true, signal: mcSignal });
     }
   }
+
 
   function updateTabBar() {
     if (!tabBarElement) return;
@@ -9521,8 +9968,8 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     log('[chat-toggle] →', chatPosition, 'prev:', chatPositionPrevious);
   }
 
-  // Edge-pill: 6px orange strip pinned to the edge where chat last lived.
-  // Resize-handle convention: #ff8700, ≥6px, no text.
+  // Edge-pill: orange strip pinned to the edge where chat last lived. Click to
+  // restore (not a resize bar) — kept visible/thick on purpose, #ff8700, no text.
   function ensureChatRestorePill(show) {
     let pill = document.getElementById('hs-chat-restore-pill');
     if (!show) { if (pill) pill.remove(); return; }

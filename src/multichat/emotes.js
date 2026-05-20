@@ -745,7 +745,12 @@
       blockedEmoteNames.delete(name);
       const emote = lookupEmote(name);
       const realUrl = emote?.url || '';
-      const newState = emote ? getEmoteState(name, emote.source) : 'global';
+      // Mirror unblockEmote: block dropped this from the set, so restore to the
+      // not-in-set tier (orange/unadded for heatsync) — never owned/green.
+      const src = emote?.source || 'heatsync';
+      const isThirdParty = ['7tv', 'bttv', 'ffz', 'twitch', 'kick'].includes(src);
+      if (!isThirdParty) inventoryEmotes.delete(name);
+      const newState = isThirdParty ? getEmoteState(name, src) : 'unadded';
       queryEmoteWrappers(name).forEach(w => {
         if (w.classList.contains(`hs-state-${newState}`)) return;
         w.classList.remove('hs-state-global', 'hs-state-channel', 'hs-state-owned', 'hs-state-blocked', 'hs-state-unadded', 'hs-emote-highlight');
@@ -793,7 +798,12 @@
     void document.body.offsetWidth
     for (const t of targets) {
       t.classList.add(flashClass);
-      t.addEventListener('animationend', () => t.classList.remove(flashClass), { once: true });
+      const clear = () => t.classList.remove(flashClass);
+      t.addEventListener('animationend', clear, { once: true });
+      // animationend never fires if the tab is backgrounded / the animation is
+      // throttled mid-run, leaving a stuck glow that reads as jitter. Force-clear
+      // just past the 0.4s animation window so the flash can never persist.
+      cleanup.setTimeout(clear, 600);
     }
   }
 
@@ -1008,6 +1018,9 @@
       } else {
         // HeatSync emote — mark unadded then remove from cache so it stops rendering in new messages
         cachedEmote.state = 'unadded';
+        // Keep the URL resolvable so the viewer's own past messages still draw
+        // the image after a refresh (instead of breaking to raw text).
+        rememberRemovedEmote(emoteName, cachedEmote.url, cachedEmote.source, cachedEmote.zeroWidth);
         emoteCache.delete(emoteName);
         for (const cache of Object.values(channelEmoteCaches)) {
           cache.delete(emoteName);
@@ -1150,7 +1163,16 @@
     // Instant DOM update - restore images
     const emote = lookupEmote(emoteName);
     const realUrl = emote?.url || '';
-    const newState = emote ? getEmoteState(emoteName, emote.source) : 'global';
+    // Blocking removes the emote from the set (server-side too — background.js
+    // drops it from emoteInventory on block). So unblock must land on the
+    // "available, not in set" tier — orange/unadded for heatsync — never straight
+    // back to owned/green. Ladder is bidirectional:
+    //   owned ⇄ (remove/add) ⇄ unadded ⇄ (block/unblock) ⇄ blocked
+    // Force out of inventory so a stale membership flag can't snap green back.
+    const src = emote?.source || 'heatsync';
+    const isThirdParty = ['7tv', 'bttv', 'ffz', 'twitch', 'kick'].includes(src);
+    if (!isThirdParty) inventoryEmotes.delete(emoteName);
+    const newState = isThirdParty ? getEmoteState(emoteName, src) : 'unadded';
     queryEmoteWrappers(emoteName).forEach(w => {
       w.classList.remove('hs-state-global', 'hs-state-channel', 'hs-state-owned', 'hs-state-blocked', 'hs-state-unadded', 'hs-emote-highlight');
       w.classList.add(`hs-state-${newState}`);
@@ -1208,6 +1230,8 @@
         // Update local cache - change from unadded to owned
         // Adding and blocking are mutually exclusive
         blockedEmoteNames.delete(emoteName);
+        // No longer "removed" — drop the stale render fallback entry.
+        if (removedEmoteFallback.delete(emoteName)) persistRemovedFallback();
         const serverHash = response.hash || emoteHash;
         inventoryEmotes.add(emoteName);
         inventoryHashes.set(emoteName, serverHash);
@@ -1270,6 +1294,33 @@
   // Viewer's personal set — separated from emoteCache so it does NOT bleed into
   // OTHER users' rendered messages. Used as senderEmotes only when sender == viewer.
   let viewerPersonalEmotes = new Map(); // Map<name, emoteData>
+  // Render fallback for emotes the viewer REMOVED from their set. Removing purges
+  // the emote from inventory/caches, so after a refresh the viewer's own past
+  // messages that used it would resolve to nothing and render as raw text. This
+  // bounded, persisted map keeps the URL resolvable so those messages still draw
+  // the image (as unadded/orange — not owned). Gated to the viewer's own messages
+  // in processEmotes so it never bleeds into other senders' rendering.
+  let removedEmoteFallback = new Map(); // Map<name, {url, source, zeroWidth}>
+  const REMOVED_FALLBACK_CAP = 1000;
+  let _removedFallbackPersistTimer = null;
+  function persistRemovedFallback() {
+    if (_removedFallbackPersistTimer) return;
+    _removedFallbackPersistTimer = cleanup.setTimeout(() => {
+      _removedFallbackPersistTimer = null;
+      const obj = {};
+      for (const [name, e] of removedEmoteFallback) obj[name] = e;
+      try { chrome.storage.local.set({ hs_removed_emote_fallback: obj }); } catch {}
+    }, 1000);
+  }
+  function rememberRemovedEmote(name, url, source, zeroWidth) {
+    if (!name || !url) return;
+    removedEmoteFallback.delete(name); // re-insert to refresh LRU position
+    removedEmoteFallback.set(name, { url, source: source || 'heatsync', zeroWidth: !!zeroWidth, state: 'unadded' });
+    while (removedEmoteFallback.size > REMOVED_FALLBACK_CAP) {
+      removedEmoteFallback.delete(removedEmoteFallback.keys().next().value);
+    }
+    persistRemovedFallback();
+  }
   // Viewer's per-channel Twitch IRC badges. Populated from USERSTATE messages
   // (sent on JOIN + after every viewer PRIVMSG). Used to gate Twitch native
   // sub-emote clicks: no `subscriber`/`founder` badge → render as locked.
@@ -1347,7 +1398,9 @@
 
   // Look up emote — viewer-perspective fallback chain (used by picker, hover preview, etc.)
   function lookupEmote(name) {
-    return viewerPersonalEmotes.get(name) || emoteCache.get(name) || channelEmoteCaches[currentTab]?.get(name) || channelEmoteCaches[getLiveChannel()]?.get(name) || channelEmoteCaches[getCurrentChannel()]?.get(name);
+    // removedEmoteFallback last: keeps a removed emote's URL resolvable so unblock
+    // and re-renders can still draw the image instead of collapsing to raw text.
+    return viewerPersonalEmotes.get(name) || emoteCache.get(name) || channelEmoteCaches[currentTab]?.get(name) || channelEmoteCaches[getLiveChannel()]?.get(name) || channelEmoteCaches[getCurrentChannel()]?.get(name) || removedEmoteFallback.get(name);
   }
   // Resolve a typed emote name to {emote, isOverlay, displayName}.
   // Handles zeroWidth flag AND the 7TV-style "name0" overlay convention
@@ -1421,7 +1474,15 @@
 
   async function loadEmotes() {
     try {
-      const stored = await chrome.storage.local.get(['global_emotes', 'emote_inventory', 'channel_emotes_map', 'native_twitch_emotes']);
+      const stored = await chrome.storage.local.get(['global_emotes', 'emote_inventory', 'channel_emotes_map', 'native_twitch_emotes', 'hs_removed_emote_fallback']);
+      // Restore removed-emote render fallback (persists across refresh).
+      removedEmoteFallback.clear();
+      const rf = stored.hs_removed_emote_fallback;
+      if (rf && typeof rf === 'object') {
+        for (const [name, e] of Object.entries(rf)) {
+          if (e && e.url) removedEmoteFallback.set(name, { url: e.url, source: e.source || 'heatsync', zeroWidth: !!e.zeroWidth, state: 'unadded' });
+        }
+      }
       emoteCache.clear();
       // Don't wipe channelEmoteCaches — live broadcasts may have direct-
       // populated a channel that storage hasn't persisted yet (BG writes
@@ -1598,6 +1659,10 @@
 
   function processEmotes(text, channel, extraCache, senderEmotes) {
     if (emoteCache.size === 0 && !channelEmoteCaches[channel] && !extraCache?.size && !senderEmotes?.size) return text;
+    // Removed-emote render fallback applies ONLY to the viewer's own messages
+    // (main.js passes viewerPersonalEmotes by reference for isOwn). Keeps removed
+    // heatsync emotes drawing in the viewer's history without leaking into others.
+    const _rf = senderEmotes === viewerPersonalEmotes ? removedEmoteFallback : null;
 
     // Kick emote splits gated by indexOf — Kick text is <5% of overall msg volume;
     // skipping 3 replaces on Twitch/YT messages saves allocations per message.
@@ -1731,11 +1796,11 @@
       const endsWithZero = word.endsWith('0') && word.length > 1
       if (endsWithZero) {
         const baseName = word.slice(0, -1)
-        emote = senderEmotes?.get(baseName) || (channel && channelEmoteCaches[channel]?.get(baseName)) || extraCache?.get(baseName) || emoteCache.get(baseName)
+        emote = senderEmotes?.get(baseName) || (channel && channelEmoteCaches[channel]?.get(baseName)) || extraCache?.get(baseName) || emoteCache.get(baseName) || _rf?.get(baseName)
         if (emote) isOverlayEmote = true
       }
       if (!emote) {
-        emote = senderEmotes?.get(word) || (channel && channelEmoteCaches[channel]?.get(word)) || extraCache?.get(word) || emoteCache.get(word)
+        emote = senderEmotes?.get(word) || (channel && channelEmoteCaches[channel]?.get(word)) || extraCache?.get(word) || emoteCache.get(word) || _rf?.get(word)
         // Honor zero-width flag, OR fall back to the "name0" naming convention
         // when an uploader didn't set the flag despite naming the emote for overlay use.
         if (emote) isOverlayEmote = !!emote.zeroWidth || endsWithZero
@@ -1852,6 +1917,18 @@
           const startHue = pendingHue
           pendingMods = []; pendingHue = null
           pendingStack = { items: [{ kind: 'base', raw: emojiHtmlRaw, mods: startMods, hue: startHue }] }
+          continue
+        }
+        // Blocked emote whose URL didn't resolve in this context (removed from set,
+        // wrong channel, foreign personal emote, etc.) — still render the blocked
+        // box (2px dashed outline) instead of leaking the raw name as text. Matches
+        // by exact name, so only emotes the user actually blocked are boxed.
+        if (blockedEmoteNames.has(word)) {
+          _flushStackToResult()
+          pendingMods = []; pendingHue = null
+          if (pendingWhitespace) { result.push(pendingWhitespace); pendingWhitespace = '' }
+          const dn = escapeHtml(word)
+          result.push(`<span class="hs-mc-emote-wrapper hs-state-blocked" data-emote-name="${dn}" data-state="blocked" data-source="heatsync"><img src="${HS_TRANSPARENT_PX}" alt="${dn}" title="${dn}" class="hs-mc-emote hs-emote-blocked" style="width:var(--hs-emote-size,32px);height:var(--hs-emote-size,32px)" data-emote-name="${dn}" data-state="blocked" data-source="heatsync"></span>`)
           continue
         }
         // Text - flush stack and add text. Drop any pending mods/hue (they had no anchor).

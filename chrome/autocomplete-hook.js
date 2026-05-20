@@ -415,6 +415,62 @@
     return all;
   }
 
+  // Infinite Tab-cycle: when local matches run out, pull more from the 7TV
+  // search API (same source the multichat picker uses) and append to the live
+  // cycle. Inserted as heatsync-style emote nodes — the name is what gets sent,
+  // and renders for any recipient running the extension.
+  const SEVEN_TV_GQL = `query SearchEmotes($query: String!, $page: Int!, $perPage: Int!) {
+    emotes {
+      search(query: $query, sort: { sortBy: TOP_ALL_TIME, order: DESCENDING }, page: $page, perPage: $perPage) {
+        items { id defaultName flags { animated } }
+      }
+    }
+  }`
+  let _hsRemoteAbort = null
+  let _hsRemoteToken = 0
+  async function fetch7tvCycleMatches(search) {
+    // Emote-only: skip :emoji, @user, and short fragments.
+    if (!search || search.length < 2 || search.startsWith(':') || search.startsWith('@')) return
+    const token = ++_hsRemoteToken
+    if (_hsRemoteAbort) { try { _hsRemoteAbort.abort() } catch (_) {} }
+    const ac = new AbortController()
+    _hsRemoteAbort = ac
+    let items
+    try {
+      const resp = await fetch('https://api.7tv.app/v4/gql', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        signal: ac.signal,
+        body: JSON.stringify({ operationName: 'SearchEmotes', query: SEVEN_TV_GQL, variables: { query: search, page: 1, perPage: 200 } })
+      })
+      if (!resp.ok) return
+      const data = await resp.json()
+      items = data?.data?.emotes?.search?.items || []
+    } catch (_) { return }
+    if (ac.signal.aborted || token !== _hsRemoteToken) return
+    // Cycle must still be on the search this fetch was issued for.
+    if (cycleState.searchTerm !== search) return
+    // Dedupe by EXACT name (casing distinguishes emotes), matching the picker.
+    const have = new Set(cycleState.matches.map(m => m.name))
+    const searchLower = search.toLowerCase()
+    const add = []
+    for (const it of items) {
+      const name = it.defaultName
+      if (!name || have.has(name)) continue
+      have.add(name)
+      const nl = name.toLowerCase()
+      add.push({ name, nameLower: nl, url: `https://cdn.7tv.app/emote/${it.id}/1x.webp`, remote: true, _pfx: nl.startsWith(searchLower) ? 0 : 1 })
+    }
+    if (!add.length) return
+    add.sort((a, b) => (a._pfx - b._pfx) || a.name.localeCompare(b.name))
+    cycleState.matches.push(...add)
+    // Refresh the N/M denominator if the user is mid-cycle.
+    if (cycleState.lastCycledEmote != null) {
+      const cur = cycleState.matches[cycleState.index]
+      if (cur) showCycleTooltip(cycleState.index + 1, cycleState.matches.length, cur.isEmoji ? cur.emoji + ' ' + cur.name : cur.name)
+    }
+  }
+
   // Cached emotes to avoid repeated JSON parsing
   let _cachedEmotes = [];
   let _lastVersion = '';
@@ -1455,6 +1511,9 @@
           cycleState.index = 0;
           cycleState.lastCycledEmote = null;
           hasMultipleMatches = cycleState.matches.length > 1;
+          // Pull deeper matches from 7TV so cycling never dead-ends at the
+          // local set; results append asynchronously to the live cycle.
+          if (!emojiSearch) fetch7tvCycleMatches(currentSearch);
           log(' 🔄 Rebuilt', cycleState.matches.length, 'matches for "' + currentSearch + '"');
         }
 

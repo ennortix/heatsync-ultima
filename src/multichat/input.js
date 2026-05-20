@@ -141,8 +141,76 @@ matches: [],
 index: 0,
 active: false,  // true when cycling through matches
 wordStart: 0,   // Position where the completion word starts
-afterText: ''   // Text after the completion
+afterText: '',  // Text after the completion
+search: '',     // search term that produced these matches (remote-fetch guard)
+remoteDone: false // 7tv fallback already merged for this search
 };
+
+// Emotes surfaced via remote (7TV/BTTV/FFZ) Tab-search this session: name → {url,
+// source}. On send, any of these present in the outgoing message that aren't yet
+// in the viewer's set get auto-added — so a remote emote you searched and sent
+// becomes yours and renders next time. Bounded; explicit tracking beats sniffing
+// chips so it works in plain-text mode too.
+let recentRemoteCompletions = new Map()
+const REMOTE_COMPLETION_CAP = 300
+
+// Infinite Tab-cycle: once local matches run out, pull more from the 7TV
+// search API (same source the picker uses) and append. Aborts stale fetches
+// so rapid re-triggering never merges results from an old search term.
+let _acRemoteAbort = null
+let _acRemoteToken = 0
+async function fetchRemoteEmoteMatches(search) {
+  // Emote-only: skip @user, :emoji, modifier tokens, and short fragments.
+  if (!search || search.length < 2) return
+  if (search.startsWith('@') || search.startsWith(':')) return
+  if (hsModClassify(search, { allowPrefix: false }).kind === 'modifier') return
+  const token = ++_acRemoteToken
+  if (_acRemoteAbort) { try { _acRemoteAbort.abort() } catch (_) {} }
+  const ac = new AbortController()
+  _acRemoteAbort = ac
+  // Query 7TV + BTTV + FFZ in parallel — same sources the picker uses — so Tab
+  // surfaces the full cross-provider set, not just the channel's loaded emotes.
+  const calls = []
+  if (typeof mcSearch7tvApi === 'function') calls.push(mcSearch7tvApi(search, ac.signal))
+  if (typeof mcSearchBttvApi === 'function') calls.push(mcSearchBttvApi(search, ac.signal))
+  if (typeof mcSearchFfzApi === 'function') calls.push(mcSearchFfzApi(search, ac.signal))
+  if (!calls.length) return
+  const settled = await Promise.allSettled(calls)
+  if (ac.signal.aborted || token !== _acRemoteToken) return
+  // Cycling must still be on the same search the fetch was issued for.
+  if (!acState.active || acState.search !== search) return
+  acState.remoteDone = true
+  const items = []
+  for (const s of settled) if (s.status === 'fulfilled' && Array.isArray(s.value)) items.push(...s.value)
+  // Dedupe by EXACT name (casing distinguishes emotes — NODDERS vs Nodders are
+  // different uploads), matching the picker. Avoids collapsing the cycle to one.
+  const have = new Set(acState.matches.map(m => m.name))
+  const searchLower = search.toLowerCase()
+  const add = []
+  for (const it of items) {
+    if (!it.name || have.has(it.name)) continue
+    if (!it.name.toLowerCase().includes(searchLower)) continue // drop API noise
+    have.add(it.name)
+    const src = it.provider || '7tv'
+    add.push({ name: it.name, url: it.url, source: src, priority: it.name.toLowerCase().startsWith(searchLower) ? 0 : 1, type: 'emote', remote: true })
+    // Remember for auto-add-on-send (only matters if the user actually sends it).
+    recentRemoteCompletions.delete(it.name)
+    recentRemoteCompletions.set(it.name, { url: it.url, source: src })
+    while (recentRemoteCompletions.size > REMOTE_COMPLETION_CAP) {
+      recentRemoteCompletions.delete(recentRemoteCompletions.keys().next().value)
+    }
+  }
+  if (!add.length) return
+  add.sort((a, b) => (a.priority - b.priority) || a.name.localeCompare(b.name))
+  const wasEmpty = acState.matches.length === 0
+  acState.matches.push(...add.slice(0, 60))
+  // No local match existed when Tab was pressed — insert the first remote hit now.
+  if (wasEmpty && acState.matches.length > 0) {
+    acState.index = 0
+    insertCompletionKeepOpen(acState.matches[0])
+  }
+  showCycleTooltip() // refresh the N/M denominator
+}
 
 // Emoji dropdown autocomplete state
 let emojiAcState = {
@@ -735,7 +803,25 @@ function initInput() {
       const { emoteName, state, emoteUrl, source } = emoteInfo;
 
       if (state === 'blocked') {
+        // Left-click means "I want this" → unblock AND restore to the set in one
+        // click. unblockEmote clears block state but lands on the orange/unadded
+        // rung (block drops set membership server-side); re-add via the same
+        // optimistic path the unadded→owned branch uses so the picker thumbnail
+        // flips straight to owned/green. Applies to any source — third-party
+        // emotes (7tv/bttv/ffz/etc.) can be set members too. Right-click → menu
+        // (its "unblock emote" stays unblock-only, landing at unadded).
+        if (pendingEmoteOps.has(emoteName)) return;
         unblockEmote(emoteName);
+        if (!viewerPersonalEmotes.has(emoteName)) {
+          viewerPersonalEmotes.set(emoteName, { url: emoteUrl, source: source || 'heatsync', state: 'owned' });
+        }
+        const pickerWrap = e.target.closest('.hs-mc-picker-emote-wrap');
+        if (pickerWrap) {
+          pickerWrap.classList.remove('unadded', 'blocked');
+          const pImg = pickerWrap.querySelector('img');
+          if (pImg) pImg.dataset.state = 'owned';
+        }
+        addEmoteToInventory(emoteName, emoteUrl, source || 'heatsync', e.target);
         return;
       }
       if (state === 'locked') {
@@ -774,12 +860,11 @@ function initInput() {
             const pImg = pickerWrap.querySelector('img');
             if (pImg) pImg.dataset.state = 'owned';
           }
+          // addEmoteToInventory flashes on success — don't double-flash here.
           addEmoteToInventory(emoteName, emoteUrl, source, e.target);
-          flashAllEmotes(emoteName, 'hs-flash-add');
           return;
         }
         addEmoteToInventory(emoteName, emoteUrl, source, e.target);
-        flashAllEmotes(emoteName, 'hs-flash-add');
       }
     }, { capture: true, signal: mcSignal });
   }
@@ -983,9 +1068,13 @@ function showMcEmoteActionMenu(x, y, emoteInfo, evtTarget) {
   preview.appendChild(meta)
   menu.appendChild(preview)
 
-  // Items
-  let kbdIndex = 1
+  // Keybinds number bottom-up: the primary action (block/unblock/add/remove)
+  // sits at the bottom of the menu, and the cursor lands there when the menu
+  // flips up off the bottom-anchored chat panel — so key 1 is on the closest,
+  // most-used item, ascending toward the utilities up top. Assigned in a pass
+  // after all items exist (see assignBottomUpKbd).
   const kbdHandlers = {}
+  const kbdItems = [] // {el, fn} in DOM order; numbered 1..9 from the bottom
   const addHeader = (text) => {
     const h = document.createElement('div')
     h.className = 'hs-mc-em-header'
@@ -1005,16 +1094,20 @@ function showMcEmoteActionMenu(x, y, emoteInfo, evtTarget) {
       h.textContent = opts.hint
       it.appendChild(h)
     }
-    if (opts.kbd !== false && kbdIndex <= 9) {
-      const k = document.createElement('span')
-      k.className = 'hs-mc-em-kbd'
-      k.textContent = String(kbdIndex)
-      it.appendChild(k)
-      kbdHandlers[String(kbdIndex)] = fn
-      kbdIndex++
-    }
+    if (opts.kbd !== false) kbdItems.push({ el: it, fn })
     it.addEventListener('click', () => { dismiss(); try { fn() } catch {} })
     menu.appendChild(it)
+  }
+  const assignBottomUpKbd = () => {
+    let n = 1
+    for (let i = kbdItems.length - 1; i >= 0 && n <= 9; i--, n++) {
+      const { el, fn } = kbdItems[i]
+      const k = document.createElement('span')
+      k.className = 'hs-mc-em-kbd'
+      k.textContent = String(n)
+      el.appendChild(k)
+      kbdHandlers[String(n)] = fn
+    }
   }
   const addSep = () => {
     const s = document.createElement('div')
@@ -1056,8 +1149,8 @@ function showMcEmoteActionMenu(x, y, emoteInfo, evtTarget) {
     addSep()
     addHeader('set')
     addItem('add to set', () => {
+      // addEmoteToInventory flashes on success — don't double-flash here.
       addEmoteToInventory(emoteName, url, source || 'heatsync', evtTarget || wrapper)
-      flashAllEmotes(emoteName, 'hs-flash-add')
     }, { good: true })
   } else if (canRemoveFromSet) {
     addSep()
@@ -1103,7 +1196,7 @@ function showMcEmoteActionMenu(x, y, emoteInfo, evtTarget) {
     document.removeEventListener('keydown', keyHandler, true)
     document.removeEventListener('contextmenu', outside, true)
     window.removeEventListener('blur', dismiss)
-    window.removeEventListener('scroll', dismiss, true)
+    window.removeEventListener('scroll', dismiss)
   }
   function outside(ev) { if (!menu.contains(ev.target)) dismiss() }
   function keyHandler(ev) {
@@ -1116,7 +1209,10 @@ function showMcEmoteActionMenu(x, y, emoteInfo, evtTarget) {
     document.addEventListener('keydown', keyHandler, true)
     document.addEventListener('contextmenu', outside, true)
     window.addEventListener('blur', dismiss, { once: true })
-    window.addEventListener('scroll', dismiss, { passive: true, capture: true, once: true })
+    // No capture: a capturing scroll listener fires on the chat container's
+    // constant auto-scroll, killing the menu the instant it opens. Menu is
+    // position:fixed so it stays put — only dismiss on genuine window scroll.
+    window.addEventListener('scroll', dismiss, { passive: true, once: true })
   }, 0)
 }
 
@@ -1486,25 +1582,33 @@ function handleInputKeydown(e) {
       const word = getCurrentWord(input);
       if (word.length >= 2) {
         const matches = findEmoteMatches(word);
+        // Set up cycling state even with zero local matches — the cross-provider
+        // remote search (7TV/BTTV/FFZ) may still populate it (e.g. an emote that
+        // isn't in the channel's loaded set), and it auto-inserts on arrival.
+        acState.matches = matches;
+        acState.index = 0;
+        acState.active = true;
+        acState.search = word;
+        acState.remoteDone = false;
+
+        if (!wysiwygEnabled && input.value !== undefined) {
+          // Calculate positions for text input cycling (textarea only)
+          const text = input.value;
+          const pos = input.selectionStart;
+          const before = text.slice(0, pos);
+          const wordStart = before.search(/\S+$/);
+          acState.wordStart = wordStart >= 0 ? wordStart : pos;
+          // Skip past rest of word after cursor
+          let wordEnd = pos;
+          while (wordEnd < text.length && !/\s/.test(text[wordEnd])) wordEnd++;
+          acState.afterText = text.slice(wordEnd);
+        }
+
+        // Cross-provider remote search. With local matches it appends deeper hits;
+        // with none it inserts the first remote hit when the fetch resolves.
+        fetchRemoteEmoteMatches(word);
+
         if (matches.length > 0) {
-          // Save state for cycling (WYSIWYG handles positions internally)
-          acState.matches = matches;
-          acState.index = 0;
-          acState.active = true;
-
-          if (!wysiwygEnabled && input.value !== undefined) {
-            // Calculate positions for text input cycling (textarea only)
-            const text = input.value;
-            const pos = input.selectionStart;
-            const before = text.slice(0, pos);
-            const wordStart = before.search(/\S+$/);
-            acState.wordStart = wordStart >= 0 ? wordStart : pos;
-            // Skip past rest of word after cursor
-            let wordEnd = pos;
-            while (wordEnd < text.length && !/\s/.test(text[wordEnd])) wordEnd++;
-            acState.afterText = text.slice(wordEnd);
-          }
-
           insertCompletionKeepOpen(matches[0]);
           showCycleTooltip();
         }
@@ -2496,6 +2600,22 @@ function insertCompletionWysiwyg(match) {
   const input = document.getElementById('hs-mc-input');
   if (!input) return;
 
+  // Reflect block state on the inserted/cycled emote chip: a blocked emote must
+  // show the 2px dashed outline, not the image. Clears any prior block state
+  // first (the chip's src was just set to the new match) so a stale blocked src
+  // can't leak across Tab-cycle steps, then re-marks if this match is blocked.
+  const _applyInputBlock = (img) => {
+    if (!img) return
+    delete img.dataset.hsInputBlocked
+    delete img.dataset.hsOrigSrc
+    img.classList.remove('hs-state-blocked')
+    delete img.dataset.state
+    if (match.name && typeof blockedEmoteNames !== 'undefined' && blockedEmoteNames.has(match.name)
+        && typeof markInputEmoteBlocked === 'function') {
+      markInputEmoteBlocked(img, true)
+    }
+  }
+
   // Check if we're replacing an existing cycling element (emote img, text span, or user span)
   const existingEmote = input.querySelector('img.hs-cycling-emote');
   const existingText = input.querySelector('span.hs-cycling-text');
@@ -2545,6 +2665,7 @@ function insertCompletionWysiwyg(match) {
       existingEmote.src = match.url;
       existingEmote.alt = match.name;
       existingEmote.dataset.emoteName = match.name;
+      _applyInputBlock(existingEmote);
     } else if (match.type === 'emoji') {
       // Replace emote img with emoji span
       const span = document.createElement('span')
@@ -2581,6 +2702,7 @@ function insertCompletionWysiwyg(match) {
       img.className = 'hs-input-emote hs-cycling-emote'
       img.draggable = false
       attachInputEmoteErrorRecovery(img)
+      _applyInputBlock(img)
       existingText.replaceWith(img)
       const space = img.nextSibling
       if (space) placeCaretAfter(space, 1)
@@ -2616,6 +2738,7 @@ function insertCompletionWysiwyg(match) {
       img.className = 'hs-input-emote hs-cycling-emote'
       img.draggable = false
       attachInputEmoteErrorRecovery(img)
+      _applyInputBlock(img)
       existingUser.replaceWith(img)
       const space = img.nextSibling
       if (space) placeCaretAfter(space, 1)
@@ -2730,6 +2853,7 @@ function insertCompletionWysiwyg(match) {
     img.className = 'hs-input-emote hs-cycling-emote';
     img.draggable = false;
     attachInputEmoteErrorRecovery(img);
+    _applyInputBlock(img);
     // Zero-width / overlay: stack onto preceding emote so the input preview
     // matches how chat will render the same word sequence.
     const resolved = (typeof lookupEmoteWithOverlay === 'function') ? lookupEmoteWithOverlay(match.name) : null;
@@ -2825,6 +2949,10 @@ function hideAutocomplete() {
   acState.index = 0;
   acState.wordStart = 0;
   acState.afterText = '';
+  acState.search = '';
+  acState.remoteDone = false;
+  _acRemoteToken++; // invalidate any in-flight 7TV fetch
+  if (_acRemoteAbort) { try { _acRemoteAbort.abort() } catch (_) {} }
   hideCycleTooltip();
 
   // WYSIWYG: finalize cycling elements (remove cycling class so they're permanent)
@@ -3462,12 +3590,35 @@ async function sendSlashWhisper(platform, username, text, input) {
   clearInput(input)
 }
 
+// Auto-add to the viewer's set any remote-searched (7TV/BTTV/FFZ) emote that's in
+// the outgoing message but not yet owned — so an emote you Tab-searched and sent
+// becomes yours and renders next time, instead of going out as bare text. Only
+// names tracked in recentRemoteCompletions qualify, so channel/global/owned
+// emotes (which already render) never burn slots. Fire-and-forget.
+function autoAddInputEmotes(text) {
+  if (!text || !recentRemoteCompletions.size) return
+  const seen = new Set()
+  for (const word of text.split(/\s+/)) {
+    if (!word || seen.has(word)) continue
+    seen.add(word)
+    const rec = recentRemoteCompletions.get(word)
+    if (!rec) continue
+    if (typeof blockedEmoteNames !== 'undefined' && blockedEmoteNames.has(word)) continue
+    if (typeof inventoryEmotes !== 'undefined' && inventoryEmotes.has(word)) continue
+    if (typeof pendingEmoteOps !== 'undefined' && pendingEmoteOps.has(word)) continue
+    if (typeof addEmoteToInventory === 'function') addEmoteToInventory(word, rec.url, rec.source)
+  }
+}
+
 async function sendMessage() {
   const input = document.getElementById('hs-mc-input');
   if (!input) return;
 
   let text = convertEmojiShortcodes(getInputText().trim());
   if (!text) return;
+
+  // Remote-searched emotes in the outgoing message get added to the set on send.
+  autoAddInputEmotes(text);
 
   // Resub-share mode — typed text becomes the celebration BODY via Twitch's
   // Chat_ShareResub_UseResubToken GQL mutation. consume() fires that mutation

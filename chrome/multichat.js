@@ -4619,6 +4619,13 @@ function injectStyles() {
   const style = document.createElement('style');
   style.id = 'hs-mc-styles';
   const css = `
+    /* Resize-bar tokens — one source of truth for every orange drag-bar.
+       2px visible line; ::before extends the grab zone by --hs-resize-grab
+       per side. Mirrors heatsync.org's --resize-thickness / --resize-grab. */
+    :root {
+      --hs-resize-thickness: 2px;
+      --hs-resize-grab: 4px;
+    }
     /* Bundled bitmap fonts — URLs replaced via chrome.runtime.getURL after
        template evaluation (woff2 lives in chrome/fonts/, exposed via
        web_accessible_resources). font-display:block prevents FOUT flash.
@@ -4661,6 +4668,10 @@ function injectStyles() {
       font-variant-ligatures: none !important;
       font-variant-position: normal !important;
       font-feature-settings: "kern" 0, "liga" 0, "clig" 0, "calt" 0 !important;
+      /* Fractional tracking (eg letter-spacing:0.3px) pushes bitmap glyphs off
+         the integer pixel grid -- the same smear as kerning. Zero it globally;
+         the AA counter-rule below restores normal tracking for vector surfaces. */
+      letter-spacing: 0 !important;
     }
     /* Counter-rule: a handful of surfaces explicitly use NON-bitmap fonts
        (system sans, Inter, ui-monospace) where the user expects AA + kern.
@@ -4680,8 +4691,8 @@ function injectStyles() {
       font-kerning: auto !important;
       font-variant-ligatures: normal !important;
       font-feature-settings: normal !important;
+      letter-spacing: normal !important;
     }
-
     /* Tab bar - positioned at top of chat via render injection.
        Three flex sections (no-wrap outer): channel tabs fill left, platfilter
        sits center, util buttons pinned right. Channel-tabs section wraps
@@ -5160,58 +5171,49 @@ function injectStyles() {
       display: flex;
     }
 
-    /* Resize drag bar — 3px visible #ff8700, ::before extends hit zone to ~11px. */
+    /* Unified resize-bar styling — 2px visible #ff8700 line + invisible
+       ::before grab-zone (--hs-resize-grab per side). Mirrors heatsync.org's
+       .hs-resizer. Each id below sets only position/size/cursor/z-index. */
+    #hs-mc-resize-handle,
+    #hs-yt-resize-handle,
+    #hs-kick-resize-handle,
+    #hs-c-resize-handle {
+      background: #ff8700;
+      opacity: 0.55;
+      transition: opacity 0.12s;
+    }
+    #hs-mc-resize-handle::before,
+    #hs-yt-resize-handle::before,
+    #hs-kick-resize-handle::before,
+    #hs-c-resize-handle::before {
+      content: '';
+      position: absolute;
+      inset: calc(-1 * var(--hs-resize-grab));
+    }
+    #hs-mc-resize-handle:hover, #hs-mc-resize-handle:active,
+    #hs-yt-resize-handle:hover, #hs-yt-resize-handle:active,
+    #hs-kick-resize-handle:hover, #hs-kick-resize-handle:active,
+    body:has(#hs-resize-overlay) #hs-kick-resize-handle {
+      opacity: 1;
+    }
     #hs-mc-resize-handle {
       position: absolute;
       top: 0;
       left: 0;
-      width: 3px;
+      width: var(--hs-resize-thickness);
       height: 100%;
       cursor: ew-resize;
       z-index: 2000;
-      background: #ff8700;
-      opacity: 0.7;
-      transition: opacity 0.12s, background 0.12s;
     }
-    #hs-mc-resize-handle::before {
-      content: '';
-      position: absolute;
-      top: 0;
-      left: -4px;
-      right: -4px;
-      bottom: 0;
-    }
-    #hs-mc-resize-handle:hover,
-    #hs-mc-resize-handle:active {
-      background: #ffaa33;
-      opacity: 1;
-    }
-
     /* YouTube resize handle — left edge of #secondary sidebar */
     #hs-yt-resize-handle {
       position: absolute;
       top: 0;
       left: 0;
-      width: 3px;
+      width: var(--hs-resize-thickness);
       height: 100%;
       cursor: ew-resize;
       z-index: 2000;
-      background: #ff8700;
-      opacity: 0.7;
-      transition: opacity 0.12s, background 0.12s;
-    }
-    #hs-yt-resize-handle::before {
-      content: '';
-      position: absolute;
-      top: 0;
-      left: -4px;
-      right: -4px;
-      bottom: 0;
-    }
-    #hs-yt-resize-handle:hover,
-    #hs-yt-resize-handle:active {
-      background: #ffaa33;
-      opacity: 1;
     }
 
     #hs-mc-messages {
@@ -9581,6 +9583,86 @@ function injectStyles() {
       display: none;
     }
 
+    /* == Settings sub-tab bar =============================================== */
+    .hs-mc-set-subtabs {
+      display: flex;
+      gap: 4px;
+      padding: 6px 8px 4px 8px;
+      border-bottom: 1px solid rgba(255,255,255,0.2);
+      flex-shrink: 0;
+      overflow-x: auto;
+      position: sticky;
+      top: 0;
+      background: #000;
+      z-index: 2;
+    }
+    .hs-mc-set-subtab {
+      width: 34px;
+      height: 34px;
+      padding: 0;
+      background: #000;
+      color: #fff;
+      border: 1px solid rgba(255,255,255,0.3);
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      transition: none;
+    }
+    .hs-mc-set-subtab:hover {
+      background: #fff;
+      color: #000;
+      border-color: #fff;
+      outline: none;
+    }
+    .hs-mc-set-subtab.active {
+      background: #fff;
+      color: #000;
+      border-color: #fff;
+    }
+    .hs-mc-set-subtab svg { display: block; }
+    .hs-mc-set-subtab-body {
+      flex: 1;
+      overflow-y: auto;
+    }
+    /* Settings text inputs (custom font name, etc.) */
+    .hs-mc-set-text-input {
+      background: #000;
+      color: #fff;
+      border: 1px solid #808080;
+      font-family: "Liberation Mono", monospace;
+      font-size: 13px;
+      padding: 3px 6px;
+      flex-shrink: 0;
+    }
+    .hs-mc-set-text-input:focus {
+      outline: none;
+      border-color: #ff8700;
+    }
+    /* Server filter status line */
+    .hs-mc-set-status {
+      font-size: 11px;
+      color: #808080;
+      min-height: 14px;
+      padding: 2px 14px;
+    }
+    .hs-mc-set-status.ok { color: #4caf50; }
+    .hs-mc-set-status.err { color: #f44336; }
+    /* Crash log pre block */
+    .hs-mc-set-crash-pre {
+      background: #0a0a0a;
+      color: #c0c0c0;
+      border: 1px solid #333;
+      padding: 6px 8px;
+      font-size: 10px;
+      max-height: 180px;
+      overflow: auto;
+      white-space: pre-wrap;
+      word-break: break-all;
+      margin: 0;
+      font-family: "Liberation Mono", monospace;
+    }
 
     /* Ensure parent has relative positioning for overlay */
     .chat-scrollable-area__message-container {
@@ -9674,13 +9756,16 @@ function injectStyles() {
        right edge (no 18px gap from fixed-size squares + left-aligned row). */
     .hs-tabs-right .hs-mc-util-btn,
     .hs-tabs-left .hs-mc-util-btn {
-      width: auto !important;
-      max-width: none !important;
-      /* 14px min lets all 6 util buttons (C/T/F-/F+/⚙/⛶) share the 90px
-         tabbar column without wrapping. flex:1 still lets them grow. */
+      /* Fixed 14px (12px content after 1px borders) -- even content width
+         integer-centers CozetteVector's 6px glyph advance for both 1-glyph
+         (C/T) and 2-glyph (F-/F+) labels. Growing to fill (flex:1) produced
+         odd 15px widths, landing glyphs on a half-pixel and smearing the
+         bitmap. 6x14=84 fits the 90px column without wrapping. */
+      width: 14px !important;
       min-width: 14px !important;
+      max-width: 14px !important;
       padding: 0 !important;
-      flex: 1 1 0 !important;
+      flex: 0 0 14px !important;
       margin: 0 -1px 0 0 !important;
     }
     /* Right-cluster (util-row + platfilter) wraps both rows. In vertical mode
@@ -10631,24 +10716,16 @@ function injectStyles() {
       border-right: 1px solid #fff;
     }
 
-    /* Kick resize handle — convention: solid #ff8700, always visible. */
+    /* Kick resize handle — always visible. Visual/hover/grab shared above. */
     #hs-kick-resize-handle {
       position: absolute;
       top: 0;
       left: 0;
-      width: 6px;
+      width: var(--hs-resize-thickness);
       height: 100%;
       cursor: col-resize;
       z-index: 10000;
-      background: #ff8700;
-      opacity: 0.7;
-      transition: opacity 0.12s, background 0.12s;
       pointer-events: auto;
-    }
-    #hs-kick-resize-handle:hover,
-    body:has(#hs-resize-overlay) #hs-kick-resize-handle {
-      background: #ffaa33;
-      opacity: 1;
     }
 
     /* Boost Kick's popover/tooltip z-index above our panels */
@@ -11429,12 +11506,12 @@ function injectStyles() {
        block for abs-positioned children — without this the inputbar/tabbar/
        overlay (all position:absolute; bottom:Npx) snap to the outer edge
        and sit under the bar. With box-sizing: border-box the container's
-       outer dim is unchanged. Bar widths: unified #hs-c-resize-handle 5px,
-       platform handles 6px — reserve 6px to fit either case. */
-    body.hs-chat-right #hs-mc-container { border-left: 6px solid transparent !important; }
-    body.hs-chat-left #hs-mc-container { border-right: 6px solid transparent !important; }
-    body.hs-chat-top #hs-mc-container { border-bottom: 6px solid transparent !important; }
-    body.hs-chat-bottom #hs-mc-container { border-top: 6px solid transparent !important; }
+       outer dim is unchanged. Every bar is --hs-resize-thickness, so the
+       reservation tracks the same token. */
+    body.hs-chat-right #hs-mc-container { border-left: var(--hs-resize-thickness) solid transparent !important; }
+    body.hs-chat-left #hs-mc-container { border-right: var(--hs-resize-thickness) solid transparent !important; }
+    body.hs-chat-top #hs-mc-container { border-bottom: var(--hs-resize-thickness) solid transparent !important; }
+    body.hs-chat-bottom #hs-mc-container { border-top: var(--hs-resize-thickness) solid transparent !important; }
 
     /* --- YT narrow viewport rescue ---
        At narrow viewports YT collapses ytd-watch-flexy into a single-column
@@ -11541,11 +11618,11 @@ function injectStyles() {
        100% (not 100vw) — vw includes the page scrollbar (~15px); the
        chat panel is position:fixed and respects the inner viewport that
        excludes the scrollbar, so 100vw caps were 15px too wide.
-       The 5px padding on the chat-side is the orange resize bar's gutter. */
+       The chat-side padding is the orange resize bar's gutter. */
     body.hs-platform-yt:not(.hs-yt-watch).hs-chat-right ytd-app {
       width: calc(100% - var(--hs-chat-w, 340px)) !important;
       max-width: calc(100% - var(--hs-chat-w, 340px)) !important;
-      padding-right: 5px !important;
+      padding-right: var(--hs-resize-thickness) !important;
       box-sizing: border-box !important;
       overflow-x: hidden !important;
     }
@@ -14559,7 +14636,12 @@ async function sendKickMessage(kickSlug, text) {
       blockedEmoteNames.delete(name);
       const emote = lookupEmote(name);
       const realUrl = emote?.url || '';
-      const newState = emote ? getEmoteState(name, emote.source) : 'global';
+      // Mirror unblockEmote: block dropped this from the set, so restore to the
+      // not-in-set tier (orange/unadded for heatsync) — never owned/green.
+      const src = emote?.source || 'heatsync';
+      const isThirdParty = ['7tv', 'bttv', 'ffz', 'twitch', 'kick'].includes(src);
+      if (!isThirdParty) inventoryEmotes.delete(name);
+      const newState = isThirdParty ? getEmoteState(name, src) : 'unadded';
       queryEmoteWrappers(name).forEach(w => {
         if (w.classList.contains(`hs-state-${newState}`)) return;
         w.classList.remove('hs-state-global', 'hs-state-channel', 'hs-state-owned', 'hs-state-blocked', 'hs-state-unadded', 'hs-emote-highlight');
@@ -14607,7 +14689,12 @@ async function sendKickMessage(kickSlug, text) {
     void document.body.offsetWidth
     for (const t of targets) {
       t.classList.add(flashClass);
-      t.addEventListener('animationend', () => t.classList.remove(flashClass), { once: true });
+      const clear = () => t.classList.remove(flashClass);
+      t.addEventListener('animationend', clear, { once: true });
+      // animationend never fires if the tab is backgrounded / the animation is
+      // throttled mid-run, leaving a stuck glow that reads as jitter. Force-clear
+      // just past the 0.4s animation window so the flash can never persist.
+      cleanup.setTimeout(clear, 600);
     }
   }
 
@@ -14822,6 +14909,9 @@ async function sendKickMessage(kickSlug, text) {
       } else {
         // HeatSync emote — mark unadded then remove from cache so it stops rendering in new messages
         cachedEmote.state = 'unadded';
+        // Keep the URL resolvable so the viewer's own past messages still draw
+        // the image after a refresh (instead of breaking to raw text).
+        rememberRemovedEmote(emoteName, cachedEmote.url, cachedEmote.source, cachedEmote.zeroWidth);
         emoteCache.delete(emoteName);
         for (const cache of Object.values(channelEmoteCaches)) {
           cache.delete(emoteName);
@@ -14964,7 +15054,16 @@ async function sendKickMessage(kickSlug, text) {
     // Instant DOM update - restore images
     const emote = lookupEmote(emoteName);
     const realUrl = emote?.url || '';
-    const newState = emote ? getEmoteState(emoteName, emote.source) : 'global';
+    // Blocking removes the emote from the set (server-side too — background.js
+    // drops it from emoteInventory on block). So unblock must land on the
+    // "available, not in set" tier — orange/unadded for heatsync — never straight
+    // back to owned/green. Ladder is bidirectional:
+    //   owned ⇄ (remove/add) ⇄ unadded ⇄ (block/unblock) ⇄ blocked
+    // Force out of inventory so a stale membership flag can't snap green back.
+    const src = emote?.source || 'heatsync';
+    const isThirdParty = ['7tv', 'bttv', 'ffz', 'twitch', 'kick'].includes(src);
+    if (!isThirdParty) inventoryEmotes.delete(emoteName);
+    const newState = isThirdParty ? getEmoteState(emoteName, src) : 'unadded';
     queryEmoteWrappers(emoteName).forEach(w => {
       w.classList.remove('hs-state-global', 'hs-state-channel', 'hs-state-owned', 'hs-state-blocked', 'hs-state-unadded', 'hs-emote-highlight');
       w.classList.add(`hs-state-${newState}`);
@@ -15022,6 +15121,8 @@ async function sendKickMessage(kickSlug, text) {
         // Update local cache - change from unadded to owned
         // Adding and blocking are mutually exclusive
         blockedEmoteNames.delete(emoteName);
+        // No longer "removed" — drop the stale render fallback entry.
+        if (removedEmoteFallback.delete(emoteName)) persistRemovedFallback();
         const serverHash = response.hash || emoteHash;
         inventoryEmotes.add(emoteName);
         inventoryHashes.set(emoteName, serverHash);
@@ -15084,6 +15185,33 @@ async function sendKickMessage(kickSlug, text) {
   // Viewer's personal set — separated from emoteCache so it does NOT bleed into
   // OTHER users' rendered messages. Used as senderEmotes only when sender == viewer.
   let viewerPersonalEmotes = new Map(); // Map<name, emoteData>
+  // Render fallback for emotes the viewer REMOVED from their set. Removing purges
+  // the emote from inventory/caches, so after a refresh the viewer's own past
+  // messages that used it would resolve to nothing and render as raw text. This
+  // bounded, persisted map keeps the URL resolvable so those messages still draw
+  // the image (as unadded/orange — not owned). Gated to the viewer's own messages
+  // in processEmotes so it never bleeds into other senders' rendering.
+  let removedEmoteFallback = new Map(); // Map<name, {url, source, zeroWidth}>
+  const REMOVED_FALLBACK_CAP = 1000;
+  let _removedFallbackPersistTimer = null;
+  function persistRemovedFallback() {
+    if (_removedFallbackPersistTimer) return;
+    _removedFallbackPersistTimer = cleanup.setTimeout(() => {
+      _removedFallbackPersistTimer = null;
+      const obj = {};
+      for (const [name, e] of removedEmoteFallback) obj[name] = e;
+      try { chrome.storage.local.set({ hs_removed_emote_fallback: obj }); } catch {}
+    }, 1000);
+  }
+  function rememberRemovedEmote(name, url, source, zeroWidth) {
+    if (!name || !url) return;
+    removedEmoteFallback.delete(name); // re-insert to refresh LRU position
+    removedEmoteFallback.set(name, { url, source: source || 'heatsync', zeroWidth: !!zeroWidth, state: 'unadded' });
+    while (removedEmoteFallback.size > REMOVED_FALLBACK_CAP) {
+      removedEmoteFallback.delete(removedEmoteFallback.keys().next().value);
+    }
+    persistRemovedFallback();
+  }
   // Viewer's per-channel Twitch IRC badges. Populated from USERSTATE messages
   // (sent on JOIN + after every viewer PRIVMSG). Used to gate Twitch native
   // sub-emote clicks: no `subscriber`/`founder` badge → render as locked.
@@ -15161,7 +15289,9 @@ async function sendKickMessage(kickSlug, text) {
 
   // Look up emote — viewer-perspective fallback chain (used by picker, hover preview, etc.)
   function lookupEmote(name) {
-    return viewerPersonalEmotes.get(name) || emoteCache.get(name) || channelEmoteCaches[currentTab]?.get(name) || channelEmoteCaches[getLiveChannel()]?.get(name) || channelEmoteCaches[getCurrentChannel()]?.get(name);
+    // removedEmoteFallback last: keeps a removed emote's URL resolvable so unblock
+    // and re-renders can still draw the image instead of collapsing to raw text.
+    return viewerPersonalEmotes.get(name) || emoteCache.get(name) || channelEmoteCaches[currentTab]?.get(name) || channelEmoteCaches[getLiveChannel()]?.get(name) || channelEmoteCaches[getCurrentChannel()]?.get(name) || removedEmoteFallback.get(name);
   }
   // Resolve a typed emote name to {emote, isOverlay, displayName}.
   // Handles zeroWidth flag AND the 7TV-style "name0" overlay convention
@@ -15235,7 +15365,15 @@ async function sendKickMessage(kickSlug, text) {
 
   async function loadEmotes() {
     try {
-      const stored = await chrome.storage.local.get(['global_emotes', 'emote_inventory', 'channel_emotes_map', 'native_twitch_emotes']);
+      const stored = await chrome.storage.local.get(['global_emotes', 'emote_inventory', 'channel_emotes_map', 'native_twitch_emotes', 'hs_removed_emote_fallback']);
+      // Restore removed-emote render fallback (persists across refresh).
+      removedEmoteFallback.clear();
+      const rf = stored.hs_removed_emote_fallback;
+      if (rf && typeof rf === 'object') {
+        for (const [name, e] of Object.entries(rf)) {
+          if (e && e.url) removedEmoteFallback.set(name, { url: e.url, source: e.source || 'heatsync', zeroWidth: !!e.zeroWidth, state: 'unadded' });
+        }
+      }
       emoteCache.clear();
       // Don't wipe channelEmoteCaches — live broadcasts may have direct-
       // populated a channel that storage hasn't persisted yet (BG writes
@@ -15412,6 +15550,10 @@ async function sendKickMessage(kickSlug, text) {
 
   function processEmotes(text, channel, extraCache, senderEmotes) {
     if (emoteCache.size === 0 && !channelEmoteCaches[channel] && !extraCache?.size && !senderEmotes?.size) return text;
+    // Removed-emote render fallback applies ONLY to the viewer's own messages
+    // (main.js passes viewerPersonalEmotes by reference for isOwn). Keeps removed
+    // heatsync emotes drawing in the viewer's history without leaking into others.
+    const _rf = senderEmotes === viewerPersonalEmotes ? removedEmoteFallback : null;
 
     // Kick emote splits gated by indexOf — Kick text is <5% of overall msg volume;
     // skipping 3 replaces on Twitch/YT messages saves allocations per message.
@@ -15545,11 +15687,11 @@ async function sendKickMessage(kickSlug, text) {
       const endsWithZero = word.endsWith('0') && word.length > 1
       if (endsWithZero) {
         const baseName = word.slice(0, -1)
-        emote = senderEmotes?.get(baseName) || (channel && channelEmoteCaches[channel]?.get(baseName)) || extraCache?.get(baseName) || emoteCache.get(baseName)
+        emote = senderEmotes?.get(baseName) || (channel && channelEmoteCaches[channel]?.get(baseName)) || extraCache?.get(baseName) || emoteCache.get(baseName) || _rf?.get(baseName)
         if (emote) isOverlayEmote = true
       }
       if (!emote) {
-        emote = senderEmotes?.get(word) || (channel && channelEmoteCaches[channel]?.get(word)) || extraCache?.get(word) || emoteCache.get(word)
+        emote = senderEmotes?.get(word) || (channel && channelEmoteCaches[channel]?.get(word)) || extraCache?.get(word) || emoteCache.get(word) || _rf?.get(word)
         // Honor zero-width flag, OR fall back to the "name0" naming convention
         // when an uploader didn't set the flag despite naming the emote for overlay use.
         if (emote) isOverlayEmote = !!emote.zeroWidth || endsWithZero
@@ -15666,6 +15808,18 @@ async function sendKickMessage(kickSlug, text) {
           const startHue = pendingHue
           pendingMods = []; pendingHue = null
           pendingStack = { items: [{ kind: 'base', raw: emojiHtmlRaw, mods: startMods, hue: startHue }] }
+          continue
+        }
+        // Blocked emote whose URL didn't resolve in this context (removed from set,
+        // wrong channel, foreign personal emote, etc.) — still render the blocked
+        // box (2px dashed outline) instead of leaking the raw name as text. Matches
+        // by exact name, so only emotes the user actually blocked are boxed.
+        if (blockedEmoteNames.has(word)) {
+          _flushStackToResult()
+          pendingMods = []; pendingHue = null
+          if (pendingWhitespace) { result.push(pendingWhitespace); pendingWhitespace = '' }
+          const dn = escapeHtml(word)
+          result.push(`<span class="hs-mc-emote-wrapper hs-state-blocked" data-emote-name="${dn}" data-state="blocked" data-source="heatsync"><img src="${HS_TRANSPARENT_PX}" alt="${dn}" title="${dn}" class="hs-mc-emote hs-emote-blocked" style="width:var(--hs-emote-size,32px);height:var(--hs-emote-size,32px)" data-emote-name="${dn}" data-state="blocked" data-source="heatsync"></span>`)
           continue
         }
         // Text - flush stack and add text. Drop any pending mods/hue (they had no anchor).
@@ -15968,17 +16122,22 @@ async function sendKickMessage(kickSlug, text) {
       // Check wrapper first, then IMG. Input chips (.hs-input-emote) also
       // surface the tooltip so users can read name + state without leaving
       // the input box.
+      // Picker emotes hide their <img> on hover (green/orange overlay) and
+      // blocked picker emotes hide it permanently, so the steady hover target
+      // is the .hs-mc-picker-emote-wrap span, not the img. Resolve to the inner
+      // img — mirrors findEmoteTarget so the 4x tooltip + name show in-picker.
       const wrapper = target.closest('.hs-mc-emote-wrapper');
-      const img = wrapper ? wrapper.querySelector('img') : (
-        target.tagName === 'IMG' && (
-          target.classList.contains('hs-mc-emote') ||
-          target.classList.contains('hs-mc-picker-emote') ||
-          target.classList.contains('hs-input-emote')
-        ) ? target : null
-      );
-      if (!img && !wrapper) return;
+      const pickerWrap = !wrapper ? target.closest('.hs-mc-picker-emote-wrap') : null;
+      const img = wrapper ? wrapper.querySelector('img')
+        : pickerWrap ? pickerWrap.querySelector('img')
+        : (target.tagName === 'IMG' && (
+            target.classList.contains('hs-mc-emote') ||
+            target.classList.contains('hs-mc-picker-emote') ||
+            target.classList.contains('hs-input-emote')
+          ) ? target : null);
+      if (!img && !wrapper && !pickerWrap) return;
 
-      const emoteName = wrapper?.dataset.emoteName || img?.alt || img?.dataset.emoteName || img?.title?.split(' ')[0];
+      const emoteName = wrapper?.dataset.emoteName || pickerWrap?.dataset.name || img?.alt || img?.dataset.emoteName || img?.title?.split(' ')[0];
       if (!emoteName) return;
 
       // For blocked input chips, dataset.hsOrigSrc holds the real image URL
@@ -16020,14 +16179,15 @@ async function sendKickMessage(kickSlug, text) {
       }
 
       const wrapper = target.closest('.hs-mc-emote-wrapper');
-      const img = wrapper ? wrapper.querySelector('img') : (
-        target.tagName === 'IMG' && (
-          target.classList.contains('hs-mc-emote') ||
-          target.classList.contains('hs-mc-picker-emote') ||
-          target.classList.contains('hs-input-emote')
-        ) ? target : null
-      );
-      if (!img && !wrapper) return;
+      const pickerWrap = !wrapper ? target.closest('.hs-mc-picker-emote-wrap') : null;
+      const img = wrapper ? wrapper.querySelector('img')
+        : pickerWrap ? pickerWrap.querySelector('img')
+        : (target.tagName === 'IMG' && (
+            target.classList.contains('hs-mc-emote') ||
+            target.classList.contains('hs-mc-picker-emote') ||
+            target.classList.contains('hs-input-emote')
+          ) ? target : null);
+      if (!img && !wrapper && !pickerWrap) return;
 
       hideEmoteTooltip();
 
@@ -16071,6 +16231,7 @@ async function sendKickMessage(kickSlug, text) {
       requestAnimationFrame(() => {
         _tooltipRafPending = false
         const onEmote = target?.closest?.('.hs-mc-emote-wrapper') ||
+          target?.closest?.('.hs-mc-picker-emote-wrap') ||
           (target?.tagName === 'IMG' && (
             target.classList?.contains('hs-mc-emote') ||
             target.classList?.contains('hs-mc-picker-emote') ||
@@ -24769,8 +24930,76 @@ matches: [],
 index: 0,
 active: false,  // true when cycling through matches
 wordStart: 0,   // Position where the completion word starts
-afterText: ''   // Text after the completion
+afterText: '',  // Text after the completion
+search: '',     // search term that produced these matches (remote-fetch guard)
+remoteDone: false // 7tv fallback already merged for this search
 };
+
+// Emotes surfaced via remote (7TV/BTTV/FFZ) Tab-search this session: name → {url,
+// source}. On send, any of these present in the outgoing message that aren't yet
+// in the viewer's set get auto-added — so a remote emote you searched and sent
+// becomes yours and renders next time. Bounded; explicit tracking beats sniffing
+// chips so it works in plain-text mode too.
+let recentRemoteCompletions = new Map()
+const REMOTE_COMPLETION_CAP = 300
+
+// Infinite Tab-cycle: once local matches run out, pull more from the 7TV
+// search API (same source the picker uses) and append. Aborts stale fetches
+// so rapid re-triggering never merges results from an old search term.
+let _acRemoteAbort = null
+let _acRemoteToken = 0
+async function fetchRemoteEmoteMatches(search) {
+  // Emote-only: skip @user, :emoji, modifier tokens, and short fragments.
+  if (!search || search.length < 2) return
+  if (search.startsWith('@') || search.startsWith(':')) return
+  if (hsModClassify(search, { allowPrefix: false }).kind === 'modifier') return
+  const token = ++_acRemoteToken
+  if (_acRemoteAbort) { try { _acRemoteAbort.abort() } catch (_) {} }
+  const ac = new AbortController()
+  _acRemoteAbort = ac
+  // Query 7TV + BTTV + FFZ in parallel — same sources the picker uses — so Tab
+  // surfaces the full cross-provider set, not just the channel's loaded emotes.
+  const calls = []
+  if (typeof mcSearch7tvApi === 'function') calls.push(mcSearch7tvApi(search, ac.signal))
+  if (typeof mcSearchBttvApi === 'function') calls.push(mcSearchBttvApi(search, ac.signal))
+  if (typeof mcSearchFfzApi === 'function') calls.push(mcSearchFfzApi(search, ac.signal))
+  if (!calls.length) return
+  const settled = await Promise.allSettled(calls)
+  if (ac.signal.aborted || token !== _acRemoteToken) return
+  // Cycling must still be on the same search the fetch was issued for.
+  if (!acState.active || acState.search !== search) return
+  acState.remoteDone = true
+  const items = []
+  for (const s of settled) if (s.status === 'fulfilled' && Array.isArray(s.value)) items.push(...s.value)
+  // Dedupe by EXACT name (casing distinguishes emotes — NODDERS vs Nodders are
+  // different uploads), matching the picker. Avoids collapsing the cycle to one.
+  const have = new Set(acState.matches.map(m => m.name))
+  const searchLower = search.toLowerCase()
+  const add = []
+  for (const it of items) {
+    if (!it.name || have.has(it.name)) continue
+    if (!it.name.toLowerCase().includes(searchLower)) continue // drop API noise
+    have.add(it.name)
+    const src = it.provider || '7tv'
+    add.push({ name: it.name, url: it.url, source: src, priority: it.name.toLowerCase().startsWith(searchLower) ? 0 : 1, type: 'emote', remote: true })
+    // Remember for auto-add-on-send (only matters if the user actually sends it).
+    recentRemoteCompletions.delete(it.name)
+    recentRemoteCompletions.set(it.name, { url: it.url, source: src })
+    while (recentRemoteCompletions.size > REMOTE_COMPLETION_CAP) {
+      recentRemoteCompletions.delete(recentRemoteCompletions.keys().next().value)
+    }
+  }
+  if (!add.length) return
+  add.sort((a, b) => (a.priority - b.priority) || a.name.localeCompare(b.name))
+  const wasEmpty = acState.matches.length === 0
+  acState.matches.push(...add.slice(0, 60))
+  // No local match existed when Tab was pressed — insert the first remote hit now.
+  if (wasEmpty && acState.matches.length > 0) {
+    acState.index = 0
+    insertCompletionKeepOpen(acState.matches[0])
+  }
+  showCycleTooltip() // refresh the N/M denominator
+}
 
 // Emoji dropdown autocomplete state
 let emojiAcState = {
@@ -25363,7 +25592,25 @@ function initInput() {
       const { emoteName, state, emoteUrl, source } = emoteInfo;
 
       if (state === 'blocked') {
+        // Left-click means "I want this" → unblock AND restore to the set in one
+        // click. unblockEmote clears block state but lands on the orange/unadded
+        // rung (block drops set membership server-side); re-add via the same
+        // optimistic path the unadded→owned branch uses so the picker thumbnail
+        // flips straight to owned/green. Applies to any source — third-party
+        // emotes (7tv/bttv/ffz/etc.) can be set members too. Right-click → menu
+        // (its "unblock emote" stays unblock-only, landing at unadded).
+        if (pendingEmoteOps.has(emoteName)) return;
         unblockEmote(emoteName);
+        if (!viewerPersonalEmotes.has(emoteName)) {
+          viewerPersonalEmotes.set(emoteName, { url: emoteUrl, source: source || 'heatsync', state: 'owned' });
+        }
+        const pickerWrap = e.target.closest('.hs-mc-picker-emote-wrap');
+        if (pickerWrap) {
+          pickerWrap.classList.remove('unadded', 'blocked');
+          const pImg = pickerWrap.querySelector('img');
+          if (pImg) pImg.dataset.state = 'owned';
+        }
+        addEmoteToInventory(emoteName, emoteUrl, source || 'heatsync', e.target);
         return;
       }
       if (state === 'locked') {
@@ -25402,12 +25649,11 @@ function initInput() {
             const pImg = pickerWrap.querySelector('img');
             if (pImg) pImg.dataset.state = 'owned';
           }
+          // addEmoteToInventory flashes on success — don't double-flash here.
           addEmoteToInventory(emoteName, emoteUrl, source, e.target);
-          flashAllEmotes(emoteName, 'hs-flash-add');
           return;
         }
         addEmoteToInventory(emoteName, emoteUrl, source, e.target);
-        flashAllEmotes(emoteName, 'hs-flash-add');
       }
     }, { capture: true, signal: mcSignal });
   }
@@ -25611,9 +25857,13 @@ function showMcEmoteActionMenu(x, y, emoteInfo, evtTarget) {
   preview.appendChild(meta)
   menu.appendChild(preview)
 
-  // Items
-  let kbdIndex = 1
+  // Keybinds number bottom-up: the primary action (block/unblock/add/remove)
+  // sits at the bottom of the menu, and the cursor lands there when the menu
+  // flips up off the bottom-anchored chat panel — so key 1 is on the closest,
+  // most-used item, ascending toward the utilities up top. Assigned in a pass
+  // after all items exist (see assignBottomUpKbd).
   const kbdHandlers = {}
+  const kbdItems = [] // {el, fn} in DOM order; numbered 1..9 from the bottom
   const addHeader = (text) => {
     const h = document.createElement('div')
     h.className = 'hs-mc-em-header'
@@ -25633,16 +25883,20 @@ function showMcEmoteActionMenu(x, y, emoteInfo, evtTarget) {
       h.textContent = opts.hint
       it.appendChild(h)
     }
-    if (opts.kbd !== false && kbdIndex <= 9) {
-      const k = document.createElement('span')
-      k.className = 'hs-mc-em-kbd'
-      k.textContent = String(kbdIndex)
-      it.appendChild(k)
-      kbdHandlers[String(kbdIndex)] = fn
-      kbdIndex++
-    }
+    if (opts.kbd !== false) kbdItems.push({ el: it, fn })
     it.addEventListener('click', () => { dismiss(); try { fn() } catch {} })
     menu.appendChild(it)
+  }
+  const assignBottomUpKbd = () => {
+    let n = 1
+    for (let i = kbdItems.length - 1; i >= 0 && n <= 9; i--, n++) {
+      const { el, fn } = kbdItems[i]
+      const k = document.createElement('span')
+      k.className = 'hs-mc-em-kbd'
+      k.textContent = String(n)
+      el.appendChild(k)
+      kbdHandlers[String(n)] = fn
+    }
   }
   const addSep = () => {
     const s = document.createElement('div')
@@ -25684,8 +25938,8 @@ function showMcEmoteActionMenu(x, y, emoteInfo, evtTarget) {
     addSep()
     addHeader('set')
     addItem('add to set', () => {
+      // addEmoteToInventory flashes on success — don't double-flash here.
       addEmoteToInventory(emoteName, url, source || 'heatsync', evtTarget || wrapper)
-      flashAllEmotes(emoteName, 'hs-flash-add')
     }, { good: true })
   } else if (canRemoveFromSet) {
     addSep()
@@ -25731,7 +25985,7 @@ function showMcEmoteActionMenu(x, y, emoteInfo, evtTarget) {
     document.removeEventListener('keydown', keyHandler, true)
     document.removeEventListener('contextmenu', outside, true)
     window.removeEventListener('blur', dismiss)
-    window.removeEventListener('scroll', dismiss, true)
+    window.removeEventListener('scroll', dismiss)
   }
   function outside(ev) { if (!menu.contains(ev.target)) dismiss() }
   function keyHandler(ev) {
@@ -25744,7 +25998,10 @@ function showMcEmoteActionMenu(x, y, emoteInfo, evtTarget) {
     document.addEventListener('keydown', keyHandler, true)
     document.addEventListener('contextmenu', outside, true)
     window.addEventListener('blur', dismiss, { once: true })
-    window.addEventListener('scroll', dismiss, { passive: true, capture: true, once: true })
+    // No capture: a capturing scroll listener fires on the chat container's
+    // constant auto-scroll, killing the menu the instant it opens. Menu is
+    // position:fixed so it stays put — only dismiss on genuine window scroll.
+    window.addEventListener('scroll', dismiss, { passive: true, once: true })
   }, 0)
 }
 
@@ -26114,25 +26371,33 @@ function handleInputKeydown(e) {
       const word = getCurrentWord(input);
       if (word.length >= 2) {
         const matches = findEmoteMatches(word);
+        // Set up cycling state even with zero local matches — the cross-provider
+        // remote search (7TV/BTTV/FFZ) may still populate it (e.g. an emote that
+        // isn't in the channel's loaded set), and it auto-inserts on arrival.
+        acState.matches = matches;
+        acState.index = 0;
+        acState.active = true;
+        acState.search = word;
+        acState.remoteDone = false;
+
+        if (!wysiwygEnabled && input.value !== undefined) {
+          // Calculate positions for text input cycling (textarea only)
+          const text = input.value;
+          const pos = input.selectionStart;
+          const before = text.slice(0, pos);
+          const wordStart = before.search(/\S+$/);
+          acState.wordStart = wordStart >= 0 ? wordStart : pos;
+          // Skip past rest of word after cursor
+          let wordEnd = pos;
+          while (wordEnd < text.length && !/\s/.test(text[wordEnd])) wordEnd++;
+          acState.afterText = text.slice(wordEnd);
+        }
+
+        // Cross-provider remote search. With local matches it appends deeper hits;
+        // with none it inserts the first remote hit when the fetch resolves.
+        fetchRemoteEmoteMatches(word);
+
         if (matches.length > 0) {
-          // Save state for cycling (WYSIWYG handles positions internally)
-          acState.matches = matches;
-          acState.index = 0;
-          acState.active = true;
-
-          if (!wysiwygEnabled && input.value !== undefined) {
-            // Calculate positions for text input cycling (textarea only)
-            const text = input.value;
-            const pos = input.selectionStart;
-            const before = text.slice(0, pos);
-            const wordStart = before.search(/\S+$/);
-            acState.wordStart = wordStart >= 0 ? wordStart : pos;
-            // Skip past rest of word after cursor
-            let wordEnd = pos;
-            while (wordEnd < text.length && !/\s/.test(text[wordEnd])) wordEnd++;
-            acState.afterText = text.slice(wordEnd);
-          }
-
           insertCompletionKeepOpen(matches[0]);
           showCycleTooltip();
         }
@@ -27124,6 +27389,22 @@ function insertCompletionWysiwyg(match) {
   const input = document.getElementById('hs-mc-input');
   if (!input) return;
 
+  // Reflect block state on the inserted/cycled emote chip: a blocked emote must
+  // show the 2px dashed outline, not the image. Clears any prior block state
+  // first (the chip's src was just set to the new match) so a stale blocked src
+  // can't leak across Tab-cycle steps, then re-marks if this match is blocked.
+  const _applyInputBlock = (img) => {
+    if (!img) return
+    delete img.dataset.hsInputBlocked
+    delete img.dataset.hsOrigSrc
+    img.classList.remove('hs-state-blocked')
+    delete img.dataset.state
+    if (match.name && typeof blockedEmoteNames !== 'undefined' && blockedEmoteNames.has(match.name)
+        && typeof markInputEmoteBlocked === 'function') {
+      markInputEmoteBlocked(img, true)
+    }
+  }
+
   // Check if we're replacing an existing cycling element (emote img, text span, or user span)
   const existingEmote = input.querySelector('img.hs-cycling-emote');
   const existingText = input.querySelector('span.hs-cycling-text');
@@ -27173,6 +27454,7 @@ function insertCompletionWysiwyg(match) {
       existingEmote.src = match.url;
       existingEmote.alt = match.name;
       existingEmote.dataset.emoteName = match.name;
+      _applyInputBlock(existingEmote);
     } else if (match.type === 'emoji') {
       // Replace emote img with emoji span
       const span = document.createElement('span')
@@ -27209,6 +27491,7 @@ function insertCompletionWysiwyg(match) {
       img.className = 'hs-input-emote hs-cycling-emote'
       img.draggable = false
       attachInputEmoteErrorRecovery(img)
+      _applyInputBlock(img)
       existingText.replaceWith(img)
       const space = img.nextSibling
       if (space) placeCaretAfter(space, 1)
@@ -27244,6 +27527,7 @@ function insertCompletionWysiwyg(match) {
       img.className = 'hs-input-emote hs-cycling-emote'
       img.draggable = false
       attachInputEmoteErrorRecovery(img)
+      _applyInputBlock(img)
       existingUser.replaceWith(img)
       const space = img.nextSibling
       if (space) placeCaretAfter(space, 1)
@@ -27358,6 +27642,7 @@ function insertCompletionWysiwyg(match) {
     img.className = 'hs-input-emote hs-cycling-emote';
     img.draggable = false;
     attachInputEmoteErrorRecovery(img);
+    _applyInputBlock(img);
     // Zero-width / overlay: stack onto preceding emote so the input preview
     // matches how chat will render the same word sequence.
     const resolved = (typeof lookupEmoteWithOverlay === 'function') ? lookupEmoteWithOverlay(match.name) : null;
@@ -27453,6 +27738,10 @@ function hideAutocomplete() {
   acState.index = 0;
   acState.wordStart = 0;
   acState.afterText = '';
+  acState.search = '';
+  acState.remoteDone = false;
+  _acRemoteToken++; // invalidate any in-flight 7TV fetch
+  if (_acRemoteAbort) { try { _acRemoteAbort.abort() } catch (_) {} }
   hideCycleTooltip();
 
   // WYSIWYG: finalize cycling elements (remove cycling class so they're permanent)
@@ -28090,12 +28379,35 @@ async function sendSlashWhisper(platform, username, text, input) {
   clearInput(input)
 }
 
+// Auto-add to the viewer's set any remote-searched (7TV/BTTV/FFZ) emote that's in
+// the outgoing message but not yet owned — so an emote you Tab-searched and sent
+// becomes yours and renders next time, instead of going out as bare text. Only
+// names tracked in recentRemoteCompletions qualify, so channel/global/owned
+// emotes (which already render) never burn slots. Fire-and-forget.
+function autoAddInputEmotes(text) {
+  if (!text || !recentRemoteCompletions.size) return
+  const seen = new Set()
+  for (const word of text.split(/\s+/)) {
+    if (!word || seen.has(word)) continue
+    seen.add(word)
+    const rec = recentRemoteCompletions.get(word)
+    if (!rec) continue
+    if (typeof blockedEmoteNames !== 'undefined' && blockedEmoteNames.has(word)) continue
+    if (typeof inventoryEmotes !== 'undefined' && inventoryEmotes.has(word)) continue
+    if (typeof pendingEmoteOps !== 'undefined' && pendingEmoteOps.has(word)) continue
+    if (typeof addEmoteToInventory === 'function') addEmoteToInventory(word, rec.url, rec.source)
+  }
+}
+
 async function sendMessage() {
   const input = document.getElementById('hs-mc-input');
   if (!input) return;
 
   let text = convertEmojiShortcodes(getInputText().trim());
   if (!text) return;
+
+  // Remote-searched emotes in the outgoing message get added to the set on send.
+  autoAddInputEmotes(text);
 
   // Resub-share mode — typed text becomes the celebration BODY via Twitch's
   // Chat_ShareResub_UseResubToken GQL mutation. consume() fires that mutation
@@ -31395,9 +31707,10 @@ const STORAGE_KEY = 'heatsync_multichat';
   // Chat width state
   let chatWidth = 340; // Default width
   const DEFAULT_CHAT_WIDTH = 340;
-  // 10px floor matches the resize-bar width — chat can shrink to just the
-  // handle so the player nearly fills the viewport, but the handle is
-  // always grabbable to drag it back. No artificial "minimum usable size"
+  // 10px floor ≈ the bar's invisible grab-zone (2px line + 4px each side) —
+  // chat can shrink to just the handle so the player nearly fills the
+  // viewport, but the handle stays grabbable to drag it back. No artificial
+  // "minimum usable size"
   // — user explicitly wants pixel-level freedom.
   const MIN_CHAT_WIDTH = 10;
   const MAX_CHAT_WIDTH = 800;
@@ -32482,8 +32795,10 @@ const STORAGE_KEY = 'heatsync_multichat';
   // is called from applyChatPosition. Drags chatWidth (left/right) or
   // chatHeight (top/bottom). Hides itself when chatPosition='right' and
   // delegates to existing per-platform handles for the default layout.
-  // Orange #ff8700, 6px thick, no text — matches user's resize-handle rule.
+  // Orange #ff8700, 2px thin + invisible grab, no text — matches the
+  // --hs-resize-thickness token in styles.js (and heatsync.org's .hs-resizer).
   // ============================================
+  const HS_RESIZE_PX = 2; // visible thickness — mirrors --hs-resize-thickness
   let _isResizingC = false;
   function ensureChatResizeHandle() {
     let handle = document.getElementById('hs-c-resize-handle');
@@ -32706,25 +33021,25 @@ const STORAGE_KEY = 'heatsync_multichat';
       handle.style.top = cTop + 'px';
       handle.style.left = cLeft + 'px';
       handle.style.height = cHeight + 'px';
-      handle.style.width = '5px';
+      handle.style.width = HS_RESIZE_PX + 'px';
       handle.style.cursor = 'col-resize';
     } else if (chatPosition === 'left') {
       handle.style.top = cTop + 'px';
-      handle.style.left = (cRight - 5) + 'px';
+      handle.style.left = (cRight - HS_RESIZE_PX) + 'px';
       handle.style.height = cHeight + 'px';
-      handle.style.width = '5px';
+      handle.style.width = HS_RESIZE_PX + 'px';
       handle.style.cursor = 'col-resize';
     } else if (chatPosition === 'top') {
-      handle.style.top = (cBottom - 5) + 'px';
+      handle.style.top = (cBottom - HS_RESIZE_PX) + 'px';
       handle.style.left = cLeft + 'px';
       handle.style.width = cWidth + 'px';
-      handle.style.height = '5px';
+      handle.style.height = HS_RESIZE_PX + 'px';
       handle.style.cursor = 'row-resize';
     } else if (chatPosition === 'bottom') {
       handle.style.top = cTop + 'px';
       handle.style.left = cLeft + 'px';
       handle.style.width = cWidth + 'px';
-      handle.style.height = '5px';
+      handle.style.height = HS_RESIZE_PX + 'px';
       handle.style.cursor = 'row-resize';
     }
   }
@@ -34162,225 +34477,598 @@ const STORAGE_KEY = 'heatsync_multichat';
     rebuildKeywordRegex();
   }
 
+  // ─── settings sub-tab helpers ────────────────────────────────────────────
+
+  // SVG icons for the six settings sub-tabs (16x16 stroke, no fill)
+  const _SET_SUBTAB_ICONS = {
+    display: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1" y="2" width="14" height="10" rx="1"/><line x1="5" y1="14" x2="11" y2="14"/><line x1="8" y1="12" x2="8" y2="14"/></svg>',
+    chat:    '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 3a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1H6l-3 2v-2H3a1 1 0 0 1-1-1V3z"/></svg>',
+    notifs:  '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 2a5 5 0 0 1 5 5v3l1 1H2l1-1V7a5 5 0 0 1 5-5z"/><line x1="6.5" y1="13" x2="9.5" y2="13"/></svg>',
+    mod:     '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 1.5l5 2.5v4c0 3-2.5 5.5-5 6.5C5.5 13.5 3 11 3 8V4l5-2.5z"/></svg>',
+    filters: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 4h12M4 8h8M6 12h4"/></svg>',
+    system:  '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="2.5"/><path d="M8 1v2M8 13v2M1 8h2M13 8h2M3.05 3.05l1.42 1.42M11.53 11.53l1.42 1.42M3.05 12.95l1.42-1.42M11.53 4.47l1.42-1.42"/></svg>',
+  };
+  const _SET_SUBTAB_ORDER = ['display', 'chat', 'notifs', 'mod', 'filters', 'system'];
+
+  function _renderSetSubtabBar() {
+    return '<div class="hs-mc-set-subtabs">' +
+      _SET_SUBTAB_ORDER.map(function(id) {
+        return '<button class="hs-mc-set-subtab' + (_settingsSubtab === id ? ' active' : '') + '" data-set-subtab="' + id + '" title="' + id + '">' +
+          _SET_SUBTAB_ICONS[id] + '</button>';
+      }).join('') +
+    '</div>';
+  }
+
+  function _renderUiToggleRow(settingKey, label, tip, currentVal) {
+    var tipAttr = tip ? ' data-tip="' + escapeHtml(tip) + '"' : '';
+    return '<div class="hs-mc-setting-row">' +
+      '<button class="hs-mc-toggle-pill' + (currentVal ? ' active' : '') + '" data-setting="' + settingKey + '"><span class="hs-mc-toggle-knob"></span></button>' +
+      '<span class="hs-mc-setting-label"' + tipAttr + '>' + escapeHtml(label) + '</span>' +
+    '</div>';
+  }
+
+  function _renderDisplaySubtab(ui) {
+    var fam = (ui && ui.fontFamily) || 'CozetteVector';
+    var fsz = (ui && ui.fontSize) || '13';
+    var fcust = (ui && ui.customFontName) || '';
+    var showCustom = fam === 'custom';
+    return '<div class="hs-mc-settings-group">' +
+      '<div class="hs-mc-settings-group-title">font</div>' +
+      '<div class="hs-mc-setting-row hs-mc-setting-row-split">' +
+        '<span class="hs-mc-setting-label" data-tip="multichat font family">font family</span>' +
+        '<select class="hs-mc-locale-select" data-setting="fontfamily" style="max-width:55%">' +
+          '<option value="CozetteVector">CozetteVector (13px)</option>' +
+          '<option value="GohuFont">GohuFont (14px)</option>' +
+          '<option value="monospace">system monospace</option>' +
+          '<option value="twitch">Twitch default (Inter)</option>' +
+          '<option value="custom">custom...</option>' +
+        '</select>' +
+      '</div>' +
+      (showCustom ? '<div class="hs-mc-setting-row hs-mc-setting-row-split">' +
+        '<span class="hs-mc-setting-label">custom font name</span>' +
+        '<input class="hs-mc-set-text-input" data-setting="customfontname" type="text" placeholder="font name" value="' + escapeHtml(fcust) + '" style="width:140px">' +
+      '</div>' : '') +
+      '<div class="hs-mc-setting-row hs-mc-setting-row-split">' +
+        '<span class="hs-mc-setting-label" data-tip="base font size for multichat panel">font size</span>' +
+        '<select class="hs-mc-locale-select" data-setting="fontsize" style="max-width:35%">' +
+          '<option value="13">13px</option>' +
+          '<option value="14">14px</option>' +
+          '<option value="16">16px</option>' +
+        '</select>' +
+      '</div>' +
+    '</div>' +
+    '<div class="hs-mc-settings-group">' +
+      '<div class="hs-mc-settings-group-title">' + t('mc_settings_display') + '</div>' +
+      '<div class="hs-mc-setting-row hs-mc-setting-row-split">' +
+        '<span class="hs-mc-setting-label" data-tip="' + t('mc_settings_emote_size_desc') + '">' + t('mc_settings_emote_size') + '</span>' +
+        '<div class="hs-mc-size-btns">' +
+          '<button class="hs-mc-size-btn ' + (emoteSize === 1 ? 'active' : '') + '" data-size="1">1x</button>' +
+          '<button class="hs-mc-size-btn ' + (emoteSize === 2 ? 'active' : '') + '" data-size="2">2x</button>' +
+          '<button class="hs-mc-size-btn ' + (emoteSize === 4 ? 'active' : '') + '" data-size="4">4x</button>' +
+        '</div>' +
+      '</div>' +
+      '<div class="hs-mc-setting-row hs-mc-setting-row-split">' +
+        '<span class="hs-mc-setting-label" data-tip="emoji size -- 1x native, 2x (default)/4x scale unicode emoji">emoji size</span>' +
+        '<div class="hs-mc-size-btns">' +
+          '<button class="hs-mc-size-btn ' + (emojiSize === 1 ? 'active' : '') + '" data-emoji-size="1">1x</button>' +
+          '<button class="hs-mc-size-btn ' + (emojiSize === 2 ? 'active' : '') + '" data-emoji-size="2">2x</button>' +
+          '<button class="hs-mc-size-btn ' + (emojiSize === 4 ? 'active' : '') + '" data-emoji-size="4">4x</button>' +
+        '</div>' +
+      '</div>' +
+      _renderUiToggleRow('timestamps', t('mc_settings_timestamps'), t('mc_settings_timestamps_desc'), timestampsEnabled) +
+      _renderUiToggleRow('avatars', 'pfps', t('mc_settings_avatars_desc'), avatarsEnabled) +
+      _renderUiToggleRow('zebra', t('mc_settings_zebra'), t('mc_settings_zebra_desc'), zebraEnabled) +
+      _renderUiToggleRow('readablenames', 'readable names', "brighten dim username colors so they're readable on the black bg", readableNamesEnabled) +
+      _renderUiToggleRow('firstchatter', t('mc_settings_first_chatter'), t('mc_settings_first_chatter_desc'), firstChatterGlow) +
+      _renderUiToggleRow('autohide', t('mc_settings_auto_hide'), t('mc_settings_auto_hide_desc'), autoHideInput) +
+      _renderUiToggleRow('hidechatheader', 'hide header', 'hide chat room header bar', true) +
+      _renderUiToggleRow('compactchatinput', 'compact input', 'minimize chat input buttons', true) +
+      _renderUiToggleRow('hidestreamtitle', 'hide stream title', 'hide the stream title above chat', false) +
+      _renderUiToggleRow('hideviewercount', 'hide viewer count', 'hide viewer count display', false) +
+      _renderUiToggleRow('showcosmetics', 'cosmetics', '7TV/BTTV/FFZ paints and badges', true) +
+      _renderUiToggleRow('showplatformbadges', 'platform badges', '[T] [K] [Y] labels on messages', platformBadgesEnabled) +
+    '</div>';
+  }
+
+  function _renderChatSubtab(ui) {
+    return '<div class="hs-mc-settings-group">' +
+      '<div class="hs-mc-settings-group-title">input</div>' +
+      _renderUiToggleRow('wysiwyg', t('mc_settings_input_preview'), t('mc_settings_input_preview_desc'), wysiwygEnabled) +
+      _renderUiToggleRow('emotewysiwyg', 'wysiwyg emotes', 'show emote images in chat input while typing', true) +
+      _renderUiToggleRow('emotespaceafter', 'space after emote', 'auto-insert space after tab completion', true) +
+      _renderUiToggleRow('emoteplaceholdermode', 'placeholder mode', 'show colored boxes instead of emote images', false) +
+      _renderUiToggleRow('vi', t('mc_settings_vi_mode'), t('mc_settings_vi_mode_desc'), viModeEnabled) +
+    '</div>' +
+    '<div class="hs-mc-settings-group">' +
+      '<div class="hs-mc-settings-group-title">messages</div>' +
+      _renderUiToggleRow('links', t('mc_settings_clickable_links'), t('mc_settings_clickable_links_desc'), linksEnabled) +
+      _renderUiToggleRow('linkpreviews', t('mc_settings_link_previews'), t('mc_settings_link_previews_desc'), linkPreviewsEnabled) +
+      _renderUiToggleRow('emotemodifiers', 'FFZ emote modifiers', 'w! h! ffzX ffzY c!#hex chains on the previous emote', true) +
+      _renderUiToggleRow('emoterightclickmenu', 'emote right-click menu', 'right-click an emote for view-on/copy-name/copy-url/block', true) +
+      _renderUiToggleRow('usercolors', 'per-user color overrides', 'right-click a username in chat to set its display color', true) +
+      _renderUiToggleRow('highlightmentions', 'highlight mentions', 'red background on chat lines mentioning you', true) +
+      _renderUiToggleRow('showclearedmessages', 'show deleted messages', 'keep timed-out/deleted lines visible (dimmed) instead of hiding', false) +
+      _renderUiToggleRow('showpredictionschip', 'show predictions/polls chip', 'live overlay when a prediction or poll is active', true) +
+      _renderUiToggleRow('anonchat', 'anonymous chat', 'suppress presence/typing-indicator outbound traffic', false) +
+      _renderUiToggleRow('autoclaim', t('mc_settings_auto_claim'), t('mc_settings_auto_claim_desc'), autoClaimPoints) +
+      _renderUiToggleRow('dimtimeouts', t('mc_settings_dim_timeouts'), t('mc_settings_dim_timeouts_desc'), dimTimeouts) +
+      '<div class="hs-mc-setting-row hs-mc-setting-row-block">' +
+        '<span class="hs-mc-setting-label" data-tip="' + t('mc_settings_keyword_highlights_desc') + '">' + t('mc_settings_keyword_highlights') + '</span>' +
+        '<textarea class="hs-mc-setting-textarea" data-setting="keywordhighlights" placeholder="' + t('mc_settings_keyword_highlights_placeholder') + '" rows="3">' + escapeHtml(keywordHighlights) + '</textarea>' +
+      '</div>' +
+    '</div>';
+  }
+
+  function _renderNotifsSubtab() {
+    return '<div class="hs-mc-settings-group">' +
+      '<div class="hs-mc-settings-group-title">' + t('mc_settings_inline_notifs') + '</div>' +
+      Object.entries(INLINE_NOTIF_TYPES).map(function(entry) {
+        var key = entry[0]; var def = entry[1];
+        return '<div class="hs-mc-setting-row">' +
+          '<button class="hs-mc-toggle-pill' + (inlineNotifs[key] ? ' active' : '') + '" data-setting="notif_' + key + '"><span class="hs-mc-toggle-knob"></span></button>' +
+          '<span class="hs-mc-setting-label" data-tip="' + escapeHtml(def.desc) + '"><span style="color:' + def.color + '">' + def.tag + '</span> ' + escapeHtml(def.label.replace(def.tag, '').trim()) + '</span>' +
+        '</div>';
+      }).join('') +
+    '</div>' +
+    '<div class="hs-mc-settings-group">' +
+      '<div class="hs-mc-settings-group-title">' + t('mc_settings_twitch_events') + '</div>' +
+      Object.entries(HERMES_EVENT_TYPES).map(function(entry) {
+        var key = entry[0]; var def = entry[1];
+        return '<div class="hs-mc-setting-row">' +
+          '<button class="hs-mc-toggle-pill' + (hermesToggles[key] ? ' active' : '') + '" data-setting="hermes_' + key + '"><span class="hs-mc-toggle-knob"></span></button>' +
+          '<span class="hs-mc-setting-label" data-tip="' + escapeHtml(def.desc) + '"><span style="color:' + def.color + '">◆</span> ' + escapeHtml(def.label) + '</span>' +
+        '</div>';
+      }).join('') +
+    '</div>' +
+    '<div class="hs-mc-settings-group">' +
+      '<div class="hs-mc-settings-group-title">browser</div>' +
+      '<div class="hs-mc-setting-row">' +
+        '<button class="hs-mc-toggle-pill" data-storage-key="hs_notifications"><span class="hs-mc-toggle-knob"></span></button>' +
+        '<span class="hs-mc-setting-label" data-tip="show a desktop notification when someone @s you">browser notification on mention</span>' +
+      '</div>' +
+    '</div>';
+  }
+
+  function _renderModSubtab() {
+    return '<div class="hs-mc-settings-group">' +
+      '<div class="hs-mc-settings-group-title">mod toolbar -- hover actions on chat rows when you mod the channel</div>' +
+      Object.entries(MOD_BUTTON_CATALOG).map(function(entry) {
+        var id = entry[0]; var def = entry[1];
+        var enabled = modToolbarButtons.includes(id);
+        return '<div class="hs-mc-setting-row">' +
+          '<button class="hs-mc-toggle-pill' + (enabled ? ' active' : '') + '" data-mod-btn="' + id + '"><span class="hs-mc-toggle-knob"></span></button>' +
+          '<span class="hs-mc-setting-label"><span style="font-family:monospace;color:#ff8700;margin-right:6px;min-width:34px;display:inline-block">' + def.label + '</span>' + escapeHtml(def.title) + '</span>' +
+        '</div>';
+      }).join('') +
+    '</div>' +
+    '<div class="hs-mc-settings-group">' +
+      '<div class="hs-mc-settings-group-title">automod</div>' +
+      '<div class="hs-mc-setting-row">' +
+        '<button class="hs-mc-toggle-pill" data-uisetting="automodAllCaps"><span class="hs-mc-toggle-knob"></span></button>' +
+        '<span class="hs-mc-setting-label" data-tip="hide messages over 10 chars that are mostly uppercase">hide all-caps spam</span>' +
+      '</div>' +
+      '<div class="hs-mc-setting-row hs-mc-setting-row-block">' +
+        '<span class="hs-mc-setting-label" data-tip="one pattern per line, case-insensitive -- matching messages get hidden">filter regex</span>' +
+        '<textarea class="hs-mc-setting-textarea" data-setting="automodregex" placeholder="bit\\.ly\nfree\\s+v[\\-]?bucks" rows="3"></textarea>' +
+      '</div>' +
+    '</div>';
+  }
+
+  var _SERVER_FILTER_DEFS = [
+    { key: 'allow_nsfw_text',       label: 'nsfw text',        desc: 'show sexually explicit text in chat' },
+    { key: 'allow_nsfw_images',     label: 'nsfw images',      desc: 'show adult image emotes' },
+    { key: 'allow_nsfw_videos',     label: 'nsfw videos',      desc: 'show adult video clips' },
+    { key: 'allow_nsfw_emotes',     label: 'nsfw emotes',      desc: 'render emotes flagged as nsfw' },
+    { key: 'allow_nsfw_usernames',  label: 'nsfw usernames',   desc: 'show usernames flagged as inappropriate' },
+    { key: 'allow_violent_content', label: 'violent content',  desc: 'show messages containing violent content' },
+    { key: 'allow_hate_speech',     label: 'hate speech',      desc: 'show messages flagged for hate speech' },
+    { key: 'allow_weapons',         label: 'weapons',          desc: 'show content referencing weapons' },
+    { key: 'allow_drugs',           label: 'drugs',            desc: 'show content referencing drugs' },
+    { key: 'show_spam',             label: 'spam',             desc: 'show messages detected as spam' },
+    { key: 'show_hidden_messages',  label: 'hidden messages',  desc: 'show server-hidden messages' },
+  ];
+
+  function _renderFiltersSubtab() {
+    var sv = _serverSettings;
+    return '<div class="hs-mc-settings-group">' +
+      '<div class="hs-mc-settings-group-title">content filters (server-synced)</div>' +
+      '<div class="hs-mc-set-status" id="hs-set-srv-status"></div>' +
+      _SERVER_FILTER_DEFS.map(function(def) {
+        var on = sv ? !!sv[def.key] : false;
+        return '<div class="hs-mc-setting-row">' +
+          '<button class="hs-mc-toggle-pill' + (on ? ' active' : '') + '" data-server-setting="' + def.key + '"' + (sv ? '' : ' disabled') + '><span class="hs-mc-toggle-knob"></span></button>' +
+          '<span class="hs-mc-setting-label" data-tip="' + escapeHtml(def.desc) + '">' + escapeHtml(def.label) + '</span>' +
+        '</div>';
+      }).join('') +
+    '</div>';
+  }
+
+  function _renderSystemSubtab(ui) {
+    var dbg = !!(ui && ui.debugLogging);
+    var crash = !!(ui && ui.crashTelemetry);
+    return '<div class="hs-mc-settings-group">' +
+      '<div class="hs-mc-settings-group-title">tabs</div>' +
+      HIDABLE_TABS.map(function(id) {
+        return '<div class="hs-mc-setting-row">' +
+          '<button class="hs-mc-toggle-pill' + (!hiddenTabs.has(id) ? ' active' : '') + '" data-setting="hidetab_' + id + '"><span class="hs-mc-toggle-knob"></span></button>' +
+          '<span class="hs-mc-setting-label">' + t('mc_tab_' + id) + '</span>' +
+        '</div>';
+      }).join('') +
+    '</div>' +
+    '<div class="hs-mc-settings-group">' +
+      '<div class="hs-mc-settings-group-title">language</div>' +
+      '<div class="hs-mc-setting-row hs-mc-setting-row-split">' +
+        '<span class="hs-mc-setting-label">interface language</span>' +
+        '<select class="hs-mc-locale-select" data-setting="locale">' +
+          Object.entries(I18N_LOCALE_NAMES).map(function(e2) {
+            return '<option value="' + escapeHtml(e2[0]) + '"' + (e2[0] === getI18nLocale() ? ' selected' : '') + '>' + escapeHtml(e2[1]) + '</option>';
+          }).join('') +
+        '</select>' +
+      '</div>' +
+    '</div>' +
+    '<div class="hs-mc-settings-group">' +
+      '<div class="hs-mc-settings-group-title">' + t('mc_settings_muted_users') + '</div>' +
+      (mutedUsers.size === 0
+        ? '<div class="hs-mc-setting-row" style="color:#808080;font-size:13px">' + t('mc_settings_no_muted') + '</div>'
+        : Array.from(mutedUsers).sort().map(function(u) {
+          return '<div class="hs-mc-setting-row hs-mc-setting-row-split">' +
+            '<span class="hs-mc-setting-label" style="font-size:13px">' + escapeHtml(u) + '</span>' +
+            '<button class="hs-mc-unmute-btn" data-username="' + escapeHtml(u) + '" style="background:none;border:1px solid #808080;color:#808080;font-size:13px;cursor:pointer;padding:1px 6px;line-height:1.4" title="' + t('mc_settings_unmute') + '">✕</button>' +
+          '</div>';
+        }).join('')
+      ) +
+    '</div>' +
+    '<div class="hs-mc-settings-group">' +
+      '<div class="hs-mc-settings-group-title">advanced</div>' +
+      '<div class="hs-mc-setting-row">' +
+        '<button class="hs-mc-toggle-pill' + (dbg ? ' active' : '') + '" data-uisetting="debugLogging"><span class="hs-mc-toggle-knob"></span></button>' +
+        '<span class="hs-mc-setting-label" data-tip="verbose console output, reload tab after toggle">debug logging</span>' +
+      '</div>' +
+      '<div class="hs-mc-setting-row">' +
+        '<button class="hs-mc-toggle-pill' + (crash ? ' active' : '') + '" data-uisetting="crashTelemetry"><span class="hs-mc-toggle-knob"></span></button>' +
+        '<span class="hs-mc-setting-label" data-tip="capture errors locally for diagnosis (never auto-uploaded)">crash telemetry</span>' +
+      '</div>' +
+      (crash ? '<div class="hs-mc-setting-row hs-mc-setting-row-block" id="hs-set-crashlog-row">' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;width:100%">' +
+          '<span class="hs-mc-setting-label">recent errors</span>' +
+          '<div style="display:flex;gap:4px">' +
+            '<button id="hs-set-crash-copy" style="background:#000;color:#fff;border:1px solid #808080;padding:2px 8px;font-size:11px;cursor:pointer;font-family:\'Liberation Mono\',monospace">copy</button>' +
+            '<button id="hs-set-crash-clear" style="background:#000;color:#fff;border:1px solid #808080;padding:2px 8px;font-size:11px;cursor:pointer;font-family:\'Liberation Mono\',monospace">clear</button>' +
+          '</div>' +
+        '</div>' +
+        '<pre id="hs-set-crash-pre" class="hs-mc-set-crash-pre">(loading...)</pre>' +
+      '</div>' : '') +
+    '</div>' +
+    '<div class="hs-mc-settings-group">' +
+      '<div class="hs-mc-setting-row" style="justify-content:flex-end">' +
+        '<button class="hs-mc-defaults-btn" style="background:#808080;border:2px outset #fff;padding:2px 10px;font-size:13px;font-weight:bold;cursor:pointer;font-family:\'Liberation Mono\',monospace;color:#000;box-shadow:1px 1px 0 #000">default</button>' +
+      '</div>' +
+    '</div>';
+  }
+
+  // Lazy-load server content filters; only fetches once per session
+  async function _loadServerFilters() {
+    var statusEl = document.getElementById('hs-set-srv-status');
+    if (_serverSettings !== null) {
+      // Already loaded -- reflect current state in DOM
+      if (statusEl) { statusEl.textContent = ''; statusEl.className = 'hs-mc-set-status'; }
+      for (var i = 0; i < _SERVER_FILTER_DEFS.length; i++) {
+        var def = _SERVER_FILTER_DEFS[i];
+        var pill = document.querySelector('.hs-mc-toggle-pill[data-server-setting="' + def.key + '"]');
+        if (pill) {
+          pill.classList.toggle('active', !!_serverSettings[def.key]);
+          pill.removeAttribute('disabled');
+        }
+      }
+      return;
+    }
+    if (statusEl) { statusEl.textContent = 'loading…'; statusEl.className = 'hs-mc-set-status'; }
+    try {
+      var resp = await safeSendMessage({ type: 'api_fetch', path: '/api/user/settings', method: 'GET', auth: true });
+      if (!resp || !resp.ok) {
+        var st = resp && resp.status;
+        if (st === 401 || st === 403) {
+          if (statusEl) { statusEl.textContent = 'not logged in — sign in at heatsync.org'; statusEl.className = 'hs-mc-set-status'; }
+        } else {
+          if (statusEl) { statusEl.textContent = 'failed to load: ' + ((resp && resp.error) || 'unknown'); statusEl.className = 'hs-mc-set-status err'; }
+        }
+        return;
+      }
+      _serverSettings = (resp.data && resp.data.settings) || resp.settings || null;
+      if (!_serverSettings) {
+        if (statusEl) { statusEl.textContent = 'no settings data returned'; statusEl.className = 'hs-mc-set-status err'; }
+        return;
+      }
+      for (var j = 0; j < _SERVER_FILTER_DEFS.length; j++) {
+        var def2 = _SERVER_FILTER_DEFS[j];
+        var pill2 = document.querySelector('.hs-mc-toggle-pill[data-server-setting="' + def2.key + '"]');
+        if (pill2) {
+          pill2.classList.toggle('active', !!_serverSettings[def2.key]);
+          pill2.removeAttribute('disabled');
+        }
+      }
+      if (statusEl) { statusEl.textContent = ''; statusEl.className = 'hs-mc-set-status'; }
+    } catch (err) {
+      if (statusEl) { statusEl.textContent = 'not logged in — sign in at heatsync.org'; statusEl.className = 'hs-mc-set-status'; }
+    }
+  }
+
+  // Load crash log into the system sub-tab pre element
+  async function _loadCrashLog() {
+    var pre = document.getElementById('hs-set-crash-pre');
+    if (!pre) return;
+    try {
+      var resp = await chrome.runtime.sendMessage({ type: 'get_crash_log' });
+      var log = (resp && resp.log) || [];
+      if (log.length === 0) { pre.textContent = '(no errors recorded)'; return; }
+      function fmtTs(ts) {
+        var d = new Date(ts);
+        return d.toISOString().replace('T', ' ').slice(0, 19);
+      }
+      pre.textContent = log.slice().reverse().map(function(entry) {
+        var cnt = entry.count > 1 ? ' \xD7' + entry.count : '';
+        return '[' + fmtTs(entry.ts) + '] ' + entry.source + cnt + ': ' + entry.message + '\n' + (entry.stack || '') + '\n';
+      }).join('\n');
+    } catch (err) {
+      pre.textContent = '(unable to read log)';
+    }
+  }
+
+  // Populate hs_notifications toggle state (async storage read)
+  async function _populateNotifStorageToggle() {
+    try {
+      var stored = await chrome.storage.local.get(['hs_notifications']);
+      var pill = document.querySelector('.hs-mc-toggle-pill[data-storage-key="hs_notifications"]');
+      if (pill) pill.classList.toggle('active', !!stored.hs_notifications);
+    } catch (_e) {}
+  }
+
   function renderSettingsTab() {
-    const msgsEl = document.getElementById('hs-mc-messages');
+    var msgsEl = document.getElementById('hs-mc-messages');
     if (!msgsEl) return;
 
-    // Tooltip descriptions for settings — all static strings, no user input
-    const settingTips = {
-      emoteSize: t('mc_settings_emote_size_desc'),
-      wysiwyg: t('mc_settings_input_preview_desc'),
-      links: t('mc_settings_clickable_links_desc'),
-      linkPreviews: t('mc_settings_link_previews_desc'),
-      vi: t('mc_settings_vi_mode_desc'),
-      zebra: t('mc_settings_zebra_desc'),
-      autohide: t('mc_settings_auto_hide_desc'),
-      timestamps: t('mc_settings_timestamps_desc'),
-      avatars: t('mc_settings_avatars_desc'),
+    _clearMessageIndices();
+
+    var subtabContent = '';
+    if (_settingsSubtab === 'display') {
+      subtabContent = _renderDisplaySubtab(null);
+    } else if (_settingsSubtab === 'chat') {
+      subtabContent = _renderChatSubtab(null);
+    } else if (_settingsSubtab === 'notifs') {
+      subtabContent = _renderNotifsSubtab();
+    } else if (_settingsSubtab === 'mod') {
+      subtabContent = _renderModSubtab();
+    } else if (_settingsSubtab === 'filters') {
+      subtabContent = _renderFiltersSubtab();
+    } else if (_settingsSubtab === 'system') {
+      subtabContent = _renderSystemSubtab(null);
     }
-    _clearMessageIndices()
-    // Static settings HTML — no user input, all tooltip values are hardcoded strings above
-    msgsEl.innerHTML = `
-      <div class="hs-mc-settings-panel">
-        <div class="hs-mc-settings-group">
-          <div class="hs-mc-settings-group-title">${t('mc_settings_display')}</div>
-          <div class="hs-mc-setting-row hs-mc-setting-row-split">
-            <span class="hs-mc-setting-label" data-tip="${settingTips.emoteSize}">${t('mc_settings_emote_size')}</span>
-            <div class="hs-mc-size-btns">
-              <button class="hs-mc-size-btn ${emoteSize === 1 ? 'active' : ''}" data-size="1">1x</button>
-              <button class="hs-mc-size-btn ${emoteSize === 2 ? 'active' : ''}" data-size="2">2x</button>
-              <button class="hs-mc-size-btn ${emoteSize === 4 ? 'active' : ''}" data-size="4">4x</button>
-            </div>
-          </div>
-          <div class="hs-mc-setting-row hs-mc-setting-row-split">
-            <span class="hs-mc-setting-label" data-tip="emoji size — 1x native, 2x (default)/4x scale unicode emoji">emoji size</span>
-            <div class="hs-mc-size-btns">
-              <button class="hs-mc-size-btn ${emojiSize === 1 ? 'active' : ''}" data-emoji-size="1">1x</button>
-              <button class="hs-mc-size-btn ${emojiSize === 2 ? 'active' : ''}" data-emoji-size="2">2x</button>
-              <button class="hs-mc-size-btn ${emojiSize === 4 ? 'active' : ''}" data-emoji-size="4">4x</button>
-            </div>
-          </div>
-          <div class="hs-mc-setting-row">
-            <button class="hs-mc-toggle-pill ${wysiwygEnabled ? 'active' : ''}" data-setting="wysiwyg"><span class="hs-mc-toggle-knob"></span></button>
-            <span class="hs-mc-setting-label" data-tip="${settingTips.wysiwyg}">${t('mc_settings_input_preview')}</span>
-          </div>
-          <div class="hs-mc-setting-row">
-            <button class="hs-mc-toggle-pill ${linksEnabled ? 'active' : ''}" data-setting="links"><span class="hs-mc-toggle-knob"></span></button>
-            <span class="hs-mc-setting-label" data-tip="${settingTips.links}">${t('mc_settings_clickable_links')}</span>
-          </div>
-          <div class="hs-mc-setting-row">
-            <button class="hs-mc-toggle-pill ${linkPreviewsEnabled ? 'active' : ''}" data-setting="linkpreviews"><span class="hs-mc-toggle-knob"></span></button>
-            <span class="hs-mc-setting-label" data-tip="${settingTips.linkPreviews}">${t('mc_settings_link_previews')}</span>
-          </div>
-          <div class="hs-mc-setting-row">
-            <button class="hs-mc-toggle-pill ${viModeEnabled ? 'active' : ''}" data-setting="vi"><span class="hs-mc-toggle-knob"></span></button>
-            <span class="hs-mc-setting-label" data-tip="${settingTips.vi}">${t('mc_settings_vi_mode')}</span>
-          </div>
-          <div class="hs-mc-setting-row">
-            <button class="hs-mc-toggle-pill ${zebraEnabled ? 'active' : ''}" data-setting="zebra"><span class="hs-mc-toggle-knob"></span></button>
-            <span class="hs-mc-setting-label" data-tip="${settingTips.zebra}">${t('mc_settings_zebra')}</span>
-          </div>
-          <div class="hs-mc-setting-row">
-            <button class="hs-mc-toggle-pill ${autoHideInput ? 'active' : ''}" data-setting="autohide"><span class="hs-mc-toggle-knob"></span></button>
-            <span class="hs-mc-setting-label" data-tip="${settingTips.autohide}">${t('mc_settings_auto_hide')}</span>
-          </div>
-          <div class="hs-mc-setting-row">
-            <button class="hs-mc-toggle-pill ${timestampsEnabled ? 'active' : ''}" data-setting="timestamps"><span class="hs-mc-toggle-knob"></span></button>
-            <span class="hs-mc-setting-label" data-tip="${settingTips.timestamps}">${t('mc_settings_timestamps')}</span>
-          </div>
-          <div class="hs-mc-setting-row">
-            <button class="hs-mc-toggle-pill ${avatarsEnabled ? 'active' : ''}" data-setting="avatars"><span class="hs-mc-toggle-knob"></span></button>
-            <span class="hs-mc-setting-label" data-tip="${settingTips.avatars}">pfps</span>
-          </div>
-          <div class="hs-mc-setting-row">
-            <button class="hs-mc-toggle-pill ${firstChatterGlow ? 'active' : ''}" data-setting="firstchatter"><span class="hs-mc-toggle-knob"></span></button>
-            <span class="hs-mc-setting-label" data-tip="${t('mc_settings_first_chatter_desc')}">${t('mc_settings_first_chatter')}</span>
-          </div>
-          <div class="hs-mc-setting-row hs-mc-setting-row-block">
-            <span class="hs-mc-setting-label" data-tip="${t('mc_settings_keyword_highlights_desc')}">${t('mc_settings_keyword_highlights')}</span>
-            <textarea class="hs-mc-setting-textarea" data-setting="keywordhighlights" placeholder="${t('mc_settings_keyword_highlights_placeholder')}" rows="3">${escapeHtml(keywordHighlights)}</textarea>
-          </div>
-        </div>
-        <div class="hs-mc-settings-group">
-          <div class="hs-mc-settings-group-title">${t('mc_settings_inline_notifs')}</div>
-          ${Object.entries(INLINE_NOTIF_TYPES).map(([key, def]) => `
-          <div class="hs-mc-setting-row">
-            <button class="hs-mc-toggle-pill ${inlineNotifs[key] ? 'active' : ''}" data-setting="notif_${key}"><span class="hs-mc-toggle-knob"></span></button>
-            <span class="hs-mc-setting-label" data-tip="${escapeHtml(def.desc)}"><span style="color:${def.color}">${def.tag}</span> ${escapeHtml(def.label.replace(def.tag, '').trim())}</span>
-          </div>`).join('')}
-        </div>
-        <div class="hs-mc-settings-group">
-          <div class="hs-mc-settings-group-title">${t('mc_settings_twitch_events')}</div>
-          ${Object.entries(HERMES_EVENT_TYPES).map(([key, def]) => `
-          <div class="hs-mc-setting-row">
-            <button class="hs-mc-toggle-pill ${hermesToggles[key] ? 'active' : ''}" data-setting="hermes_${key}"><span class="hs-mc-toggle-knob"></span></button>
-            <span class="hs-mc-setting-label" data-tip="${escapeHtml(def.desc)}"><span style="color:${def.color}">\u25C6</span> ${escapeHtml(def.label)}</span>
-          </div>`).join('')}
-        </div>
-        <div class="hs-mc-settings-group">
-          <div class="hs-mc-settings-group-title">mod toolbar — hover actions on chat rows when you mod the channel</div>
-          ${Object.entries(MOD_BUTTON_CATALOG).map(([id, def]) => {
-            const enabled = modToolbarButtons.includes(id)
-            return `<div class="hs-mc-setting-row">
-              <button class="hs-mc-toggle-pill ${enabled ? 'active' : ''}" data-mod-btn="${id}"><span class="hs-mc-toggle-knob"></span></button>
-              <span class="hs-mc-setting-label"><span style="font-family:monospace;color:#ff8700;margin-right:6px;min-width:34px;display:inline-block">${def.label}</span>${escapeHtml(def.title)}</span>
-            </div>`
-          }).join('')}
-        </div>
-        <div class="hs-mc-settings-group">
-          <div class="hs-mc-settings-group-title">${t('mc_settings_features')}</div>
-          <div class="hs-mc-setting-row">
-            <button class="hs-mc-toggle-pill ${autoClaimPoints ? 'active' : ''}" data-setting="autoclaim"><span class="hs-mc-toggle-knob"></span></button>
-            <span class="hs-mc-setting-label" data-tip="${t('mc_settings_auto_claim_desc')}">${t('mc_settings_auto_claim')}</span>
-          </div>
-          <div class="hs-mc-setting-row">
-            <button class="hs-mc-toggle-pill ${dimTimeouts ? 'active' : ''}" data-setting="dimtimeouts"><span class="hs-mc-toggle-knob"></span></button>
-            <span class="hs-mc-setting-label" data-tip="${t('mc_settings_dim_timeouts_desc')}">${t('mc_settings_dim_timeouts')}</span>
-          </div>
-          <div class="hs-mc-setting-row">
-            <button class="hs-mc-toggle-pill ${readableNamesEnabled ? 'active' : ''}" data-setting="readablenames"><span class="hs-mc-toggle-knob"></span></button>
-            <span class="hs-mc-setting-label" data-tip="brighten dim username colors so they're readable on the black bg">readable names</span>
-          </div>
-        </div>
-        <div class="hs-mc-settings-group">
-          <div class="hs-mc-settings-group-title">tabs</div>
-          ${HIDABLE_TABS.map(id => `
-          <div class="hs-mc-setting-row">
-            <button class="hs-mc-toggle-pill ${!hiddenTabs.has(id) ? 'active' : ''}" data-setting="hidetab_${id}"><span class="hs-mc-toggle-knob"></span></button>
-            <span class="hs-mc-setting-label">${t('mc_tab_' + id)}</span>
-          </div>`).join('')}
-        </div>
-        <div class="hs-mc-settings-group">
-          <div class="hs-mc-settings-group-title">language</div>
-          <div class="hs-mc-setting-row hs-mc-setting-row-split">
-            <span class="hs-mc-setting-label">interface language</span>
-            <select class="hs-mc-locale-select" data-setting="locale">
-              ${Object.entries(I18N_LOCALE_NAMES).map(([code, name]) => `<option value="${escapeHtml(code)}" ${code === getI18nLocale() ? 'selected' : ''}>${escapeHtml(name)}</option>`).join('')}
-            </select>
-          </div>
-        </div>
-        <div class="hs-mc-settings-group">
-          <div class="hs-mc-settings-group-title">${t('mc_settings_muted_users')}</div>
-          ${mutedUsers.size === 0
-            ? `<div class="hs-mc-setting-row" style="color:#808080;font-size:13px">${t('mc_settings_no_muted')}</div>`
-            : [...mutedUsers].sort().map(u => `
-          <div class="hs-mc-setting-row hs-mc-setting-row-split">
-            <span class="hs-mc-setting-label" style="font-size:13px">${escapeHtml(u)}</span>
-            <button class="hs-mc-unmute-btn" data-username="${escapeHtml(u)}" style="background:none;border:1px solid #808080;color:#808080;font-size:13px;cursor:pointer;padding:1px 6px;line-height:1.4" title="${t('mc_settings_unmute')}">&#x2715;</button>
-          </div>`).join('')
-          }
-        </div>
-        <div class="hs-mc-settings-group">
-          <div class="hs-mc-setting-row" style="justify-content:flex-end">
-            <button class="hs-mc-defaults-btn" style="background:#808080;border:2px outset #fff;padding:2px 10px;font-size:13px;font-weight:bold;cursor:pointer;font-family:'Liberation Mono',monospace;color:#000;box-shadow:1px 1px 0 #000">default</button>
-          </div>
-        </div>
-      </div>
-    `;
+
+    // All values in the template are from module state or escapeHtml'd -- no raw user input
+    msgsEl.innerHTML =
+      '<div class="hs-mc-settings-panel">' +
+        _renderSetSubtabBar() +
+        '<div class="hs-mc-set-subtab-body">' +
+          subtabContent +
+        '</div>' +
+      '</div>';
+
+    // Async-populate settings that live in storage (options-only keys not already as module vars)
+    cachedUiSettings().then(function(stored) {
+      var ui = (stored && stored.ui_settings) || {};
+      if (_settingsSubtab === 'display') {
+        var famSel = msgsEl.querySelector('select[data-setting="fontfamily"]');
+        if (famSel) famSel.value = ui.fontFamily || 'CozetteVector';
+        var fszSel = msgsEl.querySelector('select[data-setting="fontsize"]');
+        if (fszSel) fszSel.value = ui.fontSize || '13';
+        var boolMap = {
+          hidechatheader:    ui.hideChatHeader !== undefined ? ui.hideChatHeader : true,
+          compactchatinput:  ui.compactChatInput !== undefined ? ui.compactChatInput : true,
+          hidestreamtitle:   !!ui.hideStreamTitle,
+          hideviewercount:   !!ui.hideViewerCount,
+          showcosmetics:     ui.showCosmetics !== undefined ? ui.showCosmetics : true,
+          showplatformbadges: platformBadgesEnabled,
+        };
+        Object.entries(boolMap).forEach(function(kv) {
+          var pill = msgsEl.querySelector('.hs-mc-toggle-pill[data-setting="' + kv[0] + '"]');
+          if (pill) pill.classList.toggle('active', !!kv[1]);
+        });
+      }
+      if (_settingsSubtab === 'chat') {
+        var chatBoolMap = {
+          emotewysiwyg:        ui.emoteWysiwyg !== undefined ? ui.emoteWysiwyg : true,
+          emotespaceafter:     ui.emoteSpaceAfter !== undefined ? ui.emoteSpaceAfter : true,
+          emoteplaceholdermode: !!ui.emotePlaceholderMode,
+          emotemodifiers:      ui.emoteModifiers !== undefined ? ui.emoteModifiers : true,
+          emoterightclickmenu: ui.emoteRightClickMenu !== undefined ? ui.emoteRightClickMenu : true,
+          usercolors:          ui.userColors !== undefined ? ui.userColors : true,
+          highlightmentions:   ui.highlightMentions !== undefined ? ui.highlightMentions : true,
+          showclearedmessages: !!ui.showClearedMessages,
+          showpredictionschip: ui.showPredictionsChip !== undefined ? ui.showPredictionsChip : true,
+          anonchat:            !!ui.anonChat,
+        };
+        Object.entries(chatBoolMap).forEach(function(kv) {
+          var pill = msgsEl.querySelector('.hs-mc-toggle-pill[data-setting="' + kv[0] + '"]');
+          if (pill) pill.classList.toggle('active', !!kv[1]);
+        });
+      }
+      if (_settingsSubtab === 'mod') {
+        var capsPill = msgsEl.querySelector('.hs-mc-toggle-pill[data-uisetting="automodAllCaps"]');
+        if (capsPill) capsPill.classList.toggle('active', !!ui.automodAllCaps);
+        var reTa = msgsEl.querySelector('textarea[data-setting="automodregex"]');
+        if (reTa) reTa.value = typeof ui.automodRegex === 'string' ? ui.automodRegex : '';
+      }
+      if (_settingsSubtab === 'system') {
+        var dbgPill = msgsEl.querySelector('.hs-mc-toggle-pill[data-uisetting="debugLogging"]');
+        if (dbgPill) dbgPill.classList.toggle('active', !!ui.debugLogging);
+        var crashPill = msgsEl.querySelector('.hs-mc-toggle-pill[data-uisetting="crashTelemetry"]');
+        if (crashPill) crashPill.classList.toggle('active', !!ui.crashTelemetry);
+        if (ui.crashTelemetry) _loadCrashLog();
+      }
+    }).catch(function() {});
+
+    if (_settingsSubtab === 'notifs') _populateNotifStorageToggle();
+    if (_settingsSubtab === 'filters') _loadServerFilters();
 
     // Wire up toggles via event delegation
     if (msgsEl._hsSettingsClick) msgsEl.removeEventListener('click', msgsEl._hsSettingsClick);
     msgsEl._hsSettingsClick = function settingsClick(e) {
-      // Mod toolbar button toggle — adds/removes id from modToolbarButtons array
-      const modBtnPill = e.target.closest('.hs-mc-toggle-pill[data-mod-btn]')
-      if (modBtnPill) {
-        const id = modBtnPill.dataset.modBtn
-        if (!MOD_BUTTON_CATALOG[id]) return
-        const enabling = !modBtnPill.classList.contains('active')
-        modBtnPill.classList.toggle('active', enabling)
-        if (enabling) {
-          if (!modToolbarButtons.includes(id)) modToolbarButtons.push(id)
-        } else {
-          modToolbarButtons = modToolbarButtons.filter(x => x !== id)
+      // Sub-tab navigation
+      var subtabBtn = e.target.closest('.hs-mc-set-subtab[data-set-subtab]');
+      if (subtabBtn) {
+        var next = subtabBtn.dataset.setSubtab;
+        if (next && next !== _settingsSubtab) {
+          _settingsSubtab = next;
+          renderSettingsTab();
         }
-        saveModToolbarButtons()
-        return
+        return;
       }
-      const toggle = e.target.closest('.hs-mc-toggle-pill[data-setting]');
+
+      // Mod toolbar button toggle
+      var modBtnPill = e.target.closest('.hs-mc-toggle-pill[data-mod-btn]');
+      if (modBtnPill) {
+        var id = modBtnPill.dataset.modBtn;
+        if (!MOD_BUTTON_CATALOG[id]) return;
+        var enabling = !modBtnPill.classList.contains('active');
+        modBtnPill.classList.toggle('active', enabling);
+        if (enabling) {
+          if (!modToolbarButtons.includes(id)) modToolbarButtons.push(id);
+        } else {
+          modToolbarButtons = modToolbarButtons.filter(function(x) { return x !== id; });
+        }
+        saveModToolbarButtons();
+        return;
+      }
+
+      // Server content filter toggles
+      var serverPill = e.target.closest('.hs-mc-toggle-pill[data-server-setting]');
+      if (serverPill) {
+        if (serverPill.disabled || serverPill.hasAttribute('disabled')) return;
+        var srvKey = serverPill.dataset.serverSetting;
+        if (!_serverSettings) return;
+        var srvNext = !_serverSettings[srvKey];
+        _serverSettings[srvKey] = srvNext;
+        serverPill.classList.toggle('active', srvNext);
+        serverPill.setAttribute('disabled', '');
+        var statusEl = document.getElementById('hs-set-srv-status');
+        if (statusEl) { statusEl.textContent = 'saving…'; statusEl.className = 'hs-mc-set-status'; }
+        safeSendMessage({ type: 'api_fetch', path: '/api/user/settings', method: 'PATCH', auth: true, body: { [srvKey]: srvNext } }).then(function(resp) {
+          if (!resp || !resp.ok) {
+            _serverSettings[srvKey] = !srvNext;
+            serverPill.classList.toggle('active', !srvNext);
+            if (statusEl) { statusEl.textContent = 'save failed: ' + ((resp && resp.error) || 'unknown'); statusEl.className = 'hs-mc-set-status err'; }
+          } else {
+            if (statusEl) { statusEl.textContent = 'saved'; statusEl.className = 'hs-mc-set-status ok'; }
+            cleanup.setTimeout(function() { if (statusEl) { statusEl.textContent = ''; statusEl.className = 'hs-mc-set-status'; } }, 1500);
+          }
+        }).catch(function(err) {
+          _serverSettings[srvKey] = !srvNext;
+          serverPill.classList.toggle('active', !srvNext);
+          if (statusEl) { statusEl.textContent = 'save failed: ' + ((err && err.message) || 'unknown'); statusEl.className = 'hs-mc-set-status err'; }
+        }).finally(function() {
+          serverPill.removeAttribute('disabled');
+        });
+        return;
+      }
+
+      // chrome.storage.local toggles (hs_notifications)
+      var storageKeyPill = e.target.closest('.hs-mc-toggle-pill[data-storage-key]');
+      if (storageKeyPill) {
+        var storKey = storageKeyPill.dataset.storageKey;
+        var storNext = !storageKeyPill.classList.contains('active');
+        storageKeyPill.classList.toggle('active', storNext);
+        chrome.storage.local.set({ [storKey]: storNext });
+        if (storNext && storKey === 'hs_notifications' && typeof Notification !== 'undefined' && Notification.permission === 'default') {
+          Notification.requestPermission().catch(function() {});
+        }
+        return;
+      }
+
+      // ui_settings generic boolean toggles (data-uisetting attribute)
+      var uiPill = e.target.closest('.hs-mc-toggle-pill[data-uisetting]');
+      if (uiPill) {
+        var uiKey = uiPill.dataset.uisetting;
+        var uiNext = !uiPill.classList.contains('active');
+        uiPill.classList.toggle('active', uiNext);
+        saveUiSetting(uiKey, uiNext);
+        if (uiKey === 'crashTelemetry' && uiNext) {
+          renderSettingsTab(); // re-render to show crash log block
+        }
+        return;
+      }
+
+      var toggle = e.target.closest('.hs-mc-toggle-pill[data-setting]');
       if (toggle) {
-        const setting = toggle.dataset.setting;
-        // Inline notification toggles (notif_op, notif_re, etc.)
+        var setting = toggle.dataset.setting;
+        // Inline notification toggles
         if (setting.startsWith('notif_')) {
-          const notifKey = setting.slice(6)
+          var notifKey = setting.slice(6);
           if (INLINE_NOTIF_TYPES[notifKey] !== undefined) {
-            inlineNotifs[notifKey] = !inlineNotifs[notifKey]
-            saveInlineNotifSettings()
-            toggle.classList.toggle('active')
+            inlineNotifs[notifKey] = !inlineNotifs[notifKey];
+            saveInlineNotifSettings();
+            toggle.classList.toggle('active');
           }
-          return
+          return;
         }
-        // Tab visibility toggles (hidetab_feed, hidetab_pinned, etc.) — pill ON = tab visible
+        // Tab visibility toggles
         if (setting.startsWith('hidetab_')) {
-          const tabId = setting.slice(8)
+          var tabId = setting.slice(8);
           if (HIDABLE_TABS.includes(tabId)) {
-            toggleHiddenTab(tabId)
-            toggle.classList.toggle('active')
+            toggleHiddenTab(tabId);
+            toggle.classList.toggle('active');
           }
-          return
+          return;
         }
-        // Hermes event toggles (hermes_raid, hermes_hype, etc.)
+        // Hermes event toggles
         if (setting.startsWith('hermes_')) {
-          const key = setting.slice(7)
-          if (HERMES_EVENT_TYPES[key] !== undefined) {
-            hermesToggles[key] = !hermesToggles[key]
-            saveHermesSettings()
-            toggle.classList.toggle('active')
+          var hermKey = setting.slice(7);
+          if (HERMES_EVENT_TYPES[hermKey] !== undefined) {
+            hermesToggles[hermKey] = !hermesToggles[hermKey];
+            saveHermesSettings();
+            toggle.classList.toggle('active');
           }
-          return
+          return;
         }
-        const toggleMap = {
-          wysiwyg: () => { wysiwygEnabled = !wysiwygEnabled; saveWysiwygSetting(); rebuildInput(); },
-          links: () => { linksEnabled = !linksEnabled; saveLinksSetting(); },
-          linkpreviews: () => { linkPreviewsEnabled = !linkPreviewsEnabled; saveLinkPreviewsSetting(); },
-          vi: () => { viModeEnabled = !viModeEnabled; saveViModeSetting(); },
-          zebra: () => { toggleZebra(); },
-          autohide: () => { toggleAutoHide(); },
-          timestamps: () => { toggleTimestamps(); },
-          avatars: () => { toggleAvatars(); },
-          autoclaim: () => { toggleAutoClaim(); },
-          dimtimeouts: () => { toggleDimTimeouts(); },
-          readablenames: () => { toggleReadableNames(); },
-          firstchatter: () => { toggleFirstChatterGlow(); },
+        // Options-only ui_settings boolean toggles (map data-setting kebab -> camelCase)
+        var uiSettingKeyMap = {
+          hidechatheader:       'hideChatHeader',
+          compactchatinput:     'compactChatInput',
+          hidestreamtitle:      'hideStreamTitle',
+          hideviewercount:      'hideViewerCount',
+          showcosmetics:        'showCosmetics',
+          showplatformbadges:   'showPlatformBadges',
+          emotewysiwyg:         'emoteWysiwyg',
+          emotespaceafter:      'emoteSpaceAfter',
+          emoteplaceholdermode: 'emotePlaceholderMode',
+          emotemodifiers:       'emoteModifiers',
+          emoterightclickmenu:  'emoteRightClickMenu',
+          usercolors:           'userColors',
+          highlightmentions:    'highlightMentions',
+          showclearedmessages:  'showClearedMessages',
+          showpredictionschip:  'showPredictionsChip',
+          anonchat:             'anonChat',
+        };
+        if (uiSettingKeyMap[setting]) {
+          var camelKey = uiSettingKeyMap[setting];
+          var optNext = !toggle.classList.contains('active');
+          toggle.classList.toggle('active', optNext);
+          if (setting === 'showplatformbadges') platformBadgesEnabled = optNext;
+          saveUiSetting(camelKey, optNext);
+          return;
+        }
+        var toggleMap = {
+          wysiwyg:      function() { wysiwygEnabled = !wysiwygEnabled; saveWysiwygSetting(); rebuildInput(); },
+          links:        function() { linksEnabled = !linksEnabled; saveLinksSetting(); },
+          linkpreviews: function() { linkPreviewsEnabled = !linkPreviewsEnabled; saveLinkPreviewsSetting(); },
+          vi:           function() { viModeEnabled = !viModeEnabled; saveViModeSetting(); },
+          zebra:        function() { toggleZebra(); },
+          autohide:     function() { toggleAutoHide(); },
+          timestamps:   function() { toggleTimestamps(); },
+          avatars:      function() { toggleAvatars(); },
+          autoclaim:    function() { toggleAutoClaim(); },
+          dimtimeouts:  function() { toggleDimTimeouts(); },
+          readablenames: function() { toggleReadableNames(); },
+          firstchatter: function() { toggleFirstChatterGlow(); },
         };
         if (toggleMap[setting]) {
           toggleMap[setting]();
@@ -34389,33 +35077,32 @@ const STORAGE_KEY = 'heatsync_multichat';
         return;
       }
 
-      const sizeBtn = e.target.closest('.hs-mc-size-btn[data-size]');
+      var sizeBtn = e.target.closest('.hs-mc-size-btn[data-size]');
       if (sizeBtn) {
-        const size = parseInt(sizeBtn.dataset.size);
-        if (size) {
-          setEmoteSize(size);
-          msgsEl.querySelectorAll('.hs-mc-size-btn[data-size]').forEach(b => b.classList.toggle('active', parseInt(b.dataset.size) === size));
+        var emSize = parseInt(sizeBtn.dataset.size);
+        if (emSize) {
+          setEmoteSize(emSize);
+          msgsEl.querySelectorAll('.hs-mc-size-btn[data-size]').forEach(function(b) { b.classList.toggle('active', parseInt(b.dataset.size) === emSize); });
         }
         return;
       }
 
-      const emojiSizeBtn = e.target.closest('.hs-mc-size-btn[data-emoji-size]');
+      var emojiSizeBtn = e.target.closest('.hs-mc-size-btn[data-emoji-size]');
       if (emojiSizeBtn) {
-        const size = parseInt(emojiSizeBtn.dataset.emojiSize);
-        if (size) {
-          setEmojiSize(size);
-          msgsEl.querySelectorAll('.hs-mc-size-btn[data-emoji-size]').forEach(b => b.classList.toggle('active', parseInt(b.dataset.emojiSize) === size));
+        var ejSize = parseInt(emojiSizeBtn.dataset.emojiSize);
+        if (ejSize) {
+          setEmojiSize(ejSize);
+          msgsEl.querySelectorAll('.hs-mc-size-btn[data-emoji-size]').forEach(function(b) { b.classList.toggle('active', parseInt(b.dataset.emojiSize) === ejSize); });
         }
         return;
       }
 
-      const unmuteBtn = e.target.closest('.hs-mc-unmute-btn[data-username]');
+      var unmuteBtn = e.target.closest('.hs-mc-unmute-btn[data-username]');
       if (unmuteBtn) {
-        const username = unmuteBtn.dataset.username;
+        var username = unmuteBtn.dataset.username;
         if (username) {
           mutedUsers.delete(username);
-          // Sync to background (broadcasts to all tabs + server)
-          safeSendMessage({ type: 'unmute_user', username });
+          safeSendMessage({ type: 'unmute_user', username: username });
           restoreMcUnmutedDom(username);
           renderMessages(currentTab);
           renderSettingsTab();
@@ -34423,7 +35110,24 @@ const STORAGE_KEY = 'heatsync_multichat';
         return;
       }
 
-      const defaultsBtn = e.target.closest('.hs-mc-defaults-btn');
+      // Crash log buttons
+      if (e.target.id === 'hs-set-crash-copy') {
+        var pre = document.getElementById('hs-set-crash-pre');
+        if (pre && pre.textContent) {
+          navigator.clipboard.writeText(pre.textContent).catch(function() {});
+          var copyBtn = e.target;
+          copyBtn.textContent = 'copied';
+          cleanup.setTimeout(function() { copyBtn.textContent = 'copy'; }, 1500);
+        }
+        return;
+      }
+      if (e.target.id === 'hs-set-crash-clear') {
+        chrome.runtime.sendMessage({ type: 'clear_crash_log' }).catch(function() {});
+        _loadCrashLog();
+        return;
+      }
+
+      var defaultsBtn = e.target.closest('.hs-mc-defaults-btn');
       if (defaultsBtn) {
         wysiwygEnabled = true;
         linksEnabled = true;
@@ -34443,57 +35147,111 @@ const STORAGE_KEY = 'heatsync_multichat';
         rebuildKeywordRegex();
         hiddenTabs = new Set(DEFAULT_HIDDEN_TABS);
         applyHiddenTabs();
-        for (const [k, v] of Object.entries(INLINE_NOTIF_TYPES)) inlineNotifs[k] = v.defaultOn;
-        for (const [k, v] of Object.entries(HERMES_EVENT_TYPES)) hermesToggles[k] = v.defaultOn;
-        const settings = {
+        for (var k in INLINE_NOTIF_TYPES) inlineNotifs[k] = INLINE_NOTIF_TYPES[k].defaultOn;
+        for (var k2 in HERMES_EVENT_TYPES) hermesToggles[k2] = HERMES_EVENT_TYPES[k2].defaultOn;
+        var defSettings = {
           wysiwygEnabled: true, linksEnabled: true, linkPreviewsEnabled: true, viMode: false,
           zebra: true, autoHideEmpty: false, timestamps: false,
           avatars: false, showPlatformBadges: true, showOfflineEvents: true,
           firstChatterGlow: true, keywordHighlights: '',
-          hiddenTabs: [...DEFAULT_HIDDEN_TABS],
-          inlineNotifs: { ...inlineNotifs }, hermesEvents: { ...hermesToggles },
+          hiddenTabs: Array.from(DEFAULT_HIDDEN_TABS),
+          inlineNotifs: Object.assign({}, inlineNotifs), hermesEvents: Object.assign({}, hermesToggles),
         };
         try {
-          for (const [k, v] of Object.entries(settings)) saveUiSetting(k, v);
+          Object.entries(defSettings).forEach(function(kv) { saveUiSetting(kv[0], kv[1]); });
           chrome.storage.local.set({ hs_auto_claim_points: true });
-        } catch {}
+        } catch (_e) {}
         renderSettingsTab();
         return;
       }
     };
     msgsEl.addEventListener('click', msgsEl._hsSettingsClick);
 
-    // Keyword highlights textarea — debounced save on input
-    if (!msgsEl._hsSettingsInput) {
-      msgsEl._hsSettingsInput = true;
-      let kwDebounce = null;
-      msgsEl.addEventListener('input', (e) => {
-        const ta = e.target.closest('textarea[data-setting="keywordhighlights"]');
-        if (!ta) return;
+    // Input handler — keyword highlights, automod regex, custom font name (all debounced)
+    if (msgsEl._hsSettingsInput) msgsEl.removeEventListener('input', msgsEl._hsSettingsInput);
+    var kwDebounce = null;
+    var automodDebounce = null;
+    var customFontDebounce = null;
+    msgsEl._hsSettingsInput = function settingsInput(e) {
+      var ta = e.target.closest('textarea[data-setting="keywordhighlights"]');
+      if (ta) {
         if (kwDebounce) cleanup.clearTimeout(kwDebounce);
-        kwDebounce = cleanup.setTimeout(() => {
+        kwDebounce = cleanup.setTimeout(function() {
           keywordHighlights = ta.value;
           saveKeywordHighlightsSetting();
           renderMessages(currentTab);
         }, 400);
-      });
-    }
+        return;
+      }
+      var automodTa = e.target.closest('textarea[data-setting="automodregex"]');
+      if (automodTa) {
+        if (automodDebounce) cleanup.clearTimeout(automodDebounce);
+        automodDebounce = cleanup.setTimeout(function() {
+          saveUiSetting('automodRegex', automodTa.value);
+        }, 400);
+        return;
+      }
+      var customFontInput = e.target.closest('input[data-setting="customfontname"]');
+      if (customFontInput) {
+        if (customFontDebounce) cleanup.clearTimeout(customFontDebounce);
+        customFontDebounce = cleanup.setTimeout(function() {
+          cachedUiSettings().then(function(stored) {
+            var ui = (stored && stored.ui_settings) || {};
+            var fam = ui.fontFamily || 'CozetteVector';
+            var fsz = ui.fontSize || '13';
+            var name = customFontInput.value;
+            saveUiSetting('customFontName', name);
+            applyFontSettings(fam, fsz, name);
+          }).catch(function() {});
+        }, 400);
+        return;
+      }
+    };
+    msgsEl.addEventListener('input', msgsEl._hsSettingsInput);
 
-    // Locale picker — saves and reloads page so all rendered ui picks up new locale
-    if (!msgsEl._hsSettingsChange) {
-      msgsEl._hsSettingsChange = true;
-      msgsEl.addEventListener('change', async (e) => {
-        const sel = e.target.closest('select[data-setting="locale"]');
-        if (!sel) return;
-        try {
-          await setI18nLocale(sel.value);
-        } catch {}
-        try { location.reload(); } catch {}
-      });
-    }
+    // Change handler — locale, font family, font size selects
+    if (msgsEl._hsSettingsChange) msgsEl.removeEventListener('change', msgsEl._hsSettingsChange);
+    msgsEl._hsSettingsChange = function settingsChange(e) {
+      var localeSel = e.target.closest('select[data-setting="locale"]');
+      if (localeSel) {
+        setI18nLocale(localeSel.value).catch(function() {});
+        try { location.reload(); } catch (_e) {}
+        return;
+      }
+      var famSel = e.target.closest('select[data-setting="fontfamily"]');
+      if (famSel) {
+        var fam = famSel.value;
+        saveUiSetting('fontFamily', fam);
+        var nativeSize = fam === 'GohuFont' ? '14' : (fam === 'CozetteVector' || fam === 'twitch') ? '13' : null;
+        if (nativeSize) {
+          saveUiSetting('fontSize', nativeSize);
+          var fszSel2 = msgsEl.querySelector('select[data-setting="fontsize"]');
+          if (fszSel2) fszSel2.value = nativeSize;
+        }
+        cachedUiSettings().then(function(stored) {
+          var ui = (stored && stored.ui_settings) || {};
+          var fsz = nativeSize || ui.fontSize || '13';
+          var fcust = ui.customFontName || '';
+          applyFontSettings(fam, fsz, fcust);
+        }).catch(function() { applyFontSettings(fam, nativeSize || '13', ''); });
+        renderSettingsTab();
+        return;
+      }
+      var fszSel = e.target.closest('select[data-setting="fontsize"]');
+      if (fszSel) {
+        var fsz = fszSel.value;
+        saveUiSetting('fontSize', fsz);
+        cachedUiSettings().then(function(stored) {
+          var ui = (stored && stored.ui_settings) || {};
+          applyFontSettings(ui.fontFamily || 'CozetteVector', fsz, ui.customFontName || '');
+        }).catch(function() { applyFontSettings('CozetteVector', fsz, ''); });
+        return;
+      }
+    };
+    msgsEl.addEventListener('change', msgsEl._hsSettingsChange);
 
-    // Custom tooltip for settings labels (native title doesn't work in content scripts)
-    let tip = document.getElementById('hs-settings-tip');
+    // Custom tooltip for settings labels (native title attribute blocked in content scripts)
+    var tip = document.getElementById('hs-settings-tip');
     if (!tip) {
       tip = document.createElement('div');
       tip.id = 'hs-settings-tip';
@@ -34501,23 +35259,24 @@ const STORAGE_KEY = 'heatsync_multichat';
     }
     if (!msgsEl._hsSettingsTipBound) {
       msgsEl._hsSettingsTipBound = true;
-      msgsEl.addEventListener('mouseenter', (e) => {
-        const label = e.target.closest('.hs-mc-setting-label[data-tip]');
+      msgsEl.addEventListener('mouseenter', function(e) {
+        var label = e.target.closest('.hs-mc-setting-label[data-tip]');
         if (!label) return;
-        const t = document.getElementById('hs-settings-tip');
-        if (!t) return;
-        t.textContent = label.dataset.tip;
-        const rect = label.getBoundingClientRect();
-        t.style.left = rect.left + 'px';
-        t.style.top = (rect.bottom + 4) + 'px';
-        t.classList.add('visible');
+        var tipEl = document.getElementById('hs-settings-tip');
+        if (!tipEl) return;
+        tipEl.textContent = label.dataset.tip;
+        var rect = label.getBoundingClientRect();
+        tipEl.style.left = rect.left + 'px';
+        tipEl.style.top = (rect.bottom + 4) + 'px';
+        tipEl.classList.add('visible');
       }, { capture: true, signal: mcSignal });
-      msgsEl.addEventListener('mouseleave', (e) => {
-        const label = e.target.closest('.hs-mc-setting-label[data-tip]');
-        if (label) { const t = document.getElementById('hs-settings-tip'); if (t) t.classList.remove('visible'); }
+      msgsEl.addEventListener('mouseleave', function(e) {
+        var label = e.target.closest('.hs-mc-setting-label[data-tip]');
+        if (label) { var tipEl = document.getElementById('hs-settings-tip'); if (tipEl) tipEl.classList.remove('visible'); }
       }, { capture: true, signal: mcSignal });
     }
   }
+
 
   function updateTabBar() {
     if (!tabBarElement) return;
@@ -39001,8 +39760,8 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     log('[chat-toggle] →', chatPosition, 'prev:', chatPositionPrevious);
   }
 
-  // Edge-pill: 6px orange strip pinned to the edge where chat last lived.
-  // Resize-handle convention: #ff8700, ≥6px, no text.
+  // Edge-pill: orange strip pinned to the edge where chat last lived. Click to
+  // restore (not a resize bar) — kept visible/thick on purpose, #ff8700, no text.
   function ensureChatRestorePill(show) {
     let pill = document.getElementById('hs-chat-restore-pill');
     if (!show) { if (pill) pill.remove(); return; }

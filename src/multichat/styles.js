@@ -10,6 +10,13 @@ function injectStyles() {
   const style = document.createElement('style');
   style.id = 'hs-mc-styles';
   const css = `
+    /* Resize-bar tokens — one source of truth for every orange drag-bar.
+       2px visible line; ::before extends the grab zone by --hs-resize-grab
+       per side. Mirrors heatsync.org's --resize-thickness / --resize-grab. */
+    :root {
+      --hs-resize-thickness: 2px;
+      --hs-resize-grab: 4px;
+    }
     /* Bundled bitmap fonts — URLs replaced via chrome.runtime.getURL after
        template evaluation (woff2 lives in chrome/fonts/, exposed via
        web_accessible_resources). font-display:block prevents FOUT flash.
@@ -52,6 +59,10 @@ function injectStyles() {
       font-variant-ligatures: none !important;
       font-variant-position: normal !important;
       font-feature-settings: "kern" 0, "liga" 0, "clig" 0, "calt" 0 !important;
+      /* Fractional tracking (eg letter-spacing:0.3px) pushes bitmap glyphs off
+         the integer pixel grid -- the same smear as kerning. Zero it globally;
+         the AA counter-rule below restores normal tracking for vector surfaces. */
+      letter-spacing: 0 !important;
     }
     /* Counter-rule: a handful of surfaces explicitly use NON-bitmap fonts
        (system sans, Inter, ui-monospace) where the user expects AA + kern.
@@ -71,8 +82,8 @@ function injectStyles() {
       font-kerning: auto !important;
       font-variant-ligatures: normal !important;
       font-feature-settings: normal !important;
+      letter-spacing: normal !important;
     }
-
     /* Tab bar - positioned at top of chat via render injection.
        Three flex sections (no-wrap outer): channel tabs fill left, platfilter
        sits center, util buttons pinned right. Channel-tabs section wraps
@@ -551,58 +562,49 @@ function injectStyles() {
       display: flex;
     }
 
-    /* Resize drag bar — 3px visible #ff8700, ::before extends hit zone to ~11px. */
+    /* Unified resize-bar styling — 2px visible #ff8700 line + invisible
+       ::before grab-zone (--hs-resize-grab per side). Mirrors heatsync.org's
+       .hs-resizer. Each id below sets only position/size/cursor/z-index. */
+    #hs-mc-resize-handle,
+    #hs-yt-resize-handle,
+    #hs-kick-resize-handle,
+    #hs-c-resize-handle {
+      background: #ff8700;
+      opacity: 0.55;
+      transition: opacity 0.12s;
+    }
+    #hs-mc-resize-handle::before,
+    #hs-yt-resize-handle::before,
+    #hs-kick-resize-handle::before,
+    #hs-c-resize-handle::before {
+      content: '';
+      position: absolute;
+      inset: calc(-1 * var(--hs-resize-grab));
+    }
+    #hs-mc-resize-handle:hover, #hs-mc-resize-handle:active,
+    #hs-yt-resize-handle:hover, #hs-yt-resize-handle:active,
+    #hs-kick-resize-handle:hover, #hs-kick-resize-handle:active,
+    body:has(#hs-resize-overlay) #hs-kick-resize-handle {
+      opacity: 1;
+    }
     #hs-mc-resize-handle {
       position: absolute;
       top: 0;
       left: 0;
-      width: 3px;
+      width: var(--hs-resize-thickness);
       height: 100%;
       cursor: ew-resize;
       z-index: 2000;
-      background: #ff8700;
-      opacity: 0.7;
-      transition: opacity 0.12s, background 0.12s;
     }
-    #hs-mc-resize-handle::before {
-      content: '';
-      position: absolute;
-      top: 0;
-      left: -4px;
-      right: -4px;
-      bottom: 0;
-    }
-    #hs-mc-resize-handle:hover,
-    #hs-mc-resize-handle:active {
-      background: #ffaa33;
-      opacity: 1;
-    }
-
     /* YouTube resize handle — left edge of #secondary sidebar */
     #hs-yt-resize-handle {
       position: absolute;
       top: 0;
       left: 0;
-      width: 3px;
+      width: var(--hs-resize-thickness);
       height: 100%;
       cursor: ew-resize;
       z-index: 2000;
-      background: #ff8700;
-      opacity: 0.7;
-      transition: opacity 0.12s, background 0.12s;
-    }
-    #hs-yt-resize-handle::before {
-      content: '';
-      position: absolute;
-      top: 0;
-      left: -4px;
-      right: -4px;
-      bottom: 0;
-    }
-    #hs-yt-resize-handle:hover,
-    #hs-yt-resize-handle:active {
-      background: #ffaa33;
-      opacity: 1;
     }
 
     #hs-mc-messages {
@@ -4972,6 +4974,86 @@ function injectStyles() {
       display: none;
     }
 
+    /* == Settings sub-tab bar =============================================== */
+    .hs-mc-set-subtabs {
+      display: flex;
+      gap: 4px;
+      padding: 6px 8px 4px 8px;
+      border-bottom: 1px solid rgba(255,255,255,0.2);
+      flex-shrink: 0;
+      overflow-x: auto;
+      position: sticky;
+      top: 0;
+      background: #000;
+      z-index: 2;
+    }
+    .hs-mc-set-subtab {
+      width: 34px;
+      height: 34px;
+      padding: 0;
+      background: #000;
+      color: #fff;
+      border: 1px solid rgba(255,255,255,0.3);
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      transition: none;
+    }
+    .hs-mc-set-subtab:hover {
+      background: #fff;
+      color: #000;
+      border-color: #fff;
+      outline: none;
+    }
+    .hs-mc-set-subtab.active {
+      background: #fff;
+      color: #000;
+      border-color: #fff;
+    }
+    .hs-mc-set-subtab svg { display: block; }
+    .hs-mc-set-subtab-body {
+      flex: 1;
+      overflow-y: auto;
+    }
+    /* Settings text inputs (custom font name, etc.) */
+    .hs-mc-set-text-input {
+      background: #000;
+      color: #fff;
+      border: 1px solid #808080;
+      font-family: "Liberation Mono", monospace;
+      font-size: 13px;
+      padding: 3px 6px;
+      flex-shrink: 0;
+    }
+    .hs-mc-set-text-input:focus {
+      outline: none;
+      border-color: #ff8700;
+    }
+    /* Server filter status line */
+    .hs-mc-set-status {
+      font-size: 11px;
+      color: #808080;
+      min-height: 14px;
+      padding: 2px 14px;
+    }
+    .hs-mc-set-status.ok { color: #4caf50; }
+    .hs-mc-set-status.err { color: #f44336; }
+    /* Crash log pre block */
+    .hs-mc-set-crash-pre {
+      background: #0a0a0a;
+      color: #c0c0c0;
+      border: 1px solid #333;
+      padding: 6px 8px;
+      font-size: 10px;
+      max-height: 180px;
+      overflow: auto;
+      white-space: pre-wrap;
+      word-break: break-all;
+      margin: 0;
+      font-family: "Liberation Mono", monospace;
+    }
 
     /* Ensure parent has relative positioning for overlay */
     .chat-scrollable-area__message-container {
@@ -5065,13 +5147,16 @@ function injectStyles() {
        right edge (no 18px gap from fixed-size squares + left-aligned row). */
     .hs-tabs-right .hs-mc-util-btn,
     .hs-tabs-left .hs-mc-util-btn {
-      width: auto !important;
-      max-width: none !important;
-      /* 14px min lets all 6 util buttons (C/T/F-/F+/⚙/⛶) share the 90px
-         tabbar column without wrapping. flex:1 still lets them grow. */
+      /* Fixed 14px (12px content after 1px borders) -- even content width
+         integer-centers CozetteVector's 6px glyph advance for both 1-glyph
+         (C/T) and 2-glyph (F-/F+) labels. Growing to fill (flex:1) produced
+         odd 15px widths, landing glyphs on a half-pixel and smearing the
+         bitmap. 6x14=84 fits the 90px column without wrapping. */
+      width: 14px !important;
       min-width: 14px !important;
+      max-width: 14px !important;
       padding: 0 !important;
-      flex: 1 1 0 !important;
+      flex: 0 0 14px !important;
       margin: 0 -1px 0 0 !important;
     }
     /* Right-cluster (util-row + platfilter) wraps both rows. In vertical mode
@@ -6022,24 +6107,16 @@ function injectStyles() {
       border-right: 1px solid #fff;
     }
 
-    /* Kick resize handle — convention: solid #ff8700, always visible. */
+    /* Kick resize handle — always visible. Visual/hover/grab shared above. */
     #hs-kick-resize-handle {
       position: absolute;
       top: 0;
       left: 0;
-      width: 6px;
+      width: var(--hs-resize-thickness);
       height: 100%;
       cursor: col-resize;
       z-index: 10000;
-      background: #ff8700;
-      opacity: 0.7;
-      transition: opacity 0.12s, background 0.12s;
       pointer-events: auto;
-    }
-    #hs-kick-resize-handle:hover,
-    body:has(#hs-resize-overlay) #hs-kick-resize-handle {
-      background: #ffaa33;
-      opacity: 1;
     }
 
     /* Boost Kick's popover/tooltip z-index above our panels */
@@ -6820,12 +6897,12 @@ function injectStyles() {
        block for abs-positioned children — without this the inputbar/tabbar/
        overlay (all position:absolute; bottom:Npx) snap to the outer edge
        and sit under the bar. With box-sizing: border-box the container's
-       outer dim is unchanged. Bar widths: unified #hs-c-resize-handle 5px,
-       platform handles 6px — reserve 6px to fit either case. */
-    body.hs-chat-right #hs-mc-container { border-left: 6px solid transparent !important; }
-    body.hs-chat-left #hs-mc-container { border-right: 6px solid transparent !important; }
-    body.hs-chat-top #hs-mc-container { border-bottom: 6px solid transparent !important; }
-    body.hs-chat-bottom #hs-mc-container { border-top: 6px solid transparent !important; }
+       outer dim is unchanged. Every bar is --hs-resize-thickness, so the
+       reservation tracks the same token. */
+    body.hs-chat-right #hs-mc-container { border-left: var(--hs-resize-thickness) solid transparent !important; }
+    body.hs-chat-left #hs-mc-container { border-right: var(--hs-resize-thickness) solid transparent !important; }
+    body.hs-chat-top #hs-mc-container { border-bottom: var(--hs-resize-thickness) solid transparent !important; }
+    body.hs-chat-bottom #hs-mc-container { border-top: var(--hs-resize-thickness) solid transparent !important; }
 
     /* --- YT narrow viewport rescue ---
        At narrow viewports YT collapses ytd-watch-flexy into a single-column
@@ -6932,11 +7009,11 @@ function injectStyles() {
        100% (not 100vw) — vw includes the page scrollbar (~15px); the
        chat panel is position:fixed and respects the inner viewport that
        excludes the scrollbar, so 100vw caps were 15px too wide.
-       The 5px padding on the chat-side is the orange resize bar's gutter. */
+       The chat-side padding is the orange resize bar's gutter. */
     body.hs-platform-yt:not(.hs-yt-watch).hs-chat-right ytd-app {
       width: calc(100% - var(--hs-chat-w, 340px)) !important;
       max-width: calc(100% - var(--hs-chat-w, 340px)) !important;
-      padding-right: 5px !important;
+      padding-right: var(--hs-resize-thickness) !important;
       box-sizing: border-box !important;
       overflow-x: hidden !important;
     }

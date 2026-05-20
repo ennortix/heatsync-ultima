@@ -970,7 +970,10 @@ function openEmoteActionMenu(wrapper, x, y, opts = {}) {
   el.appendChild(preview)
 
   // --- Items ---
-  let kbdIndex = 1
+  // Keys 1/2 reserved for the membership/block toggle family so muscle memory
+  // holds across states: 1 = restore (unblock / add to set), 2 = destructive
+  // (block / remove from set). Utilities auto-number from 3.
+  let kbdIndex = 3
   const kbdHandlers = {}
   const addHeader = (text) => {
     const h = document.createElement('div')
@@ -991,13 +994,15 @@ function openEmoteActionMenu(wrapper, x, y, opts = {}) {
       h.textContent = hint
       it.appendChild(h)
     }
-    if (kbd && kbdIndex <= 9) {
+    // kbd: false = no key; a number/string = explicit reserved key; true = auto (3..9).
+    const key = kbd === false ? null
+      : (kbd !== true && kbd != null ? String(kbd) : (kbdIndex <= 9 ? String(kbdIndex++) : null))
+    if (key) {
       const k = document.createElement('span')
       k.className = 'hs-em-kbd'
-      k.textContent = String(kbdIndex)
+      k.textContent = key
       it.appendChild(k)
-      kbdHandlers[String(kbdIndex)] = fn
-      kbdIndex++
+      kbdHandlers[key] = fn
     }
     it.addEventListener('click', () => { try { fn() } catch {} ; closeEmoteMenu() })
     el.appendChild(it)
@@ -1030,11 +1035,11 @@ function openEmoteActionMenu(wrapper, x, y, opts = {}) {
     if (inInventory) {
       addItem('remove from set', async () => {
         try { await safeSendMessage({ type: 'remove_from_inventory', emoteHash: hash, emoteName: name }) } catch {}
-      })
+      }, { kbd: 2 })
     } else {
       addItem('add to set', async () => {
         try { await safeSendMessage({ type: 'add_emote', hash, name, url }) } catch {}
-      }, { good: true })
+      }, { good: true, kbd: 1 })
     }
   }
 
@@ -1070,7 +1075,7 @@ function openEmoteActionMenu(wrapper, x, y, opts = {}) {
         if (vblocked) {
           blockedEmotes.delete(vhash)
           markLocalBlockToggle(vhash, 'unblocked')
-          updateEmoteState(vhash, name, inventoryHashSet.has(vhash) ? 'added' : (isGlobal ? 'global' : 'neutral'))
+          updateEmoteState(vhash, name, isGlobal ? 'global' : 'neutral')
           try { await safeSendMessage({ type: 'unblock_emote', hash: vhash }) } catch {}
         } else {
           blockedEmotes.add(vhash)
@@ -1107,12 +1112,15 @@ function openEmoteActionMenu(wrapper, x, y, opts = {}) {
   } else if (hash) {
     if (isBlocked) {
       addItem('unblock emote', async () => {
-        const restored = inInventory ? 'added' : (isGlobal ? 'global' : 'neutral')
+        // Block removed this from the set (server-side too), so unblock lands on
+        // the "available, not in set" tier — orange/unadded for heatsync, gray for
+        // 3rd-party — never back to owned/green. Ladder: blocked→unadded→add→owned.
+        const restored = isGlobal ? 'global' : 'neutral'
         blockedEmotes.delete(hash)
         markLocalBlockToggle(hash, 'unblocked')
         updateEmoteState(hash, name, restored)
         try { await safeSendMessage({ type: 'unblock_emote', hash }) } catch {}
-      }, { good: true })
+      }, { good: true, kbd: 1 })
     } else if (!inInventory) {
       // green > orange > block: an in-set emote shows "remove from set" (above),
       // not block. Globals/3rd-party aren't in your set, so block shows here.
@@ -1121,7 +1129,7 @@ function openEmoteActionMenu(wrapper, x, y, opts = {}) {
         markLocalBlockToggle(hash, 'blocked')
         updateEmoteState(hash, name, 'blocked')
         try { await safeSendMessage({ type: 'block_emote', hash }) } catch {}
-      }, { danger: true })
+      }, { danger: true, kbd: 2 })
     }
   }
 
@@ -1167,12 +1175,15 @@ function placeAndWireMenu(el, x, y, kbdHandlers = {}) {
     document.addEventListener('mousedown', onDown, true)
     document.addEventListener('keydown', onKey, true)
     window.addEventListener('blur', closeEmoteMenu, { once: true })
-    window.addEventListener('scroll', onScroll, { passive: true, capture: true, once: true })
+    // No capture: a capturing scroll listener fires on the chat container's
+    // constant auto-scroll, killing the menu the instant it opens. Menu is
+    // position:fixed so it stays put — only dismiss on genuine window scroll.
+    window.addEventListener('scroll', onScroll, { passive: true, once: true })
     _emoteMenuCleanup = () => {
       document.removeEventListener('mousedown', onDown, true)
       document.removeEventListener('keydown', onKey, true)
       window.removeEventListener('blur', closeEmoteMenu)
-      window.removeEventListener('scroll', onScroll, true)
+      window.removeEventListener('scroll', onScroll)
     }
   }, 0)
 }
@@ -4965,7 +4976,7 @@ function setupUsernameColoringObserver() {
               if (!hash) return; // can't unblock server-side without a hash
               blockedEmotes.delete(hash);
               markLocalBlockToggle(hash, 'unblocked');
-              const restoredState = inventoryHashSet.has(hash) ? 'added' : (globalNameSet.has(name) ? 'global' : 'neutral');
+              const restoredState = globalNameSet.has(name) ? 'global' : 'neutral';
               updateEmoteState(hash, name, restoredState);
               safeSendMessage({ type: 'unblock_emote', hash });
               if (name) names.push(name);
@@ -5112,7 +5123,7 @@ function setupUsernameColoringObserver() {
       const isGlobalEmote = wrapper.classList.contains('emote-overlay-global') || globalNameSet.has(emoteName);
       const inInv = inventoryHashSet.has(hash) || inventoryNameSet.has(emoteName);
       if (isBlocked) {
-        const restoredState = inInv ? 'added' : (isGlobalEmote ? 'global' : 'neutral');
+        const restoredState = isGlobalEmote ? 'global' : 'neutral';
         blockedEmotes.delete(hash);
         markLocalBlockToggle(hash, 'unblocked');
         updateEmoteState(hash, emoteName, restoredState);
@@ -6295,7 +6306,10 @@ function setupEmoteClickHandlers() {
     log(' LEFT CLICK - emote:', emoteName, 'hash:', hash, 'blocked:', isBlocked);
 
     if (isBlocked) {
-      // BLOCKED → UNBLOCK
+      // BLOCKED → left-click means "I want this" → unblock + restore in one go.
+      // restoredState lands on 'added' when the hash is still in inventory, so a
+      // single click brings it straight back to the set. Right-click → menu for
+      // block/other options.
       pendingOperations.add(operationKey);
       try {
         const result = await safeSendMessage({ type: 'unblock_emote', hash });

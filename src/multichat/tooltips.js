@@ -248,17 +248,22 @@
       // Check wrapper first, then IMG. Input chips (.hs-input-emote) also
       // surface the tooltip so users can read name + state without leaving
       // the input box.
+      // Picker emotes hide their <img> on hover (green/orange overlay) and
+      // blocked picker emotes hide it permanently, so the steady hover target
+      // is the .hs-mc-picker-emote-wrap span, not the img. Resolve to the inner
+      // img — mirrors findEmoteTarget so the 4x tooltip + name show in-picker.
       const wrapper = target.closest('.hs-mc-emote-wrapper');
-      const img = wrapper ? wrapper.querySelector('img') : (
-        target.tagName === 'IMG' && (
-          target.classList.contains('hs-mc-emote') ||
-          target.classList.contains('hs-mc-picker-emote') ||
-          target.classList.contains('hs-input-emote')
-        ) ? target : null
-      );
-      if (!img && !wrapper) return;
+      const pickerWrap = !wrapper ? target.closest('.hs-mc-picker-emote-wrap') : null;
+      const img = wrapper ? wrapper.querySelector('img')
+        : pickerWrap ? pickerWrap.querySelector('img')
+        : (target.tagName === 'IMG' && (
+            target.classList.contains('hs-mc-emote') ||
+            target.classList.contains('hs-mc-picker-emote') ||
+            target.classList.contains('hs-input-emote')
+          ) ? target : null);
+      if (!img && !wrapper && !pickerWrap) return;
 
-      const emoteName = wrapper?.dataset.emoteName || img?.alt || img?.dataset.emoteName || img?.title?.split(' ')[0];
+      const emoteName = wrapper?.dataset.emoteName || pickerWrap?.dataset.name || img?.alt || img?.dataset.emoteName || img?.title?.split(' ')[0];
       if (!emoteName) return;
 
       // For blocked input chips, dataset.hsOrigSrc holds the real image URL
@@ -300,14 +305,15 @@
       }
 
       const wrapper = target.closest('.hs-mc-emote-wrapper');
-      const img = wrapper ? wrapper.querySelector('img') : (
-        target.tagName === 'IMG' && (
-          target.classList.contains('hs-mc-emote') ||
-          target.classList.contains('hs-mc-picker-emote') ||
-          target.classList.contains('hs-input-emote')
-        ) ? target : null
-      );
-      if (!img && !wrapper) return;
+      const pickerWrap = !wrapper ? target.closest('.hs-mc-picker-emote-wrap') : null;
+      const img = wrapper ? wrapper.querySelector('img')
+        : pickerWrap ? pickerWrap.querySelector('img')
+        : (target.tagName === 'IMG' && (
+            target.classList.contains('hs-mc-emote') ||
+            target.classList.contains('hs-mc-picker-emote') ||
+            target.classList.contains('hs-input-emote')
+          ) ? target : null);
+      if (!img && !wrapper && !pickerWrap) return;
 
       hideEmoteTooltip();
 
@@ -351,6 +357,7 @@
       requestAnimationFrame(() => {
         _tooltipRafPending = false
         const onEmote = target?.closest?.('.hs-mc-emote-wrapper') ||
+          target?.closest?.('.hs-mc-picker-emote-wrap') ||
           (target?.tagName === 'IMG' && (
             target.classList?.contains('hs-mc-emote') ||
             target.classList?.contains('hs-mc-picker-emote') ||

@@ -5569,6 +5569,19 @@ async function handleMessage(message, sender, sendResponse) {
       if (!globalThis.__senderEmoteCache) globalThis.__senderEmoteCache = new Map()
       const cache = globalThis.__senderEmoteCache
       const SENDER_EMOTE_CACHE_TTL = 300000 // 5min — short so a sender's newly-added heatsync emotes reach viewers; panel re-fetches on the same cadence
+      // Batch-fetch heatsync sets for all numeric ids that aren't cache-fresh, in ONE
+      // request. Per-id /api/users/:id calls fired ~15-parallel per flush tripped
+      // Cloudflare's 429; one batched call keeps it well under. credentials:'omit' so
+      // the *-CORS response isn't rejected (credentialed + ACAO:* is invalid).
+      const _missIds = [...new Set(senderKeys
+        .filter(k => { const h = cache.get(k); return !(h && Date.now() - h.ts < SENDER_EMOTE_CACHE_TTL) })
+        .map(k => { const c = k.indexOf(':'); return c >= 0 ? k.slice(c + 1) : '' })
+        .filter(id => /^\d+$/.test(id)))]
+      let hsBatch = {}
+      if (_missIds.length) {
+        const hb = await fetchWithTimeout(`${API_URL}/api/users/emotes/batch?ids=${_missIds.join(',')}`, { credentials: 'omit' }).then(r => r.ok ? r.json() : null).catch(() => null)
+        hsBatch = hb?.sets || {}
+      }
       await Promise.all(senderKeys.map(async (key) => {
         const hit = cache.get(key)
         if (hit && Date.now() - hit.ts < SENDER_EMOTE_CACHE_TTL) {
@@ -5601,10 +5614,9 @@ async function handleMessage(message, sender, sendResponse) {
         // CREDENTIALED request (the heatsync.org default in fetchWithTimeout) makes
         // the browser reject `*`+credentials — Firefox then drops the response and
         // the sender's heatsync emotes never load. No cookie is needed here anyway.
-        const hsP = isNumericId
-          ? fetchWithTimeout(`${API_URL}/api/users/${encodeURIComponent(id)}/emotes`, { credentials: 'omit' }).then(r => r.ok ? r.json() : null).catch(() => null)
-          : Promise.resolve(null)
-        const [stv, bttv, hs] = await Promise.all([stvP, bttvP, hsP])
+        // HeatSync set comes from the single batched fetch above (hsBatch), keyed by id.
+        const hs = { emotes: hsBatch[id] || [] }
+        const [stv, bttv] = await Promise.all([stvP, bttvP])
         // 7TV personal emote_set
         const stvEmotes = stv?.emote_set?.emotes || []
         for (const e of stvEmotes) {

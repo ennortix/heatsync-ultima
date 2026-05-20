@@ -837,17 +837,32 @@ function initInput() {
         // emotes (7tv/bttv/ffz/etc.) can be set members too. Right-click → menu
         // (its "unblock emote" stays unblock-only, landing at unadded).
         if (pendingEmoteOps.has(emoteName)) return;
+        // The clicked element is a blocked render — its src is a transparent
+        // placeholder (chat dashed box / hidden picker img), NOT the real emote
+        // url. Recover the real url from caches/fallback (lookupEmote) so we
+        // re-add the actual image, falling back to the click src only if it's a
+        // real http(s) url. Without this the re-add stores a blank emote.
+        const _resolved = (typeof lookupEmote === 'function') ? lookupEmote(emoteName) : null;
+        const realUrl = (_resolved?.url && /^https?:\/\//i.test(_resolved.url))
+          ? _resolved.url
+          : (/^https?:\/\//i.test(emoteUrl) ? emoteUrl : '');
         unblockEmote(emoteName);
+        if (!realUrl) {
+          // Unblocked, but we have no resolvable image to re-add. Leave it at the
+          // unblocked/unadded rung rather than persisting a blank.
+          showToast(`unblocked ${emoteName} — re-add once its image loads`, 'info');
+          return;
+        }
         if (!viewerPersonalEmotes.has(emoteName)) {
-          viewerPersonalEmotes.set(emoteName, { url: emoteUrl, source: source || 'heatsync', state: 'owned' });
+          viewerPersonalEmotes.set(emoteName, { url: realUrl, source: source || 'heatsync', state: 'owned' });
         }
         const pickerWrap = e.target.closest('.hs-mc-picker-emote-wrap');
         if (pickerWrap) {
           pickerWrap.classList.remove('unadded', 'blocked');
           const pImg = pickerWrap.querySelector('img');
-          if (pImg) pImg.dataset.state = 'owned';
+          if (pImg) { pImg.dataset.state = 'owned'; if (pImg.src !== realUrl) pImg.src = realUrl; }
         }
-        addEmoteToInventory(emoteName, emoteUrl, source || 'heatsync', e.target);
+        addEmoteToInventory(emoteName, realUrl, source || 'heatsync', e.target);
         return;
       }
       if (state === 'locked') {
@@ -1194,7 +1209,7 @@ function showMcEmoteActionMenu(x, y, emoteInfo, evtTarget) {
     addItem('unblock emote', () => { unblockEmote(emoteName) }, { good: true })
   } else if (!canRemoveFromSet) {
     addSep()
-    addItem('block emote', () => { blockEmote(emoteName) }, { danger: true })
+    addItem('block emote', () => { blockEmote(emoteName, url, source) }, { danger: true })
   }
 
   assignBottomUpKbd()

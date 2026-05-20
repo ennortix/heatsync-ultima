@@ -14974,7 +14974,7 @@ async function sendKickMessage(kickSlug, text) {
     wrappers.forEach(w => {
       const name = w.dataset.emoteName;
       if (name && w.dataset.state !== 'blocked') {
-        blockEmote(name);
+        blockEmote(name, w.dataset.emoteUrl || w.querySelector('img')?.src, w.dataset.source);
         count++;
       }
     });
@@ -14983,14 +14983,19 @@ async function sendKickMessage(kickSlug, text) {
     stack.setAttribute('title', 'expand');
   }
 
-  function blockEmote(emoteName) {
+  function blockEmote(emoteName, clickedUrl, clickedSource) {
     if (!emoteName) return;
 
     // Capture url/source BEFORE the deletes below strip the emote from caches —
     // persists the name so the dashed box renders after refresh, and the url so
-    // unblock can restore the real image inline. See blockedEmoteFallback.
+    // unblock + re-add can restore the real image. Prefer a cache hit, then the
+    // url of the element that was clicked to block (a visible emote always has a
+    // real url) — without this, blocking an emote that lookupEmote can't resolve
+    // stored no url, leaving it un-re-addable (renders blank on re-add).
     const _be = lookupEmote(emoteName);
-    rememberBlockedEmote(emoteName, _be?.url, _be?.source, _be?.zeroWidth);
+    const _httpOk = (u) => typeof u === 'string' && /^https?:\/\//i.test(u);
+    const capturedUrl = _httpOk(_be?.url) ? _be.url : (_httpOk(clickedUrl) ? clickedUrl : '');
+    rememberBlockedEmote(emoteName, capturedUrl, _be?.source || clickedSource, _be?.zeroWidth);
 
     // Blocking and owning are mutually exclusive
     inventoryEmotes.delete(emoteName);
@@ -15000,9 +15005,10 @@ async function sendKickMessage(kickSlug, text) {
     // Update local name-based tracking
     blockedEmoteNames.add(emoteName);
 
-    // Get hash for API - prefer known hash, fallback to URL-derived
+    // Get hash for API - prefer known hash, then url-derived (capturedUrl covers
+    // the case lookupEmote misses), last resort the name.
     const hash = emoteHashes.get(emoteName) ||
-      (lookupEmote(emoteName)?.url ? btoa(lookupEmote(emoteName).url).slice(0, 32) : emoteName);
+      (capturedUrl ? btoa(capturedUrl).slice(0, 32) : emoteName);
     blockedEmoteHashes.add(hash);
 
     // Sync to heatsync.org API via background.js (it handles storage)
@@ -15133,6 +15139,14 @@ async function sendKickMessage(kickSlug, text) {
   // Add emote to inventory (click-to-add for unadded emotes)
   async function addEmoteToInventory(emoteName, emoteUrl, emoteSource, targetEl) {
     if (!emoteName) return;
+    // Guard: never persist a placeholder/data URI. A blocked emote renders with
+    // a transparent px, and the click-to-readd path can hand us that src — adding
+    // it would store a blank emote that renders empty forever (and the server
+    // rejects non-https anyway). Reject early with a clear toast.
+    if (!emoteUrl || !/^https?:\/\//i.test(emoteUrl)) {
+      showToast(`can't add ${emoteName} — image unavailable`, 'error');
+      return;
+    }
     pendingEmoteOps.add(emoteName);
     try {
       // Generate a hash from the URL for the API
@@ -15350,9 +15364,10 @@ async function sendKickMessage(kickSlug, text) {
 
   // Look up emote — viewer-perspective fallback chain (used by picker, hover preview, etc.)
   function lookupEmote(name) {
-    // removedEmoteFallback last: keeps a removed emote's URL resolvable so unblock
-    // and re-renders can still draw the image instead of collapsing to raw text.
-    return viewerPersonalEmotes.get(name) || emoteCache.get(name) || channelEmoteCaches[currentTab]?.get(name) || channelEmoteCaches[getLiveChannel()]?.get(name) || channelEmoteCaches[getCurrentChannel()]?.get(name) || removedEmoteFallback.get(name);
+    // removed/blocked fallbacks last: keep a removed-or-blocked emote's URL
+    // resolvable so unblock + re-add (and re-renders) draw the real image and
+    // never re-add the transparent placeholder a blocked render shows.
+    return viewerPersonalEmotes.get(name) || emoteCache.get(name) || channelEmoteCaches[currentTab]?.get(name) || channelEmoteCaches[getLiveChannel()]?.get(name) || channelEmoteCaches[getCurrentChannel()]?.get(name) || removedEmoteFallback.get(name) || blockedEmoteFallback.get(name);
   }
   // Resolve a typed emote name to {emote, isOverlay, displayName}.
   // Handles zeroWidth flag AND the 7TV-style "name0" overlay convention
@@ -25701,17 +25716,32 @@ function initInput() {
         // emotes (7tv/bttv/ffz/etc.) can be set members too. Right-click → menu
         // (its "unblock emote" stays unblock-only, landing at unadded).
         if (pendingEmoteOps.has(emoteName)) return;
+        // The clicked element is a blocked render — its src is a transparent
+        // placeholder (chat dashed box / hidden picker img), NOT the real emote
+        // url. Recover the real url from caches/fallback (lookupEmote) so we
+        // re-add the actual image, falling back to the click src only if it's a
+        // real http(s) url. Without this the re-add stores a blank emote.
+        const _resolved = (typeof lookupEmote === 'function') ? lookupEmote(emoteName) : null;
+        const realUrl = (_resolved?.url && /^https?:\/\//i.test(_resolved.url))
+          ? _resolved.url
+          : (/^https?:\/\//i.test(emoteUrl) ? emoteUrl : '');
         unblockEmote(emoteName);
+        if (!realUrl) {
+          // Unblocked, but we have no resolvable image to re-add. Leave it at the
+          // unblocked/unadded rung rather than persisting a blank.
+          showToast(`unblocked ${emoteName} — re-add once its image loads`, 'info');
+          return;
+        }
         if (!viewerPersonalEmotes.has(emoteName)) {
-          viewerPersonalEmotes.set(emoteName, { url: emoteUrl, source: source || 'heatsync', state: 'owned' });
+          viewerPersonalEmotes.set(emoteName, { url: realUrl, source: source || 'heatsync', state: 'owned' });
         }
         const pickerWrap = e.target.closest('.hs-mc-picker-emote-wrap');
         if (pickerWrap) {
           pickerWrap.classList.remove('unadded', 'blocked');
           const pImg = pickerWrap.querySelector('img');
-          if (pImg) pImg.dataset.state = 'owned';
+          if (pImg) { pImg.dataset.state = 'owned'; if (pImg.src !== realUrl) pImg.src = realUrl; }
         }
-        addEmoteToInventory(emoteName, emoteUrl, source || 'heatsync', e.target);
+        addEmoteToInventory(emoteName, realUrl, source || 'heatsync', e.target);
         return;
       }
       if (state === 'locked') {
@@ -26058,7 +26088,7 @@ function showMcEmoteActionMenu(x, y, emoteInfo, evtTarget) {
     addItem('unblock emote', () => { unblockEmote(emoteName) }, { good: true })
   } else if (!canRemoveFromSet) {
     addSep()
-    addItem('block emote', () => { blockEmote(emoteName) }, { danger: true })
+    addItem('block emote', () => { blockEmote(emoteName, url, source) }, { danger: true })
   }
 
   assignBottomUpKbd()

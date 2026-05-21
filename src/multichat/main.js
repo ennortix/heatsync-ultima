@@ -4807,7 +4807,7 @@
       '<div class="hs-mc-settings-group-title">messages</div>' +
       _renderUiToggleRow('links', t('mc_settings_clickable_links'), t('mc_settings_clickable_links_desc'), linksEnabled) +
       _renderUiToggleRow('linkpreviews', t('mc_settings_link_previews'), t('mc_settings_link_previews_desc'), linkPreviewsEnabled) +
-      _renderUiToggleRow('emotemodifiers', 'FFZ emote modifiers', 'w! h! ffzX ffzY c!#hex chains on the previous emote', true) +
+      _renderUiToggleRow('emotemodifiers', 'BTTV & FFZ emote modifiers', 'w! h! ffzX ffzY c!#hex chains on the previous emote', true) +
       _renderUiToggleRow('usercolors', 'per-user color overrides', 'right-click a username in chat to set its display color', true) +
       _renderUiToggleRow('highlightmentions', 'highlight mentions', 'red background on chat lines mentioning you', true) +
       _renderUiToggleRow('showclearedmessages', 'show deleted messages', 'keep timed-out/deleted lines visible (dimmed) instead of hiding', false) +

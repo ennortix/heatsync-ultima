@@ -1034,6 +1034,11 @@ function renderFeed() {
   const msgsEl = document.getElementById('hs-mc-messages');
   if (!msgsEl) return;
 
+  // Wire post-link hover preview once (event delegation — survives re-renders).
+  // Must run before the thread-view early-return below: >>id links live IN the
+  // thread view, so wiring only on the feed-list path missed them entirely.
+  if (typeof setupFeedPostLinkHover === 'function') setupFeedPostLinkHover()
+
   // Update feed tab button text
   const feedTabBtn = tabBarElement?.querySelector('[data-tab="feed"]');
   if (feedTabBtn) feedTabBtn.textContent = activeThread ? t('mc_social_back') : t('mc_tab_feed');
@@ -1450,7 +1455,11 @@ function buildFeedMessageDiv(m, opUsername) {
       ? '<span class="hs-feed-tag hs-feed-tag-op">[OP]</span>'
       : '<span class="hs-feed-tag hs-feed-tag-re">[RE]</span>';
 
-  const isAnon = !m.platform || m.username === 'Anonymous';
+  // Anonymity is "no user", not "no platform" — native heatsync posts have a
+  // user_id but no platform (only twitch/kick/youtube-origin posts carry one).
+  // Gating on platform wrongly anonymized native posts. Mirrors heatsync.org's
+  // message-element renderer (`!user_id || display_name === 'Anonymous'`).
+  const isAnon = !m.user_id || m.username === 'Anonymous';
 
   // Platform badge: [T]/[K]/[Y] (hidden for anonymous)
   const platLabel = m.platform === 'kick' ? '[K]' : m.platform === 'youtube' ? '[Y]' : m.platform === 'twitch' ? '[T]' : '';
@@ -1603,7 +1612,11 @@ function formatText(html) {
 const _feedEmoteRegexCache = new Map()
 function renderFeedContent(content, emoteRefs) {
   if (!content) return '';
-  let html = escapeHtml(String(content));
+  // Content is ALREADY HTML-escaped by the server (sanitizeUserInput on store),
+  // so we do NOT escape again — matches heatsync.org's message-element renderer,
+  // which feeds stored content straight into parsePostLinks. Escaping here
+  // double-escaped `>>id` quotes into literal `&gt;&gt;`.
+  let html = String(content);
   // Linkify URLs FIRST so text-formatting can't split them on '_' or eat path chars.
   // Single regex pass with alternation: full https:// URLs OR bare domains.
   // (?<![\/\w.]) on the bare-domain branch prevents matching inside an already-linkified URL path.
@@ -1673,6 +1686,24 @@ function renderFeedContent(content, emoteRefs) {
       }
       html = html.replace(re, `<img class="hs-mc-emote" src="${safeUrl}" alt="${escaped}" title="${escaped}" loading="lazy">`);
     }
+  }
+
+  // Local emote fallback: render 7TV/BTTV/FFZ/channel emotes the server can't
+  // resolve (not in emote_refs — site only knows heatsync emotes). The extension
+  // augments with the viewer's full local emote set, matching chat-tile rendering.
+  if (typeof lookupEmote === 'function') {
+    const refNames = emoteRefs && typeof emoteRefs === 'object' ? new Set(Object.keys(emoteRefs)) : null
+    const parts = html.split(/(<[^>]+>)/)
+    html = parts.map((part, i) => {
+      if (i % 2 === 1) return part  // inside an HTML tag — skip
+      return part.replace(/\S+/g, (word) => {
+        if (refNames && refNames.has(word)) return word  // already rendered above
+        const em = lookupEmote(word)
+        if (!em || !em.url || !/^https:\/\//.test(em.url)) return word
+        const esc = escapeHtml(word)
+        return `<img class="hs-mc-emote" src="${escapeHtml(em.url)}" alt="${esc}" title="${esc}" loading="lazy">`
+      })
+    }).join('')
   }
   return html;
 }
@@ -1826,10 +1857,12 @@ function renderThreadView(msgsEl) {
   isProgrammaticScroll = true;
   msgsEl.textContent = '';
   const frag = document.createDocumentFragment();
+  let zebraCount = 0;
 
   if (at.op) {
     const opDiv = buildFeedMessageDiv(at.op, at.op?.username);
     opDiv.classList.add('hs-thread-op');
+    if (zebraEnabled && ++zebraCount % 2 === 0) opDiv.classList.add('hs-mc-zebra');
     frag.appendChild(opDiv);
   }
 
@@ -1854,6 +1887,7 @@ function renderThreadView(msgsEl) {
       const replyDiv = buildFeedMessageDiv(r, at.op?.username);
       replyDiv.classList.add('hs-thread-reply');
       if (r.is_thread_op) replyDiv.classList.add('is-thread-op');
+      if (zebraEnabled && ++zebraCount % 2 === 0) replyDiv.classList.add('hs-mc-zebra');
       container.appendChild(replyDiv);
     }
   }
@@ -2680,4 +2714,232 @@ function renderPinnedTab() {
   }
 
   msgsEl.appendChild(frag);
+}
+
+// ============================================
+// FEED POST-LINK HOVER PREVIEW
+// ============================================
+
+// Lookup a feed message from in-memory stores, then fall back to API.
+// Returns the message object or null. Fetches are deduped by id within
+// the lifetime of a single hover (callers pass a generation counter).
+const _feedMsgFetchCache = new Map()  // id -> Promise<msg|null>
+
+function _feedMsgLookupMemory(id) {
+  if (!id) return null
+  const fromFeed = feedMessages.find(m => m.base36_id === id)
+  if (fromFeed) return fromFeed
+  if (activeThread) {
+    if (activeThread.op?.base36_id === id) return activeThread.op
+    const fromThread = activeThread.replies?.find(r => r.base36_id === id)
+    if (fromThread) return fromThread
+  }
+  return null
+}
+
+async function _feedMsgFetch(id) {
+  if (!id) return null
+  const mem = _feedMsgLookupMemory(id)
+  if (mem) return mem
+  if (_feedMsgFetchCache.has(id)) return _feedMsgFetchCache.get(id)
+  const p = apiFetch('/api/messages/' + encodeURIComponent(id)).then(r => {
+    // API returns the message directly in resp.data (not resp.data.message)
+    if (!r.ok) return null
+    const msg = r.data || null
+    return msg && msg.base36_id ? msg : null
+  }).catch(() => null)
+  _feedMsgFetchCache.set(id, p)
+  // Evict after 60s so stale data doesn't accumulate across sessions
+  cleanup.setTimeout(() => _feedMsgFetchCache.delete(id), 60000)
+  return p
+}
+
+async function _feedMsgFetchReplies(id) {
+  if (!id) return []
+  // Check activeThread first
+  if (activeThread && activeThread.id === id && activeThread.replies?.length) {
+    return activeThread.replies
+  }
+  const r = await apiFetch('/api/messages/' + encodeURIComponent(id) + '/replies')
+  return r.ok ? (r.data?.replies || []) : []
+}
+
+// Called once from feed init. Uses event delegation on document.body so it
+// works for dynamically-rendered rows without re-wiring on each renderFeed().
+function setupFeedPostLinkHover() {
+  if (window._hsMcFeedPostLinkHoverSetup) return
+  window._hsMcFeedPostLinkHoverSetup = true
+
+  let _linkGen = 0
+  let _currentLink = null
+  const MAX_DEPTH = 50
+
+  const getOverlay = () => {
+    let el = document.getElementById('hs-feed-postlink-preview')
+    if (el) return el
+    el = document.createElement('div')
+    el.id = 'hs-feed-postlink-preview'
+    document.body.appendChild(cleanup.trackNode(el))
+    // Dismiss when cursor leaves the overlay itself
+    el.addEventListener('mouseleave', (ev) => {
+      // Only dismiss if not moving back into a post-link
+      const to = ev.relatedTarget
+      if (to && to.closest && to.closest('.hs-post-link')) return
+      _hideOverlay()
+    })
+    return el
+  }
+
+  const _hideOverlay = () => {
+    _currentLink = null
+    const el = document.getElementById('hs-feed-postlink-preview')
+    if (el) { el.style.display = 'none'; el.replaceChildren() }
+    _linkGen++
+  }
+
+  // Dismiss when #hs-mc-messages scrolls (capture phase catches it before msgsEl)
+  document.addEventListener('scroll', (ev) => {
+    if (ev.target && ev.target.id === 'hs-mc-messages') _hideOverlay()
+  }, { passive: true, capture: true, signal: mcSignal })
+
+  document.body.addEventListener('mouseover', (ev) => {
+    const link = ev.target.closest && ev.target.closest('.hs-post-link')
+    if (!link) return
+    // Must be inside the feed panel
+    if (!link.closest('#hs-mc-messages')) return
+    if (link === _currentLink) return
+    _currentLink = link
+
+    const linkedId = link.dataset.id
+    if (!linkedId) return
+
+    const gen = ++_linkGen
+
+    ;(async () => {
+      // Always show on hover — even when the linked post is already on screen.
+      // Matches the chat reply-stack and Twitch reply-thread hover (the user's
+      // mental model): hovering >>id surfaces the thread context regardless of
+      // visibility. (The site skips-if-visible; the cramped panel does not.)
+
+      // Fetch the linked message
+      let msg = await _feedMsgFetch(linkedId)
+      if (_linkGen !== gen) return
+      if (!msg) return
+
+      // Walk ancestor chain (parents, above)
+      const chain = []  // will be [oldest, ..., immediate-parent] after unshifts
+      const seenUp = new Set([msg.base36_id || linkedId])
+      let cur = msg
+      while (chain.length < MAX_DEPTH && cur && cur.reply_to) {
+        if (seenUp.has(cur.reply_to)) break
+        seenUp.add(cur.reply_to)
+        const parent = await _feedMsgFetch(cur.reply_to)
+        if (_linkGen !== gen) return
+        if (!parent) break
+        chain.unshift(parent)
+        cur = parent
+      }
+
+      // Walk first-child descendant chain (below)
+      const descChain = []
+      const seenDown = new Set([msg.base36_id || linkedId])
+      let dCur = msg
+      while (descChain.length < MAX_DEPTH) {
+        if (_linkGen !== gen) return
+        const parentId = dCur.base36_id
+        if (!parentId) break
+        // Check memory first (feedMessages + activeThread)
+        let child = feedMessages.find(m => m.reply_to === parentId) || null
+        if (!child && activeThread?.replies) {
+          child = activeThread.replies.find(r => r.reply_to === parentId) || null
+        }
+        // Fall back to API replies
+        if (!child) {
+          const replies = await _feedMsgFetchReplies(parentId)
+          if (_linkGen !== gen) return
+          child = replies.length ? replies[0] : null
+        }
+        if (!child) break
+        const childId = child.base36_id
+        if (!childId || seenDown.has(childId)) break
+        seenDown.add(childId)
+        descChain.push(child)
+        dCur = child
+      }
+
+      if (_linkGen !== gen) return
+
+      // Build overlay
+      const overlay = getOverlay()
+      overlay.replaceChildren()
+      overlay.style.display = 'block'
+
+      // Render one row using buildFeedMessageDiv (handles sanitization + emotes)
+      const renderRow = (m) => {
+        const row = buildFeedMessageDiv(m)
+        row.classList.add('hs-feed-postlink-preview-row')
+        // Highlight the linked post itself
+        if (m.base36_id === linkedId) row.classList.add('hs-feed-postlink-preview-linked')
+        overlay.appendChild(row)
+      }
+
+      for (const ancestor of chain) renderRow(ancestor)
+      renderRow(msg)
+      for (const desc of descChain) renderRow(desc)
+
+      // Position: bottom edge snug against link top, always-above, clamp to viewport
+      const positionOverlay = () => {
+        if (!overlay.parentNode) return
+        const linkRect = link.getBoundingClientRect()
+        const layoutH = document.documentElement.clientHeight
+        const layoutW = document.documentElement.clientWidth
+
+        // Bottom of overlay aligns to top of link
+        const bottomFromBase = layoutH - linkRect.top
+        overlay.style.bottom = bottomFromBase + 'px'
+        overlay.style.top = ''
+
+        // Max height: everything above the link (minus a small margin)
+        const availableAbove = Math.max(0, linkRect.top - 4)
+        overlay.style.maxHeight = availableAbove + 'px'
+
+        // Horizontal: align left to link, clamp to viewport
+        const overlayW = overlay.getBoundingClientRect().width
+        let left = linkRect.left
+        if (left + overlayW > layoutW - 4) left = layoutW - overlayW - 4
+        if (left < 4) left = 4
+        overlay.style.left = left + 'px'
+      }
+
+      // Wait for images before final positioning (emotes, avatars)
+      const images = overlay.querySelectorAll('img')
+      if (images.length > 0) {
+        let pending = images.length
+        const onLoad = () => { if (--pending <= 0) requestAnimationFrame(positionOverlay) }
+        images.forEach(img => {
+          if (img.complete) { onLoad() }
+          else {
+            img.addEventListener('load', onLoad, { once: true })
+            img.addEventListener('error', onLoad, { once: true })
+          }
+        })
+        // Fallback: position after 120ms regardless
+        cleanup.setTimeout(positionOverlay, 120)
+      } else {
+        requestAnimationFrame(() => requestAnimationFrame(positionOverlay))
+      }
+    })()
+  }, { signal: mcSignal })
+
+  document.body.addEventListener('mouseout', (ev) => {
+    const link = ev.target.closest && ev.target.closest('.hs-post-link')
+    if (!link) return
+    if (!link.closest('#hs-mc-messages')) return
+    const to = ev.relatedTarget
+    // Don't hide if moving into the overlay or another post-link
+    const overlay = document.getElementById('hs-feed-postlink-preview')
+    if (overlay && overlay.contains(to)) return
+    if (to && to.closest && to.closest('.hs-post-link')) return
+    _hideOverlay()
+  }, { signal: mcSignal })
 }

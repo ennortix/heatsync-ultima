@@ -1663,6 +1663,42 @@ function injectStyles() {
       color: #000;
       background: #fff;
     }
+    /* Feed post-link hover preview stack */
+    #hs-feed-postlink-preview {
+      position: fixed;
+      z-index: 2147483647;
+      background: #000;
+      border: 1px solid #808000;
+      border-bottom: none;
+      box-sizing: border-box;
+      max-width: 600px;
+      min-width: 280px;
+      overflow: hidden;
+      display: none;
+      pointer-events: auto;
+      font-family: var(--hs-mc-font, 'CozetteVector', 'Courier New', monospace);
+      font-size: var(--hs-mc-base-size, 13px);
+    }
+    .hs-feed-postlink-preview-row {
+      background: #2e2e08 !important;
+      box-shadow: none !important;
+      margin: 0 !important;
+      border-bottom: 1px solid #555500;
+      color: #fff;
+    }
+    .hs-feed-postlink-preview-row:last-child {
+      border-bottom: none;
+    }
+    .hs-feed-postlink-preview-row:nth-child(even) {
+      background: #1a1a04 !important;
+    }
+    /* Two classes (row + linked) to out-specify the :nth-child(even) zebra rule
+       so the referenced post keeps its brighter highlight instead of blending
+       into a zebra band. */
+    .hs-feed-postlink-preview-row.hs-feed-postlink-preview-linked {
+      background: #3a3a00 !important;
+      border-left: 2px solid #ffff00 !important;
+    }
     /* Brief flash on the message that the overflow chip scrolled to */
     .hs-mc-msg.hs-mc-thread-flash {
       animation: hs-mc-thread-flash 1.2s ease-out;
@@ -2370,6 +2406,11 @@ function injectStyles() {
       cursor: pointer;
       box-sizing: content-box;
     }
+    /* Feed content is rendered in CozetteVector (a pixel font). A bare inline
+       emote with vertical-align:middle recenters the line box and lands adjacent
+       text on a half-pixel Y, blurring the glyphs. bottom keeps text on an
+       integer baseline. Chat uses .hs-mc-emote-wrapper, so this is feed-only. */
+    .hs-feed-body .hs-mc-emote { vertical-align: bottom; }
     /* Tighten gap between consecutive emotes so "eel1 eel2 eel3"
        reads as one continuous run instead of three spaced-out images.
        Negative margin pulls the second wrapper over the whitespace
@@ -3044,9 +3085,9 @@ function injectStyles() {
     .hs-mc-slash-row:hover .hs-mc-slash-args,
     .hs-mc-slash-row.selected .hs-mc-slash-args,
     .hs-mc-slash-row:hover .hs-mc-slash-desc,
-    .hs-mc-slash-row.selected .hs-mc-slash-desc { color: #fff; }
+    .hs-mc-slash-row.selected .hs-mc-slash-desc { color: #000; }
     .hs-mc-slash-row:hover .hs-mc-slash-name,
-    .hs-mc-slash-row.selected .hs-mc-slash-name { color: #fff; }
+    .hs-mc-slash-row.selected .hs-mc-slash-name { color: #000; }
     /* Toggle button */
     .hs-mc-toggle-btn {
       padding: 4px 10px;

@@ -948,23 +948,101 @@ function initInput() {
     }, { signal: mcSignal })
   }
 
-  // Right-click on message → context menu (mute, whisper, copy, profile, cancel).
-  // Replaces the previous insta-mute behavior so accidental right-clicks don't
-  // silently 24h-mute someone.
+  // Universal right-click → user/post action menu. Fires on ANY username
+  // (.hs-mc-user), chat message (.hs-mc-msg), or feed post (.hs-feed-msg)
+  // anywhere in the panel. follow=1, block=2 are always the top two items.
+  // The emote menu (capture handler above) owns emote right-clicks; real
+  // links/media fall through to the native menu so "copy link" still works.
   if (!window._hsMcMsgContextHandler) {
     window._hsMcMsgContextHandler = true;
     document.addEventListener('contextmenu', (e) => {
-      const msg = e.target.closest('.hs-mc-msg');
-      if (!msg) return;
       if (findEmoteTarget(e.target)) return;
-      const userEl = msg.querySelector('.hs-mc-user:not(.hs-mc-reply-user)');
-      const username = userEl?.textContent?.trim()?.replace(/^@/, '').toLowerCase();
-      if (!username) return;
+      const userEl = e.target.closest('.hs-mc-user:not(.hs-mc-reply-user)');
+      const feedDiv = e.target.closest('.hs-feed-msg');
+      const msg = e.target.closest('.hs-mc-msg');
+      if (!userEl && !feedDiv && !msg) return;
+      // Right-clicking a real link/embed (not a username) → keep native menu.
+      if (!userEl && e.target.closest('a, img, video, iframe, .hs-feed-thread-link, .hs-quote-insert, .hs-post-link, .hs-feed-embed')) return;
+      const norm = (el) => (el.dataset.username || el.textContent || '').replace(/^@/, '').trim().toLowerCase();
+      let username = null, platform = null, feedMsg = null;
+      if (userEl) {
+        username = norm(userEl); platform = userEl.dataset.platform || null;
+      } else if (feedDiv) {
+        const a = feedDiv.querySelector('.hs-mc-user');
+        username = a ? norm(a) : null; platform = a?.dataset.platform || null;
+        feedMsg = feedDiv._hsFeedMsg || null;
+      } else {
+        const a = msg.querySelector('.hs-mc-user:not(.hs-mc-reply-user)');
+        username = a ? norm(a) : null; platform = a?.dataset.platform || null;
+      }
+      if (!username || username === 'anonymous') return;
       e.preventDefault();
       e.stopPropagation();
-      showMcMsgContextMenu(e.clientX, e.clientY, msg, username);
+      openUserCtxMenu(e.clientX, e.clientY, username, platform, { msg: msg || null, feedDiv: feedDiv || null, feedMsg });
     }, { capture: true, signal: mcSignal });
   }
+}
+
+// Resolve a username's heatsync profile (id + relationship) via the shared
+// identity resolver — cache-first, so a prior hover/tooltip makes this instant.
+function hsRelPeek(username, platform) {
+  if (typeof _profileCache === 'undefined') return null
+  const u = String(username).toLowerCase()
+  let c = _profileCache.get(`${platform || 'unknown'}:${u}`)
+  if (!c) { for (const [k, v] of _profileCache) { if (k.endsWith(':' + u)) { c = v; break } } }
+  return c?.profile || null
+}
+
+async function hsFollowFromMenu(username, platform) {
+  if (typeof resolveIdentity !== 'function') return
+  const p = (await resolveIdentity(username, { platform }))?.profile
+  const id = p?.id || p?.userId
+  if (!id) { showToast(`${username} isn't on heatsync`, 'error'); return }
+  pcToggleFollow(id, username, !!(p.relationship?.youFollow || p.relationship?.isFollowing))
+}
+
+async function hsBlockFromMenu(username, platform) {
+  let p = null
+  if (typeof resolveIdentity === 'function') p = (await resolveIdentity(username, { platform }))?.profile || null
+  const id = p?.id || p?.userId
+  // Registered → real account-level block (persists, auto-unfollows). Otherwise
+  // fall back to a local session hide so block still works on non-heatsync users.
+  if (id) pcToggleBlock(id, username, !!(p.relationship?.youBlock || p.relationship?.isBlocked))
+  else _toggleMcBlock(username)
+}
+
+// Build the universal action menu. follow=1, block=2 always lead; whisper/
+// mention/profile/copy follow; own feed posts append edit/delete.
+function openUserCtxMenu(x, y, username, platform, ctx = {}) {
+  const { msg, feedDiv, feedMsg } = ctx
+  const rel = hsRelPeek(username, platform)?.relationship || null
+  const youFollow = !!(rel?.youFollow || rel?.isFollowing)
+  const youBlock = !!(rel?.youBlock || rel?.isBlocked) || blockedUsers.has(String(username).toLowerCase())
+  const isMuted = mutedUsers.has(username)
+  const items = [
+    { label: youFollow ? 'unfollow' : 'follow', good: youFollow, fn: () => hsFollowFromMenu(username, platform) },
+    { label: youBlock ? 'unblock' : 'block', good: youBlock, danger: !youBlock, fn: () => hsBlockFromMenu(username, platform) },
+    { label: isMuted ? 'unmute' : 'mute (24h)', good: isMuted, danger: !isMuted, fn: () => _toggleMcMute(username) },
+    'sep',
+    { label: 'whisper', fn: () => _openWhisperFor(username) },
+    { label: 'mention', fn: () => _mentionInMcInput(username) },
+    { label: 'view profile', fn: () => openProfileCard(username, platform) },
+    'sep',
+    { label: 'copy name', fn: () => { try { navigator.clipboard.writeText(username) } catch {} } },
+  ]
+  if (msg) items.push({ label: 'copy message', fn: () => { try { navigator.clipboard.writeText(_extractMcMsgText(msg)) } catch {} } })
+  if (feedMsg && typeof isOwnFeedPost === 'function' && isOwnFeedPost(feedMsg)) {
+    items.push('sep')
+    const remaining = (typeof EDIT_WINDOW_MS !== 'undefined' ? EDIT_WINDOW_MS : 0) - (Date.now() - new Date(feedMsg.created_at).getTime())
+    if (remaining > 0) {
+      const mins = Math.floor(remaining / 60000), secs = Math.floor((remaining % 60000) / 1000)
+      items.push({ label: `edit (${mins}:${String(secs).padStart(2, '0')})`, fn: () => { if (feedDiv && typeof showFeedEditUI === 'function') showFeedEditUI(feedDiv, feedMsg) } })
+    } else {
+      items.push({ label: 'edit (expired)', disabled: true })
+    }
+    items.push({ label: 'delete', danger: true, fn: () => { if (typeof deleteFeedPost === 'function') deleteFeedPost(feedMsg) } })
+  }
+  showHsCtxMenu(x, y, username, items)
 }
 
 function _toggleMcMute(username) {
@@ -1058,66 +1136,55 @@ function _mentionInMcInput(username) {
   }
 }
 
-function showMcMsgContextMenu(x, y, msg, username) {
+// Generic numbered/keyboard context menu. `items` is an array of either the
+// string 'sep' or { label, fn, danger, good, disabled }. Actionable items are
+// numbered 1..9 top-down for keyboard select. Used by every right-click surface.
+function showHsCtxMenu(x, y, header, items) {
   document.getElementById('hs-mc-msg-ctx')?.remove()
   const menu = document.createElement('div')
   menu.id = 'hs-mc-msg-ctx'
   menu.className = 'hs-mc-ctx'
   menu.tabIndex = -1
   menu.addEventListener('contextmenu', (e) => e.preventDefault())
-  const isMuted = mutedUsers.has(username)
 
   const kbdHandlers = {}
   const kbdItems = [] // {el, fn} in DOM order; numbered 1..9 from the top
-  const addHeader = (text) => {
+  if (header) {
     const h = document.createElement('div')
     h.className = 'hs-mc-em-header'
-    h.textContent = text
+    h.textContent = header
     menu.appendChild(h)
   }
-  const addItem = (label, fn, opts = {}) => {
+  for (const spec of items) {
+    if (spec === 'sep') {
+      const s = document.createElement('div')
+      s.className = 'hs-mc-em-sep'
+      menu.appendChild(s)
+      continue
+    }
     const it = document.createElement('div')
-    it.className = 'hs-mc-em-item' + (opts.danger ? ' hs-mc-em-danger' : '') + (opts.good ? ' hs-mc-em-good' : '')
+    it.className = 'hs-mc-em-item' + (spec.danger ? ' hs-mc-em-danger' : '') + (spec.good ? ' hs-mc-em-good' : '') + (spec.disabled ? ' hs-mc-em-disabled' : '')
     const lab = document.createElement('span')
     lab.className = 'hs-mc-em-label'
-    lab.textContent = label
+    lab.textContent = spec.label
     it.appendChild(lab)
-    kbdItems.push({ el: it, fn })
-    it.addEventListener('click', () => { dismiss(); try { fn() } catch {} })
+    if (!spec.disabled && spec.fn) {
+      kbdItems.push({ el: it, fn: spec.fn })
+      it.addEventListener('click', () => { dismiss(); try { spec.fn() } catch {} })
+    }
     menu.appendChild(it)
   }
-  // Number top-down (key 1 is the first item, ascending downward) like the emote menu.
-  const assignKbd = () => {
-    for (let i = 0; i < kbdItems.length && i < 9; i++) {
-      const { el, fn } = kbdItems[i]
-      const n = i + 1
-      const k = document.createElement('span')
-      k.className = 'hs-mc-em-kbd'
-      k.textContent = String(n)
-      el.appendChild(k)
-      kbdHandlers[String(n)] = fn
-    }
-  }
-  const addSep = () => {
-    const s = document.createElement('div')
-    s.className = 'hs-mc-em-sep'
-    menu.appendChild(s)
+  // Number top-down (key 1 is the first item, ascending downward).
+  for (let i = 0; i < kbdItems.length && i < 9; i++) {
+    const { el, fn } = kbdItems[i]
+    const n = i + 1
+    const k = document.createElement('span')
+    k.className = 'hs-mc-em-kbd'
+    k.textContent = String(n)
+    el.appendChild(k)
+    kbdHandlers[String(n)] = fn
   }
 
-  // Trimmed to the actions that matter, numbered top-down (key 1 is the first
-  // item): copy username=1, copy message=2, block/unblock=3, mute/unmute=4.
-  const isBlocked = blockedUsers.has(String(username).toLowerCase())
-  addHeader(username)
-  addItem('copy username', () => { try { navigator.clipboard.writeText(username) } catch {} })
-  addItem('copy message', () => { try { navigator.clipboard.writeText(_extractMcMsgText(msg)) } catch {} })
-
-  addSep()
-  if (isBlocked) addItem('unblock', () => _toggleMcBlock(username), { good: true })
-  else addItem('block', () => _toggleMcBlock(username), { danger: true })
-  if (isMuted) addItem('unmute', () => _toggleMcMute(username), { good: true })
-  else addItem('mute (24h)', () => _toggleMcMute(username), { danger: true })
-
-  assignKbd()
   document.body.appendChild(menu)
   menu.style.visibility = 'hidden'
   menu.style.left = '0px'

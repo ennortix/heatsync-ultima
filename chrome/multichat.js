@@ -15812,6 +15812,12 @@ async function sendKickMessage(kickSlug, text) {
       }
       if (!emote) {
         emote = senderEmotes?.get(word) || (channel && channelEmoteCaches[channel]?.get(word)) || extraCache?.get(word) || emoteCache.get(word) || _rf?.get(word)
+        // blockedEmoteFallback last + ungated (block is viewer-wide, all senders):
+        // resolves a blocked emote to its real url+dims so it renders the dashed box
+        // at the emote's true rectangle via the normal path, instead of the square
+        // 1×1-placeholder branch below. Only when a real url is stored (url-less
+        // blocks — name-as-hash — still fall through to the square box).
+        if (!emote) { const _bf = blockedEmoteFallback.get(word); if (_bf?.url) emote = _bf }
         // Honor zero-width flag, OR fall back to the "name0" naming convention
         // when an uploader didn't set the flag despite naming the emote for overlay use.
         if (emote) isOverlayEmote = !!emote.zeroWidth || endsWithZero

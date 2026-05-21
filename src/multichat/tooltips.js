@@ -32,11 +32,21 @@
     return badgeTooltip
   }
 
+  // Inline badges render at 18px (1x). The tooltip shows them at 72px, so swap
+  // to the CDN's 4x variant for a crisp preview instead of upscaling 18→72.
+  // Only 7TV and FFZ expose size variants; other sources keep their src.
+  function hiResBadgeUrl(src) {
+    if (!src) return src
+    if (src.includes('7tv')) return src.replace(/\/[1-4]x\.(webp|avif|png|gif)(\?.*)?$/i, '/4x.$1$2')
+    if (src.includes('frankerfacez')) return src.replace(/\/[1-4](\?.*)?$/, '/4$1')
+    return src
+  }
+
   function showBadgeTooltip(badgeImg, badgeName) {
     const tooltip = ensureBadgeTooltip()
     document.body.appendChild(cleanup.trackNode(tooltip))
     const img = tooltip.querySelector('img')
-    img.src = badgeImg.src
+    img.src = hiResBadgeUrl(badgeImg.src)
     img.alt = badgeName
     img.style.width = '72px'
     img.style.height = '72px'
@@ -77,6 +87,11 @@
         <span class="tooltip-name"></span>
         <span class="tooltip-source"></span>
       `;
+      // Composite-stack preview container (scaled base+overlays for emote nests).
+      // Built via DOM, inserted before the name so it occupies the thumbnail slot.
+      const stackBox = document.createElement('span');
+      stackBox.className = 'tooltip-stack';
+      emoteTooltip.insertBefore(stackBox, emoteTooltip.querySelector('.tooltip-name'));
       document.body.appendChild(cleanup.trackNode(emoteTooltip));
     }
     return emoteTooltip;
@@ -86,39 +101,80 @@
   // skip the 1x→4x swap entirely on next hover (no flicker, no re-fetch).
   const _hiResLoaded = new Set();
 
+  // Clone a collapsed stack's composited emotes into the tooltip and blow it up
+  // SCALE×. transform: scale keeps base+overlay grid alignment intact; the outer
+  // box is sized to the scaled footprint so the tooltip lays out around it.
+  const STACK_PREVIEW_SCALE = 4;
+  function buildStackPreview(box, stackEmotes) {
+    const clone = stackEmotes.cloneNode(true);
+    clone.querySelectorAll('img').forEach(im => {
+      // Blocked overlays render a transparent px with the real url in dataset.
+      const orig = im.dataset.hsOrigSrc || im.src;
+      const hi = getHighResUrl(orig);
+      if (hi) im.src = hi;
+      im.removeAttribute('loading');
+      im.style.filter = '';
+    });
+    clone.style.transform = `scale(${STACK_PREVIEW_SCALE})`;
+    clone.style.transformOrigin = 'top left';
+    const r = stackEmotes.getBoundingClientRect();
+    box.style.width = (r.width * STACK_PREVIEW_SCALE) + 'px';
+    box.style.height = (r.height * STACK_PREVIEW_SCALE) + 'px';
+    box.style.display = 'block';
+    box.replaceChildren(clone);
+  }
+
   function showEmoteTooltip(e, emoteName, emoteUrl, state, source, hoveredImg, owner) {
     const tooltip = ensureEmoteTooltip();
     // Re-append to body so DOM order tiebreaks above other max-int siblings
     // (reply-stack overlay sits at the same z-index).
     document.body.appendChild(cleanup.trackNode(tooltip));
     const img = tooltip.querySelector('img');
+    const stackBox = tooltip.querySelector('.tooltip-stack');
     const nameEl = tooltip.querySelector('.tooltip-name');
     const stateEl = tooltip.querySelector('.tooltip-source');
 
-    const w4 = (hoveredImg?.offsetWidth || 28) * 4;
-    const h4 = (hoveredImg?.offsetHeight || 28) * 4;
-    img.style.width = w4 + 'px';
-    img.style.height = h4 + 'px';
-    img.alt = emoteName;
-    const hiResUrl = getHighResUrl(emoteUrl);
-    if (hiResUrl !== emoteUrl && _hiResLoaded.has(hiResUrl)) {
-      // Already preloaded — go straight to hi-res, no swap-flicker.
-      img.src = hiResUrl;
+    // Emote nest (collapsed stack): preview the whole composite — base + every
+    // zero-width overlay — scaled up together, instead of just the one img the
+    // cursor happened to land on. Uniform 4× keeps the in-chat overlay alignment.
+    const stackEmotes = hoveredImg?.closest?.('.hs-mc-emote-stack:not(.expanded)')
+      ?.querySelector(':scope > .hs-mc-emote-stack-emotes');
+    if (stackEmotes && stackEmotes.children.length > 1) {
+      img.style.display = 'none';
+      buildStackPreview(stackBox, stackEmotes);
+      // Name lists all emotes in the nest, base first.
+      const names = [...stackEmotes.children].map(w =>
+        w.dataset?.emoteName || w.querySelector('img')?.alt || '').filter(Boolean);
+      nameEl.textContent = names.join(' + ') || emoteName;
     } else {
-      // First time: show 1x immediately, upgrade in background. The hi-res URL
-      // is cached after first load so subsequent hovers are flicker-free.
-      img.src = emoteUrl;
-      if (hiResUrl !== emoteUrl) {
-        const hiRes = new Image();
-        hiRes.onload = () => {
-          _hiResLoaded.add(hiResUrl);
-          if (_hiResLoaded.size > 2000) _hiResLoaded.delete(_hiResLoaded.values().next().value);
-          if (img.alt === emoteName) img.src = hiResUrl;
-        };
-        hiRes.src = hiResUrl;
+      stackBox.style.display = 'none';
+      stackBox.replaceChildren();
+      img.style.display = '';
+      const w4 = (hoveredImg?.offsetWidth || 28) * 4;
+      const h4 = (hoveredImg?.offsetHeight || 28) * 4;
+      img.style.width = w4 + 'px';
+      img.style.height = h4 + 'px';
+      img.alt = emoteName;
+      const hiResUrl = getHighResUrl(emoteUrl);
+      if (hiResUrl !== emoteUrl && _hiResLoaded.has(hiResUrl)) {
+        // Already preloaded — go straight to hi-res, no swap-flicker.
+        img.src = hiResUrl;
+      } else {
+        // First time: show 1x immediately, upgrade in background. The hi-res URL
+        // is cached after first load so subsequent hovers are flicker-free.
+        img.src = emoteUrl;
+        if (hiResUrl !== emoteUrl) {
+          const hiRes = new Image();
+          hiRes.onload = () => {
+            _hiResLoaded.add(hiResUrl);
+            if (_hiResLoaded.size > 2000) _hiResLoaded.delete(_hiResLoaded.values().next().value);
+            if (img.alt === emoteName) img.src = hiResUrl;
+          };
+          hiRes.src = hiResUrl;
+        }
       }
+      nameEl.textContent = emoteName;
     }
-    nameEl.textContent = emoteName;
 
     // Show state with source for globals
     let label;
@@ -177,6 +233,8 @@
 
     // Hide the image, show emoji character at 4x instead
     img.style.display = 'none'
+    const stackBox = tooltip.querySelector('.tooltip-stack')
+    if (stackBox) { stackBox.style.display = 'none'; stackBox.replaceChildren() }
 
     // Build emoji preview using safe DOM methods
     nameEl.textContent = ''
@@ -222,6 +280,9 @@
       // Reset img display for next emote hover
       const img = emoteTooltip.querySelector('img')
       if (img) img.style.display = ''
+      // Clear any stack composite so the next plain hover isn't oversized
+      const stackBox = emoteTooltip.querySelector('.tooltip-stack')
+      if (stackBox) { stackBox.style.display = 'none'; stackBox.replaceChildren() }
     }
   }
 

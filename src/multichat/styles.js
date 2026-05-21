@@ -2861,6 +2861,13 @@ function injectStyles() {
       object-fit: contain;
       image-rendering: pixelated;
     }
+    /* Emote-nest composite preview: sized box, scaled stack pinned top-left */
+    #hs-emote-tooltip .tooltip-stack {
+      display: none;
+      position: relative;
+      overflow: visible;
+    }
+    #hs-emote-tooltip .tooltip-stack .hs-mc-emote-stack-emotes::before { content: none !important; }
     #hs-emote-tooltip .tooltip-name {
       color: #fff;
       font-size: 13px;

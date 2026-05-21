@@ -2339,10 +2339,19 @@ function createBadgeTooltip() {
   return tooltip
 }
 
+// Inline badges render at 18px (1x). The tooltip shows them at 72px, so swap to
+// the CDN's 4x variant for a crisp preview. Only 7TV/FFZ expose size variants.
+function hiResBadgeUrl(src) {
+  if (!src) return src
+  if (src.includes('7tv')) return src.replace(/\/[1-4]x\.(webp|avif|png|gif)(\?.*)?$/i, '/4x.$1$2')
+  if (src.includes('frankerfacez')) return src.replace(/\/[1-4](\?.*)?$/, '/4$1')
+  return src
+}
+
 function showBadgeTooltip(badgeImg) {
   let tooltip = document.getElementById('hs-badge-tooltip') || createBadgeTooltip()
   const img = tooltip.querySelector('img')
-  img.src = badgeImg.src
+  img.src = hiResBadgeUrl(badgeImg.src)
   img.alt = badgeImg.alt || ''
   const nameEl = tooltip.querySelector('.hs-badge-tooltip-name')
   if (nameEl) nameEl.textContent = badgeImg.title || badgeImg.alt || ''

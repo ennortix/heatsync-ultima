@@ -1441,9 +1441,10 @@ function buildFeedMessageDiv(m, opUsername) {
   // Thread link: >>id — always expands thread inline (never navigates away)
   const shortId = (m.base36_id || '').replace(/^0+/, '') || '0';
   const inThread = !!opUsername;
+  const linkId = escapeHtml(m.base36_id || '')
   const threadLink = inThread
-    ? `<span class="hs-feed-thread-link hs-quote-insert" data-quote-id="${escapeHtml(shortId)}" style="color:#ffff00;cursor:pointer">${escapeHtml(shortId)}</span>`
-    : `<span class="hs-feed-thread-link hs-thread-toggle" style="cursor:pointer">&gt;&gt;${escapeHtml(shortId)}</span>`;
+    ? `<span class="hs-feed-thread-link hs-quote-insert" data-quote-id="${escapeHtml(shortId)}" data-id="${linkId}" style="color:#ffff00;cursor:pointer">${escapeHtml(shortId)}</span>`
+    : `<span class="hs-feed-thread-link hs-thread-toggle" data-id="${linkId}" style="cursor:pointer">&gt;&gt;${escapeHtml(shortId)}</span>`;
 
   // Post type tag: [OP] red = original post, [OP] magenta = OP replying in own thread, [RE] = reply
   const isOp = m.is_op != null ? !!m.is_op : (!m.reply_to || m.reply_to === '');
@@ -1610,6 +1611,24 @@ function formatText(html) {
 }
 
 const _feedEmoteRegexCache = new Map()
+// Render one feed emote with the SAME wrapper structure chat uses, so
+// right-click block/unblock works (queryEmoteWrappers matches
+// .hs-mc-emote-wrapper[data-emote-name], findEmoteTarget reads data-state).
+// Bare <img> rendered the emote but left it un-blockable — toast fired, image stayed.
+function renderFeedEmote(name, url, source, hash) {
+  const dn = escapeHtml(name)
+  // Blocked → dashed box (transparent px), never the real image. Matches chat's
+  // blocked branch so the block actually hides the emote on re-render.
+  if (typeof blockedEmoteNames !== 'undefined' && blockedEmoteNames.has(name)) {
+    return `<span class="hs-mc-emote-wrapper hs-state-blocked" data-emote-name="${dn}" data-state="blocked" data-source="heatsync"><img src="${HS_TRANSPARENT_PX}" alt="${dn}" title="${dn}" class="hs-mc-emote hs-emote-blocked" style="width:var(--hs-emote-size,32px);height:var(--hs-emote-size,32px)" data-emote-name="${dn}" data-state="blocked" data-source="heatsync"></span>`
+  }
+  const safeUrl = escapeHtml(url)
+  const src = escapeHtml(source || 'unknown')
+  const state = (typeof getEmoteState === 'function') ? getEmoteState(name, source) : 'global'
+  const hashAttr = hash ? ` data-emote-hash="${escapeHtml(hash)}"` : ''
+  return `<span class="hs-mc-emote-wrapper hs-state-${state}" data-emote-name="${dn}" data-emote-url="${safeUrl}" data-state="${state}" data-source="${src}"${hashAttr}><img src="${safeUrl}" alt="${dn}" title="${dn}" class="hs-mc-emote hs-emote-${state}" data-emote-name="${dn}" data-state="${state}" data-source="${src}" loading="lazy" decoding="async"></span>`
+}
+
 function renderFeedContent(content, emoteRefs) {
   if (!content) return '';
   // Content is ALREADY HTML-escaped by the server (sanitizeUserInput on store),
@@ -1675,8 +1694,9 @@ function renderFeedContent(content, emoteRefs) {
     for (const [name, val] of Object.entries(emoteRefs)) {
       const url = typeof val === 'string' ? val : val?.url
       if (!url || !/^https:\/\//.test(url)) continue
+      const source = typeof val === 'object' ? (val?.provider || 'heatsync') : 'heatsync'
+      const hash = typeof val === 'object' ? val?.hash : ''
       const escaped = escapeHtml(name);
-      const safeUrl = escapeHtml(url);
       const cacheKey = escaped
       let re = _feedEmoteRegexCache.get(cacheKey)
       if (!re) {
@@ -1684,7 +1704,7 @@ function renderFeedContent(content, emoteRefs) {
         _feedEmoteRegexCache.set(cacheKey, re)
         if (_feedEmoteRegexCache.size > 500) _feedEmoteRegexCache.delete(_feedEmoteRegexCache.keys().next().value)
       }
-      html = html.replace(re, `<img class="hs-mc-emote" src="${safeUrl}" alt="${escaped}" title="${escaped}" loading="lazy">`);
+      html = html.replace(re, renderFeedEmote(name, url, source, hash));
     }
   }
 
@@ -1698,10 +1718,13 @@ function renderFeedContent(content, emoteRefs) {
       if (i % 2 === 1) return part  // inside an HTML tag — skip
       return part.replace(/\S+/g, (word) => {
         if (refNames && refNames.has(word)) return word  // already rendered above
+        // Blocked emote dropped from caches — still box it, don't leak the name.
+        if (typeof blockedEmoteNames !== 'undefined' && blockedEmoteNames.has(word)) {
+          return renderFeedEmote(word, '', 'heatsync', '')
+        }
         const em = lookupEmote(word)
         if (!em || !em.url || !/^https:\/\//.test(em.url)) return word
-        const esc = escapeHtml(word)
-        return `<img class="hs-mc-emote" src="${escapeHtml(em.url)}" alt="${esc}" title="${esc}" loading="lazy">`
+        return renderFeedEmote(word, em.url, em.source, em.hash)
       })
     }).join('')
   }
@@ -2773,6 +2796,9 @@ function setupFeedPostLinkHover() {
   let _linkGen = 0
   let _currentLink = null
   const MAX_DEPTH = 50
+  // Both inline >>id refs AND the leading thread-link (left of the OP) get the
+  // same hover preview — a >>id is hoverable wherever it appears.
+  const LINK_SEL = '.hs-post-link, .hs-feed-thread-link'
 
   const getOverlay = () => {
     let el = document.getElementById('hs-feed-postlink-preview')
@@ -2784,7 +2810,7 @@ function setupFeedPostLinkHover() {
     el.addEventListener('mouseleave', (ev) => {
       // Only dismiss if not moving back into a post-link
       const to = ev.relatedTarget
-      if (to && to.closest && to.closest('.hs-post-link')) return
+      if (to && to.closest && to.closest(LINK_SEL)) return
       _hideOverlay()
     })
     return el
@@ -2803,7 +2829,7 @@ function setupFeedPostLinkHover() {
   }, { passive: true, capture: true, signal: mcSignal })
 
   document.body.addEventListener('mouseover', (ev) => {
-    const link = ev.target.closest && ev.target.closest('.hs-post-link')
+    const link = ev.target.closest && ev.target.closest(LINK_SEL)
     if (!link) return
     // Must be inside the feed panel
     if (!link.closest('#hs-mc-messages')) return
@@ -2932,14 +2958,14 @@ function setupFeedPostLinkHover() {
   }, { signal: mcSignal })
 
   document.body.addEventListener('mouseout', (ev) => {
-    const link = ev.target.closest && ev.target.closest('.hs-post-link')
+    const link = ev.target.closest && ev.target.closest(LINK_SEL)
     if (!link) return
     if (!link.closest('#hs-mc-messages')) return
     const to = ev.relatedTarget
     // Don't hide if moving into the overlay or another post-link
     const overlay = document.getElementById('hs-feed-postlink-preview')
     if (overlay && overlay.contains(to)) return
-    if (to && to.closest && to.closest('.hs-post-link')) return
+    if (to && to.closest && to.closest(LINK_SEL)) return
     _hideOverlay()
   }, { signal: mcSignal })
 }

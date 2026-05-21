@@ -221,48 +221,6 @@ async function deleteFeedPost(msg) {
   }
 }
 
-function showFeedPostContextMenu(e, div, msg) {
-  e.preventDefault()
-  e.stopPropagation()
-  document.getElementById('hs-mc-ctx-menu')?.remove()
-  const menu = document.createElement('div')
-  menu.id = 'hs-mc-ctx-menu'
-  menu.style.cssText = 'position:fixed;z-index:99999;background:#000;border:1px solid #808080;border-radius:0;padding:4px 0;min-width:120px;font-size:13px;font-family:inherit;'
-
-  const createdAt = new Date(msg.created_at).getTime()
-  const elapsed = Date.now() - createdAt
-  const remaining = EDIT_WINDOW_MS - elapsed
-  const canEdit = remaining > 0
-
-  const mkItem = (label, color, fn, disabled) => {
-    const item = document.createElement('div')
-    item.textContent = label
-    item.style.cssText = `padding:6px 12px;cursor:${disabled ? 'not-allowed' : 'pointer'};color:${color};opacity:${disabled ? 0.5 : 1};`
-    if (!disabled) {
-      item.addEventListener('mouseenter', () => item.style.background = 'rgba(255,255,255,0.06)')
-      item.addEventListener('mouseleave', () => item.style.background = '')
-      item.addEventListener('click', () => { menu.remove(); fn() })
-    }
-    menu.appendChild(item)
-  }
-
-  if (canEdit) {
-    const mins = Math.floor(remaining / 60000)
-    const secs = Math.floor((remaining % 60000) / 1000)
-    mkItem(`edit (${mins}:${String(secs).padStart(2, '0')} left)`, '#fff', () => showFeedEditUI(div, msg))
-  } else {
-    mkItem('edit (window expired)', '#fff', () => {}, true)
-  }
-  mkItem('delete', '#ff4444', () => deleteFeedPost(msg))
-
-  document.body.appendChild(menu)
-  const mw = menu.offsetWidth, mh = menu.offsetHeight
-  menu.style.left = Math.min(e.clientX, window.innerWidth - mw - 4) + 'px'
-  menu.style.top = Math.min(e.clientY, window.innerHeight - mh - 4) + 'px'
-  const dismiss = (ev) => { if (!menu.contains(ev.target)) { menu.remove(); document.removeEventListener('click', dismiss) } }
-  cleanup.setTimeout(() => document.addEventListener('click', dismiss, { signal: mcSignal }), 0)
-}
-
 // ============================================
 // SOCIAL TABS (FEED & NOTIFICATIONS)
 // ============================================
@@ -1538,15 +1496,9 @@ function buildFeedMessageDiv(m, opUsername) {
     });
   });
 
-  // Right-click own posts → edit/delete menu
-  if (isOwnFeedPost(m)) {
-    div.classList.add('hs-feed-own')
-    div.addEventListener('contextmenu', (e) => {
-      // Only handle right-click directly on the post (not on links/quotes inside)
-      if (e.target.closest('a, .hs-feed-thread-link, .hs-quote-insert, .hs-post-link')) return
-      showFeedPostContextMenu(e, div, m)
-    })
-  }
+  // Stash the message object so the universal right-click handler (input.js)
+  // can build the follow/block/edit/delete menu for this post.
+  div._hsFeedMsg = m
   // Show edited badge if message was edited
   if (m.edited_at && !div.querySelector('.hs-feed-edited')) {
     const body = div.querySelector('.hs-feed-body')

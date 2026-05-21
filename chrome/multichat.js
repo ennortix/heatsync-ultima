@@ -4274,6 +4274,10 @@ const HsNotifs = (() => {
     if (l._container && document.body.contains(l._container)) return l._container
     let el = document.getElementById(`hs-notif-layer-${name}`)
     if (!el) {
+      // external layers are owned by overlay chrome (e.g. the statusbar slot
+      // lives inside #hs-mc-statusbar). Never body-fallback — just wait for the
+      // overlay to render it. Emits before then no-op (mount returns on null).
+      if (l.def.external) return null
       el = document.createElement('div')
       el.id = `hs-notif-layer-${name}`
       el.className = `hs-notif-layer hs-notif-layer-${name}`
@@ -4410,6 +4414,19 @@ const HsNotifs = (() => {
     },
   })
 
+  // Statusbar — the thin always-present strip at the top of the overlay
+  // (#hs-mc-statusbar, rendered by main.js's createOverlay). Its container slot
+  // is #hs-notif-layer-statusbar, adopted in-place (external: true) so toasts
+  // render INLINE in the bar instead of floating over the read zone. A single
+  // status line: each new notif replaces the prior (stack: 'replace'), identical
+  // text still coalesces to ×N via the type's dedupe. No geometry — the slot
+  // sits in the bar's normal flex flow.
+  registerLayer('statusbar', {
+    stack: 'replace',
+    maxVisible: 1,
+    external: true,
+  })
+
   // === STANDARD TYPES ===
 
   // Toast — short status message, color-coded by level. Click anywhere on
@@ -4419,7 +4436,7 @@ const HsNotifs = (() => {
   // empty black-box-with-red-outline (the old bug where any showToast call
   // with an undefined/missing error code produced an unclickable square).
   registerType('toast', {
-    layer: 'toast-stack',
+    layer: 'statusbar',
     timeout: 4000,
     clickToDismiss: true,
     // Dedupe identical text — repeated kick/twitch send failures used to
@@ -4620,10 +4637,10 @@ function injectStyles() {
   style.id = 'hs-mc-styles';
   const css = `
     /* Resize-bar tokens — one source of truth for every orange drag-bar.
-       2px visible line; ::before extends the grab zone by --hs-resize-grab
+       4px visible line; ::before extends the grab zone by --hs-resize-grab
        per side. Mirrors heatsync.org's --resize-thickness / --resize-grab. */
     :root {
-      --hs-resize-thickness: 2px;
+      --hs-resize-thickness: 4px;
       --hs-resize-grab: 4px;
     }
     /* Bundled bitmap fonts — URLs replaced via chrome.runtime.getURL after
@@ -5688,6 +5705,93 @@ function injectStyles() {
     .hs-notif-layer-toast-stack > .hs-notif:hover .hs-notif-toast-text::before {
       color: #000 !important;
     }
+
+    /* === Statusbar — thin always-present strip at the top of the overlay.
+       Holds the whole-chat collapse button + the inline toast status line, so
+       status messages stop covering the read zone. ~20px, btop/dwl density. */
+    #hs-mc-statusbar {
+      flex: 0 0 auto;
+      display: flex;
+      align-items: stretch;
+      height: 20px;
+      min-height: 20px;
+      background: #0a0a0d;
+      border-bottom: 1px solid #2a2a2e;
+      overflow: hidden;
+    }
+    #hs-mc-collapse-btn {
+      flex: 0 0 auto;
+      width: 26px;
+      padding: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(255,255,255,0.06);
+      color: #fff;
+      border: none;
+      border-right: 1px solid #2a2a2e;
+      border-radius: 0;
+      cursor: pointer;
+      font: 700 16px/1 ui-monospace, 'JetBrains Mono', 'Cascadia Mono', 'SF Mono', Menlo, Consolas, monospace;
+      transition: background 80ms linear, color 80ms linear;
+    }
+    /* Arrow points toward the dock edge it collapses to (chat docks right by
+       default → '>'). Position-aware so it always reads as "push away". */
+    #hs-mc-collapse-btn::before { content: '>'; }
+    body.hs-chat-left   #hs-mc-collapse-btn::before { content: '<'; }
+    body.hs-chat-top    #hs-mc-collapse-btn::before { content: '\\2303'; }
+    body.hs-chat-bottom #hs-mc-collapse-btn::before { content: '\\2304'; }
+    /* Hover convention: invert to white bg / black text. */
+    #hs-mc-collapse-btn:hover { background: #fff; color: #000; }
+    #hs-mc-collapse-btn:focus-visible { outline: 1px solid #ff8700; outline-offset: -2px; }
+
+    /* The toast slot lives in the bar's normal flex flow (not fixed). Override
+       the floating-layer base so notifs render inline, single-line, no box. */
+    .hs-notif-layer-statusbar {
+      position: static;
+      z-index: auto;
+      flex: 1 1 0;
+      min-width: 0;
+      flex-direction: row;
+      align-items: center;
+      gap: 0;
+      overflow: hidden;
+      pointer-events: auto;
+    }
+    .hs-notif-layer-statusbar:empty { display: flex; } /* keep slot occupying bar width */
+    .hs-notif-layer-statusbar > .hs-notif {
+      flex: 1 1 0;
+      min-width: 0;
+      background: transparent;
+      border: none;
+      box-shadow: none;
+      animation: hs-notif-fade-in 140ms ease both;
+      transform-origin: center;
+      cursor: pointer;
+    }
+    .hs-notif-layer-statusbar .hs-notif-body {
+      display: block;
+      padding: 0 8px;
+      line-height: 20px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .hs-notif-layer-statusbar .hs-notif-toast-text { display: inline; white-space: nowrap; }
+    .hs-notif-layer-statusbar > .hs-notif:hover .hs-notif-toast-text,
+    .hs-notif-layer-statusbar > .hs-notif:hover .hs-notif-toast-text::before { color: #fff; }
+    .hs-notif-layer-statusbar .hs-notif-exiting {
+      animation: hs-notif-fade-out 120ms ease-in forwards !important;
+    }
+    /* Error/warn briefly flash the whole bar so a status-line error still
+       grabs the eye despite being inline. */
+    #hs-mc-statusbar:has(.hs-notif-toast-error) { animation: hs-statusbar-flash-err 700ms ease-out; }
+    #hs-mc-statusbar:has(.hs-notif-toast-warn)  { animation: hs-statusbar-flash-warn 700ms ease-out; }
+    @keyframes hs-statusbar-flash-err  { 0% { background: #3a0f0f; } 100% { background: #0a0a0d; } }
+    @keyframes hs-statusbar-flash-warn { 0% { background: #38330d; } 100% { background: #0a0a0d; } }
+    @media (prefers-reduced-motion: reduce) {
+      #hs-mc-statusbar { animation: none !important; }
+    }
     /* Channel-scope filter — HsNotifs flags any per-channel notif (e.g.
        twitch-resub-share, twitch-watchstreak-share) with this class when the
        active multichat tab doesn't match the notif's data.channel. Toggled
@@ -6081,43 +6185,22 @@ function injectStyles() {
       margin: 0 !important;
     }
 
-    /* Never hide Twitch's native collapse/expand arrows — user needs them.
-       Hide HS UI when chat is collapsed so it doesn't interfere with layout. */
-    .right-column--collapsed #hs-mc-container {
-      display: none !important;
-    }
-    /* Collapsed chat: width 0 but overflow visible so the toggle arrow
-       (which is a grandchild) can still render outside the box */
-    .right-column--collapsed {
-      width: 0px !important;
-      min-width: 0px !important;
-      overflow: visible !important;
-    }
-    .right-column--collapsed > *:not(:has(.right-column__toggle-visibility)) {
-      overflow: hidden !important;
-      width: 0px !important;
-      min-width: 0px !important;
-    }
-    .right-column--collapsed > *:has(.right-column__toggle-visibility) {
-      overflow: visible !important;
-    }
-    .right-column--collapsed .right-column__toggle-visibility {
-      transform: none !important;
-      left: -32px !important;
-      z-index: 50 !important;
-    }
+    /* We provide our own collapse control (the '>' button in #hs-mc-statusbar),
+       so Twitch's native collapse/expand arrow is redundant — hide it bulletproof.
+       Pure CSS survives React re-renders (a one-shot JS removal wouldn't), and
+       display:none !important beats Twitch's inline non-important display. Restore
+       when hidden is handled by our orange #hs-chat-restore-pill + the \ key. */
+    body.hs-platform-twitch .right-column__toggle-visibility { display: none !important; }
+    /* If the right column still ends up collapsed (Twitch auto-collapses on
+       narrow viewports), keep our container hidden and zero the column width.
+       Arrow no longer needs to overflow out, so clip cleanly. */
+    .right-column--collapsed #hs-mc-container { display: none !important; }
+    .right-column--collapsed,
+    .right-column--collapsed > *,
     div:has(> .right-column--collapsed) {
       width: 0px !important;
       min-width: 0px !important;
-      overflow: visible !important;
-    }
-    /* Force collapse/expand arrow to white — Twitch light theme leaks
-       into the toggle wrapper, making it black on dark background */
-    .right-column__toggle-visibility button {
-      color: #fff !important;
-    }
-    .right-column__toggle-visibility svg {
-      fill: #fff !important;
+      overflow: hidden !important;
     }
 
     /* Ensure our elements are visible */
@@ -6695,6 +6778,8 @@ function injectStyles() {
       border: 1px solid #333; background: #0a0a0a; color: #888;
       font-size: 10px; line-height: 14px; text-align: center;
     }
+    .hs-mc-ctx .hs-mc-em-item.hs-mc-em-disabled { opacity: 0.4; cursor: not-allowed; }
+    .hs-mc-ctx .hs-mc-em-item.hs-mc-em-disabled:hover { background: none; color: inherit; }
     .hs-mc-ctx .hs-mc-em-sep { height: 1px; background: #1a1a1a; margin: 2px 0; }
     #hs-user-tooltip {
       position: fixed;
@@ -21666,48 +21751,6 @@ async function deleteFeedPost(msg) {
   }
 }
 
-function showFeedPostContextMenu(e, div, msg) {
-  e.preventDefault()
-  e.stopPropagation()
-  document.getElementById('hs-mc-ctx-menu')?.remove()
-  const menu = document.createElement('div')
-  menu.id = 'hs-mc-ctx-menu'
-  menu.style.cssText = 'position:fixed;z-index:99999;background:#000;border:1px solid #808080;border-radius:0;padding:4px 0;min-width:120px;font-size:13px;font-family:inherit;'
-
-  const createdAt = new Date(msg.created_at).getTime()
-  const elapsed = Date.now() - createdAt
-  const remaining = EDIT_WINDOW_MS - elapsed
-  const canEdit = remaining > 0
-
-  const mkItem = (label, color, fn, disabled) => {
-    const item = document.createElement('div')
-    item.textContent = label
-    item.style.cssText = `padding:6px 12px;cursor:${disabled ? 'not-allowed' : 'pointer'};color:${color};opacity:${disabled ? 0.5 : 1};`
-    if (!disabled) {
-      item.addEventListener('mouseenter', () => item.style.background = 'rgba(255,255,255,0.06)')
-      item.addEventListener('mouseleave', () => item.style.background = '')
-      item.addEventListener('click', () => { menu.remove(); fn() })
-    }
-    menu.appendChild(item)
-  }
-
-  if (canEdit) {
-    const mins = Math.floor(remaining / 60000)
-    const secs = Math.floor((remaining % 60000) / 1000)
-    mkItem(`edit (${mins}:${String(secs).padStart(2, '0')} left)`, '#fff', () => showFeedEditUI(div, msg))
-  } else {
-    mkItem('edit (window expired)', '#fff', () => {}, true)
-  }
-  mkItem('delete', '#ff4444', () => deleteFeedPost(msg))
-
-  document.body.appendChild(menu)
-  const mw = menu.offsetWidth, mh = menu.offsetHeight
-  menu.style.left = Math.min(e.clientX, window.innerWidth - mw - 4) + 'px'
-  menu.style.top = Math.min(e.clientY, window.innerHeight - mh - 4) + 'px'
-  const dismiss = (ev) => { if (!menu.contains(ev.target)) { menu.remove(); document.removeEventListener('click', dismiss) } }
-  cleanup.setTimeout(() => document.addEventListener('click', dismiss, { signal: mcSignal }), 0)
-}
-
 // ============================================
 // SOCIAL TABS (FEED & NOTIFICATIONS)
 // ============================================
@@ -22983,15 +23026,9 @@ function buildFeedMessageDiv(m, opUsername) {
     });
   });
 
-  // Right-click own posts → edit/delete menu
-  if (isOwnFeedPost(m)) {
-    div.classList.add('hs-feed-own')
-    div.addEventListener('contextmenu', (e) => {
-      // Only handle right-click directly on the post (not on links/quotes inside)
-      if (e.target.closest('a, .hs-feed-thread-link, .hs-quote-insert, .hs-post-link')) return
-      showFeedPostContextMenu(e, div, m)
-    })
-  }
+  // Stash the message object so the universal right-click handler (input.js)
+  // can build the follow/block/edit/delete menu for this post.
+  div._hsFeedMsg = m
   // Show edited badge if message was edited
   if (m.edited_at && !div.querySelector('.hs-feed-edited')) {
     const body = div.querySelector('.hs-feed-body')
@@ -26162,23 +26199,101 @@ function initInput() {
     }, { signal: mcSignal })
   }
 
-  // Right-click on message → context menu (mute, whisper, copy, profile, cancel).
-  // Replaces the previous insta-mute behavior so accidental right-clicks don't
-  // silently 24h-mute someone.
+  // Universal right-click → user/post action menu. Fires on ANY username
+  // (.hs-mc-user), chat message (.hs-mc-msg), or feed post (.hs-feed-msg)
+  // anywhere in the panel. follow=1, block=2 are always the top two items.
+  // The emote menu (capture handler above) owns emote right-clicks; real
+  // links/media fall through to the native menu so "copy link" still works.
   if (!window._hsMcMsgContextHandler) {
     window._hsMcMsgContextHandler = true;
     document.addEventListener('contextmenu', (e) => {
-      const msg = e.target.closest('.hs-mc-msg');
-      if (!msg) return;
       if (findEmoteTarget(e.target)) return;
-      const userEl = msg.querySelector('.hs-mc-user:not(.hs-mc-reply-user)');
-      const username = userEl?.textContent?.trim()?.replace(/^@/, '').toLowerCase();
-      if (!username) return;
+      const userEl = e.target.closest('.hs-mc-user:not(.hs-mc-reply-user)');
+      const feedDiv = e.target.closest('.hs-feed-msg');
+      const msg = e.target.closest('.hs-mc-msg');
+      if (!userEl && !feedDiv && !msg) return;
+      // Right-clicking a real link/embed (not a username) → keep native menu.
+      if (!userEl && e.target.closest('a, img, video, iframe, .hs-feed-thread-link, .hs-quote-insert, .hs-post-link, .hs-feed-embed')) return;
+      const norm = (el) => (el.dataset.username || el.textContent || '').replace(/^@/, '').trim().toLowerCase();
+      let username = null, platform = null, feedMsg = null;
+      if (userEl) {
+        username = norm(userEl); platform = userEl.dataset.platform || null;
+      } else if (feedDiv) {
+        const a = feedDiv.querySelector('.hs-mc-user');
+        username = a ? norm(a) : null; platform = a?.dataset.platform || null;
+        feedMsg = feedDiv._hsFeedMsg || null;
+      } else {
+        const a = msg.querySelector('.hs-mc-user:not(.hs-mc-reply-user)');
+        username = a ? norm(a) : null; platform = a?.dataset.platform || null;
+      }
+      if (!username || username === 'anonymous') return;
       e.preventDefault();
       e.stopPropagation();
-      showMcMsgContextMenu(e.clientX, e.clientY, msg, username);
+      openUserCtxMenu(e.clientX, e.clientY, username, platform, { msg: msg || null, feedDiv: feedDiv || null, feedMsg });
     }, { capture: true, signal: mcSignal });
   }
+}
+
+// Resolve a username's heatsync profile (id + relationship) via the shared
+// identity resolver — cache-first, so a prior hover/tooltip makes this instant.
+function hsRelPeek(username, platform) {
+  if (typeof _profileCache === 'undefined') return null
+  const u = String(username).toLowerCase()
+  let c = _profileCache.get(`${platform || 'unknown'}:${u}`)
+  if (!c) { for (const [k, v] of _profileCache) { if (k.endsWith(':' + u)) { c = v; break } } }
+  return c?.profile || null
+}
+
+async function hsFollowFromMenu(username, platform) {
+  if (typeof resolveIdentity !== 'function') return
+  const p = (await resolveIdentity(username, { platform }))?.profile
+  const id = p?.id || p?.userId
+  if (!id) { showToast(`${username} isn't on heatsync`, 'error'); return }
+  pcToggleFollow(id, username, !!(p.relationship?.youFollow || p.relationship?.isFollowing))
+}
+
+async function hsBlockFromMenu(username, platform) {
+  let p = null
+  if (typeof resolveIdentity === 'function') p = (await resolveIdentity(username, { platform }))?.profile || null
+  const id = p?.id || p?.userId
+  // Registered → real account-level block (persists, auto-unfollows). Otherwise
+  // fall back to a local session hide so block still works on non-heatsync users.
+  if (id) pcToggleBlock(id, username, !!(p.relationship?.youBlock || p.relationship?.isBlocked))
+  else _toggleMcBlock(username)
+}
+
+// Build the universal action menu. follow=1, block=2 always lead; whisper/
+// mention/profile/copy follow; own feed posts append edit/delete.
+function openUserCtxMenu(x, y, username, platform, ctx = {}) {
+  const { msg, feedDiv, feedMsg } = ctx
+  const rel = hsRelPeek(username, platform)?.relationship || null
+  const youFollow = !!(rel?.youFollow || rel?.isFollowing)
+  const youBlock = !!(rel?.youBlock || rel?.isBlocked) || blockedUsers.has(String(username).toLowerCase())
+  const isMuted = mutedUsers.has(username)
+  const items = [
+    { label: youFollow ? 'unfollow' : 'follow', good: youFollow, fn: () => hsFollowFromMenu(username, platform) },
+    { label: youBlock ? 'unblock' : 'block', good: youBlock, danger: !youBlock, fn: () => hsBlockFromMenu(username, platform) },
+    { label: isMuted ? 'unmute' : 'mute (24h)', good: isMuted, danger: !isMuted, fn: () => _toggleMcMute(username) },
+    'sep',
+    { label: 'whisper', fn: () => _openWhisperFor(username) },
+    { label: 'mention', fn: () => _mentionInMcInput(username) },
+    { label: 'view profile', fn: () => openProfileCard(username, platform) },
+    'sep',
+    { label: 'copy name', fn: () => { try { navigator.clipboard.writeText(username) } catch {} } },
+  ]
+  if (msg) items.push({ label: 'copy message', fn: () => { try { navigator.clipboard.writeText(_extractMcMsgText(msg)) } catch {} } })
+  if (feedMsg && typeof isOwnFeedPost === 'function' && isOwnFeedPost(feedMsg)) {
+    items.push('sep')
+    const remaining = (typeof EDIT_WINDOW_MS !== 'undefined' ? EDIT_WINDOW_MS : 0) - (Date.now() - new Date(feedMsg.created_at).getTime())
+    if (remaining > 0) {
+      const mins = Math.floor(remaining / 60000), secs = Math.floor((remaining % 60000) / 1000)
+      items.push({ label: `edit (${mins}:${String(secs).padStart(2, '0')})`, fn: () => { if (feedDiv && typeof showFeedEditUI === 'function') showFeedEditUI(feedDiv, feedMsg) } })
+    } else {
+      items.push({ label: 'edit (expired)', disabled: true })
+    }
+    items.push({ label: 'delete', danger: true, fn: () => { if (typeof deleteFeedPost === 'function') deleteFeedPost(feedMsg) } })
+  }
+  showHsCtxMenu(x, y, username, items)
 }
 
 function _toggleMcMute(username) {
@@ -26272,66 +26387,55 @@ function _mentionInMcInput(username) {
   }
 }
 
-function showMcMsgContextMenu(x, y, msg, username) {
+// Generic numbered/keyboard context menu. `items` is an array of either the
+// string 'sep' or { label, fn, danger, good, disabled }. Actionable items are
+// numbered 1..9 top-down for keyboard select. Used by every right-click surface.
+function showHsCtxMenu(x, y, header, items) {
   document.getElementById('hs-mc-msg-ctx')?.remove()
   const menu = document.createElement('div')
   menu.id = 'hs-mc-msg-ctx'
   menu.className = 'hs-mc-ctx'
   menu.tabIndex = -1
   menu.addEventListener('contextmenu', (e) => e.preventDefault())
-  const isMuted = mutedUsers.has(username)
 
   const kbdHandlers = {}
   const kbdItems = [] // {el, fn} in DOM order; numbered 1..9 from the top
-  const addHeader = (text) => {
+  if (header) {
     const h = document.createElement('div')
     h.className = 'hs-mc-em-header'
-    h.textContent = text
+    h.textContent = header
     menu.appendChild(h)
   }
-  const addItem = (label, fn, opts = {}) => {
+  for (const spec of items) {
+    if (spec === 'sep') {
+      const s = document.createElement('div')
+      s.className = 'hs-mc-em-sep'
+      menu.appendChild(s)
+      continue
+    }
     const it = document.createElement('div')
-    it.className = 'hs-mc-em-item' + (opts.danger ? ' hs-mc-em-danger' : '') + (opts.good ? ' hs-mc-em-good' : '')
+    it.className = 'hs-mc-em-item' + (spec.danger ? ' hs-mc-em-danger' : '') + (spec.good ? ' hs-mc-em-good' : '') + (spec.disabled ? ' hs-mc-em-disabled' : '')
     const lab = document.createElement('span')
     lab.className = 'hs-mc-em-label'
-    lab.textContent = label
+    lab.textContent = spec.label
     it.appendChild(lab)
-    kbdItems.push({ el: it, fn })
-    it.addEventListener('click', () => { dismiss(); try { fn() } catch {} })
+    if (!spec.disabled && spec.fn) {
+      kbdItems.push({ el: it, fn: spec.fn })
+      it.addEventListener('click', () => { dismiss(); try { spec.fn() } catch {} })
+    }
     menu.appendChild(it)
   }
-  // Number top-down (key 1 is the first item, ascending downward) like the emote menu.
-  const assignKbd = () => {
-    for (let i = 0; i < kbdItems.length && i < 9; i++) {
-      const { el, fn } = kbdItems[i]
-      const n = i + 1
-      const k = document.createElement('span')
-      k.className = 'hs-mc-em-kbd'
-      k.textContent = String(n)
-      el.appendChild(k)
-      kbdHandlers[String(n)] = fn
-    }
-  }
-  const addSep = () => {
-    const s = document.createElement('div')
-    s.className = 'hs-mc-em-sep'
-    menu.appendChild(s)
+  // Number top-down (key 1 is the first item, ascending downward).
+  for (let i = 0; i < kbdItems.length && i < 9; i++) {
+    const { el, fn } = kbdItems[i]
+    const n = i + 1
+    const k = document.createElement('span')
+    k.className = 'hs-mc-em-kbd'
+    k.textContent = String(n)
+    el.appendChild(k)
+    kbdHandlers[String(n)] = fn
   }
 
-  // Trimmed to the actions that matter, numbered top-down (key 1 is the first
-  // item): copy username=1, copy message=2, block/unblock=3, mute/unmute=4.
-  const isBlocked = blockedUsers.has(String(username).toLowerCase())
-  addHeader(username)
-  addItem('copy username', () => { try { navigator.clipboard.writeText(username) } catch {} })
-  addItem('copy message', () => { try { navigator.clipboard.writeText(_extractMcMsgText(msg)) } catch {} })
-
-  addSep()
-  if (isBlocked) addItem('unblock', () => _toggleMcBlock(username), { good: true })
-  else addItem('block', () => _toggleMcBlock(username), { danger: true })
-  if (isMuted) addItem('unmute', () => _toggleMcMute(username), { good: true })
-  else addItem('mute (24h)', () => _toggleMcMute(username), { danger: true })
-
-  assignKbd()
   document.body.appendChild(menu)
   menu.style.visibility = 'hidden'
   menu.style.left = '0px'
@@ -32117,6 +32221,10 @@ const STORAGE_KEY = 'heatsync_multichat';
     // Static hardcoded layout — only static strings, no user input, safe innerHTML
     const searchPlaceholder = 'search messages…'
     overlay.innerHTML = `
+      <div id="hs-mc-statusbar">
+        <button id="hs-mc-collapse-btn" type="button" title="hide chat (\\)" aria-label="hide chat"></button>
+        <div id="hs-notif-layer-statusbar" class="hs-notif-layer hs-notif-layer-statusbar"></div>
+      </div>
       <div id="hs-mc-search-bar">
         <input id="hs-mc-search-input" type="text" placeholder="${searchPlaceholder}" autocomplete="off" spellcheck="false" />
         <div id="hs-mc-search-spinner"></div>
@@ -32134,6 +32242,12 @@ const STORAGE_KEY = 'heatsync_multichat';
       const msgsDiv = overlay.querySelector('#hs-mc-messages');
       if (msgsDiv) msgsDiv.style.setProperty('--hs-chat-font', savedFontSize + 'px');
     }
+
+    // Statusbar collapse button → hide the whole chat (same as the \ key /
+    // restore pill). Right-click clears any unread indicators site-wide, but
+    // here it just hides too — the button has one job.
+    const collapseBtn = overlay.querySelector('#hs-mc-collapse-btn');
+    if (collapseBtn) cleanup.addEventListener(collapseBtn, 'click', () => toggleChatHidden());
 
     // Setup scroll detection after DOM insertion
     cleanup.setTimeout(() => {
@@ -33148,7 +33262,7 @@ const STORAGE_KEY = 'heatsync_multichat';
   // Orange #ff8700, 2px thin + invisible grab, no text — matches the
   // --hs-resize-thickness token in styles.js (and heatsync.org's .hs-resizer).
   // ============================================
-  const HS_RESIZE_PX = 2; // visible thickness — mirrors --hs-resize-thickness
+  const HS_RESIZE_PX = 4; // visible thickness — mirrors --hs-resize-thickness
   let _isResizingC = false;
   function ensureChatResizeHandle() {
     let handle = document.getElementById('hs-c-resize-handle');

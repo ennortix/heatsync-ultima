@@ -239,6 +239,10 @@ const HsNotifs = (() => {
     if (l._container && document.body.contains(l._container)) return l._container
     let el = document.getElementById(`hs-notif-layer-${name}`)
     if (!el) {
+      // external layers are owned by overlay chrome (e.g. the statusbar slot
+      // lives inside #hs-mc-statusbar). Never body-fallback — just wait for the
+      // overlay to render it. Emits before then no-op (mount returns on null).
+      if (l.def.external) return null
       el = document.createElement('div')
       el.id = `hs-notif-layer-${name}`
       el.className = `hs-notif-layer hs-notif-layer-${name}`
@@ -375,6 +379,19 @@ const HsNotifs = (() => {
     },
   })
 
+  // Statusbar — the thin always-present strip at the top of the overlay
+  // (#hs-mc-statusbar, rendered by main.js's createOverlay). Its container slot
+  // is #hs-notif-layer-statusbar, adopted in-place (external: true) so toasts
+  // render INLINE in the bar instead of floating over the read zone. A single
+  // status line: each new notif replaces the prior (stack: 'replace'), identical
+  // text still coalesces to ×N via the type's dedupe. No geometry — the slot
+  // sits in the bar's normal flex flow.
+  registerLayer('statusbar', {
+    stack: 'replace',
+    maxVisible: 1,
+    external: true,
+  })
+
   // === STANDARD TYPES ===
 
   // Toast — short status message, color-coded by level. Click anywhere on
@@ -384,7 +401,7 @@ const HsNotifs = (() => {
   // empty black-box-with-red-outline (the old bug where any showToast call
   // with an undefined/missing error code produced an unclickable square).
   registerType('toast', {
-    layer: 'toast-stack',
+    layer: 'statusbar',
     timeout: 4000,
     clickToDismiss: true,
     // Dedupe identical text — repeated kick/twitch send failures used to

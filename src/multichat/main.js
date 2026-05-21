@@ -1991,6 +1991,10 @@
     // Static hardcoded layout — only static strings, no user input, safe innerHTML
     const searchPlaceholder = 'search messages…'
     overlay.innerHTML = `
+      <div id="hs-mc-statusbar">
+        <button id="hs-mc-collapse-btn" type="button" title="hide chat (\\)" aria-label="hide chat"></button>
+        <div id="hs-notif-layer-statusbar" class="hs-notif-layer hs-notif-layer-statusbar"></div>
+      </div>
       <div id="hs-mc-search-bar">
         <input id="hs-mc-search-input" type="text" placeholder="${searchPlaceholder}" autocomplete="off" spellcheck="false" />
         <div id="hs-mc-search-spinner"></div>
@@ -2008,6 +2012,12 @@
       const msgsDiv = overlay.querySelector('#hs-mc-messages');
       if (msgsDiv) msgsDiv.style.setProperty('--hs-chat-font', savedFontSize + 'px');
     }
+
+    // Statusbar collapse button → hide the whole chat (same as the \ key /
+    // restore pill). Right-click clears any unread indicators site-wide, but
+    // here it just hides too — the button has one job.
+    const collapseBtn = overlay.querySelector('#hs-mc-collapse-btn');
+    if (collapseBtn) cleanup.addEventListener(collapseBtn, 'click', () => toggleChatHidden());
 
     // Setup scroll detection after DOM insertion
     cleanup.setTimeout(() => {
@@ -3022,7 +3032,7 @@
   // Orange #ff8700, 2px thin + invisible grab, no text — matches the
   // --hs-resize-thickness token in styles.js (and heatsync.org's .hs-resizer).
   // ============================================
-  const HS_RESIZE_PX = 2; // visible thickness — mirrors --hs-resize-thickness
+  const HS_RESIZE_PX = 4; // visible thickness — mirrors --hs-resize-thickness
   let _isResizingC = false;
   function ensureChatResizeHandle() {
     let handle = document.getElementById('hs-c-resize-handle');

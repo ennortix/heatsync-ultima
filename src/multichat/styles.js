@@ -11,10 +11,10 @@ function injectStyles() {
   style.id = 'hs-mc-styles';
   const css = `
     /* Resize-bar tokens — one source of truth for every orange drag-bar.
-       2px visible line; ::before extends the grab zone by --hs-resize-grab
+       4px visible line; ::before extends the grab zone by --hs-resize-grab
        per side. Mirrors heatsync.org's --resize-thickness / --resize-grab. */
     :root {
-      --hs-resize-thickness: 2px;
+      --hs-resize-thickness: 4px;
       --hs-resize-grab: 4px;
     }
     /* Bundled bitmap fonts — URLs replaced via chrome.runtime.getURL after
@@ -1079,6 +1079,93 @@ function injectStyles() {
     .hs-notif-layer-toast-stack > .hs-notif:hover .hs-notif-toast-text::before {
       color: #000 !important;
     }
+
+    /* === Statusbar — thin always-present strip at the top of the overlay.
+       Holds the whole-chat collapse button + the inline toast status line, so
+       status messages stop covering the read zone. ~20px, btop/dwl density. */
+    #hs-mc-statusbar {
+      flex: 0 0 auto;
+      display: flex;
+      align-items: stretch;
+      height: 20px;
+      min-height: 20px;
+      background: #0a0a0d;
+      border-bottom: 1px solid #2a2a2e;
+      overflow: hidden;
+    }
+    #hs-mc-collapse-btn {
+      flex: 0 0 auto;
+      width: 26px;
+      padding: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(255,255,255,0.06);
+      color: #fff;
+      border: none;
+      border-right: 1px solid #2a2a2e;
+      border-radius: 0;
+      cursor: pointer;
+      font: 700 16px/1 ui-monospace, 'JetBrains Mono', 'Cascadia Mono', 'SF Mono', Menlo, Consolas, monospace;
+      transition: background 80ms linear, color 80ms linear;
+    }
+    /* Arrow points toward the dock edge it collapses to (chat docks right by
+       default → '>'). Position-aware so it always reads as "push away". */
+    #hs-mc-collapse-btn::before { content: '>'; }
+    body.hs-chat-left   #hs-mc-collapse-btn::before { content: '<'; }
+    body.hs-chat-top    #hs-mc-collapse-btn::before { content: '\\2303'; }
+    body.hs-chat-bottom #hs-mc-collapse-btn::before { content: '\\2304'; }
+    /* Hover convention: invert to white bg / black text. */
+    #hs-mc-collapse-btn:hover { background: #fff; color: #000; }
+    #hs-mc-collapse-btn:focus-visible { outline: 1px solid #ff8700; outline-offset: -2px; }
+
+    /* The toast slot lives in the bar's normal flex flow (not fixed). Override
+       the floating-layer base so notifs render inline, single-line, no box. */
+    .hs-notif-layer-statusbar {
+      position: static;
+      z-index: auto;
+      flex: 1 1 0;
+      min-width: 0;
+      flex-direction: row;
+      align-items: center;
+      gap: 0;
+      overflow: hidden;
+      pointer-events: auto;
+    }
+    .hs-notif-layer-statusbar:empty { display: flex; } /* keep slot occupying bar width */
+    .hs-notif-layer-statusbar > .hs-notif {
+      flex: 1 1 0;
+      min-width: 0;
+      background: transparent;
+      border: none;
+      box-shadow: none;
+      animation: hs-notif-fade-in 140ms ease both;
+      transform-origin: center;
+      cursor: pointer;
+    }
+    .hs-notif-layer-statusbar .hs-notif-body {
+      display: block;
+      padding: 0 8px;
+      line-height: 20px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .hs-notif-layer-statusbar .hs-notif-toast-text { display: inline; white-space: nowrap; }
+    .hs-notif-layer-statusbar > .hs-notif:hover .hs-notif-toast-text,
+    .hs-notif-layer-statusbar > .hs-notif:hover .hs-notif-toast-text::before { color: #fff; }
+    .hs-notif-layer-statusbar .hs-notif-exiting {
+      animation: hs-notif-fade-out 120ms ease-in forwards !important;
+    }
+    /* Error/warn briefly flash the whole bar so a status-line error still
+       grabs the eye despite being inline. */
+    #hs-mc-statusbar:has(.hs-notif-toast-error) { animation: hs-statusbar-flash-err 700ms ease-out; }
+    #hs-mc-statusbar:has(.hs-notif-toast-warn)  { animation: hs-statusbar-flash-warn 700ms ease-out; }
+    @keyframes hs-statusbar-flash-err  { 0% { background: #3a0f0f; } 100% { background: #0a0a0d; } }
+    @keyframes hs-statusbar-flash-warn { 0% { background: #38330d; } 100% { background: #0a0a0d; } }
+    @media (prefers-reduced-motion: reduce) {
+      #hs-mc-statusbar { animation: none !important; }
+    }
     /* Channel-scope filter — HsNotifs flags any per-channel notif (e.g.
        twitch-resub-share, twitch-watchstreak-share) with this class when the
        active multichat tab doesn't match the notif's data.channel. Toggled
@@ -1472,43 +1559,22 @@ function injectStyles() {
       margin: 0 !important;
     }
 
-    /* Never hide Twitch's native collapse/expand arrows — user needs them.
-       Hide HS UI when chat is collapsed so it doesn't interfere with layout. */
-    .right-column--collapsed #hs-mc-container {
-      display: none !important;
-    }
-    /* Collapsed chat: width 0 but overflow visible so the toggle arrow
-       (which is a grandchild) can still render outside the box */
-    .right-column--collapsed {
-      width: 0px !important;
-      min-width: 0px !important;
-      overflow: visible !important;
-    }
-    .right-column--collapsed > *:not(:has(.right-column__toggle-visibility)) {
-      overflow: hidden !important;
-      width: 0px !important;
-      min-width: 0px !important;
-    }
-    .right-column--collapsed > *:has(.right-column__toggle-visibility) {
-      overflow: visible !important;
-    }
-    .right-column--collapsed .right-column__toggle-visibility {
-      transform: none !important;
-      left: -32px !important;
-      z-index: 50 !important;
-    }
+    /* We provide our own collapse control (the '>' button in #hs-mc-statusbar),
+       so Twitch's native collapse/expand arrow is redundant — hide it bulletproof.
+       Pure CSS survives React re-renders (a one-shot JS removal wouldn't), and
+       display:none !important beats Twitch's inline non-important display. Restore
+       when hidden is handled by our orange #hs-chat-restore-pill + the \ key. */
+    body.hs-platform-twitch .right-column__toggle-visibility { display: none !important; }
+    /* If the right column still ends up collapsed (Twitch auto-collapses on
+       narrow viewports), keep our container hidden and zero the column width.
+       Arrow no longer needs to overflow out, so clip cleanly. */
+    .right-column--collapsed #hs-mc-container { display: none !important; }
+    .right-column--collapsed,
+    .right-column--collapsed > *,
     div:has(> .right-column--collapsed) {
       width: 0px !important;
       min-width: 0px !important;
-      overflow: visible !important;
-    }
-    /* Force collapse/expand arrow to white — Twitch light theme leaks
-       into the toggle wrapper, making it black on dark background */
-    .right-column__toggle-visibility button {
-      color: #fff !important;
-    }
-    .right-column__toggle-visibility svg {
-      fill: #fff !important;
+      overflow: hidden !important;
     }
 
     /* Ensure our elements are visible */
@@ -2086,6 +2152,8 @@ function injectStyles() {
       border: 1px solid #333; background: #0a0a0a; color: #888;
       font-size: 10px; line-height: 14px; text-align: center;
     }
+    .hs-mc-ctx .hs-mc-em-item.hs-mc-em-disabled { opacity: 0.4; cursor: not-allowed; }
+    .hs-mc-ctx .hs-mc-em-item.hs-mc-em-disabled:hover { background: none; color: inherit; }
     .hs-mc-ctx .hs-mc-em-sep { height: 1px; background: #1a1a1a; margin: 2px 0; }
     #hs-user-tooltip {
       position: fixed;

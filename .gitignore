@@ -6,5 +6,6 @@ chrome/multichat.js
 
 # Claude Code (local only)
 .claude/
+.worktrees/
 CLAUDE.md
 store-assets/

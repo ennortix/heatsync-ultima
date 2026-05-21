@@ -740,14 +740,18 @@
   let mcFfzBadgeMap = new Map()
   let mcChatterinoBadgeMap = new Map()
   const mcUserCosmetics = new Map()
-  const MC_COSMETICS_MAX = 500
+  // A channel buffer renders ~1500-2000 distinct users; caps below must clear
+  // that or a full-buffer rebuild silently drops most cosmetic lookups. (500/100
+  // meant switching to a busy/restored channel resolved only the first ~100
+  // users — everyone after, paints included, rendered plain.)
+  const MC_COSMETICS_MAX = 3000
   function setMcCosmetic(uid, c) {
     mcUserCosmetics.set(uid, c)
     if (mcUserCosmetics.size > MC_COSMETICS_MAX) {
       mcUserCosmetics.delete(mcUserCosmetics.keys().next().value)
     }
   }
-  const MC_COSMETICS_PENDING_MAX = 100
+  const MC_COSMETICS_PENDING_MAX = 3000
   const mcCosmeticsPending = new Set()
   let mcCosmeticsTimer = null
 
@@ -928,7 +932,11 @@
 
   function flushMcCosmeticsBatch() {
     if (!mcCosmeticsPending.size) return
-    const batch = [...mcCosmeticsPending].slice(0, 25)
+    // Drain newest-queued first: messages queue oldest→newest, but the user is
+    // looking at the bottom (newest) of the buffer, so the visible viewport
+    // resolves in the first batch instead of last. Off-screen/scrolled-away
+    // users still fill in as the queue drains.
+    const batch = [...mcCosmeticsPending].slice(-25)
     batch.forEach(id => mcCosmeticsPending.delete(id))
     safeSendMessage({ type: 'get_user_cosmetics', twitchIds: batch }).then(resp => {
       if (!resp?.cosmetics) return
@@ -7951,6 +7959,18 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       }
       if (msgsEl.children.length > toRender.length) trimMessagesEl(msgsEl, toRender.length)
       applyMcMutes()
+      // Cached fragment was mounted as-is — restored messages bypassed
+      // buildMessageDiv, so their 7TV paint/badge was never queued or applied
+      // (cached HTML is paint-less). Re-apply for already-resolved users and
+      // queue lookups for the rest; updateCosmeticsInPlace repaints via the
+      // restored _uidIndex once each resolves.
+      const _restoredCosUids = []
+      for (const m of toRender) {
+        if (!m.userId) continue
+        if (mcUserCosmetics.has(m.userId)) _restoredCosUids.push(m.userId)
+        else queueMcCosmeticsLookup(m.userId)
+      }
+      if (_restoredCosUids.length) updateCosmeticsInPlace([...new Set(_restoredCosUids)])
       cleanup.raf(() => { isProgrammaticScroll = false })
       if (!isScrolledUp && !(id === 'feed' || id === 'settings' || id === 'discover' || id === 'pinned')) {
         scrollMsgsToBottom(msgsEl)
@@ -8010,6 +8030,11 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       if (existing) {
         existingByKey.delete(key)
         if (cur !== existing) msgsEl.insertBefore(existing, cur || null)
+        // Reused div skipped buildMessageDiv — re-queue its cosmetic so a prior
+        // failed/absent lookup is retried (resolves on a later flush). Without
+        // this, a frozen channel's restored buffer never re-attempts cosmetics.
+        const _rm = toRender[j]
+        if (_rm?.userId && !mcUserCosmetics.has(_rm.userId)) queueMcCosmeticsLookup(_rm.userId)
         domIdx++
         continue
       }

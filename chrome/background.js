@@ -1752,7 +1752,10 @@ const COSMETICS_FORCE_FLUSH_INTERVAL = 30000 // when at-cap, flush at most every
 function flushCosmeticsToStorage() {
   cosmeticsLastFlushAt = Date.now()
   const entries = [...userCosmeticsCache.entries()]
-    .filter(([, v]) => Date.now() - v.fetchedAt < USER_COSMETICS_TTL)
+    // Persist only positive results — never negatives. A blank entry that
+    // survives a restart re-serves "no cosmetics" for users who actually have
+    // them; they're cheap to recheck, so let restart re-resolve them fresh.
+    .filter(([, v]) => (v.paint || v.badge) && Date.now() - v.fetchedAt < USER_COSMETICS_TTL)
     .slice(-COSMETICS_STORAGE_MAX)
   browser.storage.local.set({
     // Persist twitchId so Kick→Twitch ID linkage survives SW restart;
@@ -5490,40 +5493,49 @@ async function handleMessage(message, sender, sendResponse) {
       }
 
       if (toFetch.length > 0) {
-        // Try heatsync proxy first — single request, server-side cache, no
-        // 7TV IP exposure. Falls back to direct 7TV on any failure so an
-        // outage on our side doesn't kill cosmetics for users.
+        // Try heatsync proxy first — single request, server-side cache, no 7TV
+        // IP exposure. Retry once: switching to a busy/frozen channel rebuilds
+        // its whole buffer and floods this with ~60 batches at once; a single
+        // 6s timeout under that burst failed whole batches, fell to the direct
+        // 7TV path, and CACHED the empty result as "no cosmetics" — which stuck
+        // users who actually have a paint until the negative TTL expired.
         let proxied = null
-        try {
-          const resp = await fetchWithTimeout(`${API_URL}/api/cosmetics/batch`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ twitchIds: toFetch })
-          }, 6000)
-          if (resp.ok) {
-            const data = await resp.json()
-            if (data && data.cosmetics) proxied = data.cosmetics
-          }
-        } catch (e) { /* fall through */ }
+        for (let attempt = 0; attempt < 2 && !proxied; attempt++) {
+          try {
+            const resp = await fetchWithTimeout(`${API_URL}/api/cosmetics/batch`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ twitchIds: toFetch })
+            }, 10000)
+            if (resp.ok) {
+              const data = await resp.json()
+              if (data && data.cosmetics) proxied = data.cosmetics
+            } else { resp.body?.cancel?.() }
+          } catch (e) { /* retry, then fall through */ }
+        }
 
         if (proxied) {
           for (const id of toFetch) {
             const c = proxied[id] ?? null
-            setUserCosmetic(id, c)
+            setUserCosmetic(id, c) // genuine answer (incl. empty) — safe to cache
             result[id] = c
           }
         } else {
-          // Proxy unreachable — fall back to direct 7TV (legacy path).
+          // Proxy unreachable — fall back to direct 7TV. CRITICAL: only cache a
+          // negative on a definitive 404 (no 7TV account). A 503/timeout/network
+          // error must NOT be cached, or one transient blip blanks a user's
+          // cosmetics for the whole negative-TTL window; leave it unset to retry.
           await Promise.all(toFetch.map(async (id) => {
             try {
               const resp = await fetchWithTimeout(`https://7tv.io/v3/users/twitch/${id}`)
-              if (!resp.ok) { setUserCosmetic(id, null); result[id] = null; return }
+              if (resp.status === 404) { resp.body?.cancel?.(); setUserCosmetic(id, null); result[id] = null; return }
+              if (!resp.ok) { resp.body?.cancel?.(); result[id] = null; return } // transient — don't cache
               const data = await resp.json()
               const ids7tv = extract7TVCosmeticIds(data)
               const cosmetic = await resolve7TVCosmeticIds(ids7tv)
               setUserCosmetic(id, cosmetic)
               result[id] = cosmetic
-            } catch (e) { setUserCosmetic(id, null); result[id] = null }
+            } catch (e) { result[id] = null } // transient — don't cache
           }))
         }
       }

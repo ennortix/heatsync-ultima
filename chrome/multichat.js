@@ -16010,20 +16010,45 @@ async function sendKickMessage(kickSlug, text) {
   }
 
   // Inline badges render at 18px (1x). The tooltip shows them at 72px, so swap
-  // to the CDN's 4x variant for a crisp preview instead of upscaling 18→72.
-  // Only 7TV and FFZ expose size variants; other sources keep their src.
-  function hiResBadgeUrl(src) {
-    if (!src) return src
-    if (src.includes('7tv')) return src.replace(/\/[1-4]x\.(webp|avif|png|gif)(\?.*)?$/i, '/4x.$1$2')
-    if (src.includes('frankerfacez')) return src.replace(/\/[1-4](\?.*)?$/, '/4$1')
-    return src
+  // to the crispest variant for the 72px preview instead of upscaling 18→72.
+  // 7TV badges top out at 3x, FFZ at 4, so we list candidates descending and
+  // probe each (see upgradeBadgeImg). Other sources are single-resolution.
+  function hiResBadgeCandidates(src) {
+    if (!src) return []
+    if (src.includes('7tv'))
+      return ['4x', '3x', '2x'].map(s =>
+        src.replace(/\/[1-4]x(\.\w+)?(\?.*)?$/i, (m, ext, q) => '/' + s + (ext || '') + (q || '')))
+    if (src.includes('frankerfacez'))
+      return ['4', '2'].map(s => src.replace(/\/[1-4](\?.*)?$/, (m, q) => '/' + s + (q || '')))
+    // Twitch native badges (sub/bits/mod/vip) — URLs end in /1, /2, /3 (max 3, no 4x)
+    if (src.includes('jtvnw'))
+      return ['3', '2'].map(s => src.replace(/\/[1-3](\?.*)?$/, (m, q) => '/' + s + (q || '')))
+    return []
+  }
+
+  // Emote-preview pattern: keep 1x showing, probe each hi-res candidate, swap
+  // img.src to the first that loads. No blank flash, no broken icon on 404.
+  function upgradeBadgeImg(img, src) {
+    const cands = hiResBadgeCandidates(src).filter(u => u && u !== src)
+    let i = 0
+    const tryNext = () => {
+      if (i >= cands.length || !img.isConnected) return
+      const url = cands[i++]
+      const probe = new Image()
+      probe.onload = () => { if (img.isConnected && img.dataset.hsBadgeOrig === src) img.src = url }
+      probe.onerror = tryNext
+      probe.src = url
+    }
+    tryNext()
   }
 
   function showBadgeTooltip(badgeImg, badgeName) {
     const tooltip = ensureBadgeTooltip()
     document.body.appendChild(cleanup.trackNode(tooltip))
     const img = tooltip.querySelector('img')
-    img.src = hiResBadgeUrl(badgeImg.src)
+    img.dataset.hsBadgeOrig = badgeImg.src
+    img.src = badgeImg.src
+    upgradeBadgeImg(img, badgeImg.src)
     img.alt = badgeName
     img.style.width = '72px'
     img.style.height = '72px'
@@ -32087,7 +32112,14 @@ const STORAGE_KEY = 'heatsync_multichat';
       // constant). `load` doesn't bubble so capture phase is required. rAF
       // coalesce so a 100-image burst still does one layout per frame.
       let _imgLoadPinScheduled = false
-      const onImgLoadOrError = () => {
+      const onImgLoadOrError = (e) => {
+        // Hide a cosmetic badge whose image fails (e.g. 7TV CDN QUIC errors) so
+        // we never render a broken-image icon. Fresh imgs on later messages retry.
+        if (e?.type === 'error') {
+          const t = e.target
+          if (t instanceof HTMLImageElement && t.classList.contains('hs-mc-badge-img'))
+            t.style.display = 'none'
+        }
         if (isScrolledUp) return
         if (isStaticTab()) return
         if (_imgLoadPinScheduled) return

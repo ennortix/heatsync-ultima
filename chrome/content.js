@@ -2339,19 +2339,48 @@ function createBadgeTooltip() {
   return tooltip
 }
 
-// Inline badges render at 18px (1x). The tooltip shows them at 72px, so swap to
-// the CDN's 4x variant for a crisp preview. Only 7TV/FFZ expose size variants.
-function hiResBadgeUrl(src) {
-  if (!src) return src
-  if (src.includes('7tv')) return src.replace(/\/[1-4]x\.(webp|avif|png|gif)(\?.*)?$/i, '/4x.$1$2')
-  if (src.includes('frankerfacez')) return src.replace(/\/[1-4](\?.*)?$/, '/4$1')
-  return src
+// Inline badges render at 18px (1x). The tooltip shows them at 72px, so we want
+// the CDN's largest variant for a crisp preview. Only 7TV/FFZ expose size
+// variants — and their max differs (7TV badges top out at 3x, FFZ at 4), so we
+// list candidates descending and probe each (see upgradeBadgeImg). BTTV and
+// Chatterino are single-resolution: nothing to upgrade.
+function hiResBadgeCandidates(src) {
+  if (!src) return []
+  if (src.includes('7tv'))
+    return ['4x', '3x', '2x'].map(s =>
+      src.replace(/\/[1-4]x(\.\w+)?(\?.*)?$/i, (m, ext, q) => '/' + s + (ext || '') + (q || '')))
+  if (src.includes('frankerfacez'))
+    return ['4', '2'].map(s => src.replace(/\/[1-4](\?.*)?$/, (m, q) => '/' + s + (q || '')))
+  // Twitch native badges (sub/bits/mod/vip) — URLs end in /1, /2, /3 (max 3, no 4x)
+  if (src.includes('jtvnw'))
+    return ['3', '2'].map(s => src.replace(/\/[1-3](\?.*)?$/, (m, q) => '/' + s + (q || '')))
+  return []
+}
+
+// Mirror the emote-preview pattern: keep the 1x showing, probe each hi-res
+// candidate in turn, swap img.src to the first that loads. No blank flash, no
+// broken-image icon when a variant 404s.
+function upgradeBadgeImg(img, src) {
+  const cands = hiResBadgeCandidates(src).filter(u => u && u !== src)
+  let i = 0
+  const tryNext = () => {
+    if (i >= cands.length || !img.isConnected) return
+    const url = cands[i++]
+    const probe = new Image()
+    probe.onload = () => { if (img.isConnected && img.dataset.hsBadgeOrig === src) img.src = url }
+    probe.onerror = tryNext
+    probe.src = url
+  }
+  tryNext()
 }
 
 function showBadgeTooltip(badgeImg) {
   let tooltip = document.getElementById('hs-badge-tooltip') || createBadgeTooltip()
   const img = tooltip.querySelector('img')
-  img.src = hiResBadgeUrl(badgeImg.src)
+  // 1x first (always renders), then silently upgrade to the crispest variant.
+  img.dataset.hsBadgeOrig = badgeImg.src
+  img.src = badgeImg.src
+  upgradeBadgeImg(img, badgeImg.src)
   img.alt = badgeImg.alt || ''
   const nameEl = tooltip.querySelector('.hs-badge-tooltip-name')
   if (nameEl) nameEl.textContent = badgeImg.title || badgeImg.alt || ''
@@ -2402,6 +2431,15 @@ function hideBadgeTooltip() {
   }, { capture: true, signal })
   document.addEventListener('mouseout', e => {
     if (e.target.closest('.hs-cosmetic-badge')) hideBadgeTooltip()
+  }, { capture: true, signal })
+  // Hide a cosmetic badge whose image fails to load (e.g. 7TV CDN QUIC errors)
+  // so we never render a broken-image icon. error doesn't bubble, but it fires
+  // in the capture phase on document. Later messages create fresh imgs that
+  // retry once the CDN recovers.
+  document.addEventListener('error', e => {
+    const t = e.target
+    if (t instanceof HTMLImageElement && t.classList.contains('hs-cosmetic-badge'))
+      t.style.display = 'none'
   }, { capture: true, signal })
 })()
 

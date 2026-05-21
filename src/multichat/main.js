@@ -2205,7 +2205,14 @@
       // constant). `load` doesn't bubble so capture phase is required. rAF
       // coalesce so a 100-image burst still does one layout per frame.
       let _imgLoadPinScheduled = false
-      const onImgLoadOrError = () => {
+      const onImgLoadOrError = (e) => {
+        // Hide a cosmetic badge whose image fails (e.g. 7TV CDN QUIC errors) so
+        // we never render a broken-image icon. Fresh imgs on later messages retry.
+        if (e?.type === 'error') {
+          const t = e.target
+          if (t instanceof HTMLImageElement && t.classList.contains('hs-mc-badge-img'))
+            t.style.display = 'none'
+        }
         if (isScrolledUp) return
         if (isStaticTab()) return
         if (_imgLoadPinScheduled) return

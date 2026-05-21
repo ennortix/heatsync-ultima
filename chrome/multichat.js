@@ -4823,15 +4823,20 @@ function injectStyles() {
     .hs-mc-tab.has-stream-event.active {
       color: #000 !important;
     }
-    /* "live" tab stays muted grey in every state — never the white
-       active/hover highlight. Still clickable; only the highlight is
-       suppressed (per request). #id prefix wins over all .class rules. */
-    #hs-mc-tabbar .hs-mc-tab[data-tab="live"],
-    #hs-mc-tabbar .hs-mc-tab[data-tab="live"]:hover {
+    /* "live" tab stays muted grey by default — never the white *active*
+       highlight (so it never looks like the selected content tab). But it
+       DOES take the normal white-bg/black-text on hover like every other
+       tab/button (per request). #id prefix wins over all .class rules, so
+       the grey default also holds through .active. */
+    #hs-mc-tabbar .hs-mc-tab[data-tab="live"] {
       background: #000 !important;
       color: #808080 !important;
       border-color: #808080 !important;
       font-weight: 400 !important;
+    }
+    #hs-mc-tabbar .hs-mc-tab[data-tab="live"]:hover {
+      background: #fff !important;
+      color: #000 !important;
     }
     /* Horizontal mode: 3 real flex sections at the top level of #hs-mc-tabbar.
        Section sizes to its content (flex 0 1 auto) so pf+util pack tight to

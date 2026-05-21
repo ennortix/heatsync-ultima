@@ -3553,12 +3553,19 @@ function _onMessageMain(message) {
       applyUiSettings(message.settings);
       break;
 
-    case 'cosmetics_update':
-      bttvBadgeMap = new Map(Object.entries(message.bttvBadges || {}))
-      ffzBadgeMap = new Map(Object.entries(message.ffzBadges || {}))
-      chatterinoBadgeMap = new Map(Object.entries(message.chatterinoBadges || {}))
-      reapplyBadgesToExistingMessages()
+    case 'cosmetics_update': {
+      const bttv = Object.entries(message.bttvBadges || {})
+      const ffz = Object.entries(message.ffzBadges || {})
+      const chat = Object.entries(message.chatterinoBadges || {})
+      // Never let an empty broadcast wipe populated maps.
+      if (bttv.length + ffz.length + chat.length > 0) {
+        bttvBadgeMap = new Map(bttv)
+        ffzBadgeMap = new Map(ffz)
+        chatterinoBadgeMap = new Map(chat)
+        reapplyBadgesToExistingMessages()
+      }
       break
+    }
 
     case 'follow_colors':
       if (message.colors && typeof message.colors === 'object') {
@@ -5631,22 +5638,32 @@ function replaceEmotesWithStacking(element, allEmotes) {
       // Apply any pending mods (floating before base, e.g. "w! Kappa") to this base
       applyPendingToLast()
     } else {
-      // Check for emoji :shortcode:
-      if (typeof EMOJI_BY_NAME !== 'undefined' && trimmed.startsWith(':') && trimmed.endsWith(':') && trimmed.length > 2) {
-        const emojiName = trimmed.slice(1, -1)
-        const emojiEntry = EMOJI_BY_NAME.get(emojiName)
-        if (emojiEntry) {
-          // Treat emoji as stackable base (overlays can sit on top)
-          if (currentStack.length > 0) {
-            resultNodes.push(flushEmoteStack(currentStack))
-            currentStack = []
+      // Emoji :shortcode: (stackable base) OR ":shortcode:0" (overlay that sits
+      // on top of the previous token — mirrors the emote "name0" convention).
+      if (typeof EMOJI_BY_NAME !== 'undefined' && trimmed.startsWith(':') && trimmed.length > 2) {
+        const emojiOverlay = trimmed.endsWith(':0') && trimmed.length > 3
+        const core = emojiOverlay ? trimmed.slice(0, -1) : trimmed // ":smile:0" -> ":smile:"
+        if (core.endsWith(':') && core.length > 2) {
+          const emojiName = core.slice(1, -1)
+          const emojiEntry = EMOJI_BY_NAME.get(emojiName)
+          if (emojiEntry) {
+            if (emojiOverlay && currentStack.length > 0) {
+              currentStack.push({ emoji: emojiEntry.emoji, emojiName, isOverlay: true, isEmoji: true, originalWord: trimmed })
+              pendingWhitespace = ''
+              continue
+            }
+            // Base emoji (overlays can sit on top)
+            if (currentStack.length > 0) {
+              resultNodes.push(flushEmoteStack(currentStack))
+              currentStack = []
+            }
+            if (pendingWhitespace) {
+              resultNodes.push(document.createTextNode(pendingWhitespace))
+              pendingWhitespace = ''
+            }
+            currentStack.push({ emoji: emojiEntry.emoji, emojiName, isOverlay: false, isEmoji: true, originalWord: trimmed })
+            continue
           }
-          if (pendingWhitespace) {
-            resultNodes.push(document.createTextNode(pendingWhitespace))
-            pendingWhitespace = ''
-          }
-          currentStack.push({ emoji: emojiEntry.emoji, emojiName, isOverlay: false, isEmoji: true, originalWord: trimmed })
-          continue
         }
       }
       // Check for Unicode emoji (🏙️, 💵, etc.) — stackable base
@@ -5699,9 +5716,11 @@ function replaceEmotesWithStacking(element, allEmotes) {
   }
 
   // Helper to flush emote stack to DOM node
-  function generateEmojiElement(emoji, title) {
+  function generateEmojiElement(emoji, title, isOverlay) {
     const span = document.createElement('span')
-    span.className = 'heatsync-emoji'
+    // heatsync-overlay triggers the stack's absolute-centered, z-index:2 layout
+    // so an overlay emoji lands ON TOP of the base instead of beside it.
+    span.className = isOverlay ? 'heatsync-emoji heatsync-overlay' : 'heatsync-emoji'
     span.textContent = emoji
     if (title) span.title = `:${title}:`
     span.style.cssText = 'display: inline-block; vertical-align: middle; position: relative; z-index: 1;'
@@ -5731,7 +5750,7 @@ function replaceEmotesWithStacking(element, allEmotes) {
     // Add emotes and emojis
     stack.forEach((entry) => {
       if (entry.isEmoji) {
-        stackContainer.appendChild(generateEmojiElement(entry.emoji, entry.emojiName))
+        stackContainer.appendChild(generateEmojiElement(entry.emoji, entry.emojiName, entry.isOverlay))
       } else {
         stackContainer.appendChild(generateEmoteElement(entry.emote, entry.isOverlay, entry.modifiers, entry.modColorHue))
       }
@@ -8297,15 +8316,27 @@ function reapplyBadgesToExistingMessages() {
   })
 }
 
-// Fetch BTTV/FFZ/Chatterino badge maps from background
-function fetchCosmeticBadges() {
+// Fetch BTTV/FFZ/Chatterino badge maps from background.
+// A cold service worker can respond before its storage restore lands, returning
+// empty maps. Retry with backoff until non-empty so badges aren't suppressed
+// until the next ~24h refresh (background also pushes a warm-cache cosmetics_update).
+function fetchCosmeticBadges(attempt = 0) {
   safeSendMessage({ type: 'get_bulk_badges' }).then(resp => {
-    if (resp?.bttvBadges) bttvBadgeMap = new Map(Object.entries(resp.bttvBadges))
-    if (resp?.ffzBadges) ffzBadgeMap = new Map(Object.entries(resp.ffzBadges))
-    if (resp?.chatterinoBadges) chatterinoBadgeMap = new Map(Object.entries(resp.chatterinoBadges))
+    const bttv = resp?.bttvBadges ? Object.entries(resp.bttvBadges) : []
+    const ffz = resp?.ffzBadges ? Object.entries(resp.ffzBadges) : []
+    const chat = resp?.chatterinoBadges ? Object.entries(resp.chatterinoBadges) : []
+    if (bttv.length + ffz.length + chat.length === 0) {
+      if (attempt < 8) cleanup.setTimeout(() => fetchCosmeticBadges(attempt + 1), Math.min(500 * (attempt + 1), 3000))
+      return
+    }
+    bttvBadgeMap = new Map(bttv)
+    ffzBadgeMap = new Map(ffz)
+    chatterinoBadgeMap = new Map(chat)
     log(' Initial cosmetics: BTTV', bttvBadgeMap.size, 'FFZ', ffzBadgeMap.size, 'Chatterino', chatterinoBadgeMap.size)
     reapplyBadgesToExistingMessages()
-  }).catch(() => {})
+  }).catch(() => {
+    if (attempt < 8) cleanup.setTimeout(() => fetchCosmeticBadges(attempt + 1), Math.min(500 * (attempt + 1), 3000))
+  })
 }
 
 // =============================================================================

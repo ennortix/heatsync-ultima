@@ -410,16 +410,24 @@ function getInputText() {
         _lastWasChip = true
       } else if (node.nodeType === Node.ELEMENT_NODE && node.classList?.contains('hs-input-stack')) {
         sepBefore()
+        let _firstStackChild = true
         for (const child of node.children) {
           if (child.tagName === 'IMG') {
             if (text && !text.endsWith(' ')) text += ' '
-            appendImg(child)
+            appendImg(child) // emote overlays already carry "name0" in dataset.emoteName
           } else if (child.classList?.contains('hs-mc-emoji')) {
-            // Emoji base of a stack (overlay emote stacked onto an emoji) —
-            // serialize the unicode char so peer renderers re-stack it.
             if (text && !text.endsWith(' ')) text += ' '
-            text += child.textContent || ''
+            const ename = child.dataset.emojiName || child.getAttribute('data-emoji-name')
+            if (!_firstStackChild && ename) {
+              // Overlay emoji — emit ":name:0" so peer renderers stack it on top
+              // (the unicode-char form would render beside, not over, the base).
+              text += ':' + ename + ':0'
+            } else {
+              // Base emoji — unicode char (renderer treats a bare emoji as base).
+              text += child.textContent || ''
+            }
           }
+          _firstStackChild = false
         }
         _lastWasChip = true
       } else if (node.nodeType === Node.ELEMENT_NODE && node.classList?.contains('hs-mc-user')) {
@@ -1465,6 +1473,9 @@ function handleInputKeydown(e) {
     // Type `Kappa w` then Tab from any cursor position → wide Kappa.
     if (!acState.active) {
       if (scanAndApplyModifiersInInput(input)) return
+      // Tab also commits a pending "<emote>0" / "<emoji>0" overlay (parity with
+      // the live typing path) — overlay onto the left, drop the trailing 0.
+      if (wysiwygEnabled && input?.isContentEditable && tryOverlayOnZero(input)) return
     }
 
     if (acState.active && acState.matches.length > 0) {
@@ -1764,11 +1775,42 @@ function handleInputChange(e) {
       let n = stack.firstChild
       while (n) {
         const next = n.nextSibling
+        // Keep IMG (emote base/overlay) AND .hs-mc-emoji (emoji base/overlay) —
+        // both are legitimate stack children. Evict only trapped text/other nodes.
         if (n.nodeType === Node.TEXT_NODE ||
-            (n.nodeType === Node.ELEMENT_NODE && n.tagName !== 'IMG')) {
+            (n.nodeType === Node.ELEMENT_NODE && n.tagName !== 'IMG' &&
+             !n.classList?.contains('hs-mc-emoji'))) {
           stack.parentNode.insertBefore(n, stack.nextSibling)
         }
         n = next
+      }
+    }
+    // Standalone emoji spans must be atomic too. Without contenteditable=false
+    // the caret enters the span when the user backspaces the trailing space, so
+    // the next typed char (e.g. the "0" of an emoji overlay) lands INSIDE the
+    // span — where it inherits the 2x emoji font-size (huge) and never reaches
+    // overlay detection. Retrofit cE=false and evict any non-emoji text to a
+    // sibling right after the span, moving the caret there so tryOverlayOnZero
+    // sees it as the next word.
+    for (const em of inputEl.querySelectorAll('.hs-mc-emoji')) {
+      if (em.closest('.hs-input-stack')) continue
+      if (em.getAttribute('contenteditable') !== 'false') em.setAttribute('contenteditable', 'false')
+      const name = em.dataset.emojiName || em.getAttribute('data-emoji-name')
+      const want = (name && typeof _emojiMap !== 'undefined') ? _emojiMap.get(name) : null
+      const full = em.textContent || ''
+      if (want && full !== want && full.startsWith(want)) {
+        const extra = full.slice(want.length)
+        em.textContent = want
+        if (extra) {
+          const t = document.createTextNode(extra)
+          em.parentNode.insertBefore(t, em.nextSibling)
+          const sel = window.getSelection()
+          if (sel) {
+            const r = document.createRange()
+            r.setStart(t, t.textContent.length); r.collapse(true)
+            sel.removeAllRanges(); sel.addRange(r)
+          }
+        }
       }
     }
   }
@@ -1819,6 +1861,7 @@ function handleInputChange(e) {
           span.textContent = emoji
           span.title = ':' + match[1] + ':'
           span.setAttribute('data-emoji-name', match[1])
+          span.setAttribute('contenteditable', 'false') // atomic — caret can't enter
           const tail = text.slice(cursorOffset)
           const head = text.slice(0, start)
           // Trailing space prevents fused tokens on the wire.
@@ -1857,14 +1900,9 @@ function handleInputChange(e) {
     }
   }
 
-  // Live "name0" overlay: a trailing 0 on an emote turns it into a zero-width
-  // overlay stacked on the element to its left — no space or Tab needed.
-  // Chat-parity rule: ANY emote + "0" overlays the previous token. Handles a
-  // typed-out word ("centipede0") AND a "0" appended right after an emote chip.
-  if (wysiwygEnabled) {
-    const input = document.getElementById('hs-mc-input')
-    if (input?.isContentEditable && tryOverlayOnZero(input)) return
-  }
+  // Note: "<emote>0" / "<emoji>0" overlays are committed on Tab (see the Tab
+  // branch in handleInputKeydown), NOT live on the "0" keystroke — typing the 0
+  // leaves it as plain text so the user can see it before confirming with Tab.
 
   // Live emote replacement: "emoteName " → <img> (triggered on space after emote name)
   if (wysiwygEnabled) {
@@ -2026,12 +2064,14 @@ function handleInputChange(e) {
   }
 }
 
-// Live overlay-on-zero: when the word ending at the cursor is "<emote>0" (the
-// 7TV overlay convention), convert it to a zero-width overlay chip and stack it
-// onto the emote/stack/emoji to its left — immediately, without waiting for a
-// space or Tab. Mirrors the space-triggered live-replace path. Two entry
-// shapes: (1) a "0" typed directly after an existing emote chip — the chip's
-// name is merged in first; (2) a fully typed-out "centipede0" text word.
+// Commit an overlay-on-zero: when the word ending at the cursor is "<emote>0" or
+// "<:emoji:>0" (the overlay convention), convert it to an overlay chip and stack
+// it onto the emote/stack/emoji to its left, then leave a trailing space the user
+// can backspace. Invoked on Tab (NOT live on the "0" keystroke). Entry shapes:
+//   (1) "0" after an emote chip — chip name merged → "centipede0" overlay
+//   (2) "0" after an emoji chip — that emoji span relocated as the overlay
+//   (3) typed-out "centipede0" text word → emote overlay
+//   (4) typed-out ":smile:0" text word → emoji overlay (if it never span-converted)
 // Returns true if it consumed the word.
 function tryOverlayOnZero(input) {
   const sel = window.getSelection()
@@ -2052,58 +2092,89 @@ function tryOverlayOnZero(input) {
   // Only fire once the word actually carries a trailing 0.
   if (!nodeWord.endsWith('0')) return false
 
-  // If the word reaches the start of this text node it may be the tail of a
-  // directly-preceding emote chip (e.g. "centipede" chip + just-typed "0").
-  // Merge that chip's name in so the base resolves: "centipede" + "0".
+  const touchesPrev = before.length === nodeWord.length
+  const prevSib = touchesPrev ? node.previousSibling : null
+
+  // Decide the overlay element: an emote img (created/merged), an existing emoji
+  // span to relocate, or a freshly built emoji span.
+  let overlayEl = null
   let mergedChip = null
+  let relocateSpan = null
   let word = nodeWord
-  if (before.length === nodeWord.length) {
-    const prev = node.previousSibling
-    if (prev?.nodeType === Node.ELEMENT_NODE && prev.tagName === 'IMG' &&
-        prev.classList?.contains('hs-input-emote')) {
-      const ct = chipToText(prev)
-      const clean = ct ? ct.trim() : ''
-      if (clean && !/\s/.test(clean)) { word = clean + nodeWord; mergedChip = prev }
-    }
+
+  if (prevSib?.nodeType === Node.ELEMENT_NODE && prevSib.tagName === 'IMG' &&
+      prevSib.classList?.contains('hs-input-emote')) {
+    // (1) emote chip + typed "0" → merge the chip's name into the word.
+    const ct = chipToText(prevSib)
+    const clean = ct ? ct.trim() : ''
+    if (clean && !/\s/.test(clean)) { word = clean + nodeWord; mergedChip = prevSib }
+  } else if (prevSib?.classList?.contains('hs-mc-emoji') && nodeWord === '0') {
+    // (2) emoji chip + typed "0" → relocate that emoji span as the overlay.
+    relocateSpan = prevSib
   }
 
-  // Base (word minus trailing 0) must resolve to a real emote AND the overlay
-  // convention must apply — otherwise leave the text alone.
-  const resolved = (typeof lookupEmoteWithOverlay === 'function') ? lookupEmoteWithOverlay(word) : null
-  if (!resolved || !resolved.isOverlay) return false
-  const img = (typeof createInputEmoteImg === 'function') ? createInputEmoteImg(word) : null
-  if (!img) return false
+  if (relocateSpan) {
+    overlayEl = relocateSpan
+  } else {
+    const resolved = (typeof lookupEmoteWithOverlay === 'function') ? lookupEmoteWithOverlay(word) : null
+    if (resolved?.isOverlay) {
+      // (1)/(3) emote overlay
+      overlayEl = (typeof createInputEmoteImg === 'function') ? createInputEmoteImg(word) : null
+    } else if (word.startsWith(':') && word.endsWith(':0') && word.length > 3 &&
+               typeof _emojiMap !== 'undefined') {
+      // (4) literal ":smile:0" that never span-converted → build emoji overlay
+      const ename = word.slice(1, -2)
+      const echar = _emojiMap.get(ename)
+      if (echar) {
+        const span = document.createElement('span')
+        span.className = 'hs-mc-emoji'
+        span.textContent = echar
+        span.title = ':' + ename + ':'
+        span.setAttribute('data-emoji-name', ename)
+        span.setAttribute('contenteditable', 'false')
+        overlayEl = span
+      }
+    }
+  }
+  if (!overlayEl) return false
 
   if (mergedChip) mergedChip.remove()
   const wordStartInNode = cursor - nodeWord.length
   const beforeText = text.slice(0, wordStartInNode)
   const afterText = text.slice(cursor)
   const parent = node.parentNode
+  // Where to start scanning left for a base: before the relocated emoji span
+  // (case 2) or before this text node (all other cases).
+  const searchStart = relocateSpan ? relocateSpan.previousSibling : node.previousSibling
 
-  // Stack onto a preceding emote/stack/emoji when nothing but whitespace
-  // precedes the word in this node.
-  if (beforeText.trim() === '') {
-    let prev = node.previousSibling
+  // Stack onto a preceding emote/stack/emoji. For a relocated emoji the word is
+  // just "0" so beforeText is empty; for typed words require empty beforeText.
+  if (relocateSpan || beforeText.trim() === '') {
+    let prev = searchStart
     while (prev && prev.nodeType === Node.TEXT_NODE && prev.textContent.trim() === '') {
       const rm = prev; prev = prev.previousSibling; rm.remove()
     }
-    if (prev && prev.nodeType === Node.ELEMENT_NODE && (
+    if (prev && prev !== overlayEl && prev.nodeType === Node.ELEMENT_NODE && (
       (prev.tagName === 'IMG' && prev.classList.contains('hs-input-emote')) ||
       prev.classList?.contains('hs-input-stack') ||
       prev.classList?.contains('hs-mc-emoji')
     )) {
+      const stopAt = relocateSpan || node
       let ws = prev.nextSibling
-      while (ws && ws !== node) { const rm = ws; ws = ws.nextSibling; rm.remove() }
-      stackInputEmote(prev, img)
-      node.textContent = afterText || ' '
+      while (ws && ws !== stopAt) { const rm = ws; ws = ws.nextSibling; rm.remove() }
+      stackInputEmote(prev, overlayEl) // appendChild moves overlayEl out of its old spot
+      // Leave a trailing space the user can backspace; caret sits after it.
+      const tail = afterText || ''
+      node.textContent = (tail.startsWith(' ') ? '' : ' ') + tail
       const nr = document.createRange()
-      nr.setStart(node, 0); nr.collapse(true)
+      nr.setStart(node, 1); nr.collapse(true)
       sel.removeAllRanges(); sel.addRange(nr)
       pendingMessage = getInputText()
       return true
     }
-    // Overlay onto a raw unicode emoji typed as plain text before the word.
-    if (typeof peelTrailingEmoji === 'function') {
+    // Overlay onto a raw unicode emoji typed as plain text before the word
+    // (only for non-relocate cases — relocate already has its element).
+    if (!relocateSpan && typeof peelTrailingEmoji === 'function') {
       const peeled = peelTrailingEmoji(beforeText.replace(/\s+$/, ''))
       if (peeled) {
         const restNode = peeled.rest ? document.createTextNode(peeled.rest) : null
@@ -2112,10 +2183,11 @@ function tryOverlayOnZero(input) {
         emojiSpan.textContent = peeled.emoji
         if (restNode) parent.insertBefore(restNode, node)
         parent.insertBefore(emojiSpan, node)
-        stackInputEmote(emojiSpan, img)
-        node.textContent = afterText || ' '
+        stackInputEmote(emojiSpan, overlayEl)
+        const tail = afterText || ''
+        node.textContent = (tail.startsWith(' ') ? '' : ' ') + tail
         const nr = document.createRange()
-        nr.setStart(node, 0); nr.collapse(true)
+        nr.setStart(node, 1); nr.collapse(true)
         sel.removeAllRanges(); sel.addRange(nr)
         pendingMessage = getInputText()
         return true
@@ -2123,15 +2195,19 @@ function tryOverlayOnZero(input) {
     }
   }
 
-  // No left base to overlay — drop in a standalone overlay chip.
+  // A relocated emoji with no base to sit on stays put — leave the "0" as text.
+  if (relocateSpan) return false
+
+  // No left base to overlay — drop in a standalone overlay chip + trailing space.
+  const tail = afterText || ''
   const beforeNode = beforeText ? document.createTextNode(beforeText) : null
-  const afterNode = document.createTextNode(afterText || ' ')
+  const afterNode = document.createTextNode((tail.startsWith(' ') ? '' : ' ') + tail)
   if (beforeNode) parent.insertBefore(beforeNode, node)
-  parent.insertBefore(img, node)
+  parent.insertBefore(overlayEl, node)
   parent.insertBefore(afterNode, node)
   parent.removeChild(node)
   const nr = document.createRange()
-  nr.setStart(afterNode, 0); nr.collapse(true)
+  nr.setStart(afterNode, 1); nr.collapse(true)
   sel.removeAllRanges(); sel.addRange(nr)
   pendingMessage = getInputText()
   return true
@@ -3265,6 +3341,7 @@ function insertEmojiFromDropdown(entry) {
     span.textContent = entry.emoji
     span.title = ':' + entry.name + ':'
     span.setAttribute('data-emoji-name', entry.name)
+    span.setAttribute('contenteditable', 'false') // atomic — caret can't enter
     const tail = text.slice(cursor)
     const head = text.slice(0, colonIdx)
     // Trailing space keeps emote-name boundaries intact downstream.

@@ -2004,19 +2004,33 @@
           pendingStack = { items: [{ kind: 'base', raw: imgHtmlRaw, mods: itemMods, hue: itemHue }] }
         }
       } else {
-        // Check for emoji :shortcode: — treat as stackable base
-        if (typeof EMOJI_BY_NAME !== 'undefined' && word.startsWith(':') && word.endsWith(':') && word.length > 2) {
-          const emojiName = word.slice(1, -1)
-          const emojiEntry = EMOJI_BY_NAME.get(emojiName)
-          if (emojiEntry) {
-            _flushStackToResult()
-            if (pendingWhitespace) { result.push(pendingWhitespace); pendingWhitespace = '' }
-            const emojiHtmlRaw = `<span class="hs-mc-emoji" title=":${escapeHtml(emojiName)}:">${emojiEntry.emoji}</span>`
-            const startMods = pendingMods.slice()
-            const startHue = pendingHue
-            pendingMods = []; pendingHue = null
-            pendingStack = { items: [{ kind: 'base', raw: emojiHtmlRaw, mods: startMods, hue: startHue }] }
-            continue
+        // Emoji :shortcode: — stackable base, OR ":shortcode:0" overlay marker.
+        // Mirrors the emote "name0" convention: a trailing 0 makes the emoji an
+        // overlay that sits ON TOP of the previous token instead of beside it.
+        if (typeof EMOJI_BY_NAME !== 'undefined' && word.startsWith(':') && word.length > 2) {
+          const emojiOverlay = word.endsWith(':0') && word.length > 3
+          const core = emojiOverlay ? word.slice(0, -1) : word // ":smile:0" -> ":smile:"
+          if (core.endsWith(':') && core.length > 2) {
+            const emojiName = core.slice(1, -1)
+            const emojiEntry = EMOJI_BY_NAME.get(emojiName)
+            if (emojiEntry) {
+              const emojiHtmlRaw = `<span class="hs-mc-emoji" title=":${escapeHtml(emojiName)}:">${emojiEntry.emoji}</span>`
+              if (emojiOverlay && pendingStack) {
+                const itemMods = pendingMods.slice()
+                const itemHue = pendingHue
+                pendingMods = []; pendingHue = null
+                pendingStack.items.push({ kind: 'overlay', raw: emojiHtmlRaw, mods: itemMods, hue: itemHue })
+                pendingWhitespace = ''
+                continue
+              }
+              _flushStackToResult()
+              if (pendingWhitespace) { result.push(pendingWhitespace); pendingWhitespace = '' }
+              const startMods = pendingMods.slice()
+              const startHue = pendingHue
+              pendingMods = []; pendingHue = null
+              pendingStack = { items: [{ kind: 'base', raw: emojiHtmlRaw, mods: startMods, hue: startHue }] }
+              continue
+            }
           }
         }
         // Check for Unicode emoji — treat as stackable base

@@ -2073,7 +2073,11 @@ function injectStyles() {
       border-radius: 0;
     }
     .hs-mc-platform-badge {
-      font-size: var(--hs-badge-font, 10px);
+      /* Text badges follow the single font setting (family + size), not the
+         emote-size scale — one appearance control drives every badge glyph.
+         Crispness on Cozette/Gohu comes from the .hs-font-bitmap block. */
+      font-family: var(--hs-mc-font, 'CozetteVector', 'Courier New', monospace);
+      font-size: 13px;
       margin-right: 3px;
       font-weight: 700;
       vertical-align: middle;
@@ -2083,7 +2087,9 @@ function injectStyles() {
     .hs-mc-platform-badge.hs-mc-pb-yt { color: #ff0000; }
     .hs-mc-badge {
       display: inline-block;
-      font-size: var(--hs-stat-badge-font, 9px);
+      /* Single font setting drives family + size (see .hs-mc-platform-badge). */
+      font-family: var(--hs-mc-font, 'CozetteVector', 'Courier New', monospace);
+      font-size: 13px;
       padding: 0 3px;
       border-radius: 0;
       margin-right: 2px;
@@ -2630,14 +2636,23 @@ function injectStyles() {
       display: inline-flex;
       align-items: center;
       gap: 4px;
+      /* Drop the collapsed 36px lock so a multi-row wrap can grow vertically. */
+      height: auto;
     }
     /* Expanded inner: gray bg via pseudo-element bleeding outward so the box
-       layout doesn't grow vs collapsed (no line-height shift, no off-center). */
+       layout doesn't grow vs collapsed (no line-height shift, no off-center).
+       wrap + non-shrinking children so a 50-emote nest reflows onto multiple
+       rows at native size instead of squishing to a 4px-wide single line. */
     .hs-mc-emote-stack.expanded .hs-mc-emote-stack-emotes {
       border-radius: 0;
       display: inline-flex;
+      flex-wrap: wrap;
       gap: 4px;
       align-items: center;
+    }
+    .hs-mc-emote-stack.expanded .hs-mc-emote-stack-emotes > .hs-mc-emote-wrapper,
+    .hs-mc-emote-stack.expanded .hs-mc-emote-stack-emotes > .hs-mc-emoji {
+      flex: 0 0 auto;
     }
     .hs-mc-emote-stack.expanded .hs-mc-emote-stack-emotes::after {
       content: '';
@@ -3083,6 +3098,8 @@ function injectStyles() {
       margin: 0;
       z-index: 1;
     }
+    /* Emoji acting as the OVERLAY (stacked on top of the left base) sits above. */
+    #hs-mc-input .hs-input-stack > .hs-mc-emoji:not(:first-child) { z-index: 2; }
     /* Blocked emote in input — parity with chat/picker: dashed gray border,
        image hidden. Image content is masked to a 1×1 transparent placeholder
        (src swap in applyInputEmoteBlockState) so outline still renders (a

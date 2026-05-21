@@ -11367,6 +11367,23 @@ function injectStyles() {
       height: calc(100vh - var(--hs-chat-h, 35vh)) !important;
       overflow-y: hidden !important;
     }
+    /* Twitch creator dashboard (dashboard.twitch.tv) renders into
+       .sunlight-root, pinned to 100vw x 100vh — it ignores the body shrink
+       above, so dashboard content (and its right-edge buttons) renders under
+       the fixed panel. Force the root + its content child back to 100% so it
+       reflows inside the squeezed body. Mirror of the kick w-xvw rule below. */
+    body.hs-platform-twitch.hs-twitch-no-channel .sunlight-root,
+    body.hs-platform-twitch.hs-twitch-no-channel .sunlight-root > div {
+      width: 100% !important;
+      max-width: 100% !important;
+    }
+    body.hs-platform-twitch.hs-twitch-no-channel.hs-chat-top .sunlight-root,
+    body.hs-platform-twitch.hs-twitch-no-channel.hs-chat-bottom .sunlight-root,
+    body.hs-platform-twitch.hs-twitch-no-channel.hs-chat-top .sunlight-root > div,
+    body.hs-platform-twitch.hs-twitch-no-channel.hs-chat-bottom .sunlight-root > div {
+      height: 100% !important;
+      max-height: 100% !important;
+    }
 
     /* --- KICK non-channel pages (/browse, /categories, /following,
        /search, /settings, …): #channel-chatroom doesn't exist, so we
@@ -26736,6 +26753,15 @@ function handleInputChange(e) {
     }
   }
 
+  // Live "name0" overlay: a trailing 0 on an emote turns it into a zero-width
+  // overlay stacked on the element to its left — no space or Tab needed.
+  // Chat-parity rule: ANY emote + "0" overlays the previous token. Handles a
+  // typed-out word ("centipede0") AND a "0" appended right after an emote chip.
+  if (wysiwygEnabled) {
+    const input = document.getElementById('hs-mc-input')
+    if (input?.isContentEditable && tryOverlayOnZero(input)) return
+  }
+
   // Live emote replacement: "emoteName " → <img> (triggered on space after emote name)
   if (wysiwygEnabled) {
     const input = document.getElementById('hs-mc-input')
@@ -26894,6 +26920,117 @@ function handleInputChange(e) {
       }
     }
   }
+}
+
+// Live overlay-on-zero: when the word ending at the cursor is "<emote>0" (the
+// 7TV overlay convention), convert it to a zero-width overlay chip and stack it
+// onto the emote/stack/emoji to its left — immediately, without waiting for a
+// space or Tab. Mirrors the space-triggered live-replace path. Two entry
+// shapes: (1) a "0" typed directly after an existing emote chip — the chip's
+// name is merged in first; (2) a fully typed-out "centipede0" text word.
+// Returns true if it consumed the word.
+function tryOverlayOnZero(input) {
+  const sel = window.getSelection()
+  if (!sel?.rangeCount || !sel.isCollapsed) return false
+  const range = sel.getRangeAt(0)
+  let node = range.startContainer
+  let cursor = range.startOffset
+  if (node.nodeType === Node.ELEMENT_NODE && cursor > 0) {
+    const child = node.childNodes[cursor - 1]
+    if (child?.nodeType === Node.TEXT_NODE) { node = child; cursor = child.textContent.length }
+  }
+  if (node.nodeType !== Node.TEXT_NODE) return false
+  const text = node.textContent
+  const before = text.slice(0, cursor)
+  const wm = before.match(/(\S+)$/)
+  if (!wm) return false
+  const nodeWord = wm[1]
+  // Only fire once the word actually carries a trailing 0.
+  if (!nodeWord.endsWith('0')) return false
+
+  // If the word reaches the start of this text node it may be the tail of a
+  // directly-preceding emote chip (e.g. "centipede" chip + just-typed "0").
+  // Merge that chip's name in so the base resolves: "centipede" + "0".
+  let mergedChip = null
+  let word = nodeWord
+  if (before.length === nodeWord.length) {
+    const prev = node.previousSibling
+    if (prev?.nodeType === Node.ELEMENT_NODE && prev.tagName === 'IMG' &&
+        prev.classList?.contains('hs-input-emote')) {
+      const ct = chipToText(prev)
+      const clean = ct ? ct.trim() : ''
+      if (clean && !/\s/.test(clean)) { word = clean + nodeWord; mergedChip = prev }
+    }
+  }
+
+  // Base (word minus trailing 0) must resolve to a real emote AND the overlay
+  // convention must apply — otherwise leave the text alone.
+  const resolved = (typeof lookupEmoteWithOverlay === 'function') ? lookupEmoteWithOverlay(word) : null
+  if (!resolved || !resolved.isOverlay) return false
+  const img = (typeof createInputEmoteImg === 'function') ? createInputEmoteImg(word) : null
+  if (!img) return false
+
+  if (mergedChip) mergedChip.remove()
+  const wordStartInNode = cursor - nodeWord.length
+  const beforeText = text.slice(0, wordStartInNode)
+  const afterText = text.slice(cursor)
+  const parent = node.parentNode
+
+  // Stack onto a preceding emote/stack/emoji when nothing but whitespace
+  // precedes the word in this node.
+  if (beforeText.trim() === '') {
+    let prev = node.previousSibling
+    while (prev && prev.nodeType === Node.TEXT_NODE && prev.textContent.trim() === '') {
+      const rm = prev; prev = prev.previousSibling; rm.remove()
+    }
+    if (prev && prev.nodeType === Node.ELEMENT_NODE && (
+      (prev.tagName === 'IMG' && prev.classList.contains('hs-input-emote')) ||
+      prev.classList?.contains('hs-input-stack') ||
+      prev.classList?.contains('hs-mc-emoji')
+    )) {
+      let ws = prev.nextSibling
+      while (ws && ws !== node) { const rm = ws; ws = ws.nextSibling; rm.remove() }
+      stackInputEmote(prev, img)
+      node.textContent = afterText || ' '
+      const nr = document.createRange()
+      nr.setStart(node, 0); nr.collapse(true)
+      sel.removeAllRanges(); sel.addRange(nr)
+      pendingMessage = getInputText()
+      return true
+    }
+    // Overlay onto a raw unicode emoji typed as plain text before the word.
+    if (typeof peelTrailingEmoji === 'function') {
+      const peeled = peelTrailingEmoji(beforeText.replace(/\s+$/, ''))
+      if (peeled) {
+        const restNode = peeled.rest ? document.createTextNode(peeled.rest) : null
+        const emojiSpan = document.createElement('span')
+        emojiSpan.className = 'hs-mc-emoji'
+        emojiSpan.textContent = peeled.emoji
+        if (restNode) parent.insertBefore(restNode, node)
+        parent.insertBefore(emojiSpan, node)
+        stackInputEmote(emojiSpan, img)
+        node.textContent = afterText || ' '
+        const nr = document.createRange()
+        nr.setStart(node, 0); nr.collapse(true)
+        sel.removeAllRanges(); sel.addRange(nr)
+        pendingMessage = getInputText()
+        return true
+      }
+    }
+  }
+
+  // No left base to overlay — drop in a standalone overlay chip.
+  const beforeNode = beforeText ? document.createTextNode(beforeText) : null
+  const afterNode = document.createTextNode(afterText || ' ')
+  if (beforeNode) parent.insertBefore(beforeNode, node)
+  parent.insertBefore(img, node)
+  parent.insertBefore(afterNode, node)
+  parent.removeChild(node)
+  const nr = document.createRange()
+  nr.setStart(afterNode, 0); nr.collapse(true)
+  sel.removeAllRanges(); sel.addRange(nr)
+  pendingMessage = getInputText()
+  return true
 }
 
 function updateCharCount() {
@@ -27245,6 +27382,28 @@ function findEmoteMatches(search) {
         matches.push({ name, url: emote.url, source: emote.source, priority: 0, type: 'emote', sub });
       } else if (name.toLowerCase().includes(searchLower)) {
         matches.push({ name, url: emote.url, source: emote.source, priority: 1, type: 'emote', sub });
+      }
+    }
+    // 7TV "name0" overlay convention: a trailing "0" turns an emote into a
+    // zero-width overlay (e.g. "centipede0"). The literal "centipede0" matches
+    // no emote name, so synthesize an overlay match from the base name. Without
+    // this, re-completing a "name0" word (complete emote → backspace auto-space
+    // → type 0 → Tab) finds nothing and the chip collapses back to plain text.
+    // The insert path resolves the overlay flag via lookupEmoteWithOverlay and
+    // stacks it onto the preceding emote.
+    if (searchLower.length > 2 && searchLower.endsWith('0')) {
+      const baseLower = searchLower.slice(0, -1);
+      const seen = new Set(matches.filter(m => m.type === 'emote').map(m => m.name.toLowerCase()));
+      for (const [name, emote] of acEmotes) {
+        if (emote.source === 'heatsync' && emote.state !== 'owned') continue;
+        const nl = name.toLowerCase();
+        const overlayName = name + '0';
+        if (seen.has(overlayName.toLowerCase())) continue;
+        if (nl === baseLower) {
+          matches.push({ name: overlayName, url: emote.url, source: emote.source, priority: 0, type: 'emote', sub: !!emote.subscription });
+        } else if (nl.startsWith(baseLower)) {
+          matches.push({ name: overlayName, url: emote.url, source: emote.source, priority: 1, type: 'emote', sub: !!emote.subscription });
+        }
       }
     }
   }

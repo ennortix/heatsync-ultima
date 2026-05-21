@@ -6725,6 +6725,23 @@ function injectStyles() {
       height: calc(100vh - var(--hs-chat-h, 35vh)) !important;
       overflow-y: hidden !important;
     }
+    /* Twitch creator dashboard (dashboard.twitch.tv) renders into
+       .sunlight-root, pinned to 100vw x 100vh — it ignores the body shrink
+       above, so dashboard content (and its right-edge buttons) renders under
+       the fixed panel. Force the root + its content child back to 100% so it
+       reflows inside the squeezed body. Mirror of the kick w-xvw rule below. */
+    body.hs-platform-twitch.hs-twitch-no-channel .sunlight-root,
+    body.hs-platform-twitch.hs-twitch-no-channel .sunlight-root > div {
+      width: 100% !important;
+      max-width: 100% !important;
+    }
+    body.hs-platform-twitch.hs-twitch-no-channel.hs-chat-top .sunlight-root,
+    body.hs-platform-twitch.hs-twitch-no-channel.hs-chat-bottom .sunlight-root,
+    body.hs-platform-twitch.hs-twitch-no-channel.hs-chat-top .sunlight-root > div,
+    body.hs-platform-twitch.hs-twitch-no-channel.hs-chat-bottom .sunlight-root > div {
+      height: 100% !important;
+      max-height: 100% !important;
+    }
 
     /* --- KICK non-channel pages (/browse, /categories, /following,
        /search, /settings, …): #channel-chatroom doesn't exist, so we

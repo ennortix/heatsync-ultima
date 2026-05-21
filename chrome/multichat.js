@@ -7653,9 +7653,9 @@ function injectStyles() {
     .hs-mc-slash-row:hover .hs-mc-slash-args,
     .hs-mc-slash-row.selected .hs-mc-slash-args,
     .hs-mc-slash-row:hover .hs-mc-slash-desc,
-    .hs-mc-slash-row.selected .hs-mc-slash-desc { color: #fff; }
+    .hs-mc-slash-row.selected .hs-mc-slash-desc { color: #000; }
     .hs-mc-slash-row:hover .hs-mc-slash-name,
-    .hs-mc-slash-row.selected .hs-mc-slash-name { color: #fff; }
+    .hs-mc-slash-row.selected .hs-mc-slash-name { color: #000; }
     /* Toggle button */
     .hs-mc-toggle-btn {
       padding: 4px 10px;
@@ -23068,6 +23068,24 @@ function renderFeedContent(content, emoteRefs) {
       html = html.replace(re, `<img class="hs-mc-emote" src="${safeUrl}" alt="${escaped}" title="${escaped}" loading="lazy">`);
     }
   }
+
+  // Local emote fallback: render 7TV/BTTV/FFZ/channel emotes the server can't
+  // resolve (not in emote_refs — site only knows heatsync emotes). The extension
+  // augments with the viewer's full local emote set, matching chat-tile rendering.
+  if (typeof lookupEmote === 'function') {
+    const refNames = emoteRefs && typeof emoteRefs === 'object' ? new Set(Object.keys(emoteRefs)) : null
+    const parts = html.split(/(<[^>]+>)/)
+    html = parts.map((part, i) => {
+      if (i % 2 === 1) return part  // inside an HTML tag — skip
+      return part.replace(/\S+/g, (word) => {
+        if (refNames && refNames.has(word)) return word  // already rendered above
+        const em = lookupEmote(word)
+        if (!em || !em.url || !/^https:\/\//.test(em.url)) return word
+        const esc = escapeHtml(word)
+        return `<img class="hs-mc-emote" src="${escapeHtml(em.url)}" alt="${esc}" title="${esc}" loading="lazy">`
+      })
+    }).join('')
+  }
   return html;
 }
 
@@ -36676,7 +36694,8 @@ const STORAGE_KEY = 'heatsync_multichat';
       const tagLabel = isThreadOp || isOp ? '[OP]' : '[RE]'
       const typeTag = `<span class="hs-feed-tag" style="color:${tagColor};font-size:13px;margin-right:3px">${tagLabel}</span>`
       const shortId = (m.base36_id || '').replace(/^0+/, '') || '0'
-      const threadLink = `<a href="https://heatsync.org/post/${encodeURIComponent(m.base36_id)}" target="_blank" class="hs-feed-thread-link">&gt;&gt;${escapeHtml(shortId)}</a>`
+      // Span (not <a>): falls through to the row click handler below → switchTab('feed') + openThread, in-ext. An anchor would open heatsync.org in a new tab.
+      const threadLink = `<span class="hs-feed-thread-link" style="cursor:pointer">&gt;&gt;${escapeHtml(shortId)}</span>`
       const userLink = `<a href="https://heatsync.org/user/${encodeURIComponent(m.feedUser)}" target="_blank" class="hs-mc-user" data-username="${escapeHtml((m.feedUser || 'anon').toLowerCase())}" style="color:${sanitizeColor(m.color || '#fff')}">${escapeHtml(m.feedUser || 'anon')}</a>`
       const content = renderFeedContent(m.text, m.emote_refs)
       // Canonical heat: formatHeat + ° suffix (≥10) + tier color/glow/breathe via heatSpanHtml

@@ -766,11 +766,26 @@ function initInput() {
       e.preventDefault();
       e.stopPropagation();
 
-      // Race-guard before any UI: blocks the menu from opening while
-      // a previous op for this emote is still in-flight.
-      if (pendingEmoteOps.has(emoteInfo.emoteName)) return;
+      const { emoteName, state, emoteUrl, source } = emoteInfo;
 
-      showMcEmoteActionMenu(e.clientX, e.clientY, emoteInfo, e.target);
+      // Race-guard against rapid clicking
+      if (pendingEmoteOps.has(emoteName)) return;
+
+      // Instant: right-click is the destructive partner to left-click.
+      // blocked → unblock, owned-removable → drop from set, everything else → block.
+      if (state === 'blocked') {
+        unblockEmote(emoteName);
+      } else if (state === 'owned') {
+        // Sub / no-slot emotes can't be DELETEd via /api/user/emotes/:slot — block-only.
+        const cached = (typeof lookupEmote === 'function') ? lookupEmote(emoteName) : null;
+        if (cached?.subscription || cached?.slot == null) {
+          blockEmote(emoteName, emoteUrl, source);
+        } else {
+          removeEmoteFromInventory(emoteName, e.target);
+        }
+      } else {
+        blockEmote(emoteName, emoteUrl, source);
+      }
     }, { capture: true, signal: mcSignal });
   }
 
@@ -856,7 +871,7 @@ function initInput() {
         // One rung up the ladder per click: unblock → unadded (orange). A second
         // click (now in the unadded branch below) adds it to the set → owned/green.
         // unblockEmote lands on the unadded rung and restores the image from the
-        // block fallback, matching the right-click menu's "unblock emote".
+        // block fallback, matching right-click unblock.
         if (pendingEmoteOps.has(emoteName)) return;
         unblockEmote(emoteName);
         return;
@@ -1027,222 +1042,6 @@ function _openWhisperFor(username) {
   }
 }
 
-// Right-click action menu for any emote rendered in the multichat panel
-// (chat tiles + WYSIWYG input chips + native Twitch sub/bits images that
-// findEmoteTarget catches). Mirrors the page-level menu in chrome/content.js.
-function showMcEmoteActionMenu(x, y, emoteInfo, evtTarget) {
-  document.getElementById('hs-mc-emote-ctx')?.remove()
-  const { emoteName, state, emoteUrl, source, wrapper } = emoteInfo
-  const url = emoteUrl || evtTarget?.src || ''
-  const cached = (typeof lookupEmote === 'function') ? lookupEmote(emoteName) : null
-  const provider = (() => {
-    const s = (source || '').toLowerCase()
-    if (s === '7tv' || url.includes('cdn.7tv.app')) return '7TV'
-    if (s === 'bttv' || url.includes('cdn.betterttv.net')) return 'BTTV'
-    if (s === 'ffz' || url.includes('cdn.frankerfacez.com')) return 'FFZ'
-    if (s === 'twitch' || url.includes('static-cdn.jtvnw.net')) return 'Twitch'
-    if (s === 'heatsync') return 'heatsync'
-    return null
-  })()
-
-  const isOwned = state === 'owned'
-  const isBlocked = state === 'blocked'
-  const isLocked = state === 'locked'
-  const isUnadded = state === 'unadded'
-  const isPostable = state === 'owned' || state === 'global' || state === 'channel'
-  // Sub emotes / no-slot entries can be blocked but not removed
-  const canRemoveFromSet = isOwned && cached && cached.slot != null && !cached.subscription
-
-  const menu = document.createElement('div')
-  menu.id = 'hs-mc-emote-ctx'
-  menu.className = 'hs-mc-ctx'
-  menu.tabIndex = -1
-  menu.addEventListener('contextmenu', (e) => e.preventDefault())
-
-  // Preview tile
-  const preview = document.createElement('div')
-  preview.className = 'hs-mc-em-preview'
-  const thumb = document.createElement('div')
-  thumb.className = 'hs-mc-em-thumb'
-  if (url) {
-    const big = document.createElement('img')
-    big.src = url
-    big.alt = emoteName
-    big.decoding = 'async'
-    big.referrerPolicy = 'no-referrer'
-    thumb.appendChild(big)
-  }
-  const meta = document.createElement('div')
-  meta.className = 'hs-mc-em-meta'
-  const nm = document.createElement('div')
-  nm.className = 'hs-mc-em-name'
-  nm.textContent = emoteName
-  const sub = document.createElement('div')
-  sub.className = 'hs-mc-em-sub'
-  if (provider) {
-    const tag = document.createElement('span')
-    tag.className = 'hs-mc-em-provider'
-    tag.textContent = provider
-    sub.appendChild(tag)
-  }
-  const stxt = document.createElement('span')
-  const dimW = evtTarget?.naturalWidth || evtTarget?.width || 0
-  const dimH = evtTarget?.naturalHeight || evtTarget?.height || 0
-  const subParts = []
-  if (dimW && dimH) subParts.push(`${dimW}×${dimH}`)
-  subParts.push(state)
-  stxt.textContent = subParts.join(' · ')
-  sub.appendChild(stxt)
-  meta.appendChild(nm)
-  meta.appendChild(sub)
-  preview.appendChild(thumb)
-  preview.appendChild(meta)
-  menu.appendChild(preview)
-
-  // Keybinds number bottom-up: the primary action (block/unblock/add/remove)
-  // sits at the bottom of the menu, and the cursor lands there when the menu
-  // flips up off the bottom-anchored chat panel — so key 1 is on the closest,
-  // most-used item, ascending toward the utilities up top. Assigned in a pass
-  // after all items exist (see assignBottomUpKbd).
-  const kbdHandlers = {}
-  const kbdItems = [] // {el, fn} in DOM order; numbered 1..9 from the bottom
-  const addHeader = (text) => {
-    const h = document.createElement('div')
-    h.className = 'hs-mc-em-header'
-    h.textContent = text
-    menu.appendChild(h)
-  }
-  const addItem = (label, fn, opts = {}) => {
-    const it = document.createElement('div')
-    it.className = 'hs-mc-em-item' + (opts.danger ? ' hs-mc-em-danger' : '') + (opts.good ? ' hs-mc-em-good' : '')
-    const lab = document.createElement('span')
-    lab.className = 'hs-mc-em-label'
-    lab.textContent = label
-    it.appendChild(lab)
-    if (opts.hint) {
-      const h = document.createElement('span')
-      h.className = 'hs-mc-em-hint'
-      h.textContent = opts.hint
-      it.appendChild(h)
-    }
-    if (opts.kbd !== false) kbdItems.push({ el: it, fn })
-    it.addEventListener('click', () => { dismiss(); try { fn() } catch {} })
-    menu.appendChild(it)
-  }
-  const assignBottomUpKbd = () => {
-    let n = 1
-    for (let i = kbdItems.length - 1; i >= 0 && n <= 9; i--, n++) {
-      const { el, fn } = kbdItems[i]
-      const k = document.createElement('span')
-      k.className = 'hs-mc-em-kbd'
-      k.textContent = String(n)
-      el.appendChild(k)
-      kbdHandlers[String(n)] = fn
-    }
-  }
-  const addSep = () => {
-    const s = document.createElement('div')
-    s.className = 'hs-mc-em-sep'
-    menu.appendChild(s)
-  }
-
-  // Actions
-  addHeader('actions')
-  if (isPostable) {
-    addItem('paste to input', () => {
-      showInputBar()
-      pasteEmoteToInput(emoteName)
-      const input = document.getElementById('hs-mc-input')
-      if (input) input.focus()
-      flashAllEmotes(emoteName, 'hs-flash-paste')
-    })
-  } else if (isLocked) {
-    addItem('paste anyway', () => {
-      // Locked = foreign sub emote. Server will reject; keep available for users who know better.
-      showInputBar()
-      pasteEmoteToInput(emoteName)
-      const input = document.getElementById('hs-mc-input')
-      if (input) input.focus()
-    }, { hint: 'locked' })
-  }
-  addItem('copy name', () => { try { navigator.clipboard.writeText(emoteName) } catch {} })
-  if (url) {
-    addItem('copy image url', () => { try { navigator.clipboard.writeText(url) } catch {} })
-  }
-
-  // Set membership
-  if (isUnadded) {
-    addSep()
-    addHeader('set')
-    addItem('add to set', () => {
-      // addEmoteToInventory flashes on success — don't double-flash here.
-      addEmoteToInventory(emoteName, url, source || 'heatsync', evtTarget || wrapper)
-    }, { good: true })
-  } else if (canRemoveFromSet) {
-    addSep()
-    addHeader('set')
-    addItem('remove from set', () => {
-      removeEmoteFromInventory(emoteName, evtTarget || wrapper)
-    })
-  }
-
-  // Block toggle — green > orange > block. A removable in-set emote shows
-  // "remove from set" (above), not block. Sub emotes (owned but not removable)
-  // and unowned/global emotes still show block. Always allow unblock.
-  if (isBlocked) {
-    addSep()
-    addItem('unblock emote', () => { unblockEmote(emoteName) }, { good: true })
-  } else if (!canRemoveFromSet) {
-    addSep()
-    addItem('block emote', () => { blockEmote(emoteName, url, source) }, { danger: true })
-  }
-
-  assignBottomUpKbd()
-  document.body.appendChild(menu)
-
-  // Edge-aware positioning
-  menu.style.visibility = 'hidden'
-  menu.style.left = '0px'
-  menu.style.top = '0px'
-  const mw = menu.offsetWidth, mh = menu.offsetHeight
-  const vw = window.innerWidth, vh = window.innerHeight
-  const flipX = x + mw + 8 > vw
-  const flipY = y + mh + 8 > vh
-  const left = flipX ? Math.max(4, x - mw) : Math.min(x, vw - mw - 4)
-  const top  = flipY ? Math.max(4, y - mh) : Math.min(y, vh - mh - 4)
-  menu.style.left = left + 'px'
-  menu.style.top = top + 'px'
-  if (flipX) menu.classList.add('hs-mc-em-flip-x')
-  if (flipY) menu.classList.add('hs-mc-em-flip-y')
-  menu.style.visibility = ''
-  try { menu.focus({ preventScroll: true }) } catch {}
-
-  function dismiss() {
-    menu.remove()
-    document.removeEventListener('mousedown', outside, true)
-    document.removeEventListener('keydown', keyHandler, true)
-    document.removeEventListener('contextmenu', outside, true)
-    window.removeEventListener('blur', dismiss)
-    window.removeEventListener('scroll', dismiss)
-  }
-  function outside(ev) { if (!menu.contains(ev.target)) dismiss() }
-  function keyHandler(ev) {
-    if (ev.key === 'Escape') { ev.preventDefault(); dismiss(); return }
-    const fn = kbdHandlers[ev.key]
-    if (fn) { ev.preventDefault(); dismiss(); try { fn() } catch {} }
-  }
-  setTimeout(() => {
-    document.addEventListener('mousedown', outside, true)
-    document.addEventListener('keydown', keyHandler, true)
-    document.addEventListener('contextmenu', outside, true)
-    window.addEventListener('blur', dismiss, { once: true })
-    // No capture: a capturing scroll listener fires on the chat container's
-    // constant auto-scroll, killing the menu the instant it opens. Menu is
-    // position:fixed so it stays put — only dismiss on genuine window scroll.
-    window.addEventListener('scroll', dismiss, { passive: true, once: true })
-  }, 0)
-}
-
 function _mentionInMcInput(username) {
   showInputBar()
   const input = document.getElementById('hs-mc-input')
@@ -1269,7 +1068,7 @@ function showMcMsgContextMenu(x, y, msg, username) {
   const isMuted = mutedUsers.has(username)
 
   const kbdHandlers = {}
-  const kbdItems = [] // {el, fn} in DOM order; numbered 1..9 from the bottom
+  const kbdItems = [] // {el, fn} in DOM order; numbered 1..9 from the top
   const addHeader = (text) => {
     const h = document.createElement('div')
     h.className = 'hs-mc-em-header'
@@ -1287,12 +1086,11 @@ function showMcMsgContextMenu(x, y, msg, username) {
     it.addEventListener('click', () => { dismiss(); try { fn() } catch {} })
     menu.appendChild(it)
   }
-  // Number bottom-up (key 1 nearest the cursor) like the emote menu. Item order is
-  // arranged so the primary actions land on the low keys: mute/unmute=1, copy=2.
-  const assignBottomUpKbd = () => {
-    let n = 1
-    for (let i = kbdItems.length - 1; i >= 0 && n <= 9; i--, n++) {
+  // Number top-down (key 1 is the first item, ascending downward) like the emote menu.
+  const assignKbd = () => {
+    for (let i = 0; i < kbdItems.length && i < 9; i++) {
       const { el, fn } = kbdItems[i]
+      const n = i + 1
       const k = document.createElement('span')
       k.className = 'hs-mc-em-kbd'
       k.textContent = String(n)
@@ -1306,9 +1104,8 @@ function showMcMsgContextMenu(x, y, msg, username) {
     menu.appendChild(s)
   }
 
-  // Trimmed to the actions that matter, numbered bottom-up (key 1 nearest the
-  // cursor, like the emote menu): mute/unmute=1, block/unblock=2, copy message=3,
-  // copy username=4. The two mod actions sit at the bottom for fastest reach.
+  // Trimmed to the actions that matter, numbered top-down (key 1 is the first
+  // item): copy username=1, copy message=2, block/unblock=3, mute/unmute=4.
   const isBlocked = blockedUsers.has(String(username).toLowerCase())
   addHeader(username)
   addItem('copy username', () => { try { navigator.clipboard.writeText(username) } catch {} })
@@ -1320,7 +1117,7 @@ function showMcMsgContextMenu(x, y, msg, username) {
   if (isMuted) addItem('unmute', () => _toggleMcMute(username), { good: true })
   else addItem('mute (24h)', () => _toggleMcMute(username), { danger: true })
 
-  assignBottomUpKbd()
+  assignKbd()
   document.body.appendChild(menu)
   menu.style.visibility = 'hidden'
   menu.style.left = '0px'

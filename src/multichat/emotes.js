@@ -872,26 +872,14 @@
   function applyInputEmoteBlockState(emoteName, blocked) {
     if (!emoteName) return
     const inputs = document.querySelectorAll('img.hs-input-emote')
-    let removed = false
     for (const img of inputs) {
       if (img.alt !== emoteName && img.dataset.emoteName !== emoteName) continue
-      if (blocked) {
-        // Blocking an emote that's sitting in the compose box removes it: you've
-        // said you don't want this emote, so it shouldn't ride out in the message
-        // (right-click-block then send was the source of the "blocked but sent,
-        // renders blank" edge case). Drop an emptied stack wrapper too.
-        const stack = img.closest('.hs-input-stack')
-        img.remove()
-        if (stack && !stack.querySelector('img')) stack.remove()
-        removed = true
-      } else {
-        markInputEmoteBlocked(img, false)
-      }
-    }
-    // Resync persisted draft + char count after structural removal.
-    if (removed) {
-      const input = document.getElementById('hs-mc-input')
-      if (input) input.dispatchEvent(new InputEvent('input', { bubbles: true }))
+      // Render the dashed box in place — same as chat/picker. The chip keeps its
+      // alt/dataset.emoteName so getInputText still serializes the name on send
+      // (recipient renders the emote unless they too blocked it). Removing the
+      // chip instead left the contenteditable with a stale caret/draft, which
+      // showed up as doubled overlapping text.
+      markInputEmoteBlocked(img, blocked)
     }
   }
 

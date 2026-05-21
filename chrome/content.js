@@ -855,7 +855,7 @@ function attachInputModifierObserver() {
 setTimeout(attachInputModifierObserver, 1500)
 cleanup.setInterval(attachInputModifierObserver, 5000)
 
-// Right-click emote action menu (7TV-style: view on, copy name/URL, block, add)
+// Shared right-click menu state + placement/dismiss (used by the username menu).
 let _emoteMenuEl = null
 let _emoteMenuCleanup = null
 function closeEmoteMenu() {
@@ -891,252 +891,6 @@ function providerEmoteUrl(provider, url, name) {
     }
   } catch {}
   return null
-}
-// Right-click action menu — opens for any emote (wrapped, stacked, or native
-// Twitch). opts.nativeTwitch=true switches into name-only mode (no hash → no
-// server block, no inventory add; local-block-by-name + copy/insert/view).
-function openEmoteActionMenu(wrapper, x, y, opts = {}) {
-  closeEmoteMenu()
-
-  const nativeTwitch = !!opts.nativeTwitch
-  const img = nativeTwitch ? wrapper : wrapper.querySelector('img')
-  const name = (nativeTwitch ? (img?.alt) : wrapper.dataset?.emoteName) || img?.alt || 'emote'
-  const hash = nativeTwitch ? '' : (wrapper.dataset?.emoteHash || '')
-  const url = img?.src || wrapper.dataset?.emoteUrl || ''
-  const provider = detectEmoteProvider(url) || (nativeTwitch ? 'Twitch' : null)
-  const externalUrl = providerEmoteUrl(provider, url, name)
-
-  const isBlocked = hash ? blockedEmotes.has(hash) : false
-  const isLocalNameBlocked = localBlockedEmoteNames.has(name)
-  const inInventory = !nativeTwitch && (inventoryHashSet.has(hash) || inventoryNameSet.has(name))
-  const isGlobal = !nativeTwitch && (wrapper.classList?.contains('emote-overlay-global') || globalNameSet.has(name))
-
-  // Variants — only meaningful for non-native wrappers
-  const variantImgs = (!nativeTwitch && wrapper.dataset?.hasVariants === '1')
-    ? Array.from(wrapper.querySelectorAll(':scope > img.heatsync-emote'))
-        .sort((a, b) => (+a.dataset.variantIndex || 0) - (+b.dataset.variantIndex || 0))
-    : []
-  const activeImg = (!nativeTwitch && wrapper.firstElementChild?.tagName === 'IMG') ? wrapper.firstElementChild : null
-
-  // Natural pixel dimensions for the "AxB" subtitle
-  const dimW = img?.naturalWidth || img?.width || 0
-  const dimH = img?.naturalHeight || img?.height || 0
-
-  const el = document.createElement('div')
-  el.id = 'hs-emote-menu'
-  el.className = 'hs-ctx-menu'
-  el.tabIndex = -1
-  el.addEventListener('contextmenu', (e) => e.preventDefault())
-
-  // --- Preview tile ---
-  const preview = document.createElement('div')
-  preview.className = 'hs-em-preview'
-  const thumb = document.createElement('div')
-  thumb.className = 'hs-em-thumb'
-  if (url) {
-    const big = document.createElement('img')
-    big.src = url
-    big.alt = name
-    big.decoding = 'async'
-    big.referrerPolicy = 'no-referrer'
-    thumb.appendChild(big)
-  }
-  const meta = document.createElement('div')
-  meta.className = 'hs-em-meta'
-  const nm = document.createElement('div')
-  nm.className = 'hs-em-name'
-  nm.textContent = name
-  const sub = document.createElement('div')
-  sub.className = 'hs-em-sub'
-  if (provider) {
-    const tag = document.createElement('span')
-    tag.className = 'hs-em-provider'
-    tag.textContent = provider
-    sub.appendChild(tag)
-  }
-  const subText = []
-  if (dimW && dimH) subText.push(`${dimW}×${dimH}`)
-  if (inInventory) subText.push('in set')
-  else if (isGlobal) subText.push('global')
-  if (isBlocked) subText.push('blocked')
-  if (isLocalNameBlocked) subText.push('hidden')
-  const subT = document.createElement('span')
-  subT.textContent = subText.join(' · ')
-  sub.appendChild(subT)
-  meta.appendChild(nm)
-  meta.appendChild(sub)
-  preview.appendChild(thumb)
-  preview.appendChild(meta)
-  el.appendChild(preview)
-
-  // --- Items ---
-  // Keybinds number bottom-up: the primary action (block/unblock/add/remove)
-  // sits at the bottom, where the cursor lands when the menu flips up off a
-  // bottom-anchored chat panel — so key 1 is the closest/most-used item,
-  // ascending toward utilities up top. Numbered after all items exist.
-  const kbdHandlers = {}
-  const kbdItems = [] // {el, fn} in DOM order; numbered 1..9 from the bottom
-  const addHeader = (text) => {
-    const h = document.createElement('div')
-    h.className = 'hs-em-header'
-    h.textContent = text
-    el.appendChild(h)
-  }
-  const addItem = (label, fn, { kbd = true, danger = false, good = false, hint = '' } = {}) => {
-    const it = document.createElement('div')
-    it.className = 'hs-em-item' + (danger ? ' hs-em-danger' : '') + (good ? ' hs-em-good' : '')
-    const lab = document.createElement('span')
-    lab.className = 'hs-em-label'
-    lab.textContent = label
-    it.appendChild(lab)
-    if (hint) {
-      const h = document.createElement('span')
-      h.className = 'hs-em-hint'
-      h.textContent = hint
-      it.appendChild(h)
-    }
-    if (kbd !== false) kbdItems.push({ el: it, fn })
-    it.addEventListener('click', () => { try { fn() } catch {} ; closeEmoteMenu() })
-    el.appendChild(it)
-  }
-  const assignBottomUpKbd = () => {
-    let n = 1
-    for (let i = kbdItems.length - 1; i >= 0 && n <= 9; i--, n++) {
-      const k = document.createElement('span')
-      k.className = 'hs-em-kbd'
-      k.textContent = String(n)
-      kbdItems[i].el.appendChild(k)
-      kbdHandlers[String(n)] = kbdItems[i].fn
-    }
-  }
-  const addSep = () => {
-    const s = document.createElement('div')
-    s.className = 'hs-em-sep'
-    el.appendChild(s)
-  }
-
-  // -- Actions --
-  addHeader('actions')
-  addItem('insert in chat', () => {
-    window.postMessage({ type: 'heatsync-insert-emote', name, hash: hash || name, url }, location.origin)
-  })
-  addItem('copy name', () => navigator.clipboard?.writeText(name))
-  if (url) {
-    addItem('copy image url', () => navigator.clipboard?.writeText(url))
-    addItem('copy markdown', () => navigator.clipboard?.writeText(`![${name}](${url})`))
-  }
-  if (externalUrl) {
-    addItem('view on ' + provider.toLowerCase() + (provider === 'Twitch' ? '.tv' : '.app'),
-      () => window.open(externalUrl, '_blank', 'noopener,noreferrer'))
-  }
-
-  // -- Set membership (non-native only) --
-  if (!nativeTwitch && hash && provider !== 'Twitch') {
-    addSep()
-    addHeader('set')
-    if (inInventory) {
-      addItem('remove from set', async () => {
-        try { await safeSendMessage({ type: 'remove_from_inventory', emoteHash: hash, emoteName: name }) } catch {}
-      })
-    } else {
-      addItem('add to set', async () => {
-        try { await safeSendMessage({ type: 'add_emote', hash, name, url }) } catch {}
-      }, { good: true })
-    }
-  }
-
-  // -- Variants (only when multi-source) --
-  if (variantImgs.length > 1) {
-    addSep()
-    addHeader('variants · click to block')
-    const wrap = document.createElement('div')
-    wrap.className = 'hs-em-variants'
-    for (const v of variantImgs) {
-      const vhash = v.dataset.emoteHash
-      const vclass = v.dataset.variantClass || ''
-      const vblocked = blockedEmotes.has(vhash)
-      const vactive = v === activeImg
-      const row = document.createElement('div')
-      row.className = 'hs-em-variant' + (vactive ? ' active' : '') + (vblocked ? ' blocked' : '')
-      const vimg = document.createElement('img')
-      vimg.src = v.dataset.emoteUrl || v.src
-      vimg.alt = name
-      vimg.decoding = 'async'
-      vimg.referrerPolicy = 'no-referrer'
-      row.appendChild(vimg)
-      const label = document.createElement('span')
-      label.textContent = vclass || 'variant'
-      row.appendChild(label)
-      const tag = document.createElement('span')
-      tag.className = 'hs-em-vtag'
-      tag.textContent = vblocked ? 'blocked' : (vactive ? 'active' : 'block')
-      row.appendChild(tag)
-      row.addEventListener('click', async () => {
-        closeEmoteMenu()
-        if (!vhash) return
-        if (vblocked) {
-          blockedEmotes.delete(vhash)
-          markLocalBlockToggle(vhash, 'unblocked')
-          updateEmoteState(vhash, name, isGlobal ? 'global' : 'neutral')
-          try { await safeSendMessage({ type: 'unblock_emote', hash: vhash }) } catch {}
-        } else {
-          blockedEmotes.add(vhash)
-          markLocalBlockToggle(vhash, 'blocked')
-          updateEmoteState(vhash, name, 'blocked')
-          try { await safeSendMessage({ type: 'block_emote', hash: vhash }) } catch {}
-        }
-      })
-      wrap.appendChild(row)
-    }
-    el.appendChild(wrap)
-  }
-
-  // -- Block toggle (terminal action) --
-  addSep()
-  if (nativeTwitch) {
-    if (isLocalNameBlocked) {
-      addItem('unhide locally', () => {
-        localBlockedEmoteNames.delete(name)
-        const esc = (window.CSS && CSS.escape) ? CSS.escape(name) : name.replace(/"/g, '\\"')
-        document.querySelectorAll(`img[alt="${esc}"][src*="static-cdn.jtvnw.net/emoticons"]`)
-          .forEach(el => el.removeAttribute('data-hs-name-blocked'))
-        try { chrome.storage.local.set({ local_blocked_emote_names: Array.from(localBlockedEmoteNames) }) } catch {}
-      }, { good: true })
-    } else {
-      addItem('hide locally', () => {
-        localBlockedEmoteNames.add(name)
-        const esc = (window.CSS && CSS.escape) ? CSS.escape(name) : name.replace(/"/g, '\\"')
-        document.querySelectorAll(`img[alt="${esc}"][src*="static-cdn.jtvnw.net/emoticons"]`)
-          .forEach(el => el.setAttribute('data-hs-name-blocked', '1'))
-        try { chrome.storage.local.set({ local_blocked_emote_names: Array.from(localBlockedEmoteNames) }) } catch {}
-      }, { danger: true, hint: 'name-only' })
-    }
-  } else if (hash) {
-    if (isBlocked) {
-      addItem('unblock emote', async () => {
-        // Block removed this from the set (server-side too), so unblock lands on
-        // the "available, not in set" tier — orange/unadded for heatsync, gray for
-        // 3rd-party — never back to owned/green. Ladder: blocked→unadded→add→owned.
-        const restored = isGlobal ? 'global' : 'neutral'
-        blockedEmotes.delete(hash)
-        markLocalBlockToggle(hash, 'unblocked')
-        updateEmoteState(hash, name, restored)
-        try { await safeSendMessage({ type: 'unblock_emote', hash }) } catch {}
-      }, { good: true })
-    } else if (!inInventory) {
-      // green > orange > block: an in-set emote shows "remove from set" (above),
-      // not block. Globals/3rd-party aren't in your set, so block shows here.
-      addItem('block emote', async () => {
-        blockedEmotes.add(hash)
-        markLocalBlockToggle(hash, 'blocked')
-        updateEmoteState(hash, name, 'blocked')
-        try { await safeSendMessage({ type: 'block_emote', hash }) } catch {}
-      }, { danger: true })
-    }
-  }
-
-  assignBottomUpKbd()
-  placeAndWireMenu(el, x, y, kbdHandlers)
 }
 
 // Shared placement + dismiss wiring for right-click menus (emote + message).
@@ -2530,7 +2284,7 @@ style.textContent = `
   }
   #hs-user-color-picker button:hover { background: #fff; color: #000; }
 
-  /* Right-click emote action menu */
+  /* Right-click username menu */
   .hs-ctx-menu {
     position: fixed; z-index: 2147483646;
     background: #000; color: #fff;
@@ -2548,41 +2302,6 @@ style.textContent = `
   .hs-ctx-menu.hs-em-flip-x { transform-origin: top right; }
   .hs-ctx-menu.hs-em-flip-y { transform-origin: bottom left; }
   .hs-ctx-menu.hs-em-flip-x.hs-em-flip-y { transform-origin: bottom right; }
-  .hs-ctx-menu .hs-em-preview {
-    display: flex; align-items: center; gap: 10px;
-    padding: 8px 10px; border-bottom: 1px solid #222;
-    background: linear-gradient(180deg, #0a0a0a, #000);
-  }
-  .hs-ctx-menu .hs-em-thumb {
-    width: 56px; height: 56px; flex-shrink: 0;
-    display: flex; align-items: center; justify-content: center;
-    background-image:
-      linear-gradient(45deg, #161616 25%, transparent 25%),
-      linear-gradient(-45deg, #161616 25%, transparent 25%),
-      linear-gradient(45deg, transparent 75%, #161616 75%),
-      linear-gradient(-45deg, transparent 75%, #161616 75%);
-    background-size: 12px 12px;
-    background-position: 0 0, 0 6px, 6px -6px, -6px 0;
-    border: 1px solid #222;
-  }
-  .hs-ctx-menu .hs-em-thumb img {
-    max-width: 100%; max-height: 100%;
-    image-rendering: pixelated;
-  }
-  .hs-ctx-menu .hs-em-meta { flex: 1; min-width: 0; }
-  .hs-ctx-menu .hs-em-name {
-    font-weight: 700; font-size: 13px; color: #fff;
-    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  }
-  .hs-ctx-menu .hs-em-sub {
-    font-size: 11px; color: #888; margin-top: 2px;
-    display: flex; gap: 6px; align-items: center;
-  }
-  .hs-ctx-menu .hs-em-provider {
-    display: inline-block; padding: 0 4px;
-    border: 1px solid #444; color: #ff8700;
-    font-size: 10px; line-height: 14px;
-  }
   .hs-ctx-menu .hs-em-header {
     padding: 4px 10px; font-size: 10px; color: #666;
     text-transform: uppercase; letter-spacing: 0.5px;
@@ -2595,37 +2314,17 @@ style.textContent = `
   }
   .hs-ctx-menu .hs-em-item:hover { background: #fff; color: #000; }
   .hs-ctx-menu .hs-em-item:hover .hs-em-kbd { background: #000; color: #fff; border-color: #000; }
-  .hs-ctx-menu .hs-em-item:hover .hs-em-hint { color: #555; }
   .hs-ctx-menu .hs-em-item.hs-em-danger { color: #ff5959; }
   .hs-ctx-menu .hs-em-item.hs-em-danger:hover { background: #ff2020; color: #fff; }
   .hs-ctx-menu .hs-em-item.hs-em-good { color: #59ff8a; }
   .hs-ctx-menu .hs-em-item.hs-em-good:hover { background: #1faf48; color: #fff; }
   .hs-ctx-menu .hs-em-label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .hs-ctx-menu .hs-em-hint { color: #666; font-size: 11px; }
   .hs-ctx-menu .hs-em-kbd {
     display: inline-block; min-width: 14px; padding: 0 4px;
     border: 1px solid #333; background: #0a0a0a; color: #888;
     font-size: 10px; line-height: 14px; text-align: center;
   }
   .hs-ctx-menu .hs-em-sep { height: 1px; background: #1a1a1a; margin: 2px 0; }
-  .hs-ctx-menu .hs-em-variants {
-    display: flex; flex-direction: column;
-    max-height: 140px; overflow-y: auto;
-  }
-  .hs-ctx-menu .hs-em-variant {
-    display: flex; align-items: center; gap: 8px;
-    padding: 4px 10px; cursor: pointer; font-size: 11px;
-  }
-  .hs-ctx-menu .hs-em-variant:hover { background: #fff; color: #000; }
-  .hs-ctx-menu .hs-em-variant img { width: 20px; height: 20px; object-fit: contain; }
-  .hs-ctx-menu .hs-em-variant.active { background: #1a0d00; }
-  .hs-ctx-menu .hs-em-variant.active::before { content: '●'; color: #ff8700; }
-  .hs-ctx-menu .hs-em-variant.blocked { opacity: 0.45; }
-  .hs-ctx-menu .hs-em-variant .hs-em-vtag {
-    margin-left: auto; font-size: 10px; color: #666;
-    text-transform: uppercase; letter-spacing: 0.5px;
-  }
-  .hs-ctx-menu .hs-em-variant:hover .hs-em-vtag { color: #333; }
 
   /* Predictions/polls chip */
   .hs-event-chip {
@@ -2915,7 +2614,6 @@ function disableHeaderHiding() {
 // Cached UI prefs for runtime feature gating (default-on except where noted)
 const _uiPrefs = {
   emoteModifiers: true,
-  emoteRightClickMenu: true,
   userColors: true,
   showClearedMessages: false,
   showPredictionsChip: true,
@@ -5114,10 +4812,8 @@ function setupUsernameColoringObserver() {
     }, { capture: true, signal });
 
     // Right-click on stack — capture phase so we beat Twitch React + bubble
-    // handlers. When the action menu is enabled (pref on, default), open the
-    // full menu on the wrapper under cursor so users get the same affordances
-    // as standalone emotes. Stack auto-expands so siblings are visible while
-    // the menu is open. Pref off → fast insta-block path (preserved behavior).
+    // handlers. Instant block/unblock toggle on the wrapper under the cursor;
+    // stack auto-expands (lockStack) so siblings stay visible during the op.
     document.addEventListener('contextmenu', (e) => {
       const stack = e.target.closest('.heatsync-emote-stack');
       if (!stack) return;
@@ -5131,13 +4827,6 @@ function setupUsernameColoringObserver() {
       const hash = wrapper.dataset.emoteHash;
       const emoteName = wrapper.dataset.emoteName;
       if (!hash) return;
-
-      if (_uiPrefs.emoteRightClickMenu) {
-        openEmoteActionMenu(wrapper, e.clientX, e.clientY);
-        // Keep stack expanded while menu is open
-        stack.classList.add('expanded');
-        return;
-      }
 
       const isBlocked = blockedEmotes.has(hash);
       const isGlobalEmote = wrapper.classList.contains('emote-overlay-global') || globalNameSet.has(emoteName);
@@ -6385,9 +6074,8 @@ function setupEmoteClickHandlers() {
   }, 'emote-click');
 
   // Right-click on native Twitch emotes (sub/follower/bits) — these never get
-  // wrapped, so no hash exists for server-side block. Route through the same
-  // action menu in nativeTwitch mode (insert/copy/view + local-block-by-name).
-  // Pref off → fall back to legacy instant local-toggle for muscle-memory users.
+  // wrapped, so no hash exists for server-side block. Instant local-block-by-name
+  // toggle (persisted to chrome.storage.local).
   cleanup.addEventListener(document, 'contextmenu', async (e) => {
     const img = e.target.closest('img');
     if (!img) return;
@@ -6403,11 +6091,6 @@ function setupEmoteClickHandlers() {
 
     e.preventDefault();
     e.stopPropagation();
-
-    if (_uiPrefs.emoteRightClickMenu) {
-      openEmoteActionMenu(img, e.clientX, e.clientY, { nativeTwitch: true });
-      return;
-    }
 
     const escName = (window.CSS && CSS.escape) ? CSS.escape(name) : name.replace(/"/g, '\\"');
     const sel = `img[alt="${escName}"][src*="static-cdn.jtvnw.net/emoticons"]`;
@@ -6432,12 +6115,6 @@ function setupEmoteClickHandlers() {
 
     e.preventDefault();
     e.stopPropagation();
-
-    // 7TV-style action menu (gated by setting; falls through to block toggle below)
-    if (_uiPrefs.emoteRightClickMenu) {
-      openEmoteActionMenu(wrapper, e.clientX, e.clientY)
-      return
-    }
 
     const hash = wrapper.dataset.emoteHash;
     const emoteName = wrapper.dataset.emoteName;
@@ -8820,7 +8497,7 @@ function applyPendingKickCosmetics(slugs) {
 function setupMessageContextMenu() {
   cleanup.addEventListener(document, 'contextmenu', (e) => {
     // Don't intercept emote right-clicks (heatsync wrappers or native Twitch
-    // emotes) — those open the emote action menu via their own handlers.
+    // emotes) — those instant block/unblock via their own handlers.
     if (e.target.closest('.heatsync-emote-wrapper')) return;
     const imgEl = e.target.closest('img');
     if (imgEl && (imgEl.src || '').includes('static-cdn.jtvnw.net/emoticons')) return;

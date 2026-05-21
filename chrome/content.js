@@ -1838,34 +1838,6 @@ style.textContent = `
   }
 
   /* Loading indicator with coggers */
-  #heatsync-loading-indicator {
-    position: fixed;
-    bottom: 20px;
-    right: 20px;
-    display: none; /* Hidden by default, shown via JS */
-    align-items: center;
-    gap: 8px;
-    background: #000;
-    border: 1px solid #fff;
-    border-radius: 0;
-    padding: 6px 14px;
-    font: bold 12px monospace;
-    color: #fff;
-    z-index: 5000;
-    animation: heatsync-fade-in 0.2s ease-out;
-  }
-  @keyframes heatsync-fade-in {
-    from { opacity: 0; transform: translateY(10px); }
-    to { opacity: 1; transform: translateY(0); }
-  }
-  #heatsync-loading-indicator img {
-    width: 28px;
-    height: 28px;
-  }
-  #heatsync-loading-indicator .loading-text {
-    color: #808080;
-  }
-
   /* Mention highlight - Chatterino-style dark red background on entire message.
      Dark blood-red so full-color Twitch usernames render on top. */
   .chat-line__message.hs-mentioned,
@@ -2741,46 +2713,17 @@ function applyUiSettings(settings) {
   } catch { applyEmojiSize() }
 })()
 
-// Loading indicator with coggers emote
-const COGGERS_URL = chrome.runtime.getURL('COGGERS-1x.webp');
-let loadingIndicator = null;
-
+// Emote-load progress — rendered inline in the multichat overlay's top
+// statusbar via the shared HsNotifs layer (set on window by multichat.js,
+// same isolated world). No floating box. On heatsync.org the overlay isn't
+// injected, so HsNotifs is absent and these calls no-op.
 function showLoadingStatus(text) {
   log(' showLoadingStatus:', text);
-  if (!document.body) {
-    warn(' No document.body yet');
-    return;
-  }
-  // Reuse existing element if script reinitialized
-  if (!loadingIndicator) {
-    loadingIndicator = document.getElementById('heatsync-loading-indicator');
-  }
-  if (!loadingIndicator) {
-    loadingIndicator = document.createElement('div');
-    loadingIndicator.id = 'heatsync-loading-indicator';
-    const _loadSpan = document.createElement('span')
-    _loadSpan.className = 'loading-text'
-    const _loadImg = document.createElement('img')
-    _loadImg.src = COGGERS_URL
-    _loadImg.alt = 'COGGERS'
-    loadingIndicator.appendChild(_loadSpan)
-    loadingIndicator.appendChild(_loadImg)
-    document.body.appendChild(loadingIndicator);
-    log(' Loading indicator created');
-  }
-  const loadingText = loadingIndicator?.querySelector('.loading-text')
-  if (loadingText) loadingText.textContent = text
-  loadingIndicator.style.display = 'flex';
+  try { window.HsNotifs?.emit('emote-loading', { text }); } catch (_) {}
 }
 
 function hideLoadingStatus() {
-  // Also check DOM directly in case script reinitialized
-  if (!loadingIndicator) {
-    loadingIndicator = document.getElementById('heatsync-loading-indicator');
-  }
-  if (loadingIndicator) {
-    loadingIndicator.style.display = 'none';
-  }
+  try { window.HsNotifs?.dismissByKey('emote-loading', 'emote-loading'); } catch (_) {}
 }
 
 let emoteInventory = [];

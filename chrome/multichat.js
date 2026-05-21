@@ -4456,6 +4456,22 @@ const HsNotifs = (() => {
     },
   })
 
+  // Emote-loading — transient progress line shown while content.js fetches
+  // third-party emotes (BTTV/FFZ/7TV). Persistent (no timeout): content.js
+  // dismisses it via dismissByKey when loading finishes. Single fixed key so
+  // repeated progress updates ("loading… (2/5)") replace the text in place.
+  registerType('emote-loading', {
+    layer: 'statusbar',
+    dedupeKey: () => 'emote-loading',
+    dedupePolicy: 'replace',
+    render: ({ data }) => {
+      const el = document.createElement('span')
+      el.className = 'hs-notif-toast-text hs-notif-toast-info'
+      el.textContent = (typeof data?.text === 'string' && data.text.trim()) || 'loading emotes…'
+      return el
+    },
+  })
+
   // Twitch resub-share — user's own resub callout. Surfaces above input,
   // shows month count + Share button (clicks the native Twitch share so the
   // existing _enterResubShareMode flow runs) and X to dismiss. Native DOM is
@@ -10497,148 +10513,6 @@ function injectStyles() {
       background: #000;
     }
     .hs-feed-embed-rich-imglink { display: block; line-height: 0; }
-
-    /* ---- ENGAGEMENT BAR ---- */
-    .hs-feed-engage {
-      display: flex;
-      align-items: center;
-      gap: 4px;
-      margin-top: 2px;
-      padding-left: 2px;
-    }
-    .hs-feed-actions {
-      display: none;
-      position: absolute;
-      top: 1px;
-      right: 4px;
-      align-items: center;
-      gap: 2px;
-      background: #000;
-      border: 1px solid #808080;
-      padding: 1px 3px;
-      z-index: 10;
-    }
-    .hs-feed-msg:hover .hs-feed-actions {
-      display: inline-flex;
-    }
-    .hs-feed-heat-btn,
-    .hs-feed-bm-btn {
-      display: inline-flex;
-      align-items: center;
-      gap: 2px;
-      background: none;
-      border: none;
-      padding: 1px 3px;
-      cursor: pointer;
-      color: #fff;
-      font-size: 13px;
-      font-family: inherit;
-      line-height: 1;
-    }
-    .hs-feed-heat-btn:hover .hs-fe-icon path,
-    .hs-feed-bm-btn:hover .hs-fe-icon path {
-      stroke: #ff8700;
-    }
-    .hs-feed-heat-btn.active .hs-fe-count {
-      color: #ff8700;
-    }
-    .hs-fe-count {
-      font-size: 13px;
-      color: #808080;
-      min-width: 0;
-    }
-    .hs-fe-icon {
-      display: block;
-      flex-shrink: 0;
-    }
-    .hs-feed-react-row {
-      display: flex;
-      align-items: center;
-      flex-wrap: wrap;
-      gap: 2px;
-    }
-    .hs-feed-react-chip {
-      display: inline-flex;
-      align-items: center;
-      gap: 2px;
-      background: rgba(255,255,255,0.05);
-      border: 1px solid #444;
-      padding: 1px 3px;
-      cursor: pointer;
-      font-size: 13px;
-      color: #808080;
-      font-family: inherit;
-      line-height: 1;
-    }
-    .hs-feed-react-chip.active {
-      border-color: #ff8700;
-      color: #ff8700;
-    }
-    .hs-feed-react-chip:hover {
-      border-color: #808080;
-    }
-    .hs-feed-react-img {
-      width: 14px;
-      height: 14px;
-      vertical-align: middle;
-    }
-    .hs-feed-react-add {
-      background: none;
-      border: 1px solid #444;
-      color: #fff;
-      padding: 1px 4px;
-      cursor: pointer;
-      font-size: 13px;
-      font-family: inherit;
-      line-height: 1;
-    }
-    .hs-feed-react-add:hover {
-      border-color: #ff8700;
-      color: #ff8700;
-    }
-    .hs-mc-react-picker {
-      position: fixed;
-      z-index: 99999;
-      background: #111;
-      border: 1px solid #808080;
-      padding: 6px;
-      width: 200px;
-      max-height: 220px;
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
-    }
-    .hs-mc-react-search {
-      width: 100%;
-      box-sizing: border-box;
-      background: #000;
-      border: 1px solid #808080;
-      color: #fff;
-      padding: 3px 5px;
-      font-family: inherit;
-      font-size: 13px;
-    }
-    .hs-mc-react-grid {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 2px;
-      overflow-y: auto;
-      max-height: 160px;
-    }
-    .hs-mc-react-emote {
-      background: none;
-      border: 1px solid transparent;
-      padding: 2px;
-      cursor: pointer;
-    }
-    .hs-mc-react-emote:hover {
-      border-color: #ff8700;
-    }
-    .hs-mc-react-emote img {
-      width: 28px;
-      height: 28px;
-      display: block;
-    }
 
     /* ---- TEXT FORMATTING ---- */
     .hs-spoiler {
@@ -21632,17 +21506,6 @@ const FEED_STALE_MS = 120000; // 2 minutes
 // Feed scroll state — handler ref for teardown only, infinite-scroll trigger
 let _feedVirtualScrollHandler = null
 
-// Engagement state — optimistic local cache
-const feedLiked = new Set()     // base36_ids the user has liked
-const feedBookmarked = new Set() // base36_ids the user has bookmarked
-const feedReactionsCache = new Map() // base36_id → [{ emote_id, emote_url, emote_name, count, user_reacted }]
-// Cap to prevent long-session unbounded growth; evict oldest insert when full.
-const FEED_ENGAGE_CAP = 2000
-function _capFeedEngage() {
-  while (feedLiked.size > FEED_ENGAGE_CAP) feedLiked.delete(feedLiked.values().next().value)
-  while (feedBookmarked.size > FEED_ENGAGE_CAP) feedBookmarked.delete(feedBookmarked.values().next().value)
-  while (feedReactionsCache.size > FEED_ENGAGE_CAP) feedReactionsCache.delete(feedReactionsCache.keys().next().value)
-}
 // Stream events injected inline into per-channel buffers (no dedicated tab)
 const activityEvents = [];
 const ACTIVITY_EVENTS_MAX = 500;
@@ -21825,9 +21688,6 @@ async function loadHsAuth() {
           pinnedLoaded = false;
           pinnedLoading = false;
           pinnedMessages = [];
-          feedLiked.clear();
-          feedBookmarked.clear();
-          feedReactionsCache.clear();
           if (currentTab === 'feed') {
             renderMessages(currentTab);
           }
@@ -22420,9 +22280,6 @@ async function fetchFeed(append = false) {
   feedLoaded = true;
   feedLastFetch = Date.now();
   if (currentTab === 'feed') renderFeed();
-  // Async: check bookmark state for loaded messages (non-blocking)
-  const ids = msgs.map(msg => msg.base36_id).filter(Boolean)
-  checkFeedBookmarks(ids)
 }
 
 // Onboarding card shown when feed has no posts. Replaces the bare
@@ -22613,311 +22470,6 @@ function renderFeed() {
   msgsEl.addEventListener('scroll', _feedVirtualScrollHandler, { signal: mcSignal, passive: true })
 }
 
-// ---- ENGAGEMENT: heat, bookmark, reactions ----
-
-// Batch-check bookmark status for a list of ids after feed loads
-async function checkFeedBookmarks(ids) {
-  if (!ids.length || !hsAuthToken) return
-  try {
-    const resp = await apiFetch('/api/bookmarks/check', { method: 'POST', auth: true, body: { message_ids: ids } })
-    if (!resp.ok) return
-    // Server returns { bookmarked: { id1: true/false, id2: ... } } — an object map.
-    const map = resp.data?.bookmarked || resp.bookmarked || {}
-    feedBookmarked.clear()
-    if (Array.isArray(map)) {
-      for (const id of map) feedBookmarked.add(id)
-    } else {
-      for (const [id, isBookmarked] of Object.entries(map)) {
-        if (isBookmarked) feedBookmarked.add(id)
-      }
-    }
-    for (const id of ids) {
-      const btn = document.querySelector(`.hs-feed-bm-btn[data-id="${CSS.escape(id)}"]`)
-      if (btn) _applyBookmarkState(btn, feedBookmarked.has(id))
-    }
-  } catch (e) { /* silent */ }
-}
-
-function _makeSvg(pathD, filled, size) {
-  const ns = 'http://www.w3.org/2000/svg'
-  const svg = document.createElementNS(ns, 'svg')
-  svg.setAttribute('viewBox', '0 0 24 24')
-  svg.setAttribute('width', String(size || 13))
-  svg.setAttribute('height', String(size || 13))
-  svg.setAttribute('class', 'hs-fe-icon')
-  const path = document.createElementNS(ns, 'path')
-  path.setAttribute('d', pathD)
-  path.setAttribute('fill', filled ? '#ff8700' : 'none')
-  path.setAttribute('stroke', filled ? '#ff8700' : '#808080')
-  path.setAttribute('stroke-width', '2')
-  path.setAttribute('stroke-linejoin', 'round')
-  svg.appendChild(path)
-  return svg
-}
-
-function _applyBookmarkState(btn, active) {
-  btn.classList.toggle('active', active)
-  btn.title = active ? 'remove bookmark' : 'bookmark'
-  const path = btn.querySelector('path')
-  if (path) {
-    path.setAttribute('fill', active ? '#ff8700' : 'none')
-    path.setAttribute('stroke', active ? '#ff8700' : '#808080')
-  }
-}
-
-function _applyHeatState(btn, active, count) {
-  btn.classList.toggle('active', active)
-  const countEl = btn.querySelector('.hs-fe-count')
-  if (countEl) countEl.textContent = count > 0 ? formatHeat(count) + '°' : '+'
-}
-
-async function toggleHeat(msgId, btn, m) {
-  if (!hsAuthToken) { showToast(t('mc_social_log_in_first'), 'error'); return }
-  // Server-side /api/messages/:id/like is one-way (no unlike route exists).
-  if (feedLiked.has(msgId)) return
-  const prevHeat = m.heat || 0
-  feedLiked.add(msgId)
-  m.heat = prevHeat + 1
-  _applyHeatState(btn, true, m.heat)
-  const resp = await apiFetch(`/api/messages/${encodeURIComponent(msgId)}/like`, { method: 'POST', auth: true })
-  if (!resp.ok) {
-    feedLiked.delete(msgId)
-    m.heat = prevHeat
-    _applyHeatState(btn, false, m.heat)
-  }
-}
-
-async function toggleBookmark(msgId, btn) {
-  if (!hsAuthToken) { showToast(t('mc_social_log_in_first'), 'error'); return }
-  const wasBookmarked = feedBookmarked.has(msgId)
-  const newState = !wasBookmarked
-  if (newState) feedBookmarked.add(msgId); else feedBookmarked.delete(msgId)
-  _applyBookmarkState(btn, newState)
-  const method = newState ? 'POST' : 'DELETE'
-  const resp = await apiFetch(`/api/bookmarks/${encodeURIComponent(msgId)}`, { method, auth: true })
-  if (!resp.ok) {
-    if (newState) feedBookmarked.delete(msgId); else feedBookmarked.add(msgId)
-    if (btn.isConnected) _applyBookmarkState(btn, wasBookmarked)
-  }
-}
-
-async function loadReactions(msgId, engageEl) {
-  const resp = await apiFetch(`/api/messages/${encodeURIComponent(msgId)}/reactions`, { auth: true })
-  if (!resp.ok) return
-  const raw = resp.data?.reactions || resp.reactions || []
-  // Server returns user_ids array; derive user_reacted client-side so chip "active" state works
-  const reactions = raw.map(r => ({
-    ...r,
-    user_reacted: !!(r.user_reacted ?? (hsCurrentUserId && Array.isArray(r.user_ids) && r.user_ids.map(String).includes(hsCurrentUserId)))
-  }))
-  feedReactionsCache.set(msgId, reactions)
-  _capFeedEngage()
-  _renderReactionsIntoRow(engageEl, msgId, reactions)
-}
-
-function _makeReactChip(r, msgId, engageEl) {
-  const chip = document.createElement('button')
-  chip.className = 'hs-feed-react-chip' + (r.user_reacted ? ' active' : '')
-  chip.title = r.emote_name || ''
-  chip.dataset.emoteId = String(r.emote_id)
-  const img = document.createElement('img')
-  // Validate URL before assigning to img.src
-  const rawUrl = r.emote_url || ''
-  const validUrl = /^https:\/\//.test(rawUrl) ? rawUrl : ''
-  img.src = validUrl
-  img.alt = r.emote_name || ''
-  img.className = 'hs-feed-react-img'
-  const cnt = document.createElement('span')
-  cnt.className = 'hs-fe-count'
-  cnt.textContent = String(r.count)
-  chip.appendChild(img)
-  chip.appendChild(cnt)
-  chip.addEventListener('click', (e) => {
-    e.stopPropagation()
-    const row = chip.closest('.hs-feed-react-row')
-    handleReactionChip(msgId, r, chip, row, engageEl)
-  })
-  return chip
-}
-
-function _renderReactionsIntoRow(engageEl, msgId, reactions) {
-  let row = engageEl.querySelector('.hs-feed-react-row')
-  if (!row) return
-  // Remove old chips (keep the "+" add button at end)
-  const addBtn = row.querySelector('.hs-feed-react-add')
-  row.textContent = ''
-  for (const r of reactions) row.appendChild(_makeReactChip(r, msgId, engageEl))
-  if (addBtn) row.appendChild(addBtn)
-}
-
-async function handleReactionChip(msgId, reaction, chip, row, engageEl) {
-  if (!hsAuthToken) { showToast(t('mc_social_log_in_first'), 'error'); return }
-  // Snapshot pre-mutation values so rollback can restore exactly, no off-by-one drift
-  const prevReacted = reaction.user_reacted
-  const prevCount = reaction.count
-  const wasReacted = prevReacted
-  reaction.user_reacted = !wasReacted
-  reaction.count = Math.max(0, (prevCount || 0) + (wasReacted ? -1 : 1))
-  chip.classList.toggle('active', reaction.user_reacted)
-  const countEl = chip.querySelector('.hs-fe-count')
-  if (countEl) countEl.textContent = String(reaction.count)
-  if (reaction.count <= 0) chip.remove()
-  const method = wasReacted ? 'DELETE' : 'POST'
-  const path = wasReacted
-    ? `/api/messages/${encodeURIComponent(msgId)}/react/${encodeURIComponent(reaction.emote_id)}`
-    : `/api/messages/${encodeURIComponent(msgId)}/react`
-  const body = wasReacted ? undefined : { emote_id: reaction.emote_id }
-  const resp = await apiFetch(path, { method, auth: true, body })
-  if (!resp.ok) {
-    reaction.user_reacted = prevReacted
-    reaction.count = prevCount
-    _renderReactionsIntoRow(engageEl, msgId, feedReactionsCache.get(msgId) || [])
-  }
-}
-
-function openReactionPicker(e, msgId, engageEl) {
-  if (!hsAuthToken) { showToast(t('mc_social_log_in_first'), 'error'); return }
-  document.getElementById('hs-mc-react-picker')?.remove()
-  const emotes = []
-  if (typeof emoteCache !== 'undefined') {
-    for (const [name, data] of emoteCache) {
-      if (data.url && data.source === 'heatsync') emotes.push({ name, url: data.url, id: data.id || name })
-    }
-  }
-  if (!emotes.length) { showToast('no emotes available', 'error'); return }
-
-  const picker = document.createElement('div')
-  picker.id = 'hs-mc-react-picker'
-  picker.className = 'hs-mc-react-picker'
-
-  const searchEl = document.createElement('input')
-  searchEl.type = 'text'
-  searchEl.className = 'hs-mc-react-search'
-  searchEl.placeholder = 'search emotes'
-  const grid = document.createElement('div')
-  grid.className = 'hs-mc-react-grid'
-  picker.appendChild(searchEl)
-  picker.appendChild(grid)
-
-  function fillGrid(filter) {
-    grid.textContent = ''
-    const q = filter.toLowerCase()
-    const shown = q ? emotes.filter(em => em.name.toLowerCase().includes(q)).slice(0, 40) : emotes.slice(0, 40)
-    for (const em of shown) {
-      const btn = document.createElement('button')
-      btn.className = 'hs-mc-react-emote'
-      btn.title = em.name
-      const img = document.createElement('img')
-      img.src = em.url
-      img.alt = em.name
-      img.loading = 'lazy'
-      btn.appendChild(img)
-      btn.addEventListener('click', async (ev) => {
-        ev.stopPropagation()
-        picker.remove()
-        if (!hsAuthToken) return
-        const cached = feedReactionsCache.get(msgId) || []
-        const existing = cached.find(r => String(r.emote_id) === String(em.id))
-        if (existing) {
-          const chip = engageEl.querySelector(`.hs-feed-react-chip[data-emote-id="${CSS.escape(String(em.id))}"]`)
-          const row = engageEl.querySelector('.hs-feed-react-row')
-          if (chip && row) handleReactionChip(msgId, existing, chip, row, engageEl)
-          return
-        }
-        const resp = await apiFetch(`/api/messages/${encodeURIComponent(msgId)}/react`, {
-          method: 'POST', auth: true, body: { emote_id: em.id }
-        })
-        if (resp.ok) await loadReactions(msgId, engageEl)
-      })
-      grid.appendChild(btn)
-    }
-  }
-  fillGrid('')
-  searchEl.addEventListener('input', () => fillGrid(searchEl.value))
-
-  document.body.appendChild(picker)
-  const rect = e.target.getBoundingClientRect()
-  const pw = picker.offsetWidth || 200
-  const ph = picker.offsetHeight || 220
-  picker.style.left = Math.min(rect.left, window.innerWidth - pw - 4) + 'px'
-  picker.style.top = Math.max(rect.top - ph - 4, 4) + 'px'
-
-  cleanup.setTimeout(() => {
-    const dismiss = (ev) => {
-      if (!picker.contains(ev.target)) { picker.remove(); document.removeEventListener('click', dismiss) }
-    }
-    document.addEventListener('click', dismiss, { signal: mcSignal })
-  }, 0)
-  searchEl.focus()
-}
-
-function buildEngagementBar(m) {
-  const bar = document.createElement('div')
-  bar.className = 'hs-feed-engage'
-
-  // Server returns user_heat (the heat the current user has given this msg);
-  // any value > 0 means they've liked. user_liked may also be set by older
-  // server versions.
-  const liked = feedLiked.has(m.base36_id) || !!m.user_liked || (m.user_heat || 0) > 0
-  const heatCount = m.heat || 0
-
-  // Heat/like button — text-only to match heatsync.org (no fire emoji)
-  const heatBtn = document.createElement('button')
-  heatBtn.className = 'hs-feed-heat-btn' + (liked ? ' active' : '')
-  heatBtn.title = liked ? 'already heated' : 'heat'
-  heatBtn.dataset.id = m.base36_id
-  const heatCount2 = document.createElement('span')
-  heatCount2.className = 'hs-fe-count'
-  heatCount2.textContent = heatCount > 0 ? formatHeat(heatCount) + '°' : '+'
-  heatBtn.appendChild(heatCount2)
-
-  // Bookmark button — ribbon SVG
-  const bookmarked = feedBookmarked.has(m.base36_id)
-  const bmBtn = document.createElement('button')
-  bmBtn.className = 'hs-feed-bm-btn' + (bookmarked ? ' active' : '')
-  bmBtn.title = bookmarked ? 'remove bookmark' : 'bookmark'
-  bmBtn.dataset.id = m.base36_id
-  bmBtn.appendChild(_makeSvg('M5 2h14a1 1 0 011 1v18l-8-5-8 5V3a1 1 0 011-1z', bookmarked))
-
-  // Action buttons overlay — absolute top-right, hover-only (matches .hs-mc-reply-btn pattern)
-  const actions = document.createElement('div')
-  actions.className = 'hs-feed-actions'
-  actions.appendChild(heatBtn)
-  actions.appendChild(bmBtn)
-  const addReactBtn = document.createElement('button')
-  addReactBtn.className = 'hs-feed-react-add'
-  addReactBtn.title = 'react'
-  addReactBtn.textContent = '+'
-  actions.appendChild(addReactBtn)
-  bar.appendChild(actions)
-
-  // Reactions row — always visible in flow (existing chips are data)
-  const reactRow = document.createElement('div')
-  reactRow.className = 'hs-feed-react-row'
-  const cached = feedReactionsCache.get(m.base36_id)
-  if (cached?.length) {
-    for (const r of cached) reactRow.appendChild(_makeReactChip(r, m.base36_id, bar))
-  }
-  bar.appendChild(reactRow)
-
-  return bar
-}
-
-function attachEngagementHandlers(div, m) {
-  const bar = div.querySelector('.hs-feed-engage')
-  if (!bar) return
-  if (m.user_liked || (m.user_heat || 0) > 0) feedLiked.add(m.base36_id)
-
-  const heatBtn = bar.querySelector('.hs-feed-heat-btn')
-  if (heatBtn) heatBtn.addEventListener('click', (e) => { e.stopPropagation(); toggleHeat(m.base36_id, heatBtn, m) })
-
-  const bmBtn = bar.querySelector('.hs-feed-bm-btn')
-  if (bmBtn) bmBtn.addEventListener('click', (e) => { e.stopPropagation(); toggleBookmark(m.base36_id, bmBtn) })
-
-  const addReactBtn = bar.querySelector('.hs-feed-react-add')
-  if (addReactBtn) addReactBtn.addEventListener('click', (e) => { e.stopPropagation(); openReactionPicker(e, m.base36_id, bar) })
-}
-
 function buildFeedMessageDiv(m, opUsername) {
   const div = document.createElement('div');
   div.className = 'hs-feed-msg';
@@ -23068,11 +22620,6 @@ function buildFeedMessageDiv(m, opUsername) {
       }
     });
   }
-
-  // Engagement bar: heat, bookmark, reactions
-  const engageBar = buildEngagementBar(m);
-  div.appendChild(engageBar);
-  attachEngagementHandlers(div, m);
 
   return div;
 }
@@ -23267,23 +22814,6 @@ async function openThread(msgId, highlightId) {
     activeThread.replies = resp.data?.replies || [];
   }
   activeThread.loading = false;
-
-  // Pre-fetch reactions for OP + replies so chips render with the thread.
-  // Without this, buildEngagementBar reads an empty feedReactionsCache and
-  // shows zero reactions even when the server has them.
-  const reactIds = [activeThread.op?.base36_id, ...activeThread.replies.map(r => r.base36_id)].filter(Boolean);
-  await Promise.all(reactIds.map(id =>
-    apiFetch(`/api/messages/${encodeURIComponent(id)}/reactions`, { auth: true }).then(r => {
-      if (!r?.ok) return;
-      const raw = r.data?.reactions || r.reactions || [];
-      const reactions = raw.map(rx => ({
-        ...rx,
-        user_reacted: !!(rx.user_reacted ?? (hsCurrentUserId && Array.isArray(rx.user_ids) && rx.user_ids.map(String).includes(hsCurrentUserId)))
-      }));
-      feedReactionsCache.set(id, reactions);
-    }).catch(() => {})
-  ));
-  _capFeedEngage();
 
   renderFeed();
 
@@ -34956,8 +34486,9 @@ const STORAGE_KEY = 'heatsync_multichat';
     mod:     '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 1.5l5 2.5v4c0 3-2.5 5.5-5 6.5C5.5 13.5 3 11 3 8V4l5-2.5z"/></svg>',
     filters: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 4h12M4 8h8M6 12h4"/></svg>',
     system:  '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="2.5"/><path d="M8 1v2M8 13v2M1 8h2M13 8h2M3.05 3.05l1.42 1.42M11.53 11.53l1.42 1.42M3.05 12.95l1.42-1.42M11.53 4.47l1.42-1.42"/></svg>',
+    tutorial: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6.5"/><path d="M6.1 6.2a1.9 1.9 0 0 1 3.4-.9c.5.7.2 1.4-.6 1.9-.6.4-.9.8-.9 1.4"/><circle cx="8" cy="11.4" r="0.6" fill="currentColor" stroke="none"/></svg>',
   };
-  const _SET_SUBTAB_ORDER = ['display', 'chat', 'notifs', 'mod', 'filters', 'system'];
+  const _SET_SUBTAB_ORDER = ['display', 'chat', 'notifs', 'mod', 'filters', 'system', 'tutorial'];
 
   function _renderSetSubtabBar() {
     return '<div class="hs-mc-set-subtabs">' +
@@ -35214,6 +34745,43 @@ const STORAGE_KEY = 'heatsync_multichat';
     '</div>';
   }
 
+  // Cheatsheet -- the non-obvious mechanics people would otherwise wonder about:
+  // emote color states, the "0" overlay trick, modifiers, keys, right-click.
+  // All content is static literals (no user input), so raw markup is safe here.
+  function _renderTutorialSubtab() {
+    function sw(color) { return '<span style="display:inline-block;flex-shrink:0;width:12px;height:12px;background:' + color + '"></span>'; }
+    function kbd(k) { return '<span style="background:#fff;color:#000;padding:0 5px;font-weight:700;white-space:nowrap">' + k + '</span>'; }
+    function code(c) { return '<span style="background:#1a1a1a;color:#ff8700;padding:0 5px">' + c + '</span>'; }
+    function term(t) { return '<span style="color:#fff;font-weight:600">' + t + '</span>'; }
+    function clr(swatch, text) {
+      return '<div style="display:flex;align-items:center;gap:8px;padding:4px 14px;font-size:13px;line-height:18px;color:#808080">' + swatch + '<span>' + text + '</span></div>';
+    }
+    function ln(text) {
+      return '<div style="padding:4px 14px;font-size:13px;line-height:18px;color:#808080">' + text + '</div>';
+    }
+    function grp(title, body) {
+      return '<div class="hs-mc-settings-group"><div class="hs-mc-settings-group-title">' + title + '</div>' + body + '</div>';
+    }
+    return grp('emote colors',
+      clr(sw('#00ff00'), term('got it') + ' &mdash; global, channel, or added. click to send.') +
+      clr(sw('#ff8700'), term('unadded') + ' &mdash; a heatsync emote you don\'t own yet. click to grab it.') +
+      clr(sw('#ff0000'), term('blocked') + ' &mdash; hidden. right-click any emote to block / unblock.')
+    ) +
+    grp('stack &amp; bend',
+      ln('overlay &mdash; type an emote then ' + code('0') + ' to stack it on the one before: ' + code('KKona RainTime0')) +
+      ln('modify the last emote (chain them): ' + code('w!') + ' wide ' + code('h!') + ' tall ' + code('l!') + ' flip ' + code('v!') + ' flip-y ' + code('c!#hex') + ' recolor &mdash; e.g. ' + code('Pog w!h!'))
+    ) +
+    grp('keys',
+      ln(kbd('Tab') + ' complete the emote ' + '(' + kbd('Shift+Tab') + ' cycles back)') +
+      ln(kbd('Enter') + ' send &middot; ' + kbd('&uarr;') + ' ' + kbd('&darr;') + ' reuse past messages') +
+      ln(kbd('\\') + ' hide / show the chat panel')
+    ) +
+    grp('right-click',
+      ln('a ' + term('name') + ' &mdash; follow &middot; block &middot; mute &middot; whisper &middot; recolor &middot; profile') +
+      ln('an ' + term('emote') + ' &mdash; block / unblock (or remove it if it\'s yours)')
+    );
+  }
+
   // Lazy-load server content filters; only fetches once per session
   async function _loadServerFilters() {
     var statusEl = document.getElementById('hs-set-srv-status');
@@ -35310,6 +34878,8 @@ const STORAGE_KEY = 'heatsync_multichat';
       subtabContent = _renderFiltersSubtab();
     } else if (_settingsSubtab === 'system') {
       subtabContent = _renderSystemSubtab(null);
+    } else if (_settingsSubtab === 'tutorial') {
+      subtabContent = _renderTutorialSubtab();
     }
 
     // All values in the template are from module state or escapeHtml'd -- no raw user input

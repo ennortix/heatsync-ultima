@@ -4721,8 +4721,9 @@
     mod:     '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 1.5l5 2.5v4c0 3-2.5 5.5-5 6.5C5.5 13.5 3 11 3 8V4l5-2.5z"/></svg>',
     filters: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 4h12M4 8h8M6 12h4"/></svg>',
     system:  '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="2.5"/><path d="M8 1v2M8 13v2M1 8h2M13 8h2M3.05 3.05l1.42 1.42M11.53 11.53l1.42 1.42M3.05 12.95l1.42-1.42M11.53 4.47l1.42-1.42"/></svg>',
+    tutorial: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="6.5"/><path d="M6.1 6.2a1.9 1.9 0 0 1 3.4-.9c.5.7.2 1.4-.6 1.9-.6.4-.9.8-.9 1.4"/><circle cx="8" cy="11.4" r="0.6" fill="currentColor" stroke="none"/></svg>',
   };
-  const _SET_SUBTAB_ORDER = ['display', 'chat', 'notifs', 'mod', 'filters', 'system'];
+  const _SET_SUBTAB_ORDER = ['display', 'chat', 'notifs', 'mod', 'filters', 'system', 'tutorial'];
 
   function _renderSetSubtabBar() {
     return '<div class="hs-mc-set-subtabs">' +
@@ -4979,6 +4980,43 @@
     '</div>';
   }
 
+  // Cheatsheet -- the non-obvious mechanics people would otherwise wonder about:
+  // emote color states, the "0" overlay trick, modifiers, keys, right-click.
+  // All content is static literals (no user input), so raw markup is safe here.
+  function _renderTutorialSubtab() {
+    function sw(color) { return '<span style="display:inline-block;flex-shrink:0;width:12px;height:12px;background:' + color + '"></span>'; }
+    function kbd(k) { return '<span style="background:#fff;color:#000;padding:0 5px;font-weight:700;white-space:nowrap">' + k + '</span>'; }
+    function code(c) { return '<span style="background:#1a1a1a;color:#ff8700;padding:0 5px">' + c + '</span>'; }
+    function term(t) { return '<span style="color:#fff;font-weight:600">' + t + '</span>'; }
+    function clr(swatch, text) {
+      return '<div style="display:flex;align-items:center;gap:8px;padding:4px 14px;font-size:13px;line-height:18px;color:#808080">' + swatch + '<span>' + text + '</span></div>';
+    }
+    function ln(text) {
+      return '<div style="padding:4px 14px;font-size:13px;line-height:18px;color:#808080">' + text + '</div>';
+    }
+    function grp(title, body) {
+      return '<div class="hs-mc-settings-group"><div class="hs-mc-settings-group-title">' + title + '</div>' + body + '</div>';
+    }
+    return grp('emote colors',
+      clr(sw('#00ff00'), term('got it') + ' &mdash; global, channel, or added. click to send.') +
+      clr(sw('#ff8700'), term('unadded') + ' &mdash; a heatsync emote you don\'t own yet. click to grab it.') +
+      clr(sw('#ff0000'), term('blocked') + ' &mdash; hidden. right-click any emote to block / unblock.')
+    ) +
+    grp('stack &amp; bend',
+      ln('overlay &mdash; type an emote then ' + code('0') + ' to stack it on the one before: ' + code('KKona RainTime0')) +
+      ln('modify the last emote (chain them): ' + code('w!') + ' wide ' + code('h!') + ' tall ' + code('l!') + ' flip ' + code('v!') + ' flip-y ' + code('c!#hex') + ' recolor &mdash; e.g. ' + code('Pog w!h!'))
+    ) +
+    grp('keys',
+      ln(kbd('Tab') + ' complete the emote ' + '(' + kbd('Shift+Tab') + ' cycles back)') +
+      ln(kbd('Enter') + ' send &middot; ' + kbd('&uarr;') + ' ' + kbd('&darr;') + ' reuse past messages') +
+      ln(kbd('\\') + ' hide / show the chat panel')
+    ) +
+    grp('right-click',
+      ln('a ' + term('name') + ' &mdash; follow &middot; block &middot; mute &middot; whisper &middot; recolor &middot; profile') +
+      ln('an ' + term('emote') + ' &mdash; block / unblock (or remove it if it\'s yours)')
+    );
+  }
+
   // Lazy-load server content filters; only fetches once per session
   async function _loadServerFilters() {
     var statusEl = document.getElementById('hs-set-srv-status');
@@ -5075,6 +5113,8 @@
       subtabContent = _renderFiltersSubtab();
     } else if (_settingsSubtab === 'system') {
       subtabContent = _renderSystemSubtab(null);
+    } else if (_settingsSubtab === 'tutorial') {
+      subtabContent = _renderTutorialSubtab();
     }
 
     // All values in the template are from module state or escapeHtml'd -- no raw user input

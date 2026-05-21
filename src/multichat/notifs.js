@@ -421,6 +421,22 @@ const HsNotifs = (() => {
     },
   })
 
+  // Emote-loading — transient progress line shown while content.js fetches
+  // third-party emotes (BTTV/FFZ/7TV). Persistent (no timeout): content.js
+  // dismisses it via dismissByKey when loading finishes. Single fixed key so
+  // repeated progress updates ("loading… (2/5)") replace the text in place.
+  registerType('emote-loading', {
+    layer: 'statusbar',
+    dedupeKey: () => 'emote-loading',
+    dedupePolicy: 'replace',
+    render: ({ data }) => {
+      const el = document.createElement('span')
+      el.className = 'hs-notif-toast-text hs-notif-toast-info'
+      el.textContent = (typeof data?.text === 'string' && data.text.trim()) || 'loading emotes…'
+      return el
+    },
+  })
+
   // Twitch resub-share — user's own resub callout. Surfaces above input,
   // shows month count + Share button (clicks the native Twitch share so the
   // existing _enterResubShareMode flow runs) and X to dismiss. Native DOM is

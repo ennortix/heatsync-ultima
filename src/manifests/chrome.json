@@ -150,7 +150,7 @@
 
   "web_accessible_resources": [
     {
-      "resources": ["icon-16.png", "icon-48.png", "icon-48-black.png", "COGGERS-1x.webp"],
+      "resources": ["icon-16.png", "icon-48.png", "icon-48-black.png"],
       "matches": ["https://*.twitch.tv/*", "https://kick.com/*", "https://*.kick.com/*", "https://www.youtube.com/*", "https://heatsync.org/*"]
     },
     {

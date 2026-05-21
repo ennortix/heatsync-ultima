@@ -26260,7 +26260,10 @@ function handleInputKeydown(e) {
       insertCompletionKeepOpen(acState.matches[acState.index]);
       showCycleTooltip();
     } else {
-      // First Tab - find matches
+      // First Tab - find matches. WYSIWYG: if the typed word touches a preceding
+      // emote chip (auto-space backspaced, then chars typed), unwrap+merge first
+      // so re-completion searches the full word (SupHomie + 3 → SupHomie3).
+      if (wysiwygEnabled) mergeChipIntoWordForRecompletion(input)
       const word = getCurrentWord(input);
       if (word.length >= 2) {
         const matches = findEmoteMatches(word);
@@ -26883,6 +26886,52 @@ function getCurrentWord(input) {
   const afterMatch = after.match(/^(\S+)/);
   if (beforeMatch) return beforeMatch[1] + (afterMatch ? afterMatch[1] : '');
   return '';
+}
+
+// WYSIWYG re-completion across a chip boundary. After Tab completes an emote it
+// becomes an atomic <img> chip; if the user backspaces the auto-space and types
+// more (e.g. SupHomie + "3"), the typed text is a separate node and getCurrentWord
+// would only see "3". When the caret's typed word DIRECTLY touches a preceding
+// single-token chip (no whitespace between), unwrap that chip back to its source
+// text and merge it into the word so the next Tab re-searches "SupHomie3".
+// Returns true if it merged. Skips modified/stacked chips (their text contains
+// spaces — merging "Kappa w!" + "3" is nonsense).
+function mergeChipIntoWordForRecompletion(input) {
+  if (!input?.isContentEditable) return false
+  const sel = window.getSelection()
+  if (!sel?.rangeCount || !sel.isCollapsed) return false
+  const range = sel.getRangeAt(0)
+  let node = range.startContainer
+  let offset = range.startOffset
+  if (node.nodeType === Node.ELEMENT_NODE && offset > 0) {
+    const child = node.childNodes[offset - 1]
+    if (child?.nodeType === Node.TEXT_NODE) { node = child; offset = child.textContent.length }
+  }
+  if (node.nodeType !== Node.TEXT_NODE) return false
+  const text = node.textContent
+  const before = text.slice(0, offset)
+  // Typed word must reach the very start of this text node, so it touches prev.
+  const wm = before.match(/(\S+)$/)
+  if (!wm || wm[1].length !== before.length) return false
+  const prev = node.previousSibling
+  const isChip = prev?.nodeType === Node.ELEMENT_NODE && (
+    (prev.tagName === 'IMG' && prev.classList?.contains('hs-input-emote')) ||
+    prev.classList?.contains('hs-mc-user') ||
+    prev.classList?.contains('hs-mc-emoji')
+  )
+  if (!isChip) return false
+  const chipText = chipToText(prev)
+  if (!chipText) return false
+  const clean = chipText.trim()
+  if (!clean || /\s/.test(clean)) return false // modified/stacked chip — skip
+  prev.remove()
+  node.textContent = clean + text
+  const r = document.createRange()
+  r.setStart(node, clean.length + offset)
+  r.collapse(true)
+  sel.removeAllRanges(); sel.addRange(r)
+  pendingMessage = getInputText()
+  return true
 }
 
 function getRecencyMap() {
@@ -34745,14 +34794,15 @@ const STORAGE_KEY = 'heatsync_multichat';
     '</div>';
   }
 
-  // Cheatsheet -- the non-obvious mechanics people would otherwise wonder about:
-  // emote color states, the "0" overlay trick, modifiers, keys, right-click.
+  // Cheatsheet -- the complete set of non-obvious mechanics: emote colors, the
+  // "0" overlay trick, modifiers, typing syntax, slash commands, keys, layout.
   // All content is static literals (no user input), so raw markup is safe here.
   function _renderTutorialSubtab() {
     function sw(color) { return '<span style="display:inline-block;flex-shrink:0;width:12px;height:12px;background:' + color + '"></span>'; }
     function kbd(k) { return '<span style="background:#fff;color:#000;padding:0 5px;font-weight:700;white-space:nowrap">' + k + '</span>'; }
-    function code(c) { return '<span style="background:#1a1a1a;color:#ff8700;padding:0 5px">' + c + '</span>'; }
+    function code(c) { return '<span style="background:#1a1a1a;color:#ff8700;padding:0 5px;white-space:nowrap">' + c + '</span>'; }
     function term(t) { return '<span style="color:#fff;font-weight:600">' + t + '</span>'; }
+    function hot(c, t) { return '<span style="color:' + c + ';font-weight:600">' + t + '</span>'; }
     function clr(swatch, text) {
       return '<div style="display:flex;align-items:center;gap:8px;padding:4px 14px;font-size:13px;line-height:18px;color:#808080">' + swatch + '<span>' + text + '</span></div>';
     }
@@ -34764,21 +34814,32 @@ const STORAGE_KEY = 'heatsync_multichat';
     }
     return grp('emote colors',
       clr(sw('#00ff00'), term('got it') + ' &mdash; global, channel, or added. click to send.') +
-      clr(sw('#ff8700'), term('unadded') + ' &mdash; a heatsync emote you don\'t own yet. click to grab it.') +
+      clr(sw('#ff8700'), term('unadded') + ' &mdash; a heatsync emote. click it once to add it.') +
       clr(sw('#ff0000'), term('blocked') + ' &mdash; hidden. right-click any emote to block / unblock.')
     ) +
     grp('stack &amp; bend',
       ln('overlay &mdash; type an emote then ' + code('0') + ' to stack it on the one before: ' + code('KKona RainTime0')) +
-      ln('modify the last emote (chain them): ' + code('w!') + ' wide ' + code('h!') + ' tall ' + code('l!') + ' flip ' + code('v!') + ' flip-y ' + code('c!#hex') + ' recolor &mdash; e.g. ' + code('Pog w!h!'))
+      ln('bend the last emote (chain them): ' + code('w!') + ' wide ' + code('h!') + ' tall ' + code('l!') + ' flip ' + code('v!') + ' flip-y ' + code('c!#hex') + ' color &mdash; ' + code('Pog w!h!'))
+    ) +
+    grp('typing',
+      ln(code(':emoji:') + ' unicode emoji &middot; ' + code('@name') + ' mention someone') +
+      ln(kbd('Tab') + ' completes the emote / name you\'re typing (' + kbd('Shift+Tab') + ' back)') +
+      ln('click any emote already in chat to drop it into your message')
+    ) +
+    grp('commands',
+      ln(code('/op') + ' post to the feed &middot; ' + code('/w') + ' ' + code('/dm') + ' whisper / DM &middot; ' + code('/r') + ' reply to last') +
+      ln(code('/mute') + ' hide someone 24h &middot; ' + code('/shrug') + ' ' + code('/tableflip') + ' &middot; ' + code('/help') + ' the full list') +
+      ln('mods: ' + code('/ban') + ' ' + code('/timeout') + ' ' + code('/delete') + ' &mdash; or hover a message: ' + kbd('x') + ' del ' + kbd('t') + ' timeout ' + kbd('b') + ' ban')
     ) +
     grp('keys',
-      ln(kbd('Tab') + ' complete the emote ' + '(' + kbd('Shift+Tab') + ' cycles back)') +
-      ln(kbd('Enter') + ' send &middot; ' + kbd('&uarr;') + ' ' + kbd('&darr;') + ' reuse past messages') +
-      ln(kbd('\\') + ' hide / show the chat panel')
+      ln(kbd('Enter') + ' send &middot; ' + kbd('&uarr;') + ' ' + kbd('&darr;') + ' past messages &middot; ' + kbd('Esc') + ' cancel reply') +
+      ln(kbd('\\') + ' hide / show chat &middot; vi mode (settings) adds vim keys &mdash; ' + kbd('?') + ' for its help')
     ) +
-    grp('right-click',
-      ln('a ' + term('name') + ' &mdash; follow &middot; block &middot; mute &middot; whisper &middot; recolor &middot; profile') +
-      ln('an ' + term('emote') + ' &mdash; block / unblock (or remove it if it\'s yours)')
+    grp('layout &amp; tabs',
+      ln('one message posts to every platform on the tab &mdash; ' + term('[T]') + ' twitch ' + term('[K]') + ' kick ' + term('[Y]') + ' youtube') +
+      ln(term('+') + ' adds a channel &middot; ' + term('feed') + ' ' + term('whispers') + ' ' + term('mentions') + ' are built-in tabs') +
+      ln('tab dots: ' + hot('#ff8700', 'orange') + ' new messages &middot; ' + hot('#ff4d4d', 'red') + ' you were mentioned') +
+      ln('drag the panel edges to resize &middot; ' + kbd('C') + ' ' + kbd('T') + ' rotate chat / tabs &middot; click a name for their card')
     );
   }
 

@@ -1474,7 +1474,10 @@ function handleInputKeydown(e) {
       insertCompletionKeepOpen(acState.matches[acState.index]);
       showCycleTooltip();
     } else {
-      // First Tab - find matches
+      // First Tab - find matches. WYSIWYG: if the typed word touches a preceding
+      // emote chip (auto-space backspaced, then chars typed), unwrap+merge first
+      // so re-completion searches the full word (SupHomie + 3 → SupHomie3).
+      if (wysiwygEnabled) mergeChipIntoWordForRecompletion(input)
       const word = getCurrentWord(input);
       if (word.length >= 2) {
         const matches = findEmoteMatches(word);
@@ -2097,6 +2100,52 @@ function getCurrentWord(input) {
   const afterMatch = after.match(/^(\S+)/);
   if (beforeMatch) return beforeMatch[1] + (afterMatch ? afterMatch[1] : '');
   return '';
+}
+
+// WYSIWYG re-completion across a chip boundary. After Tab completes an emote it
+// becomes an atomic <img> chip; if the user backspaces the auto-space and types
+// more (e.g. SupHomie + "3"), the typed text is a separate node and getCurrentWord
+// would only see "3". When the caret's typed word DIRECTLY touches a preceding
+// single-token chip (no whitespace between), unwrap that chip back to its source
+// text and merge it into the word so the next Tab re-searches "SupHomie3".
+// Returns true if it merged. Skips modified/stacked chips (their text contains
+// spaces — merging "Kappa w!" + "3" is nonsense).
+function mergeChipIntoWordForRecompletion(input) {
+  if (!input?.isContentEditable) return false
+  const sel = window.getSelection()
+  if (!sel?.rangeCount || !sel.isCollapsed) return false
+  const range = sel.getRangeAt(0)
+  let node = range.startContainer
+  let offset = range.startOffset
+  if (node.nodeType === Node.ELEMENT_NODE && offset > 0) {
+    const child = node.childNodes[offset - 1]
+    if (child?.nodeType === Node.TEXT_NODE) { node = child; offset = child.textContent.length }
+  }
+  if (node.nodeType !== Node.TEXT_NODE) return false
+  const text = node.textContent
+  const before = text.slice(0, offset)
+  // Typed word must reach the very start of this text node, so it touches prev.
+  const wm = before.match(/(\S+)$/)
+  if (!wm || wm[1].length !== before.length) return false
+  const prev = node.previousSibling
+  const isChip = prev?.nodeType === Node.ELEMENT_NODE && (
+    (prev.tagName === 'IMG' && prev.classList?.contains('hs-input-emote')) ||
+    prev.classList?.contains('hs-mc-user') ||
+    prev.classList?.contains('hs-mc-emoji')
+  )
+  if (!isChip) return false
+  const chipText = chipToText(prev)
+  if (!chipText) return false
+  const clean = chipText.trim()
+  if (!clean || /\s/.test(clean)) return false // modified/stacked chip — skip
+  prev.remove()
+  node.textContent = clean + text
+  const r = document.createRange()
+  r.setStart(node, clean.length + offset)
+  r.collapse(true)
+  sel.removeAllRanges(); sel.addRange(r)
+  pendingMessage = getInputText()
+  return true
 }
 
 function getRecencyMap() {

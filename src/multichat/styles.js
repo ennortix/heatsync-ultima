@@ -2972,6 +2972,14 @@ function injectStyles() {
     /* Input styles (used in #hs-mc-inputbar) */
     #hs-mc-input {
       flex: 1;
+      /* Explicit floor + box model: without these the empty contenteditable
+         collapses on hosts that lack a universal box-sizing reset (YouTube),
+         dropping the box to padding+border height so the absolutely-placed
+         placeholder spilled below the white area. Kick/Twitch only looked
+         right because Tailwind's *{box-sizing:border-box} happened to bleed
+         in. Pin both so all platforms render one full line. */
+      box-sizing: border-box;
+      min-height: 35px;
       padding: 8px 12px;
       background: #fff;
       color: #000;

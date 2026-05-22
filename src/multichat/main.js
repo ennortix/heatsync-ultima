@@ -78,6 +78,12 @@
   let liveChannel = null;        // override channel for live tab (null = use URL channel)
   let livePlatformMap = {};      // per-URL-channel platform overrides: { [urlCh]: { twitch, kick, youtube } }
   let liveChannelSet = new Set(); // channels currently live (lowercase twitch names)
+  // Channels we've already surfaced as "went live" this session. A channel can
+  // only legitimately go off→on once per session — every later stream:online
+  // for the same channel is a server re-broadcast (connect-snapshot, EventSub
+  // re-subscribe, emote-add round-trip, etc.). Cleared by stream:offline so a
+  // genuine re-go-live during a long session still shows.
+  const sessionWentLiveSeen = new Set()
   let irc = null;
   let kickChat = null;
   let currentUsername = null;
@@ -1466,6 +1472,15 @@
       const ch = evt.channel
       if (!ch) continue
 
+      // On replay (overlay load / reconnect) drop "went live" events. They are,
+      // by definition, channels that were ALREADY live when you opened — a wall
+      // of online dumps (plus stale dupes when a channel switched games while
+      // you were away). Genuine go-lives that happen DURING the session still
+      // surface via the realtime stream_event / follow_stream_event listeners,
+      // which don't go through this replay path. offline + game-switch replay
+      // fine (low volume, useful context).
+      if (recentOnly && evt.eventClass?.includes('event-online')) continue
+
       const injectToChat = !recentOnly || (evt.time && evt.time > chatCutoff)
       const isFollowEvent = evt.eventClass?.includes('event-follow')
 
@@ -1514,6 +1529,7 @@
         seenTexts.add(e.text)
         valid.push(e)
       }
+
 
       injectStreamEventsIntoBuffers(valid, true)
 
@@ -11459,9 +11475,27 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
         } else if (msg.eventType === 'stream:online') {
           try { streamStats.delete((channel || '').toLowerCase()) } catch (e) {}
           if (!hermesToggles?.online) return;
+          // Same gate as the follow_stream_event listener: if the authoritative
+          // poll snapshot already has this channel live, the WS "went live" is
+          // a connect-snapshot replay (the server pushes the whole live roster
+          // as realtime online events on every (re)connect), not a genuine
+          // off\u2192on transition. Drop it. A real transition pushes faster than
+          // the 60s poll refresh so it won't be in the set yet and still shows.
+          // Per-channel session dedupe: one "went live" per channel per session
+          // (offline clears the mark below). Suppresses every server re-broadcast
+          // — initial WS connect-snapshot, EventSub re-subscribe replays, the
+          // emote-add round-trip that fans out cached stream.online events, etc.
+          if (sessionWentLiveSeen.has(channel)) return;
+          sessionWentLiveSeen.add(channel);
+          // If the authoritative poll snapshots already have this channel live,
+          // this isn't a transition — it's the first replayed snapshot we're
+          // seeing. Record (above) and drop. A genuine off→on beats the 60s
+          // poll, so the channel won't be in either set yet and still shows.
+          if (liveChannelSet?.has(channel) || _swLiveSet?.has(channel)) return;
           text = msg.game ? `[${channel}] \u25C6 went live \u2014 ${msg.game}` : `[${channel}] \u25C6 went live`;
           eventClass = 'event-online';
         } else if (msg.eventType === 'stream:offline') {
+          sessionWentLiveSeen.delete(channel); // genuine re-go-live can resurface
           try { renderStreamSummary(channel) } catch (e) {}
           if (!hermesToggles?.offline) return;
           text = `[${channel}] \u25C6 went offline`;
@@ -11693,9 +11727,28 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
           eventClass = 'event-follow event-update';
         } else if (msg.eventType === 'stream:online') {
           if (!hermesToggles?.online) return;
+          // Drop the "already live on (re)connect" wall: the server replays the
+          // whole live roster as realtime online events whenever the WS connects.
+          // _swLiveSet is the authoritative poll snapshot of who's *currently*
+          // live \u2014 if this channel is already in it, it didn't just go live, so
+          // this is snapshot noise. A genuine off\u2192on transition pushes faster
+          // than the 60s poll refreshes the set, so it won't be present yet and
+          // still surfaces.
+          // Per-channel session dedupe: one "went live" per channel per session
+          // (offline clears the mark below). Suppresses every server re-broadcast
+          // — initial WS connect-snapshot, EventSub re-subscribe replays, the
+          // emote-add round-trip that fans out cached stream.online events, etc.
+          if (sessionWentLiveSeen.has(channel)) return;
+          sessionWentLiveSeen.add(channel);
+          // If the authoritative poll snapshots already have this channel live,
+          // this isn't a transition — it's the first replayed snapshot we're
+          // seeing. Record (above) and drop. A genuine off→on beats the 60s
+          // poll, so the channel won't be in either set yet and still shows.
+          if (liveChannelSet?.has(channel) || _swLiveSet?.has(channel)) return;
           text = msg.game ? `[${channel}] \u25C6 went live \u2014 ${msg.game}` : `[${channel}] \u25C6 went live`;
           eventClass = 'event-follow event-online';
         } else if (msg.eventType === 'stream:offline') {
+          sessionWentLiveSeen.delete(channel); // genuine re-go-live can resurface
           if (!hermesToggles?.offline) return;
           text = `[${channel}] \u25C6 went offline`;
           eventClass = 'event-follow event-offline';

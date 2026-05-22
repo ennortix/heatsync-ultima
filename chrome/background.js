@@ -1255,6 +1255,45 @@ async function pollFollowedLive() {
   }
 }
 
+// Handle a WS follow:stream:* event: 60s dedup, then cache + broadcast. The
+// "already live on load" wall is filtered downstream in the content script's
+// replay path (injectStreamEventsIntoBuffers drops event-online on recentOnly),
+// so realtime events pass straight through here.
+function handleFollowStreamEvent(msg) {
+  const now = Date.now()
+  const dedupKey = `${msg.channel}:${msg.type.replace('follow:', '')}:${msg.game || ''}`
+  if (wsStreamEventDedup.has(dedupKey) && now - wsStreamEventDedup.get(dedupKey) < 60000) return
+  wsStreamEventDedup.set(dedupKey, now)
+  if (wsStreamEventDedup.size > 100) {
+    for (const [k, t] of wsStreamEventDedup) { if (now - t > 60000) wsStreamEventDedup.delete(k) }
+  }
+
+  if (!cachedFollowHistory) cachedFollowHistory = []
+  cachedFollowHistory.push({
+    type: msg.type,
+    platform: msg.platform,
+    channel: msg.channel,
+    game: msg.game || '',
+    title: msg.title || '',
+    prevGame: msg.prevGame || '',
+    prevTitle: msg.prevTitle || '',
+    color: msg.color || '',
+    time: now
+  })
+  if (cachedFollowHistory.length > 200) cachedFollowHistory.splice(0, cachedFollowHistory.length - 200)
+  broadcastToTabs({
+    type: 'follow_stream_event',
+    eventType: msg.type.replace('follow:', ''),
+    platform: msg.platform,
+    channel: msg.channel,
+    game: msg.game || '',
+    title: msg.title || '',
+    prevGame: msg.prevGame || '',
+    prevTitle: msg.prevTitle || '',
+    color: msg.color || '',
+  })
+}
+
 // Set browser action title (icon hover tooltip) — top live followed names.
 function updateLiveBadgeTooltip() {
   if (!badgeApi) return
@@ -3933,44 +3972,9 @@ function handleWSMessage(msg) {
 
     case 'follow:stream:update':
     case 'follow:stream:online':
-    case 'follow:stream:offline': {
-      // Dedup: same channel+event within 60s (shared map with stream:*)
-      const fStreamKey = `${msg.channel}:${msg.type.replace('follow:', '')}:${msg.game || ''}`
-      const fStreamNow = Date.now()
-      if (wsStreamEventDedup.has(fStreamKey) && fStreamNow - wsStreamEventDedup.get(fStreamKey) < 60000) break
-      wsStreamEventDedup.set(fStreamKey, fStreamNow)
-      if (wsStreamEventDedup.size > 100) {
-        for (const [k, t] of wsStreamEventDedup) { if (fStreamNow - t > 60000) wsStreamEventDedup.delete(k) }
-      }
-
-      // Append to cached history so content scripts get it on refresh
-      if (!cachedFollowHistory) cachedFollowHistory = []
-      cachedFollowHistory.push({
-        type: msg.type,
-        platform: msg.platform,
-        channel: msg.channel,
-        game: msg.game || '',
-        title: msg.title || '',
-        prevGame: msg.prevGame || '',
-        prevTitle: msg.prevTitle || '',
-        color: msg.color || '',
-        time: fStreamNow
-      })
-      // Keep capped at 200
-      if (cachedFollowHistory.length > 200) cachedFollowHistory.splice(0, cachedFollowHistory.length - 200)
-      broadcastToTabs({
-        type: 'follow_stream_event',
-        eventType: msg.type.replace('follow:', ''),
-        platform: msg.platform,
-        channel: msg.channel,
-        game: msg.game || '',
-        title: msg.title || '',
-        prevGame: msg.prevGame || '',
-        prevTitle: msg.prevTitle || '',
-        color: msg.color || '',
-      })
+    case 'follow:stream:offline':
+      handleFollowStreamEvent(msg)
       break
-    }
 
     case 'follow:colors':
       cachedFollowColors = msg.colors || {}

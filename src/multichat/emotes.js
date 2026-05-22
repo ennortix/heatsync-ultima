@@ -1793,11 +1793,15 @@
   function _hsMcHexToHue(h) { return hsModHexToHue(h) }
   function _hsMcApplyMods(html, mods, hue) {
     if ((!mods || !mods.length) && hue == null) return html
-    const wrapperStyle = hsModBuildStyleAttr(mods, null)  // transform/margins
     const imgFilter = hsModComposeFilter(mods, hue)
+    const hasImg = /<img(\s|>)/.test(html)
+    // Emoji spans have no <img> — fold the filter into the wrapper span style
+    // (transform + margins always go on the wrapper anyway).
+    const wrapperStyle = hsModBuildStyleAttr(mods, null) +
+      (!hasImg && imgFilter ? `filter:${imgFilter} !important;` : '')
     let out = html
     if (wrapperStyle) out = hsModInjectWrapperStyle(out, wrapperStyle)
-    if (imgFilter) {
+    if (imgFilter && hasImg) {
       out = out.replace(/<img(\s)/, `<img style="filter:${imgFilter} !important;"$1`)
     }
     return out

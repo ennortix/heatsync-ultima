@@ -426,6 +426,8 @@ function getInputText() {
               // Base emoji — unicode char (renderer treats a bare emoji as base).
               text += child.textContent || ''
             }
+            const emjMods = child.dataset.hsWords
+            if (emjMods) for (const w of emjMods.split(/\s+/).filter(Boolean)) text += ' ' + w
           }
           _firstStackChild = false
         }
@@ -440,6 +442,8 @@ function getInputText() {
       } else if (node.nodeType === Node.ELEMENT_NODE && node.classList?.contains('hs-mc-emoji')) {
         sepBefore()
         text += node.textContent || ''
+        const emjMods = node.dataset.hsWords
+        if (emjMods) for (const w of emjMods.split(/\s+/).filter(Boolean)) text += ' ' + w
         _lastWasChip = true
       } else if (node.nodeType === Node.ELEMENT_NODE) {
         text += node.textContent || ''
@@ -1928,11 +1932,9 @@ function handleInputChange(e) {
               while (prev && prev.nodeType === Node.TEXT_NODE && prev.textContent.trim() === '') {
                 prev = prev.previousSibling
               }
-              if (prev && prev.nodeType === Node.ELEMENT_NODE &&
-                  (prev.classList.contains('hs-input-emote') || prev.classList.contains('hs-input-stack'))) {
-                const imgs = prev.tagName === 'IMG' ? [prev] : prev.querySelectorAll('img')
-                const targetImg = imgs.length ? imgs[imgs.length - 1] : null
-                if (targetImg) {
+              const targetImg = hsModAnchorEl(prev)
+              if (targetImg) {
+                {
                   hsModApplyToImg(targetImg, cls.mods, cls.hue, cls.words)
                   const wordStart = cursor - match[0].length
                   node.textContent = text.slice(0, wordStart) + (text.slice(cursor) || ' ')
@@ -2378,6 +2380,21 @@ function peelModifierChain(w) { return hsModPeelChain(w) }
 function resolveModifierPrefix(w) { return hsModResolvePrefix(w) }
 function _hsHexToHueDeg(h) { return hsModHexToHue(h) }
 
+// Resolve the element a modifier should attach to. Valid anchors: an emote
+// IMG, the last unit (img OR emoji span) of a stack, or a standalone emoji
+// span — so "😀 w!" widens the emoji just like "Kappa w!" widens the emote.
+function hsModAnchorEl(prev) {
+  if (!prev || prev.nodeType !== Node.ELEMENT_NODE) return null
+  if (prev.tagName === 'IMG' && (prev.classList.contains('hs-input-emote') || prev.dataset?.emoteName)) return prev
+  if (prev.classList.contains('hs-mc-emoji')) return prev
+  if (prev.classList.contains('hs-input-stack')) {
+    const units = [...prev.children].filter(c =>
+      c.tagName === 'IMG' || c.classList?.contains('hs-mc-emoji'))
+    return units.length ? units[units.length - 1] : null
+  }
+  return null
+}
+
 // Scan input for modifier shorthands adjacent to emotes; apply via lib helper.
 // Cursor-position-agnostic. Returns true if any modifier was applied.
 // Only mutates a text node if it consumed at least one token from it — leaves
@@ -2388,9 +2405,10 @@ function scanAndApplyModifiersInInput(input) {
   let prevEmote = null
   for (const child of [...input.childNodes]) {
     if (child.nodeType === Node.ELEMENT_NODE) {
-      const isEmote = child.classList?.contains('hs-input-emote') ||
-                      child.classList?.contains('hs-input-stack')
-      if (isEmote) prevEmote = child
+      const isAnchor = child.classList?.contains('hs-input-emote') ||
+                       child.classList?.contains('hs-input-stack') ||
+                       child.classList?.contains('hs-mc-emoji')
+      if (isAnchor) prevEmote = child
       else if (child.tagName !== 'BR') prevEmote = null
       continue
     }
@@ -2402,8 +2420,7 @@ function scanAndApplyModifiersInInput(input) {
       if (!tok || /^\s*$/.test(tok)) { remaining.push(tok); continue }
       const cls = hsModClassify(tok, { allowPrefix: true })
       if (cls.kind !== 'modifier') { remaining.push(tok); continue }
-      const imgs = prevEmote.tagName === 'IMG' ? [prevEmote] : prevEmote.querySelectorAll('img')
-      const targetImg = imgs.length ? imgs[imgs.length - 1] : null
+      const targetImg = hsModAnchorEl(prevEmote)
       if (!targetImg) { remaining.push(tok); continue }
       hsModApplyToImg(targetImg, cls.mods, cls.hue, cls.words)
       appliedAny = true
@@ -2450,10 +2467,7 @@ function applyModifierAtCursor(modWord, _ignoredModKey, _ignoredCMatch) {
   if (text.slice(0, wsStart).trim().length > 0) return false
   let prev = textNode.previousSibling
   while (prev && prev.nodeType === Node.TEXT_NODE && prev.textContent.trim() === '') prev = prev.previousSibling
-  if (!prev || prev.nodeType !== Node.ELEMENT_NODE) return false
-  if (!(prev.classList.contains('hs-input-emote') || prev.classList.contains('hs-input-stack'))) return false
-  const imgs = prev.tagName === 'IMG' ? [prev] : prev.querySelectorAll('img')
-  const targetImg = imgs.length ? imgs[imgs.length - 1] : null
+  const targetImg = hsModAnchorEl(prev)
   if (!targetImg) return false
   hsModApplyToImg(targetImg, cls.mods, cls.hue, cls.words)
   // Remove the modifier text + leading whitespace

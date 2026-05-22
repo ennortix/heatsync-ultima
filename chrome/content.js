@@ -5512,7 +5512,6 @@ function replaceEmotesWithStacking(element, allEmotes) {
   const applyPendingToLast = () => {
     if (!currentStack.length) return
     const target = currentStack[currentStack.length - 1]
-    if (target.isEmoji) return
     if (pendingModifiers.length) {
       target.modifiers = (target.modifiers || []).concat(pendingModifiers)
       pendingModifiers = []
@@ -5716,14 +5715,27 @@ function replaceEmotesWithStacking(element, allEmotes) {
   }
 
   // Helper to flush emote stack to DOM node
-  function generateEmojiElement(emoji, title, isOverlay) {
+  function generateEmojiElement(emoji, title, isOverlay, modifiers, modColorHue) {
     const span = document.createElement('span')
     // heatsync-overlay triggers the stack's absolute-centered, z-index:2 layout
     // so an overlay emoji lands ON TOP of the base instead of beside it.
     span.className = isOverlay ? 'heatsync-emoji heatsync-overlay' : 'heatsync-emoji'
     span.textContent = emoji
     if (title) span.title = `:${title}:`
-    span.style.cssText = 'display: inline-block; vertical-align: middle; position: relative; z-index: 1;'
+    let css = 'display: inline-block; vertical-align: middle; position: relative; z-index: 1;'
+    // FFZ-style modifiers: w!/h!/l!/c! etc. — transform + hue filter on the span
+    // itself (emoji has no <img>, so both go on the element directly).
+    if ((modifiers && modifiers.length) || modColorHue != null) {
+      const { sx, sy } = hsModComposeTransform(modifiers)
+      if (sx !== 1 || sy !== 1) {
+        css += `transform: scale(${sx}, ${sy}) !important; transform-origin: center !important;`
+        const fx = Math.abs(sx)
+        if (fx > 1) css += `margin: 0 calc(0.5em * ${fx - 1}) !important;`
+      }
+      const filter = hsModComposeFilter(modifiers, modColorHue)
+      if (filter) css += `filter: ${filter} !important;`
+    }
+    span.style.cssText = css
     return span
   }
 
@@ -5731,7 +5743,7 @@ function replaceEmotesWithStacking(element, allEmotes) {
     if (stack.length === 0) return document.createTextNode('');
     if (stack.length === 1) {
       const entry = stack[0]
-      if (entry.isEmoji) return generateEmojiElement(entry.emoji, entry.emojiName)
+      if (entry.isEmoji) return generateEmojiElement(entry.emoji, entry.emojiName, entry.isOverlay, entry.modifiers, entry.modColorHue)
       return generateEmoteElement(entry.emote, entry.isOverlay, entry.modifiers, entry.modColorHue);
     }
     // Multiple emotes - wrap in stack container with buttons
@@ -5750,7 +5762,7 @@ function replaceEmotesWithStacking(element, allEmotes) {
     // Add emotes and emojis
     stack.forEach((entry) => {
       if (entry.isEmoji) {
-        stackContainer.appendChild(generateEmojiElement(entry.emoji, entry.emojiName, entry.isOverlay))
+        stackContainer.appendChild(generateEmojiElement(entry.emoji, entry.emojiName, entry.isOverlay, entry.modifiers, entry.modColorHue))
       } else {
         stackContainer.appendChild(generateEmoteElement(entry.emote, entry.isOverlay, entry.modifiers, entry.modColorHue))
       }

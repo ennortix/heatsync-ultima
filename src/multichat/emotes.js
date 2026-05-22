@@ -1542,6 +1542,19 @@
   function lookupOwnedEmote(name) {
     return viewerPersonalEmotes.get(name)
   }
+  // True if ANY cache knows this emote name is 7TV zero-width. The owned set
+  // (viewerPersonalEmotes) and the heatsync server cache don't carry 7TV's
+  // zeroWidth flag, and viewerPersonalEmotes is resolved FIRST — so an overlay
+  // emote you OWN (e.g. "Wave") otherwise resolves zeroWidth:false and renders
+  // inline. The channel/global caches fetch the flag straight from 7TV, so
+  // consult them to recover it.
+  function zeroWidthFromAnyCache(name) {
+    if (emoteCache.get(name)?.zeroWidth) return true
+    for (const m of Object.values(channelEmoteCaches)) {
+      if (m && typeof m.get === 'function' && m.get(name)?.zeroWidth) return true
+    }
+    return false
+  }
   // Resolve a typed emote name to {emote, isOverlay, displayName}.
   // Handles zeroWidth flag AND the 7TV-style "name0" overlay convention
   // ("TriHard0" → looks up "TriHard" and treats as overlay) so the input
@@ -1558,6 +1571,9 @@
     // this, an emote literally named "fog0" rendered inline in the input box
     // while chat stacked it.
     let isOverlay = !!emote?.zeroWidth || (!!emote && endsWithZero)
+    // Owned/personal cache shadows the flagged channel/global copy without the
+    // 7TV zeroWidth flag — recover it so an overlay emote you own still stacks.
+    if (emote && !isOverlay && zeroWidthFromAnyCache(name)) isOverlay = true
     if (!emote && endsWithZero) {
       const baseName = name.slice(0, -1)
       const baseEmote = resolve(baseName)
@@ -1972,6 +1988,10 @@
         // Honor zero-width flag, OR fall back to the "name0" naming convention
         // when an uploader didn't set the flag despite naming the emote for overlay use.
         if (emote) isOverlayEmote = !!emote.zeroWidth || endsWithZero
+        // Own outgoing messages resolve via senderEmotes (viewerPersonalEmotes),
+        // which lacks the 7TV zeroWidth flag — recover it from channel/global
+        // caches so an overlay emote you own stacks in rendered chat too.
+        if (emote && !isOverlayEmote && zeroWidthFromAnyCache(word)) isOverlayEmote = true
       }
       // FFZ-style fallback: token like "Kappaw!" or "KappaffzX" — when the
       // upstream send pipeline strips the space between emote and modifier,

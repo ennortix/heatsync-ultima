@@ -219,7 +219,7 @@ async function fetchRemoteEmoteMatches(search) {
     if (!it.name.toLowerCase().includes(searchLower)) continue // drop API noise
     have.add(it.name)
     const src = it.provider || '7tv'
-    add.push({ name: it.name, url: it.url, source: src, priority: it.name.toLowerCase().startsWith(searchLower) ? 0 : 1, type: 'emote', remote: true, _ai: add.length })
+    add.push({ name: it.name, url: it.url, source: src, priority: it.name.toLowerCase().startsWith(searchLower) ? 0 : 1, type: 'emote', remote: true, zeroWidth: !!it.zeroWidth, _ai: add.length })
     // Remember for auto-add-on-send (only matters if the user actually sends it).
     recentRemoteCompletions.delete(it.name)
     recentRemoteCompletions.set(it.name, { url: it.url, source: src })
@@ -1952,7 +1952,32 @@ function handleInputChange(e) {
             }
             // Live auto-convert: in-set emotes only. Channel/global emotes
             // (incl. lowercase word collisions like "what") stay text until Tab.
-            const resolved = lookupEmoteWithOverlay(word, { ownedOnly: true })
+            let resolved = lookupEmoteWithOverlay(word, { ownedOnly: true })
+            // Exception: a zero-width OVERLAY emote (e.g. "Wave") auto-stacks
+            // onto a preceding emote even when it's only a channel/global emote
+            // (not in your set). Overlays read as nonsense inline so there's no
+            // "what"-style word-collision risk, and this mirrors how chat stacks
+            // them without a space. Gated on an actual preceding base so a lone
+            // overlay name typed as prose stays text until Tab.
+            if (!resolved) {
+              const ov = lookupEmoteWithOverlay(word)
+              if (ov && ov.isOverlay) {
+                const bt = text.slice(0, cursor - match[0].length)
+                let stackable = false
+                if (bt.trim() === '') {
+                  let p = node.previousSibling
+                  while (p && p.nodeType === Node.TEXT_NODE && p.textContent.trim() === '') p = p.previousSibling
+                  stackable = !!(p && (
+                    (p.tagName === 'IMG' && p.classList.contains('hs-input-emote')) ||
+                    p.classList?.contains('hs-input-stack') ||
+                    p.classList?.contains('hs-mc-emoji')
+                  ))
+                } else {
+                  stackable = !!peelTrailingEmoji(bt.replace(/\s+$/, ''))
+                }
+                if (stackable) resolved = ov
+              }
+            }
             if (resolved) {
               const wordStart = cursor - match[0].length
               if (deflectAdjacentChip(node, wordStart)) return
@@ -2858,7 +2883,10 @@ function insertCompletionWysiwyg(match) {
       // overlay state sticks — every cycle stays inside the stack span and
       // non-overlay matches appear to stack onto whatever's before them.
       const resolved = (typeof lookupEmoteWithOverlay === 'function') ? lookupEmoteWithOverlay(match.name) : null
-      const wantsOverlay = !!resolved?.isOverlay
+      // Remote-only emotes (7TV cross-provider search hits) aren't in any local
+      // cache, so lookupEmoteWithOverlay can't resolve their zero-width flag —
+      // fall back to the flag carried on the match from the search result.
+      const wantsOverlay = !!resolved?.isOverlay || !!match.zeroWidth
       const stack = existingEmote.parentElement?.classList?.contains('hs-input-stack')
         ? existingEmote.parentElement : null
       if (stack && !wantsOverlay) {
@@ -3089,7 +3117,10 @@ function insertCompletionWysiwyg(match) {
     // Zero-width / overlay: stack onto preceding emote so the input preview
     // matches how chat will render the same word sequence.
     const resolved = (typeof lookupEmoteWithOverlay === 'function') ? lookupEmoteWithOverlay(match.name) : null;
-    if (resolved?.isOverlay && before.trim() === '') {
+    // Remote-only emotes aren't in any local cache (lookup returns null), so
+    // fall back to the zero-width flag the 7TV search carried on the match.
+    const wantsOverlay = !!resolved?.isOverlay || !!match.zeroWidth;
+    if (wantsOverlay && before.trim() === '') {
       let prev = textNode.previousSibling;
       while (prev && prev.nodeType === Node.TEXT_NODE && prev.textContent.trim() === '') {
         prev = prev.previousSibling;
@@ -3117,7 +3148,7 @@ function insertCompletionWysiwyg(match) {
     }
     // Overlay onto a raw unicode emoji typed/pasted as plain text in `before`
     // (parity with the typed live-replace path and chat render).
-    if (resolved?.isOverlay && typeof peelTrailingEmoji === 'function') {
+    if (wantsOverlay && typeof peelTrailingEmoji === 'function') {
       const peeled = peelTrailingEmoji(before.replace(/\s+$/, ''));
       if (peeled) {
         const parent = textNode.parentNode;

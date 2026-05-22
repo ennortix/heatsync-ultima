@@ -91,7 +91,7 @@
     emotes {
       search(query: $query, sort: { sortBy: TOP_ALL_TIME, order: DESCENDING }, page: $page, perPage: $perPage) {
         totalCount
-        items { id defaultName flags { animated } }
+        items { id defaultName flags { animated defaultZeroWidth } }
       }
     }
   }`
@@ -116,6 +116,7 @@
       provider: '7tv',
       id: e.id,
       animated: !!(e.flags && e.flags.animated),
+      zeroWidth: !!(e.flags && e.flags.defaultZeroWidth),
     }))
   }
 

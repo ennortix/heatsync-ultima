@@ -3054,6 +3054,10 @@ function injectStyles() {
        left-click unblocks). The chrome content.js hover-overlay paints the
        state-coloured rect over the IMG on hover. */
     #hs-mc-input .hs-input-emote {
+      /* Kick's Tailwind preflight sets img{display:block} globally — without an
+         explicit inline-block the bare chip breaks onto its own line and the
+         input balloons. Twitch has no such reset, so this was Kick-only. */
+      display: inline-block;
       height: var(--hs-emote-size, 32px);
       width: auto;
       max-width: 192px;
@@ -5993,13 +5997,19 @@ function injectStyles() {
       background: #000 !important;
       transition: none !important;
     }
+    /* Collapsed (\\ / > button): the kick side-panel rule above is (2,1,0) and
+       outranks the generic body.hs-chat-hidden hide at (1,1,1). Re-hide the
+       container with a higher-specificity rule so collapse works on Kick too. */
+    body.hs-chat-hidden .hs-native-hidden#channel-chatroom ~ #hs-mc-container {
+      display: none !important;
+    }
     /* Shrink Kick's main content to make room for HeatSync panel.
        Gate to chat-right (or default — no hs-chat-* class). For
        hs-chat-left/top/bottom, the position-specific padding rules
        elsewhere in this file handle the offset; applying margin-right
        here too would carve 340px off the wrong side and shrink main
        (e.g., chat-left → empty right gutter, video clipped). */
-    body:has(.hs-native-hidden#channel-chatroom):not(.hs-chat-left):not(.hs-chat-top):not(.hs-chat-bottom) main {
+    body:has(.hs-native-hidden#channel-chatroom):not(.hs-chat-left):not(.hs-chat-top):not(.hs-chat-bottom):not(.hs-chat-hidden) main {
       margin-right: var(--hs-kick-chat-width, 340px) !important;
       transition: none !important;
     }

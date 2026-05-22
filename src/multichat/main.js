@@ -4728,12 +4728,22 @@
   let _hsMuteScanPending = false;
   let _hsMuteObserver = null;
   const _hsMutedEls = new WeakSet();
+  // Elements the user has taken over (unmuted via gesture). We NEVER re-mute
+  // these — the initial-mute guard is a one-shot loud-stream shield, not a
+  // permanent lock. Without this, YouTube's constant DOM churn re-fires the
+  // mute scan every ~250ms and clobbers the user's unmute the moment the 800ms
+  // gesture window lapses (felt like a force-mute every ~1s).
+  const _hsUserControlled = new WeakSet();
 
   function _hsForceMute(el) {
     if (!defaultMuteStreams) return;
-    // A recent gesture means the user is likely the one changing volume —
-    // respect their unmute instead of clobbering it.
-    if (Date.now() - _hsMuteLastGesture < 800) return;
+    if (_hsUserControlled.has(el)) return;
+    // A recent gesture means the user is likely the one changing volume. If
+    // they've unmuted, hand control over for good; otherwise just hold off.
+    if (Date.now() - _hsMuteLastGesture < 800) {
+      if (!el.muted) _hsUserControlled.add(el);
+      return;
+    }
     if (!el.muted) { try { el.muted = true; } catch (_) {} }
   }
   function _hsArmMute(el) {

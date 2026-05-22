@@ -12,13 +12,18 @@
 // but new live events repopulate it; the cleared/uncleared state itself is
 // always correct because that's server-backed.
 
-const SEEN_SURFACES = ['mentions', 'whispers', 'home']
+// Surface names are server-canonical: the DB columns are
+// {mentions,whispers,live}_seen_at and the web chat-tile uses the same set.
+// The feed tab's surface is 'live' (NOT 'home') — using 'home' here makes
+// the server reject the POST (zod 400) and drop the WS seen:update, so the
+// feed dot never clears across a reload.
+const SEEN_SURFACES = ['mentions', 'whispers', 'live']
 const SEEN_STORAGE_KEY = 'hs_mc_seen_state_v1'
 
 // Server-authoritative "last viewed at" for each surface (ms epoch).
-const seenAt = { mentions: 0, whispers: 0, home: 0 }
+const seenAt = { mentions: 0, whispers: 0, live: 0 }
 // Local "latest event at" for each surface (ms epoch). Persisted.
-const latestAt = { mentions: 0, whispers: 0, home: 0 }
+const latestAt = { mentions: 0, whispers: 0, live: 0 }
 
 let _seenLoaded = false
 let _seenSaveTimer = null
@@ -119,7 +124,7 @@ function refreshSeenBadges() {
   const map = {
     mentions: { selector: '[data-tab="mentions"]', cls: 'has-mentions' },
     whispers: { selector: '[data-tab="whispers"]', cls: 'has-new' },
-    home:     { selector: '[data-tab="feed"]',     cls: 'has-new' },
+    live:     { selector: '[data-tab="feed"]',     cls: 'has-new' },
   }
   for (const surface of SEEN_SURFACES) {
     const { selector, cls } = map[surface]

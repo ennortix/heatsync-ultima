@@ -478,7 +478,7 @@ function listenForSocialEvents() {
       // not have opened the feed tab yet, but we still want a red dot.
       const ts = msg.data.created_at ? new Date(msg.data.created_at).getTime() : Date.now()
       if (!isNaN(ts) && msg.data.username !== 'Anonymous') {
-        noteSeenEvent('home', ts)
+        noteSeenEvent('live', ts)
       }
       if (!feedLoaded) return;
       // Dedup: skip if already in feed

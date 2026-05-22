@@ -148,6 +148,17 @@
   const mentionsBuffer = [];
   const MAX_BUFFER = 500;
 
+  // Max chat rows kept as live DOM. Decoupled from the data buffers (ring
+  // buffer 1500, persist 1500) which stay large for scrollback-data, sync and
+  // reload restore — those are cheap plain objects. The DOM cap is the
+  // expensive axis (~6 nodes/row), so we render far fewer than we remember.
+  // content-visibility:auto already skips paint/layout for off-screen rows;
+  // this trims the node count itself (~9.3k → ~3k nodes at a busy channel).
+  // 500 unifies the whole system (MAX_BUFFER, TAB_CACHE_DOM_CAP) on one number
+  // and matches the per-platform buffer, so a restored cached tab never exceeds
+  // the cap. ~3.3x Twitch native scrollback.
+  const DOM_RENDER_CAP = 500;
+
   let isKick = location.hostname.includes('kick.com');
   const hostPlatform = isKick ? 'kick' : location.hostname.includes('youtube.com') ? 'yt' : 'twitch';
 
@@ -7501,8 +7512,8 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     msgsEl.appendChild(div);
     _indexMessageDiv(div, msgKeyStr)
 
-    // Trim oldest messages beyond cap (1500 with content-visibility virtualization)
-    trimMessagesEl(msgsEl, 1500);
+    // Trim oldest rows beyond the live-DOM cap (data buffer keeps more).
+    trimMessagesEl(msgsEl, DOM_RENDER_CAP);
 
     // Apply mute to just this message — strip content for muted users.
     // msg.user is the sender; avoid a DOM scan to recompute it.
@@ -7581,11 +7592,11 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
   // don't overlap (e.g. IRC history from hours ago + YT from seconds ago).
   function fairMerge(sources) {
     if (MC_DEBUG) log('fairMerge sources:', sources.map(s => s.length))
+    const limit = DOM_RENDER_CAP
     const active = sources.filter(s => s.length > 0)
     if (active.length === 0) return []
-    if (active.length === 1) return active[0]
+    if (active.length === 1) return active[0].slice(-limit)
 
-    const limit = 1500
     const perSource = Math.ceil(limit / active.length)
     // Take each platform's most recent messages (internally chronological)
     const slices = active.map(s => s.slice(-perSource))
@@ -7898,9 +7909,8 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     }
 
     // Stale-event guard: drop stream-events older than 2h so the 24h
-    // event archive doesn't pile up at the top. Chat msgs are NOT capped —
-    // buffer (3000) + render (1500) caps already bound volume, and the
-    // user expects a full night of scrollback to match heatsync.org chat-tile.
+    // event archive doesn't pile up at the top. Chat volume is bound by the
+    // data buffers plus the DOM_RENDER_CAP live-row cap below.
     const STALE_WINDOW_MS = 2 * 60 * 60 * 1000
     let newestTime = 0
     for (let i = msgs.length - 1; i >= 0; i--) {
@@ -7916,7 +7926,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       }
     }
 
-    const toRender = msgs.slice(-1500).filter(m => !m?.hidden)
+    const toRender = msgs.slice(-DOM_RENDER_CAP).filter(m => !m?.hidden)
     isProgrammaticScroll = true;
 
     // GOD-TIER STABLE-ORDER RENDER:

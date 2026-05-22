@@ -263,6 +263,46 @@
     twitch: 'Twitch', kick: 'Kick', heatsync: 'Heatsync'
   }
 
+  // Recently-used emotes — a local MRU list (most-recent first), captured on
+  // every insert via the picker or tab-complete (see recordRecentEmote). There
+  // is no server-side personal usage signal in the picker (the `uses` field on
+  // search results is FFZ global popularity, not per-user), so this starts
+  // empty on a fresh device and fills as the user inserts emotes. Rendered as
+  // the first picker section; omitted entirely while empty (no dead header).
+  const RECENT_KEY = 'hs-mc-recent-emotes'
+  const RECENT_CAP = 24
+
+  function loadRecentEmotes() {
+    try {
+      const r = JSON.parse(localStorage.getItem(RECENT_KEY))
+      return Array.isArray(r) ? r : []
+    } catch (_) { return [] }
+  }
+
+  function recordRecentEmote(name) {
+    if (!name) return
+    let list = loadRecentEmotes().filter(n => n !== name)
+    list.unshift(name)
+    if (list.length > RECENT_CAP) list = list.slice(0, RECENT_CAP)
+    try { localStorage.setItem(RECENT_KEY, JSON.stringify(list)) } catch (_) {}
+    // The cache key doesn't track the MRU list, so force a rebuild on next
+    // open (idle prebuild repopulates before reopen → still instant).
+    markPickerDirty()
+  }
+
+  // Resolve MRU names to live emote pairs, dropping any no longer available
+  // (blocked, removed, or not loaded for this channel). A recent emote also
+  // appears in its source section below — intended, mirrors Discord.
+  function buildRecentSection(allEmotes) {
+    const out = []
+    for (const name of loadRecentEmotes()) {
+      const e = allEmotes.get(name)
+      if (e) out.push([name, e])
+      if (out.length >= RECENT_CAP) break
+    }
+    return out.length ? { key: 'recent', label: 'Recent', emotes: out } : null
+  }
+
   function groupEmotes(allEmotes) {
     const groups = {}
     for (const [name, emote] of allEmotes) {
@@ -270,9 +310,12 @@
       if (!groups[key]) groups[key] = []
       groups[key].push([name, emote])
     }
-    return SECTION_ORDER
+    const sections = SECTION_ORDER
       .filter(k => groups[k]?.length)
       .map(k => ({ key: k, label: SECTION_LABELS[k] || k, emotes: groups[k] }))
+    const recent = buildRecentSection(allEmotes)
+    if (recent) sections.unshift(recent)
+    return sections
   }
 
   // Chunked lazy render: with 2k+ emotes, building all <img> up-front blocks
@@ -607,6 +650,7 @@
         if (wysiwygEnabled || !('value' in input)) {
           pasteEmoteToInput(name)
         } else {
+          recordRecentEmote(name);
           const pos = input.selectionStart || input.value.length;
           const before = input.value.slice(0, pos);
           const after = input.value.slice(pos);
@@ -936,6 +980,7 @@
   function pasteEmoteToInput(emoteName) {
     const input = document.getElementById('hs-mc-input');
     if (!input) return;
+    recordRecentEmote(emoteName);
     if (wysiwygEnabled || !('value' in input)) {
       const img = createInputEmoteImg(emoteName)
       if (img) {

@@ -4716,84 +4716,6 @@
     chrome.storage.local.set({ hs_readable_names: readableNamesEnabled });
   }
 
-  // ---- Default-mute streams ----------------------------------------------
-  // Loud-stream guard: every <video>/<audio> on the platform page starts
-  // MUTED, so opening a stream (or juggling many at once in multichat) never
-  // blasts audio before you can hit a tiny, still-loading native control.
-  // We re-assert mute through autoplay / ad / source-swap churn, but back off
-  // for ~800ms after any user gesture so unmuting the one you want sticks
-  // (never permanently fights the user). Opt-out: Settings → display.
-  let defaultMuteStreams = true;
-  let _hsMuteLastGesture = 0;
-  let _hsMuteScanPending = false;
-  let _hsMuteObserver = null;
-  const _hsMutedEls = new WeakSet();
-  // Elements the user has taken over (unmuted via gesture). We NEVER re-mute
-  // these — the initial-mute guard is a one-shot loud-stream shield, not a
-  // permanent lock. Without this, YouTube's constant DOM churn re-fires the
-  // mute scan every ~250ms and clobbers the user's unmute the moment the 800ms
-  // gesture window lapses (felt like a force-mute every ~1s).
-  const _hsUserControlled = new WeakSet();
-
-  function _hsForceMute(el) {
-    if (!defaultMuteStreams) return;
-    if (_hsUserControlled.has(el)) return;
-    // A recent gesture means the user is likely the one changing volume. If
-    // they've unmuted, hand control over for good; otherwise just hold off.
-    if (Date.now() - _hsMuteLastGesture < 800) {
-      if (!el.muted) _hsUserControlled.add(el);
-      return;
-    }
-    if (!el.muted) { try { el.muted = true; } catch (_) {} }
-  }
-  function _hsArmMute(el) {
-    if (!el || (el.tagName !== 'VIDEO' && el.tagName !== 'AUDIO')) return;
-    if (_hsMutedEls.has(el)) { _hsForceMute(el); return; }
-    _hsMutedEls.add(el);
-    _hsForceMute(el);
-    // Players flip muted=false at/around play and on ad/source swaps.
-    const f = () => _hsForceMute(el);
-    cleanup.addEventListener(el, 'volumechange', f);
-    cleanup.addEventListener(el, 'play', f);
-    cleanup.addEventListener(el, 'loadeddata', f);
-  }
-  function _hsScanMute() {
-    try { document.querySelectorAll('video,audio').forEach(_hsArmMute); } catch (_) {}
-  }
-  function _hsScheduleMuteScan() {
-    if (_hsMuteScanPending) return;
-    _hsMuteScanPending = true;
-    // Throttled: a brand-new player takes far longer than this to emit audio,
-    // and one tag-query per burst keeps us off Twitch's ~2500-node hot path.
-    cleanup.setTimeout(() => { _hsMuteScanPending = false; _hsScanMute(); }, 250);
-  }
-  function initDefaultMute() {
-    if (window.__hsDefaultMuteInit) return;
-    window.__hsDefaultMuteInit = true;
-    const mark = () => { _hsMuteLastGesture = Date.now(); };
-    cleanup.addEventListener(window, 'pointerdown', mark, true);
-    cleanup.addEventListener(window, 'keydown', mark, true);
-    _hsScanMute();
-    _hsMuteObserver = new MutationObserver(() => _hsScheduleMuteScan());
-    _hsMuteObserver.observe(document.documentElement, { childList: true, subtree: true });
-    cleanup.trackObserver(_hsMuteObserver);
-  }
-  async function loadDefaultMuteSetting() {
-    try {
-      const s = await cachedUiSettings();
-      const ui = (s && s.ui_settings) || {};
-      if (ui.defaultMuteStreams !== undefined) defaultMuteStreams = !!ui.defaultMuteStreams;
-    } catch (_) {}
-    if (defaultMuteStreams) initDefaultMute();
-  }
-  function toggleDefaultMute() {
-    defaultMuteStreams = !defaultMuteStreams;
-    saveUiSetting('defaultMuteStreams', defaultMuteStreams);
-    // Turning it on mid-session takes effect immediately; turning it off just
-    // stops enforcement (current players keep their state, next load is normal).
-    if (defaultMuteStreams) { initDefaultMute(); _hsScanMute(); }
-  }
-
   function toggleAutoClaim() {
     autoClaimPoints = !autoClaimPoints;
     chrome.storage.local.set({ hs_auto_claim_points: autoClaimPoints });
@@ -4924,7 +4846,6 @@
       _renderUiToggleRow('hideviewercount', 'hide viewer count', 'hide viewer count display', false) +
       _renderUiToggleRow('showcosmetics', 'cosmetics', '7TV/BTTV/FFZ paints and badges', true) +
       _renderUiToggleRow('showplatformbadges', 'platform badges', '[T] [K] [Y] labels on messages', platformBadgesEnabled) +
-      _renderUiToggleRow('defaultmute', 'mute streams by default', 'every stream starts muted so a loud one never blasts before the player loads; unmute the one you want', defaultMuteStreams) +
     '</div>';
   }
 
@@ -5421,7 +5342,6 @@
           timestamps:   function() { toggleTimestamps(); },
           avatars:      function() { toggleAvatars(); },
           autoclaim:    function() { toggleAutoClaim(); },
-          defaultmute:  function() { toggleDefaultMute(); },
           dimtimeouts:  function() { toggleDimTimeouts(); },
           readablenames: function() { toggleReadableNames(); },
           firstchatter: function() { toggleFirstChatterGlow(); },
@@ -11102,7 +11022,6 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       loadAutoClaimSetting(),
       loadDimTimeoutsSetting(),
       loadReadableNamesSetting(),
-      loadDefaultMuteSetting(),
       loadFirstChatterGlowSetting(),
       loadKeywordHighlightsSetting(),
       loadOfflineEventsSetting(),

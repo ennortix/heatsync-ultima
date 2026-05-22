@@ -7165,8 +7165,19 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
         // accessible (Twitch wouldn't have echoed otherwise).
         const viewerBadges = viewerBadgesPerChannel.get(m.channel)
         const viewerCanPostSub = isOwn || (viewerBadges && (viewerBadges.has('subscriber') || viewerBadges.has('founder')))
-        const state = viewerCanPostSub ? 'global' : 'locked'
         for (const [name, url] of Object.entries(m.twitchEmotes)) {
+          // Twitch IRC tags BOTH sub emotes and globals (and any name a streamer
+          // collides with, e.g. a "pewpewpew" sub emote sharing a BTTV global's
+          // name). Don't blanket-lock — if the viewer has the name available
+          // via any postable route (own set, channel cache, BTTV/FFZ/7TV global,
+          // twitch global), they can still send it. Render keeps the twitch
+          // CDN url for visual parity; only the click-state changes.
+          let state = 'locked'
+          if (viewerCanPostSub) state = 'global'
+          else {
+            const alt = (typeof lookupEmote === 'function') ? lookupEmote(name) : null
+            if (alt && (alt.state === 'owned' || alt.state === 'global' || alt.state === 'channel')) state = 'global'
+          }
           twitchExtra.set(name, { url, source: 'twitch', state, zeroWidth: false })
         }
       }

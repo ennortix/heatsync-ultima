@@ -1,5 +1,20 @@
 # changelog
 
+## [1.5.1] — 2026-05-21
+
+### fixed
+- broken avatar images now hide via the delegated chat error handler instead of an inline `onerror` — the inline handler was silently stripped by Twitch/Kick/YouTube page CSP, leaving blank avatar boxes
+- recent emotes row now records emotes inserted via tab-complete, not only picker clicks
+- kick: chat-hidden collapse now reclaims video space (the side-panel rule outranked the generic hide); bare emote chips no longer break onto their own line on tab-complete
+- youtube: stream no longer re-mutes after you manually unmute it
+
+### removed
+- default-mute streams (guard, observer, settings toggle) — out of scope for a chat extension and the source of the youtube re-mute loop
+
+### internal
+- search-result rows render via `textContent` instead of pre-escaped `innerHTML`
+- auto-claim, resub/watchstreak share, and youtube resize timers are now lifecycle-tracked so they cancel on SPA-nav teardown
+
 ## [1.5.0] — 2026-05-21
 
 ### added

@@ -2625,6 +2625,8 @@ function insertCompletionKeepOpen(match) {
   if (!input || !match) return;
 
   trackCompletionForAutoAdd(match);
+  if (match.type === 'emote' && match.name && typeof recordRecentEmote === 'function')
+    recordRecentEmote(match.name)
 
   if (wysiwygEnabled) {
     insertCompletionWysiwyg(match);

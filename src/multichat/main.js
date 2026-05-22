@@ -2242,6 +2242,8 @@
           const t = e.target
           if (t instanceof HTMLImageElement && t.classList.contains('hs-mc-badge-img'))
             retryOrHideBadgeImg(t)
+          if (t instanceof HTMLImageElement && t.classList.contains('hs-mc-avatar'))
+            t.style.display = 'none'
         }
         if (isScrolledUp) return
         if (isStaticTab()) return
@@ -2817,8 +2819,8 @@
       div.className = 'hs-mc-search-result'
 
       const ts = r.created_at ? new Date(r.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''
-      const user = escapeHtml(r.display_name || r.username || '')
-      const content = escapeHtml(r.content || '')
+      const user = r.display_name || r.username || ''
+      const content = r.content || ''
       const msgId = r.base36_id || ''
       const permalink = msgId ? `https://heatsync.org/m/${msgId}` : null
 
@@ -2831,12 +2833,12 @@
       }
       const userSpan = document.createElement('span')
       userSpan.className = 'hs-mc-search-user'
-      userSpan.innerHTML = user
+      userSpan.textContent = user
       meta.appendChild(userSpan)
 
       const body = document.createElement('div')
       body.className = 'hs-mc-search-content'
-      body.innerHTML = content
+      body.textContent = content
 
       div.appendChild(meta)
       div.appendChild(body)
@@ -4679,7 +4681,7 @@
   }
   function startAutoClaimPoller() {
     if (_autoClaimPoller || !autoClaimPoints) return
-    setTimeout(_autoClaimSweep, 20000)
+    cleanup.setTimeout(_autoClaimSweep, 20000)
     _autoClaimPoller = cleanup.setInterval(_autoClaimSweep, 5 * 60 * 1000)
   }
   function stopAutoClaimPoller() {
@@ -5893,7 +5895,7 @@
       bitsTier: 0, id: synthId, isSynthetic: true, userOverride: !!customText
     }
     try { irc?._handleMsg?.(synth) } catch (_) {}
-    claim.postTimer = setTimeout(() => {
+    claim.postTimer = cleanup.setTimeout(() => {
       if (_pendingShareClaim === claim) _pendingShareClaim = null
     }, 30000)
   }
@@ -5917,8 +5919,8 @@
     input.setAttribute('placeholder', placeholder)
     input.setAttribute('data-placeholder', placeholder)
     try { input.focus() } catch (_) {}
-    if (_resubShareModeTimer) clearTimeout(_resubShareModeTimer)
-    _resubShareModeTimer = setTimeout(() => _exitResubShareMode(claim, true), 30000)
+    if (_resubShareModeTimer) cleanup.clearTimeout(_resubShareModeTimer)
+    _resubShareModeTimer = cleanup.setTimeout(() => _exitResubShareMode(claim, true), 30000)
   }
   function _exitResubShareMode(claim, fireFallback, silent) {
     if (claim && _resubShareCtx?.claim !== claim) return
@@ -6063,7 +6065,7 @@
       bitsTier: 0, streakCount, id: synthId, isSynthetic: true, userOverride: !!customText
     }
     try { irc?._handleMsg?.(synth) } catch (_) {}
-    claim.postTimer = setTimeout(() => {
+    claim.postTimer = cleanup.setTimeout(() => {
       if (_pendingShareClaim === claim) _pendingShareClaim = null
     }, 30000)
   }
@@ -6087,8 +6089,8 @@
     input.setAttribute('placeholder', placeholder)
     input.setAttribute('data-placeholder', placeholder)
     try { input.focus() } catch (_) {}
-    if (_watchstreakShareModeTimer) clearTimeout(_watchstreakShareModeTimer)
-    _watchstreakShareModeTimer = setTimeout(() => _exitWatchstreakShareMode(claim, true), 30000)
+    if (_watchstreakShareModeTimer) cleanup.clearTimeout(_watchstreakShareModeTimer)
+    _watchstreakShareModeTimer = cleanup.setTimeout(() => _exitWatchstreakShareMode(claim, true), 30000)
   }
   function _exitWatchstreakShareMode(claim, fireFallback, silent) {
     if (claim && _watchstreakShareCtx?.claim !== claim) return
@@ -7112,7 +7114,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       }
       const cachedUrl = avatarCache.get(userKey)
       if (cachedUrl) {
-        avatarHtml = `<img class="hs-mc-avatar" src="${escapeHtml(cachedUrl)}" alt="" loading="lazy" decoding="async" onerror="this.style.display='none'">`
+        avatarHtml = `<img class="hs-mc-avatar" src="${escapeHtml(cachedUrl)}" alt="" loading="lazy" decoding="async">`
       } else if (!m.platform || m.platform === 'twitch') {
         // Only fetch from decapi for Twitch users (Kick/YouTube don't have decapi endpoints)
         avatarHtml = `<img class="hs-mc-avatar" data-user="${escapeHtml(userKey)}" src="" alt="" style="display:none" loading="lazy" decoding="async">`
@@ -9728,9 +9730,9 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     if (hostPlatform === 'yt') {
       const fire = () => { try { window.dispatchEvent(new Event('resize')) } catch (_) {} };
       fire();
-      setTimeout(fire, 100);
-      setTimeout(fire, 500);
-      setTimeout(fire, 1500);
+      cleanup.setTimeout(fire, 100);
+      cleanup.setTimeout(fire, 500);
+      cleanup.setTimeout(fire, 1500);
     }
   }
 

@@ -46,6 +46,7 @@ the extension communicates with the following services. **no personal data is so
 |---------|-----------|---------|
 | heatsync.org | auth token, emote names, blocked IDs | fetch and sync your emotes |
 | heatsync.org | channel names | real-time emote broadcasts via WebSocket |
+| heatsync.org | chat/feed link URLs you hover or that appear in feed posts | proxy link previews and embed metadata so the request isn't made from your IP |
 | 7tv.io | twitch user IDs, emote names | fetch paint gradients and badges |
 | frankerfacez.com (FFZ) | emote names (batch query) | fetch badge metadata |
 | betterttv.net (BTTV) | emote names (batch query) | fetch badge metadata |

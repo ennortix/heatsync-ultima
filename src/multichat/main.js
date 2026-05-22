@@ -1109,6 +1109,21 @@
     }, 600)
   }
 
+  // 7TV badge imgs sometimes fail at insert-time: a burst of cdn.7tv.app
+  // requests races HTTP/3 and the CDN drops a few. The URL is valid (a fresh
+  // fetch succeeds), so retry up to 2x — cache-busted + staggered — before
+  // hiding, instead of leaving a permanent broken-image icon.
+  function retryOrHideBadgeImg(img) {
+    if (!(img instanceof HTMLImageElement) || !img.classList.contains('hs-mc-badge-img')) return
+    const n = +img.dataset.hsRetry || 0
+    if (n >= 2) { img.style.display = 'none'; return }
+    img.dataset.hsRetry = String(n + 1)
+    const base = img.dataset.hsSrc || (img.dataset.hsSrc = img.src.replace(/[?&]hsr=\d+$/, ''))
+    cleanup.setTimeout(() => {
+      img.src = base + (base.includes('?') ? '&' : '?') + 'hsr=' + img.dataset.hsRetry
+    }, 200 * (n + 1))
+  }
+
   // Update cosmetics (badges + paint) in-place without full re-render.
   // O(1) lookup via _uidIndex / _mentionIndex instead of querySelectorAll over
   // the full message container — at 25-user batches × 500 children that was
@@ -1152,12 +1167,15 @@
             if (url) {
               const img = document.createElement('img')
               img.className = 'hs-mc-badge-img hs-mc-7tv-badge'
-              img.src = url
               img.alt = '7TV'
               img.title = cosmetic.badge.tooltip || '7TV'
               img.style.cssText = 'width:18px;height:18px;'
-              // Insert before the username link
+              img.dataset.hsSrc = url
+              // Insert FIRST, then set src — so an immediate QUIC-drop error
+              // fires while the img is already under msgsEl and the capture-phase
+              // error handler (→ retryOrHideBadgeImg) catches it.
               if (userLink) userLink.parentNode.insertBefore(img, userLink)
+              img.src = url
             }
           }
         }
@@ -2206,12 +2224,13 @@
       // coalesce so a 100-image burst still does one layout per frame.
       let _imgLoadPinScheduled = false
       const onImgLoadOrError = (e) => {
-        // Hide a cosmetic badge whose image fails (e.g. 7TV CDN QUIC errors) so
-        // we never render a broken-image icon. Fresh imgs on later messages retry.
+        // A cosmetic badge img failed (e.g. 7TV CDN QUIC drop under request
+        // burst). The URL is valid, so retry before giving up — only hide after
+        // 2 failed retries — so we never render a permanent broken-image icon.
         if (e?.type === 'error') {
           const t = e.target
           if (t instanceof HTMLImageElement && t.classList.contains('hs-mc-badge-img'))
-            t.style.display = 'none'
+            retryOrHideBadgeImg(t)
         }
         if (isScrolledUp) return
         if (isStaticTab()) return

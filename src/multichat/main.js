@@ -10232,11 +10232,17 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
         try { showAuthLoginBanner(!!msg.loggedIn) } catch (e) {}
       }
       if (msg.type === 'cosmetics_update') {
-        mcBttvBadgeMap = new Map(Object.entries(msg.bttvBadges || {}))
-        mcFfzBadgeMap = new Map(Object.entries(msg.ffzBadges || {}))
-        mcChatterinoBadgeMap = new Map(Object.entries(msg.chatterinoBadges || {}))
-        bumpRenderEpoch()
-        renderMessages(currentTab)
+        const bttv = Object.entries(msg.bttvBadges || {})
+        const ffz = Object.entries(msg.ffzBadges || {})
+        const chat = Object.entries(msg.chatterinoBadges || {})
+        // Never let an empty broadcast wipe populated maps.
+        if (bttv.length + ffz.length + chat.length > 0) {
+          mcBttvBadgeMap = new Map(bttv)
+          mcFfzBadgeMap = new Map(ffz)
+          mcChatterinoBadgeMap = new Map(chat)
+          bumpRenderEpoch()
+          renderMessages(currentTab)
+        }
       }
       // SW pushes its `/api/live/following` snapshot every ~60s. Consume it
       // here so we can skip /api/platform/live-status calls for the channels
@@ -10956,7 +10962,11 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     // ── PHASE 3: settings hydration + emote load (all in parallel) ────────
     // All load* funcs, blocked-emotes, and emotes share the cached ui_settings
     // or hit independent local keys; they can run concurrently.
-    await Promise.all([
+    // Resilient init: each loader may fail OR stall without aborting the rest.
+    // (Plain Promise.all let a single throwing/hanging settings-loader kill
+    // everything after it — including badge loading.) Cap each at 5s + swallow
+    // rejections so the panel always finishes booting.
+    await Promise.allSettled([
       _uiPrime,  // already in flight; just await here to ensure it landed
       loadActiveTab(),
       loadTabsPosition(),
@@ -10990,7 +11000,10 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
       loadEmotes(),
       loadSenderEmoteSets(),
       loadStaleEmotes(),
-    ]);
+    ].map(p => Promise.race([
+      Promise.resolve(p).catch(() => {}),
+      new Promise(r => setTimeout(r, 5000)),
+    ])));
     // Init done — drop the cache so subsequent reads see fresh data.
     invalidateUiSettingsCache()
 
@@ -11005,21 +11018,32 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
     setupProfileCardHandlers();
     listenForSettingsChanges();
 
-    // Request initial BTTV/FFZ/Chatterino badge maps from background
-    safeSendMessage({ type: 'get_bulk_badges' }).then(resp => {
-      let touched = false
-      if (resp?.bttvBadges) { mcBttvBadgeMap = new Map(Object.entries(resp.bttvBadges)); touched = true }
-      if (resp?.ffzBadges) { mcFfzBadgeMap = new Map(Object.entries(resp.ffzBadges)); touched = true }
-      if (resp?.chatterinoBadges) { mcChatterinoBadgeMap = new Map(Object.entries(resp.chatterinoBadges)); touched = true }
-      // Bulk badge maps just landed — existing messages need a rebuild to pick
-      // up 3rd-party badges. cosmetics_update normally drives this, but it
-      // doesn't fire if BG already broadcast warm cache before our listener
-      // attached. This response is the get_bulk_badges fallback path.
-      if (touched) {
+    // Request initial BTTV/FFZ/Chatterino badge maps from background.
+    // A cold service worker can answer before its storage restore lands,
+    // returning empty maps; cosmetics_update only re-broadcasts on a fresh
+    // fetch, so a one-shot request that lands empty would leave the overlay
+    // badge-less until the next ~24h refresh. Retry with backoff until the
+    // maps come back non-empty (the background also pushes a warm-cache
+    // cosmetics_update once restore completes — whichever wins, we recover).
+    const loadBulkBadges = (attempt = 0) => {
+      safeSendMessage({ type: 'get_bulk_badges' }).then(resp => {
+        const bttv = resp?.bttvBadges ? Object.entries(resp.bttvBadges) : []
+        const ffz = resp?.ffzBadges ? Object.entries(resp.ffzBadges) : []
+        const chat = resp?.chatterinoBadges ? Object.entries(resp.chatterinoBadges) : []
+        if (bttv.length + ffz.length + chat.length === 0) {
+          if (attempt < 8) cleanup.setTimeout(() => loadBulkBadges(attempt + 1), Math.min(500 * (attempt + 1), 3000))
+          return
+        }
+        mcBttvBadgeMap = new Map(bttv)
+        mcFfzBadgeMap = new Map(ffz)
+        mcChatterinoBadgeMap = new Map(chat)
         bumpRenderEpoch()
         renderMessages(currentTab)
-      }
-    }).catch(() => {})
+      }).catch(() => {
+        if (attempt < 8) cleanup.setTimeout(() => loadBulkBadges(attempt + 1), Math.min(500 * (attempt + 1), 3000))
+      })
+    }
+    loadBulkBadges()
 
     // Load heatsync auth state
     loadHsAuth();

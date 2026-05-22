@@ -5701,6 +5701,11 @@ async function handleMessage(message, sender, sendResponse) {
     })()
     return true
   } else if (message.type === 'get_bulk_badges') {
+    // Synchronous response — must call sendResponse before this handler yields,
+    // or the message channel closes and the caller's promise hangs forever.
+    // The cold-start "maps not loaded yet" race is handled on the client side:
+    // the multichat retry-loader re-requests until non-empty, and initialize()
+    // broadcasts a cosmetics_update once the storage restore lands.
     const bttvObj = {}
     for (const [k, v] of bttvBadgeMap) bttvObj[k] = v
     const ffzObj = {}
@@ -5920,6 +5925,15 @@ async function initialize() {
     if (stored.chatterino_badge_map && typeof stored.chatterino_badge_map === 'object') {
       chatterinoBadgeMap = new Map(Object.entries(stored.chatterino_badge_map))
       log(' ✓ Warm cache:', chatterinoBadgeMap.size, 'Chatterino badge entries from storage')
+    }
+    // Push restored maps to tabs that loaded before this cold-wake restore landed.
+    // Content scripts request get_bulk_badges during their own init; one of them
+    // can arrive before the async restore completes and the multichat overlay,
+    // which inits early, may receive an empty response with no later recovery
+    // (cosmetics_update only re-broadcasts on a fresh fetch). A warm-cache push
+    // here gives every already-listening surface the maps regardless of timing.
+    if (ffzBadgeMap.size || bttvBadgeMap.size || chatterinoBadgeMap.size) {
+      broadcastBadgeMaps()
     }
   } catch (err) {
     log(' Storage restore failed:', err.message);

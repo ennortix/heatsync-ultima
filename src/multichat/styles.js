@@ -3862,7 +3862,6 @@ function injectStyles() {
     .hs-mc-tab-content {
       flex: 1 1 0 !important;
       min-height: 0 !important;
-      max-height: calc(min(400px, 60vh) - 42px) !important;
       overflow-y: auto !important;
     }
     /* Custom scrollbar — Chrome + Firefox */

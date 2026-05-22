@@ -1950,7 +1950,9 @@ function handleInputChange(e) {
               // Modifier without an anchor — keep as plain text, don't insert as BTTV emote
               return
             }
-            const resolved = lookupEmoteWithOverlay(word)
+            // Live auto-convert: in-set emotes only. Channel/global emotes
+            // (incl. lowercase word collisions like "what") stay text until Tab.
+            const resolved = lookupEmoteWithOverlay(word, { ownedOnly: true })
             if (resolved) {
               const wordStart = cursor - match[0].length
               if (deflectAdjacentChip(node, wordStart)) return
@@ -2039,7 +2041,7 @@ function handleInputChange(e) {
                   const cm = afterNode.textContent.match(/^(\S+)(\s|$)/)
                   if (!cm) break
                   const cName = cm[1]
-                  const cResolved = lookupEmoteWithOverlay(cName)
+                  const cResolved = lookupEmoteWithOverlay(cName, { ownedOnly: true })
                   if (!cResolved || cResolved.isOverlay) break
                   const cImg = createInputEmoteImg(cName)
                   if (!cImg) break

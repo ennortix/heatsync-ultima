@@ -1534,13 +1534,24 @@
     // never re-add the transparent placeholder a blocked render shows.
     return viewerPersonalEmotes.get(name) || emoteCache.get(name) || channelEmoteCaches[currentTab]?.get(name) || channelEmoteCaches[getLiveChannel()]?.get(name) || channelEmoteCaches[getCurrentChannel()]?.get(name) || removedEmoteFallback.get(name) || blockedEmoteFallback.get(name);
   }
+  // In-set lookup: only emotes the viewer actually owns (heatsync inventory +
+  // their native Twitch subs). Excludes channel/global/3rd-party pools — those
+  // are words a viewer never deliberately added (e.g. a channel's lowercase
+  // "what" 7TV emote), so silently imagifying them mid-sentence is hostile.
+  function lookupOwnedEmote(name) {
+    return viewerPersonalEmotes.get(name)
+  }
   // Resolve a typed emote name to {emote, isOverlay, displayName}.
   // Handles zeroWidth flag AND the 7TV-style "name0" overlay convention
   // ("TriHard0" → looks up "TriHard" and treats as overlay) so the input
   // preview matches how the chat renderer resolves the same word.
-  function lookupEmoteWithOverlay(name) {
+  // ownedOnly restricts resolution to the viewer's own set — used by the LIVE
+  // type-word-then-space auto-convert so only your emotes imagify as you type.
+  // Channel/global emotes still render via Tab-complete (which omits the flag).
+  function lookupEmoteWithOverlay(name, { ownedOnly = false } = {}) {
+    const resolve = ownedOnly ? lookupOwnedEmote : lookupEmote
     const endsWithZero = name.length > 1 && name.endsWith('0')
-    let emote = lookupEmote(name)
+    let emote = resolve(name)
     // Mirror processEmotes (chat render): a direct hit ending in "0" is an
     // overlay even without the zeroWidth flag (7TV "name0" convention). Without
     // this, an emote literally named "fog0" rendered inline in the input box
@@ -1548,7 +1559,7 @@
     let isOverlay = !!emote?.zeroWidth || (!!emote && endsWithZero)
     if (!emote && endsWithZero) {
       const baseName = name.slice(0, -1)
-      const baseEmote = lookupEmote(baseName)
+      const baseEmote = resolve(baseName)
       if (baseEmote) {
         emote = baseEmote
         isOverlay = true

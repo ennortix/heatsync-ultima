@@ -1,5 +1,15 @@
 # changelog
 
+## [1.5.2] — 2026-05-22
+
+### added
+- FFZ-style modifiers (`w!` `h!` `l!` `c!`) now apply to emoji too, not just emotes — the modifier folds into the emoji span
+
+### fixed
+- live type-and-space auto-convert only imagifies emotes you own (heatsync inventory + native subs); channel/global/3rd-party words like a lowercase "what" emote stay plain text until Tab
+- input box no longer collapses on youtube — pinned `box-sizing` + `min-height` so the placeholder stays inside the white box
+- emote picker no longer shows a blank strip above the input on kick/youtube — dropped the hardcoded `max-height` that subtracted a tabs-bar height only present on twitch
+
 ## [1.5.1] — 2026-05-21
 
 ### fixed

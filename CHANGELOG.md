@@ -1,5 +1,78 @@
 # changelog
 
+## [1.5.0] — 2026-05-21
+
+### added
+- recent emotes row at the top of the emote picker (local MRU, cap 24)
+- emote/emoji overlay via name0 convention — appending `0` to an emote name or emoji stacks it zero-width onto the left; committed on Tab, not live; emoji spans marked contenteditable=false so overlay stacking survives caret moves
+- `\` key toggles chat panel hide/show; edge-pill restores last edge
+- statusbar — inline toast status line with collapse button (position-aware arrow); hides Twitch's native collapse button
+- universal right-click menu for any user or feed post — follow, block, mute, whisper wired in order
+- block/remove context menus on emotes with numbered keybinds (bottom-up); owned-emote tooltip goes green, unowned orange
+- mod toolbar — hover row shows delete/timeout/ban per message; per-button settings, hotkeys, prefetched mod state; singleton with absolute positioning
+- profile card: compact hero layout, lean mod toolbar integration, clip-URL copy
+- twitch picker sub-tabs: events, bits, chat, links; cheer popup flow; toast dedup + repositioning
+- channel-scoped callouts + custom-body resub share via GQL
+- tab re-completion across emote chips; settings cheatsheet — emote colors, 0-overlay/modifier syntax, keybind reference, right-click guide
+- infinite tab-cycle via 7tv search fallback when local set exhausted
+- provider search in emote pickers + two-click add flow for unowned emotes
+- tab-complete ranked by 7TV popularity (TOP_ALL_TIME), not alphabetical
+- owned sub emotes reachable from tab completion
+- cross-platform Twitch GQL wrapper + scheduler for emote actions
+
+### changed
+- tagline updated to "twitch + kick + youtube, one chat" across manifest and 34 locales; home tab renamed to feed across all locales
+- welcome page reduced to minimal landing style; readme tagline updated
+- emote size spec aligned to website: true /1.0 native at 1x, emoji 2x default, 1x/2x/4x widget variants
+- bitmap font rendering fully landed: AA disabled, faux-bold/italic synthesis off, integer line-heights, emoji fallback, kerning + OT features, left-aligned channel tabs so text origin lands on integer X; matches heatsync.org base.css exactly
+- font-size auto-switches to native (13/14px) when bitmap font is selected
+- sender heatsync emote sets fetched in a single batched request, exempted from shared backoff, with credentials=omit for CORS; sets updated in place on source change rather than discarded and refetched
+- emote auth: bearer-only on mutations (cookie was tripping server CSRF check)
+- emote-picker stays open on context-menu clicks; blocked state visible in search results
+- blocked emotes render dashed box at real emote dimensions (not a fixed square)
+- blocked emote left-click: steps to unadded state first, not straight to owned; re-adding recovers real URL via emote lookup, never the broken src; re-added emotes no longer store a blank
+- emote chip colors carry provider brand; YT keyboard guard rewritten
+- picker hover rects: green for owned, orange for addable, dashed for blocked
+- feed emotes wrapped in emote-wrapper so right-click block hides them live
+- message right-click menu: copy=2, mute/unmute=1, numbered bottom-up
+- resub-share broadcast: fiber onClick + stored-button + DOM-click fallbacks
+- emote modifiers toggle relabeled as BTTV & FFZ (supports both)
+- live tab pinned to #808080 at rest/active; white-bg hover like normal tabs
+- util-btn font-weight set to 400 — bold was pushing Cozette off bitmap path
+- dropped www.heatsync.org host permission (unused)
+
+### fixed
+- feed unread surface corrected from `home` to `live` (matches DB + server schema); default-mute all streams on first load
+- 7TV cosmetics dropping on busy or restored channels (per-user cap now clears full ~2000-user buffer)
+- broken 7TV badges on QUIC drop — retry with insert-before-src fallback instead of hiding
+- badge tooltip loads real hi-res CDN variant (4x), not upscaled 18px
+- panel init made resilient; badge fetch made synchronous
+- cross-user heatsync emotes now render in native Twitch chat and in the multichat panel; newly-added emotes propagate on re-validation
+- shared emotes show as addable (orange) with 'extension' label, not owned (green)
+- tab-completed 3rd-party emotes and blocked names persist across refresh
+- overlay emotes stack onto emoji in the input box
+- emote hover-highlight color re-syncs on state change
+- removing an emote drops it from the auto-add-on-send registry
+- own-badge seeded per-channel from USERSTATE rawBadges on join
+- full chat scrollback shown on reload — stale-guard narrowed to stream events only
+- deep-history sources fired on restored channels, not only fresh joins
+- no chat flash on block/unblock
+- chat not flashing on block/unblock cycles
+- Twitch dashboard reflows correctly under no-channel page squeeze
+- live-tab hover CSS ported into src so rebuild no longer reverts it
+- picker hover rect tracks emote bounds, not img padding-box
+- feed post-link fixes + reply-thread hover stack
+- mod toolbar: singleton enforcement + absolute positioning + hotkey wiring
+
+### perf
+- live chat DOM capped at 500 rendered rows, decoupled from 1500-row data buffer; measured −67% nodes, −134 MB
+- memory + 100k-scale audit pass: allocations and lookup paths audited across cosmetics, emote render, and observer surfaces
+
+## [1.4.1] — 2026-05-15
+
+### fixed
+- long input text wraps instead of overflowing into the tab area
+
 ## [1.4.0] — 2026-05-14
 
 ### added

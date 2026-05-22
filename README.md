@@ -5,7 +5,7 @@ twitch + kick + youtube, one chat.
 - **multichat** — twitch, kick, and youtube in one tabbed panel: live chat, mentions, whispers, social feed
 - **custom emotes** — upload at [heatsync.org](https://heatsync.org), use them in any twitch/kick/youtube chat. real-time sync, no channel approval
 - **7tv, bttv, ffz** — emotes, paints, badges render automatically. works without an account
-- tab completion, emote picker, zero-width stacking, user muting, emote blocking, profile cards, twitch clip creation
+- tab completion, emote picker with recent row, zero-width overlay (type `emote0` → tab), user muting, emote blocking, profile cards, unified right-click menu, default-mute streams, twitch clip creation
 
 ## install
 

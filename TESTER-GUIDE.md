@@ -67,6 +67,30 @@ open twitch.tv, kick.com, or a youtube live stream and try these:
 - [ ] that emote should disappear/stop rendering
 - [ ] refresh page - emote should still be blocked
 
+### recent emotes (picker)
+- [ ] open the emote picker in the multichat input bar
+- [ ] the top row should show "Recent" — up to 24 emotes you've used before
+- [ ] send a few emotes; close and reopen picker — they should appear in Recent first
+- [ ] Recent row is absent on first install (no history yet)
+
+### right-click menu
+- [ ] right-click a username in multichat chat — menu should appear with follow/block/whisper options
+- [ ] right-click an emote in multichat chat — should show block emote option
+- [ ] menu dismisses on click-away and on scroll (without freezing)
+- [ ] menu appears in same fixed order: follow, block
+
+### zero-width overlay (name0)
+- [ ] in the multichat input, type an emote name followed immediately by `0` (e.g. `Pepega0`)
+- [ ] press TAB — the `0` suffix should stack the emote as a zero-width overlay onto the preceding emote
+- [ ] the trailing `0` should be dropped; both emotes should display overlaid
+- [ ] also works with emoji: `:smile:0` → tab → overlays onto the left
+
+### default-mute streams
+- [ ] open multichat settings (gear icon)
+- [ ] enable "mute streams by default"
+- [ ] open a new stream — video player should start muted automatically
+- [ ] unmuting the player manually should not get overridden
+
 ### cross-platform
 - [ ] test on twitch.tv
 - [ ] test on kick.com

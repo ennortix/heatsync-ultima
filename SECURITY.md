@@ -21,7 +21,7 @@ extension-side processing happens locally in the browser tab. the extension comm
 
 ## content-script defenses
 
-- **`escapeHtml()`** wraps every user-supplied value (chat text, display names, emote names, profile fields, feed content) before it can reach `innerHTML` or `insertAdjacentHTML`. enforced in `src/lib/utils.js`.
+- **`escapeHtml()`** wraps every user-supplied value (chat text, display names, emote names, profile fields, feed metadata) before it can reach `innerHTML` or `insertAdjacentHTML`. enforced in `src/lib/utils.js`. exception: feed post body text is HTML-escaped server-side before storage and is rendered as-is — re-escaping would double-encode entities.
 - **`safeUrl()`** validates urls before assigning them to `href` / `src`; only `http(s):` schemes pass.
 - **`sanitizeColor()`** restricts user-supplied colors to `#rrggbb` / `#rgb` hex.
 - **CSP**: extension pages declare `script-src 'self'; object-src 'none'` in both MV3 (`extension_pages`) and MV2 manifests — no inline eval, no remote scripts.

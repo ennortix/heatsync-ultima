@@ -4,7 +4,7 @@
 > This file is a repo snapshot for offline review. The live version on
 > heatsync.org is authoritative if the two ever differ.
 
-**version 1.0 — april 2026**
+**version 1.5 — may 2026**
 
 ## what we collect
 
@@ -50,6 +50,9 @@ the extension communicates with the following services. **no personal data is so
 | frankerfacez.com (FFZ) | emote names (batch query) | fetch badge metadata |
 | betterttv.net (BTTV) | emote names (batch query) | fetch badge metadata |
 | decapi.me | channel names (streamer usernames) | resolve to Twitch ID for cosmetics lookups |
+| recent-messages.robotty.de | channel names | fetch recent Twitch chat history on join |
+| logs.ivr.fi, logs.spanix.team | channel names | fetch extended Twitch chat history on join |
+| api.chatterino.com | none (public GET, no personal data) | fetch Chatterino contributor badges |
 | twitch.tv, kick.com, youtube.com | none — extension reads DOM only | display overlays in chat |
 
 ## what we don't collect

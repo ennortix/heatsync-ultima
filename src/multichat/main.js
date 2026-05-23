@@ -84,6 +84,11 @@
   // re-subscribe, emote-add round-trip, etc.). Cleared by stream:offline so a
   // genuine re-go-live during a long session still shows.
   const sessionWentLiveSeen = new Set()
+  // Content-script load time. Used as a connect-snapshot grace for the FIRST
+  // stream:online emission per channel — sessionWentLiveSeen only catches the
+  // second emission onward. SW WS auth + snapshot burst lands up to ~20s
+  // after content load on slow connects, so 30s.
+  const mcStartedAt = Date.now()
   let irc = null;
   let kickChat = null;
   let currentUsername = null;
@@ -11492,17 +11497,27 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
           // as realtime online events on every (re)connect), not a genuine
           // off\u2192on transition. Drop it. A real transition pushes faster than
           // the 60s poll refresh so it won't be in the set yet and still shows.
-          // Per-channel session dedupe: one "went live" per channel per session
-          // (offline clears the mark below). Suppresses every server re-broadcast
-          // — initial WS connect-snapshot, EventSub re-subscribe replays, the
-          // emote-add round-trip that fans out cached stream.online events, etc.
+          // Triple guard against the "went live" wall:
+          //  1. sessionWentLiveSeen — a channel emits at most one went-live
+          //     per session (offline clears the mark below). Kills every later
+          //     server re-broadcast: connect-snapshot replays, EventSub
+          //     re-subscribe, emote-add round-trips that fan out cached
+          //     stream.online events, etc.
+          //  2. Membership — if a poll snapshot already knows this channel
+          //     live, the FIRST emission we see is a snapshot, not a
+          //     transition. Drop.
+          //  3. Grace window — for the first 30s after content load, the WS
+          //     burst can arrive before either set has populated, so neither
+          //     #1 nor #2 catches it. Treat any first-emission within 30s as
+          //     snapshot.
+          // A genuine off→on transition beats the 60s poll and arrives outside
+          // the grace, so it still surfaces (and gets recorded so any later
+          // re-broadcast of the same channel is deduped).
           if (sessionWentLiveSeen.has(channel)) return;
+          const _alreadyLive = liveChannelSet?.has(channel) || _swLiveSet?.has(channel);
+          const _inGrace = Date.now() - mcStartedAt < 30000;
           sessionWentLiveSeen.add(channel);
-          // If the authoritative poll snapshots already have this channel live,
-          // this isn't a transition — it's the first replayed snapshot we're
-          // seeing. Record (above) and drop. A genuine off→on beats the 60s
-          // poll, so the channel won't be in either set yet and still shows.
-          if (liveChannelSet?.has(channel) || _swLiveSet?.has(channel)) return;
+          if (_alreadyLive || _inGrace) return;
           text = msg.game ? `[${channel}] \u25C6 went live \u2014 ${msg.game}` : `[${channel}] \u25C6 went live`;
           eventClass = 'event-online';
         } else if (msg.eventType === 'stream:offline') {
@@ -11745,17 +11760,27 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
           // this is snapshot noise. A genuine off\u2192on transition pushes faster
           // than the 60s poll refreshes the set, so it won't be present yet and
           // still surfaces.
-          // Per-channel session dedupe: one "went live" per channel per session
-          // (offline clears the mark below). Suppresses every server re-broadcast
-          // — initial WS connect-snapshot, EventSub re-subscribe replays, the
-          // emote-add round-trip that fans out cached stream.online events, etc.
+          // Triple guard against the "went live" wall:
+          //  1. sessionWentLiveSeen — a channel emits at most one went-live
+          //     per session (offline clears the mark below). Kills every later
+          //     server re-broadcast: connect-snapshot replays, EventSub
+          //     re-subscribe, emote-add round-trips that fan out cached
+          //     stream.online events, etc.
+          //  2. Membership — if a poll snapshot already knows this channel
+          //     live, the FIRST emission we see is a snapshot, not a
+          //     transition. Drop.
+          //  3. Grace window — for the first 30s after content load, the WS
+          //     burst can arrive before either set has populated, so neither
+          //     #1 nor #2 catches it. Treat any first-emission within 30s as
+          //     snapshot.
+          // A genuine off→on transition beats the 60s poll and arrives outside
+          // the grace, so it still surfaces (and gets recorded so any later
+          // re-broadcast of the same channel is deduped).
           if (sessionWentLiveSeen.has(channel)) return;
+          const _alreadyLive = liveChannelSet?.has(channel) || _swLiveSet?.has(channel);
+          const _inGrace = Date.now() - mcStartedAt < 30000;
           sessionWentLiveSeen.add(channel);
-          // If the authoritative poll snapshots already have this channel live,
-          // this isn't a transition — it's the first replayed snapshot we're
-          // seeing. Record (above) and drop. A genuine off→on beats the 60s
-          // poll, so the channel won't be in either set yet and still shows.
-          if (liveChannelSet?.has(channel) || _swLiveSet?.has(channel)) return;
+          if (_alreadyLive || _inGrace) return;
           text = msg.game ? `[${channel}] \u25C6 went live \u2014 ${msg.game}` : `[${channel}] \u25C6 went live`;
           eventClass = 'event-follow event-online';
         } else if (msg.eventType === 'stream:offline') {

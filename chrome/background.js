@@ -625,25 +625,9 @@ let heatsyncBackoffUntil = 0
 // hundreds of "backing off" warns; the server already told us to slow down).
 const heatsyncInflightAborts = new Set()
 let _heatsyncBackoffWarnAt = 0
-// Heatsync concurrency cap — Cloudflare/server per-IP rate-limit trips when
-// 5+ requests fly concurrently (panel cold-load with 8 channels was firing 8
-// /api/emotes/user/X in the same tick). Cap at 4 in flight; queue the rest.
-// Together with the cascade-abort this turns bursts into smooth serial waves.
-const HEATSYNC_CONCURRENCY = 4
-let heatsyncInflightCount = 0
-const heatsyncWaitQueue = []
-function heatsyncAcquire() {
-  if (heatsyncInflightCount < HEATSYNC_CONCURRENCY) {
-    heatsyncInflightCount++
-    return Promise.resolve()
-  }
-  return new Promise(resolve => heatsyncWaitQueue.push(resolve))
-}
-function heatsyncRelease() {
-  heatsyncInflightCount--
-  const next = heatsyncWaitQueue.shift()
-  if (next) { heatsyncInflightCount++; next() }
-}
+// (Removed: heatsync concurrency cap. The 4-slot semaphore could starve
+// critical calls behind queued retries during sustained backoff windows.
+// Cascade-abort + warn dedupe below are enough; if bursts return, revisit.)
 function fakeBackoffResponse() {
   // Match the Response interface enough that callers checking .status / .ok / .json() / .body work.
   return {
@@ -665,15 +649,6 @@ async function fetchWithTimeout(url, opts = {}, ms = 10000) {
   if (backoffManaged && Date.now() < heatsyncBackoffUntil) {
     return fakeBackoffResponse()
   }
-  // Concurrency gate for heatsync — covers backoffManaged and noBackoff paths
-  // alike (server rate-limit applies to ALL heatsync calls). Queued requests
-  // re-check the backoff window after waking so a 429 that fired while we
-  // queued short-circuits us out of the slot we'd be wasting.
-  if (isHeatsync) await heatsyncAcquire()
-  if (backoffManaged && Date.now() < heatsyncBackoffUntil) {
-    heatsyncRelease()
-    return fakeBackoffResponse()
-  }
   const ctrl = new AbortController()
   const timer = setTimeout(() => ctrl.abort(), ms)
   if (opts.signal) {
@@ -689,7 +664,6 @@ async function fetchWithTimeout(url, opts = {}, ms = 10000) {
   } finally {
     clearTimeout(timer)
     if (backoffManaged) heatsyncInflightAborts.delete(ctrl)
-    if (isHeatsync) heatsyncRelease()
   }
   if (backoffManaged && resp.status === 429) {
     const retryAfter = resp.headers.get('retry-after')

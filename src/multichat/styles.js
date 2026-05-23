@@ -2705,10 +2705,15 @@ function injectStyles() {
       pointer-events: none;
     }
     /* Hover: show solid color rect, hide image. Color from --hs-highlight-color
-       (set by hover source) so cross-highlighted instances all match. */
+       (set by hover source) so cross-highlighted instances all match.
+       transition:none snaps to the highlight color on class-apply — without
+       it, moving between sibling instances briefly removes+re-adds the class
+       and the base 0.25s background-color transition flashes the sibling's
+       state color (e.g. green) before settling back to highlight orange. */
     .hs-mc-emote-wrapper.hs-emote-highlight::before {
       opacity: 1;
       background: var(--hs-highlight-color, #00ff00) !important;
+      transition: none;
     }
     .hs-mc-emote-wrapper.hs-emote-highlight > img {
       visibility: hidden;

@@ -1789,6 +1789,13 @@
         // here prevents non-entitled senders' text from re-imagifying via
         // this fallback cache.
         if (source === 'twitch') continue;
+        // 7TV/BTTV/FFZ channel emotes are authoritatively fetched by the
+        // background's fetchChannelOwnerEmotes. The DOM scan would otherwise
+        // capture other browser extensions' renders of personal emotes (e.g.
+        // 7TV browser ext rendering the viewer's own posted emote) and stamp
+        // them into channelEmoteCaches as if they were channel-wide. That
+        // leaks the viewer's set into every sender's message in this channel.
+        if (source === '7tv' || source === 'bttv' || source === 'ffz') continue;
         cache.set(name, { url, source, state: getEmoteState(name, source), zeroWidth: false });
         found++;
       }

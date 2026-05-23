@@ -10361,8 +10361,16 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
           });
         }, 300);
       }
-      // Inventory changes: update membership + ensure emotes are in cache for tab completion
-      // Old messages keep their rendered emotes, new messages use updated inventory
+      // Inventory changes: update membership + viewer's personal set.
+      // CRITICAL: do NOT add inventory items to emoteCache (the global render
+      // pool). emoteCache is consulted as a fallback for OTHER senders'
+      // messages, so writing the viewer's inventory there made viewer-owned
+      // emotes render for every sender's messages — exactly the "personal set
+      // bleed" that viewerPersonalEmotes was built to prevent (see line 1389).
+      // Lookups for own outgoing use senderEmotes=viewerPersonalEmotes; tab
+      // completion / picker use lookupEmote() which checks viewerPersonalEmotes
+      // first. emoteCache only needs the state flipped when the same name is
+      // ALSO a heatsync global.
       if (msg.type === 'inventory_update') {
         const prevInventory = new Set(inventoryEmotes)
         inventoryEmotes.clear();
@@ -10371,10 +10379,9 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
           if (e.name) {
             inventoryEmotes.add(e.name);
             if (e.hash) inventoryHashes.set(e.name, e.hash);
-            // Ensure emote is in cache for tab completion + rendering
-            if (!emoteCache.has(e.name) && e.url) {
-              emoteCache.set(e.name, { url: e.url, source: 'heatsync', state: 'owned', hash: e.hash, slot: e.slot });
-            } else if (emoteCache.has(e.name)) {
+            // Flip state for emotes that are ALSO in the heatsync globals pool;
+            // do not ADD new entries to emoteCache here.
+            if (emoteCache.has(e.name)) {
               const c = emoteCache.get(e.name);
               c.state = 'owned';
               if (e.slot != null) c.slot = e.slot;

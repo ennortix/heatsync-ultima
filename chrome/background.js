@@ -1161,6 +1161,10 @@ async function loadLiveStatusState() {
     }
   } catch {}
 }
+// Eagerly hydrate at SW boot so handleFollowStreamEvent can gate on lastSeenLive
+// before the first pollFollowedLive tick. Without this the WS reconnect burst
+// races the poll alarm and slips through.
+loadLiveStatusState().catch(() => {})
 
 async function saveLiveStatusState() {
   _liveStatusInitialized = true
@@ -1282,10 +1286,12 @@ async function pollFollowedLive() {
   }
 }
 
-// Handle a WS follow:stream:* event: 60s dedup, then cache + broadcast. The
-// "already live on load" wall is filtered downstream in the content script's
-// replay path (injectStreamEventsIntoBuffers drops event-online on recentOnly),
-// so realtime events pass straight through here.
+// Handle a WS follow:stream:* event: 60s in-mem dedup + persistent lastSeenLive
+// gate, then cache + broadcast. On WS reconnect / SW restart the server replays
+// the entire live-followed snapshot as follow:stream:online events; the in-mem
+// dedup is cleared on SW eviction, so we additionally suppress online events for
+// channels we already knew were live (persisted via pollFollowedLive). Genuine
+// off→on transitions still pass (lastSeenLive cleared on offline / poll absence).
 function handleFollowStreamEvent(msg) {
   const now = Date.now()
   const dedupKey = `${msg.channel}:${msg.type.replace('follow:', '')}:${msg.game || ''}`
@@ -1293,6 +1299,21 @@ function handleFollowStreamEvent(msg) {
   wsStreamEventDedup.set(dedupKey, now)
   if (wsStreamEventDedup.size > 100) {
     for (const [k, t] of wsStreamEventDedup) { if (now - t > 60000) wsStreamEventDedup.delete(k) }
+  }
+
+  const platform = String(msg.platform || '').toLowerCase()
+  const channel = String(msg.channel || '').toLowerCase()
+  const liveKey = `${platform}:${channel}`
+  if (msg.type === 'follow:stream:online') {
+    if (_liveStatusState.lastSeenLive?.[liveKey]) return
+    if (!_liveStatusState.lastSeenLive) _liveStatusState.lastSeenLive = {}
+    _liveStatusState.lastSeenLive[liveKey] = true
+    saveLiveStatusState().catch(() => {})
+  } else if (msg.type === 'follow:stream:offline') {
+    if (_liveStatusState.lastSeenLive?.[liveKey]) {
+      delete _liveStatusState.lastSeenLive[liveKey]
+      saveLiveStatusState().catch(() => {})
+    }
   }
 
   if (!cachedFollowHistory) cachedFollowHistory = []

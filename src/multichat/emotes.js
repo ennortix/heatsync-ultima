@@ -1246,14 +1246,17 @@
     const realUrl = emote?.url || _bfEmote?.url || '';
     // Blocking removes the emote from the set (server-side too — background.js
     // drops it from emoteInventory on block). So unblock must land on the
-    // "available, not in set" tier — orange/unadded for heatsync — never straight
+    // "available, not in set" tier — orange/unadded — never straight
     // back to owned/green. Ladder is bidirectional:
     //   owned ⇄ (remove/add) ⇄ unadded ⇄ (block/unblock) ⇄ blocked
     // Force out of inventory so a stale membership flag can't snap green back.
-    const src = emote?.source || 'heatsync';
-    const isThirdParty = ['7tv', 'bttv', 'ffz', 'twitch', 'kick'].includes(src);
-    if (!isThirdParty) inventoryEmotes.delete(emoteName);
-    const newState = isThirdParty ? getEmoteState(emoteName, src) : 'unadded';
+    // Applies to BOTH heatsync and third-party sources — earlier code
+    // special-cased third-party to getEmoteState (which returns 'global' for
+    // 7tv/bttv/ffz with empty inventory). That made unblock → 'global' → next
+    // right-click → block (else branch), trapping the user in green↔red with
+    // no orange middle state.
+    inventoryEmotes.delete(emoteName);
+    const newState = 'unadded';
     queryEmoteWrappers(emoteName).forEach(w => {
       w.classList.remove('hs-state-global', 'hs-state-channel', 'hs-state-owned', 'hs-state-blocked', 'hs-state-unadded', 'hs-emote-highlight');
       w.classList.add(`hs-state-${newState}`);

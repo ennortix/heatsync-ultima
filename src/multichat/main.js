@@ -7205,7 +7205,7 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
         // newly-added emotes) while the existing set keeps rendering meanwhile.
         queueSenderEmoteFetch(senderKey, m)
       }
-      processedText = processEmotes(escapeHtml(m.text), m.channel, twitchExtra, senderEmotes)
+      processedText = processEmotes(escapeHtml(m.text), m.channel, twitchExtra, senderEmotes, m.time)
       if (m.emotes && m.emotes.length > 0) {
         processedText = processYtEmotes(processedText, m.emotes, true)
       }

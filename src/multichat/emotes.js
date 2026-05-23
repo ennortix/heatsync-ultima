@@ -1410,7 +1410,11 @@
   function rememberRemovedEmote(name, url, source, zeroWidth) {
     if (!name || !url) return;
     removedEmoteFallback.delete(name); // re-insert to refresh LRU position
-    removedEmoteFallback.set(name, { url, source: source || 'heatsync', zeroWidth: !!zeroWidth, state: 'unadded' });
+    // removedAt: gate processEmotes so the fallback only fills in messages
+    // that pre-date the removal (preserves past-history rendering, per intent).
+    // Newly-sent own messages stay raw — removing means "I don't want this in
+    // chat anymore", so a re-post shouldn't silently re-render the image.
+    removedEmoteFallback.set(name, { url, source: source || 'heatsync', zeroWidth: !!zeroWidth, state: 'unadded', removedAt: Date.now() });
     while (removedEmoteFallback.size > REMOVED_FALLBACK_CAP) {
       removedEmoteFallback.delete(removedEmoteFallback.keys().next().value);
     }
@@ -1645,7 +1649,7 @@
       const rf = stored.hs_removed_emote_fallback;
       if (rf && typeof rf === 'object') {
         for (const [name, e] of Object.entries(rf)) {
-          if (e && e.url) removedEmoteFallback.set(name, { url: e.url, source: e.source || 'heatsync', zeroWidth: !!e.zeroWidth, state: 'unadded' });
+          if (e && e.url) removedEmoteFallback.set(name, { url: e.url, source: e.source || 'heatsync', zeroWidth: !!e.zeroWidth, state: 'unadded', removedAt: Number(e.removedAt) || 0 });
         }
       }
       // Restore block-state render fallback so the dashed box survives refresh
@@ -1842,12 +1846,19 @@
     return out
   }
 
-  function processEmotes(text, channel, extraCache, senderEmotes) {
+  function processEmotes(text, channel, extraCache, senderEmotes, msgTime) {
     if (emoteCache.size === 0 && !channelEmoteCaches[channel] && !extraCache?.size && !senderEmotes?.size) return text;
     // Removed-emote render fallback applies ONLY to the viewer's own messages
     // (main.js passes viewerPersonalEmotes by reference for isOwn). Keeps removed
     // heatsync emotes drawing in the viewer's history without leaking into others.
+    // Gated additionally by msgTime: fallback applies only to messages that
+    // pre-date the removal — newly-sent posts after remove stay raw.
     const _rf = senderEmotes === viewerPersonalEmotes ? removedEmoteFallback : null;
+    const _rfGate = (entry) => {
+      if (!entry) return null;
+      if (typeof msgTime !== 'number' || !entry.removedAt) return entry; // unknown time → preserve old behavior
+      return msgTime < entry.removedAt ? entry : null;
+    };
 
     // Kick emote splits gated by indexOf — Kick text is <5% of overall msg volume;
     // skipping 3 replaces on Twitch/YT messages saves allocations per message.
@@ -1981,11 +1992,11 @@
       const endsWithZero = word.endsWith('0') && word.length > 1
       if (endsWithZero) {
         const baseName = word.slice(0, -1)
-        emote = senderEmotes?.get(baseName) || (channel && channelEmoteCaches[channel]?.get(baseName)) || extraCache?.get(baseName) || emoteCache.get(baseName) || _rf?.get(baseName)
+        emote = senderEmotes?.get(baseName) || (channel && channelEmoteCaches[channel]?.get(baseName)) || extraCache?.get(baseName) || emoteCache.get(baseName) || _rfGate(_rf?.get(baseName))
         if (emote) isOverlayEmote = true
       }
       if (!emote) {
-        emote = senderEmotes?.get(word) || (channel && channelEmoteCaches[channel]?.get(word)) || extraCache?.get(word) || emoteCache.get(word) || _rf?.get(word)
+        emote = senderEmotes?.get(word) || (channel && channelEmoteCaches[channel]?.get(word)) || extraCache?.get(word) || emoteCache.get(word) || _rfGate(_rf?.get(word))
         // blockedEmoteFallback last + ungated (block is viewer-wide, all senders):
         // resolves a blocked emote to its real url+dims so it renders the dashed box
         // at the emote's true rectangle via the normal path, instead of the square

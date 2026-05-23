@@ -5512,12 +5512,20 @@ async function handleMessage(message, sender, sendResponse) {
     ;(async () => {
       const result = {}
       const toFetch = []
+      // Per-id inflight dedup — concurrent get_user_cosmetics calls (multi-tab
+      // or rapid chat) used to fan out as N separate /api/cosmetics/batch POSTs
+      // even when IDs overlapped, each one a fresh 429 candidate. Share promises.
+      if (!globalThis.__cosmeticsInflight) globalThis.__cosmeticsInflight = new Map()
+      const inflightMap = globalThis.__cosmeticsInflight
+      const pendingInflight = []
       for (const id of ids) {
         const cached = userCosmeticsCache.get(id)
         const isNegative = cached && !cached.paint && !cached.badge
         const ttl = isNegative ? COSMETICS_NEGATIVE_TTL : USER_COSMETICS_TTL
         if (cached && Date.now() - cached.fetchedAt < ttl) {
           result[id] = { paint: cached.paint, badge: cached.badge }
+        } else if (inflightMap.has(id)) {
+          pendingInflight.push(id)
         } else {
           toFetch.push(id)
         }
@@ -5530,45 +5538,68 @@ async function handleMessage(message, sender, sendResponse) {
         // 6s timeout under that burst failed whole batches, fell to the direct
         // 7TV path, and CACHED the empty result as "no cosmetics" — which stuck
         // users who actually have a paint until the negative TTL expired.
-        let proxied = null
-        for (let attempt = 0; attempt < 2 && !proxied; attempt++) {
-          try {
-            const resp = await fetchWithTimeout(`${API_URL}/api/cosmetics/batch`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ twitchIds: toFetch })
-            }, 10000)
-            if (resp.ok) {
-              const data = await resp.json()
-              if (data && data.cosmetics) proxied = data.cosmetics
-            } else { resp.body?.cancel?.() }
-          } catch (e) { /* retry, then fall through */ }
-        }
-
-        if (proxied) {
-          for (const id of toFetch) {
-            const c = proxied[id] ?? null
-            setUserCosmetic(id, c) // genuine answer (incl. empty) — safe to cache
-            result[id] = c
+        // Wrapped in one shared per-id promise so concurrent overlapping batch
+        // calls don't each re-fire the same id.
+        const batchPromise = (async () => {
+          let proxied = null
+          for (let attempt = 0; attempt < 2 && !proxied; attempt++) {
+            try {
+              const resp = await fetchWithTimeout(`${API_URL}/api/cosmetics/batch`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ twitchIds: toFetch })
+              }, 10000)
+              if (resp.ok) {
+                const data = await resp.json()
+                if (data && data.cosmetics) proxied = data.cosmetics
+              } else { resp.body?.cancel?.() }
+            } catch (e) { /* retry, then fall through */ }
           }
-        } else {
+          if (proxied) {
+            const out = {}
+            for (const id of toFetch) {
+              const c = proxied[id] ?? null
+              setUserCosmetic(id, c)
+              out[id] = c
+            }
+            return out
+          }
           // Proxy unreachable — fall back to direct 7TV. CRITICAL: only cache a
           // negative on a definitive 404 (no 7TV account). A 503/timeout/network
           // error must NOT be cached, or one transient blip blanks a user's
           // cosmetics for the whole negative-TTL window; leave it unset to retry.
+          const out = {}
           await Promise.all(toFetch.map(async (id) => {
             try {
               const resp = await fetchWithTimeout(`https://7tv.io/v3/users/twitch/${id}`)
-              if (resp.status === 404) { resp.body?.cancel?.(); setUserCosmetic(id, null); result[id] = null; return }
-              if (!resp.ok) { resp.body?.cancel?.(); result[id] = null; return } // transient — don't cache
+              if (resp.status === 404) { resp.body?.cancel?.(); setUserCosmetic(id, null); out[id] = null; return }
+              if (!resp.ok) { resp.body?.cancel?.(); out[id] = null; return }
               const data = await resp.json()
               const ids7tv = extract7TVCosmeticIds(data)
               const cosmetic = await resolve7TVCosmeticIds(ids7tv)
               setUserCosmetic(id, cosmetic)
-              result[id] = cosmetic
-            } catch (e) { result[id] = null } // transient — don't cache
+              out[id] = cosmetic
+            } catch (e) { out[id] = null }
           }))
+          return out
+        })()
+        // Register each id as inflight before awaiting — overlapping concurrent
+        // callers see the same promise and skip refiring.
+        for (const id of toFetch) {
+          const idP = batchPromise.then(m => m[id] || null)
+          inflightMap.set(id, idP)
+          idP.finally(() => { if (inflightMap.get(id) === idP) inflightMap.delete(id) })
         }
+        const batchResult = await batchPromise
+        for (const id of toFetch) result[id] = batchResult[id] || null
+      }
+
+      // Collect from any other in-flight requests (started by sibling calls)
+      if (pendingInflight.length > 0) {
+        await Promise.all(pendingInflight.map(async (id) => {
+          const p = inflightMap.get(id)
+          if (p) result[id] = (await p) || null
+        }))
       }
 
       sendResponse({ cosmetics: result })

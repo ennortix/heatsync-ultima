@@ -225,6 +225,12 @@ let extensionContextValid = true;
 
 // Cached allEmotes map — rebuilt only when emote data changes
 let cachedAllEmotes = null
+// Same as cachedAllEmotes but with viewer-inventory variants stripped. Used as
+// the channel/global fallback for OTHER senders' messages so the viewer's
+// personal set doesn't bleed into renders of users who don't actually have
+// the emote. cachedAllEmotes (with inventory) is still used for own renders
+// + picker + autocomplete + tab-complete suggestions.
+let cachedNonInventoryEmotes = null
 // name → emote[] in priority order (inventory[0], channel[1..], global[N..]).
 // Same-named emotes from different sources are kept as siblings so right-click
 // block on the active one swaps to the next non-blocked variant in DOM.
@@ -2952,6 +2958,13 @@ function rebuildEmoteMapIfDirty() {
   for (const [name, variants] of cachedAllEmoteVariants) {
     cachedAllEmotes.set(name, variants[0])
   }
+  // cachedNonInventoryEmotes: first non-inventory variant per name. Channel
+  // and global variants only — what other senders can legitimately render.
+  cachedNonInventoryEmotes = new Map()
+  for (const [name, variants] of cachedAllEmoteVariants) {
+    const v = variants.find(x => !x.inInventory)
+    if (v) cachedNonInventoryEmotes.set(name, v)
+  }
 
   // Rebuild O(1) lookup sets
   inventoryHashSet = new Set()
@@ -5031,23 +5044,28 @@ function processMessage(messageElement) {
       }
     }
   }
+  // Own renders see viewer inventory; other senders see only channel/global +
+  // their own sender_emote_set + live broadcasts. Without this split, mellen
+  // adding "Catge" to inventory would have made every chatter's "Catge" render
+  // as the image even when they don't have the emote in any of their sets.
+  const baseMap = isOwnMessage ? cachedAllEmotes : cachedNonInventoryEmotes
   if (!userBroadcasts && (!senderSet || senderSet.size === 0)) {
     // Fast path — no overlays, no Map alloc.
-    allEmotes = cachedAllEmotes
+    allEmotes = baseMap
   } else {
     // Precedence: live broadcast > sender's persistent set > channel/global cache.
     allEmotes = {
       get(name) {
         return (userBroadcasts && userBroadcasts.get(name))
             || (senderSet && senderSet.get(name))
-            || cachedAllEmotes.get(name)
+            || baseMap.get(name)
       },
       has(name) {
         return !!(userBroadcasts && userBroadcasts.has(name))
             || !!(senderSet && senderSet.has(name))
-            || cachedAllEmotes.has(name)
+            || baseMap.has(name)
       },
-      get size() { return cachedAllEmotes.size + (userBroadcasts ? userBroadcasts.size : 0) + (senderSet ? senderSet.size : 0) }
+      get size() { return baseMap.size + (userBroadcasts ? userBroadcasts.size : 0) + (senderSet ? senderSet.size : 0) }
     }
   }
 

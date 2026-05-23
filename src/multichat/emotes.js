@@ -1513,6 +1513,22 @@
     return senderKey ? senderEmoteSets.get(senderKey) : undefined;
   }
 
+  // Drop an emote NAME from every cached sender set. Called when a WS
+  // emote:removed broadcast arrives — the actor's user_emote_set on the server
+  // dropped the name, but cached entries here would otherwise render the name
+  // as an image for up to a session (LRU lifetime). Match by name is fine: a
+  // sender can only have one emote per name, so dropping by name targets the
+  // right entry without needing the actor's twitch ID.
+  function dropEmoteFromAllSenders(emoteName) {
+    if (!emoteName) return false
+    let changed = false
+    for (const [, set] of senderEmoteSets) {
+      if (set?.delete?.(emoteName)) changed = true
+    }
+    if (changed) { _senderEmoteDirty = true; _scheduleSenderEmotePersist() }
+    return changed
+  }
+
   async function loadSenderEmoteSets() {
     try {
       const stored = await chrome.storage.local.get(['sender_emote_sets']);

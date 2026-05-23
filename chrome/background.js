@@ -3558,8 +3558,18 @@ function handleWSMessage(msg) {
         log(' 🗑️ EMOTE REMOVED FROM YOUR INVENTORY:', msg.name, 'slot:', msg.slot)
         scheduleInventoryRefresh()
       } else if (msg.username) {
-        // Broadcast from other user
+        // Broadcast from other user. Invalidate the cached sender_emote_set
+        // for that user — without this, their /api/users/emotes/batch entry
+        // stays cached (5min TTL) and OTHER tabs keep rendering the removed
+        // emote in their messages.
         log(' 🗑️ EMOTE REMOVED BROADCAST:', msg);
+        if (globalThis.__senderEmoteCache && msg.emoteName) {
+          for (const [k, hit] of globalThis.__senderEmoteCache) {
+            if (hit?.emotes && msg.emoteName in hit.emotes) {
+              delete hit.emotes[msg.emoteName]
+            }
+          }
+        }
         broadcastToTabs({
           type: 'emote_removed_broadcast',
           username: msg.username,

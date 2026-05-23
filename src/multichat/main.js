@@ -10444,6 +10444,35 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
         if (u && blockedUsers.delete(u)) renderMessages(currentTab)
       }
 
+      // A different user removed an emote from their set. Background already
+      // dropped __senderEmoteCache; mirror in the panel's persisted
+      // senderEmoteSets so we stop imagifying their now-gone name. Re-render
+      // matching messages so the wrappers become raw text (or fall through to
+      // channel/global pool, if present).
+      if (msg.type === 'emote_removed_broadcast' && msg.emoteName) {
+        const changed = typeof dropEmoteFromAllSenders === 'function'
+          ? dropEmoteFromAllSenders(msg.emoteName) : false
+        if (changed) {
+          try {
+            const inv = (buf) => {
+              if (!buf) return
+              const arr = (typeof buf.forEach === 'function' && !Array.isArray(buf)) ? null : buf
+              const iter = arr || (typeof buf.values === 'function' ? buf.values() : null)
+              if (!iter) return
+              for (const m of iter) {
+                if (m && m.text && m.text.includes(msg.emoteName)) m._renderedHtml = null
+              }
+            }
+            // Twitch + Kick IRC buffers (per-channel)
+            try { for (const ch of (irc?.channels?.keys?.() || [])) inv(irc.getMessages(ch)) } catch (_) {}
+            try { for (const ch of (kickChat?.channels?.keys?.() || [])) inv(kickChat.getMessages(ch)) } catch (_) {}
+            if (typeof mentionsBuffer !== 'undefined') inv(mentionsBuffer)
+            if (typeof channelYtMessages !== 'undefined') channelYtMessages.forEach(inv)
+            renderMessages(currentTab)
+          } catch (_) {}
+        }
+      }
+
       // Server-evaluated mention rule match — show as inline toast
       if (msg.type === 'mention_rule_match') {
         const channel = String(msg.channel || '').toLowerCase()

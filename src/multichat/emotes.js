@@ -1077,33 +1077,28 @@
     // leaving it in a half-owned/pending flux that errors on interaction until the
     // async re-add settles.
     if (typeof recentRemoteCompletions !== 'undefined') recentRemoteCompletions.delete(emoteName);
+    // After viewerPersonalEmotes.delete above, lookupEmote falls back to
+    // channelEmoteCaches / emoteCache / fallbacks. Old code split on source:
+    // third-party (7tv/bttv/ffz) kept caches and re-stated to 'global'; heatsync
+    // cleared everything and stated 'unadded'. The third-party branch was a trap
+    // when stale channel cache entries existed — remove would silently flip to
+    // 'global' (green) instead of 'unadded' (orange). Unify: clear all caches
+    // and remember the removed entry. If a legit channel emote exists, the next
+    // channel_emotes_update broadcast restores it; the gap is short and the
+    // user actually gets the orange-unadded state they expect.
     const cachedEmote = lookupEmote(emoteName);
     if (cachedEmote) {
-      const isThirdParty = ['7tv', 'bttv', 'ffz', 'twitch', 'kick'].includes(cachedEmote.source);
-      if (isThirdParty) {
-        cachedEmote.state = 'global';
-      } else {
-        // HeatSync emote — mark unadded then remove from cache so it stops rendering in new messages
-        cachedEmote.state = 'unadded';
-        // Keep the URL resolvable so the viewer's own past messages still draw
-        // the image after a refresh (instead of breaking to raw text).
-        rememberRemovedEmote(emoteName, cachedEmote.url, cachedEmote.source, cachedEmote.zeroWidth);
-        emoteCache.delete(emoteName);
-        for (const cache of Object.values(channelEmoteCaches)) {
-          cache.delete(emoteName);
-        }
-      }
-    } else {
-      // Not found via lookupEmote but might still be in caches
-      emoteCache.delete(emoteName);
-      for (const cache of Object.values(channelEmoteCaches)) {
-        cache.delete(emoteName);
-      }
+      cachedEmote.state = 'unadded';
+      rememberRemovedEmote(emoteName, cachedEmote.url, cachedEmote.source, cachedEmote.zeroWidth);
+    }
+    emoteCache.delete(emoteName);
+    for (const cache of Object.values(channelEmoteCaches)) {
+      cache.delete(emoteName);
     }
     // Update all existing wrappers in DOM. If a lower-tier variant (channel/global)
     // exists with a different URL, swap img.src so the chat shows the fallback emote
     // (e.g. 7TV channel Pog) instead of leaving the heatsync image with a new class.
-    const newState = cachedEmote?.state || 'unadded';
+    const newState = 'unadded';
     const fallbackUrl = cachedEmote?.url;
     queryEmoteWrappers(emoteName).forEach(w => {
       w.classList.remove('hs-state-global', 'hs-state-channel', 'hs-state-owned', 'hs-state-blocked', 'hs-state-unadded');

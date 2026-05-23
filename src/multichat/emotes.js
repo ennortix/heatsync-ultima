@@ -1529,6 +1529,42 @@
     return changed
   }
 
+  // Replace a sender's set with an AUTHORITATIVE fresh fetch — drops any
+  // cached names absent from the new data. Use ONLY when the response is
+  // known good (HTTP 200, not a transient error). mergeSenderEmotes is the
+  // additive sibling for cases where we don't trust empty responses.
+  // Returns true if anything changed.
+  function replaceSenderEmotes(senderKey, nameToEmote) {
+    if (!senderKey) return false
+    const fresh = nameToEmote || {}
+    let inner = senderEmoteSets.get(senderKey)
+    if (!inner) {
+      // First time we see this sender — same path as merge, but tracked.
+      inner = new Map()
+      senderEmoteSets.set(senderKey, inner)
+      if (senderEmoteSets.size > SENDER_EMOTE_LRU_MAX) {
+        senderEmoteSets.delete(senderEmoteSets.keys().next().value)
+      }
+    } else {
+      senderEmoteSets.delete(senderKey)
+      senderEmoteSets.set(senderKey, inner)
+    }
+    let changed = false
+    // Drop stale names
+    for (const name of [...inner.keys()]) {
+      if (!(name in fresh)) { inner.delete(name); changed = true }
+    }
+    // Add/update fresh names
+    for (const [name, data] of Object.entries(fresh)) {
+      const prev = inner.get(name)
+      if (!prev || prev.url !== data.url || prev.state !== data.state || prev.source !== data.source) {
+        inner.set(name, data); changed = true
+      }
+    }
+    if (changed) { _senderEmoteDirty = true; _scheduleSenderEmotePersist() }
+    return changed
+  }
+
   async function loadSenderEmoteSets() {
     try {
       const stored = await chrome.storage.local.get(['sender_emote_sets']);

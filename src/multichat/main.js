@@ -1064,9 +1064,13 @@
       // on every render and loop render→fetch→re-render on busy chats.
       const now = Date.now()
       for (const key of batch) {
-        const added = mergeSenderEmotes(key, emotes[key] || {})
+        // resp arrived — treat the value as authoritative and replace the cached
+        // set entirely. Use replace (not merge) so names removed on the server
+        // also disappear here; merge was the bleed: removed emotes lingered
+        // forever and rendered for other viewers until the cache was nuked.
+        const changed = replaceSenderEmotes(key, emotes[key] || {})
         senderEmoteFetchedAt.set(key, now)
-        if (added) changedKeys.push(key)
+        if (changed) changedKeys.push(key)
       }
       if (changedKeys.length) upgradeMessagesForSenders(changedKeys)
     }).catch(() => {

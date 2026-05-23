@@ -3519,6 +3519,21 @@ function _onMessageMain(message) {
         log(' 🗑️ Clearing broadcast (user removed emote):', removeKey);
         _deleteBroadcast(removeKey);
       }
+      // Also drop the name from any cached sender_emote_set so old messages
+      // from that user stop imagifying it. Matches multichat panel behavior.
+      if (message.emoteName) {
+        for (const [, inner] of senderHeatsyncEmotes) {
+          if (inner?.delete?.(message.emoteName)) {
+            // Removed — also bust freshness so next message triggers refetch
+          }
+        }
+      }
+      break;
+
+    case 'emote_added_broadcast':
+      // Different user added an emote. Drop freshness for all cached senders
+      // so next message render refetches their set and picks up the new emote.
+      senderEmoteFetchedAt.clear();
       break;
 
     case 'emote_broadcast':

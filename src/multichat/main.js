@@ -10448,6 +10448,18 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
         if (u && blockedUsers.delete(u)) renderMessages(currentTab)
       }
 
+      // A different user added an emote to their set. Drop the freshness
+      // stamp on every cached sender so the next render of any of their
+      // messages triggers a refetch, picking up the new emote without
+      // waiting for the 5-min senderEmoteFetchedAt TTL. We don't know which
+      // sender key this user maps to (msg.username != twitch_id), so we
+      // bust everyone — next render of any message refreshes.
+      if (msg.type === 'emote_added_broadcast') {
+        try {
+          if (typeof senderEmoteFetchedAt !== 'undefined') senderEmoteFetchedAt.clear()
+        } catch (_) {}
+      }
+
       // A different user removed an emote from their set. Background already
       // dropped __senderEmoteCache; mirror in the panel's persisted
       // senderEmoteSets so we stop imagifying their now-gone name. Re-render

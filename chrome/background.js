@@ -3579,10 +3579,29 @@ function handleWSMessage(msg) {
       break;
 
     case 'emote:added':
-      // Server notifies when emote is added to YOUR inventory (e.g., uploaded on website)
-      log(' ✅ EMOTE ADDED TO INVENTORY:', msg.name, 'slot:', msg.slot)
-      // Refresh inventory to get the new emote (debounced)
-      scheduleInventoryRefresh()
+      // Two shapes:
+      //  - Personal add (msg.slot present): server saved YOUR own add, refresh
+      //    inventory. (User-side broadcast on own add via website upload.)
+      //  - Broadcast (msg.username present): a DIFFERENT user added an emote.
+      //    Mirror of emote:removed broadcast. Invalidate cached sender sets so
+      //    other viewers' panels refetch and pick up the new emote without
+      //    waiting for the 5-min senderEmoteFetchedAt TTL.
+      if (msg.slot !== undefined) {
+        log(' ✅ EMOTE ADDED TO INVENTORY:', msg.name, 'slot:', msg.slot)
+        scheduleInventoryRefresh()
+      } else if (msg.username) {
+        log(' ➕ EMOTE ADDED BROADCAST:', msg)
+        // Drop any cached entries so the next get_sender_emotes returns fresh
+        // server data (which will now include the new emote).
+        if (globalThis.__senderEmoteCache) {
+          globalThis.__senderEmoteCache.clear()
+        }
+        broadcastToTabs({
+          type: 'emote_added_broadcast',
+          username: msg.username,
+          emoteName: msg.emoteName
+        })
+      }
       break
 
     case 'emote:blocked':

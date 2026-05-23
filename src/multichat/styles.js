@@ -84,6 +84,23 @@ function injectStyles() {
       font-feature-settings: normal !important;
       letter-spacing: normal !important;
     }
+    /* Counter-counter: badges inside the system-sans surfaces (pcard, notifs)
+       must still render bitmap. .hs-mc-badge is fixed at 13px CozetteVector
+       (single font setting — see badge font spec); without this, AA + kern
+       from the surface rule above smears the bitmap glyphs. */
+    body.hs-font-bitmap .hs-pcard .hs-mc-badge,
+    body.hs-font-bitmap .hs-notif .hs-mc-badge {
+      -webkit-font-smoothing: none !important;
+      -moz-osx-font-smoothing: unset !important;
+      font-smooth: never !important;
+      text-rendering: optimizeSpeed !important;
+      font-synthesis: none !important;
+      font-optical-sizing: none !important;
+      font-kerning: none !important;
+      font-variant-ligatures: none !important;
+      font-feature-settings: "kern" 0, "liga" 0, "clig" 0, "calt" 0 !important;
+      letter-spacing: 0 !important;
+    }
     /* Tab bar - positioned at top of chat via render injection.
        Three flex sections (no-wrap outer): channel tabs fill left, platfilter
        sits center, util buttons pinned right. Channel-tabs section wraps
@@ -2257,13 +2274,29 @@ function injectStyles() {
       flex-wrap: wrap;
       line-height: 15px;
     }
+    /* Broad reset — content.js injects ~12 bare-class .hs-pc-* rules with
+       font-size: 10px !important + padding: 2px 4px !important + letter-
+       spacing: 0.3px !important for the native chat-tile profile card. At
+       the !important tier those bare-class rules beat tooltip-scoped rules
+       on specificity tie. This one selector normalizes every .hs-pc-* badge
+       inside the tooltip to consistent 13px / padding / line-height so
+       badges share an identical baseline (mismatched heights produced
+       fractional vertical centers in the flex row → bitmap glyphs smeared
+       on the off-baseline rows, which read as "blurry"). */
+    #hs-user-tooltip [class*="hs-pc-"] {
+      font-size: 13px !important;
+      padding: 1px 2px !important;
+      line-height: 16px !important;
+      letter-spacing: 0 !important;
+    }
     #hs-user-tooltip .hs-pc-platform {
-      font-size: 13px;
-      padding: 1px 2px;
-      font-weight: 900;
-      border: 1px solid #000;
-      white-space: nowrap;
-      letter-spacing: 0.2px;
+      font-size: 13px !important;
+      padding: 1px 2px !important;
+      font-weight: 900 !important;
+      border: 1px solid #000 !important;
+      white-space: nowrap !important;
+      letter-spacing: 0.2px !important;
+      line-height: 16px !important;
     }
     #hs-user-tooltip .hs-pc-platform.twitch {
       background: #9146ff;
@@ -2367,6 +2400,50 @@ function injectStyles() {
     #hs-user-tooltip .hs-pc-rel-badge.subbed { background: #9146ff; color: #fff; }
     #hs-user-tooltip .hs-pc-rel-badge.mutual-follow { background: #000; color: #fff; border: 1px solid #00aaaa; }
     #hs-user-tooltip .hs-pc-rel-badge.mutual-sub { background: #000; color: #fff; border: 1px solid #ff8700; }
+    /* Property sheet — mirrors .hs-pcard-sheet. Tooltip already inherits
+       CozetteVector bitmap rendering from body.hs-font-bitmap, so no
+       counter-counter block needed here (unlike the pcard sheet which
+       sits inside a system-sans counter-rule). */
+    #hs-user-tooltip .hs-pc-sheet {
+      display: grid; grid-template-columns: max-content 1fr;
+      column-gap: 12px; row-gap: 0;
+      font-size: 13px; line-height: 18px;
+      margin: 4px 0 0 0;
+    }
+    #hs-user-tooltip .hs-pc-sheet dt,
+    #hs-user-tooltip .hs-pc-sheet dd {
+      padding: 1px 6px; margin: 0;
+    }
+    #hs-user-tooltip .hs-pc-sheet dt { color: #888; font-weight: 400; }
+    #hs-user-tooltip .hs-pc-sheet dd { color: #fff; font-weight: 700; }
+    #hs-user-tooltip .hs-pc-sheet dt:nth-of-type(even),
+    #hs-user-tooltip .hs-pc-sheet dd:nth-of-type(even) { background: #1f1f1f; }
+    /* Mirror of .hs-pcard-sheet ANSI semantic palette — see comment in
+       the pcard sheet block for the full reasoning. */
+    #hs-user-tooltip .hs-pc-sheet .val-age { color: #ffff00; }
+    #hs-user-tooltip .hs-pc-sheet .val-partner { color: #ffaf00; }
+    #hs-user-tooltip .hs-pc-sheet .val-affiliate { color: #bcbcbc; }
+    #hs-user-tooltip .hs-pc-sheet .val-ttv { color: #9146ff; }
+    #hs-user-tooltip .hs-pc-sheet .val-kick { color: #53fc18; }
+    #hs-user-tooltip .hs-pc-sheet .val-yt { color: #ff0000; }
+    #hs-user-tooltip .hs-pc-sheet .val-admin { color: #ff0000; }
+    #hs-user-tooltip .hs-pc-sheet .val-staff { color: #ff8700; }
+    #hs-user-tooltip .hs-pc-sheet .val-heat { color: #ff0000; }
+    #hs-user-tooltip .hs-pc-sheet .val-followers { color: #0087ff; }
+    #hs-user-tooltip .hs-pc-sheet .val-you-follow { color: #00ffff; }
+    #hs-user-tooltip .hs-pc-sheet .val-you-sub { color: #875fff; }
+    #hs-user-tooltip .hs-pc-sheet .val-they-follow { color: #ff00ff; }
+    #hs-user-tooltip .hs-pc-sheet .val-they-sub { color: #ff5fff; }
+    #hs-user-tooltip .hs-pc-sheet .val-mutual { color: #00ff00; }
+    #hs-user-tooltip .hs-pc-sheet .val-mutual-sub { color: #ffd700; }
+    #hs-user-tooltip .hs-pc-sheet .val-ch { color: #ff8700; }
+    #hs-user-tooltip .hs-pc-sheet .hs-pc-live { color: #ff0000; font-weight: 700; }
+    /* Heat number inside the sheet: digits inherit Cozette (already crisp
+       on this tooltip surface), ° gets vector fallback for a clean glyph. */
+    #hs-user-tooltip .hs-pc-sheet .hs-heat-n { font-family: inherit; }
+    #hs-user-tooltip .hs-pc-sheet .hs-heat-deg {
+      font-family: ui-monospace, SFMono-Regular, monospace;
+    }
     #hs-user-tooltip .hs-pc-followage {
       padding: 2px 3px;
       font-size: 13px;
@@ -3602,29 +3679,32 @@ function injectStyles() {
         0 6px 16px rgba(0, 0, 0, 0.7),
         0 0 18px color-mix(in srgb, var(--hs-pcard-accent, transparent) 35%, transparent);
     }
-    .hs-pcard-id-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+    .hs-pcard-id-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+    /* Identity chip row — pills + native badges + age/role/verified all flow
+       as flex-wrap siblings; no forced line breaks between groups. */
+    .hs-pcard-id-chips {
+      display: flex; flex-wrap: wrap; gap: 3px; align-items: center;
+      font-size: 13px; line-height: 18px;
+    }
+    .hs-pcard-id-chips img.hs-mc-badge-img { width: 18px; height: 18px; }
     .hs-pcard-name {
       font-size: 16px; font-weight: 700; color: #fff;
       display: flex; align-items: center; gap: 6px; line-height: 18px;
     }
     .hs-pcard-livedot { color: #ff5050; font-size: 9px; animation: hs-pcard-pulse 1.5s infinite; }
     @keyframes hs-pcard-pulse { 50% { opacity: 0.4; } }
-    .hs-pcard-badges {
-      display: flex; gap: 3px; flex-wrap: wrap; align-items: center; min-height: 18px;
-    }
-    .hs-pcard-badges img.hs-mc-badge-img {
-      width: 18px; height: 18px;
-    }
-    .hs-pcard-pills { display: flex; flex-wrap: wrap; gap: 6px; font-size: 13px; }
+    /* Filled-style platform pills — mirror #hs-user-tooltip .hs-pc-platform
+       so the click-card identity row looks identical to the hover tooltip. */
     .hs-pcard-pill {
-      padding: 2px 6px; border: 1px solid; text-decoration: none;
-      font-weight: 600; display: inline-flex; align-items: center; gap: 3px;
+      padding: 1px 2px; border: 1px solid #000; text-decoration: none;
+      font-weight: 900; letter-spacing: 0.2px; white-space: nowrap;
+      display: inline-flex; align-items: center; gap: 3px;
+      line-height: 16px;
     }
-    .hs-pcard-pill:hover { background: #fff; color: #000; border-color: #fff; }
-    .hs-pcard-pill-twitch { color: #9146ff; border-color: #9146ff; }
-    .hs-pcard-pill-kick { color: #53fc18; border-color: #53fc18; }
-    .hs-pcard-pill-youtube { color: #ff5050; border-color: #ff5050; }
-    .hs-pcard-pill-heatsync { color: #ff8700; border-color: #ff8700; }
+    .hs-pcard-pill:hover { background: #fff !important; color: #000 !important; border-color: #000; }
+    .hs-pcard-pill-twitch { background: #9146ff; color: #fff; }
+    .hs-pcard-pill-kick { background: #53fc18; color: #000; }
+    .hs-pcard-pill-youtube { background: #ff0000; color: #fff; }
     .hs-pcard-pill-live { color: #ff5050; }
     .hs-pcard-bio {
       color: #aaa; font-size: 13px; line-height: 18px;
@@ -3635,23 +3715,82 @@ function injectStyles() {
     .hs-pcard-bio-mention:hover { text-decoration: underline; }
     .hs-pcard-bio-tag { color: #ff00ff; text-decoration: none; }
     .hs-pcard-bio-tag:hover { text-decoration: underline; }
-    .hs-pcard-meta {
-      display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
-      font-size: 13px; color: #888; line-height: 18px;
+    /* Property sheet — 2-col zebra list. The pcard surface uses system-sans
+       by default (see body.hs-font-bitmap .hs-pcard counter-rule near top
+       of styles.js), so the sheet must opt back into 13px CozetteVector +
+       bitmap render block for crispness. dt/dd cells must NEVER have
+       fractional metrics (no kerning, ligatures, letter-spacing) or the
+       bitmap glyphs smear — same root cause as the tooltip badge fix. */
+    .hs-pcard-sheet {
+      display: grid; grid-template-columns: max-content 1fr;
+      column-gap: 12px; row-gap: 0;
+      font-family: 'CozetteVector', 'Courier New', monospace;
+      font-size: 13px; line-height: 18px;
+      margin: 0;
     }
-    .hs-pcard-age { color: #888; }
-    .hs-pcard-role {
-      padding: 0 5px; font-size: 13px; font-weight: 700; line-height: 21px;
+    .hs-pcard-sheet dt, .hs-pcard-sheet dd {
+      padding: 1px 6px; margin: 0;
     }
-    .hs-pcard-role.partner { background: #ffaa00; color: #000; }
-    .hs-pcard-role.affiliate { background: #555; color: #fff; }
-    .hs-pcard-verified {
-      display: inline-flex; align-items: center; justify-content: center;
-      width: 14px; height: 14px; font-size: 13px; font-weight: 700;
+    .hs-pcard-sheet dt { color: #888; font-weight: 400; }
+    .hs-pcard-sheet dd { color: #fff; font-weight: 700; }
+    /* Zebra cadence — alt rows use the same #1f1f1f as chat zebra. */
+    .hs-pcard-sheet dt:nth-of-type(even),
+    .hs-pcard-sheet dd:nth-of-type(even) { background: #1f1f1f; }
+    /* Semantic color on values — only fields with state earn a color. */
+    /* ANSI 256-mapped semantic colors. Each row's value carries meaning via hue:
+       identity = brand, time = yellow, tier = amber/silver, power = red,
+       relationship direction = cool (outflow) / warm (inflow) / saturated (mutual). */
+    .hs-pcard-sheet .val-age { color: #ffff00; }       /* xterm 226 — time */
+    .hs-pcard-sheet .val-partner { color: #ffaf00; }    /* xterm 214 — premium */
+    .hs-pcard-sheet .val-affiliate { color: #bcbcbc; }  /* xterm 250 — entry */
+    .hs-pcard-sheet .val-ttv { color: #9146ff; }        /* twitch brand */
+    .hs-pcard-sheet .val-kick { color: #53fc18; }       /* kick brand */
+    .hs-pcard-sheet .val-yt { color: #ff0000; }         /* xterm 196 — yt brand */
+    .hs-pcard-sheet .val-admin { color: #ff0000; }      /* xterm 196 — power */
+    .hs-pcard-sheet .val-staff { color: #ff8700; }      /* xterm 208 — hs orange */
+    .hs-pcard-sheet .val-heat { color: #ff0000; }       /* xterm 196 — fire */
+    .hs-pcard-sheet .val-followers { color: #0087ff; }  /* xterm 33 — popularity */
+    .hs-pcard-sheet .val-you-follow { color: #00ffff; } /* xterm 51 — outflow */
+    .hs-pcard-sheet .val-you-sub { color: #875fff; }    /* xterm 99 — paid outflow */
+    .hs-pcard-sheet .val-they-follow { color: #ff00ff; }/* xterm 201 — inflow */
+    .hs-pcard-sheet .val-they-sub { color: #ff5fff; }   /* xterm 207 — paid inflow */
+    .hs-pcard-sheet .val-mutual { color: #00ff00; }     /* xterm 46 — handshake */
+    .hs-pcard-sheet .val-mutual-sub { color: #ffd700; } /* xterm 220 — premium handshake */
+    .hs-pcard-sheet .val-ch { color: #ff8700; }         /* xterm 208 — channel context */
+    .hs-pcard-sheet .hs-pc-live { color: #ff0000; font-weight: 700; }
+    /* Inside the sheet: digits inherit cozette from the sheet (bitmap-crisp),
+       degree symbol falls back to ui-monospace (vector AA, has clean °). */
+    .hs-pcard-sheet .hs-heat-num { font-family: inherit; }
+    .hs-pcard-sheet .hs-heat-n { font-family: inherit; }
+    .hs-pcard-sheet .hs-heat-deg { font-family: ui-monospace, SFMono-Regular, monospace; }
+    .hs-pcard-sheet .val-rel { color: #ff8700; }
+    /* Counter-counter: re-apply bitmap render block to the sheet so cozette
+       renders crisp inside the .hs-pcard system-sans bubble. */
+    body.hs-font-bitmap .hs-pcard .hs-pcard-sheet,
+    body.hs-font-bitmap .hs-pcard .hs-pcard-sheet * {
+      -webkit-font-smoothing: none !important;
+      -moz-osx-font-smoothing: unset !important;
+      font-smooth: never !important;
+      text-rendering: optimizeSpeed !important;
+      font-synthesis: none !important;
+      font-optical-sizing: none !important;
+      font-kerning: none !important;
+      font-variant-ligatures: none !important;
+      font-feature-settings: "kern" 0, "liga" 0, "clig" 0, "calt" 0 !important;
+      letter-spacing: 0 !important;
     }
-    .hs-pcard-verified.twitch { background: #9146ff; color: #fff; }
-    .hs-pcard-verified.kick { background: #53fc18; color: #000; }
-    .hs-pcard-rel { color: #ff8700; font-weight: 600; font-size: 13px; margin-top: 4px; }
+    /* Counter-counter-counter: the ° span inside the sheet wants AA back —
+       cozette's degree glyph (if it exists) renders thin/uneven, vector AA °
+       looks cleaner. Listed AFTER the sheet bitmap block so it wins. */
+    body.hs-font-bitmap .hs-pcard .hs-pcard-sheet .hs-heat-deg {
+      -webkit-font-smoothing: subpixel-antialiased !important;
+      -moz-osx-font-smoothing: auto !important;
+      font-smooth: auto !important;
+      text-rendering: auto !important;
+      font-kerning: auto !important;
+      font-feature-settings: normal !important;
+      letter-spacing: normal !important;
+    }
     .hs-pcard-link { color: #ff8700; text-decoration: none; font-weight: 600; }
     .hs-pcard-link:hover { text-decoration: underline; }
     .hs-pcard-msg {
@@ -3663,6 +3802,13 @@ function injectStyles() {
       flex-shrink: 0; font-size: 13px; padding: 0 3px;
       font-weight: 600; line-height: 19px; color: #888;
     }
+    /* Recent-message platform letter — text-only override, no bg. The
+       identity-row pills above share .hs-pcard-pill-* classes for color but
+       want the filled tooltip look; the inline message-history badge stays
+       plain so 12 stacked rows don't read as a wall of purple. */
+    .hs-pcard-msg-plat.hs-pcard-pill-twitch { background: transparent; color: #9146ff; border: none; }
+    .hs-pcard-msg-plat.hs-pcard-pill-kick { background: transparent; color: #53fc18; border: none; }
+    .hs-pcard-msg-plat.hs-pcard-pill-youtube { background: transparent; color: #ff5050; border: none; }
     .hs-pcard-msg-text {
       color: #fff; word-break: break-word; overflow-wrap: anywhere; flex: 1;
     }
@@ -5614,12 +5760,20 @@ function injectStyles() {
       background: #fff;
       color: #000;
     }
-    /* Canonical heat number — used everywhere via heatSpanHtml/heatSpanEl. Tier color/glow is set inline. */
+    /* Canonical heat number — used everywhere via heatSpanHtml/heatSpanEl. Tier color/glow is set inline.
+       Structure: <span.hs-heat-num><span.hs-heat-n>{digits}</span><span.hs-heat-deg>°</span></span>
+       The two sub-spans let surfaces using a bitmap font keep the digits crisp
+       while the degree symbol falls back to a vector font that has a clean glyph. */
     .hs-heat-num {
       font-variant-numeric: tabular-nums;
-      font-family: ui-monospace, SFMono-Regular, monospace;
       font-weight: 900;
       line-height: 1;
+    }
+    .hs-heat-n {
+      font-family: ui-monospace, SFMono-Regular, monospace;
+    }
+    .hs-heat-deg {
+      font-family: ui-monospace, SFMono-Regular, monospace;
     }
     .hs-feed-heat-breathe {
       animation: hs-feed-heat-breathe 2.5s ease-in-out infinite;

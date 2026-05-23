@@ -1116,7 +1116,8 @@ function buildFeedMessageDiv(m, opUsername) {
   }
   const isReply = !!m.reply_to
   const heatStyle = hd ? getHeatNumberStyle(heat, isReply) : ''
-  const heatSpan = hd ? `<span class="hs-feed-stat hs-feed-heat" style="${heatStyle}">${formatHeat(heat)}${hd.suffix}</span>` : ''
+  const heatDeg = hd && hd.suffix ? '<span class="hs-heat-deg">°</span>' : ''
+  const heatSpan = hd ? `<span class="hs-feed-stat hs-feed-heat" style="${heatStyle}"><span class="hs-heat-n">${formatHeat(heat)}</span>${heatDeg}</span>` : ''
   const repliesSpan = replies > 0 ? `<span class="hs-feed-stat hs-feed-replies" title="replies">💬${replies}</span>` : '';
   const stats = [heatSpan, repliesSpan].filter(Boolean).join(' ')
   const statsHtml = stats ? ` ${stats}` : ''
@@ -1737,13 +1738,15 @@ function applyDiscoverHeatRowEffects(row, heat) {
 }
 
 // Canonical heat number — formatHeat + ° suffix at ≥ 10 + tier color/glow/breathe inline style.
-// HTML-string variant for innerHTML callers (heat numeric + internally-built style is safe).
+// The number and degree symbol render in separate sub-spans (.hs-heat-n and
+// .hs-heat-deg) so surfaces using a bitmap font can keep the digits crisp
+// while letting the ° fall back to a vector font that has a clean glyph.
 function heatSpanHtml(heat) {
   const h = Number(heat) || 0;
   if (h <= 0) return '';
   const style = discoverHeatStyle(h);
-  const suffix = h >= 10 ? '°' : '';
-  return `<span class="hs-heat-num" style="${style}">${formatHeat(h)}${suffix}</span>`;
+  const suffix = h >= 10 ? '<span class="hs-heat-deg">°</span>' : '';
+  return `<span class="hs-heat-num" style="${style}"><span class="hs-heat-n">${formatHeat(h)}</span>${suffix}</span>`;
 }
 
 // Same, returned as a DOM node for createElement callers.
@@ -1753,8 +1756,16 @@ function heatSpanEl(heat) {
   const span = document.createElement('span');
   span.className = 'hs-heat-num';
   span.setAttribute('style', discoverHeatStyle(h));
-  const suffix = h >= 10 ? '°' : '';
-  span.textContent = formatHeat(h) + suffix;
+  const numSpan = document.createElement('span');
+  numSpan.className = 'hs-heat-n';
+  numSpan.textContent = formatHeat(h);
+  span.appendChild(numSpan);
+  if (h >= 10) {
+    const deg = document.createElement('span');
+    deg.className = 'hs-heat-deg';
+    deg.textContent = '°';
+    span.appendChild(deg);
+  }
   return span;
 }
 
@@ -1841,13 +1852,23 @@ function renderDiscoverProfileRow(profile, username, rank, maxHeat, showRank = t
   bar.appendChild(fill);
   row.appendChild(bar);
 
-  // Canonical heat number — matches website / feed posts (formatHeat + ° suffix, tiered glow)
+  // Canonical heat number — matches website / feed posts (formatHeat + ° suffix, tiered glow).
+  // Digits and ° are split into sub-spans so bitmap-font surfaces can render digits crisp
+  // while keeping the degree symbol on a vector font with a clean glyph.
   const heatEl = document.createElement('span');
   heatEl.className = 'hs-discover-heat';
   heatEl.title = `${heat.toLocaleString()} heat`;
   heatEl.setAttribute('style', discoverHeatStyle(heat));
-  const suffix = heat >= 10 ? '°' : '';
-  heatEl.textContent = formatHeat(heat) + suffix;
+  const numSpan = document.createElement('span');
+  numSpan.className = 'hs-heat-n';
+  numSpan.textContent = formatHeat(heat);
+  heatEl.appendChild(numSpan);
+  if (heat >= 10) {
+    const deg = document.createElement('span');
+    deg.className = 'hs-heat-deg';
+    deg.textContent = '°';
+    heatEl.appendChild(deg);
+  }
   row.appendChild(heatEl);
 
   // Apply row-level heat tier effects ONLY when not live (live row has red border)
@@ -1961,8 +1982,16 @@ function renderDiscoverPostRow(m) {
   heatEl.className = 'hs-discover-heat hs-discover-post-heat';
   heatEl.title = `${heat.toLocaleString()} heat`;
   heatEl.setAttribute('style', discoverHeatStyle(heat));
-  const suffix = heat >= 10 ? '°' : '';
-  heatEl.textContent = formatHeat(heat) + suffix;
+  const numSpan = document.createElement('span');
+  numSpan.className = 'hs-heat-n';
+  numSpan.textContent = formatHeat(heat);
+  heatEl.appendChild(numSpan);
+  if (heat >= 10) {
+    const deg = document.createElement('span');
+    deg.className = 'hs-heat-deg';
+    deg.textContent = '°';
+    heatEl.appendChild(deg);
+  }
   meta.appendChild(heatEl);
 
   if ((m.reply_count || 0) > 0) {

@@ -245,7 +245,7 @@ function pcMakePill(plat, name, isLive) {
   else if (plat === 'kick') pill.href = 'https://kick.com/' + encodeURIComponent(name)
   else if (plat === 'youtube') pill.href = 'https://youtube.com/@' + encodeURIComponent(name)
   else if (plat === 'heatsync') pill.href = 'https://heatsync.org/user/' + encodeURIComponent(name)
-  const label = plat === 'twitch' ? 't' : plat === 'kick' ? 'k' : plat === 'youtube' ? 'y' : 'h'
+  const label = plat === 'twitch' ? 'ttv' : plat === 'kick' ? 'kick' : plat === 'youtube' ? 'yt' : 'hs'
   pill.textContent = `${label}:${name}`
   if (isLive) {
     const dot = document.createElement('span')
@@ -394,48 +394,12 @@ function renderProfileCardView() {
   const idText = document.createElement('div')
   idText.className = 'hs-pcard-id-text'
 
-  const nameLine = document.createElement('div')
-  nameLine.className = 'hs-pcard-name'
-  const isLive = !!(data?.twitch_is_live || data?.kick_is_live || data?.youtube_is_live)
-  if (isLive) {
-    const dot = document.createElement('span')
-    dot.className = 'hs-pcard-livedot'
-    dot.textContent = '●'
-    nameLine.appendChild(dot)
-  }
-  const nameText = document.createElement('span')
-  nameText.textContent = data?.display_name || username
-  // Apply 7TV paint to the display name when available — same style string
-  // chat uses, so cards match the in-flow username treatment.
-  try {
-    const tid = data?.twitch_user_id || data?.twitch_id || null
-    if (tid && typeof getMcPaintStyle === 'function') {
-      const ps = getMcPaintStyle(String(tid))
-      if (ps) nameText.style.cssText = ps
-    }
-  } catch {}
-  nameLine.appendChild(nameText)
-  idText.appendChild(nameLine)
-
-  // Platform pills
-  const pills = document.createElement('div')
-  pills.className = 'hs-pcard-pills'
-  if (data?.twitch_username) pills.appendChild(pcMakePill('twitch', data.twitch_username, data.twitch_is_live))
-  if (data?.kick_username) pills.appendChild(pcMakePill('kick', data.kick_username, data.kick_is_live))
-  if (data?.youtube_username || data?.youtube_channel_id) {
-    pills.appendChild(pcMakePill('youtube', data.youtube_username || username, !!data.youtube_is_live))
-  } else if (activeProfileCard.platform === 'yt' || activeProfileCard.platform === 'youtube') {
-    // YT-only chatter with no heatsync account — surface a YT pill anyway so
-    // the user has a working link from the card to the YouTube channel.
-    pills.appendChild(pcMakePill('youtube', username))
-  }
-  pills.appendChild(pcMakePill('heatsync', username))
-  idText.appendChild(pills)
-
-  // Badges row — twitch native (sub/mod/vip/etc) + 7TV/FFZ/BTTV/Chatterino. The
-  // helper fns build escaped <img> markup with internal escapeHtml on every
-  // attribute; createContextualFragment parses without executing scripts so we
-  // get the same render path chat uses without an innerHTML write.
+  // Chip row holds ONLY native chat badge images (sub/mod/vip + 7TV/FFZ/BTTV/
+  // Chatterino) — these are visual identity tokens that can't fit a text sheet.
+  // Platform usernames, age, role, verified, heat, posts, followers, rel are
+  // all rendered as text rows in the property sheet below.
+  const chips = document.createElement('div')
+  chips.className = 'hs-pcard-id-chips'
   try {
     const userId = data?.twitch_user_id || data?.twitch_id || null
     const recent = (typeof getRecentMessagesFromUser === 'function') ? getRecentMessagesFromUser(username) : []
@@ -448,59 +412,19 @@ function renderProfileCardView() {
       html += renderThirdPartyBadges(String(userId))
     }
     if (html) {
-      const row = document.createElement('div')
-      row.className = 'hs-pcard-badges'
       const range = document.createRange()
-      range.selectNodeContents(row)
-      row.appendChild(range.createContextualFragment(html))
-      idText.appendChild(row)
+      range.selectNodeContents(chips)
+      chips.appendChild(range.createContextualFragment(html))
     }
   } catch {}
+
+  if (chips.children.length) idText.appendChild(chips)
 
   if (data?.bio) {
     const bio = document.createElement('div')
     bio.className = 'hs-pcard-bio'
     pcAppendBioWithAutolinks(bio, data.bio)
     idText.appendChild(bio)
-  }
-
-  // Account age + verification + broadcaster type
-  if (data) {
-    const meta = document.createElement('div')
-    meta.className = 'hs-pcard-meta'
-    const dates = [data.twitch_created_at, data.kick_created_at]
-      .filter(Boolean)
-      .filter(d => !isNaN(new Date(d).getTime()))
-    const oldest = dates.length ? dates.reduce((a, b) => new Date(b) < new Date(a) ? b : a) : null
-    const age = (typeof getAccountAge === 'function') ? getAccountAge(oldest) : null
-    if (age) {
-      const ageEl = document.createElement('span')
-      ageEl.className = 'hs-pcard-age'
-      ageEl.textContent = age + ' old'
-      meta.appendChild(ageEl)
-    }
-    const bt = data.twitch_broadcaster_type
-    if (bt === 'partner' || bt === 'affiliate') {
-      const r = document.createElement('span')
-      r.className = 'hs-pcard-role ' + bt
-      r.textContent = bt
-      meta.appendChild(r)
-    }
-    if (data.twitch_verified) {
-      const v = document.createElement('span')
-      v.className = 'hs-pcard-verified twitch'
-      v.title = 'Twitch Verified'
-      v.textContent = '✓'
-      meta.appendChild(v)
-    }
-    if (data.kick_verified) {
-      const v = document.createElement('span')
-      v.className = 'hs-pcard-verified kick'
-      v.title = 'Kick Verified'
-      v.textContent = '✓'
-      meta.appendChild(v)
-    }
-    if (meta.children.length) idText.appendChild(meta)
   }
 
   idRow.appendChild(idText)
@@ -573,45 +497,88 @@ function renderProfileCardView() {
     const youSub = rel.youSub ?? rel.isSubscribed ?? rel.subscribedOnTwitch ?? rel.subscribedOnKick
     const subsYou = rel.profileSubbedToViewerOnTwitch || rel.profileSubbedToViewerOnKick
 
-    const relParts = []
-    if (youFollow && followsYou) relParts.push('mutual')
-    else if (youFollow) relParts.push('you follow')
-    else if (followsYou) relParts.push('follows you')
-    if (youSub) relParts.push('you sub')
-    if (subsYou) relParts.push('subs to you')
+    // Property sheet — 2-col zebra list. Label = dim gray, value = bold white
+    // except semantic-state values (age, role, verified, heat, rel) which
+    // carry their own brand/state color. 13px Cozette + bitmap render block
+    // for crispness; matches house "color when it earns it" rule.
+    const sheet = document.createElement('dl')
+    sheet.className = 'hs-pcard-sheet'
+    const addRow = (label, value, valueClass) => {
+      const dt = document.createElement('dt')
+      dt.textContent = label
+      const dd = document.createElement('dd')
+      if (valueClass) dd.className = valueClass
+      if (value instanceof Node) dd.appendChild(value)
+      else dd.textContent = value
+      sheet.appendChild(dt)
+      sheet.appendChild(dd)
+    }
 
-    // Stats line: heat uses canonical tier styling (formatHeat + ° + glow), others plain
-    const heatNode = heat ? heatSpanEl(heat) : null
-    const hasStats = heatNode || posts || followers
-    if (hasStats) {
-      const line = document.createElement('div')
-      let needsSep = false
-      if (heatNode) {
-        line.appendChild(heatNode)
-        line.appendChild(document.createTextNode(' heat'))
-        needsSep = true
-      }
-      if (posts) {
-        if (needsSep) line.appendChild(document.createTextNode(' · '))
-        line.appendChild(document.createTextNode(`${pcFmt(posts)} posts`))
-        needsSep = true
-      }
-      if (followers) {
-        if (needsSep) line.appendChild(document.createTextNode(' · '))
-        line.appendChild(document.createTextNode(`${pcFmt(followers)} followers`))
-      }
-      statsSec.appendChild(line)
+    // Platform usernames — value text is brand-colored. Live indicator (🔴 +
+    // viewer count) appended inline when broadcasting.
+    const liveDot = (vc) => {
+      const live = document.createElement('span')
+      live.className = 'hs-pc-live'
+      live.textContent = vc ? ' 🔴 ' + pcFmt(vc) : ' 🔴'
+      return live
     }
-    if (relParts.length) {
-      const rline = document.createElement('div')
-      rline.className = 'hs-pcard-rel'
-      // House style: no dots between profile relationship items.
-      rline.textContent = relParts.join('  ')
-      statsSec.appendChild(rline)
+    if (data.twitch_username) {
+      const v = document.createElement('span')
+      v.textContent = data.twitch_username
+      if (data.twitch_is_live) v.appendChild(liveDot(data.twitch_viewer_count || 0))
+      addRow('ttv', v, 'val-ttv')
     }
-    if (!hasStats && !relParts.length) {
-      statsSec.appendChild(document.createTextNode('no stats yet'))
+    if (data.kick_username) {
+      const v = document.createElement('span')
+      v.textContent = data.kick_username
+      if (data.kick_is_live) v.appendChild(liveDot(data.kick_viewer_count || 0))
+      addRow('kick', v, 'val-kick')
     }
+    if (data.youtube_username || data.youtube_channel_id) {
+      const v = document.createElement('span')
+      v.textContent = data.youtube_username || username
+      if (data.youtube_is_live) v.appendChild(liveDot(data.youtube_viewer_count || 0))
+      addRow('yt', v, 'val-yt')
+    } else if (activeProfileCard.platform === 'yt' || activeProfileCard.platform === 'youtube') {
+      addRow('yt', username, 'val-yt')
+    }
+
+    // acctage
+    const dates = [data.twitch_created_at, data.kick_created_at]
+      .filter(Boolean)
+      .filter(d => !isNaN(new Date(d).getTime()))
+    const oldest = dates.length ? dates.reduce((a, b) => new Date(b) < new Date(a) ? b : a) : null
+    const age = (typeof getAccountAge === 'function') ? getAccountAge(oldest) : null
+    if (age) addRow('acctage', age, 'val-age')
+
+    // type (broadcaster status)
+    const bt = data.twitch_broadcaster_type
+    if (bt === 'partner') addRow('type', 'partner', 'val-partner')
+    else if (bt === 'affiliate') addRow('type', 'affiliate', 'val-affiliate')
+
+    // verified
+    if (data.twitch_verified) addRow('verified', '✓ twitch', 'val-ttv')
+    if (data.kick_verified) addRow('verified', '✓ kick', 'val-kick')
+
+    // heat (keep heatSpanEl for tier glow + degree symbol)
+    if (heat) addRow('heat', heatSpanEl(heat), 'val-heat')
+
+    // counts — posts neutral, followers blue (popularity scalar)
+    if (posts) addRow('posts', pcFmt(posts))
+    if (followers) addRow('followers', pcFmt(followers), 'val-followers')
+
+    // Relationship — direction-coded colors. Outflow (you→them) cool side
+    // of the wheel (cyan/violet); inflow (them→you) warm side (magenta/pink);
+    // mutual gets a saturated handshake color (lime/gold).
+    if (youFollow && followsYou) addRow('rel', 'mutual follow', 'val-mutual')
+    else if (youFollow) addRow('you', 'follow', 'val-you-follow')
+    else if (followsYou) addRow('they', 'follow you', 'val-they-follow')
+    if (youSub && subsYou) addRow('rel', 'mutual sub', 'val-mutual-sub')
+    else if (youSub) addRow('you', 'sub', 'val-you-sub')
+    else if (subsYou) addRow('they', 'sub to you', 'val-they-sub')
+
+    if (sheet.children.length) statsSec.appendChild(sheet)
+    else statsSec.appendChild(document.createTextNode('no stats yet'))
   }
   card.appendChild(statsSec)
 

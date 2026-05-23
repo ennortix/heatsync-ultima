@@ -572,6 +572,38 @@
   let _userTooltipTarget = null;
   let _userTooltipResizeObs = null;
 
+  // CozetteVector's OTF advance widths aren't integer multiples at 13px
+  // (~5.984px per glyph), so any flex row of badges accumulates fractional
+  // X positions on every child after the first. Bitmap glyphs rendered at
+  // fractional X get sampled at sub-pixel offsets and smear — the "blurry"
+  // tooltip badges. Rounding each badge's width UP to the next integer
+  // resets the X of the next sibling to integer, killing the cascade.
+  // BADGE_LEAFS lists the specific badge classes (visible chips, never
+  // layout wrappers). Compound stat parents like .hs-pc-stat.op are rounded
+  // because their .hs-pc-num child has fractional width that pushes the
+  // sibling text node off integer; rounding the parent fixes the next
+  // sibling-row badge.
+  const TOOLTIP_BADGE_LEAFS = new Set([
+    'hs-pc-platform', 'hs-pc-name', 'hs-pc-age', 'hs-pc-role',
+    'hs-pc-sub-tenure', 'hs-pc-followage', 'hs-pc-channel-follows',
+    'hs-pc-rel-badge', 'hs-pc-stat', 'hs-pc-num', 'hs-pc-loading',
+    'hs-heat-num',
+  ]);
+  function roundTooltipBadgeWidths(tooltip) {
+    if (!tooltip) return;
+    const els = tooltip.querySelectorAll('[class*="hs-pc-"], .hs-heat-num');
+    for (const el of els) {
+      let isBadge = false;
+      for (const c of el.classList) if (TOOLTIP_BADGE_LEAFS.has(c)) { isBadge = true; break; }
+      if (!isBadge) continue;
+      if (!el.textContent?.trim()) continue;
+      el.style.width = '';
+      const w = el.getBoundingClientRect().width;
+      const rounded = Math.ceil(w);
+      if (Math.abs(w - rounded) > 0.01) el.style.width = rounded + 'px';
+    }
+  }
+
   function ensureUserTooltip() {
     if (!userTooltip || !document.contains(userTooltip)) {
       userTooltip = document.createElement('div');
@@ -587,6 +619,14 @@
         });
         cleanup.trackObserver(_userTooltipResizeObs);
         _userTooltipResizeObs.observe(userTooltip);
+      }
+      // MutationObserver — round badge widths whenever the tooltip's subtree
+      // changes (sync renderProfileCard + async sub-tenure + followage adds
+      // children at different times; this catches all paths).
+      if (typeof MutationObserver !== 'undefined') {
+        const mo = new MutationObserver(() => roundTooltipBadgeWidths(userTooltip));
+        cleanup.trackObserver(mo);
+        mo.observe(userTooltip, { childList: true, subtree: true });
       }
     }
     return userTooltip;
@@ -631,43 +671,21 @@
     const pfp = p.twitch_profile_pic || p.kick_profile_pic || p.profile_image_url || 'https://heatsync.org/anon.webp';
     const displayName = p.display_name || p.username || 'unknown';
 
-    // Platform badges
-    let platforms = '';
-    if (p.twitch_username) {
-      let ttv = `<span class="hs-pc-platform twitch">ttv:${escapeHtml(p.twitch_username)}</span>`;
-      if (p.twitch_verified) ttv += ' <span class="hs-pc-verified" title="Twitch Verified"><svg viewBox="0 0 16 16" fill="none" width="12" height="12" style="vertical-align:middle"><path d="M14.54 6.29L13.09 4.63l.26-2.17-2.13-.49L10.09.24 8 1.14 5.91.24 4.78 1.97l-2.13.49.26 2.17L1.46 6.29 2.72 8 1.46 9.71l1.45 1.66-.26 2.17 2.13.49L5.91 15.76 8 14.86l2.09.9 1.13-1.73 2.13-.49-.26-2.17 1.45-1.66L13.28 8l1.26-1.71z" fill="#9146ff"/><path d="M6.5 11.17L3.83 8.5l1.18-1.17L6.5 8.83l4.49-4.5L12.17 5.5 6.5 11.17z" fill="#fff"/></svg></span>';
-      if (p.twitch_is_live) {
-        const vc = Number(p.twitch_viewer_count) || 0;
-        ttv += ` <span style="color:#f00">🔴${vc > 0 ? ' ' + escapeHtml(formatCompact(vc)) : ''}</span>`;
-      }
-      platforms += ttv;
-    }
-    if (p.kick_username) {
-      let kk = `<span class="hs-pc-platform kick">kick:${escapeHtml(p.kick_username)}</span>`;
-      if (p.kick_verified) kk += ' <span class="hs-pc-verified" title="Kick Verified"><svg viewBox="0 0 16 16" fill="none" width="12" height="12" style="vertical-align:middle"><path d="M14.54 6.29L13.09 4.63l.26-2.17-2.13-.49L10.09.24 8 1.14 5.91.24 4.78 1.97l-2.13.49.26 2.17L1.46 6.29 2.72 8 1.46 9.71l1.45 1.66-.26 2.17 2.13.49L5.91 15.76 8 14.86l2.09.9 1.13-1.73 2.13-.49-.26-2.17 1.45-1.66L13.28 8l1.26-1.71z" fill="#53fc18"/><path d="M6.5 11.17L3.83 8.5l1.18-1.17L6.5 8.83l4.49-4.5L12.17 5.5 6.5 11.17z" fill="#000"/></svg></span>';
-      if (p.kick_is_live) {
-        const vc = Number(p.kick_viewer_count) || 0;
-        kk += ` <span style="color:#f00">🔴${vc > 0 ? ' ' + escapeHtml(formatCompact(vc)) : ''}</span>`;
-      }
-      platforms += kk;
-    }
-    if (!platforms) {
-      platforms = `<span class="hs-pc-name">${escapeHtml(displayName)}</span>`;
-    }
-
-    // Role badge
-    let role = '';
+    // Role
     const bt = p.twitch_broadcaster_type;
-    if (bt === 'partner') role = '<span class="hs-pc-role partner">partner</span>';
-    else if (bt === 'affiliate') role = '<span class="hs-pc-role affiliate">affiliate</span>';
-    else if (p.role === 'admin') role = '<span class="hs-pc-role admin">admin</span>';
-    else if (p.role === 'staff') role = '<span class="hs-pc-role staff">staff</span>';
+    let roleStr = '', roleCls = '';
+    if (bt === 'partner') { roleStr = 'partner'; roleCls = 'val-partner'; }
+    else if (bt === 'affiliate') { roleStr = 'affiliate'; roleCls = 'val-affiliate'; }
+    else if (p.role === 'admin') { roleStr = 'admin'; roleCls = 'val-admin'; }
+    else if (p.role === 'staff') { roleStr = 'staff'; roleCls = 'val-staff'; }
 
     // Account age
     const dates = [p.twitch_created_at, p.kick_created_at].filter(Boolean);
     const oldest = dates.length ? dates.reduce((a, b) => new Date(b) < new Date(a) ? b : a) : null;
     const age = getAccountAge(oldest);
-    const ageHtml = age ? `<span class="hs-pc-age">${age}</span>` : '';
+
+    // Live indicator HTML helper
+    const liveStr = (vc) => `<span class="hs-pc-live">${vc > 0 ? '🔴 ' + escapeHtml(formatCompact(vc)) : '🔴'}</span>`;
 
     // Bio with @mention/#tag autolinks
     const bioHtml = p.bio ? String(p.bio).split(/(@[A-Za-z0-9_]{3,25}|#[A-Za-z0-9]{1,30})/g).map(s => {
@@ -686,13 +704,53 @@
     const re = stats.re_count || p.reCount || 0;
     const followers = Math.max(stats.followers || 0, p.twitch_followers || 0, p.kick_followers || 0);
 
-    const statBadges = [];
+    // Native chat badges (Twitch sub/mod/vip + 7TV/FFZ/BTTV/Chatterino) —
+    // mirrors the .hs-pcard-id-chips row in the click-card. Uses the same
+    // helpers, which return escaped <img> markup safe for innerHTML.
+    let nativeBadges = '';
+    try {
+      const userId = p.twitch_user_id || p.twitch_id || null;
+      const uname = p.username || p.twitch_username || p.kick_username || '';
+      const recent = (uname && typeof getRecentMessagesFromUser === 'function') ? getRecentMessagesFromUser(uname) : [];
+      const recentTwitch = recent.find(m => (m.platform || 'twitch') === 'twitch' && m.badges);
+      if (recentTwitch && typeof renderBadges === 'function') {
+        nativeBadges += renderBadges(recentTwitch.badges, recentTwitch.channel);
+      }
+      if (userId && typeof renderThirdPartyBadges === 'function') {
+        nativeBadges += renderThirdPartyBadges(String(userId));
+      }
+    } catch {}
+
+    // Build property-sheet rows. data-k attributes let the async update paths
+    // (fetchAndShowFollowage etc) locate specific rows after the fetch lands.
+    const sheetRows = [];
+    const sheetRow = (label, value, valCls, key) =>
+      sheetRows.push(`<dt>${escapeHtml(label)}</dt><dd class="${valCls || ''}" data-k="${escapeHtml(key || label)}">${value}</dd>`);
+
+    // Platform identity rows — value text brand-colored, live dot inline.
+    if (p.twitch_username) {
+      const live = p.twitch_is_live ? ' ' + liveStr(Number(p.twitch_viewer_count) || 0) : '';
+      sheetRow('ttv', escapeHtml(p.twitch_username) + live, 'val-ttv', 'ttv');
+    }
+    if (p.kick_username) {
+      const live = p.kick_is_live ? ' ' + liveStr(Number(p.kick_viewer_count) || 0) : '';
+      sheetRow('kick', escapeHtml(p.kick_username) + live, 'val-kick', 'kick');
+    }
+    if (p.youtube_username || p.youtube_channel_id) {
+      const yname = p.youtube_username || p.youtube_channel_id;
+      const live = p.youtube_is_live ? ' ' + liveStr(Number(p.youtube_viewer_count) || 0) : '';
+      sheetRow('yt', escapeHtml(yname) + live, 'val-yt', 'yt');
+    }
+    if (age) sheetRow('acctage', escapeHtml(age), 'val-age', 'acctage');
+    if (roleStr) sheetRow('type', escapeHtml(roleStr), roleCls, 'type');
+    if (p.twitch_verified) sheetRow('verified', '✓ twitch', 'val-ttv', 'verified-ttv');
+    if (p.kick_verified) sheetRow('verified', '✓ kick', 'val-kick', 'verified-kick');
+
     const heatHtml = heatSpanHtml(heat);
-    if (heatHtml) statBadges.push(`<span class="hs-pc-stat hs-pc-stat-heat">${heatHtml}</span>`);
-    if (op > 0) statBadges.push(`<span class="hs-pc-stat op"><span class="hs-pc-num">${formatCompact(op)}</span>[OP]</span>`);
-    if (mop > 0) statBadges.push(`<span class="hs-pc-stat mop"><span class="hs-pc-num">${formatCompact(mop)}</span>[OP]</span>`);
-    if (re > 0) statBadges.push(`<span class="hs-pc-stat re"><span class="hs-pc-num">${formatCompact(re)}</span>[RE]</span>`);
-    if (followers > 0) statBadges.push(`<span class="hs-pc-stat hs-pc-stat-followers">${t('mc_tip_followers', [formatCompact(followers)])}</span>`);
+    if (heatHtml) sheetRow('heat', heatHtml, 'val-heat', 'heat');
+    const posts = op + mop + re;
+    if (posts > 0) sheetRow('posts', escapeHtml(formatCompact(posts)), '', 'posts');
+    if (followers > 0) sheetRow('followers', escapeHtml(formatCompact(followers)), 'val-followers', 'followers');
 
     // Relationship — covers all four angles across Twitch and Kick.
     // Timestamps: platform-verified only (Twitch helix followed_at / sub started_at,
@@ -701,14 +759,12 @@
     // signup/sync date for every profile (e.g. "5mo" everywhere) and lie about
     // multi-year Twitch follows. Show bare label when no platform date exists.
     const rel = p.relationship || {};
-    const relBadges = [];
-    // They → you (follow) — platform-verified flag only; heatsync DB rows can
-    // be stale and don't reflect actual Twitch/Kick state for arbitrary streamers.
+    // They → you (follow) — platform-verified flag only
     const followsYou = rel.profileFollowsViewerOnTwitch || rel.profileFollowsViewerOnKick;
     if (followsYou) {
       const since = rel.profileFollowsViewerOnTwitchSince || rel.profileFollowsViewerOnKickSince;
       const ageStr = since ? ' ' + getCompactRelTime(since).replace(' ago', '') : '';
-      relBadges.push(`<span class="hs-pc-rel-badge mutual">follows you${ageStr}</span>`);
+      sheetRow('they', escapeHtml('follow you' + ageStr), 'val-they-follow', 'follows-you');
     }
     // They → you (sub) — platform-verified flag only
     const subsYou = rel.profileSubbedToViewerOnTwitch || rel.profileSubbedToViewerOnKick;
@@ -718,14 +774,14 @@
       const tierNum = typeof rawTier === 'string' ? Math.round(Number(rawTier) / 1000) : rawTier;
       const tierStr = tierNum && tierNum > 1 ? ' T' + tierNum : '';
       const ageStr = since ? ' ' + getCompactRelTime(since).replace(' ago', '') : '';
-      relBadges.push(`<span class="hs-pc-rel-badge supporter">subs to you${tierStr}${ageStr}</span>`);
+      sheetRow('they', escapeHtml('sub to you' + tierStr + ageStr), 'val-they-sub', 'subs-you');
     }
     // You → them (follow) — ?? respects explicit false from canonical youFollow
     const youFollow = rel.youFollow ?? rel.isFollowing ?? rel.followsOnTwitch ?? rel.followsOnKick;
     if (youFollow) {
       const since = rel.followsOnTwitchSince || rel.followsOnKickSince;
       const ageStr = since ? ' ' + getCompactRelTime(since).replace(' ago', '') : '';
-      relBadges.push(`<span class="hs-pc-rel-badge following">you follow${ageStr}</span>`);
+      sheetRow('you', escapeHtml('follow' + ageStr), 'val-you-follow', 'you-follow');
     }
     // You → them (sub) — normalize tier
     const youSub = rel.youSub ?? rel.isSubscribed ?? rel.subscribedOnTwitch ?? rel.subscribedOnKick;
@@ -735,15 +791,12 @@
       const tier = tierNum || 1;
       const since = rel.twitchSubSince || rel.kickSubSince;
       const ageStr = since ? ' ' + getCompactRelTime(since).replace(' ago', '') : '';
-      relBadges.push(`<span class="hs-pc-rel-badge subbed">you sub${tier > 1 ? ' T' + tier : ''}${ageStr}</span>`);
+      sheetRow('you', escapeHtml('sub' + (tier > 1 ? ' T' + tier : '') + ageStr), 'val-you-sub', 'you-sub');
     }
-    // Mutual indicators when both directions present
-    if (followsYou && youFollow) {
-      relBadges.push(`<span class="hs-pc-rel-badge mutual-follow">mutual</span>`);
-    }
-    if (subsYou && youSub) {
-      relBadges.push(`<span class="hs-pc-rel-badge mutual-sub">mutual sub</span>`);
-    }
+    if (followsYou && youFollow) sheetRow('rel', 'mutual', 'val-mutual', 'mutual-follow');
+    if (subsYou && youSub) sheetRow('rel', 'mutual sub', 'val-mutual-sub', 'mutual-sub');
+
+    const sheetHtml = sheetRows.length ? `<dl class="hs-pc-sheet">${sheetRows.join('')}</dl>` : '';
 
     // Hero banner placeholder — wraps the whole card so the banner sits behind
     // the avatar/info row. Filled async by pcApplyBanner once the Twitch GQL
@@ -754,10 +807,9 @@
       <div class="hs-pc-body">
         ${pfp ? `<img class="hs-pc-avatar" src="${escapeHtml(pfp)}" alt="${escapeHtml(displayName)}">` : ''}
         <div class="hs-pc-info">
-          <div class="hs-pc-header">${platforms} ${role} ${ageHtml}</div>
+          <div class="hs-pc-header">${nativeBadges || `<span class="hs-pc-name">${escapeHtml(displayName)}</span>`}</div>
           ${bio}
-          ${statBadges.length ? `<div class="hs-pc-stats">${statBadges.join('')}</div>` : ''}
-          ${relBadges.length ? `<div class="hs-pc-rel">${relBadges.join(' ')}</div>` : ''}
+          ${sheetHtml}
         </div>
       </div>`;
   }
@@ -884,27 +936,32 @@
     }
   }
 
-  // Append sub tenure badge from local IRC data (sync, no fetch)
+  // Append sub tenure as a sheet row (sync, no fetch). Dedupes via data-k.
   function appendSubTenureBadge(tooltip, username, msgChannel) {
-    // Try message's channel first, fall back to tooltip channel context
     const channelLogin = msgChannel || getTooltipChannelContext()
     if (!channelLogin) return
     const channelMap = subTenureMap.get(channelLogin)
     if (!channelMap) return
     const months = channelMap.get(username.toLowerCase())
     if (!months) return
-    const header = tooltip.querySelector('.hs-pc-header')
-    if (!header) return
-    const badge = document.createElement('span')
-    badge.className = 'hs-pc-sub-tenure'
-    // When the channel context is the viewer themselves, "subbed mellen 5y" reads
-    // confusingly self-referential — phrase it as "subbed to you" instead.
+    const sheet = tooltip.querySelector('.hs-pc-sheet')
+    if (!sheet) return
+    if (sheet.querySelector('dd[data-k="sub-tenure"]')) return
     const isSelfChannel = (typeof currentUsername === 'string' && currentUsername) &&
       channelLogin.toLowerCase() === currentUsername.toLowerCase()
-    badge.textContent = isSelfChannel
-      ? `subbed to you ${formatSubTenure(months)}`
-      : t('mc_tip_subbed', [channelLogin, formatSubTenure(months)])
-    header.appendChild(badge)
+    const dt = document.createElement('dt')
+    const dd = document.createElement('dd')
+    dd.dataset.k = 'sub-tenure'
+    if (isSelfChannel) {
+      dt.textContent = 'they'
+      dd.className = 'val-they-sub'
+      dd.textContent = 'sub to you ' + formatSubTenure(months)
+    } else {
+      dt.textContent = 'ch sub'
+      dd.className = 'val-ch'
+      dd.textContent = channelLogin + ' ' + formatSubTenure(months)
+    }
+    sheet.appendChild(dt); sheet.appendChild(dd)
   }
 
   // Async followage fetch — appends to tooltip after profile renders (DOM methods, no innerHTML)
@@ -916,65 +973,57 @@
     if (typeof lookupFollowage !== 'function') return
     const result = await lookupFollowage(username, channelLogin)
     if (gen !== _profileGen || !result) return
-    const header = tooltip.querySelector('.hs-pc-header')
-    if (!header) return
     // When the channel context IS the viewer (e.g. you're hovering a chatter
-    // in your own channel tab), the followage badges duplicate the heatsync
-    // rel-badges ("follows you" / nothing). Skip the literal Twitch-followage
-    // badge entirely — the rel-badge is the single source of truth for the
-    // "they → you" direction. Still process channelFollowedAt below for the
-    // "you follow Xy" age-correction path.
+    // in your own channel tab), the followage rows duplicate the heatsync
+    // "they → you" rel-row. Skip the literal Twitch followage row in that
+    // case. Still process channelFollowedAt below for the you-follow age fill.
     const isSelfChannel = (typeof currentUsername === 'string' && currentUsername) &&
       channelLogin.toLowerCase() === currentUsername.toLowerCase()
-    const existing = header.querySelector('.hs-pc-followage')
-    if (existing) existing.remove()
-    if (!isSelfChannel) {
-      const badge = document.createElement('span')
-      if (result.followedAt) {
-        badge.className = 'hs-pc-followage'
-        const age = getCompactRelTime(result.followedAt).replace(' ago', '')
-        badge.textContent = t('mc_tip_following', [channelLogin, age])
-      } else {
-        badge.className = 'hs-pc-followage hs-pc-nofollow'
-        badge.textContent = t('mc_tip_not_following', [channelLogin])
-      }
-      header.appendChild(badge)
+    const sheetEl = tooltip.querySelector('.hs-pc-sheet')
+    const upsertRow = (key, label, value, valCls) => {
+      if (!sheetEl) return
+      const existing = sheetEl.querySelector(`dd[data-k="${key}"]`)
+      if (existing) { existing.textContent = value; if (valCls) existing.className = valCls; return }
+      const dt = document.createElement('dt'); dt.textContent = label
+      const dd = document.createElement('dd'); if (valCls) dd.className = valCls; dd.dataset.k = key; dd.textContent = value
+      sheetEl.appendChild(dt); sheetEl.appendChild(dd)
     }
-    // "followed by {channel}" badge — streamer follows this user.
-    // Skip when channel === viewer; the rel-badge already says "you follow".
+    if (!isSelfChannel) {
+      if (result.followedAt) {
+        const age = getCompactRelTime(result.followedAt).replace(' ago', '')
+        upsertRow('ch-follow', 'ch follow', `${channelLogin} ${age}`, 'val-ch')
+      } else {
+        upsertRow('ch-follow', 'ch follow', `not following ${channelLogin}`, 'val-affiliate')
+      }
+    }
+    // Channel follows this user.
     if (result.channelFollowedAt && !isSelfChannel) {
-      const cfBadge = document.createElement('span')
-      cfBadge.className = 'hs-pc-channel-follows'
-      cfBadge.textContent = t('mc_tip_followed_by', [channelLogin])
-      header.appendChild(cfBadge)
+      upsertRow('ch-follows', 'follower', channelLogin, 'val-ch')
     }
     // When channel === viewer, channelFollowedAt is the viewer's authoritative
-    // Twitch follow date. Use it to fill in (or override) the rel-badge time.
+    // Twitch follow date. Use it to fill in (or override) the you-follow row.
     if (isSelfChannel && result.channelFollowedAt) {
-      const relRow = tooltip.querySelector('.hs-pc-rel')
-      const youFollowBadge = relRow?.querySelector('.hs-pc-rel-badge.following')
+      const sheet = tooltip.querySelector('.hs-pc-sheet')
+      const youFollowVal = sheet?.querySelector('dd[data-k="you-follow"]')
       const ageStr = ' ' + getCompactRelTime(result.channelFollowedAt).replace(' ago', '')
-      if (youFollowBadge) {
-        youFollowBadge.textContent = `you follow${ageStr}`
-      } else if (relRow) {
-        const b = document.createElement('span')
-        b.className = 'hs-pc-rel-badge following'
-        b.textContent = `you follow${ageStr}`
-        relRow.appendChild(b)
+      if (youFollowVal) {
+        youFollowVal.textContent = 'follow' + ageStr
+      } else if (sheet) {
+        const dt = document.createElement('dt'); dt.textContent = 'you'
+        const dd = document.createElement('dd'); dd.className = 'val-you-follow'; dd.dataset.k = 'you-follow'; dd.textContent = 'follow' + ageStr
+        sheet.appendChild(dt); sheet.appendChild(dd)
       }
     }
     // Update follower count from live data
-    const statsEl = tooltip.querySelector('.hs-pc-stats')
-    if (statsEl && result.followerCount != null) {
-      // Update followers with live data
-      const followerStat = statsEl.querySelector('.hs-pc-stat-followers')
-      if (followerStat) {
-        followerStat.textContent = t('mc_tip_followers', [formatCompact(result.followerCount)])
+    const sheet = tooltip.querySelector('.hs-pc-sheet')
+    if (sheet && result.followerCount != null) {
+      const followerVal = sheet.querySelector('dd[data-k="followers"]')
+      if (followerVal) {
+        followerVal.textContent = formatCompact(result.followerCount)
       } else {
-        const el = document.createElement('span')
-        el.className = 'hs-pc-stat hs-pc-stat-followers'
-        el.textContent = t('mc_tip_followers', [formatCompact(result.followerCount)])
-        statsEl.appendChild(el)
+        const dt = document.createElement('dt'); dt.textContent = 'followers'
+        const dd = document.createElement('dd'); dd.dataset.k = 'followers'; dd.textContent = formatCompact(result.followerCount)
+        sheet.appendChild(dt); sheet.appendChild(dd)
       }
     }
   }

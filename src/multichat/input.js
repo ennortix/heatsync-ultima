@@ -4034,18 +4034,33 @@ async function sendMessage() {
     Promise.all([kickPromise, twitchPromise]).then(([kickResult, twitchResult]) => {
       const kickOk = kickResult === true
       const twitchOk = twitchResult === true || twitchResult === null
+      // Kick "not logged in" is benign in dual-send if Twitch succeeded — user
+      // never intended to send to Kick. Suppress that specific toast.
+      const kickBenign = kickResult === 'kick_not_logged_in'
 
       if (kickOk || twitchOk) {
         // Partial failure toasts for dual-send
         if (isDualSend && !twitchOk) showToast('sent to kick only — twitch failed', 'error')
-        if (isDualSend && !kickOk) showToast('sent to twitch only — kick failed', 'error')
+        if (isDualSend && !kickOk && !kickBenign) showToast('sent to twitch only — kick failed', 'error')
       } else {
-        // Both failed (or single Kick failed)
+        // Both failed (or single Kick failed). Surface Twitch's error first
+        // when sendToTwitch was requested — that's the platform the user is
+        // actually on; reporting "log in to kick" while masking a Twitch auth
+        // failure was the misleading message that sent users chasing the
+        // wrong platform.
         input.style.borderColor = '#f44'
-        const msg = kickResult === 'kick_not_logged_in' ? t('mc_input_login_kick')
-          : kickResult === 'no_kick_tab' ? t('mc_input_open_kick')
-          : kickResult === 'no_channel' ? t('mc_input_kick_not_found')
-          : t('mc_input_send_failed')
+        let msg
+        if (sendToTwitch && twitchResult && twitchResult !== true && twitchResult !== null) {
+          msg = twitchResult === 'no_user' ? t('mc_input_no_username')
+            : twitchResult === 'auth_failed' ? t('mc_input_auth_failed')
+            : twitchResult === 'connect_failed' ? t('mc_input_connection_failed')
+            : t('mc_input_send_failed_retry')
+        } else {
+          msg = kickResult === 'kick_not_logged_in' ? t('mc_input_login_kick')
+            : kickResult === 'no_kick_tab' ? t('mc_input_open_kick')
+            : kickResult === 'no_channel' ? t('mc_input_kick_not_found')
+            : t('mc_input_send_failed')
+        }
         if (wysiwygEnabled) input.dataset.placeholder = msg
         else input.placeholder = msg
         setTimeout(() => { input.style.borderColor = ''; updateInputPlaceholder() }, 2500)

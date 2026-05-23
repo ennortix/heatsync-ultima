@@ -784,13 +784,17 @@ function initInput() {
       if (pendingEmoteOps.has(emoteName)) return;
 
       // Instant: right-click is the destructive partner to left-click.
-      // blocked → unblock, owned-removable → drop from set, everything else → block.
+      // blocked → unblock, owned (non-sub) → drop from set (renders as unadded
+      // orange), sub or non-owned → block.
+      // Note: slot==null is NOT a short-circuit to block — bg.removeFromInventory
+      // refetches the inventory to recover the slot. Short-circuiting here
+      // skipped the orange-unadded state users expect after right-click remove.
       if (state === 'blocked') {
         unblockEmote(emoteName);
       } else if (state === 'owned') {
-        // Sub / no-slot emotes can't be DELETEd via /api/user/emotes/:slot — block-only.
         const cached = (typeof lookupEmote === 'function') ? lookupEmote(emoteName) : null;
-        if (cached?.subscription || cached?.slot == null) {
+        if (cached?.subscription) {
+          // Sub emotes can't be DELETEd via /api/user/emotes/:slot — block only.
           blockEmote(emoteName, emoteUrl, source);
         } else {
           removeEmoteFromInventory(emoteName, e.target);

@@ -4034,9 +4034,25 @@ async function sendMessage() {
     Promise.all([kickPromise, twitchPromise]).then(([kickResult, twitchResult]) => {
       const kickOk = kickResult === true
       const twitchOk = twitchResult === true || twitchResult === null
+      // 'queued' = IRC was offline, message stuffed in send-queue for next
+      // reconnect (could be never). Treat as a visible yellow cue, not silent
+      // success — without this the input clears and the user thinks the
+      // message went through.
+      const twitchQueued = twitchResult === 'queued'
       // Kick "not logged in" is benign in dual-send if Twitch succeeded — user
       // never intended to send to Kick. Suppress that specific toast.
       const kickBenign = kickResult === 'kick_not_logged_in'
+
+      if (twitchQueued && !kickOk) {
+        // Most common: not logged into Twitch IRC (no auth-token cookie) AND
+        // not on Kick. Surface as a real error — the message did NOT go out.
+        input.style.borderColor = '#f44'
+        const msg = t('mc_input_auth_failed') || 'log in to twitch first'
+        if (wysiwygEnabled) input.dataset.placeholder = msg
+        else input.placeholder = msg
+        setTimeout(() => { input.style.borderColor = ''; updateInputPlaceholder() }, 2500)
+        return
+      }
 
       if (kickOk || twitchOk) {
         // Partial failure toasts for dual-send

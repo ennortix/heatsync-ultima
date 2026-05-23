@@ -17,6 +17,9 @@ const authState = {
   sendQueue: [], // Capped at 50 — drop oldest if full
 }
 const MAX_SEND_QUEUE = 50
+// Expose for devtools inspection — useful when "send disappears with no error"
+// is reported, lets you see if the WS is dead / token missing / queued forever.
+try { globalThis.__hsAuthIrc = authState } catch {}
 
 function authIrcAlive() {
   return authState.ws?.readyState === WebSocket.OPEN && authState.ready
@@ -230,7 +233,10 @@ async function sendIrcMessage(channel, text, token, replyParentId, overrideNick)
           if (authState.sendQueue.length < MAX_SEND_QUEUE) authState.sendQueue.push({ channel, text });
           scheduleReconnect([channel]);
           log('Queued message for reconnect');
-          return true;
+          // Return 'queued' so the caller can show a yellow "queued" cue
+          // instead of treating it as a clean success — message will fire
+          // when (if) the WS reconnects, not now.
+          return 'queued';
         }
       }
       if (!authState.joined.has(channel)) await joinChannel(channel);
@@ -238,7 +244,7 @@ async function sendIrcMessage(channel, text, token, replyParentId, overrideNick)
         if (attempt < 2) { cleanupAuthIrc(); continue; }
         if (authState.sendQueue.length < MAX_SEND_QUEUE) authState.sendQueue.push({ channel, text });
         scheduleReconnect([channel]);
-        return true;
+        return 'queued';
       }
       authState.ws.send(`${prefix}PRIVMSG #${channel} :${text}\r\n`);
       if (MC_DEBUG) console.warn('[HS] IRC SEND →', `#${channel}`, `nick=${nick}`, replyParentId ? `reply=${replyParentId}` : '', text.slice(0, 40));
@@ -249,7 +255,7 @@ async function sendIrcMessage(channel, text, token, replyParentId, overrideNick)
       if (attempt === 2) {
         if (authState.sendQueue.length < MAX_SEND_QUEUE) authState.sendQueue.push({ channel, text });
         scheduleReconnect([channel]);
-        return true;
+        return 'queued';
       }
     }
   }

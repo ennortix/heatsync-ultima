@@ -619,6 +619,31 @@ function untrackInterval(id) {
 // every subsequent heatsync fetch short-circuits until the window passes. Keeps
 // 10k extensions from hammering a stressed server one endpoint at a time.
 let heatsyncBackoffUntil = 0
+// In-flight heatsync AbortControllers — on the FIRST 429 we cancel every other
+// pending heatsync fetch so a single rate-limit hit doesn't cascade into N-1
+// redundant 429s (concurrent channel-emote / cosmetics bursts were spamming
+// hundreds of "backing off" warns; the server already told us to slow down).
+const heatsyncInflightAborts = new Set()
+let _heatsyncBackoffWarnAt = 0
+// Heatsync concurrency cap — Cloudflare/server per-IP rate-limit trips when
+// 5+ requests fly concurrently (panel cold-load with 8 channels was firing 8
+// /api/emotes/user/X in the same tick). Cap at 4 in flight; queue the rest.
+// Together with the cascade-abort this turns bursts into smooth serial waves.
+const HEATSYNC_CONCURRENCY = 4
+let heatsyncInflightCount = 0
+const heatsyncWaitQueue = []
+function heatsyncAcquire() {
+  if (heatsyncInflightCount < HEATSYNC_CONCURRENCY) {
+    heatsyncInflightCount++
+    return Promise.resolve()
+  }
+  return new Promise(resolve => heatsyncWaitQueue.push(resolve))
+}
+function heatsyncRelease() {
+  heatsyncInflightCount--
+  const next = heatsyncWaitQueue.shift()
+  if (next) { heatsyncInflightCount++; next() }
+}
 function fakeBackoffResponse() {
   // Match the Response interface enough that callers checking .status / .ok / .json() / .body work.
   return {
@@ -640,15 +665,32 @@ async function fetchWithTimeout(url, opts = {}, ms = 10000) {
   if (backoffManaged && Date.now() < heatsyncBackoffUntil) {
     return fakeBackoffResponse()
   }
+  // Concurrency gate for heatsync — covers backoffManaged and noBackoff paths
+  // alike (server rate-limit applies to ALL heatsync calls). Queued requests
+  // re-check the backoff window after waking so a 429 that fired while we
+  // queued short-circuits us out of the slot we'd be wasting.
+  if (isHeatsync) await heatsyncAcquire()
+  if (backoffManaged && Date.now() < heatsyncBackoffUntil) {
+    heatsyncRelease()
+    return fakeBackoffResponse()
+  }
   const ctrl = new AbortController()
   const timer = setTimeout(() => ctrl.abort(), ms)
   if (opts.signal) {
     opts.signal.addEventListener('abort', () => ctrl.abort())
   }
+  if (backoffManaged) heatsyncInflightAborts.add(ctrl)
   // Default credentials: 'omit' for third-party APIs (no cookie leakage to 7TV/FFZ/BTTV/etc).
   // heatsync.org calls override with credentials: 'include' explicitly.
   const credentials = opts.credentials ?? (isHeatsync ? 'include' : 'omit')
-  const resp = await fetch(url, { ...opts, credentials, signal: ctrl.signal }).finally(() => clearTimeout(timer))
+  let resp
+  try {
+    resp = await fetch(url, { ...opts, credentials, signal: ctrl.signal })
+  } finally {
+    clearTimeout(timer)
+    if (backoffManaged) heatsyncInflightAborts.delete(ctrl)
+    if (isHeatsync) heatsyncRelease()
+  }
   if (backoffManaged && resp.status === 429) {
     const retryAfter = resp.headers.get('retry-after')
     let waitMs = 5000
@@ -656,8 +698,19 @@ async function fetchWithTimeout(url, opts = {}, ms = 10000) {
       const n = parseInt(retryAfter, 10)
       if (!isNaN(n) && n > 0) waitMs = Math.min(60000, n * 1000)
     }
+    const firstHit = Date.now() >= heatsyncBackoffUntil
     heatsyncBackoffUntil = Date.now() + waitMs
-    console.warn('[heatsync] 429 — backing off all heatsync fetches for', waitMs, 'ms')
+    if (firstHit) {
+      // Cancel every other in-flight heatsync request — they were issued before
+      // we knew about the rate-limit and would each get 429'd individually.
+      for (const a of heatsyncInflightAborts) { if (a !== ctrl) { try { a.abort() } catch {} } }
+    }
+    // Dedupe the warn — one per backoff window. Include URL so future storms
+    // can be traced back to the noisy endpoint.
+    if (Date.now() - _heatsyncBackoffWarnAt > 1000) {
+      _heatsyncBackoffWarnAt = Date.now()
+      console.warn('[heatsync] 429 — backing off all heatsync fetches for', waitMs, 'ms (first url:', url, ')')
+    }
   }
   return resp
 }
@@ -5619,11 +5672,30 @@ async function handleMessage(message, sender, sendResponse) {
         // back to twitch-id which arrives once ytNameToTwitchId resolves.
         const sevenTvPath = platform === 'kick' ? `kick/${encodeURIComponent(id)}` : `twitch/${encodeURIComponent(id)}`
         const isNumericId = /^\d+$/.test(id)
-        const stvP = fetchWithTimeout(`https://7tv.io/v3/users/${sevenTvPath}`).then(r => r.ok ? r.json() : null).catch(() => null)
+        // Per-id inflight dedup for 7TV/BTTV — chat rebuild can flush 30 keys in
+        // <1s; without this each one fires its own pair. Shared promise per
+        // (provider, path) collapses duplicate concurrent fetches into one. The
+        // 5min cache below handles the longer-window case.
+        const stv7tvInflight = (globalThis.__stv7tvInflight ??= new Map())
+        const bttvInflight = (globalThis.__bttvInflight ??= new Map())
+        let stvP = stv7tvInflight.get(sevenTvPath)
+        if (!stvP) {
+          stvP = fetchWithTimeout(`https://7tv.io/v3/users/${sevenTvPath}`).then(r => r.ok ? r.json() : null).catch(() => null)
+          stv7tvInflight.set(sevenTvPath, stvP)
+          stvP.finally(() => stv7tvInflight.delete(sevenTvPath))
+        }
         // BTTV — only twitch-id endpoint. Skip for kick/yt.
-        const bttvP = (platform === 'twitch' && isNumericId)
-          ? fetchWithTimeout(`https://api.betterttv.net/3/cached/users/twitch/${id}`).then(r => r.ok ? r.json() : null).catch(() => null)
-          : Promise.resolve(null)
+        let bttvP
+        if (platform === 'twitch' && isNumericId) {
+          bttvP = bttvInflight.get(id)
+          if (!bttvP) {
+            bttvP = fetchWithTimeout(`https://api.betterttv.net/3/cached/users/twitch/${id}`).then(r => r.ok ? r.json() : null).catch(() => null)
+            bttvInflight.set(id, bttvP)
+            bttvP.finally(() => bttvInflight.delete(id))
+          }
+        } else {
+          bttvP = Promise.resolve(null)
+        }
         // HeatSync personal set — the sender's added/custom emotes (public endpoint,
         // users.id == platform id). This is the ONLY source for an emote a user
         // added to heatsync that isn't in their 7TV/BTTV provider set (e.g. a 7TV

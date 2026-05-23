@@ -886,7 +886,11 @@
     if (!ytNameLookupPending.size) return
     const batch = [...ytNameLookupPending].slice(0, YT_NAME_BATCH)
     batch.forEach(k => ytNameLookupPending.delete(k))
-    await Promise.all(batch.map(async (key) => {
+    // Serialize — Promise.all over the batch was firing 8 concurrent
+    // /api/profile/X requests that monopolized the SW's heatsync slot pool
+    // and starved channel-emote / cosmetics fetches. YT cosmetics aren't
+    // time-critical; a slower-but-quieter walk is the right trade.
+    const lookupOne = async (key) => {
       try {
         const resp = await safeSendMessage({
           type: 'api_fetch',
@@ -930,7 +934,8 @@
         evictYtNameCache()
         ytNameToTwitchId.set(key, null)
       }
-    }))
+    }
+    for (const key of batch) await lookupOne(key)
     if (ytNameLookupPending.size > 0 && !ytNameLookupTimer) {
       ytNameLookupTimer = cleanup.setTimeout(() => {
         ytNameLookupTimer = null

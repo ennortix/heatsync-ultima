@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title data-i18n="welcome_title">heatsync</title>
+  <title>heatsync</title>
   <style>
     @font-face {
       font-family: 'CozetteVector';
@@ -24,87 +24,19 @@
       font-smooth: never;
       text-rendering: optimizeSpeed;
     }
-    .grid {
-      display: grid;
-      grid-template-rows: 1fr auto;
-      min-height: 100dvh;
-    }
-    .main {
+    body {
       display: flex;
       align-items: center;
       justify-content: center;
       padding: 24px;
     }
-    .trace {
-      width: 100%;
-      max-width: 420px;
-    }
-    .row { white-space: pre; }
-    .dim { color: #555; }
-    .ok { color: #fff; }
-    .gap { height: 14px; }
-    .cta {
-      display: inline-block;
-      margin-top: 6px;
-      padding: 6px 14px;
-      color: #ff8700;
-      text-decoration: none;
-      border: 1px solid #ff8700;
-      background: transparent;
-    }
-    .cta:hover, .cta:focus-visible {
-      background: #fff;
-      color: #000;
-      border-color: #fff;
-      outline: none;
-    }
-    .footer {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 6px 14px;
-      border-top: 1px solid #1a1a1a;
-      color: #555;
-    }
-    .footer a {
-      color: #555;
-      text-decoration: none;
-      padding: 1px 4px;
-      margin-left: 8px;
-    }
-    .footer a:hover { background: #fff; color: #000; }
+    a { color: #fff; text-decoration: underline; }
+    a:hover, a:focus-visible { background: #fff; color: #000; outline: none; }
   </style>
 </head>
 <body>
-  <div class="grid">
-    <div class="main" role="main">
-      <div class="trace">
-        <div class="row"><span class="dim">$</span> heatsync install</div>
-        <div class="row"><span class="dim">  </span><span class="ok">[ok]</span> extension active</div>
-        <div class="row"><span class="dim">  </span><span class="ok">[ok]</span> multichat overlay enabled</div>
-        <div class="row"><span class="dim">  </span><span class="ok">[ok]</span> twitch · kick · youtube ready</div>
-        <div class="gap"></div>
-        <div class="row"><span class="dim">$</span> next</div>
-        <div class="row">  link your accounts at heatsync.org</div>
-        <div class="gap"></div>
-        <a href="https://heatsync.org" target="_blank" class="cta">open heatsync.org →</a>
-      </div>
-    </div>
-    <div class="footer" role="contentinfo">
-      <span id="footer-version">v</span>
-      <span>
-        <a href="https://heatsync.org/legal/privacy" target="_blank" data-i18n="welcome_privacy">privacy</a>
-        <a href="https://github.com/mellen9999/heatsync-extension" target="_blank" data-i18n="welcome_source">source</a>
-      </span>
-    </div>
+  <div>
+    heatsync installed. go to <a href="https://heatsync.org" target="_blank">heatsync.org</a> to link your account.
   </div>
-  <script>
-    try {
-      const v = chrome.runtime.getManifest().version
-      document.getElementById('footer-version').textContent = 'v' + v
-    } catch {}
-  </script>
-  <script src="i18n-override.js"></script>
-  <script src="welcome.js"></script>
 </body>
 </html>

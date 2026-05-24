@@ -1024,9 +1024,16 @@ function hsRelPeek(username, platform) {
 
 async function hsFollowFromMenu(username, platform) {
   if (typeof resolveIdentity !== 'function') return
-  const p = (await resolveIdentity(username, { platform }))?.profile
+  const ri = await resolveIdentity(username, { platform })
+  const p = ri?.profile
   const id = p?.id || p?.userId
-  if (!id) { showToast(`${username} isn't on heatsync`, 'error'); return }
+  if (!id) {
+    const msg = ri?.transient
+      ? (ri.status === 429 ? `rate limited — try in a sec` : `couldn't reach server (${ri.status || 'net'})`)
+      : `${username} isn't on heatsync`
+    showToast(msg, 'error')
+    return
+  }
   pcToggleFollow(id, username, !!(p.relationship?.youFollow || p.relationship?.isFollowing))
 }
 
@@ -1049,9 +1056,9 @@ function openUserCtxMenu(x, y, username, platform, ctx = {}) {
   const youBlock = !!(rel?.youBlock || rel?.isBlocked) || blockedUsers.has(String(username).toLowerCase())
   const isMuted = mutedUsers.has(username)
   const items = [
-    { label: youFollow ? 'unfollow' : 'follow', good: youFollow, fn: () => hsFollowFromMenu(username, platform) },
-    { label: youBlock ? 'unblock' : 'block', good: youBlock, danger: !youBlock, fn: () => hsBlockFromMenu(username, platform) },
-    { label: isMuted ? 'unmute' : 'mute (24h)', good: isMuted, danger: !isMuted, fn: () => _toggleMcMute(username) },
+    { key: 'follow', label: youFollow ? 'unfollow' : 'follow', fn: () => hsFollowFromMenu(username, platform) },
+    { key: 'block', label: youBlock ? 'unblock' : 'block', danger: !youBlock, fn: () => hsBlockFromMenu(username, platform) },
+    { label: isMuted ? 'unmute' : 'mute (24h)', danger: !isMuted, fn: () => _toggleMcMute(username) },
     'sep',
     { label: 'whisper', fn: () => _openWhisperFor(username) },
     { label: 'mention', fn: () => _mentionInMcInput(username) },
@@ -1072,6 +1079,26 @@ function openUserCtxMenu(x, y, username, platform, ctx = {}) {
     items.push({ label: 'delete', danger: true, fn: () => { if (typeof deleteFeedPost === 'function') deleteFeedPost(feedMsg) } })
   }
   showHsCtxMenu(x, y, username, items)
+  // Async warm-up: cache miss or stale → fetch fresh and patch the menu's
+  // follow/block labels in place. Survives the typical case where the user's
+  // first interaction with a sender is a right-click (no hover-warmed cache).
+  if (typeof resolveIdentity === 'function') {
+    resolveIdentity(username, { platform }).then(ri => {
+      const r = ri?.profile?.relationship
+      if (!r) return
+      const menu = document.getElementById('hs-mc-msg-ctx')
+      if (!menu) return
+      const yf = !!(r.youFollow || r.isFollowing)
+      const yb = !!(r.youBlock || r.isBlocked) || blockedUsers.has(String(username).toLowerCase())
+      const followEl = menu.querySelector('[data-hs-key="follow"] .hs-mc-em-label')
+      if (followEl) followEl.textContent = yf ? 'unfollow' : 'follow'
+      const blockEl = menu.querySelector('[data-hs-key="block"] .hs-mc-em-label')
+      if (blockEl) {
+        blockEl.textContent = yb ? 'unblock' : 'block'
+        blockEl.parentElement.classList.toggle('hs-mc-em-danger', !yb)
+      }
+    }).catch(() => {})
+  }
 }
 
 function _toggleMcMute(username) {
@@ -1193,6 +1220,7 @@ function showHsCtxMenu(x, y, header, items) {
     }
     const it = document.createElement('div')
     it.className = 'hs-mc-em-item' + (spec.danger ? ' hs-mc-em-danger' : '') + (spec.good ? ' hs-mc-em-good' : '') + (spec.disabled ? ' hs-mc-em-disabled' : '')
+    if (spec.key) it.dataset.hsKey = spec.key
     const lab = document.createElement('span')
     lab.className = 'hs-mc-em-label'
     lab.textContent = spec.label

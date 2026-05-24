@@ -512,7 +512,8 @@
   // User hover tooltip (profile preview)
   let userTooltip = null;
   const _profileCache = new Map(); // platform:username -> { profile, ts }
-  const PROFILE_CACHE_TTL = 60000; // 60s
+  const _profileInflight = new Map(); // cacheKey -> Promise dedup for concurrent hover+ctx-menu+card opens
+  const PROFILE_CACHE_TTL = 60000; // 60s fresh; on 429/error we still serve stale
   let _profileGen = 0; // generation counter to prevent stale renders
 
   // Centralized cross-platform identity resolver. ALL identity lookups should go
@@ -551,22 +552,45 @@
         return shapeIdentity(cached.profile);
       }
     }
-    try {
-      const platParam = platform ? `?platform=${encodeURIComponent(platform)}` : '';
-      const resp = await apiFetch(`/api/profile/${encodeURIComponent(name)}${platParam}`);
-      if (!resp?.ok || !resp.data?.profile) {
-        return { ok: false, error: resp?.error || 'not found', notFound: true };
+    // Dedup concurrent lookups so hover + ctx-menu + card-open don't burn 3
+    // tokens against the per-user rate limit. Also covers the case where the
+    // user rapid-right-clicks while a prior fetch is in flight.
+    if (_profileInflight.has(cacheKey)) return _profileInflight.get(cacheKey);
+    const p = (async () => {
+      try {
+        const platParam = platform ? `?platform=${encodeURIComponent(platform)}` : '';
+        const resp = await apiFetch(`/api/profile/${encodeURIComponent(name)}${platParam}`);
+        if (!resp?.ok || !resp.data?.profile) {
+          // On 429 / transient error, fall back to stale cache (any age) so
+          // the UI keeps the last-known follow/block state instead of flipping
+          // back to default ("follow" label) on every menu open.
+          const stale = _profileCache.get(cacheKey);
+          if (stale) return shapeIdentity(stale.profile);
+          // Only flag as truly "not on heatsync" when server returned 404 or
+          // 400. Anything else (429, 5xx, network, timeout) is transient — let
+          // callers differentiate via `status`/`transient` so they can show
+          // "try again" instead of "user isn't on heatsync".
+          const status = resp?.status || 0;
+          const transient = status !== 404 && status !== 400;
+          return { ok: false, error: resp?.error || 'not found', notFound: !transient, transient, status };
+        }
+        const profile = resp.data.profile;
+        _profileCache.set(cacheKey, { profile, ts: Date.now() });
+        if (_profileCache.size > 100) {
+          const oldest = [..._profileCache.entries()].sort((a, b) => a[1].ts - b[1].ts).slice(0, 50);
+          for (const [k] of oldest) _profileCache.delete(k);
+        }
+        return shapeIdentity(profile);
+      } catch (e) {
+        const stale = _profileCache.get(cacheKey);
+        if (stale) return shapeIdentity(stale.profile);
+        return { ok: false, error: e.message || 'fetch failed' };
+      } finally {
+        _profileInflight.delete(cacheKey);
       }
-      const profile = resp.data.profile;
-      _profileCache.set(cacheKey, { profile, ts: Date.now() });
-      if (_profileCache.size > 100) {
-        const oldest = [..._profileCache.entries()].sort((a, b) => a[1].ts - b[1].ts).slice(0, 50);
-        for (const [k] of oldest) _profileCache.delete(k);
-      }
-      return shapeIdentity(profile);
-    } catch (e) {
-      return { ok: false, error: e.message || 'fetch failed' };
-    }
+    })();
+    _profileInflight.set(cacheKey, p);
+    return p;
   }
 
   let _userTooltipTarget = null;

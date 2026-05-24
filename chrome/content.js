@@ -251,34 +251,41 @@ function applyEmojiSize() {
   document.documentElement.style.setProperty('--hs-emoji-scale', String(hsEmojiSize))
 }
 
-// Crash telemetry: capture unhandled errors and unhandled promise rejections.
-// Filtered to only forward errors that look like ours (heatsync stack frames or
-// triggered from our injected scripts). Page-side noise gets dropped.
-let _lastCrashMessage = ''
-let _lastCrashTs = 0
-function _maybeReportCrash(source, message, stack, url) {
-  if (!message) return
-  const msg = String(message).slice(0, 500)
-  const stk = String(stack || '')
-  // Drop unrelated page errors — only forward when stack mentions our scripts.
-  const ours = /heatsync|content\.js|multichat\.js|heatsync-button\.js/.test(stk + ' ' + url)
-  if (!ours) return
-  // Dedup within 5s
-  const now = Date.now()
-  if (msg === _lastCrashMessage && now - _lastCrashTs < 5000) return
-  _lastCrashMessage = msg
-  _lastCrashTs = now
-  try {
-    safeSendMessage({ type: 'crash_report', source, message: msg, stack: stk, url }).catch(() => {})
-  } catch (e) {}
+// Diag probe — writes a small page-state snapshot to chrome.storage.local.hs_diag_page
+// so the SW's buildDiagSnapshot() can include "what browser context did the bug fire in"
+// alongside the error ring buffer. DOM-probes peer extensions (7TV/FFZ/BTTV/Chatterino)
+// because their injected DOM is the #1 source of repro-only-on-some-users breakage.
+// (Unhandled errors are captured by lib/error-reporter.js writing hs_errors directly.)
+function _detectPeerExts() {
+  const c = []
+  try { if (window.FrankerFaceZ || document.querySelector('.ffz-emoticon, .ffz-badge, [class^="ffz-"]')) c.push('ffz') } catch {}
+  try { if (window.SevenTV || document.querySelector('[class^="seventv-"], .seventv-emote')) c.push('7tv') } catch {}
+  try { if (window.BetterTTV || document.querySelector('[data-provider="bttv"], .bttv-emote')) c.push('bttv') } catch {}
+  try { if (document.querySelector('chatterino-injected, [class^="chatterino-"]')) c.push('chatterino') } catch {}
+  return c
 }
-window.addEventListener('error', (ev) => {
-  _maybeReportCrash('content', ev.message, ev.error?.stack, ev.filename)
-})
-window.addEventListener('unhandledrejection', (ev) => {
-  const r = ev.reason
-  _maybeReportCrash('content', r?.message || String(r), r?.stack, '')
-})
+function _writeDiagPage() {
+  try {
+    const plat = window.location.hostname.includes('kick.com') ? 'kick'
+      : window.location.hostname.includes('youtube.com') ? 'yt'
+      : window.location.hostname.includes('twitch.tv') ? 'twitch'
+      : 'other'
+    const snap = {
+      ts: Date.now(),
+      plat,
+      channel: getPageChannel(),
+      conflicts: _detectPeerExts(),
+    }
+    chrome.storage.local.set({ hs_diag_page: snap }, () => { void chrome.runtime.lastError })
+  } catch {}
+}
+// Initial + re-probe after host SPA settles + on URL change.
+cleanup.setTimeout(_writeDiagPage, 2000)
+cleanup.setTimeout(_writeDiagPage, 8000)
+let _lastDiagUrl = location.href
+cleanup.setIntervalIfVisible(() => {
+  if (location.href !== _lastDiagUrl) { _lastDiagUrl = location.href; _writeDiagPage() }
+}, 5000)
 
 // Safe wrapper for chrome.runtime.sendMessage - handles context invalidation
 async function safeSendMessage(message, _retry = 0) {
@@ -8350,6 +8357,7 @@ function reapplyBadgesToExistingMessages() {
     return
   }
   const container = findChatContainer()
+  if (!container) return
   let matched = 0
   container.querySelectorAll('[data-hs-cosmetic-user-id]').forEach(el => {
     const uid = el.dataset.hsCosmeticUserId

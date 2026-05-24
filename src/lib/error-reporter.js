@@ -108,9 +108,18 @@
     } catch (_) {}
   }
 
+  // Host pages (Twitch/Kick/YouTube) throw their own errors constantly — keep them
+  // out of the buffer unless the stack or filename traces back to extension code.
+  function _isOurs(stack, file) {
+    const s = (stack || '') + ' ' + (file || '')
+    return s.includes('chrome-extension://') || s.includes('moz-extension://')
+      || /\b(heatsync|content\.js|multichat\.js|heatsync-button\.js|autocomplete-hook\.js|chat-injector\.js)\b/.test(s)
+  }
+
   function _onError(e) {
     try {
       const f = _fmtErr(e.error != null ? e.error : e.message)
+      if (!_isOurs(f.stack, e.filename)) return
       _capture({
         ts: Date.now(), type: 'error', plat: _plat, ver: _ver,
         url: _truncate(location.href, 200),
@@ -125,6 +134,7 @@
     try {
       const f = _fmtErr(e.reason)
       const stack = f.stack || _synthStack(2)
+      if (!_isOurs(stack, '')) return
       _capture({
         ts: Date.now(), type: 'rejection', plat: _plat, ver: _ver,
         url: _truncate(location.href, 200),

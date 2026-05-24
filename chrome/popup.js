@@ -155,14 +155,16 @@
   async function copyErrors() {
     const cur = await new Promise(r => chrome.storage.local.get('hs_errors', r));
     const arr = Array.isArray(cur?.hs_errors) ? cur.hs_errors : [];
-    if (arr.length === 0) {
+    let diag = null;
+    try { diag = (await chrome.runtime.sendMessage({ type: 'get_diag' }))?.diag || null; } catch {}
+    if (arr.length === 0 && !diag) {
       linkErrors.textContent = 'no errors';
       setTimeout(refreshErrorCount, 1200);
       return;
     }
     const ua = navigator.userAgent;
     const ver = chrome.runtime.getManifest().version;
-    const payload = { ver, ua, count: arr.length, errors: arr };
+    const payload = { ver, ua, diag, count: arr.length, errors: arr };
     try {
       await navigator.clipboard.writeText(JSON.stringify(payload, null, 2));
       linkErrors.textContent = 'copied ' + arr.length;

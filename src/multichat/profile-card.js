@@ -742,6 +742,21 @@ function pcToggleMute(username) {
 // 400 'Already following' / 'Not following' for no-op state which we treat as
 // idempotent success. After success, ping background to refresh followedUsers
 // so the new follow shows up in live notifications + badge immediately.
+// Mutate every _profileCache entry for this user so subsequent reads (ctx
+// menu's hsRelPeek, tooltip rehover, profile card reopen) see fresh state.
+// Without this, after pcToggleFollow the cached profile keeps the pre-toggle
+// youFollow and the next right-click still says "follow".
+function _patchProfileCacheRel(username, patch) {
+  if (typeof _profileCache === 'undefined' || !_profileCache) return
+  const u = String(username).toLowerCase()
+  for (const [k, v] of _profileCache) {
+    if (!k.endsWith(':' + u)) continue
+    const prof = v?.profile
+    if (!prof) continue
+    prof.relationship = { ...(prof.relationship || {}), ...patch }
+  }
+}
+
 async function pcToggleFollow(profileId, username, currentlyFollowing) {
   if (!profileId) {
     if (typeof showToast === 'function') showToast('not registered on heatsync', 'error')
@@ -754,6 +769,7 @@ async function pcToggleFollow(profileId, username, currentlyFollowing) {
     activeProfileCard.data.relationship = { ...(activeProfileCard.data.relationship || {}), youFollow: targetFollowing }
     renderProfileCardView()
   }
+  _patchProfileCacheRel(username, { youFollow: targetFollowing, isFollowing: targetFollowing })
   try {
     const resp = await apiFetch(`/api/follow/${encodeURIComponent(profileId)}`, { method, auth: true })
     if (!resp?.ok) {
@@ -764,6 +780,7 @@ async function pcToggleFollow(profileId, username, currentlyFollowing) {
           activeProfileCard.data.relationship.youFollow = currentlyFollowing
           renderProfileCardView()
         }
+        _patchProfileCacheRel(username, { youFollow: currentlyFollowing, isFollowing: currentlyFollowing })
         if (typeof showToast === 'function') showToast('follow failed: ' + (resp?.error || 'unknown'), 'error')
         return
       }
@@ -777,6 +794,7 @@ async function pcToggleFollow(profileId, username, currentlyFollowing) {
       activeProfileCard.data.relationship.youFollow = currentlyFollowing
       renderProfileCardView()
     }
+    _patchProfileCacheRel(username, { youFollow: currentlyFollowing, isFollowing: currentlyFollowing })
     if (typeof showToast === 'function') showToast('follow failed: ' + (e?.message || 'unknown'), 'error')
   }
 }
@@ -804,6 +822,9 @@ async function pcToggleBlock(profileId, username, currentlyBlocked) {
     activeProfileCard.data.relationship = rel
     renderProfileCardView()
   }
+  _patchProfileCacheRel(username, targetBlocked
+    ? { youBlock: true, isBlocked: true, youFollow: false, isFollowing: false }
+    : { youBlock: false, isBlocked: false })
   try {
     const path = `/api/user/block/${encodeURIComponent(profileId)}`
     const resp = targetBlocked
@@ -818,6 +839,7 @@ async function pcToggleBlock(profileId, username, currentlyBlocked) {
           activeProfileCard.data.relationship.isBlocked = currentlyBlocked
           renderProfileCardView()
         }
+        _patchProfileCacheRel(username, { youBlock: currentlyBlocked, isBlocked: currentlyBlocked })
         if (typeof showToast === 'function') showToast('block failed: ' + (resp?.error || 'unknown'), 'error')
         return
       }
@@ -831,6 +853,7 @@ async function pcToggleBlock(profileId, username, currentlyBlocked) {
       activeProfileCard.data.relationship.isBlocked = currentlyBlocked
       renderProfileCardView()
     }
+    _patchProfileCacheRel(username, { youBlock: currentlyBlocked, isBlocked: currentlyBlocked })
     if (typeof showToast === 'function') showToast('block failed: ' + (e?.message || 'unknown'), 'error')
   }
 }

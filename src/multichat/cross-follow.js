@@ -136,12 +136,49 @@ async function _kickFollow(slug, follow) {
   }
 }
 
-// ─── Twitch follow (delegated to twitch-api.js _followMutation) ─────────────
-
+// ─── Twitch follow ──────────────────────────────────────────────────────────
+//
+// Preferred path: SW direct fetch with twitch auth cookie + minted integrity
+// JWT. Works from ANY tab (kick.com, youtube, heatsync.org, etc.) — no
+// twitch.tv tab required. SW reads twitch auth cookies, mints integrity via
+// /integrity, fires the FollowButton GQL with the seeded persisted-query hash.
+//
+// Fallback: on-twitch in-page apolloMutate (when user IS on twitch.tv, the
+// MAIN-world integrity is fresh + locally-minted device-id matches), then
+// twitch_relay to any open twitch.tv tab.
+//
+// Queue: integrity_check_failed / twitch_not_logged_in / no_twitch_tab all
+// get queued for a later retry when the user opens a twitch.tv tab (drain
+// triggers via tabs.onUpdated).
 async function _twitchFollow(targetID, follow, disableNotifications) {
   if (!targetID) return { error: 'no target id' }
-  if (typeof followTwitchUserById !== 'function') return { error: 'twitch helper missing' }
-  return followTwitchUserById(targetID, follow, disableNotifications)
+
+  // Try SW-direct first — fastest, works from any context.
+  try {
+    const swResp = await safeSendMessage({
+      type: 'twitch_follow_direct',
+      targetID,
+      follow: !!follow,
+      disableNotifications: !!disableNotifications,
+    })
+    if (swResp?.ok) return { ok: true, idempotent: !!swResp.idempotent }
+    // twitch_not_logged_in is terminal — user needs to log in to twitch.
+    if (swResp?.error === 'twitch_not_logged_in') return { error: 'twitch_not_logged_in', queueable: true }
+    // 2fa_required is terminal — user has 2FA on state changes.
+    if (swResp?.error === '2fa_required') return { error: '2fa_required' }
+    // integrity_check_failed → fall through to in-page / relay path which has
+    // a better device-id match.
+  } catch (e) {
+    // Network or SW error → fall through
+  }
+
+  // In-page / relay path (uses MAIN-world integrity, more reliable).
+  if (typeof followTwitchUserById === 'function') {
+    const r = await followTwitchUserById(targetID, follow, disableNotifications)
+    if (r?.ok) return r
+    return r || { error: 'twitch follow failed', queueable: true }
+  }
+  return { error: 'twitch helper missing', queueable: true }
 }
 
 // ─── Main entry: called from pcToggleFollow + pcToggleBlock ─────────────────

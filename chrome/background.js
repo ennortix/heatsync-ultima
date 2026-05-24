@@ -5516,6 +5516,101 @@ async function handleMessage(message, sender, sendResponse) {
     })()
     return true
 
+  } else if (message.type === 'twitch_follow_direct') {
+    // SW-direct Twitch follow/unfollow. Works from ANY tab (kick.com,
+    // youtube.com, heatsync.org, etc.) — does not require a twitch.tv tab
+    // to be open. We read the user's twitch auth-token cookie, mint a
+    // Client-Integrity JWT, and fire the FollowButton GQL mutation with
+    // the seeded persisted-query hash.
+    //
+    // Twitch GQL anti-bot wants the integrity device-id to match the one
+    // on the user's twitch.tv localStorage; SW can't read localStorage, so
+    // we fall back to the `unique_id` cookie. In practice this is accepted
+    // for low-volume actions; if anti-bot blocks, _followMutation queues
+    // and the next twitch.tv tab visit drains via twitch_relay (which uses
+    // the real localStorage device id).
+    ;(async () => {
+      try {
+        const { targetID, follow, disableNotifications } = message
+        if (!targetID) { sendResponse({ ok: false, error: 'no target id' }); return }
+        const authCookie = await browser.cookies.get({ url: 'https://twitch.tv', name: 'auth-token' })
+        if (!authCookie?.value) { sendResponse({ ok: false, error: 'twitch_not_logged_in' }); return }
+        const idCookie = await browser.cookies.get({ url: 'https://twitch.tv', name: 'unique_id' })
+        const deviceId = idCookie?.value || ('heatsync-' + Math.random().toString(36).slice(2, 18))
+        const clientId = 'kimne78kx3ncx6brgo4mv6wki5h1ko'
+        const operationName = follow ? 'FollowButton_FollowUser' : 'FollowButton_UnfollowUser'
+        const hash = follow
+          ? '800e7346bdf7e5278a3c1d3f21b2b56e2639928f86815677a7126b093b2fdd08'
+          : 'f7dae976ebf41c755ae2d758546bfd176b4eeb856656098bb40e0a672ca0d880'
+        const variables = follow
+          ? { input: { targetID: String(targetID), disableNotifications: !!disableNotifications } }
+          : { input: { targetID: String(targetID) } }
+
+        // Mint integrity JWT
+        let integrity = null
+        try {
+          const ir = await fetchWithTimeout('https://gql.twitch.tv/integrity', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Client-Id': clientId,
+              'Authorization': 'OAuth ' + authCookie.value,
+              'X-Device-Id': deviceId,
+            },
+            body: '{}',
+          })
+          if (ir.ok) {
+            const id = await ir.json()
+            integrity = id?.token || null
+          }
+        } catch (e) { log('twitch_follow_direct integrity error:', e?.message) }
+
+        const headers = {
+          'Content-Type': 'application/json',
+          'Client-Id': clientId,
+          'Authorization': 'OAuth ' + authCookie.value,
+          'X-Device-Id': deviceId,
+        }
+        if (integrity) headers['Client-Integrity'] = integrity
+
+        const fr = await fetchWithTimeout('https://gql.twitch.tv/gql', {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            operationName,
+            variables,
+            extensions: { persistedQuery: { version: 1, sha256Hash: hash } },
+          }),
+        })
+        if (!fr.ok) { sendResponse({ ok: false, error: `twitch gql ${fr.status}` }); return }
+        const data = await fr.json()
+        const items = Array.isArray(data) ? data[0] : data
+        if (items?.errors?.length) {
+          const msg = String(items.errors[0].message || '').toLowerCase()
+          if (msg.includes('already') || msg.includes('not followed') || msg.includes('not following')) {
+            sendResponse({ ok: true, idempotent: true }); return
+          }
+          if (msg.includes('integrity')) { sendResponse({ ok: false, error: 'integrity_check_failed' }); return }
+          sendResponse({ ok: false, error: items.errors[0].message }); return
+        }
+        const resultField = follow ? 'followUser' : 'unfollowUser'
+        const err = items?.data?.[resultField]?.error
+        if (err) {
+          const code = String(err.code || '')
+          if (code === 'TARGET_ALREADY_FOLLOWED' || code === 'TARGET_NOT_FOLLOWED') {
+            sendResponse({ ok: true, idempotent: true }); return
+          }
+          if (code === 'TARGET_TWO_FACTOR_REQUIRED') { sendResponse({ ok: false, error: '2fa_required' }); return }
+          sendResponse({ ok: false, error: code }); return
+        }
+        sendResponse({ ok: true })
+      } catch (e) {
+        log('twitch_follow_direct error:', e?.message)
+        sendResponse({ ok: false, error: e?.message || 'fetch failed' })
+      }
+    })()
+    return true
+
   } else if (message.type === 'youtube_send_message') {
     (async () => {
       try {

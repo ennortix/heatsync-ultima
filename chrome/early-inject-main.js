@@ -178,7 +178,14 @@
       Chat_ShareResub_UseResubToken: '61045d4a4bb10d25080bc0a01a74232f1fa67a6a530e0f2ebf05df2f1ba3fa59',
       // Cheer bits — the canonical bits-send mutation twitch's own client fires
       // when the bits modal confirms. Captures auto-update if rotated.
-      ChatInput_SendCheer: '57b0d6bd979e516ae3767f6586e7f23666d612d3a65af1d5436dba130c9426fd'
+      ChatInput_SendCheer: '57b0d6bd979e516ae3767f6586e7f23666d612d3a65af1d5436dba130c9426fd',
+      // Follow / unfollow buttons. Twitch's public follow REST API was removed
+      // Aug 2023; the only path left for "follow another user on twitch from
+      // an extension" is this GQL mutation pair, called the same way Twitch's
+      // own follow button does. Hashes auto-update if rotated. Used by
+      // cross-follow.js to propagate heatsync follows onto twitch.
+      FollowButton_FollowUser: '800e7346bdf7e5278a3c1d3f21b2b56e2639928f86815677a7126b093b2fdd08',
+      FollowButton_UnfollowUser: 'f7dae976ebf41c755ae2d758546bfd176b4eeb856656098bb40e0a672ca0d880'
     },
     integrity: null,  // Client-Integrity token
     clientId: null,   // Client-Id

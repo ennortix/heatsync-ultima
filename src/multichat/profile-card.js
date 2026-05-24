@@ -789,6 +789,12 @@ async function pcToggleFollow(profileId, username, currentlyFollowing) {
     // Tell background to refetch followedUsers — pollFollowedLive runs after,
     // so live notifications + badge include the new follow within ~60s.
     safeSendMessage({ type: 'refresh_followed_users' })
+    // Cross-platform propagation — server returns target.{twitch_id, kick_username}
+    // on success. Fire and forget; failures queue locally for next platform tab.
+    const tgt = resp?.data?.target || resp?.target || null
+    if (tgt && typeof propagateFollow === 'function') {
+      propagateFollow(targetFollowing, tgt).catch(() => {})
+    }
   } catch (e) {
     if (activeProfileCard?.data?.relationship) {
       activeProfileCard.data.relationship.youFollow = currentlyFollowing
@@ -847,6 +853,16 @@ async function pcToggleBlock(profileId, username, currentlyBlocked) {
     if (typeof showToast === 'function') showToast(targetBlocked ? `blocked ${username}` : `unblocked ${username}`, 'success')
     // Block side-effects unfollow on server — re-fetch followedUsers in background
     safeSendMessage({ type: 'refresh_followed_users' })
+    // Block always implies platform-unfollow (server auto-unfollowed heatsync).
+    // Mirror on twitch/kick so the relationship stays consistent across surfaces.
+    // No corresponding "block on twitch/kick" — those are separate user actions
+    // intentionally not auto-propagated (block is a user-level decision).
+    if (targetBlocked) {
+      const tgt = resp?.data?.target || resp?.target || null
+      if (tgt && typeof propagateFollow === 'function') {
+        propagateFollow(false, tgt).catch(() => {})
+      }
+    }
   } catch (e) {
     if (activeProfileCard?.data?.relationship) {
       activeProfileCard.data.relationship.youBlock = currentlyBlocked

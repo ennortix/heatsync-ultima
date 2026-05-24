@@ -2542,9 +2542,16 @@ async function acceptPredictionTerms() {
   return !!result.ok
 }
 
-// Known working persisted query hashes (from Twitch's own client)
+// Known working persisted query hashes (from Twitch's own client). Hashes
+// auto-update from live Twitch traffic on twitch.tv pages via early-inject
+// gql.hashes capture; this map is the fallback seed for first-call before any
+// page traffic, and for code paths that don't have MAIN-world access.
 const TWITCH_HASHES = {
-  MakePrediction: 'b44682ecc88358817009f20e69d75081b1e58825bb40aa53d5dbadcc17c881d8'
+  MakePrediction: 'b44682ecc88358817009f20e69d75081b1e58825bb40aa53d5dbadcc17c881d8',
+  // Follow / unfollow — needed for cross-platform follow propagation. Twitch
+  // killed the public follow REST API in Aug 2023, so this is the only path.
+  FollowButton_FollowUser: '800e7346bdf7e5278a3c1d3f21b2b56e2639928f86815677a7126b093b2fdd08',
+  FollowButton_UnfollowUser: 'f7dae976ebf41c755ae2d758546bfd176b4eeb856656098bb40e0a672ca0d880'
 }
 
 // Route mutation through MAIN world proxy (has integrity token) with direct fetch fallback
@@ -3590,7 +3597,7 @@ async function _modActionMutation(searchTerm, resultField, rawQuery, variables) 
 }
 
 // Twitch-tab-only: respond to relay requests from off-Twitch pages.
-// Runs ban/timeout/delete locally (has integrity), returns the result.
+// Runs ban/timeout/delete/follow locally (has integrity), returns the result.
 if (_isOnTwitchPage() && typeof chrome !== 'undefined' && chrome.runtime?.onMessage) {
   chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     if (msg?.type !== 'twitch_relay_exec') return false
@@ -3599,6 +3606,10 @@ if (_isOnTwitchPage() && typeof chrome !== 'undefined' && chrome.runtime?.onMess
         if (msg.op === 'mod_action') {
           const { searchTerm, resultField, rawQuery, variables } = msg.args || {}
           const result = await _modActionMutation(searchTerm, resultField, rawQuery, variables)
+          sendResponse({ ok: true, result })
+        } else if (msg.op === 'follow_action') {
+          const { targetID, follow, disableNotifications } = msg.args || {}
+          const result = await _followMutation(targetID, follow, disableNotifications)
           sendResponse({ ok: true, result })
         } else {
           sendResponse({ ok: false, error: 'unknown op' })
@@ -3609,6 +3620,69 @@ if (_isOnTwitchPage() && typeof chrome !== 'undefined' && chrome.runtime?.onMess
     })()
     return true
   })
+}
+
+// Twitch follow / unfollow mutation. Mirrors _modActionMutation: when on a
+// twitch.tv page, run locally (apollo has integrity); when off-twitch, relay
+// through a twitch.tv tab. When no twitch.tv tab is open, returns a queueable
+// error so cross-follow.js can stash the action for next tab-open drain.
+//
+// Idempotency: Twitch returns errors like TARGET_ALREADY_FOLLOWED /
+// TARGET_NOT_FOLLOWED for re-follow/re-unfollow — we treat those as success
+// so heatsync->twitch state stays consistent across retries.
+async function _followMutation(targetID, follow, disableNotifications) {
+  if (!targetID) return { error: 'no target id' }
+  const operationName = follow ? 'FollowButton_FollowUser' : 'FollowButton_UnfollowUser'
+  const resultField = follow ? 'followUser' : 'unfollowUser'
+  const inputType = follow ? 'FollowUserInput' : 'UnfollowUserInput'
+  const rawQuery = follow
+    ? 'mutation FollowUser($input: FollowUserInput!) { followUser(input: $input) { follow { user { id login } } error { code } } }'
+    : 'mutation UnfollowUser($input: UnfollowUserInput!) { unfollowUser(input: $input) { follow { user { id login } } error { code } } }'
+  const variables = follow
+    ? { input: { targetID: String(targetID), disableNotifications: !!disableNotifications } }
+    : { input: { targetID: String(targetID) } }
+
+  if (!_isOnTwitchPage()) {
+    const resp = await safeSendMessage({
+      type: 'twitch_relay',
+      op: 'follow_action',
+      args: { targetID, follow, disableNotifications }
+    })
+    if (resp?.ok && resp.result) return resp.result
+    if (resp?.error === 'no_twitch_tab')   return { error: 'no_twitch_tab', queueable: true }
+    if (resp?.error === 'stale_twitch_tab') return { error: 'stale_twitch_tab', queueable: true }
+    return { error: resp?.error || 'relay failed', queueable: true }
+  }
+
+  // On Twitch: apollo first (integrity attached automatically), then raw GQL.
+  const apolloResult = await apolloMutate({ searchTerm: operationName, variables, resultField, rawQuery })
+  if (apolloResult.ok) return { ok: true }
+
+  try {
+    const data = await gqlMutation(rawQuery, variables)
+    if (data?.errors?.length) {
+      const msg = String(data.errors[0].message || '').toLowerCase()
+      if (msg.includes('already') || msg.includes('not followed') || msg.includes('not following')) {
+        return { ok: true, idempotent: true }
+      }
+      return { error: data.errors[0].message || (resultField + ' failed') }
+    }
+    const err = data?.data?.[resultField]?.error
+    if (err) {
+      const code = String(err.code || '')
+      if (code === 'TARGET_ALREADY_FOLLOWED' || code === 'TARGET_NOT_FOLLOWED') return { ok: true, idempotent: true }
+      // 2FA required for state changes — surface so caller can route a useful toast.
+      if (code === 'TARGET_TWO_FACTOR_REQUIRED') return { error: '2fa_required' }
+      return { error: code || (resultField + ' failed') }
+    }
+    return { ok: true }
+  } catch (e) {
+    return { error: apolloResult.error || e.message, queueable: true }
+  }
+}
+
+async function followTwitchUserById(targetID, follow = true, disableNotifications = false) {
+  return _followMutation(targetID, follow, disableNotifications)
 }
 
 async function banTwitchUser(channelLogin, targetLogin, reason) {

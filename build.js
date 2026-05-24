@@ -110,6 +110,7 @@ const MULTICHAT_MODULES = [
   'social.js',
   'whispers.js',
   'eventsub-whispers.js',
+  'cross-follow.js',
   'input.js',
   'profile-card.js',
 ]

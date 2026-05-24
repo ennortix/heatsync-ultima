@@ -4936,6 +4936,21 @@
         '<button class="hs-mc-toggle-pill" data-storage-key="hs_notifications"><span class="hs-mc-toggle-knob"></span></button>' +
         '<span class="hs-mc-setting-label" data-tip="show a desktop notification when someone @s you">browser notification on mention</span>' +
       '</div>' +
+    '</div>' +
+    '<div class="hs-mc-settings-group">' +
+      '<div class="hs-mc-settings-group-title">cross-platform follow -- mirror heatsync follows onto twitch/kick</div>' +
+      '<div class="hs-mc-setting-row">' +
+        '<button class="hs-mc-toggle-pill" data-uisetting="crossFollowTwitch"><span class="hs-mc-toggle-knob"></span></button>' +
+        '<span class="hs-mc-setting-label" data-tip="when you follow on heatsync, also follow on twitch if they have a linked twitch account. needs an open twitch.tv tab; queues otherwise">auto-follow on twitch</span>' +
+      '</div>' +
+      '<div class="hs-mc-setting-row">' +
+        '<button class="hs-mc-toggle-pill" data-uisetting="crossFollowKick"><span class="hs-mc-toggle-knob"></span></button>' +
+        '<span class="hs-mc-setting-label" data-tip="when you follow on heatsync, also follow on kick if they have a linked kick account. needs a kick.com login; queues otherwise">auto-follow on kick</span>' +
+      '</div>' +
+      '<div class="hs-mc-setting-row">' +
+        '<button class="hs-mc-toggle-pill" data-uisetting="crossFollowTwitchNotify"><span class="hs-mc-toggle-knob"></span></button>' +
+        '<span class="hs-mc-setting-label" data-tip="send the target a twitch follow notification (matches twitch default). off = silent follow on twitch">notify on twitch follow</span>' +
+      '</div>' +
     '</div>';
   }
 
@@ -5216,6 +5231,15 @@
         var crashPill = msgsEl.querySelector('.hs-mc-toggle-pill[data-uisetting="crashTelemetry"]');
         if (crashPill) crashPill.classList.toggle('active', !!ui.crashTelemetry);
         if (ui.crashTelemetry) _loadCrashLog();
+      }
+      if (_settingsSubtab === 'notifs') {
+        // Cross-follow toggles default on — only mark inactive when explicitly false
+        var xftPill = msgsEl.querySelector('.hs-mc-toggle-pill[data-uisetting="crossFollowTwitch"]');
+        if (xftPill) xftPill.classList.toggle('active', ui.crossFollowTwitch !== false);
+        var xfkPill = msgsEl.querySelector('.hs-mc-toggle-pill[data-uisetting="crossFollowKick"]');
+        if (xfkPill) xfkPill.classList.toggle('active', ui.crossFollowKick !== false);
+        var xftnPill = msgsEl.querySelector('.hs-mc-toggle-pill[data-uisetting="crossFollowTwitchNotify"]');
+        if (xftnPill) xftnPill.classList.toggle('active', ui.crossFollowTwitchNotify !== false);
       }
     }).catch(function() {});
 

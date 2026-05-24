@@ -401,7 +401,40 @@ browser.tabs.onUpdated.addListener((tabId, changeInfo) => {
     tabChannels.delete(tabId)
     saveTabChannels()
   }
+  // Cross-follow queue drain trigger. When a twitch.tv / kick.com tab
+  // finishes loading, ask its content script to drain any pending follows
+  // that were queued while the user was elsewhere (or while the platform
+  // session was logged out). Deduped per (tabId × platform) in
+  // _maybeTriggerCrossFollowDrain so a SPA URL change doesn't repeat-drain.
+  if (changeInfo.status === 'complete') {
+    _maybeTriggerCrossFollowDrain(tabId).catch(() => {})
+  }
 })
+
+// One-shot per-tab drain — sends the cross_follow_drain message to whichever
+// platform matches the tab's URL. Idempotent: if the queue is empty, the
+// content script noops. We also dedupe by tabId+platform so a SPA reload
+// doesn't repeat-drain.
+const _drainAttempted = new Map() // tabId → Set<platform>
+async function _maybeTriggerCrossFollowDrain(tabId) {
+  let tab
+  try { tab = await browser.tabs.get(tabId) } catch { return }
+  if (!tab?.url) return
+  let platform = null
+  if (/twitch\.tv/.test(tab.url))    platform = 'twitch'
+  else if (/kick\.com/.test(tab.url)) platform = 'kick'
+  if (!platform) return
+  if (!_drainAttempted.has(tabId)) _drainAttempted.set(tabId, new Set())
+  const set = _drainAttempted.get(tabId)
+  if (set.has(platform)) return
+  set.add(platform)
+  // Small delay so the content script has time to register its onMessage
+  // listener after page load completes.
+  setTimeout(() => {
+    browser.tabs.sendMessage(tabId, { type: 'cross_follow_drain', platform }).catch(() => {})
+  }, 2500)
+}
+browser.tabs.onRemoved.addListener((tabId) => { _drainAttempted.delete(tabId) })
 let current7TVEmoteSetId = null; // Track current 7TV emote set ID for EventAPI
 let seventvEmoteSetIds = new Map(); // channelName → 7TV emote set ID
 let blockedEmotes = new Set();
@@ -5440,6 +5473,45 @@ async function handleMessage(message, sender, sendResponse) {
       } catch (e) {
         log('kick_send_message error:', e.message)
         sendResponse({ ok: false, error: e.message })
+      }
+    })()
+    return true
+
+  } else if (message.type === 'kick_follow') {
+    // Kick has no public follow API. We POST/DELETE /api/v2/channels/{slug}/follow
+    // with the user's own session cookies + XSRF token. SW direct fetch with
+    // credentials:include works because manifest grants kick.com/* host access.
+    // No tab-relay required (unlike kick_send_message which needs a kick.com
+    // tab as the messaging origin); SW is fine here because Kick's follow
+    // endpoint doesn't enforce a same-origin Referer check.
+    ;(async () => {
+      try {
+        const slug = String(message.slug || '').toLowerCase().replace(/[^a-z0-9_-]/g, '').slice(0, 64)
+        const follow = !!message.follow
+        if (!slug) { sendResponse({ ok: false, error: 'missing slug' }); return }
+        const cookie = await browser.cookies.get({ url: 'https://kick.com', name: 'XSRF-TOKEN' })
+        if (!cookie?.value) { sendResponse({ ok: false, error: 'kick_not_logged_in' }); return }
+        const url = `https://kick.com/api/v2/channels/${encodeURIComponent(slug)}/follow`
+        const resp = await fetchWithTimeout(url, {
+          method: follow ? 'POST' : 'DELETE',
+          credentials: 'include',
+          headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json',
+            'X-XSRF-TOKEN': decodeURIComponent(cookie.value),
+          },
+        })
+        // Kick returns 200/204 on success; treat "already following" / "not following"
+        // signals as idempotent success. Other 4xx/5xx surface as errors.
+        if (resp.ok || resp.status === 204) { sendResponse({ ok: true }); return }
+        // 422 with "already" in body → idempotent
+        let bodyText = ''
+        try { bodyText = await resp.text() } catch {}
+        if (/already|not.*follow/i.test(bodyText)) { sendResponse({ ok: true, idempotent: true }); return }
+        sendResponse({ ok: false, error: `kick ${resp.status}`, body: bodyText.slice(0, 200) })
+      } catch (e) {
+        log('kick_follow error:', e?.message)
+        sendResponse({ ok: false, error: e?.message || 'fetch failed' })
       }
     })()
     return true

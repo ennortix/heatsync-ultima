@@ -133,10 +133,18 @@ async function openProfileCard(username, platform) {
     const platParam = platform ? `?platform=${encodeURIComponent(platform)}` : ''
     const resp = await apiFetch(`/api/profile/${encodeURIComponent(username)}${platParam}`)
     if (!activeProfileCard || activeProfileCard.username !== username) return
-    if (resp?.ok && resp.data?.profile) {
-      activeProfileCard.data = resp.data.profile
+    let profile = (resp?.ok && resp.data?.profile) ? resp.data.profile : null
+    // Cross-platform probe — kick chatters often share their handle on twitch;
+    // a same-name twitch hit lands a full profile when the kick lookup misses.
+    if (!profile && platform === 'kick') {
+      const twResp = await apiFetch(`/api/profile/${encodeURIComponent(username)}?platform=twitch`)
+      if (!activeProfileCard || activeProfileCard.username !== username) return
+      if (twResp?.ok && twResp.data?.profile) profile = twResp.data.profile
+    }
+    if (profile) {
+      activeProfileCard.data = profile
       if (typeof _profileCache !== 'undefined') {
-        _profileCache.set(cacheKey, { profile: resp.data.profile, ts: Date.now() })
+        _profileCache.set(cacheKey, { profile, ts: Date.now() })
       }
     } else {
       activeProfileCard.data = { error: true, username }
@@ -483,7 +491,20 @@ function renderProfileCardView() {
   if (!data) {
     statsSec.appendChild(document.createTextNode('loading…'))
   } else if (data.error) {
-    statsSec.appendChild(document.createTextNode('not registered on heatsync'))
+    // No heatsync profile — still surface the platform identity row so the
+    // card has at least one useful link (channel url) instead of a dead end.
+    const plat = activeProfileCard.platform
+    const sheet = document.createElement('dl')
+    sheet.className = 'hs-pcard-sheet'
+    const addRow = (label, value, valueClass) => {
+      const dt = document.createElement('dt'); dt.textContent = label
+      const dd = document.createElement('dd'); if (valueClass) dd.className = valueClass; dd.textContent = value
+      sheet.appendChild(dt); sheet.appendChild(dd)
+    }
+    if (plat === 'kick') addRow('kick', username, 'val-kick')
+    else if (plat === 'youtube' || plat === 'yt') addRow('yt', username, 'val-yt')
+    else addRow('ttv', username, 'val-ttv')
+    statsSec.appendChild(sheet)
   } else {
     const stats = data.stats || {}
     const heat = stats.total_heat || 0
@@ -678,6 +699,15 @@ async function pcApplyBanner(card, chain) {
     }
     probe.referrerPolicy = 'no-referrer'
     probe.src = url
+  }
+  // Fill avatar from banner fetch's profile_pic when the card landed on the
+  // anon placeholder (no heatsync profile pic). Kick API returns profile_pic
+  // alongside the banner so unregistered kick chatters get a real face.
+  if (banner.profileUrl) {
+    const avatar = root.querySelector('.hs-pcard-avatar')
+    if (avatar && (avatar.src || '').includes('anon.webp')) {
+      avatar.src = banner.profileUrl
+    }
   }
   if (banner.accent) {
     // Accent tints scrim + avatar ring + section divider so the whole card

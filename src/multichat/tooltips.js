@@ -840,6 +840,15 @@
       probe.referrerPolicy = 'no-referrer'
       probe.src = url
     }
+    // Fallback path leaves the avatar as anon.webp — fill it from the banner
+    // fetch's profile_pic (kick api hands this back next to the banner URL).
+    // Skip if a real avatar is already in place (success path uses heatsync data).
+    if (banner.profileUrl) {
+      const avatar = tooltip.querySelector('.hs-pc-avatar')
+      if (avatar && (avatar.src || '').includes('anon.webp')) {
+        avatar.src = banner.profileUrl
+      }
+    }
     if (banner.accent) {
       tooltip.style.setProperty('--hs-pc-accent', banner.accent)
       hero.classList.add('hs-pc-hero-accent')
@@ -909,29 +918,55 @@
     const resp = await apiFetch(`/api/profile/${encodeURIComponent(username)}${platParam}`);
     if (gen !== _profileGen) return; // user moved away
 
+    let profile = null
     if (resp?.ok && resp.data?.profile) {
-      const profile = resp.data.profile;
+      profile = resp.data.profile
+    } else if (platform === 'kick') {
+      // Cross-platform probe — most unregistered kick chatters share their
+      // handle on twitch. Same-name twitch hit lands a full profile (heat,
+      // follows, banner, partner status) for what would otherwise be a bare
+      // fallback. Only fires when the kick lookup misses.
+      const twResp = await apiFetch(`/api/profile/${encodeURIComponent(username)}?platform=twitch`)
+      if (gen !== _profileGen) return
+      if (twResp?.ok && twResp.data?.profile) profile = twResp.data.profile
+    }
+
+    if (profile) {
       _profileCache.set(cacheKey, { profile, ts: Date.now() });
-      // Prune cache
       if (_profileCache.size > 100) {
         const oldest = [..._profileCache.entries()].sort((a, b) => a[1].ts - b[1].ts).slice(0, 50);
         for (const [k] of oldest) _profileCache.delete(k);
       }
-      // NOTE: innerHTML is XSS-safe — all user content goes through escapeHtml() in renderProfileCard
+      // NOTE: innerHTML XSS-safe — renderProfileCard escapes everything
       tooltip.innerHTML = renderProfileCard(profile);
       appendSubTenureBadge(tooltip, username, msgChannel);
       positionTooltipAtElement(tooltip, targetEl);
       fetchAndShowFollowage(tooltip, username, gen, platform);
       applyTooltipBanner(tooltip, profile, platform, username, gen)
     } else {
-      // Fallback — show basic info (username sanitized via escapeHtml).
-      // Still wraps in hero + body so banner can apply if this is a Twitch user
-      // with no heatsync profile (most chatters in busy channels).
-      tooltip.innerHTML = `<div class="hs-pc-hero"><div class="hs-pc-hero-img"></div><div class="hs-pc-hero-scrim"></div></div><div class="hs-pc-body"><div class="hs-pc-info"><div class="hs-pc-header"><span class="hs-pc-name">${escapeHtml(username)}</span></div></div></div>`;
+      // Fallback — populated from client-only signals so kick chatters with
+      // no heatsync acct still get a real card: chat badges from recent msgs,
+      // platform-link row, color-tinted name. applyTooltipBanner extends to
+      // also fill the avatar from kick.com profile_pic.
+      const safeName = escapeHtml(username)
+      const safeColor = sanitizeColor(color || '#fff')
+      let nativeBadges = ''
+      try {
+        const recent = (typeof getRecentMessagesFromUser === 'function') ? getRecentMessagesFromUser(username) : []
+        const rTwitch = recent.find(m => (m.platform || 'twitch') === 'twitch' && m.badges)
+        if (rTwitch && typeof renderBadges === 'function') nativeBadges += renderBadges(rTwitch.badges, rTwitch.channel)
+        const rKick = recent.find(m => m.platform === 'kick' && m.badges)
+        if (rKick && typeof renderBadges === 'function') nativeBadges += renderBadges(rKick.badges, rKick.channel)
+      } catch {}
+      const platRow = platform === 'kick' ? `<dt>kick</dt><dd class="val-kick" data-k="kick">${safeName}</dd>`
+        : (platform === 'youtube' || platform === 'yt') ? `<dt>yt</dt><dd class="val-yt" data-k="yt">${safeName}</dd>`
+        : `<dt>ttv</dt><dd class="val-ttv" data-k="ttv">${safeName}</dd>`
+      const header = nativeBadges || `<span class="hs-pc-name" style="color:${safeColor}">${safeName}</span>`
+      // NOTE: innerHTML XSS-safe — username via escapeHtml, color via sanitizeColor (hex-only),
+      // nativeBadges from renderBadges which emits escaped <img> markup
+      tooltip.innerHTML = `<div class="hs-pc-hero"><div class="hs-pc-hero-img"></div><div class="hs-pc-hero-scrim"></div></div><div class="hs-pc-body"><img class="hs-pc-avatar" src="https://heatsync.org/anon.webp" alt=""><div class="hs-pc-info"><div class="hs-pc-header">${header}</div><dl class="hs-pc-sheet">${platRow}</dl></div></div>`
       appendSubTenureBadge(tooltip, username, msgChannel);
       fetchAndShowFollowage(tooltip, username, gen, platform);
-      // No heatsync profile — still try platform-direct banner using whatever
-      // context platform we have (or twitch as the default guess).
       applyTooltipBanner(tooltip, null, platform, username, gen)
     }
   }

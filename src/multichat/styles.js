@@ -2142,7 +2142,11 @@ function injectStyles() {
 
     /* Right-click emote action menu (multichat panel) */
     .hs-mc-ctx {
-      position: fixed; z-index: 2147483646;
+      position: fixed;
+      /* Match max-int + !important so the menu sits above the orange resize
+         bar (#hs-c-resize-handle, also max-int). Menu is created on right-
+         click after the bar exists, so later DOM order tie-breaks above. */
+      z-index: 2147483647 !important;
       background: #000; color: #fff;
       border: 1px solid #ff8700;
       padding: 0; min-width: 220px; max-width: 280px;

@@ -1734,6 +1734,25 @@ function unwrapStuckChips(inputEl, acceptWhitespace) {
     const aText = chipToText(pair.a)
     const bText = chipToText(pair.b)
     if (aText == null || bText == null) break
+    // Two adjacent valid chips (paste of an emote name right after an
+    // existing chip is the common case) — insert a single space between them
+    // instead of collapsing both into "WaVeWaVe" plain text. Wire payload
+    // becomes `WaVe WaVe` which parses correctly on the receiver. The
+    // original unwrap-to-text path destroyed both chips on every paste.
+    const isValidChip = (el) =>
+      (el.tagName === 'IMG' && el.classList?.contains('hs-input-emote')) ||
+      el.classList?.contains('hs-input-stack') ||
+      el.classList?.contains('hs-mc-emoji') ||
+      el.classList?.contains('hs-mc-user')
+    if (isValidChip(pair.a) && isValidChip(pair.b)) {
+      for (const m of pair.between) m.remove()
+      const space = document.createTextNode(' ')
+      pair.a.parentNode.insertBefore(space, pair.b)
+      cursorTarget = space
+      cursorOffset = 1
+      changed = true
+      continue
+    }
     const merged = aText + bText
     const parent = pair.a.parentNode
     const textNode = document.createTextNode(merged)
@@ -3896,6 +3915,14 @@ function autoAddInputEmotes(text) {
     if (typeof blockedEmoteNames !== 'undefined' && blockedEmoteNames.has(word)) continue
     if (typeof inventoryEmotes !== 'undefined' && inventoryEmotes.has(word)) continue
     if (typeof pendingEmoteOps !== 'undefined' && pendingEmoteOps.has(word)) continue
+    // Skip heatsync curated globals — server rejects with "global emotes cannot
+    // be added to personal inventory" and they already render for everyone, so
+    // the POST is wasted and the failure toast misleads ("failed to add Wave"
+    // when in fact Wave was never meant to be added).
+    if (typeof emoteCache !== 'undefined') {
+      const cached = emoteCache.get(word)
+      if (cached?.state === 'global') continue
+    }
     // Optimistically register locally so the own-message echo (arrives in ~ms,
     // before the server add resolves) renders the emote image instead of raw
     // text — text has no wrapper, so a late add can't retro-fix it. Mirrors the

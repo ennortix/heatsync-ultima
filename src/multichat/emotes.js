@@ -1716,6 +1716,18 @@
       // populated a channel that storage hasn't persisted yet (BG writes
       // storage AFTER the final broadcast). Wiping would clobber it; the
       // loop below refreshes each channel that storage knows about.
+      // Preserve in-flight optimistic preregister entries (autoAddInputEmotes
+      // sets viewerPersonalEmotes BEFORE the server add resolves so the IRC
+      // echo of "wavE" renders the image, not the bare word). Without this
+      // snapshot, an unrelated storage change (channel emote refresh, global
+      // update) racing the add wipes the optimistic entry before the echo
+      // arrives → message renders as plain text. pendingEmoteOps tracks names
+      // whose addEmoteToInventory is still in flight; restored at the bottom.
+      const _inflight = new Map()
+      for (const name of pendingEmoteOps) {
+        const e = viewerPersonalEmotes.get(name)
+        if (e) _inflight.set(name, e)
+      }
       inventoryEmotes.clear();
       viewerPersonalEmotes.clear();
       inventoryHashes.clear();
@@ -1793,6 +1805,14 @@
         while (emoteCache.size > 2000) { emoteCache.delete(emoteCache.keys().next().value) }
         if (e.hash) registerHash(e.name, e.hash);
       });
+
+      // Restore in-flight optimistic preregister entries that the clear()
+      // above wiped — server hasn't confirmed yet, so they're not in stored.
+      // Without this, the IRC echo of an auto-add emote misses the lookup
+      // and the message renders as plain text instead of the image.
+      for (const [name, e] of _inflight) {
+        if (!viewerPersonalEmotes.has(name)) viewerPersonalEmotes.set(name, e)
+      }
 
       // Rebuild blockedEmoteNames from loaded hashes
       rebuildBlockedNames();

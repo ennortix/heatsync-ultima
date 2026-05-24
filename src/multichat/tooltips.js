@@ -513,7 +513,12 @@
   let userTooltip = null;
   const _profileCache = new Map(); // platform:username -> { profile, ts }
   const _profileInflight = new Map(); // cacheKey -> Promise dedup for concurrent hover+ctx-menu+card opens
-  const PROFILE_CACHE_TTL = 60000; // 60s fresh; on 429/error we still serve stale
+  // 5min TTL: relationship state is patched in-place by pcToggleFollow/Block so
+  // long-lived cache doesn't make the follow label go stale. Prevents
+  // /api/profile from being re-hit on every menu open after a single session
+  // hover. Also raises cache cap from 100 → 500.
+  const PROFILE_CACHE_TTL = 5 * 60 * 1000;
+  const PROFILE_CACHE_MAX = 500;
   let _profileGen = 0; // generation counter to prevent stale renders
 
   // Centralized cross-platform identity resolver. ALL identity lookups should go
@@ -576,8 +581,8 @@
         }
         const profile = resp.data.profile;
         _profileCache.set(cacheKey, { profile, ts: Date.now() });
-        if (_profileCache.size > 100) {
-          const oldest = [..._profileCache.entries()].sort((a, b) => a[1].ts - b[1].ts).slice(0, 50);
+        if (_profileCache.size > PROFILE_CACHE_MAX) {
+          const oldest = [..._profileCache.entries()].sort((a, b) => a[1].ts - b[1].ts).slice(0, Math.floor(PROFILE_CACHE_MAX / 2));
           for (const [k] of oldest) _profileCache.delete(k);
         }
         return shapeIdentity(profile);
@@ -957,8 +962,8 @@
 
     if (profile) {
       _profileCache.set(cacheKey, { profile, ts: Date.now() });
-      if (_profileCache.size > 100) {
-        const oldest = [..._profileCache.entries()].sort((a, b) => a[1].ts - b[1].ts).slice(0, 50);
+      if (_profileCache.size > PROFILE_CACHE_MAX) {
+        const oldest = [..._profileCache.entries()].sort((a, b) => a[1].ts - b[1].ts).slice(0, Math.floor(PROFILE_CACHE_MAX / 2));
         for (const [k] of oldest) _profileCache.delete(k);
       }
       // NOTE: innerHTML XSS-safe — renderProfileCard escapes everything

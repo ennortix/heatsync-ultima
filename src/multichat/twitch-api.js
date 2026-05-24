@@ -2138,6 +2138,84 @@ function triggerTwitchFeature(action) {
   return true;
 }
 
+// Best-effort own twitch login — read Twitch's stored user blob if we're on
+// twitch.tv; otherwise null (the launcher still works, just no broadcaster
+// detection so dashboard deep-links stay hidden).
+function getOwnTwitchLogin() {
+  try {
+    const raw = localStorage.getItem('twilight-user')
+    if (!raw) return null
+    const obj = JSON.parse(raw)
+    const login = (obj?.login || obj?.userName || '').toString().toLowerCase()
+    return login || null
+  } catch { return null }
+}
+
+// Curated launcher of native Twitch surfaces. Audience gates: 'all' for
+// public pages + viewer-account; 'mod' for the moderator hub (covers
+// blocked terms + automod via gear); 'broadcaster' for dashboard deep-links
+// which only resolve for the channel owner.
+const TWITCH_NATIVE_LINKS = [
+  { section: 'mod tools' },
+  { id: 'modview',     audience: 'mod',         label: 'mod view (chat + automod + blocked terms)', url: (ch) => `https://www.twitch.tv/moderator/${ch}`,                                 opts: 'width=1200,height=800' },
+
+  { section: 'broadcaster' },
+  { id: 'streammgr',   audience: 'broadcaster', label: 'stream manager',         url: (ch) => `https://dashboard.twitch.tv/u/${ch}/stream-manager`,            opts: 'width=1200,height=800' },
+  { id: 'dashboard',   audience: 'broadcaster', label: 'creator dashboard',      url: (ch) => `https://dashboard.twitch.tv/u/${ch}/home`,                      opts: 'width=1200,height=800' },
+  { id: 'modsettings', audience: 'broadcaster', label: 'moderation settings',    url: (ch) => `https://dashboard.twitch.tv/u/${ch}/settings/moderation`,       opts: 'width=1000,height=750' },
+  { id: 'chansettings',audience: 'broadcaster', label: 'channel settings',       url: (ch) => `https://dashboard.twitch.tv/u/${ch}/settings/channel`,          opts: 'width=1000,height=750' },
+  { id: 'community',   audience: 'broadcaster', label: 'community (mods, vips, follows)', url: (ch) => `https://dashboard.twitch.tv/u/${ch}/community`,        opts: 'width=1000,height=750' },
+  { id: 'monetize',    audience: 'broadcaster', label: 'monetization (subs, bits)', url: (ch) => `https://dashboard.twitch.tv/u/${ch}/monetization`,           opts: 'width=1000,height=750' },
+  { id: 'analytics',   audience: 'broadcaster', label: 'analytics',              url: (ch) => `https://dashboard.twitch.tv/u/${ch}/analytics/stream-summary`,  opts: 'width=1200,height=800' },
+
+  { section: 'channel pages' },
+  { id: 'about',       audience: 'all', label: 'about page',  url: (ch) => `https://www.twitch.tv/${ch}/about` },
+  { id: 'videos',      audience: 'all', label: 'videos',      url: (ch) => `https://www.twitch.tv/${ch}/videos` },
+  { id: 'clips',       audience: 'all', label: 'clips',       url: (ch) => `https://www.twitch.tv/${ch}/clips` },
+  { id: 'schedule',    audience: 'all', label: 'schedule',    url: (ch) => `https://www.twitch.tv/${ch}/schedule` },
+  { id: 'popoutchat',  audience: 'all', label: 'popout chat', url: (ch) => `https://www.twitch.tv/popout/${ch}/chat?popout=`, opts: 'width=400,height=600' },
+
+  { section: 'your account' },
+  { id: 'inventory',   audience: 'all', label: 'drops / inventory',  url: () => `https://www.twitch.tv/inventory` },
+  { id: 'mysubs',      audience: 'all', label: 'my subscriptions',   url: () => `https://www.twitch.tv/subscriptions` },
+  { id: 'following',   audience: 'all', label: 'following directory',url: () => `https://www.twitch.tv/directory/following` },
+  { id: 'prefs',       audience: 'all', label: 'twitch settings',    url: () => `https://www.twitch.tv/settings` },
+  { id: 'security',    audience: 'all', label: 'privacy + security', url: () => `https://www.twitch.tv/settings/security` },
+]
+
+// Open the native-Twitch launcher menu at (x, y) for `channel`.
+// Filters items by role: broadcaster gets dashboard deep-links, mods get the
+// hub. Falls back to active channel if none provided.
+function openTwitchNativeLauncher(x, y, channel) {
+  const ch = (channel || getActiveTwitchChannel() || getCurrentChannel() || '').toString().toLowerCase()
+  if (!ch || !/^[a-z0-9_]{2,40}$/.test(ch)) {
+    showToast('no twitch channel selected', 'error')
+    return
+  }
+  const own = getOwnTwitchLogin()
+  const isBroadcaster = !!(own && own === ch)
+  const isMod = isBroadcaster || _twitchIsMod
+
+  const items = []
+  let pendingSection = null
+  for (const e of TWITCH_NATIVE_LINKS) {
+    if (e.section) { pendingSection = e.section; continue }
+    if (e.audience === 'broadcaster' && !isBroadcaster) continue
+    if (e.audience === 'mod' && !isMod) continue
+    if (pendingSection) {
+      if (items.length) items.push('sep')
+      items.push({ section: pendingSection })
+      pendingSection = null
+    }
+    items.push({
+      label: e.label,
+      fn: () => { try { window.open(e.url(ch, own), '_blank', e.opts || 'noopener') } catch {} }
+    })
+  }
+  if (!items.length) { showToast('no twitch links available', 'error'); return }
+  showHsCtxMenu(x, y, 'twitch · ' + ch, items)
+}
+
 // Twitch IRC badge rendering
 const BADGE_STYLES = {
   broadcaster: { label: 'LIVE', bg: '#e91916', fg: '#fff' },
@@ -3622,22 +3700,23 @@ if (_isOnTwitchPage() && typeof chrome !== 'undefined' && chrome.runtime?.onMess
   })
 }
 
-// Twitch follow / unfollow mutation. Mirrors _modActionMutation: when on a
-// twitch.tv page, run locally (apollo has integrity); when off-twitch, relay
-// through a twitch.tv tab. When no twitch.tv tab is open, returns a queueable
-// error so cross-follow.js can stash the action for next tab-open drain.
+// Twitch follow / unfollow mutation. On a twitch.tv page, fires the persisted
+// query through the MAIN-world GQL proxy (handles auth + integrity + hash
+// rotation). Off-twitch, relays through a twitch.tv tab — the MAIN world
+// only exists on twitch.tv so a relay is mandatory. No-tab → queueable.
 //
-// Idempotency: Twitch returns errors like TARGET_ALREADY_FOLLOWED /
-// TARGET_NOT_FOLLOWED for re-follow/re-unfollow — we treat those as success
-// so heatsync->twitch state stays consistent across retries.
+// IMPORTANT: must call gqlProxy with operationName + variables ONLY (no
+// rawQuery). The MAIN-world handler explicitly rejects rawQuery messages for
+// security; it serves persisted queries via gql.hashes lookup. The
+// FollowButton_FollowUser / FollowButton_UnfollowUser hashes are seeded in
+// early-inject-main.js and auto-updated from page traffic.
+//
+// Idempotency: TARGET_ALREADY_FOLLOWED / TARGET_NOT_FOLLOWED treated as
+// success so heatsync→twitch state stays consistent across retries.
 async function _followMutation(targetID, follow, disableNotifications) {
   if (!targetID) return { error: 'no target id' }
   const operationName = follow ? 'FollowButton_FollowUser' : 'FollowButton_UnfollowUser'
   const resultField = follow ? 'followUser' : 'unfollowUser'
-  const inputType = follow ? 'FollowUserInput' : 'UnfollowUserInput'
-  const rawQuery = follow
-    ? 'mutation FollowUser($input: FollowUserInput!) { followUser(input: $input) { follow { user { id login } } error { code } } }'
-    : 'mutation UnfollowUser($input: UnfollowUserInput!) { unfollowUser(input: $input) { follow { user { id login } } error { code } } }'
   const variables = follow
     ? { input: { targetID: String(targetID), disableNotifications: !!disableNotifications } }
     : { input: { targetID: String(targetID) } }
@@ -3654,30 +3733,36 @@ async function _followMutation(targetID, follow, disableNotifications) {
     return { error: resp?.error || 'relay failed', queueable: true }
   }
 
-  // On Twitch: apollo first (integrity attached automatically), then raw GQL.
-  const apolloResult = await apolloMutate({ searchTerm: operationName, variables, resultField, rawQuery })
-  if (apolloResult.ok) return { ok: true }
-
+  // On Twitch: gqlProxy with operation name + variables (no rawQuery — MAIN
+  // world rejects rawQuery for security). Hash + integrity attached server-side
+  // by executeGqlProxy in early-inject-main.js.
   try {
-    const data = await gqlMutation(rawQuery, variables)
-    if (data?.errors?.length) {
-      const msg = String(data.errors[0].message || '').toLowerCase()
+    const data = await gqlProxy(operationName, variables)
+    const d = Array.isArray(data) ? data[0] : data
+    if (d?.errors?.length) {
+      const msg = String(d.errors[0].message || '').toLowerCase()
       if (msg.includes('already') || msg.includes('not followed') || msg.includes('not following')) {
         return { ok: true, idempotent: true }
       }
-      return { error: data.errors[0].message || (resultField + ' failed') }
+      return { error: d.errors[0].message || (resultField + ' failed') }
     }
-    const err = data?.data?.[resultField]?.error
+    const err = d?.data?.[resultField]?.error
     if (err) {
       const code = String(err.code || '')
       if (code === 'TARGET_ALREADY_FOLLOWED' || code === 'TARGET_NOT_FOLLOWED') return { ok: true, idempotent: true }
-      // 2FA required for state changes — surface so caller can route a useful toast.
       if (code === 'TARGET_TWO_FACTOR_REQUIRED') return { error: '2fa_required' }
       return { error: code || (resultField + ' failed') }
     }
     return { ok: true }
   } catch (e) {
-    return { error: apolloResult.error || e.message, queueable: true }
+    const msg = String(e?.message || '').toLowerCase()
+    // Hash missing from MAIN-world gql.hashes — Twitch may have rotated.
+    // Auto-capture will eventually update; queue so next attempt uses fresh hash.
+    if (msg.includes('no hash') || msg.includes('hash not available')) {
+      return { error: 'twitch_hash_stale', queueable: true }
+    }
+    if (msg.includes('timeout')) return { error: 'twitch_gql_timeout', queueable: true }
+    return { error: e?.message || 'twitch follow failed', queueable: true }
   }
 }
 

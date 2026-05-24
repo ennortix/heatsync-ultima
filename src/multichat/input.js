@@ -165,7 +165,10 @@ function trackCompletionForAutoAdd(match) {
   const src = match.source
   if (src !== '7tv' && src !== 'bttv' && src !== 'ffz') return
   recentRemoteCompletions.delete(match.name)
-  recentRemoteCompletions.set(match.name, { url: match.url, source: src })
+  // Carry zeroWidth so optimistic viewerPersonalEmotes.set and the server add
+  // both inherit the overlay flag — without it, a tab-completed 7TV overlay
+  // emote (CarrotTime, wavE) renders as a standalone base after auto-add.
+  recentRemoteCompletions.set(match.name, { url: match.url, source: src, zeroWidth: !!match.zeroWidth })
   while (recentRemoteCompletions.size > REMOTE_COMPLETION_CAP) {
     recentRemoteCompletions.delete(recentRemoteCompletions.keys().next().value)
   }
@@ -222,7 +225,7 @@ async function fetchRemoteEmoteMatches(search) {
     add.push({ name: it.name, url: it.url, source: src, priority: it.name.toLowerCase().startsWith(searchLower) ? 0 : 1, type: 'emote', remote: true, zeroWidth: !!it.zeroWidth, _ai: add.length })
     // Remember for auto-add-on-send (only matters if the user actually sends it).
     recentRemoteCompletions.delete(it.name)
-    recentRemoteCompletions.set(it.name, { url: it.url, source: src })
+    recentRemoteCompletions.set(it.name, { url: it.url, source: src, zeroWidth: !!it.zeroWidth })
     while (recentRemoteCompletions.size > REMOTE_COMPLETION_CAP) {
       recentRemoteCompletions.delete(recentRemoteCompletions.keys().next().value)
     }
@@ -709,12 +712,14 @@ function initInput() {
     // Check wrapper first (our emotes)
     const wrapper = target.closest('.hs-mc-emote-wrapper');
     if (wrapper) {
+      const wImg = wrapper.querySelector('img');
       return {
         wrapper,
-        emoteName: wrapper.dataset.emoteName || wrapper.querySelector('img')?.alt || 'emote',
+        emoteName: wrapper.dataset.emoteName || wImg?.alt || 'emote',
         state: wrapper.dataset.state || 'global',
-        emoteUrl: wrapper.dataset.emoteUrl || wrapper.querySelector('img')?.src || '',
-        source: wrapper.dataset.source || 'unknown'
+        emoteUrl: wrapper.dataset.emoteUrl || wImg?.src || '',
+        source: wrapper.dataset.source || 'unknown',
+        modWords: wImg?.dataset?.hsWords || wrapper.dataset?.hsWords || ''
       };
     }
     // Picker emote wrap — when blocked, the inner img is visibility:hidden so
@@ -859,7 +864,13 @@ function initInput() {
           showInputBar();
           for (const w of postable) {
             const name = w.dataset.emoteName;
-            if (name) pasteEmoteToInput(name);
+            if (!name) continue;
+            // Wire words are stashed on the wrapper at render time by
+            // _hsMcApplyMods so paste preserves w!/h!/c! per emote, letting
+            // user click-paste-enter and reproduce the nest's exact dimensions.
+            const wImg = w.querySelector('img');
+            const modWords = wImg?.dataset?.hsWords || w.dataset?.hsWords || '';
+            pasteEmoteToInput(name, modWords);
           }
           const input = document.getElementById('hs-mc-input');
           if (input) input.focus();
@@ -881,7 +892,7 @@ function initInput() {
       e.preventDefault();
       e.stopPropagation();
 
-      const { emoteName, state, emoteUrl, source } = emoteInfo;
+      const { emoteName, state, emoteUrl, source, modWords } = emoteInfo;
 
       if (state === 'blocked') {
         // One rung up the ladder per click: unblock → unadded (orange). A second
@@ -900,9 +911,11 @@ function initInput() {
         return;
       }
       if (state === 'owned' || state === 'global' || state === 'channel') {
-        // Paste to input (no lock needed — instant, no async)
+        // Paste to input (no lock needed — instant, no async).
+        // modWords (w!/h!/c!) round-trip from the source chip so paste→send
+        // reproduces identical sizing — matches the nest-click behavior.
         showInputBar();
-        pasteEmoteToInput(emoteName);
+        pasteEmoteToInput(emoteName, modWords);
         const input = document.getElementById('hs-mc-input');
         if (input) input.focus();
         flashAllEmotes(emoteName, 'hs-flash-paste');
@@ -3928,9 +3941,9 @@ function autoAddInputEmotes(text) {
     // text — text has no wrapper, so a late add can't retro-fix it. Mirrors the
     // picker's optimistic add (emotes.js). addEmoteToInventory then persists it.
     if (typeof viewerPersonalEmotes !== 'undefined' && !viewerPersonalEmotes.has(word)) {
-      viewerPersonalEmotes.set(word, { url: rec.url, source: rec.source, state: 'owned' })
+      viewerPersonalEmotes.set(word, { url: rec.url, source: rec.source, state: 'owned', zeroWidth: !!rec.zeroWidth })
     }
-    if (typeof addEmoteToInventory === 'function') addEmoteToInventory(word, rec.url, rec.source)
+    if (typeof addEmoteToInventory === 'function') addEmoteToInventory(word, rec.url, rec.source, undefined, !!rec.zeroWidth)
   }
 }
 

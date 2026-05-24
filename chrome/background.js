@@ -998,7 +998,8 @@ function fetchEmoteInventory() {
       width: emote.width,
       height: emote.height,
       slot: emote.slot_number,
-      usage_count: emote.usage_count
+      usage_count: emote.usage_count,
+      zero_width: !!emote.zero_width  // 7TV overlay flag — drives stacking in chat
     }));
     log(' 🔍 Transformed inventory length:', inventoryEmotes.length);
     log(' 🔍 First transformed emote:', inventoryEmotes[0]);
@@ -4343,7 +4344,7 @@ function broadcastEmoteUsage(emoteName, emoteHash, senderTabId = null) {
 }
 
 // Add emote to your set (for global emotes clicked in chat) - returns success/failure
-async function addToInventory(emoteName, emoteHash, emoteUrl) {
+async function addToInventory(emoteName, emoteHash, emoteUrl, zeroWidth = false) {
   try {
     const authToken = await getAuthCookie();
     if (!authToken) {
@@ -4373,7 +4374,8 @@ async function addToInventory(emoteName, emoteHash, emoteUrl) {
         emoteName,
         customName: emoteName,
         source: 'extension',
-        sourceId: emoteHash
+        sourceId: emoteHash,
+        zeroWidth: !!zeroWidth
       })
     });
 
@@ -4611,24 +4613,10 @@ browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true
   }
 
-  // Crash telemetry from content scripts (no auth needed — best-effort logging)
-  if (message.type === 'crash_report') {
-    recordCrash(message.source || 'content', message.message, message.stack, message.url || senderUrl)
-    sendResponse({ ok: true })
-    return true
-  }
-
-  // Read crash log (for options page)
-  if (message.type === 'get_crash_log') {
-    browser.storage.local.get(CRASH_LOG_KEY).then(stored => {
-      sendResponse({ ok: true, log: stored[CRASH_LOG_KEY] || [] })
-    }).catch(() => sendResponse({ ok: false, log: [] }))
-    return true
-  }
-
-  // Clear crash log
-  if (message.type === 'clear_crash_log') {
-    browser.storage.local.remove(CRASH_LOG_KEY).then(() => sendResponse({ ok: true }))
+  // Diag snapshot for bug reports — bundled with errors on copy.
+  if (message.type === 'get_diag') {
+    buildDiagSnapshot().then(d => sendResponse({ ok: true, diag: d }))
+      .catch(() => sendResponse({ ok: false, diag: null }))
     return true
   }
 
@@ -5117,7 +5105,7 @@ async function handleMessage(message, sender, sendResponse) {
     return true; // Keep channel open for async response
   } else if (message.type === 'add_to_inventory') {
     // Async - send response when done
-    addToInventory(message.emoteName, message.emoteHash, message.emoteUrl).then(result => {
+    addToInventory(message.emoteName, message.emoteHash, message.emoteUrl, message.zeroWidth).then(result => {
       sendResponse(result);
     });
     return true; // Keep channel open for async response
@@ -5796,8 +5784,12 @@ async function handleMessage(message, sender, sendResponse) {
         }
         // HeatSync personal set — overrides provider entries because it's the
         // sender's curated set (and what they actually post via heatsync). URLs
-        // are already absolute (server normalizes /uploads/ → CDN). No overlay
-        // flag in the emotes table, so zeroWidth defaults false.
+        // are already absolute (server normalizes /uploads/ → CDN). zero_width
+        // arrives from the emotes table (added 2026-05-23, migration 164) so
+        // cross-user overlay stacks ("wavE wavE wavE") render correctly. If the
+        // server flag is missing (old payload / unmigrated row) we fall back to
+        // any zeroWidth already collected via the 7TV personal-set loop above —
+        // never blindly overwriting an overlay flag with false.
         const hsEmotes = hs?.emotes || []
         for (const e of hsEmotes) {
           const name = e?.custom_name || e?.name
@@ -5810,6 +5802,7 @@ async function handleMessage(message, sender, sendResponse) {
             : /cdn\.frankerfacez\.com/.test(u) ? 'ffz'
             : (e.source && e.source !== 'extension') ? e.source
             : 'heatsync'
+          const prevZW = collected[name]?.zeroWidth
           collected[name] = {
             url: u,
             source: src,
@@ -5817,7 +5810,7 @@ async function handleMessage(message, sender, sendResponse) {
             // orange "click to add" affordance — they can grab a shared emote.
             // processEmotes upgrades to 'owned' if they already have it.
             state: 'unadded',
-            zeroWidth: false,
+            zeroWidth: !!(e.zero_width ?? e.zeroWidth ?? prevZW),
             hash: e.hash || ''
           }
         }
@@ -6150,40 +6143,49 @@ async function initialize() {
 log(' 🚀 Calling initialize()...');
 initPromise = initialize().catch(err => {
   console.error('[heatsync] Initialize failed:', err);
-  recordCrash('bg', err?.message || String(err), err?.stack || '', 'initialize')
 });
 
-// ============================================
-// CRASH TELEMETRY (opt-in)
-// ============================================
-// Captures unhandled errors to chrome.storage.local, capped at 50.
-// User views/copies via options page. Upload to server requires explicit opt-in
-// via ui_settings.shareCrashReports — endpoint stubbed for future use.
-const CRASH_LOG_KEY = 'hs_crash_log'
-const CRASH_LOG_MAX = 50
-
-async function recordCrash(source, message, stack, url) {
+// Diag snapshot for bug reports — gathered on demand, never stored.
+// Combines SW-side runtime state with the most recently active tab's page-side
+// state (hs_diag_page key, written by content.js). No PII; counts and states only.
+function _wsLabel(ws) {
+  if (!ws) return 'null'
+  const s = ws.readyState
+  return s === 0 ? 'connecting' : s === 1 ? 'open' : s === 2 ? 'closing' : 'closed'
+}
+async function buildDiagSnapshot() {
+  const now = Date.now()
+  const out = { ts: now, ver: 'unknown', sw: {}, page: null }
+  try { out.ver = browser.runtime.getManifest().version } catch {}
   try {
-    if (!message) return
-    const entry = {
-      ts: Date.now(),
-      source,
-      message: String(message).slice(0, 500),
-      stack: String(stack || '').slice(0, 2000),
-      url: String(url || '').slice(0, 200)
+    out.sw.irc = {
+      state: _wsLabel(BG_IRC?.ws),
+      lastDataAgeMs: BG_IRC?.lastData ? now - BG_IRC.lastData : null,
+      channels: BG_IRC?.channels?.size || 0,
+      liveTabs: BG_IRC?.liveTabs?.size || 0,
+      reconnectAttempts: BG_IRC?.reconnectAttempts || 0,
     }
-    const stored = await browser.storage.local.get(CRASH_LOG_KEY)
-    const log = Array.isArray(stored[CRASH_LOG_KEY]) ? stored[CRASH_LOG_KEY] : []
-    // Dedup consecutive identical messages (don't spam log when one bug fires repeatedly)
-    if (log.length > 0 && log[log.length - 1].message === entry.message) {
-      log[log.length - 1].ts = entry.ts
-      log[log.length - 1].count = (log[log.length - 1].count || 1) + 1
-    } else {
-      log.push(entry)
+  } catch {}
+  try { out.sw.ws7tv = _wsLabel(seventvWebSocket) } catch {}
+  try { out.sw.wsHs = _wsLabel(socket) } catch {}
+  try { out.sw.inventory = Array.isArray(emoteInventory) ? emoteInventory.length : 0 } catch {}
+  try { out.sw.blocked = blockedEmotes?.size || 0 } catch {}
+  try { out.sw.channelEmotes = Object.keys(channelEmotesMap || {}).length } catch {}
+  try {
+    const h = await getCachedHealth()
+    const { hs_health_at } = await browser.storage.local.get('hs_health_at')
+    out.sw.health = {
+      kill: !!h.kill, ext_min: h.ext_min || '', disabledN: (h.disabled || []).length,
+      msgPresent: !!h.msg, ageMs: hs_health_at ? now - hs_health_at : null,
     }
-    while (log.length > CRASH_LOG_MAX) log.shift()
-    await browser.storage.local.set({ [CRASH_LOG_KEY]: log })
-  } catch (e) { /* swallow — telemetry must never crash the SW */ }
+  } catch {}
+  try {
+    const { hs_diag_page } = await browser.storage.local.get('hs_diag_page')
+    if (hs_diag_page && typeof hs_diag_page === 'object') {
+      out.page = { ...hs_diag_page, ageMs: hs_diag_page.ts ? now - hs_diag_page.ts : null }
+    }
+  } catch {}
+  return out
 }
 
 // ============================================
@@ -6316,14 +6318,6 @@ self.addEventListener('notificationclick', (ev) => {
   if (typeof url === 'string' && url.startsWith('https://heatsync.org/')) {
     ev.waitUntil(clients.openWindow(url))
   }
-})
-
-self.addEventListener('error', (ev) => {
-  recordCrash('bg', ev.message, ev.error?.stack, ev.filename)
-})
-self.addEventListener('unhandledrejection', (ev) => {
-  const r = ev.reason
-  recordCrash('bg', r?.message || String(r), r?.stack, '')
 })
 
 // ============================================================================

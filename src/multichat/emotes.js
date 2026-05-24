@@ -72,7 +72,7 @@
         // (input.js:740) which knows that branch — 'remote' fell through
         // every branch, leaving stopPropagation alive and the click dead.
         filtered.set(r.name, { source: p, state: 'unadded', url: r.url, provider: r.provider })
-        mcRemoteEmoteIndex.set(r.name, { url: r.url, provider: r.provider, id: r.id })
+        mcRemoteEmoteIndex.set(r.name, { url: r.url, provider: r.provider, id: r.id, zeroWidth: !!r.zeroWidth })
       }
     }
     // One unified flat feed — no section headers, no visual distinction
@@ -642,9 +642,10 @@
                 url: remote.url,
                 source: remote.provider || '7tv',
                 state: 'owned',
+                zeroWidth: !!remote.zeroWidth,
               });
             }
-            addEmoteToInventory(name, remote.url, remote.provider, img).catch(() => {});
+            addEmoteToInventory(name, remote.url, remote.provider, img, !!remote.zeroWidth).catch(() => {});
           }
         }
 
@@ -872,6 +873,16 @@
     img.alt = emoteName
     img.dataset.emoteName = emoteName
     img.draggable = false
+    // Persist state + source on the chip so findEmoteTarget (input.js:752) reads
+    // 'owned' instead of defaulting to 'global'. Without this, right-clicking a
+    // wavE chip in the input fell into the else branch and tried to BLOCK an
+    // emote you own; left-click hover also missed its green-state CSS. Match
+    // resolved emote.state ('owned'/'global'/'channel'/'unadded') 1:1.
+    const _resolvedSource = emote.source || detectEmoteSource(emote.url)
+    img.dataset.source = _resolvedSource
+    // Owned shadows global/channel — surface what the user actually controls.
+    img.dataset.state = inventoryEmotes.has(emoteName) ? 'owned' : (emote.state || 'global')
+    img.classList.add('hs-state-' + img.dataset.state)
     if (isOverlay) img.dataset.zeroWidth = '1'
     // Broken-image recovery — shared helper in input.js (cache-bust retry then
     // text fallback). Defined later in the bundle but function declarations
@@ -977,14 +988,41 @@
     sel.addRange(range)
   }
 
-  // Paste emote name to input
-  function pasteEmoteToInput(emoteName) {
+  // Parse a space-separated modifier-word string ("w! h! c!#ff8700") into
+  // canonical {mods, hue, words}; skips tokens that don't classify as modifiers
+  // so a stray non-modifier word can't poison the result.
+  function _hsMcParseModWords(s) {
+    const mods = []
+    let hue = null
+    const words = []
+    for (const w of (s || '').trim().split(/\s+/).filter(Boolean)) {
+      const c = hsModClassify(w, { allowPrefix: false })
+      if (c.kind !== 'modifier') continue
+      if (c.mods) for (const m of c.mods) mods.push(m)
+      if (c.hue != null) hue = c.hue
+      if (c.words) for (const ww of c.words) words.push(ww)
+    }
+    return { mods, hue, words }
+  }
+
+  // Paste emote name to input. Optional modWords ("w! h!") restores the
+  // exact dimensions from a source chip — left-click on an emote nest passes
+  // each wrapper's wire words so paste→send produces identical sizing.
+  function pasteEmoteToInput(emoteName, modWords) {
     const input = document.getElementById('hs-mc-input');
     if (!input) return;
     recordRecentEmote(emoteName);
+    const _applyMods = (img) => {
+      if (!img || !modWords) return
+      const { mods, hue, words } = _hsMcParseModWords(modWords)
+      if (mods.length || hue != null || words.length) {
+        hsModApplyToImg(img, mods, hue, words)
+      }
+    }
     if (wysiwygEnabled || !('value' in input)) {
       const img = createInputEmoteImg(emoteName)
       if (img) {
+        _applyMods(img)
         // createInputEmoteImg already resolved overlay status (zeroWidth flag
         // OR "name0" convention) and tagged the img — reuse it for parity with
         // the typed live-replace path.
@@ -1019,7 +1057,8 @@
         // Fallback: emote not in cache, insert as text
         const text = input.textContent || ''
         const space = text.length > 0 && !text.endsWith(' ') ? ' ' : ''
-        input.textContent = text + space + emoteName + ' '
+        const modTail = modWords ? ' ' + modWords.trim() : ''
+        input.textContent = text + space + emoteName + modTail + ' '
         cursorToEnd(input)
       }
       pendingMessage = getInputText()
@@ -1028,9 +1067,11 @@
       const before = input.value.slice(0, pos);
       const after = input.value.slice(pos);
       const space = before.length > 0 && !before.endsWith(' ') ? ' ' : '';
-      input.value = before + space + emoteName + ' ' + after;
+      const modTail = modWords ? ' ' + modWords.trim() : '';
+      const insert = emoteName + modTail + ' ';
+      input.value = before + space + insert + after;
       pendingMessage = input.value;
-      input.selectionStart = input.selectionEnd = pos + space.length + emoteName.length + 1;
+      input.selectionStart = input.selectionEnd = pos + space.length + insert.length;
     }
     input.focus();
   }
@@ -1292,9 +1333,18 @@
     if (typeof invalidateRenderedForEmotes === 'function') invalidateRenderedForEmotes(emoteName);
   }
 
-  // Add emote to inventory (click-to-add for unadded emotes)
-  async function addEmoteToInventory(emoteName, emoteUrl, emoteSource, targetEl) {
+  // Add emote to inventory (click-to-add for unadded emotes).
+  // zeroWidth: optional — pass true for 7TV overlay emotes (wavE, SnowTime…) so
+  // the server persists the stack flag. Falsy default triggers a best-effort
+  // lookup across mcRemoteEmoteIndex + zeroWidthFromAnyCache so all callers
+  // (picker, chat-row click, auto-add-on-send, chip-paste) inherit the flag
+  // without each having to plumb it through their own state.
+  async function addEmoteToInventory(emoteName, emoteUrl, emoteSource, targetEl, zeroWidth) {
     if (!emoteName) return;
+    if (zeroWidth == null) {
+      const remote = mcRemoteEmoteIndex.get(emoteName)
+      zeroWidth = !!(remote?.zeroWidth || zeroWidthFromAnyCache(emoteName))
+    }
     // Guard: never persist a placeholder/data URI. A blocked emote renders with
     // a transparent px, and the click-to-readd path can hand us that src — adding
     // it would store a blank emote that renders empty forever (and the server
@@ -1314,7 +1364,8 @@
           type: 'add_to_inventory',
           emoteName: emoteName,
           emoteHash: emoteHash,
-          emoteUrl: emoteUrl
+          emoteUrl: emoteUrl,
+          zeroWidth: !!zeroWidth
         }, resolve);
       });
 
@@ -1328,7 +1379,7 @@
         const serverHash = response.hash || emoteHash;
         inventoryEmotes.add(emoteName);
         inventoryHashes.set(emoteName, serverHash);
-        viewerPersonalEmotes.set(emoteName, { url: emoteUrl, source: emoteSource || 'heatsync', state: 'owned', hash: serverHash, slot: response.slot });
+        viewerPersonalEmotes.set(emoteName, { url: emoteUrl, source: emoteSource || 'heatsync', state: 'owned', hash: serverHash, slot: response.slot, zeroWidth: !!zeroWidth });
         if (emoteCache.has(emoteName)) {
           const cached = emoteCache.get(emoteName);
           cached.state = 'owned';
@@ -1772,7 +1823,9 @@
       (stored.emote_inventory || []).forEach(e => {
         if (e.name && e.url) {
           const source = e.source || 'heatsync';
-          viewerPersonalEmotes.set(e.name, { url: e.url, source, state: 'owned', zeroWidth: !!e.zeroWidth, subscription: !!e.subscription, slot: e.slot });
+          // server returns zero_width (snake_case from postgres column), older
+          // payloads may carry zeroWidth — accept either; falsy default is fine.
+          viewerPersonalEmotes.set(e.name, { url: e.url, source, state: 'owned', zeroWidth: !!(e.zero_width ?? e.zeroWidth), subscription: !!e.subscription, slot: e.slot });
         }
       });
 
@@ -1912,6 +1965,14 @@
     if (wrapperStyle) out = hsModInjectWrapperStyle(out, wrapperStyle)
     if (imgFilter && hasImg) {
       out = out.replace(/<img(\s)/, `<img style="filter:${imgFilter} !important;"$1`)
+    }
+    // Stash wire words on the wrapper so left-clicking a nested emote can
+    // round-trip modifiers ("w! h! c!#ff8700") into the input on paste.
+    const wireWords = hsModWordsFromState(mods, hue).join(' ')
+    if (wireWords) {
+      const safe = wireWords.replace(/"/g, '&quot;')
+      out = out.replace(/^(<span\b[^>]*?)(>)/, (m, p1, gt) =>
+        / data-hs-words=/.test(p1) ? m : `${p1} data-hs-words="${safe}"${gt}`)
     }
     return out
   }

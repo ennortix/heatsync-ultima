@@ -5103,21 +5103,24 @@
     }
   }
 
-  // Load crash log into the system sub-tab pre element
+  // Load recent errors + diag snapshot into the system sub-tab pre element.
+  // Reads hs_errors directly (single source of truth — written by lib/error-reporter).
   async function _loadCrashLog() {
     var pre = document.getElementById('hs-set-crash-pre');
     if (!pre) return;
     try {
-      var resp = await chrome.runtime.sendMessage({ type: 'get_crash_log' });
-      var log = (resp && resp.log) || [];
-      if (log.length === 0) { pre.textContent = '(no errors recorded)'; return; }
+      var cur = await new Promise(function(r) { chrome.storage.local.get('hs_errors', r); });
+      var log = Array.isArray(cur && cur.hs_errors) ? cur.hs_errors : [];
+      var diag = null;
+      try { diag = (await chrome.runtime.sendMessage({ type: 'get_diag' }))?.diag || null; } catch (_) {}
       function fmtTs(ts) {
         var d = new Date(ts);
         return d.toISOString().replace('T', ' ').slice(0, 19);
       }
-      pre.textContent = log.slice().reverse().map(function(entry) {
-        var cnt = entry.count > 1 ? ' \xD7' + entry.count : '';
-        return '[' + fmtTs(entry.ts) + '] ' + entry.source + cnt + ': ' + entry.message + '\n' + (entry.stack || '') + '\n';
+      var head = diag ? ('--- diag ---\n' + JSON.stringify(diag, null, 2) + '\n\n') : '';
+      if (log.length === 0) { pre.textContent = head + '(no errors recorded)'; return; }
+      pre.textContent = head + log.slice().reverse().map(function(entry) {
+        return '[' + fmtTs(entry.ts) + '] ' + (entry.plat || entry.type || '?') + ': ' + (entry.msg || '') + '\n' + (entry.stack || '') + '\n';
       }).join('\n');
     } catch (err) {
       pre.textContent = '(unable to read log)';
@@ -5430,7 +5433,7 @@
         return;
       }
       if (e.target.id === 'hs-set-crash-clear') {
-        chrome.runtime.sendMessage({ type: 'clear_crash_log' }).catch(function() {});
+        chrome.storage.local.remove('hs_errors', function() { void chrome.runtime.lastError; });
         _loadCrashLog();
         return;
       }
@@ -10390,7 +10393,14 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
               c.state = 'owned';
               if (e.slot != null) c.slot = e.slot;
             }
-            if (e.url) viewerPersonalEmotes.set(e.name, { url: e.url, source: 'heatsync', state: 'owned', hash: e.hash, slot: e.slot });
+            if (e.url) {
+              // Recover overlay flag for emotes whose server row is pre-zero_width
+              // (DB column added 2026-05-23; rows added before that have FALSE).
+              // The 7TV channel/global caches still carry the flag — borrow it so
+              // a viewer's pre-existing CarrotTime/wavE stacks without re-adding.
+              const zwFromAny = (typeof zeroWidthFromAnyCache === 'function') ? zeroWidthFromAnyCache(e.name) : false
+              viewerPersonalEmotes.set(e.name, { url: e.url, source: 'heatsync', state: 'owned', hash: e.hash, slot: e.slot, zeroWidth: !!(e.zero_width ?? e.zeroWidth ?? zwFromAny) });
+            }
           }
         });
         // Remove emotes no longer in inventory from cache (if heatsync source)
@@ -10409,10 +10419,71 @@ m.type === 'usernotice' || m.type === 'notice' ? `hs-mc-msg hs-mc-system ${notic
         const added = [...inventoryEmotes].filter(n => !prevInventory.has(n))
         for (const n of removed) refreshEmoteWrappersState(n)
         for (const n of added) refreshEmoteWrappersState(n)
+        // Newly-owned names also need _renderedHtml invalidated so a row that
+        // rendered the name as plain text (because viewerPersonalEmotes was empty
+        // at the time — startup race / inventory wipe before refetch) re-resolves
+        // to an emote img on the next paint. refreshEmoteWrappersState only flips
+        // existing wrappers; it can't conjure one out of a text node.
+        if (added.length && typeof invalidateRenderedForEmotes === 'function') {
+          invalidateRenderedForEmotes(added)
+        }
+        // First inventory_update after page load: the buffer may contain rows
+        // rendered with an EMPTY viewerPersonalEmotes (any name now in inventory
+        // would have processed as plain text). Brute-force invalidate everything
+        // ONCE so those rows re-resolve to emote imgs. Subsequent updates use
+        // the per-name path above (cheap).
+        if (!window.__hsInventoryEverLoaded) {
+          window.__hsInventoryEverLoaded = true
+          if (typeof invalidateRenderedForEmotes === 'function' && inventoryEmotes.size) {
+            invalidateRenderedForEmotes([...inventoryEmotes])
+          }
+        }
         log('inventory_update:', inventoryEmotes.size, 'emotes');
         // Inventory just changed emoteCache contents — picker is stale.
         markPickerDirty();
         prebuildPickerIdle();
+        // Background probe: for owned 7TV emotes whose zeroWidth ended up FALSE
+        // (DB row predates the column AND no loaded channel set carries the flag
+        // — e.g. an emote added via picker search without subscribing to a
+        // channel that owns it), hit 7tv.io/v3/emotes/{hash} to recover the
+        // overlay flag and POST a sticky-true upgrade to the server. Cached in
+        // window.__hsZwProbed so we don't re-probe across inventory polls.
+        if (!window.__hsZwProbed) window.__hsZwProbed = new Set()
+        const _probeTargets = []
+        for (const [name, em] of viewerPersonalEmotes) {
+          if (em.zeroWidth) continue
+          if (window.__hsZwProbed.has(name)) continue
+          // Only 7TV CDN URLs have a usable hash for the REST emote-by-id probe.
+          if (!em.url || !em.url.includes('cdn.7tv.app/emote/')) continue
+          const m = em.url.match(/cdn\.7tv\.app\/emote\/([A-Z0-9]+)/i)
+          const sevenTvId = m?.[1] || em.hash
+          if (!sevenTvId) continue
+          window.__hsZwProbed.add(name)
+          _probeTargets.push({ name, sevenTvId, em })
+        }
+        if (_probeTargets.length) {
+          // Trickle 4-at-a-time so a viewer with 200 owned 7TV emotes doesn't
+          // flash-fire 200 simultaneous 7TV fetches on every inventory_update.
+          const _runProbeBatch = async (batch) => {
+            await Promise.allSettled(batch.map(async ({ name, sevenTvId, em }) => {
+              try {
+                const r = await fetch('https://7tv.io/v3/emotes/' + sevenTvId).then(r => r.ok ? r.json() : null)
+                const isZw = !!(r && ((r.flags || 0) & 256))
+                if (!isZw) return
+                em.zeroWidth = true
+                if (typeof invalidateRenderedForEmotes === 'function') invalidateRenderedForEmotes([name])
+                // Sticky-true upgrade on the server so every other viewer of any
+                // sender owning this emote inherits the flag too.
+                try { chrome.runtime.sendMessage({ type: 'add_to_inventory', emoteName: name, emoteHash: em.hash || sevenTvId, emoteUrl: em.url, zeroWidth: true }, () => {}) } catch (_) {}
+              } catch (_) {}
+            }))
+          }
+          ;(async () => {
+            for (let i = 0; i < _probeTargets.length; i += 4) {
+              await _runProbeBatch(_probeTargets.slice(i, i + 4))
+            }
+          })()
+        }
       }
 
       // Cross-platform mute sync (from background.js — other tabs, server WS, or expiry)

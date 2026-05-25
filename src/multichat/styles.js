@@ -7087,6 +7087,16 @@ function injectStyles() {
       max-width: 100% !important;
       overflow-x: hidden !important;
     }
+    /* Kick's stream-card / category grids use viewport-based media queries
+       (sm:grid-cols-2 etc) — but body is shrunken so the viewport breakpoint
+       doesn't match what fits in body. result: 1-2 columns rendered when
+       3-4 would fit, leaving empty space on the right edge between content
+       and chat. Override to a container-relative auto-fill so cards always
+       fill available width. minmax(170px,1fr) keeps cards readable. */
+    body.hs-platform-kick.hs-kick-no-channel main section[class*="grid"],
+    body.hs-platform-kick.hs-kick-no-channel main div[class*="grid-cols"] {
+      grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)) !important;
+    }
     /* Push content below Kick's fixed 60px nav so the first row of video
        thumbnails isn't half-hidden under it. chat-top covers the nav (own
        body margin-top handles it); chat-right/left/bottom all leave the

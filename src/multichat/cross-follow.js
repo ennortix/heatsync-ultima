@@ -166,51 +166,19 @@ async function _kickFollow(slug, follow) {
 
 // ─── Twitch follow ──────────────────────────────────────────────────────────
 //
-// Preferred path: SW direct fetch with twitch auth cookie + minted integrity
-// JWT. Works from ANY tab (kick.com, youtube, heatsync.org, etc.) — no
-// twitch.tv tab required. SW reads twitch auth cookies, mints integrity via
-// /integrity, fires the FollowButton GQL with the seeded persisted-query hash.
+// Twitch's anti-bot blocks ALL programmatic follow paths:
+//   - GQL with captured / minted integrity → "failed integrity check"
+//   - Apollo client finder → broken on current Twitch (bundle refactored)
+//   - Synthetic button click → React ignores (isTrusted check)
+//   - Fiber onClick invocation → renderer hangs
+// Per empirical testing (2026-05). Twitch wants real user gestures on their
+// channel page. We provide an "open twitch page" link in the profile card
+// instead so the user can click follow there themselves — see profile-card.js.
 //
-// Fallback: on-twitch in-page apolloMutate (when user IS on twitch.tv, the
-// MAIN-world integrity is fresh + locally-minted device-id matches), then
-// twitch_relay to any open twitch.tv tab.
-//
-// Queue: integrity_check_failed / twitch_not_logged_in / no_twitch_tab all
-// get queued for a later retry when the user opens a twitch.tv tab (drain
-// triggers via tabs.onUpdated).
-async function _twitchFollow(targetID, follow, disableNotifications, targetSlug) {
-  if (!targetID) return { error: 'no target id' }
-
-  // DOM-click is the only reliable path. The two GQL alternatives are both
-  // broken on current Twitch:
-  //   - apolloMutate: webpack-Document lookup fails (Twitch refactored their
-  //     React + webpack bundle, our finder can't locate the FollowUser doc)
-  //   - gqlProxy with captured integrity: anti-bot returns 'failed integrity
-  //     check' because the JWT only validates when attached via Apollo's
-  //     link chain (which we can't replicate from raw fetch)
-  // The DOM-click path goes through Twitch's own React click handler, so
-  // Apollo links + integrity attach naturally — bypasses anti-bot entirely.
-  // Cost: ~5s per follow (background tab open + click + close). Fragile
-  // alternatives stripped — no point spending 1-2s timing out on dead paths.
-  if (!targetSlug) {
-    // No slug = we only have a numeric twitch_id. DOM-click needs the
-    // /channel-slug URL path. Queue for next twitch visit (where the user
-    // can manually find them) — or surface as terminal if username missing.
-    return { error: 'no_slug', queueable: true }
-  }
-  try {
-    const r = await safeSendMessage({
-      type: 'twitch_follow_via_click',
-      slug: targetSlug,
-      follow: !!follow,
-    })
-    if (r?.ok) return { ok: true, idempotent: !!r.idempotent, viaClick: true }
-    if (r?.error === 'twitch_not_logged_in') return { error: 'twitch_not_logged_in', queueable: true }
-    if (r?.error === '2fa_required') return { error: '2fa_required' }
-    return { error: r?.error || 'dom_click_failed', queueable: true }
-  } catch (e) {
-    return { error: 'dom_click_threw', queueable: true }
-  }
+// This stub returns silently — heatsync follow is the source of truth; the
+// twitch side is opt-in manual via the profile card link.
+async function _twitchFollow(_targetID, _follow, _disableNotifications, _targetSlug) {
+  return { skipped: 'manual_follow_only' }
 }
 
 // ─── Main entry: called from pcToggleFollow + pcToggleBlock ─────────────────
@@ -220,83 +188,37 @@ async function _twitchFollow(targetID, follow, disableNotifications, targetSlug)
 // Returns: { twitch: {...}, kick: {...} } — caller can surface diagnostics
 // in dev mode but the default UX is silent best-effort.
 async function propagateFollow(follow, target) {
-  if (!target) return { twitch: { skipped: 'no target' }, kick: { skipped: 'no target' } }
+  if (!target) return { kick: { skipped: 'no target' } }
   const settings = await _crossFollowSettings()
-  const tasks = []
-  const out = { twitch: { skipped: 'no twitch id' }, kick: { skipped: 'no kick username' } }
+  const out = { kick: { skipped: 'no kick username' } }
 
-  if (settings.twitch && target.twitch_id) {
-    tasks.push((async () => {
-      const r = await _twitchFollow(target.twitch_id, follow, !settings.twitchNotifyTarget, target.twitch_username || null)
-      if (r?.ok) {
-        out.twitch = { ok: true, idempotent: !!r.idempotent }
-        await _dequeueMatching('twitch', String(target.twitch_id))
-      } else {
-        out.twitch = { error: r?.error || 'twitch follow failed', reloaded: !!r?.reloaded }
-        if (r?.queueable) {
-          await _enqueue({
-            platform: 'twitch',
-            target: String(target.twitch_id),
-            action: follow ? 'follow' : 'unfollow',
-            disableNotifications: !settings.twitchNotifyTarget,
-            username: target.twitch_username || null
-          })
-        }
-      }
-    })())
-  }
+  // Twitch propagation is no longer programmatic — anti-bot blocks every
+  // viable path. Users follow on twitch via the profile card's "open on
+  // twitch" link, which navigates to the channel page where they can click
+  // the native follow button themselves. Heatsync follow remains the source
+  // of truth regardless.
 
   if (settings.kick && target.kick_username) {
-    tasks.push((async () => {
-      const r = await _kickFollow(target.kick_username, follow)
-      if (r?.ok) {
-        out.kick = { ok: true, idempotent: !!r.idempotent }
-        await _dequeueMatching('kick', String(target.kick_username).toLowerCase())
-      } else {
-        out.kick = { error: r?.error || 'kick follow failed' }
-        if (r?.queueable) {
-          await _enqueue({
-            platform: 'kick',
-            target: String(target.kick_username).toLowerCase(),
-            action: follow ? 'follow' : 'unfollow'
-          })
-        }
-      }
-    })())
-  }
-
-  if (tasks.length) await Promise.allSettled(tasks)
-  // Surface meaningful state to the user. Heatsync follow already toasted
-  // "following X" — we add ONE additional toast only if cross-platform
-  // propagation didn't fully complete (queued / login needed / 2fa).
-  // Silent on full success.
-  try {
-    const u = target?.twitch_username || target?.kick_username || 'them'
     const verb = follow ? 'follow' : 'unfollow'
-    const tErr = out.twitch?.error && !out.twitch?.ok ? out.twitch.error : null
-    const kErr = out.kick?.error && !out.kick?.ok ? out.kick.error : null
-    let msg = null
-    if (tErr === 'twitch_not_logged_in') {
-      msg = `log in to twitch.tv to mirror this ${verb}`
-    } else if (tErr === '2fa_required') {
-      msg = `twitch needs 2FA confirmation — ${verb} on twitch.tv directly`
-    } else if (tErr === 'stale_twitch_tab' && out.twitch?.reloaded) {
-      msg = `refreshing twitch.tv to sync ${verb} — hold on`
-    } else if (tErr === 'no_twitch_tab' || tErr === 'stale_twitch_tab' ||
-               tErr === 'integrity_check_failed' || tErr === 'twitch_hash_stale' ||
-               tErr === 'twitch_gql_timeout' || /failed integrity/i.test(tErr || '')) {
-      msg = `twitch ${verb} queued — will sync on your next twitch.tv visit`
-    } else if (tErr) {
-      msg = `twitch ${verb} failed: ${tErr}`
+    const r = await _kickFollow(target.kick_username, follow)
+    if (r?.ok) {
+      out.kick = { ok: true, idempotent: !!r.idempotent }
+      await _dequeueMatching('kick', String(target.kick_username).toLowerCase())
+    } else {
+      out.kick = { error: r?.error || 'kick follow failed' }
+      if (r?.queueable) {
+        await _enqueue({
+          platform: 'kick',
+          target: String(target.kick_username).toLowerCase(),
+          action: follow ? 'follow' : 'unfollow'
+        })
+      }
+      // Surface only login-needed; treat other transient kick errors as silent
+      // (heatsync follow already toasted; we don't want noise on each follow).
+      if (r?.error === 'kick_not_logged_in' && typeof showToast === 'function') {
+        showToast(`kick ${verb} queued — will sync when you log in to kick.com`, 'info')
+      }
     }
-    if (kErr === 'kick_not_logged_in') {
-      const k = `kick ${verb} queued — will sync when you log in to kick.com`
-      msg = msg ? msg + ' · ' + k : k
-    } else if (kErr) {
-      const k = `kick ${verb} failed: ${kErr}`
-      msg = msg ? msg + ' · ' + k : k
-    }
-    if (msg && typeof showToast === 'function') showToast(msg, 'info')
-  } catch {}
+  }
   return out
 }

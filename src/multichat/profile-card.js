@@ -543,25 +543,37 @@ function renderProfileCardView() {
       live.textContent = vc ? ' 🔴 ' + pcFmt(vc) : ' 🔴'
       return live
     }
+    // Platform usernames render as clickable links to the channel page —
+    // same tab navigation (no _blank) per "go to page" UX. Useful for
+    // actually following on a platform: heatsync follow is the source of
+    // truth, but if the user wants to follow on twitch/kick natively
+    // (e.g. to get their notification, or because twitch's anti-bot
+    // blocks programmatic propagation), they click here to open the
+    // channel page and click the native follow button.
+    const mkLink = (href, label, liveVc) => {
+      const a = document.createElement('a')
+      a.href = href
+      a.textContent = label
+      a.dataset.pcardPill = '1'  // bypasses overlay click interception
+      if (typeof liveVc === 'number') a.appendChild(liveDot(liveVc))
+      return a
+    }
     if (data.twitch_username) {
-      const v = document.createElement('span')
-      v.textContent = data.twitch_username
-      if (data.twitch_is_live) v.appendChild(liveDot(data.twitch_viewer_count || 0))
-      addRow('ttv', v, 'val-ttv')
+      addRow('ttv', mkLink('https://twitch.tv/' + encodeURIComponent(data.twitch_username),
+        data.twitch_username, data.twitch_is_live ? (data.twitch_viewer_count || 0) : undefined), 'val-ttv')
     }
     if (data.kick_username) {
-      const v = document.createElement('span')
-      v.textContent = data.kick_username
-      if (data.kick_is_live) v.appendChild(liveDot(data.kick_viewer_count || 0))
-      addRow('kick', v, 'val-kick')
+      addRow('kick', mkLink('https://kick.com/' + encodeURIComponent(data.kick_username),
+        data.kick_username, data.kick_is_live ? (data.kick_viewer_count || 0) : undefined), 'val-kick')
     }
     if (data.youtube_username || data.youtube_channel_id) {
-      const v = document.createElement('span')
-      v.textContent = data.youtube_username || username
-      if (data.youtube_is_live) v.appendChild(liveDot(data.youtube_viewer_count || 0))
-      addRow('yt', v, 'val-yt')
+      const ytName = data.youtube_username || username
+      const ytHref = data.youtube_username
+        ? 'https://youtube.com/@' + encodeURIComponent(data.youtube_username)
+        : 'https://youtube.com/channel/' + encodeURIComponent(data.youtube_channel_id)
+      addRow('yt', mkLink(ytHref, ytName, data.youtube_is_live ? (data.youtube_viewer_count || 0) : undefined), 'val-yt')
     } else if (activeProfileCard.platform === 'yt' || activeProfileCard.platform === 'youtube') {
-      addRow('yt', username, 'val-yt')
+      addRow('yt', mkLink('https://youtube.com/@' + encodeURIComponent(username), username), 'val-yt')
     }
 
     // acctage

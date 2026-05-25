@@ -419,12 +419,6 @@ browser.tabs.onUpdated.addListener((tabId, changeInfo) => {
 // content script noops. We also dedupe by tabId+platform so a SPA reload
 // doesn't repeat-drain.
 const _drainAttempted = new Map() // tabId → Set<platform>
-// Track twitch tabs we've already reloaded once to recover from ext-reload
-// orphaned content scripts — never reload the same tab twice in a session.
-const _staleTwitchReloaded = new Set()
-// Serialize twitch_follow_via_click calls so a queue drain of N items
-// doesn't open N background tabs concurrently. Promise-chain semaphore.
-let _twitchClickQueue = Promise.resolve()
 async function _maybeTriggerCrossFollowDrain(tabId) {
   let tab
   try { tab = await browser.tabs.get(tabId) } catch { return }
@@ -443,7 +437,7 @@ async function _maybeTriggerCrossFollowDrain(tabId) {
     browser.tabs.sendMessage(tabId, { type: 'cross_follow_drain', platform }).catch(() => {})
   }, 2500)
 }
-browser.tabs.onRemoved.addListener((tabId) => { _drainAttempted.delete(tabId); _staleTwitchReloaded.delete(tabId) })
+browser.tabs.onRemoved.addListener((tabId) => { _drainAttempted.delete(tabId) })
 let current7TVEmoteSetId = null; // Track current 7TV emote set ID for EventAPI
 let seventvEmoteSetIds = new Map(); // channelName → 7TV emote set ID
 let blockedEmotes = new Set();
@@ -5435,24 +5429,6 @@ async function handleMessage(message, sender, sendResponse) {
             return
           }
         }
-        // All tabs are stale (orphaned content scripts from ext reload). Self-heal
-        // by reloading the most recently focused twitch tab — on load, the new
-        // content script registers a fresh listener and the queue drain trigger
-        // (tabs.onUpdated complete) sweeps pending follows. Dedupe per-tab via
-        // _staleTwitchReloaded so we don't loop-reload the same tab.
-        const reloadCandidate = candidates.find(t => !_staleTwitchReloaded.has(t.id))
-        if (reloadCandidate) {
-          _staleTwitchReloaded.add(reloadCandidate.id)
-          // Critical: clear the drain-attempted dedup for this tab so that
-          // when the reloaded page fires tabs.onUpdated 'complete', the drain
-          // trigger fires again instead of being deduped against the old
-          // pre-reload drain attempt (which got swallowed by the orphaned
-          // listener and never actually drained).
-          _drainAttempted.delete(reloadCandidate.id)
-          try { browser.tabs.reload(reloadCandidate.id) } catch {}
-          sendResponse({ ok: false, error: 'stale_twitch_tab', reloaded: true })
-          return
-        }
         sendResponse({ ok: false, error: 'stale_twitch_tab' })
       } catch (e) {
         sendResponse({ ok: false, error: e.message })
@@ -5548,90 +5524,6 @@ async function handleMessage(message, sender, sendResponse) {
       } catch (e) {
         log('kick_follow error:', e?.message)
         sendResponse({ ok: false, error: e?.message || 'fetch failed' })
-      }
-    })()
-    return true
-
-  } else if (message.type === 'twitch_follow_via_click') {
-    // Last-resort follow path: open the user's channel page in a background
-    // tab, programmatically click Twitch's native follow button, close the
-    // tab. Bypasses anti-bot entirely because the click goes through Twitch's
-    // own React handler — Apollo links + integrity attach naturally.
-    //
-    // Requires the channel slug (twitch_username), not just the ID. Each
-    // follow opens + closes one background tab; brief visible flash on some
-    // window managers but no persistent tab.
-    //
-    // Serialized via _twitchClickQueue — concurrent callers (drain of N
-    // queued follows, rapid manual clicks) chain rather than fan out into
-    // N background tabs all at once.
-    ;(async () => {
-      const prev = _twitchClickQueue
-      let release
-      _twitchClickQueue = new Promise(r => { release = r })
-      await prev
-      let newTab = null
-      try {
-        const slug = String(message.slug || '').toLowerCase().replace(/[^a-z0-9_]/g, '').slice(0, 30)
-        const follow = !!message.follow
-        if (!slug) { sendResponse({ ok: false, error: 'no_slug' }); return }
-        // Auth check upfront — no point opening tab if not logged in.
-        const cookie = await browser.cookies.get({ url: 'https://twitch.tv', name: 'auth-token' })
-        if (!cookie?.value) { sendResponse({ ok: false, error: 'twitch_not_logged_in' }); return }
-
-        // Open in background; user barely notices on most window managers.
-        newTab = await browser.tabs.create({
-          url: `https://www.twitch.tv/${encodeURIComponent(slug)}`,
-          active: false,
-        })
-
-        // Wait for content script to be ready. tabs.onUpdated 'complete' fires
-        // when document.readyState is complete, but Twitch's React app needs
-        // more time to render the follow button. We poll-ping the content
-        // script which responds once it has registered its message handler.
-        const ready = await new Promise((resolve) => {
-          let attempts = 0
-          const tick = async () => {
-            attempts++
-            if (attempts > 40) { resolve(false); return } // ~20s max
-            try {
-              const r = await browser.tabs.sendMessage(newTab.id, { type: 'hs_ping' })
-              if (r?.ok) { resolve(true); return }
-            } catch {}
-            setTimeout(tick, 500)
-          }
-          setTimeout(tick, 1500)
-        })
-        if (!ready) {
-          sendResponse({ ok: false, error: 'tab_not_ready' })
-          return
-        }
-
-        // Issue the click — content script handles React-tree button discovery,
-        // confirm-modal handling for unfollows, and idempotent state checks.
-        let result
-        try {
-          result = await browser.tabs.sendMessage(newTab.id, {
-            type: 'hs_click_follow_button',
-            follow,
-            slug,
-          })
-        } catch (e) {
-          result = { ok: false, error: 'click_relay_failed' }
-        }
-        sendResponse(result || { ok: false, error: 'no_click_response' })
-      } catch (e) {
-        log('twitch_follow_via_click error:', e?.message)
-        sendResponse({ ok: false, error: e?.message || 'fetch failed' })
-      } finally {
-        // Close the tab regardless of outcome. Small delay so the click POST
-        // can complete + Twitch UI shows the state update before teardown.
-        if (newTab?.id) {
-          setTimeout(() => { try { browser.tabs.remove(newTab.id) } catch {} }, 2500)
-        }
-        // Release the serialization queue so the next call can proceed.
-        // 3.5s gap = 2.5s tab teardown + 1s breathing room for anti-bot.
-        setTimeout(() => release(), 3500)
       }
     })()
     return true
